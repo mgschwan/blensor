@@ -1,0 +1,14 @@
+#!/usr/bin/python
+Import ('env')
+
+sources = 'DummyPhysicsEnvironment.cpp'
+
+incs = '. ../common'
+
+defs = []
+
+if env['WITH_BF_CXX_GUARDEDALLOC']:
+    defs.append('WITH_CXX_GUARDEDALLOC')
+    incs += ' #intern/guardedalloc'
+
+env.BlenderLib ( 'ge_phys_dummy', Split(sources), Split(incs), defs, libtype=['core','player'], priority=[350,60] )

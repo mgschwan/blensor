@@ -1,0 +1,38 @@
+#!/usr/bin/python
+Import ('env')
+
+sources = env.Glob('*.cpp')
+defs = [ 'GLEW_STATIC' ]
+
+incs = '. #intern/string #intern/guardedalloc'
+incs += ' #source/gameengine/Rasterizer/RAS_OpenGLRasterizer'
+incs += ' #source/gameengine/Converter #source/blender/imbuf'
+incs += ' #intern/ghost/include #intern/container'
+incs += ' #intern/audaspace/intern'
+incs += ' #intern/moto/include #source/gameengine/Ketsji #source/blender/blenlib'
+incs += ' #source/blender/blenkernel #source/blender'
+incs += ' #source/blender/blenfont #source/blender/editors/include'
+incs += ' #source/blender/makesdna #source/blender/makesrna'
+incs += ' #source/gameengine/Rasterizer #source/gameengine/GameLogic'
+incs += ' #source/gameengine/Expressions #source/gameengine/Network'
+incs += ' #source/gameengine/SceneGraph #source/gameengine/Physics/common'
+incs += ' #source/gameengine/Physics/Bullet'
+incs += ' #source/gameengine/Network/LoopBackNetwork'
+incs += ' #source/blender/misc #source/blender/blenloader'
+incs += ' #extern/glew/include #source/blender/gpu'
+incs += ' #source/blender/windowmanager'
+
+if env['WITH_BF_FFMPEG']:
+    defs.append('WITH_FFMPEG')
+
+if env['WITH_BF_PYTHON']:
+    incs += ' ' + env['BF_PYTHON_INC']
+    defs.append('WITH_PYTHON')
+
+if env['WITH_BF_CXX_GUARDEDALLOC']:
+    defs.append('WITH_CXX_GUARDEDALLOC')
+
+incs += ' ' + env['BF_BULLET_INC']
+incs += ' ' + env['BF_OPENGL_INC']
+
+env.BlenderLib ( 'ge_blen_routines', sources, Split(incs), defs, libtype=['core','player'], priority=[300,35] , cxx_compileflags=env['BGE_CXXFLAGS'])

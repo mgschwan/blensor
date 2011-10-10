@@ -1,0 +1,8 @@
+APPARMOR - WEB PLUGIN
+
+In order to enable AppArmor integration, you have to:
+* create (link) a blenderplayer-web executable (ln /usr/bin/blenderplayer /usr/bin/blenderplayer-web)
+* copy AppArmor policy to /etc/apparmor.d (cp usr.bin.blenderplayer-web /etc/apparmor.d/)
+* reload AppArmor (/etc/init.d/apparmor reload)
+
+If AppArmore is working, the blenderplayer-web process should run using /usr/bin/blenderplayer-web label (ps auxZ)

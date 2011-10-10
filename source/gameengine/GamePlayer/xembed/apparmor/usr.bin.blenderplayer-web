@@ -1,0 +1,12 @@
+# Last Modified: Sun Sep 21 17:41:02 2008
+#include <tunables/global>
+/usr/bin/blenderplayer-web {
+  #include <abstractions/base>
+  #include <abstractions/X>
+  #include <abstractions/nvidia>
+  #include <abstractions/audio>
+
+  /tmp/blender.* r,
+  /usr/bin/blenderplayer-web mr,
+  /usr/share/icons/** r,
+}
