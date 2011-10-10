@@ -61,6 +61,47 @@
 
 #include "MEM_guardedalloc.h"
 
+/* Return the floating point zbuffer */
+static void rna_Image_zbuf(Image *image, bContext *C, ReportList *reports, int *outbuffer_len, float **outbuffer, Scene *scene)
+{
+
+	ImBuf *ibuf;
+    int idx=0;
+	if (scene == NULL) {
+		scene = CTX_data_scene(C);
+	}
+
+
+    *outbuffer_len=0;
+
+    ImageUser iuser;
+	void *lock;
+
+	iuser.scene = scene;
+	iuser.ok = 1;
+
+	ibuf = BKE_image_acquire_ibuf(image, &iuser, &lock);
+
+	if (ibuf == NULL) {
+			BKE_reportf(reports, RPT_ERROR, "Couldn't acquire buffer from image");
+	}
+	else {
+        *outbuffer = (float *) MEM_mallocN(ibuf->x * ibuf->y * sizeof(float),"rna_Image_zbuf");
+        if (*outbuffer == NULL)
+        {
+		BKE_reportf(reports, RPT_ERROR, "Couldn't allocate buffer for zbuffer output");
+        }
+        else
+        {
+            memcpy((void *)*outbuffer, (const void *)ibuf->zbuf_float, ibuf->x * ibuf->y* sizeof(float));
+            *outbuffer_len = ibuf->x * ibuf->y;
+        }
+
+	}
+	BKE_image_release_ibuf(image, lock);
+
+}
+
 static void rna_Image_save_render(Image *image, bContext *C, ReportList *reports, const char *path, Scene *scene)
 {
 	ImBuf *ibuf;
@@ -276,6 +317,14 @@ void RNA_api_image(StructRNA *srna)
 
 	func= RNA_def_function(srna, "gl_free", "rna_Image_gl_free");
 	RNA_def_function_ui_description(func, "Free the image from OpenGL graphics memory");
+
+	func= RNA_def_function(srna, "zbuf", "rna_Image_zbuf");
+	RNA_def_function_ui_description(func, "Access the image zbuffer");
+	RNA_def_function_flag(func, FUNC_USE_CONTEXT|FUNC_USE_REPORTS);
+    parm= RNA_def_float_array(func, "outbuffer", 1, NULL, -FLT_MAX, FLT_MAX, "outbuffer", "Target Buffer.", 0.0f, 0.0f); 	 
+	RNA_def_property_flag(parm, PROP_DYNAMIC|PROP_THICK_WRAP|PROP_REQUIRED);
+	RNA_def_function_output(func, parm);
+	RNA_def_pointer(func, "scene", "Scene", "", "Scene to take image parameters from");
 
 	/* TODO, pack/unpack, maybe should be generic functions? */
 }

@@ -321,5 +321,13 @@ void RE_engines_exit(void);
 
 int RE_is_rendering_allowed(struct Scene *scene, struct Object *camera_override, struct ReportList *reports);
 
+
+
+
+
+void RE_BlensorFrame(struct Render *re, struct Main *bmain, struct Scene *scene, struct SceneRenderLayer *srl, struct Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, float *returns, float maximum_distance);
+ 
+
+
 #endif /* RE_PIPELINE_H */
 

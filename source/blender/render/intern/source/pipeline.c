@@ -40,10 +40,13 @@
 #include "DNA_group_types.h"
 #include "DNA_image_types.h"
 #include "DNA_node_types.h"
+#include "DNA_camera_types.h"
 #include "DNA_object_types.h"
+#include "DNA_material_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_sequence_types.h"
 #include "DNA_userdef_types.h"
+#include "DNA_property_types.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -59,6 +62,8 @@
 #include "BKE_sequencer.h"
 #include "BKE_utildefines.h"
 #include "BKE_writeavi.h"	/* <------ should be replaced once with generic movie module */
+#include "BKE_property.h"
+#include "BKE_idprop.h"
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
@@ -72,8 +77,15 @@
 #include "IMB_imbuf_types.h"
 
 #include "intern/openexr/openexr_multi.h"
+#include "rayintersection.h"
+#include "rayobject.h"
+#include "RNA_access.h"
+
 
 #include "RE_pipeline.h"
+
+
+
 
 /* internal */
 #include "render_types.h"
@@ -85,6 +97,11 @@
 #include "shadbuf.h"
 #include "pixelblending.h"
 #include "zbuf.h"
+
+
+
+extern StructRNA RNA_Camera;
+extern StructRNA RNA_Object;
 
 
 /* render flow
@@ -1811,6 +1828,359 @@ void RE_TileProcessor(Render *re)
 
 /* ************  This part uses API, for rendering Blender scenes ********** */
 
+
+/* Return the value of the id property or the defaultvalue if the id property
+ * does not exist
+ */
+double Blensor_GetIDPropertyValue_Double(struct ID *root, const char *name, double default_value)
+{
+    struct IDProperty *prop;
+    struct IDProperty *rindex;
+    double retVal=default_value;
+
+    if (root)
+    {
+        prop = IDP_GetProperties(root, 0);
+        if (prop)
+        {
+            rindex = IDP_GetPropertyFromGroup(prop, name);
+            if (rindex)
+            {
+                int *rtmp = (int *)&retVal;
+                rtmp[0] = rindex->data.val;
+                rtmp[1] = rindex->data.val2;
+            }
+        }
+    }
+    return retVal;
+}
+
+/* Return the value of theproperty or the defaultvalue if the id property
+ * does not exist
+ */
+double Blensor_GetPropertyValue_Double(struct Object *root, const char *name, double default_value)
+{
+    struct bProperty *prop;    
+    double retVal=default_value;
+
+    if (root)
+    {
+            prop = get_ob_property(root,name);
+            
+            if (prop)
+            {
+                retVal = prop->data;
+            }
+    }
+    return retVal;
+}
+
+
+
+/* Setup a single ray and cast it onto the raytree */
+static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, float vy, float vz, float *ret, void **hit_ob, void **hit_face)
+{
+    struct Isect isect;
+    int res=0;
+    float veclen = sqrt( pow(vx,2) + pow(vy,2) +pow(vz,2));
+    ret[5] = 1.0; //Transmission
+    ret[6] = 0.0; //Reflection
+    ret[10] = 1.0; //Refractive Index of the material
+    ret[11] = 1.0; //Diffuse reflectivity
+    if (hit_ob && *hit_ob)
+    {
+        isect.orig.ob = *hit_ob;
+    }
+    if (hit_face && *hit_face)
+    {
+        isect.orig.face = *hit_face;
+    }
+
+    if (veclen)
+    {
+        isect.start[0]=sx;
+        isect.start[1]=sy;
+        isect.start[2]=sz;
+
+        isect.dir[0]=vx/veclen;
+        isect.dir[1]=vy/veclen;
+        isect.dir[2]=vz/veclen;
+
+
+        isect.dist = RE_RAYTRACE_MAXDIST;
+	    isect.mode= RE_RAY_MIRROR;
+	    isect.check = RE_CHECK_VLR_RENDER;
+	    isect.skip = RE_SKIP_VLR_NEIGHBOUR;
+	    isect.hint = 0;
+
+        res = RE_rayobject_raycast( (RayObject*) tree, &isect );
+
+        ret[0] = isect.dist;
+        ret[1] = isect.dist * isect.dir[0] + isect.start[0];    
+        ret[2] = isect.dist * isect.dir[1] + isect.start[1];
+        ret[3] = isect.dist * isect.dir[2] + isect.start[2];
+        ret[4] = 0.0;
+        
+        if (isect.dist < 1000)
+        {
+            /* Object is defined in: source/blender/makesdna/DNA_object_types.h */
+          	ObjectInstanceRen *obi = (ObjectInstanceRen*)isect.hit.ob;
+
+            /* Retrieve the information from the intersected face */
+            VlakRen *face = (VlakRen *) isect.hit.face;
+
+            *hit_ob = isect.hit.ob;
+            *hit_face = isect.hit.face;
+
+
+            if (face)
+            {
+                struct Material *m = face->mat;
+                ret[5] = m->alpha;
+                ret[6] = m->ray_mirror;
+                ret[7] = face->n[0];
+                ret[8] = face->n[1];
+                ret[9] = face->n[2];
+                ret[10] = Blensor_GetIDPropertyValue_Double(&face->mat->id,"refractive_index", 1.0);
+                ret[11] = m->ref; 
+            }
+
+            if (obi->ob->id.name != NULL)
+            {
+                int idx;
+                char *bytes = (char *)(&ret[4]);
+                bytes[0]=0;
+                bytes[1]=0;
+                bytes[2]=0;
+                bytes[3]=0;
+                /* We have a name 
+                 * They are usually OB<name>. For example "OBCube" 
+                 * Extract 4 characters after OB 
+                */
+                 for (idx = 0; idx < 4 && obi->ob->id.name[idx+2] != 0; idx++)
+                 {  
+                    bytes[idx] = obi->ob->id.name[idx+2];
+                 }
+            }
+       }
+    }
+    return res;
+}
+
+
+/* Calculate the Outgoing ray based on the surface normal and the refractive indices
+ * (n1,n2) of the two materials
+ * Returns 0 if the ray is reflected
+ */
+int blensor_dispersion(float *ray, float *surface_normal, float n1, float n2, float *out_ray)
+{
+    float incident_angle = angle_v3v3(ray, surface_normal);
+    int reflected = 0;
+    /* Check for numerical problems. We can not calculate a rotation axis if 
+     * the ray is close to parallel to the surface normal
+     * If the ray is parallel to the surface_normal the change in direction 
+     * due to dispersion is minimal and the ray passes along in the same direction
+     */
+    if (fabs(n1) < 0.0 && (fabs(incident_angle) < 0.002 || 
+                           fabs(incident_angle-M_PI) < 0.02) )
+    {
+        float rotation_axis[3];
+      
+        float r = n2/n1;
+        float sin_theta2 = incident_angle*r;
+
+
+        cross_v3_v3v3(rotation_axis,ray,surface_normal);
+
+        /* If the angle is below the critical angle we get a total-reflection */
+        if (sin_theta2 > 1.0)
+        {
+            reflect_v3_v3v3(out_ray, ray, surface_normal);
+            reflected = 1;
+        }
+        else
+        {
+            float exit_angle;
+            float tmp[3];
+            exit_angle = asin(sin_theta2);
+
+            normalize_v3_v3(tmp, surface_normal); //This is probably already normalized
+            rotate_v3_v3v3fl(out_ray, tmp, rotation_axis, -exit_angle);            
+        }
+    }
+    else 
+    {
+       out_ray[0]=ray[0];
+       out_ray[1]=ray[1];
+       out_ray[2]=ray[2];
+    }
+    return reflected;
+}
+
+
+/* Calculate the minimal reflectivty that will cause a reflection */
+double blensor_calculate_reflectivity_limit(double dist, 
+                                            double reflectivity_distance,    
+                                            double reflectivity_limit,
+                                            double reflectivity_slope)
+{
+    double min_reflectivity = -1.0;
+    if (dist >= reflectivity_distance)
+    {
+        min_reflectivity = reflectivity_limit + reflectivity_slope * (dist-reflectivity_distance);
+    }
+    
+    return min_reflectivity;
+}
+
+
+/* cast all rays specified in *rays and return the result via *returns */
+static void do_blensor(Render *re, float *rays, int raycount, float *returns, float maximum_distance)
+{
+    int idx;
+    float refractive_index = 1.0;
+    double reflectivity_distance = 50;  //Minimum distance at which the reflectivity
+                                          //of the object influences the distance measuremet
+    double reflectivity_limit = 0.1;  
+    double reflectivity_slope = 0.01;  
+    double min_reflectivity = -1.0;
+    struct bProperty *tprop;
+    Camera *cam;
+    PointerRNA rna_cam;
+    PropertyRNA *rna_cam_prop;
+    PropertyType pt;
+    
+	re->scene->r.subframe = re->mblur_offs + re->field_offs;
+    RE_Database_FromScene(re, re->main, re->scene, re->lay, 1);
+
+
+    cam = (Camera *)re->scene->camera->data;
+    RNA_pointer_create(&(re->scene->camera->id), &RNA_Object, re->scene->camera, &rna_cam);
+
+    rna_cam_prop = RNA_struct_find_property(&rna_cam, "ref_dist");
+    reflectivity_distance = RNA_property_float_get(&rna_cam, rna_cam_prop);
+
+    rna_cam_prop = RNA_struct_find_property(&rna_cam, "ref_limit");
+    reflectivity_limit = RNA_property_float_get(&rna_cam, rna_cam_prop);
+
+    rna_cam_prop = RNA_struct_find_property(&rna_cam, "ref_slope");
+    reflectivity_slope = RNA_property_float_get(&rna_cam, rna_cam_prop);
+
+ 
+
+    refractive_index = Blensor_GetIDPropertyValue_Double(&re->scene->world->id,"refractive_index", 1.0);
+    printf ("The refractive index of the world is: %.6f\n",refractive_index);
+
+    for (idx = 0; idx < raycount ;  idx ++)
+    {
+        double maxdist = maximum_distance;
+        int valid_signal = 0;
+
+
+        float sx = 0.0, sy=0.0, sz=0.0;
+        float vx = rays[idx*3], vy=rays[idx*3+1], vz=rays[idx*3+2];
+        float intersection[12];
+        //Transmission threshold and reflection threshold should be set for
+        //every ray from within python
+
+        float raydistance = 0.0;
+        int reflection = 0;
+        int transmission = 0;
+        void *hit_ob = NULL;
+        void *hit_face = NULL;
+    
+        do
+        {
+            double min_reflectivity = -1.0;
+            double reflected_energy = 0.0;
+            reflection = 0;
+            transmission = 0;
+
+            cast_ray(re->raytree, sx, sy, sz, vx, vy, vz, intersection, &hit_ob, &hit_face);
+  
+            raydistance += intersection[0];
+
+            min_reflectivity = blensor_calculate_reflectivity_limit(raydistance, 
+                                            reflectivity_distance, reflectivity_limit, reflectivity_slope);
+    
+            //TODO: We would neeed to cast the ray through the material and
+            //      also reflect it, but this could get really messy if a ray
+            //      is split many times.
+            //      reflectivity tells how much light is reflected this is further
+            //      split into diffuse and specular reflection. A certain amount of
+            //      the specular reflection is added to the reflected_energy.
+            //      If the remaining amount of energy that is emitted through reflection/transmission
+            //      is below the threshold for a detection we can stop
+
+            if (intersection[6] > 0.0) //if reflection instead of transmission
+            {
+                    /* Check if the ray is reflected and calculate the
+                     * the new vector
+                     */                        
+                    float out_ray[3];
+                    float in_ray[] = {vx,vy,vz};
+                    float v1[3];
+                    float angle;
+                    
+                    reflection = 1;
+                    reflect_v3_v3v3(out_ray, in_ray, &intersection[7]);
+
+                    v1[0] = sx-intersection[1];v1[1]=sy-intersection[2];v1[2]=sz-intersection[3];
+                    angle = angle_v3v3(v1,&intersection[7]);
+                    vx=out_ray[0];
+                    vy=out_ray[1];
+                    vz=out_ray[2];
+
+                    valid_signal=0; //Reflection means we have not hit a correct target
+            } 
+            else if (intersection[11] > min_reflectivity)
+            {
+               valid_signal = 1;
+               //We have a signal
+               reflection=0;
+               transmission=0; 
+            }
+            else if ( (1==0) && intersection[5] > 0.0 ) //Refraction is currently [DISABLED]
+            {
+                float out_ray[3];
+                float in_ray[] = {vx,vy,vz};
+                
+                transmission = 1;
+                transmission = !blensor_dispersion(in_ray, &intersection[7], refractive_index, intersection[10], out_ray);
+
+                vx=out_ray[0];
+                vy=out_ray[1];
+                vz=out_ray[2];
+            
+                valid_signal = 0;
+            } else
+            {
+                valid_signal = 0;
+            }
+
+            sx = intersection[1];  //And set up the new starting point            
+            sy = intersection[2];
+            sz = intersection[3];
+        } while((reflection || transmission) && raydistance <= maxdist);
+        
+
+        if (raydistance <= maxdist && valid_signal != 0)
+        {   
+            intersection[0] = raydistance;
+            memcpy(&returns[idx*5], intersection, 5*sizeof(float));
+        }
+        else 
+        {
+            intersection[0] = FLT_MAX;
+        }
+    }
+
+	/* free all render verts etc */
+	RE_Database_Free(re);
+	
+	re->scene->r.subframe = 0.f;
+}
+
 static int external_render_3d(Render *re, int do_all);
 
 static void do_render_3d(Render *re)
@@ -2936,6 +3306,50 @@ void RE_SetReports(Render *re, ReportList *reports)
 {
 	re->reports= reports;
 }
+
+/* Setup the evnironment and call the raycaster function */
+void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, float *returns, float maximum_distance)
+{
+    double refractive_index = 1.0; //Vacuum
+	/* ugly global still... is to prevent preview events and signal subsurfs etc to make full resol */
+	G.rendering= 1;
+	
+	printf ("Do Blensor processing: %d\n", frame);
+
+	scene->r.cfra= frame;
+	if(render_initialize_from_main(re, bmain, scene, srl, camera_override, lay, 0, 0)) {
+		MEM_reset_peak_memory();
+
+        scene_camera_switch_update(re->scene);
+
+        
+
+	    re->i.starttime= PIL_check_seconds_timer();
+
+	    /* ensure no images are in memory from previous animated sequences */
+	    BKE_image_all_free_anim_ibufs(re->r.cfra);
+        do_blensor(re, rays, raycount, returns, maximum_distance);
+	
+	    /* for UI only */
+	    BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
+	    renderresult_add_names(re->result);
+	    BLI_rw_mutex_unlock(&re->resultmutex);
+	
+    re->i.lastframetime= PIL_check_seconds_timer()- re->i.starttime;
+	
+	    re->stats_draw(re->sdh, &re->i);
+	
+    /* stamp image info here */
+	    if((re->r.stamp & R_STAMP_ALL) && (re->r.stamp & R_STAMP_DRAW)) {
+		    renderresult_stampinfo(re->scene);
+		    re->display_draw(re->ddh, re->result, NULL);
+    }
+
+	}
+	/* UGLY WARNING */
+	G.rendering= 0;
+}
+
 
 /* general Blender frame render call */
 void RE_BlenderFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still)

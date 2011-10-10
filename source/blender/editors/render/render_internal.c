@@ -186,6 +186,68 @@ void image_buffer_rect_update(Scene *scene, RenderResult *rr, ImBuf *ibuf, volat
 
 /* ****************************** render invoking ***************** */
 
+/* executes blocking blensor */
+static int screen_blensor_exec(bContext *C, wmOperator *op)
+{
+	Scene *scene= CTX_data_scene(C);
+	Render *re= RE_NewRender(scene->id.name);
+	Image *ima;
+	View3D *v3d= CTX_wm_view3d(C);
+	Main *mainp= CTX_data_main(C);
+	unsigned int lay= (v3d)? v3d->lay: scene->lay;
+    float *rays;
+    float *returns;
+
+    /* add modal handler for ESC */
+
+	const int raycount= RNA_int_get(op->ptr, "raycount");
+	const unsigned int rays_ptr_low =(unsigned int) RNA_int_get(op->ptr, "rays_ptr_low");
+	const unsigned int return_ptr_low =(unsigned int) RNA_int_get(op->ptr, "returns_ptr_low");
+	const unsigned int rays_ptr_high =(unsigned int) RNA_int_get(op->ptr, "rays_ptr_high");
+  const unsigned int return_ptr_high =(unsigned int) RNA_int_get(op->ptr, "returns_ptr_high");
+	const float maximum_distance =RNA_float_get(op->ptr, "maximum_distance");
+	struct Object *camera_override= v3d ? V3D_CAMERA_LOCAL(v3d) : NULL;
+  rays = (float *)( (rays_ptr_high<<16) + rays_ptr_low );
+  returns = (float *)( (return_ptr_high<<16) + return_ptr_low );
+      
+    if (raycount > 0)
+    {
+        
+        printf ("Raycount: %d\n",raycount);
+
+	    if(re==NULL) {
+		    re= RE_NewRender(scene->id.name);
+	    }
+	
+	    G.afbreek= 0;
+        
+ 	    //RE_test_break_cb(re, NULL, (int (*)(void *)) blender_test_break);
+
+	    ima= BKE_image_verify_viewer(IMA_TYPE_R_RESULT, "Render Result");
+	    BKE_image_signal(ima, NULL, IMA_SIGNAL_FREE);
+	    BKE_image_backup_render(scene, ima);
+
+	    /* cleanup sequencer caches before starting user triggered render.
+       otherwise, invalidated cache entries can make their way into
+	       the output rendering. We can't put that into RE_BlenderFrame,
+	       since sequence rendering can call that recursively... (peter) */
+	    seq_stripelem_cache_cleanup();
+
+     RE_SetReports(re, op->reports);
+
+	    RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, returns, maximum_distance);
+
+    	RE_SetReports(re, NULL);
+
+	    // no redraw needed, we leave state as we entered it
+	    ED_update_for_newframe(mainp, scene, CTX_wm_screen(C), 1);
+
+	    WM_event_add_notifier(C, NC_SCENE|ND_RENDER_RESULT, scene);
+
+    }
+	return OPERATOR_FINISHED;
+}
+
 /* set callbacks, exported to sequence render too.
  Only call in foreground (UI) renders. */
 
@@ -450,6 +512,7 @@ static int screen_render_modal(bContext *C, wmOperator *UNUSED(op), wmEvent *eve
 	return OPERATOR_PASS_THROUGH;
 }
 
+
 /* using context, starts job */
 static int screen_render_invoke(bContext *C, wmOperator *op, wmEvent *event)
 {
@@ -615,5 +678,31 @@ void RENDER_OT_render(wmOperatorType *ot)
 	RNA_def_boolean(ot->srna, "write_still", 0, "Write Image", "Save rendered the image to the output path (used only when animation is disabled)");
 	RNA_def_string(ot->srna, "layer", "", RE_MAXNAME, "Render Layer", "Single render layer to re-render");
 	RNA_def_string(ot->srna, "scene", "", MAX_ID_NAME-2, "Scene", "Re-render single layer in this scene");
+}
+
+
+/* sensor simulation, using current scene, view3d? */
+void RENDER_OT_blensor(wmOperatorType *ot)
+{
+    PropertyRNA *parm;
+
+       /* identifiers */
+       ot->name= "Blensor";
+       ot->description= "Sensor active scene";
+       ot->idname= "RENDER_OT_blensor";
+
+       ot->exec= screen_blensor_exec;
+
+       parm = RNA_def_int(ot->srna, "raycount", -1, -INT_MAX, INT_MAX, "Number of rays", "Number of rays in the rays array", -INT_MAX, INT_MAX);
+
+    parm = RNA_def_int_array(ot->srna, "rays_ptr_low", 0, NULL, 0, INT_MAX, "rays_ptr_low", "Pointer to the rays", 0.0f, 0.0f);
+    parm = RNA_def_int_array(ot->srna, "rays_ptr_high", 0, NULL, 0, INT_MAX, "rays_ptr_high", "Pointer to the rays", 0.0f, 0.0f);
+    parm = RNA_def_int_array(ot->srna, "returns_ptr_low", 0, NULL, 0, INT_MAX, "returns_ptr_low", "Pointer to the rays", 0.0f, 0.0f);
+    parm = RNA_def_int_array(ot->srna, "returns_ptr_high", 0, NULL, 0, INT_MAX, "returns_ptr_high", "Pointer to the rays", 0.0f, 0.0f);
+
+    parm = RNA_def_float(ot->srna, "maximum_distance", 100.0f, -FLT_MAX, FLT_MAX, "", "Maximum distance a ray travels", -FLT_MAX, FLT_MAX);
+
+       RNA_def_string(ot->srna, "layer", "", RE_MAXNAME, "Render Layer", "Single render layer to re-render");
+       RNA_def_string(ot->srna, "scene", "", 19, "Scene", "Re-render single layer in this scene");
 }
 

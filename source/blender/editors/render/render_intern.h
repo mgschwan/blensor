@@ -75,6 +75,8 @@ void render_view_open(struct bContext *C, int mx, int my);
 
 void RENDER_OT_view_show(struct wmOperatorType *ot);
 void RENDER_OT_view_cancel(struct wmOperatorType *ot);
+void RENDER_OT_blensor(struct wmOperatorType *ot);
+
 
 /* render_opengl.c */
 void RENDER_OT_opengl(struct wmOperatorType *ot);
