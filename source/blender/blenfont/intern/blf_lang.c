@@ -1,5 +1,5 @@
 /*
- * $Id: blf_lang.c 40581 2011-09-26 18:51:10Z campbellbarton $
+ * $Id: blf_lang.c 40928 2011-10-11 05:52:58Z dfelinto $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -94,6 +94,7 @@ static const char *locales[] = {
 	"greek", "el_GR",
 	"korean", "ko_KR",
 	"nepali", "ne_NP",
+	"persian", "fa_PE",
 };
 
 void BLF_lang_init(void)

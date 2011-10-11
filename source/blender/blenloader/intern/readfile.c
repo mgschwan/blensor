@@ -1,5 +1,5 @@
 /*
- * $Id: readfile.c 40889 2011-10-10 00:38:32Z campbellbarton $
+ * $Id: readfile.c 40908 2011-10-10 14:32:08Z nazgul $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -12123,12 +12123,14 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 
 					if(mtex) {
 						if((mtex->texflag&MTEX_BUMP_FLIPPED)==0) {
-							if((mtex->mapto&MAP_NORM) && mtex->texflag&(MTEX_COMPAT_BUMP|MTEX_3TAP_BUMP|MTEX_5TAP_BUMP)) {
-								Tex *tex= newlibadr(fd, lib, mtex->tex);
+							if((mtex->mapto&MAP_DISPLACE)==0) {
+								if((mtex->mapto&MAP_NORM) && mtex->texflag&(MTEX_COMPAT_BUMP|MTEX_3TAP_BUMP|MTEX_5TAP_BUMP)) {
+									Tex *tex= newlibadr(fd, lib, mtex->tex);
 
-								if(!tex || (tex->imaflag&TEX_NORMALMAP)==0) {
-									mtex->norfac= -mtex->norfac;
-									mtex->texflag|= MTEX_BUMP_FLIPPED;
+									if(!tex || (tex->imaflag&TEX_NORMALMAP)==0) {
+										mtex->norfac= -mtex->norfac;
+										mtex->texflag|= MTEX_BUMP_FLIPPED;
+									}
 								}
 							}
 						}

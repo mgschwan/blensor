@@ -1,5 +1,5 @@
 /*
- * $Id: rna_ID.c 40738 2011-10-01 21:09:42Z campbellbarton $
+ * $Id: rna_ID.c 40927 2011-10-11 05:45:59Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -317,9 +317,15 @@ static int rna_IDPArray_length(PointerRNA *ptr)
 int rna_IDMaterials_assign_int(PointerRNA *ptr, int key, const PointerRNA *assign_ptr)
 {
 	ID *id=           ptr->id.data;
+	short *totcol= give_totcolp_id(id);
 	Material *mat_id= assign_ptr->id.data;
-	assign_material_id(id, mat_id, key + 1);
-	return 1;
+	if(totcol && (key >= 0 && key < *totcol)) {
+		assign_material_id(id, mat_id, key + 1);
+		return 1;
+	}
+	else {
+		return 0;
+	}
 }
 
 #else

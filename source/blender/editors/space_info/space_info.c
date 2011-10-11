@@ -1,5 +1,5 @@
 /*
- * $Id: space_info.c 40395 2011-09-20 13:41:43Z nazgul $
+ * $Id: space_info.c 40924 2011-10-11 05:02:45Z xiaoxiangquan $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -290,7 +290,7 @@ static void recent_files_menu_register(void)
 
 	mt= MEM_callocN(sizeof(MenuType), "spacetype info menu recent files");
 	strcpy(mt->idname, "INFO_MT_file_open_recent");
-	strcpy(mt->label, "Open Recent...");
+	strcpy(mt->label, _("Open Recent..."));
 	mt->draw= recent_files_menu_draw;
 	WM_menutype_add(mt);
 }

@@ -1,5 +1,5 @@
 /*
- * $Id: sequencer_draw.c 40114 2011-09-11 06:41:09Z campbellbarton $
+ * $Id: sequencer_draw.c 40937 2011-10-11 14:53:27Z blendix $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -186,6 +186,9 @@ static void drawseqwave(Scene *scene, Sequence *seq, float x1, float y1, float x
 
 		if(!seq->sound->waveform)
 			sound_read_waveform(seq->sound);
+
+		if(!seq->sound->waveform)
+			return; /* zero length sound */
 
 		waveform = seq->sound->waveform;
 
