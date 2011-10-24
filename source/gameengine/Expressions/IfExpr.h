@@ -1,6 +1,5 @@
 /*
  * IfExpr.h: interface for the CIfExpr class.
- * $Id: IfExpr.h 40095 2011-09-10 09:38:38Z campbellbarton $
  * Copyright (c) 1996-2000 Erwin Coumans <coockie@acm.org>
  *
  * Permission to use, copy, modify, distribute and sell this software

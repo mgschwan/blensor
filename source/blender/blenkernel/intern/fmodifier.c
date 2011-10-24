@@ -1,6 +1,4 @@
 /*
- * $Id: fmodifier.c 40904 2011-10-10 09:44:14Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

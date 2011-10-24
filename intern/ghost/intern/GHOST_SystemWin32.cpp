@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_SystemWin32.cpp 39007 2011-08-04 03:14:00Z merwin $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: GHOST_SystemWin32.cpp 39007 2011-08-04 03:14:00Z merwin $
  * Copyright (C) 2001 NaN Technologies B.V.
  * @author	Maarten Gribnau
  * @date	May 7, 2001
@@ -712,20 +710,23 @@ GHOST_EventKey* GHOST_SystemWin32::processKeyEvent(GHOST_IWindow *window, RAWINP
 	GHOST_SystemWin32 * system = (GHOST_SystemWin32 *)getSystem();
 	GHOST_TKey key = system->hardKey(window, raw, &keyDown, &vk);
 	GHOST_EventKey* event;
+
 	if (key != GHOST_kKeyUnknown) {
-		char ascii = '\0';
+		char utf8_char[6] = {0} ;
 
-		unsigned short utf16[2]={0};
+		wchar_t utf16[2]={0};
 		BYTE state[256];
-		GetKeyboardState((PBYTE)state);
+		GetKeyboardState((PBYTE)state);  
 
-		if(ToAsciiEx(vk, 0, state, utf16, 0, system->m_keylayout))
-				WideCharToMultiByte(CP_ACP, 0x00000400, 
+		if(ToUnicodeEx(vk, 0, state, utf16, 2, 0, system->m_keylayout))
+			WideCharToMultiByte(CP_UTF8, 0, 
 									(wchar_t*)utf16, 1,
-									(LPSTR) &ascii, 1,
-									NULL,NULL);
+									(LPSTR) utf8_char, 5,
+									NULL,NULL); else *utf8_char = 0;
 
-		event = new GHOST_EventKey(system->getMilliSeconds(), keyDown ? GHOST_kEventKeyDown: GHOST_kEventKeyUp, window, key, ascii);
+		if(!keyDown) utf8_char[0] = '\0';
+		
+		event = new GHOST_EventKey(system->getMilliSeconds(), keyDown ? GHOST_kEventKeyDown: GHOST_kEventKeyUp, window, key, (*utf8_char & 0x80)?'?':*utf8_char, utf8_char);
 		
 #ifdef GHOST_DEBUG
 		std::cout << ascii << std::endl;

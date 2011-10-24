@@ -1,6 +1,4 @@
 /*
- * $Id: object_add.c 40831 2011-10-06 12:51:33Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

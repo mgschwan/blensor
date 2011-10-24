@@ -1,7 +1,6 @@
 /*
  * Senses touch and collision events
  *
- * $Id: KX_TouchSensor.cpp 35171 2011-02-25 13:35:59Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

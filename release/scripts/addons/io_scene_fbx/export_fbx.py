@@ -131,6 +131,26 @@ def mat4x4str(mat):
     return '%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f' % tuple([f for v in mat for f in v])
 
 
+def action_bone_names(obj, action):
+    from bpy.types import PoseBone
+
+    names = set()
+    path_resolve = obj.path_resolve
+
+    for fcu in action.fcurves:
+        try:
+            prop = path_resolve(fcu.data_path, False)
+        except:
+            prop = None
+
+        if prop is not None:
+            data = prop.data
+            if isinstance(data, PoseBone):
+                names.add(data.name)
+
+    return names
+
+
 # ob must be OB_MESH
 def BPyMesh_meshWeight2List(ob, me):
     ''' Takes a mesh and return its group names and a list of lists, one list per vertex.
@@ -244,13 +264,13 @@ def save_single(operator, scene, filepath="",
 
             self.blenName = blenBone.name
             self.blenBone = blenBone
-            self.blenMeshes = {}					# fbxMeshObName : mesh
+            self.blenMeshes = {}  # fbxMeshObName : mesh
             self.fbxArm = fbxArm
             self.restMatrix = blenBone.matrix_local
 
             # not used yet
-            # self.restMatrixInv =	self.restMatrix.inverted()
-            # self.restMatrixLocal =	None # set later, need parent matrix
+            #~ self.restMatrixInv = self.restMatrix.inverted()
+            #~ self.restMatrixLocal = None # set later, need parent matrix
 
             self.parent = None
 
@@ -258,7 +278,7 @@ def save_single(operator, scene, filepath="",
             pose = fbxArm.blenObject.pose
             self.__pose_bone = pose.bones[self.blenName]
 
-            # store a list if matricies here, (poseMatrix, head, tail)
+            # store a list if matrices here, (poseMatrix, head, tail)
             # {frame:posematrix, frame:posematrix, ...}
             self.__anim_poselist = {}
 
@@ -431,12 +451,12 @@ def save_single(operator, scene, filepath="",
     fw('\nCreationTime: "%.4i-%.2i-%.2i %.2i:%.2i:%.2i:000"' % curtime)
     fw('\nCreator: "Blender version %s"' % bpy.app.version_string)
 
-    pose_items = []  # list of (fbxName, matrix) to write pose data for, easier to collect allong the way
+    pose_items = []  # list of (fbxName, matrix) to write pose data for, easier to collect along the way
 
     # --------------- funcs for exporting
     def object_tx(ob, loc, matrix, matrix_mod=None):
         '''
-        Matrix mod is so armature objects can modify their bone matricies
+        Matrix mod is so armature objects can modify their bone matrices
         '''
         if isinstance(ob, bpy.types.Bone):
 
@@ -536,7 +556,7 @@ def save_single(operator, scene, filepath="",
                     constraint_values["sca_max"] = constraint.max_x, constraint.max_y, constraint.max_z
                     constraint_values["sca_limit"] = constraint.use_min_x, constraint.use_min_y, constraint.use_min_z, constraint.use_max_x, constraint.use_max_y, constraint.use_max_z
 
-        # incase bad values are assigned.
+        # in case bad values are assigned.
         assert(len(constraint_values) == 9)
 
         return constraint_values
@@ -655,8 +675,8 @@ def save_single(operator, scene, filepath="",
         fw('\n\tModel: "Model::%s", "Limb" {' % my_bone.fbxName)
         fw('\n\t\tVersion: 232')
 
-        #poseMatrix = write_object_props(my_bone.blenBone, None, None, my_bone.fbxArm.parRelMatrix())[3]
-        poseMatrix = write_object_props(my_bone.blenBone, pose_bone=my_bone.getPoseBone())[3]  # dont apply bone matricies anymore
+        #~ poseMatrix = write_object_props(my_bone.blenBone, None, None, my_bone.fbxArm.parRelMatrix())[3]
+        poseMatrix = write_object_props(my_bone.blenBone, pose_bone=my_bone.getPoseBone())[3]  # dont apply bone matrices anymore
         pose_items.append((my_bone.fbxName, poseMatrix))
 
         # fw('\n\t\t\tProperty: "Size", "double", "",%.6f' % ((my_bone.blenData.head['ARMATURESPACE'] - my_bone.blenData.tail['ARMATURESPACE']) * my_bone.fbxArm.parRelMatrix()).length)
@@ -1232,7 +1252,7 @@ def save_single(operator, scene, filepath="",
     def write_sub_deformer_skin(my_mesh, my_bone, weights):
 
         '''
-        Each subdeformer is spesific to a mesh, but the bone it links to can be used by many sub-deformers
+        Each subdeformer is specific to a mesh, but the bone it links to can be used by many sub-deformers
         So the SubDeformer needs the mesh-object name as a prefix to make it unique
 
         Its possible that there is no matching vgroup in this mesh, in that case no verts are in the subdeformer,
@@ -1781,7 +1801,7 @@ def save_single(operator, scene, filepath="",
                 fw('\n\t\t\t\tTypedIndex: %i' % i)
                 fw('\n\t\t\t}')
                 fw('\n\t\t}')
-        
+
         if do_shapekeys:
             key_blocks = my_mesh.blenObject.data.shape_keys.key_blocks[:]
             for kb in key_blocks[1:]:
@@ -1876,7 +1896,7 @@ def save_single(operator, scene, filepath="",
     materials = {}  # (mat, image) keys, should be a set()
     textures = {}  # should be a set()
 
-    tmp_ob_type = None  # incase no objects are exported, so as not to raise an error
+    tmp_ob_type = None  # in case no objects are exported, so as not to raise an error
 
 ## XXX
 
@@ -2576,14 +2596,12 @@ Connections:  {''')
 
                 for action in tmp_actions:
 
-                    action_chan_names = arm_bone_names.intersection(set([g.name for g in action.groups]))
-
-                    if action_chan_names:  # at least one channel matches.
+                    if arm_bone_names.intersection(action_bone_names(my_arm.blenObject, action)):  # at least one channel matches.
                         my_arm.blenActionList.append(action)
                         tagged_actions.append(action.name)
                         tmp_act_count += 1
 
-                        # incase there are no actions applied to armatures
+                        # in case there are no actions applied to armatures
                         # for example, when a user deletes the current action.
                         action_lastcompat = action
 
@@ -2649,7 +2667,7 @@ Takes:  {''')
 		;----------------------------------------------------''')
 
             # set pose data for all bones
-            # do this here incase the action changes
+            # do this here in case the action changes
             '''
             for my_bone in ob_bones:
                 my_bone.flushAnimData()
@@ -2799,7 +2817,7 @@ Takes:  {''')
             fw('\n\t}')
 
             # end action loop. set original actions
-            # do this after every loop incase actions effect eachother.
+            # do this after every loop in case actions effect eachother.
             for my_arm in ob_arms:
                 if my_arm.blenObject.animation_data:
                     my_arm.blenObject.animation_data.action = my_arm.blenAction

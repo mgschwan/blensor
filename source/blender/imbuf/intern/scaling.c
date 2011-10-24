@@ -1,5 +1,4 @@
 /*
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -26,7 +25,6 @@
  * ***** END GPL LICENSE BLOCK *****
  * allocimbuf.c
  *
- * $Id: scaling.c 36895 2011-05-25 11:06:30Z campbellbarton $
  */
 
 /** \file blender/imbuf/intern/scaling.c

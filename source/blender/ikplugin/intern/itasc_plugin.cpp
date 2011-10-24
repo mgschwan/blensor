@@ -1,5 +1,4 @@
 /*
- * $Id: itasc_plugin.cpp 35814 2011-03-27 07:56:29Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

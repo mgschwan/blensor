@@ -1,6 +1,4 @@
 /*
- * $Id: RE_shader_ext.h 37668 2011-06-20 15:20:33Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: BL_ShapeDeformer.h 39883 2011-09-03 02:15:49Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

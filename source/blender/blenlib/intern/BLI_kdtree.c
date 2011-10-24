@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_kdtree.c 39794 2011-08-30 09:50:31Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

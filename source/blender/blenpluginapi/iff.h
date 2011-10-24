@@ -2,7 +2,6 @@
  *  \ingroup blpluginapi
  */
 /* Copyright (c) 1999, Not a Number / NeoGeo b.v. 
- * $Id: iff.h 39814 2011-08-31 01:05:40Z campbellbarton $
  * 
  * All rights reserved.
  * 

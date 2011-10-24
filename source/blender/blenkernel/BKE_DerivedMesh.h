@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_DerivedMesh.h 40508 2011-09-23 18:29:45Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

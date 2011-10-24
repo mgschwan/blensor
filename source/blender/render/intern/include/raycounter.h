@@ -1,6 +1,4 @@
 /*
- * $Id: raycounter.h 35233 2011-02-27 19:31:27Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -35,7 +33,7 @@
 #ifndef RE_RAYCOUNTER_H
 #define RE_RAYCOUNTER_H
 
-//#define RE_RAYCOUNTER			/* enable counters per ray, usefull for measuring raytrace structures performance */
+//#define RE_RAYCOUNTER			/* enable counters per ray, useful for measuring raytrace structures performance */
 
 #ifdef __cplusplus
 extern "C" {

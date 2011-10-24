@@ -1,7 +1,6 @@
 /*
  * Quicktime_import.h
  *
- * $Id: quicktime_import.h 35235 2011-02-27 20:01:38Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

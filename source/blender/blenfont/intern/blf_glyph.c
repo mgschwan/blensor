@@ -1,6 +1,4 @@
 /*
- * $Id: blf_glyph.c 40358 2011-09-19 14:09:13Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,5 @@
 /*
  *
- * $Id: cpu.c 35246 2011-02-27 20:37:56Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

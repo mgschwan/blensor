@@ -12,7 +12,6 @@
  *		- $log$
  *
  *	\par Release
- *		$Id: utility_io.cpp 35155 2011-02-25 11:45:16Z jesterking $
  *		$Name:  $ 
  * \todo
  *   make IO routines more robust against the differences between DOS/UNIX end-of-line style.

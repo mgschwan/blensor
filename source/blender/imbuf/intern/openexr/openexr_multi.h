@@ -1,6 +1,4 @@
 /*
- * $Id: openexr_multi.h 39810 2011-08-30 23:08:38Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

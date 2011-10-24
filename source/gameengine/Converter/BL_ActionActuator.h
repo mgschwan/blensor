@@ -1,6 +1,4 @@
 /*
- * $Id: BL_ActionActuator.h 39853 2011-09-01 21:47:46Z moguri $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

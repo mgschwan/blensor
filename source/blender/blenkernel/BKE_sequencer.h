@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_sequencer.h 40122 2011-09-11 10:35:26Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -217,9 +215,7 @@ typedef enum {
 	SEQ_STRIPELEM_IBUF_ENDSTILL
 } seq_stripelem_ibuf_t;
 
-void seq_stripelem_cache_init(void);
 void seq_stripelem_cache_destruct(void);
-
 void seq_stripelem_cache_cleanup(void);
 
 /* returned ImBuf is properly refed and has to be freed */

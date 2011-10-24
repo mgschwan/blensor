@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_dynlib.h 36519 2011-05-06 15:17:42Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

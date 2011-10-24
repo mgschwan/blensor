@@ -1,6 +1,4 @@
 /*
-* $Id: KX_ConvertActuators.cpp 40080 2011-09-09 21:28:56Z ben2610 $
-*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -25,8 +23,8 @@
  * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
-* Convert Blender actuators for use in the GameEngine
-*/
+ * Convert Blender actuators for use in the GameEngine
+ */
 
 /** \file gameengine/Converter/KX_ConvertActuators.cpp
  *  \ingroup bgeconv

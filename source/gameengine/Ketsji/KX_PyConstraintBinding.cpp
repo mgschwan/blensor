@@ -1,6 +1,4 @@
 /*
- * $Id: KX_PyConstraintBinding.cpp 38880 2011-07-31 11:21:48Z dfelinto $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

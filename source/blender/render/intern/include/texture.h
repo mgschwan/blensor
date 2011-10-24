@@ -1,7 +1,6 @@
 /*
  * texture_ext.h
  *
- * $Id: texture.h 40162 2011-09-12 13:00:24Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,6 +1,4 @@
 /*
- * $Id: transform_ops.c 40387 2011-09-20 07:56:58Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

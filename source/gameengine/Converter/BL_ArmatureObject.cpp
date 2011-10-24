@@ -1,6 +1,4 @@
 /*
- * $Id: BL_ArmatureObject.cpp 40248 2011-09-16 02:42:50Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -663,7 +661,7 @@ KX_PYMETHODDEF_DOC_NOARGS(BL_ArmatureObject, update,
 						  "update()\n"
 						  "Make sure that the armature will be updated on next graphic frame.\n"
 						  "This is automatically done if a KX_ArmatureActuator with mode run is active\n"
-						  "or if an action is playing. This function is usefull in other cases.\n")
+						  "or if an action is playing. This function is useful in other cases.\n")
 {
 	SetActiveAction(NULL, 0, KX_GetActiveEngine()->GetFrameTime());
 	Py_RETURN_NONE;

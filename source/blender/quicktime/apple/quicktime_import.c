@@ -1,5 +1,4 @@
 /*
- * $Id: quicktime_import.c 36243 2011-04-20 12:04:07Z jesterking $
  *
  * quicktime_import.c
  *

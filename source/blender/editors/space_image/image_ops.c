@@ -1,6 +1,4 @@
 /*
- * $Id: image_ops.c 40853 2011-10-08 11:02:58Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -143,7 +141,7 @@ static int space_image_file_exists_poll(bContext *C)
 		if(ibuf) {
 			BLI_strncpy(name, ibuf->name, FILE_MAX);
 			BLI_path_abs(name, bmain->name);
-			poll= (BLI_exists(name) && BLI_is_writable(name));
+			poll= (BLI_exists(name) && BLI_file_is_writable(name));
 		}
 		ED_space_image_release_buffer(sima, lock);
 
@@ -843,10 +841,6 @@ static int open_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 
 	if(ima)
 		path= ima->name;
-	
-
-	if(!RNA_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
 
 	if(RNA_property_is_set(op->ptr, "filepath"))
 		return open_exec(C, op);
@@ -1167,9 +1161,6 @@ static int save_as_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 	Scene *scene= CTX_data_scene(C);
 	SaveImageOptions simopts;
 
-	if(!RNA_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
-
 	if(RNA_property_is_set(op->ptr, "filepath"))
 		return save_as_exec(C, op);
 
@@ -1230,7 +1221,7 @@ static int save_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	save_image_options_from_op(&simopts, op);
 
-	if (BLI_exists(simopts.filepath) && BLI_is_writable(simopts.filepath)) {
+	if (BLI_exists(simopts.filepath) && BLI_file_is_writable(simopts.filepath)) {
 		save_image_doit(C, sima, op, &simopts, FALSE);
 	}
 	else {

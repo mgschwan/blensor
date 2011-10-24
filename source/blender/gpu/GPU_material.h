@@ -1,6 +1,4 @@
 /*
- * $Id: GPU_material.h 40372 2011-09-19 19:55:59Z dfelinto $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This shader is free software; you can redistribute it and/or

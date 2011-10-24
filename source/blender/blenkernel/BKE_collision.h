@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_collision.h 36423 2011-05-02 03:44:02Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

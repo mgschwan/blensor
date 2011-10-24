@@ -1,6 +1,4 @@
 /*
- * $Id: transform.c 40774 2011-10-03 16:20:05Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -1543,10 +1541,11 @@ int initTransform(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event, int
 		{
 			if (kmi->propvalue == TFM_MODAL_SNAP_INV_ON && kmi->val == KM_PRESS)
 			{
-				if ((ELEM(kmi->type, LEFTCTRLKEY, RIGHTCTRLKEY) && event->ctrl) ||
-					(ELEM(kmi->type, LEFTSHIFTKEY, RIGHTSHIFTKEY) && event->shift) ||
-					(ELEM(kmi->type, LEFTALTKEY, RIGHTALTKEY) && event->alt) ||
-					(kmi->type == OSKEY && event->oskey)) {
+				if ((ELEM(kmi->type, LEFTCTRLKEY, RIGHTCTRLKEY) &&   event->ctrl)  ||
+				    (ELEM(kmi->type, LEFTSHIFTKEY, RIGHTSHIFTKEY) && event->shift) ||
+				    (ELEM(kmi->type, LEFTALTKEY, RIGHTALTKEY) &&     event->alt)   ||
+				    ((kmi->type == OSKEY) &&                         event->oskey) )
+				{
 					t->modifiers |= MOD_SNAP_INVERT;
 				}
 				break;
@@ -1922,7 +1921,7 @@ static void protectedQuaternionBits(short protectflag, float *quat, float *oldqu
 			quat[3]= oldquat[3];
 	}
 	else {
-		/* quaternions get limited with euler... (compatability mode) */
+		/* quaternions get limited with euler... (compatibility mode) */
 		float eul[3], oldeul[3], nquat[4], noldquat[4];
 		float qlen;
 

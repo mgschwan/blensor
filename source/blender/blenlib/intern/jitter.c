@@ -1,7 +1,6 @@
 /*
  * Jitter offset table
  *
- * $Id: jitter.c 39558 2011-08-19 16:21:29Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

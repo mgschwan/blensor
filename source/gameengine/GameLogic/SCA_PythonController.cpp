@@ -1,7 +1,6 @@
 /*
  * Execute Python scripts
  *
- * $Id: SCA_PythonController.cpp 36999 2011-05-29 11:17:25Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

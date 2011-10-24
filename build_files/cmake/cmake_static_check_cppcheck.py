@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# $Id: cmake_static_check_cppcheck.py 40576 2011-09-26 15:39:15Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

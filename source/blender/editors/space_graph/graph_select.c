@@ -1,6 +1,4 @@
 /*
- * $Id: graph_select.c 40291 2011-09-17 10:44:16Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

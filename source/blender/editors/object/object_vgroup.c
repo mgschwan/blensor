@@ -1,6 +1,4 @@
 /*
- * $Id: object_vgroup.c 40739 2011-10-02 08:46:46Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -669,7 +667,7 @@ static void vgroup_duplicate(Object *ob)
 	}
 
 	cdg = defgroup_duplicate(dg);
-	strcpy(cdg->name, name);
+	BLI_strncpy(cdg->name, name, sizeof(cdg->name));
 	defgroup_unique_name(cdg, ob);
 
 	BLI_addtail(&ob->defbase, cdg);

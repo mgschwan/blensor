@@ -1,6 +1,4 @@
 /*
- * $Id: BLO_runtime.h 36620 2011-05-11 19:29:23Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -42,8 +40,8 @@ extern "C" {
 struct BlendFileData;
 struct ReportList;
 
-int BLO_is_a_runtime(char *file);
-struct BlendFileData *BLO_read_runtime(char *file, struct ReportList *reports);
+int BLO_is_a_runtime(const char *file);
+struct BlendFileData *BLO_read_runtime(const char *file, struct ReportList *reports);
 
 #ifdef __cplusplus
 }

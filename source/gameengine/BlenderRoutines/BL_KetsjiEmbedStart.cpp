@@ -1,6 +1,4 @@
 /*
- * $Id: BL_KetsjiEmbedStart.cpp 40113 2011-09-11 05:54:07Z dfelinto $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -360,7 +358,14 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 				ketsjiengine->SetCameraOverrideUseOrtho((rv3d->persp == RV3D_ORTHO));
 				ketsjiengine->SetCameraOverrideProjectionMatrix(MT_CmMatrix4x4(rv3d->winmat));
 				ketsjiengine->SetCameraOverrideViewMatrix(MT_CmMatrix4x4(rv3d->viewmat));
-				ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
+				if(rv3d->persp == RV3D_ORTHO)
+				{
+					ketsjiengine->SetCameraOverrideClipping(-v3d->far, v3d->far);
+				}
+				else
+				{
+					ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
+				}
 				ketsjiengine->SetCameraOverrideLens(v3d->lens);
 			}
 			

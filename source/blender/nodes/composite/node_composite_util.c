@@ -1,6 +1,4 @@
 /*
- * $Id: node_composite_util.c 39944 2011-09-05 22:04:30Z gsrb3d $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -1320,7 +1318,7 @@ void IIR_gauss(CompBuf* src, float sigma, int chan, int xy)
 	
 	if ((xy < 1) || (xy > 3)) xy = 3;
 	
-	// XXX The YVV macro defined below explicitely expects sources of at least 3x3 pixels,
+	// XXX The YVV macro defined below explicitly expects sources of at least 3x3 pixels,
 	//     so just skiping blur along faulty direction if src's def is below that limit!
 	if (src->x < 3) xy &= ~(int) 1;
 	if (src->y < 3) xy &= ~(int) 2;
@@ -1346,7 +1344,7 @@ void IIR_gauss(CompBuf* src, float sigma, int chan, int xy)
 	// it seems to work, not entirely sure if it is actually totally correct,
 	// Besides J.M.Geusebroek's anigauss.c (see http://www.science.uva.nl/~mark),
 	// found one other implementation by Cristoph Lampert,
-	// but neither seem to be quite the same, result seems to be ok sofar anyway.
+	// but neither seem to be quite the same, result seems to be ok so far anyway.
 	// Extra scale factor here to not have to do it in filter,
 	// though maybe this had something to with the precision errors
 	sc = cf[0]/((1.0 + cf[1] - cf[2] + cf[3])*(1.0 - cf[1] - cf[2] - cf[3])*(1.0 + cf[2] + (cf[1] - cf[3])*cf[3]));

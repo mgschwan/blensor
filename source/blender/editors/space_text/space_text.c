@@ -1,6 +1,4 @@
 /*
- * $Id: space_text.c 39868 2011-09-02 09:39:21Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -136,7 +134,12 @@ static void text_listener(ScrArea *sa, wmNotifier *wmn)
 
 			switch(wmn->data) {
 				case ND_DISPLAY:
+					ED_area_tag_redraw(sa);
+					break;
 				case ND_CURSOR:
+					if(st->text && st->text == wmn->reference)
+						text_scroll_to_cursor(st, sa);
+
 					ED_area_tag_redraw(sa);
 					break;
 			}

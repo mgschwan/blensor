@@ -164,11 +164,9 @@ class InputKeyMapPanel:
             row.label()
 
         if (not kmi.is_user_defined) and kmi.is_user_modified:
-            op = row.operator("wm.keyitem_restore", text="", icon='BACK')
-            op.item_id = kmi.id
+            row.operator("wm.keyitem_restore", text="", icon='BACK').item_id = kmi.id
         else:
-            op = row.operator("wm.keyitem_remove", text="", icon='X')
-            op.item_id = kmi.id
+            row.operator("wm.keyitem_remove", text="", icon='X').item_id = kmi.id
 
         # Expanded, additional event settings
         if kmi.show_expanded:
@@ -262,7 +260,7 @@ class InputKeyMapPanel:
 
         row = subcol.row(align=True)
 
-        #row.prop_search(wm.keyconfigs, "active", wm, "keyconfigs", text="Key Config:")
+        #~ row.prop_search(wm.keyconfigs, "active", wm, "keyconfigs", text="Key Config:")
         text = bpy.path.display_name(context.window_manager.keyconfigs.active.name)
         if not text:
             text = "Blender (default)"
@@ -270,8 +268,8 @@ class InputKeyMapPanel:
         row.operator("wm.keyconfig_preset_add", text="", icon="ZOOMIN")
         row.operator("wm.keyconfig_preset_add", text="", icon="ZOOMOUT").remove_active = True
 
-#        layout.context_pointer_set("keyconfig", wm.keyconfigs.active)
-#        row.operator("wm.keyconfig_remove", text="", icon='X')
+        #~ layout.context_pointer_set("keyconfig", wm.keyconfigs.active)
+        #~ row.operator("wm.keyconfig_remove", text="", icon='X')
 
         row.prop(context.space_data, "filter_text", icon="VIEWZOOM")
 

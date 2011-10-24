@@ -1,5 +1,4 @@
 /*
- * $Id: KX_BlenderGL.cpp 36083 2011-04-10 09:37:04Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

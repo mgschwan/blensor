@@ -3,7 +3,6 @@
  *
  *	Low level routines for manipulating the BMesh structure.
  *
- * $Id: BME_structure.c 40607 2011-09-27 11:02:19Z mont29 $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -40,6 +39,7 @@
 #include <limits.h>
 
 #include "MEM_guardedalloc.h"
+#include "BLI_listbase.h"
 #include "BLI_utildefines.h"
 #include "BKE_bmesh.h"
 /**

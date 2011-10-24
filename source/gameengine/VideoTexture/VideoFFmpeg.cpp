@@ -1,7 +1,4 @@
-/** \file gameengine/VideoTexture/VideoFFmpeg.cpp
- *  \ingroup bgevideotex
- */
-/* $Id: VideoFFmpeg.cpp 39834 2011-09-01 02:12:53Z campbellbarton $
+/*
 -----------------------------------------------------------------------------
 This source file is part of VideoTexture library
 
@@ -22,6 +19,11 @@ Place - Suite 330, Boston, MA 02111-1307, USA, or go to
 http://www.gnu.org/copyleft/lesser.txt.
 -----------------------------------------------------------------------------
 */
+
+/** \file gameengine/VideoTexture/VideoFFmpeg.cpp
+ *  \ingroup bgevideotex
+ */
+
 
 #ifdef WITH_FFMPEG
 
@@ -607,7 +609,7 @@ void VideoFFmpeg::openCam (char * file, short camIdx)
 	// The driver name is constructed automatically from the device type:
 	// v4l   : /dev/video<camIdx>
 	// dv1394: /dev/dv1394/<camIdx>
-	// If you have different driver name, you can specify the driver name explicitely 
+	// If you have different driver name, you can specify the driver name explicitly
 	// instead of device type. Examples of valid filename:
 	//    /dev/v4l/video0:pal
 	//    /dev/ieee1394/1:ntsc

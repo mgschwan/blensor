@@ -1,6 +1,4 @@
 /*
- * $Id: rna_controller.c 37427 2011-06-12 08:34:53Z dfelinto $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

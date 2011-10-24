@@ -1,6 +1,4 @@
 /*
- * $Id: mesh_intern.h 40898 2011-10-10 07:21:42Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,7 +1,7 @@
 /** \file itasc/Armature.cpp
  *  \ingroup itasc
  */
-/* $Id: Armature.cpp 35155 2011-02-25 11:45:16Z jesterking $
+/*
  * Armature.cpp
  *
  *  Created on: Feb 3, 2009

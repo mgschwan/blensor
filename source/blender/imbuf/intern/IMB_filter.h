@@ -1,7 +1,6 @@
 /*
  * filter.h
  *
- * $Id: IMB_filter.h 33665 2010-12-14 18:02:41Z ton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

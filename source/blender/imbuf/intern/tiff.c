@@ -1,7 +1,6 @@
 /*
  * tiff.c
  *
- * $Id: tiff.c 40340 2011-09-19 06:32:19Z campbellbarton $
  * 
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

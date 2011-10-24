@@ -1,6 +1,4 @@
 /*
- * $Id: gpencil.c 40904 2011-10-10 09:44:14Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -185,7 +183,7 @@ bGPDlayer *gpencil_layer_addnew (bGPdata *gpd)
 	
 	/* auto-name */
 	strcpy(gpl->info, "GP_Layer");
-	BLI_uniquename(&gpd->layers, gpl, "GP_Layer", '.', offsetof(bGPDlayer, info[0]), sizeof(gpl->info));
+	BLI_uniquename(&gpd->layers, gpl, "GP_Layer", '.', offsetof(bGPDlayer, info), sizeof(gpl->info));
 	
 	/* make this one the active one */
 	gpencil_layer_setactive(gpd, gpl);

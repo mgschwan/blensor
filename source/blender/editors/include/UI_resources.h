@@ -1,5 +1,4 @@
 /*
- * $Id: UI_resources.h 40109 2011-09-11 04:31:09Z campbellbarton $
  *
  * ***** BEGIN GPL/BL DUAL LICENSE BLOCK *****
  *

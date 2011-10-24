@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_callbacks.h 40605 2011-09-27 10:43:45Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

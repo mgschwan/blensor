@@ -1,6 +1,4 @@
 /*
- * $Id: UnixShell.c 36276 2011-04-21 15:53:30Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -28,7 +26,6 @@
  * NS api template, adapted to link to our own internals.
  */
 
-#define UNIXSH_VERSION "$Id: UnixShell.c 36276 2011-04-21 15:53:30Z campbellbarton $"
 #define MOZ_X11 1
 
 /* -*- Mode: C; tab-width: 8; c-set-style: bsd -*- */

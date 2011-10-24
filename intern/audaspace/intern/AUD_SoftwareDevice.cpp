@@ -1,6 +1,4 @@
 /*
- * $Id: AUD_SoftwareDevice.cpp 39815 2011-08-31 01:07:55Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * Copyright 2009-2011 Jörg Hermann Müller

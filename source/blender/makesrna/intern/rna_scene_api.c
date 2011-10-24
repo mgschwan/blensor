@@ -1,6 +1,4 @@
 /*
- * $Id: rna_scene_api.c 40354 2011-09-19 13:23:58Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

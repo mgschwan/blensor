@@ -9,7 +9,6 @@
  *		- $log$
  *
  *	\par Release
- *		$Id: utility.h 23467 2009-09-25 01:13:07Z gsrb3d $
  *		$Name:  $ 
  *  \file
  *    Included by most lrl-files to provide some general

@@ -1,5 +1,4 @@
 /*
- * $Id: avi.c 39732 2011-08-27 03:34:11Z campbellbarton $
  *
  * This is external code.
  *

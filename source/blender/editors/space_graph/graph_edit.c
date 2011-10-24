@@ -1,6 +1,4 @@
 /*
- * $Id: graph_edit.c 40351 2011-09-19 12:26:20Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

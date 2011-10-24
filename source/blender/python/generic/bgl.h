@@ -1,5 +1,4 @@
 /* 
- * $Id: bgl.h 37088 2011-06-02 08:29:16Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -25,7 +24,7 @@
  * Contributor(s): Willian P. Germano
  *
  * ***** END GPL LICENSE BLOCK *****
-*/
+ */
 
 /** \file blender/python/generic/bgl.h
  *  \ingroup pygen

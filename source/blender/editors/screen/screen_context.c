@@ -1,6 +1,4 @@
 /*
- * $Id: screen_context.c 40197 2011-09-14 01:48:55Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: filesel.c 40801 2011-10-05 12:20:38Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -64,8 +62,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_linklist.h"
-#include "BLI_path_util.h"
-#include "BLI_storage_types.h"
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
@@ -113,7 +109,7 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 	if (!sfile->params) {
 		sfile->params= MEM_callocN(sizeof(FileSelectParams), "fileselparams");
 		/* set path to most recently opened .blend */
-		BLI_split_dirfile(G.main->name, sfile->params->dir, sfile->params->file);
+		BLI_split_dirfile(G.main->name, sfile->params->dir, sfile->params->file, sizeof(sfile->params->dir), sizeof(sfile->params->file));
 		sfile->params->filter_glob[0] = '\0';
 	}
 
@@ -125,6 +121,7 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 		const short is_filepath= (RNA_struct_find_property(op->ptr, "filepath") != NULL);
 		const short is_filename= (RNA_struct_find_property(op->ptr, "filename") != NULL);
 		const short is_directory= (RNA_struct_find_property(op->ptr, "directory") != NULL);
+		const short is_relative_path= (RNA_struct_find_property(op->ptr, "relative_path") != NULL);
 
 		BLI_strncpy(params->title, op->type->name, sizeof(params->title));
 
@@ -141,7 +138,7 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 				sfile->params->file[0]= '\0';
 			}
 			else {
-				BLI_split_dirfile(name, sfile->params->dir, sfile->params->file);
+				BLI_split_dirfile(name, sfile->params->dir, sfile->params->file, sizeof(sfile->params->dir), sizeof(sfile->params->file));
 			}
 		}
 		else {
@@ -228,6 +225,11 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 			params->display= FILE_SHORTDISPLAY;
 		}
 
+		if (is_relative_path) {
+			if (!RNA_property_is_set(op->ptr, "relative_path")) {
+				RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
+			}
+		}
 	}
 	else {
 		/* default values, if no operator */
@@ -607,7 +609,7 @@ void autocomplete_directory(struct bContext *C, char *str, void *UNUSED(arg_v))
 		DIR *dir;
 		struct dirent *de;
 		
-		BLI_split_dirfile(str, dirname, NULL);
+		BLI_split_dir_part(str, dirname, sizeof(dirname));
 
 		dir = opendir(dirname);
 

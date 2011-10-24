@@ -1,5 +1,4 @@
 /*
- * $Id: PyObjectPlus.cpp 38602 2011-07-22 11:21:01Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

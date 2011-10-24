@@ -1,6 +1,4 @@
 /*
- * $Id: scanfill.c 39558 2011-08-19 16:21:29Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

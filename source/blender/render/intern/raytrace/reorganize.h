@@ -1,6 +1,4 @@
 /*
- * $Id: reorganize.h 36377 2011-04-29 04:43:36Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

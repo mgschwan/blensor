@@ -1,6 +1,5 @@
 /*
  *
- * $Id: BLI_threads.h 34966 2011-02-18 13:58:08Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

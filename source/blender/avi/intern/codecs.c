@@ -1,5 +1,4 @@
 /*
- * $Id: codecs.c 36271 2011-04-21 13:11:51Z campbellbarton $
  *
  * This is external code. Identify and convert different avi-files.
  *

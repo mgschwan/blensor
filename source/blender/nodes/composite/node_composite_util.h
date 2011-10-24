@@ -1,6 +1,4 @@
 /*
- * $Id: node_composite_util.h 40378 2011-09-20 04:38:59Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,7 +1,6 @@
 /*
  * Sense if other objects are near
  *
- * $Id: KX_NearSensor.cpp 40538 2011-09-25 12:31:21Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

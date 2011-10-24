@@ -1,6 +1,4 @@
 /*
- * $Id: MOD_util.c 40880 2011-10-09 21:11:51Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_meshdata_types.h 40372 2011-09-19 19:55:59Z dfelinto $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,5 +1,4 @@
 /*
- * $Id: writeffmpeg.c 40903 2011-10-10 09:38:02Z campbellbarton $
  *
  * ffmpeg-write support
  *
@@ -397,6 +396,20 @@ static void set_ffmpeg_property_option(AVCodecContext* c, IDProperty * prop)
 	}
 }
 
+static int ffmpeg_proprty_valid(AVCodecContext *c, const char *prop_name, IDProperty *curr)
+{
+	int valid= 1;
+
+	if(strcmp(prop_name, "video")==0) {
+		if(strcmp(curr->name, "bf")==0) {
+			/* flash codec doesn't support b frames */
+			valid&= c->codec_id!=CODEC_ID_FLV1;
+		}
+	}
+
+	return valid;
+}
+
 static void set_ffmpeg_properties(RenderData *rd, AVCodecContext *c, const char * prop_name)
 {
 	IDProperty * prop;
@@ -407,8 +420,7 @@ static void set_ffmpeg_properties(RenderData *rd, AVCodecContext *c, const char 
 		return;
 	}
 	
-	prop = IDP_GetPropertyFromGroup(
-		rd->ffcodecdata.properties, (char*) prop_name);
+	prop = IDP_GetPropertyFromGroup(rd->ffcodecdata.properties, prop_name);
 	if (!prop) {
 		return;
 	}
@@ -416,7 +428,8 @@ static void set_ffmpeg_properties(RenderData *rd, AVCodecContext *c, const char 
 	iter = IDP_GetGroupIterator(prop);
 
 	while ((curr = IDP_GroupIterNext(iter)) != NULL) {
-		set_ffmpeg_property_option(c, curr);
+		if(ffmpeg_proprty_valid(c, prop_name, curr))
+			set_ffmpeg_property_option(c, curr);
 	}
 }
 
@@ -1025,8 +1038,7 @@ void ffmpeg_property_del(RenderData *rd, void *type, void *prop_)
 		return;
 	}
 
-	group = IDP_GetPropertyFromGroup(
-		rd->ffcodecdata.properties, (char*) type);
+	group = IDP_GetPropertyFromGroup(rd->ffcodecdata.properties, type);
 	if (group && prop) {
 		IDP_RemFromGroup(group, prop);
 		IDP_FreeProperty(prop);
@@ -1057,11 +1069,10 @@ IDProperty *ffmpeg_property_add(RenderData *rd, char * type, int opt_index, int 
 			= IDP_New(IDP_GROUP, val, "ffmpeg"); 
 	}
 
-	group = IDP_GetPropertyFromGroup(
-		rd->ffcodecdata.properties, (char*) type);
+	group = IDP_GetPropertyFromGroup(rd->ffcodecdata.properties, type);
 	
 	if (!group) {
-		group = IDP_New(IDP_GROUP, val, (char*) type); 
+		group = IDP_New(IDP_GROUP, val, type);
 		IDP_AddToGroup(rd->ffcodecdata.properties, group);
 	}
 
@@ -1191,6 +1202,9 @@ void ffmpeg_set_preset(RenderData *rd, int preset)
 {
 	int isntsc = (rd->frs_sec != 25);
 
+	if(rd->ffcodecdata.properties)
+		IDP_FreeProperty(rd->ffcodecdata.properties);
+
 	switch (preset) {
 	case FFMPEG_PRESET_VCD:
 		rd->ffcodecdata.type = FFMPEG_MPEG1;
@@ -1221,8 +1235,11 @@ void ffmpeg_set_preset(RenderData *rd, int preset)
 	case FFMPEG_PRESET_DVD:
 		rd->ffcodecdata.type = FFMPEG_MPEG2;
 		rd->ffcodecdata.video_bitrate = 6000;
-		rd->xsch = 720;
-		rd->ysch = isntsc ? 480 : 576;
+
+		/* Don't set resolution, see [#21351]
+		 * rd->xsch = 720;
+		 * rd->ysch = isntsc ? 480 : 576; */
+
 		rd->ffcodecdata.gop_size = isntsc ? 18 : 15;
 		rd->ffcodecdata.rc_max_rate = 9000;
 		rd->ffcodecdata.rc_min_rate = 0;
@@ -1325,8 +1342,8 @@ void ffmpeg_verify_image_type(RenderData *rd)
 		   rd->ffcodecdata.video_bitrate <= 1) {
 
 			rd->ffcodecdata.codec = CODEC_ID_MPEG2VIDEO;
-			/* Don't set preset, disturbs render resolution.
-			 * ffmpeg_set_preset(rd, FFMPEG_PRESET_DVD); */
+
+			ffmpeg_set_preset(rd, FFMPEG_PRESET_DVD);
 		}
 		if(rd->ffcodecdata.type == FFMPEG_OGG) {
 			rd->ffcodecdata.type = FFMPEG_MPEG2;

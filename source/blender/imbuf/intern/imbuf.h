@@ -3,7 +3,6 @@
  *
  * This header might have to become external...
  *
- * $Id: imbuf.h 40341 2011-09-19 08:02:17Z campbellbarton $ 
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

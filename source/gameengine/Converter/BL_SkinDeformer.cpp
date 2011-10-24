@@ -1,6 +1,4 @@
 /*
- * $Id: BL_SkinDeformer.cpp 40148 2011-09-12 04:29:35Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

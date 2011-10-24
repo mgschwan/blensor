@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_brush.h 37276 2011-06-06 22:10:05Z psy-fi $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

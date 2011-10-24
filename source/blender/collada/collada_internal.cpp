@@ -1,6 +1,4 @@
 /*
- * $Id: collada_internal.cpp 38079 2011-07-04 08:59:28Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,5 +1,3 @@
-$Id: scons-dev.txt 39584 2011-08-21 13:31:46Z nazgul $
-
 
     Internals of Blenders SCons scripts
     ===================================
@@ -189,6 +187,6 @@ $Id: scons-dev.txt 39584 2011-08-21 13:31:46Z nazgul $
     need changes elsewhere in the system, as it is handled automatically
     with the central library repository.
 
-    Enjoy the new system!
+    Enjoy the new system!!
 
     /Nathan Letwory (jesterKing)

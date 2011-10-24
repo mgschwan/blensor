@@ -1,6 +1,4 @@
 /*
- * $Id: view3d_select.c 40874 2011-10-09 08:39:38Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

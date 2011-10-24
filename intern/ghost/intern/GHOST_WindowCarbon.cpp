@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_WindowCarbon.cpp 37765 2011-06-23 19:55:47Z blendix $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: GHOST_WindowCarbon.cpp 37765 2011-06-23 19:55:47Z blendix $
  * Copyright (C) 2001 NaN Technologies B.V.
  * @author	Maarten Gribnau
  * @date	May 10, 2001

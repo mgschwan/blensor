@@ -1,6 +1,4 @@
 /*
- * $Id: image_intern.h 38908 2011-08-02 04:28:05Z merwin $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

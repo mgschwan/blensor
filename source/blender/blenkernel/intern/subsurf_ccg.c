@@ -1,6 +1,4 @@
 /*
- * $Id: subsurf_ccg.c 40508 2011-09-23 18:29:45Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -141,7 +139,7 @@ static CCGSubSurf *_getSubSurf(CCGSubSurf *prevSS, int subdivLevels, int useAgin
 		ccgSubSurf_setUseAgeCounts(ccgSS, 1, 8, 8, 8);
 	}
 
-	ccgSubSurf_setCalcVertexNormals(ccgSS, 1, BLI_STRUCT_OFFSET(DMGridData, no));
+	ccgSubSurf_setCalcVertexNormals(ccgSS, 1, offsetof(DMGridData, no));
 
 	return ccgSS;
 }

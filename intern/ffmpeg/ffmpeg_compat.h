@@ -2,7 +2,6 @@
 #define __ffmpeg_compat_h_included__ 1
 
 /*
- * $Id: ffmpeg_compat.h 40529 2011-09-25 04:17:00Z campbellbarton $
  *
  * compatibility macros to make every ffmpeg installation appear
  * like the most current installation (wrapping some functionality sometimes)
@@ -29,7 +28,7 @@
 
 /* check our ffmpeg is new enough, avoids user complaints */
 #if (LIBAVFORMAT_VERSION_MAJOR < 52) || ((LIBAVFORMAT_VERSION_MAJOR == 52) && (LIBAVFORMAT_VERSION_MINOR <= 64))
-#  error "FFmpeg 0.7 or newer is needed, Upgrade you're FFmpeg or disable it"
+#  error "FFmpeg 0.7 or newer is needed, Upgrade your FFmpeg or disable it"
 #endif
 /* end sanity check */
 

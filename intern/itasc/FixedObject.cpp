@@ -1,7 +1,7 @@
 /** \file itasc/FixedObject.cpp
  *  \ingroup itasc
  */
-/* $Id: FixedObject.cpp 35155 2011-02-25 11:45:16Z jesterking $
+/*
  * FixedObject.cpp
  *
  *  Created on: Feb 10, 2009

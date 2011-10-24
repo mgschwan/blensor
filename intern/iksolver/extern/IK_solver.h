@@ -1,5 +1,4 @@
 /*
- * $Id: IK_solver.h 35154 2011-02-25 11:43:19Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -34,7 +33,6 @@
 
 /**
 
- * $Id: IK_solver.h 35154 2011-02-25 11:43:19Z jesterking $
  * Copyright (C) 2001 NaN Technologies B.V.
  *
  * @author Laurence, Brecht

@@ -1,7 +1,6 @@
 /*
  * A general argument parsing module
  *
- * $Id: BLI_args.c 40641 2011-09-28 05:53:40Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -35,12 +34,13 @@
 
 
 #include <ctype.h> /* for tolower */
+#include <string.h>
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_listbase.h"
 #include "BLI_string.h"
-#include "BLI_utildefines.h"
 #include "BLI_args.h"
 #include "BLI_ghash.h"
 

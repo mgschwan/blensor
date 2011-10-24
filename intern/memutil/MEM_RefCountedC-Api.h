@@ -1,5 +1,4 @@
 /*
- * $Id: MEM_RefCountedC-Api.h 35156 2011-02-25 11:47:18Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

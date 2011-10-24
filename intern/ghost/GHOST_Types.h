@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_Types.h 40837 2011-10-06 22:02:50Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -466,8 +465,20 @@ typedef struct {
 typedef struct {
 	/** The key code. */
 	GHOST_TKey		key;
+
+	/* ascii / utf8: both should always be set when possible,
+	 * - ascii may be '\0' however if the user presses a non ascii key
+	 * - unicode may not be set if the system has no unicode support
+	 *
+	 * These values are intended to be used as follows.
+	 * For text input use unicode when available, fallback to ascii.
+	 * For areas where unicode is not needed, number input for example, always
+	 * use ascii, unicode is ignored - campbell.
+	 */
 	/** The ascii code for the key event ('\0' if none). */
 	char			ascii;
+	/** The unicode character. if the length is 6, not NULL terminated if all 6 are set */
+	char			utf8_buf[6];
 } GHOST_TEventKeyData;
 
 typedef struct {

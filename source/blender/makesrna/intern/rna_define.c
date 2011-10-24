@@ -1,6 +1,4 @@
 /*
- * $Id: rna_define.c 40732 2011-10-01 15:40:32Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -39,7 +37,6 @@
 #include "DNA_genfile.h"
 #include "DNA_sdna_types.h"
 
-#include "BLI_string.h"
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
 

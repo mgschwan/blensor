@@ -1,6 +1,4 @@
 /*
- * $Id: view3d_fly.c 40556 2011-09-26 08:33:51Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -179,7 +177,7 @@ typedef struct FlyInfo {
 
 	/* fly state state */
 	float speed; /* the speed the view is moving per redraw */
-	short axis; /* Axis index to move allong by default Z to move allong the view */
+	short axis; /* Axis index to move along by default Z to move along the view */
 	short pan_view; /* when true, pan the view instead of rotating */
 
 	/* relative view axis locking - xlock, zlock
@@ -699,11 +697,11 @@ static void move_camera(bContext* C, RegionView3D* rv3d, FlyInfo* fly, int orien
 		 *		TODO: need to check in future that frame changed before doing this 
 		 */
 		if (orientationChanged) {
-			KeyingSet *ks= ANIM_builtin_keyingset_get_named(NULL, "Rotation");
+			KeyingSet *ks= ANIM_builtin_keyingset_get_named(NULL, ANIM_KS_ROTATION_ID);
 			ANIM_apply_keyingset(C, &dsources, NULL, ks, MODIFYKEY_MODE_INSERT, (float)CFRA);
 		}
 		if (positionChanged) {
-			KeyingSet *ks= ANIM_builtin_keyingset_get_named(NULL, "Location");
+			KeyingSet *ks= ANIM_builtin_keyingset_get_named(NULL, ANIM_KS_LOCATION_ID);
 			ANIM_apply_keyingset(C, &dsources, NULL, ks, MODIFYKEY_MODE_INSERT, (float)CFRA);
 		}
 		
@@ -725,7 +723,7 @@ static int flyApply(bContext *C, FlyInfo *fly)
 	RegionView3D *rv3d= fly->rv3d;
 	ARegion *ar = fly->ar;
 
-	float mat[3][3], /* 3x3 copy of the view matrix so we can move allong the view axis */
+	float mat[3][3], /* 3x3 copy of the view matrix so we can move along the view axis */
 	dvec[3]={0,0,0}, /* this is the direction thast added to the view offset per redraw */
 
 	/* Camera Uprighting variables */

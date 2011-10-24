@@ -1,7 +1,6 @@
 /*
  * Set random/camera stuff
  *
- * $Id: SCA_RandomActuator.cpp 39883 2011-09-03 02:15:49Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

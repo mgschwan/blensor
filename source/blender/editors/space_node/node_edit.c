@@ -1,6 +1,4 @@
 /*
- * $Id: node_edit.c 40641 2011-09-28 05:53:40Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -49,7 +47,6 @@
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
-#include "BLI_storage_types.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -65,11 +62,6 @@
 #include "BKE_screen.h"
 #include "BKE_texture.h"
 #include "BKE_report.h"
-
-
-#include "BLI_math.h"
-#include "BLI_blenlib.h"
-#include "BLI_storage_types.h"
 
 #include "RE_pipeline.h"
 
@@ -496,17 +488,17 @@ void snode_set_context(SpaceNode *snode, Scene *scene)
 	node_tree_from_ID(snode->id, &snode->nodetree, &snode->edittree, NULL);
 }
 
-static void snode_tag_changed(SpaceNode *snode, bNode *node)
+static void snode_update(SpaceNode *snode, bNode *node)
 {
 	bNode *gnode;
 	
 	if (node)
-		NodeTagChanged(snode->edittree, node);
+		nodeUpdate(snode->edittree, node);
 	
 	/* if inside group, tag entire group */
 	gnode= node_tree_get_editgroup(snode->nodetree);
 	if(gnode)
-		NodeTagIDChanged(snode->nodetree, gnode->id);
+		nodeUpdateID(snode->nodetree, gnode->id);
 }
 
 static int has_nodetree(bNodeTree *ntree, bNodeTree *lookup)
@@ -1775,7 +1767,7 @@ static void node_link_viewer(SpaceNode *snode, bNode *tonode)
 				link->fromsock= sock;
 			}
 			ntreeUpdateTree(snode->edittree);
-			snode_tag_changed(snode, node);
+			snode_update(snode, node);
 		}
 	}
 }
@@ -2127,7 +2119,7 @@ void snode_autoconnect(SpaceNode *snode, int allow_multiple, int replace)
 				continue;
 			}
 			
-			snode_tag_changed(snode, node_to);
+			snode_update(snode, node_to);
 			++numlinks;
 			break;
 		}
@@ -2175,7 +2167,7 @@ bNode *node_add_node(SpaceNode *snode, Main *bmain, Scene *scene, bNodeTemplate 
 		if(node->id)
 			id_us_plus(node->id);
 			
-		snode_tag_changed(snode, node);
+		snode_update(snode, node);
 	}
 	
 	if(snode->nodetree->type==NTREE_TEXTURE) {
@@ -2412,7 +2404,7 @@ static int node_link_modal(bContext *C, wmOperator *op, wmEvent *event)
 		case MIDDLEMOUSE:
 			if(link->tosock && link->fromsock) {
 				/* send changed events for original tonode and new */
-				snode_tag_changed(snode, link->tonode);
+				snode_update(snode, link->tonode);
 				
 				/* we might need to remove a link */
 				if(in_out==SOCK_OUT)
@@ -2495,7 +2487,7 @@ static int node_link_init(SpaceNode *snode, bNodeLinkDrag *nldrag)
 			if(link) {
 				/* send changed event to original tonode */
 				if(link->tonode) 
-					snode_tag_changed(snode, link->tonode);
+					snode_update(snode, link->tonode);
 				
 				nldrag->node= link->fromnode;
 				nldrag->sock= link->fromsock;
@@ -2663,7 +2655,7 @@ static int cut_links_exec(bContext *C, wmOperator *op)
 			next= link->next;
 			
 			if(cut_links_intersect(link, mcoords, i)) {
-				snode_tag_changed(snode, link->tonode);
+				snode_update(snode, link->tonode);
 				nodeRemLink(snode->edittree, link);
 			}
 		}
@@ -2794,7 +2786,7 @@ void ED_node_link_insert(ScrArea *sa)
 		
 		nodeAddLink(snode->edittree, select, socket_best_match(&select->outputs, sockto->type), node, sockto);
 		ntreeUpdateTree(snode->edittree);	/* needed for pointers */
-		snode_tag_changed(snode, select);
+		snode_update(snode, select);
 		ED_node_changed_update(snode->id, select);
 	}
 }
@@ -3198,7 +3190,7 @@ static int node_mute_exec(bContext *C, wmOperator *UNUSED(op))
 			/* Be able to mute in-/output nodes as well.  - DingTo
 			if(node->inputs.first && node->outputs.first) { */
 				node->flag ^= NODE_MUTED;
-				snode_tag_changed(snode, node);
+				snode_update(snode, node);
 		}
 	}
 	

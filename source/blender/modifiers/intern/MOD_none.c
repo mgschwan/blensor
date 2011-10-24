@@ -1,6 +1,4 @@
 /*
- * $Id: MOD_none.c 39342 2011-08-12 18:11:22Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

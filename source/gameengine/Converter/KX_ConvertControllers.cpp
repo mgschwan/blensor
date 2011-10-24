@@ -1,5 +1,4 @@
 /*
- * $Id: KX_ConvertControllers.cpp 39767 2011-08-29 03:20:15Z dfelinto $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

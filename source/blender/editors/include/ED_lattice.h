@@ -1,6 +1,4 @@
 /*
- * $Id: ED_lattice.h 35016 2011-02-21 07:25:24Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

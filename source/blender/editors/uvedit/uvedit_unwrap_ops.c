@@ -1,6 +1,4 @@
 /*
- * $Id: uvedit_unwrap_ops.c 40417 2011-09-21 08:02:26Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -464,7 +462,7 @@ void UV_OT_minimize_stretch(wmOperatorType *ot)
 	/* identifiers */
 	ot->name= "Minimize Stretch";
 	ot->idname= "UV_OT_minimize_stretch";
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO|OPTYPE_GRAB_POINTER|OPTYPE_BLOCKING;
 	ot->description="Reduce UV stretching by relaxing angles";
 	
 	/* api callbacks */

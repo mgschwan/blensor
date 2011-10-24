@@ -1,5 +1,4 @@
 /*
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -44,7 +43,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_storage_types.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_scene_types.h"
@@ -235,7 +233,7 @@ static int sequencer_add_scene_strip_exec(bContext *C, wmOperator *op)
 	
 	strip->stripdata= MEM_callocN(seq->len*sizeof(StripElem), "stripelem");
 	
-	strcpy(seq->name+2, sce_seq->id.name+2);
+	BLI_strncpy(seq->name+2, sce_seq->id.name+2, sizeof(seq->name)-2);
 	seqbase_unique_name_recursive(&ed->seqbase, seq);
 
 	seq->scene_sound = sound_scene_add_scene_sound(scene, seq, start_frame, start_frame + strip->len, 0);
@@ -321,7 +319,7 @@ static int sequencer_add_generic_strip_exec(bContext *C, wmOperator *op, SeqLoad
 		char dir_only[FILE_MAX];
 		char file_only[FILE_MAX];
 
-		BLI_split_dirfile(seq_load.path, dir_only, NULL);
+		BLI_split_dir_part(seq_load.path, dir_only, sizeof(dir_only));
 
 		RNA_BEGIN(op->ptr, itemptr, "files") {
 			RNA_string_get(&itemptr, "name", file_only);
@@ -380,9 +378,6 @@ static int sequencer_add_movie_strip_invoke(bContext *C, wmOperator *op, wmEvent
 	
 	sequencer_generic_invoke_xy__internal(C, op, event, 0);
 	
-	if(!RNA_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
-	
 	WM_event_add_fileselect(C, op);
 	return OPERATOR_RUNNING_MODAL;
 
@@ -434,10 +429,7 @@ static int sequencer_add_sound_strip_invoke(bContext *C, wmOperator *op, wmEvent
 	}
 	
 	sequencer_generic_invoke_xy__internal(C, op, event, 0);
-	
-	if(!RNA_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
-	
+
 	WM_event_add_fileselect(C, op);
 	return OPERATOR_RUNNING_MODAL;
 
@@ -543,9 +535,6 @@ static int sequencer_add_image_strip_invoke(bContext *C, wmOperator *op, wmEvent
 	}
 	
 	sequencer_generic_invoke_xy__internal(C, op, event, SEQPROP_ENDFRAME);
-	
-	if(!RNA_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
 
 	WM_event_add_fileselect(C, op);
 	return OPERATOR_RUNNING_MODAL;
@@ -721,10 +710,6 @@ static int sequencer_add_effect_strip_invoke(bContext *C, wmOperator *op, wmEven
 	sequencer_generic_invoke_xy__internal(C, op, event, prop_flag);
 
 	if (is_type_set && type==SEQ_PLUGIN) {
-
-		if(!RNA_property_is_set(op->ptr, "relative_path"))
-			RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
-
 		/* only plugins need the file selector */
 		return WM_operator_filesel(C, op, event);
 	}

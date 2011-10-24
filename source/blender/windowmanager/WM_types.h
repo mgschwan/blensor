@@ -1,6 +1,4 @@
 /*
- * $Id: WM_types.h 40762 2011-10-03 01:36:25Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -97,6 +95,11 @@ enum {
 #define KM_CTRL2	32
 #define KM_ALT2		64
 #define KM_OSKEY2	128
+
+/* KM_MOD_ flags for wmKeyMapItem and wmEvent.alt/shift/oskey/ctrl  */
+/* note that KM_ANY and FALSE are used with these defines too */
+#define KM_MOD_FIRST  1
+#define KM_MOD_SECOND 2
 
 /* type: defined in wm_event_types.c */
 #define KM_TEXTINPUT	-2
@@ -341,8 +344,10 @@ typedef struct wmEvent {
 	short val;			/* press, release, scrollvalue */
 	int x, y;			/* mouse pointer position, screen coord */
 	int mval[2];		/* region mouse position, name convention pre 2.5 :) */
-	short unicode;		/* future, ghost? */
-	char ascii;			/* from ghost */
+	char utf8_buf[6];	/* from, ghost if utf8 is enabled for the platform,
+						 * BLI_str_utf8_size() must _always_ be valid, check
+						 * when assigning s we dont need to check on every access after */
+	char ascii;			/* from ghost, fallback if utf8 isnt set */
 	char pad;
 
 	/* previous state */

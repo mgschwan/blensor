@@ -1,6 +1,4 @@
 /*
- * $Id: graph_intern.h 35765 2011-03-25 03:58:21Z aligorith $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

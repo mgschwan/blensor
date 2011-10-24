@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# $Id: clean_po.py 40752 2011-10-02 18:09:36Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

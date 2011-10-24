@@ -1,6 +1,4 @@
 /*
- * $Id: idprop.c 36403 2011-05-01 06:34:40Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

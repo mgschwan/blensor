@@ -1,6 +1,5 @@
 /*
  *
- * $Id: filter.c 40252 2011-09-16 06:47:01Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -28,7 +27,6 @@
  * ***** END GPL LICENSE BLOCK *****
  * filter.c
  *
- * $Id: filter.c 40252 2011-09-16 06:47:01Z campbellbarton $
  */
 
 /** \file blender/imbuf/intern/filter.c

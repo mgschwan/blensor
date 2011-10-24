@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_modifier_types.h 40900 2011-10-10 07:50:39Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

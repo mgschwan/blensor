@@ -1,6 +1,4 @@
 /*
- * $Id: rna_internal.h 40738 2011-10-01 21:09:42Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

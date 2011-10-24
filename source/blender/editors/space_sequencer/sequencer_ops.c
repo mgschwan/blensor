@@ -1,6 +1,5 @@
 
 /*
- * $Id: sequencer_ops.c 40658 2011-09-28 14:12:27Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

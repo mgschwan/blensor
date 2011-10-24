@@ -1,6 +1,4 @@
 /*
- * $Id: EffectExporter.cpp 40166 2011-09-12 13:59:23Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

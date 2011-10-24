@@ -1,6 +1,4 @@
 /*
- * $Id: depsgraph_private.h 37503 2011-06-15 09:45:26Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

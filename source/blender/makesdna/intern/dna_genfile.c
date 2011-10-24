@@ -2,7 +2,6 @@
  *
  * Functions for struct-dna, the genetic file dot c!
  *
- * $Id: dna_genfile.c 39568 2011-08-20 14:23:43Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

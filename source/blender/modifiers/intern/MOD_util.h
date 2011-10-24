@@ -1,6 +1,4 @@
 /*
- * $Id: MOD_util.h 38484 2011-07-18 18:14:22Z lukastoenne $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

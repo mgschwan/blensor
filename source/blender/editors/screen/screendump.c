@@ -1,6 +1,4 @@
 /*
- * $Id: screendump.c 36770 2011-05-19 11:13:35Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -157,7 +155,7 @@ static int screenshot_exec(bContext *C, wmOperator *op)
 
 			RNA_string_get(op->ptr, "filepath", path);
 
-			strcpy(G.ima, path);
+			BLI_strncpy(G.ima, path, sizeof(G.ima));
 			BLI_path_abs(path, G.main->name);
 
 			/* BKE_add_image_extension() checks for if extension was already set */

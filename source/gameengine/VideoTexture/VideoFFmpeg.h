@@ -1,4 +1,4 @@
-/* $Id: VideoFFmpeg.h 36960 2011-05-27 23:33:40Z schlaile $
+/*
 -----------------------------------------------------------------------------
 This source file is part of VideoTexture library
 

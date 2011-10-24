@@ -1,6 +1,4 @@
 /*
- * $Id: particle_object.c 35362 2011-03-05 10:29:10Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

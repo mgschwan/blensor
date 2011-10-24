@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_world.h 36772 2011-05-19 11:21:37Z blendix $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

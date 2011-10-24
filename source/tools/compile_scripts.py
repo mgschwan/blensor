@@ -24,7 +24,7 @@
 This script runs inside blender and compiles all scripts into pyc files which
 blender uses as modules.
 
-./blender.bin --background --python source/tools/compile_scripts.py
+./blender.bin --background -noaudio --python source/tools/compile_scripts.py
 """
 
 

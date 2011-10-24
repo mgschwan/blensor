@@ -1,6 +1,4 @@
 /*
- * $Id: paint_vertex.c 40821 2011-10-06 04:33:00Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -1619,7 +1617,7 @@ static void do_weight_paint_vertex( /* vars which remain the same for every vert
 			}
 		}
 
-		/* important to normalize after mirror, otherwise mirror gets wight
+		/* important to normalize after mirror, otherwise mirror gets weight
 		 * which has already been scaled down in relation to other weights,
 		 * then scales a second time [#26193]. Tricky multi-paint code doesn't
 		 * suffer from this problem - campbell */

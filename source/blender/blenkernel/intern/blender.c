@@ -1,6 +1,4 @@
 /*
- * $Id: blender.c 40903 2011-10-10 09:38:02Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -59,11 +57,11 @@
 #include "BLI_blenlib.h"
 #include "BLI_bpath.h"
 #include "BLI_dynstr.h"
-#include "BLI_path_util.h"
 #include "BLI_utildefines.h"
 #include "BLI_callbacks.h"
 
 #include "IMB_imbuf.h"
+#include "IMB_moviecache.h"
 
 #include "BKE_blender.h"
 #include "BKE_context.h"
@@ -114,6 +112,7 @@ void free_blender(void)
 	BLI_cb_finalize();
 
 	seq_stripelem_cache_destruct();
+	IMB_moviecache_destruct();
 	
 	free_nodesystem();	
 }
@@ -549,7 +548,7 @@ void BKE_write_undo(bContext *C, const char *name)
 		counter= counter % U.undosteps;	
 	
 		BLI_snprintf(numstr, sizeof(numstr), "%d.blend", counter);
-		BLI_make_file_string("/", filepath, btempdir, numstr);
+		BLI_make_file_string("/", filepath, BLI_temporary_dir(), numstr);
 	
 		/* success= */ /* UNUSED */ BLO_write_file(CTX_data_main(C), filepath, fileflags, NULL, NULL);
 		
@@ -719,7 +718,7 @@ void BKE_undo_save_quit(void)
 	/* no undo state to save */
 	if(undobase.first==undobase.last) return;
 		
-	BLI_make_file_string("/", str, btempdir, "quit.blend");
+	BLI_make_file_string("/", str, BLI_temporary_dir(), "quit.blend");
 
 	file = open(str,O_BINARY+O_WRONLY+O_CREAT+O_TRUNC, 0666);
 	if(file == -1) {

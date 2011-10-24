@@ -1,6 +1,4 @@
 /*
- * $Id: transform_generics.c 40793 2011-10-04 23:42:06Z theeth $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

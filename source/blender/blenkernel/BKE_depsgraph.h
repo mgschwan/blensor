@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_depsgraph.h 37466 2011-06-14 04:05:58Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

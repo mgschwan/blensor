@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_math_base.h 38126 2011-07-05 19:04:38Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

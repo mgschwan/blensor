@@ -1,5 +1,4 @@
-/* $Id: quicktime_export.h 35235 2011-02-27 20:01:38Z jesterking $ 
- *
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

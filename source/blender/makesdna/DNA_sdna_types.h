@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_sdna_types.h 39568 2011-08-20 14:23:43Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

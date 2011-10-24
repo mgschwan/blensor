@@ -1,5 +1,4 @@
 /*
- * $Id: endian.c 40341 2011-09-19 08:02:17Z campbellbarton $
  *
  * This is external code. Streams bytes to output depending on the
  * endianness of the system.

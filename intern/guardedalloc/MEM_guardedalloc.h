@@ -1,5 +1,4 @@
 /*
- * $Id: MEM_guardedalloc.h 35417 2011-03-09 01:25:59Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

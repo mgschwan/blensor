@@ -1,6 +1,4 @@
 /*
- * $Id: curve_ops.c 40255 2011-09-16 08:20:21Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

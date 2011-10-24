@@ -1,7 +1,4 @@
-/** \file gameengine/VideoTexture/FilterBlueScreen.cpp
- *  \ingroup bgevideotex
- */
-/* $Id: FilterBlueScreen.cpp 35176 2011-02-25 13:39:34Z jesterking $
+/*
 -----------------------------------------------------------------------------
 This source file is part of VideoTexture library
 
@@ -23,6 +20,9 @@ http://www.gnu.org/copyleft/lesser.txt.
 -----------------------------------------------------------------------------
 */
 
+/** \file gameengine/VideoTexture/FilterBlueScreen.cpp
+ *  \ingroup bgevideotex
+ */
 
 #include <PyObjectPlus.h>
 #include <structmember.h>

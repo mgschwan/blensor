@@ -1,4 +1,3 @@
-# $Id: CMakeLists.txt 39936 2011-09-05 19:27:21Z blendix $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

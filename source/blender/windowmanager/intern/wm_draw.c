@@ -1,6 +1,4 @@
 /*
- * $Id: wm_draw.c 36563 2011-05-09 08:01:48Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

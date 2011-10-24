@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_math_inline.h 40064 2011-09-09 12:23:45Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

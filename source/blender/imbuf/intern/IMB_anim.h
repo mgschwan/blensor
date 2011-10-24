@@ -1,7 +1,6 @@
 /*
  * allocimbuf.h
  *
- * $Id: IMB_anim.h 40341 2011-09-19 08:02:17Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -66,9 +65,6 @@
 #else
 #  include <dirent.h>
 #endif
-
-#include "BLI_blenlib.h" /* BLI_remlink BLI_filesize BLI_addtail
-							BLI_countlist BLI_stringdec */
 
 #include "imbuf.h"
 

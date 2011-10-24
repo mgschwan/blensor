@@ -1,6 +1,4 @@
 /*
- * $Id: BL_BlenderDataConversion.cpp 40538 2011-09-25 12:31:21Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -1590,15 +1588,15 @@ void BL_CreatePhysicsObjectNew(KX_GameObject* gameobj,
 				objprop.m_boundobject.box.m_extends[1]=2.f*bb.m_extends[1];
 				objprop.m_boundobject.box.m_extends[2]=2.f*bb.m_extends[2];
 				break;
-			case OB_BOUND_POLYT:
+			case OB_BOUND_CONVEX_HULL:
 				if (blenderobject->type == OB_MESH)
 				{
 					objprop.m_boundclass = KX_BOUNDPOLYTOPE;
 					break;
 				}
-				// Object is not a mesh... fall through OB_BOUND_POLYH to 
+				// Object is not a mesh... fall through OB_BOUND_TRIANGLE_MESH to
 				// OB_BOUND_SPHERE
-			case OB_BOUND_POLYH:
+			case OB_BOUND_TRIANGLE_MESH:
 				if (blenderobject->type == OB_MESH)
 				{
 					objprop.m_boundclass = KX_BOUNDMESH;

@@ -1,6 +1,4 @@
 /*
- * $Id: bvh.h 35477 2011-03-11 22:27:06Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -167,7 +165,7 @@ static inline void bvh_node_merge_bb(Node *node, float *min, float *max)
 
 
 /*
- * recursivly transverse a BVH looking for a rayhit using a local stack
+ * recursively transverse a BVH looking for a rayhit using a local stack
  */
 template<class Node> static inline void bvh_node_push_childs(Node *node, Isect *isec, Node **stack, int &stack_pos);
 

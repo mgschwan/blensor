@@ -1,6 +1,4 @@
 /*
- * $Id: screen_ops.c 40351 2011-09-19 12:26:20Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -649,7 +647,7 @@ static void SCREEN_OT_actionzone(wmOperatorType *ot)
 	
 	ot->flag= OPTYPE_BLOCKING;
 	
-	RNA_def_int(ot->srna, "modifier", 0, 0, 2, "modifier", "modifier state", 0, 2);
+	RNA_def_int(ot->srna, "modifier", 0, 0, 2, "Modifier", "Modifier state", 0, 2);
 }
 
 /* ************** swap area operator *********************************** */

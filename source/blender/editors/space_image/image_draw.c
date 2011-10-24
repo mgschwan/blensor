@@ -1,6 +1,4 @@
 /*
- * $Id: image_draw.c 36715 2011-05-16 13:34:42Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

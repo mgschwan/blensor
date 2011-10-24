@@ -1,6 +1,4 @@
 /*
- * $Id: wm_subwindow.h 35179 2011-02-25 14:04:21Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

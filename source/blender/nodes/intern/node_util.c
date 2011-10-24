@@ -1,6 +1,4 @@
 /*
- * $Id: node_util.c 39941 2011-09-05 21:01:50Z lukastoenne $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

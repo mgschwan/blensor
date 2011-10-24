@@ -1,7 +1,7 @@
 /** \file itasc/ControlledObject.cpp
  *  \ingroup itasc
  */
-/* $Id: ControlledObject.cpp 35155 2011-02-25 11:45:16Z jesterking $
+/*
  * ControlledObject.cpp
  *
  *  Created on: Jan 5, 2009

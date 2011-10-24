@@ -1,6 +1,4 @@
 /*
- * $Id: ImageExporter.cpp 40019 2011-09-07 18:23:30Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -97,7 +95,7 @@ void ImagesExporter::operator()(Material *ma, Object *ob)
 			char src[FILE_MAX];
 			char dir[FILE_MAX];
 			
-			BLI_split_dirfile(this->export_settings->filepath, dir, NULL);
+			BLI_split_dir_part(this->export_settings->filepath, dir, sizeof(dir));
 
 			BKE_rebase_path(abs, sizeof(abs), rel, sizeof(rel), G.main->name, image->name, dir);
 
@@ -110,7 +108,7 @@ void ImagesExporter::operator()(Material *ma, Object *ob)
 				// make dest directory if it doesn't exist
 				BLI_make_existing_file(abs);
 			
-				if (BLI_copy_fileops(src, abs) != 0) {
+				if (BLI_copy(src, abs) != 0) {
 					fprintf(stderr, "Cannot copy image to file's directory. \n");
 				}
 			} 

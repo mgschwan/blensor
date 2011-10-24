@@ -1,6 +1,4 @@
 /*
- * $Id: sequencer_scopes.c 35971 2011-04-03 10:04:16Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: ExtraHandler.cpp 39807 2011-08-30 15:43:00Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

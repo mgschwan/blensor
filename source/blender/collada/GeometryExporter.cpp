@@ -1,6 +1,4 @@
 /*
- * $Id: GeometryExporter.cpp 40382 2011-09-20 06:25:15Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

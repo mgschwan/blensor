@@ -1,7 +1,7 @@
 /** \file itasc/WorldObject.cpp
  *  \ingroup itasc
  */
-/* $Id: WorldObject.cpp 35155 2011-02-25 11:45:16Z jesterking $
+/*
  * WorldObject.cpp
  *
  *  Created on: Feb 10, 2009

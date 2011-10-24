@@ -1,6 +1,4 @@
 /*
- * $Id: text_intern.h 39868 2011-09-02 09:39:21Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_math_geom.h 37825 2011-06-26 11:08:12Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

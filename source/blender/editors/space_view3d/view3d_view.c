@@ -1,6 +1,4 @@
 /*
- * $Id: view3d_view.c 40607 2011-09-27 11:02:19Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

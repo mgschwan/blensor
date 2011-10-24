@@ -1,6 +1,4 @@
 /*
- * $Id: KX_WorldIpoController.h 35072 2011-02-22 12:42:55Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

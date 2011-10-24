@@ -1,7 +1,4 @@
-/** \file gameengine/VideoTexture/FilterBase.cpp
- *  \ingroup bgevideotex
- */
-/* $Id: FilterBase.cpp 35176 2011-02-25 13:39:34Z jesterking $
+/*
 -----------------------------------------------------------------------------
 This source file is part of VideoTexture library
 
@@ -22,6 +19,11 @@ Place - Suite 330, Boston, MA 02111-1307, USA, or go to
 http://www.gnu.org/copyleft/lesser.txt.
 -----------------------------------------------------------------------------
 */
+
+/** \file gameengine/VideoTexture/FilterBase.cpp
+ *  \ingroup bgevideotex
+ */
+
 
 #include "FilterBase.h"
 

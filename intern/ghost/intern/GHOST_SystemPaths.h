@@ -1,6 +1,4 @@
 /*
- * $Id: GHOST_SystemPaths.h 35152 2011-02-25 11:28:33Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

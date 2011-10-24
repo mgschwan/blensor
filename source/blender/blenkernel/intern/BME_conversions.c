@@ -3,7 +3,6 @@
  *
  *	BMesh mesh level functions.
  *
- * $Id: BME_conversions.c 40567 2011-09-26 13:24:42Z mont29 $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -44,6 +43,7 @@
 #include "DNA_scene_types.h"
 
 #include "BLI_edgehash.h"
+#include "BLI_listbase.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_mesh.h"

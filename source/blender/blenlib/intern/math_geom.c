@@ -1,6 +1,4 @@
 /*
- * $Id: math_geom.c 39833 2011-09-01 01:48:50Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

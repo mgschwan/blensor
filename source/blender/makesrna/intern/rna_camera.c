@@ -1,6 +1,4 @@
 /*
- * $Id: rna_camera.c 40684 2011-09-29 08:23:52Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

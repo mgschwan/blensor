@@ -1,7 +1,6 @@
 /*
  * SCA_AlwaysSensor.h
  *
- * $Id: SCA_AlwaysSensor.h 35063 2011-02-22 10:33:14Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

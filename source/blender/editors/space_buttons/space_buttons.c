@@ -1,6 +1,4 @@
 /*
- * $Id: space_buttons.c 39755 2011-08-28 18:54:02Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

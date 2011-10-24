@@ -1,4 +1,3 @@
-# $Id: VideoTexture.py 31730 2010-09-03 03:30:20Z gsrb3d $
 """
 The VideoTexture module allows you to manipulate textures during the game.
 

@@ -1,7 +1,6 @@
 /**
 * Add steering behaviors
 *
-* $Id: KX_SteeringActuator.cpp 40871 2011-10-09 04:11:18Z campbellbarton $
 *
 * ***** BEGIN GPL LICENSE BLOCK *****
 *

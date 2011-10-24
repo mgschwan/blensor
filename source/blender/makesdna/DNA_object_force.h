@@ -1,6 +1,5 @@
 /*
  *
- * $Id: DNA_object_force.h 38235 2011-07-08 13:22:58Z blendix $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

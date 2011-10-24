@@ -1,6 +1,4 @@
 /*
- * $Id: sound.c 40854 2011-10-08 11:11:54Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -63,6 +61,10 @@
 #include "BKE_sequencer.h"
 #include "BKE_scene.h"
 
+// evil quiet NaN definition
+static const int NAN_INT = 0x7FC00000;
+#define NAN_FLT *((float*)(&NAN_INT))
+
 #ifdef WITH_AUDASPACE
 // evil global ;-)
 static int sound_cfra;
@@ -75,9 +77,9 @@ struct bSound* sound_new_file(struct Main *bmain, const char *filename)
 	char str[FILE_MAX];
 	char *path;
 
-	int len;
+	size_t len;
 
-	strcpy(str, filename);
+	BLI_strncpy(str, filename, sizeof(str));
 
 	path = /*bmain ? bmain->name :*/ G.main->name;
 
@@ -295,7 +297,10 @@ void sound_cache(struct bSound* sound)
 		AUD_unload(sound->cache);
 
 	sound->cache = AUD_bufferSound(sound->handle);
-	sound->playback_handle = sound->cache;
+	if(sound->cache)
+		sound->playback_handle = sound->cache;
+	else
+		sound->playback_handle = sound->handle;
 }
 
 void sound_cache_notifying(struct Main* main, struct bSound* sound)
@@ -331,6 +336,8 @@ void sound_load(struct Main *bmain, struct bSound* sound)
 			sound->handle = NULL;
 			sound->playback_handle = NULL;
 		}
+
+		sound_free_waveform(sound);
 
 // XXX unused currently
 #if 0
@@ -625,7 +632,7 @@ float sound_sync_scene(struct Scene *scene)
 		else
 			return AUD_getPosition(scene->sound_scene_handle);
 	}
-	return 0.0f;
+	return NAN_FLT;
 }
 
 int sound_scene_playing(struct Scene *scene)
@@ -782,7 +789,7 @@ static void sound_start_play_scene(struct Scene *UNUSED(scene)) {}
 void sound_play_scene(struct Scene *UNUSED(scene)) {}
 void sound_stop_scene(struct Scene *UNUSED(scene)) {}
 void sound_seek_scene(struct Main *UNUSED(bmain), struct Scene *UNUSED(scene)) {}
-float sound_sync_scene(struct Scene *UNUSED(scene)) { return 0.0f; }
+float sound_sync_scene(struct Scene *UNUSED(scene)) { return NAN_FLT; }
 int sound_scene_playing(struct Scene *UNUSED(scene)) { return -1; }
 int sound_read_sound_buffer(struct bSound* UNUSED(sound), float* UNUSED(buffer), int UNUSED(length), float UNUSED(start), float UNUSED(end)) { return 0; }
 void sound_read_waveform(struct bSound* sound) { (void)sound; }

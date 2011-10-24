@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_global.h 40341 2011-09-19 08:02:17Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

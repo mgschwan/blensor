@@ -1,6 +1,4 @@
 /*
- * $Id: DocumentImporter.cpp 40455 2011-09-22 14:42:29Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -884,7 +882,7 @@ bool DocumentImporter::writeImage( const COLLADAFW::Image* image )
 	char dir[FILE_MAX];
 	char full_path[FILE_MAX];
 	
-	BLI_split_dirfile(filename, dir, NULL);
+	BLI_split_dir_part(filename, dir, sizeof(dir));
 	BLI_join_dirfile(full_path, sizeof(full_path), dir, filepath.c_str());
 	Image *ima = BKE_add_image_file(full_path);
 	if (!ima) {

@@ -1,6 +1,4 @@
 /*
- * $Id: bpy_props.h 37088 2011-06-02 08:29:16Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

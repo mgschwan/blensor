@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_NDOFManagerWin32.cpp 39007 2011-08-04 03:14:00Z merwin $
  * 
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,6 +1,4 @@
 /*
- * $Id: GPU_extensions.h 40061 2011-09-09 11:55:38Z ben2610 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This shader is free software; you can redistribute it and/or

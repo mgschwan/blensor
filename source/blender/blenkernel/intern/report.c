@@ -1,6 +1,4 @@
 /*
- * $Id: report.c 39795 2011-08-30 10:07:50Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,4 +1,3 @@
-// $Id: KX_TrackToActuator.h 39883 2011-09-03 02:15:49Z campbellbarton $
 //
 // ***** BEGIN GPL LICENSE BLOCK *****
 //

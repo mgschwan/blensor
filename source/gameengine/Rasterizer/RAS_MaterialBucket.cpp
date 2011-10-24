@@ -1,5 +1,4 @@
 /*
- * $Id: RAS_MaterialBucket.cpp 39683 2011-08-24 20:28:54Z moguri $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,8 +1,5 @@
-/*
- * @file PIL_time.h
- * 
- * Platform independant time functions.
- * $Id: PIL_time.h 35587 2011-03-17 06:57:12Z campbellbarton $
+/* 
+ * Platform independent time functions.
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -51,7 +48,7 @@ extern
 double	PIL_check_seconds_timer		(void);
 
 	/**
-	 * Platform-independant sleep function.
+	 * Platform-independent sleep function.
 	 * @param ms Number of milliseconds to sleep
 	 */
 void	PIL_sleep_ms				(int ms);

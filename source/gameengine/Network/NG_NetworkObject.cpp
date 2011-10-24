@@ -1,6 +1,4 @@
 /*
- * $Id: NG_NetworkObject.cpp 35172 2011-02-25 13:36:49Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

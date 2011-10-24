@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_ghash.h 39316 2011-08-12 02:23:06Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -38,13 +36,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include "BLI_mempool.h"
-#include "BLI_blenlib.h"
 
 typedef unsigned int	(*GHashHashFP)		(const void *key);
 typedef int				(*GHashCmpFP)		(const void *a, const void *b);

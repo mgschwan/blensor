@@ -1,6 +1,4 @@
 /*
- * $Id: RNA_define.h 40732 2011-10-01 15:40:32Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,5 +1,4 @@
 /*
- * $Id: BlenderWorldInfo.cpp 39834 2011-09-01 02:12:53Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can [0]istribute it and/or

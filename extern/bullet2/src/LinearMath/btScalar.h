@@ -29,7 +29,7 @@ subject to the following restrictions:
 #include <cfloat>
 #include <float.h>
 
-/* SVN $Revision: 35500 $ on $Date: 2011-03-12 21:34:17 +0100 (Sam, 12. Mär 2011) $ from http://bullet.googlecode.com*/
+/* SVN $Revision: 35500 $ on $Date: 2011-03-12 21:34:17 +0100 (Sat, 12 Mar 2011) $ from http://bullet.googlecode.com*/
 #define BT_BULLET_VERSION 278
 
 inline int	btGetVersion()

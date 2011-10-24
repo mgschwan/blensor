@@ -1,6 +1,4 @@
 /*
- * $Id: GHOST_SystemPathsX11.cpp 39160 2011-08-07 17:38:36Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

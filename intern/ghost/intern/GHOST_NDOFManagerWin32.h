@@ -1,6 +1,4 @@
 /*
- * $Id: GHOST_NDOFManagerWin32.h 39007 2011-08-04 03:14:00Z merwin $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

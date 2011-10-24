@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_WindowNULL.h 38022 2011-07-01 15:15:22Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

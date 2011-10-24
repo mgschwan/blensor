@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_ISystem.cpp 38351 2011-07-13 06:04:54Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: GHOST_ISystem.cpp 38351 2011-07-13 06:04:54Z campbellbarton $
  * Copyright (C) 2001 NaN Technologies B.V.
  * @author	Maarten Gribnau
  * @date	May 7, 2001

@@ -1,6 +1,4 @@
 /*
- * $Id: collision.c 40659 2011-09-28 15:22:13Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

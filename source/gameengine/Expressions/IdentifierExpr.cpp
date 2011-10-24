@@ -1,5 +1,4 @@
 /*
- * $Id: IdentifierExpr.cpp 35168 2011-02-25 13:31:23Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

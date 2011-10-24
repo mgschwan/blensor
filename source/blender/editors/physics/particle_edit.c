@@ -1,6 +1,4 @@
 /*
- * $Id: particle_edit.c 40581 2011-09-26 18:51:10Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -2970,7 +2968,7 @@ static void brush_puff(PEData *data, int point_index)
 						VECSUB(dco, lastco, co);
 						mul_mat3_m4_v3(imat, dco); /* into particle space */
 
-						/* move the point allong a vector perpendicular to the
+						/* move the point along a vector perpendicular to the
 						 * hairs direction, reduces odd kinks, */
 						cross_v3_v3v3(c1, ofs, dco);
 						cross_v3_v3v3(c2, c1, dco);
@@ -3700,7 +3698,7 @@ static void brush_edit_apply_event(bContext *C, wmOperator *op, wmEvent *event)
 	RNA_collection_add(op->ptr, "stroke", &itemptr);
 
 	RNA_float_set_array(&itemptr, "mouse", mouse);
-	RNA_boolean_set(&itemptr, "pen_flip", event->shift != 0); // XXX hardcoded
+	RNA_boolean_set(&itemptr, "pen_flip", event->shift != FALSE); // XXX hardcoded
 
 	/* apply */
 	brush_edit_apply(C, op, &itemptr);

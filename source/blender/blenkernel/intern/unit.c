@@ -1,6 +1,4 @@
 /*
- * $Id: unit.c 40258 2011-09-16 10:03:08Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

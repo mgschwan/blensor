@@ -1,6 +1,4 @@
-/**
- * $Id: node_shader_tree.c 40139 2011-09-12 00:00:21Z campbellbarton $
- *
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -85,6 +83,11 @@ static void local_sync(bNodeTree *localtree, bNodeTree *ntree)
 	}
 }
 
+static void update(bNodeTree *ntree)
+{
+	ntreeSetOutput(ntree);
+}
+
 bNodeTreeType ntreeType_Shader = {
 	/* type */				NTREE_SHADER,
 	/* id_name */			"NTShader Nodetree",
@@ -97,7 +100,7 @@ bNodeTreeType ntreeType_Shader = {
 	/* localize */			NULL,
 	/* local_sync */		local_sync,
 	/* local_merge */		NULL,
-	/* update */			NULL,
+	/* update */			update,
 	/* update_node */		NULL
 };
 

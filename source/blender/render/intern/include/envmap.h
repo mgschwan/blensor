@@ -1,7 +1,6 @@
 /*
  * envmap_ext.h
  *
- * $Id: envmap.h 35233 2011-02-27 19:31:27Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

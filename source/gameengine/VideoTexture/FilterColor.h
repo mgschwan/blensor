@@ -1,4 +1,4 @@
-/* $Id: FilterColor.h 39815 2011-08-31 01:07:55Z campbellbarton $
+/*
 -----------------------------------------------------------------------------
 This source file is part of blendTex library
 

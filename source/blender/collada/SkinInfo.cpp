@@ -1,6 +1,4 @@
 /*
- * $Id: SkinInfo.cpp 39898 2011-09-04 00:15:59Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

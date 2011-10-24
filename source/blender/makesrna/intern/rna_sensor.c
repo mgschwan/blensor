@@ -1,6 +1,4 @@
 /*
- * $Id: rna_sensor.c 39509 2011-08-17 20:44:15Z moguri $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

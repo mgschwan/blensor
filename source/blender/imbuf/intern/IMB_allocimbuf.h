@@ -1,7 +1,6 @@
 /*
  * allocimbuf.h
  *
- * $Id: IMB_allocimbuf.h 33468 2010-12-04 13:00:28Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

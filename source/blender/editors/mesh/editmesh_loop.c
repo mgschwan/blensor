@@ -1,6 +1,4 @@
 /*
- * $Id: editmesh_loop.c 38081 2011-07-04 11:28:39Z ton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

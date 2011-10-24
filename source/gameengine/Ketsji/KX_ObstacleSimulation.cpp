@@ -1,7 +1,6 @@
 /**
 * Simulation for obstacle avoidance behavior
 *
-* $Id: KX_ObstacleSimulation.cpp 40871 2011-10-09 04:11:18Z campbellbarton $
 *
 * ***** BEGIN GPL LICENSE BLOCK *****
 *

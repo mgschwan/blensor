@@ -1,6 +1,4 @@
 /*
- * $Id: rna_screen.c 40710 2011-09-30 08:10:53Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

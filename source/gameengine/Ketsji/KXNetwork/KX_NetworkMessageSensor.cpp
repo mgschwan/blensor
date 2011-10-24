@@ -1,6 +1,4 @@
 /*
- * $Id: KX_NetworkMessageSensor.cpp 39834 2011-09-01 02:12:53Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -146,7 +144,7 @@ bool KX_NetworkMessageSensor::Evaluate()
 	// Return always true if a message was received otherwise we can loose messages
 	if (m_IsUp)
 		return true;
-	// Is it usefull to return also true when the first frame without a message?? 
+	// Is it useful to return also true when the first frame without a message??
 	// This will cause a fast on/off cycle that seems useless!
 	return result;
 }

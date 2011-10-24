@@ -1,6 +1,4 @@
 /*
- * $Id: fsmenu.c 39695 2011-08-25 16:41:08Z alexk $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -44,7 +42,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_linklist.h"
 #include "BLI_dynstr.h"
-#include "BLI_string.h"
 
 #ifdef WIN32
 #include <windows.h> /* need to include windows.h so _WIN32_IE is defined  */
@@ -279,7 +276,7 @@ void fsmenu_read_bookmarks(struct FSMenu* fsmenu, const char *filename)
 				if (line[len-1] == '\n') {
 					line[len-1] = '\0';
 				}
-				if (BLI_exist(line)) {
+				if (BLI_exists(line)) {
 					fsmenu_insert_entry(fsmenu, category, line, 0, 1);
 				}
 			}

@@ -1,6 +1,4 @@
 /*
- * $Id: math_rotation.c 40352 2011-09-19 13:08:01Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

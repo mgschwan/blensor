@@ -4,7 +4,6 @@
  * 
  * april 95
  * 
- * $Id: rct.c 39558 2011-08-19 16:21:29Z campbellbarton $
  *
  * A minimalist lib for functions doing stuff with rectangle structs.
  *

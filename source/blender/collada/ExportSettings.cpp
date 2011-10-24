@@ -1,6 +1,4 @@
 /*
- * $Id: ExportSettings.cpp 40019 2011-09-07 18:23:30Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

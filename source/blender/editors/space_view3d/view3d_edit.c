@@ -1,6 +1,4 @@
 /*
- * $Id: view3d_edit.c 40730 2011-10-01 13:46:20Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -450,7 +448,7 @@ static void viewops_data_create(bContext *C, wmOperator *op, wmEvent *event)
 				sub_v3_v3v3(my_pivot, rv3d->ofs, upvec);
 				negate_v3(my_pivot);				/* ofs is flipped */
 
-				/* find a new ofs value that is allong the view axis (rather than the mouse location) */
+				/* find a new ofs value that is along the view axis (rather than the mouse location) */
 				closest_to_line_v3(dvec, vod->dyn_ofs, my_pivot, my_origin);
 				vod->dist0 = rv3d->dist = len_v3v3(my_pivot, dvec);
 

@@ -1,6 +1,4 @@
 /*
- * $Id: bpy_intern_string.h 37626 2011-06-18 23:22:55Z gsrb3d $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,5 +1,4 @@
 /*
- * $Id: GEN_Map.h 35158 2011-02-25 11:49:19Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

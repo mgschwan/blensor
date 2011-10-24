@@ -1,6 +1,4 @@
 /*
- * $Id: wm_event_system.h 36242 2011-04-20 11:15:58Z ton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

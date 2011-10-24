@@ -1,7 +1,7 @@
 /** \file itasc/UncontrolledObject.cpp
  *  \ingroup itasc
  */
-/* $Id: UncontrolledObject.cpp 35155 2011-02-25 11:45:16Z jesterking $
+/*
  * UncontrolledObject.cpp
  *
  *  Created on: Jan 5, 2009

@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_cloth.h 36419 2011-05-01 21:39:13Z joeedh $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

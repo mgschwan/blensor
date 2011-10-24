@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_WindowX11.h 36985 2011-05-28 15:34:02Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -221,6 +220,10 @@ public:
 	{ return NULL; }
 #endif // WITH_X11_XINPUT
 
+#if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)
+	XIC getX11_XIC() { return m_xic; }
+#endif
+
 	/*
 	 * Need this in case that we want start the window
 	 * in FullScree or Maximized state.
@@ -361,6 +364,10 @@ private :
 #ifdef WITH_X11_XINPUT
 	/* Tablet devices */
 	XTablet m_xtablet;
+#endif
+
+#if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)
+	XIC m_xic;
 #endif
 
 	void icccmSetState(int state);

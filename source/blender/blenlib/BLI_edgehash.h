@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_edgehash.h 34966 2011-02-18 13:58:08Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -30,7 +28,7 @@
 #ifndef BLI_EDGEHASH_H
 #define BLI_EDGEHASH_H
 
-/** \file BLI_storage.h
+/** \file BLI_edgehash.h
  *  \ingroup bli
  *  \author Daniel Dunbar
  *  \brief A general unordered 2-int pair hash table ADT.

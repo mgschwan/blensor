@@ -1,6 +1,4 @@
 /*
- * $Id: thumbs_blend.c 35239 2011-02-27 20:23:21Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

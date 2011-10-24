@@ -110,7 +110,7 @@ def parse_commits(filepath):
 
 #svn_log = "/dsk/data/src/blender/svn_log_verbose.xml"
 svn_log = "/dsk/data/src/blender/svn_log_verbose.xml"
-tracker_csv = "/l/tracker_report-2011-09-02.csv"
+tracker_csv = "/l/tracker_report-2011-10-17.csv"
 
 # TODO, there are for sure more companies then are currently listed.
 # 1 liners for in wiki syntax
@@ -157,52 +157,78 @@ author_name_mapping = {
     "broken": "Matt Ebb",
     "campbellbarton": "Campbell Barton",
     "cessen": "Nathan Vegdahl",
+    "cmccad": "Casey Corn",
     "damien78": "Damien Plisson",
     "desoto": "Chris Burt",
     "dfelinto": "Dalai Felinto",
     "dingto": "Thomas Dinges",
     "djcapelis": "D.J. Capelis",
     "dougal2": "Doug Hammond",
+    "eeshlo": "Alfredo de Greef",
     "elubie": "Andrea Weikert",
+    "ender79": "Andrew Wiggin",  # an alias, not real name.
     "erwin": "Erwin Coumans",
+    "frank": "Frank van Beek",
     "genscher": "Daniel Genrich",
     "goofster": "Roel Spruit",
     "gsrb3d": "gsr b3d",
+    "guignot": "Jacques Guignot",
     "guitargeek": "Johnny Matthews",
+    "h_xnan": "Hans Lambermont",
+    "halley": "Ed Halley",
     "hans": "Hans Lambermont",
     "harkyman": "Roland Hess",
     "hos": "Chris Want",
     "ianwill": "Willian Padovani Germano",
     "imbusy": "Lukas Steiblys",
     "intrr": "Alexander Ewering",
+    "jaguarandi": "Andre Susano Pinto",
+    "jandro": "Alejandro Conty Estevez",
     "jbakker": "Jeroen Bakker",
+    "jbinto": "Jacques Beuarain",
     "jensverwiebe": "Jens Verwiebe",
     "jesterking": "Nathan Letwory",
     "jhk": "Janne Karhu",
     "jiri": "Jiri Hnidek",
     "joeedh": "Joseph Eagar",
     "jwilkins": "Jason Wilkins",
+    "kakbarnf": "Robin Allen",
     "kazanbas": "Arystanbek Dyussenov",
     "kester": "Kester Maddock",
     "khughes": "Ken Hughes",
     "kwk": "Konrad Kleine",
+    "larstiq": "Wouter van Heyst",
     "letterrip": "Tom Musgrove",
     "lmg": "M.G. Kishalmi",
+    "loczar": "Francis Laurence",  # not 100% sure on this.
+    "lonetech": "Yann Vernier",
     "lukastoenne": "Lukas Toenne",
     "lukep": "Jean-Luc Peurière",
     "lusque": "Ervin Weber",
+    "maarten": "Maarten Gribnau",
     "mal_cando": "Mal Duffin",
+    "mein": "Kent Mein",
     "merwin": "Mike Erwin",
     "mfoxdogg": "Michael Fox",
+    "mfreixas": "Marc Freixas",
+    "michel": "Michel Selten",
+    "migius": "Remigiusz Fiedler",
+    "mikasaari": "Mika Saari",
     "mindrones": "Luca Bonavita",
     "mmikkelsen": "Morten Mikkelsen",
     "moguri": "Mitchell Stokes",
+    "mont29": "Bastien Montagne",
+    "n_t": "Nils Thuerey",
     "nazgul": "Sergey Sharybin",
     "nexyon": "Joerg Mueller",
     "nicholasbishop": "Nicholas Bishop",
-    "n_t": "Nils Thuerey",
+    "phaethon": "Frederick Lee",
+    "phase": "Rob Haarsma",
+    "phlo": "Florian Eggenberger",
     "pidhash": "Joilnen Leite",
     "psy-fi": "Antony Riakiotakis",
+    "rwenzlaff": "Robert Wenzlaff",
+    "sateh": "Stefan Arentz",
     "schlaile": "Peter Schlaile",
     "scourage": "Robert Holcomb",
     "sgefant": "Stefan Gartner",
@@ -211,40 +237,20 @@ author_name_mapping = {
     "snailrose": "Charlie Carley",
     "stiv": "Stephen Swaney",
     "theeth": "Martin Poirier",
+    "themyers": "Ricki Myers",
     "ton": "Ton Roosendaal",
     "vekoon": "Elia Sarti",
     "xat": "Xavier Thomas",
+    "xiaoxiangquan": "Xiao Xiangquan",
     "zaghaghi": "Hamed Zaghaghi",
     "zanqdo": "Daniel Salazar",
+    "z0r": "Alex Fraser",
     "zuster": "Daniel Dunbar",
+    "jason_hays22": "Jason Hays",
+    "miikah": "Miika Hamalainen",
 
     # TODO, find remaining names
-    "cmccad": "",
-    "eeshlo": "",
-    "frank": "",
-    "guignot": "",
-    "h_xnan": "",
-    "halley": "",
-    "jaguarandi": "",
-    "jandro": "",
-    "jbinto": "",
-    "kakbarnf": "",
-    "larstiq": "",
-    "loczar": "",
-    "lonetech": "",
-    "maarten": "",
-    "mein": "",
-    "mfreixas": "",
-    "michel": "",
-    "migius": "",
-    "mikasaari": "",
     "nlin": "",
-    "phaethon": "",
-    "phase": "",
-    "phlo": "",
-    "rwenzlaff": "",
-    "sateh": "",
-    "themyers": "",
     }
 
 # lame, fill in empty key/values
@@ -268,7 +274,7 @@ def build_patch_name_map(filepath):
     """
     patches = {}
     import csv
-    tracker = csv.reader(open(filepath, 'r'), delimiter=';', quotechar='|')
+    tracker = csv.reader(open(filepath, 'r', encoding='utf-8'), delimiter=';', quotechar='|')
     for i, row in enumerate(tracker):
         if i == 0:
             id_index = row.index("artifact_id")
@@ -320,11 +326,13 @@ def patch_find_author(commit, patch_map):
         if p in patch_map:
             patch = patch_map[p]
 
-            print(author_name_mapping[commit.author],
-                  "committing patch for",
+            '''
+            print("%r committing patch for %r %d" % (
+                  author_name_mapping[commit.author],
                   patch["author"],
                   commit.revision,
-                  )
+                  ))
+            '''
 
             return p, patch["author"]
 
@@ -409,7 +417,7 @@ def main():
 
     # write out the wiki page
     # sort by name
-    file = open("credits.html", 'w')
+    file = open("credits.html", 'w', encoding="utf-8")
 
     file.write("<h3>Individual Contributors</h3>\n\n")
 

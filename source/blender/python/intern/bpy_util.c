@@ -1,6 +1,4 @@
 /*
- * $Id: bpy_util.c 37579 2011-06-17 05:45:46Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -48,7 +46,7 @@ char *BPy_enum_as_string(EnumPropertyItem *item)
 	char *cstring;
 
 	for (e= item; item->identifier; item++) {
-		if(item->identifier[0])
+		if (item->identifier[0])
 			BLI_dynstr_appendf(dynstr, (e==item)?"'%s'":", '%s'", item->identifier);
 	}
 
@@ -63,11 +61,11 @@ short BPy_reports_to_error(ReportList *reports, PyObject *exception, const short
 
 	report_str= BKE_reports_string(reports, RPT_ERROR);
 
-	if(clear) {
+	if (clear) {
 		BKE_reports_clear(reports);
 	}
 
-	if(report_str) {
+	if (report_str) {
 		PyErr_SetString(exception, report_str);
 		MEM_freeN(report_str);
 	}
@@ -89,7 +87,7 @@ short BPy_errors_to_report(ReportList *reports)
 		return 1;
 	
 	/* less hassle if we allow NULL */
-	if(reports==NULL) {
+	if (reports==NULL) {
 		PyErr_Print();
 		PyErr_Clear();
 		return 1;
@@ -97,13 +95,13 @@ short BPy_errors_to_report(ReportList *reports)
 	
 	pystring= PyC_ExceptionBuffer();
 	
-	if(pystring==NULL) {
+	if (pystring==NULL) {
 		BKE_report(reports, RPT_ERROR, "unknown py-exception, couldn't convert");
 		return 0;
 	}
 	
 	PyC_FileAndNum(&filename, &lineno);
-	if(filename==NULL)
+	if (filename==NULL)
 		filename= "<unknown location>";
 	
 	cstring= _PyUnicode_AsString(pystring);

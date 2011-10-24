@@ -1,5 +1,4 @@
 /* 
- * $Id: screen.c 40284 2011-09-17 07:14:39Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

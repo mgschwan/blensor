@@ -1,5 +1,4 @@
 /**
- * $Id: BSP_GhostTest3D.cpp 28254 2010-04-18 10:28:37Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -28,7 +27,6 @@
 
 /**
 
-* $Id: BSP_GhostTest3D.cpp 28254 2010-04-18 10:28:37Z campbellbarton $
 * Copyright (C) 2001 NaN Technologies B.V.
 */
 #if defined(WIN32) || defined(__APPLE__)

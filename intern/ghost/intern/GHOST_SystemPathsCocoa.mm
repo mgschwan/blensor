@@ -1,6 +1,4 @@
-/**
- * $Id: GHOST_SystemPathsCocoa.mm 34106 2011-01-05 19:19:49Z gsrb3d $
- *
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

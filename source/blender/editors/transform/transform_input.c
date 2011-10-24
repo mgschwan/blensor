@@ -1,6 +1,4 @@
 /*
- * $Id: transform_input.c 40641 2011-09-28 05:53:40Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -312,6 +310,15 @@ static void calcSpringFactor(MouseInput *mi)
 
 void initMouseInputMode(TransInfo *t, MouseInput *mi, MouseInputMode mode)
 {
+	/* may have been allocated previously */
+	/* TODO, holding R-key can cause mem leak, but this causes [#28903]
+	 * disable for now. */
+#if 0
+	if(mi->data) {
+		MEM_freeN(mi->data);
+		mi->data= NULL;
+	}
+#endif
 
 	switch(mode)
 	{

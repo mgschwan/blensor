@@ -1,6 +1,5 @@
 /*
  *
- * $Id: DNA_object_fluidsim.h 37441 2011-06-12 23:51:30Z genscher $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_SystemWin32.h 39110 2011-08-06 23:13:36Z merwin $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

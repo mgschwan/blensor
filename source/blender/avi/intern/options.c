@@ -1,5 +1,4 @@
 /*
- * $Id: options.c 40539 2011-09-25 12:33:51Z ender79 $
  *
  * This is external code. Sets some compression related options
  * (width, height quality, framerate).

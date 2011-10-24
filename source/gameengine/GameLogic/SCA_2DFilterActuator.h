@@ -1,7 +1,6 @@
 /*
  * SCA_2DFilterActuator.h
  *
- * $Id: SCA_2DFilterActuator.h 40838 2011-10-06 22:04:01Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,6 +1,4 @@
 /*
- * $Id: gpu_codegen.c 40158 2011-09-12 09:47:28Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

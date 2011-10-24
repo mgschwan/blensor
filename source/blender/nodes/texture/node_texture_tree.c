@@ -1,6 +1,4 @@
-/**
- * $Id: node_texture_tree.c 39975 2011-09-06 16:32:51Z lukastoenne $ 
- *
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -108,7 +106,7 @@ int ntreeTexTagAnimated(bNodeTree *ntree)
 	
 	for(node= ntree->nodes.first; node; node= node->next) {
 		if(node->type==TEX_NODE_CURVE_TIME) {
-			NodeTagChanged(ntree, node);
+			nodeUpdate(ntree, node);
 			return 1;
 		}
 		else if(node->type==NODE_GROUP) {

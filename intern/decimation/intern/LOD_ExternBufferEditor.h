@@ -1,5 +1,4 @@
 /*
- * $Id: LOD_ExternBufferEditor.h 35147 2011-02-25 10:47:28Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: LOD_ExternBufferEditor.h 35147 2011-02-25 10:47:28Z jesterking $
  * Copyright (C) 2001 NaN Technologies B.V.
  */
 

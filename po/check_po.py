@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# $Id: check_po.py 40724 2011-09-30 17:07:13Z gsrb3d $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

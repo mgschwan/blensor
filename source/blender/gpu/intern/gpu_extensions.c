@@ -1,6 +1,4 @@
 /*
- * $Id: gpu_extensions.c 40252 2011-09-16 06:47:01Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

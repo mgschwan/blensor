@@ -1,6 +1,4 @@
 /*
- * $Id: reeb.c 40567 2011-09-26 13:24:42Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

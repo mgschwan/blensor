@@ -1,6 +1,4 @@
 /*
- * $Id: node_intern.h 40587 2011-09-27 01:32:27Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

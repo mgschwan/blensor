@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_particle.h 40537 2011-09-25 11:51:28Z z0r $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,7 +1,6 @@
 /*
  * Assign, change, copy properties
  *
- * $Id: SCA_PropertyActuator.cpp 36523 2011-05-06 20:18:42Z blendix $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

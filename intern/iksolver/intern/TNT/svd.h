@@ -1,5 +1,4 @@
 /**
- * $Id: svd.h 28202 2010-04-15 10:28:32Z blendix $
  */
 
 #ifndef SVD_H

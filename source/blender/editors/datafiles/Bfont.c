@@ -1,6 +1,5 @@
 /* DataToC output of file <Bfont> */
 /*
- * $Id: Bfont.c 35242 2011-02-27 20:29:51Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_kdopbvh.h 34966 2011-02-18 13:58:08Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

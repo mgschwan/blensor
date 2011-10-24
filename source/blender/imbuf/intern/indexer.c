@@ -1,12 +1,10 @@
 /*
- * $Id: indexer.c 40538 2011-09-25 12:31:21Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
-  * of the License, or (at your option) any later version.
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -22,17 +20,18 @@
  * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
-*/
+ */
 
 #include "IMB_indexer.h"
 #include "IMB_anim.h"
 #include "AVI_avi.h"
 #include "imbuf.h"
 #include "MEM_guardedalloc.h"
+
 #include "BLI_utildefines.h"
 #include "BLI_blenlib.h"
 #include "BLI_math_base.h"
-#include "BLI_string.h"
+
 #include "MEM_guardedalloc.h"
 #include "DNA_userdef_types.h"
 #include "BKE_global.h"
@@ -87,7 +86,7 @@ anim_index_builder * IMB_index_builder_create(const char * name)
 
 	BLI_make_existing_file(rv->temp_name);
 
-	rv->fp = fopen(rv->temp_name, "w");
+	rv->fp = fopen(rv->temp_name, "wb");
 
 	if (!rv->fp) {
 		fprintf(stderr, "Couldn't open index target: %s! "
@@ -453,7 +452,7 @@ static int round_up(int x, int mod)
 static struct proxy_output_ctx * alloc_proxy_output_ffmpeg(
 	struct anim * anim,
 	AVStream * st, int proxy_size, int width, int height,
-	int quality)
+	int UNUSED(quality))
 {
 	struct proxy_output_ctx * rv = MEM_callocN(
 		sizeof(struct proxy_output_ctx), "alloc_proxy_output");
@@ -797,7 +796,7 @@ static int index_rebuild_ffmpeg(struct anim * anim,
 
 	while(av_read_frame(iFormatCtx, &next_packet) >= 0) {
 		int frame_finished = 0;
-		float next_progress =  ((int)floor(((double) next_packet.pos) * 100 /
+		float next_progress =  (float)((int)floor(((double) next_packet.pos) * 100 /
 		                                   ((double) stream_size)+0.5)) / 100;
 
 		if (*progress != next_progress) {
@@ -840,8 +839,8 @@ static int index_rebuild_ffmpeg(struct anim * anim,
 				start_pts_set = TRUE;
 			}
 
-			frameno = (pts - start_pts) 
-				* pts_time_base * frame_rate; 
+			frameno = floor((pts - start_pts)
+				* pts_time_base * frame_rate + 0.5f);
 
 			/* decoding starts *always* on I-Frames,
 			   so: P-Frames won't work, even if all the

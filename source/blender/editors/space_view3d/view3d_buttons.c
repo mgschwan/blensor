@@ -1,6 +1,4 @@
 /*
- * $Id: view3d_buttons.c 40776 2011-10-03 17:29:43Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

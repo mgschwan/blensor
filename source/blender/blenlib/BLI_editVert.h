@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_editVert.h 35793 2011-03-26 08:28:24Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

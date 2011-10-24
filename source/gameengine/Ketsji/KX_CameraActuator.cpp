@@ -1,7 +1,6 @@
 /*
  * KX_CameraActuator.cpp
  *
- * $Id: KX_CameraActuator.cpp 40538 2011-09-25 12:31:21Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

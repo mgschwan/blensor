@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_heap.c 35246 2011-02-27 20:37:56Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

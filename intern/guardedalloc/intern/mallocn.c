@@ -1,5 +1,4 @@
 /*
- * $Id: mallocn.c 40569 2011-09-26 14:21:40Z nazgul $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: mallocn.c 40569 2011-09-26 14:21:40Z nazgul $
  * Copyright (C) 2001 NaN Technologies B.V.
  * Guarded memory allocation, and boundary-write detection.
  */

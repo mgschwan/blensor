@@ -1,6 +1,4 @@
 /*
- * $Id: AUD_DynamicIIRFilterReader.cpp 39792 2011-08-30 09:15:55Z nexyon $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * Copyright 2009-2011 Jörg Hermann Müller
@@ -32,7 +30,8 @@
 
 AUD_DynamicIIRFilterReader::AUD_DynamicIIRFilterReader(AUD_Reference<AUD_IReader> reader,
 													   AUD_Reference<AUD_DynamicIIRFilterFactory> factory) :
-	AUD_IIRFilterReader(reader, std::vector<float>(), std::vector<float>())
+	AUD_IIRFilterReader(reader, std::vector<float>(), std::vector<float>()),
+	m_factory(factory)
 {
 	sampleRateChanged(reader->getSpecs().rate);
 }

@@ -1,5 +1,4 @@
 /**
- * $Id: version.h 116 2002-11-20 14:43:09Z mein $
  */
 
 // Template Numerical Toolkit (TNT) for Linear Algebra

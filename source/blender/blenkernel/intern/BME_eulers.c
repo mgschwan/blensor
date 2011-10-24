@@ -3,7 +3,6 @@
  *
  *	BMesh Euler construction API.
  *
- * $Id: BME_eulers.c 35247 2011-02-27 20:40:57Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -38,6 +37,7 @@
 
 
 #include "MEM_guardedalloc.h"
+#include "BLI_listbase.h"
 #include "BLI_utildefines.h"
 
 #include "bmesh_private.h"

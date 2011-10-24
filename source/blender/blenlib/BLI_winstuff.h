@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_winstuff.h 38142 2011-07-06 10:19:04Z blendix $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: WM_keymap.h 39084 2011-08-05 20:45:26Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

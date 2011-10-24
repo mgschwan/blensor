@@ -1,6 +1,4 @@
 /*
- * $Id: node_composite_lummaMatte.c 40443 2011-09-22 03:14:50Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

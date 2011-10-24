@@ -1,6 +1,4 @@
 /*
- * $Id: rna_fluidsim.c 40872 2011-10-09 06:03:38Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -96,7 +94,7 @@ static int fluidsim_find_lastframe(FluidsimSettings *fss)
 	do {
 		BLI_strncpy(targetFile, targetDir, sizeof(targetFile));
 		BLI_path_frame(targetFile, curFrame++, 0);
-	} while(BLI_exist(targetFile));
+	} while(BLI_exists(targetFile));
 
 	return curFrame - 1;
 }
@@ -173,6 +171,7 @@ static void rna_FluidSettings_update_type(Main *bmain, Scene *scene, PointerRNA 
 static void rna_DomainFluidSettings_memory_estimate_get(PointerRNA *ptr, char *value)
 {
 #ifdef DISABLE_ELBEEM
+	(void)ptr;
 	value[0]= '\0';
 #else
 	Object *ob= (Object*)ptr->id.data;
@@ -182,7 +181,7 @@ static void rna_DomainFluidSettings_memory_estimate_get(PointerRNA *ptr, char *v
 #endif
 }
 
-static int rna_DomainFluidSettings_memory_estimate_length(PointerRNA *ptr)
+static int rna_DomainFluidSettings_memory_estimate_length(PointerRNA *UNUSED(ptr))
 {
 #ifdef DISABLE_ELBEEM
 	return 0;

@@ -1,6 +1,4 @@
 /*
- * $Id: vbvh.h 35477 2011-03-11 22:27:06Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

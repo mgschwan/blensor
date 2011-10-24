@@ -1,6 +1,4 @@
 /*
- * $Id: AUD_NULLDevice.cpp 39792 2011-08-30 09:15:55Z nexyon $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * Copyright 2009-2011 Jörg Hermann Müller
@@ -69,7 +67,7 @@ bool AUD_NULLDevice::AUD_NULLHandle::seek(float position)
 
 float AUD_NULLDevice::AUD_NULLHandle::getPosition()
 {
-	return 0.0f;
+	return std::numeric_limits<float>::quiet_NaN();
 }
 
 AUD_Status AUD_NULLDevice::AUD_NULLHandle::getStatus()
@@ -79,7 +77,7 @@ AUD_Status AUD_NULLDevice::AUD_NULLHandle::getStatus()
 
 float AUD_NULLDevice::AUD_NULLHandle::getVolume()
 {
-	return 0.0f;
+	return std::numeric_limits<float>::quiet_NaN();
 }
 
 bool AUD_NULLDevice::AUD_NULLHandle::setVolume(float volume)
@@ -89,7 +87,7 @@ bool AUD_NULLDevice::AUD_NULLHandle::setVolume(float volume)
 
 float AUD_NULLDevice::AUD_NULLHandle::getPitch()
 {
-	return 0.0f;
+	return std::numeric_limits<float>::quiet_NaN();
 }
 
 bool AUD_NULLDevice::AUD_NULLHandle::setPitch(float pitch)
@@ -153,7 +151,7 @@ void AUD_NULLDevice::unlock()
 
 float AUD_NULLDevice::getVolume() const
 {
-	return 0;
+	return std::numeric_limits<float>::quiet_NaN();
 }
 
 void AUD_NULLDevice::setVolume(float volume)

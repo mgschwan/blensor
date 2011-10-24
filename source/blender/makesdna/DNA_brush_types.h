@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_brush_types.h 35189 2011-02-25 16:54:09Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

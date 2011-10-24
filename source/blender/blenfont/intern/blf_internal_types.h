@@ -1,6 +1,4 @@
 /*
- * $Id: blf_internal_types.h 40292 2011-09-17 10:45:20Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

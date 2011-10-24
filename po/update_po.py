@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# $Id: update_po.py 40708 2011-09-30 05:36:56Z dfelinto $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

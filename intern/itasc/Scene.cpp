@@ -1,7 +1,7 @@
 /** \file itasc/Scene.cpp
  *  \ingroup itasc
  */
-/* $Id: Scene.cpp 35814 2011-03-27 07:56:29Z campbellbarton $
+/*
  * Scene.cpp
  *
  *  Created on: Jan 5, 2009

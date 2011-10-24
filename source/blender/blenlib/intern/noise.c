@@ -1,6 +1,5 @@
 /*
  *
- * $Id: noise.c 39931 2011-09-05 16:25:42Z blendix $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

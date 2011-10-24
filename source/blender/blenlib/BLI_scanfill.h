@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_scanfill.h 36672 2011-05-13 16:04:20Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -30,7 +28,7 @@
 #ifndef BLI_SCANFILL_H
 #define BLI_SCANFILL_H
 
-/** \file BLI_storage.h
+/** \file BLI_scanfill.h
  *  \ingroup bli
  *  \since March 2001
  *  \author nzc

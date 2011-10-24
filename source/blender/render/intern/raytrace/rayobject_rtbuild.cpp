@@ -1,6 +1,4 @@
 /*
- * $Id: rayobject_rtbuild.cpp 35478 2011-03-11 23:12:58Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

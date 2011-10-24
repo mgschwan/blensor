@@ -1,5 +1,4 @@
 /*
- * $Id: MEM_SmartPtr.h 35156 2011-02-25 11:47:18Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -49,14 +48,14 @@
  * the Standard Template Library but without the painful get()
  * semantics to access the internal c style pointer.
  *
- * It is often useful to explicitely decalre ownership of memory
+ * It is often useful to explicitly declare ownership of memory
  * allocated on the heap within class or function scope. This
  * class helps you to encapsulate this ownership within a value
  * type. When an instance of this class goes out of scope it
  * makes sure that any memory associated with it's internal pointer
  * is deleted. It can help to inform users of an aggregate class
  * that it owns instances of it's members and these instances 
- * should not be shared. This is not reliably enforcable in C++
+ * should not be shared. This is not reliably enforceable in C++
  * but this class attempts to make the 1-1 relationship clear.
  * 
  * @section Example usage

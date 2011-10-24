@@ -1,5 +1,4 @@
 /*
- * $Id: iksolver_plugin.c 35336 2011-03-03 17:58:06Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: KX_BlenderInputDevice.cpp 35166 2011-02-25 13:29:48Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

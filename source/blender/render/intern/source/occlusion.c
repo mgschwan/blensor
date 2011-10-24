@@ -1,5 +1,4 @@
 /* 
- * $Id: occlusion.c 40147 2011-09-12 04:14:12Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,6 +1,4 @@
 /*
- * $Id: editmesh_add.c 40507 2011-09-23 17:44:57Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

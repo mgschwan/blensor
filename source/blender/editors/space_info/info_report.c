@@ -1,6 +1,4 @@
 /*
- * $Id: info_report.c 40351 2011-09-19 12:26:20Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -160,7 +158,7 @@ void INFO_OT_select_pick(wmOperatorType *ot)
 	/* ot->flag= OPTYPE_REGISTER; */
 
 	/* properties */
-	RNA_def_int(ot->srna, "report_index", 0, 0, INT_MAX, "Report", "The index of the report", 0, INT_MAX);
+	RNA_def_int(ot->srna, "report_index", 0, 0, INT_MAX, "Report", "Index of the report", 0, INT_MAX);
 }
 
 

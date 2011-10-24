@@ -1,7 +1,6 @@
 /*
  * Cast a ray and feel for objects
  *
- * $Id: KX_RaySensor.cpp 39834 2011-09-01 02:12:53Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

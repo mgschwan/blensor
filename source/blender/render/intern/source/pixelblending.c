@@ -4,7 +4,6 @@
  * Functions to blend pixels with or without alpha, in various formats
  * nzc - June 2000
  *
- * $Id: pixelblending.c 39570 2011-08-20 17:39:13Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

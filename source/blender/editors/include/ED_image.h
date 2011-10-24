@@ -1,6 +1,4 @@
 /*
- * $Id: ED_image.h 36576 2011-05-09 14:41:44Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

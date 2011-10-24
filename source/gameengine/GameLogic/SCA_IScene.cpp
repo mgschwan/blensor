@@ -1,5 +1,4 @@
 /*
- * $Id: SCA_IScene.cpp 35169 2011-02-25 13:32:11Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

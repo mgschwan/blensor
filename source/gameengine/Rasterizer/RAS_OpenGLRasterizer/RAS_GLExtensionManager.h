@@ -1,5 +1,4 @@
 /*
- * $Id: RAS_GLExtensionManager.h 35078 2011-02-22 16:12:12Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

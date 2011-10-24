@@ -1,7 +1,6 @@
 /*
  * BKE_fluidsim.h 
  *	
- * $Id: ED_fluidsim.h 35016 2011-02-21 07:25:24Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

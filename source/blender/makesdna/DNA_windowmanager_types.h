@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_windowmanager_types.h 40690 2011-09-29 13:52:58Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

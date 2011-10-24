@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_IEvent.h 35904 2011-03-30 16:14:54Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

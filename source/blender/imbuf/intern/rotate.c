@@ -1,5 +1,4 @@
 /*
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -26,7 +25,6 @@
  * ***** END GPL LICENSE BLOCK *****
  * rotate.c
  *
- * $Id: rotate.c 35586 2011-03-17 05:15:54Z campbellbarton $
  */
 
 /** \file blender/imbuf/intern/rotate.c

@@ -1,6 +1,4 @@
 /*
- * $Id: makesdna.c 39792 2011-08-30 09:15:55Z nexyon $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -50,7 +48,7 @@
  * numbers give more output.
  * */
 
-#define DNA_VERSION_DATE "$Id: makesdna.c 39792 2011-08-30 09:15:55Z nexyon $"
+#define DNA_VERSION_DATE "FIXME-DNA_VERSION_DATE"
 
 #include <string.h>
 #include <stdlib.h>

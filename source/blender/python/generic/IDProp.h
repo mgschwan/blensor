@@ -1,6 +1,4 @@
 /*
- * $Id: IDProp.h 37579 2011-06-17 05:45:46Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: script_header.c 37185 2011-06-04 17:03:46Z ton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

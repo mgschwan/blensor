@@ -1,6 +1,4 @@
 /*
- * $Id: MOD_weightvgedit.c 40449 2011-09-22 11:52:42Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

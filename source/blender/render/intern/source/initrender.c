@@ -1,6 +1,4 @@
 /*
- * $Id: initrender.c 39570 2011-08-20 17:39:13Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

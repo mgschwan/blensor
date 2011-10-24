@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_effect.h 38663 2011-07-24 17:44:22Z jhk $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

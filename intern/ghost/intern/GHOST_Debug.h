@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_Debug.h 38351 2011-07-13 06:04:54Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

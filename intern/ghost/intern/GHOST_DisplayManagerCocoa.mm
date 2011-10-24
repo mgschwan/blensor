@@ -1,5 +1,4 @@
-/**
- * $Id: GHOST_DisplayManagerCocoa.mm 37861 2011-06-27 13:57:27Z blendix $
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: physics_intern.h 36628 2011-05-12 01:57:47Z nicholasbishop $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

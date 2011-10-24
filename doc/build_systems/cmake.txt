@@ -1,4 +1,3 @@
-$Id: cmake.txt 40893 2011-10-10 04:16:16Z campbellbarton $
 
     Blender CMake build system
     ============================

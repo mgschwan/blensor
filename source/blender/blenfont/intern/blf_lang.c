@@ -1,6 +1,4 @@
 /*
- * $Id: blf_lang.c 40928 2011-10-11 05:52:58Z dfelinto $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -55,6 +53,7 @@
 
 #include "BLI_linklist.h"	/* linknode */
 #include "BLI_string.h"
+#include "BLI_utildefines.h"
 #include "BLI_path_util.h"
 
 #define DOMAIN_NAME "blender"
@@ -103,10 +102,13 @@ void BLF_lang_init(void)
 	
 	BLI_strncpy(global_encoding_name, SYSTEM_ENCODING_DEFAULT, sizeof(global_encoding_name));
 	
-	if (messagepath)
+	if (messagepath) {
 		BLI_strncpy(global_messagepath, messagepath, sizeof(global_messagepath));
-	else
+	}
+	else {
+		printf("%s: 'locale' data path for translations not found, continuing\n", __func__);
 		global_messagepath[0]= '\0';
+	}
 	
 }
 

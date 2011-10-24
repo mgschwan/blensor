@@ -1,6 +1,4 @@
 /*
- * $Id: console_draw.c 37413 2011-06-11 17:05:20Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

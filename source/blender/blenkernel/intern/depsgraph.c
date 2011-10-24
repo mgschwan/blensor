@@ -1,6 +1,4 @@
 /*
- * $Id: depsgraph.c 40727 2011-10-01 01:27:44Z aligorith $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -38,6 +36,7 @@
 
 #include "BLI_winstuff.h"
 #include "BLI_utildefines.h"
+#include "BLI_listbase.h"
 #include "BLI_ghash.h"
 
 #include "DNA_anim_types.h"
@@ -1962,7 +1961,7 @@ static void dag_tag_renderlayers(Scene *sce, unsigned int lay)
 			if(node->id==(ID *)sce) {
 				SceneRenderLayer *srl= BLI_findlink(&sce->r.layers, node->custom1);
 				if(srl && (srl->lay & lay_changed))
-					NodeTagChanged(sce->nodetree, node);
+					nodeUpdate(sce->nodetree, node);
 			}
 		}
 	}

@@ -1,6 +1,4 @@
 /*
- * $Id: math_geom_inline.c 36235 2011-04-20 06:47:16Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

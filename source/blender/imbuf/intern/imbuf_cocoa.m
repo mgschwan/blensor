@@ -1,7 +1,5 @@
 /*
  * imbuf_coca.m
- *
- * $Id: imbuf_cocoa.m 32541 2010-10-17 18:56:36Z jesterking $
  * 
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,6 +1,4 @@
 /*
- * $Id: Image.h 36541 2011-05-07 20:53:49Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,5 +1,4 @@
 /*
- * $Id: CTR_TaggedSetOps.h 35146 2011-02-25 10:45:31Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

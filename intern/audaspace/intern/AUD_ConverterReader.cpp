@@ -1,6 +1,4 @@
 /*
- * $Id: AUD_ConverterReader.cpp 40341 2011-09-19 08:02:17Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * Copyright 2009-2011 Jörg Hermann Müller

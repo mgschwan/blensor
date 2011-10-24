@@ -1,6 +1,4 @@
 /*
- * $Id: DerivedMesh.c 40920 2011-10-11 04:09:11Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -50,6 +48,7 @@
 #include "BLI_memarena.h"
 #include "BLI_pbvh.h"
 #include "BLI_utildefines.h"
+#include "BLI_linklist.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_displist.h"

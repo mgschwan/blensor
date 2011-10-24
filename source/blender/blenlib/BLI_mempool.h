@@ -1,5 +1,4 @@
 /*
- * $Id: BLI_mempool.h 34966 2011-02-18 13:58:08Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -29,7 +28,7 @@
 #ifndef BLI_MEMPOOL_H
 #define BLI_MEMPOOL_H
 
-/** \file BLI_storage.h
+/** \file BLI_mempool.h
  *  \ingroup bli
  *  \author Geoffrey Bantle
  *  \brief Simple fast memory allocator.

@@ -1,5 +1,4 @@
 /*
- * $Id: CTR_TaggedIndex.h 36860 2011-05-24 11:19:11Z blendix $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: CTR_TaggedIndex.h 36860 2011-05-24 11:19:11Z blendix $
  * Copyright (C) 2001 NaN Technologies B.V.
  * Simple tagged index class.
  */

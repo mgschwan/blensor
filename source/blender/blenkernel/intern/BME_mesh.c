@@ -3,7 +3,6 @@
  *
  *	BMesh mesh level functions.
  *
- * $Id: BME_mesh.c 35247 2011-02-27 20:40:57Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -37,7 +36,7 @@
  */
 
 
-
+#include "BLI_listbase.h"
 #include "MEM_guardedalloc.h"
 #include "BKE_bmesh.h"
 #include "bmesh_private.h"

@@ -1,5 +1,4 @@
 /*
- * $Id: IK_QTask.cpp 38232 2011-07-08 12:18:54Z blendix $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

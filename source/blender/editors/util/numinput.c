@@ -1,6 +1,4 @@
 /*
- * $Id: numinput.c 35890 2011-03-30 04:58:45Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -76,7 +76,7 @@ class ExportUVLayout(bpy.types.Operator):
             options={'HIDDEN'},
             )
     export_all = BoolProperty(
-            name="All UV's",
+            name="All UVs",
             description="Export all UVs in this mesh (not just visible ones)",
             default=False,
             )
@@ -86,7 +86,7 @@ class ExportUVLayout(bpy.types.Operator):
                    ('EPS', "Encapsulate PostScript (.eps)",
                     "Export the UV layout to a vector EPS file"),
                    ('PNG', "PNG Image (.png)",
-                    "Export the UV layout a bitmap image"),
+                    "Export the UV layout to a bitmap image"),
                    ),
             name="Format",
             description="File format to export the UV layout to",
@@ -125,7 +125,7 @@ class ExportUVLayout(bpy.types.Operator):
             image = space_data.image
             if image:
                 width, height = tuple(context.space_data.image.size)
-                # incase no data is found.
+                # in case no data is found.
                 if width and height:
                     image_width, image_height = width, height
 

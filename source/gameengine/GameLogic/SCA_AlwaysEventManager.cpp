@@ -2,7 +2,6 @@
  * Manager for 'always' events. Since always sensors can operate in pulse
  * mode, they need to be activated.
  *
- * $Id: SCA_AlwaysEventManager.cpp 35169 2011-02-25 13:32:11Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

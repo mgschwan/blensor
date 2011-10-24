@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_multires.h 37225 2011-06-05 20:54:04Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,8 +1,4 @@
-/**
- * $Id: qtkit_export.m 37750 2011-06-23 09:27:56Z campbellbarton $
- *
- * qtkit_export.m
- *
+/*
  * Code to create QuickTime Movies with Blender
  *
  * ***** BEGIN GPL LICENSE BLOCK *****

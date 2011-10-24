@@ -1,6 +1,4 @@
 /*
- * $Id: ED_sequencer.h 39937 2011-09-05 19:34:27Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

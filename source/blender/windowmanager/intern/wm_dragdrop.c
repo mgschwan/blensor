@@ -1,6 +1,4 @@
 /*
- * $Id: wm_dragdrop.c 40114 2011-09-11 06:41:09Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

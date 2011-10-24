@@ -1,6 +1,4 @@
 /*
- * $Id: AUD_BandPassReader.h 35141 2011-02-25 10:21:56Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * Copyright 2009-2011 Jörg Hermann Müller

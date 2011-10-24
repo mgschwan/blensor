@@ -1,6 +1,4 @@
 /*
- * $Id: sequencer.c 40903 2011-10-10 09:38:02Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -61,8 +59,9 @@
 #include "BKE_sequencer.h"
 #include "BKE_fcurve.h"
 #include "BKE_scene.h"
-#include "RNA_access.h"
 #include "BKE_utildefines.h"
+
+#include "RNA_access.h"
 
 #include "RE_pipeline.h"
 
@@ -866,8 +865,8 @@ void seqbase_unique_name_recursive(ListBase *seqbasep, struct Sequence *seq)
 	SeqUniqueInfo sui;
 	char *dot;
 	sui.seq= seq;
-	strcpy(sui.name_src, seq->name+2);
-	strcpy(sui.name_dest, seq->name+2);
+	BLI_strncpy(sui.name_src, seq->name+2, sizeof(sui.name_src));
+	BLI_strncpy(sui.name_dest, seq->name+2, sizeof(sui.name_dest));
 
 	sui.count= 1;
 	sui.match= 1; /* assume the worst to start the loop */
@@ -887,7 +886,7 @@ void seqbase_unique_name_recursive(ListBase *seqbasep, struct Sequence *seq)
 		seqbase_recursive_apply(seqbasep, seqbase_unique_name_recursive_cb, &sui);
 	}
 
-	strcpy(seq->name+2, sui.name_dest);
+	BLI_strncpy(seq->name+2, sui.name_dest, sizeof(seq->name)-2);
 }
 
 static const char *give_seqname_by_type(int type)
@@ -1204,7 +1203,7 @@ static int seq_proxy_get_fname(SeqRenderData context, Sequence * seq, int cfra, 
 	   sorry folks, please rebuild your proxies... */
 
 	if (seq->flag & (SEQ_USE_PROXY_CUSTOM_DIR|SEQ_USE_PROXY_CUSTOM_FILE)) {
-		strcpy(dir, seq->strip->proxy->dir);
+		BLI_strncpy(dir, seq->strip->proxy->dir, sizeof(dir));
 	} else if (seq->type == SEQ_IMAGE) {
 		BLI_snprintf(dir, PROXY_MAXFILE, "%s/BL_proxy", seq->strip->dir);
 	} else {
@@ -1324,6 +1323,10 @@ static void seq_proxy_build_frame(SeqRenderData context,
 	   won't work... */
 	quality = seq->strip->proxy->quality;
 	ibuf->ftype= JPG | quality;
+
+	/* unsupported feature only confuses other s/w */
+	if(ibuf->depth==32)
+		ibuf->depth= 24;
 
 	BLI_make_existing_file(name);
 	
@@ -2502,9 +2505,6 @@ static void *seq_prefetch_thread(void * This_)
 
 		for (e = prefetch_done.first; e; e = e->next) {
 			if (s_last > e->monoton_cfra) {
-				if (e->ibuf) {
-					IMB_cache_limiter_unref(e->ibuf);
-				}
 				BLI_remlink(&prefetch_done, e);
 				MEM_freeN(e);
 			}
@@ -2582,9 +2582,6 @@ static void seq_stop_threads()
 	}
 
 	for (e = prefetch_done.first; e; e = e->next) {
-		if (e->ibuf) {
-			IMB_cache_limiter_unref(e->ibuf);
-		}
 		BLI_remlink(&prefetch_done, e);
 		MEM_freeN(e);
 	}
@@ -3360,9 +3357,9 @@ int seq_swap(Sequence *seq_a, Sequence *seq_b, const char **error_str)
 	SWAP(Sequence, *seq_a, *seq_b);
 
 	/* swap back names so animation fcurves dont get swapped */
-	strcpy(name, seq_a->name+2);
-	strcpy(seq_a->name+2, seq_b->name+2);
-	strcpy(seq_b->name+2, name);
+	BLI_strncpy(name, seq_a->name+2, sizeof(name));
+	BLI_strncpy(seq_a->name+2, seq_b->name+2, sizeof(seq_b->name)-2);
+	BLI_strncpy(seq_b->name+2, name, sizeof(seq_b->name)-2);
 
 	/* swap back opacity, and overlay mode */
 	SWAP(int, seq_a->blend_mode, seq_b->blend_mode);
@@ -3647,7 +3644,7 @@ Sequence *sequencer_add_sound_strip(bContext *C, ListBase *seqbasep, SeqLoadInfo
 	/* we only need 1 element to store the filename */
 	strip->stripdata= se= MEM_callocN(sizeof(StripElem), "stripelem");
 
-	BLI_split_dirfile(seq_load->path, strip->dir, se->name);
+	BLI_split_dirfile(seq_load->path, strip->dir, se->name, sizeof(strip->dir), sizeof(se->name));
 
 	seq->scene_sound = sound_add_scene_sound(scene, seq, seq_load->start_frame, seq_load->start_frame + strip->len, 0);
 
@@ -3706,7 +3703,7 @@ Sequence *sequencer_add_movie_strip(bContext *C, ListBase *seqbasep, SeqLoadInfo
 	/* we only need 1 element for MOVIE strips */
 	strip->stripdata= se= MEM_callocN(sizeof(StripElem), "stripelem");
 
-	BLI_split_dirfile(seq_load->path, strip->dir, se->name);
+	BLI_split_dirfile(seq_load->path, strip->dir, se->name, sizeof(strip->dir), sizeof(se->name));
 
 	calc_sequence_disp(scene, seq);
 

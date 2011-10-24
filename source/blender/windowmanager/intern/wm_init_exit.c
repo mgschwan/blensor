@@ -1,6 +1,4 @@
 /*
- * $Id: wm_init_exit.c 40709 2011-09-30 07:47:45Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -66,6 +64,7 @@
 #include "BLI_blenlib.h"
 #include "BLI_winstuff.h"
 
+#include "RE_engine.h"
 #include "RE_pipeline.h"		/* RE_ free stuff */
 
 #ifdef WITH_PYTHON

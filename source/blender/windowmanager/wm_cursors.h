@@ -1,6 +1,4 @@
 /*
- * $Id: wm_cursors.h 35388 2011-03-07 14:56:19Z ton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: gpu_draw.c 40803 2011-10-05 15:28:02Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

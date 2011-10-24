@@ -1,7 +1,7 @@
 /** \file itasc/Cache.cpp
  *  \ingroup itasc
  */
-/* $Id: Cache.cpp 35155 2011-02-25 11:45:16Z jesterking $
+/*
  * Cache.cpp
  *
  *  Created on: Feb 24, 2009

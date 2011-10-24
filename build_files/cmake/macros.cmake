@@ -1,5 +1,4 @@
 # -*- mode: cmake; indent-tabs-mode: t; -*-
-# $Id: macros.cmake 40747 2011-10-02 17:16:28Z campbellbarton $
 
 
 # foo_bar.spam --> foo_barMySuffix.spam

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# $Id: update_mo.py 40681 2011-09-29 06:34:58Z dfelinto $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -30,7 +29,7 @@ import sys
 GETTEXT_MSGFMT_EXECUTABLE = "msgfmt"
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 SOURCE_DIR = os.path.normpath(os.path.abspath(os.path.join(CURRENT_DIR, "..")))
-LOCALE_DIR = os.path.join(SOURCE_DIR, "release", "bin", ".blender", "locale")
+LOCALE_DIR = os.path.join(SOURCE_DIR, "release", "datafiles", "locale")
 
 DOMAIN = "blender"
 

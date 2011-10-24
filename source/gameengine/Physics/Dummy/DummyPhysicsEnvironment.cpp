@@ -1,6 +1,4 @@
 /*
- * $Id: DummyPhysicsEnvironment.cpp 35173 2011-02-25 13:37:23Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

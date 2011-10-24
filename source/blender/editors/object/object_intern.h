@@ -1,6 +1,4 @@
 /*
- * $Id: object_intern.h 40595 2011-09-27 09:09:52Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

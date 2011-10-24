@@ -1,6 +1,4 @@
 /*
- * $Id: ColorBlock.h 36546 2011-05-08 09:05:52Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

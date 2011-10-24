@@ -1,5 +1,4 @@
 /* 
- * $Id: render_preview.c 40776 2011-10-03 17:29:43Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -121,8 +120,6 @@ ImBuf* get_brush_icon(Brush *brush)
 				// otherwise lets try to find it in other directories
 				if (!(brush->icon_imbuf)) {
 					folder= BLI_get_folder(BLENDER_DATAFILES, "brushicons");
-
-					path[0]= 0;
 
 					BLI_make_file_string(G.main->name, path, folder, brush->icon_filepath);
 
@@ -261,7 +258,7 @@ static Scene *preview_prepare_scene(Scene *scene, ID *id, int id_type, ShaderPre
 			sce->r.alphamode= R_ADDSKY;
 
 		sce->r.cfra= scene->r.cfra;
-		strcpy(sce->r.engine, scene->r.engine);
+		BLI_strncpy(sce->r.engine, scene->r.engine, sizeof(sce->r.engine));
 		
 		if(id_type==ID_MA) {
 			Material *mat= NULL, *origmat= (Material *)id;

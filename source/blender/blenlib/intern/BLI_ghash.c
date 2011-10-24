@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_ghash.c 39744 2011-08-28 05:06:30Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -32,11 +30,20 @@
  *  \ingroup bli
  */
 
+#include <string.h>
+#include <stdlib.h>
+
 
 #include "MEM_guardedalloc.h"
 
+
+
+// #include "BLI_blenlib.h"
+
+#include "BLI_mempool.h"
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
+
 #include "BLO_sys_types.h" // for intptr_t support
 /***/
 

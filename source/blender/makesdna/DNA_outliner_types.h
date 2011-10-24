@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_outliner_types.h 40066 2011-09-09 12:46:07Z aligorith $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

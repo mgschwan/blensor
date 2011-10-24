@@ -1,6 +1,5 @@
 /*
  *
- * $Id: BOP_MathUtils.cpp 35143 2011-02-25 10:32:33Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

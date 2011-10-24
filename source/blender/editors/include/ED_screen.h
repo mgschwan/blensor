@@ -1,6 +1,4 @@
 /*
- * $Id: ED_screen.h 37232 2011-06-06 00:42:36Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

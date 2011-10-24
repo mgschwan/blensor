@@ -1,6 +1,4 @@
 /*
- * $Id: ErrorHandler.cpp 40160 2011-09-12 10:57:41Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

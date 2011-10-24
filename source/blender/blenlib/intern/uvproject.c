@@ -1,6 +1,4 @@
 /*
- * $Id: uvproject.c 38054 2011-07-03 10:48:18Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: context.c 36442 2011-05-02 13:35:04Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

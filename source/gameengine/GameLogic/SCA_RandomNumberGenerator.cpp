@@ -6,7 +6,6 @@
  * convert to different types/distributions elsewhere. This just 
  * delivers a clean, random bitvector.
  *
- * $Id: SCA_RandomNumberGenerator.cpp 39834 2011-09-01 02:12:53Z campbellbarton $
  */
 
 /* A C-program for MT19937: Real number version                */

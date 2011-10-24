@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_math_matrix.h 40162 2011-09-12 13:00:24Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

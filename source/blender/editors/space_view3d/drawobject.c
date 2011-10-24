@@ -1,6 +1,4 @@
 /*
- * $Id: drawobject.c 40895 2011-10-10 06:56:28Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -765,7 +763,7 @@ void view3d_cached_text_draw_end(View3D *v3d, ARegion *ar, int depth_write, floa
 		else glDepthMask(0);
 		
 		for(vos= strings->first; vos; vos= vos->next) {
-#if 0       // too slow, reading opengl info while drawing is very bad, better to see if we cn use the zbuffer while in pixel space - campbell
+#if 0       // too slow, reading opengl info while drawing is very bad, better to see if we can use the zbuffer while in pixel space - campbell
 			if(v3d->zbuf && (vos->flag & V3D_CACHE_TEXT_ZBUF)) {
 				gluProject(vos->vec[0], vos->vec[1], vos->vec[2], mats.modelview, mats.projection, (GLint *)mats.viewport, &ux, &uy, &uz);
 				glReadPixels(ar->winrct.xmin+vos->mval[0]+vos->xoffs, ar->winrct.ymin+vos->mval[1], 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &depth);
@@ -6723,7 +6721,10 @@ void draw_object_backbufsel(Scene *scene, View3D *v3d, RegionView3D *rv3d, Objec
 		}
 		else {
 			Mesh *me= ob->data;
-			if(me->editflag & ME_EDIT_VERT_SEL) {
+			if(     (me->editflag & ME_EDIT_VERT_SEL) &&
+			        /* currently vertex select only supports weight paint */
+			        (ob->mode & OB_MODE_WEIGHT_PAINT))
+			{
 				DerivedMesh *dm = mesh_get_derived_final(scene, ob, scene->customdata_mask);
 				glColor3ub(0, 0, 0);
 

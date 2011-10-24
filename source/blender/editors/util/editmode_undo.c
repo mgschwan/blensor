@@ -1,6 +1,4 @@
 /*
- * $Id: editmode_undo.c 40581 2011-09-26 18:51:10Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

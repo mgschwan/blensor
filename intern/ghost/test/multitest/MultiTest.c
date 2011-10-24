@@ -1,5 +1,4 @@
 /**
- * $Id: MultiTest.c 38260 2011-07-09 16:18:15Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -50,9 +49,8 @@
    extern int datatoc_bfont_ttf_size;
    extern char datatoc_bfont_ttf[];
 
-   // XXX, bad, but BLI uses these
-   char bprogname[160]= "";
-char U[1024]= {0};
+   /* cheat */
+   char U[1024]= {0};
 #endif
 
 #include "Util.h"

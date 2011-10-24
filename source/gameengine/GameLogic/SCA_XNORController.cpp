@@ -1,7 +1,6 @@
 /*
  * 'Xnor' together all inputs
  *
- * $Id: SCA_XNORController.cpp 35169 2011-02-25 13:32:11Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,6 +1,4 @@
 /*
- * $Id: GHOST_NDOFManager.cpp 39945 2011-09-05 22:15:07Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

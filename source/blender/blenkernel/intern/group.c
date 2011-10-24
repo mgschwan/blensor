@@ -1,5 +1,4 @@
 /* 
- * $Id: group.c 35247 2011-02-27 20:40:57Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

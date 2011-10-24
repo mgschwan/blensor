@@ -1,5 +1,4 @@
 /*
- * $Id: rgb32.c 35249 2011-02-27 20:43:42Z jesterking $
  *
  * This is external code. Converts between rgb32 and avi.
  *

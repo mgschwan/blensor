@@ -1,6 +1,4 @@
 /*
- * $Id: spacetypes.c 37206 2011-06-05 12:57:09Z ton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

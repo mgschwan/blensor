@@ -1,6 +1,4 @@
 /*
- * $Id: GPG_Application.cpp 40113 2011-09-11 05:54:07Z dfelinto $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

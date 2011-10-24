@@ -1,6 +1,4 @@
 /*
-* $Id: shading.h 40519 2011-09-24 14:34:24Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

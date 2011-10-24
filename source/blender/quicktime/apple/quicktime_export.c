@@ -1,5 +1,4 @@
 /*
- * $Id: quicktime_export.c 35235 2011-02-27 20:01:38Z jesterking $
  *
  * quicktime_export.c
  *

@@ -1,4 +1,3 @@
-// $Id: KX_SCA_DynamicActuator.h 40538 2011-09-25 12:31:21Z campbellbarton $
 //
 // ***** BEGIN GPL LICENSE BLOCK *****
 //

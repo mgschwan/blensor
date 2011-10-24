@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_text.h 36826 2011-05-23 08:14:29Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

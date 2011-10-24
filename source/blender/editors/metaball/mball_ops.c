@@ -1,6 +1,4 @@
 /*
- * $Id: mball_ops.c 35694 2011-03-22 12:53:36Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

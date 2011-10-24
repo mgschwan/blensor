@@ -1,6 +1,4 @@
 /*
- * $Id: sequencer_intern.h 40658 2011-09-28 14:12:27Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

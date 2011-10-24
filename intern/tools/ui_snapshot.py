@@ -1,4 +1,3 @@
-# $Id: ui_snapshot.py 36820 2011-05-22 12:28:23Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: blf_dir.c 40358 2011-09-19 14:09:13Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -136,7 +134,7 @@ char *blf_dir_search(const char *file)
 
 	for(dir=global_font_dir.first; dir; dir= dir->next) {
 		BLI_join_dirfile(full_path, sizeof(full_path), dir->path, file);
-		if (BLI_exist(full_path)) {
+		if (BLI_exists(full_path)) {
 			s= BLI_strdup(full_path);
 			break;
 		}
@@ -144,7 +142,7 @@ char *blf_dir_search(const char *file)
 
 	if (!s) {
 		/* check the current directory, why not ? */
-		if (BLI_exist(file))
+		if (BLI_exists(file))
 			s= BLI_strdup(file);
 	}
 
@@ -198,13 +196,13 @@ char *blf_dir_metrics_search(const char *filename)
 		s[2]= 'm';
 
 		/* first check .afm */
-		if (BLI_exist(s))
+		if (BLI_exists(s))
 			return s;
 
 		/* and now check .pfm */
 		s[0]= 'p';
 
-		if (BLI_exist(s))
+		if (BLI_exists(s))
 			return s;
 	}
 	MEM_freeN(mfile);

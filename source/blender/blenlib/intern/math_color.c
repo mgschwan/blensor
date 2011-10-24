@@ -1,6 +1,4 @@
 /*
- * $Id: math_color.c 37783 2011-06-24 03:49:56Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

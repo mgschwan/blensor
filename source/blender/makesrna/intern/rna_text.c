@@ -1,6 +1,4 @@
 /*
- * $Id: rna_text.c 40640 2011-09-28 05:20:14Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

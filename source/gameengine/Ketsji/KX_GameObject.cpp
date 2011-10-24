@@ -1,6 +1,4 @@
 /*
- * $Id: KX_GameObject.cpp 40871 2011-10-09 04:11:18Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

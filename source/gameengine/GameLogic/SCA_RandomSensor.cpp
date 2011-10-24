@@ -1,7 +1,6 @@
 /*
  * Generate random pulses
  *
- * $Id: SCA_RandomSensor.cpp 39834 2011-09-01 02:12:53Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

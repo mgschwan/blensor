@@ -1,6 +1,4 @@
 /*
- * $Id: DirectDrawSurface.cpp 39731 2011-08-27 03:25:02Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

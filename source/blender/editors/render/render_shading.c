@@ -1,6 +1,4 @@
 /*
- * $Id: render_shading.c 40351 2011-09-19 12:26:20Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -47,7 +45,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 #include "BLI_editVert.h"
-#include "BLI_listbase.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_animsys.h"
@@ -711,9 +708,6 @@ static int envmap_save_exec(bContext *C, wmOperator *op)
 static int envmap_save_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 {
 	//Scene *scene= CTX_data_scene(C);
-	
-	if(!RNA_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
 	
 	if(RNA_property_is_set(op->ptr, "filepath"))
 		return envmap_save_exec(C, op);

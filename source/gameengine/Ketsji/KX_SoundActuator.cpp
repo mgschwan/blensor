@@ -1,7 +1,6 @@
 /*
  * KX_SoundActuator.cpp
  *
- * $Id: KX_SoundActuator.cpp 39984 2011-09-06 21:02:26Z nexyon $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

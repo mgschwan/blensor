@@ -1,6 +1,4 @@
 /*
- * $Id: ED_sculpt.h 40193 2011-09-14 00:37:27Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

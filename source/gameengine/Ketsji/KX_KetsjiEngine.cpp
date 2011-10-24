@@ -1,6 +1,4 @@
 /*
- * $Id: KX_KetsjiEngine.cpp 40538 2011-09-25 12:31:21Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -1400,8 +1398,14 @@ void KX_KetsjiEngine::PostProcessScene(KX_Scene* scene)
 		KX_Camera* activecam = NULL;
 
 		RAS_CameraData camdata = RAS_CameraData();
-		if (override_camera) camdata.m_lens = m_overrideCamLens;
-
+		if (override_camera)
+		{
+			camdata.m_lens = m_overrideCamLens;
+			camdata.m_clipstart = m_overrideCamNear;
+			camdata.m_clipend = m_overrideCamFar;
+			
+			camdata.m_perspective= !m_overrideCamUseOrtho;
+		}
 		activecam = new KX_Camera(scene,KX_Scene::m_callbacks,camdata);
 		activecam->SetName("__default__cam__");
 	

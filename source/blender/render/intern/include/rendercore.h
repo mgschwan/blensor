@@ -1,7 +1,6 @@
 /*
  * rendercore_ext.h
  *
- * $Id: rendercore.h 40519 2011-09-24 14:34:24Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

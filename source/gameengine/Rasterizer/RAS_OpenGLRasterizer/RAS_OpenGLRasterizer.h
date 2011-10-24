@@ -1,6 +1,4 @@
 /*
- * $Id: RAS_OpenGLRasterizer.h 40838 2011-10-06 22:04:01Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

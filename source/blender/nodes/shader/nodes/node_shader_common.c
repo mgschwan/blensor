@@ -1,6 +1,4 @@
 /*
- * $Id: node_shader_common.c 39975 2011-09-06 16:32:51Z lukastoenne $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

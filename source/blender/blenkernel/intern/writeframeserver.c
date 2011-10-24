@@ -1,5 +1,4 @@
 /*
- * $Id: writeframeserver.c 40903 2011-10-10 09:38:02Z campbellbarton $
  *
  * Frameserver
  * Makes Blender accessible from TMPGenc directly using VFAPI (you can

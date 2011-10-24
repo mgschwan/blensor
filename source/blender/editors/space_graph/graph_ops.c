@@ -1,6 +1,4 @@
 /*
- * $Id: graph_ops.c 40458 2011-09-22 15:35:25Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

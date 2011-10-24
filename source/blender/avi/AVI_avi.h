@@ -1,6 +1,4 @@
 /*
- * $Id: AVI_avi.h 38302 2011-07-11 09:47:13Z blendix $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

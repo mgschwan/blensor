@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_mesh_types.h 40368 2011-09-19 16:13:34Z jason_hays22 $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

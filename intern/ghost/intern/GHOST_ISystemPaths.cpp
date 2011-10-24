@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_ISystemPaths.cpp 39828 2011-09-01 00:03:20Z dfelinto $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: GHOST_ISystemPaths.cpp 39828 2011-09-01 00:03:20Z dfelinto $
  * Copyright (C) 2001 NaN Technologies B.V.
  * @author	Maarten Gribnau
  * @date	May 7, 2001

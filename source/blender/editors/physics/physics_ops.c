@@ -1,6 +1,4 @@
 /*
- * $Id: physics_ops.c 36703 2011-05-15 16:42:39Z jhk $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

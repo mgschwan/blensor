@@ -1,6 +1,4 @@
 /*
- * $Id: wm_jobs.c 39749 2011-08-28 14:46:03Z schlaile $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

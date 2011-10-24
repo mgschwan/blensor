@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_scene_types.h 40842 2011-10-07 05:19:21Z dfelinto $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

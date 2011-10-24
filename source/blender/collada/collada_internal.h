@@ -1,6 +1,4 @@
 /*
- * $Id: collada_internal.h 35596 2011-03-17 16:40:53Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

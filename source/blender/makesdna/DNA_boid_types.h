@@ -1,5 +1,4 @@
 /* 
- * $Id: DNA_boid_types.h 34941 2011-02-17 20:48:12Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

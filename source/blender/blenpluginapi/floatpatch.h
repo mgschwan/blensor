@@ -2,7 +2,6 @@
  *  \ingroup blpluginapi
  */
 /* Copyright (c) 1999, Not a Number / NeoGeo b.v. 
- * $Id: floatpatch.h 35244 2011-02-27 20:32:12Z jesterking $
  * 
  * All rights reserved.
  * 

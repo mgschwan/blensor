@@ -1,5 +1,4 @@
 /*
- * $Id: CSG_BooleanOps.h 35145 2011-02-25 10:44:20Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

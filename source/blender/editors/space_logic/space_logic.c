@@ -1,6 +1,4 @@
 /*
- * $Id: space_logic.c 40906 2011-10-10 10:35:18Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

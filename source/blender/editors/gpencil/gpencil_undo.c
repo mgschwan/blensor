@@ -1,6 +1,4 @@
 /*
- * $Id: gpencil_undo.c 39971 2011-09-06 15:35:42Z gsrb3d $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

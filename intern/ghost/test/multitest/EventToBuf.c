@@ -1,5 +1,4 @@
 /**
- * $Id: EventToBuf.c 32332 2010-10-05 19:10:15Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

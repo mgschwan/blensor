@@ -1,6 +1,4 @@
 /*
- * $Id: RNA_types.h 40762 2011-10-03 01:36:25Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

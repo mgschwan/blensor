@@ -1,4 +1,4 @@
-/* $Id: VideoBase.h 35082 2011-02-22 19:30:37Z jesterking $
+/*
 -----------------------------------------------------------------------------
 This source file is part of VideoTexture library
 

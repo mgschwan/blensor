@@ -1,7 +1,6 @@
 /*
  * Implementationclass to derive controllers from
  *
- * $Id: SG_Controller.h 35082 2011-02-22 19:30:37Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

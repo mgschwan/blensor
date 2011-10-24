@@ -1,5 +1,4 @@
 /*
- * $Id: mallocn.cpp 35153 2011-02-25 11:41:12Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

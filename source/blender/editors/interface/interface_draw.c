@@ -1,6 +1,4 @@
 /*
- * $Id: interface_draw.c 40709 2011-09-30 07:47:45Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -600,13 +598,13 @@ static void ui_draw_but_CHARTAB(uiBut *but)
 			wstr[0] = cs;
 			if(strcmp(G.selfont->name, FO_BUILTIN_NAME))
 			{
-				wcs2utf8s((char *)ustr, (wchar_t *)wstr);
+				BLI_strncpy_wchar_as_utf8((char *)ustr, (wchar_t *)wstr, sizeof(ustr));
 			}
 			else
 			{
 				if(G.ui_international == TRUE)
 				{
-					wcs2utf8s((char *)ustr, (wchar_t *)wstr);
+					BLI_strncpy_wchar_as_utf8((char *)ustr, (wchar_t *)wstr, sizeof(ustr));
 				}
 				else
 				{

@@ -1,6 +1,4 @@
 /*
- * $Id: readfile.h 36736 2011-05-18 06:27:32Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

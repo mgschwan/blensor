@@ -53,12 +53,17 @@ def register():
     
     class ObjectCoat3D(bpy.types.PropertyGroup):
         objpath = StringProperty(name="Object_Path")
+        applink_name = StringProperty(name="Object_Applink_name")
         coatpath = StringProperty(name="Coat_Path")
         objectdir = StringProperty(name="ObjectPath", subtype="FILE_PATH")
+        objecttime = StringProperty(name="ObjectTime", subtype="FILE_PATH")
         texturefolder = StringProperty(name="Texture folder:", subtype="DIR_PATH")
         path3b = StringProperty(name="3B Path", subtype="FILE_PATH")
         export_on = BoolProperty(name="Export_On", description="Add Modifiers and export",default= False)
-
+        dime = FloatVectorProperty(name="dime",description="Dimension")
+        loc = FloatVectorProperty(name="Location",description="Location")
+        rot = FloatVectorProperty(name="Rotation",description="Rotation",subtype='EULER')
+        sca = FloatVectorProperty(name="Scale",description="Scale")
 
     class SceneCoat3D(bpy.types.PropertyGroup):
 
@@ -66,10 +71,17 @@ def register():
             name="FilePath",
             subtype="DIR_PATH",
         )
+        cursor_loc = FloatVectorProperty(name="Cursor_loc",description="location")
+        
         exchangedir = StringProperty(
             name="FilePath",
             subtype="DIR_PATH"
         )
+        exchangefolder = StringProperty(
+            name="FilePath",
+            subtype="DIR_PATH"
+        )
+
 
     
         
@@ -79,6 +91,11 @@ def register():
         import_box = BoolProperty(
             name="Import window",
             description="Allows to skip import dialog",
+            default= True
+        )
+        exchange_found = BoolProperty(
+            name="Exchange Found",
+            description="Alert if Exchange folder is not found",
             default= True
         )
         export_box = BoolProperty(

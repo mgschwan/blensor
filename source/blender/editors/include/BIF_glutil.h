@@ -1,6 +1,4 @@
 /*
- * $Id: BIF_glutil.h 38978 2011-08-03 09:28:16Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

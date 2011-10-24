@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_material.h 40734 2011-10-01 17:51:47Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

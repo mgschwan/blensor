@@ -1,6 +1,4 @@
 /*
- * $Id: bpy_app.c 37795 2011-06-24 16:54:30Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -93,8 +91,6 @@ static PyStructSequence_Desc app_info_desc= {
 
 static PyObject *make_app_info(void)
 {
-	extern char bprogname[]; /* argv[0] from creator.c */
-
 	PyObject *app_info;
 	int pos= 0;
 
@@ -118,7 +114,7 @@ static PyObject *make_app_info(void)
 	SetStrItem("");
 #endif
 	SetStrItem(STRINGIFY(BLENDER_VERSION_CYCLE));
-	SetStrItem(bprogname);
+	SetStrItem(BLI_program_path());
 	SetObjItem(PyBool_FromLong(G.background));
 
 	/* build info */
@@ -168,13 +164,13 @@ static int bpy_app_debug_set(PyObject *UNUSED(self), PyObject *value, void *UNUS
 {
 	int param= PyObject_IsTrue(value);
 
-	if(param < 0) {
+	if (param < 0) {
 		PyErr_SetString(PyExc_TypeError, "bpy.app.debug can only be True/False");
 		return -1;
 	}
 	
-	if(param)	G.f |=  G_DEBUG;
-	else		G.f &= ~G_DEBUG;
+	if (param)  G.f |=  G_DEBUG;
+	else        G.f &= ~G_DEBUG;
 	
 	return 0;
 }
@@ -200,8 +196,7 @@ static int bpy_app_debug_value_set(PyObject *UNUSED(self), PyObject *value, void
 
 static PyObject *bpy_app_tempdir_get(PyObject *UNUSED(self), void *UNUSED(closure))
 {
-	extern char btempdir[];
-	return PyC_UnicodeFromByte(btempdir);
+	return PyC_UnicodeFromByte(BLI_temporary_dir());
 }
 
 static PyObject *bpy_app_driver_dict_get(PyObject *UNUSED(self), void *UNUSED(closure))
@@ -230,7 +225,7 @@ static void py_struct_seq_getset_init(void)
 	/* tricky dynamic members, not to py-spec! */
 	PyGetSetDef *getset;
 
-	for(getset= bpy_app_getsets; getset->name; getset++) {
+	for (getset= bpy_app_getsets; getset->name; getset++) {
 		PyDict_SetItemString(BlenderAppType.tp_dict, getset->name, PyDescr_NewGetSet(&BlenderAppType, getset));
 	}
 }

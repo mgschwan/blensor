@@ -1,6 +1,4 @@
 /*
- * $Id: callbacks.c 39744 2011-08-28 05:06:30Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

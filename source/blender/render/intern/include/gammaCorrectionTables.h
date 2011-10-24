@@ -1,7 +1,6 @@
 /*
  * gammacorrectiontables.h
  *
- * $Id: gammaCorrectionTables.h 35233 2011-02-27 19:31:27Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

@@ -1,6 +1,4 @@
 /*
- * $Id: rna_cloth.c 40769 2011-10-03 08:01:07Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,5 +1,4 @@
 /*
- * $Id: STR_String.cpp 40341 2011-09-19 08:02:17Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: STR_String.cpp 40341 2011-09-19 08:02:17Z campbellbarton $
  * Copyright (C) 2001 NaN Technologies B.V.
  * This file was formerly known as: GEN_StdString.cpp.
  * @date	April, 25, 2001

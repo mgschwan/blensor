@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_WindowX11.cpp 40538 2011-09-25 12:31:21Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -391,6 +390,13 @@ GHOST_WindowX11(
 			XSetWMProtocols(m_display, m_window, atoms, natom);
 		}
 	}
+
+#if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)
+	m_xic = XCreateIC(m_system->getX11_XIM(), XNClientWindow, m_window, XNFocusWindow, m_window,
+	                  XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+	                  XNResourceName, GHOST_X11_RES_NAME, XNResourceClass,
+	                  GHOST_X11_RES_CLASS, NULL);
+#endif
 
 	// Set the window icon
 	XWMHints *xwmhints = XAllocWMHints();
@@ -1304,6 +1310,13 @@ GHOST_WindowX11::
 		XSetSelectionOwner(m_display, Clipboard_atom, None, CurrentTime);
 	}
 	
+#if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)
+	if (m_xic) {
+		XDestroyIC(m_xic);
+	}
+#endif
+
+
 	XDestroyWindow(m_display, m_window);
 	XFree(m_visual);
 }

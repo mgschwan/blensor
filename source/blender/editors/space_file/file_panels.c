@@ -1,6 +1,4 @@
 /*
- * $Id: file_panels.c 40395 2011-09-20 13:41:43Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -146,7 +144,7 @@ static void file_panel_bookmarks(const bContext *C, Panel *pa)
 
 	if(sfile) {
 		row= uiLayoutRow(pa->layout, 0);
-		uiItemO(row, UI_translate_do_iface(N_("Add")), ICON_ZOOMIN, "file.bookmark_add");
+		uiItemO(row, IFACE_("Add"), ICON_ZOOMIN, "file.bookmark_add");
 		uiItemL(row, NULL, ICON_NONE);
 
 		file_panel_category(C, pa, FS_CATEGORY_BOOKMARKS, &sfile->bookmarknr, ICON_BOOKMARKS, 1, 0);

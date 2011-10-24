@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_WindowWin32.cpp 40538 2011-09-25 12:31:21Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: GHOST_WindowWin32.cpp 40538 2011-09-25 12:31:21Z campbellbarton $
  * Copyright (C) 2001 NaN Technologies B.V.
  * @author	Maarten Gribnau
  * @date	May 10, 2001

@@ -1,6 +1,4 @@
 /*
- * $Id: object_constraint.c 40351 2011-09-19 12:26:20Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -245,7 +243,7 @@ static void set_constraint_nth_target (bConstraint *con, Object *target, const c
 		for (ct=targets.first, i=0; ct; ct= ct->next, i++) {
 			if (i == index) {
 				ct->tar= target;
-				strcpy(ct->subtarget, subtarget);
+				BLI_strncpy(ct->subtarget, subtarget, sizeof(ct->subtarget));
 				break;
 			}
 		}

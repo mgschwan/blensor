@@ -1,5 +1,4 @@
 /*
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -26,7 +25,6 @@
  * ***** END GPL LICENSE BLOCK *****
  * util.c
  *
- * $Id: util.c 39749 2011-08-28 14:46:03Z schlaile $
  */
 
 /** \file blender/imbuf/intern/util.c

@@ -1,4 +1,3 @@
-# $Id: CMakeLists.txt 40216 2011-09-15 08:07:42Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -99,6 +98,7 @@ set(SRC
 	BLI_edgehash.h
 	BLI_editVert.h
 	BLI_fileops.h
+	BLI_fileops_types.h
 	BLI_fnmatch.h
 	BLI_ghash.h
 	BLI_graph.h
@@ -125,9 +125,8 @@ set(SRC
 	BLI_rand.h
 	BLI_rect.h
 	BLI_scanfill.h
-	BLI_storage.h
-	BLI_storage_types.h
 	BLI_string.h
+	BLI_string_utf8.h
 	BLI_threads.h
 	BLI_utildefines.h
 	BLI_uvproject.h

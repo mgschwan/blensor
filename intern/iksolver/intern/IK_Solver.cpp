@@ -1,5 +1,4 @@
 /*
- * $Id: IK_Solver.cpp 35154 2011-02-25 11:43:19Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,5 +1,4 @@
 /*
- * $Id: npunix.c 39883 2011-09-03 02:15:49Z campbellbarton $
  * npunix.c
  *
  * Netscape Client Plugin API

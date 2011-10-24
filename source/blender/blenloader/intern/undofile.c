@@ -1,6 +1,4 @@
 /*
- * $Id: undofile.c 35245 2011-02-27 20:35:41Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

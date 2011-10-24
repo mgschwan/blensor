@@ -1,4 +1,3 @@
-# $Id: CMakeLists.txt 38443 2011-07-17 09:11:13Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -131,8 +130,8 @@ if(WITH_SDL)
 	list(APPEND INC_SYS
 		${SDL_INCLUDE_DIR}
 	)
-else()
-	add_definitions(-DDISABLE_SDL)
+
+	add_definitions(-DWITH_SDL)
 endif()
 
 blender_add_lib(ge_logic "${SRC}" "${INC}" "${INC_SYS}")

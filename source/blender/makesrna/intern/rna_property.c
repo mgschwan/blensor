@@ -1,6 +1,4 @@
 /*
- * $Id: rna_property.c 40224 2011-09-15 12:26:48Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

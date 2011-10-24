@@ -1,5 +1,4 @@
 /*
- * $Id: paint_undo.c 40581 2011-09-26 18:51:10Z campbellbarton $
  *
  * Undo system for painting and sculpting.
  * 

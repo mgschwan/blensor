@@ -1,6 +1,4 @@
 /*
- * $Id: interface_anim.c 40579 2011-09-26 17:30:56Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -38,6 +36,7 @@
 
 #include "BLI_listbase.h"
 #include "BLI_string.h"
+#include "BLI_string_utf8.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -115,7 +114,7 @@ int ui_but_anim_expression_set(uiBut *but, const char *str)
 		driver= fcu->driver;
 		
 		if(driver && driver->type == DRIVER_TYPE_PYTHON) {
-			BLI_strncpy(driver->expression, str, sizeof(driver->expression));
+			BLI_strncpy_utf8(driver->expression, str, sizeof(driver->expression));
 			driver->flag |= DRIVER_FLAG_RECOMPILE;
 			WM_event_add_notifier(but->block->evil_C, NC_ANIMATION|ND_KEYFRAME, NULL);
 			return 1;
@@ -164,7 +163,7 @@ int ui_but_anim_expression_create(uiBut *but, const char *str)
 			
 			/* set the expression */
 			// TODO: need some way of identifying variables used
-			BLI_strncpy(driver->expression, str, sizeof(driver->expression));
+			BLI_strncpy_utf8(driver->expression, str, sizeof(driver->expression));
 			
 			/* FIXME: for now, assume that 
 			 * 	- for expressions, users are likely to be using "frame" -> current frame" as a variable
@@ -179,6 +178,7 @@ int ui_but_anim_expression_create(uiBut *but, const char *str)
 				
 				dtar = &dvar->targets[0];
 				dtar->id = (ID *)CTX_data_scene(C); // XXX: should we check that C is valid first?
+				dtar->idtype= ID_SCE;
 				dtar->rna_path = BLI_sprintfN("frame_current");
 			}
 			

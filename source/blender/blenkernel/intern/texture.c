@@ -1,6 +1,4 @@
 /*
- * $Id: texture.c 40903 2011-10-10 09:38:02Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -992,7 +990,7 @@ void autotexname(Tex *tex)
 		if(tex->type==TEX_IMAGE) {
 			ima= tex->ima;
 			if(ima) {
-				strcpy(di, ima->name);
+				BLI_strncpy(di, ima->name, sizeof(di));
 				BLI_splitdirstring(di, fi);
 				strcpy(di, "I.");
 				strcat(di, fi);

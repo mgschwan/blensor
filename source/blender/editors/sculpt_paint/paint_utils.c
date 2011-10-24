@@ -1,6 +1,4 @@
 /*
- * $Id: paint_utils.c 40370 2011-09-19 17:27:33Z gsrb3d $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

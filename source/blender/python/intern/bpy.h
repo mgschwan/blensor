@@ -1,6 +1,4 @@
 /*
- * $Id: bpy.h 40401 2011-09-20 15:17:24Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

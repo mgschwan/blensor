@@ -1,5 +1,4 @@
 /* 
- * $Id: sss.c 40108 2011-09-11 02:50:01Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

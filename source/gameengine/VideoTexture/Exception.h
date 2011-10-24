@@ -1,4 +1,4 @@
-/* $Id: Exception.h 39883 2011-09-03 02:15:49Z campbellbarton $
+/*
 -----------------------------------------------------------------------------
 This source file is part of VideoTexture library
 

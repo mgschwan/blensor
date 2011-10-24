@@ -1,4 +1,3 @@
-# $Id: CMakeLists.txt 40882 2011-10-09 21:43:13Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

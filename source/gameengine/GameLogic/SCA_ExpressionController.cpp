@@ -1,7 +1,6 @@
 /*
  * 'Expression Controller enables to calculate an expression that wires inputs to output
  *
- * $Id: SCA_ExpressionController.cpp 35169 2011-02-25 13:32:11Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

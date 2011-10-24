@@ -1,7 +1,6 @@
 /*
  * Apply a constraint to a position or rotation value
  *
- * $Id: KX_ConstraintActuator.cpp 35171 2011-02-25 13:35:59Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

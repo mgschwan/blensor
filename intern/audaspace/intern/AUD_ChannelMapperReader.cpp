@@ -1,6 +1,4 @@
 /*
- * $Id: AUD_ChannelMapperReader.cpp 39792 2011-08-30 09:15:55Z nexyon $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * Copyright 2009-2011 Jörg Hermann Müller
@@ -352,7 +350,7 @@ const float AUD_ChannelMapperReader::SURROUND71_ANGLES[] =
 	   0.0f * M_PI / 180.0f,
 	   0.0f * M_PI / 180.0f,
 	-110.0f * M_PI / 180.0f,
-	 110.0f * M_PI / 180.0f
+	 110.0f * M_PI / 180.0f,
 	-150.0f * M_PI / 180.0f,
 	 150.0f * M_PI / 180.0f
 };

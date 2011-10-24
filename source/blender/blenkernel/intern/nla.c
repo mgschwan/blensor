@@ -1,6 +1,4 @@
 /*
- * $Id: nla.c 40904 2011-10-10 09:44:14Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -42,6 +40,9 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
+#include "BLI_path_util.h"
+#include "BLI_listbase.h"
+#include "BLI_string.h"
 #include "BLI_ghash.h"
 
 #include "DNA_anim_types.h"

@@ -1,6 +1,4 @@
 /*
- * $Id: mmap_win.h 35025 2011-02-21 11:38:55Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

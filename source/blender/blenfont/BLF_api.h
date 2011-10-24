@@ -1,6 +1,4 @@
 /*
- * $Id: BLF_api.h 40430 2011-09-21 15:14:47Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

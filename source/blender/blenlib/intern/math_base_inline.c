@@ -1,6 +1,4 @@
 /*
- * $Id: math_base_inline.c 37336 2011-06-09 14:27:51Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

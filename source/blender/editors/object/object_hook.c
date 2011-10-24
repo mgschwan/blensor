@@ -1,6 +1,4 @@
 /*
- * $Id: object_hook.c 40351 2011-09-19 12:26:20Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -837,7 +835,7 @@ void OBJECT_OT_hook_select(wmOperatorType *ot)
 	
 	/* identifiers */
 	ot->name= "Select Hook";
-	ot->description= "Selects effected vertices on mesh";
+	ot->description= "Select affected vertices on mesh";
 	ot->idname= "OBJECT_OT_hook_select";
 	
 	/* callbacks */

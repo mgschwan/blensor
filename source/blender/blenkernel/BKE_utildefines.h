@@ -1,5 +1,4 @@
 /* 
- * $Id: BKE_utildefines.h 40341 2011-09-19 08:02:17Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -25,11 +24,11 @@
  * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
-*/
+ */
 
 /** \file BKE_utildefines.h
  *  \ingroup bke
- *  \brief blender format spesific macros
+ *  \brief blender format specific macros
  *  \note generic defines should go in BLI_utildefines.h
  */
 

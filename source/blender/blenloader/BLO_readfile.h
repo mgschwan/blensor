@@ -1,6 +1,4 @@
 /*
- * $Id: BLO_readfile.h 39044 2011-08-05 05:26:19Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -204,7 +202,7 @@ BLO_blendhandle_close(
 
 #define GROUP_MAX 32
 
-int BLO_has_bfile_extension(char *str);
+int BLO_has_bfile_extension(const char *str);
 
 /* return ok when a blenderfile, in dir is the filename,
  * in group the type of libdata
@@ -252,7 +250,7 @@ void BLO_library_append_end(const struct bContext *C, struct Main *mainl, BlendH
 
 void *BLO_library_read_struct(struct FileData *fd, struct BHead *bh, const char *blockname);
 
-BlendFileData* blo_read_blendafterruntime(int file, char *name, int actualsize, struct ReportList *reports);
+BlendFileData* blo_read_blendafterruntime(int file, const char *name, int actualsize, struct ReportList *reports);
 
 #ifdef __cplusplus
 } 

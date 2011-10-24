@@ -1,7 +1,6 @@
 /*
  * Actuator sensor
  *
- * $Id: SCA_ActuatorSensor.h 35063 2011-02-22 10:33:14Z jesterking $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

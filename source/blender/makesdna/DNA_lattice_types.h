@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_lattice_types.h 37239 2011-06-06 06:40:09Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

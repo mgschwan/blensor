@@ -1,6 +1,4 @@
 /*
- * $Id: sculpt.c 40597 2011-09-27 09:21:17Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_scene.h 35921 2011-03-31 14:33:59Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

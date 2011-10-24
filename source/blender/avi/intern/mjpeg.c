@@ -1,5 +1,4 @@
 /*
- * $Id: mjpeg.c 35249 2011-02-27 20:43:42Z jesterking $
  *
  * This is external code. Converts between avi and mpeg/jpeg.
  *

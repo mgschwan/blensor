@@ -1,6 +1,4 @@
 /*
- * $Id: filelist.h 35658 2011-03-21 03:22:33Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

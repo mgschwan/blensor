@@ -1,6 +1,4 @@
 /*
- * $Id: seqeffects.c 40782 2011-10-04 08:28:37Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -827,7 +825,7 @@ static void do_cross_effect_float(float facf0, float facf1, int x, int y,
 	}
 }
 
-/* carefull: also used by speed effect! */
+/* careful: also used by speed effect! */
 
 static struct ImBuf* do_cross_effect(
 	SeqRenderData context, Sequence *UNUSED(seq), float UNUSED(cfra),

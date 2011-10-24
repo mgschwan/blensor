@@ -1,6 +1,4 @@
 /*
- * $Id: editmesh_mods.c 40540 2011-09-25 15:37:06Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

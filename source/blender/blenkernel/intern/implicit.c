@@ -1,6 +1,4 @@
 /*
- * $Id: implicit.c 40693 2011-09-29 15:28:22Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

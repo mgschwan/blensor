@@ -1,6 +1,4 @@
 /*
- * $Id: AUD_PyAPI.cpp 40590 2011-09-27 05:28:06Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * Copyright 2009-2011 Jörg Hermann Müller

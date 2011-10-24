@@ -1,6 +1,4 @@
 /*
- * $Id: KX_Scene.cpp 40274 2011-09-16 20:08:05Z moguri $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: BPY_extern.h 37795 2011-06-24 16:54:30Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -35,8 +33,6 @@
 
 #ifndef BPY_EXTERN_H
 #define BPY_EXTERN_H
-
-extern char bprogname[];	/* holds a copy of argv[0], from creator.c */
 
 struct Text; /* defined in DNA_text_types.h */
 struct ID; /* DNA_ID.h */

@@ -1,6 +1,4 @@
 /*
- * $Id: logic_buttons.c 37246 2011-06-06 11:04:54Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

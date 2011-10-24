@@ -1,6 +1,4 @@
 /*
- * $Id: crazyspace.c 36485 2011-05-04 13:15:42Z nazgul $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -384,7 +382,7 @@ void crazyspace_build_sculpt(Scene *scene, Object *ob, float (**deformmats)[3][3
 	int totleft= sculpt_get_first_deform_matrices(scene, ob, deformmats, deformcos);
 
 	if(totleft) {
-		/* there are deformation modifier which doesn't support deformation matricies
+		/* there are deformation modifier which doesn't support deformation matrices
 		   calculation. Need additional crazyspace correction */
 
 		float (*deformedVerts)[3]= *deformcos;

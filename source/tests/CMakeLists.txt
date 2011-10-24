@@ -1,5 +1,4 @@
 # -*- mode: cmake; indent-tabs-mode: t; -*-
-# $Id: CMakeLists.txt 34198 2011-01-09 15:12:08Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -43,7 +42,7 @@ else()
 endif()
 
 # for testing with valgrind prefix: valgrind --track-origins=yes --error-limit=no 
-set(TEST_BLENDER_EXE ${TEST_BLENDER_EXE} --background --factory-startup --env-system-scripts ${CMAKE_SOURCE_DIR}/release/scripts)
+set(TEST_BLENDER_EXE ${TEST_BLENDER_EXE} --background -noaudio --factory-startup --env-system-scripts ${CMAKE_SOURCE_DIR}/release/scripts)
 
 
 # ------------------------------------------------------------------------------

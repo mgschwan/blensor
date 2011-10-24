@@ -1,6 +1,4 @@
 /*
- * $Id: smoke_API.cpp 35159 2011-02-25 11:50:46Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

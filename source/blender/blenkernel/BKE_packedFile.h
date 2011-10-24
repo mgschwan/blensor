@@ -1,6 +1,4 @@
 /*
- * $Id: BKE_packedFile.h 40853 2011-10-08 11:02:58Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -51,7 +49,7 @@ struct PackedFile *newPackedFileMemory(void *mem, int memlen);
 void packAll(struct Main *bmain, struct ReportList *reports);
 
 /* unpack */
-char *unpackFile(struct ReportList *reports, char *abs_name, char *local_name, struct PackedFile *pf, int how);
+char *unpackFile(struct ReportList *reports, const char *abs_name, const char *local_name, struct PackedFile *pf, int how);
 int unpackVFont(struct ReportList *reports, struct VFont *vfont, int how);
 int unpackSound(struct Main *bmain, struct ReportList *reports, struct bSound *sound, int how);
 int unpackImage(struct ReportList *reports, struct Image *ima, int how);

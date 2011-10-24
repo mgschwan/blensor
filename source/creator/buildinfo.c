@@ -1,6 +1,4 @@
 /*
- * $Id: buildinfo.c 39614 2011-08-22 12:24:14Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

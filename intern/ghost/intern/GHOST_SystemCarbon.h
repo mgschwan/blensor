@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_SystemCarbon.h 40837 2011-10-06 22:02:50Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

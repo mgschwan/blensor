@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# $Id: cmake_static_check_splint.py 40444 2011-09-22 04:41:12Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

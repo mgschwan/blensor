@@ -1,6 +1,4 @@
 /*
- * $Id: KX_IpoConvert.h 39792 2011-08-30 09:15:55Z nexyon $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

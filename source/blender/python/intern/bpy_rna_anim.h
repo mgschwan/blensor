@@ -1,6 +1,4 @@
 /*
- * $Id: bpy_rna_anim.h 35297 2011-03-02 05:06:43Z gsrb3d $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

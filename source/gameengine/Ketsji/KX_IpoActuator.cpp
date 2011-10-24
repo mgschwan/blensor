@@ -1,7 +1,6 @@
 /*
  * Do Ipo stuff
  *
- * $Id: KX_IpoActuator.cpp 40419 2011-09-21 08:40:30Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

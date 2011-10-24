@@ -1,7 +1,6 @@
 /*
  *
  *
- * $Id: DNA_property_types.h 35106 2011-02-23 10:52:22Z jesterking $ 
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

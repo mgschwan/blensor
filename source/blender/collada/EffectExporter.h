@@ -1,6 +1,4 @@
 /*
- * $Id: EffectExporter.h 40164 2011-09-12 13:20:24Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

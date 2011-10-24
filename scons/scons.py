@@ -24,6 +24,15 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
 
+# -----------------------------------
+# quick patch to avoid user confusion
+if not hasattr(dict, "has_key"):
+    import sys
+    print("Python2.x needed, using %d.%d\nAborting!\n" % sys.version_info[:2])
+    sys.exit(1)
+# end patch - campbell
+# --------------------
+
 __revision__ = "src/script/scons.py 4043 2009/02/23 09:06:45 scons"
 
 __version__ = "1.2.0.d20090223"

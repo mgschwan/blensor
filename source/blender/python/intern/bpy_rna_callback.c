@@ -1,6 +1,4 @@
 /*
- * $Id: bpy_rna_callback.c 35624 2011-03-19 11:12:48Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

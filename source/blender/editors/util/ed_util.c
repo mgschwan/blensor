@@ -1,6 +1,4 @@
 /*
- * $Id: ed_util.c 40872 2011-10-09 06:03:38Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

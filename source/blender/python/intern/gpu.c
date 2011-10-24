@@ -1,6 +1,4 @@
 /*
- * $Id: gpu.c 40255 2011-09-16 08:20:21Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -77,7 +75,7 @@ PyInit_gpu(void)
 	PyObject* m;
 
 	m = PyModule_Create(&gpumodule);
-	if(m == NULL)
+	if (m == NULL)
 		return NULL;
 
 	// device constants
@@ -164,7 +162,7 @@ static PyObject* GPU_export_shader(PyObject* UNUSED(self), PyObject *args, PyObj
 
 	static const char *kwlist[] = {"scene", "material", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OO:export_shader", (char**)(kwlist), &pyscene, &pymat))
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO:export_shader", (char**)(kwlist), &pyscene, &pymat))
 		return NULL;
 
 	if (!strcmp(Py_TYPE(pyscene)->tp_name, "Scene") && 

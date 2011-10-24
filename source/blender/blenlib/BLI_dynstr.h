@@ -1,6 +1,4 @@
 /*
- * $Id: BLI_dynstr.h 35215 2011-02-27 08:31:10Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: rand.c 36596 2011-05-10 14:48:06Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

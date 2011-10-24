@@ -1,6 +1,4 @@
 /*
- * $Id: blf_internal.h 40116 2011-09-11 08:12:16Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -40,7 +38,6 @@ struct rctf;
 
 unsigned int blf_next_p2(unsigned int x);
 unsigned int blf_hash(unsigned int val);
-int blf_utf8_next(unsigned char *buf, unsigned int *iindex);
 
 char *blf_dir_search(const char *file);
 char *blf_dir_metrics_search(const char *filename);

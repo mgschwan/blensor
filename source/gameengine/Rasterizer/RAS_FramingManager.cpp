@@ -1,5 +1,4 @@
 /*
- * $Id: RAS_FramingManager.cpp 35174 2011-02-25 13:38:24Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -99,7 +98,7 @@ ComputeDefaultOrtho(
 	frustum.x1 = -frustum.x2;
 	frustum.y2 = sizeY;
 	frustum.y1 = -frustum.y2;
-	frustum.camnear = -camfar;
+	frustum.camnear = camnear;
 	frustum.camfar = camfar;
 }
 

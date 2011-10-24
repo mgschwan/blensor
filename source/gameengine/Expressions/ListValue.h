@@ -1,6 +1,5 @@
 /*
  * ListValue.h: interface for the CListValue class.
- * $Id: ListValue.h 35063 2011-02-22 10:33:14Z jesterking $
  * Copyright (c) 1996-2000 Erwin Coumans <coockie@acm.org>
  *
  * Permission to use, copy, modify, distribute and sell this software

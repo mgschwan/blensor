@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_texture_types.h 40714 2011-09-30 09:55:21Z nazgul $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

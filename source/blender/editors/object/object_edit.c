@@ -1,6 +1,4 @@
 /*
- * $Id: object_edit.c 40853 2011-10-08 11:02:58Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -585,7 +583,7 @@ void OBJECT_OT_posemode_toggle(wmOperatorType *ot)
 	/* identifiers */
 	ot->name= "Toggle Pose Mode";
 	ot->idname= "OBJECT_OT_posemode_toggle";
-	ot->description= "Enables or disables posing/selecting bones";
+	ot->description= "Enable or disable posing/selecting bones";
 	
 	/* api callbacks */
 	ot->exec= posemode_exec;

@@ -1,5 +1,4 @@
 /* 
- * $Id: mathutils_geometry.h 38409 2011-07-15 04:01:47Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
@@ -25,7 +24,7 @@
  * Contributor(s): Joseph Gilbert
  *
  * ***** END GPL LICENSE BLOCK *****
-*/
+ */
 
 /** \file blender/python/generic/mathutils_geometry.h
  *  \ingroup pygen

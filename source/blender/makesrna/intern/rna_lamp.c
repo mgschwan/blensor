@@ -1,6 +1,4 @@
 /*
- * $Id: rna_lamp.c 37078 2011-06-01 16:17:38Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

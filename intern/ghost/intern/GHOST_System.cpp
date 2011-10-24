@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_System.cpp 38926 2011-08-02 10:20:47Z jesterking $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

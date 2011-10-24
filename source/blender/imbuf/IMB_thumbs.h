@@ -1,6 +1,4 @@
 /*
- * $Id: IMB_thumbs.h 36433 2011-05-02 10:22:49Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

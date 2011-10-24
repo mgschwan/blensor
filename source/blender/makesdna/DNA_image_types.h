@@ -1,6 +1,4 @@
 /*
- * $Id: DNA_image_types.h 38551 2011-07-21 00:41:00Z campbellbarton $ 
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

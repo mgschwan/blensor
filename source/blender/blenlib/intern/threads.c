@@ -1,6 +1,5 @@
 /*
  *
- * $Id: threads.c 40641 2011-09-28 05:53:40Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

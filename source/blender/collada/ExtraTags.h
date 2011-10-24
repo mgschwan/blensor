@@ -1,6 +1,4 @@
 /*
- * $Id: ExtraTags.h 35897 2011-03-30 10:51:01Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,7 +1,6 @@
 /*
  * KX_CameraActuator.h
  *
- * $Id: KX_CameraActuator.h 37455 2011-06-13 17:08:33Z dfelinto $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

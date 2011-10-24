@@ -1,6 +1,4 @@
 /*
- * $Id: InstanceWriter.cpp 35711 2011-03-22 22:51:02Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,5 +1,4 @@
 /*
- * $Id: KX_BlenderSceneConverter.cpp 39946 2011-09-05 23:40:52Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

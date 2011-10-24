@@ -1,6 +1,4 @@
 /*
- * $Id: rayobject_octree.cpp 40253 2011-09-16 06:56:50Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

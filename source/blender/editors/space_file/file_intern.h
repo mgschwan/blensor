@@ -1,6 +1,4 @@
 /*
- * $Id: file_intern.h 37204 2011-06-05 10:05:13Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: UI_icons.h 39996 2011-09-07 07:46:26Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

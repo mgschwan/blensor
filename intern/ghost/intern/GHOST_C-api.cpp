@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_C-api.cpp 38908 2011-08-02 04:28:05Z merwin $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -37,7 +36,6 @@
  *
  * C Api for GHOST
  *
- * Version: $Id: GHOST_C-api.cpp 38908 2011-08-02 04:28:05Z merwin $
  */
 
 #include <stdlib.h>

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# $Id: update_pot.py 40713 2011-09-30 09:25:53Z nazgul $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: TransformWriter.cpp 40289 2011-09-17 09:43:51Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

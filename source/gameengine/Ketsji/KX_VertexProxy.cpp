@@ -1,5 +1,4 @@
 /*
- * $Id: KX_VertexProxy.cpp 40833 2011-10-06 16:07:05Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

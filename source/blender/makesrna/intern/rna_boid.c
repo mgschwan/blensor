@@ -1,6 +1,4 @@
 /*
- * $Id: rna_boid.c 40710 2011-09-30 08:10:53Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -76,7 +74,7 @@ EnumPropertyItem boidruleset_type_items[] ={
 #include "BKE_depsgraph.h"
 #include "BKE_particle.h"
 
-static void rna_Boids_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
+static void rna_Boids_reset(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
 	if(ptr->type==&RNA_ParticleSystem) {
 		ParticleSystem *psys = (ParticleSystem*)ptr->data;

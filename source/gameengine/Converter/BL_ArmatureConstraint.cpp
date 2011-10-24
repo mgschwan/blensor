@@ -1,5 +1,4 @@
 /*
- * $Id: BL_ArmatureConstraint.cpp 36523 2011-05-06 20:18:42Z blendix $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

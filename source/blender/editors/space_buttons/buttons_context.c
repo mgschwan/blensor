@@ -1,6 +1,4 @@
 /*
- * $Id: buttons_context.c 40776 2011-10-03 17:29:43Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -925,7 +923,7 @@ void buttons_context_draw(const bContext *C, uiLayout *layout)
 
 		if(ptr->data) {
 			icon= RNA_struct_ui_icon(ptr->type);
-			name= RNA_struct_name_get_alloc(ptr, namebuf, sizeof(namebuf));
+			name= RNA_struct_name_get_alloc(ptr, namebuf, sizeof(namebuf), NULL);
 
 			if(name) {
 				if(!ELEM(sbuts->mainb, BCONTEXT_RENDER, BCONTEXT_SCENE) && ptr->type == &RNA_Scene)

@@ -1,4 +1,3 @@
-# $Id: update_msg.py 40875 2011-10-09 12:41:42Z mont29 $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -135,10 +134,12 @@ def dump_messages_rna(messages):
                                                         item.identifier,
                                                         )
                     # Here identifier and name can be the same!
-                    if item.name: # and item.name != item.identifier:
-                        messages.setdefault(item.name, []).append(msgsrc)
+                    if item.name:  # and item.name != item.identifier:
+                        messages.setdefault(item.name,
+                                            []).append(msgsrc)
                     if item.description:
-                        messages.setdefault(item.description, []).append(msgsrc)
+                        messages.setdefault(item.description,
+                                            []).append(msgsrc)
 
     def walkRNA(bl_rna):
 

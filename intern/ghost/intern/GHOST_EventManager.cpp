@@ -1,5 +1,4 @@
 /*
- * $Id: GHOST_EventManager.cpp 38908 2011-08-02 04:28:05Z merwin $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -33,7 +32,6 @@
 
 /**
 
- * $Id: GHOST_EventManager.cpp 38908 2011-08-02 04:28:05Z merwin $
  * Copyright (C) 2001 NaN Technologies B.V.
  * @author	Maarten Gribnau
  * @date	May 14, 2001

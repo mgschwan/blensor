@@ -1,5 +1,4 @@
 /**
- * $Id: memtest.c 36276 2011-04-21 15:53:30Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -28,7 +27,6 @@
 
 /**
 
- * $Id: memtest.c 36276 2011-04-21 15:53:30Z campbellbarton $
  * Copyright (C) 2001 NaN Technologies B.V.
  * Simple test of memory.
  */

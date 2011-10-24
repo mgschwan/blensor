@@ -1,6 +1,4 @@
 /*
- * $Id: AUD_SequencerHandle.cpp 40124 2011-09-11 12:24:11Z nexyon $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * Copyright 2009-2011 Jörg Hermann Müller

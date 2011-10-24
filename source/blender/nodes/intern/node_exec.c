@@ -1,6 +1,4 @@
-/**
- * $Id: node_exec.c 39944 2011-09-05 22:04:30Z gsrb3d $
- *
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -174,11 +172,13 @@ bNodeTreeExec *ntree_exec_begin(bNodeTree *ntree)
 	exec->stacksize = index;
 	exec->stack = MEM_callocN(exec->stacksize * sizeof(bNodeStack), "bNodeStack");
 	
+	/* all non-const results are considered inputs */
+	for (n=0; n < exec->stacksize; ++n)
+		exec->stack[n].hasinput = 1;
+	
 	/* prepare group tree inputs */
 	for (sock=ntree->inputs.first; sock; sock=sock->next) {
-		ns = setup_stack(exec->stack, sock);
-		if (ns->hasoutput)
-			ns->hasinput = 1;
+		/* ns = */ setup_stack(exec->stack, sock);
 	}
 	/* prepare all internal nodes for execution */
 	for(n=0, nodeexec= exec->nodeexec; n < totnodes; ++n, ++nodeexec) {
@@ -191,14 +191,12 @@ bNodeTreeExec *ntree_exec_begin(bNodeTree *ntree)
 				node->need_exec= 0;
 			
 			ns = setup_stack(exec->stack, sock);
-			if (ns->hasoutput)
-				ns->hasinput = 1;
+			ns->hasoutput = 1;
 		}
 		
 		/* tag all outputs */
 		for (sock=node->outputs.first; sock; sock=sock->next) {
-			ns = setup_stack(exec->stack, sock);
-			ns->hasoutput = 1;
+			/* ns = */ setup_stack(exec->stack, sock);
 		}
 		
 		if(node->typeinfo->initexecfunc)

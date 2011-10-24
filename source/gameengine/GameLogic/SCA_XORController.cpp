@@ -1,7 +1,6 @@
 /*
  * 'Xor' together all inputs
  *
- * $Id: SCA_XORController.cpp 39834 2011-09-01 02:12:53Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

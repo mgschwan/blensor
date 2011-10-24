@@ -1,6 +1,4 @@
 /*
- * $Id: BIF_gl.h 36025 2011-04-05 23:55:52Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

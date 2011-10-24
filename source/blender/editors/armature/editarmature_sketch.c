@@ -1,6 +1,4 @@
 /*
- * $Id: editarmature_sketch.c 40147 2011-09-12 04:14:12Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,4 @@
 /*
- * $Id: view3d_intern.h 38919 2011-08-02 08:12:50Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

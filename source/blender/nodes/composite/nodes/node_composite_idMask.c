@@ -1,6 +1,4 @@
 /*
- * $Id: node_composite_idMask.c 40742 2011-10-02 12:57:49Z mont29 $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

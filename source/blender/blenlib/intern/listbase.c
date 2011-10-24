@@ -3,7 +3,6 @@
  * various string, file, list operations.
  *
  *
- * $Id: listbase.c 36442 2011-05-02 13:35:04Z campbellbarton $
  *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *

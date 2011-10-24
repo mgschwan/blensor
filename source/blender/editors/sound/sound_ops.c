@@ -1,6 +1,4 @@
 /*
- * $Id: sound_ops.c 40853 2011-10-08 11:02:58Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -164,9 +162,6 @@ static int open_exec(bContext *UNUSED(C), wmOperator *op)
 
 static int open_invoke(bContext *C, wmOperator *op, wmEvent *event)
 {
-	if(!RNA_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
-
 	if(RNA_property_is_set(op->ptr, "filepath"))
 		return open_exec(C, op);
 
@@ -264,9 +259,6 @@ static int mixdown_exec(bContext *C, wmOperator *op)
 
 static int mixdown_invoke(bContext *C, wmOperator *op, wmEvent *event)
 {
-	if(!RNA_property_is_set(op->ptr, "relative_path"))
-		RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS);
-
 	if(RNA_property_is_set(op->ptr, "filepath"))
 		return mixdown_exec(C, op);
 

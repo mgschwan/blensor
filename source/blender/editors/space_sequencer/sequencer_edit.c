@@ -1,6 +1,4 @@
 /*
- * $Id: sequencer_edit.c 40390 2011-09-20 08:48:48Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -45,7 +43,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_storage_types.h"
 #include "BLI_utildefines.h"
 #include "BLI_threads.h"
 
@@ -883,7 +880,7 @@ static void UNUSED_FUNCTION(touch_seq_files)(Scene *scene)
 			if(seq->type==SEQ_MOVIE) {
 				if(seq->strip && seq->strip->stripdata) {
 					BLI_make_file_string(G.main->name, str, seq->strip->dir, seq->strip->stripdata->name);
-					BLI_touch(seq->name);
+					BLI_file_touch(seq->name);
 				}
 			}
 
@@ -929,11 +926,11 @@ static void UNUSED_FUNCTION(seq_remap_paths)(Scene *scene)
 	if(last_seq==NULL) 
 		return;
 	
-	BLI_strncpy(from, last_seq->strip->dir, FILE_MAX);
+	BLI_strncpy(from, last_seq->strip->dir, sizeof(from));
 // XXX	if (0==sbutton(from, 0, sizeof(from)-1, "From: "))
 //		return;
 	
-	strcpy(to, from);
+	BLI_strncpy(to, from, sizeof(to));
 // XXX	if (0==sbutton(to, 0, sizeof(to)-1, "To: "))
 //		return;
 	
@@ -2961,9 +2958,11 @@ void SEQUENCER_OT_change_effect_type(struct wmOperatorType *ot)
 
 static int sequencer_change_path_exec(bContext *C, wmOperator *op)
 {
+	Main *bmain= CTX_data_main(C);
 	Scene *scene= CTX_data_scene(C);
 	Editing *ed= seq_give_editing(scene, FALSE);
 	Sequence *seq= seq_active_get(scene);
+	const int is_relative_path= RNA_boolean_get(op->ptr, "relative_path");
 
 	if(seq->type == SEQ_IMAGE) {
 		char directory[FILE_MAX];
@@ -2974,6 +2973,12 @@ static int sequencer_change_path_exec(bContext *C, wmOperator *op)
 			return OPERATOR_CANCELLED;
 
 		RNA_string_get(op->ptr, "directory", directory);
+		if (is_relative_path) {
+			/* TODO, shouldn't this already be relative from the filesel?
+			 * (as the 'filepath' is) for now just make relative here,
+			 * but look into changing after 2.60 - campbell */
+			BLI_path_rel(directory, bmain->name);
+		}
 		BLI_strncpy(seq->strip->dir, directory, sizeof(seq->strip->dir));
 
 		if(seq->strip->stripdata) {

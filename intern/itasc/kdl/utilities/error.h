@@ -39,7 +39,6 @@
  *		- $log$
  *
  *	\par Release
- *		$Id: error.h 26841 2010-02-12 13:34:04Z campbellbarton $
  *		$Name:  $ 
  ****************************************************************************/
 #ifndef ERROR_H_84822 // to make it unique, a random number

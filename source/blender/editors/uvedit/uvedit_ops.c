@@ -1,6 +1,4 @@
 /*
- * $Id: uvedit_ops.c 40455 2011-09-22 14:42:29Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# $Id: project_info.py 36910 2011-05-26 09:33:51Z campbellbarton $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -105,7 +104,7 @@ def is_glsl(filename):
 
 def is_c(filename):
     ext = splitext(filename)[1]
-    return (ext in (".c", ".cpp", ".cxx", ".m", ".mm", ".rc"))
+    return (ext in (".c", ".cpp", ".cxx", ".m", ".mm", ".rc", ".cc"))
 
 
 def is_c_any(filename):

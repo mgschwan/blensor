@@ -1,6 +1,4 @@
 /*
- * $Id: rayobject.h 37667 2011-06-20 15:17:02Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

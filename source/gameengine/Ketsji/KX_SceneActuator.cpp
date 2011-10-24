@@ -1,8 +1,7 @@
 /*
-* Set scene/camera stuff
-*
-* $Id: KX_SceneActuator.cpp 36523 2011-05-06 20:18:42Z blendix $
-*
+ * Set scene/camera stuff
+ *
+ *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -27,7 +26,7 @@
  * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
-*/
+ */
 
 /** \file gameengine/Ketsji/KX_SceneActuator.cpp
  *  \ingroup ketsji

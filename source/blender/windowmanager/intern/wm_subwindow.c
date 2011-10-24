@@ -1,6 +1,4 @@
 /*
- * $Id: wm_subwindow.c 39358 2011-08-13 09:22:14Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

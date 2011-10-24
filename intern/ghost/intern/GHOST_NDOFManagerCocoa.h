@@ -1,6 +1,4 @@
 /*
- * $Id: GHOST_NDOFManagerCocoa.h 39495 2011-08-17 15:01:26Z blendix $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

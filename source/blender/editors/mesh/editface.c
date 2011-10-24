@@ -1,6 +1,4 @@
 /*
- * $Id: editface.c 36644 2011-05-12 16:47:36Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

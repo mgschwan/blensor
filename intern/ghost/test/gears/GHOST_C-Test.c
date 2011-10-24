@@ -1,5 +1,4 @@
 /**
- * $Id: GHOST_C-Test.c 40837 2011-10-06 22:02:50Z campbellbarton $
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -28,7 +27,6 @@
 
 /**
 
- * $Id: GHOST_C-Test.c 40837 2011-10-06 22:02:50Z campbellbarton $
  * Copyright (C) 2001 NaN Technologies B.V.
  *
  * Simple test file for the GHOST library.

@@ -1,6 +1,4 @@
 /*
- * $Id: ErrorHandler.h 39940 2011-09-05 20:43:45Z jesterking $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

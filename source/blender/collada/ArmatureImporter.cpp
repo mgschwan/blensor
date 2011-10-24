@@ -1,6 +1,4 @@
 /*
- * $Id: ArmatureImporter.cpp 40095 2011-09-10 09:38:38Z campbellbarton $
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or

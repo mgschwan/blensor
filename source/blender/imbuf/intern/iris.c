@@ -1,5 +1,4 @@
 /*
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -24,9 +23,6 @@
  * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
- * iris.c
- *
- * $Id: iris.c 40252 2011-09-16 06:47:01Z campbellbarton $
  */
 
 /** \file blender/imbuf/intern/iris.c
