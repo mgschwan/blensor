@@ -49,7 +49,7 @@ def tuples_to_list(tuples):
     return l
 
 
-parameters = {"max_dist":20,"noise_mu":0.0,"noise_sigma":0.004, "backfolding":False}
+parameters = {"max_dist":20,"noise_mu":0.0,"noise_sigma":0.004, "backfolding":False, "xres": 176, "yres": 144}
 
 def addProperties(cType):
     global parameters
@@ -57,6 +57,8 @@ def addProperties(cType):
     cType.tof_noise_mu = bpy.props.FloatProperty( name = "Noise mu", default = parameters["noise_mu"], description = "The center of the gaussian noise" )
     cType.tof_noise_sigma = bpy.props.FloatProperty( name = "Noise sigma", default = parameters["noise_sigma"], description = "The sigma of the gaussian noise" )
     cType.tof_backfolding = bpy.props.BoolProperty( name = "Backfolding", default = parameters["backfolding"], description = "Should backfolding be simulated" )
+    cType.tof_xres = bpy.props.IntProperty( name = "X resolution", default = parameters["xres"], description = "Horizontal resolution" )
+    cType.tof_yres = bpy.props.IntProperty( name = "Y resolution", default = parameters["yres"], description = "Vertical resolution" )
 
 
 
@@ -182,7 +184,7 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False):
+def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144):
 
 
 
@@ -198,7 +200,8 @@ def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.
             ok,start_radians,scan_time = scan_advanced(evd_file = filename , 
                     add_blender_mesh=add_blender_mesh, max_distance=max_distance,
                     timestamp = float(i) * frame_time,
-                    noise_mu = noise_mu, noise_sigma=noise_sigma, backfolding=backfolding)
+                    noise_mu = noise_mu, noise_sigma=noise_sigma, backfolding=backfolding,
+                    tof_res_x = tof_res_x, tof_res_y = tof_res_y)
 
             if not ok:
                 break

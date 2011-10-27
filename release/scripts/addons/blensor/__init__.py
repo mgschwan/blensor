@@ -80,6 +80,11 @@ def velodyne_layout(obj, layout):
 
 def tof_layout(obj, layout):
             row = layout.row()
+            col = row.column()
+            col.prop(obj, "tof_xres")
+            col = row.column()
+            col.prop(obj, "tof_yres")
+            row = layout.row()
             row.prop(obj, "tof_max_dist")
             row = layout.row()
             col = row.column()
@@ -153,7 +158,8 @@ def dispatch_scan(obj, filename=None):
                 blensor.tof.scan_advanced( max_distance=obj.tof_max_dist,
                 add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
                 evd_file=filename, noise_mu=obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,
-                backfolding=obj.tof_backfolding)
+                backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres, 
+                tof_res_y = obj.tof_yres)
             else:
                 print ("Scanner not supported ... yet")
 
@@ -184,7 +190,8 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                 noise_mu = obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,                
                 frame_start = frame, frame_end=frame+1, filename=filename, 
                 last_frame=last_frame,frame_time = time_per_frame,
-                backfolding=obj.tof_backfolding)
+                backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres,
+                tof_res_y = obj.tof_yres)
             else:
                 print ("Scanner not supported ... yet")
 
