@@ -34,7 +34,7 @@ import blensor.scan_interface
 from blensor import evd
 
 
-from mathutils import Vector, Euler
+from mathutils import Vector, Euler, Matrix
 
 def deg2rad(deg):
     return deg*math.pi/180.0
@@ -66,7 +66,8 @@ def addProperties(cType):
 def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False, 
                   add_noisy_blender_mesh = False, tof_res_x = 176, tof_res_y = 144, 
                   lens_angle_w=43.6, lens_angle_h=34.6, flength = 10,  evd_last_scan=True, 
-                  noise_mu=0.0, noise_sigma=0.004, timestamp = 0.0, backfolding=False):
+                  noise_mu=0.0, noise_sigma=0.004, timestamp = 0.0, backfolding=False,
+                  world_transformation=Matrix()):
 
     start_time = time.time()
 
@@ -134,19 +135,20 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
         #If everything works substitute the previous line with this
         #distance_noise =  pixel_noise[returns[idx][-1]] + random.gauss(noise_mu, noise_sigma) 
 
+        vt = (world_transformation * Vector((returns[i][1],returns[i][2],returns[i][3],1.0))).xyz
         v = [returns[i][1],returns[i][2],returns[i][3]]
-        verts.append( v )
+        verts.append ( vt )
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
         norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
 
 
         vector_length_noise = vector_length+distance_noise
         if backfolding:
-            #Distances > max_distance/2..max_distance are mapped to 0..max_distance/2
-            if vector_length_noise >= max_distance/2.0:
+           #Distances > max_distance/2..max_distance are mapped to 0..max_distance/2
+           if vector_length_noise >= max_distance/2.0:
                vector_length_noise = vector_length_noise - max_distance/2.0
 
-        v_noise = [ norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise ]
+        v_noise = (world_transformation * Vector((norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0))).xyz
         verts_noise.append( v_noise )
 
         evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, x=v[0], y=v[1], z=v[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4])
@@ -184,7 +186,7 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144):
+def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144,world_transformation=Matrix()):
 
 
 
@@ -201,7 +203,7 @@ def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.
                     add_blender_mesh=add_blender_mesh, max_distance=max_distance,
                     timestamp = float(i) * frame_time,
                     noise_mu = noise_mu, noise_sigma=noise_sigma, backfolding=backfolding,
-                    tof_res_x = tof_res_x, tof_res_y = tof_res_y)
+                    tof_res_x = tof_res_x, tof_res_y = tof_res_y,world_transformation=world_transformation)
 
             if not ok:
                 break

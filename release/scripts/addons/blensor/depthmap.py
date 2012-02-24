@@ -9,7 +9,7 @@ import time
 import random
 import bpy
 import blensor.globals
-from mathutils import Vector, Euler
+from mathutils import Vector, Euler, Matrix
 
 
 parameters = {"max_dist":200}
@@ -34,7 +34,8 @@ def tuples_to_list(tuples):
     return l
 
 
-def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False):
+def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
+    world_transformation=Matrix()):
     start_time = time.time()
 
 
@@ -83,9 +84,11 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False):
                     Z = -zbuffer[idx] 
                     X = -( Z * dx ) / focal_length
                     Y = -( Z * dy ) / focal_length
-                    verts.append(X)                
-                    verts.append(Y)
-                    verts.append(Z)
+                    vt = (world_transformation * Vector((X,Y,Z,1.0))).xyz
+
+                    verts.append(vt[0])                
+                    verts.append(vt[1])
+                    verts.append(vt[2])
 
 
     if filename:
@@ -120,7 +123,7 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False):
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/depthmap", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 120.0, last_frame = True):
+def scan_range(frame_start, frame_end, filename="/tmp/depthmap", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 120.0, last_frame = True,world_transformation=Matrix()):
 
 
     start_time = time.time()
@@ -132,7 +135,7 @@ def scan_range(frame_start, frame_end, filename="/tmp/depthmap", frame_time = (1
 
             bpy.context.scene.frame_current = i
 
-            ok,start_radians,scan_time = scan_advanced(filename = filename+"%04d.dmap"%i , add_blender_mesh=add_blender_mesh, max_distance=max_distance)
+            ok,start_radians,scan_time = scan_advanced(filename = filename+"%04d.dmap"%i , add_blender_mesh=add_blender_mesh, max_distance=max_distance,world_transformation=world_transformation)
 
             if not ok:
                 break

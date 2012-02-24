@@ -109,7 +109,7 @@ def calculateRay(laserAngle, mirrorAngle, laserMirrorDistance):
     return [ray, reflectionPoint, math.pi/4-incomingAngle]
 
 
-def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0.5, max_distance = 90, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = -35, end_angle = 50, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, simulation_time = 0.0,laser_mirror_distance=0.05):
+def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0.5, max_distance = 90, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = -35, end_angle = 50, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, simulation_time = 0.0,laser_mirror_distance=0.05, world_transformation=Matrix()):
     start_time = time.time()
 
     current_time = simulation_time
@@ -150,14 +150,15 @@ def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0
 
     for i in range(len(returns)):
         idx = returns[i][-1]
+        vt = (world_transformation * Vector((returns[i][1],returns[i][2],returns[i][3],1.0))).xyz
         v = [returns[i][1],returns[i][2],returns[i][3]]
-        verts.append ( v )
+        verts.append ( vt )
 
         distance_noise =  laser_noise[idx%len(laser_noise)] + random.gauss(noise_mu, noise_sigma) 
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
         norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
         vector_length_noise = vector_length+distance_noise
-        v_noise = [ norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise ]
+        v_noise = (world_transformation * Vector((norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0))).xyz
         verts_noise.append( v_noise )
 
         evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, x=v[0], y=v[1], z=v[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4])
@@ -198,7 +199,7 @@ def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time = (1.0/24.0), rotation_speed = 25.0, fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, angle_resolution = 0.5, max_distance = 90.0, noise_mu = 0.0, noise_sigma= 0.02, laser_mirror_distance = 0.05, start_angle=-35.0, end_angle=50.0, last_frame = True):
+def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time = (1.0/24.0), rotation_speed = 25.0, fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, angle_resolution = 0.5, max_distance = 90.0, noise_mu = 0.0, noise_sigma= 0.02, laser_mirror_distance = 0.05, start_angle=-35.0, end_angle=50.0, last_frame = True, world_transformation=Matrix()):
 
     fps = rotation_speed # The Ibeo Module does not yet support an update
                          # rate different to the simulation speed
@@ -211,7 +212,7 @@ def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time
 
                 bpy.context.scene.frame_current = i
 
-                ok,start_radians,scan_time = scan_advanced(angle_resolution = angle_resolution, start_angle = start_angle, end_angle=end_angle, evd_file = filename, evd_last_scan=False,add_blender_mesh=add_blender_mesh, add_noisy_blender_mesh=add_noisy_blender_mesh, simulation_time = float(i)*frame_time, max_distance=max_distance, noise_mu = noise_mu, noise_sigma=noise_sigma, laser_mirror_distance=laser_mirror_distance)
+                ok,start_radians,scan_time = scan_advanced(angle_resolution = angle_resolution, start_angle = start_angle, end_angle=end_angle, evd_file = filename, evd_last_scan=False,add_blender_mesh=add_blender_mesh, add_noisy_blender_mesh=add_noisy_blender_mesh, simulation_time = float(i)*frame_time, max_distance=max_distance, noise_mu = noise_mu, noise_sigma=noise_sigma, laser_mirror_distance=laser_mirror_distance, world_transformation=world_transformation)
 
                 if not ok:
                     break

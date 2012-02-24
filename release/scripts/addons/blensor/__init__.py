@@ -10,6 +10,8 @@ import blensor.evd
 import blensor.ibeo
 import blensor.exportmotion
 import blensor.mesh_utils
+from mathutils import Matrix
+from math import pi
 
 """A package for simulating various types of range scanners inside blender"""
 
@@ -129,6 +131,13 @@ def ibeo_layout(obj, layout):
 
             
 def dispatch_scan(obj, filename=None):
+            if obj.local_coordinates:
+              world_transformation = Matrix()
+            else:
+              world_transformation = obj.matrix_world #((obj.matrix_world*Matrix.Rotation(-pi/2,4,"X")))
+          
+
+
             if obj.scan_type == "velodyne":
                 obj.ref_dist = obj.velodyne_ref_dist
                 obj.ref_limit = obj.velodyne_ref_limit
@@ -139,7 +148,8 @@ def dispatch_scan(obj, filename=None):
                 end_angle=obj.velodyne_end_angle, noise_mu = obj.velodyne_noise_mu, 
                 noise_sigma=obj.velodyne_noise_sigma, add_blender_mesh=obj.add_scan_mesh, 
                 add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
-                rotation_speed = obj.velodyne_rotation_speed, evd_file=filename)
+                rotation_speed = obj.velodyne_rotation_speed, evd_file=filename,
+                world_transformation = world_transformation )
             elif obj.scan_type == "ibeo":
                 obj.ref_dist = obj.ibeo_ref_dist
                 obj.ref_limit = obj.ibeo_ref_limit
@@ -150,16 +160,18 @@ def dispatch_scan(obj, filename=None):
                 end_angle=obj.ibeo_end_angle, noise_mu = obj.ibeo_noise_mu, 
                 noise_sigma=obj.ibeo_noise_sigma, add_blender_mesh=obj.add_scan_mesh, 
                 add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
-                rotation_speed = obj.ibeo_rotation_speed, evd_file=filename)
+                rotation_speed = obj.ibeo_rotation_speed, evd_file=filename,
+                world_transformation=world_transformation)
             elif obj.scan_type == "depthmap":
                 blensor.depthmap.scan_advanced( max_distance=obj.depthmap_max_dist, 
-                add_blender_mesh=obj.add_scan_mesh, filename=filename)
+                add_blender_mesh=obj.add_scan_mesh, filename=filename,
+                world_transformation=world_transformation)
             elif obj.scan_type == "tof":
                 blensor.tof.scan_advanced( max_distance=obj.tof_max_dist,
                 add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
                 evd_file=filename, noise_mu=obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,
                 backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres, 
-                tof_res_y = obj.tof_yres)
+                tof_res_y = obj.tof_yres,world_transformation=world_transformation)
             else:
                 print ("Scanner not supported ... yet")
 
@@ -167,6 +179,11 @@ def dispatch_scan(obj, filename=None):
 
 def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0/24.0):
             blensor.evd.frame_counter = frame
+
+            if obj.local_coordinates:
+              world_transformation = Matrix()
+            else:
+              world_transformation = obj.matrix_world #((obj.matrix_world*Matrix.Rotation(-pi/2,4,"X")))
 
 
             if obj.scan_type == "velodyne":
@@ -177,21 +194,25 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                 blensor.blendodyne.scan_range( angle_resolution=obj.velodyne_angle_resolution, 
                 max_distance=obj.velodyne_max_dist, noise_mu = obj.velodyne_noise_mu, 
                 noise_sigma=obj.velodyne_noise_sigma,  rotation_speed = obj.velodyne_rotation_speed, 
-                frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame)
+                frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame,
+                world_transformation = world_transformation )
             elif obj.scan_type == "ibeo":
                 blensor.ibeo.scan_range( angle_resolution=obj.ibeo_angle_resolution,
                 max_distance=obj.ibeo_max_dist, noise_mu = obj.ibeo_noise_mu, 
                 noise_sigma=obj.ibeo_noise_sigma,  rotation_speed = obj.ibeo_rotation_speed, 
-                frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame)
+                frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame,
+                world_transformation=world_transformation)
             elif obj.scan_type == "depthmap":
-                blensor.depthmap.scan_range( max_distance=obj.depthmap_max_dist,frame_start = frame, frame_end=frame+1, filename=filename)
+                blensor.depthmap.scan_range( max_distance=obj.depthmap_max_dist,
+                frame_start = frame, frame_end=frame+1, filename=filename,
+                world_transformation=world_transformation)
             elif obj.scan_type == "tof":
                 blensor.tof.scan_range( max_distance=obj.tof_max_dist, 
                 noise_mu = obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,                
                 frame_start = frame, frame_end=frame+1, filename=filename, 
                 last_frame=last_frame,frame_time = time_per_frame,
                 backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres,
-                tof_res_y = obj.tof_yres)
+                tof_res_y = obj.tof_yres, world_transformation=world_transformation)
             else:
                 print ("Scanner not supported ... yet")
 
@@ -252,6 +273,8 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             col.prop(obj, "scan_frame_start")
             col = row.column()
             col.prop(obj, "scan_frame_end")
+            row = layout.row()
+            row.prop(obj,"local_coordinates")        
 
 
             row = layout.row()
@@ -578,6 +601,7 @@ def register():
     cType.add_noise_scan_mesh = bpy.props.BoolProperty( name = "Add noisy scan", default = False, description = "Should the noisy scan be added as an object" )
 
     cType.save_scan = bpy.props.BoolProperty( name = "Save to File", default = False, description = "Should the scan be saved to file" )
+    cType.local_coordinates = bpy.props.BoolProperty( name = "Sensor coordinates", default = True, description = "Should the points be in sensor coordinates" )
 
 
     cType.scan_frame_start = bpy.props.IntProperty( name = "Start frame", default = 1, min = 0, description = "First frame to be scanned" )
