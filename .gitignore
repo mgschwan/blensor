@@ -2,3 +2,5 @@
 *.pyc
 user-config.py
 *~
+blensor_tools/bin
+
