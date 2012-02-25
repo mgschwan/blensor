@@ -32,7 +32,7 @@ class evd_file:
     def __init__(self, filename):
         self.filename = filename
         self.buffer = []
-        mode = WRITER_MODE_EVD
+        self.mode = WRITER_MODE_EVD
         try:
           if self.filename[-4:] == ".pcd":
             self.mode = WRITER_MODE_PCL

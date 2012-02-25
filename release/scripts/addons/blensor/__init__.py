@@ -185,7 +185,6 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
             else:
               world_transformation = obj.matrix_world #((obj.matrix_world*Matrix.Rotation(-pi/2,4,"X")))
 
-
             if obj.scan_type == "velodyne":
                 obj.ref_dist = obj.velodyne_ref_dist
                 obj.ref_limit = obj.velodyne_ref_limit
