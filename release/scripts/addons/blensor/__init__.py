@@ -516,7 +516,6 @@ class OBJECT_OT_exportmotion(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
-
 class OBJECT_OT_exporthandler(bpy.types.Operator):
     bl_label = "Export Handler" #Button label
     bl_idname = "blensor.export_handler" #Name used to refer to this operator
@@ -594,11 +593,37 @@ class OBJECT_OT_exporthandler(bpy.types.Operator):
 laser_types=[("velodyne", "Velodyne HDL-64E", "Rotating infrared laser"),("ibeo","Ibeo LUX","Line laser with 4 rays"),("tof","TOF Camera","Time of Flight camera"),("depthmap","Depthmap","Plain Depthmap")]
 
 
-
 ######################################################
 
+def show_in_frame(obj, frame):
+    """ Make obj only appear in the specified frame """
+    # Cache current frame
+    cur_frame = bpy.context.scene.frame_current  
+    # Clear existing animation data
+    obj.animation_data_clear()
+    # Turn off display in previous frame
+    bpy.context.scene.frame_current = cur_frame - 1
+    obj.hide = True
+    obj.keyframe_insert('hide')
+    obj.hide_render = True
+    obj.keyframe_insert('hide_render')
+    # Turn on display in desired frame
+    bpy.context.scene.frame_set(frame)
+    obj.hide = False
+    obj.keyframe_insert('hide')
+    obj.hide_render = False
+    obj.keyframe_insert('hide_render')
+    # Turn off display in following frame
+    bpy.context.scene.frame_current = cur_frame + 1
+    obj.hide = True
+    obj.keyframe_insert('hide')
+    obj.hide_render = True
+    obj.keyframe_insert('hide_render')
+    # Return to cached frame
+    bpy.context.scene.frame_current =  cur_frame
 
 
+########################################################
 
 
 def info():
@@ -653,6 +678,7 @@ def unregister():
     bpy.utils.unregister_class(OBJECT_OT_exportmotion)
     bpy.utils.unregister_class(OBJECT_PT_sensor)
     bpy.utils.unregister_class(OBJECT_OT_scan)
+    bpy.utils.unregister_class(OBJECT_OT_delete_scans)
     bpy.utils.unregister_class(OBJECT_OT_randomize)
     bpy.utils.unregister_class(OBJECT_OT_scanrange)
     bpy.utils.unregister_class(OBJECT_OT_exporthandler)
