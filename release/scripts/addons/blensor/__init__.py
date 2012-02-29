@@ -281,7 +281,11 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             row = layout.row()
             row.operator("blensor.scanrange", "Scan range")        
             row = layout.row()
-            row.operator("blensor.export_motion", "Export motion")
+            col = row.column()
+            col.operator("blensor.export_motion", "Export motion")
+            col = row.column()
+            col.operator("blensor.delete_scans", "Delete scans")
+            
         
 class OBJECT_OT_scan(bpy.types.Operator):
     bl_label = "Run scan" #Button label
@@ -334,8 +338,6 @@ class OBJECT_OT_scanrange(bpy.types.Operator):
         obj = context.object
         bpy.ops.blensor.scanrange_handler(filepath=self.filepath)
         return {'FINISHED'}
-
-
 
     def invoke(self,context,event):
         wm = context.window_manager
@@ -472,9 +474,29 @@ class OBJECT_OT_randomize(bpy.types.Operator):
  
         if is_cam:
             if obj.scan_type == "velodyne":
-                blensor.blendodyne.randomize_distance_bias(    obj.velodyne_db_noise_mu, obj.velodyne_db_noise_sigma )
+                blensor.blendodyne.randomize_distance_bias(obj.velodyne_db_noise_mu, obj.velodyne_db_noise_sigma )
 
         return{'FINISHED'}
+
+
+class OBJECT_OT_delete_scans(bpy.types.Operator):
+    bl_label = "Delete scans"
+    bl_idname = "blensor.delete_scans"
+    bl_description = "Delete all scans from scene"
+    
+    
+    def execute(self, context):
+        for o in bpy.context.scene.objects:
+            if o.name.find('NoisyScan.') == 0 or o.name.find('Scan.') == 0:
+                bpy.context.scene.objects.unlink(o)
+        
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_confirm(self, event)        
+        
+
 
 
 class OBJECT_OT_exportmotion(bpy.types.Operator):
@@ -588,6 +610,7 @@ def register():
     global laser_types
     bpy.utils.register_class(OBJECT_OT_scanrange)
     bpy.utils.register_class(OBJECT_OT_randomize)
+    bpy.utils.register_class(OBJECT_OT_delete_scans)
     bpy.utils.register_class(OBJECT_OT_scan)
     bpy.utils.register_class(OBJECT_PT_sensor)
     bpy.utils.register_class(OBJECT_OT_exportmotion)
