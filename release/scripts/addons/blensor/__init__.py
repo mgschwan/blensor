@@ -194,7 +194,8 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                 max_distance=obj.velodyne_max_dist, noise_mu = obj.velodyne_noise_mu, 
                 noise_sigma=obj.velodyne_noise_sigma,  rotation_speed = obj.velodyne_rotation_speed, 
                 frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame, 
-                frame_time=time_per_frame, world_transformation=world_transformation )
+                frame_time=time_per_frame, world_transformation=world_transformation,
+                add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
             elif obj.scan_type == "ibeo":
                 blensor.ibeo.scan_range( angle_resolution=obj.ibeo_angle_resolution,
                 max_distance=obj.ibeo_max_dist, noise_mu = obj.ibeo_noise_mu, 
