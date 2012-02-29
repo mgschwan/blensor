@@ -267,15 +267,15 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             col = row.column()
             col.prop(obj, "add_noise_scan_mesh")
             row = layout.row()
-            row.prop(obj, "save_scan")
+            col = row.column()
+            col.prop(obj, "save_scan")
+            col = row.column()            
+            col.prop(obj,"local_coordinates")        
             row = layout.row()
             col = row.column()
             col.prop(obj, "scan_frame_start")
             col = row.column()
             col.prop(obj, "scan_frame_end")
-            row = layout.row()
-            row.prop(obj,"local_coordinates")        
-
 
             row = layout.row()
             row.operator("blensor.scan", "Single scan")        
@@ -651,7 +651,7 @@ def register():
     cType.add_noise_scan_mesh = bpy.props.BoolProperty( name = "Add noisy scan", default = False, description = "Should the noisy scan be added as an object" )
 
     cType.save_scan = bpy.props.BoolProperty( name = "Save to File", default = False, description = "Should the scan be saved to file" )
-    cType.local_coordinates = bpy.props.BoolProperty( name = "Sensor coordinates", default = True, description = "Should the points be in sensor coordinates" )
+    cType.local_coordinates = bpy.props.BoolProperty( name = "Sensor coordinates", default = True, description = "Should the points be saved sensor coordinates" )
 
 
     cType.scan_frame_start = bpy.props.IntProperty( name = "Start frame", default = 1, min = 0, description = "First frame to be scanned" )
