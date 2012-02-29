@@ -194,7 +194,8 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                 max_distance=obj.velodyne_max_dist, noise_mu = obj.velodyne_noise_mu, 
                 noise_sigma=obj.velodyne_noise_sigma,  rotation_speed = obj.velodyne_rotation_speed, 
                 frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame, 
-                frame_time=time_per_frame, world_transformation=world_transformation )
+                frame_time=time_per_frame, world_transformation=world_transformation,
+                add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
             elif obj.scan_type == "ibeo":
                 blensor.ibeo.scan_range( angle_resolution=obj.ibeo_angle_resolution,
                 max_distance=obj.ibeo_max_dist, noise_mu = obj.ibeo_noise_mu, 
@@ -266,22 +267,26 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             col = row.column()
             col.prop(obj, "add_noise_scan_mesh")
             row = layout.row()
-            row.prop(obj, "save_scan")
+            col = row.column()
+            col.prop(obj, "save_scan")
+            col = row.column()            
+            col.prop(obj,"local_coordinates")        
             row = layout.row()
             col = row.column()
             col.prop(obj, "scan_frame_start")
             col = row.column()
             col.prop(obj, "scan_frame_end")
-            row = layout.row()
-            row.prop(obj,"local_coordinates")        
-
 
             row = layout.row()
             row.operator("blensor.scan", "Single scan")        
             row = layout.row()
             row.operator("blensor.scanrange", "Scan range")        
             row = layout.row()
-            row.operator("blensor.export_motion", "Export motion")
+            col = row.column()
+            col.operator("blensor.export_motion", "Export motion")
+            col = row.column()
+            col.operator("blensor.delete_scans", "Delete scans")
+            
         
 class OBJECT_OT_scan(bpy.types.Operator):
     bl_label = "Run scan" #Button label
@@ -334,8 +339,6 @@ class OBJECT_OT_scanrange(bpy.types.Operator):
         obj = context.object
         bpy.ops.blensor.scanrange_handler(filepath=self.filepath)
         return {'FINISHED'}
-
-
 
     def invoke(self,context,event):
         wm = context.window_manager
@@ -472,9 +475,29 @@ class OBJECT_OT_randomize(bpy.types.Operator):
  
         if is_cam:
             if obj.scan_type == "velodyne":
-                blensor.blendodyne.randomize_distance_bias(    obj.velodyne_db_noise_mu, obj.velodyne_db_noise_sigma )
+                blensor.blendodyne.randomize_distance_bias(obj.velodyne_db_noise_mu, obj.velodyne_db_noise_sigma )
 
         return{'FINISHED'}
+
+
+class OBJECT_OT_delete_scans(bpy.types.Operator):
+    bl_label = "Delete scans"
+    bl_idname = "blensor.delete_scans"
+    bl_description = "Delete all scans from scene"
+    
+    
+    def execute(self, context):
+        for o in bpy.context.scene.objects:
+            if o.name.find('NoisyScan.') == 0 or o.name.find('Scan.') == 0:
+                bpy.context.scene.objects.unlink(o)
+        
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_confirm(self, event)        
+        
+
 
 
 class OBJECT_OT_exportmotion(bpy.types.Operator):
@@ -493,7 +516,6 @@ class OBJECT_OT_exportmotion(bpy.types.Operator):
         print ("INVOKE")
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
-
 
 class OBJECT_OT_exporthandler(bpy.types.Operator):
     bl_label = "Export Handler" #Button label
@@ -572,11 +594,37 @@ class OBJECT_OT_exporthandler(bpy.types.Operator):
 laser_types=[("velodyne", "Velodyne HDL-64E", "Rotating infrared laser"),("ibeo","Ibeo LUX","Line laser with 4 rays"),("tof","TOF Camera","Time of Flight camera"),("depthmap","Depthmap","Plain Depthmap")]
 
 
-
 ######################################################
 
+def show_in_frame(obj, frame):
+    """ Make obj only appear in the specified frame """
+    # Cache current frame
+    cur_frame = bpy.context.scene.frame_current  
+    # Clear existing animation data
+    obj.animation_data_clear()
+    # Turn off display in previous frame
+    bpy.context.scene.frame_current = cur_frame - 1
+    obj.hide = True
+    obj.keyframe_insert('hide')
+    obj.hide_render = True
+    obj.keyframe_insert('hide_render')
+    # Turn on display in desired frame
+    bpy.context.scene.frame_set(frame)
+    obj.hide = False
+    obj.keyframe_insert('hide')
+    obj.hide_render = False
+    obj.keyframe_insert('hide_render')
+    # Turn off display in following frame
+    bpy.context.scene.frame_current = cur_frame + 1
+    obj.hide = True
+    obj.keyframe_insert('hide')
+    obj.hide_render = True
+    obj.keyframe_insert('hide_render')
+    # Return to cached frame
+    bpy.context.scene.frame_current =  cur_frame
 
 
+########################################################
 
 
 def info():
@@ -588,6 +636,7 @@ def register():
     global laser_types
     bpy.utils.register_class(OBJECT_OT_scanrange)
     bpy.utils.register_class(OBJECT_OT_randomize)
+    bpy.utils.register_class(OBJECT_OT_delete_scans)
     bpy.utils.register_class(OBJECT_OT_scan)
     bpy.utils.register_class(OBJECT_PT_sensor)
     bpy.utils.register_class(OBJECT_OT_exportmotion)
@@ -602,7 +651,7 @@ def register():
     cType.add_noise_scan_mesh = bpy.props.BoolProperty( name = "Add noisy scan", default = False, description = "Should the noisy scan be added as an object" )
 
     cType.save_scan = bpy.props.BoolProperty( name = "Save to File", default = False, description = "Should the scan be saved to file" )
-    cType.local_coordinates = bpy.props.BoolProperty( name = "Sensor coordinates", default = True, description = "Should the points be in sensor coordinates" )
+    cType.local_coordinates = bpy.props.BoolProperty( name = "Sensor coordinates", default = True, description = "Should the points be saved sensor coordinates" )
 
 
     cType.scan_frame_start = bpy.props.IntProperty( name = "Start frame", default = 1, min = 0, description = "First frame to be scanned" )
@@ -630,6 +679,7 @@ def unregister():
     bpy.utils.unregister_class(OBJECT_OT_exportmotion)
     bpy.utils.unregister_class(OBJECT_PT_sensor)
     bpy.utils.unregister_class(OBJECT_OT_scan)
+    bpy.utils.unregister_class(OBJECT_OT_delete_scans)
     bpy.utils.unregister_class(OBJECT_OT_randomize)
     bpy.utils.unregister_class(OBJECT_OT_scanrange)
     bpy.utils.unregister_class(OBJECT_OT_exporthandler)
