@@ -12,8 +12,8 @@ import sys
 import os
 import struct 
 import ctypes
-import time
-import random
+import time 
+import random 
 import bpy
 from mathutils import Vector, Euler, Matrix
 
@@ -122,7 +122,7 @@ def randomize_distance_bias(noise_mu = 0.0, noise_sigma = 0.04):
 @param world_transformation The transformation for the resulting pointcloud
 
 """
-def scan_advanced(rotation_speed = 10.0, simulation_fps=24, angle_resolution = 0.1728, max_distance = 120, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = 0.0, end_angle = 360.0, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, simulation_time = 0.0, world_transformation=Matrix()):
+def scan_advanced(rotation_speed = 10.0, simulation_fps=24, angle_resolution = 0.1728, max_distance = 120, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = 0.0, end_angle = 360.0, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, frame_time = (1.0 / 24.0), simulation_time = 0.0, world_transformation=Matrix()):
     start_time = time.time()
 
     current_time = simulation_time
@@ -138,7 +138,7 @@ def scan_advanced(rotation_speed = 10.0, simulation_fps=24, angle_resolution = 0
     ray_info = []
 
     steps_per_rotation = 360.0/angle_resolution
-    time_per_step = (1.0/rotation_speed) / steps_per_rotation
+    time_per_step = (1.0 / rotation_speed) / steps_per_rotation
     angles = end_angle-start_angle
 
     lines = (end_angle-start_angle)/angle_resolution
@@ -209,19 +209,17 @@ def scan_advanced(rotation_speed = 10.0, simulation_fps=24, angle_resolution = 0
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time = (1.0/24.0), rotation_speed = 10.0, fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, angle_resolution = 0.1728, max_distance = 120.0, noise_mu = 0.0, noise_sigma= 0.02,last_frame = True, world_transformation=Matrix()):
+def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time = (1.0/24.0), rotation_speed = 10.0, add_blender_mesh=False, add_noisy_blender_mesh=False, angle_resolution = 0.1728, max_distance = 120.0, noise_mu = 0.0, noise_sigma= 0.02, last_frame = True, world_transformation=Matrix()):
     start_time = time.time()
 
-    time_per_frame = 1.0 / float(fps)
     angle_per_second = 360.0 * rotation_speed
-    angle_per_frame = angle_per_second * time_per_frame
-
+    angle_per_frame = angle_per_second * frame_time
 
     try:
         for i in range(frame_start,frame_end):
                 bpy.context.scene.frame_current = i
 
-                ok,start_radians,scan_time = scan_advanced(angle_resolution = angle_resolution, start_angle = float(i)*angle_per_frame, end_angle=float(i+1)*angle_per_frame, evd_file = filename, evd_last_scan=False,add_blender_mesh=add_blender_mesh, add_noisy_blender_mesh=add_noisy_blender_mesh, simulation_time = float(i)*frame_time, max_distance=max_distance, noise_mu = noise_mu, noise_sigma=noise_sigma, world_transformation=world_transformation)
+                ok,start_radians,scan_time = scan_advanced(rotation_speed=rotation_speed, angle_resolution = angle_resolution, start_angle = float(i)*angle_per_frame, end_angle=float(i+1)*angle_per_frame, evd_file = filename, evd_last_scan=False,add_blender_mesh=add_blender_mesh, add_noisy_blender_mesh=add_noisy_blender_mesh, frame_time=frame_time, simulation_time = float(i)*frame_time, max_distance=max_distance, noise_mu = noise_mu, noise_sigma=noise_sigma, world_transformation=world_transformation)
 
                 if not ok:
                     break

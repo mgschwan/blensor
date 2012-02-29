@@ -193,8 +193,8 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                 blensor.blendodyne.scan_range( angle_resolution=obj.velodyne_angle_resolution, 
                 max_distance=obj.velodyne_max_dist, noise_mu = obj.velodyne_noise_mu, 
                 noise_sigma=obj.velodyne_noise_sigma,  rotation_speed = obj.velodyne_rotation_speed, 
-                frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame,
-                world_transformation = world_transformation )
+                frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame, 
+                frame_time=time_per_frame, world_transformation=world_transformation )
             elif obj.scan_type == "ibeo":
                 blensor.ibeo.scan_range( angle_resolution=obj.ibeo_angle_resolution,
                 max_distance=obj.ibeo_max_dist, noise_mu = obj.ibeo_noise_mu, 
@@ -280,6 +280,8 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             row.operator("blensor.scan", "Single scan")        
             row = layout.row()
             row.operator("blensor.scanrange", "Scan range")        
+            row = layout.row()
+            row.operator("blensor.export_motion", "Export motion")
         
 class OBJECT_OT_scan(bpy.types.Operator):
     bl_label = "Run scan" #Button label
@@ -293,7 +295,7 @@ class OBJECT_OT_scan(bpy.types.Operator):
         obj = context.object
         try:
             dispatch_scan(obj, self.filepath)
-        except:
+        except Exception as e:
             print ("Scan not successful")
             self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
 
@@ -344,7 +346,7 @@ class OBJECT_OT_scanrange(bpy.types.Operator):
             if context.object.type == "CAMERA":
                 is_cam = True
         except:
-                    self.report({'WARNING'}, "Please select a valid camera: "+str(type(e)))
+            self.report({'WARNING'}, "Please select a valid camera: "+str(type(e)))
  
         if is_cam:
             wm.fileselect_add(self)
@@ -384,8 +386,8 @@ class OBJECT_OT_scanrange_handler(bpy.types.Operator):
             try:
                     dispatch_scan_range(obj, self.filepath, frame=self.properties.frame, 
                                         last_frame=(self.properties.frame == obj.scan_frame_end),
-                                        time_per_frame = context.scene.render.fps / 
-                                        context.scene.render.fps_base)
+                                        time_per_frame=1.0/(context.scene.render.fps / 
+                                        context.scene.render.fps_base))
             except:
                 print ("Scan not successful")
                 self.report({'WARNING'}, "Range scan not successful: "+str(type(e)))
