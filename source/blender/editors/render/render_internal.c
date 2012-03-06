@@ -184,6 +184,48 @@ void image_buffer_rect_update(Scene *scene, RenderResult *rr, ImBuf *ibuf, volat
 
 /* ****************************** render invoking ***************** */
 
+
+static uintptr_t convert_str_to_ptr(char *ptr_str)
+{
+  int idx=0;
+  uintptr_t ptr=0;
+  for (idx=0; idx < 16; idx++)
+  {
+    ptr = ptr << 4;  
+    switch(ptr_str[idx])
+    {
+      case 'F': 
+      case 'f': ptr += 15; break;
+      case 'E': 
+      case 'e': ptr += 14; break;
+      case 'D': 
+      case 'd': ptr += 13; break;
+      case 'C': 
+      case 'c': ptr += 12; break;
+      case 'B': 
+      case 'b': ptr += 11; break;
+      case 'A': 
+      case 'a': ptr += 10; break;
+      case '0':
+      case '1':
+      case '2':
+      case '3':
+      case '4':
+      case '5':
+      case '6':
+      case '7':
+      case '8':
+      case '9': ptr += ptr_str[idx]-'0';
+            break;
+      default:
+        //You have some ugly data here
+        break;
+    }
+    
+  }
+  return ptr;
+}
+
 /* executes blocking blensor */
 static int screen_blensor_exec(bContext *C, wmOperator *op)
 {
@@ -193,26 +235,28 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
 	View3D *v3d= CTX_wm_view3d(C);
 	Main *mainp= CTX_data_main(C);
 	unsigned int lay= (v3d)? v3d->lay: scene->lay;
-    float *rays;
-    float *returns;
+  float *rays;
+  float *returns;
+  float ray_ptr_str[17];
+  float return_ptr_str[17];
 
     /* add modal handler for ESC */
 
 	const int raycount= RNA_int_get(op->ptr, "raycount");
-	const unsigned int rays_ptr_low =(unsigned int) RNA_int_get(op->ptr, "rays_ptr_low");
-	const unsigned int return_ptr_low =(unsigned int) RNA_int_get(op->ptr, "returns_ptr_low");
-	const unsigned int rays_ptr_high =(unsigned int) RNA_int_get(op->ptr, "rays_ptr_high");
-  const unsigned int return_ptr_high =(unsigned int) RNA_int_get(op->ptr, "returns_ptr_high");
+
 	const float maximum_distance =RNA_float_get(op->ptr, "maximum_distance");
 	struct Object *camera_override= v3d ? V3D_CAMERA_LOCAL(v3d) : NULL;
-  rays = (float *)( (rays_ptr_high<<16) + rays_ptr_low );
-  returns = (float *)( (return_ptr_high<<16) + return_ptr_low );
+
+  RNA_string_get(op->ptr, "vector_strptr", ray_ptr_str);
+  RNA_string_get(op->ptr, "return_vector_strptr", return_ptr_str);
+  rays = (float *)convert_str_to_ptr(ray_ptr_str);
+  returns = (float *)convert_str_to_ptr(return_ptr_str);
       
     if (raycount > 0)
     {
         
         printf ("Raycount: %d\n",raycount);
-
+      
 	    if(re==NULL) {
 		    re= RE_NewRender(scene->id.name);
 	    }
@@ -693,14 +737,11 @@ void RENDER_OT_blensor(wmOperatorType *ot)
 
        parm = RNA_def_int(ot->srna, "raycount", -1, -INT_MAX, INT_MAX, "Number of rays", "Number of rays in the rays array", -INT_MAX, INT_MAX);
 
-    parm = RNA_def_int_array(ot->srna, "rays_ptr_low", 0, NULL, 0, INT_MAX, "rays_ptr_low", "Pointer to the rays", 0.0f, 0.0f);
-    parm = RNA_def_int_array(ot->srna, "rays_ptr_high", 0, NULL, 0, INT_MAX, "rays_ptr_high", "Pointer to the rays", 0.0f, 0.0f);
-    parm = RNA_def_int_array(ot->srna, "returns_ptr_low", 0, NULL, 0, INT_MAX, "returns_ptr_low", "Pointer to the rays", 0.0f, 0.0f);
-    parm = RNA_def_int_array(ot->srna, "returns_ptr_high", 0, NULL, 0, INT_MAX, "returns_ptr_high", "Pointer to the rays", 0.0f, 0.0f);
-
     parm = RNA_def_float(ot->srna, "maximum_distance", 100.0f, -FLT_MAX, FLT_MAX, "", "Maximum distance a ray travels", -FLT_MAX, FLT_MAX);
-
        RNA_def_string(ot->srna, "layer", "", RE_MAXNAME, "Render Layer", "Single render layer to re-render");
        RNA_def_string(ot->srna, "scene", "", 19, "Scene", "Re-render single layer in this scene");
+       RNA_def_string(ot->srna, "vector_strptr", "", 17, "Vector Pointer", "String representation of the pointer to the input vectors ");
+       RNA_def_string(ot->srna, "return_vector_strptr", "", 17, "Return Vector Pointer", "String representation of the pointer to the output vectors ");
+
 }
 
