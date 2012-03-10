@@ -272,6 +272,8 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             col = row.column()            
             col.prop(obj,"local_coordinates")        
             row = layout.row()
+            row.prop(obj, "ref_enabled")
+            row = layout.row()
             col = row.column()
             col.prop(obj, "scan_frame_start")
             col = row.column()
@@ -660,6 +662,8 @@ def register():
 
 
     cType.scan_type = bpy.props.EnumProperty( items=laser_types, name = "Scanner type", description = "Which scanner to use" )
+
+    cType.ref_enabled = bpy.props.BoolProperty( name = "Enable reflection", default = False, description = "Should the respect reflective surfaces" )
 
     cType.ref_dist = bpy.props.FloatProperty( name = "Reflectivity Distance", default = 100.0, description = "Objects closer than reflectivity distance are independent of their reflectivity" )
     cType.ref_limit = bpy.props.FloatProperty( name = "Reflectivity Limit", default = -1.0, description = "Minimum reflectivity for objects at the reflectivity distance" )

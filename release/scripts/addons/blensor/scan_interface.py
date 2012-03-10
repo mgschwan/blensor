@@ -13,7 +13,7 @@ from mathutils import Vector, Euler
 """The number of elements per return depends on the version of the blensor
    patch
 """
-ELEMENTS_PER_RETURN = 5
+ELEMENTS_PER_RETURN = 8
 
 
 
@@ -53,11 +53,14 @@ def scan_rays(rays, max_distance):
               vec[2] = raydistance * vec[2]/veclen
 
 
-              ret = [ float(returns_buffer[e + idx*ELEMENTS_PER_RETURN]) for e in range(ELEMENTS_PER_RETURN-1) ]            
+              ret = [ float(returns_buffer[e + idx*ELEMENTS_PER_RETURN]) for e in range(4) ]            
               ret[1] = vec[0]
               ret[2] = vec[1]
               ret[3] = vec[2]
               ret.append(returns_buffer_uint[idx*ELEMENTS_PER_RETURN+4]) #objectid
+              ret.append((returns_buffer[idx*ELEMENTS_PER_RETURN+5],
+                          returns_buffer[idx*ELEMENTS_PER_RETURN+6],
+                          returns_buffer[idx*ELEMENTS_PER_RETURN+7])) # RGB Value of the material
               ret.append(idx) # Store the index per return as the last element
               array_of_returns.append(ret)
     except TypeError as e:

@@ -1827,6 +1827,12 @@ void RE_TileProcessor(Render *re)
 
 /* ************  This part uses API, for rendering Blender scenes ********** */
 
+
+//How many fields are returned from the cast rays function
+#define BLENSOR_INTERSECTION_RETURNS 15
+#define BLENSOR_ELEMENTS_PER_RETURN 8
+
+
 /* Return the value of the id property or the defaultvalue if the id property
  * does not exist
  */
@@ -1885,6 +1891,10 @@ static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, flo
     ret[6] = 0.0; //Reflection
     ret[10] = 1.0; //Refractive Index of the material
     ret[11] = 1.0; //Diffuse reflectivity
+    ret[12] = 1.0; //R-Value
+    ret[13] = 1.0; //G-Value
+    ret[14] = 1.0; //B-Value
+
     if (hit_ob && *hit_ob)
     {
         isect.orig.ob = *hit_ob;
@@ -1940,7 +1950,10 @@ static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, flo
                 ret[8] = face->n[1];
                 ret[9] = face->n[2];
                 ret[10] = Blensor_GetIDPropertyValue_Double(&face->mat->id,"refractive_index", 1.0);
-                ret[11] = m->ref; 
+                ret[11] = m->ref;
+                ret[12] = m->r; 
+                ret[13] = m->g;
+                ret[14] = m->b;
             }
 
             if (obi->ob->id.name != NULL)
@@ -2042,6 +2055,7 @@ static void do_blensor(Render *re, float *rays, int raycount, float *returns, fl
     double reflectivity_limit = 0.1;  
     double reflectivity_slope = 0.01;  
     double min_reflectivity = -1.0;
+    int reflection_enabled = 0;
     struct bProperty *tprop;
     Camera *cam;
     PointerRNA rna_cam;
@@ -2064,6 +2078,9 @@ static void do_blensor(Render *re, float *rays, int raycount, float *returns, fl
     rna_cam_prop = RNA_struct_find_property(&rna_cam, "ref_slope");
     reflectivity_slope = RNA_property_float_get(&rna_cam, rna_cam_prop);
 
+    rna_cam_prop = RNA_struct_find_property(&rna_cam, "ref_enabled");
+    reflection_enabled = RNA_property_boolean_get(&rna_cam, rna_cam_prop);
+
  
 
     refractive_index = Blensor_GetIDPropertyValue_Double(&re->scene->world->id,"refractive_index", 1.0);
@@ -2077,7 +2094,7 @@ static void do_blensor(Render *re, float *rays, int raycount, float *returns, fl
 
         float sx = 0.0, sy=0.0, sz=0.0;
         float vx = rays[idx*3], vy=rays[idx*3+1], vz=rays[idx*3+2];
-        float intersection[12];
+        float intersection[BLENSOR_INTERSECTION_RETURNS];
         //Transmission threshold and reflection threshold should be set for
         //every ray from within python
 
@@ -2110,7 +2127,7 @@ static void do_blensor(Render *re, float *rays, int raycount, float *returns, fl
             //      If the remaining amount of energy that is emitted through reflection/transmission
             //      is below the threshold for a detection we can stop
 
-            if (intersection[6] > 0.0) //if reflection instead of transmission
+            if (intersection[6] > 0.0 && reflection_enabled != 0) //if reflection instead of transmission
             {
                     /* Check if the ray is reflected and calculate the
                      * the new vector
@@ -2131,7 +2148,7 @@ static void do_blensor(Render *re, float *rays, int raycount, float *returns, fl
 
                     valid_signal=0; //Reflection means we have not hit a correct target
             } 
-            else if (intersection[11] > min_reflectivity)
+            else if (intersection[11] > min_reflectivity )
             {
                valid_signal = 1;
                //We have a signal
@@ -2165,7 +2182,10 @@ static void do_blensor(Render *re, float *rays, int raycount, float *returns, fl
         if (raydistance <= maxdist && valid_signal != 0)
         {   
             intersection[0] = raydistance;
-            memcpy(&returns[idx*5], intersection, 5*sizeof(float));
+            memcpy(&returns[idx*BLENSOR_ELEMENTS_PER_RETURN], intersection, 5*sizeof(float));
+            returns[idx*BLENSOR_ELEMENTS_PER_RETURN+5] = intersection[12]; //r-value
+            returns[idx*BLENSOR_ELEMENTS_PER_RETURN+6] = intersection[13]; //g-value
+            returns[idx*BLENSOR_ELEMENTS_PER_RETURN+7] = intersection[14]; //b-value
         }
         else 
         {
