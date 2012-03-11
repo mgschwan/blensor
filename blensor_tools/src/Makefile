@@ -1,10 +1,22 @@
-all: pcd_combiner
+all: pcd_combiner pcd_filter
+
+
+LIBS=`pkg-config pcl_common-1.5 --libs` -lpcl_io -lpcl_filters
+LIBS+= `pkg-config /usr/local/lib64/pkgconfig/flann.pc --libs` 
+
+
+CFLAGS=`pkg-config pcl_common-1.5 --cflags`
 
 
 pcd_combiner: pcd_combiner.cpp
-	g++ -o ../bin/pcd_combiner pcd_combiner.cpp -I /opt/pcl/include/pcl-1.5/ -I /opt/pcl/include/ -I /usr/include/eigen3/ -L /opt/pcl/lib/ -lpcl_common -lpcl_io -lpcl_filters
+	g++ -o pcd_combiner pcd_combiner.cpp ${CFLAGS} -I /usr/include/eigen3/  ${LIBS}
+
+pcd_filter: pcd_combiner.cpp
+	g++ -o pcd_filter pcd_filter.cpp ${CFLAGS} -I /usr/include/eigen3/  ${LIBS}
+
 
 
 
 clean:
-	rm ../bin/pcd_combiner
+	rm pcd_combiner
+  rm pcd_filter
