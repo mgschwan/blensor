@@ -14,9 +14,19 @@ int
 {
   bool binary = false;
 
-  pcl::PointCloud<pcl::PointXYZ> *cloud1(new  pcl::PointCloud<pcl::PointXYZ>());
-  pcl::PointCloud<pcl::PointXYZ> outputCloud;
-  pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud1_ptr(cloud1);
+  if (argc < 4)
+  {
+    cout << "Usage: pcd_filter <input-cloud> <leaf-size (i.e 0.01)> <output-cloud> [binary]" << endl;
+    return 0; 
+  }
+  if (argc > 4 && (string(argv[4]) == "binary")) binary = true;
+
+
+
+
+  pcl::PointCloud<pcl::PointXYZRGB> *cloud1(new  pcl::PointCloud<pcl::PointXYZRGB>());
+  pcl::PointCloud<pcl::PointXYZRGB> outputCloud;
+  pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud1_ptr(cloud1);
 
 
 
@@ -24,9 +34,8 @@ int
   reader.read(string(argv[1]),*cloud1);
   float leafsize = 0.01;
   sscanf(argv[2],"%f",&leafsize);
-  if (string(argv[4]) == "binary") binary = true;
 
-  pcl::VoxelGrid<pcl::PointXYZ> grid;
+  pcl::VoxelGrid<pcl::PointXYZRGB> grid;
   grid.setLeafSize(leafsize,leafsize,leafsize);
   grid.setInputCloud(cloud1_ptr);
   grid.filter(outputCloud);
