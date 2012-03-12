@@ -83,9 +83,12 @@ class evd_file:
         idx = 0
         for e in self.buffer:
           idx = idx + 1
-          color_uint32 = 0xFF000000 + (e[12][0]<<16) + (e[12][1]<<8) + e[12][2]
-          pcl.write("%f %f %f %f\n"%(float(e[5]),float(e[6]),float(e[7]), color_uint32))        
-          pcl_noisy.write("%f %f %f %f\n"%(float(e[8]),float(e[9]),float(e[10]), color_uint32))        
+          #Storing color values packed into a single floating point number??? 
+          #That is really required by the pcl library!
+          color_uint32 = (e[12][0]<<16) | (e[12][1]<<8) | (e[12][2])
+          values=struct.unpack("f",struct.pack("I",color_uint32))
+          pcl.write("%f %f %f %.15e\n"%(float(e[5]),float(e[6]),float(e[7]), values[0]))        
+          pcl_noisy.write("%f %f %f %.15e\n"%(float(e[8]),float(e[9]),float(e[10]), values[0]))        
         pcl.close()
         pcl_noisy.close()
       except Exception as e:
