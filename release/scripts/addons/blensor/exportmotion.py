@@ -21,10 +21,9 @@ def export(filename, fps=24, frame=0, append=False):
 #        bpy.context.scene.frame_current = frame
 #        bpy.context.scene.update()
     for o in object_list:
-        xrot = o.rotation_euler.x
-        yrot = o.rotation_euler.y
-        zrot = o.rotation_euler.z
+        trans = o.matrix_world.to_translation()
+        rot = o.matrix_world.to_euler()
         fh.write ("timestamp: %.4f object: %s x: %.10f y: %.10f z: %.10f rx: %.10f ry: %.10f rz: %.10f\n"%(float(frame)/float(fps),
-                   o.name, o.location.x, o.location.y, o.location.z, xrot, yrot, zrot))
+                   o.name, trans.x, trans.y, trans.z, rot.x, rot.y, rot.z))
 
     fh.close()
