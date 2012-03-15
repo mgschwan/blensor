@@ -31,8 +31,21 @@ int
 
 
   pcl::PCDReader reader;
-  reader.read(string(argv[1]),*cloud1);
-  reader.read(string(argv[2]),cloud2);
+  try {
+    reader.read(string(argv[1]),*cloud1);
+  } catch (pcl::IOException e)
+  {
+    std::cout << "Input Mesh One is empty" << std::endl;
+  }
+
+  try
+  {
+    reader.read(string(argv[2]),cloud2);
+  } catch(pcl::IOException e)
+  {
+    std::cout << "Input Mesh Two is empty" << std::endl;
+  }
+
   if (argc > 4)
   {
     if (string(argv[4]) == "binary") binary = true;
