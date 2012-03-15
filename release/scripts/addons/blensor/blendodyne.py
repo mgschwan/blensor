@@ -237,6 +237,7 @@ def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time
 
 
     if last_frame:
+        #TODO: move this into the evd module
         evd_file = open(filename,"a")
         evd_file.buffer.write(struct.pack("i",-1))
         evd_file.close()
@@ -244,39 +245,6 @@ def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time
 
     end_time = time.time()
     print ("Total scan time: %.2f"%(end_time-start_time))
-
-
-
-
-
-"""
-
-    rays_buffer = (ctypes.c_float * len(rays))()
-    for idx in range(len(rays)):
-        struct.pack_into("f",rays_buffer, idx*4, rays[idx])
-
-
-    ELEMENTS_PER_RETURN = 5
-    returns_buffer = (ctypes.c_float * ((len(rays)//3) * ELEMENTS_PER_RETURN))()
-   
-    print ("Raycount: ", len(rays)//3)
-    rays_low = (ctypes.addressof(rays_buffer)%(2**16))
-    rays_high = (ctypes.addressof(rays_buffer)//(2**16))
-    returns_low = (ctypes.addressof(returns_buffer)%(2**16))
-    returns_high = (ctypes.addressof(returns_buffer)//(2**16))
-    
-    returns_buffer_uint = ctypes.cast(returns_buffer, ctypes.POINTER(ctypes.c_uint))
-
-    bpy.ops.render.blensor(raycount = len(rays)//3, rays_ptr_low = rays_low, rays_ptr_high = rays_high, returns_ptr_low = returns_low, returns_ptr_high = returns_high )
-"""
-
-
-
-
-
-
-
-
 
 
 

@@ -183,7 +183,7 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
             if obj.local_coordinates:
               world_transformation = Matrix()
             else:
-              world_transformation = obj.matrix_world #((obj.matrix_world*Matrix.Rotation(-pi/2,4,"X")))
+              world_transformation = obj.matrix_world 
 
             if obj.scan_type == "velodyne":
                 obj.ref_dist = obj.velodyne_ref_dist
@@ -201,18 +201,21 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                 max_distance=obj.ibeo_max_dist, noise_mu = obj.ibeo_noise_mu, 
                 noise_sigma=obj.ibeo_noise_sigma,  rotation_speed = obj.ibeo_rotation_speed, 
                 frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame,
-                world_transformation=world_transformation)
+                world_transformation=world_transformation,
+                add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
             elif obj.scan_type == "depthmap":
                 blensor.depthmap.scan_range( max_distance=obj.depthmap_max_dist,
                 frame_start = frame, frame_end=frame+1, filename=filename,
-                world_transformation=world_transformation)
+                world_transformation=world_transformation,
+                add_blender_mesh=obj.add_scan_mesh)
             elif obj.scan_type == "tof":
                 blensor.tof.scan_range( max_distance=obj.tof_max_dist, 
                 noise_mu = obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,                
                 frame_start = frame, frame_end=frame+1, filename=filename, 
                 last_frame=last_frame,frame_time = time_per_frame,
                 backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres,
-                tof_res_y = obj.tof_yres, world_transformation=world_transformation)
+                tof_res_y = obj.tof_yres, world_transformation=world_transformation,
+                add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
             else:
                 print ("Scanner not supported ... yet")
 

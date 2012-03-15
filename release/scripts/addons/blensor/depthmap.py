@@ -99,12 +99,16 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
         fh.close()
 
     if add_blender_mesh:
-        depthmap_mesh = bpy.data.meshes.new("depthmap_mesh")
-        depthmap_mesh.vertices.add(len(verts)//3)
-        depthmap_mesh.vertices.foreach_set("co", verts)
-        depthmap_mesh.update()
-        depthmap_mesh_object = bpy.data.objects.new("depthmap", depthmap_mesh)
-        bpy.context.scene.objects.link(depthmap_mesh_object)
+        scan_mesh = bpy.data.meshes.new("scan_mesh")
+        scan_mesh.vertices.add(len(verts)//3)
+        scan_mesh.vertices.foreach_set("co", verts)
+        scan_mesh.update()
+        scan_mesh_object = bpy.data.objects.new("Scan.{0}".format(bpy.context.scene.frame_current), scan_mesh)
+        bpy.context.scene.objects.link(scan_mesh_object)
+        blensor.show_in_frame(scan_mesh_object, bpy.context.scene.frame_current)
+
+        if world_transformation == Matrix():
+            scan_mesh_object.matrix_world = bpy.context.object.matrix_world
 
 
 
@@ -125,7 +129,6 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
 
 def scan_range(frame_start, frame_end, filename="/tmp/depthmap", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 120.0, last_frame = True,world_transformation=Matrix()):
 
-
     start_time = time.time()
 
     time_per_frame = 1.0 / float(fps)
@@ -135,7 +138,7 @@ def scan_range(frame_start, frame_end, filename="/tmp/depthmap", frame_time = (1
 
             bpy.context.scene.frame_current = i
 
-            ok,start_radians,scan_time = scan_advanced(filename = filename+"%04d.dmap"%i , add_blender_mesh=add_blender_mesh, max_distance=max_distance,world_transformation=world_transformation)
+            ok,start_radians,scan_time = scan_advanced(filename = filename+"%04d.dmap"%i , add_blender_mesh=add_blender_mesh,  max_distance=max_distance,world_transformation=world_transformation)
 
             if not ok:
                 break

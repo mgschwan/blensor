@@ -157,20 +157,28 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
         evd_storage.appendEvdFile()
 
     if add_blender_mesh:
-        tof_mesh = bpy.data.meshes.new("tof_mesh")
-        tof_mesh.vertices.add(len(verts))
-        tof_mesh.vertices.foreach_set("co", tuples_to_list(verts))
-        tof_mesh.update()
-        tof_mesh_object = bpy.data.objects.new("tof", tof_mesh)
-        bpy.context.scene.objects.link(tof_mesh_object)
+        scan_mesh = bpy.data.meshes.new("scan_mesh")
+        scan_mesh.vertices.add(len(verts))
+        scan_mesh.vertices.foreach_set("co", tuples_to_list(verts))
+        scan_mesh.update()
+        scan_mesh_object = bpy.data.objects.new("Scan.{0}".format(bpy.context.scene.frame_current), scan_mesh)
+        bpy.context.scene.objects.link(scan_mesh_object)
+        blensor.show_in_frame(scan_mesh_object, bpy.context.scene.frame_current)
+
+        if world_transformation == Matrix():
+            scan_mesh_object.matrix_world = bpy.context.object.matrix_world
 
     if add_noisy_blender_mesh:
-        tof_mesh = bpy.data.meshes.new("noisy_tof_mesh")
-        tof_mesh.vertices.add(len(verts_noise))
-        tof_mesh.vertices.foreach_set("co", tuples_to_list(verts_noise))
-        tof_mesh.update()
-        tof_mesh_object = bpy.data.objects.new("noisy_tof", tof_mesh)
-        bpy.context.scene.objects.link(tof_mesh_object)
+        noise_scan_mesh = bpy.data.meshes.new("noisy_scan_mesh")
+        noise_scan_mesh.vertices.add(len(verts_noise))
+        noise_scan_mesh.vertices.foreach_set("co", tuples_to_list(verts_noise))
+        noise_scan_mesh.update()
+        noise_scan_mesh_object = bpy.data.objects.new("NoisyScan.{0}".format(bpy.context.scene.frame_current), noise_scan_mesh)
+        bpy.context.scene.objects.link(noise_scan_mesh_object)
+        blensor.show_in_frame(noise_scan_mesh_object, bpy.context.scene.frame_current)
+
+        if world_transformation == Matrix():
+            noise_scan_mesh_object.matrix_world = bpy.context.object.matrix_world
 
     bpy.context.scene.update()
 
@@ -186,7 +194,7 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144,world_transformation=Matrix()):
+def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144,world_transformation=Matrix()):
 
 
 
@@ -200,7 +208,9 @@ def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.
             bpy.context.scene.frame_current = i
 
             ok,start_radians,scan_time = scan_advanced(evd_file = filename , 
-                    add_blender_mesh=add_blender_mesh, max_distance=max_distance,
+                    add_blender_mesh=add_blender_mesh, 
+                    add_noisy_blender_mesh=add_noisy_blender_mesh, 
+                    max_distance=max_distance,
                     timestamp = float(i) * frame_time,
                     noise_mu = noise_mu, noise_sigma=noise_sigma, backfolding=backfolding,
                     tof_res_x = tof_res_x, tof_res_y = tof_res_y,world_transformation=world_transformation)

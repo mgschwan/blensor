@@ -174,16 +174,24 @@ def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0
         scan_mesh.vertices.add(len(verts))
         scan_mesh.vertices.foreach_set("co", tuples_to_list(verts))
         scan_mesh.update()
-        scan_mesh_object = bpy.data.objects.new("scan", scan_mesh)
+        scan_mesh_object = bpy.data.objects.new("Scan.{0}".format(bpy.context.scene.frame_current), scan_mesh)
         bpy.context.scene.objects.link(scan_mesh_object)
+        blensor.show_in_frame(scan_mesh_object, bpy.context.scene.frame_current)
+        
+        if world_transformation == Matrix():
+            scan_mesh_object.matrix_world = bpy.context.object.matrix_world
 
     if add_noisy_blender_mesh:
         noise_scan_mesh = bpy.data.meshes.new("noisy_scan_mesh")
         noise_scan_mesh.vertices.add(len(verts_noise))
         noise_scan_mesh.vertices.foreach_set("co", tuples_to_list(verts_noise))
         noise_scan_mesh.update()
-        noise_scan_mesh_object = bpy.data.objects.new("noisy_scan", noise_scan_mesh)
+        noise_scan_mesh_object = bpy.data.objects.new("NoisyScan.{0}".format(bpy.context.scene.frame_current), noise_scan_mesh)
         bpy.context.scene.objects.link(noise_scan_mesh_object)
+        blensor.show_in_frame(noise_scan_mesh_object, bpy.context.scene.frame_current)
+
+        if world_transformation == Matrix():
+            noise_scan_mesh_object.matrix_world = bpy.context.object.matrix_world
 
 
     bpy.context.scene.update()
