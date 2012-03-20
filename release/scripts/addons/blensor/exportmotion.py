@@ -8,18 +8,19 @@ def export(filename, fps=24, frame=0, append=False):
         Export the position and motion data for all, or all selected objects
         for the given framerange.
     """
-    
+
     mode ="w"
     if append:
         mode = "a+"
     fh = open(filename,mode)
+
     object_list = bpy.data.objects
     if len(bpy.context.selected_objects) > 0:
         object_list = bpy.context.selected_objects
-#    for frame in range(startframe,stopframe):
-    bpy.ops.anim.change_frame(frame=frame)
-#        bpy.context.scene.frame_current = frame
-#        bpy.context.scene.update()
+    
+    bpy.context.scene.frame_set(frame)
+    #bpy.context.scene.update()
+    
     for o in object_list:
         trans = o.matrix_world.to_translation()
         rot = o.matrix_world.to_euler()
@@ -27,3 +28,4 @@ def export(filename, fps=24, frame=0, append=False):
                    o.name, trans.x, trans.y, trans.z, rot.x, rot.y, rot.z))
 
     fh.close()
+
