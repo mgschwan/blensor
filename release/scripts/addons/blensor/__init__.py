@@ -303,6 +303,7 @@ class OBJECT_OT_scan(bpy.types.Operator):
 
     def execute(self, context):
         obj = context.object
+
         try:
             dispatch_scan(obj, self.filepath)
         except Exception as e:
@@ -342,6 +343,7 @@ class OBJECT_OT_scanrange(bpy.types.Operator):
 
     def execute(self, context):
         obj = context.object
+
         bpy.ops.blensor.scanrange_handler(filepath=self.filepath)
         return {'FINISHED'}
 
@@ -357,7 +359,8 @@ class OBJECT_OT_scanrange(bpy.types.Operator):
             self.report({'WARNING'}, "Please select a valid camera: "+str(type(e)))
  
         if is_cam:
-            wm.fileselect_add(self)
+            if obj.save_scan:
+              wm.fileselect_add(self)
             return {'RUNNING_MODAL'}
 
         return{'FINISHED'}
