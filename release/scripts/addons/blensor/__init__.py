@@ -359,8 +359,7 @@ class OBJECT_OT_scanrange(bpy.types.Operator):
             self.report({'WARNING'}, "Please select a valid camera: "+str(type(e)))
  
         if is_cam:
-            if obj.save_scan:
-              wm.fileselect_add(self)
+            context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
 
         return{'FINISHED'}
