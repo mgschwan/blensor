@@ -8,6 +8,7 @@ import blensor.depthmap
 import blensor.tof
 import blensor.evd
 import blensor.ibeo
+import blensor.kinect
 import blensor.exportmotion
 import blensor.mesh_utils
 from mathutils import Matrix
@@ -22,6 +23,7 @@ __all__ = [
     'depthmap',
     'globals',
     'tof',
+    'kinect'
     'ibeo',
     'exportmotion',
     'mesh_utils'
@@ -95,6 +97,21 @@ def tof_layout(obj, layout):
             col.prop(obj, "tof_noise_sigma")
             row = layout.row()
             row.prop(obj, "tof_backfolding")
+
+def kinect_layout(obj, layout):
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "kinect_xres")
+            col = row.column()
+            col.prop(obj, "kinect_yres")
+            row = layout.row()
+            row.prop(obj, "kinect_max_dist")
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "kinect_noise_mu")
+            col = row.column()
+            col.prop(obj, "kinect_noise_sigma")
+
 
 def depthmap_layout(obj, layout):
             row = layout.row()
@@ -172,6 +189,8 @@ def dispatch_scan(obj, filename=None):
                 evd_file=filename, noise_mu=obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,
                 backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres, 
                 tof_res_y = obj.tof_yres,world_transformation=world_transformation)
+            elif obj.scan_type == "kinect":
+                blensor.kinect.scan_advanced( scanner_object = obj, evd_file=filename, world_transformation=world_transformation)
             else:
                 print ("Scanner not supported ... yet")
 
@@ -216,6 +235,11 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                 backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres,
                 tof_res_y = obj.tof_yres, world_transformation=world_transformation,
                 add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
+            elif obj.scan_type == "kinect":
+                blensor.kinect.scan_range( scanner_object = obj,
+                frame_start = frame, frame_end=frame+1, filename=filename, 
+                last_frame=last_frame,frame_time = time_per_frame,
+                world_transformation=world_transformation)
             else:
                 print ("Scanner not supported ... yet")
 
@@ -259,6 +283,8 @@ class OBJECT_PT_sensor(bpy.types.Panel):
                 velodyne_layout(obj,layout)
             elif obj.scan_type == "tof":
                 tof_layout(obj,layout)
+            elif obj.scan_type == "kinect":
+                kinect_layout(obj,layout)
             elif obj.scan_type == "ibeo":
                 ibeo_layout(obj,layout)
             elif obj.scan_type == "depthmap":
@@ -598,7 +624,7 @@ class OBJECT_OT_exporthandler(bpy.types.Operator):
 
 
 
-laser_types=[("velodyne", "Velodyne HDL-64E", "Rotating infrared laser"),("ibeo","Ibeo LUX","Line laser with 4 rays"),("tof","TOF Camera","Time of Flight camera"),("depthmap","Depthmap","Plain Depthmap")]
+laser_types=[("velodyne", "Velodyne HDL-64E", "Rotating infrared laser"),("ibeo","Ibeo LUX","Line laser with 4 rays"),("tof","TOF Camera","Time of Flight camera"),("kinect","Kinect","Primesense technology"),("depthmap","Depthmap","Plain Depthmap")]
 
 
 ######################################################
@@ -682,6 +708,7 @@ def register():
     blensor.blendodyne.addProperties(cType)
     blensor.ibeo.addProperties(cType)
     blensor.tof.addProperties(cType)
+    blensor.kinect.addProperties(cType)
     blensor.depthmap.addProperties(cType)
 """Unregister the blender addon"""
 def unregister():
