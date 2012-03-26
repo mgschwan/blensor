@@ -14,19 +14,27 @@ from mathutils import Vector, Euler
    patch
 """
 ELEMENTS_PER_RETURN = 8
+SIZEOF_FLOAT = 4
+
+""" rays is an array of vectors that describe the laser direction and also the
+         ray origin if the ray_origin field is setp
+    max_distance is a float that determines the maximum distance a ray can travel
+"""
+def scan_rays(rays, max_distance, ray_origins=False):
+
+    elementsPerRay = 3
+    if ray_origins == True:
+      elementsPerRay = 6
+  
+    numberOfRays = int(len(rays)/elementsPerRay)
 
 
+    rays_buffer = (ctypes.c_float * numberOfRays*elementsPerRay)()
+    struct.pack_into("%df"%(numberOfRays*elementsPerRay), rays_buffer, 0, *rays[:numberOfRays*elementsPerRay])
 
-def scan_rays(rays, max_distance):
-
-    rays_buffer = (ctypes.c_float * len(rays))()
-    for idx in range(len(rays)):
-        struct.pack_into("f",rays_buffer, idx*4, rays[idx])
-
-
-    returns_buffer = (ctypes.c_float * ((len(rays)//3) * ELEMENTS_PER_RETURN))()
+    returns_buffer = (ctypes.c_float * (numberOfRays * ELEMENTS_PER_RETURN))()
    
-    print ("Raycount: ", len(rays)//3)
+    print ("Raycount: ", numberOfRays)
     
     returns_buffer_uint = ctypes.cast(returns_buffer, ctypes.POINTER(ctypes.c_uint))
 
@@ -37,15 +45,15 @@ def scan_rays(rays, max_distance):
       
 
 
-      for idx in range((len(rays)//3)):
+      for idx in range(numberOfRays):
           if returns_buffer[idx*ELEMENTS_PER_RETURN] < max_distance and returns_buffer[idx*ELEMENTS_PER_RETURN]>0.0 :
               #The ray may have been reflecten and refracted. But the laser
               #does not know that so we need to calculate the point which
               #is the measured distance away from the sensor but without
               #beeing reflected/refracted. We use the original ray direction
-              vec = [float(rays[idx*3]), 
-                     float(rays[idx*3+1]),
-                     float(rays[idx*3+2])]
+              vec = [float(rays[idx*elementsPerRay]), 
+                     float(rays[idx*elementsPerRay+1]),
+                     float(rays[idx*elementsPerRay+2])]
               veclen = math.sqrt(vec[0]**2+vec[1]**2+vec[2]**2)
               raydistance = float(returns_buffer[idx*ELEMENTS_PER_RETURN])
               vec[0] = raydistance * vec[0]/veclen
