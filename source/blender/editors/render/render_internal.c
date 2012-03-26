@@ -243,6 +243,7 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
     /* add modal handler for ESC */
 
 	const int raycount= RNA_int_get(op->ptr, "raycount");
+	const int elements_per_ray= RNA_int_get(op->ptr, "elements_per_ray");
 
 	const float maximum_distance =RNA_float_get(op->ptr, "maximum_distance");
 	struct Object *camera_override= v3d ? V3D_CAMERA_LOCAL(v3d) : NULL;
@@ -255,7 +256,7 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
     if (raycount > 0)
     {
         
-        printf ("Raycount: %d\n",raycount);
+      printf ("Raycount: %d\n",raycount);
       
 	    if(re==NULL) {
 		    re= RE_NewRender(scene->id.name);
@@ -277,7 +278,7 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
 
      RE_SetReports(re, op->reports);
 
-	    RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, returns, maximum_distance);
+	    RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, elements_per_ray, returns, maximum_distance);
 
     	RE_SetReports(re, NULL);
 
@@ -736,8 +737,9 @@ void RENDER_OT_blensor(wmOperatorType *ot)
        ot->exec= screen_blensor_exec;
 
        parm = RNA_def_int(ot->srna, "raycount", -1, -INT_MAX, INT_MAX, "Number of rays", "Number of rays in the rays array", -INT_MAX, INT_MAX);
+       parm = RNA_def_int(ot->srna, "elements_per_ray", 3, -INT_MAX, INT_MAX, "Elements per ray", "Number of elements per ray", -INT_MAX, INT_MAX);
 
-    parm = RNA_def_float(ot->srna, "maximum_distance", 100.0f, -FLT_MAX, FLT_MAX, "", "Maximum distance a ray travels", -FLT_MAX, FLT_MAX);
+       parm = RNA_def_float(ot->srna, "maximum_distance", 100.0f, -FLT_MAX, FLT_MAX, "", "Maximum distance a ray travels", -FLT_MAX, FLT_MAX);
        RNA_def_string(ot->srna, "layer", "", RE_MAXNAME, "Render Layer", "Single render layer to re-render");
        RNA_def_string(ot->srna, "scene", "", 19, "Scene", "Re-render single layer in this scene");
        RNA_def_string(ot->srna, "vector_strptr", "", 17, "Vector Pointer", "String representation of the pointer to the input vectors ");

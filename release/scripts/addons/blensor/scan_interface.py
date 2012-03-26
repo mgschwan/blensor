@@ -41,7 +41,7 @@ def scan_rays(rays, max_distance, ray_origins=False):
     array_of_returns = []
 
     try:
-      bpy.ops.render.blensor(raycount = len(rays)//3,maximum_distance = max_distance, vector_strptr="%016X"%(ctypes.addressof(rays_buffer)), return_vector_strptr="%016X"%(ctypes.addressof(returns_buffer)))
+      bpy.ops.render.blensor(raycount = numberOfRays,maximum_distance = max_distance, vector_strptr="%016X"%(ctypes.addressof(rays_buffer)), return_vector_strptr="%016X"%(ctypes.addressof(returns_buffer)), elements_per_ray = elementsPerRay)
       
 
 

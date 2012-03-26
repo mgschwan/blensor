@@ -2046,7 +2046,7 @@ double blensor_calculate_reflectivity_limit(double dist,
 
 
 /* cast all rays specified in *rays and return the result via *returns */
-static void do_blensor(Render *re, float *rays, int raycount, float *returns, float maximum_distance)
+static void do_blensor(Render *re, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance)
 {
     int idx;
     float refractive_index = 1.0;
@@ -2093,7 +2093,7 @@ static void do_blensor(Render *re, float *rays, int raycount, float *returns, fl
 
 
         float sx = 0.0, sy=0.0, sz=0.0;
-        float vx = rays[idx*3], vy=rays[idx*3+1], vz=rays[idx*3+2];
+        float vx = rays[idx*elements_per_ray], vy=rays[idx*elements_per_ray+1], vz=rays[idx*elements_per_ray+2];
         float intersection[BLENSOR_INTERSECTION_RETURNS];
         //Transmission threshold and reflection threshold should be set for
         //every ray from within python
@@ -2103,6 +2103,17 @@ static void do_blensor(Render *re, float *rays, int raycount, float *returns, fl
         int transmission = 0;
         void *hit_ob = NULL;
         void *hit_face = NULL;
+
+        /* If we got 6 elements per ray the scan interface also supplied
+           start coordinates for every ray
+         */
+        if (elements_per_ray >= 6)
+        {
+          sx = rays[idx*elements_per_ray+3];
+          sy = rays[idx*elements_per_ray+4];
+          sz = rays[idx*elements_per_ray+5];;
+        }
+
     
         do
         {
@@ -3326,7 +3337,7 @@ void RE_SetReports(Render *re, ReportList *reports)
 }
 
 /* Setup the evnironment and call the raycaster function */
-void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, float *returns, float maximum_distance)
+void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance)
 {
     double refractive_index = 1.0; //Vacuum
 	/* ugly global still... is to prevent preview events and signal subsurfs etc to make full resol */
@@ -3338,24 +3349,25 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 	if(render_initialize_from_main(re, bmain, scene, srl, camera_override, lay, 0, 0)) {
 		MEM_reset_peak_memory();
 
-        scene_camera_switch_update(re->scene);
+    scene_camera_switch_update(re->scene);
 
         
 
-	    re->i.starttime= PIL_check_seconds_timer();
+	  re->i.starttime= PIL_check_seconds_timer();
 
-	    /* ensure no images are in memory from previous animated sequences */
-	    BKE_image_all_free_anim_ibufs(re->r.cfra);
-        do_blensor(re, rays, raycount, returns, maximum_distance);
+	  /* ensure no images are in memory from previous animated sequences */
+	  BKE_image_all_free_anim_ibufs(re->r.cfra);
+    
+    do_blensor(re, rays, raycount, elements_per_ray, returns, maximum_distance);
 	
-	    /* for UI only */
-	    BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
-	    renderresult_add_names(re->result);
-	    BLI_rw_mutex_unlock(&re->resultmutex);
+	  /* for UI only */
+	  BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
+	  renderresult_add_names(re->result);
+	  BLI_rw_mutex_unlock(&re->resultmutex);
 	
     re->i.lastframetime= PIL_check_seconds_timer()- re->i.starttime;
 	
-	    re->stats_draw(re->sdh, &re->i);
+	  re->stats_draw(re->sdh, &re->i);
 	
     /* stamp image info here */
 	    if((re->r.stamp & R_STAMP_ALL) && (re->r.stamp & R_STAMP_DRAW)) {
