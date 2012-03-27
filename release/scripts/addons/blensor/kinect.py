@@ -12,7 +12,9 @@
 # to the object. This gives the characteristical shadows around the objects 
 # in the depthmap, without needing to do full stereo processing
 #
-
+# It assumes that the displacement between camera/projector is only in the x
+# coordinate
+#
 import math
 import sys
 import os
@@ -56,6 +58,21 @@ def addProperties(cType):
     cType.kinect_flength = bpy.props.FloatProperty( name = "Focal length", default = parameters["flength"], description = "Focal length in mm" )
 
 
+""" Calculates the Image coordinates on the sensor for a given ray
+    This function assumes that the rays are generated like
+    for y in range(res_y):
+      for x in range(res_x):
+"""
+def get_uv_from_idx(idx, res_x, res_y):
+  return ((idx%res_x)-res_x/2,(idx//res_x)-res_y/2)
+
+""" Calculate the pixel coordinate from the world coordinates the focal length
+    and the width of a pixel.
+    X,Z are in meters, flength is in pixel
+"""
+def get_pixel_from_world(X,Z,flength_px):
+  return (flength_px*X/Z)
+
 
 def scan_advanced(scanner_object, evd_file=None, 
                   evd_last_scan=True, 
@@ -97,8 +114,8 @@ def scan_advanced(scanner_object, evd_file=None,
     baseline = Vector([0.075,0.0,0.0]) #Kinect has a baseline of 7.5 centimeters
 
     """Calculate the rays from the projector"""
-    for x in range(res_x):
-        for y in range(res_y):
+    for y in range(res_y):
+        for x in range(res_x):
             """Calculate a vector that originates at the principal point
                and points to the pixel in the sensor. This vector is then
                scaled to the maximum scanning distance 
@@ -125,7 +142,7 @@ def scan_advanced(scanner_object, evd_file=None,
             
 
     """ Max distance is increased because the kinect is limited by 4m
-        normal distance to the imaging plane
+        _normal distance_ to the imaging plane
     """
     returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True)
 
@@ -155,26 +172,37 @@ def scan_advanced(scanner_object, evd_file=None,
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
 
         if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and camera_returns[i][3] <= max_distance :
-            """The ray hit the project ray"""
+            """The ray hit the projected ray, so this is a valid measurement"""
 
-            v = [camera_returns[i][1],camera_returns[i][2],camera_returns[i][3]]
+
+
+            projector_point = get_uv_from_idx(projector_idx, res_x,res_y)
+            camera_x = get_pixel_from_world(camera_rays[idx*3],camera_rays[idx*3+2],
+                                   flength/pixel_width)
+            camera_y = get_pixel_from_world(camera_rays[idx*3+1],camera_rays[idx*3+2],
+                                   flength/pixel_width)
+
+            """ Kinect calculates the disparity with an accuracy of 1/8 pixel"""
+
+            camera_x_quantized = float(int(camera_x*8.0))/8.0
+            camera_y_quantized = float(int(camera_y*8.0))/8.0 #I don't know if this accurately represents the kinect 
+
+            disparity_quantized = camera_x_quantized + projector_point[0]
+
+            Z_quantized = (flength*(baseline.x))/(disparity_quantized*pixel_width)
+            X_quantized = Z_quantized*camera_x_quantized*pixel_width/flength
+            Y_quantized = Z_quantized*camera_y_quantized*pixel_width/flength
+
+            v = Vector([camera_returns[i][1],camera_returns[i][2],camera_returns[i][3]])
             vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
 
-
-            distance_noise =  random.gauss(noise_mu, noise_sigma)
-            #If everything works substitute the previous line with this
-            #distance_noise =  pixel_noise[returns[idx][-1]] + random.gauss(noise_mu, noise_sigma) 
-
-            vt = (world_transformation * Vector((camera_returns[i][1],
-                  camera_returns[i][2],camera_returns[i][3],1.0))).xyz
+            vt = (world_transformation * v.to_4d()).xyz
             verts.append ( vt )
 
-            norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
+            vn = Vector([X_quantized,Y_quantized,Z_quantized])
+            vector_length_noise = vn.magnitude
 
-
-            vector_length_noise = vector_length+distance_noise
-
-            v_noise = (world_transformation * Vector((norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0))).xyz
+            v_noise = (world_transformation * vn.to_4d()).xyz
             verts_noise.append( v_noise )
 
             evd_storage.addEntry(timestamp = ray_info[projector_idx][2], yaw = 0.0, pitch=0.0, distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=camera_returns[i][4], color=camera_returns[i][5])
