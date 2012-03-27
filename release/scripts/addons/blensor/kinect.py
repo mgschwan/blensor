@@ -7,6 +7,11 @@
 # according to http://www.ros.org/wiki/kinect_calibration/technical
 # pixel width/height: 7.8um
 # according to http://www.isprs.org/proceedings/XXXVIII/5-W12/Papers/ls2011_submission_40.pdf
+#
+# This sensor does calculate the paths from both the projector and the camera
+# to the object. This gives the characteristical shadows around the objects 
+# in the depthmap, without needing to do full stereo processing
+#
 
 import math
 import sys
@@ -19,6 +24,7 @@ import bpy
 import blensor.globals
 import blensor.scan_interface
 from blensor import evd
+from blensor import mesh_utils
 
 
 from mathutils import Vector, Euler, Matrix
@@ -88,7 +94,9 @@ def scan_advanced(scanner_object, evd_file=None,
     rays = []
     ray_info = []
 
+    baseline = Vector([0.075,0.0,0.0]) #Kinect has a baseline of 7.5 centimeters
 
+    """Calculate the rays from the projector"""
     for x in range(res_x):
         for y in range(res_y):
             """Calculate a vector that originates at the principal point
@@ -103,7 +111,7 @@ def scan_advanced(scanner_object, evd_file=None,
             ray = Vector([physical_x, physical_y, physical_z])
             ray.normalize()
             final_ray = max_distance*ray
-            rays.extend([final_ray[0],final_ray[1],final_ray[2]])
+            rays.extend([final_ray[0],final_ray[1],final_ray[2], baseline.x,baseline.y,baseline.z]) #ray+baseline
 
 
             """ pitch and yaw are added for completeness, normally they are
@@ -116,58 +124,74 @@ def scan_advanced(scanner_object, evd_file=None,
             ray_info.append([yaw, pitch, timestamp])
             
 
-    returns = blensor.scan_interface.scan_rays(rays, max_distance)
+    """ Max distance is increased because the kinect is limited by 4m
+        normal distance to the imaging plane
+    """
+    returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True)
+
+    camera_rays = []
+    projector_ray_index = [] #Stores the index to the rays array for the camera ray
+
+
+    """Calculate the rays from the camera to the hit points of the projector rays"""
+    for i in range(len(returns)):
+        idx = returns[i][-1]
+        camera_rays.extend([returns[i][1]+baseline.x, returns[i][2]+baseline.y, 
+                            returns[i][3]+baseline.z])
+        projector_ray_index.append(idx)
+
+
+    camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False)
 
     verts = []
     verts_noise = []
     evd_storage = evd.evd_file(evd_file)
 
-    for i in range(len(returns)):
-        idx = returns[i][-1]
-        distance_noise =  random.gauss(noise_mu, noise_sigma)
-        #If everything works substitute the previous line with this
-        #distance_noise =  pixel_noise[returns[idx][-1]] + random.gauss(noise_mu, noise_sigma) 
 
-        vt = (world_transformation * Vector((returns[i][1],returns[i][2],returns[i][3],1.0))).xyz
-        v = [returns[i][1],returns[i][2],returns[i][3]]
-        verts.append ( vt )
-        vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
-        norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
+    """Check if the rays of the camera meet with the rays of the projector and
+       add them as valid returns if they do"""
+    for i in range(len(camera_returns)):
+        idx = camera_returns[i][-1] 
+        projector_idx = projector_ray_index[idx] # Get the index of the original ray
+
+        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and camera_returns[i][3] <= max_distance :
+            """The ray hit the project ray"""
+
+            v = [camera_returns[i][1],camera_returns[i][2],camera_returns[i][3]]
+            vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
 
 
-        vector_length_noise = vector_length+distance_noise
+            distance_noise =  random.gauss(noise_mu, noise_sigma)
+            #If everything works substitute the previous line with this
+            #distance_noise =  pixel_noise[returns[idx][-1]] + random.gauss(noise_mu, noise_sigma) 
 
-        v_noise = (world_transformation * Vector((norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0))).xyz
-        verts_noise.append( v_noise )
+            vt = (world_transformation * Vector((camera_returns[i][1],
+                  camera_returns[i][2],camera_returns[i][3],1.0))).xyz
+            verts.append ( vt )
 
-        evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4], color=returns[i][5])
+            norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
+
+
+            vector_length_noise = vector_length+distance_noise
+
+            v_noise = (world_transformation * Vector((norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0))).xyz
+            verts_noise.append( v_noise )
+
+            evd_storage.addEntry(timestamp = ray_info[projector_idx][2], yaw = 0.0, pitch=0.0, distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=camera_returns[i][4], color=camera_returns[i][5])
+        else:
+          """Occlusion"""
+          pass
+
 
     if evd_file:
         evd_storage.appendEvdFile()
 
     if add_blender_mesh:
-        scan_mesh = bpy.data.meshes.new("scan_mesh")
-        scan_mesh.vertices.add(len(verts))
-        scan_mesh.vertices.foreach_set("co", tuples_to_list(verts))
-        scan_mesh.update()
-        scan_mesh_object = bpy.data.objects.new("Scan.{0}".format(bpy.context.scene.frame_current), scan_mesh)
-        bpy.context.scene.objects.link(scan_mesh_object)
-        blensor.show_in_frame(scan_mesh_object, bpy.context.scene.frame_current)
-
-        if world_transformation == Matrix():
-            scan_mesh_object.matrix_world = bpy.context.object.matrix_world
+        mesh_utils.add_mesh_from_points_tf(verts, "Scan", world_transformation)
 
     if add_noisy_blender_mesh:
-        noise_scan_mesh = bpy.data.meshes.new("noisy_scan_mesh")
-        noise_scan_mesh.vertices.add(len(verts_noise))
-        noise_scan_mesh.vertices.foreach_set("co", tuples_to_list(verts_noise))
-        noise_scan_mesh.update()
-        noise_scan_mesh_object = bpy.data.objects.new("NoisyScan.{0}".format(bpy.context.scene.frame_current), noise_scan_mesh)
-        bpy.context.scene.objects.link(noise_scan_mesh_object)
-        blensor.show_in_frame(noise_scan_mesh_object, bpy.context.scene.frame_current)
+        mesh_utils.add_mesh_from_points_tf(verts_noise, "NoisyScan", world_transformation)
 
-        if world_transformation == Matrix():
-            noise_scan_mesh_object.matrix_world = bpy.context.object.matrix_world
 
     bpy.context.scene.update()
 
