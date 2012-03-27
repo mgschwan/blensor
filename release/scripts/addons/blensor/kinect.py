@@ -184,8 +184,16 @@ def scan_advanced(scanner_object, evd_file=None,
 
             """ Kinect calculates the disparity with an accuracy of 1/8 pixel"""
 
-            camera_x_quantized = float(int(camera_x*8.0))/8.0
-            camera_y_quantized = float(int(camera_y*8.0))/8.0 #I don't know if this accurately represents the kinect 
+            if camera_x > 0:
+              camera_x_quantized = float(int(camera_x*8.0))/8.0
+            else:
+              camera_x_quantized = -float(int(-camera_x*8.0))/8.0
+            
+            #I don't know if this accurately represents the kinect 
+            if camera_y > 0:
+              camera_y_quantized = float(int(camera_y*8.0))/8.0 
+            else:
+              camera_y_quantized = -float(int(-camera_y*8.0))/8.0 
 
             disparity_quantized = camera_x_quantized + projector_point[0]
 
