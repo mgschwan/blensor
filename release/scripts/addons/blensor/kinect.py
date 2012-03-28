@@ -44,7 +44,7 @@ def tuples_to_list(tuples):
     return l
 
 
-parameters = {"max_dist":4,"noise_mu":0.0,"noise_sigma":0.004,  
+parameters = {"max_dist":4,"noise_mu":0.0,"noise_sigma":0.0,  
               "xres": 640, "yres": 480, "flength": 4.73}
 
 def addProperties(cType):
@@ -177,23 +177,19 @@ def scan_advanced(scanner_object, evd_file=None,
 
 
             projector_point = get_uv_from_idx(projector_idx, res_x,res_y)
+
             camera_x = get_pixel_from_world(camera_rays[idx*3],camera_rays[idx*3+2],
-                                   flength/pixel_width)
+                                   flength/pixel_width) + random.gauss(noise_mu, noise_sigma)
+
             camera_y = get_pixel_from_world(camera_rays[idx*3+1],camera_rays[idx*3+2],
                                    flength/pixel_width)
 
             """ Kinect calculates the disparity with an accuracy of 1/8 pixel"""
 
-            if camera_x > 0:
-              camera_x_quantized = float(int(camera_x*8.0))/8.0
-            else:
-              camera_x_quantized = -float(int(-camera_x*8.0))/8.0
+            camera_x_quantized = math.floor(camera_x*8.0)/8.0
             
             #I don't know if this accurately represents the kinect 
-            if camera_y > 0:
-              camera_y_quantized = float(int(camera_y*8.0))/8.0 
-            else:
-              camera_y_quantized = -float(int(-camera_y*8.0))/8.0 
+            camera_y_quantized = math.floor(camera_y*8.0)/8.0 
 
             disparity_quantized = camera_x_quantized + projector_point[0]
 
