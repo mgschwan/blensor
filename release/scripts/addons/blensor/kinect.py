@@ -1,5 +1,5 @@
-#Range according to http://msdn.microsoft.com/en-us/library/hh405689.aspx
-# 800 mm to 4000 mm
+#Range according to wikipedia
+# 700 mm to 6000 mm
 # HFOV 57°
 # VFOV 43°
 # Invalid depth value: 2047
@@ -44,12 +44,13 @@ def tuples_to_list(tuples):
     return l
 
 
-parameters = {"max_dist":4,"noise_mu":0.0,"noise_sigma":0.0,  
+parameters = {"max_dist":6.0,"min_dist": 0.7, "noise_mu":0.0,"noise_sigma":0.0,  
               "xres": 640, "yres": 480, "flength": 4.73}
 
 def addProperties(cType):
     global parameters
-    cType.kinect_max_dist = bpy.props.FloatProperty( name = "Scan distance", default = parameters["max_dist"], min = 0, max = 1000, description = "How far the kinect can see" )
+    cType.kinect_max_dist = bpy.props.FloatProperty( name = "Scan distance (max)", default = parameters["max_dist"], min = 0, max = 1000, description = "How far the kinect can see" )
+    cType.kinect_min_dist = bpy.props.FloatProperty( name = "Scan distance (min)", default = parameters["min_dist"], min = 0, max = 1000, description = "How close the kinect can see" )
     cType.kinect_noise_mu = bpy.props.FloatProperty( name = "Noise mu", default = parameters["noise_mu"], description = "The center of the gaussian noise" )
     cType.kinect_noise_sigma = bpy.props.FloatProperty( name = "Noise sigma", default = parameters["noise_sigma"], description = "The sigma of the gaussian noise" )
     cType.kinect_xres = bpy.props.IntProperty( name = "X resolution", default = parameters["xres"], description = "Horizontal resolution" )
@@ -80,6 +81,7 @@ def scan_advanced(scanner_object, evd_file=None,
                   world_transformation=Matrix()):
 
     max_distance = scanner_object.kinect_max_dist
+    min_distance = scanner_object.kinect_min_dist
     add_blender_mesh = scanner_object.add_scan_mesh
     add_noisy_blender_mesh = scanner_object.add_noise_scan_mesh
     noise_mu = scanner_object.kinect_noise_mu
@@ -171,7 +173,7 @@ def scan_advanced(scanner_object, evd_file=None,
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
 
-        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and camera_returns[i][3] <= max_distance :
+        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and abs(camera_returns[i][3]) <= max_distance and abs(camera_returns[i][3]) >= min_distance :
             """The ray hit the projected ray, so this is a valid measurement"""
 
 
