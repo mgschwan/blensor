@@ -110,11 +110,13 @@ def scan_advanced(scanner_object, evd_file=None,
 
 
     evd_buffer = []
-    rays = []
-    ray_info = []
+
+    rays = [0.0]*res_y*res_x*6
+    ray_info = [[0.0,0.0,0.0]]*res_y*res_x
 
     baseline = Vector([0.075,0.0,0.0]) #Kinect has a baseline of 7.5 centimeters
 
+    rayidx=0
     """Calculate the rays from the projector"""
     for y in range(res_y):
         for x in range(res_x):
@@ -130,8 +132,12 @@ def scan_advanced(scanner_object, evd_file=None,
             ray = Vector([physical_x, physical_y, physical_z])
             ray.normalize()
             final_ray = max_distance*ray
-            rays.extend([final_ray[0],final_ray[1],final_ray[2], baseline.x,baseline.y,baseline.z]) #ray+baseline
-
+            rays[rayidx*6] = final_ray[0]
+            rays[rayidx*6+1] = final_ray[1]
+            rays[rayidx*6+2] = final_ray[2]
+            rays[rayidx*6+3] = baseline.x
+            rays[rayidx*6+4] = baseline.y
+            rays[rayidx*6+5] = baseline.z
 
             """ pitch and yaw are added for completeness, normally they are
                 not provided by a ToF Camera but can be derived 
@@ -139,14 +145,18 @@ def scan_advanced(scanner_object, evd_file=None,
             """
             yaw = math.atan(physical_x/flength)
             pitch = math.atan(physical_y/flength)
+            ray_info[rayidx][0] = yaw
+            ray_info[rayidx][1] = pitch
+            ray_info[rayidx][2] = timestamp
 
-            ray_info.append([yaw, pitch, timestamp])
+            rayidx += 1
+
             
 
     """ Max distance is increased because the kinect is limited by 4m
         _normal distance_ to the imaging plane
     """
-    returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True)
+    returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True,True)
 
     camera_rays = []
     projector_ray_index = [] #Stores the index to the rays array for the camera ray
@@ -160,7 +170,7 @@ def scan_advanced(scanner_object, evd_file=None,
         projector_ray_index.append(idx)
 
 
-    camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False)
+    camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False,False)
 
     verts = []
     verts_noise = []

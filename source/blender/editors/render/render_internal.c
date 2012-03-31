@@ -230,7 +230,7 @@ static uintptr_t convert_str_to_ptr(char *ptr_str)
 static int screen_blensor_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene= CTX_data_scene(C);
-	Render *re= RE_NewRender(scene->id.name);
+	static Render *re=NULL;
 	Image *ima;
 	View3D *v3d= CTX_wm_view3d(C);
 	Main *mainp= CTX_data_main(C);
@@ -244,6 +244,8 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
 
 	const int raycount= RNA_int_get(op->ptr, "raycount");
 	const int elements_per_ray= RNA_int_get(op->ptr, "elements_per_ray");
+	const int keep_render_setup = RNA_boolean_get(op->ptr, "keep_render_setup");
+
 
 	const float maximum_distance =RNA_float_get(op->ptr, "maximum_distance");
 	struct Object *camera_override= v3d ? V3D_CAMERA_LOCAL(v3d) : NULL;
@@ -253,13 +255,13 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
   rays = (float *)convert_str_to_ptr(ray_ptr_str);
   returns = (float *)convert_str_to_ptr(return_ptr_str);
       
-    if (raycount > 0)
-    {
+  if (raycount > 0)
+  {
         
       printf ("Raycount: %d\n",raycount);
       
 	    if(re==NULL) {
-		    re= RE_NewRender(scene->id.name);
+		    re = RE_NewRender(scene->id.name);
 	    }
 	
 	    G.afbreek= 0;
@@ -276,9 +278,9 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
 	       since sequence rendering can call that recursively... (peter) */
 	    seq_stripelem_cache_cleanup();
 
-     RE_SetReports(re, op->reports);
+      RE_SetReports(re, op->reports);
 
-	    RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, elements_per_ray, returns, maximum_distance);
+	    RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, elements_per_ray, returns, maximum_distance, keep_render_setup);
 
     	RE_SetReports(re, NULL);
 
@@ -286,8 +288,12 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
 	    ED_update_for_newframe(mainp, scene, CTX_wm_screen(C), 1);
 
 	    WM_event_add_notifier(C, NC_SCENE|ND_RENDER_RESULT, scene);
+      if (keep_render_setup == 0)
+      {
+        re = NULL;
+      }
 
-    }
+  }
 	return OPERATOR_FINISHED;
 }
 
@@ -744,6 +750,9 @@ void RENDER_OT_blensor(wmOperatorType *ot)
        RNA_def_string(ot->srna, "scene", "", 19, "Scene", "Re-render single layer in this scene");
        RNA_def_string(ot->srna, "vector_strptr", "", 17, "Vector Pointer", "String representation of the pointer to the input vectors ");
        RNA_def_string(ot->srna, "return_vector_strptr", "", 17, "Return Vector Pointer", "String representation of the pointer to the output vectors ");
+       RNA_def_boolean(ot->srna, "keep_render_setup", 0, "Keep render setup", "Do not delete the raytree after casting");
+
+
 
 }
 

@@ -19,8 +19,10 @@ SIZEOF_FLOAT = 4
 """ rays is an array of vectors that describe the laser direction and also the
          ray origin if the ray_origin field is setp
     max_distance is a float that determines the maximum distance a ray can travel
+    keep_render_setup is passed to the blender internal code to keep the renderer
+    setup for additional calls
 """
-def scan_rays(rays, max_distance, ray_origins=False):
+def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False):
 
     elementsPerRay = 3
     if ray_origins == True:
@@ -41,7 +43,7 @@ def scan_rays(rays, max_distance, ray_origins=False):
     array_of_returns = []
 
     try:
-      bpy.ops.render.blensor(raycount = numberOfRays,maximum_distance = max_distance, vector_strptr="%016X"%(ctypes.addressof(rays_buffer)), return_vector_strptr="%016X"%(ctypes.addressof(returns_buffer)), elements_per_ray = elementsPerRay)
+      bpy.ops.render.blensor(raycount = numberOfRays,maximum_distance = max_distance, vector_strptr="%016X"%(ctypes.addressof(rays_buffer)), return_vector_strptr="%016X"%(ctypes.addressof(returns_buffer)), elements_per_ray = elementsPerRay, keep_render_setup=keep_render_setup)
       
 
 

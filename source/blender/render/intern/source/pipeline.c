@@ -2062,8 +2062,6 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
     PropertyRNA *rna_cam_prop;
     PropertyType pt;
     
-	re->scene->r.subframe = re->mblur_offs + re->field_offs;
-    RE_Database_FromScene(re, re->main, re->scene, re->lay, 1);
 
 
     cam = (Camera *)re->scene->camera->data;
@@ -2204,10 +2202,6 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
         }
     }
 
-	/* free all render verts etc */
-	RE_Database_Free(re);
-	
-	re->scene->r.subframe = 0.f;
 }
 
 static int external_render_3d(Render *re, int do_all);
@@ -3337,29 +3331,54 @@ void RE_SetReports(Render *re, ReportList *reports)
 }
 
 /* Setup the evnironment and call the raycaster function */
-void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance)
+void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance, int keep_setup)
 {
-    double refractive_index = 1.0; //Vacuum
+  static int render_still_available = 0; //If this is 1 the raycasting is still setup from
+                                         //previous renders, and can be reused
+
+  double refractive_index = 1.0; //Vacuum
 	/* ugly global still... is to prevent preview events and signal subsurfs etc to make full resol */
 	G.rendering= 1;
 	
 	printf ("Do Blensor processing: %d\n", frame);
 
 	scene->r.cfra= frame;
-	if(render_initialize_from_main(re, bmain, scene, srl, camera_override, lay, 0, 0)) {
-		MEM_reset_peak_memory();
 
-    scene_camera_switch_update(re->scene);
+	if(render_still_available == 1|| render_initialize_from_main(re, bmain, scene, srl, camera_override, lay, 0, 0)) {
+    if (render_still_available == 0)
+    {
+  		MEM_reset_peak_memory();
 
-        
+      scene_camera_switch_update(re->scene);
 
-	  re->i.starttime= PIL_check_seconds_timer();
+  	  re->i.starttime= PIL_check_seconds_timer();
 
-	  /* ensure no images are in memory from previous animated sequences */
-	  BKE_image_all_free_anim_ibufs(re->r.cfra);
-    
+
+      /* moved here from the do_blensor function */
+  	  re->scene->r.subframe = re->mblur_offs + re->field_offs;
+      RE_Database_FromScene(re, re->main, re->scene, re->lay, 1); //Sets up all the stuff
+      /* */
+
+    } else { printf ("Keeping the old tree\n"); }
+
+
     do_blensor(re, rays, raycount, elements_per_ray, returns, maximum_distance);
 	
+    if (keep_setup == 0)
+    {
+      /* moved here from the end of do_blensor */
+    	/* free all render verts etc */
+    	RE_Database_Free(re);
+    	
+    	re->scene->r.subframe = 0.f;
+      render_still_available = 0;
+    }
+    else 
+    {
+      render_still_available = 1;
+    }  
+    /* */
+
 	  /* for UI only */
 	  BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
 	  renderresult_add_names(re->result);
@@ -3368,13 +3387,6 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
     re->i.lastframetime= PIL_check_seconds_timer()- re->i.starttime;
 	
 	  re->stats_draw(re->sdh, &re->i);
-	
-    /* stamp image info here */
-	    if((re->r.stamp & R_STAMP_ALL) && (re->r.stamp & R_STAMP_DRAW)) {
-		    renderresult_stampinfo(re->scene);
-		    re->display_draw(re->ddh, re->result, NULL);
-    }
-
 	}
 	/* UGLY WARNING */
 	G.rendering= 0;
