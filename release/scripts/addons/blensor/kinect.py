@@ -57,6 +57,8 @@ def addProperties(cType):
     cType.kinect_yres = bpy.props.IntProperty( name = "Y resolution", default = parameters["yres"], description = "Vertical resolution" )
 
     cType.kinect_flength = bpy.props.FloatProperty( name = "Focal length", default = parameters["flength"], description = "Focal length in mm" )
+    cType.kinect_enable_window = bpy.props.BoolProperty( name = "Enable 9x9", default = False, description = "Valid measurements require a 9x9 window of returns" )
+
 
 
 """ Calculates the Image coordinates on the sensor for a given ray
@@ -74,6 +76,31 @@ def get_uv_from_idx(idx, res_x, res_y):
 def get_pixel_from_world(X,Z,flength_px):
   return (flength_px*X/Z)
 
+
+"""This checks a 9x9 window around the point in idx if the depth values
+   would allow the kinect to do a correct matching. If for example some
+   value would be missing, the kinect could not match the image to the
+   projector pattern
+   #TODO: determine how big the depth-difference can be to still produce a
+   valid depth measurement. Note: This has to be verified by a real kinect
+"""
+def check_9x9_window(idx, res_x, res_y, distances):
+  valid = True
+  """Check if all points are within the image"""
+  uv = (idx%res_x, idx//res_x)
+  if uv[0] > 4 and uv[0] < res_x-5 and uv[1]>4 and uv[1] < res_y-5:
+    accu = 0.0
+    for y in range (-4,5):
+      for x in range(-4,5):
+        if distances[idx+y*res_x+x] == 0.0:
+          valid = False
+          break
+        accu += distances[idx+y*res_x+x]
+    if abs(accu/81.0 - distances[idx]) > abs(distances[idx]*0.1):
+      valid = False
+  else:
+    valid = False
+  return valid
 
 def scan_advanced(scanner_object, evd_file=None, 
                   evd_last_scan=True, 
@@ -161,6 +188,12 @@ def scan_advanced(scanner_object, evd_file=None,
     camera_rays = []
     projector_ray_index = [] #Stores the index to the rays array for the camera ray
 
+    """After the second pass there may be some rays missing. However for the 9x9
+       calculation we can not work with a spare representation
+    """
+    all_distances = [0.0]*res_x*res_y #Used for the 9x9 window calculation
+    
+      
 
     """Calculate the rays from the camera to the hit points of the projector rays"""
     for i in range(len(returns)):
@@ -174,7 +207,13 @@ def scan_advanced(scanner_object, evd_file=None,
 
     verts = []
     verts_noise = []
-    evd_storage = evd.evd_file(evd_file)
+    evd_storage = evd.evd_file(evd_file, res_x, res_y, max_distance)
+
+
+    for i in range(len(camera_returns)):
+        idx = camera_returns[i][-1] 
+        projector_idx = projector_ray_index[idx] # Get the index of the original ray
+        all_distances[projector_idx] = camera_returns[i][3] #TODO: maybe this should be the euclidean instead of the orthogonal distance
 
 
     """Check if the rays of the camera meet with the rays of the projector and
@@ -183,7 +222,7 @@ def scan_advanced(scanner_object, evd_file=None,
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
 
-        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and abs(camera_returns[i][3]) <= max_distance and abs(camera_returns[i][3]) >= min_distance :
+        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and abs(camera_returns[i][3]) <= max_distance and abs(camera_returns[i][3]) >= min_distance and check_9x9_window(projector_idx, res_x, res_y,all_distances):
             """The ray hit the projected ray, so this is a valid measurement"""
 
 
@@ -221,7 +260,7 @@ def scan_advanced(scanner_object, evd_file=None,
             v_noise = (world_transformation * vn.to_4d()).xyz
             verts_noise.append( v_noise )
 
-            evd_storage.addEntry(timestamp = ray_info[projector_idx][2], yaw = 0.0, pitch=0.0, distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=camera_returns[i][4], color=camera_returns[i][5])
+            evd_storage.addEntry(timestamp = ray_info[projector_idx][2], yaw = 0.0, pitch=0.0, distance=-camera_returns[i][3], distance_noise=-Z_quantized, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=camera_returns[i][4], color=camera_returns[i][5], idx=projector_idx)
         else:
           """Occlusion"""
           pass

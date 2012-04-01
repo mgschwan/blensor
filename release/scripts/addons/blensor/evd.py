@@ -15,6 +15,11 @@ POINTS %d
 DATA ascii
 """
 
+PGM_HEADER ="""P2
+#BlenSor output
+%d %d
+255
+"""
 
 frame_counter = 0
 
@@ -24,13 +29,18 @@ frame_counter = 0
 
 WRITER_MODE_EVD = 1
 WRITER_MODE_PCL = 2
+WRITER_MODE_PGM = 3
 
 class evd_file:
     buffer = []
     filename = ""
+    width  = 0
+    height = 0
+    image = []
+    image_noisy = []
+    max_depth=1.0
 
-
-    def __init__(self, filename):
+    def __init__(self, filename, width=0, height=0, max_depth=1.0):
         self.filename = filename
         self.buffer = []
         self.mode = WRITER_MODE_EVD
@@ -38,19 +48,36 @@ class evd_file:
           if self.filename[-4:] == ".pcd":
             self.mode = WRITER_MODE_PCL
             self.filename = self.filename[:-4]
+          elif self.filename[-4:] == ".pgm":
+            if width==0 or height==0:
+              raise Exception("Width or Height not set")
+            self.width = width
+            self.height = height
+            self.image = [0.0]*(width*height)
+            self.image_noisy = [0.0]*(width*height)
+            self.max_depth=max_depth
+            self.mode = WRITER_MODE_PGM
+            self.filename = self.filename[:-4]
         except:
           pass
 
 
     def addEntry(self, timestamp=0.0, yaw=0.0, pitch=0.0, distance=0.0, 
                  distance_noise=0.0, x=0.0, y=0.0, z=0.0,
-                 x_noise = 0.0, y_noise = 0.0, z_noise = 0.0, object_id=0, color=(1.0,1.0,1.0)):
-        self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
+                 x_noise = 0.0, y_noise = 0.0, z_noise = 0.0, object_id=0, color=(1.0,1.0,1.0), idx=0):
+        if self.mode == WRITER_MODE_PGM:
+          if idx >=0 and idx < len(self.image):
+            self.image[idx]=distance
+            self.image_noisy[idx]=distance_noise
+        else:
+          self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
                        x,y,z,x_noise,y_noise,z_noise,object_id,(int(255*color[0]),int(255*color[1]),int(255*color[2]))])
 
     def writeEvdFile(self):
         if self.mode == WRITER_MODE_PCL:
           self.writePCLFile()
+        elif self.mode == WRITER_MODE_PGM:
+          self.writePGMFile()
         else:
           evd = open(self.filename,"w")
           evd.buffer.write(struct.pack("i", len(self.buffer)))
@@ -62,6 +89,8 @@ class evd_file:
     def appendEvdFile(self):
         if self.mode == WRITER_MODE_PCL:
           self.writePCLFile()
+        elif self.mode == WRITER_MODE_PGM:
+          self.writePGMFile()
         else:
           evd = open(self.filename,"a")
           evd.buffer.write(struct.pack("i", len(self.buffer)))
@@ -95,7 +124,26 @@ class evd_file:
         exc_type, exc_value, exc_traceback = sys.exc_info()
         traceback.print_tb(exc_traceback)
 
-
+    def writePGMFile(self):
+      global frame_counter    #Not nice to have it global but it needs to persist
+      try:
+        pgm = open("%s%05d.pgm"%(self.filename,frame_counter),"w")
+        pgm_noisy = open("%s_noisy%05d.pgm"%(self.filename,frame_counter),"w")
+        pgm.write(PGM_HEADER%(self.width,self.height))
+        pgm_noisy.write(PGM_HEADER%(self.width,self.height))
+        for val in range(len(self.image)):
+          ival = int(255*self.image[val]/self.max_depth)
+          pgm.write("%d\n"%(ival if ival < 256 else 256))
+        for val in range(len(self.image_noisy)):
+          ival = int(255*self.image_noisy[val]/self.max_depth)
+          pgm_noisy.write("%d\n"%(ival if ival < 256 else 256))
+        
+        pgm.close()
+        pgm_noisy.close()
+      except Exception as e:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        traceback.print_tb(exc_traceback)
+      
 
 
 

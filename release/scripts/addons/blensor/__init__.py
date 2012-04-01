@@ -333,7 +333,7 @@ class OBJECT_OT_scan(bpy.types.Operator):
         obj = context.object
 
         try:
-            dispatch_scan(obj, self.filepath)
+          dispatch_scan(obj, self.filepath)
         except Exception as e:
             print ("Scan not successful")
             self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
