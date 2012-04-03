@@ -90,7 +90,7 @@ class OBJECT_PT_delta_transform(ObjectButtonsPanel, Panel):
             #row.column().prop(ob, "delta_rotation_axis_angle", text="Rotation")
             row.column().label(text="Not for Axis-Angle")
         else:
-            row.column().prop(ob, "delta_rotation_euler", text="Rotation")
+            row.column().prop(ob, "delta_rotation_euler", text="Delta Rotation")
 
         row.column().prop(ob, "delta_scale")
 
@@ -181,9 +181,9 @@ class OBJECT_PT_groups(ObjectButtonsPanel, Panel):
                 col = split.column()
                 col.prop(group, "dupli_offset", text="")
 
-                prop = col.operator("wm.context_set_value", text="From Cursor")
-                prop.data_path = "object.users_group[%d].dupli_offset" % index
-                prop.value = value
+                props = col.operator("wm.context_set_value", text="From Cursor")
+                props.data_path = "object.users_group[%d].dupli_offset" % index
+                props.value = value
                 index += 1
 
 
@@ -211,8 +211,11 @@ class OBJECT_PT_display(ObjectButtonsPanel, Panel):
         col = split.column()
         col.prop(ob, "show_name", text="Name")
         col.prop(ob, "show_axis", text="Axis")
-        col.prop(ob, "show_wire", text="Wire")
-        col.prop(ob, "color", text="Object Color")
+        if ob.type in {"MESH", "CURVE", "SURFACE", "META", "FONT"}:
+            # Makes no sense for cameras, armtures, etc.!
+            col.prop(ob, "show_wire", text="Wire")
+            # Only useful with object having faces/materials...
+            col.prop(ob, "color", text="Object Color")
 
         col = split.column()
         col.prop(ob, "show_texture_space", text="Texture Space")
@@ -257,10 +260,8 @@ class OBJECT_PT_duplication(ObjectButtonsPanel, Panel):
             layout.prop(ob, "dupli_group", text="Group")
 
 
-# XXX: the following options are all quite buggy, ancient hacks that should be dropped
-
-class OBJECT_PT_animation(ObjectButtonsPanel, Panel):
-    bl_label = "Animation Hacks"
+class OBJECT_PT_relations_extras(ObjectButtonsPanel, Panel):
+    bl_label = "Relations Extras"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -271,24 +272,18 @@ class OBJECT_PT_animation(ObjectButtonsPanel, Panel):
         split = layout.split()
 
         col = split.column()
-        col.label(text="Time Offset:")
-        col.prop(ob, "use_time_offset_edit", text="Edit")
-        row = col.row()
-        row.prop(ob, "use_time_offset_parent", text="Parent")
-        row.active = (ob.parent is not None)
-        row = col.row()
-        row.prop(ob, "use_slow_parent")
-        row.active = (ob.parent is not None)
-        col.prop(ob, "time_offset", text="Offset")
-
-        # XXX: these are still used for a few curve-related tracking features
-        col = split.column()
         col.label(text="Tracking Axes:")
         col.prop(ob, "track_axis", text="Axis")
         col.prop(ob, "up_axis", text="Up Axis")
 
+        col = split.column()
+        col.prop(ob, "use_slow_parent")
+        row = col.row()
+        row.active = ((ob.parent is not None) and (ob.use_slow_parent))
+        row.prop(ob, "slow_parent_offset", text="Offset")
 
-from bl_ui.properties_animviz import (
+
+from .properties_animviz import (
     MotionPathButtonsPanel,
     OnionSkinButtonsPanel,
     )

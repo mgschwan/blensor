@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BKE_MATERIAL_H
-#define BKE_MATERIAL_H
+#ifndef __BKE_MATERIAL_H__
+#define __BKE_MATERIAL_H__
 
 /** \file BKE_material.h
  *  \ingroup bke
@@ -50,7 +50,6 @@ void free_material(struct Material *sc);
 void test_object_materials(struct ID *id);
 void resize_object_material(struct Object *ob, const short totcol);
 void init_material(struct Material *ma);
-struct Material *add_material_main(struct Main *main, const char *name);
 struct Material *add_material(const char *name);
 struct Material *copy_material(struct Material *ma);
 struct Material *localize_material(struct Material *ma);
@@ -91,17 +90,13 @@ void end_render_materials(struct Main *);
 
 int material_in_material(struct Material *parmat, struct Material *mat);
 
-void ramp_blend(int type, float *r, float *g, float *b, float fac, const float col[3]);
+void	ramp_blend(int type, float r_col[3], const float fac, const float col[3]);
 
 /* copy/paste */
 void clear_matcopybuf(void);
 void free_matcopybuf(void);
 void copy_matcopybuf(struct Material *ma);
 void paste_matcopybuf(struct Material *ma);
-
-void clear_mat_mtex_copybuf(void);
-void copy_mat_mtex_copybuf(struct ID *id);
-void paste_mat_mtex_copybuf(struct ID *id);
 
 /* handle backward compatibility for tface/materials called from doversion (fileload=1) or Help Menu (fileload=0) */	
 int do_version_tface(struct Main *main, int fileload);

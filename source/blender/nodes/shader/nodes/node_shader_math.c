@@ -35,8 +35,8 @@
 
 /* **************** SCALAR MATH ******************** */ 
 static bNodeSocketTemplate sh_node_math_in[]= { 
-	{ SOCK_FLOAT, 1, "Value", 0.5f, 0.5f, 0.5f, 1.0f, -100.0f, 100.0f, PROP_NONE}, 
-	{ SOCK_FLOAT, 1, "Value", 0.5f, 0.5f, 0.5f, 1.0f, -100.0f, 100.0f, PROP_NONE}, 
+	{ SOCK_FLOAT, 1, "Value", 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE}, 
+	{ SOCK_FLOAT, 1, "Value", 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE}, 
 	{ -1, 0, "" } 
 };
 
@@ -48,7 +48,7 @@ static bNodeSocketTemplate sh_node_math_out[]= {
 static void node_shader_exec_math(void *UNUSED(data), bNode *node, bNodeStack **in, 
 bNodeStack **out) 
 {
-	switch(node->custom1){ 
+	switch(node->custom1) { 
 	
 	case 0: /* Add */
 		out[0]->vec[0]= in[0]->vec[0] + in[1]->vec[0]; 
@@ -61,7 +61,7 @@ bNodeStack **out)
 		break; 
 	case 3: /* Divide */
 		{
-			if(in[1]->vec[0]==0)	/* We don't want to divide by zero. */
+			if (in[1]->vec[0]==0)	/* We don't want to divide by zero. */
 				out[0]->vec[0]= 0.0;
 			else
 				out[0]->vec[0]= in[0]->vec[0] / in[1]->vec[0];
@@ -69,7 +69,7 @@ bNodeStack **out)
 		break;
 	case 4: /* Sine */
 		{
-			if(in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
+			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
 				out[0]->vec[0]= sin(in[0]->vec[0]);
 			else
 				out[0]->vec[0]= sin(in[1]->vec[0]);
@@ -77,7 +77,7 @@ bNodeStack **out)
 		break;
 	case 5: /* Cosine */
 		{
-			if(in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */	
+			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */	
 				out[0]->vec[0]= cos(in[0]->vec[0]);
 			else
 				out[0]->vec[0]= cos(in[1]->vec[0]);
@@ -85,7 +85,7 @@ bNodeStack **out)
 		break;
 	case 6: /* Tangent */
 		{
-			if(in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */	
+			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */	
 				out[0]->vec[0]= tan(in[0]->vec[0]);
 			else
 				out[0]->vec[0]= tan(in[1]->vec[0]);
@@ -93,16 +93,16 @@ bNodeStack **out)
 		break;
 	case 7: /* Arc-Sine */
 		{
-			if(in[0]->hasinput || !in[1]->hasinput) { /* This one only takes one input, so we've got to choose. */
+			if (in[0]->hasinput || !in[1]->hasinput) { /* This one only takes one input, so we've got to choose. */
 				/* Can't do the impossible... */
-				if( in[0]->vec[0] <= 1 && in[0]->vec[0] >= -1 )
+				if ( in[0]->vec[0] <= 1 && in[0]->vec[0] >= -1 )
 					out[0]->vec[0]= asin(in[0]->vec[0]);
 				else
 					out[0]->vec[0]= 0.0;
 			}
 			else {
 				/* Can't do the impossible... */
-				if( in[1]->vec[0] <= 1 && in[1]->vec[0] >= -1 )
+				if ( in[1]->vec[0] <= 1 && in[1]->vec[0] >= -1 )
 					out[0]->vec[0]= asin(in[1]->vec[0]);
 				else
 					out[0]->vec[0]= 0.0;
@@ -111,16 +111,16 @@ bNodeStack **out)
 		break;
 	case 8: /* Arc-Cosine */
 		{
-			if(in[0]->hasinput || !in[1]->hasinput) { /* This one only takes one input, so we've got to choose. */
+			if (in[0]->hasinput || !in[1]->hasinput) { /* This one only takes one input, so we've got to choose. */
 				/* Can't do the impossible... */
-				if( in[0]->vec[0] <= 1 && in[0]->vec[0] >= -1 )
+				if ( in[0]->vec[0] <= 1 && in[0]->vec[0] >= -1 )
 					out[0]->vec[0]= acos(in[0]->vec[0]);
 				else
 					out[0]->vec[0]= 0.0;
 			}
 			else {
 				/* Can't do the impossible... */
-				if( in[1]->vec[0] <= 1 && in[1]->vec[0] >= -1 )
+				if ( in[1]->vec[0] <= 1 && in[1]->vec[0] >= -1 )
 					out[0]->vec[0]= acos(in[1]->vec[0]);
 				else
 					out[0]->vec[0]= 0.0;
@@ -129,7 +129,7 @@ bNodeStack **out)
 		break;
 	case 9: /* Arc-Tangent */
 		{
-			if(in[0]->hasinput || !in[1]->hasinput) /* This one only takes one input, so we've got to choose. */
+			if (in[0]->hasinput || !in[1]->hasinput) /* This one only takes one input, so we've got to choose. */
 				out[0]->vec[0]= atan(in[0]->vec[0]);
 			else
 				out[0]->vec[0]= atan(in[1]->vec[0]);
@@ -138,7 +138,7 @@ bNodeStack **out)
 	case 10: /* Power */
 		{
 			/* Don't want any imaginary numbers... */
-			if( in[0]->vec[0] >= 0 )
+			if ( in[0]->vec[0] >= 0 )
 				out[0]->vec[0]= pow(in[0]->vec[0], in[1]->vec[0]);
 			else
 				out[0]->vec[0]= 0.0;
@@ -147,7 +147,7 @@ bNodeStack **out)
 	case 11: /* Logarithm */
 		{
 			/* Don't want any imaginary numbers... */
-			if( in[0]->vec[0] > 0  && in[1]->vec[0] > 0 )
+			if ( in[0]->vec[0] > 0  && in[1]->vec[0] > 0 )
 				out[0]->vec[0]= log(in[0]->vec[0]) / log(in[1]->vec[0]);
 			else
 				out[0]->vec[0]= 0.0;
@@ -155,7 +155,7 @@ bNodeStack **out)
 		break;
 	case 12: /* Minimum */
 		{
-			if( in[0]->vec[0] < in[1]->vec[0] )
+			if ( in[0]->vec[0] < in[1]->vec[0] )
 				out[0]->vec[0]= in[0]->vec[0];
 			else
 				out[0]->vec[0]= in[1]->vec[0];
@@ -163,7 +163,7 @@ bNodeStack **out)
 		break;
 	case 13: /* Maximum */
 		{
-			if( in[0]->vec[0] > in[1]->vec[0] )
+			if ( in[0]->vec[0] > in[1]->vec[0] )
 				out[0]->vec[0]= in[0]->vec[0];
 			else
 				out[0]->vec[0]= in[1]->vec[0];
@@ -171,7 +171,7 @@ bNodeStack **out)
 		break;
 	case 14: /* Round */
 		{
-			if(in[0]->hasinput || !in[1]->hasinput) /* This one only takes one input, so we've got to choose. */
+			if (in[0]->hasinput || !in[1]->hasinput) /* This one only takes one input, so we've got to choose. */
 				out[0]->vec[0]= (in[0]->vec[0]<0)?(int)(in[0]->vec[0] - 0.5f):(int)(in[0]->vec[0] + 0.5f);
 			else
 				out[0]->vec[0]= (in[1]->vec[0]<0)?(int)(in[1]->vec[0] - 0.5f):(int)(in[1]->vec[0] + 0.5f);
@@ -179,7 +179,7 @@ bNodeStack **out)
 		break;
 	case 15: /* Less Than */
 		{
-			if( in[0]->vec[0] < in[1]->vec[0] )
+			if ( in[0]->vec[0] < in[1]->vec[0] )
 				out[0]->vec[0]= 1.0f;
 			else
 				out[0]->vec[0]= 0.0f;
@@ -187,7 +187,7 @@ bNodeStack **out)
 		break;
 	case 16: /* Greater Than */
 		{
-			if( in[0]->vec[0] > in[1]->vec[0] )
+			if ( in[0]->vec[0] > in[1]->vec[0] )
 				out[0]->vec[0]= 1.0f;
 			else
 				out[0]->vec[0]= 0.0f;
@@ -224,7 +224,7 @@ static int gpu_shader_math(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUN
 		case 8:
 		case 9:
 		case 14:
-			if(in[0].hasinput || !in[1].hasinput)
+			if (in[0].hasinput || !in[1].hasinput)
 				GPU_stack_link(mat, names[node->custom1], NULL, out, GPU_socket(&in[0]));
 			else
 				GPU_stack_link(mat, names[node->custom1], NULL, out, GPU_socket(&in[1]));
@@ -236,11 +236,12 @@ static int gpu_shader_math(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUN
 	return 1;
 }
 
-void register_node_type_sh_math(ListBase *lb)
+void register_node_type_sh_math(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, SH_NODE_MATH, "Math", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, SH_NODE_MATH, "Math", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING|NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, sh_node_math_in, sh_node_math_out);
 	node_type_size(&ntype, 120, 110, 160);
 	node_type_label(&ntype, node_math_label);
@@ -248,7 +249,5 @@ void register_node_type_sh_math(ListBase *lb)
 	node_type_exec(&ntype, node_shader_exec_math);
 	node_type_gpu(&ntype, gpu_shader_math);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-

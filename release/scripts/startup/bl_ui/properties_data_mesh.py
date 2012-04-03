@@ -36,9 +36,9 @@ class MESH_MT_vertex_group_specials(Menu):
         layout.operator("object.vertex_group_mirror", icon='ARROW_LEFTRIGHT')
         layout.operator("object.vertex_group_remove", icon='X', text="Delete All").all = True
         layout.separator()
-        layout.operator("object.vertex_group_lock", icon='LOCK', text="Lock All").action = 'SELECT'
-        layout.operator("object.vertex_group_lock", icon='UNLOCK', text="UnLock All").action = 'DESELECT'
-        layout.operator("object.vertex_group_lock", icon='LOCK', text="Lock Invert All").action = 'INVERT'
+        layout.operator("object.vertex_group_lock", icon='LOCKED', text="Lock All").action = 'SELECT'
+        layout.operator("object.vertex_group_lock", icon='UNLOCKED', text="UnLock All").action = 'DESELECT'
+        layout.operator("object.vertex_group_lock", icon='LOCKED', text="Lock Invert All").action = 'INVERT'
 
 
 class MESH_MT_shape_key_specials(Menu):
@@ -158,11 +158,11 @@ class DATA_PT_vertex_groups(MeshButtonsPanel, Panel):
             row = layout.row()
             row.prop(group, "name")
 
-        if ob.mode == 'EDIT' and len(ob.vertex_groups) > 0:
+        if ob.vertex_groups and (ob.mode == 'EDIT' or (ob.mode == 'WEIGHT_PAINT' and ob.type == 'MESH' and ob.data.use_paint_mask_vertex)):
             row = layout.row()
 
             sub = row.row(align=True)
-            sub.operator("object.vertex_group_assign", text="Assign")
+            sub.operator("object.vertex_group_assign", text="Assign").new = False
             sub.operator("object.vertex_group_remove_from", text="Remove")
 
             sub = row.row(align=True)
@@ -226,10 +226,10 @@ class DATA_PT_shape_keys(MeshButtonsPanel, Panel):
             row.alignment = 'RIGHT'
 
             sub = row.row(align=True)
+            sub.label()  # XXX, for alignment only
             subsub = sub.row(align=True)
             subsub.active = enable_edit_value
             subsub.prop(ob, "show_only_shape_key", text="")
-            subsub.prop(kb, "mute", text="")
             sub.prop(ob, "use_shape_key_edit_mode", text="")
 
             sub = row.row()
@@ -265,7 +265,7 @@ class DATA_PT_shape_keys(MeshButtonsPanel, Panel):
 
 
 class DATA_PT_uv_texture(MeshButtonsPanel, Panel):
-    bl_label = "UV Texture"
+    bl_label = "UV Maps"
     COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
 
     def draw(self, context):

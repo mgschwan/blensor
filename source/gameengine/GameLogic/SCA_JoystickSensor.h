@@ -38,7 +38,7 @@
 
 class SCA_JoystickSensor :public SCA_ISensor
 {
-	Py_Header;
+	Py_Header
 	
 	/**
 	 * Axis 1-JOYAXIS_MAX, MUST be followed by m_axisf
@@ -65,7 +65,7 @@ class SCA_JoystickSensor :public SCA_ISensor
 	 */
 	int 	m_hatf;
 	/**
-	 * The threshold value the axis acts opon
+	 * The threshold value the axis acts upon
 	 */
 	int 	m_precision;
 	/**
@@ -128,8 +128,8 @@ public:
 	/* --------------------------------------------------------------------- */
 
 	/* Joystick Index */
-	KX_PYMETHOD_DOC_NOARGS(SCA_JoystickSensor,GetButtonActiveList);
-	KX_PYMETHOD_DOC_VARARGS(SCA_JoystickSensor,GetButtonStatus);
+	KX_PYMETHOD_DOC_NOARGS(SCA_JoystickSensor,GetButtonActiveList)
+	KX_PYMETHOD_DOC_VARARGS(SCA_JoystickSensor,GetButtonStatus)
 
 	static PyObject*	pyattr_get_axis_values(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
 	static PyObject*	pyattr_get_axis_single(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);

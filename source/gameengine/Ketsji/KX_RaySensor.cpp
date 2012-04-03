@@ -151,7 +151,7 @@ bool KX_RaySensor::RayHit(KX_ClientObjectInfo* client, KX_RayCast* result, void 
 }
 
 /* this function is used to pre-filter the object before casting the ray on them.
-   This is useful for "X-Ray" option when we want to see "through" unwanted object.
+ * This is useful for "X-Ray" option when we want to see "through" unwanted object.
  */
 bool KX_RaySensor::NeedRayCast(KX_ClientObjectInfo* client)
 {
@@ -352,7 +352,7 @@ PyAttributeDef KX_RaySensor::Attributes[] = {
 	KX_PYATTRIBUTE_BOOL_RW("useMaterial", KX_RaySensor, m_bFindMaterial),
 	KX_PYATTRIBUTE_BOOL_RW("useXRay", KX_RaySensor, m_bXRay),
 	KX_PYATTRIBUTE_FLOAT_RW("range", 0, 10000, KX_RaySensor, m_distance),
-	KX_PYATTRIBUTE_STRING_RW("propName", 0, 100, false, KX_RaySensor, m_propertyname),
+	KX_PYATTRIBUTE_STRING_RW("propName", 0, MAX_PROP_NAME, false, KX_RaySensor, m_propertyname),
 	KX_PYATTRIBUTE_INT_RW("axis", 0, 5, true, KX_RaySensor, m_axis),
 	KX_PYATTRIBUTE_FLOAT_ARRAY_RO("hitPosition", KX_RaySensor, m_hitPosition, 3),
 	KX_PYATTRIBUTE_FLOAT_ARRAY_RO("rayDirection", KX_RaySensor, m_rayDirection, 3),

@@ -7,31 +7,17 @@
 //
 // ---------------------------------------------------------
 
-#ifndef OPTIONS_H
-#define OPTIONS_H
+#ifndef EL_TOPO_OPTIONS_H
+#define EL_TOPO_OPTIONS_H
 
-// ---------------------------------------------------------
-// Preproccessor defines
-// ---------------------------------------------------------
-
-// Whether to use an OpenGL GUI, or run command-line style
-// (Define NO_GUI in your build to suppress the GUI.)
-
-#ifndef NO_GUI
-#define USE_GUI
-#endif
-
-#ifndef NO_RAY_TRACER
-#define RAY_TRACER
-#endif
+#include <commonoptions.h>
 
 // ---------------------------------------------------------
 // Global constants
 // ---------------------------------------------------------
 
-const double UNINITIALIZED_DOUBLE = 0x0F;
+extern const double G_EIGENVALUE_RANK_RATIO;    // in surftrack.cpp
 
-extern const double G_EIGENVALUE_RANK_RATIO;    // in dynamicsurface.cpp
 
 #endif
 

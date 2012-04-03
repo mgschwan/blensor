@@ -28,8 +28,8 @@
  *  \ingroup edobj
  */
 
-#ifndef ED_OBJECT_INTERN_H
-#define ED_OBJECT_INTERN_H
+#ifndef __OBJECT_INTERN_H__
+#define __OBJECT_INTERN_H__
 
 struct wmOperatorType;
 struct KeyBlock;
@@ -92,17 +92,16 @@ void OBJECT_OT_game_property_remove(struct wmOperatorType *ot);
 void OBJECT_OT_game_property_copy(struct wmOperatorType *ot);
 void OBJECT_OT_game_property_clear(struct wmOperatorType *ot);
 void OBJECT_OT_logic_bricks_copy(struct wmOperatorType *ot);
+void OBJECT_OT_game_physics_copy(struct wmOperatorType *ot);
 
 /* object_select.c */
 void OBJECT_OT_select_all(struct wmOperatorType *ot);
-void OBJECT_OT_select_inverse(struct wmOperatorType *ot);
 void OBJECT_OT_select_random(struct wmOperatorType *ot);
 void OBJECT_OT_select_by_type(struct wmOperatorType *ot);
 void OBJECT_OT_select_by_layer(struct wmOperatorType *ot);
 void OBJECT_OT_select_linked(struct wmOperatorType *ot);
 void OBJECT_OT_select_grouped(struct wmOperatorType *ot);
 void OBJECT_OT_select_mirror(struct wmOperatorType *ot);
-void OBJECT_OT_select_name(struct wmOperatorType *ot);
 void OBJECT_OT_select_same_group(struct wmOperatorType *ot);
 
 /* object_add.c */
@@ -159,6 +158,7 @@ void OBJECT_OT_multires_external_save(struct wmOperatorType *ot);
 void OBJECT_OT_multires_external_pack(struct wmOperatorType *ot);
 void OBJECT_OT_meshdeform_bind(struct wmOperatorType *ot);
 void OBJECT_OT_explode_refresh(struct wmOperatorType *ot);
+void OBJECT_OT_ocean_bake(struct wmOperatorType *ot);
 
 /* object_constraint.c */
 void OBJECT_OT_constraint_add(struct wmOperatorType *ot);
@@ -184,6 +184,8 @@ void CONSTRAINT_OT_stretchto_reset(struct wmOperatorType *ot);
 void CONSTRAINT_OT_limitdistance_reset(struct wmOperatorType *ot);
 void CONSTRAINT_OT_childof_set_inverse(struct wmOperatorType *ot);
 void CONSTRAINT_OT_childof_clear_inverse(struct wmOperatorType *ot);
+void CONSTRAINT_OT_objectsolver_set_inverse(struct wmOperatorType *ot);
+void CONSTRAINT_OT_objectsolver_clear_inverse (struct wmOperatorType *ot);
 
 /* object_vgroup.c */
 void OBJECT_OT_vertex_group_add(struct wmOperatorType *ot);
@@ -223,5 +225,5 @@ void OBJECT_OT_group_remove(struct wmOperatorType *ot);
 /* object_bake.c */
 void OBJECT_OT_bake_image(wmOperatorType *ot);
 
-#endif /* ED_OBJECT_INTERN_H */
+#endif /* __OBJECT_INTERN_H__ */
 

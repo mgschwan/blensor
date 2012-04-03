@@ -16,14 +16,14 @@
  *  \ingroup expressions
  */
 
-#if !defined _LISTVALUE_H
-#define _LISTVALUE_H
+#ifndef __LISTVALUE_H__
+#define __LISTVALUE_H__
 
 #include "Value.h"
 
 class CListValue : public CPropValue  
 {
-	Py_Header;
+	Py_Header
 	//PLUGIN_DECLARE_SERIAL (CListValue,CValue)
 
 public:
@@ -34,7 +34,7 @@ public:
 	void Configure(CValue* menuvalue);
 	void Add(CValue* value);
 
-	/** @attention not implemented yet :( */
+	/** \attention not implemented yet :( */
 	virtual CValue* Calc(VALUE_OPERATOR op,CValue *val);
 	virtual CValue* CalcFinal(VALUE_DATA_TYPE dtype,
 							  VALUE_OPERATOR op,
@@ -58,7 +58,7 @@ public:
 	void Resize(int num);
 	void SetValue(int i,CValue* val);
 	CValue* GetValue(int i){	assertd(i < m_pValueArray.size());	return m_pValueArray[i];}
-	int GetCount() { return m_pValueArray.size();};
+	int GetCount() { return m_pValueArray.size(); }
 	virtual const STR_String & GetText();
 
 	bool CheckEqual(CValue* first,CValue* second);
@@ -87,5 +87,5 @@ private:
 	bool	m_bReleaseContents;
 };
 
-#endif // !defined _LISTVALUE_H
+#endif // !defined __LISTVALUE_H__
 

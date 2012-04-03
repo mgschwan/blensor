@@ -52,7 +52,7 @@
 #include "MOD_weightvg_util.h"
 #include "RE_shader_ext.h"        /* Texture masking. */
 
-/* Maps new_w weights in place, using either one of the predifined functions, or a custom curve.
+/* Maps new_w weights in place, using either one of the predefined functions, or a custom curve.
  * Return values are in new_w.
  * If indices is not NULL, it must be a table of same length as org_w and new_w, mapping to the real
  * vertex index (in case the weight tables do not cover the whole vertices...).
@@ -64,14 +64,14 @@ void weightvg_do_map(int num, float *new_w, short falloff_type, CurveMapping *cm
 
 	/* Return immediately, if we have nothing to do! */
 	/* Also security checks... */
-	if(((falloff_type == MOD_WVG_MAPPING_CURVE) && (cmap == NULL))
+	if (((falloff_type == MOD_WVG_MAPPING_CURVE) && (cmap == NULL))
 	        || !ELEM7(falloff_type, MOD_WVG_MAPPING_CURVE, MOD_WVG_MAPPING_SHARP, MOD_WVG_MAPPING_SMOOTH,
 	                  MOD_WVG_MAPPING_ROOT, MOD_WVG_MAPPING_SPHERE, MOD_WVG_MAPPING_RANDOM,
 	                  MOD_WVG_MAPPING_STEP))
 		return;
 
 	/* Map each weight (vertex) to its new value, accordingly to the chosen mode. */
-	for(i = 0; i < num; ++i) {
+	for (i = 0; i < num; ++i) {
 		float fac = new_w[i];
 
 		/* Code borrowed from the warp modifier. */
@@ -109,10 +109,10 @@ void weightvg_do_map(int num, float *new_w, short falloff_type, CurveMapping *cm
  * Return values are in org_w.
  * If indices is not NULL, it must be a table of same length as org_w and new_w, mapping to the real
  * vertex index (in case the weight tables do not cover the whole vertices...).
- * XXX The standard “factor” value is assumed in [0.0, 1.0] range. Else, weird results might appear.
+ * XXX The standard "factor" value is assumed in [0.0, 1.0] range. Else, weird results might appear.
  */
 void weightvg_do_mask(int num, const int *indices, float *org_w, const float *new_w,
-                      Object *ob, DerivedMesh *dm, float fact, const char defgrp_name[32],
+                      Object *ob, DerivedMesh *dm, float fact, const char defgrp_name[MAX_VGROUP_NAME],
                       Tex *texture, int tex_use_channel, int tex_mapping,
                       Object *tex_map_object, const char *tex_uvlayer_name)
 {
@@ -146,7 +146,7 @@ void weightvg_do_mask(int num, const int *indices, float *org_w, const float *ne
 		MEM_freeN(v_co);
 
 		/* For each weight (vertex), make the mix between org and new weights. */
-		for(i = 0; i < num; ++i) {
+		for (i = 0; i < num; ++i) {
 			int idx = indices ? indices[i] : i;
 			TexResult texres;
 			float h, s, v; /* For HSV color space. */
@@ -222,71 +222,10 @@ void weightvg_do_mask(int num, const int *indices, float *org_w, const float *ne
 	}
 }
 
-/* Adds the given vertex to the specified vertex group, with given weight. */
-static void defvert_add_to_group(MDeformVert *dv, int defgrp_idx, const float weight)
-{
-	/* TODO, move into deform.c as a generic function. This assumes the vertex
-	 * groups have already been checked, so this has to remain low level. */
-	MDeformWeight *newdw;
-
-	newdw = MEM_callocN(sizeof(MDeformWeight)*(dv->totweight+1), "defvert_add_to group, new deformWeight");
-	if(dv->dw) {
-		memcpy(newdw, dv->dw, sizeof(MDeformWeight)*dv->totweight);
-		MEM_freeN(dv->dw);
-	}
-	dv->dw = newdw;
-	dv->dw[dv->totweight].weight = weight;
-	dv->dw[dv->totweight].def_nr = defgrp_idx;
-	dv->totweight++;
-}
-
-/* Removes the given vertex from the vertex group, specified either by its defgrp_idx,
- * or directly by its MDeformWeight pointer, if dw is not NULL.
- * WARNING: This function frees the given MDeformWeight, do not use it afterward! */
-static void defvert_remove_from_group(MDeformVert *dv, int defgrp_idx, MDeformWeight *dw)
-{
-	/* TODO, move this into deform.c as a generic function. */
-	MDeformWeight *newdw;
-	int i;
-
-	/* Get index of removed MDeformWeight. */
-	if(dw == NULL) {
-		dw = dv->dw;
-		for (i = dv->totweight; i > 0; i--, dw++) {
-			if (dw->def_nr == defgrp_idx)
-				break;
-		}
-		i--;
-	}
-	else {
-		i = dw - dv->dw;
-		/* Security check! */
-		if(i < 0 || i >= dv->totweight)
-			return;
-	}
-
-	dv->totweight--;
-	/* If there are still other deform weights attached to this vert then remove
-	 * this deform weight, and reshuffle the others.
-	 */
-	if(dv->totweight) {
-		newdw = MEM_mallocN(sizeof(MDeformWeight)*(dv->totweight), "defvert_remove_from_group, new deformWeight");
-		if(dv->dw){
-			memcpy(newdw, dv->dw, sizeof(MDeformWeight)*i);
-			memcpy(newdw+i, dv->dw+i+1, sizeof(MDeformWeight)*(dv->totweight-i));
-			MEM_freeN(dv->dw);
-		}
-		dv->dw = newdw;
-	}
-	/* If there are no other deform weights left then just remove this one. */
-	else {
-		MEM_freeN(dv->dw);
-		dv->dw = NULL;
-	}
-}
 
 
-/* Applies weights to given vgroup (defgroup), and optionnaly add/remove vertices from the group.
+
+/* Applies weights to given vgroup (defgroup), and optionally add/remove vertices from the group.
  * If dws is not NULL, it must be an array of MDeformWeight pointers of same length as weights (and
  * defgrp_idx can then have any value).
  * If indices is not NULL, it must be an array of same length as weights, mapping to the real
@@ -298,7 +237,7 @@ void weightvg_update_vg(MDeformVert *dvert, int defgrp_idx, MDeformWeight **dws,
 {
 	int i;
 
-	for(i = 0; i < num; i++) {
+	for (i = 0; i < num; i++) {
 		float w = weights[i];
 		MDeformVert *dv = &dvert[indices ? indices[i] : i];
 		MDeformWeight *dw = dws ? dws[i] : defvert_find_index(dv, defgrp_idx);
@@ -307,17 +246,17 @@ void weightvg_update_vg(MDeformVert *dvert, int defgrp_idx, MDeformWeight **dws,
 		CLAMP(w, 0.0f, 1.0f);
 
 		/* If the vertex is in this vgroup, remove it if needed, or just update it. */
-		if(dw != NULL) {
-			if(do_rem && w < rem_thresh) {
-				defvert_remove_from_group(dv, defgrp_idx, dw);
+		if (dw != NULL) {
+			if (do_rem && w < rem_thresh) {
+				defvert_remove_group(dv, dw);
 			}
 			else {
 				dw->weight = w;
 			}
 		}
 		/* Else, add it if needed! */
-		else if(do_add && w > add_thresh) {
-			defvert_add_to_group(dv, defgrp_idx, w);
+		else if (do_add && w > add_thresh) {
+			defvert_add_index_notest(dv, defgrp_idx, w);
 		}
 	}
 }

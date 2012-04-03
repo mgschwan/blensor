@@ -24,14 +24,14 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __KX_PYKEYBOARD
-#define __KX_PYKEYBOARD
+#ifndef __SCA_PYTHONKEYBOARD_H__
+#define __SCA_PYTHONKEYBOARD_H__
 
 #include "PyObjectPlus.h"
 
 class SCA_PythonKeyboard : public PyObjectPlus
 {
-	Py_Header;
+	Py_Header
 private:
 	class SCA_IInputDevice *m_keyboard;
 #ifdef WITH_PYTHON
@@ -43,8 +43,9 @@ public:
 
 #ifdef WITH_PYTHON
 	static PyObject*	pyattr_get_events(void* self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static PyObject*	pyattr_get_active_events(void* self_v, const KX_PYATTRIBUTE_DEF *attrdef);
 #endif
 };
 
-#endif //__KX_PYKEYBOARD
+#endif //__SCA_PYTHONKEYBOARD_H__
 

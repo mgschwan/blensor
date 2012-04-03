@@ -1,10 +1,21 @@
-LCGDIR = '../lib/linux'
-LIBDIR = "${LCGDIR}"
+# find library directory
+import platform
+import os
+from Modules.FindPython import FindPython
 
-BF_PYTHON_ABI_FLAGS = 'm'  # Most common for linux distros
-BF_PYTHON = '/usr'
-BF_PYTHON_LIBPATH = '${BF_PYTHON}/lib'
-BF_PYTHON_VERSION = '3.2'
+bitness = platform.architecture()[0]
+if bitness == '64bit':
+    LCGDIR = '../lib/linux64'
+else:
+    LCGDIR = '../lib/linux'
+LIBDIR = "#${LCGDIR}"
+
+py = FindPython()
+
+BF_PYTHON_ABI_FLAGS = py['ABI_FLAGS']
+BF_PYTHON = py['PYTHON']
+BF_PYTHON_LIBPATH = py['LIBPATH']
+BF_PYTHON_VERSION = py['VERSION']
 WITH_BF_STATICPYTHON = False
 BF_PYTHON_INC = '${BF_PYTHON}/include/python${BF_PYTHON_VERSION}${BF_PYTHON_ABI_FLAGS}'
 BF_PYTHON_BINARY = '${BF_PYTHON}/bin/python${BF_PYTHON_VERSION}'
@@ -87,6 +98,7 @@ BF_GETTEXT_LIBPATH = '${BF_GETTEXT}/lib'
 
 WITH_BF_GAMEENGINE = True
 WITH_BF_PLAYER = True
+WITH_BF_OCEANSIM = True
 
 WITH_BF_BULLET = True
 BF_BULLET = '#extern/bullet2/src'
@@ -113,7 +125,18 @@ WITH_BF_BINRELOC = True
 
 # enable ffmpeg  support
 WITH_BF_FFMPEG = True  # -DWITH_FFMPEG
-BF_FFMPEG = '/usr'
+BF_FFMPEG = LIBDIR + '/ffmpeg'
+if os.path.exists(LCGDIR + '/ffmpeg'):
+    WITH_BF_STATICFFMPEG = True
+    BF_FFMPEG_LIB_STATIC = '${BF_FFMPEG_LIBPATH}/libavformat.a ${BF_FFMPEG_LIBPATH}/libswscale.a ' + \
+        '${BF_FFMPEG_LIBPATH}/libavcodec.a ${BF_FFMPEG_LIBPATH}/libavdevice.a ${BF_FFMPEG_LIBPATH}/libavutil.a ' + \
+        '${BF_FFMPEG_LIBPATH}/libxvidcore.a ${BF_FFMPEG_LIBPATH}/libx264.a ${BF_FFMPEG_LIBPATH}/libmp3lame.a ' + \
+        '${BF_FFMPEG_LIBPATH}/libvpx.a ${BF_FFMPEG_LIBPATH}/libvorbis.a ${BF_FFMPEG_LIBPATH}/libogg.a ' + \
+        '${BF_FFMPEG_LIBPATH}/libvorbisenc.a ${BF_FFMPEG_LIBPATH}/libtheora.a ' + \
+        '${BF_FFMPEG_LIBPATH}/libschroedinger-1.0.a ${BF_FFMPEG_LIBPATH}/liborc-0.4.a ${BF_FFMPEG_LIBPATH}/libdirac_encoder.a ' + \
+        '${BF_FFMPEG_LIBPATH}/libfaad.a'
+else:
+    BF_FFMPEG = '/usr'
 BF_FFMPEG_LIB = 'avformat avcodec swscale avutil avdevice'
 BF_FFMPEG_INC = '${BF_FFMPEG}/include'
 BF_FFMPEG_LIBPATH='${BF_FFMPEG}/lib'
@@ -121,7 +144,7 @@ BF_FFMPEG_LIBPATH='${BF_FFMPEG}/lib'
 #BF_FFMPEG_LIB_STATIC = '${BF_FFMPEG_LIBPATH}/libavformat.a ${BF_FFMPEG_LIBPATH/libavcodec.a ${BF_FFMPEG_LIBPATH}/libswscale.a ${BF_FFMPEG_LIBPATH}/libavutil.a ${BF_FFMPEG_LIBPATH}/libavdevice.a'
 
 # enable ogg, vorbis and theora in ffmpeg
-WITH_BF_OGG = False  # -DWITH_OGG 
+WITH_BF_OGG = False
 BF_OGG = '/usr'
 BF_OGG_INC = '${BF_OGG}/include'
 BF_OGG_LIB = 'ogg vorbis vorbisenc theoraenc theoradec'
@@ -178,6 +201,32 @@ BF_JEMALLOC_LIBPATH = '${BF_JEMALLOC}/lib'
 BF_JEMALLOC_LIB = 'jemalloc'
 BF_JEMALLOC_LIB_STATIC = '${BF_JEMALLOC_LIBPATH}/libjemalloc.a'
 
+WITH_BF_OIIO = True
+WITH_BF_STATICOIIO = False
+BF_OIIO = LIBDIR + '/oiio'
+if not os.path.exists(LCGDIR + '/oiio'):
+    WITH_BF_OIIO = False
+    BF_OIIO = '/usr'
+BF_OIIO_INC = BF_OIIO + '/include'
+BF_OIIO_LIB = 'OpenImageIO'
+BF_OIIO_LIBPATH = BF_OIIO + '/lib'
+
+WITH_BF_BOOST = True
+WITH_BF_STATICBOOST = False
+BF_BOOST = LIBDIR + '/boost'
+if not os.path.exists(LCGDIR + '/boost'):
+    WITH_BF_BOOST = False
+    BF_BOOST = '/usr'
+BF_BOOST_INC = BF_BOOST + '/include'
+BF_BOOST_LIB = 'boost_date_time boost_filesystem boost_regex boost_system boost_thread'
+BF_BOOST_LIBPATH = BF_BOOST + '/lib'
+
+WITH_BF_CYCLES = WITH_BF_OIIO and WITH_BF_BOOST
+
+WITH_BF_CYCLES_CUDA_BINARIES = False
+BF_CYCLES_CUDA_NVCC = '/usr/local/cuda/bin/nvcc'
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_13', 'sm_20', 'sm_21']
+
 WITH_BF_OPENMP = True
 
 #Ray trace optimization
@@ -186,6 +235,7 @@ BF_RAYOPTIMIZATION_SSE_FLAGS = ['-msse','-pthread']
 
 #SpaceNavigator and friends
 WITH_BF_3DMOUSE = True
+WITH_BF_STATIC3DMOUSE = False
 BF_3DMOUSE = '/usr'
 BF_3DMOUSE_INC = '${BF_3DMOUSE}/include'
 BF_3DMOUSE_LIBPATH = '${BF_3DMOUSE}/lib'
@@ -205,8 +255,8 @@ CPPFLAGS = []
 # g++ 4.6, only needed for bullet
 CXXFLAGS += ['-fpermissive']
 if WITH_BF_FFMPEG:
-  # libavutil needs UINT64_C()
-  CXXFLAGS += ['-D__STDC_CONSTANT_MACROS', ]
+    # libavutil needs UINT64_C()
+    CXXFLAGS += ['-D__STDC_CONSTANT_MACROS', ]
 REL_CFLAGS = []
 REL_CXXFLAGS = []
 REL_CCFLAGS = ['-DNDEBUG', '-O2']

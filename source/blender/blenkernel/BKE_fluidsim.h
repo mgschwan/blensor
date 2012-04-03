@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BKE_FLUIDSIM_H
-#define BKE_FLUIDSIM_H
+#ifndef __BKE_FLUIDSIM_H__
+#define __BKE_FLUIDSIM_H__
 
 /** \file BKE_fluidsim.h
  *  \ingroup bke
@@ -48,7 +48,7 @@ void initElbeemMesh(struct Scene *scene, struct Object *ob,
 
 /* bounding box & memory estimate */
 void fluid_get_bb(struct MVert *mvert, int totvert, float obmat[][4],
-		 float start[3], float size[3]);
+                  float start[3], float size[3]);
 
 void fluid_estimate_memory(struct Object *ob, struct FluidsimSettings *fss, char *value);
 

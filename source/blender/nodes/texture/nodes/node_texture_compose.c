@@ -48,7 +48,7 @@ static bNodeSocketTemplate outputs[]= {
 static void colorfn(float *out, TexParams *p, bNode *UNUSED(node), bNodeStack **in, short thread)
 {
 	int i;
-	for(i = 0; i < 4; i++)
+	for (i = 0; i < 4; i++)
 		out[i] = tex_input_value(in[i], p, thread);
 }
 
@@ -57,14 +57,14 @@ static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
 	tex_output(node, in, out[0], &colorfn, data);
 }
 
-void register_node_type_tex_compose(ListBase *lb)
+void register_node_type_tex_compose(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 	
-	node_type_base(&ntype, TEX_NODE_COMPOSE, "Compose RGBA", NODE_CLASS_OP_COLOR, 0);
+	node_type_base(ttype, &ntype, TEX_NODE_COMPOSE, "Compose RGBA", NODE_CLASS_OP_COLOR, 0);
 	node_type_socket_templates(&ntype, inputs, outputs);
 	node_type_size(&ntype, 100, 60, 150);
 	node_type_exec(&ntype, exec);
 	
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }

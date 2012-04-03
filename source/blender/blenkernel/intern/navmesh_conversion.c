@@ -44,12 +44,12 @@
 
 #include "recast-capi.h"
 
-BM_INLINE float area2(const float* a, const float* b, const float* c)
+BLI_INLINE float area2(const float* a, const float* b, const float* c)
 {
 	return (b[0] - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (b[2] - a[2]);
 }
 
-BM_INLINE int left(const float* a, const float* b, const float* c)
+BLI_INLINE int left(const float* a, const float* b, const float* c)
 {
 	return area2(a, b, c) < 0;
 }
@@ -134,8 +134,8 @@ int buildRawVertIndicesData(DerivedMesh* dm, int *nverts_r, float **verts_r,
 	}
 
 	//calculate number of tris
-	nfaces = dm->getNumFaces(dm);
-	faces = dm->getFaceArray(dm);
+	nfaces = dm->getNumTessFaces(dm);
+	faces = dm->getTessFaceArray(dm);
 	ntris = nfaces;
 	for (fi=0; fi<nfaces; fi++)
 	{
@@ -248,8 +248,7 @@ int buildPolygonsByDetailedMeshes(const int vertsPerPoly, const int npolys,
 				//move to next edge					
 				edge = (edge+1)%3;
 			}
-			else
-			{
+			else {
 				//move to next tri
 				int twinedge = -1;
 				for (k=0; k<3; k++)
@@ -344,7 +343,7 @@ int buildNavMeshData(const int nverts, const float* verts,
 							 int *vertsPerPoly_r, int **dtrisToPolysMap_r, int **dtrisToTrisMap_r)
 
 {
-	int *trisMapping = MEM_callocN(sizeof(int)*ntris, "buildNavMeshData trisMapping");
+	int *trisMapping;
 	int i;
 	struct SortContext context;
 	int validTriStart, prevPolyIdx, curPolyIdx, newPolyIdx, prevpolyidx;
@@ -359,6 +358,8 @@ int buildNavMeshData(const int nverts, const float* verts,
 		printf("Converting navmesh: Error! Can't find recast custom data\n");
 		return 0;
 	}
+
+	trisMapping = MEM_callocN(sizeof(int)*ntris, "buildNavMeshData trisMapping");
 
 	//sort the triangles by polygon idx
 	for (i=0; i<ntris; i++)
@@ -500,7 +501,7 @@ exit:
 int polyFindVertex(const unsigned short* p, const int vertsPerPoly, unsigned short vertexIdx)
 {
 	int i, res = -1;
-	for(i=0; i<vertsPerPoly; i++)
+	for (i=0; i<vertsPerPoly; i++)
 	{
 		if (p[i]==0xffff)
 			break;

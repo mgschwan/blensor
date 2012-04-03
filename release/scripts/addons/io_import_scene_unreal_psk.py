@@ -21,7 +21,6 @@ bl_info = {
     "author": "Darknet",
     "version": (2, 0),
     "blender": (2, 5, 9),
-    "api": 41077,
     "location": "File > Import > Skeleton Mesh (.psk)",
     "description": "Import Skeleleton Mesh",
     "warning": "",
@@ -446,9 +445,9 @@ def pskimport(infile,importmesh,importbone,bDebugLogPSK,importmultiuvtextures):
                     newbone.head.y = parentbone.head.y + pos_y
                     newbone.head.z = parentbone.head.z + pos_z
                     #print("head:",newbone.head)
-                    newbone.tail.x = parentbone.head.x + (pos_x + bonesize * rotmatrix[1][0])
+                    newbone.tail.x = parentbone.head.x + (pos_x + bonesize * rotmatrix[0][1])
                     newbone.tail.y = parentbone.head.y + (pos_y + bonesize * rotmatrix[1][1])
-                    newbone.tail.z = parentbone.head.z + (pos_z + bonesize * rotmatrix[1][2])
+                    newbone.tail.z = parentbone.head.z + (pos_z + bonesize * rotmatrix[2][1])
                     #newbone.roll = fixRoll(newbone)
                 else:
                     #print("rotmatrix:",dir(bone.bindmat.to_matrix().resize_4x4()))
@@ -458,9 +457,9 @@ def pskimport(infile,importmesh,importbone,bDebugLogPSK,importmultiuvtextures):
                     newbone.head.x = bone.bindpos[0]
                     newbone.head.y = bone.bindpos[1]
                     newbone.head.z = bone.bindpos[2]
-                    newbone.tail.x = bone.bindpos[0] + bonesize * rotmatrix[1][0]
+                    newbone.tail.x = bone.bindpos[0] + bonesize * rotmatrix[0][1]
                     newbone.tail.y = bone.bindpos[1] + bonesize * rotmatrix[1][1]
-                    newbone.tail.z = bone.bindpos[2] + bonesize * rotmatrix[1][2]
+                    newbone.tail.z = bone.bindpos[2] + bonesize * rotmatrix[2][1]
                     #newbone.roll = fixRoll(newbone)
                     #print("no parent")
             
@@ -625,46 +624,46 @@ def pskimport(infile,importmesh,importbone,bDebugLogPSK,importmultiuvtextures):
             #psktexname="psk" + str(countm)
         #me_ob.uv_textures.new(name=psktexname)
         for countm in range(len(me_ob.uv_textures)):
-                me_ob.update()
-                #print(dir(me_ob.uv_textures))
-                #psktexname="psk" + str(countm)
-                uvtex = me_ob.uv_textures[countm] #add one uv texture
-                me_ob.update()
-                #print("UV TEXTURE NAME:",uvtex.name)
-                if (len(faceuv) > 0):
-                    # counttex = 0  # UNUSED
-                    countm = 0
-                    for countm in range(len(me_ob.uv_textures)):
-                        me_ob.update()
-                        #print(dir(me_ob.uv_textures))
-                        psktexname="psk" + str(countm)
-                        uvtex = me_ob.uv_textures[countm] #add one uv texture
-                        me_ob.update()
-                        #print("UV TEXTURE NAME:",uvtex.name)
-                        for i, face in enumerate(me_ob.faces):
-                            blender_tface = uvtex.data[i] #face
-                            mfaceuv = faceuv[i]
-                            #print("---------------------------------------")
-                            #print(faceuv[i][1])
-                            #print(dir(face))
+            me_ob.update()
+            #print(dir(me_ob.uv_textures))
+            #psktexname="psk" + str(countm)
+            uvtex = me_ob.uv_textures[countm] #add one uv texture
+            me_ob.update()
+            #print("UV TEXTURE NAME:",uvtex.name)
+            if (len(faceuv) > 0):
+                # counttex = 0  # UNUSED
+                countm = 0
+                for countm in range(len(me_ob.uv_textures)):
+                    me_ob.update()
+                    #print(dir(me_ob.uv_textures))
+                    psktexname="psk" + str(countm)
+                    uvtex = me_ob.uv_textures[countm] #add one uv texture
+                    me_ob.update()
+                    #print("UV TEXTURE NAME:",uvtex.name)
+                    for i, face in enumerate(me_ob.faces):
+                        blender_tface = uvtex.data[i] #face
+                        mfaceuv = faceuv[i]
+                        #print("---------------------------------------")
+                        #print(faceuv[i][1])
+                        #print(dir(face))
+                        face.material_index = faceuv[i][1]
+                        if countm == faceuv[i][1]:
                             face.material_index = faceuv[i][1]
-                            if countm == faceuv[i][1]:
-                                face.material_index = faceuv[i][1]
-                                blender_tface.uv1 = mfaceuv[0][0] #uv = (0,0)
-                                blender_tface.uv2 = mfaceuv[0][1] #uv = (0,0)
-                                blender_tface.uv3 = mfaceuv[0][2] #uv = (0,0)
-                            else:
-                                #set uv to zero (0,0)
-                                #print("--------------------")
-                                #print(blender_tface.uv1)
-                                #print(blender_tface.uv2)
-                                #print(blender_tface.uv2)
-                                blender_tface.uv1 = [0,0]
-                                #print(blender_tface.uv1)
-                                blender_tface.uv2 = [0,0]
-                                blender_tface.uv3 = [0,0]
-                    
-                texture.append(uvtex)		
+                            blender_tface.uv1 = mfaceuv[0][0] #uv = (0,0)
+                            blender_tface.uv2 = mfaceuv[0][1] #uv = (0,0)
+                            blender_tface.uv3 = mfaceuv[0][2] #uv = (0,0)
+                        else:
+                            #set uv to zero (0,0)
+                            #print("--------------------")
+                            #print(blender_tface.uv1)
+                            #print(blender_tface.uv2)
+                            #print(blender_tface.uv2)
+                            blender_tface.uv1 = [0,0]
+                            #print(blender_tface.uv1)
+                            blender_tface.uv2 = [0,0]
+                            blender_tface.uv3 = [0,0]
+                
+            texture.append(uvtex)
     print("UV TEXTURE LEN:",len(texture))
         #for tex in me_ob.uv_textures:
             #print("mesh tex:",dir(tex))
@@ -749,9 +748,6 @@ class IMPORT_OT_psk(bpy.types.Operator):
     # List of operator properties, the attributes will be assigned
     # to the class instance from the operator settings before calling.
     filepath = StringProperty(
-            name="File Path",
-            description="Filepath used for importing the psk file",
-            maxlen= 1024,
             subtype='FILE_PATH',
             )
     filter_glob = StringProperty(

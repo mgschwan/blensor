@@ -30,8 +30,8 @@
  */
 
 
-#ifndef NAN_INCLUDED_BSP_CSGMesh_h
-#define NAN_INCLUDED_BSP_CSGMesh_h
+#ifndef __BSP_CSGMESH_H__
+#define __BSP_CSGMESH_H__
 
 #include "BSP_MeshPrimitives.h"
 #include "MEM_SmartPtr.h"
@@ -108,11 +108,10 @@ public :
 
 		std::vector<BSP_MVertex> &
 	VertexSet(
-	) const ;		
-
+	) const;
 		std::vector<BSP_MFace> &
 	FaceSet(
-	) const ;
+	) const;
 
 		std::vector<BSP_MEdge> &
 	EdgeSet(

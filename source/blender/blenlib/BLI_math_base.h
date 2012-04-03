@@ -23,8 +23,8 @@
  * ***** END GPL LICENSE BLOCK *****
  * */
 
-#ifndef BLI_MATH_BASE_H
-#define BLI_MATH_BASE_H
+#ifndef __BLI_MATH_BASE_H__
+#define __BLI_MATH_BASE_H__
 
 /** \file BLI_math_base.h
  *  \ingroup bli
@@ -142,7 +142,7 @@
 #define CLAMP(a, b, c)		if((a)<(b)) (a)=(b); else if((a)>(c)) (a)=(c)
 #endif
 
-#ifdef BLI_MATH_INLINE_H
+#ifdef __BLI_MATH_INLINE_H__
 #include "intern/math_base_inline.c"
 #endif
 
@@ -167,6 +167,11 @@ MINLINE float signf(float f);
 
 MINLINE float power_of_2(float f);
 
+/* these don't really fit anywhere but were being copied about a lot */
+MINLINE int is_power_of_2_i(int n);
+MINLINE int power_of_2_max_i(int n);
+MINLINE int power_of_2_min_i(int n);
+
 MINLINE float shell_angle_to_dist(float angle);
 
 #if (defined(WIN32) || defined(WIN64)) && !defined(FREE_WINDOWS)
@@ -176,5 +181,5 @@ extern double round(double x);
 
 double double_round(double x, int ndigits);
 
-#endif /* BLI_MATH_BASE_H */
+#endif /* __BLI_MATH_BASE_H__ */
 

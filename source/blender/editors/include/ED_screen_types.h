@@ -28,8 +28,8 @@
  *  \ingroup editors
  */
 
-#ifndef ED_SCREEN_TYPES_H__
-#define ED_SCREEN_TYPES_H__
+#ifndef __ED_SCREEN_TYPES_H__
+#define __ED_SCREEN_TYPES_H__
 
 /* ----------------------------------------------------- */
 
@@ -41,6 +41,7 @@ typedef struct ScreenAnimData {
 	short flag;			/* flags for playback */
 	int sfra;			/* frame that playback was started from */
 	int nextfra;		/* next frame to go to (when ANIMPLAY_FLAG_USE_NEXT_FRAME is set) */
+	double last_duration;	/* used for frame dropping */
 } ScreenAnimData;
 
 /* for animplayer */
@@ -100,4 +101,4 @@ typedef struct AZone {
 #define	AZONE_AREA			1
 #define AZONE_REGION		2
 
-#endif /* ED_SCREEN_TYPES_H__ */
+#endif /* __ED_SCREEN_TYPES_H__ */

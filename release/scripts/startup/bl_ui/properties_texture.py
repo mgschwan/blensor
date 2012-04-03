@@ -19,6 +19,14 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Menu, Panel
+
+from bpy.types import (Brush,
+                       Lamp,
+                       Material,
+                       ParticleSettings,
+                       Texture,
+                       World)
+
 from rna_prop_ui import PropertyPanel
 
 
@@ -44,7 +52,7 @@ class TEXTURE_MT_envmap_specials(Menu):
         layout.operator("texture.envmap_clear", icon='FILE_REFRESH')
         layout.operator("texture.envmap_clear_all", icon='FILE_REFRESH')
 
-from bl_ui.properties_material import active_node_mat
+from .properties_material import active_node_mat
 
 
 def context_tex_datablock(context):
@@ -91,7 +99,7 @@ class TEXTURE_PT_context_texture(TextureButtonsPanel, Panel):
         engine = context.scene.render.engine
         if not (hasattr(context, "texture_slot") or hasattr(context, "texture_node")):
             return False
-        return ((context.material or context.world or context.lamp or context.brush or context.texture or context.particle_system or isinstance(context.space_data.pin_id, bpy.types.ParticleSettings))
+        return ((context.material or context.world or context.lamp or context.brush or context.texture or context.particle_system or isinstance(context.space_data.pin_id, ParticleSettings))
             and (engine in cls.COMPAT_ENGINES))
 
     def draw(self, context):
@@ -103,14 +111,14 @@ class TEXTURE_PT_context_texture(TextureButtonsPanel, Panel):
         idblock = context_tex_datablock(context)
         pin_id = space.pin_id
 
-        if space.use_pin_id and not isinstance(pin_id, bpy.types.Texture):
+        if space.use_pin_id and not isinstance(pin_id, Texture):
             idblock = pin_id
             pin_id = None
 
         if not space.use_pin_id:
             layout.prop(space, "texture_context", expand=True)
 
-        tex_collection = (pin_id is None) and (node is None) and (not isinstance(idblock, bpy.types.Brush))
+        tex_collection = (pin_id is None) and (node is None) and (not isinstance(idblock, Brush))
 
         if tex_collection:
             row = layout.row()
@@ -166,6 +174,10 @@ class TEXTURE_PT_preview(TextureButtonsPanel, Panel):
             layout.template_preview(tex, parent=idblock, slot=slot)
         else:
             layout.template_preview(tex, slot=slot)
+
+        #Show Alpha Button for Brush Textures, see #29502
+        if context.space_data.texture_context == 'BRUSH':
+            layout.prop(tex, "use_preview_alpha")
 
 
 class TEXTURE_PT_colors(TextureButtonsPanel, Panel):
@@ -409,7 +421,7 @@ class TEXTURE_PT_image_sampling(TextureTypePanel, Panel):
         col = split.column()
 
         #Only for Material based textures, not for Lamp/World...
-        if slot and isinstance(idblock, bpy.types.Material):
+        if slot and isinstance(idblock, Material):
             col.prop(tex, "use_normal_map")
             row = col.row()
             row.active = tex.use_normal_map
@@ -726,7 +738,7 @@ class TEXTURE_PT_pointdensity(TextureButtonsPanel, Panel):
         col.prop(pd, "falloff", text="")
         if pd.falloff == 'SOFT':
             col.prop(pd, "falloff_soft")
-        if pd.falloff == "PARTICLE_VELOCITY":
+        if pd.falloff == 'PARTICLE_VELOCITY':
             col.prop(pd, "falloff_speed_scale")
 
         col.prop(pd, "use_falloff_curve")
@@ -774,6 +786,22 @@ class TEXTURE_PT_pointdensity_turbulence(TextureButtonsPanel, Panel):
         col.prop(pd, "turbulence_strength")
 
 
+class TEXTURE_PT_ocean(TextureTypePanel, Panel):
+    bl_label = "Ocean"
+    tex_type = 'OCEAN'
+    COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
+
+    def draw(self, context):
+        layout = self.layout
+
+        tex = context.texture
+        ot = tex.ocean
+
+        col = layout.column()
+        col.prop(ot, "ocean_object")
+        col.prop(ot, "output")
+
+
 class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
     bl_label = "Mapping"
     COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
@@ -781,7 +809,7 @@ class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
     @classmethod
     def poll(cls, context):
         idblock = context_tex_datablock(context)
-        if isinstance(idblock, bpy.types.Brush) and not context.sculpt_object:
+        if isinstance(idblock, Brush) and not context.sculpt_object:
             return False
 
         if not getattr(context, "texture_slot", None):
@@ -796,9 +824,8 @@ class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
         idblock = context_tex_datablock(context)
 
         tex = context.texture_slot
-        # textype = context.texture
 
-        if not isinstance(idblock, bpy.types.Brush):
+        if not isinstance(idblock, Brush):
             split = layout.split(percentage=0.3)
             col = split.column()
             col.label(text="Coordinates:")
@@ -815,7 +842,7 @@ class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
                 """
             elif tex.texture_coords == 'UV':
                 split = layout.split(percentage=0.3)
-                split.label(text="Layer:")
+                split.label(text="Map:")
                 ob = context.object
                 if ob and ob.type == 'MESH':
                     split.prop_search(tex, "uv_layer", ob.data, "uv_textures", text="")
@@ -827,7 +854,7 @@ class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
                 split.label(text="Object:")
                 split.prop(tex, "object", text="")
 
-        if isinstance(idblock, bpy.types.Brush):
+        if isinstance(idblock, Brush):
             if context.sculpt_object:
                 layout.label(text="Brush Mapping:")
                 layout.prop(tex, "map_mode", expand=True)
@@ -836,7 +863,7 @@ class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
                 row.active = tex.map_mode in {'FIXED', 'TILED'}
                 row.prop(tex, "angle")
         else:
-            if isinstance(idblock, bpy.types.Material):
+            if isinstance(idblock, Material):
                 split = layout.split(percentage=0.3)
                 split.label(text="Projection:")
                 split.prop(tex, "mapping", text="")
@@ -869,7 +896,7 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
     @classmethod
     def poll(cls, context):
         idblock = context_tex_datablock(context)
-        if isinstance(idblock, bpy.types.Brush):
+        if isinstance(idblock, Brush):
             return False
 
         if not getattr(context, "texture_slot", None):
@@ -884,7 +911,6 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
 
         idblock = context_tex_datablock(context)
 
-        # textype = context.texture
         tex = context.texture_slot
 
         def factor_but(layout, toggle, factor, name):
@@ -895,7 +921,7 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
             sub.prop(tex, factor, text=name, slider=True)
             return sub  # XXX, temp. use_map_normal needs to override.
 
-        if isinstance(idblock, bpy.types.Material):
+        if isinstance(idblock, Material):
             if idblock.type in {'SURFACE', 'WIRE'}:
                 split = layout.split()
 
@@ -958,7 +984,7 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
                 factor_but(col, "use_map_color_transmission", "transmission_color_factor", "Transmission Color")
                 factor_but(col, "use_map_color_reflection", "reflection_color_factor", "Reflection Color")
 
-        elif isinstance(idblock, bpy.types.Lamp):
+        elif isinstance(idblock, Lamp):
             split = layout.split()
 
             col = split.column()
@@ -967,7 +993,7 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
             col = split.column()
             factor_but(col, "use_map_shadow", "shadow_factor", "Shadow")
 
-        elif isinstance(idblock, bpy.types.World):
+        elif isinstance(idblock, World):
             split = layout.split()
 
             col = split.column()
@@ -977,7 +1003,7 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
             col = split.column()
             factor_but(col, "use_map_zenith_up", "zenith_up_factor", "Zenith Up")
             factor_but(col, "use_map_zenith_down", "zenith_down_factor", "Zenith Down")
-        elif isinstance(idblock, bpy.types.ParticleSettings):
+        elif isinstance(idblock, ParticleSettings):
             split = layout.split()
 
             col = split.column()
@@ -1008,7 +1034,7 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
 
         layout.separator()
 
-        if not isinstance(idblock, bpy.types.ParticleSettings):
+        if not isinstance(idblock, ParticleSettings):
             split = layout.split()
 
             col = split.column()
@@ -1021,10 +1047,10 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
             col.prop(tex, "invert", text="Negative")
             col.prop(tex, "use_stencil")
 
-        if isinstance(idblock, bpy.types.Material) or isinstance(idblock, bpy.types.World):
+        if isinstance(idblock, Material) or isinstance(idblock, World):
             col.prop(tex, "default_value", text="DVar", slider=True)
 
-        if isinstance(idblock, bpy.types.Material):
+        if isinstance(idblock, Material):
             layout.label(text="Bump Mapping:")
 
             # only show bump settings if activated but not for normal-map images
@@ -1036,14 +1062,14 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
 
             # the space setting is supported for: derivative-maps + bump-maps (DEFAULT,BEST_QUALITY), not for normal-maps
             sub = row.row()
-            sub.active = (tex.use_map_normal or tex.use_map_warp) and not (tex.texture.type == 'IMAGE' and tex.texture.use_normal_map) and ((tex.bump_method in {'BUMP_DEFAULT', 'BUMP_BEST_QUALITY'}) or (tex.texture.type == 'IMAGE' and tex.texture.use_derivative_map))
+            sub.active = (tex.use_map_normal or tex.use_map_warp) and not (tex.texture.type == 'IMAGE' and tex.texture.use_normal_map) and ((tex.bump_method in {'BUMP_LOW_QUALITY', 'BUMP_MEDIUM_QUALITY', 'BUMP_BEST_QUALITY'}) or (tex.texture.type == 'IMAGE' and tex.texture.use_derivative_map))
             sub.prop(tex, "bump_objectspace", text="Space")
 
 
 class TEXTURE_PT_custom_props(TextureButtonsPanel, PropertyPanel, Panel):
     COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
     _context_path = "texture"
-    _property_type = bpy.types.Texture
+    _property_type = Texture
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

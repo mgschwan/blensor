@@ -32,14 +32,14 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __KX_EXPRESSIONCONTROLLER
-#define __KX_EXPRESSIONCONTROLLER
+#ifndef __SCA_EXPRESSIONCONTROLLER_H__
+#define __SCA_EXPRESSIONCONTROLLER_H__
 
 #include "SCA_IController.h"
 
 class SCA_ExpressionController : public SCA_IController
 {
-//	Py_Header;
+//	Py_Header
 	STR_String			m_exprText;
 	CExpression*		m_exprCache;
 
@@ -65,5 +65,5 @@ public:
 #endif
 };
 
-#endif //__KX_EXPRESSIONCONTROLLER
+#endif //__SCA_EXPRESSIONCONTROLLER_H__
 

@@ -29,8 +29,8 @@
  *  \ingroup ketsji
  */
 
-#ifndef __KX_CONSTRAINTACTUATOR
-#define __KX_CONSTRAINTACTUATOR
+#ifndef __KX_CONSTRAINTACTUATOR_H__
+#define __KX_CONSTRAINTACTUATOR_H__
 
 #include "SCA_IActuator.h"
 #include "MT_Scalar.h"
@@ -42,7 +42,7 @@ class KX_GameObject;
 
 class KX_ConstraintActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 protected:	
 	// Damp time (int),
 	int m_posDampTime;
@@ -145,5 +145,5 @@ protected:
 
 };
 
-#endif //__KX_CONSTRAINTACTUATOR
+#endif //__KX_CONSTRAINTACTUATOR_H__
 

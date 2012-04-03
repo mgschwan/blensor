@@ -1,43 +1,44 @@
 #ifdef WIN32
 
-#include "Windows.h"
+#include <Windows.h>
 
 static unsigned __int64 timer_frequency;
 static unsigned __int64 base_time;
 
 void set_time_base(void)
 {
-   QueryPerformanceFrequency((LARGE_INTEGER*)&timer_frequency);
-   QueryPerformanceCounter((LARGE_INTEGER*)&base_time);
+    QueryPerformanceFrequency((LARGE_INTEGER*)&timer_frequency);
+    QueryPerformanceCounter((LARGE_INTEGER*)&base_time);
 }
 
 double get_time_in_seconds(void)
 {
-   unsigned __int64 newtime;
-   QueryPerformanceCounter((LARGE_INTEGER*)&newtime);
-   return (double)(newtime - base_time) / (double)timer_frequency;
+    unsigned __int64 newtime;
+    QueryPerformanceCounter((LARGE_INTEGER*)&newtime);
+    return (double)(newtime - base_time) / (double)timer_frequency;
 }
 
 #else
 
+#include <wallclocktime.h>
 #include <sys/time.h>
 
 static long base_seconds=0;
 
 void set_time_base(void)
 {
-   struct timeval tv;
-   struct timezone tz;
-   gettimeofday(&tv, &tz);
-   base_seconds=tv.tv_sec;
+    struct timeval tv;
+    struct timezone tz;
+    gettimeofday(&tv, &tz);
+    base_seconds=tv.tv_sec;
 }
 
 double get_time_in_seconds(void)
 {
-   struct timeval tv;
-   struct timezone tz;
-   gettimeofday(&tv, &tz);
-   return 0.000001*tv.tv_usec + (tv.tv_sec-base_seconds);
+    struct timeval tv;
+    struct timezone tz;
+    gettimeofday(&tv, &tz);
+    return 0.000001*tv.tv_usec + (tv.tv_sec-base_seconds);
 }
 
 #endif

@@ -23,10 +23,12 @@ set(INC
 	../../blenkernel
 	../../blenlib
 	../../blenloader
+	../../bmesh
 	../../gpu
 	../../imbuf
 	../../makesdna
 	../../makesrna
+	../uvedit
 	../../render/extern/include
 	../../windowmanager
 	../../../../intern/guardedalloc
@@ -37,6 +39,8 @@ set(INC_SYS
 )
 
 set(SRC
+	paint_cursor.c
+	paint_hide.c
 	paint_image.c
 	paint_ops.c
 	paint_stroke.c
@@ -45,6 +49,7 @@ set(SRC
 	paint_vertex.c
 	sculpt.c
 	sculpt_undo.c
+	sculpt_uv.c
 
 	paint_intern.h
 	sculpt_intern.h

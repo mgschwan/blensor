@@ -19,6 +19,11 @@
 import netrender.versioning as versioning
 from netrender.utils import *
 
+TAG_BAKING = "baking"
+TAG_RENDER = "render"
+
+TAG_ALL = set((TAG_BAKING, TAG_RENDER))
+
 class LogFile:
     def __init__(self, job_id = 0, slave_id = 0, frames = []):
         self.job_id = job_id
@@ -47,14 +52,22 @@ class LogFile:
 class RenderSlave:
     _slave_map = {}
 
-    def __init__(self):
+    def __init__(self, info = None):
         self.id = ""
-        self.name = ""
-        self.address = ("",0)
-        self.stats = ""
         self.total_done = 0
         self.total_error = 0
         self.last_seen = 0.0
+        
+        if info:
+            self.name = info.name
+            self.address = info.address
+            self.stats = info.stats
+            self.tags = info.tags
+        else:
+            self.name = ""
+            self.address = ("",0)
+            self.stats = ""
+            self.tags = set()
 
     def serialize(self):
         return 	{
@@ -64,7 +77,8 @@ class RenderSlave:
                             "stats": self.stats,
                             "total_done": self.total_done,
                             "total_error": self.total_error,
-                            "last_seen": self.last_seen
+                            "last_seen": self.last_seen,
+                            "tags": tuple(self.tags)
                         }
 
     @staticmethod
@@ -85,6 +99,7 @@ class RenderSlave:
         slave.total_done = data["total_done"]
         slave.total_error = data["total_error"]
         slave.last_seen = data["last_seen"]
+        slave.tags = set(data["tags"])
 
         if cache:
             RenderSlave._slave_map[slave_id] = slave
@@ -99,6 +114,14 @@ JOB_TYPES = {
                 JOB_BLENDER: "Blender",
                 JOB_PROCESS: "Process",
                 JOB_VCS:     "Versioned",
+            }
+
+JOB_SUB_RENDER = 1
+JOB_SUB_BAKING = 2
+
+JOB_SUBTYPES = {
+                JOB_SUB_RENDER: "Render",
+                JOB_SUB_BAKING: "Baking",
             }
 
 class VersioningInfo:
@@ -154,13 +177,15 @@ class VersioningInfo:
         
 
 class RenderFile:
-    def __init__(self, filepath = "", index = 0, start = -1, end = -1, signature=0):
+    def __init__(self, filepath = "", index = 0, start = -1, end = -1, signature = 0):
         self.filepath = filepath
         self.original_path = filepath
         self.signature = signature
         self.index = index
         self.start = start
         self.end = end
+        self.force = False
+        
 
     def serialize(self):
         return 	{
@@ -169,7 +194,9 @@ class RenderFile:
                     "index": self.index,
                     "start": self.start,
                     "end": self.end,
-                    "signature": self.signature
+                    "signature": self.signature,
+                    "force": self.force
+                    
                 }
 
     @staticmethod
@@ -179,22 +206,13 @@ class RenderFile:
 
         rfile = RenderFile(data["filepath"], data["index"], data["start"], data["end"], data["signature"])
         rfile.original_path = data["original_path"]
+        rfile.force = data["force"]
 
         return rfile
 
 class RenderJob:
-    def __init__(self, job_info = None):
+    def __init__(self, info = None):
         self.id = ""
-        self.type = JOB_BLENDER
-        self.name = ""
-        self.category = "None"
-        self.status = JOB_WAITING
-        self.files = []
-        self.chunks = 0
-        self.priority = 0
-        self.blacklist = []
-        
-        self.version_info = None
         
         self.resolution = None
 
@@ -202,29 +220,57 @@ class RenderJob:
         self.last_dispatched = 0.0
         self.frames = []
 
-        if job_info:
-            self.type = job_info.type
-            self.name = job_info.name
-            self.category = job_info.category
-            self.status = job_info.status
-            self.files = job_info.files
-            self.chunks = job_info.chunks
-            self.priority = job_info.priority
-            self.blacklist = job_info.blacklist
-            self.version_info = job_info.version_info
+        if info:
+            self.type = info.type
+            self.subtype = info.subtype
+            self.name = info.name
+            self.category = info.category
+            self.tags = info.tags
+            self.status = info.status
+            self.files = info.files
+            self.chunks = info.chunks
+            self.priority = info.priority
+            self.blacklist = info.blacklist
+            self.version_info = info.version_info
+            self.render = info.render
+        else:
+            self.type = JOB_BLENDER
+            self.subtype = JOB_SUB_RENDER
+            self.name = ""
+            self.category = "None"
+            self.tags = set()
+            self.status = JOB_WAITING
+            self.files = []
+            self.chunks = 0
+            self.priority = 0
+            self.blacklist = []
+            self.version_info = None
+            self.render = "BLENDER_RENDER"
 
     def hasRenderResult(self):
-        return self.type in (JOB_BLENDER, JOB_VCS)
+        return self.subtype == JOB_SUB_RENDER
 
     def rendersWithBlender(self):
-        return self.type in (JOB_BLENDER, JOB_VCS)
+        return self.subtype == JOB_SUB_RENDER
 
     def addFile(self, file_path, start=-1, end=-1, signed=True):
-        if signed:
-            signature = hashFile(file_path)
-        else:
-            signature = None
-        self.files.append(RenderFile(file_path, len(self.files), start, end, signature))
+        def isFileInFrames():
+            if start == end == -1:
+                return True
+            
+            for rframe in self.frames:
+                if start <= rframe.number<= end:
+                    return True
+            
+            return False
+            
+            
+        if isFileInFrames(): 
+            if signed:
+                signature = hashFile(file_path)
+            else:
+                signature = None
+            self.files.append(RenderFile(file_path, len(self.files), start, end, signature))
 
     def addFrame(self, frame_number, command = ""):
         frame = RenderFrame(frame_number, command)
@@ -234,7 +280,7 @@ class RenderJob:
     def __len__(self):
         return len(self.frames)
 
-    def countFrames(self, status=QUEUED):
+    def countFrames(self, status=FRAME_QUEUED):
         total = 0
         for f in self.frames:
             if f.status == status:
@@ -243,17 +289,17 @@ class RenderJob:
         return total
 
     def countSlaves(self):
-        return len(set((frame.slave for frame in self.frames if frame.status == DISPATCHED)))
+        return len(set((frame.slave for frame in self.frames if frame.status == FRAME_DISPATCHED)))
 
     def statusText(self):
         return JOB_STATUS_TEXT[self.status]
 
     def framesStatus(self):
         results = {
-                                QUEUED: 0,
-                                DISPATCHED: 0,
-                                DONE: 0,
-                                ERROR: 0
+                                FRAME_QUEUED: 0,
+                                FRAME_DISPATCHED: 0,
+                                FRAME_DONE: 0,
+                                FRAME_ERROR: 0
                             }
 
         for frame in self.frames:
@@ -275,26 +321,33 @@ class RenderJob:
         else:
             return None
 
-    def serialize(self, frames = None):
+    def serialize(self, frames = None,withFiles=True,withFrames=True):
         min_frame = min((f.number for f in frames)) if frames else -1
         max_frame = max((f.number for f in frames)) if frames else -1
-        return 	{
+        data={
                             "id": self.id,
                             "type": self.type,
+                            "subtype": self.subtype,
                             "name": self.name,
                             "category": self.category,
+                            "tags": tuple(self.tags),
                             "status": self.status,
-                            "files": [f.serialize() for f in self.files if f.start == -1 or not frames or (f.start <= max_frame and f.end >= min_frame)],
-                            "frames": [f.serialize() for f in self.frames if not frames or f in frames],
                             "chunks": self.chunks,
                             "priority": self.priority,
                             "usage": self.usage,
                             "blacklist": self.blacklist,
                             "last_dispatched": self.last_dispatched,
                             "version_info": self.version_info.serialize() if self.version_info else None,
-                            "resolution": self.resolution
+                            "resolution": self.resolution,
+                            "render": self.render
                         }
-
+        if (withFiles):
+           data["files"]=[f.serialize() for f in self.files if f.start == -1 or not frames or (f.start <= max_frame and f.end >= min_frame)]
+          
+        if (withFrames):
+           data["frames"]=[f.serialize() for f in self.frames if not frames or f in frames]
+           
+        return data
     @staticmethod
     def materialize(data):
         if not data:
@@ -303,8 +356,10 @@ class RenderJob:
         job = RenderJob()
         job.id = data["id"]
         job.type = data["type"]
+        job.subtype = data["subtype"]
         job.name = data["name"]
         job.category = data["category"]
+        job.tags = set(data["tags"])
         job.status = data["status"]
         job.files = [RenderFile.materialize(f) for f in data["files"]]
         job.frames = [RenderFrame.materialize(f) for f in data["frames"]]
@@ -314,6 +369,7 @@ class RenderJob:
         job.blacklist = data["blacklist"]
         job.last_dispatched = data["last_dispatched"]
         job.resolution = data["resolution"]
+        job.render=data["render"]
         
         version_info = data.get("version_info", None)
         if version_info:
@@ -325,9 +381,10 @@ class RenderFrame:
     def __init__(self, number = 0, command = ""):
         self.number = number
         self.time = 0
-        self.status = QUEUED
+        self.status = FRAME_QUEUED
         self.slave = None
         self.command = command
+        self.results = []   # List of filename of result files associated with this frame
 
     def statusText(self):
         return FRAME_STATUS_TEXT[self.status]
@@ -338,7 +395,8 @@ class RenderFrame:
                             "time": self.time,
                             "status": self.status,
                             "slave": None if not self.slave else self.slave.serialize(),
-                            "command": self.command
+                            "command": self.command,
+                            "results": self.results
                         }
 
     @staticmethod
@@ -352,5 +410,6 @@ class RenderFrame:
         frame.status = data["status"]
         frame.slave = RenderSlave.materialize(data["slave"])
         frame.command = data["command"]
+        frame.results = data["results"]
 
         return frame

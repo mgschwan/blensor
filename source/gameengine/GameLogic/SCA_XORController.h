@@ -29,14 +29,14 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __KX_XORCONTROLLER
-#define __KX_XORCONTROLLER
+#ifndef __SCA_XORCONTROLLER_H__
+#define __SCA_XORCONTROLLER_H__
 
 #include "SCA_IController.h"
 
 class SCA_XORController : public SCA_IController
 {
-	Py_Header;
+	Py_Header
 	//virtual void Trigger(class SCA_LogicManager* logicmgr);
 public:
 	SCA_XORController(SCA_IObject* gameobj);
@@ -45,5 +45,5 @@ public:
 	virtual void Trigger(SCA_LogicManager* logicmgr);
 };
 
-#endif //__KX_XORCONTROLLER
+#endif //__SCA_XORCONTROLLER_H__
 

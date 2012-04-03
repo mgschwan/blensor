@@ -34,7 +34,7 @@
 
 /* **************** SEPARATE RGBA ******************** */
 static bNodeSocketTemplate cmp_node_seprgba_in[]= {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f},
+	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_seprgba_out[]= {
@@ -51,7 +51,7 @@ static void node_composit_exec_seprgba(void *UNUSED(data), bNode *UNUSED(node), 
 	/* stack order in: col */
 	
 	/* input no image? then only color operation */
-	if(in[0]->data==NULL) {
+	if (in[0]->data==NULL) {
 		out[0]->vec[0] = in[0]->vec[0];
 		out[1]->vec[0] = in[0]->vec[1];
 		out[2]->vec[0] = in[0]->vec[2];
@@ -62,31 +62,31 @@ static void node_composit_exec_seprgba(void *UNUSED(data), bNode *UNUSED(node), 
 		CompBuf *cbuf= typecheck_compbuf(in[0]->data, CB_RGBA);
 
 		/* don't do any pixel processing, just copy the stack directly (faster, I presume) */
-		if(out[0]->hasoutput)
+		if (out[0]->hasoutput)
 			out[0]->data= valbuf_from_rgbabuf(cbuf, CHAN_R);
-		if(out[1]->hasoutput)
+		if (out[1]->hasoutput)
 			out[1]->data= valbuf_from_rgbabuf(cbuf, CHAN_G);
-		if(out[2]->hasoutput)
+		if (out[2]->hasoutput)
 			out[2]->data= valbuf_from_rgbabuf(cbuf, CHAN_B);
-		if(out[3]->hasoutput)
+		if (out[3]->hasoutput)
 			out[3]->data= valbuf_from_rgbabuf(cbuf, CHAN_A);
 		
-		if(cbuf!=in[0]->data) 
+		if (cbuf!=in[0]->data) 
 			free_compbuf(cbuf);
 
 	}
 }
 
-void register_node_type_cmp_seprgba(ListBase *lb)
+void register_node_type_cmp_seprgba(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_SEPRGBA, "Separate RGBA", NODE_CLASS_CONVERTOR, 0);
+	node_type_base(ttype, &ntype, CMP_NODE_SEPRGBA, "Separate RGBA", NODE_CLASS_CONVERTOR, 0);
 	node_type_socket_templates(&ntype, cmp_node_seprgba_in, cmp_node_seprgba_out);
 	node_type_size(&ntype, 80, 40, 140);
 	node_type_exec(&ntype, node_composit_exec_seprgba);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
 
 
@@ -118,7 +118,7 @@ static void node_composit_exec_combrgba(void *UNUSED(data), bNode *node, bNodeSt
 	/* stack order in: 4 value channels */
 	
 	/* input no image? then only color operation */
-	if((in[0]->data==NULL) && (in[1]->data==NULL) && (in[2]->data==NULL) && (in[3]->data==NULL)) {
+	if ((in[0]->data==NULL) && (in[1]->data==NULL) && (in[2]->data==NULL) && (in[3]->data==NULL)) {
 		out[0]->vec[0] = in[0]->vec[0];
 		out[0]->vec[1] = in[1]->vec[0];
 		out[0]->vec[2] = in[2]->vec[0];
@@ -145,16 +145,14 @@ static void node_composit_exec_combrgba(void *UNUSED(data), bNode *node, bNodeSt
 	}	
 }
 
-void register_node_type_cmp_combrgba(ListBase *lb)
+void register_node_type_cmp_combrgba(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_COMBRGBA, "Combine RGBA", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_COMBRGBA, "Combine RGBA", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_combrgba_in, cmp_node_combrgba_out);
 	node_type_size(&ntype, 80, 40, 140);
 	node_type_exec(&ntype, node_composit_exec_combrgba);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-

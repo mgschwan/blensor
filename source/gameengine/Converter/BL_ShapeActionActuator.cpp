@@ -177,8 +177,9 @@ void BL_ShapeActionActuator::BlendShape(Key* key, float srcweight)
 	dstweight = 1.0F - srcweight;
 
 	for (it=m_blendshape.begin(), kb = (KeyBlock*)key->block.first; 
-		 kb && it != m_blendshape.end(); 
-		 kb = (KeyBlock*)kb->next, it++) {
+	     kb && it != m_blendshape.end();
+	     kb = (KeyBlock*)kb->next, it++)
+	{
 		kb->curval = kb->curval * dstweight + (*it) * srcweight;
 	}
 }
@@ -220,23 +221,23 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 	
 	priority = m_priority;
 	
-	/* Determine pre-incrementation behaviour and set appropriate flags */
-	switch (m_playtype){
+	/* Determine pre-incrementation behavior and set appropriate flags */
+	switch (m_playtype) {
 	case ACT_ACTION_MOTION:
-		if (bNegativeEvent){
+		if (bNegativeEvent) {
 			keepgoing=false;
 			apply=false;
 		};
 		break;
 	case ACT_ACTION_FROM_PROP:
-		if (bNegativeEvent){
+		if (bNegativeEvent) {
 			apply=false;
 			keepgoing=false;
 		}
 		break;
 	case ACT_ACTION_LOOP_END:
-		if (bPositiveEvent){
-			if (!(m_flag & ACT_FLAG_LOCKINPUT)){
+		if (bPositiveEvent) {
+			if (!(m_flag & ACT_FLAG_LOCKINPUT)) {
 				m_flag &= ~ACT_FLAG_KEYUP;
 				m_flag &= ~ACT_FLAG_REVERSE;
 				m_flag |= ACT_FLAG_LOCKINPUT;
@@ -244,20 +245,20 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 				m_starttime = curtime;
 			}
 		}
-		if (bNegativeEvent){
+		if (bNegativeEvent) {
 			m_flag |= ACT_FLAG_KEYUP;
 		}
 		break;
 	case ACT_ACTION_LOOP_STOP:
-		if (bPositiveEvent){
-			if (!(m_flag & ACT_FLAG_LOCKINPUT)){
+		if (bPositiveEvent) {
+			if (!(m_flag & ACT_FLAG_LOCKINPUT)) {
 				m_flag &= ~ACT_FLAG_REVERSE;
 				m_flag &= ~ACT_FLAG_KEYUP;
 				m_flag |= ACT_FLAG_LOCKINPUT;
 				SetStartTime(curtime);
 			}
 		}
-		if (bNegativeEvent){
+		if (bNegativeEvent) {
 			m_flag |= ACT_FLAG_KEYUP;
 			m_flag &= ~ACT_FLAG_LOCKINPUT;
 			keepgoing=false;
@@ -265,8 +266,8 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 		}
 		break;
 	case ACT_ACTION_PINGPONG:
-		if (bPositiveEvent){
-			if (!(m_flag & ACT_FLAG_LOCKINPUT)){
+		if (bPositiveEvent) {
+			if (!(m_flag & ACT_FLAG_LOCKINPUT)) {
 				m_flag &= ~ACT_FLAG_KEYUP;
 				m_localtime = m_starttime;
 				m_starttime = curtime;
@@ -275,22 +276,22 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 		}
 		break;
 	case ACT_ACTION_FLIPPER:
-		if (bPositiveEvent){
-			if (!(m_flag & ACT_FLAG_LOCKINPUT)){
+		if (bPositiveEvent) {
+			if (!(m_flag & ACT_FLAG_LOCKINPUT)) {
 				m_flag &= ~ACT_FLAG_REVERSE;
 				m_flag |= ACT_FLAG_LOCKINPUT;
 				SetStartTime(curtime);
 			}
 		}
-		else if (bNegativeEvent){
+		else if (bNegativeEvent) {
 			m_flag |= ACT_FLAG_REVERSE;
 			m_flag &= ~ACT_FLAG_LOCKINPUT;
 			SetStartTime(curtime);
 		}
 		break;
 	case ACT_ACTION_PLAY:
-		if (bPositiveEvent){
-			if (!(m_flag & ACT_FLAG_LOCKINPUT)){
+		if (bPositiveEvent) {
+			if (!(m_flag & ACT_FLAG_LOCKINPUT)) {
 				m_flag &= ~ACT_FLAG_REVERSE;
 				m_localtime = m_starttime;
 				m_starttime = curtime;
@@ -303,8 +304,8 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 	}
 	
 	/* Perform increment */
-	if (keepgoing){
-		if (m_playtype == ACT_ACTION_MOTION){
+	if (keepgoing) {
+		if (m_playtype == ACT_ACTION_MOTION) {
 			MT_Point3	newpos;
 			MT_Point3	deltapos;
 			
@@ -321,7 +322,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 	}
 	
 	/* Check if a wrapping response is needed */
-	if (length){
+	if (length) {
 		if (m_localtime < m_startframe || m_localtime > m_endframe)
 		{
 			m_localtime = m_startframe + fmod(m_localtime, length);
@@ -332,14 +333,14 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 		m_localtime = m_startframe;
 	
 	/* Perform post-increment tasks */
-	switch (m_playtype){
+	switch (m_playtype) {
 	case ACT_ACTION_FROM_PROP:
 		{
 			CValue* propval = GetParent()->GetProperty(m_propname);
 			if (propval)
 				m_localtime = propval->GetNumber();
 			
-			if (bNegativeEvent){
+			if (bNegativeEvent) {
 				keepgoing=false;
 			}
 		}
@@ -349,7 +350,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 	case ACT_ACTION_LOOP_STOP:
 		break;
 	case ACT_ACTION_PINGPONG:
-		if (wrap){
+		if (wrap) {
 			if (!(m_flag & ACT_FLAG_REVERSE))
 				m_localtime = m_endframe;
 			else 
@@ -361,8 +362,8 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 		}
 		break;
 	case ACT_ACTION_FLIPPER:
-		if (wrap){
-			if (!(m_flag & ACT_FLAG_REVERSE)){
+		if (wrap) {
+			if (!(m_flag & ACT_FLAG_REVERSE)) {
 				m_localtime=m_endframe;
 				//keepgoing = false;
 			}
@@ -373,8 +374,8 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 		}
 		break;
 	case ACT_ACTION_LOOP_END:
-		if (wrap){
-			if (m_flag & ACT_FLAG_KEYUP){
+		if (wrap) {
+			if (m_flag & ACT_FLAG_KEYUP) {
 				keepgoing = false;
 				m_localtime = m_endframe;
 				m_flag &= ~ACT_FLAG_LOCKINPUT;
@@ -383,7 +384,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 		}
 		break;
 	case ACT_ACTION_PLAY:
-		if (wrap){
+		if (wrap) {
 			m_localtime = m_endframe;
 			keepgoing = false;
 			m_flag &= ~ACT_FLAG_LOCKINPUT;
@@ -414,7 +415,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 	if (apply) {
 
 		/* Priority test */
-		if (obj->SetActiveAction(this, priority, curtime)){
+		if (obj->SetActiveAction(this, priority, curtime)) {
 			BL_ShapeDeformer *shape_deformer = dynamic_cast<BL_ShapeDeformer*>(obj->GetDeformer());
 			Key *key = NULL;
 
@@ -429,7 +430,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 			else {
 				ListBase tchanbase= {NULL, NULL};
 			
-				if (m_blendin && m_blendframe==0.0f){
+				if (m_blendin && m_blendframe==0.0f) {
 					// this is the start of the blending, remember the startup shape
 					obj->GetShape(m_blendshape);
 					m_blendstart = curtime;
@@ -450,7 +451,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 				} 
 				else {
 					// the key have changed, apply blending if needed
-					if (m_blendin && (m_blendframe<m_blendin)){
+					if (m_blendin && (m_blendframe<m_blendin)) {
 						newweight = (m_blendframe/(float)m_blendin);
 
 						BlendShape(key, 1.0f - newweight);
@@ -470,7 +471,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 		}
 	}
 	
-	if (!keepgoing){
+	if (!keepgoing) {
 		m_blendframe = 0.0f;
 	}
 	return keepgoing;
@@ -518,8 +519,8 @@ PyAttributeDef BL_ShapeActionActuator::Attributes[] = {
 	KX_PYATTRIBUTE_RW_FUNCTION("action", BL_ShapeActionActuator, pyattr_get_action, pyattr_set_action),
 	KX_PYATTRIBUTE_SHORT_RW("priority", 0, 100, false, BL_ShapeActionActuator, m_priority),
 	KX_PYATTRIBUTE_FLOAT_RW_CHECK("frame", 0, MAXFRAMEF, BL_ShapeActionActuator, m_localtime, CheckFrame),
-	KX_PYATTRIBUTE_STRING_RW("propName", 0, 31, false, BL_ShapeActionActuator, m_propname),
-	KX_PYATTRIBUTE_STRING_RW("framePropName", 0, 31, false, BL_ShapeActionActuator, m_framepropname),
+	KX_PYATTRIBUTE_STRING_RW("propName", 0, MAX_PROP_NAME, false, BL_ShapeActionActuator, m_propname),
+	KX_PYATTRIBUTE_STRING_RW("framePropName", 0, MAX_PROP_NAME, false, BL_ShapeActionActuator, m_framepropname),
 	KX_PYATTRIBUTE_FLOAT_RW_CHECK("blendTime", 0, MAXFRAMEF, BL_ShapeActionActuator, m_blendframe, CheckBlendTime),
 	KX_PYATTRIBUTE_SHORT_RW_CHECK("mode",0,100,false,BL_ShapeActionActuator,m_playtype,CheckType),
 	{ NULL }	//Sentinel

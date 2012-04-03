@@ -52,7 +52,8 @@
 /* callbacks */
 static int start_avi(Scene *scene, RenderData *rd, int rectx, int recty, ReportList *reports);
 static void end_avi(void);
-static int append_avi(RenderData *rd, int frame, int *pixels, int rectx, int recty, ReportList *reports);
+static int append_avi(RenderData *rd, int start_frame, int frame, int *pixels,
+                      int rectx, int recty, ReportList *reports);
 static void filepath_avi(char *string, RenderData *rd);
 
 /* ********************** general blender movie support ***************************** */
@@ -67,7 +68,7 @@ static void filepath_avi(char *string, RenderData *rd);
 
 #include "BKE_writeframeserver.h"
 
-bMovieHandle *BKE_get_movie_handle(int imtype)
+bMovieHandle *BKE_get_movie_handle(const char imtype)
 {
 	static bMovieHandle mh;
 	
@@ -80,14 +81,14 @@ bMovieHandle *BKE_get_movie_handle(int imtype)
 	
 	/* do the platform specific handles */
 #if defined(_WIN32) && !defined(FREE_WINDOWS)
-	if (imtype == R_AVICODEC) {		
+	if (imtype == R_IMF_IMTYPE_AVICODEC) {		
 		//XXX mh.start_movie= start_avi_codec;
 		//XXX mh.append_movie= append_avi_codec;
 		//XXX mh.end_movie= end_avi_codec;
 	}
 #endif
 #ifdef WITH_QUICKTIME
-	if (imtype == R_QUICKTIME) {
+	if (imtype == R_IMF_IMTYPE_QUICKTIME) {
 		mh.start_movie= start_qt;
 		mh.append_movie= append_qt;
 		mh.end_movie= end_qt;
@@ -95,7 +96,7 @@ bMovieHandle *BKE_get_movie_handle(int imtype)
 	}
 #endif
 #ifdef WITH_FFMPEG
-	if (ELEM4(imtype, R_FFMPEG, R_H264, R_XVID, R_THEORA)) {
+	if (ELEM4(imtype, R_IMF_IMTYPE_FFMPEG, R_IMF_IMTYPE_H264, R_IMF_IMTYPE_XVID, R_IMF_IMTYPE_THEORA)) {
 		mh.start_movie = start_ffmpeg;
 		mh.append_movie = append_ffmpeg;
 		mh.end_movie = end_ffmpeg;
@@ -103,7 +104,7 @@ bMovieHandle *BKE_get_movie_handle(int imtype)
 	}
 #endif
 #ifdef WITH_FRAMESERVER
-	if (imtype == R_FRAMESERVER) {
+	if (imtype == R_IMF_IMTYPE_FRAMESERVER) {
 		mh.start_movie = start_frameserver;
 		mh.append_movie = append_frameserver;
 		mh.end_movie = end_frameserver;
@@ -111,7 +112,7 @@ bMovieHandle *BKE_get_movie_handle(int imtype)
 	}
 #endif
 
-	/* incase all above are disabled */
+	/* in case all above are disabled */
 	(void)imtype;
 
 	return &mh;
@@ -121,7 +122,6 @@ bMovieHandle *BKE_get_movie_handle(int imtype)
 
 
 static AviMovie *avi=NULL;
-static int sframe;
 
 static void filepath_avi (char *string, RenderData *rd)
 {
@@ -150,19 +150,15 @@ static int start_avi(Scene *scene, RenderData *rd, int rectx, int recty, ReportL
 	
 	filepath_avi(name, rd);
 
-	sframe = (rd->sfra);
 	x = rectx;
 	y = recty;
 
-	quality= rd->quality;
+	quality= rd->im_format.quality;
 	framerate= (double) rd->frs_sec / (double) rd->frs_sec_base;
 	
 	avi = MEM_mallocN (sizeof(AviMovie), "avimovie");
 
-	/* RPW 11-21-2002 
-	if (rd->imtype != AVI_FORMAT_MJPEG) format = AVI_FORMAT_AVI_RGB;
-	*/
-	if (rd->imtype != R_AVIJPEG ) format = AVI_FORMAT_AVI_RGB;
+	if (rd->im_format.imtype != R_IMF_IMTYPE_AVIJPEG ) format = AVI_FORMAT_AVI_RGB;
 	else format = AVI_FORMAT_MJPEG;
 
 	if (AVI_open_compress (name, avi, 1, format) != AVI_ERROR_NONE) {
@@ -186,7 +182,8 @@ static int start_avi(Scene *scene, RenderData *rd, int rectx, int recty, ReportL
 	return 1;
 }
 
-static int append_avi(RenderData *UNUSED(rd), int frame, int *pixels, int rectx, int recty, ReportList *UNUSED(reports))
+static int append_avi(RenderData *UNUSED(rd), int start_frame, int frame, int *pixels,
+                      int rectx, int recty, ReportList *UNUSED(reports))
 {
 	unsigned int *rt1, *rt2, *rectot;
 	int x, y;
@@ -204,7 +201,7 @@ static int append_avi(RenderData *UNUSED(rd), int frame, int *pixels, int rectx,
 		memcpy (rt1, rt2, rectx*sizeof(int));
 		
 		cp= (char *)rt1;
-		for(x= rectx; x>0; x--) {
+		for (x= rectx; x>0; x--) {
 			rt= cp[0];
 			cp[0]= cp[3];
 			cp[3]= rt;
@@ -215,8 +212,8 @@ static int append_avi(RenderData *UNUSED(rd), int frame, int *pixels, int rectx,
 		}
 	}
 	
-	AVI_write_frame (avi, (frame-sframe), AVI_FORMAT_RGB32, rectot, rectx*recty*4);
-//	printf ("added frame %3d (frame %3d in avi): ", frame, frame-sframe);
+	AVI_write_frame (avi, (frame-start_frame), AVI_FORMAT_RGB32, rectot, rectx*recty*4);
+//	printf ("added frame %3d (frame %3d in avi): ", frame, frame-start_frame);
 
 	return 1;
 }
@@ -233,8 +230,8 @@ static void end_avi(void)
 /* similar to BKE_makepicstring() */
 void BKE_makeanimstring(char *string, RenderData *rd)
 {
-	bMovieHandle *mh= BKE_get_movie_handle(rd->imtype);
-	if(mh->get_movie_path)
+	bMovieHandle *mh= BKE_get_movie_handle(rd->im_format.imtype);
+	if (mh->get_movie_path)
 		mh->get_movie_path(string, rd);
 	else
 		string[0]= '\0';

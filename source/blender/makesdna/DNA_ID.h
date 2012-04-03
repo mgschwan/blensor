@@ -24,13 +24,14 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_ID_H
-#define DNA_ID_H
 
 /** \file DNA_ID.h
  *  \ingroup DNA
  *  \brief ID and Library types, which are fundamental for sdna.
  */
+
+#ifndef __DNA_ID_H__
+#define __DNA_ID_H__
 
 #include "DNA_listBase.h"
 
@@ -52,19 +53,18 @@ typedef struct IDProperty {
 	struct IDProperty *next, *prev;
 	char type, subtype;
 	short flag;
-	char name[32];
-	int saved; /*saved is used to indicate if this struct has been saved yet.
-				seemed like a good idea as a pad var was needed anyway :)*/
+	char name[64];	/* MAX_IDPROP_NAME */
+	int saved; /* saved is used to indicate if this struct has been saved yet.
+	            * seemed like a good idea as a pad var was needed anyway :)*/
 	IDPropertyData data;	/* note, alignment for 64 bits */
 	int len; /* array length, also (this is important!) string length + 1.
-				the idea is to be able to reuse array realloc functions on strings.*/
-	/*totallen is total length of allocated array/string, including a buffer.
-	  Note that the buffering is mild; the code comes from python's list implementation.*/
-	int totallen; /*strings and arrays are both buffered, though the buffer isn't
-					saved.*/
+	          * the idea is to be able to reuse array realloc functions on strings.*/
+	/* totallen is total length of allocated array/string, including a buffer.
+	 * Note that the buffering is mild; the code comes from python's list implementation.*/
+	int totallen; /*strings and arrays are both buffered, though the buffer isn't saved.*/
 } IDProperty;
 
-#define MAX_IDPROP_NAME	32
+#define MAX_IDPROP_NAME	64
 #define DEFAULT_ALLOC_FOR_NULL_STRINGS	64
 
 /*->type*/
@@ -74,11 +74,22 @@ typedef struct IDProperty {
 #define IDP_ARRAY		5
 #define IDP_GROUP		6
 /* the ID link property type hasn't been implemented yet, this will require
-   some cleanup of blenkernel, most likely.*/
+ * some cleanup of blenkernel, most likely.*/
 #define IDP_ID			7
 #define IDP_DOUBLE		8
 #define IDP_IDPARRAY	9
 #define IDP_NUMTYPES	10
+
+/*->subtype */
+
+/* IDP_STRING */
+#define IDP_STRING_SUB_UTF8  0 /* default */
+#define IDP_STRING_SUB_BYTE  1 /* arbitrary byte array, _not_ null terminated */
+/*->flag*/
+#define IDP_FLAG_GHOST (1<<7)  /* this means the propery is set but RNA will return
+                                * false when checking 'RNA_property_is_set',
+                                * currently this is a runtime flag */
+
 
 /* add any future new id property types here.*/
 
@@ -88,7 +99,8 @@ typedef struct IDProperty {
  * provides a common handle to place all data in double-linked lists.
  * */
 
-#define MAX_ID_NAME	24
+/* 2 characters for ID code and 64 for actual name */
+#define MAX_ID_NAME	66
 
 /* There's a nasty circular dependency here.... void* to the rescue! I
  * really wonder why this is needed. */
@@ -96,14 +108,14 @@ typedef struct ID {
 	void *next, *prev;
 	struct ID *newid;
 	struct Library *lib;
-	char name[24];
-	short us;
+	char name[66];
+	short pad, us;
 	/**
 	 * LIB_... flags report on status of the datablock this ID belongs
 	 * to.
 	 */
 	short flag;
-	int icon_id;
+	int icon_id, pad2;
 	IDProperty *properties;
 } ID;
 
@@ -115,8 +127,8 @@ typedef struct Library {
 	ID id;
 	ID *idblock;
 	struct FileData *filedata;
-	char name[240];			/* path name used for reading, can be relative and edited in the outliner */
-	char filepath[240];		/* absolute filepath, this is only for convenience,
+	char name[1024];		/* path name used for reading, can be relative and edited in the outliner */
+	char filepath[1024];	/* absolute filepath, this is only for convenience,
 							 * 'name' is the real path used on file read but in
 							 * some cases its useful to access the absolute one,
 							 * This is set on file read.
@@ -194,6 +206,7 @@ typedef struct PreviewImage {
 #define ID_PA		MAKE_ID2('P', 'A') /* ParticleSettings */
 #define ID_GD		MAKE_ID2('G', 'D') /* GreasePencil */
 #define ID_WM		MAKE_ID2('W', 'M') /* WindowManager */
+#define ID_MC		MAKE_ID2('M', 'C') /* MovieClip */
 
 	/* NOTE! Fake IDs, needed for g.sipo->blocktype or outliner */
 #define ID_SEQ		MAKE_ID2('S', 'Q')
@@ -235,6 +248,7 @@ typedef struct PreviewImage {
 #define LIB_PRE_EXISTING	2048
 /* runtime */
 #define LIB_ID_RECALC		4096
+#define LIB_ID_RECALC_DATA	8192
 
 #ifdef __cplusplus
 }

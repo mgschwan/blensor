@@ -30,8 +30,8 @@
  *  \ingroup editorui
  */
 
-#ifndef BIF_GL_H
-#define BIF_GL_H
+#ifndef __BIF_GL_H__
+#define __BIF_GL_H__
 
 #include "GL/glew.h"
 
@@ -43,12 +43,12 @@
  *
  * This define converts a numerical value to the equivalent 24-bit
  * color, while not being endian-sensitive. On little-endians, this
- * is the same as doing a 'naive'indexing, on big-endian, it is not!
+ * is the same as doing a 'naive' indexing, on big-endian, it is not!
  * */
 #define cpack(x)	glColor3ub( ((x)&0xFF), (((x)>>8)&0xFF), (((x)>>16)&0xFF) )
 
 #define glMultMatrixf(x)		glMultMatrixf( (float *)(x))
 #define glLoadMatrixf(x)		glLoadMatrixf( (float *)(x))
 
-#endif /* #ifdef BIF_GL_H */
+#endif /* #ifdef __BIF_GL_H__ */
 

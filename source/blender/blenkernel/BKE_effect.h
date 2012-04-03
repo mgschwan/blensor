@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_EFFECT_H
-#define BKE_EFFECT_H
+#ifndef __BKE_EFFECT_H__
+#define __BKE_EFFECT_H__
 
 /** \file BKE_effect.h
  *  \ingroup bke
@@ -109,15 +109,6 @@ typedef struct EffectorCache {
 	int flag;
 } EffectorCache;
 
-void free_effect(struct Effect *eff);
-void free_effects(struct ListBase *lb);
-struct Effect *copy_effect(struct Effect *eff);
-void copy_effects(struct ListBase *lbn, struct ListBase *lb);
-void deselectall_eff(struct Object *ob);
-
-struct PartEff *give_parteff(struct Object *ob);
-
-
 void			free_partdeflect(struct PartDeflect *pd);
 struct ListBase *pdInitEffectors(struct Scene *scene, struct Object *ob_src, struct ParticleSystem *psys_src, struct EffectorWeights *weights);
 void			pdEndEffectors(struct ListBase **effectors);
@@ -129,7 +120,7 @@ void pd_point_from_soft(struct Scene *scene, float *loc, float *vel, int index, 
 
 /* needed for boids */
 float effector_falloff(struct EffectorCache *eff, struct EffectorData *efd, struct EffectedPoint *point, struct EffectorWeights *weights);
-int closest_point_on_surface(struct SurfaceModifierData *surmd, float *co, float *surface_co, float *surface_nor, float *surface_vel);
+int closest_point_on_surface(SurfaceModifierData *surmd, const float co[3], float surface_co[3], float surface_nor[3], float surface_vel[3]);
 int get_effector_data(struct EffectorCache *eff, struct EffectorData *efd, struct EffectedPoint *point, int real_velocity);
 
 /* required for particle_system.c */

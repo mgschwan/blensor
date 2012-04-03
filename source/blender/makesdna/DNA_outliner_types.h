@@ -24,12 +24,13 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_OUTLINER_TYPES_H
-#define DNA_OUTLINER_TYPES_H
 
 /** \file DNA_outliner_types.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_OUTLINER_TYPES_H__
+#define __DNA_OUTLINER_TYPES_H__
 
 #include "DNA_listBase.h"
 

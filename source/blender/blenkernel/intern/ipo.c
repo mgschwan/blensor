@@ -43,7 +43,8 @@
 #include <string.h>
 #include <stddef.h>
 
-#include "MEM_guardedalloc.h"
+/* since we have versioning code here */
+#define DNA_DEPRECATED_ALLOW
 
 #include "DNA_anim_types.h"
 #include "DNA_constraint_types.h"
@@ -73,6 +74,7 @@
 #include "BKE_nla.h"
 #include "BKE_sequencer.h"
 
+#include "MEM_guardedalloc.h"
 
 /* *************************************************** */
 /* Old-Data Freeing Tools */
@@ -95,8 +97,8 @@ void free_ipo (Ipo *ipo)
 		BLI_freelinkN(&ipo->curve, icu);
 	}
 	
-	if (G.f & G_DEBUG)
-		printf("Freed %d (Unconverted) Ipo-Curves from IPO '%s' \n", n, ipo->id.name+2);
+	if (G.debug & G_DEBUG)
+		printf("Freed %d (Unconverted) Ipo-Curves from IPO '%s'\n", n, ipo->id.name+2);
 }
 
 /* *************************************************** */
@@ -294,7 +296,7 @@ static const char *pchan_adrcodes_to_paths (int adrcode, int *array_index)
 	}
 	
 	/* for debugging only */
-	printf("ERROR: unmatched PoseChannel setting (code %d) \n", adrcode);
+	printf("ERROR: unmatched PoseChannel setting (code %d)\n", adrcode);
 	return NULL;
 }
 
@@ -326,9 +328,9 @@ static char *shapekey_adrcodes_to_paths (int adrcode, int *UNUSED(array_index))
 	/* block will be attached to ID_KE block, and setting that we alter is the 'value' (which sets keyblock.curval) */
 	// XXX adrcode 0 was dummy 'speed' curve 
 	if (adrcode == 0) 
-		sprintf(buf, "speed");
+		strcpy(buf, "speed");
 	else
-		sprintf(buf, "key_blocks[%d].value", adrcode);
+		BLI_snprintf(buf, sizeof(buf), "key_blocks[%d].value", adrcode);
 	return buf;
 }
 
@@ -661,8 +663,10 @@ static const char *sound_adrcodes_to_paths (int adrcode, int *array_index)
 		case SND_PITCH:
 			return "pitch";
 	/* XXX Joshua -- I had wrapped panning in rna, but someone commented out, calling it "unused" */
-	/*	case SND_PANNING:
-			return "panning"; */
+#if 0
+		case SND_PANNING:
+			return "panning";
+#endif
 		case SND_ATTEN:
 			return "attenuation";
 	}
@@ -703,14 +707,7 @@ static const char *world_adrcodes_to_paths (int adrcode, int *array_index)
 			return "mist.start";
 		case WO_MISTHI:
 			return "mist.height";
-		
-	/*	Star Color is unused -- recommend removal */
-	/*	case WO_STAR_R:
-			*array_index= 0; return "stars.color";
-		case WO_STAR_G:
-			*array_index= 1; return "stars.color";
-		case WO_STAR_B:
-			*array_index= 2; return "stars.color"; */
+
 		case WO_STAR_R:
 		case WO_STAR_G:
 		case WO_STAR_B:
@@ -767,11 +764,12 @@ static const char *particle_adrcodes_to_paths (int adrcode, int *array_index)
 			return "settings.billboard_tilt";
 		
 		/* PartDeflect needs to be sorted out properly in rna_object_force;
-		   If anyone else works on this, but is unfamiliar, these particular
-			settings reference the particles of the system themselves
-			being used as forces -- it will use the same rna structure
-			as the similar object forces				*/
-		/*case PART_PD_FSTR:
+		 * If anyone else works on this, but is unfamiliar, these particular
+		 * settings reference the particles of the system themselves
+		 * being used as forces -- it will use the same rna structure
+		 * as the similar object forces */
+#if 0
+		case PART_PD_FSTR:
 			if (part->pd) poin= &(part->pd->f_strength);
 			break;
 		case PART_PD_FFALL:
@@ -788,11 +786,12 @@ static const char *particle_adrcodes_to_paths (int adrcode, int *array_index)
 			break;
 		case PART_PD2_FMAXD:
 			if (part->pd2) poin= &(part->pd2->maxdist);
-			break;*/
+			break;
+#endif
 
-		}
-		
-	return NULL;	
+	}
+
+	return NULL;
 }
 
 /* ------- */
@@ -894,7 +893,7 @@ static char *get_rna_access (int blocktype, int adrcode, char actname[], char co
 			
 		// TODO... add other blocktypes...
 		default:
-			printf("IPO2ANIMATO WARNING: No path for blocktype %d, adrcode %d yet \n", blocktype, adrcode);
+			printf("IPO2ANIMATO WARNING: No path for blocktype %d, adrcode %d yet\n", blocktype, adrcode);
 			break;
 	}
 	
@@ -914,15 +913,18 @@ static char *get_rna_access (int blocktype, int adrcode, char actname[], char co
 		if (array_index)
 			*array_index= dummy_index;
 	}
-	
+
+	/* 'buf' _must_ be initialized in this block */
 	/* append preceding bits to path */
+	/* note, strings are not escapted and they should be! */
 	if ((actname && actname[0]) && (constname && constname[0])) {
 		/* Constraint in Pose-Channel */
-		sprintf(buf, "pose.bones[\"%s\"].constraints[\"%s\"]", actname, constname);
+		BLI_snprintf(buf, sizeof(buf), "pose.bones[\"%s\"].constraints[\"%s\"]", actname, constname);
 	}
 	else if (actname && actname[0]) {
 		if ((blocktype == ID_OB) && strcmp(actname, "Object")==0) {
 			/* Actionified "Object" IPO's... no extra path stuff needed */
+			buf[0]= '\0'; /* empty string */
 		}
 		else if ((blocktype == ID_KE) && strcmp(actname, "Shape")==0) {
 			/* Actionified "Shape" IPO's - these are forced onto object level via the action container there... */
@@ -930,19 +932,21 @@ static char *get_rna_access (int blocktype, int adrcode, char actname[], char co
 		}
 		else {
 			/* Pose-Channel */
-			sprintf(buf, "pose.bones[\"%s\"]", actname);
+			BLI_snprintf(buf, sizeof(buf), "pose.bones[\"%s\"]", actname);
 		}
 	}
 	else if (constname && constname[0]) {
 		/* Constraint in Object */
-		sprintf(buf, "constraints[\"%s\"]", constname);
+		BLI_snprintf(buf, sizeof(buf), "constraints[\"%s\"]", constname);
 	}
 	else if (seq) {
 		/* Sequence names in Scene */
-		sprintf(buf, "sequence_editor.sequences_all[\"%s\"]", seq->name+2);
+		BLI_snprintf(buf, sizeof(buf), "sequence_editor.sequences_all[\"%s\"]", seq->name+2);
 	}
-	else
+	else {
 		buf[0]= '\0'; /* empty string */
+	}
+
 	BLI_dynstr_append(path, buf);
 	
 	/* need to add dot before property if there was anything precceding this */
@@ -954,7 +958,7 @@ static char *get_rna_access (int blocktype, int adrcode, char actname[], char co
 	
 	/* if there was no array index pointer provided, add it to the path */
 	if (array_index == NULL) {
-		sprintf(buf, "[\"%d\"]", dummy_index);
+		BLI_snprintf(buf, sizeof(buf), "[\"%d\"]", dummy_index);
 		BLI_dynstr_append(path, buf);
 	}
 	
@@ -1115,7 +1119,7 @@ static void fcurve_add_to_list (ListBase *groups, ListBase *list, FCurve *fcu, c
 		}
 		
 		/* add F-Curve to group */
-		/* WARNING: this func should only need to look at the stuff we initialised, if not, things may crash */
+		/* WARNING: this func should only need to look at the stuff we initialized, if not, things may crash */
 		action_groups_add_channel(&tmp_act, agrp, fcu);
 		
 		if (agrp->flag & AGRP_MUTED) /* flush down */
@@ -1173,7 +1177,7 @@ static void icu_to_fcurves (ID *id, ListBase *groups, ListBase *list, IpoCurve *
 		case IPO_CYCLX: /* cyclic extrapolation + offset */
 		{
 			/* Add a new FModifier (Cyclic) instead of setting extend value 
-			 * as that's the new equivilant of that option. 
+			 * as that's the new equivalent of that option.
 			 */
 			FModifier *fcm= add_fmodifier(&fcu->modifiers, FMODIFIER_TYPE_CYCLES);
 			FMod_Cycles *data= (FMod_Cycles *)fcm->data;
@@ -1195,7 +1199,7 @@ static void icu_to_fcurves (ID *id, ListBase *groups, ListBase *list, IpoCurve *
 		FCurve *fcurve;
 		int b;
 		
-		if (G.f & G_DEBUG) printf("\tconvert bitflag ipocurve, totbits = %d \n", totbits);
+		if (G.debug & G_DEBUG) printf("\tconvert bitflag ipocurve, totbits = %d\n", totbits);
 		
 		/* add the 'only int values' flag */
 		fcu->flag |= (FCURVE_INT_VALUES|FCURVE_DISCRETE_VALUES);		
@@ -1392,7 +1396,7 @@ static void ipo_to_animato (ID *id, Ipo *ipo, char actname[], char constname[], 
 	if (ELEM3(NULL, ipo, anim, drivers))
 		return;
 		
-	if (G.f & G_DEBUG) printf("ipo_to_animato \n");
+	if (G.debug & G_DEBUG) printf("ipo_to_animato\n");
 		
 	/* validate actname and constname 
 	 *	- clear actname if it was one of the generic <builtin> ones (i.e. 'Object', or 'Shapes')
@@ -1514,15 +1518,15 @@ static void ipo_to_animdata (ID *id, Ipo *ipo, char actname[], char constname[],
 	ListBase drivers = {NULL, NULL};
 	
 	/* sanity check */
-	if ELEM(NULL, id, ipo)
+	if (ELEM(NULL, id, ipo))
 		return;
 	if (adt == NULL) {
-		printf("ERROR ipo_to_animdata(): adt invalid \n");
+		printf("ERROR ipo_to_animdata(): adt invalid\n");
 		return;
 	}
 	
-	if (G.f & G_DEBUG) {
-		printf("ipo to animdata - ID:%s, IPO:%s, actname:%s constname:%s seqname:%s  curves:%d \n", 
+	if (G.debug & G_DEBUG) {
+		printf("ipo to animdata - ID:%s, IPO:%s, actname:%s constname:%s seqname:%s  curves:%d\n",
 		       id->name+2, ipo->id.name+2, (actname)?actname:"<None>", (constname)?constname:"<None>", (seq)?(seq->name+2):"<None>",
 			BLI_countlist(&ipo->curve));
 	}
@@ -1535,7 +1539,7 @@ static void ipo_to_animdata (ID *id, Ipo *ipo, char actname[], char constname[],
 	
 	/* deal with animation first */
 	if (anim.first) {
-		if (G.f & G_DEBUG) printf("\thas anim \n");
+		if (G.debug & G_DEBUG) printf("\thas anim\n");
 		/* try to get action */
 		if (adt->action == NULL) {
 			char nameBuf[MAX_ID_NAME];
@@ -1543,7 +1547,7 @@ static void ipo_to_animdata (ID *id, Ipo *ipo, char actname[], char constname[],
 			BLI_snprintf(nameBuf, sizeof(nameBuf), "CDA:%s", ipo->id.name+2);
 			
 			adt->action= add_empty_action(nameBuf);
-			if (G.f & G_DEBUG) printf("\t\tadded new action - '%s' \n", nameBuf);
+			if (G.debug & G_DEBUG) printf("\t\tadded new action - '%s'\n", nameBuf);
 		}
 		
 		/* add F-Curves to action */
@@ -1552,7 +1556,7 @@ static void ipo_to_animdata (ID *id, Ipo *ipo, char actname[], char constname[],
 	
 	/* deal with drivers */
 	if (drivers.first) {
-		if (G.f & G_DEBUG) printf("\thas drivers \n");
+		if (G.debug & G_DEBUG) printf("\thas drivers\n");
 		/* add drivers to end of driver stack */
 		BLI_movelisttolist(&adt->drivers, &drivers);
 	}
@@ -1572,7 +1576,7 @@ static void action_to_animdata (ID *id, bAction *act)
 	/* check if we need to set this Action as the AnimData's action */
 	if (adt->action == NULL) {
 		/* set this Action as AnimData's Action */
-		if (G.f & G_DEBUG) printf("act_to_adt - set adt action to act \n");
+		if (G.debug & G_DEBUG) printf("act_to_adt - set adt action to act\n");
 		adt->action= act;
 	}
 	
@@ -1681,17 +1685,17 @@ void do_versions_ipos_to_animato(Main *main)
 	ID *id;
 	
 	if (main == NULL) {
-		printf("Argh! Main is NULL in do_versions_ipos_to_animato() \n");
+		printf("Argh! Main is NULL in do_versions_ipos_to_animato()\n");
 		return;
 	}
 		
 	/* only convert if version is right */
 	if (main->versionfile >= 250) {
-		printf("WARNING: Animation data too new to convert (Version %d) \n", main->versionfile);
+		printf("WARNING: Animation data too new to convert (Version %d)\n", main->versionfile);
 		return;
 	}
-	else if (G.f & G_DEBUG)
-		printf("INFO: Converting to Animato... \n");
+	else if (G.debug & G_DEBUG)
+		printf("INFO: Converting to Animato...\n");
 		
 	/* ----------- Animation Attached to Data -------------- */
 	
@@ -1702,7 +1706,7 @@ void do_versions_ipos_to_animato(Main *main)
 		bConstraint *con;
 		bConstraintChannel *conchan, *conchann;
 		
-		if (G.f & G_DEBUG) printf("\tconverting ob %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting ob %s\n", id->name+2);
 		
 		/* check if object has any animation data */
 		if (ob->nlastrips.first) {
@@ -1827,7 +1831,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->key.first; id; id= id->next) {
 		Key *key= (Key *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting key %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting key %s\n", id->name+2);
 		
 		/* we're only interested in the IPO 
 		 * NOTE: for later, it might be good to port these over to Object instead, as many of these
@@ -1852,7 +1856,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->mat.first; id; id= id->next) {
 		Material *ma= (Material *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting material %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting material %s\n", id->name+2);
 		
 		/* we're only interested in the IPO */
 		if (ma->ipo) {
@@ -1874,7 +1878,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->world.first; id; id= id->next) {
 		World *wo= (World *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting world %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting world %s\n", id->name+2);
 		
 		/* we're only interested in the IPO */
 		if (wo->ipo) {
@@ -1905,8 +1909,8 @@ void do_versions_ipos_to_animato(Main *main)
 				IpoCurve *icu = (seq->ipo) ? seq->ipo->curve.first : NULL;
 				short adrcode = SEQ_FAC1;
 				
-				if (G.f & G_DEBUG) 
-					printf("\tconverting sequence strip %s \n", seq->name+2);
+				if (G.debug & G_DEBUG)
+					printf("\tconverting sequence strip %s\n", seq->name+2);
 				
 				if (ELEM(NULL, seq->ipo, icu)) {
 					seq->flag |= SEQ_USE_EFFECT_DEFAULT_FADE;
@@ -1914,9 +1918,9 @@ void do_versions_ipos_to_animato(Main *main)
 				}
 				
 				/* patch adrcode, so that we can map
-				   to different DNA variables later 
-				   (semi-hack (tm) )
-				*/
+				 * to different DNA variables later 
+				 * (semi-hack (tm) )
+				 */
 				switch (seq->type) {
 					case SEQ_IMAGE:
 					case SEQ_META:
@@ -1949,7 +1953,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->tex.first; id; id= id->next) {
 		Tex *te= (Tex *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting texture %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting texture %s\n", id->name+2);
 		
 		/* we're only interested in the IPO */
 		if (te->ipo) {
@@ -1971,7 +1975,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->camera.first; id; id= id->next) {
 		Camera *ca= (Camera *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting camera %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting camera %s\n", id->name+2);
 		
 		/* we're only interested in the IPO */
 		if (ca->ipo) {
@@ -1993,7 +1997,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->lamp.first; id; id= id->next) {
 		Lamp *la= (Lamp *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting lamp %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting lamp %s\n", id->name+2);
 		
 		/* we're only interested in the IPO */
 		if (la->ipo) {
@@ -2015,7 +2019,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->curve.first; id; id= id->next) {
 		Curve *cu= (Curve *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting curve %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting curve %s\n", id->name+2);
 		
 		/* we're only interested in the IPO */
 		if (cu->ipo) {
@@ -2048,7 +2052,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->action.first; id; id= id->next) {
 		bAction *act= (bAction *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting action %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting action %s\n", id->name+2);
 		
 		/* if old action, it will be object-only... */
 		if (act->chanbase.first)
@@ -2062,7 +2066,7 @@ void do_versions_ipos_to_animato(Main *main)
 	for (id= main->ipo.first; id; id= id->next) {
 		Ipo *ipo= (Ipo *)id;
 		
-		if (G.f & G_DEBUG) printf("\tconverting ipo %s \n", id->name+2);
+		if (G.debug & G_DEBUG) printf("\tconverting ipo %s\n", id->name+2);
 		
 		/* most likely this IPO has already been processed, so check if any curves left to convert */
 		if (ipo->curve.first) {
@@ -2082,7 +2086,7 @@ void do_versions_ipos_to_animato(Main *main)
 	/* free unused drivers from actions + ipos */
 	free_fcurves(&drivers);
 	
-	if (G.f & G_DEBUG)
-		printf("INFO: Animato convert done \n");
+	if (G.debug & G_DEBUG)
+		printf("INFO: Animato convert done\n");
 }
 

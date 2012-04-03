@@ -28,10 +28,10 @@ import netrender.client as client
 import netrender.model
 import netrender.versioning as versioning
 
-class RENDER_OT_netslave_bake(bpy.types.Operator):
-    '''NEED DESCRIPTION'''
-    bl_idname = "render.netslavebake"
-    bl_label = "Bake all in file"
+class RENDER_OT_netclientsendbake(bpy.types.Operator):
+    '''Send a baking job to the Network'''
+    bl_idname = "render.netclientsendbake"
+    bl_label = "Bake on network"
 
     @classmethod
     def poll(cls, context):
@@ -39,45 +39,19 @@ class RENDER_OT_netslave_bake(bpy.types.Operator):
 
     def execute(self, context):
         scene = context.scene
-        # netsettings = scene.network_render  # UNUSED
+        netsettings = scene.network_render
 
-        filename = bpy.data.filepath
-        path, name = os.path.split(filename)
-        root, ext = os.path.splitext(name)
-        # default_path = path + os.sep + "blendcache_" + root + os.sep # need an API call for that, UNUSED
-        relative_path = "//blendcache_" + root + os.sep
+        try:
+            conn = clientConnection(netsettings, report = self.report)
 
-        # Force all point cache next to the blend file
-        for object in bpy.data.objects:
-            for modifier in object.modifiers:
-                if modifier.type == 'FLUID_SIMULATION' and modifier.settings.type == "DOMAIN":
-                    modifier.settings.path = relative_path
-                    bpy.ops.fluid.bake({"active_object": object, "scene": scene})
-                elif modifier.type == "CLOTH":
-                    modifier.point_cache.frame_step = 1
-                    modifier.point_cache.use_disk_cache = True
-                    modifier.point_cache.use_external = False
-                elif modifier.type == "SOFT_BODY":
-                    modifier.point_cache.frame_step = 1
-                    modifier.point_cache.use_disk_cache = True
-                    modifier.point_cache.use_external = False
-                elif modifier.type == "SMOKE" and modifier.smoke_type == "TYPE_DOMAIN":
-                    modifier.domain_settings.point_cache.use_step = 1
-                    modifier.domain_settings.point_cache.use_disk_cache = True
-                    modifier.domain_settings.point_cache.use_external = False
-
-            # particles modifier are stupid and don't contain data
-            # we have to go through the object property
-            for psys in object.particle_systems:
-                psys.point_cache.use_step = 1
-                psys.point_cache.use_disk_cache = True
-                psys.point_cache.use_external = False
-                psys.point_cache.filepath = relative_path
-
-        bpy.ops.ptcache.bake_all()
-
-        #bpy.ops.wm.save_mainfile(filepath = path + os.sep + root + "_baked.blend")
-
+            if conn:
+                # Sending file
+                client.sendJobBaking(conn, scene)
+                conn.close()
+                self.report({'INFO'}, "Job sent to master")
+        except Exception as err:
+            self.report({'ERROR'}, str(err))
+            
         return {'FINISHED'}
 
     def invoke(self, context, event):
@@ -96,11 +70,11 @@ class RENDER_OT_netclientanim(bpy.types.Operator):
         scene = context.scene
         netsettings = scene.network_render
 
-        conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+        conn = clientConnection(netsettings, report = self.report)
 
         if conn:
             # Sending file
-            scene.network_render.job_id = client.clientSendJob(conn, scene, True)
+            scene.network_render.job_id = client.sendJob(conn, scene, True)
             conn.close()
 
         bpy.ops.render.render('INVOKE_AREA', animation=True)
@@ -141,11 +115,11 @@ class RENDER_OT_netclientsend(bpy.types.Operator):
         netsettings = scene.network_render
 
         try:
-            conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+            conn = clientConnection(netsettings, report = self.report)
 
             if conn:
                 # Sending file
-                scene.network_render.job_id = client.clientSendJob(conn, scene, True)
+                scene.network_render.job_id = client.sendJob(conn, scene, True)
                 conn.close()
                 self.report({'INFO'}, "Job sent to master")
         except Exception as err:
@@ -171,11 +145,11 @@ class RENDER_OT_netclientsendframe(bpy.types.Operator):
         netsettings = scene.network_render
 
         try:
-            conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+            conn = clientConnection(netsettings, report = self.report)
 
             if conn:
                 # Sending file
-                scene.network_render.job_id = client.clientSendJob(conn, scene, False)
+                scene.network_render.job_id = client.sendJob(conn, scene, False)
                 conn.close()
                 self.report({'INFO'}, "Job sent to master")
         except Exception as err:
@@ -198,11 +172,11 @@ class RENDER_OT_netclientstatus(bpy.types.Operator):
 
     def execute(self, context):
         netsettings = context.scene.network_render
-        conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+        conn = clientConnection(netsettings, report = self.report)
 
         if conn:
-            conn.request("GET", "/status")
-
+            with ConnectionContext():
+                conn.request("GET", "/status")
             response = conn.getresponse()
             content = response.read()
             print( response.status, response.reason )
@@ -229,7 +203,7 @@ class RENDER_OT_netclientstatus(bpy.types.Operator):
         return self.execute(context)
 
 class RENDER_OT_netclientblacklistslave(bpy.types.Operator):
-    '''Exclude from rendering, by adding slave to the blacklist.'''
+    '''Exclude from rendering, by adding slave to the blacklist'''
     bl_idname = "render.netclientblacklistslave"
     bl_label = "Client Blacklist Slave"
 
@@ -259,7 +233,7 @@ class RENDER_OT_netclientblacklistslave(bpy.types.Operator):
         return self.execute(context)
 
 class RENDER_OT_netclientwhitelistslave(bpy.types.Operator):
-    '''Remove slave from the blacklist.'''
+    '''Remove slave from the blacklist'''
     bl_idname = "render.netclientwhitelistslave"
     bl_label = "Client Whitelist Slave"
 
@@ -300,11 +274,11 @@ class RENDER_OT_netclientslaves(bpy.types.Operator):
 
     def execute(self, context):
         netsettings = context.scene.network_render
-        conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+        conn = clientConnection(netsettings, report = self.report)
 
         if conn:
-            conn.request("GET", "/slaves")
-
+            with ConnectionContext():
+                conn.request("GET", "/slaves")
             response = conn.getresponse()
             content = response.read()
             print( response.status, response.reason )
@@ -341,7 +315,7 @@ class RENDER_OT_netclientslaves(bpy.types.Operator):
         return self.execute(context)
 
 class RENDER_OT_netclientcancel(bpy.types.Operator):
-    '''Cancel the selected network rendering job.'''
+    '''Cancel the selected network rendering job'''
     bl_idname = "render.netclientcancel"
     bl_label = "Client Cancel"
 
@@ -352,13 +326,13 @@ class RENDER_OT_netclientcancel(bpy.types.Operator):
 
     def execute(self, context):
         netsettings = context.scene.network_render
-        conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+        conn = clientConnection(netsettings, report = self.report)
 
         if conn:
             job = netrender.jobs[netsettings.active_job_index]
 
-            conn.request("POST", cancelURL(job.id), json.dumps({'clear':False}))
-
+            with ConnectionContext():
+                conn.request("POST", cancelURL(job.id), json.dumps({'clear':False}))
             response = conn.getresponse()
             response.read()
             print( response.status, response.reason )
@@ -371,7 +345,7 @@ class RENDER_OT_netclientcancel(bpy.types.Operator):
         return self.execute(context)
 
 class RENDER_OT_netclientcancelall(bpy.types.Operator):
-    '''Cancel all running network rendering jobs.'''
+    '''Cancel all running network rendering jobs'''
     bl_idname = "render.netclientcancelall"
     bl_label = "Client Cancel All"
 
@@ -381,11 +355,11 @@ class RENDER_OT_netclientcancelall(bpy.types.Operator):
 
     def execute(self, context):
         netsettings = context.scene.network_render
-        conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+        conn = clientConnection(netsettings, report = self.report)
 
         if conn:
-            conn.request("POST", "/clear", json.dumps({'clear':False}))
-
+            with ConnectionContext():
+                conn.request("POST", "/clear", json.dumps({'clear':False}))
             response = conn.getresponse()
             response.read()
             print( response.status, response.reason )
@@ -411,15 +385,15 @@ class netclientdownload(bpy.types.Operator):
     def execute(self, context):
         netsettings = context.scene.network_render
 
-        conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+        conn = clientConnection(netsettings, report = self.report)
 
         if conn:
             job_id = netrender.jobs[netsettings.active_job_index].id
     
-            conn.request("GET", "/status", headers={"job-id":job_id})
-    
+            with ConnectionContext():
+                conn.request("GET", "/status", headers={"job-id":job_id})
             response = conn.getresponse()
-            
+        
             if response.status != http.client.OK:
                 self.report({'ERROR'}, "Job ID %i not defined on master" % job_id)
                 return {'ERROR'}
@@ -436,9 +410,9 @@ class netclientdownload(bpy.types.Operator):
             nb_missing = 0
                 
             for frame in job.frames:
-                if frame.status == DONE:
+                if frame.status == FRAME_DONE:
                     finished_frames.append(frame.number)
-                elif frame.status == ERROR:
+                elif frame.status == FRAME_ERROR:
                     nb_error += 1
                 else:
                     nb_missing += 1
@@ -486,7 +460,7 @@ class netclientdownload(bpy.types.Operator):
         return self.execute(context)
 
 class netclientscan(bpy.types.Operator):
-    '''Listen on network for master server broadcasting its address and port.'''
+    '''Listen on network for master server broadcasting its address and port'''
     bl_idname = "render.netclientscan"
     bl_label = "Client Scan"
 
@@ -556,13 +530,14 @@ class netclientweb(bpy.types.Operator):
 
 
         # open connection to make sure server exists
-        conn = clientConnection(netsettings.server_address, netsettings.server_port, self.report)
+        conn = clientConnection(netsettings, report = self.report)
 
         if conn:
             conn.close()
-
-            webbrowser.open("http://%s:%i" % (netsettings.server_address, netsettings.server_port))
-
+            if netsettings.use_ssl:
+               webbrowser.open("https://%s:%i" % (netsettings.server_address, netsettings.server_port))
+            else:
+               webbrowser.open("http://%s:%i" % (netsettings.server_address, netsettings.server_port)) 
         return {'FINISHED'}
 
     def invoke(self, context, event):

@@ -84,6 +84,7 @@ BF_GETTEXT_LIBPATH = '${BF_GETTEXT}/lib'
 
 WITH_BF_GAMEENGINE = False
 WITH_BF_PLAYER = True
+WITH_BF_OCEANSIM = True
 
 WITH_BF_BULLET = True
 BF_BULLET = '#extern/bullet2/src'
@@ -116,7 +117,7 @@ BF_FFMPEG_INC = '${BF_FFMPEG}/include'
 BF_FFMPEG_LIBPATH='${BF_FFMPEG}/lib'
 
 # enable ogg, vorbis and theora in ffmpeg
-WITH_BF_OGG = True  # -DWITH_OGG 
+WITH_BF_OGG = True
 BF_OGG = '/usr/local'
 BF_OGG_INC = '${BF_OGG}/include'
 BF_OGG_LIB = 'ogg vorbis vorbisenc theoraenc theoradec'
@@ -163,6 +164,8 @@ BF_EXPAT = '/usr/local'
 BF_EXPAT_LIB = 'expat'
 BF_EXPAT_LIBPATH = '${BF_EXPAT}/lib'
 
+WITH_GHOST_XDND = False
+
 WITH_BF_OPENMP = True
 
 #Ray trace optimization
@@ -174,8 +177,8 @@ CCFLAGS = ['-pipe','-fPIC','-funsigned-char','-fno-strict-aliasing','-D_LARGEFIL
 CPPFLAGS = []
 CXXFLAGS = []
 if WITH_BF_FFMPEG:
-  # libavutil needs UINT64_C()
-  CXXFLAGS += ['-D__STDC_CONSTANT_MACROS', ]
+    # libavutil needs UINT64_C()
+    CXXFLAGS += ['-D__STDC_CONSTANT_MACROS', ]
 REL_CFLAGS = []
 REL_CXXFLAGS = []
 REL_CCFLAGS = ['-DNDEBUG', '-O2']

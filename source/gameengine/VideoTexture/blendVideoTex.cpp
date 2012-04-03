@@ -38,6 +38,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 //#include "TexPlayerGL.h"
 
 #include "ImageBase.h"
+#include "VideoBase.h"
 #include "FilterBase.h"
 #include "Texture.h"
 
@@ -91,7 +92,7 @@ static PyObject * imageToArray (PyObject * self, PyObject *args)
 	// parameter is Image object
 	PyObject * pyImg;
 	char *mode = NULL;
-	if (!PyArg_ParseTuple(args, "O|s:imageToArray", &pyImg, &mode) || !pyImageTypes.in(pyImg->ob_type))
+	if (!PyArg_ParseTuple(args, "O|s:imageToArray", &pyImg, &mode) || !pyImageTypes.in(Py_TYPE(pyImg)))
 	{
 		// if object is incorect, report error
 		PyErr_SetString(PyExc_TypeError, "VideoTexture.imageToArray(image): The value must be a image source object");
@@ -188,7 +189,7 @@ PyObject* initVideoTexture(void)
 	/* Use existing module where possible
 	 * be careful not to init any runtime vars after this */
 	m = PyImport_ImportModule( "VideoTexture" );
-	if(m) {
+	if (m) {
 		Py_DECREF(m);
 		return m;
 	}
@@ -208,6 +209,11 @@ PyObject* initVideoTexture(void)
 
 	Py_INCREF(&TextureType);
 	PyModule_AddObject(m, (char*)"Texture", (PyObject*)&TextureType);
+	PyModule_AddIntConstant(m, (char*)"SOURCE_ERROR", SourceError);
+	PyModule_AddIntConstant(m, (char*)"SOURCE_EMPTY", SourceEmpty);
+	PyModule_AddIntConstant(m, (char*)"SOURCE_READY", SourceReady);
+	PyModule_AddIntConstant(m, (char*)"SOURCE_PLAYING", SourcePlaying);
+	PyModule_AddIntConstant(m, (char*)"SOURCE_STOPPED", SourceStopped);
 	
 	// init last error description
 	Exception::m_lastError = "";

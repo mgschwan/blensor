@@ -24,12 +24,13 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_VIEW2D_TYPES_H
-#define DNA_VIEW2D_TYPES_H
 
 /** \file DNA_view2d_types.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_VIEW2D_TYPES_H__
+#define __DNA_VIEW2D_TYPES_H__
 
 #include "DNA_vec_types.h"
 

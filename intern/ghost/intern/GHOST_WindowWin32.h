@@ -30,8 +30,8 @@
  * Declaration of GHOST_WindowWin32 class.
  */
 
-#ifndef _GHOST_WINDOW_WIN32_H_
-#define _GHOST_WINDOW_WIN32_H_
+#ifndef __GHOST_WINDOWWIN32_H__
+#define __GHOST_WINDOWWIN32_H__
 
 #ifndef WIN32
 #error WIN32 only!
@@ -236,7 +236,7 @@ public:
 	 * Returns the name of the window class.
 	 * @return The name of the window class.
 	 */
-	static LPCSTR getWindowClassName() { return s_windowClassName; }
+	static wchar_t* getWindowClassName() { return s_windowClassName; }
 
 	/**
 	 * Register a mouse click event (should be called 
@@ -309,7 +309,9 @@ protected:
 	 * Sets the cursor shape on the window using
 	 * native window system calls.
 	 */
-	virtual GHOST_TSuccess setWindowCustomCursorShape(GHOST_TUns8 bitmap[16][2], GHOST_TUns8 mask[16][2], int hotX, int hotY);
+	virtual GHOST_TSuccess setWindowCustomCursorShape(GHOST_TUns8 bitmap[16][2],
+	                                                  GHOST_TUns8 mask[16][2],
+	                                                  int hotX, int hotY);
 
 	virtual GHOST_TSuccess setWindowCustomCursorShape(
 		GHOST_TUns8 *bitmap, 
@@ -349,7 +351,7 @@ protected:
 	/** ITaskbarList3 structure for progress bar*/
 	ITaskbarList3 * m_Bar;
 
-	static LPCSTR s_windowClassName;
+	static wchar_t* s_windowClassName;
 	static const int s_maxTitleLength;
 
 	/** WinTab dll handle */
@@ -388,4 +390,4 @@ protected:
 	GHOST_TEmbedderWindowID m_parentWindowHwnd;
 };
 
-#endif // _GHOST_WINDOW_WIN32_H_
+#endif // __GHOST_WINDOWWIN32_H__

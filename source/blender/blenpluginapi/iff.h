@@ -30,8 +30,8 @@
  * SUCH DAMAGE.
  */
 
-#ifndef IFF_H
-#define IFF_H
+#ifndef __IFF_H__
+#define __IFF_H__
 
 #include <sys/types.h>
 #include "util.h"
@@ -57,13 +57,13 @@ typedef struct ImBuf {
 	unsigned int   encodedsize;       /**< Size of data written to encodedbuffer */
 	unsigned int   encodedbuffersize; /**< Size of encodedbuffer */
 
-	float *rect_float;		/**< floating point Rect equivalent
-								Linear RGB color space - may need gamma correction to 
-								sRGB when generating 8bit representations */
+	float *rect_float;		/** < floating point Rect equivalent
+							 * Linear RGB color space - may need gamma correction to
+							 * sRGB when generating 8bit representations */
 	int channels;			/**< amount of channels in rect_float (0 = 4 channel default) */
 	float dither;			/**< random dither value, for conversion from float -> byte rect */
 	short profile;			/** color space/profile preset that the byte rect buffer represents */
-	char profile_filename[256];		/** to be implemented properly, specific filename for custom profiles */
+	char profile_filename[1024];		/** to be implemented properly, specific filename for custom profiles */
 
 	/* mipmapping */
 	struct ImBuf *mipmap[IB_MIPMAP_LEVELS]; /**< MipMap levels, a series of halved images */
@@ -117,5 +117,5 @@ LIBIMPORT void IMB_rectfill_area(struct ImBuf *ibuf, float *col, int x1, int y1,
 LIBIMPORT void buf_rectfill_area(unsigned char *rect, float *rectf, int width, int height, const float col[4], int x1, int y1, int x2, int y2);
 LIBIMPORT void IMB_rectfill_alpha(struct ImBuf *drect, const float value);
 
-#endif /* IFF_H */
+#endif /* __IFF_H__ */
 

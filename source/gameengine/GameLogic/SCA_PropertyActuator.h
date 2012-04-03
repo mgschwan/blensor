@@ -29,14 +29,14 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __KX_PROPERTYACTUATOR
-#define __KX_PROPERTYACTUATOR
+#ifndef __SCA_PROPERTYACTUATOR_H__
+#define __SCA_PROPERTYACTUATOR_H__
 
 #include "SCA_IActuator.h"
 
 class SCA_PropertyActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 	
 	enum KX_ACT_PROP_MODE {
 		KX_ACT_PROP_NODEF = 0,

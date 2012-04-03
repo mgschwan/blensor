@@ -29,8 +29,8 @@
  */
 
 
-#ifndef WM_WINDOW_H
-#define WM_WINDOW_H
+#ifndef __WM_WINDOW_H__
+#define __WM_WINDOW_H__
 
 struct bScreen;
 struct wmOperator;
@@ -46,7 +46,7 @@ void		wm_window_free			(bContext *C, wmWindowManager *wm, wmWindow *win);
 void		wm_window_close			(bContext *C, wmWindowManager *wm, wmWindow *win);
 
 void		wm_window_title				(wmWindowManager *wm, wmWindow *win);
-void		wm_window_add_ghostwindows	(bContext *C, wmWindowManager *wm);
+void		wm_window_add_ghostwindows	(wmWindowManager *wm);
 void		wm_window_process_events	(const bContext *C);
 void		wm_window_process_events_nosleep(void);
 
@@ -70,5 +70,5 @@ void		wm_window_testbreak		(void);
 int			wm_window_duplicate_exec(bContext *C, struct wmOperator *op);
 int			wm_window_fullscreen_toggle_exec(bContext *C, struct wmOperator *op);
 
-#endif /* WM_WINDOW_H */
+#endif /* __WM_WINDOW_H__ */
 

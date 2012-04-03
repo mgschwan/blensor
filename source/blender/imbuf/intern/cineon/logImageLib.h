@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef _LOG_IMAGE_LIB_H_
-#define _LOG_IMAGE_LIB_H_
+#ifndef __LOGIMAGELIB_H__
+#define __LOGIMAGELIB_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,10 +62,6 @@ LogImageFile* logImageOpen(const char* filename, int cineon);
 int logImageGetSize(const LogImageFile* logImage, int* xsize, int* ysize, int* channels);
 LogImageFile* logImageCreate(const char* filename, int cineon, int xsize, int ysize, int channels);
 
-/* get / set header block NYI */
-int logImageGetHeader(LogImageFile*, int*, void**);
-int logImageSetHeader(LogImageFile*, int, void*);
-
 /* byte conversion routines for mapping logImage (usually) 10 bit values to 8 bit */
 /* see Kodak docs for details... */
 
@@ -87,4 +83,4 @@ void logImageDump(const char* filename);
 }
 #endif
 
-#endif /* _LOG_IMAGE_LIB_H_ */
+#endif /* __LOGIMAGELIB_H__ */

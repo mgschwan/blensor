@@ -65,7 +65,8 @@ GHOST_TSuccess GHOST_DisposeSystem(GHOST_SystemHandle systemhandle)
 }
 
 
-GHOST_EventConsumerHandle GHOST_CreateEventConsumer(GHOST_EventCallbackProcPtr eventCallback, GHOST_TUserDataPtr userdata)
+GHOST_EventConsumerHandle GHOST_CreateEventConsumer(GHOST_EventCallbackProcPtr eventCallback,
+                                                    GHOST_TUserDataPtr userdata)
 {
 	return (GHOST_EventConsumerHandle) new GHOST_CallbackEventConsumer (eventCallback, userdata);
 }
@@ -863,4 +864,10 @@ int GHOST_toggleConsole(int action)
 {
 	GHOST_ISystem* system = GHOST_ISystem::getSystem();
 	return system->toggleConsole(action);
+}
+
+
+int GHOST_confirmQuit(GHOST_WindowHandle windowhandle){
+	GHOST_ISystem* system = GHOST_ISystem::getSystem();
+	return system->confirmQuit((GHOST_IWindow*) windowhandle);
 }

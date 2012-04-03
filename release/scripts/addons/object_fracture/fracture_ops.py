@@ -31,13 +31,9 @@ def create_cutter(context, crack_type, scale, roughness):
             enter_editmode=False,
             location=(0, 0, 0),
             rotation=(0, 0, 0),
-            layers=(True, False, False, False,
-                False, False, False, False,
-                False, False, False, False,
-                False, False, False, False,
-                False, False, False, False))
+            layers=context.scene.layers)
 
-        for v in context.scene.objects.active.data.vertices:
+        for v in context.active_object.data.vertices:
             v.co[0] += 1.0
             v.co *= scale
 
@@ -62,18 +58,14 @@ def create_cutter(context, crack_type, scale, roughness):
             enter_editmode=False,
             location=(0, 0, 0),
             rotation=(0, 0, 0),
-            layers=(True, False, False, False,
-                False, False, False, False,
-                False, False, False, False,
-                False, False, False, False,
-                False, False, False, False))
+            layers=context.scene.layers)
 
         bpy.ops.object.editmode_toggle()
         bpy.ops.mesh.faces_shade_smooth()
         bpy.ops.uv.smart_project(angle_limit=66, island_margin=0)
 
         bpy.ops.object.editmode_toggle()
-        for v in context.scene.objects.active.data.vertices:
+        for v in context.active_object.data.vertices:
             v.co[0] += 1.0
             v.co *= scale
 
@@ -83,7 +75,8 @@ def create_cutter(context, crack_type, scale, roughness):
                 v.co[1] += roughness * scale * 0.1 * (random.random() - 0.5)
                 v.co[2] += roughness * scale * 0.1 * (random.random() - 0.5)
 
-    bpy.context.scene.objects.active.select = True
+    bpy.context.active_object.select = True
+#    bpy.context.scene.objects.active.select = True
 
     '''
     # Adding fracture material
@@ -349,13 +342,13 @@ def fracture_group(context, group):
 
 
 class FractureSimple(bpy.types.Operator):
-    '''Split object with boolean operations for simulation, uses an object.'''
+    '''Split object with boolean operations for simulation, uses an object'''
     bl_idname = "object.fracture_simple"
     bl_label = "Fracture Object"
     bl_options = {'REGISTER', 'UNDO'}
 
     exe = BoolProperty(name="Execute",
-        description="If it shall actually run, for optimal performance...",
+        description="If it shall actually run, for optimal performance",
         default=False)
 
     hierarchy = BoolProperty(name="Generate hierarchy",
@@ -395,13 +388,13 @@ class FractureSimple(bpy.types.Operator):
 
 
 class FractureGroup(bpy.types.Operator):
-    '''Split object with boolean operations for simulation, uses a group.'''
+    '''Split object with boolean operations for simulation, uses a group'''
     bl_idname = "object.fracture_group"
     bl_label = "Fracture Object (Group)"
     bl_options = {'REGISTER', 'UNDO'}
 
     exe = BoolProperty(name="Execute",
-                       description="If it shall actually run, for optimal performance...",
+                       description="If it shall actually run, for optimal performance",
                        default=False)
 
     group = StringProperty(name="Group",
@@ -431,27 +424,27 @@ class FractureGroup(bpy.types.Operator):
 # Import Functions
 
 def import_object(obname):
-        opath = "//data.blend\\Object\\" + obname
-        s = os.sep
-        dpath = bpy.utils.script_paths()[0] + \
-            '%saddons%sobject_fracture%sdata.blend\\Object\\' % (s, s, s)
+    opath = "//data.blend\\Object\\" + obname
+    s = os.sep
+    dpath = bpy.utils.script_paths()[0] + \
+        '%saddons%sobject_fracture%sdata.blend\\Object\\' % (s, s, s)
 
-        # DEBUG
-        #print('import_object: ' + opath)
+    # DEBUG
+    #print('import_object: ' + opath)
 
-        bpy.ops.wm.link_append(
-                filepath=opath,
-                filename=obname,
-                directory=dpath,
-                filemode=1,
-                link=False,
-                autoselect=True,
-                active_layer=True,
-                instance_groups=True,
-                relative_path=True)
+    bpy.ops.wm.link_append(
+            filepath=opath,
+            filename=obname,
+            directory=dpath,
+            filemode=1,
+            link=False,
+            autoselect=True,
+            active_layer=True,
+            instance_groups=True,
+            relative_path=True)
 
-        for ob in bpy.context.selected_objects:
-            ob.location = bpy.context.scene.cursor_location
+    for ob in bpy.context.selected_objects:
+        ob.location = bpy.context.scene.cursor_location
 
 
 class ImportFractureRecorder(bpy.types.Operator):

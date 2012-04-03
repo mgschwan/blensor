@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_GLOBAL_H
-#define BKE_GLOBAL_H
+#ifndef __BKE_GLOBAL_H__
+#define __BKE_GLOBAL_H__
 
 /** \file BKE_global.h
  *  \ingroup bke
@@ -53,12 +53,12 @@ typedef struct Global {
 	struct Main *main;
 	
 	/* strings: lastsaved */
-	char ima[256], lib[256];
+	char ima[1024], lib[1024]; /* 1024 = FILE_MAX */
 
 	/* flag: if != 0 G.main->name contains valid relative base path */
 	int relbase_valid;
 
-	/* strings of recent opend files */
+	/* strings of recent opened files */
 	struct ListBase recent_files;
         
 	short afbreek, moving, file_loaded;
@@ -69,6 +69,7 @@ typedef struct Global {
 
 	short rt;
 	int f;
+	int debug;
 
 	/* Used for BMesh transformations */
 	struct BME_Glob *editBMesh;
@@ -104,7 +105,6 @@ typedef struct Global {
 
 /* #define G_FACESELECT	(1 <<  8) use (mesh->editflag & ME_EDIT_PAINT_MASK) */
 
-#define G_DEBUG			(1 << 12)
 #define G_SCRIPT_AUTOEXEC (1 << 13)
 #define G_SCRIPT_OVERRIDE_PREF (1 << 14) /* when this flag is set ignore the userprefs */
 
@@ -112,6 +112,18 @@ typedef struct Global {
 /* #define G_GREASEPENCIL 	(1 << 17)   also removed */
 
 /* #define G_AUTOMATKEYS	(1 << 30)   also removed */
+
+/* G.debug */
+enum {
+	G_DEBUG =           (1 << 0), /* general debug flag, print more info in unexpected cases */
+	G_DEBUG_FFMPEG =    (1 << 1),
+	G_DEBUG_PYTHON =    (1 << 2), /* extra python info */
+	G_DEBUG_EVENTS =    (1 << 3), /* input/window/screen events */
+	G_DEBUG_WM =        (1 << 4)  /* operator, undo */
+};
+
+#define G_DEBUG_ALL  (G_DEBUG | G_DEBUG_FFMPEG | G_DEBUG_PYTHON | G_DEBUG_EVENTS | G_DEBUG_WM)
+
 
 /* G.fileflags */
 
@@ -141,6 +153,7 @@ typedef struct Global {
 #define G_FILE_RECOVER			 (1 << 23)
 #define G_FILE_RELATIVE_REMAP	 (1 << 24)
 #define G_FILE_HISTORY			 (1 << 25)
+#define G_FILE_MESH_COMPAT		 (1 << 26)				/* BMesh option to save as older mesh format */
 
 /* G.windowstate */
 #define G_WINDOWSTATE_USERDEF		0

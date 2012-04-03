@@ -20,6 +20,7 @@
 
 import bpy
 from bpy.types import Menu, Operator
+from bpy.props import StringProperty, BoolProperty
 
 
 class AddPresetBase():
@@ -31,14 +32,15 @@ class AddPresetBase():
     # bl_label = "Add a Python Preset"
     bl_options = {'REGISTER'}  # only because invoke_props_popup requires.
 
-    name = bpy.props.StringProperty(
+    name = StringProperty(
             name="Name",
             description="Name of the preset, used to make the path name",
             maxlen=64,
+            options={'SKIP_SAVE'},
             )
-    remove_active = bpy.props.BoolProperty(
+    remove_active = BoolProperty(
             default=False,
-            options={'HIDDEN'},
+            options={'HIDDEN', 'SKIP_SAVE'},
             )
 
     @staticmethod
@@ -54,6 +56,13 @@ class AddPresetBase():
             self.pre_cb(context)
 
         preset_menu_class = getattr(bpy.types, self.preset_menu)
+
+        is_xml = getattr(preset_menu_class, "preset_type", None) == 'XML'
+
+        if is_xml:
+            ext = ".xml"
+        else:
+            ext = ".py"
 
         if not self.remove_active:
             name = self.name.strip()
@@ -71,31 +80,40 @@ class AddPresetBase():
                 self.report({'WARNING'}, "Failed to create presets path")
                 return {'CANCELLED'}
 
-            filepath = os.path.join(target_path, filename) + ".py"
+            filepath = os.path.join(target_path, filename) + ext
 
             if hasattr(self, "add"):
                 self.add(context, filepath)
             else:
-                file_preset = open(filepath, 'w')
-                file_preset.write("import bpy\n")
+                print("Writing Preset: %r" % filepath)
 
-                if hasattr(self, "preset_defines"):
-                    for rna_path in self.preset_defines:
-                        exec(rna_path)
-                        file_preset.write("%s\n" % rna_path)
-                    file_preset.write("\n")
+                if is_xml:
+                    import rna_xml
+                    rna_xml.xml_file_write(context,
+                                           filepath,
+                                           preset_menu_class.preset_xml_map)
+                else:
+                    file_preset = open(filepath, 'w')
+                    file_preset.write("import bpy\n")
 
-                for rna_path in self.preset_values:
-                    value = eval(rna_path)
-                    # convert thin wrapped sequences to simple lists to repr()
-                    try:
-                        value = value[:]
-                    except:
-                        pass
+                    if hasattr(self, "preset_defines"):
+                        for rna_path in self.preset_defines:
+                            exec(rna_path)
+                            file_preset.write("%s\n" % rna_path)
+                        file_preset.write("\n")
 
-                    file_preset.write("%s = %r\n" % (rna_path, value))
+                    for rna_path in self.preset_values:
+                        value = eval(rna_path)
+                        # convert thin wrapped sequences
+                        # to simple lists to repr()
+                        try:
+                            value = value[:]
+                        except:
+                            pass
 
-                file_preset.close()
+                        file_preset.write("%s = %r\n" % (rna_path, value))
+
+                    file_preset.close()
 
             preset_menu_class.bl_label = bpy.path.display_name(filename)
 
@@ -103,12 +121,15 @@ class AddPresetBase():
             preset_active = preset_menu_class.bl_label
 
             # fairly sloppy but convenient.
-            filepath = bpy.utils.preset_find(preset_active, self.preset_subdir)
+            filepath = bpy.utils.preset_find(preset_active,
+                                             self.preset_subdir,
+                                             ext=ext)
 
             if not filepath:
                 filepath = bpy.utils.preset_find(preset_active,
                                                  self.preset_subdir,
-                                                 display_name=True)
+                                                 display_name=True,
+                                                 ext=ext)
 
             if not filepath:
                 return {'CANCELLED'}
@@ -146,26 +167,36 @@ class ExecutePreset(Operator):
     bl_idname = "script.execute_preset"
     bl_label = "Execute a Python Preset"
 
-    filepath = bpy.props.StringProperty(
-            name="Path",
-            description="Path of the Python file to execute",
-            maxlen=512,
+    filepath = StringProperty(
+            subtype='FILE_PATH',
             )
-    menu_idname = bpy.props.StringProperty(
+    menu_idname = StringProperty(
             name="Menu ID Name",
             description="ID name of the menu this was called from",
             )
 
     def execute(self, context):
-        from os.path import basename
+        from os.path import basename, splitext
         filepath = self.filepath
 
         # change the menu title to the most recently chosen option
         preset_class = getattr(bpy.types, self.menu_idname)
         preset_class.bl_label = bpy.path.display_name(basename(filepath))
 
+        ext = splitext(filepath)[1].lower()
+
         # execute the preset using script.python_file_run
-        bpy.ops.script.python_file_run(filepath=filepath)
+        if ext == ".py":
+            bpy.ops.script.python_file_run(filepath=filepath)
+        elif ext == ".xml":
+            import rna_xml
+            rna_xml.xml_file_run(context,
+                                 filepath,
+                                 preset_class.preset_xml_map)
+        else:
+            self.report({'ERROR'}, "unknown filetype: %r" % ext)
+            return {'CANCELLED'}
+
         return {'FINISHED'}
 
 
@@ -193,6 +224,25 @@ class AddPresetRender(AddPresetBase, Operator):
     ]
 
     preset_subdir = "render"
+
+
+class AddPresetCamera(AddPresetBase, Operator):
+    '''Add a Camera Preset'''
+    bl_idname = "camera.preset_add"
+    bl_label = "Add Camera Preset"
+    preset_menu = "CAMERA_MT_presets"
+
+    preset_defines = [
+        "cam = bpy.context.object.data"
+    ]
+
+    preset_values = [
+        "cam.sensor_width",
+        "cam.sensor_height",
+        "cam.sensor_fit"
+    ]
+
+    preset_subdir = "camera"
 
 
 class AddPresetSSS(AddPresetBase, Operator):
@@ -300,8 +350,84 @@ class AddPresetInteraction(AddPresetBase, Operator):
     preset_subdir = "interaction"
 
 
+class AddPresetTrackingCamera(AddPresetBase, Operator):
+    '''Add a Tracking Camera Intrinsics  Preset'''
+    bl_idname = "clip.camera_preset_add"
+    bl_label = "Add Camera Preset"
+    preset_menu = "CLIP_MT_camera_presets"
+
+    preset_defines = [
+        "camera = bpy.context.edit_movieclip.tracking.camera"
+    ]
+
+    preset_values = [
+        "camera.sensor_width",
+        "camera.units",
+        "camera.focal_length",
+        "camera.pixel_aspect",
+        "camera.k1",
+        "camera.k2",
+        "camera.k3"
+    ]
+
+    preset_subdir = "tracking_camera"
+
+
+class AddPresetTrackingTrackColor(AddPresetBase, Operator):
+    '''Add a Clip Track Color Preset'''
+    bl_idname = "clip.track_color_preset_add"
+    bl_label = "Add Track Color Preset"
+    preset_menu = "CLIP_MT_track_color_presets"
+
+    preset_defines = [
+        "track = bpy.context.edit_movieclip.tracking.tracks.active"
+    ]
+
+    preset_values = [
+        "track.color",
+        "track.use_custom_color"
+    ]
+
+    preset_subdir = "tracking_track_color"
+
+
+class AddPresetTrackingSettings(AddPresetBase, Operator):
+    '''Add a motion tracking settings preset'''
+    bl_idname = "clip.tracking_settings_preset_add"
+    bl_label = "Add Tracking Settings Preset"
+    preset_menu = "CLIP_MT_tracking_settings_presets"
+
+    preset_defines = [
+        "settings = bpy.context.edit_movieclip.tracking.settings"
+    ]
+
+    preset_values = [
+        "settings.default_tracker",
+        "settings.default_pyramid_levels",
+        "settings.default_correlation_min",
+        "settings.default_pattern_size",
+        "settings.default_search_size",
+        "settings.default_frames_limit",
+        "settings.default_pattern_match",
+        "settings.default_margin",
+        "settings.use_default_red_channel",
+        "settings.use_default_green_channel",
+        "settings.use_default_blue_channel"
+    ]
+
+    preset_subdir = "tracking_settings"
+
+
+class AddPresetInterfaceTheme(AddPresetBase, Operator):
+    '''Add a theme preset'''
+    bl_idname = "wm.interface_theme_preset_add"
+    bl_label = "Add Tracking Settings Preset"
+    preset_menu = "USERPREF_MT_interface_theme_presets"
+    preset_subdir = "interface_theme"
+
+
 class AddPresetKeyconfig(AddPresetBase, Operator):
-    '''Add a Keyconfig Preset'''
+    '''Add a Key-config Preset'''
     bl_idname = "wm.keyconfig_preset_add"
     bl_label = "Add Keyconfig Preset"
     preset_menu = "USERPREF_MT_keyconfigs"
@@ -329,15 +455,14 @@ class AddPresetOperator(AddPresetBase, Operator):
     bl_label = "Operator Preset"
     preset_menu = "WM_MT_operator_presets"
 
-    operator = bpy.props.StringProperty(
+    operator = StringProperty(
             name="Operator",
             maxlen=64,
             options={'HIDDEN'},
             )
 
-    # XXX, not ideal
     preset_defines = [
-        "op = bpy.context.space_data.operator",
+        "op = bpy.context.active_operator",
     ]
 
     @property
@@ -372,7 +497,7 @@ class WM_MT_operator_presets(Menu):
     bl_label = "Operator Presets"
 
     def draw(self, context):
-        self.operator = context.space_data.operator.bl_idname
+        self.operator = context.active_operator.bl_idname
         Menu.draw_preset(self, context)
 
     @property

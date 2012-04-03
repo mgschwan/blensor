@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-# <pep8 compliant>
+# <pep8-80 compliant>
 
 
 bl_info = {
@@ -24,14 +24,13 @@ bl_info = {
     "author": "Anthony D,Agostino (Scorpius), Aurel Wildfellner",
     "version": (0, 2),
     "blender": (2, 5, 7),
-    "api": 36103,
     "location": "File > Import-Export > Raw Faces (.raw) ",
     "description": "Import-Export Raw Faces",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
-        "Scripts/Import-Export/Raw_Mesh_IO",
-    "tracker_url": "https://projects.blender.org/tracker/index.php?"\
-        "func=detail&aid=25692",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+                "Scripts/Import-Export/Raw_Mesh_IO",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"
+                   "func=detail&aid=25692",
     "category": "Import-Export"}
 
 if "bpy" in locals():
@@ -52,7 +51,9 @@ class RawImporter(bpy.types.Operator):
     bl_label = "Import RAW"
     bl_options = {'UNDO'}
 
-    filepath = StringProperty(name="File Path", description="Filepath used for importing the RAW file", maxlen=1024, default="", subtype='FILE_PATH')
+    filepath = StringProperty(
+            subtype='FILE_PATH',
+            )
     filter_glob = StringProperty(default="*.raw", options={'HIDDEN'})
 
     def execute(self, context):
@@ -72,9 +73,6 @@ class RawExporter(bpy.types.Operator):
     bl_label = "Export RAW"
 
     filepath = StringProperty(
-            name="File Path",
-            description="Filepath used for exporting the RAW file",
-            maxlen=1024,
             subtype='FILE_PATH',
             )
     check_existing = BoolProperty(

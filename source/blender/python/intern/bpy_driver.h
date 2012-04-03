@@ -24,8 +24,8 @@
  *  \ingroup pythonintern
  */
 
-#ifndef BPY_DRIVER_H
-#define BPY_DRIVER_H
+#ifndef __BPY_DRIVER_H__
+#define __BPY_DRIVER_H__
 
 struct ChannelDriver;
 
@@ -33,7 +33,7 @@ int bpy_pydriver_create_dict(void);
 extern PyObject *bpy_pydriver_Dict;
 
 /* externals */
-float BPY_driver_exec(struct ChannelDriver *driver);
+float BPY_driver_exec(struct ChannelDriver *driver, const float evaltime);
 void BPY_driver_reset(void);
 
-#endif // BPY_DRIVER_H
+#endif // __BPY_DRIVER_H__

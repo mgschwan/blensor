@@ -34,6 +34,7 @@
 #endif
 
 #include <OpenGL/gl.h>
+#include <OpenGL/CGLRenderers.h>
 /***** Multithreaded opengl code : uncomment for enabling
 #include <OpenGL/OpenGL.h>
 */
@@ -238,10 +239,13 @@ extern "C" {
 
 #pragma mark NSOpenGLView subclass
 //We need to subclass it in order to give Cocoa the feeling key events are trapped
-@interface CocoaOpenGLView : NSOpenGLView
+@interface CocoaOpenGLView : NSOpenGLView <NSTextInput>
 {
 	GHOST_SystemCocoa *systemCocoa;
 	GHOST_WindowCocoa *associatedWindow;
+
+       bool composing;
+       NSString *composing_text;
 }
 - (void)setSystemAndWindowCocoa:(GHOST_SystemCocoa *)sysCocoa windowCocoa:(GHOST_WindowCocoa *)winCocoa;
 @end
@@ -251,6 +255,9 @@ extern "C" {
 {
 	systemCocoa = sysCocoa;
 	associatedWindow = winCocoa;
+
+       composing = false;
+       composing_text = nil;
 }
 
 - (BOOL)acceptsFirstResponder
@@ -258,9 +265,26 @@ extern "C" {
     return YES;
 }
 
-//The trick to prevent Cocoa from complaining (beeping)
-- (void)keyDown:(NSEvent *)theEvent
-{}
+// The trick to prevent Cocoa from complaining (beeping)
+- (void)keyDown:(NSEvent *)event
+{
+       // Start or continue composing?
+       if([[event characters] length] == 0  ||
+          [[event charactersIgnoringModifiers] length] == 0 ||
+          composing) {
+               composing = YES;
+ 
+               // interpret event to call insertText
+               NSMutableArray *events;
+               events = [[NSMutableArray alloc] initWithCapacity:1];
+               [events addObject:event];
+               [self interpretKeyEvents:events]; // calls insertText
+               [events removeObject:event];
+               [events release];
+
+               return;
+       }
+}
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED <= MAC_OS_X_VERSION_10_4
 //Cmd+key are handled differently before 10.5
@@ -306,8 +330,99 @@ extern "C" {
     }
 }
 
-@end
+// Text input
 
+- (void)composing_free
+{
+       composing = NO;
+
+       if(composing_text) {
+               [composing_text release];
+               composing_text = nil;
+       }
+}
+
+- (void)insertText:(id)chars
+{
+       [self composing_free];
+}
+
+- (void)setMarkedText:(id)chars selectedRange:(NSRange)range
+{
+       [self composing_free];
+       if([chars length] == 0)
+               return;
+       
+       // start composing
+       composing = YES;
+       composing_text = [chars copy];
+
+       // if empty, cancel
+       if([composing_text length] == 0)
+               [self composing_free];
+}
+
+- (void)unmarkText
+{
+       [self composing_free];
+}
+
+- (BOOL)hasMarkedText
+{
+       return (composing)? YES: NO;
+}
+
+- (void)doCommandBySelector:(SEL)selector
+{
+}
+
+- (BOOL)isComposing
+{
+       return composing;
+}
+
+- (NSInteger)conversationIdentifier
+{
+       return (NSInteger)self;
+}
+
+- (NSAttributedString *)attributedSubstringFromRange:(NSRange)range
+{
+       return [NSAttributedString new]; // XXX does this leak?
+}
+
+- (NSRange)markedRange
+{
+       unsigned int length = (composing_text)? [composing_text length]: 0;
+
+       if(composing)
+               return NSMakeRange(0, length);
+
+       return NSMakeRange(NSNotFound, 0);
+}
+
+- (NSRange)selectedRange
+{
+       unsigned int length = (composing_text)? [composing_text length]: 0;
+       return NSMakeRange(0, length);
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)range
+{
+       return NSZeroRect;
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)point
+{
+       return NSNotFound;
+}
+
+- (NSArray*)validAttributesForMarkedText
+{
+       return [NSArray array]; // XXX does this leak?
+}
+
+@end
 
 #pragma mark initialization / finalization
 
@@ -371,7 +486,14 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 	// needed for 'Draw Overlap' drawing method
 	pixelFormatAttrsWindow[i++] = NSOpenGLPFABackingStore; 
 	
-	pixelFormatAttrsWindow[i++] = NSOpenGLPFAAccelerated;
+	// Force software OpenGL, for debugging
+	if(getenv("BLENDER_SOFTWAREGL")) {
+		pixelFormatAttrsWindow[i++] = NSOpenGLPFARendererID;
+		pixelFormatAttrsWindow[i++] = kCGLRendererGenericID;
+	}
+	else
+		pixelFormatAttrsWindow[i++] = NSOpenGLPFAAccelerated;
+
 	//pixelFormatAttrsWindow[i++] = NSOpenGLPFAAllowOfflineRenderers,;   // Removed to allow 10.4 builds, and 2 GPUs rendering is not used anyway
 
 	pixelFormatAttrsWindow[i++] = NSOpenGLPFADepthSize;
@@ -407,7 +529,14 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 		// needed for 'Draw Overlap' drawing method
 		pixelFormatAttrsWindow[i++] = NSOpenGLPFABackingStore;
 		
-		pixelFormatAttrsWindow[i++] = NSOpenGLPFAAccelerated;
+		// Force software OpenGL, for debugging
+		if(getenv("BLENDER_SOFTWAREGL")) {
+			pixelFormatAttrsWindow[i++] = NSOpenGLPFARendererID;
+			pixelFormatAttrsWindow[i++] = kCGLRendererGenericID;
+		}
+		else
+			pixelFormatAttrsWindow[i++] = NSOpenGLPFAAccelerated;
+
 		//pixelFormatAttrsWindow[i++] = NSOpenGLPFAAllowOfflineRenderers,;   // Removed to allow 10.4 builds, and 2 GPUs rendering is not used anyway
 		
 		pixelFormatAttrsWindow[i++] = NSOpenGLPFADepthSize;

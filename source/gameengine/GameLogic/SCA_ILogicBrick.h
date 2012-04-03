@@ -29,8 +29,8 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __KX_ILOGICBRICK
-#define __KX_ILOGICBRICK
+#ifndef __SCA_ILOGICBRICK_H__
+#define __SCA_ILOGICBRICK_H__
 
 #include "Value.h"
 #include "SCA_IObject.h"
@@ -43,7 +43,7 @@ class SCA_IScene;
 
 class SCA_ILogicBrick : public CValue
 {
-	Py_Header;
+	Py_Header
 protected:
 	SCA_IObject*		m_gameobj;
 	int					m_Execute_Priority;
@@ -133,8 +133,8 @@ public:
 
 
 	/* for moving logic bricks between scenes */
-	virtual void		Replace_IScene(SCA_IScene *val) {};
-	virtual void		Replace_NetworkScene(NG_NetworkScene *val) {};
+	virtual void		Replace_IScene(SCA_IScene *val) {}
+	virtual void		Replace_NetworkScene(NG_NetworkScene *val) {}
 
 #ifdef WITH_PYTHON
 	// python methods

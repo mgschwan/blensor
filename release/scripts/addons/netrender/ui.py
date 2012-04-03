@@ -30,11 +30,6 @@ VERSION = b"0.3"
 
 PATH_PREFIX = "/tmp/"
 
-QUEUED = 0
-DISPATCHED = 1
-DONE = 2
-ERROR = 3
-
 LAST_ADDRESS_TEST = 0
 ADDRESS_TEST_TIMEOUT = 30
 
@@ -75,7 +70,7 @@ def verify_address(netsettings, force=False):
         LAST_ADDRESS_TEST = time.time()
 
         try:
-            conn = clientConnection(netsettings.server_address, netsettings.server_port, scan = False, timeout = 1)
+            conn = clientConnection(netsettings, scan = False, timeout = 1)
         except:
             conn = None
 
@@ -125,25 +120,34 @@ class RENDER_PT_network_settings(NetRenderButtonsPanel, bpy.types.Panel):
             layout.operator("render.netclientstart", icon='PLAY')
 
         layout.prop(netsettings, "path")
+        
+        row = layout.row()
 
-        split = layout.split(percentage=0.7)
-
-        col = split.column()
-        col.label(text="Server Address:")
-        col.prop(netsettings, "server_address", text="")
+        split = layout.split(percentage=0.5)
 
         col = split.column()
-        col.label(text="Port:")
-        col.prop(netsettings, "server_port", text="")
+        col.prop(netsettings, "server_address", text="Address")
+
+        col = split.column()
+        row = col.row()
+        row.prop(netsettings, "server_port", text="Port")
+        row.prop(netsettings, "use_ssl", text="SSL")
 
         if netsettings.mode != "RENDER_MASTER":
             layout.operator("render.netclientscan", icon='FILE_REFRESH', text="")
             
         if not netrender.valid_address:
             layout.label(text="No master at specified address")
+        
+        
+        if netsettings.use_ssl and netsettings.mode == "RENDER_MASTER":
+            layout.prop(netsettings, "cert_path", text="Certificate")
+            layout.prop(netsettings, "key_path", text="Key")
 
         layout.operator("render.netclientweb", icon='QUESTION')
+        
 
+        
 class RENDER_PT_network_slave_settings(NetRenderButtonsPanel, bpy.types.Panel):
     bl_label = "Slave Settings"
     COMPAT_ENGINES = {'NET_RENDER'}
@@ -159,6 +163,7 @@ class RENDER_PT_network_slave_settings(NetRenderButtonsPanel, bpy.types.Panel):
         rd = context.scene.render
         netsettings = context.scene.network_render
 
+        layout.prop(netsettings, "slave_tags", text="Tags")
         layout.prop(netsettings, "use_slave_clear")
         layout.prop(netsettings, "use_slave_thumb")
         layout.prop(netsettings, "use_slave_output_log")
@@ -184,6 +189,7 @@ class RENDER_PT_network_master_settings(NetRenderButtonsPanel, bpy.types.Panel):
         netsettings = context.scene.network_render
 
         layout.prop(netsettings, "use_master_broadcast")
+        layout.prop(netsettings, "use_master_force_upload")
         layout.prop(netsettings, "use_master_clear")
 
 class RENDER_PT_network_job(NetRenderButtonsPanel, bpy.types.Panel):
@@ -205,27 +211,30 @@ class RENDER_PT_network_job(NetRenderButtonsPanel, bpy.types.Panel):
         if netsettings.server_address != "[default]":
             layout.operator("render.netclientanim", icon='RENDER_ANIMATION')
             layout.operator("render.netclientsend", icon='FILE_BLEND')
+            layout.operator("render.netclientsendbake", icon='PHYSICS')
             layout.operator("render.netclientsendframe", icon='RENDER_STILL')
             if netsettings.job_id:
                 row = layout.row()
                 row.operator("render.render", text="Get Image", icon='RENDER_STILL')
                 row.operator("render.render", text="Get Animation", icon='RENDER_ANIMATION').animation = True
 
-        split = layout.split(percentage=0.3)
-
-        col = split.column()
-        col.label(text="Type:")
-        col.label(text="Name:")
-        col.label(text="Category:")
-
-        col = split.column()
-        col.prop(netsettings, "job_type", text="")
-        col.prop(netsettings, "job_name", text="")
-        col.prop(netsettings, "job_category", text="")
+        layout.prop(netsettings, "job_type", text="Type")
+        layout.prop(netsettings, "job_name", text="Name")
+        layout.prop(netsettings, "job_category", text="Category")
+        layout.prop(netsettings, "job_tags", text="Tags")
+        layout.prop(netsettings, "job_render_engine", text="Engine")
+        
+        if netsettings.job_render_engine == "OTHER":
+            layout.prop(netsettings, "job_render_engine_other", text="Other Engine")
 
         row = layout.row()
         row.prop(netsettings, "priority")
         row.prop(netsettings, "chunks")
+        
+        if netsettings.job_type == "JOB_BLENDER":
+            layout.prop(netsettings, "save_before_job")
+            
+        
 
 class RENDER_PT_network_job_vcs(NetRenderButtonsPanel, bpy.types.Panel):
     bl_label = "VCS Job Settings"
@@ -341,8 +350,8 @@ class RENDER_PT_network_jobs(NeedValidAddress, NetRenderButtonsPanel, bpy.types.
 
             layout.label(text="Name: %s" % job.name)
             layout.label(text="Length: %04i" % len(job))
-            layout.label(text="Done: %04i" % job.results[DONE])
-            layout.label(text="Error: %04i" % job.results[ERROR])
+            layout.label(text="Done: %04i" % job.results[FRAME_DONE])
+            layout.label(text="Error: %04i" % job.results[FRAME_ERROR])
 
 import bl_ui.properties_render as properties_render
 class RENDER_PT_network_output(NeedValidAddress, NetRenderButtonsPanel, bpy.types.Panel):
@@ -403,6 +412,22 @@ class NetRenderSettings(bpy.types.PropertyGroup):
                         name="Broadcast",
                         description="broadcast master server address on local network",
                         default = True)
+        NetRenderSettings.use_ssl = BoolProperty(
+                        name="use ssl",
+                        description="use ssl encryption for communication",
+                        default = False)
+        NetRenderSettings.cert_path = StringProperty(
+                        name="CertPath",
+                        description="Path to ssl certifcate",
+                        maxlen = 128,
+                        default = "",
+                        subtype='FILE_PATH')
+        NetRenderSettings.key_path = StringProperty(
+                        name="key",
+                        description="Path to ssl key file",
+                        maxlen = 128,
+                        default = "",
+                        subtype='FILE_PATH')
         
         NetRenderSettings.use_slave_clear = BoolProperty(
                         name="Clear on exit",
@@ -414,6 +439,12 @@ class NetRenderSettings(bpy.types.PropertyGroup):
                         description="Generate thumbnails on slaves instead of master",
                         default = False)
         
+        NetRenderSettings.slave_tags = StringProperty(
+                        name="Tags",
+                        description="Tags to associate with the slave (semi-colon separated)",
+                        maxlen = 256,
+                        default = "")
+
         NetRenderSettings.use_slave_output_log = BoolProperty(
                         name="Output render log on console",
                         description="Output render text log to console as well as sending it to the master",
@@ -421,7 +452,12 @@ class NetRenderSettings(bpy.types.PropertyGroup):
         
         NetRenderSettings.use_master_clear = BoolProperty(
                         name="Clear on exit",
-                        description="delete saved files on exit",
+                        description="Delete saved files on exit",
+                        default = False)
+
+        NetRenderSettings.use_master_force_upload = BoolProperty(
+                        name="Force Dependency Upload",
+                        description="Force client to upload dependency files to master",
                         default = False)
         
         default_path = os.environ.get("TEMP")
@@ -462,7 +498,34 @@ class NetRenderSettings(bpy.types.PropertyGroup):
                         description="Category of the job",
                         maxlen = 128,
                         default = "")
+
+        NetRenderSettings.job_tags = StringProperty(
+                        name="Tags",
+                        description="Tags to associate with the job (semi-colon separated)",
+                        maxlen = 256,
+                        default = "")
+
+        NetRenderSettings.job_render_engine = EnumProperty(
+                                items = (
+                                                ("BLENDER_RENDER", "BLENDER", "Standard Blender Render"),
+                                                ("CYCLES", "CYCLES", "Cycle Render"),
+                                                ("OTHER", "OTHER", "Other non-default Render"),
+                                         ),
+                                name="render",
+                                description="Render engine used to render this job",
+                                default="BLENDER_RENDER")
+
+        NetRenderSettings.job_render_engine_other = StringProperty(
+                        name="Render engine",
+                        description="Render engine other than the builtin defaults (POVRAY_RENDER, ...)",
+                        maxlen = 128,
+                        default = "")
         
+        NetRenderSettings.save_before_job = BoolProperty(
+                        name="Save Before Job",
+                        description="Save current file before sending a job",
+                        default = False)
+
         NetRenderSettings.chunks = IntProperty(
                         name="Chunks",
                         description="Number of frame to dispatch to each slave in one chunk",
@@ -495,11 +558,11 @@ class NetRenderSettings(bpy.types.PropertyGroup):
                         maxlen = 256,
                         default = "")
     
-        NetRenderSettings.vcs_system = StringProperty(
-                        name="VCS",
-                        description="Version Control System",
-                        maxlen = 64,
-                        default = "Subversion")
+        NetRenderSettings.vcs_system = EnumProperty(
+                                items= netrender.versioning.ITEMS,
+                                name="VCS mode",
+                                description="Version Control System",
+                                default=netrender.versioning.ITEMS[0][0])
     
         NetRenderSettings.job_id = StringProperty(
                         name="Network job id",

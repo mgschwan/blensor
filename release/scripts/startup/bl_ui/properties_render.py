@@ -51,7 +51,7 @@ class RenderButtonsPanel():
     @classmethod
     def poll(cls, context):
         rd = context.scene.render
-        return (context.scene and rd.use_game_engine is False) and (rd.engine in cls.COMPAT_ENGINES)
+        return context.scene and (rd.engine in cls.COMPAT_ENGINES)
 
 
 class RENDER_PT_render(RenderButtonsPanel, Panel):
@@ -186,8 +186,8 @@ class RENDER_PT_dimensions(RenderButtonsPanel, Panel):
 
         row = layout.row(align=True)
         row.menu("RENDER_MT_presets", text=bpy.types.RENDER_MT_presets.bl_label)
-        row.operator("render.preset_add", text="", icon="ZOOMIN")
-        row.operator("render.preset_add", text="", icon="ZOOMOUT").remove_active = True
+        row.operator("render.preset_add", text="", icon='ZOOMIN')
+        row.operator("render.preset_add", text="", icon='ZOOMOUT').remove_active = True
 
         split = layout.split()
 
@@ -316,6 +316,9 @@ class RENDER_PT_shading(RenderButtonsPanel, Panel):
         col = split.column()
         col.prop(rd, "use_raytrace", text="Ray Tracing")
         col.prop(rd, "use_color_management")
+        sub = col.row()
+        sub.active = rd.use_color_management == True
+        sub.prop(rd, "use_color_unpremultiply")
         col.prop(rd, "alpha_mode", text="Alpha")
 
 
@@ -416,6 +419,12 @@ class RENDER_PT_stamp(RenderButtonsPanel, Panel):
 
         layout.active = rd.use_stamp
 
+        layout.prop(rd, "stamp_font_size", text="Font Size")
+
+        row = layout.row()
+        row.column().prop(rd, "stamp_foreground", slider=True)
+        row.column().prop(rd, "stamp_background", slider=True)
+
         split = layout.split()
 
         col = split.column()
@@ -424,18 +433,13 @@ class RENDER_PT_stamp(RenderButtonsPanel, Panel):
         col.prop(rd, "use_stamp_render_time", text="RenderTime")
         col.prop(rd, "use_stamp_frame", text="Frame")
         col.prop(rd, "use_stamp_scene", text="Scene")
+
+        col = split.column()
         col.prop(rd, "use_stamp_camera", text="Camera")
         col.prop(rd, "use_stamp_lens", text="Lens")
         col.prop(rd, "use_stamp_filename", text="Filename")
         col.prop(rd, "use_stamp_marker", text="Marker")
         col.prop(rd, "use_stamp_sequencer_strip", text="Seq. Strip")
-
-        col = split.column()
-        col.active = rd.use_stamp
-        col.prop(rd, "stamp_foreground", slider=True)
-        col.prop(rd, "stamp_background", slider=True)
-        col.separator()
-        col.prop(rd, "stamp_font_size", text="Font Size")
 
         row = layout.split(percentage=0.2)
         row.prop(rd, "use_stamp_note", text="Note")
@@ -452,96 +456,51 @@ class RENDER_PT_output(RenderButtonsPanel, Panel):
         layout = self.layout
 
         rd = context.scene.render
-        file_format = rd.file_format
+        image_settings = rd.image_settings
+        file_format = image_settings.file_format
 
         layout.prop(rd, "filepath", text="")
 
-        split = layout.split()
+        flow = layout.column_flow()
+        flow.prop(rd, "use_overwrite")
+        flow.prop(rd, "use_placeholder")
+        flow.prop(rd, "use_file_extension")
 
-        col = split.column()
-        col.prop(rd, "file_format", text="")
-        col.row().prop(rd, "color_mode", text="Color", expand=True)
+        layout.template_image_settings(image_settings)
 
-        col = split.column()
-        col.prop(rd, "use_file_extension")
-        col.prop(rd, "use_overwrite")
-        col.prop(rd, "use_placeholder")
-
-        if file_format in {'AVI_JPEG', 'JPEG'}:
-            layout.prop(rd, "file_quality", slider=True)
-
-        if file_format == 'PNG':
-            layout.prop(rd, "file_quality", slider=True, text="Compression")
-
-        if file_format in {'OPEN_EXR', 'MULTILAYER'}:
-            row = layout.row()
-            row.prop(rd, "exr_codec", text="Codec")
-
-            if file_format == 'OPEN_EXR':
-                row = layout.row()
-                row.prop(rd, "use_exr_half")
-                row.prop(rd, "exr_zbuf")
-                row.prop(rd, "exr_preview")
-
-        elif file_format == 'JPEG2000':
-            split = layout.split()
-            col = split.column()
-            col.label(text="Depth:")
-            col.row().prop(rd, "jpeg2k_depth", expand=True)
-
-            col = split.column()
-            col.prop(rd, "jpeg2k_preset", text="")
-            col.prop(rd, "jpeg2k_ycc")
-
-        elif file_format in {'CINEON', 'DPX'}:
-
-            split = layout.split()
-            split.label("FIXME: hard coded Non-Linear, Gamma:1.0")
-            '''
-            col = split.column()
-            col.prop(rd, "use_cineon_log", text="Convert to Log")
-
-            col = split.column(align=True)
-            col.active = rd.use_cineon_log
-            col.prop(rd, "cineon_black", text="Black")
-            col.prop(rd, "cineon_white", text="White")
-            col.prop(rd, "cineon_gamma", text="Gamma")
-            '''
-
-        elif file_format == 'TIFF':
-            layout.prop(rd, "use_tiff_16bit")
-
-        elif file_format == 'QUICKTIME_CARBON':
+        if file_format == 'QUICKTIME_CARBON':
             layout.operator("scene.render_data_set_quicktime_codec")
 
         elif file_format == 'QUICKTIME_QTKIT':
+            quicktime = rd.quicktime
+
             split = layout.split()
             col = split.column()
-            col.prop(rd, "quicktime_codec_type", text="Video Codec")
-            col.prop(rd, "quicktime_codec_spatial_quality", text="Quality")
+            col.prop(quicktime, "codec_type", text="Video Codec")
+            col.prop(quicktime, "codec_spatial_quality", text="Quality")
 
             # Audio
-            col.prop(rd, "quicktime_audiocodec_type", text="Audio Codec")
-            if rd.quicktime_audiocodec_type != 'No audio':
+            col.prop(quicktime, "audiocodec_type", text="Audio Codec")
+            if quicktime.audiocodec_type != 'No audio':
                 split = layout.split()
-                if rd.quicktime_audiocodec_type == 'LPCM':
-                    split.prop(rd, "quicktime_audio_bitdepth", text="")
+                if quicktime.audiocodec_type == 'LPCM':
+                    split.prop(quicktime, "audio_bitdepth", text="")
 
-                split.prop(rd, "quicktime_audio_samplerate", text="")
+                split.prop(quicktime, "audio_samplerate", text="")
 
                 split = layout.split()
                 col = split.column()
-                if rd.quicktime_audiocodec_type == 'AAC':
-                    col.prop(rd, "quicktime_audio_bitrate")
+                if quicktime.audiocodec_type == 'AAC':
+                    col.prop(quicktime, "audio_bitrate")
 
                 subsplit = split.split()
                 col = subsplit.column()
 
-                if rd.quicktime_audiocodec_type == 'AAC':
-                    col.prop(rd, "quicktime_audio_codec_isvbr")
+                if quicktime.audiocodec_type == 'AAC':
+                    col.prop(quicktime, "audio_codec_isvbr")
 
                 col = subsplit.column()
-                col.prop(rd, "quicktime_audio_resampling_hq")
+                col.prop(quicktime, "audio_resampling_hq")
 
 
 class RENDER_PT_encoding(RenderButtonsPanel, Panel):
@@ -552,55 +511,58 @@ class RENDER_PT_encoding(RenderButtonsPanel, Panel):
     @classmethod
     def poll(cls, context):
         rd = context.scene.render
-        return rd.file_format in {'FFMPEG', 'XVID', 'H264', 'THEORA'}
+        return rd.image_settings.file_format in {'FFMPEG', 'XVID', 'H264', 'THEORA'}
 
     def draw(self, context):
         layout = self.layout
 
         rd = context.scene.render
+        ffmpeg = rd.ffmpeg
 
         layout.menu("RENDER_MT_ffmpeg_presets", text="Presets")
 
         split = layout.split()
-        split.prop(rd, "ffmpeg_format")
-        if rd.ffmpeg_format in {'AVI', 'QUICKTIME', 'MKV', 'OGG'}:
-            split.prop(rd, "ffmpeg_codec")
+        split.prop(rd.ffmpeg, "format")
+        if ffmpeg.format in {'AVI', 'QUICKTIME', 'MKV', 'OGG'}:
+            split.prop(ffmpeg, "codec")
+        elif rd.ffmpeg.format == 'H264':
+            split.prop(ffmpeg, 'use_lossless_output')
         else:
             split.label()
 
         row = layout.row()
-        row.prop(rd, "ffmpeg_video_bitrate")
-        row.prop(rd, "ffmpeg_gopsize")
+        row.prop(ffmpeg, "video_bitrate")
+        row.prop(ffmpeg, "gopsize")
 
         split = layout.split()
 
         col = split.column()
         col.label(text="Rate:")
-        col.prop(rd, "ffmpeg_minrate", text="Minimum")
-        col.prop(rd, "ffmpeg_maxrate", text="Maximum")
-        col.prop(rd, "ffmpeg_buffersize", text="Buffer")
+        col.prop(ffmpeg, "minrate", text="Minimum")
+        col.prop(ffmpeg, "maxrate", text="Maximum")
+        col.prop(ffmpeg, "buffersize", text="Buffer")
 
         col = split.column()
-        col.prop(rd, "ffmpeg_autosplit")
+        col.prop(ffmpeg, "use_autosplit")
         col.label(text="Mux:")
-        col.prop(rd, "ffmpeg_muxrate", text="Rate")
-        col.prop(rd, "ffmpeg_packetsize", text="Packet Size")
+        col.prop(ffmpeg, "muxrate", text="Rate")
+        col.prop(ffmpeg, "packetsize", text="Packet Size")
 
         layout.separator()
 
         # Audio:
-        if rd.ffmpeg_format not in {'MP3'}:
-            layout.prop(rd, "ffmpeg_audio_codec", text="Audio Codec")
+        if ffmpeg.format != 'MP3':
+            layout.prop(ffmpeg, "audio_codec", text="Audio Codec")
 
         row = layout.row()
-        row.prop(rd, "ffmpeg_audio_bitrate")
-        row.prop(rd, "ffmpeg_audio_volume", slider=True)
+        row.prop(ffmpeg, "audio_bitrate")
+        row.prop(ffmpeg, "audio_volume", slider=True)
 
 
 class RENDER_PT_bake(RenderButtonsPanel, Panel):
     bl_label = "Bake"
     bl_options = {'DEFAULT_CLOSED'}
-    COMPAT_ENGINES = {'BLENDER_RENDER'}
+    COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
 
     def draw(self, context):
         layout = self.layout

@@ -30,14 +30,13 @@
  */
 
  
-#ifndef BOP_Indexs_H
-#define BOP_Indexs_H
+#ifndef __BOP_INDEXS_H__
+#define __BOP_INDEXS_H__
 
 #include <vector>
-using namespace std;
 
 typedef unsigned int BOP_Index;
-typedef vector<BOP_Index> BOP_Indexs;
-typedef vector<BOP_Index>::iterator BOP_IT_Indexs;
+typedef std::vector<BOP_Index> BOP_Indexs;
+typedef std::vector<BOP_Index>::iterator BOP_IT_Indexs;
 
 #endif

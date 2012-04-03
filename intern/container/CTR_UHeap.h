@@ -44,8 +44,8 @@
  *
  */
 
-#ifndef NAN_INCLUDED_CTR_UHeap_h
-#define NAN_INCLUDED_CTR_UHeap_h
+#ifndef __CTR_UHEAP_H__
+#define __CTR_UHEAP_H__
 
 #include <vector>
 
@@ -229,13 +229,13 @@ private:
 	Parent(
 		unsigned int i
 	) {
-		 return (i-1) >> 1; 
+		return (i-1) >> 1;
 	}
 		int 
 	Left(
 		int i
 	) {
-		return (i<<1)+1; 
+		return (i<<1)+1;
 	}
 
 		int 

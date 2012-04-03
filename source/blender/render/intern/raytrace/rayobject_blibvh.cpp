@@ -46,13 +46,14 @@ static void RE_rayobject_blibvh_done(RayObject *o);
 static void RE_rayobject_blibvh_free(RayObject *o);
 static void RE_rayobject_blibvh_bb(RayObject *o, float *min, float *max);
 
-static float RE_rayobject_blibvh_cost(RayObject *o)
+static float RE_rayobject_blibvh_cost(RayObject *UNUSED(o))
 {
 	//TODO calculate the expected cost to raycast on this structure
 	return 1.0;
 }
 
-static void RE_rayobject_blibvh_hint_bb(RayObject *o, RayHint *hint, float *min, float *max)
+static void RE_rayobject_blibvh_hint_bb(RayObject *UNUSED(o), RayHint *UNUSED(hint),
+                                        float *UNUSED(min), float *UNUSED(max))
 {
 	return;
 }
@@ -95,17 +96,17 @@ struct BVHCallbackUserData
 	RayObject **leafs;
 };
 
-static void bvh_callback(void *userdata, int index, const BVHTreeRay *ray, BVHTreeRayHit *hit)
+static void bvh_callback(void *userdata, int index, const BVHTreeRay *UNUSED(ray), BVHTreeRayHit *hit)
 {
 	struct BVHCallbackUserData *data = (struct BVHCallbackUserData*)userdata;
 	Isect *isec = data->isec;
 	RayObject *face = data->leafs[index];
 	
-	if(RE_rayobject_intersect(face,isec))
+	if (RE_rayobject_intersect(face,isec))
 	{
 		hit->index = index;
 
-		if(isec->mode == RE_RAY_SHADOW)
+		if (isec->mode == RE_RAY_SHADOW)
 			hit->dist = 0;
 		else
 			hit->dist = isec->dist;
@@ -153,10 +154,10 @@ static void RE_rayobject_blibvh_free(RayObject *o)
 {
 	BVHObject *obj = (BVHObject*)o;
 
-	if(obj->bvh)
+	if (obj->bvh)
 		BLI_bvhtree_free(obj->bvh);
 
-	if(obj->leafs)
+	if (obj->leafs)
 		MEM_freeN(obj->leafs);
 
 	MEM_freeN(obj);

@@ -28,6 +28,7 @@ dict_custom = {
     "merchantability",
     "precalculate",
     "unregister",
+    "unselected",
     "subdirectory",
     "decrement",
     "boolean",
@@ -43,6 +44,7 @@ dict_custom = {
 
     # accepted abbreviations
     "config",
+    "recalc",
     "addon", "addons",
     "subdir",
     "struct", "structs",
@@ -53,6 +55,7 @@ dict_custom = {
     "keyframe", "keyframing",
     "coord", "coords",
     "dir",
+    "tooltip",
 
     # general computer terms
     "unicode",
@@ -67,7 +70,26 @@ dict_custom = {
     "boids",
     "keymap",
     "voxel",
+    "vert", "verts",
     "euler", "eulers",
+    "booleans",
+    "intrinsics",
+    "xml",
+
+    # general computer graphics terms
+    "radiosity",
+    "specular",
+    "nurbs",
+    "compositing",
+    "deinterlace",
+
+    # blender terms
+    "bpy",
+    "mathutils",
+    "fcurve",
+    "animviz",
+    "animsys",
+    "eekadoodle",
 
     # should have apostrophe but ignore for now
     # unless we want to get really picky!
@@ -103,6 +125,9 @@ dict_ignore = {
     "node-trees",
 
     # acronyms
+    "nan",
+    "utf",
+    "rgb",
     "gzip",
     "ppc",
     "gpl",
@@ -123,6 +148,7 @@ dict_ignore = {
 
     # slang
     "hrmf",
+    "automagically",
 
     # names
     "jahka",

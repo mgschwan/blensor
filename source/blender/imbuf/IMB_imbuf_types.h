@@ -44,13 +44,13 @@
  * \todo Clean up includes.
  */
 
-#ifndef IMB_IMBUF_TYPES_H
-#define IMB_IMBUF_TYPES_H
+#ifndef __IMB_IMBUF_TYPES_H__
+#define __IMB_IMBUF_TYPES_H__
 
 struct ImMetaData;
 
 #define IB_MIPMAP_LEVELS	20
-#define IB_FILENAME_SIZE	1023
+#define IB_FILENAME_SIZE	1024
 
 /**
  * \ingroup imbuf
@@ -74,7 +74,7 @@ typedef struct ImBuf {
 							 * but this is problematic with texture math in imagetexture.c
 							 * avoid problems and use int. - campbell */
 
-	unsigned char depth;	/* Active amount of bits/bitplanes */
+	unsigned char planes;	/* Active amount of bits/bitplanes */
 	int channels;			/* amount of channels in rect_float (0 = 4 channel default) */
 
 	/* flags */
@@ -84,8 +84,8 @@ typedef struct ImBuf {
 	/* pixels */
 	unsigned int *rect;		/* pixel values stored here */
 	float *rect_float;		/* floating point Rect equivalent
-							Linear RGB color space - may need gamma correction to 
-							sRGB when generating 8bit representations */
+	                         * Linear RGB color space - may need gamma correction to
+	                         * sRGB when generating 8bit representations */
 
 	/* resolution - pixels per meter */
 	double ppm[2];
@@ -158,6 +158,7 @@ typedef struct ImBuf {
 #define IB_tiles			(1 << 10)
 #define IB_tilecache		(1 << 11)
 #define IB_premul			(1 << 12)
+#define IB_cm_predivide		(1 << 13)
 
 /*
  * The bit flag is stored in the ImBuf.ftype variable.

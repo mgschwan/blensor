@@ -16,11 +16,9 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-# <pep8 compliant>
+# <pep8-80 compliant>
 
-__author__ = ["Anthony D'Agostino (Scorpius)", "Aurel Wildfellner"]
-__version__ = '0.2'
-__bpydoc__ = """\
+"""
 This script imports Raw Triangle File format files to Blender.
 
 The raw triangle format is very simple; it has no verts or faces lists.
@@ -45,7 +43,7 @@ import bpy
 
 
 def readMesh(filename, objName):
-    file = open(filename, "rb")
+    filehandle = open(filename, "rb")
 
     def line_to_face(line):
         # Each triplet is an xyz float
@@ -61,12 +59,12 @@ def readMesh(filename, objName):
             return None
 
     faces = []
-    for line in file.readlines():
+    for line in filehandle.readlines():
         face = line_to_face(line)
         if face:
             faces.append(face)
 
-    file.close()
+    filehandle.close()
 
     # Generate verts and faces lists, without duplicates
     verts = []

@@ -33,8 +33,8 @@
  */
 
 
-#ifndef RENDERCORE_H
-#define RENDERCORE_H 
+#ifndef __RENDERCORE_H__
+#define __RENDERCORE_H__ 
 
 #include "render_types.h"
 
@@ -42,7 +42,6 @@
 /* vector defines */
 
 #define CROSS(dest, a, b)		{ dest[0]= a[1] * b[2] - a[2] * b[1]; dest[1]= a[2] * b[0] - a[0] * b[2]; dest[2]= a[0] * b[1] - a[1] * b[0]; }
-#define VECMUL(dest, f)			{ dest[0]*= f; dest[1]*= f; dest[2]*= f; }
 
 struct HaloRen;
 struct ShadeInput;
@@ -84,9 +83,6 @@ void calc_renderco_zbuf(float co[3], const float view[3], int z);
 void calc_renderco_ortho(float co[3], float x, float y, int z);
 
 int count_mask(unsigned short mask);
-
-void zbufshade(void);
-void zbufshadeDA(void);	/* Delta Accum Pixel Struct */
 
 void zbufshade_tile(struct RenderPart *pa);
 void zbufshadeDA_tile(struct RenderPart *pa);

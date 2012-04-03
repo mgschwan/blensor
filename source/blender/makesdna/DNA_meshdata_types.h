@@ -24,12 +24,13 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_MESHDATA_TYPES_H
-#define DNA_MESHDATA_TYPES_H
 
 /** \file DNA_meshdata_types.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_MESHDATA_TYPES_H__
+#define __DNA_MESHDATA_TYPES_H__
 
 #include "DNA_customdata_types.h"
 #include "DNA_listBase.h"
@@ -37,6 +38,7 @@
 struct Bone;
 struct Image;
 
+/*tessellation face, see MLoop/MPoly for the real face data*/
 typedef struct MFace {
 	unsigned int v1, v2, v3, v4;
 	short mat_nr;
@@ -66,27 +68,83 @@ typedef struct MVert {
 	char flag, bweight;
 } MVert;
 
-/* at the moment alpha is abused for vertex painting
- * and not used for transperency, note that red and blue are swapped */
+/* tessellation vertex color data.
+ * at the moment alpha is abused for vertex painting
+ * and not used for transparency, note that red and blue are swapped */
 typedef struct MCol {
 	char a, r, g, b;	
 } MCol;
 
-/*bmesh custom data stuff*/
-typedef struct MTexPoly{
+/* new face structure, replaces MFace, which is now
+ * only used for storing tessellations.*/
+typedef struct MPoly {
+	/* offset into loop array and number of loops in the face */
+	int loopstart;
+	int totloop; /* keep signed since we need to subtract when getting the previous loop */
+	short mat_nr;
+	char flag, pad;
+} MPoly;
+
+/* the e here is because we want to move away from
+ * relying on edge hashes.*/
+typedef struct MLoop {
+	unsigned int v; /*vertex index*/
+	unsigned int e; /*edge index*/
+} MLoop;
+
+typedef struct MTexPoly {
 	struct Image *tpage;
 	char flag, transp;
 	short mode,tile,unwrap;
-}MTexPoly;
+} MTexPoly;
 
-typedef struct MLoopUV{
+/* can copy from/to MTexPoly/MTFace */
+#define ME_MTEXFACE_CPY(dst, src)   \
+{                                   \
+	(dst)->tpage  = (src)->tpage;   \
+	(dst)->flag   = (src)->flag;    \
+	(dst)->transp = (src)->transp;  \
+	(dst)->mode   = (src)->mode;    \
+	(dst)->tile   = (src)->tile;    \
+	(dst)->unwrap = (src)->unwrap;  \
+}
+
+typedef struct MLoopUV {
 	float uv[2];
-}MLoopUV;
+	int flag;
+} MLoopUV;
 
-typedef struct MLoopCol{
-	char a, r, g, b;
-	int pad;  /*waste!*/
-}MLoopCol;
+/*mloopuv->flag*/
+#define MLOOPUV_EDGESEL	1
+#define MLOOPUV_VERTSEL	2
+#define MLOOPUV_PINNED	4
+
+/* at the moment alpha is abused for vertex painting
+ * and not used for transparency, note that red and blue are swapped */
+typedef struct MLoopCol {
+	char r, g, b, a;
+} MLoopCol;
+
+#define MESH_MLOOPCOL_FROM_MCOL(_mloopcol, _mcol) \
+{                                                 \
+	MLoopCol   *mloopcol__tmp = _mloopcol;        \
+	const MCol *mcol__tmp     = _mcol;            \
+	mloopcol__tmp->r = mcol__tmp->b;              \
+	mloopcol__tmp->g = mcol__tmp->g;              \
+	mloopcol__tmp->b = mcol__tmp->r;              \
+	mloopcol__tmp->a = mcol__tmp->a;              \
+} (void)0
+
+
+#define MESH_MLOOPCOL_TO_MCOL(_mloopcol, _mcol) \
+{                                               \
+	const MLoopCol *mloopcol__tmp = _mloopcol;  \
+	MCol           *mcol__tmp     = _mcol;      \
+	mcol__tmp->b = mloopcol__tmp->r;            \
+	mcol__tmp->g = mloopcol__tmp->g;            \
+	mcol__tmp->r = mloopcol__tmp->b;            \
+	mcol__tmp->a = mloopcol__tmp->a;            \
+} (void)0
 
 typedef struct MSticky {
 	float co[2];
@@ -94,9 +152,10 @@ typedef struct MSticky {
 
 typedef struct MSelect {
 	int index;
-	int type;
+	int type; /* EDITVERT/EDITEDGE/EDITFACE */
 } MSelect;
 
+/*tessellation uv face data*/
 typedef struct MTFace {
 	float uv[4][2];
 	struct Image *tpage;
@@ -105,13 +164,13 @@ typedef struct MTFace {
 } MTFace;
 
 /*Custom Data Properties*/
-typedef struct MFloatProperty{
+typedef struct MFloatProperty {
 	float	f;
 } MFloatProperty;
-typedef struct MIntProperty{
+typedef struct MIntProperty {
 	int		i;
 } MIntProperty;
-typedef struct MStringProperty{
+typedef struct MStringProperty {
 	char	s[256];
 } MStringProperty;
 
@@ -119,11 +178,21 @@ typedef struct OrigSpaceFace {
 	float uv[4][2];
 } OrigSpaceFace;
 
+typedef struct OrigSpaceLoop {
+	float uv[2];
+} OrigSpaceLoop;
+
 typedef struct MDisps {
 	/* Strange bug in SDNA: if disps pointer comes first, it fails to see totdisp */
 	int totdisp;
-	char pad[4];
+	int level;
 	float (*disps)[3];
+	
+	/* Used for hiding parts of a multires mesh. Essentially the multires
+	   equivalent of MVert.flag's ME_HIDE bit.
+	
+	   This is a bitmap, keep in sync with type used in BLI_bitmap.h */
+	unsigned int *hidden;
 } MDisps;
 
 /** Multires structs kept for compatibility with old files **/
@@ -174,15 +243,7 @@ typedef struct Multires {
 
 /** End Multires **/
 
-typedef struct PartialVisibility {
-	unsigned int *vert_map; /* vert_map[Old Index]= New Index */
-	int *edge_map; /* edge_map[Old Index]= New Index, -1= hidden */
-	MFace *old_faces;
-	MEdge *old_edges;
-	unsigned int totface, totedge, totvert, pad;
-} PartialVisibility;
-
-typedef struct MRecast{
+typedef struct MRecast {
 	int		i;
 } MRecast;
 
@@ -200,15 +261,10 @@ typedef struct MRecast{
 						/* reserve 16 for ME_HIDE */
 #define ME_EDGERENDER		(1<<5)
 #define ME_LOOSEEDGE		(1<<7)
-#define ME_SEAM_LAST		(1<<8)
-#define ME_SHARP			(1<<9)
+/* #define ME_SEAM_LAST		(1<<8) */ /* UNUSED */
+#define ME_SHARP			(1<<9)    /* only reason this flag remains a 'short' */
 
 /* puno = vertexnormal (mface) */
-/* render assumes flips to be ordered like this */
-#define ME_FLIPV1		1
-#define ME_FLIPV2		2
-#define ME_FLIPV3		4
-#define ME_FLIPV4		8
 #define ME_PROJXY		16
 #define ME_PROJXZ		32
 #define ME_PROJYZ		64
@@ -223,10 +279,14 @@ typedef struct MRecast{
 /* flag (mface) */
 #define ME_SMOOTH			1
 #define ME_FACE_SEL			2
-						/* flag ME_HIDE==16 is used here too */ 
+/* flag ME_HIDE==16 is used here too */ 
+
+#define ME_POLY_LOOP_PREV(mloop, mp, i)  (&(mloop)[(mp)->loopstart + (((i) + (mp)->totloop - 1) % (mp)->totloop)])
+#define ME_POLY_LOOP_NEXT(mloop, mp, i)  (&(mloop)[(mp)->loopstart + (((i) + 1) % (mp)->totloop)])
+
 /* mselect->type */
-#define ME_VSEl	0
-#define ME_ESEl 1
+#define ME_VSEL	0
+#define ME_ESEL 1
 #define ME_FSEL 2
 
 /* mtface->flag */

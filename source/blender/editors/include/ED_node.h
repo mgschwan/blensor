@@ -28,8 +28,8 @@
  *  \ingroup editors
  */
 
-#ifndef ED_NODE_H
-#define ED_NODE_H
+#ifndef __ED_NODE_H__
+#define __ED_NODE_H__
 
 struct ID;
 struct Main;
@@ -51,7 +51,7 @@ void ED_node_changed_update(struct ID *id, struct bNode *node);
 void ED_node_generic_update(struct Main *bmain, struct bNodeTree *ntree, struct bNode *node);
 
 /* node_edit.c */
-void ED_node_shader_default(struct Material *ma);
+void ED_node_shader_default(struct Scene *scene, struct ID *id);
 void ED_node_composit_default(struct Scene *sce);
 void ED_node_texture_default(struct Tex *tex);
 void ED_node_link_intersect_test(struct ScrArea *sa, int test);
@@ -63,5 +63,5 @@ void ED_node_set_active(struct Main *bmain, struct bNodeTree *ntree, struct bNod
 /* node ops.c */
 void ED_operatormacros_node(void);
 
-#endif /* ED_NODE_H */
+#endif /* __ED_NODE_H__ */
 

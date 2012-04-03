@@ -108,6 +108,7 @@ void linearrgb_to_srgb(vec4 col_from, out vec4 col_to)
 }
 
 #define M_PI 3.14159265358979323846
+#define M_1_PI 0.31830988618379069
 
 /*********** SHADER NODES ***************/
 
@@ -121,7 +122,7 @@ void uv_attribute(vec2 attuv, out vec3 uv)
 	uv = vec3(attuv*2.0 - vec2(1.0, 1.0), 0.0);
 }
 
-void geom(vec3 co, vec3 nor, mat4 viewinvmat, vec3 attorco, vec2 attuv, vec4 attvcol, out vec3 global, out vec3 local, out vec3 view, out vec3 orco, out vec3 uv, out vec3 normal, out vec4 vcol, out float frontback)
+void geom(vec3 co, vec3 nor, mat4 viewinvmat, vec3 attorco, vec2 attuv, vec4 attvcol, out vec3 global, out vec3 local, out vec3 view, out vec3 orco, out vec3 uv, out vec3 normal, out vec4 vcol, out float vcol_alpha, out float frontback)
 {
 	local = co;
 	view = normalize(local);
@@ -130,6 +131,7 @@ void geom(vec3 co, vec3 nor, mat4 viewinvmat, vec3 attorco, vec2 attuv, vec4 att
 	uv_attribute(attuv, uv);
 	normal = -normalize(nor);	/* blender render normal is negated */
 	vcol_attribute(attvcol, vcol);
+	vcol_alpha = attvcol.a;
 	frontback = 1.0;
 }
 
@@ -304,7 +306,7 @@ void vec_math_negate(vec3 v, out vec3 outv)
 
 void normal(vec3 dir, vec3 nor, out vec3 outnor, out float outdot)
 {
-	outnor = dir;
+	outnor = nor;
 	outdot = -dot(dir, nor);
 }
 
@@ -1130,8 +1132,8 @@ void mtex_bump_init_objspace( vec3 surf_pos, vec3 surf_norm,
 							  out float fPrevMagnitude_out, out vec3 vNacc_out, 
 							  out vec3 vR1, out vec3 vR2, out float fDet ) 
 {
-	mat3 obj2view = to_mat3(mView * mObj);
-	mat3 view2obj = to_mat3(mObjInv * mViewInv);
+	mat3 obj2view = to_mat3(gl_ModelViewMatrix);
+	mat3 view2obj = to_mat3(gl_ModelViewMatrixInverse);
 	
 	vec3 vSigmaS = view2obj * dFdx( surf_pos );
 	vec3 vSigmaT = view2obj * dFdy( surf_pos );
@@ -1202,6 +1204,100 @@ void mtex_bump_tap3( vec3 texco, sampler2D ima, float hScale,
 	dBs = hScale * (Hlr - Hll);
 	dBt = hScale * (Hul - Hll);
 }
+
+#ifdef BUMP_BICUBIC
+
+void mtex_bump_bicubic( vec3 texco, sampler2D ima, float hScale, 
+                     out float dBs, out float dBt ) 
+{
+	float Hl;
+	float Hr;
+	float Hd;
+	float Hu;
+	
+	vec2 TexDx = dFdx(texco.xy);
+	vec2 TexDy = dFdy(texco.xy);
+ 
+	vec2 STl = texco.xy - 0.5 * TexDx ;
+	vec2 STr = texco.xy + 0.5 * TexDx ;
+	vec2 STd = texco.xy - 0.5 * TexDy ;
+	vec2 STu = texco.xy + 0.5 * TexDy ;
+	
+	rgbtobw(texture2D(ima, STl), Hl);
+	rgbtobw(texture2D(ima, STr), Hr);
+	rgbtobw(texture2D(ima, STd), Hd);
+	rgbtobw(texture2D(ima, STu), Hu);
+	
+	vec2 dHdxy = vec2(Hr - Hl, Hu - Hd);
+	float fBlend = clamp(1.0-textureQueryLOD(ima, texco.xy).x, 0.0, 1.0);
+	if(fBlend!=0.0)
+	{
+		// the derivative of the bicubic sampling of level 0
+		ivec2 vDim;
+		vDim = textureSize(ima, 0);
+
+		// taking the fract part of the texture coordinate is a hardcoded wrap mode.
+		// this is acceptable as textures use wrap mode exclusively in 3D view elsewhere in blender. 
+		// this is done so that we can still get a valid texel with uvs outside the 0,1 range
+		// by texelFetch below, as coordinates are clamped when using this function.
+		vec2 fTexLoc = vDim*fract(texco.xy) - vec2(0.5, 0.5);
+		ivec2 iTexLoc = ivec2(floor(fTexLoc));
+		vec2 t = clamp(fTexLoc - iTexLoc, 0.0, 1.0);		// sat just to be pedantic
+
+/*******************************************************************************************
+ * This block will replace the one below when one channel textures are properly supported. *
+ *******************************************************************************************
+		vec4 vSamplesUL = textureGather(ima, (iTexLoc+ivec2(-1,-1) + vec2(0.5,0.5))/vDim );
+		vec4 vSamplesUR = textureGather(ima, (iTexLoc+ivec2(1,-1) + vec2(0.5,0.5))/vDim );
+		vec4 vSamplesLL = textureGather(ima, (iTexLoc+ivec2(-1,1) + vec2(0.5,0.5))/vDim );
+		vec4 vSamplesLR = textureGather(ima, (iTexLoc+ivec2(1,1) + vec2(0.5,0.5))/vDim );
+
+		mat4 H = mat4(vSamplesUL.w, vSamplesUL.x, vSamplesLL.w, vSamplesLL.x,
+					vSamplesUL.z, vSamplesUL.y, vSamplesLL.z, vSamplesLL.y,
+					vSamplesUR.w, vSamplesUR.x, vSamplesLR.w, vSamplesLR.x,
+					vSamplesUR.z, vSamplesUR.y, vSamplesLR.z, vSamplesLR.y);
+*/	
+		ivec2 iTexLocMod = iTexLoc + ivec2(-1, -1);
+
+		mat4 H;
+		
+		for(int i = 0; i < 4; i++){
+			for(int j = 0; j < 4; j++){
+				ivec2 iTexTmp = iTexLocMod + ivec2(i,j);
+				
+				// wrap texture coordinates manually for texelFetch to work on uvs oitside the 0,1 range.
+				// this is guaranteed to work since we take the fractional part of the uv above.
+				iTexTmp.x = (iTexTmp.x < 0)? iTexTmp.x + vDim.x : ((iTexTmp.x >= vDim.x)? iTexTmp.x - vDim.x : iTexTmp.x);
+				iTexTmp.y = (iTexTmp.y < 0)? iTexTmp.y + vDim.y : ((iTexTmp.y >= vDim.y)? iTexTmp.y - vDim.y : iTexTmp.y);
+
+				rgbtobw(texelFetch(ima, iTexTmp, 0), H[i][j]);
+			}
+		}
+		
+		float x = t.x, y = t.y;
+		float x2 = x * x, x3 = x2 * x, y2 = y * y, y3 = y2 * y;
+
+		vec4 X = vec4(-0.5*(x3+x)+x2,		1.5*x3-2.5*x2+1,	-1.5*x3+2*x2+0.5*x,		0.5*(x3-x2));
+		vec4 Y = vec4(-0.5*(y3+y)+y2,		1.5*y3-2.5*y2+1,	-1.5*y3+2*y2+0.5*y,		0.5*(y3-y2));
+		vec4 dX = vec4(-1.5*x2+2*x-0.5,		4.5*x2-5*x,			-4.5*x2+4*x+0.5,		1.5*x2-x);
+		vec4 dY = vec4(-1.5*y2+2*y-0.5,		4.5*y2-5*y,			-4.5*y2+4*y+0.5,		1.5*y2-y);
+	
+		// complete derivative in normalized coordinates (mul by vDim)
+		vec2 dHdST = vDim * vec2(dot(Y, H * dX), dot(dY, H * X));
+
+		// transform derivative to screen-space
+		vec2 dHdxy_bicubic = vec2( dHdST.x * TexDx.x + dHdST.y * TexDx.y,
+								   dHdST.x * TexDy.x + dHdST.y * TexDy.y );
+
+		// blend between the two
+		dHdxy = dHdxy*(1-fBlend) + dHdxy_bicubic*fBlend;
+	}
+
+	dBs = hScale * dHdxy.x;
+	dBt = hScale * dHdxy.y;
+}
+
+#endif
 
 void mtex_bump_tap5( vec3 texco, sampler2D ima, float hScale, 
                      out float dBs, out float dBt ) 
@@ -1800,5 +1896,257 @@ void shade_alpha_opaque(vec4 col, out vec4 outcol)
 void shade_alpha_obcolor(vec4 col, vec4 obcol, out vec4 outcol)
 {
 	outcol = vec4(col.rgb, col.a*obcol.a);
+}
+
+/*********** NEW SHADER UTILITIES **************/
+
+float fresnel_dielectric(vec3 Incoming, vec3 Normal, float eta)
+{
+    /* compute fresnel reflectance without explicitly computing
+       the refracted direction */
+    float c = abs(dot(Incoming, Normal));
+    float g = eta * eta - 1.0 + c * c;
+    float result;
+
+    if(g > 0.0) {
+        g = sqrt(g);
+        float A =(g - c)/(g + c);
+        float B =(c *(g + c)- 1.0)/(c *(g - c)+ 1.0);
+        result = 0.5 * A * A *(1.0 + B * B);
+    }
+    else
+        result = 1.0;  /* TIR (no refracted component) */
+
+    return result;
+}
+
+float hypot(float x, float y)
+{
+	return sqrt(x*x + y*y);
+}
+
+/*********** NEW SHADER NODES ***************/
+
+#define NUM_LIGHTS 3
+
+/* bsdfs */
+
+void node_bsdf_diffuse(vec4 color, float roughness, vec3 N, out vec4 result)
+{
+	/* ambient light */
+	vec3 L = vec3(0.2);
+
+	/* directional lights */
+	for(int i = 0; i < NUM_LIGHTS; i++) {
+		vec3 light_position = gl_LightSource[i].position.xyz;
+		vec3 light_diffuse = gl_LightSource[i].diffuse.rgb;
+
+		float bsdf = max(dot(N, light_position), 0.0);
+		L += light_diffuse*bsdf;
+	}
+
+	result = vec4(L*color.rgb, 1.0);
+}
+
+void node_bsdf_glossy(vec4 color, float roughness, vec3 N, vec3 I, out vec4 result)
+{
+	/* ambient light */
+	vec3 L = vec3(0.2);
+
+	/* directional lights */
+	for(int i = 0; i < NUM_LIGHTS; i++) {
+		vec3 light_position = gl_LightSource[i].position.xyz;
+		vec3 H = gl_LightSource[i].halfVector.xyz;
+		vec3 light_diffuse = gl_LightSource[i].diffuse.rgb;
+		vec3 light_specular = gl_LightSource[i].specular.rgb;
+
+		/* we mix in some diffuse so low roughness still shows up */
+		float bsdf = 0.5*pow(max(dot(N, H), 0.0), 1.0/roughness);
+		bsdf += 0.5*max(dot(N, light_position), 0.0);
+		L += light_specular*bsdf;
+	}
+
+	result = vec4(L*color.rgb, 1.0);
+}
+
+void node_bsdf_anisotropic(vec4 color, float roughnessU, float roughnessV, vec3 N, vec3 I, out vec4 result)
+{
+	node_bsdf_diffuse(color, 0.0, N, result);
+}
+
+void node_bsdf_glass(vec4 color, float roughness, float ior, vec3 N, vec3 I, out vec4 result)
+{
+	node_bsdf_diffuse(color, 0.0, N, result);
+}
+
+void node_bsdf_translucent(vec4 color, vec3 N, out vec4 result)
+{
+	node_bsdf_diffuse(color, 0.0, N, result);
+}
+
+void node_bsdf_transparent(vec4 color, out vec4 result)
+{
+	/* this isn't right */
+	result.r = color.r;
+	result.g = color.g;
+	result.b = color.b;
+	result.a = 0.0;
+}
+
+void node_bsdf_velvet(vec4 color, float sigma, vec3 N, out vec4 result)
+{
+	node_bsdf_diffuse(color, 0.0, N, result);
+}
+
+/* emission */
+
+void node_emission(vec4 color, float strength, vec3 N, out vec4 result)
+{
+	result = color*strength;
+}
+
+/* closures */
+
+void node_mix_shader(float fac, vec4 shader1, vec4 shader2, out vec4 shader)
+{
+	shader = mix(shader1, shader2, fac);
+}
+
+void node_add_shader(vec4 shader1, vec4 shader2, out vec4 shader)
+{
+	shader = shader1 + shader2;
+}
+
+/* fresnel */
+
+void node_fresnel(float ior, vec3 N, vec3 I, out float result)
+{
+	float eta = max(ior, 0.00001);
+	result = fresnel_dielectric(I, N, eta); //backfacing()? 1.0/eta: eta);
+}
+
+/* geometry */
+
+void node_geometry(vec3 I, vec3 N, mat4 toworld,
+	out vec3 position, out vec3 normal, out vec3 tangent,
+	out vec3 true_normal, out vec3 incoming, out vec3 parametric,
+	out float backfacing)
+{
+	position = (toworld*vec4(I, 1.0)).xyz;
+	normal = N;
+	tangent = vec3(0.0);
+	true_normal = N;
+	incoming = I;
+	parametric = vec3(0.0);
+	backfacing = 0.0;
+}
+
+void node_tex_coord(vec3 I, vec3 N, mat4 toworld,
+	vec3 attr_orco, vec3 attr_uv,
+	out vec3 generated, out vec3 uv, out vec3 object,
+	out vec3 camera, out vec3 window, out vec3 reflection)
+{
+	generated = attr_orco;
+	uv = attr_uv;
+	object = I;
+	camera = I;
+	window = gl_FragCoord.xyz;
+	reflection = reflect(N, I);
+
+}
+
+/* textures */
+
+void node_tex_gradient(vec3 co, out vec4 color, out float fac)
+{
+	color = vec4(1.0);
+	fac = 1.0;
+}
+
+void node_tex_checker(vec3 co, vec4 color1, vec4 color2, float scale, out vec4 color, out float fac)
+{
+	color = vec4(1.0);
+	fac = 1.0;
+}
+
+void node_tex_clouds(vec3 co, float size, out vec4 color, out float fac)
+{
+	color = vec4(1.0);
+	fac = 1.0;
+}
+
+void node_tex_environment(vec3 co, sampler2D ima, out vec4 color)
+{
+	float u = (atan(co.y, co.x) + M_PI)/(2.0*M_PI);
+	float v = atan(co.z, hypot(co.x, co.y))/M_PI + 0.5;
+
+	color = texture2D(ima, vec2(u, v));
+}
+
+void node_tex_image(vec3 co, sampler2D ima, out vec4 color)
+{
+	color = texture2D(ima, co.xy);
+}
+
+void node_tex_magic(vec3 p, float scale, float distortion, out vec4 color, out float fac)
+{
+	color = vec4(1.0);
+	fac = 1.0;
+}
+
+void node_tex_musgrave(vec3 co, float scale, float detail, float dimension, float lacunarity, float offset, float gain, out vec4 color, out float fac)
+{
+	color = vec4(1.0);
+	fac = 1.0;
+}
+
+void node_tex_noise(vec3 co, float scale, float detail, float distortion, out vec4 color, out float fac)
+{
+	color = vec4(1.0);
+	fac = 1.0;
+}
+
+void node_tex_sky(vec3 co, out vec4 color)
+{
+	color = vec4(1.0);
+}
+
+void node_tex_voronoi(vec3 co, float scale, out vec4 color, out float fac)
+{
+	color = vec4(1.0);
+	fac = 1.0;
+}
+
+void node_tex_wave(vec3 co, float scale, float distortion, float detail, float detail_scale, out vec4 color, out float fac)
+{
+	color = vec4(1.0);
+	fac = 1.0;
+}
+
+/* light path */
+
+void node_light_path(
+	out float is_camera_ray,
+	out float is_shadow_ray,
+	out float is_diffuse_ray,
+	out float is_glossy_ray,
+	out float is_singular_ray,
+	out float is_reflection_ray,
+	out float is_transmission_ray)
+{
+	is_camera_ray = 1.0;
+	is_shadow_ray = 0.0;
+	is_diffuse_ray = 0.0;
+	is_glossy_ray = 0.0;
+	is_singular_ray = 0.0;
+	is_reflection_ray = 0.0;
+	is_transmission_ray = 0.0;
+}
+
+/* output */
+
+void node_output_material(vec4 surface, vec4 volume, float displacement, out vec4 result)
+{
+	result = surface;
 }
 

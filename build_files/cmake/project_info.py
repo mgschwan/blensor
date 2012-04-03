@@ -41,9 +41,17 @@ __all__ = (
     "is_py",
     "cmake_advanced_info",
     "cmake_compiler_defines",
+    "project_name_get"
 )
 
+
 import sys
+if not sys.version.startswith("3"):
+    print("\nPython3.x needed, found %s.\nAborting!\n" %
+          sys.version.partition(" ")[0])
+    sys.exit(1)
+
+
 import os
 from os.path import join, dirname, normpath, abspath, splitext, exists
 
@@ -104,7 +112,7 @@ def is_glsl(filename):
 
 def is_c(filename):
     ext = splitext(filename)[1]
-    return (ext in (".c", ".cpp", ".cxx", ".m", ".mm", ".rc", ".cc"))
+    return (ext in (".c", ".cpp", ".cxx", ".m", ".mm", ".rc", ".cc", ".inl"))
 
 
 def is_c_any(filename):
@@ -125,7 +133,7 @@ def cmake_advanced_info():
     """ Extracr includes and defines from cmake.
     """
 
-    def create_eclipse_project(CMAKE_DIR):
+    def create_eclipse_project():
         print("CMAKE_DIR %r" % CMAKE_DIR)
         if sys.platform == "win32":
             cmd = 'cmake "%s" -G"Eclipse CDT4 - MinGW Makefiles"' % CMAKE_DIR
@@ -137,14 +145,15 @@ def cmake_advanced_info():
     includes = []
     defines = []
 
-    create_eclipse_project(CMAKE_DIR)
+    create_eclipse_project()
 
     from xml.dom.minidom import parse
     tree = parse(join(CMAKE_DIR, ".cproject"))
-    '''
-    f = open(".cproject_pretty", 'w')
-    f.write(tree.toprettyxml(indent="    ", newl=""))
-    '''
+
+    # to check on nicer xml
+    # f = open(".cproject_pretty", 'w')
+    # f.write(tree.toprettyxml(indent="    ", newl=""))
+
     ELEMENT_NODE = tree.ELEMENT_NODE
 
     cproject, = tree.getElementsByTagName("cproject")
@@ -185,7 +194,7 @@ def cmake_advanced_info():
 
 
 def cmake_cache_var(var):
-    cache_file = open(join(CMAKE_DIR, "CMakeCache.txt"))
+    cache_file = open(join(CMAKE_DIR, "CMakeCache.txt"), encoding='utf-8')
     lines = [l_strip for l in cache_file for l_strip in (l.strip(),) if l_strip if not l_strip.startswith("//") if not l_strip.startswith("#")]
     cache_file.close()
 
@@ -215,3 +224,23 @@ def cmake_compiler_defines():
     os.remove(temp_c)
     os.remove(temp_def)
     return lines
+
+
+def project_name_get(path, fallback="Blender", prefix="Blender_"):
+    if not os.path.isdir(os.path.join(path, ".svn")):
+        return fallback
+
+    import subprocess
+    info = subprocess.Popen(["svn", "info", path],
+                            stdout=subprocess.PIPE).communicate()[0]
+    # string version, we only want the URL
+    info = info.decode(encoding="utf-8", errors="ignore")
+
+    for l in info.split("\n"):
+        l = l.strip()
+        if l.startswith("URL"):
+            # https://svn.blender.org/svnroot/bf-blender/branches/bmesh/blender
+            # --> bmesh
+            if "/branches/" in l:
+                return prefix + l.rsplit("/branches/", 1)[-1].split("/", 1)[0]
+    return fallback

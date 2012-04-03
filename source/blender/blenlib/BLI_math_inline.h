@@ -23,8 +23,8 @@
  * ***** END GPL LICENSE BLOCK *****
  * */
 
-#ifndef BLI_MATH_INLINE_H
-#define BLI_MATH_INLINE_H
+#ifndef __BLI_MATH_INLINE_H__
+#define __BLI_MATH_INLINE_H__
 
 /** \file BLI_math_inline.h
  *  \ingroup bli
@@ -35,29 +35,28 @@ extern "C" {
 #endif
 
 /* add platform/compiler checks here if it is not supported */
-#define BLI_MATH_INLINE_H
+#define __BLI_MATH_INLINE_H__
 
-#ifdef BLI_MATH_INLINE_H
-#ifdef _MSC_VER
-#define MINLINE static __forceinline
-#define MALWAYS_INLINE MINLINE
+#ifdef __BLI_MATH_INLINE_H__
+#  ifdef _MSC_VER
+#    define MINLINE static __forceinline
+#    define MALWAYS_INLINE MINLINE
+#  else
+#    define MINLINE static inline
+#    if (defined(__APPLE__) && defined(__ppc__))
+       /* static inline __attribute__ here breaks osx ppc gcc42 build */
+#      define MALWAYS_INLINE static __attribute__((always_inline))
+#    else
+#      define MALWAYS_INLINE static inline __attribute__((always_inline))
+#    endif
+#  endif
 #else
-#define MINLINE static inline
-#if (defined(__APPLE__) && defined(__ppc__))
-/* static inline __attribute__ here breaks osx ppc gcc42 build */
-#define MALWAYS_INLINE static __attribute__((always_inline))
-#else
-#define MALWAYS_INLINE static inline __attribute__((always_inline))
-#endif
-#endif
-#else
-#define MINLINE
-#define MALWAYS_INLINE
+#  define MINLINE
+#  define MALWAYS_INLINE
 #endif
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* BLI_MATH_INLINE_H */
-
+#endif /* __BLI_MATH_INLINE_H__ */

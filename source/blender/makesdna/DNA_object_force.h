@@ -26,12 +26,13 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_OBJECT_FORCE_H
-#define DNA_OBJECT_FORCE_H
 
 /** \file DNA_object_force.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_OBJECT_FORCE_H__
+#define __DNA_OBJECT_FORCE_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -129,13 +130,14 @@ typedef struct EffectorWeights {
  * - to add new data types update:
  *		* BKE_ptcache_data_size()
  *		* ptcache_file_init_pointers()
-*/
+ */
 #define BPHYS_DATA_INDEX		0
 #define BPHYS_DATA_LOCATION		1
 #define BPHYS_DATA_SMOKE_LOW	1
 #define BPHYS_DATA_VELOCITY		2
 #define BPHYS_DATA_SMOKE_HIGH	2
 #define BPHYS_DATA_ROTATION		3
+#define BPHYS_DATA_DYNAMICPAINT 3
 #define BPHYS_DATA_AVELOCITY	4	/* used for particles */
 #define BPHYS_DATA_XCONST		4	/* used for cloth */
 #define BPHYS_DATA_SIZE			5
@@ -184,6 +186,8 @@ typedef struct PointCache {
 	int endframe;	/* simulation end frame */
 	int editframe;	/* frame being edited (runtime only) */
 	int last_exact; /* last exact frame that's cached */
+	int last_valid; /* used for editing cache - what is the last baked frame */
+	int pad;
 
 	/* for external cache files */
 	int totpoint;   /* number of cached points */
@@ -193,7 +197,7 @@ typedef struct PointCache {
 	char name[64];
 	char prev_name[64];
 	char info[64];
-	char path[240]; /* file path */
+	char path[1024]; /* file path, 1024 = FILE_MAX */
 	char *cached_frames;	/* array of length endframe-startframe+1 with flags to indicate cached frames */
 							/* can be later used for other per frame flags too if needed */
 	struct ListBase mem_cache;
@@ -272,9 +276,10 @@ typedef struct SoftBody {
 	
 	/* general options */
 	float nodemass;		/* softbody mass of *vertex* */
-	char  namedVG_Mass[32]; /* along with it introduce mass painting
-							starting to fix old bug .. nastyness that VG are indexes 
-								rather find them by name tag to find it -> jow20090613 */
+	char  namedVG_Mass[64]; /* MAX_VGROUP_NAME */
+	                        /* along with it introduce mass painting
+	                         * starting to fix old bug .. nastyness that VG are indexes
+	                         * rather find them by name tag to find it -> jow20090613 */
 	float grav;			/* softbody amount of gravitaion to apply */
 	float mediafrict;	/* friction to env */
 	float rklimit;		/* error limit for ODE solver */
@@ -287,17 +292,19 @@ typedef struct SoftBody {
 	float maxgoal;
 	float defgoal;		/* default goal for vertices without vgroup */
 	short vertgroup;	/* index starting at 1 */
-	char  namedVG_Softgoal[32]; /* starting to fix old bug .. nastyness that VG are indexes 
-								rather find them by name tag to find it -> jow20090613 */
+	char  namedVG_Softgoal[64]; /* MAX_VGROUP_NAME */
+	                            /* starting to fix old bug .. nastyness that VG are indexes
+	                             * rather find them by name tag to find it -> jow20090613 */
   
 	short fuzzyness;      /* */
 	
 	/* springs */
 	float inspring;		/* softbody inner springs */
 	float infrict;		/* softbody inner springs friction */
-	 char  namedVG_Spring_K[32]; /* along with it introduce Spring_K painting
-							starting to fix old bug .. nastyness that VG are indexes 
-								rather find them by name tag to find it -> jow20090613 */
+	char  namedVG_Spring_K[64]; /* MAX_VGROUP_NAME */
+	                            /* along with it introduce Spring_K painting
+	                             * starting to fix old bug .. nastyness that VG are indexes
+	                             * rather find them by name tag to find it -> jow20090613 */
 	
 	/* baking */
 	int sfra, efra;
@@ -321,7 +328,7 @@ typedef struct SoftBody {
 		choke,
 		solver_ID,
 		plastic,springpreload
-		;   
+		;
 
 	struct SBScratch *scratch;	/* scratch pad/cache on live time not saved in file */
 	float shearstiff;
@@ -335,8 +342,8 @@ typedef struct SoftBody {
 	float lcom[3];
 	float lrot[3][3];
 	float lscale[3][3];
-	char  pad4[4];
 
+	int last_frame;
 } SoftBody;
 
 
@@ -394,10 +401,11 @@ typedef struct SoftBody {
 #define PTCACHE_FRAMES_SKIPPED		256
 #define PTCACHE_EXTERNAL			512
 #define PTCACHE_READ_INFO			1024
-/* dont use the filename of the blendfile the data is linked from (write a local cache) */
+/* don't use the filename of the blendfile the data is linked from (write a local cache) */
 #define PTCACHE_IGNORE_LIBPATH		2048
 /* high resolution cache is saved for smoke for backwards compatibility, so set this flag to know it's a "fake" cache */
 #define PTCACHE_FAKE_SMOKE			(1<<12)
+#define PTCACHE_IGNORE_CLEAR		(1<<13)
 
 /* PTCACHE_OUTDATED + PTCACHE_FRAMES_SKIPPED */
 #define PTCACHE_REDO_NEEDED			258
@@ -419,8 +427,8 @@ typedef struct SoftBody {
 #define OB_SB_SELF		512
 #define OB_SB_FACECOLL  1024
 #define OB_SB_EDGECOLL  2048
-#define OB_SB_COLLFINAL 4096	/* deprecated */
-#define OB_SB_BIG_UI	8192
+/* #define OB_SB_COLLFINAL 4096	*/ /* deprecated */
+/* #define OB_SB_BIG_UI	8192 */    /* deprecated */
 #define OB_SB_AERO_ANGLE	16384
 
 /* sb->solverflags */

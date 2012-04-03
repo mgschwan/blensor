@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_SOUND_H
-#define BKE_SOUND_H
+#ifndef __BKE_SOUND_H__
+#define __BKE_SOUND_H__
 
 /** \file BKE_sound.h
  *  \ingroup bke
@@ -79,7 +79,7 @@ void sound_load(struct Main *main, struct bSound* sound);
 
 void sound_free(struct bSound* sound);
 
-#ifdef AUD_CAPI
+#ifdef __AUD_C_API_H__
 AUD_Device* sound_mixdown(struct Scene *scene, AUD_DeviceSpecs specs, int start, float volume);
 #endif
 
@@ -94,14 +94,17 @@ void sound_update_fps(struct Scene *scene);
 void sound_update_scene_listener(struct Scene *scene);
 
 void* sound_scene_add_scene_sound(struct Scene *scene, struct Sequence* sequence, int startframe, int endframe, int frameskip);
+void* sound_scene_add_scene_sound_defaults(struct Scene *scene, struct Sequence* sequence);
 
 void* sound_add_scene_sound(struct Scene *scene, struct Sequence* sequence, int startframe, int endframe, int frameskip);
+void* sound_add_scene_sound_defaults(struct Scene *scene, struct Sequence* sequence);
 
 void sound_remove_scene_sound(struct Scene *scene, void* handle);
 
 void sound_mute_scene_sound(void* handle, char mute);
 
 void sound_move_scene_sound(struct Scene *scene, void* handle, int startframe, int endframe, int frameskip);
+void sound_move_scene_sound_defaults(struct Scene *scene, struct Sequence *sequence);
 
 void sound_update_scene_sound(void* handle, struct bSound* sound);
 

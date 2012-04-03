@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_ANIM_H
-#define BKE_ANIM_H
+#ifndef __BKE_ANIM_H__
+#define __BKE_ANIM_H__
 
 /** \file BKE_anim.h
  *  \ingroup bke
@@ -40,6 +40,7 @@ struct ListBase;
 struct bAnimVizSettings;
 struct bMotionPath;
 struct bPoseChannel;
+struct ReportList;
 
 /* ---------------------------------------------------- */
 /* Animation Visualisation */
@@ -49,7 +50,7 @@ void animviz_settings_init(struct bAnimVizSettings *avs);
 void animviz_free_motionpath_cache(struct bMotionPath *mpath);
 void animviz_free_motionpath(struct bMotionPath *mpath);
 
-struct bMotionPath *animviz_verify_motionpaths(struct Scene *scene, struct Object *ob, struct bPoseChannel *pchan);
+struct bMotionPath *animviz_verify_motionpaths(struct ReportList *reports, struct Scene *scene, struct Object *ob, struct bPoseChannel *pchan);
 
 void animviz_get_object_motionpaths(struct Object *ob, ListBase *targets);
 void animviz_calc_motionpaths(struct Scene *scene, ListBase *targets);
@@ -60,7 +61,7 @@ void animviz_calc_motionpaths(struct Scene *scene, ListBase *targets);
 void free_path(struct Path *path);
 void calc_curvepath(struct Object *ob);
 int interval_test(int min, int max, int p1, int cycl);
-int where_on_path(struct Object *ob, float ctime, float *vec, float *dir, float *quat, float *radius, float *weight);
+int where_on_path(struct Object *ob, float ctime, float vec[4], float dir[3], float quat[4], float *radius, float *weight);
 
 /* ---------------------------------------------------- */
 /* Dupli-Geometry */

@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_GROUP_H
-#define BKE_GROUP_H
+#ifndef __BKE_GROUP_H__
+#define __BKE_GROUP_H__
 
 /** \file BKE_group.h
  *  \ingroup bke
@@ -52,8 +52,10 @@ int			group_is_animated(struct Object *parent, struct Group *group);
 
 void		group_tag_recalc(struct Group *group);
 void		group_handle_recalc_and_update(struct Scene *scene, struct Object *parent, struct Group *group);
+#if 0 /* UNUSED */
 struct Object *group_get_member_with_action(struct Group *group, struct bAction *act);
 void		group_relink_nla_objects(struct Object *ob);
+#endif
 
 #endif
 

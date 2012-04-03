@@ -35,6 +35,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_listbase.h"
+#include "BLI_math.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_curve_types.h"
@@ -69,12 +70,12 @@ void free_editLatt(Object *ob)
 {
 	Lattice *lt= ob->data;
 	
-	if(lt->editlatt) {
+	if (lt->editlatt) {
 		Lattice *editlt= lt->editlatt->latt;
 
-		if(editlt->def)
+		if (editlt->def)
 			MEM_freeN(editlt->def);
-		if(editlt->dvert)
+		if (editlt->dvert)
 			free_dverts(editlt->dvert, editlt->pntsu*editlt->pntsv*editlt->pntsw);
 
 		MEM_freeN(editlt);
@@ -92,20 +93,20 @@ void make_editLatt(Object *obedit)
 	free_editLatt(obedit);
 
 	actkey= ob_get_keyblock(obedit);
-	if(actkey)
+	if (actkey)
 		key_to_latt(actkey, lt);
 
 	lt->editlatt= MEM_callocN(sizeof(EditLatt), "editlatt");
 	lt->editlatt->latt= MEM_dupallocN(lt);
 	lt->editlatt->latt->def= MEM_dupallocN(lt->def);
 
-	if(lt->dvert) {
+	if (lt->dvert) {
 		int tot= lt->pntsu*lt->pntsv*lt->pntsw;
 		lt->editlatt->latt->dvert = MEM_mallocN (sizeof (MDeformVert)*tot, "Lattice MDeformVert");
 		copy_dverts(lt->editlatt->latt->dvert, lt->dvert, tot);
 	}
 
-	if(lt->key) lt->editlatt->shapenr= obedit->shapenr;
+	if (lt->key) lt->editlatt->shapenr= obedit->shapenr;
 }
 
 void load_editLatt(Object *obedit)
@@ -119,20 +120,20 @@ void load_editLatt(Object *obedit)
 	lt= obedit->data;
 	editlt= lt->editlatt->latt;
 
-	if(lt->editlatt->shapenr) {
+	if (lt->editlatt->shapenr) {
 		actkey= BLI_findlink(&lt->key->block, lt->editlatt->shapenr-1);
 
 		/* active key: vertices */
 		tot= editlt->pntsu*editlt->pntsv*editlt->pntsw;
 		
-		if(actkey->data) MEM_freeN(actkey->data);
+		if (actkey->data) MEM_freeN(actkey->data);
 		
 		fp=actkey->data= MEM_callocN(lt->key->elemsize*tot, "actkey->data");
 		actkey->totelem= tot;
 
 		bp= editlt->def;
-		while(tot--) {
-			VECCOPY(fp, bp->vec);
+		while (tot--) {
+			copy_v3_v3(fp, bp->vec);
 			fp+= 3;
 			bp++;
 		}
@@ -153,12 +154,12 @@ void load_editLatt(Object *obedit)
 		lt->typew= editlt->typew;
 	}
 
-	if(lt->dvert) {
+	if (lt->dvert) {
 		free_dverts(lt->dvert, lt->pntsu*lt->pntsv*lt->pntsw);
 		lt->dvert= NULL;
 	}
 
-	if(editlt->dvert) {
+	if (editlt->dvert) {
 		tot= lt->pntsu*lt->pntsv*lt->pntsw;
 
 		lt->dvert = MEM_mallocN (sizeof (MDeformVert)*tot, "Lattice MDeformVert");
@@ -178,15 +179,15 @@ void ED_setflagsLatt(Object *obedit, int flag)
 	
 	a= lt->editlatt->latt->pntsu*lt->editlatt->latt->pntsv*lt->editlatt->latt->pntsw;
 	
-	while(a--) {
-		if(bp->hide==0) {
+	while (a--) {
+		if (bp->hide==0) {
 			bp->f1= flag;
 		}
 		bp++;
 	}
 }
 
-static int select_all_exec(bContext *C, wmOperator *op)
+static int lattice_select_all_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit= CTX_data_edit_object(C);
 	Lattice *lt= obedit->data;
@@ -200,9 +201,9 @@ static int select_all_exec(bContext *C, wmOperator *op)
 		bp= lt->editlatt->latt->def;
 		a= lt->editlatt->latt->pntsu*lt->editlatt->latt->pntsv*lt->editlatt->latt->pntsw;
 
-		while(a--) {
-			if(bp->hide==0) {
-				if(bp->f1) {
+		while (a--) {
+			if (bp->hide==0) {
+				if (bp->f1) {
 					action = SEL_DESELECT;
 					break;
 				}
@@ -222,8 +223,8 @@ static int select_all_exec(bContext *C, wmOperator *op)
 		bp= lt->editlatt->latt->def;
 		a= lt->editlatt->latt->pntsu*lt->editlatt->latt->pntsv*lt->editlatt->latt->pntsw;
 
-		while(a--) {
-			if(bp->hide==0) {
+		while (a--) {
+			if (bp->hide==0) {
 				bp->f1 ^= 1;
 			}
 			bp++;
@@ -239,16 +240,16 @@ static int select_all_exec(bContext *C, wmOperator *op)
 void LATTICE_OT_select_all(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Select or Deselect All";
-	ot->description= "Change selection of all UVW control points";
-	ot->idname= "LATTICE_OT_select_all";
+	ot->name = "(De)select All";
+	ot->description = "Change selection of all UVW control points";
+	ot->idname = "LATTICE_OT_select_all";
 	
 	/* api callbacks */
-	ot->exec= select_all_exec;
-	ot->poll= ED_operator_editlattice;
+	ot->exec = lattice_select_all_exec;
+	ot->poll = ED_operator_editlattice;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 
 	WM_operator_properties_select_all(ot);
 }
@@ -257,7 +258,7 @@ static int make_regular_poll(bContext *C)
 {
 	Object *ob;
 
-	if(ED_operator_editlattice(C)) return 1;
+	if (ED_operator_editlattice(C)) return 1;
 
 	ob= CTX_data_active_object(C);
 	return (ob && ob->type==OB_LATTICE);
@@ -268,7 +269,7 @@ static int make_regular_exec(bContext *C, wmOperator *UNUSED(op))
 	Object *ob= CTX_data_edit_object(C);
 	Lattice *lt;
 	
-	if(ob) {
+	if (ob) {
 		lt= ob->data;
 		resizelattice(lt->editlatt->latt, lt->pntsu, lt->pntsv, lt->pntsw, NULL);
 	}
@@ -287,16 +288,16 @@ static int make_regular_exec(bContext *C, wmOperator *UNUSED(op))
 void LATTICE_OT_make_regular(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Make Regular";
-	ot->description= "Set UVW control points a uniform distance apart";
-	ot->idname= "LATTICE_OT_make_regular";
+	ot->name = "Make Regular";
+	ot->description = "Set UVW control points a uniform distance apart";
+	ot->idname = "LATTICE_OT_make_regular";
 	
 	/* api callbacks */
-	ot->exec= make_regular_exec;
-	ot->poll= make_regular_poll;
+	ot->exec = make_regular_exec;
+	ot->poll = make_regular_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 /****************************** Mouse Selection *************************/
@@ -306,10 +307,10 @@ static void findnearestLattvert__doClosest(void *userData, BPoint *bp, int x, in
 	struct { BPoint *bp; short dist, select; int mval[2]; } *data = userData;
 	float temp = abs(data->mval[0]-x) + abs(data->mval[1]-y);
 	
-	if((bp->f1 & SELECT)==data->select)
+	if ((bp->f1 & SELECT)==data->select)
 		temp += 5;
 
-	if(temp<data->dist) {
+	if (temp<data->dist) {
 		data->dist = temp;
 
 		data->bp = bp;
@@ -342,8 +343,8 @@ int mouse_lattice(bContext *C, const int mval[2], int extend)
 	view3d_set_viewcontext(C, &vc);
 	bp= findnearestLattvert(&vc, mval, 1);
 
-	if(bp) {
-		if(extend==0) {
+	if (bp) {
+		if (extend==0) {
 			ED_setflagsLatt(vc.obedit, 0);
 			bp->f1 |= SELECT;
 		}
@@ -365,7 +366,7 @@ typedef struct UndoLattice {
 	int pntsu, pntsv, pntsw;
 } UndoLattice;
 
-static void undoLatt_to_editLatt(void *data, void *edata)
+static void undoLatt_to_editLatt(void *data, void *edata, void *UNUSED(obdata))
 {
 	UndoLattice *ult= (UndoLattice*)data;
 	EditLatt *editlatt= (EditLatt *)edata;
@@ -374,7 +375,7 @@ static void undoLatt_to_editLatt(void *data, void *edata)
 	memcpy(editlatt->latt->def, ult->def, a*sizeof(BPoint));
 }
 
-static void *editLatt_to_undoLatt(void *edata)
+static void *editLatt_to_undoLatt(void *edata, void *UNUSED(obdata))
 {
 	UndoLattice *ult= MEM_callocN(sizeof(UndoLattice), "UndoLattice");
 	EditLatt *editlatt= (EditLatt *)edata;
@@ -391,7 +392,7 @@ static void free_undoLatt(void *data)
 {
 	UndoLattice *ult= (UndoLattice*)data;
 
-	if(ult->def) MEM_freeN(ult->def);
+	if (ult->def) MEM_freeN(ult->def);
 	MEM_freeN(ult);
 }
 
@@ -409,7 +410,7 @@ static void *get_editlatt(bContext *C)
 {
 	Object *obedit= CTX_data_edit_object(C);
 
-	if(obedit && obedit->type==OB_LATTICE) {
+	if (obedit && obedit->type==OB_LATTICE) {
 		Lattice *lt= obedit->data;
 		return lt->editlatt;
 	}

@@ -25,16 +25,16 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BKE_ICONS_H
-#define BKE_ICONS_H
+#ifndef __BKE_ICONS_H__
+#define __BKE_ICONS_H__
 
 /** \file BKE_icons.h
  *  \ingroup bke
  */
 
 /*
- Resizable Icons for Blender
-*/
+ * Resizable Icons for Blender
+ */
 
 typedef void (*DrawInfoFreeFP) (void *drawinfo);
 
@@ -82,7 +82,7 @@ void BKE_previewimg_free(struct PreviewImage **prv);
 void BKE_previewimg_free_id(struct ID *id);
 
 /* create a new preview image */
-struct PreviewImage* BKE_previewimg_create(void) ;
+struct PreviewImage* BKE_previewimg_create(void);
 
 /* create a copy of the preview image */
 struct PreviewImage* BKE_previewimg_copy(struct PreviewImage *prv);
@@ -90,4 +90,4 @@ struct PreviewImage* BKE_previewimg_copy(struct PreviewImage *prv);
 /* retrieve existing or create new preview image */
 struct PreviewImage* BKE_previewimg_get(struct ID *id);
 
-#endif /*  BKE_ICONS_H */
+#endif /*  __BKE_ICONS_H__ */

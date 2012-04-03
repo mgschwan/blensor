@@ -28,8 +28,8 @@
  *  \ingroup spaction
  */
 
-#ifndef ED_ACTION_INTERN_H
-#define ED_ACTION_INTERN_H
+#ifndef __ACTION_INTERN_H__
+#define __ACTION_INTERN_H__
 
 struct bContext;
 struct bAnimContext;
@@ -46,12 +46,6 @@ struct bAnimListElem;
 /* action_draw.c */
 void draw_channel_names(struct bContext *C, struct bAnimContext *ac, struct ARegion *ar); 
 void draw_channel_strips(struct bAnimContext *ac, struct SpaceAction *saction, struct ARegion *ar);
-
-struct ActKeysInc *init_aki_data(struct bAnimContext *ac, struct bAnimListElem *ale);
-
-/* ***************************************** */
-/* action_header.c */
-void action_header_buttons(const struct bContext *C, struct ARegion *ar);
 
 /* ***************************************** */
 /* action_select.c */
@@ -135,5 +129,5 @@ enum {
 void action_operatortypes(void);
 void action_keymap(struct wmKeyConfig *keyconf);
 
-#endif /* ED_ACTION_INTERN_H */
+#endif /* __ACTION_INTERN_H__ */
 

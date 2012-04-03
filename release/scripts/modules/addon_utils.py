@@ -38,17 +38,17 @@ addons_fake_modules = {}
 
 def paths():
     # RELEASE SCRIPTS: official scripts distributed in Blender releases
-    paths = _bpy.utils.script_paths("addons")
+    addon_paths = _bpy.utils.script_paths("addons")
 
     # CONTRIB SCRIPTS: good for testing but not official scripts yet
     # if folder addons_contrib/ exists, scripts in there will be loaded too
-    paths += _bpy.utils.script_paths("addons_contrib")
+    addon_paths += _bpy.utils.script_paths("addons_contrib")
 
     # EXTERN SCRIPTS: external projects scripts
     # if folder addons_extern/ exists, scripts in there will be loaded too
-    paths += _bpy.utils.script_paths("addons_extern")
+    addon_paths += _bpy.utils.script_paths("addons_extern")
 
-    return paths
+    return addon_paths
 
 
 def modules(module_cache):
@@ -62,10 +62,10 @@ def modules(module_cache):
     path_list = paths()
 
     # fake module importing
-    def fake_module(mod_name, mod_path, speedy=True):
+    def fake_module(mod_name, mod_path, speedy=True, force_support=None):
         global error_encoding
 
-        if _bpy.app.debug:
+        if _bpy.app.debug_python:
             print("fake_module", mod_path, mod_name)
         import ast
         ModuleType = type(ast)
@@ -134,6 +134,9 @@ def modules(module_cache):
                 traceback.print_exc()
                 raise
 
+            if force_support is not None:
+                mod.bl_info["support"] = force_support
+
             return mod
         else:
             return None
@@ -141,6 +144,13 @@ def modules(module_cache):
     modules_stale = set(module_cache.keys())
 
     for path in path_list:
+
+        # force all contrib addons to be 'TESTING'
+        if path.endswith("addons_contrib") or path.endswith("addons_extern"):
+            force_support = 'TESTING'
+        else:
+            force_support = None
+
         for mod_name, mod_path in _bpy.path.module_names(path):
             modules_stale -= {mod_name}
             mod = module_cache.get(mod_name)
@@ -161,7 +171,9 @@ def modules(module_cache):
                     mod = None
 
             if mod is None:
-                mod = fake_module(mod_name, mod_path)
+                mod = fake_module(mod_name,
+                                  mod_path,
+                                  force_support=force_support)
                 if mod:
                     module_cache[mod_name] = mod
 
@@ -223,7 +235,8 @@ def enable(module_name, default_set=True):
 
     # reload if the mtime changes
     mod = sys.modules.get(module_name)
-    if mod:
+    # chances of the file _not_ existing are low, but it could be removed
+    if mod and os.path.exists(mod.__file__):
         mod.__addon_enabled__ = False
         mtime_orig = getattr(mod, "__time__", 0)
         mtime_new = os.path.getmtime(mod.__file__)
@@ -240,6 +253,7 @@ def enable(module_name, default_set=True):
 
     # Split registering up into 3 steps so we can undo
     # if it fails par way through.
+
     # 1) try import
     try:
         mod = __import__(module_name)
@@ -270,7 +284,7 @@ def enable(module_name, default_set=True):
 
     mod.__addon_enabled__ = True
 
-    if _bpy.app.debug:
+    if _bpy.app.debug_python:
         print("\taddon_utils.enable", mod.__name__)
 
     return mod
@@ -309,7 +323,7 @@ def disable(module_name, default_set=True):
             if addon:
                 addons.remove(addon)
 
-    if _bpy.app.debug:
+    if _bpy.app.debug_python:
         print("\taddon_utils.disable", module_name)
 
 
@@ -347,7 +361,6 @@ def module_bl_info(mod, info_basis={"name": "",
                                     "author": "",
                                     "version": (),
                                     "blender": (),
-                                    "api": 0,
                                     "location": "",
                                     "description": "",
                                     "wiki_url": "",

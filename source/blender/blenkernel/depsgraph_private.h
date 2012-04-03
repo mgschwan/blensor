@@ -27,8 +27,8 @@
  *  \ingroup bke
  */
 
-#ifndef DEPSGRAPH_PRIVATE
-#define DEPSGRAPH_PRIVATE
+#ifndef __DEPSGRAPH_PRIVATE_H__
+#define __DEPSGRAPH_PRIVATE_H__
 
 #include "BKE_depsgraph.h"
 #include "DNA_constraint_types.h"
@@ -69,7 +69,7 @@ typedef struct DagNode
 	int ancestor_count;
 	unsigned int lay;				// accumulated layers of its relations + itself
 	unsigned int scelay;			// layers due to being in scene
-	unsigned int customdata_mask;	// customdata mask
+	uint64_t customdata_mask;	// customdata mask
 	int lasttime;		// if lasttime != DagForest->time, this node was not evaluated yet for flushing
 	int BFS_dist;		// BFS distance
 	int DFS_dist;		// DFS distance
@@ -132,6 +132,4 @@ void graph_print_queue(DagNodeQueue *nqueue);
 void graph_print_queue_dist(DagNodeQueue *nqueue);
 void graph_print_adj_list(void);
 
-int build_deps(short mask);
-
-#endif
+#endif /* __DEPSGRAPH_PRIVATE_H__ */

@@ -57,9 +57,10 @@ static void colorfn(float *out, TexParams *p, bNode *UNUSED(node), bNodeStack **
 	int yi = (int)fabs(floor(0.00001f + y / sz));
 	int zi = (int)fabs(floor(0.00001f + z / sz));
 	
-	if( (xi % 2 == yi % 2) == (zi % 2) ) {
+	if ( (xi % 2 == yi % 2) == (zi % 2) ) {
 		tex_input_rgba(out, in[0], p, thread);
-	} else {
+	}
+	else {
 		tex_input_rgba(out, in[1], p, thread);
 	} 
 }
@@ -69,14 +70,14 @@ static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
 	tex_output(node, in, out[0], &colorfn, data);
 }
 
-void register_node_type_tex_checker(ListBase *lb)
+void register_node_type_tex_checker(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 	
-	node_type_base(&ntype, TEX_NODE_CHECKER, "Checker", NODE_CLASS_PATTERN, NODE_PREVIEW|NODE_OPTIONS);
+	node_type_base(ttype, &ntype, TEX_NODE_CHECKER, "Checker", NODE_CLASS_PATTERN, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, inputs, outputs);
 	node_type_size(&ntype, 100, 60, 150);
 	node_type_exec(&ntype, exec);
 	
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }

@@ -273,7 +273,7 @@ TargetVertex(
 		result[4] = c0[1];
 		result[5] = c0[2];
 
-		return ;
+		return;
 	}
 };
 

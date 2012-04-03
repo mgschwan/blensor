@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software Foundation,
-# Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 # The Original Code is Copyright (C) 2006, Blender Foundation
 # All rights reserved.
@@ -30,9 +30,11 @@ set(INC
 	../blenkernel
 	../blenkernel/intern
 	../blenlib
+	../blenfont
 	../blenloader
 	../makesdna
 	../makesrna
+	../bmesh
 	../render/extern/include
 	../../../intern/elbeem/extern
 	../../../intern/guardedalloc
@@ -40,7 +42,7 @@ set(INC
 
 set(INC_SYS
 	${ZLIB_INCLUDE_DIRS}
-        ${GLEW_INCLUDE_PATH}
+	${GLEW_INCLUDE_PATH}
 )
 
 set(SRC
@@ -55,6 +57,7 @@ set(SRC
 	intern/MOD_curve.c
 	intern/MOD_decimate.c
 	intern/MOD_displace.c
+	intern/MOD_dynamicpaint.c
 	intern/MOD_edgesplit.c
 	intern/MOD_explode.c
 	intern/MOD_fluidsim.c
@@ -66,8 +69,10 @@ set(SRC
 	intern/MOD_mirror.c
 	intern/MOD_multires.c
 	intern/MOD_none.c
+	intern/MOD_ocean.c
 	intern/MOD_particleinstance.c
 	intern/MOD_particlesystem.c
+	intern/MOD_remesh.c
 	intern/MOD_screw.c
 	intern/MOD_shapekey.c
 	intern/MOD_shrinkwrap.c
@@ -104,6 +109,13 @@ if(WITH_MOD_BOOLEAN)
 	)
 endif()
 
+if(WITH_MOD_REMESH)
+	add_definitions(-DWITH_MOD_REMESH)
+	list(APPEND INC
+		../../../intern/dualcon
+	)
+endif()
+
 if(WITH_MOD_DECIMATE)
 	add_definitions(-DWITH_MOD_DECIMATE)
 	list(APPEND INC
@@ -111,8 +123,12 @@ if(WITH_MOD_DECIMATE)
 	)
 endif()
 
-if(NOT WITH_MOD_FLUID)
-	add_definitions(-DDISABLE_ELBEEM)
+if(WITH_MOD_FLUID)
+	add_definitions(-DWITH_MOD_FLUID)
+endif()
+
+if(WITH_MOD_OCEANSIM)
+	add_definitions(-DWITH_OCEANSIM)
 endif()
 
 if(WITH_GAMEENGINE)
@@ -122,6 +138,14 @@ if(WITH_GAMEENGINE)
 		../gpu
 		../../../extern/recastnavigation
 	)
+endif()
+
+if(WITH_INTERNATIONAL)
+	add_definitions(-DWITH_INTERNATIONAL)
+endif()
+
+if(WITH_OPENMP)
+	add_definitions(-DPARALLEL=1)
 endif()
 
 blender_add_lib(bf_modifiers "${SRC}" "${INC}" "${INC_SYS}")

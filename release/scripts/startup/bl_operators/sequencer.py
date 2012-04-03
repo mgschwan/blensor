@@ -25,7 +25,7 @@ from bpy.props import IntProperty
 
 
 class SequencerCrossfadeSounds(Operator):
-    '''Do crossfading volume animation of two selected sound strips'''
+    '''Do cross-fading volume animation of two selected sound strips'''
 
     bl_idname = "sequencer.crossfade_sounds"
     bl_label = "Crossfade sounds"
@@ -60,14 +60,14 @@ class SequencerCrossfadeSounds(Operator):
         if seq1.frame_final_end > seq2.frame_final_start:
             tempcfra = context.scene.frame_current
             context.scene.frame_current = seq2.frame_final_start
-            seq1.keyframe_insert('volume')
+            seq1.keyframe_insert("volume")
             context.scene.frame_current = seq1.frame_final_end
             seq1.volume = 0
-            seq1.keyframe_insert('volume')
-            seq2.keyframe_insert('volume')
+            seq1.keyframe_insert("volume")
+            seq2.keyframe_insert("volume")
             context.scene.frame_current = seq2.frame_final_start
             seq2.volume = 0
-            seq2.keyframe_insert('volume')
+            seq2.keyframe_insert("volume")
             context.scene.frame_current = tempcfra
             return {'FINISHED'}
         else:
@@ -76,7 +76,7 @@ class SequencerCrossfadeSounds(Operator):
 
 
 class SequencerCutMulticam(Operator):
-    '''Cut multicam strip and select camera'''
+    '''Cut multi-cam strip and select camera'''
 
     bl_idname = "sequencer.cut_multicam"
     bl_label = "Cut multicam"

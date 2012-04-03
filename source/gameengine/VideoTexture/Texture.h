@@ -24,8 +24,8 @@ http://www.gnu.org/copyleft/lesser.txt.
  *  \ingroup bgevideotex
  */
  
-#if !defined TEXTURE_H
-#define TEXTURE_H
+#ifndef __TEXTURE_H__
+#define __TEXTURE_H__
 
 #include <PyObjectPlus.h>
 #include <structmember.h>
@@ -79,13 +79,13 @@ extern PyTypeObject TextureType;
 
 // load texture
 void loadTexture (unsigned int texId, unsigned int * texture, short * size,
-				  bool mipmap = false);
+                  bool mipmap = false);
 
 // get material
 RAS_IPolyMaterial * getMaterial (PyObject *obj, short matID);
 
 // get material ID
-short getMaterialID (PyObject * obj, char * name);
+short getMaterialID (PyObject * obj, const char *name);
 
 // Exceptions
 extern ExceptionID MaterialNotAvail;

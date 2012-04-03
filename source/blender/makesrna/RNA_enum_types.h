@@ -20,8 +20,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef RNA_ENUM_TYPES_H
-#define RNA_ENUM_TYPES_H
+#ifndef __RNA_ENUM_TYPES_H__
+#define __RNA_ENUM_TYPES_H__
 
 /** \file RNA_enum_types.h
  *  \ingroup RNA
@@ -53,6 +53,7 @@ extern EnumPropertyItem boidrule_type_items[];
 
 extern EnumPropertyItem image_type_items[];
 extern EnumPropertyItem image_color_mode_items[];
+extern EnumPropertyItem image_depth_mode_items[];
 
 extern EnumPropertyItem beztriple_keyframe_type_items[];
 extern EnumPropertyItem beztriple_handle_type_items[];
@@ -103,6 +104,8 @@ extern EnumPropertyItem property_type_items[];
 extern EnumPropertyItem property_subtype_items[];
 extern EnumPropertyItem property_unit_items[];
 
+extern EnumPropertyItem gameproperty_type_items[];
+
 extern EnumPropertyItem viewport_shade_items[];
 
 extern EnumPropertyItem nodetree_type_items[];
@@ -113,6 +116,8 @@ extern EnumPropertyItem node_vec_math_items[];
 extern EnumPropertyItem node_filter_items[];
 
 extern EnumPropertyItem ramp_blend_items[];
+
+extern EnumPropertyItem prop_dynamicpaint_type_items[];
 
 struct bContext;
 struct PointerRNA;
@@ -131,5 +136,8 @@ EnumPropertyItem *RNA_image_itemf(struct bContext *C, struct PointerRNA *ptr, st
 EnumPropertyItem *RNA_image_local_itemf(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop, int *free);
 EnumPropertyItem *RNA_scene_itemf(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop, int *free);
 EnumPropertyItem *RNA_scene_local_itemf(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop, int *free);
+EnumPropertyItem *RNA_movieclip_itemf(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop, int *free);
+EnumPropertyItem *RNA_movieclip_local_itemf(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop, int *free);
 
-#endif /* RNA_ENUM_TYPES_H */
+
+#endif /* __RNA_ENUM_TYPES_H__ */

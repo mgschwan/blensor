@@ -62,7 +62,7 @@ static void do_proc(float *result, TexParams *p, float *col1, float *col2, char 
 	TexResult texres;
 	int textype;
 	
-	if(is_normal) {
+	if (is_normal) {
 		texres.nor = result;
 	}
 	else
@@ -71,15 +71,15 @@ static void do_proc(float *result, TexParams *p, float *col1, float *col2, char 
 	textype = multitex_nodes(tex, p->co, p->dxt, p->dyt, p->osatex,
 		&texres, thread, 0, p->shi, p->mtex);
 	
-	if(is_normal)
+	if (is_normal)
 		return;
 	
-	if(textype & TEX_RGB) {
-		QUATCOPY(result, &texres.tr);
+	if (textype & TEX_RGB) {
+		copy_v4_v4(result, &texres.tr);
 	}
 	else {
-		QUATCOPY(result, col1);
-		ramp_blend(MA_RAMP_BLEND, result, result+1, result+2, texres.tin, col2);
+		copy_v4_v4(result, col1);
+		ramp_blend(MA_RAMP_BLEND, result, texres.tin, col2);
 	}
 }
 
@@ -108,7 +108,7 @@ static int count_outputs(bNode *node)
 {
 	bNodeSocket *sock;
 	int num = 0;
-	for(sock= node->outputs.first; sock; sock= sock->next) {
+	for (sock= node->outputs.first; sock; sock= sock->next) {
 		num++;
 	}
 	return num;
@@ -132,8 +132,8 @@ static int count_outputs(bNode *node)
 		static void name##_exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)                  \
 		{                                                                                                    \
 				int outs = count_outputs(node);                                                              \
-				if(outs >= 1) tex_output(node, in, out[0], &name##_colorfn, data);                                 \
-				if(outs >= 2) tex_output(node, in, out[1], &name##_normalfn, data);                                \
+				if (outs >= 1) tex_output(node, in, out[0], &name##_colorfn, data);                                 \
+				if (outs >= 2) tex_output(node, in, out[1], &name##_normalfn, data);                                \
 		}
 
 
@@ -289,25 +289,25 @@ static void init(bNodeTree *UNUSED(ntree), bNode* node, bNodeTemplate *UNUSED(nt
 	default_tex(tex);
 	tex->type = node->type - TEX_NODE_PROC;
 	
-	if(tex->type == TEX_WOOD)
+	if (tex->type == TEX_WOOD)
 		tex->stype = TEX_BANDNOISE;
 	
 }
 
 /* Node type definitions */
 #define TexDef(TEXTYPE, outputs, name, Name) \
-void register_node_type_tex_proc_##name(ListBase *lb) \
+void register_node_type_tex_proc_##name(bNodeTreeType *ttype) \
 { \
 	static bNodeType ntype; \
 	\
-	node_type_base(&ntype, TEX_NODE_PROC+TEXTYPE, Name, NODE_CLASS_TEXTURE, NODE_PREVIEW|NODE_OPTIONS); \
+	node_type_base(ttype, &ntype, TEX_NODE_PROC+TEXTYPE, Name, NODE_CLASS_TEXTURE, NODE_PREVIEW|NODE_OPTIONS); \
 	node_type_socket_templates(&ntype, name##_inputs, outputs); \
 	node_type_size(&ntype, 140, 80, 140); \
 	node_type_init(&ntype, init); \
 	node_type_storage(&ntype, "Tex", node_free_standard_storage, node_copy_standard_storage); \
 	node_type_exec(&ntype, name##_exec); \
 	\
-	nodeRegisterType(lb, &ntype); \
+	nodeRegisterType(ttype, &ntype); \
 }
 	
 #define C outputs_color_only

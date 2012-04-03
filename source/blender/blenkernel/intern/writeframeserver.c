@@ -301,16 +301,18 @@ int frameserver_loop(RenderData *rd, ReportList *UNUSED(reports))
 			rval = select(connsock + 1, &readfds, NULL, NULL, &tv);
 		if (rval > 0) {
 			break;
-		} else if (rval == 0) {
+		}
+		else if (rval == 0) {
 			return -1;
-		} else if (rval < 0) {
+		}
+		else if (rval < 0) {
 			if (!select_was_interrupted_by_signal()) {
 				return -1;
 			}
 		}
 	}
 
-	len = recv(connsock, buf, 4095, 0);
+	len = recv(connsock, buf, sizeof(buf) - 1, 0);
 
 	if (len < 0) {
 		return -1;
@@ -362,7 +364,8 @@ static void serve_ppm(int *pixels, int rectx, int recty)
 	connsock = -1;
 }
 
-int append_frameserver(RenderData *UNUSED(rd), int frame, int *pixels, int rectx, int recty, ReportList *UNUSED(reports))
+int append_frameserver(RenderData *UNUSED(rd), int UNUSED(start_frame), int frame, int *pixels,
+                       int rectx, int recty, ReportList *UNUSED(reports))
 {
 	fprintf(stderr, "Serving frame: %d\n", frame);
 	if (write_ppm) {

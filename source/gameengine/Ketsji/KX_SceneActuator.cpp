@@ -190,7 +190,7 @@ bool KX_SceneActuator::Update()
 
 
 /*  returns a camera if the name is valid */
-KX_Camera* KX_SceneActuator::FindCamera(char *camName)
+KX_Camera* KX_SceneActuator::FindCamera(const char *camName)
 {
 	KX_SceneList* sl = m_KetsjiEngine->CurrentScenes();
 	STR_String name = STR_String(camName);
@@ -208,7 +208,7 @@ KX_Camera* KX_SceneActuator::FindCamera(char *camName)
 
 
 
-KX_Scene* KX_SceneActuator::FindScene(char * sceneName)
+KX_Scene* KX_SceneActuator::FindScene(const char * sceneName)
 {
 	return m_KetsjiEngine->FindScene(sceneName);
 }
@@ -249,7 +249,7 @@ PyMethodDef KX_SceneActuator::Methods[] =
 };
 
 PyAttributeDef KX_SceneActuator::Attributes[] = {
-	KX_PYATTRIBUTE_STRING_RW("scene",0,32,true,KX_SceneActuator,m_nextSceneName),
+	KX_PYATTRIBUTE_STRING_RW("scene",0,MAX_ID_NAME-2,true,KX_SceneActuator,m_nextSceneName),
 	KX_PYATTRIBUTE_RW_FUNCTION("camera",KX_SceneActuator,pyattr_get_camera,pyattr_set_camera),
 	KX_PYATTRIBUTE_BOOL_RW("useRestart", KX_SceneActuator, m_restart),
 	KX_PYATTRIBUTE_INT_RW("mode", KX_SCENE_NODEF+1, KX_SCENE_MAX-1, true, KX_SceneActuator, m_mode),
@@ -276,7 +276,7 @@ int KX_SceneActuator::pyattr_set_camera(void *self, const struct KX_PYATTRIBUTE_
 	if (actuator->m_camera)
 		actuator->m_camera->UnregisterActuator(actuator);
 	
-	if(camOb==NULL) {
+	if (camOb==NULL) {
 		actuator->m_camera= NULL;
 	}
 	else {	

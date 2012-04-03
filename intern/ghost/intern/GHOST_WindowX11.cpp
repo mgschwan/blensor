@@ -35,6 +35,10 @@
 #include "STR_String.h"
 #include "GHOST_Debug.h"
 
+#ifdef WITH_XDND
+#include "GHOST_DropTargetX11.h"
+#endif
+
 // For standard X11 cursors
 #include <X11/cursorfont.h>
 #include <X11/Xatom.h>
@@ -239,7 +243,8 @@ GHOST_WindowX11(
 			}
 		} else {
 			if (m_numOfAASamples && (m_numOfAASamples > samples)) {
-				printf("%s:%d: oversampling requested %i but using %i samples\n", __FILE__, __LINE__, m_numOfAASamples, samples);
+				printf("%s:%d: oversampling requested %i but using %i samples\n",
+				       __FILE__, __LINE__, m_numOfAASamples, samples);
 			}
 			break;
 		}
@@ -324,7 +329,13 @@ GHOST_WindowX11(
 		XSelectInput(m_display , parentWindow, SubstructureNotifyMask);
 		
 	}	
-	
+
+#ifdef WITH_XDND
+	/* initialize drop target for newly created window */
+	m_dropTarget = new GHOST_DropTargetX11(this, m_system);
+	GHOST_PRINT("Set drop target\n");
+#endif
+
 	/*
 	 * One of the problem with WM-spec is that can't set a property
 	 * to a window that isn't mapped. That is why we can't "just
@@ -362,7 +373,7 @@ GHOST_WindowX11(
 	XFree(xsizehints);
 
 	XClassHint * xclasshint = XAllocClassHint();
-	int len = title.Length() +1 ;
+	const int len = title.Length() + 1;
 	char *wmclass = (char *)malloc(sizeof(char) * len);
 	strncpy(wmclass, (const char*)title, sizeof(char) * len);
 	xclasshint->res_name = wmclass;
@@ -471,12 +482,13 @@ GHOST_WindowX11(
 	is configured but not plugged in.
 
 */
-static int ApplicationErrorHandler(Display *display, XErrorEvent *theEvent) {
+static int ApplicationErrorHandler(Display *display, XErrorEvent *theEvent)
+{
 	fprintf(stderr, "Ignoring Xlib error: error code %d request code %d\n",
-		theEvent->error_code, theEvent->request_code) ;
+		theEvent->error_code, theEvent->request_code);
 
 	/* No exit! - but keep lint happy */
-	return 0 ;
+	return 0;
 }
 
 /* These C functions are copied from Wine 1.1.13's wintab.c */
@@ -576,7 +588,7 @@ static BOOL is_eraser(const char *name, const char *type)
 
 void GHOST_WindowX11::initXInputDevices()
 {
-	static XErrorHandler old_handler = (XErrorHandler) 0 ;
+	static XErrorHandler old_handler = (XErrorHandler) 0;
 	XExtensionVersion *version = XGetExtensionVersion(m_display, INAME);
 
 	if(version && (version != (XExtensionVersion*)NoSuchExtension)) {
@@ -588,7 +600,7 @@ void GHOST_WindowX11::initXInputDevices()
 			m_xtablet.CommonData.Active= GHOST_kTabletModeNone;
 
 			/* Install our error handler to override Xlib's termination behavior */
-			old_handler = XSetErrorHandler(ApplicationErrorHandler) ;
+			old_handler = XSetErrorHandler(ApplicationErrorHandler);
 
 			for(int i=0; i<device_count; ++i) {
 				char *device_type = device_info[i].type ? XGetAtomName(m_display, device_info[i].type) : NULL;
@@ -636,7 +648,7 @@ void GHOST_WindowX11::initXInputDevices()
 			}
 
 			/* Restore handler */
-			(void) XSetErrorHandler(old_handler) ;
+			(void) XSetErrorHandler(old_handler);
 
 			XFreeDeviceList(device_info);
 
@@ -1316,6 +1328,9 @@ GHOST_WindowX11::
 	}
 #endif
 
+#ifdef WITH_XDND
+	delete m_dropTarget;
+#endif
 
 	XDestroyWindow(m_display, m_window);
 	XFree(m_visual);
@@ -1343,7 +1358,9 @@ installDrawingContext(
 			if (!s_firstContext) {
 				s_firstContext = m_context;
 			}
-			glXMakeCurrent(m_display, m_window,m_context);						
+			glXMakeCurrent(m_display, m_window,m_context);
+			glClearColor(0.447, 0.447, 0.447, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
 			success = GHOST_kSuccess;
 		} else {
 			success = GHOST_kFailure;
@@ -1491,7 +1508,8 @@ setWindowCursorGrab(
 
 		}
 #ifdef GHOST_X11_GRAB
-		XGrabPointer(m_display, m_window, False, ButtonPressMask| ButtonReleaseMask|PointerMotionMask, GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
+		XGrabPointer(m_display, m_window, False, ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+		             GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
 #endif
 	}
 	else {
@@ -1585,30 +1603,3 @@ setWindowCustomCursorShape(
 
 	return GHOST_kSuccess;
 }
-
-/*
-
-void glutCustomCursor(char *data1, char *data2, int size)
-{
-	Pixmap source, mask;
-	Cursor cursor;
-	XColor fg, bg;
-	
-	if(XAllocNamedColor(__glutDisplay, DefaultColormap(__glutDisplay, __glutScreen),
-		"White", &fg, &fg) == 0) return;
-	if(XAllocNamedColor(__glutDisplay, DefaultColormap(__glutDisplay, __glutScreen),
-		"Red", &bg, &bg) == 0) return;
-
-
-	source= XCreateBitmapFromData(__glutDisplay, xdraw, data2, size, size);
-	mask= XCreateBitmapFromData(__glutDisplay, xdraw, data1, size, size);
-		
-	cursor= XCreatePixmapCursor(__glutDisplay, source, mask, &fg, &bg, 7, 7);
-		
-	XFreePixmap(__glutDisplay, source);
-	XFreePixmap(__glutDisplay, mask);
-		
-	XDefineCursor(__glutDisplay, xdraw, cursor);
-}
-
-*/

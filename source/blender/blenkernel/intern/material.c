@@ -50,6 +50,8 @@
 #include "BLI_math.h"		
 #include "BLI_listbase.h"		
 #include "BLI_utildefines.h"
+#include "BLI_bpath.h"
+#include "BLI_string.h"
 
 #include "BKE_animsys.h"
 #include "BKE_displist.h"
@@ -80,29 +82,29 @@ void free_material(Material *ma)
 	MTex *mtex;
 	int a;
 	
-	for(a=0; a<MAX_MTEX; a++) {
+	for (a=0; a<MAX_MTEX; a++) {
 		mtex= ma->mtex[a];
-		if(mtex && mtex->tex) mtex->tex->id.us--;
-		if(mtex) MEM_freeN(mtex);
+		if (mtex && mtex->tex) mtex->tex->id.us--;
+		if (mtex) MEM_freeN(mtex);
 	}
 	
-	if(ma->ramp_col) MEM_freeN(ma->ramp_col);
-	if(ma->ramp_spec) MEM_freeN(ma->ramp_spec);
+	if (ma->ramp_col) MEM_freeN(ma->ramp_col);
+	if (ma->ramp_spec) MEM_freeN(ma->ramp_spec);
 	
 	BKE_free_animdata((ID *)ma);
 	
-	if(ma->preview)
+	if (ma->preview)
 		BKE_previewimg_free(&ma->preview);
 	BKE_icon_delete((struct ID*)ma);
 	ma->id.icon_id = 0;
 	
 	/* is no lib link block, but material extension */
-	if(ma->nodetree) {
+	if (ma->nodetree) {
 		ntreeFreeTree(ma->nodetree);
 		MEM_freeN(ma->nodetree);
 	}
 
-	if(ma->gpumaterial.first)
+	if (ma->gpumaterial.first)
 		GPU_material_free(ma);
 }
 
@@ -214,24 +216,24 @@ Material *copy_material(Material *ma)
 	Material *man;
 	int a;
 	
-	man= copy_libblock(ma);
+	man= copy_libblock(&ma->id);
 	
 	id_lib_extern((ID *)man->group);
 	
-	for(a=0; a<MAX_MTEX; a++) {
-		if(ma->mtex[a]) {
+	for (a=0; a<MAX_MTEX; a++) {
+		if (ma->mtex[a]) {
 			man->mtex[a]= MEM_mallocN(sizeof(MTex), "copymaterial");
 			memcpy(man->mtex[a], ma->mtex[a], sizeof(MTex));
 			id_us_plus((ID *)man->mtex[a]->tex);
 		}
 	}
 	
-	if(ma->ramp_col) man->ramp_col= MEM_dupallocN(ma->ramp_col);
-	if(ma->ramp_spec) man->ramp_spec= MEM_dupallocN(ma->ramp_spec);
+	if (ma->ramp_col) man->ramp_col= MEM_dupallocN(ma->ramp_col);
+	if (ma->ramp_spec) man->ramp_spec= MEM_dupallocN(ma->ramp_spec);
 	
 	if (ma->preview) man->preview = BKE_previewimg_copy(ma->preview);
 
-	if(ma->nodetree) {
+	if (ma->nodetree) {
 		man->nodetree= ntreeCopyTree(ma->nodetree);	/* 0 == full new tree */
 	}
 
@@ -246,23 +248,23 @@ Material *localize_material(Material *ma)
 	Material *man;
 	int a;
 	
-	man= copy_libblock(ma);
+	man= copy_libblock(&ma->id);
 	BLI_remlink(&G.main->mat, man);
 
 	/* no increment for texture ID users, in previewrender.c it prevents decrement */
-	for(a=0; a<MAX_MTEX; a++) {
-		if(ma->mtex[a]) {
+	for (a=0; a<MAX_MTEX; a++) {
+		if (ma->mtex[a]) {
 			man->mtex[a]= MEM_mallocN(sizeof(MTex), "copymaterial");
 			memcpy(man->mtex[a], ma->mtex[a], sizeof(MTex));
 		}
 	}
 	
-	if(ma->ramp_col) man->ramp_col= MEM_dupallocN(ma->ramp_col);
-	if(ma->ramp_spec) man->ramp_spec= MEM_dupallocN(ma->ramp_spec);
+	if (ma->ramp_col) man->ramp_col= MEM_dupallocN(ma->ramp_col);
+	if (ma->ramp_spec) man->ramp_spec= MEM_dupallocN(ma->ramp_spec);
 	
 	man->preview = NULL;
 	
-	if(ma->nodetree)
+	if (ma->nodetree)
 		man->nodetree= ntreeLocalize(ma->nodetree);
 	
 	man->gpumaterial.first= man->gpumaterial.last= NULL;
@@ -273,8 +275,8 @@ Material *localize_material(Material *ma)
 static void extern_local_material(Material *ma)
 {
 	int i;
-	for(i=0; i < MAX_MTEX; i++) {
-		if(ma->mtex[i]) id_lib_extern((ID *)ma->mtex[i]->tex);
+	for (i=0; i < MAX_MTEX; i++) {
+		if (ma->mtex[i]) id_lib_extern((ID *)ma->mtex[i]->tex);
 	}
 }
 
@@ -285,32 +287,32 @@ void make_local_material(Material *ma)
 	Mesh *me;
 	Curve *cu;
 	MetaBall *mb;
-	Material *man;
-	int a, local=0, lib=0;
+	int a, is_local= FALSE, is_lib= FALSE;
 
 	/* - only lib users: do nothing
-		* - only local users: set flag
-		* - mixed: make copy
-		*/
+	 * - only local users: set flag
+	 * - mixed: make copy
+	 */
 	
-	if(ma->id.lib==NULL) return;
-	if(ma->id.us==1) {
-		ma->id.lib= NULL;
-		ma->id.flag= LIB_LOCAL;
+	if (ma->id.lib==NULL) return;
 
-		new_id(&bmain->mat, (ID *)ma, NULL);
+	/* One local user; set flag and return. */
+	if (ma->id.us==1) {
+		id_clear_lib_data(bmain, &ma->id);
 		extern_local_material(ma);
 		return;
 	}
-	
+
+	/* Check which other IDs reference this one to determine if it's used by
+	 * lib or local */
 	/* test objects */
 	ob= bmain->object.first;
-	while(ob) {
-		if(ob->mat) {
-			for(a=0; a<ob->totcol; a++) {
-				if(ob->mat[a]==ma) {
-					if(ob->id.lib) lib= 1;
-					else local= 1;
+	while (ob) {
+		if (ob->mat) {
+			for (a=0; a<ob->totcol; a++) {
+				if (ob->mat[a]==ma) {
+					if (ob->id.lib) is_lib= TRUE;
+					else is_local= TRUE;
 				}
 			}
 		}
@@ -318,12 +320,12 @@ void make_local_material(Material *ma)
 	}
 	/* test meshes */
 	me= bmain->mesh.first;
-	while(me) {
-		if(me->mat) {
-			for(a=0; a<me->totcol; a++) {
-				if(me->mat[a]==ma) {
-					if(me->id.lib) lib= 1;
-					else local= 1;
+	while (me) {
+		if (me->mat) {
+			for (a=0; a<me->totcol; a++) {
+				if (me->mat[a]==ma) {
+					if (me->id.lib) is_lib= TRUE;
+					else is_local= TRUE;
 				}
 			}
 		}
@@ -331,12 +333,12 @@ void make_local_material(Material *ma)
 	}
 	/* test curves */
 	cu= bmain->curve.first;
-	while(cu) {
-		if(cu->mat) {
-			for(a=0; a<cu->totcol; a++) {
-				if(cu->mat[a]==ma) {
-					if(cu->id.lib) lib= 1;
-					else local= 1;
+	while (cu) {
+		if (cu->mat) {
+			for (a=0; a<cu->totcol; a++) {
+				if (cu->mat[a]==ma) {
+					if (cu->id.lib) is_lib= TRUE;
+					else is_local= TRUE;
 				}
 			}
 		}
@@ -344,39 +346,41 @@ void make_local_material(Material *ma)
 	}
 	/* test mballs */
 	mb= bmain->mball.first;
-	while(mb) {
-		if(mb->mat) {
-			for(a=0; a<mb->totcol; a++) {
-				if(mb->mat[a]==ma) {
-					if(mb->id.lib) lib= 1;
-					else local= 1;
+	while (mb) {
+		if (mb->mat) {
+			for (a=0; a<mb->totcol; a++) {
+				if (mb->mat[a]==ma) {
+					if (mb->id.lib) is_lib= TRUE;
+					else is_local= TRUE;
 				}
 			}
 		}
 		mb= mb->id.next;
 	}
-	
-	if(local && lib==0) {
-		ma->id.lib= NULL;
-		ma->id.flag= LIB_LOCAL;
 
-		new_id(&bmain->mat, (ID *)ma, NULL);
+	/* Only local users. */
+	if (is_local && is_lib == FALSE) {
+		id_clear_lib_data(bmain, &ma->id);
 		extern_local_material(ma);
 	}
-	else if(local && lib) {
-		
-		man= copy_material(ma);
-		man->id.us= 0;
-		
+	/* Both user and local, so copy. */
+	else if (is_local && is_lib) {
+		Material *ma_new= copy_material(ma);
+
+		ma_new->id.us= 0;
+
+		/* Remap paths of new ID using old library as base. */
+		BKE_id_lib_local_paths(bmain, ma->id.lib, &ma_new->id);
+
 		/* do objects */
 		ob= bmain->object.first;
-		while(ob) {
-			if(ob->mat) {
-				for(a=0; a<ob->totcol; a++) {
-					if(ob->mat[a]==ma) {
-						if(ob->id.lib==NULL) {
-							ob->mat[a]= man;
-							man->id.us++;
+		while (ob) {
+			if (ob->mat) {
+				for (a=0; a<ob->totcol; a++) {
+					if (ob->mat[a]==ma) {
+						if (ob->id.lib==NULL) {
+							ob->mat[a]= ma_new;
+							ma_new->id.us++;
 							ma->id.us--;
 						}
 					}
@@ -386,13 +390,13 @@ void make_local_material(Material *ma)
 		}
 		/* do meshes */
 		me= bmain->mesh.first;
-		while(me) {
-			if(me->mat) {
-				for(a=0; a<me->totcol; a++) {
-					if(me->mat[a]==ma) {
-						if(me->id.lib==NULL) {
-							me->mat[a]= man;
-							man->id.us++;
+		while (me) {
+			if (me->mat) {
+				for (a=0; a<me->totcol; a++) {
+					if (me->mat[a]==ma) {
+						if (me->id.lib==NULL) {
+							me->mat[a]= ma_new;
+							ma_new->id.us++;
 							ma->id.us--;
 						}
 					}
@@ -402,13 +406,13 @@ void make_local_material(Material *ma)
 		}
 		/* do curves */
 		cu= bmain->curve.first;
-		while(cu) {
-			if(cu->mat) {
-				for(a=0; a<cu->totcol; a++) {
-					if(cu->mat[a]==ma) {
-						if(cu->id.lib==NULL) {
-							cu->mat[a]= man;
-							man->id.us++;
+		while (cu) {
+			if (cu->mat) {
+				for (a=0; a<cu->totcol; a++) {
+					if (cu->mat[a]==ma) {
+						if (cu->id.lib==NULL) {
+							cu->mat[a]= ma_new;
+							ma_new->id.us++;
 							ma->id.us--;
 						}
 					}
@@ -418,13 +422,13 @@ void make_local_material(Material *ma)
 		}
 		/* do mballs */
 		mb= bmain->mball.first;
-		while(mb) {
-			if(mb->mat) {
-				for(a=0; a<mb->totcol; a++) {
-					if(mb->mat[a]==ma) {
-						if(mb->id.lib==NULL) {
-							mb->mat[a]= man;
-							man->id.us++;
+		while (mb) {
+			if (mb->mat) {
+				for (a=0; a<mb->totcol; a++) {
+					if (mb->mat[a]==ma) {
+						if (mb->id.lib==NULL) {
+							mb->mat[a]= ma_new;
+							ma_new->id.us++;
 							ma->id.us--;
 						}
 					}
@@ -439,7 +443,7 @@ void make_local_material(Material *ma)
 void extern_local_matarar(struct Material **matar, short totcol)
 {
 	short i;
-	for(i= 0; i < totcol; i++) {
+	for (i= 0; i < totcol; i++) {
 		id_lib_extern((ID *)matar[i]);
 	}
 }
@@ -450,15 +454,15 @@ Material ***give_matarar(Object *ob)
 	Curve *cu;
 	MetaBall *mb;
 	
-	if(ob->type==OB_MESH) {
+	if (ob->type==OB_MESH) {
 		me= ob->data;
 		return &(me->mat);
 	}
-	else if ELEM3(ob->type, OB_CURVE, OB_FONT, OB_SURF) {
+	else if (ELEM3(ob->type, OB_CURVE, OB_FONT, OB_SURF)) {
 		cu= ob->data;
 		return &(cu->mat);
 	}
-	else if(ob->type==OB_MBALL) {
+	else if (ob->type==OB_MBALL) {
 		mb= ob->data;
 		return &(mb->mat);
 	}
@@ -471,15 +475,15 @@ short *give_totcolp(Object *ob)
 	Curve *cu;
 	MetaBall *mb;
 	
-	if(ob->type==OB_MESH) {
+	if (ob->type==OB_MESH) {
 		me= ob->data;
 		return &(me->totcol);
 	}
-	else if ELEM3(ob->type, OB_CURVE, OB_FONT, OB_SURF) {
+	else if (ELEM3(ob->type, OB_CURVE, OB_FONT, OB_SURF)) {
 		cu= ob->data;
 		return &(cu->totcol);
 	}
-	else if(ob->type==OB_MBALL) {
+	else if (ob->type==OB_MBALL) {
 		mb= ob->data;
 		return &(mb->totcol);
 	}
@@ -529,7 +533,7 @@ static void data_delete_material_index_id(ID *id, short index)
 		curve_delete_material_index((Curve *)id, index);
 		break;
 	case ID_MB:
-		/* meta-elems dont have materials atm */
+		/* meta-elems don't have materials atm */
 		break;
 	}
 }
@@ -537,11 +541,11 @@ static void data_delete_material_index_id(ID *id, short index)
 void material_append_id(ID *id, Material *ma)
 {
 	Material ***matar;
-	if((matar= give_matarar_id(id))) {
+	if ((matar= give_matarar_id(id))) {
 		short *totcol= give_totcolp_id(id);
 		Material **mat= MEM_callocN(sizeof(void *) * ((*totcol) + 1), "newmatar");
-		if(*totcol) memcpy(mat, *matar, sizeof(void *) * (*totcol));
-		if(*matar) MEM_freeN(*matar);
+		if (*totcol) memcpy(mat, *matar, sizeof(void *) * (*totcol));
+		if (*matar) MEM_freeN(*matar);
 
 		*matar= mat;
 		(*matar)[(*totcol)++]= ma;
@@ -556,21 +560,21 @@ Material *material_pop_id(ID *id, int index_i, int remove_material_slot)
 	short index= (short)index_i;
 	Material *ret= NULL;
 	Material ***matar;
-	if((matar= give_matarar_id(id))) {
+	if ((matar= give_matarar_id(id))) {
 		short *totcol= give_totcolp_id(id);
-		if(index >= 0 && index < (*totcol)) {
+		if (index >= 0 && index < (*totcol)) {
 			ret= (*matar)[index];
 			id_us_min((ID *)ret);
 
 			if (remove_material_slot) {
-				if(*totcol <= 1) {
+				if (*totcol <= 1) {
 					*totcol= 0;
 					MEM_freeN(*matar);
 					*matar= NULL;
 				}
 				else {
 					Material **mat;
-					if(index + 1 != (*totcol))
+					if (index + 1 != (*totcol))
 						memmove((*matar)+index, (*matar)+(index+1), sizeof(void *) * ((*totcol) - (index + 1)));
 
 					(*totcol)--;
@@ -601,32 +605,32 @@ Material *give_current_material(Object *ob, short act)
 	Material ***matarar, *ma;
 	short *totcolp;
 	
-	if(ob==NULL) return NULL;
+	if (ob==NULL) return NULL;
 	
 	/* if object cannot have material, totcolp==NULL */
 	totcolp= give_totcolp(ob);
-	if(totcolp==NULL || ob->totcol==0) return NULL;
+	if (totcolp==NULL || ob->totcol==0) return NULL;
 	
-	if(act<0) {
+	if (act<0) {
 		printf("no!\n");
 	}
 	
-	if(act>ob->totcol) act= ob->totcol;
-	else if(act<=0) act= 1;
+	if (act>ob->totcol) act= ob->totcol;
+	else if (act<=0) act= 1;
 
-	if(ob->matbits && ob->matbits[act-1]) {	/* in object */
+	if (ob->matbits && ob->matbits[act-1]) {	/* in object */
 		ma= ob->mat[act-1];
 	}
 	else {								/* in data */
 
 		/* check for inconsistency */
-		if(*totcolp < ob->totcol)
+		if (*totcolp < ob->totcol)
 			ob->totcol= *totcolp;
-		if(act>ob->totcol) act= ob->totcol;
+		if (act>ob->totcol) act= ob->totcol;
 
 		matarar= give_matarar(ob);
 		
-		if(matarar && *matarar) ma= (*matarar)[act-1];
+		if (matarar && *matarar) ma= (*matarar)[act-1];
 		else ma= NULL;
 		
 	}
@@ -637,21 +641,21 @@ Material *give_current_material(Object *ob, short act)
 ID *material_from(Object *ob, short act)
 {
 
-	if(ob==NULL) return NULL;
+	if (ob==NULL) return NULL;
 
-	if(ob->totcol==0) return ob->data;
-	if(act==0) act= 1;
+	if (ob->totcol==0) return ob->data;
+	if (act==0) act= 1;
 
-	if(ob->matbits[act-1]) return (ID *)ob;
+	if (ob->matbits[act-1]) return (ID *)ob;
 	else return ob->data;
 }
 
 Material *give_node_material(Material *ma)
 {
-	if(ma && ma->use_nodes && ma->nodetree) {
+	if (ma && ma->use_nodes && ma->nodetree) {
 		bNode *node= nodeGetActiveID(ma->nodetree, ID_MA);
 
-		if(node)
+		if (node)
 			return (Material *)node->id;
 	}
 
@@ -676,18 +680,18 @@ void resize_object_material(Object *ob, const short totcol)
 	Material **newmatar;
 	char *newmatbits;
 
-	if(totcol==0) {
-		if(ob->totcol) {
+	if (totcol==0) {
+		if (ob->totcol) {
 			MEM_freeN(ob->mat);
 			MEM_freeN(ob->matbits);
 			ob->mat= NULL;
 			ob->matbits= NULL;
 		}
 	}
-	else if(ob->totcol<totcol) {
+	else if (ob->totcol<totcol) {
 		newmatar= MEM_callocN(sizeof(void *)*totcol, "newmatar");
 		newmatbits= MEM_callocN(sizeof(char)*totcol, "newmatbits");
-		if(ob->totcol) {
+		if (ob->totcol) {
 			memcpy(newmatar, ob->mat, sizeof(void *)*ob->totcol);
 			memcpy(newmatbits, ob->matbits, sizeof(char)*ob->totcol);
 			MEM_freeN(ob->mat);
@@ -697,8 +701,8 @@ void resize_object_material(Object *ob, const short totcol)
 		ob->matbits= newmatbits;
 	}
 	ob->totcol= totcol;
-	if(ob->totcol && ob->actcol==0) ob->actcol= 1;
-	if(ob->actcol>ob->totcol) ob->actcol= ob->totcol;
+	if (ob->totcol && ob->actcol==0) ob->actcol= 1;
+	if (ob->actcol>ob->totcol) ob->actcol= ob->totcol;
 }
 
 void test_object_materials(ID *id)
@@ -707,12 +711,12 @@ void test_object_materials(ID *id)
 	Object *ob;
 	short *totcol;
 
-	if(id==NULL || (totcol=give_totcolp_id(id))==NULL) {
+	if (id==NULL || (totcol=give_totcolp_id(id))==NULL) {
 		return;
 	}
 
-	for(ob= G.main->object.first; ob; ob= ob->id.next) {
-		if(ob->data==id) {
+	for (ob= G.main->object.first; ob; ob= ob->id.next) {
+		if (ob->data==id) {
 			resize_object_material(ob, *totcol);
 		}
 	}
@@ -723,24 +727,24 @@ void assign_material_id(ID *id, Material *ma, short act)
 	Material *mao, **matar, ***matarar;
 	short *totcolp;
 
-	if(act>MAXMAT) return;
-	if(act<1) act= 1;
+	if (act>MAXMAT) return;
+	if (act<1) act= 1;
 
 	/* prevent crashing when using accidentally */
 	BLI_assert(id->lib == NULL);
-	if(id->lib) return;
+	if (id->lib) return;
 
 	/* test arraylens */
 
 	totcolp= give_totcolp_id(id);
 	matarar= give_matarar_id(id);
 
-	if(totcolp==NULL || matarar==NULL) return;
+	if (totcolp==NULL || matarar==NULL) return;
 
-	if(act > *totcolp) {
+	if (act > *totcolp) {
 		matar= MEM_callocN(sizeof(void *)*act, "matarray1");
 
-		if(*totcolp) {
+		if (*totcolp) {
 			memcpy(matar, *matarar, sizeof(void *)*(*totcolp));
 			MEM_freeN(*matarar);
 		}
@@ -751,10 +755,10 @@ void assign_material_id(ID *id, Material *ma, short act)
 
 	/* in data */
 	mao= (*matarar)[act-1];
-	if(mao) mao->id.us--;
+	if (mao) mao->id.us--;
 	(*matarar)[act-1]= ma;
 
-	if(ma)
+	if (ma)
 		id_us_plus((ID *)ma);
 
 	test_object_materials(id);
@@ -766,24 +770,24 @@ void assign_material(Object *ob, Material *ma, short act)
 	char *matbits;
 	short *totcolp;
 
-	if(act>MAXMAT) return;
-	if(act<1) act= 1;
+	if (act>MAXMAT) return;
+	if (act<1) act= 1;
 	
 	/* prevent crashing when using accidentally */
 	BLI_assert(ob->id.lib == NULL);
-	if(ob->id.lib) return;
+	if (ob->id.lib) return;
 	
 	/* test arraylens */
 	
 	totcolp= give_totcolp(ob);
 	matarar= give_matarar(ob);
 	
-	if(totcolp==NULL || matarar==NULL) return;
+	if (totcolp==NULL || matarar==NULL) return;
 	
-	if(act > *totcolp) {
+	if (act > *totcolp) {
 		matar= MEM_callocN(sizeof(void *)*act, "matarray1");
 
-		if(*totcolp) {
+		if (*totcolp) {
 			memcpy(matar, *matarar, sizeof(void *)*(*totcolp));
 			MEM_freeN(*matarar);
 		}
@@ -792,10 +796,10 @@ void assign_material(Object *ob, Material *ma, short act)
 		*totcolp= act;
 	}
 	
-	if(act > ob->totcol) {
+	if (act > ob->totcol) {
 		matar= MEM_callocN(sizeof(void *)*act, "matarray2");
 		matbits= MEM_callocN(sizeof(char)*act, "matbits1");
-		if( ob->totcol) {
+		if ( ob->totcol) {
 			memcpy(matar, ob->mat, sizeof(void *)*( ob->totcol ));
 			memcpy(matbits, ob->matbits, sizeof(char)*(*totcolp));
 			MEM_freeN(ob->mat);
@@ -806,7 +810,7 @@ void assign_material(Object *ob, Material *ma, short act)
 		ob->totcol= act;
 
 		/* copy object/mesh linking, or assign based on userpref */
-		if(ob->actcol)
+		if (ob->actcol)
 			ob->matbits[act-1]= ob->matbits[ob->actcol-1];
 		else
 			ob->matbits[act-1]= (U.flag & USER_MAT_ON_OB)? 1: 0;
@@ -814,18 +818,18 @@ void assign_material(Object *ob, Material *ma, short act)
 	
 	/* do it */
 
-	if(ob->matbits[act-1]) {	/* in object */
+	if (ob->matbits[act-1]) {	/* in object */
 		mao= ob->mat[act-1];
-		if(mao) mao->id.us--;
+		if (mao) mao->id.us--;
 		ob->mat[act-1]= ma;
 	}
 	else {	/* in data */
 		mao= (*matarar)[act-1];
-		if(mao) mao->id.us--;
+		if (mao) mao->id.us--;
 		(*matarar)[act-1]= ma;
 	}
 
-	if(ma)
+	if (ma)
 		id_us_plus((ID *)ma);
 	test_object_materials(ob->data);
 }
@@ -836,13 +840,13 @@ void assign_matarar(struct Object *ob, struct Material ***matar, short totcol)
 	int actcol_orig= ob->actcol;
 	short i;
 
-	while(object_remove_material_slot(ob)) {};
+	while (object_remove_material_slot(ob)) {};
 
 	/* now we have the right number of slots */
-	for(i=0; i<totcol; i++)
+	for (i=0; i<totcol; i++)
 		assign_material(ob, (*matar)[i], i+1);
 
-	if(actcol_orig > ob->totcol)
+	if (actcol_orig > ob->totcol)
 		actcol_orig= ob->totcol;
 
 	ob->actcol= actcol_orig;
@@ -854,25 +858,25 @@ short find_material_index(Object *ob, Material *ma)
 	Material ***matarar;
 	short a, *totcolp;
 	
-	if(ma==NULL) return 0;
+	if (ma==NULL) return 0;
 	
 	totcolp= give_totcolp(ob);
 	matarar= give_matarar(ob);
 	
-	if(totcolp==NULL || matarar==NULL) return 0;
+	if (totcolp==NULL || matarar==NULL) return 0;
 	
-	for(a=0; a<*totcolp; a++)
-		if((*matarar)[a]==ma)
+	for (a=0; a<*totcolp; a++)
+		if ((*matarar)[a]==ma)
 		   break;
-	if(a<*totcolp)
+	if (a<*totcolp)
 		return a+1;
 	return 0;	   
 }
 
 int object_add_material_slot(Object *ob)
 {
-	if(ob==NULL) return FALSE;
-	if(ob->totcol>=MAXMAT) return FALSE;
+	if (ob==NULL) return FALSE;
+	if (ob->totcol>=MAXMAT) return FALSE;
 	
 	assign_material(ob, NULL, ob->totcol+1);
 	ob->actcol= ob->totcol;
@@ -884,51 +888,51 @@ static void do_init_render_material(Material *ma, int r_mode, float *amb)
 	MTex *mtex;
 	int a, needuv=0, needtang=0;
 	
-	if(ma->flarec==0) ma->flarec= 1;
+	if (ma->flarec==0) ma->flarec= 1;
 
 	/* add all texcoflags from mtex, texco and mapto were cleared in advance */
-	for(a=0; a<MAX_MTEX; a++) {
+	for (a=0; a<MAX_MTEX; a++) {
 		
 		/* separate tex switching */
-		if(ma->septex & (1<<a)) continue;
+		if (ma->septex & (1<<a)) continue;
 
 		mtex= ma->mtex[a];
-		if(mtex && mtex->tex && (mtex->tex->type | (mtex->tex->use_nodes && mtex->tex->nodetree) )) {
+		if (mtex && mtex->tex && (mtex->tex->type | (mtex->tex->use_nodes && mtex->tex->nodetree) )) {
 			
 			ma->texco |= mtex->texco;
 			ma->mapto |= mtex->mapto;
 
 			/* always get derivatives for these textures */
-			if ELEM3(mtex->tex->type, TEX_IMAGE, TEX_PLUGIN, TEX_ENVMAP) ma->texco |= TEXCO_OSA;
-			else if(mtex->texflag & (MTEX_COMPAT_BUMP|MTEX_3TAP_BUMP|MTEX_5TAP_BUMP)) ma->texco |= TEXCO_OSA;
+			if (ELEM3(mtex->tex->type, TEX_IMAGE, TEX_PLUGIN, TEX_ENVMAP)) ma->texco |= TEXCO_OSA;
+			else if (mtex->texflag & (MTEX_COMPAT_BUMP|MTEX_3TAP_BUMP|MTEX_5TAP_BUMP|MTEX_BICUBIC_BUMP)) ma->texco |= TEXCO_OSA;
 			
-			if(ma->texco & (TEXCO_ORCO|TEXCO_REFL|TEXCO_NORM|TEXCO_STRAND|TEXCO_STRESS)) needuv= 1;
-			else if(ma->texco & (TEXCO_GLOB|TEXCO_UV|TEXCO_OBJECT|TEXCO_SPEED)) needuv= 1;
-			else if(ma->texco & (TEXCO_LAVECTOR|TEXCO_VIEW|TEXCO_STICKY)) needuv= 1;
+			if (ma->texco & (TEXCO_ORCO|TEXCO_REFL|TEXCO_NORM|TEXCO_STRAND|TEXCO_STRESS)) needuv= 1;
+			else if (ma->texco & (TEXCO_GLOB|TEXCO_UV|TEXCO_OBJECT|TEXCO_SPEED)) needuv= 1;
+			else if (ma->texco & (TEXCO_LAVECTOR|TEXCO_VIEW|TEXCO_STICKY)) needuv= 1;
 
-			if((ma->mapto & MAP_NORM) && (mtex->normapspace == MTEX_NSPACE_TANGENT))
+			if ((ma->mapto & MAP_NORM) && (mtex->normapspace == MTEX_NSPACE_TANGENT))
 				needtang= 1;
 		}
 	}
 
-	if(needtang) ma->mode |= MA_NORMAP_TANG;
+	if (needtang) ma->mode |= MA_NORMAP_TANG;
 	else ma->mode &= ~MA_NORMAP_TANG;
 	
-	if(ma->mode & (MA_VERTEXCOL|MA_VERTEXCOLP|MA_FACETEXTURE)) {
+	if (ma->mode & (MA_VERTEXCOL|MA_VERTEXCOLP|MA_FACETEXTURE)) {
 		needuv= 1;
-		if(r_mode & R_OSA) ma->texco |= TEXCO_OSA;		/* for texfaces */
+		if (r_mode & R_OSA) ma->texco |= TEXCO_OSA;		/* for texfaces */
 	}
-	if(needuv) ma->texco |= NEED_UV;
+	if (needuv) ma->texco |= NEED_UV;
 	
 	/* since the raytracer doesnt recalc O structs for each ray, we have to preset them all */
-	if(r_mode & R_RAYTRACE) {
-		if((ma->mode & (MA_RAYMIRROR|MA_SHADOW_TRA)) || ((ma->mode & MA_TRANSP) && (ma->mode & MA_RAYTRANSP))) {
+	if (r_mode & R_RAYTRACE) {
+		if ((ma->mode & (MA_RAYMIRROR|MA_SHADOW_TRA)) || ((ma->mode & MA_TRANSP) && (ma->mode & MA_RAYTRANSP))) {
 			ma->texco |= NEED_UV|TEXCO_ORCO|TEXCO_REFL|TEXCO_NORM;
-			if(r_mode & R_OSA) ma->texco |= TEXCO_OSA;
+			if (r_mode & R_OSA) ma->texco |= TEXCO_OSA;
 		}
 	}
 	
-	if(amb) {
+	if (amb) {
 		ma->ambr= ma->amb*amb[0];
 		ma->ambg= ma->amb*amb[1];
 		ma->ambb= ma->amb*amb[2];
@@ -937,11 +941,11 @@ static void do_init_render_material(Material *ma, int r_mode, float *amb)
 	ma->mode_l= ma->mode;
 	ma->mode_l &= ~MA_SHLESS;
 
-	if(ma->strand_surfnor > 0.0f)
+	if (ma->strand_surfnor > 0.0f)
 		ma->mode_l |= MA_STR_SURFDIFF;
 
 	/* parses the geom+tex nodes */
-	if(ma->nodetree && ma->use_nodes)
+	if (ma->nodetree && ma->use_nodes)
 		ntreeShaderGetTexcoMode(ma->nodetree, r_mode, &ma->texco, &ma->mode_l);
 }
 
@@ -949,17 +953,17 @@ static void init_render_nodetree(bNodeTree *ntree, Material *basemat, int r_mode
 {
 	bNode *node;
 	
-	for(node=ntree->nodes.first; node; node= node->next) {
-		if(node->id) {
-			if(GS(node->id->name)==ID_MA) {
+	for (node=ntree->nodes.first; node; node= node->next) {
+		if (node->id) {
+			if (GS(node->id->name)==ID_MA) {
 				Material *ma= (Material *)node->id;
-				if(ma!=basemat) {
+				if (ma!=basemat) {
 					do_init_render_material(ma, r_mode, amb);
 					basemat->texco |= ma->texco;
 					basemat->mode_l |= ma->mode_l & ~(MA_TRANSP|MA_ZTRANSP|MA_RAYTRANSP); 
 				}
 			}
-			else if(node->type==NODE_GROUP)
+			else if (node->type==NODE_GROUP)
 				init_render_nodetree((bNodeTree *)node->id, basemat, r_mode, amb);
 		}
 	}
@@ -970,7 +974,7 @@ void init_render_material(Material *mat, int r_mode, float *amb)
 	
 	do_init_render_material(mat, r_mode, amb);
 	
-	if(mat->nodetree && mat->use_nodes) {
+	if (mat->nodetree && mat->use_nodes) {
 		init_render_nodetree(mat->nodetree, mat, r_mode, amb);
 		
 		if (!mat->nodetree->execdata)
@@ -985,18 +989,18 @@ void init_render_materials(Main *bmain, int r_mode, float *amb)
 	/* clear these flags before going over materials, to make sure they
 	 * are cleared only once, otherwise node materials contained in other
 	 * node materials can go wrong */
-	for(ma= bmain->mat.first; ma; ma= ma->id.next) {
-		if(ma->id.us) {
+	for (ma= bmain->mat.first; ma; ma= ma->id.next) {
+		if (ma->id.us) {
 			ma->texco= 0;
 			ma->mapto= 0;
 		}
 	}
 
 	/* two steps, first initialize, then or the flags for layers */
-	for(ma= bmain->mat.first; ma; ma= ma->id.next) {
+	for (ma= bmain->mat.first; ma; ma= ma->id.next) {
 		/* is_used flag comes back in convertblender.c */
 		ma->flag &= ~MA_IS_USED;
-		if(ma->id.us) 
+		if (ma->id.us) 
 			init_render_material(ma, r_mode, amb);
 	}
 	
@@ -1006,7 +1010,7 @@ void init_render_materials(Main *bmain, int r_mode, float *amb)
 /* only needed for nodes now */
 void end_render_material(Material *mat)
 {
-	if(mat && mat->nodetree && mat->use_nodes) {
+	if (mat && mat->nodetree && mat->use_nodes) {
 		if (mat->nodetree->execdata)
 			ntreeShaderEndExecTree(mat->nodetree->execdata, 1);
 	}
@@ -1015,8 +1019,8 @@ void end_render_material(Material *mat)
 void end_render_materials(Main *bmain)
 {
 	Material *ma;
-	for(ma= bmain->mat.first; ma; ma= ma->id.next)
-		if(ma->id.us) 
+	for (ma= bmain->mat.first; ma; ma= ma->id.next)
+		if (ma->id.us) 
 			end_render_material(ma);
 }
 
@@ -1024,13 +1028,13 @@ static int material_in_nodetree(bNodeTree *ntree, Material *mat)
 {
 	bNode *node;
 
-	for(node=ntree->nodes.first; node; node= node->next) {
-		if(node->id && GS(node->id->name)==ID_MA) {
-			if(node->id==(ID*)mat)
+	for (node=ntree->nodes.first; node; node= node->next) {
+		if (node->id && GS(node->id->name)==ID_MA) {
+			if (node->id==(ID*)mat)
 				return 1;
 		}
-		else if(node->type==NODE_GROUP)
-			if(material_in_nodetree((bNodeTree*)node->id, mat))
+		else if (node->type==NODE_GROUP)
+			if (material_in_nodetree((bNodeTree*)node->id, mat))
 				return 1;
 	}
 
@@ -1039,9 +1043,9 @@ static int material_in_nodetree(bNodeTree *ntree, Material *mat)
 
 int material_in_material(Material *parmat, Material *mat)
 {
-	if(parmat==mat)
+	if (parmat==mat)
 		return 1;
-	else if(parmat->nodetree && parmat->use_nodes)
+	else if (parmat->nodetree && parmat->use_nodes)
 		return material_in_nodetree(parmat->nodetree, mat);
 	else
 		return 0;
@@ -1082,15 +1086,15 @@ void automatname(Material *ma)
 	int nr, r, g, b;
 	float ref;
 	
-	if(ma==NULL) return;
-	if(ma->mode & MA_SHLESS) ref= 1.0;
+	if (ma==NULL) return;
+	if (ma->mode & MA_SHLESS) ref= 1.0;
 	else ref= ma->ref;
 	
 	r= (int)(4.99f*(ref*ma->r));
 	g= (int)(4.99f*(ref*ma->g));
 	b= (int)(4.99f*(ref*ma->b));
 	nr= r + 5*g + 25*b;
-	if(nr>124) nr= 124;
+	if (nr>124) nr= 124;
 	new_id(&G.main->mat, (ID *)ma, colname_array[nr]);
 	
 }
@@ -1123,39 +1127,39 @@ int object_remove_material_slot(Object *ob)
 	totcolp= give_totcolp(ob);
 	matarar= give_matarar(ob);
 
-	if(*matarar==NULL) return FALSE;
+	if (*matarar==NULL) return FALSE;
 
 	/* we delete the actcol */
 	mao= (*matarar)[ob->actcol-1];
-	if(mao) mao->id.us--;
+	if (mao) mao->id.us--;
 	
-	for(a=ob->actcol; a<ob->totcol; a++)
+	for (a=ob->actcol; a<ob->totcol; a++)
 		(*matarar)[a-1]= (*matarar)[a];
 	(*totcolp)--;
 	
-	if(*totcolp==0) {
+	if (*totcolp==0) {
 		MEM_freeN(*matarar);
 		*matarar= NULL;
 	}
 	
 	actcol= ob->actcol;
 	obt= G.main->object.first;
-	while(obt) {
+	while (obt) {
 	
-		if(obt->data==ob->data) {
+		if (obt->data==ob->data) {
 			
 			/* WATCH IT: do not use actcol from ob or from obt (can become zero) */
 			mao= obt->mat[actcol-1];
-			if(mao) mao->id.us--;
+			if (mao) mao->id.us--;
 		
-			for(a=actcol; a<obt->totcol; a++) {
+			for (a=actcol; a<obt->totcol; a++) {
 				obt->mat[a-1]= obt->mat[a];
 				obt->matbits[a-1]= obt->matbits[a];
 			}
 			obt->totcol--;
-			if(obt->actcol > obt->totcol) obt->actcol= obt->totcol;
+			if (obt->actcol > obt->totcol) obt->actcol= obt->totcol;
 			
-			if(obt->totcol==0) {
+			if (obt->totcol==0) {
 				MEM_freeN(obt->mat);
 				MEM_freeN(obt->matbits);
 				obt->mat= NULL;
@@ -1175,251 +1179,220 @@ int object_remove_material_slot(Object *ob)
 }
 
 
-/* r g b = current value, col = new value, fac==0 is no change */
-/* if g==NULL, it only does r channel */
-void ramp_blend(int type, float *r, float *g, float *b, float fac, const float col[3])
+/* r_col = current value, col = new value, fac==0 is no change */
+void ramp_blend(int type, float r_col[3], const float fac, const float col[3])
 {
 	float tmp, facm= 1.0f-fac;
 	
 	switch (type) {
 		case MA_RAMP_BLEND:
-			*r = facm*(*r) + fac*col[0];
-			if(g) {
-				*g = facm*(*g) + fac*col[1];
-				*b = facm*(*b) + fac*col[2];
-			}
-				break;
+			r_col[0] = facm*(r_col[0]) + fac*col[0];
+			r_col[1] = facm*(r_col[1]) + fac*col[1];
+			r_col[2] = facm*(r_col[2]) + fac*col[2];
+			break;
 		case MA_RAMP_ADD:
-			*r += fac*col[0];
-			if(g) {
-				*g += fac*col[1];
-				*b += fac*col[2];
-			}
-				break;
+			r_col[0] += fac*col[0];
+			r_col[1] += fac*col[1];
+			r_col[2] += fac*col[2];
+			break;
 		case MA_RAMP_MULT:
-			*r *= (facm + fac*col[0]);
-			if(g) {
-				*g *= (facm + fac*col[1]);
-				*b *= (facm + fac*col[2]);
-			}
-				break;
+			r_col[0] *= (facm + fac*col[0]);
+			r_col[1] *= (facm + fac*col[1]);
+			r_col[2] *= (facm + fac*col[2]);
+			break;
 		case MA_RAMP_SCREEN:
-			*r = 1.0f - (facm + fac*(1.0f - col[0])) * (1.0f - *r);
-			if(g) {
-				*g = 1.0f - (facm + fac*(1.0f - col[1])) * (1.0f - *g);
-				*b = 1.0f - (facm + fac*(1.0f - col[2])) * (1.0f - *b);
-			}
-				break;
+			r_col[0] = 1.0f - (facm + fac*(1.0f - col[0])) * (1.0f - r_col[0]);
+			r_col[1] = 1.0f - (facm + fac*(1.0f - col[1])) * (1.0f - r_col[1]);
+			r_col[2] = 1.0f - (facm + fac*(1.0f - col[2])) * (1.0f - r_col[2]);
+			break;
 		case MA_RAMP_OVERLAY:
-			if(*r < 0.5f)
-				*r *= (facm + 2.0f*fac*col[0]);
+			if (r_col[0] < 0.5f)
+				r_col[0] *= (facm + 2.0f*fac*col[0]);
 			else
-				*r = 1.0f - (facm + 2.0f*fac*(1.0f - col[0])) * (1.0f - *r);
-			if(g) {
-				if(*g < 0.5f)
-					*g *= (facm + 2.0f*fac*col[1]);
-				else
-					*g = 1.0f - (facm + 2.0f*fac*(1.0f - col[1])) * (1.0f - *g);
-				if(*b < 0.5f)
-					*b *= (facm + 2.0f*fac*col[2]);
-				else
-					*b = 1.0f - (facm + 2.0f*fac*(1.0f - col[2])) * (1.0f - *b);
-			}
-				break;
+				r_col[0] = 1.0f - (facm + 2.0f*fac*(1.0f - col[0])) * (1.0f - r_col[0]);
+			if (r_col[1] < 0.5f)
+				r_col[1] *= (facm + 2.0f*fac*col[1]);
+			else
+				r_col[1] = 1.0f - (facm + 2.0f*fac*(1.0f - col[1])) * (1.0f - r_col[1]);
+			if (r_col[2] < 0.5f)
+				r_col[2] *= (facm + 2.0f*fac*col[2]);
+			else
+				r_col[2] = 1.0f - (facm + 2.0f*fac*(1.0f - col[2])) * (1.0f - r_col[2]);
+			break;
 		case MA_RAMP_SUB:
-			*r -= fac*col[0];
-			if(g) {
-				*g -= fac*col[1];
-				*b -= fac*col[2];
-			}
-				break;
+			r_col[0] -= fac*col[0];
+			r_col[1] -= fac*col[1];
+			r_col[2] -= fac*col[2];
+			break;
 		case MA_RAMP_DIV:
-			if(col[0]!=0.0f)
-				*r = facm*(*r) + fac*(*r)/col[0];
-			if(g) {
-				if(col[1]!=0.0f)
-					*g = facm*(*g) + fac*(*g)/col[1];
-				if(col[2]!=0.0f)
-					*b = facm*(*b) + fac*(*b)/col[2];
-			}
-				break;
+			if (col[0]!=0.0f)
+				r_col[0] = facm*(r_col[0]) + fac*(r_col[0])/col[0];
+			if (col[1]!=0.0f)
+				r_col[1] = facm*(r_col[1]) + fac*(r_col[1])/col[1];
+			if (col[2]!=0.0f)
+				r_col[2] = facm*(r_col[2]) + fac*(r_col[2])/col[2];
+			break;
 		case MA_RAMP_DIFF:
-			*r = facm*(*r) + fac*fabsf(*r-col[0]);
-			if(g) {
-				*g = facm*(*g) + fac*fabsf(*g-col[1]);
-				*b = facm*(*b) + fac*fabsf(*b-col[2]);
-			}
-				break;
+			r_col[0] = facm*(r_col[0]) + fac*fabsf(r_col[0]-col[0]);
+			r_col[1] = facm*(r_col[1]) + fac*fabsf(r_col[1]-col[1]);
+			r_col[2] = facm*(r_col[2]) + fac*fabsf(r_col[2]-col[2]);
+			break;
 		case MA_RAMP_DARK:
-			tmp=col[0]+((1-col[0])*facm); 
-			if(tmp < *r) *r= tmp; 
-			if(g) { 
-				tmp=col[1]+((1-col[1])*facm); 
-				if(tmp < *g) *g= tmp; 
-				tmp=col[2]+((1-col[2])*facm); 
-				if(tmp < *b) *b= tmp; 
-			} 
-				break; 
+			tmp=col[0]+((1-col[0])*facm);
+			if (tmp < r_col[0]) r_col[0]= tmp;
+			tmp=col[1]+((1-col[1])*facm);
+			if (tmp < r_col[1]) r_col[1]= tmp;
+			tmp=col[2]+((1-col[2])*facm);
+			if (tmp < r_col[2]) r_col[2]= tmp;
+			break;
 		case MA_RAMP_LIGHT:
 			tmp= fac*col[0];
-			if(tmp > *r) *r= tmp; 
-				if(g) {
-					tmp= fac*col[1];
-					if(tmp > *g) *g= tmp; 
-					tmp= fac*col[2];
-					if(tmp > *b) *b= tmp; 
-				}
-					break;	
-		case MA_RAMP_DODGE:			
-			
-				
-			if(*r !=0.0f){
+			if (tmp > r_col[0]) r_col[0]= tmp;
+				tmp= fac*col[1];
+				if (tmp > r_col[1]) r_col[1]= tmp;
+				tmp= fac*col[2];
+				if (tmp > r_col[2]) r_col[2]= tmp;
+				break;
+		case MA_RAMP_DODGE:
+			if (r_col[0] != 0.0f) {
 				tmp = 1.0f - fac*col[0];
-				if(tmp <= 0.0f)
-					*r = 1.0f;
-				else if ((tmp = (*r) / tmp)> 1.0f)
-					*r = 1.0f;
-				else 
-					*r = tmp;
+				if (tmp <= 0.0f)
+					r_col[0] = 1.0f;
+				else if ((tmp = (r_col[0]) / tmp)> 1.0f)
+					r_col[0] = 1.0f;
+				else
+					r_col[0] = tmp;
 			}
-			if(g) {
-				if(*g !=0.0f){
-					tmp = 1.0f - fac*col[1];
-					if(tmp <= 0.0f )
-						*g = 1.0f;
-					else if ((tmp = (*g) / tmp) > 1.0f )
-						*g = 1.0f;
-					else
-						*g = tmp;
-				}
-				if(*b !=0.0f){
-					tmp = 1.0f - fac*col[2];
-					if(tmp <= 0.0f)
-						*b = 1.0f;
-					else if ((tmp = (*b) / tmp) > 1.0f )
-						*b = 1.0f;
-					else
-						*b = tmp;
-				}
-
+			if (r_col[1] != 0.0f) {
+				tmp = 1.0f - fac*col[1];
+				if (tmp <= 0.0f )
+					r_col[1] = 1.0f;
+				else if ((tmp = (r_col[1]) / tmp) > 1.0f )
+					r_col[1] = 1.0f;
+				else
+					r_col[1] = tmp;
 			}
-				break;	
+			if (r_col[2] != 0.0f) {
+				tmp = 1.0f - fac*col[2];
+				if (tmp <= 0.0f)
+					r_col[2] = 1.0f;
+				else if ((tmp = (r_col[2]) / tmp) > 1.0f )
+					r_col[2] = 1.0f;
+				else
+					r_col[2] = tmp;
+			}
+			break;
 		case MA_RAMP_BURN:
-			
 			tmp = facm + fac*col[0];
-			
-			if(tmp <= 0.0f)
-				*r = 0.0f;
-			else if (( tmp = (1.0f - (1.0f - (*r)) / tmp )) < 0.0f)
-					*r = 0.0f;
+
+			if (tmp <= 0.0f)
+				r_col[0] = 0.0f;
+			else if (( tmp = (1.0f - (1.0f - (r_col[0])) / tmp )) < 0.0f)
+					r_col[0] = 0.0f;
 			else if (tmp > 1.0f)
-				*r=1.0f;
-			else 
-				*r = tmp; 
+				r_col[0]=1.0f;
+			else
+				r_col[0] = tmp;
 
-			if(g) {
-				tmp = facm + fac*col[1];
-				if(tmp <= 0.0f)
-					*g = 0.0f;
-				else if (( tmp = (1.0f - (1.0f - (*g)) / tmp )) < 0.0f )
-						*g = 0.0f;
-				else if(tmp >1.0f)
-					*g=1.0f;
-				else
-					*g = tmp;
+			tmp = facm + fac*col[1];
+			if (tmp <= 0.0f)
+				r_col[1] = 0.0f;
+			else if (( tmp = (1.0f - (1.0f - (r_col[1])) / tmp )) < 0.0f )
+					r_col[1] = 0.0f;
+			else if (tmp >1.0f)
+				r_col[1]=1.0f;
+			else
+				r_col[1] = tmp;
 
-					tmp = facm + fac*col[2];
-					if(tmp <= 0.0f)
-					*b = 0.0f;
-				else if (( tmp = (1.0f - (1.0f - (*b)) / tmp )) < 0.0f  )
-						*b = 0.0f;
-				else if(tmp >1.0f)
-					*b= 1.0f;
-				else
-					*b = tmp;
-			}
-				break;
-		case MA_RAMP_HUE:		
-			if(g){
+				tmp = facm + fac*col[2];
+				if (tmp <= 0.0f)
+				r_col[2] = 0.0f;
+			else if (( tmp = (1.0f - (1.0f - (r_col[2])) / tmp )) < 0.0f  )
+					r_col[2] = 0.0f;
+			else if (tmp >1.0f)
+				r_col[2]= 1.0f;
+			else
+				r_col[2] = tmp;
+			break;
+		case MA_RAMP_HUE:
+			{
 				float rH,rS,rV;
-				float colH,colS,colV; 
+				float colH,colS,colV;
 				float tmpr,tmpg,tmpb;
 				rgb_to_hsv(col[0],col[1],col[2],&colH,&colS,&colV);
-				if(colS!=0 ){
-					rgb_to_hsv(*r,*g,*b,&rH,&rS,&rV);
+				if (colS != 0) {
+					rgb_to_hsv(r_col[0],r_col[1],r_col[2],&rH,&rS,&rV);
 					hsv_to_rgb( colH , rS, rV, &tmpr, &tmpg, &tmpb);
-					*r = facm*(*r) + fac*tmpr;  
-					*g = facm*(*g) + fac*tmpg; 
-					*b = facm*(*b) + fac*tmpb;
+					r_col[0] = facm*(r_col[0]) + fac*tmpr;
+					r_col[1] = facm*(r_col[1]) + fac*tmpg;
+					r_col[2] = facm*(r_col[2]) + fac*tmpb;
 				}
 			}
-				break;
-		case MA_RAMP_SAT:		
-			if(g){
+			break;
+		case MA_RAMP_SAT:
+			{
 				float rH,rS,rV;
 				float colH,colS,colV;
-				rgb_to_hsv(*r,*g,*b,&rH,&rS,&rV);
-				if(rS!=0){
+				rgb_to_hsv(r_col[0],r_col[1],r_col[2],&rH,&rS,&rV);
+				if (rS != 0) {
 					rgb_to_hsv(col[0],col[1],col[2],&colH,&colS,&colV);
-					hsv_to_rgb( rH, (facm*rS +fac*colS), rV, r, g, b);
+					hsv_to_rgb( rH, (facm*rS +fac*colS), rV, r_col+0, r_col+1, r_col+2);
 				}
 			}
-				break;
-		case MA_RAMP_VAL:		
-			if(g){
+			break;
+		case MA_RAMP_VAL:
+			{
 				float rH,rS,rV;
 				float colH,colS,colV;
-				rgb_to_hsv(*r,*g,*b,&rH,&rS,&rV);
+				rgb_to_hsv(r_col[0],r_col[1],r_col[2],&rH,&rS,&rV);
 				rgb_to_hsv(col[0],col[1],col[2],&colH,&colS,&colV);
-				hsv_to_rgb( rH, rS, (facm*rV +fac*colV), r, g, b);
+				hsv_to_rgb( rH, rS, (facm*rV +fac*colV), r_col+0, r_col+1, r_col+2);
 			}
-				break;
-		case MA_RAMP_COLOR:		
-			if(g){
+			break;
+		case MA_RAMP_COLOR:
+			{
 				float rH,rS,rV;
 				float colH,colS,colV;
 				float tmpr,tmpg,tmpb;
 				rgb_to_hsv(col[0],col[1],col[2],&colH,&colS,&colV);
-				if(colS!=0){
-					rgb_to_hsv(*r,*g,*b,&rH,&rS,&rV);
+				if (colS != 0) {
+					rgb_to_hsv(r_col[0],r_col[1],r_col[2],&rH,&rS,&rV);
 					hsv_to_rgb( colH, colS, rV, &tmpr, &tmpg, &tmpb);
-					*r = facm*(*r) + fac*tmpr;
-					*g = facm*(*g) + fac*tmpg;
-					*b = facm*(*b) + fac*tmpb;
+					r_col[0] = facm*(r_col[0]) + fac*tmpr;
+					r_col[1] = facm*(r_col[1]) + fac*tmpg;
+					r_col[2] = facm*(r_col[2]) + fac*tmpb;
 				}
 			}
-				break;
-		case MA_RAMP_SOFT: 
-			if (g){ 
-				float scr, scg, scb; 
+			break;
+		case MA_RAMP_SOFT:
+			{
+				float scr, scg, scb;
 
-				/* first calculate non-fac based Screen mix */ 
-				scr = 1.0f - (1.0f - col[0]) * (1.0f - *r); 
-				scg = 1.0f - (1.0f - col[1]) * (1.0f - *g); 
-				scb = 1.0f - (1.0f - col[2]) * (1.0f - *b); 
+				/* first calculate non-fac based Screen mix */
+				scr = 1.0f - (1.0f - col[0]) * (1.0f - r_col[0]);
+				scg = 1.0f - (1.0f - col[1]) * (1.0f - r_col[1]);
+				scb = 1.0f - (1.0f - col[2]) * (1.0f - r_col[2]);
 
-				*r = facm*(*r) + fac*(((1.0f - *r) * col[0] * (*r)) + (*r * scr)); 
-				*g = facm*(*g) + fac*(((1.0f - *g) * col[1] * (*g)) + (*g * scg)); 
-				*b = facm*(*b) + fac*(((1.0f - *b) * col[2] * (*b)) + (*b * scb)); 
-			} 
-				break; 
-		case MA_RAMP_LINEAR: 
-			if (col[0] > 0.5f)  
-				*r = *r + fac*(2.0f*(col[0]-0.5f)); 
-			else  
-				*r = *r + fac*(2.0f*(col[0]) - 1.0f); 
-			if (g){ 
-				if (col[1] > 0.5f)  
-					*g = *g + fac*(2.0f*(col[1]-0.5f)); 
-				else  
-					*g = *g + fac*(2.0f*(col[1]) -1.0f); 
-				if (col[2] > 0.5f)  
-					*b = *b + fac*(2.0f*(col[2]-0.5f)); 
-				else  
-					*b = *b + fac*(2.0f*(col[2]) - 1.0f); 
-			} 
-				break; 
-	}	
+				r_col[0] = facm*(r_col[0]) + fac*(((1.0f - r_col[0]) * col[0] * (r_col[0])) + (r_col[0] * scr));
+				r_col[1] = facm*(r_col[1]) + fac*(((1.0f - r_col[1]) * col[1] * (r_col[1])) + (r_col[1] * scg));
+				r_col[2] = facm*(r_col[2]) + fac*(((1.0f - r_col[2]) * col[2] * (r_col[2])) + (r_col[2] * scb));
+			}
+			break;
+		case MA_RAMP_LINEAR:
+			if (col[0] > 0.5f)
+				r_col[0] = r_col[0] + fac*(2.0f*(col[0]-0.5f));
+			else
+				r_col[0] = r_col[0] + fac*(2.0f*(col[0]) - 1.0f);
+			if (col[1] > 0.5f)
+				r_col[1] = r_col[1] + fac*(2.0f*(col[1]-0.5f));
+			else
+				r_col[1] = r_col[1] + fac*(2.0f*(col[1]) -1.0f);
+			if (col[2] > 0.5f)
+				r_col[2] = r_col[2] + fac*(2.0f*(col[2]-0.5f));
+			else
+				r_col[2] = r_col[2] + fac*(2.0f*(col[2]) - 1.0f);
+			break;
+	}
 }
 
 /* copy/paste buffer, if we had a propper py api that would be better */
@@ -1436,20 +1409,20 @@ void free_matcopybuf(void)
 {
 	int a;
 
-	for(a=0; a<MAX_MTEX; a++) {
-		if(matcopybuf.mtex[a]) {
+	for (a=0; a<MAX_MTEX; a++) {
+		if (matcopybuf.mtex[a]) {
 			MEM_freeN(matcopybuf.mtex[a]);
 			matcopybuf.mtex[a]= NULL;
 		}
 	}
 
-	if(matcopybuf.ramp_col) MEM_freeN(matcopybuf.ramp_col);
-	if(matcopybuf.ramp_spec) MEM_freeN(matcopybuf.ramp_spec);
+	if (matcopybuf.ramp_col) MEM_freeN(matcopybuf.ramp_col);
+	if (matcopybuf.ramp_spec) MEM_freeN(matcopybuf.ramp_spec);
 
 	matcopybuf.ramp_col= NULL;
 	matcopybuf.ramp_spec= NULL;
 
-	if(matcopybuf.nodetree) {
+	if (matcopybuf.nodetree) {
 		ntreeFreeTree(matcopybuf.nodetree);
 		MEM_freeN(matcopybuf.nodetree);
 		matcopybuf.nodetree= NULL;
@@ -1463,16 +1436,16 @@ void copy_matcopybuf(Material *ma)
 	int a;
 	MTex *mtex;
 
-	if(matcopied)
+	if (matcopied)
 		free_matcopybuf();
 
 	memcpy(&matcopybuf, ma, sizeof(Material));
-	if(matcopybuf.ramp_col) matcopybuf.ramp_col= MEM_dupallocN(matcopybuf.ramp_col);
-	if(matcopybuf.ramp_spec) matcopybuf.ramp_spec= MEM_dupallocN(matcopybuf.ramp_spec);
+	if (matcopybuf.ramp_col) matcopybuf.ramp_col= MEM_dupallocN(matcopybuf.ramp_col);
+	if (matcopybuf.ramp_spec) matcopybuf.ramp_spec= MEM_dupallocN(matcopybuf.ramp_spec);
 
-	for(a=0; a<MAX_MTEX; a++) {
+	for (a=0; a<MAX_MTEX; a++) {
 		mtex= matcopybuf.mtex[a];
-		if(mtex) {
+		if (mtex) {
 			matcopybuf.mtex[a]= MEM_dupallocN(mtex);
 		}
 	}
@@ -1488,18 +1461,18 @@ void paste_matcopybuf(Material *ma)
 	MTex *mtex;
 	ID id;
 
-	if(matcopied==0)
+	if (matcopied==0)
 		return;
 	/* free current mat */
-	if(ma->ramp_col) MEM_freeN(ma->ramp_col);
-	if(ma->ramp_spec) MEM_freeN(ma->ramp_spec);
-	for(a=0; a<MAX_MTEX; a++) {
+	if (ma->ramp_col) MEM_freeN(ma->ramp_col);
+	if (ma->ramp_spec) MEM_freeN(ma->ramp_spec);
+	for (a=0; a<MAX_MTEX; a++) {
 		mtex= ma->mtex[a];
-		if(mtex && mtex->tex) mtex->tex->id.us--;
-		if(mtex) MEM_freeN(mtex);
+		if (mtex && mtex->tex) mtex->tex->id.us--;
+		if (mtex) MEM_freeN(mtex);
 	}
 
-	if(ma->nodetree) {
+	if (ma->nodetree) {
 		ntreeFreeTree(ma->nodetree);
 		MEM_freeN(ma->nodetree);
 	}
@@ -1510,14 +1483,14 @@ void paste_matcopybuf(Material *ma)
 	memcpy(ma, &matcopybuf, sizeof(Material));
 	(ma->id)= id;
 
-	if(matcopybuf.ramp_col) ma->ramp_col= MEM_dupallocN(matcopybuf.ramp_col);
-	if(matcopybuf.ramp_spec) ma->ramp_spec= MEM_dupallocN(matcopybuf.ramp_spec);
+	if (matcopybuf.ramp_col) ma->ramp_col= MEM_dupallocN(matcopybuf.ramp_col);
+	if (matcopybuf.ramp_spec) ma->ramp_spec= MEM_dupallocN(matcopybuf.ramp_spec);
 
-	for(a=0; a<MAX_MTEX; a++) {
+	for (a=0; a<MAX_MTEX; a++) {
 		mtex= ma->mtex[a];
-		if(mtex) {
+		if (mtex) {
 			ma->mtex[a]= MEM_dupallocN(mtex);
-			if(mtex->tex) id_us_plus((ID *)mtex->tex);
+			if (mtex->tex) id_us_plus((ID *)mtex->tex);
 		}
 	}
 
@@ -1627,7 +1600,7 @@ static int integer_getdigits(int number)
 	int i=0;
 	if (number == 0) return 1;
 
-	while (number != 0){
+	while (number != 0) {
 		number = (int)(number/10);
 		i++;
 	}
@@ -1641,8 +1614,8 @@ static void calculate_tface_materialname(char *matname, char *newname, int flag)
 	// otherwise do:
 	int digits = integer_getdigits(flag);
 	/* clamp the old name, remove the MA prefix and add the .TF.flag suffix
-	e.g. matname = "MALoooooooooooooongName"; newname = "Loooooooooooooon.TF.2" */
-	sprintf(newname, "%.*s.TF.%0*d", MAX_ID_NAME-(digits+5), matname, digits, flag);
+	 * e.g. matname = "MALoooooooooooooongName"; newname = "Loooooooooooooon.TF.2" */
+	BLI_snprintf(newname, MAX_ID_NAME, "%.*s.TF.%0*d", MAX_ID_NAME-(digits+5), matname, digits, flag);
 }
 
 /* returns -1 if no match */
@@ -1672,11 +1645,11 @@ static short mesh_addmaterial(Mesh *me, Material *ma)
 
 static void set_facetexture_flags(Material *ma, Image *image)
 {
-	if(image) {
+	if (image) {
 		ma->mode |= MA_FACETEXTURE;
 		/* we could check if the texture has alpha, but then more meshes sharing the same
 		 * material may need it. Let's make it simple. */
-		if(BKE_image_has_alpha(image))
+		if (BKE_image_has_alpha(image))
 			ma->mode |= MA_FACETEXTURE_ALPHA;
 	}
 }
@@ -1689,12 +1662,12 @@ static short convert_tfacenomaterial(Main *main, Mesh *me, MTFace *tf, int flag)
 	short mat_nr= -1;
 	
 	/* new material, the name uses the flag*/
-	sprintf(idname, "MAMaterial.TF.%0*d", integer_getdigits(flag), flag);
-	
+	BLI_snprintf(idname, sizeof(idname), "MAMaterial.TF.%0*d", integer_getdigits(flag), flag);
+
 	if ((ma= BLI_findstring(&main->mat, idname+2, offsetof(ID, name)+2))) {
 		mat_nr= mesh_getmaterialnumber(me, ma);
 		/* assign the material to the mesh */
-		if(mat_nr == -1) mat_nr= mesh_addmaterial(me, ma);
+		if (mat_nr == -1) mat_nr= mesh_addmaterial(me, ma);
 
 		/* if needed set "Face Textures [Alpha]" Material options */
 		set_facetexture_flags(ma, tf->tpage);
@@ -1703,7 +1676,7 @@ static short convert_tfacenomaterial(Main *main, Mesh *me, MTFace *tf, int flag)
 	else {
 		ma= add_material(idname+2);
 
-		if(ma){
+		if (ma) {
 			printf("TexFace Convert: Material \"%s\" created.\n", idname+2);
 			mat_nr= mesh_addmaterial(me, ma);
 			
@@ -1738,10 +1711,10 @@ static void convert_tfacematerial(Main *main, Material *ma)
 	CustomDataLayer *cdl;
 	char idname[MAX_ID_NAME];
 
-	for(me=main->mesh.first; me; me=me->id.next){
+	for (me=main->mesh.first; me; me=me->id.next) {
 		/* check if this mesh uses this material */
-		for(a=0;a<me->totcol;a++)
-			if(me->mat[a] == ma) break;
+		for (a=0;a<me->totcol;a++)
+			if (me->mat[a] == ma) break;
 			
 		/* no material found */
 		if (a == me->totcol) continue;
@@ -1752,8 +1725,8 @@ static void convert_tfacematerial(Main *main, Material *ma)
 		if (!cdl) continue;
 
 		/* loop over all the faces and stop at the ones that use the material*/
-		for(a=0, mf=me->mface; a<me->totface; a++, mf++) {
-			if(me->mat[mf->mat_nr] != ma) continue;
+		for (a=0, mf=me->mface; a<me->totface; a++, mf++) {
+			if (me->mat[mf->mat_nr] != ma) continue;
 
 			/* texface data for this face */
 			tf = ((MTFace*)cdl->data) + a;
@@ -1766,12 +1739,12 @@ static void convert_tfacematerial(Main *main, Material *ma)
 				/* material already existent, see if the mesh has it */
 				mat_nr = mesh_getmaterialnumber(me, mat_new);
 				/* material is not in the mesh, add it */
-				if(mat_nr == -1) mat_nr= mesh_addmaterial(me, mat_new);
+				if (mat_nr == -1) mat_nr= mesh_addmaterial(me, mat_new);
 			}
 			/* create a new material */
 			else {
 				mat_new=copy_material(ma);
-				if(mat_new){
+				if (mat_new) {
 					/* rename the material*/
 					strcpy(mat_new->id.name, idname);
 					id_us_min((ID *)mat_new);	
@@ -1790,15 +1763,15 @@ static void convert_tfacematerial(Main *main, Material *ma)
 			 * set "Face Textures [Alpha]" Material options 
 			 * actually we need to run it always, because of old behavior
 			 * of using face texture if any texture channel was present (multitex) */
-			//if((!mat_new->mtex[0]) && (!mat_new->mtex[0]->tex))
+			//if ((!mat_new->mtex[0]) && (!mat_new->mtex[0]->tex))
 			set_facetexture_flags(mat_new, tf->tpage);
 
 			/* set the material number to the face*/
 			mf->mat_nr = mat_nr;
 		}
 		/* remove material from mesh */
-		for(a=0;a<me->totcol;)
-			if(me->mat[a] == ma) material_pop_id(&me->id, a, 1);else a++;
+		for (a=0;a<me->totcol;)
+			if (me->mat[a] == ma) material_pop_id(&me->id, a, 1);else a++;
 	}
 }
 
@@ -1832,7 +1805,7 @@ int do_version_tface(Main *main, int fileload)
 	 */
 	
 	/* 1st part: marking mesh materials to update */
-	for(me=main->mesh.first; me; me=me->id.next){
+	for (me=main->mesh.first; me; me=me->id.next) {
 		if (me->id.lib) continue;
 
 		/* get the active tface layer */
@@ -1843,7 +1816,7 @@ int do_version_tface(Main *main, int fileload)
 		nomaterialslots = (me->totcol==0?1:0);
 		
 		/* loop over all the faces*/
-		for(a=0, mf=me->mface; a<me->totface; a++, mf++) {
+		for (a=0, mf=me->mface; a<me->totface; a++, mf++) {
 			/* texface data for this face */
 			tf = ((MTFace*)cdl->data) + a;
 
@@ -1851,12 +1824,12 @@ int do_version_tface(Main *main, int fileload)
 			if (fileload)
 				tf->mode &= ~TF_CONVERTED;
 			else {
-				if((tf->mode & TF_CONVERTED)) continue;
+				if ((tf->mode & TF_CONVERTED)) continue;
 				else tf->mode |= TF_CONVERTED;
 			}
 			
 			/* no material slots */
-			if(nomaterialslots) {
+			if (nomaterialslots) {
 				flag = encode_tfaceflag(tf, 1);
 				
 				/* create/find a new material and assign to the face */
@@ -1868,11 +1841,11 @@ int do_version_tface(Main *main, int fileload)
 					mf->mat_nr = -1;
 				}
 			}
-			else if(mf->mat_nr < me->totcol) {
+			else if (mf->mat_nr < me->totcol) {
 				ma= me->mat[mf->mat_nr];
 				
 				/* no material create one if necessary */
-				if(!ma) {
+				if (!ma) {
 					/* find a new material and assign to the face */
 					flag = encode_tfaceflag(tf, 1);
 
@@ -1887,11 +1860,11 @@ int do_version_tface(Main *main, int fileload)
 				 * at doversion time: direct_link might not have happened on it,
 				 * so ma->mtex is not pointing to valid memory yet.
 				 * later we could, but it's better not */
-				else if(ma->id.lib)
+				else if (ma->id.lib)
 					continue;
 				
 				/* material already marked as disputed */
-				else if(ma->game.flag == MAT_BGE_DISPUTED)
+				else if (ma->game.flag == MAT_BGE_DISPUTED)
 					continue;
 
 				/* found a material */
@@ -1913,23 +1886,24 @@ int do_version_tface(Main *main, int fileload)
 						ma->game.flag = -flag;
 						
 						/* some people uses multitexture with TexFace by creating a texture
-						 * channel which not neccessarly the tf->tpage image. But the game engine
+						 * channel which not necessarily the tf->tpage image. But the game engine
 						 * was enabling it. Now it's required to set "Face Texture [Alpha] in the
 						 * material settings. */
-						if(!fileload)
+						if (!fileload)
 							set_facetexture_flags(ma, tf->tpage);
 					}
 				}
 			}
-			else
+			else {
 				continue;
+			}
 		}
 
 		/* if we didn't have material slot and now we do, we need to
 		 * make sure the materials are correct */
-		if(nomaterialslots) {
+		if (nomaterialslots) {
 			if (me->totcol>0) {
-				for(a=0, mf=me->mface; a<me->totface; a++, mf++) {
+				for (a=0, mf=me->mface; a<me->totface; a++, mf++) {
 					if (mf->mat_nr == -1) {
 						/* texface data for this face */
 						tf = ((MTFace*)cdl->data) + a;
@@ -1938,7 +1912,7 @@ int do_version_tface(Main *main, int fileload)
 				}
 			}
 			else {
-				for(a=0, mf=me->mface; a<me->totface; a++, mf++) {
+				for (a=0, mf=me->mface; a<me->totface; a++, mf++) {
 					mf->mat_nr=0;
 				}
 			}
@@ -1973,10 +1947,10 @@ int do_version_tface(Main *main, int fileload)
 			/* material is good make sure all faces using
 			 * this material are set to converted */
 			if (fileload) {
-				for(me=main->mesh.first; me; me=me->id.next){
+				for (me=main->mesh.first; me; me=me->id.next) {
 					/* check if this mesh uses this material */
-					for(a=0;a<me->totcol;a++)
-						if(me->mat[a] == ma) break;
+					for (a=0;a<me->totcol;a++)
+						if (me->mat[a] == ma) break;
 						
 					/* no material found */
 					if (a == me->totcol) continue;
@@ -1999,9 +1973,11 @@ int do_version_tface(Main *main, int fileload)
 		}
 		/* material is not used by faces with texface
 		 * set the default flag - do it only once */
-		else
-			 if (fileload)
-					ma->game.flag = GEMAT_BACKCULL;
+		else {
+			if (fileload) {
+				ma->game.flag = GEMAT_BACKCULL;
+			}
+		}
 	}
 
 	return nowarning;

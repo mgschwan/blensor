@@ -29,8 +29,8 @@
  *  \ingroup ketsji
  */
 
-#ifndef __KX_FONTOBJECT
-#define  __KX_FONTOBJECT
+#ifndef __KX_FONTOBJECT_H__
+#define  __KX_FONTOBJECT_H__
 #include "KX_GameObject.h"
 #include "DNA_vfont_types.h"
 #include "RAS_IRenderTools.h"
@@ -38,7 +38,7 @@
 class KX_FontObject : public KX_GameObject
 {
 public:
-	Py_Header;
+	Py_Header
 	KX_FontObject(	void* sgReplicationInfo,
 					SG_Callbacks callbacks,
 					RAS_IRenderTools* rendertools,
@@ -57,27 +57,31 @@ public:
 	virtual void ProcessReplica();
 
 protected:
-	STR_String		m_text;
+	std::vector<STR_String>		m_text;
 	Object*			m_object;
 	int			m_fontid;
 	int			m_dpi;
 	float			m_fsize;
 	float			m_resolution;
 	float			m_color[4];
+	float			m_line_spacing;
+	MT_Vector3		m_offset;
 
 	class RAS_IRenderTools*	m_rendertools;	//needed for drawing routine
 
-/*
+#if 0 // WHY COMMENTED? - campbell
 #ifdef WITH_CXX_GUARDEDALLOC
 public:
 	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:KX_FontObject"); }
 	void operator delete( void *mem ) { MEM_freeN(mem); }
 #endif
-*/
+#endif
 
 #ifdef WITH_PYTHON
+	static PyObject*	pyattr_get_text(void* self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static int			pyattr_set_text(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
 #endif
 
 };
 
-#endif //__KX_FONTOBJECT
+#endif //__KX_FONTOBJECT_H__

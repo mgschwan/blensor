@@ -39,6 +39,8 @@ KX_BlenderCanvas::KX_BlenderCanvas(struct wmWindow *win, RAS_Rect &rect, struct 
 m_win(win),
 m_frame_rect(rect)
 {
+	// initialize area so that it's available for game logic on frame 1 (ImageViewport)
+	m_area_rect = rect;
 	// area boundaries needed for mouse coordinates in Letterbox framing mode
 	m_area_left = ar->winrct.xmin;
 	m_area_top = ar->winrct.ymax;
@@ -57,6 +59,11 @@ void KX_BlenderCanvas::Init()
 void KX_BlenderCanvas::SwapBuffers()
 {
 	BL_SwapBuffers(m_win);
+}
+
+void KX_BlenderCanvas::ResizeWindow(int width, int height)
+{
+	// Not implemented for the embedded player
 }
 
 void KX_BlenderCanvas::BeginFrame()
@@ -134,7 +141,7 @@ float KX_BlenderCanvas::GetMouseNormalizedY(int y)
 RAS_Rect &
 KX_BlenderCanvas::
 GetWindowArea(
-){
+) {
 	return m_area_rect;
 }	
 
@@ -143,7 +150,7 @@ KX_BlenderCanvas::
 SetViewPort(
 	int x1, int y1,
 	int x2, int y2
-){
+) {
 	/*	x1 and y1 are the min pixel coordinate (e.g. 0)
 		x2 and y2 are the max pixel coordinate
 		the width,height is calculated including both pixels

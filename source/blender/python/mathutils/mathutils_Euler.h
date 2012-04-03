@@ -27,33 +27,34 @@
  *
  */
 
-/** \file blender/python/generic/mathutils_Euler.h
- *  \ingroup pygen
+/** \file blender/python/mathutils/mathutils_Euler.h
+ *  \ingroup pymathutils
  */
 
 
-#ifndef MATHUTILS_EULER_H
-#define MATHUTILS_EULER_H
+#ifndef __MATHUTILS_EULER_H__
+#define __MATHUTILS_EULER_H__
 
 extern PyTypeObject euler_Type;
 #define EulerObject_Check(_v) PyObject_TypeCheck((_v), &euler_Type)
 
 typedef struct {
-	BASE_MATH_MEMBERS(eul)
+	BASE_MATH_MEMBERS(eul);
 	unsigned char order;		/* rotation order */
 
 } EulerObject;
 
-/*struct data contains a pointer to the actual data that the
-object uses. It can use either PyMem allocated data (which will
-be stored in py_data) or be a wrapper for data allocated through
-blender (stored in blend_data). This is an either/or struct not both*/
+/* struct data contains a pointer to the actual data that the
+ * object uses. It can use either PyMem allocated data (which will
+ * be stored in py_data) or be a wrapper for data allocated through
+ * blender (stored in blend_data). This is an either/or struct not both */
 
 //prototypes
-PyObject *newEulerObject( float *eul, short order, int type, PyTypeObject *base_type);
-PyObject *newEulerObject_cb(PyObject *cb_user, short order, int cb_type, int cb_subtype);
+PyObject *Euler_CreatePyObject(float *eul, short order, int type, PyTypeObject *base_type);
+PyObject *Euler_CreatePyObject_cb(PyObject *cb_user, short order,
+                                  unsigned char cb_type, unsigned char cb_subtype);
 
 short euler_order_from_string(const char *str, const char *error_prefix);
 
 
-#endif /* MATHUTILS_EULER_H */
+#endif /* __MATHUTILS_EULER_H__ */

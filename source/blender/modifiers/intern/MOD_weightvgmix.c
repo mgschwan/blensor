@@ -153,8 +153,10 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
 	dataMask |= CD_MASK_MDEFORMVERT;
 
 	/* Ask for UV coordinates if we need them. */
-	if(wmd->mask_tex_mapping == MOD_DISP_MAP_UV)
+	if (wmd->mask_tex_mapping == MOD_DISP_MAP_UV)
 		dataMask |= CD_MASK_MTFACE;
+
+	/* No need to ask for CD_PREVIEW_MLOOPCOL... */
 
 	return dataMask;
 }
@@ -163,7 +165,7 @@ static int dependsOnTime(ModifierData *md)
 {
 	WeightVGMixModifierData *wmd = (WeightVGMixModifierData*) md;
 
-	if(wmd->mask_texture)
+	if (wmd->mask_texture)
 		return BKE_texture_dependsOnTime(wmd->mask_texture);
 	return 0;
 }
@@ -196,14 +198,14 @@ static void updateDepgraph(ModifierData *md, DagForest *forest, struct Scene *UN
 	WeightVGMixModifierData *wmd = (WeightVGMixModifierData*) md;
 	DagNode *curNode;
 
-	if(wmd->mask_tex_map_obj && wmd->mask_tex_mapping == MOD_DISP_MAP_OBJECT) {
+	if (wmd->mask_tex_map_obj && wmd->mask_tex_mapping == MOD_DISP_MAP_OBJECT) {
 		curNode = dag_get_node(forest, wmd->mask_tex_map_obj);
 
 		dag_add_relation(forest, curNode, obNode, DAG_RL_DATA_DATA|DAG_RL_OB_DATA,
 		                 "WeightVGMix Modifier");
 	}
 
-	if(wmd->mask_tex_mapping == MOD_DISP_MAP_GLOBAL)
+	if (wmd->mask_tex_mapping == MOD_DISP_MAP_GLOBAL)
 		dag_add_relation(forest, obNode, obNode, DAG_RL_DATA_DATA|DAG_RL_OB_DATA,
 		                 "WeightVGMix Modifier");
 }
@@ -219,10 +221,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
                                   int UNUSED(useRenderParams), int UNUSED(isFinalCalc))
 {
 	WeightVGMixModifierData *wmd = (WeightVGMixModifierData*) md;
-	DerivedMesh *dm = derivedData, *ret = NULL;
-#if 0
-	Mesh *ob_m = NULL;
-#endif
+	DerivedMesh *dm = derivedData;
 	MDeformVert *dvert = NULL;
 	MDeformWeight **dw1, **tdw1, **dw2, **tdw2;
 	int numVerts;
@@ -232,7 +231,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 	int *tidx, *indices = NULL;
 	int numIdx = 0;
 	int i;
-	char rel_ret = 0; /* Boolean, whether we have to release ret dm or not, when not using it! */
+	/* Flags. */
+#if 0
+	int do_prev = (wmd->modifier.mode & eModifierMode_DoWeightPreview);
+#endif
 
 	/* Get number of verts. */
 	numVerts = dm->getNumVerts(dm);
@@ -254,49 +256,18 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 			return dm;
 	}
 
-	/* XXX All this to avoid copying dm when not needed... However, it nearly doubles compute
-	 *     time! See scene 5 of the WeighVG test file...
-	 */
-#if 0
-	/* Get actual dverts (ie vertex group data). */
-	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
-	/* If no dverts, return unmodified data... */
-	if (dvert == NULL)
-		return dm;
-
-	/* Get org mesh, only to test whether affected cdata layer has already been copied
-	 * somewhere up in the modifiers stack.
-	 */
-	ob_m = get_mesh(ob);
-	if (ob_m == NULL)
-		return dm;
-
-	/* Create a copy of our dmesh, only if our affected cdata layer is the same as org mesh. */
-	if (dvert == CustomData_get_layer(&ob_m->vdata, CD_MDEFORMVERT)) {
-		/* XXX Seems to create problems with weightpaint mode???
-		 *     I'm missing something here, I guess...
-		 */
-//		DM_set_only_copy(dm, CD_MASK_MDEFORMVERT); /* Only copy defgroup layer. */
-		ret = CDDM_copy(dm);
-		dvert = ret->getVertDataArray(ret, CD_MDEFORMVERT);
-		if (dvert == NULL) {
-			ret->release(ret);
+	dvert = CustomData_duplicate_referenced_layer(&dm->vertData, CD_MDEFORMVERT, numVerts);
+	/* If no vertices were ever added to an object's vgroup, dvert might be NULL. */
+	if (!dvert)
+		/* If not affecting all vertices, just return. */
+		if (wmd->mix_set != MOD_WVG_SET_ALL)
 			return dm;
-		}
-		rel_ret = 1;
-	}
-	else
-		ret = dm;
-#else
-	ret = CDDM_copy(dm);
-	rel_ret = 1;
-	dvert = ret->getVertDataArray(ret, CD_MDEFORMVERT);
-	if (dvert == NULL) {
-		if (rel_ret)
-			ret->release(ret);
-		return dm;
-	}
-#endif
+		/* Else, add a valid data layer! */
+		dvert = CustomData_add_layer_named(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
+		                                   NULL, numVerts, wmd->defgrp_name_a);
+		/* Ultimate security check. */
+		if (!dvert)
+			return dm;
 
 	/* Find out which vertices to work on. */
 	tidx = MEM_mallocN(sizeof(int) * numVerts, "WeightVGMix Modifier, tidx");
@@ -307,7 +278,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		/* All vertices in first vgroup. */
 		for (i = 0; i < numVerts; i++) {
 			MDeformWeight *dw = defvert_find_index(&dvert[i], defgrp_idx);
-			if(dw) {
+			if (dw) {
 				tdw1[numIdx] = dw;
 				tdw2[numIdx] = defvert_find_index(&dvert[i], defgrp_idx2);
 				tidx[numIdx++] = i;
@@ -318,7 +289,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		/* All vertices in second vgroup. */
 		for (i = 0; i < numVerts; i++) {
 			MDeformWeight *dw = defvert_find_index(&dvert[i], defgrp_idx2);
-			if(dw) {
+			if (dw) {
 				tdw1[numIdx] = defvert_find_index(&dvert[i], defgrp_idx);
 				tdw2[numIdx] = dw;
 				tidx[numIdx++] = i;
@@ -330,7 +301,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		for (i = 0; i < numVerts; i++) {
 			MDeformWeight *adw = defvert_find_index(&dvert[i], defgrp_idx);
 			MDeformWeight *bdw = defvert_find_index(&dvert[i], defgrp_idx2);
-			if(adw || bdw) {
+			if (adw || bdw) {
 				tdw1[numIdx] = adw;
 				tdw2[numIdx] = bdw;
 				tidx[numIdx++] = i;
@@ -342,7 +313,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		for (i = 0; i < numVerts; i++) {
 			MDeformWeight *adw = defvert_find_index(&dvert[i], defgrp_idx);
 			MDeformWeight *bdw = defvert_find_index(&dvert[i], defgrp_idx2);
-			if(adw && bdw) {
+			if (adw && bdw) {
 				tdw1[numIdx] = adw;
 				tdw2[numIdx] = bdw;
 				tidx[numIdx++] = i;
@@ -359,13 +330,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		numIdx = -1;
 		break;
 	}
-	if(numIdx == 0) {
+	if (numIdx == 0) {
 		/* Use no vertices! Hence, return org data. */
 		MEM_freeN(tdw1);
 		MEM_freeN(tdw2);
 		MEM_freeN(tidx);
-		if (rel_ret)
-			ret->release(ret);
 		return dm;
 	}
 	if (numIdx != -1) {
@@ -400,7 +369,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 	}
 
 	/* Do masking. */
-	weightvg_do_mask(numIdx, indices, org_w, new_w, ob, ret, wmd->mask_constant,
+	weightvg_do_mask(numIdx, indices, org_w, new_w, ob, dm, wmd->mask_constant,
 	                 wmd->mask_defgrp_name, wmd->mask_texture, wmd->mask_tex_use_channel,
 	                 wmd->mask_tex_mapping, wmd->mask_tex_map_obj, wmd->mask_tex_uvlayer_name);
 
@@ -408,6 +377,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 	 * XXX Depending on the MOD_WVG_SET_xxx option chosen, we might have to add vertices to vgroup.
 	 */
 	weightvg_update_vg(dvert, defgrp_idx, dw1, numIdx, indices, org_w, TRUE, -FLT_MAX, FALSE, 0.0f);
+
+	/* If weight preview enabled... */
+#if 0 /* XXX Currently done in mod stack :/ */
+	if (do_prev)
+		DM_update_weight_mcol(ob, dm, 0, org_w, numIdx, indices);
+#endif
 
 	/* Freeing stuff. */
 	MEM_freeN(org_w);
@@ -419,11 +394,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		MEM_freeN(indices);
 
 	/* Return the vgroup-modified mesh. */
-	return ret;
+	return dm;
 }
 
 static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
-                                    struct EditMesh *UNUSED(editData),
+                                    struct BMEditMesh *UNUSED(editData),
                                     DerivedMesh *derivedData)
 {
 	return applyModifier(md, ob, derivedData, 0, 1);
@@ -434,10 +409,11 @@ ModifierTypeInfo modifierType_WeightVGMix = {
 	/* name */              "VertexWeightMix",
 	/* structName */        "WeightVGMixModifierData",
 	/* structSize */        sizeof(WeightVGMixModifierData),
-	/* type */              eModifierTypeType_Nonconstructive,
+	/* type */              eModifierTypeType_NonGeometrical,
 	/* flags */             eModifierTypeFlag_AcceptsMesh
-/*	                       |eModifierTypeFlag_SupportsMapping*/
-	                       |eModifierTypeFlag_SupportsEditmode,
+	                       |eModifierTypeFlag_SupportsMapping
+	                       |eModifierTypeFlag_SupportsEditmode
+	                       |eModifierTypeFlag_UsesPreview,
 
 	/* copyData */          copyData,
 	/* deformVerts */       NULL,

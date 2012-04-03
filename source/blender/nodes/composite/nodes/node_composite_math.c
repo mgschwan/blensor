@@ -59,7 +59,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 		break; 
 	case 3: /* Divide */
 		{
-			if(in2[0]==0)	/* We don't want to divide by zero. */
+			if (in2[0]==0)	/* We don't want to divide by zero. */
 				out[0]= 0.0;
 			else
 				out[0]= in[0] / in2[0];
@@ -77,7 +77,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 	case 7: /* Arc-Sine */
 		{
 			/* Can't do the impossible... */
-			if(in[0] <= 1 && in[0] >= -1 )
+			if (in[0] <= 1 && in[0] >= -1 )
 				out[0]= asin(in[0]);
 			else
 				out[0]= 0.0;
@@ -86,7 +86,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 	case 8: /* Arc-Cosine */
 		{
 			/* Can't do the impossible... */
-			if( in[0] <= 1 && in[0] >= -1 )
+			if ( in[0] <= 1 && in[0] >= -1 )
 				out[0]= acos(in[0]);
 			else
 				out[0]= 0.0;
@@ -98,15 +98,17 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 	case 10: /* Power */
 		{
 			/* Only raise negative numbers by full integers */
-			if( in[0] >= 0 ) {
+			if ( in[0] >= 0 ) {
 				out[0]= pow(in[0], in2[0]);
-			} else {
+			}
+			else {
 				float y_mod_1 = fmod(in2[0], 1);
 				/* if input value is not nearly an integer, fall back to zero, nicer than straight rounding */
-				if (y_mod_1 > 0.999 || y_mod_1 < 0.001) {
-					out[0]= pow(in[0], floor(in2[0] + 0.5));
-				} else {
-					out[0] = 0.0;
+				if (y_mod_1 > 0.999f || y_mod_1 < 0.001f) {
+					out[0]= powf(in[0], floorf(in2[0] + 0.5f));
+				}
+				else {
+					out[0] = 0.0f;
 				}
 			}
 		}
@@ -114,7 +116,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 	case 11: /* Logarithm */
 		{
 			/* Don't want any imaginary numbers... */
-			if( in[0] > 0  && in2[0] > 0 )
+			if ( in[0] > 0  && in2[0] > 0 )
 				out[0]= log(in[0]) / log(in2[0]);
 			else
 				out[0]= 0.0;
@@ -122,7 +124,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 		break;
 	case 12: /* Minimum */
 		{
-			if( in[0] < in2[0] )
+			if ( in[0] < in2[0] )
 				out[0]= in[0];
 			else
 				out[0]= in2[0];
@@ -130,7 +132,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 		break;
 	case 13: /* Maximum */
 		{
-			if( in[0] > in2[0] )
+			if ( in[0] > in2[0] )
 				out[0]= in[0];
 			else
 				out[0]= in2[0];
@@ -139,7 +141,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 	case 14: /* Round */
 		{
 			/* round by the second value */
-			if( in2[0] != 0.0f )
+			if ( in2[0] != 0.0f )
 				out[0]= floorf(in[0] / in2[0] + 0.5f) * in2[0];
 			else
 				out[0]= floorf(in[0] + 0.5f);
@@ -147,7 +149,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 		break;
 	case 15: /* Less Than */
 		{
-			if( in[0] < in2[0] )
+			if ( in[0] < in2[0] )
 				out[0]= 1.0f;
 			else
 				out[0]= 0.0f;
@@ -155,7 +157,7 @@ static void do_math(bNode *node, float *out, float *in, float *in2)
 		break;
 	case 16: /* Greater Than */
 		{
-			if( in[0] > in2[0] )
+			if ( in[0] > in2[0] )
 				out[0]= 1.0f;
 			else
 				out[0]= 0.0f;
@@ -171,16 +173,16 @@ static void node_composit_exec_math(void *UNUSED(data), bNode *node, bNodeStack 
 	CompBuf *stackbuf; 
 
 	/* check for inputs and outputs for early out*/
-	if(out[0]->hasoutput==0) return;
+	if (out[0]->hasoutput==0) return;
 
 	/* no image-color operation */
-	if(in[0]->data==NULL && in[1]->data==NULL) {
+	if (in[0]->data==NULL && in[1]->data==NULL) {
 		do_math(node, out[0]->vec, in[0]->vec, in[1]->vec);
 		return;
 	}
 
 	/*create output based on first input */
-	if(cbuf) {
+	if (cbuf) {
 		stackbuf=alloc_compbuf(cbuf->x, cbuf->y, CB_VAL, 1);
 	}
 	/* and if it doesn't exist use the second input since we 
@@ -194,19 +196,15 @@ static void node_composit_exec_math(void *UNUSED(data), bNode *node, bNodeStack 
 	out[0]->data= stackbuf;
 }
 
-void register_node_type_cmp_math(ListBase *lb)
+void register_node_type_cmp_math(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_MATH, "Math", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_MATH, "Math", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_math_in, cmp_node_math_out);
 	node_type_size(&ntype, 120, 110, 160);
 	node_type_label(&ntype, node_math_label);
 	node_type_exec(&ntype, node_composit_exec_math);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-
-
-

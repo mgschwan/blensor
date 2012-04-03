@@ -36,7 +36,7 @@
 /* **************** Displace  ******************** */
 
 static bNodeSocketTemplate cmp_node_displace_in[]= {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f},
+	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
 	{	SOCK_VECTOR, 1, "Vector",			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_TRANSLATION},
 	{	SOCK_FLOAT, 1, "X Scale",				0.0f, 0.0f, 0.0f, 0.0f, -1000.0f, 1000.0f, PROP_FACTOR},
 	{	SOCK_FLOAT, 1, "Y Scale",				0.0f, 0.0f, 0.0f, 0.0f, -1000.0f, 1000.0f, PROP_FACTOR},
@@ -49,7 +49,7 @@ static bNodeSocketTemplate cmp_node_displace_out[]= {
 
 /* minimum distance (in pixels) a pixel has to be displaced
  * in order to take effect */
-#define DISPLACE_EPSILON	0.01
+#define DISPLACE_EPSILON	0.01f
 
 static void do_displace(bNode *node, CompBuf *stackbuf, CompBuf *cbuf, CompBuf *vecbuf, float *UNUSED(veccol), CompBuf *xbuf,  CompBuf *ybuf, float *xscale, float *yscale)
 {
@@ -66,8 +66,8 @@ static void do_displace(bNode *node, CompBuf *stackbuf, CompBuf *cbuf, CompBuf *
 	ibuf= IMB_allocImBuf(cbuf->x, cbuf->y, 32, 0);
 	ibuf->rect_float= cbuf->rect;
 	
-	for(y=0; y < stackbuf->y; y++) {
-		for(x=0; x < stackbuf->x; x++) {
+	for (y=0; y < stackbuf->y; y++) {
+		for (x=0; x < stackbuf->x; x++) {
 			/* calc pixel coordinates */
 			qd_getPixel(vecbuf, x-vecbuf->xof, y-vecbuf->yof, vec);
 			
@@ -117,10 +117,10 @@ static void do_displace(bNode *node, CompBuf *stackbuf, CompBuf *cbuf, CompBuf *
 			ibuf_sample(ibuf, u, v, dxt, dyt, col);
 			qd_setPixel(stackbuf, x, y, col);
 			
-			if(node->exec & NODE_BREAK) break;
+			if (node->exec & NODE_BREAK) break;
 		}
 		
-		if(node->exec & NODE_BREAK) break;
+		if (node->exec & NODE_BREAK) break;
 	}
 	IMB_freeImBuf(ibuf);
 	
@@ -133,8 +133,8 @@ static void do_displace(bNode *node, CompBuf *stackbuf, CompBuf *cbuf, CompBuf *
 	float vec[3];
 	float col[3];
 	
-	for(y=0; y < stackbuf->y; y++) {
-		for(x=0; x < stackbuf->x; x++) {
+	for (y=0; y < stackbuf->y; y++) {
+		for (x=0; x < stackbuf->x; x++) {
 			qd_getPixel(vecbuf, x, y, vec);
 			
 			dx = vec[0] * (xscale[0]);
@@ -153,10 +153,10 @@ static void do_displace(bNode *node, CompBuf *stackbuf, CompBuf *cbuf, CompBuf *
 
 static void node_composit_exec_displace(void *UNUSED(data), bNode *node, bNodeStack **in, bNodeStack **out)
 {
-	if(out[0]->hasoutput==0)
+	if (out[0]->hasoutput==0)
 		return;
 	
-	if(in[0]->data && in[1]->data) {
+	if (in[0]->data && in[1]->data) {
 		CompBuf *cbuf= in[0]->data;
 		CompBuf *vecbuf= in[1]->data;
 		CompBuf *xbuf= in[2]->data;
@@ -175,23 +175,21 @@ static void node_composit_exec_displace(void *UNUSED(data), bNode *node, bNodeSt
 		out[0]->data= stackbuf;
 		
 		
-		if(cbuf!=in[0]->data)
+		if (cbuf!=in[0]->data)
 			free_compbuf(cbuf);
-		if(vecbuf!=in[1]->data)
+		if (vecbuf!=in[1]->data)
 			free_compbuf(vecbuf);
 	}
 }
 
-void register_node_type_cmp_displace(ListBase *lb)
+void register_node_type_cmp_displace(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_DISPLACE, "Displace", NODE_CLASS_DISTORT, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_DISPLACE, "Displace", NODE_CLASS_DISTORT, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_displace_in, cmp_node_displace_out);
 	node_type_size(&ntype, 140, 100, 320);
 	node_type_exec(&ntype, node_composit_exec_displace);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-

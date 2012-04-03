@@ -29,8 +29,8 @@
  *  \ingroup bgeconv
  */
 
-#ifndef BL_SHAPEACTIONACTUATOR
-#define BL_SHAPEACTIONACTUATOR
+#ifndef __BL_SHAPEACTIONACTUATOR_H__
+#define __BL_SHAPEACTIONACTUATOR_H__
 
 #include "CTR_HashedPtr.h"
 #include "SCA_IActuator.h"
@@ -42,7 +42,7 @@ struct Key;
 class BL_ShapeActionActuator : public SCA_IActuator  
 {
 public:
-	Py_Header;
+	Py_Header
 	BL_ShapeActionActuator(SCA_IObject* gameobj,
 						const STR_String& propname,
 						const STR_String& framepropname,

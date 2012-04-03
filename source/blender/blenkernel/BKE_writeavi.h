@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BKE_WRITEAVI_H
-#define BKE_WRITEAVI_H
+#ifndef __BKE_WRITEAVI_H__
+#define __BKE_WRITEAVI_H__
 
 /** \file BKE_writeavi.h
  *  \ingroup bke
@@ -44,13 +44,14 @@ struct Scene;
 
 typedef struct bMovieHandle {
 	int (*start_movie)(struct Scene *scene, struct RenderData *rd, int rectx, int recty, struct ReportList *reports);
-	int (*append_movie)(struct RenderData *rd, int frame, int *pixels, int rectx, int recty, struct ReportList *reports);
+	int (*append_movie)(struct RenderData *rd, int start_frame, int frame, int *pixels,
+	                    int rectx, int recty, struct ReportList *reports);
 	void (*end_movie)(void);
 	int (*get_next_frame)(struct RenderData *rd, struct ReportList *reports); /* optional */
 	void (*get_movie_path)(char *string, struct RenderData *rd); /* optional */
 } bMovieHandle;
 
-bMovieHandle *BKE_get_movie_handle(int imtype);
+bMovieHandle *BKE_get_movie_handle(const char imtype);
 void BKE_makeanimstring(char *string, struct RenderData *rd);
 
 #ifdef __cplusplus

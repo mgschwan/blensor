@@ -54,18 +54,21 @@
 #define TEMPERING_SHIFT_T(y)  (y << 15)
 #define TEMPERING_SHIFT_L(y)  (y >> 18)
 
-SCA_RandomNumberGenerator::SCA_RandomNumberGenerator(long seed) {
+SCA_RandomNumberGenerator::SCA_RandomNumberGenerator(long seed)
+{
 	// int mti = N + 1; /*unused*/
 	m_seed = seed;
 	m_refcount = 1;
 	SetStartVector();
 }
 
-SCA_RandomNumberGenerator::~SCA_RandomNumberGenerator() {
+SCA_RandomNumberGenerator::~SCA_RandomNumberGenerator()
+{
 	/* intentionally empty */
 }
 
-void SCA_RandomNumberGenerator::SetStartVector(void) {
+void SCA_RandomNumberGenerator::SetStartVector(void)
+{
 	/* setting initial seeds to mt[N] using         */
 	/* the generator Line 25 of Table 1 in          */
 	/* [KNUTH 1981, The Art of Computer Programming */
@@ -85,7 +88,8 @@ void SCA_RandomNumberGenerator::SetSeed(long newseed)
 /**
  * This is the important part: copied verbatim :)
  */
-unsigned long SCA_RandomNumberGenerator::Draw() {
+unsigned long SCA_RandomNumberGenerator::Draw()
+{
 	static unsigned long mag01[2] = { 0x0, MATRIX_A };
 	/* mag01[x] = x * MATRIX_A  for x=0,1 */
 
@@ -121,7 +125,8 @@ unsigned long SCA_RandomNumberGenerator::Draw() {
 	return y;
 }
 
-float SCA_RandomNumberGenerator::DrawFloat() {
+float SCA_RandomNumberGenerator::DrawFloat()
+{
 	return ( (float) Draw()/ (unsigned long) 0xffffffff );
 }
 

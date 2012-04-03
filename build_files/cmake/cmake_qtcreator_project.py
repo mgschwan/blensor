@@ -40,10 +40,18 @@ from project_info import (SIMPLE_PROJECTFILE,
                           is_py,
                           cmake_advanced_info,
                           cmake_compiler_defines,
+                          project_name_get,
                           )
 
 import os
 import sys
+
+
+def quote_define(define):
+    if " " in define.strip():
+        return '"%s"' % define
+    else:
+        return define
 
 
 def create_qtc_project_main():
@@ -59,7 +67,8 @@ def create_qtc_project_main():
         f.write("\n".join(files_rel))
 
         f = open(os.path.join(PROJECT_DIR, "%s.includes" % PROJECT_NAME), 'w')
-        f.write("\n".join(sorted(list(set(os.path.dirname(f) for f in files_rel if is_c_header(f))))))
+        f.write("\n".join(sorted(list(set(os.path.dirname(f)
+                          for f in files_rel if is_c_header(f))))))
 
         qtc_prj = os.path.join(PROJECT_DIR, "%s.creator" % PROJECT_NAME)
         f = open(qtc_prj, 'w')
@@ -73,15 +82,21 @@ def create_qtc_project_main():
         includes, defines = cmake_advanced_info()
 
         # for some reason it doesnt give all internal includes
-        includes = list(set(includes) | set(os.path.dirname(f) for f in files_rel if is_c_header(f)))
+        includes = list(set(includes) | set(os.path.dirname(f)
+                        for f in files_rel if is_c_header(f)))
         includes.sort()
 
-        PROJECT_NAME = "Blender"
+        if 0:
+            PROJECT_NAME = "Blender"
+        else:
+            # be tricky, get the project name from SVN if we can!
+            PROJECT_NAME = project_name_get(SOURCE_DIR)
+
         FILE_NAME = PROJECT_NAME.lower()
         f = open(os.path.join(PROJECT_DIR, "%s.files" % FILE_NAME), 'w')
         f.write("\n".join(files_rel))
 
-        f = open(os.path.join(PROJECT_DIR, "%s.includes" % FILE_NAME), 'w')
+        f = open(os.path.join(PROJECT_DIR, "%s.includes" % FILE_NAME), 'w', encoding='utf-8')
         f.write("\n".join(sorted(includes)))
 
         qtc_prj = os.path.join(PROJECT_DIR, "%s.creator" % FILE_NAME)
@@ -91,12 +106,12 @@ def create_qtc_project_main():
         qtc_cfg = os.path.join(PROJECT_DIR, "%s.config" % FILE_NAME)
         f = open(qtc_cfg, 'w')
         f.write("// ADD PREDEFINED MACROS HERE!\n")
-        defines_final = [("#define %s %s" % item) for item in defines]
+        defines_final = [("#define %s %s" % (item[0], quote_define(item[1]))) for item in defines]
         if sys.platform != "win32":
-            defines_final += cmake_compiler_defines()  # defines from the compiler
+            defines_final += cmake_compiler_defines()
         f.write("\n".join(defines_final))
 
-    print("Blender project file written to: %s" % qtc_prj)
+    print("Blender project file written to: %r" % qtc_prj)
     # --- end
 
 
@@ -106,7 +121,12 @@ def create_qtc_project_python():
     files_rel.sort()
 
     # --- qtcreator specific, simple format
-    PROJECT_NAME = "Blender_Python"
+    if 0:
+        PROJECT_NAME = "Blender_Python"
+    else:
+        # be tricky, get the project name from SVN if we can!
+        PROJECT_NAME = project_name_get(SOURCE_DIR) + "_Python"
+
     FILE_NAME = PROJECT_NAME.lower()
     f = open(os.path.join(PROJECT_DIR, "%s.files" % FILE_NAME), 'w')
     f.write("\n".join(files_rel))
@@ -120,7 +140,7 @@ def create_qtc_project_python():
         f = open(qtc_cfg, 'w')
         f.write("// ADD PREDEFINED MACROS HERE!\n")
 
-    print("Python project file written to:  %s" % qtc_prj)
+    print("Python project file written to:  %r" % qtc_prj)
 
 
 def main():

@@ -29,8 +29,8 @@
  */
 
 
-#ifndef ED_OUTLINER_INTERN_H
-#define ED_OUTLINER_INTERN_H
+#ifndef __OUTLINER_INTERN_H__
+#define __OUTLINER_INTERN_H__
 
 #include "RNA_types.h"
 
@@ -127,20 +127,20 @@ typedef struct TreeElement {
 
 
 /* Outliner Searching --
-
-   Are we looking for something in the outliner?
-   If so finding matches in child items makes it more useful
-
-	 - We want to flag parents to act as being open to filter child matches 
-	 - and also flag matches so we can highlight them
-	 - Flags are stored in TreeStoreElem->flag
-	 - Flag options defined in DNA_outliner_types.h
-	 - SO_SEARCH_RECURSIVE defined in DNA_space_types.h
-	 
-	 - NOT in datablocks view - searching all datablocks takes way too long 
-		to be useful
-	 - not searching into RNA items helps but isn't the complete solution
-	*/
+ *
+ * Are we looking for something in the outliner?
+ * If so finding matches in child items makes it more useful
+ *
+ * - We want to flag parents to act as being open to filter child matches 
+ * - and also flag matches so we can highlight them
+ * - Flags are stored in TreeStoreElem->flag
+ * - Flag options defined in DNA_outliner_types.h
+ * - SO_SEARCH_RECURSIVE defined in DNA_space_types.h
+ *
+ * - NOT in datablocks view - searching all datablocks takes way too long 
+ *   to be useful
+ * - not searching into RNA items helps but isn't the complete solution
+ */
 
 #define SEARCHING_OUTLINER(sov)   (sov->search_flags & SO_SEARCH_RECURSIVE)
 
@@ -188,6 +188,9 @@ void group_toggle_renderability_cb(struct bContext *C, struct Scene *scene, Tree
 
 void item_rename_cb(struct bContext *C, struct Scene *scene, TreeElement *te, struct TreeStoreElem *tsep, struct TreeStoreElem *tselem);
 
+TreeElement *outliner_dropzone_parent(struct bContext *C, struct wmEvent *event, struct TreeElement *te, float *fmval);
+int outliner_dropzone_parent_clear(struct bContext *C, struct wmEvent *event, struct TreeElement *te, float *fmval);
+
 /* ...................................................... */
 
 void OUTLINER_OT_item_activate(struct wmOperatorType *ot);
@@ -197,6 +200,8 @@ void OUTLINER_OT_item_rename(struct wmOperatorType *ot);
 void OUTLINER_OT_show_one_level(struct wmOperatorType *ot);
 void OUTLINER_OT_show_active(struct wmOperatorType *ot);
 void OUTLINER_OT_show_hierarchy(struct wmOperatorType *ot);
+
+void OUTLINER_OT_select_border(struct wmOperatorType *ot);
 
 void OUTLINER_OT_selected_toggle(struct wmOperatorType *ot);
 void OUTLINER_OT_expanded_toggle(struct wmOperatorType *ot);
@@ -212,6 +217,9 @@ void OUTLINER_OT_keyingset_remove_selected(struct wmOperatorType *ot);
 
 void OUTLINER_OT_drivers_add_selected(struct wmOperatorType *ot);
 void OUTLINER_OT_drivers_delete_selected(struct wmOperatorType *ot);
+
+void OUTLINER_OT_parent_drop(struct wmOperatorType *ot);
+void OUTLINER_OT_parent_clear(struct wmOperatorType *ot);
 
 /* outliner_tools.c ---------------------------------------------- */
 
@@ -229,7 +237,4 @@ void OUTLINER_OT_action_set(struct wmOperatorType *ot);
 void outliner_operatortypes(void);
 void outliner_keymap(struct wmKeyConfig *keyconf);
 
-/* outliner_header.c */
-void outliner_header_buttons(const struct bContext *C, struct ARegion *ar);
-
-#endif /* ED_OUTLINER_INTERN_H */
+#endif /* __OUTLINER_INTERN_H__ */

@@ -54,14 +54,20 @@ static void colorfn(float *out, TexParams *p, bNode *node, bNodeStack **in, shor
 	float co[3], dxt[3], dyt[3];
 	
 	copy_v3_v3(co, p->co);
-	copy_v3_v3(dxt, p->dxt);
-	copy_v3_v3(dyt, p->dyt);
-	
-	if(node->custom2 || node->need_exec==0) {
-		/* this node refers to its own texture tree! */
-		QUATCOPY(out, (fabs(co[0] - co[1]) < .01) ? white : red );
+	if (p->osatex) {
+		copy_v3_v3(dxt, p->dxt);
+		copy_v3_v3(dyt, p->dyt);
 	}
-	else if(nodetex) {
+	else {
+		zero_v3(dxt);
+		zero_v3(dyt);
+	}
+	
+	if (node->custom2 || node->need_exec==0) {
+		/* this node refers to its own texture tree! */
+		copy_v4_v4(out, (fabs(co[0] - co[1]) < .01) ? white : red );
+	}
+	else if (nodetex) {
 		TexResult texres;
 		int textype;
 		float nor[] = {0,0,0};
@@ -74,12 +80,12 @@ static void colorfn(float *out, TexParams *p, bNode *node, bNodeStack **in, shor
 		textype = multitex_nodes(nodetex, co, dxt, dyt, p->osatex,
 			&texres, thread, 0, p->shi, p->mtex);
 		
-		if(textype & TEX_RGB) {
-			QUATCOPY(out, &texres.tr);
+		if (textype & TEX_RGB) {
+			copy_v4_v4(out, &texres.tr);
 		}
 		else {
-			QUATCOPY(out, col1);
-			ramp_blend(MA_RAMP_BLEND, out, out+1, out+2, texres.tin, col2);
+			copy_v4_v4(out, col1);
+			ramp_blend(MA_RAMP_BLEND, out, texres.tin, col2);
 		}
 	}
 }
@@ -89,14 +95,14 @@ static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
 	tex_output(node, in, out[0], &colorfn, data);
 }
 
-void register_node_type_tex_texture(ListBase *lb)
+void register_node_type_tex_texture(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 	
-	node_type_base(&ntype, TEX_NODE_TEXTURE, "Texture", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
+	node_type_base(ttype, &ntype, TEX_NODE_TEXTURE, "Texture", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, inputs, outputs);
 	node_type_size(&ntype, 120, 80, 240);
 	node_type_exec(&ntype, exec);
 	
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }

@@ -25,6 +25,7 @@ class ModifierButtonsPanel():
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "modifier"
+    bl_options = {'HIDE_HEADER'}
 
 
 class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
@@ -121,6 +122,14 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         split.prop(md, "width")
         split.prop(md, "use_only_vertices")
+
+        # -- new modifier only, this may be reverted in favor of 2.62 mod.
+        '''
+        split = layout.split()
+        split.prop(md, "use_even_offset")
+        split.prop(md, "use_distance_offset")
+        '''
+        # -- end
 
         layout.label(text="Limit Method:")
         layout.row().prop(md, "limit_method", expand=True)
@@ -230,6 +239,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row.prop(md, "mid_level")
         row.prop(md, "strength")
 
+    def DYNAMIC_PAINT(self, layout, ob, md):
+        layout.label(text="Settings can be found inside the Physics context")
+
     def EDGE_SPLIT(self, layout, ob, md):
         split = layout.split()
 
@@ -306,6 +318,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col = split.column()
         col.label(text="Vertex Group:")
         col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        
+        layout.separator()
+        layout.prop(md, "strength", slider=True)
 
     def MASK(self, layout, ob, md):
         split = layout.split()
@@ -411,6 +426,80 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             row.operator("object.multires_external_save", text="Save External...")
             row.label()
 
+    def OCEAN(self, layout, ob, md):
+        if not md.is_build_enabled:
+            layout.label("Built without OceanSim modifier")
+            return
+
+        layout.prop(md, "geometry_mode")
+
+        if md.geometry_mode == 'GENERATE':
+            row = layout.row()
+            row.prop(md, "repeat_x")
+            row.prop(md, "repeat_y")
+
+        layout.separator()
+
+        flow = layout.column_flow()
+        flow.prop(md, "time")
+        flow.prop(md, "resolution")
+        flow.prop(md, "spatial_size")
+        flow.prop(md, "depth")
+
+        layout.label("Waves:")
+
+        split = layout.split()
+
+        col = split.column()
+        col.prop(md, "choppiness")
+        col.prop(md, "wave_scale", text="Scale")
+        col.prop(md, "wave_scale_min")
+        col.prop(md, "wind_velocity")
+
+        col = split.column()
+        col.prop(md, "wave_alignment", text="Alignment")
+        sub = col.column()
+        sub.active = md.wave_alignment > 0
+        sub.prop(md, "wave_direction", text="Direction")
+        sub.prop(md, "damping")
+
+        layout.separator()
+
+        layout.prop(md, "use_normals")
+
+        split = layout.split()
+
+        col = split.column()
+        col.prop(md, "use_foam")
+        sub = col.row()
+        sub.active = md.use_foam
+        sub.prop(md, "foam_coverage", text="Coverage")
+
+        col = split.column()
+        col.active = md.use_foam
+        col.label("Foam Data Layer Name:")
+        col.prop(md, "foam_layer_name", text="")
+
+        layout.separator()
+
+        if md.is_cached:
+            layout.operator("object.ocean_bake", text="Free Bake").free = True
+        else:
+            layout.operator("object.ocean_bake")
+
+        split = layout.split()
+        split.enabled = not md.is_cached
+
+        col = split.column(align=True)
+        col.prop(md, "frame_start", text="Start")
+        col.prop(md, "frame_end", text="End")
+
+        col = split.column(align=True)
+        col.label(text="Cache path:")
+        col.prop(md, "filepath", text="")
+
+        #col.prop(md, "bake_foam_fade")
+
     def PARTICLE_INSTANCE(self, layout, ob, md):
         layout.prop(md, "object")
         layout.prop(md, "particle_system_index", text="Particle System")
@@ -510,11 +599,10 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             layout.prop(md, "use_keep_above_surface")
 
     def SIMPLE_DEFORM(self, layout, ob, md):
-        split = layout.split()
 
-        col = split.column()
-        col.label(text="Mode:")
-        col.prop(md, "deform_method", text="")
+        layout.row().prop(md, "deform_method", expand=True)
+
+        split = layout.split()
 
         col = split.column()
         col.label(text="Vertex Group:")
@@ -533,7 +621,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.label(text="Deform:")
         col.prop(md, "factor")
         col.prop(md, "limits", slider=True)
-        if md.deform_method in {'TAPER', 'STRETCH'}:
+        if md.deform_method in {'TAPER', 'STRETCH', 'TWIST'}:
             col.prop(md, "lock_x")
             col.prop(md, "lock_y")
 
@@ -615,7 +703,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "image", text="")
 
         col = split.column()
-        col.label(text="UV Layer:")
+        col.label(text="UV Map:")
         col.prop_search(md, "uv_layer", ob.data, "uv_textures", text="")
 
         split = layout.split()
@@ -735,6 +823,21 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col = split.column()
         col.prop(md, "width", slider=True)
         col.prop(md, "narrowness", slider=True)
+
+    def REMESH(self, layout, ob, md):
+        layout.prop(md, "mode")
+
+        row = layout.row()
+        row.prop(md, "octree_depth")
+        row.prop(md, "scale")
+
+        if md.mode == 'SHARP':
+            layout.prop(md, "sharpness")
+
+        layout.prop(md, "remove_disconnected_pieces")
+        row = layout.row()
+        row.active = md.remove_disconnected_pieces
+        row.prop(md, "threshold")
 
     @staticmethod
     def vertex_weight_mask(layout, ob, md):

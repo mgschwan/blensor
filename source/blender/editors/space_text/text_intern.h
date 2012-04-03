@@ -28,8 +28,8 @@
  *  \ingroup sptext
  */
 
-#ifndef ED_TEXT_INTERN_H
-#define ED_TEXT_INTERN_H
+#ifndef __TEXT_INTERN_H__
+#define __TEXT_INTERN_H__
 
 /* internal exports only */
 
@@ -46,9 +46,6 @@ struct wmWindowManager;
 
 /* text_draw.c */
 void draw_text_main(struct SpaceText *st, struct ARegion *ar);
-
-int text_font_width_character(struct SpaceText *st);
-int text_font_width(struct SpaceText *st, const char *str);
 
 void text_update_line_edited(struct TextLine *line);
 void text_update_edited(struct Text *text);
@@ -105,7 +102,7 @@ int text_get_total_lines(struct SpaceText *st, struct ARegion *ar);
 
 /* text_ops.c */
 enum { LINE_BEGIN, LINE_END, FILE_TOP, FILE_BOTTOM, PREV_CHAR, NEXT_CHAR,
-	   PREV_WORD, NEXT_WORD, PREV_LINE, NEXT_LINE, PREV_PAGE, NEXT_PAGE };
+       PREV_WORD, NEXT_WORD, PREV_LINE, NEXT_LINE, PREV_PAGE, NEXT_PAGE };
 enum { DEL_NEXT_CHAR, DEL_PREV_CHAR, DEL_NEXT_WORD, DEL_PREV_WORD };
 
 void TEXT_OT_new(struct wmOperatorType *ot);
@@ -166,5 +163,5 @@ void TEXT_OT_resolve_conflict(struct wmOperatorType *ot);
 /* space_text.c */
 extern const char *text_context_dir[]; /* doc access */
 
-#endif /* ED_TEXT_INTERN_H */
+#endif /* __TEXT_INTERN_H__ */
 

@@ -27,8 +27,8 @@
  *  \ingroup editors
  */
 
-#ifndef ED_ARMATURE_H
-#define ED_ARMATURE_H
+#ifndef __ED_ARMATURE_H__
+#define __ED_ARMATURE_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,32 +56,32 @@ struct wmOperator;
 typedef struct EditBone
 {
 	struct EditBone *next, *prev;
-	struct IDProperty 		*prop;			/* User-Defined Properties on this Bone */
-	struct EditBone *parent;/*	Editbones have a one-way link  (i.e. children refer
-									to parents.  This is converted to a two-way link for
-									normal bones when leaving editmode.	*/
-	void	*temp;			/*	Used to store temporary data */
+	struct IDProperty *prop;/* User-Defined Properties on this Bone */
+	struct EditBone *parent;/* Editbones have a one-way link  (i.e. children refer
+	                         * to parents.  This is converted to a two-way link for
+	                         * normal bones when leaving editmode. */
+	void    *temp;          /* Used to store temporary data */
 
-	char	name[32];
-	float	roll;			/*	Roll along axis.  We'll ultimately use the axis/angle method
-								for determining the transformation matrix of the bone.  The axis
-								is tail-head while roll provides the angle. Refer to Graphics
-								Gems 1 p. 466 (section IX.6) if it's not already in here somewhere*/
+	char    name[64];       /* MAX_NAME */
+	float   roll;           /* Roll along axis.  We'll ultimately use the axis/angle method
+	                         * for determining the transformation matrix of the bone.  The axis
+	                         * is tail-head while roll provides the angle. Refer to Graphics
+	                         * Gems 1 p. 466 (section IX.6) if it's not already in here somewhere*/
 
-	float	head[3];			/*	Orientation and length is implicit during editing */
-	float	tail[3];	
-							/*	All joints are considered to have zero rotation with respect to
-							their parents.	Therefore any rotations specified during the
-							animation are automatically relative to the bones' rest positions*/
+	float	head[3];        /* Orientation and length is implicit during editing */
+	float	tail[3];
+	                        /* All joints are considered to have zero rotation with respect to
+	                         * their parents.	Therefore any rotations specified during the
+	                         * animation are automatically relative to the bones' rest positions*/
 	int		flag;
 	int		layer;
 	
 	float dist, weight;
-	float xwidth, length, zwidth;	/* put them in order! transform uses this as scale */
+	float xwidth, length, zwidth;  /* put them in order! transform uses this as scale */
 	float ease1, ease2;
 	float rad_head, rad_tail;
 	
-	float oldlength;				/* for envelope scaling */
+	float oldlength;        /* for envelope scaling */
 	
 	short segments;
 } EditBone;
@@ -128,7 +128,6 @@ struct EditBone *ED_armature_edit_bone_add(struct bArmature *arm, const char *na
 void ED_armature_edit_bone_remove(struct bArmature *arm, EditBone *exBone);
 
 void transform_armature_mirror_update(struct Object *obedit);
-void clear_armature(struct Scene *scene, struct Object *ob, char mode);
 void docenter_armature (struct Scene *scene, struct Object *ob, float cursor[3], int centermode, int around);
 
 void ED_armature_apply_transform(struct Object *ob, float mat[4][4]);
@@ -139,9 +138,8 @@ void ED_armature_apply_transform(struct Object *ob, float mat[4][4]);
 
 void create_vgroups_from_armature(struct ReportList *reports, struct Scene *scene, struct Object *ob, struct Object *par, int mode, int mirror);
 
-void auto_align_armature(struct Scene *scene, struct View3D *v3d, short mode);
 void unique_editbone_name(struct ListBase *ebones, char *name, EditBone *bone); /* if bone is already in list, pass it as param to ignore it */
-void ED_armature_bone_rename(struct bArmature *arm, char *oldnamep, char *newnamep);
+void ED_armature_bone_rename(struct bArmature *arm, const char *oldnamep, const char *newnamep);
 
 void undo_push_armature(struct bContext *C, const char *name);
 
@@ -163,7 +161,7 @@ void BIF_deleteSketch(struct bContext *C);
 void BIF_selectAllSketch(struct bContext *C, int mode); /* -1: deselect, 0: select, 1: toggle */
 
 void  BIF_makeListTemplates(const struct bContext *C);
-char *BIF_listTemplates(const struct bContext *C);
+const char *BIF_listTemplates(const struct bContext *C);
 int   BIF_currentTemplate(const struct bContext *C);
 void  BIF_freeTemplates(struct bContext *C);
 void  BIF_setTemplate(struct bContext *C, int index);
@@ -182,7 +180,7 @@ void mesh_deform_bind(struct Scene *scene,
 }
 #endif
 
-#endif /* ED_ARMATURE_H */
+#endif /* __ED_ARMATURE_H__ */
 
 
 

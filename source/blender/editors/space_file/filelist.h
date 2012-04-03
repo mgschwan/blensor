@@ -4,10 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version. The Blender
- * Foundation also sells licenses for use in proprietary software under
- * the Blender License.  See http://www.blender.org/BL/ for information
- * about this.
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -33,8 +30,8 @@
  */
 
 
-#ifndef FILELIST_H
-#define FILELIST_H
+#ifndef __FILELIST_H__
+#define __FILELIST_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,7 +63,7 @@ typedef enum FileCheckType
 struct FileList *	filelist_new(short type);
 void				filelist_init_icons(void);
 void				filelist_free_icons(void);
-int					filelist_find(struct FileList* filelist, char *file);
+int					filelist_find(struct FileList* filelist, const char *file);
 void				filelist_free(struct FileList* filelist);
 void				filelist_sort(struct FileList* filelist, short sort);
 int					filelist_numfiles(struct FileList* filelist);

@@ -24,8 +24,8 @@
  *  \ingroup collada
  */
 
-#ifndef __BC_ARMATUREIMPORTER_H__
-#define __BC_ARMATUREIMPORTER_H__
+#ifndef __ARMATUREIMPORTER_H__
+#define __ARMATUREIMPORTER_H__
 
 #include "COLLADAFWNode.h"
 #include "COLLADAFWUniqueId.h"
@@ -107,13 +107,13 @@ private:
 					 float parent_mat[][4], bArmature *arm);
 
 	void create_unskinned_bone(COLLADAFW::Node *node, EditBone *parent, int totchild,
-				 float parent_mat[][4], Object * ob_arm);
+	                           float parent_mat[][4], Object * ob_arm);
 
 	void add_leaf_bone(float mat[][4], EditBone *bone, COLLADAFW::Node * node);
 
 	void fix_leaf_bones();
 	
-	void set_pose ( Object * ob_arm ,  COLLADAFW::Node * root_node ,char * parentname, float parent_mat[][4]);
+	void set_pose ( Object * ob_arm ,  COLLADAFW::Node * root_node , const char *parentname, float parent_mat[][4]);
 
 
 #if 0

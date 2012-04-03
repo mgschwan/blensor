@@ -30,8 +30,8 @@
  */
 
 
-#ifndef NODE_COMPOSITE_UTIL_H_
-#define NODE_COMPOSITE_UTIL_H_
+#ifndef __NODE_COMPOSITE_UTIL_H__
+#define __NODE_COMPOSITE_UTIL_H__
 
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +44,7 @@
 #include "DNA_ID.h"
 #include "DNA_image_types.h"
 #include "DNA_material_types.h"
+#include "DNA_movieclip_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
@@ -57,13 +58,16 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_blender.h"
+#include "BKE_camera.h"
 #include "BKE_colortools.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
+#include "BKE_movieclip.h"
 #include "BKE_node.h"
 #include "BKE_texture.h"
+#include "BKE_tracking.h"
 
 #include "BKE_library.h"
 #include "BKE_object.h"
@@ -120,7 +124,6 @@ CompBuf *pass_on_compbuf(CompBuf *cbuf);
 void free_compbuf(CompBuf *cbuf);
 void print_compbuf(char *str, CompBuf *cbuf);
 void compbuf_set_node(struct CompBuf *cbuf, struct bNode *node);
-void node_compo_pass_on(struct bNode *node, struct bNodeStack **nsin, struct bNodeStack **nsout);
 
 CompBuf *get_cropped_compbuf(rcti *drect, float *rectf, int rectx, int recty, int type);
 CompBuf *scalefast_compbuf(CompBuf *inbuf, int newx, int newy);
@@ -128,6 +131,8 @@ CompBuf *typecheck_compbuf(CompBuf *inbuf, int type);
 void typecheck_compbuf_color(float *out, float *in, int outtype, int intype);
 
 /* **************************************************** */
+
+float *compbuf_get_pixel(CompBuf *cbuf, float *defcol, float *use, int x, int y, int xrad, int yrad);
 
 /* Pixel-to-Pixel operation, 1 Image in, 1 out */
 void composit1_pixel_processor(bNode *node, CompBuf *out, CompBuf *src_buf, float *src_col,
@@ -208,5 +213,12 @@ void qd_getPixelLerpChan(CompBuf* src, float u, float v, int chan, float* out);
 CompBuf* qd_downScaledCopy(CompBuf* src, int scale);
 void IIR_gauss(CompBuf* src, float sigma, int chan, int xy);
 /* end utility funcs */
+
+/* transformations */
+
+#define CMP_SCALE_MAX	12000
+
+CompBuf* node_composit_transform(CompBuf *cbuf, float x, float y, float angle, float scale, int filter_type);
+float *node_composit_get_float_buffer(RenderData *rd, ImBuf *ibuf, int *alloc);
 
 #endif

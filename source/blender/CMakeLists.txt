@@ -38,7 +38,9 @@ set(SRC_DNA_INC
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_controller_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_curve_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_customdata_types.h
+	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_defs.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_documentation.h
+	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_dynamicpaint_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_effect_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_fileglobal_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_genfile.h
@@ -82,12 +84,15 @@ set(SRC_DNA_INC
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_view3d_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_windowmanager_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_world_types.h
+	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_movieclip_types.h
+	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_tracking_types.h
 )
 
 add_subdirectory(editors)
 add_subdirectory(windowmanager)
 add_subdirectory(blenkernel)
 add_subdirectory(blenlib)
+add_subdirectory(bmesh)
 add_subdirectory(render)
 add_subdirectory(blenfont)
 add_subdirectory(blenloader)

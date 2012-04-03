@@ -30,8 +30,8 @@
  *  \brief Sensor for keyboard input
  */
 
-#ifndef __KX_KEYBOARDSENSOR
-#define __KX_KEYBOARDSENSOR
+#ifndef __SCA_KEYBOARDSENSOR_H__
+#define __SCA_KEYBOARDSENSOR_H__
 
 #include "SCA_ISensor.h"
 #include "BoolValue.h"
@@ -44,7 +44,7 @@
  * exclusive.  */
 class SCA_KeyboardSensor : public SCA_ISensor
 {
-	Py_Header;
+	Py_Header
 
 	/**
 	 * the key this sensor is sensing for
@@ -111,7 +111,7 @@ public:
 	/* --------------------------------------------------------------------- */
 
 	// KeyEvents: 
-	KX_PYMETHOD_DOC_NOARGS(SCA_KeyboardSensor,getEventList); 
+	KX_PYMETHOD_DOC_NOARGS(SCA_KeyboardSensor,getEventList);
 	// KeyStatus: 
 	KX_PYMETHOD_DOC_O(SCA_KeyboardSensor,getKeyStatus);
 	
@@ -137,7 +137,7 @@ bool IsPrintable(int keyIndex);
 bool IsDelete(int keyIndex);
 
 
-#endif //__KX_KEYBOARDSENSOR
+#endif //__SCA_KEYBOARDSENSOR_H__
 
 
 

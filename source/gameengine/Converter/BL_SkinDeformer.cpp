@@ -34,7 +34,7 @@
 #pragma warning (disable : 4786)
 #endif //WIN32
 
-// Eigen2 stuff used for BGEDeformVerts
+// Eigen3 stuff used for BGEDeformVerts
 #include <Eigen/Core>
 #include <Eigen/LU>
 
@@ -111,9 +111,9 @@ BL_SkinDeformer::BL_SkinDeformer(
 
 BL_SkinDeformer::~BL_SkinDeformer()
 {
-	if(m_releaseobject && m_armobj)
+	if (m_releaseobject && m_armobj)
 		m_armobj->Release();
-	if(m_dfnrToPC)
+	if (m_dfnrToPC)
 		delete [] m_dfnrToPC;
 }
 
@@ -149,16 +149,16 @@ bool BL_SkinDeformer::Apply(RAS_IPolyMaterial *mat)
 		nmat = m_pMeshObject->NumMaterials();
 		for (imat=0; imat<nmat; imat++) {
 			mmat = m_pMeshObject->GetMeshMaterial(imat);
-			if(!mmat->m_slots[(void*)m_gameobj])
+			if (!mmat->m_slots[(void*)m_gameobj])
 				continue;
 
 			slot = *mmat->m_slots[(void*)m_gameobj];
 
 			// for each array
-			for(slot->begin(it); !slot->end(it); slot->next(it)) {
+			for (slot->begin(it); !slot->end(it); slot->next(it)) {
 				// for each vertex
 				// copy the untransformed data from the original mvert
-				for(i=it.startvertex; i<it.endvertex; i++) {
+				for (i=it.startvertex; i<it.endvertex; i++) {
 					RAS_TexVert& v = it.vertex[i];
 					v.SetXYZ(m_transverts[v.getOrigIndex()]);
 					if (m_copyNormals)
@@ -217,14 +217,14 @@ void BL_SkinDeformer::BGEDeformVerts()
 	Object *par_arma = m_armobj->GetArmatureObject();
 	MDeformVert *dverts = m_bmesh->dvert;
 	bDeformGroup *dg;
-	int numGroups = BLI_countlist(&m_objMesh->defbase);
+	int defbase_tot = BLI_countlist(&m_objMesh->defbase);
 
 	if (!dverts)
 		return;
 
 	if (m_dfnrToPC == NULL)
 	{
-		m_dfnrToPC = new bPoseChannel*[numGroups];
+		m_dfnrToPC = new bPoseChannel*[defbase_tot];
 		int i;
 		for (i=0, dg=(bDeformGroup*)m_objMesh->defbase.first;
 			dg;
@@ -237,12 +237,12 @@ void BL_SkinDeformer::BGEDeformVerts()
 		}
 	}
 
+	MDeformVert *dv= dverts;
 
-	for (int i=0; i<m_bmesh->totvert; ++i)
+	for (int i=0; i<m_bmesh->totvert; ++i, dv++)
 	{
 		float contrib = 0.f, weight, max_weight=0.f;
 		bPoseChannel *pchan=NULL;
-		MDeformVert *dvert;
 		Eigen::Map<Eigen::Vector3f> norm(m_transnors[i]);
 		Eigen::Vector4f vec(0, 0, 0, 1);
 		Eigen::Matrix4f norm_chan_mat;
@@ -251,18 +251,18 @@ void BL_SkinDeformer::BGEDeformVerts()
 							m_transverts[i][2],
 							1.f);
 
-		dvert = dverts+i;
-
-		if (!dvert->totweight)
+		if (!dv->totweight)
 			continue;
 
-		for (int j=0; j<dvert->totweight; ++j)
-		{
-			int index = dvert->dw[j].def_nr;
+		MDeformWeight *dw= dv->dw;
 
-			if (index < numGroups && (pchan=m_dfnrToPC[index]))
+		for (unsigned int j= dv->totweight; j != 0; j--, dw++)
+		{
+			const int index = dw->def_nr;
+
+			if (index < defbase_tot && (pchan=m_dfnrToPC[index]))
 			{
-				weight = dvert->dw[j].weight;
+				weight = dw->weight;
 
 				if (weight)
 				{
@@ -287,7 +287,7 @@ void BL_SkinDeformer::BGEDeformVerts()
 
 		
 		// Update Vertex Normal
-		norm = norm_chan_mat.corner<3, 3>(Eigen::TopLeft)*norm;
+		norm = norm_chan_mat.topLeftCorner<3, 3>()*norm;
 				
 		if (contrib > 0.0001f)
 		{
@@ -305,9 +305,9 @@ void BL_SkinDeformer::BGEDeformVerts()
 bool BL_SkinDeformer::UpdateInternal(bool shape_applied)
 {
 	/* See if the armature has been updated for this frame */
-	if (PoseUpdated()){	
+	if (PoseUpdated()) {	
 
-		if(!shape_applied) {
+		if (!shape_applied) {
 			/* store verts locally */
 			VerifyStorage();
 		

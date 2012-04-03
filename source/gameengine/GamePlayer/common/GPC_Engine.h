@@ -29,8 +29,8 @@
  *  \ingroup player
  */
 
-#ifndef __GPC_ENGINE_H
-#define __GPC_ENGINE_H
+#ifndef __GPC_ENGINE_H__
+#define __GPC_ENGINE_H__
 
 #include "GPC_Canvas.h"
 #include "GPC_System.h"
@@ -102,9 +102,9 @@ public:
 	// Initialize() functions are not put here since they have
 	// different prototypes for Unix and Windows
 	void StartLoadingAnimation();
-	bool Start(char *filename);  // file-on-disk starter
+	bool Start(const char *filename);  // file-on-disk starter
 	bool Start(unsigned char *blenderDataBuffer,
-			unsigned int blenderDataBufferSize);  // file-in-memory starter
+	           unsigned int blenderDataBufferSize);  // file-in-memory starter
 
 	void Stop();
 	virtual void Exit();
@@ -113,7 +113,7 @@ public:
 	bool Loading(void) {return m_loading;}
 	bool Running(void) const {return m_running;}
 
-	virtual float DetermineProgress(void);  // will be platform dependant
+	virtual float DetermineProgress(void);  // will be platform dependent
 	void UpdateLoadingAnimation(void);
 
 private:
@@ -121,5 +121,5 @@ private:
 
 };
 
-#endif  // __GPC_ENGINE_H
+#endif  // __GPC_ENGINE_H__
 

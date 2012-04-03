@@ -216,13 +216,13 @@ KX_PYMETHODDEF_DOC_NOARGS(KX_PolyProxy, isCollider,
 KX_PYMETHODDEF_DOC_NOARGS(KX_PolyProxy, getMaterialName,
 "getMaterialName() : returns the polygon material name, \"NoMaterial\" if no material\n")
 {
-	return PyUnicode_FromString(m_polygon->GetMaterial()->GetPolyMaterial()->GetMaterialName());
+	return PyUnicode_From_STR_String(m_polygon->GetMaterial()->GetPolyMaterial()->GetMaterialName());
 }
 
 KX_PYMETHODDEF_DOC_NOARGS(KX_PolyProxy, getTextureName,
 "getTexturelName() : returns the polygon texture name, \"NULL\" if no texture\n")
 {
-	return PyUnicode_FromString(m_polygon->GetMaterial()->GetPolyMaterial()->GetTextureName());
+	return PyUnicode_From_STR_String(m_polygon->GetMaterial()->GetPolyMaterial()->GetTextureName());
 }
 
 KX_PYMETHODDEF_DOC(KX_PolyProxy, getVertexIndex,
@@ -259,7 +259,7 @@ KX_PYMETHODDEF_DOC_NOARGS(KX_PolyProxy, getMaterial,
 "getMaterial() : returns a material\n")
 {
 	RAS_IPolyMaterial *polymat = m_polygon->GetMaterial()->GetPolyMaterial();
-	if(polymat->GetFlag() & RAS_BLENDERMAT)
+	if (polymat->GetFlag() & RAS_BLENDERMAT)
 	{
 		KX_BlenderMaterial* mat = static_cast<KX_BlenderMaterial*>(polymat);
 		return mat->GetProxy();

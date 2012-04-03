@@ -36,6 +36,10 @@ if(WITH_AUDASPACE)
 	add_subdirectory(audaspace)
 endif()
 
+if(WITH_MOD_REMESH)
+	add_subdirectory(dualcon)
+endif()
+
 if(WITH_MOD_FLUID)
 	add_subdirectory(elbeem)
 endif()
@@ -56,4 +60,14 @@ endif()
 
 if(WITH_IK_ITASC)
 	add_subdirectory(itasc)
+endif()
+
+if(WITH_CYCLES)
+	add_subdirectory(cycles)
+endif()
+
+
+#Only Windows needs utf16 converter
+if(WIN32)
+	add_subdirectory(utfconv)
 endif()

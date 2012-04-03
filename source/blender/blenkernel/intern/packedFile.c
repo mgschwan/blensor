@@ -87,7 +87,8 @@ int seekPackedFile(PackedFile *pf, int offset, int whence)
 		}
 		if (seek < 0) {
 			seek = 0;
-		} else if (seek > pf->size) {
+		}
+		else if (seek > pf->size) {
 			seek = pf->size;
 		}
 		pf->seek = seek;
@@ -110,12 +111,14 @@ int readPackedFile(PackedFile *pf, void *data, int size)
 
 		if (size > 0) {
 			memcpy(data, ((char *) pf->data) + pf->seek, size);
-		} else {
+		}
+		else {
 			size = 0;
 		}
 
 		pf->seek += size;
-	} else {
+	}
+	else {
 		size = -1;
 	}
 
@@ -130,16 +133,16 @@ int countPackedFiles(Main *bmain)
 	int count = 0;
 	
 	// let's check if there are packed files...
-	for(ima=bmain->image.first; ima; ima=ima->id.next)
-		if(ima->packedfile)
+	for (ima=bmain->image.first; ima; ima=ima->id.next)
+		if (ima->packedfile)
 			count++;
 
-	for(vf=bmain->vfont.first; vf; vf=vf->id.next)
-		if(vf->packedfile)
+	for (vf=bmain->vfont.first; vf; vf=vf->id.next)
+		if (vf->packedfile)
 			count++;
 
-	for(sound=bmain->sound.first; sound; sound=sound->id.next)
-		if(sound->packedfile)
+	for (sound=bmain->sound.first; sound; sound=sound->id.next)
+		if (sound->packedfile)
 			count++;
 
 	return count;
@@ -147,7 +150,7 @@ int countPackedFiles(Main *bmain)
 
 void freePackedFile(PackedFile *pf)
 {
-	if(pf) {
+	if (pf) {
 		MEM_freeN(pf->data);
 		MEM_freeN(pf);
 	}
@@ -168,12 +171,12 @@ PackedFile *newPackedFile(ReportList *reports, const char *filename, const char 
 {
 	PackedFile *pf = NULL;
 	int file, filelen;
-	char name[FILE_MAXDIR+FILE_MAXFILE];
+	char name[FILE_MAX];
 	void *data;
 	
 	/* render result has no filename and can be ignored
 	 * any other files with no name can be ignored too */
-	if(filename[0]=='\0')
+	if (filename[0]=='\0')
 		return NULL;
 
 	//XXX waitcursor(1);
@@ -186,17 +189,19 @@ PackedFile *newPackedFile(ReportList *reports, const char *filename, const char 
 	// open the file
 	// and create a PackedFile structure
 
-	file= open(name, O_BINARY|O_RDONLY);
+	file= BLI_open(name, O_BINARY|O_RDONLY,0);
 	if (file <= 0) {
 		BKE_reportf(reports, RPT_ERROR, "Unable to pack file, source path not found: \"%s\"", name);
-	} else {
+	}
+	else {
 		filelen = BLI_file_descriptor_size(file);
 
 		if (filelen == 0) {
 			// MEM_mallocN complains about MEM_mallocN(0, "bla");
 			// we don't care....
 			data = MEM_mallocN(1, "packFile");
-		} else {
+		}
+		else {
 			data = MEM_mallocN(filelen, "packFile");
 		}
 		if (read(file, data, filelen) == filelen) {
@@ -217,23 +222,23 @@ void packAll(Main *bmain, ReportList *reports)
 	VFont *vf;
 	bSound *sound;
 	
-	for(ima=bmain->image.first; ima; ima=ima->id.next) {
-		if(ima->packedfile == NULL && ima->id.lib==NULL) { 
-			if(ima->source==IMA_SRC_FILE) {
+	for (ima=bmain->image.first; ima; ima=ima->id.next) {
+		if (ima->packedfile == NULL && ima->id.lib==NULL) { 
+			if (ima->source==IMA_SRC_FILE) {
 				ima->packedfile = newPackedFile(reports, ima->name, ID_BLEND_PATH(bmain, &ima->id));
 			}
-			else if(ELEM(ima->source, IMA_SRC_SEQUENCE, IMA_SRC_MOVIE)) {
+			else if (ELEM(ima->source, IMA_SRC_SEQUENCE, IMA_SRC_MOVIE)) {
 				BKE_reportf(reports, RPT_WARNING, "Image '%s' skipped, movies and image sequences not supported.", ima->id.name+2);
 			}
 		}
 	}
 
-	for(vf=bmain->vfont.first; vf; vf=vf->id.next)
-		if(vf->packedfile == NULL && vf->id.lib==NULL && strcmp(vf->name, FO_BUILTIN_NAME) != 0)
+	for (vf=bmain->vfont.first; vf; vf=vf->id.next)
+		if (vf->packedfile == NULL && vf->id.lib==NULL && strcmp(vf->name, FO_BUILTIN_NAME) != 0)
 			vf->packedfile = newPackedFile(reports, vf->name, bmain->name);
 
-	for(sound=bmain->sound.first; sound; sound=sound->id.next)
-		if(sound->packedfile == NULL && sound->id.lib==NULL)
+	for (sound=bmain->sound.first; sound; sound=sound->id.next)
+		if (sound->packedfile == NULL && sound->id.lib==NULL)
 			sound->packedfile = newPackedFile(reports, sound->name, bmain->name);
 }
 
@@ -245,13 +250,13 @@ void packAll(Main *bmain, ReportList *reports)
 
 static char *find_new_name(char *name)
 {
-	char tempname[FILE_MAXDIR + FILE_MAXFILE];
+	char tempname[FILE_MAX];
 	char *newname;
 	size_t len;
 	
 	if (fop_exists(name)) {
 		for (number = 1; number <= 999; number++) {
-			sprintf(tempname, "%s.%03d", name, number);
+			BLI_snprintf(tempname, sizeof(tempname), "%s.%03d", name, number);
 			if (! fop_exists(tempname)) {
 				break;
 			}
@@ -268,8 +273,8 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 {
 	int file, number, remove_tmp = FALSE;
 	int ret_value = RET_OK;
-	char name[FILE_MAXDIR + FILE_MAXFILE];
-	char tempname[FILE_MAXDIR + FILE_MAXFILE];
+	char name[FILE_MAX];
+	char tempname[FILE_MAX];
 /*  	void *data; */
 	
 	if (guimode) {} //XXX  waitcursor(1);
@@ -292,14 +297,15 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 	// make sure the path to the file exists...
 	BLI_make_existing_file(name);
 	
-	file = open(name, O_BINARY + O_WRONLY + O_CREAT + O_TRUNC, 0666);
+	file = BLI_open(name, O_BINARY + O_WRONLY + O_CREAT + O_TRUNC, 0666);
 	if (file >= 0) {
 		if (write(file, pf->data, pf->size) != pf->size) {
 			BKE_reportf(reports, RPT_ERROR, "Error writing file: %s", name);
 			ret_value = RET_ERROR;
 		}
 		close(file);
-	} else {
+	}
+	else {
 		BKE_reportf(reports, RPT_ERROR, "Error creating file: %s", name);
 		ret_value = RET_ERROR;
 	}
@@ -309,50 +315,52 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 			if (BLI_rename(tempname, name) != 0) {
 				BKE_reportf(reports, RPT_ERROR, "Error restoring tempfile. Check files: '%s' '%s'", tempname, name);
 			}
-		} else {
+		}
+		else {
 			if (BLI_delete(tempname, 0, 0) != 0) {
 				BKE_reportf(reports, RPT_ERROR, "Error deleting '%s' (ignored)", tempname);
 			}
 		}
 	}
 	
-	if(guimode) {} //XXX waitcursor(0);
+	if (guimode) {} //XXX waitcursor(0);
 
 	return (ret_value);
 }
 	
-/* 
-
-This function compares a packed file to a 'real' file.
-It returns an integer indicating if:
-
-PF_EQUAL		- the packed file and original file are identical
-PF_DIFFERENT	- the packed file and original file differ
-PF_NOFILE		- the original file doens't exist
-
-*/
+/*
+ * This function compares a packed file to a 'real' file.
+ * It returns an integer indicating if:
+ *
+ * PF_EQUAL		- the packed file and original file are identical
+ * PF_DIFFERENT	- the packed file and original file differ
+ * PF_NOFILE	- the original file doens't exist
+ */
 
 int checkPackedFile(const char *filename, PackedFile *pf)
 {
 	struct stat st;
 	int ret_val, i, len, file;
 	char buf[4096];
-	char name[FILE_MAXDIR + FILE_MAXFILE];
+	char name[FILE_MAX];
 	
 	BLI_strncpy(name, filename, sizeof(name));
 	BLI_path_abs(name, G.main->name);
 	
 	if (stat(name, &st)) {
 		ret_val = PF_NOFILE;
-	} else if (st.st_size != pf->size) {
+	}
+	else if (st.st_size != pf->size) {
 		ret_val = PF_DIFFERS;
-	} else {
+	}
+	else {
 		// we'll have to compare the two...
 		
-		file = open(name, O_BINARY | O_RDONLY);
+		file = BLI_open(name, O_BINARY | O_RDONLY, 0);
 		if (file < 0) {
 			ret_val = PF_NOFILE;
-		} else {
+		}
+		else {
 			ret_val = PF_EQUAL;
 			
 			for (i = 0; i < pf->size; i += sizeof(buf)) {
@@ -365,7 +373,8 @@ int checkPackedFile(const char *filename, PackedFile *pf)
 					// read error ...
 					ret_val = PF_DIFFERS;
 					break;
-				} else {
+				}
+				else {
 					if (memcmp(buf, ((char *)pf->data) + i, len)) {
 						ret_val = PF_DIFFERS;
 						break;
@@ -380,22 +389,19 @@ int checkPackedFile(const char *filename, PackedFile *pf)
 	return(ret_val);
 }
 
-/*
-
-   unpackFile() looks at the existing files (abs_name, local_name) and a packed file.
-
-It returns a char *to the existing file name / new file name or NULL when
-there was an error or when the user desides to cancel the operation.
-
-*/
+/* unpackFile() looks at the existing files (abs_name, local_name) and a packed file.
+ *
+ * It returns a char *to the existing file name / new file name or NULL when
+ * there was an error or when the user desides to cancel the operation.
+ */
 
 char *unpackFile(ReportList *reports, const char *abs_name, const char *local_name, PackedFile *pf, int how)
 {
 	char *newname = NULL;
 	const char *temp = NULL;
 	
-	// char newabs[FILE_MAXDIR + FILE_MAXFILE];
-	// char newlocal[FILE_MAXDIR + FILE_MAXFILE];
+	// char newabs[FILE_MAX];
+	// char newlocal[FILE_MAX];
 	
 	if (pf != NULL) {
 		switch (how) {
@@ -445,7 +451,7 @@ char *unpackFile(ReportList *reports, const char *abs_name, const char *local_na
 
 int unpackVFont(ReportList *reports, VFont *vfont, int how)
 {
-	char localname[FILE_MAXDIR + FILE_MAXFILE], fi[FILE_MAXFILE];
+	char localname[FILE_MAX], fi[FILE_MAXFILE];
 	char *newname;
 	int ret_value = RET_ERROR;
 	
@@ -502,7 +508,7 @@ int unpackImage(ReportList *reports, Image *ima, int how)
 	char *newname;
 	int ret_value = RET_ERROR;
 	
-	if (ima != NULL) {
+	if (ima != NULL && ima->name[0]) {
 		BLI_strncpy(localname, ima->name, sizeof(localname));
 		BLI_splitdirstring(localname, fi);
 		BLI_snprintf(localname, sizeof(localname), "//textures/%s", fi);
@@ -527,16 +533,16 @@ void unpackAll(Main *bmain, ReportList *reports, int how)
 	VFont *vf;
 	bSound *sound;
 
-	for(ima=bmain->image.first; ima; ima=ima->id.next)
-		if(ima->packedfile)
+	for (ima=bmain->image.first; ima; ima=ima->id.next)
+		if (ima->packedfile)
 			unpackImage(reports, ima, how);
 
-	for(vf=bmain->vfont.first; vf; vf=vf->id.next)
-		if(vf->packedfile)
+	for (vf=bmain->vfont.first; vf; vf=vf->id.next)
+		if (vf->packedfile)
 			unpackVFont(reports, vf, how);
 
-	for(sound=bmain->sound.first; sound; sound=sound->id.next)
-		if(sound->packedfile)
+	for (sound=bmain->sound.first; sound; sound=sound->id.next)
+		if (sound->packedfile)
 			unpackSound(bmain, reports, sound, how);
 }
 

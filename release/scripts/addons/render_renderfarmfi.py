@@ -16,12 +16,13 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+DEV = False
+
 bl_info = {
     "name": "Renderfarm.fi",
     "author": "Nathan Letwory <nathan@letworyinteractive.com>, Jesse Kaukonen <jesse.kaukonen@gmail.com>",
-    "version": (9,),
-    "blender": (2, 5, 9),
-    "api": 40652,
+    "version": (19,),
+    "blender": (2, 6, 2),
     "location": "Render > Engine > Renderfarm.fi",
     "description": "Send .blend as session to http://www.renderfarm.fi to render",
     "warning": "",
@@ -84,7 +85,17 @@ bpy.originalFileName = bpy.path.display_name_from_filepath(bpy.data.filepath)
 bpy.particleBakeWarning = False
 bpy.childParticleWarning = False
 bpy.simulationWarning = False
+bpy.file_format_warning = False
 bpy.ready = False
+
+if DEV:
+    rffi_xmlrpc_secure = r'http://renderfarm.local/burp/xmlrpc'
+    rffi_xmlrpc = r'http://renderfarm.local/burp/xmlrpc'
+    rffi_xmlrpc_upload = 'renderfarm.local'
+else:
+    rffi_xmlrpc_secure = r'https://xmlrpc.renderfarm.fi/burp/xmlrpc'
+    rffi_xmlrpc = r'http://xmlrpc.renderfarm.fi/burp/xmlrpc'
+    rffi_xmlrpc_upload = 'xmlrpc.renderfarm.fi'
 
 def renderEngine(render_engine):
     bpy.utils.register_class(render_engine)
@@ -113,6 +124,10 @@ class ORESettings(bpy.types.PropertyGroup):
     longdesc = StringProperty(name='Description', description='Description of the scene (2k)', maxlen=2048, default='')
     title = StringProperty(name='Title', description='Title for this session (128 characters)', maxlen=128, default='')
     url = StringProperty(name='Project URL', description='Project URL. Leave empty if not applicable', maxlen=256, default='')
+    engine = StringProperty(name='Engine', description='The rendering engine that is used for rendering', maxlen=64, default='blender')
+    samples = IntProperty(name='Samples', description='Number of samples that is used (Cycles only)', min=1, max=1000000, soft_min=1, soft_max=100000, default=100)
+    subsamples = IntProperty(name='Subsample Frames', description='Number of subsample frames that is used (Cycles only)', min=1, max=1000000, soft_min=1, soft_max=1000, default=10)
+    file_format = StringProperty(name='File format', description='File format used for the rendering', maxlen=30, default='PNG_FORMAT')
     
     parts = IntProperty(name='Parts/Frame', description='', min=1, max=1000, soft_min=1, soft_max=64, default=1)
     resox = IntProperty(name='Resolution X', description='X of render', min=1, max=10000, soft_min=1, soft_max=10000, default=1920)
@@ -120,7 +135,7 @@ class ORESettings(bpy.types.PropertyGroup):
     memusage = IntProperty(name='Memory Usage', description='Estimated maximum memory usage during rendering in MB', min=1, max=6*1024, soft_min=1, soft_max=3*1024, default=256)
     start = IntProperty(name='Start Frame', description='Start Frame', default=1)
     end = IntProperty(name='End Frame', description='End Frame', default=250)
-    fps = IntProperty(name='FPS', description='FPS', min=1, max=256, default=25)
+    fps = IntProperty(name='FPS', description='FPS', min=1, max=120, default=25)
     
     prepared = BoolProperty(name='Prepared', description='Set to True if preparation has been run', default=False)
     loginInserted = BoolProperty(name='LoginInserted', description='Set to True if user has logged in', default=False)
@@ -129,8 +144,8 @@ class ORESettings(bpy.types.PropertyGroup):
     selected_session = IntProperty(name='Selected Session', description='The selected session', default=0)
     hasUnsupportedSimulation = BoolProperty(name='HasSimulation', description='Set to True if therea re unsupported simulations', default=False)
     
-    inlicense = EnumProperty(items=licenses, name='source license', description='license speficied for the source files', default='1')
-    outlicense = EnumProperty(items=licenses, name='output license', description='license speficied for the output files', default='1')
+    inlicense = EnumProperty(items=licenses, name='Scene license', description='License speficied for the source files', default='1')
+    outlicense = EnumProperty(items=licenses, name='Product license', description='License speficied for the output files', default='1')
     sessions = CollectionProperty(type=ORESession, name='Sessions', description='Sessions on Renderfarm.fi')
     completed_sessions = CollectionProperty(type=ORESession, name='Completed sessions', description='Sessions that have been already rendered')
     rejected_sessions = CollectionProperty(type=ORESession, name='Rejected sessions', description='Sessions that have been rejected')
@@ -226,14 +241,45 @@ def changeSettings():
     sce = bpy.context.scene
     rd = sce.render
     ore = sce.ore_render
-    
+
     # Necessary settings for BURP
-    ore.resox = rd.resolution_x
-    ore.resoy = rd.resolution_y
-    ore.start = sce.frame_start
-    ore.end = sce.frame_end
-    ore.fps = rd.fps
+    rd.resolution_x = ore.resox
+    rd.resolution_y = ore.resoy
+    sce.frame_start = ore.start
+    sce.frame_end = ore.end
+    rd.fps = ore.fps
     
+    bpy.file_format_warning = False
+    bpy.simulationWarning = False
+    bpy.texturePackError = False
+    bpy.particleBakeWarning = False
+    bpy.childParticleWarning = False
+    
+    if (rd.image_settings.file_format == 'HDR'):
+        rd.image_settings.file_format = 'PNG'
+        bpy.file_format_warning = True
+    
+    # Convert between Blender's image format and BURP's formats
+    if (rd.image_settings.file_format == 'PNG'):
+        ore.file_format = 'PNG_FORMAT'
+    elif (rd.image_settings.file_format == 'OPEN_EXR'):
+        ore.file_format = 'EXR_FORMAT'
+    elif (rd.image_settings.file_format == 'OPEN_EXR_MULTILAYER'):
+        ore.file_format = 'EXR_MULTILAYER_FORMAT'
+    elif (rd.image_settings.file_format == 'HDR'):
+        ore.file_format = 'PNG_FORMAT'
+    else:
+        ore.file_format = 'PNG_FORMAT'
+        
+    if (ore.engine == 'cycles'):
+        bpy.context.scene.cycles.samples = ore.samples
+        
+    if (ore.subsamples <= 0):
+        ore.subsamples = 1
+    
+    if (ore.samples / ore.subsamples < 100.0):
+        ore.subsamples = float(ore.samples) / 100.0
+        
     # Multipart support doesn' work if SSS is used
     if ((rd.use_sss == True and hasSSSMaterial()) and ore.parts > 1):
         ore.parts = 1;
@@ -255,9 +301,8 @@ def prepareScene():
     ore = sce.ore_render
     
     changeSettings()
-    
+
     print("Packing external textures...")
-    # Pack all external textures
     try:
         bpy.ops.file.pack_all()
         bpy.texturePackError = False
@@ -304,40 +349,80 @@ class OpSwitchRenderfarm(bpy.types.Operator):
     bl_idname = "ore.switch_to_renderfarm_render"
     
     def execute(self, context):
-        changeSettings()
+        ore = bpy.context.scene.ore_render
+        rd = bpy.context.scene.render
+        
+        ore.resox = rd.resolution_x
+        ore.resoy = rd.resolution_y
+        ore.fps = rd.fps
+        ore.start = bpy.context.scene.frame_start
+        ore.end = bpy.context.scene.frame_end
+        if (rd.engine == 'CYCLES'):
+            ore.samples = bpy.context.scene.cycles.samples
+            ore.engine = 'cycles'
+        else:
+            ore.engine = 'blender'
         bpy.context.scene.render.engine = 'RENDERFARMFI_RENDER'
         return {'FINISHED'}
 
 class OpSwitchBlenderRender(bpy.types.Operator):
-    bl_label = "Switch to Blender Render"
-    bl_idname = "ore.switch_to_blender_render"
+    bl_label = "Switch to local render"
+    bl_idname = "ore.switch_to_local_render"
     
     def execute(self, context):
-        bpy.context.scene.render.engine = 'BLENDER_RENDER'
-        return {'FINISHED'}  
+        rd = bpy.context.scene.render
+        ore = bpy.context.scene.ore_render
+        rd.resolution_x = ore.resox
+        rd.resolution_y = ore.resoy
+        rd.fps = ore.fps
+        bpy.context.scene.frame_start = ore.start
+        bpy.context.scene.frame_end = ore.end
+        if (bpy.context.scene.ore_render.engine == 'cycles'):
+            rd.engine = 'CYCLES'
+            bpy.context.scene.cycles.samples = ore.samples
+        else:
+            bpy.context.scene.render.engine = 'BLENDER_RENDER'
+        return {'FINISHED'}
 
-# We re-write the default render panel
-class RENDER_PT_render(RenderButtonsPanel, bpy.types.Panel):
-    bl_label = "Render"
-    COMPAT_ENGINES = {'BLENDER_RENDER'}
+# Copies start & end frame + others from render settings to ore settings
+class OpCopySettings(bpy.types.Operator):
+    bl_label = "Copy settings from current scene"
+    bl_idname = "ore.copy_settings"
+    
+    def execute(self, context):
+        sce = bpy.context.scene
+        rd = sce.render
+        ore = sce.ore_render
+        ore.resox = rd.resolution_x
+        ore.resoy = rd.resolution_y
+        ore.start = sce.frame_start
+        ore.end = sce.frame_end
+        ore.fps = rd.fps
+        return {'FINISHED'}
+
+class EngineSelectPanel(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_engineSelectPanel"
+    bl_label = "Choose rendering mode"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "render"
+    
     def draw(self, context):
         layout = self.layout
         rd = context.scene.render
         row = layout.row()
         row.operator("ore.switch_to_renderfarm_render", text="Renderfarm.fi", icon='WORLD')
-        row.operator("ore.switch_to_blender_render", text="Blender Render", icon='BLENDER')
+        row.operator("ore.switch_to_local_render", text="Local computer", icon='BLENDER')
         row = layout.row()
-        if (bpy.context.scene.render.engine == 'BLENDER_RENDER'):
-            row.operator("render.render", text="Image", icon='RENDER_STILL')
-            row.operator("render.render", text="Animation", icon='RENDER_ANIMATION').animation = True
-            layout.prop(rd, "display_mode", text="Display")
-        else:
+        if (bpy.context.scene.render.engine == 'RENDERFARMFI_RENDER'):
             if bpy.found_newer_version == True:
                 layout.operator('ore.open_download_location')
             else:
                 if bpy.up_to_date == True:
                     layout.label(text='You have the latest version')
                 layout.operator('ore.check_update')
+                
+bpy.utils.register_class(EngineSelectPanel)
 
 class RENDERFARM_MT_Session(bpy.types.Menu):
     bl_label = "Show Session"
@@ -437,6 +522,51 @@ class RENDER_PT_RenderfarmFi(RenderButtonsPanel, bpy.types.Panel):
             layout.label(text="Example: blue skies hero castle flowers grass particles")
             layout.prop(ore, 'url')
             layout.label(text="Example: www.sintel.org")
+            
+            layout.label(text="Please verify your settings", icon='MODIFIER')
+            row = layout.row()
+            #row.operator('ore.copy_settings')
+            #row = layout.row()
+            
+            layout.label(text="Rendering engine")
+            row = layout.row()
+            if (ore.engine == 'blender'):
+                row.operator('ore.use_blender_render', icon='FILE_TICK')
+                row.operator('ore.use_cycles_render')
+            elif (ore.engine == 'cycles' ):
+                row.operator('ore.use_blender_render')
+                row.operator('ore.use_cycles_render', icon='FILE_TICK')
+            else:
+                row.operator('ore.use_blender_render', icon='FILE_TICK')
+                row.operator('ore.use_cycles_render')
+            
+            row = layout.row()
+            
+            layout.separator()
+            row = layout.row()
+            row.prop(ore, 'resox')
+            row.prop(ore, 'resoy')
+            row = layout.row()
+            row.prop(ore, 'start')
+            row.prop(ore, 'end')
+            row = layout.row()
+            row.prop(ore, 'fps')
+            row = layout.row()
+            if (ore.engine == 'cycles'):
+                row.prop(ore, 'samples')
+                row.prop(ore, 'subsamples')
+            row = layout.row()
+            row.prop(ore, 'memusage')
+            #row.prop(ore, 'parts')
+            layout.separator()
+            row = layout.row()
+            
+            layout.label(text="Licenses", icon='FILE_REFRESH')
+            row = layout.row()
+            row.prop(ore, 'inlicense')
+            row = layout.row()
+            row.prop(ore, 'outlicense')
+            
             checkStatus(ore)
             if (len(bpy.errors) > 0):
                 bpy.ready = False
@@ -444,7 +574,7 @@ class RENDER_PT_RenderfarmFi(RenderButtonsPanel, bpy.types.Panel):
                 bpy.ready = True
 
 class UPLOAD_PT_RenderfarmFi(RenderButtonsPanel, bpy.types.Panel):
-    bl_label = "Upload"
+    bl_label = "Upload to www.renderfarm.fi"
     COMPAT_ENGINES = set(['RENDERFARMFI_RENDER'])
     
     @classmethod
@@ -465,7 +595,7 @@ class UPLOAD_PT_RenderfarmFi(RenderButtonsPanel, bpy.types.Panel):
                 layout.label(text="- The animation must be at least 20 frames long")
                 layout.label(text="- No still renders")
                 layout.label(text="- No Python scripts")
-                layout.label(text="- Memory usage max 3GB")
+                layout.label(text="- Memory usage max 4GB")
                 layout.label(text="- If your render takes more than an hour / frame:")
                 layout.label(text="   * No filter type composite nodes (blur, glare etc.)")
                 layout.label(text="   * No SSS")
@@ -473,45 +603,24 @@ class UPLOAD_PT_RenderfarmFi(RenderButtonsPanel, bpy.types.Panel):
                 
                 layout.separator()
                 
-                layout.label(text="Please verify your settings", icon='MODIFIER')
-                row = layout.row()
-                row.label(text="Resolution: " + str(ore.resox) + "x" + str(ore.resoy))
-                row = layout.row()
-                row.label(text="Frames: " + str(ore.start) + " - " + str(ore.end))
-                row = layout.row()
-                if (ore.start == ore.end):
-                    row.label(text="You have selected only 1 frame to be rendered", icon='ERROR')
-                    row = layout.row()
-                    row.label(text="Renderfarm.fi does not render stills - only animations")
-                row = layout.row()
-                row.label(text="Frame rate: " + str(ore.fps))
-                row = layout.row()
-                layout.separator()
-                
-                layout.label(text="Optional advanced settings", icon='MODIFIER')
-                row = layout.row()
-                row.prop(ore, 'memusage')
-                row.prop(ore, 'parts')
-                layout.separator()
-                row = layout.row()
-                
-                layout.label(text="Licenses", icon='FILE_REFRESH')
-                row = layout.row()
-                row.prop(ore, 'inlicense')  
-                row.prop(ore, 'outlicense')
-                
                 row = layout.row()
                 if (bpy.uploadInProgress == True):
-                    layout.label(text="Attempting upload...")
+                    layout.label(text="------------------------")
+                    layout.label(text="- Attempting upload... -")
+                    layout.label(text="------------------------")
+                if (bpy.file_format_warning == True):
+                    layout.label(text="Your output format is HDR", icon='ERROR')
+                    layout.label(text="Right now we don't support this file format")
+                    layout.label(text="File format will be changed to PNG")
                 if (bpy.texturePackError):
                     layout.label(text="There was an error in packing external textures", icon='ERROR')
                     layout.label(text="Make sure that all your textures exist on your computer")
                     layout.label(text="The render will still work, but won't have the missing textures")
-                    layout.label(text="You may want to cancel your render above")
+                    layout.label(text="You may want to cancel your render above in \"My sessions\"")
                 if (bpy.linkedFileError):
                     layout.label(text="There was an error in appending linked .blend files", icon='ERROR')
                     layout.label(text="Your render might not have all the external content")
-                    layout.label(text="You may want to cancel your render above")
+                    layout.label(text="You may want to cancel your render above in \"My sessions\"")
                 if (bpy.particleBakeWarning):
                     layout.label(text="You have a particle simulation", icon='ERROR')
                     layout.label(text="All Emitter type particles must be baked")
@@ -530,7 +639,8 @@ class UPLOAD_PT_RenderfarmFi(RenderButtonsPanel, bpy.types.Panel):
                     if (errorTime > 4):
                         bpy.infoError = False
                         bpy.errorStartTime = -1
-                layout.label(text="Blender may seem frozen during the upload!", icon='LAMP')
+                layout.label(text="Warning:", icon='LAMP')
+                layout.label(text="Blender may seem frozen during the upload!")
                 row.operator('ore.reset', icon='FILE_REFRESH')
             else:
                 layout.label(text="Fill the scene information first")
@@ -553,10 +663,16 @@ def encode_multipart_data(data, files):
     
     def encode_file(field_name):
         filename = files [field_name]
+        fcontent = None
+        print('encoding', field_name)
+        try:
+            fcontent = str(open(filename, 'rb').read(), encoding='iso-8859-1')
+        except Exception:
+            print('Trouble in paradise')
         return ('--' + boundary,
                 'Content-Disposition: form-data; name="%s"; filename="%s"' % (field_name, filename),
                 'Content-Type: %s' % get_content_type(filename),
-                '', str(open(filename, 'rb').read(), encoding='iso-8859-1'))
+                '', fcontent)
     
     lines = []
     for name in data:
@@ -564,16 +680,19 @@ def encode_multipart_data(data, files):
     for name in files:
         lines.extend(encode_file(name))
     lines.extend(('--%s--' % boundary, ''))
+    print("joining lines into body")
     body = '\r\n'.join(lines)
     
     headers = {'content-type': 'multipart/form-data; boundary=' + boundary,
                'content-length': str(len(body))}
+
+    print("headers and body ready")
     
     return body, headers
 
-def send_post(url, data, files):
-    connection = http.client.HTTPConnection('xmlrpc.renderfarm.fi')
-    connection.request('POST', '/file', *encode_multipart_data(data, files))
+def send_post(data, files):
+    connection = http.client.HTTPConnection(rffi_xmlrpc_upload)
+    connection.request('POST', '/burp/storage', *encode_multipart_data(data, files)) # was /file
     response = connection.getresponse()
     res = response.read()
     return res
@@ -589,7 +708,7 @@ def md5_for_file(filepath):
         md5hash.update(data)
     return md5hash.hexdigest()
 
-def upload_file(key, userid, sessionid, server, path):
+def upload_file(key, userid, sessionid, path):
     assert isabs(path)
     assert isfile(path)
     data = {
@@ -598,22 +717,19 @@ def upload_file(key, userid, sessionid, server, path):
         'sessionId': sessionid,
         'md5sum': md5_for_file(path)
     }
-    print("d")
     files = {
         'blenderfile': path
     }
-    print("e")
-    r = send_post(server, data, files)
-    print("f")
-    #print 'Uploaded %r' % (path)
+    r = send_post(data, files)
     
     return r
 
 def run_upload(key, userid, sessionid, path):
-    #print('Upload', path)
-    r = upload_file(key, userid, sessionid, r'http://xmlrpc.renderfarm.fi/file', path)
+    print("Starting upload");
+    r = upload_file(key, userid, sessionid, path)
+    print("Upload finished")
     o = xmlrpc.client.loads(r)
-    print("Done!")
+    print("Loaded xmlrpc response")
     return o[0][0]
 
 def ore_upload(op, context):
@@ -627,17 +743,24 @@ def ore_upload(op, context):
         bpy.context.scene.render.engine = 'RENDERFARMFI_RENDER'
         return {'CANCELLED'}
     try:
-        authproxy = xmlrpc.client.ServerProxy(r'https://xmlrpc.renderfarm.fi/auth')
+        print("Creating auth proxy")
+        authproxy = xmlrpc.client.ServerProxy(rffi_xmlrpc_secure, verbose=DEV)
+        print("Getting session key")
         res = authproxy.auth.getSessionKey(ore.username, ore.hash)
         key = res['key']
         userid = res['userId']
-        proxy = xmlrpc.client.ServerProxy(r'http://xmlrpc.renderfarm.fi/session')
+        print("Creating server proxy")
+        proxy = xmlrpc.client.ServerProxy(rffi_xmlrpc, verbose=DEV) #r'http://xmlrpc.renderfarm.fi/session')
         proxy._ServerProxy__transport.user_agent = 'Renderfarm.fi Uploader/%s' % (bpy.CURRENT_VERSION)
-        res = proxy.session.createSession(userid, key)
+        print("Creating a new session")
+        res = proxy.session.createSession(userid, key)  # This may use an existing, non-rendered session. Prevents spamming in case the upload fails for some reason
         sessionid = res['sessionId']
         key = res['key']
+        print("Session id is " + str(sessionid))
         res = run_upload(key, userid, sessionid, bpy.data.filepath)
+        print("Getting fileid from xmlrpc response data")
         fileid = int(res['fileId'])
+        print("Sending session details for session " + str(sessionid) + " with fileid " + str(fileid))
         res = proxy.session.setTitle(userid, res['key'], sessionid, ore.title)
         res = proxy.session.setLongDescription(userid, res['key'], sessionid, ore.longdesc)
         res = proxy.session.setShortDescription(userid, res['key'], sessionid, ore.shortdesc)
@@ -650,22 +773,35 @@ def ore_upload(op, context):
         res = proxy.session.setXSize(userid, res['key'], sessionid, ore.resox)
         res = proxy.session.setYSize(userid, res['key'], sessionid, ore.resoy)
         res = proxy.session.setFrameRate(userid, res['key'], sessionid, ore.fps)
+        res = proxy.session.setFrameFormat(userid, res['key'], sessionid, ore.file_format)
+        res = proxy.session.setRenderer(userid, res['key'], sessionid, ore.engine)
+        res = proxy.session.setSamples(userid, res['key'], sessionid, ore.samples)
+        res = proxy.session.setSubSamples(userid, res['key'], sessionid, ore.subsamples)
+        if (ore.engine == 'cycles'):
+            res = proxy.session.setReplication(userid, res['key'], sessionid, 1)
+            if ore.subsamples > 1:
+                res = proxy.session.setStitcher(userid, res['key'], sessionid, 'AVERAGE')
+        else:
+            res = proxy.session.setReplication(userid, res['key'], sessionid, 3)
         res = proxy.session.setOutputLicense(userid, res['key'], sessionid, int(ore.outlicense))
         res = proxy.session.setInputLicense(userid, res['key'], sessionid, int(ore.inlicense))
+        print("Setting primary input file")
         res = proxy.session.setPrimaryInputFile(userid, res['key'], sessionid, fileid)
+        print("Submitting session")
         res = proxy.session.submit(userid, res['key'], sessionid)
+        print("Session submitted")
         op.report(set(['INFO']), 'Submission sent to Renderfarm.fi')
     except xmlrpc.client.Error as v:
         bpy.context.scene.render.engine = 'RENDERFARMFI_RENDER'
         print('ERROR:', v)
-        op.report(set(['ERROR']), 'An error occurred while sending submission to Renderfarm.fi')
+        op.report(set(['ERROR']), 'An XMLRPC error occurred while sending submission to Renderfarm.fi')
     except Exception as e:
         bpy.context.scene.render.engine = 'RENDERFARMFI_RENDER'
         print('Unhandled error:', e)
-        op.report(set(['ERROR']), 'An error occurred while sending submission to Renderfarm.fi')
+        op.report(set(['ERROR']), 'A generic error occurred while sending submission to Renderfarm.fi')
     
     bpy.context.scene.render.engine = 'RENDERFARMFI_RENDER'
-    doRefresh()
+    doRefresh(op)
     return {'FINISHED'}
 
 def setStatus(property, status):
@@ -708,53 +844,71 @@ class OreSession:
     
     def percentageComplete(self):
         totFrames = self.endframe - self.startframe
+        done = 0
         if totFrames != 0:
             done = math.floor((self.frames / totFrames)*100)
-        else:
-            done = math.floor((self.frames / (totFrames+0.01))*100)
         
         if done > 100:
             done = 100
         return done
 
-def xmlSessionsToOreSessions(sessions, queue):
-    #bpy.ore_sessions = []
+def xmlSessionsToOreSessions(sessions, stage=None): #, queue):
     output = []
-    sessionFilter = []
-    sessionFilter = sessions[queue]
-    for sid in sessionFilter:
-        s = sessionFilter[sid]['title']
-        t = sessionFilter[sid]['timestamps']
-        sinfo = OreSession(sid, s) 
-        if queue in ('completed', 'active'):
-            sinfo.frames = sessionFilter[sid]['framesRendered']
-        sinfo.startframe = sessionFilter[sid]['startFrame']
-        sinfo.endframe = sessionFilter[sid]['endFrame']
-        #bpy.ore_sessions.append(sinfo)
+    for session in sessions:
+        s = session['title']
+        if stage:
+            s = s + ' (' + stage + ')'
+        #t = session['timestamps']
+        sinfo = OreSession(session['sessionId'], s) 
+        if stage in {'Completed', 'Active'}:
+            sinfo.frames = session['framesRendered']
+        sinfo.startframe = session['startFrame']
+        sinfo.endframe = session['endFrame']
         output.append(sinfo)
     return output
 
-def doRefresh():
+def doRefresh(op, rethrow=False):
     sce = bpy.context.scene
     ore = sce.ore_render
     try:
-        userproxy = xmlrpc.client.ServerProxy(r'https://xmlrpc.renderfarm.fi/user')
-        sessions = userproxy.user.getAllSessions(ore.username, ore.hash, 'completed')
+    
+        proxy = xmlrpc.client.ServerProxy(rffi_xmlrpc_secure, verbose=DEV)
+        res = proxy.auth.getSessionKey(ore.username, ore.hash)
+        userid = res['userID']
+        proxy = xmlrpc.client.ServerProxy(rffi_xmlrpc, verbose=DEV)
+
         bpy.ore_sessions = []
-        bpy.ore_sessions = xmlSessionsToOreSessions(sessions, 'completed')
+
+        sessions = proxy.session.getSessions(userid, 'accept', 0, 100, 'full')
+        bpy.ore_sessions = xmlSessionsToOreSessions(sessions, stage='Pending')
+        bpy.ore_pending_sessions = bpy.ore_sessions
+
+        sessions = proxy.session.getSessions(userid, 'completed', 0, 100, 'full')
+        bpy.ore_sessions = xmlSessionsToOreSessions(sessions, stage='Completed')
         bpy.ore_completed_sessions = bpy.ore_sessions
-        bpy.ore_cancelled_sessions = xmlSessionsToOreSessions(sessions, 'canceled')
-        sessions = userproxy.user.getAllSessions(ore.username, ore.hash, 'accept')
-        bpy.ore_pending_sessions = xmlSessionsToOreSessions(sessions, 'accept')
-        sessions = userproxy.user.getAllSessions(ore.username, ore.hash, 'active')
-        bpy.ore_active_sessions = xmlSessionsToOreSessions(sessions, 'active')
+
+        sessions = proxy.session.getSessions(userid, 'cancelled', 0, 100, 'full')
+        bpy.ore_sessions = xmlSessionsToOreSessions(sessions, stage='Cancelled')
+        bpy.ore_cancelled_sessions = bpy.ore_sessions
+
+        sessions = proxy.session.getSessions(userid, 'render', 0, 100, 'full')
+        bpy.ore_sessions = xmlSessionsToOreSessions(sessions, stage='Rendering')
+        bpy.ore_active_sessions = bpy.ore_sessions
         
         updateCompleteSessionList(ore)
         
         return 0
     except xmlrpc.client.Error as v:
-        self.report({'WARNING'}, "Error at refresh")
+        op.report({'WARNING'}, "Error at refresh : " + str(type(v)) + " -> " + str(v.faultCode) + ": " + v.faultString)
         print(v)
+        if rethrow:
+            raise v
+        return 1
+    except Exception as v:
+        op.report({'WARNING'}, "Non XMLRPC Error at refresh: " + str(v))
+        print(v)
+        if rethrow:
+            raise v
         return 1
 
 class ORE_RefreshOp(bpy.types.Operator):
@@ -762,7 +916,7 @@ class ORE_RefreshOp(bpy.types.Operator):
     bl_label = 'Refresh'
     
     def execute(self, context):
-        result = doRefresh()
+        result = doRefresh(self)
         if (result == 0):
             return {'FINISHED'}
         else:
@@ -814,15 +968,19 @@ class ORE_CancelSession(bpy.types.Operator):
     def execute(self, context):
         sce = context.scene
         ore = sce.ore_render
-        userproxy = xmlrpc.client.ServerProxy(r'https://xmlrpc.renderfarm.fi/user')
-        if len(bpy.ore_sessions)>0:
+        proxy = xmlrpc.client.ServerProxy(rffi_xmlrpc_secure, verbose=DEV)
+        if len(bpy.ore_complete_session_queue)>0:
             s = bpy.ore_complete_session_queue[ore.selected_session]
             try:
-                userproxy.user.cancelSession(ore.username, ore.hash, int(s.id))
-                doRefresh()
-                self.report(set(['INFO']), 'Session ' + s.title + ' with id ' + s.id + ' cancelled')
-            except:
-                self.report(set(['ERROR']), 'Could not cancel session ' + s.title + ' with id ' + s.id)
+                res = proxy.auth.getSessionKey(ore.username, ore.hash)
+                key = res['key']
+                userid = res['userId']
+                res = proxy.session.cancelSession(userid, key, s.id)
+                doRefresh(self)
+                self.report(set(['INFO']), 'Session ' + s.title + ' with id ' + str(s.id) + ' cancelled')
+            except xmlrpc.client.Error as v:
+                self.report(set(['ERROR']), 'Could not cancel session ' + s.title + ' with id ' + str(s.id))
+                print(v)
                 bpy.cancelError = True
                 bpy.errorStartTime = time.time()
         
@@ -885,7 +1043,7 @@ class ORE_CheckUpdate(bpy.types.Operator):
     bl_label = 'Check for a new version'
     
     def execute(self, context):
-        blenderproxy = xmlrpc.client.ServerProxy(r'http://xmlrpc.renderfarm.fi/blender')
+        blenderproxy = xmlrpc.client.ServerProxy(r'http://xmlrpc.renderfarm.fi/renderfarmfi/blender', verbose=DEV)
         try:
             self.report(set(['INFO']), 'Checking for newer version on Renderfarm.fi')
             dl_url = blenderproxy.blender.getCurrentVersion(bpy.CURRENT_VERSION)
@@ -898,7 +1056,10 @@ class ORE_CheckUpdate(bpy.types.Operator):
             self.report(set(['INFO']), 'Done checking for newer version on Renderfarm.fi')
         except xmlrpc.client.Fault as f:
             print('ERROR:', f)
-            self.report(set(['ERROR']), 'An error occurred while checking for newer version on Renderfarm.fi')
+            self.report(set(['ERROR']), 'An error occurred while checking for newer version on Renderfarm.fi: ' + f.faultString)
+        except xmlrpc.client.ProtocolError as e:
+            print('ERROR:', e)
+            self.report(set(['ERROR']), 'An HTTP error occurred while checking for newer version on Renderfarm.fi: ' + str(e.errcode) + ' ' + e.errmsg)
         
         return {'FINISHED'}
 
@@ -909,6 +1070,9 @@ class ORE_LoginOp(bpy.types.Operator):
     def execute(self, context):
         sce = context.scene
         ore = sce.ore_render
+
+        ore.password = ore.password.strip()
+        ore.username = ore.username.strip().lower()
         
         if ore.hash=='':
             if ore.password != '' and ore.username != '':
@@ -917,27 +1081,7 @@ class ORE_LoginOp(bpy.types.Operator):
                 ore.loginInserted = False
         
         try:
-            userproxy = xmlrpc.client.ServerProxy(r'https://xmlrpc.renderfarm.fi/user')
-            sessions = userproxy.user.getAllSessions(ore.username, ore.hash, 'completed')
-            bpy.ore_sessions = xmlSessionsToOreSessions(sessions, 'completed')
-            bpy.ore_completed_sessions = bpy.ore_sessions
-            bpy.ore_cancelled_sessions = xmlSessionsToOreSessions(sessions, 'canceled')
-            sessions = userproxy.user.getAllSessions(ore.username, ore.hash, 'accept')
-            bpy.ore_pending_sessions = xmlSessionsToOreSessions(sessions, 'accept')
-            sessions = userproxy.user.getAllSessions(ore.username, ore.hash, 'active')
-            bpy.ore_active_sessions = xmlSessionsToOreSessions(sessions, 'active')
-            
-            bpy.ore_active_session_queue = bpy.ore_completed_sessions
-            updateSessionList(ore.completed_sessions, ore)
-            
-            bpy.ore_active_session_queue = bpy.ore_pending_sessions
-            updateSessionList(ore.pending_sessions, ore)
-            
-            bpy.ore_active_session_queue = bpy.ore_active_sessions
-            updateSessionList(ore.active_sessions, ore)
-            
-            bpy.ore_active_session_queue = bpy.ore_cancelled_sessions
-            updateSessionList(ore.rejected_sessions, ore)
+            doRefresh(self, True)
             
             ore.passwordCorrect = True
             ore.loginInserted = True
@@ -948,20 +1092,9 @@ class ORE_LoginOp(bpy.types.Operator):
             ore.passwordCorrect = False
             ore.hash = ''
             ore.password = ''
-            self.report({'WARNING'}, "Incorrect login")
+            self.report({'WARNING'}, "Incorrect login: " + v.faultString)
             print(v)
             return {'CANCELLED'}
-        
-        all_sessions = []
-        bpy.ore_complete_session_queue = []
-        
-        bpy.ore_complete_session_queue.extend(bpy.ore_pending_sessions)
-        bpy.ore_complete_session_queue.extend(bpy.ore_active_sessions)
-        bpy.ore_complete_session_queue.extend(bpy.ore_completed_sessions)
-        bpy.ore_complete_session_queue.extend(bpy.ore_cancelled_sessions)
-        
-        bpy.ore_active_session_queue = bpy.ore_complete_session_queue
-        updateSessionList(ore.all_sessions, ore)
         
         return {'FINISHED'}
 
@@ -1029,6 +1162,22 @@ class ORE_UseBlenderReso(bpy.types.Operator):
         ore.end = sce.frame_end
         ore.fps = rd.fps
         
+        return {'FINISHED'}
+        
+class ORE_UseCyclesRender(bpy.types.Operator):
+    bl_idname = "ore.use_cycles_render"
+    bl_label = "Cycles"
+    
+    def execute(self, context):
+        context.scene.ore_render.engine = 'cycles'
+        return {'FINISHED'}
+
+class ORE_UseBlenderRender(bpy.types.Operator):
+    bl_idname = "ore.use_blender_render"
+    bl_label = "Blender Internal"
+    
+    def execute(self, context):
+        context.scene.ore_render.engine = 'blender'
         return {'FINISHED'}
 
 class ORE_ChangeUser(bpy.types.Operator):

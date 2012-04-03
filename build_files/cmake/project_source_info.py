@@ -25,6 +25,14 @@ __all__ = (
     "SOURCE_DIR",
     )
 
+
+import sys
+if not sys.version.startswith("3"):
+    print("\nPython3.x needed, found %s.\nAborting!\n" %
+          sys.version.partition(" ")[0])
+    sys.exit(1)
+
+
 import os
 from os.path import join, dirname, normpath, abspath
 
@@ -40,7 +48,7 @@ def is_c_header(filename):
 
 def is_c(filename):
     ext = os.path.splitext(filename)[1]
-    return (ext in (".c", ".cpp", ".cxx", ".m", ".mm", ".rc"))
+    return (ext in (".c", ".cpp", ".cxx", ".m", ".mm", ".rc", ".cc", ".inl"))
 
 
 def is_c_any(filename):
@@ -73,7 +81,7 @@ def do_ignore(filepath, ignore_prefix_list):
 def makefile_log():
     import subprocess
     import time
-    # Check blender is not 2.5x until it supports playback again
+
     print("running make with --dry-run ...")
     process = subprocess.Popen(["make", "--always-make", "--dry-run", "--keep-going", "VERBOSE=1"],
                                 stdout=subprocess.PIPE,
@@ -85,7 +93,7 @@ def makefile_log():
     out = process.stdout.read()
     process.stdout.close()
     print("done!", len(out), "bytes")
-    return out.decode("ascii").split("\n")
+    return out.decode("utf-8", errors="ignore").split("\n")
 
 
 def build_info(use_c=True, use_cxx=True, ignore_prefix_list=None):
@@ -152,7 +160,6 @@ def build_info(use_c=True, use_cxx=True, ignore_prefix_list=None):
 def queue_processes(process_funcs, job_total=-1):
     """ Takes a list of function arg pairs, each function must return a process
     """
-    import sys
 
     if job_total == -1:
         import multiprocessing

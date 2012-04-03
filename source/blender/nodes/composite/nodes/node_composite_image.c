@@ -36,28 +36,76 @@
 /* **************** IMAGE (and RenderResult, multilayer image) ******************** */
 
 static bNodeSocketTemplate cmp_node_rlayers_out[]= {
-	{	SOCK_RGBA, 0, "Image",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "Alpha",		1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "Z",			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_VECTOR, 0, "Normal",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_VECTOR, 0, "UV",		1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_VECTOR, 0, "Speed",	1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Color",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Diffuse",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Specular",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Shadow",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "AO",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Reflect",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Refract",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Indirect",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "IndexOB",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "IndexMA",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "Mist",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Emit",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Environment",0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Image",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, "Alpha",					1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, "Z",						1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_VECTOR, 0, "Normal",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_VECTOR, 0, "UV",					1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_VECTOR, 0, "Speed",				1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Color",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Diffuse",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Specular",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Shadow",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "AO",						0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Reflect",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Refract",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Indirect",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, "IndexOB",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, "IndexMA",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, "Mist",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Emit",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Environment",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Diffuse Direct",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Diffuse Indirect",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Diffuse Color",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Glossy Direct",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Glossy Indirect",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Glossy Color",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Transmission Direct",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Transmission Indirect",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, "Transmission Color",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 
+/* float buffer from the image with matching color management */
+float *node_composit_get_float_buffer(RenderData *rd, ImBuf *ibuf, int *alloc)
+{
+	float *rect;
+	int predivide= (ibuf->flags & IB_cm_predivide);
+
+	*alloc= FALSE;
+
+	if (rd->color_mgt_flag & R_COLOR_MANAGEMENT) {
+		if (ibuf->profile != IB_PROFILE_NONE) {
+			rect= ibuf->rect_float;
+		}
+		else {
+			rect= MEM_mapallocN(sizeof(float) * 4 * ibuf->x * ibuf->y, "node_composit_get_image");
+
+			IMB_buffer_float_from_float(rect, ibuf->rect_float,
+				4, IB_PROFILE_LINEAR_RGB, IB_PROFILE_SRGB, predivide,
+				ibuf->x, ibuf->y, ibuf->x, ibuf->x);
+
+			*alloc= TRUE;
+		}
+	}
+	else {
+		if (ibuf->profile == IB_PROFILE_NONE) {
+			rect= ibuf->rect_float;
+		}
+		else {
+			rect= MEM_mapallocN(sizeof(float) * 4 * ibuf->x * ibuf->y, "node_composit_get_image");
+
+			IMB_buffer_float_from_float(rect, ibuf->rect_float,
+				4, IB_PROFILE_SRGB, IB_PROFILE_LINEAR_RGB, predivide,
+				ibuf->x, ibuf->y, ibuf->x, ibuf->x);
+
+			*alloc= TRUE;
+		}
+	}
+
+	return rect;
+}
 
 /* note: this function is used for multilayer too, to ensure uniform 
    handling with BKE_image_get_ibuf() */
@@ -71,7 +119,7 @@ static CompBuf *node_composit_get_image(RenderData *rd, Image *ima, ImageUser *i
 	int alloc= FALSE;
 
 	ibuf= BKE_image_get_ibuf(ima, iuser);
-	if(ibuf==NULL || (ibuf->rect==NULL && ibuf->rect_float==NULL)) {
+	if (ibuf==NULL || (ibuf->rect==NULL && ibuf->rect_float==NULL)) {
 		return NULL;
 	}
 
@@ -81,27 +129,8 @@ static CompBuf *node_composit_get_image(RenderData *rd, Image *ima, ImageUser *i
 
 	/* now we need a float buffer from the image with matching color management */
 	/* XXX weak code, multilayer is excluded from this */
-	if(ibuf->channels == 4 && ima->rr==NULL) {
-		if(rd->color_mgt_flag & R_COLOR_MANAGEMENT) {
-			if(ibuf->profile != IB_PROFILE_NONE) {
-				rect= ibuf->rect_float;
-			}
-			else {
-				rect= MEM_mapallocN(sizeof(float) * 4 * ibuf->x * ibuf->y, "node_composit_get_image");
-				srgb_to_linearrgb_rgba_rgba_buf(rect, ibuf->rect_float, ibuf->x * ibuf->y);
-				alloc= TRUE;
-			}
-		}
-		else {
-			if(ibuf->profile == IB_PROFILE_NONE) {
-				rect= ibuf->rect_float;
-			}
-			else {
-				rect= MEM_mapallocN(sizeof(float) * 4 * ibuf->x * ibuf->y, "node_composit_get_image");
-				linearrgb_to_srgb_rgba_rgba_buf(rect, ibuf->rect_float, ibuf->x * ibuf->y);
-				alloc= TRUE;
-			}
-		}
+	if (ibuf->channels == 4 && ima->rr==NULL) {
+		rect= node_composit_get_float_buffer(rd, ibuf, &alloc);
 	}
 	else {
 		/* non-rgba passes can't use color profiles */
@@ -112,9 +141,9 @@ static CompBuf *node_composit_get_image(RenderData *rd, Image *ima, ImageUser *i
 
 	type= ibuf->channels;
 	
-	if(rd->scemode & R_COMP_CROP) {
+	if (rd->scemode & R_COMP_CROP) {
 		stackbuf= get_cropped_compbuf(&rd->disprect, rect, ibuf->x, ibuf->y, type);
-		if(alloc)
+		if (alloc)
 			MEM_freeN(rect);
 	}
 	else {
@@ -147,8 +176,8 @@ static CompBuf *node_composit_get_zimage(bNode *node, RenderData *rd)
 	ImBuf *ibuf= BKE_image_get_ibuf((Image *)node->id, node->storage);
 	CompBuf *zbuf= NULL;
 	
-	if(ibuf && ibuf->zbuf_float) {
-		if(rd->scemode & R_COMP_CROP) {
+	if (ibuf && ibuf->zbuf_float) {
+		if (rd->scemode & R_COMP_CROP) {
 			zbuf= get_cropped_compbuf(&rd->disprect, ibuf->zbuf_float, ibuf->x, ibuf->y, CB_VAL);
 		}
 		else {
@@ -165,11 +194,11 @@ static CompBuf *compbuf_multilayer_get(RenderData *rd, RenderLayer *rl, Image *i
 	RenderPass *rpass;
 	short index;
 	
-	for(index=0, rpass= rl->passes.first; rpass; rpass= rpass->next, index++)
-		if(rpass->passtype==passtype)
+	for (index=0, rpass= rl->passes.first; rpass; rpass= rpass->next, index++)
+		if (rpass->passtype==passtype)
 			break;
 	
-	if(rpass) {
+	if (rpass) {
 		CompBuf *cbuf;
 		
 		iuser->pass= index;
@@ -183,41 +212,59 @@ static CompBuf *compbuf_multilayer_get(RenderData *rd, RenderLayer *rl, Image *i
 
 static void outputs_multilayer_get(RenderData *rd, RenderLayer *rl, bNodeStack **out, Image *ima, ImageUser *iuser)
 {
-	if(out[RRES_OUT_Z]->hasoutput)
+	if (out[RRES_OUT_Z]->hasoutput)
 		out[RRES_OUT_Z]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_Z);
-	if(out[RRES_OUT_VEC]->hasoutput)
+	if (out[RRES_OUT_VEC]->hasoutput)
 		out[RRES_OUT_VEC]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_VECTOR);
-	if(out[RRES_OUT_NORMAL]->hasoutput)
+	if (out[RRES_OUT_NORMAL]->hasoutput)
 		out[RRES_OUT_NORMAL]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_NORMAL);
-	if(out[RRES_OUT_UV]->hasoutput)
+	if (out[RRES_OUT_UV]->hasoutput)
 		out[RRES_OUT_UV]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_UV);
 	
-	if(out[RRES_OUT_RGBA]->hasoutput)
+	if (out[RRES_OUT_RGBA]->hasoutput)
 		out[RRES_OUT_RGBA]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_RGBA);
-	if(out[RRES_OUT_DIFF]->hasoutput)
+	if (out[RRES_OUT_DIFF]->hasoutput)
 		out[RRES_OUT_DIFF]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_DIFFUSE);
-	if(out[RRES_OUT_SPEC]->hasoutput)
+	if (out[RRES_OUT_SPEC]->hasoutput)
 		out[RRES_OUT_SPEC]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_SPEC);
-	if(out[RRES_OUT_SHADOW]->hasoutput)
+	if (out[RRES_OUT_SHADOW]->hasoutput)
 		out[RRES_OUT_SHADOW]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_SHADOW);
-	if(out[RRES_OUT_AO]->hasoutput)
+	if (out[RRES_OUT_AO]->hasoutput)
 		out[RRES_OUT_AO]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_AO);
-	if(out[RRES_OUT_REFLECT]->hasoutput)
+	if (out[RRES_OUT_REFLECT]->hasoutput)
 		out[RRES_OUT_REFLECT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_REFLECT);
-	if(out[RRES_OUT_REFRACT]->hasoutput)
+	if (out[RRES_OUT_REFRACT]->hasoutput)
 		out[RRES_OUT_REFRACT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_REFRACT);
-	if(out[RRES_OUT_INDIRECT]->hasoutput)
+	if (out[RRES_OUT_INDIRECT]->hasoutput)
 		out[RRES_OUT_INDIRECT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_INDIRECT);
-	if(out[RRES_OUT_INDEXOB]->hasoutput)
+	if (out[RRES_OUT_INDEXOB]->hasoutput)
 		out[RRES_OUT_INDEXOB]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_INDEXOB);
-	if(out[RRES_OUT_INDEXMA]->hasoutput)
+	if (out[RRES_OUT_INDEXMA]->hasoutput)
 		out[RRES_OUT_INDEXMA]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_INDEXMA);
-	if(out[RRES_OUT_MIST]->hasoutput)
+	if (out[RRES_OUT_MIST]->hasoutput)
 		out[RRES_OUT_MIST]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_MIST);
-	if(out[RRES_OUT_EMIT]->hasoutput)
+	if (out[RRES_OUT_EMIT]->hasoutput)
 		out[RRES_OUT_EMIT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_EMIT);
-	if(out[RRES_OUT_ENV]->hasoutput)
+	if (out[RRES_OUT_ENV]->hasoutput)
 		out[RRES_OUT_ENV]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_ENVIRONMENT);
+	if (out[RRES_OUT_DIFF_DIRECT]->hasoutput)
+		out[RRES_OUT_DIFF_DIRECT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_DIFFUSE_DIRECT);
+	if (out[RRES_OUT_DIFF_INDIRECT]->hasoutput)
+		out[RRES_OUT_DIFF_INDIRECT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_DIFFUSE_INDIRECT);
+	if (out[RRES_OUT_DIFF_COLOR]->hasoutput)
+		out[RRES_OUT_DIFF_COLOR]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_DIFFUSE_COLOR);
+	if (out[RRES_OUT_GLOSSY_DIRECT]->hasoutput)
+		out[RRES_OUT_GLOSSY_DIRECT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_GLOSSY_DIRECT);
+	if (out[RRES_OUT_GLOSSY_INDIRECT]->hasoutput)
+		out[RRES_OUT_GLOSSY_INDIRECT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_GLOSSY_INDIRECT);
+	if (out[RRES_OUT_GLOSSY_COLOR]->hasoutput)
+		out[RRES_OUT_GLOSSY_COLOR]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_GLOSSY_COLOR);
+	if (out[RRES_OUT_TRANSM_DIRECT]->hasoutput)
+		out[RRES_OUT_TRANSM_DIRECT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_TRANSM_DIRECT);
+	if (out[RRES_OUT_TRANSM_INDIRECT]->hasoutput)
+		out[RRES_OUT_TRANSM_INDIRECT]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_TRANSM_INDIRECT);
+	if (out[RRES_OUT_TRANSM_COLOR]->hasoutput)
+		out[RRES_OUT_TRANSM_COLOR]->data= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_TRANSM_COLOR);
 }
 
 
@@ -226,7 +273,7 @@ static void node_composit_exec_image(void *data, bNode *node, bNodeStack **UNUSE
 	
 	/* image assigned to output */
 	/* stack order input sockets: col, alpha */
-	if(node->id) {
+	if (node->id) {
 		RenderData *rd= data;
 		Image *ima= (Image *)node->id;
 		ImageUser *iuser= (ImageUser *)node->storage;
@@ -236,13 +283,13 @@ static void node_composit_exec_image(void *data, bNode *node, bNodeStack **UNUSE
 		BKE_image_user_calc_frame(iuser, rd->cfra, 0);
 		
 		/* force a load, we assume iuser index will be set OK anyway */
-		if(ima->type==IMA_TYPE_MULTILAYER)
+		if (ima->type==IMA_TYPE_MULTILAYER)
 			BKE_image_get_ibuf(ima, iuser);
 		
-		if(ima->type==IMA_TYPE_MULTILAYER && ima->rr) {
+		if (ima->type==IMA_TYPE_MULTILAYER && ima->rr) {
 			RenderLayer *rl= BLI_findlink(&ima->rr->layers, iuser->layer);
 			
-			if(rl) {
+			if (rl) {
 				out[0]->data= stackbuf= compbuf_multilayer_get(rd, rl, ima, iuser, SCE_PASS_COMBINED);
 				
 				/* go over all layers */
@@ -278,14 +325,14 @@ static void node_composit_exec_image(void *data, bNode *node, bNodeStack **UNUSE
 				/* put image on stack */	
 				out[0]->data= stackbuf;
 			
-				if(out[2]->hasoutput)
+				if (out[2]->hasoutput)
 					out[2]->data= node_composit_get_zimage(node, rd);
 			}
 		}
 		
 		/* alpha and preview for both types */
-		if(stackbuf) {
-			if(out[1]->hasoutput)
+		if (stackbuf) {
+			if (out[1]->hasoutput)
 				out[1]->data= valbuf_from_rgbabuf(stackbuf, CHAN_A);
 
 			generate_preview(data, node, stackbuf);
@@ -303,18 +350,18 @@ static void node_composit_init_image(bNodeTree *UNUSED(ntree), bNode* node, bNod
 	iuser->ok= 1;
 }
 
-void register_node_type_cmp_image(ListBase *lb)
+void register_node_type_cmp_image(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_IMAGE, "Image", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_IMAGE, "Image", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, NULL, cmp_node_rlayers_out);
 	node_type_size(&ntype, 120, 80, 300);
 	node_type_init(&ntype, node_composit_init_image);
 	node_type_storage(&ntype, "ImageUser", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, node_composit_exec_image);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
 
 
@@ -323,18 +370,18 @@ void register_node_type_cmp_image(ListBase *lb)
 static CompBuf *compbuf_from_pass(RenderData *rd, RenderLayer *rl, int rectx, int recty, int passcode)
 {
 	float *fp= RE_RenderLayerGetPass(rl, passcode);
-	if(fp) {
+	if (fp) {
 		CompBuf *buf;
 		int buftype= CB_VEC3;
 
-		if(ELEM4(passcode, SCE_PASS_Z, SCE_PASS_INDEXOB, SCE_PASS_MIST, SCE_PASS_INDEXMA))
+		if (ELEM4(passcode, SCE_PASS_Z, SCE_PASS_INDEXOB, SCE_PASS_MIST, SCE_PASS_INDEXMA))
 			buftype= CB_VAL;
-		else if(passcode==SCE_PASS_VECTOR)
+		else if (passcode==SCE_PASS_VECTOR)
 			buftype= CB_VEC4;
-		else if(ELEM(passcode, SCE_PASS_COMBINED, SCE_PASS_RGBA))
+		else if (ELEM(passcode, SCE_PASS_COMBINED, SCE_PASS_RGBA))
 			buftype= CB_RGBA;
 
-		if(rd->scemode & R_COMP_CROP)
+		if (rd->scemode & R_COMP_CROP)
 			buf= get_cropped_compbuf(&rd->disprect, fp, rectx, recty, buftype);
 		else {
 			buf= alloc_compbuf(rectx, recty, buftype, 0);
@@ -347,41 +394,59 @@ static CompBuf *compbuf_from_pass(RenderData *rd, RenderLayer *rl, int rectx, in
 
 static void node_composit_rlayers_out(RenderData *rd, RenderLayer *rl, bNodeStack **out, int rectx, int recty)
 {
-   if(out[RRES_OUT_Z]->hasoutput)
-	  out[RRES_OUT_Z]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_Z);
-   if(out[RRES_OUT_VEC]->hasoutput)
-	  out[RRES_OUT_VEC]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_VECTOR);
-   if(out[RRES_OUT_NORMAL]->hasoutput)
-	  out[RRES_OUT_NORMAL]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_NORMAL);
-   if(out[RRES_OUT_UV]->hasoutput)
-	  out[RRES_OUT_UV]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_UV);
+	if (out[RRES_OUT_Z]->hasoutput)
+		out[RRES_OUT_Z]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_Z);
+	if (out[RRES_OUT_VEC]->hasoutput)
+		out[RRES_OUT_VEC]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_VECTOR);
+	if (out[RRES_OUT_NORMAL]->hasoutput)
+		out[RRES_OUT_NORMAL]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_NORMAL);
+	if (out[RRES_OUT_UV]->hasoutput)
+		out[RRES_OUT_UV]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_UV);
 
-   if(out[RRES_OUT_RGBA]->hasoutput)
-	  out[RRES_OUT_RGBA]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_RGBA);
-   if(out[RRES_OUT_DIFF]->hasoutput)
-	  out[RRES_OUT_DIFF]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_DIFFUSE);
-   if(out[RRES_OUT_SPEC]->hasoutput)
-	  out[RRES_OUT_SPEC]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_SPEC);
-   if(out[RRES_OUT_SHADOW]->hasoutput)
-	  out[RRES_OUT_SHADOW]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_SHADOW);
-   if(out[RRES_OUT_AO]->hasoutput)
-	  out[RRES_OUT_AO]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_AO);
-   if(out[RRES_OUT_REFLECT]->hasoutput)
-	  out[RRES_OUT_REFLECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_REFLECT);
-   if(out[RRES_OUT_REFRACT]->hasoutput)
-	  out[RRES_OUT_REFRACT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_REFRACT);
-   if(out[RRES_OUT_INDIRECT]->hasoutput)
-	  out[RRES_OUT_INDIRECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_INDIRECT);
-   if(out[RRES_OUT_INDEXOB]->hasoutput)
-	   out[RRES_OUT_INDEXOB]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_INDEXOB);
-	if(out[RRES_OUT_INDEXMA]->hasoutput)
+	if (out[RRES_OUT_RGBA]->hasoutput)
+		out[RRES_OUT_RGBA]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_RGBA);
+	if (out[RRES_OUT_DIFF]->hasoutput)
+		out[RRES_OUT_DIFF]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_DIFFUSE);
+	if (out[RRES_OUT_SPEC]->hasoutput)
+		out[RRES_OUT_SPEC]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_SPEC);
+	if (out[RRES_OUT_SHADOW]->hasoutput)
+		out[RRES_OUT_SHADOW]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_SHADOW);
+	if (out[RRES_OUT_AO]->hasoutput)
+		out[RRES_OUT_AO]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_AO);
+	if (out[RRES_OUT_REFLECT]->hasoutput)
+		out[RRES_OUT_REFLECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_REFLECT);
+	if (out[RRES_OUT_REFRACT]->hasoutput)
+		out[RRES_OUT_REFRACT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_REFRACT);
+	if (out[RRES_OUT_INDIRECT]->hasoutput)
+		out[RRES_OUT_INDIRECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_INDIRECT);
+	if (out[RRES_OUT_INDEXOB]->hasoutput)
+		out[RRES_OUT_INDEXOB]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_INDEXOB);
+	if (out[RRES_OUT_INDEXMA]->hasoutput)
 		out[RRES_OUT_INDEXMA]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_INDEXMA);
-   if(out[RRES_OUT_MIST]->hasoutput)
-	   out[RRES_OUT_MIST]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_MIST);
-   if(out[RRES_OUT_EMIT]->hasoutput)
-	   out[RRES_OUT_EMIT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_EMIT);
-   if(out[RRES_OUT_ENV]->hasoutput)
-	   out[RRES_OUT_ENV]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_ENVIRONMENT);
+	if (out[RRES_OUT_MIST]->hasoutput)
+		out[RRES_OUT_MIST]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_MIST);
+	if (out[RRES_OUT_EMIT]->hasoutput)
+		out[RRES_OUT_EMIT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_EMIT);
+	if (out[RRES_OUT_ENV]->hasoutput)
+		out[RRES_OUT_ENV]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_ENVIRONMENT);
+	if (out[RRES_OUT_DIFF_DIRECT]->hasoutput)
+		out[RRES_OUT_DIFF_DIRECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_DIFFUSE_DIRECT);
+	if (out[RRES_OUT_DIFF_INDIRECT]->hasoutput)
+		out[RRES_OUT_DIFF_INDIRECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_DIFFUSE_INDIRECT);
+	if (out[RRES_OUT_DIFF_COLOR]->hasoutput)
+		out[RRES_OUT_DIFF_COLOR]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_DIFFUSE_COLOR);
+	if (out[RRES_OUT_GLOSSY_DIRECT]->hasoutput)
+		out[RRES_OUT_GLOSSY_DIRECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_GLOSSY_DIRECT);
+	if (out[RRES_OUT_GLOSSY_INDIRECT]->hasoutput)
+		out[RRES_OUT_GLOSSY_INDIRECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_GLOSSY_INDIRECT);
+	if (out[RRES_OUT_GLOSSY_COLOR]->hasoutput)
+		out[RRES_OUT_GLOSSY_COLOR]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_GLOSSY_COLOR);
+	if (out[RRES_OUT_TRANSM_DIRECT]->hasoutput)
+		out[RRES_OUT_TRANSM_DIRECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_TRANSM_DIRECT);
+	if (out[RRES_OUT_TRANSM_INDIRECT]->hasoutput)
+		out[RRES_OUT_TRANSM_INDIRECT]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_TRANSM_INDIRECT);
+	if (out[RRES_OUT_TRANSM_COLOR]->hasoutput)
+		out[RRES_OUT_TRANSM_COLOR]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_TRANSM_COLOR);
 }
 
 static void node_composit_exec_rlayers(void *data, bNode *node, bNodeStack **UNUSED(in), bNodeStack **out)
@@ -391,24 +456,24 @@ static void node_composit_exec_rlayers(void *data, bNode *node, bNodeStack **UNU
 	RenderData *rd= data;
 	RenderResult *rr= NULL;
 
-	if(re)
+	if (re)
 		rr= RE_AcquireResultRead(re);
 
-	if(rr) {
+	if (rr) {
 		SceneRenderLayer *srl= BLI_findlink(&sce->r.layers, node->custom1);
-		if(srl) {
+		if (srl) {
 			RenderLayer *rl= RE_GetRenderLayer(rr, srl->name);
-			if(rl && rl->rectf) {
+			if (rl && rl->rectf) {
 				CompBuf *stackbuf;
 
 				/* we put render rect on stack, cbuf knows rect is from other ibuf when freed! */
-				if(rd->scemode & R_COMP_CROP)
+				if (rd->scemode & R_COMP_CROP)
 					stackbuf= get_cropped_compbuf(&rd->disprect, rl->rectf, rr->rectx, rr->recty, CB_RGBA);
 				else {
 					stackbuf= alloc_compbuf(rr->rectx, rr->recty, CB_RGBA, 0);
 					stackbuf->rect= rl->rectf;
 				}
-				if(stackbuf==NULL) {
+				if (stackbuf==NULL) {
 					printf("Error; Preview Panel in UV Window returns zero sized image\n");
 				}
 				else {
@@ -418,7 +483,7 @@ static void node_composit_exec_rlayers(void *data, bNode *node, bNodeStack **UNU
 					/* put on stack */
 					out[RRES_OUT_IMAGE]->data= stackbuf;
 
-					if(out[RRES_OUT_ALPHA]->hasoutput)
+					if (out[RRES_OUT_ALPHA]->hasoutput)
 						out[RRES_OUT_ALPHA]->data= valbuf_from_rgbabuf(stackbuf, CHAN_A);
 
 					node_composit_rlayers_out(rd, rl, out, rr->rectx, rr->recty);
@@ -429,22 +494,19 @@ static void node_composit_exec_rlayers(void *data, bNode *node, bNodeStack **UNU
 		}
 	}
 
-	if(re)
+	if (re)
 		RE_ReleaseResult(re);
 }
 
 
-void register_node_type_cmp_rlayers(ListBase *lb)
+void register_node_type_cmp_rlayers(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_R_LAYERS, "Render Layers", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_R_LAYERS, "Render Layers", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, NULL, cmp_node_rlayers_out);
 	node_type_size(&ntype, 150, 100, 300);
 	node_type_exec(&ntype, node_composit_exec_rlayers);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-
-

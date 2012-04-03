@@ -148,7 +148,7 @@ static void occ_shade(ShadeSample *ssamp, ObjectInstanceRen *obi, VlakRen *vlr, 
 	float l, u, v, *v1, *v2, *v3;
 	
 	/* init */
-	if(vlr->v4) {
+	if (vlr->v4) {
 		shi->u= u= 0.5f;
 		shi->v= v= 0.5f;
 	}
@@ -172,7 +172,7 @@ static void occ_shade(ShadeSample *ssamp, ObjectInstanceRen *obi, VlakRen *vlr, 
 	shade_input_set_triangle_i(shi, obi, vlr, 0, 1, 2);
 
 	/* set up view vector */
-	VECCOPY(shi->view, shi->co);
+	copy_v3_v3(shi->view, shi->co);
 	normalize_v3(shi->view);
 	
 	/* cache for shadow */
@@ -184,13 +184,13 @@ static void occ_shade(ShadeSample *ssamp, ObjectInstanceRen *obi, VlakRen *vlr, 
 	shade_input_set_normals(shi);
 
 	/* no normal flip */
-	if(shi->flippednor)
+	if (shi->flippednor)
 		shade_input_flip_normals(shi);
 
 	madd_v3_v3fl(shi->co, shi->vn, 0.0001f); /* ugly.. */
 
 	/* not a pretty solution, but fixes common cases */
-	if(shi->obr->ob && shi->obr->ob->transflag & OB_NEG_SCALE) {
+	if (shi->obr->ob && shi->obr->ob->transflag & OB_NEG_SCALE) {
 		negate_v3(shi->vn);
 		negate_v3(shi->vno);
 		negate_v3(shi->nmapnorm);
@@ -205,7 +205,7 @@ static void occ_shade(ShadeSample *ssamp, ObjectInstanceRen *obi, VlakRen *vlr, 
 	shade_input_set_shade_texco(shi);
 	shade_material_loop(shi, shr); /* todo: nodes */
 	
-	VECCOPY(rad, shr->combined);
+	copy_v3_v3(rad, shr->combined);
 }
 
 static void occ_build_shade(Render *re, OcclusionTree *tree)
@@ -224,7 +224,7 @@ static void occ_build_shade(Render *re, OcclusionTree *tree)
 	ssamp.shi[0].combinedflag= ~(SCE_PASS_SPEC);
 	ssamp.tot= 1;
 
-	for(a=0; a<tree->totface; a++) {
+	for (a=0; a<tree->totface; a++) {
 		obi= &R.objectinstance[tree->face[a].obi];
 		vlr= RE_findOrAddVlak(obi->obr, tree->face[a].facenr);
 
@@ -235,9 +235,9 @@ static void occ_build_shade(Render *re, OcclusionTree *tree)
 /* ------------------------- Spherical Harmonics --------------------------- */
 
 /* Use 2nd order SH => 9 coefficients, stored in this order:
-   0 = (0,0),
-   1 = (1,-1), 2 = (1,0), 3 = (1,1),
-   4 = (2,-2), 5 = (2,-1), 6 = (2,0), 7 = (2,1), 8 = (2,2) */
+ * 0 = (0,0),
+ * 1 = (1,-1), 2 = (1,0), 3 = (1,1),
+ * 4 = (2,-2), 5 = (2,-1), 6 = (2,0), 7 = (2,1), 8 = (2,2) */
 
 static void sh_copy(float *shresult, float *sh)
 {
@@ -248,7 +248,7 @@ static void sh_mul(float *sh, float f)
 {
 	int i;
 
-	for(i=0; i<9; i++)
+	for (i=0; i<9; i++)
 		sh[i] *= f;
 }
 
@@ -256,14 +256,14 @@ static void sh_add(float *shresult, float *sh1, float *sh2)
 {
 	int i;
 
-	for(i=0; i<9; i++)
+	for (i=0; i<9; i++)
 		shresult[i]= sh1[i] + sh2[i];
 }
 
 static void sh_from_disc(float *n, float area, float *shresult)
 {
 	/* See formula (3) in:
-	   "An Efficient Representation for Irradiance Environment Maps" */
+	 * "An Efficient Representation for Irradiance Environment Maps" */
 	float sh[9], x, y, z;
 
 	x= n[0];
@@ -289,7 +289,7 @@ static void sh_from_disc(float *n, float area, float *shresult)
 static float sh_eval(float *sh, float *v)
 {
 	/* See formula (13) in:
-	   "An Efficient Representation for Irradiance Environment Maps" */
+	 * "An Efficient Representation for Irradiance Environment Maps" */
 	static const float c1 = 0.429043f, c2 = 0.511664f, c3 = 0.743125f;
 	static const float c4 = 0.886227f, c5 = 0.247708f;
 	float x, y, z, sum;
@@ -319,40 +319,40 @@ static void occ_face(const OccFace *face, float co[3], float normal[3], float *a
 	obi= &R.objectinstance[face->obi];
 	vlr= RE_findOrAddVlak(obi->obr, face->facenr);
 	
-	if(co) {
-		if(vlr->v4)
-			interp_v3_v3v3(co, vlr->v1->co, vlr->v3->co, 0.5f);
+	if (co) {
+		if (vlr->v4)
+			mid_v3_v3v3(co, vlr->v1->co, vlr->v3->co);
 		else
 			cent_tri_v3(co, vlr->v1->co, vlr->v2->co, vlr->v3->co);
 
-		if(obi->flag & R_TRANSFORMED)
+		if (obi->flag & R_TRANSFORMED)
 			mul_m4_v3(obi->mat, co);
 	}
 	
-	if(normal) {
+	if (normal) {
 		normal[0]= -vlr->n[0];
 		normal[1]= -vlr->n[1];
 		normal[2]= -vlr->n[2];
 
-		if(obi->flag & R_TRANSFORMED)
+		if (obi->flag & R_TRANSFORMED)
 			mul_m3_v3(obi->nmat, normal);
 	}
 
-	if(area) {
-		VECCOPY(v1, vlr->v1->co);
-		VECCOPY(v2, vlr->v2->co);
-		VECCOPY(v3, vlr->v3->co);
-		if(vlr->v4) VECCOPY(v4, vlr->v4->co);
+	if (area) {
+		copy_v3_v3(v1, vlr->v1->co);
+		copy_v3_v3(v2, vlr->v2->co);
+		copy_v3_v3(v3, vlr->v3->co);
+		if (vlr->v4) copy_v3_v3(v4, vlr->v4->co);
 
-		if(obi->flag & R_TRANSFORMED) {
+		if (obi->flag & R_TRANSFORMED) {
 			mul_m4_v3(obi->mat, v1);
 			mul_m4_v3(obi->mat, v2);
 			mul_m4_v3(obi->mat, v3);
-			if(vlr->v4) mul_m4_v3(obi->mat, v4);
+			if (vlr->v4) mul_m4_v3(obi->mat, v4);
 		}
 
 		/* todo: correct area for instances */
-		if(vlr->v4)
+		if (vlr->v4)
 			*area= area_quad_v3(v1, v2, v3, v4);
 		else
 			*area= area_tri_v3(v1, v2, v3);
@@ -367,33 +367,33 @@ static void occ_sum_occlusion(OcclusionTree *tree, OccNode *node)
 
 	occ= 0.0f;
 	totarea= 0.0f;
-	if(indirect) zero_v3(rad);
+	if (indirect) zero_v3(rad);
 
-	for(b=0; b<TOTCHILD; b++) {
-		if(node->childflag & (1<<b)) {
+	for (b=0; b<TOTCHILD; b++) {
+		if (node->childflag & (1<<b)) {
 			a= node->child[b].face;
 			occ_face(&tree->face[a], 0, 0, &area);
 			occ += area*tree->occlusion[a];
-			if(indirect) madd_v3_v3fl(rad, tree->rad[a], area);
+			if (indirect) madd_v3_v3fl(rad, tree->rad[a], area);
 			totarea += area;
 		}
-		else if(node->child[b].node) {
+		else if (node->child[b].node) {
 			child= node->child[b].node;
 			occ_sum_occlusion(tree, child);
 
 			occ += child->area*child->occlusion;
-			if(indirect) madd_v3_v3fl(rad, child->rad, child->area);
+			if (indirect) madd_v3_v3fl(rad, child->rad, child->area);
 			totarea += child->area;
 		}
 	}
 
-	if(totarea != 0.0f) {
+	if (totarea != 0.0f) {
 		occ /= totarea;
-		if(indirect) mul_v3_fl(rad, 1.0f/totarea);
+		if (indirect) mul_v3_fl(rad, 1.0f/totarea);
 	}
 	
 	node->occlusion= occ;
-	if(indirect) copy_v3_v3(node->rad, rad);
+	if (indirect) copy_v3_v3(node->rad, rad);
 }
 
 static int occ_find_bbox_axis(OcclusionTree *tree, int begin, int end, float *min, float *max)
@@ -403,13 +403,14 @@ static int occ_find_bbox_axis(OcclusionTree *tree, int begin, int end, float *mi
 
 	INIT_MINMAX(min, max);
 
-	for(a=begin; a<end; a++)
-		DO_MINMAX(tree->co[a], min, max)
+	for (a = begin; a < end; a++) {
+		DO_MINMAX(tree->co[a], min, max);
+	}
 
-	for(a=0; a<3; a++) {
+	for (a=0; a<3; a++) {
 		len= max[a] - min[a];
 
-		if(len > maxlen) {
+		if (len > maxlen) {
 			maxlen= len;
 			axis= a;
 		}
@@ -430,24 +431,24 @@ static void occ_node_from_face(OccFace *face, OccNode *node)
 static void occ_build_dco(OcclusionTree *tree, OccNode *node, const float co[3], float *dco)
 {
 	int b;
-	for(b=0; b<TOTCHILD; b++) {
+	for (b=0; b<TOTCHILD; b++) {
 		float dist, d[3], nco[3];
 
-		if(node->childflag & (1<<b)) {
+		if (node->childflag & (1<<b)) {
 			occ_face(tree->face+node->child[b].face, nco, NULL, NULL);
 		}
-		else if(node->child[b].node) {
+		else if (node->child[b].node) {
 			OccNode *child= node->child[b].node;
 			occ_build_dco(tree, child, co, dco);
-			VECCOPY(nco, child->co);
+			copy_v3_v3(nco, child->co);
 		}
 		else {
 			continue;
 		}
 
-		VECSUB(d, nco, co);
-		dist= INPR(d, d);
-		if(dist > *dco)
+		sub_v3_v3v3(d, nco, co);
+		dist= dot_v3v3(d, d);
+		if (dist > *dco)
 			*dco= dist;
 	}
 }
@@ -465,8 +466,8 @@ static void occ_build_split(OcclusionTree *tree, int begin, int end, int *split)
 
 	a= begin;
 	enda= end;
-	while(a<enda) {
-		if(tree->co[a][axis] > mid) {
+	while (a<enda) {
+		if (tree->co[a][axis] > mid) {
 			enda--;
 			SWAP(OccFace, tree->face[a], tree->face[enda]);
 			SWAP(float, tree->co[a][0], tree->co[enda][0]);
@@ -488,7 +489,7 @@ static void occ_build_8_split(OcclusionTree *tree, int begin, int end, int *offs
 	occ_build_split(tree, begin, end, &splitx);
 
 	/* force split if none found, to deal with degenerate geometry */
-	if(splitx == begin || splitx == end)
+	if (splitx == begin || splitx == end)
 		splitx= (begin+end)/2;
 
 	occ_build_split(tree, begin, splitx, &splity[0]);
@@ -508,7 +509,7 @@ static void occ_build_8_split(OcclusionTree *tree, int begin, int end, int *offs
 	offset[6]= splity[1];
 	offset[7]= splitz[3];
 
-	for(b=0; b<7; b++)
+	for (b=0; b<7; b++)
 		count[b]= offset[b+1] - offset[b];
 	count[7]= end - offset[7];
 }
@@ -536,8 +537,8 @@ static void occ_build_recursive(OcclusionTree *tree, OccNode *node, int begin, i
 	node->occlusion= 1.0f;
 
 	/* leaf node with only children */
-	if(end - begin <= TOTCHILD) {
-		for(a=begin, b=0; a<end; a++, b++) {
+	if (end - begin <= TOTCHILD) {
+		for (a=begin, b=0; a<end; a++, b++) {
 			/* face= &tree->face[a]; */
 			node->child[b].face= a;
 			node->childflag |= (1<<b);
@@ -547,33 +548,33 @@ static void occ_build_recursive(OcclusionTree *tree, OccNode *node, int begin, i
 		/* order faces */
 		occ_build_8_split(tree, begin, end, offset, count);
 
-		if(depth == 1 && tree->dothreadedbuild)
+		if (depth == 1 && tree->dothreadedbuild)
 			BLI_init_threads(&threads, exec_occ_build, tree->totbuildthread);
 
-		for(b=0; b<TOTCHILD; b++) {
-			if(count[b] == 0) {
+		for (b=0; b<TOTCHILD; b++) {
+			if (count[b] == 0) {
 				node->child[b].node= NULL;
 			}
-			else if(count[b] == 1) {
+			else if (count[b] == 1) {
 				/* face= &tree->face[offset[b]]; */
 				node->child[b].face= offset[b];
 				node->childflag |= (1<<b);
 			}
 			else {
-				if(tree->dothreadedbuild)
+				if (tree->dothreadedbuild)
 					BLI_lock_thread(LOCK_CUSTOM1);
 
 				child= BLI_memarena_alloc(tree->arena, sizeof(OccNode));
 				node->child[b].node= child;
 
 				/* keep track of maximum depth for stack */
-				if(depth+1 > tree->maxdepth)
+				if (depth+1 > tree->maxdepth)
 					tree->maxdepth= depth+1;
 
-				if(tree->dothreadedbuild)
+				if (tree->dothreadedbuild)
 					BLI_unlock_thread(LOCK_CUSTOM1);
 
-				if(depth == 1 && tree->dothreadedbuild) {
+				if (depth == 1 && tree->dothreadedbuild) {
 					othreads[totthread].tree= tree;
 					othreads[totthread].node= child;
 					othreads[totthread].begin= offset[b];
@@ -587,13 +588,13 @@ static void occ_build_recursive(OcclusionTree *tree, OccNode *node, int begin, i
 			}
 		}
 
-		if(depth == 1 && tree->dothreadedbuild)
+		if (depth == 1 && tree->dothreadedbuild)
 			BLI_end_threads(&threads);
 	}
 
 	/* combine area, position and sh */
-	for(b=0; b<TOTCHILD; b++) {
-		if(node->childflag & (1<<b)) {
+	for (b=0; b<TOTCHILD; b++) {
+		if (node->childflag & (1<<b)) {
 			child= &tmpnode;
 			occ_node_from_face(tree->face+node->child[b].face, &tmpnode);
 		}
@@ -601,19 +602,19 @@ static void occ_build_recursive(OcclusionTree *tree, OccNode *node, int begin, i
 			child= node->child[b].node;
 		}
 
-		if(child) {
+		if (child) {
 			node->area += child->area;
 			sh_add(node->sh, node->sh, child->sh);
-			VECADDFAC(node->co, node->co, child->co, child->area);
+			madd_v3_v3fl(node->co, child->co, child->area);
 		}
 	}
 
-	if(node->area != 0.0f)
+	if (node->area != 0.0f)
 		mul_v3_fl(node->co, 1.0f/node->area);
 
 	/* compute maximum distance from center */
 	node->dco= 0.0f;
-	if(node->area > 0.0f)
+	if (node->area > 0.0f)
 		occ_build_dco(tree, node, node->co, &node->dco);
 }
 
@@ -623,12 +624,12 @@ static void occ_build_sh_normalize(OccNode *node)
 	 * we can clamp the dot product and then mutliply by area */
 	int b;
 
-	if(node->area != 0.0f)
+	if (node->area != 0.0f)
 		sh_mul(node->sh, 1.0f/node->area);
 
-	for(b=0; b<TOTCHILD; b++) {
-		if(node->childflag & (1<<b));
-		else if(node->child[b].node)
+	for (b=0; b<TOTCHILD; b++) {
+		if (node->childflag & (1<<b));
+		else if (node->child[b].node)
 			occ_build_sh_normalize(node->child[b].node);
 	}
 }
@@ -644,20 +645,20 @@ static OcclusionTree *occ_tree_build(Render *re)
 
 	/* count */
 	totface= 0;
-	for(obi=re->instancetable.first; obi; obi=obi->next) {
+	for (obi=re->instancetable.first; obi; obi=obi->next) {
 		obr= obi->obr;
-		for(a=0; a<obr->totvlak; a++) {
-			if((a & 255)==0) vlr= obr->vlaknodes[a>>8].vlak;
+		for (a=0; a<obr->totvlak; a++) {
+			if ((a & 255)==0) vlr= obr->vlaknodes[a>>8].vlak;
 			else vlr++;
 
 			ma= vlr->mat;
 
-			if((ma->shade_flag & MA_APPROX_OCCLUSION) && (ma->material_type == MA_TYPE_SURFACE))
+			if ((ma->shade_flag & MA_APPROX_OCCLUSION) && (ma->material_type == MA_TYPE_SURFACE))
 				totface++;
 		}
 	}
 
-	if(totface == 0)
+	if (totface == 0)
 		return NULL;
 	
 	tree= MEM_callocN(sizeof(OcclusionTree), "OcclusionTree");
@@ -672,26 +673,26 @@ static OcclusionTree *occ_tree_build(Render *re)
 	tree->arena= BLI_memarena_new(0x8000 * sizeof(OccNode), "occ tree arena");
 	BLI_memarena_use_calloc(tree->arena);
 
-	if(re->wrld.aomode & WO_AOCACHE)
+	if (re->wrld.aomode & WO_AOCACHE)
 		tree->cache= MEM_callocN(sizeof(OcclusionCache)*BLENDER_MAX_THREADS, "OcclusionCache");
 
 	tree->face= MEM_callocN(sizeof(OccFace)*totface, "OcclusionFace");
 	tree->co= MEM_callocN(sizeof(float)*3*totface, "OcclusionCo");
 	tree->occlusion= MEM_callocN(sizeof(float)*totface, "OcclusionOcclusion");
 
-	if(tree->doindirect)
+	if (tree->doindirect)
 		tree->rad= MEM_callocN(sizeof(float)*3*totface, "OcclusionRad");
 
 	/* make array of face pointers */
-	for(b=0, c=0, obi=re->instancetable.first; obi; obi=obi->next, c++) {
+	for (b=0, c=0, obi=re->instancetable.first; obi; obi=obi->next, c++) {
 		obr= obi->obr;
-		for(a=0; a<obr->totvlak; a++) {
-			if((a & 255)==0) vlr= obr->vlaknodes[a>>8].vlak;
+		for (a=0; a<obr->totvlak; a++) {
+			if ((a & 255)==0) vlr= obr->vlaknodes[a>>8].vlak;
 			else vlr++;
 
 			ma= vlr->mat;
 
-			if((ma->shade_flag & MA_APPROX_OCCLUSION) && (ma->material_type == MA_TYPE_SURFACE)) {
+			if ((ma->shade_flag & MA_APPROX_OCCLUSION) && (ma->material_type == MA_TYPE_SURFACE)) {
 				tree->face[b].obi= c;
 				tree->face[b].facenr= a;
 				tree->occlusion[b]= 1.0f;
@@ -710,7 +711,7 @@ static OcclusionTree *occ_tree_build(Render *re)
 	tree->maxdepth= 1;
 	occ_build_recursive(tree, tree->root, 0, totface, 1);
 
-	if(tree->doindirect) {
+	if (tree->doindirect) {
 		occ_build_shade(re, tree);
 		occ_sum_occlusion(tree, tree->root);
 	}
@@ -720,7 +721,7 @@ static OcclusionTree *occ_tree_build(Render *re)
 
 	occ_build_sh_normalize(tree->root);
 
-	for(a=0; a<BLENDER_MAX_THREADS; a++)
+	for (a=0; a<BLENDER_MAX_THREADS; a++)
 		tree->stack[a]= MEM_callocN(sizeof(OccNode)*TOTCHILD*(tree->maxdepth+1), "OccStack");
 
 	return tree;
@@ -730,22 +731,22 @@ static void occ_free_tree(OcclusionTree *tree)
 {
 	int a;
 
-	if(tree) {
-		if(tree->arena) BLI_memarena_free(tree->arena);
-		for(a=0; a<BLENDER_MAX_THREADS; a++)
-			if(tree->stack[a])
+	if (tree) {
+		if (tree->arena) BLI_memarena_free(tree->arena);
+		for (a=0; a<BLENDER_MAX_THREADS; a++)
+			if (tree->stack[a])
 				MEM_freeN(tree->stack[a]);
-		if(tree->occlusion) MEM_freeN(tree->occlusion);
-		if(tree->cache) MEM_freeN(tree->cache);
-		if(tree->face) MEM_freeN(tree->face);
-		if(tree->rad) MEM_freeN(tree->rad);
+		if (tree->occlusion) MEM_freeN(tree->occlusion);
+		if (tree->cache) MEM_freeN(tree->cache);
+		if (tree->face) MEM_freeN(tree->face);
+		if (tree->rad) MEM_freeN(tree->rad);
 		MEM_freeN(tree);
 	}
 }
 
 /* ------------------------- Traversal --------------------------- */
 
-static float occ_solid_angle(OccNode *node, float *v, float d2, float invd2, float *receivenormal)
+static float occ_solid_angle(OccNode *node, const float v[3], float d2, float invd2, const float receivenormal[3])
 {
 	float dotreceive, dotemit;
 	float ev[3];
@@ -754,7 +755,7 @@ static float occ_solid_angle(OccNode *node, float *v, float d2, float invd2, flo
 	ev[1]= -v[1]*invd2;
 	ev[2]= -v[2]*invd2;
 	dotemit= sh_eval(node->sh, ev);
-	dotreceive= INPR(receivenormal, v)*invd2;
+	dotreceive= dot_v3v3(receivenormal, v)*invd2;
 
 	CLAMP(dotemit, 0.0f, 1.0f);
 	CLAMP(dotreceive, 0.0f, 1.0f);
@@ -762,133 +763,133 @@ static float occ_solid_angle(OccNode *node, float *v, float d2, float invd2, flo
 	return ((node->area*dotemit*dotreceive)/(d2 + node->area*INVPI))*INVPI;
 }
 
-static void VecAddDir(float *result, float *v1, float *v2, float fac)
+static void VecAddDir(float result[3], const float v1[3], const float v2[3], const float fac)
 {
 	result[0]= v1[0] + fac*(v2[0] - v1[0]);
 	result[1]= v1[1] + fac*(v2[1] - v1[1]);
 	result[2]= v1[2] + fac*(v2[2] - v1[2]);
 }
 
-static int occ_visible_quad(float *p, float *n, float *v0, float *v1, float *v2, float *q0, float *q1, float *q2, float *q3)
+static int occ_visible_quad(float *p, const float n[3], const float v0[3], const float *v1, const float *v2, float q0[3], float q1[3], float q2[3], float q3[3])
 {
 	static const float epsilon = 1e-6f;
 	float c, sd[3];
 	
-	c= INPR(n, p);
+	c= dot_v3v3(n, p);
 
 	/* signed distances from the vertices to the plane. */
-	sd[0]= INPR(n, v0) - c;
-	sd[1]= INPR(n, v1) - c;
-	sd[2]= INPR(n, v2) - c;
+	sd[0]= dot_v3v3(n, v0) - c;
+	sd[1]= dot_v3v3(n, v1) - c;
+	sd[2]= dot_v3v3(n, v2) - c;
 
-	if(fabsf(sd[0]) < epsilon) sd[0] = 0.0f;
-	if(fabsf(sd[1]) < epsilon) sd[1] = 0.0f;
-	if(fabsf(sd[2]) < epsilon) sd[2] = 0.0f;
+	if (fabsf(sd[0]) < epsilon) sd[0] = 0.0f;
+	if (fabsf(sd[1]) < epsilon) sd[1] = 0.0f;
+	if (fabsf(sd[2]) < epsilon) sd[2] = 0.0f;
 
-	if(sd[0] > 0) {
-		if(sd[1] > 0) {
-			if(sd[2] > 0) {
+	if (sd[0] > 0) {
+		if (sd[1] > 0) {
+			if (sd[2] > 0) {
 				// +++
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// ++-
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
 				VecAddDir(q2, v1, v2, (sd[1]/(sd[1]-sd[2])));
 				VecAddDir(q3, v0, v2, (sd[0]/(sd[0]-sd[2])));
 			}
 			else {
 				// ++0
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
 		}
-		else if(sd[1] < 0) {
-			if(sd[2] > 0) {
+		else if (sd[1] < 0) {
+			if (sd[2] > 0) {
 				// +-+
-				VECCOPY(q0, v0);
+				copy_v3_v3(q0, v0);
 				VecAddDir(q1, v0, v1, (sd[0]/(sd[0]-sd[1])));
 				VecAddDir(q2, v1, v2, (sd[1]/(sd[1]-sd[2])));
-				VECCOPY(q3, v2);
+				copy_v3_v3(q3, v2);
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// +--
-				VECCOPY(q0, v0);
+				copy_v3_v3(q0, v0);
 				VecAddDir(q1, v0, v1, (sd[0]/(sd[0]-sd[1])));
 				VecAddDir(q2, v0, v2, (sd[0]/(sd[0]-sd[2])));
-				VECCOPY(q3, q2);
+				copy_v3_v3(q3, q2);
 			}
 			else {
 				// +-0
-				VECCOPY(q0, v0);
+				copy_v3_v3(q0, v0);
 				VecAddDir(q1, v0, v1, (sd[0]/(sd[0]-sd[1])));
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
 		}
 		else {
-			if(sd[2] > 0) {
+			if (sd[2] > 0) {
 				// +0+
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// +0-
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
 				VecAddDir(q2, v0, v2, (sd[0]/(sd[0]-sd[2])));
-				VECCOPY(q3, q2);
+				copy_v3_v3(q3, q2);
 			}
 			else {
 				// +00
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
 		}
 	}
-	else if(sd[0] < 0) {
-		if(sd[1] > 0) {
-			if(sd[2] > 0) {
+	else if (sd[0] < 0) {
+		if (sd[1] > 0) {
+			if (sd[2] > 0) {
 				// -++
 				VecAddDir(q0, v0, v1, (sd[0]/(sd[0]-sd[1])));
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
 				VecAddDir(q3, v0, v2, (sd[0]/(sd[0]-sd[2])));
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// -+-
 				VecAddDir(q0, v0, v1, (sd[0]/(sd[0]-sd[1])));
-				VECCOPY(q1, v1);
+				copy_v3_v3(q1, v1);
 				VecAddDir(q2, v1, v2, (sd[1]/(sd[1]-sd[2])));
-				VECCOPY(q3, q2);
+				copy_v3_v3(q3, q2);
 			}
 			else {
 				// -+0
 				VecAddDir(q0, v0, v1, (sd[0]/(sd[0]-sd[1])));
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
 		}
-		else if(sd[1] < 0) {
-			if(sd[2] > 0) {
+		else if (sd[1] < 0) {
+			if (sd[2] > 0) {
 				// --+
 				VecAddDir(q0, v0, v2, (sd[0]/(sd[0]-sd[2])));
 				VecAddDir(q1, v1, v2, (sd[1]/(sd[1]-sd[2])));
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// ---
 				return 0;
 			}
@@ -898,14 +899,14 @@ static int occ_visible_quad(float *p, float *n, float *v0, float *v1, float *v2,
 			}
 		}
 		else {
-			if(sd[2] > 0) {
+			if (sd[2] > 0) {
 				// -0+
 				VecAddDir(q0, v0, v2, (sd[0]/(sd[0]-sd[2])));
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// -0-
 				return 0;
 			}
@@ -916,38 +917,38 @@ static int occ_visible_quad(float *p, float *n, float *v0, float *v1, float *v2,
 		}
 	}
 	else {
-		if(sd[1] > 0) {
-			if(sd[2] > 0) {
+		if (sd[1] > 0) {
+			if (sd[2] > 0) {
 				// 0++
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// 0+-
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
 				VecAddDir(q2, v1, v2, (sd[1]/(sd[1]-sd[2])));
-				VECCOPY(q3, q2);
+				copy_v3_v3(q3, q2);
 			}
 			else {
 				// 0+0
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
 		}
-		else if(sd[1] < 0) {
-			if(sd[2] > 0) {
+		else if (sd[1] < 0) {
+			if (sd[2] > 0) {
 				// 0-+
-				VECCOPY(q0, v0);
+				copy_v3_v3(q0, v0);
 				VecAddDir(q1, v1, v2, (sd[1]/(sd[1]-sd[2])));
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// 0--
 				return 0;
 			}
@@ -957,14 +958,14 @@ static int occ_visible_quad(float *p, float *n, float *v0, float *v1, float *v2,
 			}
 		}
 		else {
-			if(sd[2] > 0) {
+			if (sd[2] > 0) {
 				// 00+
-				VECCOPY(q0, v0);
-				VECCOPY(q1, v1);
-				VECCOPY(q2, v2);
-				VECCOPY(q3, q2);
+				copy_v3_v3(q0, v0);
+				copy_v3_v3(q1, v1);
+				copy_v3_v3(q2, v2);
+				copy_v3_v3(q3, q2);
 			}
-			else if(sd[2] < 0) {
+			else if (sd[2] < 0) {
 				// 00-
 				return 0;
 			}
@@ -990,20 +991,20 @@ typedef union {
 
 static vFloat vec_splat_float(float val)
 {
-	return (vFloat){val, val, val, val};
+	return (vFloat) {val, val, val, val};
 }
 
 static float occ_quad_form_factor(float *p, float *n, float *q0, float *q1, float *q2, float *q3)
 {
 	vFloat vcos, rlen, vrx, vry, vrz, vsrx, vsry, vsrz, gx, gy, gz, vangle;
-	vUInt8 rotate = (vUInt8){4,5,6,7,8,9,10,11,12,13,14,15,0,1,2,3};
+	vUInt8 rotate = (vUInt8) {4,5,6,7,8,9,10,11,12,13,14,15,0,1,2,3};
 	vFloatResult vresult;
 	float result;
 
 	/* compute r* */
-	vrx = (vFloat){q0[0], q1[0], q2[0], q3[0]} - vec_splat_float(p[0]);
-	vry = (vFloat){q0[1], q1[1], q2[1], q3[1]} - vec_splat_float(p[1]);
-	vrz = (vFloat){q0[2], q1[2], q2[2], q3[2]} - vec_splat_float(p[2]);
+	vrx = (vFloat) {q0[0], q1[0], q2[0], q3[0]} - vec_splat_float(p[0]);
+	vry = (vFloat) {q0[1], q1[1], q2[1], q3[1]} - vec_splat_float(p[1]);
+	vrz = (vFloat) {q0[2], q1[2], q2[2], q3[2]} - vec_splat_float(p[2]);
 
 	/* normalize r* */
 	rlen = vec_rsqrte(vrx*vrx + vry*vry + vrz*vrz + vec_splat_float(1e-16f));
@@ -1034,8 +1035,8 @@ static float occ_quad_form_factor(float *p, float *n, float *q0, float *q1, floa
 
 	/* dot */
 	vresult.v = (vec_splat_float(n[0])*gx +
-				 vec_splat_float(n[1])*gy +
-				 vec_splat_float(n[2])*gz)*vangle;
+	             vec_splat_float(n[1])*gy +
+	             vec_splat_float(n[2])*gz)*vangle;
 
 	result= (vresult.f[0] + vresult.f[1] + vresult.f[2] + vresult.f[3])*(0.5f/(float)M_PI);
 	result= MAX2(result, 0.0f);
@@ -1117,9 +1118,9 @@ static void normalizef(float *n)
 {
 	float d;
 	
-	d= INPR(n, n);
+	d= dot_v3v3(n, n);
 
-	if(d > 1.0e-35F) {
+	if (d > 1.0e-35F) {
 		d= 1.0f/sqrtf(d);
 
 		n[0] *= d; 
@@ -1128,15 +1129,15 @@ static void normalizef(float *n)
 	} 
 }
 
-static float occ_quad_form_factor(float *p, float *n, float *q0, float *q1, float *q2, float *q3)
+static float occ_quad_form_factor(const float p[3], const float n[3], const float q0[3], const float q1[3], const float q2[3], const float q3[3])
 {
 	float r0[3], r1[3], r2[3], r3[3], g0[3], g1[3], g2[3], g3[3];
 	float a1, a2, a3, a4, dot1, dot2, dot3, dot4, result;
 
-	VECSUB(r0, q0, p);
-	VECSUB(r1, q1, p);
-	VECSUB(r2, q2, p);
-	VECSUB(r3, q3, p);
+	sub_v3_v3v3(r0, q0, p);
+	sub_v3_v3v3(r1, q1, p);
+	sub_v3_v3v3(r2, q2, p);
+	sub_v3_v3v3(r3, q3, p);
 
 	normalizef(r0);
 	normalizef(r1);
@@ -1148,15 +1149,15 @@ static float occ_quad_form_factor(float *p, float *n, float *q0, float *q1, floa
 	cross_v3_v3v3(g2, r3, r2); normalizef(g2);
 	cross_v3_v3v3(g3, r0, r3); normalizef(g3);
 
-	a1= saacosf(INPR(r0, r1));
-	a2= saacosf(INPR(r1, r2));
-	a3= saacosf(INPR(r2, r3));
-	a4= saacosf(INPR(r3, r0));
+	a1= saacosf(dot_v3v3(r0, r1));
+	a2= saacosf(dot_v3v3(r1, r2));
+	a3= saacosf(dot_v3v3(r2, r3));
+	a4= saacosf(dot_v3v3(r3, r0));
 
-	dot1= INPR(n, g0);
-	dot2= INPR(n, g1);
-	dot3= INPR(n, g2);
-	dot4= INPR(n, g3);
+	dot1= dot_v3v3(n, g0);
+	dot2= dot_v3v3(n, g1);
+	dot3= dot_v3v3(n, g2);
+	dot4= dot_v3v3(n, g3);
 
 	result= (a1*dot1 + a2*dot2 + a3*dot3 + a4*dot4)*0.5f/(float)M_PI;
 	result= MAX2(result, 0.0f);
@@ -1173,25 +1174,25 @@ static float occ_form_factor(OccFace *face, float *p, float *n)
 	obi= &R.objectinstance[face->obi];
 	vlr= RE_findOrAddVlak(obi->obr, face->facenr);
 
-	VECCOPY(v1, vlr->v1->co);
-	VECCOPY(v2, vlr->v2->co);
-	VECCOPY(v3, vlr->v3->co);
+	copy_v3_v3(v1, vlr->v1->co);
+	copy_v3_v3(v2, vlr->v2->co);
+	copy_v3_v3(v3, vlr->v3->co);
 
-	if(obi->flag & R_TRANSFORMED) {
+	if (obi->flag & R_TRANSFORMED) {
 		mul_m4_v3(obi->mat, v1);
 		mul_m4_v3(obi->mat, v2);
 		mul_m4_v3(obi->mat, v3);
 	}
 
-	if(occ_visible_quad(p, n, v1, v2, v3, q0, q1, q2, q3))
+	if (occ_visible_quad(p, n, v1, v2, v3, q0, q1, q2, q3))
 		contrib += occ_quad_form_factor(p, n, q0, q1, q2, q3);
 
-	if(vlr->v4) {
-		VECCOPY(v4, vlr->v4->co);
-		if(obi->flag & R_TRANSFORMED)
+	if (vlr->v4) {
+		copy_v3_v3(v4, vlr->v4->co);
+		if (obi->flag & R_TRANSFORMED)
 			mul_m4_v3(obi->mat, v4);
 
-		if(occ_visible_quad(p, n, v1, v3, v4, q0, q1, q2, q3))
+		if (occ_visible_quad(p, n, v1, v3, v4, q0, q1, q2, q3))
 			contrib += occ_quad_form_factor(p, n, q0, q1, q2, q3);
 	}
 
@@ -1207,11 +1208,11 @@ static void occ_lookup(OcclusionTree *tree, int thread, OccFace *exclude, float 
 	int b, f, totstack;
 
 	/* init variables */
-	VECCOPY(p, pp);
-	VECCOPY(n, pn);
-	VECADDFAC(p, p, n, 1e-4f);
+	copy_v3_v3(p, pp);
+	copy_v3_v3(n, pn);
+	madd_v3_v3fl(p, n, 1e-4f);
 
-	if(bentn)
+	if (bentn)
 		copy_v3_v3(bentn, n);
 	
 	error= tree->error;
@@ -1225,18 +1226,18 @@ static void occ_lookup(OcclusionTree *tree, int thread, OccFace *exclude, float 
 	stack[0]= tree->root;
 	totstack= 1;
 
-	while(totstack) {
+	while (totstack) {
 		/* pop point off the stack */
 		node= stack[--totstack];
 
-		VECSUB(v, node->co, p);
-		d2= INPR(v, v) + 1e-16f;
+		sub_v3_v3v3(v, node->co, p);
+		d2= dot_v3v3(v, v) + 1e-16f;
 		emitarea= MAX2(node->area, node->dco);
 
-		if(d2*error > emitarea) {
-			if(distfac != 0.0f) {
+		if (d2*error > emitarea) {
+			if (distfac != 0.0f) {
 				fac= 1.0f/(1.0f + distfac*d2);
-				if(fac < 0.01f)
+				if (fac < 0.01f)
 					continue;
 			}
 			else
@@ -1246,12 +1247,12 @@ static void occ_lookup(OcclusionTree *tree, int thread, OccFace *exclude, float 
 			invd2 = 1.0f/sqrtf(d2);
 			weight= occ_solid_angle(node, v, d2, invd2, n);
 
-			if(rad)
+			if (rad)
 				madd_v3_v3fl(resultrad, node->rad, weight*fac);
 
 			weight *= node->occlusion;
 
-			if(bentn) {
+			if (bentn) {
 				bentn[0] -= weight*invd2*v[0];
 				bentn[1] -= weight*invd2*v[1];
 				bentn[2] -= weight*invd2*v[2];
@@ -1261,20 +1262,20 @@ static void occ_lookup(OcclusionTree *tree, int thread, OccFace *exclude, float 
 		}
 		else {
 			/* traverse into children */
-			for(b=0; b<TOTCHILD; b++) {
-				if(node->childflag & (1<<b)) {
+			for (b=0; b<TOTCHILD; b++) {
+				if (node->childflag & (1<<b)) {
 					f= node->child[b].face;
 					face= &tree->face[f];
 
 					/* accumulate occlusion with face form factor */
-					if(!exclude || !(face->obi == exclude->obi && face->facenr == exclude->facenr)) {
-						if(bentn || distfac != 0.0f) {
+					if (!exclude || !(face->obi == exclude->obi && face->facenr == exclude->facenr)) {
+						if (bentn || distfac != 0.0f) {
 							occ_face(face, co, NULL, NULL); 
-							VECSUB(v, co, p);
-							d2= INPR(v, v) + 1e-16f;
+							sub_v3_v3v3(v, co, p);
+							d2= dot_v3v3(v, v) + 1e-16f;
 
 							fac= (distfac == 0.0f)? 1.0f: 1.0f/(1.0f + distfac*d2);
-							if(fac < 0.01f)
+							if (fac < 0.01f)
 								continue;
 						}
 						else
@@ -1282,12 +1283,12 @@ static void occ_lookup(OcclusionTree *tree, int thread, OccFace *exclude, float 
 
 						weight= occ_form_factor(face, p, n);
 
-						if(rad)
+						if (rad)
 							madd_v3_v3fl(resultrad, tree->rad[f], weight*fac);
 
 						weight *= tree->occlusion[f];
 
-						if(bentn) {
+						if (bentn) {
 							invd2= 1.0f/sqrtf(d2);
 							bentn[0] -= weight*invd2*v[0];
 							bentn[1] -= weight*invd2*v[1];
@@ -1297,7 +1298,7 @@ static void occ_lookup(OcclusionTree *tree, int thread, OccFace *exclude, float 
 						resultocc += weight*fac;
 					}
 				}
-				else if(node->child[b].node) {
+				else if (node->child[b].node) {
 					/* push child on the stack */
 					stack[totstack++]= node->child[b].node;
 				}
@@ -1305,15 +1306,17 @@ static void occ_lookup(OcclusionTree *tree, int thread, OccFace *exclude, float 
 		}
 	}
 
-	if(occ) *occ= resultocc;
-	if(rad) copy_v3_v3(rad, resultrad);
-	/*if(rad && exclude) {
+	if (occ) *occ= resultocc;
+	if (rad) copy_v3_v3(rad, resultrad);
+#if 0
+	if (rad && exclude) {
 		int a;
-		for(a=0; a<tree->totface; a++)
-			if((tree->face[a].obi == exclude->obi && tree->face[a].facenr == exclude->facenr))
+		for (a=0; a<tree->totface; a++)
+			if ((tree->face[a].obi == exclude->obi && tree->face[a].facenr == exclude->facenr))
 				copy_v3_v3(rad, tree->rad[a]);
-	}*/
-	if(bentn) normalize_v3(bentn);
+	}
+#endif
+	if (bentn) normalize_v3(bentn);
 }
 
 static void occ_compute_bounces(Render *re, OcclusionTree *tree, int totbounce)
@@ -1324,8 +1327,8 @@ static void occ_compute_bounces(Render *re, OcclusionTree *tree, int totbounce)
 	rad= MEM_callocN(sizeof(float)*3*tree->totface, "OcclusionBounceRad");
 	sum= MEM_dupallocN(tree->rad);
 
-	for(bounce=1; bounce<totbounce; bounce++) {
-		for(i=0; i<tree->totface; i++) {
+	for (bounce=1; bounce<totbounce; bounce++) {
+		for (i=0; i<tree->totface; i++) {
 			occ_face(&tree->face[i], co, n, NULL);
 			madd_v3_v3fl(co, n, 1e-8f);
 
@@ -1335,11 +1338,11 @@ static void occ_compute_bounces(Render *re, OcclusionTree *tree, int totbounce)
 			rad[i][2]= MAX2(rad[i][2], 0.0f);
 			add_v3_v3(sum[i], rad[i]);
 
-			if(re->test_break(re->tbh))
+			if (re->test_break(re->tbh))
 				break;
 		}
 
-		if(re->test_break(re->tbh))
+		if (re->test_break(re->tbh))
 			break;
 
 		tmp= tree->rad;
@@ -1353,7 +1356,7 @@ static void occ_compute_bounces(Render *re, OcclusionTree *tree, int totbounce)
 	MEM_freeN(tree->rad);
 	tree->rad= sum;
 
-	if(!re->test_break(re->tbh))
+	if (!re->test_break(re->tbh))
 		occ_sum_occlusion(tree, tree->root);
 }
 
@@ -1364,23 +1367,23 @@ static void occ_compute_passes(Render *re, OcclusionTree *tree, int totpass)
 	
 	occ= MEM_callocN(sizeof(float)*tree->totface, "OcclusionPassOcc");
 
-	for(pass=0; pass<totpass; pass++) {
-		for(i=0; i<tree->totface; i++) {
+	for (pass=0; pass<totpass; pass++) {
+		for (i=0; i<tree->totface; i++) {
 			occ_face(&tree->face[i], co, n, NULL);
 			negate_v3(n);
-			VECADDFAC(co, co, n, 1e-8f);
+			madd_v3_v3fl(co, n, 1e-8f);
 
 			occ_lookup(tree, 0, &tree->face[i], co, n, &occ[i], NULL, NULL);
-			if(re->test_break(re->tbh))
+			if (re->test_break(re->tbh))
 				break;
 		}
 
-		if(re->test_break(re->tbh))
+		if (re->test_break(re->tbh))
 			break;
 
-		for(i=0; i<tree->totface; i++) {
+		for (i=0; i<tree->totface; i++) {
 			tree->occlusion[i] -= occ[i]; //MAX2(1.0f-occ[i], 0.0f);
-			if(tree->occlusion[i] < 0.0f)
+			if (tree->occlusion[i] < 0.0f)
 				tree->occlusion[i]= 0.0f;
 		}
 
@@ -1396,7 +1399,7 @@ static void sample_occ_tree(Render *re, OcclusionTree *tree, OccFace *exclude, f
 	int envcolor;
 
 	envcolor= re->wrld.aocolor;
-	if(onlyshadow)
+	if (onlyshadow)
 		envcolor= WO_AOPLAIN;
 
 	negate_v3_v3(nn, n);
@@ -1407,13 +1410,13 @@ static void sample_occ_tree(Render *re, OcclusionTree *tree, OccFace *exclude, f
 
 	occlusion= (1.0f-correction)*(1.0f-occ);
 	CLAMP(occlusion, 0.0f, 1.0f);
-	if(correction != 0.0f)
-		occlusion += correction*exp(-occ);
+	if (correction != 0.0f)
+		occlusion += correction*expf(-occ);
 
-	if(env) {
+	if (env) {
 		/* sky shading using bent normal */
-		if(ELEM(envcolor, WO_AOSKYCOL, WO_AOSKYTEX)) {
-			fac= 0.5f*(1.0f+bn[0]*re->grvec[0]+ bn[1]*re->grvec[1]+ bn[2]*re->grvec[2]);
+		if (ELEM(envcolor, WO_AOSKYCOL, WO_AOSKYTEX)) {
+			fac= 0.5f * (1.0f + dot_v3v3(bn, re->grvec));
 			env[0]= (1.0f-fac)*re->wrld.horr + fac*re->wrld.zenr;
 			env[1]= (1.0f-fac)*re->wrld.horg + fac*re->wrld.zeng;
 			env[2]= (1.0f-fac)*re->wrld.horb + fac*re->wrld.zenb;
@@ -1439,13 +1442,13 @@ static void sample_occ_tree(Render *re, OcclusionTree *tree, OccFace *exclude, f
 #endif
 	}
 
-	if(ao) {
+	if (ao) {
 		ao[0]= occlusion;
 		ao[1]= occlusion;
 		ao[2]= occlusion;
 	}
 
-	if(tree->doindirect) copy_v3_v3(indirect, rad);
+	if (tree->doindirect) copy_v3_v3(indirect, rad);
 	else zero_v3(indirect);
 }
 
@@ -1461,7 +1464,7 @@ static OcclusionCacheSample *find_occ_sample(OcclusionCache *cache, int x, int y
 	x *= cache->step;
 	y *= cache->step;
 
-	if(x < 0 || x >= cache->w || y < 0 || y >= cache->h)
+	if (x < 0 || x >= cache->w || y < 0 || y >= cache->h)
 		return NULL;
 	else
 		return &cache->sample[y*cache->w + x];
@@ -1475,21 +1478,21 @@ static int sample_occ_cache(OcclusionTree *tree, float *co, float *n, int x, int
 	float d[3], dist2;
 	int i, x1, y1, x2, y2;
 
-	if(!tree->cache)
+	if (!tree->cache)
 		return 0;
 	
 	/* first try to find a sample in the same pixel */
 	cache= &tree->cache[thread];
 
-	if(cache->sample && cache->step) {
+	if (cache->sample && cache->step) {
 		sample= &cache->sample[(y-cache->y)*cache->w + (x-cache->x)];
-		if(sample->filled) {
-			VECSUB(d, sample->co, co);
-			dist2= INPR(d, d);
-			if(dist2 < 0.5f*sample->dist2 && INPR(sample->n, n) > 0.98f) {
-				VECCOPY(ao, sample->ao);
-				VECCOPY(env, sample->env);
-				VECCOPY(indirect, sample->indirect);
+		if (sample->filled) {
+			sub_v3_v3v3(d, sample->co, co);
+			dist2= dot_v3v3(d, d);
+			if (dist2 < 0.5f*sample->dist2 && dot_v3v3(sample->n, n) > 0.98f) {
+				copy_v3_v3(ao, sample->ao);
+				copy_v3_v3(env, sample->env);
+				copy_v3_v3(indirect, sample->indirect);
 				return 1;
 			}
 		}
@@ -1497,21 +1500,21 @@ static int sample_occ_cache(OcclusionTree *tree, float *co, float *n, int x, int
 	else
 		return 0;
 
-	/* try to interpolate between 4 neighbouring pixels */
+	/* try to interpolate between 4 neighboring pixels */
 	samples[0]= find_occ_sample(cache, x, y);
 	samples[1]= find_occ_sample(cache, x+cache->step, y);
 	samples[2]= find_occ_sample(cache, x, y+cache->step);
 	samples[3]= find_occ_sample(cache, x+cache->step, y+cache->step);
 
-	for(i=0; i<4; i++)
-		if(!samples[i] || !samples[i]->filled)
+	for (i=0; i<4; i++)
+		if (!samples[i] || !samples[i]->filled)
 			return 0;
 
 	/* require intensities not being too different */
 	mino= MIN4(samples[0]->intensity, samples[1]->intensity, samples[2]->intensity, samples[3]->intensity);
 	maxo= MAX4(samples[0]->intensity, samples[1]->intensity, samples[2]->intensity, samples[3]->intensity);
 
-	if(maxo - mino > 0.05f)
+	if (maxo - mino > 0.05f)
 		return 0;
 
 	/* compute weighted interpolation between samples */
@@ -1533,12 +1536,12 @@ static int sample_occ_cache(OcclusionTree *tree, float *co, float *n, int x, int
 	wb[1]= (1.0f-tx)*(ty);
 	wb[0]= tx*ty;
 
-	for(i=0; i<4; i++) {
-		VECSUB(d, samples[i]->co, co);
-		//dist2= INPR(d, d);
+	for (i=0; i<4; i++) {
+		sub_v3_v3v3(d, samples[i]->co, co);
+		//dist2= dot_v3v3(d, d);
 
 		wz[i]= 1.0f; //(samples[i]->dist2/(1e-4f + dist2));
-		wn[i]= pow(INPR(samples[i]->n, n), 32.0f);
+		wn[i]= pow(dot_v3v3(samples[i]->n, n), 32.0f);
 
 		w= wb[i]*wn[i]*wz[i];
 
@@ -1548,7 +1551,7 @@ static int sample_occ_cache(OcclusionTree *tree, float *co, float *n, int x, int
 		madd_v3_v3fl(indirect, samples[i]->indirect, w);
 	}
 
-	if(totw >= 0.9f) {
+	if (totw >= 0.9f) {
 		totw= 1.0f/totw;
 		mul_v3_fl(ao, totw);
 		mul_v3_fl(env, totw);
@@ -1566,7 +1569,7 @@ static void sample_occ_surface(ShadeInput *shi)
 	int *face, *index = RE_strandren_get_face(shi->obr, strand, 0);
 	float w[4], *co1, *co2, *co3, *co4;
 
-	if(mesh && mesh->face && mesh->co && mesh->ao && index) {
+	if (mesh && mesh->face && mesh->co && mesh->ao && index) {
 		face= mesh->face[*index];
 
 		co1= mesh->co[face[0]];
@@ -1589,7 +1592,7 @@ static void sample_occ_surface(ShadeInput *shi)
 		madd_v3_v3fl(shi->ao, mesh->ao[face[2]], w[2]);
 		madd_v3_v3fl(shi->env, mesh->env[face[2]], w[2]);
 		madd_v3_v3fl(shi->indirect, mesh->indirect[face[2]], w[2]);
-		if(face[3]) {
+		if (face[3]) {
 			madd_v3_v3fl(shi->ao, mesh->ao[face[3]], w[3]);
 			madd_v3_v3fl(shi->env, mesh->env[face[3]], w[3]);
 			madd_v3_v3fl(shi->indirect, mesh->indirect[face[3]], w[3]);
@@ -1614,16 +1617,16 @@ static void *exec_strandsurface_sample(void *data)
 	float ao[3], env[3], indirect[3], co[3], n[3], *co1, *co2, *co3, *co4;
 	int a, *face;
 
-	for(a=othread->begin; a<othread->end; a++) {
+	for (a=othread->begin; a<othread->end; a++) {
 		face= mesh->face[a];
 		co1= mesh->co[face[0]];
 		co2= mesh->co[face[1]];
 		co3= mesh->co[face[2]];
 
-		if(face[3]) {
+		if (face[3]) {
 			co4= mesh->co[face[3]];
 
-			interp_v3_v3v3(co, co1, co3, 0.5f);
+			mid_v3_v3v3(co, co1, co3);
 			normal_quad_v3( n,co1, co2, co3, co4);
 		}
 		else {
@@ -1633,9 +1636,9 @@ static void *exec_strandsurface_sample(void *data)
 		negate_v3(n);
 
 		sample_occ_tree(re, re->occlusiontree, NULL, co, n, othread->thread, 0, ao, env, indirect);
-		VECCOPY(othread->faceao[a], ao);
-		VECCOPY(othread->faceenv[a], env);
-		VECCOPY(othread->faceindirect[a], indirect);
+		copy_v3_v3(othread->faceao[a], ao);
+		copy_v3_v3(othread->faceenv[a], env);
+		copy_v3_v3(othread->faceindirect[a], indirect);
 	}
 
 	return 0;
@@ -1658,14 +1661,14 @@ void make_occ_tree(Render *re)
 	
 	re->occlusiontree= tree= occ_tree_build(re);
 	
-	if(tree) {
-		if(re->wrld.ao_approx_passes > 0)
+	if (tree) {
+		if (re->wrld.ao_approx_passes > 0)
 			occ_compute_passes(re, tree, re->wrld.ao_approx_passes);
-		if(tree->doindirect && (re->wrld.mode & WO_INDIRECT_LIGHT))
+		if (tree->doindirect && (re->wrld.mode & WO_INDIRECT_LIGHT))
 			occ_compute_bounces(re, tree, re->wrld.ao_indirect_bounces);
 
-		for(mesh=re->strandsurface.first; mesh; mesh=mesh->next) {
-			if(!mesh->face || !mesh->co || !mesh->ao)
+		for (mesh=re->strandsurface.first; mesh; mesh=mesh->next) {
+			if (!mesh->face || !mesh->co || !mesh->ao)
 				continue;
 
 			count= MEM_callocN(sizeof(int)*mesh->totvert, "OcclusionCount");
@@ -1675,7 +1678,7 @@ void make_occ_tree(Render *re)
 
 			totthread= (mesh->totface > 10000)? re->r.threads: 1;
 			totface= mesh->totface/totthread;
-			for(a=0; a<totthread; a++) {
+			for (a=0; a<totthread; a++) {
 				othreads[a].re= re;
 				othreads[a].faceao= faceao;
 				othreads[a].faceenv= faceenv;
@@ -1686,48 +1689,48 @@ void make_occ_tree(Render *re)
 				othreads[a].end= (a == totthread-1)? mesh->totface: (a+1)*totface;
 			}
 
-			if(totthread == 1) {
+			if (totthread == 1) {
 				exec_strandsurface_sample(&othreads[0]);
 			}
 			else {
 				BLI_init_threads(&threads, exec_strandsurface_sample, totthread);
 
-				for(a=0; a<totthread; a++)
+				for (a=0; a<totthread; a++)
 					BLI_insert_thread(&threads, &othreads[a]);
 
 				BLI_end_threads(&threads);
 			}
 
-			for(a=0; a<mesh->totface; a++) {
+			for (a=0; a<mesh->totface; a++) {
 				face= mesh->face[a];
 
-				VECCOPY(ao, faceao[a]);
-				VECCOPY(env, faceenv[a]);
-				VECCOPY(indirect, faceindirect[a]);
+				copy_v3_v3(ao, faceao[a]);
+				copy_v3_v3(env, faceenv[a]);
+				copy_v3_v3(indirect, faceindirect[a]);
 
-				VECADD(mesh->ao[face[0]], mesh->ao[face[0]], ao);
-				VECADD(mesh->env[face[0]], mesh->env[face[0]], env);
-				VECADD(mesh->indirect[face[0]], mesh->indirect[face[0]], indirect);
+				add_v3_v3(mesh->ao[face[0]], ao);
+				add_v3_v3(mesh->env[face[0]], env);
+				add_v3_v3(mesh->indirect[face[0]], indirect);
 				count[face[0]]++;
-				VECADD(mesh->ao[face[1]], mesh->ao[face[1]], ao);
-				VECADD(mesh->env[face[1]], mesh->env[face[1]], env);
-				VECADD(mesh->indirect[face[1]], mesh->indirect[face[1]], indirect);
+				add_v3_v3(mesh->ao[face[1]], ao);
+				add_v3_v3(mesh->env[face[1]], env);
+				add_v3_v3(mesh->indirect[face[1]], indirect);
 				count[face[1]]++;
-				VECADD(mesh->ao[face[2]], mesh->ao[face[2]], ao);
-				VECADD(mesh->env[face[2]], mesh->env[face[2]], env);
-				VECADD(mesh->indirect[face[2]], mesh->indirect[face[2]], indirect);
+				add_v3_v3(mesh->ao[face[2]], ao);
+				add_v3_v3(mesh->env[face[2]], env);
+				add_v3_v3(mesh->indirect[face[2]], indirect);
 				count[face[2]]++;
 
-				if(face[3]) {
-					VECADD(mesh->ao[face[3]], mesh->ao[face[3]], ao);
-					VECADD(mesh->env[face[3]], mesh->env[face[3]], env);
-					VECADD(mesh->indirect[face[3]], mesh->indirect[face[3]], indirect);
+				if (face[3]) {
+					add_v3_v3(mesh->ao[face[3]], ao);
+					add_v3_v3(mesh->env[face[3]], env);
+					add_v3_v3(mesh->indirect[face[3]], indirect);
 					count[face[3]]++;
 				}
 			}
 
-			for(a=0; a<mesh->totvert; a++) {
-				if(count[a]) {
+			for (a=0; a<mesh->totvert; a++) {
+				if (count[a]) {
 					mul_v3_fl(mesh->ao[a], 1.0f/count[a]);
 					mul_v3_fl(mesh->env[a], 1.0f/count[a]);
 					mul_v3_fl(mesh->indirect[a], 1.0f/count[a]);
@@ -1744,7 +1747,7 @@ void make_occ_tree(Render *re)
 
 void free_occ(Render *re)
 {
-	if(re->occlusiontree) {
+	if (re->occlusiontree) {
 		occ_free_tree(re->occlusiontree);
 		re->occlusiontree = NULL;
 	}
@@ -1758,12 +1761,12 @@ void sample_occ(Render *re, ShadeInput *shi)
 	OccFace exclude;
 	int onlyshadow;
 
-	if(tree) {
-		if(shi->strand) {
+	if (tree) {
+		if (shi->strand) {
 			sample_occ_surface(shi);
 		}
 		/* try to get result from the cache if possible */
-		else if(shi->depth!=0 || !sample_occ_cache(tree, shi->co, shi->vno, shi->xs, shi->ys, shi->thread, shi->ao, shi->env, shi->indirect)) {
+		else if (shi->depth!=0 || !sample_occ_cache(tree, shi->co, shi->vno, shi->xs, shi->ys, shi->thread, shi->ao, shi->env, shi->indirect)) {
 			/* no luck, let's sample the occlusion */
 			exclude.obi= shi->obi - re->objectinstance;
 			exclude.facenr= shi->vlr->index;
@@ -1771,10 +1774,10 @@ void sample_occ(Render *re, ShadeInput *shi)
 			sample_occ_tree(re, tree, &exclude, shi->co, shi->vno, shi->thread, onlyshadow, shi->ao, shi->env, shi->indirect);
 
 			/* fill result into sample, each time */
-			if(tree->cache) {
+			if (tree->cache) {
 				cache= &tree->cache[shi->thread];
 
-				if(cache->sample && cache->step) {
+				if (cache->sample && cache->step) {
 					sample= &cache->sample[(shi->ys-cache->y)*cache->w + (shi->xs-cache->x)];
 					copy_v3_v3(sample->co, shi->co);
 					copy_v3_v3(sample->n, shi->vno);
@@ -1784,7 +1787,7 @@ void sample_occ(Render *re, ShadeInput *shi)
 					sample->intensity= MAX3(sample->ao[0], sample->ao[1], sample->ao[2]);
 					sample->intensity= MAX2(sample->intensity, MAX3(sample->env[0], sample->env[1], sample->env[2]));
 					sample->intensity= MAX2(sample->intensity, MAX3(sample->indirect[0], sample->indirect[1], sample->indirect[2]));
-					sample->dist2= INPR(shi->dxco, shi->dxco) + INPR(shi->dyco, shi->dyco);
+					sample->dist2= dot_v3v3(shi->dxco, shi->dxco) + dot_v3v3(shi->dyco, shi->dyco);
 					sample->filled= 1;
 				}
 			}
@@ -1817,7 +1820,7 @@ void cache_occ_samples(Render *re, RenderPart *pa, ShadeSample *ssamp)
 	int *ro=NULL, *rp=NULL, *rz=NULL, onlyshadow;
 	int x, y, step = CACHE_STEP;
 
-	if(!tree->cache)
+	if (!tree->cache)
 		return;
 
 	cache= &tree->cache[pa->thread];
@@ -1829,7 +1832,7 @@ void cache_occ_samples(Render *re, RenderPart *pa, ShadeSample *ssamp)
 	cache->sample= MEM_callocN(sizeof(OcclusionCacheSample)*cache->w*cache->h, "OcclusionCacheSample");
 	sample= cache->sample;
 
-	if(re->osa) {
+	if (re->osa) {
 		rd= pa->rectdaps;
 	}
 	else {
@@ -1843,20 +1846,20 @@ void cache_occ_samples(Render *re, RenderPart *pa, ShadeSample *ssamp)
 	}
 
 	/* compute a sample at every step pixels */
-	for(y=pa->disprect.ymin; y<pa->disprect.ymax; y++) {
-		for(x=pa->disprect.xmin; x<pa->disprect.xmax; x++, sample++, rd++, ro++, rp++, rz++) {
-			if(!(((x - pa->disprect.xmin + step) % step) == 0 || x == pa->disprect.xmax-1))
+	for (y=pa->disprect.ymin; y<pa->disprect.ymax; y++) {
+		for (x=pa->disprect.xmin; x<pa->disprect.xmax; x++, sample++, rd++, ro++, rp++, rz++) {
+			if (!(((x - pa->disprect.xmin + step) % step) == 0 || x == pa->disprect.xmax-1))
 				continue;
-			if(!(((y - pa->disprect.ymin + step) % step) == 0 || y == pa->disprect.ymax-1))
+			if (!(((y - pa->disprect.ymin + step) % step) == 0 || y == pa->disprect.ymax-1))
 				continue;
 
-			if(re->osa) {
-				if(!*rd) continue;
+			if (re->osa) {
+				if (!*rd) continue;
 
 				shade_samples_fill_with_ps(ssamp, (PixStr *)(*rd), x, y);
 			}
 			else {
-				if(!*rp) continue;
+				if (!*rp) continue;
 
 				ps.obi= *ro;
 				ps.facenr= *rp;
@@ -1865,7 +1868,7 @@ void cache_occ_samples(Render *re, RenderPart *pa, ShadeSample *ssamp)
 			}
 
 			shi= ssamp->shi;
-			if(shi->vlr) {
+			if (shi->vlr) {
 				onlyshadow= (shi->mat->mode & MA_ONLYSHADOW);
 				exclude.obi= shi->obi - re->objectinstance;
 				exclude.facenr= shi->vlr->index;
@@ -1879,13 +1882,13 @@ void cache_occ_samples(Render *re, RenderPart *pa, ShadeSample *ssamp)
 				sample->intensity= MAX3(sample->ao[0], sample->ao[1], sample->ao[2]);
 				sample->intensity= MAX2(sample->intensity, MAX3(sample->env[0], sample->env[1], sample->env[2]));
 				sample->intensity= MAX2(sample->intensity, MAX3(sample->indirect[0], sample->indirect[1], sample->indirect[2]));
-				sample->dist2= INPR(shi->dxco, shi->dxco) + INPR(shi->dyco, shi->dyco);
+				sample->dist2= dot_v3v3(shi->dxco, shi->dxco) + dot_v3v3(shi->dyco, shi->dyco);
 				sample->x= shi->xs;
 				sample->y= shi->ys;
 				sample->filled= 1;
 			}
 
-			if(re->test_break(re->tbh))
+			if (re->test_break(re->tbh))
 				break;
 		}
 	}
@@ -1896,10 +1899,10 @@ void free_occ_samples(Render *re, RenderPart *pa)
 	OcclusionTree *tree= re->occlusiontree;
 	OcclusionCache *cache;
 
-	if(tree->cache) {
+	if (tree->cache) {
 		cache= &tree->cache[pa->thread];
 
-		if(cache->sample)
+		if (cache->sample)
 			MEM_freeN(cache->sample);
 
 		cache->w= 0;

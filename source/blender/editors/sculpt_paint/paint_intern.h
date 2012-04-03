@@ -29,8 +29,8 @@
  */
 
 
-#ifndef ED_PAINT_INTERN_H
-#define ED_PAINT_INTERN_H
+#ifndef __PAINT_INTERN_H__
+#define __PAINT_INTERN_H__
 
 struct ARegion;
 struct bContext;
@@ -41,6 +41,7 @@ struct Mesh;
 struct Object;
 struct PaintStroke;
 struct PointerRNA;
+struct rcti;
 struct Scene;
 struct VPaint;
 struct ViewContext;
@@ -49,7 +50,7 @@ struct wmOperator;
 struct wmOperatorType;
 
 /* paint_stroke.c */
-typedef int (*StrokeGetLocation)(struct bContext *C, struct PaintStroke *stroke, float location[3], float mouse[2]);
+typedef int (*StrokeGetLocation)(struct bContext *C, float location[3], float mouse[2]);
 typedef int (*StrokeTestStart)(struct bContext *C, struct wmOperator *op, struct wmEvent *event);
 typedef void (*StrokeUpdateStep)(struct bContext *C, struct PaintStroke *stroke, struct PointerRNA *itemptr);
 typedef void (*StrokeDone)(struct bContext *C, struct PaintStroke *stroke);
@@ -102,12 +103,36 @@ void PAINT_OT_texture_paint_toggle(struct wmOperatorType *ot);
 void PAINT_OT_project_image(struct wmOperatorType *ot);
 void PAINT_OT_image_from_view(struct wmOperatorType *ot);
 
+/* uv sculpting */
+int uv_sculpt_poll(struct bContext *C);
+
+void SCULPT_OT_uv_sculpt_stroke(struct wmOperatorType *ot);
 
 /* paint_utils.c */
+
+/* Convert the object-space axis-aligned bounding box (expressed as
+ * its minimum and maximum corners) into a screen-space rectangle,
+ * returns zero if the result is empty */
+int paint_convert_bb_to_rect(struct rcti *rect,
+							 const float bb_min[3],
+							 const float bb_max[3],
+							 const struct ARegion *ar,
+							 struct RegionView3D *rv3d,
+							 struct Object *ob);
+
+/* Get four planes in object-space that describe the projection of
+ * screen_rect from screen into object-space (essentially converting a
+ * 2D screens-space bounding box into four 3D planes) */
+void paint_calc_redraw_planes(float planes[4][4],
+							  const struct ARegion *ar,
+							  struct RegionView3D *rv3d,
+							  struct Object *ob,
+							  const struct rcti *screen_rect);
+
 void projectf(struct bglMats *mats, const float v[3], float p[2]);
-float paint_calc_object_space_radius(struct ViewContext *vc, float center[3], float pixel_radius);
+float paint_calc_object_space_radius(struct ViewContext *vc, const float center[3], float pixel_radius);
 float paint_get_tex_pixel(struct Brush* br, float u, float v);
-int imapaint_pick_face(struct ViewContext *vc, struct Mesh *me, const int mval[2], unsigned int *index);
+int imapaint_pick_face(struct ViewContext *vc, const int mval[2], unsigned int *index, unsigned int totface);
 void imapaint_pick_uv(struct Scene *scene, struct Object *ob, unsigned int faceindex, const int xy[2], float uv[2]);
 
 void paint_sample_color(struct Scene *scene, struct ARegion *ar, int x, int y);
@@ -143,5 +168,19 @@ struct ListBase *undo_paint_push_get_list(int type);
 void undo_paint_push_count_alloc(int type, int size);
 void undo_paint_push_end(int type);
 
-#endif /* ED_PAINT_INTERN_H */
+/* paint_hide.c */
 
+typedef enum {
+	PARTIALVIS_HIDE,
+	PARTIALVIS_SHOW
+} PartialVisAction;
+
+typedef enum {
+	PARTIALVIS_INSIDE,
+	PARTIALVIS_OUTSIDE,
+	PARTIALVIS_ALL
+} PartialVisArea;
+
+void PAINT_OT_hide_show(struct wmOperatorType *ot);
+
+#endif /* __PAINT_INTERN_H__ */

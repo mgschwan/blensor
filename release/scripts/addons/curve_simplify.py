@@ -21,7 +21,6 @@ bl_info = {
     "author": "testscreenings",
     "version": (1,),
     "blender": (2, 5, 9),
-    "api": 39685,
     "location": "Search > Simplify Curves",
     "description": "Simplifies 3D curves and fcurves",
     "warning": "",
@@ -165,7 +164,7 @@ def iterate(points, newVerts, error):
             if alti > alti_store:
                 alti_store = alti
                 if alti_store >= error:
-                   bigVert = i+1+newVerts[newIndex]
+                    bigVert = i+1+newVerts[newIndex]
         if bigVert:
             new.append(bigVert)
     if new == []:

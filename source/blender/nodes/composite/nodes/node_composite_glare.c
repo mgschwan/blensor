@@ -33,7 +33,7 @@
 #include "node_composite_util.h"
 
 static bNodeSocketTemplate cmp_node_glare_in[]= {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f},
+	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_glare_out[]= {
@@ -238,7 +238,7 @@ static void streaks(NodeGlare* ndg, CompBuf* dst, CompBuf* src)
 	int x, y, n;
 	unsigned int nump=0;
 	fRGB c1, c2, c3, c4;
-	float a, ang = 360.f/(float)ndg->angle;
+	float a, ang = DEG2RADF(360.0f)/(float)ndg->angle;
 
 	bsrc = BTP(src, ndg->threshold, 1 << ndg->quality);
 	tsrc = dupalloc_compbuf(bsrc); // sample from buffer
@@ -246,14 +246,14 @@ static void streaks(NodeGlare* ndg, CompBuf* dst, CompBuf* src)
 	sbuf = alloc_compbuf(tsrc->x, tsrc->y, tsrc->type, 1);  // streak sum buffer
 
 	
-	for (a=0.f; a<360.f; a+=ang) {
-		const float an = (a + (float)ndg->angle_ofs)*(float)M_PI/180.f;
+	for (a=0.f; a<DEG2RADF(360.0f); a+=ang) {
+		const float an = a + ndg->angle_ofs;
 		const float vx = cos((double)an), vy = sin((double)an);
 		for (n=0; n<ndg->iter; ++n) {
 			const float p4 = pow(4.0, (double)n);
 			const float vxp = vx*p4, vyp = vy*p4;
 			const float wt = pow((double)ndg->fade, (double)p4);
-			const float cmo = 1.f - pow((double)ndg->colmod, (double)n+1);	// colormodulation amount relative to current pass
+			const float cmo = 1.f - (float)pow((double)ndg->colmod, (double)n+1);	// colormodulation amount relative to current pass
 			float* tdstcol = tdst->rect;
 			for (y=0; y<tsrc->y; ++y) {
 				for (x=0; x<tsrc->x; ++x, tdstcol+=4) {
@@ -436,7 +436,8 @@ static void node_composit_exec_glare(void *UNUSED(data), bNode *node, bNodeStack
 	if (img->type != CB_RGBA) {
 		new = typecheck_compbuf(img, CB_RGBA);
 		src = typecheck_compbuf(img, CB_RGBA);
-	} else {
+	}
+	else {
 		new = dupalloc_compbuf(img);
 		src = dupalloc_compbuf(img);
 	}
@@ -483,23 +484,22 @@ static void node_composit_init_glare(bNodeTree *UNUSED(ntree), bNode* node, bNod
 	ndg->mix = 0;
 	ndg->threshold = 1;
 	ndg->angle = 4;
-	ndg->angle_ofs = 0;
+	ndg->angle_ofs = 0.0f;
 	ndg->fade = 0.9;
 	ndg->size = 8;
 	node->storage = ndg;
 }
 
-void register_node_type_cmp_glare(ListBase *lb)
+void register_node_type_cmp_glare(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_GLARE, "Glare", NODE_CLASS_OP_FILTER, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_GLARE, "Glare", NODE_CLASS_OP_FILTER, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_glare_in, cmp_node_glare_out);
 	node_type_size(&ntype, 150, 120, 200);
 	node_type_init(&ntype, node_composit_init_glare);
 	node_type_storage(&ntype, "NodeGlare", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, node_composit_exec_glare);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-

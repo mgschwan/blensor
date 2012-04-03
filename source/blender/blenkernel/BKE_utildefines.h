@@ -33,15 +33,19 @@
  */
 
 
-#ifndef BKE_UTILDEFINES_H
-#define BKE_UTILDEFINES_H
+#ifndef __BKE_UTILDEFINES_H__
+#define __BKE_UTILDEFINES_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* these values need to be hardcoded in structs, dna does not recognize defines */
 /* also defined in DNA_space_types.h */
 #ifndef FILE_MAXDIR
-#define FILE_MAXDIR			160
-#define FILE_MAXFILE		80
-#define FILE_MAX			240
+#define FILE_MAXDIR			768
+#define FILE_MAXFILE		256
+#define FILE_MAX			1024
 #endif
 
 /* this weirdo pops up in two places ... */
@@ -81,6 +85,8 @@
 /* bit-row */
 #define BROW(min, max)	(((max)>=31? 0xFFFFFFFF: (1<<(max+1))-1) - ((min)? ((1<<(min))-1):0) )
 
-#define BMEMSET(mem, val, size) {unsigned int _i; char *_c = (char*) mem; for (_i=0; _i<size; _i++) *_c++ = val;}
+#ifdef __cplusplus
+}
+#endif
 
-#endif // BKE_UTILDEFINES_H
+#endif // __BKE_UTILDEFINES_H__

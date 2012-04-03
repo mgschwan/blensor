@@ -131,7 +131,7 @@ class ConstraintButtonsPanel():
         self.space_template(layout, con)
 
     def IK(self, context, layout, con):
-        if context.object.pose.ik_solver == "ITASC":
+        if context.object.pose.ik_solver == 'ITASC':
             layout.prop(con, "ik_type")
             getattr(self, 'IK_' + con.ik_type)(context, layout, con)
         else:
@@ -420,7 +420,9 @@ class ConstraintButtonsPanel():
 
         layout.prop(con, "volume")
 
-        self.space_template(layout, con)
+        row = layout.row()
+        row.label(text="Convert:")
+        row.prop(con, "owner_space", text="")
 
     def COPY_TRANSFORMS(self, context, layout, con):
         self.target_template(layout, con)
@@ -432,25 +434,28 @@ class ConstraintButtonsPanel():
     def ACTION(self, context, layout, con):
         self.target_template(layout, con)
 
-        layout.prop(con, "action")
-
-        layout.prop(con, "transform_channel")
-
         split = layout.split()
 
-        col = split.column(align=True)
-        col.label(text="Action Length:")
-        col.prop(con, "frame_start", text="Start")
-        col.prop(con, "frame_end", text="End")
+        col = split.column()
+        col.label(text="From Target:")
+        col.prop(con, "transform_channel", text="")
+        col.prop(con, "target_space", text="")
+
+        col = split.column()
+        col.label(text="To Action:")
+        col.prop(con, "action", text="")
+
+        split = layout.split()
 
         col = split.column(align=True)
         col.label(text="Target Range:")
         col.prop(con, "min", text="Min")
         col.prop(con, "max", text="Max")
 
-        row = layout.row()
-        row.label(text="Convert:")
-        row.prop(con, "target_space", text="")
+        col = split.column(align=True)
+        col.label(text="Action Range:")
+        col.prop(con, "frame_start", text="Start")
+        col.prop(con, "frame_end", text="End")
 
     def LOCKED_TRACK(self, context, layout, con):
         self.target_template(layout, con)
@@ -753,13 +758,71 @@ class ConstraintButtonsPanel():
         col = layout.column()
         col.prop(con, "rotation_range", text="Pivot When")
 
+    @staticmethod
+    def _getConstraintClip(context, con):
+        if not con.use_active_clip:
+            return con.clip
+        else:
+            return context.scene.active_clip
+
+    def FOLLOW_TRACK(self, context, layout, con):
+        clip = self._getConstraintClip(context, con)
+
+        row = layout.row()
+        row.prop(con, "use_active_clip")
+        row.prop(con, "use_3d_position")
+
+        if not con.use_active_clip:
+            layout.prop(con, "clip")
+
+        if clip:
+            layout.prop_search(con, "object", clip.tracking, "objects", icon='OBJECT_DATA')
+            layout.prop_search(con, "track", clip.tracking, "tracks", icon='ANIM_DATA')
+
+        layout.prop(con, "camera")
+
+        row = layout.row()
+        row.active = not con.use_3d_position
+        row.prop(con, "depth_object")
+
+        layout.operator("clip.constraint_to_fcurve")
+
+    def CAMERA_SOLVER(self, context, layout, con):
+        layout.prop(con, "use_active_clip")
+
+        if not con.use_active_clip:
+            layout.prop(con, "clip")
+
+        layout.operator("clip.constraint_to_fcurve")
+
+    def OBJECT_SOLVER(self, context, layout, con):
+        scene = context.scene
+        clip = self._getConstraintClip(context, con)
+
+        layout.prop(con, "use_active_clip")
+
+        if not con.use_active_clip:
+            layout.prop(con, "clip")
+
+        if clip:
+            layout.prop_search(con, "object", clip.tracking, "objects", icon='OBJECT_DATA')
+
+        layout.prop(con, "camera")
+
+        row = layout.row()
+        row.operator("constraint.objectsolver_set_inverse")
+        row.operator("constraint.objectsolver_clear_inverse")
+
+        layout.operator("clip.constraint_to_fcurve")
+
     def SCRIPT(self, context, layout, con):
-        layout.label("Blender 2.5 has no py-constraints")
+        layout.label("Blender 2.6 doesn't support python constraints yet.")
 
 
 class OBJECT_PT_constraints(ConstraintButtonsPanel, Panel):
     bl_label = "Object Constraints"
     bl_context = "constraint"
+    bl_options = {'HIDE_HEADER'}
 
     @classmethod
     def poll(cls, context):
@@ -784,6 +847,7 @@ class OBJECT_PT_constraints(ConstraintButtonsPanel, Panel):
 class BONE_PT_constraints(ConstraintButtonsPanel, Panel):
     bl_label = "Bone Constraints"
     bl_context = "bone_constraint"
+    bl_options = {'HIDE_HEADER'}
 
     @classmethod
     def poll(cls, context):

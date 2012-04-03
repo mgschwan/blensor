@@ -35,6 +35,7 @@ set(INC_SYS
 )
 
 set(SRC
+	dynamicpaint_ops.c
 	particle_boids.c
 	particle_edit.c
 	particle_object.c
@@ -45,8 +46,8 @@ set(SRC
 	physics_intern.h
 )
 
-if(NOT WITH_MOD_FLUID)
-	add_definitions(-DDISABLE_ELBEEM)
+if(WITH_MOD_FLUID)
+	add_definitions(-DWITH_MOD_FLUID)
 endif()
 
 if(WITH_OPENMP)

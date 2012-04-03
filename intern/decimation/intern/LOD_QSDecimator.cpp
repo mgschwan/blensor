@@ -152,8 +152,8 @@ CollapseEdge(
 
 		// assign new vertex position
 
-		 v0.pos = new_vertex;
-		 v1.pos = new_vertex;
+		v0.pos = new_vertex;
+		v1.pos = new_vertex;
 
 		// sum the quadrics of v0 and v1
 		q0 = sum;
@@ -265,8 +265,10 @@ BuildHeap(
 	// load in edge pointers to the heap
 
 	std::vector<LOD_Edge> & edge_set= m_mesh.EdgeSet();
-	std::vector<LOD_Edge>::const_iterator edge_end = edge_set.end();
-	std::vector<LOD_Edge>::iterator edge_start = edge_set.begin();
+
+	// UNUSED
+	// std::vector<LOD_Edge>::const_iterator edge_end = edge_set.end();
+	// std::vector<LOD_Edge>::iterator edge_start = edge_set.begin();
 
 	std::vector<int> & heap_vector = m_heap->HeapVector();
 

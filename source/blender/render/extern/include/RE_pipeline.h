@@ -29,8 +29,8 @@
  *  \ingroup render
  */
 
-#ifndef RE_PIPELINE_H
-#define RE_PIPELINE_H
+#ifndef __RE_PIPELINE_H__
+#define __RE_PIPELINE_H__
 
 #include "DNA_listBase.h"
 #include "DNA_vec_types.h"
@@ -58,12 +58,12 @@ struct EnvMap;
 typedef struct Render Render;
 
 /* Render Result usage:
-
-- render engine allocates/frees and delivers raw floating point rects
-- right now it's full rects, but might become tiles or file 
-- the display client has to allocate display rects, sort out what to display, 
-  and how it's converted
-*/
+ *
+ * - render engine allocates/frees and delivers raw floating point rects
+ * - right now it's full rects, but might become tiles or file
+ * - the display client has to allocate display rects, sort out what to display,
+ *   and how it's converted
+ */
 
 typedef struct RenderPass {
 	struct RenderPass *next, *prev;
@@ -165,6 +165,8 @@ void RE_InitRenderCB(struct Render *re);
 void RE_FreeRender (struct Render *re);
 /* only called on exit */
 void RE_FreeAllRender (void);
+/* only call on file load */
+void RE_FreeAllRenderResults(void);
 
 /* get results and statistics */
 void RE_FreeRenderResult(struct RenderResult *rr);
@@ -182,12 +184,10 @@ float *RE_RenderLayerGetPass(struct RenderLayer *rl, int passtype);
 /* obligatory initialize call, disprect is optional */
 void RE_InitState (struct Render *re, struct Render *source, struct RenderData *rd, struct SceneRenderLayer *srl, int winx, int winy, rcti *disprect);
 
-/* use this to change disprect of active render */
-void RE_SetDispRect (struct Render *re, rcti *disprect);
-
 /* set up the viewplane/perspective matrix, three choices */
 struct Object *RE_GetCamera(struct Render *re); /* return camera override if set */
 void RE_SetCamera(struct Render *re, struct Object *camera);
+void RE_SetEnvmapCamera(struct Render *re, struct Object *cam_ob, float viewscale, float clipsta, float clipend);
 void RE_SetWindow (struct Render *re, rctf *viewplane, float clipsta, float clipend);
 void RE_SetOrtho (struct Render *re, rctf *viewplane, float clipsta, float clipend);
 void RE_SetPixelSize(struct Render *re, float pixsize);
@@ -226,14 +226,14 @@ int RE_WriteRenderResult(struct ReportList *reports, RenderResult *rr, const cha
 struct RenderResult *RE_MultilayerConvert(void *exrhandle, int rectx, int recty);
 
 extern const float default_envmap_layout[];
-int RE_WriteEnvmapResult(struct ReportList *reports, struct Scene *scene, struct EnvMap *env, const char *relpath, int imtype, float layout[12]);
+int RE_WriteEnvmapResult(struct ReportList *reports, struct Scene *scene, struct EnvMap *env, const char *relpath, const char imtype, float layout[12]);
 
 /* do a full sample buffer compo */
 void RE_MergeFullSample(struct Render *re, struct Main *bmain, struct Scene *sce, struct bNodeTree *ntree);
 
 /* ancient stars function... go away! */
 void RE_make_stars(struct Render *re, struct Scene *scenev3d, void (*initfunc)(void),
-				   void (*vertexfunc)(float*),  void (*termfunc)(void));
+                   void (*vertexfunc)(float*),  void (*termfunc)(void));
 
 /* display and event callbacks */
 void RE_display_init_cb	(struct Render *re, void *handle, void (*f)(void *handle, RenderResult *rr));
@@ -248,6 +248,8 @@ void RE_test_break_cb	(struct Render *re, void *handle, int (*f)(void *handle));
 float RE_filter_value(int type, float x);
 /* vector blur zbuffer method */
 void RE_zbuf_accumulate_vecblur(struct NodeBlurData *nbd, int xsize, int ysize, float *newrect, float *imgrect, float *vecbufrect, float *zbufrect);
+
+int RE_seq_render_active(struct Scene *scene, struct RenderData *rd);
 
 /* shaded view or baking options */
 #define RE_BAKE_LIGHT				0	/* not listed in rna_scene.c -> can't be enabled! */
@@ -273,12 +275,7 @@ struct Scene *RE_GetScene(struct Render *re);
 int RE_is_rendering_allowed(struct Scene *scene, struct Object *camera_override, struct ReportList *reports);
 
 
-
-
-
 void RE_BlensorFrame(struct Render *re, struct Main *bmain, struct Scene *scene, struct SceneRenderLayer *srl, struct Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance, int keep_setup);
- 
 
-
-#endif /* RE_PIPELINE_H */
+#endif /* __RE_PIPELINE_H__ */
 

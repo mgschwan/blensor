@@ -29,8 +29,8 @@
  *  \ingroup ketsji
  */
 
-#ifndef __KX_MESHPROXY
-#define __KX_MESHPROXY
+#ifndef __KX_MESHPROXY_H__
+#define __KX_MESHPROXY_H__
 
 #ifdef WITH_PYTHON
 
@@ -41,7 +41,7 @@ bool ConvertPythonToMesh(PyObject * value, class RAS_MeshObject **object, bool p
 
 class KX_MeshProxy	: public CValue
 {
-	Py_Header;
+	Py_Header
 
 	class RAS_MeshObject*	m_meshobj;
 public:
@@ -51,7 +51,7 @@ public:
 	void SetMeshModified(bool v);
 
 	// stuff for cvalue related things
-	virtual CValue*		Calc(VALUE_OPERATOR op, CValue *val) ;
+	virtual CValue*		Calc(VALUE_OPERATOR op, CValue *val);
 	virtual CValue*		CalcFinal(VALUE_DATA_TYPE dtype, VALUE_OPERATOR op, CValue *val);
 	virtual const STR_String &	GetText();
 	virtual double		GetNumber();
@@ -79,5 +79,5 @@ public:
 
 #endif // WITH_PYTHON
 
-#endif //__KX_MESHPROXY
+#endif //__KX_MESHPROXY_H__
 

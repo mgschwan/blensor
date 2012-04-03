@@ -38,9 +38,14 @@ set(SRC
 	buttons_context.c
 	buttons_header.c
 	buttons_ops.c
+	buttons_texture.c
 	space_buttons.c
 
 	buttons_intern.h
 )
+
+if(WITH_INTERNATIONAL)
+	add_definitions(-DWITH_INTERNATIONAL)
+endif()
 
 blender_add_lib(bf_editor_space_buttons "${SRC}" "${INC}" "${INC_SYS}")

@@ -70,6 +70,7 @@ KM_HIERARCHY = [
     ('Image', 'IMAGE_EDITOR', 'WINDOW', [
         ('UV Editor', 'EMPTY', 'WINDOW', []),  # image (reverse order, UVEdit before Image
         ('Image Paint', 'EMPTY', 'WINDOW', []),  # image and view3d
+        ('UV Sculpt', 'EMPTY', 'WINDOW', []),
         ('Image Generic', 'IMAGE_EDITOR', 'WINDOW', [])
         ]),
 
@@ -89,9 +90,12 @@ KM_HIERARCHY = [
 
     ('Property Editor', 'PROPERTIES', 'WINDOW', []),  # align context menu
 
-    ('Script', 'SCRIPTS_WINDOW', 'WINDOW', []),
     ('Text', 'TEXT_EDITOR', 'WINDOW', []),
     ('Console', 'CONSOLE', 'WINDOW', []),
+    ('Clip', 'CLIP_EDITOR', 'WINDOW', [
+        ('Clip Editor', 'CLIP_EDITOR', 'WINDOW', []),
+        ('Clip Graph Editor', 'CLIP_EDITOR', 'WINDOW', []),
+        ]),
 
     ('View3D Gesture Circle', 'EMPTY', 'WINDOW', []),
     ('Gesture Border', 'EMPTY', 'WINDOW', []),

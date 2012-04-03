@@ -21,15 +21,6 @@
 
 # <pep8 compliant>
 
-# History
-#
-# Originally written by Campbell Barton aka ideasman42
-#
-# 2009-11-01: * 2.5 port by Keith "Wahooney" Boshoff
-#              * Replaced old method with my own, speed is similar (about 0.001 sec on Suzanne)
-#               but results are far more accurate
-#
-
 
 def applyVertexDirt(me, blur_iterations, blur_strength, clamp_dirt, clamp_clean, dirt_only):
     from mathutils import Vector
@@ -165,19 +156,19 @@ class VertexPaintDirt(Operator):
             )
     clean_angle = FloatProperty(
             name="Highlight Angle",
-            description="Less then 90 limits the angle used in the tonal range",
+            description="Less than 90 limits the angle used in the tonal range",
             min=0.0, max=180.0,
             default=180.0,
             )
     dirt_angle = FloatProperty(
             name="Dirt Angle",
-            description="Less then 90 limits the angle used in the tonal range",
+            description="Less than 90 limits the angle used in the tonal range",
             min=0.0, max=180.0,
             default=0.0,
             )
     dirt_only = BoolProperty(
             name="Dirt Only",
-            description="Dont calculate cleans for convex areas",
+            description="Don't calculate cleans for convex areas",
             default=False,
             )
 

@@ -30,6 +30,7 @@ def extend(obj, operator, EXTEND_MODE):
 
     me = obj.data
     me_verts = me.vertices
+
     # script will fail without UVs
     if not me.uv_textures:
         me.uv_textures.new()
@@ -52,17 +53,15 @@ def extend(obj, operator, EXTEND_MODE):
         '''
 
         def face_edge_vs(vi):
-            # assume a quad
-            return [(vi[0], vi[1]), (vi[1], vi[2]), (vi[2], vi[3]), (vi[3], vi[0])]
+            vlen = len(vi)
+            return [(vi[i], vi[(i + 1) % vlen]) for i in range(vlen)]
 
         vidx_source = face_source.vertices
         vidx_target = face_target.vertices
 
-        faceUVsource = me.uv_textures.active.data[face_source.index]
-        uvs_source = [faceUVsource.uv1, faceUVsource.uv2, faceUVsource.uv3, faceUVsource.uv4]
-
-        faceUVtarget = me.uv_textures.active.data[face_target.index]
-        uvs_target = [faceUVtarget.uv1, faceUVtarget.uv2, faceUVtarget.uv3, faceUVtarget.uv4]
+        uv_layer = me.uv_loop_layers.active.data
+        uvs_source = [uv_layer[i].uv for i in face_source.loops]
+        uvs_target = [uv_layer[i].uv for i in face_target.loops]
 
         # vertex index is the key, uv is the value
 
@@ -99,7 +98,7 @@ def extend(obj, operator, EXTEND_MODE):
             iA = 1
             iB = 0
 
-        # Set the target UV's touching source face, no tricky calc needed,
+        # Set the target UV's touching source face, no tricky calculations needed,
         uvs_vhash_target[edgepair_inner_target[0]][:] = uvs_vhash_source[edgepair_inner_source[iA]]
         uvs_vhash_target[edgepair_inner_target[1]][:] = uvs_vhash_source[edgepair_inner_source[iB]]
 
@@ -135,15 +134,12 @@ def extend(obj, operator, EXTEND_MODE):
             uvs_vhash_target[edgepair_outer_target[iB]][:] = uvs_vhash_source[edgepair_inner_source[0]] + (uvs_vhash_source[edgepair_inner_source[0]] - uvs_vhash_source[edgepair_outer_source[1]])
             uvs_vhash_target[edgepair_outer_target[iA]][:] = uvs_vhash_source[edgepair_inner_source[1]] + (uvs_vhash_source[edgepair_inner_source[1]] - uvs_vhash_source[edgepair_outer_source[0]])
 
-    if not me.uv_textures:
-        me.uv_textures.new()
-
-    face_act = me.faces.active
+    face_act = me.polygons.active
     if face_act == -1:
         operator.report({'ERROR'}, "No active face")
         return
 
-    face_sel = [f for f in me.faces if len(f.vertices) == 4 and f.select]
+    face_sel = [f for f in me.polygons if len(f.vertices) == 4 and f.select]
 
     face_act_local_index = -1
     for i, f in enumerate(face_sel):
@@ -156,8 +152,8 @@ def extend(obj, operator, EXTEND_MODE):
         return
 
     # Modes
-    # 0 unsearched
-    # 1:mapped, use search from this face. - removed!!
+    # 0 not yet searched for.
+    # 1:mapped, use search from this face - removed!
     # 2:all siblings have been searched. don't search again.
     face_modes = [0] * len(face_sel)
     face_modes[face_act_local_index] = 1  # extend UV's from this face.
@@ -172,7 +168,7 @@ def extend(obj, operator, EXTEND_MODE):
                 edge_faces[edkey] = [i]
 
     if EXTEND_MODE == 'LENGTH':
-        edge_loops = mesh_utils.edge_loops_from_faces(me, face_sel, [ed.key for ed in me.edges if ed.use_seam])
+        edge_loops = mesh_utils.edge_loops_from_tessfaces(me, face_sel, [ed.key for ed in me.edges if ed.use_seam])
         me_verts = me.vertices
         for loop in edge_loops:
             looplen = [0.0]
@@ -233,10 +229,13 @@ class FollowActiveQuads(Operator):
     bl_label = "Follow Active Quads"
     bl_options = {'REGISTER', 'UNDO'}
 
-    mode = bpy.props.EnumProperty(items=(("EVEN", "Even", "Space all UVs evently"), ("LENGTH", "Length", "Average space UVs edge length of each loop")),
-                        name="Edge Length Mode",
-                        description="Method to space UV edge loops",
-                        default="LENGTH")
+    mode = bpy.props.EnumProperty(
+            name="Edge Length Mode",
+            description="Method to space UV edge loops",
+            items=(('EVEN', "Even", "Space all UVs evently"),
+                   ('LENGTH', "Length", "Average space UVs edge length of each loop")),
+            default='LENGTH',
+            )
 
     @classmethod
     def poll(cls, context):

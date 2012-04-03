@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_MAIN_H
-#define BKE_MAIN_H
+#ifndef __BKE_MAIN_H__
+#define __BKE_MAIN_H__
 
 /** \file BKE_main.h
  *  \ingroup bke
@@ -50,7 +50,7 @@ struct Library;
 
 typedef struct Main {
 	struct Main *next, *prev;
-	char name[240];
+	char name[1024]; /* 1024 = FILE_MAX */
 	short versionfile, subversionfile;
 	short minversionfile, minsubversionfile;
 	int revision;	/* svn revision of binary that saved file */
@@ -85,6 +85,7 @@ typedef struct Main {
 	ListBase particle;
 	ListBase wm;
 	ListBase gpencil;
+	ListBase movieclip;
 
 	char id_tag_update[256];
 } Main;

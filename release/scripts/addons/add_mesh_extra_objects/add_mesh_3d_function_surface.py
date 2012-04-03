@@ -21,7 +21,6 @@ bl_info = {
     "author": "Buerbaum Martin (Pontiac), Elod Csirmaz",
     "version": (0, 3, 8),
     "blender": (2, 5, 7),
-    "api": 37329,
     "location": "View3D > Add > Mesh",
     "description": "Create Objects using Math Formulas",
     "warning": "",
@@ -149,7 +148,7 @@ class AddZFunctionSurface(bpy.types.Operator):
     '''Add a surface defined defined by a function z=f(x,y)'''
     bl_idname = "mesh.primitive_z_function_surface"
     bl_label = "Add Z Function Surface"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'PRESET'}
 
     equation = StringProperty(name="Z Equation",
         description="Equation for z=f(x,y)",
@@ -403,7 +402,7 @@ class AddXYZFunctionSurface(bpy.types.Operator):
     + ''' x=F1(u,v), y=F2(u,v) and z=F3(u,v)'''
     bl_idname = "mesh.primitive_xyz_function_surface"
     bl_label = "Add X,Y,Z Function Surface"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'PRESET'}
 
     x_eq = StringProperty(name="X equation",
         description="Equation for x=F(u,v). " \

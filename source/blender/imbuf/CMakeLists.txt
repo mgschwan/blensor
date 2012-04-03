@@ -23,11 +23,6 @@
 #
 # ***** END GPL LICENSE BLOCK *****
 
-if(WITH_CODEC_FFMPEG)
-	# FFMPEG gives warnigns which are hard to avoid across multiple versions.
-	remove_strict_flags()
-endif()
-
 set(INC 
 	.
 	../avi
@@ -58,7 +53,6 @@ set(SRC
 	intern/indexer_dv.c
 	intern/iris.c
 	intern/jpeg.c
-	intern/md5.c
 	intern/metadata.c
 	intern/module.c
 	intern/moviecache.c
@@ -101,7 +95,6 @@ set(SRC
 	intern/dds/Stream.h
 	intern/dds/dds_api.h
 	intern/imbuf.h
-	intern/md5.h
 	intern/openexr/openexr_api.h
 	intern/openexr/openexr_multi.h
 	
@@ -111,6 +104,10 @@ set(SRC
 
 if(WITH_IMAGE_OPENEXR)
 	add_definitions(-DWITH_OPENEXR)
+else()
+	list(APPEND SRC
+		intern/openexr/openexr_stub.cpp
+	)
 endif()
 
 if(WITH_IMAGE_TIFF)
@@ -160,6 +157,12 @@ if(WITH_CODEC_FFMPEG)
 		${FFMPEG_INCLUDE_DIRS}
 	)
 	add_definitions(-DWITH_FFMPEG)
+
+	remove_strict_flags_file(
+		intern/indexer.c
+		intern/util.c
+		intern/anim_movie.c
+	)
 endif()
 
 if(WITH_IMAGE_DDS)
@@ -175,6 +178,12 @@ if(WITH_IMAGE_HDR)
 		intern/radiance_hdr.c
 	)
 	add_definitions(-DWITH_HDR)
+endif()
+
+if(WIN32)
+	list(APPEND INC
+		../../../intern/utfconv
+	)
 endif()
 
 blender_add_lib(bf_imbuf "${SRC}" "${INC}" "${INC_SYS}")

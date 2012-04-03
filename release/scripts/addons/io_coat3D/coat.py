@@ -30,13 +30,30 @@ def set_exchange_folder():
     platform = os.sys.platform
     coat3D = bpy.context.scene.coat3D
     Blender_export = ""
+
     if(platform == 'win32'):
         exchange = os.path.expanduser("~") + os.sep + 'Documents' + os.sep + '3D-CoatV3' + os.sep +'Exchange'
     else:
         exchange = os.path.expanduser("~") + os.sep + '3D-CoatV3' + os.sep + 'Exchange'
+    if(not(os.path.isdir(exchange))):
+        exchange = coat3D.exchangedir 
 
     if(os.path.isdir(exchange)):
         bpy.coat3D['status'] = 1
+        if(platform == 'win32'):
+            exchange_path = os.path.expanduser("~") + os.sep + 'Documents' + os.sep + '3DC2Blender' + os.sep + 'Exchange_folder.txt'
+            applink_folder = os.path.expanduser("~") + os.sep + 'Documents' + os.sep + '3DC2Blender'
+            if(not(os.path.isdir(applink_folder))):
+                os.makedirs(applink_folder)
+        else:
+            exchange_path = os.path.expanduser("~") + os.sep + 'Documents' + os.sep + '3DC2Blender' + os.sep + 'Exchange_folder.txt'
+            applink_folder = os.path.expanduser("~") + os.sep + 'Documents' + os.sep + '3DC2Blender'
+            if(not(os.path.isdir(applink_folder))):
+                os.makedirs(applink_folder)
+        file = open(exchange_path, "w")
+        file.write("%s"%(coat3D.exchangedir))
+        file.close()
+        
     else:
         if(platform == 'win32'):
             exchange_path = os.path.expanduser("~") + os.sep + 'Documents' + os.sep + '3DC2Blender' + os.sep + 'Exchange_folder.txt'
@@ -117,7 +134,6 @@ class SCENE_PT_Main(ObjectButtonsPanel,bpy.types.Panel):
 
             
         if(bpy.coat3D['status'] == 0 and not(os.path.isdir(coat3D.exchangedir))):
-            print('toivottavasti nyt toimii')
             bpy.coat3D['active_coat'] = set_exchange_folder()
             row = layout.row()
             row.label(text="Applink didn't find your 3d-Coat/Excahnge folder.")

@@ -22,7 +22,6 @@ bl_info = {
     "author": "testscreenings",
     "version": (0,1),
     "blender": (2, 5, 9),
-    "api": 39685,
     "location": "View3D > Add > Curve",
     "description": "Adds many types of (torus) knots",
     "warning": "",
@@ -38,7 +37,7 @@ bl_info = {
 import bpy
 from bpy.props import *
 from math import sin, cos, pi
-from add_utils import *
+from bpy_extras.object_utils import AddObjectHelper, object_data_add
 
     
 ########################################################################
@@ -94,7 +93,7 @@ def create_torus_knot(self, context):
         #curve_data.offset = self.geo_width # removed, somehow screws things up all of a sudden
         curve_data.resolution_u = self.geo_res
     
-    new_obj = add_object_data(context, curve_data, operator=self)
+    new_obj = object_data_add(context, curve_data, operator=self)
 
 
 class torus_knot_plus(bpy.types.Operator, AddObjectHelper):
@@ -131,7 +130,7 @@ class torus_knot_plus(bpy.types.Operator, AddObjectHelper):
     torus_res = IntProperty(name="Resoulution",
                 default=100,
                 min=3, soft_min=3,
-                description='Resolution, Number of controlverticies.')
+                description='Resolution, Number of controlverticies')
     torus_p = IntProperty(name="p",
                 default=2,
                 min=1, soft_min=1,

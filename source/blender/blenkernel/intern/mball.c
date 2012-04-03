@@ -50,7 +50,7 @@
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-
+#include "BLI_bpath.h"
 
 
 #include "BKE_global.h"
@@ -77,8 +77,8 @@ void unlink_mball(MetaBall *mb)
 {
 	int a;
 	
-	for(a=0; a<mb->totcol; a++) {
-		if(mb->mat[a]) mb->mat[a]->id.us--;
+	for (a=0; a<mb->totcol; a++) {
+		if (mb->mat[a]) mb->mat[a]->id.us--;
 		mb->mat[a]= NULL;
 	}
 }
@@ -89,14 +89,14 @@ void free_mball(MetaBall *mb)
 {
 	unlink_mball(mb);	
 	
-	if(mb->adt) {
+	if (mb->adt) {
 		BKE_free_animdata((ID *)mb);
 		mb->adt = NULL;
 	}
-	if(mb->mat) MEM_freeN(mb->mat);
-	if(mb->bb) MEM_freeN(mb->bb);
+	if (mb->mat) MEM_freeN(mb->mat);
+	if (mb->bb) MEM_freeN(mb->bb);
 	BLI_freelistN(&mb->elems);
-	if(mb->disp.first) freedisplist(&mb->disp);
+	if (mb->disp.first) freedisplist(&mb->disp);
 }
 
 MetaBall *add_mball(const char *name)
@@ -120,12 +120,12 @@ MetaBall *copy_mball(MetaBall *mb)
 	MetaBall *mbn;
 	int a;
 	
-	mbn= copy_libblock(mb);
+	mbn= copy_libblock(&mb->id);
 
 	BLI_duplicatelist(&mbn->elems, &mb->elems);
 	
 	mbn->mat= MEM_dupallocN(mb->mat);
-	for(a=0; a<mbn->totcol; a++) {
+	for (a=0; a<mbn->totcol; a++) {
 		id_us_plus((ID *)mbn->mat[a]);
 	}
 	mbn->bb= MEM_dupallocN(mb->bb);
@@ -138,7 +138,7 @@ MetaBall *copy_mball(MetaBall *mb)
 
 static void extern_local_mball(MetaBall *mb)
 {
-	if(mb->mat) {
+	if (mb->mat) {
 		extern_local_matarar(mb->mat, mb->totcol);
 	}
 }
@@ -147,46 +147,44 @@ void make_local_mball(MetaBall *mb)
 {
 	Main *bmain= G.main;
 	Object *ob;
-	int local=0, lib=0;
+	int is_local= FALSE, is_lib= FALSE;
 
 	/* - only lib users: do nothing
 	 * - only local users: set flag
 	 * - mixed: make copy
 	 */
 	
-	if(mb->id.lib==NULL) return;
-	if(mb->id.us==1) {
-		mb->id.lib= NULL;
-		mb->id.flag= LIB_LOCAL;
-		new_id(&bmain->mball, (ID *)mb, NULL);
+	if (mb->id.lib==NULL) return;
+	if (mb->id.us==1) {
+		id_clear_lib_data(bmain, &mb->id);
 		extern_local_mball(mb);
 		
 		return;
 	}
 
-	for(ob= G.main->object.first; ob && ELEM(0, lib, local); ob= ob->id.next) {
-		if(ob->data == mb) {
-			if(ob->id.lib) lib= 1;
-			else local= 1;
+	for (ob= G.main->object.first; ob && ELEM(0, is_lib, is_local); ob= ob->id.next) {
+		if (ob->data == mb) {
+			if (ob->id.lib) is_lib= TRUE;
+			else is_local= TRUE;
 		}
 	}
 	
-	if(local && lib==0) {
-		mb->id.lib= NULL;
-		mb->id.flag= LIB_LOCAL;
-
-		new_id(&bmain->mball, (ID *)mb, NULL);
+	if (is_local && is_lib == FALSE) {
+		id_clear_lib_data(bmain, &mb->id);
 		extern_local_mball(mb);
 	}
-	else if(local && lib) {
-		MetaBall *mbn= copy_mball(mb);
-		mbn->id.us= 0;
+	else if (is_local && is_lib) {
+		MetaBall *mb_new= copy_mball(mb);
+		mb_new->id.us= 0;
 
-		for(ob= G.main->object.first; ob; ob= ob->id.next) {
-			if(ob->data == mb) {
-				if(ob->id.lib==NULL) {
-					ob->data= mbn;
-					mbn->id.us++;
+		/* Remap paths of new ID using old library as base. */
+		BKE_id_lib_local_paths(bmain, mb->id.lib, &mb_new->id);
+
+		for (ob= G.main->object.first; ob; ob= ob->id.next) {
+			if (ob->data == mb) {
+				if (ob->id.lib==NULL) {
+					ob->data= mb_new;
+					mb_new->id.us++;
 					mb->id.us--;
 				}
 			}
@@ -255,7 +253,7 @@ void tex_space_mball(Object *ob)
 	float *data, min[3], max[3] /*, loc[3], size[3] */;
 	int tot, doit=0;
 
-	if(ob->bb==NULL) ob->bb= MEM_callocN(sizeof(BoundBox), "mb boundbox");
+	if (ob->bb==NULL) ob->bb= MEM_callocN(sizeof(BoundBox), "mb boundbox");
 	bb= ob->bb;
 	
 	/* Weird one, this. */
@@ -264,11 +262,11 @@ void tex_space_mball(Object *ob)
 	(max)[0]= (max)[1]= (max)[2]= -1.0e30f;
 
 	dl= ob->disp.first;
-	while(dl) {
+	while (dl) {
 		tot= dl->nr;
-		if(tot) doit= 1;
+		if (tot) doit= 1;
 		data= dl->verts;
-		while(tot--) {
+		while (tot--) {
 			/* Also weird... but longer. From utildefines. */
 			DO_MINMAX(data, min, max);
 			data+= 3;
@@ -276,11 +274,11 @@ void tex_space_mball(Object *ob)
 		dl= dl->next;
 	}
 
-	if(!doit) {
+	if (!doit) {
 		min[0] = min[1] = min[2] = -1.0f;
 		max[0] = max[1] = max[2] = 1.0f;
 	}
-	/*
+#if 0
 	loc[0]= (min[0]+max[0])/2.0f;
 	loc[1]= (min[1]+max[1])/2.0f;
 	loc[2]= (min[2]+max[2])/2.0f;
@@ -288,7 +286,7 @@ void tex_space_mball(Object *ob)
 	size[0]= (max[0]-min[0])/2.0f;
 	size[1]= (max[1]-min[1])/2.0f;
 	size[2]= (max[2]-min[2])/2.0f;
-	*/
+#endif
 	boundbox_set_from_min_max(bb, min, max);
 }
 
@@ -315,7 +313,7 @@ float *make_orco_mball(Object *ob, ListBase *dispbase)
 	data= dl->verts;
 	orco= orcodata;
 	a= dl->nr;
-	while(a--) {
+	while (a--) {
 		orco[0]= (data[0]-loc[0])/size[0];
 		orco[1]= (data[1]-loc[1])/size[1];
 		orco[2]= (data[2]-loc[2])/size[2];
@@ -350,20 +348,20 @@ int is_basis_mball(Object *ob)
 	
 	/* just a quick test */
 	len= strlen(ob->id.name);
-	if( isdigit(ob->id.name[len-1]) ) return 0;
+	if ( isdigit(ob->id.name[len-1]) ) return 0;
 	return 1;
 }
 
 /* return nonzero if ob1 is a basis mball for ob */
-int is_mball_basis_for(Object *ob1, Object *ob2)
+int is_mball_basis_for (Object *ob1, Object *ob2)
 {
 	int basis1nr, basis2nr;
-	char basis1name[32], basis2name[32];
+	char basis1name[MAX_ID_NAME], basis2name[MAX_ID_NAME];
 
 	BLI_split_name_num(basis1name, &basis1nr, ob1->id.name+2, '.');
 	BLI_split_name_num(basis2name, &basis2nr, ob2->id.name+2, '.');
 
-	if(!strcmp(basis1name, basis2name)) return is_basis_mball(ob1);
+	if (!strcmp(basis1name, basis2name)) return is_basis_mball(ob1);
 	else return 0;
 }
 
@@ -380,22 +378,22 @@ void copy_mball_properties(Scene *scene, Object *active_object)
 	Object *ob;
 	MetaBall *active_mball = (MetaBall*)active_object->data;
 	int basisnr, obnr;
-	char basisname[32], obname[32];
+	char basisname[MAX_ID_NAME], obname[MAX_ID_NAME];
 	
 	BLI_split_name_num(basisname, &basisnr, active_object->id.name+2, '.');
 
 	/* XXX recursion check, see scene.c, just too simple code this next_object() */
-	if(F_ERROR==next_object(&sce_iter, 0, NULL, NULL))
+	if (F_ERROR==next_object(&sce_iter, 0, NULL, NULL))
 		return;
 	
-	while(next_object(&sce_iter, 1, &base, &ob)) {
+	while (next_object(&sce_iter, 1, &base, &ob)) {
 		if (ob->type==OB_MBALL) {
-			if(ob!=active_object){
+			if (ob != active_object) {
 				BLI_split_name_num(obname, &obnr, ob->id.name+2, '.');
 
 				/* Object ob has to be in same "group" ... it means, that it has to have
 				 * same base of its name */
-				if(strcmp(obname, basisname)==0){
+				if (strcmp(obname, basisname)==0) {
 					MetaBall *mb= ob->data;
 
 					/* Copy properties from selected/edited metaball */
@@ -425,43 +423,43 @@ Object *find_basis_mball(Scene *scene, Object *basis)
 	Object *ob,*bob= basis;
 	MetaElem *ml=NULL;
 	int basisnr, obnr;
-	char basisname[32], obname[32];
+	char basisname[MAX_ID_NAME], obname[MAX_ID_NAME];
 
 	BLI_split_name_num(basisname, &basisnr, basis->id.name+2, '.');
 	totelem= 0;
 
 	/* XXX recursion check, see scene.c, just too simple code this next_object() */
-	if(F_ERROR==next_object(&sce_iter, 0, NULL, NULL))
+	if (F_ERROR==next_object(&sce_iter, 0, NULL, NULL))
 		return NULL;
 	
-	while(next_object(&sce_iter, 1, &base, &ob)) {
+	while (next_object(&sce_iter, 1, &base, &ob)) {
 		
 		if (ob->type==OB_MBALL) {
-			if(ob==bob){
+			if (ob==bob) {
 				MetaBall *mb= ob->data;
 				
 				/* if bob object is in edit mode, then dynamic list of all MetaElems
 				 * is stored in editelems */
-				if(mb->editelems) ml= mb->editelems->first;
+				if (mb->editelems) ml= mb->editelems->first;
 				/* if bob object is in object mode */
 				else ml= mb->elems.first;
 			}
-			else{
+			else {
 				BLI_split_name_num(obname, &obnr, ob->id.name+2, '.');
 
 				/* object ob has to be in same "group" ... it means, that it has to have
 				 * same base of its name */
-				if(strcmp(obname, basisname)==0){
+				if (strcmp(obname, basisname)==0) {
 					MetaBall *mb= ob->data;
 					
 					/* if object is in edit mode, then dynamic list of all MetaElems
 					 * is stored in editelems */
-					if(mb->editelems) ml= mb->editelems->first;
+					if (mb->editelems) ml= mb->editelems->first;
 					/* if bob object is in object mode */
 					else ml= mb->elems.first;
 					
-					if(obnr<basisnr){
-						if(!(ob->flag & OB_FROMDUPLI)){
+					if (obnr < basisnr) {
+						if (!(ob->flag & OB_FROMDUPLI)) {
 							basis= ob;
 							basisnr= obnr;
 						}
@@ -469,8 +467,8 @@ Object *find_basis_mball(Scene *scene, Object *basis)
 				}
 			}
 			
-			while(ml){
-				if(!(ml->flag & MB_HIDE)) totelem++;
+			while (ml) {
+				if (!(ml->flag & MB_HIDE)) totelem++;
 				ml= ml->next;
 			}
 		}
@@ -487,7 +485,7 @@ Object *find_basis_mball(Scene *scene, Object *basis)
  * "An Implicit Surface Polygonizer"
  * by Jules Bloomenthal, jbloom@beauty.gmu.edu
  * in "Graphics Gems IV", Academic Press, 1994
-
+ *
  * Authored by Jules Bloomenthal, Xerox PARC.
  * Copyright (c) Xerox Corporation, 1991.  All rights reserved.
  * Permission is granted to reproduce, use and distribute this code for
@@ -524,9 +522,9 @@ Object *find_basis_mball(Scene *scene, Object *basis)
 
 /* **************** POLYGONIZATION ************************ */
 
-void calc_mballco(MetaElem *ml, float *vec)
+void calc_mballco(MetaElem *ml, float vec[3])
 {
-	if(ml->mat) {
+	if (ml->mat) {
 		mul_m4_v3((float ( * )[4])ml->mat, vec);
 	}
 }
@@ -544,64 +542,64 @@ float densfunc(MetaElem *ball, float x, float y, float z)
 	dy= vec[1];
 	dz= vec[2];
 	
-	if(ball->type==MB_BALL) {
+	if (ball->type==MB_BALL) {
 	}
-	else if(ball->type==MB_TUBEX) {
-		if( dx > ball->len) dx-= ball->len;
-		else if(dx< -ball->len) dx+= ball->len;
+	else if (ball->type==MB_TUBEX) {
+		if ( dx > ball->len) dx-= ball->len;
+		else if (dx< -ball->len) dx+= ball->len;
 		else dx= 0.0;
 	}
-	else if(ball->type==MB_TUBEY) {
-		if( dy > ball->len) dy-= ball->len;
-		else if(dy< -ball->len) dy+= ball->len;
+	else if (ball->type==MB_TUBEY) {
+		if ( dy > ball->len) dy-= ball->len;
+		else if (dy< -ball->len) dy+= ball->len;
 		else dy= 0.0;
 	}
-	else if(ball->type==MB_TUBEZ) {
-		if( dz > ball->len) dz-= ball->len;
-		else if(dz< -ball->len) dz+= ball->len;
+	else if (ball->type==MB_TUBEZ) {
+		if ( dz > ball->len) dz-= ball->len;
+		else if (dz< -ball->len) dz+= ball->len;
 		else dz= 0.0;
 	}
-	else if(ball->type==MB_TUBE) {
-		if( dx > ball->expx) dx-= ball->expx;
-		else if(dx< -ball->expx) dx+= ball->expx;
+	else if (ball->type==MB_TUBE) {
+		if ( dx > ball->expx) dx-= ball->expx;
+		else if (dx< -ball->expx) dx+= ball->expx;
 		else dx= 0.0;
 	}
-	else if(ball->type==MB_PLANE) {
-		if( dx > ball->expx) dx-= ball->expx;
-		else if(dx< -ball->expx) dx+= ball->expx;
+	else if (ball->type==MB_PLANE) {
+		if ( dx > ball->expx) dx-= ball->expx;
+		else if (dx< -ball->expx) dx+= ball->expx;
 		else dx= 0.0;
-		if( dy > ball->expy) dy-= ball->expy;
-		else if(dy< -ball->expy) dy+= ball->expy;
+		if ( dy > ball->expy) dy-= ball->expy;
+		else if (dy< -ball->expy) dy+= ball->expy;
 		else dy= 0.0;
 	}
-	else if(ball->type==MB_ELIPSOID) {
+	else if (ball->type==MB_ELIPSOID) {
 		dx *= 1/ball->expx;
 		dy *= 1/ball->expy;
 		dz *= 1/ball->expz;
 	}
-	else if(ball->type==MB_CUBE) {
-		if( dx > ball->expx) dx-= ball->expx;
-		else if(dx< -ball->expx) dx+= ball->expx;
+	else if (ball->type==MB_CUBE) {
+		if ( dx > ball->expx) dx-= ball->expx;
+		else if (dx< -ball->expx) dx+= ball->expx;
 		else dx= 0.0;
-		if( dy > ball->expy) dy-= ball->expy;
-		else if(dy< -ball->expy) dy+= ball->expy;
+		if ( dy > ball->expy) dy-= ball->expy;
+		else if (dy< -ball->expy) dy+= ball->expy;
 		else dy= 0.0;
-		if( dz > ball->expz) dz-= ball->expz;
-		else if(dz< -ball->expz) dz+= ball->expz;
+		if ( dz > ball->expz) dz-= ball->expz;
+		else if (dz< -ball->expz) dz+= ball->expz;
 		else dz= 0.0;
 	}
 
 	dist2= (dx*dx + dy*dy + dz*dz);
 
-	if(ball->flag & MB_NEGATIVE) {
+	if (ball->flag & MB_NEGATIVE) {
 		dist2= 1.0f-(dist2/ball->rad2);
-		if(dist2 < 0.0f) return 0.5f;
+		if (dist2 < 0.0f) return 0.5f;
 
 		return 0.5f-ball->s*dist2*dist2*dist2;
 	}
 	else {
 		dist2= 1.0f-(dist2/ball->rad2);
-		if(dist2 < 0.0f) return -0.5f;
+		if (dist2 < 0.0f) return -0.5f;
 
 		return ball->s*dist2*dist2*dist2 -0.5f;
 	}
@@ -609,62 +607,62 @@ float densfunc(MetaElem *ball, float x, float y, float z)
 
 octal_node* find_metaball_octal_node(octal_node *node, float x, float y, float z, short depth)
 {
-	if(!depth) return node;
+	if (!depth) return node;
 	
-	if(z < node->z){
-		if(y < node->y){
-			if(x < node->x){
-				if(node->nodes[0])
+	if (z < node->z) {
+		if (y < node->y) {
+			if (x < node->x) {
+				if (node->nodes[0])
 					return find_metaball_octal_node(node->nodes[0],x,y,z,depth--);
 				else
 					return node;
 			}
-			else{
-				if(node->nodes[1])
+			else {
+				if (node->nodes[1])
 					return find_metaball_octal_node(node->nodes[1],x,y,z,depth--);
 				else
 					return node;
 			}
 		}
-		else{
-			if(x < node->x){
-				if(node->nodes[3])
+		else {
+			if (x < node->x) {
+				if (node->nodes[3])
 					return find_metaball_octal_node(node->nodes[3],x,y,z,depth--);
 				else
 					return node;
 			}
-			else{
-				if(node->nodes[2])
+			else {
+				if (node->nodes[2])
 					return find_metaball_octal_node(node->nodes[2],x,y,z,depth--);
 				else
 					return node;
 			}		
 		}
 	}
-	else{
-		if(y < node->y){
-			if(x < node->x){
-				if(node->nodes[4])
+	else {
+		if (y < node->y) {
+			if (x < node->x) {
+				if (node->nodes[4])
 					return find_metaball_octal_node(node->nodes[4],x,y,z,depth--);
 				else
 					return node;
 			}
-			else{
-				if(node->nodes[5])
+			else {
+				if (node->nodes[5])
 					return find_metaball_octal_node(node->nodes[5],x,y,z,depth--);
 				else
 					return node;
 			}
 		}
-		else{
-			if(x < node->x){
-				if(node->nodes[7])
+		else {
+			if (x < node->x) {
+				if (node->nodes[7])
 					return find_metaball_octal_node(node->nodes[7],x,y,z,depth--);
 				else
 					return node;
 			}
-			else{
-				if(node->nodes[6])
+			else {
+				if (node->nodes[6])
 					return find_metaball_octal_node(node->nodes[6],x,y,z,depth--);
 				else
 					return node;
@@ -683,12 +681,12 @@ float metaball(float x, float y, float z)
 	float dens=0;
 	int a;
 	
-	if(totelem > 1){
+	if (totelem > 1) {
 		node= find_metaball_octal_node(metaball_tree->first, x, y, z, metaball_tree->depth);
-		if(node){
+		if (node) {
 			ml_p= node->elems.first;
 
-			while(ml_p){
+			while (ml_p) {
 				dens+=densfunc(ml_p->ml, x, y, z);
 				ml_p= ml_p->next;
 			}
@@ -696,14 +694,14 @@ float metaball(float x, float y, float z)
 			dens+= -0.5f*(metaball_tree->pos - node->pos);
 			dens+= 0.5f*(metaball_tree->neg - node->neg);
 		}
-		else{
-			for(a=0; a<totelem; a++) {
-				dens+= densfunc( mainb[a], x, y, z);
+		else {
+			for (a=0; a<totelem; a++) {
+				dens += densfunc(mainb[a], x, y, z);
 			}
 		}
 	}
-	else{
-		dens+= densfunc( mainb[0], x, y, z);
+	else {
+		dens += densfunc(mainb[0], x, y, z);
 	}
 
 	return thresh - dens;
@@ -720,11 +718,11 @@ void accum_mballfaces(int i1, int i2, int i3, int i4)
 	int *newi, *cur;
 	/* static int i=0; I would like to delete altogether, but I don't dare to, yet */
 
-	if(totindex==curindex) {
+	if (totindex==curindex) {
 		totindex+= 256;
 		newi= MEM_mallocN(4*sizeof(int)*totindex, "vertindex");
 		
-		if(indices) {
+		if (indices) {
 			memcpy(newi, indices, 4*sizeof(int)*(totindex-256));
 			MEM_freeN(indices);
 		}
@@ -738,7 +736,7 @@ void accum_mballfaces(int i1, int i2, int i3, int i4)
 	cur[0]= i1;
 	cur[1]= i2;
 	cur[2]= i3;
-	if(i4==0)
+	if (i4==0)
 		cur[3]= i3;
 	else 
 		cur[3]= i4;
@@ -759,12 +757,12 @@ void *new_pgn_element(int size)
 	static ListBase lb= {NULL, NULL};
 	void *adr;
 	
-	if(size>10000 || size==0) {
+	if (size>10000 || size==0) {
 		printf("incorrect use of new_pgn_element\n");
 	}
-	else if(size== -1) {
+	else if (size== -1) {
 		cur= lb.first;
-		while(cur) {
+		while (cur) {
 			MEM_freeN(cur->data);
 			cur= cur->next;
 		}
@@ -775,10 +773,10 @@ void *new_pgn_element(int size)
 	
 	size= 4*( (size+3)/4 );
 	
-	if(cur) {
-		if(size+offs < blocksize) {
+	if (cur) {
+		if (size+offs < blocksize) {
 			adr= (void *) (cur->data+offs);
-			 offs+= size;
+			offs+= size;
 			return adr;
 		}
 	}
@@ -799,7 +797,7 @@ void freepolygonize(PROCESS *p)
 
 	new_pgn_element(-1);
 	
-	if(p->vertices.ptr) MEM_freeN(p->vertices.ptr);
+	if (p->vertices.ptr) MEM_freeN(p->vertices.ptr);
 }
 
 /**** Cubical Polygonization (optional) ****/
@@ -854,23 +852,23 @@ void docube(CUBE *cube, PROCESS *p, MetaBall *mb)
 			indexar[count] = vertid(c1, c2, p, mb);
 			count++;
 		}
-		if(count>2) {
+		if (count>2) {
 			switch(count) {
 			case 3:
 				accum_mballfaces(indexar[2], indexar[1], indexar[0], 0);
 				break;
 			case 4:
-				if(indexar[0]==0) accum_mballfaces(indexar[0], indexar[3], indexar[2], indexar[1]);
+				if (indexar[0]==0) accum_mballfaces(indexar[0], indexar[3], indexar[2], indexar[1]);
 				else accum_mballfaces(indexar[3], indexar[2], indexar[1], indexar[0]);
 				break;
 			case 5:
-				if(indexar[0]==0) accum_mballfaces(indexar[0], indexar[3], indexar[2], indexar[1]);
+				if (indexar[0]==0) accum_mballfaces(indexar[0], indexar[3], indexar[2], indexar[1]);
 				else accum_mballfaces(indexar[3], indexar[2], indexar[1], indexar[0]);
 
 				accum_mballfaces(indexar[4], indexar[3], indexar[0], 0);
 				break;
 			case 6:
-				if(indexar[0]==0) {
+				if (indexar[0]==0) {
 					accum_mballfaces(indexar[0], indexar[3], indexar[2], indexar[1]);
 					accum_mballfaces(indexar[0], indexar[5], indexar[4], indexar[3]);
 				}
@@ -880,7 +878,7 @@ void docube(CUBE *cube, PROCESS *p, MetaBall *mb)
 				}
 				break;
 			case 7:
-				if(indexar[0]==0) {
+				if (indexar[0]==0) {
 					accum_mballfaces(indexar[0], indexar[3], indexar[2], indexar[1]);
 					accum_mballfaces(indexar[0], indexar[5], indexar[4], indexar[3]);
 				}
@@ -917,7 +915,7 @@ void testface(int i, int j, int k, CUBE* old, int bit, int c1, int c2, int c3, i
 	pos = corn1->value > 0.0f ? 1 : 0;
 
 	/* test if no surface crossing */
-	if( (corn2->value > 0) == pos && (corn3->value > 0) == pos && (corn4->value > 0) == pos) return;
+	if ( (corn2->value > 0) == pos && (corn3->value > 0) == pos && (corn4->value > 0) == pos) return;
 	/* test if cube out of bounds */
 	/*if ( abs(i) > p->bounds || abs(j) > p->bounds || abs(k) > p->bounds) return;*/
 	/* test if already visited (always as last) */
@@ -938,20 +936,20 @@ void testface(int i, int j, int k, CUBE* old, int bit, int c1, int c2, int c3, i
 	newc.corners[FLIP(c3, bit)] = corn3;
 	newc.corners[FLIP(c4, bit)] = corn4;
 
-	if(newc.corners[0]==NULL) newc.corners[0] = setcorner(p, i, j, k);
-	if(newc.corners[1]==NULL) newc.corners[1] = setcorner(p, i, j, k+1);
-	if(newc.corners[2]==NULL) newc.corners[2] = setcorner(p, i, j+1, k);
-	if(newc.corners[3]==NULL) newc.corners[3] = setcorner(p, i, j+1, k+1);
-	if(newc.corners[4]==NULL) newc.corners[4] = setcorner(p, i+1, j, k);
-	if(newc.corners[5]==NULL) newc.corners[5] = setcorner(p, i+1, j, k+1);
-	if(newc.corners[6]==NULL) newc.corners[6] = setcorner(p, i+1, j+1, k);
-	if(newc.corners[7]==NULL) newc.corners[7] = setcorner(p, i+1, j+1, k+1);
+	if (newc.corners[0]==NULL) newc.corners[0] = setcorner(p, i, j, k);
+	if (newc.corners[1]==NULL) newc.corners[1] = setcorner(p, i, j, k+1);
+	if (newc.corners[2]==NULL) newc.corners[2] = setcorner(p, i, j+1, k);
+	if (newc.corners[3]==NULL) newc.corners[3] = setcorner(p, i, j+1, k+1);
+	if (newc.corners[4]==NULL) newc.corners[4] = setcorner(p, i+1, j, k);
+	if (newc.corners[5]==NULL) newc.corners[5] = setcorner(p, i+1, j, k+1);
+	if (newc.corners[6]==NULL) newc.corners[6] = setcorner(p, i+1, j+1, k);
+	if (newc.corners[7]==NULL) newc.corners[7] = setcorner(p, i+1, j+1, k+1);
 
 	p->cubes->cube= newc;	
 }
 
 /* setcorner: return corner with the given lattice location
-   set (and cache) its function value */
+ * set (and cache) its function value */
 
 CORNER *setcorner (PROCESS* p, int i, int j, int k)
 {
@@ -1036,7 +1034,7 @@ void makecubetable (void)
 	static int isdone= 0;
 	int i, e, c, done[12], pos[8];
 
-	if(isdone) return;
+	if (isdone) return;
 	isdone= 1;
 
 	for (i = 0; i < 256; i++) {
@@ -1080,11 +1078,11 @@ void BKE_freecubetable(void)
 
 	for (i = 0; i < 256; i++) {
 		lists= cubetable[i];
-		while(lists) {
+		while (lists) {
 			nlists= lists->next;
 			
 			ints= lists->list;
-			while(ints) {
+			while (ints) {
 				nints= ints->next;
 				MEM_freeN(ints);
 				ints= nints;
@@ -1235,7 +1233,7 @@ void vnormal (MB_POINT *point, PROCESS *p, MB_POINT *v)
 		v->z /= f;
 	}
 	
-	if(FALSE) {
+	if (FALSE) {
 		MB_POINT temp;
 		
 		delta *= 2.0f;
@@ -1325,20 +1323,20 @@ void converge (MB_POINT *p1, MB_POINT *p2, float v1, float v2,
 
 /* Approximation by linear interpolation is faster then binary subdivision,
  * but it results sometimes (mb->thresh < 0.2) into the strange results */
-	if((mb->thresh > 0.2f) && (f==1)){
-	if((dy == 0.0f) && (dz == 0.0f)){
+	if ((mb->thresh > 0.2f) && (f==1)) {
+	if ((dy == 0.0f) && (dz == 0.0f)) {
 		p->x = neg.x - negative*dx/(positive-negative);
 		p->y = neg.y;
 		p->z = neg.z;
 		return;
 	}
-	  if((dx == 0.0f) && (dz == 0.0f)){
+	  if ((dx == 0.0f) && (dz == 0.0f)) {
 		p->x = neg.x;
 		p->y = neg.y - negative*dy/(positive-negative);
 		p->z = neg.z;
 		return;
 	}
-	if((dx == 0.0f) && (dy == 0.0f)){
+	if ((dx == 0.0f) && (dy == 0.0f)) {
 		p->x = neg.x;
 		p->y = neg.y;
 		p->z = neg.z - negative*dz/(positive-negative);
@@ -1346,7 +1344,7 @@ void converge (MB_POINT *p1, MB_POINT *p2, float v1, float v2,
 	}
 	}
 
-	if((dy == 0.0f) && (dz == 0.0f)){
+	if ((dy == 0.0f) && (dz == 0.0f)) {
 		p->y = neg.y;
 		p->z = neg.z;
 		while (1) {
@@ -1356,7 +1354,7 @@ void converge (MB_POINT *p1, MB_POINT *p2, float v1, float v2,
 		}
 	}
 
-	if((dx == 0.0f) && (dz == 0.0f)){
+	if ((dx == 0.0f) && (dz == 0.0f)) {
 		p->x = neg.x;
 		p->z = neg.z;
 		while (1) {
@@ -1366,7 +1364,7 @@ void converge (MB_POINT *p1, MB_POINT *p2, float v1, float v2,
 		}
 	  }
    
-	if((dx == 0.0f) && (dy == 0.0f)){
+	if ((dx == 0.0f) && (dy == 0.0f)) {
 		p->x = neg.x;
 		p->y = neg.y;
 		while (1) {
@@ -1384,12 +1382,12 @@ void converge (MB_POINT *p1, MB_POINT *p2, float v1, float v2,
 
 		if (i++ == RES) return;
    
-		if ((function(p->x, p->y, p->z)) > 0.0f){
+		if ((function(p->x, p->y, p->z)) > 0.0f) {
 			pos.x = p->x;
 			pos.y = p->y;
 			pos.z = p->z;
 		}
-		else{
+		else {
 			neg.x = p->x;
 			neg.y = p->y;
 			neg.z = p->z;
@@ -1406,11 +1404,11 @@ void add_cube(PROCESS *mbproc, int i, int j, int k, int count)
 
 	/* hmmm, not only one, but eight cube will be added on the stack 
 	 * ... */
-	for(a=i-1; a<i+count; a++)
-		for(b=j-1; b<j+count; b++)
-			for(c=k-1; c<k+count; c++) {
+	for (a=i-1; a<i+count; a++)
+		for (b=j-1; b<j+count; b++)
+			for (c=k-1; c<k+count; c++) {
 				/* test if cube has been found before */
-				if( setcenter(mbproc->centers, a, b, c)==0 ) {
+				if ( setcenter(mbproc->centers, a, b, c)==0 ) {
 					/* push cube on stack: */
 					ncube= (CUBES *) new_pgn_element(sizeof(CUBES));
 					ncube->next= mbproc->cubes;
@@ -1445,7 +1443,7 @@ void find_first_points(PROCESS *mbproc, MetaBall *mb, int a)
 
 	/* Skip, when Stiffness of MetaElement is too small ... MetaElement can't be
 	 * visible alone ... but still can influence others MetaElements :-) */
-	if(f > 0.0f) {
+	if (f > 0.0f) {
 		OUT.x = IN.x = in.x= 0.0;
 		OUT.y = IN.y = in.y= 0.0;
 		OUT.z = IN.z = in.z= 0.0;
@@ -1453,7 +1451,7 @@ void find_first_points(PROCESS *mbproc, MetaBall *mb, int a)
 		calc_mballco(ml, (float *)&in);
 		in_v = mbproc->function(in.x, in.y, in.z);
 
-		for(i=0;i<3;i++){
+		for (i=0;i<3;i++) {
 			switch (ml->type) {
 				case MB_BALL:
 					OUT.x = out.x= IN.x + index[i]*ml->rad;
@@ -1466,7 +1464,7 @@ void find_first_points(PROCESS *mbproc, MetaBall *mb, int a)
 					break;
 			}
 
-			for(j=0;j<3;j++) {
+			for (j=0;j<3;j++) {
 				switch (ml->type) {
 					case MB_BALL:
 						OUT.y = out.y= IN.y + index[j]*ml->rad;
@@ -1479,7 +1477,7 @@ void find_first_points(PROCESS *mbproc, MetaBall *mb, int a)
 						break;
 				}
 			
-				for(k=0;k<3;k++) {
+				for (k=0;k<3;k++) {
 					out.x = OUT.x;
 					out.y = OUT.y;
 					switch (ml->type) {
@@ -1510,20 +1508,20 @@ void find_first_points(PROCESS *mbproc, MetaBall *mb, int a)
 					nz = abs((out.z - in.z)/mbproc->size);
 					
 					MAXN = MAX3(nx,ny,nz);
-					if(MAXN!=0.0f) {
+					if (MAXN!=0.0f) {
 						dx = (out.x - in.x)/MAXN;
 						dy = (out.y - in.y)/MAXN;
 						dz = (out.z - in.z)/MAXN;
 
 						len = 0.0;
-						while(len<=max_len) {
+						while (len<=max_len) {
 							workp.x += dx;
 							workp.y += dy;
 							workp.z += dz;
 							/* compute value of implicite function */
 							tmp_v = mbproc->function(workp.x, workp.y, workp.z);
 							/* add cube to the stack, when value of implicite function crosses zero value */
-							if((tmp_v<0.0f && workp_v>=0.0f)||(tmp_v>0.0f && workp_v<=0.0f)) {
+							if ((tmp_v<0.0f && workp_v>=0.0f)||(tmp_v>0.0f && workp_v<=0.0f)) {
 
 								/* indexes of CUBE, which includes "first point" */
 								c_i= (int)floor(workp.x/mbproc->size);
@@ -1562,7 +1560,7 @@ void polygonize(PROCESS *mbproc, MetaBall *mb)
 	mbproc->edges =	MEM_callocN(2*HASHSIZE * sizeof(EDGELIST *), "mbproc->edges");
 	makecubetable();
 
-	for(a=0; a<totelem; a++) {
+	for (a=0; a<totelem; a++) {
 
 		/* try to find 8 points on the surface for each MetaElem */
 		find_first_points(mbproc, mb, a);	
@@ -1598,7 +1596,7 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 	float size, totsize, obinv[4][4], obmat[4][4], vec[3];
 	//float max=0.0;
 	int a, obnr, zero_size=0;
-	char obname[32];
+	char obname[MAX_ID_NAME];
 	
 	copy_m4_m4(obmat, ob->obmat);	/* to cope with duplicators from next_object */
 	invert_m4_m4(obinv, ob->obmat);
@@ -1608,40 +1606,40 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 	
 	/* make main array */
 	next_object(&sce_iter, 0, NULL, NULL);
-	while(next_object(&sce_iter, 1, &base, &bob)) {
+	while (next_object(&sce_iter, 1, &base, &bob)) {
 
-		if(bob->type==OB_MBALL) {
+		if (bob->type==OB_MBALL) {
 			zero_size= 0;
 			ml= NULL;
 
-			if(bob==ob && (base->flag & OB_FROMDUPLI)==0) {
+			if (bob==ob && (base->flag & OB_FROMDUPLI)==0) {
 				mb= ob->data;
 	
-				if(mb->editelems) ml= mb->editelems->first;
+				if (mb->editelems) ml= mb->editelems->first;
 				else ml= mb->elems.first;
 			}
 			else {
-				char name[32];
+				char name[MAX_ID_NAME];
 				int nr;
 				
 				BLI_split_name_num(name, &nr, bob->id.name+2, '.');
-				if( strcmp(obname, name)==0 ) {
+				if ( strcmp(obname, name)==0 ) {
 					mb= bob->data;
 					
-					if(mb->editelems) ml= mb->editelems->first;
+					if (mb->editelems) ml= mb->editelems->first;
 					else ml= mb->elems.first;
 				}
 			}
 
 			/* when metaball object has zero scale, then MetaElem to this MetaBall
 			 * will not be put to mainb array */
-			if(bob->size[0]==0.0f || bob->size[1]==0.0f || bob->size[2]==0.0f) {
+			if (bob->size[0]==0.0f || bob->size[1]==0.0f || bob->size[2]==0.0f) {
 				zero_size= 1;
 			}
-			else if(bob->parent) {
+			else if (bob->parent) {
 				struct Object *pob=bob->parent;
-				while(pob) {
-					if(pob->size[0]==0.0f || pob->size[1]==0.0f || pob->size[2]==0.0f) {
+				while (pob) {
+					if (pob->size[0]==0.0f || pob->size[1]==0.0f || pob->size[2]==0.0f) {
 						zero_size= 1;
 						break;
 					}
@@ -1651,15 +1649,15 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 
 			if (zero_size) {
 				unsigned int ml_count=0;
-				while(ml) {
+				while (ml) {
 					ml_count++;
 					ml= ml->next;
 				}
 				totelem -= ml_count;
 			}
 			else {
-			while(ml) {
-				if(!(ml->flag & MB_HIDE)) {
+			while (ml) {
+				if (!(ml->flag & MB_HIDE)) {
 					int i;
 					float temp1[4][4], temp2[4][4], temp3[4][4];
 					float (*mat)[4] = NULL, (*imat)[4] = NULL;
@@ -1670,7 +1668,7 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 
 					/* too big stiffness seems only ugly due to linear interpolation
 					 * no need to have possibility for too big stiffness */
-					if(ml->s > 10.0f) ml->s = 10.0f;
+					if (ml->s > 10.0f) ml->s = 10.0f;
 					
 					/* Rotation of MetaElem is stored in quat */
 					 quat_to_mat4( temp3,ml->quat);
@@ -1681,7 +1679,7 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 					temp2[3][1]= ml->y;
 					temp2[3][2]= ml->z;
 
-					mul_m4_m4m4(temp1, temp3, temp2);
+					mult_m4_m4m4(temp1, temp2, temp3);
 				
 					/* make a copy because of duplicates */
 					mainb[a]= new_pgn_element(sizeof(MetaElem));
@@ -1693,9 +1691,9 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 					
 					/* mat is the matrix to transform from mball into the basis-mball */
 					invert_m4_m4(obinv, obmat);
-					mul_m4_m4m4(temp2, bob->obmat, obinv);
+					mult_m4_m4m4(temp2, obinv, bob->obmat);
 					/* MetaBall transformation */
-					mul_m4_m4m4(mat, temp1, temp2);
+					mult_m4_m4m4(mat, temp2, temp1);
 
 					invert_m4_m4(imat,mat);				
 
@@ -1739,23 +1737,23 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 					mainb[a]->bb->vec[7][2]=  ml->expz;
 
 					/* transformation of Metalem bb */
-					for(i=0; i<8; i++)
+					for (i=0; i<8; i++)
 						mul_m4_v3((float ( * )[4])mat, mainb[a]->bb->vec[i]);
 
 					/* find max and min of transformed bb */
-					for(i=0; i<8; i++){
+					for (i=0; i<8; i++) {
 						/* find maximums */
-						if(mainb[a]->bb->vec[i][0] > max_x) max_x = mainb[a]->bb->vec[i][0];
-						if(mainb[a]->bb->vec[i][1] > max_y) max_y = mainb[a]->bb->vec[i][1];
-						if(mainb[a]->bb->vec[i][2] > max_z) max_z = mainb[a]->bb->vec[i][2];
+						if (mainb[a]->bb->vec[i][0] > max_x) max_x = mainb[a]->bb->vec[i][0];
+						if (mainb[a]->bb->vec[i][1] > max_y) max_y = mainb[a]->bb->vec[i][1];
+						if (mainb[a]->bb->vec[i][2] > max_z) max_z = mainb[a]->bb->vec[i][2];
 						/* find  minimums */
-						if(mainb[a]->bb->vec[i][0] < min_x) min_x = mainb[a]->bb->vec[i][0];
-						if(mainb[a]->bb->vec[i][1] < min_y) min_y = mainb[a]->bb->vec[i][1];
-						if(mainb[a]->bb->vec[i][2] < min_z) min_z = mainb[a]->bb->vec[i][2];
+						if (mainb[a]->bb->vec[i][0] < min_x) min_x = mainb[a]->bb->vec[i][0];
+						if (mainb[a]->bb->vec[i][1] < min_y) min_y = mainb[a]->bb->vec[i][1];
+						if (mainb[a]->bb->vec[i][2] < min_z) min_z = mainb[a]->bb->vec[i][2];
 					}
 
 					/* create "new" bb, only point 0 and 6, which are
-					 * neccesary for octal tree filling */
+					 * necessary for octal tree filling */
 					mainb[a]->bb->vec[0][0] = min_x - ml->rad;
 					mainb[a]->bb->vec[0][1] = min_y - ml->rad;
 					mainb[a]->bb->vec[0][2] = min_z - ml->rad;
@@ -1775,7 +1773,7 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 	
 	/* totsize (= 'manhattan' radius) */
 	totsize= 0.0;
-	for(a=0; a<totelem; a++) {
+	for (a=0; a<totelem; a++) {
 		
 		vec[0]= mainb[a]->x + mainb[a]->rad + mainb[a]->expx;
 		vec[1]= mainb[a]->y + mainb[a]->rad + mainb[a]->expy;
@@ -1783,12 +1781,12 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 
 		calc_mballco(mainb[a], vec);
 	
-		size= (float)fabs( vec[0] );
-		if( size > totsize ) totsize= size;
-		size= (float)fabs( vec[1] );
-		if( size > totsize ) totsize= size;
-		size= (float)fabs( vec[2] );
-		if( size > totsize ) totsize= size;
+		size= fabsf( vec[0] );
+		if ( size > totsize ) totsize= size;
+		size= fabsf( vec[1] );
+		if ( size > totsize ) totsize= size;
+		size= fabsf( vec[2] );
+		if ( size > totsize ) totsize= size;
 
 		vec[0]= mainb[a]->x - mainb[a]->rad;
 		vec[1]= mainb[a]->y - mainb[a]->rad;
@@ -1796,16 +1794,16 @@ float init_meta(Scene *scene, Object *ob)	/* return totsize */
 				
 		calc_mballco(mainb[a], vec);
 	
-		size= (float)fabs( vec[0] );
-		if( size > totsize ) totsize= size;
-		size= (float)fabs( vec[1] );
-		if( size > totsize ) totsize= size;
-		size= (float)fabs( vec[2] );
-		if( size > totsize ) totsize= size;
+		size= fabsf( vec[0] );
+		if ( size > totsize ) totsize= size;
+		size= fabsf( vec[1] );
+		if ( size > totsize ) totsize= size;
+		size= fabsf( vec[2] );
+		if ( size > totsize ) totsize= size;
 	}
 
-	for(a=0; a<totelem; a++) {
-		thresh+= densfunc( mainb[a], 2.0f*totsize, 2.0f*totsize, 2.0f*totsize);
+	for (a=0; a<totelem; a++) {
+		thresh += densfunc(mainb[a], 2.0f * totsize, 2.0f * totsize, 2.0f * totsize);
 	}
 
 	return totsize;
@@ -1823,15 +1821,15 @@ void fill_metaball_octal_node(octal_node *node, MetaElem *ml, short i)
 	BLI_addtail(&(node->nodes[i]->elems), ml_p);
 	node->count++;
 	
-	if(ml->flag & MB_NEGATIVE) {
+	if (ml->flag & MB_NEGATIVE) {
 		node->nodes[i]->neg++;
 	}
-	else{
+	else {
 		node->nodes[i]->pos++;
 	}
 }
 
-/* Node is subdivided as is ilustrated on the following figure:
+/* Node is subdivided as is illustrated on the following figure:
  * 
  *      +------+------+
  *     /      /      /|
@@ -1854,9 +1852,9 @@ void subdivide_metaball_octal_node(octal_node *node, float size_x, float size_y,
 	int a,i;
 
 	/* create new nodes */
-	for(a=0;a<8;a++){
+	for (a=0;a<8;a++) {
 		node->nodes[a]= MEM_mallocN(sizeof(octal_node),"octal_node");
-		for(i=0;i<8;i++)
+		for (i=0;i<8;i++)
 			node->nodes[a]->nodes[i]= NULL;
 		node->nodes[a]->parent= node;
 		node->nodes[a]->elems.first= NULL;
@@ -1935,48 +1933,48 @@ void subdivide_metaball_octal_node(octal_node *node, float size_x, float size_y,
 	ml_p= node->elems.first;
 	
 	/* setting up references of MetaElems for new nodes */
-	while(ml_p){
+	while (ml_p) {
 		ml= ml_p->ml;
-		if(ml->bb->vec[0][2] < z){
-			if(ml->bb->vec[0][1] < y){
+		if (ml->bb->vec[0][2] < z) {
+			if (ml->bb->vec[0][1] < y) {
 				/* vec[0][0] lies in first octant */
-				if(ml->bb->vec[0][0] < x){
+				if (ml->bb->vec[0][0] < x) {
 					/* ml belongs to the (0)1st node */
 					fill_metaball_octal_node(node, ml, 0);
 
 					/* ml belongs to the (3)4th node */
-					if(ml->bb->vec[6][1] >= y){
+					if (ml->bb->vec[6][1] >= y) {
 						fill_metaball_octal_node(node, ml, 3);
 
 						/* ml belongs to the (7)8th node */
-						if(ml->bb->vec[6][2] >= z){
+						if (ml->bb->vec[6][2] >= z) {
 							fill_metaball_octal_node(node, ml, 7);
 						}
 					}
 	
 					/* ml belongs to the (1)2nd node */
-					if(ml->bb->vec[6][0] >= x){
+					if (ml->bb->vec[6][0] >= x) {
 						fill_metaball_octal_node(node, ml, 1);
 
 						/* ml belongs to the (5)6th node */
-						if(ml->bb->vec[6][2] >= z){
+						if (ml->bb->vec[6][2] >= z) {
 							fill_metaball_octal_node(node, ml, 5);
 						}
 					}
 
 					/* ml belongs to the (2)3th node */
-					if((ml->bb->vec[6][0] >= x) && (ml->bb->vec[6][1] >= y)){
+					if ((ml->bb->vec[6][0] >= x) && (ml->bb->vec[6][1] >= y)) {
 						fill_metaball_octal_node(node, ml, 2);
 						
 						/* ml belong to the (6)7th node */
-						if(ml->bb->vec[6][2] >= z){
+						if (ml->bb->vec[6][2] >= z) {
 							fill_metaball_octal_node(node, ml, 6);
 						}
 						
 					}
 			
 					/* ml belongs to the (4)5th node too */	
-					if(ml->bb->vec[6][2] >= z){
+					if (ml->bb->vec[6][2] >= z) {
 						fill_metaball_octal_node(node, ml, 4);
 					}
 
@@ -1984,45 +1982,45 @@ void subdivide_metaball_octal_node(octal_node *node, float size_x, float size_y,
 					
 				}
 				/* vec[0][0] is in the (1)second octant */
-				else{
+				else {
 					/* ml belong to the (1)2nd node */
 					fill_metaball_octal_node(node, ml, 1);
 
 					/* ml belongs to the (2)3th node */
-					if(ml->bb->vec[6][1] >= y){
+					if (ml->bb->vec[6][1] >= y) {
 						fill_metaball_octal_node(node, ml, 2);
 
 						/* ml belongs to the (6)7th node */
-						if(ml->bb->vec[6][2] >= z){
+						if (ml->bb->vec[6][2] >= z) {
 							fill_metaball_octal_node(node, ml, 6);
 						}
 						
 					}
 					
 					/* ml belongs to the (5)6th node */
-					if(ml->bb->vec[6][2] >= z){
+					if (ml->bb->vec[6][2] >= z) {
 						fill_metaball_octal_node(node, ml, 5);
 					}
 				}
 			}
-			else{
+			else {
 				/* vec[0][0] is in the (3)4th octant */
-				if(ml->bb->vec[0][0] < x){
+				if (ml->bb->vec[0][0] < x) {
 					/* ml belongs to the (3)4nd node */
 					fill_metaball_octal_node(node, ml, 3);
 					
 					/* ml belongs to the (7)8th node */
-					if(ml->bb->vec[6][2] >= z){
+					if (ml->bb->vec[6][2] >= z) {
 						fill_metaball_octal_node(node, ml, 7);
 					}
 				
 
 					/* ml belongs to the (2)3th node */
-					if(ml->bb->vec[6][0] >= x){
+					if (ml->bb->vec[6][0] >= x) {
 						fill_metaball_octal_node(node, ml, 2);
 					
 						/* ml belongs to the (6)7th node */
-						if(ml->bb->vec[6][2] >= z){
+						if (ml->bb->vec[6][2] >= z) {
 							fill_metaball_octal_node(node, ml, 6);
 						}
 					}
@@ -2031,50 +2029,50 @@ void subdivide_metaball_octal_node(octal_node *node, float size_x, float size_y,
 			}
 
 			/* vec[0][0] is in the (2)3th octant */
-			if((ml->bb->vec[0][0] >= x) && (ml->bb->vec[0][1] >= y)){
+			if ((ml->bb->vec[0][0] >= x) && (ml->bb->vec[0][1] >= y)) {
 				/* ml belongs to the (2)3th node */
 				fill_metaball_octal_node(node, ml, 2);
 				
 				/* ml belongs to the (6)7th node */
-				if(ml->bb->vec[6][2] >= z){
+				if (ml->bb->vec[6][2] >= z) {
 					fill_metaball_octal_node(node, ml, 6);
 				}
 			}
 		}
-		else{
-			if(ml->bb->vec[0][1] < y){
+		else {
+			if (ml->bb->vec[0][1] < y) {
 				/* vec[0][0] lies in (4)5th octant */
-				if(ml->bb->vec[0][0] < x){
+				if (ml->bb->vec[0][0] < x) {
 					/* ml belongs to the (4)5th node */
 					fill_metaball_octal_node(node, ml, 4);
 
-					if(ml->bb->vec[6][0] >= x){
+					if (ml->bb->vec[6][0] >= x) {
 						fill_metaball_octal_node(node, ml, 5);
 					}
 
-					if(ml->bb->vec[6][1] >= y){
+					if (ml->bb->vec[6][1] >= y) {
 						fill_metaball_octal_node(node, ml, 7);
 					}
 					
-					if((ml->bb->vec[6][0] >= x) && (ml->bb->vec[6][1] >= y)){
+					if ((ml->bb->vec[6][0] >= x) && (ml->bb->vec[6][1] >= y)) {
 						fill_metaball_octal_node(node, ml, 6);
 					}
 				}
 				/* vec[0][0] lies in (5)6th octant */
-				else{
+				else {
 					fill_metaball_octal_node(node, ml, 5);
 
-					if(ml->bb->vec[6][1] >= y){
+					if (ml->bb->vec[6][1] >= y) {
 						fill_metaball_octal_node(node, ml, 6);
 					}
 				}
 			}
-			else{
+			else {
 				/* vec[0][0] lies in (7)8th octant */
-				if(ml->bb->vec[0][0] < x){
+				if (ml->bb->vec[0][0] < x) {
 					fill_metaball_octal_node(node, ml, 7);
 
-					if(ml->bb->vec[6][0] >= x){
+					if (ml->bb->vec[6][0] >= x) {
 						fill_metaball_octal_node(node, ml, 6);
 					}
 				}
@@ -2082,7 +2080,7 @@ void subdivide_metaball_octal_node(octal_node *node, float size_x, float size_y,
 			}
 			
 			/* vec[0][0] lies in (6)7th octant */
-			if((ml->bb->vec[0][0] >= x) && (ml->bb->vec[0][1] >= y)){
+			if ((ml->bb->vec[0][0] >= x) && (ml->bb->vec[0][1] >= y)) {
 				fill_metaball_octal_node(node, ml, 6);
 			}
 		}
@@ -2094,9 +2092,9 @@ void subdivide_metaball_octal_node(octal_node *node, float size_x, float size_y,
 
 	depth--;
 	
-	if(depth>0){
-		for(a=0;a<8;a++){
-			if(node->nodes[a]->count > 0) /* if node is not empty, then it is subdivided */
+	if (depth>0) {
+		for (a=0;a<8;a++) {
+			if (node->nodes[a]->count > 0) /* if node is not empty, then it is subdivided */
 				subdivide_metaball_octal_node(node->nodes[a], size_x, size_y, size_z, depth);
 		}
 	}
@@ -2106,8 +2104,8 @@ void subdivide_metaball_octal_node(octal_node *node, float size_x, float size_y,
 void free_metaball_octal_node(octal_node *node)
 {
 	int a;
-	for(a=0;a<8;a++){
-		if(node->nodes[a]!=NULL) free_metaball_octal_node(node->nodes[a]);
+	for (a=0;a<8;a++) {
+		if (node->nodes[a]!=NULL) free_metaball_octal_node(node->nodes[a]);
 	}
 	BLI_freelistN(&node->elems);
 	MEM_freeN(node);
@@ -2133,31 +2131,31 @@ void init_metaball_octal_tree(int depth)
 	node->elems.last= NULL;
 	node->count=0;
 
-	for(a=0;a<8;a++)
+	for (a=0;a<8;a++)
 		node->nodes[a]=NULL;
 
 	node->x_min= node->y_min= node->z_min= FLT_MAX;
 	node->x_max= node->y_max= node->z_max= -FLT_MAX;
 
 	/* size of octal tree scene */
-	for(a=0;a<totelem;a++) {
-		if(mainb[a]->bb->vec[0][0] < node->x_min) node->x_min= mainb[a]->bb->vec[0][0];
-		if(mainb[a]->bb->vec[0][1] < node->y_min) node->y_min= mainb[a]->bb->vec[0][1];
-		if(mainb[a]->bb->vec[0][2] < node->z_min) node->z_min= mainb[a]->bb->vec[0][2];
+	for (a=0;a<totelem;a++) {
+		if (mainb[a]->bb->vec[0][0] < node->x_min) node->x_min= mainb[a]->bb->vec[0][0];
+		if (mainb[a]->bb->vec[0][1] < node->y_min) node->y_min= mainb[a]->bb->vec[0][1];
+		if (mainb[a]->bb->vec[0][2] < node->z_min) node->z_min= mainb[a]->bb->vec[0][2];
 		
-		if(mainb[a]->bb->vec[6][0] > node->x_max) node->x_max= mainb[a]->bb->vec[6][0];
-		if(mainb[a]->bb->vec[6][1] > node->y_max) node->y_max= mainb[a]->bb->vec[6][1];
-		if(mainb[a]->bb->vec[6][2] > node->z_max) node->z_max= mainb[a]->bb->vec[6][2];
+		if (mainb[a]->bb->vec[6][0] > node->x_max) node->x_max= mainb[a]->bb->vec[6][0];
+		if (mainb[a]->bb->vec[6][1] > node->y_max) node->y_max= mainb[a]->bb->vec[6][1];
+		if (mainb[a]->bb->vec[6][2] > node->z_max) node->z_max= mainb[a]->bb->vec[6][2];
 
 		ml_p= MEM_mallocN(sizeof(ml_pointer), "ml_pointer");
 		ml_p->ml= mainb[a];
 		BLI_addtail(&node->elems, ml_p);
 
-		if(mainb[a]->flag & MB_NEGATIVE) {
+		if (mainb[a]->flag & MB_NEGATIVE) {
 			/* number of negative MetaElem in scene */
 			metaball_tree->neg++;
 		}
-		else{
+		else {
 			/* number of positive MetaElem in scene */
 			metaball_tree->pos++;
 		}
@@ -2182,9 +2180,9 @@ void metaball_polygonize(Scene *scene, Object *ob, ListBase *dispbase)
 
 	mb= ob->data;
 
-	if(totelem==0) return;
-	if(!(G.rendering) && (mb->flag==MB_UPDATE_NEVER)) return;
-	if(G.moving && mb->flag==MB_UPDATE_FAST) return;
+	if (totelem==0) return;
+	if (!(G.rendering) && (mb->flag==MB_UPDATE_NEVER)) return;
+	if (G.moving && mb->flag==MB_UPDATE_FAST) return;
 
 	curindex= totindex= 0;
 	indices= NULL;
@@ -2196,23 +2194,23 @@ void metaball_polygonize(Scene *scene, Object *ob, ListBase *dispbase)
 	/* initialize all mainb (MetaElems) */
 	totsize= init_meta(scene, ob);
 
-	if(metaball_tree){
+	if (metaball_tree) {
 		free_metaball_octal_node(metaball_tree->first);
 		MEM_freeN(metaball_tree);
 		metaball_tree= NULL;
 	}
 
 	/* if scene includes more then one MetaElem, then octal tree optimalisation is used */	
-	if((totelem > 1) && (totelem <= 64)) init_metaball_octal_tree(1);
-	if((totelem > 64) && (totelem <= 128)) init_metaball_octal_tree(2);
-	if((totelem > 128) && (totelem <= 512))	init_metaball_octal_tree(3);
-	if((totelem > 512) && (totelem <= 1024)) init_metaball_octal_tree(4);
-	if(totelem > 1024) init_metaball_octal_tree(5);
+	if ((totelem > 1) && (totelem <= 64)) init_metaball_octal_tree(1);
+	if ((totelem > 64) && (totelem <= 128)) init_metaball_octal_tree(2);
+	if ((totelem > 128) && (totelem <= 512))	init_metaball_octal_tree(3);
+	if ((totelem > 512) && (totelem <= 1024)) init_metaball_octal_tree(4);
+	if (totelem > 1024) init_metaball_octal_tree(5);
 
 	/* don't polygonize metaballs with too high resolution (base mball to small)
 	 * note: Eps was 0.0001f but this was giving problems for blood animation for durian, using 0.00001f */
-	if(metaball_tree) {
-		if(	ob->size[0] <= 0.00001f * (metaball_tree->first->x_max - metaball_tree->first->x_min) ||
+	if (metaball_tree) {
+		if (	ob->size[0] <= 0.00001f * (metaball_tree->first->x_max - metaball_tree->first->x_min) ||
 			ob->size[1] <= 0.00001f * (metaball_tree->first->y_max - metaball_tree->first->y_min) ||
 			ob->size[2] <= 0.00001f * (metaball_tree->first->z_max - metaball_tree->first->z_min))
 		{
@@ -2230,10 +2228,10 @@ void metaball_polygonize(Scene *scene, Object *ob, ListBase *dispbase)
 	}
 
 	/* width is size per polygonize cube */
-	if(G.rendering) width= mb->rendersize;
+	if (G.rendering) width= mb->rendersize;
 	else {
 		width= mb->wiresize;
-		if(G.moving && mb->flag==MB_UPDATE_HALFRES) width*= 2;
+		if (G.moving && mb->flag==MB_UPDATE_HALFRES) width*= 2;
 	}
 	/* nr_cubes is just for safety, minimum is totsize */
 	nr_cubes= (int)(0.5f+totsize/width);
@@ -2250,13 +2248,13 @@ void metaball_polygonize(Scene *scene, Object *ob, ListBase *dispbase)
 	MEM_freeN(mainb);
 
 	/* free octal tree */
-	if(totelem > 1){
+	if (totelem > 1) {
 		free_metaball_octal_node(metaball_tree->first);
 		MEM_freeN(metaball_tree);
 		metaball_tree= NULL;
 	}
 
-	if(curindex) {
+	if (curindex) {
 		dl= MEM_callocN(sizeof(DispList), "mbaldisp");
 		BLI_addtail(dispbase, dl);
 		dl->type= DL_INDEX4;
@@ -2270,7 +2268,7 @@ void metaball_polygonize(Scene *scene, Object *ob, ListBase *dispbase)
 		dl->verts= ve= MEM_mallocN(sizeof(float)*3*a, "mballverts");
 		dl->nors= no= MEM_mallocN(sizeof(float)*3*a, "mballnors");
 
-		for(a=0; a<mbproc.vertices.count; a++, no+=3, ve+=3) {
+		for (a=0; a<mbproc.vertices.count; a++, no+=3, ve+=3) {
 			ve[0]= mbproc.vertices.ptr[a].position.x;
 			ve[1]= mbproc.vertices.ptr[a].position.y;
 			ve[2]= mbproc.vertices.ptr[a].position.z;
@@ -2284,3 +2282,54 @@ void metaball_polygonize(Scene *scene, Object *ob, ListBase *dispbase)
 	freepolygonize(&mbproc);
 }
 
+/* basic vertex data functions */
+int BKE_metaball_minmax(MetaBall *mb, float min[3], float max[3])
+{
+	MetaElem *ml;
+
+	INIT_MINMAX(min, max);
+
+	for (ml = mb->elems.first; ml; ml = ml->next) {
+		DO_MINMAX(&ml->x, min, max);
+	}
+
+	return (mb->elems.first != NULL);
+}
+
+int BKE_metaball_center_median(MetaBall *mb, float cent[3])
+{
+	MetaElem *ml;
+	int total= 0;
+
+	zero_v3(cent);
+
+	for (ml = mb->elems.first; ml; ml = ml->next) {
+		add_v3_v3(cent, &ml->x);
+	}
+
+	if (total)
+		mul_v3_fl(cent, 1.0f/(float)total);
+
+	return (total != 0);
+}
+
+int BKE_metaball_center_bounds(MetaBall *mb, float cent[3])
+{
+	float min[3], max[3];
+
+	if (BKE_metaball_minmax(mb, min, max)) {
+		mid_v3_v3v3(cent, min, max);
+		return 1;
+	}
+
+	return 0;
+}
+
+void BKE_metaball_translate(MetaBall *mb, float offset[3])
+{
+	MetaElem *ml;
+
+	for (ml = mb->elems.first; ml; ml = ml->next) {
+		add_v3_v3(&ml->x, offset);
+	}
+}

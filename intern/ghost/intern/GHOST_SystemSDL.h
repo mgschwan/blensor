@@ -25,8 +25,8 @@
  * Declaration of GHOST_SystemSDL class.
  */
 
-#ifndef _GHOST_SYSTEM_SDL_H_
-#define _GHOST_SYSTEM_SDL_H_
+#ifndef __GHOST_SYSTEMSDL_H__
+#define __GHOST_SYSTEMSDL_H__
 
 #include "GHOST_System.h"
 #include "../GHOST_Types.h"
@@ -39,8 +39,8 @@ extern "C" {
 	#include "SDL.h"
 }
 
-#if !SDL_VERSION_ATLEAST(1, 3, 0)
-#  error "SDL 1.3 or newer is needed to build with Ghost"
+#if !SDL_VERSION_ATLEAST(2, 0, 0)
+#  error "SDL 2.0 or newer is needed to build with Ghost"
 #endif
 
 

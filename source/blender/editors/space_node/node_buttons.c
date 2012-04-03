@@ -45,6 +45,7 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
+#include "BKE_global.h"
 #include "BKE_node.h"
 #include "BKE_screen.h"
 
@@ -97,7 +98,7 @@ static void active_node_panel(const bContext *C, Panel *pa)
 	PointerRNA ptr;
 	
 	/* verify pointers, and create RNA pointer for the node */
-	if ELEM(NULL, ntree, node)
+	if (ELEM(NULL, ntree, node))
 		return;
 	//if (node->id) /* for group nodes */
 	//	RNA_pointer_create(node->id, &RNA_Node, node, &ptr);
@@ -114,12 +115,43 @@ static void active_node_panel(const bContext *C, Panel *pa)
 	uiItemS(layout);
 	uiItemR(layout, &ptr, "name", 0, NULL, ICON_NODE);
 	uiItemS(layout);
+	
+	uiItemO(layout, NULL, 0, "NODE_OT_hide_socket_toggle");
+	uiItemS(layout);
 
 	/* draw this node's settings */
 	if (node->typeinfo && node->typeinfo->uifuncbut)
 		node->typeinfo->uifuncbut(layout, (bContext *)C, &ptr);
 	else if (node->typeinfo && node->typeinfo->uifunc)
 		node->typeinfo->uifunc(layout, (bContext *)C, &ptr);
+}
+
+static int node_sockets_poll(const bContext *C, PanelType *UNUSED(pt))
+{
+	SpaceNode *snode= CTX_wm_space_node(C);
+	
+	return (snode && snode->nodetree && G.rt == 777);
+}
+
+static void node_sockets_panel(const bContext *C, Panel *pa)
+{
+	SpaceNode *snode= CTX_wm_space_node(C);
+	bNodeTree *ntree= (snode) ? snode->edittree : NULL;
+	bNode *node = (ntree) ? nodeGetActive(ntree) : NULL;
+	bNodeSocket *sock;
+	uiLayout *layout= pa->layout, *split;
+	char name[UI_MAX_NAME_STR];
+	
+	if (ELEM(NULL, ntree, node))
+		return;
+	
+	for (sock=node->inputs.first; sock; sock=sock->next) {
+		BLI_snprintf(name, sizeof(name), "%s:", sock->name);
+
+		split = uiLayoutSplit(layout, 0.35f, 0);
+		uiItemL(split, name, ICON_NONE);
+		uiTemplateNodeLink(split, ntree, node, sock);
+	}
 }
 
 /* ******************* node buttons registration ************** */
@@ -134,6 +166,14 @@ void node_buttons_register(ARegionType *art)
 	pt->draw= active_node_panel;
 	pt->poll= active_node_poll;
 	BLI_addtail(&art->paneltypes, pt);
+
+	pt= MEM_callocN(sizeof(PanelType), "spacetype node panel node sockets");
+	strcpy(pt->idname, "NODE_PT_sockets");
+	strcpy(pt->label, "Sockets");
+	pt->draw= node_sockets_panel;
+	pt->poll= node_sockets_poll;
+	pt->flag |= PNL_DEFAULT_CLOSED;
+	BLI_addtail(&art->paneltypes, pt);
 	
 	pt= MEM_callocN(sizeof(PanelType), "spacetype node panel gpencil");
 	strcpy(pt->idname, "NODE_PT_gpencil");
@@ -147,7 +187,7 @@ static int node_properties(bContext *C, wmOperator *UNUSED(op))
 	ScrArea *sa= CTX_wm_area(C);
 	ARegion *ar= node_has_buttons_region(sa);
 	
-	if(ar)
+	if (ar)
 		ED_region_toggle_hidden(C, ar);
 
 	return OPERATOR_FINISHED;
@@ -162,13 +202,13 @@ static int node_properties_poll(bContext *C)
 
 void NODE_OT_properties(wmOperatorType *ot)
 {
-	ot->name= "Properties";
-	ot->description= "Toggles the properties panel display";
-	ot->idname= "NODE_OT_properties";
+	ot->name = "Properties";
+	ot->description = "Toggles the properties panel display";
+	ot->idname = "NODE_OT_properties";
 	
-	ot->exec= node_properties;
-	ot->poll= node_properties_poll;
+	ot->exec = node_properties;
+	ot->poll = node_properties_poll;
 	
 	/* flags */
-	ot->flag= 0;
+	ot->flag = 0;
 }

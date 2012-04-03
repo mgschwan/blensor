@@ -107,7 +107,7 @@ RAS_IPolyMaterial * getMaterial (PyObject *obj, short matID)
 
 
 // get material ID
-short getMaterialID (PyObject * obj, char * name)
+short getMaterialID(PyObject * obj, const char *name)
 {
 	// search for material
 	for (short matID = 0;; ++matID)
@@ -171,7 +171,7 @@ void Texture_dealloc (Texture * self)
 	// release scaled image buffer
 	delete [] self->m_scaledImg;
 	// release object
-	((PyObject *)self)->ob_type->tp_free((PyObject*)self);
+	Py_TYPE((PyObject *)self)->tp_free((PyObject*)self);
 }
 
 
@@ -329,7 +329,17 @@ PyObject * Texture_refresh (Texture * self, PyObject * args)
 					// get texture size
 					short * orgSize = self->m_source->m_image->getSize();
 					// calc scaled sizes
-					short size[] = {ImageBase::calcSize(orgSize[0]), ImageBase::calcSize(orgSize[1])};
+					short size[2];
+					if (GLEW_ARB_texture_non_power_of_two)
+					{
+						size[0] = orgSize[0];
+						size[1] = orgSize[1];
+					}
+					else
+					{
+						size[0] = ImageBase::calcSize(orgSize[0]);
+						size[1] = ImageBase::calcSize(orgSize[1]);
+					}
 					// scale texture if needed
 					if (size[0] != orgSize[0] || size[1] != orgSize[1])
 					{
@@ -410,7 +420,7 @@ PyObject * Texture_getSource (Texture * self, PyObject * value, void * closure)
 int Texture_setSource (Texture * self, PyObject * value, void * closure)
 {
 	// check new value
-	if (value == NULL || !pyImageTypes.in(value->ob_type))
+	if (value == NULL || !pyImageTypes.in(Py_TYPE(value)))
 	{
 		// report value error
 		PyErr_SetString(PyExc_TypeError, "Invalid type of value");

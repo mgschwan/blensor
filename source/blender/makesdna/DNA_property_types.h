@@ -27,8 +27,6 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_PROPERTY_TYPES_H
-#define DNA_PROPERTY_TYPES_H
 
 /** \file DNA_property_types.h
  *  \ingroup DNA
@@ -38,11 +36,14 @@
  *             hierarchy here is a bit strange, and not desirable.
  */
 
+#ifndef __DNA_PROPERTY_TYPES_H__
+#define __DNA_PROPERTY_TYPES_H__
+
 /* ********************* PROPERTY ************************ */
 
 typedef struct bProperty {
 	struct bProperty *next, *prev;
-	char name[32];
+	char name[64];	/* MAX_NAME */
 	short type, flag;
 	int data;				/* data should be 4 bytes to store int,float stuff */
 	void *poin;				/* references data unless its a string which is malloc'd */

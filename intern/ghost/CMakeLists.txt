@@ -108,6 +108,10 @@ if(WITH_INPUT_NDOF)
 	)
 endif()
 
+if(WITH_XDG_USER_DIRS)
+	add_definitions(-DWITH_XDG_USER_DIRS)
+endif()
+
 if(WITH_HEADLESS OR WITH_GHOST_SDL)
 	if(WITH_HEADLESS)
 		list(APPEND SRC
@@ -223,10 +227,31 @@ elseif(UNIX)
 		intern/GHOST_WindowX11.h
 	)
 
+	if(WITH_GHOST_XDND)
+		add_definitions(-DWITH_XDND)
+
+		list(APPEND INC
+			../../extern/xdnd
+		)
+
+		list(APPEND SRC
+			intern/GHOST_DropTargetX11.cpp
+
+			intern/GHOST_DropTargetX11.h
+		)
+	endif()
+
 	if(X11_XF86keysym_INCLUDE_PATH)
 		add_definitions(-DWITH_XF86KEYSYM)
 		list(APPEND INC_SYS
 			${X11_XF86keysym_INCLUDE_PATH}
+		)
+	endif()
+
+	if(WITH_X11_XF86VMODE)
+		add_definitions(-DWITH_X11_XF86VMODE)
+		list(APPEND INC_SYS
+			${X11_xf86vmode_INCLUDE_PATH}
 		)
 	endif()
 
@@ -254,6 +279,10 @@ elseif(WIN32)
 
 	list(APPEND INC_SYS
 		${WINTAB_INC}
+	)
+
+	list(APPEND INC
+		../utfconv
 	)
 
 	list(APPEND SRC

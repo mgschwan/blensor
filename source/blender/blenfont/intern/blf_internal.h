@@ -28,8 +28,8 @@
  */
 
 
-#ifndef BLF_INTERNAL_H
-#define BLF_INTERNAL_H
+#ifndef __BLF_INTERNAL_H__
+#define __BLF_INTERNAL_H__
 
 struct FontBLF;
 struct GlyphBLF;
@@ -41,7 +41,7 @@ unsigned int blf_hash(unsigned int val);
 
 char *blf_dir_search(const char *file);
 char *blf_dir_metrics_search(const char *filename);
-// int blf_dir_split(const char *str, char *file, int *size); // UNUSED
+/* int blf_dir_split(const char *str, char *file, int *size);  *//* UNUSED */
 
 int blf_font_init(void);
 void blf_font_exit(void);
@@ -72,4 +72,4 @@ struct GlyphBLF *blf_glyph_add(struct FontBLF *font, unsigned int index, unsigne
 void blf_glyph_free(struct GlyphBLF *g);
 int blf_glyph_render(struct FontBLF *font, struct GlyphBLF *g, float x, float y);
 
-#endif /* BLF_INTERNAL_H */
+#endif /* __BLF_INTERNAL_H__ */

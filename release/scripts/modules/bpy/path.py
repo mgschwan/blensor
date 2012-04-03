@@ -54,7 +54,7 @@ def abspath(path, start=None, library=None):
     """
     if path.startswith("//"):
         if library:
-            start = abspath(_os.path.dirname(library.filepath))
+            start = _os.path.dirname(abspath(library.filepath))
         return _os.path.join(_os.path.dirname(_bpy.data.filepath)
                              if start is None else start,
                              path[2:],
@@ -118,6 +118,14 @@ def clean_name(name, replace="_"):
     return name
 
 
+def _clean_utf8(name):
+    name = _os.path.splitext(basename(name))[0]
+    if type(name) == bytes:
+        return name.decode("utf8", "replace")
+    else:
+        return name.encode("utf8", "replace").decode("utf8")
+
+
 def display_name(name):
     """
     Creates a display string from name to be used menus and the user interface.
@@ -126,17 +134,18 @@ def display_name(name):
     filenames and module names.
     """
 
-    name_base = _os.path.splitext(name)[0]
+    name = _os.path.splitext(name)[0]
 
     # string replacements
-    name_base = name_base.replace("_colon_", ":")
+    name = name.replace("_colon_", ":")
 
-    name_base = name_base.replace("_", " ")
+    name = name.replace("_", " ")
 
-    if name_base.islower():
-        return name_base.lower().title()
-    else:
-        return name_base
+    if name.islower():
+        name = name.lower().title()
+
+    name = _clean_utf8(name)
+    return name
 
 
 def display_name_from_filepath(name):
@@ -144,8 +153,10 @@ def display_name_from_filepath(name):
     Returns the path stripped of directory and extension,
     ensured to be utf8 compatible.
     """
+
     name = _os.path.splitext(basename(name))[0]
-    return name.encode("utf8", "replace").decode("utf8")
+    name = _clean_utf8(name)
+    return name
 
 
 def resolve_ncase(path):
@@ -154,25 +165,23 @@ def resolve_ncase(path):
     returning a string with the path if found else return the original path.
     """
 
-    import os
-
     def _ncase_path_found(path):
-        if not path or os.path.exists(path):
+        if not path or _os.path.exists(path):
             return path, True
 
         # filename may be a directory or a file
-        filename = os.path.basename(path)
-        dirpath = os.path.dirname(path)
+        filename = _os.path.basename(path)
+        dirpath = _os.path.dirname(path)
 
         suffix = path[:0]  # "" but ensure byte/str match
         if not filename:  # dir ends with a slash?
             if len(dirpath) < len(path):
                 suffix = path[:len(path) - len(dirpath)]
 
-            filename = os.path.basename(dirpath)
-            dirpath = os.path.dirname(dirpath)
+            filename = _os.path.basename(dirpath)
+            dirpath = _os.path.dirname(dirpath)
 
-        if not os.path.exists(dirpath):
+        if not _os.path.exists(dirpath):
             if dirpath == path:
                 return path, False
 
@@ -184,8 +193,8 @@ def resolve_ncase(path):
         # at this point, the directory exists but not the file
 
         # we are expecting 'dirpath' to be a directory, but it could be a file
-        if os.path.isdir(dirpath):
-            files = os.listdir(dirpath)
+        if _os.path.isdir(dirpath):
+            files = _os.listdir(dirpath)
         else:
             return path, False
 
@@ -198,7 +207,7 @@ def resolve_ncase(path):
                 break
 
         if f_iter_nocase:
-            return os.path.join(dirpath, f_iter_nocase) + suffix, True
+            return _os.path.join(dirpath, f_iter_nocase) + suffix, True
         else:
             # cant find the right one, just return the path as is.
             return path, False
@@ -216,8 +225,7 @@ def ensure_ext(filepath, ext, case_sensitive=False):
     :arg case_sensitive: Check for matching case when comparing extensions.
     :type case_sensitive: bool
     """
-    import os
-    fn_base, fn_ext = os.path.splitext(filepath)
+    fn_base, fn_ext = _os.path.splitext(filepath)
     if fn_base and fn_ext:
         if ((case_sensitive and ext == fn_ext) or
             (ext.lower() == fn_ext.lower())):

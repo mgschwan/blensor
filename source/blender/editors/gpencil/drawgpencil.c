@@ -79,7 +79,7 @@ typedef enum eDrawStrokeFlags {
 	GP_DRAWDATA_ONLYV2D		= (1<<2),	/* only draw 'canvas' strokes */
 	GP_DRAWDATA_ONLYI2D		= (1<<3),	/* only draw 'image' strokes */
 	GP_DRAWDATA_IEDITHACK	= (1<<4),	/* special hack for drawing strokes in Image Editor (weird coordinates) */
-	GP_DRAWDATA_NO_XRAY		= (1<<5),	/* dont draw xray in 3D view (which is default) */
+	GP_DRAWDATA_NO_XRAY		= (1<<5),	/* don't draw xray in 3D view (which is default) */
 } eDrawStrokeFlags;
 
 
@@ -107,7 +107,7 @@ static void gp_draw_stroke_buffer (tGPspoint *points, int totpoints, short thick
 	if (totpoints == 1) {		
 		/* draw point */
 		glBegin(GL_POINTS);
-			glVertex2f(points->x, points->y);
+			glVertex2iv(&points->x);
 		glEnd();
 	}
 	else if (sflag & GP_STROKE_ERASER) {
@@ -117,7 +117,7 @@ static void gp_draw_stroke_buffer (tGPspoint *points, int totpoints, short thick
 		float oldpressure = points[0].pressure;
 		
 		/* draw stroke curve */
-		if (G.f & G_DEBUG) setlinestyle(2);
+		if (G.debug & G_DEBUG) setlinestyle(2);
 
 		glLineWidth(oldpressure * thickness);
 		glBegin(GL_LINE_STRIP);
@@ -132,25 +132,22 @@ static void gp_draw_stroke_buffer (tGPspoint *points, int totpoints, short thick
 				glBegin(GL_LINE_STRIP);
 				
 				/* need to roll-back one point to ensure that there are no gaps in the stroke */
-				if (i != 0) {
-					pt--;
-					glVertex2f(pt->x, pt->y);
-					pt++;
-				}
+				if (i != 0) glVertex2iv(&(pt - 1)->x);
+
 				/* now the point we want... */
-				glVertex2f(pt->x, pt->y);
+				glVertex2iv(&pt->x);
 				
 				oldpressure = pt->pressure;
 			}
 			else
-				glVertex2f(pt->x, pt->y);
+				glVertex2iv(&pt->x);
 		}
 		glEnd();
 
 		/* reset for predictable OpenGL context */
 		glLineWidth(1.0f);
 		
-		if (G.f & G_DEBUG) setlinestyle(0);
+		if (G.debug & G_DEBUG) setlinestyle(0);
 	}
 }
 
@@ -162,7 +159,7 @@ static void gp_draw_stroke_point (bGPDspoint *points, short thickness, short dfl
 	/* draw point */
 	if (sflag & GP_STROKE_3DSPACE) {
 		glBegin(GL_POINTS);
-			glVertex3f(points->x, points->y, points->z);
+			glVertex3fv(&points->x);
 		glEnd();
 	}
 	else {
@@ -192,8 +189,7 @@ static void gp_draw_stroke_point (bGPDspoint *points, short thickness, short dfl
 				glVertex2fv(co);
 			glEnd();
 		}
-		else 
-		{
+		else {
 			/* draw filled circle as is done in circf (but without the matrix push/pops which screwed things up) */
 			GLUquadricObj *qobj = gluNewQuadric(); 
 			
@@ -228,18 +224,16 @@ static void gp_draw_stroke_3d (bGPDspoint *points, int totpoints, short thicknes
 			glBegin(GL_LINE_STRIP);
 			
 			/* need to roll-back one point to ensure that there are no gaps in the stroke */
-			if (i != 0) {
-				pt--;
-				glVertex3f(pt->x, pt->y, pt->z);
-				pt++;
-			}
+			if (i != 0) glVertex3fv(&(pt - 1)->x);
+
 			/* now the point we want... */
-			glVertex3f(pt->x, pt->y, pt->z);
+			glVertex3fv(&pt->x);
 			
 			oldpressure = pt->pressure;
 		}
-		else
-			glVertex3f(pt->x, pt->y, pt->z);
+		else {
+			glVertex3fv(&pt->x);
+		}
 	}
 	glEnd();
 	
@@ -247,7 +241,7 @@ static void gp_draw_stroke_3d (bGPDspoint *points, int totpoints, short thicknes
 	if (debug) {
 		glBegin(GL_POINTS);
 		for (i=0, pt=points; i < totpoints && pt; i++, pt++)
-			glVertex3f(pt->x, pt->y, pt->z);
+			glVertex3fv(&pt->x);
 		glEnd();
 	}
 }
@@ -291,11 +285,10 @@ static void gp_draw_stroke (bGPDspoint *points, int totpoints, short thickness_s
 		glEnd();
 	}
 	
-	/* tesselation code - draw stroke as series of connected quads with connection
+	/* tessellation code - draw stroke as series of connected quads with connection
 	 * edges rotated to minimise shrinking artifacts, and rounded endcaps
 	 */
-	else 
-	{ 
+	else {
 		bGPDspoint *pt1, *pt2;
 		float pm[2];
 		int i;
@@ -305,7 +298,7 @@ static void gp_draw_stroke (bGPDspoint *points, int totpoints, short thickness_s
 		
 		for (i=0, pt1=points, pt2=points+1; i < (totpoints-1); i++, pt1++, pt2++) {
 			float s0[2], s1[2];		/* segment 'center' points */
-			float t0[2], t1[2];		/* tesselated coordinates */
+			float t0[2], t1[2];		/* tessellated coordinates */
 			float m1[2], m2[2];		/* gradient and normal */
 			float mt[2], sc[2];		/* gradient for thickness, point for end-cap */
 			float pthick;			/* thickness at segment point */
@@ -389,8 +382,8 @@ static void gp_draw_stroke (bGPDspoint *points, int totpoints, short thickness_s
 				mt[1]= mb[1] * pthick;
 				athick= len_v2(mt);
 				dfac= pthick - (athick * 2);
-				if ( ((athick * 2.0f) < pthick) && (IS_EQF(athick, pthick)==0) )
-				{
+
+				if (((athick * 2.0f) < pthick) && (IS_EQF(athick, pthick)==0)) {
 					mt[0] += (mb[0] * dfac);
 					mt[1] += (mb[1] * dfac);
 				}	
@@ -461,7 +454,7 @@ static void gp_draw_stroke (bGPDspoint *points, int totpoints, short thickness_s
 		glBegin(GL_POINTS);
 		for (i=0, pt=points; i < totpoints && pt; i++, pt++) {
 			if (sflag & GP_STROKE_2DSPACE) {
-				glVertex2f(pt->x, pt->y);
+				glVertex2fv(&pt->x);
 			}
 			else if (sflag & GP_STROKE_2DIMAGE) {
 				const float x= (float)((pt->x * winx) + offsx);
@@ -520,12 +513,12 @@ static void gp_draw_strokes (bGPDframe *gpf, int offsx, int offsy, int winx, int
 				glDepthMask(0);
 				glEnable(GL_DEPTH_TEST);
 				
-				/* first arg is normally rv3d->dist, but this isnt available here and seems to work quite well without */
+				/* first arg is normally rv3d->dist, but this isn't available here and seems to work quite well without */
 				bglPolygonOffset(1.0f, 1.0f);
-				/*
+#if 0
 				glEnable(GL_POLYGON_OFFSET_LINE);
 				glPolygonOffset(-1.0f, -1.0f);
-				*/
+#endif
 			}
 			
 			gp_draw_stroke_3d(gps->points, gps->totpoints, lthick, debug);
@@ -535,10 +528,10 @@ static void gp_draw_strokes (bGPDframe *gpf, int offsx, int offsy, int winx, int
 				glDisable(GL_DEPTH_TEST);
 				
 				bglPolygonOffset(0.0, 0.0);
-				/*
+#if 0
 				glDisable(GL_POLYGON_OFFSET_LINE);
 				glPolygonOffset(0, 0);
-				*/
+#endif
 			}
 		}
 		else if (gps->totpoints > 1)	
@@ -580,8 +573,8 @@ static void gp_draw_data (bGPdata *gpd, int offsx, int offsy, int winx, int winy
 		
 		/* set color, stroke thickness, and point size */
 		glLineWidth(lthick);
-		QUATCOPY(color, gpl->color); // just for copying 4 array elements
-		QUATCOPY(tcolor, gpl->color); // additional copy of color (for ghosting)
+		copy_v4_v4(color, gpl->color); // just for copying 4 array elements
+		copy_v4_v4(tcolor, gpl->color); // additional copy of color (for ghosting)
 		glColor4fv(color);
 		glPointSize((float)(gpl->thickness + 2));
 		
@@ -693,6 +686,7 @@ void draw_gpencil_2dimage (bContext *C, ImBuf *ibuf)
 	/* calculate rect */
 	switch (sa->spacetype) {
 		case SPACE_IMAGE: /* image */
+		case SPACE_CLIP: /* clip */
 		{
 			
 			/* just draw using standard scaling (settings here are currently ignored anyways) */
@@ -707,7 +701,7 @@ void draw_gpencil_2dimage (bContext *C, ImBuf *ibuf)
 			dflag |= GP_DRAWDATA_ONLYV2D|GP_DRAWDATA_IEDITHACK;
 		}
 			break;
-			
+#if 0	/* removed since 2.5x, needs to be added back */
 		case SPACE_SEQ: /* sequence */
 		{
 			SpaceSeq *sseq= (SpaceSeq *)sa->spacedata.first;
@@ -732,7 +726,7 @@ void draw_gpencil_2dimage (bContext *C, ImBuf *ibuf)
 			dflag |= GP_DRAWDATA_ONLYI2D;
 		}
 			break;
-			
+#endif
 		default: /* for spacetype not yet handled */
 			offsx= 0;
 			offsy= 0;
@@ -766,7 +760,7 @@ void draw_gpencil_view2d (bContext *C, short onlyv2d)
 	
 	/* special hack for Image Editor */
 	// FIXME: the opengl poly-strokes don't draw at right thickness when done this way, so disabled
-	if (sa->spacetype == SPACE_IMAGE)
+	if (ELEM(sa->spacetype, SPACE_IMAGE, SPACE_CLIP))
 		dflag |= GP_DRAWDATA_IEDITHACK;
 	
 	/* draw it! */
@@ -789,18 +783,18 @@ void draw_gpencil_view3d (Scene *scene, View3D *v3d, ARegion *ar, short only3d)
 	gpd= gpencil_data_get_active_v3d(scene); // XXX
 	if (gpd == NULL) return;
 
-	/* when rendering to the offscreen buffer we dont want to
+	/* when rendering to the offscreen buffer we don't want to
 	 * deal with the camera border, otherwise map the coords to the camera border. */
 	if ((rv3d->persp == RV3D_CAMOB) && !(G.f & G_RENDER_OGL)) {
 		rctf rectf;
-		ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, &rectf, -1); /* negative shift */
+		ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, &rectf, TRUE); /* no shift */
 		BLI_copy_rcti_rctf(&rect, &rectf);
 	}
 	else {
-		rect.xmin= 0;
-		rect.ymin= 0;
-		rect.xmax= ar->winx;
-		rect.ymax= ar->winy;
+		rect.xmin = 0;
+		rect.ymin = 0;
+		rect.xmax = ar->winx;
+		rect.ymax = ar->winy;
 	}
 	
 	/* draw it! */

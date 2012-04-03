@@ -30,8 +30,8 @@
  */
 
 
-#ifndef NAN_INCLUDED_LOD_NdQuadricEditor_h
-#define NAN_INCLUDED_LOD_NdQuadricEditor_h
+#ifndef __LOD_NDQUADRICEDITOR_H__
+#define __LOD_NDQUADRICEDITOR_H__
 
 #include "common/NonCopyable.h"
 #include "LOD_ManMesh2.h"
@@ -97,7 +97,7 @@ public :
 		const LOD_Edge & e,
 		TNT::Vector<MT_Scalar> &result,
 		const LOD_ExternVColorEditor & color_editor
-	) const ;
+	) const;
 
 	~LOD_NdQuadricEditor(
 	 ){

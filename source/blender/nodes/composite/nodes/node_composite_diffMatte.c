@@ -34,8 +34,8 @@
 
 /* ******************* channel Difference Matte ********************************* */
 static bNodeSocketTemplate cmp_node_diff_matte_in[]={
-	{SOCK_RGBA,1,"Image 1", 0.8f, 0.8f, 0.8f, 1.0f},
-	{SOCK_RGBA,1,"Image 2", 0.8f, 0.8f, 0.8f, 1.0f},
+	{SOCK_RGBA,1,"Image 1", 1.0f, 1.0f, 1.0f, 1.0f},
+	{SOCK_RGBA,1,"Image 2", 1.0f, 1.0f, 1.0f, 1.0f},
 	{-1,0,""}
 };
 
@@ -53,25 +53,25 @@ static void do_diff_matte(bNode *node, float *outColor, float *inColor1, float *
 	float difference;
 	float alpha;
 
-	difference= fabs(inColor2[0]-inColor1[0])+
-			   fabs(inColor2[1]-inColor1[1])+
-			   fabs(inColor2[2]-inColor1[2]);
+	difference= fabs(inColor2[0]-inColor1[0]) +
+	        fabs(inColor2[1]-inColor1[1]) +
+	        fabs(inColor2[2]-inColor1[2]);
 
 	/*average together the distances*/
-	difference=difference/3.0;
+	difference=difference/3.0f;
 
-	VECCOPY(outColor, inColor1);
+	copy_v3_v3(outColor, inColor1);
 
 	/*make 100% transparent*/
-	if(difference < tolerence) {
+	if (difference < tolerence) {
 		outColor[3]=0.0;
 	}
 	/*in the falloff region, make partially transparent */
-	else if(difference < falloff+tolerence) {
+	else if (difference < falloff+tolerence) {
 		difference=difference-tolerence;
 		alpha=difference/falloff;
 		/*only change if more transparent than before */
-		if(alpha < inColor1[3]) {
+		if (alpha < inColor1[3]) {
 			outColor[3]=alpha;
 		}
 		else { /* leave as before */
@@ -92,16 +92,16 @@ static void node_composit_exec_diff_matte(void *data, bNode *node, bNodeStack **
 	/* NodeChroma *c; */ /* UNUSED */
 
 	/*is anything connected?*/
-	if(out[0]->hasoutput==0 && out[1]->hasoutput==0) return;
+	if (out[0]->hasoutput==0 && out[1]->hasoutput==0) return;
 
 	/*must have an image imput*/
-	if(in[0]->data==NULL) return;
+	if (in[0]->data==NULL) return;
 
 
 	imbuf1=typecheck_compbuf(in[0]->data, CB_RGBA);
 
 	/* if there's an image, use that, if not use the color */
-	if(in[1]->data) {
+	if (in[1]->data) {
 		imbuf2=typecheck_compbuf(in[1]->data, CB_RGBA);
 	}
 
@@ -112,14 +112,14 @@ static void node_composit_exec_diff_matte(void *data, bNode *node, bNodeStack **
 	composit2_pixel_processor(node, outbuf, imbuf1, in[0]->vec, imbuf2, in[1]->vec, do_diff_matte, CB_RGBA, CB_RGBA);
 
 	out[0]->data=outbuf;
-	if(out[1]->hasoutput)
+	if (out[1]->hasoutput)
 		out[1]->data=valbuf_from_rgbabuf(outbuf, CHAN_A);
 	generate_preview(data, node, outbuf);
 
-	if(imbuf1!=in[0]->data)
+	if (imbuf1!=in[0]->data)
 		free_compbuf(imbuf1);
 
-	if(imbuf2!=in[1]->data)
+	if (imbuf2!=in[1]->data)
 		free_compbuf(imbuf2);
 }
 
@@ -131,19 +131,16 @@ static void node_composit_init_diff_matte(bNodeTree *UNUSED(ntree), bNode* node,
 	c->t2= 0.1f;
 }
 
-void register_node_type_cmp_diff_matte(ListBase *lb)
+void register_node_type_cmp_diff_matte(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_DIFF_MATTE, "Difference Key", NODE_CLASS_MATTE, NODE_PREVIEW|NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_DIFF_MATTE, "Difference Key", NODE_CLASS_MATTE, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_diff_matte_in, cmp_node_diff_matte_out);
 	node_type_size(&ntype, 200, 80, 250);
 	node_type_init(&ntype, node_composit_init_diff_matte);
 	node_type_storage(&ntype, "NodeChroma", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, node_composit_exec_diff_matte);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-
-

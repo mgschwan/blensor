@@ -16,6 +16,8 @@
 #
 #======================= END GPL LICENSE BLOCK ========================
 
+# <pep8 compliant>
+
 import bpy
 import re
 import time
@@ -153,9 +155,26 @@ def generate_rig(context, metarig):
         bone_gen.lock_location = tuple(bone.lock_location)
         bone_gen.lock_scale = tuple(bone.lock_scale)
 
+        # rigify_type and rigify_parameters
+        bone_gen.rigify_type = bone.rigify_type
+        if len(bone.rigify_parameters) > 0:
+            bone_gen.rigify_parameters.add()
+            for prop in dir(bone_gen.rigify_parameters[0]):
+                if (not prop.startswith("_")) \
+                and (not prop.startswith("bl_")) \
+                and (prop != "rna_type"):
+                    try:
+                        setattr(bone_gen.rigify_parameters[0], prop, \
+                                getattr(bone.rigify_parameters[0], prop))
+                    except AttributeError:
+                        print("FAILED TO COPY PARAMETER: " + str(prop))
+
         # Custom properties
         for prop in bone.keys():
-            bone_gen[prop] = bone[prop]
+            try:
+                bone_gen[prop] = bone[prop]
+            except KeyError:
+                pass
 
         # Constraints
         for con1 in bone.constraints:
@@ -299,16 +318,17 @@ def generate_rig(context, metarig):
             obj.data.bones[bone].use_deform = False
 
     # Alter marked driver targets
-    for d in obj.animation_data.drivers:
-        for v in d.driver.variables:
-            for tar in v.targets:
-                if tar.data_path.startswith("RIGIFY-"):
-                    temp, bone, prop = tuple([x.strip('"]') for x in tar.data_path.split('["')])
-                    if bone in obj.data.bones \
-                    and prop in obj.pose.bones[bone].keys():
-                        tar.data_path = tar.data_path[7:]
-                    else:
-                        tar.data_path = 'pose.bones["%s"]["%s"]' % (make_original_name(bone), prop)
+    if obj.animation_data:
+        for d in obj.animation_data.drivers:
+            for v in d.driver.variables:
+                for tar in v.targets:
+                    if tar.data_path.startswith("RIGIFY-"):
+                        temp, bone, prop = tuple([x.strip('"]') for x in tar.data_path.split('["')])
+                        if bone in obj.data.bones \
+                        and prop in obj.pose.bones[bone].keys():
+                            tar.data_path = tar.data_path[7:]
+                        else:
+                            tar.data_path = 'pose.bones["%s"]["%s"]' % (make_original_name(bone), prop)
 
     # Move all the original bones to their layer.
     for bone in original_bones:

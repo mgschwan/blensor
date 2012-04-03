@@ -23,8 +23,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BLI_DLRB_TREE_H
-#define BLI_DLRB_TREE_H
+#ifndef __BLI_DLRBTREE_H__
+#define __BLI_DLRBTREE_H__
 
 /** \file BLI_dlrbTree.h
  *  \ingroup bli
@@ -77,7 +77,7 @@ typedef struct DLRBT_Tree {
 
 /* return -1, 0, 1 for whether the given data is less than, equal to, or greater than the given node 
  *	- node: <DLRBT_Node> the node to compare to
- *	- data: pointer to the relevant data or values stored in the bitpattern dependant on the function
+ *	- data: pointer to the relevant data or values stored in the bitpattern dependent on the function
  */
 typedef short (*DLRBT_Comparator_FP)(void *node, void *data);
 
@@ -88,7 +88,7 @@ typedef DLRBT_Node *(*DLRBT_NAlloc_FP)(void *data);
 
 /* update an existing node instance accordingly to be in sync with the given data *	
  * 	- node: <DLRBT_Node> the node to update
- *	- data: pointer to the relevant data or values stored in the bitpattern dependant on the function
+ *	- data: pointer to the relevant data or values stored in the bitpattern dependent on the function
  */
 typedef void (*DLRBT_NUpdate_FP)(void *node, void *data);
 
@@ -97,10 +97,10 @@ typedef void (*DLRBT_NUpdate_FP)(void *node, void *data);
 
 /* ADT Management ------------------------------- */
 
-/* Create a new tree, and initialise as necessary */
+/* Create a new tree, and initialize as necessary */
 DLRBT_Tree *BLI_dlrbTree_new(void);
 
-/* Initialises some given trees */
+/* Initializes some given trees */
 void BLI_dlrbTree_init(DLRBT_Tree *tree);
 
 /* Free some tree */
@@ -142,7 +142,7 @@ DLRBT_Node *BLI_dlrbTree_add(DLRBT_Tree *tree, DLRBT_Comparator_FP cmp_cb,
 
 /* Remove the given element from the tree and balance again */
 // FIXME: this is not implemented yet... 
-void BLI_dlrbTree_remove(DLRBT_Tree *tree, DLRBT_Node *node);
+// void BLI_dlrbTree_remove(DLRBT_Tree *tree, DLRBT_Node *node);
 
 /* Node Operations (Manual) --------------------- */
 /* These methods require custom code for creating BST nodes and adding them to the 
@@ -158,4 +158,4 @@ void BLI_dlrbTree_insert(DLRBT_Tree *tree, DLRBT_Node *node);
 
 /* ********************************************** */
 
-#endif // BLI_DLRB_TREE_H
+#endif // __BLI_DLRBTREE_H__

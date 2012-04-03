@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BLI_STRING_H
-#define BLI_STRING_H
+#ifndef __BLI_STRING_H__
+#define __BLI_STRING_H__
 
 /** \file BLI_string.h
  *  \ingroup bli
@@ -37,30 +37,30 @@ extern "C" {
 #endif
 
 	/**
-	 * Duplicates the cstring @a str into a newly mallocN'd
+	 * Duplicates the cstring \a str into a newly mallocN'd
 	 * string and returns it.
 	 * 
-	 * @param str The string to be duplicated
-	 * @retval Returns the duplicated string
+	 * \param str The string to be duplicated
+	 * \retval Returns the duplicated string
 	 */
 char *BLI_strdup(const char *str);
 
 	/**
-	 * Duplicates the first @a len bytes of cstring @a str 
-	 * into a newly mallocN'd string and returns it. @a str
+	 * Duplicates the first \a len bytes of cstring \a str 
+	 * into a newly mallocN'd string and returns it. \a str
 	 * is assumed to be at least len bytes long.
 	 * 
-	 * @param str The string to be duplicated
-	 * @param len The number of bytes to duplicate
-	 * @retval Returns the duplicated string
+	 * \param str The string to be duplicated
+	 * \param len The number of bytes to duplicate
+	 * \retval Returns the duplicated string
 	 */
 char *BLI_strdupn(const char *str, const size_t len);
 
 	/**
 	 * Appends the two strings, and returns new mallocN'ed string
-	 * @param str1 first string for copy
-	 * @param str2 second string for append
-	 * @retval Returns dst
+	 * \param str1 first string for copy
+	 * \param str2 second string for append
+	 * \retval Returns dst
 	 */
 char *BLI_strdupcat(const char *str1, const char *str2);
 
@@ -68,11 +68,11 @@ char *BLI_strdupcat(const char *str1, const char *str2);
 	 * Like strncpy but ensures dst is always
 	 * '\0' terminated.
 	 * 
-	 * @param dst Destination for copy
-	 * @param src Source string to copy
-	 * @param maxncpy Maximum number of characters to copy (generally
+	 * \param dst Destination for copy
+	 * \param src Source string to copy
+	 * \param maxncpy Maximum number of characters to copy (generally
 	 *   the size of dst)
-	 * @retval Returns dst
+	 * \retval Returns dst
 	 */
 char *BLI_strncpy(char *dst, const char *src, const size_t maxncpy);
 
@@ -88,14 +88,14 @@ char *BLI_strncpy(char *dst, const char *src, const size_t maxncpy);
 char *BLI_getQuotedStr(const char *str, const char *prefix);
 
 	/**
-	 * Returns a copy of the cstring @a str into a newly mallocN'd
+	 * Returns a copy of the cstring \a str into a newly mallocN'd
 	 * string with all instances of oldText replaced with newText,
 	 * and returns it.
 	 * 
-	 * @param str The string to replace occurances of oldText in
-	 * @param oldText The text in the string to find and replace
-	 * @param newText The text in the string to find and replace
-	 * @retval Returns the duplicated string
+	 * \param str The string to replace occurrences of oldText in
+	 * \param oldText The text in the string to find and replace
+	 * \param newText The text in the string to find and replace
+	 * \retval Returns the duplicated string
 	 */
 char *BLI_replacestr(char *str, const char *oldText, const char *newText);
 
@@ -123,7 +123,7 @@ size_t BLI_strescape(char *dst, const char *src, const size_t maxlen);
 	/**
 	 * Compare two strings without regard to case.
 	 * 
-	 * @retval True if the strings are equal, false otherwise.
+	 * \retval True if the strings are equal, false otherwise.
 	 */
 int BLI_strcaseeq(const char *a, const char *b);
 
@@ -132,7 +132,6 @@ int BLI_strcasecmp(const char *s1, const char *s2);
 int BLI_strncasecmp(const char *s1, const char *s2, size_t len);
 int BLI_natstrcmp(const char *s1, const char *s2);
 size_t BLI_strnlen(const char *str, size_t maxlen);
-
 void BLI_timestr(double _time, char *str); /* time var is global */
 
 void BLI_ascii_strtolower(char *str, int len);

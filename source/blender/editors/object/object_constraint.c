@@ -55,6 +55,7 @@
 #include "BKE_main.h"
 #include "BKE_object.h"
 #include "BKE_report.h"
+#include "BKE_tracking.h"
 #include "BIK_api.h"
 
 #ifdef WITH_PYTHON
@@ -141,6 +142,7 @@ bConstraint *get_active_constraint (Object *ob)
 }
 
 /* -------------- Constraint Management (Add New, Remove, Rename) -------------------- */
+#ifdef WITH_PYTHON
 /* ------------- PyConstraints ------------------ */
 
 /* this callback sets the text-file to be used for selected menu item */
@@ -159,7 +161,6 @@ static void validate_pyconstraint_cb (void *arg1, void *arg2)
 	data->text = text;
 }
 
-#ifdef WITH_PYTHON
 /* this returns a string for the list of usable pyconstraint script names */
 static char *buildmenu_pyconstraints (Text *con_text, int *pyconindex)
 {
@@ -390,8 +391,7 @@ static void test_constraints (Object *owner, bPoseChannel *pchan)
 				/* if the number of points does not match the amount required by the chain length,
 				 * free the points array and request a rebind...
 				 */
-				if ((data->points == NULL) || (data->numpoints != data->chainlen+1))
-				{
+				if ((data->points == NULL) || (data->numpoints != data->chainlen+1)) {
 					/* free the points array */
 					if (data->points) {
 						MEM_freeN(data->points);
@@ -401,6 +401,42 @@ static void test_constraints (Object *owner, bPoseChannel *pchan)
 					/* clear the bound flag, forcing a rebind next time this is evaluated */
 					data->flag &= ~CONSTRAINT_SPLINEIK_BOUND;
 				}
+			}
+			else if (curcon->type == CONSTRAINT_TYPE_FOLLOWTRACK) {
+				bFollowTrackConstraint *data = curcon->data;
+
+				if ((data->flag&CAMERASOLVER_ACTIVECLIP)==0) {
+					if (data->clip != NULL && data->track[0]) {
+						MovieTracking *tracking= &data->clip->tracking;
+						MovieTrackingObject *tracking_object;
+
+						if (data->object[0])
+							tracking_object= BKE_tracking_named_object(tracking, data->object);
+						else
+							tracking_object= BKE_tracking_get_camera_object(tracking);
+
+						if (!tracking_object) {
+							curcon->flag |= CONSTRAINT_DISABLE;
+						}
+						else {
+							if (!BKE_tracking_named_track(tracking, tracking_object, data->track))
+								curcon->flag |= CONSTRAINT_DISABLE;
+						}
+					}
+					else curcon->flag |= CONSTRAINT_DISABLE;
+				}
+			}
+			else if (curcon->type == CONSTRAINT_TYPE_CAMERASOLVER) {
+				bCameraSolverConstraint *data = curcon->data;
+
+				if ((data->flag&CAMERASOLVER_ACTIVECLIP)==0 && data->clip == NULL)
+					curcon->flag |= CONSTRAINT_DISABLE;
+			}
+			else if (curcon->type == CONSTRAINT_TYPE_OBJECTSOLVER) {
+				bObjectSolverConstraint *data = curcon->data;
+
+				if ((data->flag&CAMERASOLVER_ACTIVECLIP)==0 && data->clip == NULL)
+					curcon->flag |= CONSTRAINT_DISABLE;
 			}
 			
 			/* Check targets for constraints */
@@ -505,7 +541,7 @@ static int edit_constraint_poll(bContext *C)
 
 static void edit_constraint_properties(wmOperatorType *ot)
 {
-	RNA_def_string(ot->srna, "constraint", "", 32, "Constraint", "Name of the constraint to edit");
+	RNA_def_string(ot->srna, "constraint", "", MAX_NAME, "Constraint", "Name of the constraint to edit");
 	RNA_def_enum(ot->srna, "owner", constraint_owner_items, 0, "Owner", "The owner of this constraint");
 }
 
@@ -516,7 +552,7 @@ static int edit_constraint_invoke_properties(bContext *C, wmOperator *op)
 	bConstraint *con;
 	ListBase *list;
 	
-	if (RNA_property_is_set(op->ptr, "constraint") && RNA_property_is_set(op->ptr, "owner"))
+	if (RNA_struct_property_is_set(op->ptr, "constraint") && RNA_struct_property_is_set(op->ptr, "owner"))
 		return 1;
 	
 	if (ptr.data) {
@@ -538,7 +574,7 @@ static int edit_constraint_invoke_properties(bContext *C, wmOperator *op)
 
 static bConstraint *edit_constraint_property_get(wmOperator *op, Object *ob, int type)
 {
-	char constraint_name[32];
+	char constraint_name[MAX_NAME];
 	int owner = RNA_enum_get(op->ptr, "owner");
 	bConstraint *con;
 	ListBase *list=NULL;
@@ -553,19 +589,19 @@ static bConstraint *edit_constraint_property_get(wmOperator *op, Object *ob, int
 		if (pchan)
 			list = &pchan->constraints;
 		else {
-			//if (G.f & G_DEBUG)
+			//if (G.debug & G_DEBUG)
 			//printf("edit_constraint_property_get: No active bone for object '%s'\n", (ob)? ob->id.name+2 : "<None>");
 			return NULL;
 		}
 	}
 	else {
-		//if (G.f & G_DEBUG)
+		//if (G.debug & G_DEBUG)
 		//printf("edit_constraint_property_get: defaulting to getting list in the standard way\n");
 		list = get_active_constraints(ob);
 	}
 	
 	con = constraints_findByName(list, constraint_name);
-	//if (G.f & G_DEBUG)
+	//if (G.debug & G_DEBUG)
 	//printf("constraint found = %p, %s\n", (void *)con, (con)?con->name:"<Not found>");
 
 	if (con && (type != 0) && (con->type != type))
@@ -608,16 +644,16 @@ static int stretchto_reset_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(e
 void CONSTRAINT_OT_stretchto_reset (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Reset Original Length";
-	ot->idname= "CONSTRAINT_OT_stretchto_reset";
-	ot->description= "Reset original length of bone for Stretch To Constraint";
+	ot->name = "Reset Original Length";
+	ot->idname = "CONSTRAINT_OT_stretchto_reset";
+	ot->description = "Reset original length of bone for Stretch To Constraint";
 	
-	ot->exec= stretchto_reset_exec;
-	ot->invoke= stretchto_reset_invoke;
-	ot->poll= edit_constraint_poll;
+	ot->exec = stretchto_reset_exec;
+	ot->invoke = stretchto_reset_invoke;
+	ot->poll = edit_constraint_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	edit_constraint_properties(ot);
 }
 
@@ -651,20 +687,98 @@ static int limitdistance_reset_invoke(bContext *C, wmOperator *op, wmEvent *UNUS
 void CONSTRAINT_OT_limitdistance_reset (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Reset Distance";
-	ot->idname= "CONSTRAINT_OT_limitdistance_reset";
-	ot->description= "Reset limiting distance for Limit Distance Constraint";
+	ot->name = "Reset Distance";
+	ot->idname = "CONSTRAINT_OT_limitdistance_reset";
+	ot->description = "Reset limiting distance for Limit Distance Constraint";
 	
-	ot->exec= limitdistance_reset_exec;
-	ot->invoke= limitdistance_reset_invoke;
-	ot->poll= edit_constraint_poll;
+	ot->exec = limitdistance_reset_exec;
+	ot->invoke = limitdistance_reset_invoke;
+	ot->poll = edit_constraint_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	edit_constraint_properties(ot);
 }
 
 /* ------------- Child-Of Constraint ------------------ */
+
+static void child_get_inverse_matrix (Scene *scene, Object *ob, bConstraint *con, float invmat[4][4])
+{
+	bConstraint *lastcon = NULL;
+	bPoseChannel *pchan= NULL;
+	
+	/* nullify inverse matrix first */
+	unit_m4(invmat);
+	
+	/* try to find a pose channel - assume that this is the constraint owner */
+	// TODO: get from context instead?
+	if (ob && ob->pose)
+		pchan= get_active_posechannel(ob);
+	
+	/* calculate/set inverse matrix:
+	 * 	We just calculate all transform-stack eval up to but not including this constraint.
+	 * 	This is because inverse should just inverse correct for just the constraint's influence
+	 * 	when it gets applied; that is, at the time of application, we don't know anything about
+	 * 	what follows.
+	 */
+	if (pchan) {
+		float imat[4][4], tmat[4][4];
+		float pmat[4][4];
+		
+		/* 1. calculate posemat where inverse doesn't exist yet (inverse was cleared above), 
+		 * to use as baseline ("pmat") to derive delta from. This extra calc saves users 
+		 * from having pressing "Clear Inverse" first
+		 */
+		where_is_pose(scene, ob);
+		copy_m4_m4(pmat, pchan->pose_mat);
+		
+		/* 2. knock out constraints starting from this one */
+		lastcon = pchan->constraints.last;
+		pchan->constraints.last = con->prev;
+		
+		if (con->prev) {
+			/* new end must not point to this one, else this chain cutting is useless */
+			con->prev->next = NULL;
+		}
+		else {
+			/* constraint was first */
+			pchan->constraints.first = NULL;
+		}
+		
+		/* 3. solve pose without disabled constraints */
+		where_is_pose(scene, ob);
+		
+		/* 4. determine effect of constraint by removing the newly calculated 
+		 * pchan->pose_mat from the original pchan->pose_mat, thus determining 
+		 * the effect of the constraint
+		 */
+		invert_m4_m4(imat, pchan->pose_mat);
+		mult_m4_m4m4(tmat, pmat, imat);
+		invert_m4_m4(invmat, tmat);
+		
+		/* 5. restore constraints */
+		pchan->constraints.last = lastcon;
+		
+		if (con->prev) {
+			/* hook up prev to this one again */
+			con->prev->next = con;
+		}
+		else {
+			/* set as first again */
+			pchan->constraints.first = con;
+		}
+		
+		/* 6. recalculate pose with new inv-mat applied */
+		where_is_pose(scene, ob);
+	}
+	else if (ob) {
+		Object workob;
+		
+		/* use what_does_parent to find inverse - just like for normal parenting */
+		what_does_parent(scene, ob, &workob);
+		invert_m4_m4(invmat, workob.obmat);
+	}
+}
 
 /* ChildOf Constraint - set inverse callback */
 static int childof_set_inverse_exec (bContext *C, wmOperator *op)
@@ -673,8 +787,7 @@ static int childof_set_inverse_exec (bContext *C, wmOperator *op)
 	Object *ob = ED_object_active_context(C);
 	bConstraint *con = edit_constraint_property_get(op, ob, CONSTRAINT_TYPE_CHILDOF);
 	bChildOfConstraint *data= (con) ? (bChildOfConstraint *)con->data : NULL;
-	bPoseChannel *pchan= NULL;
-	
+
 	/* despite 3 layers of checks, we may still not be able to find a constraint */
 	if (data == NULL) {
 		printf("DEBUG: Child-Of Set Inverse - object = '%s'\n", (ob)? ob->id.name+2 : "<None>");
@@ -682,51 +795,10 @@ static int childof_set_inverse_exec (bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	
-	/* try to find a pose channel */
-	// TODO: get from context instead?
-	if (ob && ob->pose)
-		pchan= get_active_posechannel(ob);
-	
-	/* calculate/set inverse matrix */
-	if (pchan) {
-		float pmat[4][4], cinf;
-		float imat[4][4], tmat[4][4];
-		
-		/* make copy of pchan's original pose-mat (for use later) */
-		copy_m4_m4(pmat, pchan->pose_mat);
-		
-		/* disable constraint for pose to be solved without it */
-		cinf= con->enforce;
-		con->enforce= 0.0f;
-		
-		/* solve pose without constraint */
-		where_is_pose(scene, ob);
-		
-		/* determine effect of constraint by removing the newly calculated 
-		 * pchan->pose_mat from the original pchan->pose_mat, thus determining 
-		 * the effect of the constraint
-		 */
-		invert_m4_m4(imat, pchan->pose_mat);
-		mul_m4_m4m4(tmat, imat, pmat);
-		invert_m4_m4(data->invmat, tmat);
-		
-		/* recalculate pose with new inv-mat */
-		con->enforce= cinf;
-		where_is_pose(scene, ob);
-	}
-	else if (ob) {
-		Object workob;
-		/* use what_does_parent to find inverse - just like for normal parenting.
-		 * NOTE: what_does_parent uses a static workob defined in object.c 
-		 */
-		what_does_parent(scene, ob, &workob);
-		invert_m4_m4(data->invmat, workob.obmat);
-	}
-	else
-		unit_m4(data->invmat);
-		
+	child_get_inverse_matrix(scene, ob, con, data->invmat);
+
 	WM_event_add_notifier(C, NC_OBJECT|ND_CONSTRAINT, ob);
-		
+	
 	return OPERATOR_FINISHED;
 }
 
@@ -741,16 +813,16 @@ static int childof_set_inverse_invoke(bContext *C, wmOperator *op, wmEvent *UNUS
 void CONSTRAINT_OT_childof_set_inverse (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Set Inverse";
-	ot->idname= "CONSTRAINT_OT_childof_set_inverse";
-	ot->description= "Set inverse correction for ChildOf constraint";
+	ot->name = "Set Inverse";
+	ot->idname = "CONSTRAINT_OT_childof_set_inverse";
+	ot->description = "Set inverse correction for ChildOf constraint";
 	
-	ot->exec= childof_set_inverse_exec;
-	ot->invoke= childof_set_inverse_invoke;
-	ot->poll= edit_constraint_poll;
+	ot->exec = childof_set_inverse_exec;
+	ot->invoke = childof_set_inverse_invoke;
+	ot->poll = edit_constraint_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	edit_constraint_properties(ot);
 }
 
@@ -761,7 +833,7 @@ static int childof_clear_inverse_exec (bContext *C, wmOperator *op)
 	bConstraint *con = edit_constraint_property_get(op, ob, CONSTRAINT_TYPE_CHILDOF);
 	bChildOfConstraint *data= (con) ? (bChildOfConstraint *)con->data : NULL;
 	
-	if(data==NULL) {
+	if (data==NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Childof constraint not found");
 		return OPERATOR_CANCELLED;
 	}
@@ -785,16 +857,106 @@ static int childof_clear_inverse_invoke(bContext *C, wmOperator *op, wmEvent *UN
 void CONSTRAINT_OT_childof_clear_inverse (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Clear Inverse";
-	ot->idname= "CONSTRAINT_OT_childof_clear_inverse";
-	ot->description= "Clear inverse correction for ChildOf constraint";
+	ot->name = "Clear Inverse";
+	ot->idname = "CONSTRAINT_OT_childof_clear_inverse";
+	ot->description = "Clear inverse correction for ChildOf constraint";
 	
-	ot->exec= childof_clear_inverse_exec;
-	ot->invoke= childof_clear_inverse_invoke;
-	ot->poll= edit_constraint_poll;
+	ot->exec = childof_clear_inverse_exec;
+	ot->invoke = childof_clear_inverse_invoke;
+	ot->poll = edit_constraint_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
+	edit_constraint_properties(ot);
+}
+
+/* ------------- Object Solver Constraint ------------------ */
+
+static int objectsolver_set_inverse_exec (bContext *C, wmOperator *op)
+{
+	Scene *scene= CTX_data_scene(C);
+	Object *ob = ED_object_active_context(C);
+	bConstraint *con = edit_constraint_property_get(op, ob, CONSTRAINT_TYPE_OBJECTSOLVER);
+	bObjectSolverConstraint *data= (con) ? (bObjectSolverConstraint *)con->data : NULL;
+
+	/* despite 3 layers of checks, we may still not be able to find a constraint */
+	if (data == NULL) {
+		printf("DEBUG: Child-Of Set Inverse - object = '%s'\n", (ob)? ob->id.name+2 : "<None>");
+		BKE_report(op->reports, RPT_ERROR, "Couldn't find constraint data for Child-Of Set Inverse");
+		return OPERATOR_CANCELLED;
+	}
+
+	child_get_inverse_matrix(scene, ob, con, data->invmat);
+
+	WM_event_add_notifier(C, NC_OBJECT|ND_CONSTRAINT, ob);
+
+	return OPERATOR_FINISHED;
+}
+
+static int objectsolver_set_inverse_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+{
+	if (edit_constraint_invoke_properties(C, op))
+		return objectsolver_set_inverse_exec(C, op);
+	else
+		return OPERATOR_CANCELLED;
+}
+
+void CONSTRAINT_OT_objectsolver_set_inverse (wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Set Inverse";
+	ot->idname = "CONSTRAINT_OT_objectsolver_set_inverse";
+	ot->description = "Set inverse correction for ObjectSolver constraint";
+
+	ot->exec = objectsolver_set_inverse_exec;
+	ot->invoke = objectsolver_set_inverse_invoke;
+	ot->poll = edit_constraint_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
+	edit_constraint_properties(ot);
+}
+
+static int objectsolver_clear_inverse_exec (bContext *C, wmOperator *op)
+{
+	Object *ob = ED_object_active_context(C);
+	bConstraint *con = edit_constraint_property_get(op, ob, CONSTRAINT_TYPE_OBJECTSOLVER);
+	bObjectSolverConstraint *data= (con) ? (bObjectSolverConstraint *)con->data : NULL;
+
+	if (data==NULL) {
+		BKE_report(op->reports, RPT_ERROR, "Childof constraint not found");
+		return OPERATOR_CANCELLED;
+	}
+
+	/* simply clear the matrix */
+	unit_m4(data->invmat);
+
+	WM_event_add_notifier(C, NC_OBJECT|ND_CONSTRAINT, ob);
+
+	return OPERATOR_FINISHED;
+}
+
+static int objectsolver_clear_inverse_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+{
+	if (edit_constraint_invoke_properties(C, op))
+		return objectsolver_clear_inverse_exec(C, op);
+	else
+		return OPERATOR_CANCELLED;
+}
+
+void CONSTRAINT_OT_objectsolver_clear_inverse (wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Clear Inverse";
+	ot->idname = "CONSTRAINT_OT_objectsolver_clear_inverse";
+	ot->description = "Clear inverse correction for ObjectSolver constraint";
+
+	ot->exec = objectsolver_clear_inverse_exec;
+	ot->invoke = objectsolver_clear_inverse_invoke;
+	ot->poll = edit_constraint_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	edit_constraint_properties(ot);
 }
 
@@ -815,11 +977,11 @@ void ED_object_constraint_set_active(Object *ob, bConstraint *con)
 void ED_object_constraint_update(Object *ob)
 {
 
-	if(ob->pose) update_pose_constraint_flags(ob->pose);
+	if (ob->pose) update_pose_constraint_flags(ob->pose);
 
 	object_test_constraints(ob);
 
-	if(ob->type==OB_ARMATURE) DAG_id_tag_update(&ob->id, OB_RECALC_DATA|OB_RECALC_OB);
+	if (ob->type==OB_ARMATURE) DAG_id_tag_update(&ob->id, OB_RECALC_DATA|OB_RECALC_OB);
 	else DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 }
 
@@ -827,7 +989,7 @@ void ED_object_constraint_dependency_update(Main *bmain, Scene *scene, Object *o
 {
 	ED_object_constraint_update(ob);
 
-	if(ob->pose) ob->pose->flag |= POSE_RECALC;	// checks & sorts pose channels
+	if (ob->pose) ob->pose->flag |= POSE_RECALC;	// checks & sorts pose channels
 	DAG_scene_sort(bmain, scene);
 }
 
@@ -853,7 +1015,7 @@ static int constraint_delete_exec (bContext *C, wmOperator *UNUSED(op))
 		ED_object_constraint_update(ob); /* needed to set the flags on posebones correctly */
 
 		/* ITASC needs to be rebuilt once a constraint is removed [#26920] */
-		if(is_ik) {
+		if (is_ik) {
 			BIK_clear_data(ob->pose);
 		}
 
@@ -871,16 +1033,16 @@ static int constraint_delete_exec (bContext *C, wmOperator *UNUSED(op))
 void CONSTRAINT_OT_delete (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Delete Constraint";
-	ot->idname= "CONSTRAINT_OT_delete";
-	ot->description= "Remove constraint from constraint stack";
+	ot->name = "Delete Constraint";
+	ot->idname = "CONSTRAINT_OT_delete";
+	ot->description = "Remove constraint from constraint stack";
 	
 	/* callbacks */
-	ot->exec= constraint_delete_exec;
-	ot->poll= constraint_poll;
+	ot->exec = constraint_delete_exec;
+	ot->poll = constraint_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO; 
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO; 
 }
 
 static int constraint_move_down_exec (bContext *C, wmOperator *op)
@@ -916,17 +1078,17 @@ static int constraint_move_down_invoke(bContext *C, wmOperator *op, wmEvent *UNU
 void CONSTRAINT_OT_move_down (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Move Constraint Down";
-	ot->idname= "CONSTRAINT_OT_move_down";
-	ot->description= "Move constraint down in constraint stack";
+	ot->name = "Move Constraint Down";
+	ot->idname = "CONSTRAINT_OT_move_down";
+	ot->description = "Move constraint down in constraint stack";
 	
 	/* callbacks */
-	ot->exec= constraint_move_down_exec;
-	ot->invoke= constraint_move_down_invoke;
-	ot->poll= edit_constraint_poll;
+	ot->exec = constraint_move_down_exec;
+	ot->invoke = constraint_move_down_invoke;
+	ot->poll = edit_constraint_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO; 
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO; 
 	edit_constraint_properties(ot);
 }
 
@@ -963,17 +1125,17 @@ static int constraint_move_up_invoke(bContext *C, wmOperator *op, wmEvent *UNUSE
 void CONSTRAINT_OT_move_up (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Move Constraint Up";
-	ot->idname= "CONSTRAINT_OT_move_up";
-	ot->description= "Move constraint up in constraint stack";
+	ot->name = "Move Constraint Up";
+	ot->idname = "CONSTRAINT_OT_move_up";
+	ot->description = "Move constraint up in constraint stack";
 	
 	/* callbacks */
-	ot->exec= constraint_move_up_exec;
-	ot->invoke= constraint_move_up_invoke;
-	ot->poll= edit_constraint_poll;
+	ot->exec = constraint_move_up_exec;
+	ot->invoke = constraint_move_up_invoke;
+	ot->poll = edit_constraint_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO; 
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO; 
 	edit_constraint_properties(ot);
 }
 
@@ -998,7 +1160,7 @@ static int pose_constraints_clear_exec(bContext *C, wmOperator *UNUSED(op))
 	/* force depsgraph to get recalculated since relationships removed */
 	DAG_scene_sort(bmain, scene);		/* sort order of objects */	
 	
-	/* note, calling BIK_clear_data() isnt needed here */
+	/* note, calling BIK_clear_data() isn't needed here */
 
 	/* do updates */
 	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
@@ -1011,12 +1173,12 @@ void POSE_OT_constraints_clear(wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Clear Pose Constraints";
-	ot->idname= "POSE_OT_constraints_clear";
-	ot->description= "Clear all the constraints for the selected bones";
+	ot->idname = "POSE_OT_constraints_clear";
+	ot->description = "Clear all the constraints for the selected bones";
 	
 	/* callbacks */
-	ot->exec= pose_constraints_clear_exec;
-	ot->poll= ED_operator_posemode; // XXX - do we want to ensure there are selected bones too?
+	ot->exec = pose_constraints_clear_exec;
+	ot->poll = ED_operator_posemode; // XXX - do we want to ensure there are selected bones too?
 }
 
 
@@ -1046,12 +1208,12 @@ void OBJECT_OT_constraints_clear(wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Clear Object Constraints";
-	ot->idname= "OBJECT_OT_constraints_clear";
-	ot->description= "Clear all the constraints for the active Object only";
+	ot->idname = "OBJECT_OT_constraints_clear";
+	ot->description = "Clear all the constraints for the active Object only";
 	
 	/* callbacks */
-	ot->exec= object_constraints_clear_exec;
-	ot->poll= ED_operator_object_active_editable;
+	ot->exec = object_constraints_clear_exec;
+	ot->poll = ED_operator_object_active_editable;
 }
 
 /************************ copy all constraints operators *********************/
@@ -1091,16 +1253,16 @@ static int pose_constraint_copy_exec(bContext *C, wmOperator *op)
 void POSE_OT_constraints_copy(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Copy Constraints to Selected";
-	ot->idname= "POSE_OT_constraints_copy";
+	ot->name = "Copy Constraints to Selected";
+	ot->idname = "POSE_OT_constraints_copy";
 	ot->description = "Copy constraints to other selected bones";
 	
 	/* api callbacks */
-	ot->exec= pose_constraint_copy_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_constraint_copy_exec;
+	ot->poll = ED_operator_posemode;
 
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 static int object_constraint_copy_exec(bContext *C, wmOperator *UNUSED(op))
@@ -1132,16 +1294,16 @@ static int object_constraint_copy_exec(bContext *C, wmOperator *UNUSED(op))
 void OBJECT_OT_constraints_copy(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Copy Constraints to Selected";
-	ot->idname= "OBJECT_OT_constraints_copy";
+	ot->name = "Copy Constraints to Selected";
+	ot->idname = "OBJECT_OT_constraints_copy";
 	ot->description = "Copy constraints to other selected objects";
 	
 	/* api callbacks */
-	ot->exec= object_constraint_copy_exec;
-	ot->poll= ED_operator_object_active_editable;
+	ot->exec = object_constraint_copy_exec;
+	ot->poll = ED_operator_object_active_editable;
 
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 /************************ add constraint operators *********************/
@@ -1268,9 +1430,10 @@ static short get_new_constraint_target(bContext *C, int con_type, Object **tar_o
 			else
 				mul_v3_m4v3(obt->loc, obact->obmat, pchanact->pose_head);
 		}
-		else
-			VECCOPY(obt->loc, obact->obmat[3]);
-		
+		else {
+			copy_v3_v3(obt->loc, obact->obmat[3]);
+		}
+
 		/* restore, add_object sets active */
 		BASACT= base;
 		base->flag |= SELECT;
@@ -1337,7 +1500,7 @@ static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase
 		/* get the target objects, adding them as need be */
 		if (get_new_constraint_target(C, type, &tar_ob, &tar_pchan, 1)) {
 			/* method of setting target depends on the type of target we've got 
-			 *	- by default, just set the first target (distinction here is only for multiple-targetted constraints)
+			 *	- by default, just set the first target (distinction here is only for multiple-targeted constraints)
 			 */
 			if (tar_pchan)
 				set_constraint_nth_target(con, tar_ob, tar_pchan->name, 0);
@@ -1367,7 +1530,9 @@ static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase
 				BPY_pyconstraint_update(ob, con);
 			}
 #endif
+			break;
 		}
+
 		default:
 			break;
 	}
@@ -1444,77 +1609,77 @@ static int pose_constraint_add_exec(bContext *C, wmOperator *op)
 void OBJECT_OT_constraint_add(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Add Constraint";
+	ot->name = "Add Constraint";
 	ot->description = "Add a constraint to the active object";
-	ot->idname= "OBJECT_OT_constraint_add";
+	ot->idname = "OBJECT_OT_constraint_add";
 	
 	/* api callbacks */
-	ot->invoke= WM_menu_invoke;
-	ot->exec= object_constraint_add_exec;
-	ot->poll= ED_operator_object_active_editable;
+	ot->invoke = WM_menu_invoke;
+	ot->exec = object_constraint_add_exec;
+	ot->poll = ED_operator_object_active_editable;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop= RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
 }
 
 void OBJECT_OT_constraint_add_with_targets(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Add Constraint (with Targets)";
+	ot->name = "Add Constraint (with Targets)";
 	ot->description = "Add a constraint to the active object, with target (where applicable) set to the selected Objects/Bones";
-	ot->idname= "OBJECT_OT_constraint_add_with_targets";
+	ot->idname = "OBJECT_OT_constraint_add_with_targets";
 	
 	/* api callbacks */
-	ot->invoke= WM_menu_invoke;
-	ot->exec= object_constraint_add_exec;
-	ot->poll= ED_operator_object_active_editable;
+	ot->invoke = WM_menu_invoke;
+	ot->exec = object_constraint_add_exec;
+	ot->poll = ED_operator_object_active_editable;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop= RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
 }
 
 void POSE_OT_constraint_add(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Add Constraint";
+	ot->name = "Add Constraint";
 	ot->description = "Add a constraint to the active bone";
-	ot->idname= "POSE_OT_constraint_add";
+	ot->idname = "POSE_OT_constraint_add";
 	
 	/* api callbacks */
-	ot->invoke= WM_menu_invoke;
-	ot->exec= pose_constraint_add_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = WM_menu_invoke;
+	ot->exec = pose_constraint_add_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop= RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
 }
 
 void POSE_OT_constraint_add_with_targets(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Add Constraint (with Targets)";
+	ot->name = "Add Constraint (with Targets)";
 	ot->description = "Add a constraint to the active bone, with target (where applicable) set to the selected Objects/Bones";
-	ot->idname= "POSE_OT_constraint_add_with_targets";
+	ot->idname = "POSE_OT_constraint_add_with_targets";
 	
 	/* api callbacks */
-	ot->invoke= WM_menu_invoke;
-	ot->exec= pose_constraint_add_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = WM_menu_invoke;
+	ot->exec = pose_constraint_add_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop= RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
 }
 
 /************************ IK Constraint operators *********************/
@@ -1587,17 +1752,17 @@ static int pose_ik_add_exec(bContext *C, wmOperator *op)
 void POSE_OT_ik_add(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Add IK to Bone";
-	ot->description= "Add IK Constraint to the active Bone";
-	ot->idname= "POSE_OT_ik_add";
+	ot->name = "Add IK to Bone";
+	ot->description = "Add IK Constraint to the active Bone";
+	ot->idname = "POSE_OT_ik_add";
 	
 	/* api callbacks */
-	ot->invoke= pose_ik_add_invoke;
-	ot->exec= pose_ik_add_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = pose_ik_add_invoke;
+	ot->exec = pose_ik_add_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
 	RNA_def_boolean(ot->srna, "with_targets", 1, "With Targets", "Assign IK Constraint with targets derived from the select bones/objects");
@@ -1638,15 +1803,15 @@ static int pose_ik_clear_exec(bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_ik_clear(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Remove IK";
-	ot->description= "Remove all IK Constraints from selected bones";
-	ot->idname= "POSE_OT_ik_clear";
+	ot->name = "Remove IK";
+	ot->description = "Remove all IK Constraints from selected bones";
+	ot->idname = "POSE_OT_ik_clear";
 	
 	/* api callbacks */
-	ot->exec= pose_ik_clear_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_ik_clear_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 

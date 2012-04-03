@@ -20,23 +20,29 @@
 
 /** \file blender/python/intern/bpy_traceback.c
  *  \ingroup pythonintern
+ *
+ * This file contains utility functions for getting data from a python stack
+ * trace.
  */
 
 
 #include <Python.h>
 #include <frameobject.h>
 
+#include "BLI_path_util.h"
+#include "BLI_string.h"
+
 #include "bpy_traceback.h"
 
 static const char *traceback_filepath(PyTracebackObject *tb, PyObject **coerce)
 {
-	return PyBytes_AS_STRING((*coerce= PyUnicode_EncodeFSDefault(tb->tb_frame->f_code->co_filename)));
+	return PyBytes_AS_STRING((*coerce = PyUnicode_EncodeFSDefault(tb->tb_frame->f_code->co_filename)));
 }
 
 /* copied from pythonrun.c, 3.2.0 */
 static int
 parse_syntax_error(PyObject *err, PyObject **message, const char **filename,
-				   int *lineno, int *offset, const char **text)
+                   int *lineno, int *offset, const char **text)
 {
 	long hold;
 	PyObject *v;
@@ -44,11 +50,11 @@ parse_syntax_error(PyObject *err, PyObject **message, const char **filename,
 	/* old style errors */
 	if (PyTuple_Check(err))
 		return PyArg_ParseTuple(err, "O(ziiz)", message, filename,
-								lineno, offset, text);
+		                        lineno, offset, text);
 
 	/* new style errors.  `err' is an instance */
 
-	if (! (v = PyObject_GetAttrString(err, "msg")))
+	if (!(v = PyObject_GetAttrString(err, "msg")))
 		goto finally;
 	*message = v;
 
@@ -56,7 +62,7 @@ parse_syntax_error(PyObject *err, PyObject **message, const char **filename,
 		goto finally;
 	if (v == Py_None)
 		*filename = NULL;
-	else if (! (*filename = _PyUnicode_AsString(v)))
+	else if (!(*filename = _PyUnicode_AsString(v)))
 		goto finally;
 
 	Py_DECREF(v);
@@ -90,7 +96,7 @@ parse_syntax_error(PyObject *err, PyObject **message, const char **filename,
 	if (v == Py_None)
 		*text = NULL;
 	else if (!PyUnicode_Check(v) ||
-			 !(*text = _PyUnicode_AsString(v)))
+	         !(*text = _PyUnicode_AsString(v)))
 		goto finally;
 	Py_DECREF(v);
 	return 1;
@@ -107,8 +113,8 @@ void python_script_error_jump(const char *filepath, int *lineno, int *offset)
 	PyObject *exception, *value;
 	PyTracebackObject *tb;
 
-	*lineno= -1;
-	*offset= 0;
+	*lineno = -1;
+	*offset = 0;
 
 	PyErr_Fetch(&exception, &value, (PyObject **)&tb);
 
@@ -116,7 +122,7 @@ void python_script_error_jump(const char *filepath, int *lineno, int *offset)
 		/* no traceback available when SyntaxError.
 		 * python has no api's to this. reference parse_syntax_error() from pythonrun.c */
 		PyErr_NormalizeException(&exception, &value, (PyObject **)&tb);
-		PyErr_Restore(exception, value, (PyObject *)tb);	/* takes away reference! */
+		PyErr_Restore(exception, value, (PyObject *)tb);  /* takes away reference! */
 
 		if (value) { /* should always be true */
 			PyObject *message;
@@ -124,34 +130,38 @@ void python_script_error_jump(const char *filepath, int *lineno, int *offset)
 
 			if (parse_syntax_error(value, &message, &filename, lineno, offset, &text)) {
 				/* python adds a '/', prefix, so check for both */
-				if ((strcmp(filename, filepath) == 0) ||
-					((filename[0] == '\\' || filename[0] == '/') && strcmp(filename + 1, filepath) == 0)
-				) {
+				if ((BLI_path_cmp(filename, filepath) == 0) ||
+				    ((filename[0] == '\\' || filename[0] == '/') && BLI_path_cmp(filename + 1, filepath) == 0))
+				{
 					/* good */
 				}
 				else {
-					*lineno= -1;
+					*lineno = -1;
 				}
 			}
 			else {
-				*lineno= -1;
+				*lineno = -1;
 			}
 		}
 	}
 	else {
 		PyErr_NormalizeException(&exception, &value, (PyObject **)&tb);
-		PyErr_Restore(exception, value, (PyObject *)tb);	/* takes away reference! */
+		PyErr_Restore(exception, value, (PyObject *)tb);  /* takes away reference! */
 		PyErr_Print();
 
-		for (tb= (PyTracebackObject *)PySys_GetObject("last_traceback"); tb && (PyObject *)tb != Py_None; tb= tb->tb_next) {
+		for (tb = (PyTracebackObject *)PySys_GetObject("last_traceback");
+		     tb && (PyObject *)tb != Py_None;
+		     tb = tb->tb_next)
+		{
 			PyObject *coerce;
-			const char *tb_filepath= traceback_filepath(tb, &coerce);
-			const int match= strcmp(tb_filepath, filepath) != 0;
+			const char *tb_filepath = traceback_filepath(tb, &coerce);
+			const int match = ((BLI_path_cmp(tb_filepath, filepath) == 0) ||
+			                   ((tb_filepath[0] == '\\' || tb_filepath[0] == '/') && BLI_path_cmp(tb_filepath + 1, filepath) == 0));
 			Py_DECREF(coerce);
 
 			if (match) {
-				*lineno= tb->tb_lineno;
-				break;
+				*lineno = tb->tb_lineno;
+				/* used to break here, but better find the inner most line */
 			}
 		}
 	}

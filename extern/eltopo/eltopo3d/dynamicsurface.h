@@ -1,123 +1,66 @@
-
 // ---------------------------------------------------------
 //
 //  dynamicsurface.h
 //  Tyson Brochu 2008
 //  
-//  A triangle mesh with associated vertex locations and 
-//  velocities.  Functions for collision detection and solving.
+//  A triangle mesh with associated vertex locations and  masses.  Query functions for getting geometry info.
+//
+//  The most important function is integrate(), which advances the mesh vertices from m_positions to m_newpositions, while 
+//  performing collision detection and resolution.
 //
 // ---------------------------------------------------------
 
-#ifndef DYNAMICSURFACE_H
-#define DYNAMICSURFACE_H
+#ifndef EL_TOPO_DYNAMICSURFACE_H
+#define EL_TOPO_DYNAMICSURFACE_H
 
 // ---------------------------------------------------------
 // Nested includes
 // ---------------------------------------------------------
 
-#include <deque>
-#include <map>
-
-#include <mat.h>
-#include <nondestructivetrimesh.h>
 #include <ccd_wrapper.h>
+#include <nondestructivetrimesh.h>
+#include <limits>
 
 // ---------------------------------------------------------
 //  Forwards and typedefs
 // ---------------------------------------------------------
 
-// Broad-phase collision detector.  Avoids performing collision detection between far-away primitives
+// Broad-phase collision detector.  Avoids performing collision detection between far-away primitives.
 class BroadPhase;
 
-// Computes the quadric metric tensor at a vertex
-// TODO: Move this into a utility class or something
-void compute_quadric_metric_tensor( const std::vector<Vec3d>& triangle_normals, 
-                                    const std::vector<double>& triangle_areas, 
-                                    const std::vector<unsigned int>& incident_triangles,
-                                    Mat33d& quadric_metric_tensor );
-
-
-// A potentially colliding pair of primitives.  Each pair is a triple of unsigned ints:
-//  elements 0 and 1 are the indices of the primitives involved.
-//  element 2 specifies if the potential collision is point-triangle or edge-edge
-typedef std::deque<Vec3ui> CollisionCandidateSet;
-
+// Class for encapsulating all collision detection and resolution functionality.
+class CollisionPipeline;
 
 // ---------------------------------------------------------
-//  Interface declarations
+//  Class definitions
 // ---------------------------------------------------------
 
 // --------------------------------------------------------
 ///
-/// A collision between a triangle and a vertex or between two edges
+/// Edge-triangle intersection info.
 ///
 // --------------------------------------------------------
 
-struct Collision
+struct Intersection
 {
-   
-   Collision( bool in_is_edge_edge, const Vec4ui& in_vertex_indices, const Vec3d& in_normal, const Vec4d& in_alphas, double in_relative_displacement ) :
-      is_edge_edge( in_is_edge_edge ),
-      vertex_indices( in_vertex_indices ),
-      normal( in_normal ),
-      alphas( in_alphas ),
-      relative_displacement( in_relative_displacement )
-   {
-      if ( !is_edge_edge ) { assert( in_alphas[0] == 1.0 ); }
-   }
-
-   // One or more vertices is shared between this Collision and other
-   inline bool overlap_vertices( const Collision& other ) const;
-   
-   // ALL vertices are shared between this Collision and other
-   inline bool same_vertices( const Collision& other ) const;
-   
-   // Are the two elements both edges
-   bool is_edge_edge;
-   
-   // Which vertices are involved in the collision
-   Vec4ui vertex_indices;
-   
-   // Collision normal
-   Vec3d normal;
-   
-   // Barycentric coordinates of the point of intersection
-   Vec4d alphas;
-   
-   // Magnitude of relative motion over the timestep
-   double relative_displacement;
-   
+    
+    /// Constructor
+    ///
+    Intersection(size_t edge_index, 
+                 size_t triangle_index ) :
+    m_edge_index( edge_index ),
+    m_triangle_index( triangle_index )
+    {}
+    
+    /// The index of the edge intersecting the triangle
+    ///
+    size_t m_edge_index;
+    
+    /// Index of the triangle intersecting the edge
+    ///
+    size_t m_triangle_index;
+    
 };
-
-// --------------------------------------------------------
-///
-/// Used in the simultaneous handling of collisions: a set of connected elements which are in collision
-///
-// --------------------------------------------------------
-
-struct ImpactZone
-{
-   ImpactZone() :
-      collisions(),
-      all_solved( false )
-   {}
-   
-   // Get the set of all vertices in this impact zone
-   void get_all_vertices( std::vector<unsigned int>& vertices ) const;
-      
-   // Whether this ImpactZones shares vertices with other
-   bool share_vertices( const ImpactZone& other ) const;
-
-   // Set of collisions with connected vertices
-   std::vector<Collision> collisions;  
-   
-   // Whether all collisions in this zone have been solved (i.e. no longer colliding)
-   bool all_solved;
-   
-};
-
-
 
 
 // --------------------------------------------------------
@@ -128,321 +71,353 @@ struct ImpactZone
 
 class DynamicSurface
 {
-
+    
 public:
- 
-   DynamicSurface( const std::vector<Vec3d>& vs, 
-                   const std::vector<Vec3ui>& ts, 
+    
+    /// Create a DynamicSurface object from the specified vertices, triangles, and vertex masses.
+    ///
+    DynamicSurface( const std::vector<Vec3d>& vs, 
+                   const std::vector<Vec3st>& ts, 
                    const std::vector<double>& masses,
                    double in_proximity_epsilon = 1e-4,
+                   double in_friction_coefficient = 0.0,
                    bool in_collision_safety = true,
                    bool in_verbose = false );
-
-   virtual ~DynamicSurface(); 
-   
+    
+    /// Destructor
+    /// 
+    virtual ~DynamicSurface(); 
+    
 private:
-   
-   // Disallowed, do not implement
-   DynamicSurface( const DynamicSurface& );
-   DynamicSurface& operator=( const DynamicSurface& );
-   
+    
+    /// Disallowed, do not implement
+    ///
+    DynamicSurface( const DynamicSurface& );
+    
+    /// Disallowed, do not implement
+    ///
+    DynamicSurface& operator=( const DynamicSurface& );
+    
 public:
-   
-   // ---------------------------------------------------------
-   // Simulation step
+    
+    /// Advance from current state to a collision-free state as close as possible to predicted state.
+    /// 
+    virtual void integrate( double dt, double& actual_dt );
 
-   /// (Implemented in SurfTrack)
-   /// 
-   virtual void improve_mesh( ) {}
+    //
+    // Utility
+    //
 
-   /// Advance from current state to collision-free state as close as possible to predicted state.
-   /// 
-   virtual void integrate(double dt);
-   
-   // ---------------------------------------------------------
-   // Mesh bookkeeping
+    /// Break up the triangle mesh into connected components, determine surface IDs for all vertices.
+    ///
+    void partition_surfaces( std::vector<size_t>& surface_ids, std::vector< std::vector< size_t> >& surfaces ) const;
+    
+    /// Compute the area of the specified triangle
+    ///
+    inline double get_triangle_area(size_t tri) const;
+    
+    /// Compute the area of the specified triangle
+    ///    
+    inline double get_triangle_area(const Vec3st& tri) const;
+    
+    /// Compute the area of the specified triangle
+    ///
+    inline double get_triangle_area(size_t v0, size_t v1, size_t v2) const;
+    
+    /// Get the smallest triangle in the mesh by area.
+    ///
+    inline double get_min_triangle_area( size_t& out_triangle_index ) const;
+    
+    /// Compute the vector normal to the specified triangle's plane
+    ///
+    inline Vec3d get_triangle_normal(size_t tri) const;
+    
+    /// Compute the vector normal to the specified triangle's plane
+    ///    
+    inline Vec3d get_triangle_normal(const Vec3st& tri) const;
+    
+    /// Compute the vector normal to the specified triangle's plane
+    ///    
+    inline Vec3d get_triangle_normal(size_t v0, size_t v1, size_t v2) const;
+    
+    /// Compute the specified triangle's barycenter
+    ///    
+    inline Vec3d get_triangle_barycenter( size_t triangle_index ) const;
+    
+    /// Get an estimate for the surface normal at the specified vertex. Computed using an unweighted average of the normals of 
+    /// incident triangles.
+    ///
+    inline Vec3d get_vertex_normal( size_t vertex ) const;
+    
+    /// Compute all vertex normals, using an unweighted average of incident triangle normals.
+    ///
+    void get_all_vertex_normals( std::vector<Vec3d>& normals ) const;
+    
+    /// Get an estimate for the surface normal at the specified vertex. Computed using a weighted average as described in [Max 1999].
+    ///
+    inline Vec3d get_vertex_normal_max( size_t vertex_index ) const;
+    
+    /// Compute the edge length of the specified edge
+    ///
+    inline double get_edge_length( size_t edge_index ) const;
+    
+    /// Get the average edge length over all edges
+    ///
+    inline double get_average_edge_length() const;
+    
+    /// Get the average edge length, disregarding edges with vertices marked as solid
+    ///
+    inline double get_average_non_solid_edge_length() const;
+    
+    /// Determine if the vertex is on a solid surface (has infinite mass).
+    ///
+    inline bool vertex_is_solid( size_t vertex_index ) const;
+    
+    /// Determine if the edge is on a solid surface (has infinite mass).
+    ///
+    inline bool edge_is_solid( size_t eedge_index ) const;
+    
+    /// Determine if the triangle is on a solid surface (has infinite mass).
+    ///    
+    inline bool triangle_is_solid( size_t triangle_index ) const;
+    
+    /// Compute the total surface area defined by the mesh
+    ///
+    inline double get_surface_area( ) const;
+    
+    /// Compute the total surface area using predicted vertex locations (m_newpositions)
+    ///
+    inline double get_predicted_surface_area() const;
+    
+    /// Compute the volume enclosed by the surface
+    ///
+    inline double get_volume() const;
+    
+    /// Compute the volume enclosed by the surface, using predicted vertex locations (m_newpositions)
+    ///
+    inline double get_predicted_volume() const;
+    
+    /// Compute the distance from the given point to the surface.  Also return the index of the closest triangle.
+    ///
+    double distance_to_surface( const Vec3d& p, size_t& out_closest_triangle ) const;
+    
+    /// Determine the rank of the primary space at the given vertex (see Jiao07).
+    /// Rank {1, 2, 3} == {smooth, ridge, peak}
+    ///
+    unsigned int vertex_primary_space_rank( size_t v ) const;
+    
 
-   unsigned int add_triangle(const Vec3ui& t);
-   void remove_triangle(unsigned int t);  
-
-   unsigned int add_vertex( const Vec3d& new_vertex_position, 
-                            const Vec3d& new_vertex_velocity, 
-                            double new_vertex_mass );
-   
-   void remove_vertex(unsigned int v);
-
-   void clear_deleted_vertices( );
-
-   // ---------------------------------------------------------
-   // Utility
-
-   inline double get_triangle_area(unsigned int tri) const;
-   inline double get_triangle_area(const Vec3ui& tri) const;
-   inline double get_triangle_area(unsigned int v0, unsigned int v1, unsigned int v2) const;
-
-   inline double get_min_triangle_area( unsigned int& triangle_index ) const;
-   inline double get_min_triangle_area( ) const;
-   
-   inline Vec3d get_triangle_normal(unsigned int tri) const;
-   inline Vec3d get_triangle_normal(const Vec3ui& tri) const;
-   inline Vec3d get_triangle_normal(unsigned int v0, unsigned int v1, unsigned int v2) const;
-   
-   // Return the rank of the eigenspace of the quadric metric tensor at vertex v
-   unsigned int classify_vertex( unsigned int v );
-
-   inline Vec3d get_vertex_normal( unsigned int vertex ) const;
-   inline Vec3d get_vertex_normal_max( unsigned int vertex_index ) const;
-   
-   inline double get_edge_length( unsigned int edge_index ) const;
-   inline double get_average_edge_length() const;
-   inline double get_average_non_solid_edge_length() const;
-
-   /// Determine volume IDs for all vertices
-   void partition_surfaces( std::vector<unsigned int>& surface_ids, std::vector< std::vector< unsigned int> >& surfaces ) const;
-   
-   static double compute_max_timestep_quadratic_solve( const std::vector<Vec3ui>& tris, 
-                                                       const std::vector<Vec3d>& positions, 
-                                                       const std::vector<Vec3d>& displacements, 
-                                                       bool verbose );
-   
-   inline double get_surface_area( ) const;
-   inline double get_predicted_surface_area() const;
-   
-   inline double get_volume() const;
-   inline double get_predicted_volume() const;
-   
-   void get_triangle_intersections( const Vec3d& segment_point_a, 
+    //
+    // Broad phase collision detector
+    //
+    
+    /// Delete and rebuild the broad phase object, using AABBs defined from m_positions.
+    ///
+    void rebuild_static_broad_phase( );
+    
+    /// Delete and rebuild the broad phase object, using AABBs defined from m_positions and m_newpositions.
+    ///
+    void rebuild_continuous_broad_phase( );
+    
+    /// Assume that the specified vertex has moved.  Update the broadphase entries of the vertex, its incident edges and incident 
+    /// triangles.
+    ///
+    void update_static_broad_phase( size_t vertex_index );
+    
+    /// Assume that the specified vertex has moved.  Update the broadphase entries of the vertex, its incident edges and incident 
+    /// triangles, using current and predicted positions.
+    ///    
+    void update_continuous_broad_phase( size_t vertex_index );  
+    
+    /// Get the padded AABB of the specified vertex using current positions.
+    ///
+    void vertex_static_bounds(size_t v, Vec3d &xmin, Vec3d &xmax) const;
+    
+    /// Get the padded AABB of the specified edge using current positions.
+    ///
+    void edge_static_bounds(size_t e, Vec3d &xmin, Vec3d &xmax) const;
+    
+    /// Get the padded AABB of the specified triangle using current positions.
+    ///
+    void triangle_static_bounds(size_t t, Vec3d &xmin, Vec3d &xmax) const; 
+    
+    /// Get the padded AABB of the specified vertex using current and predicted positions.
+    ///
+    void vertex_continuous_bounds(size_t v, Vec3d &xmin, Vec3d &xmax) const;
+    
+    /// Get the padded AABB of the specified edge using current and predicted positions.
+    ///    
+    void edge_continuous_bounds(size_t e, Vec3d &xmin, Vec3d &xmax) const;
+    
+    /// Get the padded AABB of the specified triangle using current and predicted positions.
+    ///        
+    void triangle_continuous_bounds(size_t t, Vec3d &xmin, Vec3d &xmax) const;
+    
+    /// Caution: slow!
+    /// Check the consistency of the broad phase by comparing against the N^2 broadphase.
+    ///
+    void check_static_broad_phase_is_up_to_date() const;
+    
+    /// Caution: slow!
+    /// Check the consistency of the broad phase by comparing against the N^2 broadphase.  Checks using current and predicted vertex 
+    /// positions.
+    void check_continuous_broad_phase_is_up_to_date() const;
+    
+    // 
+    // Intersection detection 
+    //
+    
+    /// Get the set of triangles intersected by the given segment. Also returns the barycentric coordinate along the segment of each
+    /// intersection.
+    ///
+    void get_triangle_intersections(const Vec3d& segment_point_a, 
                                     const Vec3d& segment_point_b,
                                     std::vector<double>& hit_ss,
-                                    std::vector<unsigned int>& hit_triangles ) const;
-   
-   unsigned int get_number_of_triangle_intersections( const Vec3d& segment_point_a, 
+                                    std::vector<size_t>& hit_triangles ) const;
+    
+    /// Count the number of triangles intersected by the given segment.
+    ///
+    size_t get_number_of_triangle_intersections( const Vec3d& segment_point_a, 
+                                                const Vec3d& segment_point_b ) const;
+    
+    /// Using exact intersection testing, count the number of triangle intersected by the given segment.
+    ///
+    size_t get_number_of_triangle_intersections_exact( const Vec3d& segment_point_a, 
                                                       const Vec3d& segment_point_b ) const;
-   
-   unsigned int get_number_of_triangle_intersections_exact( const Vec3d& segment_point_a, 
-                                                            const Vec3d& segment_point_b ) const;
+    
+    /// Test the given triangle against all other triangles in the mesh for intersection.
+    ///
+    bool check_triangle_vs_all_triangles_for_intersection( size_t tri_index );
+    
+    /// Test the given triangle against all other triangles in the mesh for intersection.
+    ///
+    bool check_triangle_vs_all_triangles_for_intersection( const Vec3st& tri );
+    
+    /// Get all self-intersections in the surface
+    ///
+    void get_intersections(bool degeneracy_counts_as_intersection, 
+                           bool use_new_positions, 
+                           std::vector<Intersection>& intersections );
+    
+    /// Look for self-intersections, but stop when the first one is found
+    ///
+    void get_first_intersection( bool degeneracy_counts_as_intersection, 
+                                bool use_new_positions, 
+                                Intersection& intersections );
+    
+    /// Fire an assert if the mesh contains a self-intersection. Uses m_positions as the vertex locations.
+    ///
+    void assert_mesh_is_intersection_free( bool degeneracy_counts_as_intersection );              
+    
+    /// Using m_newpositions as the vertex locations, fire an assert if the mesh contains a self-intersection.
+    ///
+    void assert_predicted_mesh_is_intersection_free( bool degeneracy_counts_as_intersection ); 
 
-   double distance_to_surface( const Vec3d& p, unsigned int& closest_triangle );
-   bool point_is_inside( const Vec3d& p );
-   
-   
-   // ---------------------------------------------------------
-   // Proximity / collision detection and resolution
+    /// Returns the number of vertices in the mesh, including any vertices marked as deleted
+    ///
+    inline size_t get_num_vertices() const;
+    
+    /// Returns the current positions of a vertex.
+    ///
+    inline const Vec3d& get_position( size_t index ) const;
 
-   void apply_edge_edge_impulse( const Vec2ui& e0, const Vec2ui& e1, double s0, double s2, Vec3d& direction, double magnitude);
-   void apply_triangle_point_impulse(const Vec3ui& t, unsigned int v, double s1, double s2, double s3, Vec3d& direction, double magnitude);
+    /// Returns the set of all current vertex positions.
+    ///
+    inline const std::vector<Vec3d>& get_positions( ) const;
+    
+    /// Set the current position of an individual vertex.
+    ///
+    inline void set_position( size_t index, const Vec3d& x );   
+    
+    /// Set the current positions of all vertices in the mesh.
+    ///
+    inline void set_all_positions( const std::vector<Vec3d>& xs );
+    
+    /// Set the current positions of all vertices in the mesh, from a C-array of doubles
+    ///
+    inline void set_all_positions( size_t n, const double* xs );
+    
+    /// Copy predicted vertex positions into the current positions
+    ///
+    inline void set_positions_to_newpositions();
 
-   void handle_triangle_point_proximities( double dt );
-   void handle_edge_edge_proximities( double dt );
-
-   void add_point_candidates(unsigned int v, CollisionCandidateSet& collision_candidates);  
-   void add_edge_candidates(unsigned int e, CollisionCandidateSet& collision_candidates);
-   void add_triangle_candidates(unsigned int t, CollisionCandidateSet& collision_candidates);
-   void add_point_update_candidates(unsigned int v, CollisionCandidateSet& collision_candidates);
-   
-   // Impulse-based collision resolution on individual collisions [Bridson 2002]
-   // return true if we think we've handled all collisions
-   bool handle_collisions(double dt);
-
-   // run one sweep of collision handling, considering only collisions between movable vertices and nonmovable triangles
-   void handle_point_vs_solid_triangle_collisions( double dt );
-      
-   // ---------------------------------------------------------
-   // Simulataneous collision detection [Harmon et al. 2008]
-   
-   // detect all collisions
-   bool detect_collisions( std::vector<Collision>& collisions );
-   
-   // detect collisions among vertices present in impact_zones
-   void detect_new_collisions( const std::vector<ImpactZone> impact_zones, std::vector<Collision>& collisions );
-
-   // merge impact zones with common vertices
-   void merge_impact_zones( std::vector<ImpactZone>& impact_zones, std::vector<ImpactZone>& new_impact_zones );
-   
-   // iteratively run collision detection and inelastic projection on an active set of collisions
-   bool iterated_inelastic_projection( ImpactZone& iz, double dt );
-
-   // attempt to set normal velocity to zero for all collisions in the impact zone
-   bool inelastic_projection( const ImpactZone& iz );
-  
-   // detect and solve all collisions
-   bool handle_collisions_simultaneous(double dt);
-   
-   // ---------------------------------------------------------
-   // Rigid Impact Zones [BFA 2002]
-
-   bool collision_solved( const Collision& collision );
-   
-   bool new_rigid_impact_zones(double dt);
-   
-   void calculate_rigid_motion( double dt, std::vector<unsigned int>& vs );
-   
-   std::vector<unsigned int> merge_impact_zones( std::vector<unsigned int>& zones, 
-                                                 unsigned int z0, 
-                                                 unsigned int z1, 
-                                                 unsigned int z2, 
-                                                 unsigned int z3 );
-   
-   // ---------------------------------------------------------
-   // Broadphase
-
-   void rebuild_static_broad_phase( );
-   void rebuild_continuous_broad_phase( );
-
-   void update_static_broad_phase( unsigned int vertex_index );
-   void update_continuous_broad_phase( unsigned int vertex_index );  
-   
-   void vertex_static_bounds(unsigned int v, Vec3d &xmin, Vec3d &xmax) const;
-   void edge_static_bounds(unsigned int e, Vec3d &xmin, Vec3d &xmax) const;
-   void triangle_static_bounds(unsigned int t, Vec3d &xmin, Vec3d &xmax) const; 
-   
-   void vertex_continuous_bounds(unsigned int v, Vec3d &xmin, Vec3d &xmax) const;
-   void edge_continuous_bounds(unsigned int e, Vec3d &xmin, Vec3d &xmax) const;
-   void triangle_continuous_bounds(unsigned int t, Vec3d &xmin, Vec3d &xmax) const;
-
-   // ---------------------------------------------------------
-   // Intersection detection 
-   
-   bool check_triangle_vs_all_triangles_for_intersection( unsigned int tri_index );
-   bool check_triangle_vs_all_triangles_for_intersection( const Vec3ui& tri );
-      
-   void assert_mesh_is_intersection_free( bool degeneracy_counts_as_intersection = false );             // uses m_positions
-   void assert_predicted_mesh_is_intersection_free();    // uses m_newpositions
-
-   // ---------------------------------------------------------
-   // Data members
-      
-   // Elements closer than this are proximal
-   double m_proximity_epsilon;
-
-   // Dump lots of details to stdout
-   bool m_verbose;
-   
-   // Ensure that no mesh elements intersect, during mesh moving and mesh maintenance
-   bool m_collision_safety;
-   
-   // Vertex positions, predicted locations, velocities and masses
-   std::vector<Vec3d> m_positions, m_newpositions, m_velocities;
-   std::vector<double> m_masses;
-
-   // The mesh "graph"
-   NonDestructiveTriMesh m_mesh;
-
-   // collision acceleration structures
-   BroadPhase* m_broad_phase;
-      
-   // TEMP:
-   unsigned int m_num_collisions_this_step;
-   unsigned int m_total_num_collisions;
+    /// Returns the predicted position of a vertex.
+    ///
+    inline const Vec3d& get_newposition( size_t index ) const;
+    
+    /// Returns the set of all predicted vertex positions.
+    ///
+    inline const std::vector<Vec3d>& get_newpositions( ) const;
+    
+    /// Set the predicted position of an individual vertex.
+    ///
+    inline void set_newposition( size_t index, const Vec3d& x );   
+    
+    /// Set the predicted positions of all vertices in the mesh.
+    ///
+    inline void set_all_newpositions( const std::vector<Vec3d>& xs );
+    
+    /// Set the predicted positions of all vertices in the mesh from a C-array.
+    ///
+    inline void set_all_newpositions( size_t n, const double* xs );
+    
+    
+    //
+    // Data members
+    //
+    
+    /// Elements closer than this have repulsion forces applied
+    ///
+    double m_proximity_epsilon;
+    
+    /// Dump lots of details to stdout
+    ///
+    bool m_verbose;
+    
+    /// Ensure that no mesh elements intersect, during mesh moving and mesh maintenance
+    ///
+    bool m_collision_safety;
+    
+    /// Vertex positions, predicted locations, velocities and masses
+    ///
+    std::vector<double> m_masses;
+    
+    /// The mesh graph
+    ///
+    NonDestructiveTriMesh m_mesh;
+    
+    /// collision acceleration structures
+    ///
+    BroadPhase* m_broad_phase;
+    
+    /// Encapsulates the collision detection functionality
+    ///
+    CollisionPipeline* m_collision_pipeline;
+    
+    /// Amount to pad AABBs by when doing broad-phase collision detection
+    ///
+    double m_aabb_padding;
+    
+protected:
+    
+    friend class CollisionPipeline;
+    friend class ImpactZoneSolver;
+    friend class MeshSmoother;
+    
+    /// Current and predicted vertex positions
+    ///
+    std::vector<Vec3d> pm_positions, pm_newpositions;
+    
+    /// Temporary velocities field
+    ///
+    std::vector<Vec3d> m_velocities;
+    
 };
+
 
 // ---------------------------------------------------------
 //  Inline functions
 // ---------------------------------------------------------
-
-// --------------------------------------------------------
-///
-/// Determine if another collision has any vertices in common with this collision.
-///
-// --------------------------------------------------------
-
-inline bool Collision::overlap_vertices( const Collision& other ) const
-{
-   for ( unsigned short i = 0; i < 4; ++i )
-   {
-      if ( vertex_indices[i] == other.vertex_indices[0] || 
-           vertex_indices[i] == other.vertex_indices[1] || 
-           vertex_indices[i] == other.vertex_indices[2] || 
-           vertex_indices[i] == other.vertex_indices[3] )
-      {
-         return true;
-      }
-   }
-   
-   return false;
-}
-
-// --------------------------------------------------------
-///
-/// Determine if another collision has all the same vertices as this collision.
-///
-// --------------------------------------------------------
-
-inline bool Collision::same_vertices( const Collision& other ) const
-{
-   bool found[4];
-   for ( unsigned short i = 0; i < 4; ++i )
-   {
-      if ( vertex_indices[i] == other.vertex_indices[0] || 
-          vertex_indices[i] == other.vertex_indices[1] || 
-          vertex_indices[i] == other.vertex_indices[2] || 
-          vertex_indices[i] == other.vertex_indices[3] )
-      {
-         found[i] = true;
-      }
-      else
-      {
-         found[i] = false;
-      }
-   }
-   
-   return ( found[0] && found[1] && found[2] && found[3] );
-}
-
-// --------------------------------------------------------
-///
-/// Extract the set of all vertices in all collisions in an ImpactZone
-///
-// --------------------------------------------------------
-
-inline void ImpactZone::get_all_vertices( std::vector<unsigned int>& vertices ) const
-{
-   vertices.clear();
-   for ( unsigned int i = 0; i < collisions.size(); ++i )
-   {
-      add_unique( vertices, collisions[i].vertex_indices[0] );
-      add_unique( vertices, collisions[i].vertex_indices[1] );
-      add_unique( vertices, collisions[i].vertex_indices[2] );
-      add_unique( vertices, collisions[i].vertex_indices[3] );
-   }
-}
-
-
-// --------------------------------------------------------
-///
-/// Determine whether another ImpactZone shares any vertices with this ImpactZone
-///
-// --------------------------------------------------------
-
-inline bool ImpactZone::share_vertices( const ImpactZone& other ) const
-{
-   for ( unsigned int i = 0; i < collisions.size(); ++i )
-   {
-      for ( unsigned int j = 0; j < other.collisions.size(); ++j )
-      {
-         if ( collisions[i].overlap_vertices( other.collisions[j] ) )
-         {
-            return true;
-         }
-      }
-   }
-   
-   return false;
-}
-
-
-// --------------------------------------------------------
-///
-/// Add a collision to the list
-///
-// --------------------------------------------------------
-
-inline void add_to_collision_candidates( CollisionCandidateSet& collision_candidates, const Vec3ui& new_collision )
-{  
-   collision_candidates.push_back( new_collision );
-   return;   
-}
-
 
 // --------------------------------------------------------
 ///
@@ -452,7 +427,7 @@ inline void add_to_collision_candidates( CollisionCandidateSet& collision_candid
 
 inline double triangle_area( const Vec3d& v0, const Vec3d &v1, const Vec3d &v2 )
 {
-   return 0.5 * mag( cross( v1 - v0, v2 - v0 ) );
+    return 0.5 * mag( cross( v1 - v0, v2 - v0 ) );
 }
 
 // --------------------------------------------------------
@@ -461,10 +436,10 @@ inline double triangle_area( const Vec3d& v0, const Vec3d &v1, const Vec3d &v2 )
 ///
 // --------------------------------------------------------
 
-inline double DynamicSurface::get_triangle_area(unsigned int tri) const
+inline double DynamicSurface::get_triangle_area(size_t tri) const
 {
-   const Vec3ui &t = m_mesh.m_tris[tri]; 
-   return get_triangle_area(t[0], t[1], t[2]);
+    const Vec3st &t = m_mesh.get_triangle( tri ); 
+    return get_triangle_area(t[0], t[1], t[2]);
 }
 
 // --------------------------------------------------------
@@ -473,9 +448,9 @@ inline double DynamicSurface::get_triangle_area(unsigned int tri) const
 ///
 // --------------------------------------------------------
 
-inline double DynamicSurface::get_triangle_area(const Vec3ui& tri) const
+inline double DynamicSurface::get_triangle_area(const Vec3st& tri) const
 {
-   return get_triangle_area(tri[0], tri[1], tri[2]);
+    return get_triangle_area(tri[0], tri[1], tri[2]);
 }
 
 // --------------------------------------------------------
@@ -484,13 +459,13 @@ inline double DynamicSurface::get_triangle_area(const Vec3ui& tri) const
 ///
 // --------------------------------------------------------
 
-inline double DynamicSurface::get_triangle_area(unsigned int v0, unsigned int v1, unsigned int v2) const
+inline double DynamicSurface::get_triangle_area(size_t v0, size_t v1, size_t v2) const
 {
-   const Vec3d &p0 = m_positions[v0];
-   const Vec3d &p1 = m_positions[v1];
-   const Vec3d &p2 = m_positions[v2];
-   
-   return 0.5 * mag(cross(p1-p0, p2-p0));
+    const Vec3d &p0 = get_position(v0);
+    const Vec3d &p1 = get_position(v1);
+    const Vec3d &p2 = get_position(v2);
+    
+    return 0.5 * mag(cross(p1-p0, p2-p0));
 }
 
 // --------------------------------------------------------
@@ -501,9 +476,9 @@ inline double DynamicSurface::get_triangle_area(unsigned int v0, unsigned int v1
 
 inline Vec3d triangle_normal( const Vec3d& v0, const Vec3d &v1, const Vec3d &v2 )
 {
-   Vec3d u = v1 - v0;
-   Vec3d v = v2 - v0;
-   return normalized(cross(u, v));
+    Vec3d u = v1 - v0;
+    Vec3d v = v2 - v0;
+    return normalized(cross(u, v));
 }
 
 // --------------------------------------------------------
@@ -512,10 +487,10 @@ inline Vec3d triangle_normal( const Vec3d& v0, const Vec3d &v1, const Vec3d &v2 
 ///
 // --------------------------------------------------------
 
-inline Vec3d DynamicSurface::get_triangle_normal(unsigned int tri) const
+inline Vec3d DynamicSurface::get_triangle_normal(size_t tri) const
 {
-   const Vec3ui &t = m_mesh.m_tris[tri]; 
-   return get_triangle_normal(t[0], t[1], t[2]);
+    const Vec3st &t = m_mesh.get_triangle( tri ); 
+    return get_triangle_normal(t[0], t[1], t[2]);
 }
 
 // --------------------------------------------------------
@@ -524,9 +499,9 @@ inline Vec3d DynamicSurface::get_triangle_normal(unsigned int tri) const
 ///
 // --------------------------------------------------------
 
-inline Vec3d DynamicSurface::get_triangle_normal(const Vec3ui& tri) const
+inline Vec3d DynamicSurface::get_triangle_normal(const Vec3st& tri) const
 {
-   return get_triangle_normal(tri[0], tri[1], tri[2]);
+    return get_triangle_normal(tri[0], tri[1], tri[2]);
 }
 
 // --------------------------------------------------------
@@ -535,11 +510,19 @@ inline Vec3d DynamicSurface::get_triangle_normal(const Vec3ui& tri) const
 ///
 // --------------------------------------------------------
 
-inline Vec3d DynamicSurface::get_triangle_normal(unsigned int v0, unsigned int v1, unsigned int v2) const
+inline Vec3d DynamicSurface::get_triangle_normal(size_t v0, size_t v1, size_t v2) const
 {
-   Vec3d u = m_positions[v1] - m_positions[v0];
-   Vec3d v = m_positions[v2] - m_positions[v0];
-   return normalized(cross(u, v));
+    Vec3d u = get_position(v1) - get_position(v0);
+    Vec3d v = get_position(v2) - get_position(v0);
+    return normalized(cross(u, v));
+}
+
+// --------------------------------------------------------
+
+inline Vec3d DynamicSurface::get_triangle_barycenter( size_t triangle_index ) const
+{
+    const Vec3st& tri = m_mesh.get_triangle( triangle_index );
+    return 1.0 / 3.0 * ( get_position( tri[0] ) + get_position( tri[1] ) + get_position( tri[2] ) );
 }
 
 // --------------------------------------------------------
@@ -548,37 +531,25 @@ inline Vec3d DynamicSurface::get_triangle_normal(unsigned int v0, unsigned int v
 ///
 // --------------------------------------------------------
 
-inline double DynamicSurface::get_min_triangle_area( unsigned int& triangle_index ) const
+inline double DynamicSurface::get_min_triangle_area( size_t& triangle_index ) const
 {
-   double min_area = 1e30;
-   for ( unsigned int i = 0; i < m_mesh.m_tris.size(); ++i )
-   {
-      if ( m_mesh.m_tris[i][0] == m_mesh.m_tris[i][1] )
-      {
-         continue;
-      }
-      
-      double area = get_triangle_area(i);
-      if ( area < min_area )
-      {
-         min_area = area;
-         triangle_index = i;
-      }
-   }
-   
-   return min_area;
-}
-
-// --------------------------------------------------------
-///
-/// Return the smallest triangle area
-///
-// --------------------------------------------------------
-
-inline double DynamicSurface::get_min_triangle_area( ) const
-{
-   unsigned int dummy;
-   return get_min_triangle_area( dummy );
+    double min_area = BIG_DOUBLE;
+    for ( size_t i = 0; i < m_mesh.num_triangles(); ++i )
+    {
+        if ( m_mesh.get_triangle(i)[0] == m_mesh.get_triangle(i)[1] )
+        {
+            continue;
+        }
+        
+        double area = get_triangle_area(i);
+        if ( area < min_area )
+        {
+            min_area = area;
+            triangle_index = i;
+        }
+    }
+    
+    return min_area;
 }
 
 // --------------------------------------------------------
@@ -587,17 +558,17 @@ inline double DynamicSurface::get_min_triangle_area( ) const
 ///
 // --------------------------------------------------------
 
-inline Vec3d DynamicSurface::get_vertex_normal( unsigned int vertex ) const
+inline Vec3d DynamicSurface::get_vertex_normal( size_t vertex ) const
 {
-   Vec3d normal(0,0,0);
-   for ( unsigned int i = 0; i < m_mesh.m_vtxtri[vertex].size(); ++i )
-   {
-      normal += get_triangle_normal( m_mesh.m_vtxtri[vertex][i] );
-   }
-   normal /= double(m_mesh.m_vtxtri[vertex].size());
-   normal /= mag(normal);
-   
-   return normal;
+    Vec3d normal(0,0,0);
+    for ( size_t i = 0; i < m_mesh.m_vertex_to_triangle_map[vertex].size(); ++i )
+    {
+        normal += get_triangle_normal( m_mesh.m_vertex_to_triangle_map[vertex][i] );
+    }
+    normal /= double(m_mesh.m_vertex_to_triangle_map[vertex].size());
+    normal /= mag(normal);
+    
+    return normal;
 }
 
 // --------------------------------------------------------
@@ -606,34 +577,33 @@ inline Vec3d DynamicSurface::get_vertex_normal( unsigned int vertex ) const
 ///
 // --------------------------------------------------------
 
-inline Vec3d DynamicSurface::get_vertex_normal_max( unsigned int vertex_index ) const
+inline Vec3d DynamicSurface::get_vertex_normal_max( size_t vertex_index ) const
 {
-   const std::vector<unsigned int>& inc_tris = m_mesh.m_vtxtri[vertex_index];
-   
-   Vec3d sum_cross_products(0,0,0);
-   
-   for ( unsigned int i = 0; i < inc_tris.size(); ++i )
-   {
-      const Vec3ui& curr_tri = m_mesh.m_tris[inc_tris[i]];
-      
-      if ( curr_tri[0] == curr_tri[1] ) { continue; }
-      
-      Vec2ui other_two;
-      
-      NonDestructiveTriMesh::index_in_triangle( curr_tri, vertex_index, other_two );
-      
-      unsigned int verti = curr_tri[other_two[0]];
-      unsigned int vertnext = curr_tri[other_two[1]];
-      
-      Vec3d vi = m_positions[verti] - m_positions[vertex_index];
-      Vec3d vnext = m_positions[vertnext] - m_positions[vertex_index];
-      
-      sum_cross_products += cross( vi, vnext ) / ( mag2(vi)*mag2(vnext) );
-   }
-   
-   sum_cross_products /= mag( sum_cross_products );
-   
-   return sum_cross_products;
+    const std::vector<size_t>& inc_tris = m_mesh.m_vertex_to_triangle_map[vertex_index];
+    
+    Vec3d sum_cross_products(0,0,0);
+    
+    for ( size_t i = 0; i < inc_tris.size(); ++i )
+    {
+        const Vec3st& curr_tri = m_mesh.get_triangle( inc_tris[i] );
+        
+        if ( curr_tri[0] == curr_tri[1] ) { continue; }
+        
+        Vec2ui other_two;
+        NonDestructiveTriMesh::index_in_triangle( curr_tri, vertex_index, other_two );
+        
+        size_t verti = curr_tri[other_two[0]];
+        size_t vertnext = curr_tri[other_two[1]];
+        
+        Vec3d vi = get_position(verti) - get_position(vertex_index);
+        Vec3d vnext = get_position(vertnext) - get_position(vertex_index);
+        
+        sum_cross_products += cross( vi, vnext ) / ( mag2(vi)*mag2(vnext) );
+    }
+    
+    sum_cross_products /= mag( sum_cross_products );
+    
+    return sum_cross_products;
 }
 
 
@@ -643,9 +613,9 @@ inline Vec3d DynamicSurface::get_vertex_normal_max( unsigned int vertex_index ) 
 ///
 // --------------------------------------------------------
 
-inline double DynamicSurface::get_edge_length( unsigned int edge_index ) const
+inline double DynamicSurface::get_edge_length( size_t edge_index ) const
 {
-   return mag( m_positions[ m_mesh.m_edges[edge_index][1] ] - m_positions[ m_mesh.m_edges[edge_index][0] ] );
+    return mag( get_position( m_mesh.m_edges[edge_index][1] ) - get_position( m_mesh.m_edges[edge_index][0] ) );
 }
 
 // --------------------------------------------------------
@@ -656,14 +626,14 @@ inline double DynamicSurface::get_edge_length( unsigned int edge_index ) const
 
 inline double DynamicSurface::get_average_edge_length() const
 {
-   double sum_lengths = 0;
-   for ( unsigned int i = 0; i < m_mesh.m_edges.size(); ++i )
-   {
-      const Vec2ui& e = m_mesh.m_edges[i]; 
-      if ( e[0] == e[1] )  { continue; }
-      sum_lengths += mag( m_positions[e[1]] - m_positions[e[0]] ); 
-   }
-   return sum_lengths / (double) m_mesh.m_edges.size();   
+    double sum_lengths = 0;
+    for ( size_t i = 0; i < m_mesh.m_edges.size(); ++i )
+    {
+        const Vec2st& e = m_mesh.m_edges[i]; 
+        if ( e[0] == e[1] )  { continue; }
+        sum_lengths += mag( get_position(e[1]) - get_position(e[0]) ); 
+    }
+    return sum_lengths / (double) m_mesh.m_edges.size();   
 }
 
 // --------------------------------------------------------
@@ -674,17 +644,17 @@ inline double DynamicSurface::get_average_edge_length() const
 
 inline double DynamicSurface::get_average_non_solid_edge_length() const
 {
-   double sum_lengths = 0;
-   unsigned int counted_edges = 0;
-   for ( unsigned int i = 0; i < m_mesh.m_edges.size(); ++i )
-   {
-      const Vec2ui& e = m_mesh.m_edges[i]; 
-      if ( e[0] == e[1] )  { continue; }
-      if ( m_masses[e[0]] > 100.0 || m_masses[e[1]] > 100.0 ) { continue; }
-      sum_lengths += mag( m_positions[e[1]] - m_positions[e[0]] ); 
-      ++counted_edges;
-   }
-   return sum_lengths / (double) counted_edges;   
+    double sum_lengths = 0;
+    size_t counted_edges = 0;
+    for ( size_t i = 0; i < m_mesh.m_edges.size(); ++i )
+    {
+        const Vec2st& e = m_mesh.m_edges[i]; 
+        if ( e[0] == e[1] )  { continue; }
+        if ( edge_is_solid(i) ) { continue; }
+        sum_lengths += mag( get_position(e[1]) - get_position(e[0]) ); 
+        ++counted_edges;
+    }
+    return sum_lengths / (double) counted_edges;   
 }
 
 // --------------------------------------------------------
@@ -695,13 +665,14 @@ inline double DynamicSurface::get_average_non_solid_edge_length() const
 
 inline double DynamicSurface::get_surface_area( ) const
 {
-   double area=0;
-   for(unsigned int t=0; t < m_mesh.m_tris.size(); ++t )
-   {
-      if ( m_mesh.m_tris[t][0] ==  m_mesh.m_tris[t][1] ) { continue; }
-      area += get_triangle_area(t);
-   }
-   return area;
+    double area=0;
+    const std::vector<Vec3st>& tris = m_mesh.get_triangles();
+    for(size_t t=0; t < tris.size(); ++t )
+    {
+        if ( tris[t][0] ==  tris[t][1] ) { continue; }
+        area += get_triangle_area(t);
+    }
+    return area;
 }
 // --------------------------------------------------------
 ///
@@ -711,16 +682,17 @@ inline double DynamicSurface::get_surface_area( ) const
 
 inline double DynamicSurface::get_predicted_surface_area( ) const
 {
-   double area=0;
-   for(unsigned int t=0; t < m_mesh.m_tris.size(); ++t )
-   {
-      if ( m_mesh.m_tris[t][0] ==  m_mesh.m_tris[t][1] ) { continue; }
-      const Vec3d &p0 = m_newpositions[m_mesh.m_tris[t][0]];
-      const Vec3d &p1 = m_newpositions[m_mesh.m_tris[t][1]];
-      const Vec3d &p2 = m_newpositions[m_mesh.m_tris[t][2]];      
-      area += 0.5 * mag(cross(p1-p0, p2-p0));
-   }
-   return area;
+    double area=0;
+    const std::vector<Vec3st>& tris = m_mesh.get_triangles();
+    for(size_t t=0; t < tris.size(); ++t )
+    {
+        if ( tris[t][0] ==  tris[t][1] ) { continue; }
+        const Vec3d &p0 = get_newposition(tris[t][0]);
+        const Vec3d &p1 = get_newposition(tris[t][1]);
+        const Vec3d &p2 = get_newposition(tris[t][2]);      
+        area += 0.5 * mag(cross(p1-p0, p2-p0));
+    }
+    return area;
 }
 
 // --------------------------------------------------------
@@ -731,15 +703,16 @@ inline double DynamicSurface::get_predicted_surface_area( ) const
 
 inline double DynamicSurface::get_volume( ) const
 {
-   static const double inv_six = 1.0/6.0;
-   double volume=0;
-   for(unsigned int t=0; t < m_mesh.m_tris.size(); ++t )
-   {
-      if ( m_mesh.m_tris[t][0] ==  m_mesh.m_tris[t][1] ) { continue; }
-      const Vec3ui& tri = m_mesh.m_tris[t];
-      volume += inv_six * triple(m_positions[tri[0]], m_positions[tri[1]], m_positions[tri[2]]);
-   }
-   return volume;
+    static const double inv_six = 1.0/6.0;
+    double volume=0;
+    const std::vector<Vec3st>& tris = m_mesh.get_triangles();
+    for(size_t t=0; t < tris.size(); ++t )
+    {
+        if ( tris[t][0] == tris[t][1] ) { continue; }
+        const Vec3st& tri = tris[t];
+        volume += inv_six * triple(get_position(tri[0]), get_position(tri[1]), get_position(tri[2]));
+    }
+    return volume;
 }
 
 // --------------------------------------------------------
@@ -750,15 +723,247 @@ inline double DynamicSurface::get_volume( ) const
 
 inline double DynamicSurface::get_predicted_volume( ) const
 {
-   static const double inv_six = 1.0/6.0;
-   double volume=0;
-   for(unsigned int t=0; t < m_mesh.m_tris.size(); ++t )
-   {
-      if ( m_mesh.m_tris[t][0] ==  m_mesh.m_tris[t][1] ) { continue; }
-      const Vec3ui& tri = m_mesh.m_tris[t];
-      volume += inv_six * triple(m_newpositions[tri[0]], m_newpositions[tri[1]], m_newpositions[tri[2]]);
-   }
-   return volume;
+    static const double inv_six = 1.0/6.0;
+    double volume=0;
+    const std::vector<Vec3st>& tris = m_mesh.get_triangles();
+    for(size_t t=0; t < tris.size(); ++t )
+    {
+        if ( tris[t][0] ==  tris[t][1] ) { continue; }
+        const Vec3st& tri = tris[t];
+        volume += inv_six * triple(get_newposition(tri[0]), get_newposition(tri[1]), get_newposition(tri[2]));
+    }
+    return volume;
+}
+
+// --------------------------------------------------------
+///
+/// Return true if the specified vertex is solid (should be treated as having infinite mass).
+///
+// --------------------------------------------------------
+
+inline bool DynamicSurface::vertex_is_solid( size_t v ) const
+{
+    assert( v < m_masses.size() );
+    return ( m_masses[v] == std::numeric_limits<double>::infinity() );
+}
+
+// --------------------------------------------------------
+///
+/// Return true if either end vertex of the specified edge is solid (should be treated as having infinite mass).
+///
+// --------------------------------------------------------
+
+inline bool DynamicSurface::edge_is_solid( size_t e ) const
+{
+    const Vec2st& edge = m_mesh.m_edges[e];
+    return ( vertex_is_solid(edge[0]) || vertex_is_solid(edge[1]) );
+}
+
+// --------------------------------------------------------
+///
+/// Return true if any corner vertex of the specified triangle is solid (should be treated as having infinite mass).
+///
+// --------------------------------------------------------
+
+inline bool DynamicSurface::triangle_is_solid( size_t t ) const
+{
+    const Vec3st& tri = m_mesh.get_triangle(t);
+    return ( vertex_is_solid(tri[0]) || vertex_is_solid(tri[1]) || vertex_is_solid(tri[2]) );
+}
+
+
+// ---------------------------------------------------------
+///
+/// Returns the number of vertices in the mesh, including any vertices marked as deleted
+///
+// ---------------------------------------------------------
+
+inline size_t DynamicSurface::get_num_vertices() const
+{
+    return pm_positions.size();
+}
+
+// ---------------------------------------------------------
+///
+/// Returns the current positions of a vertex.
+///
+// ---------------------------------------------------------
+
+inline const Vec3d& DynamicSurface::get_position( size_t index ) const
+{
+    assert( index < pm_positions.size() );
+    return pm_positions[index];   
+}
+
+// ---------------------------------------------------------
+///
+/// Returns the set of all current vertex positions.
+///
+// ---------------------------------------------------------
+
+inline const std::vector<Vec3d>& DynamicSurface::get_positions( ) const
+{
+    return pm_positions;
+}
+
+// ---------------------------------------------------------
+///
+/// Set the current position of an individual vertex.
+///
+// ---------------------------------------------------------
+
+inline void DynamicSurface::set_position( size_t index, const Vec3d& x )
+{
+    assert( index < pm_positions.size() );
+    pm_positions[index] = x;
+    
+    // update broad phase
+    if ( m_collision_safety )
+    {
+        update_continuous_broad_phase( index );
+    }
+}
+
+// ---------------------------------------------------------
+///
+/// Set the current positions of all vertices in the mesh.
+///
+// ---------------------------------------------------------
+
+inline void DynamicSurface::set_all_positions( const std::vector<Vec3d>& xs )
+{
+    pm_positions = xs;
+    pm_newpositions = xs;
+    
+    // update broad phase
+    if ( m_collision_safety )
+    {
+        rebuild_continuous_broad_phase();
+    }
+}
+
+// ---------------------------------------------------------
+///
+/// Set the current positions of all vertices in the mesh, from a C-array of doubles
+///
+// ---------------------------------------------------------
+
+inline void DynamicSurface::set_all_positions( size_t n, const double* xs )
+{
+    pm_positions.resize(n);
+    for ( size_t i = 0; i < n; ++i )
+    {
+        pm_positions[i][0] = xs[3*i+0];
+        pm_positions[i][1] = xs[3*i+1];
+        pm_positions[i][2] = xs[3*i+2];
+    }
+    
+    pm_newpositions = pm_positions;
+    
+    // update broad phase
+    if ( m_collision_safety )
+    {
+        rebuild_continuous_broad_phase();
+    }
+}
+
+// ---------------------------------------------------------
+///
+/// Copy predicted vertex positions into the current positions
+///
+// ---------------------------------------------------------
+
+inline void DynamicSurface::set_positions_to_newpositions()
+{
+    pm_positions = pm_newpositions;
+    
+    if ( m_collision_safety )
+    {
+        rebuild_continuous_broad_phase();
+    }
+}
+
+// ---------------------------------------------------------
+///
+/// Returns the predicted position of a vertex.
+///
+// ---------------------------------------------------------
+
+inline const Vec3d& DynamicSurface::get_newposition( size_t index ) const
+{
+    assert( index < pm_newpositions.size() );
+    return pm_newpositions[index];   
+}
+
+// ---------------------------------------------------------
+///
+/// Set the predicted position of an individual vertex.
+///
+// ---------------------------------------------------------
+
+inline void DynamicSurface::set_newposition( size_t index, const Vec3d& x )
+{
+    assert( index < pm_newpositions.size() );
+    
+    pm_newpositions[index] = x;
+    
+    // update broad phase
+    if ( m_collision_safety )
+    {
+        update_continuous_broad_phase( index );
+    }
+    
+}
+
+// ---------------------------------------------------------
+///
+/// Set the predicted positions of all vertices in the mesh.
+///
+// ---------------------------------------------------------
+
+inline void DynamicSurface::set_all_newpositions( const std::vector<Vec3d>& xs )
+{
+    pm_newpositions = xs;
+    
+    // update broad phase
+    if ( m_collision_safety )
+    {
+        rebuild_continuous_broad_phase();
+    }
+}
+
+// ---------------------------------------------------------
+///
+/// Set the predicted positions of all vertices in the mesh from a C-array.
+///
+// ---------------------------------------------------------
+
+inline void DynamicSurface::set_all_newpositions( size_t n, const double* xs )
+{
+    pm_newpositions.resize(n);
+    for ( size_t i = 0; i < n; ++i )
+    {
+        pm_newpositions[i][0] = xs[3*i+0];
+        pm_newpositions[i][1] = xs[3*i+1];
+        pm_newpositions[i][2] = xs[3*i+2];
+    }
+    
+    // update broad phase
+    if ( m_collision_safety )
+    {
+        rebuild_continuous_broad_phase();
+    }
+}
+
+// ---------------------------------------------------------
+///
+/// Returns the set of all predicted vertex positions.
+///
+// ---------------------------------------------------------
+
+inline const std::vector<Vec3d>& DynamicSurface::get_newpositions( ) const
+{
+    return pm_newpositions;
 }
 
 
@@ -768,24 +973,28 @@ inline double DynamicSurface::get_predicted_volume( ) const
 ///
 // --------------------------------------------------------
 
-inline bool check_edge_triangle_intersection_by_index( unsigned int edge_a, 
-                                                       unsigned int edge_b, 
-                                                       unsigned int triangle_a, 
-                                                       unsigned int triangle_b, 
-                                                       unsigned int triangle_c, 
-                                                       std::vector<Vec3d>& m_positions, 
-                                                       bool verbose )
+inline bool check_edge_triangle_intersection_by_index( size_t edge_a, 
+                                                      size_t edge_b, 
+                                                      size_t triangle_a, 
+                                                      size_t triangle_b, 
+                                                      size_t triangle_c, 
+                                                      const std::vector<Vec3d>& m_positions, 
+                                                      bool verbose )
 {
-   if (    edge_a == triangle_a || edge_a == triangle_b || edge_a == triangle_c 
+    if (    edge_a == triangle_a || edge_a == triangle_b || edge_a == triangle_c 
         || edge_b == triangle_a || edge_b == triangle_b || edge_b == triangle_c )
-   {
-      return false;
-   }
-   
-   return segment_triangle_intersection( m_positions[edge_a], edge_a, m_positions[edge_b], edge_b,
-                                         m_positions[triangle_a], triangle_a, m_positions[triangle_b], triangle_b, m_positions[triangle_c], triangle_c,
-                                         true, verbose );
-   
+    {
+        return false;
+    }
+    
+    static const bool DEGEN_COUNTS_AS_INTERSECTION = true;
+    
+    return segment_triangle_intersection(m_positions[edge_a], edge_a, m_positions[edge_b], edge_b,
+                                         m_positions[triangle_a], triangle_a, 
+                                         m_positions[triangle_b], triangle_b, 
+                                         m_positions[triangle_c], triangle_c,
+                                         DEGEN_COUNTS_AS_INTERSECTION, verbose);
+    
 }
 
 
@@ -796,58 +1005,60 @@ inline bool check_edge_triangle_intersection_by_index( unsigned int edge_a,
 ///
 // --------------------------------------------------------
 
-inline bool check_triangle_triangle_intersection( Vec3ui triangle_a, 
-                                                  Vec3ui triangle_b, 
-                                                  std::vector<Vec3d>& m_positions )
+inline bool check_triangle_triangle_intersection( Vec3st triangle_a, 
+                                                 Vec3st triangle_b, 
+                                                 const std::vector<Vec3d>& positions )
 {
-   if ( triangle_a[0] == triangle_a[1] || triangle_b[0] == triangle_b[1] )    
-   { 
-      return false; 
-   }
-   
-   if ( check_edge_triangle_intersection_by_index( triangle_a[0], triangle_a[1], 
+    if ( triangle_a[0] == triangle_a[1] || triangle_b[0] == triangle_b[1] )    
+    { 
+        return false; 
+    }
+    
+    if ( check_edge_triangle_intersection_by_index( triangle_a[0], triangle_a[1], 
                                                    triangle_b[0], triangle_b[1], triangle_b[2], 
-                                                   m_positions, false ) )
-   {
-      return true;
-   }
-   
-   if ( check_edge_triangle_intersection_by_index( triangle_a[1], triangle_a[2], 
+                                                   positions, false ) )
+    {
+        return true;
+    }
+    
+    if ( check_edge_triangle_intersection_by_index( triangle_a[1], triangle_a[2], 
                                                    triangle_b[0], triangle_b[1], triangle_b[2], 
-                                                   m_positions, false ) )
-   {
-      return true;
-   }
-   
-   if ( check_edge_triangle_intersection_by_index( triangle_a[2], triangle_a[0], 
+                                                   positions, false ) )
+    {
+        return true;
+    }
+    
+    if ( check_edge_triangle_intersection_by_index( triangle_a[2], triangle_a[0], 
                                                    triangle_b[0], triangle_b[1], triangle_b[2], 
-                                                   m_positions, false ) )
-   {
-      return true;
-   }
-   
-   if ( check_edge_triangle_intersection_by_index( triangle_b[0], triangle_b[1], 
+                                                   positions, false ) )
+    {
+        return true;
+    }
+    
+    if ( check_edge_triangle_intersection_by_index( triangle_b[0], triangle_b[1], 
                                                    triangle_a[0], triangle_a[1], triangle_a[2], 
-                                                   m_positions, false ) )
-   {
-      return true;
-   }
-   
-   if ( check_edge_triangle_intersection_by_index( triangle_b[1], triangle_b[2], 
+                                                   positions, false ) )
+    {
+        return true;
+    }
+    
+    if ( check_edge_triangle_intersection_by_index( triangle_b[1], triangle_b[2], 
                                                    triangle_a[0], triangle_a[1], triangle_a[2], 
-                                                   m_positions, false ) )
-   {
-      return true;
-   }
-   
-   if ( check_edge_triangle_intersection_by_index( triangle_b[2], triangle_b[0], 
+                                                   positions, false ) )
+    {
+        return true;
+    }
+    
+    if ( check_edge_triangle_intersection_by_index( triangle_b[2], triangle_b[0], 
                                                    triangle_a[0], triangle_a[1], triangle_a[2], 
-                                                   m_positions, false ) )
-   {
+                                                   positions, false ) )
+    {
 		return true;
-   }
-   
-   return false;
+    }
+    
+    return false;
 }
 
 #endif
+
+

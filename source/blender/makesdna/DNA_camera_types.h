@@ -24,12 +24,15 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_CAMERA_TYPES_H
-#define DNA_CAMERA_TYPES_H
 
 /** \file DNA_camera_types.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_CAMERA_TYPES_H__
+#define __DNA_CAMERA_TYPES_H__
+
+#include "DNA_defs.h"
 
 #include "DNA_ID.h"
 
@@ -51,16 +54,20 @@ typedef struct Camera {
 	float passepartalpha;
 	float clipsta, clipend;
 	float lens, ortho_scale, drawsize;
+	float sensor_x, sensor_y;
 	float shiftx, shifty;
 	
 	/* yafray: dof params */
-	/* qdn: yafray var 'YF_dofdist' now enabled for defocus composit node as well.
-			The name was not changed so that no other files need to be modified */
+	/* qdn: yafray var 'YF_dofdist' now enabled for defocus composite node as well.
+	 * The name was not changed so that no other files need to be modified */
 	float YF_dofdist;
 
-	struct Ipo *ipo;			// XXX depreceated... old animation system
+	struct Ipo *ipo  DNA_DEPRECATED; /* old animation system, deprecated for 2.5 */
 	
 	struct Object *dof_ob;
+
+	char sensor_fit;
+	char pad[7];
 } Camera;
 
 /* **************** CAMERA ********************* */
@@ -88,10 +95,18 @@ typedef struct Camera {
 #define CAM_ANGLETOGGLE		32
 #define CAM_DS_EXPAND		64
 #define CAM_PANORAMA		128
+#define CAM_SHOWSENSOR		256
 
 /* yafray: dof sampling switch */
 /* #define CAM_YF_NO_QMC	512 */ /* depreceated */
 
+/* Sensor fit */
+#define CAMERA_SENSOR_FIT_AUTO	0
+#define CAMERA_SENSOR_FIT_HOR	1
+#define CAMERA_SENSOR_FIT_VERT	2
+
+#define DEFAULT_SENSOR_WIDTH	32.0f
+#define DEFAULT_SENSOR_HEIGHT	18.0f
 
 #ifdef __cplusplus
 }

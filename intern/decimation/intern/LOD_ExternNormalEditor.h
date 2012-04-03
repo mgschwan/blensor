@@ -30,8 +30,8 @@
  */
 
 
-#ifndef NAN_INCLUDED_ExternNormalEditor_h
-#define NAN_INCLUDED_ExternNormalEditor_h
+#ifndef __LOD_EXTERNNORMALEDITOR_H__
+#define __LOD_EXTERNNORMALEDITOR_H__
 
 #include "MEM_NonCopyable.h"
 #include "LOD_ManMesh2.h"
@@ -122,7 +122,7 @@ private :
 		MT_Vector3 
 	ComputeNormal(
 		const LOD_TriFace &face
-	) const ;
+	) const;
 
 	const 
 		MT_Vector3

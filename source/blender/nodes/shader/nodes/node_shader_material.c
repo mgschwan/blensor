@@ -78,7 +78,7 @@ static bNodeSocketTemplate sh_node_material_ext_out[]= {
 
 static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
 {
-	if(data && node->id) {
+	if (data && node->id) {
 		ShadeResult shrnode;
 		ShadeInput *shi;
 		ShaderCallData *shcd= data;
@@ -103,17 +103,17 @@ static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, 
 		shi->har= shi->mat->har;
 		
 		/* write values */
-		if(hasinput[MAT_IN_COLOR])
+		if (hasinput[MAT_IN_COLOR])
 			nodestack_get_vec(&shi->r, SOCK_VECTOR, in[MAT_IN_COLOR]);
 		
-		if(hasinput[MAT_IN_SPEC])
+		if (hasinput[MAT_IN_SPEC])
 			nodestack_get_vec(&shi->specr, SOCK_VECTOR, in[MAT_IN_SPEC]);
 		
-		if(hasinput[MAT_IN_REFL])
+		if (hasinput[MAT_IN_REFL])
 			nodestack_get_vec(&shi->refl, SOCK_FLOAT, in[MAT_IN_REFL]);
 		
 		/* retrieve normal */
-		if(hasinput[MAT_IN_NORMAL]) {
+		if (hasinput[MAT_IN_NORMAL]) {
 			nodestack_get_vec(shi->vn, SOCK_VECTOR, in[MAT_IN_NORMAL]);
 			normalize_v3(shi->vn);
 		}
@@ -121,24 +121,24 @@ static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, 
 			copy_v3_v3(shi->vn, shi->vno);
 		
 		/* custom option to flip normal */
-		if(node->custom1 & SH_NODE_MAT_NEG) {
+		if (node->custom1 & SH_NODE_MAT_NEG) {
 			negate_v3(shi->vn);
 		}
 		
 		if (node->type == SH_NODE_MATERIAL_EXT) {
-			if(hasinput[MAT_IN_MIR])
+			if (hasinput[MAT_IN_MIR])
 				nodestack_get_vec(&shi->mirr, SOCK_VECTOR, in[MAT_IN_MIR]);
-			if(hasinput[MAT_IN_AMB])
+			if (hasinput[MAT_IN_AMB])
 				nodestack_get_vec(&shi->amb, SOCK_FLOAT, in[MAT_IN_AMB]);
-			if(hasinput[MAT_IN_EMIT])
+			if (hasinput[MAT_IN_EMIT])
 				nodestack_get_vec(&shi->emit, SOCK_FLOAT, in[MAT_IN_EMIT]);
-			if(hasinput[MAT_IN_SPECTRA])
+			if (hasinput[MAT_IN_SPECTRA])
 				nodestack_get_vec(&shi->spectra, SOCK_FLOAT, in[MAT_IN_SPECTRA]);
-			if(hasinput[MAT_IN_RAY_MIRROR])
+			if (hasinput[MAT_IN_RAY_MIRROR])
 				nodestack_get_vec(&shi->ray_mirror, SOCK_FLOAT, in[MAT_IN_RAY_MIRROR]);
-			if(hasinput[MAT_IN_ALPHA])
+			if (hasinput[MAT_IN_ALPHA])
 				nodestack_get_vec(&shi->alpha, SOCK_FLOAT, in[MAT_IN_ALPHA]);
-			if(hasinput[MAT_IN_TRANSLUCENCY])
+			if (hasinput[MAT_IN_TRANSLUCENCY])
 				nodestack_get_vec(&shi->translucency, SOCK_FLOAT, in[MAT_IN_TRANSLUCENCY]);			
 		}
 		
@@ -147,45 +147,45 @@ static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, 
 		shi->nodes= 0;
 		
 		/* write to outputs */
-		if(node->custom1 & SH_NODE_MAT_DIFF) {
-			VECCOPY(col, shrnode.combined);
-			if(!(node->custom1 & SH_NODE_MAT_SPEC)) {
+		if (node->custom1 & SH_NODE_MAT_DIFF) {
+			copy_v3_v3(col, shrnode.combined);
+			if (!(node->custom1 & SH_NODE_MAT_SPEC)) {
 				sub_v3_v3(col, shrnode.spec);
 			}
 		}
-		else if(node->custom1 & SH_NODE_MAT_SPEC) {
-			VECCOPY(col, shrnode.spec);
+		else if (node->custom1 & SH_NODE_MAT_SPEC) {
+			copy_v3_v3(col, shrnode.spec);
 		}
 		else
 			col[0]= col[1]= col[2]= 0.0f;
 		
 		col[3]= shrnode.alpha;
 		
-		if(shi->do_preview)
+		if (shi->do_preview)
 			nodeAddToPreview(node, col, shi->xs, shi->ys, shi->do_manage);
 		
-		VECCOPY(out[MAT_OUT_COLOR]->vec, col);
+		copy_v3_v3(out[MAT_OUT_COLOR]->vec, col);
 		out[MAT_OUT_ALPHA]->vec[0]= shrnode.alpha;
 		
-		if(node->custom1 & SH_NODE_MAT_NEG) {
+		if (node->custom1 & SH_NODE_MAT_NEG) {
 			shi->vn[0]= -shi->vn[0];
 			shi->vn[1]= -shi->vn[1];
 			shi->vn[2]= -shi->vn[2];
 		}
 		
-		VECCOPY(out[MAT_OUT_NORMAL]->vec, shi->vn);
+		copy_v3_v3(out[MAT_OUT_NORMAL]->vec, shi->vn);
 		
 		/* Extended material options */
 		if (node->type == SH_NODE_MATERIAL_EXT) {
 			/* Shadow, Reflect, Refract, Radiosity, Speed seem to cause problems inside
 			 * a node tree :( */
-			VECCOPY(out[MAT_OUT_DIFFUSE]->vec, shrnode.diff);
-			VECCOPY(out[MAT_OUT_SPEC]->vec, shrnode.spec);
-			VECCOPY(out[MAT_OUT_AO]->vec, shrnode.ao);
+			copy_v3_v3(out[MAT_OUT_DIFFUSE]->vec, shrnode.diff);
+			copy_v3_v3(out[MAT_OUT_SPEC]->vec, shrnode.spec);
+			copy_v3_v3(out[MAT_OUT_AO]->vec, shrnode.ao);
 		}
 		
 		/* copy passes, now just active node */
-		if(node->flag & NODE_ACTIVE_ID) {
+		if (node->flag & NODE_ACTIVE_ID) {
 			float combined[4], alpha;
 
 			copy_v4_v4(combined, shcd->shr->combined);
@@ -218,7 +218,7 @@ static GPUNodeLink *gpu_get_input_link(GPUNodeStack *in)
 
 static int gpu_shader_material(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUNodeStack *out)
 {
-	if(node->id) {
+	if (node->id) {
 		GPUShadeInput shi;
 		GPUShadeResult shr;
 		bNodeSocket *sock;
@@ -235,47 +235,47 @@ static int gpu_shader_material(GPUMaterial *mat, bNode *node, GPUNodeStack *in, 
 		GPU_shadeinput_set(mat, (Material*)node->id, &shi);
 
 		/* write values */
-		if(hasinput[MAT_IN_COLOR])
+		if (hasinput[MAT_IN_COLOR])
 			shi.rgb = gpu_get_input_link(&in[MAT_IN_COLOR]);
 		
-		if(hasinput[MAT_IN_SPEC])
+		if (hasinput[MAT_IN_SPEC])
 			shi.specrgb = gpu_get_input_link(&in[MAT_IN_SPEC]);
 		
-		if(hasinput[MAT_IN_REFL])
+		if (hasinput[MAT_IN_REFL])
 			shi.refl = gpu_get_input_link(&in[MAT_IN_REFL]);
 		
 		/* retrieve normal */
-		if(hasinput[MAT_IN_NORMAL]) {
+		if (hasinput[MAT_IN_NORMAL]) {
 			GPUNodeLink *tmp;
 			shi.vn = gpu_get_input_link(&in[MAT_IN_NORMAL]);
 			GPU_link(mat, "vec_math_normalize", shi.vn, &shi.vn, &tmp);
 		}
 		
 		/* custom option to flip normal */
-		if(node->custom1 & SH_NODE_MAT_NEG)
+		if (node->custom1 & SH_NODE_MAT_NEG)
 			GPU_link(mat, "vec_math_negate", shi.vn, &shi.vn);
 
 		if (node->type == SH_NODE_MATERIAL_EXT) {
-			if(hasinput[MAT_IN_AMB])
+			if (hasinput[MAT_IN_AMB])
 				shi.amb= gpu_get_input_link(&in[MAT_IN_AMB]);
-			if(hasinput[MAT_IN_EMIT])
+			if (hasinput[MAT_IN_EMIT])
 				shi.emit= gpu_get_input_link(&in[MAT_IN_EMIT]);
-			if(hasinput[MAT_IN_ALPHA])
+			if (hasinput[MAT_IN_ALPHA])
 				shi.alpha= gpu_get_input_link(&in[MAT_IN_ALPHA]);
 		}
 
 		GPU_shaderesult_set(&shi, &shr); /* clears shr */
 		
 		/* write to outputs */
-		if(node->custom1 & SH_NODE_MAT_DIFF) {
+		if (node->custom1 & SH_NODE_MAT_DIFF) {
 			out[MAT_OUT_COLOR].link= shr.combined;
 
-			if(!(node->custom1 & SH_NODE_MAT_SPEC)) {
+			if (!(node->custom1 & SH_NODE_MAT_SPEC)) {
 				GPUNodeLink *link;
 				GPU_link(mat, "vec_math_sub", shr.combined, shr.spec, &out[MAT_OUT_COLOR].link, &link);
 			}
 		}
-		else if(node->custom1 & SH_NODE_MAT_SPEC) {
+		else if (node->custom1 & SH_NODE_MAT_SPEC) {
 			out[MAT_OUT_COLOR].link= shr.spec;
 		}
 		else
@@ -285,7 +285,7 @@ static int gpu_shader_material(GPUMaterial *mat, bNode *node, GPUNodeStack *in, 
 
 		out[MAT_OUT_ALPHA].link = shr.alpha; //
 		
-		if(node->custom1 & SH_NODE_MAT_NEG)
+		if (node->custom1 & SH_NODE_MAT_NEG)
 			GPU_link(mat, "vec_math_negate", shi.vn, &shi.vn);
 		out[MAT_OUT_NORMAL].link = shi.vn;
 
@@ -300,33 +300,33 @@ static int gpu_shader_material(GPUMaterial *mat, bNode *node, GPUNodeStack *in, 
 	return 0;
 }
 
-void register_node_type_sh_material(ListBase *lb)
+void register_node_type_sh_material(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, SH_NODE_MATERIAL, "Material", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
+	node_type_base(ttype, &ntype, SH_NODE_MATERIAL, "Material", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING);
 	node_type_socket_templates(&ntype, sh_node_material_in, sh_node_material_out);
 	node_type_size(&ntype, 120, 80, 240);
 	node_type_init(&ntype, node_shader_init_material);
 	node_type_exec(&ntype, node_shader_exec_material);
 	node_type_gpu(&ntype, gpu_shader_material);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
 
 
-void register_node_type_sh_material_ext(ListBase *lb)
+void register_node_type_sh_material_ext(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, SH_NODE_MATERIAL_EXT, "Extended Material", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
+	node_type_base(ttype, &ntype, SH_NODE_MATERIAL_EXT, "Extended Material", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING);
 	node_type_socket_templates(&ntype, sh_node_material_ext_in, sh_node_material_ext_out);
 	node_type_size(&ntype, 120, 80, 240);
 	node_type_init(&ntype, node_shader_init_material);
 	node_type_exec(&ntype, node_shader_exec_material);
 	node_type_gpu(&ntype, gpu_shader_material);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-

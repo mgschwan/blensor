@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software Foundation,
-# Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 # The Original Code is Copyright (C) 2006, Blender Foundation
 # All rights reserved.
@@ -45,7 +45,6 @@ set(SRC
 	common/cubic_ccd_wrapper.cpp
 	common/fe_ccd_wrapper.cpp
 	common/fileio.cpp
-	common/gluvi.cpp
 	common/levelset.cpp
 	common/makelevelset2.cpp
 	common/makelevelset3.cpp
@@ -82,7 +81,6 @@ set(SRC
 	common/clamped_spline.h
 	common/collisionqueries.h
 	common/fileio.h
-	common/gluvi.h
 	common/grid3.h
 	common/hashtable.h
 	common/lapack_wrapper.h
@@ -122,7 +120,7 @@ set(SRC
 	common/tunicate/tunicate.h
 	)
 
-add_definitions(-DNOGUI)
+add_definitions(-DNO_GUI)
 add_definitions(-DUSE_FORTRAN_BLAS)
 
 blender_add_lib(extern_eltopo "${SRC}" "${INC}" "${INC_SYS}")

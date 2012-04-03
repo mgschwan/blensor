@@ -27,14 +27,18 @@
  */
 
 
-#ifndef AUD_JACKDEVICE
-#define AUD_JACKDEVICE
+#ifndef __AUD_JACKDEVICE_H__
+#define __AUD_JACKDEVICE_H__
 
 
 #include "AUD_SoftwareDevice.h"
 #include "AUD_Buffer.h"
 
 #include <string>
+
+#if defined(__APPLE__) // always first include for jack weaklinking !
+#include <weakjack.h>
+#endif
 
 #include <jack.h>
 #include <ringbuffer.h>
@@ -201,4 +205,4 @@ public:
 	bool doesPlayback();
 };
 
-#endif //AUD_JACKDEVICE
+#endif //__AUD_JACKDEVICE_H__

@@ -55,15 +55,15 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
-#ifndef _DDS_PIXELFORMAT_H
-#define _DDS_PIXELFORMAT_H
+#ifndef __PIXELFORMAT_H__
+#define __PIXELFORMAT_H__
 
 #include <Common.h>
 
 	namespace PixelFormat
 	{
 
-		// Convert component @a c having @a inbits to the returned value having @a outbits.
+		// Convert component \a c having \a inbits to the returned value having \a outbits.
 		inline uint convert(uint c, uint inbits, uint outbits)
 		{
 			if (inbits == 0)

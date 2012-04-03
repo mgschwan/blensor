@@ -30,8 +30,8 @@
  *  \brief actuator for global game stuff
  */
 
-#ifndef __KX_GAMEACTUATOR
-#define __KX_GAMEACTUATOR
+#ifndef __KX_GAMEACTUATOR_H__
+#define __KX_GAMEACTUATOR_H__
 
 #include "SCA_IActuator.h"
 
@@ -40,7 +40,7 @@
 
 class KX_GameActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 protected:
 	int							m_mode;
 	bool						m_restart;

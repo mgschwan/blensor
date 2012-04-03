@@ -7,8 +7,8 @@
 //
 // ---------------------------------------------------------
 
-#ifndef SUBDIVISIONSCHEME_H
-#define SUBDIVISIONSCHEME_H
+#ifndef EL_TOPO_SUBDIVISIONSCHEME_H
+#define EL_TOPO_SUBDIVISIONSCHEME_H
 
 // ---------------------------------------------------------
 // Nested includes
@@ -20,10 +20,11 @@
 //  Forwards and typedefs
 // ---------------------------------------------------------
 
-class DynamicSurface;
+class SurfTrack;
+class NonDestructiveTriMesh;
 
 // ---------------------------------------------------------
-//  Interface declarations
+//  Class definitions
 // ---------------------------------------------------------
 
 // --------------------------------------------------------
@@ -35,8 +36,13 @@ class DynamicSurface;
 class SubdivisionScheme
 {
 public:
-   virtual ~SubdivisionScheme() {}
-   virtual void generate_new_midpoint( unsigned int edge_index, const DynamicSurface& surface, Vec3d& new_point ) = 0;
+    
+    virtual ~SubdivisionScheme() {}
+    
+    /// Given an edge, compute the offset midpoint
+    ///
+    virtual void generate_new_midpoint( size_t edge_index, const SurfTrack& surface, Vec3d& new_point ) = 0;
+    
 };
 
 // --------------------------------------------------------
@@ -48,7 +54,11 @@ public:
 class MidpointScheme : public SubdivisionScheme
 {
 public:
-   void generate_new_midpoint( unsigned int edge_index, const DynamicSurface& surface, Vec3d& new_point );   
+    
+    /// Given an edge, compute the offset midpoint
+    ///
+    void generate_new_midpoint( size_t edge_index, const SurfTrack& surface, Vec3d& new_point );   
+    
 };
 
 // --------------------------------------------------------
@@ -59,9 +69,14 @@ public:
 
 class ButterflyScheme : public SubdivisionScheme
 {
-public:   
-   void generate_new_midpoint( unsigned int edge_index, const DynamicSurface& surface, Vec3d& new_point );
+public:  
+    
+    /// Given an edge, compute the offset midpoint
+    ///
+    void generate_new_midpoint( size_t edge_index, const SurfTrack& surface, Vec3d& new_point );
+    
 };
+
 
 // --------------------------------------------------------
 ///
@@ -72,7 +87,11 @@ public:
 class QuadraticErrorMinScheme : public SubdivisionScheme
 {
 public:
-   void generate_new_midpoint( unsigned int edge_index, const DynamicSurface& surface, Vec3d& new_point );
+    
+    /// Given an edge, compute the offset midpoint
+    ///
+    void generate_new_midpoint( size_t edge_index, const SurfTrack& surface, Vec3d& new_point );
+    
 };
 
 

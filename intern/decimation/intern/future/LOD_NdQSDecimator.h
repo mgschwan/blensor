@@ -30,8 +30,8 @@
  */
 
 
-#ifndef NAN_INCLUDED_LOD_NdQSDecimator_H
-#define NAN_INCLUDED_LOD_NdQSDecimator_H
+#ifndef __LOD_NDQSDECIMATOR_H__
+#define __LOD_NDQSDECIMATOR_H__
 
 #include "common/NonCopyable.h"
 #include "LOD_ManMesh2.h"

@@ -45,7 +45,7 @@ class add_mesh_bolt(bpy.types.Operator):
     ''''''
     bl_idname = "mesh.bolt_add"
     bl_label = "Add Bolt"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'PRESET'}
     bl_description = "adds many types of Bolts"
     
     align_matrix = mathutils.Matrix()
@@ -229,8 +229,8 @@ class add_mesh_bolt(bpy.types.Operator):
             if self.bf_Bit_Type == 'bf_Bit_None':
                 pass
             elif self.bf_Bit_Type == 'bf_Bit_Allen':
-                 col.prop(self, 'bf_Allen_Bit_Depth')
-                 col.prop(self, 'bf_Allen_Bit_Flat_Distance')
+                col.prop(self, 'bf_Allen_Bit_Depth')
+                col.prop(self, 'bf_Allen_Bit_Flat_Distance')
             elif self.bf_Bit_Type == 'bf_Bit_Philips':
                 col.prop(self, 'bf_Phillips_Bit_Depth')
                 col.prop(self, 'bf_Philips_Bit_Dia')

@@ -26,6 +26,8 @@
 #include <map>		// array functionality for the propertylist
 #include "STR_String.h"	// STR_String class
 
+using namespace std;
+
 #ifdef WITH_CXX_GUARDEDALLOC
 #include "MEM_guardedalloc.h"
 #endif
@@ -150,7 +152,7 @@ struct ValueFlags {
 
 /**
  *	Base Class for all Actions performed on CValue's. Can be extended for undo/redo system in future.
-*/
+ */
 class CAction
 {
 public:
@@ -179,7 +181,7 @@ public:
  *
  * Together with CExpression, CValue and it's derived classes can be used to
  * parse expressions into a parsetree with error detecting/correcting capabilities
- * also expandible by a CFactory pluginsystem 
+ * also expandable by a CFactory pluginsystem 
  *
  * Base class for all editor functionality, flexible object type that allows
  * calculations and uses reference counting for memory management.
@@ -200,7 +202,7 @@ public:
 class CValue  : public PyObjectPlus
 
 {
-Py_Header;
+Py_Header
 public:
 	enum AllocationTYPE {
 		STACKVALUE		= 0,
@@ -221,7 +223,7 @@ public:
 	//static PyObject*	PyMake(PyObject*,PyObject*);
 	virtual PyObject *py_repr(void)
 	{
-		return PyUnicode_FromString((const char*)GetText());
+		return PyUnicode_From_STR_String(GetText());
 	}
 
 	virtual PyObject*	ConvertValueToPython() {
@@ -314,18 +316,18 @@ public:
 	virtual CValue*		FindIdentifier(const STR_String& identifiername);
 	/** Set the wireframe color of this value depending on the CSG
 	 * operator type <op>
-	 * @attention: not implemented */
+	 * \attention: not implemented */
 	virtual void		SetColorOperator(VALUE_OPERATOR op);
 
 	virtual const STR_String &	GetText() = 0;
 	virtual double		GetNumber() = 0;
-	double*				ZeroVector() { return m_sZeroVec; };
+	double*				ZeroVector() { return m_sZeroVec; }
 	virtual double*		GetVector3(bool bGetTransformedVec = false);
 
 	virtual STR_String&	GetName() = 0;											// Retrieve the name of the value
 	virtual void		SetName(const char *name) = 0;								// Set the name of the value
 	/** Sets the value to this cvalue.
-	 * @attention this particular function should never be called. Why not abstract? */
+	 * \attention this particular function should never be called. Why not abstract? */
 	virtual void		SetValue(CValue* newval);
 	virtual CValue*		GetReplica() =0;
 	virtual void			ProcessReplica();
@@ -348,11 +350,11 @@ public:
 	virtual bool		IsSelected()											{ return m_ValFlags.Selected; }
 	inline bool			IsReleaseRequested()									{ return m_ValFlags.ReleaseRequested; }
 	virtual bool		IsVisible()												{ return m_ValFlags.Visible;}
-	virtual void		SetCustomFlag1(bool bCustomFlag)						{ m_ValFlags.CustomFlag1 = bCustomFlag;};
-	virtual bool		IsCustomFlag1()											{ return m_ValFlags.CustomFlag1;};
+	virtual void		SetCustomFlag1(bool bCustomFlag)						{ m_ValFlags.CustomFlag1 = bCustomFlag;}
+	virtual bool		IsCustomFlag1()											{ return m_ValFlags.CustomFlag1;}
 
-	virtual void		SetCustomFlag2(bool bCustomFlag)						{ m_ValFlags.CustomFlag2 = bCustomFlag;};
-	virtual bool		IsCustomFlag2()											{ return m_ValFlags.CustomFlag2;};
+	virtual void		SetCustomFlag2(bool bCustomFlag)						{ m_ValFlags.CustomFlag2 = bCustomFlag;}
+	virtual bool		IsCustomFlag2()											{ return m_ValFlags.CustomFlag2;}
 
 protected:																		
 	virtual void		DisableRefCount();										// Disable reference counting for this value
@@ -379,18 +381,23 @@ private:
 // of object. So, for *any* CValue-derived object this should be set to CValue,
 // for *any* CExpression-derived object this should be set to CExpression.
 //
-#define PLUGIN_DECLARE_SERIAL(class_name, root_base_class_name)											\
-public:																									\
-	virtual root_base_class_name *	Copy()					{ return new class_name; }					\
-	virtual bool EdSerialize(CompressorArchive& arch,class CFactoryManager* facmgr,bool bIsStoring);    \
-	virtual bool EdIdSerialize(CompressorArchive& arch,class CFactoryManager* facmgr,bool bIsStoring)	\
-{																										\
-	if (bIsStoring)																						\
-		arch.StoreString(#class_name);																	\
-																										\
-	return false;																						\
-}																										\
-	
+#define PLUGIN_DECLARE_SERIAL(class_name, root_base_class_name)                \
+public:                                                                        \
+	virtual root_base_class_name *Copy() {                                     \
+		return new class_name;                                                 \
+	}                                                                          \
+	virtual bool EdSerialize(CompressorArchive& arch,                          \
+	                         class CFactoryManager* facmgr,                    \
+	                         bool bIsStoring);                                 \
+	virtual bool EdIdSerialize(CompressorArchive& arch,                        \
+	                           class CFactoryManager* facmgr,                  \
+	                           bool bIsStoring)                                \
+	{                                                                          \
+		if (bIsStoring)                                                        \
+			arch.StoreString(#class_name);                                     \
+		return false;                                                          \
+	}                                                                          \
+
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -424,7 +431,7 @@ public:
 		//if (namefromprop.Length() > 0)
 		//	return namefromprop;
 		return m_strNewName;
-	};						// name of Value
+	}						// name of Value
 	
 protected:
 	STR_String					m_strNewName;				    // Identification

@@ -29,8 +29,8 @@
  *  \ingroup bgeconv
  */
 
-#ifndef BL_ARMATUREOBJECT
-#define BL_ARMATUREOBJECT
+#ifndef __BL_ARMATUREOBJECT_H__
+#define __BL_ARMATUREOBJECT_H__
 
 #include "KX_GameObject.h"
 #include "BL_ArmatureConstraint.h"
@@ -51,7 +51,7 @@ class KX_BlenderSceneConverter;
 
 class BL_ArmatureObject : public KX_GameObject  
 {
-	Py_Header;
+	Py_Header
 public:
 
 	double GetLastFrame ();

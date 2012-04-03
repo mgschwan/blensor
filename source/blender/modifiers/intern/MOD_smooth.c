@@ -39,12 +39,11 @@
 #include "BLI_utildefines.h"
 #include "BLI_string.h"
 
+#include "MEM_guardedalloc.h"
+
 #include "BKE_cdderivedmesh.h"
 #include "BKE_particle.h"
 #include "BKE_deform.h"
-
-
-#include "MEM_guardedalloc.h"
 
 #include "MOD_modifiertypes.h"
 #include "MOD_util.h"
@@ -68,7 +67,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	tsmd->fac = smd->fac;
 	tsmd->repeat = smd->repeat;
 	tsmd->flag = smd->flag;
-	BLI_strncpy(tsmd->defgrp_name, smd->defgrp_name, 32);
+	BLI_strncpy(tsmd->defgrp_name, smd->defgrp_name, sizeof(tsmd->defgrp_name));
 }
 
 static int isDisabled(ModifierData *md, int UNUSED(useRenderParams))
@@ -79,7 +78,7 @@ static int isDisabled(ModifierData *md, int UNUSED(useRenderParams))
 	flag = smd->flag & (MOD_SMOOTH_X|MOD_SMOOTH_Y|MOD_SMOOTH_Z);
 
 	/* disable if modifier is off for X, Y and Z or if factor is 0 */
-	if((smd->fac == 0.0f) || flag == 0) return 1;
+	if ((smd->fac == 0.0f) || flag == 0) return 1;
 
 	return 0;
 }
@@ -90,7 +89,7 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
 	CustomDataMask dataMask = 0;
 
 	/* ask for vertexgroups if we need them */
-	if(smd->defgrp_name[0]) dataMask |= CD_MASK_MDEFORMVERT;
+	if (smd->defgrp_name[0]) dataMask |= CD_MASK_MDEFORMVERT;
 
 	return dataMask;
 }
@@ -125,7 +124,7 @@ static void smoothModifier_do(
 	modifier_get_vgroup(ob, dm, smd->defgrp_name, &dvert, &defgrp_index);
 
 	/* NOTICE: this can be optimized a little bit by moving the
-	* if (dvert) out of the loop, if needed */
+	 * if (dvert) out of the loop, if needed */
 	for (j = 0; j < smd->repeat; j++) {
 		for (i = 0; i < numDMEdges; i++) {
 			float fvec[3];
@@ -154,24 +153,19 @@ static void smoothModifier_do(
 		}
 
 		if (dvert) {
-			for (i = 0; i < numVerts; i++) {
-				MDeformWeight *dw = NULL;
+			MDeformVert *dv= dvert;
+			for (i = 0; i < numVerts; i++, dv++) {
 				float f, fm, facw, *fp, *v;
-				int k;
 				short flag = smd->flag;
 
 				v = vertexCos[i];
 				fp = &ftmp[i*3];
 
-				for (k = 0; k < dvert[i].totweight; ++k) {
-					if(dvert[i].dw[k].def_nr == defgrp_index) {
-						dw = &dvert[i].dw[k];
-						break;
-					}
-				}
-				if (!dw) continue;
 
-				f = fac * dw->weight;
+				f= defvert_find_weight(dv, defgrp_index);
+				if (f <= 0.0f) continue;
+
+				f *= fac;
 				fm = 1.0f - f;
 
 				/* fp is the sum of uctmp[i] verts, so must be averaged */
@@ -225,22 +219,22 @@ static void deformVerts(
 	DerivedMesh *dm= get_dm(ob, NULL, derivedData, NULL, 0);
 
 	smoothModifier_do((SmoothModifierData *)md, ob, dm,
-			   vertexCos, numVerts);
+	                  vertexCos, numVerts);
 
-	if(dm != derivedData)
+	if (dm != derivedData)
 		dm->release(dm);
 }
 
 static void deformVertsEM(
-					 ModifierData *md, Object *ob, struct EditMesh *editData,
+					 ModifierData *md, Object *ob, struct BMEditMesh *editData,
 	  DerivedMesh *derivedData, float (*vertexCos)[3], int numVerts)
 {
 	DerivedMesh *dm= get_dm(ob, editData, derivedData, NULL, 0);
 
 	smoothModifier_do((SmoothModifierData *)md, ob, dm,
-			   vertexCos, numVerts);
+	                  vertexCos, numVerts);
 
-	if(dm != derivedData)
+	if (dm != derivedData)
 		dm->release(dm);
 }
 

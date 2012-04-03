@@ -53,7 +53,7 @@ KX_CameraActuator::KX_CameraActuator(
 	float hght,
 	float minhght,
 	float maxhght,
-	bool  xytog,
+	short axis,
 	float damping
 ): 
 	SCA_IActuator(gameobj, KX_ACT_CAMERA),
@@ -61,7 +61,7 @@ KX_CameraActuator::KX_CameraActuator(
 	m_height (hght),
 	m_minHeight (minhght),
 	m_maxHeight (maxhght),
-	m_x (xytog),
+	m_axis(axis),
 	m_damping (damping)
 {
 	if (m_ob)
@@ -121,7 +121,7 @@ static float Kx_Normalize(float *n)
 	
 	d= n[0]*n[0]+n[1]*n[1]+n[2]*n[2];
 	/* FLT_EPSILON is too large! A larger value causes normalize errors in a scaled down utah teapot */
-	if(d>0.0000000000001) {
+	if (d>0.0000000000001) {
 		d= sqrt(d);
 
 		n[0]/=d; 
@@ -142,7 +142,7 @@ static void Kx_Crossf(float *c, float *a, float *b)
 }
 
 
-static void Kx_VecUpMat3(float *vec, float mat[][3], short axis)
+static void Kx_VecUpMat3(float vec[3], float mat[][3], short axis)
 {
 
 	// Construct a camera matrix s.t. the specified axis
@@ -155,29 +155,29 @@ static void Kx_VecUpMat3(float *vec, float mat[][3], short axis)
 	float inp;
 	short cox = 0, coy = 0, coz = 0;
 	
-	/* up varieeren heeft geen zin, is eigenlijk helemaal geen up!
-	 * zie VecUpMat3old
+	/* up range has no meaning, is not really up!
+	 * see: VecUpMat3old
 	 */
 
-	if(axis==0) {
+	if (axis==0) {
 		cox= 0; coy= 1; coz= 2;		/* Y up Z tr */
 	}
-	if(axis==1) {
+	if (axis==1) {
 		cox= 1; coy= 2; coz= 0;		/* Z up X tr */
 	}
-	if(axis==2) {
+	if (axis==2) {
 		cox= 2; coy= 0; coz= 1;		/* X up Y tr */
 	}
-	if(axis==3) {
+	if (axis==3) {
 		cox= 0; coy= 1; coz= 2;		/* Y op -Z tr */
 		vec[0]= -vec[0];
 		vec[1]= -vec[1];
 		vec[2]= -vec[2];
 	}
-	if(axis==4) {
+	if (axis==4) {
 		cox= 1; coy= 0; coz= 2;		/*  */
 	}
-	if(axis==5) {
+	if (axis==5) {
 		cox= 2; coy= 1; coz= 0;		/* Y up X tr */
 	}
 
@@ -186,7 +186,7 @@ static void Kx_VecUpMat3(float *vec, float mat[][3], short axis)
 	mat[coz][2]= vec[2];
 	if (Kx_Normalize((float *)mat[coz]) == 0.f) {
 		/* this is a very abnormal situation: the camera has reach the object center exactly
-		   We will choose a completely arbitrary direction */
+		 * We will choose a completely arbitrary direction */
 		mat[coz][0] = 1.0f;
 		mat[coz][1] = 0.0f;
 		mat[coz][2] = 0.0f;
@@ -210,7 +210,7 @@ static void Kx_VecUpMat3(float *vec, float mat[][3], short axis)
 
 bool KX_CameraActuator::Update(double curtime, bool frame)
 {
-	/* wondering... is it really neccesary/desirable to suppress negative    */
+	/* wondering... is it really necessary/desirable to suppress negative    */
 	/* events here?                                                          */
 	bool bNegativeEvent = IsNegativeEvent();
 	RemoveAllEvents();
@@ -239,9 +239,9 @@ bool KX_CameraActuator::Update(double curtime, bool frame)
 	/* CONSTRAINT 6: again: fixed height relative to floor below actor        */
 	/* CONSTRAINT 7: track to floor below actor                               */
 	/* CONSTRAINT 8: look a little bit left or right, depending on how the
-
-	   character is looking (horizontal x)
- */
+	 *
+	 * character is looking (horizontal x)
+	 */
 
 	/* ...and then set the camera position. Since we assume the parent of    */
 	/* this actuator is always a camera, just set the parent position and    */
@@ -264,23 +264,50 @@ bool KX_CameraActuator::Update(double curtime, bool frame)
 
 
 	/* C4: camera behind actor   */
-	if (m_x) {
-		fp1[0] = actormat[0][0];
-		fp1[1] = actormat[1][0];
-		fp1[2] = actormat[2][0];
+	switch (m_axis) {
+		case OB_POSX:
+			/* X */
+			fp1[0] = actormat[0][0];
+			fp1[1] = actormat[1][0];
+			fp1[2] = actormat[2][0];
 
-		fp2[0] = frommat[0][0];
-		fp2[1] = frommat[1][0];
-		fp2[2] = frommat[2][0];
-	} 
-	else {
-		fp1[0] = actormat[0][1];
-		fp1[1] = actormat[1][1];
-		fp1[2] = actormat[2][1];
+			fp2[0] = frommat[0][0];
+			fp2[1] = frommat[1][0];
+			fp2[2] = frommat[2][0];
+			break;
+		case OB_POSY:
+			/* Y */
+			fp1[0] = actormat[0][1];
+			fp1[1] = actormat[1][1];
+			fp1[2] = actormat[2][1];
 
-		fp2[0] = frommat[0][1];
-		fp2[1] = frommat[1][1];
-		fp2[2] = frommat[2][1];
+			fp2[0] = frommat[0][1];
+			fp2[1] = frommat[1][1];
+			fp2[2] = frommat[2][1];
+			break;
+		case OB_NEGX:
+			/* -X */
+			fp1[0] = -actormat[0][0];
+			fp1[1] = -actormat[1][0];
+			fp1[2] = -actormat[2][0];
+
+			fp2[0] = frommat[0][0];
+			fp2[1] = frommat[1][0];
+			fp2[2] = frommat[2][0];
+			break;
+		case OB_NEGY:
+			/* -Y */
+			fp1[0] = -actormat[0][1];
+			fp1[1] = -actormat[1][1];
+			fp1[2] = -actormat[2][1];
+
+			fp2[0] = frommat[0][1];
+			fp2[1] = frommat[1][1];
+			fp2[2] = frommat[2][1];
+			break;
+		default:
+			assert(0);
+			break;
 	}
 	
 	inp= fp1[0]*fp2[0] + fp1[1]*fp2[1] + fp1[2]*fp2[2];
@@ -291,8 +318,8 @@ bool KX_CameraActuator::Update(double curtime, bool frame)
 	from[2]+= fac*fp1[2];
 	
 	/* alleen alstie ervoor ligt: cross testen en loodrechte bijtellen */
-	if(inp<0.0) {
-		if(fp1[0]*fp2[1] - fp1[1]*fp2[0] > 0.0) {
+	if (inp<0.0) {
+		if (fp1[0]*fp2[1] - fp1[1]*fp2[0] > 0.0) {
 			from[0]-= fac*fp1[1];
 			from[1]+= fac*fp1[0];
 		}
@@ -309,14 +336,14 @@ bool KX_CameraActuator::Update(double curtime, bool frame)
 	rc[2]= (lookat[2]-from[2]);
 	distsq= rc[0]*rc[0] + rc[1]*rc[1] + rc[2]*rc[2];
 
-	if(distsq > maxdistsq) {
+	if (distsq > maxdistsq) {
 		distsq = 0.15*(distsq-maxdistsq)/distsq;
 		
 		from[0] += distsq*rc[0];
 		from[1] += distsq*rc[1];
 		from[2] += distsq*rc[2];
 	}
-	else if(distsq < mindistsq) {
+	else if (distsq < mindistsq) {
 		distsq = 0.15*(mindistsq-distsq)/mindistsq;
 		
 		from[0] -= distsq*rc[0];
@@ -346,7 +373,7 @@ bool KX_CameraActuator::Update(double curtime, bool frame)
 	return true;
 }
 
-CValue *KX_CameraActuator::findObject(char *obName) 
+CValue *KX_CameraActuator::findObject(const char *obName)
 {
 	/* hook to object system */
 	return NULL;
@@ -389,7 +416,7 @@ PyAttributeDef KX_CameraActuator::Attributes[] = {
 	KX_PYATTRIBUTE_FLOAT_RW("min",-FLT_MAX,FLT_MAX,KX_CameraActuator,m_minHeight),
 	KX_PYATTRIBUTE_FLOAT_RW("max",-FLT_MAX,FLT_MAX,KX_CameraActuator,m_maxHeight),
 	KX_PYATTRIBUTE_FLOAT_RW("height",-FLT_MAX,FLT_MAX,KX_CameraActuator,m_height),
-	KX_PYATTRIBUTE_BOOL_RW("useXY",KX_CameraActuator,m_x),
+	KX_PYATTRIBUTE_SHORT_RW("axis", 0, 3, true, KX_CameraActuator,m_axis),
 	KX_PYATTRIBUTE_RW_FUNCTION("object", KX_CameraActuator, pyattr_get_object,	pyattr_set_object),
 	KX_PYATTRIBUTE_FLOAT_RW("damping",0.f,10.f,KX_CameraActuator,m_damping),
 	{NULL}

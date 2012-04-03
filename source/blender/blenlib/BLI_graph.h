@@ -1,5 +1,29 @@
-#ifndef BLI_GRAPH_H_
-#define BLI_GRAPH_H_
+/*
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * The Original Code is Copyright (C) 2008 Blender Foundation.
+ * All rights reserved.
+ *
+ * Contributor(s): Joshua Leung
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
+#ifndef __BLI_GRAPH_H__
+#define __BLI_GRAPH_H__
 
 /** \file BLI_graph.h
  *  \ingroup bli
@@ -117,7 +141,6 @@ void BLI_flagArcs(BGraph *graph, int flag);
 
 int BLI_hasAdjacencyList(BGraph *rg);
 void BLI_buildAdjacencyList(BGraph *rg);
-void BLI_rebuildAdjacencyList(BGraph* rg);
 void BLI_rebuildAdjacencyListForNode(BGraph* rg, BNode *node);
 void BLI_freeAdjacencyList(BGraph *rg);
 
@@ -154,10 +177,10 @@ void BLI_mirrorAlongAxis(float v[3], float center[3], float axis[3]);
 
 /* BArc symmetry flags
  * 
- * axial symetry sides */
+ * axial symmetry sides */
 #define SYM_SIDE_POSITIVE		1
 #define SYM_SIDE_NEGATIVE		2
 /* Anything higher is the order in radial symmetry */
 #define SYM_SIDE_RADIAL			3
 
-#endif /*BLI_GRAPH_H_*/
+#endif /*__BLI_GRAPH_H__*/

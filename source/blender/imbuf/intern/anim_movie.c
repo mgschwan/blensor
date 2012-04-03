@@ -1,7 +1,4 @@
 /*
- * anim.c
- *
- *
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -48,8 +45,12 @@
 #undef AVIIF_KEYFRAME // redefined in AVI_avi.h
 #undef AVIIF_LIST // redefined in AVI_avi.h
 
-#define FIXCC(fcc)  if (fcc == 0)	fcc = mmioFOURCC('N', 'o', 'n', 'e'); \
-		if (fcc == BI_RLE8) fcc = mmioFOURCC('R', 'l', 'e', '8');
+#define FIXCC(fcc) \
+	{ \
+		if (fcc == 0)       { fcc = mmioFOURCC('N', 'o', 'n', 'e'); } \
+		if (fcc == BI_RLE8) { fcc = mmioFOURCC('R', 'l', 'e', '8'); } \
+	}
+
 #endif
 
 #include <sys/types.h>
@@ -64,7 +65,7 @@
 #endif
 
 #include "BLI_blenlib.h" /* BLI_remlink BLI_filesize BLI_addtail
-							BLI_countlist BLI_stringdec */
+                          * BLI_countlist BLI_stringdec */
 #include "BLI_utildefines.h"
 #include "BLI_math_base.h"
 
@@ -113,7 +114,8 @@
 #endif
 #endif
 
-int ismovie(const char *UNUSED(name)) {
+int ismovie(const char *UNUSED(filepath))
+{
 	return 0;
 }
 
@@ -129,28 +131,31 @@ static void free_anim_movie(struct anim *UNUSED(anim)) { ; }
 # define PATHSEPERATOR '/'
 #endif
 
-static int an_stringdec(const char *string, char* head, char *tail, unsigned short *numlen) {
+static int an_stringdec(const char *string, char* head, char *tail, unsigned short *numlen)
+{
 	unsigned short len,nume,nums=0;
 	short i,found=FALSE;
 
 	len=strlen(string);
 	nume = len;
 
-	for(i=len-1;i>=0;i--){
+	for (i=len-1;i>=0;i--) {
 		if (string[i]==PATHSEPERATOR) break;
 		if (isdigit(string[i])) {
-			if (found){
+			if (found) {
 				nums=i;
-			} else{
+			}
+			else {
 				nume=i;
 				nums=i;
 				found=TRUE;
 			}
-		} else{
+		}
+		else {
 			if (found) break;
 		}
 	}
-	if (found){
+	if (found) {
 		strcpy(tail ,&string[nume+1]);
 		strcpy(head, string);
 		head[nums]= '\0';
@@ -164,11 +169,13 @@ static int an_stringdec(const char *string, char* head, char *tail, unsigned sho
 }
 
 
-static void an_stringenc(char *string, const char *head, const char *tail, unsigned short numlen, int pic) {
+static void an_stringenc(char *string, const char *head, const char *tail, unsigned short numlen, int pic)
+{
 	BLI_stringenc(string, head, tail, numlen, pic);
 }
 
-static void free_anim_avi (struct anim *anim) {
+static void free_anim_avi (struct anim *anim)
+{
 #if defined(_WIN32) && !defined(FREE_WINDOWS)
 	int i;
 #endif
@@ -187,7 +194,7 @@ static void free_anim_avi (struct anim *anim) {
 		anim->pgf = NULL;
 	}
 
-	for (i = 0; i < anim->avistreams; i++){
+	for (i = 0; i < anim->avistreams; i++) {
 		AVIStreamRelease(anim->pavi[i]);
 	}
 	anim->avistreams = 0;
@@ -209,7 +216,8 @@ static void free_anim_ffmpeg(struct anim * anim);
 static void free_anim_redcode(struct anim * anim);
 #endif
 
-void IMB_free_anim(struct anim * anim) {
+void IMB_free_anim(struct anim * anim)
+{
 	if (anim == NULL) {
 		printf("free anim, anim == NULL\n");
 		return;
@@ -232,14 +240,23 @@ void IMB_free_anim(struct anim * anim) {
 	MEM_freeN(anim);
 }
 
-void IMB_close_anim(struct anim * anim) {
+void IMB_close_anim(struct anim * anim)
+{
 	if (anim == NULL) return;
 
 	IMB_free_anim(anim);
 }
 
+void IMB_close_anim_proxies(struct anim *anim)
+{
+	if (anim == NULL)
+		return;
 
-struct anim * IMB_open_anim( const char * name, int ib_flags, int streamindex) {
+	IMB_free_indices(anim);
+}
+
+struct anim * IMB_open_anim( const char * name, int ib_flags, int streamindex)
+{
 	struct anim * anim;
 
 	anim = (struct anim*)MEM_callocN(sizeof(struct anim), "anim struct");
@@ -252,7 +269,8 @@ struct anim * IMB_open_anim( const char * name, int ib_flags, int streamindex) {
 }
 
 
-static int startavi (struct anim *anim) {
+static int startavi (struct anim *anim)
+{
 
 	AviError avierror;
 #if defined(_WIN32) && !defined(FREE_WINDOWS)
@@ -306,7 +324,8 @@ static int startavi (struct anim *anim) {
 						lpbi = (LPBITMAPINFOHEADER)abFormat;
 						anim->avi->header->Height = lpbi->biHeight;
 						anim->avi->header->Width = lpbi->biWidth;
-					} else {
+					}
+					else {
 						FIXCC(avis.fccHandler);
 						FIXCC(avis.fccType);
 						printf("Can't find AVI decoder for type : %4.4hs/%4.4hs\n",
@@ -324,11 +343,13 @@ static int startavi (struct anim *anim) {
 			//
 			if ((anim->avistreams == 0) || (firstvideo == -1)) {
 				avierror = AVI_ERROR_FORMAT;
-			} else {
+			}
+			else {
 				avierror = AVI_ERROR_NONE;
 				anim->firstvideo = firstvideo;
 			}
-		} else {
+		}
+		else {
 			AVIFileExit();
 		}
 	}
@@ -358,7 +379,8 @@ static int startavi (struct anim *anim) {
 	return 0;
 }
 
-static ImBuf * avi_fetchibuf (struct anim *anim, int position) {
+static ImBuf * avi_fetchibuf (struct anim *anim, int position)
+{
 	ImBuf *ibuf = NULL;
 	int *tmp;
 	int y;
@@ -372,11 +394,12 @@ static ImBuf * avi_fetchibuf (struct anim *anim, int position) {
 		if (anim->pgf) {
 			lpbi = AVIStreamGetFrame(anim->pgf, position + AVIStreamStart(anim->pavi[anim->firstvideo]));
 			if (lpbi) {
-				ibuf = IMB_ibImageFromMemory((unsigned char *) lpbi, 100, IB_rect);
+				ibuf = IMB_ibImageFromMemory((unsigned char *) lpbi, 100, IB_rect, "<avi_fetchibuf>");
 //Oh brother...
 			}
 		}
-	} else {
+	}
+	else {
 #else
 	if (1) {
 #endif
@@ -408,7 +431,8 @@ static ImBuf * avi_fetchibuf (struct anim *anim, int position) {
 
 extern void do_init_ffmpeg(void);
 
-static int startffmpeg(struct anim * anim) {
+static int startffmpeg(struct anim * anim)
+{
 	int            i, videoStream;
 
 	AVCodec *pCodec;
@@ -431,11 +455,11 @@ static int startffmpeg(struct anim * anim) {
 
 	do_init_ffmpeg();
 
-	if(av_open_input_file(&pFormatCtx, anim->name, NULL, 0, NULL)!=0) {
+	if (av_open_input_file(&pFormatCtx, anim->name, NULL, 0, NULL)!=0) {
 		return -1;
 	}
 
-	if(av_find_stream_info(pFormatCtx)<0) {
+	if (av_find_stream_info(pFormatCtx)<0) {
 		av_close_input_file(pFormatCtx);
 		return -1;
 	}
@@ -446,7 +470,7 @@ static int startffmpeg(struct anim * anim) {
 	/* Find the video stream */
 	videoStream = -1;
 
-	for(i = 0; i < pFormatCtx->nb_streams; i++)
+	for (i = 0; i < pFormatCtx->nb_streams; i++)
 		if (pFormatCtx->streams[i]->codec->codec_type
 		   == AVMEDIA_TYPE_VIDEO) {
 			if (streamcount > 0) {
@@ -457,7 +481,7 @@ static int startffmpeg(struct anim * anim) {
 			break;
 		}
 
-	if(videoStream==-1) {
+	if (videoStream==-1) {
 		av_close_input_file(pFormatCtx);
 		return -1;
 	}
@@ -466,14 +490,14 @@ static int startffmpeg(struct anim * anim) {
 
 	/* Find the decoder for the video stream */
 	pCodec = avcodec_find_decoder(pCodecCtx->codec_id);
-	if(pCodec == NULL) {
+	if (pCodec == NULL) {
 		av_close_input_file(pFormatCtx);
 		return -1;
 	}
 
 	pCodecCtx->workaround_bugs = 1;
 
-	if(avcodec_open(pCodecCtx, pCodec) < 0) {
+	if (avcodec_open(pCodecCtx, pCodec) < 0) {
 		av_close_input_file(pFormatCtx);
 		return -1;
 	}
@@ -507,7 +531,6 @@ static int startffmpeg(struct anim * anim) {
 	anim->last_frame = 0;
 	anim->last_pts = -1;
 	anim->next_pts = -1;
-	anim->next_undecoded_pts = -1;
 	anim->next_packet.stream_index = -1;
 
 	anim->pFormatCtx = pFormatCtx;
@@ -516,6 +539,7 @@ static int startffmpeg(struct anim * anim) {
 	anim->videoStream = videoStream;
 
 	anim->pFrame = avcodec_alloc_frame();
+	anim->pFrameComplete = FALSE;
 	anim->pFrameDeinterlaced = avcodec_alloc_frame();
 	anim->pFrameRGB = avcodec_alloc_frame();
 
@@ -533,17 +557,18 @@ static int startffmpeg(struct anim * anim) {
 	}
 
 	if (anim->ib_flags & IB_animdeinterlace) {
-		avpicture_fill((AVPicture*) anim->pFrameDeinterlaced, 
-				   MEM_callocN(avpicture_get_size(
-						   anim->pCodecCtx->pix_fmt,
-						   anim->x, anim->y), 
-					   "ffmpeg deinterlace"), 
-				   anim->pCodecCtx->pix_fmt, anim->x, anim->y);
+		avpicture_fill((AVPicture*) anim->pFrameDeinterlaced,
+		               MEM_callocN(avpicture_get_size(
+		                               anim->pCodecCtx->pix_fmt,
+		                               anim->x, anim->y),
+		                           "ffmpeg deinterlace"),
+		               anim->pCodecCtx->pix_fmt, anim->x, anim->y);
 	}
 
 	if (pCodecCtx->has_b_frames) {
 		anim->preseek = 25; /* FIXME: detect gopsize ... */
-	} else {
+	}
+	else {
 		anim->preseek = 0;
 	}
 	
@@ -577,7 +602,7 @@ static int startffmpeg(struct anim * anim) {
 		srcRange = srcRange || anim->pCodecCtx->color_range == AVCOL_RANGE_JPEG;
 		inv_table = sws_getCoefficients(anim->pCodecCtx->colorspace);
 
-		if(sws_setColorspaceDetails(anim->img_convert_ctx, (int *)inv_table, srcRange,
+		if (sws_setColorspaceDetails(anim->img_convert_ctx, (int *)inv_table, srcRange,
 			table, dstRange, brightness, contrast, saturation)) {
 
 			printf("Warning: Could not set libswscale colorspace details.\n");
@@ -592,10 +617,10 @@ static int startffmpeg(struct anim * anim) {
 }
 
 /* postprocess the image in anim->pFrame and do color conversion
-   and deinterlacing stuff.
-
-   Output is anim->last_frame
-*/
+ * and deinterlacing stuff.
+ *
+ * Output is anim->last_frame
+ */
 
 static void ffmpeg_postprocess(struct anim * anim)
 {
@@ -605,14 +630,24 @@ static void ffmpeg_postprocess(struct anim * anim)
 
 	ibuf->profile = IB_PROFILE_SRGB;
 
+	if (!anim->pFrameComplete) {
+		return;
+	}
+
 	/* This means the data wasnt read properly, 
-	   this check stops crashing */
+	 * this check stops crashing */
 	if (input->data[0]==0 && input->data[1]==0 
-	    && input->data[2]==0 && input->data[3]==0){
+	    && input->data[2]==0 && input->data[3]==0) {
 		fprintf(stderr, "ffmpeg_fetchibuf: "
 			"data not read properly...\n");
 		return;
 	}
+
+	av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
+	       "  POSTPROC: anim->pFrame planes: %p %p %p %p\n",
+	       input->data[0], input->data[1], input->data[2],
+	       input->data[3]);
+
 
 	if (anim->ib_flags & IB_animdeinterlace) {
 		if (avpicture_deinterlace(
@@ -625,14 +660,15 @@ static void ffmpeg_postprocess(struct anim * anim)
 			    anim->pCodecCtx->height)
 		    < 0) {
 			filter_y = TRUE;
-		} else {
+		}
+		else {
 			input = anim->pFrameDeinterlaced;
 		}
 	}
 	
-	avpicture_fill((AVPicture*) anim->pFrameRGB, 
-		       (unsigned char*) ibuf->rect, 
-		       PIX_FMT_RGBA, anim->x, anim->y);
+	avpicture_fill((AVPicture*) anim->pFrameRGB,
+	               (unsigned char*) ibuf->rect,
+	               PIX_FMT_RGBA, anim->x, anim->y);
 
 	if (ENDIAN_ORDER == B_ENDIAN) {
 		int * dstStride   = anim->pFrameRGB->linesize;
@@ -644,16 +680,12 @@ static void ffmpeg_postprocess(struct anim * anim)
 		unsigned char* top;
 		
 		sws_scale(anim->img_convert_ctx,
-			  (const uint8_t * const *)input->data,
-			  input->linesize,
-			  0,
-			  anim->pCodecCtx->height,
-			  dst2,
-			  dstStride2);
-		
-		/* workaround: sws_scale bug
-		   sets alpha = 0 and compensate
-		   for altivec-bugs and flipy... */
+		          (const uint8_t * const *)input->data,
+		          input->linesize,
+		          0,
+		          anim->pCodecCtx->height,
+		          dst2,
+		          dstStride2);
 		
 		bottom = (unsigned char*) ibuf->rect;
 		top = bottom + ibuf->x * (ibuf->y-1) * 4;
@@ -665,17 +697,17 @@ static void ffmpeg_postprocess(struct anim * anim)
 			unsigned char tmp[4];
 			unsigned int * tmp_l =
 				(unsigned int*) tmp;
-			tmp[3] = 0xff;
 			
 			for (x = 0; x < w; x++) {
 				tmp[0] = bottom[0];
 				tmp[1] = bottom[1];
 				tmp[2] = bottom[2];
+				tmp[3] = bottom[3];
 				
 				bottom[0] = top[0];
 				bottom[1] = top[1];
 				bottom[2] = top[2];
-				bottom[3] = 0xff;
+				bottom[3] = top[3];
 				
 				*(unsigned int*) top = *tmp_l;
 				
@@ -684,33 +716,21 @@ static void ffmpeg_postprocess(struct anim * anim)
 			}
 			top -= 8 * w;
 		}
-	} else {
+	}
+	else {
 		int * dstStride   = anim->pFrameRGB->linesize;
 		uint8_t** dst     = anim->pFrameRGB->data;
 		int dstStride2[4] = { -dstStride[0], 0, 0, 0 };
 		uint8_t* dst2[4]  = { dst[0] + (anim->y - 1)*dstStride[0],
 				      0, 0, 0 };
-		int i;
-		unsigned char* r;
 		
 		sws_scale(anim->img_convert_ctx,
-			  (const uint8_t * const *)input->data,
-			  input->linesize,
-			  0,
-			  anim->pCodecCtx->height,
-			  dst2,
-			  dstStride2);
-		
-		r = (unsigned char*) ibuf->rect;
-		
-		/* workaround sws_scale bug: older version of 
-		   sws_scale set alpha = 0... */
-		if (r[3] == 0) {
-			for (i = 0; i < ibuf->x * ibuf->y; i++) {
-				r[3] = 0xff;
-				r += 4;
-			}
-		}
+		          (const uint8_t * const *)input->data,
+		          input->linesize,
+		          0,
+		          anim->pCodecCtx->height,
+		          dst2,
+		          dstStride2);
 	}
 
 	if (filter_y) {
@@ -718,45 +738,20 @@ static void ffmpeg_postprocess(struct anim * anim)
 	}
 }
 
-/* decode one video frame and load the next packet into anim->packet,
-   so that we can obtain next_pts and next undecoded pts */
+/* decode one video frame also considering the packet read into next_packet */
 
 static int ffmpeg_decode_video_frame(struct anim * anim)
 {
-	int frameFinished = 0;
 	int rval = 0;
 
 	av_log(anim->pFormatCtx, AV_LOG_DEBUG, "  DECODE VIDEO FRAME\n");
 
-	anim->next_undecoded_pts = -1;
-
 	if (anim->next_packet.stream_index == anim->videoStream) {
-		av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
-		       "  DECODE: cached next packet\n");
-
-		avcodec_decode_video2(anim->pCodecCtx, 
-				      anim->pFrame, &frameFinished, 
-				      &anim->next_packet);
-
-		if (frameFinished) {
-			av_log(anim->pFormatCtx, 
-			       AV_LOG_DEBUG, 
-			       "  FRAME DONE: "
-				"next_pts=%lld pkt_pts=%lld\n",
-				(anim->pFrame->pts == AV_NOPTS_VALUE) ? 
-				-1 : (long long int)anim->pFrame->pts,
-				(anim->pFrame->pkt_pts == AV_NOPTS_VALUE) ?
-				-1 : (long long int)anim->pFrame->pkt_pts);
-			anim->next_pts = 
-				av_get_pts_from_frame(anim->pFormatCtx,
-						      anim->pFrame);
-		}
-
 		av_free_packet(&anim->next_packet);
 		anim->next_packet.stream_index = -1;
 	}
 	
-	while((rval = av_read_frame(anim->pFormatCtx, &anim->next_packet)) >= 0) {
+	while ((rval = av_read_frame(anim->pFormatCtx, &anim->next_packet)) >= 0) {
 		av_log(anim->pFormatCtx, 
 		       AV_LOG_DEBUG, 
 		       "%sREAD: strID=%d (VID: %d) dts=%lld pts=%lld "
@@ -772,21 +767,14 @@ static int ffmpeg_decode_video_frame(struct anim * anim)
 		       (anim->next_packet.flags & AV_PKT_FLAG_KEY) ? 
 		       " KEY" : "");
 		if (anim->next_packet.stream_index == anim->videoStream) {
-			if (frameFinished) {
-				av_log(anim->pFormatCtx,
-				       AV_LOG_DEBUG,
-				       "  FRAME finished, we leave\n");
-				anim->next_undecoded_pts 
-					= anim->next_packet.dts;
-				break;
-			}
+			anim->pFrameComplete = 0;
 
 			avcodec_decode_video2(
 				anim->pCodecCtx, 
-				anim->pFrame, &frameFinished, 
+				anim->pFrame, &anim->pFrameComplete, 
 				&anim->next_packet);
 
-			if (frameFinished) {
+			if (anim->pFrameComplete) {
 				anim->next_pts = av_get_pts_from_frame(
 					anim->pFormatCtx, anim->pFrame);
 
@@ -800,6 +788,7 @@ static int ffmpeg_decode_video_frame(struct anim * anim)
 					== AV_NOPTS_VALUE) ?
 				       -1 : (long long int)anim->pFrame->pkt_pts,
 					(long long int)anim->next_pts);
+				break;
 			}
 		}
 		av_free_packet(&anim->next_packet);
@@ -807,10 +796,13 @@ static int ffmpeg_decode_video_frame(struct anim * anim)
 	}
 	
 	if (rval < 0) {
+		anim->next_packet.stream_index = -1;
+
 		av_log(anim->pFormatCtx,
 		       AV_LOG_ERROR, "  DECODE READ FAILED: av_read_frame() "
 		       "returned error: %d\n",	rval);
 	}
+
 	return (rval >= 0);
 }
 
@@ -845,7 +837,8 @@ static void ffmpeg_decode_video_frame_scan(
 	if (anim->next_pts == pts_to_search) {
 		av_log(anim->pFormatCtx,
 		       AV_LOG_DEBUG, "SCAN HAPPY: we found our PTS!\n");
-	} else {
+	}
+	else {
 		av_log(anim->pFormatCtx,
 		       AV_LOG_ERROR, "SCAN UNHAPPY: PTS not matched!\n");
 	}
@@ -873,7 +866,7 @@ static int match_format(const char *name, AVFormatContext * pFormatCtx)
 
 static int ffmpeg_seek_by_byte(AVFormatContext *pFormatCtx)
 {
-	static const char * byte_seek_list [] = { "dv", "mpegts", 0 };
+	static const char * byte_seek_list [] = { "mpegts", 0 };
 	const char ** p;
 
 	if (pFormatCtx->iformat->flags & AVFMT_TS_DISCONT) {
@@ -924,9 +917,11 @@ static ImBuf * ffmpeg_fetchibuf(struct anim * anim, int position,
 			tc_index, anim->curposition);
 		pts_to_search =	IMB_indexer_get_pts(
 			tc_index, new_frame_index);
-	} else {
+	}
+	else {
 		pts_to_search = (long long) 
-			floor(((double) position) / pts_time_base / frame_rate + 0.5);
+			floor(((double) position) 
+			      / pts_time_base / frame_rate + 0.5);
 
 		if (st_time != AV_NOPTS_VALUE) {
 			pts_to_search += st_time / pts_time_base 
@@ -937,40 +932,29 @@ static ImBuf * ffmpeg_fetchibuf(struct anim * anim, int position,
 	av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
 	       "FETCH: looking for PTS=%lld "
 	       "(pts_timebase=%g, frame_rate=%g, st_time=%lld)\n", 
-	       (long long int)pts_to_search, pts_time_base, frame_rate, st_time);
+	       (long long int)pts_to_search,pts_time_base, frame_rate, st_time);
 
 	if (anim->last_frame && 
-	    anim->last_pts <= pts_to_search && anim->next_pts > pts_to_search){
+	    anim->last_pts <= pts_to_search && anim->next_pts > pts_to_search) {
 		av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
 		       "FETCH: frame repeat: last: %lld next: %lld\n",
-		       (long long int)anim->last_pts, (long long int)anim->next_pts);
+		       (long long int)anim->last_pts, 
+		       (long long int)anim->next_pts);
 		IMB_refImBuf(anim->last_frame);
 		anim->curposition = position;
 		return anim->last_frame;
 	}
 	 
-	IMB_freeImBuf(anim->last_frame);
-
-	if (anim->next_pts <= pts_to_search && 
-	    anim->next_undecoded_pts > pts_to_search) {
-		av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
-		       "FETCH: no seek necessary: "
-			"next: %lld next undecoded: %lld\n",
-			(long long int)anim->next_pts,
-		    (long long int)anim->next_undecoded_pts);
-
-		/* we are already done :) */
-
-	} else if (position > anim->curposition + 1 
-		   && anim->preseek 
-		   && !tc_index
-		   && position - (anim->curposition + 1) < anim->preseek) {
-
+	if (position > anim->curposition + 1 
+	    && anim->preseek 
+	    && !tc_index
+	    && position - (anim->curposition + 1) < anim->preseek) {
 		av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
 		       "FETCH: within preseek interval (no index)\n");
 
 		ffmpeg_decode_video_frame_scan(anim, pts_to_search);
-	} else if (tc_index && 
+	}
+	else if (tc_index &&
 		   IMB_indexer_can_scan(tc_index, old_frame_index,
 					new_frame_index)) {
 
@@ -979,7 +963,8 @@ static ImBuf * ffmpeg_fetchibuf(struct anim * anim, int position,
 		       "(index tells us)\n");
 
 		ffmpeg_decode_video_frame_scan(anim, pts_to_search);
-	} else if (position != anim->curposition + 1) { 
+	}
+	else if (position != anim->curposition + 1) {
 		long long pos;
 		int ret;
 
@@ -1004,16 +989,23 @@ static ImBuf * ffmpeg_fetchibuf(struct anim * anim, int position,
 						    -1,
 						    pos, AVSEEK_FLAG_BYTE);
 				av_update_cur_dts(anim->pFormatCtx, v_st, dts);
-			} else {
+			}
+			else {
 				av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
 				       "... using DTS pos\n");
 				ret = av_seek_frame(anim->pFormatCtx, 
 						    anim->videoStream, 
 						    dts, AVSEEK_FLAG_BACKWARD);
 			}
-		} else {
+		}
+		else {
 			pos = (long long) (position - anim->preseek) 
 				* AV_TIME_BASE / frame_rate;
+
+			av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
+			       "NO INDEX seek pos = %lld, st_time = %lld\n", 
+			       pos, (st_time != AV_NOPTS_VALUE) ? st_time : 0);
+
 			if (pos < 0) {
 				pos = 0;
 			}
@@ -1022,15 +1014,18 @@ static ImBuf * ffmpeg_fetchibuf(struct anim * anim, int position,
 				pos += st_time;
 			}
 
+			av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
+			       "NO INDEX final seek pos = %lld\n", pos);
+
 			ret = av_seek_frame(anim->pFormatCtx, -1, 
 					    pos, AVSEEK_FLAG_BACKWARD);
 		}
 
 		if (ret < 0) {
-			av_log(anim->pFormatCtx, AV_LOG_ERROR, 
+			av_log(anim->pFormatCtx, AV_LOG_ERROR,
 			       "FETCH: "
 			       "error while seeking to DTS = %lld "
-			       "(frameno = %d, PTS = %lld): errcode = %d\n", 
+			       "(frameno = %d, PTS = %lld): errcode = %d\n",
 			       pos, position, (long long int)pts_to_search, ret);
 		}
 
@@ -1048,15 +1043,21 @@ static ImBuf * ffmpeg_fetchibuf(struct anim * anim, int position,
 		if (ret >= 0) {
 			ffmpeg_decode_video_frame_scan(anim, pts_to_search);
 		}
-	} else if (position == 0 && anim->curposition == -1) {
+	}
+	else if (position == 0 && anim->curposition == -1) {
 		/* first frame without seeking special case... */
 		ffmpeg_decode_video_frame(anim);
 	}
+	else {
+		av_log(anim->pFormatCtx, AV_LOG_DEBUG, 
+		       "FETCH: no seek necessary, just continue...\n");
+	}
 
+	IMB_freeImBuf(anim->last_frame);
 	anim->last_frame = IMB_allocImBuf(anim->x, anim->y, 32, IB_rect);
 
 	ffmpeg_postprocess(anim);
-	
+
 	anim->last_pts = anim->next_pts;
 	
 	ffmpeg_decode_video_frame(anim);
@@ -1064,11 +1065,12 @@ static ImBuf * ffmpeg_fetchibuf(struct anim * anim, int position,
 	anim->curposition = position;
 	
 	IMB_refImBuf(anim->last_frame);
-	
+
 	return anim->last_frame;
 }
 
-static void free_anim_ffmpeg(struct anim * anim) {
+static void free_anim_ffmpeg(struct anim * anim)
+{
 	if (anim == NULL) return;
 
 	if (anim->pCodecCtx) {
@@ -1094,7 +1096,8 @@ static void free_anim_ffmpeg(struct anim * anim) {
 
 #ifdef WITH_REDCODE
 
-static int startredcode(struct anim * anim) {
+static int startredcode(struct anim * anim)
+{
 	anim->redcodeCtx = redcode_open(anim->name);
 	if (!anim->redcodeCtx) {
 		return -1;
@@ -1104,7 +1107,8 @@ static int startredcode(struct anim * anim) {
 	return 0;
 }
 
-static ImBuf * redcode_fetchibuf(struct anim * anim, int position) {
+static ImBuf * redcode_fetchibuf(struct anim * anim, int position)
+{
 	struct ImBuf * ibuf;
 	struct redcode_frame * frame;
 	struct redcode_frame_raw * raw_frame;
@@ -1128,14 +1132,15 @@ static ImBuf * redcode_fetchibuf(struct anim * anim, int position) {
 	}
 	
 		ibuf = IMB_allocImBuf(raw_frame->width * 2, 
-				  raw_frame->height * 2, 32, IB_rectfloat);
+		                      raw_frame->height * 2, 32, IB_rectfloat);
 
 	redcode_decode_video_float(raw_frame, ibuf->rect_float, 1);
 
 	return ibuf;
 }
 
-static void free_anim_redcode(struct anim * anim) {
+static void free_anim_redcode(struct anim * anim)
+{
 	if (anim->redcodeCtx) {
 		redcode_close(anim->redcodeCtx);
 		anim->redcodeCtx = 0;
@@ -1149,7 +1154,8 @@ static void free_anim_redcode(struct anim * anim) {
 /* Geen plaatje, probeer dan volgende animatie te openen */
 /* gelukt, haal dan eerste plaatje van animatie */
 
-static struct ImBuf * anim_getnew(struct anim * anim) {
+static struct ImBuf * anim_getnew(struct anim * anim)
+{
 	struct ImBuf *ibuf = NULL;
 
 	if (anim == NULL) return(NULL);
@@ -1211,7 +1217,8 @@ static struct ImBuf * anim_getnew(struct anim * anim) {
 	return(ibuf);
 }
 
-struct ImBuf * IMB_anim_previewframe(struct anim * anim) {
+struct ImBuf * IMB_anim_previewframe(struct anim * anim)
+{
 	struct ImBuf * ibuf = NULL;
 	int position = 0;
 	
@@ -1310,7 +1317,7 @@ struct ImBuf * IMB_anim_absolute(struct anim * anim, int position,
 
 	if (ibuf) {
 		if (filter_y) IMB_filtery(ibuf);
-		sprintf(ibuf->name, "%s.%04d", anim->name, anim->curposition + 1);
+		BLI_snprintf(ibuf->name, sizeof(ibuf->name), "%s.%04d", anim->name, anim->curposition + 1);
 		
 	}
 	return(ibuf);
@@ -1318,7 +1325,8 @@ struct ImBuf * IMB_anim_absolute(struct anim * anim, int position,
 
 /***/
 
-int IMB_anim_get_duration(struct anim *anim, IMB_Timecode_Type tc) {
+int IMB_anim_get_duration(struct anim *anim, IMB_Timecode_Type tc)
+{
 	struct anim_index * idx;
 	if (tc == IMB_TC_NONE) {
 		return anim->duration;

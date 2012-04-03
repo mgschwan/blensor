@@ -21,7 +21,6 @@ bl_info = {
     "author": "Florian Meyer (tstscr)",
     "version": (1, 0),
     "blender": (2, 5, 7),
-    "api": 36079,
     "location": "File > Export > Pointcache (.pc2)",
     "description": "Export mesh Pointcache data (.pc2)",
     "warning": "",
@@ -106,7 +105,7 @@ def do_export(context, props, filepath):
 
 ###### EXPORT OPERATOR #######
 class Export_pc2(bpy.types.Operator, ExportHelper):
-    '''Exports the active Object as a .pc2 Pointcache file.'''
+    '''Exports the active Object as a .pc2 Pointcache file'''
     bl_idname = "export_shape.pc2"
     bl_label = "Export Pointcache (.pc2)"
 

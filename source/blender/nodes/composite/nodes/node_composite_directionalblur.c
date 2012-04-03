@@ -33,7 +33,7 @@
 #include "node_composite_util.h"
 
 static bNodeSocketTemplate cmp_node_dblur_in[]= {
-	{	SOCK_RGBA, 1, "Image", 0.8f, 0.8f, 0.8f, 1.f},
+	{	SOCK_RGBA, 1, "Image", 1.0f, 1.0f, 1.0f, 1.f},
 	{	-1, 0, ""       }
 };
 
@@ -47,8 +47,8 @@ static CompBuf *dblur(bNode *node, CompBuf *img, int iterations, int wrap,
 {
 	if ((dist != 0.f) || (spin != 0.f) || (zoom != 0.f)) {
 		void (*getpix)(CompBuf*, float, float, float*) = wrap ? qd_getPixelLerpWrap : qd_getPixelLerp;
-		const float a= angle * (float)M_PI / 180.f;
-		const float itsc= 1.f / pow(2.f, (float)iterations);
+		const float a= angle;
+		const float itsc= 1.f / powf(2.f, (float)iterations);
 		float D;
 		float center_x_pix, center_y_pix;
 		float tx, ty;
@@ -62,43 +62,43 @@ static CompBuf *dblur(bNode *node, CompBuf *img, int iterations, int wrap,
 		center_x_pix= center_x * img->x;
 		center_y_pix= center_y * img->y;
 
-		tx=  itsc * D * cos(a);
-		ty= -itsc * D * sin(a);
+		tx=  itsc * D * cosf(a);
+		ty= -itsc * D * sinf(a);
 		sc=  itsc * zoom;
-		rot= itsc * spin * (float)M_PI / 180.f;
+		rot= itsc * spin;
 
 		/* blur the image */
-		for(i= 0; i < iterations; ++i) {
-			const float cs= cos(rot), ss= sin(rot);
+		for (i= 0; i < iterations; ++i) {
+			const float cs= cosf(rot), ss= sinf(rot);
 			const float isc= 1.f / (1.f + sc);
 			unsigned int x, y;
 			float col[4]= {0,0,0,0};
 
-			for(y= 0; y < img->y; ++y) {
+			for (y= 0; y < img->y; ++y) {
 				const float v= isc * (y - center_y_pix) + ty;
 
-				for(x= 0; x < img->x; ++x) {
+				for (x= 0; x < img->x; ++x) {
 					const float  u= isc * (x - center_x_pix) + tx;
 					unsigned int p= (x + y * img->x) * img->type;
 
 					getpix(tmp, cs * u + ss * v + center_x_pix, cs * v - ss * u + center_y_pix, col);
 
 					/* mix img and transformed tmp */
-					for(j= 0; j < 4; ++j) {
+					for (j= 0; j < 4; ++j) {
 						img->rect[p + j]= 0.5f * (img->rect[p + j] + col[j]);
 					}
 				}
 			}
 
 			/* copy img to tmp */
-			if(i != (iterations - 1)) 
+			if (i != (iterations - 1)) 
 				memcpy(tmp->rect, img->rect, sizeof(float) * img->x * img->y * img->type);
 
 			/* double transformations */
 			tx *= 2.f, ty  *= 2.f;
 			sc *= 2.f, rot *= 2.f;
 
-			if(node->exec & NODE_BREAK) break;
+			if (node->exec & NODE_BREAK) break;
 		}
 
 		free_compbuf(tmp);
@@ -112,7 +112,7 @@ static void node_composit_exec_dblur(void *UNUSED(data), bNode *node, bNodeStack
 	NodeDBlurData *ndbd= node->storage;
 	CompBuf *new, *img= in[0]->data;
 	
-	if((img == NULL) || (out[0]->hasoutput == 0)) return;
+	if ((img == NULL) || (out[0]->hasoutput == 0)) return;
 
 	if (img->type != CB_RGBA)
 		new = typecheck_compbuf(img, CB_RGBA);
@@ -130,17 +130,16 @@ static void node_composit_init_dblur(bNodeTree *UNUSED(ntree), bNode* node, bNod
 	ndbd->center_y= 0.5;
 }
 
-void register_node_type_cmp_dblur(ListBase *lb)
+void register_node_type_cmp_dblur(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_DBLUR, "Directional Blur", NODE_CLASS_OP_FILTER, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_DBLUR, "Directional Blur", NODE_CLASS_OP_FILTER, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_dblur_in, cmp_node_dblur_out);
 	node_type_size(&ntype, 150, 120, 200);
 	node_type_init(&ntype, node_composit_init_dblur);
 	node_type_storage(&ntype, "NodeDBlurData", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, node_composit_exec_dblur);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-

@@ -25,8 +25,8 @@
  */
 
  
-#ifndef REEB_H_
-#define REEB_H_
+#ifndef __REEB_H__
+#define __REEB_H__
 
 #define WITH_BF_REEB
 
@@ -161,8 +161,6 @@ void initArcIteratorStart(BArcIterator *iter, struct ReebArc *arc, struct ReebNo
 /* Filtering */
 void filterNullReebGraph(ReebGraph *rg);
 int filterSmartReebGraph(ReebGraph *rg, float threshold);
-int filterExternalReebGraph(ReebGraph *rg, float threshold);
-int filterInternalReebGraph(ReebGraph *rg, float threshold);
 
 /* Post-Build processing */
 void repositionNodes(ReebGraph *rg);
@@ -203,4 +201,4 @@ void REEB_exportGraph(ReebGraph *rg, int count);
 void REEB_draw(void);
 
 
-#endif /*REEB_H_*/
+#endif /*__REEB_H__*/

@@ -25,8 +25,8 @@
  * Declaration of GHOST_WindowSDL class.
  */
 
-#ifndef _GHOST_WINDOWSDL_H_
-#define _GHOST_WINDOWSDL_H_
+#ifndef __GHOST_WINDOWSDL_H__
+#define __GHOST_WINDOWSDL_H__
 
 #include "GHOST_Window.h"
 #include "GHOST_SystemSDL.h"
@@ -36,8 +36,8 @@ extern "C" {
 	#include "SDL.h"
 }
 
-#if !SDL_VERSION_ATLEAST(1, 3, 0)
-#  error "SDL 1.3 or newer is needed to build with Ghost"
+#if !SDL_VERSION_ATLEAST(2, 0, 0)
+#  error "SDL 2.0 or newer is needed to build with Ghost"
 #endif
 
 class STR_String;
@@ -163,4 +163,4 @@ protected:
 };
 
 
-#endif // _GHOST_WINDOWSDL_H_
+#endif // __GHOST_WINDOWSDL_H__

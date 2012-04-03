@@ -16,7 +16,7 @@ macro(file_suffix
 	unset(_file_name_EXT)
 endmacro()
 
-# usefil for adding debug suffix to library lists:
+# useful for adding debug suffix to library lists:
 # /somepath/foo.lib --> /somepath/foo_d.lib
 macro(file_list_suffix
 	fp_list_new fp_list fn_suffix
@@ -165,6 +165,12 @@ macro(SETUP_LIBDIRS)
 	if(WITH_IMAGE_TIFF)
 		link_directories(${TIFF_LIBPATH})
 	endif()
+	if(WITH_BOOST)
+		link_directories(${BOOST_LIBPATH})
+	endif()
+	if(WITH_OPENIMAGEIO)
+		link_directories(${OPENIMAGEIO_LIBPATH})
+	endif()
 	if(WITH_IMAGE_OPENJPEG AND UNIX AND NOT APPLE)
 		link_directories(${OPENJPEG_LIBPATH})
 	endif()
@@ -259,8 +265,14 @@ macro(setup_liblinks
 	if(WITH_IMAGE_TIFF)
 		target_link_libraries(${target} ${TIFF_LIBRARY})
 	endif()
+	if(WITH_OPENIMAGEIO)
+		target_link_libraries(${target} ${OPENIMAGEIO_LIBRARIES})
+	endif()
+	if(WITH_BOOST)
+		target_link_libraries(${target} ${BOOST_LIBRARIES})
+	endif()
 	if(WITH_IMAGE_OPENEXR)
-		if(WIN32 AND NOT UNIX)
+		if(WIN32 AND NOT UNIX AND NOT CMAKE_COMPILER_IS_GNUCC)
 			file_list_suffix(OPENEXR_LIBRARIES_DEBUG "${OPENEXR_LIBRARIES}" "_d")
 			target_link_libraries_debug(${target} "${OPENEXR_LIBRARIES_DEBUG}")
 			target_link_libraries_optimized(${target} "${OPENEXR_LIBRARIES}")
@@ -377,7 +389,7 @@ endmacro()
 # needs to be removed for some external libs which we dont maintain.
 
 # utility macro
-macro(remove_flag
+macro(remove_cc_flag
 	flag)
 
 	string(REGEX REPLACE ${flag} "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
@@ -394,16 +406,26 @@ macro(remove_flag
 
 endmacro()
 
+macro(add_cc_flag
+	flag)
+
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${flag}")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flag}")
+endmacro()
+
 macro(remove_strict_flags)
 
 	if(CMAKE_COMPILER_IS_GNUCC)
-		remove_flag("-Wstrict-prototypes")
-		remove_flag("-Wunused-parameter")
-		remove_flag("-Wwrite-strings")
-		remove_flag("-Wundef")
-		remove_flag("-Wshadow")
-		remove_flag("-Werror=[^ ]+")
-		remove_flag("-Werror")
+		remove_cc_flag("-Wstrict-prototypes")
+		remove_cc_flag("-Wunused-parameter")
+		remove_cc_flag("-Wwrite-strings")
+		remove_cc_flag("-Wundef")
+		remove_cc_flag("-Wshadow")
+		remove_cc_flag("-Werror=[^ ]+")
+		remove_cc_flag("-Werror")
+
+		# negate flags implied by '-Wall'
+		add_cc_flag("${CC_REMOVE_STRICT_FLAGS}")
 	endif()
 
 	if(MSVC)
@@ -411,6 +433,32 @@ macro(remove_strict_flags)
 	endif()
 
 endmacro()
+
+# note, we can only append flags on a single file so we need to negate the options.
+# at the moment we cant shut up ffmpeg deprecations, so use this, but will
+# probably add more removals here.
+macro(remove_strict_flags_file
+	filenames)
+
+	foreach(_SOURCE ${ARGV})
+
+		if(CMAKE_COMPILER_IS_GNUCC)
+			set_source_files_properties(${_SOURCE}
+				PROPERTIES
+					COMPILE_FLAGS "${CC_REMOVE_STRICT_FLAGS}"
+			)
+		endif()
+
+		if(MSVC)
+			# TODO
+		endif()
+
+	endforeach()	
+
+	unset(_SOURCE)
+
+endmacro()
+
 
 macro(ADD_CHECK_C_COMPILER_FLAG
 	_CFLAGS
@@ -580,5 +628,53 @@ macro(blender_project_hack_post)
 			set(CMAKE_INCLUDE_SYSTEM_FLAG_C "-isystem ")
 		endif()
 	endif()
+
+endmacro()
+
+# pair of macros to allow libraries to be specify files to install, but to
+# only install them at the end so the directories don't get cleared with
+# the files in them. used by cycles to install addon.
+macro(delayed_install
+	base
+	files
+	destination)
+
+	foreach(f ${files})
+		set_property(GLOBAL APPEND PROPERTY DELAYED_INSTALL_FILES ${base}/${f})
+		set_property(GLOBAL APPEND PROPERTY DELAYED_INSTALL_DESTINATIONS ${destination})
+	endforeach()
+endmacro()
+
+# note this is a function instead of a macro so that ${BUILD_TYPE} in targetdir
+# does not get expanded in calling but is preserved
+function(delayed_do_install
+	targetdir)
+
+	get_property(files GLOBAL PROPERTY DELAYED_INSTALL_FILES)
+	get_property(destinations GLOBAL PROPERTY DELAYED_INSTALL_DESTINATIONS)
+
+	if(files)
+		list(LENGTH files n)
+		math(EXPR n "${n}-1")
+
+		foreach(i RANGE ${n})
+			list(GET files ${i} f)
+			list(GET destinations ${i} d)
+			install(FILES ${f} DESTINATION ${targetdir}/${d})
+		endforeach()
+	endif()
+endfunction()
+
+macro(set_lib_path
+		lvar
+		lproj)
+
+	
+	if(MSVC10 AND EXISTS ${LIBDIR}/vc2010/${lproj})
+		set(${lvar} ${LIBDIR}/vc2010/${lproj})
+	else()
+		set(${lvar} ${LIBDIR}/${lproj})
+	endif()
+
 
 endmacro()

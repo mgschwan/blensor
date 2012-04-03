@@ -266,7 +266,8 @@ bool SCA_RandomActuator::Update()
 	return false;
 }
 
-void SCA_RandomActuator::enforceConstraints() {
+void SCA_RandomActuator::enforceConstraints()
+{
 	/* The constraints that are checked here are the ones fundamental to     */
 	/* the various distributions. Limitations of the algorithms are checked  */
 	/* elsewhere (or they should be... ).                                    */
@@ -360,7 +361,7 @@ PyAttributeDef SCA_RandomActuator::Attributes[] = {
 	KX_PYATTRIBUTE_FLOAT_RO("para1",SCA_RandomActuator,m_parameter1),
 	KX_PYATTRIBUTE_FLOAT_RO("para2",SCA_RandomActuator,m_parameter2),
 	KX_PYATTRIBUTE_ENUM_RO("distribution",SCA_RandomActuator,m_distribution),
-	KX_PYATTRIBUTE_STRING_RW_CHECK("propName",0,100,false,SCA_RandomActuator,m_propname,CheckProperty),
+	KX_PYATTRIBUTE_STRING_RW_CHECK("propName",0,MAX_PROP_NAME,false,SCA_RandomActuator,m_propname,CheckProperty),
 	KX_PYATTRIBUTE_RW_FUNCTION("seed",SCA_RandomActuator,pyattr_get_seed,pyattr_set_seed),
 	{ NULL }	//Sentinel
 };	
@@ -391,7 +392,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setBoolConst,
 "\tSet this generator to produce a constant boolean value.\n") 
 {
 	int paraArg;
-	if(!PyArg_ParseTuple(args, "i:setBoolConst", &paraArg)) {
+	if (!PyArg_ParseTuple(args, "i:setBoolConst", &paraArg)) {
 		return NULL;
 	}
 	
@@ -403,7 +404,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setBoolConst,
 /* 12. setBoolUniform, */
 KX_PYMETHODDEF_DOC_NOARGS(SCA_RandomActuator, setBoolUniform,
 "setBoolUniform()\n"
-"\tSet this generator to produce true and false, each with 50%% chance of occuring\n") 
+"\tSet this generator to produce true and false, each with 50%% chance of occurring\n") 
 {
 	/* no args */
 	m_distribution = KX_RANDOMACT_BOOL_UNIFORM;
@@ -417,7 +418,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setBoolBernouilli,
 "\tReturn false value * 100%% of the time.\n")
 {
 	float paraArg;
-	if(!PyArg_ParseTuple(args, "f:setBoolBernouilli", &paraArg)) {
+	if (!PyArg_ParseTuple(args, "f:setBoolBernouilli", &paraArg)) {
 		return NULL;
 	}
 	
@@ -433,7 +434,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setIntConst,
 "\tAlways return value\n") 
 {
 	int paraArg;
-	if(!PyArg_ParseTuple(args, "i:setIntConst", &paraArg)) {
+	if (!PyArg_ParseTuple(args, "i:setIntConst", &paraArg)) {
 		return NULL;
 	}
 	
@@ -451,7 +452,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setIntUniform,
 "\tupper_bound. The boundaries are included.\n")
 {
 	int paraArg1, paraArg2;
-	if(!PyArg_ParseTuple(args, "ii:setIntUniform", &paraArg1, &paraArg2)) {
+	if (!PyArg_ParseTuple(args, "ii:setIntUniform", &paraArg1, &paraArg2)) {
 		return NULL;
 	}
 	
@@ -470,7 +471,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setIntPoisson,
 "\tnumber of tries needed to achieve succes.\n")
 {
 	float paraArg;
-	if(!PyArg_ParseTuple(args, "f:setIntPoisson", &paraArg)) {
+	if (!PyArg_ParseTuple(args, "f:setIntPoisson", &paraArg)) {
 		return NULL;
 	}
 	
@@ -486,7 +487,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setFloatConst,
 "\tAlways return value\n")
 {
 	float paraArg;
-	if(!PyArg_ParseTuple(args, "f:setFloatConst", &paraArg)) {
+	if (!PyArg_ParseTuple(args, "f:setFloatConst", &paraArg)) {
 		return NULL;
 	}
 	
@@ -504,7 +505,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setFloatUniform,
 "\tupper_bound.\n")
 {
 	float paraArg1, paraArg2;
-	if(!PyArg_ParseTuple(args, "ff:setFloatUniform", &paraArg1, &paraArg2)) {
+	if (!PyArg_ParseTuple(args, "ff:setFloatUniform", &paraArg1, &paraArg2)) {
 		return NULL;
 	}
 	
@@ -523,7 +524,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setFloatNormal,
 "\tdeviation from the mean is characterized by standard_deviation.\n")
 {
 	float paraArg1, paraArg2;
-	if(!PyArg_ParseTuple(args, "ff:setFloatNormal", &paraArg1, &paraArg2)) {
+	if (!PyArg_ParseTuple(args, "ff:setFloatNormal", &paraArg1, &paraArg2)) {
 		return NULL;
 	}
 	
@@ -541,7 +542,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setFloatNegativeExponential,
 "\tis characterized by half_life.\n")
 {
 	float paraArg;
-	if(!PyArg_ParseTuple(args, "f:setFloatNegativeExponential", &paraArg)) {
+	if (!PyArg_ParseTuple(args, "f:setFloatNegativeExponential", &paraArg)) {
 		return NULL;
 	}
 	

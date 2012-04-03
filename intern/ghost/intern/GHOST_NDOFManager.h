@@ -21,8 +21,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
  
-#ifndef _GHOST_NDOFMANAGER_H_
-#define _GHOST_NDOFMANAGER_H_
+#ifndef __GHOST_NDOFMANAGER_H__
+#define __GHOST_NDOFMANAGER_H__
 
 #include "GHOST_System.h"
 
@@ -31,15 +31,18 @@
 // #define DEBUG_NDOF_BUTTONS
 
 typedef enum {
-	NDOF_UnknownDevice, // <-- motion will work fine, buttons are ignored
+	NDOF_UnknownDevice,
 
 	// current devices
 	NDOF_SpaceNavigator,
 	NDOF_SpaceExplorer,
 	NDOF_SpacePilotPro,
+	NDOF_SpaceMousePro,
 
 	// older devices
-	NDOF_SpacePilot
+	NDOF_SpacePilot,
+	NDOF_Spaceball5000,
+	NDOF_SpaceTraveler
 
 	} NDOF_DeviceT;
 
@@ -74,6 +77,11 @@ typedef enum {
 	NDOF_BUTTON_DOMINANT,
 	NDOF_BUTTON_PLUS,
 	NDOF_BUTTON_MINUS,
+	// keyboard emulation
+	NDOF_BUTTON_ESC,
+	NDOF_BUTTON_ALT,
+	NDOF_BUTTON_SHIFT,
+	NDOF_BUTTON_CTRL,
 	// general-purpose buttons
 	// users can assign functions via keymap editor
 	NDOF_BUTTON_1,
@@ -86,7 +94,12 @@ typedef enum {
 	NDOF_BUTTON_8,
 	NDOF_BUTTON_9,
 	NDOF_BUTTON_10,
-
+	// more general-purpose buttons
+	NDOF_BUTTON_A,
+	NDOF_BUTTON_B,
+	NDOF_BUTTON_C,
+	// the end
+	NDOF_BUTTON_LAST
 	} NDOF_ButtonT;
 
 class GHOST_NDOFManager
@@ -142,6 +155,7 @@ private:
 	NDOF_DeviceT m_deviceType;
 	int m_buttonCount;
 	int m_buttonMask;
+	const NDOF_ButtonT* m_hidMap;
 
 	short m_translation[3];
 	short m_rotation[3];

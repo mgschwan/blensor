@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_BLENDER_H
-#define BKE_BLENDER_H
+#ifndef __BKE_BLENDER_H__
+#define __BKE_BLENDER_H__
 
 /** \file BKE_blender.h
  *  \ingroup bke
@@ -41,17 +41,19 @@ extern "C" {
 /* these lines are grep'd, watch out for our not-so-awesome regex
  * and keep comment above the defines.
  * Use STRINGIFY() rather than defining with quotes */
-#define BLENDER_VERSION			260
-#define BLENDER_SUBVERSION		0
+#define BLENDER_VERSION			262
+#define BLENDER_SUBVERSION		3
 
 #define BLENDER_MINVERSION		250
 #define BLENDER_MINSUBVERSION	0
 
 /* used by packaging tools */
 		/* can be left blank, otherwise a,b,c... etc with no quotes */
-#define BLENDER_VERSION_CHAR	a
+#define BLENDER_VERSION_CHAR	
 		/* alpha/beta/rc/release, docs use this */
-#define BLENDER_VERSION_CYCLE	alpha
+#define BLENDER_VERSION_CYCLE	beta
+
+extern char versionstr[]; /* from blender.c */
 
 struct ListBase;
 struct MemFile;
@@ -87,7 +89,7 @@ extern int BKE_undo_valid(const char *name);
 extern void BKE_reset_undo(void);
 extern char *BKE_undo_menu_string(void);
 extern void BKE_undo_number(struct bContext *C, int nr);
-extern char *BKE_undo_get_name(int nr, int *active);
+extern const char *BKE_undo_get_name(int nr, int *active);
 extern void BKE_undo_save_quit(void);
 extern struct Main *BKE_undo_get_main(struct Scene **scene);
 

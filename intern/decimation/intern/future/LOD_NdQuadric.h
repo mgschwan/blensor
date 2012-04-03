@@ -30,8 +30,8 @@
  */
 
 
-#ifndef NAN_INCLUDED_LOD_NdQuardic_h
-#define NAN_INCLUDED_LOD_NdQuardic_h
+#ifndef __LOD_NDQUADRIC_H__
+#define __LOD_NDQUADRIC_H__
 
 // An N dimensional quadric form.
 ///////////////////////////////////
@@ -148,7 +148,7 @@ public :
 		bool 
 	Optimize(
 		TNT::Vector<MT_Scalar> & vec
-	) const ;
+	) const;
 
 	
 };

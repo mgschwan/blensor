@@ -35,7 +35,7 @@
 
 /* ******************* Luma Matte Node ********************************* */
 static bNodeSocketTemplate cmp_node_luma_matte_in[]={
-	{SOCK_RGBA,1,"Image", 0.8f, 0.8f, 0.8f, 1.0f},
+	{SOCK_RGBA,1,"Image", 1.0f, 1.0f, 1.0f, 1.0f},
 	{-1,0,""}
 };
 
@@ -51,10 +51,10 @@ static void do_luma_matte(bNode *node, float *out, float *in)
 	float alpha;
 
 	/* test range*/
-	if(in[0]>c->t1) {
+	if (in[0]>c->t1) {
 		alpha=1.0;
 	}
-	else if(in[0]<c->t2){
+	else if (in[0]<c->t2) {
 		alpha=0.0;
 	}
 	else {/*blend */
@@ -76,9 +76,9 @@ static void node_composit_exec_luma_matte(void *data, bNode *node, bNodeStack **
 	CompBuf *cbuf;
 	CompBuf *outbuf;
 	
-	if(in[0]->hasinput==0)  return;
-	if(in[0]->data==NULL) return;
-	if(out[0]->hasoutput==0 && out[1]->hasoutput==0) return;
+	if (in[0]->hasinput==0)  return;
+	if (in[0]->data==NULL) return;
+	if (out[0]->hasoutput==0 && out[1]->hasoutput==0) return;
 	
 	cbuf=typecheck_compbuf(in[0]->data, CB_RGBA);
 	
@@ -92,7 +92,7 @@ static void node_composit_exec_luma_matte(void *data, bNode *node, bNodeStack **
 	out[0]->data=outbuf;
 	if (out[1]->hasoutput)
 		out[1]->data=valbuf_from_rgbabuf(outbuf, CHAN_A);
-	if(cbuf!=in[0]->data)
+	if (cbuf!=in[0]->data)
 		free_compbuf(cbuf);
 }
 
@@ -104,18 +104,16 @@ static void node_composit_init_luma_matte(bNodeTree *UNUSED(ntree), bNode* node,
 	c->t2= 0.0f;
 }
 
-void register_node_type_cmp_luma_matte(ListBase *lb)
+void register_node_type_cmp_luma_matte(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_LUMA_MATTE, "Luminance Key", NODE_CLASS_MATTE, NODE_PREVIEW|NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_LUMA_MATTE, "Luminance Key", NODE_CLASS_MATTE, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_luma_matte_in, cmp_node_luma_matte_out);
 	node_type_size(&ntype, 200, 80, 250);
 	node_type_init(&ntype, node_composit_init_luma_matte);
 	node_type_storage(&ntype, "NodeChroma", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, node_composit_exec_luma_matte);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-

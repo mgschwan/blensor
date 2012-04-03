@@ -116,7 +116,7 @@ static void pointdensity_cache_psys(Render *re, PointDensity *pd, Object *ob, Pa
 	/* init everything */
 	if (!psys || !ob || !pd) return;
 
-	mul_m4_m4m4(obview, re->viewinv, ob->obmat);
+	mult_m4_m4m4(obview, ob->obmat, re->viewinv);
 	
 	/* Just to create a valid rendering context for particles */
 	psys_render_set(ob, psys, re->viewmat, re->winmat, re->winx, re->winy, 0);
@@ -151,15 +151,16 @@ static void pointdensity_cache_psys(Render *re, PointDensity *pd, Object *ob, Pa
 	for (i=0, pa=psys->particles; i < total_particles; i++, pa++) {
 
 		state.time = cfra;
-		if(psys_get_particle_state(&sim, i, &state, 0)) {
+		if (psys_get_particle_state(&sim, i, &state, 0)) {
 			
-			VECCOPY(partco, state.co);
+			copy_v3_v3(partco, state.co);
 			
 			if (pd->psys_cache_space == TEX_PD_OBJECTSPACE)
 				mul_m4_v3(ob->imat, partco);
 			else if (pd->psys_cache_space == TEX_PD_OBJECTLOC) {
 				sub_v3_v3(partco, ob->loc);
-			} else {
+			}
+			else {
 				/* TEX_PD_WORLDSPACE */
 			}
 			
@@ -175,7 +176,8 @@ static void pointdensity_cache_psys(Render *re, PointDensity *pd, Object *ob, Pa
 				
 				if (i < psys->totpart) {
 					pa_time = (cfra - pa->time)/pa->lifetime;
-				} else {
+				}
+				else {
 					ChildParticle *cpa= (psys->child + i) - psys->totpart;
 					float pa_birthtime, pa_dietime;
 					
@@ -191,7 +193,7 @@ static void pointdensity_cache_psys(Render *re, PointDensity *pd, Object *ob, Pa
 	BLI_bvhtree_balance(pd->point_tree);
 	dm->release(dm);
 	
-	if(psys->lattice){
+	if (psys->lattice) {
 		end_latt_deform(psys->lattice);
 		psys->lattice=0;
 	}
@@ -214,10 +216,10 @@ static void pointdensity_cache_object(Render *re, PointDensity *pd, Object *ob)
 
 	pd->point_tree = BLI_bvhtree_new(pd->totpoints, 0.0, 4, 6);
 	
-	for(i=0; i < pd->totpoints; i++, mvert++) {
+	for (i=0; i < pd->totpoints; i++, mvert++) {
 		float co[3];
 		
-		VECCOPY(co, mvert->co);
+		copy_v3_v3(co, mvert->co);
 
 		switch(pd->ob_cache_space) {
 			case TEX_PD_OBJECTSPACE:
@@ -239,11 +241,11 @@ static void pointdensity_cache_object(Render *re, PointDensity *pd, Object *ob)
 	dm->release(dm);
 
 }
-static void cache_pointdensity(Render *re, Tex *tex)
+void cache_pointdensity(Render *re, Tex *tex)
 {
 	PointDensity *pd = tex->pd;
 	
-	if(!pd)
+	if (!pd)
 		return;
 
 	if (pd->point_tree) {
@@ -293,14 +295,14 @@ void make_pointdensities(Render *re)
 {
 	Tex *tex;
 	
-	if(re->scene->r.scemode & R_PREVIEWBUTS)
+	if (re->scene->r.scemode & R_PREVIEWBUTS)
 		return;
 	
 	re->i.infostr= "Caching Point Densities";
 	re->stats_draw(re->sdh, &re->i);
 
 	for (tex= re->main->tex.first; tex; tex= tex->id.next) {
-		if(tex->id.us && tex->type==TEX_POINTDENSITY) {
+		if (tex->id.us && tex->type==TEX_POINTDENSITY) {
 			cache_pointdensity(re, tex);
 		}
 	}
@@ -313,11 +315,11 @@ void free_pointdensities(Render *re)
 {
 	Tex *tex;
 	
-	if(re->scene->r.scemode & R_PREVIEWBUTS)
+	if (re->scene->r.scemode & R_PREVIEWBUTS)
 		return;
 	
 	for (tex= re->main->tex.first; tex; tex= tex->id.next) {
-		if(tex->id.us && tex->type==TEX_POINTDENSITY) {
+		if (tex->id.us && tex->type==TEX_POINTDENSITY) {
 			free_pointdensity(re, tex);
 		}
 	}
@@ -346,9 +348,9 @@ static void accum_density(void *userdata, int index, float squared_dist)
 	float density = 0.0f;
 	
 	if (pdr->point_data_used & POINT_DATA_VEL) {
-		pdr->vec[0] += pdr->point_data[index*3 + 0]; //* density;
-		pdr->vec[1] += pdr->point_data[index*3 + 1]; //* density;
-		pdr->vec[2] += pdr->point_data[index*3 + 2]; //* density;
+		pdr->vec[0] += pdr->point_data[index*3 + 0]; // * density;
+		pdr->vec[1] += pdr->point_data[index*3 + 1]; // * density;
+		pdr->vec[2] += pdr->point_data[index*3 + 2]; // * density;
 	}
 	if (pdr->point_data_used & POINT_DATA_LIFE) {
 		*pdr->age += pdr->point_data[pdr->offset + index]; // * density;
@@ -423,7 +425,7 @@ int pointdensitytex(Tex *tex, float *texvec, TexResult *texres)
 		(pd->flag&TEX_PD_FALLOFF_CURVE ? pd->falloff_curve : NULL), pd->falloff_speed_scale*0.001f);
 	noise_fac = pd->noise_fac * 0.5f;	/* better default */
 	
-	VECCOPY(co, texvec);
+	copy_v3_v3(co, texvec);
 	
 	if (point_data_used(pd)) {
 		/* does a BVH lookup to find accumulated density and additional point data *
@@ -480,7 +482,7 @@ int pointdensitytex(Tex *tex, float *texvec, TexResult *texres)
 			if (pd->coba) {
 				if (do_colorband(pd->coba, age, col)) {
 					texres->talpha= 1;
-					VECCOPY(&texres->tr, col);
+					copy_v3_v3(&texres->tr, col);
 					texres->tin *= col[3];
 					texres->ta = texres->tin;
 				}
@@ -493,7 +495,7 @@ int pointdensitytex(Tex *tex, float *texvec, TexResult *texres)
 			if (pd->coba) {
 				if (do_colorband(pd->coba, speed, col)) {
 					texres->talpha= 1;	
-					VECCOPY(&texres->tr, col);
+					copy_v3_v3(&texres->tr, col);
 					texres->tin *= col[3];
 					texres->ta = texres->tin;
 				}
@@ -503,7 +505,7 @@ int pointdensitytex(Tex *tex, float *texvec, TexResult *texres)
 		case TEX_PD_COLOR_PARTVEL:
 			texres->talpha= 1;
 			mul_v3_fl(vec, pd->speed_scale);
-			VECCOPY(&texres->tr, vec);
+			copy_v3_v3(&texres->tr, vec);
 			texres->ta = texres->tin;
 			break;
 		case TEX_PD_COLOR_CONSTANT:
@@ -515,9 +517,9 @@ int pointdensitytex(Tex *tex, float *texvec, TexResult *texres)
 	
 	return retval;
 	
-	/*
+#if 0
 	if (texres->nor!=NULL) {
 		texres->nor[0] = texres->nor[1] = texres->nor[2] = 0.0f;
 	}
-	*/
+#endif
 }

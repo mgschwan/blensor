@@ -20,13 +20,13 @@
 
 import bpy
 from bpy.types import Operator
+from mathutils import Vector
 
 
-def randomize_selected(seed, delta, loc, rot, scale, scale_even):
+def randomize_selected(seed, delta, loc, rot, scale, scale_even, scale_min):
 
     import random
     from random import uniform
-    from mathutils import Vector
 
     random.seed(seed)
 
@@ -43,8 +43,13 @@ def randomize_selected(seed, delta, loc, rot, scale, scale_even):
         else:  # otherwise the values change under us
             uniform(0.0, 0.0), uniform(0.0, 0.0), uniform(0.0, 0.0)
 
-        if rot:  # TODO, non euler's
+        if rot:
             vec = rand_vec(rot)
+
+            rotation_mode = obj.rotation_mode
+            if rotation_mode in {'QUATERNION', 'AXIS_ANGLE'}:
+                obj.rotation_mode = 'XYZ'
+
             if delta:
                 obj.delta_rotation_euler[0] += vec[0]
                 obj.delta_rotation_euler[1] += vec[1]
@@ -53,6 +58,7 @@ def randomize_selected(seed, delta, loc, rot, scale, scale_even):
                 obj.rotation_euler[0] += vec[0]
                 obj.rotation_euler[1] += vec[1]
                 obj.rotation_euler[2] += vec[2]
+            obj.rotation_mode = rotation_mode
         else:
             uniform(0.0, 0.0), uniform(0.0, 0.0), uniform(0.0, 0.0)
 
@@ -62,20 +68,18 @@ def randomize_selected(seed, delta, loc, rot, scale, scale_even):
             else:
                 org_sca_x, org_sca_y, org_sca_z = obj.scale
 
-            if scale_even:
-                sca_x = sca_y = sca_z = uniform(scale[0], - scale[0])
-                uniform(0.0, 0.0), uniform(0.0, 0.0)
-            else:
-                sca_x, sca_y, sca_z = rand_vec(scale)
+            sca_x, sca_y, sca_z = (uniform(-scale[0] + 2.0, scale[0]),
+                                   uniform(-scale[1] + 2.0, scale[1]),
+                                   uniform(-scale[2] + 2.0, scale[2]))
 
             if scale_even:
-                aX = -(sca_x * org_sca_x) + org_sca_x
-                aY = -(sca_x * org_sca_y) + org_sca_y
-                aZ = -(sca_x * org_sca_z) + org_sca_z
+                aX = sca_x * org_sca_x
+                aY = sca_x * org_sca_y
+                aZ = sca_x * org_sca_z
             else:
-                aX = sca_x + org_sca_x
-                aY = sca_y + org_sca_y
-                aZ = sca_z + org_sca_z
+                aX = sca_x * org_sca_x
+                aY = sca_y * org_sca_y
+                aZ = sca_z * org_sca_z
 
             if delta:
                 obj.delta_scale = aX, aY, aZ
@@ -85,7 +89,10 @@ def randomize_selected(seed, delta, loc, rot, scale, scale_even):
             uniform(0.0, 0.0), uniform(0.0, 0.0), uniform(0.0, 0.0)
 
 
-from bpy.props import IntProperty, BoolProperty, FloatVectorProperty
+from bpy.props import (IntProperty,
+                       BoolProperty,
+                       FloatVectorProperty)
+from math import pi
 
 
 class RandomizeLocRotSize(Operator):
@@ -98,7 +105,7 @@ class RandomizeLocRotSize(Operator):
             name="Random Seed",
             description="Seed value for the random generator",
             min=0,
-            max=1000,
+            max=10000,
             default=0,
             )
     use_delta = BoolProperty(
@@ -129,10 +136,10 @@ class RandomizeLocRotSize(Operator):
     rot = FloatVectorProperty(
             name="Rotation",
             description="Maximun rotation over each axis",
-            min=-180.0,
-            max=180.0,
+            min=-pi,
+            max=pi,
             default=(0.0, 0.0, 0.0),
-            subtype='TRANSLATION',
+            subtype='EULER',
             )
     use_scale = BoolProperty(
             name="Randomize Scale",
@@ -157,24 +164,23 @@ class RandomizeLocRotSize(Operator):
             description="Maximum scale randomization over each axis",
             min=-100.0,
             max=100.0,
-            default=(0.0, 0.0, 0.0),
+            default=(1.0, 1.0, 1.0),
             subtype='TRANSLATION',
             )
 
     def execute(self, context):
-        from math import radians
-
         seed = self.random_seed
 
         delta = self.use_delta
 
         loc = None if not self.use_loc else self.loc
-        rot = None if not self.use_rot else self.rot * radians(1.0)
+        rot = None if not self.use_rot else Vector(self.rot)
         scale = None if not self.use_scale else self.scale
 
         scale_even = self.scale_even
         #scale_min = self.scale_min
+        scale_min = 0
 
-        randomize_selected(seed, delta, loc, rot, scale, scale_even)
+        randomize_selected(seed, delta, loc, rot, scale, scale_even, scale_min)
 
         return {'FINISHED'}

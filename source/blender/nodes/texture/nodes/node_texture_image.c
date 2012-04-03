@@ -45,9 +45,9 @@ static void colorfn(float *out, TexParams *p, bNode *node, bNodeStack **UNUSED(i
 	Image *ima= (Image *)node->id;
 	ImageUser *iuser= (ImageUser *)node->storage;
 	
-	if( ima ) {
+	if ( ima ) {
 		ImBuf *ibuf = BKE_image_get_ibuf(ima, iuser);
-		if( ibuf ) {
+		if ( ibuf ) {
 			float xsize, ysize;
 			float xoff, yoff;
 			int px, py;
@@ -61,22 +61,22 @@ static void colorfn(float *out, TexParams *p, bNode *node, bNodeStack **UNUSED(i
 			px = (int)( (x-xoff) * xsize );
 			py = (int)( (y-yoff) * ysize );
 		
-			if( (!xsize) || (!ysize) ) return;
+			if ( (!xsize) || (!ysize) ) return;
 			
-			if( !ibuf->rect_float ) {
+			if ( !ibuf->rect_float ) {
 				BLI_lock_thread(LOCK_IMAGE);
-				if( !ibuf->rect_float )
+				if ( !ibuf->rect_float )
 					IMB_float_from_rect(ibuf);
 				BLI_unlock_thread(LOCK_IMAGE);
 			}
 			
-			while( px < 0 ) px += ibuf->x;
-			while( py < 0 ) py += ibuf->y;
-			while( px >= ibuf->x ) px -= ibuf->x;
-			while( py >= ibuf->y ) py -= ibuf->y;
+			while ( px < 0 ) px += ibuf->x;
+			while ( py < 0 ) py += ibuf->y;
+			while ( px >= ibuf->x ) px -= ibuf->x;
+			while ( py >= ibuf->y ) py -= ibuf->y;
 			
 			result = ibuf->rect_float + py*ibuf->x*4 + px*4;
-			QUATCOPY( out, result );
+			copy_v4_v4( out, result );
 		}
 	}
 }
@@ -95,16 +95,16 @@ static void init(bNodeTree *UNUSED(ntree), bNode* node, bNodeTemplate *UNUSED(nt
 	iuser->ok= 1;
 }
 
-void register_node_type_tex_image(ListBase *lb)
+void register_node_type_tex_image(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 	
-	node_type_base(&ntype, TEX_NODE_IMAGE, "Image", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
+	node_type_base(ttype, &ntype, TEX_NODE_IMAGE, "Image", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, NULL, outputs);
 	node_type_size(&ntype, 120, 80, 300);
 	node_type_init(&ntype, init);
 	node_type_storage(&ntype, "ImageUser", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, exec);
 	
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }

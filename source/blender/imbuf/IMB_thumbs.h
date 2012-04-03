@@ -30,8 +30,8 @@
  */
 
 
-#ifndef _IMB_THUMBS_H
-#define _IMB_THUMBS_H
+#ifndef __IMB_THUMBS_H__
+#define __IMB_THUMBS_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -57,7 +57,7 @@ typedef enum ThumbSource {
 	THB_SOURCE_BLEND
 } ThumbSource;
 
-/* dont generate thumbs for images bigger then this (100mb) */
+/* don't generate thumbs for images bigger then this (100mb) */
 #define THUMB_SIZE_MAX (100 * 1024*1024)
 
 // IB_metadata
@@ -85,5 +85,5 @@ void IMB_overlayblend_thumb(unsigned int *thumb, int width, int height, float as
 }
 #endif /* __cplusplus */
 
-#endif /* _IMB_THUMBS_H */
+#endif /* __IMB_THUMBS_H__ */
 

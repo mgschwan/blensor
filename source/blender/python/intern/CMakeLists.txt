@@ -25,6 +25,7 @@
 
 set(INC 
 	..
+	../../blenfont
 	../../blenkernel
 	../../blenlib
 	../../blenloader
@@ -32,8 +33,9 @@ set(INC
 	../../makesdna
 	../../makesrna
 	../../windowmanager
-    ../../gpu
+	../../gpu
 	../../../../intern/guardedalloc
+	../../../../intern/cycles/blender
 )
 
 set(INC_SYS
@@ -41,9 +43,10 @@ set(INC_SYS
 )
 
 set(SRC
-    gpu.c
+	gpu.c
 	bpy.c
 	bpy_app.c
+	bpy_app_ffmpeg.c
 	bpy_app_handlers.c
 	bpy_driver.c
 	bpy_interface.c
@@ -61,9 +64,10 @@ set(SRC
 	bpy_util.c
 	stubs.c
 
-    gpu.h
+	gpu.h
 	bpy.h
 	bpy_app.h
+	bpy_app_ffmpeg.h
 	bpy_app_handlers.h
 	bpy_driver.h
 	bpy_intern_string.h
@@ -95,8 +99,20 @@ if(WITH_AUDASPACE)
 	add_definitions(-DWITH_AUDASPACE)
 endif()
 
+if(WITH_CYCLES)
+	add_definitions(-DWITH_CYCLES)
+endif()
+
 if(WITH_INTERNATIONAL)
-        add_definitions(-DWITH_INTERNATIONAL)
+	add_definitions(-DWITH_INTERNATIONAL)
+endif()
+
+if(WITH_CODEC_FFMPEG)
+	list(APPEND INC_SYS
+		${FFMPEG_INCLUDE_DIRS}
+	)
+
+	add_definitions(-DWITH_FFMPEG)
 endif()
 
 blender_add_lib(bf_python "${SRC}" "${INC}" "${INC_SYS}")

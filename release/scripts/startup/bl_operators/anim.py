@@ -38,7 +38,7 @@ class ANIM_OT_keying_set_export(Operator):
     bl_label = "Export Keying Set..."
 
     filepath = StringProperty(
-            name="File Path",
+            subtype='FILE_PATH',
             )
     filter_folder = BoolProperty(
             name="Filter folders",
@@ -67,15 +67,16 @@ class ANIM_OT_keying_set_export(Operator):
         scene = context.scene
         ks = scene.keying_sets.active
 
-        f.write("# Keying Set: %s\n" % ks.name)
+        f.write("# Keying Set: %s\n" % ks.bl_idname)
 
         f.write("import bpy\n\n")
-        # XXX, why not current scene?
-        f.write("scene= bpy.data.scenes[0]\n\n")
+        f.write("scene = bpy.context.scene\n\n")
 
         # Add KeyingSet and set general settings
         f.write("# Keying Set Level declarations\n")
-        f.write("ks= scene.keying_sets.new(name=\"%s\")\n" % ks.name)
+        f.write("ks = scene.keying_sets.new(idname=\"%s\", name=\"%s\")\n"
+                "" % (ks.bl_idname, ks.bl_label))
+        f.write("ks.bl_description = \"%s\"\n" % ks.bl_description)
 
         if not ks.is_path_absolute:
             f.write("ks.is_path_absolute = False\n")
@@ -161,7 +162,7 @@ class ANIM_OT_keying_set_export(Operator):
 
 
 class BakeAction(Operator):
-    """Bake animation to an Action"""
+    """Bake object/pose loc/scale/rotation animation to a new action"""
     bl_idname = "nla.bake"
     bl_label = "Bake Action"
     bl_options = {'REGISTER', 'UNDO'}
@@ -227,7 +228,7 @@ class BakeAction(Operator):
 
 
 class ClearUselessActions(Operator):
-    """Mark actions with no F-Curves for deletion after save+reload of """ \
+    """Mark actions with no F-Curves for deletion after save & reload of """ \
     """file preserving \"action libraries\""""
     bl_idname = "anim.clear_useless_actions"
     bl_label = "Clear Useless Actions"
@@ -239,7 +240,7 @@ class ClearUselessActions(Operator):
 
     @classmethod
     def poll(cls, context):
-        return len(bpy.data.actions) != 0
+        return bool(bpy.data.actions)
 
     def execute(self, context):
         removed = 0

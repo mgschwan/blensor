@@ -61,7 +61,7 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 	/* sanity checks */
 	if (name == NULL)
 		return icon;
-	else if ELEM3(NULL, id, fcu, fcu->rna_path) {
+	else if (ELEM3(NULL, id, fcu, fcu->rna_path)) {
 		if (fcu == NULL)
 			strcpy(name, "<invalid>");
 		else if (fcu->rna_path == NULL)
@@ -78,7 +78,8 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 		
 		/* try to resolve the path */
 		if (RNA_path_resolve(&id_ptr, fcu->rna_path, &ptr, &prop)) {
-			char *structname=NULL, *propname=NULL, arrayindbuf[16];
+			const char *structname=NULL, *propname=NULL;
+			char arrayindbuf[16];
 			const char *arrayname=NULL;
 			short free_structname = 0;
 			
@@ -122,19 +123,19 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 					free_structname= 1;
 				}
 				else
-					structname= (char *)RNA_struct_ui_name(ptr.type);
+					structname= RNA_struct_ui_name(ptr.type);
 			}
 			
 			/* Property Name is straightforward */
-			propname= (char *)RNA_property_ui_name(prop);
+			propname= RNA_property_ui_name(prop);
 			
 			/* Array Index - only if applicable */
 			if (RNA_property_array_length(&ptr, prop)) {
 				char c= RNA_property_array_item_char(prop, fcu->array_index);
 				
 				/* we need to write the index to a temp buffer (in py syntax) */
-				if (c) sprintf(arrayindbuf, "%c ", c);
-				else sprintf(arrayindbuf, "[%d]", fcu->array_index);
+				if (c) BLI_snprintf(arrayindbuf, sizeof(arrayindbuf), "%c ", c);
+				else BLI_snprintf(arrayindbuf, sizeof(arrayindbuf), "[%d]", fcu->array_index);
 				
 				arrayname= &arrayindbuf[0];
 			}
@@ -153,13 +154,18 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 			
 			/* free temp name if nameprop is set */
 			if (free_structname)
-				MEM_freeN(structname);
+				MEM_freeN((void *)structname);
 			
 			
 			/* Icon for this property's owner:
 			 *	use the struct's icon if it is set
 			 */
 			icon= RNA_struct_ui_icon(ptr.type);
+			
+			/* valid path - remove the invalid tag since we now know how to use it saving
+			 * users manual effort to reenable using "Revive Disabled FCurves" [#29629]
+			 */
+			fcu->flag &= ~FCURVE_DISABLED;
 		}
 		else {
 			/* invalid path */

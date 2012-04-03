@@ -30,8 +30,8 @@
  * Declaration of GHOST_WindowX11 class.
  */
 
-#ifndef _GHOST_WINDOWX11_H_
-#define _GHOST_WINDOWX11_H_
+#ifndef __GHOST_WINDOWX11_H__
+#define __GHOST_WINDOWX11_H__
 
 #include "GHOST_Window.h"
 #include <X11/Xlib.h>
@@ -45,6 +45,10 @@
 
 class STR_String;
 class GHOST_SystemX11;
+
+#ifdef WITH_XDND
+class GHOST_DropTargetX11;
+#endif
 
 /**
  * X11 implementation of GHOST_IWindow.
@@ -142,7 +146,7 @@ public:
 	
 		GHOST_TWindowState 
 	getState(
-	) const ;
+	) const;
 
 		GHOST_TSuccess 
 	setState(
@@ -222,6 +226,11 @@ public:
 
 #if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)
 	XIC getX11_XIC() { return m_xic; }
+#endif
+
+#ifdef WITH_XDND
+	GHOST_DropTargetX11* getDropTarget()
+	{ return m_dropTarget; }
 #endif
 
 	/*
@@ -361,6 +370,10 @@ private :
 	/** Cache of XC_* ID's to XCursor structures */
 	std::map<unsigned int, Cursor> m_standard_cursors;
 
+#ifdef WITH_XDND
+	GHOST_DropTargetX11 * m_dropTarget;
+#endif
+
 #ifdef WITH_X11_XINPUT
 	/* Tablet devices */
 	XTablet m_xtablet;
@@ -384,4 +397,4 @@ private :
 };
 
 
-#endif // _GHOST_WINDOWX11_H_
+#endif // __GHOST_WINDOWX11_H__

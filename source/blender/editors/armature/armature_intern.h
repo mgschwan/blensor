@@ -28,8 +28,8 @@
  *  \ingroup edarmature
  */
 
-#ifndef ED_ARMATURE_INTERN_H
-#define ED_ARMATURE_INTERN_H
+#ifndef __ARMATURE_INTERN_H__
+#define __ARMATURE_INTERN_H__
 
 /* internal exports only */
 struct wmOperatorType;
@@ -99,7 +99,6 @@ void POSE_OT_copy(struct wmOperatorType *ot);
 void POSE_OT_paste(struct wmOperatorType *ot);
 
 void POSE_OT_select_all(struct wmOperatorType *ot);
-void POSE_OT_select_inverse(struct wmOperatorType *ot);
 void POSE_OT_select_parent(struct wmOperatorType *ot);
 void POSE_OT_select_hierarchy(struct wmOperatorType *ot);
 void POSE_OT_select_linked(struct wmOperatorType *ot);
@@ -173,7 +172,7 @@ void poseAnim_mapping_refresh(struct bContext *C, struct Scene *scene, struct Ob
 void poseAnim_mapping_reset(ListBase *pfLinks);
 void poseAnim_mapping_autoKeyframe(struct bContext *C, struct Scene *scene, struct Object *ob, ListBase *pfLinks, float cframe);
 
-LinkData *poseAnim_mapping_getNextFCurve(ListBase *fcuLinks, LinkData *prev, char *path);
+LinkData *poseAnim_mapping_getNextFCurve(ListBase *fcuLinks, LinkData *prev, const char *path);
 
 /* ******************************************************* */
 /* PoseLib */
@@ -209,16 +208,16 @@ void BIF_sk_selectStroke(struct bContext *C, const int mval[2], short extend);
 
 /* duplicate method */
 void preEditBoneDuplicate(struct ListBase *editbones);
-struct EditBone *duplicateEditBone(struct EditBone *curBone, char *name, struct ListBase *editbones, struct Object *ob);
+struct EditBone *duplicateEditBone(struct EditBone *curBone, const char *name, struct ListBase *editbones, struct Object *ob);
 void updateDuplicateSubtarget(struct EditBone *dupBone, struct ListBase *editbones, struct Object *ob);
 
 /* duplicate method (cross objects */
 
 /* editbones is the target list */
-struct EditBone *duplicateEditBoneObjects(struct EditBone *curBone, char *name, struct ListBase *editbones, struct Object *src_ob, struct Object *dst_ob);
+struct EditBone *duplicateEditBoneObjects(struct EditBone *curBone, const char *name, struct ListBase *editbones, struct Object *src_ob, struct Object *dst_ob);
 
 /* editbones is the source list */
 void updateDuplicateSubtargetObjects(struct EditBone *dupBone, struct ListBase *editbones, struct Object *src_ob, struct Object *dst_ob);
 
-#endif /* ED_ARMATURE_INTERN_H */
+#endif /* __ARMATURE_INTERN_H__ */
 

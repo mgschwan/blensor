@@ -21,7 +21,6 @@ bl_info = {
     "author": "Brian Hinton (Nichod)",
     "version": (0,1),
     "blender": (2, 5, 9),
-    "api": 39685,
     "location": "View3D > Add > Mesh",
     "description": "Adds Chain with curve guide for easy creation",
     "warning": "",
@@ -143,7 +142,7 @@ def Add_Chain():
 
 #makes AddChain an operator
 class AddChain(bpy.types.Operator):
-    '''Add a Chain.'''
+    '''Add a Chain'''
     bl_idname = "mesh.primitive_chain_add"
     bl_label = "Add Chain"
     bl_options = {'REGISTER', 'UNDO'}

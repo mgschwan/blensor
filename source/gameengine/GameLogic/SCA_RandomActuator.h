@@ -30,15 +30,15 @@
  *  \brief Draw a random number, and put it in a property
  */
 
-#ifndef __KX_RANDOMACTUATOR
-#define __KX_RANDOMACTUATOR
+#ifndef __SCA_RANDOMACTUATOR_H__
+#define __SCA_RANDOMACTUATOR_H__
 
 #include "SCA_IActuator.h"
 #include "SCA_RandomNumberGenerator.h"
 
 class SCA_RandomActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 	/** Property to assign to */
 	STR_String m_propname;
 	

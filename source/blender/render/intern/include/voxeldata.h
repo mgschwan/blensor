@@ -29,9 +29,8 @@
  *  \ingroup render
  */
 
-
-#ifndef VOXELDATA_H
-#define VOXELDATA_H 
+#ifndef __VOXELDATA_H__
+#define __VOXELDATA_H__ 
 
 struct Render;
 struct TexResult;
@@ -42,8 +41,8 @@ typedef struct VoxelDataHeader
 	int frames;
 } VoxelDataHeader;
 
+void cache_voxeldata(Tex *tex, int scene_frame);
 void make_voxeldata(struct Render *re);
-void free_voxeldata(struct Render *re);
-int voxeldatatex(struct Tex *tex, const float texvec[3], struct TexResult *texres);
+int  voxeldatatex(struct Tex *tex, const float texvec[3], struct TexResult *texres);
 
-#endif /* VOXELDATA_H */
+#endif /* __VOXELDATA_H__ */

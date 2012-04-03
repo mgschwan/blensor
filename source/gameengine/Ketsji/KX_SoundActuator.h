@@ -29,8 +29,8 @@
  *  \ingroup ketsji
  */
 
-#ifndef __KX_SOUNDACTUATOR
-#define __KX_SOUNDACTUATOR
+#ifndef __KX_SOUNDACTUATOR_H__
+#define __KX_SOUNDACTUATOR_H__
 
 #include "SCA_IActuator.h"
 
@@ -57,7 +57,7 @@ typedef struct KX_3DSoundSettings
 
 class KX_SoundActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 	bool					m_isplaying;
 	AUD_Reference<AUD_IFactory>				m_sound;
 	float					m_volume;
@@ -127,5 +127,5 @@ public:
 
 };
 
-#endif //__KX_SOUNDACTUATOR
+#endif //__KX_SOUNDACTUATOR_H__
 

@@ -30,8 +30,8 @@
  */
 
  
-#ifndef BOP_FACE_H
-#define BOP_FACE_H
+#ifndef __BOP_FACE_H__
+#define __BOP_FACE_H__
 
 #include "BOP_Tag.h"
 #include "MT_Plane3.h"
@@ -40,12 +40,11 @@
 #include "BOP_Misc.h"
 #include <iostream>
 #include <vector>
-using namespace std;
 
 class BOP_Face;
 
-typedef vector<BOP_Face *> BOP_Faces;
-typedef vector<BOP_Face *>::iterator BOP_IT_Faces;
+typedef std::vector<BOP_Face *> BOP_Faces;
+typedef std::vector<BOP_Face *>::iterator BOP_IT_Faces;
 
 class BOP_Face
 {

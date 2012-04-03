@@ -38,11 +38,13 @@ extern "C" {
 }
 
 // (n&(n-1)) zeros the least significant bit of n 
-static int is_pow2(int num) {
+static int is_power_of_2_i(int num)
+{
 	return ((num)&(num-1))==0;
 }
-static int smaller_pow2(int num) {
-	while (!is_pow2(num))
+static int power_of_2_min_i(int num)
+{
+	while (!is_power_of_2_i(num))
 		num= num&(num-1);
 	return num;	
 }
@@ -77,18 +79,18 @@ BL_Texture::~BL_Texture()
 
 void BL_Texture::DeleteTex()
 {
-	if( mNeedsDeleted ) {
+	if ( mNeedsDeleted ) {
 		glDeleteTextures(1, (GLuint*)&mTexture);
 		mNeedsDeleted = 0;
 		mOk = 0;
 	}
 
-	if(mEnvState) {
+	if (mEnvState) {
 		glDeleteLists((GLuint)mEnvState, 1);
 		mEnvState =0;
 	}
 
-	if(mDisableState) {
+	if (mDisableState) {
 		glDeleteLists((GLuint)mDisableState, 1);
 		mDisableState =0;
 	}
@@ -159,13 +161,13 @@ bool BL_Texture::InitFromImage(int unit,  Image *img, bool mipmap)
 
 void BL_Texture::InitGLTex(unsigned int *pix,int x,int y,bool mipmap)
 {
-	if (!is_pow2(x) || !is_pow2(y) ) {
+	if (!is_power_of_2_i(x) || !is_power_of_2_i(y) ) {
 		InitNonPow2Tex(pix, x,y,mipmap);
 		return;
 	}
 
 	glBindTexture(GL_TEXTURE_2D, mTexture );
-	if( mipmap ) {
+	if ( mipmap ) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		gluBuild2DMipmaps( GL_TEXTURE_2D, GL_RGBA, x, y, GL_RGBA, GL_UNSIGNED_BYTE, pix );
@@ -184,15 +186,15 @@ void BL_Texture::InitGLTex(unsigned int *pix,int x,int y,bool mipmap)
 
 void BL_Texture::InitNonPow2Tex(unsigned int *pix,int x,int y,bool mipmap)
 {
-	int nx= smaller_pow2(x);
-	int ny= smaller_pow2(y);
+	int nx= power_of_2_min_i(x);
+	int ny= power_of_2_min_i(y);
 
 	unsigned int *newPixels = (unsigned int *)malloc(nx*ny*sizeof(unsigned int));
 	
 	gluScaleImage(GL_RGBA, x, y, GL_UNSIGNED_BYTE, pix, nx,ny, GL_UNSIGNED_BYTE, newPixels);
 	glBindTexture(GL_TEXTURE_2D, mTexture );
 
-	if( mipmap ) {
+	if ( mipmap ) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		gluBuild2DMipmaps( GL_TEXTURE_2D, GL_RGBA, nx, ny, GL_RGBA, GL_UNSIGNED_BYTE, newPixels );
@@ -274,7 +276,7 @@ bool BL_Texture::InitCubeMap(int unit,  EnvMap *cubemap)
 		my_envmap_split_ima(cubemap, ibuf);
 
 
-	if (!is_pow2(cubemap->cube[0]->x) || !is_pow2(cubemap->cube[0]->y))
+	if (!is_power_of_2_i(cubemap->cube[0]->x) || !is_power_of_2_i(cubemap->cube[0]->y))
 	{
 		spit("invalid envmap size please render with CubeRes @ power of two");
 
@@ -302,7 +304,7 @@ bool BL_Texture::InitCubeMap(int unit,  EnvMap *cubemap)
 	glTexParameteri( GL_TEXTURE_CUBE_MAP_ARB, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 	glTexParameteri( GL_TEXTURE_CUBE_MAP_ARB, GL_TEXTURE_WRAP_S,	 GL_CLAMP_TO_EDGE );
 	glTexParameteri( GL_TEXTURE_CUBE_MAP_ARB, GL_TEXTURE_WRAP_T,	 GL_CLAMP_TO_EDGE );
-	if(GLEW_VERSION_1_2)
+	if (GLEW_VERSION_1_2)
 		glTexParameteri( GL_TEXTURE_CUBE_MAP_ARB, GL_TEXTURE_WRAP_R,	 GL_CLAMP_TO_EDGE );
 
 	if (needs_split)
@@ -344,7 +346,7 @@ int BL_Texture::GetMaxUnits()
 {
 	GLint unit=0;
 
-	if(GLEW_ARB_multitexture) {
+	if (GLEW_ARB_multitexture) {
 		glGetIntegerv(GL_MAX_TEXTURE_UNITS_ARB, &unit);
 		return (MAXTEX>=unit?unit:MAXTEX);
 	}
@@ -354,28 +356,28 @@ int BL_Texture::GetMaxUnits()
 
 void BL_Texture::ActivateFirst()
 {
-	if(GLEW_ARB_multitexture)
+	if (GLEW_ARB_multitexture)
 		glActiveTextureARB(GL_TEXTURE0_ARB);
 }
 
 void BL_Texture::ActivateUnit(int unit)
 {
-	if(GLEW_ARB_multitexture)
-		if(unit <= MAXTEX)
+	if (GLEW_ARB_multitexture)
+		if (unit <= MAXTEX)
 			glActiveTextureARB(GL_TEXTURE0_ARB+unit);
 }
 
 
 void BL_Texture::DisableUnit()
 {
-	if(GLEW_ARB_multitexture)
+	if (GLEW_ARB_multitexture)
 		glActiveTextureARB(GL_TEXTURE0_ARB+mUnit);
 
 	glMatrixMode(GL_TEXTURE);
 	glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);
 
-	if(GLEW_ARB_texture_cube_map && glIsEnabled(GL_TEXTURE_CUBE_MAP_ARB))
+	if (GLEW_ARB_texture_cube_map && glIsEnabled(GL_TEXTURE_CUBE_MAP_ARB))
 		glDisable(GL_TEXTURE_CUBE_MAP_ARB);
 	else
 	{
@@ -393,8 +395,8 @@ void BL_Texture::DisableUnit()
 
 void BL_Texture::DisableAllTextures()
 {
-	for(int i=0; i<MAXTEX; i++) {
-		if(GLEW_ARB_multitexture)
+	for (int i=0; i<MAXTEX; i++) {
+		if (GLEW_ARB_multitexture)
 			glActiveTextureARB(GL_TEXTURE0_ARB+i);
 
 		glMatrixMode(GL_TEXTURE);
@@ -408,14 +410,14 @@ void BL_Texture::DisableAllTextures()
 		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
 	}
 
-	if(GLEW_ARB_multitexture)
+	if (GLEW_ARB_multitexture)
 		glActiveTextureARB(GL_TEXTURE0_ARB);
 }
 
 
 void BL_Texture::ActivateTexture()
 {
-	if(GLEW_ARB_multitexture)
+	if (GLEW_ARB_multitexture)
 		glActiveTextureARB(GL_TEXTURE0_ARB+mUnit);
 
 	if (mType == GL_TEXTURE_CUBE_MAP_ARB && GLEW_ARB_texture_cube_map)
@@ -424,7 +426,7 @@ void BL_Texture::ActivateTexture()
 		glEnable(GL_TEXTURE_CUBE_MAP_ARB);
 	}
 	else {
-		if(GLEW_ARB_texture_cube_map )
+		if (GLEW_ARB_texture_cube_map )
 			glDisable(GL_TEXTURE_CUBE_MAP_ARB);
 
 		glBindTexture( GL_TEXTURE_2D, mTexture );	
@@ -435,7 +437,7 @@ void BL_Texture::ActivateTexture()
 void BL_Texture::SetMapping(int mode)
 {
 
-	if(!(mode &USEREFL)) {
+	if (!(mode &USEREFL)) {
 		glDisable(GL_TEXTURE_GEN_S);
 		glDisable(GL_TEXTURE_GEN_T);
 		glDisable(GL_TEXTURE_GEN_R);
@@ -443,7 +445,7 @@ void BL_Texture::SetMapping(int mode)
 		return;
 	}
 
-	if( mType == GL_TEXTURE_CUBE_MAP_ARB && 
+	if ( mType == GL_TEXTURE_CUBE_MAP_ARB && 
 		GLEW_ARB_texture_cube_map &&
 		mode &USEREFL) 
 	{
@@ -472,17 +474,17 @@ void BL_Texture::SetMapping(int mode)
 
 void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 {
-	if(modulate || !GLEW_ARB_texture_env_combine){
+	if (modulate || !GLEW_ARB_texture_env_combine) {
 		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
 		return;
 	}
 
-	if(glIsList(mEnvState))
+	if (glIsList(mEnvState))
 	{
 		glCallList(mEnvState);
 		return;
 	}
-	if(!mEnvState)
+	if (!mEnvState)
 		mEnvState = glGenLists(1);
 
 	glNewList(mEnvState, GL_COMPILE_AND_EXECUTE);
@@ -502,7 +504,7 @@ void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 	GLenum op2		= GL_OPERAND2_RGB_ARB;
 
 	// switch to alpha combiners
-	if( mat->flag[mUnit]  &TEXALPHA ) {
+	if ( mat->flag[mUnit]  &TEXALPHA ) {
 		combiner = GL_COMBINE_ALPHA_ARB;
 		source0	= GL_SOURCE0_ALPHA_ARB;
 		source1 = GL_SOURCE1_ALPHA_ARB;
@@ -513,24 +515,24 @@ void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 		blend_operand = GL_SRC_ALPHA;
 		blend_operand_prev = GL_SRC_ALPHA;
 		// invert
-		if(mat->flag[mUnit] &TEXNEG) {
+		if (mat->flag[mUnit] &TEXNEG) {
 			blend_operand_prev = GL_ONE_MINUS_SRC_ALPHA;
 			blend_operand = GL_ONE_MINUS_SRC_ALPHA;
 		}
 	}
 	else {
-		if(mat->flag[mUnit] &TEXNEG) {
+		if (mat->flag[mUnit] &TEXNEG) {
 			blend_operand_prev=GL_ONE_MINUS_SRC_COLOR;
 			blend_operand = GL_ONE_MINUS_SRC_COLOR;
 		}
 	}
 	bool using_alpha = false;
 
-	if(mat->flag[mUnit]  &USEALPHA){
+	if (mat->flag[mUnit]  &USEALPHA) {
 		alphaOp = GL_ONE_MINUS_SRC_ALPHA;
 		using_alpha=true;
 	}
-	else if(mat->flag[mUnit]  &USENEGALPHA){
+	else if (mat->flag[mUnit]  &USENEGALPHA) {
 		alphaOp = GL_SRC_ALPHA;
 		using_alpha = true;
 	}
@@ -539,7 +541,7 @@ void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 		case BLEND_MIX:
 			{
 				// ------------------------------
-				if(!using_alpha) {
+				if (!using_alpha) {
 					GLfloat base_col[4];
 					base_col[0]	 = base_col[1]  = base_col[2]  = 0.f;
 					base_col[3]	 = 1.f-mat->color_blend[mUnit];
@@ -550,7 +552,7 @@ void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 				glTexEnvf(	GL_TEXTURE_ENV, op0,		blend_operand_prev );
 				glTexEnvf(	GL_TEXTURE_ENV, source1,	GL_TEXTURE );
 				glTexEnvf(	GL_TEXTURE_ENV, op1,		blend_operand);
-				if(!using_alpha)
+				if (!using_alpha)
 					glTexEnvf(	GL_TEXTURE_ENV, source2,	GL_CONSTANT_ARB );
 				else
 					glTexEnvf(	GL_TEXTURE_ENV, source2,	GL_TEXTURE );
@@ -564,7 +566,7 @@ void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 				glTexEnvf(	GL_TEXTURE_ENV, source0,	GL_PREVIOUS_ARB);
 				glTexEnvf(	GL_TEXTURE_ENV, op0,		blend_operand_prev);
 				glTexEnvf(	GL_TEXTURE_ENV, source1,	GL_TEXTURE );
-				if(using_alpha)
+				if (using_alpha)
 					glTexEnvf(	GL_TEXTURE_ENV, op1,		alphaOp);
 				else
 					glTexEnvf(	GL_TEXTURE_ENV, op1,		blend_operand);
@@ -576,7 +578,7 @@ void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 				glTexEnvf(	GL_TEXTURE_ENV, source0,	GL_PREVIOUS_ARB );
 				glTexEnvf(	GL_TEXTURE_ENV, op0,		blend_operand_prev );
 				glTexEnvf(	GL_TEXTURE_ENV, source1,	GL_TEXTURE );
-				if(using_alpha)
+				if (using_alpha)
 					glTexEnvf(	GL_TEXTURE_ENV, op1,		alphaOp);
 				else
 					glTexEnvf(	GL_TEXTURE_ENV, op1,		blend_operand);
@@ -597,7 +599,7 @@ void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 				glTexEnvf(	GL_TEXTURE_ENV, source0,	GL_PREVIOUS_ARB );
 				glTexEnvf(	GL_TEXTURE_ENV, op0,		blend_operand_prev );
 				glTexEnvf(	GL_TEXTURE_ENV, source1,	GL_TEXTURE );
-				if(using_alpha)
+				if (using_alpha)
 					glTexEnvf(	GL_TEXTURE_ENV, op1,		alphaOp);
 				else
 					glTexEnvf(	GL_TEXTURE_ENV, op1,		blend_operand);
@@ -610,8 +612,8 @@ void BL_Texture::setTexEnv(BL_Material *mat, bool modulate)
 
 int BL_Texture::GetPow2(int n)
 {
-	if(!is_pow2(n))
-		n = smaller_pow2(n);
+	if (!is_power_of_2_i(n))
+		n = power_of_2_min_i(n);
 
 	return n;
 }
@@ -636,13 +638,13 @@ void my_envmap_split_ima(EnvMap *env, ImBuf *ibuf)
 	
 	dx= ibuf->y;
 	dx/= 2;
-	if(3*dx != ibuf->x) {
+	if (3*dx != ibuf->x) {
 		printf("Incorrect envmap size\n");
 		env->ok= 0;
 		env->ima->ok= 0;
 	}
 	else {
-		for(part=0; part<6; part++) {
+		for (part=0; part<6; part++) {
 			env->cube[part]= IMB_allocImBuf(dx, dx, 24, IB_rect);
 		}
 		IMB_rectcpy(env->cube[0], ibuf, 
@@ -667,9 +669,9 @@ void my_free_envmapdata(EnvMap *env)
 {
 	unsigned int part;
 	
-	for(part=0; part<6; part++) {
+	for (part=0; part<6; part++) {
 		ImBuf *ibuf= env->cube[part];
-		if(ibuf) {
+		if (ibuf) {
 			IMB_freeImBuf(ibuf);
 			env->cube[part]= NULL;
 		}

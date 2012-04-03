@@ -24,14 +24,14 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __KX_PYMOUSE
-#define __KX_PYMOUSE
+#ifndef __SCA_PYTHONMOUSE_H__
+#define __SCA_PYTHONMOUSE_H__
 
 #include "PyObjectPlus.h"
 
 class SCA_PythonMouse : public PyObjectPlus
 {
-	Py_Header;
+	Py_Header
 private:
 	class SCA_IInputDevice *m_mouse;
 	class RAS_ICanvas *m_canvas;
@@ -48,6 +48,7 @@ public:
 	KX_PYMETHOD_DOC(SCA_PythonMouse, show);
 
 	static PyObject*	pyattr_get_events(void* self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static PyObject*	pyattr_get_active_events(void* self_v, const KX_PYATTRIBUTE_DEF *attrdef);
 	static PyObject*	pyattr_get_position(void* self_v, const KX_PYATTRIBUTE_DEF *attrdef);
 	static int			pyattr_set_position(void* self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject* value);
 	static PyObject*	pyattr_get_visible(void* self_v, const KX_PYATTRIBUTE_DEF *attrdef);
@@ -55,5 +56,5 @@ public:
 #endif
 };
 
-#endif //__KX_PYMOUSE
+#endif //__SCA_PYTHONMOUSE_H__
 

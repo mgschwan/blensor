@@ -40,6 +40,7 @@
 #include "GPU_extensions.h"
 
 #include "GPG_Application.h"
+#include "BL_BlenderDataConversion.h"
 
 #include <iostream>
 #include <MT_assert.h>
@@ -137,7 +138,7 @@ GPG_Application::GPG_Application(GHOST_ISystem* system)
 
 GPG_Application::~GPG_Application(void)
 {
-	if(m_pyGlobalDictString) {
+	if (m_pyGlobalDictString) {
 		delete [] m_pyGlobalDictString;
 		m_pyGlobalDictString = 0;
 		m_pyGlobalDictString_Length = 0;
@@ -371,17 +372,20 @@ bool GPG_Application::startFullScreen(
 		int bpp,int frequency,
 		const bool stereoVisual,
 		const int stereoMode,
-		const GHOST_TUns16 samples)
+		const GHOST_TUns16 samples,
+		bool useDesktop)
 {
 	bool success;
+	GHOST_TUns32 sysWidth=0, sysHeight=0;
+	fSystem->getMainDisplayDimensions(sysWidth, sysHeight);
 	// Create the main window
 	GHOST_DisplaySetting setting;
-	setting.xPixels = width;
-	setting.yPixels = height;
+	setting.xPixels = (useDesktop) ? sysWidth : width;
+	setting.yPixels = (useDesktop) ? sysHeight : height;
 	setting.bpp = bpp;
 	setting.frequency = frequency;
 
-	fSystem->beginFullScreen(setting, &m_mainWindow, stereoVisual);
+	fSystem->beginFullScreen(setting, &m_mainWindow, stereoVisual, samples);
 	m_mainWindow->setCursorVisibility(false);
 	m_mainWindow->setState(GHOST_kWindowStateFullScreen);
 
@@ -554,12 +558,12 @@ bool GPG_Application::initEngine(GHOST_IWindow* window, const int stereoMode)
 		bool nodepwarnings = (SYS_GetCommandLineInt(syshandle, "ignore_deprecation_warnings", 1) != 0);
 		bool restrictAnimFPS = gm->flag & GAME_RESTRICT_ANIM_UPDATES;
 
-		if(GLEW_ARB_multitexture && GLEW_VERSION_1_1)
+		if (GLEW_ARB_multitexture && GLEW_VERSION_1_1)
 			m_blendermat = (SYS_GetCommandLineInt(syshandle, "blender_material", 1) != 0);
 
-		if(GPU_glsl_support())
+		if (GPU_glsl_support())
 			m_blenderglslmat = (SYS_GetCommandLineInt(syshandle, "blender_glsl_material", 1) != 0);
-		else if(m_globalSettings->matmode == GAME_MAT_GLSL)
+		else if (m_globalSettings->matmode == GAME_MAT_GLSL)
 			m_blendermat = false;
 
 		// create the canvas, rasterizer and rendertools
@@ -575,8 +579,8 @@ bool GPG_Application::initEngine(GHOST_IWindow* window, const int stereoMode)
 		if (!m_rendertools)
 			goto initFailed;
 		
-		if(useLists) {
-			if(GLEW_VERSION_1_1)
+		if (useLists) {
+			if (GLEW_VERSION_1_1)
 				m_rasterizer = new RAS_ListRasterizer(m_canvas, true);
 			else
 				m_rasterizer = new RAS_ListRasterizer(m_canvas);
@@ -626,6 +630,8 @@ bool GPG_Application::initEngine(GHOST_IWindow* window, const int stereoMode)
 		m_ketsjiengine->SetRasterizer(m_rasterizer);
 
 		m_ketsjiengine->SetTimingDisplay(frameRate, false, false);
+
+		KX_KetsjiEngine::SetExitKey(ConvertKeyCode(gm->exitkey));
 #ifdef WITH_PYTHON
 		CValue::SetDeprecationWarnings(nodepwarnings);
 #else
@@ -695,9 +701,9 @@ bool GPG_Application::startEngine(void)
 
 		//	if (always_use_expand_framing)
 		//		sceneconverter->SetAlwaysUseExpandFraming(true);
-		if(m_blendermat && (m_globalSettings->matmode != GAME_MAT_TEXFACE))
+		if (m_blendermat && (m_globalSettings->matmode != GAME_MAT_TEXFACE))
 			m_sceneconverter->SetMaterials(true);
-		if(m_blenderglslmat && (m_globalSettings->matmode == GAME_MAT_GLSL))
+		if (m_blenderglslmat && (m_globalSettings->matmode == GAME_MAT_GLSL))
 			m_sceneconverter->SetGLSLMaterials(true);
 
 		KX_Scene* startscene = new KX_Scene(m_keyboard,
@@ -714,7 +720,7 @@ bool GPG_Application::startEngine(void)
 #endif // WITH_PYTHON
 
 		//initialize Dome Settings
-		if(m_startScene->gm.stereoflag == STEREO_DOME)
+		if (m_startScene->gm.stereoflag == STEREO_DOME)
 			m_ketsjiengine->InitDome(m_startScene->gm.dome.res, m_startScene->gm.dome.mode, m_startScene->gm.dome.angle, m_startScene->gm.dome.resbuf, m_startScene->gm.dome.tilt, m_startScene->gm.dome.warptext);
 
 #ifdef WITH_PYTHON
@@ -758,7 +764,7 @@ void GPG_Application::stopEngine()
 	// GameLogic.globalDict gets converted into a buffer, and sorted in
 	// m_pyGlobalDictString so we can restore after python has stopped
 	// and started between .blend file loads.
-	if(m_pyGlobalDictString) {
+	if (m_pyGlobalDictString) {
 		delete [] m_pyGlobalDictString;
 		m_pyGlobalDictString = 0;
 	}
@@ -786,6 +792,10 @@ void GPG_Application::stopEngine()
 
 void GPG_Application::exitEngine()
 {
+	// We only want to kill the engine if it has been initialized
+	if (!m_engineInitialized)
+		return;
+
 	sound_exit();
 	if (m_ketsjiengine)
 	{
@@ -908,12 +918,10 @@ bool GPG_Application::handleKey(GHOST_IEvent* event, bool isDown)
 	{
 		GHOST_TEventDataPtr eventData = ((GHOST_IEvent*)event)->getData();
 		GHOST_TEventKeyData* keyData = static_cast<GHOST_TEventKeyData*>(eventData);
-		//no need for this test
-		//if (fSystem->getFullScreen()) {
-			if (keyData->key == GHOST_kKeyEsc && !m_keyboard->m_hookesc && !m_isEmbedded) {
-				m_exitRequested = KX_EXIT_REQUEST_OUTSIDE;
-			}
-		//}
+
+		if (m_keyboard->ToNative(keyData->key) == KX_KetsjiEngine::GetExitKey() && !m_keyboard->m_hookesc && !m_isEmbedded) {
+			m_exitRequested = KX_EXIT_REQUEST_OUTSIDE;
+		}
 		m_keyboard->ConvertEvent(keyData->key, isDown);
 		handled = true;
 	}

@@ -123,7 +123,8 @@ void BL_ActionActuator::ProcessReplica()
 	
 }
 
-void BL_ActionActuator::SetBlendTime (float newtime){
+void BL_ActionActuator::SetBlendTime (float newtime)
+{
 	m_blendframe = newtime;
 }
 
@@ -144,6 +145,7 @@ void BL_ActionActuator::SetLocalTime(float curtime)
 		case ACT_ACTION_PLAY:
 			// Clamp
 			m_localtime = m_endframe;
+			((KX_GameObject*)GetParent())->StopAction(m_layer);
 			break;
 		case ACT_ACTION_LOOP_END:
 			// Put the time back to the beginning
@@ -173,7 +175,8 @@ void BL_ActionActuator::ResetStartTime(float curtime)
 	//SetLocalTime(curtime);
 }
 
-CValue* BL_ActionActuator::GetReplica() {
+CValue* BL_ActionActuator::GetReplica()
+{
 	BL_ActionActuator* replica = new BL_ActionActuator(*this);//m_float,GetName());
 	replica->ProcessReplica();
 	return replica;
@@ -237,14 +240,14 @@ bool BL_ActionActuator::Update(double curtime, bool frame)
 		RemoveAllEvents();
 	}
 
+	// "Active" actions need to keep updating their current frame
 	if (bUseContinue && (m_flag & ACT_FLAG_ACTIVE))
-	{
 		m_localtime = obj->GetActionFrame(m_layer);
-		ResetStartTime(curtime);
-	}
 
 	if (m_flag & ACT_FLAG_ATTEMPT_PLAY)
 		SetLocalTime(curtime);
+	else
+		ResetStartTime(curtime);
 
 	// Handle a frame property if it's defined
 	if ((m_flag & ACT_FLAG_ACTIVE) && m_framepropname[0] != 0)
@@ -299,6 +302,7 @@ bool BL_ActionActuator::Update(double curtime, bool frame)
 	else if ((m_flag & ACT_FLAG_ACTIVE) && bNegativeEvent)
 	{	
 		m_flag &= ~ACT_FLAG_ATTEMPT_PLAY;
+		m_localtime = obj->GetActionFrame(m_layer);
 		bAction *curr_action = obj->GetCurrentAction(m_layer);
 		if (curr_action && curr_action != m_action)
 		{
@@ -344,8 +348,15 @@ bool BL_ActionActuator::Update(double curtime, bool frame)
 /* Python functions                                                          */
 /* ------------------------------------------------------------------------- */
 
-PyObject* BL_ActionActuator::PyGetChannel(PyObject* value) {
-	char *string= _PyUnicode_AsString(value);
+PyObject* BL_ActionActuator::PyGetChannel(PyObject* value)
+{
+	const char *string= _PyUnicode_AsString(value);
+
+	if (GetParent()->GetGameObjectType() != SCA_IObject::OBJ_ARMATURE)
+	{
+		PyErr_SetString(PyExc_NotImplementedError, "actuator.getChannel(): Only armatures support channels");
+		return NULL;
+	}
 	
 	if (!string) {
 		PyErr_SetString(PyExc_TypeError, "expected a single string");
@@ -354,14 +365,14 @@ PyObject* BL_ActionActuator::PyGetChannel(PyObject* value) {
 	
 	bPoseChannel *pchan;
 	
-	if(m_userpose==NULL && m_pose==NULL) {
+	if (m_userpose==NULL && m_pose==NULL) {
 		BL_ArmatureObject *obj = (BL_ArmatureObject*)GetParent();
 		obj->GetPose(&m_pose); /* Get the underlying pose from the armature */
 	}
 	
-	// get_pose_channel accounts for NULL pose, run on both incase one exists but
+	// get_pose_channel accounts for NULL pose, run on both in case one exists but
 	// the channel doesnt
-	if(		!(pchan=get_pose_channel(m_userpose, string)) &&
+	if (		!(pchan=get_pose_channel(m_userpose, string)) &&
 			!(pchan=get_pose_channel(m_pose, string))  )
 	{
 		PyErr_SetString(PyExc_ValueError, "channel doesnt exist");
@@ -390,12 +401,12 @@ PyObject* BL_ActionActuator::PyGetChannel(PyObject* value) {
 	PyTuple_SET_ITEM(ret, 2, list);
 
 	return ret;
-/*
+#if 0
 	return Py_BuildValue("([fff][fff][ffff])",
 		pchan->loc[0], pchan->loc[1], pchan->loc[2],
 		pchan->size[0], pchan->size[1], pchan->size[2],
 		pchan->quat[0], pchan->quat[1], pchan->quat[2], pchan->quat[3] );
-*/
+#endif
 }
 
 /*     setChannel                                                         */
@@ -410,12 +421,18 @@ KX_PYMETHODDEF_DOC(BL_ActionActuator, setChannel,
 	PyObject *pymat= NULL;
 	PyObject *pyloc= NULL, *pysize= NULL, *pyquat= NULL;
 	bPoseChannel *pchan;
+
+	if (GetParent()->GetGameObjectType() != SCA_IObject::OBJ_ARMATURE)
+	{
+		PyErr_SetString(PyExc_NotImplementedError, "actuator.setChannel(): Only armatures support channels");
+		return NULL;
+	}
 	
-	if(PyTuple_Size(args)==2) {
+	if (PyTuple_Size(args)==2) {
 		if (!PyArg_ParseTuple(args,"sO:setChannel", &string, &pymat)) // matrix
 			return NULL;
 	}
-	else if(PyTuple_Size(args)==4) {
+	else if (PyTuple_Size(args)==4) {
 		if (!PyArg_ParseTuple(args,"sOOO:setChannel", &string, &pyloc, &pysize, &pyquat)) // loc/size/quat
 			return NULL;
 	}
@@ -424,11 +441,11 @@ KX_PYMETHODDEF_DOC(BL_ActionActuator, setChannel,
 		return NULL;
 	}
 	
-	if(pymat) {
+	if (pymat) {
 		float matrix[4][4];
 		MT_Matrix4x4 mat;
 		
-		if(!PyMatTo(pymat, mat))
+		if (!PyMatTo(pymat, mat))
 			return NULL;
 		
 		mat.getValue((float*)matrix);
@@ -436,17 +453,17 @@ KX_PYMETHODDEF_DOC(BL_ActionActuator, setChannel,
 		BL_ArmatureObject *obj = (BL_ArmatureObject*)GetParent();
 		
 		if (!m_userpose) {
-			if(!m_pose)
+			if (!m_pose)
 				obj->GetPose(&m_pose); /* Get the underlying pose from the armature */
 			game_copy_pose(&m_userpose, m_pose, 0);
 		}
 		// pchan= verify_pose_channel(m_userpose, string); // adds the channel if its not there.
 		pchan= get_pose_channel(m_userpose, string); // adds the channel if its not there.
 		
-		if(pchan) {
-			VECCOPY (pchan->loc, matrix[3]);
-			mat4_to_size( pchan->size,matrix);
-			mat4_to_quat( pchan->quat,matrix);
+		if (pchan) {
+			copy_v3_v3(pchan->loc, matrix[3]);
+			mat4_to_size(pchan->size, matrix);
+			mat4_to_quat(pchan->quat, matrix);
 		}
 	}
 	else {
@@ -459,7 +476,7 @@ KX_PYMETHODDEF_DOC(BL_ActionActuator, setChannel,
 		
 		// same as above
 		if (!m_userpose) {
-			if(!m_pose)
+			if (!m_pose)
 				obj->GetPose(&m_pose); /* Get the underlying pose from the armature */
 			game_copy_pose(&m_userpose, m_pose, 0);
 		}
@@ -467,14 +484,14 @@ KX_PYMETHODDEF_DOC(BL_ActionActuator, setChannel,
 		pchan= get_pose_channel(m_userpose, string); // adds the channel if its not there.
 		
 		// for some reason loc.setValue(pchan->loc) fails
-		if(pchan) {
+		if (pchan) {
 			pchan->loc[0]= loc[0]; pchan->loc[1]= loc[1]; pchan->loc[2]= loc[2];
 			pchan->size[0]= size[0]; pchan->size[1]= size[1]; pchan->size[2]= size[2];
 			pchan->quat[0]= quat[3]; pchan->quat[1]= quat[0]; pchan->quat[2]= quat[1]; pchan->quat[3]= quat[2]; /* notice xyzw -> wxyz is intentional */
 		}
 	}
 	
-	if(pchan==NULL) {
+	if (pchan==NULL) {
 		PyErr_SetString(PyExc_ValueError, "Channel could not be found, use the 'channelNames' attribute to get a list of valid channels");
 		return NULL;
 	}
@@ -522,8 +539,8 @@ PyAttributeDef BL_ActionActuator::Attributes[] = {
 	KX_PYATTRIBUTE_RO_FUNCTION("channelNames", BL_ActionActuator, pyattr_get_channel_names),
 	KX_PYATTRIBUTE_SHORT_RW("priority", 0, 100, false, BL_ActionActuator, m_priority),
 	KX_PYATTRIBUTE_RW_FUNCTION("frame", BL_ActionActuator, pyattr_get_frame, pyattr_set_frame),
-	KX_PYATTRIBUTE_STRING_RW("propName", 0, 31, false, BL_ActionActuator, m_propname),
-	KX_PYATTRIBUTE_STRING_RW("framePropName", 0, 31, false, BL_ActionActuator, m_framepropname),
+	KX_PYATTRIBUTE_STRING_RW("propName", 0, MAX_PROP_NAME, false, BL_ActionActuator, m_propname),
+	KX_PYATTRIBUTE_STRING_RW("framePropName", 0, MAX_PROP_NAME, false, BL_ActionActuator, m_framepropname),
 	KX_PYATTRIBUTE_RW_FUNCTION("useContinue", BL_ActionActuator, pyattr_get_use_continue, pyattr_set_use_continue),
 	KX_PYATTRIBUTE_FLOAT_RW_CHECK("blendTime", 0, MAXFRAMEF, BL_ActionActuator, m_blendframe, CheckBlendTime),
 	KX_PYATTRIBUTE_SHORT_RW_CHECK("mode",0,100,false,BL_ActionActuator,m_playtype,CheckType),
@@ -570,11 +587,17 @@ PyObject* BL_ActionActuator::pyattr_get_channel_names(void *self_v, const KX_PYA
 	PyObject *ret= PyList_New(0);
 	PyObject *item;
 	
+	if (self->GetParent()->GetGameObjectType() != SCA_IObject::OBJ_ARMATURE)
+	{
+		PyErr_SetString(PyExc_NotImplementedError, "actuator.channelNames: Only armatures support channels");
+		return NULL;
+	}
+
 	bPose *pose= ((BL_ArmatureObject*)self->GetParent())->GetOrigPose();
 	
-	if(pose) {
+	if (pose) {
 		bPoseChannel *pchan;
-		for(pchan= (bPoseChannel *)pose->chanbase.first; pchan; pchan= (bPoseChannel *)pchan->next) {
+		for (pchan= (bPoseChannel *)pose->chanbase.first; pchan; pchan= (bPoseChannel *)pchan->next) {
 			item= PyUnicode_FromString(pchan->name);
 			PyList_Append(ret, item);
 			Py_DECREF(item);

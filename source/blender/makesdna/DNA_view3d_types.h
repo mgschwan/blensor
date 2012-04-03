@@ -24,12 +24,13 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_VIEW3D_TYPES_H
-#define DNA_VIEW3D_TYPES_H
 
 /** \file DNA_view3d_types.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_VIEW3D_TYPES_H__
+#define __DNA_VIEW3D_TYPES_H__
 
 struct ViewDepths;
 struct Object;
@@ -38,7 +39,10 @@ struct Tex;
 struct SpaceLink;
 struct Base;
 struct BoundBox;
+struct MovieClip;
+struct MovieClipUser;
 struct RenderInfo;
+struct RenderEngine;
 struct bGPdata;
 struct SmoothViewStore;
 struct wmTimer;
@@ -52,8 +56,10 @@ struct wmTimer;
 #define far clipend
 #endif
 
+#include "DNA_defs.h"
 #include "DNA_listBase.h"
 #include "DNA_image_types.h"
+#include "DNA_movieclip_types.h"
 
 /* ******************************** */
 
@@ -66,10 +72,12 @@ typedef struct BGpic {
 
 	struct Image *ima;
 	struct ImageUser iuser;
+	struct MovieClip *clip;
+	struct MovieClipUser cuser;
 	float xof, yof, size, blend;
 	short view;
 	short flag;
-	float pad2;
+	short source, pad;
 } BGpic;
 
 /* ********************************* */
@@ -86,6 +94,24 @@ typedef struct RegionView3D {
 	float viewmatob[4][4];
 	float persmatob[4][4];
 
+
+	/* user defined clipping planes */
+	float clip[6][4];
+	float clip_local[6][4]; /* clip in object space, means we can test for clipping in editmode without first going into worldspace */
+	struct BoundBox *clipbb;
+
+	struct bGPdata *gpd;		/* Grease-Pencil Data (annotation layers) */
+
+	struct RegionView3D *localvd; /* allocated backup of its self while in localview */
+	struct RenderInfo *ri;
+	struct RenderEngine *render_engine;
+	struct ViewDepths *depths;
+
+	/* animated smooth view */
+	struct SmoothViewStore *sms;
+	struct wmTimer *smooth_timer;
+
+
 	/* transform widget matrix */
 	float twmat[4][4];
 
@@ -96,31 +122,17 @@ typedef struct RegionView3D {
 	float pixsize;				/* runtime only */
 	float ofs[3];				/* view center & orbit pivot, negative of worldspace location,
 								 * also matches -viewinv[3][0:3] in ortho mode.*/
-	short camzoom;				/* viewport zoom on the camera frame, see BKE_screen_view3d_zoom_to_fac */
-	short twdrawflag;
+	float camzoom;				/* viewport zoom on the camera frame, see BKE_screen_view3d_zoom_to_fac */
 	char is_persp;				/* check if persp/ortho view, since 'persp' cant be used for this since
 								 * it can have cameras assigned as well. (only set in setwinmatrixview3d) */
-	char pad[3];
+	char persp;
+	char view;
+	char viewlock;
+
+	short twdrawflag;
+	short rflag;
 	
-	short rflag, viewlock;
-	short persp;
-	short view;
-	
-	/* user defined clipping planes */
-	float clip[6][4];
-	float clip_local[6][4]; /* clip in object space, means we can test for clipping in editmode without first going into worldspace */
-	struct BoundBox *clipbb;	
-	
-	struct bGPdata *gpd;		/* Grease-Pencil Data (annotation layers) */
-	
-	struct RegionView3D *localvd; /* allocated backup of its self while in localview */
-	struct RenderInfo *ri;
-	struct ViewDepths *depths;
-	
-	/* animated smooth view */
-	struct SmoothViewStore *sms;
-	struct wmTimer *smooth_timer;
-	
+
 	/* last view */
 	float lviewquat[4];
 	short lpersp, lview; /* lpersp can never be set to 'RV3D_CAMOB' */
@@ -128,11 +140,10 @@ typedef struct RegionView3D {
 	
 	float twangle[3];
 
+
 	/* active rotation from NDOF or elsewhere */
 	float rot_angle;
 	float rot_axis[3];
-	
-	char pad2[4];
 
 } RegionView3D;
 
@@ -143,29 +154,35 @@ typedef struct View3D {
 	int spacetype;
 	float blockscale;
 	short blockhandler[8];
-	
-	float viewquat[4], dist, pad1;	/* XXX depricated */
+
+	float viewquat[4]  DNA_DEPRECATED;
+	float dist         DNA_DEPRECATED;
+
+	float bundle_size;			/* size of bundles in reconstructed data */
+	short bundle_drawtype;		/* display style for bundle */
+
+	char pad[6];
 	
 	unsigned int lay_used; /* used while drawing */
 	
-	short persp;	/* XXX depricated */
-	short view;	/* XXX depricated */
+	short persp  DNA_DEPRECATED;
+	short view   DNA_DEPRECATED;
 	
 	struct Object *camera, *ob_centre;
 
 	struct ListBase bgpicbase;
-	struct BGpic *bgpic; /* deprecated, use bgpicbase, only kept for do_versions(...) */
+	struct BGpic *bgpic  DNA_DEPRECATED; /* deprecated, use bgpicbase, only kept for do_versions(...) */
 
 	struct View3D *localvd; /* allocated backup of its self while in localview */
 	
-	char ob_centre_bone[32];		/* optional string for armature bone to define center */
+	char ob_centre_bone[64];		/* optional string for armature bone to define center, MAXBONENAME */
 	
 	unsigned int lay;
 	int layact;
 	
 	/**
-	 * The drawing mode for the 3d display. Set to OB_WIRE, OB_SOLID,
-	 * OB_SHADED or OB_TEXTURE */
+	 * The drawing mode for the 3d display. Set to OB_BOUNDBOX, OB_WIRE, OB_SOLID,
+	 * OB_TEXTURE, OB_MATERIAL or OB_RENDER */
 	short drawtype;
 	short ob_centre_cursor;		/* optional bool for 3d cursor to define center */
 	short scenelock, around;
@@ -173,7 +190,7 @@ typedef struct View3D {
 	
 	float lens, grid;
 	float near, far;
-	float ofs[3];			/* XXX deprecated */
+	float ofs[3]  DNA_DEPRECATED;			/* XXX deprecated */
 	float cursor[3];
 
 	short modeselect;
@@ -196,8 +213,8 @@ typedef struct View3D {
 
 	void *properties_storage;	/* Nkey panel stores stuff here (runtime only!) */
 
-	/* XXX depricated? */
-	struct bGPdata *gpd;		/* Grease-Pencil Data (annotation layers) */
+	/* XXX deprecated? */
+	struct bGPdata *gpd  DNA_DEPRECATED;		/* Grease-Pencil Data (annotation layers) */
 
 } View3D;
 
@@ -246,6 +263,9 @@ typedef struct View3D {
 #define V3D_DISPGP				16
 #define V3D_LOCK_CAMERA			32
 #define V3D_RENDER_SHADOW		64 /* This is a runtime only flag that's used to tell draw_mesh_object() that we're doing a shadow pass instead of a regular draw */
+#define V3D_SHOW_RECONSTRUCTION		128
+#define V3D_SHOW_CAMERAPATH		256
+#define V3D_SHOW_BUNDLENAME		512
 
 /* View3D->around */
 #define V3D_CENTER		 0
@@ -292,6 +312,13 @@ typedef struct View3D {
 /* BGPic->flag */
 /* may want to use 1 for select ?*/
 #define V3D_BGPIC_EXPANDED		2
+#define V3D_BGPIC_CAMERACLIP	4
+#define V3D_BGPIC_DISABLED		8
+
+/* BGPic->source */
+/* may want to use 1 for select ?*/
+#define V3D_BGPIC_IMAGE		0
+#define V3D_BGPIC_MOVIE		1
 
 #define RV3D_CAMZOOM_MIN -30
 #define RV3D_CAMZOOM_MAX 600

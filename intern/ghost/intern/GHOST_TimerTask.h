@@ -30,8 +30,8 @@
  * Declaration of GHOST_TimerTask class.
  */
 
-#ifndef _GHOST_TIMER_TASK_H_
-#define _GHOST_TIMER_TASK_H_
+#ifndef __GHOST_TIMERTASK_H__
+#define __GHOST_TIMERTASK_H__
 
 #include "GHOST_ITimerTask.h"
 
@@ -51,8 +51,16 @@ public:
 	 * @param timerProc	The callbak invoked when the interval expires.
 	 * @param data		The timer user data.
 	 */
-	GHOST_TimerTask(GHOST_TUns64 start, GHOST_TUns64 interval, GHOST_TimerProcPtr timerProc, GHOST_TUserDataPtr userData = 0)
-		: m_start(start), m_interval(interval), m_next(start), m_timerProc(timerProc), m_userData(userData), m_auxData(0)
+	GHOST_TimerTask(GHOST_TUns64 start,
+	                GHOST_TUns64 interval,
+	                GHOST_TimerProcPtr timerProc,
+	                GHOST_TUserDataPtr userData = 0)
+		: m_start(start),
+	      m_interval(interval),
+	      m_next(start),
+	      m_timerProc(timerProc),
+	      m_userData(userData),
+	      m_auxData(0)
 	{
 	}
 
@@ -184,5 +192,5 @@ protected:
 	GHOST_TUns32 m_auxData;
 };
 
-#endif // _GHOST_TIMER_TASK_H_
+#endif // __GHOST_TIMERTASK_H__
 

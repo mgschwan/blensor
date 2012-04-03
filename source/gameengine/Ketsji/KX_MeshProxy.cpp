@@ -129,7 +129,7 @@ PyObject* KX_MeshProxy::PyGetMaterialName(PyObject* args, PyObject* kwds)
 		return NULL;
 	}
 
-	return PyUnicode_FromString(matname.Ptr());
+	return PyUnicode_From_STR_String(matname);
 
 }
 
@@ -147,7 +147,7 @@ PyObject* KX_MeshProxy::PyGetTextureName(PyObject* args, PyObject* kwds)
 		return NULL;
 	}
 
-	return PyUnicode_FromString(matname.Ptr());
+	return PyUnicode_From_STR_String(matname);
 		
 }
 
@@ -184,7 +184,7 @@ PyObject* KX_MeshProxy::PyGetVertex(PyObject* args, PyObject* kwds)
 	
 	RAS_TexVert* vertex = m_meshobj->GetVertex(matindex,vertexindex);
 	
-	if(vertex==NULL) {
+	if (vertex==NULL) {
 		PyErr_SetString(PyExc_ValueError, "mesh.getVertex(mat_idx, vert_idx): KX_MeshProxy, could not get a vertex at the given indices");
 		return NULL;
 	}
@@ -230,11 +230,11 @@ PyObject* KX_MeshProxy::pyattr_get_materials(void *self_v, const KX_PYATTRIBUTE_
 	list<RAS_MeshMaterial>::iterator mit= self->m_meshobj->GetFirstMaterial();
 	
 	
-	for(i=0; i<tot; mit++, i++) {
+	for (i=0; i<tot; mit++, i++) {
 		RAS_IPolyMaterial *polymat = mit->m_bucket->GetPolyMaterial(); 	 
 		
 		/* Why do we need to check for RAS_BLENDERMAT if both are cast to a (PyObject*)? - Campbell */
-		if(polymat->GetFlag() & RAS_BLENDERMAT) 	 
+		if (polymat->GetFlag() & RAS_BLENDERMAT) 	 
 		{ 	 
 			KX_BlenderMaterial *mat = static_cast<KX_BlenderMaterial*>(polymat); 	 
 			PyList_SET_ITEM(materials, i, mat->GetProxy());
@@ -247,12 +247,14 @@ PyObject* KX_MeshProxy::pyattr_get_materials(void *self_v, const KX_PYATTRIBUTE_
 	return materials;
 }
 
-PyObject * KX_MeshProxy::pyattr_get_numMaterials(void * selfv, const KX_PYATTRIBUTE_DEF * attrdef) {
+PyObject * KX_MeshProxy::pyattr_get_numMaterials(void * selfv, const KX_PYATTRIBUTE_DEF * attrdef)
+{
 	KX_MeshProxy * self = static_cast<KX_MeshProxy *> (selfv);
 	return PyLong_FromSsize_t(self->m_meshobj->NumMaterials());
 }
 
-PyObject * KX_MeshProxy::pyattr_get_numPolygons(void * selfv, const KX_PYATTRIBUTE_DEF * attrdef) {
+PyObject * KX_MeshProxy::pyattr_get_numPolygons(void * selfv, const KX_PYATTRIBUTE_DEF * attrdef)
+{
 	KX_MeshProxy * self = static_cast<KX_MeshProxy *> (selfv);
 	return PyLong_FromSsize_t(self->m_meshobj->NumPolygons());
 }

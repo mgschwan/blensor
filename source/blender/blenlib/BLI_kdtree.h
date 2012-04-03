@@ -26,12 +26,12 @@
  * ***** END GPL LICENSE BLOCK *****
  */
  
-#ifndef BLI_KDTREE_H
-#define BLI_KDTREE_H
+#ifndef __BLI_KDTREE_H__
+#define __BLI_KDTREE_H__
 
 /** \file BLI_kdtree.h
  *  \ingroup bli
- *  \brief A kd-tree for nearest neighbour search.
+ *  \brief A kd-tree for nearest neighbor search.
  *  \author Janne Karhu
  *  \author Brecht van Lommel
  */

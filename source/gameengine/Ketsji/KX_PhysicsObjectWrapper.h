@@ -29,15 +29,15 @@
  *  \ingroup ketsji
  */
 
-#ifndef PHYP_PHYSICSOBJECT_WRAPPER
-#define PHYP_PHYSICSOBJECT_WRAPPER
+#ifndef __KX_PHYSICSOBJECTWRAPPER_H__
+#define __KX_PHYSICSOBJECTWRAPPER_H__
 
 #include "Value.h"
 #include "PHY_DynamicTypes.h"
 
 class	KX_PhysicsObjectWrapper : public PyObjectPlus
 {
-	Py_Header;
+	Py_Header
 public:
 	KX_PhysicsObjectWrapper(class PHY_IPhysicsController* ctrl,class PHY_IPhysicsEnvironment* physenv);
 	virtual ~KX_PhysicsObjectWrapper();
@@ -56,5 +56,5 @@ private:
 	PHY_IPhysicsEnvironment* m_physenv;
 };
 
-#endif //PHYP_PHYSICSOBJECT_WRAPPER
+#endif //__KX_PHYSICSOBJECTWRAPPER_H__
 

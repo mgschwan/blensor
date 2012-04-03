@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
  
-#ifndef BLI_GHASH_H
-#define BLI_GHASH_H
+#ifndef __BLI_GHASH_H__
+#define __BLI_GHASH_H__
 
 /** \file BLI_ghash.h
  *  \ingroup bli
@@ -80,8 +80,8 @@ int	   BLI_ghash_size  (GHash *gh);
 	 * while the iterator is in use, and the iterator will step exactly
 	 * BLI_ghash_size(gh) times before becoming done.
 	 * 
-	 * @param gh The GHash to iterate over.
-	 * @return Pointer to a new DynStr.
+	 * \param gh The GHash to iterate over.
+	 * \return Pointer to a new DynStr.
 	 */
 GHashIterator*	BLI_ghashIterator_new		(GHash *gh);
 	/**
@@ -89,45 +89,45 @@ GHashIterator*	BLI_ghashIterator_new		(GHash *gh);
 	 * be mutated while the iterator is in use, and the iterator will
 	 * step exactly BLI_ghash_size(gh) times before becoming done.
 	 * 
-	 * @param ghi The GHashIterator to initialize.
-	 * @param gh The GHash to iterate over.
+	 * \param ghi The GHashIterator to initialize.
+	 * \param gh The GHash to iterate over.
 	 */
 void BLI_ghashIterator_init(GHashIterator *ghi, GHash *gh);
 	/**
 	 * Free a GHashIterator.
 	 *
-	 * @param ghi The iterator to free.
+	 * \param ghi The iterator to free.
 	 */
 void			BLI_ghashIterator_free		(GHashIterator *ghi);
 
 	/**
 	 * Retrieve the key from an iterator.
 	 *
-	 * @param ghi The iterator.
-	 * @return The key at the current index, or NULL if the 
+	 * \param ghi The iterator.
+	 * \return The key at the current index, or NULL if the 
 	 * iterator is done.
 	 */
 void*			BLI_ghashIterator_getKey	(GHashIterator *ghi);
 	/**
 	 * Retrieve the value from an iterator.
 	 *
-	 * @param ghi The iterator.
-	 * @return The value at the current index, or NULL if the 
+	 * \param ghi The iterator.
+	 * \return The value at the current index, or NULL if the 
 	 * iterator is done.
 	 */
 void*			BLI_ghashIterator_getValue	(GHashIterator *ghi);
 	/**
 	 * Steps the iterator to the next index.
 	 *
-	 * @param ghi The iterator.
+	 * \param ghi The iterator.
 	 */
 void			BLI_ghashIterator_step		(GHashIterator *ghi);
 	/**
 	 * Determine if an iterator is done (has reached the end of
 	 * the hash table).
 	 *
-	 * @param ghi The iterator.
-	 * @return True if done, False otherwise.
+	 * \param ghi The iterator.
+	 * \return True if done, False otherwise.
 	 */
 int				BLI_ghashIterator_isDone	(GHashIterator *ghi);
 
@@ -142,8 +142,18 @@ int				BLI_ghashutil_strcmp	(const void *a, const void *b);
 unsigned int	BLI_ghashutil_inthash	(const void *ptr);
 int				BLI_ghashutil_intcmp	(const void *a, const void *b);
 
+typedef struct GHashPair {
+	const void *first;
+	int second;
+} GHashPair;
+
+GHashPair*		BLI_ghashutil_pairalloc (const void *first, int second);
+unsigned int	BLI_ghashutil_pairhash	(const void *ptr);
+int				BLI_ghashutil_paircmp	(const void *a, const void *b);
+void			BLI_ghashutil_pairfree	(void *ptr);
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* BLI_GHASH_H */
+#endif /* __BLI_GHASH_H__ */

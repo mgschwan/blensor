@@ -26,7 +26,7 @@ class NLA_HT_header(Header):
     bl_space_type = 'NLA_EDITOR'
 
     def draw(self, context):
-        from bl_ui.space_dopesheet import dopesheet_filter
+        from .space_dopesheet import dopesheet_filter
 
         layout = self.layout
 
@@ -62,7 +62,7 @@ class NLA_MT_view(Menu):
         layout.prop(st, "use_realtime_update")
         layout.prop(st, "show_frame_indicator")
 
-        layout.operator("anim.time_toggle", text="Show Frames" if st.show_seconds else "Show Seconds")
+        layout.prop(st, "show_seconds")
 
         layout.prop(st, "show_strip_curves")
 
@@ -86,11 +86,11 @@ class NLA_MT_select(Menu):
         layout = self.layout
 
         # This is a bit misleading as the operator's default text is "Select All" while it actually *toggles* All/None
-        layout.operator("nla.select_all_toggle")
+        layout.operator("nla.select_all_toggle").invert = False
         layout.operator("nla.select_all_toggle", text="Invert Selection").invert = True
 
         layout.separator()
-        layout.operator("nla.select_border")
+        layout.operator("nla.select_border").axis_range = False
         layout.operator("nla.select_border", text="Border Axis Range").axis_range = True
 
         layout.separator()
@@ -104,16 +104,8 @@ class NLA_MT_marker(Menu):
     def draw(self, context):
         layout = self.layout
 
-        #layout.operator_context = 'EXEC_REGION_WIN'
-
-        layout.operator("marker.add", "Add Marker")
-        layout.operator("marker.duplicate", text="Duplicate Marker")
-        layout.operator("marker.delete", text="Delete Marker")
-
-        layout.separator()
-
-        layout.operator("marker.rename", text="Rename Marker")
-        layout.operator("marker.move", text="Grab/Move Marker")
+        from .space_time import marker_menu_generic
+        marker_menu_generic(layout)
 
 
 class NLA_MT_edit(Menu):
@@ -151,7 +143,7 @@ class NLA_MT_edit(Menu):
         layout.operator_menu_enum("anim.channels_move", "direction", text="Track Ordering...")
 
         layout.separator()
-        # TODO: names of these tools for 'tweakmode' need changing?
+        # TODO: names of these tools for 'tweak-mode' need changing?
         if scene.is_nla_tweakmode:
             layout.operator("nla.tweakmode_exit", text="Stop Tweaking Strip Actions")
         else:
@@ -173,7 +165,7 @@ class NLA_MT_add(Menu):
         layout.operator("nla.meta_remove")
 
         layout.separator()
-        layout.operator("nla.tracks_add")
+        layout.operator("nla.tracks_add").above_selected = False
         layout.operator("nla.tracks_add", text="Add Tracks Above Selected").above_selected = True
 
 

@@ -29,8 +29,8 @@
  *  \ingroup editors
  */
 
-#ifndef ED_TRANSFORM_H
-#define ED_TRANSFORM_H
+#ifndef __ED_TRANSFORM_H__
+#define __ED_TRANSFORM_H__
 
 /* ******************* Registration Function ********************** */
 
@@ -94,6 +94,7 @@ enum {
 #define CTX_AUTOCONFIRM		32
 #define CTX_BMESH			64
 #define CTX_NDOF			128
+#define CTX_MOVIECLIP		256
 
 /* Standalone call to get the transformation center corresponding to the current situation
  * returns 1 if successful, 0 otherwise (usually means there's no selection)
@@ -107,11 +108,6 @@ struct Base;
 struct Scene;
 struct Object;
 
-void BIF_setSingleAxisConstraint(float vec[3], char *text);
-void BIF_setDualAxisConstraint(float vec1[3], float vec2[3], char *text);
-void BIF_setLocalAxisConstraint(char axis, char *text);
-void BIF_setLocalLockConstraint(char axis, char *text);
-
 int BIF_snappingSupported(struct Object *obedit);
 
 struct TransformOrientation;
@@ -122,7 +118,6 @@ void BIF_clearTransformOrientation(struct bContext *C);
 void BIF_removeTransformOrientation(struct bContext *C, struct TransformOrientation *ts);
 void BIF_removeTransformOrientationIndex(struct bContext *C, int index);
 void BIF_createTransformOrientation(struct bContext *C, struct ReportList *reports, char *name, int use, int overwrite);
-int BIF_menuselectTransformOrientation(void);
 void BIF_selectTransformOrientation(struct bContext *C, struct TransformOrientation *ts);
 void BIF_selectTransformOrientationValue(struct bContext *C, int orientation);
 
@@ -132,7 +127,7 @@ struct EnumPropertyItem *BIF_enumTransformOrientation(struct bContext *C);
 const char * BIF_menustringTransformOrientation(const struct bContext *C, const char *title); /* the returned value was allocated and needs to be freed after use */
 int BIF_countTransformOrientation(const struct bContext *C);
 
-void BIF_TransformSetUndo(char *str);
+void BIF_TransformSetUndo(const char *str);
 
 void BIF_selectOrientation(void);
 
@@ -180,10 +175,10 @@ typedef enum SnapMode
 
 #define SNAP_MIN_DISTANCE 30
 
-int peelObjectsTransForm(struct TransInfo *t, struct ListBase *depth_peels, float mval[2]);
-int peelObjectsContext(struct bContext *C, struct ListBase *depth_peels, float mval[2]);
-int snapObjectsTransform(struct TransInfo *t, float mval[2], int *dist, float *loc, float *no, SnapMode mode);
-int snapObjectsContext(struct bContext *C, float mval[2], int *dist, float *loc, float *no, SnapMode mode);
+int peelObjectsTransForm(struct TransInfo *t, struct ListBase *depth_peels, const float mval[2], SnapMode mode);
+int peelObjectsContext(struct bContext *C, struct ListBase *depth_peels, const float mval[2], SnapMode mode);
+int snapObjectsTransform(struct TransInfo *t, const float mval[2], int *r_dist, float r_loc[3], float r_no[3], SnapMode mode);
+int snapObjectsContext(struct bContext *C, const float mval[2], int *r_dist, float r_loc[3], float r_no[3], SnapMode mode);
 
 #endif
 

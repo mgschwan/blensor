@@ -29,8 +29,8 @@
  */
 
 
-#ifndef ED_CURVE_INTERN_H
-#define ED_CURVE_INTERN_H
+#ifndef __CURVE_INTERN_H__
+#define __CURVE_INTERN_H__
 
 /* internal exports only */
 struct wmOperatorType;
@@ -42,7 +42,7 @@ extern const char ED_lorem[];
 enum { DEL_ALL, DEL_NEXT_CHAR, DEL_PREV_CHAR, DEL_SELECTION, DEL_NEXT_SEL, DEL_PREV_SEL };
 enum { CASE_LOWER, CASE_UPPER };
 enum { LINE_BEGIN, LINE_END, PREV_CHAR, NEXT_CHAR, PREV_WORD, NEXT_WORD,
-	   PREV_LINE, NEXT_LINE, PREV_PAGE, NEXT_PAGE };
+       PREV_LINE, NEXT_LINE, PREV_PAGE, NEXT_PAGE };
 
 void FONT_OT_text_insert(struct wmOperatorType *ot);
 void FONT_OT_line_break(struct wmOperatorType *ot);
@@ -57,7 +57,6 @@ void FONT_OT_text_copy(struct wmOperatorType *ot);
 void FONT_OT_text_cut(struct wmOperatorType *ot);
 void FONT_OT_text_paste(struct wmOperatorType *ot);
 void FONT_OT_file_paste(struct wmOperatorType *ot);
-void FONT_OT_buffer_paste(struct wmOperatorType *ot);
 
 void FONT_OT_move(struct wmOperatorType *ot);
 void FONT_OT_move_select(struct wmOperatorType *ot);
@@ -107,7 +106,6 @@ void SURFACE_OT_primitive_nurbs_surface_torus_add(struct wmOperatorType *ot);
 void CURVE_OT_de_select_first(struct wmOperatorType *ot);
 void CURVE_OT_de_select_last(struct wmOperatorType *ot);
 void CURVE_OT_select_all(struct wmOperatorType *ot);
-void CURVE_OT_select_inverse(struct wmOperatorType *ot);
 void CURVE_OT_select_linked(struct wmOperatorType *ot);
 void CURVE_OT_select_linked_pick(struct wmOperatorType *ot);
 void CURVE_OT_select_row(struct wmOperatorType *ot);
@@ -125,8 +123,6 @@ void CURVE_OT_spin(struct wmOperatorType *ot);
 void CURVE_OT_vertex_add(struct wmOperatorType *ot);
 void CURVE_OT_extrude(struct wmOperatorType *ot);
 void CURVE_OT_cyclic_toggle(struct wmOperatorType *ot);
-
-void CURVE_OT_specials_menu(struct wmOperatorType *ot);
 
 #endif /* ED_UTIL_INTERN_H */
 

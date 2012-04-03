@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_BMFONT_TYPES_H
-#define BKE_BMFONT_TYPES_H
+#ifndef __BKE_BMFONT_TYPES_H__
+#define __BKE_BMFONT_TYPES_H__
 
 /** \file BKE_bmfont_types.h
  *  \ingroup bke
@@ -34,10 +34,11 @@
  */
 #define is_power_of_two(N) ((N ^ (N - 1)) == (2 * N - 1))
 /*
-Moved to IMB_imbuf_types.h where it will live close to the ImBuf type.
-It is used as a userflag bit mask.
-#define IB_BITMAPFONT 1
-*/
+ * Moved to IMB_imbuf_types.h where it will live close to the ImBuf type.
+ * It is used as a userflag bit mask.
+ */
+// #define IB_BITMAPFONT 1
+
 typedef struct bmGlyph {
 	unsigned short unicode;
 	short locx, locy;

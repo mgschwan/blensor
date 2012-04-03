@@ -11,7 +11,7 @@ incs += '#/intern/guardedalloc ../editors/include ../blenlib ../makesdna'
 incs += ' ../render/extern/include ../makesrna '
 incs += ' ../imbuf ../avi '
 incs += ' ../blenloader'
-incs += ' ../blenkernel ../renderconverter '
+incs += ' ../blenfont ../blenkernel ../renderconverter '
 incs += ' ../gpu #/extern/glew/include '
 
 incs += ' ' + env['BF_OPENGL_INC']
@@ -25,6 +25,9 @@ if env['WITH_BF_PYTHON']:
     defs.append('WITH_PYTHON')
     if env['BF_DEBUG']:
         defs.append('_DEBUG')
+
+if env['WITH_BF_INTERNATIONAL']:
+    defs.append('WITH_INTERNATIONAL')
 
 if env['OURPLATFORM'] == 'linux':
     cflags='-pthread'

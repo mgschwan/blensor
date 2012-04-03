@@ -52,7 +52,7 @@ def get_version():
             else:
                 ver_display = "%s%s" % (ver_base, ver_char)  # assume release
 
-            return ver_base, ver_display
+            return ver_base, ver_display, ver_cycle
 
     raise Exception("%s: missing version string" % fname)
 
@@ -80,7 +80,7 @@ def checkEndian():
 
 
 # This is used in creating the local config directories
-VERSION, VERSION_DISPLAY = get_version()
+VERSION, VERSION_DISPLAY, VERSION_RELEASE_CYCLE = get_version()
 REVISION = get_revision()
 ENDIAN = checkEndian()
 
@@ -116,7 +116,9 @@ def validate_arguments(args, bc):
             'WITH_BF_INTERNATIONAL',
             'BF_GETTEXT', 'BF_GETTEXT_INC', 'BF_GETTEXT_LIB', 'WITH_BF_GETTEXT_STATIC', 'BF_GETTEXT_LIB_STATIC', 'BF_GETTEXT_LIBPATH',
             'WITH_BF_ICONV', 'BF_ICONV', 'BF_ICONV_INC', 'BF_ICONV_LIB', 'BF_ICONV_LIBPATH',
-            'WITH_BF_GAMEENGINE', 'WITH_BF_BULLET', 'WITH_BF_ELTOPO', 'BF_BULLET', 'BF_BULLET_INC', 'BF_BULLET_LIB',
+            'WITH_BF_GAMEENGINE',
+            'WITH_BF_BULLET', 'BF_BULLET', 'BF_BULLET_INC', 'BF_BULLET_LIB',
+            'WITH_BF_ELTOPO',
             'BF_WINTAB', 'BF_WINTAB_INC',
             'BF_FREETYPE', 'BF_FREETYPE_INC', 'BF_FREETYPE_LIB', 'BF_FREETYPE_LIBPATH', 'BF_FREETYPE_LIB_STATIC', 'WITH_BF_FREETYPE_STATIC',
             'WITH_BF_QUICKTIME', 'BF_QUICKTIME', 'BF_QUICKTIME_INC', 'BF_QUICKTIME_LIB', 'BF_QUICKTIME_LIBPATH',
@@ -133,12 +135,11 @@ def validate_arguments(args, bc):
             'WITHOUT_BF_INSTALL',
             'WITHOUT_BF_PYTHON_INSTALL',
             'WITHOUT_BF_OVERWRITE_INSTALL',
-            'WITH_BF_OPENMP',
-            'BF_OPENMP',
-            'BF_OPENMP_INC',
-            'BF_OPENMP_LIBPATH',
+            'WITH_BF_OPENMP', 'BF_OPENMP', 'BF_OPENMP_LIBPATH',
             'WITH_GHOST_COCOA',
             'WITH_GHOST_SDL',
+            'WITH_GHOST_XDND',
+            'BF_GHOST_DEBUG',
             'USE_QTKIT',
             'BF_FANCY', 'BF_QUIET', 'BF_LINE_OVERWRITE',
             'BF_X264_CONFIG',
@@ -147,13 +148,21 @@ def validate_arguments(args, bc):
             'BF_NUMJOBS',
             'BF_MSVS',
             'BF_VERSION',
-            'BF_GHOST_DEBUG',
             'WITH_BF_RAYOPTIMIZATION',
             'BF_RAYOPTIMIZATION_SSE_FLAGS',
-            'BF_NO_ELBEEM',
+            'WITH_BF_FLUID',
+            'WITH_BF_DECIMATE',
+            'WITH_BF_BOOLEAN',
+            'WITH_BF_REMESH',
+            'WITH_BF_OCEANSIM',
             'WITH_BF_CXX_GUARDEDALLOC',
             'WITH_BF_JEMALLOC', 'WITH_BF_STATICJEMALLOC', 'BF_JEMALLOC', 'BF_JEMALLOC_INC', 'BF_JEMALLOC_LIBPATH', 'BF_JEMALLOC_LIB', 'BF_JEMALLOC_LIB_STATIC',
-            'BUILDBOT_BRANCH', 'WITH_BF_3DMOUSE', 'WITH_BF_STATIC3DMOUSE', 'BF_3DMOUSE', 'BF_3DMOUSE_INC', 'BF_3DMOUSE_LIB', 'BF_3DMOUSE_LIBPATH', 'BF_3DMOUSE_LIB_STATIC'
+            'BUILDBOT_BRANCH',
+            'WITH_BF_3DMOUSE', 'WITH_BF_STATIC3DMOUSE', 'BF_3DMOUSE', 'BF_3DMOUSE_INC', 'BF_3DMOUSE_LIB', 'BF_3DMOUSE_LIBPATH', 'BF_3DMOUSE_LIB_STATIC',
+            'WITH_BF_CYCLES', 'WITH_BF_CYCLES_CUDA_BINARIES', 'BF_CYCLES_CUDA_NVCC', 'BF_CYCLES_CUDA_NVCC', 'WITH_BF_CYCLES_CUDA_THREADED_COMPILE',
+            'WITH_BF_OIIO', 'WITH_BF_STATICOIIO', 'BF_OIIO', 'BF_OIIO_INC', 'BF_OIIO_LIB', 'BF_OIIO_LIB_STATIC', 'BF_OIIO_LIBPATH',
+            'WITH_BF_BOOST', 'WITH_BF_STATICBOOST', 'BF_BOOST', 'BF_BOOST_INC', 'BF_BOOST_LIB', 'BF_BOOST_LIB_STATIC', 'BF_BOOST_LIBPATH',
+            'WITH_BF_LIBMV', 'WITH_BF_CARVE'
             ]
     
     # Have options here that scons expects to be lists
@@ -214,15 +223,15 @@ class ourSpawn:
         newargs = string.join(args[1:], ' ')
         cmdline = cmd + " " + newargs
         startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        #startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         proc = subprocess.Popen(cmdline, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, startupinfo=startupinfo, shell = False)
         data, err = proc.communicate()
         rv = proc.wait()
-        if rv:
-            print "====="
-            print err
-            print "====="
+        if data:
+            print(data)
+        if err:
+            print(err)
         return rv
 
 def SetupSpawn( env ):
@@ -235,11 +244,12 @@ def read_opts(env, cfg, args):
     localopts = Variables.Variables(cfg, args)
     localopts.AddVariables(
         ('LCGDIR', 'location of cvs lib dir'),
+        ('LIBDIR', 'root dir of libs'),
         (BoolVariable('WITH_BF_PYTHON', 'Compile with python', True)),
         (BoolVariable('WITH_BF_PYTHON_SAFETY', 'Internal API error checking to track invalid data to prevent crash on access (at the expense of some effeciency)', False)),
-        ('BF_PYTHON', 'base path for python', ''),
+        ('BF_PYTHON', 'Base path for python', ''),
         ('BF_PYTHON_VERSION', 'Python version to use', ''),
-        ('BF_PYTHON_INC', 'include path for Python headers', ''),
+        ('BF_PYTHON_INC', 'Include path for Python headers', ''),
         ('BF_PYTHON_BINARY', 'Path to the Python interpreter', ''),
         ('BF_PYTHON_LIB', 'Python library', ''),
         ('BF_PYTHON_DLL', 'Python dll - used on Windows only', ''),
@@ -250,11 +260,15 @@ def read_opts(env, cfg, args):
         (BoolVariable('WITH_OSX_STATICPYTHON', 'Staticly link to python', True)),
         ('BF_PYTHON_ABI_FLAGS', 'Python ABI flags (suffix in library version: m, mu, etc)', ''),
 
-        (BoolVariable('BF_NO_ELBEEM', 'Disable Fluid Sim', False)),
+        (BoolVariable('WITH_BF_FLUID', 'Build with Fluid simulation (Elbeem)', True)),
+        (BoolVariable('WITH_BF_DECIMATE', 'Build with decimate modifier', True)),
+        (BoolVariable('WITH_BF_BOOLEAN', 'Build with boolean modifier', True)),
+        (BoolVariable('WITH_BF_REMESH', 'Build with remesh modifier', True)),
+        (BoolVariable('WITH_BF_OCEANSIM', 'Build with ocean simulation', False)),
         ('BF_PROFILE_FLAGS', 'Profiling compiler flags', ''),
         (BoolVariable('WITH_BF_OPENAL', 'Use OpenAL if true', False)),
-        ('BF_OPENAL', 'base path for OpenAL', ''),
-        ('BF_OPENAL_INC', 'include path for python headers', ''),
+        ('BF_OPENAL', 'Base path for OpenAL', ''),
+        ('BF_OPENAL_INC', 'Include path for python headers', ''),
         ('BF_OPENAL_LIB', 'Path to OpenAL library', ''),
         ('BF_OPENAL_LIB_STATIC', 'Path to OpenAL static library', ''),
         ('BF_OPENAL_LIBPATH', 'Path to OpenAL library', ''),
@@ -310,7 +324,7 @@ def read_opts(env, cfg, args):
         (BoolVariable('WITH_BF_STATICFFMPEG', 'Use static FFMPEG if true', False)),
         ('BF_FFMPEG_LIB_STATIC', 'Static FFMPEG libraries', ''),
         
-        (BoolVariable('WITH_BF_OGG', 'Use OGG, THEORA, VORBIS in FFMPEG if true',
+        (BoolVariable('WITH_BF_OGG', 'Link OGG, THEORA, VORBIS with FFMPEG if true',
                     False)),
         ('BF_OGG', 'OGG base path', ''),
         ('BF_OGG_LIB', 'OGG library', ''),
@@ -508,7 +522,10 @@ def read_opts(env, cfg, args):
         
         (BoolVariable('WITH_BF_LZO', 'Enable fast LZO pointcache compression', True)),
         (BoolVariable('WITH_BF_LZMA', 'Enable best LZMA pointcache compression', True)),
+        (BoolVariable('WITH_BF_CARVE', 'Enable carve library for mesh boolean operations', True)),
         
+        (BoolVariable('WITH_BF_LIBMV', 'Enable libmv structure from motion library', True)),
+
         ('BF_X264_CONFIG', 'configuration flags for x264', ''),
         ('BF_XVIDCORE_CONFIG', 'configuration flags for xvidcore', ''),
 #        (BoolVariable('WITH_BF_DOCS', 'Generate API documentation', False)),
@@ -528,6 +545,32 @@ def read_opts(env, cfg, args):
         (BoolVariable('WITH_BF_CXX_GUARDEDALLOC', 'Enable GuardedAlloc for C++ memory allocation tracking.', False)),
 
         ('BUILDBOT_BRANCH', 'Buildbot branch name', ''),
+    ) # end of opts.AddOptions()
+
+    localopts.AddVariables(
+        (BoolVariable('WITH_BF_CYCLES', 'Build with the Cycles engine', True)),
+        (BoolVariable('WITH_BF_CYCLES_CUDA_BINARIES', 'Build with precompiled CUDA binaries', False)),
+        (BoolVariable('WITH_BF_CYCLES_CUDA_THREADED_COMPILE', 'Build several render kernels at once (using BF_NUMJOBS)', False)),
+        ('BF_CYCLES_CUDA_NVCC', 'CUDA nvcc compiler path', ''),
+        ('BF_CYCLES_CUDA_BINARIES_ARCH', 'CUDA architectures to compile binaries for', []),
+
+        (BoolVariable('WITH_BF_OIIO', 'Build with OpenImageIO', False)),
+        (BoolVariable('WITH_BF_STATICOIIO', 'Staticly link to OpenImageIO', False)),
+        ('BF_OIIO', 'OIIO root path', ''),
+        ('BF_OIIO_INC', 'OIIO include path', ''),
+        ('BF_OIIO_LIB', 'OIIO library', ''),
+        ('BF_OIIO_LIBPATH', 'OIIO library path', ''),
+        ('BF_OIIO_LIB_STATIC', 'OIIO static library', ''),
+
+        (BoolVariable('WITH_BF_BOOST', 'Build with Boost', False)),
+        (BoolVariable('WITH_BF_STATICBOOST', 'Staticly link to boost', False)),
+        ('BF_BOOST', 'Boost root path', ''),
+        ('BF_BOOST_INC', 'Boost include path', ''),
+        ('BF_BOOST_LIB', 'Boost library', ''),
+        ('BF_BOOST_LIBPATH', 'Boost library path', ''),
+        ('BF_BOOST_LIB_STATIC', 'Boost static library', ''),
+
+        (BoolVariable('WITH_GHOST_XDND', 'Build with drag-n-drop support on Linux platforms using XDND protocol', True))
     ) # end of opts.AddOptions()
 
     return localopts

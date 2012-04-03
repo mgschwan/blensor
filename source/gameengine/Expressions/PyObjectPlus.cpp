@@ -55,7 +55,7 @@
 PyObjectPlus::~PyObjectPlus()
 {
 #ifdef WITH_PYTHON
-	if(m_proxy) {
+	if (m_proxy) {
 		BGE_PROXY_REF(m_proxy)= NULL;
 		Py_DECREF(m_proxy);			/* Remove own reference, python may still have 1 */
 	}
@@ -90,7 +90,7 @@ void PyObjectPlus::ProcessReplica()
 void PyObjectPlus::InvalidateProxy()		// check typename of each parent
 {
 #ifdef WITH_PYTHON
-	if(m_proxy) {
+	if (m_proxy) {
 		BGE_PROXY_REF(m_proxy)=NULL;
 		Py_DECREF(m_proxy);
 		m_proxy= NULL;
@@ -137,7 +137,7 @@ PyTypeObject PyObjectPlus::Type = {
 PyObject *PyObjectPlus::py_base_repr(PyObject *self)			// This should be the entry in Type.
 {
 	PyObjectPlus *self_plus= BGE_PROXY_REF(self);
-	if(self_plus==NULL) {
+	if (self_plus==NULL) {
 		PyErr_SetString(PyExc_SystemError, BGE_PROXY_ERROR_MSG);
 		return NULL;
 	}
@@ -173,13 +173,13 @@ PyObject * PyObjectPlus::py_base_new(PyTypeObject *type, PyObject *args, PyObjec
 	while(base_type && !BGE_PROXY_CHECK_TYPE(base_type))
 		base_type= base_type->tp_base;
 
-	if(base_type==NULL || !BGE_PROXY_CHECK_TYPE(base_type)) {
+	if (base_type==NULL || !BGE_PROXY_CHECK_TYPE(base_type)) {
 		PyErr_SetString(PyExc_TypeError, "can't subclass from a blender game type because the argument given is not a game class or subclass");
 		return NULL;
 	}
 
 	/* use base_type rather than Py_TYPE(base) because we could already be subtyped */
-	if(!PyType_IsSubtype(type, base_type)) {
+	if (!PyType_IsSubtype(type, base_type)) {
 		PyErr_Format(PyExc_TypeError, "can't subclass blender game type <%s> from <%s> because it is not a subclass", base_type->tp_name, type->tp_name);
 		return NULL;
 	}
@@ -199,7 +199,7 @@ PyObject * PyObjectPlus::py_base_new(PyTypeObject *type, PyObject *args, PyObjec
 		base->ptr = NULL;
 		if (ret->ref)
 			ret->ref->m_proxy= NULL;
-		/* 'base' may be free'd after this func finished but not necessarily
+		/* 'base' may be freed after this func finished but not necessarily
 		 * there is no reference to the BGE data now so it will throw an error on access */
 		Py_DECREF(base);
 		if (ret->ref) {
@@ -217,7 +217,7 @@ PyObject * PyObjectPlus::py_base_new(PyTypeObject *type, PyObject *args, PyObjec
 }
 
 /**
-  * @param self A PyObjectPlus_Proxy
+  * \param self A PyObjectPlus_Proxy
   */
 void PyObjectPlus::py_base_dealloc(PyObject *self)				// python wrapper
 {
@@ -228,8 +228,8 @@ void PyObjectPlus::py_base_dealloc(PyObject *self)				// python wrapper
 
 	if (BGE_PROXY_PYREF(self)) {
 		PyObjectPlus *self_plus= BGE_PROXY_REF(self);
-		if(self_plus) {
-			if(BGE_PROXY_PYOWNS(self)) { /* Does python own this?, then delete it  */
+		if (self_plus) {
+			if (BGE_PROXY_PYOWNS(self)) { /* Does python own this?, then delete it  */
 				self_plus->m_proxy = NULL; /* Need this to stop ~PyObjectPlus from decrefing m_proxy otherwise its decref'd twice and py-debug crashes */
 				delete self_plus;
 			}
@@ -239,8 +239,8 @@ void PyObjectPlus::py_base_dealloc(PyObject *self)				// python wrapper
 		BGE_PROXY_PTR(self)= NULL; // not really needed
 	} else {
 		void *ptr= BGE_PROXY_PTR(self);
-		if(ptr) {
-			if(BGE_PROXY_PYOWNS(self)) { /* Does python own this?, then delete it  */
+		if (ptr) {
+			if (BGE_PROXY_PYOWNS(self)) { /* Does python own this?, then delete it  */
 				// generic structure owned by python MUST be created though MEM_alloc
 				MEM_freeN(ptr);
 			}
@@ -280,9 +280,9 @@ PyObject *PyObjectPlus::py_get_attrdef(PyObject *self_py, const PyAttributeDef *
 {
 	PyObjectPlus *ref= (BGE_PROXY_REF(self_py));
 	char* ptr = (attrdef->m_usePtr) ? (char*)BGE_PROXY_PTR(self_py) : (char*)ref;
-	if(ptr == NULL || (BGE_PROXY_PYREF(self_py) && (ref==NULL || !ref->py_is_valid()))) {
-		if(attrdef == attr_invalid)
-			Py_RETURN_TRUE; // dont bother running the function
+	if (ptr == NULL || (BGE_PROXY_PYREF(self_py) && (ref==NULL || !ref->py_is_valid()))) {
+		if (attrdef == attr_invalid)
+			Py_RETURN_TRUE; // don't bother running the function
 
 		PyErr_SetString(PyExc_SystemError, BGE_PROXY_ERROR_MSG);
 		return NULL;
@@ -295,7 +295,7 @@ PyObject *PyObjectPlus::py_get_attrdef(PyObject *self_py, const PyAttributeDef *
 	}
 	if (attrdef->m_type == KX_PYATTRIBUTE_TYPE_FUNCTION)
 	{
-		// the attribute has no field correspondance, handover processing to function.
+		// the attribute has no field correspondence, handover processing to function.
 		if (attrdef->m_getFunction == NULL)
 			return NULL;
 		return (*attrdef->m_getFunction)(ptr, attrdef);
@@ -418,7 +418,7 @@ PyObject *PyObjectPlus::py_get_attrdef(PyObject *self_py, const PyAttributeDef *
 							return NULL;
 						}
 #ifdef USE_MATHUTILS
-						return newVectorObject(val, attrdef->m_imax, Py_NEW, NULL);
+						return Vector_CreatePyObject(val, attrdef->m_imax, Py_NEW, NULL);
 #else
 						PyObject* resultlist = PyList_New(attrdef->m_imax);
 						for (unsigned int i=0; i<attrdef->m_imax; i++)
@@ -435,7 +435,7 @@ PyObject *PyObjectPlus::py_get_attrdef(PyObject *self_py, const PyAttributeDef *
 						return NULL;
 					}
 #ifdef USE_MATHUTILS
-					return newMatrixObject(val, attrdef->m_imin, attrdef->m_imax, Py_WRAP, NULL);
+					return Matrix_CreatePyObject(val, attrdef->m_imin, attrdef->m_imax, Py_WRAP, NULL);
 #else
 					PyObject* collist = PyList_New(attrdef->m_imin);
 					for (unsigned int i=0; i<attrdef->m_imin; i++)
@@ -456,8 +456,9 @@ PyObject *PyObjectPlus::py_get_attrdef(PyObject *self_py, const PyAttributeDef *
 			{
 				MT_Vector3 *val = reinterpret_cast<MT_Vector3*>(ptr);
 #ifdef USE_MATHUTILS
-				float fval[3]= {(*val)[0], (*val)[1], (*val)[2]};
-				return newVectorObject(fval, 3, Py_NEW, NULL);
+				float fval[3];
+				val->getValue(fval);
+				return Vector_CreatePyObject(fval, 3, Py_NEW, NULL);
 #else
 				PyObject* resultlist = PyList_New(3);
 				for (unsigned int i=0; i<3; i++)
@@ -470,7 +471,7 @@ PyObject *PyObjectPlus::py_get_attrdef(PyObject *self_py, const PyAttributeDef *
 		case KX_PYATTRIBUTE_TYPE_STRING:
 			{
 				STR_String *val = reinterpret_cast<STR_String*>(ptr);
-				return PyUnicode_FromString(*val);
+				return PyUnicode_From_STR_String(*val);
 			}
 		case KX_PYATTRIBUTE_TYPE_CHAR:
 			{
@@ -512,7 +513,7 @@ int PyObjectPlus::py_set_attrdef(PyObject *self_py, PyObject *value, const PyAtt
 {
 	PyObjectPlus *ref= (BGE_PROXY_REF(self_py));
 	char* ptr = (attrdef->m_usePtr) ? (char*)BGE_PROXY_PTR(self_py) : (char*)ref;
-	if(ref==NULL || !ref->py_is_valid() || ptr==NULL) {
+	if (ref==NULL || !ref->py_is_valid() || ptr==NULL) {
 		PyErr_SetString(PyExc_SystemError, BGE_PROXY_ERROR_MSG);
 		return PY_SET_ATTR_FAIL;
 	}
@@ -698,7 +699,7 @@ int PyObjectPlus::py_set_attrdef(PyObject *self_py, PyObject *value, const PyAtt
 		{
 			if ((*attrdef->m_checkFunction)(ref, attrdef) != 0)
 			{
-				// if the checing function didnt set an error then set a generic one here so we dont set an error with no exception
+				// if the checing function didnt set an error then set a generic one here so we don't set an error with no exception
 				if (PyErr_Occurred()==0)
 					PyErr_Format(PyExc_AttributeError, "type check error for attribute \"%s\", reasion unknown", attrdef->m_name);
 				
@@ -1012,8 +1013,8 @@ int PyObjectPlus::py_set_attrdef(PyObject *self_py, PyObject *value, const PyAtt
 			{
 				if (PyUnicode_Check(value)) 
 				{
-					Py_ssize_t val_len;
-					char *val = _PyUnicode_AsStringAndSize(value, &val_len);
+					Py_ssize_t val_size;
+					const char *val = _PyUnicode_AsStringAndSize(value, &val_size);
 					strncpy(ptr, val, attrdef->m_size);
 					ptr[attrdef->m_size-1] = 0;
 				}
@@ -1030,7 +1031,7 @@ int PyObjectPlus::py_set_attrdef(PyObject *self_py, PyObject *value, const PyAtt
 				if (PyUnicode_Check(value)) 
 				{
 					Py_ssize_t val_len;
-					char *val = _PyUnicode_AsStringAndSize(value, &val_len);
+					const char *val = _PyUnicode_AsStringAndSize(value, &val_len); /* XXX, should be 'const' but we do a silly trick to have a shorter string */
 					if (attrdef->m_clamp)
 					{
 						if (val_len < attrdef->m_imin)
@@ -1042,10 +1043,8 @@ int PyObjectPlus::py_set_attrdef(PyObject *self_py, PyObject *value, const PyAtt
 						else if (val_len > attrdef->m_imax)
 						{
 							// trim the string
-							char c = val[attrdef->m_imax];
-							val[attrdef->m_imax] = 0;
-							*var = val;
-							val[attrdef->m_imax] = c;
+							var->SetLength(attrdef->m_imax);
+							memcpy(var->Ptr(), val, attrdef->m_imax - 1);
 							break;
 						}
 					} else if (val_len < attrdef->m_imin || val_len > attrdef->m_imax)
@@ -1152,7 +1151,7 @@ PyObject *PyObjectPlus::NewProxyPlus_Ext(PyObjectPlus *self, PyTypeObject *tp, v
 	}
 	if (self->m_proxy)
 	{
-		if(py_owns)
+		if (py_owns)
 		{	/* Free */
 			BGE_PROXY_REF(self->m_proxy) = NULL;
 			Py_DECREF(self->m_proxy);
@@ -1166,11 +1165,16 @@ PyObject *PyObjectPlus::NewProxyPlus_Ext(PyObjectPlus *self, PyTypeObject *tp, v
 	}
 	
 	GetProxyPlus_Ext(self, tp, ptr);
-	if(py_owns) {
+	if (py_owns) {
 		BGE_PROXY_PYOWNS(self->m_proxy) = py_owns;
 		Py_DECREF(self->m_proxy); /* could avoid thrashing here but for now its ok */
 	}
 	return self->m_proxy;
+}
+
+PyObject *PyUnicode_From_STR_String(const STR_String& str)
+{
+	return PyUnicode_FromStringAndSize(str.ReadPtr(), str.Length());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////

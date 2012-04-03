@@ -24,25 +24,28 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_SEQUENCE_TYPES_H
-#define DNA_SEQUENCE_TYPES_H
 /** \file DNA_sequence_types.h
  *  \ingroup DNA
  *  \since mar-2001
  *  \author nzc
  */
 
+#ifndef __DNA_SEQUENCE_TYPES_H__
+#define __DNA_SEQUENCE_TYPES_H__
+
+#include "DNA_defs.h"
 #include "DNA_listBase.h"
 #include "DNA_vec_types.h"
 
 struct Ipo;
 struct Scene;
 struct bSound;
+struct MovieClip;
 
-/* strlens; 80= FILE_MAXFILE, 160= FILE_MAXDIR */
+/* strlens; 256= FILE_MAXFILE, 768= FILE_MAXDIR */
 
 typedef struct StripElem {
-	char name[80];
+	char name[256];
 	int orig_width, orig_height;
 } StripElem;
 
@@ -69,10 +72,10 @@ typedef struct StripColorBalance {
 } StripColorBalance;
 
 typedef struct StripProxy {
-	char dir[160];	       // custom directory for index and proxy files
+	char dir[768];	       // custom directory for index and proxy files
 	                       // (defaults to BL_proxy)
 
-	char file[80];         // custom file
+	char file[256];        // custom file
 	struct anim *anim;     // custom proxy anim file
 
 	short tc;              // time code in use
@@ -86,10 +89,12 @@ typedef struct StripProxy {
 
 typedef struct Strip {
 	struct Strip *next, *prev;
-	int rt, len, us, done;
+	int us, done;
 	int startstill, endstill;
-	StripElem *stripdata;
-	char dir[160];
+	StripElem *stripdata; /* only used as an array in IMAGE sequences(!),
+				 and as a 1-element array in MOVIE sequences,
+				 NULL for all other strip-types */
+	char dir[768];
 	StripProxy *proxy;
 	StripCrop *crop;
 	StripTransform *transform;
@@ -98,7 +103,7 @@ typedef struct Strip {
 
 
 typedef struct PluginSeq {
-	char name[256];
+	char name[1024]; /* 1024 = FILE_MAX */
 	void *handle;
 
 	char *pname;
@@ -125,7 +130,7 @@ typedef struct Sequence {
 	struct Sequence *next, *prev;
 	void *tmp; /* tmp var for copying, and tagging for linked selection */
 	void *lib; /* needed (to be like ipo), else it will raise libdata warnings, this should never be used */
-	char name[24]; /* SEQ_NAME_MAXSTR - name, set by default and needs to be unique, for RNA paths */
+	char name[64]; /* SEQ_NAME_MAXSTR - name, set by default and needs to be unique, for RNA paths */
 
 	int flag, type;	/*flags bitmap (see below) and the type of sequence*/
 	int len; /* the length of the contense of this strip - before handles are applied */
@@ -135,18 +140,21 @@ typedef struct Sequence {
 	int startdisp, enddisp;	/*starting and ending points in the sequence*/
 	float sat;
 	float mul, handsize;
-					/* is sfra needed anymore? - it looks like its only used in one place */
-	int sfra;		/* starting frame according to the timeline of the scene. */
-	int anim_preseek;
-	int streamindex;   /* streamindex for movie or sound files with several streams */
+
+	short anim_preseek;
+	short streamindex;   /* streamindex for movie or sound files with several streams */
+	int multicam_source;  /* for multicam source selection */
+	int clip_flag;          /* MOVIECLIP render flags */
 
 	Strip *strip;
 
-	struct Ipo *ipo;	// xxx depreceated... old animation system
+	struct Ipo *ipo  DNA_DEPRECATED;  /* old animation system, deprecated for 2.5 */
 	struct Scene *scene;
 	struct Object *scene_camera; /* override scene camera */
 
-	struct anim *anim;
+	struct anim *anim;      /* for MOVIE strips */
+	struct MovieClip *clip; /* for MOVIECLIP strips */
+
 	float effect_fader;
 	float speed_fader;
 
@@ -162,8 +170,6 @@ typedef struct Sequence {
 	float volume;
 
 	float pitch, pan;	/* pitch (-0.1..10), pan -2..2 */
-	int scenenr;          /* for scene selection */
-	int multicam_source;  /* for multicam source selection */
 	float strobe;
 
 	void *effectdata;	/* Struct pointer for effect settings */
@@ -171,9 +177,12 @@ typedef struct Sequence {
 	int anim_startofs;    /* only use part of animation file */
 	int anim_endofs;      /* is subtle different to startofs / endofs */
 
+
 	int blend_mode;
 	float blend_opacity;
 
+			/* is sfra needed anymore? - it looks like its only used in one place */
+	int sfra, pad;	/* starting frame according to the timeline of the scene. */
 } Sequence;
 
 typedef struct MetaStack {
@@ -189,8 +198,8 @@ typedef struct Editing {
 	
 	/* Context vars, used to be static */
 	Sequence *act_seq;
-	char act_imagedir[256];
-	char act_sounddir[256];
+	char act_imagedir[1024]; /* 1024 = FILE_MAX */
+	char act_sounddir[1024]; /* 1024 = FILE_MAX */
 
 	int over_ofs, over_cfra;
 	int over_flag, pad;
@@ -253,7 +262,7 @@ typedef struct SpeedControlVars {
 #define SEQ_SPEED_COMPRESS_IPO_Y 4
 
 /* ***************** SEQUENCE ****************** */
-#define SEQ_NAME_MAXSTR			24
+#define SEQ_NAME_MAXSTR			64
 
 /* seq->flag */
 #define SEQ_LEFTSEL                 (1<<1)
@@ -290,7 +299,7 @@ typedef struct SpeedControlVars {
 /* convenience define for all selection flags */
 #define SEQ_ALLSEL	(SELECT+SEQ_LEFTSEL+SEQ_RIGHTSEL)
 
-/* deprecated, dont use a flag anymore*/
+/* deprecated, don't use a flag anymore*/
 /*#define SEQ_ACTIVE                            1048576*/
 
 #define SEQ_COLOR_BALANCE_INVERSE_GAIN 1
@@ -308,7 +317,8 @@ typedef struct SpeedControlVars {
 #define SEQ_PROXY_TC_RECORD_RUN                 1
 #define SEQ_PROXY_TC_FREE_RUN                   2
 #define SEQ_PROXY_TC_INTERP_REC_DATE_FREE_RUN   4
-#define SEQ_PROXY_TC_ALL                        7
+#define SEQ_PROXY_TC_RECORD_RUN_NO_GAPS         8
+#define SEQ_PROXY_TC_ALL                        15
 
 /* seq->type WATCH IT: SEQ_EFFECT BIT is used to determine if this is an effect strip!!! */
 #define SEQ_IMAGE		0
@@ -318,6 +328,7 @@ typedef struct SpeedControlVars {
 #define SEQ_RAM_SOUND		4
 #define SEQ_HD_SOUND            5
 #define SEQ_SOUND		4
+#define SEQ_MOVIECLIP           6
 
 #define SEQ_EFFECT		8
 #define SEQ_CROSS		8
@@ -343,14 +354,17 @@ typedef struct SpeedControlVars {
 
 #define STRIPELEM_PREVIEW_DONE  1
 
+#define SEQ_MOVIECLIP_RENDER_UNDISTORTED (1<<0)
+#define SEQ_MOVIECLIP_RENDER_STABILIZED  (1<<1)
+
 #define SEQ_BLEND_REPLACE      0
 /* all other BLEND_MODEs are simple SEQ_EFFECT ids and therefore identical
-   to the table above. (Only those effects that handle _exactly_ two inputs,
-   otherwise, you can't really blend, right :) !)
-*/
+ * to the table above. (Only those effects that handle _exactly_ two inputs,
+ * otherwise, you can't really blend, right :) !)
+ */
 
 
-#define SEQ_HAS_PATH(_seq) (ELEM5((_seq)->type, SEQ_MOVIE, SEQ_IMAGE, SEQ_SOUND, SEQ_RAM_SOUND, SEQ_HD_SOUND))
+#define SEQ_HAS_PATH(_seq) (ELEM4((_seq)->type, SEQ_MOVIE, SEQ_IMAGE, SEQ_RAM_SOUND, SEQ_HD_SOUND))
 
 #endif
 

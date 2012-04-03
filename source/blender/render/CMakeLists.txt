@@ -27,6 +27,7 @@
 set(INC 
 	extern/include
 	intern/include
+	../blenfont
 	../blenkernel
 	../blenlib
 	../blenloader
@@ -66,6 +67,7 @@ set(SRC
 	intern/source/pointdensity.c
 	intern/source/rayshade.c
 	intern/source/rendercore.c
+	intern/source/render_result.c
 	intern/source/render_texture.c
 	intern/source/renderdatabase.c
 	intern/source/shadbuf.c
@@ -74,6 +76,7 @@ set(SRC
 	intern/source/sss.c
 	intern/source/strand.c
 	intern/source/sunsky.c
+	intern/source/texture_ocean.c
 	intern/source/volume_precache.c
 	intern/source/volumetric.c
 	intern/source/voxeldata.c
@@ -95,6 +98,7 @@ set(SRC
 	intern/include/rayintersection.h
 	intern/include/raycounter.h
 	intern/include/render_types.h
+	intern/include/render_result.h
 	intern/include/rendercore.h
 	intern/include/renderdatabase.h
 	intern/include/renderpipeline.h
@@ -104,6 +108,7 @@ set(SRC
 	intern/include/strand.h
 	intern/include/sunsky.h
 	intern/include/texture.h
+	intern/include/texture_ocean.h
 	intern/include/volume_precache.h
 	intern/include/volumetric.h
 	intern/include/voxeldata.h

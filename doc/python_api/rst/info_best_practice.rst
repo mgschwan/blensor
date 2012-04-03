@@ -2,15 +2,15 @@
 Best Practice
 *************
 
-When writing you're own scripts python is great for new developers to pick up and become productive, but you can also pick up odd habits or at least write scripts that are not easy for others to understand.
+When writing your own scripts python is great for new developers to pick up and become productive, but you can also pick up odd habits or at least write scripts that are not easy for others to understand.
 
-For you're own work this is of course fine, but if you want to collaborate with others or have you're work included with blender there are practices we encourage.
+For your own work this is of course fine, but if you want to collaborate with others or have your work included with blender there are practices we encourage.
 
 
 Style Conventions
 =================
 
-For Blender 2.5 we have chosen to follow python suggested style guide to avoid mixing styles amongst our own scripts and make it easier to use python scripts from other projects.
+For Blender/Python development we have chosen to follow python suggested style guide to avoid mixing styles amongst our own scripts and make it easier to use python scripts from other projects.
 
 Using our style guide for your own scripts makes it easier if you eventually want to contribute them to blender.
 
@@ -39,7 +39,7 @@ As well as pep8 we have other conventions used for blender python scripts.
 
   .. code-block:: python
 
-     bpy.context.scene.render.file_format = 'PNG'
+     bpy.context.scene.render.image_settings.file_format = 'PNG'
      bpy.context.scene.render.filepath = "//render_out"
 
 * pep8 also defines that lines should not exceed 79 characters, we felt this is too restrictive so this is optional per script.
@@ -83,7 +83,7 @@ Even though you're not looping on the list data **python is**, so you need to be
 
 Modifying Lists
 ^^^^^^^^^^^^^^^
-In python we can add and remove from a list, This is slower when the list length is modifier, especially at the start of the list, since all the data after the index of modification needs to be moved up or down 1 place.
+In python we can add and remove from a list, This is slower when the list length is modified, especially at the start of the list, since all the data after the index of modification needs to be moved up or down 1 place.
 
 The most simple way to add onto the end of the list is to use ``my_list.append(list_item)`` or ``my_list.extend(some_list)`` and the fastest way to remove an item is ``my_list.pop()`` or ``del my_list[-1]``.
 
@@ -181,7 +181,7 @@ When removing many items in a large list this can provide a good speedup.
 Avoid Copying Lists
 ^^^^^^^^^^^^^^^^^^^
 
-When passing a list/dictionary to a function, it is faster to have the function modify the list rather then returning a new list so python dosn't have tp duplicate the list in memory.
+When passing a list/dictionary to a function, it is faster to have the function modify the list rather then returning a new list so python doesn't have to duplicate the list in memory.
 
 Functions that modify a list in-place are more efficient then functions that create new lists.
 
@@ -244,7 +244,7 @@ Use ``float(string)`` rather than ``eval(string)``, if you know the value will b
 Checking String Start/End
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-If your checking the start of a string for a keyword, rather than...
+If you're checking the start of a string for a keyword, rather than...
 
 >>> if line[0:5] == "vert ": ...
 
@@ -264,11 +264,11 @@ if your unsure whether the text is upper or lower case use lower or upper string
 Use try/except Sparingly
 ------------------------
 
-The **try** statement useful to save time writing error checking code.
+The **try** statement is useful to save time writing error checking code.
 
 However **try** is significantly slower then an **if** since an exception has to be set each time, so avoid using **try** in areas of your code that execute in a loop and runs many times.
 
-There are cases where using **try** is faster than checking weather the condition will raise an error, so it is worth experimenting.
+There are cases where using **try** is faster than checking whether the condition will raise an error, so it is worth experimenting.
 
 
 Value Comparison
@@ -279,8 +279,8 @@ Python has two ways to compare values ``a == b`` and ``a is b``, The difference 
 In cases where you know you are checking for the same value which is referenced from multiple places, ``is`` is faster.
 
 
-Time You're Code
-----------------
+Time Your Code
+--------------
 
 While developing a script its good to time it to be aware of any changes in performance, this can be done simply.
 

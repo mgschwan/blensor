@@ -36,7 +36,7 @@
 /* *********************************************** */
 /* Tree API */
 
-/* Create a new tree, and initialise as necessary */
+/* Create a new tree, and initialize as necessary */
 DLRBT_Tree *BLI_dlrbTree_new (void)
 {
 	/* just allocate for now */
@@ -209,7 +209,7 @@ DLRBT_Node *BLI_dlrbTree_search_exact (DLRBT_Tree *tree, DLRBT_Comparator_FP cmp
 		}
 	}
 	
-	/* return the nearest matching node */
+	/* return the exactly matching node */
 	return (found == 1) ? (node) : (NULL);
 }
 
@@ -287,20 +287,28 @@ static DLRBT_Node *get_grandparent (DLRBT_Node *node)
 		return NULL;
 }
 
+/* get the sibling node (e.g. if node is left child of parent, return right child of parent) */
+static DLRBT_Node *get_sibling(DLRBT_Node *node)
+{
+	if (node && node->parent) {
+		if (node == node->parent->left)
+			return node->parent->right;
+		else
+			return node->parent->left;
+	}
+
+	/* sibling not found */
+	return NULL;
+}
+
 /* get the 'uncle' - the sibling of the parent - of the given node */
 static DLRBT_Node *get_uncle (DLRBT_Node *node)
 {
-	DLRBT_Node *gpn= get_grandparent(node);
+	if (node)
+		/* return the child of the grandparent which isn't the node's parent */
+		return get_sibling(node->parent);
 	
-	/* return the child of the grandparent which isn't the node's parent */
-	if (gpn) {
-		if (gpn->left == node->parent)
-			return gpn->right;
-		else
-			return gpn->left;
-	}
-	
-	/* not found */
+	/* uncle not found */
 	return NULL;
 }
 

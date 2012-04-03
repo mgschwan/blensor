@@ -187,7 +187,7 @@ void BIF_makeListTemplates(const bContext *C)
 	}
 }
 
-char *BIF_listTemplates(const bContext *UNUSED(C))
+const char *BIF_listTemplates(const bContext *UNUSED(C))
 {
 	GHashIterator ghi;
 	char menu_header[] = "Template%t|None%x0|";
@@ -508,7 +508,7 @@ static void sk_drawEdge(GLUquadric *quad, SK_Point *pt0, SK_Point *pt1, float si
 
 	angle = angle_normalized_v3v3(vec2, vec1);
 
-	glRotatef(angle * 180 / M_PI + 180, axis[0], axis[1], axis[2]);
+	glRotatef(angle * (float)(180.0/M_PI) + 180.0f, axis[0], axis[1], axis[2]);
 
 	gluCylinder(quad, sk_clampPointSize(pt1, size), sk_clampPointSize(pt0, size), length, 8, 8);
 }
@@ -529,7 +529,7 @@ static void sk_drawNormal(GLUquadric *quad, SK_Point *pt, float size, float heig
 
 	angle = angle_normalized_v3v3(vec2, pt->no);
 
-	glRotatef(angle * 180 / M_PI, axis[0], axis[1], axis[2]);
+	glRotatef(angle * (float)(180.0/M_PI), axis[0], axis[1], axis[2]);
 
 	glColor3f(0, 1, 1);
 	gluCylinder(quad, sk_clampPointSize(pt, size), 0, sk_clampPointSize(pt, height), 10, 2);
@@ -624,7 +624,7 @@ static void drawSubdividedStrokeBy(ToolSettings *toolsettings, BArcIterator *ite
 	gluQuadricNormals(quad, GLU_SMOOTH);
 
 	iter->head(iter);
-	VECCOPY(head, iter->p);
+	copy_v3_v3(head, iter->p);
 
 	index = next_subdividion(toolsettings, iter, bone_start, end, head, tail);
 	while (index != -1)
@@ -640,7 +640,7 @@ static void drawSubdividedStrokeBy(ToolSettings *toolsettings, BArcIterator *ite
 
 		glPopMatrix();
 
-		VECCOPY(head, tail);
+		copy_v3_v3(head, tail);
 		bone_start = index; // start next bone from current index
 
 		index = next_subdividion(toolsettings, iter, bone_start, end, head, tail);
@@ -748,7 +748,7 @@ static SK_Point *sk_snapPointArmature(bContext *C, Object *ob, ListBase *ebones,
 
 		if ((bone->flag & BONE_CONNECTED) == 0)
 		{
-			VECCOPY(vec, bone->head);
+			copy_v3_v3(vec, bone->head);
 			mul_m4_v3(ob->obmat, vec);
 			project_short_noclip(ar, vec, pval);
 
@@ -758,13 +758,13 @@ static SK_Point *sk_snapPointArmature(bContext *C, Object *ob, ListBase *ebones,
 			{
 				*dist = pdist;
 				pt = &boneSnap;
-				VECCOPY(pt->p, vec);
+				copy_v3_v3(pt->p, vec);
 				pt->type = PT_EXACT;
 			}
 		}
 
 
-		VECCOPY(vec, bone->tail);
+		copy_v3_v3(vec, bone->tail);
 		mul_m4_v3(ob->obmat, vec);
 		project_short_noclip(ar, vec, pval);
 
@@ -774,7 +774,7 @@ static SK_Point *sk_snapPointArmature(bContext *C, Object *ob, ListBase *ebones,
 		{
 			*dist = pdist;
 			pt = &boneSnap;
-			VECCOPY(pt->p, vec);
+			copy_v3_v3(pt->p, vec);
 			pt->type = PT_EXACT;
 		}
 	}
@@ -1008,7 +1008,7 @@ static void sk_interpolateDepth(bContext *C, SK_Stroke *stk, int start, int end,
 		mul_v3_fl(ray_normal, distance * progress / length);
 		add_v3_v3(stk->points[i].p, ray_normal);
 
-		progress += delta ;
+		progress += delta;
 	}
 }
 
@@ -1024,7 +1024,7 @@ static void sk_projectDrawPoint(bContext *C, float vec[3], SK_Stroke *stk, SK_Dr
 
 	if (last != NULL)
 	{
-		VECCOPY(fp, last->p);
+		copy_v3_v3(fp, last->p);
 	}
 
 	initgrabz(ar->regiondata, fp[0], fp[1], fp[2]);
@@ -1079,7 +1079,7 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 
 		mvalf[0]= dd->mval[0];
 		mvalf[1]= dd->mval[1];
-		peelObjectsContext(C, &sketch->depth_peels, mvalf);
+		peelObjectsContext(C, &sketch->depth_peels, mvalf, SNAP_ALL);
 
 		if (stk->nb_points > 0 && stk->points[stk->nb_points - 1].type == PT_CONTINUOUS)
 		{
@@ -1134,12 +1134,12 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 				}
 				else
 				{
-					VECCOPY(vec, p1->p);
+					copy_v3_v3(vec, p1->p);
 				}
 
 				if (last_p == NULL)
 				{
-					VECCOPY(p, vec);
+					copy_v3_v3(p, vec);
 					size = new_size;
 					dist = 0;
 					break;
@@ -1149,7 +1149,7 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 
 				if (new_dist < dist)
 				{
-					VECCOPY(p, vec);
+					copy_v3_v3(p, vec);
 					dist = new_dist;
 					size = new_size;
 				}
@@ -1161,7 +1161,7 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 			pt->type = dd->type;
 			pt->mode = PT_SNAP;
 			pt->size = size / 2;
-			VECCOPY(pt->p, p);
+			copy_v3_v3(pt->p, p);
 
 			point_added = 1;
 		}
@@ -1193,7 +1193,7 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 
 			if (spt != NULL)
 			{
-				VECCOPY(pt->p, spt->p);
+				copy_v3_v3(pt->p, spt->p);
 				point_added = 1;
 			}
 		}
@@ -1207,7 +1207,7 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 		{
 			pt->type = dd->type;
 			pt->mode = PT_SNAP;
-			VECCOPY(pt->p, vec);
+			copy_v3_v3(pt->p, vec);
 
 			point_added = 1;
 		}
@@ -1234,7 +1234,7 @@ static int sk_addStrokeSnapPoint(bContext *C, SK_Sketch *sketch, SK_Stroke *stk,
 		int total;
 		int i;
 
-		VECCOPY(final_p, pt.p);
+		copy_v3_v3(final_p, pt.p);
 
 		sk_projectDrawPoint(C, pt.p, stk, dd);
 		sk_appendStrokePoint(stk, &pt);
@@ -1259,7 +1259,7 @@ static int sk_addStrokeSnapPoint(bContext *C, SK_Sketch *sketch, SK_Stroke *stk,
 			sk_interpolateDepth(C, stk, i + 1, stk->nb_points - 2, length, distance);
 		}
 
-		VECCOPY(stk->points[stk->nb_points - 1].p, final_p);
+		copy_v3_v3(stk->points[stk->nb_points - 1].p, final_p);
 
 		point_added = 1;
 	}
@@ -1296,7 +1296,7 @@ static void sk_getStrokePoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, SK_S
 	{
 		point_added = sk_getStrokeSnapPoint(C, pt, sketch, stk, dd);
 		LAST_SNAP_POINT_VALID = 1;
-		VECCOPY(LAST_SNAP_POINT, pt->p);
+		copy_v3_v3(LAST_SNAP_POINT, pt->p);
 	}
 	else
 	{
@@ -1536,8 +1536,8 @@ static void sk_convertStroke(bContext *C, SK_Stroke *stk)
 				{
 					bone = ED_armature_edit_bone_add(arm, "Bone");
 
-					VECCOPY(bone->head, head->p);
-					VECCOPY(bone->tail, pt->p);
+					copy_v3_v3(bone->head, head->p);
+					copy_v3_v3(bone->tail, pt->p);
 
 					mul_m4_v3(invmat, bone->head);
 					mul_m4_v3(invmat, bone->tail);
@@ -1799,7 +1799,7 @@ void sk_applyCutGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UNUSED
 		SK_Point pt;
 
 		pt.type = PT_EXACT;
-		pt.mode = PT_PROJECT; /* take mode from neighbouring points */
+		pt.mode = PT_PROJECT; /* take mode from neighboring points */
 		copy_v3_v3(pt.p, isect->p);
 		copy_v3_v3(pt.no, isect->stroke->points[isect->before].no);
 
@@ -1817,7 +1817,7 @@ int sk_detectTrimGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UNUSE
 		sub_v3_v3v3(s1, gest->segments->points[1].p, gest->segments->points[0].p);
 		sub_v3_v3v3(s2, gest->segments->points[2].p, gest->segments->points[1].p);
 
-		angle = RAD2DEG(angle_v2v2(s1, s2));
+		angle = RAD2DEGF(angle_v2v2(s1, s2));
 
 		if (angle > 60 && angle < 120)
 		{
@@ -1841,7 +1841,7 @@ void sk_applyTrimGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UNUSE
 		float stroke_dir[3];
 
 		pt.type = PT_EXACT;
-		pt.mode = PT_PROJECT; /* take mode from neighbouring points */
+		pt.mode = PT_PROJECT; /* take mode from neighboring points */
 		copy_v3_v3(pt.p, isect->p);
 		copy_v3_v3(pt.no, isect->stroke->points[isect->before].no);
 
@@ -1870,7 +1870,7 @@ int sk_detectCommandGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UN
 		SK_Intersection *isect, *self_isect;
 
 		/* get the the last intersection of the first pair */
-		for( isect = gest->intersections.first; isect; isect = isect->next )
+		for ( isect = gest->intersections.first; isect; isect = isect->next )
 		{
 			if (isect->stroke == isect->next->stroke)
 			{
@@ -1897,7 +1897,7 @@ void sk_applyCommandGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UN
 
 //	XXX
 //	command = pupmenu("Action %t|Flatten %x1|Straighten %x2|Polygonize %x3");
-	if(command < 1) return;
+	if (command < 1) return;
 
 	for (isect = gest->intersections.first; isect; isect = isect->next)
 	{
@@ -1935,7 +1935,7 @@ int sk_detectDeleteGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UNU
 		sub_v3_v3v3(s1, gest->segments->points[1].p, gest->segments->points[0].p);
 		sub_v3_v3v3(s2, gest->segments->points[2].p, gest->segments->points[1].p);
 
-		angle = RAD2DEG(angle_v2v2(s1, s2));
+		angle = RAD2DEGF(angle_v2v2(s1, s2));
 
 		if (angle > 120)
 		{
@@ -2067,7 +2067,7 @@ int sk_detectReverseGesture(bContext *UNUSED(C), SK_Gesture *gest, SK_Sketch *UN
 					sub_v3_v3v3(end_v, sk_lastStrokePoint(gest->stk)->p, isect->p);
 				}
 
-				angle = RAD2DEG(angle_v2v2(start_v, end_v));
+				angle = RAD2DEGF(angle_v2v2(start_v, end_v));
 
 				if (angle > 120)
 				{
@@ -2166,10 +2166,10 @@ static int sk_selectStroke(bContext *C, SK_Sketch *sketch, const int mval[2], in
 
 	view3d_set_viewcontext(C, &vc);
 
-	rect.xmin= mval[0]-5;
-	rect.xmax= mval[0]+5;
-	rect.ymin= mval[1]-5;
-	rect.ymax= mval[1]+5;
+	rect.xmin = mval[0]-5;
+	rect.xmax = mval[0]+5;
+	rect.ymin = mval[1]-5;
+	rect.ymax = mval[1]+5;
 
 	hits = view3d_opengl_select(&vc, buffer, MAXPICKBUF, &rect);
 
@@ -2177,7 +2177,7 @@ static int sk_selectStroke(bContext *C, SK_Sketch *sketch, const int mval[2], in
 	{
 		int besthitresult = -1;
 
-		if(hits == 1) {
+		if (hits == 1) {
 			besthitresult = buffer[3];
 		}
 		else {
@@ -2839,130 +2839,130 @@ int ED_operator_sketch_mode(const bContext *C)
 void SKETCH_OT_delete(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "delete";
-	ot->idname= "SKETCH_OT_delete";
+	ot->name = "Delete";
+	ot->idname = "SKETCH_OT_delete";
 
 	/* api callbacks */
-	ot->invoke= sketch_delete;
+	ot->invoke = sketch_delete;
 
-	ot->poll= ED_operator_sketch_full_mode;
+	ot->poll = ED_operator_sketch_full_mode;
 
 	/* flags */
-//	ot->flag= OPTYPE_UNDO;
+//	ot->flag = OPTYPE_UNDO;
 }
 
 void SKETCH_OT_select(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "select";
-	ot->idname= "SKETCH_OT_select";
+	ot->name = "Select";
+	ot->idname = "SKETCH_OT_select";
 
 	/* api callbacks */
-	ot->invoke= sketch_select;
+	ot->invoke = sketch_select;
 
-	ot->poll= ED_operator_sketch_full_mode;
+	ot->poll = ED_operator_sketch_full_mode;
 
 	/* flags */
-//	ot->flag= OPTYPE_UNDO;
+//	ot->flag = OPTYPE_UNDO;
 }
 
 void SKETCH_OT_cancel_stroke(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "cancel stroke";
-	ot->idname= "SKETCH_OT_cancel_stroke";
+	ot->name = "Cancel Stroke";
+	ot->idname = "SKETCH_OT_cancel_stroke";
 
 	/* api callbacks */
-	ot->invoke= sketch_cancel;
+	ot->invoke = sketch_cancel;
 
-	ot->poll= ED_operator_sketch_mode_active_stroke;
+	ot->poll = ED_operator_sketch_mode_active_stroke;
 
 	/* flags */
-//	ot->flag= OPTYPE_UNDO;
+//	ot->flag = OPTYPE_UNDO;
 }
 
 void SKETCH_OT_convert(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "convert";
-	ot->idname= "SKETCH_OT_convert";
+	ot->name = "Convert";
+	ot->idname = "SKETCH_OT_convert";
 
 	/* api callbacks */
-	ot->invoke= sketch_convert;
+	ot->invoke = sketch_convert;
 
-	ot->poll= ED_operator_sketch_full_mode;
+	ot->poll = ED_operator_sketch_full_mode;
 
 	/* flags */
-	ot->flag= OPTYPE_UNDO;
+	ot->flag = OPTYPE_UNDO;
 }
 
 void SKETCH_OT_finish_stroke(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "end stroke";
-	ot->idname= "SKETCH_OT_finish_stroke";
+	ot->name = "End Stroke";
+	ot->idname = "SKETCH_OT_finish_stroke";
 
 	/* api callbacks */
-	ot->invoke= sketch_finish;
+	ot->invoke = sketch_finish;
 
-	ot->poll= ED_operator_sketch_mode_active_stroke;
+	ot->poll = ED_operator_sketch_mode_active_stroke;
 
 	/* flags */
-//	ot->flag= OPTYPE_UNDO;
+//	ot->flag = OPTYPE_UNDO;
 }
 
 void SKETCH_OT_draw_preview(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "draw preview";
-	ot->idname= "SKETCH_OT_draw_preview";
+	ot->name = "Draw Preview";
+	ot->idname = "SKETCH_OT_draw_preview";
 
 	/* api callbacks */
-	ot->invoke= sketch_draw_preview;
+	ot->invoke = sketch_draw_preview;
 
-	ot->poll= ED_operator_sketch_mode_active_stroke;
+	ot->poll = ED_operator_sketch_mode_active_stroke;
 
 	RNA_def_boolean(ot->srna, "snap", 0, "Snap", "");
 
 	/* flags */
-//	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+//	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 void SKETCH_OT_draw_stroke(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "draw stroke";
-	ot->idname= "SKETCH_OT_draw_stroke";
+	ot->name = "Draw Stroke";
+	ot->idname = "SKETCH_OT_draw_stroke";
 
 	/* api callbacks */
 	ot->invoke = sketch_draw_stroke;
 	ot->modal  = sketch_draw_stroke_modal;
 	ot->cancel = sketch_draw_stroke_cancel;
 
-	ot->poll= (int (*)(bContext *))ED_operator_sketch_mode;
+	ot->poll = (int (*)(bContext *))ED_operator_sketch_mode;
 
 	RNA_def_boolean(ot->srna, "snap", 0, "Snap", "");
 
 	/* flags */
-	ot->flag= OPTYPE_BLOCKING; // OPTYPE_REGISTER|OPTYPE_UNDO
+	ot->flag = OPTYPE_BLOCKING; // OPTYPE_REGISTER|OPTYPE_UNDO
 }
 
 void SKETCH_OT_gesture(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "gesture";
-	ot->idname= "SKETCH_OT_gesture";
+	ot->name = "Gesture";
+	ot->idname = "SKETCH_OT_gesture";
 
 	/* api callbacks */
 	ot->invoke = sketch_draw_gesture;
 	ot->modal  = sketch_draw_gesture_modal;
 	ot->cancel = sketch_draw_gesture_cancel;
 
-	ot->poll= ED_operator_sketch_mode_gesture;
+	ot->poll = ED_operator_sketch_mode_gesture;
 
 	RNA_def_boolean(ot->srna, "snap", 0, "Snap", "");
 
 	/* flags */
-	ot->flag= OPTYPE_BLOCKING; // OPTYPE_UNDO
+	ot->flag = OPTYPE_BLOCKING; // OPTYPE_UNDO
 }
 

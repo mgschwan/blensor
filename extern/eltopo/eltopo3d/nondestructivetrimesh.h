@@ -1,4 +1,3 @@
-
 // ---------------------------------------------------------
 //
 //  nondestructivetrimesh.h
@@ -10,8 +9,8 @@
 //
 // ---------------------------------------------------------
 
-#ifndef NONDESTRUCTIVETRIMESH_H
-#define NONDESTRUCTIVETRIMESH_H
+#ifndef EL_TOPO_NONDESTRUCTIVETRIMESH_H
+#define EL_TOPO_NONDESTRUCTIVETRIMESH_H
 
 // ---------------------------------------------------------
 // Nested includes
@@ -22,8 +21,22 @@
 #include <vector>
 #include <vec.h>
 
+
 // ---------------------------------------------------------
-//  Interface declarations
+//  Non-member function declarations
+// ---------------------------------------------------------
+
+/// Safely convert a size_t to an int
+///
+int to_int( size_t a );
+
+/// Safely convert a ssize_t to an int
+///
+int to_int( ssize_t a );
+
+
+// ---------------------------------------------------------
+//  Class definitions
 // ---------------------------------------------------------
 
 // --------------------------------------------------------
@@ -32,87 +45,260 @@
 ///
 // --------------------------------------------------------
 
-struct NonDestructiveTriMesh
+class NonDestructiveTriMesh
 {  
-   NonDestructiveTriMesh() :
-      m_tris(0), m_edges(0),
-      m_vtxedge(0), m_vtxtri(0), m_edgetri(0), m_triedge(0)
-   {}
-   
-   void clear();
-   
-   void clear_connectivity();
-   void update_connectivity( unsigned int nv );
-   
-   /// Find the index of an edge in the list of edges
-   ///
-   unsigned int get_edge(unsigned int vtx0, unsigned int vtx1) const;  
-   
-   /// Get all triangles adjacent to the specified triangle
-   ///
-   void get_adjacent_triangles( unsigned int triangle_index, std::vector<unsigned int>& adjacent_triangles ) const;
-   
-   unsigned int add_edge(unsigned int vtx0, unsigned int vtx1);
-   
-   void nondestructive_add_triangle(const Vec3ui& tri);
-   void nondestructive_remove_triangle(unsigned int tri);
-   
-   unsigned int nondestructive_add_vertex( );
-   void nondestructive_remove_vertex(unsigned int vtx);
-   
-   void nondestructive_add_edge( Vec2ui new_edge );
-   void nondestructive_remove_edge( unsigned int edge_index );
-   
-   /// Given two vertices on a triangle, return the third vertex
-   ///
-   inline unsigned int get_third_vertex( unsigned int vertex0, unsigned int vertex1, const Vec3ui& triangle ) const;
-   
-   /// Given two vertices on a triangle, return whether or not the triangle has the same orientation
-   ///
-   inline static bool oriented( unsigned int vertex0, unsigned int vertex1, const Vec3ui& triangle );
-   
-   inline static bool triangle_has_these_verts( const Vec3ui& tri, const Vec3ui& verts );
-   
-   /// Return which vertex in tri matches v.  Also returns the other two vertices in tri.
-   ///
-   inline static unsigned int index_in_triangle( const Vec3ui& tri, unsigned int v, Vec2ui& other_two );
-   
-   /// Remove triangles which have been deleted
-   ///
-   void clear_deleted_triangles();
-      
-   // ---------------------------------------------------------
-   // Data members
-   
-   /// List of triangles: the fundamental data
-   ///
-   std::vector<Vec3ui> m_tris;
-   
-   /// Edges as vertex pairs
-   ///
-   std::vector<Vec2ui> m_edges;    
-   
-   /// Edges incident on vertices (given a vertex, which edges is it incident on)
-   ///
-   std::vector<std::vector<unsigned int> > m_vtxedge; 
-   
-   /// Ttriangles incident on vertices (given a vertex, which triangles is it incident on)
-   ///
-   std::vector<std::vector<unsigned int> > m_vtxtri;    
-   
-   /// Triangles incident on edges (given an edge, which triangles is it incident on)
-   ///
-   std::vector<std::vector<unsigned int> > m_edgetri;    
-   
-   /// Edges around triangles (given a triangle, which 3 edges does it contain)
-   ///
-   std::vector<Vec3ui> m_triedge;    
+    
+public:
+    
+    /// Constructor
+    ///
+    NonDestructiveTriMesh() :
+    m_edges(0),
+    m_is_boundary_edge(0), m_is_boundary_vertex(0),
+    m_vertex_to_edge_map(0), m_vertex_to_triangle_map(0), m_edge_to_triangle_map(0), m_triangle_to_edge_map(0),
+    m_tris(0)
+    {}
 
+    
+    /// Return a const reference to the set of all triangles, including triangles marked as deleted.
+    ///
+    inline const std::vector<Vec3st>& get_triangles() const;
+    
+    /// Return a const reference to the specified triangle.
+    ///
+    inline const Vec3st& get_triangle( size_t index ) const;
+    
+    /// Get the number of triangles in the mesh.
+    ///
+    inline size_t num_triangles() const;
+    
+    /// Clear all mesh information
+    ///
+    void clear();
+    
+    /// Remove auxiliary connectivity information
+    ///
+    void clear_connectivity();
+    
+    /// Clear and rebuild connectivity information
+    ///
+    void update_connectivity( );
+    
+    /// Determine if the given vertex is on a boundary edge and store in data structure
+    ///
+    void update_is_boundary_vertex( size_t v );
+    
+    /// Find the index of an edge in the list of edges, if it exists. Return edges.size if the edge is not found.
+    ///
+    size_t get_edge_index(size_t vtx0, size_t vtx1) const;  
+    
+    /// Find the index of a triangle, if it exists. Return triangles.size if the triangle is not found.
+    ///
+    size_t get_triangle_index( size_t vtx0, size_t vtx1, size_t vtx2 ) const;  
+    
+    /// Get all triangles adjacent to the specified triangle
+    ///
+    void get_adjacent_triangles( size_t triangle_index, std::vector<size_t>& adjacent_triangles ) const;
+    
+    /// Get all vertices adjacent to the specified vertex
+    ///
+    void get_adjacent_vertices( size_t vertex_index, std::vector<size_t>& adjacent_vertices ) const;
+    
+    /// Add a triangle to the tris structure, update connectivity
+    ///
+    size_t nondestructive_add_triangle(const Vec3st& tri);
+    
+    /// Mark a triangle as deleted without actually changing the data structures
+    ///
+    void nondestructive_remove_triangle(size_t tri);
+    
+    /// Add a vertex, update connectivity.  Return index of new vertex.
+    ///
+    size_t nondestructive_add_vertex( );
+    
+    /// Remove a vertex, update connectivity
+    ///
+    void nondestructive_remove_vertex(size_t vtx);
+    
+    /// Set the stored set of triangles to the specified set.
+    ///
+    void replace_all_triangles( const std::vector<Vec3st>& new_tris );
+
+    /// Update the number of vertices in the mesh.
+    ///
+    void set_num_vertices( size_t num_vertices );
+    
+    /// Given two vertices on a triangle, return the third vertex
+    ///
+    inline size_t get_third_vertex( size_t vertex0, size_t vertex1, const Vec3st& triangle ) const;
+
+    /// Given two vertices on a triangle, return the third vertex
+    ///
+    inline size_t get_third_vertex( size_t edge_index, const Vec3st& triangle ) const;
+    
+    /// Given two vertices on a triangle, return the third vertex
+    ///
+    inline size_t get_third_vertex( size_t edge_index, size_t triangle_index ) const;
+    
+    /// Given two vertices on a triangle, return whether or not the triangle has the same orientation
+    ///
+    inline static bool oriented( size_t vertex0, size_t vertex1, const Vec3st& triangle );
+    
+    /// Ensure that all adjacent triangles have consistent orientation.
+    ///
+    void verify_orientation( );
+    
+    /// Return true if the given triangle is made up of the given vertices
+    ///
+    inline static bool triangle_has_these_verts( const Vec3st& tri, const Vec3st& verts );
+    
+    /// Return which vertex in tri matches v.  Also returns the other two vertices in tri.
+    ///
+    inline static size_t index_in_triangle( const Vec3st& tri, size_t v, Vec2ui& other_two );
+    
+    /// Return the edge incident on two triangles.  Returns ~0 if triangles are not adjacent.
+    ///
+    inline size_t get_common_edge( size_t triangle_a, size_t triangle_b );
+    
+    /// Determine if two triangles are adjacent (if they share an edge)
+    ///
+    inline bool triangles_are_adjacent( size_t triangle_a, size_t triangle_b );
+    
+    /// Remove triangles which have been deleted
+    ///
+    void clear_deleted_triangles( std::vector<Vec2st>* defragged_triangle_map = NULL );
+    
+    /// Determine if the given edge is on a surface composed of a single tet
+    ///
+    bool edge_is_on_single_tet( size_t edge_index ) const;
+    
+    /// Returns true if the triangle is marked for deletion
+    ///
+    inline bool triangle_is_deleted( size_t triangle_index ) const;
+    
+    /// Returns true if the edge is marked for deletion
+    ///
+    inline bool edge_is_deleted( size_t edge_index ) const;
+    
+    /// Returns true if the vertex is marked for deletion
+    ///
+    inline bool vertex_is_deleted( size_t vertex_index ) const;
+    
+    /// Check the consistency of auxiliary data structures
+    ///
+    void test_connectivity() const;
+    
+    // 
+    // Data members
+    //
+    
+    /// Edges as vertex pairs
+    ///
+    std::vector<Vec2st> m_edges;    
+    
+    /// Whether an edge is on a boundary
+    ///
+    std::vector<bool> m_is_boundary_edge;
+    
+    /// Whether a vertex is on a boundary
+    ///
+    std::vector<bool> m_is_boundary_vertex;
+    
+    /// Edges incident on vertices (given a vertex, which edges is it incident on)
+    ///
+    std::vector<std::vector<size_t> > m_vertex_to_edge_map; 
+    
+    /// Triangles incident on vertices (given a vertex, which triangles is it incident on)
+    ///
+    std::vector<std::vector<size_t> > m_vertex_to_triangle_map;    
+    
+    /// Triangles incident on edges (given an edge, which triangles is it incident on)
+    ///
+    std::vector<std::vector<size_t> > m_edge_to_triangle_map;    
+    
+    /// Edges around triangles (given a triangle, which 3 edges does it contain)
+    ///
+    std::vector<Vec3st> m_triangle_to_edge_map; 
+    
+    
+private:
+    
+    /// List of triangles: the fundamental data
+    ///
+    std::vector<Vec3st> m_tris;
+    
+    /// Add an edge to the list of edges.  Return the index of the new edge.
+    ///
+    size_t nondestructive_add_edge(size_t vtx0, size_t vtx1);
+    
+    /// Mark an edge as deleted, update connectivity
+    ///
+    void nondestructive_remove_edge( size_t edge_index );
+    
 };
+
 
 // ---------------------------------------------------------
 //  Inline functions
 // ---------------------------------------------------------
+
+// ---------------------------------------------------------
+///
+/// Safely convert a size_t to an int
+///
+// ---------------------------------------------------------
+
+inline int to_int( size_t a )
+{
+    assert( a < INT_MAX );
+    return static_cast<int>(a);
+}
+
+// ---------------------------------------------------------
+///
+/// Safely convert a ssize_t to an int
+///
+// ---------------------------------------------------------
+
+inline int to_int( ssize_t a )
+{
+    assert( a < INT_MAX );
+    return static_cast<int>(a);
+}
+
+// ---------------------------------------------------------
+///
+/// Return a reference to the set of all triangles, including triangles marked as deleted.
+///
+// ---------------------------------------------------------
+
+inline const std::vector<Vec3st>& NonDestructiveTriMesh::get_triangles() const
+{
+    return m_tris;
+}
+
+// ---------------------------------------------------------
+///
+/// Return a reference to the specified triangle.
+///
+// ---------------------------------------------------------
+
+inline const Vec3st& NonDestructiveTriMesh::get_triangle( size_t index ) const
+{
+    return m_tris[index];
+}
+
+// ---------------------------------------------------------
+///
+/// Get the number of triangles in the mesh.
+///
+// ---------------------------------------------------------
+
+inline size_t NonDestructiveTriMesh::num_triangles() const
+{
+    return m_tris.size();
+}
+
 
 // --------------------------------------------------------
 ///
@@ -120,44 +306,44 @@ struct NonDestructiveTriMesh
 ///
 // --------------------------------------------------------
 
-inline Vec3ui sort_triangle( const Vec3ui& t )
+inline Vec3st sort_triangle( const Vec3st& t )
 {
-   if ( t[0] < t[1] )
-   {
-      if ( t[0] < t[2] )
-      {
-         if ( t[1] < t[2] )
-         {
-            return t;
-         }
-         else
-         {
-            return Vec3ui( t[0], t[2], t[1] );
-         }
-      }
-      else
-      {
-         return Vec3ui( t[2], t[0], t[1] );
-      }
-   }
-   else
-   {
-      if ( t[1] < t[2] )
-      {
-         if ( t[0] < t[2] )
-         {
-            return Vec3ui( t[1], t[0], t[2] );
-         }
-         else
-         {
-            return Vec3ui( t[1], t[2], t[0] );
-         }
-      }
-      else
-      {
-         return Vec3ui( t[2], t[1], t[0] );
-      }
-   }
+    if ( t[0] < t[1] )
+    {
+        if ( t[0] < t[2] )
+        {
+            if ( t[1] < t[2] )
+            {
+                return t;
+            }
+            else
+            {
+                return Vec3st( t[0], t[2], t[1] );
+            }
+        }
+        else
+        {
+            return Vec3st( t[2], t[0], t[1] );
+        }
+    }
+    else
+    {
+        if ( t[1] < t[2] )
+        {
+            if ( t[0] < t[2] )
+            {
+                return Vec3st( t[1], t[0], t[2] );
+            }
+            else
+            {
+                return Vec3st( t[1], t[2], t[0] );
+            }
+        }
+        else
+        {
+            return Vec3st( t[2], t[1], t[0] );
+        }
+    }
 }
 
 
@@ -167,50 +353,86 @@ inline Vec3ui sort_triangle( const Vec3ui& t )
 ///
 // --------------------------------------------------------
 
-inline unsigned int NonDestructiveTriMesh::get_third_vertex( unsigned int vertex0, unsigned int vertex1, const Vec3ui& triangle ) const
+inline size_t NonDestructiveTriMesh::get_third_vertex( size_t vertex0, size_t vertex1, const Vec3st& triangle ) const
 {
-   if ( !( ( triangle[0] == vertex0 || triangle[1] == vertex0 || triangle[2] == vertex0 ) && ( triangle[0] == vertex1 || triangle[1] == vertex1 || triangle[2] == vertex1 ) ) )
-   {
-      std::cout << "tri: " << triangle << std::endl;
-      std::cout << "v0: " << vertex0 << ", v1: " << vertex1 << std::endl;
-      assert(false);
-   }
-   
-   if ( triangle[0] == vertex0 )
-   {
-      if ( triangle[1] == vertex1 )
-      {
-         return triangle[2];
-      }
-      else
-      {
-         return triangle[1];
-      }
-   }
-   else if ( triangle[1] == vertex0 )
-   {
-      if ( triangle[2] == vertex1 )
-      {
-         return triangle[0];
-      }
-      else
-      {
-         return triangle[2];
-      }
-   }
-   else
-   {
-      if ( triangle[0] == vertex1 )
-      {
-         return triangle[1];
-      }
-      else
-      {
-         return triangle[0];
-      }
-   }
-   
+    if ( !( ( triangle[0] == vertex0 || triangle[1] == vertex0 || triangle[2] == vertex0 ) && ( triangle[0] == vertex1 || triangle[1] == vertex1 || triangle[2] == vertex1 ) ) )
+    {
+        std::cout << "tri: " << triangle << std::endl;
+        std::cout << "v0: " << vertex0 << ", v1: " << vertex1 << std::endl;
+        assert(false);
+    }
+    
+    if ( triangle[0] == vertex0 )
+    {
+        if ( triangle[1] == vertex1 )
+        {
+            return triangle[2];
+        }
+        else
+        {
+            return triangle[1];
+        }
+    }
+    else if ( triangle[1] == vertex0 )
+    {
+        if ( triangle[2] == vertex1 )
+        {
+            return triangle[0];
+        }
+        else
+        {
+            return triangle[2];
+        }
+    }
+    else
+    {
+        if ( triangle[0] == vertex1 )
+        {
+            return triangle[1];
+        }
+        else
+        {
+            return triangle[0];
+        }
+    }
+    
 }
+
+// ---------------------------------------------------------
+///
+/// Given an edge and a triangle, return the vertex in the triangle and not on the edge.
+///
+// ---------------------------------------------------------
+
+inline size_t NonDestructiveTriMesh::get_third_vertex( size_t edge_index, const Vec3st& triangle ) const
+{
+    return get_third_vertex( m_edges[edge_index][0], m_edges[edge_index][1], triangle );
+}
+
+// ---------------------------------------------------------
+///
+/// Given an edge and a triangle, return the vertex in the triangle and not on the edge.
+///
+// ---------------------------------------------------------
+
+inline size_t NonDestructiveTriMesh::get_third_vertex( size_t edge_index, size_t triangle_index ) const
+{
+    return get_third_vertex( m_edges[edge_index][0], m_edges[edge_index][1], m_tris[triangle_index] );
+}
+
+
+// ---------------------------------------------------------
+///
+/// Set the stored set of triangles to the specified set.
+///
+// ---------------------------------------------------------
+
+inline void NonDestructiveTriMesh::replace_all_triangles( const std::vector<Vec3st>& new_tris )
+{
+    m_tris = new_tris;
+    update_connectivity( );
+}
+
 
 // --------------------------------------------------------
 ///
@@ -219,19 +441,19 @@ inline unsigned int NonDestructiveTriMesh::get_third_vertex( unsigned int vertex
 ///
 // --------------------------------------------------------
 
-inline bool NonDestructiveTriMesh::oriented( unsigned int vertex0, unsigned int vertex1, const Vec3ui& triangle )
+inline bool NonDestructiveTriMesh::oriented( size_t vertex0, size_t vertex1, const Vec3st& triangle )
 {
-   assert ( triangle[0] == vertex0 || triangle[1] == vertex0 || triangle[2] == vertex0 );
-   assert ( triangle[0] == vertex1 || triangle[1] == vertex1 || triangle[2] == vertex1 );
-  
-   if ( ( (triangle[0] == vertex0) && (triangle[1] == vertex1) ) || 
+    assert ( triangle[0] == vertex0 || triangle[1] == vertex0 || triangle[2] == vertex0 );
+    assert ( triangle[0] == vertex1 || triangle[1] == vertex1 || triangle[2] == vertex1 );
+    
+    if ( ( (triangle[0] == vertex0) && (triangle[1] == vertex1) ) || 
         ( (triangle[1] == vertex0) && (triangle[2] == vertex1) ) ||
         ( (triangle[2] == vertex0) && (triangle[0] == vertex1) ) )
-   {
-      return true;
-   }
-   
-   return false;
+    {
+        return true;
+    }
+    
+    return false;
 }
 
 // --------------------------------------------------------
@@ -240,16 +462,16 @@ inline bool NonDestructiveTriMesh::oriented( unsigned int vertex0, unsigned int 
 ///
 // --------------------------------------------------------
 
-inline bool NonDestructiveTriMesh::triangle_has_these_verts( const Vec3ui& tri, const Vec3ui& verts )
+inline bool NonDestructiveTriMesh::triangle_has_these_verts( const Vec3st& tri, const Vec3st& verts )
 {
-   if ( ( tri[0] == verts[0] || tri[0] == verts[1] || tri[0] == verts[2] ) &&
+    if ( ( tri[0] == verts[0] || tri[0] == verts[1] || tri[0] == verts[2] ) &&
         ( tri[1] == verts[0] || tri[1] == verts[1] || tri[1] == verts[2] ) &&
         ( tri[2] == verts[0] || tri[2] == verts[1] || tri[2] == verts[2] ) )
-   {
-      return true;
-   }
-   
-   return false;
+    {
+        return true;
+    }
+    
+    return false;
 }
 
 // --------------------------------------------------------
@@ -258,34 +480,34 @@ inline bool NonDestructiveTriMesh::triangle_has_these_verts( const Vec3ui& tri, 
 ///
 // --------------------------------------------------------
 
-inline unsigned int NonDestructiveTriMesh::index_in_triangle( const Vec3ui& tri, unsigned int v, Vec2ui& other_two )
+inline size_t NonDestructiveTriMesh::index_in_triangle( const Vec3st& tri, size_t v, Vec2ui& other_two )
 {
-   if ( v == tri[0] )
-   {
-      other_two[0] = 1;
-      other_two[1] = 2;
-      return 0;
-   }
-   
-   if ( v == tri[1] )
-   {
-      other_two[0] = 2;
-      other_two[1] = 0;      
-      return 1;
-   }
-   
-   if ( v == tri[2] )
-   {
-      other_two[0] = 0;
-      other_two[1] = 1;
-      return 2;
-   }
-   
-   assert(0);
-   
-   other_two[0] = ~0;
-   other_two[1] = ~0;
-   return ~0;
+    if ( v == tri[0] )
+    {
+        other_two[0] = 1;
+        other_two[1] = 2;
+        return 0;
+    }
+    
+    if ( v == tri[1] )
+    {
+        other_two[0] = 2;
+        other_two[1] = 0;      
+        return 1;
+    }
+    
+    if ( v == tri[2] )
+    {
+        other_two[0] = 0;
+        other_two[1] = 1;
+        return 2;
+    }
+    
+    assert(0);
+    
+    other_two[0] = static_cast<unsigned int>(~0);
+    other_two[1] = static_cast<unsigned int>(~0);
+    return static_cast<size_t>(~0);
 }
 
 
@@ -295,24 +517,162 @@ inline unsigned int NonDestructiveTriMesh::index_in_triangle( const Vec3ui& tri,
 ///
 // --------------------------------------------------------
 
-inline void NonDestructiveTriMesh::get_adjacent_triangles( unsigned int triangle_index, std::vector<unsigned int>& adjacent_triangles ) const
+inline void NonDestructiveTriMesh::get_adjacent_triangles( size_t triangle_index, std::vector<size_t>& adjacent_triangles ) const
 {
-   adjacent_triangles.clear();
-   
-   for ( unsigned int i = 0; i < 3; ++i )
-   {
-      unsigned int edge_index = m_triedge[triangle_index][i];
-
-      for ( unsigned int t = 0; t < m_edgetri[edge_index].size(); ++t )
-      {
-         if ( m_edgetri[edge_index][t] != triangle_index )
-         {  
-            adjacent_triangles.push_back( m_edgetri[edge_index][t] );
-         }
-      }
-   }
-   
+    adjacent_triangles.clear();
+    
+    for ( unsigned int i = 0; i < 3; ++i )
+    {
+        size_t edge_index = m_triangle_to_edge_map[triangle_index][i];
+        
+        for ( size_t t = 0; t < m_edge_to_triangle_map[edge_index].size(); ++t )
+        {
+            if ( m_edge_to_triangle_map[edge_index][t] != triangle_index )
+            {  
+                adjacent_triangles.push_back( m_edge_to_triangle_map[edge_index][t] );
+            }
+        }
+    }
+    
 }
 
+// --------------------------------------------------------
+///
+/// Get the set of all vertices adjacent to a given vertices
+///
+// --------------------------------------------------------
+
+inline void NonDestructiveTriMesh::get_adjacent_vertices( size_t vertex_index, std::vector<size_t>& adjacent_vertices ) const
+{
+    adjacent_vertices.clear();
+    const std::vector<size_t>& incident_edges = m_vertex_to_edge_map[vertex_index];
+    
+    for ( size_t i = 0; i < incident_edges.size(); ++i )
+    {
+        if ( m_edges[ incident_edges[i] ][0] == vertex_index )
+        {
+            adjacent_vertices.push_back( m_edges[ incident_edges[i] ][1] );
+        }
+        else
+        {
+            assert( m_edges[ incident_edges[i] ][1] == vertex_index );
+            adjacent_vertices.push_back( m_edges[ incident_edges[i] ][0] );
+        }      
+    }
+    
+}
+
+// --------------------------------------------------------
+///
+/// Determine if the given edge is on a surface composed of a single tet
+///
+// --------------------------------------------------------
+
+inline bool NonDestructiveTriMesh::edge_is_on_single_tet( size_t edge_index ) const
+{
+    const Vec2st& e = m_edges[edge_index];
+    const std::vector<size_t>& incident_tris0 = m_vertex_to_triangle_map[ e[0] ];
+    const std::vector<size_t>& incident_tris1 = m_vertex_to_triangle_map[ e[1] ];
+    
+    size_t triangle_nhood_size = incident_tris0.size();
+    
+    for ( size_t i = 0; i < incident_tris1.size(); ++i )
+    {
+        bool already_counted = false;
+        for ( size_t j = 0; j < incident_tris0.size(); ++j )
+        {
+            if ( incident_tris1[i] == incident_tris0[j] )
+            {
+                already_counted = true;
+                break;
+            }
+        }
+        
+        if ( !already_counted )
+        {
+            ++triangle_nhood_size;
+        }
+        
+    }
+    
+    // will fire if one of the vertices is on a boundary
+    assert( triangle_nhood_size >= 4 );
+    
+    return (triangle_nhood_size == 4);
+    
+}
+
+// ---------------------------------------------------------
+///
+/// Returns true if the triangle is marked for deletion
+///
+// ---------------------------------------------------------
+
+inline bool NonDestructiveTriMesh::triangle_is_deleted( size_t triangle_index ) const
+{
+    return ( m_tris[triangle_index][0] == m_tris[triangle_index][1] || 
+            m_tris[triangle_index][1] == m_tris[triangle_index][2] ||
+            m_tris[triangle_index][2] == m_tris[triangle_index][0] );
+    
+}
+
+// ---------------------------------------------------------
+///
+/// Returns true if the edge is marked for deletion
+///
+// ---------------------------------------------------------
+
+inline bool NonDestructiveTriMesh::edge_is_deleted( size_t edge_index ) const
+{
+    return ( m_edges[edge_index][0] == m_edges[edge_index][1] );
+}
+
+// ---------------------------------------------------------
+///
+/// Returns true if the vertex is marked for deletion
+///
+// ---------------------------------------------------------
+
+inline bool NonDestructiveTriMesh::vertex_is_deleted( size_t vertex_index ) const
+{
+    return ( m_vertex_to_edge_map[vertex_index].size() == 0 );
+}
+
+// --------------------------------------------------------
+///
+/// Return the edge incident on two triangles.  Returns ~0 if triangles are not adjacent.
+///
+// --------------------------------------------------------
+
+inline size_t NonDestructiveTriMesh::get_common_edge( size_t triangle_a, size_t triangle_b )
+{
+    const Vec3st& triangle_a_edges = m_triangle_to_edge_map[triangle_a];
+    const Vec3st& triangle_b_edges = m_triangle_to_edge_map[triangle_b];
+    
+    for ( unsigned int i = 0; i < 3; ++i )
+    {
+        for ( unsigned int j = 0; j < 3; ++j )
+        {
+            if ( triangle_a_edges[i] == triangle_b_edges[j] )
+            {
+                return triangle_a_edges[i];
+            }
+        }      
+    }
+    
+    return static_cast<unsigned int>(~0);
+}
+
+
+// --------------------------------------------------------
+///
+/// Determine if two triangles are adjacent (if they share an edge)
+///
+// --------------------------------------------------------
+
+inline bool NonDestructiveTriMesh::triangles_are_adjacent( size_t triangle_a, size_t triangle_b )
+{
+    return ( get_common_edge( triangle_a, triangle_b ) != (size_t) ~0 );
+}
 
 #endif

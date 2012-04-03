@@ -66,9 +66,9 @@ static void node_shader_exec_normal(void *UNUSED(data), bNode *node, bNodeStack 
 	
 	nodestack_get_vec(vec, SOCK_VECTOR, in[0]);
 	
-	VECCOPY(out[0]->vec, ((bNodeSocketValueVector*)sock->default_value)->value);
+	copy_v3_v3(out[0]->vec, ((bNodeSocketValueVector*)sock->default_value)->value);
 	/* render normals point inside... the widget points outside */
-	out[1]->vec[0]= -INPR(out[0]->vec, vec);
+	out[1]->vec[0]= -dot_v3v3(out[0]->vec, vec);
 }
 
 static int gpu_shader_normal(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUNodeStack *out)
@@ -79,15 +79,16 @@ static int gpu_shader_normal(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GP
 	return GPU_stack_link(mat, "normal", in, out, vec);
 }
 
-void register_node_type_sh_normal(ListBase *lb)
+void register_node_type_sh_normal(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 	
-	node_type_base(&ntype, SH_NODE_NORMAL, "Normal", NODE_CLASS_OP_VECTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, SH_NODE_NORMAL, "Normal", NODE_CLASS_OP_VECTOR, NODE_OPTIONS);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING|NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, sh_node_normal_in, sh_node_normal_out);
 	node_type_init(&ntype, node_shader_init_normal);
 	node_type_exec(&ntype, node_shader_exec_normal);
 	node_type_gpu(&ntype, gpu_shader_normal);
 	
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }

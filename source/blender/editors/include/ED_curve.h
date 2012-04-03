@@ -28,8 +28,8 @@
  *  \ingroup editors
  */
 
-#ifndef ED_CURVE_H
-#define ED_CURVE_H
+#ifndef __ED_CURVE_H__
+#define __ED_CURVE_H__
 
 struct Base;
 struct bContext;
@@ -47,6 +47,7 @@ struct BPoint;
 
 /* curve_ops.c */
 void	ED_operatortypes_curve(void);
+void	ED_operatormacros_curve(void);
 void	ED_keymap_curve	(struct wmKeyConfig *keyconf);
 
 /* editcurve.c */
@@ -82,15 +83,16 @@ void	free_editText	(struct Object *obedit);
 void	ED_text_to_object(struct bContext *C, struct Text *text, int split_lines);
 
 int CU_select_nth(struct Object *obedit, int nth);
-ListBase *ED_curve_editnurbs(struct Curve *cu);
 
 void ED_curve_beztcpy(struct EditNurb *editnurb, struct BezTriple *dst, struct BezTriple *src, int count);
 void ED_curve_bpcpy(struct EditNurb *editnurb, struct BPoint *dst, struct BPoint *src, int count);
 
 int ED_curve_updateAnimPaths(struct Object *obedit);
 
+int ED_curve_actSelection(struct Curve *cu, float center[3]);
+
 /* debug only */
 void printknots(struct Object *obedit);
 
-#endif /* ED_CURVE_H */
+#endif /* __ED_CURVE_H__ */
 

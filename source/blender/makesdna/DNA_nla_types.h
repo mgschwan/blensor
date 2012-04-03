@@ -25,12 +25,12 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef DNA_NLA_TYPES_H
-#define DNA_NLA_TYPES_H
-
 /** \file DNA_nla_types.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_NLA_TYPES_H__
+#define __DNA_NLA_TYPES_H__
 
 #include "DNA_listBase.h"
 

@@ -34,8 +34,8 @@
 
 /* ******************* channel Distance Matte ********************************* */
 static bNodeSocketTemplate cmp_node_distance_matte_in[]={
-	{SOCK_RGBA,1,"Image", 0.8f, 0.8f, 0.8f, 1.0f},
-	{SOCK_RGBA,1,"Key Color", 0.8f, 0.8f, 0.8f, 1.0f},
+	{SOCK_RGBA,1,"Image", 1.0f, 1.0f, 1.0f, 1.0f},
+	{SOCK_RGBA,1,"Key Color", 1.0f, 1.0f, 1.0f, 1.0f},
 	{-1,0,""}
 };
 
@@ -59,18 +59,18 @@ static void do_distance_matte(bNode *node, float *out, float *in)
 				  (c->key[1]-in[1])*(c->key[1]-in[1]) +
 				  (c->key[2]-in[2])*(c->key[2]-in[2]));
 
-	VECCOPY(out, in);
+	copy_v3_v3(out, in);
 
 	/*make 100% transparent */
-	if(distance < tolerence) {
+	if (distance < tolerence) {
 		out[3]=0.0;
 	}
 	/*in the falloff region, make partially transparent */
-	else if(distance < falloff+tolerence){
+	else if (distance < falloff+tolerence) {
 		distance=distance-tolerence;
 		alpha=distance/falloff;
 		/*only change if more transparent than before */
-		if(alpha < in[3]) {
+		if (alpha < in[3]) {
 			out[3]=alpha;
 		}
 		else { /* leave as before */
@@ -93,9 +93,9 @@ static void node_composit_exec_distance_matte(void *data, bNode *node, bNodeStac
 	NodeChroma *c;
 	
 	/*is anything connected?*/
-	if(out[0]->hasoutput==0 && out[1]->hasoutput==0) return;
+	if (out[0]->hasoutput==0 && out[1]->hasoutput==0) return;
 	/*must have an image imput*/
-	if(in[0]->data==NULL) return;
+	if (in[0]->data==NULL) return;
 	
 	inbuf=typecheck_compbuf(in[0]->data, CB_RGBA);
 	
@@ -112,11 +112,11 @@ static void node_composit_exec_distance_matte(void *data, bNode *node, bNodeStac
 	
 	
 	out[0]->data=workbuf;
-	if(out[1]->hasoutput)
+	if (out[1]->hasoutput)
 		out[1]->data=valbuf_from_rgbabuf(workbuf, CHAN_A);
 	generate_preview(data, node, workbuf);
 
-	if(inbuf!=in[0]->data)
+	if (inbuf!=in[0]->data)
 		free_compbuf(inbuf);
 }
 
@@ -128,19 +128,16 @@ static void node_composit_init_distance_matte(bNodeTree *UNUSED(ntree), bNode* n
 	c->t2= 0.1f;
 }
 
-void register_node_type_cmp_distance_matte(ListBase *lb)
+void register_node_type_cmp_distance_matte(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_DIST_MATTE, "Distance Key", NODE_CLASS_MATTE, NODE_PREVIEW|NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_DIST_MATTE, "Distance Key", NODE_CLASS_MATTE, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_distance_matte_in, cmp_node_distance_matte_out);
 	node_type_size(&ntype, 200, 80, 250);
 	node_type_init(&ntype, node_composit_init_distance_matte);
 	node_type_storage(&ntype, "NodeChroma", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, node_composit_exec_distance_matte);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-
-

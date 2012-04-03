@@ -422,6 +422,7 @@ void paste_gpdata (Scene *scene)
 								
 							case SPACE_NODE: /* Nodes Editor: either screen-aligned or view-aligned */
 							case SPACE_IMAGE: /* Image Editor: either screen-aligned or view\image-aligned */
+							case SPACE_CLIP: /* Image Editor: either screen-aligned or view\image-aligned */
 								if ((gps->flag == 0) || (gps->flag & GP_STROKE_2DSPACE))
 									stroke_ok= 1;
 								break;
@@ -560,7 +561,7 @@ static short mirror_gpf_xaxis (bGPDframe *gpf, Scene *scene)
 static short mirror_gpf_marker (bGPDframe *gpf, Scene *scene)
 {
 	static TimeMarker *marker;
-	static short initialised = 0;
+	static short initialized = 0;
 	int diff;
 	
 	/* In order for this mirror function to work without
@@ -579,17 +580,17 @@ static short mirror_gpf_marker (bGPDframe *gpf, Scene *scene)
 		}
 	}
 	else {
-		/* initialisation time */
-		if (initialised) {
+		/* initialization time */
+		if (initialized) {
 			/* reset everything for safety */
 			marker = NULL;
-			initialised = 0;
+			initialized = 0;
 		}
 		else {
 			/* try to find a marker */
 			marker= ED_markers_get_first_selected(&scene->markers);
-			if(marker) {
-				initialised= 1;
+			if (marker) {
+				initialized= 1;
 			}
 		}
 	}

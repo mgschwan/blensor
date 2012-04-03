@@ -33,7 +33,7 @@
 #include "node_composite_util.h"
 
 static bNodeSocketTemplate cmp_node_tonemap_in[]= {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f},
+	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_tonemap_out[]= {
@@ -142,7 +142,7 @@ static void node_composit_exec_tonemap(void *UNUSED(data), bNode *node, bNodeSta
 
 	out[0]->data = new;
 	
-	if(img!=in[0]->data)
+	if (img!=in[0]->data)
 		free_compbuf(img);
 }
 
@@ -162,17 +162,16 @@ static void node_composit_init_tonemap(bNodeTree *UNUSED(ntree), bNode* node, bN
 	node->storage = ntm;
 }
 
-void register_node_type_cmp_tonemap(ListBase *lb)
+void register_node_type_cmp_tonemap(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_TONEMAP, "Tonemap", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_TONEMAP, "Tonemap", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_tonemap_in, cmp_node_tonemap_out);
 	node_type_size(&ntype, 150, 120, 200);
 	node_type_init(&ntype, node_composit_init_tonemap);
 	node_type_storage(&ntype, "NodeTonemap", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, node_composit_exec_tonemap);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-

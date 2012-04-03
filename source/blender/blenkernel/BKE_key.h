@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_KEY_H
-#define BKE_KEY_H
+#ifndef __BKE_KEY_H__
+#define __BKE_KEY_H__
 
 /** \file BKE_key.h
  *  \ingroup bke
@@ -48,8 +48,10 @@ extern "C" {
 #endif
 
 void free_key(struct Key *sc); 
+void free_key_nolib(struct Key *key);
 struct Key *add_key(struct ID *id);
 struct Key *copy_key(struct Key *key);
+struct Key *copy_key_nolib(struct Key *key);
 void make_local_key(struct Key *key);
 void sort_keys(struct Key *key);
 
@@ -87,4 +89,4 @@ extern int slurph_opt;
 };
 #endif
 
-#endif // BKE_KEY_H
+#endif // __BKE_KEY_H__

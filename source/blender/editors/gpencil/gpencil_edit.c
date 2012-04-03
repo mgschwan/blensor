@@ -69,6 +69,7 @@
 
 #include "ED_gpencil.h"
 #include "ED_view3d.h"
+#include "ED_clip.h"
 
 #include "gpencil_intern.h"
 
@@ -137,6 +138,19 @@ bGPdata **gpencil_data_get_pointers (bContext *C, PointerRNA *ptr)
 			}
 				break;
 				
+			case SPACE_CLIP: /* Nodes Editor */
+			{
+				SpaceClip *sc= (SpaceClip *)CTX_wm_space_data(C);
+				MovieClip *clip= ED_space_clip(sc);
+
+				if (clip) {
+					/* for now, as long as there's a clip, default to using that in Clip Editor */
+					if (ptr) RNA_id_pointer_create(&clip->id, ptr);
+					return &clip->gpd;
+				}
+			}
+				break;
+				
 			default: /* unsupported space */
 				return NULL;
 		}
@@ -183,7 +197,10 @@ static int gp_data_add_exec (bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	else {
-		/* just add new datablock now */
+		/* decrement user count and add new datablock */
+		bGPdata *gpd= (*gpd_ptr);
+
+		id_us_min(&gpd->id);
 		*gpd_ptr= gpencil_data_addnew("GPencil");
 	}
 	
@@ -196,14 +213,14 @@ static int gp_data_add_exec (bContext *C, wmOperator *op)
 void GPENCIL_OT_data_add (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Grease Pencil Add New";
-	ot->idname= "GPENCIL_OT_data_add";
-	ot->description= "Add new Grease Pencil datablock";
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->name = "Grease Pencil Add New";
+	ot->idname = "GPENCIL_OT_data_add";
+	ot->description = "Add new Grease Pencil datablock";
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* callbacks */
-	ot->exec= gp_data_add_exec;
-	ot->poll= gp_add_poll;
+	ot->exec = gp_data_add_exec;
+	ot->poll = gp_add_poll;
 }
 
 /* ******************* Unlink Data ************************ */
@@ -231,7 +248,7 @@ static int gp_data_unlink_exec (bContext *C, wmOperator *op)
 		/* just unlink datablock now, decreasing its user count */
 		bGPdata *gpd= (*gpd_ptr);
 		
-		gpd->id.us--;
+		id_us_min(&gpd->id);
 		*gpd_ptr= NULL;
 	}
 	
@@ -244,14 +261,14 @@ static int gp_data_unlink_exec (bContext *C, wmOperator *op)
 void GPENCIL_OT_data_unlink (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Grease Pencil Unlink";
-	ot->idname= "GPENCIL_OT_data_unlink";
-	ot->description= "Unlink active Grease Pencil datablock";
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->name = "Grease Pencil Unlink";
+	ot->idname = "GPENCIL_OT_data_unlink";
+	ot->description = "Unlink active Grease Pencil datablock";
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* callbacks */
-	ot->exec= gp_data_unlink_exec;
-	ot->poll= gp_data_unlink_poll;
+	ot->exec = gp_data_unlink_exec;
+	ot->poll = gp_data_unlink_poll;
 }
 
 /* ******************* Add New Layer ************************ */
@@ -281,14 +298,14 @@ static int gp_layer_add_exec (bContext *C, wmOperator *op)
 void GPENCIL_OT_layer_add (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Add New Layer";
-	ot->idname= "GPENCIL_OT_layer_add";
-	ot->description= "Add new Grease Pencil layer for the active Grease Pencil datablock";
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->name = "Add New Layer";
+	ot->idname = "GPENCIL_OT_layer_add";
+	ot->description = "Add new Grease Pencil layer for the active Grease Pencil datablock";
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* callbacks */
-	ot->exec= gp_layer_add_exec;
-	ot->poll= gp_add_poll;
+	ot->exec = gp_layer_add_exec;
+	ot->poll = gp_add_poll;
 }
 
 /* ******************* Delete Active Frame ************************ */
@@ -315,7 +332,7 @@ static int gp_actframe_delete_exec (bContext *C, wmOperator *op)
 		BKE_report(op->reports, RPT_ERROR, "No Grease Pencil data");
 		return OPERATOR_CANCELLED;
 	}
-	if ELEM(NULL, gpl, gpf) {
+	if (ELEM(NULL, gpl, gpf)) {
 		BKE_report(op->reports, RPT_ERROR, "No active frame to delete");
 		return OPERATOR_CANCELLED;
 	}
@@ -332,14 +349,14 @@ static int gp_actframe_delete_exec (bContext *C, wmOperator *op)
 void GPENCIL_OT_active_frame_delete (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Delete Active Frame";
-	ot->idname= "GPENCIL_OT_active_frame_delete";
-	ot->description= "Delete the active frame for the active Grease Pencil datablock";
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->name = "Delete Active Frame";
+	ot->idname = "GPENCIL_OT_active_frame_delete";
+	ot->description = "Delete the active frame for the active Grease Pencil datablock";
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* callbacks */
-	ot->exec= gp_actframe_delete_exec;
-	ot->poll= gp_actframe_delete_poll;
+	ot->exec = gp_actframe_delete_exec;
+	ot->poll = gp_actframe_delete_poll;
 }
 
 /* ************************************************ */
@@ -385,7 +402,7 @@ static void gp_strokepoint_convertcoords (bContext *C, bGPDstroke *gps, bGPDspoi
 			VECCOPY2D(mvalf, mvali);
 		}
 		else {
-			if(subrect) {
+			if (subrect) {
 				mvalf[0]= (((float)pt->x/100.0f) * (subrect->xmax - subrect->xmin)) + subrect->xmin;
 				mvalf[1]= (((float)pt->y/100.0f) * (subrect->ymax - subrect->ymin)) + subrect->ymin;
 			}
@@ -451,7 +468,7 @@ static int gp_camera_view_subrect(bContext *C, rctf *subrect)
 		/* for camera view set the subrect */
 		if (rv3d->persp == RV3D_CAMOB) {
 			Scene *scene= CTX_data_scene(C);
-			ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, subrect, -1); /* negative shift */
+			ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, subrect, TRUE); /* no shift */
 			return 1;
 		}
 	}
@@ -544,7 +561,7 @@ static void gp_layer_to_curve (bContext *C, bGPdata *gpd, bGPDlayer *gpl, short 
 		return;
 
 	/* initialize camera framing */
-	if(gp_camera_view_subrect(C, &subrect)) {
+	if (gp_camera_view_subrect(C, &subrect)) {
 		subrect_ptr= &subrect;
 	}
 
@@ -552,8 +569,8 @@ static void gp_layer_to_curve (bContext *C, bGPdata *gpd, bGPDlayer *gpl, short 
 	 *	- must clear transforms set on object, as those skew our results
 	 */
 	ob= add_object(scene, OB_CURVE);
-	ob->loc[0]= ob->loc[1]= ob->loc[2]= 0;
-	ob->rot[0]= ob->rot[1]= ob->rot[2]= 0;
+	zero_v3(ob->loc);
+	zero_v3(ob->rot);
 	cu= ob->data;
 	cu->flag |= CU_3D;
 	
@@ -569,6 +586,9 @@ static void gp_layer_to_curve (bContext *C, bGPdata *gpd, bGPDlayer *gpl, short 
 				break;
 			case GP_STROKECONVERT_CURVE:
 				gp_stroke_to_bezier(C, gpl, gps, cu, subrect_ptr);
+				break;
+			default:
+				BLI_assert(!"invalid mode");
 				break;
 		}
 	}
@@ -599,17 +619,7 @@ static int gp_convert_layer_exec (bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	/* handle conversion modes */
-	switch (mode) {
-		case GP_STROKECONVERT_PATH:
-		case GP_STROKECONVERT_CURVE:
-			gp_layer_to_curve(C, gpd, gpl, mode);
-			break;
-			
-		default: /* unsupoorted */
-			BKE_report(op->reports, RPT_ERROR, "Unknown conversion option");
-			return OPERATOR_CANCELLED;
-	}
+	gp_layer_to_curve(C, gpd, gpl, mode);
 
 	/* notifiers */
 	WM_event_add_notifier(C, NC_OBJECT|NA_ADDED, NULL);
@@ -622,21 +632,21 @@ static int gp_convert_layer_exec (bContext *C, wmOperator *op)
 void GPENCIL_OT_convert (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Convert Grease Pencil";
-	ot->idname= "GPENCIL_OT_convert";
-	ot->description= "Convert the active Grease Pencil layer to a new Object";
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->name = "Convert Grease Pencil";
+	ot->idname = "GPENCIL_OT_convert";
+	ot->description = "Convert the active Grease Pencil layer to a new Object";
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* callbacks */
-	ot->invoke= WM_menu_invoke;
-	ot->exec= gp_convert_layer_exec;
-	ot->poll= gp_convert_poll;
+	ot->invoke = WM_menu_invoke;
+	ot->exec = gp_convert_layer_exec;
+	ot->poll = gp_convert_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop= RNA_def_enum(ot->srna, "type", prop_gpencil_convertmodes, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", prop_gpencil_convertmodes, 0, "Type", "");
 }
 
 /* ************************************************ */

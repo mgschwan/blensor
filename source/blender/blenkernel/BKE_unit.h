@@ -20,8 +20,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BKE_UNIT_H
-#define BKE_UNIT_H
+#ifndef __BKE_UNIT_H__
+#define __BKE_UNIT_H__
 
 /** \file BKE_unit.h
  *  \ingroup bke
@@ -37,10 +37,10 @@ extern "C" {
 void	bUnit_AsString(char *str, int len_max, double value, int prec, int system, int type, int split, int pad);
 
 /* replace units with values, used before python button evaluation */
-int		bUnit_ReplaceString(char *str, int len_max, char *str_prev, double scale_pref, int system, int type);
+int		bUnit_ReplaceString(char *str, int len_max, const char *str_prev, double scale_pref, int system, int type);
 
 /* make string keyboard-friendly: 10µm --> 10um */
-void bUnit_ToUnitAltName(char *str, int len_max, char *orig_str, int system, int type);
+void bUnit_ToUnitAltName(char *str, int len_max, const char *orig_str, int system, int type);
 
 /* the size of the unit used for this value (used for calculating the ckickstep) */
 double bUnit_ClosestScalar(double value, int system, int type);
@@ -76,4 +76,4 @@ double		bUnit_GetScaler(void *usys_pt, int index);
 }
 #endif
 
-#endif /* BKE_UNIT_H */
+#endif /* __BKE_UNIT_H__ */

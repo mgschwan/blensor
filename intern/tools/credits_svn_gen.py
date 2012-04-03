@@ -163,6 +163,7 @@ author_name_mapping = {
     "dfelinto": "Dalai Felinto",
     "dingto": "Thomas Dinges",
     "djcapelis": "D.J. Capelis",
+    "domino": "Domino Marama",
     "dougal2": "Doug Hammond",
     "eeshlo": "Alfredo de Greef",
     "elubie": "Andrea Weikert",
@@ -232,10 +233,11 @@ author_name_mapping = {
     "schlaile": "Peter Schlaile",
     "scourage": "Robert Holcomb",
     "sgefant": "Stefan Gartner",
-    "sirdude": "sirdude",
+    "sirdude": "Kent Mein",
     "smerch": "Alex Sytnik",
     "snailrose": "Charlie Carley",
     "stiv": "Stephen Swaney",
+    "trumanblending": "Andrew Hale",
     "theeth": "Martin Poirier",
     "themyers": "Ricki Myers",
     "ton": "Ton Roosendaal",
@@ -248,7 +250,11 @@ author_name_mapping = {
     "zuster": "Daniel Dunbar",
     "jason_hays22": "Jason Hays",
     "miikah": "Miika Hamalainen",
-
+    "howardt": "Howard Trickey",
+    "kanttori": "Juha Mäki-Kanto",
+    "xglasyliax": "Peter Larabell",
+    "lockal": "Sv. Lockal",
+    "kupoman": "Daniel Stokes",
     # TODO, find remaining names
     "nlin": "",
     }
@@ -258,6 +264,7 @@ empty = []
 for key, value in author_name_mapping.items():
     if not value:
         empty.append(key)
+e = None
 for e in empty:
     author_name_mapping[e] = e.title()
 del empty, e
@@ -274,7 +281,10 @@ def build_patch_name_map(filepath):
     """
     patches = {}
     import csv
-    tracker = csv.reader(open(filepath, 'r', encoding='utf-8'), delimiter=';', quotechar='|')
+    tracker = csv.reader(open(filepath, 'r', encoding='utf-8'),
+                         delimiter=';',
+                         quotechar='|')
+
     for i, row in enumerate(tracker):
         if i == 0:
             id_index = row.index("artifact_id")
@@ -395,7 +405,14 @@ def main():
 
             if patch_author is None:
                 # will error out if we miss adding new devs
-                credit = credits[commit.author]
+                credit = credits.get(commit.author)
+                if credit is None:
+                    print("warning: '%s' is not in 'author_name_mapping' !" %
+                          commit.author)
+
+                    # will be discarded
+                    credit = Credit()
+
             else:
                 # so we dont use again
                 del patch_map[patch_id]
@@ -431,7 +448,12 @@ def main():
         if not credit.commits:
             continue
 
-        author_real = author_name_mapping[author]
+        author_real = author_name_mapping.get(author)
+
+        if author_real is None:
+            print("warning: '%s' is not in 'author_name_mapping' dict!")
+            author_real = author
+
         if author_real == author:
             name_string = "<b>%s</b>" % author
         else:

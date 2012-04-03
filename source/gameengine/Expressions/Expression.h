@@ -16,27 +16,33 @@
  *  \ingroup expressions
  */
 
-#if !defined _EXPRESSION_H
-#define _EXPRESSION_H
+#ifndef __EXPRESSION_H__
+#define __EXPRESSION_H__
 
 #include "Value.h"
 
 //extern int gRefCountExpr; // only for debugging purposes (detect mem.leaks)
 
 
-#define PLUGIN_DECLARE_SERIAL_EXPRESSION(class_name,base_class_name)									\
-public:																						\
-	virtual base_class_name *	Copy()						{ return new class_name; }		\
-	virtual bool EdSerialize(CompressorArchive& arch,class CFactoryManager* facmgr,bool bIsStoring);    \
-	virtual bool EdIdSerialize(CompressorArchive& arch,class CFactoryManager* facmgr,bool bIsStoring)  \
-{				\
-	if (bIsStoring)			\
-	{							\
-		unsigned char exprID = GetExpressionID(); \
-		arch << exprID;					\
-	}						\
-	return true; \
-}				\
+#define PLUGIN_DECLARE_SERIAL_EXPRESSION(class_name, base_class_name)          \
+public:                                                                        \
+	virtual base_class_name * Copy() {                                         \
+		return new class_name;                                                 \
+	}                                                                          \
+	virtual bool EdSerialize(CompressorArchive& arch,                          \
+	                         class CFactoryManager* facmgr,                    \
+	                         bool bIsStoring);                                 \
+	virtual bool EdIdSerialize(CompressorArchive& arch,                        \
+	                           class CFactoryManager* facmgr,                  \
+	                           bool bIsStoring)                                \
+	{                                                                          \
+		if (bIsStoring)                                                        \
+		{                                                                      \
+			unsigned char exprID = GetExpressionID();                          \
+			arch << exprID;                                                    \
+		}                                                                      \
+		return true;                                                           \
+	}                                                                          \
 
 
 
@@ -144,5 +150,5 @@ public:
 #endif
 };
 
-#endif // !defined _EXPRESSION_H
+#endif // !defined __EXPRESSION_H__
 

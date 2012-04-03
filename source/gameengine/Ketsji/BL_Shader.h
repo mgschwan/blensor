@@ -116,7 +116,7 @@ public:
  */
 class BL_Shader : public PyObjectPlus
 {
-	Py_Header;
+	Py_Header
 private:
 	typedef std::vector<BL_Uniform*>	BL_UniformVec;
 	typedef std::vector<BL_DefUniform*>	BL_UniformVecDef;
@@ -194,7 +194,7 @@ public:
 	bool				Ok()const;
 	unsigned int		GetProg();
 	void				SetProg(bool enable);
-	int					GetAttribute(){return mAttr;};
+	int					GetAttribute() { return mAttr; }
 
 	// -- 
 	// Apply methods : sets colected uniforms

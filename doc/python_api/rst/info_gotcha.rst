@@ -118,14 +118,6 @@ If you insist - yes its possible, but scripts that use this hack wont be conside
    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
 
 
-Matrix multiplication is wrong
-==============================
-
-Every so often users complain that Blenders matrix math is wrong, the confusion comes from mathutils matrices being column-major to match OpenGL and the rest of Blenders matrix operations and stored matrix data.
-
-This is different to **numpy** which is row-major which matches what you would expect when using conventional matrix math notation.
-
-
 I can't edit the mesh in edit-mode!
 ===================================
 
@@ -140,6 +132,91 @@ write useful tools in python which are also fast to execute while in edit-mode.
 For the time being this limitation just has to be worked around but we're aware its frustrating needs to be addressed.
 
 
+NGons and Tessellation Faces
+============================
+
+Since 2.63 NGons are supported, this adds some complexity since in some cases you need to access triangles still (some exporters for example).
+
+There are now 3 ways to access faces:
+
+* :class:`bpy.types.MeshPolygon` - this is the data stricture which now stores faces in object mode (access as ``mesh.polygons`` rather then ``mesh.faces``).
+* :class:`bpy.types.MeshTessFace` - the result of triangulating (tessellated) polygons, the main method of face access in 2.62 or older (access as ``mesh.tessfaces``).
+* :class:`bmesh.types.BMFace` - the polygons as used in editmode.
+
+For the purpose of the following documentation, these will be referred to as polygons, tessfaces and bmesh-faces respectively.
+
+5+ sided faces will be referred to as ``ngons``.
+
+Support Overview
+----------------
+
++--------------+------------------------------+--------------------------------+--------------------------------+
+|Usage         |:class:`bpy.types.MeshPolygon`|:class:`bpy.types.MeshTessFace` |:class:`bmesh.types.BMFace`     |
++==============+==============================+================================+================================+
+|Import/Create |Bad (inflexible)              |Fine (supported as upgrade path)|Best                            |
++--------------+------------------------------+--------------------------------+--------------------------------+
+|Manipulate    |Bad (inflexible)              |Bad (loses ngons)               |Best                            |
++--------------+------------------------------+--------------------------------+--------------------------------+
+|Export/Output |Good (ngons)                  |Good (When ngons can't be used) |Good (ngons, memory overhead)   |
++--------------+------------------------------+--------------------------------+--------------------------------+
+
+
+.. note::
+
+   Using the :mod:`bmesh` api is completely separate api from :mod:`bpy`, typically you would would use one or the other based on the level of editing needed, not simply for a different way to access faces.
+
+
+Creating
+--------
+
+All 3 datatypes can be used for face creation.
+
+* polygons are the most efficient way to create faces but the data structure is _very_ rigid and inflexible, you must have all your vertes and faces ready and create them all at once. This is further complicated by the fact that each polygon does not store its own verts (as with tessfaces), rather they reference an index and size in :class:`bpy.types.Mesh.loops` which are a fixed array too.
+* tessfaces ideally should not be used for creating faces since they are really only tessellation cache of polygons, however for scripts upgrading from 2.62 this is by far the most straightforward option. This works by creating tessfaces and when finished - they can be converted into polygons by calling :class:`bpy.types.Mesh.update`. The obvious limitation is ngons can't be created this way.
+* bmesh-faces are most likely the easiest way for new scripts to create faces, since faces can be added one by one and the api has features intended for mesh manipulation. While :class:`bmesh.types.BMesh` uses more memory it can be managed by only operating on one mesh at a time.
+
+
+Editing
+-------
+
+Editing is where the 3 data types vary most.
+
+* polygons are very limited for editing, changing materials and options like smooth works but for anything else they are too inflexible and are only intended for storage.
+* tessfaces should not be used for editing geometry because doing so will cause existing ngons to be tessellated.
+* bmesh-faces are by far the best way to manipulate geometry.
+
+Exporting
+---------
+
+All 3 data types can be used for exporting, the choice mostly depends on whether the target format supports ngons or not.
+
+* polygons are the most direct & efficient way to export providing they convert into the output format easily enough.
+* tessfaces work well for exporting to formats which dont support ngons, in fact this is the only place where their use is encouraged.
+* bmesh-faces can work for exporting too but may not be necessary if polygons can be used since using bmesh gives some overhead because its not the native storage format in object mode.
+
+
+Upgrading Importers from 2.62
+-----------------------------
+
+Importers can be upgraded to work with only minor changes.
+
+The main change to be made is used the tessellation versions of each attribute.
+
+* mesh.faces --> :class:`bpy.types.Mesh.tessfaces`
+* mesh.uv_textures --> :class:`bpy.types.Mesh.tessface_uv_textures`
+* mesh.vertex_colors --> :class:`bpy.types.Mesh.tessface_vertex_colors`
+
+Once the data is created call :class:`bpy.types.Mesh.update` to convert the tessfaces into polygons.
+
+
+Upgrading Exporters from 2.62
+-----------------------------
+
+For exporters the most direct way to upgrade is to use tessfaces as with importing however its important to know that tessfaces may **not** exist for a mesh, the array will be empty as if there are no faces.
+
+So before accessing tessface data call: :class:`bpy.types.Mesh.update` ``(calc_tessface=True)``.
+
+
 EditBones, PoseBones, Bone... Bones
 ===================================
 
@@ -147,7 +224,7 @@ Armature Bones in Blender have three distinct data structures that contain them.
 
 .. note::
 
-	In the following examples ``bpy.context.object`` is assumed to be an armature object.
+   In the following examples ``bpy.context.object`` is assumed to be an armature object.
 
 
 Edit Bones
@@ -163,11 +240,11 @@ This is only possible in edit mode.
 
 This will be empty outside of editmode.
 
-	>>> mybones = bpy.context.selected_editable_bones
+   >>> mybones = bpy.context.selected_editable_bones
 
 Returns an editbone only in edit mode.
 
-	>>> bpy.context.active_bone
+   >>> bpy.context.active_bone
 
 
 Bones (Object Mode)
@@ -179,15 +256,15 @@ Example using :class:`bpy.types.Bone` in object or pose mode:
 
 Returns a bone (not an editbone) outside of edit mode
 
-	>>> bpy.context.active_bone
+   >>> bpy.context.active_bone
 
 This works, as with blender the setting can be edited in any mode
 
-	>>> bpy.context.object.data.bones["Bone"].use_deform = True
+   >>> bpy.context.object.data.bones["Bone"].use_deform = True
 
 Accessible but read-only
 
-	>>> tail = myobj.data.bones["Bone"].tail
+   >>> tail = myobj.data.bones["Bone"].tail
 
 
 Pose Bones
@@ -199,20 +276,20 @@ Examples using :class:`bpy.types.PoseBone` in object or pose mode:
 
 .. code-block:: python
 
-	# Gets the name of the first constraint (if it exists)
-	bpy.context.object.pose.bones["Bone"].constraints[0].name 
+   # Gets the name of the first constraint (if it exists)
+   bpy.context.object.pose.bones["Bone"].constraints[0].name 
 
-	# Gets the last selected pose bone (pose mode only)
-	bpy.context.active_pose_bone
+   # Gets the last selected pose bone (pose mode only)
+   bpy.context.active_pose_bone
 
-
-.. note::
-
-	Notice the pose is accessed from the object rather than the object data, this is why blender can have 2 or more objects sharing the same armature in different poses.
 
 .. note::
 
-	Strictly speaking PoseBone's are not bones, they are just the state of the armature, stored in the :class:`bpy.types.Object` rather than the :class:`bpy.types.Armature`, the real bones are however accessible from the pose bones - :class:`bpy.types.PoseBone.bone`
+   Notice the pose is accessed from the object rather than the object data, this is why blender can have 2 or more objects sharing the same armature in different poses.
+
+.. note::
+
+   Strictly speaking PoseBone's are not bones, they are just the state of the armature, stored in the :class:`bpy.types.Object` rather than the :class:`bpy.types.Armature`, the real bones are however accessible from the pose bones - :class:`bpy.types.PoseBone.bone`
 
 
 Armature Mode Switching
@@ -223,6 +300,86 @@ While writing scripts that deal with armatures you may find you have to switch b
 This is mainly an issue with editmode since pose data can be manipulated without having to be in pose mode, however for operator access you may still need to enter pose mode.
 
 
+Data Names
+==========
+
+
+Naming Limitations
+------------------
+
+A common mistake is to assume newly created data is given the requested name.
+
+This can cause bugs when you add some data (normally imported) and then reference it later by name.
+
+.. code-block:: python
+
+   bpy.data.meshes.new(name=meshid)
+   
+   # normally some code, function calls...
+   bpy.data.meshes[meshid]
+
+
+Or with name assignment...
+
+.. code-block:: python
+
+   obj.name = objname
+   
+   # normally some code, function calls...
+   obj = bpy.data.meshes[objname]
+
+
+Data names may not match the assigned values if they exceed the maximum length, are already used or an empty string.
+
+
+Its better practice not to reference objects by names at all, once created you can store the data in a list, dictionary, on a class etc, there is rarely a reason to have to keep searching for the same data by name.
+
+
+If you do need to use name references, its best to use a dictionary to maintain a mapping between the names of the imported assets and the newly created data, this way you don't run this risk of referencing existing data from the blend file, or worse modifying it.
+
+.. code-block:: python
+
+   # typically declared in the main body of the function.
+   mesh_name_mapping = {}
+   
+   mesh = bpy.data.meshes.new(name=meshid)
+   mesh_name_mapping[meshid] = mesh
+   
+   # normally some code, or function calls...
+   
+   # use own dictionary rather then bpy.data
+   mesh = mesh_name_mapping[meshid]
+
+
+Library Collisions
+------------------
+
+Blender keeps data names unique - :class:`bpy.types.ID.name` so you can't name two objects, meshes, scenes etc the same thing by accident.
+
+However when linking in library data from another blend file naming collisions can occur, so its best to avoid referencing data by name at all.
+
+This can be tricky at times and not even blender handles this correctly in some case (when selecting the modifier object for eg you can't select between multiple objects with the same name), but its still good to try avoid problems in this area.
+
+
+If you need to select between local and library data, there is a feature in ``bpy.data`` members to allow for this.
+
+.. code-block:: python
+
+   # typical name lookup, could be local or library.
+   obj = bpy.data.objects["my_obj"]
+
+   # library object name look up using a pair
+   # where the second argument is the library path matching bpy.types.Library.filepath
+   obj = bpy.data.objects["my_obj", "//my_lib.blend"]
+
+   # local object name look up using a pair
+   # where the second argument excludes library data from being returned.
+   obj = bpy.data.objects["my_obj", None]
+
+   # both the examples above also works for 'get'
+   obj = bpy.data.objects.get(("my_obj", None))
+
+
 Relative File Paths
 ===================
 
@@ -230,12 +387,12 @@ Blenders relative file paths are not compatible with standard python modules suc
 
 Built in python functions don't understand blenders ``//`` prefix which denotes the blend file path.
 
-A common case where you would run into this problem is when exporting a material with assosiated image paths.
+A common case where you would run into this problem is when exporting a material with associated image paths.
 
 >>> bpy.path.abspath(image.filepath)
 
 
-When using blender data from linked libraries there is an unfortunate complication since the path will be relative to the library rather then the open blend file. When the data block may be from an external blend file pass the library argument from the `bpy.types.ID`.
+When using blender data from linked libraries there is an unfortunate complication since the path will be relative to the library rather then the open blend file. When the data block may be from an external blend file pass the library argument from the :class:`bpy.types.ID`.
 
 >>> bpy.path.abspath(image.filepath, library=image.library)
 
@@ -289,7 +446,7 @@ Unicode encoding/decoding is a big topic with comprehensive python documentation
 
 * To print paths or to include them in the user interface use ``repr(path)`` first or ``"%r" % path`` with string formatting.
 
-* **Possibly** - use bytes instead of python strings, when reading some input its less trouble to read it as binary data though you will still need to deciede how to treat any strings you want to use with Blender, some importers do this.
+* **Possibly** - use bytes instead of python strings, when reading some input its less trouble to read it as binary data though you will still need to decide how to treat any strings you want to use with Blender, some importers do this.
 
 
 Strange errors using 'threading' module
@@ -458,3 +615,14 @@ Removing Data
 **Any** data that you remove shouldn't be modified or accessed afterwards, this includes f-curves, drivers, render layers, timeline markers, modifiers, constraints along with objects, scenes, groups, bones.. etc.
 
 This is a problem in the API at the moment that we should eventually solve.
+
+
+sys.exit
+========
+
+Some python modules will call sys.exit() themselves when an error occurs, while not common behavior this is something to watch out for because it may seem as if blender is crashing since sys.exit() will quit blender immediately.
+
+For example, the ``optparse`` module will print an error and exit if the arguments are invalid.
+
+An ugly way of troubleshooting this is to set ``sys.exit = None`` and see what line of python code is quitting, you could of course replace ``sys.exit``/ with your own function but manipulating python in this way is bad practice.
+

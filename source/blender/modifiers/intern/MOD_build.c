@@ -75,147 +75,167 @@ static int dependsOnTime(ModifierData *UNUSED(md))
 	return 1;
 }
 
-static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
-						DerivedMesh *derivedData,
-						int UNUSED(useRenderParams),
-						int UNUSED(isFinalCalc))
+static DerivedMesh *applyModifier(ModifierData *md, Object *UNUSED(ob),
+                                  DerivedMesh *derivedData,
+                                  int UNUSED(useRenderParams),
+                                  int UNUSED(isFinalCalc))
 {
 	DerivedMesh *dm = derivedData;
 	DerivedMesh *result;
 	BuildModifierData *bmd = (BuildModifierData*) md;
-	int i;
-	int numFaces, numEdges;
+	int i, j, k;
+	int numFaces_dst, numEdges_dst, numLoops_dst = 0;
 	int *vertMap, *edgeMap, *faceMap;
 	float frac;
+	MPoly *mpoly_dst;
+	MLoop *ml_dst, *ml_src /*, *mloop_dst */;
 	GHashIterator *hashIter;
 	/* maps vert indices in old mesh to indices in new mesh */
 	GHash *vertHash = BLI_ghash_new(BLI_ghashutil_inthash,
-					BLI_ghashutil_intcmp, "build ve apply gh");
+	                                BLI_ghashutil_intcmp, "build ve apply gh");
 	/* maps edge indices in new mesh to indices in old mesh */
 	GHash *edgeHash = BLI_ghash_new(BLI_ghashutil_inthash,
-					BLI_ghashutil_intcmp, "build ed apply gh");
+	                                BLI_ghashutil_intcmp, "build ed apply gh");
+	GHash *edgeHash2 = BLI_ghash_new(BLI_ghashutil_inthash,
+	                                 BLI_ghashutil_intcmp, "build ed apply gh");
 
-	const int maxVerts= dm->getNumVerts(dm);
-	const int maxEdges= dm->getNumEdges(dm);
-	const int maxFaces= dm->getNumFaces(dm);
+	const int numVert_src = dm->getNumVerts(dm);
+	const int numEdge_src = dm->getNumEdges(dm);
+	const int numPoly_src = dm->getNumPolys(dm);
+	MPoly *mpoly_src = dm->getPolyArray(dm);
+	MLoop *mloop_src = dm->getLoopArray(dm);
+	MEdge *medge_src = dm->getEdgeArray(dm);
+	MVert *mvert_src = dm->getVertArray(dm);
 
-	vertMap = MEM_callocN(sizeof(*vertMap) * maxVerts, "build modifier vertMap");
-	for(i = 0; i < maxVerts; ++i) vertMap[i] = i;
-	edgeMap = MEM_callocN(sizeof(*edgeMap) * maxEdges, "build modifier edgeMap");
-	for(i = 0; i < maxEdges; ++i) edgeMap[i] = i;
-	faceMap = MEM_callocN(sizeof(*faceMap) * maxFaces, "build modifier faceMap");
-	for(i = 0; i < maxFaces; ++i) faceMap[i] = i;
 
-	if (ob) {
-		frac = bsystem_time(md->scene, ob, md->scene->r.cfra,
-					bmd->start - 1.0f) / bmd->length;
-	} else {
-		frac = BKE_curframe(md->scene) - bmd->start / bmd->length;
-	}
+	vertMap = MEM_callocN(sizeof(*vertMap) * numVert_src, "build modifier vertMap");
+	for (i = 0; i < numVert_src; i++) vertMap[i] = i;
+	edgeMap = MEM_callocN(sizeof(*edgeMap) * numEdge_src, "build modifier edgeMap");
+	for (i = 0; i < numEdge_src; i++) edgeMap[i] = i;
+	faceMap = MEM_callocN(sizeof(*faceMap) * numPoly_src, "build modifier faceMap");
+	for (i = 0; i < numPoly_src; i++) faceMap[i] = i;
+
+	frac = (BKE_curframe(md->scene) - bmd->start) / bmd->length;
 	CLAMP(frac, 0.0f, 1.0f);
 
-	numFaces = dm->getNumFaces(dm) * frac;
-	numEdges = dm->getNumEdges(dm) * frac;
+	numFaces_dst = numPoly_src * frac;
+	numEdges_dst = numEdge_src * frac;
 
 	/* if there's at least one face, build based on faces */
-	if(numFaces) {
-		if(bmd->randomize)
+	if (numFaces_dst) {
+		MPoly *mpoly, *mp;
+		MLoop *ml, *mloop;
+		MEdge *medge;
+		
+		if (bmd->randomize) {
 			BLI_array_randomize(faceMap, sizeof(*faceMap),
-						maxFaces, bmd->seed);
+			                    numPoly_src, bmd->seed);
+		}
 
 		/* get the set of all vert indices that will be in the final mesh,
-		* mapped to the new indices
-		*/
-		for(i = 0; i < numFaces; ++i) {
-			MFace mf;
-			dm->getFace(dm, faceMap[i], &mf);
+		 * mapped to the new indices
+		 */
+		mpoly = mpoly_src;
+		mloop = mloop_src;
+		for (i = 0; i < numFaces_dst; i++) {
+			mp = mpoly + faceMap[i];
+			ml = mloop + mp->loopstart;
 
-			if(!BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(mf.v1)))
-				BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(mf.v1),
-					SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
-			if(!BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(mf.v2)))
-				BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(mf.v2),
-					SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
-			if(!BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(mf.v3)))
-				BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(mf.v3),
-					SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
-			if(mf.v4 && !BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(mf.v4)))
-				BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(mf.v4),
-					SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
+			for (j=0; j<mp->totloop; j++, ml++) {
+				if (!BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(ml->v)))
+					BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(ml->v),
+					                 SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
+			}
+			
+			numLoops_dst += mp->totloop;
 		}
 
 		/* get the set of edges that will be in the new mesh (i.e. all edges
-		* that have both verts in the new mesh)
-		*/
-		for(i = 0; i < maxEdges; ++i) {
-			MEdge me;
-			dm->getEdge(dm, i, &me);
+		 * that have both verts in the new mesh)
+		 */
+		medge = medge_src;
+		for (i = 0; i < numEdge_src; i++) {
+			MEdge *me = medge + i;
 
-			if(BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(me.v1))
-						&& BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(me.v2)))
-				BLI_ghash_insert(edgeHash,
-					SET_INT_IN_POINTER(BLI_ghash_size(edgeHash)), SET_INT_IN_POINTER(i));
+			if ( BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(me->v1)) &&
+			     BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(me->v2)))
+			{
+				j = BLI_ghash_size(edgeHash);
+				
+				BLI_ghash_insert(edgeHash, SET_INT_IN_POINTER(j),
+				                 SET_INT_IN_POINTER(i));
+				BLI_ghash_insert(edgeHash2, SET_INT_IN_POINTER(i),
+				                 SET_INT_IN_POINTER(j));
+			}
 		}
-	} else if(numEdges) {
-		if(bmd->randomize)
+	}
+	else if (numEdges_dst) {
+		MEdge *medge, *me;
+
+		if (bmd->randomize)
 			BLI_array_randomize(edgeMap, sizeof(*edgeMap),
-						maxEdges, bmd->seed);
+			                    numEdge_src, bmd->seed);
 
 		/* get the set of all vert indices that will be in the final mesh,
-		* mapped to the new indices
-		*/
-		for(i = 0; i < numEdges; ++i) {
-			MEdge me;
-			dm->getEdge(dm, edgeMap[i], &me);
+		 * mapped to the new indices
+		 */
+		medge = medge_src;
+		for (i = 0; i < numEdges_dst; i++) {
+			me = medge + edgeMap[i];
 
-			if(!BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(me.v1)))
-				BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(me.v1),
-					SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
-			if(!BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(me.v2)))
-				BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(me.v2),
-					SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
+			if (!BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(me->v1))) {
+				BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(me->v1),
+				                 SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
+			}
+			if (!BLI_ghash_haskey(vertHash, SET_INT_IN_POINTER(me->v2))) {
+				BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(me->v2), SET_INT_IN_POINTER(BLI_ghash_size(vertHash)));
+			}
 		}
 
-		/* get the set of edges that will be in the new mesh
-		*/
-		for(i = 0; i < numEdges; ++i) {
-			MEdge me;
-			dm->getEdge(dm, edgeMap[i], &me);
-
-			BLI_ghash_insert(edgeHash, SET_INT_IN_POINTER(BLI_ghash_size(edgeHash)),
-					 SET_INT_IN_POINTER(edgeMap[i]));
+		/* get the set of edges that will be in the new mesh */
+		for (i = 0; i < numEdges_dst; i++) {
+			j = BLI_ghash_size(edgeHash);
+			
+			BLI_ghash_insert(edgeHash, SET_INT_IN_POINTER(j),
+			                 SET_INT_IN_POINTER(edgeMap[i]));
+			BLI_ghash_insert(edgeHash2,  SET_INT_IN_POINTER(edgeMap[i]),
+			                 SET_INT_IN_POINTER(j));
 		}
-	} else {
-		int numVerts = dm->getNumVerts(dm) * frac;
+	}
+	else {
+		int numVerts = numVert_src * frac;
 
-		if(bmd->randomize)
+		if (bmd->randomize) {
 			BLI_array_randomize(vertMap, sizeof(*vertMap),
-						maxVerts, bmd->seed);
+			                    numVert_src, bmd->seed);
+		}
 
 		/* get the set of all vert indices that will be in the final mesh,
-		* mapped to the new indices
-		*/
-		for(i = 0; i < numVerts; ++i)
+		 * mapped to the new indices
+		 */
+		for (i = 0; i < numVerts; i++) {
 			BLI_ghash_insert(vertHash, SET_INT_IN_POINTER(vertMap[i]), SET_INT_IN_POINTER(i));
+		}
 	}
 
 	/* now we know the number of verts, edges and faces, we can create
-	* the mesh
-	*/
+	 * the mesh
+	 */
 	result = CDDM_from_template(dm, BLI_ghash_size(vertHash),
-					BLI_ghash_size(edgeHash), numFaces);
+	                            BLI_ghash_size(edgeHash), 0, numLoops_dst, numFaces_dst);
 
 	/* copy the vertices across */
-	for(	hashIter = BLI_ghashIterator_new(vertHash);
-			!BLI_ghashIterator_isDone(hashIter);
-			BLI_ghashIterator_step(hashIter)
-	) {
+	for ( hashIter = BLI_ghashIterator_new(vertHash);
+	      !BLI_ghashIterator_isDone(hashIter);
+	      BLI_ghashIterator_step(hashIter)
+	      )
+	{
 		MVert source;
 		MVert *dest;
 		int oldIndex = GET_INT_FROM_POINTER(BLI_ghashIterator_getKey(hashIter));
 		int newIndex = GET_INT_FROM_POINTER(BLI_ghashIterator_getValue(hashIter));
 
-		dm->getVert(dm, oldIndex, &source);
+		source = mvert_src [oldIndex];
 		dest = CDDM_get_vert(result, newIndex);
 
 		DM_copy_vert_data(dm, result, oldIndex, newIndex, 1);
@@ -224,12 +244,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	BLI_ghashIterator_free(hashIter);
 	
 	/* copy the edges across, remapping indices */
-	for(i = 0; i < BLI_ghash_size(edgeHash); ++i) {
+	for (i = 0; i < BLI_ghash_size(edgeHash); i++) {
 		MEdge source;
 		MEdge *dest;
 		int oldIndex = GET_INT_FROM_POINTER(BLI_ghash_lookup(edgeHash, SET_INT_IN_POINTER(i)));
 		
-		dm->getEdge(dm, oldIndex, &source);
+		source = medge_src[oldIndex];
 		dest = CDDM_get_edge(result, i);
 		
 		source.v1 = GET_INT_FROM_POINTER(BLI_ghash_lookup(vertHash, SET_INT_IN_POINTER(source.v1)));
@@ -239,38 +259,39 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		*dest = source;
 	}
 
+	mpoly_dst = CDDM_get_polys(result);
+	/* mloop_dst = */ ml_dst = CDDM_get_loops(result);
+	
 	/* copy the faces across, remapping indices */
-	for(i = 0; i < numFaces; ++i) {
-		MFace source;
-		MFace *dest;
-		int orig_v4;
+	k = 0;
+	for (i = 0; i < numFaces_dst; i++) {
+		MPoly *source;
+		MPoly *dest;
 		
-		dm->getFace(dm, faceMap[i], &source);
-		dest = CDDM_get_face(result, i);
+		source = mpoly_src + faceMap[i];
+		dest = mpoly_dst + i;
+		DM_copy_poly_data(dm, result, faceMap[i], i, 1);
 		
-		orig_v4 = source.v4;
+		*dest = *source;
+		dest->loopstart = k;
 		
-		source.v1 = GET_INT_FROM_POINTER(BLI_ghash_lookup(vertHash, SET_INT_IN_POINTER(source.v1)));
-		source.v2 = GET_INT_FROM_POINTER(BLI_ghash_lookup(vertHash, SET_INT_IN_POINTER(source.v2)));
-		source.v3 = GET_INT_FROM_POINTER(BLI_ghash_lookup(vertHash, SET_INT_IN_POINTER(source.v3)));
-		if(source.v4)
-			source.v4 = GET_INT_FROM_POINTER(BLI_ghash_lookup(vertHash, SET_INT_IN_POINTER(source.v4)));
-		
-		DM_copy_face_data(dm, result, faceMap[i], i, 1);
-		*dest = source;
-		
-		test_index_face(dest, &result->faceData, i, (orig_v4 ? 4 : 3));
+		DM_copy_loop_data(dm, result, source->loopstart, dest->loopstart, dest->totloop);
+
+		ml_src = mloop_src + source->loopstart;
+		for (j=0; j<source->totloop; j++, k++, ml_src++, ml_dst++) {
+			ml_dst->v = GET_INT_FROM_POINTER(BLI_ghash_lookup(vertHash, SET_INT_IN_POINTER(ml_src->v)));
+			ml_dst->e = GET_INT_FROM_POINTER(BLI_ghash_lookup(edgeHash2, SET_INT_IN_POINTER(ml_src->e)));
+		}
 	}
 
-	CDDM_calc_normals(result);
-	
 	BLI_ghash_free(vertHash, NULL, NULL);
 	BLI_ghash_free(edgeHash, NULL, NULL);
+	BLI_ghash_free(edgeHash2, NULL, NULL);
 	
 	MEM_freeN(vertMap);
 	MEM_freeN(edgeMap);
 	MEM_freeN(faceMap);
-	
+
 	return result;
 }
 

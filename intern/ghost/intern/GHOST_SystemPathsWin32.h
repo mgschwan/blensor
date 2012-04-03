@@ -30,8 +30,8 @@
  */
 
 
-#ifndef _GHOST_SYSTEM_PATHS_WIN32_H_
-#define _GHOST_SYSTEM_PATHS_WIN32_H_
+#ifndef __GHOST_SYSTEMPATHSWIN32_H__
+#define __GHOST_SYSTEMPATHSWIN32_H__
 
 #ifndef WIN32
 #error WIN32 only!
@@ -74,19 +74,19 @@ public:
 	 * If needed, it will create the base directory.
 	 * @return Unsigned char string pointing to user dir (eg ~/).
 	 */
-	 const GHOST_TUns8* getUserDir() const;
+	const GHOST_TUns8* getUserDir() const;
 
-	 /**
-	  * Determine the directory of the current binary
-	  * @return Unsigned char string pointing to the binary dir
-	  */
-	 const GHOST_TUns8* getBinaryDir() const;
+	/**
+	 * Determine the directory of the current binary
+	 * @return Unsigned char string pointing to the binary dir
+	 */
+	const GHOST_TUns8* getBinaryDir() const;
 
-	 /**
-	  * Add the file to the operating system most recently used files
-	  */
-	 void addToSystemRecentFiles(const char* filename) const;
+	/**
+	 * Add the file to the operating system most recently used files
+	 */
+	void addToSystemRecentFiles(const char* filename) const;
 };
 
-#endif // _GHOST_SYSTEM_PATHS_WIN32_H_
+#endif // __GHOST_SYSTEMPATHSWIN32_H__
 

@@ -46,6 +46,7 @@ set(DEFSRC
 	rna_context.c
 	rna_controller.c
 	rna_curve.c
+	rna_dynamicpaint.c
 	rna_fcurve.c
 	rna_fluidsim.c
 	rna_gpencil.c
@@ -59,6 +60,7 @@ set(DEFSRC
 	rna_mesh.c
 	rna_meta.c
 	rna_modifier.c
+	rna_movieclip.c
 	rna_nla.c
 	rna_nodetree.c
 	rna_object.c
@@ -82,6 +84,7 @@ set(DEFSRC
 	rna_text.c
 	rna_texture.c
 	rna_timeline.c
+	rna_tracking.c
 	rna_ui.c
 	rna_userdef.c
 	rna_vfont.c
@@ -140,6 +143,9 @@ set(INC_SYS
 
 )
 
+if(WITH_CYCLES)
+	add_definitions(-DWITH_CYCLES)
+endif()
 
 if(WITH_PYTHON)
 	add_definitions(-DWITH_PYTHON)
@@ -195,12 +201,16 @@ if(WITH_CODEC_FFMPEG)
 	add_definitions(-DWITH_FFMPEG)
 endif()
 
-if(NOT WITH_MOD_FLUID)
-	add_definitions(-DDISABLE_ELBEEM)
+if(WITH_MOD_FLUID)
+	add_definitions(-DWITH_MOD_FLUID)
 endif()
 
 if(WITH_FFTW3)
 	add_definitions(-DWITH_FFTW3)
+endif()
+
+if(WITH_MOD_OCEANSIM)
+	add_definitions(-DWITH_OCEANSIM)
 endif()
 
 if(WITH_SDL)
@@ -230,6 +240,7 @@ blender_include_dirs(
 	../../blenkernel
 	../../blenloader
 	../../blenlib
+	../../bmesh
 	../../blenfont
 	../../gpu
 	../../imbuf
@@ -239,6 +250,7 @@ blender_include_dirs(
 	../../editors/include
 	../../render/extern/include
 	../../../../intern/audaspace/intern
+	../../../../intern/cycles/blender
 	../../../../intern/guardedalloc
 	../../../../intern/memutil
 )
@@ -268,6 +280,7 @@ set(SRC
 	rna_internal.h
 	rna_internal_types.h
 	rna_nodetree_types.h
+	rna_mesh_utils.h
 )
 
 blender_add_lib(bf_rna "${SRC}" "${INC}" "${INC_SYS}")

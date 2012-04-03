@@ -28,8 +28,8 @@
  *  \ingroup spnla
  */
 
-#ifndef ED_NLA_INTERN_H
-#define ED_NLA_INTERN_H
+#ifndef __NLA_INTERN_H__
+#define __NLA_INTERN_H__
 
 /* internal exports only */
 
@@ -49,11 +49,6 @@ void NLA_OT_properties(wmOperatorType *ot);
 
 void draw_nla_main_data(bAnimContext *ac, SpaceNla *snla, ARegion *ar);
 void draw_nla_channel_list(bContext *C, bAnimContext *ac, ARegion *ar);
-
-/* **************************************** */
-/* nla_header.c */
-
-void nla_header_buttons(const bContext *C, ARegion *ar);
 
 /* **************************************** */
 /* nla_select.c */
@@ -145,5 +140,5 @@ short nlaedit_is_tweakmode_on(bAnimContext *ac);
 void nla_operatortypes(void);
 void nla_keymap(wmKeyConfig *keyconf);
 
-#endif /* ED_NLA_INTERN_H */
+#endif /* __NLA_INTERN_H__ */
 

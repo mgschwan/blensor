@@ -30,25 +30,15 @@
  */
 
 
-#ifndef PIPELINE_H
-#define PIPELINE_H
+#ifndef __RENDERPIPELINE_H__
+#define __RENDERPIPELINE_H__
 
-struct ListBase;
 struct Render;
-struct RenderResult;
 struct RenderLayer;
-struct rcti;
+struct RenderResult;
 
 struct RenderLayer *render_get_active_layer(struct Render *re, struct RenderResult *rr);
 float panorama_pixel_rot(struct Render *re);
 
-#define PASS_VECTOR_MAX	10000.0f
-
-#define RR_USEMEM	0
-
-struct RenderResult *new_render_result(struct Render *re, struct rcti *partrct, int crop, int savebuffers);
-void merge_render_result(struct RenderResult *rr, struct RenderResult *rrpart);
-void free_render_result(struct ListBase *lb, struct RenderResult *rr);
-
-#endif /* PIPELINE_H */
+#endif /* __RENDERPIPELINE_H__ */
 

@@ -36,7 +36,7 @@
 /* **************** Gamma Tools  ******************** */
   
 static bNodeSocketTemplate cmp_node_gamma_in[]= {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f},
+	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
 	{	SOCK_FLOAT, 1, "Gamma",			1.0f, 0.0f, 0.0f, 0.0f, 0.001f, 10.0f, PROP_UNSIGNED},
 	{	-1, 0, ""	}
 };
@@ -48,9 +48,9 @@ static bNodeSocketTemplate cmp_node_gamma_out[]= {
 static void do_gamma(bNode *UNUSED(node), float *out, float *in, float *fac)
 {
 	int i=0;
-	for(i=0; i<3; i++) {
+	for (i=0; i<3; i++) {
 		/* check for negative to avoid nan's */
-		out[i] = (in[i] > 0.0f)? pow(in[i],fac[0]): in[i];
+		out[i] = (in[i] > 0.0f)? powf(in[i],fac[0]): in[i];
 	}
 	out[3] = in[3];
 }
@@ -58,10 +58,10 @@ static void node_composit_exec_gamma(void *UNUSED(data), bNode *node, bNodeStack
 {
 	/* stack order in: Fac, Image */
 	/* stack order out: Image */
-	if(out[0]->hasoutput==0) return;
+	if (out[0]->hasoutput==0) return;
 	
 	/* input no image? then only color operation */
-	if(in[0]->data==NULL) {
+	if (in[0]->data==NULL) {
 		do_gamma(node, out[0]->vec, in[0]->vec, in[1]->vec);
 	}
 	else {
@@ -75,14 +75,14 @@ static void node_composit_exec_gamma(void *UNUSED(data), bNode *node, bNodeStack
 	}
 }
 
-void register_node_type_cmp_gamma(ListBase *lb)
+void register_node_type_cmp_gamma(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 	
-	node_type_base(&ntype, CMP_NODE_GAMMA, "Gamma", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_GAMMA, "Gamma", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_gamma_in, cmp_node_gamma_out);
 	node_type_size(&ntype, 140, 100, 320);
 	node_type_exec(&ntype, node_composit_exec_gamma);
 	
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }

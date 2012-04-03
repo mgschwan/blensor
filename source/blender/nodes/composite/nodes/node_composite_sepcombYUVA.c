@@ -35,7 +35,7 @@
 
 /* **************** SEPARATE YUVA ******************** */
 static bNodeSocketTemplate cmp_node_sepyuva_in[]= {
-	{  SOCK_RGBA, 1, "Image",        0.8f, 0.8f, 0.8f, 1.0f},
+	{  SOCK_RGBA, 1, "Image",        1.0f, 1.0f, 1.0f, 1.0f},
 	{  -1, 0, ""   }
 };
 static bNodeSocketTemplate cmp_node_sepyuva_out[]= {
@@ -64,7 +64,7 @@ static void node_composit_exec_sepyuva(void *UNUSED(data), bNode *node, bNodeSta
 	/* stack order in: col */
 	
 	/* input no image? then only color operation */
-	if(in[0]->data==NULL) {
+	if (in[0]->data==NULL) {
 		float y, u, v;
 	
 		rgb_to_yuv(in[0]->vec[0], in[0]->vec[1], in[0]->vec[2], &y, &u, &v);
@@ -83,32 +83,32 @@ static void node_composit_exec_sepyuva(void *UNUSED(data), bNode *node, bNodeSta
 		composit1_pixel_processor(node, cbuf2, cbuf2, in[0]->vec, do_sepyuva, CB_RGBA);
 	
 		/* separate each of those channels */
-		if(out[0]->hasoutput)
+		if (out[0]->hasoutput)
 			out[0]->data= valbuf_from_rgbabuf(cbuf2, CHAN_R);
-		if(out[1]->hasoutput)
+		if (out[1]->hasoutput)
 			out[1]->data= valbuf_from_rgbabuf(cbuf2, CHAN_G);
-		if(out[2]->hasoutput)
+		if (out[2]->hasoutput)
 			out[2]->data= valbuf_from_rgbabuf(cbuf2, CHAN_B);
-		if(out[3]->hasoutput)
+		if (out[3]->hasoutput)
 			out[3]->data= valbuf_from_rgbabuf(cbuf2, CHAN_A);
 
 		/*not used anymore */
-		if(cbuf2!=cbuf)
+		if (cbuf2!=cbuf)
 			free_compbuf(cbuf2);
 		free_compbuf(cbuf);
 	}
 }
 
-void register_node_type_cmp_sepyuva(ListBase *lb)
+void register_node_type_cmp_sepyuva(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_SEPYUVA, "Separate YUVA", NODE_CLASS_CONVERTOR, 0);
+	node_type_base(ttype, &ntype, CMP_NODE_SEPYUVA, "Separate YUVA", NODE_CLASS_CONVERTOR, 0);
 	node_type_socket_templates(&ntype, cmp_node_sepyuva_in, cmp_node_sepyuva_out);
 	node_type_size(&ntype, 80, 40, 140);
 	node_type_exec(&ntype, node_composit_exec_sepyuva);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
 
 
@@ -143,7 +143,7 @@ static void node_composit_exec_combyuva(void *UNUSED(data), bNode *node, bNodeSt
 	/* stack order in: 4 value channels */
 	
 	/* input no image? then only color operation */
-	if((in[0]->data==NULL) && (in[1]->data==NULL) && (in[2]->data==NULL) && (in[3]->data==NULL)) {
+	if ((in[0]->data==NULL) && (in[1]->data==NULL) && (in[2]->data==NULL) && (in[3]->data==NULL)) {
 		out[0]->vec[0] = in[0]->vec[0];
 		out[0]->vec[1] = in[1]->vec[0];
 		out[0]->vec[2] = in[2]->vec[0];
@@ -170,16 +170,14 @@ static void node_composit_exec_combyuva(void *UNUSED(data), bNode *node, bNodeSt
 	}	
 }
 
-void register_node_type_cmp_combyuva(ListBase *lb)
+void register_node_type_cmp_combyuva(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_COMBYUVA, "Combine YUVA", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_COMBYUVA, "Combine YUVA", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_combyuva_in, cmp_node_combyuva_out);
 	node_type_size(&ntype, 80, 40, 140);
 	node_type_exec(&ntype, node_composit_exec_combyuva);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-

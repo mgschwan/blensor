@@ -28,28 +28,27 @@
  *  \ingroup spview3d
  */
 
-#ifndef ED_VIEW3D_INTERN_H
-#define ED_VIEW3D_INTERN_H
+#ifndef __VIEW3D_INTERN_H__
+#define __VIEW3D_INTERN_H__
 
 #include "ED_view3d.h"
 
 /* internal exports only */
 
-struct bScreen;
 struct ARegion;
-struct BoundBox;
-struct Object;
-struct DerivedMesh;
-struct wmOperatorType;
-struct bContext;
-struct wmWindowManager;
-struct EditMesh;
-struct ViewContext;
 struct ARegionType;
-struct bPoseChannel;
+struct BoundBox;
+struct DerivedMesh;
+struct Object;
+struct ViewContext;
 struct bAnimVizSettings;
+struct bContext;
 struct bMotionPath;
+struct bPoseChannel;
+struct bScreen;
 struct wmNDOFMotionData;
+struct wmOperatorType;
+struct wmWindowManager;
 
 #define BL_NEAR_CLIP 0.001
 
@@ -58,8 +57,11 @@ struct wmNDOFMotionData;
 #define DRAW_CONSTCOLOR	2
 #define DRAW_SCENESET	4
 
+/* draw_mesh_fancy/draw_mesh_textured draw_flags */
+#define DRAW_MODIFIERS_PREVIEW 1
+#define DRAW_FACE_SELECT 2
+
 /* view3d_header.c */
-void view3d_header_buttons(const struct bContext *C, struct ARegion *ar);
 void VIEW3D_OT_layers(struct wmOperatorType *ot);
 
 /* view3d_ops.c */
@@ -89,7 +91,6 @@ void VIEW3D_OT_manipulator(struct wmOperatorType *ot);
 void VIEW3D_OT_enable_manipulator(struct wmOperatorType *ot);
 void VIEW3D_OT_render_border(struct wmOperatorType *ot);
 void VIEW3D_OT_zoom_border(struct wmOperatorType *ot);
-void VIEW3D_OT_drawtype(struct wmOperatorType *ot);
 
 void view3d_boxview_copy(ScrArea *sa, ARegion *ar);
 void ndof_to_quat(struct wmNDOFMotionData* ndof, float q[4]);
@@ -121,6 +122,8 @@ void view3d_cached_text_draw_end(View3D *v3d, ARegion *ar, int depth_write, floa
 #define V3D_CACHE_TEXT_ZBUF			(1<<0)
 #define V3D_CACHE_TEXT_WORLDSPACE	(1<<1)
 #define V3D_CACHE_TEXT_ASCII		(1<<2)
+#define V3D_CACHE_TEXT_GLOBALSPACE	(1<<3)
+#define V3D_CACHE_TEXT_LOCALCLIP	(1<<4)
 
 /* drawarmature.c */
 int draw_armature(Scene *scene, View3D *v3d, ARegion *ar, Base *base, int dt, int flag, const short is_outline);
@@ -132,10 +135,7 @@ void draw_mesh_textured(Scene *scene, View3D *v3d, RegionView3D *rv3d, struct Ob
 void view3d_main_area_draw(const struct bContext *C, struct ARegion *ar);
 void draw_depth(Scene *scene, struct ARegion *ar, View3D *v3d, int (* func)(void *));
 void draw_depth_gpencil(Scene *scene, ARegion *ar, View3D *v3d);
-void view3d_clr_clipping(void);
-void view3d_set_clipping(RegionView3D *rv3d);
 void add_view3d_after(ListBase *lb, Base *base, int flag);
-void view3d_viewborder_size_get(struct Scene *scene, struct ARegion *ar, float size_r[2]);
 
 void circf(float x, float y, float rad);
 void circ(float x, float y, float rad);
@@ -144,13 +144,14 @@ float view3d_depth_near(struct ViewDepths *d);
 
 /* view3d_select.c */
 void VIEW3D_OT_select(struct wmOperatorType *ot);
-void VIEW3D_OT_select_extend(struct wmOperatorType *ot);
 void VIEW3D_OT_select_circle(struct wmOperatorType *ot);
 void VIEW3D_OT_select_border(struct wmOperatorType *ot);
 void VIEW3D_OT_select_lasso(struct wmOperatorType *ot);
+void VIEW3D_OT_select_menu(struct wmOperatorType *ot);
 
 void VIEW3D_OT_smoothview(struct wmOperatorType *ot);
-void VIEW3D_OT_setcameratoview(struct wmOperatorType *ot);
+void VIEW3D_OT_camera_to_view(struct wmOperatorType *ot);
+void VIEW3D_OT_camera_to_view_selected(struct wmOperatorType *ot);
 void VIEW3D_OT_object_as_camera(struct wmOperatorType *ot);
 void VIEW3D_OT_localview(struct wmOperatorType *ot);
 void VIEW3D_OT_game_start(struct wmOperatorType *ot);
@@ -158,7 +159,8 @@ void VIEW3D_OT_game_start(struct wmOperatorType *ot);
 
 int ED_view3d_boundbox_clip(RegionView3D *rv3d, float obmat[][4], struct BoundBox *bb);
 
-void smooth_view(struct bContext *C, struct View3D *v3d, struct ARegion *ar, struct Object *, struct Object *, float *ofs, float *quat, float *dist, float *lens);
+void smooth_view(struct bContext *C, struct View3D *v3d, struct ARegion *ar, struct Object *, struct Object *,
+                 float *ofs, float *quat, float *dist, float *lens);
 
 void setwinmatrixview3d(ARegion *ar, View3D *v3d, rctf *rect);	/* rect: for picking */
 void setviewmatrixview3d(Scene *scene, View3D *v3d, RegionView3D *rv3d);
@@ -197,7 +199,7 @@ extern const char *view3d_context_dir[]; /* doc access */
 /* draw_volume.c */
 void draw_volume(struct ARegion *ar, struct GPUTexture *tex, float *min, float *max, int res[3], float dx, struct GPUTexture *tex_shadow);
 
-/* workaround for trivial but noticable camera bug caused by imprecision
+/* workaround for trivial but noticeable camera bug caused by imprecision
  * between view border calculation in 2D/3D space, workaround for bug [#28037].
  * without this deifne we get the old behavior which is to try and align them
  * both which _mostly_ works fine, but when the camera moves beyond ~1000 in
@@ -208,5 +210,5 @@ extern float view3d_camera_border_hack_col[4];
 extern short view3d_camera_border_hack_test;
 #endif
 
-#endif /* ED_VIEW3D_INTERN_H */
+#endif /* __VIEW3D_INTERN_H__ */
 

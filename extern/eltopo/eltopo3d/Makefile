@@ -20,19 +20,9 @@ include Makefile.inc
 
 # how to compile each file
 .SUFFIXES:
-obj/%.o: %.cpp
+obj/%.o:
 	$(CC) -c $(RELEASE_FLAGS) $(INCLUDE_PATH) -o $@ $<
-obj_debug/%.o: %.cpp
-	$(CC) -c $(DEBUG_FLAGS) $(INCLUDE_PATH) -o $@ $<
-
-obj/%.o: ../common/%.cpp
-	$(CC) -c $(RELEASE_FLAGS) $(INCLUDE_PATH) -o $@ $<
-obj_debug/%.o: ../common/%.cpp
-	$(CC) -c $(DEBUG_FLAGS) $(INCLUDE_PATH) -o $@ $<
-
-obj/%.o: ../common/newsparse/%.cpp
-	$(CC) -c $(RELEASE_FLAGS) $(INCLUDE_PATH) -o $@ $<
-obj_debug/%.o: ../common/newsparse/%.cpp
+obj_debug/%.o:
 	$(CC) -c $(DEBUG_FLAGS) $(INCLUDE_PATH) -o $@ $<
 
 .PHONY: release

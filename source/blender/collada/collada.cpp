@@ -44,22 +44,23 @@ extern "C"
 	int collada_import(bContext *C, const char *filepath)
 	{
 		DocumentImporter imp (C, filepath);
-		if(imp.import()) return 1;
+		if (imp.import()) return 1;
 
 		return 0;
 	}
 
-	int collada_export(Scene *sce, const char *filepath, int selected)
+	int collada_export(Scene *sce, const char *filepath, int selected, int second_life)
 	{
 		ExportSettings export_settings;
 		
 		export_settings.selected = selected != 0;
+		export_settings.second_life = second_life != 0;
 		export_settings.filepath = (char *)filepath;
 
 		/* annoying, collada crashes if file cant be created! [#27162] */
-		if(!BLI_exists(filepath)) {
+		if (!BLI_exists(filepath)) {
 			BLI_make_existing_file(filepath); /* makes the dir if its not there */
-			if(BLI_file_touch(filepath) == 0) {
+			if (BLI_file_touch(filepath) == 0) {
 				return 0;
 			}
 		}

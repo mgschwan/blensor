@@ -215,7 +215,7 @@ PyObject* BL_ArmatureChannel::py_attr_get_joint_rotation(void *self_v, const str
 	normalize_m3(pose_mat);
 	if (pchan->parent) {
 		// bone has a parent, compute the rest pose of the bone taking actual pose of parent
-		mul_m3_m3m4(rest_mat, pchan->bone->bone_mat, pchan->parent->pose_mat);
+		mult_m3_m3m4(rest_mat, pchan->parent->pose_mat, pchan->bone->bone_mat);
 		normalize_m3(rest_mat);
 	} else {
 		// otherwise, the bone matrix in armature space is the rest pose
@@ -295,7 +295,7 @@ PyObject* BL_ArmatureChannel::py_attr_get_joint_rotation(void *self_v, const str
 		mul_v3_fl(joints,norm);
 		break;
 	}
-	return newVectorObject(joints, 3, Py_NEW, NULL);
+	return Vector_CreatePyObject(joints, 3, Py_NEW, NULL);
 }
 
 int BL_ArmatureChannel::py_attr_set_joint_rotation(void *self_v, const struct KX_PYATTRIBUTE_DEF *attrdef, PyObject *value)
@@ -434,7 +434,7 @@ PyAttributeDef BL_ArmatureBone::AttributesPtr[] = {
 	KX_PYATTRIBUTE_FLOAT_VECTOR_RO("arm_head",Bone,arm_head,3),
 	KX_PYATTRIBUTE_FLOAT_VECTOR_RO("arm_tail",Bone,arm_tail,3),
 	KX_PYATTRIBUTE_FLOAT_MATRIX_RO("arm_mat",Bone,arm_mat,4),
-	KX_PYATTRIBUTE_FLOAT_MATRIX_RO("bone_mat",Bone,bone_mat,4),
+	KX_PYATTRIBUTE_FLOAT_MATRIX_RO("bone_mat",Bone,bone_mat,3),
 	KX_PYATTRIBUTE_RO_FUNCTION("parent",BL_ArmatureBone,py_bone_get_parent),
 	KX_PYATTRIBUTE_RO_FUNCTION("children",BL_ArmatureBone,py_bone_get_children),
 	{ NULL }	//Sentinel

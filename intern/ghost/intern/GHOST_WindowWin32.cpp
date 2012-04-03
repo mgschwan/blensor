@@ -41,6 +41,8 @@
 #include "GHOST_WindowWin32.h"
 #include "GHOST_SystemWin32.h"
 #include "GHOST_DropTargetWin32.h"
+#include "utfconv.h"
+#include "utf_winfunc.h"
 
 // Need glew for some defines
 #include <GL/glew.h>
@@ -64,7 +66,7 @@
 #endif
 #endif
 
-LPCSTR GHOST_WindowWin32::s_windowClassName = "GHOST_WindowClass";
+wchar_t* GHOST_WindowWin32::s_windowClassName = L"GHOST_WindowClass";
 const int GHOST_WindowWin32::s_maxTitleLength = 128;
 HGLRC GHOST_WindowWin32::s_firsthGLRc = NULL;
 HDC GHOST_WindowWin32::s_firstHDC = NULL;
@@ -234,9 +236,10 @@ GHOST_WindowWin32::GHOST_WindowWin32(
 			height = rect.bottom - rect.top;
 		}
 		
-		m_hWnd = ::CreateWindow(
+		wchar_t * title_16 = alloc_utf16_from_8((char*)(const char*)title,0);
+		m_hWnd = ::CreateWindowW(
 			s_windowClassName,			// pointer to registered class name
-			title,						// pointer to window name
+			title_16,						// pointer to window name
 			wintype,					// window style
 			left,					// horizontal position of window
 			top,					// vertical position of window
@@ -246,11 +249,13 @@ GHOST_WindowWin32::GHOST_WindowWin32(
 			0,							// handle to menu or child-window identifier
 			::GetModuleHandle(0),		// handle to application instance
 			0);							// pointer to window-creation data
+		free(title_16);
 	}
 	else {
-		m_hWnd = ::CreateWindow(
+		wchar_t * title_16 = alloc_utf16_from_8((char*)(const char*)title,0);
+		m_hWnd = ::CreateWindowW(
 			s_windowClassName,			// pointer to registered class name
-			title,						// pointer to window name
+			title_16,						// pointer to window name
 			WS_POPUP | WS_MAXIMIZE,		// window style
 			left,						// horizontal position of window
 			top,						// vertical position of window
@@ -260,6 +265,7 @@ GHOST_WindowWin32::GHOST_WindowWin32(
 			0,							// handle to menu or child-window identifier
 			::GetModuleHandle(0),		// handle to application instance
 			0);							// pointer to window-creation data
+		free(title_16);
 	}
 	if (m_hWnd) {
 		// Register this window as a droptarget. Requires m_hWnd to be valid.
@@ -433,13 +439,15 @@ HWND GHOST_WindowWin32::getHWND() const
 
 void GHOST_WindowWin32::setTitle(const STR_String& title)
 {
-	::SetWindowText(m_hWnd, title);
+	wchar_t * title_16 = alloc_utf16_from_8((char*)(const char*)title, 0);
+	::SetWindowTextW(m_hWnd, (wchar_t*)title_16);
+	free(title_16);
 }
 
 
 void GHOST_WindowWin32::getTitle(STR_String& title) const
 {
-	char buf[s_maxTitleLength];
+	char buf[s_maxTitleLength];/*CHANGE + never used yet*/
 	::GetWindowText(m_hWnd, buf, s_maxTitleLength);
 	STR_String temp (buf);
 	title = buf;
@@ -1046,9 +1054,9 @@ GHOST_TSuccess GHOST_WindowWin32::setWindowCursorGrab(GHOST_TGrabCursorMode mode
 			/* use to generate a mouse move event, otherwise the last event
 			 * blender gets can be outside the screen causing menus not to show
 			 * properly unless the user moves the mouse */
-			 GHOST_TInt32 pos[2];
-			 m_system->getCursorPosition(pos[0], pos[1]);
-			 m_system->setCursorPosition(pos[0], pos[1]);
+			GHOST_TInt32 pos[2];
+			m_system->getCursorPosition(pos[0], pos[1]);
+			m_system->setCursorPosition(pos[0], pos[1]);
 		}
 
 		/* Almost works without but important otherwise the mouse GHOST location can be incorrect on exit */
@@ -1196,10 +1204,11 @@ static GHOST_TUns16 uns16ReverseBits(GHOST_TUns16 shrt)
 	return shrt;
 }
 GHOST_TSuccess GHOST_WindowWin32::setWindowCustomCursorShape(GHOST_TUns8 bitmap[16][2],
-					GHOST_TUns8 mask[16][2], int hotX, int hotY)
+                                                             GHOST_TUns8 mask[16][2],
+                                                             int hotX, int hotY)
 {
 	return setWindowCustomCursorShape((GHOST_TUns8*)bitmap, (GHOST_TUns8*)mask,
-									16, 16, hotX, hotY, 0, 1);
+	                                  16, 16, hotX, hotY, 0, 1);
 }
 
 GHOST_TSuccess GHOST_WindowWin32::setWindowCustomCursorShape(GHOST_TUns8 *bitmap,
@@ -1268,7 +1277,8 @@ GHOST_TSuccess GHOST_WindowWin32::endProgressBar()
 /*  Ron Fosner's code for weighting pixel formats and forcing software.
 	See http://www.opengl.org/resources/faq/technical/weight.cpp */
 
-static int WeightPixelFormat(PIXELFORMATDESCRIPTOR& pfd) {
+static int WeightPixelFormat(PIXELFORMATDESCRIPTOR& pfd)
+{
 	int weight = 0;
 
 	/* assume desktop color depth is 32 bits per pixel */
@@ -1301,7 +1311,8 @@ static int WeightPixelFormat(PIXELFORMATDESCRIPTOR& pfd) {
 
 /* A modification of Ron Fosner's replacement for ChoosePixelFormat */
 /* returns 0 on error, else returns the pixel format number to be used */
-static int EnumPixelFormats(HDC hdc) {
+static int EnumPixelFormats(HDC hdc)
+{
 	int iPixelFormat;
 	int i, n, w, weight = 0;
 	PIXELFORMATDESCRIPTOR pfd;

@@ -48,7 +48,7 @@ static void node_shader_exec_valtorgb(void *UNUSED(data), bNode *node, bNodeStac
 	/* stack order in: fac */
 	/* stack order out: col, alpha */
 	
-	if(node->storage) {
+	if (node->storage) {
 		float fac;
 		nodestack_get_vec(&fac, SOCK_FLOAT, in[0]);
 
@@ -71,11 +71,12 @@ static int gpu_shader_valtorgb(GPUMaterial *mat, bNode *node, GPUNodeStack *in, 
 	return GPU_stack_link(mat, "valtorgb", in, out, GPU_texture(size, array));
 }
 
-void register_node_type_sh_valtorgb(ListBase *lb)
+void register_node_type_sh_valtorgb(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, SH_NODE_VALTORGB, "ColorRamp", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, SH_NODE_VALTORGB, "ColorRamp", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING|NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, sh_node_valtorgb_in, sh_node_valtorgb_out);
 	node_type_size(&ntype, 240, 200, 300);
 	node_type_init(&ntype, node_shader_init_valtorgb);
@@ -83,7 +84,7 @@ void register_node_type_sh_valtorgb(ListBase *lb)
 	node_type_exec(&ntype, node_shader_exec_valtorgb);
 	node_type_gpu(&ntype, gpu_shader_valtorgb);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
 
 
@@ -111,17 +112,16 @@ static int gpu_shader_rgbtobw(GPUMaterial *mat, bNode *UNUSED(node), GPUNodeStac
 	return GPU_stack_link(mat, "rgbtobw", in, out);
 }
 
-void register_node_type_sh_rgbtobw(ListBase *lb)
+void register_node_type_sh_rgbtobw(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, SH_NODE_RGBTOBW, "RGB to BW", NODE_CLASS_CONVERTOR, 0);
+	node_type_base(ttype, &ntype, SH_NODE_RGBTOBW, "RGB to BW", NODE_CLASS_CONVERTOR, 0);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING|NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, sh_node_rgbtobw_in, sh_node_rgbtobw_out);
 	node_type_size(&ntype, 80, 40, 120);
 	node_type_exec(&ntype, node_shader_exec_rgbtobw);
 	node_type_gpu(&ntype, gpu_shader_rgbtobw);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-

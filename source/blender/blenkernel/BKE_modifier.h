@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_MODIFIER_H
-#define BKE_MODIFIER_H
+#ifndef __BKE_MODIFIER_H__
+#define __BKE_MODIFIER_H__
 
 /** \file BKE_modifier.h
  *  \ingroup bke
@@ -35,7 +35,6 @@
 #include "BKE_customdata.h"
 
 struct ID;
-struct EditMesh;
 struct DerivedMesh;
 struct DagForest;
 struct DagNode;
@@ -45,6 +44,7 @@ struct ListBase;
 struct LinkNode;
 struct bArmature;
 struct ModifierData;
+struct BMEditMesh;
 
 typedef enum {
 	/* Should not be used, only for None modifier type */
@@ -65,6 +65,11 @@ typedef enum {
 	 * unless it's a mesh and can be exploded -> curve can also emit particles
 	 */
 	eModifierTypeType_DeformOrConstruct,
+
+	/* Like eModifierTypeType_Nonconstructive, but does not affect the geometry
+	 * of the object, rather some of its CustomData layers.
+	 * E.g. UVProject and WeightVG modifiers. */
+	eModifierTypeType_NonGeometrical,
 } ModifierTypeType;
 
 typedef enum {
@@ -87,14 +92,17 @@ typedef enum {
 	eModifierTypeFlag_RequiresOriginalData = (1<<5),
 
 	/* For modifiers that support pointcache, so we can check to see if it has files we need to deal with
-	*/
+	 */
 	eModifierTypeFlag_UsesPointCache = (1<<6),
 
 	/* For physics modifiers, max one per type */
 	eModifierTypeFlag_Single = (1<<7),
 
 	/* Some modifier can't be added manually by user */
-	eModifierTypeFlag_NoUserAdd = (1<<8)
+	eModifierTypeFlag_NoUserAdd = (1<<8),
+
+	/* For modifiers that use CD_PREVIEW_MCOL for preview. */
+	eModifierTypeFlag_UsesPreview = (1<<9)
 } ModifierTypeFlag;
 
 typedef void (*ObjectWalkFunc)(void *userData, struct Object *ob, struct Object **obpoin);
@@ -146,13 +154,13 @@ typedef struct ModifierTypeInfo {
 	 */
 	void (*deformVertsEM)(
 				struct ModifierData *md, struct Object *ob,
-				struct EditMesh *editData, struct DerivedMesh *derivedData,
+				struct BMEditMesh *editData, struct DerivedMesh *derivedData,
 				float (*vertexCos)[3], int numVerts);
 
 	/* Set deform matrix per vertex for crazyspace correction */
 	void (*deformMatricesEM)(
 				struct ModifierData *md, struct Object *ob,
-				struct EditMesh *editData, struct DerivedMesh *derivedData,
+				struct BMEditMesh *editData, struct DerivedMesh *derivedData,
 				float (*vertexCos)[3], float (*defMats)[3][3], int numVerts);
 
 	/********************* Non-deform modifier functions *********************/
@@ -190,7 +198,7 @@ typedef struct ModifierTypeInfo {
 	 */
 	struct DerivedMesh *(*applyModifierEM)(
 								struct ModifierData *md, struct Object *ob,
-								struct EditMesh *editData,
+								struct BMEditMesh *editData,
 								struct DerivedMesh *derivedData);
 
 
@@ -311,12 +319,14 @@ int           modifier_supportsMapping(struct ModifierData *md);
 int           modifier_couldBeCage(struct Scene *scene, struct ModifierData *md);
 int           modifier_isCorrectableDeformed(struct ModifierData *md);
 int			  modifier_sameTopology(ModifierData *md);
+int           modifier_nonGeometrical(ModifierData *md);
 int           modifier_isEnabled(struct Scene *scene, struct ModifierData *md, int required_mode);
 void          modifier_setError(struct ModifierData *md, const char *format, ...)
 #ifdef __GNUC__
 __attribute__ ((format (printf, 2, 3)))
 #endif
 ;
+int           modifier_isPreview(struct ModifierData *md);
 
 void          modifiers_foreachObjectLink(struct Object *ob,
 										  ObjectWalkFunc walk,
@@ -343,19 +353,28 @@ struct Object *modifiers_isDeformedByLattice(struct Object *ob);
 int           modifiers_usesArmature(struct Object *ob, struct bArmature *arm);
 int           modifiers_isCorrectableDeformed(struct Object *ob);
 void          modifier_freeTemporaryData(struct ModifierData *md);
+int           modifiers_isPreview(struct Object *ob);
 
 int           modifiers_indexInObject(struct Object *ob, struct ModifierData *md);
+
+typedef struct CDMaskLink {
+	struct CDMaskLink *next;
+	CustomDataMask mask;
+} CDMaskLink;
 
 /* Calculates and returns a linked list of CustomDataMasks indicating the
  * data required by each modifier in the stack pointed to by md for correct
  * evaluation, assuming the data indicated by dataMask is required at the
  * end of the stack.
  */
-struct LinkNode *modifiers_calcDataMasks(struct Scene *scene, 
-										 struct Object *ob,
-										 struct ModifierData *md,
-										 CustomDataMask dataMask,
-										 int required_mode);
+struct CDMaskLink *modifiers_calcDataMasks(struct Scene *scene, 
+										   struct Object *ob,
+										   struct ModifierData *md,
+										   CustomDataMask dataMask,
+										   int required_mode);
+struct ModifierData *modifiers_getLastPreview(struct Scene *scene,
+                                              struct ModifierData *md,
+                                              int required_mode);
 struct ModifierData  *modifiers_getVirtualModifierList(struct Object *ob);
 
 /* ensure modifier correctness when changing ob->data */
@@ -363,6 +382,9 @@ void test_object_modifiers(struct Object *ob);
 
 /* here for do_versions */
 void modifier_mdef_compact_influences(struct ModifierData *md);
+
+void        modifier_path_init(char *path, int path_maxlen, const char *name);
+const char *modifier_path_relbase(struct Object *ob);
 
 #endif
 

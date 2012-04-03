@@ -47,7 +47,7 @@ if(WITH_BLENDER)
 
 			# images
 			splash.png.c
-			blenderbuttons.c
+			blender_icons.png.c
 
 			# brushes
 			add.png.c
@@ -74,6 +74,7 @@ if(WITH_BLENDER)
 			smooth.png.c
 			snake_hook.png.c
 			soften.png.c
+			claystrips.png.c
 			subtract.png.c
 			texdraw.png.c
 			thumb.png.c

@@ -31,8 +31,8 @@
  * Declaration of GHOST_SystemCocoa class.
  */
 
-#ifndef _GHOST_SYSTEM_COCOA_H_
-#define _GHOST_SYSTEM_COCOA_H_
+#ifndef __GHOST_SYSTEMCOCOA_H__
+#define __GHOST_SYSTEMCOCOA_H__
 
 #ifndef __APPLE__
 #error Apple OSX only!
@@ -241,7 +241,9 @@ protected:
 	/**
 	 * Handles a tablet event.
 	 * @param eventPtr	An NSEvent pointer (casted to void* to enable compilation in standard C++)
-	 * @param eventType The type of the event. It needs to be passed separately as it can be either directly in the event type, or as a subtype if combined with a mouse button event
+	 * @param eventType The type of the event.
+	 * It needs to be passed separately as it can be either directly in the event type,
+	 * or as a subtype if combined with a mouse button event.
 	 * @return Indication whether the event was handled.
 	 */
 	GHOST_TSuccess handleTabletEvent(void *eventPtr, short eventType);
@@ -298,5 +300,5 @@ protected:
 	bool m_isGestureInProgress;
 };
 
-#endif // _GHOST_SYSTEM_COCOA_H_
+#endif // __GHOST_SYSTEMCOCOA_H__
 

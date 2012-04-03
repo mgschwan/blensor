@@ -108,7 +108,7 @@ void CParser::TermChar(char c)
 {
 	// generates an error if the next char isn't the specified char c,
 	// otherwise, skip the char
-	if(ch == c)
+	if (ch == c)
 	{
 		NextCh();
 	}
@@ -166,7 +166,7 @@ void CParser::GrabRealString(int start)
 	const_as_string = STR_String();
 	for (i=start;i<chcount;i++) {
 		tmpch= text[i];
-		if ((tmpch =='\\') && (text[i+1] == 'n')){
+		if ((tmpch =='\\') && (text[i+1] == 'n')) {
 			tmpch = '\n';
 			i++;
 		}
@@ -346,7 +346,8 @@ void CParser::NextSym()
 }
 
 #if 0
-int CParser::MakeInt() {
+int CParser::MakeInt()
+{
 	// returns the integer representation of the value in the global
 	// variable const_as_string
 	// pre: const_as_string contains only numercal chars
@@ -354,7 +355,8 @@ int CParser::MakeInt() {
 }
 #endif
 
-STR_String CParser::Symbol2Str(int s) {
+STR_String CParser::Symbol2Str(int s)
+{
 	// returns a string representation of of symbol s,
 	// for use in Term when generating an error
 	switch(s) {
@@ -373,10 +375,11 @@ STR_String CParser::Symbol2Str(int s) {
 	}
 }
 
-void CParser::Term(int s) {
+void CParser::Term(int s)
+{
 	// generates an error if the next symbol isn't the specified symbol s
 	// otherwise, skip the symbol
-	if(s == sym) NextSym();
+	if (s == sym) NextSym();
 	else {
 		STR_String msg;
 		msg.Format("Warning: " + Symbol2Str(s) + " expected\ncontinuing without it");
@@ -387,7 +390,8 @@ void CParser::Term(int s) {
 	}
 }
 
-int CParser::Priority(int optorkind) {
+int CParser::Priority(int optorkind)
+{
 	// returns the priority of an operator
 	// higher number means higher priority
 	switch(optorkind) {
@@ -409,7 +413,8 @@ int CParser::Priority(int optorkind) {
 	return 0;      // should not happen
 }
 
-CExpression *CParser::Ex(int i) {
+CExpression *CParser::Ex(int i)
+{
 	// parses an expression in the imput, starting at priority i, and
 	// returns an CExpression, containing the parsed input
 	CExpression *e1 = NULL, *e2 = NULL;
@@ -551,7 +556,8 @@ CExpression *CParser::Ex(int i) {
 	return e1;
 }
 
-CExpression *CParser::Expr() {
+CExpression *CParser::Expr()
+{
 	// parses an expression in the imput, and
 	// returns an CExpression, containing the parsed input
 	return Ex(1);
@@ -573,12 +579,12 @@ CExpression* CParser::ProcessText
 	}
 	
 	ch = text[0];
-	/*if (ch != '=') {
-	expr = new CConstExpr(new CStringValue(text));
-	*dependant = deplist;
-	return expr;
-	} else 
-	*/
+	/* if (ch != '=') {
+	 * expr = new CConstExpr(new CStringValue(text));
+	 * *dependent = deplist;
+	 * return expr;
+	 * } else
+	 */
 	//	NextCh();
 	NextSym();
 	expr = Expr();

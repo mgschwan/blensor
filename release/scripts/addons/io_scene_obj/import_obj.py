@@ -55,35 +55,17 @@ def line_value(line_split):
         return b' '.join(line_split[1:])
 
 
-def obj_image_load(imagepath, DIR, use_image_search):
+def obj_image_load(imagepath, DIR, recursive):
+    '''
+    Mainly uses comprehensiveImageLoad
+    but tries to replace '_' with ' ' for Max's exporter replaces spaces with underscores.
+    '''
     if b'_' in imagepath:
-        image = load_image(imagepath.replace(b'_', b' '), DIR)
+        image = load_image(imagepath.replace(b'_', b' '), DIR, recursive=recursive)
         if image:
             return image
 
-    image = load_image(imagepath, DIR)
-    if image:
-        return image
-
-    print("failed to load %r doesn't exist" % imagepath)
-    return None
-
-# def obj_image_load(imagepath, DIR, use_image_search):
-#     '''
-#     Mainly uses comprehensiveImageLoad
-#     but tries to replace '_' with ' ' for Max's exporter replaces spaces with underscores.
-#     '''
-
-#     if '_' in imagepath:
-#         image= BPyImage.comprehensiveImageLoad(imagepath, DIR, PLACE_HOLDER= False, RECURSIVE= use_image_search)
-#         if image: return image
-#         # Did the exporter rename the image?
-#         image= BPyImage.comprehensiveImageLoad(imagepath.replace('_', ' '), DIR, PLACE_HOLDER= False, RECURSIVE= use_image_search)
-#         if image: return image
-
-#     # Return an image, placeholder if it dosnt exist
-#     image= BPyImage.comprehensiveImageLoad(imagepath, DIR, PLACE_HOLDER= True, RECURSIVE= use_image_search)
-#     return image
+    return load_image(imagepath, DIR, recursive=recursive, place_holder=True)
 
 
 def create_materials(filepath, material_libs, unique_materials, unique_material_images, use_image_search):
@@ -124,6 +106,8 @@ def create_materials(filepath, material_libs, unique_materials, unique_material_
                 texture.use_alpha = True
                 blender_material.use_transparency = True
                 blender_material.alpha = 0.0
+
+                blender_material.game_settings.alpha_blend = 'ALPHA'
             else:
                 mtex = blender_material.texture_slots.add()
                 mtex.texture = texture
@@ -399,7 +383,7 @@ def split_mesh(verts_loc, faces, unique_materials, filepath, SPLIT_OB_OR_GROUP):
                 faces_split = []
                 verts_split = []
                 unique_materials_split = {}
-                vert_remap = [-1] * len(verts_loc)
+                vert_remap = {}
 
                 face_split_dict[key] = (verts_split, faces_split, unique_materials_split, vert_remap)
 
@@ -409,13 +393,13 @@ def split_mesh(verts_loc, faces, unique_materials, filepath, SPLIT_OB_OR_GROUP):
 
         # Remap verts to new vert list and add where needed
         for enum, i in enumerate(face_vert_loc_indices):
-            if vert_remap[i] == -1:
-                new_index = len(verts_split)
-                vert_remap[i] = new_index  # set the new remapped index so we only add once and can reference next time.
-                face_vert_loc_indices[enum] = new_index  # remap to the local index
+            map_index = vert_remap.get(i)
+            if map_index is None:
+                map_index = len(verts_split)
+                vert_remap[i] = map_index  # set the new remapped index so we only add once and can reference next time.
                 verts_split.append(verts_loc[i])  # add the vert to the local verts
-            else:
-                face_vert_loc_indices[enum] = vert_remap[i]  # remap to the local index
+
+            face_vert_loc_indices[enum] = map_index  # remap to the local index
 
             matname = face[2]
             if matname and matname not in unique_materials_split:
@@ -444,7 +428,7 @@ def create_mesh(new_objects,
     Takes all the data gathered and generates a mesh, adding the new object to new_objects
     deals with fgons, sharp edges and assigning materials
     '''
-    from bpy_extras.mesh_utils import ngon_tesselate
+    from bpy_extras.mesh_utils import ngon_tessellate
 
     if not has_ngons:
         use_ngons = False
@@ -506,7 +490,7 @@ def create_mesh(new_objects,
             # FGons into triangles
             if has_ngons and len_face_vert_loc_indices > 4:
 
-                ngon_face_indices = ngon_tesselate(verts_loc, face_vert_loc_indices)
+                ngon_face_indices = ngon_tessellate(verts_loc, face_vert_loc_indices)
                 faces.extend([([face_vert_loc_indices[ngon[0]],
                                 face_vert_loc_indices[ngon[1]],
                                 face_vert_loc_indices[ngon[2]],
@@ -566,7 +550,7 @@ def create_mesh(new_objects,
         me.materials.append(material)
 
     me.vertices.add(len(verts_loc))
-    me.faces.add(len(faces))
+    me.tessfaces.add(len(faces))
 
     # verts_loc is a list of (x, y, z) tuples
     me.vertices.foreach_set("co", unpack_list(verts_loc))
@@ -574,14 +558,14 @@ def create_mesh(new_objects,
     # faces is a list of (vert_indices, texco_indices, ...) tuples
     # XXX faces should contain either 3 or 4 verts
     # XXX no check for valid face indices
-    me.faces.foreach_set("vertices_raw", unpack_face_list([f[0] for f in faces]))
+    me.tessfaces.foreach_set("vertices_raw", unpack_face_list([f[0] for f in faces]))
 
-    if verts_tex and me.faces:
-        me.uv_textures.new()
+    if verts_tex and me.tessfaces:
+        me.tessface_uv_textures.new()
 
     context_material_old = -1  # avoid a dict lookup
     mat = 0  # rare case it may be un-initialized.
-    me_faces = me.faces
+    me_faces = me.tessfaces
 
     for i, face in enumerate(faces):
         if len(face[0]) < 2:
@@ -591,56 +575,54 @@ def create_mesh(new_objects,
                 edges.append(face[0])
         else:
 
-                blender_face = me.faces[i]
+            blender_face = me.tessfaces[i]
 
-                (face_vert_loc_indices,
-                 face_vert_tex_indices,
-                 context_material,
-                 context_smooth_group,
-                 context_object,
-                 ) = face
+            (face_vert_loc_indices,
+             face_vert_tex_indices,
+             context_material,
+             context_smooth_group,
+             context_object,
+             ) = face
 
-                if context_smooth_group:
-                    blender_face.use_smooth = True
+            if context_smooth_group:
+                blender_face.use_smooth = True
+
+            if context_material:
+                if context_material_old is not context_material:
+                    mat = material_mapping[context_material]
+                    context_material_old = context_material
+
+                blender_face.material_index = mat
+#                blender_face.mat= mat
+
+            if verts_tex:
+
+                blender_tface = me.tessface_uv_textures[0].data[i]
 
                 if context_material:
-                    if context_material_old is not context_material:
-                        mat = material_mapping[context_material]
-                        context_material_old = context_material
+                    image, has_data = unique_material_images[context_material]
+                    if image:  # Can be none if the material dosnt have an image.
+                        blender_tface.image = image
 
-                    blender_face.material_index = mat
-#                     blender_face.mat= mat
+                # BUG - Evil eekadoodle problem where faces that have vert index 0 location at 3 or 4 are shuffled.
+                if len(face_vert_loc_indices) == 4:
+                    if face_vert_loc_indices[2] == 0 or face_vert_loc_indices[3] == 0:
+                        face_vert_tex_indices = face_vert_tex_indices[2], face_vert_tex_indices[3], face_vert_tex_indices[0], face_vert_tex_indices[1]
+                else:  # length of 3
+                    if face_vert_loc_indices[2] == 0:
+                        face_vert_tex_indices = face_vert_tex_indices[1], face_vert_tex_indices[2], face_vert_tex_indices[0]
+                # END EEEKADOODLE FIX
 
-                if verts_tex:
+                # assign material, uv's and image
+                blender_tface.uv1 = verts_tex[face_vert_tex_indices[0]]
+                blender_tface.uv2 = verts_tex[face_vert_tex_indices[1]]
+                blender_tface.uv3 = verts_tex[face_vert_tex_indices[2]]
 
-                    blender_tface = me.uv_textures[0].data[i]
+                if len(face_vert_loc_indices) == 4:
+                    blender_tface.uv4 = verts_tex[face_vert_tex_indices[3]]
 
-                    if context_material:
-                        image, has_data = unique_material_images[context_material]
-                        if image:  # Can be none if the material dosnt have an image.
-                            blender_tface.image = image
-                            if has_data and image.depth == 32:
-                                blender_tface.alpha_blend = 'ALPHA'
-
-                    # BUG - Evil eekadoodle problem where faces that have vert index 0 location at 3 or 4 are shuffled.
-                    if len(face_vert_loc_indices) == 4:
-                        if face_vert_loc_indices[2] == 0 or face_vert_loc_indices[3] == 0:
-                            face_vert_tex_indices = face_vert_tex_indices[2], face_vert_tex_indices[3], face_vert_tex_indices[0], face_vert_tex_indices[1]
-                    else:  # length of 3
-                        if face_vert_loc_indices[2] == 0:
-                            face_vert_tex_indices = face_vert_tex_indices[1], face_vert_tex_indices[2], face_vert_tex_indices[0]
-                    # END EEEKADOODLE FIX
-
-                    # assign material, uv's and image
-                    blender_tface.uv1 = verts_tex[face_vert_tex_indices[0]]
-                    blender_tface.uv2 = verts_tex[face_vert_tex_indices[1]]
-                    blender_tface.uv3 = verts_tex[face_vert_tex_indices[2]]
-
-                    if len(face_vert_loc_indices) == 4:
-                        blender_tface.uv4 = verts_tex[face_vert_tex_indices[3]]
-
-#                     for ii, uv in enumerate(blender_face.uv):
-#                         uv.x, uv.y=  verts_tex[face_vert_tex_indices[ii]]
+#                for ii, uv in enumerate(blender_face.uv):
+#                    uv.x, uv.y=  verts_tex[face_vert_tex_indices[ii]]
     del me_faces
 #     del ALPHA
 
@@ -878,29 +860,32 @@ def load(operator, context, filepath,
 
     file = open(filepath, 'rb')
     for line in file:  # .readlines():
-        line = line.lstrip()  # rare cases there is white space at the start of the line
+        line_split = line.split()
 
-        if line.startswith(b"v "):
-            line_split = line.split()
+        if not line_split:
+            continue
+
+        line_start = line_split[0]  # we compare with this a _lot_
+
+        if line_start == b'v':
             verts_loc.append((float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3])))
 
-        elif line.startswith(b"vn "):
+        elif line_start == b'vn':
             pass
 
-        elif line.startswith(b"vt "):
-            line_split = line.split()
+        elif line_start == b'vt':
             verts_tex.append((float_func(line_split[1]), float_func(line_split[2])))
 
         # Handel faces lines (as faces) and the second+ lines of fa multiline face here
         # use 'f' not 'f ' because some objs (very rare have 'fo ' for faces)
-        elif line.startswith(b'f') or context_multi_line == b'f':
+        elif line_start == b'f' or context_multi_line == b'f':
 
             if context_multi_line:
                 # use face_vert_loc_indices and face_vert_tex_indices previously defined and used the obj_face
-                line_split = line.split()
+                pass
 
             else:
-                line_split = line[2:].split()
+                line_split = line_split[1:]
                 face_vert_loc_indices = []
                 face_vert_tex_indices = []
 
@@ -948,15 +933,15 @@ def load(operator, context, filepath,
             if len(face_vert_loc_indices) > 4:
                 has_ngons = True
 
-        elif use_edges and (line.startswith(b'l ') or context_multi_line == b'l'):
+        elif use_edges and (line_start == b'l' or context_multi_line == b'l'):
             # very similar to the face load function above with some parts removed
 
             if context_multi_line:
                 # use face_vert_loc_indices and face_vert_tex_indices previously defined and used the obj_face
-                line_split = line.split()
+                pass
 
             else:
-                line_split = line[2:].split()
+                line_split = line_split[1:]
                 face_vert_loc_indices = []
                 face_vert_tex_indices = []
 
@@ -973,7 +958,7 @@ def load(operator, context, filepath,
             else:
                 context_multi_line = b''
 
-            # isline = line.startswith(b'l')  # UNUSED
+            # isline = line_start == b'l'  # UNUSED
 
             for v in line_split:
                 vert_loc_index = int(v) - 1
@@ -984,20 +969,20 @@ def load(operator, context, filepath,
 
                 face_vert_loc_indices.append(vert_loc_index)
 
-        elif line.startswith(b's'):
+        elif line_start == b's':
             if use_smooth_groups:
-                context_smooth_group = line_value(line.split())
+                context_smooth_group = line_value(line_split)
                 if context_smooth_group == b'off':
                     context_smooth_group = None
                 elif context_smooth_group:  # is not None
                     unique_smooth_groups[context_smooth_group] = None
 
-        elif line.startswith(b'o'):
+        elif line_start == b'o':
             if use_split_objects:
-                context_object = line_value(line.split())
+                context_object = line_value(line_split)
                 # unique_obects[context_object]= None
 
-        elif line.startswith(b'g'):
+        elif line_start == b'g':
             if use_split_groups:
                 context_object = line_value(line.split())
                 # print 'context_object', context_object
@@ -1009,18 +994,16 @@ def load(operator, context, filepath,
                 else:
                     context_vgroup = None  # dont assign a vgroup
 
-        elif line.startswith(b'usemtl'):
+        elif line_start == b'usemtl':
             context_material = line_value(line.split())
             unique_materials[context_material] = None
-        elif line.startswith(b'mtllib'):  # usemap or usemat
+        elif line_start == b'mtllib':  # usemap or usemat
             material_libs = list(set(material_libs) | set(line.split()[1:]))  # can have multiple mtllib filenames per line, mtllib can appear more than once, so make sure only occurance of material exists
 
             # Nurbs support
-        elif line.startswith(b'cstype '):
+        elif line_start == b'cstype':
             context_nurbs[b'cstype'] = line_value(line.split())  # 'rat bspline' / 'bspline'
-        elif line.startswith(b'curv ') or context_multi_line == b'curv':
-            line_split = line.split()
-
+        elif line_start == b'curv' or context_multi_line == b'curv':
             curv_idx = context_nurbs[b'curv_idx'] = context_nurbs.get(b'curv_idx', [])  # in case were multiline
 
             if not context_multi_line:
@@ -1040,9 +1023,7 @@ def load(operator, context, filepath,
 
                 curv_idx.append(vert_loc_index)
 
-        elif line.startswith(b'parm') or context_multi_line == b'parm':
-            line_split = line.split()
-
+        elif line_start == b'parm' or context_multi_line == b'parm':
             if context_multi_line:
                 context_multi_line = b''
             else:
@@ -1060,9 +1041,9 @@ def load(operator, context, filepath,
                 context_nurbs.setdefault(b'parm_v', []).extend([float_func(f) for f in line_split])
             # else: # may want to support other parm's ?
 
-        elif line.startswith(b'deg '):
+        elif line_start == b'deg':
             context_nurbs[b'deg'] = [int(i) for i in line.split()[1:]]
-        elif line.startswith(b'end'):
+        elif line_start == b'end':
             # Add the nurbs curve
             if context_object:
                 context_nurbs[b'name'] = context_object
@@ -1071,8 +1052,8 @@ def load(operator, context, filepath,
             context_parm = b''
 
         ''' # How to use usemap? depricated?
-        elif line.startswith(b'usema'): # usemap or usemat
-            context_image= line_value(line.split())
+        elif line_start == b'usema': # usemap or usemat
+            context_image= line_value(line_split)
         '''
 
     file.close()

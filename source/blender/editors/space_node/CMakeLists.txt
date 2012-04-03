@@ -25,6 +25,7 @@ set(INC
 	../../blenlib
 	../../blenloader
 	../../imbuf
+	../../gpu
 	../../makesdna
 	../../makesrna
 	../../nodes
@@ -47,9 +48,14 @@ set(SRC
 	node_ops.c
 	node_select.c
 	node_state.c
+	node_templates.c
 	space_node.c
 
 	node_intern.h
 )
+
+if(WITH_INTERNATIONAL)
+	add_definitions(-DWITH_INTERNATIONAL)
+endif()
 
 blender_add_lib(bf_editor_space_node "${SRC}" "${INC}" "${INC_SYS}")

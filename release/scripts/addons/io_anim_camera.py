@@ -23,7 +23,6 @@ bl_info = {
     "author": "Campbell Barton",
     "version": (0, 1),
     "blender": (2, 5, 7),
-    "api": 36079,
     "location": "File > Export > Cameras & Markers (.py)",
     "description": "Export Cameras & Markers (.py)",
     "warning": "",
@@ -87,9 +86,9 @@ def writeCameras(context, filepath, frame_start, frame_end, only_selected=False)
             fw("obj = cameras['%s']\n" % obj.name)
 
             matrix = obj.matrix_world.copy()
-            fw("obj.location = %r\n" % matrix.to_translation()[:])
-            fw("obj.scale = %r\n" % matrix.to_scale()[:])
-            fw("obj.rotation_euler = %r\n" % matrix.to_euler()[:])
+            fw("obj.location = %r, %r, %r\n" % matrix.to_translation()[:])
+            fw("obj.scale = %r, %r, %r\n" % matrix.to_scale()[:])
+            fw("obj.rotation_euler = %r, %r, %r\n" % matrix.to_euler()[:])
 
             fw("obj.keyframe_insert('location')\n")
             fw("obj.keyframe_insert('scale')\n")
@@ -119,7 +118,7 @@ from bpy_extras.io_utils import ExportHelper
 
 
 class CameraExporter(bpy.types.Operator, ExportHelper):
-    '''Save a python script which re-creartes cameras and markers elsewhere'''
+    '''Save a python script which re-creates cameras and markers elsewhere'''
     bl_idname = "export_animation.cameras"
     bl_label = "Export Camera & Markers"
 

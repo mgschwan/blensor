@@ -21,7 +21,6 @@ bl_info = {
     "author": "Pontiac, Fourmadmen, Dreampainter",
     "version": (0, 4),
     "blender": (2, 5, 7),
-    "api": 35853,
     "location": "View3D > Add > Mesh > Gemstones",
     "description": "Adds various gemstone (Diamond & Gem) meshes.",
     "warning": "",
@@ -239,10 +238,10 @@ def add_diamond(segments, girdle_radius, table_radius,
 
 
 class AddDiamond(bpy.types.Operator):
-    '''Add a diamond mesh.'''
+    '''Add a diamond mesh'''
     bl_idname = "mesh.primitive_diamond_add"
     bl_label = "Add Diamond"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'PRESET'}
 
     segments = IntProperty(name="Segments",
         description="Number of segments for the diamond",
@@ -287,7 +286,7 @@ class AddGem(bpy.types.Operator):
     bl_idname = "mesh.primitive_gem_add"
     bl_label = "Add Gem"
     bl_description = "Create an offset faceted gem"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'PRESET'}
 
     segments = IntProperty(name="Segments",
         description="Longitudial segmentation",

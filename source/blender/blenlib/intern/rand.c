@@ -78,11 +78,13 @@ void rng_free(RNG* rng)
 	MEM_freeN(rng);
 }
 
-void rng_seed(RNG *rng, unsigned int seed) {
+void rng_seed(RNG *rng, unsigned int seed)
+{
 	rng->X= (((r_uint64) seed)<<16) | LOWSEED;
 }
 
-void rng_srandom(RNG *rng, unsigned int seed) {
+void rng_srandom(RNG *rng, unsigned int seed)
+{
 	rng_seed(rng, seed + hash[seed & 255]);
 	seed= rng_getInt(rng);
 	rng_seed(rng, seed + hash[seed & 255]);
@@ -90,27 +92,36 @@ void rng_srandom(RNG *rng, unsigned int seed) {
 	rng_seed(rng, seed + hash[seed & 255]);
 }
 
-int rng_getInt(RNG *rng) {
+int rng_getInt(RNG *rng)
+{
 	rng->X= (MULTIPLIER*rng->X + ADDEND)&MASK;
 	return (int) (rng->X>>17);
 }
 
-double rng_getDouble(RNG *rng) {
+double rng_getDouble(RNG *rng)
+{
 	return (double) rng_getInt(rng)/0x80000000;
 }
 
-float rng_getFloat(RNG *rng) {
+float rng_getFloat(RNG *rng)
+{
 	return (float) rng_getInt(rng)/0x80000000;
 }
 
 void rng_shuffleArray(RNG *rng, void *data, int elemSize, int numElems)
 {
 	int i = numElems;
-	void *temp = malloc(elemSize);
+	void *temp;
+
+	if (numElems <= 0) {
+		return;
+	}
+
+	temp = malloc(elemSize);
 
 	while (--i) {
 		int j = rng_getInt(rng)%numElems;
-		if(i!=j) {
+		if (i!=j) {
 			void *iElem = (unsigned char*)data + i*elemSize;
 			void *jElem = (unsigned char*)data + j*elemSize;
 			memcpy(temp, iElem, elemSize);
@@ -126,7 +137,7 @@ void rng_skip(RNG *rng, int n)
 {
 	int i;
 
-	for(i=0; i<n; i++)
+	for (i=0; i<n; i++)
 		rng_getInt(rng);
 }
 
@@ -135,28 +146,34 @@ void rng_skip(RNG *rng, int n)
 static RNG theBLI_rng = {0};
 
 /* note, this one creates periodical patterns */
-void BLI_srand(unsigned int seed) {
+void BLI_srand(unsigned int seed)
+{
 	rng_seed(&theBLI_rng, seed);
 }
 
 /* using hash table to create better seed */
-void BLI_srandom(unsigned int seed) {
+void BLI_srandom(unsigned int seed)
+{
 	rng_srandom(&theBLI_rng, seed);
 }
 
-int BLI_rand(void) {
+int BLI_rand(void)
+{
 	return rng_getInt(&theBLI_rng);
 }
 
-double BLI_drand(void) {
+double BLI_drand(void)
+{
 	return rng_getDouble(&theBLI_rng);
 }
 
-float BLI_frand(void) {
+float BLI_frand(void)
+{
 	return rng_getFloat(&theBLI_rng);
 }
 
-void BLI_fillrand(void *addr, int len) {
+void BLI_fillrand(void *addr, int len)
+{
 	RNG rng;
 	unsigned char *p= addr;
 
@@ -178,7 +195,7 @@ static RNG rng_tab[BLENDER_MAX_THREADS];
 
 void BLI_thread_srandom(int thread, unsigned int seed)
 {
-	if(thread >= BLENDER_MAX_THREADS)
+	if (thread >= BLENDER_MAX_THREADS)
 		thread= 0;
 	
 	rng_seed(&rng_tab[thread], seed + hash[seed & 255]);
@@ -188,11 +205,13 @@ void BLI_thread_srandom(int thread, unsigned int seed)
 	rng_seed(&rng_tab[thread], seed + hash[seed & 255]);
 }
 
-int BLI_thread_rand(int thread) {
+int BLI_thread_rand(int thread)
+{
 	return rng_getInt(&rng_tab[thread]);
 }
 
-float BLI_thread_frand(int thread) {
+float BLI_thread_frand(int thread)
+{
 	return rng_getFloat(&rng_tab[thread]);
 }
 

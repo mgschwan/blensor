@@ -3,7 +3,6 @@ bl_info = {
     "author": "Michael Wiliamson",
     "version": (1, 0),
     "blender": (2, 5, 7),
-    "api": 35964,
     "location": "Texture Paint > Properties > Texture Paint Layers Panels",
     "description": "Adds a layer manager for image based texture slots in paint and quick add layer tools",
     "warning": "",
@@ -185,7 +184,7 @@ class OBJECT_PT_Texture_paint_layers(bpy.types.Panel):
                                 ic = 'RESTRICT_VIEW_ON'
                             row.prop(t,'use', text = "",icon = ic)
                     except:
-                         continue
+                        continue
     
             
     
@@ -347,16 +346,17 @@ def main(context,tn):
     m_id = ob.active_material_index 
 
     if img:
-        for f in me.faces:  
+        for f in me.polygons:  
             if f.material_index == m_id:
-                uvtex[f.index].select_uv
                 uvtex[f.index].image = img
+        print('if')
             
 
     else:
-        for f in me.faces:  
+        for f in me.polygons:  
             if f.material_index == m_id:
                 uvtex[f.index].image = None
+        print('else')
     me.update()
 
 
@@ -446,7 +446,7 @@ def add_paint(context, size =2048, typ = 'NORMAL'):
         ts.use_map_normal = True
         ts.use_map_color_diffuse =False
         ts.normal_factor = -1
-        ts.bump_method='BUMP_DEFAULT'
+        ts.bump_method='BUMP_ORIGINAL'
         ts.bump_objectspace='BUMP_OBJECTSPACE'
         
     elif typ == 'SPECULAR':
@@ -558,7 +558,7 @@ def save_painted(ts):
                     elif i.file_format =='TARGA':   
                         name = name +'.tga' 
                         
-                    bpy.context.scene.render.color_mode = 'RGBA'                          
+                    bpy.context.scene.render.image_settings.color_mode = 'RGBA'                          
                     fp =bpy.path.abspath('//textures' + sep + name)
                     try:
                         i.save_render(fp)

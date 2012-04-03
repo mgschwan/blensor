@@ -111,7 +111,15 @@ class DATA_PT_shape_curve(CurveButtonsPanel, Panel):
             sub = col.column()
             sub.active = (curve.dimensions == '2D' or (curve.bevel_object is None and curve.dimensions == '3D'))
             sub.prop(curve, "fill_mode", text="")
-            col.prop(curve, "use_fill_deform", text="Fill Deformed")
+            col.prop(curve, "use_fill_deform")
+
+        if is_curve:
+            col.label(text="Path / Curve-Deform:")
+            sub = col.column()
+            rowsub = sub.row()
+            rowsub.prop(curve, "use_radius")
+            rowsub.prop(curve, "use_stretch")
+            sub.prop(curve, "use_deform_bounds")
 
 
 class DATA_PT_curve_texture_space(CurveButtonsPanel, Panel):
@@ -165,6 +173,10 @@ class DATA_PT_geometry_curve(CurveButtonsPanel, Panel):
         col.label(text="Bevel Object:")
         col.prop(curve, "bevel_object", text="")
 
+        row = col.row()
+        row.active = (curve.bevel_object is not None)
+        row.prop(curve, "use_fill_caps")
+
 
 class DATA_PT_pathanim(CurveButtonsPanelCurve, Panel):
     bl_label = "Path Animation"
@@ -185,16 +197,10 @@ class DATA_PT_pathanim(CurveButtonsPanelCurve, Panel):
         layout.prop(curve, "path_duration", text="Frames")
         layout.prop(curve, "eval_time")
 
-        split = layout.split()
-
-        col = split.column()
-        col.prop(curve, "use_path_follow")
-        col.prop(curve, "use_stretch")
-        col.prop(curve, "use_deform_bounds")
-
-        col = split.column()
-        col.prop(curve, "use_radius")
-        col.prop(curve, "use_time_offset", text="Offset Children")
+        # these are for paths only
+        row = layout.row()
+        row.prop(curve, "use_path_follow")
+        row.prop(curve, "use_time_offset", text="Offset Children")
 
 
 class DATA_PT_active_spline(CurveButtonsPanelActive, Panel):
@@ -213,13 +219,12 @@ class DATA_PT_active_spline(CurveButtonsPanelActive, Panel):
 
         if is_poly:
             # These settings are below but its easier to have
-            # poly's set aside since they use so few settings
-            col = split.column()
-            col.label(text="Cyclic:")
-            col.prop(act_spline, "use_smooth")
-            col = split.column()
-            col.prop(act_spline, "use_cyclic_u", text="U")
+            # polys set aside since they use so few settings
+            row = layout.row()
+            row.label(text="Cyclic:")
+            row.prop(act_spline, "use_cyclic_u", text="U")
 
+            layout.prop(act_spline, "use_smooth")
         else:
             col = split.column()
             col.label(text="Cyclic:")
@@ -247,7 +252,7 @@ class DATA_PT_active_spline(CurveButtonsPanelActive, Panel):
                 col = split.column()
                 col.prop(act_spline, "use_cyclic_v", text="V")
 
-                # its a surface, assume its a nurb.
+                # its a surface, assume its a nurbs
                 sub = col.column()
                 sub.active = (not act_spline.use_cyclic_v)
                 sub.prop(act_spline, "use_bezier_v", text="V")
@@ -257,13 +262,13 @@ class DATA_PT_active_spline(CurveButtonsPanelActive, Panel):
                 sub.prop(act_spline, "resolution_v", text="V")
 
             if not is_surf:
-                split = layout.split()
-                col = split.column()
-
+                col = layout.column()
                 col.label(text="Interpolation:")
-                colsub = col.column()
-                colsub.active = (curve.dimensions == '3D')
-                colsub.prop(act_spline, "tilt_interpolation", text="Tilt")
+
+                sub = col.column()
+                sub.active = (curve.dimensions == '3D')
+                sub.prop(act_spline, "tilt_interpolation", text="Tilt")
+
                 col.prop(act_spline, "radius_interpolation", text="Radius")
 
             layout.prop(act_spline, "use_smooth")

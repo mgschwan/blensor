@@ -32,18 +32,18 @@
  */
 
  
-#ifndef BOP_MESH_H
-#define BOP_MESH_H
+#ifndef __BOP_MESH_H__
+#define __BOP_MESH_H__
 
 #include "BOP_Vertex.h"
 #include "BOP_Edge.h"
 #include "BOP_Face.h"
 #include "DNA_listBase.h"
 
-typedef vector<BOP_Vertex *> BOP_Vertexs;
-typedef vector<BOP_Edge *> BOP_Edges;
-typedef vector<BOP_Vertex *>::iterator BOP_IT_Vertexs;
-typedef vector<BOP_Edge *>::iterator BOP_IT_Edges;
+typedef std::vector<BOP_Vertex *> BOP_Vertexs;
+typedef std::vector<BOP_Edge *> BOP_Edges;
+typedef std::vector<BOP_Vertex *>::iterator BOP_IT_Vertexs;
+typedef std::vector<BOP_Edge *>::iterator BOP_IT_Edges;
 
 #ifdef HASH
 typedef struct EdgeEntry {
@@ -100,7 +100,7 @@ public:
 	BOP_Index replaceVertexIndex(BOP_Index oldIndex, BOP_Index newIndex);
 #ifdef HASH
 	void rehashVertex(BOP_Index oldIndex, BOP_Index newIndex,
-		   	BOP_Index otherIndex);
+			BOP_Index otherIndex);
 #endif
 	bool isClosedMesh();
 

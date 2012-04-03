@@ -43,6 +43,7 @@
 #include "BKE_context.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
+#include "BKE_report.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -80,13 +81,13 @@ static int toolbox_invoke(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(e
 void BUTTONS_OT_toolbox(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Toolbox";
-	ot->description="Display button panel toolbox";
-	ot->idname= "BUTTONS_OT_toolbox";
+	ot->name = "Toolbox";
+	ot->description = "Display button panel toolbox";
+	ot->idname = "BUTTONS_OT_toolbox";
 	
 	/* api callbacks */
-	ot->invoke= toolbox_invoke;
-	ot->poll= ED_operator_buttons_active;
+	ot->invoke = toolbox_invoke;
+	ot->poll = ED_operator_buttons_active;
 }
 
 /********************** filebrowse operator *********************/
@@ -100,25 +101,24 @@ static int file_browse_exec(bContext *C, wmOperator *op)
 {
 	FileBrowseOp *fbo= op->customdata;
 	ID *id;
-	char *base, *str, path[FILE_MAX];
+	char *str, path[FILE_MAX];
 	const char *path_prop= RNA_struct_find_property(op->ptr, "directory") ? "directory" : "filepath";
 	
-	if (RNA_property_is_set(op->ptr, path_prop)==0 || fbo==NULL)
+	if (RNA_struct_property_is_set(op->ptr, path_prop)==0 || fbo==NULL)
 		return OPERATOR_CANCELLED;
 	
 	str= RNA_string_get_alloc(op->ptr, path_prop, NULL, 0);
 
 	/* add slash for directories, important for some properties */
-	if(RNA_property_subtype(fbo->prop) == PROP_DIRPATH) {
+	if (RNA_property_subtype(fbo->prop) == PROP_DIRPATH) {
 		char name[FILE_MAX];
 		
 		id = fbo->ptr.id.data;
-		base = (id && id->lib)? id->lib->filepath: G.main->name;
 
 		BLI_strncpy(path, str, FILE_MAX);
-		BLI_path_abs(path, base);
+		BLI_path_abs(path, id ? ID_BLEND_PATH(G.main, id) : G.main->name);
 		
-		if(BLI_is_dir(path)) {
+		if (BLI_is_dir(path)) {
 			str = MEM_reallocN(str, strlen(str)+2);
 			BLI_add_slash(str);
 		}
@@ -134,8 +134,8 @@ static int file_browse_exec(bContext *C, wmOperator *op)
 	/* special, annoying exception, filesel on redo panel [#26618] */
 	{
 		wmOperator *redo_op= WM_operator_last_redo(C);
-		if(redo_op) {
-			if(fbo->ptr.data == redo_op->ptr->data) {
+		if (redo_op) {
+			if (fbo->ptr.data == redo_op->ptr->data) {
 				ED_undo_operator_repeat(C, redo_op);
 			}
 		}
@@ -161,21 +161,26 @@ static int file_browse_invoke(bContext *C, wmOperator *op, wmEvent *event)
 	FileBrowseOp *fbo;
 	char *str;
 
+	if (CTX_wm_space_file(C)) {
+		BKE_report(op->reports, RPT_ERROR, "Can't activate a file selector, one already open");
+		return OPERATOR_CANCELLED;
+	}
+
 	uiFileBrowseContextProperty(C, &ptr, &prop);
 
-	if(!prop)
+	if (!prop)
 		return OPERATOR_CANCELLED;
 
 	str= RNA_property_string_get_alloc(&ptr, prop, NULL, 0, NULL);
 
 	/* useful yet irritating feature, Shift+Click to open the file
 	 * Alt+Click to browse a folder in the OS's browser */
-	if(event->shift || event->alt) {
+	if (event->shift || event->alt) {
 		PointerRNA props_ptr;
 
-		if(event->alt) {
+		if (event->alt) {
 			char *lslash= BLI_last_slash(str);
-			if(lslash)
+			if (lslash)
 				*lslash= '\0';
 		}
 
@@ -200,8 +205,8 @@ static int file_browse_invoke(bContext *C, wmOperator *op, wmEvent *event)
 
 		/* normally ED_fileselect_get_params would handle this but we need to because of stupid
 		 * user-prefs exception - campbell */
-		if(RNA_struct_find_property(op->ptr, "relative_path")) {
-			if(!RNA_property_is_set(op->ptr, "relative_path")) {
+		if (RNA_struct_find_property(op->ptr, "relative_path")) {
+			if (!RNA_struct_property_is_set(op->ptr, "relative_path")) {
 				/* annoying exception!, if were dealign with the user prefs, default relative to be off */
 				RNA_boolean_set(op->ptr, "relative_path", U.flag & USER_RELPATHS && (ptr.data != &U));
 			}
@@ -215,32 +220,32 @@ static int file_browse_invoke(bContext *C, wmOperator *op, wmEvent *event)
 void BUTTONS_OT_file_browse(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Accept";
-	ot->description="Open a file browser, Hold Shift to open the file, Alt to browse containing directory";
-	ot->idname= "BUTTONS_OT_file_browse";
+	ot->name = "Accept";
+	ot->description = "Open a file browser, Hold Shift to open the file, Alt to browse containing directory";
+	ot->idname = "BUTTONS_OT_file_browse";
 	
 	/* api callbacks */
-	ot->invoke= file_browse_invoke;
-	ot->exec= file_browse_exec;
-	ot->cancel= file_browse_cancel;
+	ot->invoke = file_browse_invoke;
+	ot->exec = file_browse_exec;
+	ot->cancel = file_browse_cancel;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, 0, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH|WM_FILESEL_RELPATH);
+	WM_operator_properties_filesel(ot, 0, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH|WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 }
 
 /* second operator, only difference from BUTTONS_OT_file_browse is WM_FILESEL_DIRECTORY */
 void BUTTONS_OT_directory_browse(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Accept";
-	ot->description="Open a directory browser, Hold Shift to open the file, Alt to browse containing directory";
-	ot->idname= "BUTTONS_OT_directory_browse";
+	ot->name = "Accept";
+	ot->description = "Open a directory browser, Hold Shift to open the file, Alt to browse containing directory";
+	ot->idname = "BUTTONS_OT_directory_browse";
 
 	/* api callbacks */
-	ot->invoke= file_browse_invoke;
-	ot->exec= file_browse_exec;
-	ot->cancel= file_browse_cancel;
+	ot->invoke = file_browse_invoke;
+	ot->exec = file_browse_exec;
+	ot->cancel = file_browse_cancel;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, 0, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_DIRECTORY|WM_FILESEL_RELPATH);
+	WM_operator_properties_filesel(ot, 0, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_DIRECTORY|WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 }

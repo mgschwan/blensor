@@ -19,6 +19,12 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Header, Menu, Panel
+from .properties_paint_common import UnifiedPaintPanel
+
+
+class ImagePaintPanel(UnifiedPaintPanel):
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'UI'
 
 
 class BrushButtonsPanel():
@@ -52,7 +58,8 @@ class IMAGE_MT_view(Menu):
         layout.prop(sima, "use_realtime_update")
         if show_uvedit:
             layout.prop(toolsettings, "show_uv_local_view")
-            layout.prop(uv, "show_other_objects")
+
+        layout.prop(uv, "show_other_objects")
 
         layout.separator()
 
@@ -61,7 +68,7 @@ class IMAGE_MT_view(Menu):
 
         layout.separator()
 
-        ratios = [[1, 8], [1, 4], [1, 2], [1, 1], [2, 1], [4, 1], [8, 1]]
+        ratios = ((1, 8), (1, 4), (1, 2), (1, 1), (2, 1), (4, 1), (8, 1))
 
         for a, b in ratios:
             layout.operator("image.view_zoom_ratio", text="Zoom" + " %d:%d" % (a, b)).ratio = a / b
@@ -85,12 +92,12 @@ class IMAGE_MT_select(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator("uv.select_border")
-        layout.operator("uv.select_border").pinned = True
+        layout.operator("uv.select_border").pinned = False
+        layout.operator("uv.select_border", text="Border Select Pinned").pinned = True
 
         layout.separator()
 
-        layout.operator("uv.select_all")
+        layout.operator("uv.select_all").action = 'TOGGLE'
         layout.operator("uv.select_all", text="Inverse").action = 'INVERT'
         layout.operator("uv.unlink_selected")
 
@@ -143,12 +150,14 @@ class IMAGE_MT_image(Menu):
                 # only for dirty && specific image types, perhaps
                 # this could be done in operator poll too
                 if ima.is_dirty:
-                    if ima.source in {'FILE', 'GENERATED'} and ima.type != 'MULTILAYER':
+                    if ima.source in {'FILE', 'GENERATED'} and ima.type != 'OPEN_EXR_MULTILAYER':
                         layout.operator("image.pack", text="Pack As PNG").as_png = True
 
-            layout.separator()
+            if not context.tool_settings.use_uv_sculpt:
+                layout.separator()
+                layout.prop(sima, "use_image_paint")
 
-            layout.prop(sima, "use_image_paint")
+            layout.separator()
 
 
 class IMAGE_MT_image_invert(Menu):
@@ -184,7 +193,7 @@ class IMAGE_MT_uvs_showhide(Menu):
         layout = self.layout
 
         layout.operator("uv.reveal")
-        layout.operator("uv.hide", text="Hide Selected")
+        layout.operator("uv.hide", text="Hide Selected").unselected = False
         layout.operator("uv.hide", text="Hide Unselected").unselected = True
 
 
@@ -256,6 +265,10 @@ class IMAGE_MT_uvs(Menu):
 
         layout.separator()
 
+        layout.prop(toolsettings, "use_uv_sculpt")
+
+        layout.separator()
+
         layout.prop(uv, "use_live_unwrap")
         layout.operator("uv.unwrap")
         layout.operator("uv.pin", text="Unpin").clear = True
@@ -267,6 +280,8 @@ class IMAGE_MT_uvs(Menu):
         layout.operator("uv.average_islands_scale")
         layout.operator("uv.minimize_stretch")
         layout.operator("uv.stitch")
+        layout.operator("uv.mark_seam")
+        layout.operator("uv.seams_from_islands")
         layout.operator("mesh.faces_mirror_uv")
 
         layout.separator()
@@ -298,34 +313,34 @@ class IMAGE_MT_uvs_select_mode(Menu):
         # do smart things depending on whether uv_select_sync is on
 
         if toolsettings.use_uv_select_sync:
-            prop = layout.operator("wm.context_set_value", text="Vertex", icon='VERTEXSEL')
-            prop.value = "(True, False, False)"
-            prop.data_path = "tool_settings.mesh_select_mode"
+            props = layout.operator("wm.context_set_value", text="Vertex", icon='VERTEXSEL')
+            props.value = "(True, False, False)"
+            props.data_path = "tool_settings.mesh_select_mode"
 
-            prop = layout.operator("wm.context_set_value", text="Edge", icon='EDGESEL')
-            prop.value = "(False, True, False)"
-            prop.data_path = "tool_settings.mesh_select_mode"
+            props = layout.operator("wm.context_set_value", text="Edge", icon='EDGESEL')
+            props.value = "(False, True, False)"
+            props.data_path = "tool_settings.mesh_select_mode"
 
-            prop = layout.operator("wm.context_set_value", text="Face", icon='FACESEL')
-            prop.value = "(False, False, True)"
-            prop.data_path = "tool_settings.mesh_select_mode"
+            props = layout.operator("wm.context_set_value", text="Face", icon='FACESEL')
+            props.value = "(False, False, True)"
+            props.data_path = "tool_settings.mesh_select_mode"
 
         else:
-            prop = layout.operator("wm.context_set_string", text="Vertex", icon='UV_VERTEXSEL')
-            prop.value = "VERTEX"
-            prop.data_path = "tool_settings.uv_select_mode"
+            props = layout.operator("wm.context_set_string", text="Vertex", icon='UV_VERTEXSEL')
+            props.value = 'VERTEX'
+            props.data_path = "tool_settings.uv_select_mode"
 
-            prop = layout.operator("wm.context_set_string", text="Edge", icon='UV_EDGESEL')
-            prop.value = "EDGE"
-            prop.data_path = "tool_settings.uv_select_mode"
+            props = layout.operator("wm.context_set_string", text="Edge", icon='UV_EDGESEL')
+            props.value = 'EDGE'
+            props.data_path = "tool_settings.uv_select_mode"
 
-            prop = layout.operator("wm.context_set_string", text="Face", icon='UV_FACESEL')
-            prop.value = "FACE"
-            prop.data_path = "tool_settings.uv_select_mode"
+            props = layout.operator("wm.context_set_string", text="Face", icon='UV_FACESEL')
+            props.value = 'FACE'
+            props.data_path = "tool_settings.uv_select_mode"
 
-            prop = layout.operator("wm.context_set_string", text="Island", icon='UV_ISLANDSEL')
-            prop.value = "ISLAND"
-            prop.data_path = "tool_settings.uv_select_mode"
+            props = layout.operator("wm.context_set_string", text="Island", icon='UV_ISLANDSEL')
+            props.value = 'ISLAND'
+            props.data_path = "tool_settings.uv_select_mode"
 
 
 class IMAGE_HT_header(Header):
@@ -632,7 +647,7 @@ class IMAGE_PT_view_properties(Panel):
             sub.row().prop(uvedit, "draw_stretch_type", expand=True)
 
 
-class IMAGE_PT_paint(Panel):
+class IMAGE_PT_paint(Panel, ImagePaintPanel):
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'UI'
     bl_label = "Paint"
@@ -657,12 +672,12 @@ class IMAGE_PT_paint(Panel):
             col.prop(brush, "color", text="")
 
             row = col.row(align=True)
-            row.prop(brush, "size", slider=True)
-            row.prop(brush, "use_pressure_size", toggle=True, text="")
+            self.prop_unified_size(row, context, brush, "size", slider=True, text="Radius")
+            self.prop_unified_size(row, context, brush, "use_pressure_size")
 
             row = col.row(align=True)
-            row.prop(brush, "strength", slider=True)
-            row.prop(brush, "use_pressure_strength", toggle=True, text="")
+            self.prop_unified_strength(row, context, brush, "strength", slider=True, text="Strength")
+            self.prop_unified_strength(row, context, brush, "use_pressure_strength")
 
             row = col.row(align=True)
             row.prop(brush, "jitter", slider=True)
@@ -697,8 +712,8 @@ class IMAGE_PT_tools_brush_tool(BrushButtonsPanel, Panel):
 
     def draw(self, context):
         layout = self.layout
-        settings = context.tool_settings.image_paint
-        brush = settings.brush
+        toolsettings = context.tool_settings.image_paint
+        brush = toolsettings.brush
 
         layout.prop(brush, "image_tool", text="")
 
@@ -746,12 +761,87 @@ class IMAGE_PT_paint_curve(BrushButtonsPanel, Panel):
         layout.template_curve_mapping(brush, "curve")
 
         row = layout.row(align=True)
+        row.operator("brush.curve_preset", icon='SMOOTHCURVE', text="").shape = 'SMOOTH'
+        row.operator("brush.curve_preset", icon='SPHERECURVE', text="").shape = 'ROUND'
+        row.operator("brush.curve_preset", icon='ROOTCURVE', text="").shape = 'ROOT'
+        row.operator("brush.curve_preset", icon='SHARPCURVE', text="").shape = 'SHARP'
+        row.operator("brush.curve_preset", icon='LINCURVE', text="").shape = 'LINE'
+        row.operator("brush.curve_preset", icon='NOCURVE', text="").shape = 'MAX'
+
+
+class IMAGE_UV_sculpt_curve(Panel):
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'UI'
+    bl_label = "UV Sculpt Curve"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        sima = context.space_data
+        toolsettings = context.tool_settings.image_paint
+        return sima.show_uvedit and context.tool_settings.use_uv_sculpt and not (sima.show_paint and toolsettings.brush)
+
+    def draw(self, context):
+        layout = self.layout
+
+        toolsettings = context.tool_settings
+        uvsculpt = toolsettings.uv_sculpt
+        brush = uvsculpt.brush
+
+        layout.template_curve_mapping(brush, "curve")
+
+        row = layout.row(align=True)
         row.operator("brush.curve_preset", icon="SMOOTHCURVE", text="").shape = 'SMOOTH'
         row.operator("brush.curve_preset", icon="SPHERECURVE", text="").shape = 'ROUND'
         row.operator("brush.curve_preset", icon="ROOTCURVE", text="").shape = 'ROOT'
         row.operator("brush.curve_preset", icon="SHARPCURVE", text="").shape = 'SHARP'
         row.operator("brush.curve_preset", icon="LINCURVE", text="").shape = 'LINE'
         row.operator("brush.curve_preset", icon="NOCURVE", text="").shape = 'MAX'
+
+
+class IMAGE_UV_sculpt(Panel, ImagePaintPanel):
+    bl_space_type = 'IMAGE_EDITOR'
+    bl_region_type = 'UI'
+    bl_label = "UV Sculpt"
+
+    @classmethod
+    def poll(cls, context):
+        sima = context.space_data
+        toolsettings = context.tool_settings.image_paint
+        return sima.show_uvedit and context.tool_settings.use_uv_sculpt and not (sima.show_paint and toolsettings.brush)
+
+    def draw(self, context):
+        layout = self.layout
+
+        toolsettings = context.tool_settings
+        uvsculpt = toolsettings.uv_sculpt
+        brush = uvsculpt.brush
+
+        if brush:
+            col = layout.column()
+
+            row = col.row(align=True)
+            self.prop_unified_size(row, context, brush, "size", slider=True, text="Radius")
+            self.prop_unified_size(row, context, brush, "use_pressure_size")
+
+            row = col.row(align=True)
+            self.prop_unified_strength(row, context, brush, "strength", slider=True, text="Strength")
+            self.prop_unified_strength(row, context, brush, "use_pressure_strength")
+
+        split = layout.split()
+        col = split.column()
+
+        col.prop(toolsettings, "uv_sculpt_lock_borders")
+        col.prop(toolsettings, "uv_sculpt_all_islands")
+
+        split = layout.split()
+        col = split.column()
+
+        col.prop(toolsettings, "uv_sculpt_tool")
+
+        if toolsettings.uv_sculpt_tool == 'RELAX':
+            col.prop(toolsettings, "uv_relax_method")
+
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

@@ -52,160 +52,6 @@
  
 #include "node_intern.h"
 
-/* **************** Node Header Buttons ************** */
-
-/* note: call node_tree_verify_groups(snode->nodetree) after this
- */
-void node_set_hidden_sockets(SpaceNode *snode, bNode *node, int set)
-{	
-	bNodeSocket *sock;
-
-	if(set==0) {
-		for(sock= node->inputs.first; sock; sock= sock->next)
-			sock->flag &= ~SOCK_HIDDEN;
-		for(sock= node->outputs.first; sock; sock= sock->next)
-			sock->flag &= ~SOCK_HIDDEN;
-	}
-	else {
-		/* hide unused sockets */
-		for(sock= node->inputs.first; sock; sock= sock->next) {
-			if(sock->link==NULL)
-				sock->flag |= SOCK_HIDDEN;
-		}
-		for(sock= node->outputs.first; sock; sock= sock->next) {
-			if(nodeCountSocketLinks(snode->edittree, sock)==0)
-				sock->flag |= SOCK_HIDDEN;
-		}
-	}
-}
-
-static void node_hide_unhide_sockets(SpaceNode *snode, bNode *node)
-{
-	node_set_hidden_sockets(snode, node, !node_has_hidden_sockets(node));
-	ntreeUpdateTree(snode->edittree);
-}
-
-static int do_header_node(SpaceNode *snode, bNode *node, float mx, float my)
-{
-	rctf totr= node->totr;
-	
-	totr.ymin= totr.ymax-20.0f;
-	
-	totr.xmax= totr.xmin+15.0f;
-	if(BLI_in_rctf(&totr, mx, my)) {
-		node->flag |= NODE_HIDDEN;
-		return 1;
-	}	
-	
-	totr.xmax= node->totr.xmax;
-	totr.xmin= totr.xmax-18.0f;
-	if(node->typeinfo->flag & NODE_PREVIEW) {
-		if(BLI_in_rctf(&totr, mx, my)) {
-			node->flag ^= NODE_PREVIEW;
-			return 1;
-		}
-		totr.xmin-=15.0f;
-	}
-	if(node->type == NODE_GROUP) {
-		if(BLI_in_rctf(&totr, mx, my)) {
-			snode_make_group_editable(snode, node);
-			return 1;
-		}
-		totr.xmin-=15.0f;
-	}
-	if(node->typeinfo->flag & NODE_OPTIONS) {
-		if(BLI_in_rctf(&totr, mx, my)) {
-			node->flag ^= NODE_OPTIONS;
-			return 1;
-		}
-		totr.xmin-=15.0f;
-	}
-	/* hide unused sockets */
-	if(BLI_in_rctf(&totr, mx, my)) {
-		node_hide_unhide_sockets(snode, node);
-	}
-	
-	return 0;
-}
-
-static int do_header_hidden_node(bNode *node, float mx, float my)
-{
-	rctf totr= node->totr;
-	
-	totr.xmax= totr.xmin+15.0f;
-	if(BLI_in_rctf(&totr, mx, my)) {
-		node->flag &= ~NODE_HIDDEN;
-		return 1;
-	}	
-	return 0;
-}
-
-static int node_toggle_visibility(SpaceNode *snode, ARegion *ar, const int mval[2])
-{
-	bNode *node;
-	float mx, my;
-	
-	mx= (float)mval[0];
-	my= (float)mval[1];
-	
-	UI_view2d_region_to_view(&ar->v2d, mval[0], mval[1], &mx, &my);
-	
-	for(node=snode->edittree->nodes.last; node; node=node->prev) {
-		if(node->flag & NODE_HIDDEN) {
-			if(do_header_hidden_node(node, mx, my)) {
-				ED_region_tag_redraw(ar);
-				return 1;
-			}
-		}
-		else {
-			if(do_header_node(snode, node, mx, my)) {
-				ED_region_tag_redraw(ar);
-				return 1;
-			}
-		}
-	}
-	return 0;
-}
-
-static int node_toggle_visibility_exec(bContext *C, wmOperator *op)
-{
-	SpaceNode *snode= CTX_wm_space_node(C);
-	ARegion *ar= CTX_wm_region(C);
-	int mval[2];
-
-	mval[0] = RNA_int_get(op->ptr, "mouse_x");
-	mval[1] = RNA_int_get(op->ptr, "mouse_y");
-	if(node_toggle_visibility(snode, ar, mval))
-		return OPERATOR_FINISHED;
-	else
-		return OPERATOR_CANCELLED|OPERATOR_PASS_THROUGH;
-}
-
-static int node_toggle_visibility_invoke(bContext *C, wmOperator *op, wmEvent *event)
-{
-	RNA_int_set(op->ptr, "mouse_x", event->mval[0]);
-	RNA_int_set(op->ptr, "mouse_y", event->mval[1]);
-
-	return node_toggle_visibility_exec(C,op);
-}
-
-void NODE_OT_visibility_toggle(wmOperatorType *ot)
-{
-	/* identifiers */
-	ot->name= "Toggle Visibility";
-	ot->idname= "NODE_OT_visibility_toggle";
-	ot->description= "Handle clicks on node header buttons";
-	
-	/* api callbacks */
-	ot->invoke= node_toggle_visibility_invoke;
-	ot->poll= ED_operator_node_active;
-	
-	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
-	
-	RNA_def_int(ot->srna, "mouse_x", 0, INT_MIN, INT_MAX, "Mouse X", "", INT_MIN, INT_MAX);
-	RNA_def_int(ot->srna, "mouse_y", 0, INT_MIN, INT_MAX, "Mouse Y", "", INT_MIN, INT_MAX);
-}
 
 /* **************** View All Operator ************** */
 
@@ -221,13 +67,13 @@ static void snode_home(ScrArea *UNUSED(sa), ARegion *ar, SpaceNode* snode)
 	oldwidth= cur->xmax - cur->xmin;
 	oldheight= cur->ymax - cur->ymin;
 	
-	cur->xmin= cur->ymin= 0.0f;
+	cur->xmin = cur->ymin = 0.0f;
 	cur->xmax=ar->winx;
 	cur->ymax=ar->winy;
 	
-	if(snode->edittree) {
-		for(node= snode->edittree->nodes.first; node; node= node->next) {
-			if(first) {
+	if (snode->edittree) {
+		for (node= snode->edittree->nodes.first; node; node= node->next) {
+			if (first) {
 				first= 0;
 				ar->v2d.cur= node->totr;
 			}
@@ -242,17 +88,17 @@ static void snode_home(ScrArea *UNUSED(sa), ARegion *ar, SpaceNode* snode)
 	width= cur->xmax - cur->xmin;
 	height= cur->ymax- cur->ymin;
 
-	if(width > height) {
+	if (width > height) {
 		float newheight;
 		newheight= oldheight * width/oldwidth;
-		cur->ymin= cur->ymin - newheight/4;
-		cur->ymax= cur->ymax + newheight/4;
+		cur->ymin = cur->ymin - newheight/4;
+		cur->ymax = cur->ymax + newheight/4;
 	}
 	else {
 		float newwidth;
 		newwidth= oldwidth * height/oldheight;
-		cur->xmin= cur->xmin - newwidth/4;
-		cur->xmax= cur->xmax + newwidth/4;
+		cur->xmin = cur->xmin - newwidth/4;
+		cur->xmax = cur->xmax + newwidth/4;
 	}
 
 	ar->v2d.tot= ar->v2d.cur;
@@ -274,14 +120,14 @@ static int node_view_all_exec(bContext *C, wmOperator *UNUSED(op))
 void NODE_OT_view_all(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "View All";
-	ot->idname= "NODE_OT_view_all";
-	ot->description= "Resize view so you can see all nodes";
+	ot->name = "View All";
+	ot->idname = "NODE_OT_view_all";
+	ot->description = "Resize view so you can see all nodes";
 	
 	/* api callbacks */
-	ot->exec= node_view_all_exec;
-	ot->poll= ED_operator_node_active;
+	ot->exec = node_view_all_exec;
+	ot->poll = ED_operator_node_active;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }

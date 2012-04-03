@@ -36,7 +36,7 @@
 /* **************** ID Mask  ******************** */
 
 static bNodeSocketTemplate cmp_node_idmask_in[]= {
-	{	SOCK_FLOAT, 1, "ID value",			0.8f, 0.8f, 0.8f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, "ID value",			1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_idmask_out[]= {
@@ -52,15 +52,15 @@ static void do_idmask(CompBuf *stackbuf, CompBuf *cbuf, float idnr)
 	char *abuf= MEM_mapallocN(cbuf->x*cbuf->y, "anti ali buf");
 	
 	rect= cbuf->rect;
-	for(x= cbuf->x*cbuf->y - 1; x>=0; x--)
-		if(rect[x]==idnr)
+	for (x= cbuf->x*cbuf->y - 1; x>=0; x--)
+		if (rect[x]==idnr)
 			abuf[x]= 255;
 	
 	antialias_tagbuf(cbuf->x, cbuf->y, abuf);
 	
 	rect= stackbuf->rect;
-	for(x= cbuf->x*cbuf->y - 1; x>=0; x--)
-		if(abuf[x]>1)
+	for (x= cbuf->x*cbuf->y - 1; x>=0; x--)
+		if (abuf[x]>1)
 			rect[x]= (1.0f/255.0f)*(float)abuf[x];
 	
 	MEM_freeN(abuf);
@@ -74,8 +74,8 @@ static void do_idmask_fsa(CompBuf *stackbuf, CompBuf *cbuf, float idnr)
 	
 	rect= cbuf->rect;
 	rs= stackbuf->rect;
-	for(x= cbuf->x*cbuf->y - 1; x>=0; x--)
-		if(rect[x]==idnr)
+	for (x= cbuf->x*cbuf->y - 1; x>=0; x--)
+		if (rect[x]==idnr)
 			rs[x]= 1.0f;
 	
 }
@@ -85,19 +85,19 @@ static void node_composit_exec_idmask(void *data, bNode *node, bNodeStack **in, 
 {
 	RenderData *rd= data;
 	
-	if(out[0]->hasoutput==0)
+	if (out[0]->hasoutput==0)
 		return;
 	
-	if(in[0]->data) {
+	if (in[0]->data) {
 		CompBuf *cbuf= in[0]->data;
 		CompBuf *stackbuf;
 		
-		if(cbuf->type!=CB_VAL)
+		if (cbuf->type!=CB_VAL)
 			return;
 		
 		stackbuf= alloc_compbuf(cbuf->x, cbuf->y, CB_VAL, 1); /* allocs */;
 		
-		if((rd->scemode & R_FULL_SAMPLE) || node->custom2 == 0)
+		if ((rd->scemode & R_FULL_SAMPLE) || node->custom2 == 0)
 			do_idmask_fsa(stackbuf, cbuf, (float)node->custom1);
 		else
 			do_idmask(stackbuf, cbuf, (float)node->custom1);
@@ -107,17 +107,14 @@ static void node_composit_exec_idmask(void *data, bNode *node, bNodeStack **in, 
 }
 
 
-void register_node_type_cmp_idmask(ListBase *lb)
+void register_node_type_cmp_idmask(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_ID_MASK, "ID Mask", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_ID_MASK, "ID Mask", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_idmask_in, cmp_node_idmask_out);
 	node_type_size(&ntype, 140, 100, 320);
 	node_type_exec(&ntype, node_composit_exec_idmask);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-
-

@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-import sys, os, re
+import sys, os, re, platform
 import http, http.client, http.server, socket
 import subprocess, time, hashlib
 
@@ -45,17 +45,71 @@ JOB_STATUS_TEXT = {
 
 
 # Frames status
-QUEUED = 0
-DISPATCHED = 1
-DONE = 2
-ERROR = 3
+FRAME_QUEUED = 0
+FRAME_DISPATCHED = 1
+FRAME_DONE = 2
+FRAME_ERROR = 3
 
 FRAME_STATUS_TEXT = {
-        QUEUED: "Queued",
-        DISPATCHED: "Dispatched",
-        DONE: "Done",
-        ERROR: "Error"
+        FRAME_QUEUED: "Queued",
+        FRAME_DISPATCHED: "Dispatched",
+        FRAME_DONE: "Done",
+        FRAME_ERROR: "Error"
         }
+
+try:
+    system = platform.system()
+except UnicodeDecodeError:
+    import sys
+    system = sys.platform
+
+
+if system == "Darwin":
+    class ConnectionContext:
+        def __init__(self, timeout = None):
+            self.old_timeout = socket.getdefaulttimeout()
+            self.timeout = timeout
+            
+        def __enter__(self):
+            if self.old_timeout != self.timeout:
+                socket.setdefaulttimeout(self.timeout)
+        def __exit__(self, exc_type, exc_value, traceback):
+            if self.old_timeout != self.timeout:
+                socket.setdefaulttimeout(self.old_timeout)
+else:
+    # On sane OSes we can use the connection timeout value correctly
+    class ConnectionContext:
+        def __init__(self, timeout = None):
+            pass
+            
+        def __enter__(self):
+            pass
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            pass
+
+if system in {'Windows', 'win32'} and platform.version() >= '5': # Error mode is only available on Win2k or higher, that's version 5
+    import ctypes
+    class NoErrorDialogContext:
+        def __init__(self):
+            self.val = 0
+            
+        def __enter__(self):
+            self.val = ctypes.windll.kernel32.SetErrorMode(0x0002)
+            ctypes.windll.kernel32.SetErrorMode(self.val | 0x0002)
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            ctypes.windll.kernel32.SetErrorMode(self.val)
+else:
+    class NoErrorDialogContext:
+        def __init__(self):
+            pass
+            
+        def __enter__(self):
+            pass
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            pass
 
 class DirectoryContext:
     def __init__(self, path):
@@ -104,7 +158,7 @@ def reporting(report, message, errorType = None):
         t = 'INFO'
 
     if report:
-        report(t, message)
+        report({t}, message)
         return None
     elif errorType:
         raise errorType(message)
@@ -132,21 +186,30 @@ def clientScan(report = None):
 
         return ("", 8000) # return default values
 
-def clientConnection(address, port, report = None, scan = True, timeout = 5):
-    if address == "[default]":
+def clientConnection(netsettings, report = None, scan = True, timeout = 5):
+    address = netsettings.server_address
+    port = netsettings.server_port
+    use_ssl = netsettings.use_ssl
+    
+    if address== "[default]":
 #            calling operator from python is fucked, scene isn't in context
-#			if bpy:
-#				bpy.ops.render.netclientscan()
-#			else:
+#            if bpy:
+#                bpy.ops.render.netclientscan()
+#            else:
         if not scan:
             return None
 
         address, port = clientScan()
         if address == "":
             return None
-
+    conn = None
     try:
-        conn = http.client.HTTPConnection(address, port, timeout = timeout)
+        HTTPConnection = http.client.HTTPSConnection if use_ssl else http.client.HTTPConnection
+        if platform.system() == "Darwin":
+            with ConnectionContext(timeout):
+                conn = HTTPConnection(address, port)
+        else:
+            conn = HTTPConnection(address, port, timeout = timeout)
 
         if conn:
             if clientVerifyVersion(conn):
@@ -163,7 +226,8 @@ def clientConnection(address, port, report = None, scan = True, timeout = 5):
             return None
 
 def clientVerifyVersion(conn):
-    conn.request("GET", "/version")
+    with ConnectionContext():
+        conn.request("GET", "/version")
     response = conn.getresponse()
 
     if response.status != http.client.OK:
@@ -185,6 +249,9 @@ def fileURL(job_id, file_index):
 def logURL(job_id, frame_number):
     return "/log_%s_%i.log" % (job_id, frame_number)
 
+def resultURL(job_id):
+    return "/result_%s.zip" % job_id
+
 def renderURL(job_id, frame_number):
     return "/render_%s_%i.exr" % (job_id, frame_number)
 
@@ -201,32 +268,108 @@ def hashData(data):
     m = hashlib.md5()
     m.update(data)
     return m.hexdigest()
+
+def verifyCreateDir(directory_path):
+    original_path = directory_path
+    directory_path = os.path.expanduser(directory_path)
+    directory_path = os.path.expandvars(directory_path)
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+            print("Created directory:", directory_path)
+            if original_path != directory_path:
+                print("Expanded from the following path:", original_path)
+        except:
+            print("Couldn't create directory:", directory_path)
+            if original_path != directory_path:
+                print("Expanded from the following path:", original_path)
+            raise
     
 
-def prefixPath(prefix_directory, file_path, prefix_path, force = False):
-    if (os.path.isabs(file_path) or
-        len(file_path) >= 3 and (file_path[1:3] == ":/" or file_path[1:3] == ":\\") or # Windows absolute path don't count as absolute on unix, have to handle them myself
-        file_path[0] == "/" or file_path[0] == "\\"): # and vice versa
+def cacheName(ob, point_cache):
+    name = point_cache.name
+    if name == "":
+        name = "".join(["%02X" % ord(c) for c in ob.name])
+        
+    return name
+
+def cachePath(file_path):
+    path, name = os.path.split(file_path)
+    root, ext = os.path.splitext(name)
+    return path + os.sep + "blendcache_" + root # need an API call for that
+
+# Process dependencies of all objects with user defined functions
+#    pointCacheFunction(object, owner, point_cache) (owner is modifier or psys)
+#    fluidFunction(object, modifier, cache_path)
+#    multiresFunction(object, modifier, cache_path)
+def processObjectDependencies(pointCacheFunction, fluidFunction, multiresFunction):
+    for object in bpy.data.objects:
+        for modifier in object.modifiers:
+            if modifier.type == 'FLUID_SIMULATION' and modifier.settings.type == "DOMAIN":
+                fluidFunction(object, modifier, bpy.path.abspath(modifier.settings.filepath))
+            elif modifier.type == "CLOTH":
+                pointCacheFunction(object, modifier, modifier.point_cache)
+            elif modifier.type == "SOFT_BODY":
+                pointCacheFunction(object, modifier, modifier.point_cache)
+            elif modifier.type == "SMOKE" and modifier.smoke_type == "DOMAIN":
+                pointCacheFunction(object, modifier, modifier.domain_settings.point_cache)
+            elif modifier.type == "MULTIRES" and modifier.is_external:
+                multiresFunction(object, modifier, bpy.path.abspath(modifier.filepath))
+            elif modifier.type == "DYNAMIC_PAINT" and modifier.canvas_settings:
+                for surface in modifier.canvas_settings.canvas_surfaces:
+                    pointCacheFunction(object, modifier, surface.point_cache)
+    
+        # particles modifier are stupid and don't contain data
+        # we have to go through the object property
+        for psys in object.particle_systems:
+            pointCacheFunction(object, psys, psys.point_cache)
+    
+
+def createLocalPath(rfile, prefixdirectory, prefixpath, forcelocal):
+    filepath = rfile.original_path
+    prefixpath = os.path.normpath(prefixpath) if prefixpath else None
+    if (os.path.isabs(filepath) or
+        filepath[1:3] == ":/" or filepath[1:3] == ":\\" or # Windows absolute path don't count as absolute on unix, have to handle them ourself
+        filepath[:1] == "/" or filepath[:1] == "\\"): # and vice versa
 
         # if an absolute path, make sure path exists, if it doesn't, use relative local path
-        full_path = file_path
-        if force or not os.path.exists(full_path):
-            p, n = os.path.split(os.path.normpath(full_path))
+        finalpath = filepath
+        if forcelocal or not os.path.exists(finalpath):
+            path, name = os.path.split(os.path.normpath(finalpath))
+            
+            # Don't add signatures to cache files, relink fails otherwise
+            if not name.endswith(".bphys") and not name.endswith(".bobj.gz"):
+                name, ext = os.path.splitext(name)
+                name = name + "_" + rfile.signature + ext
+            
+            if prefixpath and path.startswith(prefixpath):
+                suffix = ""
+                while path != prefixpath:
+                    path, last = os.path.split(path)
+                    suffix = os.path.join(last, suffix)
 
-            if prefix_path and p.startswith(prefix_path):
-                if len(prefix_path) < len(p):
-                    directory = os.path.join(prefix_directory, p[len(prefix_path)+1:]) # +1 to remove separator
-                    if not os.path.exists(directory):
-                        os.mkdir(directory)
-                else:
-                    directory = prefix_directory
-                full_path = os.path.join(directory, n)
+                directory = os.path.join(prefixdirectory, suffix)
+                verifyCreateDir(directory)
+
+                finalpath = os.path.join(directory, name)
             else:
-                full_path = os.path.join(prefix_directory, n)
+                finalpath = os.path.join(prefixdirectory, name)
     else:
-        full_path = os.path.join(prefix_directory, file_path)
+        directory, name = os.path.split(filepath)
 
-    return full_path
+        # Don't add signatures to cache files
+        if not name.endswith(".bphys") and not name.endswith(".bobj.gz"):
+            name, ext = os.path.splitext(name)
+            name = name + "_" + rfile.signature + ext
+        
+        directory = directory.replace("../")
+        directory = os.path.join(prefixdirectory, directory)
+
+        verifyCreateDir(directory)
+
+        finalpath = os.path.join(directory, name)
+
+    return finalpath
 
 def getResults(server_address, server_port, job_id, resolution_x, resolution_y, resolution_percentage, frame_ranges):
     if bpy.app.debug:

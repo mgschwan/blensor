@@ -24,12 +24,13 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_EFFECT_TYPES_H
-#define DNA_EFFECT_TYPES_H
 
 /** \file DNA_effect_types.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_EFFECT_TYPES_H__
+#define __DNA_EFFECT_TYPES_H__
 
 /* don't forget, new effects also in writefile.c for dna!!! */
 
@@ -117,7 +118,7 @@ typedef struct PartEff {
 	short staticstep, omat, timetex, speedtex, flag2, flag2neg;
 	short disp, vertgroup_v;
 	
-	char vgroupname[32], vgroupname_v[32];
+	char vgroupname[64], vgroupname_v[64];	/* MAX_VGROUP_NAME */
 	float imat[4][4];	/* inverse matrix of parent Object */
 	
 	Particle *keys;

@@ -25,6 +25,7 @@
 
 set(INC 
 	.
+	../blenfont
 	../blenkernel
 	../blenlib
 	../blenloader
@@ -58,6 +59,7 @@ set(SRC
 	composite/nodes/node_composite_composite.c
 	composite/nodes/node_composite_crop.c
 	composite/nodes/node_composite_curves.c
+	composite/nodes/node_composite_doubleEdgeMask.c
 	composite/nodes/node_composite_defocus.c
 	composite/nodes/node_composite_diffMatte.c
 	composite/nodes/node_composite_dilate.c
@@ -80,6 +82,8 @@ set(SRC
 	composite/nodes/node_composite_mapValue.c
 	composite/nodes/node_composite_math.c
 	composite/nodes/node_composite_mixrgb.c
+	composite/nodes/node_composite_movieclip.c
+	composite/nodes/node_composite_moviedistortion.c
 	composite/nodes/node_composite_normal.c
 	composite/nodes/node_composite_normalize.c
 	composite/nodes/node_composite_outputFile.c
@@ -93,8 +97,10 @@ set(SRC
 	composite/nodes/node_composite_sepcombYUVA.c
 	composite/nodes/node_composite_setalpha.c
 	composite/nodes/node_composite_splitViewer.c
+	composite/nodes/node_composite_stabilize2d.c
 	composite/nodes/node_composite_texture.c
 	composite/nodes/node_composite_tonemap.c
+	composite/nodes/node_composite_transform.c
 	composite/nodes/node_composite_translate.c
 	composite/nodes/node_composite_valToRgb.c
 	composite/nodes/node_composite_value.c
@@ -108,6 +114,8 @@ set(SRC
 	shader/nodes/node_shader_common.c
 	shader/nodes/node_shader_curves.c
 	shader/nodes/node_shader_dynamic.c
+	shader/nodes/node_shader_gamma.c
+	shader/nodes/node_shader_brightness.c
 	shader/nodes/node_shader_geom.c
 	shader/nodes/node_shader_hueSatVal.c
 	shader/nodes/node_shader_invert.c
@@ -124,6 +132,39 @@ set(SRC
 	shader/nodes/node_shader_valToRgb.c
 	shader/nodes/node_shader_value.c
 	shader/nodes/node_shader_vectMath.c
+	shader/nodes/node_shader_attribute.c
+	shader/nodes/node_shader_background.c
+	# shader/nodes/node_shader_bsdf_anisotropic.c  # XXX, why not included?
+	shader/nodes/node_shader_bsdf_diffuse.c
+	shader/nodes/node_shader_bsdf_glossy.c
+	shader/nodes/node_shader_bsdf_glass.c
+	shader/nodes/node_shader_bsdf_translucent.c
+	shader/nodes/node_shader_bsdf_transparent.c
+	shader/nodes/node_shader_bsdf_velvet.c
+	shader/nodes/node_shader_emission.c
+	shader/nodes/node_shader_fresnel.c
+	shader/nodes/node_shader_layer_weight.c
+	shader/nodes/node_shader_geometry.c
+	shader/nodes/node_shader_holdout.c
+	shader/nodes/node_shader_volume_transparent.c
+	shader/nodes/node_shader_volume_isotropic.c
+	shader/nodes/node_shader_light_path.c
+	shader/nodes/node_shader_mix_shader.c
+	shader/nodes/node_shader_add_shader.c
+	shader/nodes/node_shader_output_lamp.c
+	shader/nodes/node_shader_output_material.c
+	shader/nodes/node_shader_output_world.c
+	shader/nodes/node_shader_tex_gradient.c
+	shader/nodes/node_shader_tex_coord.c
+	shader/nodes/node_shader_tex_environment.c
+	shader/nodes/node_shader_tex_image.c
+	shader/nodes/node_shader_tex_magic.c
+	shader/nodes/node_shader_tex_musgrave.c
+	shader/nodes/node_shader_tex_noise.c
+	shader/nodes/node_shader_tex_sky.c
+	shader/nodes/node_shader_tex_voronoi.c
+	shader/nodes/node_shader_tex_wave.c
+	shader/nodes/node_shader_tex_checker.c
 	shader/node_shader_tree.c
 	shader/node_shader_util.c
 
@@ -179,6 +220,14 @@ if(WITH_PYTHON)
 		${PYTHON_INCLUDE_DIRS}
 	)
 	add_definitions(-DWITH_PYTHON)
+endif()
+
+if(WITH_INTERNATIONAL)
+	add_definitions(-DWITH_INTERNATIONAL)
+endif()
+
+if(WITH_IMAGE_OPENEXR)
+	add_definitions(-DWITH_OPENEXR)
 endif()
 
 blender_add_lib(bf_nodes "${SRC}" "${INC}" "${INC_SYS}")

@@ -27,6 +27,8 @@ class NODE_HT_header(Header):
     def draw(self, context):
         layout = self.layout
 
+        scene = context.scene
+        ob = context.object
         snode = context.space_data
         snode_id = snode.id
         id_from = snode.id_from
@@ -42,11 +44,25 @@ class NODE_HT_header(Header):
 
         layout.prop(snode, "tree_type", text="", expand=True)
 
-        if snode.tree_type == 'MATERIAL':
-            if id_from:
-                layout.template_ID(id_from, "active_material", new="material.new")
-            if snode_id:
-                layout.prop(snode_id, "use_nodes")
+        if snode.tree_type == 'SHADER':
+            if scene.render.use_shading_nodes:
+                layout.prop(snode, "shader_type", text="", expand=True)
+
+            if (not scene.render.use_shading_nodes or snode.shader_type == 'OBJECT') and ob:
+                # Show material.new when no active ID/slot exists
+                if not id_from and ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT', 'METABALL'}:
+                    layout.template_ID(ob, "active_material", new="material.new")
+                # Material ID, but not for Lamps
+                if id_from and ob.type != 'LAMP':
+                    layout.template_ID(id_from, "active_material", new="material.new")
+                # Don't show "Use Nodes" Button when Engine is BI for Lamps
+                if snode_id and not (scene.render.use_shading_nodes == 0 and ob.type == 'LAMP'):
+                    layout.prop(snode_id, "use_nodes")
+
+            if snode.shader_type == 'WORLD':
+                layout.template_ID(scene, "world", new="world.new")
+                if snode_id:
+                    layout.prop(snode_id, "use_nodes")
 
         elif snode.tree_type == 'TEXTURE':
             layout.prop(snode, "texture_type", text="", expand=True)
@@ -151,6 +167,7 @@ class NODE_MT_node(Menu):
         layout.operator("node.mute_toggle")
         layout.operator("node.preview_toggle")
         layout.operator("node.hide_socket_toggle")
+        layout.operator("node.options_toggle")
 
         layout.separator()
 

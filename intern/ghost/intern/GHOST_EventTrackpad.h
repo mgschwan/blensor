@@ -31,8 +31,8 @@
  * Declaration of GHOST_EventTrackpad class.
  */
 
-#ifndef _GHOST_EVENT_TRACKPAD_H_
-#define _GHOST_EVENT_TRACKPAD_H_
+#ifndef __GHOST_EVENTTRACKPAD_H__
+#define __GHOST_EVENTTRACKPAD_H__
 
 #include "GHOST_Event.h"
 
@@ -50,7 +50,11 @@ public:
 	 * @param x			The x-delta of the pan event.
 	 * @param y			The y-delta of the pan event.
 	 */
-	GHOST_EventTrackpad(GHOST_TUns64 msec, GHOST_IWindow* window, GHOST_TTrackpadEventSubTypes subtype, GHOST_TInt32 x, GHOST_TInt32 y, GHOST_TInt32 deltaX, GHOST_TInt32 deltaY)
+	GHOST_EventTrackpad(GHOST_TUns64 msec,
+	                    GHOST_IWindow* window,
+	                    GHOST_TTrackpadEventSubTypes subtype,
+	                    GHOST_TInt32 x, GHOST_TInt32 y,
+	                    GHOST_TInt32 deltaX, GHOST_TInt32 deltaY)
 		: GHOST_Event(msec, GHOST_kEventTrackpad, window)
 	{
 		m_trackpadEventData.subtype = subtype;

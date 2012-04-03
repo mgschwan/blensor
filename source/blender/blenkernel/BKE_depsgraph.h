@@ -23,8 +23,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef DEPSGRAPH_API
-#define DEPSGRAPH_API
+#ifndef __BKE_DEPSGRAPH_H__
+#define __BKE_DEPSGRAPH_H__
 
 /** \file BKE_depsgraph.h
  *  \ingroup bke
@@ -34,9 +34,7 @@
 extern "C" {
 #endif
 
-/*
-#define DEPS_DEBUG
-*/
+// #define DEPS_DEBUG
 
 struct ID;
 struct Main;
@@ -97,9 +95,6 @@ short		are_obs_related(struct DagForest	*dag, void *ob1, void *ob2);
 int					is_acyclic(struct DagForest	*dag); //
 //int					get_cycles(struct DagForest	*dag, struct DagNodeQueue **queues, int *count); //
 
-void	boundbox_deps(void);
-void	draw_all_deps(void);
-
 /* ********** API *************** */
 /* Note that the DAG never executes changes in Objects, only sets flags in Objects */
 
@@ -120,12 +115,22 @@ void	DAG_ids_flush_update(struct Main *bmain, int time);
 void	DAG_id_tag_update(struct ID *id, short flag);
 		/* flush all tagged updates */
 void	DAG_ids_flush_tagged(struct Main *bmain);
+		/* check and clear ID recalc flags */
+void	DAG_ids_check_recalc(struct Main *bmain, struct Scene *scene, int time);
+void	DAG_ids_clear_recalc(struct Main *bmain);
+		/* test if any of this id type is tagged for update */
+void	DAG_id_type_tag(struct Main *bmain, short idtype);
+int		DAG_id_type_tagged(struct Main *bmain, short idtype);
 
 		/* (re)-create dependency graph for armature pose */
 void	DAG_pose_sort(struct Object *ob);
 
 		/* callback for editors module to do updates */
-void	DAG_editors_update_cb(void (*func)(struct Main *bmain, struct ID *id));
+void	DAG_editors_update_cb(void (*id_func)(struct Main *bmain, struct ID *id),
+                              void (*scene_func)(struct Main *bmain, struct Scene *scene, int updated));
+
+		/* debugging */
+void	DAG_print_dependencies(struct Main *bmain, struct Scene *scene, struct Object *ob);
 
 #ifdef __cplusplus
 }

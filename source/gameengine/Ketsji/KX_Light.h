@@ -29,8 +29,8 @@
  *  \ingroup ketsji
  */
 
-#ifndef __KX_LIGHT
-#define __KX_LIGHT
+#ifndef __KX_LIGHT_H__
+#define __KX_LIGHT_H__
 
 #include "RAS_LightObject.h"
 #include "KX_GameObject.h"
@@ -44,7 +44,7 @@ class MT_Transform;
 
 class KX_LightObject : public KX_GameObject
 {
-	Py_Header;
+	Py_Header
 protected:
 	RAS_LightObject		m_lightobj;
 	class RAS_IRenderTools*	m_rendertools;	//needed for registering and replication of lightobj
@@ -82,5 +82,5 @@ public:
 #endif
 };
 
-#endif //__KX_LIGHT
+#endif //__KX_LIGHT_H__
 

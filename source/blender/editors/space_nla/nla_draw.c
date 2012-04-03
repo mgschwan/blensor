@@ -121,7 +121,7 @@ static void nla_action_draw_keyframes (AnimData *adt, bAction *act, View2D *v2d,
 	action_to_keylist(adt, act, &keys, NULL);
 	BLI_dlrbTree_linkedlist_sync(&keys);
 	
-	if ELEM(NULL, act, keys.first)
+	if (ELEM(NULL, act, keys.first))
 		return;
 	
 	/* draw a darkened region behind the strips 
@@ -172,7 +172,7 @@ static void nla_strip_get_color_inside (AnimData *adt, NlaStrip *strip, float co
 			color[2]= 0.86f;
 		}
 		else {
-			/* normal, unselected strip - use (hardly noticable) blue tinge */
+			/* normal, unselected strip - use (hardly noticeable) blue tinge */
 			// FIXME: hardcoded temp-hack colors
 			color[0]= 0.11f;
 			color[1]= 0.15f;
@@ -190,7 +190,7 @@ static void nla_strip_get_color_inside (AnimData *adt, NlaStrip *strip, float co
 			color[2]= 0.59f;
 		}
 		else {
-			/* normal, unselected strip - use (hardly noticable) dark purple tinge */
+			/* normal, unselected strip - use (hardly noticeable) dark purple tinge */
 			// FIXME: hardcoded temp-hack colors
 			color[0]= 0.20f;
 			color[1]= 0.15f;
@@ -207,7 +207,7 @@ static void nla_strip_get_color_inside (AnimData *adt, NlaStrip *strip, float co
 			color[2]= 0.48f;
 		}
 		else {
-			/* normal, unselected strip - use (hardly noticable) teal tinge */
+			/* normal, unselected strip - use (hardly noticeable) teal tinge */
 			// FIXME: hardcoded temp-hack colors
 			color[0]= 0.17f;
 			color[1]= 0.24f;
@@ -498,10 +498,10 @@ static void nla_draw_strip_text (AnimData *adt, NlaTrack *nlt, NlaStrip *strip, 
 	 *	- padding of 2 'units' on either side
 	 */
 	// TODO: make this centered?
-	rect.xmin= strip->start + xofs;
-	rect.ymin= yminc;
-	rect.xmax= strip->end - xofs;
-	rect.ymax= ymaxc;
+	rect.xmin = strip->start + xofs;
+	rect.ymin = yminc;
+	rect.xmax = strip->end - xofs;
+	rect.ymax = ymaxc;
 	
 	/* add this string to the cache of texts to draw */
 	UI_view2d_text_cache_rectf(v2d, &rect, str, col);
@@ -514,7 +514,7 @@ static void nla_draw_strip_frames_text(NlaTrack *UNUSED(nlt), NlaStrip *strip, V
 {
 	const float ytol = 1.0f; /* small offset to vertical positioning of text, for legibility */
 	const char col[4] = {220, 220, 220, 255}; /* light grey */
-	char str[32] = "";
+	char numstr[32] = "";
 	
 	
 	/* Always draw times above the strip, whereas sequencer drew below + above.
@@ -524,12 +524,12 @@ static void nla_draw_strip_frames_text(NlaTrack *UNUSED(nlt), NlaStrip *strip, V
 	 *	  while also preserving some accuracy, since we do use floats
 	 */
 		/* start frame */
-	BLI_snprintf(str, sizeof(str), "%.1f", strip->start);
-	UI_view2d_text_cache_add(v2d, strip->start-1.0f, ymaxc+ytol, str, col);
+	BLI_snprintf(numstr, sizeof(numstr), "%.1f", strip->start);
+	UI_view2d_text_cache_add(v2d, strip->start-1.0f, ymaxc+ytol, numstr, col);
 	
 		/* end frame */
-	BLI_snprintf(str, sizeof(str), "%.1f", strip->end);
-	UI_view2d_text_cache_add(v2d, strip->end, ymaxc+ytol, str, col);
+	BLI_snprintf(numstr, sizeof(numstr), "%.1f", strip->end);
+	UI_view2d_text_cache_add(v2d, strip->end, ymaxc+ytol, numstr, col);
 }
 
 /* ---------------------- */
@@ -559,7 +559,7 @@ void draw_nla_main_data (bAnimContext *ac, SpaceNla *snla, ARegion *ar)
 	/* don't use totrect set, as the width stays the same 
 	 * (NOTE: this is ok here, the configuration is pretty straightforward) 
 	 */
-	v2d->tot.ymin= (float)(-height);
+	v2d->tot.ymin = (float)(-height);
 	
 	/* loop through channels, and set up drawing depending on their type  */	
 	y= (float)(-NLACHANNEL_HEIGHT(snla));
@@ -692,8 +692,7 @@ static void draw_nla_channel_list_gl (bAnimContext *ac, ListBase *anim_data, Vie
 						
 					/* if this track is active and we're tweaking it, don't draw these toggles */
 					// TODO: need a special macro for this...
-					if ( ((nlt->flag & NLATRACK_ACTIVE) && (nlt->flag & NLATRACK_DISABLED)) == 0 ) 
-					{
+					if (((nlt->flag & NLATRACK_ACTIVE) && (nlt->flag & NLATRACK_DISABLED)) == 0) {
 						if (nlt->flag & NLATRACK_MUTED)
 							mute = ICON_MUTE_IPO_ON;
 						else	
@@ -715,7 +714,7 @@ static void draw_nla_channel_list_gl (bAnimContext *ac, ListBase *anim_data, Vie
 					}
 						
 					sel = SEL_NLT(nlt);
-					strcpy(name, nlt->name);
+					BLI_strncpy(name, nlt->name, sizeof(name));
 					
 					// draw manually still
 					doDraw= 1;
@@ -813,7 +812,7 @@ static void draw_nla_channel_list_gl (bAnimContext *ac, ListBase *anim_data, Vie
 					/* only on top two corners, to show that this channel sits on top of the preceding ones */
 					uiSetRoundBox(UI_CNR_TOP_LEFT | UI_CNR_TOP_RIGHT);
 					
-					/* draw slightly shifted up vertically to look like it has more separtion from other channels,
+					/* draw slightly shifted up vertically to look like it has more separation from other channels,
 					 * but we then need to slightly shorten it so that it doesn't look like it overlaps
 					 */
 					uiDrawBox(GL_POLYGON, x+offset,  yminc+NLACHANNEL_SKIP, (float)v2d->cur.xmax, ymaxc+NLACHANNEL_SKIP-1, 8);
@@ -947,7 +946,7 @@ void draw_nla_channel_list (bContext *C, bAnimContext *ac, ARegion *ar)
 	/* don't use totrect set, as the width stays the same 
 	 * (NOTE: this is ok here, the configuration is pretty straightforward) 
 	 */
-	v2d->tot.ymin= (float)(-height);
+	v2d->tot.ymin = (float)(-height);
 	/* need to do a view-sync here, so that the keys area doesn't jump around (it must copy this) */
 	UI_view2d_sync(NULL, ac->sa, v2d, V2D_LOCK_COPY);
 	
@@ -958,7 +957,7 @@ void draw_nla_channel_list (bContext *C, bAnimContext *ac, ARegion *ar)
 		draw_nla_channel_list_gl(ac, &anim_data, v2d, y);
 	}
 	{	/* second pass: UI widgets */
-		uiBlock *block= uiBeginBlock(C, ar, "NLA channel buttons", UI_EMBOSS);
+		uiBlock *block= uiBeginBlock(C, ar, __func__, UI_EMBOSS);
 		size_t channel_index = 0;
 		
 		y= (float)(-NLACHANNEL_HEIGHT(snla));

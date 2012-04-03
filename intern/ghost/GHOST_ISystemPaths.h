@@ -28,8 +28,8 @@
  *  \ingroup GHOST
  */
 
-#ifndef _GHOST_ISYSTEMPATHS_H_
-#define _GHOST_ISYSTEMPATHS_H_
+#ifndef __GHOST_ISYSTEMPATHS_H__
+#define __GHOST_ISYSTEMPATHS_H__
 
 #include "GHOST_Types.h"
 
@@ -86,12 +86,12 @@ public:
 	  * Determine the directory of the current binary
 	  * @return Unsigned char string pointing to the binary dir
 	  */
-	 virtual const GHOST_TUns8* getBinaryDir() const = 0;
+	virtual const GHOST_TUns8* getBinaryDir() const = 0;
 
-	 /**
-	  * Add the file to the operating system most recently used files
-	  */
-	 virtual void addToSystemRecentFiles(const char* filename) const = 0;
+	/**
+	 * Add the file to the operating system most recently used files
+	 */
+	virtual void addToSystemRecentFiles(const char* filename) const = 0;
 
 private:
 	/** The one and only system paths*/

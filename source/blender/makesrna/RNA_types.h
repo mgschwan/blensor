@@ -27,8 +27,8 @@
 
 #include "BLO_sys_types.h"
 
-#ifndef RNA_TYPES_H
-#define RNA_TYPES_H
+#ifndef __RNA_TYPES_H__
+#define __RNA_TYPES_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,7 +108,9 @@ typedef enum PropertySubType {
 	PROP_FILEPATH = 1,
 	PROP_DIRPATH = 2,
 	PROP_FILENAME = 3,
-	PROP_TRANSLATE = 4, /* a string which should be translated */
+	PROP_BYTESTRING = 4, /* a string which should be represented as bytes
+	                      * in python, still NULL terminated though. */
+	PROP_TRANSLATE = 5, /* a string which should be translated */
 
 	/* numbers */
 	PROP_UNSIGNED = 13,
@@ -150,9 +152,9 @@ typedef enum PropertyFlag {
 	 * for editing. */
 	PROP_LIB_EXCEPTION = 1<<16,
 
-	/* animateable means the property can be driven by some
+	/* animatable means the property can be driven by some
 	 * other input, be it animation curves, expressions, ..
-	 * properties are animateable by default except for pointers
+	 * properties are animatable by default except for pointers
 	 * and collections */
 	PROP_ANIMATABLE = 1<<1,
 
@@ -189,7 +191,7 @@ typedef enum PropertyFlag {
 	 * this exposes the flag as multiple options in python and the UI.
 	 *
 	 * note: these can't be animated so use with care.
-	  */
+	 */
 	PROP_ENUM_FLAG = 1<<21,
 
 	/* need context for update function */
@@ -301,13 +303,14 @@ typedef struct ParameterDynAlloc {
 
 typedef enum FunctionFlag {
 	FUNC_NO_SELF = 1, /* for static functions */
-	FUNC_USE_CONTEXT = 2,
-	FUNC_USE_REPORTS = 4,
+	FUNC_USE_MAIN = 2,
+	FUNC_USE_CONTEXT = 4,
+	FUNC_USE_REPORTS = 8,
 	FUNC_USE_SELF_ID = 2048,
 
 	/* registering */
-	FUNC_REGISTER = 8,
-	FUNC_REGISTER_OPTIONAL = 8|16,
+	FUNC_REGISTER = 16,
+	FUNC_REGISTER_OPTIONAL = 16|32,
 
 	/* internal flags */
 	FUNC_BUILTIN = 128,
@@ -326,12 +329,13 @@ typedef enum StructFlag {
 	/* indicates that this struct is an ID struct, and to use refcounting */
 	STRUCT_ID = 1,
 	STRUCT_ID_REFCOUNT = 2,
+	STRUCT_UNDO = 4, /* defaults on, clear for user preferences and similar */
 
 	/* internal flags */
-	STRUCT_RUNTIME = 4,
-	STRUCT_GENERATED = 8,
-	STRUCT_FREE_POINTERS = 16,
-	STRUCT_NO_IDPROPERTIES = 32 /* Menu's and Panels don't need properties */
+	STRUCT_RUNTIME = 8,
+	STRUCT_GENERATED = 16,
+	STRUCT_FREE_POINTERS = 32,
+	STRUCT_NO_IDPROPERTIES = 64 /* Menu's and Panels don't need properties */
 } StructFlag;
 
 typedef int (*StructValidateFunc)(struct PointerRNA *ptr, void *data, int *have_function);
@@ -367,4 +371,4 @@ typedef struct ExtensionRNA {
 }
 #endif
 
-#endif /* RNA_TYPES_H */
+#endif /* __RNA_TYPES_H__ */

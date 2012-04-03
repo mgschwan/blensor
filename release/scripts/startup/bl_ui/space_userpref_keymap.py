@@ -180,7 +180,7 @@ class InputKeyMapPanel:
                     sub.prop(kmi, "propvalue", text="")
                 else:
                     # One day...
-                    # sub.prop_search(kmi, "idname", bpy.context.window_manager, "operators_all", text="")
+                    #~ sub.prop_search(kmi, "idname", bpy.context.window_manager, "operators_all", text="")
                     sub.prop(kmi, "idname", text="")
 
                 sub = split.column()
@@ -219,11 +219,11 @@ class InputKeyMapPanel:
 
             filtered_items = [kmi for kmi in km.keymap_items if filter_text in kmi.name.lower()]
 
-            if len(filtered_items) != 0:
+            if filtered_items:
                 col = layout.column()
 
                 row = col.row()
-                row.label(text=km.name, icon="DOT")
+                row.label(text=km.name, icon='DOT')
 
                 row.label()
                 row.label()
@@ -265,13 +265,13 @@ class InputKeyMapPanel:
         if not text:
             text = "Blender (default)"
         row.menu("USERPREF_MT_keyconfigs", text=text)
-        row.operator("wm.keyconfig_preset_add", text="", icon="ZOOMIN")
-        row.operator("wm.keyconfig_preset_add", text="", icon="ZOOMOUT").remove_active = True
+        row.operator("wm.keyconfig_preset_add", text="", icon='ZOOMIN')
+        row.operator("wm.keyconfig_preset_add", text="", icon='ZOOMOUT').remove_active = True
 
         #~ layout.context_pointer_set("keyconfig", wm.keyconfigs.active)
         #~ row.operator("wm.keyconfig_remove", text="", icon='X')
 
-        row.prop(context.space_data, "filter_text", icon="VIEWZOOM")
+        row.prop(context.space_data, "filter_text", icon='VIEWZOOM')
 
         col.separator()
 

@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_LIBRARY_TYPES_H
-#define BKE_LIBRARY_TYPES_H
+#ifndef __BKE_LIBRARY_H__
+#define __BKE_LIBRARY_H__
 
 /** \file BKE_library.h
  *  \ingroup bke
@@ -46,9 +46,10 @@ struct PointerRNA;
 struct PropertyRNA;
 
 void *alloc_libblock(struct ListBase *lb, short type, const char *name);
-void *copy_libblock(void *rt);
+void *copy_libblock(struct ID *id);
 void copy_libblock_data(struct ID *id, const struct ID *id_from, const short do_action);
 
+void BKE_id_lib_local_paths(struct Main *bmain, struct Library *lib, struct ID *id);
 void id_lib_extern(struct ID *id);
 void BKE_library_filepath_set(struct Library *lib, const char *filepath);
 void id_us_plus(struct ID *id);
@@ -59,10 +60,11 @@ int id_copy(struct ID *id, struct ID **newid, int test);
 int id_unlink(struct ID *id, int test);
 
 int new_id(struct ListBase *lb, struct ID *id, const char *name);
+void id_clear_lib_data(struct Main *bmain, struct ID *id);
 
 struct ListBase *which_libbase(struct Main *mainlib, short type);
 
-#define MAX_LIBARRAY	39
+#define MAX_LIBARRAY	40
 int set_listbasepointers(struct Main *main, struct ListBase **lb);
 
 void free_libblock(struct ListBase *lb, void *idv);
@@ -77,13 +79,14 @@ void rename_id(struct ID *id, const char *name);
 void name_uiprefix_id(char *name, struct ID *id);
 void test_idbutton(char *name);
 void text_idbutton(struct ID *id, char *text);
-void all_local(struct Library *lib, int untagged_only);
+void BKE_library_make_local(struct Main *bmain, struct Library *lib, int untagged_only);
 struct ID *find_id(const char *type, const char *name);
 void clear_id_newpoins(void);
 
-void IDnames_to_pupstring(const char **str, const char *title, const char *extraops, struct ListBase *lb,struct ID* link, short *nr);
-void IMAnames_to_pupstring(const char **str, const char *title, const char *extraops, struct ListBase *lb, struct ID *link, short *nr);
-void IPOnames_to_pupstring(const char **str, const char *title, const char *extraops, struct ListBase *lb, struct ID* link, short *nr, int blocktype);
+void IDnames_to_pupstring(const char **str, const char *title, const char *extraops,
+                          struct ListBase *lb,struct ID* link, short *nr);
+void IMAnames_to_pupstring(const char **str, const char *title, const char *extraops,
+                           struct ListBase *lb, struct ID *link, short *nr);
 
 void flag_listbase_ids(ListBase *lb, short flag, short value);
 void flag_all_listbases_ids(short flag, short value);

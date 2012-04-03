@@ -43,7 +43,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_editVert.h"
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
 #include "BLI_graph.h"
@@ -157,14 +156,14 @@ static void getEditBoneRollUpAxis(EditBone *bone, float roll, float up_axis[3])
 	sub_v3_v3v3(nor, bone->tail, bone->head);
 	
 	vec_roll_to_mat3(nor, roll, mat);
-	VECCOPY(up_axis, mat[2]);
+	copy_v3_v3(up_axis, mat[2]);
 }
 
 static float rollBoneByQuatAligned(EditBone *bone, float old_up_axis[3], float qrot[4], float qroll[4], float aligned_axis[3])
 {
 	float nor[3], new_up_axis[3], x_axis[3], z_axis[3];
 	
-	VECCOPY(new_up_axis, old_up_axis);
+	copy_v3_v3(new_up_axis, old_up_axis);
 	mul_qt_v3(qrot, new_up_axis);
 	
 	sub_v3_v3v3(nor, bone->tail, bone->head);
@@ -236,7 +235,7 @@ static float rollBoneByQuatJoint(RigEdge *edge, RigEdge *previous, float qrot[4]
 		
 		mul_qt_v3(qroll, normal);
 			
-		VECCOPY(new_up_axis, edge->up_axis);
+		copy_v3_v3(new_up_axis, edge->up_axis);
 		mul_qt_v3(qrot, new_up_axis);
 		
 		normalize_v3(new_up_axis);
@@ -252,7 +251,7 @@ float rollBoneByQuat(EditBone *bone, float old_up_axis[3], float qrot[4])
 {
 	float new_up_axis[3];
 	
-	VECCOPY(new_up_axis, old_up_axis);
+	copy_v3_v3(new_up_axis, old_up_axis);
 	mul_qt_v3(qrot, new_up_axis);
 	
 	return ED_rollBoneToVector(bone, new_up_axis, FALSE);
@@ -324,7 +323,7 @@ static RigGraph *newRigGraph(void)
 	rg->free_node = NULL;
 	
 #ifdef USE_THREADS
-//	if(G.scene->r.mode & R_FIXED_THREADS)
+//	if (G.scene->r.mode & R_FIXED_THREADS)
 //	{
 //		totthread = G.scene->r.threads;
 //	}
@@ -367,7 +366,7 @@ static RigNode *newRigNodeHead(RigGraph *rg, RigArc *arc, float p[3])
 	node = MEM_callocN(sizeof(RigNode), "rig node");
 	BLI_addtail(&rg->nodes, node);
 
-	VECCOPY(node->p, p);
+	copy_v3_v3(node->p, p);
 	node->degree = 1;
 	node->arcs = NULL;
 	
@@ -389,7 +388,7 @@ static RigNode *newRigNode(RigGraph *rg, float p[3])
 	node = MEM_callocN(sizeof(RigNode), "rig node");
 	BLI_addtail(&rg->nodes, node);
 
-	VECCOPY(node->p, p);
+	copy_v3_v3(node->p, p);
 	node->degree = 0;
 	node->arcs = NULL;
 	
@@ -412,12 +411,12 @@ static void RIG_appendEdgeToArc(RigArc *arc, RigEdge *edge)
 
 	if (edge->prev == NULL)
 	{
-		VECCOPY(edge->head, arc->head->p);
+		copy_v3_v3(edge->head, arc->head->p);
 	}
 	else
 	{
 		RigEdge *last_edge = edge->prev;
-		VECCOPY(edge->head, last_edge->tail);
+		copy_v3_v3(edge->head, last_edge->tail);
 		RIG_calculateEdgeAngles(last_edge, edge);
 	}
 	
@@ -434,7 +433,7 @@ static void RIG_addEdgeToArc(RigArc *arc, float tail[3], EditBone *bone)
 
 	edge = MEM_callocN(sizeof(RigEdge), "rig edge");
 
-	VECCOPY(edge->tail, tail);
+	copy_v3_v3(edge->tail, tail);
 	edge->bone = bone;
 	
 	if (bone)
@@ -450,7 +449,7 @@ static void renameTemplateBone(char *name, char *template_name, ListBase *editbo
 {
 	int i, j;
 	
-	for (i = 0, j = 0; template_name[i] != '\0' && i < 31 && j < 31; i++)
+	for (i = 0, j = 0; i < (MAXBONENAME-1) && j < (MAXBONENAME-1) && template_name[i] != '\0'; i++)
 	{
 		if (template_name[i] == '&')
 		{
@@ -485,14 +484,14 @@ static void renameTemplateBone(char *name, char *template_name, ListBase *editbo
 static RigControl *cloneControl(RigGraph *rg, RigGraph *src_rg, RigControl *src_ctrl, GHash *ptr_hash, char *side_string, char *num_string)
 {
 	RigControl *ctrl;
-	char name[32];
+	char name[MAXBONENAME];
 	
 	ctrl = newRigControl(rg);
 	
-	VECCOPY(ctrl->head, src_ctrl->head);
-	VECCOPY(ctrl->tail, src_ctrl->tail);
-	VECCOPY(ctrl->up_axis, src_ctrl->up_axis);
-	VECCOPY(ctrl->offset, src_ctrl->offset);
+	copy_v3_v3(ctrl->head, src_ctrl->head);
+	copy_v3_v3(ctrl->tail, src_ctrl->tail);
+	copy_v3_v3(ctrl->up_axis, src_ctrl->up_axis);
+	copy_v3_v3(ctrl->offset, src_ctrl->offset);
 	
 	ctrl->tail_mode = src_ctrl->tail_mode;
 	ctrl->flag = src_ctrl->flag;
@@ -531,9 +530,9 @@ static RigArc *cloneArc(RigGraph *rg, RigGraph *src_rg, RigArc *src_arc, GHash *
 	
 		edge = MEM_callocN(sizeof(RigEdge), "rig edge");
 
-		VECCOPY(edge->head, src_edge->head);
-		VECCOPY(edge->tail, src_edge->tail);
-		VECCOPY(edge->up_axis, src_edge->up_axis);
+		copy_v3_v3(edge->head, src_edge->head);
+		copy_v3_v3(edge->tail, src_edge->tail);
+		copy_v3_v3(edge->up_axis, src_edge->up_axis);
 		
 		edge->length = src_edge->length;
 		edge->angle = src_edge->angle;
@@ -541,7 +540,7 @@ static RigArc *cloneArc(RigGraph *rg, RigGraph *src_rg, RigArc *src_arc, GHash *
 		
 		if (src_edge->bone != NULL)
 		{
-			char name[32];
+			char name[MAXBONENAME];
 			renameTemplateBone(name, src_edge->bone->name, rg->editbones, side_string, num_string);
 			edge->bone = duplicateEditBoneObjects(src_edge->bone, name, rg->editbones, src_rg->ob, rg->ob);
 			edge->bone->flag &= ~(BONE_TIPSEL|BONE_SELECTED|BONE_ROOTSEL);
@@ -690,8 +689,8 @@ static void RIG_addControlBone(RigGraph *rg, EditBone *bone)
 {
 	RigControl *ctrl = newRigControl(rg);
 	ctrl->bone = bone;
-	VECCOPY(ctrl->head, bone->head);
-	VECCOPY(ctrl->tail, bone->tail);
+	copy_v3_v3(ctrl->head, bone->head);
+	copy_v3_v3(ctrl->tail, bone->tail);
 	getEditBoneRollUpAxis(bone, bone->roll, ctrl->up_axis);
 	ctrl->tail_mode = TL_NONE;
 	
@@ -708,7 +707,7 @@ static int RIG_parentControl(RigControl *ctrl, EditBone *link)
 		sub_v3_v3v3(offset, ctrl->bone->head, link->head);
 
 		/* if root matches, check for direction too */		
-		if (dot_v3v3(offset, offset) < 0.0001)
+		if (dot_v3v3(offset, offset) < 0.0001f)
 		{
 			float vbone[3], vparent[3];
 			
@@ -726,7 +725,7 @@ static int RIG_parentControl(RigControl *ctrl, EditBone *link)
 				cross_v3_v3v3(nor, vbone, vparent);
 				
 				len = dot_v3v3(nor, nor);
-				if (len < 0.0001)
+				if (len < 0.0001f)
 				{
 					flag |= RIG_CTRL_FIT_BONE;
 				}
@@ -765,7 +764,7 @@ static int RIG_parentControl(RigControl *ctrl, EditBone *link)
 		ctrl->link = link;
 		ctrl->flag = flag;
 		
-		VECCOPY(ctrl->offset, offset);
+		copy_v3_v3(ctrl->offset, offset);
 		
 		return 1;
 	}
@@ -859,8 +858,8 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 						{
 							int fit = 0;
 							
-							fit = len_v3v3(ctrl->bone->head, edge->bone->head) < 0.0001;
-							fit = fit || len_v3v3(ctrl->bone->tail, edge->bone->tail) < 0.0001;
+							fit = len_v3v3(ctrl->bone->head, edge->bone->head) < 0.0001f;
+							fit = fit || len_v3v3(ctrl->bone->tail, edge->bone->tail) < 0.0001f;
 							
 							if (fit)
 							{
@@ -1009,20 +1008,20 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 			/* look on deform bones first */
 			BLI_ghashIterator_init(&ghi, rg->bones_map);
 			
-			for( ; !BLI_ghashIterator_isDone(&ghi); BLI_ghashIterator_step(&ghi))
+			for ( ; !BLI_ghashIterator_isDone(&ghi); BLI_ghashIterator_step(&ghi))
 			{
 				EditBone *bone = (EditBone*)BLI_ghashIterator_getValue(&ghi);
 				
 				/* don't link with parent */
 				if (bone->parent != ctrl->bone)
 				{
-					if (len_v3v3(ctrl->bone->tail, bone->head) < 0.01)
+					if (len_v3v3(ctrl->bone->tail, bone->head) < 0.01f)
 					{
 						ctrl->tail_mode = TL_HEAD;
 						ctrl->link_tail = bone;
 						break;
 					}
-					else if (len_v3v3(ctrl->bone->tail, bone->tail) < 0.01)
+					else if (len_v3v3(ctrl->bone->tail, bone->tail) < 0.01f)
 					{
 						ctrl->tail_mode = TL_TAIL;
 						ctrl->link_tail = bone;
@@ -1122,14 +1121,14 @@ static void RIG_removeUneededOffsets(RigGraph *rg)
 		
 		if (first_edge->bone == NULL)
 		{
-			if (first_edge->bone == NULL && len_v3v3(first_edge->tail, arc->head->p) <= 0.001)
+			if (first_edge->bone == NULL && len_v3v3(first_edge->tail, arc->head->p) <= 0.001f)
 			{
 				BLI_remlink(&arc->edges, first_edge);
 				MEM_freeN(first_edge);
 			}
 			else if (arc->head->degree == 1)
 			{
-				RigNode *new_node = (RigNode*)BLI_FindNodeByPosition((BGraph*)rg, first_edge->tail, 0.001);
+				RigNode *new_node = (RigNode*)BLI_FindNodeByPosition((BGraph*)rg, first_edge->tail, 0.001f);
 				
 				if (new_node)
 				{
@@ -1146,7 +1145,7 @@ static void RIG_removeUneededOffsets(RigGraph *rg)
 						BLI_remlink(&arc->edges, first_edge);
 						MEM_freeN(first_edge);
 						
-						VECCOPY(arc->head->p, next_edge->head);
+						copy_v3_v3(arc->head->p, next_edge->head);
 					}
 				}
 			}
@@ -1222,7 +1221,7 @@ static void RIG_removeUneededOffsets(RigGraph *rg)
 							BLI_remlink(&arc->edges, first_edge);
 							MEM_freeN(first_edge);
 							
-							VECCOPY(arc->head->p, next_edge->head);
+							copy_v3_v3(arc->head->p, next_edge->head);
 							
 							/* remove null edge in other arcs too */
 							for (other_arc = rg->arcs.first; other_arc; other_arc = other_arc->next)
@@ -1252,14 +1251,14 @@ static void RIG_removeUneededOffsets(RigGraph *rg)
 		
 		if (last_edge->bone == NULL)
 		{
-			if (len_v3v3(last_edge->head, arc->tail->p) <= 0.001)
+			if (len_v3v3(last_edge->head, arc->tail->p) <= 0.001f)
 			{
 				BLI_remlink(&arc->edges, last_edge);
 				MEM_freeN(last_edge);
 			}
 			else if (arc->tail->degree == 1)
 			{
-				RigNode *new_node = (RigNode*)BLI_FindNodeByPosition((BGraph*)rg, last_edge->head, 0.001);
+				RigNode *new_node = (RigNode*)BLI_FindNodeByPosition((BGraph*)rg, last_edge->head, 0.001f);
 				
 				if (new_node)
 				{
@@ -1284,7 +1283,7 @@ static void RIG_removeUneededOffsets(RigGraph *rg)
 						BLI_remlink(&arc->edges, last_edge);
 						MEM_freeN(last_edge);
 						
-						VECCOPY(arc->tail->p, previous_edge->tail);
+						copy_v3_v3(arc->tail->p, previous_edge->tail);
 						previous_edge->angle = 0;
 					}
 				}
@@ -1299,7 +1298,7 @@ static void RIG_arcFromBoneChain(RigGraph *rg, ListBase *list, EditBone *root_bo
 	RigArc *arc = NULL;
 	int contain_head = 0;
 	
-	for(bone = root_bone; bone; bone = nextEditBoneChild(list, bone, 0))
+	for (bone = root_bone; bone; bone = nextEditBoneChild(list, bone, 0))
 	{
 		int nb_children;
 		
@@ -1453,7 +1452,7 @@ static void RIG_printCtrl(RigControl *ctrl, char *indent)
 	printf("%sBone: %s\n", indent, ctrl->bone->name);
 	printf("%sLink: %s\n", indent, ctrl->link ? ctrl->link->name : "!NONE!");
 	
-	sprintf(text, "%soffset", indent);
+	BLI_snprintf(text, sizeof(text), "%soffset", indent);
 	print_v3(text, ctrl->offset);
 	
 	printf("%sFlag: %i\n", indent, ctrl->flag);
@@ -1551,7 +1550,7 @@ RigGraph *RIG_graphFromArmature(const bContext *C, Object *ob, bArmature *arm)
 	rg->ob = ob;
 
 	/* Do the rotations */
-	for (ebone = rg->editbones->first; ebone; ebone=ebone->next){
+	for (ebone = rg->editbones->first; ebone; ebone=ebone->next) {
 		if (ebone->parent == NULL)
 		{
 			RIG_arcFromBoneChain(rg, rg->editbones, ebone, NULL, 0);
@@ -1603,7 +1602,7 @@ static RigGraph *armatureSelectedToGraph(bContext *C, Object *ob, bArmature *arm
 	rg->ob = ob;
 
 	/* Do the rotations */
-	for (ebone = rg->editbones->first; ebone; ebone=ebone->next){
+	for (ebone = rg->editbones->first; ebone; ebone=ebone->next) {
 		if (ebone->parent == NULL)
 		{
 			RIG_arcFromBoneChain(rg, rg->editbones, ebone, NULL, 1);
@@ -1755,7 +1754,7 @@ static void finalizeControl(RigGraph *rigg, RigControl *ctrl, float resize)
 			sub_v3_v3v3(v1, ctrl->bone->tail, ctrl->bone->head);
 			sub_v3_v3v3(v2, tail_vec, ctrl->bone->head);
 			
-			VECCOPY(ctrl->bone->tail, tail_vec);
+			copy_v3_v3(ctrl->bone->tail, tail_vec);
 			
 			rotation_between_vecs_to_quat(qtail, v1, v2);
 			mul_qt_qtqt(ctrl->qrot, qtail, ctrl->qrot);
@@ -1791,7 +1790,7 @@ static void repositionControl(RigGraph *rigg, RigControl *ctrl, float head[3], f
 {
 	float parent_offset[3], tail_offset[3];
 	
-	VECCOPY(parent_offset, ctrl->offset);
+	copy_v3_v3(parent_offset, ctrl->offset);
 	mul_v3_fl(parent_offset, resize);
 	mul_qt_v3(qrot, parent_offset);
 	
@@ -1799,7 +1798,7 @@ static void repositionControl(RigGraph *rigg, RigControl *ctrl, float head[3], f
 
 	ctrl->flag |= RIG_CTRL_HEAD_DONE;
 
-	QUATCOPY(ctrl->qrot, qrot); 
+	copy_qt_qt(ctrl->qrot, qrot);
 
 	if (ctrl->tail_mode == TL_NONE)
 	{
@@ -1836,8 +1835,8 @@ static void repositionBone(bContext *C, RigGraph *rigg, RigEdge *edge, float vec
 	
 	rotation_between_vecs_to_quat(qrot, v1, v2);
 	
-	VECCOPY(bone->head, vec0);
-	VECCOPY(bone->tail, vec1);
+	copy_v3_v3(bone->head, vec0);
+	copy_v3_v3(bone->tail, vec1);
 	
 	if (!is_zero_v3(up_axis))
 	{
@@ -2013,11 +2012,11 @@ static float costAngle(float original_angle, float vec_first[3], float vec_secon
 		{
 			current_angle = saacos(dot_v3v3(vec_first, vec_second));
 
-			return angle_weight * fabs(current_angle - original_angle);
+			return angle_weight * fabsf(current_angle - original_angle);
 		}
 		else
 		{
-			return angle_weight * M_PI;
+			return angle_weight * (float)M_PI;
 		}
 	}
 	else
@@ -2287,8 +2286,8 @@ static void retargetArctoArcAggresive(bContext *C, RigGraph *rigg, RigArc *iarc,
 
 	/* set joints to best position */
 	for (edge = iarc->edges.first, i = 0;
-		 edge;
-		 edge = edge->next, i++)
+	     edge;
+	     edge = edge->next, i++)
 	{
 		float *no = NULL;
 		if (i < nb_joints)
@@ -2489,7 +2488,7 @@ static void markMultiResolutionChildArc(ReebNode *end_enode, ReebNode *enode)
 {
 	int i;
 	
-	for(i = 0; i < enode->degree; i++)
+	for (i = 0; i < enode->degree; i++)
 	{
 		ReebArc *earc = (ReebArc*)enode->arcs[i];
 		
@@ -2594,7 +2593,7 @@ static void findCorrespondingArc(RigGraph *rigg, RigArc *start_arc, RigNode *sta
 //		RIG_printArcBones(next_iarc);
 //	}
 	
-	for(i = 0; i < enode->degree; i++)
+	for (i = 0; i < enode->degree; i++)
 	{
 		next_earc = (ReebArc*)enode->arcs[i];
 		
@@ -2645,20 +2644,20 @@ static void findCorrespondingArc(RigGraph *rigg, RigArc *start_arc, RigNode *sta
 //		printf("flag %i -- level %i -- flag %i -- group %i\n", ARC_FREE, symmetry_level, symmetry_flag, symmetry_group);
 //		
 //		printf("CANDIDATES\n");
-//		for(i = 0; i < enode->degree; i++)
+//		for (i = 0; i < enode->degree; i++)
 //		{
 //			next_earc = (ReebArc*)enode->arcs[i];
 //			printf("flag %i -- level %i -- flag %i -- group %i\n", next_earc->flag, next_earc->symmetry_level, next_earc->symmetry_flag, next_earc->symmetry_group);
 //		}
 		
 		/* Emergency matching */
-		for(i = 0; i < enode->degree; i++)
+		for (i = 0; i < enode->degree; i++)
 		{
 			next_earc = (ReebArc*)enode->arcs[i];
 			
 			if (next_earc->flag == ARC_FREE && next_earc->symmetry_level == symmetry_level)
 			{
-//				printf("USING: \n");
+//				printf("USING:\n");
 //				printf("flag %i -- level %i -- flag %i -- group %i\n", next_earc->flag, next_earc->symmetry_level, next_earc->symmetry_flag, next_earc->symmetry_group);
 				matchMultiResolutionArc(rigg, start_node, next_iarc, next_earc);
 				break;
@@ -2688,7 +2687,7 @@ static void retargetSubgraph(bContext *C, RigGraph *rigg, RigArc *start_arc, Rig
 		matchMultiResolutionNode(rigg, inode, enode);
 	}
 	
-	for(i = 0; i < inode->degree; i++)
+	for (i = 0; i < inode->degree; i++)
 	{
 		RigArc *next_iarc = (RigArc*)inode->arcs[i];
 		
@@ -2902,12 +2901,10 @@ void BIF_retargetArc(bContext *C, ReebArc *earc, RigGraph *template_rigg)
 	char *num_string = scene->toolsettings->skgen_num_string;
 	int free_template = 0;
 	
-	if (template_rigg)
-	{
-		ob = template_rigg->ob; 	
+	if (template_rigg) {
+		ob = template_rigg->ob;
 	}
-	else
-	{
+	else {
 		free_template = 1;
 		ob = obedit;
 		template_rigg = armatureSelectedToGraph(C, ob, ob->data);

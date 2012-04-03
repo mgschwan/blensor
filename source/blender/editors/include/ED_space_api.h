@@ -28,8 +28,8 @@
  *  \ingroup editors
  */
 
-#ifndef ED_SPACE_API_H
-#define ED_SPACE_API_H
+#ifndef __ED_SPACE_API_H__
+#define __ED_SPACE_API_H__
 
 struct ARegionType;
 struct bContext;
@@ -46,7 +46,6 @@ void ED_spacetype_node(void);
 void ED_spacetype_buttons(void);
 void ED_spacetype_info(void);
 void ED_spacetype_file(void);
-void ED_spacetype_sound(void);
 void ED_spacetype_action(void);
 void ED_spacetype_nla(void);
 void ED_spacetype_script(void);
@@ -55,9 +54,10 @@ void ED_spacetype_sequencer(void);
 void ED_spacetype_logic(void);
 void ED_spacetype_console(void);
 void ED_spacetype_userpref(void);
+void ED_spacetype_clip(void);
 
 /* calls for instancing and freeing spacetype static data 
-   called in WM_init_exit */
+ * called in WM_init_exit */
 /* in space_file.c */
 void ED_file_init(void);
 void ED_file_exit(void);
@@ -73,5 +73,5 @@ void ED_region_draw_cb_draw(const struct bContext *, struct ARegion *, int);
 void ED_region_draw_cb_exit(struct ARegionType *, void *);
 void *ED_region_draw_cb_customdata(void *handle);
 
-#endif /* ED_SPACE_API_H */
+#endif /* __ED_SPACE_API_H__ */
 

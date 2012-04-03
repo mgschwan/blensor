@@ -42,7 +42,6 @@
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
-#include "BLI_editVert.h"
 #include "BLI_rand.h"
 
 #include "BLF_translation.h"
@@ -294,7 +293,7 @@ static void nla_panel_properties(const bContext *C, Panel *pa)
 {
 	PointerRNA strip_ptr;
 	uiLayout *layout= pa->layout;
-	uiLayout *column, *row, *subcol;
+	uiLayout *column, *row, *sub;
 	uiBlock *block;
 	short showEvalProps = 1;
 	
@@ -339,10 +338,10 @@ static void nla_panel_properties(const bContext *C, Panel *pa)
 			uiLayoutSetActive(column, RNA_boolean_get(&strip_ptr, "use_animated_influence")==0); 
 			uiItemR(column, &strip_ptr, "use_auto_blend", 0, NULL, ICON_NONE); // XXX as toggle?
 			
-			subcol= uiLayoutColumn(column, 1);
-				uiLayoutSetActive(subcol, RNA_boolean_get(&strip_ptr, "use_auto_blend")==0); 
-				uiItemR(subcol, &strip_ptr, "blend_in", 0, NULL, ICON_NONE);
-				uiItemR(subcol, &strip_ptr, "blend_out", 0, NULL, ICON_NONE);
+			sub= uiLayoutColumn(column, 1);
+				uiLayoutSetActive(sub, RNA_boolean_get(&strip_ptr, "use_auto_blend")==0); 
+				uiItemR(sub, &strip_ptr, "blend_in", 0, NULL, ICON_NONE);
+				uiItemR(sub, &strip_ptr, "blend_out", 0, NULL, ICON_NONE);
 			
 		/* settings */
 		column= uiLayoutColumn(layout, 1);
@@ -395,7 +394,7 @@ static void nla_panel_evaluation(const bContext *C, Panel *pa)
 {
 	PointerRNA strip_ptr;
 	uiLayout *layout= pa->layout;
-	uiLayout *column, *subcolumn, *subrow;
+	uiLayout *col, *sub;
 	uiBlock *block;
 
 	/* check context and also validity of pointer */
@@ -405,23 +404,21 @@ static void nla_panel_evaluation(const bContext *C, Panel *pa)
 	block= uiLayoutGetBlock(layout);
 	uiBlockSetHandleFunc(block, do_nla_region_buttons, NULL);
 		
-	column= uiLayoutColumn(layout, 1);
-		uiItemR(column, &strip_ptr, "use_animated_influence", 0, NULL, ICON_NONE);
-		
-		subcolumn= uiLayoutColumn(column, 1);
-		uiLayoutSetEnabled(subcolumn, RNA_boolean_get(&strip_ptr, "use_animated_influence"));	
-			uiItemR(subcolumn, &strip_ptr, "influence", 0, NULL, ICON_NONE);
-		
+	col= uiLayoutColumn(layout, 1);
+	uiItemR(col, &strip_ptr, "use_animated_influence", 0, NULL, ICON_NONE);
 	
-	column= uiLayoutColumn(layout, 1);
-		subrow= uiLayoutRow(column, 0);
-		uiItemR(subrow, &strip_ptr, "use_animated_time", 0, NULL, ICON_NONE);
-		uiItemR(subrow, &strip_ptr, "use_animated_time_cyclic", 0, NULL, ICON_NONE);
+	sub= uiLayoutColumn(col, 1);
+	uiLayoutSetEnabled(sub, RNA_boolean_get(&strip_ptr, "use_animated_influence"));	
+	uiItemR(sub, &strip_ptr, "influence", 0, NULL, ICON_NONE);
 
-		subcolumn= uiLayoutColumn(column, 1);
-		subrow= uiLayoutRow(subcolumn, 0);
-		uiLayoutSetEnabled(subrow, RNA_boolean_get(&strip_ptr, "use_animated_time"));
-			uiItemR(subcolumn, &strip_ptr, "strip_time", 0, NULL, ICON_NONE);
+	col= uiLayoutColumn(layout, 1);
+	sub= uiLayoutRow(col, 0);
+	uiItemR(sub, &strip_ptr, "use_animated_time", 0, NULL, ICON_NONE);
+	uiItemR(sub, &strip_ptr, "use_animated_time_cyclic", 0, NULL, ICON_NONE);
+
+	sub= uiLayoutRow(col, 0);
+	uiLayoutSetEnabled(sub, RNA_boolean_get(&strip_ptr, "use_animated_time"));
+	uiItemR(sub, &strip_ptr, "strip_time", 0, NULL, ICON_NONE);
 }
 
 /* F-Modifiers for active NLA-Strip */
@@ -521,7 +518,7 @@ static int nla_properties(bContext *C, wmOperator *UNUSED(op))
 	ScrArea *sa= CTX_wm_area(C);
 	ARegion *ar= nla_has_buttons_region(sa);
 	
-	if(ar)
+	if (ar)
 		ED_region_toggle_hidden(C, ar);
 
 	return OPERATOR_FINISHED;
@@ -529,13 +526,13 @@ static int nla_properties(bContext *C, wmOperator *UNUSED(op))
 
 void NLA_OT_properties(wmOperatorType *ot)
 {
-	ot->name= "Properties";
-	ot->idname= "NLA_OT_properties";
-	ot->description= "Toggle display properties panel";
+	ot->name = "Properties";
+	ot->idname = "NLA_OT_properties";
+	ot->description = "Toggle display properties panel";
 	
-	ot->exec= nla_properties;
-	ot->poll= ED_operator_nla_active;
+	ot->exec = nla_properties;
+	ot->poll = ED_operator_nla_active;
 
 	/* flags */
-	ot->flag= 0;
+	ot->flag = 0;
 }

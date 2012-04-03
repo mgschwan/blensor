@@ -25,8 +25,8 @@
  * Declaration of GHOST_DisplayManagerSDL class.
  */
 
-#ifndef _GHOST_DISPLAY_MANAGER_SDL_H_
-#define _GHOST_DISPLAY_MANAGER_SDL_H_
+#ifndef __GHOST_DISPLAYMANAGERSDL_H__
+#define __GHOST_DISPLAYMANAGERSDL_H__
 
 #include "GHOST_DisplayManager.h"
 
@@ -34,8 +34,8 @@ extern "C" {
 	#include "SDL.h"
 }
 
-#if !SDL_VERSION_ATLEAST(1, 3, 0)
-#  error "SDL 1.3 or newer is needed to build with Ghost"
+#if !SDL_VERSION_ATLEAST(2, 0, 0)
+#  error "SDL 2.0 or newer is needed to build with Ghost"
 #endif
 
 class GHOST_SystemSDL;
@@ -46,20 +46,23 @@ public:
 	GHOST_DisplayManagerSDL(GHOST_SystemSDL *system);
 
 	GHOST_TSuccess
-	getNumDisplays(GHOST_TUns8& numDisplays);
+	getNumDisplays(GHOST_TUns8& numDisplays) const;
 
 	GHOST_TSuccess
 	getNumDisplaySettings(GHOST_TUns8 display,
-	                      GHOST_TInt32& numSettings);
+	                      GHOST_TInt32& numSettings) const;
 
 	GHOST_TSuccess
 	getDisplaySetting(GHOST_TUns8 display,
 	                  GHOST_TInt32 index,
-	                  GHOST_DisplaySetting& setting);
+	                  GHOST_DisplaySetting& setting) const;
 
 	GHOST_TSuccess
 	getCurrentDisplaySetting(GHOST_TUns8 display,
-	                         GHOST_DisplaySetting& setting);
+	                         GHOST_DisplaySetting& setting) const;
+
+	GHOST_TSuccess
+	getCurrentDisplayModeSDL(SDL_DisplayMode &mode) const;
 
 	GHOST_TSuccess
 	setCurrentDisplaySetting(GHOST_TUns8 display,
@@ -67,6 +70,7 @@ public:
 
 private :
 	GHOST_SystemSDL * m_system;
+	SDL_DisplayMode m_mode;
 };
 
-#endif /* _GHOST_DISPLAY_MANAGER_SDL_H_ */
+#endif /* __GHOST_DISPLAYMANAGERSDL_H__ */

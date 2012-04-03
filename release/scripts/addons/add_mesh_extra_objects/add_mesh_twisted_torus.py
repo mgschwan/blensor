@@ -25,7 +25,6 @@ bl_info = {
     "author": "Paulo_Gomes",
     "version": (0, 11, 1),
     "blender": (2, 5, 7),
-    "api": 35853,
     "location": "View3D > Add > Mesh ",
     "description": "Adds a mesh Twisted Torus to the Add Mesh menu",
     "warning": "",
@@ -186,7 +185,7 @@ class AddTwistedTorus(bpy.types.Operator):
     '''Add a torus mesh'''
     bl_idname = "mesh.primitive_twisted_torus_add"
     bl_label = "Add Torus"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'PRESET'}
 
     major_radius = FloatProperty(name="Major Radius",
         description="Radius from the origin to the" \

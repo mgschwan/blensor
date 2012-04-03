@@ -145,7 +145,7 @@ void duplicate_fcurve_keys(FCurve *fcu)
 	int i;
 	
 	/* this can only work when there is an F-Curve, and also when there are some BezTriples */
-	if ELEM(NULL, fcu, fcu->bezt)
+	if (ELEM(NULL, fcu, fcu->bezt))
 		return;
 	
 	for (i=0; i < fcu->totvert; i++) {
@@ -544,7 +544,7 @@ short copy_animedit_keys (bAnimContext *ac, ListBase *anim_data)
 				/* add to buffer */
 				newbuf= MEM_callocN(sizeof(BezTriple)*(aci->totvert+1), "copybuf beztriple");
 				
-				/* assume that since we are just resizing the array, just copy all existing data across */
+				/* assume that since we are just re-sizing the array, just copy all existing data across */
 				if (aci->bezt)
 					memcpy(newbuf, aci->bezt, sizeof(BezTriple)*(aci->totvert));
 				
@@ -574,7 +574,7 @@ short copy_animedit_keys (bAnimContext *ac, ListBase *anim_data)
 	if (ELEM(NULL, animcopybuf.first, animcopybuf.last))
 		return -1;
 
-	/* incase 'relative' paste method is used */
+	/* in case 'relative' paste method is used */
 	animcopy_cfra= CFRA;
 
 	/* everything went fine */
@@ -757,7 +757,9 @@ EnumPropertyItem keyframe_paste_merge_items[] = {
 	{0, NULL, 0, NULL, NULL}};
 
 
-/* This function pastes data from the keyframes copy/paste buffer */
+/* This function pastes data from the keyframes copy/paste buffer 
+ * > return status code is whether the method FAILED to do anything
+ */
 short paste_animedit_keys (bAnimContext *ac, ListBase *anim_data,
 			const eKeyPasteOffset offset_mode, const eKeyMergeMode merge_mode)
 {
@@ -773,17 +775,17 @@ short paste_animedit_keys (bAnimContext *ac, ListBase *anim_data,
 
 	/* check if buffer is empty */
 	if (animcopybuf.first == NULL) {
-		BKE_report(ac->reports, RPT_WARNING, "No data in buffer to paste");
+		BKE_report(ac->reports, RPT_ERROR, "No animation data in buffer to paste");
 		return -1;
 	}
 
 	if (anim_data->first == NULL) {
-		BKE_report(ac->reports, RPT_WARNING, "No FCurves to paste into");
+		BKE_report(ac->reports, RPT_ERROR, "No selected F-Curves to paste into");
 		return -1;
 	}
 	
 	/* mathods of offset */
-	switch(offset_mode) {
+	switch (offset_mode) {
 		case KEYFRAME_PASTE_OFFSET_CFRA_START:
 			offset= (float)(CFRA - animcopy_firstframe);
 			break;
@@ -851,7 +853,7 @@ short paste_animedit_keys (bAnimContext *ac, ListBase *anim_data,
 				}
 			}
 			
-			/* dont continue if some fcurves were pasted */
+			/* don't continue if some fcurves were pasted */
 			if (totmatch)
 				break;
 		}

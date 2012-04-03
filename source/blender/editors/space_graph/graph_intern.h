@@ -28,8 +28,8 @@
  *  \ingroup spgraph
  */
 
-#ifndef ED_GRAPH_INTERN_H
-#define ED_GRAPH_INTERN_H
+#ifndef __GRAPH_INTERN_H__
+#define __GRAPH_INTERN_H__
 
 struct bContext;
 struct wmWindowManager;
@@ -55,10 +55,6 @@ void graph_draw_channel_names(struct bContext *C, struct bAnimContext *ac, struc
 
 void graph_draw_curves(struct bAnimContext *ac, struct SpaceIpo *sipo, struct ARegion *ar, struct View2DGrid *grid, short sel);
 void graph_draw_ghost_curves(struct bAnimContext *ac, struct SpaceIpo *sipo, struct ARegion *ar);
-
-/* ***************************************** */
-/* graph_header.c */
-void graph_header_buttons(const bContext *C, struct ARegion *ar);
 
 /* ***************************************** */
 /* graph_select.c */
@@ -164,8 +160,6 @@ void graph_buttons_register(struct ARegionType *art);
 
 struct bAnimListElem *get_active_fcurve_channel(struct bAnimContext *ac);
 
-short fcurve_needs_draw_fmodifier_controls(struct FCurve *fcu, struct FModifier *fcm);
-
 int graphop_visible_keyframes_poll(struct bContext *C);
 int graphop_editable_keyframes_poll(struct bContext *C);
 int graphop_active_fcurve_poll(struct bContext *C);
@@ -177,5 +171,5 @@ void graphedit_keymap(struct wmKeyConfig *keyconf);
 void graphedit_operatortypes(void);
 
 
-#endif /* ED_GRAPH_INTERN_H */
+#endif /* __GRAPH_INTERN_H__ */
 

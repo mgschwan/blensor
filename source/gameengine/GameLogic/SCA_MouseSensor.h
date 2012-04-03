@@ -30,8 +30,8 @@
  *  \brief Senses mouse events
  */
 
-#ifndef __KX_MOUSESENSOR
-#define __KX_MOUSESENSOR
+#ifndef __SCA_MOUSESENSOR_H__
+#define __SCA_MOUSESENSOR_H__
 
 #include "SCA_ISensor.h"
 #include "BoolValue.h"
@@ -39,7 +39,7 @@
 
 class SCA_MouseSensor : public SCA_ISensor
 {
-	Py_Header;
+	Py_Header
 	
 	/**
 	 * Use SCA_IInputDevice values to encode the mouse mode for now.
@@ -88,9 +88,9 @@ class SCA_MouseSensor : public SCA_ISensor
 	bool isValid(KX_MOUSESENSORMODE);
 	
 	SCA_MouseSensor(class SCA_MouseManager* keybdmgr,
-					int startx,int starty,
-				   short int mousemode,
-				   SCA_IObject* gameobj);
+	                int startx,int starty,
+	                short int mousemode,
+	                SCA_IObject* gameobj);
 
 	virtual ~SCA_MouseSensor();
 	virtual CValue* GetReplica();
@@ -117,5 +117,5 @@ class SCA_MouseSensor : public SCA_ISensor
 #endif
 };
 
-#endif //__KX_MOUSESENSOR
+#endif //__SCA_MOUSESENSOR_H__
 

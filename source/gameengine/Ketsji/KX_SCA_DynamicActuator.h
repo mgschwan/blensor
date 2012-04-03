@@ -30,8 +30,8 @@
  *  \brief Add object to the game world on action of this actuator
  */
 
-#ifndef __KX_SCA_DYNAMICACTUATOR
-#define __KX_SCA_DYNAMICACTUATOR
+#ifndef __KX_SCA_DYNAMICACTUATOR_H__
+#define __KX_SCA_DYNAMICACTUATOR_H__
 
 #include "SCA_IActuator.h"
 #include "SCA_PropertyActuator.h"
@@ -42,7 +42,7 @@
 
 class KX_SCA_DynamicActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 
 	// dynamics operation to apply to the game object
 	short m_dyn_operation;

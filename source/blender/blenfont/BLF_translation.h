@@ -30,8 +30,10 @@
  */
 
 
-#ifndef BLF_TRANSLATION_H
-#define BLF_TRANSLATION_H
+#ifndef __BLF_TRANSLATION_H__
+#define __BLF_TRANSLATION_H__
+
+#define TEXT_DOMAIN_NAME "blender"
 
 /* blf_translation.c  */
 
@@ -40,12 +42,12 @@ unsigned char *BLF_get_unifont(int *unifont_size);
 void BLF_free_unifont(void);
 #endif
 
-const char* BLF_gettext(const char *msgid);
+const char *BLF_gettext(const char *msgid);
+const char *BLF_pgettext(const char *context, const char *message);
 
 /* blf_lang.c */
 
-/*
- * Search the path directory to the locale files, this try all
+/* Search the path directory to the locale files, this try all
  * the case for Linux, Win and Mac.
  */
 void BLF_lang_init(void);
@@ -54,12 +56,30 @@ void BLF_lang_init(void);
 void BLF_lang_set(const char *);
 
 /* Set the current encoding name. */
-void BLF_lang_encoding_name(const char *str);
-
 void BLF_lang_encoding(const char *str);
 
-/*#define _(msgid) BLF_gettext(msgid)*/
+/* translation */
+int BLF_translate_iface(void);
+int BLF_translate_tooltips(void);
+const char *BLF_translate_do_iface(const char *contex, const char *msgid);
+const char *BLF_translate_do_tooltip(const char *contex, const char *msgid);
+
+
 /* The "translation-marker" macro. */
 #define N_(msgid) msgid
+/* Those macros should be used everywhere in UI code. */
+#ifdef WITH_INTERNATIONAL
+/*	#define _(msgid) BLF_gettext(msgid) */
+	#define IFACE_(msgid) BLF_translate_do_iface(NULL, msgid)
+	#define TIP_(msgid) BLF_translate_do_tooltip(NULL, msgid)
+	#define CTX_IFACE_(context, msgid) BLF_translate_do_iface(context, msgid)
+	#define CTX_TIP_(context, msgid) BLF_translate_do_tooltip(context, msgid)
+#else
+/*	#define _(msgid) msgid */
+	#define IFACE_(msgid) msgid
+	#define TIP_(msgid) msgid
+	#define CTX_IFACE_(context, msgid) msgid
+	#define CTX_TIP_(context, msgid) msgid
+#endif
 
-#endif /* BLF_TRANSLATION_H */
+#endif /* __BLF_TRANSLATION_H__ */

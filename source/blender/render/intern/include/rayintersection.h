@@ -31,8 +31,8 @@
  */
 
 
-#ifndef __RENDER_RAYINTERSECTION_H__
-#define __RENDER_RAYINTERSECTION_H__
+#ifndef __RAYINTERSECTION_H__
+#define __RAYINTERSECTION_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,7 +59,7 @@ typedef struct RayHint {
 
 typedef struct Isect {
 	/* ray start, direction (normalized vector), and max distance. on hit,
-	   the distance is modified to be the distance to the hit point. */
+	 * the distance is modified to be the distance to the hit point. */
 	float start[3];
 	float dir[3];
 	float dist;
@@ -123,5 +123,5 @@ typedef struct Isect {
 }
 #endif
 
-#endif /* __RENDER_RAYINTERSECTION_H__ */
+#endif /* __RAYINTERSECTION_H__ */
 

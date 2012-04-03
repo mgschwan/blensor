@@ -7,8 +7,8 @@
 //
 // ---------------------------------------------------------
 
-#ifndef BROADPHASEGRID_H
-#define BROADPHASEGRID_H
+#ifndef EL_TOPO_BROADPHASEGRID_H
+#define EL_TOPO_BROADPHASEGRID_H
 
 // ---------------------------------------------------------
 // Nested includes
@@ -24,7 +24,7 @@
 class DynamicSurface;
 
 // ---------------------------------------------------------
-//  Interface declarations
+//  Class definitions
 // ---------------------------------------------------------
 
 // --------------------------------------------------------
@@ -36,68 +36,139 @@ class DynamicSurface;
 class BroadPhaseGrid : public BroadPhase
 {
 public:
-   
-   BroadPhaseGrid() :
-      m_vertex_grid(), 
-      m_edge_grid(), 
-      m_triangle_grid()
-   {}
+    
+    /// Default constructor, just initialize empty grids
+    ///
+    BroadPhaseGrid() :
+    m_solid_vertex_grid(),
+    m_solid_edge_grid(),
+    m_solid_triangle_grid(),
+    m_dynamic_vertex_grid(),
+    m_dynamic_edge_grid(),
+    m_dynamic_triangle_grid()
+    {}
+    
+    
+    /// Do-nothing destructor
+    ///
+    ~BroadPhaseGrid() 
+    {}
+    
+    /// Rebuild the broad phase
+    ///
+    void update_broad_phase( const DynamicSurface& surface, bool continuous );
+    
+    /// Add a vertex with the specified bounding box to the broad phase
+    ///
+    inline void add_vertex( size_t index,
+                           const Vec3d& aabb_low,
+                           const Vec3d& aabb_high,
+                           bool is_solid );
+    
+    /// Add an edge with the specified bounding box to the broad phase
+    ///
+    inline void add_edge( size_t index,
+                         const Vec3d& aabb_low,
+                         const Vec3d& aabb_high,
+                         bool is_solid );
 
-   ~BroadPhaseGrid() 
-   {}
-   
-   /// Rebuild the broad phase using current vertex positions
-   ///
-   void update_broad_phase_static( const DynamicSurface& surface );
-   
-   /// Rebuild the broad phase using current and predicted vertex positions
-   ///
-   void update_broad_phase_continuous( const DynamicSurface& surface );
+    /// Add a triangle with the specified bounding box to the broad phase
+    ///
+    inline void add_triangle( size_t index,
+                             const Vec3d& aabb_low,
+                             const Vec3d& aabb_high,
+                             bool is_solid );
 
-   inline void add_vertex( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high ); 
-   inline void add_edge( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high ); 
-   inline void add_triangle( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high );   
-   
-   inline void update_vertex( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high ); 
-   inline void update_edge( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high ); 
-   inline void update_triangle( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high ); 
-   
-   inline void remove_vertex( unsigned int index ); 
-   inline void remove_edge( unsigned int index ); 
-   inline void remove_triangle( unsigned int index ); 
-   
-   /// Get the set of vertices whose bounding volumes overlap the specified bounding volume
-   ///
-   inline void get_potential_vertex_collisions( const Vec3d& aabb_low, 
-                                                const Vec3d& aabb_high, 
-                                                std::vector<unsigned int>& overlapping_vertices );
-   
-   /// Get the set of edges whose bounding volumes overlap the specified bounding volume
-   ///
-   inline void get_potential_edge_collisions( const Vec3d& aabb_low, 
+    /// Update a vertex's broad phase entry
+    ///
+    inline void update_vertex( size_t index,
+                              const Vec3d& aabb_low,
+                              const Vec3d& aabb_high,
+                              bool is_solid );
+    
+    /// Update an edge's broad phase entry
+    ///
+    inline void update_edge( size_t index,
+                            const Vec3d& aabb_low,
+                            const Vec3d& aabb_high,
+                            bool is_solid );
+
+    /// Update a triangle's broad phase entry
+    ///
+    inline void update_triangle( size_t index,
+                                const Vec3d& aabb_low,
+                                const Vec3d& aabb_high,
+                                bool is_solid );
+
+    /// Remove a vertex from the broad phase
+    ///
+    inline void remove_vertex( size_t index );
+    
+    /// Remove an edge from the broad phase
+    ///    
+    inline void remove_edge( size_t index );
+    
+    /// Remove a triangle from the broad phase
+    ///        
+    inline void remove_triangle( size_t index ); 
+    
+    /// Get the stored axis-aligned bounding box of a vertex
+    ///
+    virtual void get_vertex_aabb( size_t index, bool is_solid, Vec3d& aabb_low, Vec3d& aabb_high );
+    
+    /// Get the stored axis-aligned bounding box of an edge
+    ///
+    virtual void get_edge_aabb( size_t index, bool is_solid, Vec3d& aabb_low, Vec3d& aabb_high );
+    
+    /// Get the stored axis-aligned bounding box of a triangle
+    ///
+    virtual void get_triangle_aabb( size_t index, bool is_solid, Vec3d& aabb_low, Vec3d& aabb_high );
+    
+    /// Get the set of vertices whose bounding volumes overlap the specified bounding volume
+    ///
+    inline void get_potential_vertex_collisions( const Vec3d& aabb_low, 
+                                                const Vec3d& aabb_high,
+                                                bool return_solid,
+                                                bool return_dynamic,
+                                                std::vector<size_t>& overlapping_vertices );
+    
+    /// Get the set of edges whose bounding volumes overlap the specified bounding volume
+    ///
+    inline void get_potential_edge_collisions( const Vec3d& aabb_low, 
                                               const Vec3d& aabb_high, 
-                                              std::vector<unsigned int>& overlapping_edges );
-   
-   /// Get the set of triangles whose bounding volumes overlap the specified bounding volume
-   ///
-   inline void get_potential_triangle_collisions( const Vec3d& aabb_low, 
-                                                  const Vec3d& aabb_high, 
-                                                  std::vector<unsigned int>& overlapping_triangles );
-
-   /// Rebuild one of the grids
-   ///
-   void build_acceleration_grid( AccelerationGrid& grid, 
+                                              bool return_solid,
+                                              bool return_dynamic,
+                                              std::vector<size_t>& overlapping_edges );
+    
+    /// Get the set of triangles whose bounding volumes overlap the specified bounding volume
+    ///
+    inline void get_potential_triangle_collisions( const Vec3d& aabb_low, 
+                                                  const Vec3d& aabb_high,
+                                                  bool return_solid,
+                                                  bool return_dynamic,
+                                                  std::vector<size_t>& overlapping_triangles );
+    
+    /// Rebuild one of the grids
+    ///
+    void build_acceleration_grid( AccelerationGrid& grid, 
                                  std::vector<Vec3d>& xmins, 
-                                 std::vector<Vec3d>& xmaxs, 
+                                 std::vector<Vec3d>& xmaxs,
+                                 std::vector<size_t>& indices,
                                  double length_scale, 
                                  double grid_padding );
-   
-   /// Regular grids
-   ///
-   AccelerationGrid m_vertex_grid;
-   AccelerationGrid m_edge_grid;
-   AccelerationGrid m_triangle_grid;  
-   
+    
+    /// Regular grids for solid mesh elements
+    ///
+    AccelerationGrid m_solid_vertex_grid;
+    AccelerationGrid m_solid_edge_grid;
+    AccelerationGrid m_solid_triangle_grid;
+
+    /// Regular grids for dynamic mesh elements
+    ///
+    AccelerationGrid m_dynamic_vertex_grid;
+    AccelerationGrid m_dynamic_edge_grid;
+    AccelerationGrid m_dynamic_triangle_grid;
+    
 };
 
 // ---------------------------------------------------------
@@ -110,9 +181,16 @@ public:
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::add_vertex( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high )
+inline void BroadPhaseGrid::add_vertex( size_t index, const Vec3d& aabb_low, const Vec3d& aabb_high, bool is_solid )
 {
-   m_vertex_grid.add_element( index, aabb_low, aabb_high );
+    if ( is_solid )
+    {
+        m_solid_vertex_grid.add_element( index, aabb_low, aabb_high );
+    }
+    else
+    {
+        m_dynamic_vertex_grid.add_element( index, aabb_low, aabb_high );
+    }
 }
 
 // --------------------------------------------------------
@@ -121,9 +199,16 @@ inline void BroadPhaseGrid::add_vertex( unsigned int index, const Vec3d& aabb_lo
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::add_edge( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high )
+inline void BroadPhaseGrid::add_edge( size_t index, const Vec3d& aabb_low, const Vec3d& aabb_high, bool is_solid )
 {
-   m_edge_grid.add_element( index, aabb_low, aabb_high );
+    if ( is_solid )
+    {
+        m_solid_edge_grid.add_element( index, aabb_low, aabb_high );
+    }
+    else
+    {
+        m_dynamic_edge_grid.add_element( index, aabb_low, aabb_high );
+    }
 }
 
 // --------------------------------------------------------
@@ -132,25 +217,71 @@ inline void BroadPhaseGrid::add_edge( unsigned int index, const Vec3d& aabb_low,
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::add_triangle( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high )
+inline void BroadPhaseGrid::add_triangle( size_t index, const Vec3d& aabb_low, const Vec3d& aabb_high, bool is_solid )
 {
-   m_triangle_grid.add_element( index, aabb_low, aabb_high );
+    if ( is_solid )
+    {
+        m_solid_triangle_grid.add_element( index, aabb_low, aabb_high );
+    }
+    else
+    {
+        m_dynamic_triangle_grid.add_element( index, aabb_low, aabb_high );
+    }
 }
 
 
-inline void BroadPhaseGrid::update_vertex( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high )
+// ---------------------------------------------------------
+///
+/// Update a vertex's broad phase entry
+///
+// ---------------------------------------------------------
+
+inline void BroadPhaseGrid::update_vertex( size_t index, const Vec3d& aabb_low, const Vec3d& aabb_high, bool is_solid )
 {
-   m_vertex_grid.update_element( index, aabb_low, aabb_high );
+    if ( is_solid )
+    {
+        m_solid_vertex_grid.update_element( index, aabb_low, aabb_high );
+    }
+    else
+    {
+        m_dynamic_vertex_grid.update_element( index, aabb_low, aabb_high );
+    }
 }
 
-inline void BroadPhaseGrid::update_edge( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high )
+// ---------------------------------------------------------
+///
+/// Update an edge's broad phase entry
+///
+// ---------------------------------------------------------
+
+inline void BroadPhaseGrid::update_edge( size_t index, const Vec3d& aabb_low, const Vec3d& aabb_high, bool is_solid )
 {
-   m_edge_grid.update_element( index, aabb_low, aabb_high );   
+    if ( is_solid )
+    {
+        m_solid_edge_grid.update_element( index, aabb_low, aabb_high );
+    }
+    else
+    {
+        m_dynamic_edge_grid.update_element( index, aabb_low, aabb_high );
+    }
 }
 
-inline void BroadPhaseGrid::update_triangle( unsigned int index, const Vec3d& aabb_low, const Vec3d& aabb_high )
+// ---------------------------------------------------------
+///
+/// Update a triangle's broad phase entry
+///
+// ---------------------------------------------------------
+
+inline void BroadPhaseGrid::update_triangle( size_t index, const Vec3d& aabb_low, const Vec3d& aabb_high, bool is_solid )
 {
-   m_triangle_grid.update_element( index, aabb_low, aabb_high );   
+    if ( is_solid )
+    {
+        m_solid_triangle_grid.update_element( index, aabb_low, aabb_high );
+    }
+    else
+    {
+        m_dynamic_triangle_grid.update_element( index, aabb_low, aabb_high );
+    }
 }
 
 
@@ -160,9 +291,10 @@ inline void BroadPhaseGrid::update_triangle( unsigned int index, const Vec3d& aa
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::remove_vertex( unsigned int index )
+inline void BroadPhaseGrid::remove_vertex( size_t index )
 {
-   m_vertex_grid.remove_element( index );
+    m_solid_vertex_grid.remove_element( index );
+    m_dynamic_vertex_grid.remove_element( index );
 }
 
 // --------------------------------------------------------
@@ -171,9 +303,10 @@ inline void BroadPhaseGrid::remove_vertex( unsigned int index )
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::remove_edge( unsigned int index )
+inline void BroadPhaseGrid::remove_edge( size_t index )
 {
-   m_edge_grid.remove_element( index );
+    m_solid_edge_grid.remove_element( index );
+    m_dynamic_edge_grid.remove_element( index );
 }
 
 // --------------------------------------------------------
@@ -182,9 +315,10 @@ inline void BroadPhaseGrid::remove_edge( unsigned int index )
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::remove_triangle( unsigned int index )
+inline void BroadPhaseGrid::remove_triangle( size_t index )
 {
-   m_triangle_grid.remove_element( index );
+    m_solid_triangle_grid.remove_element( index );
+    m_dynamic_triangle_grid.remove_element( index );
 }
 
 // --------------------------------------------------------
@@ -193,9 +327,21 @@ inline void BroadPhaseGrid::remove_triangle( unsigned int index )
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::get_potential_vertex_collisions( const Vec3d& aabb_low, const Vec3d& aabb_high, std::vector<unsigned int>& overlapping_vertices )
+inline void BroadPhaseGrid::get_potential_vertex_collisions( const Vec3d& aabb_low,
+                                                            const Vec3d& aabb_high,
+                                                            bool return_solid,
+                                                            bool return_dynamic,
+                                                            std::vector<size_t>& overlapping_vertices )
 {
-   m_vertex_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_vertices );
+    if ( return_solid )
+    {
+        m_solid_vertex_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_vertices );
+    }
+    
+    if ( return_dynamic )
+    {
+        m_dynamic_vertex_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_vertices );
+    }
 }
 
 // --------------------------------------------------------
@@ -204,9 +350,21 @@ inline void BroadPhaseGrid::get_potential_vertex_collisions( const Vec3d& aabb_l
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::get_potential_edge_collisions( const Vec3d& aabb_low, const Vec3d& aabb_high, std::vector<unsigned int>& overlapping_edges )
+inline void BroadPhaseGrid::get_potential_edge_collisions( const Vec3d& aabb_low,
+                                                          const Vec3d& aabb_high,
+                                                          bool return_solid,
+                                                          bool return_dynamic,
+                                                          std::vector<size_t>& overlapping_edges )
 {
-   m_edge_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_edges );
+    if ( return_solid )
+    {
+        m_solid_edge_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_edges );
+    }
+    
+    if ( return_dynamic )
+    {
+        m_dynamic_edge_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_edges );
+    }
 }
 
 // --------------------------------------------------------
@@ -215,10 +373,84 @@ inline void BroadPhaseGrid::get_potential_edge_collisions( const Vec3d& aabb_low
 ///
 // --------------------------------------------------------
 
-inline void BroadPhaseGrid::get_potential_triangle_collisions( const Vec3d& aabb_low, const Vec3d& aabb_high, std::vector<unsigned int>& overlapping_triangles )
+inline void BroadPhaseGrid::get_potential_triangle_collisions( const Vec3d& aabb_low,
+                                                              const Vec3d& aabb_high,
+                                                              bool return_solid,
+                                                              bool return_dynamic,
+                                                              std::vector<size_t>& overlapping_triangles )
 {
-   m_triangle_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_triangles );
+    if ( return_solid )
+    {
+        m_solid_triangle_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_triangles );
+    }
+    
+    if ( return_dynamic )
+    {
+        m_dynamic_triangle_grid.find_overlapping_elements( aabb_low, aabb_high, overlapping_triangles );
+    }
 }
+
+
+// ---------------------------------------------------------
+///
+/// Get the stored axis-aligned bounding box of a vertex
+///
+// ---------------------------------------------------------
+
+inline void BroadPhaseGrid::get_vertex_aabb( size_t index, bool is_solid, Vec3d& aabb_low, Vec3d& aabb_high )
+{
+    if ( is_solid )
+    {
+        aabb_low = m_solid_vertex_grid.m_elementxmins[index];
+        aabb_high = m_solid_vertex_grid.m_elementxmaxs[index];
+    }
+    else
+    {
+        aabb_low = m_dynamic_vertex_grid.m_elementxmins[index];
+        aabb_high = m_dynamic_vertex_grid.m_elementxmaxs[index];      
+    }
+}
+
+// ---------------------------------------------------------
+///
+/// Get the stored axis-aligned bounding box of an edge
+///
+// ---------------------------------------------------------
+
+inline void BroadPhaseGrid::get_edge_aabb( size_t index, bool is_solid, Vec3d& aabb_low, Vec3d& aabb_high )
+{
+    if ( is_solid )
+    {
+        aabb_low = m_solid_edge_grid.m_elementxmins[index];
+        aabb_high = m_solid_edge_grid.m_elementxmaxs[index];
+    }
+    else
+    {
+        aabb_low = m_dynamic_edge_grid.m_elementxmins[index];
+        aabb_high = m_dynamic_edge_grid.m_elementxmaxs[index];      
+    }
+}
+
+// ---------------------------------------------------------
+///
+/// Get the stored axis-aligned bounding box of a triangle
+///
+// ---------------------------------------------------------
+
+inline void BroadPhaseGrid::get_triangle_aabb( size_t index, bool is_solid, Vec3d& aabb_low, Vec3d& aabb_high )
+{
+    if ( is_solid )
+    {
+        aabb_low = m_solid_triangle_grid.m_elementxmins[index];
+        aabb_high = m_solid_triangle_grid.m_elementxmaxs[index];
+    }
+    else
+    {
+        aabb_low = m_dynamic_triangle_grid.m_elementxmins[index];
+        aabb_high = m_dynamic_triangle_grid.m_elementxmaxs[index];      
+    }   
+}
+
 
 #endif
 

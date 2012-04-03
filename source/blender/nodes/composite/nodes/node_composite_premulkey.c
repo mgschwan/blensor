@@ -36,7 +36,7 @@
 /* **************** Premul and Key Alpha Convert ******************** */
 
 static bNodeSocketTemplate cmp_node_premulkey_in[]= {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f},
+	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_premulkey_out[]= {
@@ -46,31 +46,29 @@ static bNodeSocketTemplate cmp_node_premulkey_out[]= {
 
 static void node_composit_exec_premulkey(void *UNUSED(data), bNode *node, bNodeStack **in, bNodeStack **out)
 {
-	if(out[0]->hasoutput==0)
+	if (out[0]->hasoutput==0)
 		return;
 	
-	if(in[0]->data) {
+	if (in[0]->data) {
 		CompBuf *stackbuf, *cbuf= typecheck_compbuf(in[0]->data, CB_RGBA);
 
 		stackbuf= dupalloc_compbuf(cbuf);
 		premul_compbuf(stackbuf, node->custom1 == 1);
 
 		out[0]->data = stackbuf;
-		if(cbuf != in[0]->data)
+		if (cbuf != in[0]->data)
 			free_compbuf(cbuf);
 	}
 }
 
-void register_node_type_cmp_premulkey(ListBase *lb)
+void register_node_type_cmp_premulkey(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_PREMULKEY, "Alpha Convert", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_PREMULKEY, "Alpha Convert", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_premulkey_in, cmp_node_premulkey_out);
 	node_type_size(&ntype, 140, 100, 320);
 	node_type_exec(&ntype, node_composit_exec_premulkey);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-

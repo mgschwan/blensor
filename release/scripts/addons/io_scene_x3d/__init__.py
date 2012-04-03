@@ -19,12 +19,11 @@
 # <pep8-80 compliant>
 
 bl_info = {
-    "name": "Web3D X3D/VRML format",
+    "name": "Web3D X3D/VRML2 format",
     "author": "Campbell Barton, Bart",
     "blender": (2, 5, 7),
-    "api": 35622,
     "location": "File > Import-Export",
-    "description": "Import-Export X3D, Import VRML",
+    "description": "Import-Export X3D, Import VRML2",
     "warning": "",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
                 "Scripts/Import-Export/Web3D",
@@ -49,9 +48,9 @@ from bpy_extras.io_utils import (ImportHelper,
 
 
 class ImportX3D(bpy.types.Operator, ImportHelper):
-    '''Import and X3D or VRML file'''
+    '''Import an X3D or VRML2 file'''
     bl_idname = "import_scene.x3d"
-    bl_label = "Import X3D/VRML"
+    bl_label = "Import X3D/VRML2"
     bl_options = {'PRESET', 'UNDO'}
 
     filename_ext = ".x3d"
@@ -135,11 +134,18 @@ class ExportX3D(bpy.types.Operator, ExportHelper):
             description="Export parent child relationships",
             default=True,
             )
+    name_decorations = BoolProperty(
+            name="Name decorations",
+            description=("Add prefixes to the names of exported nodes to "
+                         "indicate their type"),
+            default=True,
+            )
     use_h3d = BoolProperty(
             name="H3D Extensions",
             description="Export shaders for H3D",
             default=False,
             )
+
     axis_forward = EnumProperty(
             name="Forward",
             items=(('X', "X Forward", ""),
@@ -148,9 +154,9 @@ class ExportX3D(bpy.types.Operator, ExportHelper):
                    ('-X', "-X Forward", ""),
                    ('-Y', "-Y Forward", ""),
                    ('-Z', "-Z Forward", ""),
-                   ),
-            default='Z',
-            )
+               ),
+        default='Z',
+        )
 
     axis_up = EnumProperty(
             name="Up",

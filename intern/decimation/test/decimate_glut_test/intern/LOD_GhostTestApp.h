@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef LOD_GhostTestApp_h
-#define LOD_GhostTestApp_h
+#ifndef __LOD_GHOSTTESTAPP_H__
+#define __LOD_GHOSTTESTAPP_H__
 
 #include "GHOST_IEventConsumer.h"
 #include "MT_Vector3.h"

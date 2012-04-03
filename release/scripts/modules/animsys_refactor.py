@@ -35,9 +35,10 @@ def drepr(string):
 
 
 class DataPathBuilder(object):
-    __slots__ = ("data_path", )
     """ Dummy class used to parse fcurve and driver data paths.
     """
+    __slots__ = ("data_path", )
+
     def __init__(self, attrs):
         self.data_path = attrs
 
@@ -531,8 +532,6 @@ data_2_56_to_2_59 = (
     ("ShaderNodeMapping", "minimum", "min"),
     ("ShaderNodeMapping", "clamp_maximum", "use_max"),
     ("ShaderNodeMapping", "clamp_minimum", "use_min"),
-    ("VertexPaint", "all_faces", "use_all_faces"),
-    ("VertexPaint", "spray", "use_spray"),
     ("ParticleEdit", "add_keys", "default_key_count"),
     ("ParticleEdit", "selection_mode", "select_mode"),
     ("ParticleEdit", "auto_velocity", "use_auto_velocity"),

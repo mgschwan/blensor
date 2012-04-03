@@ -24,8 +24,8 @@
  *
  * ***** END GPL/BL DUAL LICENSE BLOCK *****
  */
-#ifndef BKE_COLORTOOLS_H
-#define BKE_COLORTOOLS_H
+#ifndef __BKE_COLORTOOLS_H__
+#define __BKE_COLORTOOLS_H__
 
 /** \file BKE_colortools.h
  *  \ingroup bke
@@ -44,9 +44,6 @@ struct rctf;
 #else
 #   define DO_INLINE static inline
 #endif
-
-void				floatbuf_to_srgb_byte(float *rectf, unsigned char *rectc, int x1, int x2, int y1, int y2, int w);
-void				floatbuf_to_byte(float *rectf, unsigned char *rectc, int x1, int x2, int y1, int y2, int w);
 
 struct CurveMapping	*curvemapping_add(int tot, float minx, float miny, float maxx, float maxy);
 void				curvemapping_free(struct CurveMapping *cumap);

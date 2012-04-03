@@ -20,8 +20,7 @@ bl_info = {
     'name': 'Save As Game Engine Runtime',
     'author': 'Mitchell Stokes (Moguri)',
     'version': (0, 3, 1),
-    "blender": (2, 5, 8),
-    "api": 37846,
+    "blender": (2, 6, 1),
     'location': 'File > Export',
     'description': 'Bundle a .blend file with the Blenderplayer',
     'warning': '',
@@ -48,7 +47,8 @@ def CopyPythonLibs(dst, overwrite_lib, report=print):
     #  '/usr/lib/python3.2' vs '/usr/lib'
     # append python's library dir name to destination, so only python's
     # libraries would be copied
-    dst = os.path.join(dst, os.path.basename(src))
+    if os.name == 'posix':
+        dst = os.path.join(dst, os.path.basename(src))
 
     if os.path.exists(src):
         write = False
@@ -193,8 +193,6 @@ class SaveAsRuntime(bpy.types.Operator):
             subtype='FILE_PATH',
             )
     filepath = StringProperty(
-            name="Output Path",
-            description="Where to save the runtime",
             subtype='FILE_PATH',
             )
     copy_python = BoolProperty(

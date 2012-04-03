@@ -27,8 +27,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BLI_THREADS_H
-#define BLI_THREADS_H 
+#ifndef __BLI_THREADS_H__
+#define __BLI_THREADS_H__ 
 
 /** \file BLI_threads.h
  *  \ingroup bli
@@ -56,6 +56,10 @@ void	BLI_remove_threads(struct ListBase *threadbase);
 void	BLI_end_threads		(struct ListBase *threadbase);
 int BLI_thread_is_main(void);
 
+
+void BLI_begin_threaded_malloc(void);
+void BLI_end_threaded_malloc(void);
+
 /* System Information */
 
 int		BLI_system_thread_count(void); /* gets the number of threads the system can make use of */
@@ -70,6 +74,9 @@ int		BLI_system_thread_count(void); /* gets the number of threads the system can
 #define LOCK_CUSTOM1	3
 #define LOCK_RCACHE		4
 #define LOCK_OPENGL		5
+#define LOCK_NODES		6
+#define LOCK_MOVIECLIP	7
+#define LOCK_SCANFILL	8
 
 void	BLI_lock_thread(int type);
 void	BLI_unlock_thread(int type);

@@ -19,9 +19,8 @@
 bl_info = {
     "name": "ANT Landscape",
     "author": "Jimmy Hazevoet",
-    "version": (0,1,1),
-    "blender": (2, 5, 9),
-    "api": 39685,
+    "version": (0,1,2),
+    "blender": (2, 6, 1),
     "location": "View3D > Add > Mesh",
     "description": "Add a landscape primitive",
     "warning": "", # used for warning icon and text in addons panel
@@ -73,7 +72,7 @@ Strata type:     Strata types, Smooth, Sharp-sub, Sharp-add
 import bpy
 from bpy.props import *
 from mathutils import *
-from noise import *
+from mathutils.noise import *
 from math import *
 
 
@@ -318,7 +317,7 @@ def landscape_gen(x,y,z,falloffsize,options=[0,1.0,1, 0,0,1.0,0,6,1.0,2.0,1.0,2.
     elif ntype == 3: value = hetero_terrain(       ncoords, dimension, lacunarity, depth, offset, nbasis ) * 0.25
     elif ntype == 4: value = fractal(              ncoords, dimension, lacunarity, depth, nbasis )
     elif ntype == 5: value = turbulence_vector(    ncoords, depth, hardnoise, nbasis )[0]
-    elif ntype == 6: value = vl_vector(            ncoords, distortion, nbasis, vlbasis ) + 0.5
+    elif ntype == 6: value = variable_lacunarity(            ncoords, distortion, nbasis, vlbasis ) + 0.5
     elif ntype == 7: value = marble_noise( x*2.0/falloffsize,y*2.0/falloffsize,z*2/falloffsize, origin, nsize, marbleshape, marblebias, marblesharpnes, distortion, depth, hardnoise, nbasis )
     elif ntype == 8: value = shattered_hterrain( ncoords[0], ncoords[1], ncoords[2], dimension, lacunarity, depth, offset, distortion, nbasis )
     elif ntype == 9: value = strata_hterrain( ncoords[0], ncoords[1], ncoords[2], dimension, lacunarity, depth, offset, distortion, nbasis )
@@ -434,7 +433,7 @@ class landscape_add(bpy.types.Operator):
     '''Add a landscape mesh'''
     bl_idname = "mesh.landscape_add"
     bl_label = "Landscape"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'PRESET'}
     bl_description = "Add landscape mesh"
 
     # properties
@@ -776,11 +775,13 @@ class landscape_add(bpy.types.Operator):
 
             # create mesh object
             obj = create_mesh_object(context, verts, [], faces, "Landscape")
-
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.normals_make_consistent(inside=False)
+            bpy.ops.object.mode_set(mode='OBJECT')
             # sphere, remove doubles
             if self.SphereMesh !=0:
                 bpy.ops.object.mode_set(mode='EDIT')
-                bpy.ops.mesh.remove_doubles(limit=0.0001)
+                bpy.ops.mesh.remove_doubles(mergedist=0.0001)
                 bpy.ops.object.mode_set(mode='OBJECT')
 
             # Shade smooth

@@ -4,10 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version. The Blender
- * Foundation also sells licenses for use in proprietary software under
- * the Blender License.  See http://www.blender.org/BL/ for information
- * about this.
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -43,7 +40,9 @@
 #endif
 
 struct DerivedMesh;
+struct DMFlagMat;
 struct DMGridData;
+struct CustomData;
 struct GHash;
 struct DMGridData;
 struct GPUVertPointLink;
@@ -64,20 +63,20 @@ typedef struct GPUBufferMaterial {
 } GPUBufferMaterial;
 
 /* meshes are split up by material since changing materials requires
-   GL state changes that can't occur in the middle of drawing an
-   array.
-
-   some simplifying assumptions are made:
-   * all quads are treated as two triangles.
-   * no vertex sharing is used; each triangle gets its own copy of the
-     vertices it uses (this makes it easy to deal with a vertex used
-     by faces with different properties, such as smooth/solid shading,
-     different MCols, etc.)
-
-   to avoid confusion between the original MVert vertices and the
-   arrays of OpenGL vertices, the latter are referred to here and in
-   the source as `points'. similarly, the OpenGL triangles generated
-   for MFaces are referred to as triangles rather than faces.
+ * GL state changes that can't occur in the middle of drawing an
+ * array.
+ *
+ * some simplifying assumptions are made:
+ * - all quads are treated as two triangles.
+ * - no vertex sharing is used; each triangle gets its own copy of the
+ *   vertices it uses (this makes it easy to deal with a vertex used
+ *   by faces with different properties, such as smooth/solid shading,
+ *   different MCols, etc.)
+ *
+ * to avoid confusion between the original MVert vertices and the
+ * arrays of OpenGL vertices, the latter are referred to here and in
+ * the source as `points'. similarly, the OpenGL triangles generated
+ * for MFaces are referred to as triangles rather than faces.
  */
 typedef struct GPUDrawObject {
 	GPUBuffer *points;
@@ -109,7 +108,7 @@ typedef struct GPUDrawObject {
 	int totedge;
 
 	/* if there was a failure allocating some buffer, use old
-	   rendering code */
+	 * rendering code */
 	int legacy;
 } GPUDrawObject;
 
@@ -125,17 +124,16 @@ void GPU_global_buffer_pool_free(void);
 GPUBuffer *GPU_buffer_alloc(int size);
 void GPU_buffer_free(GPUBuffer *buffer);
 
-GPUDrawObject *GPU_drawobject_new( struct DerivedMesh *dm );
-void GPU_drawobject_free( struct DerivedMesh *dm );
+GPUDrawObject *GPU_drawobject_new(struct DerivedMesh *dm );
+void GPU_drawobject_free(struct DerivedMesh *dm );
 
 /* called before drawing */
-void GPU_vertex_setup( struct DerivedMesh *dm );
-void GPU_normal_setup( struct DerivedMesh *dm );
-void GPU_uv_setup( struct DerivedMesh *dm );
-void GPU_color_setup( struct DerivedMesh *dm );
-void GPU_edge_setup( struct DerivedMesh *dm );	/* does not mix with other data */
-void GPU_uvedge_setup( struct DerivedMesh *dm );
-void GPU_interleaved_setup( GPUBuffer *buffer, int data[] );
+void GPU_vertex_setup(struct DerivedMesh *dm );
+void GPU_normal_setup(struct DerivedMesh *dm );
+void GPU_uv_setup(struct DerivedMesh *dm );
+void GPU_color_setup(struct DerivedMesh *dm );
+void GPU_edge_setup(struct DerivedMesh *dm );	/* does not mix with other data */
+void GPU_uvedge_setup(struct DerivedMesh *dm );
 int GPU_attrib_element_size( GPUAttrib data[], int numdata );
 void GPU_interleaved_attrib_setup( GPUBuffer *buffer, GPUAttrib data[], int numdata );
 
@@ -145,9 +143,7 @@ void *GPU_buffer_lock_stream( GPUBuffer *buffer );
 void GPU_buffer_unlock( GPUBuffer *buffer );
 
 /* upload three unsigned chars, representing RGB colors, for each vertex. Resets dm->drawObject->colType to -1 */
-void GPU_color3_upload( struct DerivedMesh *dm, unsigned char *data );
-/* upload four unsigned chars, representing RGBA colors, for each vertex. Resets dm->drawObject->colType to -1 */
-void GPU_color4_upload( struct DerivedMesh *dm, unsigned char *data );
+void GPU_color3_upload(struct DerivedMesh *dm, unsigned char *data );
 /* switch color rendering on=1/off=0 */
 void GPU_color_switch( int mode );
 
@@ -158,20 +154,27 @@ void GPU_buffer_draw_elements( GPUBuffer *elements, unsigned int mode, int start
 void GPU_buffer_unbind(void);
 
 /* used to check whether to use the old (without buffers) code */
-int GPU_buffer_legacy( struct DerivedMesh *dm );
+int GPU_buffer_legacy(struct DerivedMesh *dm );
 
 /* Buffers for non-DerivedMesh drawing */
-void *GPU_build_mesh_buffers(struct GHash *map, struct MVert *mvert,
-			struct MFace *mface, int *face_indices,
-			int totface, int *vert_indices, int uniq_verts,
-			int totvert);
-void GPU_update_mesh_buffers(void *buffers, struct MVert *mvert,
+typedef struct GPU_Buffers GPU_Buffers;
+
+GPU_Buffers *GPU_build_mesh_buffers(int (*face_vert_indices)[4],
+			struct MFace *mface, struct MVert *mvert,
+            int *face_indices, int totface);
+
+void GPU_update_mesh_buffers(GPU_Buffers *buffers, struct MVert *mvert,
 			int *vert_indices, int totvert);
-void *GPU_build_grid_buffers(struct DMGridData **grids,
-	int *grid_indices, int totgrid, int gridsize);
-void GPU_update_grid_buffers(void *buffers_v, struct DMGridData **grids,
-	int *grid_indices, int totgrid, int gridsize, int smooth);
-void GPU_draw_buffers(void *buffers);
-void GPU_free_buffers(void *buffers);
+
+GPU_Buffers *GPU_build_grid_buffers(int *grid_indices, int totgrid,
+									unsigned int **grid_hidden, int gridsize);
+
+void GPU_update_grid_buffers(GPU_Buffers *buffers, struct DMGridData **grids,
+							 const struct DMFlagMat *grid_flag_mats,
+							 int *grid_indices, int totgrid, int gridsize);
+
+void GPU_draw_buffers(GPU_Buffers *buffers, DMSetMaterial setMaterial);
+
+void GPU_free_buffers(GPU_Buffers *buffers);
 
 #endif

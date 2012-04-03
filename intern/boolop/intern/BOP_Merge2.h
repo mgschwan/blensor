@@ -30,8 +30,8 @@
  */
 
  
-#ifndef BOP_MERGE2_H
-#define BOP_MERGE2_H
+#ifndef __BOP_MERGE2_H__
+#define __BOP_MERGE2_H__
 
 #include "BOP_Misc.h"
 
@@ -42,8 +42,8 @@
 #include "BOP_MathUtils.h"
 #include "MEM_SmartPtr.h"
 
-typedef vector< BOP_Faces > BOP_LFaces;
-typedef vector< BOP_Faces >::iterator BOP_IT_LFaces;
+typedef std::vector< BOP_Faces > BOP_LFaces;
+typedef std::vector< BOP_Faces >::iterator BOP_IT_LFaces;
 
 class BOP_Merge2 {
 	private:
@@ -78,7 +78,7 @@ class BOP_Merge2 {
 				BOP_Index X, BOP_Index I, BOP_Index P, BOP_Index N );
 		BOP_Face *find4Neighbor(BOP_Face *faceI, BOP_Face *faceJ,
 				BOP_Index X, BOP_Index I, BOP_Index P, BOP_Index N,
-    			BOP_Face **faceL, BOP_Index &O);
+				BOP_Face **faceL, BOP_Index &O);
 		BOP_Face3 *collapse(BOP_Face4 *faceC, BOP_Index X);
 		void mergeFaces(BOP_Face *A, BOP_Face *B, BOP_Index X,
 			BOP_Index I, BOP_Index N, BOP_Index P, BOP_Faces &newFaces );

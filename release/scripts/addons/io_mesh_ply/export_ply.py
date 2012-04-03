@@ -18,9 +18,6 @@
 
 # <pep8-80 compliant>
 
-# Copyright (C) 2004, 2005: Bruce Merry, bmerry@cs.uct.ac.za
-# Contributors: Bruce Merry, Campbell Barton
-
 """
 This script exports Stanford PLY files from Blender. It supports normals,
 colours, and texture coordinates per face or per vertex.
@@ -68,9 +65,9 @@ def save(operator,
 
     # mesh.transform(obj.matrix_world) # XXX
 
-    has_uv = (len(mesh.uv_textures) > 0)
+    has_uv = (len(mesh.tessface_uv_textures) > 0)
     has_uv_vertex = (len(mesh.sticky) > 0)
-    has_vcol = len(mesh.vertex_colors) > 0
+    has_vcol = len(mesh.tessface_vertex_colors) > 0
 
     if (not has_uv) and (not has_uv_vertex):
         use_uv_coords = False
@@ -83,7 +80,7 @@ def save(operator,
         has_vcol = False
 
     if has_uv:
-        active_uv_layer = mesh.uv_textures.active
+        active_uv_layer = mesh.tessface_uv_textures.active
         if not active_uv_layer:
             use_uv_coords = False
             has_uv = False
@@ -91,7 +88,7 @@ def save(operator,
             active_uv_layer = active_uv_layer.data
 
     if has_vcol:
-        active_col_layer = mesh.vertex_colors.active
+        active_col_layer = mesh.tessface_vertex_colors.active
         if not active_col_layer:
             use_colors = False
             has_vcol = False
@@ -105,9 +102,9 @@ def save(operator,
     ply_verts = []  # list of dictionaries
     # vdict = {} # (index, normal, uv) -> new index
     vdict = [{} for i in range(len(mesh_verts))]
-    ply_faces = [[] for f in range(len(mesh.faces))]
+    ply_faces = [[] for f in range(len(mesh.tessfaces))]
     vert_count = 0
-    for i, f in enumerate(mesh.faces):
+    for i, f in enumerate(mesh.tessfaces):
 
         smooth = f.use_smooth
         if not smooth:
@@ -116,7 +113,7 @@ def save(operator,
 
         if has_uv:
             uv = active_uv_layer[i]
-            uv = uv.uv1, uv.uv2, uv.uv3, uv.uv4  # XXX - crufty :/
+            uv = uv.uv1, uv.uv2, uv.uv3, uv.uv4
         if has_vcol:
             col = active_col_layer[i]
             col = col.color1[:], col.color2[:], col.color3[:], col.color4[:]
@@ -132,10 +129,10 @@ def save(operator,
                 normal_key = rvec3d(normal)
 
             if has_uv:
-                uvcoord = uv[j][0], 1.0 - uv[j][1]
+                uvcoord = uv[j][0], uv[j][1]
                 uvcoord_key = rvec2d(uvcoord)
             elif has_uv_vertex:
-                uvcoord = v.uvco[0], 1.0 - v.uvco[1]
+                uvcoord = v.uvco[0], v.uvco[1]
                 uvcoord_key = rvec2d(uvcoord)
 
             if has_vcol:
@@ -180,7 +177,7 @@ def save(operator,
            "property uchar green\n"
            "property uchar blue\n")
 
-    fw("element face %d\n" % len(mesh.faces))
+    fw("element face %d\n" % len(mesh.tessfaces))
     fw("property list uchar uint vertex_indices\n")
     fw("end_header\n")
 

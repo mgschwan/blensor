@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_SUGGESTIONS_H
-#define BKE_SUGGESTIONS_H
+#ifndef __BKE_SUGGESTIONS_H__
+#define __BKE_SUGGESTIONS_H__
 
 /** \file BKE_suggestions.h
  *  \ingroup bke
@@ -36,19 +36,19 @@ extern "C" {
 #endif
 
 /* ****************************************************************************
-Suggestions should be added in sorted order although a linear sorting method is
-implemented. The list is then divided up based on the prefix provided by
-update_suggestions:
-
-Example:
-  Prefix: ab
-  aaa <-- first
-  aab
-  aba <-- firstmatch
-  abb <-- lastmatch
-  baa
-  bab <-- last
-**************************************************************************** */
+ * Suggestions should be added in sorted order although a linear sorting method is
+ * implemented. The list is then divided up based on the prefix provided by
+ * update_suggestions:
+ *
+ * Example:
+ *   Prefix: ab
+ *   aaa <-- first
+ *   aab
+ *   aba <-- firstmatch
+ *   abb <-- lastmatch
+ *   baa
+ *   bab <-- last
+ **************************************************************************** */
 
 struct Text;
 

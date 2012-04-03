@@ -22,7 +22,6 @@ bl_info = {
     "name": "Autodesk FBX format",
     "author": "Campbell Barton",
     "blender": (2, 5, 9),
-    "api": 38691,
     "location": "File > Import-Export",
     "description": "Export FBX meshes, UV's, vertex colors, materials, "
                    "textures, cameras, lamps and actions",
@@ -131,6 +130,11 @@ class ExportFBX(bpy.types.Operator, ExportHelper):
             name="Include Edges",
             description=("Edges may not be necessary, can cause import "
                          "pipeline errors with XNA"),
+            default=False,
+            )
+    use_armature_deform_only = BoolProperty(
+            name="Only Deform Bones",
+            description="Only write deforming bones",
             default=False,
             )
     use_anim = BoolProperty(

@@ -23,12 +23,11 @@ bl_info = {
     "author": "Campbell Barton, Silvio Falcinelli, Maurice Raybaud, Constantin Rahn, Bastien Montagne",
     "version": (0, 0, 9),
     "blender": (2, 5, 7),
-    "api": 35622,
     "location": "Render > Engine > POV-Ray 3.7",
     "description": "Basic POV-Ray 3.7 integration for blender",
     "warning": "both POV-Ray 3.7 and this script are beta",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
-        "Scripts/Render/PovRay",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
+        "Scripts/Render/POV-Ray",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=23145",
     "category": "Render"}

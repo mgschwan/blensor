@@ -24,13 +24,14 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_TEXT_TYPES_H
-#define DNA_TEXT_TYPES_H
 /** \file DNA_text_types.h
  *  \ingroup DNA
  *  \since mar-2001
  *  \author nzc
  */
+
+#ifndef __DNA_TEXT_TYPES_H__
+#define __DNA_TEXT_TYPES_H__
 
 #include "DNA_listBase.h"
 #include "DNA_ID.h"

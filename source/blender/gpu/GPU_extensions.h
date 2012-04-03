@@ -1,21 +1,18 @@
 /*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
- * This shader is free software; you can redistribute it and/or
+ * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version. The Blender
- * Foundation also sells licenses for use in proprietary software under
- * the Blender License.  See http://www.blender.org/BL/ for information
- * about this.
+ * of the License, or (at your option) any later version.
  *
- * This shader is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this shader; if not, write to the Free Software Foundation,
+ * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  * The Original Code is Copyright (C) 2005 Blender Foundation.
@@ -32,8 +29,8 @@
  *  \ingroup gpu
  */
 
-#ifndef GPU_EXTENSIONS_H
-#define GPU_EXTENSIONS_H
+#ifndef __GPU_EXTENSIONS_H__
+#define __GPU_EXTENSIONS_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,6 +61,8 @@ int GPU_print_error(const char *str);
 int GPU_glsl_support(void);
 int GPU_non_power_of_two_support(void);
 int GPU_color_depth(void);
+void GPU_code_generate_glsl_lib(void);
+int GPU_bicubic_bump_support(void);
 
 /* GPU Types */
 
@@ -93,18 +92,18 @@ typedef enum GPUDriverType {
 int GPU_type_matches(GPUDeviceType device, GPUOSType os, GPUDriverType driver);
 
 /* GPU Texture
-   - always returns unsigned char RGBA textures
-   - if texture with non square dimensions is created, depending on the
-	 graphics card capabilities the texture may actually be stored in a
-	 larger texture with power of two dimensions. the actual dimensions
-	 may be queried with GPU_texture_opengl_width/height. GPU_texture_coord_2f
-	 calls glTexCoord2f with the coordinates adjusted for this.
-   - can use reference counting:
-	   - reference counter after GPU_texture_create is 1
-	   - GPU_texture_ref increases by one
-	   - GPU_texture_free decreases by one, and frees if 0
-	- if created with from_blender, will not free the texture
-*/
+ * - always returns unsigned char RGBA textures
+ * - if texture with non square dimensions is created, depending on the
+ *   graphics card capabilities the texture may actually be stored in a
+ *   larger texture with power of two dimensions. the actual dimensions
+ *   may be queried with GPU_texture_opengl_width/height. GPU_texture_coord_2f
+ *   calls glTexCoord2f with the coordinates adjusted for this.
+ * - can use reference counting:
+ *     - reference counter after GPU_texture_create is 1
+ *     - GPU_texture_ref increases by one
+ *     - GPU_texture_free decreases by one, and frees if 0
+ *  - if created with from_blender, will not free the texture
+ */
 
 GPUTexture *GPU_texture_create_1D(int w, float *pixels, char err_out[256]);
 GPUTexture *GPU_texture_create_2D(int w, int h, float *pixels, char err_out[256]);
@@ -127,33 +126,34 @@ int GPU_texture_opengl_height(GPUTexture *tex);
 int GPU_texture_opengl_bindcode(GPUTexture *tex);
 
 /* GPU Framebuffer
-   - this is a wrapper for an OpenGL framebuffer object (FBO). in practice
-	 multiple FBO's may be created, to get around limitations on the number
-	 of attached textures and the dimension requirements.
-   - after any of the GPU_framebuffer_* functions, GPU_framebuffer_restore must
-	 be called before rendering to the window framebuffer again */
+ * - this is a wrapper for an OpenGL framebuffer object (FBO). in practice
+ *   multiple FBO's may be created, to get around limitations on the number
+ *   of attached textures and the dimension requirements.
+ * - after any of the GPU_framebuffer_* functions, GPU_framebuffer_restore must
+ *   be called before rendering to the window framebuffer again */
 
 GPUFrameBuffer *GPU_framebuffer_create(void);
 int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, char err_out[256]);
 void GPU_framebuffer_texture_detach(GPUFrameBuffer *fb, GPUTexture *tex);
-void GPU_framebuffer_texture_bind(GPUFrameBuffer *fb, GPUTexture *tex);
+void GPU_framebuffer_texture_bind(GPUFrameBuffer *fb, GPUTexture *tex, int w, int h);
 void GPU_framebuffer_texture_unbind(GPUFrameBuffer *fb, GPUTexture *tex);
 void GPU_framebuffer_free(GPUFrameBuffer *fb);
 
 void GPU_framebuffer_restore(void);
 
 /* GPU OffScreen
-   - wrapper around framebuffer and texture for simple offscreen drawing 
-   - changes size if graphics card can't support it */
+ * - wrapper around framebuffer and texture for simple offscreen drawing
+ * - changes size if graphics card can't support it */
 
-GPUOffScreen *GPU_offscreen_create(int *width, int *height, char err_out[256]);
+GPUOffScreen *GPU_offscreen_create(int width, int height, char err_out[256]);
 void GPU_offscreen_free(GPUOffScreen *ofs);
 void GPU_offscreen_bind(GPUOffScreen *ofs);
 void GPU_offscreen_unbind(GPUOffScreen *ofs);
+void GPU_offscreen_read_pixels(GPUOffScreen *ofs, int type, void *pixels);
 
 /* GPU Shader
-   - only for fragment shaders now
-   - must call texture bind before setting a texture as uniform! */
+ * - only for fragment shaders now
+ * - must call texture bind before setting a texture as uniform! */
 
 GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, const char *libcode); /*GPUShader *lib);*/
 /*GPUShader *GPU_shader_create_lib(const char *code);*/
@@ -167,7 +167,7 @@ void GPU_shader_uniform_vector(GPUShader *shader, int location, int length,
 	int arraysize, float *value);
 void GPU_shader_uniform_texture(GPUShader *shader, int location, GPUTexture *tex);
 
-int GPU_shader_get_attribute(GPUShader *shader, char *name);
+int GPU_shader_get_attribute(GPUShader *shader, const char *name);
 
 /* Vertex attributes for shaders */
 
@@ -179,7 +179,7 @@ typedef struct GPUVertexAttribs {
 		int glindex;
 		int gltexco;
 		int attribid;
-		char name[32];
+		char name[64];	/* MAX_CUSTOMDATA_LAYER_NAME */
 	} layer[GPU_MAX_ATTRIB];
 
 	int totlayer;

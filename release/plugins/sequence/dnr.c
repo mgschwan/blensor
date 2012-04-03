@@ -42,7 +42,7 @@ struct my_data {
 };
 
 void plugin_seq_doit(Cast *, float, float, int, int, 
-		     ImBuf *, ImBuf *, ImBuf *, ImBuf *);
+                     ImBuf *, ImBuf *, ImBuf *, ImBuf *);
 
 int plugin_seq_getversion(void) { return B_PLUGIN_VERSION;}
 
@@ -90,7 +90,8 @@ void plugin_seq_free_private_data(void * data)
 	free(d);
 }
 
-void plugin_getinfo(PluginInfo *info) {
+void plugin_getinfo(PluginInfo *info)
+{
 	info->name= name;
 	info->nvars= sizeof(varstr)/sizeof(VarStruct);
 	info->cfra= &cfra;

@@ -4,10 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version. The Blender
- * Foundation also sells licenses for use in proprietary software under
- * the Blender License.  See http://www.blender.org/BL/ for information
- * about this.
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -44,9 +41,11 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
+#include "BLI_math_base.h"
 
 #include "GPU_draw.h"
 #include "GPU_extensions.h"
+#include "gpu_codegen.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -57,14 +56,14 @@
 /* Extensions support */
 
 /* extensions used:
-	- texture border clamp: 1.3 core
-	- fragement shader: 2.0 core
-	- framebuffer object: ext specification
-	- multitexture 1.3 core
-	- arb non power of two: 2.0 core
-	- pixel buffer objects? 2.1 core
-	- arb draw buffers? 2.0 core
-*/
+ * - texture border clamp: 1.3 core
+ * - fragement shader: 2.0 core
+ * - framebuffer object: ext specification
+ * - multitexture 1.3 core
+ * - arb non power of two: 2.0 core
+ * - pixel buffer objects? 2.1 core
+ * - arb draw buffers? 2.0 core
+ */
 
 static struct GPUGlobal {
 	GLint maxtextures;
@@ -87,6 +86,8 @@ int GPU_type_matches(GPUDeviceType device, GPUOSType os, GPUDriverType driver)
 
 /* GPU Extensions */
 
+static int gpu_extensions_init = 0;
+
 void GPU_extensions_disable(void)
 {
 	GG.extdisabled = 1;
@@ -98,11 +99,11 @@ void GPU_extensions_init(void)
 	const char *vendor, *renderer;
 
 	/* can't avoid calling this multiple times, see wm_window_add_ghostwindow */
-	static char init= 0;
-	if(init) return;
-	init= 1;
+	if (gpu_extensions_init) return;
+	gpu_extensions_init= 1;
 
 	glewInit();
+	GPU_codegen_init();
 
 	/* glewIsSupported("GL_VERSION_2_0") */
 
@@ -122,55 +123,38 @@ void GPU_extensions_init(void)
 	vendor = (const char*)glGetString(GL_VENDOR);
 	renderer = (const char*)glGetString(GL_RENDERER);
 
-	if(strstr(vendor, "ATI")) {
+	if (strstr(vendor, "ATI")) {
 		GG.device = GPU_DEVICE_ATI;
 		GG.driver = GPU_DRIVER_OFFICIAL;
-
-		/* ATI X1xxx cards (R500 chipset) lack full support for npot textures
-		 * although they report the GLEW_ARB_texture_non_power_of_two extension.
-		 */
-		if(strstr(renderer, "X1"))
-			GG.npotdisabled = 1;
 	}
-	else if(strstr(vendor, "NVIDIA")) {
+	else if (strstr(vendor, "NVIDIA")) {
 		GG.device = GPU_DEVICE_NVIDIA;
 		GG.driver = GPU_DRIVER_OFFICIAL;
 	}
-	else if(strstr(vendor, "Intel") ||
+	else if (strstr(vendor, "Intel") ||
 	        /* src/mesa/drivers/dri/intel/intel_context.c */
 	        strstr(renderer, "Mesa DRI Intel") ||
 		strstr(renderer, "Mesa DRI Mobile Intel")) {
 		GG.device = GPU_DEVICE_INTEL;
 		GG.driver = GPU_DRIVER_OFFICIAL;
 	}
-	else if(strstr(renderer, "Mesa DRI R") || (strstr(renderer, "Gallium ") && strstr(renderer, " on ATI "))) {
+	else if (strstr(renderer, "Mesa DRI R") || (strstr(renderer, "Gallium ") && strstr(renderer, " on ATI "))) {
 		GG.device = GPU_DEVICE_ATI;
 		GG.driver = GPU_DRIVER_OPENSOURCE;
-		/* ATI 9500 to X2300 cards support NPoT textures poorly
-		 * Incomplete list http://dri.freedesktop.org/wiki/ATIRadeon
-		 * New IDs from MESA's src/gallium/drivers/r300/r300_screen.c
-		 */
-		if(strstr(renderer, "R3") || strstr(renderer, "RV3") ||
-		   strstr(renderer, "R4") || strstr(renderer, "RV4") ||
-		   strstr(renderer, "RS4") || strstr(renderer, "RC4") ||
-		   strstr(renderer, "R5") || strstr(renderer, "RV5") ||
-		   strstr(renderer, "RS600") || strstr(renderer, "RS690") ||
-		   strstr(renderer, "RS740"))
-			GG.npotdisabled = 1;
 	}
-	else if(strstr(renderer, "Nouveau") || strstr(vendor, "nouveau")) {
+	else if (strstr(renderer, "Nouveau") || strstr(vendor, "nouveau")) {
 		GG.device = GPU_DEVICE_NVIDIA;
 		GG.driver = GPU_DRIVER_OPENSOURCE;
 	}
-	else if(strstr(vendor, "Mesa")) {
+	else if (strstr(vendor, "Mesa")) {
 		GG.device = GPU_DEVICE_SOFTWARE;
 		GG.driver = GPU_DRIVER_SOFTWARE;
 	}
-	else if(strstr(vendor, "Microsoft")) {
+	else if (strstr(vendor, "Microsoft")) {
 		GG.device = GPU_DEVICE_SOFTWARE;
 		GG.driver = GPU_DRIVER_SOFTWARE;
 	}
-	else if(strstr(renderer, "Apple Software Renderer")) {
+	else if (strstr(renderer, "Apple Software Renderer")) {
 		GG.device = GPU_DEVICE_SOFTWARE;
 		GG.driver = GPU_DRIVER_SOFTWARE;
 	}
@@ -179,13 +163,39 @@ void GPU_extensions_init(void)
 		GG.driver = GPU_DRIVER_ANY;
 	}
 
-	GG.os = GPU_OS_UNIX;
+	if (GG.device == GPU_DEVICE_ATI) {
+		/* ATI 9500 to X2300 cards support NPoT textures poorly
+		 * Incomplete list http://dri.freedesktop.org/wiki/ATIRadeon
+		 * New IDs from MESA's src/gallium/drivers/r300/r300_screen.c
+		 */
+		if (strstr(renderer, "R3") || strstr(renderer, "RV3") ||
+		   strstr(renderer, "R4") || strstr(renderer, "RV4") ||
+		   strstr(renderer, "RS4") || strstr(renderer, "RC4") ||
+		   strstr(renderer, "R5") || strstr(renderer, "RV5") ||
+		   strstr(renderer, "RS600") || strstr(renderer, "RS690") ||
+		   strstr(renderer, "RS740") || strstr(renderer, "X1") ||
+		   strstr(renderer, "X2") || strstr(renderer, "Radeon 9") ||
+		   strstr(renderer, "RADEON 9"))
+			GG.npotdisabled = 1;
+	}
+
+	/* make sure double side isn't used by default and only getting enabled in places where it's
+	 * really needed to prevent different unexpected behaviors like with intel gme965 card (sergey) */
+	glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_FALSE);
+
 #ifdef _WIN32
 	GG.os = GPU_OS_WIN;
-#endif
-#ifdef __APPLE__
+#elif defined(__APPLE__)
 	GG.os = GPU_OS_MAC;
+#else
+	GG.os = GPU_OS_UNIX;
 #endif
+}
+
+void GPU_extensions_exit(void)
+{
+	gpu_extensions_init = 0;
+	GPU_codegen_exit();
 }
 
 int GPU_glsl_support(void)
@@ -195,12 +205,7 @@ int GPU_glsl_support(void)
 
 int GPU_non_power_of_two_support(void)
 {
-	/* Exception for buggy ATI/Apple driver in Mac OS X 10.5/10.6,
-	 * they claim to support this but can cause system freeze */
-	if(GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_MAC, GPU_DRIVER_OFFICIAL))
-		return 0;
-
-	if(GG.npotdisabled)
+	if (GG.npotdisabled)
 		return 0;
 
 	return GLEW_ARB_texture_non_power_of_two;
@@ -215,7 +220,7 @@ int GPU_print_error(const char *str)
 {
 	GLenum errCode;
 
-	if (G.f & G_DEBUG) {
+	if (G.debug & G_DEBUG) {
 		if ((errCode = glGetError()) != GL_NO_ERROR) {
 			fprintf(stderr, "%s opengl error: %s\n", str, gluErrorString(errCode));
 			return 1;
@@ -255,7 +260,7 @@ static void GPU_print_framebuffer_error(GLenum status, char err_out[256])
 			break;
 	}
 
-	if(err_out) {
+	if (err_out) {
 		BLI_snprintf(err_out, 256, "GPUFrameBuffer: framebuffer incomplete error %d '%s'",
 			(int)status, err);
 	}
@@ -295,22 +300,6 @@ static unsigned char *GPU_texture_convert_pixels(int length, float *fpixels)
 	return pixels;
 }
 
-static int is_pow2(int n)
-{
-	return ((n)&(n-1))==0;
-}
-
-static int larger_pow2(int n)
-{
-	if (is_pow2(n))
-		return n;
-
-	while(!is_pow2(n))
-		n= n&(n-1);
-
-	return n*2;
-}
-
 static void GPU_glTexSubImageEmpty(GLenum target, GLenum format, int x, int y, int w, int h)
 {
 	void *pixels = MEM_callocN(sizeof(char)*4*w*h, "GPUTextureEmptyPixels");
@@ -329,7 +318,7 @@ static GPUTexture *GPU_texture_create_nD(int w, int h, int n, float *fpixels, in
 	GLenum type, format, internalformat;
 	void *pixels = NULL;
 
-	if(depth && !GLEW_ARB_depth_texture)
+	if (depth && !GLEW_ARB_depth_texture)
 		return NULL;
 
 	tex = MEM_callocN(sizeof(GPUTexture), "GPUTexture");
@@ -343,7 +332,7 @@ static GPUTexture *GPU_texture_create_nD(int w, int h, int n, float *fpixels, in
 	glGenTextures(1, &tex->bindcode);
 
 	if (!tex->bindcode) {
-		if(err_out) {
+		if (err_out) {
 			BLI_snprintf(err_out, 256, "GPUTexture: texture create failed: %d",
 				(int)glGetError());
 		}
@@ -356,14 +345,14 @@ static GPUTexture *GPU_texture_create_nD(int w, int h, int n, float *fpixels, in
 	}
 
 	if (!GPU_non_power_of_two_support()) {
-		tex->w = larger_pow2(tex->w);
-		tex->h = larger_pow2(tex->h);
+		tex->w = power_of_2_max_i(tex->w);
+		tex->h = power_of_2_max_i(tex->h);
 	}
 
 	tex->number = 0;
 	glBindTexture(tex->target, tex->bindcode);
 
-	if(depth) {
+	if (depth) {
 		type = GL_UNSIGNED_BYTE;
 		format = GL_DEPTH_COMPONENT;
 		internalformat = GL_DEPTH_COMPONENT;
@@ -407,7 +396,7 @@ static GPUTexture *GPU_texture_create_nD(int w, int h, int n, float *fpixels, in
 	if (pixels)
 		MEM_freeN(pixels);
 
-	if(depth) {
+	if (depth) {
 		glTexParameteri(tex->target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(tex->target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(tex->target, GL_TEXTURE_COMPARE_MODE_ARB, GL_COMPARE_R_TO_TEXTURE);
@@ -444,7 +433,7 @@ GPUTexture *GPU_texture_create_3D(int w, int h, int depth, float *fpixels)
 	void *pixels = NULL;
 	float vfBorderColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
-	if(!GLEW_VERSION_1_2)
+	if (!GLEW_VERSION_1_2)
 		return NULL;
 
 	tex = MEM_callocN(sizeof(GPUTexture), "GPUTexture");
@@ -465,9 +454,9 @@ GPUTexture *GPU_texture_create_3D(int w, int h, int depth, float *fpixels)
 	}
 
 	if (!GPU_non_power_of_two_support()) {
-		tex->w = larger_pow2(tex->w);
-		tex->h = larger_pow2(tex->h);
-		tex->depth = larger_pow2(tex->depth);
+		tex->w = power_of_2_max_i(tex->w);
+		tex->h = power_of_2_max_i(tex->h);
+		tex->depth = power_of_2_max_i(tex->depth);
 	}
 
 	tex->number = 0;
@@ -487,7 +476,7 @@ GPUTexture *GPU_texture_create_3D(int w, int h, int depth, float *fpixels)
 	GPU_print_error("3D glTexImage3D");
 
 	if (fpixels) {
-		if(!GPU_non_power_of_two_support() && (w != tex->w || h != tex->h || depth != tex->depth)) {
+		if (!GPU_non_power_of_two_support() && (w != tex->w || h != tex->h || depth != tex->depth)) {
 			/* clear first to avoid unitialized pixels */
 			float *zero= MEM_callocN(sizeof(float)*tex->w*tex->h*tex->depth, "zero");
 			glTexSubImage3D(tex->target, 0, 0, 0, 0, tex->w, tex->h, tex->depth, format, type, zero);
@@ -527,13 +516,13 @@ GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, double time, 
 	GPU_update_image_time(ima, time);
 	bindcode = GPU_verify_image(ima, iuser, 0, 0, mipmap);
 
-	if(ima->gputexture) {
+	if (ima->gputexture) {
 		ima->gputexture->bindcode = bindcode;
 		glBindTexture(GL_TEXTURE_2D, lastbindcode);
 		return ima->gputexture;
 	}
 
-	if(!bindcode) {
+	if (!bindcode) {
 		glBindTexture(GL_TEXTURE_2D, lastbindcode);
 		return NULL;
 	}
@@ -604,7 +593,7 @@ void GPU_texture_bind(GPUTexture *tex, int number)
 		return;
 	}
 
-	if(number == -1)
+	if (number == -1)
 		return;
 
 	GPU_print_error("Pre Texture Bind");
@@ -629,7 +618,7 @@ void GPU_texture_unbind(GPUTexture *tex)
 		return;
 	}
 
-	if(tex->number == -1)
+	if (tex->number == -1)
 		return;
 	
 	GPU_print_error("Pre Texture Unbind");
@@ -725,7 +714,7 @@ int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, char err
 	GLenum status;
 	GLenum attachment;
 
-	if(tex->depth)
+	if (tex->depth)
 		attachment = GL_DEPTH_ATTACHMENT_EXT;
 	else
 		attachment = GL_COLOR_ATTACHMENT0_EXT;
@@ -736,7 +725,7 @@ int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, char err
 	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, attachment, 
 		tex->target, tex->bindcode, 0);
 
-	if(tex->depth) {
+	if (tex->depth) {
 		glDrawBuffer(GL_NONE);
 		glReadBuffer(GL_NONE);
 	}
@@ -753,7 +742,7 @@ int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, char err
 		return 0;
 	}
 
-	if(tex->depth)
+	if (tex->depth)
 		fb->depthtex = tex;
 	else
 		fb->colortex = tex;
@@ -767,15 +756,15 @@ void GPU_framebuffer_texture_detach(GPUFrameBuffer *fb, GPUTexture *tex)
 {
 	GLenum attachment;
 
-	if(!tex->fb)
+	if (!tex->fb)
 		return;
 
-	if(GG.currentfb != tex->fb->object) {
+	if (GG.currentfb != tex->fb->object) {
 		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, tex->fb->object);
 		GG.currentfb = tex->fb->object;
 	}
 
-	if(tex->depth) {
+	if (tex->depth) {
 		fb->depthtex = NULL;
 		attachment = GL_DEPTH_ATTACHMENT_EXT;
 	}
@@ -790,7 +779,7 @@ void GPU_framebuffer_texture_detach(GPUFrameBuffer *fb, GPUTexture *tex)
 	tex->fb = NULL;
 }
 
-void GPU_framebuffer_texture_bind(GPUFrameBuffer *UNUSED(fb), GPUTexture *tex)
+void GPU_framebuffer_texture_bind(GPUFrameBuffer *UNUSED(fb), GPUTexture *tex, int w, int h)
 {
 	/* push attributes */
 	glPushAttrib(GL_ENABLE_BIT);
@@ -801,7 +790,7 @@ void GPU_framebuffer_texture_bind(GPUFrameBuffer *UNUSED(fb), GPUTexture *tex)
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, tex->fb->object);
 
 	/* push matrices and set default viewport and matrix */
-	glViewport(0, 0, tex->w, tex->h);
+	glViewport(0, 0, w, h);
 	GG.currentfb = tex->fb->object;
 
 	glMatrixMode(GL_PROJECTION);
@@ -828,12 +817,12 @@ void GPU_framebuffer_texture_unbind(GPUFrameBuffer *UNUSED(fb), GPUTexture *UNUS
 
 void GPU_framebuffer_free(GPUFrameBuffer *fb)
 {
-	if(fb->depthtex)
+	if (fb->depthtex)
 		GPU_framebuffer_texture_detach(fb, fb->depthtex);
-	if(fb->colortex)
+	if (fb->colortex)
 		GPU_framebuffer_texture_detach(fb, fb->colortex);
 
-	if(fb->object) {
+	if (fb->object) {
 		glDeleteFramebuffersEXT(1, &fb->object);
 
 		if (GG.currentfb == fb->object) {
@@ -859,44 +848,44 @@ struct GPUOffScreen {
 	GPUFrameBuffer *fb;
 	GPUTexture *color;
 	GPUTexture *depth;
+
+	/* requested width/height, may be smaller than actual texture size due
+	 * to missing non-power of two support, so we compensate for that */
+	int w, h;
 };
 
-GPUOffScreen *GPU_offscreen_create(int *width, int *height, char err_out[256])
+GPUOffScreen *GPU_offscreen_create(int width, int height, char err_out[256])
 {
 	GPUOffScreen *ofs;
 
 	ofs= MEM_callocN(sizeof(GPUOffScreen), "GPUOffScreen");
+	ofs->w= width;
+	ofs->h= height;
 
 	ofs->fb = GPU_framebuffer_create();
-	if(!ofs->fb) {
+	if (!ofs->fb) {
 		GPU_offscreen_free(ofs);
 		return NULL;
 	}
 
-	ofs->depth = GPU_texture_create_depth(*width, *height, err_out);
-	if(!ofs->depth) {
+	ofs->depth = GPU_texture_create_depth(width, height, err_out);
+	if (!ofs->depth) {
 		GPU_offscreen_free(ofs);
 		return NULL;
 	}
 
-	if(*width!=ofs->depth->w || *height!=ofs->depth->h) {
-		*width= ofs->depth->w;
-		*height= ofs->depth->h;
-		printf("Offscreen size differs from given size!\n");
-	}
-	
-	if(!GPU_framebuffer_texture_attach(ofs->fb, ofs->depth, err_out)) {
+	if (!GPU_framebuffer_texture_attach(ofs->fb, ofs->depth, err_out)) {
 		GPU_offscreen_free(ofs);
 		return NULL;
 	}
 
-	ofs->color = GPU_texture_create_2D(*width, *height, NULL, err_out);
-	if(!ofs->color) {
+	ofs->color = GPU_texture_create_2D(width, height, NULL, err_out);
+	if (!ofs->color) {
 		GPU_offscreen_free(ofs);
 		return NULL;
 	}
 
-	if(!GPU_framebuffer_texture_attach(ofs->fb, ofs->color, err_out)) {
+	if (!GPU_framebuffer_texture_attach(ofs->fb, ofs->color, err_out)) {
 		GPU_offscreen_free(ofs);
 		return NULL;
 	}
@@ -908,11 +897,11 @@ GPUOffScreen *GPU_offscreen_create(int *width, int *height, char err_out[256])
 
 void GPU_offscreen_free(GPUOffScreen *ofs)
 {
-	if(ofs->fb)
+	if (ofs->fb)
 		GPU_framebuffer_free(ofs->fb);
-	if(ofs->color)
+	if (ofs->color)
 		GPU_texture_free(ofs->color);
-	if(ofs->depth)
+	if (ofs->depth)
 		GPU_texture_free(ofs->depth);
 	
 	MEM_freeN(ofs);
@@ -921,7 +910,7 @@ void GPU_offscreen_free(GPUOffScreen *ofs)
 void GPU_offscreen_bind(GPUOffScreen *ofs)
 {
 	glDisable(GL_SCISSOR_TEST);
-	GPU_framebuffer_texture_bind(ofs->fb, ofs->color);
+	GPU_framebuffer_texture_bind(ofs->fb, ofs->color, ofs->w, ofs->h);
 }
 
 void GPU_offscreen_unbind(GPUOffScreen *ofs)
@@ -929,6 +918,11 @@ void GPU_offscreen_unbind(GPUOffScreen *ofs)
 	GPU_framebuffer_texture_unbind(ofs->fb, ofs->color);
 	GPU_framebuffer_restore();
 	glEnable(GL_SCISSOR_TEST);
+}
+
+void GPU_offscreen_read_pixels(GPUOffScreen *ofs, int type, void *pixels)
+{
+	glReadPixels(0, 0, ofs->w, ofs->h, GL_RGBA, type, pixels);
 }
 
 /* GPUShader */
@@ -948,7 +942,7 @@ static void shader_print_errors(const char *task, char *log, const char *code)
 
 	fprintf(stderr, "GPUShader: %s error:\n", task);
 
-	if(G.f & G_DEBUG) {
+	if (G.debug & G_DEBUG) {
 		c = code;
 		while ((c < end) && (pos = strchr(c, '\n'))) {
 			fprintf(stderr, "%2d  ", line);
@@ -977,9 +971,9 @@ GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, /*GPU
 
 	shader = MEM_callocN(sizeof(GPUShader), "GPUShader");
 
-	if(vertexcode)
+	if (vertexcode)
 		shader->vertex = glCreateShaderObjectARB(GL_VERTEX_SHADER_ARB);
-	if(fragcode)
+	if (fragcode)
 		shader->fragment = glCreateShaderObjectARB(GL_FRAGMENT_SHADER_ARB);
 	shader->object = glCreateProgramObjectARB();
 
@@ -991,7 +985,7 @@ GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, /*GPU
 		return NULL;
 	}
 
-	if(vertexcode) {
+	if (vertexcode) {
 		glAttachObjectARB(shader->object, shader->vertex);
 		glShaderSourceARB(shader->vertex, 1, (const char**)&vertexcode, NULL);
 
@@ -1007,10 +1001,10 @@ GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, /*GPU
 		}
 	}
 
-	if(fragcode) {
+	if (fragcode) {
 		count = 0;
-		if(libcode) fragsource[count++] = libcode;
-		if(fragcode) fragsource[count++] = fragcode;
+		if (libcode) fragsource[count++] = libcode;
+		if (fragcode) fragsource[count++] = fragcode;
 
 		glAttachObjectARB(shader->object, shader->fragment);
 		glShaderSourceARB(shader->fragment, count, fragsource, NULL);
@@ -1027,8 +1021,10 @@ GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, /*GPU
 		}
 	}
 
-	/*if(lib && lib->lib)
-		glAttachObjectARB(shader->object, lib->lib);*/
+#if 0
+	if (lib && lib->lib)
+		glAttachObjectARB(shader->object, lib->lib);
+#endif
 
 	glLinkProgramARB(shader->object);
 	glGetObjectParameterivARB(shader->object, GL_OBJECT_LINK_STATUS_ARB, &status);
@@ -1117,7 +1113,7 @@ int GPU_shader_get_uniform(GPUShader *shader, const char *name)
 
 void GPU_shader_uniform_vector(GPUShader *UNUSED(shader), int location, int length, int arraysize, float *value)
 {
-	if(location == -1)
+	if (location == -1)
 		return;
 
 	GPU_print_error("Pre Uniform Vector");
@@ -1141,10 +1137,10 @@ void GPU_shader_uniform_texture(GPUShader *UNUSED(shader), int location, GPUText
 		return;
 	}
 		
-	if(tex->number == -1)
+	if (tex->number == -1)
 		return;
 
-	if(location == -1)
+	if (location == -1)
 		return;
 
 	GPU_print_error("Pre Uniform Texture");
@@ -1160,7 +1156,7 @@ void GPU_shader_uniform_texture(GPUShader *UNUSED(shader), int location, GPUText
 	GPU_print_error("Post Uniform Texture");
 }
 
-int GPU_shader_get_attribute(GPUShader *shader, char *name)
+int GPU_shader_get_attribute(GPUShader *shader, const char *name)
 {
 	int index;
 	
@@ -1203,7 +1199,7 @@ GPUPixelBuffer *gpu_pixelbuffer_create(int x, int y, int halffloat, int numbuffe
 	pb->numbuffers = numbuffers;
 	pb->halffloat = halffloat;
 
-	   glGenBuffersARB(pb->numbuffers, pb->bindcode);
+	glGenBuffersARB(pb->numbuffers, pb->bindcode);
 
 	if (!pb->bindcode[0]) {
 		fprintf(stderr, "GPUPixelBuffer allocation failed\n");

@@ -1,20 +1,20 @@
-#  ##### BEGIN GPL LICENSE BLOCK #####
-#
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 2
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software Foundation,
-#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# ##### END GPL LICENSE BLOCK #####
+ # ***** BEGIN GPL LICENSE BLOCK *****
+ #
+ # This program is free software; you can redistribute it and/or
+ # modify it under the terms of the GNU General Public License
+ # as published by the Free Software Foundation; either version 2
+ # of the License, or (at your option) any later version.
+ #
+ # This program is distributed in the hope that it will be useful,
+ # but WITHOUT ANY WARRANTY; without even the implied warranty of
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ # GNU General Public License for more details.
+ #
+ # You should have received a copy of the GNU General Public License
+ # along with this program; if not, write to the Free Software Foundation,
+ # Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ #
+ # #**** END GPL LICENSE BLOCK #****
 
 # <pep8 compliant>
 
@@ -210,16 +210,18 @@ def write_pov(filename, scene=None, info_callback=None):
         return name
 
     def writeMatrix(matrix):
-        tabWrite("matrix <%.6f, %.6f, %.6f,  %.6f, %.6f, %.6f,  %.6f, %.6f, %.6f,  %.6f, %.6f, " \
-                 "%.6f>\n" % (matrix[0][0], matrix[0][1], matrix[0][2], matrix[1][0], matrix[1][1],
-                              matrix[1][2], matrix[2][0], matrix[2][1], matrix[2][2], matrix[3][0],
-                              matrix[3][1], matrix[3][2]))
+        tabWrite("matrix <%.6f, %.6f, %.6f,  %.6f, %.6f, %.6f,  %.6f, %.6f, %.6f,  %.6f, %.6f, %.6f>\n" %
+                 (matrix[0][0], matrix[1][0], matrix[2][0],
+                  matrix[0][1], matrix[1][1], matrix[2][1],
+                  matrix[0][2], matrix[1][2], matrix[2][2],
+                  matrix[0][3], matrix[1][3], matrix[2][3]))
 
     def MatrixAsPovString(matrix):
-        sMatrix = ("matrix <%.6f, %.6f, %.6f,  %.6f, %.6f, %.6f,  %.6f, %.6f, %.6f,  %.6f, %.6f, " \
-                   "%.6f>\n" % (matrix[0][0], matrix[0][1], matrix[0][2], matrix[1][0], matrix[1][1],
-                                matrix[1][2], matrix[2][0], matrix[2][1], matrix[2][2], matrix[3][0],
-                                matrix[3][1], matrix[3][2]))
+        sMatrix = ("matrix <%.6f, %.6f, %.6f,  %.6f, %.6f, %.6f,  %.6f, %.6f, %.6f,  %.6f, %.6f, %.6f>\n" %
+                   (matrix[0][0], matrix[1][0], matrix[2][0],
+                    matrix[0][1], matrix[1][1], matrix[2][1],
+                    matrix[0][2], matrix[1][2], matrix[2][2],
+                    matrix[0][3], matrix[1][3], matrix[2][3]))
         return sMatrix
 
     def writeObjectMaterial(material, ob):
@@ -462,13 +464,11 @@ def write_pov(filename, scene=None, info_callback=None):
 
                 if material.subsurface_scattering.use:
                     subsurface_scattering = material.subsurface_scattering
-                    tabWrite("subsurface { <%.3g, %.3g, %.3g>, <%.3g, %.3g, %.3g> }\n" % (
-                             sqrt(subsurface_scattering.radius[0]) * 1.5,
-                             sqrt(subsurface_scattering.radius[1]) * 1.5,
-                             sqrt(subsurface_scattering.radius[2]) * 1.5,
-                             1.0 - subsurface_scattering.color[0],
-                             1.0 - subsurface_scattering.color[1],
-                             1.0 - subsurface_scattering.color[2])
+                    tabWrite("subsurface { translucency <%.3g, %.3g, %.3g> }\n" % (
+                             (subsurface_scattering.radius[0]),
+                             (subsurface_scattering.radius[1]),
+                             (subsurface_scattering.radius[2]),
+                             )
                             )
 
                 if material.pov.irid_enable:
@@ -524,9 +524,9 @@ def write_pov(filename, scene=None, info_callback=None):
 
         # compute resolution
         Qsize = float(render.resolution_x) / float(render.resolution_y)
-        tabWrite("#declare camLocation  = <%.6f, %.6f, %.6f>;\n" % \
-                 (matrix[3][0], matrix[3][1], matrix[3][2]))
-        tabWrite("#declare camLookAt = <%.6f, %.6f, %.6f>;\n" % \
+        tabWrite("#declare camLocation  = <%.6f, %.6f, %.6f>;\n" %
+                 matrix.translation[:])
+        tabWrite("#declare camLookAt = <%.6f, %.6f, %.6f>;\n" %
                  tuple([degrees(e) for e in matrix.to_3x3().to_euler()]))
 
         tabWrite("camera {\n")
@@ -546,7 +546,7 @@ def write_pov(filename, scene=None, info_callback=None):
 
             tabWrite("rotate  <%.6f, %.6f, %.6f>\n" % \
                      tuple([degrees(e) for e in matrix.to_3x3().to_euler()]))
-            tabWrite("translate <%.6f, %.6f, %.6f>\n" % (matrix[3][0], matrix[3][1], matrix[3][2]))
+            tabWrite("translate <%.6f, %.6f, %.6f>\n" % matrix.translation[:])
             if camera.data.pov.dof_enable and focal_point != 0:
                 tabWrite("aperture %.3g\n" % camera.data.pov.dof_aperture)
                 tabWrite("blur_samples %d %d\n" % \
@@ -720,7 +720,7 @@ def write_pov(filename, scene=None, info_callback=None):
                 writeObjectMaterial(material, ob)
 
                 writeMatrix(global_matrix * ob.matrix_world)
-                #Importance for radiosity sampling added here:
+                # Importance for radiosity sampling added here
                 tabWrite("radiosity { \n")
                 tabWrite("importance %3g \n" % importance)
                 tabWrite("}\n")
@@ -997,19 +997,32 @@ def write_pov(filename, scene=None, info_callback=None):
 
                     else:
                         if material:
-                            diffuse_color = material.diffuse_color[:]
-                            key = diffuse_color[0], diffuse_color[1], diffuse_color[2], \
-                                  material_index
-                            vertCols[key] = [-1]
+                            # Multiply diffuse with SSS Color
+                            if material.subsurface_scattering.use:
+                                diffuse_color = [i * j for i, j in zip(material.subsurface_scattering.color[:], material.diffuse_color[:])]
+                                key = diffuse_color[0], diffuse_color[1], diffuse_color[2], \
+                                      material_index
+                                vertCols[key] = [-1]
+                            else:
+                                diffuse_color = material.diffuse_color[:]
+                                key = diffuse_color[0], diffuse_color[1], diffuse_color[2], \
+                                      material_index
+                                vertCols[key] = [-1]
 
             else:
                 # No vertex colours, so write material colours as vertex colours
                 for i, material in enumerate(me_materials):
 
                     if material:
-                        diffuse_color = material.diffuse_color[:]
-                        key = diffuse_color[0], diffuse_color[1], diffuse_color[2], i  # i == f.mat
-                        vertCols[key] = [-1]
+                        # Multiply diffuse with SSS Color
+                        if material.subsurface_scattering.use:
+                            diffuse_color = [i * j for i, j in zip(material.subsurface_scattering.color[:], material.diffuse_color[:])]
+                            key = diffuse_color[0], diffuse_color[1], diffuse_color[2], i  # i == f.mat
+                            vertCols[key] = [-1]
+                        else:
+                            diffuse_color = material.diffuse_color[:]
+                            key = diffuse_color[0], diffuse_color[1], diffuse_color[2], i  # i == f.mat
+                            vertCols[key] = [-1]
 
             # Vert Colours
             tabWrite("texture_list {\n")
@@ -1422,7 +1435,10 @@ def write_pov(filename, scene=None, info_callback=None):
                             ci3 = vertCols[col3[0], col3[1], col3[2], material_index][0]
                         else:
                             # Colour per material - flat material colour
-                            diffuse_color = material.diffuse_color
+                            if material.subsurface_scattering.use:
+                                diffuse_color = [i * j for i, j in zip(material.subsurface_scattering.color[:], material.diffuse_color[:])]
+                            else:
+                                diffuse_color = material.diffuse_color[:]
                             ci1 = ci2 = ci3 = vertCols[diffuse_color[0], diffuse_color[1], \
                                               diffuse_color[2], f.material_index][0]
 
@@ -1703,6 +1719,8 @@ def write_pov(filename, scene=None, info_callback=None):
                 tabWrite("mm_per_unit %.6f\n" % \
                          (material.subsurface_scattering.scale * (-100.0) + 15.0))
                 # In POV-Ray, the scale factor for all subsurface shaders needs to be the same
+                sslt_samples = (11 - material.subsurface_scattering.error_threshold) * 100
+                tabWrite("subsurface { samples %d, %d }\n" % (sslt_samples, sslt_samples / 10))
                 onceSss = 0
 
             if world and onceAmbient:
@@ -2050,13 +2068,13 @@ class PovrayRender(bpy.types.RenderEngine):
         print("***INITIALIZING***")
 
 ##WIP output format
-##        if r.file_format == 'OPENEXR':
+##        if r.image_settings.file_format == 'OPENEXR':
 ##            fformat = 'EXR'
-##            render.color_mode = 'RGBA'
+##            render.image_settings.color_mode = 'RGBA'
 ##        else:
 ##            fformat = 'TGA'
-##            r.file_format = 'TARGA'
-##            r.color_mode = 'RGBA'
+##            r.image_settings.file_format = 'TARGA'
+##            r.image_settings.color_mode = 'RGBA'
 
         blendSceneName = bpy.data.filepath.split(os.path.sep)[-1].split(".")[0]
         povSceneName = ""

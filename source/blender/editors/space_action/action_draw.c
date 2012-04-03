@@ -93,7 +93,7 @@ void draw_channel_names(bContext *C, bAnimContext *ac, ARegion *ar)
 		/* don't use totrect set, as the width stays the same 
 		 * (NOTE: this is ok here, the configuration is pretty straightforward) 
 		 */
-		v2d->tot.ymin= (float)(-height);
+		v2d->tot.ymin = (float)(-height);
 	}
 	/* need to do a view-sync here, so that the keys area doesn't jump around (it must copy this) */
 	UI_view2d_sync(NULL, ac->sa, v2d, V2D_LOCK_COPY);
@@ -119,7 +119,7 @@ void draw_channel_names(bContext *C, bAnimContext *ac, ARegion *ar)
 		}
 	}
 	{	/* second pass: widgets */
-		uiBlock *block= uiBeginBlock(C, ar, "dopesheet channel buttons", UI_EMBOSS);
+		uiBlock *block= uiBeginBlock(C, ar, __func__, UI_EMBOSS);
 		size_t channel_index = 0;
 		
 		y= (float)ACHANNEL_FIRST;
@@ -209,7 +209,7 @@ void draw_channel_strips(bAnimContext *ac, SpaceAction *saction, ARegion *ar)
 	/* don't use totrect set, as the width stays the same 
 	 * (NOTE: this is ok here, the configuration is pretty straightforward) 
 	 */
-	v2d->tot.ymin= (float)(-height);
+	v2d->tot.ymin = (float)(-height);
 	
 	/* first backdrop strips */
 	y= (float)(-ACHANNEL_HEIGHT);
@@ -300,7 +300,7 @@ void draw_channel_strips(bAnimContext *ac, SpaceAction *saction, ARegion *ar)
 	
 	/* Draw keyframes 
 	 *	1) Only channels that are visible in the Action Editor get drawn/evaluated.
-	 *	   This is to try to optimise this for heavier data sets
+	 *	   This is to try to optimize this for heavier data sets
 	 *	2) Keyframes which are out of view horizontally are disregarded 
 	 */
 	y= (float)(-ACHANNEL_HEIGHT);

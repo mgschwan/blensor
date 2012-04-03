@@ -40,14 +40,14 @@ The Blender/Python API **can't** (yet)...
 Before Starting
 ===============
 
-This document isn't intended to fully cover each topic. Rather, its purpose is to familiarize you with Blender 2.5's new Python API.
+This document isn't intended to fully cover each topic. Rather, its purpose is to familiarize you with Blender Python API.
 
 
 A quick list of helpful things to know before starting:
 
 * Blender uses Python 3.x; some 3rd party extensions are not available yet.
 
-* The interactive console in Blender 2.5 has been improved; testing one-liners in the console is a good way to learn.
+* The interactive console is great for testing one-liners, It also has autocompleation so you can inspect the api quickly.
 
 * Button tool tips show Python attributes and operator names.
 
@@ -67,7 +67,7 @@ Data Access
 Accessing datablocks
 ^^^^^^^^^^^^^^^^^^^^
 
-Python accesses Blender's data in the same way as the animation system and user interface, which means any setting that is changed via a button can also be changed from Python.
+Python accesses Blender's data in the same way as the animation system and user interface; this implies that any setting that can be changed via a button can also be changed from Python.
 
 Accessing data from the currently loaded blend file is done with the module :mod:`bpy.data`. This gives access to library data. For example:
 
@@ -101,7 +101,7 @@ Unlike Python's dictionaries, both methods are acceptable; however, the index of
 Accessing attributes
 ^^^^^^^^^^^^^^^^^^^^
 
-Once you have a data block such as a material, object, groups etc. its attributes can be accessed just like changing a setting in the interface; in fact, the button tooltip also displays the Python attribute which can help in finding what settings to change in a script.
+Once you have a data block, such as a material, object, groups etc., its attributes can be accessed much like you would change a setting using the graphical interface. In fact, the tooltip for each button also displays the Python attribute which can help in finding what settings to change in a script.
 
    >>> bpy.data.objects[0].name 
    'Camera'
@@ -113,7 +113,7 @@ Once you have a data block such as a material, object, groups etc. its attribute
    bpy.data.materials['MyMaterial']
 
 
-For testing what data to access it's useful to use the "Console", which is its own space type in Blender 2.5. This supports auto-complete, giving you a fast way to dig into different data in your file.
+For testing what data to access it's useful to use the "Console", which is its own space type. This supports auto-complete, giving you a fast way to dig into different data in your file.
 
 Example of a data path that can be quickly found via the console:
 
@@ -121,6 +121,29 @@ Example of a data path that can be quickly found via the console:
    100
    >>> bpy.data.scenes[0].objects["Torus"].data.vertices[0].co.x
    1.0
+
+
+Data Creation/Removal
+^^^^^^^^^^^^^^^^^^^^^
+
+Those of you familiar with other python api's may be surprised that new datablocks in the bpy api can't be created by calling the class:
+
+   >>> bpy.types.Mesh()
+   Traceback (most recent call last):
+     File "<blender_console>", line 1, in <module>
+   TypeError: bpy_struct.__new__(type): expected a single argument
+
+
+This is an intentional part of the API design.
+The blender/python api can't create blender data that exists outside the main blender database (accessed through bpy.data), because this data is managed by blender (save/load/undo/append... etc).
+
+Data is added and removed via methods on the collections in bpy.data, eg:
+
+   >>> mesh = bpy.data.meshes.new(name="MyMesh")
+   >>> print(mesh)
+   <bpy_struct, Mesh("MyMesh.001")>
+
+   >>> bpy.data.meshes.remove(mesh)
 
 
 Custom Properties
@@ -179,7 +202,7 @@ So ``bpy.context.object = obj`` will raise an error.
 But ``bpy.context.scene.objects.active = obj`` will work as expected.
 
 
-The context attributes change depending on where it is accessed. The 3D view has different context members to the Console, so take care when accessing context attributes that the user state is known.
+The context attributes change depending on where they are accessed. The 3D view has different context members than the console, so take care when accessing context attributes that the user state is known.
 
 See :mod:`bpy.context` API reference
 
@@ -256,12 +279,13 @@ To run the script:
 
 #. Press Ctrl+Right twice to change to the Scripting layout.
 
+#. Click the button labeled ``New`` and the confirmation pop up in order to create a new text block.
+
 #. Press Ctrl+V to paste the code into the text panel (the upper left frame).
 
 #. Click on the button **Run Script**.
 
-#. Move you're mouse into the 3D view, press spacebar for the operator search
-   menu, and type "Simple".
+#. Move your mouse into the 3D view, press spacebar for the operator search menu, and type "Simple".
 
 #. Click on the "Simple Operator" item found in search.
 
@@ -269,6 +293,7 @@ To run the script:
 .. seealso:: The class members with the **bl_** prefix are documented in the API
    reference :class:`bpy.types.Operator`
 
+.. note:: The output from the ``main`` function is sent to the terminal; in order to see this, be sure to :ref:`use the terminal <use_the_terminal>`.
 
 Example Panel
 -------------
@@ -284,6 +309,8 @@ To run the script:
 #. Start Blender
 
 #. Press Ctrl+Right twice to change to the Scripting layout
+
+#. Click the button labeled ``New`` and the confirmation pop up in order to create a new text block.
 
 #. Press Ctrl+V to paste the code into the text panel (the upper left frame)
 
@@ -310,7 +337,7 @@ Types
 
 Blender defines a number of Python types but also uses Python native types.
 
-Blender's Python API can be split up into 3 categories. 
+Blender's Python API can be split up into 3 categories.
 
 
 Native Types

@@ -31,6 +31,11 @@ set(INC
 	../imbuf
 	../makesdna
 	../makesrna
+
+	# For node muting stuff...
+	../nodes
+	../nodes/intern
+
 	../../../intern/guardedalloc
 	../../../intern/smoke/extern
 )

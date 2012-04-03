@@ -4,10 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version. The Blender
- * Foundation also sells licenses for use in proprietary software under
- * the Blender License.  See http://www.blender.org/BL/ for information
- * about this.
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -64,10 +61,10 @@ typedef struct GPUFunction {
 GPUFunction *GPU_lookup_function(const char *name);
 
 /* Pass Generation
-   - Takes a list of nodes and a desired output, and makes a pass. This
-	 will take ownership of the nodes and free them early if unused or
-	 at the end if used.
-*/
+ *  - Takes a list of nodes and a desired output, and makes a pass. This
+ *    will take ownership of the nodes and free them early if unused or
+ *    at the end if used.
+ */
 
 typedef enum GPUDataSource {
 	GPU_SOURCE_VEC_UNIFORM,
@@ -180,6 +177,9 @@ void GPU_pass_update_uniforms(GPUPass *pass);
 void GPU_pass_unbind(GPUPass *pass);
 
 void GPU_pass_free(GPUPass *pass);
+
+void GPU_codegen_init(void);
+void GPU_codegen_exit(void);
 
 /* Material calls */
 

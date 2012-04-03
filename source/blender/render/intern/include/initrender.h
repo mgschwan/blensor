@@ -33,8 +33,8 @@
  */
 
 
-#ifndef INITRENDER_H
-#define INITRENDER_H 
+#ifndef __INITRENDER_H__
+#define __INITRENDER_H__ 
 
 struct Object;
 
@@ -43,11 +43,9 @@ struct Object;
 void free_sample_tables(Render *re);
 void make_sample_tables(Render *re);
 
-void render_scene_set_window(Render *re, struct Object *camera, int blursample);
-
 void initparts(Render *re);
 void freeparts(Render *re);
 
 
-#endif /* INITRENDER_H */
+#endif /* __INITRENDER_H__ */
 

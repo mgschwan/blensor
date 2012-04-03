@@ -25,7 +25,6 @@ bl_info = {
     "author": "uselessdreamer",
     "version": (0,3),
     "blender": (2, 5, 9),
-    "api": 39685,
     "location": "Properties > Scene > Blend Info Panel",
     "description": "Show information about the .blend",
     "warning": "",
@@ -126,6 +125,12 @@ class OBJECT_PT_blendinfo(bpy.types.Panel):
         num = len(empties)
         row.label(text=quantity_string(num, "Empty", "Empties"),
             icon='EMPTY_DATA')
+
+        row = ob_cols[1].row()
+        empties = [o for o in objects.values() if o.type == 'SPEAKER']
+        num = len(empties)
+        row.label(text=quantity_string(num, "Speaker", "Speakers"),
+            icon='OUTLINER_OB_SPEAKER')
 
         layout.separator()
         

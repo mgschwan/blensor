@@ -30,8 +30,8 @@
  */
 
 
-#ifndef NODE_UTIL_H_
-#define NODE_UTIL_H_
+#ifndef __NODE_UTIL_H__
+#define __NODE_UTIL_H__
 
 #include "DNA_listBase.h"
 
@@ -40,6 +40,8 @@
 #include "MEM_guardedalloc.h"
 
 #include "NOD_socket.h"
+
+#include "GPU_material.h" /* For Shader muting GPU code... */
 
 struct bNodeTree;
 struct bNode;
@@ -59,9 +61,11 @@ const char *node_math_label(struct bNode *node);
 const char *node_vect_math_label(struct bNode *node);
 const char *node_filter_label(struct bNode *node);
 
+ListBase node_internal_connect_default(struct bNodeTree *ntree, struct bNode *node);
+
 #endif
 
-// this is needed for inlining behaviour
+// this is needed for inlining behavior
 #if defined _WIN32
 #   define DO_INLINE __inline
 #elif defined (__sun) || defined (__sun__)

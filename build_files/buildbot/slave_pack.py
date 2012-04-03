@@ -41,7 +41,7 @@ if len(sys.argv) >= 3:
 # scons does own packaging
 if builder.find('scons') != -1:
     os.chdir('../blender')
-    scons_options = ['BF_QUICK=slnt', 'BUILDBOT_BRANCH=' + branch, 'buildslave']
+    scons_options = ['BF_QUICK=slnt', 'BUILDBOT_BRANCH=' + branch, 'buildslave', 'BF_FANCY=False']
 
     if builder.find('linux') != -1:
         buildbot_dir = os.path.dirname(os.path.realpath(__file__))
@@ -79,17 +79,19 @@ if builder.find('scons') != -1:
                 bitness = '64'
 
             scons_options.append('BF_BITNESS=' + bitness)
+            scons_options.append('WITH_BF_CYCLES_CUDA_BINARIES=True')
+            scons_options.append('BF_CYCLES_CUDA_NVCC=nvcc.exe')
 
         retcode = subprocess.call(['python', 'scons/scons.py'] + scons_options)
         sys.exit(retcode)
 
 # clean release directory if it already exists
-dir = 'release'
+release_dir = 'release'
 
-if os.path.exists(dir):
-    for f in os.listdir(dir):
-        if os.path.isfile(os.path.join(dir, f)):
-            os.remove(os.path.join(dir, f))
+if os.path.exists(release_dir):
+    for f in os.listdir(release_dir):
+        if os.path.isfile(os.path.join(release_dir, f)):
+            os.remove(os.path.join(release_dir, f))
 
 # create release package
 try:
@@ -99,16 +101,16 @@ except Exception, ex:
     sys.exit(1)
 
 # find release directory, must exist this time
-if not os.path.exists(dir):
-    sys.stderr.write("Failed to find release directory.\n")
+if not os.path.exists(release_dir):
+    sys.stderr.write("Failed to find release directory %r.\n" % release_dir)
     sys.exit(1)
 
 # find release package
 file = None
 filepath = None
 
-for f in os.listdir(dir):
-    rf = os.path.join(dir, f)
+for f in os.listdir(release_dir):
+    rf = os.path.join(release_dir, f)
     if os.path.isfile(rf) and f.startswith('blender'):
         file = f
         filepath = rf

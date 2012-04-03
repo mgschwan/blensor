@@ -31,7 +31,9 @@
 #include "IMB_anim.h"
 #include "BLO_sys_types.h"
 #include "BKE_global.h"
+
 #include "BLI_dynstr.h"
+#include "BLI_path_util.h"
 
 #import <Cocoa/Cocoa.h>
 #import <QTKit/QTKit.h>
@@ -79,11 +81,14 @@ int anim_is_quicktime (const char *name)
 {
 	NSAutoreleasePool *pool;
 	
-	// dont let quicktime movie import handle these
+	// don't let quicktime movie import handle these
 	if( BLI_testextensie(name, ".swf") ||
 		BLI_testextensie(name, ".txt") ||
 		BLI_testextensie(name, ".mpg") ||
 		BLI_testextensie(name, ".avi") ||	// wouldnt be appropriate ;)
+		BLI_testextensie(name, ".mov") ||	// disabled, suboptimal decoding speed   
+		BLI_testextensie(name, ".mp4") ||	// disabled, suboptimal decoding speed
+		BLI_testextensie(name, ".m4v") ||	// disabled, suboptimal decoding speed
 		BLI_testextensie(name, ".tga") ||
 		BLI_testextensie(name, ".png") ||
 		BLI_testextensie(name, ".bmp") ||
@@ -110,7 +115,8 @@ int anim_is_quicktime (const char *name)
 }
 
 
-void free_anim_quicktime (struct anim *anim) {
+void free_anim_quicktime (struct anim *anim)
+{
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 	
 	if (anim == NULL) return;
@@ -309,11 +315,11 @@ int startquicktime (struct anim *anim)
 	[QTMovie enterQTKitOnThread];		
 
 	attributes = [NSDictionary dictionaryWithObjectsAndKeys:
-				  [NSString stringWithCString:anim->name 
-									 encoding:[NSString defaultCStringEncoding]], QTMovieFileNameAttribute,
-				 [NSNumber numberWithBool:NO], QTMovieEditableAttribute,
-				 nil];
-	
+	        [NSString stringWithCString:anim->name
+	        encoding:[NSString defaultCStringEncoding]], QTMovieFileNameAttribute,
+	        [NSNumber numberWithBool:NO], QTMovieEditableAttribute,
+	    nil];
+
 	anim->qtime->movie = [QTMovie movieWithAttributes:attributes error:NULL];
 	
 	if (!anim->qtime->movie) {
@@ -390,7 +396,7 @@ int imb_is_a_quicktime (char *name)
 
 	pool = [[NSAutoreleasePool alloc] init];
 	
-	// dont let quicktime image import handle these
+	// don't let quicktime image import handle these
 	if( BLI_testextensie(name, ".swf") ||
 		BLI_testextensie(name, ".txt") ||
 		BLI_testextensie(name, ".mpg") ||

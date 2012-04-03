@@ -16,18 +16,19 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+# <pep8-80 compliant>
+
 bl_info = {
     'name': 'Corrective shape keys',
     'author': 'Ivo Grigull (loolarge), Tal Trachtman',
     'version': (1, 0),
     "blender": (2, 5, 7),
-    "api": 36157,
     'location': 'Object Data > Shape Keys (Search: corrective) ',
     'description': 'Creates a corrective shape key for the current pose',
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
-        "Scripts/Animation/Corrective_Shape_Key",
-    "tracker_url": "https://projects.blender.org/tracker/index.php?"\
-        "func=detail&aid=22129",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
+                "Scripts/Animation/Corrective_Shape_Key",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"
+                   "func=detail&aid=22129",
     'category': 'Animation'}
 
 """
@@ -37,7 +38,7 @@ Only two objects must be selected.
 The first selected object will be added to the second selected
 object as a new shape key.
 
-- Original 2.4x script by ? (brecht?)
+- Original 2.4x script by Brecht
 - Unpose-function reused from a script by Tal Trachtman in 2007
   http://www.apexbow.com/randd.html
 - Converted to Blender 2.5 by Ivo Grigull
@@ -51,91 +52,53 @@ Limitations:
 
 
 import bpy
-import mathutils
+from mathutils import Vector, Matrix
 
 
 iterations = 20
 threshold = 1e-16
 
-def reset_transform(ob):
-    m = mathutils.Matrix()
-    ob.matrix_local = m 
 
-# flips rotation matrix
-def flip_matrix_direction(m):
-    mat = mathutils.Matrix()
-    
-    mat[0][0] = m[0][0]
-    mat[0][1] = m[1][0]
-    mat[0][2] = m[2][0]
-    
-    mat[1][0] = m[0][1]
-    mat[1][1] = m[1][1]
-    mat[1][2] = m[2][1]
-    
-    mat[2][0] = m[0][2]
-    mat[2][1] = m[1][2]
-    mat[2][2] = m[2][2]
-    
-    return mat 
+def reset_transform(ob):
+    ob.matrix_local.identity()
+
 
 # this version is for shape_key data
-def extractX(ob, mesh):
-    x = []
-    
-    for i in range(0, len(mesh)):
-        v = mesh[i]
-        x += [mathutils.Vector(v.co)]
-    
-    return x
+def extract_vert_coords(ob, verts):
+    return [v.co.copy() for v in verts]
 
-# this version is for mesh data
-def extractX_2(ob, mesh):
-    x = []
-    
-    for i in range(0, len(mesh.vertices)):
-        v = mesh.vertices[i]
-        x += [mathutils.Vector(v.co)]
-    
-    return x
 
-def extractMappedX(ob, mesh):
-    totvert = len(mesh)
-    
-    mesh = ob.to_mesh( bpy.context.scene, True, 'PREVIEW' )
+def extract_mapped_coords(ob, shape_verts):
+    totvert = len(shape_verts)
 
-    x = []
+    mesh = ob.to_mesh(bpy.context.scene, True, 'PREVIEW')
 
     # cheating, the original mapped verts happen
     # to be at the end of the vertex array
-    for i in range(len(mesh.vertices)-totvert, len(mesh.vertices)):
-        v = mesh.vertices[i]
-        x += [mathutils.Vector(v.co)]
+    verts = mesh.vertices
+    arr = [verts[i].co.copy() for i in range(len(verts) - totvert, len(verts))]
 
     mesh.user_clear()
-    bpy.data.meshes.remove(mesh)    
-    
-    return x
+    bpy.data.meshes.remove(mesh)
 
-def applyX(ob, mesh, x ):
-    for i in range(0, len(mesh)):
-        v = mesh[i]
+    return arr
+
+
+def apply_vert_coords(ob, mesh, x):
+    for i, v in enumerate(mesh):
         v.co = x[i]
-    
     ob.data.update()
-    
-    return x
 
 
-def func_add_corrective_pose_shape( source, target):
-    
-    ob_1   = target
+def func_add_corrective_pose_shape(source, target):
+
+    ob_1 = target
     mesh_1 = target.data
-    ob_2   = source
+    ob_2 = source
     mesh_2 = source.data
 
     reset_transform(target)
-    
+
     # If target object doesn't have Basis shape key, create it.
     if not mesh_1.shape_keys:
         basis = ob_1.shape_key_add()
@@ -147,75 +110,73 @@ def func_add_corrective_pose_shape( source, target):
     if key_index == 0:
         new_shapekey = ob_1.shape_key_add()
         new_shapekey.name = "Shape_" + ob_2.name
-        
-        key_index = len(mesh_1.shape_keys.key_blocks)-1
+
+        key_index = len(mesh_1.shape_keys.key_blocks) - 1
         ob_1.active_shape_key_index = key_index
-        
+
     # else, the active shape will be used (updated)
-                
+
     ob_1.show_only_shape_key = True
 
     vgroup = ob_1.active_shape_key.vertex_group
     ob_1.active_shape_key.vertex_group = ""
-        
-    mesh_1_key_verts = mesh_1.shape_keys.key_blocks[ key_index ].data
-    
-    
-    x = extractX(ob_1, mesh_1_key_verts)
-    
-    targetx = extractX_2(ob_2, mesh_2)
-    
+
+    mesh_1_key_verts = mesh_1.shape_keys.key_blocks[key_index].data
+
+    x = extract_vert_coords(ob_1, mesh_1_key_verts)
+
+    targetx = extract_vert_coords(ob_2, mesh_2.vertices)
+
     for iteration in range(0, iterations):
         dx = [[], [], [], [], [], []]
-    
-        mapx = extractMappedX(ob_1, mesh_1_key_verts)
-        
+
+        mapx = extract_mapped_coords(ob_1, mesh_1_key_verts)
+
         # finite differencing in X/Y/Z to get approximate gradient
         for i in range(0, len(mesh_1.vertices)):
             epsilon = (targetx[i] - mapx[i]).length
-            
+
             if epsilon < threshold:
                 epsilon = 0.0
-            
-            dx[0] += [x[i] + 0.5 * epsilon * mathutils.Vector((1, 0, 0))]
-            dx[1] += [x[i] + 0.5 * epsilon * mathutils.Vector((-1, 0, 0))]
-            dx[2] += [x[i] + 0.5 * epsilon * mathutils.Vector((0, 1, 0))]
-            dx[3] += [x[i] + 0.5 * epsilon * mathutils.Vector((0, -1, 0))]
-            dx[4] += [x[i] + 0.5 * epsilon * mathutils.Vector((0, 0, 1))]
-            dx[5] += [x[i] + 0.5 * epsilon * mathutils.Vector((0, 0, -1))]
-    
+
+            dx[0] += [x[i] + 0.5 * epsilon * Vector((1, 0, 0))]
+            dx[1] += [x[i] + 0.5 * epsilon * Vector((-1, 0, 0))]
+            dx[2] += [x[i] + 0.5 * epsilon * Vector((0, 1, 0))]
+            dx[3] += [x[i] + 0.5 * epsilon * Vector((0, -1, 0))]
+            dx[4] += [x[i] + 0.5 * epsilon * Vector((0, 0, 1))]
+            dx[5] += [x[i] + 0.5 * epsilon * Vector((0, 0, -1))]
+
         for j in range(0, 6):
-            applyX(ob_1, mesh_1_key_verts, dx[j])
-            dx[j] = extractMappedX(ob_1, mesh_1_key_verts)
-    
+            apply_vert_coords(ob_1, mesh_1_key_verts, dx[j])
+            dx[j] = extract_mapped_coords(ob_1, mesh_1_key_verts)
+
         # take a step in the direction of the gradient
         for i in range(0, len(mesh_1.vertices)):
             epsilon = (targetx[i] - mapx[i]).length
-            
+
             if epsilon >= threshold:
                 Gx = list((dx[0][i] - dx[1][i]) / epsilon)
                 Gy = list((dx[2][i] - dx[3][i]) / epsilon)
                 Gz = list((dx[4][i] - dx[5][i]) / epsilon)
-                G = mathutils.Matrix((Gx, Gy, Gz))
-                G = flip_matrix_direction(G)
-    
+                G = Matrix((Gx, Gy, Gz))
                 x[i] += G * (targetx[i] - mapx[i])
-        
-        applyX(ob_1, mesh_1_key_verts, x )
-    
+
+        apply_vert_coords(ob_1, mesh_1_key_verts, x)
 
     ob_1.active_shape_key.vertex_group = vgroup
-    
+
     # set the new shape key value to 1.0, so we see the result instantly
     ob_1.active_shape_key.value = 1.0
-    
+
     #mesh_1.update()
     ob_1.show_only_shape_key = False
-    
 
-class add_corrective_pose_shape(bpy.types.Operator):    
-    '''Adds first object as shape to second object for the current pose while maintaining modifiers (i.e. anisculpt, avoiding crazy space) Beware of slowness!!!'''
-    
+
+class add_corrective_pose_shape(bpy.types.Operator):
+    """Adds first object as shape to second object for the current pose """ \
+    """while maintaining modifiers """ \
+    """(i.e. anisculpt, avoiding crazy space) Beware of slowness!"""
+
     bl_idname = "object.add_corrective_pose_shape"
     bl_label = "Add object as corrective pose shape"
 
@@ -235,91 +196,67 @@ class add_corrective_pose_shape(bpy.types.Operator):
         else:
             source = selection[0]
 
-        func_add_corrective_pose_shape( source, target)
+        func_add_corrective_pose_shape(source, target)
 
         return {'FINISHED'}
 
 
-def func_object_duplicate_flatten_modifiers(ob, scene):
-    mesh = ob.to_mesh( bpy.context.scene, True, 'PREVIEW' )
-    name = ob.name + "_clean"
-    new_object = bpy.data.objects.new( name, mesh)
+def func_object_duplicate_flatten_modifiers(scene, obj):
+    mesh = obj.to_mesh(scene, True, 'PREVIEW')
+    name = obj.name + "_clean"
+    new_object = bpy.data.objects.new(name, mesh)
     new_object.data = mesh
     scene.objects.link(new_object)
     return new_object
 
-class object_duplicate_flatten_modifiers(bpy.types.Operator):   
+
+class object_duplicate_flatten_modifiers(bpy.types.Operator):
     '''Duplicates the selected object with modifiers applied'''
-    
+
     bl_idname = "object.object_duplicate_flatten_modifiers"
     bl_label = "Duplicate and apply all"
 
     @classmethod
     def poll(cls, context):
-        return context.active_object != None
+        return context.active_object is not None
 
     def execute(self, context):
-        new_object = func_object_duplicate_flatten_modifiers( context.active_object, context.scene )
-        context.scene.objects.active = new_object
+        scene = context.scene
+        obj_act = context.active_object
 
-        for n in bpy.data.objects:
-            if n != new_object:
-                n.select = False
-            else:
-                n.select = True
+        new_object = func_object_duplicate_flatten_modifiers(obj_act, scene)
+
+        # setup the context
+        bpy.ops.object.select_all(action='DESELECT')
+
+        scene.objects.active = new_object
+        new_object.select = True
+
         return {'FINISHED'}
 
 
-
-
-def flip_matrix_direction_4x4(m):
-    mat = mathutils.Matrix()
-    
-    mat[0][0] = m[0][0]
-    mat[0][1] = m[1][0]
-    mat[0][2] = m[2][0]
-    mat[0][3] = m[3][0]
-    
-    mat[1][0] = m[0][1]
-    mat[1][1] = m[1][1]
-    mat[1][2] = m[2][1]
-    mat[1][3] = m[3][1]
-    
-    mat[2][0] = m[0][2]
-    mat[2][1] = m[1][2]
-    mat[2][2] = m[2][2]
-    mat[2][3] = m[3][2]
-    
-    mat[3][0] = m[0][3]
-    mat[3][1] = m[1][3]
-    mat[3][2] = m[2][3]
-    mat[3][3] = m[3][3]
-    return mat 
-
-    
 def unposeMesh(meshObToUnpose, meshObToUnposeWeightSrc, armatureOb):
     psdMeshData = meshObToUnpose
 
     psdMesh = psdMeshData
-    I = mathutils.Matrix() #identity matrix
-    
+    I = Matrix()  # identity matrix
+
     meshData = meshObToUnposeWeightSrc.data
     mesh = meshData
-    
+
     armData = armatureOb.data
 
     pose = armatureOb.pose
-    pbones =  pose.bones
-    
+    pbones = pose.bones
 
     for index, v in enumerate(mesh.vertices):
-        # above is python shortcut for:index goes up from 0 to tot num of verts in mesh,
-        # with index incrementing by 1 each iteration
-        
+        # above is python shortcut for:index goes up from 0 to tot num of
+        # verts in mesh, with index incrementing by 1 each iteration
+
         psdMeshVert = psdMesh[index]
 
         listOfBoneNameWeightPairs = []
-        for n in mesh.vertices[index].groups:         
+        for n in mesh.vertices[index].groups:
             try:
                 name = meshObToUnposeWeightSrc.vertex_groups[n.group].name
                 weight = n.weight
@@ -330,7 +267,7 @@ def unposeMesh(meshObToUnpose, meshObToUnposeWeightSrc, armatureOb):
                         break
                 # ignore non-bone vertex groups
                 if is_bone:
-                    listOfBoneNameWeightPairs.append( [name, weight] )
+                    listOfBoneNameWeightPairs.append([name, weight])
             except:
                 print('error')
                 pass
@@ -341,13 +278,15 @@ def unposeMesh(meshObToUnpose, meshObToUnposeWeightSrc, armatureOb):
             totalWeight += pair[1]
 
         for pair in listOfBoneNameWeightPairs:
-            if (totalWeight>0): #avoid divide by zero!
-                weightedAverageDictionary[pair[0]] = pair[1]/totalWeight
+            if totalWeight > 0:  # avoid divide by zero!
+                weightedAverageDictionary[pair[0]] = pair[1] / totalWeight
             else:
                 weightedAverageDictionary[pair[0]] = 0
-                
-        sigma = mathutils.Matrix(I-I) #Matrix filled with zeros
-        
+
+        # Matrix filled with zeros
+        sigma = Matrix()
+        sigma.zero()
+
         list = []
         for n in pbones:
             list.append(n)
@@ -358,9 +297,9 @@ def unposeMesh(meshObToUnpose, meshObToUnposeWeightSrc, armatureOb):
                 #~ print("found key %s", pbone.name)
                 vertexWeight = weightedAverageDictionary[pbone.name]
                 m = pbone.matrix_channel.copy()
-                #m = flip_matrix_direction_4x4(m)
+                #m.transpose()
                 sigma += (m - I) * vertexWeight
-                
+
             else:
                 pass
                 #~ print("no key for bone " + pbone.name)
@@ -370,45 +309,42 @@ def unposeMesh(meshObToUnpose, meshObToUnposeWeightSrc, armatureOb):
         psdMeshVert.co = psdMeshVert.co * sigma
 
 
-
 def func_add_corrective_pose_shape_fast(source, target):
-    
-    
+
     reset_transform(target)
-    
+
     # If target object doesn't have Basis shape key, create it.
     if not target.data.shape_keys:
         basis = target.shape_key_add()
         basis.name = "Basis"
         target.data.update()
-    
+
     key_index = target.active_shape_key_index
 
     if key_index == 0:
-        
+
         # Insert new shape key
         new_shapekey = target.shape_key_add()
         new_shapekey.name = "Shape_" + source.name
-        
-        key_index = len(target.data.shape_keys.key_blocks)-1
+
+        key_index = len(target.data.shape_keys.key_blocks) - 1
         target.active_shape_key_index = key_index
-        
+
     # else, the active shape will be used (updated)
-        
+
     target.show_only_shape_key = True
-    
-    shape_key_verts = target.data.shape_keys.key_blocks[ key_index ].data
+
+    shape_key_verts = target.data.shape_keys.key_blocks[key_index].data
 
     try:
         vgroup = target.active_shape_key.vertex_group
         target.active_shape_key.vertex_group = ''
     except:
-        print("blub")
         pass
 
     # copy the local vertex positions to the new shape
     verts = source.data.vertices
-    for n in range( len(verts)):
+    for n in range(len(verts)):
         shape_key_verts[n].co = verts[n].co
 
     # go to all armature modifies and unpose the shape
@@ -419,29 +355,28 @@ def func_add_corrective_pose_shape_fast(source, target):
             n.use_deform_preserve_volume = False
             n.use_vertex_groups = True
             armature = n.object
-            unposeMesh( shape_key_verts, target, armature)
+            unposeMesh(shape_key_verts, target, armature)
             break
-    
+
     # set the new shape key value to 1.0, so we see the result instantly
-    target.data.shape_keys.key_blocks[ target.active_shape_key_index].value = 1.0
+    target.active_shape_key.value = 1.0
 
     try:
         target.active_shape_key.vertex_group = vgroup
     except:
-        #~ print("bluba")
         pass
-    
+
     target.show_only_shape_key = False
     target.data.update()
-    
 
 
-class add_corrective_pose_shape_fast(bpy.types.Operator):   
-    '''Adds 1st object as shape to 2nd object as pose shape (only 1 armature)'''
-    
+class add_corrective_pose_shape_fast(bpy.types.Operator):
+    """Adds 1st object as shape to 2nd object as pose shape
+    (only 1 armature)"""
+
     bl_idname = "object.add_corrective_pose_shape_fast"
     bl_label = "Add object as corrective shape faster"
-    
+
     @classmethod
     def poll(cls, context):
         return context.active_object != None
@@ -458,20 +393,26 @@ class add_corrective_pose_shape_fast(bpy.types.Operator):
         else:
             source = selection[0]
 
-        func_add_corrective_pose_shape_fast( source, target)
+        func_add_corrective_pose_shape_fast(source, target)
 
         return {'FINISHED'}
 
 
+# -----------------------------------------------------------------------------
+# GUI
 
-
-## GUI
 def vgroups_draw(self, context):
     layout = self.layout
 
-    layout.row().operator("object.object_duplicate_flatten_modifiers", text='Create duplicate for editing' )
-    layout.row().operator("object.add_corrective_pose_shape_fast", text='Add as corrective pose-shape (fast, armatures only)', icon='COPY_ID') # icon is not ideal
-    layout.row().operator("object.add_corrective_pose_shape", text='Add as corrective pose-shape (slow, all modifiers)', icon='COPY_ID') # icon is not ideal
+    layout.operator("object.object_duplicate_flatten_modifiers",
+                    text='Create duplicate for editing')
+    layout.operator("object.add_corrective_pose_shape_fast",
+                    text='Add as corrective pose-shape (fast, armatures only)',
+                    icon='COPY_ID')  # icon is not ideal
+    layout.operator("object.add_corrective_pose_shape",
+                    text='Add as corrective pose-shape (slow, all modifiers)',
+                    icon='COPY_ID')  # icon is not ideal
+
 
 def modifiers_draw(self, context):
     pass
@@ -480,8 +421,9 @@ def modifiers_draw(self, context):
 def register():
     bpy.utils.register_module(__name__)
 
-    bpy.types.MESH_MT_shape_key_specials.append( vgroups_draw )
-    bpy.types.DATA_PT_modifiers.append( modifiers_draw )
+    bpy.types.MESH_MT_shape_key_specials.append(vgroups_draw)
+    bpy.types.DATA_PT_modifiers.append(modifiers_draw)
+
 
 def unregister():
     bpy.utils.unregister_module(__name__)

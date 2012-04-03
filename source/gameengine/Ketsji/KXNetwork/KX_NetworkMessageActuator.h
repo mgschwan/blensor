@@ -27,11 +27,11 @@
 
 /** \file KX_NetworkMessageActuator.h
  *  \ingroup ketsjinet
- *  \brief Ketsji Logic Extenstion: Network Message Actuator class
+ *  \brief Ketsji Logic Extension: Network Message Actuator class
  */
 
-#ifndef __KX_NETWORKMESSAGEACTUATOR_H
-#define __KX_NETWORKMESSAGEACTUATOR_H
+#ifndef __KX_NETWORKMESSAGEACTUATOR_H__
+#define __KX_NETWORKMESSAGEACTUATOR_H__
 
 #include "STR_String.h"
 #include "SCA_IActuator.h"
@@ -39,7 +39,7 @@
 
 class KX_NetworkMessageActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 	bool m_lastEvent;
 	class NG_NetworkScene* m_networkscene;	// needed for replication
 	STR_String m_toPropName;
@@ -69,5 +69,5 @@ public:
 
 };
 
-#endif //__KX_NETWORKMESSAGEACTUATOR_H
+#endif //__KX_NETWORKMESSAGEACTUATOR_H__
 

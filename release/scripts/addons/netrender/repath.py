@@ -21,6 +21,8 @@ import subprocess
 
 import bpy
 
+DEBUG = False
+
 from netrender.utils import *
 
 BLENDER_PATH = sys.argv[0]
@@ -44,7 +46,9 @@ def update(job):
         
     path, ext = os.path.splitext(job_full_path)
     
-    new_path = path + ".remap" + ext 
+    new_path = path + ".remap" + ext
+    
+    original_path = main_file.original_path 
     
     # Disable for now. Partial repath should work anyway
     #all = main_file.filepath != main_file.original_path
@@ -57,42 +61,43 @@ def update(job):
     
     # Only update if needed
     if paths:        
-        process = subprocess.Popen([BLENDER_PATH, "-b", "-noaudio", job_full_path, "-P", __file__, "--", new_path] + paths, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        process = subprocess.Popen([BLENDER_PATH, "-b", "-noaudio", job_full_path, "-P", __file__, "--", new_path, original_path] + paths, stdout=sys.stdout, stderr=subprocess.STDOUT)
         process.wait()
         
         os.renames(job_full_path, job_full_path + ".bak")
         os.renames(new_path, job_full_path)
 
-def process(paths):
-    def processPointCache(point_cache):
-        point_cache.use_external = False
-
-    def processFluid(fluid):
-        new_path = path_map.get(fluid.filepath, None)
-        if new_path:
-            fluid.path = new_path
-    
+def process(original_path, paths):
+    if DEBUG: print("==========================================================")
+    original_directory = os.path.dirname(original_path)
     path_map = {}
     for i in range(0, len(paths), 2):
         # special case for point cache
         if paths[i].endswith(".bphys"):
-            pass # Don't need them in the map, they all use the default external path
-            # NOTE: This is probably not correct all the time, need to be fixed.
+            path, filename = os.path.split(paths[i+1])
+            cache_name = filename.split("_")[0]
+            if DEBUG: print(cache_name, path)
+            path_map[cache_name] = path
         # special case for fluids
         elif paths[i].endswith(".bobj.gz"):
+            if DEBUG: print(os.path.split(paths[i])[0], os.path.split(paths[i+1])[0])
             path_map[os.path.split(paths[i])[0]] = os.path.split(paths[i+1])[0]
         else:
-            path_map[os.path.split(paths[i])[1]] = paths[i+1]
+            if DEBUG: print(paths[i], paths[i+1])
+            path_map[paths[i]] = paths[i+1]
             
-    # TODO original paths aren't really the orignal path (they are the normalized path
+    if DEBUG: print("----------------------------------------------------------")
+
+    # TODO original paths aren't really the original path, they are the normalized path
     # so we repath using the filenames only. 
     
     ###########################
     # LIBRARIES
     ###########################
     for lib in bpy.data.libraries:
-        file_path = bpy.path.abspath(lib.filepath)
-        new_path = path_map.get(os.path.split(file_path)[1], None)
+        file_path = bpy.path.abspath(lib.filepath, start=original_directory)
+        new_path = path_map.get(file_path, None)
+        if DEBUG: print(file_path, new_path)
         if new_path:
             lib.filepath = new_path
 
@@ -101,8 +106,9 @@ def process(paths):
     ###########################
     for image in bpy.data.images:
         if image.source == "FILE" and not image.packed_file:
-            file_path = bpy.path.abspath(image.filepath)
-            new_path = path_map.get(os.path.split(file_path)[1], None)
+            file_path = bpy.path.abspath(image.filepath, start=original_directory)
+            new_path = path_map.get(file_path, None)
+            if DEBUG: print(file_path, new_path)
             if new_path:
                 image.filepath = new_path
             
@@ -110,28 +116,31 @@ def process(paths):
     ###########################
     # FLUID + POINT CACHE
     ###########################
-    for object in bpy.data.objects:
-        for modifier in object.modifiers:
-            if modifier.type == 'FLUID_SIMULATION' and modifier.settings.type == "DOMAIN":
-                processFluid(settings)
-            elif modifier.type == "CLOTH":
-                processPointCache(modifier.point_cache)
-            elif modifier.type == "SOFT_BODY":
-                processPointCache(modifier.point_cache)
-            elif modifier.type == "SMOKE" and modifier.smoke_type == "TYPE_DOMAIN":
-                processPointCache(modifier.domain_settings.point_cache_low)
-                if modifier.domain_settings.use_high_resolution:
-                    processPointCache(modifier.domain_settings.point_cache_high)
-            elif modifier.type == "MULTIRES" and modifier.is_external:
-                file_path = bpy.path.abspath(modifier.filepath)
-                new_path = path_map.get(file_path, None)
-                if new_path:
-                    modifier.filepath = new_path
+    def pointCacheFunc(object, owner, point_cache):
+        if not point_cache.use_disk_cache:
+            return
 
-        # particles modifier are stupid and don't contain data
-        # we have to go through the object property
-        for psys in object.particle_systems:
-            processPointCache(psys.point_cache)
+        cache_name = cacheName(object, point_cache)
+        new_path = path_map.get(cache_name, None)
+        if DEBUG: print(cache_name, new_path)
+        if new_path:
+            point_cache.use_external = True
+            point_cache.filepath = new_path
+            point_cache.name = cache_name
+        
+    def fluidFunc(object, modifier, cache_path):
+        fluid = modifier.settings
+        new_path = path_map.get(cache_path, None)
+        if new_path:
+            fluid.path = new_path
+        
+    def multiresFunc(object, modifier, cache_path):
+        new_path = path_map.get(cache_path, None)
+        if new_path:
+            modifier.filepath = new_path
+        
+    processObjectDependencies(pointCacheFunc, fluidFunc, multiresFunc)
+    if DEBUG: print("==========================================================")
                 
 
 if __name__ == "__main__":
@@ -141,9 +150,8 @@ if __name__ == "__main__":
         i = 0
     
     if i:
-        new_path = sys.argv[i+1]
-        args = sys.argv[i+2:]
+        new_path, original_path, *args = sys.argv[i+1:]
         
-        process(args)
+        process(original_path, args)
         
         bpy.ops.wm.save_as_mainfile(filepath=new_path, check_existing=False)

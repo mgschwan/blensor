@@ -23,8 +23,8 @@
  *
  */
 
-#ifndef _CINEON_LIB_H_
-#define _CINEON_LIB_H_
+#ifndef __CINEONLIB_H__
+#define __CINEONLIB_H__
 
 #include "logImageCore.h"
 
@@ -49,10 +49,6 @@ int cineonGetSize(const CineonFile* cineon, int* xsize, int* ysize, int* channel
 CineonFile* cineonCreate(const char* filename, int xsize, int ysize, int channels);
 int cineonIsMemFileCineon(unsigned char *mem);
 
-/* get / set header block NYI */
-int cineonGetHeader(CineonFile*, int*, void**);
-int cineonSetHeader(CineonFile*, int, void*);
-
 /* get/set scanline of converted bytes */
 int cineonGetRowBytes(CineonFile* cineon, unsigned short* row, int y);
 int cineonSetRowBytes(CineonFile* cineon, const unsigned short* row, int y);
@@ -68,4 +64,4 @@ void cineonClose(CineonFile* cineon);
 }
 #endif
 
-#endif /* _CINEON_LIB_H_ */
+#endif /* __CINEONLIB_H__ */

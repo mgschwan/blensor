@@ -23,8 +23,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef WM_KEYMAP_H
-#define WM_KEYMAP_H
+#ifndef __WM_KEYMAP_H__
+#define __WM_KEYMAP_H__
 
 /** \file WM_keymap.h
  *  \ingroup wm
@@ -92,11 +92,11 @@ void		WM_keymap_restore_item_to_default(struct bContext *C, struct wmKeyMap *key
 
 const char	*WM_key_event_string(short type);
 int			WM_key_event_operator_id(const struct bContext *C, const char *opname, int opcontext, struct IDProperty *properties, int hotkey, struct wmKeyMap **keymap_r);
-char		*WM_key_event_operator_string(const struct bContext *C, const char *opname, int opcontext, struct IDProperty *properties, char *str, int len);
+char		*WM_key_event_operator_string(const struct bContext *C, const char *opname, int opcontext, struct IDProperty *properties, const short sloppy, char *str, int len);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* WM_KEYMAP_H */
+#endif /* __WM_KEYMAP_H__ */
 

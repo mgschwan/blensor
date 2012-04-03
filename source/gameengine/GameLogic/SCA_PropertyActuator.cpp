@@ -83,7 +83,7 @@ bool SCA_PropertyActuator::Update()
 	
 	if (m_type==KX_ACT_PROP_TOGGLE)
 	{
-		/* dont use */
+		/* don't use */
 		CValue* newval;
 		CValue* oldprop = propowner->GetProperty(m_propname);
 		if (oldprop)
@@ -172,7 +172,7 @@ isValid(
 
 	SCA_PropertyActuator::KX_ACT_PROP_MODE mode
 
-){
+) {
 	bool res = false;	
 	res = ((mode > KX_ACT_PROP_NODEF) && (mode < KX_ACT_PROP_MAX));
 	return res;
@@ -183,7 +183,8 @@ isValid(
 
 SCA_PropertyActuator::
 
-GetReplica() {
+GetReplica()
+{
 
 	SCA_PropertyActuator* replica = new SCA_PropertyActuator(*this);
 
@@ -257,7 +258,7 @@ PyMethodDef SCA_PropertyActuator::Methods[] = {
 };
 
 PyAttributeDef SCA_PropertyActuator::Attributes[] = {
-	KX_PYATTRIBUTE_STRING_RW_CHECK("propName",0,100,false,SCA_PropertyActuator,m_propname,CheckProperty),
+	KX_PYATTRIBUTE_STRING_RW_CHECK("propName",0,MAX_PROP_NAME,false,SCA_PropertyActuator,m_propname,CheckProperty),
 	KX_PYATTRIBUTE_STRING_RW("value",0,100,false,SCA_PropertyActuator,m_exprtxt),
 	KX_PYATTRIBUTE_INT_RW("mode", KX_ACT_PROP_NODEF+1, KX_ACT_PROP_MAX-1, false, SCA_PropertyActuator, m_type), /* ATTR_TODO add constents to game logic dict */
 	{ NULL }	//Sentinel

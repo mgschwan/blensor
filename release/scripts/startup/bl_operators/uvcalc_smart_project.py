@@ -71,7 +71,7 @@ def pointInTri2D(v, v1, v2, v3):
 
         mtx = Matrix((side1, side2, nor))
 
-        # Zero area 2d tri, even tho we throw away zerop area faces
+        # Zero area 2d tri, even tho we throw away zero area faces
         # the projection UV can result in a zero area UV.
         if not mtx.determinant():
             dict_matrix[key] = None
@@ -162,7 +162,7 @@ def island2Edge(island):
     return length_sorted_edges, [v.to_3d() for v in unique_points.values()]
 
 # ========================= NOT WORKING????
-# Find if a points inside an edge loop, un-ordered.
+# Find if a points inside an edge loop, unordered.
 # pt is and x/y
 # edges are a non ordered loop of edges.
 # offsets are the edge x and y offset.
@@ -212,8 +212,11 @@ def islandIntersectUvIsland(source, target, SourceOffset):
     # Edge intersect test
     for ed in edgeLoopsSource:
         for seg in edgeLoopsTarget:
-            i = geometry.intersect_line_line_2d(\
-            seg[0], seg[1], SourceOffset+ed[0], SourceOffset+ed[1])
+            i = geometry.intersect_line_line_2d(seg[0],
+                                                seg[1],
+                                                SourceOffset+ed[0],
+                                                SourceOffset+ed[1],
+                                                )
             if i:
                 return 1 # LINE INTERSECTION
 
@@ -753,13 +756,10 @@ def VectoQuat(vec):
 
 
 class thickface(object):
-    __slost__= 'v', 'uv', 'no', 'area', 'edge_keys'
-    def __init__(self, face, uvface, mesh_verts):
+    __slost__= "v", "uv", "no", "area", "edge_keys"
+    def __init__(self, face, uv_layer, mesh_verts):
         self.v = [mesh_verts[i] for i in face.vertices]
-        if len(self.v)==4:
-            self.uv = uvface.uv1, uvface.uv2, uvface.uv3, uvface.uv4
-        else:
-            self.uv = uvface.uv1, uvface.uv2, uvface.uv3
+        self.uv = [uv_layer[i].uv for i in face.loops]
 
         self.no = face.normal
         self.area = face.area
@@ -773,15 +773,16 @@ def main_consts():
     global ROTMAT_2D_POS_45D
     global RotMatStepRotation
 
-    ROTMAT_2D_POS_90D = Matrix.Rotation( radians(90.0), 2)
-    ROTMAT_2D_POS_45D = Matrix.Rotation( radians(45.0), 2)
+    ROTMAT_2D_POS_90D = Matrix.Rotation(radians(90.0), 2)
+    ROTMAT_2D_POS_45D = Matrix.Rotation(radians(45.0), 2)
 
     RotMatStepRotation = []
     rot_angle = 22.5 #45.0/2
     while rot_angle > 0.1:
-        RotMatStepRotation.append([\
-         Matrix.Rotation( radians(rot_angle), 2),\
-         Matrix.Rotation( radians(-rot_angle), 2)])
+        RotMatStepRotation.append([
+            Matrix.Rotation(radians(+rot_angle), 2),
+            Matrix.Rotation(radians(-rot_angle), 2),
+            ])
 
         rot_angle = rot_angle/2.0
 
@@ -888,13 +889,13 @@ def main(context,
         if not me.uv_textures: # Mesh has no UV Coords, don't bother.
             me.uv_textures.new()
 
-        uv_layer = me.uv_textures.active.data
+        uv_layer = me.uv_loop_layers.active.data
         me_verts = list(me.vertices)
 
         if USER_ONLY_SELECTED_FACES:
-            meshFaces = [thickface(f, uv_layer[i], me_verts) for i, f in enumerate(me.faces) if f.select]
+            meshFaces = [thickface(f, uv_layer, me_verts) for i, f in enumerate(me.polygons) if f.select]
         else:
-        	meshFaces = [thickface(f, uv_layer[i], me_verts) for i, f in enumerate(me.faces)]
+            meshFaces = [thickface(f, uv_layer, me_verts) for i, f in enumerate(me.polygons)]
 
         if not meshFaces:
             continue
@@ -1113,7 +1114,7 @@ class SmartProject(Operator):
 
     angle_limit = FloatProperty(
             name="Angle Limit",
-            description="lower for more projection groups, higher for less distortion",
+            description="Lower for more projection groups, higher for less distortion",
             min=1.0, max=89.0,
             default=66.0,
             )

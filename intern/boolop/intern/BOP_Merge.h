@@ -30,8 +30,8 @@
  */
 
  
-#ifndef BOP_MERGE_H
-#define BOP_MERGE_H
+#ifndef __BOP_MERGE_H__
+#define __BOP_MERGE_H__
 
 #include "BOP_Misc.h"
 
@@ -41,8 +41,8 @@
 #include "BOP_MathUtils.h"
 #include "MEM_SmartPtr.h"
 
-typedef vector< BOP_Faces > BOP_LFaces;
-typedef vector< BOP_Faces >::iterator BOP_IT_LFaces;
+typedef std::vector< BOP_Faces > BOP_LFaces;
+typedef std::vector< BOP_Faces >::iterator BOP_IT_LFaces;
 
 class BOP_Merge {
 	private:

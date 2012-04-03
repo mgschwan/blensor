@@ -34,10 +34,8 @@
 
 /* **************** Scale  ******************** */
 
-#define CMP_SCALE_MAX	12000
-
 static bNodeSocketTemplate cmp_node_scale_in[]= {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f},
+	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
 	{	SOCK_FLOAT, 1, "X",				1.0f, 0.0f, 0.0f, 0.0f, 0.0001f, CMP_SCALE_MAX, PROP_FACTOR},
 	{	SOCK_FLOAT, 1, "Y",				1.0f, 0.0f, 0.0f, 0.0f, 0.0001f, CMP_SCALE_MAX, PROP_FACTOR},
 	{	-1, 0, ""	}
@@ -51,27 +49,28 @@ static bNodeSocketTemplate cmp_node_scale_out[]= {
 /* node->custom1 stores if input values are absolute or relative scale */
 static void node_composit_exec_scale(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
 {
-	if(out[0]->hasoutput==0)
+	if (out[0]->hasoutput==0)
 		return;
 	
-	if(in[0]->data) {
+	if (in[0]->data) {
 		RenderData *rd= data;
 		CompBuf *stackbuf, *cbuf= typecheck_compbuf(in[0]->data, CB_RGBA);
 		ImBuf *ibuf;
 		int newx, newy;
 		
-		if(node->custom1==CMP_SCALE_RELATIVE) {
+		if (node->custom1==CMP_SCALE_RELATIVE) {
 			newx= MAX2((int)(in[1]->vec[0]*cbuf->x), 1);
 			newy= MAX2((int)(in[2]->vec[0]*cbuf->y), 1);
 		}
-		else if(node->custom1==CMP_SCALE_SCENEPERCENT) {
+		else if (node->custom1==CMP_SCALE_SCENEPERCENT) {
 			newx = cbuf->x * (rd->size / 100.0f);
 			newy = cbuf->y * (rd->size / 100.0f);
 		}
 		else if (node->custom1==CMP_SCALE_RENDERPERCENT) {
 			newx= (rd->xsch * rd->size)/100;
 			newy= (rd->ysch * rd->size)/100;
-		} else {	/* CMP_SCALE_ABSOLUTE */
+		}
+		else {	/* CMP_SCALE_ABSOLUTE */
 			newx= MAX2((int)in[1]->vec[0], 1);
 			newy= MAX2((int)in[2]->vec[0], 1);
 		}
@@ -79,11 +78,11 @@ static void node_composit_exec_scale(void *data, bNode *node, bNodeStack **in, b
 		newy= MIN2(newy, CMP_SCALE_MAX);
 
 		ibuf= IMB_allocImBuf(cbuf->x, cbuf->y, 32, 0);
-		if(ibuf) {
+		if (ibuf) {
 			ibuf->rect_float= cbuf->rect;
 			IMB_scaleImBuf(ibuf, newx, newy);
 			
-			if(ibuf->rect_float == cbuf->rect) {
+			if (ibuf->rect_float == cbuf->rect) {
 				/* no scaling happened. */
 				stackbuf= pass_on_compbuf(in[0]->data);
 			}
@@ -107,26 +106,38 @@ static void node_composit_exec_scale(void *data, bNode *node, bNodeStack **in, b
 		}
 		
 		out[0]->data= stackbuf;
-		if(cbuf!=in[0]->data)
+		if (cbuf!=in[0]->data)
 			free_compbuf(cbuf);
+	}
+	else if (node->custom1==CMP_SCALE_ABSOLUTE) {
+		CompBuf *stackbuf;
+		int a, x, y;
+		float *fp;
+
+		x = MAX2((int)in[1]->vec[0], 1);
+		y = MAX2((int)in[2]->vec[0], 1);
+
+		stackbuf = alloc_compbuf(x, y, CB_RGBA, 1);
+		fp = stackbuf->rect;
+
+		a = stackbuf->x * stackbuf->y;
+		while (a--) {
+			copy_v4_v4(fp, in[0]->vec);
+			fp += 4;
+		}
+
+		out[0]->data= stackbuf;
 	}
 }
 
-void register_node_type_cmp_scale(ListBase *lb)
+void register_node_type_cmp_scale(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_SCALE, "Scale", NODE_CLASS_DISTORT, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_SCALE, "Scale", NODE_CLASS_DISTORT, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_scale_in, cmp_node_scale_out);
 	node_type_size(&ntype, 140, 100, 320);
 	node_type_exec(&ntype, node_composit_exec_scale);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-
-
-
-
-
-

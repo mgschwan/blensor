@@ -25,14 +25,15 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BKE_POINTCACHE_H
-#define BKE_POINTCACHE_H
+#ifndef __BKE_POINTCACHE_H__
+#define __BKE_POINTCACHE_H__
 
 /** \file BKE_pointcache.h
  *  \ingroup bke
  */
 
 #include "DNA_ID.h"
+#include "DNA_dynamicpaint_types.h"
 #include "DNA_object_force.h"
 #include "DNA_boid_types.h"
 #include <stdio.h> /* for FILE */
@@ -65,6 +66,7 @@
 #define PTCACHE_TYPE_CLOTH				2
 #define PTCACHE_TYPE_SMOKE_DOMAIN		3
 #define PTCACHE_TYPE_SMOKE_HIGHRES		4
+#define PTCACHE_TYPE_DYNAMICPAINT		5
 
 /* high bits reserved for flags that need to be stored in file */
 #define PTCACHE_TYPEFLAG_COMPRESS		(1<<16)
@@ -125,6 +127,9 @@ typedef struct PTCacheID {
 	unsigned int stack_index;
 	unsigned int flag;
 
+	unsigned int default_step;
+	unsigned int max_step;
+
 	/* flags defined in DNA_object_force.h */
 	unsigned int data_types, info_types;
 
@@ -138,7 +143,7 @@ typedef struct PTCacheID {
 	/* copies point data to cache data */
 	int (*write_stream)(PTCacheFile *pf, void *calldata);
 	/* copies cache cata to point data */
-	void (*read_stream)(PTCacheFile *pf, void *calldata);
+	int (*read_stream)(PTCacheFile *pf, void *calldata);
 
 	/* copies custom extradata to cache data */
 	void (*write_extra_data)(void *calldata, struct PTCacheMem *pm, int cfra);
@@ -254,6 +259,7 @@ void BKE_ptcache_id_from_softbody(PTCacheID *pid, struct Object *ob, struct Soft
 void BKE_ptcache_id_from_particles(PTCacheID *pid, struct Object *ob, struct ParticleSystem *psys);
 void BKE_ptcache_id_from_cloth(PTCacheID *pid, struct Object *ob, struct ClothModifierData *clmd);
 void BKE_ptcache_id_from_smoke(PTCacheID *pid, struct Object *ob, struct SmokeModifierData *smd);
+void BKE_ptcache_id_from_dynamicpaint(PTCacheID *pid, struct Object *ob, struct DynamicPaintSurface *surface);
 
 void BKE_ptcache_ids_from_object(struct ListBase *lb, struct Object *ob, struct Scene *scene, int duplis);
 
@@ -281,12 +287,6 @@ int BKE_ptcache_mem_index_find(struct PTCacheMem *pm, unsigned int index);
 void BKE_ptcache_mem_pointers_init(struct PTCacheMem *pm);
 void BKE_ptcache_mem_pointers_incr(struct PTCacheMem *pm);
 int  BKE_ptcache_mem_pointers_seek(int point_index, struct PTCacheMem *pm);
-
-/* Copy a specific data type from cache data to point data. */
-void	BKE_ptcache_data_get(void **data, int type, int index, void *to);
-
-/* Copy a specific data type from point data to cache data. */
-void	BKE_ptcache_data_set(void **data, int type, void *from);
 
 /* Main cache reading call. */
 int		BKE_ptcache_read(PTCacheID *pid, float cfra);
@@ -323,7 +323,7 @@ void BKE_ptcache_mem_to_disk(struct PTCacheID *pid);
 void BKE_ptcache_toggle_disk_cache(struct PTCacheID *pid);
 
 /* Rename all disk cache files with a new name. Doesn't touch the actual content of the files. */
-void BKE_ptcache_disk_cache_rename(struct PTCacheID *pid, char *from, char *to);
+void BKE_ptcache_disk_cache_rename(struct PTCacheID *pid, const char *name_src, const char *name_dst);
 
 /* Loads simulation from external (disk) cache files. */
 void BKE_ptcache_load_external(struct PTCacheID *pid);

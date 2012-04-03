@@ -3,6 +3,7 @@ Import ('env')
 import sys
 
 SConscript(['avi/SConscript',
+            'bmesh/SConscript',
             'blenkernel/SConscript',
             'blenlib/SConscript',
             'blenloader/SConscript',
@@ -11,7 +12,6 @@ SConscript(['avi/SConscript',
             'editors/SConscript',
             'imbuf/SConscript',
             'makesdna/SConscript',
-            'makesrna/SConscript',
             'render/SConscript',
             'nodes/SConscript',
             'modifiers/SConscript',
@@ -19,7 +19,7 @@ SConscript(['avi/SConscript',
             'windowmanager/SConscript',
             'blenfont/SConscript'])
 
-
+makesrna = SConscript('makesrna/SConscript')
 
 if env['WITH_BF_PYTHON']:
     SConscript(['python/SConscript'])

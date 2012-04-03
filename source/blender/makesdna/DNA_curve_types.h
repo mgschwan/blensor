@@ -24,13 +24,15 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_CURVE_TYPES_H
-#define DNA_CURVE_TYPES_H
 
 /** \file DNA_curve_types.h
  *  \ingroup DNA
  */
 
+#ifndef __DNA_CURVE_TYPES_H__
+#define __DNA_CURVE_TYPES_H__
+
+#include "DNA_defs.h"
 #include "DNA_listBase.h"
 #include "DNA_vec_types.h"
 #include "DNA_ID.h"
@@ -90,16 +92,16 @@ typedef struct BevPoint {
  */
 /* note: alfa location in struct is abused by Key system */
 /* vec in BezTriple looks like this:
-	vec[0][0]=x location of handle 1
-	vec[0][1]=y location of handle 1
-	vec[0][2]=z location of handle 1 (not used for FCurve Points(2d))
-	vec[1][0]=x location of control point
-	vec[1][1]=y location of control point
-	vec[1][2]=z location of control point
-	vec[2][0]=x location of handle 2
-	vec[2][1]=y location of handle 2
-	vec[2][2]=z location of handle 2 (not used for FCurve Points(2d))
-*/
+ * - vec[0][0]=x location of handle 1
+ * - vec[0][1]=y location of handle 1
+ * - vec[0][2]=z location of handle 1 (not used for FCurve Points(2d))
+ * - vec[1][0]=x location of control point
+ * - vec[1][1]=y location of control point
+ * - vec[1][2]=z location of control point
+ * - vec[2][0]=x location of handle 2
+ * - vec[2][1]=y location of handle 2
+ * - vec[2][2]=z location of handle 2 (not used for FCurve Points(2d))
+ */
 typedef struct BezTriple {
 	float vec[3][3];
 	float alfa, weight, radius;	/* alfa: tilt in 3D View, weight: used for softbody goal weight, radius: for bevel tapering */
@@ -123,7 +125,7 @@ typedef struct Nurb {
 	short mat_nr;		/* index into material list */
 	short hide, flag;
 	short pntsu, pntsv;		/* number of points in the U or V directions */
-	short resolu, resolv;	/* tesselation resolution in the U or V directions */
+	short resolu, resolv;	/* tessellation resolution in the U or V directions */
 	short orderu, orderv;
 	short flagu, flagv;
 	
@@ -174,7 +176,7 @@ typedef struct Curve {
 	EditNurb *editnurb;	/* edited data, not in file, use pointer so we can check for it */
 	
 	struct Object *bevobj, *taperobj, *textoncurve;
-	struct Ipo *ipo;	// XXX depreceated... old animation system
+	struct Ipo *ipo    DNA_DEPRECATED;  /* old animation system, deprecated for 2.5 */
 	Path *path;
 	struct Key *key;
 	struct Material **mat;
@@ -186,7 +188,9 @@ typedef struct Curve {
 	float size[3];
 	float rot[3];
 
-	short texflag, pad1; /* keep a short because of give_obdata_texspace() */
+	short type;	/* creation-time type of curve datablock */
+
+	short texflag; /* keep a short because of give_obdata_texspace() */
 	short drawflag, twist_mode;
 	float twist_smooth, smallcaps_scale;
 
@@ -252,10 +256,11 @@ typedef struct Curve {
 #define CU_STRETCH		128
 #define CU_OFFS_PATHDIST	256
 #define CU_FAST			512 /* Font: no filling inside editmode */
-#define CU_RETOPO               1024
+/* #define CU_RETOPO               1024 */ /* DEPRECATED */
 #define CU_DS_EXPAND	2048
 #define CU_PATH_RADIUS	4096 /* make use of the path radius if this is enabled (default for new curves) */
 #define CU_DEFORM_FILL	8192 /* fill 2d curve after deformation */
+#define CU_FILL_CAPS	16384 /* fill bevel caps */
 
 /* twist mode */
 #define CU_TWIST_Z_UP			0

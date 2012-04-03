@@ -3,4 +3,5 @@
 user-config.py
 *~
 blensor_tools/bin
-
+pcd_combiner
+pcd_filter

@@ -24,8 +24,8 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef BKE_CLOTH_H
-#define BKE_CLOTH_H
+#ifndef __BKE_CLOTH_H__
+#define __BKE_CLOTH_H__
 
 /** \file BKE_cloth.h
  *  \ingroup bke
@@ -51,7 +51,7 @@ struct CollisionTree;
 #define SOFTGOALSNAP  0.999f
 
 /* This is approximately the smallest number that can be
-* represented by a float, given its precision. */
+ * represented by a float, given its precision. */
 #define ALMOST_ZERO		FLT_EPSILON
 
 /* Bits to or into the ClothVertex.flags. */
@@ -60,15 +60,15 @@ struct CollisionTree;
 #define CLOTH_VERT_FLAG_PINNED_EM 3
 
 /**
-* This structure describes a cloth object against which the
-* simulation can run.
-*
-* The m and n members of this structure represent the assumed
-* rectangular ordered grid for which the original paper is written.
-* At some point they need to disappear and we need to determine out
-* own connectivity of the mesh based on the actual edges in the mesh.
-*
-**/
+ * This structure describes a cloth object against which the
+ * simulation can run.
+ *
+ * The m and n members of this structure represent the assumed
+ * rectangular ordered grid for which the original paper is written.
+ * At some point they need to disappear and we need to determine out
+ * own connectivity of the mesh based on the actual edges in the mesh.
+ *
+ */
 typedef struct Cloth
 {
 	struct ClothVertex	*verts;			/* The vertices that represent this cloth. */
@@ -85,6 +85,7 @@ typedef struct Cloth
 	struct Implicit_Data	*implicit; 		/* our implicit solver connects to this pointer */
 	struct Implicit_Data	*implicitEM; 		/* our implicit solver connects to this pointer */
 	struct EdgeHash 	*edgehash; 		/* used for selfcollisions */
+	int last_frame, pad4;
 } Cloth;
 
 /**
@@ -197,38 +198,32 @@ int cloth_bvh_objcollision (struct Object *ob, struct ClothModifierData * clmd, 
 ////////////////////////////////////////////////
 
 // needed for cloth.c
-int implicit_init ( struct Object *ob, struct ClothModifierData *clmd );
-int implicit_free ( struct ClothModifierData *clmd );
-int implicit_solver ( struct Object *ob, float frame, struct ClothModifierData *clmd, struct ListBase *effectors );
-void implicit_set_positions ( struct ClothModifierData *clmd );
-
-// globally needed
-void clmdSetInterruptCallBack ( int ( *f ) ( void ) );
-////////////////////////////////////////////////
-
+int implicit_init (struct Object *ob, struct ClothModifierData *clmd );
+int implicit_free (struct ClothModifierData *clmd );
+int implicit_solver (struct Object *ob, float frame, struct ClothModifierData *clmd, struct ListBase *effectors );
+void implicit_set_positions (struct ClothModifierData *clmd );
 
 /////////////////////////////////////////////////
 // cloth.c
 ////////////////////////////////////////////////
 
 // needed for modifier.c
-void cloth_free_modifier_extern ( struct ClothModifierData *clmd );
-void cloth_free_modifier ( struct ClothModifierData *clmd );
-void cloth_init ( struct ClothModifierData *clmd );
-struct DerivedMesh *clothModifier_do ( struct ClothModifierData *clmd, struct Scene *scene, struct Object *ob, struct DerivedMesh *dm);
+void cloth_free_modifier_extern (struct ClothModifierData *clmd );
+void cloth_free_modifier (struct ClothModifierData *clmd );
+void cloth_init (struct ClothModifierData *clmd );
+void clothModifier_do (struct ClothModifierData *clmd, struct Scene *scene, struct Object *ob, struct DerivedMesh *dm, float (*vertexCos)[3]);
 
-void cloth_update_normals ( ClothVertex *verts, int nVerts, struct MFace *face, int totface );
 int cloth_uses_vgroup(struct ClothModifierData *clmd);
 
 // needed for collision.c
-void bvhtree_update_from_cloth ( struct ClothModifierData *clmd, int moving );
-void bvhselftree_update_from_cloth ( struct ClothModifierData *clmd, int moving );
+void bvhtree_update_from_cloth (struct ClothModifierData *clmd, int moving );
+void bvhselftree_update_from_cloth (struct ClothModifierData *clmd, int moving );
 
 // needed for button_object.c
-void cloth_clear_cache ( struct Object *ob, struct ClothModifierData *clmd, float framenr );
+void cloth_clear_cache (struct Object *ob, struct ClothModifierData *clmd, float framenr );
 
 // needed for cloth.c
-int cloth_add_spring ( struct ClothModifierData *clmd, unsigned int indexA, unsigned int indexB, float restlength, int spring_type);
+int cloth_add_spring (struct ClothModifierData *clmd, unsigned int indexA, unsigned int indexB, float restlength, int spring_type);
 
 ////////////////////////////////////////////////
 
@@ -242,14 +237,14 @@ typedef enum
 
 
 /* This structure defines how to call the solver.
-*/
+ */
 typedef struct
 {
 	const char		*name;
 	CM_SOLVER_ID	id;
-	int	( *init ) ( struct Object *ob, struct ClothModifierData *clmd );
-	int	( *solver ) ( struct Object *ob, float framenr, struct ClothModifierData *clmd, struct ListBase *effectors );
-	int	( *free ) ( struct ClothModifierData *clmd );
+	int	( *init ) (struct Object *ob, struct ClothModifierData *clmd );
+	int	( *solver ) (struct Object *ob, float framenr, struct ClothModifierData *clmd, struct ListBase *effectors );
+	int	( *free ) (struct ClothModifierData *clmd );
 }
 CM_SOLVER_DEF;
 

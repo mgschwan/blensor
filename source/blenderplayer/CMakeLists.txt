@@ -100,6 +100,7 @@ endif()
 		bf_intern_string 
 		bf_intern_ghost
 		bf_rna
+		bf_bmesh
 		bf_blenkernel
 		bf_blenloader 
 		bf_blenpluginapi 
@@ -133,7 +134,9 @@ endif()
 		bf_intern_memutil 
 		bf_python_ext
 		bf_python_mathutils
+		bf_python_bmesh
 		bf_blenlib 
+		bf_intern_utfconv
 		bf_imbuf_cineon
 		bf_imbuf_openexr 
 		extern_openjpeg
@@ -144,6 +147,7 @@ endif()
 		bf_blenfont
 		bf_intern_audaspace
 		blenkernel_blc
+		bf_bmesh
 		extern_binreloc
 		extern_minilzo
 		bf_intern_ghost # duplicate for linking
@@ -164,6 +168,12 @@ endif()
 		list(APPEND BLENDER_SORTED_LIBS extern_lzma)
 	endif()
 
+	if(WITH_LIBMV)
+		list(APPEND BLENDER_SORTED_LIBS extern_libmv)
+	endif()
+
+	list(APPEND BLENDER_SORTED_LIBS extern_colamd)
+
 	if(WITH_MOD_DECIMATE)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_decimate)
 	endif()
@@ -172,6 +182,14 @@ endif()
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_bsp)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_bop)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_moto)
+	endif()
+
+	if(WITH_CARVE)
+		list(APPEND BLENDER_SORTED_LIBS extern_carve)
+	endif()
+
+	if(WITH_GHOST_XDND)
+		list(APPEND BLENDER_SORTED_LIBS extern_xdnd)
 	endif()
 
 	if(WITH_CODEC_QUICKTIME)

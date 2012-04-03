@@ -22,8 +22,9 @@
 
 /** \file blender/python/generic/blf_py_api.c
  *  \ingroup pygen
+ *
+ * This file defines the 'bgl' module, used for drawing text in OpenGL.
  */
-
 
 #include <Python.h>
 #include "blf_py_api.h"
@@ -181,7 +182,7 @@ static PyObject *py_blf_dimensions(PyObject *UNUSED(self), PyObject *args)
 
 	BLF_width_and_height(fontid, text, &r_width, &r_height);
 
-	ret= PyTuple_New(2);
+	ret = PyTuple_New(2);
 	PyTuple_SET_ITEM(ret, 0, PyFloat_FromDouble(r_width));
 	PyTuple_SET_ITEM(ret, 1, PyFloat_FromDouble(r_height));
 	return ret;
@@ -355,7 +356,7 @@ PyDoc_STRVAR(py_blf_load_doc,
 );
 static PyObject *py_blf_load(PyObject *UNUSED(self), PyObject *args)
 {
-	char* filename;
+	char *filename;
 
 	if (!PyArg_ParseTuple(args, "s:blf.load", &filename))
 		return NULL;
@@ -373,7 +374,7 @@ PyDoc_STRVAR(py_blf_unload_doc,
 );
 static PyObject *py_blf_unload(PyObject *UNUSED(self), PyObject *args)
 {
-	char* filename;
+	char *filename;
 
 	if (!PyArg_ParseTuple(args, "s:blf.unload", &filename))
 		return NULL;

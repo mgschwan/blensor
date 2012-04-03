@@ -42,8 +42,13 @@
 #include "GHOST_EventButton.h"
 #include "GHOST_EventWheel.h"
 #include "GHOST_DisplayManagerX11.h"
+#include "GHOST_EventDragnDrop.h"
 #ifdef WITH_INPUT_NDOF
 #include "GHOST_NDOFManagerX11.h"
+#endif
+
+#ifdef WITH_XDND
+#include "GHOST_DropTargetX11.h"
 #endif
 
 #include "GHOST_Debug.h"
@@ -296,7 +301,8 @@ findGhostWindow(
 	
 }
 
-static void SleepTillEvent(Display *display, GHOST_TInt64 maxSleep) {
+static void SleepTillEvent(Display *display, GHOST_TInt64 maxSleep)
+{
 	int fd = ConnectionNumber(display);
 	fd_set fds;
 	
@@ -304,14 +310,15 @@ static void SleepTillEvent(Display *display, GHOST_TInt64 maxSleep) {
 	FD_SET(fd, &fds);
 
 	if (maxSleep == -1) {
-	    select(fd + 1, &fds, NULL, NULL, NULL);
-	} else {
+		select(fd + 1, &fds, NULL, NULL, NULL);
+	}
+	else {
 		timeval tv;
 
 		tv.tv_sec = maxSleep/1000;
 		tv.tv_usec = (maxSleep - tv.tv_sec*1000)*1000;
 	
-	    select(fd + 1, &fds, NULL, NULL, &tv);
+		select(fd + 1, &fds, NULL, NULL, &tv);
 	}
 }
 
@@ -419,6 +426,18 @@ processEvents(
 	
 	return anyProcessed;
 }
+
+
+#ifdef WITH_X11_XINPUT
+/* set currently using tablet mode (stylus or eraser) depending on device ID */
+static void setTabletMode(GHOST_WindowX11 * window, XID deviceid)
+{
+	if(deviceid == window->GetXTablet().StylusID)
+		window->GetXTablet().CommonData.Active= GHOST_kTabletModeStylus;
+	else if(deviceid == window->GetXTablet().EraserID)
+		window->GetXTablet().CommonData.Active= GHOST_kTabletModeEraser;
+}
+#endif /* WITH_X11_XINPUT */
 
 	void
 GHOST_SystemX11::processEvent(XEvent *xe)
@@ -695,8 +714,16 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 					}
 				}
 			} else {
+#ifdef WITH_XDND
+				/* try to handle drag event (if there's no such events, GHOST_HandleClientMessage will return zero) */
+				if (window->getDropTarget()->GHOST_HandleClientMessage(xe) == false) {
+					/* Unknown client message, ignore */
+				}
+#else
 				/* Unknown client message, ignore */
+#endif
 			}
+
 			break;
 		}
 		
@@ -765,10 +792,11 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 		case SelectionRequest:
 		{
 			XEvent nxe;
-			Atom target, string, compound_text, c_string;
+			Atom target, utf8_string, string, compound_text, c_string;
 			XSelectionRequestEvent *xse = &xe->xselectionrequest;
 			
 			target = XInternAtom(m_display, "TARGETS", False);
+			utf8_string = XInternAtom(m_display, "UTF8_STRING", False);
 			string = XInternAtom(m_display, "STRING", False);
 			compound_text = XInternAtom(m_display, "COMPOUND_TEXT", False);
 			c_string = XInternAtom(m_display, "C_STRING", False);
@@ -787,19 +815,23 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 			nxe.xselection.time = xse->time;
 			
 			/*Check to see if the requestor is asking for String*/
-			if(xse->target == string || xse->target == compound_text || xse->target == c_string) {
+			if(xse->target == utf8_string || xse->target == string || xse->target == compound_text || xse->target == c_string) {
 				if (xse->selection == XInternAtom(m_display, "PRIMARY", False)) {
-					XChangeProperty(m_display, xse->requestor, xse->property, xse->target, 8, PropModeReplace, (unsigned char*)txt_select_buffer, strlen(txt_select_buffer));
+					XChangeProperty(m_display, xse->requestor, xse->property, xse->target, 8, PropModeReplace,
+					                (unsigned char*)txt_select_buffer, strlen(txt_select_buffer));
 				} else if (xse->selection == XInternAtom(m_display, "CLIPBOARD", False)) {
-					XChangeProperty(m_display, xse->requestor, xse->property, xse->target, 8, PropModeReplace, (unsigned char*)txt_cut_buffer, strlen(txt_cut_buffer));
+					XChangeProperty(m_display, xse->requestor, xse->property, xse->target, 8, PropModeReplace,
+					                (unsigned char*)txt_cut_buffer, strlen(txt_cut_buffer));
 				}
 			} else if (xse->target == target) {
-				Atom alist[4];
+				Atom alist[5];
 				alist[0] = target;
-				alist[1] = string;
-				alist[2] = compound_text;
-				alist[3] = c_string;
-				XChangeProperty(m_display, xse->requestor, xse->property, xse->target, 32, PropModeReplace, (unsigned char*)alist, 4);
+				alist[1] = utf8_string;
+				alist[2] = string;
+				alist[3] = compound_text;
+				alist[4] = c_string;
+				XChangeProperty(m_display, xse->requestor, xse->property, xse->target, 32, PropModeReplace,
+				                (unsigned char*)alist, 5);
 				XFlush(m_display);
 			} else  {
 				//Change property to None because we do not support anything but STRING
@@ -817,6 +849,12 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 			if(xe->type == window->GetXTablet().MotionEvent) 
 			{
 				XDeviceMotionEvent* data = (XDeviceMotionEvent*)xe;
+
+				/* stroke might begin without leading ProxyIn event,
+				 * this happens when window is opened when stylus is already hovering
+				 * around tablet surface */
+				setTabletMode(window, data->deviceid);
+
 				window->GetXTablet().CommonData.Pressure= 
 					data->axis_data[2]/((float)window->GetXTablet().PressureLevels);
 			
@@ -830,10 +868,8 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 			else if(xe->type == window->GetXTablet().ProxInEvent) 
 			{
 				XProximityNotifyEvent* data = (XProximityNotifyEvent*)xe;
-				if(data->deviceid == window->GetXTablet().StylusID)
-					window->GetXTablet().CommonData.Active= GHOST_kTabletModeStylus;
-				else if(data->deviceid == window->GetXTablet().EraserID)
-					window->GetXTablet().CommonData.Active= GHOST_kTabletModeEraser;
+
+				setTabletMode(window, data->deviceid);
 			}
 			else if(xe->type == window->GetXTablet().ProxOutEvent)
 				window->GetXTablet().CommonData.Active= GHOST_kTabletModeNone;
@@ -1337,7 +1373,7 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 GHOST_TUns8 *GHOST_SystemX11::getClipboard(bool selection) const
 {
 	Atom sseln;
-	Atom target= m_string;
+	Atom target= m_utf8_string;
 	Window owner;
 
 	// from xclip.c doOut() v0.11
@@ -1455,3 +1491,19 @@ void GHOST_SystemX11::putClipboard(GHOST_TInt8 *buffer, bool selection) const
 			fprintf(stderr, "failed to own primary\n");
 	}
 }
+
+#ifdef WITH_XDND
+GHOST_TSuccess GHOST_SystemX11::pushDragDropEvent(GHOST_TEventType eventType, 
+													GHOST_TDragnDropTypes draggedObjectType,
+													GHOST_IWindow* window,
+													int mouseX, int mouseY,
+													void* data)
+{
+	GHOST_SystemX11* system = ((GHOST_SystemX11*)getSystem());
+	return system->pushEvent(new GHOST_EventDragnDrop(system->getMilliSeconds(),
+													  eventType,
+													  draggedObjectType,
+													  window,mouseX,mouseY,data)
+			);
+}
+#endif

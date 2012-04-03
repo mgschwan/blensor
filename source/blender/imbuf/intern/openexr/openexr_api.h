@@ -30,8 +30,8 @@
  */
 
 
-#ifndef _OPENEXR_API_H
-#define _OPENEXR_API_H
+#ifndef __OPENEXR_API_H__
+#define __OPENEXR_API_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,11 +39,13 @@ extern "C" {
   
 #include <stdio.h>
   
-  /**
+/**
  * Test presence of OpenEXR file.
- * @param mem pointer to loaded OpenEXR bitstream
+ * \param mem pointer to loaded OpenEXR bitstream
  */
-  
+
+void		imb_initopenexr					(void);
+
 int		imb_is_a_openexr			(unsigned char *mem);
 	
 int		imb_save_openexr			(struct ImBuf *ibuf, const char *name, int flags);

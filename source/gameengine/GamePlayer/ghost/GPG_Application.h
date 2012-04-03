@@ -64,7 +64,7 @@ public:
 			bool SetGameEngineData(struct Main* maggie, struct Scene* scene, GlobalSettings* gs, int argc, char** argv);
 			bool startWindow(STR_String& title, int windowLeft, int windowTop, int windowWidth, int windowHeight,
 			const bool stereoVisual, const int stereoMode, const GHOST_TUns16 samples=0);
-			bool startFullScreen(int width, int height, int bpp, int frequency, const bool stereoVisual, const int stereoMode, const GHOST_TUns16 samples=0);
+			bool startFullScreen(int width, int height, int bpp, int frequency, const bool stereoVisual, const int stereoMode, const GHOST_TUns16 samples=0, bool useDesktop=false);
 			bool startEmbeddedWindow(STR_String& title, const GHOST_TEmbedderWindowID parent_window, const bool stereoVisual, const int stereoMode, const GHOST_TUns16 samples=0);
 #ifdef WIN32
 			bool startScreenSaverFullScreen(int width, int height, int bpp, int frequency, const bool stereoVisual, const int stereoMode, const GHOST_TUns16 samples=0);
@@ -103,6 +103,7 @@ protected:
 	 * Shuts the game engine down.
 	 */
 	void exitEngine(void);
+	short					m_exitkey;
 
 	/* The game data */
 	STR_String				m_startSceneName;

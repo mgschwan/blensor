@@ -28,8 +28,8 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __SCA_2DFILETRACTUATOR_H__
-#define __SCA_2DFILETRACTUATOR_H__
+#ifndef __SCA_2DFILTERACTUATOR_H__
+#define __SCA_2DFILTERACTUATOR_H__
 
 #include "RAS_IRasterizer.h"
 #include "SCA_IActuator.h"
@@ -37,7 +37,7 @@
 
 class SCA_2DFilterActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 
 private:
 	vector<STR_String> m_propNames;

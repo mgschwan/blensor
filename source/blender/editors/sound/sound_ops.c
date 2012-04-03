@@ -77,14 +77,14 @@
 
 /******************** open sound operator ********************/
 
-static int open_cancel(bContext *UNUSED(C), wmOperator *op)
+static int sound_open_cancel(bContext *UNUSED(C), wmOperator *op)
 {
 	MEM_freeN(op->customdata);
 	op->customdata= NULL;
 	return OPERATOR_CANCELLED;
 }
 
-static void open_init(bContext *C, wmOperator *op)
+static void sound_open_init(bContext *C, wmOperator *op)
 {
 	PropertyPointerRNA *pprop;
 
@@ -93,7 +93,7 @@ static void open_init(bContext *C, wmOperator *op)
 }
 
 #ifdef WITH_AUDASPACE
-static int open_exec(bContext *C, wmOperator *op)
+static int sound_open_exec(bContext *C, wmOperator *op)
 {
 	char path[FILE_MAX];
 	bSound *sound;
@@ -105,11 +105,11 @@ static int open_exec(bContext *C, wmOperator *op)
 	RNA_string_get(op->ptr, "filepath", path);
 	sound = sound_new_file(bmain, path);
 
-	if(!op->customdata)
-		open_init(C, op);
+	if (!op->customdata)
+		sound_open_init(C, op);
 
 	if (sound==NULL || sound->playback_handle == NULL) {
-		if(op->customdata) MEM_freeN(op->customdata);
+		if (op->customdata) MEM_freeN(op->customdata);
 		BKE_report(op->reports, RPT_ERROR, "Unsupported audio format");
 		return OPERATOR_CANCELLED;
 	}
@@ -118,12 +118,12 @@ static int open_exec(bContext *C, wmOperator *op)
 
 	if (info.specs.channels == AUD_CHANNELS_INVALID) {
 		sound_delete(bmain, sound);
-		if(op->customdata) MEM_freeN(op->customdata);
+		if (op->customdata) MEM_freeN(op->customdata);
 		BKE_report(op->reports, RPT_ERROR, "Unsupported audio format");
 		return OPERATOR_CANCELLED;
 	}
 
-	if(RNA_boolean_get(op->ptr, "mono")) {
+	if (RNA_boolean_get(op->ptr, "mono")) {
 		sound->flags |= SOUND_FLAGS_MONO;
 		sound_load(bmain, sound);
 	}
@@ -135,7 +135,7 @@ static int open_exec(bContext *C, wmOperator *op)
 	/* hook into UI */
 	pprop= op->customdata;
 
-	if(pprop->prop) {
+	if (pprop->prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
 		 * pointer se also increases user, so this compensates it */
 		sound->id.us--;
@@ -145,13 +145,13 @@ static int open_exec(bContext *C, wmOperator *op)
 		RNA_property_update(C, &pprop->ptr, pprop->prop);
 	}
 
-	if(op->customdata) MEM_freeN(op->customdata);
+	if (op->customdata) MEM_freeN(op->customdata);
 	return OPERATOR_FINISHED;
 }
 
 #else //WITH_AUDASPACE
 
-static int open_exec(bContext *UNUSED(C), wmOperator *op)
+static int sound_open_exec(bContext *UNUSED(C), wmOperator *op)
 {
 	BKE_report(op->reports, RPT_ERROR, "Compiled without sound support");
 
@@ -160,12 +160,12 @@ static int open_exec(bContext *UNUSED(C), wmOperator *op)
 
 #endif
 
-static int open_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int sound_open_invoke(bContext *C, wmOperator *op, wmEvent *event)
 {
-	if(RNA_property_is_set(op->ptr, "filepath"))
-		return open_exec(C, op);
+	if (RNA_struct_property_is_set(op->ptr, "filepath"))
+		return sound_open_exec(C, op);
 
-	open_init(C, op);
+	sound_open_init(C, op);
 
 	return WM_operator_filesel(C, op, event);
 }
@@ -173,20 +173,20 @@ static int open_invoke(bContext *C, wmOperator *op, wmEvent *event)
 static void SOUND_OT_open(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Open Sound";
-	ot->description= "Load a sound file";
-	ot->idname= "SOUND_OT_open";
+	ot->name = "Open Sound";
+	ot->description = "Load a sound file";
+	ot->idname = "SOUND_OT_open";
 
 	/* api callbacks */
-	ot->exec= open_exec;
-	ot->invoke= open_invoke;
-	ot->cancel= open_cancel;
+	ot->exec = sound_open_exec;
+	ot->invoke = sound_open_invoke;
+	ot->cancel = sound_open_cancel;
 
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE|SOUNDFILE|MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH);
+	WM_operator_properties_filesel(ot, FOLDERFILE|SOUNDFILE|MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 	RNA_def_boolean(ot->srna, "cache", FALSE, "Cache", "Cache the sound in memory");
 	RNA_def_boolean(ot->srna, "mono", FALSE, "Mono", "Mixdown the sound to mono");
 }
@@ -194,27 +194,125 @@ static void SOUND_OT_open(wmOperatorType *ot)
 static void SOUND_OT_open_mono(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Open Sound Mono";
-	ot->description= "Load a sound file as mono";
-	ot->idname= "SOUND_OT_open_mono";
+	ot->name = "Open Sound Mono";
+	ot->description = "Load a sound file as mono";
+	ot->idname = "SOUND_OT_open_mono";
 
 	/* api callbacks */
-	ot->exec= open_exec;
-	ot->invoke= open_invoke;
-	ot->cancel= open_cancel;
+	ot->exec = sound_open_exec;
+	ot->invoke = sound_open_invoke;
+	ot->cancel = sound_open_cancel;
 
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE|SOUNDFILE|MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH);
+	WM_operator_properties_filesel(ot, FOLDERFILE|SOUNDFILE|MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 	RNA_def_boolean(ot->srna, "cache", FALSE, "Cache", "Cache the sound in memory");
 	RNA_def_boolean(ot->srna, "mono", TRUE, "Mono", "Mixdown the sound to mono");
 }
 
+/* ******************************************************* */
+
+static int sound_update_animation_flags_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Sequence* seq;
+	Scene* scene = CTX_data_scene(C);
+	struct FCurve* fcu;
+	char driven;
+
+	SEQ_BEGIN(scene->ed, seq) {
+		fcu = id_data_find_fcurve(&scene->id, seq, &RNA_Sequence, "volume", 0, &driven);
+		if (fcu || driven)
+			seq->flag |= SEQ_AUDIO_VOLUME_ANIMATED;
+		else
+			seq->flag &= ~SEQ_AUDIO_VOLUME_ANIMATED;
+
+		fcu = id_data_find_fcurve(&scene->id, seq, &RNA_Sequence, "pitch", 0, &driven);
+		if (fcu || driven)
+			seq->flag |= SEQ_AUDIO_PITCH_ANIMATED;
+		else
+			seq->flag &= ~SEQ_AUDIO_PITCH_ANIMATED;
+
+		fcu = id_data_find_fcurve(&scene->id, seq, &RNA_Sequence, "pan", 0, &driven);
+		if (fcu || driven)
+			seq->flag |= SEQ_AUDIO_PAN_ANIMATED;
+		else
+			seq->flag &= ~SEQ_AUDIO_PAN_ANIMATED;
+	}
+	SEQ_END
+
+	fcu = id_data_find_fcurve(&scene->id, scene, &RNA_Scene, "audio_volume", 0, &driven);
+	if (fcu || driven)
+		scene->audio.flag |= AUDIO_VOLUME_ANIMATED;
+	else
+		scene->audio.flag &= ~AUDIO_VOLUME_ANIMATED;
+
+	return OPERATOR_FINISHED;
+}
+
+static void SOUND_OT_update_animation_flags(wmOperatorType *ot)
+{
+	/*
+	 * This operator is needed to set a correct state of the sound animation
+	 * System. Unfortunately there's no really correct place to call the exec
+	 * function, that's why I made it an operator that's only visible in the
+	 * search menu. Apart from that the bake animation operator calls it too.
+	 */
+
+	/* identifiers */
+	ot->name = "Update animation";
+	ot->description = "Update animation flags";
+	ot->idname = "SOUND_OT_update_animation_flags";
+
+	/* api callbacks */
+	ot->exec = sound_update_animation_flags_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER;
+}
+
+/* ******************************************************* */
+
+static int sound_bake_animation_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Main* bmain = CTX_data_main(C);
+	Scene* scene = CTX_data_scene(C);
+	int oldfra = scene->r.cfra;
+	int cfra;
+
+	sound_update_animation_flags_exec(C, NULL);
+
+	for (cfra = scene->r.sfra > 0 ? scene->r.sfra - 1 : 0; cfra <= scene->r.efra + 1; cfra++)
+	{
+		scene->r.cfra = cfra;
+		scene_update_for_newframe(bmain, scene, scene->lay);
+	}
+
+	scene->r.cfra = oldfra;
+	scene_update_for_newframe(bmain, scene, scene->lay);
+
+	return OPERATOR_FINISHED;
+}
+
+static void SOUND_OT_bake_animation(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Update animation cache";
+	ot->description = "Update the audio animation cache";
+	ot->idname = "SOUND_OT_bake_animation";
+
+	/* api callbacks */
+	ot->exec = sound_bake_animation_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER;
+}
+
+
 /******************** mixdown operator ********************/
 
-static int mixdown_exec(bContext *C, wmOperator *op)
+static int sound_mixdown_exec(bContext *C, wmOperator *op)
 {
 #ifdef WITH_AUDASPACE
 	char path[FILE_MAX];
@@ -227,6 +325,8 @@ static int mixdown_exec(bContext *C, wmOperator *op)
 	AUD_Container container;
 	AUD_Codec codec;
 	const char* result;
+
+	sound_bake_animation_exec(C, op);
 
 	RNA_string_get(op->ptr, "filepath", path);
 	bitrate = RNA_int_get(op->ptr, "bitrate") * 1000;
@@ -245,8 +345,7 @@ static int mixdown_exec(bContext *C, wmOperator *op)
 	result = AUD_mixdown(scene->sound_scene, SFRA * specs.rate / FPS, (EFRA - SFRA) * specs.rate / FPS,
 						 accuracy, filename, specs, container, codec, bitrate);
 
-	if(result)
-	{
+	if (result) {
 		BKE_report(op->reports, RPT_ERROR, result);
 		return OPERATOR_CANCELLED;
 	}
@@ -257,15 +356,17 @@ static int mixdown_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int mixdown_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int sound_mixdown_invoke(bContext *C, wmOperator *op, wmEvent *event)
 {
-	if(RNA_property_is_set(op->ptr, "filepath"))
-		return mixdown_exec(C, op);
+	if (RNA_struct_property_is_set(op->ptr, "filepath"))
+		return sound_mixdown_exec(C, op);
 
 	return WM_operator_filesel(C, op, event);
 }
 
-static int mixdown_draw_check_prop(PropertyRNA *prop)
+#ifdef WITH_AUDASPACE
+
+static int sound_mixdown_draw_check_prop(PointerRNA *UNUSED(ptr), PropertyRNA *prop)
 {
 	const char *prop_id= RNA_property_identifier(prop);
 	return !(	strcmp(prop_id, "filepath") == 0 ||
@@ -274,8 +375,7 @@ static int mixdown_draw_check_prop(PropertyRNA *prop)
 	);
 }
 
-#ifdef WITH_AUDASPACE
-static void mixdown_draw(bContext *C, wmOperator *op)
+static void sound_mixdown_draw(bContext *C, wmOperator *op)
 {
 	static EnumPropertyItem pcm_format_items[] = {
 		{AUD_FORMAT_U8, "U8", 0, "U8", "8 bit unsigned"},
@@ -424,7 +524,7 @@ static void mixdown_draw(bContext *C, wmOperator *op)
 	RNA_pointer_create(&wm->id, op->type->srna, op->properties, &ptr);
 
 	/* main draw call */
-	uiDefAutoButsRNA(layout, &ptr, mixdown_draw_check_prop, '\0');
+	uiDefAutoButsRNA(layout, &ptr, sound_mixdown_draw_check_prop, '\0');
 }
 #endif // WITH_AUDASPACE
 
@@ -471,22 +571,22 @@ static void SOUND_OT_mixdown(wmOperatorType *ot)
 #endif // WITH_AUDASPACE
 
 	/* identifiers */
-	ot->name= "Mixdown";
-	ot->description= "Mixes the scene's audio to a sound file";
-	ot->idname= "SOUND_OT_mixdown";
+	ot->name = "Mixdown";
+	ot->description = "Mixes the scene's audio to a sound file";
+	ot->idname = "SOUND_OT_mixdown";
 
 	/* api callbacks */
-	ot->exec= mixdown_exec;
-	ot->invoke= mixdown_invoke;
+	ot->exec = sound_mixdown_exec;
+	ot->invoke = sound_mixdown_invoke;
 
 #ifdef WITH_AUDASPACE
-	ot->ui= mixdown_draw;
+	ot->ui = sound_mixdown_draw;
 #endif
 	/* flags */
-	ot->flag= OPTYPE_REGISTER;
+	ot->flag = OPTYPE_REGISTER;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE|SOUNDFILE, FILE_SPECIAL, FILE_SAVE, WM_FILESEL_FILEPATH);
+	WM_operator_properties_filesel(ot, FOLDERFILE|SOUNDFILE, FILE_SPECIAL, FILE_SAVE, WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 #ifdef WITH_AUDASPACE
 	RNA_def_int(ot->srna, "accuracy", 1024, 1, 16777216, "Accuracy", "Sample accuracy, important for animation data (the lower the value, the more accurate)", 1, 16777216);
 	RNA_def_enum(ot->srna, "container", container_items, AUD_CONTAINER_FLAC, "Container", "File format");
@@ -502,25 +602,25 @@ static int sound_poll(bContext *C)
 {
 	Editing* ed = CTX_data_scene(C)->ed;
 
-	if(!ed || !ed->act_seq || ed->act_seq->type != SEQ_SOUND)
+	if (!ed || !ed->act_seq || ed->act_seq->type != SEQ_SOUND)
 		return 0;
 
 	return 1;
 }
 /********************* pack operator *********************/
 
-static int pack_exec(bContext *C, wmOperator *op)
+static int sound_pack_exec(bContext *C, wmOperator *op)
 {
 	Main *bmain= CTX_data_main(C);
 	Editing* ed = CTX_data_scene(C)->ed;
 	bSound* sound;
 
-	if(!ed || !ed->act_seq || ed->act_seq->type != SEQ_SOUND)
+	if (!ed || !ed->act_seq || ed->act_seq->type != SEQ_SOUND)
 		return OPERATOR_CANCELLED;
 
 	sound = ed->act_seq->sound;
 
-	if(!sound || sound->packedfile)
+	if (!sound || sound->packedfile)
 		return OPERATOR_CANCELLED;
 
 	sound->packedfile= newPackedFile(op->reports, sound->name, ID_BLEND_PATH(bmain, &sound->id));
@@ -532,16 +632,16 @@ static int pack_exec(bContext *C, wmOperator *op)
 static void SOUND_OT_pack(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Pack Sound";
-	ot->description= "Pack the sound into the current blend file";
-	ot->idname= "SOUND_OT_pack";
+	ot->name = "Pack Sound";
+	ot->description = "Pack the sound into the current blend file";
+	ot->idname = "SOUND_OT_pack";
 
 	/* api callbacks */
-	ot->exec= pack_exec;
-	ot->poll= sound_poll;
+	ot->exec = sound_pack_exec;
+	ot->poll = sound_poll;
 
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 /********************* unpack operator *********************/
@@ -552,16 +652,16 @@ static int sound_unpack_exec(bContext *C, wmOperator *op)
 	bSound* sound= NULL;
 
 	/* find the suppplied image by name */
-	if (RNA_property_is_set(op->ptr, "id")) {
+	if (RNA_struct_property_is_set(op->ptr, "id")) {
 		char sndname[MAX_ID_NAME-2];
 		RNA_string_get(op->ptr, "id", sndname);
 		sound = BLI_findstring(&CTX_data_main(C)->sound, sndname, offsetof(ID, name) + 2);
 	}
 
-	if(!sound || !sound->packedfile)
+	if (!sound || !sound->packedfile)
 		return OPERATOR_CANCELLED;
 
-	if(G.fileflags & G_AUTOPACK)
+	if (G.fileflags & G_AUTOPACK)
 		BKE_report(op->reports, RPT_WARNING, "AutoPack is enabled, so image will be packed again on file save");
 
 	unpackSound(CTX_data_main(C), op->reports, sound, method);
@@ -574,18 +674,18 @@ static int sound_unpack_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(even
 	Editing* ed = CTX_data_scene(C)->ed;
 	bSound* sound;
 
-	if(RNA_property_is_set(op->ptr, "id"))
+	if (RNA_struct_property_is_set(op->ptr, "id"))
 		return sound_unpack_exec(C, op);
 
-	if(!ed || !ed->act_seq || ed->act_seq->type != SEQ_SOUND)
+	if (!ed || !ed->act_seq || ed->act_seq->type != SEQ_SOUND)
 		return OPERATOR_CANCELLED;
 
 	sound = ed->act_seq->sound;
 
-	if(!sound || !sound->packedfile)
+	if (!sound || !sound->packedfile)
 		return OPERATOR_CANCELLED;
 
-	if(G.fileflags & G_AUTOPACK)
+	if (G.fileflags & G_AUTOPACK)
 		BKE_report(op->reports, RPT_WARNING, "AutoPack is enabled, so image will be packed again on file save");
 
 	unpack_menu(C, "SOUND_OT_unpack", sound->id.name+2, sound->name, "sounds", sound->packedfile);
@@ -596,120 +696,22 @@ static int sound_unpack_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(even
 static void SOUND_OT_unpack(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Unpack Sound";
-	ot->description= "Unpack the sound to the samples filename";
-	ot->idname= "SOUND_OT_unpack";
+	ot->name = "Unpack Sound";
+	ot->description = "Unpack the sound to the samples filename";
+	ot->idname = "SOUND_OT_unpack";
 
 	/* api callbacks */
-	ot->exec= sound_unpack_exec;
-	ot->invoke= sound_unpack_invoke;
-	ot->poll= sound_poll;
+	ot->exec = sound_unpack_exec;
+	ot->invoke = sound_unpack_invoke;
+	ot->poll = sound_poll;
 
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 
 	/* properties */
 	RNA_def_enum(ot->srna, "method", unpack_method_items, PF_USE_LOCAL, "Method", "How to unpack");
 	RNA_def_string(ot->srna, "id", "", MAX_ID_NAME-2, "Sound Name", "Sound datablock name to unpack"); /* XXX, weark!, will fail with library, name collisions */
 }
-
-/* ******************************************************* */
-
-static int update_animation_flags_exec(bContext *C, wmOperator *UNUSED(op))
-{
-	Sequence* seq;
-	Scene* scene = CTX_data_scene(C);
-	struct FCurve* fcu;
-	char driven;
-
-	SEQ_BEGIN(scene->ed, seq) {
-		fcu = id_data_find_fcurve(&scene->id, seq, &RNA_Sequence, "volume", 0, &driven);
-		if(fcu || driven)
-			seq->flag |= SEQ_AUDIO_VOLUME_ANIMATED;
-		else
-			seq->flag &= ~SEQ_AUDIO_VOLUME_ANIMATED;
-
-		fcu = id_data_find_fcurve(&scene->id, seq, &RNA_Sequence, "pitch", 0, &driven);
-		if(fcu || driven)
-			seq->flag |= SEQ_AUDIO_PITCH_ANIMATED;
-		else
-			seq->flag &= ~SEQ_AUDIO_PITCH_ANIMATED;
-
-		fcu = id_data_find_fcurve(&scene->id, seq, &RNA_Sequence, "pan", 0, &driven);
-		if(fcu || driven)
-			seq->flag |= SEQ_AUDIO_PAN_ANIMATED;
-		else
-			seq->flag &= ~SEQ_AUDIO_PAN_ANIMATED;
-	}
-	SEQ_END
-
-	fcu = id_data_find_fcurve(&scene->id, scene, &RNA_Scene, "audio_volume", 0, &driven);
-	if(fcu || driven)
-		scene->audio.flag |= AUDIO_VOLUME_ANIMATED;
-	else
-		scene->audio.flag &= ~AUDIO_VOLUME_ANIMATED;
-
-	return OPERATOR_FINISHED;
-}
-
-static void SOUND_OT_update_animation_flags(wmOperatorType *ot)
-{
-	/*
-	  This operator is needed to set a correct state of the sound animation
-	  System. Unfortunately there's no really correct place to call the exec
-	  function, that's why I made it an operator that's only visible in the
-	  search menu. Apart from that the bake animation operator calls it too.
-	*/
-
-	/* identifiers */
-	ot->name= "Update animation";
-	ot->description= "Update animation flags";
-	ot->idname= "SOUND_OT_update_animation_flags";
-
-	/* api callbacks */
-	ot->exec= update_animation_flags_exec;
-
-	/* flags */
-	ot->flag= OPTYPE_REGISTER;
-}
-
-/* ******************************************************* */
-
-static int bake_animation_exec(bContext *C, wmOperator *UNUSED(op))
-{
-	Main* bmain = CTX_data_main(C);
-	Scene* scene = CTX_data_scene(C);
-	int oldfra = scene->r.cfra;
-	int cfra;
-
-	update_animation_flags_exec(C, NULL);
-
-	for(cfra = scene->r.sfra > 0 ? scene->r.sfra - 1 : 0; cfra <= scene->r.efra + 1; cfra++)
-	{
-		scene->r.cfra = cfra;
-		scene_update_for_newframe(bmain, scene, scene->lay);
-	}
-
-	scene->r.cfra = oldfra;
-	scene_update_for_newframe(bmain, scene, scene->lay);
-
-	return OPERATOR_FINISHED;
-}
-
-static void SOUND_OT_bake_animation(wmOperatorType *ot)
-{
-	/* identifiers */
-	ot->name= "Update animation cache";
-	ot->description= "Updates the audio animation cache so that it's up to date";
-	ot->idname= "SOUND_OT_bake_animation";
-
-	/* api callbacks */
-	ot->exec= bake_animation_exec;
-
-	/* flags */
-	ot->flag= OPTYPE_REGISTER;
-}
-
 
 /* ******************************************************* */
 

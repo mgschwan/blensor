@@ -76,11 +76,11 @@ def createIntermediate(performer_obj, enduser_obj, root, s_frame, e_frame, scene
 
     #Simple 1to1 retarget of a bone
     def singleBoneRetarget(inter_bone, perf_bone):
-            perf_world_rotation = perf_bone.matrix
-            inter_world_base_rotation = inter_bone.bone.matrix_local
-            inter_world_base_inv = inter_world_base_rotation.inverted()
-            bake_matrix = (inter_world_base_inv.to_3x3() * perf_world_rotation.to_3x3())
-            return bake_matrix.to_4x4()
+        perf_world_rotation = perf_bone.matrix
+        inter_world_base_rotation = inter_bone.bone.matrix_local
+        inter_world_base_inv = inter_world_base_rotation.inverted()
+        bake_matrix = (inter_world_base_inv.to_3x3() * perf_world_rotation.to_3x3())
+        return bake_matrix.to_4x4()
 
     #uses 1to1 and interpolation/averaging to match many to 1 retarget
     def manyPerfToSingleInterRetarget(inter_bone, performer_bones_s):
@@ -307,7 +307,6 @@ def copyTranslation(performer_obj, enduser_obj, perfFeet, root, s_frame, e_frame
 
 
 def IKRetarget(performer_obj, enduser_obj, s_frame, e_frame, scene, step):
-    bpy.ops.object.select_name(name=enduser_obj.name, extend=False)
     end_bones = enduser_obj.pose.bones
     for pose_bone in end_bones:
         ik_constraint = hasIKConstraint(pose_bone)
@@ -529,16 +528,20 @@ def totalRetarget(performer_obj, enduser_obj, scene, s_frame, e_frame):
     print("Second pass: retargeting root translation and clean up")
     stride_bone = copyTranslation(performer_obj, enduser_obj, feetBones, root, s_frame, e_frame, scene, enduser_obj_mat)
     if not advanced:
+        print("hry")
+        bpy.ops.object.select_all(action='DESELECT')
+        bpy.context.scene.objects.active = enduser_obj
+        bpy.ops.object.select_pattern(pattern=enduser_obj.name, extend=False)
         IKRetarget(performer_obj, enduser_obj, s_frame, e_frame, scene, step)
-        bpy.ops.object.select_name(name=stride_bone.name, extend=False)
+        bpy.ops.object.select_pattern(pattern=stride_bone.name, extend=False)
     restoreObjMat(performer_obj, enduser_obj, perf_obj_mat, enduser_obj_mat, stride_bone, scene, s_frame)
     bpy.ops.object.mode_set(mode='OBJECT')
     if not advanced:
-        bpy.ops.object.select_name(name=inter_obj.name, extend=False)
+        bpy.ops.object.select_pattern(pattern=inter_obj.name, extend=False)
         bpy.ops.object.delete()
     else:
         cleanTempConstraints(enduser_obj)
-    bpy.ops.object.select_name(name=enduser_obj.name, extend=False)
+    bpy.ops.object.select_pattern(pattern=enduser_obj.name, extend=False)
 
     if not name in [tracks.name for tracks in end_arm.mocapNLATracks]:
         NLATracks = end_arm.mocapNLATracks.add()

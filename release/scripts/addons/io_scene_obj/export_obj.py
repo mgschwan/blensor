@@ -338,15 +338,15 @@ def write_file(filepath, objects, scene,
             if EXPORT_UV:
                 faceuv = len(me.uv_textures) > 0
                 if faceuv:
-                    uv_layer = me.uv_textures.active.data[:]
+                    uv_layer = me.tessface_uv_textures.active.data[:]
             else:
                 faceuv = False
 
             me_verts = me.vertices[:]
 
             # Make our own list so it can be sorted to reduce context switching
-            face_index_pairs = [(face, index) for index, face in enumerate(me.faces)]
-            # faces = [ f for f in me.faces ]
+            face_index_pairs = [(face, index) for index, face in enumerate(me.tessfaces)]
+            # faces = [ f for f in me.tessfaces ]
 
             if EXPORT_EDGES:
                 edges = me.edges
@@ -412,7 +412,7 @@ def write_file(filepath, objects, scene,
                 uv_face_mapping = [[0, 0, 0, 0] for i in range(len(face_index_pairs))]  # a bit of a waste for tri's :/
 
                 uv_dict = {}  # could use a set() here
-                uv_layer = me.uv_textures.active.data
+                uv_layer = me.tessface_uv_textures.active.data
                 for f, f_index in face_index_pairs:
                     for uv_index, uv in enumerate(uv_layer[f_index].uv):
                         uvkey = veckey2d(uv)
@@ -492,7 +492,8 @@ def write_file(filepath, objects, scene,
                         if EXPORT_GROUP_BY_MAT:
                             # can be mat_image or (null)
                             fw("g %s_%s\n" % (name_compat(ob.name), name_compat(ob.data.name)))  # can be mat_image or (null)
-                        fw("usemtl (null)\n")  # mat, image
+                        if EXPORT_MTL:
+                            fw("usemtl (null)\n")  # mat, image
 
                     else:
                         mat_data = mtl_dict.get(key)
@@ -511,8 +512,8 @@ def write_file(filepath, objects, scene,
 
                         if EXPORT_GROUP_BY_MAT:
                             fw("g %s_%s_%s\n" % (name_compat(ob.name), name_compat(ob.data.name), mat_data[0]))  # can be mat_image or (null)
-
-                        fw("usemtl %s\n" % mat_data[0])  # can be mat_image or (null)
+                        if EXPORT_MTL:
+                            fw("usemtl %s\n" % mat_data[0])  # can be mat_image or (null)
 
                 contextMat = key
                 if f_smooth != contextSmooth:

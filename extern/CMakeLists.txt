@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software Foundation,
-# Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 # The Original Code is Copyright (C) 2006, Blender Foundation
 # All rights reserved.
@@ -25,6 +25,8 @@
 
 # Otherwise we get warnings here that we cant fix in external projects
 remove_strict_flags()
+
+add_subdirectory(colamd)
 
 if(WITH_BULLET)
 	add_subdirectory(bullet2)
@@ -43,7 +45,7 @@ if(WITH_BUILTIN_GLEW)
 endif()
 
 if(WITH_GAMEENGINE)
-   add_subdirectory(recastnavigation)
+	add_subdirectory(recastnavigation)
 endif()
 
 if(WITH_IMAGE_OPENJPEG AND (NOT UNIX OR APPLE))
@@ -60,4 +62,18 @@ endif()
 
 if(WITH_LZMA)
 	add_subdirectory(lzma)
+endif()
+
+if(WITH_LIBMV)
+	add_subdirectory(libmv)
+endif()
+
+if(WITH_CARVE)
+	add_subdirectory(carve)
+endif()
+
+if(WITH_GHOST_XDND)
+	if(UNIX AND NOT APPLE)
+		add_subdirectory(xdnd)
+	endif()
 endif()

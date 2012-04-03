@@ -109,43 +109,43 @@ class INFO_MT_file(Menu):
         layout.operator("wm.read_homefile", text="New", icon='NEW')
         layout.operator_context = 'INVOKE_AREA'
         layout.operator("wm.open_mainfile", text="Open...", icon='FILE_FOLDER')
-        layout.menu("INFO_MT_file_open_recent")
+        layout.menu("INFO_MT_file_open_recent", icon='OPEN_RECENT')
         layout.operator("wm.recover_last_session", icon='RECOVER_LAST')
-        layout.operator("wm.recover_auto_save", text="Recover Auto Save...")
+        layout.operator("wm.recover_auto_save", text="Recover Auto Save...", icon='RECOVER_AUTO')
 
         layout.separator()
 
         layout.operator_context = 'INVOKE_AREA'
         layout.operator("wm.save_mainfile", text="Save", icon='FILE_TICK').check_existing = False
         layout.operator_context = 'INVOKE_AREA'
-        layout.operator("wm.save_as_mainfile", text="Save As...")
+        layout.operator("wm.save_as_mainfile", text="Save As...", icon='SAVE_AS')
         layout.operator_context = 'INVOKE_AREA'
-        layout.operator("wm.save_as_mainfile", text="Save Copy...").copy = True
+        layout.operator("wm.save_as_mainfile", text="Save Copy...", icon='SAVE_COPY').copy = True
 
         layout.separator()
 
         layout.operator("screen.userpref_show", text="User Preferences...", icon='PREFERENCES')
 
         layout.operator_context = 'EXEC_AREA'
-        layout.operator("wm.save_homefile")
-        layout.operator("wm.read_factory_settings")
+        layout.operator("wm.save_homefile", icon='SAVE_PREFS')
+        layout.operator("wm.read_factory_settings", icon='LOAD_FACTORY')
 
         layout.separator()
 
         layout.operator_context = 'INVOKE_AREA'
-        layout.operator("wm.link_append", text="Link")
-        props = layout.operator("wm.link_append", text="Append")
+        layout.operator("wm.link_append", text="Link", icon='LINK_BLEND')
+        props = layout.operator("wm.link_append", text="Append", icon='APPEND_BLEND')
         props.link = False
         props.instance_groups = False
 
         layout.separator()
 
-        layout.menu("INFO_MT_file_import")
-        layout.menu("INFO_MT_file_export")
+        layout.menu("INFO_MT_file_import", icon='IMPORT')
+        layout.menu("INFO_MT_file_export", icon='EXPORT')
 
         layout.separator()
 
-        layout.menu("INFO_MT_file_external_data")
+        layout.menu("INFO_MT_file_external_data", icon='EXTERNAL_DATA')
 
         layout.separator()
 
@@ -273,7 +273,9 @@ class INFO_MT_add(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator_context = 'EXEC_SCREEN'
+        # note, don't use 'EXEC_SCREEN' or operators wont get the 'v3d' context.
+
+        layout.operator_context = 'EXEC_AREA'
 
         #layout.operator_menu_enum("object.mesh_add", "type", text="Mesh", icon='OUTLINER_OB_MESH')
         layout.menu("INFO_MT_mesh_add", icon='OUTLINER_OB_MESH')
@@ -296,7 +298,7 @@ class INFO_MT_add(Menu):
         layout.separator()
 
         layout.operator("object.camera_add", text="Camera", icon='OUTLINER_OB_CAMERA')
-        layout.operator_context = 'EXEC_SCREEN'
+        layout.operator_context = 'EXEC_AREA'
         layout.operator_menu_enum("object.lamp_add", "type", text="Lamp", icon='OUTLINER_OB_LAMP')
         layout.separator()
 
@@ -359,8 +361,8 @@ class INFO_MT_help(Menu):
 
         layout = self.layout
 
-        layout.operator("wm.url_open", text="Manual", icon='HELP').url = 'http://wiki.blender.org/index.php/Doc:Manual'
-        layout.operator("wm.url_open", text="Release Log", icon='URL').url = 'http://www.blender.org/development/release-logs/blender-260/'
+        layout.operator("wm.url_open", text="Manual", icon='HELP').url = 'http://wiki.blender.org/index.php/Doc:2.6/Manual'
+        layout.operator("wm.url_open", text="Release Log", icon='URL').url = 'http://www.blender.org/development/release-logs/blender-262/'
 
         layout.separator()
 

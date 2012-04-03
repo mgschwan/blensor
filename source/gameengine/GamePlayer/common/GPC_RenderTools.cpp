@@ -101,23 +101,23 @@ void GPC_RenderTools::ProcessLighting(RAS_IRasterizer *rasty, bool uselights, co
 	int layer= -1;
 
 	/* find the layer */
-	if(uselights) {
-		if(m_clientobject)
+	if (uselights) {
+		if (m_clientobject)
 			layer = static_cast<KX_GameObject*>(m_clientobject)->GetLayer();
 	}
 
 	/* avoid state switching */
-	if(m_lastlightlayer == layer && m_lastauxinfo == m_auxilaryClientInfo)
+	if (m_lastlightlayer == layer && m_lastauxinfo == m_auxilaryClientInfo)
 		return;
 
 	m_lastlightlayer = layer;
 	m_lastauxinfo = m_auxilaryClientInfo;
 
 	/* enable/disable lights as needed */
-	if(layer >= 0)
+	if (layer >= 0)
 		enable = applyLights(layer, viewmat);
 
-	if(enable)
+	if (enable)
 		EnableOpenGLLights(rasty);
 	else
 		DisableOpenGLLights();
@@ -125,7 +125,7 @@ void GPC_RenderTools::ProcessLighting(RAS_IRasterizer *rasty, bool uselights, co
 
 void GPC_RenderTools::EnableOpenGLLights(RAS_IRasterizer *rasty)
 {
-	if(m_lastlighting == true)
+	if (m_lastlighting == true)
 		return;
 
 	glEnable(GL_LIGHTING);
@@ -142,7 +142,7 @@ void GPC_RenderTools::EnableOpenGLLights(RAS_IRasterizer *rasty)
 
 void GPC_RenderTools::DisableOpenGLLights()
 {
-	if(m_lastlighting == false)
+	if (m_lastlighting == false)
 		return;
 
 	glDisable(GL_LIGHTING);
@@ -291,8 +291,31 @@ void GPC_RenderTools::RenderText3D(	int fontid,
 									double* mat,
 									float aspect)
 {
+	if (GLEW_ARB_multitexture) {
+		for (int i=0; i<MAXTEX; i++) {
+			glActiveTextureARB(GL_TEXTURE0_ARB+i);
+
+			if (GLEW_ARB_texture_cube_map)
+				if (glIsEnabled(GL_TEXTURE_CUBE_MAP_ARB))
+					glDisable(GL_TEXTURE_CUBE_MAP_ARB);
+
+			if (glIsEnabled(GL_TEXTURE_2D))
+				glDisable(GL_TEXTURE_2D);
+		}
+
+		glActiveTextureARB(GL_TEXTURE0_ARB);
+	}
+	else {
+		if (GLEW_ARB_texture_cube_map)
+			if (glIsEnabled(GL_TEXTURE_CUBE_MAP_ARB))
+				glDisable(GL_TEXTURE_CUBE_MAP_ARB);
+
+		if (glIsEnabled(GL_TEXTURE_2D))
+			glDisable(GL_TEXTURE_2D);
+	}
+
 	/* the actual drawing */
-	glColor3fv(color);
+	glColor4fv(color);
  
 	/* multiply the text matrix by the object matrix */
 	BLF_enable(fontid, BLF_MATRIX|BLF_ASPECT);
@@ -305,7 +328,7 @@ void GPC_RenderTools::RenderText3D(	int fontid,
 
 	BLF_size(fontid, size, dpi);
 	BLF_position(fontid, 0, 0, 0);
-	BLF_draw(fontid, (char *)text, strlen(text));
+	BLF_draw(fontid, text, 65535);
 
 	BLF_disable(fontid, BLF_MATRIX|BLF_ASPECT);
 	glEnable(GL_DEPTH_TEST);
@@ -350,11 +373,11 @@ void GPC_RenderTools::RenderText2D(RAS_TEXT_RENDER_MODE mode,
 	if (mode == RAS_IRenderTools::RAS_TEXT_PADDED)
 	{
 		glColor3ub(0, 0, 0);
-		BLF_draw_default(xco+1, height-yco-1, 0.f, text, strlen(text));
+		BLF_draw_default(xco+1, height-yco-1, 0.f, text, 65536);
 	}
 
 	glColor3ub(255, 255, 255);
-	BLF_draw_default(xco, height-yco, 0.f, text, strlen(text));
+	BLF_draw_default(xco, height-yco, 0.f, text, 65536);
 
 	// Restore view settings
 	glMatrixMode(GL_PROJECTION);
@@ -392,7 +415,7 @@ void GPC_RenderTools::RenderText(
 	struct MTFace* tface = 0;
 	unsigned int *col = 0;
 
-	if(flag & RAS_BLENDERMAT) {
+	if (flag & RAS_BLENDERMAT) {
 		KX_BlenderMaterial *bl_mat = static_cast<KX_BlenderMaterial*>(polymat);
 		tface = bl_mat->GetMTFace();
 		col = bl_mat->GetMCol();
@@ -425,7 +448,7 @@ int GPC_RenderTools::applyLights(int objectlayer, const MT_Transform& viewmat)
 	unsigned int count;
 	std::vector<struct	RAS_LightObject*>::iterator lit = m_lights.begin();
 
-	for(count=0; count<m_numgllights; count++)
+	for (count=0; count<m_numgllights; count++)
 		glDisable((GLenum)(GL_LIGHT0+count));
 
 	viewmat.getValue(glviewmat);
@@ -437,7 +460,7 @@ int GPC_RenderTools::applyLights(int objectlayer, const MT_Transform& viewmat)
 		RAS_LightObject* lightdata = (*lit);
 		KX_LightObject *kxlight = (KX_LightObject*)lightdata->m_light;
 
-		if(kxlight->ApplyLight(kxscene, objectlayer, count))
+		if (kxlight->ApplyLight(kxscene, objectlayer, count))
 			count++;
 	}
 	glPopMatrix();
@@ -449,16 +472,16 @@ void GPC_RenderTools::MotionBlur(RAS_IRasterizer* rasterizer)
 {
 	int state = rasterizer->GetMotionBlurState();
 	float motionblurvalue;
-	if(state)
+	if (state)
 	{
 		motionblurvalue = rasterizer->GetMotionBlurValue();
-		if(state==1)
+		if (state==1)
 		{
 			//bugfix:load color buffer into accum buffer for the first time(state=1)
 			glAccum(GL_LOAD, 1.0);
 			rasterizer->SetMotionBlurState(2);
 		}
-		else if(motionblurvalue>=0.0 && motionblurvalue<=1.0)
+		else if (motionblurvalue>=0.0 && motionblurvalue<=1.0)
 		{
 			glAccum(GL_MULT, motionblurvalue);
 			glAccum(GL_ACCUM, 1-motionblurvalue);

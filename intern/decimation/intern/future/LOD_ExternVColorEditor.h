@@ -30,8 +30,8 @@
  */
 
 
-#ifndef NAN_INCLUDED_ExternVColorEditor_h
-#define NAN_INCLUDED_ExternVColorEditor_h
+#ifndef __LOD_EXTERNVCOLOREDITOR_H__
+#define __LOD_EXTERNVCOLOREDITOR_H__
 
 #include "common/NonCopyable.h"
 #include "LOD_ManMesh2.h"
@@ -65,7 +65,7 @@ public :
 		MT_Vector3
 	IndexColor(
 		const LOD_VertexInd &v
-	) const ;
+	) const;
 
 	// Set the color for vertex v
 

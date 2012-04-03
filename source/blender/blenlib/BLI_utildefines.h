@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BLI_UTILDEFINES_H
-#define BLI_UTILDEFINES_H
+#ifndef __BLI_UTILDEFINES_H__
+#define __BLI_UTILDEFINES_H__
 
 /** \file BLI_utildefines.h
  *  \ingroup bli
@@ -53,8 +53,21 @@
 #define ELEM11(a, b, c, d, e, f, g, h, i, j, k, l)        ( ELEM4(a, b, c, d, e) || ELEM7(a, f, g, h, i, j, k, l) )
 
 /* shift around elements */
-#define SHIFT3(type, a, b, c) { type tmp; tmp = a; a = c; c = b; b = tmp; }
-#define SHIFT4(type, a, b, c, d) { type tmp; tmp = a; a = d; d = c; c = b; b = tmp; }
+#define SHIFT3(type, a, b, c)  {                                              \
+		type tmp;                                                             \
+		tmp = a;                                                              \
+		a = c;                                                                \
+		c = b;                                                                \
+		b = tmp;                                                              \
+	} (void)0
+#define SHIFT4(type, a, b, c, d)  {                                           \
+		type tmp;                                                             \
+		tmp = a;                                                              \
+		a = d;                                                                \
+		d = c;                                                                \
+		c = b;                                                                \
+		b = tmp;                                                              \
+	} (void)0
 
 /* min/max */
 #define MIN2(x,y)               ( (x)<(y) ? (x) : (y) )
@@ -72,17 +85,17 @@
 #define INIT_MINMAX2(min, max) {                                              \
 		(min)[0]= (min)[1]= 1.0e30f;                                          \
 		(max)[0]= (max)[1]= -1.0e30f;                                         \
-	}
+	} (void)0
 #define DO_MIN(vec, min) {                                                    \
 		if( (min)[0]>(vec)[0] ) (min)[0]= (vec)[0];                           \
 		if( (min)[1]>(vec)[1] ) (min)[1]= (vec)[1];                           \
 		if( (min)[2]>(vec)[2] ) (min)[2]= (vec)[2];                           \
-	}
+	} (void)0
 #define DO_MAX(vec, max) {                                                    \
 		if( (max)[0]<(vec)[0] ) (max)[0]= (vec)[0];                           \
 		if( (max)[1]<(vec)[1] ) (max)[1]= (vec)[1];                           \
 		if( (max)[2]<(vec)[2] ) (max)[2]= (vec)[2];                           \
-	}
+	} (void)0
 #define DO_MINMAX(vec, min, max) {                                            \
 		if( (min)[0]>(vec)[0] ) (min)[0]= (vec)[0];                           \
 		if( (min)[1]>(vec)[1] ) (min)[1]= (vec)[1];                           \
@@ -90,13 +103,13 @@
 		if( (max)[0]<(vec)[0] ) (max)[0]= (vec)[0];                           \
 		if( (max)[1]<(vec)[1] ) (max)[1]= (vec)[1];                           \
 		if( (max)[2]<(vec)[2] ) (max)[2]= (vec)[2];                           \
-	}
+	} (void)0
 #define DO_MINMAX2(vec, min, max) {                                           \
 		if( (min)[0]>(vec)[0] ) (min)[0]= (vec)[0];                           \
 		if( (min)[1]>(vec)[1] ) (min)[1]= (vec)[1];                           \
 		if( (max)[0]<(vec)[0] ) (max)[0]= (vec)[0];                           \
 		if( (max)[1]<(vec)[1] ) (max)[1]= (vec)[1];                           \
-	}
+	} (void)0
 
 /* some math and copy defines */
 
@@ -108,75 +121,70 @@
 
 #define FTOCHAR(val) ((val)<=0.0f)? 0 : (((val)>(1.0f-0.5f/255.0f))? 255 : (char)((255.0f*(val))+0.5f))
 #define FTOUSHORT(val) ((val >= 1.0f-0.5f/65535)? 65535: (val <= 0.0f)? 0: (unsigned short)(val*65535.0f + 0.5f))
+#define USHORTTOUCHAR(val) ((unsigned char)(((val) >= 65535-128)? 255: ((val)+128)>>8))
 #define F3TOCHAR3(v2, v1) {                                                   \
 		(v1)[0]= FTOCHAR((v2[0]));                                            \
 		(v1)[1]= FTOCHAR((v2[1]));                                            \
 		(v1)[2]= FTOCHAR((v2[2]));                                            \
-	}
+	} (void)0
 #define F3TOCHAR4(v2, v1) {                                                   \
 		(v1)[0]= FTOCHAR((v2[0]));                                            \
 		(v1)[1]= FTOCHAR((v2[1]));                                            \
 		(v1)[2]= FTOCHAR((v2[2]));                                            \
 		(v1)[3]= 255;                                                         \
-	}
+	} (void)0
 #define F4TOCHAR4(v2, v1) {                                                   \
 		(v1)[0]= FTOCHAR((v2[0]));                                            \
 		(v1)[1]= FTOCHAR((v2[1]));                                            \
 		(v1)[2]= FTOCHAR((v2[2]));                                            \
 		(v1)[3]= FTOCHAR((v2[3]));                                            \
-	}
+	} (void)0
 #define VECCOPY(v1, v2) {                                                     \
 		*(v1)=   *(v2);                                                       \
 		*(v1+1)= *(v2+1);                                                     \
 		*(v1+2)= *(v2+2);                                                     \
-	}
+	} (void)0
 #define VECCOPY2D(v1, v2) {                                                   \
 		*(v1)=   *(v2);                                                       \
 		*(v1+1)= *(v2+1);                                                     \
-	}
-#define QUATCOPY(v1, v2) {                                                    \
-		*(v1)=   *(v2);                                                       \
-		*(v1+1)= *(v2+1);                                                     \
-		*(v1+2)= *(v2+2);                                                     \
-		*(v1+3)= *(v2+3);                                                     \
-	}
+	} (void)0
 #define VECADD(v1,v2,v3) {                                                    \
 		*(v1)=   *(v2)   + *(v3);                                             \
 		*(v1+1)= *(v2+1) + *(v3+1);                                           \
 		*(v1+2)= *(v2+2) + *(v3+2);                                           \
-	}
+	} (void)0
 #define VECSUB(v1,v2,v3) {                                                    \
 		*(v1)=   *(v2)   - *(v3);                                             \
 		*(v1+1)= *(v2+1) - *(v3+1);                                           \
 		*(v1+2)= *(v2+2) - *(v3+2);                                           \
-	}
+	} (void)0
 #define VECSUB2D(v1,v2,v3)     {                                              \
 		*(v1)=   *(v2)   - *(v3);                                             \
 		*(v1+1)= *(v2+1) - *(v3+1);                                           \
-	}
+	} (void)0
 #define VECADDFAC(v1,v2,v3,fac) {                                             \
 		*(v1)=   *(v2)   + *(v3)*(fac);                                       \
 		*(v1+1)= *(v2+1) + *(v3+1)*(fac);                                     \
 		*(v1+2)= *(v2+2) + *(v3+2)*(fac);                                     \
-	}
+	} (void)0
 #define VECSUBFAC(v1,v2,v3,fac) {                                             \
 		*(v1)=   *(v2)   - *(v3)*(fac);                                       \
 		*(v1+1)= *(v2+1) - *(v3+1)*(fac);                                     \
 		*(v1+2)= *(v2+2) - *(v3+2)*(fac);                                     \
-	}
-#define QUATADDFAC(v1,v2,v3,fac) {                                            \
-		*(v1)=   *(v2)   + *(v3)*(fac);                                       \
-		*(v1+1)= *(v2+1) + *(v3+1)*(fac);                                     \
-		*(v1+2)= *(v2+2) + *(v3+2)*(fac);                                     \
-		*(v1+3)= *(v2+3) + *(v3+3)*(fac);                                     \
-	}
+	} (void)0
 
 #define INPR(v1, v2) ( (v1)[0]*(v2)[0] + (v1)[1]*(v2)[1] + (v1)[2]*(v2)[2] )
 
 /* some misc stuff.... */
 #define CLAMP(a, b, c)		if((a)<(b)) (a)=(b); else if((a)>(c)) (a)=(c)
 #define CLAMPIS(a, b, c) ((a)<(b) ? (b) : (a)>(c) ? (c) : (a))
-#define CLAMPTEST(a, b, c)	if((b)<(c)) {CLAMP(a, b, c);} else {CLAMP(a, c, b);}
+#define CLAMPTEST(a, b, c)                                                    \
+	if ((b) < (c)) {                                                          \
+		CLAMP(a, b, c);                                                       \
+	}                                                                         \
+	else {                                                                    \
+		CLAMP(a, c, b);                                                       \
+	} (void)
 
 #define IS_EQ(a,b) ((fabs((double)(a)-(b)) >= (double) FLT_EPSILON) ? 0 : 1)
 #define IS_EQF(a,b) ((fabsf((float)(a)-(b)) >= (float) FLT_EPSILON) ? 0 : 1)
@@ -202,32 +210,35 @@
 		s_i= p_i[1]; p_i[1]= p_i[6]; p_i[6]= s_i;                             \
 		s_i= p_i[2]; p_i[2]= p_i[5]; p_i[5]= s_i;                             \
 		s_i= p_i[3]; p_i[3]= p_i[4]; p_i[4]= s_i;                             \
-	}
+	} (void)0
 
 #define SWITCH_INT(a) {                                                       \
 		char s_i, *p_i;                                                       \
 		p_i= (char *)&(a);                                                    \
 		s_i= p_i[0]; p_i[0]= p_i[3]; p_i[3]= s_i;                             \
 		s_i= p_i[1]; p_i[1]= p_i[2]; p_i[2]= s_i;                             \
-	}
+	} (void)0
 
 #define SWITCH_SHORT(a) {                                                     \
 		char s_i, *p_i;                                                       \
 		p_i= (char *)&(a);                                                    \
 		s_i=p_i[0]; p_i[0]=p_i[1]; p_i[1]=s_i;                                \
-	}
+	} (void)0
 
 
 /* Warning-free macros for storing ints in pointers. Use these _only_
  * for storing an int in a pointer, not a pointer in an int (64bit)! */
-#define SET_INT_IN_POINTER(i) ((void*)(intptr_t)(i))
-#define GET_INT_FROM_POINTER(i) ((int)(intptr_t)(i))
+#define SET_INT_IN_POINTER(i)    ((void *)(intptr_t)(i))
+#define GET_INT_FROM_POINTER(i)  ((int)(intptr_t)(i))
 
 /* Macro to convert a value to string in the preprocessor
- * STRINGIFY_ARG: gives the defined name in the string
- * STRINGIFY: gives the defined value. */
-#define STRINGIFY_ARG(x) #x
-#define STRINGIFY(x) STRINGIFY_ARG(x)
+ * STRINGIFY_ARG: gives the argument as a string
+ * STRINGIFY_APPEND: appends any argument 'b' onto the string argument 'a',
+ *   used by STRINGIFY because some preprocessors warn about zero arguments
+ * STRINGIFY: gives the argument's value as a string */
+#define STRINGIFY_ARG(x) "" #x
+#define STRINGIFY_APPEND(a, b) "" a #b
+#define STRINGIFY(x) STRINGIFY_APPEND("", x)
 
 /* useful for debugging */
 #define AT __FILE__ ":" STRINGIFY(__LINE__)
@@ -259,47 +270,54 @@
 
 /*little macro so inline keyword works*/
 #if defined(_MSC_VER)
-#  define BM_INLINE static __forceinline
+#  define BLI_INLINE static __forceinline
 #elif defined(__GNUC__)
-#  define BM_INLINE static inline __attribute((always_inline))
+#  define BLI_INLINE static inline __attribute((always_inline))
 #else
 /* #warning "MSC/GNUC defines not found, inline non-functional" */
-#  define BM_INLINE static
+#  define BLI_INLINE static
 #endif
 
 
 /* BLI_assert(), default only to print
  * for aborting need to define WITH_ASSERT_ABORT
  */
-#if !defined NDEBUG
+#ifndef NDEBUG
 #  ifdef WITH_ASSERT_ABORT
-#    define _dummy_abort abort
+#    define _BLI_DUMMY_ABORT abort
 #  else
-#    define _dummy_abort() (void)0
+#    define _BLI_DUMMY_ABORT() (void)0
 #  endif
 #  if defined(__GNUC__) || defined(_MSC_VER) /* check __func__ is available */
 #    define BLI_assert(a)                                                     \
-do {                                                                          \
-	if (!(a)) {                                                               \
+	(void)((!(a)) ?  (                                                        \
+		(                                                                     \
 		fprintf(stderr,                                                       \
-			"BLI_assert failed: %s, %s(), %d at \'%s\'\n",                    \
-			__FILE__, __func__, __LINE__, STRINGIFY(a));                      \
-		_dummy_abort();                                                       \
-	}                                                                         \
-} while (0)
+			"BLI_assert failed: %s:%d, %s(), at \'%s\'\n",                    \
+			__FILE__, __LINE__, __func__, STRINGIFY(a)),                      \
+		_BLI_DUMMY_ABORT(),                                                   \
+		NULL)) : NULL)
 #  else
-#    define BLI_assert(a) \
-do {                                                                          \
-	if (0 == (a)) {                                                           \
+#    define BLI_assert(a)                                                     \
+	(void)((!(a)) ?  (                                                        \
+		(                                                                     \
 		fprintf(stderr,                                                       \
-			"BLI_assert failed: %s, %d at \'%s\'\n",                          \
-			__FILE__, __LINE__, STRINGIFY(a));                                \
-		_dummy_abort();                                                       \
-	}                                                                         \
-} while (0)
+			"BLI_assert failed: %s:%d, at \'%s\'\n",                          \
+			__FILE__, __LINE__, STRINGIFY(a)),                                \
+		_BLI_DUMMY_ABORT(),                                                   \
+		NULL)) : NULL)
 #  endif
 #else
 #  define BLI_assert(a) (void)0
 #endif
 
-#endif // BLI_UTILDEFINES_H
+/* hints for branch pradiction, only use in code that runs a _lot_ where */
+#ifdef __GNUC__
+#  define LIKELY(x)       __builtin_expect(!!(x), 1)
+#  define UNLIKELY(x)     __builtin_expect(!!(x), 0)
+#else
+#  define LIKELY(x)       (x)
+#  define UNLIKELY(x)     (x)
+#endif
+
+#endif // __BLI_UTILDEFINES_H__

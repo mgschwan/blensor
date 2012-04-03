@@ -30,8 +30,8 @@
  *  \ingroup blenloader
  */
 
-#ifndef READFILE_H
-#define READFILE_H
+#ifndef __READFILE_H__
+#define __READFILE_H__
 
 #include "zlib.h"
 
@@ -59,7 +59,7 @@ typedef struct FileData {
 	gzFile gzfiledes;
 
 	// now only in use for library appending
-	char relabase[FILE_MAXDIR+FILE_MAXFILE];
+	char relabase[FILE_MAX];
 	
 	// variables needed for reading from stream
 	char headerdone;
@@ -78,6 +78,7 @@ typedef struct FileData {
 	struct OldNewMap *globmap;
 	struct OldNewMap *libmap;
 	struct OldNewMap *imamap;
+	struct OldNewMap *movieclipmap;
 	
 	struct bheadsort *bheadmap;
 	int tot_bheadmap;
@@ -120,6 +121,8 @@ FileData *blo_openblendermemfile(struct MemFile *memfile, struct ReportList *rep
 void blo_clear_proxy_pointers_from_lib(Main *oldmain);
 void blo_make_image_pointer_map(FileData *fd, Main *oldmain);
 void blo_end_image_pointer_map(FileData *fd, Main *oldmain);
+void blo_make_movieclip_pointer_map(FileData *fd, Main *oldmain);
+void blo_end_movieclip_pointer_map(FileData *fd, Main *oldmain);
 void blo_add_library_pointer_map(ListBase *mainlist, FileData *fd);
 
 void blo_freefiledata( FileData *fd);

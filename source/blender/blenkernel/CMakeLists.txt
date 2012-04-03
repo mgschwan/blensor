@@ -23,12 +23,7 @@
 #
 # ***** END GPL LICENSE BLOCK *****
 
-if(WITH_CODEC_FFMPEG)
-	# FFMPEG gives warnigns which are hard to avoid across multiple versions.
-	remove_strict_flags()
-endif()
-
-set(INC 
+set(INC
 	.
 	../avi
 	../blenfont
@@ -39,18 +34,15 @@ set(INC
 	../imbuf
 	../makesdna
 	../makesrna
+	../bmesh
 	../modifiers
 	../nodes
 	../render/extern/include
-	../../../intern/bsp/extern
-	../../../intern/decimation/extern
-	../../../intern/elbeem/extern
 	../../../intern/guardedalloc
 	../../../intern/iksolver/extern
 	../../../intern/memutil
 	../../../intern/mikktspace
 	../../../intern/opennl/extern
-	../../../intern/smoke/extern
 
 	# XXX - BAD LEVEL CALL WM_api.h
 	../windowmanager
@@ -62,12 +54,6 @@ set(INC_SYS
 )
 
 set(SRC
-	intern/BME_Customdata.c
-	intern/BME_conversions.c
-	intern/BME_eulers.c
-	intern/BME_mesh.c
-	intern/BME_structure.c
-	intern/BME_tools.c
 	intern/CCGSubSurf.c
 	intern/DerivedMesh.c
 	intern/action.c
@@ -81,6 +67,7 @@ set(SRC
 	intern/brush.c
 	intern/bullet.c
 	intern/bvhutils.c
+	intern/camera.c
 	intern/cdderivedmesh.c
 	intern/cloth.c
 	intern/collision.c
@@ -93,6 +80,8 @@ set(SRC
 	intern/deform.c
 	intern/depsgraph.c
 	intern/displist.c
+	intern/dynamicpaint.c
+	intern/editderivedmesh.c
 	intern/effect.c
 	intern/fcurve.c
 	intern/fluidsim.c
@@ -108,6 +97,7 @@ set(SRC
 	intern/implicit.c
 	intern/ipo.c
 	intern/key.c
+	intern/lamp.c
 	intern/lattice.c
 	intern/library.c
 	intern/material.c
@@ -115,10 +105,13 @@ set(SRC
 	intern/mesh.c
 	intern/mesh_validate.c
 	intern/modifier.c
+	intern/modifiers_bmesh.c
+	intern/movieclip.c
 	intern/multires.c
 	intern/nla.c
 	intern/node.c
 	intern/object.c
+	intern/ocean.c
 	intern/packedFile.c
 	intern/paint.c
 	intern/particle.c
@@ -143,10 +136,10 @@ set(SRC
 	intern/suggestions.c
 	intern/text.c
 	intern/texture.c
+	intern/tracking.c
 	intern/unit.c
 	intern/world.c
 	intern/writeavi.c
-	intern/writeffmpeg.c
 	intern/writeframeserver.c
 	
 	BKE_DerivedMesh.h
@@ -154,10 +147,8 @@ set(SRC
 	BKE_anim.h
 	BKE_animsys.h
 	BKE_armature.h
-	BKE_array_mallocn.h
 	BKE_blender.h
 	BKE_bmesh.h
-	BKE_bmeshCustomData.h
 	BKE_bmfont.h
 	BKE_bmfont_types.h
 	BKE_boids.h
@@ -165,6 +156,7 @@ set(SRC
 	BKE_brush.h
 	BKE_bullet.h
 	BKE_bvhutils.h
+	BKE_camera.h
 	BKE_cdderivedmesh.h
 	BKE_cloth.h
 	BKE_collision.h
@@ -177,6 +169,7 @@ set(SRC
 	BKE_deform.h
 	BKE_depsgraph.h
 	BKE_displist.h
+	BKE_dynamicpaint.h
 	BKE_effect.h
 	BKE_fcurve.h
 	BKE_fluidsim.h
@@ -190,6 +183,7 @@ set(SRC
 	BKE_image.h
 	BKE_ipo.h
 	BKE_key.h
+	BKE_lamp.h
 	BKE_lattice.h
 	BKE_library.h
 	BKE_main.h
@@ -197,10 +191,12 @@ set(SRC
 	BKE_mball.h
 	BKE_mesh.h
 	BKE_modifier.h
+	BKE_movieclip.h
 	BKE_multires.h
 	BKE_nla.h
 	BKE_node.h
 	BKE_object.h
+	BKE_ocean.h
 	BKE_packedFile.h
 	BKE_paint.h
 	BKE_particle.h
@@ -221,18 +217,18 @@ set(SRC
 	BKE_speaker.h
 	BKE_subsurf.h
 	BKE_suggestions.h
+	BKE_tessmesh.h
 	BKE_text.h
 	BKE_texture.h
+	BKE_tracking.h
 	BKE_unit.h
 	BKE_utildefines.h
 	BKE_world.h
 	BKE_writeavi.h
-	BKE_writeffmpeg.h
 	BKE_writeframeserver.h
 	depsgraph_private.h
-	intern/CCGSubSurf.h
-	intern/bmesh_private.h
 	nla_private.h
+	intern/CCGSubSurf.h
 )
 
 add_definitions(-DGLEW_STATIC)
@@ -297,6 +293,10 @@ if(WITH_CODEC_QUICKTIME)
 endif()
 
 if(WITH_CODEC_FFMPEG)
+	list(APPEND SRC
+		intern/writeffmpeg.c
+		BKE_writeffmpeg.h
+	)
 	list(APPEND INC
 		../../../intern/ffmpeg
 	)
@@ -304,6 +304,10 @@ if(WITH_CODEC_FFMPEG)
 		${FFMPEG_INCLUDE_DIRS}
 	)
 	add_definitions(-DWITH_FFMPEG)
+
+	remove_strict_flags_file(
+		intern/writeffmpeg.c
+	)
 endif()
 
 if(WITH_PYTHON)
@@ -324,12 +328,34 @@ if(WITH_OPENMP)
 	add_definitions(-DPARALLEL=1)
 endif()
 
-if(NOT WITH_MOD_FLUID)
-	add_definitions(-DDISABLE_ELBEEM)
+if(WITH_MOD_FLUID)
+	list(APPEND INC
+		../../../intern/elbeem/extern
+	)
+	add_definitions(-DWITH_MOD_FLUID)
 endif()
 
 if(WITH_MOD_SMOKE)
+	list(APPEND INC
+		../../../intern/smoke/extern
+	)
 	add_definitions(-DWITH_SMOKE)
+endif()
+
+if(WITH_MOD_OCEANSIM)
+	add_definitions(-DWITH_OCEANSIM)
+endif()
+
+if(WITH_MOD_DECIMATE)
+	list(APPEND INC
+		../../../intern/decimation/extern
+	)
+endif()
+
+if(WITH_MOD_BOOLEAN)
+	list(APPEND INC
+		../../../intern/bsp/extern
+	)
 endif()
 
 if(WITH_JACK)
@@ -360,6 +386,24 @@ if(WITH_GAMEENGINE)
 	)
 
 	add_definitions(-DWITH_GAMEENGINE)
+endif()
+
+if(WITH_LIBMV)
+	list(APPEND INC
+		../../../extern/libmv
+	)
+	add_definitions(-DWITH_LIBMV)
+endif()
+
+if(WITH_FFTW3)
+	list(APPEND INC_SYS
+		${FFTW3_INCLUDE_DIRS}
+	)
+	add_definitions(-DFFTW3=1)
+endif()
+
+if(WITH_INTERNATIONAL)
+	add_definitions(-DWITH_INTERNATIONAL)
 endif()
 
 ## Warnings as errors, this is too strict!

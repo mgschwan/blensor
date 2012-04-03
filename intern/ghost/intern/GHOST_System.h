@@ -30,8 +30,8 @@
  * Declaration of GHOST_System class.
  */
 
-#ifndef _GHOST_SYSTEM_H_
-#define _GHOST_SYSTEM_H_
+#ifndef __GHOST_SYSTEM_H__
+#define __GHOST_SYSTEM_H__
 
 #include "GHOST_ISystem.h"
 
@@ -97,7 +97,10 @@ public:
 	 * @param userData	Placeholder for user data.
 	 * @return A timer task (0 if timer task installation failed).
 	 */
-	virtual GHOST_ITimerTask* installTimer(GHOST_TUns64 delay, GHOST_TUns64 interval, GHOST_TimerProcPtr timerProc, GHOST_TUserDataPtr userData = 0);
+	virtual GHOST_ITimerTask* installTimer(GHOST_TUns64 delay,
+	                                       GHOST_TUns64 interval,
+	                                       GHOST_TimerProcPtr timerProc,
+	                                       GHOST_TUserDataPtr userData = 0);
 
 	/**
 	 * Removes a timer.
@@ -141,7 +144,16 @@ public:
 	 * @return	Indication of success.
 	 */
 	virtual GHOST_TSuccess beginFullScreen(const GHOST_DisplaySetting& setting, GHOST_IWindow** window,
-		const bool stereoVisual);
+		const bool stereoVisual, const GHOST_TUns16 numOfAASamples=0);
+		
+	/**
+	 * Updates the resolution while in fullscreen mode.
+	 * @param setting	The new setting of the display.
+	 * @param window	Window displayed in full screen.
+	 *
+	 * @return	Indication of success.
+	 */
+	virtual GHOST_TSuccess updateFullScreen(const GHOST_DisplaySetting& setting, GHOST_IWindow** window);
 
 	/**
 	 * Ends full screen mode.
@@ -276,7 +288,7 @@ public:
 	 * @return 				Returns the clipboard data
 	 *
 	 */
-	 virtual GHOST_TUns8* getClipboard(bool selection) const = 0;
+	virtual GHOST_TUns8* getClipboard(bool selection) const = 0;
 	  
 	  /**
 	   * Put data to the Clipboard
@@ -284,6 +296,13 @@ public:
 	   * @param selection	The clipboard to copy too only used on X11
 	   */
 	  virtual void putClipboard(GHOST_TInt8 *buffer, bool selection) const = 0;
+
+	 /**
+	 * Confirms quitting he program when there is just one window left open
+	 * in the application
+	 */
+	virtual int confirmQuit(GHOST_IWindow * window) const;
+
 
 	
 protected:
@@ -305,7 +324,7 @@ protected:
 	 * @return Indication of success.
 	 */
 	virtual GHOST_TSuccess createFullScreenWindow(GHOST_Window** window,
-		const bool stereoVisual);
+		const bool stereoVisual, const GHOST_TUns16 numOfAASamples=0);
 
 	/** The display manager (platform dependant). */
 	GHOST_DisplayManager* m_displayManager;
@@ -355,5 +374,5 @@ inline GHOST_NDOFManager* GHOST_System::getNDOFManager() const
 }
 #endif
 
-#endif // _GHOST_SYSTEM_H_
+#endif // __GHOST_SYSTEM_H__
 

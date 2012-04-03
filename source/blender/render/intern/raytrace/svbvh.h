@@ -32,8 +32,8 @@
 
 #ifdef __SSE__
  
-#ifndef RE_RAYTRACE_SVBVH_H
-#define RE_RAYTRACE_SVBVH_H
+#ifndef __SVBVH_H__
+#define __SVBVH_H__
 
 #include "bvh.h"
 #include "BLI_memarena.h"
@@ -224,7 +224,7 @@ struct Reorganize_SVBVH
 	
 	~Reorganize_SVBVH()
 	{
-		if(G.f & G_DEBUG) {
+		if(G.debug & G_DEBUG) {
 			printf("%f childs per node\n", childs_per_node / nodes);
 			printf("%d childs BB are useless\n", useless_bb);
 			for(int i=0; i<16; i++)
@@ -296,7 +296,7 @@ struct Reorganize_SVBVH
 		{
 			const static float def_bb[6] = { FLT_MAX, FLT_MAX, FLT_MAX, FLT_MIN, FLT_MIN, FLT_MIN };
 			alloc_childs--;
-			node->child[alloc_childs] = 0;
+			node->child[alloc_childs] = NULL;
 			copy_bb(node->child_bb+alloc_childs*6, def_bb);
 		}
 		

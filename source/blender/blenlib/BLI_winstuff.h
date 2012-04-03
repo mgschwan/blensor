@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
  
-#ifndef __WINSTUFF_H__
-#define __WINSTUFF_H__
+#ifndef __BLI_WINSTUFF_H__
+#define __BLI_WINSTUFF_H__
 
 /** \file BLI_winstuff.h
  *  \ingroup bli
@@ -124,7 +124,7 @@ struct dirent {
 
 typedef struct _DIR {
 	HANDLE handle;
-	WIN32_FIND_DATA data;
+	WIN32_FIND_DATAW data;
 	char path[MAX_PATH];
 	long dd_loc;
 	long dd_size;
@@ -150,5 +150,5 @@ int BLI_getInstallationDir(char *str);
 
 #endif /* _WIN32 */
 
-#endif /* __WINSTUFF_H__ */
+#endif /* __BLI_WINSTUFF_H__ */
 

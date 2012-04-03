@@ -28,8 +28,8 @@
  *  \ingroup editors
  */
 
-#ifndef ED_ANIM_API_H
-#define ED_ANIM_API_H
+#ifndef __ED_ANIM_API_H__
+#define __ED_ANIM_API_H__
 
 struct ID;
 struct ListBase;
@@ -339,7 +339,7 @@ short ANIM_animdata_context_getdata(bAnimContext *ac);
 
 /* ------------------------ Drawing TypeInfo -------------------------- */
 
-/* flag-setting behaviour */
+/* flag-setting behavior */
 typedef enum eAnimChannels_SetFlag {
 	ACHANNEL_SETFLAG_CLEAR = 0,		/* turn off */
 	ACHANNEL_SETFLAG_ADD,			/* turn on */
@@ -358,7 +358,7 @@ typedef enum eAnimChannel_Settings {
 } eAnimChannel_Settings;
 
 
-/* Drawing, mouse handling, and flag setting behaviour... */
+/* Drawing, mouse handling, and flag setting behavior... */
 typedef struct bAnimChannelType {
 	/* type data */
 		/* name of the channel type, for debugging */
@@ -427,7 +427,7 @@ void ANIM_channel_setting_set(bAnimContext *ac, bAnimListElem *ale, int setting,
  *	- anim_data: list of the all the anim channels that can be chosen
  *		-> filtered using ANIMFILTER_CHANNELS only, since if we took VISIBLE too,
  *		  then the channels under closed expanders get ignored...
- *	- ale_setting: the anim channel (not in the anim_data list directly, though occuring there)
+ *	- ale_setting: the anim channel (not in the anim_data list directly, though occurring there)
  *		with the new state of the setting that we want flushed up/down the hierarchy 
  *	- setting: type of setting to set
  *	- on: whether the visibility setting has been enabled or disabled 
@@ -462,10 +462,8 @@ enum {
 	DRAWCFRA_SHOW_NUMBOX	= (1<<0),
 		/* time indication in seconds or frames */
 	DRAWCFRA_UNIT_SECONDS 	= (1<<1),
-		/* show time-offset line */
-	DRAWCFRA_SHOW_TIMEOFS	= (1<<2),
 		/* draw indicator extra wide (for timeline) */
-	DRAWCFRA_WIDE			= (1<<3)
+	DRAWCFRA_WIDE			= (1<<2)
 } eAnimEditDraw_CurrentFrame; 
 
 /* main call to draw current-frame indicator in an Animation Editor */
@@ -607,5 +605,5 @@ void ED_operatormacros_action(void);
 
 /* ************************************************ */
 
-#endif /* ED_ANIM_API_H */
+#endif /* __ED_ANIM_API_H__ */
 

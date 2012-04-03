@@ -38,6 +38,7 @@
 #include "DNA_meshdata_types.h"
 #include "BKE_customdata.h"
 #include "BKE_material.h"
+#include "BKE_mesh.h"
 
 #include "collada_internal.h"
 
@@ -64,7 +65,10 @@ void GeometryExporter::operator()(Object *ob)
 	DerivedMesh *dm = mesh_get_derived_final(mScene, ob, CD_MASK_BAREMESH);
 #endif
 	Mesh *me = (Mesh*)ob->data;
+	BKE_mesh_tessface_ensure(me);
+
 	std::string geom_id = get_geometry_id(ob);
+	std::string geom_name = id_name(ob->data);
 	std::vector<Normal> nor;
 	std::vector<Face> norind;
 
@@ -78,7 +82,7 @@ void GeometryExporter::operator()(Object *ob)
 	create_normals(nor, norind, me);
 
 	// openMesh(geoId, geoName, meshId)
-	openMesh(geom_id);
+	openMesh(geom_id, geom_name);
 	
 	// writes <source> for vertex coords
 	createVertsSource(geom_id, me);
@@ -105,7 +109,7 @@ void GeometryExporter::operator()(Object *ob)
 
 	// XXX slow		
 	if (ob->totcol) {
-		for(int a = 0; a < ob->totcol; a++)	{
+		for (int a = 0; a < ob->totcol; a++)	{
 			createPolylist(a, has_uvs, has_color, ob, geom_id, norind);
 		}
 	}
@@ -196,7 +200,7 @@ void GeometryExporter::createPolylist(short material_index,
 		COLLADASW::Input input3(COLLADASW::InputSemantic::TEXCOORD,
 								makeUrl(makeTexcoordSourceId(geom_id, i)),
 								2, // offset always 2, this is only until we have optimized UV sets
-								i  // set number equals UV layer index
+								i  // set number equals UV map index
 								);
 		til.push_back(input3);
 	}
@@ -321,8 +325,8 @@ std::string GeometryExporter::makeTexcoordSourceId(std::string& geom_id, int lay
 void GeometryExporter::createTexcoordsSource(std::string geom_id, Mesh *me)
 {
 #if 0
-	int totfaces = dm->getNumFaces(dm);
-	MFace *mfaces = dm->getFaceArray(dm);
+	int totfaces = dm->getNumTessFaces(dm);
+	MFace *mfaces = dm->getTessFaceArray(dm);
 #endif
 	int totfaces = me->totface;
 	MFace *mfaces = me->mface;
@@ -456,12 +460,14 @@ void GeometryExporter::create_normals(std::vector<Normal> &nor, std::vector<Face
 	}
 }
 
-std::string GeometryExporter::getIdBySemantics(std::string geom_id, COLLADASW::InputSemantic::Semantics type, std::string other_suffix) {
+std::string GeometryExporter::getIdBySemantics(std::string geom_id, COLLADASW::InputSemantic::Semantics type, std::string other_suffix)
+{
 	return geom_id + getSuffixBySemantic(type) + other_suffix;
 }
 
 
-COLLADASW::URI GeometryExporter::getUrlBySemantics(std::string geom_id, COLLADASW::InputSemantic::Semantics type, std::string other_suffix) {
+COLLADASW::URI GeometryExporter::getUrlBySemantics(std::string geom_id, COLLADASW::InputSemantic::Semantics type, std::string other_suffix)
+{
 	
 	std::string id(getIdBySemantics(geom_id, type, other_suffix));
 	return COLLADASW::URI(COLLADABU::Utils::EMPTY_STRING, id);

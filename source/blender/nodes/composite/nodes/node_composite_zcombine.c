@@ -36,10 +36,10 @@
 /* **************** Z COMBINE ******************** */
 	/* lazy coder note: node->custom2 is abused to send signal */
 static bNodeSocketTemplate cmp_node_zcombine_in[]= {
-	{	SOCK_RGBA, 1, "Image",		0.8f, 0.8f, 0.8f, 1.0f},
-	{	SOCK_FLOAT, 1, "Z",			0.8f, 0.8f, 0.8f, 1.0f, 0.0f, 10000.0f, PROP_NONE},
-	{	SOCK_RGBA, 1, "Image",		0.8f, 0.8f, 0.8f, 1.0f},
-	{	SOCK_FLOAT, 1, "Z",			0.8f, 0.8f, 0.8f, 1.0f, 0.0f, 10000.0f, PROP_NONE},
+	{	SOCK_RGBA, 1, "Image",		1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_FLOAT, 1, "Z",			1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 10000.0f, PROP_NONE},
+	{	SOCK_RGBA, 1, "Image",		1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_FLOAT, 1, "Z",			1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 10000.0f, PROP_NONE},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_zcombine_out[]= {
@@ -53,7 +53,7 @@ static void do_zcombine(bNode *node, float *out, float *src1, float *z1, float *
 	float alpha;
 	float malpha;
 	
-	if(*z1 <= *z2) {
+	if (*z1 <= *z2) {
 		if (node->custom1) {
 			// use alpha in combine operation
 			alpha= src1[3];
@@ -65,7 +65,7 @@ static void do_zcombine(bNode *node, float *out, float *src1, float *z1, float *
 		}
 		else {
 			// do combination based solely on z value
-			QUATCOPY(out, src1);
+			copy_v4_v4(out, src1);
 		}
 	}
 	else {
@@ -80,19 +80,19 @@ static void do_zcombine(bNode *node, float *out, float *src1, float *z1, float *
 		}
 		else {
 			// do combination based solely on z value
-			QUATCOPY(out, src1);
+			copy_v4_v4(out, src1);
 		}
 		
-		if(node->custom2)
+		if (node->custom2)
 			*z1= *z2;
 	}
 }
 
 static void do_zcombine_mask(bNode *node, float *out, float *z1, float *z2)
 {
-	if(*z1 > *z2) {
+	if (*z1 > *z2) {
 		*out= 1.0f;
-		if(node->custom2)
+		if (node->custom2)
 			*z1= *z2;
 	}
 }
@@ -145,24 +145,24 @@ static void node_composit_exec_zcombine(void *data, bNode *node, bNodeStack **in
 
 	/* stack order in: col z col z */
 	/* stack order out: col z */
-	if(out[0]->hasoutput==0 && out[1]->hasoutput==0) 
+	if (out[0]->hasoutput==0 && out[1]->hasoutput==0) 
 		return;
 	
 	/* no input image; do nothing now */
-	if(in[0]->data==NULL) {
+	if (in[0]->data==NULL) {
 		return;
 	}
 	
-	if(out[1]->hasoutput) {
+	if (out[1]->hasoutput) {
 		/* copy or make a buffer for for the first z value, here we write result in */
-		if(in[1]->data)
+		if (in[1]->data)
 			zbuf= dupalloc_compbuf(in[1]->data);
 		else {
 			float *zval;
 			int tot= cbuf->x*cbuf->y;
 			
 			zbuf= alloc_compbuf(cbuf->x, cbuf->y, CB_VAL, 1);
-			for(zval= zbuf->rect; tot; tot--, zval++)
+			for (zval= zbuf->rect; tot; tot--, zval++)
 				*zval= in[1]->vec[0];
 		}
 		/* lazy coder hack */
@@ -174,7 +174,7 @@ static void node_composit_exec_zcombine(void *data, bNode *node, bNodeStack **in
 		zbuf= in[1]->data;
 	}
 	
-	if(rd->scemode & R_FULL_SAMPLE) {
+	if (rd->scemode & R_FULL_SAMPLE) {
 		/* make output size of first input image */
 		CompBuf *stackbuf= alloc_compbuf(cbuf->x, cbuf->y, CB_RGBA, 1); // allocs
 		
@@ -199,16 +199,16 @@ static void node_composit_exec_zcombine(void *data, bNode *node, bNodeStack **in
 		/* convert to char */
 		aabuf= MEM_mallocN(cbuf->x*cbuf->y, "aa buf");
 		fp= mbuf->rect;
-		for(x= cbuf->x*cbuf->y-1; x>=0; x--)
-			if(fp[x]==0.0f) aabuf[x]= 0;
+		for (x= cbuf->x*cbuf->y-1; x>=0; x--)
+			if (fp[x]==0.0f) aabuf[x]= 0;
 			else aabuf[x]= 255;
 		
 		antialias_tagbuf(cbuf->x, cbuf->y, aabuf);
 		
 		/* convert to float */
 		fp= mbuf->rect;
-		for(x= cbuf->x*cbuf->y-1; x>=0; x--)
-			if(aabuf[x]>1)
+		for (x= cbuf->x*cbuf->y-1; x>=0; x--)
+			if (aabuf[x]>1)
 				fp[x]= (1.0f/255.0f)*(float)aabuf[x];
 		
 		composit3_pixel_processor(node, stackbuf, in[0]->data, in[0]->vec, in[2]->data, in[2]->vec, mbuf, NULL, 
@@ -222,15 +222,14 @@ static void node_composit_exec_zcombine(void *data, bNode *node, bNodeStack **in
 
 }
 
-void register_node_type_cmp_zcombine(ListBase *lb)
+void register_node_type_cmp_zcombine(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_ZCOMBINE, "Z Combine", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_ZCOMBINE, "Z Combine", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_zcombine_in, cmp_node_zcombine_out);
 	node_type_size(&ntype, 80, 40, 120);
 	node_type_exec(&ntype, node_composit_exec_zcombine);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-

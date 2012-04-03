@@ -73,6 +73,7 @@
 #include "ED_keyframing.h"
 #include "ED_mesh.h"
 #include "ED_screen.h"
+#include "ED_object.h"
 
 #include "UI_interface.h"
 #include "UI_resources.h"
@@ -108,7 +109,7 @@ void ED_armature_enter_posemode(bContext *C, Base *base)
 
 void ED_armature_exit_posemode(bContext *C, Base *base)
 {
-	if(base) {
+	if (base) {
 		Object *ob= base->object;
 		
 		ob->restore_mode = ob->mode;
@@ -153,18 +154,18 @@ static int pose_channel_in_IK_chain(Object *ob, bPoseChannel *pchan, int level)
 	
 	/* No need to check if constraint is active (has influence),
 	 * since all constraints with CONSTRAINT_IK_AUTO are active */
-	for(con= pchan->constraints.first; con; con= con->next) {
-		if(con->type==CONSTRAINT_TYPE_KINEMATIC) {
+	for (con= pchan->constraints.first; con; con= con->next) {
+		if (con->type==CONSTRAINT_TYPE_KINEMATIC) {
 			bKinematicConstraint *data= con->data;
-			if(data->rootbone == 0 || data->rootbone > level) {
-				if((data->flag & CONSTRAINT_IK_AUTO)==0)
+			if (data->rootbone == 0 || data->rootbone > level) {
+				if ((data->flag & CONSTRAINT_IK_AUTO)==0)
 					return 1;
 			}
 		}
 	}
-	for(bone= pchan->bone->childbase.first; bone; bone= bone->next) {
+	for (bone= pchan->bone->childbase.first; bone; bone= bone->next) {
 		pchan= get_pose_channel(ob->pose, bone->name);
-		if(pchan && pose_channel_in_IK_chain(ob, pchan, level + 1))
+		if (pchan && pose_channel_in_IK_chain(ob, pchan, level + 1))
 			return 1;
 	}
 	return 0;
@@ -199,7 +200,7 @@ void ED_pose_recalculate_paths(Scene *scene, Object *ob)
 /* For the object with pose/action: create path curves for selected bones 
  * This recalculates the WHOLE path within the pchan->pathsf and pchan->pathef range
  */
-static int pose_calculate_paths_exec (bContext *C, wmOperator *UNUSED(op))
+static int pose_calculate_paths_exec (bContext *C, wmOperator *op)
 {
 	ScrArea *sa= CTX_wm_area(C);
 	Scene *scene= CTX_data_scene(C);
@@ -207,7 +208,7 @@ static int pose_calculate_paths_exec (bContext *C, wmOperator *UNUSED(op))
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 		
@@ -218,7 +219,7 @@ static int pose_calculate_paths_exec (bContext *C, wmOperator *UNUSED(op))
 	CTX_DATA_BEGIN(C, bPoseChannel*, pchan, selected_pose_bones) 
 	{
 		/* verify makes sure that the selected bone has a bone with the appropriate settings */
-		animviz_verify_motionpaths(scene, ob, pchan);
+		animviz_verify_motionpaths(op->reports, scene, ob, pchan);
 	}
 	CTX_DATA_END;
 	
@@ -235,16 +236,16 @@ static int pose_calculate_paths_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_paths_calculate (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Calculate Bone Paths";
-	ot->idname= "POSE_OT_paths_calculate";
-	ot->description= "Calculate paths for the selected bones";
+	ot->name = "Calculate Bone Paths";
+	ot->idname = "POSE_OT_paths_calculate";
+	ot->description = "Calculate paths for the selected bones";
 	
 	/* api callbacks */
-	ot->exec= pose_calculate_paths_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_calculate_paths_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 /* --------- */
@@ -255,7 +256,7 @@ static void ED_pose_clear_paths(Object *ob)
 	bPoseChannel *pchan;
 	short skipped = 0;
 	
-	if ELEM(NULL, ob, ob->pose)
+	if (ELEM(NULL, ob, ob->pose))
 		return;
 	
 	/* free the motionpath blocks, but also take note of whether we skipped some... */
@@ -283,12 +284,12 @@ static int pose_clear_paths_exec (bContext *C, wmOperator *UNUSED(op))
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 		
 	/* only continue if there's an object */
-	if ELEM(NULL, ob, ob->pose)
+	if (ELEM(NULL, ob, ob->pose))
 		return OPERATOR_CANCELLED;
 	
 	/* use the backend function for this */
@@ -303,13 +304,13 @@ static int pose_clear_paths_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_paths_clear (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Clear Bone Paths";
-	ot->idname= "POSE_OT_paths_clear";
-	ot->description= "Clear path caches for selected bones";
+	ot->name = "Clear Bone Paths";
+	ot->idname = "POSE_OT_paths_clear";
+	ot->description = "Clear path caches for selected bones";
 	
 	/* api callbacks */
-	ot->exec= pose_clear_paths_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_clear_paths_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
@@ -337,7 +338,7 @@ static int pose_select_constraint_target_exec(bContext *C, wmOperator *UNUSED(op
 					for (ct= targets.first; ct; ct= ct->next) {
 						if ((ct->tar == ob) && (ct->subtarget[0])) {
 							bPoseChannel *pchanc= get_pose_channel(ob->pose, ct->subtarget);
-							if((pchanc) && !(pchanc->bone->flag & BONE_UNSELECTABLE)) {
+							if ((pchanc) && !(pchanc->bone->flag & BONE_UNSELECTABLE)) {
 								pchanc->bone->flag |= BONE_SELECTED|BONE_TIPSEL|BONE_ROOTSEL;
 								found= 1;
 							}
@@ -363,16 +364,16 @@ static int pose_select_constraint_target_exec(bContext *C, wmOperator *UNUSED(op
 void POSE_OT_select_constraint_target(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Select Constraint Target";
-	ot->idname= "POSE_OT_select_constraint_target";
-	ot->description= "Select bones used as targets for the currently selected bones";
+	ot->name = "Select Constraint Target";
+	ot->idname = "POSE_OT_select_constraint_target";
+	ot->description = "Select bones used as targets for the currently selected bones";
 	
 	/* api callbacks */
-	ot->exec= pose_select_constraint_target_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_select_constraint_target_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 /* ******************* select hierarchy operator ************* */
@@ -406,8 +407,30 @@ static int pose_select_hierarchy_exec(bContext *C, wmOperator *op)
 					}
 				} 
 				else { /* direction == BONE_SELECT_CHILD */
+
+					/* the child member is only assigned to connected bones, see [#30340] */
+#if 0
 					if (pchan->child == NULL) continue;
 					else chbone = pchan->child->bone;
+#else
+					/* instead. find _any_ visible child bone, using the first one is a little arbitrary  - campbell */
+					chbone = pchan->child ? pchan->child->bone : NULL;
+					if (chbone == NULL) {
+						bPoseChannel *pchan_child;
+
+						for (pchan_child = ob->pose->chanbase.first; pchan_child; pchan_child = pchan_child->next) {
+							/* possible we have multiple children, some invisible */
+							if (PBONE_VISIBLE(arm, pchan_child->bone)) {
+								if (pchan_child->parent == pchan) {
+									chbone = pchan_child->bone;
+									break;
+								}
+							}
+						}
+					}
+
+					if (chbone == NULL) continue;
+#endif
 					
 					if (PBONE_VISIBLE(arm, chbone)) {
 						if (!add_to_sel) curbone->flag &= ~BONE_SELECTED;
@@ -440,19 +463,19 @@ void POSE_OT_select_hierarchy(wmOperatorType *ot)
 	};
 	
 	/* identifiers */
-	ot->name= "Select Hierarchy";
-	ot->idname= "POSE_OT_select_hierarchy";
-	ot->description= "Select immediate parent/children of selected bones";
+	ot->name = "Select Hierarchy";
+	ot->idname = "POSE_OT_select_hierarchy";
+	ot->description = "Select immediate parent/children of selected bones";
 	
 	/* api callbacks */
-	ot->exec= pose_select_hierarchy_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_select_hierarchy_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* props */
-	ot->prop= RNA_def_enum(ot->srna, "direction", direction_items, BONE_SELECT_PARENT, "Direction", "");
+	ot->prop = RNA_def_enum(ot->srna, "direction", direction_items, BONE_SELECT_PARENT, "Direction", "");
 	RNA_def_boolean(ot->srna, "extend", 0, "Add to Selection", "");
 	
 }
@@ -496,7 +519,7 @@ static short pose_select_same_group (bContext *C, Object *ob, short extend)
 	}
 	CTX_DATA_END;
 	
-	/* small optimisation: only loop through bones a second time if there are any groups tagged */
+	/* small optimization: only loop through bones a second time if there are any groups tagged */
 	if (tagged) {
 		/* only if group matches (and is not selected or current bone) */
 		CTX_DATA_BEGIN(C, bPoseChannel *, pchan, visible_pose_bones) 
@@ -660,21 +683,21 @@ void POSE_OT_select_grouped (wmOperatorType *ot)
 	};
 
 	/* identifiers */
-	ot->name= "Select Grouped";
+	ot->name = "Select Grouped";
 	ot->description = "Select all visible bones grouped by similar properties";
-	ot->idname= "POSE_OT_select_grouped";
+	ot->idname = "POSE_OT_select_grouped";
 	
 	/* api callbacks */
-	ot->invoke= WM_menu_invoke;
-	ot->exec= pose_select_grouped_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = WM_menu_invoke;
+	ot->exec = pose_select_grouped_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
 	RNA_def_boolean(ot->srna, "extend", FALSE, "Extend", "Extend selection instead of deselecting everything first");
-	ot->prop= RNA_def_enum(ot->srna, "type", prop_select_grouped_types, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", prop_select_grouped_types, 0, "Type", "");
 }
 
 
@@ -686,23 +709,23 @@ static int pose_bone_flip_active_exec (bContext *C, wmOperator *UNUSED(op))
 	Object *ob_act= CTX_data_active_object(C);
 	Object *ob= object_pose_armature_get(ob_act);
 
-	if(ob && (ob->mode & OB_MODE_POSE)) {
+	if (ob && (ob->mode & OB_MODE_POSE)) {
 		bArmature *arm= ob->data;
 
-		if(arm->act_bone) {
+		if (arm->act_bone) {
 			bPoseChannel *pchanf;
 			char name[MAXBONENAME];
 			flip_side_name(name, arm->act_bone->name, TRUE);
 
 			pchanf= get_pose_channel(ob->pose, name);
-			if(pchanf && pchanf->bone != arm->act_bone) {
+			if (pchanf && pchanf->bone != arm->act_bone) {
 				arm->act_bone->flag &= ~BONE_SELECTED;
 				pchanf->bone->flag |= BONE_SELECTED;
 
 				arm->act_bone= pchanf->bone;
 
 				/* in weightpaint we select the associated vertex group too */
-				if(ob_act->mode & OB_MODE_WEIGHT_PAINT) {
+				if (ob_act->mode & OB_MODE_WEIGHT_PAINT) {
 					ED_vgroup_select_by_name(ob_act, name);
 					DAG_id_tag_update(&ob_act->id, OB_RECALC_DATA);
 				}
@@ -720,13 +743,13 @@ static int pose_bone_flip_active_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_select_flip_active(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Flip Selected Active Bone";
-	ot->idname= "POSE_OT_select_flip_active";
-	ot->description= "Activate the bone with a flipped name";
+	ot->name = "Flip Selected Active Bone";
+	ot->idname = "POSE_OT_select_flip_active";
+	ot->description = "Activate the bone with a flipped name";
 	
 	/* api callbacks */
-	ot->exec= pose_bone_flip_active_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_bone_flip_active_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
@@ -754,7 +777,7 @@ static void pose_copy_menu(Scene *scene)
 	pchanact= pchan;
 	arm= ob->data;
 
-	/* if proxy-protected bones selected, some things (such as locks + displays) shouldn't be changable, 
+	/* if proxy-protected bones selected, some things (such as locks + displays) shouldn't be changeable,
 	 * but for constraints (just add local constraints)
 	 */
 	if (pose_has_protected_selected(ob, 0)) {
@@ -775,7 +798,7 @@ static void pose_copy_menu(Scene *scene)
 	if (nr <= 0) 
 		return;
 	
-	if (nr != 5)  {
+	if (nr != 5) {
 		for (pchan= ob->pose->chanbase.first; pchan; pchan= pchan->next) {
 			if ( (arm->layer & pchan->bone->layer) &&
 				 (pchan->bone->flag & BONE_SELECTED) &&
@@ -783,14 +806,14 @@ static void pose_copy_menu(Scene *scene)
 			{
 				switch (nr) {
 					case 1: /* Local Location */
-						VECCOPY(pchan->loc, pchanact->loc);
+						copy_v3_v3(pchan->loc, pchanact->loc);
 						break;
 					case 2: /* Local Rotation */
-						QUATCOPY(pchan->quat, pchanact->quat);
-						VECCOPY(pchan->eul, pchanact->eul);
+						copy_qt_qt(pchan->quat, pchanact->quat);
+						copy_v3_v3(pchan->eul, pchanact->eul);
 						break;
 					case 3: /* Local Size */
-						VECCOPY(pchan->size, pchanact->size);
+						copy_v3_v3(pchan->size, pchanact->size);
 						break;
 					case 4: /* All Constraints */
 					{
@@ -822,9 +845,9 @@ static void pose_copy_menu(Scene *scene)
 					case 7: /* IK (DOF) settings */
 					{
 						pchan->ikflag = pchanact->ikflag;
-						VECCOPY(pchan->limitmin, pchanact->limitmin);
-						VECCOPY(pchan->limitmax, pchanact->limitmax);
-						VECCOPY(pchan->stiffness, pchanact->stiffness);
+						copy_v3_v3(pchan->limitmin, pchanact->limitmin);
+						copy_v3_v3(pchan->limitmax, pchanact->limitmax);
+						copy_v3_v3(pchan->stiffness, pchanact->stiffness);
 						pchan->ikstretch= pchanact->ikstretch;
 						pchan->ikrotweight= pchanact->ikrotweight;
 						pchan->iklinweight= pchanact->iklinweight;
@@ -861,7 +884,7 @@ static void pose_copy_menu(Scene *scene)
 						
 						armature_mat_pose_to_bone(pchan, pchanact->pose_mat, delta_mat);
 						mat4_to_size( size,delta_mat);
-						VECCOPY(pchan->size, size);
+						copy_v3_v3(pchan->size, size);
 					}
 				}
 			}
@@ -875,7 +898,7 @@ static void pose_copy_menu(Scene *scene)
 		BLI_duplicatelist(&const_copy, &(pchanact->constraints));
 		
 		/* build the puplist of constraints */
-		for (con = pchanact->constraints.first, i=0; con; con=con->next, i++){
+		for (con = pchanact->constraints.first, i=0; con; con=con->next, i++) {
 			const_toggle[i]= 1;
 //			add_numbut(i, TOG|INT, con->name, 0, 0, &(const_toggle[i]), "");
 		}
@@ -945,7 +968,7 @@ void free_posebuf(void)
 		bPoseChannel *pchan;
 		
 		for (pchan= g_posebuf->chanbase.first; pchan; pchan= pchan->next) {
-			if(pchan->prop) {
+			if (pchan->prop) {
 				IDP_FreeProperty(pchan->prop);
 				MEM_freeN(pchan->prop);
 			}
@@ -967,8 +990,8 @@ static void set_pose_keys (Object *ob)
 	bArmature *arm= ob->data;
 	bPoseChannel *chan;
 
-	if (ob->pose){
-		for (chan=ob->pose->chanbase.first; chan; chan=chan->next){
+	if (ob->pose) {
+		for (chan=ob->pose->chanbase.first; chan; chan=chan->next) {
 			Bone *bone= chan->bone;
 			if ((bone) && (bone->flag & BONE_SELECTED) && (arm->layer & bone->layer))
 				chan->flag |= POSE_KEY;	
@@ -989,7 +1012,7 @@ static void set_pose_keys (Object *ob)
 static bPoseChannel *pose_bone_do_paste (Object *ob, bPoseChannel *chan, short selOnly, short flip)
 {
 	bPoseChannel *pchan;
-	char name[32];
+	char name[MAXBONENAME];
 	short paste_ok;
 	
 	/* get the name - if flipping, we must flip this first */
@@ -1014,22 +1037,22 @@ static bPoseChannel *pose_bone_do_paste (Object *ob, bPoseChannel *chan, short s
 		/* only loc rot size 
 		 *	- only copies transform info for the pose 
 		 */
-		VECCOPY(pchan->loc, chan->loc);
-		VECCOPY(pchan->size, chan->size);
+		copy_v3_v3(pchan->loc, chan->loc);
+		copy_v3_v3(pchan->size, chan->size);
 		pchan->flag= chan->flag;
 		
 		/* check if rotation modes are compatible (i.e. do they need any conversions) */
 		if (pchan->rotmode == chan->rotmode) {
 			/* copy the type of rotation in use */
 			if (pchan->rotmode > 0) {
-				VECCOPY(pchan->eul, chan->eul);
+				copy_v3_v3(pchan->eul, chan->eul);
 			}
 			else if (pchan->rotmode == ROT_MODE_AXISANGLE) {
-				VECCOPY(pchan->rotAxis, chan->rotAxis);
+				copy_v3_v3(pchan->rotAxis, chan->rotAxis);
 				pchan->rotAngle = chan->rotAngle;
 			}
 			else {
-				QUATCOPY(pchan->quat, chan->quat);
+				copy_qt_qt(pchan->quat, chan->quat);
 			}
 		}
 		else if (pchan->rotmode > 0) {
@@ -1109,7 +1132,7 @@ static int pose_copy_exec (bContext *C, wmOperator *op)
 	Object *ob= object_pose_armature_get(CTX_data_active_object(C));
 	
 	/* sanity checking */
-	if ELEM(NULL, ob, ob->pose) {
+	if (ELEM(NULL, ob, ob->pose)) {
 		BKE_report(op->reports, RPT_ERROR, "No Pose to Copy");
 		return OPERATOR_CANCELLED;
 	}
@@ -1128,16 +1151,16 @@ static int pose_copy_exec (bContext *C, wmOperator *op)
 void POSE_OT_copy (wmOperatorType *ot) 
 {
 	/* identifiers */
-	ot->name= "Copy Pose";
-	ot->idname= "POSE_OT_copy";
-	ot->description= "Copies the current pose of the selected bones to copy/paste buffer";
+	ot->name = "Copy Pose";
+	ot->idname = "POSE_OT_copy";
+	ot->description = "Copies the current pose of the selected bones to copy/paste buffer";
 	
 	/* api callbacks */
-	ot->exec= pose_copy_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_copy_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flag */
-	ot->flag= OPTYPE_REGISTER;
+	ot->flag = OPTYPE_REGISTER;
 }
 
 /* ---- */
@@ -1154,7 +1177,7 @@ static int pose_paste_exec (bContext *C, wmOperator *op)
 	KeyingSet *ks = ANIM_get_keyingset_for_autokeying(scene, ANIM_KS_LOC_ROT_SCALE_ID);
 
 	/* sanity checks */
-	if ELEM(NULL, ob, ob->pose)
+	if (ELEM(NULL, ob, ob->pose))
 		return OPERATOR_CANCELLED;
 
 	if (g_posebuf == NULL) {
@@ -1163,7 +1186,7 @@ static int pose_paste_exec (bContext *C, wmOperator *op)
 	}
 	
 	/* if selOnly option is enabled, if user hasn't selected any bones, 
-	 * just go back to default behaviour to be more in line with other pose tools
+	 * just go back to default behavior to be more in line with other pose tools
 	 */
 	if (selOnly) {
 		if (CTX_DATA_COUNT(C, selected_pose_bones) == 0)
@@ -1195,16 +1218,16 @@ static int pose_paste_exec (bContext *C, wmOperator *op)
 void POSE_OT_paste (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Paste Pose";
-	ot->idname= "POSE_OT_paste";
-	ot->description= "Paste the stored pose on to the current pose";
+	ot->name = "Paste Pose";
+	ot->idname = "POSE_OT_paste";
+	ot->description = "Paste the stored pose on to the current pose";
 	
 	/* api callbacks */
-	ot->exec= pose_paste_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_paste_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flag */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
 	RNA_def_boolean(ot->srna, "flipped", FALSE, "Flipped on X-Axis", "Paste the stored pose flipped on to current pose");
@@ -1221,7 +1244,7 @@ static int pose_group_add_exec (bContext *C, wmOperator *UNUSED(op))
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 		
@@ -1241,13 +1264,13 @@ static int pose_group_add_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_group_add (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Add Bone Group";
-	ot->idname= "POSE_OT_group_add";
-	ot->description= "Add a new bone group";
+	ot->name = "Add Bone Group";
+	ot->idname = "POSE_OT_group_add";
+	ot->description = "Add a new bone group";
 	
 	/* api callbacks */
-	ot->exec= pose_group_add_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_group_add_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
@@ -1261,7 +1284,7 @@ static int pose_group_remove_exec (bContext *C, wmOperator *UNUSED(op))
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 	
@@ -1281,13 +1304,13 @@ static int pose_group_remove_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_group_remove (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Remove Bone Group";
-	ot->idname= "POSE_OT_group_remove";
-	ot->description= "Removes the active bone group";
+	ot->name = "Remove Bone Group";
+	ot->idname = "POSE_OT_group_remove";
+	ot->description = "Removes the active bone group";
 	
 	/* api callbacks */
-	ot->exec= pose_group_remove_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_group_remove_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
@@ -1309,7 +1332,7 @@ static int pose_groups_menu_invoke (bContext *C, wmOperator *op, wmEvent *UNUSED
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 	
@@ -1358,7 +1381,7 @@ static int pose_group_assign_exec (bContext *C, wmOperator *op)
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 	
@@ -1396,14 +1419,14 @@ static int pose_group_assign_exec (bContext *C, wmOperator *op)
 void POSE_OT_group_assign (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Add Selected to Bone Group";
-	ot->idname= "POSE_OT_group_assign";
-	ot->description= "Add selected bones to the chosen bone group";
+	ot->name = "Add Selected to Bone Group";
+	ot->idname = "POSE_OT_group_assign";
+	ot->description = "Add selected bones to the chosen bone group";
 	
 	/* api callbacks */
-	ot->invoke= pose_groups_menu_invoke;
-	ot->exec= pose_group_assign_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = pose_groups_menu_invoke;
+	ot->exec = pose_group_assign_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
@@ -1421,7 +1444,7 @@ static int pose_group_unassign_exec (bContext *C, wmOperator *UNUSED(op))
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 	
@@ -1452,13 +1475,13 @@ static int pose_group_unassign_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_group_unassign (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Remove Selected from Bone Groups";
-	ot->idname= "POSE_OT_group_unassign";
-	ot->description= "Remove selected bones from all bone groups";
+	ot->name = "Remove Selected from Bone Groups";
+	ot->idname = "POSE_OT_group_unassign";
+	ot->description = "Remove selected bones from all bone groups";
 	
 	/* api callbacks */
-	ot->exec= pose_group_unassign_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_group_unassign_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
@@ -1466,7 +1489,7 @@ void POSE_OT_group_unassign (wmOperatorType *ot)
 
 static int group_move_exec(bContext *C, wmOperator *op)
 {
-	Object *ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+	Object *ob = ED_object_context(C);
 	bPose *pose= (ob) ? ob->pose : NULL;
 	bPoseChannel *pchan;
 	bActionGroup *grp;
@@ -1533,16 +1556,16 @@ void POSE_OT_group_move(wmOperatorType *ot)
 	};
 
 	/* identifiers */
-	ot->name= "Move Bone Group";
-	ot->idname= "POSE_OT_group_move";
-	ot->description= "Change position of active Bone Group in list of Bone Groups";
+	ot->name = "Move Bone Group";
+	ot->idname = "POSE_OT_group_move";
+	ot->description = "Change position of active Bone Group in list of Bone Groups";
 
 	/* api callbacks */
-	ot->exec= group_move_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = group_move_exec;
+	ot->poll = ED_operator_posemode;
 
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 
 	RNA_def_enum(ot->srna, "direction", group_slot_move, 0, "Direction", "Direction to move, UP or DOWN");
 }
@@ -1564,7 +1587,7 @@ static int compare_agroup(const void *sgrp_a_ptr, const void *sgrp_b_ptr)
 
 static int group_sort_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	Object *ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+	Object *ob = ED_object_context(C);
 	bPose *pose= (ob) ? ob->pose : NULL;
 	bPoseChannel *pchan;
 	tSortActionGroup *agrp_array;
@@ -1617,16 +1640,16 @@ static int group_sort_exec(bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_group_sort(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Sort Bone Groups";
-	ot->idname= "POSE_OT_group_sort";
-	ot->description= "Sort Bone Groups by their names in ascending order";
+	ot->name = "Sort Bone Groups";
+	ot->idname = "POSE_OT_group_sort";
+	ot->description = "Sort Bone Groups by their names in ascending order";
 
 	/* api callbacks */
-	ot->exec= group_sort_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = group_sort_exec;
+	ot->poll = ED_operator_posemode;
 
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 static void pose_group_select(bContext *C, Object *ob, int select)
@@ -1656,7 +1679,7 @@ static int pose_group_select_exec (bContext *C, wmOperator *UNUSED(op))
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 	
@@ -1675,13 +1698,13 @@ static int pose_group_select_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_group_select (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Select Bones of Bone Group";
-	ot->idname= "POSE_OT_group_select";
-	ot->description= "Select bones in active Bone Group";
+	ot->name = "Select Bones of Bone Group";
+	ot->idname = "POSE_OT_group_select";
+	ot->description = "Select bones in active Bone Group";
 	
 	/* api callbacks */
-	ot->exec= pose_group_select_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_group_select_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
@@ -1694,7 +1717,7 @@ static int pose_group_deselect_exec (bContext *C, wmOperator *UNUSED(op))
 	
 	/* since this call may also be used from the buttons window, we need to check for where to get the object */
 	if (sa->spacetype == SPACE_BUTS) 
-		ob= CTX_data_pointer_get_type(C, "object", &RNA_Object).data;
+		ob= ED_object_context(C);
 	else
 		ob= object_pose_armature_get(CTX_data_active_object(C));
 	
@@ -1713,13 +1736,13 @@ static int pose_group_deselect_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_group_deselect (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Deselect Bone Group";
-	ot->idname= "POSE_OT_group_deselect";
-	ot->description= "Deselect bones of active Bone Group";
+	ot->name = "Deselect Bone Group";
+	ot->idname = "POSE_OT_group_deselect";
+	ot->description = "Deselect bones of active Bone Group";
 	
 	/* api callbacks */
-	ot->exec= pose_group_deselect_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_group_deselect_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
@@ -1740,7 +1763,7 @@ static int pose_flip_names_exec (bContext *C, wmOperator *UNUSED(op))
 	/* loop through selected bones, auto-naming them */
 	CTX_DATA_BEGIN(C, bPoseChannel*, pchan, selected_pose_bones)
 	{
-		char newname[32];
+		char newname[MAXBONENAME];
 		flip_side_name(newname, pchan->name, TRUE);
 		ED_armature_bone_rename(arm, pchan->name, newname);
 	}
@@ -1758,16 +1781,16 @@ static int pose_flip_names_exec (bContext *C, wmOperator *UNUSED(op))
 void POSE_OT_flip_names (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Flip Names";
-	ot->idname= "POSE_OT_flip_names";
-	ot->description= "Flips (and corrects) the axis suffixes of the the names of selected bones";
+	ot->name = "Flip Names";
+	ot->idname = "POSE_OT_flip_names";
+	ot->description = "Flips (and corrects) the axis suffixes of the the names of selected bones";
 	
 	/* api callbacks */
-	ot->exec= pose_flip_names_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_flip_names_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 /* ------------------ */
@@ -1776,7 +1799,7 @@ static int pose_autoside_names_exec (bContext *C, wmOperator *op)
 {
 	Object *ob= object_pose_armature_get(CTX_data_active_object(C));
 	bArmature *arm;
-	char newname[32];
+	char newname[MAXBONENAME];
 	short axis= RNA_enum_get(op->ptr, "axis");
 	
 	/* paranoia checks */
@@ -1788,7 +1811,7 @@ static int pose_autoside_names_exec (bContext *C, wmOperator *op)
 	CTX_DATA_BEGIN(C, bPoseChannel*, pchan, selected_pose_bones)
 	{
 		BLI_strncpy(newname, pchan->name, sizeof(newname));
-		if(bone_autoside_name(newname, 1, axis, pchan->bone->head[axis], pchan->bone->tail[axis]))
+		if (bone_autoside_name(newname, 1, axis, pchan->bone->head[axis], pchan->bone->tail[axis]))
 			ED_armature_bone_rename(arm, pchan->name, newname);
 	}
 	CTX_DATA_END;
@@ -1811,20 +1834,20 @@ void POSE_OT_autoside_names (wmOperatorType *ot)
 		{0, NULL, 0, NULL, NULL}};
 	
 	/* identifiers */
-	ot->name= "AutoName by Axis";
-	ot->idname= "POSE_OT_autoside_names";
-	ot->description= "Automatically renames the selected bones according to which side of the target axis they fall on";
+	ot->name = "AutoName by Axis";
+	ot->idname = "POSE_OT_autoside_names";
+	ot->description = "Automatically renames the selected bones according to which side of the target axis they fall on";
 	
 	/* api callbacks */
-	ot->invoke= WM_menu_invoke;
-	ot->exec= pose_autoside_names_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = WM_menu_invoke;
+	ot->exec = pose_autoside_names_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* settings */
-	ot->prop= RNA_def_enum(ot->srna, "axis", axis_items, 0, "Axis", "Axis tag names with");
+	ot->prop = RNA_def_enum(ot->srna, "axis", axis_items, 0, "Axis", "Axis tag names with");
 }
 
 /* ********************************************** */
@@ -1851,20 +1874,20 @@ static int pose_bone_rotmode_exec (bContext *C, wmOperator *op)
 void POSE_OT_rotation_mode_set (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Set Rotation Mode";
-	ot->idname= "POSE_OT_rotation_mode_set";
-	ot->description= "Set the rotation representation used by selected bones";
+	ot->name = "Set Rotation Mode";
+	ot->idname = "POSE_OT_rotation_mode_set";
+	ot->description = "Set the rotation representation used by selected bones";
 	
 	/* callbacks */
-	ot->invoke= WM_menu_invoke;
-	ot->exec= pose_bone_rotmode_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = WM_menu_invoke;
+	ot->exec = pose_bone_rotmode_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop= RNA_def_enum(ot->srna, "type", posebone_rotmode_items, 0, "Rotation Mode", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", posebone_rotmode_items, 0, "Rotation Mode", "");
 }
 
 /* ********************************************** */
@@ -1910,16 +1933,16 @@ static int pose_armature_layers_showall_exec (bContext *C, wmOperator *op)
 void ARMATURE_OT_layers_show_all (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Show All Layers";
-	ot->idname= "ARMATURE_OT_layers_show_all";
-	ot->description= "Make all armature layers visible";
+	ot->name = "Show All Layers";
+	ot->idname = "ARMATURE_OT_layers_show_all";
+	ot->description = "Make all armature layers visible";
 	
 	/* callbacks */
-	ot->exec= pose_armature_layers_showall_exec;
-	ot->poll= pose_armature_layers_showall_poll;
+	ot->exec = pose_armature_layers_showall_exec;
+	ot->poll = pose_armature_layers_showall_poll;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
 	ot->prop = RNA_def_boolean(ot->srna, "all", 1, "All Layers", "Enable all layers or just the first 16 (top row)");
@@ -1976,17 +1999,17 @@ static int pose_armature_layers_exec (bContext *C, wmOperator *op)
 void POSE_OT_armature_layers (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Change Armature Layers";
-	ot->idname= "POSE_OT_armature_layers";
-	ot->description= "Change the visible armature layers";
+	ot->name = "Change Armature Layers";
+	ot->idname = "POSE_OT_armature_layers";
+	ot->description = "Change the visible armature layers";
 	
 	/* callbacks */
-	ot->invoke= pose_armature_layers_invoke;
-	ot->exec= pose_armature_layers_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = pose_armature_layers_invoke;
+	ot->exec = pose_armature_layers_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
 	RNA_def_boolean_layer_member(ot->srna, "layers", 32, NULL, "Layer", "Armature layers to make visible");
@@ -1995,17 +2018,17 @@ void POSE_OT_armature_layers (wmOperatorType *ot)
 void ARMATURE_OT_armature_layers (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Change Armature Layers";
-	ot->idname= "ARMATURE_OT_armature_layers";
-	ot->description= "Change the visible armature layers";
+	ot->name = "Change Armature Layers";
+	ot->idname = "ARMATURE_OT_armature_layers";
+	ot->description = "Change the visible armature layers";
 	
 	/* callbacks */
-	ot->invoke= pose_armature_layers_invoke;
-	ot->exec= pose_armature_layers_exec;
-	ot->poll= ED_operator_editarmature;
+	ot->invoke = pose_armature_layers_invoke;
+	ot->exec = pose_armature_layers_exec;
+	ot->poll = ED_operator_editarmature;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
 	RNA_def_boolean_layer_member(ot->srna, "layers", 32, NULL, "Layer", "Armature layers to make visible");
@@ -2045,7 +2068,7 @@ static int pose_bone_layers_exec (bContext *C, wmOperator *op)
 	PointerRNA ptr;
 	int layers[32]; /* hardcoded for now - we can only have 32 armature layers, so this should be fine... */
 
-	if(ob==NULL || ob->data==NULL) {
+	if (ob==NULL || ob->data==NULL) {
 		return OPERATOR_CANCELLED;
 	}
 
@@ -2070,17 +2093,17 @@ static int pose_bone_layers_exec (bContext *C, wmOperator *op)
 void POSE_OT_bone_layers (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Change Bone Layers";
-	ot->idname= "POSE_OT_bone_layers";
-	ot->description= "Change the layers that the selected bones belong to";
+	ot->name = "Change Bone Layers";
+	ot->idname = "POSE_OT_bone_layers";
+	ot->description = "Change the layers that the selected bones belong to";
 	
 	/* callbacks */
-	ot->invoke= pose_bone_layers_invoke;
-	ot->exec= pose_bone_layers_exec;
-	ot->poll= ED_operator_posemode;
+	ot->invoke = pose_bone_layers_invoke;
+	ot->exec = pose_bone_layers_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
 	RNA_def_boolean_layer_member(ot->srna, "layers", 32, NULL, "Layer", "Armature layers that bone belongs to");
@@ -2142,17 +2165,17 @@ static int armature_bone_layers_exec (bContext *C, wmOperator *op)
 void ARMATURE_OT_bone_layers (wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name= "Change Bone Layers";
-	ot->idname= "ARMATURE_OT_bone_layers";
-	ot->description= "Change the layers that the selected bones belong to";
+	ot->name = "Change Bone Layers";
+	ot->idname = "ARMATURE_OT_bone_layers";
+	ot->description = "Change the layers that the selected bones belong to";
 	
 	/* callbacks */
-	ot->invoke= armature_bone_layers_invoke;
-	ot->exec= armature_bone_layers_exec;
-	ot->poll= ED_operator_editarmature;
+	ot->invoke = armature_bone_layers_invoke;
+	ot->exec = armature_bone_layers_exec;
+	ot->poll = ED_operator_editarmature;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 	
 	/* properties */
 	RNA_def_boolean_layer_member(ot->srna, "layers", 32, NULL, "Layer", "Armature layers that bone belongs to");
@@ -2191,15 +2214,15 @@ void POSE_OT_quaternions_flip (wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Flip Quats";
-	ot->idname= "POSE_OT_quaternions_flip";
-	ot->description= "Flip quaternion values to achieve desired rotations, while maintaining the same orientations";
+	ot->idname = "POSE_OT_quaternions_flip";
+	ot->description = "Flip quaternion values to achieve desired rotations, while maintaining the same orientations";
 	
 	/* callbacks */
-	ot->exec= pose_flip_quats_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_flip_quats_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 
 /* ********************************************** */
@@ -2267,14 +2290,14 @@ void POSE_OT_user_transforms_clear (wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Clear User Transforms";
-	ot->idname= "POSE_OT_user_transforms_clear";
-	ot->description= "Reset pose on selected bones to keyframed state";
+	ot->idname = "POSE_OT_user_transforms_clear";
+	ot->description = "Reset pose on selected bones to keyframed state";
 	
 	/* callbacks */
-	ot->exec= pose_clear_user_transforms_exec;
-	ot->poll= ED_operator_posemode;
+	ot->exec = pose_clear_user_transforms_exec;
+	ot->poll = ED_operator_posemode;
 	
 	/* flags */
-	ot->flag= OPTYPE_REGISTER|OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER|OPTYPE_UNDO;
 }
 

@@ -31,8 +31,8 @@
  */
 
 
-#ifndef BIF_MESHLAPLACIAN_H
-#define BIF_MESHLAPLACIAN_H
+#ifndef __MESHLAPLACIAN_H__
+#define __MESHLAPLACIAN_H__
 
 //#define RIGID_DEFORM
 
@@ -51,13 +51,8 @@ struct EditMesh;
 struct LaplacianSystem;
 typedef struct LaplacianSystem LaplacianSystem;
 
-LaplacianSystem *laplacian_construct_begin(int totvert, int totface, int lsq);
-
 void laplacian_add_vertex(LaplacianSystem *sys, float *co, int pinned);
 void laplacian_add_triangle(LaplacianSystem *sys, int v1, int v2, int v3);
-
-void laplacian_construct_end(LaplacianSystem *sys);
-void laplacian_delete(LaplacianSystem *sys);
 
 void laplacian_begin_solve(LaplacianSystem *sys, int index);
 void laplacian_add_right_hand_side(LaplacianSystem *sys, int v, float value);

@@ -26,12 +26,13 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_OBJECT_FLUIDSIM_H
-#define DNA_OBJECT_FLUIDSIM_H
 
 /** \file DNA_object_fluidsim.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_OBJECT_FLUIDSIM_H__
+#define __DNA_OBJECT_FLUIDSIM_H__
 
 #include "DNA_ID.h"
 
@@ -73,6 +74,9 @@ typedef struct FluidsimSettings {
 	float animStart, animEnd;
 	/* bake start end time (in blender frames) */
 	int bakeStart, bakeEnd;
+	/* offset for baked frames */
+	int frameOffset;
+	int pad;
 	/* g star param (LBM compressibility) */
 	float gstar;
 	/* activate refinement? */
@@ -88,8 +92,8 @@ typedef struct FluidsimSettings {
 	struct Mesh *meshBB;
 
 	/* store output path, and file prefix for baked fluid surface */
-	/* strlens; 80= FILE_MAXFILE, 160= FILE_MAXDIR */
-	char surfdataPath[240];
+	/* strlens; 256= FILE_MAXFILE, 768= FILE_MAXDIR */
+	char surfdataPath[1024];
 
 	/* store start coords of axis aligned bounding box together with size */
 	/* values are inited during derived mesh display */
@@ -139,8 +143,8 @@ typedef struct FluidsimSettings {
 
 	int lastgoodframe;
 	
-	int pad;
-
+	/* Simulation/flow rate control (i.e. old "Fac-Time") */
+	float animRate;
 } FluidsimSettings;
 
 /* ob->fluidsimSettings defines */
@@ -177,6 +181,11 @@ typedef struct FluidsimSettings {
 #define OB_FLUIDSIM_REVERSE			(1 << 0)
 #define OB_FLUIDSIM_ACTIVE			(1 << 1)
 #define OB_FLUIDSIM_OVERRIDE_TIME	(1 << 2)
+
+#define OB_FLUIDSIM_SURF_PREVIEW_OBJ_FNAME "fluidsurface_preview_####.bobj.gz"
+#define OB_FLUIDSIM_SURF_FINAL_OBJ_FNAME   "fluidsurface_final_####.bobj.gz"
+#define OB_FLUIDSIM_SURF_FINAL_VEL_FNAME   "fluidsurface_final_####.bvel.gz"
+#define OB_FLUIDSIM_SURF_PARTICLES_FNAME   "fluidsurface_particles_####.gz"
 
 #ifdef __cplusplus
 }

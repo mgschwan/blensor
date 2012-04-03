@@ -36,7 +36,7 @@
 /* **************** Hue Saturation ******************** */
 static bNodeSocketTemplate cmp_node_hue_sat_in[]= {
 	{	SOCK_FLOAT, 1, "Fac",			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f},
+	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_hue_sat_out[]= {
@@ -48,12 +48,12 @@ static void do_hue_sat_fac(bNode *node, float *out, float *in, float *fac)
 {
 	NodeHueSat *nhs= node->storage;
 	
-	if(*fac!=0.0f && (nhs->hue!=0.5f || nhs->sat!=1.0 || nhs->val!=1.0)) {
+	if (*fac!=0.0f && (nhs->hue!=0.5f || nhs->sat!=1.0f || nhs->val!=1.0f)) {
 		float col[3], hsv[3], mfac= 1.0f - *fac;
 		
 		rgb_to_hsv(in[0], in[1], in[2], hsv, hsv+1, hsv+2);
 		hsv[0]+= (nhs->hue - 0.5f);
-		if(hsv[0]>1.0) hsv[0]-=1.0; else if(hsv[0]<0.0) hsv[0]+= 1.0;
+		if (hsv[0]>1.0f) hsv[0]-=1.0f; else if (hsv[0]<0.0f) hsv[0]+= 1.0f;
 		hsv[1]*= nhs->sat;
 		hsv[2]*= nhs->val;
 		hsv_to_rgb(hsv[0], hsv[1], hsv[2], col, col+1, col+2);
@@ -64,7 +64,7 @@ static void do_hue_sat_fac(bNode *node, float *out, float *in, float *fac)
 		out[3]= in[3];
 	}
 	else {
-		QUATCOPY(out, in);
+		copy_v4_v4(out, in);
 	}
 }
 
@@ -72,10 +72,10 @@ static void node_composit_exec_hue_sat(void *UNUSED(data), bNode *node, bNodeSta
 {
 	/* stack order in: Fac, Image */
 	/* stack order out: Image */
-	if(out[0]->hasoutput==0) return;
+	if (out[0]->hasoutput==0) return;
 	
 	/* input no image? then only color operation */
-	if(in[1]->data==NULL) {
+	if (in[1]->data==NULL) {
 		do_hue_sat_fac(node, out[0]->vec, in[1]->vec, in[0]->vec);
 	}
 	else {
@@ -88,7 +88,7 @@ static void node_composit_exec_hue_sat(void *UNUSED(data), bNode *node, bNodeSta
 		out[0]->data= stackbuf;
 
 		/* get rid of intermediary cbuf if it's extra */		
-		if(stackbuf!=cbuf)
+		if (stackbuf!=cbuf)
 			free_compbuf(cbuf);
 	}
 }
@@ -102,19 +102,16 @@ static void node_composit_init_hue_sat(bNodeTree *UNUSED(ntree), bNode* node, bN
 	nhs->val= 1.0f;
 }
 
-void register_node_type_cmp_hue_sat(ListBase *lb)
+void register_node_type_cmp_hue_sat(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, CMP_NODE_HUE_SAT, "Hue Saturation Value", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, CMP_NODE_HUE_SAT, "Hue Saturation Value", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_hue_sat_in, cmp_node_hue_sat_out);
 	node_type_size(&ntype, 150, 80, 250);
 	node_type_init(&ntype, node_composit_init_hue_sat);
 	node_type_storage(&ntype, "NodeHueSat", node_free_standard_storage, node_copy_standard_storage);
 	node_type_exec(&ntype, node_composit_exec_hue_sat);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-
-
-

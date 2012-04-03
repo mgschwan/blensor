@@ -15,18 +15,6 @@
 #include <dynamicsurface.h>
 
 // ---------------------------------------------------------
-// Global externs
-// ---------------------------------------------------------
-
-// ---------------------------------------------------------
-// Local constants, typedefs, macros
-// ---------------------------------------------------------
-
-// ---------------------------------------------------------
-// Static function definitions
-// ---------------------------------------------------------
-
-// ---------------------------------------------------------
 // Member function definitions
 // ---------------------------------------------------------
 
@@ -37,56 +25,72 @@
 // --------------------------------------------------------
 
 void BroadPhaseGrid::build_acceleration_grid( AccelerationGrid& grid, 
-                                              std::vector<Vec3d>& xmins, 
-                                              std::vector<Vec3d>& xmaxs, 
-                                              double length_scale, 
-                                              double grid_padding )
+                                             std::vector<Vec3d>& xmins, 
+                                             std::vector<Vec3d>& xmaxs, 
+                                             std::vector<size_t>& indices,
+                                             double length_scale, 
+                                             double grid_padding )
 {
-
-   Vec3d xmax = xmaxs[0];
-   Vec3d xmin = xmins[0];
-   double maxdistance = 0;
-   
-   unsigned int n = xmins.size();
-   
-   for(unsigned int i = 0; i < n; i++)
-   {
-      update_minmax(xmins[i], xmin, xmax);
-      update_minmax(xmaxs[i], xmin, xmax);
-      maxdistance = std::max(maxdistance, mag(xmaxs[i] - xmins[i]));
-   }
-   
-   for(unsigned int i = 0; i < 3; i++)
-   {
-      xmin[i] -= 2*maxdistance + grid_padding;
-      xmax[i] += 2*maxdistance + grid_padding;
-   }
-   
-   Vec3ui dims(1,1,1);
-          
-   if(mag(xmax-xmin) > grid_padding)
-   {
-      for(unsigned int i = 0; i < 3; i++)
-      {
-         unsigned int d = (unsigned int)ceil((xmax[i] - xmin[i])/length_scale);
-         
-         if(d < 1) d = 1;
-         if(d > n) d = n;
-         dims[i] = d;
-      }
-   }
-      
-   grid.set(dims, xmin, xmax);
-   
-   for(unsigned int i = n; i > 0; i--)
-   {
-      unsigned int index = i - 1;
-      
-      // don't add inside-out AABBs
-      if ( xmins[index][0] > xmaxs[index][0] )  { continue; }
-      
-      grid.add_element(index, xmins[index], xmaxs[index]);
-   }
+    
+    assert( xmaxs.size() == xmins.size() );
+    assert( xmins.size() == indices.size() );
+    
+    if ( indices.empty() )
+    {
+        grid.clear();
+        return;
+    }
+    
+    Vec3d xmax = xmaxs[0];
+    Vec3d xmin = xmins[0];
+    double maxdistance = 0;
+    
+    size_t n = xmins.size();
+    
+    for(size_t i = 0; i < n; i++)
+    {
+        update_minmax(xmins[i], xmin, xmax);
+        update_minmax(xmaxs[i], xmin, xmax);
+        maxdistance = std::max(maxdistance, mag(xmaxs[i] - xmins[i]));
+    }
+    
+    for(unsigned int i = 0; i < 3; i++)
+    {
+        xmin[i] -= 2*maxdistance + grid_padding;
+        xmax[i] += 2*maxdistance + grid_padding;
+    }
+    
+    Vec3st dims(1,1,1);
+    
+    const size_t MAX_D = 2000;
+    
+    if(mag(xmax-xmin) > grid_padding)
+    {
+        for(unsigned int i = 0; i < 3; i++)
+        {
+            size_t d = (size_t)ceil((xmax[i] - xmin[i])/length_scale);
+            
+            if(d < 1) d = 1;
+            
+            if(d > MAX_D) 
+            {
+                d = MAX_D;
+            }
+            
+            dims[i] = d;
+        }
+    }
+    
+    grid.set(dims, xmin, xmax);
+    
+    // going backwards from n to 0, so hopefully the grid only has to allocate once
+    
+    for( ssize_t i = n-1; i >= 0; i-- )
+    {
+        // don't add inside-out AABBs
+        if ( xmins[i][0] > xmaxs[i][0] )  { continue; }
+        grid.add_element( indices[i], xmins[i], xmaxs[i]);
+    }
 }
 
 
@@ -96,88 +100,178 @@ void BroadPhaseGrid::build_acceleration_grid( AccelerationGrid& grid,
 ///
 // --------------------------------------------------------
 
-void BroadPhaseGrid::update_broad_phase_static( const DynamicSurface& surface )
+void BroadPhaseGrid::update_broad_phase( const DynamicSurface& surface, bool continuous )
 {
-   double grid_scale = surface.get_average_edge_length();
-   
-   {
-      unsigned int num_vertices = surface.m_positions.size();
-      std::vector<Vec3d> vertex_xmins(num_vertices), vertex_xmaxs(num_vertices);
-      for(unsigned int i = 0; i < num_vertices; i++)
-      {
-         surface.vertex_static_bounds(i, vertex_xmins[i], vertex_xmaxs[i]);
-      }      
-      build_acceleration_grid( m_vertex_grid, vertex_xmins, vertex_xmaxs, grid_scale, surface.m_proximity_epsilon );
-   }
-   
-   {
-      unsigned int num_edges = surface.m_mesh.m_edges.size();
-      std::vector<Vec3d> edge_xmins(num_edges), edge_xmaxs(num_edges);
-      for(unsigned int i = 0; i < num_edges; i++)
-      {
-         surface.edge_static_bounds(i, edge_xmins[i], edge_xmaxs[i]);
-      }      
-      if (num_edges)
-		  build_acceleration_grid( m_edge_grid, edge_xmins, edge_xmaxs, grid_scale, surface.m_proximity_epsilon );
-   }
-   
-   {
-      unsigned int num_triangles = surface.m_mesh.m_tris.size();
-      std::vector<Vec3d> tri_xmins(num_triangles), tri_xmaxs(num_triangles);
-      for(unsigned int i = 0; i < num_triangles; i++)
-      {
-         surface.triangle_static_bounds(i, tri_xmins[i], tri_xmaxs[i]);
-      }   
-	  
-      if (num_triangles)
-		  build_acceleration_grid( m_triangle_grid, tri_xmins, tri_xmaxs, grid_scale, surface.m_proximity_epsilon );  
-   }
-   
+    
+    double grid_scale = surface.get_average_edge_length();
+    
+    // 
+    // vertices
+    // 
+    
+    {
+        size_t num_vertices = surface.get_num_vertices();
+        
+        std::vector<Vec3d> solid_vertex_xmins, solid_vertex_xmaxs;
+        std::vector<size_t> solid_vertex_indices;
+        std::vector<Vec3d> dynamic_vertex_xmins, dynamic_vertex_xmaxs;
+        std::vector<size_t> dynamic_vertex_indices;
+        
+        for(size_t i = 0; i < num_vertices; i++)
+        {
+            Vec3d xmin, xmax;
+            
+            if ( continuous )
+            {
+                surface.vertex_continuous_bounds( i, xmin, xmax );
+            }
+            else
+            {
+                surface.vertex_static_bounds( i, xmin, xmax );
+            }
+            
+            if ( surface.vertex_is_solid( i ) )
+            {
+                solid_vertex_xmins.push_back( xmin );
+                solid_vertex_xmaxs.push_back( xmax );
+                solid_vertex_indices.push_back( i );
+            }
+            else
+            {
+                dynamic_vertex_xmins.push_back( xmin );
+                dynamic_vertex_xmaxs.push_back( xmax );
+                dynamic_vertex_indices.push_back( i );
+            }
+        }
+        
+        build_acceleration_grid( m_solid_vertex_grid,
+                                solid_vertex_xmins,
+                                solid_vertex_xmaxs,
+                                solid_vertex_indices,
+                                grid_scale,
+                                surface.m_aabb_padding );
+        
+        build_acceleration_grid( m_dynamic_vertex_grid,
+                                dynamic_vertex_xmins,
+                                dynamic_vertex_xmaxs,
+                                dynamic_vertex_indices,
+                                grid_scale,
+                                surface.m_aabb_padding );
+        
+    }
+    
+    //
+    // edges
+    //
+    
+    {
+        size_t num_edges = surface.m_mesh.m_edges.size();
+        
+        std::vector<Vec3d> solid_edge_xmins, solid_edge_xmaxs;
+        std::vector<size_t> solid_edge_indices;
+        std::vector<Vec3d> dynamic_edge_xmins, dynamic_edge_xmaxs;
+        std::vector<size_t> dynamic_edge_indices;
+        
+        for(size_t i = 0; i < num_edges; i++)
+        {
+            Vec3d xmin, xmax;
+            
+            if ( continuous )
+            {
+                surface.edge_continuous_bounds( i, xmin, xmax );
+            }
+            else
+            {
+                surface.edge_static_bounds( i, xmin, xmax );
+            }
+            
+            // if either vertex is solid, it has to go into the solid broad phase
+            if ( surface.edge_is_solid(i) )
+            {
+                solid_edge_xmins.push_back( xmin );
+                solid_edge_xmaxs.push_back( xmax );
+                solid_edge_indices.push_back( i );
+            }
+            else
+            {
+                dynamic_edge_xmins.push_back( xmin );
+                dynamic_edge_xmaxs.push_back( xmax );
+                dynamic_edge_indices.push_back( i );
+            }
+        }      
+        
+        build_acceleration_grid( m_solid_edge_grid,
+                                solid_edge_xmins,
+                                solid_edge_xmaxs,
+                                solid_edge_indices,
+                                grid_scale,
+                                surface.m_aabb_padding );
+        
+        build_acceleration_grid( m_dynamic_edge_grid,
+                                dynamic_edge_xmins,
+                                dynamic_edge_xmaxs,
+                                dynamic_edge_indices,
+                                grid_scale,
+                                surface.m_aabb_padding );
+        
+    }
+    
+    //
+    // triangles
+    //
+    
+    {
+        size_t num_triangles = surface.m_mesh.num_triangles();
+        
+        std::vector<Vec3d> solid_tri_xmins, solid_tri_xmaxs;
+        std::vector<size_t> solid_tri_indices;
+        std::vector<Vec3d> dynamic_tri_xmins, dynamic_tri_xmaxs;
+        std::vector<size_t> dynamic_tri_indices;
+        
+        for(size_t i = 0; i < num_triangles; i++)
+        {
+            Vec3d xmin, xmax;
+            
+            if ( continuous )
+            {
+                surface.triangle_continuous_bounds(i, xmin, xmax);
+            }
+            else
+            {
+                surface.triangle_static_bounds(i, xmin, xmax);
+            }
+            
+            if ( surface.triangle_is_solid( i ) )
+            {
+                solid_tri_xmins.push_back( xmin );
+                solid_tri_xmaxs.push_back( xmax );
+                solid_tri_indices.push_back( i );
+            }
+            else
+            {
+                dynamic_tri_xmins.push_back( xmin );
+                dynamic_tri_xmaxs.push_back( xmax );
+                dynamic_tri_indices.push_back( i );
+            }
+        }
+        
+        build_acceleration_grid( m_solid_triangle_grid,
+                                solid_tri_xmins,
+                                solid_tri_xmaxs,
+                                solid_tri_indices,
+                                grid_scale,
+                                surface.m_aabb_padding );
+        
+        build_acceleration_grid( m_dynamic_triangle_grid,
+                                dynamic_tri_xmins,
+                                dynamic_tri_xmaxs,
+                                dynamic_tri_indices,
+                                grid_scale,
+                                surface.m_aabb_padding );
+        
+    }
+    
 }
 
 
-
-// --------------------------------------------------------
-///
-/// Rebuild acceleration grids according to the given triangle mesh
-///
-// --------------------------------------------------------
-
-void BroadPhaseGrid::update_broad_phase_continuous( const DynamicSurface& surface )
-{
-   double grid_scale = surface.get_average_edge_length();
-   
-   {
-      unsigned int num_vertices = surface.m_positions.size();
-      std::vector<Vec3d> vertex_xmins(num_vertices), vertex_xmaxs(num_vertices);
-      for(unsigned int i = 0; i < num_vertices; i++)
-      {           
-         surface.vertex_continuous_bounds(i, vertex_xmins[i], vertex_xmaxs[i]);
-      }
-      build_acceleration_grid( m_vertex_grid, vertex_xmins, vertex_xmaxs, grid_scale, surface.m_proximity_epsilon );
-   }
-   
-   {
-      unsigned int num_edges = surface.m_mesh.m_edges.size();
-      std::vector<Vec3d> edge_xmins(num_edges), edge_xmaxs(num_edges);
-      for(unsigned int i = 0; i < num_edges; i++)
-      {
-         surface.edge_continuous_bounds(i, edge_xmins[i], edge_xmaxs[i]);
-      }
-      if (num_edges)
-		  build_acceleration_grid( m_edge_grid, edge_xmins, edge_xmaxs, grid_scale, surface.m_proximity_epsilon );
-   }
-   
-   {
-      unsigned int num_triangles = surface.m_mesh.m_tris.size();
-      std::vector<Vec3d> tri_xmins(num_triangles), tri_xmaxs(num_triangles);
-      for(unsigned int i = 0; i < num_triangles; i++)
-      {            
-         surface.triangle_continuous_bounds(i, tri_xmins[i], tri_xmaxs[i]);
-      }
-      if (num_triangles)
-		  build_acceleration_grid( m_triangle_grid, tri_xmins, tri_xmaxs, grid_scale, surface.m_proximity_epsilon );  
-   }
-   
-}
 

@@ -49,6 +49,9 @@ bool AUD_SequencerReader::isSeekable() const
 
 void AUD_SequencerReader::seek(int position)
 {
+	if(position < 0)
+		return;
+
 	m_position = position;
 
 	for(AUD_HandleIterator it = m_handles.begin(); it != m_handles.end(); it++)
@@ -176,6 +179,8 @@ void AUD_SequencerReader::read(int& length, bool& eos, sample_t* buffer)
 		}
 
 		m_factory->m_volume.read(frame, &volume);
+		if(m_factory->m_muted)
+			volume = 0.0f;
 		m_device.setVolume(volume);
 
 		m_factory->m_orientation.read(frame, q.get());

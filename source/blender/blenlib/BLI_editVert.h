@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BLI_EDITVERT_H
-#define BLI_EDITVERT_H
+#ifndef __BLI_EDITVERT_H__
+#define __BLI_EDITVERT_H__
 
 /** \file BLI_editVert.h
  *  \ingroup bli
@@ -42,7 +42,6 @@
 #include "BLO_sys_types.h" // for intptr_t support
 
 struct DerivedMesh;
-struct RetopoPaintData;
 
 /* note; changing this also might affect the undo copy in editmesh.c */
 typedef struct EditVert
@@ -65,8 +64,8 @@ typedef struct EditVert
 	short xs, ys; /* used to store a screenspace 2d projection of the verts */
 	
 	/* f stores selection eg. if (eve->f & SELECT) {...
-	h for hidden. if (!eve->h) {...
-	f1 and f2 can be used for temp data, clear them first*/
+	 * h for hidden. if (!eve->h) {...
+	 * f1 and f2 can be used for temp data, clear them first*/
 	unsigned char f, h, f1, f2; 
 	float bweight;
 	short fast;	/* only 0 or 1, for editmesh_fastmalloc, do not store temp data here! */
@@ -183,8 +182,6 @@ typedef struct EditMesh
 	 * derivedCage and derivedFinal
 	 */
 	int lastDataMask;
-
-	struct RetopoPaintData *retopo_paint_data;
 
 	CustomData vdata, edata, fdata;
 

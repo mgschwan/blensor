@@ -29,8 +29,8 @@
  *  \ingroup bgerast
  */
 
-#ifndef RAS_FRAMINGMANAGER_H
-#define RAS_FRAMINGMANAGER_H
+#ifndef __RAS_FRAMINGMANAGER_H__
+#define __RAS_FRAMINGMANAGER_H__
 
 #ifdef WITH_CXX_GUARDEDALLOC
 #include "MEM_guardedalloc.h"
@@ -39,7 +39,7 @@
 class RAS_Rect;
 
 /**
- * @section RAS_FrameSettings
+ * \section RAS_FrameSettings
  * This is a value type describing the framing used
  * by a particular scene in the game engine.
  * Each KX_Scene contains a RAS_FrameSetting describing
@@ -184,8 +184,16 @@ enum RAS_CullingMode
 	RAS_CULLING_NONE
 };
 
+/* Should match CAMERA_SENSOR_FIT... from DNA_camera_types.h */
+enum RAS_SensorFit
+{
+	RAS_SENSORFIT_AUTO = 0,
+	RAS_SENSORFIT_HOR,
+	RAS_SENSORFIT_VERT
+};
+
 /**
- * @section RAS_FramingManager
+ * \section RAS_FramingManager
  * This class helps to compute a view frustum
  * and a viewport rectangle given the 
  * above settings and a description of the 
@@ -229,6 +237,7 @@ public :
 		const float scale,
 		const float camnear,
 		const float camfar,
+		const short sensor_fit,
 		RAS_FrameFrustum &frustum
 	);
 
@@ -239,6 +248,7 @@ public :
 		const RAS_Rect &availableViewport,
 		const RAS_Rect &viewport,
 		const float lens,
+		const float sensor_x, const float sensor_y, const short sensor_fit,
 		const float camnear,
 		const float camfar,
 		RAS_FrameFrustum &frustum
@@ -250,6 +260,8 @@ public :
 		const float camnear,
 		const float camfar,
 		const float lens,
+		const float sensor_x, const float sensor_y,
+		const short sensor_fit,
 		const float design_aspect_ratio,
 		RAS_FrameFrustum & frustum
 	);	
@@ -261,6 +273,7 @@ public :
 		const float camfar,
 		const float scale,
 		const float design_aspect_ratio,
+		const short sensor_fit,
 		RAS_FrameFrustum & frustum
 	);
 

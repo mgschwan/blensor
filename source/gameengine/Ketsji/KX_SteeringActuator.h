@@ -1,39 +1,31 @@
-/**
-* Add steering behaviors
-*
-*
-*
-* ***** BEGIN GPL LICENSE BLOCK *****
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License
-* as published by the Free Software Foundation; either version 2
-* of the License, or (at your option) any later version. The Blender
-* Foundation also sells licenses for use in proprietary software under
-* the Blender License.  See http://www.blender.org/BL/ for information
-* about this.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software Foundation,
-* Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-*
-* The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
-* All rights reserved.
-*
-* The Original Code is: all of this file.
-*
-* Contributor(s): none yet.
-*
-* ***** END GPL LICENSE BLOCK *****
-*/
+/*
+ * Add steering behaviors
+ *
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * The Original Code is: all of this file.
+ *
+ * Contributor(s): none yet.
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
-#ifndef __KX_STEERINGACTUATOR
-#define __KX_STEERINGACTUATOR
+#ifndef __KX_STEERINGACTUATOR_H__
+#define __KX_STEERINGACTUATOR_H__
 
 #include "SCA_IActuator.h"
 #include "SCA_LogicManager.h"
@@ -47,7 +39,7 @@ const int MAX_PATH_LENGTH  = 128;
 
 class KX_SteeringActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 
 	/** Target object */
 	KX_GameObject *m_target;
@@ -107,7 +99,7 @@ public:
 	virtual bool UnlinkObject(SCA_IObject* clientobj);
 	const MT_Vector3& GetSteeringVec();
 
-#ifndef DISABLE_PYTHON
+#ifdef WITH_PYTHON
 
 	/* --------------------------------------------------------------------- */
 	/* Python interface ---------------------------------------------------- */
@@ -121,7 +113,7 @@ public:
 	static PyObject* pyattr_get_steeringVec(void *self, const struct KX_PYATTRIBUTE_DEF *attrdef);
 	
 
-#endif // DISABLE_PYTHON
+#endif // WITH_PYTHON
 
 }; /* end of class KX_SteeringActuator : public SCA_PropertyActuator */
 

@@ -21,15 +21,14 @@
 bl_info = {
     'name': 'Copy Attributes Menu',
     'author': 'Bassam Kurdali, Fabian Fricke, wiseman303',
-    'version': (0, 4, 4),
-    "blender": (2, 5, 7),
-    "api": 36695,
+    'version': (0, 4, 6),
+    "blender": (2, 6, 1),
     'location': 'View3D > Ctrl-C',
     'description': 'Copy Attributes Menu from Blender 2.4',
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.5/Py/'\
-        'Scripts/3D_interaction/Copy_Attributes_Menu',
-    'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
-        'func=detail&aid=22588',
+    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.5/Py/'
+                'Scripts/3D_interaction/Copy_Attributes_Menu',
+    'tracker_url': 'https://projects.blender.org/tracker/index.php?'
+                   'func=detail&aid=22588',
     'category': '3D View'}
 
 import bpy
@@ -92,22 +91,16 @@ def getmat(bone, active, context, ignoreparent):
     '''Helper function for visual transform copy,
        gets the active transform in bone space
     '''
-    data_bone = context.active_object.data.bones[bone.name]
+    obj_act = context.active_object
+    data_bone = obj_act.data.bones[bone.name]
     #all matrices are in armature space unless commented otherwise
     otherloc = active.matrix  # final 4x4 mat of target, location.
-    bonemat_local = Matrix(data_bone.matrix_local)  # self rest matrix
+    bonemat_local = data_bone.matrix_local.copy()  # self rest matrix
     if data_bone.parent:
-        parentposemat = Matrix(
-           context.active_object.pose.bones[data_bone.parent.name].matrix)
-        parentbonemat = Matrix(data_bone.parent.matrix_local)
+        parentposemat = obj_act.pose.bones[data_bone.parent.name].matrix.copy()
+        parentbonemat = data_bone.parent.matrix_local.copy()
     else:
-        parentposemat = bonemat_local.copy()
-        parentbonemat = bonemat_local.copy()
-
-        # FIXME! why copy from the parent if setting identity ?, Campbell
-        parentposemat.identity()
-        parentbonemat.identity()
-
+        parentposemat = parentbonemat = Matrix()
     if parentbonemat == parentposemat or ignoreparent:
         newmat = bonemat_local.inverted() * otherloc
     else:
@@ -123,8 +116,7 @@ def rotcopy(item, mat):
         item.rotation_quaternion = mat.to_3x3().to_quaternion()
     elif item.rotation_mode == 'AXIS_ANGLE':
         quat = mat.to_3x3().to_quaternion()
-        item.rotation_axis_angle = Vector([quat.axis[0],
-           quat.axis[1], quat.axis[2], quat.angle])
+        item.rotation_axis_angle = quat.axis[:] + (quat.angle, )
     else:
         item.rotation_euler = mat.to_3x3().to_euler(item.rotation_mode)
 
@@ -365,8 +357,7 @@ def obLok(ob, active, context):
         ob.lock_location[index] = state
     for index, state in enumerate(active.lock_rotation):
         ob.lock_rotation[index] = state
-    for index, state in enumerate(active.lock_rotations_4d):
-        ob.lock_rotations_4d[index] = state
+    ob.lock_rotations_4d = active.lock_rotations_4d
     ob.lock_rotation_w = active.lock_rotation_w
     for index, state in enumerate(active.lock_scale):
         ob.lock_scale[index] = state
@@ -406,6 +397,13 @@ def obMod(ob, active, context):
            type=old_modifier.type)
         generic_copy(old_modifier, new_modifier)
     return('INFO', "modifiers copied")
+
+
+def obGrp(ob, active, context):
+    for grp in bpy.data.groups:
+        if active.name in grp.objects and ob.name not in grp.objects:
+            grp.objects.link(ob)
+    return('INFO', "groups copied")
 
 
 def obWei(ob, active, context):
@@ -453,18 +451,19 @@ def obWei(ob, active, context):
                                    vgroupIndex_weight[i][1], "REPLACE")
     return('INFO', "weights copied")
 
-object_copies = (('obj_loc', "Location",
-                "Copy Location from Active to Selected", obLoc),
-                ('obj_rot', "Rotation",
-                "Copy Rotation from Active to Selected", obRot),
-                ('obj_sca', "Scale",
-                "Copy Scale from Active to Selected", obSca),
-                ('obj_vis_loc', "Visual Location",
-                "Copy Visual Location from Active to Selected", obVisLoc),
-                ('obj_vis_rot', "Visual Rotation",
-                "Copy Visual Rotation from Active to Selected", obVisRot),
-                ('obj_vis_sca', "Visual Scale",
-                "Copy Visual Scale from Active to Selected", obVisSca),
+object_copies = (
+                #('obj_loc', "Location",
+                #"Copy Location from Active to Selected", obLoc),
+                #('obj_rot', "Rotation",
+                #"Copy Rotation from Active to Selected", obRot),
+                #('obj_sca', "Scale",
+                #"Copy Scale from Active to Selected", obSca),
+                ('obj_vis_loc', "Location",
+                "Copy Location from Active to Selected", obVisLoc),
+                ('obj_vis_rot', "Rotation",
+                "Copy Rotation from Active to Selected", obVisRot),
+                ('obj_vis_sca', "Scale",
+                "Copy Scale from Active to Selected", obVisSca),
                 ('obj_drw', "Draw Options",
                 "Copy Draw Options from Active to Selected", obDrw),
                 ('obj_ofs', "Time Offset",
@@ -500,7 +499,9 @@ object_copies = (('obj_loc', "Location",
                 ('obj_mod', "Modifiers",
                 "Copy Modifiers from Active to Selected", obMod),
                 ('obj_wei', "Vertex Weights",
-                "Copy vertex weights based on indices", obWei))
+                "Copy vertex weights based on indices", obWei),
+                ('obj_grp', "Group Links",
+                "Copy selected into active object's groups", obGrp))
 
 
 @classmethod
@@ -700,7 +701,7 @@ class MESH_OT_CopyFaceSettings(bpy.types.Operator):
                 layers = mesh.uv_textures
                 act_layer = mesh.uv_textures.active
             if not layers or (layername and not layername in layers):
-                    return _end({'CANCELLED'})
+                return _end({'CANCELLED'})
             from_data = layers[layername or act_layer.name].data
             to_data = act_layer.data
         from_face = from_data[mesh.faces.active]
@@ -737,49 +738,52 @@ def register():
 
     ''' mostly to get the keymap working '''
     kc = bpy.context.window_manager.keyconfigs.addon
-    km = kc.keymaps.new(name="Object Mode")
-    kmi = km.keymap_items.new('wm.call_menu', 'C', 'PRESS', ctrl=True)
-    kmi.properties.name = 'VIEW3D_MT_copypopup'
-
-    km = kc.keymaps.new(name="Pose")
-    kmi = km.keymap_items.get("pose.copy")
-    if kmi is not None:
-        kmi.idname = 'wm.call_menu'
-    else:
+    if kc:
+        km = kc.keymaps.new(name="Object Mode")
         kmi = km.keymap_items.new('wm.call_menu', 'C', 'PRESS', ctrl=True)
-    kmi.properties.name = 'VIEW3D_MT_posecopypopup'
-    for menu in _layer_menus:
-        bpy.utils.register_class(menu)
+        kmi.properties.name = 'VIEW3D_MT_copypopup'
 
-    km = kc.keymaps.new(name="Mesh")
-    kmi = km.keymap_items.new('wm.call_menu', 'C', 'PRESS')
-    kmi.ctrl = True
-    kmi.properties.name = 'MESH_MT_CopyFaceSettings'
+        km = kc.keymaps.new(name="Pose")
+        kmi = km.keymap_items.get("pose.copy")
+        if kmi is not None:
+            kmi.idname = 'wm.call_menu'
+        else:
+            kmi = km.keymap_items.new('wm.call_menu', 'C', 'PRESS', ctrl=True)
+        kmi.properties.name = 'VIEW3D_MT_posecopypopup'
+        for menu in _layer_menus:
+            bpy.utils.register_class(menu)
+
+        km = kc.keymaps.new(name="Mesh")
+        kmi = km.keymap_items.new('wm.call_menu', 'C', 'PRESS')
+        kmi.ctrl = True
+        kmi.properties.name = 'MESH_MT_CopyFaceSettings'
 
 
 def unregister():
     bpy.utils.unregister_module(__name__)
 
     ''' mostly to remove the keymap '''
-    kms = bpy.context.window_manager.keyconfigs.addon.keymaps['Pose']
-    for item in kms.keymap_items:
-        if item.name == 'Call Menu' and item.idname == 'wm.call_menu' and \
-           item.properties.name == 'VIEW3D_MT_posecopypopup':
-            item.idname = 'pose.copy'
-            break
-    for menu in _layer_menus:
-        bpy.utils.unregister_class(menu)
-    km = bpy.context.window_manager.keyconfigs.addon.keymaps['Mesh']
-    for kmi in km.keymap_items:
-        if kmi.idname == 'wm.call_menu':
-            if kmi.properties.name == 'MESH_MT_CopyFaceSettings':
-                km.keymap_items.remove(kmi)
+    kc = bpy.context.window_manager.keyconfigs.addon
+    if kc:
+        kms = kc.keymaps['Pose']
+        for item in kms.keymap_items:
+            if item.name == 'Call Menu' and item.idname == 'wm.call_menu' and \
+               item.properties.name == 'VIEW3D_MT_posecopypopup':
+                item.idname = 'pose.copy'
+                break
+        for menu in _layer_menus:
+            bpy.utils.unregister_class(menu)
+        km = kc.keymaps['Mesh']
+        for kmi in km.keymap_items:
+            if kmi.idname == 'wm.call_menu':
+                if kmi.properties.name == 'MESH_MT_CopyFaceSettings':
+                    km.keymap_items.remove(kmi)
 
-    km = bpy.context.window_manager.keyconfigs.addon.keymaps['Object Mode']
-    for kmi in km.keymap_items:
-        if kmi.idname == 'wm.call_menu':
-            if kmi.properties.name == 'VIEW3D_MT_copypopup':
-                km.keymap_items.remove(kmi)
+        km = kc.addon.keymaps['Object Mode']
+        for kmi in km.keymap_items:
+            if kmi.idname == 'wm.call_menu':
+                if kmi.properties.name == 'VIEW3D_MT_copypopup':
+                    km.keymap_items.remove(kmi)
 
 if __name__ == "__main__":
     register()

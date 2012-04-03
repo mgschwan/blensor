@@ -22,7 +22,6 @@ bl_info = {
     "name": "Wavefront OBJ format",
     "author": "Campbell Barton",
     "blender": (2, 5, 8),
-    "api": 35622,
     "location": "File > Import-Export",
     "description": "Import-Export OBJ, Import OBJ mesh, UV's, "
                    "materials and textures",
@@ -68,7 +67,7 @@ class ImportOBJ(bpy.types.Operator, ImportHelper):
 
     use_ngons = BoolProperty(
             name="NGons",
-            description="Import faces with more then 4 verts as fgons",
+            description="Import faces with more than 4 verts as fgons",
             default=True,
             )
     use_edges = BoolProperty(
@@ -256,7 +255,7 @@ class ExportOBJ(bpy.types.Operator, ExportHelper):
             )
     use_nurbs = BoolProperty(
             name="Write Nurbs",
-            description="Write nurbs curves as OBJ nurbs rather then "
+            description="Write nurbs curves as OBJ nurbs rather than "
                         "converting to geometry",
             default=False,
             )

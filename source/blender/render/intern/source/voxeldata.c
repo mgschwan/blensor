@@ -65,7 +65,7 @@
 
 static int is_vd_res_ok(VoxelData *vd)
 {
-	/* arbitrary large value so corrupt headers dont break */
+	/* arbitrary large value so corrupt headers don't break */
 	const int min= 1, max= 100000;
 	return	(vd->resol[0] >= min && vd->resol[0] <= max) &&
 			(vd->resol[1] >= min && vd->resol[1] <= max) &&
@@ -83,15 +83,15 @@ static int load_frame_blendervoxel(VoxelData *vd, FILE *fp, int frame)
 	const size_t size = vd_resol_size(vd);
 	size_t offset = sizeof(VoxelDataHeader);
 	
-	if(is_vd_res_ok(vd) == FALSE)
+	if (is_vd_res_ok(vd) == FALSE)
 		return 0;
 
 	vd->dataset = MEM_mapallocN(sizeof(float)*size, "voxel dataset");
-	if(vd->dataset == NULL) return 0;
+	if (vd->dataset == NULL) return 0;
 
-	if(fseek(fp, frame*size*sizeof(float)+offset, 0) == -1)
+	if (fseek(fp, frame*size*sizeof(float)+offset, 0) == -1)
 		return 0;
-	if(fread(vd->dataset, sizeof(float), size, fp) != size)
+	if (fread(vd->dataset, sizeof(float), size, fp) != size)
 		return 0;
 	
 	vd->cachedframe = frame;
@@ -105,25 +105,25 @@ static int load_frame_raw8(VoxelData *vd, FILE *fp, int frame)
 	char *data_c;
 	int i;
 
-	if(is_vd_res_ok(vd) == FALSE)
+	if (is_vd_res_ok(vd) == FALSE)
 		return 0;
 
 	vd->dataset = MEM_mapallocN(sizeof(float)*size, "voxel dataset");
-	if(vd->dataset == NULL) return 0;
+	if (vd->dataset == NULL) return 0;
 	data_c = (char *)MEM_mallocN(sizeof(char)*size, "temporary voxel file reading storage");
-	if(data_c == NULL) {
+	if (data_c == NULL) {
 		MEM_freeN(vd->dataset);
 		vd->dataset= NULL;
 		return 0;
 	}
 
-	if(fseek(fp,(frame-1)*size*sizeof(char),0) == -1) {
+	if (fseek(fp,(frame-1)*size*sizeof(char),0) == -1) {
 		MEM_freeN(data_c);
 		MEM_freeN(vd->dataset);
 		vd->dataset= NULL;
 		return 0;
 	}
-	if(fread(data_c, sizeof(char), size, fp) != size) {
+	if (fread(data_c, sizeof(char), size, fp) != size) {
 		MEM_freeN(data_c);
 		MEM_freeN(vd->dataset);
 		vd->dataset= NULL;
@@ -155,7 +155,7 @@ static void load_frame_image_sequence(VoxelData *vd, Tex *tex)
 	ima->source = IMA_SRC_SEQUENCE;
 	iuser.framenr = 1 + iuser.offset;
 
-	/* find the first valid ibuf and use it to initialise the resolution of the data set */
+	/* find the first valid ibuf and use it to initialize the resolution of the data set */
 	/* need to do this in advance so we know how much memory to allocate */
 	ibuf= BKE_image_get_ibuf(ima, &iuser);
 	while (!ibuf && (iuser.framenr < iuser.frames)) {
@@ -204,7 +204,7 @@ static int read_voxeldata_header(FILE *fp, struct VoxelData *vd)
 	VoxelDataHeader *h=(VoxelDataHeader *)MEM_mallocN(sizeof(VoxelDataHeader), "voxel data header");
 	
 	rewind(fp);
-	if(fread(h,sizeof(VoxelDataHeader),1,fp) != 1) {
+	if (fread(h,sizeof(VoxelDataHeader),1,fp) != 1) {
 		MEM_freeN(h);
 		return 0;
 	}
@@ -228,20 +228,19 @@ static void init_frame_smoke(VoxelData *vd, float cfra)
 	ob= vd->object;
 	
 	/* draw code for smoke */
-	if( (md = (ModifierData *)modifiers_findByType(ob, eModifierType_Smoke)) )
-	{
+	if ((md = (ModifierData *)modifiers_findByType(ob, eModifierType_Smoke))) {
 		SmokeModifierData *smd = (SmokeModifierData *)md;
 
 		
-		if(smd->domain && smd->domain->fluid) {
-			if(cfra < smd->domain->point_cache[0]->startframe)
+		if (smd->domain && smd->domain->fluid) {
+			if (cfra < smd->domain->point_cache[0]->startframe)
 				; /* don't show smoke before simulation starts, this could be made an option in the future */
 			else if (vd->smoked_type == TEX_VD_SMOKEHEAT) {
 				size_t totRes;
 				size_t i;
 				float *heat;
 
-				VECCOPY(vd->resol, smd->domain->res);
+				copy_v3_v3_int(vd->resol, smd->domain->res);
 				totRes= vd_resol_size(vd);
 
 				// scaling heat values from -2.0-2.0 to 0.0-1.0
@@ -262,7 +261,7 @@ static void init_frame_smoke(VoxelData *vd, float cfra)
 				size_t i;
 				float *xvel, *yvel, *zvel;
 
-				VECCOPY(vd->resol, smd->domain->res);
+				copy_v3_v3_int(vd->resol, smd->domain->res);
 				totRes= vd_resol_size(vd);
 
 				// scaling heat values from -2.0-2.0 to 0.0-1.0
@@ -285,8 +284,9 @@ static void init_frame_smoke(VoxelData *vd, float cfra)
 				if (smd->domain->flags & MOD_SMOKE_HIGHRES) {
 					smoke_turbulence_get_res(smd->domain->wt, vd->resol);
 					density = smoke_turbulence_get_density(smd->domain->wt);
-				} else {
-					VECCOPY(vd->resol, smd->domain->res);
+				}
+				else {
+					copy_v3_v3_int(vd->resol, smd->domain->res);
 					density = smoke_get_density(smd->domain->fluid);
 				}
 
@@ -309,7 +309,7 @@ static void init_frame_smoke(VoxelData *vd, float cfra)
 #endif
 }
 
-static void cache_voxeldata(struct Render *re, Tex *tex)
+void cache_voxeldata(Tex *tex, int scene_frame)
 {	
 	VoxelData *vd = tex->vd;
 	FILE *fp;
@@ -317,7 +317,7 @@ static void cache_voxeldata(struct Render *re, Tex *tex)
 	char path[sizeof(vd->source_path)];
 	
 	/* only re-cache if dataset needs updating */
-	if ((vd->flag & TEX_VD_STILL) || (vd->cachedframe == re->r.cfra))
+	if ((vd->flag & TEX_VD_STILL) || (vd->cachedframe == scene_frame))
 		if (vd->ok) return;
 	
 	/* clear out old cache, ready for new */
@@ -329,7 +329,7 @@ static void cache_voxeldata(struct Render *re, Tex *tex)
 	if (vd->flag & TEX_VD_STILL)
 		curframe = vd->still_frame;
 	else
-		curframe = re->r.cfra;
+		curframe = scene_frame;
 	
 	BLI_strncpy(path, vd->source_path, sizeof(path));
 	
@@ -338,15 +338,15 @@ static void cache_voxeldata(struct Render *re, Tex *tex)
 			load_frame_image_sequence(vd, tex);
 			return;
 		case TEX_VD_SMOKE:
-			init_frame_smoke(vd, re->r.cfra);
+			init_frame_smoke(vd, scene_frame);
 			return;
 		case TEX_VD_BLENDERVOXEL:
 			BLI_path_abs(path, G.main->name);
 			if (!BLI_exists(path)) return;
-			fp = fopen(path,"rb");
+			fp = BLI_fopen(path,"rb");
 			if (!fp) return;
 			
-			if(read_voxeldata_header(fp, vd))
+			if (read_voxeldata_header(fp, vd))
 				load_frame_blendervoxel(vd, fp, curframe-1);
 
 			fclose(fp);
@@ -354,7 +354,7 @@ static void cache_voxeldata(struct Render *re, Tex *tex)
 		case TEX_VD_RAW_8BIT:
 			BLI_path_abs(path, G.main->name);
 			if (!BLI_exists(path)) return;
-			fp = fopen(path,"rb");
+			fp = BLI_fopen(path,"rb");
 			if (!fp) return;
 			
 			load_frame_raw8(vd, fp, curframe);
@@ -372,8 +372,8 @@ void make_voxeldata(struct Render *re)
 	
 	/* XXX: should be doing only textures used in this render */
 	for (tex= re->main->tex.first; tex; tex= tex->id.next) {
-		if(tex->id.us && tex->type==TEX_VOXELDATA) {
-			cache_voxeldata(re, tex);
+		if (tex->id.us && tex->type==TEX_VOXELDATA) {
+			cache_voxeldata(tex, re->r.cfra);
 		}
 	}
 	

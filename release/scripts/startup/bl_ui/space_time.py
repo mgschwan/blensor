@@ -28,7 +28,7 @@ class TIME_HT_header(Header):
         layout = self.layout
 
         scene = context.scene
-        tools = context.tool_settings
+        toolsettings = context.tool_settings
         screen = context.screen
 
         row = layout.row(align=True)
@@ -36,6 +36,7 @@ class TIME_HT_header(Header):
 
         if context.area.show_menus:
             row.menu("TIME_MT_view")
+            row.menu("TIME_MT_marker")
             row.menu("TIME_MT_frame")
             row.menu("TIME_MT_playback")
 
@@ -60,7 +61,7 @@ class TIME_HT_header(Header):
             # if using JACK and A/V sync:
             #   hide the play-reversed button
             #   since JACK transport doesn't support reversed playback
-            if (context.user_preferences.system.audio_device == 'JACK' and scene.sync_mode == 'AUDIO_SYNC'):
+            if scene.sync_mode == 'AUDIO_SYNC' and context.user_preferences.system.audio_device == 'JACK':
                 sub = row.row()
                 sub.scale_x = 2.0
                 sub.operator("screen.animation_play", text="", icon='PLAY')
@@ -79,16 +80,25 @@ class TIME_HT_header(Header):
         layout.separator()
 
         row = layout.row(align=True)
-        row.prop(tools, "use_keyframe_insert_auto", text="", toggle=True)
-        row.prop(tools, "use_keyframe_insert_keyingset", text="", toggle=True)
-        if screen.is_animation_playing and tools.use_keyframe_insert_auto:
+        row.prop(toolsettings, "use_keyframe_insert_auto", text="", toggle=True)
+        row.prop(toolsettings, "use_keyframe_insert_keyingset", text="", toggle=True)
+        if screen.is_animation_playing and toolsettings.use_keyframe_insert_auto:
             subsub = row.row()
-            subsub.prop(tools, "use_record_with_nla", toggle=True)
+            subsub.prop(toolsettings, "use_record_with_nla", toggle=True)
 
         row = layout.row(align=True)
         row.prop_search(scene.keying_sets_all, "active", scene, "keying_sets_all", text="")
         row.operator("anim.keyframe_insert", text="", icon='KEY_HLT')
         row.operator("anim.keyframe_delete", text="", icon='KEY_DEHLT')
+
+
+class TIME_MT_marker(Menu):
+    bl_label = "Marker"
+
+    def draw(self, context):
+        layout = self.layout
+
+        marker_menu_generic(layout)
 
 
 class TIME_MT_view(Menu):
@@ -99,7 +109,7 @@ class TIME_MT_view(Menu):
 
         st = context.space_data
 
-        layout.operator("anim.time_toggle")
+        layout.prop(st, "show_seconds")
         layout.operator("time.view_all")
 
         layout.separator()
@@ -134,6 +144,7 @@ class TIME_MT_cache(Menu):
         col.prop(st, "cache_particles")
         col.prop(st, "cache_cloth")
         col.prop(st, "cache_smoke")
+        col.prop(st, "cache_dynamicpaint")
 
 
 class TIME_MT_frame(Menu):
@@ -141,17 +152,6 @@ class TIME_MT_frame(Menu):
 
     def draw(self, context):
         layout = self.layout
-
-        layout.operator("marker.add", text="Add Marker")
-        layout.operator("marker.duplicate", text="Duplicate Marker")
-        layout.operator("marker.delete", text="Delete Marker")
-
-        layout.separator()
-
-        layout.operator("marker.rename", text="Rename Marker")
-        layout.operator("marker.move", text="Grab/Move Marker")
-
-        layout.separator()
 
         layout.operator("time.start_frame_set")
         layout.operator("time.end_frame_set")
@@ -178,6 +178,7 @@ class TIME_MT_playback(Menu):
         layout.prop(screen, "use_play_image_editors")
         layout.prop(screen, "use_play_sequence_editors")
         layout.prop(screen, "use_play_node_editors")
+        layout.prop(screen, "use_play_clip_editors")
 
         layout.separator()
 
@@ -192,10 +193,33 @@ class TIME_MT_autokey(Menu):
 
     def draw(self, context):
         layout = self.layout
-        tools = context.tool_settings
+        toolsettings = context.tool_settings
 
-        layout.prop_enum(tools, "auto_keying_mode", 'ADD_REPLACE_KEYS')
-        layout.prop_enum(tools, "auto_keying_mode", 'REPLACE_KEYS')
+        layout.prop_enum(toolsettings, "auto_keying_mode", 'ADD_REPLACE_KEYS')
+        layout.prop_enum(toolsettings, "auto_keying_mode", 'REPLACE_KEYS')
+
+
+def marker_menu_generic(layout):
+
+    #layout.operator_context = 'EXEC_REGION_WIN'
+
+    layout.column()
+    layout.operator("marker.add", "Add Marker")
+    layout.operator("marker.duplicate", text="Duplicate Marker")
+
+    if(len(bpy.data.scenes) > 10):
+        layout.operator_context = 'INVOKE_DEFAULT'
+        layout.operator("marker.make_links_scene", text="Duplicate Marker to Scene...", icon='OUTLINER_OB_EMPTY')
+    else:
+        layout.operator_menu_enum("marker.make_links_scene", "scene", text="Duplicate Marker to Scene...")
+
+    layout.operator("marker.delete", text="Delete Marker")
+
+    layout.separator()
+
+    layout.operator("marker.rename", text="Rename Marker")
+    layout.operator("marker.move", text="Grab/Move Marker")
+
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

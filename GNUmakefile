@@ -1,6 +1,5 @@
 # -*- mode: gnumakefile; tab-width: 8; indent-tabs-mode: t; -*-
-# vim: tabstop=8
-# $Id: GNUmakefile 41122 2011-10-19 21:55:27Z campbellbarton $
+# vim: tabstop=4
 #
 # ##### BEGIN GPL LICENSE BLOCK #####
 #
@@ -35,7 +34,10 @@ OS_NCASE:=$(shell uname -s | tr '[A-Z]' '[a-z]')
 # Source and Build DIR's
 BLENDER_DIR:=$(shell pwd -P)
 BUILD_TYPE:=Release
-BUILD_CMAKE_ARGS:=
+
+ifndef BUILD_CMAKE_ARGS
+	BUILD_CMAKE_ARGS:=
+endif
 
 ifndef BUILD_DIR
 	BUILD_DIR:=$(shell dirname $(BLENDER_DIR))/build/$(OS_NCASE)
@@ -91,6 +93,17 @@ CMAKE_CONFIG = cmake $(BUILD_CMAKE_ARGS) \
 
 
 # -----------------------------------------------------------------------------
+# Tool for 'make config'
+
+# X11 spesific
+ifdef DISPLAY
+	CMAKE_CONFIG_TOOL = cmake-gui
+else 
+	CMAKE_CONFIG_TOOL = ccmake
+endif
+
+
+# -----------------------------------------------------------------------------
 # Build Blender
 all:
 	@echo
@@ -113,8 +126,15 @@ lite: all
 headless: all
 bpy: all
 
+
 # -----------------------------------------------------------------------------
-# Helo for build targets
+# Configuration (save some cd'ing around)
+config:
+	$(CMAKE_CONFIG_TOOL) $(BUILD_DIR)
+
+
+# -----------------------------------------------------------------------------
+# Help for build targets
 help:
 	@echo ""
 	@echo "Convenience targets provided for building blender, (multiple at once can be used)"
@@ -123,7 +143,10 @@ help:
 	@echo "  * headless  - build without an interface (renderfarm or server automation)"
 	@echo "  * bpy       - build as a python module which can be loaded from python directly"
 	@echo ""
+	@echo "  * config    - run cmake configuration tool to set build options"
+	@echo ""
 	@echo "  Note, passing the argument 'BUILD_DIR=path' when calling make will override the default build dir."
+	@echo "  Note, passing the argument 'BUILD_CMAKE_ARGS=args' lets you add cmake arguments."
 	@echo ""
 	@echo ""
 	@echo "Project Files for IDE's"
@@ -136,9 +159,6 @@ help:
 	@echo "  * package_pacman  - build an arch linux pacmanpackage"
 	@echo "  * package_archive - build an archive package"
 	@echo ""
-	@echo "Other Targets (not assosiated with building blender)"
-	@echo "  * translations  - update blenders translation files in po/"
-	@echo ""
 	@echo "Testing Targets (not assosiated with building blender)"
 	@echo "  * test            - run ctest, currently tests import/export, operator execution and that python modules load"
 	@echo "  * test_cmake      - runs our own cmake file checker which detects errors in the cmake file list definitions"
@@ -146,12 +166,15 @@ help:
 	@echo "  * test_deprecated - checks for deprecation tags in our code which may need to be removed"
 	@echo ""
 	@echo "Static Source Code Checking (not assosiated with building blender)"
-	@echo "  * check_cppcheck  - run blender source through cppcheck (C & C++)"
-	@echo "  * check_splint    - run blenders source through splint (C only)"
-	@echo "  * check_sparse    - run blenders source through sparse (C only)"
+	@echo "  * check_cppcheck    - run blender source through cppcheck (C & C++)"
+	@echo "  * check_splint      - run blenders source through splint (C only)"
+	@echo "  * check_sparse      - run blenders source through sparse (C only)"
+	@echo "  * check_spelling_c  - check for spelling errors (C/C++ only)"
+	@echo "  * check_spelling_py - check for spelling errors (Python only)"
 	@echo ""
 	@echo "Documentation Targets (not assosiated with building blender)"
 	@echo "  * doc_py   - generate sphinx python api docs"
+	@echo "  * doc_doxy - generate doxygen C/C++ docs"
 	@echo "  * doc_dna  - generate blender file format reference"
 	@echo "  * doc_man  - generate manpage"
 	@echo ""
@@ -168,16 +191,6 @@ package_pacman:
 package_archive:
 	make -C $(BUILD_DIR) -s package_archive
 	@echo archive in "$(BUILD_DIR)/release"
-
-
-# -----------------------------------------------------------------------------
-# Other Targets
-#
-translations:
-	$(BUILD_DIR)/bin/blender --background -noaudio --factory-startup --python po/update_msg.py
-	python3 po/update_pot.py
-	python3 po/update_po.py
-	python3 po/update_mo.py
 
 
 # -----------------------------------------------------------------------------
@@ -231,6 +244,12 @@ check_sparse:
 	$(CMAKE_CONFIG)
 	cd $(BUILD_DIR) ; python3 $(BLENDER_DIR)/build_files/cmake/cmake_static_check_sparse.py
 
+check_spelling_py:
+	cd $(BUILD_DIR) ; PYTHONIOENCODING=utf_8 python3 $(BLENDER_DIR)/source/tools/spell_check_source.py $(BLENDER_DIR)/release/scripts
+
+check_spelling_c:
+	cd $(BUILD_DIR) ; PYTHONIOENCODING=utf_8 python3 $(BLENDER_DIR)/source/tools/spell_check_source.py $(BLENDER_DIR)/source
+
 
 # -----------------------------------------------------------------------------
 # Documentation
@@ -239,8 +258,12 @@ check_sparse:
 # Simple version of ./doc/python_api/sphinx_doc_gen.sh with no PDF generation.
 doc_py:
 	$(BUILD_DIR)/bin/blender --background -noaudio --factory-startup --python doc/python_api/sphinx_doc_gen.py
-	cd doc/python_api ; sphinx-build -n -b html sphinx-in sphinx-out
+	cd doc/python_api ; sphinx-build -b html sphinx-in sphinx-out
 	@echo "docs written into: '$(BLENDER_DIR)/doc/python_api/sphinx-out/contents.html'"
+
+doc_doxy:
+	cd doc/doxygen; doxygen Doxyfile
+	@echo "docs written into: '$(BLENDER_DIR)/doc/doxygen/html/index.html'"
 
 doc_dna:
 	$(BUILD_DIR)/bin/blender --background -noaudio --factory-startup --python doc/blender_file_format/BlendFileDnaExporter_25.py

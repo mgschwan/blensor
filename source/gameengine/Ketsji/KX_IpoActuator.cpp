@@ -282,13 +282,13 @@ bool KX_IpoActuator::Update(double curtime, bool frame)
 	}
 	case KX_ACT_IPO_LOOPEND:
 	{
-		if (numevents){
-			if (bNegativeEvent && m_bIpoPlaying){
+		if (numevents) {
+			if (bNegativeEvent && m_bIpoPlaying) {
 				m_bNegativeEvent = true;
 			}
 		}
 		
-		if (bNegativeEvent && !m_bIpoPlaying){
+		if (bNegativeEvent && !m_bIpoPlaying) {
 			result = false;
 		} 
 		else
@@ -298,7 +298,7 @@ bool KX_IpoActuator::Update(double curtime, bool frame)
 				SetLocalTime(curtime);
 			}
 			else{
-				if (!m_bNegativeEvent){
+				if (!m_bNegativeEvent) {
 					/* Perform wraparound */
 					SetLocalTime(curtime);
 					if (start_smaller_then_end > 0.f)
@@ -382,7 +382,8 @@ void KX_IpoActuator::ResetStartTime()
 	this->m_starttime = -2.0*fabs(this->m_endframe - this->m_startframe) - 1.0;
 }
 
-int KX_IpoActuator::string2mode(char* modename) {
+int KX_IpoActuator::string2mode(const char *modename)
+{
 	IpoActType res = KX_ACT_IPO_NODEF;
 
 	if (strcmp(modename, S_KX_ACT_IPO_PLAY_STRING)==0) { 
@@ -441,8 +442,8 @@ PyMethodDef KX_IpoActuator::Methods[] = {
 PyAttributeDef KX_IpoActuator::Attributes[] = {
 	KX_PYATTRIBUTE_RW_FUNCTION("frameStart", KX_IpoActuator, pyattr_get_frame_start, pyattr_set_frame_start),
 	KX_PYATTRIBUTE_RW_FUNCTION("frameEnd", KX_IpoActuator, pyattr_get_frame_end, pyattr_set_frame_end),
-	KX_PYATTRIBUTE_STRING_RW("propName", 0, 64, false, KX_IpoActuator, m_propname),
-	KX_PYATTRIBUTE_STRING_RW("framePropName", 0, 64, false, KX_IpoActuator, m_framepropname),
+	KX_PYATTRIBUTE_STRING_RW("propName", 0, MAX_PROP_NAME, false, KX_IpoActuator, m_propname),
+	KX_PYATTRIBUTE_STRING_RW("framePropName", 0, MAX_PROP_NAME, false, KX_IpoActuator, m_framepropname),
 	KX_PYATTRIBUTE_INT_RW("mode", KX_ACT_IPO_NODEF+1, KX_ACT_IPO_MAX-1, true, KX_IpoActuator, m_type),
 	KX_PYATTRIBUTE_BOOL_RW("useIpoAsForce", KX_IpoActuator, m_ipo_as_force),
 	KX_PYATTRIBUTE_BOOL_RW("useIpoAdd", KX_IpoActuator, m_ipo_add),

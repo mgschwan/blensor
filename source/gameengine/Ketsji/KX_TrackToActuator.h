@@ -29,8 +29,8 @@
  *  \ingroup ketsji
  */
 
-#ifndef __KX_TrackToActuator
-#define __KX_TrackToActuator
+#ifndef __KX_TRACKTOACTUATOR_H__
+#define __KX_TRACKTOACTUATOR_H__
 
 #include "SCA_IActuator.h"
 #include "SCA_IObject.h"
@@ -40,7 +40,7 @@
 
 class KX_TrackToActuator : public SCA_IActuator
 {
-	Py_Header;
+	Py_Header
 	// Object reference. Actually, we use the object's 'life'
 	SCA_IObject*	m_object;
 	// 3d toggle

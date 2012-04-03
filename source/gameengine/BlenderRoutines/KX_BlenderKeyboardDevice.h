@@ -29,8 +29,8 @@
  *  \ingroup blroutines
  */
 
-#ifndef __KX_BLENDERKEYBOARDDEVICE
-#define __KX_BLENDERKEYBOARDDEVICE
+#ifndef __KX_BLENDERKEYBOARDDEVICE_H__
+#define __KX_BLENDERKEYBOARDDEVICE_H__
 
 #include "KX_BlenderInputDevice.h"
 
@@ -50,6 +50,8 @@ public:
 	virtual bool	ConvertBlenderEvent(unsigned short incode,short val);
 	virtual void	NextFrame();
 	virtual void	HookEscape();
+private:
+	short		m_exit_key;
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
@@ -59,5 +61,5 @@ public:
 #endif
 };
 
-#endif //__KX_BLENDERKEYBOARDDEVICE
+#endif //__KX_BLENDERKEYBOARDDEVICE_H__
 

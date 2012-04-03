@@ -25,8 +25,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef BKE_WRITEFRAMESERVER_H
-#define BKE_WRITEFRAMESERVER_H
+#ifndef __BKE_WRITEFRAMESERVER_H__
+#define __BKE_WRITEFRAMESERVER_H__
 
 /** \file BKE_writeframeserver.h
  *  \ingroup bke
@@ -42,7 +42,8 @@ struct Scene;
 
 extern int start_frameserver(struct Scene *scene, struct RenderData *rd, int rectx, int recty, struct ReportList *reports);
 extern void end_frameserver(void);
-extern int append_frameserver(struct RenderData *rd, int frame, int *pixels, int rectx, int recty, struct ReportList *reports);
+extern int append_frameserver(struct RenderData *rd, int start_frame, int frame, int *pixels,
+                              int rectx, int recty, struct ReportList *reports);
 extern int frameserver_loop(struct RenderData *rd, struct ReportList *reports);
 
 #ifdef __cplusplus

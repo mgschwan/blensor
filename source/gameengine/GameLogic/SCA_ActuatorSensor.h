@@ -32,15 +32,15 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __KX_ACTUATORSENSOR
-#define __KX_ACTUATORSENSOR
+#ifndef __SCA_ACTUATORSENSOR_H__
+#define __SCA_ACTUATORSENSOR_H__
 
 #include "SCA_ISensor.h"
 #include "SCA_IActuator.h"
 
 class SCA_ActuatorSensor : public SCA_ISensor
 {
-	Py_Header;
+	Py_Header
 	STR_String		m_checkactname;
 	bool			m_lastresult;
 	bool			m_midresult;

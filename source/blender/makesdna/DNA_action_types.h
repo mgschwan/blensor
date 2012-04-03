@@ -1,4 +1,4 @@
-/* 
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -29,9 +29,8 @@
  *  \ingroup DNA
  */
 
-
-#ifndef DNA_ACTION_TYPES_H
-#define DNA_ACTION_TYPES_H
+#ifndef __DNA_ACTION_TYPES_H__
+#define __DNA_ACTION_TYPES_H__
 
 #include "DNA_listBase.h"
 #include "DNA_ID.h"
@@ -185,7 +184,7 @@ typedef struct bPoseChannel {
 	IDProperty 			*prop;		/* User-Defined Properties on this PoseChannel */			
 	
 	ListBase			constraints;/* Constraints that act on this PoseChannel */
-	char				name[32];	/* Channels need longer names than normal blender objects */
+	char				name[64];	/* need to match bone name length: MAXBONENAME */
 	
 	short				flag;		/* dynamic, for detecting transform changes */
 	short				ikflag;		/* settings for IK bones */
@@ -198,11 +197,15 @@ typedef struct bPoseChannel {
 	struct Bone			*bone;		/* set on read file or rebuild pose */
 	struct bPoseChannel *parent;	/* set on read file or rebuild pose */
 	struct bPoseChannel *child;		/* set on read file or rebuild pose, the 'ik' child, for b-bones */
-	struct ListBase		 iktree;		/* only while evaluating pose */
+	
+	struct ListBase		 iktree;		/* "IK trees" - only while evaluating pose */
+	struct ListBase 	siktree;		/* Spline-IK "trees" - only while evaluating pose */
 	
 	bMotionPath *mpath;				/* motion path cache for this bone */
 	struct Object *custom;			/* draws custom object instead of default bone shape */
-	struct bPoseChannel *custom_tx;	/* odd feature, display with another bones transform. needed in rare cases for advanced rigs, since the alternative is highly complicated - campbell */
+	struct bPoseChannel *custom_tx;	/* odd feature, display with another bones transform.
+	                                 * needed in rare cases for advanced rigs,
+	                                 * since the alternative is highly complicated - campbell */
 
 		/* transforms - written in by actions or transform */
 	float		loc[3];				
@@ -217,12 +220,13 @@ typedef struct bPoseChannel {
 	
 	float		chan_mat[4][4];		/* matrix result of loc/quat/size , and where we put deform in, see next line */
 	float		pose_mat[4][4];		/* constraints accumulate here. in the end, pose_mat = bone->arm_mat * chan_mat */
-	float		constinv[4][4];		/* inverse result of constraints. doesn't include effect of restposition, parent, and local transform*/
+	float		constinv[4][4];		/* inverse result of constraints.
+	                                 * doesn't include effect of restposition, parent, and local transform*/
 	
 	float		pose_head[3];		/* actually pose_mat[3] */
 	float		pose_tail[3];		/* also used for drawing help lines... */
 	
-	float		limitmin[3], limitmax[3];	/* DOF constraint */
+	float		limitmin[3], limitmax[3];	/* DOF constraint, note! - these are stored in degrees, not radians */
 	float		stiffness[3];				/* DOF stiffness */
 	float		ikstretch;
 	float		ikrotweight;		/* weight of joint rotation constraint */
@@ -341,7 +345,7 @@ typedef struct bPose {
 	void *ikparam;				/* IK solver parameters, structure depends on iksolver */ 
 	
 	bAnimVizSettings avs;		/* settings for visualization of bone animation */
-	char proxy_act_bone[32];    /* proxy active bone name*/
+	char proxy_act_bone[64];    /* proxy active bone name, MAXBONENAME */
 } bPose;
 
 
@@ -412,7 +416,7 @@ typedef enum eItasc_Solver {
 /* Groups -------------------------------------- */
 
 /* Action-Channel Group (agrp)
-
+ *
  * These are stored as a list per-Action, and are only used to 
  * group that Action's channels in an Animation Editor. 
  *
@@ -507,7 +511,7 @@ typedef enum eAction_Flags {
 /* Storage for Dopesheet/Grease-Pencil Editor data */
 typedef struct bDopeSheet {
 	ID 		*source;			/* currently ID_SCE (for Dopesheet), and ID_SC (for Grease Pencil) */
-	ListBase chanbase;			/* cache for channels (only initialised when pinned) */  // XXX not used!
+	ListBase chanbase;			/* cache for channels (only initialized when pinned) */  // XXX not used!
 	
 	struct Group *filter_grp;	/* object group for ADS_FILTER_ONLYOBGROUP filtering option */
 	char searchstr[64];			/* string to search for in displayed names of F-Curves for ADS_FILTER_BY_FCU_NAME filtering option */
@@ -580,7 +584,7 @@ typedef struct SpaceAction {
 
 	short blockhandler[8];
 
-	View2D v2d;					/* depricated, copied to region */
+	View2D v2d  DNA_DEPRECATED; /* copied to region */
 	
 	bAction		*action;		/* the currently active action */
 	bDopeSheet 	ads;			/* the currently active context (when not showing action) */
@@ -665,7 +669,7 @@ typedef struct bActionChannel {
 	ListBase				constraintChannels;		/* Constraint Channels (when Action Channel represents an Object or Bone) */
 	
 	int		flag;			/* settings accessed via bitmapping */
-	char	name[32];		/* channel name */
+	char	name[64];		/* channel name, MAX_NAME */
 	int		temp;			/* temporary setting - may be used to indicate group that channel belongs to during syncing  */
 } bActionChannel;
 

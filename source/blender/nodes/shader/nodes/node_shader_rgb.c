@@ -54,7 +54,7 @@ static void node_shader_exec_rgb(void *UNUSED(data), bNode *node, bNodeStack **U
 	bNodeSocket *sock= node->outputs.first;
 	float *col= ((bNodeSocketValueRGBA*)sock->default_value)->value;
 	
-	VECCOPY(out[0]->vec, col);
+	copy_v3_v3(out[0]->vec, col);
 }
 
 static int gpu_shader_rgb(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUNodeStack *out)
@@ -66,17 +66,17 @@ static int gpu_shader_rgb(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUNo
 	return GPU_stack_link(mat, "set_rgba", in, out, vec);
 }
 
-void register_node_type_sh_rgb(ListBase *lb)
+void register_node_type_sh_rgb(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, SH_NODE_RGB, "RGB", NODE_CLASS_INPUT, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, SH_NODE_RGB, "RGB", NODE_CLASS_INPUT, NODE_OPTIONS);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING|NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, NULL, sh_node_rgb_out);
 	node_type_init(&ntype, node_shader_init_rgb);
 	node_type_size(&ntype, 140, 80, 140);
 	node_type_exec(&ntype, node_shader_exec_rgb);
 	node_type_gpu(&ntype, gpu_shader_rgb);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-

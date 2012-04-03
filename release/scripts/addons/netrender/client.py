@@ -39,16 +39,14 @@ def addFluidFiles(job, path):
                 # fluid frames starts at 0, which explains the +1
                 # This is stupid
                 current_frame = int(match.groups()[1]) + 1
-                job.addFile(path + fluid_file, current_frame, current_frame)
+                job.addFile(os.path.join(path, fluid_file), current_frame, current_frame)
 
 def addPointCache(job, ob, point_cache, default_path):
     if not point_cache.use_disk_cache:
         return
 
 
-    name = point_cache.name
-    if name == "":
-        name = "".join(["%02X" % ord(c) for c in ob.name])
+    name = cacheName(ob, point_cache)
 
     cache_path = bpy.path.abspath(point_cache.filepath) if point_cache.use_external else default_path
 
@@ -70,7 +68,7 @@ def addPointCache(job, ob, point_cache, default_path):
 
         if len(cache_files) == 1:
             cache_frame, cache_file = cache_files[0]
-            job.addFile(cache_path + cache_file, cache_frame, cache_frame)
+            job.addFile(os.path.join(cache_path, cache_file), cache_frame, cache_frame)
         else:
             for i in range(len(cache_files)):
                 current_item = cache_files[i]
@@ -79,18 +77,18 @@ def addPointCache(job, ob, point_cache, default_path):
 
                 current_frame, current_file = current_item
 
-                if  not next_item and not previous_item:
-                    job.addFile(cache_path + current_file, current_frame, current_frame)
+                if not next_item and not previous_item:
+                    job.addFile(os.path.join(cache_path, current_file), current_frame, current_frame)
                 elif next_item and not previous_item:
                     next_frame = next_item[0]
-                    job.addFile(cache_path + current_file, current_frame, next_frame - 1)
+                    job.addFile(os.path.join(cache_path, current_file), current_frame, next_frame)
                 elif not next_item and previous_item:
                     previous_frame = previous_item[0]
-                    job.addFile(cache_path + current_file, previous_frame + 1, current_frame)
+                    job.addFile(os.path.join(cache_path, current_file), previous_frame, current_frame)
                 else:
                     next_frame = next_item[0]
                     previous_frame = previous_item[0]
-                    job.addFile(cache_path + current_file, previous_frame + 1, next_frame - 1)
+                    job.addFile(os.path.join(cache_path, current_file), previous_frame, next_frame)
 
 def fillCommonJobSettings(job, job_name, netsettings):
     job.name = job_name
@@ -101,7 +99,12 @@ def fillCommonJobSettings(job, job_name, netsettings):
 
     job.chunks = netsettings.chunks
     job.priority = netsettings.priority
-    
+
+    if netsettings.job_render_engine == "OTHER":
+        job.render = netsettings.job_render_engine_other
+    else:
+        job.render = netsettings.job_render_engine
+     
     if netsettings.job_type == "JOB_BLENDER":
         job.type = netrender.model.JOB_BLENDER
     elif netsettings.job_type == "JOB_PROCESS":
@@ -109,14 +112,14 @@ def fillCommonJobSettings(job, job_name, netsettings):
     elif netsettings.job_type == "JOB_VCS":
         job.type = netrender.model.JOB_VCS
 
-def clientSendJob(conn, scene, anim = False):
+def sendJob(conn, scene, anim = False, can_save = True):
     netsettings = scene.network_render
     if netsettings.job_type == "JOB_BLENDER":
-        return clientSendJobBlender(conn, scene, anim)
+        return sendJobBlender(conn, scene, anim, can_save)
     elif netsettings.job_type == "JOB_VCS":
-        return clientSendJobVCS(conn, scene, anim)
+        return sendJobVCS(conn, scene, anim)
 
-def clientSendJobVCS(conn, scene, anim = False):
+def sendJobVCS(conn, scene, anim = False):
     netsettings = scene.network_render
     job = netrender.model.RenderJob()
 
@@ -137,8 +140,6 @@ def clientSendJobVCS(conn, scene, anim = False):
     if filename[0] in (os.sep, os.altsep):
         filename = filename[1:]
     
-    print("CREATING VCS JOB", filename)
-    
     job.addFile(filename, signed=False)
 
     job_name = netsettings.job_name
@@ -155,9 +156,12 @@ def clientSendJobVCS(conn, scene, anim = False):
     job.version_info.wpath = netsettings.vcs_wpath
     job.version_info.rpath = netsettings.vcs_rpath
     job.version_info.revision = netsettings.vcs_revision
+    
+    job.tags.add(netrender.model.TAG_RENDER)
 
     # try to send path first
-    conn.request("POST", "/job", json.dumps(job.serialize()))
+    with ConnectionContext():
+        conn.request("POST", "/job", json.dumps(job.serialize()))
     response = conn.getresponse()
     response.read()
 
@@ -167,7 +171,87 @@ def clientSendJobVCS(conn, scene, anim = False):
 
     return job_id
 
-def clientSendJobBlender(conn, scene, anim = False):
+def sendJobBaking(conn, scene, can_save = True):
+    netsettings = scene.network_render
+    job = netrender.model.RenderJob()
+
+    filename = bpy.data.filepath
+    
+    if not os.path.exists(filename):
+        raise RuntimeError("Current file path not defined\nSave your file before sending a job")
+
+    if can_save and netsettings.save_before_job:
+        bpy.ops.wm.save_mainfile(filepath=filename, check_existing=False)
+    
+    job.addFile(filename)
+
+    job_name = netsettings.job_name
+    path, name = os.path.split(filename)
+    if job_name == "[default]":
+        job_name = name
+        
+    ###############################
+    # LIBRARIES (needed for baking)
+    ###############################
+    for lib in bpy.data.libraries:
+        file_path = bpy.path.abspath(lib.filepath)
+        if os.path.exists(file_path):
+            job.addFile(file_path)
+
+    tasks = set()
+    
+    ####################################
+    # FLUID + POINT CACHE (what we bake)
+    ####################################
+    def pointCacheFunc(object, owner, point_cache):
+        if type(owner) == bpy.types.ParticleSystem:
+            index = [index for index, data in enumerate(object.particle_systems) if data == owner][0]
+            tasks.add(("PARTICLE_SYSTEM", object.name, str(index)))
+        else: # owner is modifier
+            index = [index for index, data in enumerate(object.modifiers) if data == owner][0]
+            tasks.add((owner.type, object.name, str(index)))
+        
+    def fluidFunc(object, modifier, cache_path):
+        pass
+        
+    def multiresFunc(object, modifier, cache_path):
+        pass
+        
+    processObjectDependencies(pointCacheFunc, fluidFunc, multiresFunc)
+
+    fillCommonJobSettings(job, job_name, netsettings)
+    
+    job.tags.add(netrender.model.TAG_BAKING)
+    job.subtype = netrender.model.JOB_SUB_BAKING
+    job.chunks = 1 # No chunking for baking
+
+    for i, task in enumerate(tasks):
+        job.addFrame(i + 1)
+        job.frames[-1].command = netrender.baking.taskToCommand(task)
+        
+    # try to send path first
+    with ConnectionContext():
+        conn.request("POST", "/job", json.dumps(job.serialize()))
+    response = conn.getresponse()
+    response.read()
+
+    job_id = response.getheader("job-id")
+
+    # if not ACCEPTED (but not processed), send files
+    if response.status == http.client.ACCEPTED:
+        for rfile in job.files:
+            f = open(rfile.filepath, "rb")
+            with ConnectionContext():
+                conn.request("PUT", fileURL(job_id, rfile.index), f)
+            f.close()
+            response = conn.getresponse()
+            response.read()
+
+    # server will reply with ACCEPTED until all files are found
+
+    return job_id
+    
+def sendJobBlender(conn, scene, anim = False, can_save = True):
     netsettings = scene.network_render
     job = netrender.model.RenderJob()
 
@@ -178,10 +262,13 @@ def clientSendJobBlender(conn, scene, anim = False):
         job.addFrame(scene.frame_current)
 
     filename = bpy.data.filepath
-    
+
     if not os.path.exists(filename):
         raise RuntimeError("Current file path not defined\nSave your file before sending a job")
     
+    if can_save and netsettings.save_before_job:
+        bpy.ops.wm.save_mainfile(filepath=filename, check_existing=False)
+
     job.addFile(filename)
 
     job_name = netsettings.job_name
@@ -213,34 +300,28 @@ def clientSendJobBlender(conn, scene, anim = False):
     ###########################
     # FLUID + POINT CACHE
     ###########################
-    root, ext = os.path.splitext(name)
-    default_path = path + os.sep + "blendcache_" + root + os.sep # need an API call for that
-
-    for object in bpy.data.objects:
-        for modifier in object.modifiers:
-            if modifier.type == 'FLUID_SIMULATION' and modifier.settings.type == "DOMAIN":
-                addFluidFiles(job, bpy.path.abspath(modifier.settings.filepath))
-            elif modifier.type == "CLOTH":
-                addPointCache(job, object, modifier.point_cache, default_path)
-            elif modifier.type == "SOFT_BODY":
-                addPointCache(job, object, modifier.point_cache, default_path)
-            elif modifier.type == "SMOKE" and modifier.smoke_type == "TYPE_DOMAIN":
-                addPointCache(job, object, modifier.domain_settings.point_cache, default_path)
-            elif modifier.type == "MULTIRES" and modifier.is_external:
-                file_path = bpy.path.abspath(modifier.filepath)
-                job.addFile(file_path)
-
-        # particles modifier are stupid and don't contain data
-        # we have to go through the object property
-        for psys in object.particle_systems:
-            addPointCache(job, object, psys.point_cache, default_path)
+    default_path = cachePath(filename)
+    
+    def pointCacheFunc(object, owner, point_cache):
+        addPointCache(job, object, point_cache, default_path)
+        
+    def fluidFunc(object, modifier, cache_path):
+        addFluidFiles(job, cache_path)
+        
+    def multiresFunc(object, modifier, cache_path):
+        job.addFile(cache_path)
+        
+    processObjectDependencies(pointCacheFunc, fluidFunc, multiresFunc)
 
     #print(job.files)
 
     fillCommonJobSettings(job, job_name, netsettings)
+    
+    job.tags.add(netrender.model.TAG_RENDER)
 
     # try to send path first
-    conn.request("POST", "/job", json.dumps(job.serialize()))
+    with ConnectionContext():
+        conn.request("POST", "/job", json.dumps(job.serialize()))
     response = conn.getresponse()
     response.read()
 
@@ -250,7 +331,8 @@ def clientSendJobBlender(conn, scene, anim = False):
     if response.status == http.client.ACCEPTED:
         for rfile in job.files:
             f = open(rfile.filepath, "rb")
-            conn.request("PUT", fileURL(job_id, rfile.index), f)
+            with ConnectionContext():
+                conn.request("PUT", fileURL(job_id, rfile.index), f)
             f.close()
             response = conn.getresponse()
             response.read()
@@ -260,7 +342,8 @@ def clientSendJobBlender(conn, scene, anim = False):
     return job_id
 
 def requestResult(conn, job_id, frame):
-    conn.request("GET", renderURL(job_id, frame))
+    with ConnectionContext():
+        conn.request("GET", renderURL(job_id, frame))
 
 class NetworkRenderEngine(bpy.types.RenderEngine):
     bl_idname = 'NET_RENDER'
@@ -285,7 +368,16 @@ class NetworkRenderEngine(bpy.types.RenderEngine):
 
         address = "" if netsettings.server_address == "[default]" else netsettings.server_address
 
-        master.runMaster((address, netsettings.server_port), netsettings.use_master_broadcast, netsettings.use_master_clear, bpy.path.abspath(netsettings.path), self.update_stats, self.test_break)
+        master.runMaster(address = (address, netsettings.server_port), 
+                         broadcast = netsettings.use_master_broadcast,
+                         clear = netsettings.use_master_clear,
+                         force = netsettings.use_master_force_upload,
+                         path = bpy.path.abspath(netsettings.path),
+                         update_stats = self.update_stats,
+                         test_break = self.test_break,
+                         use_ssl=netsettings.use_ssl,
+                         cert_path=netsettings.cert_path,
+                         key_path=netsettings.key_path)
 
 
     def render_slave(self, scene):
@@ -296,7 +388,7 @@ class NetworkRenderEngine(bpy.types.RenderEngine):
         self.update_stats("", "Network render client initiation")
 
 
-        conn = clientConnection(netsettings.server_address, netsettings.server_port)
+        conn = clientConnection(netsettings)
 
         if conn:
             # Sending file
@@ -318,7 +410,7 @@ class NetworkRenderEngine(bpy.types.RenderEngine):
 
             if response.status == http.client.NO_CONTENT:
                 new_job = True
-                netsettings.job_id = clientSendJob(conn, scene)
+                netsettings.job_id = sendJob(conn, scene, can_save = False)
                 job_id = netsettings.job_id
 
                 requestResult(conn, job_id, scene.frame_current)
@@ -333,7 +425,8 @@ class NetworkRenderEngine(bpy.types.RenderEngine):
 
             # cancel new jobs (animate on network) on break
             if self.test_break() and new_job:
-                conn.request("POST", cancelURL(job_id))
+                with ConnectionContext():
+                    conn.request("POST", cancelURL(job_id))
                 response = conn.getresponse()
                 response.read()
                 print( response.status, response.reason )
@@ -350,9 +443,7 @@ class NetworkRenderEngine(bpy.types.RenderEngine):
             result_path = os.path.join(bpy.path.abspath(netsettings.path), "output.exr")
             
             folder = os.path.split(result_path)[0]
-            
-            if not os.path.exists(folder):
-                os.mkdir(folder)
+            verifyCreateDir(folder)
 
             f = open(result_path, "wb")
 

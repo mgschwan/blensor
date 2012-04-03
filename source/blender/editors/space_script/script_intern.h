@@ -28,14 +28,10 @@
  *  \ingroup spscript
  */
 
-#ifndef ED_SCRIPT_INTERN_H
-#define ED_SCRIPT_INTERN_H
+#ifndef __SCRIPT_INTERN_H__
+#define __SCRIPT_INTERN_H__
 
 /* internal exports only */
-
-
-/* script_header.c */
-void script_header_buttons(const bContext *C, ARegion *ar);
 
 /* script_ops.c */
 void script_operatortypes(void);
@@ -45,5 +41,5 @@ void script_keymap(struct wmKeyConfig *keyconf);
 void SCRIPT_OT_reload(struct wmOperatorType *ot);
 void SCRIPT_OT_python_file_run(struct wmOperatorType *ot);
 
-#endif /* ED_SCRIPT_INTERN_H */
+#endif /* __SCRIPT_INTERN_H__ */
 

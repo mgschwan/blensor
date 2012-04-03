@@ -29,14 +29,14 @@
  *  \ingroup gamelogic
  */
 
-#ifndef __KX_XNORCONTROLLER
-#define __KX_XNORCONTROLLER
+#ifndef __SCA_XNORCONTROLLER_H__
+#define __SCA_XNORCONTROLLER_H__
 
 #include "SCA_IController.h"
 
 class SCA_XNORController : public SCA_IController
 {
-	Py_Header;
+	Py_Header
 	//virtual void Trigger(class SCA_LogicManager* logicmgr);
 public:
 	SCA_XNORController(SCA_IObject* gameobj);
@@ -50,5 +50,5 @@ public:
 
 };
 
-#endif //__KX_XNORCONTROLLER
+#endif //__SCA_XNORCONTROLLER_H__
 

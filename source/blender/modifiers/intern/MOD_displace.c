@@ -74,11 +74,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	tdmd->texture = dmd->texture;
 	tdmd->strength = dmd->strength;
 	tdmd->direction = dmd->direction;
-	BLI_strncpy(tdmd->defgrp_name, dmd->defgrp_name, 32);
+	BLI_strncpy(tdmd->defgrp_name, dmd->defgrp_name, sizeof(tdmd->defgrp_name));
 	tdmd->midlevel = dmd->midlevel;
 	tdmd->texmapping = dmd->texmapping;
 	tdmd->map_object = dmd->map_object;
-	BLI_strncpy(tdmd->uvlayer_name, dmd->uvlayer_name, 32);
+	BLI_strncpy(tdmd->uvlayer_name, dmd->uvlayer_name, sizeof(tdmd->uvlayer_name));
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
@@ -87,10 +87,10 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
 	CustomDataMask dataMask = 0;
 
 	/* ask for vertexgroups if we need them */
-	if(dmd->defgrp_name[0]) dataMask |= CD_MASK_MDEFORMVERT;
+	if (dmd->defgrp_name[0]) dataMask |= CD_MASK_MDEFORMVERT;
 
 	/* ask for UV coordinates if we need them */
-	if(dmd->texmapping == MOD_DISP_MAP_UV) dataMask |= CD_MASK_MTFACE;
+	if (dmd->texmapping == MOD_DISP_MAP_UV) dataMask |= CD_MASK_MTFACE;
 
 	return dataMask;
 }
@@ -99,12 +99,10 @@ static int dependsOnTime(ModifierData *md)
 {
 	DisplaceModifierData *dmd = (DisplaceModifierData *)md;
 
-	if(dmd->texture)
-	{
+	if (dmd->texture) {
 		return BKE_texture_dependsOnTime(dmd->texture);
 	}
-	else
-	{
+	else {
 		return 0;
 	}
 }
@@ -153,17 +151,17 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 {
 	DisplaceModifierData *dmd = (DisplaceModifierData*) md;
 
-	if(dmd->map_object && dmd->texmapping == MOD_DISP_MAP_OBJECT) {
+	if (dmd->map_object && dmd->texmapping == MOD_DISP_MAP_OBJECT) {
 		DagNode *curNode = dag_get_node(forest, dmd->map_object);
 
 		dag_add_relation(forest, curNode, obNode,
-				 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Displace Modifier");
+		                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Displace Modifier");
 	}
 	
 
-	if(dmd->texmapping == MOD_DISP_MAP_GLOBAL)
+	if (dmd->texmapping == MOD_DISP_MAP_GLOBAL)
 		dag_add_relation(forest, obNode, obNode,
-						 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Displace Modifier");
+		                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Displace Modifier");
 	
 }
 
@@ -179,8 +177,8 @@ static void displaceModifier_do(
 	float (*tex_co)[3];
 	float weight= 1.0f; /* init value unused but some compilers may complain */
 
-	if(!dmd->texture) return;
-	if(dmd->strength == 0.0f) return;
+	if (!dmd->texture) return;
+	if (dmd->strength == 0.0f) return;
 
 	mvert = CDDM_get_verts(dm);
 	modifier_get_vgroup(ob, dm, dmd->defgrp_name, &dvert, &defgrp_index);
@@ -189,13 +187,13 @@ static void displaceModifier_do(
 				 "displaceModifier_do tex_co");
 	get_texture_coords((MappingInfoModifierData *)dmd, ob, dm, vertexCos, tex_co, numVerts);
 
-	for(i = 0; i < numVerts; ++i) {
+	for (i = 0; i < numVerts; ++i) {
 		TexResult texres;
 		float delta = 0, strength = dmd->strength;
 
-		if(dvert) {
+		if (dvert) {
 			weight= defvert_find_weight(dvert + i, defgrp_index);
-			if(weight == 0.0f) continue;
+			if (weight == 0.0f) continue;
 		}
 
 		texres.nor = NULL;
@@ -203,7 +201,7 @@ static void displaceModifier_do(
 
 		delta = texres.tin - dmd->midlevel;
 
-		if(dvert) strength *= weight;
+		if (dvert) strength *= weight;
 
 		delta *= strength;
 		CLAMP(delta, -10000, 10000);
@@ -244,22 +242,22 @@ static void deformVerts(ModifierData *md, Object *ob,
 	DerivedMesh *dm= get_cddm(ob, NULL, derivedData, vertexCos);
 
 	displaceModifier_do((DisplaceModifierData *)md, ob, dm,
-				 vertexCos, numVerts);
+	                    vertexCos, numVerts);
 
-	if(dm != derivedData)
+	if (dm != derivedData)
 		dm->release(dm);
 }
 
 static void deformVertsEM(
-					   ModifierData *md, Object *ob, struct EditMesh *editData,
+					   ModifierData *md, Object *ob, struct BMEditMesh *editData,
 	DerivedMesh *derivedData, float (*vertexCos)[3], int numVerts)
 {
 	DerivedMesh *dm= get_cddm(ob, editData, derivedData, vertexCos);
 
 	displaceModifier_do((DisplaceModifierData *)md, ob, dm,
-				 vertexCos, numVerts);
+	                    vertexCos, numVerts);
 
-	if(dm != derivedData)
+	if (dm != derivedData)
 		dm->release(dm);
 }
 

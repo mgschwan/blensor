@@ -30,8 +30,8 @@
  * \brief GHOST C-API function and type declarations.
  */
 
-#ifndef	GHOST_C_API_H
-#define GHOST_C_API_H
+#ifndef	__GHOST_C_API_H__
+#define __GHOST_C_API_H__
 
 #include "GHOST_Types.h"
 
@@ -81,7 +81,8 @@ extern GHOST_TSuccess GHOST_DisposeSystem(GHOST_SystemHandle systemhandle);
  * @param eventCallback The event callback routine.
  * @param userdata		Pointer to user data returned to the callback routine.
  */
-extern GHOST_EventConsumerHandle GHOST_CreateEventConsumer(GHOST_EventCallbackProcPtr eventCallback, GHOST_TUserDataPtr userdata);
+extern GHOST_EventConsumerHandle GHOST_CreateEventConsumer(GHOST_EventCallbackProcPtr eventCallback,
+                                                           GHOST_TUserDataPtr userdata);
 
 /**
  * Disposes an event consumer object
@@ -493,7 +494,7 @@ extern void GHOST_SetTimerTaskUserData(GHOST_TimerTaskHandle timertaskhandle,
  * @param windowhandle The handle to the window
  * @return The validity of the window.
  */
-extern int GHOST_GetValid(GHOST_WindowHandle windowhandle) ;
+extern int GHOST_GetValid(GHOST_WindowHandle windowhandle);
 
 /**
  * Returns the type of drawing context used in this window.
@@ -591,7 +592,7 @@ extern void GHOST_ScreenToClient(GHOST_WindowHandle windowhandle,
 								 GHOST_TInt32 inX,
 								 GHOST_TInt32 inY,
 								 GHOST_TInt32* outX,
-								 GHOST_TInt32* outY) ;
+								 GHOST_TInt32* outY);
 
 /**
  * Converts a point in screen coordinates to client rectangle coordinates
@@ -840,6 +841,14 @@ extern void GHOST_putClipboard(GHOST_TInt8 *buffer, int selection);
  * @return current status (1 -visible, 0 - hidden)
  */
 extern int GHOST_toggleConsole(int action);
+
+
+/**
+ * Confirms quitting he program when there is just one window left open
+ * in the application
+ */
+extern int GHOST_confirmQuit(GHOST_WindowHandle windowhandle);
+
 
 #ifdef __cplusplus
 }

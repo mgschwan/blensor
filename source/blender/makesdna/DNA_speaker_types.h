@@ -19,12 +19,13 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_SPEAKER_TYPES_H
-#define DNA_SPEAKER_TYPES_H
 
 /** \file DNA_speaker_types.h
  *  \ingroup DNA
  */
+
+#ifndef __DNA_SPEAKER_TYPES_H__
+#define __DNA_SPEAKER_TYPES_H__
 
 #include "DNA_ID.h"
 
@@ -63,5 +64,5 @@ typedef struct Speaker {
 #define SPK_MUTED       (1<<1)
 #define SPK_RELATIVE    (1<<2)
 
-#endif /* DNA_SPEAKER_TYPES_H */
+#endif /* __DNA_SPEAKER_TYPES_H__ */
 

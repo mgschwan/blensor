@@ -1,8 +1,4 @@
-#ifndef __ffmpeg_compat_h_included__
-#define __ffmpeg_compat_h_included__ 1
-
 /*
- *
  * compatibility macros to make every ffmpeg installation appear
  * like the most current installation (wrapping some functionality sometimes)
  * it also includes all ffmpeg header files at once, no need to do it 
@@ -22,9 +18,10 @@
  *
  */
 
+#ifndef __FFMPEG_COMPAT_H__
+#define __FFMPEG_COMPAT_H__
 
 #include <libavformat/avformat.h>
-
 
 /* check our ffmpeg is new enough, avoids user complaints */
 #if (LIBAVFORMAT_VERSION_MAJOR < 52) || ((LIBAVFORMAT_VERSION_MAJOR == 52) && (LIBAVFORMAT_VERSION_MINOR <= 64))
@@ -35,6 +32,7 @@
 
 #include <libavcodec/avcodec.h>
 #include <libavutil/rational.h>
+#include <libavutil/opt.h>
 
 #if (LIBAVFORMAT_VERSION_MAJOR > 52) || ((LIBAVFORMAT_VERSION_MAJOR >= 52) && (LIBAVFORMAT_VERSION_MINOR >= 101))
 #define FFMPEG_HAVE_PARSE_UTILS 1
@@ -72,6 +70,10 @@
 #if ((LIBAVCODEC_VERSION_MAJOR > 52) || (LIBAVCODEC_VERSION_MAJOR >= 52) && (LIBAVCODEC_VERSION_MINOR >= 29)) && \
 	((LIBSWSCALE_VERSION_MAJOR > 0) || (LIBSWSCALE_VERSION_MAJOR >= 0) && (LIBSWSCALE_VERSION_MINOR >= 10))
 #define FFMPEG_SWSCALE_COLOR_SPACE_SUPPORT
+#endif
+
+#if ((LIBAVUTIL_VERSION_MAJOR > 51) || (LIBAVUTIL_VERSION_MAJOR == 51) && (LIBAVUTIL_VERSION_MINOR >= 32))
+#define FFMPEG_FFV1_ALPHA_SUPPORTED
 #endif
 
 #ifndef FFMPEG_HAVE_AVIO
@@ -150,7 +152,8 @@ int64_t av_get_pts_from_frame(AVFormatContext *avctx, AVFrame * picture)
 	if (pts == AV_NOPTS_VALUE) {
 		pts = 0;
 	}
-	
+
+	(void)avctx;
 	return pts;
 }
 

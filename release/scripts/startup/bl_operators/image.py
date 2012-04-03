@@ -30,9 +30,7 @@ class EditExternally(Operator):
     bl_options = {'REGISTER'}
 
     filepath = StringProperty(
-            name="File Path",
-            description="Path to an image file",
-            maxlen=1024,
+            subtype='FILE_PATH',
             )
 
     def _editor_guess(self, context):
@@ -69,7 +67,7 @@ class EditExternally(Operator):
             self.report({'ERROR'}, "Image path not set")
             return {'CANCELLED'}
 
-        if not os.path.exists(filepath):
+        if not os.path.exists(filepath) or not os.path.isfile(filepath):
             self.report({'ERROR'},
                         "Image path %r not found, image may be packed or "
                         "unsaved" % filepath)
@@ -96,6 +94,10 @@ class EditExternally(Operator):
             image = context.space_data.image
         except AttributeError:
             self.report({'ERROR'}, "Context incorrect, image not found")
+            return {'CANCELLED'}
+
+        if image.packed_file:
+            self.report({'ERROR'}, "Image is packed, unpack before editing")
             return {'CANCELLED'}
 
         filepath = bpy.path.abspath(image.filepath, library=image.library)
@@ -130,7 +132,7 @@ class SaveDirty(Operator):
 
 
 class ProjectEdit(Operator):
-    """Edit a snapshot of the viewport in an external image editor"""
+    """Edit a snapshot of the view-port in an external image editor"""
     bl_idname = "image.project_edit"
     bl_label = "Project Edit"
     bl_options = {'REGISTER'}
@@ -145,7 +147,11 @@ class ProjectEdit(Operator):
         for image in bpy.data.images:
             image.tag = True
 
-        if 'FINISHED' not in bpy.ops.paint.image_from_view():
+        # opengl buffer may fail, we can't help this, but best report it.
+        try:
+            bpy.ops.paint.image_from_view()
+        except RuntimeError as err:
+            self.report({'ERROR'}, str(err))
             return {'CANCELLED'}
 
         image_new = None
@@ -187,6 +193,8 @@ class ProjectEdit(Operator):
         image_new.filepath_raw = filepath_final  # TODO, filepath raw is crummy
         image_new.file_format = 'PNG'
         image_new.save()
+
+        filepath_final = bpy.path.abspath(filepath_final)
 
         try:
             bpy.ops.image.external_edit(filepath=filepath_final)

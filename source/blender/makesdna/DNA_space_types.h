@@ -24,19 +24,22 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_SPACE_TYPES_H
-#define DNA_SPACE_TYPES_H
 /** \file DNA_space_types.h
  *  \ingroup DNA
  *  \since mar-2001
  *  \author nzc
  */
 
+#ifndef __DNA_SPACE_TYPES_H__
+#define __DNA_SPACE_TYPES_H__
+
+#include "DNA_defs.h"
 #include "DNA_listBase.h"
 #include "DNA_color_types.h"		/* for Histogram */
 #include "DNA_vec_types.h"
 #include "DNA_outliner_types.h"		/* for TreeStoreElem */
 #include "DNA_image_types.h"	/* ImageUser */
+#include "DNA_movieclip_types.h"	/* MovieClipUser */
 /* Hum ... Not really nice... but needed for spacebuts. */
 #include "DNA_view2d_types.h"
 
@@ -62,6 +65,8 @@ struct bScreen;
 struct Scene;
 struct wmOperator;
 struct wmTimer;
+struct MovieClip;
+struct MovieClipScopes;
 
 	/**
 	 * The base structure all the other spaces
@@ -73,17 +78,17 @@ typedef struct SpaceLink {
 	struct SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;			/* XXX depricate this */
-	short blockhandler[8];		/* XXX depricate this */
+	float blockscale  DNA_DEPRECATED;       /* XXX make deprecated */
+	short blockhandler[8]  DNA_DEPRECATED;  /* XXX make deprecated */
 } SpaceLink;
 
 typedef struct SpaceInfo {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 
-	short blockhandler[8];		/* XXX depricate this */
+	short blockhandler[8]  DNA_DEPRECATED;		/* XXX make deprecated */
 	
 	char rpt_mask;
 	char pad[7];
@@ -104,10 +109,10 @@ typedef struct SpaceIpo {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 
-	short blockhandler[8];
-	View2D v2d; /* deprecated, copied to region */
+	short blockhandler[8]  DNA_DEPRECATED;
+	View2D v2d  DNA_DEPRECATED; /* deprecated, copied to region */
 	
 	struct bDopeSheet *ads;	/* settings for filtering animation data (NOTE: we use a pointer due to code-linking issues) */
 	
@@ -125,13 +130,11 @@ typedef struct SpaceButs {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 	
-	short blockhandler[8];
-	
-	struct RenderInfo *ri;
+	short blockhandler[8]  DNA_DEPRECATED;
 
-	View2D v2d;						/* deprecated, copied to region */
+	View2D v2d  DNA_DEPRECATED;						/* deprecated, copied to region */
 	
 	short mainb, mainbo, mainbuser;	/* context tabs */
 	short re_align, align;			/* align for panels */
@@ -142,25 +145,27 @@ typedef struct SpaceButs {
 	void *path;						/* runtime */
 	int pathflag, dataicon;			/* runtime */
 	ID *pinid;
+
+	void *texuser;
 } SpaceButs;
 
 typedef struct SpaceSeq {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 
-	short blockhandler[8];
+	short blockhandler[8]  DNA_DEPRECATED;
 
-	View2D v2d; /* deprecated, copied to region */
+	View2D v2d  DNA_DEPRECATED; /* deprecated, copied to region */
 	
-	float xof, yof;	/* deprecated: offset for drawing the image preview */
+	float xof  DNA_DEPRECATED, yof  DNA_DEPRECATED;	/* deprecated: offset for drawing the image preview */
 	short mainb;	/* weird name for the sequencer subtype (seq, image, luma... etc) */
 	short render_size;
 	short chanshown;
 	short zebra;
 	int flag;
-	float zoom; /* deprecated, handled by View2D now */
+	float zoom  DNA_DEPRECATED; /* deprecated, handled by View2D now */
 	int view; /* see SEQ_VIEW_* below */
 	int pad;
 
@@ -169,10 +174,11 @@ typedef struct SpaceSeq {
 
 typedef struct FileSelectParams {
 	char title[32]; /* title, also used for the text of the execute button */
-	char dir[240]; /* directory */
-	char file[80]; /* file */
-	char renamefile[80];
-	char renameedit[80]; /* annoying but the first is only used for initialization */
+	char dir[1056]; /* directory, FILE_MAX_LIBEXTRA, 1024 + 32, this is for extreme case when 1023 length path
+	                 * needs to be linked in, where foo.blend/Armature need adding  */
+	char file[256]; /* file */
+	char renamefile[256];
+	char renameedit[256]; /* annoying but the first is only used for initialization */
 
 	char filter_glob[64]; /* list of filetypes to filter */
 
@@ -209,10 +215,10 @@ typedef struct SpaceFile {
 	ListBase *folders_next; /* holds the list of next directories (pushed from previous) to show */
 
 	/* operator that is invoking fileselect 
-	   op->exec() will be called on the 'Load' button.
-	   if operator provides op->cancel(), then this will be invoked
-	   on the cancel button.
-	*/
+	 * op->exec() will be called on the 'Load' button.
+	 * if operator provides op->cancel(), then this will be invoked
+	 * on the cancel button.
+	 */
 	struct wmOperator *op; 
 
 	struct wmTimer *smoothscroll_timer;
@@ -227,11 +233,11 @@ typedef struct SpaceOops {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 
-	short blockhandler[8];
+	short blockhandler[8]  DNA_DEPRECATED;
 
-	View2D v2d; /* deprecated, copied to region */
+	View2D v2d  DNA_DEPRECATED; /* deprecated, copied to region */
 	
 	ListBase tree;
 	struct TreeStore *treestore;
@@ -278,25 +284,25 @@ typedef struct SpaceNla {
 	struct SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 
-	short blockhandler[8];
+	short blockhandler[8]  DNA_DEPRECATED;
 
 	short autosnap;			/* this uses the same settings as autosnap for Action Editor */
 	short flag;
 	int pad;
 	
 	struct bDopeSheet *ads;
-	View2D v2d;	 /* deprecated, copied to region */
+	View2D v2d  DNA_DEPRECATED;	 /* deprecated, copied to region */
 } SpaceNla;
 
 typedef struct SpaceText {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 
-	short blockhandler[8];
+	short blockhandler[8]  DNA_DEPRECATED;
 
 	struct Text *text;	
 
@@ -338,16 +344,17 @@ typedef struct Script {
 	void *py_globaldict;
 
 	int flags, lastspace;
-	char scriptname[256]; /* store the script file here so we can re-run it on loading blender, if "Enable Scripts" is on */
-	char scriptarg[256];
+	/* store the script file here so we can re-run it on loading blender, if "Enable Scripts" is on */
+	char scriptname[1024]; /* 1024 = FILE_MAX */
+	char scriptarg[256]; /* 1024 = FILE_MAX */
 } Script;
-#define SCRIPT_SET_NULL(_script) _script->py_draw = _script->py_event = _script->py_button = _script->py_browsercallback = _script->py_globaldict = NULL; _script->flags = 0;
+#define SCRIPT_SET_NULL(_script) _script->py_draw = _script->py_event = _script->py_button = _script->py_browsercallback = _script->py_globaldict = NULL; _script->flags = 0
 
 typedef struct SpaceScript {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 	struct Script *script;
 
 	short flags, menunr;
@@ -367,31 +374,29 @@ typedef struct SpaceTime {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 	
-	View2D v2d; /* deprecated, copied to region */
-	
+	View2D v2d  DNA_DEPRECATED; /* deprecated, copied to region */
+
 	ListBase caches;
-	int cache_display, pad;
-	
-	int flag, redraws; /* redraws is deprecated... moved to screen */
-	
+
+	int cache_display;
+	int flag;
 } SpaceTime;
 
 typedef struct SpaceNode {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 	
-	short blockhandler[8];
+	short blockhandler[8]  DNA_DEPRECATED;
 	
-	View2D v2d; /* deprecated, copied to region */
+	View2D v2d  DNA_DEPRECATED; /* deprecated, copied to region */
 	
 	struct ID *id, *from;		/* context, no need to save in file? well... pinning... */
-	short flag, menunr;			/* menunr: browse id block in header */
+	short flag, pad1;			/* menunr: browse id block in header */
 	float aspect;
-	void *curfont;
 	
 	float xof, yof;		/* offset for drawing the backdrop */
 	float zoom, padf;	/* zoom for backdrop */
@@ -400,7 +405,9 @@ typedef struct SpaceNode {
 	struct bNodeTree *nodetree, *edittree;
 	int treetype;		/* treetype: as same nodetree->type */
 	short texfrom;		/* texfrom object, world or brush */
+	short shaderfrom;	/* shader from object or world */
 	short recalc;		/* currently on 0/1, for auto compo */
+	short pad[3];
 	ListBase linkdrag;	/* temporary data for modal linking operator */
 	
 	struct bGPdata *gpd;		/* grease-pencil data */
@@ -418,81 +425,23 @@ typedef struct SpaceNode {
 #define SNODE_TEX_WORLD		1
 #define SNODE_TEX_BRUSH		2
 
+/* snode->shaderfrom */
+#define SNODE_SHADER_OBJECT	0
+#define SNODE_SHADER_WORLD	1
+
 typedef struct SpaceLogic {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
+	float blockscale  DNA_DEPRECATED;
 	
-	short blockhandler[8];
+	short blockhandler[8]  DNA_DEPRECATED;
 	
 	short flag, scaflag;
 	int pad;
 	
 	struct bGPdata *gpd;		/* grease-pencil data */
 } SpaceLogic;
-
-/* note, this entire struct isnt used anymore!,
- * may remove some day - campbell */
-typedef struct SpaceImaSel {
-	SpaceLink *next, *prev;
-	ListBase regionbase;		/* storage of regions for inactive spaces */
-	int spacetype;
-	float blockscale;
-	
-	short blockhandler[8];
-
-	View2D v2d; /* deprecated, copied to region */
-
-	struct FileList *files;
-
-	/* specific stuff for drawing */
-	char title[24];
-	char dir[240];
-	char file[80];
-
-	short type, menu, flag, sort;
-
-	void *curfont;
-	int	active_file;
-
-	int numtilesx;
-	int numtilesy;
-
-	int selstate;
-
-	struct rcti viewrect;
-	struct rcti bookmarkrect;
-
-	float scrollpos; /* current position of scrollhandle */
-	float scrollheight; /* height of the scrollhandle */
-	float scrollarea; /* scroll region, scrollpos is from 0 to scrollarea */
-
-	float aspect;
-	unsigned short retval;		/* event */
-
-	short ipotype;
-	
-	short filter;
-	short active_bookmark;
-	short pad, pad1;
-
-	/* view settings */
-	short prv_w;
-	short prv_h;
-
-	/* one day we'll add unions to dna */
-	void (*returnfunc)(char *);
-	void (*returnfunc_event)(unsigned short);
-	void (*returnfunc_args)(char *, void *, void *);
-	
-	void *arg1, *arg2;
-	short *menup;	/* pointer to menu result or ID browsing */
-	char *pupmenu;	/* optional menu in header */
-
-	struct ImBuf *img;
-} SpaceImaSel;
-
 
 typedef struct ConsoleLine {
 	struct ConsoleLine *next, *prev;
@@ -518,9 +467,9 @@ typedef struct SpaceConsole {
 	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;			// XXX are these needed?
+	float blockscale  DNA_DEPRECATED;			// XXX are these needed?
 	
-	short blockhandler[8];		// XXX are these needed?
+	short blockhandler[8]  DNA_DEPRECATED;		// XXX are these needed?
 	
 	/* space vars */
 	int lheight, pad;
@@ -545,21 +494,36 @@ typedef struct SpaceUserPref {
 
 } SpaceUserPref;
 
-typedef struct SpaceSound {
-	struct SpaceLink *next, *prev;
+typedef struct SpaceClip {
+	SpaceLink *next, *prev;
 	ListBase regionbase;		/* storage of regions for inactive spaces */
 	int spacetype;
-	float blockscale;
-	struct ScrArea *area;
-	
-	View2D v2d;
-	
-	struct bSound *sound;
-	short mode, sndnr;
-	short xof, yof;
-	short flag, lock;
-	int pad2;
-} SpaceSound;
+
+	float xof, yof;				/* user defined offset, image is centered */
+	float xlockof, ylockof;		/* user defined offset from locked position */
+	float zoom;					/* user defined zoom level */
+
+	struct MovieClipUser user;		/* user of clip */
+	struct MovieClip *clip;			/* clip data */
+	struct MovieClipScopes scopes;	/* different scoped displayed in space panels */
+
+	int flag;					/* flags */
+	short mode;					/* editor mode (editing context being displayed) */
+	short view;					/* type of the clip editor view */
+
+	int path_length;			/* length of displaying path, in frames */
+
+	/* current stabilization data */
+	float loc[2], scale, angle;	/* pre-composed stabilization data */
+	int pad;
+	float stabmat[4][4], unistabmat[4][4];  /* current stabilization matrix and the same matrix in unified space,
+	                                         * defined when drawing and used for mouse position calculation */
+
+	/* movie postprocessing */
+	int postproc_flag;
+
+	int runtime_flag;			/* different runtime flags */
+} SpaceClip;
 
 /* view3d  Now in DNA_view3d_types.h */
 
@@ -594,23 +558,6 @@ typedef struct SpaceSound {
 #define BUTS_SOUND			12
 #define BUTS_CONSTRAINT		13
 #define BUTS_EFFECTS		14
-
-/* sbuts->tab new (deprecated) */
-#define TAB_SHADING_MAT 	0
-#define TAB_SHADING_TEX 	1
-#define TAB_SHADING_RAD 	2
-#define TAB_SHADING_WORLD	3
-#define TAB_SHADING_LAMP	4
-
-#define TAB_OBJECT_OBJECT	0
-#define TAB_OBJECT_PHYSICS 	1
-#define TAB_OBJECT_PARTICLE	2
-
-#define TAB_SCENE_RENDER	0
-#define TAB_SCENE_WORLD     	1
-#define TAB_SCENE_ANIM		2
-#define TAB_SCENE_SOUND		3
-#define TAB_SCENE_SEQUENCER	4
 
 /* buts->mainb new */
 #define BCONTEXT_RENDER				0
@@ -663,7 +610,8 @@ typedef struct SpaceSound {
 
 /* FileSelectParams.display */
 enum FileDisplayTypeE {
-	FILE_SHORTDISPLAY = 1,
+	FILE_DEFAULTDISPLAY = 0,
+	FILE_SHORTDISPLAY,
 	FILE_LONGDISPLAY,
 	FILE_IMGDISPLAY
 };
@@ -679,13 +627,15 @@ enum FileSortTypeE {
 
 /* these values need to be hardcoded in structs, dna does not recognize defines */
 /* also defined in BKE */
-#define FILE_MAXDIR			160
-#define FILE_MAXFILE		80
-#define FILE_MAX			240
+#define FILE_MAXDIR			768
+#define FILE_MAXFILE		256
+#define FILE_MAX			1024
+
+#define FILE_MAX_LIBEXTRA   (FILE_MAX + 32)
 
 /* filesel types */
 #define FILE_UNIX			8
-#define FILE_BLENDER		8 /* dont display relative paths */
+#define FILE_BLENDER		8 /* don't display relative paths */
 #define FILE_SPECIAL		9
 
 #define FILE_LOADLIB		1
@@ -726,7 +676,7 @@ enum FileSortTypeE {
 
 
 /* Selection Flags in filesel: struct direntry, unsigned char selflag */
-#define ACTIVE_FILE 		(1<<1)
+/* #define ACTIVE_FILE 		(1<<1) */ /* UNUSED */
 #define HILITED_FILE		(1<<2)
 #define SELECTED_FILE		(1<<3)
 #define EDITING_FILE		(1<<4)
@@ -743,7 +693,7 @@ enum FileSortTypeE {
 
 /* SpaceImage->sticky
  * Note DISABLE should be 0, however would also need to re-arrange icon order,
- * also, sticky loc is the default mode so this means we dont need to 'do_versons' */
+ * also, sticky loc is the default mode so this means we don't need to 'do_versons' */
 #define SI_STICKY_LOC		0
 #define SI_STICKY_DISABLE	1
 #define SI_STICKY_VERTEX	2
@@ -896,6 +846,7 @@ enum {
 #define TIME_ALL_IMAGE_WIN		64
 #define TIME_CONTINUE_PHYSICS	128
 #define TIME_NODES				256
+#define TIME_CLIPS				512
 
 /* time->cache */
 #define TIME_CACHE_DISPLAY		1
@@ -903,6 +854,7 @@ enum {
 #define TIME_CACHE_PARTICLES	4
 #define TIME_CACHE_CLOTH		8
 #define TIME_CACHE_SMOKE		16
+#define TIME_CACHE_DYNAMICPAINT	32
 
 /* sseq->mainb */
 #define SEQ_DRAW_SEQUENCE         0
@@ -914,7 +866,7 @@ enum {
 /* sseq->flag */
 #define SEQ_DRAWFRAMES   1
 #define SEQ_MARKER_TRANS 2
-#define SEQ_DRAW_COLOR_SEPERATED     4
+#define SEQ_DRAW_COLOR_SEPARATED     4
 #define SEQ_DRAW_SAFE_MARGINS        8
 #define SEQ_DRAW_GPENCIL			16
 #define SEQ_NO_DRAW_CFRANUM			32
@@ -933,6 +885,37 @@ enum {
 #define SEQ_PROXY_RENDER_SIZE_100       99
 #define SEQ_PROXY_RENDER_SIZE_FULL      100
 
+/* SpaceClip->flag */
+#define SC_SHOW_MARKER_PATTERN	(1<<0)
+#define SC_SHOW_MARKER_SEARCH	(1<<1)
+#define SC_LOCK_SELECTION		(1<<2)
+#define SC_SHOW_TINY_MARKER		(1<<3)
+#define SC_SHOW_TRACK_PATH		(1<<4)
+#define SC_SHOW_BUNDLES			(1<<5)
+#define SC_MUTE_FOOTAGE			(1<<6)
+#define SC_HIDE_DISABLED		(1<<7)
+#define SC_SHOW_NAMES			(1<<8)
+#define SC_SHOW_GRID			(1<<9)
+#define SC_SHOW_STABLE			(1<<10)
+#define SC_MANUAL_CALIBRATION	(1<<11)
+/*#define SC_SHOW_GPENCIL			(1<<12)*/	/* UNUSED */
+#define SC_SHOW_FILTERS			(1<<13)
+#define SC_SHOW_GRAPH_FRAMES	(1<<14)
+#define SC_SHOW_GRAPH_TRACKS	(1<<15)
+/*#define SC_SHOW_PYRAMID_LEVELS	(1<<16) */	/* UNUSED */
+#define SC_LOCK_TIMECURSOR		(1<<17)
+
+/* SpaceClip->mode */
+#define SC_MODE_TRACKING		0
+#define SC_MODE_RECONSTRUCTION	1
+#define SC_MODE_DISTORTION		2
+
+/* SpaceClip->view */
+#define SC_VIEW_CLIP		0
+#define SC_VIEW_GRAPH		1
+
+/* SpaceClip->runtime_flag */
+#define SC_GRAPH_BOTTOM		(1<<0)
 
 /* space types, moved from DNA_screen_types.h */
 /* Do NOT change order, append on end. types are hardcoded needed */
@@ -947,17 +930,18 @@ enum {
 	SPACE_INFO,
 	SPACE_SEQ,
 	SPACE_TEXT,
-	SPACE_IMASEL,
-	SPACE_SOUND,
+	SPACE_IMASEL, /* deprecated */
+	SPACE_SOUND, /* Deprecated */
 	SPACE_ACTION,
 	SPACE_NLA,
-	SPACE_SCRIPT,
+	SPACE_SCRIPT, /* Deprecated */
 	SPACE_TIME,
 	SPACE_NODE,
 	SPACE_LOGIC,
 	SPACE_CONSOLE,
 	SPACE_USERPREF,
-	SPACEICONMAX = SPACE_USERPREF
+	SPACE_CLIP,
+	SPACEICONMAX = SPACE_CLIP
 };
 
 #endif

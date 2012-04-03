@@ -30,14 +30,14 @@
  *  \brief Property sensor
  */
 
-#ifndef __KX_PROPERTYSENSOR
-#define __KX_PROPERTYSENSOR
+#ifndef __SCA_PROPERTYSENSOR_H__
+#define __SCA_PROPERTYSENSOR_H__
 
 #include "SCA_ISensor.h"
 
 class SCA_PropertySensor : public SCA_ISensor
 {
-	Py_Header;
+	Py_Header
 	//class CExpression*	m_rightexpr;
 	int				m_checktype;
 	STR_String		m_checkpropval;

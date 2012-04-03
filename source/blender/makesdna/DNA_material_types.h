@@ -24,13 +24,15 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-#ifndef DNA_MATERIAL_TYPES_H
-#define DNA_MATERIAL_TYPES_H
 
 /** \file DNA_material_types.h
  *  \ingroup DNA
  */
 
+#ifndef __DNA_MATERIAL_TYPES_H__
+#define __DNA_MATERIAL_TYPES_H__
+
+#include "DNA_defs.h"
 #include "DNA_ID.h"
 #include "DNA_listBase.h"
 
@@ -119,7 +121,7 @@ typedef struct Material {
 	float hasize, flaresize, subsize, flareboost;
 	float strand_sta, strand_end, strand_ease, strand_surfnor;
 	float strand_min, strand_widthfade;
-	char strand_uvname[32];
+	char strand_uvname[64];	/* MAX_CUSTOMDATA_LAYER_NAME */
 	
 	float sbias;			/* shadow bias to prevent terminator prob */
 	float lbias;			/* factor to multiply lampbias with (0.0 = no mult) */
@@ -134,7 +136,7 @@ typedef struct Material {
 	short diff_shader, spec_shader;
 	float roughness, refrac;
 	/* XXX param[4] needs review and improvement (shader system as whole anyway)
-	   This is nasty reused variable for different goals and not easy to RNAify nicely. -jesterKing */
+	 * This is nasty reused variable for different goals and not easy to RNAify nicely. -jesterKing */
 	float param[4];		/* size, smooth, size, smooth, for toonshader, 0 (fac) and 1 (fresnel) also for fresnel shader */
 	float rms;
 	float darkness;
@@ -150,7 +152,7 @@ typedef struct Material {
 
 	struct MTex *mtex[18];		/* MAX_MTEX */
 	struct bNodeTree *nodetree;	
-	struct Ipo *ipo;		// XXX depreceated... old animation system
+	struct Ipo *ipo  DNA_DEPRECATED;  /* old animation system, deprecated for 2.5 */
 	struct Group *group;	/* light group */
 	struct PreviewImage * preview;
 
@@ -166,9 +168,9 @@ typedef struct Material {
 	float sss_front, sss_back;
 	short sss_flag, sss_preset;
 
-	int mapto_textured;	/* render-time cache to optimise texture lookups */
-	short shadowonly_flag;		/* "shadowsonly" type */
-        short index;    /* custom index for render passes */
+	int mapto_textured;	/* render-time cache to optimize texture lookups */
+	short shadowonly_flag;  /* "shadowsonly" type */
+	short index;            /* custom index for render passes */
 
 	ListBase gpumaterial;		/* runtime */
 } Material;
@@ -204,7 +206,7 @@ typedef struct Material {
 /* maximum number of materials per material array.
  * (on object, mesh, lamp, etc.). limited by
  * short mat_nr in verts, faces.
- * -1 becayse for active material we store the index + 1 */
+ * -1 because for active material we store the index + 1 */
 #define MAXMAT			(32767-1)
 
 /* material_type */

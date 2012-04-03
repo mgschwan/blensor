@@ -40,7 +40,8 @@
 #include "MEM_guardedalloc.h"
 #include "rgb32.h"
 
-void *avi_converter_from_rgb32 (AviMovie *movie, int stream, unsigned char *buffer, int *size) {
+void *avi_converter_from_rgb32 (AviMovie *movie, int stream, unsigned char *buffer, int *size)
+{
 	int y, x, rowstridea, rowstrideb;
 	unsigned char *buf;
 
@@ -65,7 +66,8 @@ void *avi_converter_from_rgb32 (AviMovie *movie, int stream, unsigned char *buff
 	return buf;
 }
 
-void *avi_converter_to_rgb32 (AviMovie *movie, int stream, unsigned char *buffer, int *size) {
+void *avi_converter_to_rgb32 (AviMovie *movie, int stream, unsigned char *buffer, int *size)
+{
 	int i;
 	unsigned char *buf;
 	unsigned char *to, *from;
@@ -80,7 +82,7 @@ void *avi_converter_to_rgb32 (AviMovie *movie, int stream, unsigned char *buffer
 	to= buf; from= buffer;
 	i=movie->header->Height*movie->header->Width;
 	
-	while(i--) {
+	while (i--) {
 		memcpy(to, from, 3);
 		to+=4; from+=3;
 	}

@@ -37,10 +37,14 @@ op_blacklist = (
     "render.render",
     "*.*_export",
     "*.*_import",
+    "wm.blenderplayer_start",
     "wm.url_open",
     "wm.doc_view",
     "wm.path_open",
     "help.operator_cheat_sheet",
+    "wm.keyconfig_test",     # just annoying - but harmless
+    "wm.memory_statistics",  # another annoying one
+    # "mesh.vertex_color_remove",  #crashes! fixme
     )
 
 
@@ -63,7 +67,7 @@ def run_ops(operators, setup_func=None):
     for op_id, op in operators:
         if op.poll():
             print("    operator:", op_id)
-            sys.stdout.flush()  # incase of crash
+            sys.stdout.flush()  # in case of crash
 
             # disable will get blender in a bad state and crash easy!
             bpy.ops.wm.read_factory_settings()
@@ -137,7 +141,25 @@ def ctx_weightpaint():
     bpy.ops.object.mode_set(mode='WEIGHT_PAINT')
 
 
+def bpy_check_type_duplicates():
+    # non essential sanity check
+    bl_types = dir(bpy.types)
+    bl_types_unique = set(bl_types)
+
+    if len(bl_types) != len(bl_types_unique):
+        print("Error, found duplicates in 'bpy.types'")
+        for t in sorted(bl_types_unique):
+            tot = bl_types.count(t)
+            if tot > 1:
+                print("    '%s', %d" % (t, tot))
+        import sys
+        sys.exit(1)
+
+
 def main():
+
+    bpy_check_type_duplicates()
+
     # bpy.ops.wm.read_factory_settings()
     import bpy
     operators = []

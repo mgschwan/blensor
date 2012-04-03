@@ -30,8 +30,8 @@
  * Declaration of GHOST_DisplayManager class.
  */
 
-#ifndef _GHOST_DISPLAY_MANAGER_H_
-#define _GHOST_DISPLAY_MANAGER_H_
+#ifndef __GHOST_DISPLAYMANAGER_H__
+#define __GHOST_DISPLAYMANAGER_H__
 
 #include "GHOST_Types.h"
 
@@ -72,10 +72,11 @@ public:
 	/**
 	 * Returns the number of display settings for this display device.
 	 * @param display The index of the display to query with 0 <= display < getNumDisplays().
-	 * @param setting The number of settings of the display device with this index.
+	 * @param numSettings The number of settings of the display device with this index.
 	 * @return Indication of success.
 	 */
-	virtual GHOST_TSuccess getNumDisplaySettings(GHOST_TUns8 display, GHOST_TInt32& numSettings) const;
+	virtual GHOST_TSuccess getNumDisplaySettings(GHOST_TUns8 display,
+	                                             GHOST_TInt32& numSettings) const;
 
 	/**
 	 * Returns the current setting for this display device. 
@@ -84,7 +85,9 @@ public:
 	 * @param setting The setting of the display device with this index.
 	 * @return Indication of success.
 	 */
-	virtual GHOST_TSuccess getDisplaySetting(GHOST_TUns8 display, GHOST_TInt32 index, GHOST_DisplaySetting& setting) const;
+	virtual GHOST_TSuccess getDisplaySetting(GHOST_TUns8 display,
+	                                         GHOST_TInt32 index,
+	                                         GHOST_DisplaySetting& setting) const;
 
 	/**
 	 * Returns the current setting for this display device. 
@@ -92,7 +95,8 @@ public:
 	 * @param setting The current setting of the display device with this index.
 	 * @return Indication of success.
 	 */
-	virtual GHOST_TSuccess getCurrentDisplaySetting(GHOST_TUns8 display, GHOST_DisplaySetting& setting) const;
+	virtual GHOST_TSuccess getCurrentDisplaySetting(GHOST_TUns8 display,
+	                                                GHOST_DisplaySetting& setting) const;
 
 	/**
 	 * Changes the current setting for this display device.
@@ -102,7 +106,8 @@ public:
 	 * @param setting The setting of the display device to be matched and activated.
 	 * @return Indication of success.
 	 */
-	virtual GHOST_TSuccess setCurrentDisplaySetting(GHOST_TUns8 display, const GHOST_DisplaySetting& setting);
+	virtual GHOST_TSuccess setCurrentDisplaySetting(GHOST_TUns8 display,
+	                                                const GHOST_DisplaySetting& setting);
 
 protected:
 	typedef std::vector<GHOST_DisplaySetting> GHOST_DisplaySettings;
@@ -114,7 +119,9 @@ protected:
 	 * @param match		The optimal display setting.
 	 * @return Indication of success.
 	 */
-	GHOST_TSuccess findMatch(GHOST_TUns8 display, const GHOST_DisplaySetting& setting, GHOST_DisplaySetting& match) const;
+	GHOST_TSuccess findMatch(GHOST_TUns8 display,
+	                         const GHOST_DisplaySetting& setting,
+	                         GHOST_DisplaySetting& match) const;
 
 	/**
 	 * Retrieves settings for each display device and stores them.
@@ -129,5 +136,5 @@ protected:
 };
 
 
-#endif // _GHOST_DISPLAY_MANAGER_H_
+#endif // __GHOST_DISPLAYMANAGER_H__
 

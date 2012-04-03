@@ -23,6 +23,7 @@ set(INC
 	../../blenkernel
 	../../blenlib
 	../../blenloader
+	../../bmesh
 	../../makesdna
 	../../makesrna
 	../../windowmanager
@@ -39,6 +40,7 @@ set(SRC
 	uvedit_draw.c
 	uvedit_ops.c
 	uvedit_parametrizer.c
+	uvedit_smart_stitch.c
 	uvedit_unwrap_ops.c
 
 	uvedit_intern.h

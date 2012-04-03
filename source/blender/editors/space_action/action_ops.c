@@ -36,6 +36,7 @@
 #include "DNA_space_types.h"
 
 #include "BLI_blenlib.h"
+#include "BLI_utildefines.h"
 
 #include "ED_anim_api.h"
 #include "ED_markers.h"
@@ -92,11 +93,11 @@ void ED_operatormacros_action(void)
 	wmOperatorType *ot;
 	wmOperatorTypeMacro *otmacro;
 	
-	ot= WM_operatortype_append_macro("ACTION_OT_duplicate_move", "Duplicate", OPTYPE_UNDO|OPTYPE_REGISTER);
+	ot = WM_operatortype_append_macro("ACTION_OT_duplicate_move", "Duplicate", OPTYPE_UNDO|OPTYPE_REGISTER);
 	if (ot) {
-		ot->description= "Make a copy of all selected keyframes and move them";
+		ot->description = "Make a copy of all selected keyframes and move them";
 		WM_operatortype_macro_define(ot, "ACTION_OT_duplicate");
-		otmacro= WM_operatortype_macro_define(ot, "TRANSFORM_OT_transform");
+		otmacro = WM_operatortype_macro_define(ot, "TRANSFORM_OT_transform");
 		RNA_enum_set(otmacro->ptr, "mode", TFM_TIME_DUPLICATE);
 	}
 	
@@ -110,32 +111,45 @@ static void action_keymap_keyframes (wmKeyConfig *keyconf, wmKeyMap *keymap)
 	
 	/* action_select.c - selection tools */
 		/* click-select */
-	WM_keymap_add_item(keymap, "ACTION_OT_clickselect", SELECTMOUSE, KM_PRESS, 0, 0);
-	kmi= WM_keymap_add_item(keymap, "ACTION_OT_clickselect", SELECTMOUSE, KM_PRESS, KM_ALT, 0);
-		RNA_boolean_set(kmi->ptr, "column", 1);
-	kmi= WM_keymap_add_item(keymap, "ACTION_OT_clickselect", SELECTMOUSE, KM_PRESS, KM_SHIFT, 0);
-		RNA_boolean_set(kmi->ptr, "extend", 1);
-	kmi= WM_keymap_add_item(keymap, "ACTION_OT_clickselect", SELECTMOUSE, KM_PRESS, KM_ALT|KM_SHIFT, 0);
-		RNA_boolean_set(kmi->ptr, "extend", 1);
-		RNA_boolean_set(kmi->ptr, "column", 1);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_clickselect", SELECTMOUSE, KM_PRESS, 0, 0);
+		RNA_boolean_set(kmi->ptr, "extend", FALSE);
+		RNA_boolean_set(kmi->ptr, "column", FALSE);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_clickselect", SELECTMOUSE, KM_PRESS, KM_ALT, 0);
+		RNA_boolean_set(kmi->ptr, "extend", FALSE);
+		RNA_boolean_set(kmi->ptr, "column", TRUE);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_clickselect", SELECTMOUSE, KM_PRESS, KM_SHIFT, 0);
+		RNA_boolean_set(kmi->ptr, "extend", TRUE);
+		RNA_boolean_set(kmi->ptr, "column", FALSE);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_clickselect", SELECTMOUSE, KM_PRESS, KM_ALT|KM_SHIFT, 0);
+		RNA_boolean_set(kmi->ptr, "extend", TRUE);
+		RNA_boolean_set(kmi->ptr, "column", TRUE);
 		
 		/* select left/right */
-	WM_keymap_add_item(keymap, "ACTION_OT_select_leftright", SELECTMOUSE, KM_PRESS, KM_CTRL, 0);
-	kmi= WM_keymap_add_item(keymap, "ACTION_OT_select_leftright", SELECTMOUSE, KM_PRESS, KM_CTRL|KM_SHIFT, 0);
-		RNA_boolean_set(kmi->ptr, "extend", 1);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_select_leftright", SELECTMOUSE, KM_PRESS, KM_CTRL, 0);
+		RNA_boolean_set(kmi->ptr, "extend", FALSE);
+		RNA_enum_set(kmi->ptr, "mode", ACTKEYS_LRSEL_TEST);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_select_leftright", SELECTMOUSE, KM_PRESS, KM_CTRL|KM_SHIFT, 0);
+		RNA_boolean_set(kmi->ptr, "extend", TRUE);
+		RNA_enum_set(kmi->ptr, "mode", ACTKEYS_LRSEL_TEST);
 	
-	kmi= WM_keymap_add_item(keymap, "ACTION_OT_select_leftright", LEFTBRACKETKEY, KM_PRESS, 0, 0);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_select_leftright", LEFTBRACKETKEY, KM_PRESS, 0, 0);
+		RNA_boolean_set(kmi->ptr, "extend", FALSE);
 		RNA_enum_set(kmi->ptr, "mode", ACTKEYS_LRSEL_LEFT);
-	kmi= WM_keymap_add_item(keymap, "ACTION_OT_select_leftright", RIGHTBRACKETKEY, KM_PRESS, 0, 0);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_select_leftright", RIGHTBRACKETKEY, KM_PRESS, 0, 0);
+		RNA_boolean_set(kmi->ptr, "extend", FALSE);
 		RNA_enum_set(kmi->ptr, "mode", ACTKEYS_LRSEL_RIGHT);
 	
 		/* deselect all */
-	WM_keymap_add_item(keymap, "ACTION_OT_select_all_toggle", AKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "ACTION_OT_select_all_toggle", IKEY, KM_PRESS, KM_CTRL, 0)->ptr, "invert", 1);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_select_all_toggle", AKEY, KM_PRESS, 0, 0);
+		RNA_boolean_set(kmi->ptr, "invert", FALSE);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_select_all_toggle", IKEY, KM_PRESS, KM_CTRL, 0);
+		RNA_boolean_set(kmi->ptr, "invert", TRUE);
 	
 		/* borderselect */
-	WM_keymap_add_item(keymap, "ACTION_OT_select_border", BKEY, KM_PRESS, 0, 0);
-	RNA_boolean_set(WM_keymap_add_item(keymap, "ACTION_OT_select_border", BKEY, KM_PRESS, KM_ALT, 0)->ptr, "axis_range", 1);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_select_border", BKEY, KM_PRESS, 0, 0);
+		RNA_boolean_set(kmi->ptr, "axis_range", FALSE);
+	kmi = WM_keymap_add_item(keymap, "ACTION_OT_select_border", BKEY, KM_PRESS, KM_ALT, 0);
+		RNA_boolean_set(kmi->ptr, "axis_range", TRUE);
 	
 		/* column select */
 	RNA_enum_set(WM_keymap_add_item(keymap, "ACTION_OT_select_column", KKEY, KM_PRESS, 0, 0)->ptr, "mode", ACTKEYS_COLUMNSEL_KEYS);
@@ -211,7 +225,7 @@ void action_keymap(wmKeyConfig *keyconf)
 	 */
 	
 	/* keyframes */
-	keymap= WM_keymap_find(keyconf, "Dopesheet", SPACE_ACTION, 0);
+	keymap = WM_keymap_find(keyconf, "Dopesheet", SPACE_ACTION, 0);
 	action_keymap_keyframes(keyconf, keymap);
 }
 

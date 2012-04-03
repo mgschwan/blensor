@@ -1,35 +1,32 @@
-/**
-* Add steering behaviors
-*
-*
-* ***** BEGIN GPL LICENSE BLOCK *****
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License
-* as published by the Free Software Foundation; either version 2
-* of the License, or (at your option) any later version. The Blender
-* Foundation also sells licenses for use in proprietary software under
-* the Blender License.  See http://www.blender.org/BL/ for information
-* about this.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software Foundation,
-* Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-*
-* The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
-* All rights reserved.
-*
-* The Original Code is: all of this file.
-*
-* Contributor(s): none yet.
-*
-* ***** END GPL LICENSE BLOCK *****
-*/
+/*
+ * Add steering behaviors
+ *
+ *
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
+ * All rights reserved.
+ *
+ * The Original Code is: all of this file.
+ *
+ * Contributor(s): none yet.
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 #include "BLI_math.h"
 #include "KX_SteeringActuator.h"
@@ -341,7 +338,7 @@ static bool barDistSqPointToTri(const float* p, const float* a, const float* b, 
 
 	float ud = u<0.f ? -u : (u>1.f ? u-1.f : 0.f);
 	float vd = v<0.f ? -v : (v>1.f ? v-1.f : 0.f);
-	return ud*ud+vd*vd ;
+	return ud * ud + vd * vd;
 }
 
 inline void flipAxes(float* vec)
@@ -487,7 +484,7 @@ void KX_SteeringActuator::HandleActorFace(MT_Vector3& velocity)
 	
 	
 	KX_GameObject* parentObject = curobj->GetParent();
-	if(parentObject)
+	if (parentObject)
 	{ 
 		MT_Point3 localpos;
 		localpos = curobj->GetSGNode()->GetLocalPosition();
@@ -505,7 +502,7 @@ void KX_SteeringActuator::HandleActorFace(MT_Vector3& velocity)
 
 }
 
-#ifndef DISABLE_PYTHON
+#ifdef WITH_PYTHON
 
 /* ------------------------------------------------------------------------- */
 /* Python functions                                                          */
@@ -539,7 +536,7 @@ PyMethodDef KX_SteeringActuator::Methods[] = {
 };
 
 PyAttributeDef KX_SteeringActuator::Attributes[] = {
-	KX_PYATTRIBUTE_INT_RW("behaviour", KX_STEERING_NODEF+1, KX_STEERING_MAX-1, true, KX_SteeringActuator, m_mode),
+	KX_PYATTRIBUTE_INT_RW("behavior", KX_STEERING_NODEF+1, KX_STEERING_MAX-1, true, KX_SteeringActuator, m_mode),
 	KX_PYATTRIBUTE_RW_FUNCTION("target", KX_SteeringActuator, pyattr_get_target, pyattr_set_target),
 	KX_PYATTRIBUTE_RW_FUNCTION("navmesh", KX_SteeringActuator, pyattr_get_navmesh, pyattr_set_navmesh),
 	KX_PYATTRIBUTE_FLOAT_RW("distance", 0.0f, 1000.0f, KX_SteeringActuator, m_distance),
@@ -623,7 +620,7 @@ PyObject* KX_SteeringActuator::pyattr_get_steeringVec(void *self, const struct K
 	return PyObjectFrom(steeringVec);
 }
 
-#endif // DISABLE_PYTHON
+#endif // WITH_PYTHON
 
 /* eof */
 

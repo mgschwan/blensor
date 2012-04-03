@@ -24,9 +24,18 @@
  *  \ingroup editors
  */
 
-#ifndef ED_NUMINPUT_H
-#define ED_NUMINPUT_H
+#ifndef __ED_NUMINPUT_H__
+#define __ED_NUMINPUT_H__
 
+
+/*
+	The ctrl value has different meaning:
+		0			: No value has been typed
+
+		otherwise, |value| - 1 is where the cursor is located after the period
+		Positive	: number is positive
+		Negative	: number is negative
+*/
 
 typedef struct NumInput {
 	short  idx;
@@ -36,7 +45,7 @@ typedef struct NumInput {
 	float  val[3];      /* Direct value of the input                                                      */
 	int    ctrl[3];     /* Control to indicate what to do with the numbers that are typed                 */
 	float  increment;
-} NumInput ;
+} NumInput;
 
 /* NUMINPUT FLAGS */
 #define NUM_NULL_ONE		2

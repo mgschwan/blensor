@@ -325,7 +325,7 @@ bool CValue::RemoveProperty(const char *inName)
 vector<STR_String> CValue::GetPropertyNames()
 {
 	vector<STR_String> result;
-	if(!m_pNamedPropertyArray) return result;
+	if (!m_pNamedPropertyArray) return result;
 	result.reserve(m_pNamedPropertyArray->size());
 	
 	std::map<STR_String,CValue*>::iterator it;
@@ -366,7 +366,7 @@ void CValue::ClearProperties()
 //
 void CValue::SetPropertiesModified(bool inModified)
 {
-	if(!m_pNamedPropertyArray) return;
+	if (!m_pNamedPropertyArray) return;
 	std::map<STR_String,CValue*>::iterator it;
 	
 	for (it= m_pNamedPropertyArray->begin();(it != m_pNamedPropertyArray->end()); it++)
@@ -380,7 +380,7 @@ void CValue::SetPropertiesModified(bool inModified)
 //
 bool CValue::IsAnyPropertyModified()
 {
-	if(!m_pNamedPropertyArray) return false;
+	if (!m_pNamedPropertyArray) return false;
 	std::map<STR_String,CValue*>::iterator it;
 	
 	for (it= m_pNamedPropertyArray->begin();(it != m_pNamedPropertyArray->end()); it++)
@@ -433,7 +433,7 @@ int CValue::GetPropertyCount()
 
 double*		CValue::GetVector3(bool bGetTransformedVec)
 {
-	assertd(false); // don;t get vector from me
+	assertd(false); // don't get vector from me
 	return m_sZeroVec;//::sZero;
 }
 
@@ -530,9 +530,10 @@ PyAttributeDef CValue::Attributes[] = {
 	{ NULL }	//Sentinel
 };
 
-PyObject * CValue::pyattr_get_name(void * self_v, const KX_PYATTRIBUTE_DEF * attrdef) {
+PyObject * CValue::pyattr_get_name(void * self_v, const KX_PYATTRIBUTE_DEF * attrdef)
+{
 	CValue * self = static_cast<CValue *> (self_v);
-	return PyUnicode_FromString(self->GetName());
+	return PyUnicode_From_STR_String(self->GetName());
 }
 
 CValue* CValue::ConvertPythonToValue(PyObject* pyobj, const char *error_prefix)
@@ -584,7 +585,7 @@ CValue* CValue::ConvertPythonToValue(PyObject* pyobj, const char *error_prefix)
 	{
 		vallie = new CStringValue(_PyUnicode_AsString(pyobj),"");
 	} else
-	if (PyObject_TypeCheck(pyobj, &CValue::Type)) /* Note, dont let these get assigned to GameObject props, must check elsewhere */
+	if (PyObject_TypeCheck(pyobj, &CValue::Type)) /* Note, don't let these get assigned to GameObject props, must check elsewhere */
 	{
 		vallie = (static_cast<CValue *>(BGE_PROXY_REF(pyobj)))->AddRef();
 	} else
@@ -596,22 +597,24 @@ CValue* CValue::ConvertPythonToValue(PyObject* pyobj, const char *error_prefix)
 
 }
 
-PyObject*	CValue::ConvertKeysToPython( void )
+PyObject* CValue::ConvertKeysToPython(void)
 {
-	PyObject *pylist = PyList_New( 0 );
-	PyObject *pystr;
-	
 	if (m_pNamedPropertyArray)
 	{
+		PyObject *pylist= PyList_New(m_pNamedPropertyArray->size());
+		Py_ssize_t i= 0;
+
 		std::map<STR_String,CValue*>::iterator it;
 		for (it= m_pNamedPropertyArray->begin(); (it != m_pNamedPropertyArray->end()); it++)
 		{
-			pystr = PyUnicode_FromString( (*it).first );
-			PyList_Append(pylist, pystr);
-			Py_DECREF( pystr );
+			PyList_SET_ITEM(pylist, i++, PyUnicode_From_STR_String((*it).first));
 		}
+
+		return pylist;
 	}
-	return pylist;
+	else {
+		return PyList_New(0);
+	}
 }
 
 #endif // WITH_PYTHON

@@ -16,8 +16,10 @@
 #
 #======================= END GPL LICENSE BLOCK ========================
 
+# <pep8 compliant>
+
 import bpy
-from bpy.props import *
+from bpy.props import StringProperty
 import rigify
 from rigify.utils import get_rig_type
 from rigify import generate
@@ -36,7 +38,7 @@ class DATA_PT_rigify_buttons(bpy.types.Panel):
             return False
         #obj = context.object
         #if obj:
-        #    return (obj.mode in ('POSE', 'OBJECT', 'EDIT'))
+        #    return (obj.mode in {'POSE', 'OBJECT', 'EDIT'})
         #return False
         return True
 
@@ -131,7 +133,7 @@ class BONE_PT_rigify_buttons(bpy.types.Panel):
             return False
         obj = context.object
         if obj:
-            return (obj.mode in ('POSE'))
+            return obj.mode == 'POSE'
         return False
 
     def draw(self, context):
@@ -188,19 +190,19 @@ class BONE_PT_rigify_buttons(bpy.types.Panel):
                     rig.Rig.parameters_ui(box, C.active_object, bone.name)
 
 
-#class INFO_MT_armature_metarig_add(bpy.types.Menu):
-#    bl_idname = "INFO_MT_armature_metarig_add"
-#    bl_label = "Meta-Rig"
+#~ class INFO_MT_armature_metarig_add(bpy.types.Menu):
+    #~ bl_idname = "INFO_MT_armature_metarig_add"
+    #~ bl_label = "Meta-Rig"
 
-#    def draw(self, context):
-        #import rigify
+    #~ def draw(self, context):
+        #~ import rigify
 
-        #layout = self.layout
-        #layout.operator_context = 'INVOKE_REGION_WIN'
+        #~ layout = self.layout
+        #~ layout.operator_context = 'INVOKE_REGION_WIN'
 
-        #for submodule_type in rigify.get_submodule_types():
-        #    text = bpy.path.display_name(submodule_type)
-        #    layout.operator("pose.metarig_sample_add", text=text, icon='OUTLINER_OB_ARMATURE').metarig_type = submodule_type
+        #~ for submodule_type in rigify.get_submodule_types():
+            #~ text = bpy.path.display_name(submodule_type)
+            #~ layout.operator("pose.metarig_sample_add", text=text, icon='OUTLINER_OB_ARMATURE').metarig_type = submodule_type
 
 
 def rigify_report_exception(operator, exception):
@@ -249,13 +251,17 @@ class Generate(bpy.types.Operator):
 
 
 class Sample(bpy.types.Operator):
-    '''Create a sample metarig to be modified before generating the final rig.'''
+    '''Create a sample metarig to be modified before generating the final rig'''
 
     bl_idname = "armature.metarig_sample_add"
     bl_label = "Add a sample metarig for a rig type"
     bl_options = {'UNDO'}
 
-    metarig_type = StringProperty(name="Type", description="Name of the rig type to generate a sample of", maxlen=128, default="")
+    metarig_type = StringProperty(
+            name="Type",
+            description="Name of the rig type to generate a sample of",
+            maxlen=128,
+            )
 
     def execute(self, context):
         if context.mode == 'EDIT_ARMATURE' and self.metarig_type != "":

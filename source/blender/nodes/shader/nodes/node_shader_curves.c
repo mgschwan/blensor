@@ -69,11 +69,12 @@ static int gpu_shader_curve_vec(GPUMaterial *mat, bNode *node, GPUNodeStack *in,
 	return GPU_stack_link(mat, "curves_vec", in, out, GPU_texture(size, array));
 }
 
-void register_node_type_sh_curve_vec(ListBase *lb)
+void register_node_type_sh_curve_vec(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, SH_NODE_CURVE_VEC, "Vector Curves", NODE_CLASS_OP_VECTOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, SH_NODE_CURVE_VEC, "Vector Curves", NODE_CLASS_OP_VECTOR, NODE_OPTIONS);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING);
 	node_type_socket_templates(&ntype, sh_node_curve_vec_in, sh_node_curve_vec_out);
 	node_type_size(&ntype, 200, 140, 320);
 	node_type_init(&ntype, node_shader_init_curve_vec);
@@ -81,7 +82,7 @@ void register_node_type_sh_curve_vec(ListBase *lb)
 	node_type_exec(&ntype, node_shader_exec_curve_vec);
 	node_type_gpu(&ntype, gpu_shader_curve_vec);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
 
 
@@ -105,7 +106,7 @@ static void node_shader_exec_curve_rgb(void *UNUSED(data), bNode *node, bNodeSta
 	/* stack order output: vec */
 	nodestack_get_vec(vec, SOCK_VECTOR, in[1]);
 	curvemapping_evaluateRGBF(node->storage, out[0]->vec, vec);
-	if(in[0]->vec[0] != 1.0f) {
+	if (in[0]->vec[0] != 1.0f) {
 		interp_v3_v3v3(out[0]->vec, vec, out[0]->vec, *in[0]->vec);
 	}
 }
@@ -123,11 +124,12 @@ static int gpu_shader_curve_rgb(GPUMaterial *mat, bNode *node, GPUNodeStack *in,
 	return GPU_stack_link(mat, "curves_rgb", in, out, GPU_texture(size, array));
 }
 
-void register_node_type_sh_curve_rgb(ListBase *lb)
+void register_node_type_sh_curve_rgb(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
 
-	node_type_base(&ntype, SH_NODE_CURVE_RGB, "RGB Curves", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
+	node_type_base(ttype, &ntype, SH_NODE_CURVE_RGB, "RGB Curves", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
+	node_type_compatibility(&ntype, NODE_OLD_SHADING);
 	node_type_socket_templates(&ntype, sh_node_curve_rgb_in, sh_node_curve_rgb_out);
 	node_type_size(&ntype, 200, 140, 320);
 	node_type_init(&ntype, node_shader_init_curve_rgb);
@@ -135,6 +137,5 @@ void register_node_type_sh_curve_rgb(ListBase *lb)
 	node_type_exec(&ntype, node_shader_exec_curve_rgb);
 	node_type_gpu(&ntype, gpu_shader_curve_rgb);
 
-	nodeRegisterType(lb, &ntype);
+	nodeRegisterType(ttype, &ntype);
 }
-

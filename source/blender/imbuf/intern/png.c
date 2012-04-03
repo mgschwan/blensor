@@ -114,10 +114,10 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 	compression= compression < 0 ? 0 : (compression > 9 ? 9 : compression);
 
 	/* for prints */
-	if(flags & IB_mem)
+	if (flags & IB_mem)
 		name= "<memory>";
 
-	bytesperpixel = (ibuf->depth + 7) >> 3;
+	bytesperpixel = (ibuf->planes + 7) >> 3;
 	if ((bytesperpixel > 4) || (bytesperpixel == 2)) {
 		printf("imb_savepng: Cunsupported bytes per pixel: %d for file: '%s'\n", bytesperpixel, name);
 		return (0);
@@ -190,11 +190,12 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 		ibuf->encodedsize = 0;
 
 		png_set_write_fn(png_ptr,
-			 (png_voidp) ibuf,
-			 WriteData,
-			 Flush);
-	} else {
-		fp = fopen(name, "wb");
+		                 (png_voidp) ibuf,
+		                 WriteData,
+		                 Flush);
+	}
+	else {
+		fp = BLI_fopen(name, "wb");
 		if (!fp) {
 			png_destroy_write_struct(&png_ptr, &info_ptr);
 			MEM_freeN(pixels);
@@ -204,28 +205,28 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 		png_init_io(png_ptr, fp);
 	}
 
-	/*
+#if 0
 	png_set_filter(png_ptr, 0,
-		PNG_FILTER_NONE  | PNG_FILTER_VALUE_NONE |
-		PNG_FILTER_SUB   | PNG_FILTER_VALUE_SUB  |
-		PNG_FILTER_UP    | PNG_FILTER_VALUE_UP   |
-		PNG_FILTER_AVG   | PNG_FILTER_VALUE_AVG  |
-		PNG_FILTER_PAETH | PNG_FILTER_VALUE_PAETH|
-		PNG_ALL_FILTERS);
-	*/
+	               PNG_FILTER_NONE  | PNG_FILTER_VALUE_NONE |
+	               PNG_FILTER_SUB   | PNG_FILTER_VALUE_SUB  |
+	               PNG_FILTER_UP    | PNG_FILTER_VALUE_UP   |
+	               PNG_FILTER_AVG   | PNG_FILTER_VALUE_AVG  |
+	               PNG_FILTER_PAETH | PNG_FILTER_VALUE_PAETH|
+	               PNG_ALL_FILTERS);
+#endif
 
 	png_set_compression_level(png_ptr, compression);
 
 	// png image settings
 	png_set_IHDR(png_ptr,
-		 info_ptr,
-		 ibuf->x,
-		 ibuf->y,
-		 8,
-		 color_type,
-		 PNG_INTERLACE_NONE,
-		 PNG_COMPRESSION_TYPE_DEFAULT,
-		 PNG_FILTER_TYPE_DEFAULT);
+	             info_ptr,
+	             ibuf->x,
+	             ibuf->y,
+	             8,
+	             color_type,
+	             PNG_INTERLACE_NONE,
+	             PNG_COMPRESSION_TYPE_DEFAULT,
+	             PNG_FILTER_TYPE_DEFAULT);
 
 	/* image text info */
 	if (ibuf->metadata) {
@@ -255,7 +256,7 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 
 	}
 
-	if(ibuf->ppm[0] > 0.0 && ibuf->ppm[1] > 0.0) {
+	if (ibuf->ppm[0] > 0.0 && ibuf->ppm[1] > 0.0) {
 		png_set_pHYs(png_ptr, info_ptr, (unsigned int)(ibuf->ppm[0] + 0.5), (unsigned int)(ibuf->ppm[1] + 0.5), PNG_RESOLUTION_METER);
 	}
 
@@ -365,7 +366,8 @@ struct ImBuf *imb_loadpng(unsigned char *mem, size_t size, int flags)
 		png_set_palette_to_rgb(png_ptr);
 		if (png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS)) {
 			bytesperpixel = 4;
-		} else {
+		}
+		else {
 			bytesperpixel = 3;
 		}
 		break;
@@ -391,8 +393,8 @@ struct ImBuf *imb_loadpng(unsigned char *mem, size_t size, int flags)
 			int unit_type;
 			png_uint_32 xres, yres;
 
-			if(png_get_pHYs(png_ptr, info_ptr, &xres, &yres, &unit_type))
-			if(unit_type == PNG_RESOLUTION_METER) {
+			if (png_get_pHYs(png_ptr, info_ptr, &xres, &yres, &unit_type))
+			if (unit_type == PNG_RESOLUTION_METER) {
 				ibuf->ppm[0]= xres;
 				ibuf->ppm[1]= yres;
 			}
@@ -469,7 +471,7 @@ struct ImBuf *imb_loadpng(unsigned char *mem, size_t size, int flags)
 		if (flags & IB_metadata) {
 			png_text* text_chunks;
 			int count = png_get_text(png_ptr, info_ptr, &text_chunks, NULL);
-			for(i = 0; i < count; i++) {
+			for (i = 0; i < count; i++) {
 				IMB_metadata_add_field(ibuf, text_chunks[i].key, text_chunks[i].text);
 				ibuf->flags |= IB_metadata;				
 			 }

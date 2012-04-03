@@ -4,7 +4,7 @@ Import ('env')
 sources = env.Glob('*.c')
 
 incs = '../include ../../blenfont ../../blenlib ../../blenkernel ../../makesdna ../../makesrna ../../imbuf'
-incs += ' ../../nodes ../../render/extern/include ../../blenloader'
+incs += ' ../../nodes ../../render/extern/include ../../blenloader ../../gpu'
 incs += ' ../../windowmanager #intern/guardedalloc #extern/glew/include'
 defs = []
 cf = []
@@ -21,5 +21,8 @@ if env['OURPLATFORM'] == 'linux':
 
 if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc'):
     incs += ' ' + env['BF_PTHREADS_INC']
+
+if env['WITH_BF_INTERNATIONAL']:
+    defs.append('WITH_INTERNATIONAL')
 
 env.BlenderLib ( 'bf_editors_space_node', sources, Split(incs), defs, libtype=['core'], priority=[55], compileflags=cf )
