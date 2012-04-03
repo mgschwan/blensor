@@ -1,0 +1,491 @@
+commit 9fe49c32e990f28c83f2bbb1d18057aed8879af7
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Mon Mar 12 09:36:15 2012 +0600
+
+    Code cleanup: convert line endings to Unix style (native on my platform) so it
+    wouldn't confuse other versioning systems used for project where libmv is bundled to,
+    
+    Also change mode to +x for glog's windows-related script.
+
+commit fe74ae2b53769389b0ed9d7e604c8e60be81077d
+Author: Sergey I. Sharybin <g.ulairi@gmail.com>
+Date:   Sun Mar 11 20:34:15 2012 +0600
+
+    Replace "third_party/glog/src/glog/logging.h" with <glog/logging.h>
+    
+    It was needed because of how build systems is setup in Blender but think
+    this will be helpful change for other applications too because it makes
+    it's easier to move libraries around and even use libraries installed
+    on the operation system.
+
+commit 37fc726701479f2d321d6af878fa93f3176278d5
+Author: Sergey I. Sharybin <g.ulairi@gmail.com>
+Date:   Sun Mar 11 19:27:41 2012 +0600
+
+    Upgrade gflags and glog libraries - stage 2 (final)
+    
+    Changes to upstream code which are needed to make libmv compile smooth on all platforms
+    
+    * Replace <gflags/gflags.h> with "third_party/gflags/gflags/gflags.h" which is easier
+      to setup things in libmv and also helps with setting up building libmv into
+      external applications.
+    * Replace "glog/logging.h" and  "glog/logging.h" with <glog/logging.h> and  <glog/logging.h>
+      which is needed on Windows platform because otherwise files like logging.cc will be using
+      relative path which points to headers used by linux instead of headers need to be used
+      on Windows.
+    * Replace _asm int 3 with __debugbreak(). Such assembler code is obsolete and doesn't work
+      with 64bit versions of MSVC compilers.
+    * Do not use stacktrace for MinGW and FreeBSD because it leads into issues accessing
+      some specific data on this platforms.
+    * Define HAVE_LIB_GFLAGS for Windows builds.
+    * Do not define __declspec(dllimport) for MinGW platforms.
+    * Setup proper includes and datatypes for int32, uint32, int64 and uint64 for MinGW
+    * Do not define va_copy for MinGW platforms (it's already defined there).
+    * Patch localtime_r to be working fine with MinGW, disable strerror_r for MinGW because
+      of lack of needed functions.
+
+commit 8ed07abfa49d1e0511752021c972e0715e5a1383
+Author: Sergey I. Sharybin <g.ulairi@gmail.com>
+Date:   Sun Mar 11 19:06:33 2012 +0600
+
+    Upgrade gflags and glog libraries - stage 1
+    
+    This commit copies sources from latest original release of gflags and glog
+    over currently bundled versions of this libraries without any modifications.
+    
+    This revision can't b compiled, all needed changes to make new libraries working
+    fine will be done with next commit to make it clear which changes were necessary
+    for easier bundling further newer version and extract patches and put them to
+    gflags/glog upstream repo.
+    
+    Such upgrade of libraries is needed to make it able to compile libmv
+    with clang compilers. Currently used versions:
+    
+    - gflags is version 2.0
+    - glog is version 0.3.2
+
+commit 75b9af405964ff2c7d3f0a44500e27e63b37c91b
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 23:29:11 2012 +0600
+
+    _USE_MATH_DEFINES is needed to define constants like M_E when building with msvc
+    Occasionally was removed, but now added comment about this so hopefully it
+    wouldn't removed again.
+
+commit f85b1232a9b929f69443b5eed6e7a39908cd6551
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 21:34:40 2012 +0600
+
+    Picky edit: corrected mode for ssba readme file.
+
+commit f8c2b223f01551fd81a85f6d5221646165147035
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 21:32:05 2012 +0600
+
+    Picky edits: corrected EOL
+
+commit 3f2a4205ec5adadcdfa306b161c705c868a7be93
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 21:30:07 2012 +0600
+
+    Fixed incorrect access to ucontext on linux. Caused by incorrect merge conflict resolve.
+
+commit d360a21a5aa125cf9e83dd26b302508688ff7007
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 20:54:13 2012 +0600
+
+    More Windows -> Unix EOL conversions
+
+commit 18aeda58bec9556140ba617724e31ada6f5b67c0
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 20:15:42 2012 +0600
+
+    Looks like this debug output was removed accidentally.
+
+commit 189dc0cacdee3c1eab68c43263ecb038ed244c09
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 20:11:56 2012 +0600
+
+    Made V3D verbose again by default
+
+commit 8b3422d3eec5e450d76243886bf07fb0a3e83a81
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 20:08:01 2012 +0600
+
+    SAD tracker now can deal with pattern size any size,
+    Very quick implementation came from Blender before Hybrid tracker was added.
+    Better to be replaced with brute tracker.
+
+commit d547c9cfe37d5d3397d33c8b0e58471e1e1c1634
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 20:03:52 2012 +0600
+
+    Just convert end of lines to unix style.
+
+commit eb73ddbaec5b9e1ad30331bbf858a6ebc266c4aa
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 20:02:20 2012 +0600
+
+    Made some function static. Resolves possible linking issues when building with MinGW.
+
+commit 2930681fafd86e4f4a958054b1db8bfff29623d1
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 19:59:45 2012 +0600
+
+    Missed this in commit with improvements in camera intrinsics.
+
+commit 8d31bc767019b05c5bf8c9f309f9545b3428afa1
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 19:57:51 2012 +0600
+
+    Another step of syncing codebase with Blender.
+    Mainly fixes for freebsd/osx compilation and aligned memory allocation.
+
+commit 3214a2df5bfd98021f25d0f1a626a86318bb245f
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 19:48:02 2012 +0600
+
+    Support compilation on FreeBSD platform
+
+commit 0e5abe96f543687ccfb3a923ec639cb8f45d54f8
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 19:44:18 2012 +0600
+
+    Implementation of basic system for progress reporting into callee stuff
+    
+    Implemented by using simple callbacks classes which are getting invoked from
+    places where lots of calculation happens, so applications which are using
+    libmv may display nice progress bar.
+
+commit c5e18fe35464618055e0e9761be8d22fae56db49
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Fri Feb 17 19:25:45 2012 +0600
+
+    Add support for detecting tracking failure in the ESM tracker component of
+    libmv. Since both KLT and Hybrid rely on ESM underneath, KLT and Hybrid now
+    have a minimum correlation setting to match. With this fix, track failures
+    should get detected quicker, with the issue that sometimes the tracker will
+    give up too easily. That is fixable by reducing the required correlation (in
+    the track properties).
+
+commit ea0fed736ecdcc8c020227aeef8ef4cd3be5e63d
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Fri Feb 17 19:23:50 2012 +0600
+
+    Add a new hybrid region tracker for motion tracking to libmv, and
+    add it as an option (under "Hybrid") in the tracking settings. The
+    region tracker is a combination of brute force tracking for coarse
+    alignment, then refinement with the ESM/KLT algorithm already in
+    libmv that gives excellent subpixel precision (typically 1/50'th
+    of a pixel)
+    
+    This also adds a new "brute force" region tracker which does a
+    brute force search through every pixel position in the destination
+    for the pattern in the first frame. It leverages SSE if available,
+    similar to the SAD tracker, to do this quickly. Currently it does
+    some unnecessary conversions to/from floating point that will get
+    fixed later.
+    
+    The hybrid tracker glues the two trackers (brute & ESM) together
+    to get an overall better tracker. The algorithm is simple:
+    
+    1. Track from frame 1 to frame 2 with the brute force tracker.
+        This tries every possible pixel position for the pattern from
+        frame 1 in frame 2. The position with the smallest
+        sum-of-absolute-differences is chosen. By definition, this
+        position is only accurate up to 1 pixel or so.
+    2. Using the result from 1, initialize a track with ESM. This does
+        a least-squares fit with subpixel precision.
+    3. If the ESM shift was more than 2 pixels, report failure.
+    4. If the ESM track shifted less than 2 pixels, then the track is
+        good and we're done. The rationale here is that if the
+        refinement stage shifts more than 1 pixel, then the brute force
+        result likely found some random position that's not a good fit.
+
+commit a07fff8431621c01d81ae52595d8dd91a295a776
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Fri Feb 17 19:19:58 2012 +0600
+
+    Assorted camera tracker improvements
+    
+    - Add support for refining the camera's intrinsic parameters
+      during a solve. Currently, refining supports only the following
+      combinations of intrinsic parameters:
+    
+        f
+        f, cx, cy
+        f, cx, cy, k1, k2
+        f, k1
+        f, k1, k2
+    
+      This is not the same as autocalibration, since the user must
+      still make a reasonable initial guess about the focal length and
+      other parameters, whereas true autocalibration would eliminate
+      the need for the user specify intrinsic parameters at all.
+    
+      However, the solver works well with only rough guesses for the
+      focal length, so perhaps full autocalibation is not that
+      important.
+    
+      Adding support for the last two combinations, (f, k1) and (f,
+      k1, k2) required changes to the library libmv depends on for
+      bundle adjustment, SSBA. These changes should get ported
+      upstream not just to libmv but to SSBA as well.
+    
+    - Improved the region of convergence for bundle adjustment by
+      increasing the number of Levenberg-Marquardt iterations from 50
+      to 500. This way, the solver is able to crawl out of the bad
+      local minima it gets stuck in when changing from, for example,
+      bundling k1 and k2 to just k1 and resetting k2 to 0.
+    
+    - Add several new region tracker implementations. A region tracker
+      is a libmv concept, which refers to tracking a template image
+      pattern through frames. The impact to end users is that tracking
+      should "just work better". I am reserving a more detailed
+      writeup, and maybe a paper, for later.
+    
+    - Other libmv tweaks, such as detecting that a tracker is headed
+      outside of the image bounds.
+    
+    This includes several changes made directly to the libmv extern
+    code rather expecting to get those changes through normal libmv
+    channels, because I, the libmv BDFL, decided it was faster to work
+    on libmv directly in Blender, then later reverse-port the libmv
+    changes from Blender back into libmv trunk. The interesting part
+    is that I added a full Levenberg-Marquardt loop to the region
+    tracking code, which should lead to a more stable solutions. I
+    also added a hacky implementation of "Efficient Second-Order
+    Minimization" for tracking, which works nicely. A more detailed
+    quantitative evaluation will follow.
+
+commit 0bf66c009d5022eacfc473d247884a73ffeefa8f
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 19:13:49 2012 +0600
+
+    Rest of compilation fix with FAST library.
+
+commit 71b578ca2ba34c528363c514cd1fcc85791d01f3
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Fri Feb 17 19:00:28 2012 +0600
+
+    Improve the KLT tracking behaviour and UI
+    
+    - Remove the overly-conservative use of libmv's re-track tracker. The re-track
+      tracker would take a normal tracker such as TRKLT or KLT or pyramid KLT, and
+      track from frame 1 to 2, then back from the position found in 2 back to 1.
+      Then, when the reverse-track doesn't match the original track with high
+      precision, the track is considered "failed". This is a good approach for
+      fully automatic reconstruction, but is too conservative for supervised
+      tracking.
+    
+      The retrack-tracker will return when fully automatic tracking is added.
+    
+    - Always solve for (dx, dy) in the TRKLT loop even if the linear system is
+      ill-conditioned. The client (Blender in this case) can still use the solved
+      position, even though it is less reliable.
+
+commit 7d8a8762f2bc2e36f95b0b6f4fb4ca996f9f0db7
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 18:46:24 2012 +0600
+
+    Changes in camera intrinsics distortion/undistortion:
+    
+    - Distortion/undistortion of scaled images wasn't happening right,
+      because camera intrinsics are calibrated on an original frame which
+      has got some particular resolution and trying to apply this model on
+      an image with another resolution gives totally wrong result.
+      This is needed to be able to do post-prccessing of render, running
+      distortion on a scene which might be rendered with higher resolution
+      than footage itself and then be scaled down.
+    - Fixed incorrect calculation/applying of precomputed grid when
+      distortion is high high enough and produces pixel offset higher
+      than 127 pixels. This might be still not very distorted image,
+      but if it's a 4K footage "normal" camera will easily give such
+      a distortion.
+    - Added support of overscan distortion/undistortion.
+
+commit ed080785d63bb8e3a13dde51a2dc94fe59b059bb
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 18:38:51 2012 +0600
+
+    Fast headers now can be included from C++ sources.
+    Was needed to make it working fine when bundling in Blender but might also
+    be needed to bundle into another applications.
+
+commit 5f5a7aa46a2d87b96c8098dfc8682f4d01b5cd40
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 18:36:16 2012 +0600
+
+    Bring back FAST detector which seems to be working much nicer than Morravec.
+    Both of them are available in API.
+
+commit 2cab13c18216fb684b270cec077f7300262584af
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 18:27:36 2012 +0600
+
+    Revert "Make CameraIntrinsics (and thus Qt tracker) compilable without linking libmv."
+    
+    This reverts commit 81613ee0cc94b315f333c9632b18b95d426aad05.
+    
+    That commit made inverting intrinsics totally unworkable, so reverted this and
+    made needed tweaks to qt-tracker project file to make it compilable (was needed
+    to make it linking together with glog).
+    
+    Conflicts:
+    
+    	src/ui/tracker/tracker.cc
+    	src/ui/tracker/tracker.pro
+
+commit ec46cae041401b17afb4fe4d9c9343d10797090f
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 17:59:55 2012 +0600
+
+    Fix compilation error using official MinGW
+
+commit 6fbc370e922c47cfa35381662b6c439f4891ed74
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 17:38:20 2012 +0600
+
+    Fix compilation error with MSVC 2010 which is more picky for "missed" STL headers
+
+commit be9e6b63691d83b551a085f0766878bd84220767
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 17:36:18 2012 +0600
+
+    Fix compilation with MSVC where snprintf function is declared as unsafe and _snprintf should be used instead.
+    
+    Better to switch to own implementation will ensure string is correctly NULL-terminated.
+
+commit 1847d9e414ed763cd80668775d7d9f79575fc8ca
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 17:34:45 2012 +0600
+
+    Fix compilation error on OSX caused by incorrect access to ucontext
+
+commit 90579b6ffad07672172a1c240499615b30b25549
+Merge: b9aac30 531c79b
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 17 18:32:52 2012 +0600
+
+    Merge remote-tracking branch 'Matthias-Fauconneau/master' into devel
+    
+    Conflicts:
+    	src/libmv/tracking/CMakeLists.txt
+
+commit b9aac30a9ca6bc8362c09a0e191040964f7c6de2
+Merge: 198894e 6969e1a
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Sat Nov 5 17:38:30 2011 -0700
+
+    Merge pull request #3 from nathanwiegand/master
+    
+    Just a few tiny cleanups
+
+commit 6969e1a9534291a982749baa5a3672c97bfa506d
+Author: Nathan Wiegand <nathanwiegand@gmail.com>
+Date:   Sat Nov 5 14:26:54 2011 -0700
+
+    I've added cleaned up a few style issues here an there. Also, I've updated the CMakeLists.txt file so that it can build the image_io library. Note, it's only been tested on OSX 10.6
+
+commit 4763f851299050140757bfaa069107a0cf639e56
+Author: Nathan Wiegand <nathanwiegand@gmail.com>
+Date:   Fri Nov 4 23:59:08 2011 -0700
+
+    Removed a superfulous comment
+
+commit a44577c0162e273681e4a9a3cc5f5b37d4315b67
+Author: Nathan Wiegand <nathanwiegand@gmail.com>
+Date:   Fri Nov 4 23:55:52 2011 -0700
+
+    Removed a duplicate entry for an author.
+
+commit 198894e4c4f51c2c1784ad7c02eb45d2d1ada9bc
+Merge: c4c67db 6e797d6
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Fri Nov 4 21:47:05 2011 -0700
+
+    Merge pull request #2 from nathanwiegand/master
+    
+    CMake changes for OSX
+
+commit 6e797d678c4c19f6a9e21657d66183f412cc995b
+Author: Nathan Wiegand <nathanwiegand@gmail.com>
+Date:   Fri Nov 4 21:43:28 2011 -0700
+
+    Uncomment the GUI part of the CMake file
+
+commit 33ef88a33860345d8906f3c9dd22d8dbce3df53e
+Author: Nathan Wiegand <nathanwiegand@gmail.com>
+Date:   Fri Nov 4 21:31:22 2011 -0700
+
+    Fixed build error on OSX by adding 'glog' to the dependencies in the tracker CMake
+
+commit 531c79bf95fddaaa70707d1abcd4fdafda16bbf0
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Sat Aug 20 00:00:42 2011 +0200
+
+    Display warped pattern in marker preview.
+
+commit bb5c27e671b6f8eb56ddf490f0795d59bede591b
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 18:37:48 2011 +0200
+
+    Fix CMake build.
+
+commit 2ac7281ff6b9545b425dd84fb03bf9c5c98b4de2
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 17:34:45 2011 +0200
+
+    Avoid symbol shadowing.
+
+commit 2a7c3de4acc60e0433b4952f69e30528dbafe0d2
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 17:22:47 2011 +0200
+
+    Better dragging behavior when hitting borders.
+
+commit a14eb3953c9521b2e08ff9ddd45b33ff1f8aeafb
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 17:12:12 2011 +0200
+
+    Update marker preview to new affine tracking.
+
+commit 5299ea67043459eda147950e589c2d327a8fbced
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 16:05:54 2011 +0200
+
+    sqrt takes double precision.
+
+commit 9f9221ce151d788c49b48f6f293ab2e2f8813978
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 16:04:37 2011 +0200
+
+    MSVC compatibility: heap allocate pattern, explicit float cast.
+
+commit 702658d2f8616964a6eeb3743fd85e97ac7ff09d
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 14:59:24 2011 +0200
+
+    Expose regularization parameters (areaPenalty and conditionPenalty) in API.
+
+commit 3e84ae5fbac10451d4935418f6281a90cedace11
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 14:19:27 2011 +0200
+
+    Add LaplaceFilter.
+    Add regularization in affine SAD Tracker (keep constant area and good condition number).
+    UI: Better track display (+enable line antialiasing).
+
+commit 6d26d9a8ccc4ce009fbf253898fea8864dd5001a
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 10:25:26 2011 +0200
+
+    Add optimization for integer pixel search.
+    Allows more agressive settings for affine coordinate descent.
+
+commit 70ceae81c0ab561b07e640ecb9933f0a902b57cd
+Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
+Date:   Fri Aug 19 00:02:12 2011 +0200
+
+    Document coordinate descent method in affine SAD matcher.
+    Add heuristic to prevent high distortions.
