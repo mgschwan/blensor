@@ -8,6 +8,7 @@ incs = '. ../editors/include ../makesdna ../makesrna ../blenfont ../blenlib ../b
 incs += ' ../imbuf ../blenloader ../bmesh ../gpu ../render/extern/include ../windowmanager'
 incs += ' #intern/guardedalloc #intern/memutil #extern/glew/include #intern/cycles/blender'
 incs += ' #intern/audaspace/intern ' + env['BF_PYTHON_INC']
+incs += ' #/extern/Eigen3'
 
 is_debug = (env['OURPLATFORM'] in ('win32-mingw', 'win32-vc','win64-vc') and env['BF_DEBUG'])
 

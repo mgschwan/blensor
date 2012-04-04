@@ -24,6 +24,7 @@ set(INC
 	../../blenkernel
 	../../makesdna
 	../../../../intern/guardedalloc
+  ../../../../extern/Eigen3/
 )
 
 set(INC_SYS
@@ -39,7 +40,7 @@ set(SRC
 	mathutils_Vector.c
 	mathutils_geometry.c
 	mathutils_noise.c
-	mathutils_eigen.c
+	mathutils_eigen.cpp
 
 	mathutils.h
 	mathutils_Color.h

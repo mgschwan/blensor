@@ -1,6 +1,5 @@
 import bpy
-import numpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector, eigen
 
 
 """A package for simulating various types of range scanners inside blender"""
@@ -31,7 +30,7 @@ bl_info = {
     "blender": (2, 6, 0),
     "api": 31236,
     "location": "View3D > Properties > Object",
-    "warning": 'Requires numpy', # used for warning icon and text in addons panel
+    "warning": 'Requires eigen module', # used for warning icon and text in addons panel
     "wiki_url": "http://www.blensor.org",
     "category": "3D View"}
 
@@ -39,6 +38,7 @@ bl_info = {
 
 class AlignVertexItem(bpy.types.PropertyGroup):
     index = bpy.props.IntProperty(name="Test Prop", default=0)
+    co = bpy.props.FloatVectorProperty(name="Coordinate")
 
 def getTransformationMatrix(object, referenceobject):
 
@@ -47,44 +47,43 @@ def getTransformationMatrix(object, referenceobject):
 
     verts_o1 = []
     verts_o2 = []
-    for idx in o1.align_vertice_indices:
-        v = object.matrix_world*object.data.vertices[idx.index].co.to_4d()
+    for vert in o1.align_vertice_indices:
+        v = object.matrix_world*Vector(vert.co).to_4d()
         verts_o1.append( v.to_3d()/v[3] )
 
-    for idx in o2.align_vertice_indices:
-        v = referenceobject.matrix_world*referenceobject.data.vertices[idx.index].co.to_4d()
+    for vert in o2.align_vertice_indices:
+        v = referenceobject.matrix_world*Vector(vert.co).to_4d()
         verts_o2.append( v.to_3d()/v[3] )
         
     if len(verts_o2) != len(verts_o1):
         raise Exception ("Invalid number of vertices")    
 
-    A=numpy.zeros((len(verts_o1),12))
-    b=numpy.zeros((len(verts_o2),1))
-        
+    A = [ [0.0 for i in range(12)] for j in range(len(verts_o1)*3)]
+    b = [ 0.0 ] * (len(verts_o2)*3)
+
     for i in range(len(verts_o1)):
      A[i*3][0]=verts_o1[i].x
      A[i*3][1]=verts_o1[i].y
      A[i*3][2]=verts_o1[i].z
-     A[i*3][3]=1
+     A[i*3][3]=1.0
      A[i*3+1][4]=verts_o1[i].x
      A[i*3+1][5]=verts_o1[i].y
      A[i*3+1][6]=verts_o1[i].z
-     A[i*3+1][7]=1
+     A[i*3+1][7]=1.0
      A[i*3+2][8]=verts_o1[i].x
      A[i*3+2][9]=verts_o1[i].y
      A[i*3+2][10]=verts_o1[i].z
-     A[i*3+2][11]=1
+     A[i*3+2][11]=1.0
      b[i*3]   = verts_o2[i].x
      b[i*3+1] = verts_o2[i].y
      b[i*3+2] = verts_o2[i].z
 
-    m = numpy.linalg.lstsq(A,b)[0]
-    m = m.reshape((3,4))
+    m = eigen.solve(A,b)
 
     mat = Matrix()
     for row in range(3):
       for col in range(4):
-        mat[col][row] = m[row][col]
+        mat[row][col] = m[row*4+col]
     return mat
 
 def getSelectedVertex(object):
@@ -109,8 +108,8 @@ def isIndexInside(index, coll):
 class MeshAlignPanel(bpy.types.Panel):
     bl_label = "Align Meshes"
     bl_idname = "OBJECT_PT_alignmesh"
-    bl_space_type = "PROPERTIES"
-    bl_region_type = "OBJECT"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
     bl_context = "object"
 
     def draw(self, context):
@@ -119,7 +118,7 @@ class MeshAlignPanel(bpy.types.Panel):
         obj = context.object
 
         row = layout.row()
-        row.label(text="Align meshes", icon='WORLD_DATA')
+        row.label(text="Align meshes")
         row = layout.row()
         row.operator("meshalign.addvertexbutton")
         row = layout.row()
@@ -153,7 +152,6 @@ class OBJECT_OT_AddVertexButton(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='OBJECT') 
         vert = getSelectedVertex(obj)
         bpy.ops.object.mode_set(mode='EDIT') 
-        print (str(vert))
         if vert==-1:
             self.report({'WARNING'}, "Please select exactly ONE vertex")
         elif isIndexInside(vert, obj.align_vertice_indices):
@@ -161,6 +159,7 @@ class OBJECT_OT_AddVertexButton(bpy.types.Operator):
         else:
             v = obj.align_vertice_indices.add()
             v.index = vert
+            v.co = obj.data.vertices[vert].co
         return {'FINISHED'}
 
 class OBJECT_OT_ClearVertexButton(bpy.types.Operator):

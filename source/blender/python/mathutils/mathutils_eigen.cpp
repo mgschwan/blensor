@@ -50,8 +50,36 @@
 #include "mathutils.h"
 #include "mathutils_eigen.h"
 
+#include <Eigen/Core>
+#include <Eigen/QR>
+
 /* This is a first test to write a new python module for blender
  */
+
+/* Utilities */
+
+/* Returns a float from an PyObject that is either a PyFloat or a PyInt
+ * sets and optional error parameter if the object is incompatible 
+ */
+double getFloatFromObject(PyObject *obj, bool &error)
+{
+  if (PyFloat_Check(obj))
+  {
+      error = false;
+      return PyFloat_AsDouble(obj);
+  }
+  
+  if (PyLong_Check(obj))
+  {
+      error = false;
+      return (double)PyLong_AsLong(obj);
+  }
+
+  error = true;
+  return 0.0;
+}
+
+
 
 /*-------------------------DOC STRINGS ---------------------------*/
 PyDoc_STRVAR(M_Eigen_doc,
@@ -62,20 +90,26 @@ PyDoc_STRVAR(M_Eigen_doc,
 /* Python Functions */
 /*------------------------------------------------------------*/
 
-PyDoc_STRVAR(M_Eigen_test_doc,
-".. function:: test()\n"
+PyDoc_STRVAR(M_Eigen_solve_doc,
+".. function:: solve(A,b)\n"
 "\n"
-"   Returns 0.0.\n"
+"   Solves a system of linear equations Ax = b with Eigen::ColPivHouseholderQr\n"
+"   Returns the array with the best solution.\n"
 "\n"
-"   :return: The number.\n"
-"   :rtype: float\n"
+"   :arg A: A nxm matrix with the coefficients\n"
+"   :type: array\n"
+"   :arg A: A n dimensional vector with the constants\n"
+"   :type: array\n"
+"   :return: The solution vector x\n"
+"   :rtype: array\n"
 );
-static PyObject *M_Eigen_test(PyObject *UNUSED(self), PyObject *args)
+static PyObject *M_Eigen_solve(PyObject *UNUSED(self), PyObject *args)
 {
   PyObject* A = NULL;
   PyObject* b = NULL;
   Py_ssize_t A_rows = 0;
   Py_ssize_t A_cols = 0;
+  Py_ssize_t b_rows = 0;
   int idx;
 
 
@@ -109,13 +143,63 @@ static PyObject *M_Eigen_test(PyObject *UNUSED(self), PyObject *args)
     return 0;
   }
 
-  
+  b_rows = PyList_Size(b);
+  if (b_rows != A_rows)
+  {
+    //We want to solve Ax=b so b must have exactly as many rows as
+    //A has columns
+    PyErr_SetString(PyExc_ValueError, "A.rows == b.cols is required");
+    return 0;
+  }
 
-	return PyFloat_FromDouble(0.0);
+
+  /* The basic checks are done, now copy the data */
+
+  Eigen::MatrixXd Amat(A_rows, A_cols);
+  Eigen::VectorXd bvec(b_rows);
+
+  for (int row=0; row < A_rows; row++)
+  {
+    bool error;
+    PyObject *row_object = PyList_GetItem(A, row);
+    for (int col = 0; col < A_cols; col++)
+    {
+     
+      PyObject *item = PyList_GetItem(row_object,col);
+      Amat(row,col) = getFloatFromObject(item, error);
+      if (error)
+      {
+          PyErr_SetString(PyExc_ValueError, "Elements must be float");
+          return 0;
+      }
+    }
+
+    PyObject *item = PyList_GetItem(b, row);
+    bvec(row) = getFloatFromObject(item, error);
+    if (error)
+    {
+        PyErr_SetString(PyExc_ValueError, "Elements must be float");
+        return 0;
+    }
+  }
+
+  //Solution
+  Eigen::VectorXd xvec = Amat.colPivHouseholderQr().solve(bvec);  
+
+
+
+  PyObject *result= PyList_New(A_cols);
+  for (Py_ssize_t col=0; col < A_cols; col++)
+  {
+    PyList_SetItem(result, col, PyFloat_FromDouble(xvec(col)));
+  }
+
+
+	return result;
 }
 
 static PyMethodDef M_Eigen_methods[] = {
-	{"test", (PyCFunction) M_Eigen_test, METH_VARARGS, M_Eigen_test_doc},
+	{"solve", (PyCFunction) M_Eigen_solve, METH_VARARGS, M_Eigen_solve_doc},
 	{NULL, NULL, 0, NULL}
 };
 
