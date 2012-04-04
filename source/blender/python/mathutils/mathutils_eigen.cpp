@@ -146,8 +146,7 @@ static PyObject *M_Eigen_solve(PyObject *UNUSED(self), PyObject *args)
   b_rows = PyList_Size(b);
   if (b_rows != A_rows)
   {
-    //We want to solve Ax=b so b must have exactly as many rows as
-    //A has columns
+    //We want to solve Ax=b so b must have exactly as many rows as A
     PyErr_SetString(PyExc_ValueError, "A.rows == b.cols is required");
     return 0;
   }
