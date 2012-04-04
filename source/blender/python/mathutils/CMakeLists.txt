@@ -39,6 +39,7 @@ set(SRC
 	mathutils_Vector.c
 	mathutils_geometry.c
 	mathutils_noise.c
+	mathutils_eigen.c
 
 	mathutils.h
 	mathutils_Color.h
@@ -47,7 +48,7 @@ set(SRC
 	mathutils_Quaternion.h
 	mathutils_Vector.h
 	mathutils_geometry.h
-	mathutils_noise.h
+	mathutils_eigen.h
 )
 
 
