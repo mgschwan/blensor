@@ -53,10 +53,18 @@
 #include <Eigen/Core>
 #include <Eigen/QR>
 
+#include <iostream>
+
 /* This is a first test to write a new python module for blender
  */
 
 /* Utilities */
+
+typedef struct PyMatSize {
+  Py_ssize_t rows;
+  Py_ssize_t cols;
+} PyMatSize;
+
 
 /* Returns a float from a PyObject that is either a PyFloat or a PyLong.
  * It sets and optional error parameter if the object is incompatible 
@@ -77,6 +85,107 @@ double getFloatFromObject(PyObject *obj, bool &error)
 
   error = true;
   return 0.0;
+}
+
+
+/* Returns the size of a matrix supplied as a list of lists 
+ * Sets the error variable if not all rows have the same size
+ */
+PyMatSize getMatrixSize(PyObject *M, bool &error)
+{
+
+  PyMatSize result = {0,0};
+  Py_ssize_t rows = PyList_Size(M);
+  Py_ssize_t cols = 0;
+
+  for (Py_ssize_t row=0; row < rows; row++)
+  {
+    PyObject *row_object = PyList_GetItem(M, row);
+
+    if (PyList_Check(row_object))
+    {
+        if (cols != PyList_Size(row_object))
+        {
+          if (cols != 0)
+          {
+            /* The rowsize has changed, that must not happen */
+            PyErr_SetString(PyExc_ValueError,"rows must have the same size");
+            error = true;
+            return result;
+          }
+          cols = PyList_Size(row_object);
+        }
+    }        
+    else if (PyFloat_Check(row_object) || PyLong_Check(row_object))
+    {
+      if (cols < 2)
+      {
+         cols = 1;
+      }
+      else
+      {
+        /* The rowsize has changed, that must not happen */
+        PyErr_SetString(PyExc_ValueError,"rows must have the same size");
+        error = true;
+        return result;
+      }
+    }
+    else
+    {
+      PyErr_SetString(PyExc_ValueError,"row must be number or list");
+      error = true;
+      return result;
+    }
+  }
+  error = false;
+  result.rows = rows;
+  result.cols = cols;
+  return result;
+}
+
+
+template <typename T>
+bool MatrixFromPyToEigen(PyObject *M, T &Mmat)
+{
+  bool error;
+  PyMatSize Msize = getMatrixSize(M, error);
+  
+  std::cout << Msize.rows<<" != "<<Mmat.rows()<<"  "<<Msize.cols<<" != "<<Mmat.cols()<<std::endl;
+  if (error || Msize.rows != Mmat.rows() || Msize.cols != Mmat.cols())
+  {
+    PyErr_SetString(PyExc_ValueError, "Unknown Matrix error");
+    /* Source and destination matrix have incompatible size */
+    return false;
+  }
+
+  for (int row=0; row < Msize.rows; row++)
+  {
+    PyObject *row_object = PyList_GetItem(M, row);
+    if (PyList_Check(row_object))
+    {
+      for (int col = 0; col < Msize.cols; col++)
+      {
+       
+        PyObject *item = PyList_GetItem(row_object,col);
+        Mmat(row,col) = getFloatFromObject(item, error);
+        if (error)
+        {
+          PyErr_SetString(PyExc_ValueError, "Elements must be float");
+          return false;
+        }
+      }
+    }
+    else
+    {
+       Mmat(row,0) = getFloatFromObject(row_object, error);
+       if (error)
+       {
+         PyErr_SetString(PyExc_ValueError, "Elements must be float");
+         return false;
+       }
+    }
+  } 
+  return true;
 }
 
 
@@ -107,92 +216,44 @@ static PyObject *M_Eigen_solve(PyObject *UNUSED(self), PyObject *args)
 {
   PyObject* A = NULL;
   PyObject* b = NULL;
-  Py_ssize_t A_rows = 0;
-  Py_ssize_t A_cols = 0;
-  Py_ssize_t b_rows = 0;
-  int idx;
-
+  PyMatSize Asize;
+  PyMatSize bsize;
+  bool error;
 
   if (!PyArg_ParseTuple(args, "O!O!", &PyList_Type, &A, &PyList_Type, &b))
     return 0;
 
-  
-  A_rows = PyList_Size(A);
-  for (idx=0; idx < A_rows; idx++)
-  {
-    PyObject *row = PyList_GetItem(A, idx);
-    if (!PyList_Check(row))
-    {
-        PyErr_SetString(PyExc_ValueError, "rows must have size > 0");
-        return 0;
-    }
+  Asize = getMatrixSize(A, error);
+  if (error) return 0;
 
-    if (A_cols !=  PyList_Size(row))
-    {
-      if (A_cols != 0)
-      {
-        PyErr_SetString(PyExc_ValueError, "rows must have the same size");
-        return 0;
-      }
-      A_cols = PyList_Size(row);
-    }
-  } 
-  if (A_cols == 0)
-  {
-    PyErr_SetString(PyExc_ValueError, "rows must have size > 0");
-    return 0;
-  }
+  bsize = getMatrixSize(b, error);
+  if (error)return 0;
 
-  b_rows = PyList_Size(b);
-  if (b_rows != A_rows)
+  if (bsize.cols != 1 || bsize.rows != Asize.rows)
   {
     //We want to solve Ax=b so b must have exactly as many rows as A
-    PyErr_SetString(PyExc_ValueError, "A.rows == b.cols is required");
+    PyErr_SetString(PyExc_ValueError, "A.rows == b.rows is required");
     return 0;
   }
-
 
   /* The basic checks are done, now copy the data */
 
-  Eigen::MatrixXd Amat(A_rows, A_cols);
-  Eigen::VectorXd bvec(b_rows);
+  Eigen::MatrixXd Amat(Asize.rows, Asize.cols);
+  Eigen::VectorXd bvec(bsize.rows);
 
-  for (int row=0; row < A_rows; row++)
+  if (!MatrixFromPyToEigen(A, Amat) || !MatrixFromPyToEigen(b, bvec))
   {
-    bool error;
-    PyObject *row_object = PyList_GetItem(A, row);
-    for (int col = 0; col < A_cols; col++)
-    {
-     
-      PyObject *item = PyList_GetItem(row_object,col);
-      Amat(row,col) = getFloatFromObject(item, error);
-      if (error)
-      {
-          PyErr_SetString(PyExc_ValueError, "Elements must be float");
-          return 0;
-      }
-    }
-
-    PyObject *item = PyList_GetItem(b, row);
-    bvec(row) = getFloatFromObject(item, error);
-    if (error)
-    {
-        PyErr_SetString(PyExc_ValueError, "Elements must be float");
-        return 0;
-    }
+    return 0;
   }
 
   //Solution
   Eigen::VectorXd xvec = Amat.colPivHouseholderQr().solve(bvec);  
 
-
-
-  PyObject *result= PyList_New(A_cols);
-  for (Py_ssize_t col=0; col < A_cols; col++)
+  PyObject *result= PyList_New(Asize.cols);
+  for (Py_ssize_t col=0; col < Asize.cols; col++)
   {
     PyList_SetItem(result, col, PyFloat_FromDouble(xvec(col)));
   }
-
 
 	return result;
 }
