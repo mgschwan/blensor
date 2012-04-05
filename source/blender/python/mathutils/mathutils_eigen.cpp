@@ -58,8 +58,8 @@
 
 /* Utilities */
 
-/* Returns a float from an PyObject that is either a PyFloat or a PyInt
- * sets and optional error parameter if the object is incompatible 
+/* Returns a float from a PyObject that is either a PyFloat or a PyLong.
+ * It sets and optional error parameter if the object is incompatible 
  */
 double getFloatFromObject(PyObject *obj, bool &error)
 {
