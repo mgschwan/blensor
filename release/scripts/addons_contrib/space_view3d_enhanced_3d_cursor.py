@@ -21,8 +21,8 @@ bl_info = {
     "name": "Enhanced 3D Cursor",
     "description": "Cursor history and bookmarks; drag/snap cursor.",
     "author": "dairin0d",
-    "version": (2, 8, 1),
-    "blender": (2, 6, 0),
+    "version": (2, 8, 5),
+    "blender": (2, 6, 3),
     "location": "View3D > Action mouse; F10; Properties panel",
     "warning": "",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
@@ -33,6 +33,14 @@ bl_info = {
 #============================================================================#
 
 """
+ATTENTION:
+somewhere around 45447 revision object.ray_cast() starts conflicting with
+mesh.update(calc_tessface=True) -- at least when invoked within one
+operator cycle, object.ray_cast() crashes if object's tessfaces were
+update()d earlier in the code. However, not update()ing the meshes
+seems to work fine -- ray_cast() does its job, and it's possible to
+access tessfaces afterwards.
+
 Breakdown:
     Addon registration
     Keymap utils
@@ -2429,6 +2437,7 @@ class Snap3DUtility(SnapUtilityBase):
         bm = prepare_gridbox_mesh(subdiv=2)
         mesh = bpy.data.meshes.new(tmp_name)
         bm.to_mesh(mesh)
+        mesh.update(calc_tessface=True)
         
         self.bbox_obj = self.cache.create_temporary_mesh_obj(mesh, Matrix())
         self.bbox_obj.hide = True
@@ -2491,7 +2500,7 @@ class Snap3DUtility(SnapUtilityBase):
                 sys_matrix = m.copy()
                 try:
                     sys_matrix_inv = sys_matrix.inverted()
-                except:
+                except Exception:
                     # this is some degenerate system
                     sys_matrix_inv = Matrix()
             m_combined = sys_matrix_inv * m
@@ -2518,12 +2527,9 @@ class Snap3DUtility(SnapUtilityBase):
         
         half = (bbox[1] - bbox[0]) * 0.5
         
-        sys_matrix3 = sys_matrix.to_3x3()
-        
-        m = Matrix()
-        m[0][:3] = sys_matrix3 * Vector((half[0], 0, 0))
-        m[1][:3] = sys_matrix3 * Vector((0, half[1], 0))
-        m[2][:3] = sys_matrix3 * Vector((0, 0, half[2]))
+        m = Matrix(((half[0], 0, 0), (0, half[1], 0), (0, 0, half[2])))
+        m = sys_matrix.to_3x3() * m
+        m.resize_4x4()
         m.translation[:3] = sys_matrix * (bbox[0] + half)
         self.bbox_obj.matrix_world = m
         
@@ -2911,7 +2917,7 @@ class MeshCache:
                 if self.edit_object is None:
                     self.edit_object = self.__convert(
                                 obj, True, False, False)
-                    self.edit_object.data.update(calc_tessface=True)
+                    #self.edit_object.data.update(calc_tessface=True)
                 return self.edit_object
         
         # A usual object. Cached data will suffice.
@@ -2930,7 +2936,8 @@ class MeshCache:
             rco = None
         
         self.object_cache[obj] = rco
-        rco.data.update(calc_tessface=True)
+        if rco:
+            pass#rco.data.update(calc_tessface=True)
         
         return rco
     

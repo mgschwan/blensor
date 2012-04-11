@@ -62,6 +62,7 @@ bl_info = {
 #ver. 1.1.6: Now the vertex movement is always coherent with Mouse movement
 #ver. 2.0.0: Update to Bmesh and remove all mode switching
 #ver. 2.0.1: Replaced Conv3DtoScreen2D function with location_3d_to_region_2d
+#ver. 2.0.2: Fix crash if there are some duplicate vertices
 #***********************************************************************
 
 import bpy
@@ -423,7 +424,12 @@ class BVertexSlideOperator(bpy.types.Operator):
         if len(SelectedVertices) == 1 and len(self.LinkedVertices1) == 0:
             self.report({'WARNING'}, "Isolated vertex or mixed Select Mode!")
             return {'CANCELLED'}
-
+        # Check for duplicate vertices. If some linked vertice have the same coords of selected vertice
+        # we have the error "division by 0
+        if self.Vertex1.original.co == self.Vertex2.original.co:
+            self.report({'WARNING'}, "At least one duplicate vertex")
+            return {'CANCELLED'}
+            
         self.bm.verts[self.Vertex1.original.idx].select = True  # Select the first selected vertex
         if len(SelectedVertices) == 2:
             self.bm.verts[self.Vertex2.original.idx].select = True  # Select the second selected vertex

@@ -10,7 +10,7 @@ bl_info = {
 
 import bpy
 from bpy.types import Panel, Operator
-from bpy.props import IntProperty, FloatProperty, BoolProperty, IntVectorProperty, StringProperty, FloatVectorProperty
+from bpy.props import IntProperty, FloatProperty, BoolProperty, IntVectorProperty, StringProperty, FloatVectorProperty, CollectionProperty
 from bpy_extras import view3d_utils
 import math
 from math import *
@@ -67,14 +67,24 @@ def update_UVScale(self, context):
     uvdata = ob.data.uv_loop_layers.active.data
     for i in range(trunc(pow(ob.custom_sub+1, 2)*4)):
         vres =  v - uvdata[len(uvdata)-1-i].uv  
-        if ob.custom_linkscaleuv:
-            uvdata[len(uvdata)-1-i].uv = [v.x - vres.x/os[0]*s[0], v.y - vres.y/os[0]*s[0]]
-        else:
-            uvdata[len(uvdata)-1-i].uv = [v.x - vres.x/os[0]*s[0], v.y - vres.y/os[1]*s[1]]    
-    ob.custom_old_scaleuv = s
-        
+        uvdata[len(uvdata)-1-i].uv.x = v.x - vres.x/os[0]*s[0]
+        uvdata[len(uvdata)-1-i].uv.y = v.y - vres.y/os[1]*s[1]
+
+    ob.custom_old_scaleuv = s  
     align_to_view(context)
 
+def update_PropUVScale(self, context):
+    ob = context.object
+    if ob.custom_linkscaleuv:
+        ob.custom_scaleuv = [ob.custom_propscaleuv,ob.custom_propscaleuv]
+
+def update_LinkUVScale(self, context):
+    ob = context.object
+    if ob.custom_linkscaleuv:
+        update_PropUVScale(self, context)
+    else:
+        update_UVScale(self, context) 
+        
 # Function to update the offsetUV
 def update_UVOffset(self, context):
     ob = context.object
@@ -163,12 +173,49 @@ def update_Scale(self, context):
         if ob.custom_linkscale and xmove:
             v = view3d_utils.location_3d_to_region_2d(context.area.regions[4], sd.region_3d, c + ce/ob.custom_old_scale.x*ob.custom_scale.x) 
             res = [round(v.x),round(v.y), ob.custom_location.z]        
-            ob.custom_location = res
-            
-    else:
+            ob.custom_location = res            
+    else:          
         align_to_view(context)
     
     ob.custom_old_scale = ob.custom_scale
+
+def update_activeviewname(self, context):
+    if self.custom_active:
+        context.object.custom_active_view = self.custom_active_view
+
+class custom_props(bpy.types.PropertyGroup):
+    custom_location = FloatVectorProperty(name="Location", description="Location of the plan",
+                                           default=(0,0,-1.0),
+                                           subtype = 'XYZ', size=3)
+                                           
+    custom_rotation = IntProperty(name="Rotation", description="Rotate the plane",
+                                     min=-180, max=180, default=0)
+                                         
+    custom_scale = FloatVectorProperty(name="Scales", description="Scale the planes",
+                                       subtype = 'XYZ', default=(1.0, 1.0),min = 0.1, size=2)
+                                          
+    custom_linkscale = BoolProperty(name="linkscale", default=True)
+   
+    # UV properties
+    custom_scaleuv = FloatVectorProperty(name="ScaleUV", description="Scale the texture's UV",
+                                            default=(1.0,1.0),min = 0.01, subtype = 'XYZ', size=2)
+    custom_propscaleuv = FloatProperty(name="PropScaleUV", description="Scale the texture's UV",
+                                           default=1.0,min = 0.01) 
+    custom_offsetuv = FloatVectorProperty(name="OffsetUV", description="Decal the texture's UV",
+                                            default=(0.0,0.0), subtype = 'XYZ', size=2)       
+    custom_linkscaleuv = BoolProperty(name="linkscaleUV", default=True)
+    custom_flipuvx = BoolProperty(name="flipuvx", default=False)
+    custom_flipuvy = BoolProperty(name="flipuvy", default=False)
+    
+    # other properties
+    custom_active= BoolProperty(name="custom_active", default=True)   
+    custom_expand = BoolProperty(name="expand", default=False)
+    
+    custom_active_view = StringProperty(name = "custom_active_view",default = "View",update = update_activeviewname)
+    
+    custom_image = StringProperty(name = "custom_image",default = "")
+    
+    custom_index = IntProperty()
 
 # Function to create custom properties
 def createcustomprops(context):
@@ -198,14 +245,16 @@ def createcustomprops(context):
     
     # UV properties
     Ob.custom_scaleuv = FloatVectorProperty(name="ScaleUV", description="Scale the texture's UV",
-                                            default=(1.0,1.0),min = 0.01, subtype = 'XYZ', size=2,update = update_UVScale)    
+                                            default=(1.0,1.0),min = 0.01, subtype = 'XYZ', size=2,update = update_UVScale)
+    Ob.custom_propscaleuv = FloatProperty(name="PropScaleUV", description="Scale the texture's UV",
+                                           default=1.0,min = 0.01,update = update_PropUVScale)    
     Ob.custom_old_scaleuv = FloatVectorProperty(name="old_ScaleUV", description="Scale the texture's UV",
                                                 default=(1.0,1.0),min = 0.01, subtype = 'XYZ', size=2)
     Ob.custom_offsetuv = FloatVectorProperty(name="OffsetUV", description="Decal the texture's UV",
                                             default=(0.0,0.0), subtype = 'XYZ', size=2,update = update_UVOffset)    
     Ob.custom_old_offsetuv = FloatVectorProperty(name="old_OffsetUV", description="Decal the texture's UV",
                                                  default=(0.0,0.0), subtype = 'XYZ', size=2)    
-    Ob.custom_linkscaleuv = BoolProperty(name="linkscaleUV", default=True, update = update_UVScale)
+    Ob.custom_linkscaleuv = BoolProperty(name="linkscaleUV", default=True, update = update_LinkUVScale)
     Ob.custom_flipuvx = BoolProperty(name="flipuvx", default=False, update = update_FlipUVX)
     Ob.custom_flipuvy = BoolProperty(name="flipuvy", default=False, update = update_FlipUVY)
     
@@ -213,18 +262,169 @@ def createcustomprops(context):
     Ob.custom_c3d = BoolProperty(name="c3d", default=True)
     Ob.custom_rot = BoolProperty(name="rot", default=True)
     Ob.custom_rotc3d = BoolProperty(name="rotc3d", default=False)
-    Ob.custom_scac3d = BoolProperty(name="scac3d", default=False)  
+    Ob.custom_scac3d = BoolProperty(name="scac3d", default=False)
+    Ob.custom_expand = BoolProperty(name="expand", default=True)
+    Ob.custom_active_view = StringProperty(name = "custom_active_view",default = "View")
+    
+    Ob.custom_props = CollectionProperty(type = custom_props)
 
 # Function to remove custom properties
 def removecustomprops():    
     list_prop = ['custom_location', 'custom_rotation', 'custom_old_rotation', 'custom_scale', 'custom_old_scale', 'custom_c3d',
                  'custom_rot', 'custom_rotc3d', 'custom_scaleuv', 'custom_flipuvx', 'custom_flipuvy', 'custom_linkscale',
-                 'custom_linkscaleuv', 'custom_old_scaleuv', 'custom_offsetuv', 'custom_old_offsetuv', 'custom_scac3d', 'custom_sub']
+                 'custom_linkscaleuv', 'custom_old_scaleuv', 'custom_offsetuv', 'custom_old_offsetuv', 'custom_scac3d', 'custom_sub',
+                 'custom_expand', 'custom_active_view', 'custom_propscaleuv', 'custom_props']
     for prop in list_prop:
         try:
             del bpy.context.object[prop]
         except:
             do = 'nothing'
+
+# Oprerator Class to create view            
+class CreateView(Operator):
+    bl_idname = "object.create_view"
+    bl_label = "Create a new view"
+
+    def execute(self, context):              
+        ob = context.object
+        new_props = ob.custom_props.add()
+        
+        ob.custom_active_view = new_props.custom_active_view               
+        new_props.custom_index = len(bpy.context.object.custom_props)-1
+        bpy.ops.object.active_view(index = new_props.custom_index)
+        ob.data.shape_keys.key_blocks[ob.active_shape_key_index].mute = True
+        bpy.ops.object.shape_key_add(from_mix = False)
+        ob.data.shape_keys.key_blocks[ob.active_shape_key_index].value = 1.0
+        return {'FINISHED'}
+
+# Oprerator Class to copy view 
+class SaveView(Operator):
+    bl_idname = "object.save_view"
+    bl_label = "copy the view"
+    
+    index = IntProperty(default = 0)
+    
+    def execute(self, context):              
+        ob = context.object
+        prop = ob.custom_props[self.index]        
+        prop.custom_location =  ob.custom_location                    
+        prop.custom_rotation =  ob.custom_rotation                    
+        prop.custom_scale =  ob.custom_scale                  
+        prop.custom_linkscale =  ob.custom_linkscale                                      
+        prop.custom_scaleuv = ob.custom_scaleuv
+        prop.custom_offsetuv =  ob.custom_offsetuv  
+        prop.custom_linkscaleuv = ob.custom_linkscaleuv
+        prop.custom_propscaleuv = ob.custom_propscaleuv
+        prop.custom_flipuvx = ob.custom_flipuvx
+        prop.custom_flipuvy = ob.custom_flipuvy
+        try:
+            prop.custom_image = bpy.data.textures['Texture for BProjection'].image.name
+        except:
+            do = 'nothing'
+        #bpy.ops.object.active_view(index = self.index)
+        
+        return {'FINISHED'}
+
+# Oprerator Class to copy view 
+class PasteView(Operator):
+    bl_idname = "object.paste_view"
+    bl_label = "paste the view"
+    
+    index = IntProperty(default = 0)
+    
+    def execute(self, context):              
+        ob = context.object
+        prop = ob.custom_props[self.index]
+        ob.custom_linkscale =  prop.custom_linkscale
+        ob.custom_offsetuv =  prop.custom_offsetuv 
+        ob.custom_linkscaleuv = prop.custom_linkscaleuv
+        ob.custom_scaleuv = prop.custom_scaleuv
+        ob.custom_propscaleuv = prop.custom_propscaleuv       
+        ob.custom_rotation =  prop.custom_rotation                    
+        ob.custom_scale =  prop.custom_scale  
+        ob.custom_location =  prop.custom_location                    
+        if prop.custom_image != '':
+            if bpy.data.textures['Texture for BProjection'].image.name != prop.custom_image:
+                bpy.data.textures['Texture for BProjection'].image = bpy.data.images[prop.custom_image]
+                bpy.ops.object.applyimage()
+        if ob.custom_flipuvx != prop.custom_flipuvx:
+            ob.custom_flipuvx = prop.custom_flipuvx
+        if ob.custom_flipuvy != prop.custom_flipuvy:
+            ob.custom_flipuvy = prop.custom_flipuvy
+        
+        return {'FINISHED'}
+
+# Oprerator Class to remove view 
+class RemoveView(Operator):
+    bl_idname = "object.remove_view"
+    bl_label = "Rmeove the view"
+    
+    index = IntProperty(default = 0)
+    
+    def execute(self, context):              
+        ob = context.object
+        
+        ob.active_shape_key_index =  self.index + 1
+        bpy.ops.object.shape_key_remove()
+        
+        if  context.object.custom_props[self.index].custom_active: 
+            if len(ob.custom_props) > 0:
+                bpy.ops.object.active_view(index = self.index-1)
+            if self.index == 0 and len(ob.custom_props) > 1:
+                bpy.ops.object.active_view(index = 1)            
+                
+        ob.custom_props.remove(self.index)
+        
+        print(len(context.object.custom_props))
+                
+        if len(context.object.custom_props) == 0:
+            ob.custom_scale = [1,1]
+            ob.custom_rotation = 0
+            ob.custom_scaleuv =[1.0,1.0]
+            ob.custom_offsetuv =[0.0,0.0]
+            if ob.custom_flipuvx == True:
+                ob.custom_flipuvx = False
+            if ob.custom_flipuvy == True:
+                ob.custom_flipuvy = False
+            
+            bpy.ops.object.create_view()            
+                 
+        i=0
+        for item in context.object.custom_props:
+            item.custom_index = i           
+            i+=1 
+       
+        for item in context.object.custom_props:
+            if item.custom_active:
+                ob.active_shape_key_index = item.custom_index+1
+           
+        return {'FINISHED'}
+
+# Oprerator Class to copy view 
+class ActiveView(Operator):
+    bl_idname = "object.active_view"
+    bl_label = "Active the view"
+    
+    index = IntProperty(default = 0)
+    
+    def execute(self, context):
+        ob = context.object
+        for item in ob.custom_props:
+            if item.custom_active == True:
+                bpy.ops.object.save_view(index = item.custom_index)
+                item.custom_active = False
+        ob.custom_props[self.index].custom_active  = True
+        ob.custom_active_view = ob.custom_props[self.index].custom_active_view 
+        ob.active_shape_key_index =  self.index + 1
+        
+        for i in ob.data.shape_keys.key_blocks:
+            i.mute = True
+        
+        ob.data.shape_keys.key_blocks[ob.active_shape_key_index].mute = False
+        
+        bpy.ops.object.paste_view(index = self.index)         
+        
+        return {'FINISHED'}
 
 # Draw Class to show the panel
 class BProjection(Panel):
@@ -247,48 +447,75 @@ class BProjection(Panel):
                         
             col = layout.column(align =True)
             col.operator("object.removebprojectionplane", text="Remove BProjection plane")           
+                
             box = layout.box()
-            col = box.column(align =True)
-            col.template_ID(tex, "image", open="image.open")
-            row  = box.row(align=True)
-            row.operator('object.applyimage', text="Apply image", icon = 'FILE_TICK')
-            row.prop(ob, "custom_c3d",text="", icon='CURSOR')
-            row.prop(ob, "custom_rot",text="", icon='ROTATE')
-            row  = box.row(align =True)
-            row.label(text="Location:")
-            row  = box.row(align =True)
-            row.prop(ob,'custom_location', text='')
-            row  = box.row(align =True)            
-            row.prop(ob,'custom_rotation')
-            row.prop(ob,'custom_rotc3d',text="",icon='MANIPUL')            
-            row  = box.row(align =True)
-            row.label(text="Scale:")
-            row  = box.row(align =True)
-            row.prop(ob,'custom_scale',text='') 
-            if ob.custom_linkscale :
-                row.prop(ob, "custom_linkscale",text="",icon='LINKED')
-            else: 
-                row.prop(ob, "custom_linkscale",text="",icon='UNLINKED')
-            row.prop(ob,'custom_scac3d',text="",icon='MANIPUL')                            
-            row  = box.row(align =True)
-            row.label(text="UV's Offset:")
-            row  = box.row(align =True)
-            row.prop(ob,'custom_offsetuv',text='')
-            row.prop(ob, "custom_flipuvx",text="",icon='ARROW_LEFTRIGHT')   
-            row.prop(ob, "custom_flipuvy",text="",icon='FULLSCREEN_ENTER') 
-            row  = box.row(align =True)
-            row.label(text="UV's Scale:")
-            row  = box.row(align =True)            
-            row.prop(ob,'custom_scaleuv',text='')
-            if ob.custom_linkscaleuv:
-                row.prop(ob, "custom_linkscaleuv",text="",icon='LINKED')
-            else: 
-                row.prop(ob, "custom_linkscaleuv",text="",icon='UNLINKED')            
-            row = box.column(align =True)
-            row.prop(ob.material_slots['Material for BProjection'].material,'alpha', slider = True)
+
+            row = box.row()
+            if not ob.custom_expand:
+                row.prop(ob, "custom_expand", text  = "", icon="TRIA_RIGHT", emboss=False)
+                row.label(text=ob.custom_active_view)
+            else:
+                row.prop(ob, "custom_expand", text = "" , icon="TRIA_DOWN", emboss=False)                
+                row.label(text=ob.custom_active_view)
+                
+                col = box.column(align =True)
+                col.template_ID(tex, "image", open="image.open")
+                row  = box.row(align=True)
+                row.operator('object.applyimage', text="Apply image", icon = 'FILE_TICK')
+                row.prop(ob, "custom_c3d",text="", icon='CURSOR')
+                row.prop(ob, "custom_rot",text="", icon='ROTATE')
+                row  = box.row(align =True)
+                row.label(text="Location:")
+                row  = box.row(align =True)
+                row.prop(ob,'custom_location', text='')
+                row  = box.row(align =True)            
+                row.prop(ob,'custom_rotation')
+                row.prop(ob,'custom_rotc3d',text="",icon='MANIPUL')            
+                row  = box.row(align =True)
+                row.label(text="Scale:")
+                row  = box.row(align =True)
+                row.prop(ob,'custom_scale',text='') 
+                if ob.custom_linkscale :
+                    row.prop(ob, "custom_linkscale",text="",icon='LINKED')
+                else: 
+                    row.prop(ob, "custom_linkscale",text="",icon='UNLINKED')
+                row.prop(ob,'custom_scac3d',text="",icon='MANIPUL')                            
+                row  = box.row(align =True)
+                row.label(text="UV's Offset:")
+                row  = box.row(align =True)
+                row.prop(ob,'custom_offsetuv',text='')
+                row.prop(ob, "custom_flipuvx",text="",icon='ARROW_LEFTRIGHT')   
+                row.prop(ob, "custom_flipuvy",text="",icon='FULLSCREEN_ENTER') 
+                row  = box.row(align =True)
+                row.label(text="UV's Scale:")
+                row  = box.row(align =True)                            
+                if ob.custom_linkscaleuv:
+                    row.prop(ob,'custom_propscaleuv',text='')
+                    row.prop(ob, "custom_linkscaleuv",text="",icon='LINKED')
+                else: 
+                    row.prop(ob,'custom_scaleuv',text='')
+                    row.prop(ob, "custom_linkscaleuv",text="",icon='UNLINKED')            
+                row = box.column(align =True)
+                row.prop(ob.material_slots['Material for BProjection'].material,'alpha', slider = True)
+                row = box.column(align =True)
+
+                
+            for item in ob.custom_props:
+                box = layout.box()
+                row = box.row()
+                if item.custom_active:
+                    row.operator("object.active_view",text = "", icon='RADIOBUT_ON', emboss = False).index = item.custom_index 
+                else:
+                    row.operator("object.active_view",text = "", icon='RADIOBUT_OFF', emboss = False).index = item.custom_index 
+                row.prop(item, "custom_active_view", text="")        
+                row.operator('object.remove_view', text="", icon = 'PANEL_CLOSE', emboss = False).index = item.custom_index
+            row = layout.row()
+            row.operator('object.create_view', text="Create View", icon = 'RENDER_STILL')        
+
         except:
             col = layout.column(align = True)
-            col.operator("object.addbprojectionplane", text="Add BProjection plan")           
+            col.operator("object.addbprojectionplane", text="Add BProjection plan")
+                   
 
 # Oprerator Class to apply the image to the plane             
 class ApplyImage(Operator):
@@ -441,8 +668,7 @@ class AddBProjectionPlane(Operator):
             em.hide = True   
                      
             self.creatematerial(context)
-
-            #bpy.ops.object.applyimage()  
+  
           
             bpy.ops.gpencil.data_add()
             ob.grease_pencil.draw_mode = 'VIEW'
@@ -450,6 +676,10 @@ class AddBProjectionPlane(Operator):
             ob.grease_pencil.layers.active.color = [1.0,0,0]
             
             bpy.ops.object.editmode_toggle()
+            
+            bpy.ops.object.shape_key_add(from_mix = False)
+            
+            bpy.ops.object.create_view()
                     
             km = bpy.data.window_managers['WinMan'].keyconfigs['Blender'].keymaps['3D View']
             km.keymap_items[3-1].idname = 'view3d.rotate_view3d'
@@ -563,6 +793,11 @@ class RemoveBProjectionPlane(Operator):
                     km.keymap_items.remove(kmi)
             
             bpy.ops.paint.texture_paint_toggle()
+            
+            for i in ob.data.shape_keys.key_blocks:
+                bpy.ops.object.shape_key_remove()
+            bpy.ops.object.shape_key_remove()    
+            
             removecustomprops()
                     
         except:
@@ -688,7 +923,7 @@ class RotateView3D(Operator):
             if 'U' in self.key:
                 suv = ob.custom_scaleuv
                 if ob.custom_linkscaleuv:    
-                    ob.custom_scaleuv= [suv[0] + deltax/50 , suv[0] + deltax/50]
+                    ob.custom_propscaleuv += deltax/50
                 else:
                     ob.custom_scaleuv= [suv[0] + deltax/50 , suv[1] + deltay/50]               
 
@@ -708,7 +943,10 @@ class RotateView3D(Operator):
             ob.custom_rotation = 0
             ob.custom_scaleuv =[1.0,1.0]
             ob.custom_offsetuv =[0.0,0.0]
-            return {'RUNNING_MODAL'}
+            if ob.custom_flipuvx == True:
+                ob.custom_flipuvx = False
+            if ob.custom_flipuvy == True:
+                ob.custom_flipuvy = False
                     
         return {'RUNNING_MODAL'}
     

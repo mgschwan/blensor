@@ -63,12 +63,12 @@ def makeRope (context, DISTPOS, curvaResU, radius, FE, CUERDAS, stResU,DIAMETRO)
     # CREO EL SPLINE
     spline=crv.splines.new("NURBS")
     lencoord= len(coordenadas)
-    print("lencoord--> :"+str(lencoord))
+    #print("lencoord--> :"+str(lencoord))
     rango=range(lencoord)
     spline.points.add(lencoord-1)
     for punto in rango:
         spline.points[punto].co = coordenadas[punto]
-        print(punto)
+        #print(punto)
         
         
     # MODIFICACIONES DE DATA
@@ -136,12 +136,12 @@ def makeRope (context, DISTPOS, curvaResU, radius, FE, CUERDAS, stResU,DIAMETRO)
         # CREO EL SPLINE
         spline=crv.splines.new("NURBS")
         lencoord= len(coordenadas)
-        print("lencoord--> :"+str(lencoord))
+        #print("lencoord--> :"+str(lencoord))
         rango=range(lencoord)
         spline.points.add(lencoord-1)
         for punto in rango:
             spline.points[punto].co = coordenadas[punto]
-            print(punto)
+            #print(punto)
             
             
         # MODIFICACIONES DE DATA
@@ -152,7 +152,7 @@ def makeRope (context, DISTPOS, curvaResU, radius, FE, CUERDAS, stResU,DIAMETRO)
         
         ob.data.bevel_object= bpy.data.objects["Cable"]
         
-        print(VARLISTVER)
+        #print(VARLISTVER)
         
 #---------------        
 from bpy.props import *
