@@ -52,6 +52,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/QR>
+#include <Eigen/SVD>
 
 #include <iostream>
 
@@ -150,7 +151,6 @@ bool MatrixFromPyToEigen(PyObject *M, T &Mmat)
   bool error;
   PyMatSize Msize = getMatrixSize(M, error);
   
-  std::cout << Msize.rows<<" != "<<Mmat.rows()<<"  "<<Msize.cols<<" != "<<Mmat.cols()<<std::endl;
   if (error || Msize.rows != Mmat.rows() || Msize.cols != Mmat.cols())
   {
     PyErr_SetString(PyExc_ValueError, "Unknown Matrix error");
@@ -207,8 +207,10 @@ PyDoc_STRVAR(M_Eigen_solve_doc,
 "\n"
 "   :arg A: A nxm matrix with the coefficients\n"
 "   :type: array\n"
-"   :arg A: A n dimensional vector with the constants\n"
+"   :arg b: A n dimensional vector with the constants\n"
 "   :type: array\n"
+"   :arg solver: Which solver to be used (has to be one of eigen.solvers.*)\n"
+"   :type: integer\n"
 "   :return: The solution vector x\n"
 "   :rtype: array\n"
 );
@@ -218,9 +220,10 @@ static PyObject *M_Eigen_solve(PyObject *UNUSED(self), PyObject *args)
   PyObject* b = NULL;
   PyMatSize Asize;
   PyMatSize bsize;
+  int solver = EIGEN_COL_PIV_HOUSEHOLDER;
   bool error;
 
-  if (!PyArg_ParseTuple(args, "O!O!", &PyList_Type, &A, &PyList_Type, &b))
+  if (!PyArg_ParseTuple(args, "O!O!|i", &PyList_Type, &A, &PyList_Type, &b, &solver))
     return 0;
 
   Asize = getMatrixSize(A, error);
@@ -246,8 +249,23 @@ static PyObject *M_Eigen_solve(PyObject *UNUSED(self), PyObject *args)
     return 0;
   }
 
-  //Solution
-  Eigen::VectorXd xvec = Amat.colPivHouseholderQr().solve(bvec);  
+  Eigen::VectorXd xvec;
+  switch (solver)
+  {
+    case EIGEN_COL_PIV_HOUSEHOLDER:
+          xvec = Amat.colPivHouseholderQr().solve(bvec);  
+          break;
+    case EIGEN_FULL_PIV_HOUSEHOLDER:
+          xvec = Amat.fullPivHouseholderQr().solve(bvec);
+          break;
+    case EIGEN_JACOBI_SVD:
+          xvec = Amat.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(bvec);
+          break;
+    case EIGEN_INVALID_SOLVER:
+    default:
+          PyErr_SetString(PyExc_ValueError, "Invalid solver: Only values from eigen.solvers are allowed");
+          return 0;
+  }
 
   PyObject *result= PyList_New(Asize.cols);
   for (Py_ssize_t col=0; col < Asize.cols; col++)
@@ -275,12 +293,41 @@ static struct PyModuleDef M_Eigen_module_def = {
 	NULL,  /* m_free */
 };
 
+
 /*----------------------------MODULE INIT-------------------------*/
 PyMODINIT_FUNC PyInit_mathutils_eigen(void)
 {
 	PyObject *submodule = PyModule_Create(&M_Eigen_module_def);
+  PyObject *item_types;
+
+	PyModule_AddObject(submodule, "solvers", (item_types = PyInit_mathutils_eigen_solvers()));
+	PyDict_SetItemString(PyThreadState_GET()->interp->modules, "eigen.solvers", item_types);
+	Py_INCREF(item_types);
 	
 	return submodule;
 }
 
+/*----------------------------SUBMODULE INIT-------------------------*/
+static struct PyModuleDef M_EigenSolvers_module_def = {
+	PyModuleDef_HEAD_INIT,
+	"mathutils.eigen.solvers",  /* m_name */
+	NULL,  /* m_doc */
+	0,     /* m_size */
+	NULL,  /* m_methods */
+	NULL,  /* m_reload */
+	NULL,  /* m_traverse */
+	NULL,  /* m_clear */
+	NULL,  /* m_free */
+};
+
+PyMODINIT_FUNC PyInit_mathutils_eigen_solvers(void)
+{
+	PyObject *submodule = PyModule_Create(&M_EigenSolvers_module_def);
+
+	PyModule_AddIntConstant(submodule, (char *)"COL_PIV_HOUSEHOLDER", EIGEN_COL_PIV_HOUSEHOLDER);
+	PyModule_AddIntConstant(submodule, (char *)"FULL_PIV_HOUSEHOLDER", EIGEN_FULL_PIV_HOUSEHOLDER);
+	PyModule_AddIntConstant(submodule, (char *)"JACOBI_SVD", EIGEN_JACOBI_SVD);
+
+	return submodule;
+}
 

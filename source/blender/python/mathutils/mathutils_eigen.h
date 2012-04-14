@@ -29,6 +29,13 @@
 
 #include "mathutils.h"
 
+/* List of available solvers */
+#define EIGEN_INVALID_SOLVER          0x0000
+#define EIGEN_COL_PIV_HOUSEHOLDER     0x0001
+#define EIGEN_FULL_PIV_HOUSEHOLDER    0x0002
+#define EIGEN_JACOBI_SVD              0x0003
+
 PyMODINIT_FUNC PyInit_mathutils_eigen(void);
+PyMODINIT_FUNC PyInit_mathutils_eigen_solvers(void);
 
 #endif // __MATHUTILS_EIGEN_H__
