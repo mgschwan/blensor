@@ -83,6 +83,7 @@
 #include "RNA_access.h"
 #include "RE_engine.h"
 #include "RE_pipeline.h"
+#include "RE_shader_ext.h"
 
 
 
@@ -102,6 +103,8 @@
 extern StructRNA RNA_Camera;
 extern StructRNA RNA_Object;
 
+
+extern void shade_ray(struct Isect *is, struct ShadeInput *shi, struct ShadeResult *shr);
 
 /* render flow
  *
@@ -982,11 +985,12 @@ double Blensor_GetPropertyValue_Double(struct Object *root, const char *name, do
 
 
 /* Setup a single ray and cast it onto the raytree */
-static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, float vy, float vz, float *ret, void **hit_ob, void **hit_face)
+static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, float vy, float vz, float *ret, void **hit_ob, void **hit_face, Render *re, SceneRenderLayer *srl)
 {
     struct Isect isect;
     int res=0;
     float veclen = sqrt( pow(vx,2) + pow(vy,2) +pow(vz,2));
+    
     ret[5] = 1.0; //Transmission
     ret[6] = 0.0; //Reflection
     ret[10] = 1.0; //Refractive Index of the material
@@ -1016,12 +1020,14 @@ static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, flo
 
 
         isect.dist = RE_RAYTRACE_MAXDIST;
-	    isect.mode= RE_RAY_MIRROR;
-	    isect.check = RE_CHECK_VLR_RENDER;
-	    isect.skip = RE_SKIP_VLR_NEIGHBOUR;
-	    isect.hint = 0;
+  	    isect.mode= RE_RAY_MIRROR;
+	      isect.check = RE_CHECK_VLR_RENDER;
+	      isect.skip = RE_SKIP_VLR_NEIGHBOUR;
+	      isect.hint = 0;
+
 
         res = RE_rayobject_raycast( (RayObject*) tree, &isect );
+
 
         ret[0] = isect.dist;
         ret[1] = isect.dist * isect.dir[0] + isect.start[0];    
@@ -1043,17 +1049,54 @@ static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, flo
 
             if (face)
             {
+                 //#TODO get all necessary information from the Shaderesult
+                ShadeInput shi = {0};
+                ShadeResult shr = {{0}};
+                int saved_render_mode;
+                int saved_material_mode;
+
                 struct Material *m = face->mat;
+
+                memset(&shi, 0, sizeof(ShadeInput));
+                shi.lay = re->scene->lay; //#TODO get the layers that are really active
+                shi.depth = isect.dist;
+                shi.volume_depth = 0;
+              	shi.passflag |= SCE_PASS_RGBA | SCE_PASS_COMBINED | SCE_PASS_DIFFUSE | SCE_PASS_SPEC;
+              	// shi.combinedflag &= ~(SCE_PASS_SPEC);
+                shi.mat_override= NULL;
+                shi.light_override= NULL;
+                shi.combinedflag= 0xFFFF;
+
+                saved_render_mode = R.r.mode;
+                R.r.mode = ~(R_RAYTRACE); //Disable raytracing
+                saved_material_mode = m->mode;
+                m->mode |= MA_SHLESS; //Enable shadeless mode (disables lighting shaders)
+                shade_ray(&isect, &shi, &shr);
+                /* Restore parameters */
+                m->mode = saved_material_mode;
+                R.r.mode = saved_render_mode;
+
                 ret[5] = m->alpha;
                 ret[6] = m->ray_mirror;
                 ret[7] = face->n[0];
                 ret[8] = face->n[1];
                 ret[9] = face->n[2];
                 ret[10] = Blensor_GetIDPropertyValue_Double(&face->mat->id,"refractive_index", 1.0);
-                ret[11] = m->ref;
-                ret[12] = m->r; 
-                ret[13] = m->g;
-                ret[14] = m->b;
+                if (m->mapto & MAP_REF)
+                {
+                  printf ("%f %f %f\n", shr.refl[0],  shr.refl[1],  shr.refl[2]);
+                  printf ("\t%f %f %f\n", shr.spec[0],  shr.spec[1],  shr.spec[2]);
+                  ret[11] = (shr.diff[0] +  shr.diff[1] + shr.diff[2])/3.0;
+                  printf ("\t%f %f %f -> %f\n", shr.diff[0],  shr.diff[1],  shr.diff[2], ret[11]);
+
+                } else
+                {
+                   ret[11] = m->ref;
+                }
+                
+                ret[12] = shr.col[0]; 
+                ret[13] = shr.col[1];
+                ret[14] = shr.col[2];
             }
 
             if (obi->ob->id.name != NULL)
@@ -1146,7 +1189,8 @@ double blensor_calculate_reflectivity_limit(double dist,
 
 
 /* cast all rays specified in *rays and return the result via *returns */
-static void do_blensor(Render *re, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance)
+static void do_blensor(Render *re, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance,
+                       Main *bmain, Scene *scene, SceneRenderLayer *srl)
 {
     int idx;
     float refractive_index = 1.0;
@@ -1220,7 +1264,7 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
             reflection = 0;
             transmission = 0;
 
-            cast_ray(re->raytree, sx, sy, sz, vx, vy, vz, intersection, &hit_ob, &hit_face);
+            cast_ray(re->raytree, sx, sy, sz, vx, vy, vz, intersection, &hit_ob, &hit_face, re, srl);
   
             raydistance += intersection[0];
 
@@ -2404,6 +2448,8 @@ void RE_SetReports(Render *re, ReportList *reports)
 	re->reports= reports;
 }
 
+
+/* #TODO@mgschwan: There is a memory leak somewhere in the raycasting code. Find it! */
 /* Setup the evnironment and call the raycaster function */
 void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance, int keep_setup)
 {
@@ -2425,7 +2471,7 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 
       scene_camera_switch_update(re->scene);
   	  
-  		MEM_reset_peak_memory();
+//  		MEM_reset_peak_memory();
 
 		  BLI_exec_cb(re->main, (ID *)scene, BLI_CB_EVT_RENDER_PRE);
 
@@ -2437,7 +2483,7 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
     } else { printf ("Keeping the old tree\n"); }
 
 
-    do_blensor(re, rays, raycount, elements_per_ray, returns, maximum_distance);
+    do_blensor(re, rays, raycount, elements_per_ray, returns, maximum_distance, bmain, scene, srl);
 	
     if (keep_setup == 0)
     {

@@ -1627,7 +1627,7 @@ static void ray_trace_shadow_tra(Isect *is, ShadeInput *origshi, int depth, int 
 		ShadeResult shr;
 
 		/* we got a face */
-
+    memset(&shi, 0, sizeof(ShadeInput));
 		shi.depth= origshi->depth + 1;					/* only used to indicate tracing */
 		shi.mask= origshi->mask;
 		shi.thread= origshi->thread;

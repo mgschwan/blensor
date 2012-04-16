@@ -76,6 +76,10 @@ def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False):
     except TypeError as e:
       exc_type, exc_value, exc_traceback = sys.exc_info()
       traceback.print_tb(exc_traceback)
+    finally:
+      del rays_buffer
+      del returns_buffer
+
     return array_of_returns
     
 
