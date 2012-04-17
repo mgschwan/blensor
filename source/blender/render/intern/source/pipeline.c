@@ -985,7 +985,7 @@ double Blensor_GetPropertyValue_Double(struct Object *root, const char *name, do
 
 
 /* Setup a single ray and cast it onto the raytree */
-static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, float vy, float vz, float *ret, void **hit_ob, void **hit_face, Render *re, SceneRenderLayer *srl)
+static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, float vy, float vz, float *ret, void **hit_ob, void **hit_face, Render *re, SceneRenderLayer *srl, int shading)
 {
     struct Isect isect;
     int res=0;
@@ -1054,49 +1054,56 @@ static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, flo
                 ShadeResult shr = {{0}};
                 int saved_render_mode;
                 int saved_material_mode;
-
                 struct Material *m = face->mat;
+                
+                if (shading)
+                {
+                  memset(&shi, 0, sizeof(ShadeInput));
+                  shi.lay = re->scene->lay; //#TODO get the layers that are really active
+                  shi.depth = isect.dist;
+                  shi.volume_depth = 0;
+                	shi.passflag |= SCE_PASS_RGBA | SCE_PASS_COMBINED | SCE_PASS_DIFFUSE | SCE_PASS_SPEC;
+                	
+                  shi.mat_override= NULL;
+                  shi.light_override= NULL;
+                  shi.combinedflag= 0xFFFF;
 
-                memset(&shi, 0, sizeof(ShadeInput));
-                shi.lay = re->scene->lay; //#TODO get the layers that are really active
-                shi.depth = isect.dist;
-                shi.volume_depth = 0;
-              	shi.passflag |= SCE_PASS_RGBA | SCE_PASS_COMBINED | SCE_PASS_DIFFUSE | SCE_PASS_SPEC;
-              	// shi.combinedflag &= ~(SCE_PASS_SPEC);
-                shi.mat_override= NULL;
-                shi.light_override= NULL;
-                shi.combinedflag= 0xFFFF;
-
-                saved_render_mode = R.r.mode;
-                R.r.mode = ~(R_RAYTRACE); //Disable raytracing
-                saved_material_mode = m->mode;
-                m->mode |= MA_SHLESS; //Enable shadeless mode (disables lighting shaders)
-                shade_ray(&isect, &shi, &shr);
-                /* Restore parameters */
-                m->mode = saved_material_mode;
-                R.r.mode = saved_render_mode;
-
+                  saved_render_mode = R.r.mode;
+                  R.r.mode = ~(R_RAYTRACE); //Disable raytracing
+                  saved_material_mode = m->mode;
+                  m->mode |= MA_SHLESS; //Enable shadeless mode (disables lighting shaders)
+                  shade_ray(&isect, &shi, &shr);
+                  /* Restore parameters */
+                  m->mode = saved_material_mode;
+                  R.r.mode = saved_render_mode;
+                }
                 ret[5] = m->alpha;
                 ret[6] = m->ray_mirror;
                 ret[7] = face->n[0];
                 ret[8] = face->n[1];
                 ret[9] = face->n[2];
                 ret[10] = Blensor_GetIDPropertyValue_Double(&face->mat->id,"refractive_index", 1.0);
-                if (m->mapto & MAP_REF)
-                {
-                  printf ("%f %f %f\n", shr.refl[0],  shr.refl[1],  shr.refl[2]);
-                  printf ("\t%f %f %f\n", shr.spec[0],  shr.spec[1],  shr.spec[2]);
-                  ret[11] = (shr.diff[0] +  shr.diff[1] + shr.diff[2])/3.0;
-                  printf ("\t%f %f %f -> %f\n", shr.diff[0],  shr.diff[1],  shr.diff[2], ret[11]);
 
+                if (m->mapto & MAP_REF && shading)
+                {
+                  ret[11] = (shr.diff[0] +  shr.diff[1] + shr.diff[2])/3.0;
                 } else
                 {
                    ret[11] = m->ref;
                 }
-                
-                ret[12] = shr.col[0]; 
-                ret[13] = shr.col[1];
-                ret[14] = shr.col[2];
+
+                if (shading)                
+                {
+                  ret[12] = shr.col[0]; 
+                  ret[13] = shr.col[1];
+                  ret[14] = shr.col[2];
+                }
+                else 
+                {
+                  ret[12] = m->r; 
+                  ret[13] = m->g;
+                  ret[14] = m->b;
+                }
             }
 
             if (obi->ob->id.name != NULL)
@@ -1190,7 +1197,7 @@ double blensor_calculate_reflectivity_limit(double dist,
 
 /* cast all rays specified in *rays and return the result via *returns */
 static void do_blensor(Render *re, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance,
-                       Main *bmain, Scene *scene, SceneRenderLayer *srl)
+                       Main *bmain, Scene *scene, SceneRenderLayer *srl, int shading)
 {
     int idx;
     float refractive_index = 1.0;
@@ -1264,7 +1271,7 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
             reflection = 0;
             transmission = 0;
 
-            cast_ray(re->raytree, sx, sy, sz, vx, vy, vz, intersection, &hit_ob, &hit_face, re, srl);
+            cast_ray(re->raytree, sx, sy, sz, vx, vy, vz, intersection, &hit_ob, &hit_face, re, srl, shading);
   
             raydistance += intersection[0];
 
@@ -2451,7 +2458,7 @@ void RE_SetReports(Render *re, ReportList *reports)
 
 /* #TODO@mgschwan: There is a memory leak somewhere in the raycasting code. Find it! */
 /* Setup the evnironment and call the raycaster function */
-void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance, int keep_setup)
+void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *srl, Object *camera_override, unsigned int lay, int frame, const short write_still, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance, int keep_setup, int shading)
 {
   static int render_still_available = 0; //If this is 1 the raycasting is still setup from
                                          //previous renders, and can be reused
@@ -2483,7 +2490,7 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
     } else { printf ("Keeping the old tree\n"); }
 
 
-    do_blensor(re, rays, raycount, elements_per_ray, returns, maximum_distance, bmain, scene, srl);
+    do_blensor(re, rays, raycount, elements_per_ray, returns, maximum_distance, bmain, scene, srl, shading);
 	
     if (keep_setup == 0)
     {

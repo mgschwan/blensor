@@ -45,7 +45,8 @@ def tuples_to_list(tuples):
 
 
 parameters = {"max_dist":6.0,"min_dist": 0.7, "noise_mu":0.0,"noise_sigma":0.0,  
-              "xres": 640, "yres": 480, "flength": 4.73}
+              "xres": 640, "yres": 480, "flength": 4.73, "reflectivity_distance":0.0,
+              "reflectivity_limit":0.01,"reflectivity_slope":0.16}
 
 def addProperties(cType):
     global parameters
@@ -58,6 +59,11 @@ def addProperties(cType):
 
     cType.kinect_flength = bpy.props.FloatProperty( name = "Focal length", default = parameters["flength"], description = "Focal length in mm" )
     cType.kinect_enable_window = bpy.props.BoolProperty( name = "Enable 9x9", default = False, description = "Valid measurements require a 9x9 window of returns" )
+
+    cType.kinect_ref_dist = bpy.props.FloatProperty( name = "Reflectivity Distance", default = parameters["reflectivity_distance"], description = "Objects closer than reflectivity distance are independent of their reflectivity" )
+    cType.kinect_ref_limit = bpy.props.FloatProperty( name = "Reflectivity Limit", default = parameters["reflectivity_limit"], description = "Minimum reflectivity for objects at the reflectivity distance" )
+    cType.kinect_ref_slope = bpy.props.FloatProperty( name = "Reflectivity Slope", default = parameters["reflectivity_slope"], description = "Slope of the reflectivity limit curve" )
+
 
 
 
@@ -85,22 +91,25 @@ def get_pixel_from_world(X,Z,flength_px):
    valid depth measurement. Note: This has to be verified by a real kinect
 """
 def check_9x9_window(idx, res_x, res_y, distances):
-  valid = True
-  """Check if all points are within the image"""
+  pointcount = 0
+
+  dist = 0.0
+  """Check if all points are inside the image"""
   uv = (idx%res_x, idx//res_x)
   if uv[0] > 4 and uv[0] < res_x-5 and uv[1]>4 and uv[1] < res_y-5:
     accu = 0.0
     for y in range (-4,5):
       for x in range(-4,5):
-        if distances[idx+y*res_x+x] == 0.0:
-          valid = False
-          break
+        if distances[idx+y*res_x+x] != 0.0:
+          pointcount += 1
         accu += distances[idx+y*res_x+x]
-    if abs(accu/81.0 - distances[idx]) > abs(distances[idx]*0.1):
-      valid = False
+
+  if pointcount < 5:
+    return 0.0
+  elif abs(accu/float(pointcount) - distances[idx]) < 0.4:
+    return accu/float(pointcount)
   else:
-    valid = False
-  return valid
+    return 0.0
 
 def scan_advanced(scanner_object, evd_file=None, 
                   evd_last_scan=True, 
@@ -181,9 +190,12 @@ def scan_advanced(scanner_object, evd_file=None,
             
 
     """ Max distance is increased because the kinect is limited by 4m
-        _normal distance_ to the imaging plane
+        _normal distance_ to the imaging plane, We don't need shading in the
+        first pass. 
+        #TODO: the shading requirements might change when transmission
+        is implemented (the rays might pass through glass)
     """
-    returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True,True)
+    returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True,True, False)
 
     camera_rays = []
     projector_ray_index = [] #Stores the index to the rays array for the camera ray
@@ -203,7 +215,7 @@ def scan_advanced(scanner_object, evd_file=None,
         projector_ray_index.append(idx)
 
 
-    camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False,False)
+    camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False,False,True)
 
     verts = []
     verts_noise = []
@@ -222,11 +234,10 @@ def scan_advanced(scanner_object, evd_file=None,
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
 
-        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and abs(camera_returns[i][3]) <= max_distance and abs(camera_returns[i][3]) >= min_distance and check_9x9_window(projector_idx, res_x, res_y,all_distances):
+        matching_dist = check_9x9_window(projector_idx, res_x, res_y,all_distances) #TODO: use as distance for quantization
+
+        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and abs(camera_returns[i][3]) <= max_distance and abs(camera_returns[i][3]) >= min_distance and matching_dist != 0.0:
             """The ray hit the projected ray, so this is a valid measurement"""
-
-
-
             projector_point = get_uv_from_idx(projector_idx, res_x,res_y)
 
             camera_x = get_pixel_from_world(camera_rays[idx*3],camera_rays[idx*3+2],

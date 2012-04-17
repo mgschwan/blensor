@@ -243,15 +243,15 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
 	unsigned int lay= (v3d)? v3d->lay: scene->lay;
   float *rays;
   float *returns;
-  float ray_ptr_str[17];
-  float return_ptr_str[17];
+  char ray_ptr_str[17];
+  char return_ptr_str[17];
 
     /* add modal handler for ESC */
 
 	const int raycount= RNA_int_get(op->ptr, "raycount");
 	const int elements_per_ray= RNA_int_get(op->ptr, "elements_per_ray");
 	const int keep_render_setup = RNA_boolean_get(op->ptr, "keep_render_setup");
-
+	const int shading = RNA_boolean_get(op->ptr, "shading");
 
 	const float maximum_distance =RNA_float_get(op->ptr, "maximum_distance");
 	struct Object *camera_override= v3d ? V3D_CAMERA_LOCAL(v3d) : NULL;
@@ -286,7 +286,7 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
 
       RE_SetReports(re, op->reports);
 
-	    RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, elements_per_ray, returns, maximum_distance, keep_render_setup);
+	    RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, elements_per_ray, returns, maximum_distance, keep_render_setup, shading);
 
     	RE_SetReports(re, NULL);
 
@@ -758,6 +758,7 @@ void RENDER_OT_blensor(wmOperatorType *ot)
        RNA_def_string(ot->srna, "vector_strptr", "", 17, "Vector Pointer", "String representation of the pointer to the input vectors ");
        RNA_def_string(ot->srna, "return_vector_strptr", "", 17, "Return Vector Pointer", "String representation of the pointer to the output vectors ");
        RNA_def_boolean(ot->srna, "keep_render_setup", 0, "Keep render setup", "Do not delete the raytree after casting");
+       RNA_def_boolean(ot->srna, "shading", 0, "Do material shading", "Render the materials per ray");
 
 
 

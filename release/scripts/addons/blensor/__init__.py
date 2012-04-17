@@ -113,6 +113,15 @@ def kinect_layout(obj, layout):
             col.prop(obj, "kinect_noise_mu")
             col = row.column()
             col.prop(obj, "kinect_noise_sigma")
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "kinect_ref_dist")
+            col = row.column()
+            col.prop(obj, "kinect_ref_limit")
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "kinect_ref_slope")
+
 
 
 def depthmap_layout(obj, layout):
@@ -192,6 +201,9 @@ def dispatch_scan(obj, filename=None):
                 backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres, 
                 tof_res_y = obj.tof_yres,world_transformation=world_transformation)
             elif obj.scan_type == "kinect":
+                obj.ref_dist = obj.kinect_ref_dist
+                obj.ref_limit = obj.kinect_ref_limit
+                obj.ref_slope = obj.kinect_ref_slope
                 blensor.kinect.scan_advanced( scanner_object = obj, evd_file=filename, world_transformation=world_transformation)
             else:
                 print ("Scanner not supported ... yet")

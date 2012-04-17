@@ -22,7 +22,7 @@ SIZEOF_FLOAT = 4
     keep_render_setup is passed to the blender internal code to keep the renderer
     setup for additional calls
 """
-def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False):
+def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do_shading=True):
 
     elementsPerRay = 3
     if ray_origins == True:
@@ -43,7 +43,8 @@ def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False):
     array_of_returns = []
 
     try:
-      bpy.ops.render.blensor(raycount = numberOfRays,maximum_distance = max_distance, vector_strptr="%016X"%(ctypes.addressof(rays_buffer)), return_vector_strptr="%016X"%(ctypes.addressof(returns_buffer)), elements_per_ray = elementsPerRay, keep_render_setup=keep_render_setup)
+      bpy.ops.render.blensor(raycount = numberOfRays,maximum_distance = max_distance, vector_strptr="%016X"%(ctypes.addressof(rays_buffer)), return_vector_strptr="%016X"%(ctypes.addressof(returns_buffer)), elements_per_ray = elementsPerRay, keep_render_setup=keep_render_setup,
+      shading = do_shading)
       
 
 
