@@ -43,6 +43,8 @@ def tuples_to_list(tuples):
         l.extend(t)
     return l
 
+INVALID_DISPARITY = 99999999.9
+
 
 parameters = {"max_dist":6.0,"min_dist": 0.7, "noise_mu":0.0,"noise_sigma":0.0,  
               "xres": 640, "yres": 480, "flength": 4.73, "reflectivity_distance":0.0,
@@ -90,26 +92,78 @@ def get_pixel_from_world(X,Z,flength_px):
    #TODO: determine how big the depth-difference can be to still produce a
    valid depth measurement. Note: This has to be verified by a real kinect
 """
-def check_9x9_window(idx, res_x, res_y, distances):
+def check_9x9_window(idx, res_x, res_y, distances): #!!!CURRENTLY DISABLED!!! #TODO improve and reenable
   pointcount = 0
 
-  dist = 0.0
-  """Check if all points are inside the image"""
   uv = (idx%res_x, idx//res_x)
-  if uv[0] > 4 and uv[0] < res_x-5 and uv[1]>4 and uv[1] < res_y-5:
-    accu = 0.0
+  accu = 0.0
+  """If the current point is invalid try to predict it from within the window"""
+  if distances[idx] == INVALID_DISPARITY:
+    bins = []    
     for y in range (-4,5):
       for x in range(-4,5):
-        if distances[idx+y*res_x+x] != 0.0:
-          pointcount += 1
-        accu += distances[idx+y*res_x+x]
-
-  if pointcount < 5:
-    return 0.0
-  elif abs(accu/float(pointcount) - distances[idx]) < 0.4:
-    return accu/float(pointcount)
+        if uv[0]+x >= 0 and uv[0]+x < res_x and uv[1]+y>=0 and uv[1]+y < res_y:
+          val = distances[idx+y*res_x+x]
+          if val < INVALID_DISPARITY:
+            found = False
+            for b in bins:
+              if abs((b[0]-val)/float(b[0]))<0.05:
+                b[1] += 1
+                found = True
+                break;
+            if found == False:
+              bins.append([val, 1])  
+    if len(bins) > 0:
+      best_b = [INVALID_DISPARITY, 0]
+      for b in bins:
+        if b[1] > best_b[1]:
+          best_b = b
+      return best_b[0]
+    else:
+      return INVALID_DISPARITY
   else:
-    return 0.0
+    for y in range (-4,5):
+      for x in range(-4,5):
+        if uv[0]+x >= 0 and uv[0]+x < res_x and uv[1]+y>=0 and uv[1]+y < res_y:
+          val = distances[idx+y*res_x+x]
+          if val < INVALID_DISPARITY:
+            if abs(distances[idx]-val)<1.0:
+              pointcount += 1
+              accu += val
+    if pointcount > 27:
+      return distances[idx]
+    elif pointcount > 5:
+      return accu/float(pointcount)
+    else:
+      return INVALID_DISPARITY
+
+def check_9x9_window_simple(idx, res_x, res_y, distances):
+  pointcount = 0.0
+
+  uv = (idx%res_x, idx//res_x)
+  accu = 0.0
+  for y in range (-4,5):
+    for x in range(-4,5):
+      if uv[0]+x >= 0 and uv[0]+x < res_x and uv[1]+y>=0 and uv[1]+y < res_y:
+        val = distances[idx+y*res_x+x]
+        if val < INVALID_DISPARITY:
+          if abs(distances[idx]-val)<0.5:
+            if x!=0 or y!=0:
+              weight = 1.0/float(max(abs(x),abs(y)))
+              accu = accu * float(pointcount) + weight * val 
+              pointcount += weight
+            else:
+              accu = accu * float(pointcount) + val 
+              pointcount += 1
+            accu = accu / float(pointcount)
+           
+    if pointcount > 2.0:
+      return distances[idx]
+    elif pointcount > 1.0:
+      return accu
+    else:
+      return INVALID_DISPARITY
+
 
 def scan_advanced(scanner_object, evd_file=None, 
                   evd_last_scan=True, 
@@ -204,7 +258,6 @@ def scan_advanced(scanner_object, evd_file=None,
        calculation we can not work with a spare representation
     """
     all_distances = [0.0]*res_x*res_y #Used for the 9x9 window calculation
-    
       
 
     """Calculate the rays from the camera to the hit points of the projector rays"""
@@ -228,15 +281,13 @@ def scan_advanced(scanner_object, evd_file=None,
         all_distances[projector_idx] = camera_returns[i][3] #TODO: maybe this should be the euclidean instead of the orthogonal distance
 
 
-    """Check if the rays of the camera meet with the rays of the projector and
-       add them as valid returns if they do"""
+    all_quantized_disparities = [INVALID_DISPARITY]*res_x*res_y
+    """Build a quantized disparity map"""
     for i in range(len(camera_returns)):
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
 
-        matching_dist = check_9x9_window(projector_idx, res_x, res_y,all_distances) #TODO: use as distance for quantization
-
-        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and abs(camera_returns[i][3]) <= max_distance and abs(camera_returns[i][3]) >= min_distance and matching_dist != 0.0:
+        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and abs(camera_returns[i][3]) <= max_distance and abs(camera_returns[i][3]) >= min_distance:
             """The ray hit the projected ray, so this is a valid measurement"""
             projector_point = get_uv_from_idx(projector_idx, res_x,res_y)
 
@@ -254,10 +305,35 @@ def scan_advanced(scanner_object, evd_file=None,
             camera_y_quantized = math.floor(camera_y*8.0)/8.0 
 
             disparity_quantized = camera_x_quantized + projector_point[0]
+            all_quantized_disparities[projector_idx] = disparity_quantized
+
+
+    """Check if the rays of the camera meet with the rays of the projector and
+       add them as valid returns if they do"""
+    for i in range(len(camera_returns)):
+        idx = camera_returns[i][-1] 
+        projector_idx = projector_ray_index[idx] # Get the index of the original ray
+
+        disparity_quantized = check_9x9_window_simple(projector_idx, res_x, res_y,all_quantized_disparities) 
+        if disparity_quantized < INVALID_DISPARITY:
+            
+            camera_x = get_pixel_from_world(camera_rays[idx*3],camera_rays[idx*3+2],
+                                   flength/pixel_width)
+
+            camera_y = get_pixel_from_world(camera_rays[idx*3+1],camera_rays[idx*3+2],
+                                   flength/pixel_width)
+
+            """ Kinect calculates the disparity with an accuracy of 1/8 pixel"""
+
+            camera_x_quantized = math.floor(camera_x*8.0)/8.0
+            
+            #I don't know if this accurately represents the kinect 
+            camera_y_quantized = math.floor(camera_y*8.0)/8.0 
 
             Z_quantized = (flength*(baseline.x))/(disparity_quantized*pixel_width)
             X_quantized = Z_quantized*camera_x_quantized*pixel_width/flength
             Y_quantized = Z_quantized*camera_y_quantized*pixel_width/flength
+
 
             v = Vector([camera_returns[i][1],camera_returns[i][2],camera_returns[i][3]])
             vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
