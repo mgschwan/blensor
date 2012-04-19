@@ -323,16 +323,9 @@ def scan_advanced(scanner_object, evd_file=None,
             camera_y = get_pixel_from_world(camera_rays[idx*3+1],camera_rays[idx*3+2],
                                    flength/pixel_width)
 
-            """ Kinect calculates the disparity with an accuracy of 1/8 pixel"""
-
-            camera_x_quantized = math.floor(camera_x*8.0)/8.0
-            
-            #I don't know if this accurately represents the kinect 
-            camera_y_quantized = math.floor(camera_y*8.0)/8.0 
-
             Z_quantized = (flength*(baseline.x))/(disparity_quantized*pixel_width)
-            X_quantized = Z_quantized*camera_x_quantized*pixel_width/flength
-            Y_quantized = Z_quantized*camera_y_quantized*pixel_width/flength
+            X_quantized = Z_quantized*camera_x*pixel_width/flength
+            Y_quantized = Z_quantized*camera_y*pixel_width/flength
 
 
             v = Vector([camera_returns[i][1],camera_returns[i][2],camera_returns[i][3]])
