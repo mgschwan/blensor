@@ -21,8 +21,10 @@ from blensor import evd
 import blensor
 
 
+
+
 parameters = {"angle_resolution":0.1728, "rotation_speed":10,"max_dist":120,"noise_mu":0.0,"noise_sigma":0.01,
-              "start_angle":0,"end_angle":360, "distance_bias_noise_mu": 0, "distance_bias_noise_sigma": 0.06,
+              "start_angle":0,"end_angle":360, "distance_bias_noise_mu": 0, "distance_bias_noise_sigma": 0.078,
               "reflectivity_distance":50,"reflectivity_limit":0.1,"reflectivity_slope":0.01}
 
 def addProperties(cType):
@@ -41,10 +43,7 @@ def addProperties(cType):
     cType.velodyne_ref_dist = bpy.props.FloatProperty( name = "Reflectivity Distance", default = parameters["reflectivity_distance"], description = "Objects closer than reflectivity distance are independent of their reflectivity" )
     cType.velodyne_ref_limit = bpy.props.FloatProperty( name = "Reflectivity Limit", default = parameters["reflectivity_limit"], description = "Minimum reflectivity for objects at the reflectivity distance" )
     cType.velodyne_ref_slope = bpy.props.FloatProperty( name = "Reflectivity Slope", default = parameters["reflectivity_slope"], description = "Slope of the reflectivity limit curve" )
-
-
-
-
+ 
 
 
 def deg2rad(deg):
@@ -77,7 +76,7 @@ laser_angles =[-7.1143909000 ,-6.8259001000 ,0.3328709900 ,0.6607859700 ,
 # The laser noise is initialized with a fixed randomized array to increase
 # repoducibility. If the noise should be randomize, call 
 # randomize_distance_bias
-laser_noise = [0.023188431056485468, 0.018160539830319688, 
+laser_noise =  [0.023188431056485468, 0.018160539830319688, 
                -0.082857233607375583, -0.064524698320918547, 
                -0.093271246114693618, 0.043527643100361682,
                 0.02964170651252759, 0.022130151884228375, 
@@ -111,10 +110,12 @@ laser_noise = [0.023188431056485468, 0.018160539830319688,
                 0.034911820770082327, 0.065682492298063416]
 
 
+
 # If the laser noise has to be truely randomize, call this function prior
 # to every scan
-def randomize_distance_bias(noise_mu = 0.0, noise_sigma = 0.04):
-    laser_noise = [random.gauss(noise_mu, noise_sigma)  for i in range(len(laser_angles)) ]
+def randomize_distance_bias(scanner_object, noise_mu = 0.0, noise_sigma = 0.04):
+    for idx in range(len(laser_noise)):
+      laser_noise[idx] = random.gauss(noise_mu, noise_sigma)
 
 
 
@@ -122,7 +123,7 @@ def randomize_distance_bias(noise_mu = 0.0, noise_sigma = 0.04):
 @param world_transformation The transformation for the resulting pointcloud
 
 """
-def scan_advanced(rotation_speed = 10.0, simulation_fps=24, angle_resolution = 0.1728, max_distance = 120, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = 0.0, end_angle = 360.0, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, frame_time = (1.0 / 24.0), simulation_time = 0.0, world_transformation=Matrix()):
+def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angle_resolution = 0.1728, max_distance = 120, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = 0.0, end_angle = 360.0, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, frame_time = (1.0 / 24.0), simulation_time = 0.0, world_transformation=Matrix()):
     start_time = time.time()
 
     current_time = simulation_time
@@ -218,7 +219,7 @@ def scan_advanced(rotation_speed = 10.0, simulation_fps=24, angle_resolution = 0
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time = (1.0/24.0), rotation_speed = 10.0, add_blender_mesh=False, add_noisy_blender_mesh=False, angle_resolution = 0.1728, max_distance = 120.0, noise_mu = 0.0, noise_sigma= 0.02, last_frame = True, world_transformation=Matrix()):
+def scan_range(scanner_object, frame_start, frame_end, filename="/tmp/landscape.evd", frame_time = (1.0/24.0), rotation_speed = 10.0, add_blender_mesh=False, add_noisy_blender_mesh=False, angle_resolution = 0.1728, max_distance = 120.0, noise_mu = 0.0, noise_sigma= 0.02, last_frame = True, world_transformation=Matrix()):
     start_time = time.time()
 
     angle_per_second = 360.0 * rotation_speed
@@ -228,7 +229,15 @@ def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time
         for i in range(frame_start,frame_end):
                 bpy.context.scene.frame_current = i
 
-                ok,start_radians,scan_time = scan_advanced(rotation_speed=rotation_speed, angle_resolution = angle_resolution, start_angle = float(i)*angle_per_frame, end_angle=float(i+1)*angle_per_frame, evd_file = filename, evd_last_scan=False,add_blender_mesh=add_blender_mesh, add_noisy_blender_mesh=add_noisy_blender_mesh, frame_time=frame_time, simulation_time = float(i)*frame_time, max_distance=max_distance, noise_mu = noise_mu, noise_sigma=noise_sigma, world_transformation=world_transformation)
+                ok,start_radians,scan_time = scan_advanced(scanner_object, 
+                    rotation_speed=rotation_speed, angle_resolution = angle_resolution, 
+                    start_angle = float(i)*angle_per_frame, 
+                    end_angle=float(i+1)*angle_per_frame, evd_file = filename, 
+                    evd_last_scan=False, add_blender_mesh=add_blender_mesh, 
+                    add_noisy_blender_mesh=add_noisy_blender_mesh, 
+                    frame_time=frame_time, simulation_time = float(i)*frame_time,
+                    max_distance=max_distance, noise_mu = noise_mu, 
+                    noise_sigma=noise_sigma, world_transformation=world_transformation)
 
                 if not ok:
                     break

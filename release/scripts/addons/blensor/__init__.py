@@ -171,35 +171,40 @@ def dispatch_scan(obj, filename=None):
                 obj.ref_limit = obj.velodyne_ref_limit
                 obj.ref_slope = obj.velodyne_ref_slope
 
-                blensor.blendodyne.scan_advanced( angle_resolution=obj.velodyne_angle_resolution, 
-                max_distance=obj.velodyne_max_dist, start_angle=obj.velodyne_start_angle, 
-                end_angle=obj.velodyne_end_angle, noise_mu = obj.velodyne_noise_mu, 
-                noise_sigma=obj.velodyne_noise_sigma, add_blender_mesh=obj.add_scan_mesh, 
-                add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
-                rotation_speed = obj.velodyne_rotation_speed, evd_file=filename,
-                world_transformation = world_transformation )
+                blensor.blendodyne.scan_advanced(scanner_object=obj,
+                  angle_resolution=obj.velodyne_angle_resolution, 
+                  max_distance=obj.velodyne_max_dist, start_angle=obj.velodyne_start_angle, 
+                  end_angle=obj.velodyne_end_angle, noise_mu = obj.velodyne_noise_mu, 
+                  noise_sigma=obj.velodyne_noise_sigma, add_blender_mesh=obj.add_scan_mesh, 
+                  add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
+                  rotation_speed = obj.velodyne_rotation_speed, evd_file=filename,
+                  world_transformation = world_transformation )
+
             elif obj.scan_type == "ibeo":
                 obj.ref_dist = obj.ibeo_ref_dist
                 obj.ref_limit = obj.ibeo_ref_limit
                 obj.ref_slope = obj.ibeo_ref_slope
 
                 blensor.ibeo.scan_advanced( angle_resolution=obj.ibeo_angle_resolution, 
-                max_distance=obj.ibeo_max_dist, start_angle=obj.ibeo_start_angle, 
-                end_angle=obj.ibeo_end_angle, noise_mu = obj.ibeo_noise_mu, 
-                noise_sigma=obj.ibeo_noise_sigma, add_blender_mesh=obj.add_scan_mesh, 
-                add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
-                rotation_speed = obj.ibeo_rotation_speed, evd_file=filename,
-                world_transformation=world_transformation)
+                  max_distance=obj.ibeo_max_dist, start_angle=obj.ibeo_start_angle, 
+                  end_angle=obj.ibeo_end_angle, noise_mu = obj.ibeo_noise_mu, 
+                  noise_sigma=obj.ibeo_noise_sigma, add_blender_mesh=obj.add_scan_mesh, 
+                  add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
+                  rotation_speed = obj.ibeo_rotation_speed, evd_file=filename,
+                  world_transformation=world_transformation)
+
             elif obj.scan_type == "depthmap":
                 blensor.depthmap.scan_advanced( max_distance=obj.depthmap_max_dist, 
-                add_blender_mesh=obj.add_scan_mesh, filename=filename,
-                world_transformation=world_transformation)
+                  add_blender_mesh=obj.add_scan_mesh, filename=filename,
+                  world_transformation=world_transformation)
+
             elif obj.scan_type == "tof":
                 blensor.tof.scan_advanced( max_distance=obj.tof_max_dist,
-                add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
-                evd_file=filename, noise_mu=obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,
-                backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres, 
-                tof_res_y = obj.tof_yres,world_transformation=world_transformation)
+                  add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
+                  evd_file=filename, noise_mu=obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,
+                  backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres, 
+                  tof_res_y = obj.tof_yres,world_transformation=world_transformation)
+
             elif obj.scan_type == "kinect":
                 obj.ref_dist = obj.kinect_ref_dist
                 obj.ref_limit = obj.kinect_ref_limit
@@ -223,37 +228,43 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                 obj.ref_limit = obj.velodyne_ref_limit
                 obj.ref_slope = obj.velodyne_ref_slope
 
-                blensor.blendodyne.scan_range( angle_resolution=obj.velodyne_angle_resolution, 
-                max_distance=obj.velodyne_max_dist, noise_mu = obj.velodyne_noise_mu, 
-                noise_sigma=obj.velodyne_noise_sigma,  rotation_speed = obj.velodyne_rotation_speed, 
-                frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame, 
-                frame_time=time_per_frame, world_transformation=world_transformation,
-                add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
+                blensor.blendodyne.scan_range( scanner_object=obj, 
+                  angle_resolution=obj.velodyne_angle_resolution, 
+                  max_distance=obj.velodyne_max_dist, noise_mu = obj.velodyne_noise_mu, 
+                  noise_sigma=obj.velodyne_noise_sigma,  rotation_speed = obj.velodyne_rotation_speed, 
+                  frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame, 
+                  frame_time=time_per_frame, world_transformation=world_transformation,
+                  add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
+
             elif obj.scan_type == "ibeo":
                 blensor.ibeo.scan_range( angle_resolution=obj.ibeo_angle_resolution,
-                max_distance=obj.ibeo_max_dist, noise_mu = obj.ibeo_noise_mu, 
-                noise_sigma=obj.ibeo_noise_sigma,  rotation_speed = obj.ibeo_rotation_speed, 
-                frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame,
-                world_transformation=world_transformation,
-                add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
+                  max_distance=obj.ibeo_max_dist, noise_mu = obj.ibeo_noise_mu, 
+                  noise_sigma=obj.ibeo_noise_sigma,  rotation_speed = obj.ibeo_rotation_speed, 
+                  frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame,
+                  world_transformation=world_transformation,
+                  add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
+
             elif obj.scan_type == "depthmap":
                 blensor.depthmap.scan_range( max_distance=obj.depthmap_max_dist,
-                frame_start = frame, frame_end=frame+1, filename=filename,
-                world_transformation=world_transformation,
-                add_blender_mesh=obj.add_scan_mesh)
+                  frame_start = frame, frame_end=frame+1, filename=filename,
+                  world_transformation=world_transformation,
+                  add_blender_mesh=obj.add_scan_mesh)
+
             elif obj.scan_type == "tof":
                 blensor.tof.scan_range( max_distance=obj.tof_max_dist, 
-                noise_mu = obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,                
-                frame_start = frame, frame_end=frame+1, filename=filename, 
-                last_frame=last_frame,frame_time = time_per_frame,
-                backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres,
-                tof_res_y = obj.tof_yres, world_transformation=world_transformation,
-                add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
+                  noise_mu = obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,                
+                  frame_start = frame, frame_end=frame+1, filename=filename, 
+                  last_frame=last_frame,frame_time = time_per_frame,
+                  backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres,
+                  tof_res_y = obj.tof_yres, world_transformation=world_transformation,
+                  add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
+
             elif obj.scan_type == "kinect":
                 blensor.kinect.scan_range( scanner_object = obj,
-                frame_start = frame, frame_end=frame+1, filename=filename, 
-                last_frame=last_frame,frame_time = time_per_frame,
-                world_transformation=world_transformation)
+                  frame_start = frame, frame_end=frame+1, filename=filename, 
+                  last_frame=last_frame,frame_time = time_per_frame,
+                  world_transformation=world_transformation)
+
             else:
                 print ("Scanner not supported ... yet")
 
@@ -522,7 +533,7 @@ class OBJECT_OT_randomize(bpy.types.Operator):
  
         if is_cam:
             if obj.scan_type == "velodyne":
-                blensor.blendodyne.randomize_distance_bias(obj.velodyne_db_noise_mu, obj.velodyne_db_noise_sigma )
+                blensor.blendodyne.randomize_distance_bias(obj, obj.velodyne_db_noise_mu, obj.velodyne_db_noise_sigma )
 
         return{'FINISHED'}
 
@@ -678,9 +689,13 @@ def info():
 	return str("Not for standalone use")
 
 
+class GenericFloatCollection(bpy.types.PropertyGroup):
+    val = bpy.props.FloatProperty(name="value")
+
 """Register the blender addon"""
 def register():
     global laser_types
+    bpy.utils.register_class(GenericFloatCollection)
     bpy.utils.register_class(OBJECT_OT_scanrange)
     bpy.utils.register_class(OBJECT_OT_randomize)
     bpy.utils.register_class(OBJECT_OT_delete_scans)
@@ -734,4 +749,5 @@ def unregister():
     bpy.utils.unregister_class(OBJECT_OT_scanrange)
     bpy.utils.unregister_class(OBJECT_OT_exporthandler)
     bpy.utils.unregister_class(OBJECT_OT_scanrange_handler)
+    bpy.utils.unregister_class(GenericFloatCollection)
 
