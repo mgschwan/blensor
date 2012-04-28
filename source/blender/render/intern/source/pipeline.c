@@ -1195,6 +1195,51 @@ double blensor_calculate_reflectivity_limit(double dist,
 }
 
 
+/*
+ * TODO: implement a threaded blensor
+ * 
+static void threaded_blensor_processor(Render *re)
+{
+	ListBase threads;
+	RenderPart *pa, *nextpa;
+	int rendering=1, counter= 1, drawtimer=0, hasdrawn, minx=0;
+	
+//?//	initparts(re);
+
+	
+	BLI_init_threads(&threads, do_part_blensor, re->r.threads);
+	
+	// assuming no new data gets added to dbase... 
+	R= *re;
+	
+	// set threadsafe break 
+//?//	R.test_break= thread_break;
+	
+	nextpa= find_next_part(re, 0);
+	
+	while (rendering) {
+		
+		if (BLI_available_threads(&threads)) {
+			BLI_insert_thread(&threads, [[DATA]]);
+		}
+
+		
+		for (pa= re->parts.first; pa; pa= pa->next) {
+			if (pa->ready) {
+				BLI_remove_thread(&threads, pa);
+			}
+		}
+	}
+	
+	// unset threadsafety 
+	g_break= 0;
+	
+	BLI_end_threads(&threads);
+//?//	freeparts(re);
+}
+*/
+
+
 /* cast all rays specified in *rays and return the result via *returns */
 static void do_blensor(Render *re, float *rays, int raycount, int elements_per_ray, float *returns, float maximum_distance,
                        Main *bmain, Scene *scene, SceneRenderLayer *srl, int shading)
