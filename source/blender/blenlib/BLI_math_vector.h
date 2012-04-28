@@ -124,6 +124,8 @@ MINLINE float dot_v3v3(const float a[3], const float b[3]);
 MINLINE float cross_v2v2(const float a[2], const float b[2]);
 MINLINE void cross_v3_v3v3(float r[3], const float a[3], const float b[3]);
 
+MINLINE void add_newell_cross_v3_v3v3(float n[3], const float v_prev[3], const float v_curr[3]);
+
 MINLINE void star_m3_v3(float rmat[3][3],float a[3]);
 
 /*********************************** Length **********************************/
@@ -154,6 +156,7 @@ void interp_v4_v4v4v4(float p[4], const float v1[4], const float v2[4], const fl
 void interp_v4_v4v4v4v4(float p[4], const float v1[4], const float v2[4], const float v3[4], const float v4[4], const float w[4]);
 
 void mid_v3_v3v3(float r[3], const float a[3], const float b[3]);
+void mid_v2_v2v2(float r[2], const float a[2], const float b[2]);
 
 /********************************* Comparison ********************************/
 
@@ -225,6 +228,7 @@ void add_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_
 void sub_vn_vn(float *array_tar, const float *array_src, const int size);
 void sub_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_src_b, const int size);
 void fill_vn_i(int *array_tar, const int size, const int val);
+void fill_vn_ushort(unsigned short *array_tar, const int size, const unsigned short val);
 void fill_vn_fl(float *array_tar, const int size, const float val);
 
 #ifdef __cplusplus

@@ -40,6 +40,11 @@ operator cycle, object.ray_cast() crashes if object's tessfaces were
 update()d earlier in the code. However, not update()ing the meshes
 seems to work fine -- ray_cast() does its job, and it's possible to
 access tessfaces afterwards.
+mesh.calc_tessface() -- ? crashes too
+
+Seems like now axes are stored in columns instead of rows.
+Perhaps it's better to write utility functions to create/decompose
+matrices from/to 3D-vector axes and a translation component
 
 Breakdown:
     Addon registration
@@ -483,13 +488,28 @@ class EnhancedSetCursor(bpy.types.Operator):
                 self.process_axis_input(event)
             
             if event.alt:
+                jc = (", " if tfm_opts.use_comma_separator else "\t")
                 if event.type in self.key_map["copy_axes"]:
-                    wm.clipboard = "\t".join(self.get_axes_text(True))
+                    wm.clipboard = jc.join(self.get_axes_text(True))
                 elif event.type in self.key_map["cut_axes"]:
-                    wm.clipboard = "\t".join(self.get_axes_text(True))
+                    wm.clipboard = jc.join(self.get_axes_text(True))
                     self.set_axes_text("\t\t\t")
                 elif event.type in self.key_map["paste_axes"]:
-                    self.set_axes_text(wm.clipboard, True)
+                    if jc == "\t":
+                        self.set_axes_text(wm.clipboard, True)
+                    else:
+                        jc = jc.strip()
+                        ttext = ""
+                        brackets = 0
+                        for c in wm.clipboard:
+                            if c in "[{(":
+                                brackets += 1
+                            elif c in "]})":
+                                brackets -= 1
+                            if (brackets == 0) and (c == jc):
+                                c = "\t"
+                            ttext += c
+                        self.set_axes_text(ttext, True)
             
             if event.type in self.key_coordsys_map:
                 new_orientation = self.key_coordsys_map[event.type]
@@ -932,7 +952,17 @@ class EnhancedSetCursor(bpy.types.Operator):
     def gizmo_scale(self, pos):
         return self.gizmo_distance(pos) * self.gizmo_factor
     
-    def draw_3d(self):
+    def check_v3d_local(self, context):
+        csu_v3d = self.csu.space_data
+        v3d = context.space_data
+        if csu_v3d.local_view:
+            return csu_v3d != v3d
+        return v3d.local_view
+    
+    def draw_3d(self, context):
+        if self.check_v3d_local(context):
+            return
+        
         if time.time() < (self.click_start + self.click_period):
             return
         
@@ -1043,6 +1073,9 @@ class EnhancedSetCursor(bpy.types.Operator):
                 bgl.glEnd()
     
     def draw_2d(self, context):
+        if self.check_v3d_local(context):
+            return
+        
         r = context.region
         rv3d = context.region_data
         
@@ -1132,6 +1165,9 @@ class EnhancedSetCursor(bpy.types.Operator):
         bgl.glLineWidth(1)
     
     def draw_axes_coords(self, context, header_size):
+        if self.check_v3d_local(context):
+            return
+        
         if time.time() < (self.click_start + self.click_period):
             return
         
@@ -1384,14 +1420,10 @@ class EnhancedSetCursor(bpy.types.Operator):
             
             snapshot = bpy.data.objects.new("normal_snapshot", None)
             
-            m = Matrix()
             if tangential:
-                #m = Matrix((x, y, _z))
-                m = Matrix((_z, y, x))
+                m = MatrixCompose(_z, y, x, p0)
             else:
-                m = Matrix((_x, y, z))
-            m.resize_4x4()
-            m.translation[:3] = p0
+                m = MatrixCompose(_x, y, z, p0)
             snapshot.matrix_world = m
             
             snapshot.empty_draw_type = 'SINGLE_ARROW'
@@ -1598,7 +1630,8 @@ def gather_particles(**kwargs):
             elif context_mode == 'POSE':
                 active_bone = active_object.data.bones.active
                 if active_bone:
-                    active_element = active_bone.matrix_local.translation.to_3d()
+                    active_element = active_bone.\
+                        matrix_local.translation.to_3d()
                     active_element = active_object.\
                         matrix_world * active_element
                 
@@ -1662,7 +1695,7 @@ def gather_particles(**kwargs):
                 else:
                     t1 = Vector((0, 0, 1)).cross(normal)
                 t2 = t1.cross(normal)
-                normal_system = Matrix((t1, t2, normal))
+                normal_system = MatrixCompose(t1, t2, normal)
                 
                 median, bbox_center = calc_median_bbox_pivots(positions)
                 median = m * median
@@ -1684,9 +1717,9 @@ def gather_particles(**kwargs):
                 bbox_center = active_element
                 
                 normal_system = active_object.matrix_world.to_3x3()
-                normal_system[0].normalize()
-                normal_system[1].normalize()
-                normal_system[2].normalize()
+                normal_system.col[0].normalize()
+                normal_system.col[1].normalize()
+                normal_system.col[2].normalize()
             
             if context_mode not in {'EDIT_ARMATURE', 'POSE'}:
                 bpy.ops.object.mode_set(mode=prev_mode)
@@ -1699,8 +1732,6 @@ def gather_particles(**kwargs):
                 active_element = active_object.\
                     matrix_world.to_translation()
         
-        # These are equivalent (though scene's is slower)
-        #cursor_pos = get_cursor_location(scene=scene)
         cursor_pos = get_cursor_location(v3d=space_data)
     
     #elif area_type == 'IMAGE_EDITOR':
@@ -2134,18 +2165,19 @@ class View3DUtility:
         
         if rv3d.view_perspective == 'CAMERA':
             d = self.get_direction()
-            v3d.camera.matrix_world.translation[:3] = pos - d * rv3d.view_distance
+            v3d.camera.matrix_world.translation = pos - d * rv3d.view_distance
         else:
             if v3d.lock_object:
                 obj, bone = self._get_lock_obj_bone()
                 if bone:
                     try:
-                        bone.matrix.translation[:3] = obj.matrix_world.inverted() * pos
+                        bone.matrix.translation = \
+                            obj.matrix_world.inverted() * pos
                     except:
                         # this is some degenerate object
-                        bone.matrix.translation[:3] = pos
+                        bone.matrix.translation = pos
                 else:
-                    obj.matrix_world.translation[:3] = pos
+                    obj.matrix_world.translation = pos
             elif v3d.lock_cursor:
                 set_cursor_location(pos, v3d=v3d)
             else:
@@ -2181,7 +2213,7 @@ class View3DUtility:
     def get_matrix(self):
         m = self.get_rotation().to_matrix()
         m.resize_4x4()
-        m.translation[:3] = self.get_viewpoint()
+        m.translation = self.get_viewpoint()
         return m
     
     def get_point(self, xy, pos):
@@ -2316,7 +2348,8 @@ class SnapUtilityBase:
                     ]
                 
                 if use_object_centers:
-                    self.extra_snap_points = [obj.matrix_world.to_translation()]
+                    self.extra_snap_points = \
+                        [obj.matrix_world.to_translation()]
                 elif alt_snap:
                     pse = self.potential_snap_elements
                     n = len(pse)
@@ -2379,13 +2412,16 @@ class SnapUtilityBase:
                     direction.rotate(sys_matrix)
                     
                     if axes_of_freedom == 2:
-                        # Constrained in one axis. Find intersection with plane.
+                        # Constrained in one axis.
+                        # Find intersection with plane.
                         i_p = intersect_line_plane(a, b, start, direction)
                         if i_p is not None:
                             pos = i_p
                     elif axes_of_freedom == 1:
-                        # Constrained in two axes. Find nearest point to line.
-                        i_p = intersect_line_line(a, b, start, start + direction)
+                        # Constrained in two axes.
+                        # Find nearest point to line.
+                        i_p = intersect_line_line(a, b, start,
+                                                  start + direction)
                         if i_p is not None:
                             pos = i_p[1]
         #end if do_raycast
@@ -2438,6 +2474,7 @@ class Snap3DUtility(SnapUtilityBase):
         mesh = bpy.data.meshes.new(tmp_name)
         bm.to_mesh(mesh)
         mesh.update(calc_tessface=True)
+        #mesh.calc_tessface()
         
         self.bbox_obj = self.cache.create_temporary_mesh_obj(mesh, Matrix())
         self.bbox_obj.hide = True
@@ -2527,10 +2564,10 @@ class Snap3DUtility(SnapUtilityBase):
         
         half = (bbox[1] - bbox[0]) * 0.5
         
-        m = Matrix(((half[0], 0, 0), (0, half[1], 0), (0, 0, half[2])))
+        m = MatrixCompose(half[0], half[1], half[2])
         m = sys_matrix.to_3x3() * m
         m.resize_4x4()
-        m.translation[:3] = sys_matrix * (bbox[0] + half)
+        m.translation = sys_matrix * (bbox[0] + half)
         self.bbox_obj.matrix_world = m
         
         return self.bbox_obj
@@ -2697,11 +2734,12 @@ class Snap3DUtility(SnapUtilityBase):
         
         if self.snap_type == 'VERTEX' or self.snap_type == 'VOLUME':
             for v0 in face.vertices:
-                p0 = obj.data.vertices[v0].co
+                v = obj.data.vertices[v0]
+                p0 = v.co
                 l = (lp - p0).length_squared
                 if (L is None) or (l < L):
                     p = p0
-                    ln = obj.data.vertices[v0].normal.copy()
+                    ln = v.normal.copy()
                     #t1 = ln.cross(_ln)
                     L = l
             
@@ -2770,7 +2808,7 @@ class Snap3DUtility(SnapUtilityBase):
                         L = l
             '''
         
-        n = ln#.copy()
+        n = ln.copy()
         n.rotate(m)
         n.normalize()
         
@@ -2789,11 +2827,7 @@ class Snap3DUtility(SnapUtilityBase):
         t2 = t1.cross(n)
         t2.normalize()
         
-        matrix = Matrix()
-        matrix[0][:3] = t1
-        matrix[1][:3] = t2
-        matrix[2][:3] = n
-        matrix.translation[:3] = p
+        matrix = MatrixCompose(t1, t2, n, p)
         
         return (matrix, face_id, obj, orig_obj)
     
@@ -2918,6 +2952,8 @@ class MeshCache:
                     self.edit_object = self.__convert(
                                 obj, True, False, False)
                     #self.edit_object.data.update(calc_tessface=True)
+                    #self.edit_object.data.calc_tessface()
+                    self.edit_object.data.calc_normals()
                 return self.edit_object
         
         # A usual object. Cached data will suffice.
@@ -2937,7 +2973,10 @@ class MeshCache:
         
         self.object_cache[obj] = rco
         if rco:
-            pass#rco.data.update(calc_tessface=True)
+            #rco.data.update(calc_tessface=True)
+            #rco.data.calc_tessface()
+            rco.data.calc_normals()
+            pass
         
         return rco
     
@@ -3192,6 +3231,12 @@ class TransformExtraOptionsProp(bpy.types.PropertyGroup):
         default=8,
         min=2,
         max=64)
+    use_comma_separator = bpy.props.BoolProperty(
+        name="Use comma separator",
+        description="Use comma separator when copying/pasting"\
+                    "coordinate values (instead of Tab character)",
+        default=True,
+        options={'HIDDEN'})
 
 # ===== 3D VECTOR LOCATION ===== #
 class LocationProp(bpy.types.PropertyGroup):
@@ -3236,10 +3281,19 @@ def update_history_id(self, context):
     
     pos = history.get_pos()
     if pos is not None:
+        # History doesn't depend on view (?)
         cursor_pos = get_cursor_location(scene=scene)
+        
+        if CursorHistoryProp.update_cursor_on_id_change:
+            # Set cursor position anyway (we're changing v3d's
+            # cursor, which may be separate from scene's)
+            # This, however, should be done cautiously
+            # from scripts, since, e.g., CursorMonitor
+            # can supply wrong context -> cursor will be set
+            # in a different view than required
+            set_cursor_location(pos, v3d=context.space_data)
+        
         if pos != cursor_pos:
-            set_cursor_location(pos, scene=scene)
-            
             if (history.current_id == 0) and (history.last_id <= 1):
                 history.last_id = 1
             else:
@@ -3248,6 +3302,8 @@ def update_history_id(self, context):
 
 class CursorHistoryProp(bpy.types.PropertyGroup):
     max_size_limit = 500
+    
+    update_cursor_on_id_change = True
     
     show_trace = bpy.props.BoolProperty(
         name="Trace",
@@ -3313,7 +3369,7 @@ class CursorHistoryProp(bpy.types.PropertyGroup):
         bgl.glColor4f(1.0, 0.75, 0.5, 1.0)
         bgl.glVertex3f(p[0], p[1], p[2])
         
-        p = get_cursor_location(scene=scene)
+        p = get_cursor_location(v3d=context.space_data)
         bgl.glColor4f(1.0, 1.0, 0.25, 1.0)
         bgl.glVertex3f(p[0], p[1], p[2])
         
@@ -3364,10 +3420,11 @@ class NewCursor3DBookmark(bpy.types.Operator):
         
         bookmark = library.bookmarks.add(name=self.name)
         
-        cusor_pos = get_cursor_location(scene=context.scene)
+        cusor_pos = get_cursor_location(v3d=context.space_data)
         
         try:
-            bookmark.pos = library.convert_from_abs(cusor_pos, True)
+            bookmark.pos = library.convert_from_abs(context.space_data,
+                                                    cusor_pos, True)
         except Exception as exc:
             self.report('ERROR_INVALID_CONTEXT', exc.args[0])
             return {'CANCELLED'}
@@ -3411,10 +3468,11 @@ class OverwriteCursor3DBookmark(bpy.types.Operator):
         if not bookmark:
             return {'CANCELLED'}
         
-        cusor_pos = get_cursor_location(scene=context.scene)
+        cusor_pos = get_cursor_location(v3d=context.space_data)
         
         try:
-            bookmark.pos = library.convert_from_abs(cusor_pos, True)
+            bookmark.pos = library.convert_from_abs(context.space_data,
+                                                    cusor_pos, True)
         except Exception as exc:
             self.report('ERROR_INVALID_CONTEXT', exc.args[0])
             return {'CANCELLED'}
@@ -3443,8 +3501,9 @@ class RecallCursor3DBookmark(bpy.types.Operator):
             return {'CANCELLED'}
         
         try:
-            bookmark_pos = library.convert_to_abs(bookmark.pos, True)
-            set_cursor_location(bookmark_pos, scene=context.scene)
+            bookmark_pos = library.convert_to_abs(context.space_data,
+                                                  bookmark.pos, True)
+            set_cursor_location(bookmark_pos, v3d=context.space_data)
         except Exception as exc:
             self.report('ERROR_INVALID_CONTEXT', exc.args[0])
             return {'CANCELLED'}
@@ -3472,14 +3531,16 @@ class SwapCursor3DBookmark(bpy.types.Operator):
         if not bookmark:
             return {'CANCELLED'}
         
-        cusor_pos = get_cursor_location(scene=context.scene)
+        cusor_pos = get_cursor_location(v3d=context.space_data)
         
         try:
-            bookmark_pos = library.convert_to_abs(bookmark.pos, True)
+            bookmark_pos = library.convert_to_abs(context.space_data,
+                                                  bookmark.pos, True)
             
-            set_cursor_location(bookmark_pos, scene=context.scene)
+            set_cursor_location(bookmark_pos, v3d=context.space_data)
             
-            bookmark.pos = library.convert_from_abs(cusor_pos, True,
+            bookmark.pos = library.convert_from_abs(context.space_data,
+                                                    cusor_pos, True,
                 use_history=False)
         except Exception as exc:
             self.report('ERROR_INVALID_CONTEXT', exc.args[0])
@@ -3516,8 +3577,8 @@ class AddEmptyAtCursor3DBookmark(bpy.types.Operator):
             return {'CANCELLED'}
         
         try:
-            #bookmark_pos = library.convert_to_abs(bookmark.pos, True)
-            matrix = library.get_matrix(use_history=False, warn=True)
+            matrix = library.get_matrix(use_history=False,
+                                        v3d=context.space_data, warn=True)
             bookmark_pos = matrix * bookmark.pos
         except Exception as exc:
             self.report('ERROR_INVALID_CONTEXT', exc.args[0])
@@ -3526,7 +3587,6 @@ class AddEmptyAtCursor3DBookmark(bpy.types.Operator):
         name = "{}.{}".format(library.name, bookmark.name)
         obj = bpy.data.objects.new(name, None)
         obj.matrix_world = to_matrix4x4(matrix, bookmark_pos)
-        #obj.empty_draw_type = 'SPHERE'
         context.scene.objects.link(obj)
         
         """
@@ -3579,7 +3639,7 @@ class BookmarkLibraryProp(bpy.types.PropertyGroup):
         options={'HIDDEN'})
     
     # Returned None means "operation is not aplicable"
-    def get_matrix(self, use_history, warn=True, **kwargs):
+    def get_matrix(self, use_history, v3d, warn=True, **kwargs):
         #particles, csu = gather_particles(**kwargs)
         
         # Ensure we have relevant CSU (Blender will crash
@@ -3591,7 +3651,7 @@ class BookmarkLibraryProp(bpy.types.PropertyGroup):
         if self.offset:
             # history? or keep separate for each scene?
             if not use_history:
-                csu.source_pos = get_cursor_location(scene=csu.tou.scene)
+                csu.source_pos = get_cursor_location(v3d=v3d)
             else:
                 settings = find_settings()
                 history = settings.history
@@ -3635,19 +3695,16 @@ class BookmarkLibraryProp(bpy.types.PropertyGroup):
         
         return csu.get_matrix(sys_name, self.offset, pivot)
     
-    def convert_to_abs(self, pos, warn=False, **kwargs):
-        if "use_history" in kwargs:
-            del kwargs["use_history"]
-        matrix = self.get_matrix(False, warn, **kwargs)
+    def convert_to_abs(self, v3d, pos, warn=False, **kwargs):
+        kwargs.pop("use_history", None)
+        matrix = self.get_matrix(False, v3d, warn, **kwargs)
         if not matrix:
             return None
         return matrix * pos
     
-    def convert_from_abs(self, pos, warn=False, **kwargs):
-        use_history = kwargs.get("use_history", True)
-        if "use_history" in kwargs:
-            del kwargs["use_history"]
-        matrix = self.get_matrix(use_history, warn, **kwargs)
+    def convert_from_abs(self, v3d, pos, warn=False, **kwargs):
+        use_history = kwargs.pop("use_history", True)
+        matrix = self.get_matrix(use_history, v3d, warn, **kwargs)
         if not matrix:
             return None
         
@@ -3665,7 +3722,7 @@ class BookmarkLibraryProp(bpy.types.PropertyGroup):
         if not bookmark:
             return
         
-        pos = self.convert_to_abs(bookmark.pos)
+        pos = self.convert_to_abs(context.space_data, bookmark.pos)
         if pos is None:
             return
         
@@ -3874,6 +3931,7 @@ class TransformExtraOptions(bpy.types.Panel):
         layout.prop(tfm_opts, "use_relative_coords")
         layout.prop(tfm_opts, "snap_only_to_solid")
         layout.prop(tfm_opts, "snap_interpolate_normals_mode", text="")
+        layout.prop(tfm_opts, "use_comma_separator")
         #layout.prop(tfm_opts, "snap_element_screen_size")
 
 class Cursor3DTools(bpy.types.Panel):
@@ -3991,14 +4049,14 @@ class SetCursorDialog(bpy.types.Operator):
         self.matrix = self.csu.get_matrix()
         
         pos = self.matrix * self.pos
-        set_cursor_location(pos, scene=context.scene)
+        set_cursor_location(pos, v3d=context.space_data)
         
         return {'FINISHED'}
 
     def invoke(self, context, event):
         scene = context.scene
         
-        cursor_pos = get_cursor_location(scene=scene)
+        cursor_pos = get_cursor_location(v3d=context.space_data)
         
         particles, self.csu = gather_particles(context=context)
         self.csu.source_pos = cursor_pos
@@ -4028,6 +4086,126 @@ class SetCursorDialog(bpy.types.Operator):
         row = layout.row()
         row.prop(tfm_opts, "use_relative_coords", text="Relative")
         row.prop(v3d, "transform_orientation", text="")
+
+class AlignOrientation(bpy.types.Operator):
+    bl_idname = "view3d.align_orientation"
+    bl_label = "Align Orientation"
+    bl_description = "Rotates active object to match axis of current "\
+        "orientation to axis of another orientation"
+    
+    axes_items = [
+        ('X', 'X', 'X axis'),
+        ('Y', 'Y', 'Y axis'),
+        ('Z', 'Z', 'Z axis'),
+        ('-X', '-X', '-X axis'),
+        ('-Y', '-Y', '-Y axis'),
+        ('-Z', '-Z', '-Z axis'),
+    ]
+    
+    axes_items_ = [
+        ('X', 'X', 'X axis'),
+        ('Y', 'Y', 'Y axis'),
+        ('Z', 'Z', 'Z axis'),
+        (' ', ' ', 'Same as source axis'),
+    ]
+    
+    axes_ids = {'X':0, 'Y':1, 'Z':2}
+    
+    def get_orients(self, context):
+        orients = []
+        orients.append(('GLOBAL', "Global", ""))
+        orients.append(('LOCAL', "Local", ""))
+        orients.append(('GIMBAL', "Gimbal", ""))
+        orients.append(('NORMAL', "Normal", ""))
+        orients.append(('VIEW', "View", ""))
+        
+        for orientation in context.scene.orientations:
+            name = orientation.name
+            orients.append((name, name, ""))
+        
+        return orients
+    
+    src_axis = bpy.props.EnumProperty(default='Z', items=axes_items,
+                                      name="Initial axis")
+    #src_orient = bpy.props.EnumProperty(default='GLOBAL', items=get_orients)
+    
+    dest_axis = bpy.props.EnumProperty(default=' ', items=axes_items_,
+                                       name="Final axis")
+    dest_orient = bpy.props.EnumProperty(items=get_orients,
+                                         name="Final orientation")
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.area.type == 'VIEW_3D') and context.object
+    
+    def execute(self, context):
+        obj = context.object
+        scene = context.scene
+        v3d = context.space_data
+        rv3d = context.region_data
+        
+        tou = TransformOrientationUtility(scene, v3d, rv3d)
+        
+        src_matrix = tou.get_matrix(v3d.transform_orientation)
+        src_axes = MatrixDecompose(src_matrix)
+        src_axis_name = self.src_axis
+        if src_axis_name.startswith("-"):
+            src_axis_name = src_axis_name[1:]
+            src_axis = -src_axes[self.axes_ids[src_axis_name]]
+        else:
+            src_axis = src_axes[self.axes_ids[src_axis_name]]
+        
+        dest_matrix = tou.get_matrix(self.dest_orient)
+        dest_axes = MatrixDecompose(dest_matrix)
+        if self.dest_axis != ' ':
+            dest_axis_name = self.dest_axis
+        else:
+            dest_axis_name = src_axis_name
+        dest_axis = dest_axes[self.axes_ids[dest_axis_name]]
+        
+        q = src_axis.rotation_difference(dest_axis)
+        
+        m = obj.matrix_world.to_3x3()
+        m.rotate(q)
+        m.resize_4x4()
+        m.translation = obj.matrix_world.translation.copy()
+        
+        obj.matrix_world = m
+        
+        bpy.ops.ed.undo_push(message="Align Orientation")
+        
+        return {'FINISHED'}
+    
+    # ATTENTION!
+    # This _must_ be a dialog, because with 'UNDO' option
+    # the last selected orientation may revert to the previous state
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+
+class CopyOrientation(bpy.types.Operator):
+    bl_idname = "view3d.copy_orientation"
+    bl_label = "Copy Orientation"
+    bl_description = "Makes a copy of current orientation"
+    
+    def execute(self, context):
+        scene = context.scene
+        v3d = context.space_data
+        rv3d = context.region_data
+        
+        tou = TransformOrientationUtility(scene, v3d, rv3d)
+        
+        orient = create_transform_orientation(scene,
+            name=tou.get()+".copy", matrix=tou.get_matrix())
+        
+        tou.set(orient.name)
+        
+        return {'FINISHED'}
+
+def transform_orientations_panel_extension(self, context):
+    row = self.layout.row()
+    row.operator("view3d.align_orientation", text="Align")
+    row.operator("view3d.copy_orientation", text="Copy")
 
 # ===== CURSOR MONITOR ===== #
 class CursorMonitor(bpy.types.Operator):
@@ -4129,6 +4307,7 @@ class CursorMonitor(bpy.types.Operator):
         last_locations = {}
         
         for scene in bpy.data.scenes:
+            # History doesn't depend on view (?)
             curr_pos = get_cursor_location(scene=scene)
             
             last_locations[scene.name] = curr_pos
@@ -4185,7 +4364,11 @@ class CursorMonitor(bpy.types.Operator):
                 history.entries.remove(last_id)
             
             # make sure the most recent history entry is displayed
+            
+            CursorHistoryProp.update_cursor_on_id_change = False
             history.current_id = 0
+            CursorHistoryProp.update_cursor_on_id_change = True
+            
             history.curr_id = history.current_id
             history.last_id = 1
             
@@ -4268,6 +4451,58 @@ def to_matrix4x4(orient, pos):
     m = orient.to_4x4()
     m.translation = pos.to_3d()
     return m
+
+def MatrixCompose(*args):
+    size = len(args)
+    m = Matrix.Identity(size)
+    axes = m.col # m.row
+    
+    if size == 2:
+        for i in (0, 1):
+            c = args[i]
+            if isinstance(c, Vector):
+                axes[i] = c.to_2d()
+            elif hasattr(c, "__iter__"):
+                axes[i] = Vector(c).to_2d()
+            else:
+                axes[i][i] = c
+    else:
+        for i in (0, 1, 2):
+            c = args[i]
+            if isinstance(c, Vector):
+                axes[i][:3] = c.to_3d()
+            elif hasattr(c, "__iter__"):
+                axes[i][:3] = Vector(c).to_3d()
+            else:
+                axes[i][i] = c
+        
+        if size == 4:
+            c = args[3]
+            if isinstance(c, Vector):
+                m.translation = c.to_3d()
+            elif hasattr(c, "__iter__"):
+                m.translation = Vector(c).to_3d()
+    
+    return m
+
+def MatrixDecompose(m, res_size=None):
+    size = len(m)
+    axes = m.col # m.row
+    if res_size is None:
+        res_size = size
+    
+    if res_size == 2:
+        return (axes[0].to_2d(), axes[1].to_2d())
+    else:
+        x = axes[0].to_3d()
+        y = axes[1].to_3d()
+        z = (axes[2].to_3d() if size > 2 else Vector())
+        if res_size == 3:
+            return (x, y, z)
+        
+        t = (m.translation.to_3d() if size == 4 else Vector())
+        if res_size == 4:
+            return (x, y, z, t)
 
 def angle_axis_to_quat(angle, axis):
     w = math.cos(angle / 2.0)
@@ -4660,7 +4895,7 @@ def draw_callback_view(self, context):
         bgl.glDepthRange(0.0, 1.0)
     
     if tfm_operator:
-        tfm_operator.draw_3d()
+        tfm_operator.draw_3d(context)
     
     if is_drawing:
         # Restore previous OpenGL settings
@@ -4866,6 +5101,11 @@ def update_keymap(activate):
         kmi.active = not activate
 
 def register():
+    bpy.utils.register_class(AlignOrientation)
+    bpy.utils.register_class(CopyOrientation)
+    bpy.types.VIEW3D_PT_transform_orientations.append(
+        transform_orientations_panel_extension)
+    
     bpy.utils.register_class(SetCursorDialog)
     
     bpy.utils.register_class(NewCursor3DBookmarkLibrary)
@@ -4971,6 +5211,11 @@ def unregister():
     bpy.utils.unregister_class(AddEmptyAtCursor3DBookmark)
     
     bpy.utils.unregister_class(SetCursorDialog)
+    
+    bpy.types.VIEW3D_PT_transform_orientations.remove(
+        transform_orientations_panel_extension)
+    bpy.utils.unregister_class(CopyOrientation)
+    bpy.utils.unregister_class(AlignOrientation)
 
 class DelayRegistrationOperator(bpy.types.Operator):
     bl_idname = "wm.enhanced_3d_cursor_registration"

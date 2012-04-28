@@ -42,11 +42,11 @@
 #include <stdarg.h> /* for va_start/end */
 
 #ifndef WIN32
-	#include <unistd.h> // for read close
+#  include <unistd.h> // for read close
 #else
-	#include <io.h> // for open close read
-#include "winsock2.h"
-#include "BLI_winstuff.h"
+#  include <io.h> // for open close read
+#  include "winsock2.h"
+#  include "BLI_winstuff.h"
 #endif
 
 /* allow readfile to use deprecated functionality */
@@ -612,7 +612,7 @@ static void bh4_from_bh8(BHead *bhead, BHead8 *bhead8, int do_endian_swap)
 		}
 
 		/* this patch is to avoid a long long being read from not-eight aligned positions
-		   is necessary on any modern 64bit architecture) */
+		 * is necessary on any modern 64bit architecture) */
 		memcpy(&old, &bhead8->old, 8);
 		bhead4->old = (int) (old >> 3);
 
@@ -1061,8 +1061,7 @@ void blo_freefiledata(FileData *fd)
 			close(fd->filedes);
 		}
 
-		if (fd->gzfiledes != NULL)
-		{
+		if (fd->gzfiledes != NULL) {
 			gzclose(fd->gzfiledes);
 		}
 
@@ -1138,7 +1137,7 @@ int BLO_is_a_library(const char *path, char *dir, char *group)
 		if (!fd || !BLO_has_bfile_extension(fd+1)) return 0;
 
 		/* now we know that we are in a blend file and it is safe to 
-		   assume that gp actually points to a group */
+		 * assume that gp actually points to a group */
 		if (strcmp("Screen", gp)!=0)
 			BLI_strncpy(group, gp, GROUP_MAX);
 	}
@@ -1606,7 +1605,7 @@ static void IDP_DirectLinkProperty(IDProperty *prop, int switch_endian, FileData
 			 * in the same field as int val; val2 in the
 			 * IDPropertyData struct, they have to deal with
 			 * endianness specifically
-
+			 *
 			 * in theory, val and val2 would've already been swapped
 			 * if switch_endian is true, so we have to first unswap
 			 * them then reswap them as a single 64-bit entity.
@@ -2290,17 +2289,19 @@ static void lib_nodetree_do_versions_update_cb(void *UNUSED(data), ID *UNUSED(id
 
 /* verify types for nodes and groups, all data has to be read */
 /* open = 0: appending/linking, open = 1: open new file (need to clean out dynamic
-* typedefs*/
+ * typedefs */
 static void lib_verify_nodetree(Main *main, int UNUSED(open))
 {
 	bNodeTree *ntree;
 	int i;
 	bNodeTreeType *ntreetype;
 
-	/* this crashes blender on undo/redo
+	/* this crashes blender on undo/redo */
+#if 0
 		if (open==1) {
 			reinit_nodesystem();
-		}*/
+		}
+#endif
 	
 	/* set node->typeinfo pointers */
 	for (i=0; i < NUM_NTREE_TYPES; ++i) {
@@ -2754,9 +2755,9 @@ static void switch_endian_keyblock(Key *key, KeyBlock *kb)
 		cp= key->elemstr;
 		poin= data;
 
-		while ( cp[0] ) {	/* cp[0]==amount */
+		while ( cp[0] ) {  /* cp[0] == amount */
 
-			switch(cp[1]) {		/* cp[1]= type */
+			switch (cp[1]) {  /* cp[1] = type */
 			case IPO_FLOAT:
 			case IPO_BPOINT:
 			case IPO_BEZTRIPLE:
@@ -2936,12 +2937,12 @@ static void direct_link_text(FileData *fd, Text *text)
 
 	text->compiled= NULL;
 
-/*
+#if 0
 	if (text->flags & TXT_ISEXT) {
 		reopen_text(text);
 		}
 		else {
-*/
+#endif
 
 	link_list(fd, &text->lines);
 	link_list(fd, &text->markers);
@@ -3242,8 +3243,8 @@ static void lib_link_material(FileData *fd, Main *main)
 		if (ma->id.flag & LIB_NEEDLINK) {
 			if (ma->adt) lib_link_animdata(fd, &ma->id, ma->adt);
 
-			/*Link ID Properties -- and copy this comment EXACTLY for easy finding
-			of library blocks that implement this.*/
+			/* Link ID Properties -- and copy this comment EXACTLY for easy finding
+			 * of library blocks that implement this.*/
 			if (ma->id.properties) IDP_LibLinkProperty(ma->id.properties, (fd->flags & FD_FLAGS_SWITCH_ENDIAN), fd);
 
 			ma->ipo= newlibadr_us(fd, ma->id.lib, ma->ipo);
@@ -3440,7 +3441,7 @@ static void lib_link_particlesettings(FileData *fd, Main *main)
 				for (; state; state=state->next) {
 					rule = state->rules.first;
 				for (; rule; rule=rule->next)
-					switch(rule->type) {
+					switch (rule->type) {
 						case eBoidRuleType_Goal:
 						case eBoidRuleType_Avoid:
 						{
@@ -3683,8 +3684,8 @@ static void lib_link_mesh(FileData *fd, Main *main)
 		if (me->id.flag & LIB_NEEDLINK) {
 			int i;
 
-			/*Link ID Properties -- and copy this comment EXACTLY for easy finding
-			of library blocks that implement this.*/
+			/* Link ID Properties -- and copy this comment EXACTLY for easy finding
+			 * of library blocks that implement this.*/
 			if (me->id.properties) IDP_LibLinkProperty(me->id.properties, (fd->flags & FD_FLAGS_SWITCH_ENDIAN), fd);
 			if (me->adt) lib_link_animdata(fd, &me->id, me->adt);
 
@@ -3708,7 +3709,14 @@ static void lib_link_mesh(FileData *fd, Main *main)
 
 			/*check if we need to convert mfaces to mpolys*/
 			if (me->totface && !me->totpoly) {
+				/* temporarily switch main so that reading from
+				 * external CustomData works */
+				Main *gmain = G.main;
+				G.main = main;
+				
 				BKE_mesh_convert_mfaces_to_mpolys(me);
+
+				G.main = gmain;
 			}
 			
 			/*
@@ -3772,9 +3780,9 @@ static void direct_link_mdisps(FileData *fd, int count, MDisps *mdisps, int exte
 
 			if (mdisps[i].totdisp && !mdisps[i].level) {
 				/* this calculation is only correct for loop mdisps;
-				   if loading pre-BMesh face mdisps this will be
-				   overwritten with the correct value in
-				   bm_corners_to_loops() */
+				 * if loading pre-BMesh face mdisps this will be
+				 * overwritten with the correct value in
+				 * bm_corners_to_loops() */
 				float gridsize = sqrtf(mdisps[i].totdisp);
 				mdisps[i].level = (int)(logf(gridsize - 1.0f) / M_LN2) + 1;
 			}
@@ -3801,6 +3809,14 @@ static void direct_link_customdata(FileData *fd, CustomData *data, int count)
 	int i = 0;
 
 	data->layers= newdataadr(fd, data->layers);
+
+	/* annoying workaround for bug [#31079] loading legacy files with
+	 * no polygons _but_ have stale customdata */
+	if (UNLIKELY(count == 0 && data->layers == NULL && data->totlayer != 0)) {
+		memset(data, 0, sizeof(*data));
+		return;
+	}
+
 	data->external= newdataadr(fd, data->external);
 
 	while (i < data->totlayer) {
@@ -3838,13 +3854,14 @@ static void direct_link_mesh(FileData *fd, Mesh *mesh)
 	mesh->mloopcol= newdataadr(fd, mesh->mloopcol);
 	mesh->mloopuv= newdataadr(fd, mesh->mloopuv);
 	mesh->mtpoly= newdataadr(fd, mesh->mtpoly);
+	mesh->mselect = newdataadr(fd, mesh->mselect);
 
 	/* animdata */
 	mesh->adt= newdataadr(fd, mesh->adt);
 	direct_link_animdata(fd, mesh->adt);
 
 	/* normally direct_link_dverts should be called in direct_link_customdata,
-	   but for backwards compat in do_versions to work we do it here */
+	 * but for backwards compat in do_versions to work we do it here */
 	direct_link_dverts(fd, mesh->totvert, mesh->dvert);
 
 	direct_link_customdata(fd, &mesh->vdata, mesh->totvert);
@@ -3884,7 +3901,6 @@ static void direct_link_mesh(FileData *fd, Mesh *mesh)
 
 
 	mesh->bb= NULL;
-	mesh->mselect = NULL;
 	mesh->edit_btmesh= NULL;
 	
 	/* Multires data */
@@ -3905,11 +3921,11 @@ static void direct_link_mesh(FileData *fd, Mesh *mesh)
 		mesh->mr->verts = newdataadr(fd, mesh->mr->verts);
 		
 		/* If mesh has the same number of vertices as the
-		   highest multires level, load the current mesh verts
-		   into multires and discard the old data. Needed
-		   because some saved files either do not have a verts
-		   array, or the verts array contains out-of-date
-		   data. */
+		 * highest multires level, load the current mesh verts
+		 * into multires and discard the old data. Needed
+		 * because some saved files either do not have a verts
+		 * array, or the verts array contains out-of-date
+		 * data. */
 		if (mesh->totvert == ((MultiresLevel*)mesh->mr->levels.last)->totvert) {
 			if (mesh->mr->verts)
 				MEM_freeN(mesh->mr->verts);
@@ -4218,8 +4234,7 @@ static void lib_link_object(FileData *fd, Main *main)
 			{
 				SmokeModifierData *smd = (SmokeModifierData *)modifiers_findByType(ob, eModifierType_Smoke);
 				
-				if (smd && smd->type == MOD_SMOKE_TYPE_DOMAIN && smd->domain)
-				{
+				if (smd && smd->type == MOD_SMOKE_TYPE_DOMAIN && smd->domain) {
 					smd->domain->flags |= MOD_SMOKE_FILE_LOAD; /* flag for refreshing the simulation after loading */
 				}
 			}
@@ -4342,8 +4357,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		else if (md->type==eModifierType_Smoke) {
 			SmokeModifierData *smd = (SmokeModifierData*) md;
 
-			if (smd->type==MOD_SMOKE_TYPE_DOMAIN)
-			{
+			if (smd->type==MOD_SMOKE_TYPE_DOMAIN) {
 				smd->flow = NULL;
 				smd->coll = NULL;
 				smd->domain = newdataadr(fd, smd->domain);
@@ -4388,8 +4402,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 				smd->flow = NULL;
 				smd->domain = NULL;
 				smd->coll = newdataadr(fd, smd->coll);
-				if (smd->coll)
-				{
+				if (smd->coll) {
 					smd->coll->points = NULL;
 					smd->coll->numpoints = 0;
 				}
@@ -4401,8 +4414,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 		else if (md->type==eModifierType_DynamicPaint) {
 			DynamicPaintModifierData *pmd = (DynamicPaintModifierData*) md;
 
-			if (pmd->canvas)
-			{
+			if (pmd->canvas) {
 				pmd->canvas = newdataadr(fd, pmd->canvas);
 				pmd->canvas->pmd = pmd;
 				pmd->canvas->dm = NULL;
@@ -4422,8 +4434,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					}
 				}
 			}
-			if (pmd->brush)
-			{
+			if (pmd->brush) {
 				pmd->brush = newdataadr(fd, pmd->brush);
 				pmd->brush->pmd = pmd;
 				pmd->brush->psys = newdataadr(fd, pmd->brush->psys);
@@ -4560,7 +4571,7 @@ static void direct_link_object(FileData *fd, Object *ob)
 	ob->flag &= ~OB_FROMGROUP;
 
 	/* loading saved files with editmode enabled works, but for undo we like
-	   to stay in object mode during undo presses so keep editmode disabled */
+	 * to stay in object mode during undo presses so keep editmode disabled */
 	if (fd->memfile)
 		ob->mode &= ~(OB_MODE_EDIT|OB_MODE_PARTICLE_EDIT);
 	
@@ -4795,8 +4806,8 @@ static void lib_link_scene(FileData *fd, Main *main)
 	sce= main->scene.first;
 	while (sce) {
 		if (sce->id.flag & LIB_NEEDLINK) {
-			/*Link ID Properties -- and copy this comment EXACTLY for easy finding
-			of library blocks that implement this.*/
+			/* Link ID Properties -- and copy this comment EXACTLY for easy finding
+			 * of library blocks that implement this.*/
 			if (sce->id.properties) IDP_LibLinkProperty(sce->id.properties, (fd->flags & FD_FLAGS_SWITCH_ENDIAN), fd);
 			if (sce->adt) lib_link_animdata(fd, &sce->id, sce->adt);
 			
@@ -4830,7 +4841,7 @@ static void lib_link_scene(FileData *fd, Main *main)
 				}
 			}
 
-			SEQ_BEGIN(sce->ed, seq) {
+			SEQ_BEGIN (sce->ed, seq) {
 				if (seq->ipo) seq->ipo= newlibadr_us(fd, sce->id.lib, seq->ipo);
 				seq->scene_sound = NULL;
 				if (seq->scene) {
@@ -4961,7 +4972,7 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 		/* recursive link sequences, lb will be correctly initialized */
 		link_recurs_seq(fd, &ed->seqbase);
 
-		SEQ_BEGIN(ed, seq) {
+		SEQ_BEGIN (ed, seq) {
 			seq->seq1= newdataadr(fd, seq->seq1);
 			seq->seq2= newdataadr(fd, seq->seq2);
 			seq->seq3= newdataadr(fd, seq->seq3);
@@ -5215,7 +5226,7 @@ static void butspace_version_132(SpaceButs *buts)
 }
 
 /* note: file read without screens option G_FILE_NO_UI; 
-   check lib pointers in call below */
+ * check lib pointers in call below */
 static void lib_link_screen(FileData *fd, Main *main)
 {
 	bScreen *sc;
@@ -5737,7 +5748,7 @@ static void direct_link_screen(FileData *fd, bScreen *sc)
 	sc->swap= 0;
 	
 	/* hacky patch... but people have been saving files with the verse-blender,
-	   causing the handler to keep running for ever, with no means to disable it */
+	 * causing the handler to keep running for ever, with no means to disable it */
 	for (a=0; a<SCREEN_MAXHANDLER; a+=2) {
 		if ( sc->handler[a]==SCREEN_HANDLER_VERSE) {
 			sc->handler[a]= 0;
@@ -5914,9 +5925,9 @@ static void direct_link_screen(FileData *fd, bScreen *sc)
 				//for (cl= sconsole->scrollback.first; cl; cl= cl->next)
 				//	cl->line= newdataadr(fd, cl->line);
 				
-				/*comma expressions, (e.g. expr1, expr2, expr3) evalutate each expression,
-				  from left to right.  the right-most expression sets the result of the comma
-				  expression as a whole*/
+				/* comma expressions, (e.g. expr1, expr2, expr3) evalutate each expression,
+				 * from left to right.  the right-most expression sets the result of the comma
+				 * expression as a whole*/
 				for (cl= sconsole->history.first; cl; cl= cl_next) {
 					cl_next= cl->next;
 					cl->line= newdataadr(fd, cl->line);
@@ -6057,8 +6068,10 @@ static void direct_link_speaker(FileData *fd, Speaker *spk)
 	spk->adt= newdataadr(fd, spk->adt);
 	direct_link_animdata(fd, spk->adt);
 
-	/*spk->sound= newdataadr(fd, spk->sound);
-	direct_link_sound(fd, spk->sound);*/
+#if 0
+	spk->sound= newdataadr(fd, spk->sound);
+	direct_link_sound(fd, spk->sound);
+#endif
 }
 
 /* ************** READ SOUND ******************* */
@@ -6070,8 +6083,7 @@ static void direct_link_sound(FileData *fd, bSound *sound)
 	sound->waveform = NULL;
 
 	// versioning stuff, if there was a cache, then we enable caching:
-	if (sound->cache)
-	{
+	if (sound->cache) {
 		sound->flags |= SOUND_FLAGS_CACHING;
 		sound->cache = NULL;
 	}
@@ -6214,8 +6226,7 @@ static void lib_link_movieclip(FileData *fd, Main *main)
 
 static const char *dataname(short id_code)
 {
-	
-	switch( id_code ) {
+	switch ( id_code ) {
 		case ID_OB: return "Data from OB";
 		case ID_ME: return "Data from ME";
 		case ID_IP: return "Data from IP";
@@ -6325,7 +6336,7 @@ static BHead *read_libblock(FileData *fd, Main *main, BHead *bhead, int flag, ID
 	bhead= read_data_into_oldnewmap(fd, bhead, allocname);
 
 	/* init pointers direct data */
-	switch( GS(id->name) ) {
+	switch (GS(id->name)) {
 		case ID_WM:
 			direct_link_windowmanager(fd, (wmWindowManager *)id);
 			break;
@@ -6610,31 +6621,6 @@ static void ntree_version_242(bNodeTree *ntree)
 				node->storage= MEM_callocN(sizeof(NodeGeometry), "NodeGeometry");
 	}
 	
-}
-
-
-/* somehow, probably importing via python, keyblock adrcodes are not in order */
-static void sort_shape_fix(Main *main)
-{
-	Key *key;
-	KeyBlock *kb;
-	int sorted= 0;
-	
-	while (sorted==0) {
-		sorted= 1;
-		for (key= main->key.first; key; key= key->id.next) {
-			for (kb= key->block.first; kb; kb= kb->next) {
-				if (kb->next && kb->adrcode>kb->next->adrcode) {
-					KeyBlock *next= kb->next;
-					BLI_remlink(&key->block, kb);
-					BLI_insertlink(&key->block, next, kb);
-					kb= next;
-					sorted= 0;
-				}
-			}
-		}
-		if (sorted==0) printf("warning, shape keys were sorted incorrect, fixed it!\n");
-	}
 }
 
 static void customdata_version_242(Mesh *me)
@@ -6928,7 +6914,7 @@ static void area_add_window_regions(ScrArea *sa, SpaceLink *sl, ListBase *lb)
 
 	if (sl) {
 		/* first channels for ipo action nla... */
-		switch(sl->spacetype) {
+		switch (sl->spacetype) {
 			case SPACE_IPO:
 				ar= MEM_callocN(sizeof(ARegion), "area region from do_versions");
 				BLI_addtail(lb, ar);
@@ -7050,7 +7036,7 @@ static void area_add_window_regions(ScrArea *sa, SpaceLink *sl, ListBase *lb)
 	if (sl) {
 		/* if active spacetype has view2d data, copy that over to main region */
 		/* and we split view3d */
-		switch(sl->spacetype) {
+		switch (sl->spacetype) {
 			case SPACE_VIEW3D:
 				view3d_split_250((View3D *)sl, lb);
 				break;		
@@ -7413,7 +7399,7 @@ static void do_version_mdef_250(Main *main)
 
 				if (mmd->bindcos) {
 					/* make bindcos NULL in order to trick older versions
-					   into thinking that the mesh was not bound yet */
+					 * into thinking that the mesh was not bound yet */
 					mmd->bindcagecos= mmd->bindcos;
 					mmd->bindcos= NULL;
 
@@ -7456,8 +7442,7 @@ static void do_version_constraints_radians_degrees_250(ListBase *lb)
 static void do_version_old_trackto_to_constraints(Object *ob)
 {
 	/* create new trackto constraint from the relationship */
-	if (ob->track)
-	{
+	if (ob->track) {
 		bConstraint *con= add_ob_constraint(ob, "AutoTrack", CONSTRAINT_TYPE_TRACKTO);
 		bTrackToConstraint *data = con->data;
 		
@@ -7687,32 +7672,6 @@ static void do_versions_nodetree_socket_use_flags_2_62(bNodeTree *ntree)
 	for (link=ntree->links.first; link; link=link->next) {
 		link->fromsock->flag |= SOCK_IN_USE;
 		link->tosock->flag |= SOCK_IN_USE;
-	}
-}
-
-/* set the SOCK_AUTO_HIDDEN flag on collapsed nodes */
-static void do_versions_nodetree_socket_auto_hidden_flags_2_62(bNodeTree *ntree)
-{
-	bNode *node;
-	bNodeSocket *sock;
-	
-	for (node=ntree->nodes.first; node; node=node->next) {
-		if (node->flag & NODE_HIDDEN) {
-			for (sock=node->inputs.first; sock; sock=sock->next) {
-				if (sock->link==NULL)
-					sock->flag |= SOCK_AUTO_HIDDEN;
-			}
-			for (sock=node->outputs.first; sock; sock= sock->next) {
-				if (nodeCountSocketLinks(ntree, sock)==0)
-					sock->flag |= SOCK_AUTO_HIDDEN;
-			}
-		}
-		else {
-			for (sock=node->inputs.first; sock; sock= sock->next)
-				sock->flag &= ~SOCK_AUTO_HIDDEN;
-			for (sock=node->outputs.first; sock; sock= sock->next)
-				sock->flag &= ~SOCK_AUTO_HIDDEN;
-		}
 	}
 }
 
@@ -8368,8 +8327,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		Mesh *me;
 
 		sound = main->sound.first;
-		while (sound)
-		{
+		while (sound) {
 			sound->max_gain = 1.0;
 			sound->min_gain = 0.0;
 			sound->distance = 1.0;
@@ -8582,9 +8540,9 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		bScreen *sc;
 		Object *ob;
 
-		/*  As of now, this insures that the transition from the old Track system
-			to the new full constraint Track is painless for everyone. - theeth
-		*/
+		/* As of now, this insures that the transition from the old Track system
+		 * to the new full constraint Track is painless for everyone. - theeth
+		 */
 		ob = main->object.first;
 
 		while (ob) {
@@ -8592,7 +8550,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			list = &ob->constraints;
 
 			/* check for already existing TrackTo constraint
-			   set their track and up flag correctly */
+			 * set their track and up flag correctly */
 
 			if (list) {
 				bConstraint *curcon;
@@ -8670,8 +8628,8 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		Object *ob;
 
 
-		/*  As of now, this insures that the transition from the old Track system
-			to the new full constraint Track is painless for everyone.*/
+		/* As of now, this insures that the transition from the old Track system
+		 * to the new full constraint Track is painless for everyone.*/
 		ob = main->object.first;
 
 		while (ob) {
@@ -8679,7 +8637,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			list = &ob->constraints;
 
 			/* check for already existing TrackTo constraint
-			   set their track and up flag correctly */
+			 * set their track and up flag correctly */
 
 			if (list) {
 				bConstraint *curcon;
@@ -8780,9 +8738,9 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 	/* ton: made this 230 instead of 229,
-	   to be sure (tuho files) and this is a reliable check anyway
-	   nevertheless, we might need to think over a fitness (initialize)
-	   check apart from the do_versions() */
+	 * to be sure (tuho files) and this is a reliable check anyway
+	 * nevertheless, we might need to think over a fitness (initialize)
+	 * check apart from the do_versions() */
 
 	if (main->versionfile <= 230) {
 		bScreen *sc;
@@ -9036,7 +8994,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		while (sce) {
 			ed= sce->ed;
 			if (ed) {
-				SEQ_BEGIN(sce->ed, seq) {
+				SEQ_BEGIN (sce->ed, seq) {
 					if (seq->type==SEQ_IMAGE || seq->type==SEQ_MOVIE)
 						seq->flag |= SEQ_MAKE_PREMUL;
 				}
@@ -9193,7 +9151,6 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 				sce->toolsettings->segments = 32;
 				sce->toolsettings->rings = 32;
 				sce->toolsettings->vertices = 32;
-				sce->toolsettings->editbutflag =1;
 			}
 			sce= sce->id.next;	
 		}
@@ -9288,24 +9245,18 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		
 		for (key= main->key.first; key; key= key->id.next) {
 			KeyBlock *kb;
-			int index= 1;
-			
-			/* trick to find out if we already introduced adrcode */
-			for (kb= key->block.first; kb; kb= kb->next)
-				if (kb->adrcode) break;
-			
-			if (kb==NULL) {
-				for (kb= key->block.first; kb; kb= kb->next) {
-					if (kb==key->refkey) {
-						if (kb->name[0]==0)
-							strcpy(kb->name, "Basis");
+			int index = 1;
+
+			for (kb= key->block.first; kb; kb= kb->next) {
+				if (kb==key->refkey) {
+					if (kb->name[0]==0)
+						strcpy(kb->name, "Basis");
+				}
+				else {
+					if (kb->name[0]==0) {
+						BLI_snprintf(kb->name, sizeof(kb->name), "Key %d", index);
 					}
-					else {
-						if (kb->name[0]==0) {
-							BLI_snprintf(kb->name, sizeof(kb->name), "Key %d", index);
-						}
-						kb->adrcode= index++;
-					}
+					index++;
 				}
 			}
 		}
@@ -9568,7 +9519,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			list = &ob->constraints;
 
 			/* check for already existing MinMax (floor) constraint
-			   and update the sticky flagging */
+			 * and update the sticky flagging */
 
 			if (list) {
 				bConstraint *curcon;
@@ -9660,10 +9611,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		for (group= main->group.first; group; group= group->id.next)
 			if (group->layer==0)
 				group->layer= (1<<20)-1;
-		
-		/* History fix (python?), shape key adrcode numbers have to be sorted */
-		sort_shape_fix(main);
-				
+
 		/* now, subversion control! */
 		if (main->subversionfile < 3) {
 			Image *ima;
@@ -9795,17 +9743,16 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 					if (md->type==eModifierType_Mirror) {
 						MirrorModifierData *mmd = (MirrorModifierData*) md;
 
-						switch(mmd->axis)
-						{
-						case 0:
-							mmd->flag |= MOD_MIR_AXIS_X;
-							break;
-						case 1:
-							mmd->flag |= MOD_MIR_AXIS_Y;
-							break;
-						case 2:
-							mmd->flag |= MOD_MIR_AXIS_Z;
-							break;
+						switch (mmd->axis) {
+							case 0:
+								mmd->flag |= MOD_MIR_AXIS_X;
+								break;
+							case 1:
+								mmd->flag |= MOD_MIR_AXIS_Y;
+								break;
+							case 2:
+								mmd->flag |= MOD_MIR_AXIS_Z;
+								break;
 						}
 
 						mmd->axis = 0;
@@ -9997,7 +9944,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 
 		/* Copy over old per-level multires vertex data
-		   into a single vertex array in struct Multires */
+		 * into a single vertex array in struct Multires */
 		for (me = main->mesh.first; me; me=me->id.next) {
 			if (me->mr && !me->mr->verts) {
 				MultiresLevel *lvl = me->mr->levels.last;
@@ -10104,8 +10051,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 	 * */
 	{
 		Scene *sce;
-		for (sce=main->scene.first; sce; sce = sce->id.next)
-		{
+		for (sce=main->scene.first; sce; sce = sce->id.next) {
 			if (sce->toolsettings->skgen_subdivisions[0] == sce->toolsettings->skgen_subdivisions[1] ||
 				sce->toolsettings->skgen_subdivisions[0] == sce->toolsettings->skgen_subdivisions[2] ||
 				sce->toolsettings->skgen_subdivisions[1] == sce->toolsettings->skgen_subdivisions[2])
@@ -10463,7 +10409,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		Sequence *seq;
 		
 		for (sce=main->scene.first; sce; sce=sce->id.next) {
-			SEQ_BEGIN(sce->ed, seq) {
+			SEQ_BEGIN (sce->ed, seq) {
 				if (seq->blend_mode == 0)
 					seq->blend_opacity = 100.0f;
 			}
@@ -10521,13 +10467,11 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 	}
 	
 	// convert fluids to modifier
-	if (main->versionfile < 246 || (main->versionfile == 246 && main->subversionfile < 1))
-	{
+	if (main->versionfile < 246 || (main->versionfile == 246 && main->subversionfile < 1)) {
 		Object *ob;
 		
 		for (ob = main->object.first; ob; ob= ob->id.next) {
-			if (ob->fluidsimSettings)
-			{
+			if (ob->fluidsimSettings) {
 				FluidsimModifierData *fluidmd = (FluidsimModifierData *)modifier_new(eModifierType_Fluidsim);
 				BLI_addhead(&ob->modifiers, (ModifierData *)fluidmd);
 				
@@ -10778,10 +10722,10 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		Object *ob;
 		World *wrld;
 		for (ob = main->object.first; ob; ob= ob->id.next) {
-			ob->m_contactProcessingThreshold = 1.; //pad3 is used for m_contactProcessingThreshold
+			ob->m_contactProcessingThreshold = 1.0f; //pad3 is used for m_contactProcessingThreshold
 			if (ob->parent) {
 				/* check if top parent has compound shape set and if yes, set this object
-				   to compound shaper as well (was the behavior before, now it's optional) */
+				 * to compound shaper as well (was the behavior before, now it's optional) */
 				Object *parent= newlibadr(fd, lib, ob->parent);
 				while (parent && parent != ob &&  parent->parent != NULL) {
 					parent = newlibadr(fd, lib, parent->parent);
@@ -10818,7 +10762,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		while (sce) {
 			ed= sce->ed;
 			if (ed) {
-				SEQP_BEGIN(ed, seq) {
+				SEQP_BEGIN (ed, seq) {
 					if (seq->strip && seq->strip->proxy) {
 						seq->strip->proxy->quality =90;
 					}
@@ -10851,10 +10795,8 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		bActuator *act;
 		int a;
 
-		for (sound = main->sound.first; sound; sound = sound->id.next)
-		{
-			if (sound->newpackedfile)
-			{
+		for (sound = main->sound.first; sound; sound = sound->id.next) {
+			if (sound->newpackedfile) {
 				sound->packedfile = sound->newpackedfile;
 				sound->newpackedfile = NULL;
 			}
@@ -10864,8 +10806,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			for (act= ob->actuators.first; act; act= act->next) {
 				if (act->type == ACT_SOUND) {
 					bSoundActuator *sAct = (bSoundActuator*) act->data;
-					if (sAct->sound)
-					{
+					if (sAct->sound) {
 						sound = newlibadr(fd, lib, sAct->sound);
 						sAct->flag = sound->flags & SOUND_FLAGS_3D ? ACT_SND_3D_SOUND : 0;
 						sAct->pitch = sound->pitch;
@@ -10888,21 +10829,18 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			}
 		}
 
-		for (scene = main->scene.first; scene; scene = scene->id.next)
-		{
-			if (scene->ed && scene->ed->seqbasep)
-			{
-				SEQ_BEGIN(scene->ed, seq) {
-					if (seq->type == SEQ_HD_SOUND)
-					{
+		for (scene = main->scene.first; scene; scene = scene->id.next) {
+			if (scene->ed && scene->ed->seqbasep) {
+				SEQ_BEGIN (scene->ed, seq) {
+					if (seq->type == SEQ_HD_SOUND) {
 						char str[FILE_MAX];
 						BLI_join_dirfile(str, sizeof(str), seq->strip->dir, seq->strip->stripdata->name);
 						BLI_path_abs(str, main->name);
 						seq->sound = sound_new_file(main, str);
 					}
 					/* don't know, if anybody used that
-					   this way, but just in case, upgrade
-					   to new way... */
+					 * this way, but just in case, upgrade
+					 * to new way... */
 					if ((seq->flag & SEQ_USE_PROXY_CUSTOM_FILE) &&
 					   !(seq->flag & SEQ_USE_PROXY_CUSTOM_DIR))
 					{
@@ -11270,8 +11208,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 				if (tex->vd->extend == 0)
 					tex->vd->extend = TEX_CLIP;
 		
-		for (sce= main->scene.first; sce; sce= sce->id.next)
-		{
+		for (sce= main->scene.first; sce; sce= sce->id.next) {
 			if (sce->audio.main == 0.0f)
 				sce->audio.main = 1.0f;
 
@@ -11284,9 +11221,9 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 
 		/* Add default gravity to scenes */
 		for (sce= main->scene.first; sce; sce= sce->id.next) {
-			if ((sce->physics_settings.flag & PHYS_GLOBAL_GRAVITY) == 0
-				&& len_v3(sce->physics_settings.gravity) == 0.0f) {
-
+			if ((sce->physics_settings.flag & PHYS_GLOBAL_GRAVITY) == 0 &&
+			    len_v3(sce->physics_settings.gravity) == 0.0f)
+			{
 				sce->physics_settings.gravity[0] = sce->physics_settings.gravity[1] = 0.0f;
 				sce->physics_settings.gravity[2] = -9.81f;
 				sce->physics_settings.flag = PHYS_GLOBAL_GRAVITY;
@@ -11362,8 +11299,8 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		int a, tot;
 
 		/* shape keys are no longer applied to the mesh itself, but rather
-		   to the derivedmesh/displist, so here we ensure that the basis
-		   shape key is always set in the mesh coordinates. */
+		 * to the derivedmesh/displist, so here we ensure that the basis
+		 * shape key is always set in the mesh coordinates. */
 
 		for (me= main->mesh.first; me; me= me->id.next) {
 			if ((key = newlibadr(fd, lib, me->key)) && key->refkey) {
@@ -11413,8 +11350,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 8))
-	{
+	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 8)) {
 		{
 			Scene *sce= main->scene.first;
 			while (sce) {
@@ -11480,9 +11416,9 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			int i, convert=0;
 			
 			/* convert to new color management system:
-			 while previously colors were stored as srgb, 
-			 now they are stored as linear internally, 
-			 with screen gamma correction in certain places in the UI. */
+			 * while previously colors were stored as srgb,
+			 * now they are stored as linear internally,
+			 * with screen gamma correction in certain places in the UI. */
 
 			/* don't know what scene is active, so we'll convert if any scene has it enabled... */
 			while (sce) {
@@ -11536,8 +11472,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 	
-	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 9))
-	{
+	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 9)) {
 		Scene *sce;
 		Mesh *me;
 		Object *ob;
@@ -11563,8 +11498,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 10))
-	{
+	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 10)) {
 		Object *ob;
 
 		/* properly initialize hair clothsim data on old files */
@@ -11581,8 +11515,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 	}
 
 	/* fix bad area setup in subversion 10 */
-	if (main->versionfile == 250 && main->subversionfile == 10)
-	{
+	if (main->versionfile == 250 && main->subversionfile == 10) {
 		/* fix for new view type in sequencer */
 		bScreen *screen;
 		ScrArea *sa;
@@ -11621,8 +11554,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 11))
-	{
+	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 11)) {
 		{
 			/* fix for new view type in sequencer */
 			bScreen *screen;
@@ -11664,8 +11596,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 12))
-	{
+	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 12)) {
 		Scene *sce;
 		Object *ob;
 		Brush *brush;
@@ -11767,7 +11698,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 	
 	if (main->versionfile < 250 || (main->versionfile == 250 && main->subversionfile < 13)) {
 		/* NOTE: if you do more conversion, be sure to do it outside of this and
-		   increase subversion again, otherwise it will not be correct */
+		 * increase subversion again, otherwise it will not be correct */
 		Object *ob;
 		
 		/* convert degrees to radians for internal use */
@@ -11870,7 +11801,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			if ((sce->r.ffcodecdata.flags & FFMPEG_MULTIPLEX_AUDIO) == 0)
 				sce->r.ffcodecdata.audio_codec = 0x0; // CODEC_ID_NONE
 
-			SEQ_BEGIN(sce->ed, seq) {
+			SEQ_BEGIN (sce->ed, seq) {
 				seq->volume = 1.0f;
 			}
 			SEQ_END
@@ -12026,8 +11957,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 	}
 	
 
-	if (main->versionfile < 253)
-	{
+	if (main->versionfile < 253) {
 		Object *ob;
 		Scene *scene;
 		bScreen *sc;
@@ -12140,7 +12070,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		for (scene= main->scene.first; scene; scene=scene->id.next) {
 			if (scene) {
 				Sequence *seq;
-				SEQ_BEGIN(scene->ed, seq) {
+				SEQ_BEGIN (scene->ed, seq) {
 					if (seq->sat==0.0f) {
 						seq->sat= 1.0f;
 					}
@@ -12238,8 +12168,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 253 || (main->versionfile == 253 && main->subversionfile < 1))
-		{
+	if (main->versionfile < 253 || (main->versionfile == 253 && main->subversionfile < 1)) {
 			Object *ob;
 
 			for (ob = main->object.first; ob; ob = ob->id.next) {
@@ -12248,8 +12177,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 					if (md->type == eModifierType_Smoke) {
 						SmokeModifierData *smd = (SmokeModifierData *)md;
 
-						if ((smd->type & MOD_SMOKE_TYPE_DOMAIN) && smd->domain)
-						{
+						if ((smd->type & MOD_SMOKE_TYPE_DOMAIN) && smd->domain) {
 							smd->domain->vorticity = 2.0f;
 							smd->domain->time_scale = 1.0f;
 
@@ -12268,8 +12196,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 										if (md2->type == eModifierType_Smoke) {
 											SmokeModifierData *smd2 = (SmokeModifierData *)md2;
 
-											if ((smd2->type & MOD_SMOKE_TYPE_FLOW) && smd2->flow)
-											{
+											if ((smd2->type & MOD_SMOKE_TYPE_FLOW) && smd2->flow) {
 												smd2->flow->flags |= MOD_SMOKE_FLOW_INITVELOCITY;
 											}
 										}
@@ -12355,8 +12282,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			for (act= ob->actuators.first; act; act= act->next) {
 				if (act->type==ACT_STEERING) {
 					bSteeringActuator* stact = act->data;
-					if (stact->facingaxis==0)
-					{
+					if (stact->facingaxis==0) {
 						stact->facingaxis=1;
 					}						
 				}
@@ -12616,11 +12542,10 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			Scene *scene;
 			Sequence *seq;
 
-			for (scene=main->scene.first; scene; scene=scene->id.next)
-			{
+			for (scene=main->scene.first; scene; scene=scene->id.next) {
 				scene->r.ffcodecdata.audio_channels = 2;
 				scene->audio.volume = 1.0f;
-				SEQ_BEGIN(scene->ed, seq) {
+				SEQ_BEGIN (scene->ed, seq) {
 					seq->pitch = 1.0f;
 				}
 				SEQ_END
@@ -12791,8 +12716,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		{
 			/* set defaults for obstacle avoidance, recast data */
 			Scene *sce;
-			for (sce = main->scene.first; sce; sce = sce->id.next)
-			{
+			for (sce = main->scene.first; sce; sce = sce->id.next) {
 				if (sce->gm.levelHeight == 0.f)
 					sce->gm.levelHeight = 2.f;
 
@@ -12834,7 +12758,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 			
 			for (sce=main->scene.first; sce; sce=sce->id.next) {
 				/* there are files with invalid audio_channels value, the real cause
-				   is unknown, but we fix it here anyway to avoid crashes */
+				 * is unknown, but we fix it here anyway to avoid crashes */
 				if (sce->r.ffcodecdata.audio_channels == 0)
 					sce->r.ffcodecdata.audio_channels = 2;
 
@@ -12972,8 +12896,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 260 || (main->versionfile == 260 && main->subversionfile < 6))
-	{
+	if (main->versionfile < 260 || (main->versionfile == 260 && main->subversionfile < 6)) {
 		Scene *sce;
 		MovieClip *clip;
 		bScreen *sc;
@@ -13037,8 +12960,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 260 || (main->versionfile == 260 && main->subversionfile < 8))
-	{
+	if (main->versionfile < 260 || (main->versionfile == 260 && main->subversionfile < 8)) {
 		Brush *brush;
 
 		for (brush= main->brush.first; brush; brush= brush->id.next) {
@@ -13047,8 +12969,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 261 || (main->versionfile == 261 && main->subversionfile < 1))
-	{
+	if (main->versionfile < 261 || (main->versionfile == 261 && main->subversionfile < 1)) {
 		{
 			/* update use flags for node sockets (was only temporary before) */
 			Scene *sce;
@@ -13147,42 +13068,9 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 				}
 			}
 		}
-		{
-			/* set the SOCK_AUTO_HIDDEN flag on collapsed nodes */
-			Scene *sce;
-			Material *mat;
-			Tex *tex;
-			Lamp *lamp;
-			World *world;
-			bNodeTree *ntree;
-
-			for (sce=main->scene.first; sce; sce=sce->id.next)
-				if (sce->nodetree)
-					do_versions_nodetree_socket_auto_hidden_flags_2_62(sce->nodetree);
-
-			for (mat=main->mat.first; mat; mat=mat->id.next)
-				if (mat->nodetree)
-					do_versions_nodetree_socket_auto_hidden_flags_2_62(mat->nodetree);
-
-			for (tex=main->tex.first; tex; tex=tex->id.next)
-				if (tex->nodetree)
-					do_versions_nodetree_socket_auto_hidden_flags_2_62(tex->nodetree);
-
-			for (lamp=main->lamp.first; lamp; lamp=lamp->id.next)
-				if (lamp->nodetree)
-					do_versions_nodetree_socket_auto_hidden_flags_2_62(lamp->nodetree);
-
-			for (world=main->world.first; world; world=world->id.next)
-				if (world->nodetree)
-					do_versions_nodetree_socket_auto_hidden_flags_2_62(world->nodetree);
-
-			for (ntree=main->nodetree.first; ntree; ntree=ntree->id.next)
-				do_versions_nodetree_socket_auto_hidden_flags_2_62(ntree);
-		}
 	}
 
-	if (main->versionfile < 261 || (main->versionfile == 261 && main->subversionfile < 2))
-	{
+	if (main->versionfile < 261 || (main->versionfile == 261 && main->subversionfile < 2)) {
 		{
 			/* convert Camera Actuator values to defines */
 			Object *ob;
@@ -13203,7 +13091,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 
 		{
 			/* convert deprecated sculpt_paint_unified_* fields to
-			   UnifiedPaintSettings */
+			 * UnifiedPaintSettings */
 			Scene *scene;
 			for (scene= main->scene.first; scene; scene= scene->id.next) {
 				ToolSettings *ts= scene->toolsettings;
@@ -13216,8 +13104,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 261 || (main->versionfile == 261 && main->subversionfile < 3))
-	{
+	if (main->versionfile < 261 || (main->versionfile == 261 && main->subversionfile < 3)) {
 		{
 			/* convert extended ascii to utf-8 for text editor */
 			Text *text;
@@ -13243,8 +13130,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 				for (md= ob->modifiers.first; md; md= md->next) {
 					if (md->type == eModifierType_DynamicPaint) {
 						DynamicPaintModifierData *pmd = (DynamicPaintModifierData *)md;
-						if (pmd->canvas)
-						{
+						if (pmd->canvas) {
 							DynamicPaintSurface *surface = pmd->canvas->surfaces.first;
 							for (; surface; surface=surface->next) {
 								surface->color_dry_threshold = 1.0f;
@@ -13259,8 +13145,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 	
-	if (main->versionfile < 262)
-	{
+	if (main->versionfile < 262) {
 		Object *ob;
 		for (ob=main->object.first; ob; ob= ob->id.next) {
 			ModifierData *md;
@@ -13275,10 +13160,9 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 263)
-	{
+	if (main->versionfile < 263) {
 		/* set fluidsim rate. the version patch for this in 2.62 was wrong, so
-		   try to correct it, if rate is 0.0 that's likely not intentional */
+		 * try to correct it, if rate is 0.0 that's likely not intentional */
 		Object *ob;
 
 		for (ob = main->object.first; ob; ob = ob->id.next) {
@@ -13293,8 +13177,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
-	if (main->versionfile < 262 || (main->versionfile == 262 && main->subversionfile < 1))
-	{
+	if (main->versionfile < 262 || (main->versionfile == 262 && main->subversionfile < 1)) {
 		/* update use flags for node sockets (was only temporary before) */
 		Scene *sce;
 		bNodeTree *ntree;
@@ -13309,8 +13192,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 	}
 
 	/* only swap for pre-release bmesh merge which had MLoopCol red/blue swap */
-	if (main->versionfile == 262 && main->subversionfile == 1)
-	{
+	if (main->versionfile == 262 && main->subversionfile == 1) {
 		{
 			Mesh *me;
 			for (me = main->mesh.first; me; me = me->id.next) {
@@ -13320,8 +13202,7 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 
 	}
 
-	if (main->versionfile < 262 || (main->versionfile == 262 && main->subversionfile < 2))
-	{
+	if (main->versionfile < 262 || (main->versionfile == 262 && main->subversionfile < 2)) {
 		{
 			/* Set new idname of keyingsets from their now "label-only" name. */
 			Scene *scene;
@@ -13335,14 +13216,13 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 	
-	if (main->versionfile < 262 || (main->versionfile == 262 && main->subversionfile < 3))
-	{
+	if (main->versionfile < 262 || (main->versionfile == 262 && main->subversionfile < 3)) {
 		Object *ob;
 		ModifierData *md;
 	
-		for(ob = main->object.first; ob; ob = ob->id.next) {
-			for(md=ob->modifiers.first; md; md=md->next) {
-				if(md->type == eModifierType_Lattice) {
+		for (ob = main->object.first; ob; ob = ob->id.next) {
+			for (md=ob->modifiers.first; md; md=md->next) {
+				if (md->type == eModifierType_Lattice) {
 					LatticeModifierData *lmd = (LatticeModifierData *)md;
 					lmd->strength = 1.0f;
 				}
@@ -13350,17 +13230,35 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
 		}
 	}
 
+	if (main->versionfile < 262 || (main->versionfile == 262 && main->subversionfile < 4)) {
+		/* Read Viscosity presets from older files */
+		Object *ob;
 
-	{
+		for (ob = main->object.first; ob; ob = ob->id.next) {
+			ModifierData *md;
+			for (md = ob->modifiers.first; md; md = md->next) {
+				if (md->type == eModifierType_Fluidsim) {
+					FluidsimModifierData *fmd = (FluidsimModifierData *)md;
+					if (fmd->fss->viscosityMode == 3) {
+						fmd->fss->viscosityValue = 5.0;
+						fmd->fss->viscosityExponent = 5;
+					}
+					else if (fmd->fss->viscosityMode == 4) {
+						fmd->fss->viscosityValue = 2.0;
+						fmd->fss->viscosityExponent = 3;
+					}
+				}
+			}
+		}
+	}
+
+
+
+	if (main->versionfile < 263) {
 		/* Default for old files is to save particle rotations to pointcache */
 		ParticleSettings *part;
 		for (part = main->particle.first; part; part = part->id.next)
 			part->flag |= PART_ROTATIONS;
-	}
-
-	/* put compatibility code here until next subversion bump */
-	{
-
 	}
 
 	/* WATCH IT!!!: pointers from libdata have not been converted yet here! */
@@ -13494,7 +13392,7 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
 	BLI_strncpy(bfd->main->name, filepath, sizeof(bfd->main->name));
 
 	while (bhead) {
-		switch(bhead->code) {
+		switch (bhead->code) {
 		case DATA:
 		case DNA1:
 		case TEST: /* used as preview since 2.5x */
@@ -13513,10 +13411,10 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath)
 
 		case ID_LI:
 			/* skip library datablocks in undo, this works together with
-			   BLO_read_from_memfile, where the old main->library is restored
-			   overwriting  the libraries from the memory file. previously
-			   it did not save ID_LI/ID_ID blocks in this case, but they are
-			   needed to make quit.blend recover them correctly. */
+			 * BLO_read_from_memfile, where the old main->library is restored
+			 * overwriting  the libraries from the memory file. previously
+			 * it did not save ID_LI/ID_ID blocks in this case, but they are
+			 * needed to make quit.blend recover them correctly. */
 			if (fd->memfile)
 				bhead= blo_nextbhead(fd, bhead);
 			else
@@ -13686,7 +13584,7 @@ static void expand_doit(FileData *fd, Main *mainvar, void *old)
 					/* This crashes files, must look further into it */
 					
 					/* Update: the issue is that in file reading, the oldnewmap is OK, but for existing data, it has to be
-					   inserted in the map to be found! */
+					 * inserted in the map to be found! */
 					if (id->flag & LIB_PRE_EXISTING)
 						oldnewmap_insert(fd->libmap, bhead->old, id, 1);
 					
@@ -13705,7 +13603,7 @@ static void expand_doit(FileData *fd, Main *mainvar, void *old)
 			}
 			else {
 				/* this is actually only needed on UI call? when ID was already read before, and another append
-				   happens which invokes same ID... in that case the lookup table needs this entry */
+				 * happens which invokes same ID... in that case the lookup table needs this entry */
 				oldnewmap_insert(fd->libmap, bhead->old, id, 1);
 				// commented because this can print way too much
 				// if (G.debug & G_DEBUG) printf("expand: already read %s\n", id->name);
@@ -14322,7 +14220,7 @@ static void expand_scene(FileData *fd, Main *mainvar, Scene *sce)
 	if (sce->ed) {
 		Sequence *seq;
 
-		SEQ_BEGIN(sce->ed, seq) {
+		SEQ_BEGIN (sce->ed, seq) {
 			if (seq->scene) expand_doit(fd, mainvar, seq->scene);
 			if (seq->scene_camera) expand_doit(fd, mainvar, seq->scene_camera);
 			if (seq->sound) expand_doit(fd, mainvar, seq->sound);
@@ -14390,7 +14288,7 @@ static void expand_main(FileData *fd, Main *mainvar)
 			while (id) {
 				if (id->flag & LIB_TEST) {
 
-					switch(GS(id->name)) {
+					switch (GS(id->name)) {
 
 					case ID_OB:
 						expand_object(fd, mainvar, (Object *)id);
@@ -14491,11 +14389,11 @@ static void give_base_to_objects(Main *mainvar, Scene *sce, Library *lib, const 
 		
 		if ( ob->id.flag & LIB_INDIRECT ) {
 			
-				/* IF below is quite confusing!
-				if we are appending, but this object wasnt just added along with a group,
-				then this is already used indirectly in the scene somewhere else and we didnt just append it.
-				
-				(ob->id.flag & LIB_PRE_EXISTING)==0 means that this is a newly appended object - Campbell */
+			/* IF below is quite confusing!
+			 * if we are appending, but this object wasnt just added along with a group,
+			 * then this is already used indirectly in the scene somewhere else and we didnt just append it.
+			 *
+			 * (ob->id.flag & LIB_PRE_EXISTING)==0 means that this is a newly appended object - Campbell */
 			if (is_group_append==0 || (ob->id.flag & LIB_PRE_EXISTING)==0) {
 				
 				int do_it= 0;
@@ -14573,7 +14471,7 @@ static void give_base_to_groups(Main *mainvar, Scene *scene)
 }
 
 /* returns true if the item was found
-* but it may already have already been appended/linked */
+ * but it may already have already been appended/linked */
 static ID *append_named_part(Main *mainl, FileData *fd, const char *idname, const short idcode)
 {
 	BHead *bhead;

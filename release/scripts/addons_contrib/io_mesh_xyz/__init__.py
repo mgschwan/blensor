@@ -75,6 +75,10 @@ class CLASS_atom_xyz_prepare_panel(Panel):
 
     def draw(self, context):
         layout = self.layout
+
+        if len(context.scene.atom_xyz) == 0:
+            bpy.context.scene.atom_xyz.add()
+
         scn    = context.scene.atom_xyz[0]
 
         row = layout.row()

@@ -68,19 +68,16 @@
 #include <fcntl.h>
 #include <string.h>			/* strcpy etc.. */
 
-#ifndef WIN32
-#include <sys/ioctl.h>
-#include <unistd.h>			/*  */
-#include <pwd.h>
-#endif
-
 #ifdef WIN32
-#include <io.h>
-#include <direct.h>
-#include "BLI_winstuff.h"
-#include "utfconv.h"
+#  include <io.h>
+#  include <direct.h>
+#  include "BLI_winstuff.h"
+#  include "utfconv.h"
+#else
+#  include <sys/ioctl.h>
+#  include <unistd.h>
+#  include <pwd.h>
 #endif
-
 
 /* lib includes */
 #include "MEM_guardedalloc.h"
@@ -224,16 +221,16 @@ static void bli_builddir(const char *dirname, const char *relname)
 		return;
 	}
 #else
-	UTF16_ENCODE(dirname)
+	UTF16_ENCODE(dirname);
 	if (!SetCurrentDirectoryW(dirname_16)) {
 		perror(dirname);
 		free(dirname_16);
 		return;
 	}
-	UTF16_UN_ENCODE(dirname)
+	UTF16_UN_ENCODE(dirname);
 
 #endif
-	if ( (dir = (DIR *)opendir(".")) ) {
+	if ((dir = (DIR *)opendir("."))) {
 		while ((fname = (struct dirent*) readdir(dir)) != NULL) {
 			dlink = (struct dirlink *)malloc(sizeof(struct dirlink));
 			if (dlink) {
@@ -247,13 +244,13 @@ static void bli_builddir(const char *dirname, const char *relname)
 		if (newnum) {
 
 			if (files) {
-				void *tmp= realloc(files, (totnum+newnum) * sizeof(struct direntry));
+				void *tmp = realloc(files, (totnum+newnum) * sizeof(struct direntry));
 				if (tmp) {
-					files= (struct direntry *)tmp;
+					files = (struct direntry *)tmp;
 				}
 				else { /* realloc fail */
 					free(files);
-					files= NULL;
+					files = NULL;
 				}
 			}
 			
@@ -475,9 +472,9 @@ int BLI_exists(const char *name)
 #else
 	struct _stati64 st;
 #endif
-	/*  in Windows stat doesn't recognize dir ending on a slash 
-		To not break code where the ending slash is expected we
-		don't mess with the argument name directly here - elubie */
+	/* in Windows stat doesn't recognize dir ending on a slash
+	 * To not break code where the ending slash is expected we
+	 * don't mess with the argument name directly here - elubie */
 	wchar_t * tmp_16 = alloc_utf16_from_8(name, 0);
 	int len, res;
 	len = wcslen(tmp_16);
@@ -554,19 +551,20 @@ void BLI_file_free_lines(LinkNode *lines)
 	BLI_linklist_free(lines, (void(*)(void*)) MEM_freeN);
 }
 
+/** is file1 older then file2 */
 int BLI_file_older(const char *file1, const char *file2)
 {
-#if WIN32
+#ifdef WIN32
 	struct _stat st1, st2;
 
-	UTF16_ENCODE(file1)
-	UTF16_ENCODE(file2)
+	UTF16_ENCODE(file1);
+	UTF16_ENCODE(file2);
 	
 	if (_wstat(file1_16, &st1)) return 0;
 	if (_wstat(file2_16, &st2)) return 0;
 
-	UTF16_UN_ENCODE(file2)
-	UTF16_UN_ENCODE(file1)
+	UTF16_UN_ENCODE(file2);
+	UTF16_UN_ENCODE(file1);
 #else
 	struct stat st1, st2;
 

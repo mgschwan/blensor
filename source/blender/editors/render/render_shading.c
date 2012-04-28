@@ -170,8 +170,7 @@ static int material_slot_assign_exec(bContext *C, wmOperator *UNUSED(op))
 			BMIter iter;
 
 			if (em) {
-				BM_ITER(efa, &iter, em->bm, BM_FACES_OF_MESH, NULL)
-				{
+				BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
 					if (BM_elem_flag_test(efa, BM_ELEM_SELECT))
 						efa->mat_nr = ob->actcol - 1;
 				}
@@ -179,7 +178,7 @@ static int material_slot_assign_exec(bContext *C, wmOperator *UNUSED(op))
 		}
 		else if (ELEM(ob->type, OB_CURVE, OB_SURF)) {
 			Nurb *nu;
-			ListBase *nurbs = curve_editnurbs((Curve *)ob->data);
+			ListBase *nurbs = BKE_curve_editNurbs_get((Curve *)ob->data);
 
 			if (nurbs) {
 				for (nu = nurbs->first; nu; nu = nu->next)
@@ -234,7 +233,7 @@ static int material_slot_de_select(bContext *C, int select)
 		}
 	}
 	else if (ELEM(ob->type, OB_CURVE, OB_SURF)) {
-		ListBase *nurbs = curve_editnurbs((Curve *)ob->data);
+		ListBase *nurbs = BKE_curve_editNurbs_get((Curve *)ob->data);
 		Nurb *nu;
 		BPoint *bp;
 		BezTriple *bezt;
@@ -330,7 +329,7 @@ static int material_slot_copy_exec(bContext *C, wmOperator *UNUSED(op))
 	if (!ob || !(matar = give_matarar(ob)))
 		return OPERATOR_CANCELLED;
 
-	CTX_DATA_BEGIN(C, Object *, ob_iter, selected_editable_objects) {
+	CTX_DATA_BEGIN (C, Object *, ob_iter, selected_editable_objects) {
 		if (ob != ob_iter && give_matarar(ob_iter)) {
 			if (ob->data != ob_iter->data)
 				assign_matarar(ob_iter, matar, ob->totcol);

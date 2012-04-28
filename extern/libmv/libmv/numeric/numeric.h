@@ -33,7 +33,7 @@
 #include <Eigen/QR>
 #include <Eigen/SVD>
 
-#if _WIN32 || __APPLE__ || __FreeBSD__
+#if (defined(_WIN32) || defined(__APPLE__) || defined(__FreeBSD__)) && !defined(__MINGW64__)
   void static sincos (double x, double *sinx, double *cosx) {
     *sinx = sin(x);
     *cosx = cos(x);
@@ -473,6 +473,17 @@ inline Mat23 SkewMatMinimal(const Vec2 &x) {
   skew << 0,-1,  x(1),
           1, 0, -x(0);
   return skew;
+}
+
+/// Returns the rotaiton matrix built from given vector of euler angles
+inline Mat3 RotationFromEulerVector(Vec3 euler_vector) {
+  double theta = euler_vector.norm();
+  if (theta == 0.0) {
+    return Mat3::Identity();
+  }
+  Vec3 w = euler_vector / theta;
+  Mat3 w_hat = CrossProductMatrix(w);
+  return Mat3::Identity() + w_hat*sin(theta) + w_hat*w_hat*(1 - cos(theta));
 }
 } // namespace libmv
 

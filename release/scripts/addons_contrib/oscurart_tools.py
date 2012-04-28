@@ -35,6 +35,7 @@ import math
 import sys
 import os
 import stat
+import bmesh
 
 ## CREA PANELES EN TOOLS
 
@@ -241,6 +242,7 @@ class OscPanelOverrides(OscPollOverrides, bpy.types.Panel):
         col.label(text="Active Scene: " + bpy.context.scene.name)
         col.label(text="Example: [[Group,Material]]")        
         col.prop(bpy.context.scene, '["OVERRIDE"]', text="")
+        col.operator("render.check_overrides", text="Check List",icon="ZOOM_ALL")
         
         boxcol=layout.box().column(align=1)
         boxcol.label(text="Danger Zone")
@@ -264,12 +266,18 @@ class reloadImages (bpy.types.Operator):
 ##-----------------------------RESYM---------------------------
 
 def defResym(self, OFFSET, SUBD):
+    
+    ##EDIT    
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    
     ##SETEO VERTEX MODE        
     bpy.context.tool_settings.mesh_select_mode[0]=1
     bpy.context.tool_settings.mesh_select_mode[1]=0
     bpy.context.tool_settings.mesh_select_mode[2]=0
     
     OBJETO = bpy.context.active_object
+    OBDATA = bmesh.from_edit_mesh(OBJETO.data)
+    OBDATA.select_flush(False)
 
     if SUBD > 0:
         USESUB=True
@@ -278,31 +286,22 @@ def defResym(self, OFFSET, SUBD):
         USESUB=False
         SUBLEV=1
     
-    ## IGUALO VERTICES CERCANOS A CERO
-    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)        
-    for vertice in bpy.context.object.data.vertices:
+    ## IGUALO VERTICES CERCANOS A CERO      
+    for vertice in OBDATA.verts[:]:
         if abs(vertice.co[0]) < OFFSET  : 
-            vertice.co[0] = 0                
-    bpy.ops.object.mode_set(mode='EDIT', toggle=False)    
-    
-
-    ## OBJETO ACTIVO
-    bpy.data.scenes[0].objects.active = OBJETO
+            vertice.co[0] = 0              
+            
     ##BORRA IZQUIERDA
-    bpy.ops.object.mode_set(mode="EDIT", toggle=False)
     bpy.ops.mesh.select_all(action="DESELECT")
-    bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-    for vertices in OBJETO.data.vertices:
+       
+    for vertices in OBDATA.verts[:]:
       if vertices.co[0] < 0:
         vertices.select = 1
-    ## EDIT    
-    bpy.ops.object.mode_set(mode="EDIT", toggle=False)
+    
     ## BORRA COMPONENTES
     bpy.ops.mesh.delete()
     ## SUMA MIRROR
-    bpy.ops.object.modifier_add(type='MIRROR')
-    ## PASO A EDIT MODE
-    bpy.ops.object.mode_set(mode="EDIT", toggle= False)
+    bpy.ops.object.modifier_add(type='MIRROR')    
     ## SELECCIONO TODOS LOS COMPONENTES
     bpy.ops.mesh.select_all(action="SELECT")
     ## CREO UV TEXTURE DEL SIMETRICO
@@ -311,8 +310,6 @@ def defResym(self, OFFSET, SUBD):
     LENUVLISTSIM = len(bpy.data.objects[OBJETO.name].data.uv_textures)
     LENUVLISTSIM = LENUVLISTSIM - 1
     OBJETO.data.uv_textures[LENUVLISTSIM:][0].name = "SYMMETRICAL"
-    ## MODO EDICION
-    bpy.ops.object.mode_set(mode="EDIT", toggle= False)
     ## UNWRAP
     bpy.ops.uv.unwrap(method='ANGLE_BASED', fill_holes=True, correct_aspect=False, use_subsurf_data=USESUB, uv_subsurf_level=SUBLEV)
     ## MODO OBJETO
@@ -321,6 +318,8 @@ def defResym(self, OFFSET, SUBD):
     bpy.ops.object.modifier_apply(apply_as='DATA', modifier="Mirror")
     ## VUELVO A EDIT MODE
     bpy.ops.object.mode_set(mode="EDIT", toggle= False)
+    OBDATA = bmesh.from_edit_mesh(OBJETO.data)
+    OBDATA.select_flush(0)
     ## CREO UV TEXTURE DEL ASIMETRICO
     bpy.ops.mesh.uv_texture_add()
     ## SETEO VARIABLE CON LA CANTIDAD DE UVS, RESTO UNO Y LE DOY UN NOMBRE
@@ -329,13 +328,9 @@ def defResym(self, OFFSET, SUBD):
     OBJETO.data.uv_textures[LENUVLISTASIM:][0].name = "ASYMMETRICAL"
     ## SETEO UV ACTIVO
     OBJETO.data.uv_textures.active = OBJETO.data.uv_textures["ASYMMETRICAL"]
-    ## EDIT MODE
-    bpy.ops.object.mode_set(mode="EDIT", toggle= False)
     ## UNWRAP
     bpy.ops.uv.unwrap(method='ANGLE_BASED', fill_holes=True, correct_aspect=False, use_subsurf_data=USESUB, uv_subsurf_level=SUBLEV)
-    ## PASO A OBJECT MODE
-    bpy.ops.object.mode_set(mode="OBJECT", toggle= False)    
-
+    
 
 class resym (bpy.types.Operator):
     bl_idname = "mesh.resym_osc"
@@ -350,15 +345,14 @@ class resym (bpy.types.Operator):
 ## -----------------------------------SELECT LEFT---------------------
 def side (self, nombre, offset): 
     
+    bpy.ops.object.mode_set(mode="EDIT", toggle=0)
+    
     OBJECT=bpy.context.active_object        
-
+    ODATA = bmesh.from_edit_mesh(OBJECT.data)
     MODE=bpy.context.mode
 
-    bpy.ops.object.mode_set(mode="EDIT", toggle=0)
-    bpy.ops.mesh.select_all(action='DESELECT')    
-    bpy.ops.object.mode_set(mode="OBJECT", toggle=0)
-
-
+    
+    
     ##SETEO VERTEX MODE
     
     bpy.context.tool_settings.mesh_select_mode[0]=1
@@ -366,20 +360,22 @@ def side (self, nombre, offset):
     bpy.context.tool_settings.mesh_select_mode[2]=0
     
     ## DESELECCIONA TODO
-    for VERTICE in OBJECT.data.vertices[:]:
+    for VERTICE in ODATA.verts[:]:
         VERTICE.select = False
     
     if nombre == False:
         ## CONDICION QUE SI EL VERTICE ES MENOR A 0 LO SELECCIONA  
-        for VERTICES in OBJECT.data.vertices[:]:
+        for VERTICES in ODATA.verts[:]:
             if VERTICES.co[0] < (offset):
                 VERTICES.select = 1  
     else:
         ## CONDICION QUE SI EL VERTICE ES MENOR A 0 LO SELECCIONA        
-        for VERTICES in OBJECT.data.vertices[:]:
+        for VERTICES in ODATA.verts[:]:
             if VERTICES.co[0] > (offset):
                 VERTICES.select = 1                              
 
+    ODATA.select_flush(False)
+    
     bpy.ops.object.mode_set(mode="EDIT", toggle=0)    
 
 
@@ -883,7 +879,7 @@ def defRenderAll (FRAMETYPE):
     for OBJECT in bpy.data.objects[:]:
         SLOTLIST=[]
         try:
-            if OBJECT.type=="MESH":
+            if OBJECT.type=="MESH" or OBJECT.type == "META":
                 for SLOT in OBJECT.material_slots[:]:
                     SLOTLIST.append(SLOT.material)
                
@@ -917,7 +913,7 @@ def defRenderAll (FRAMETYPE):
         try:
             for OVERRIDE in PROPTOLIST:
                 for OBJECT in bpy.data.groups[OVERRIDE[0]].objects[:]:
-                    if OBJECT.type == "MESH":
+                    if OBJECT.type == "MESH" or OBJECT.type == "META":
                         for SLOT in OBJECT.material_slots[:]:
                             SLOT.material=bpy.data.materials[OVERRIDE[1]]             
         except:
@@ -1019,7 +1015,7 @@ def defRenderSelected(FRAMETYPE):
     for OBJECT in bpy.data.objects[:]:
         SLOTLIST=[]
         try:
-            if OBJECT.type=="MESH":
+            if OBJECT.type=="MESH" or OBJECT.type == "META":
                 for SLOT in OBJECT.material_slots[:]:
                     SLOTLIST.append(SLOT.material)
                
@@ -1051,7 +1047,7 @@ def defRenderSelected(FRAMETYPE):
             try:
                 for OVERRIDE in PROPTOLIST:
                     for OBJECT in bpy.data.groups[OVERRIDE[0]].objects[:]:
-                        if OBJECT.type == "MESH":
+                        if OBJECT.type == "MESH" or OBJECT.type == "META":
                             for SLOT in OBJECT.material_slots[:]:
                                 SLOT.material=bpy.data.materials[OVERRIDE[1]]             
             except:
@@ -1151,7 +1147,7 @@ def defRenderCurrent (FRAMETYPE):
     for OBJECT in bpy.data.objects[:]:
         SLOTLIST=[]
         try:
-            if OBJECT.type=="MESH":
+            if OBJECT.type=="MESH" or OBJECT.type == "META":
                 for SLOT in OBJECT.material_slots[:]:
                     SLOTLIST.append(SLOT.material)               
                 LISTMAT.append((OBJECT,SLOTLIST))
@@ -1176,7 +1172,7 @@ def defRenderCurrent (FRAMETYPE):
     try:
         for OVERRIDE in PROPTOLIST:
             for OBJECT in bpy.data.groups[OVERRIDE[0]].objects[:]:
-                if OBJECT.type == "MESH":
+                if OBJECT.type == "MESH" or OBJECT.type == "META":
                     for SLOT in OBJECT.material_slots[:]:
                         SLOT.material=bpy.data.materials[OVERRIDE[1]]             
     except:
@@ -2370,16 +2366,18 @@ class OscImportVG (bpy.types.Operator):
 ## ------------------------------------ RELINK OBJECTS--------------------------------------   
 
 
-def relinkObjects (self,MODE):   
-    SCENES = bpy.data.scenes[:]
+def relinkObjects (self):  
     
-    if MODE == "ALL":
-        OBJECTS = bpy.data.objects[:]
-    else:
-        OBJECTS = bpy.selection[:]
+    LISTSCENE=[]
+    
+    for SCENE in bpy.data.scenes[:]:
+        if bpy.selection[-1] in SCENE.objects[:]:
+            LISTSCENE.append(SCENE)    
+
+    OBJECTS = bpy.selection[:-1]
     
     ## REMUEVO ESCENA ACTIVA
-    SCENES.remove(bpy.context.scene)
+    LISTSCENE.remove(bpy.context.scene)
     
     ## DESELECT
     bpy.ops.object.select_all(action='DESELECT')
@@ -2391,7 +2389,7 @@ def relinkObjects (self,MODE):
             OBJETO.select = True
         
     ## LINK
-    for SCENE in SCENES:
+    for SCENE in LISTSCENE:
         bpy.ops.object.make_links_scene(scene=SCENE.name)           
     
 
@@ -2400,17 +2398,10 @@ class OscRelinkObjectsBetween (bpy.types.Operator):
     bl_label = "Relink Objects Between Scenes" 
     bl_options =  {"REGISTER","UNDO"}  
     
-    type = bpy.props.EnumProperty(
-            name="Object Mode",
-            description="Object Mode.",
-            items=(('ALL', "All Objects", "Relink all Objects."),
-                   ('SEL', "Selected Objects", "Relink Only The Selected Objects")),
-            default='SEL',
-            )
    
       
     def execute (self, context):
-        relinkObjects(self,self.type)        
+        relinkObjects(self)        
         return {'FINISHED'}
     
 
@@ -2418,21 +2409,46 @@ class OscRelinkObjectsBetween (bpy.types.Operator):
 ## ------------------------------------ COPY GROUPS AND LAYERS--------------------------------------   
 
 
-def CopyObjectGroupsAndLayers (self):            
+def CopyObjectGroupsAndLayers (self): 
+              
     OBSEL=bpy.selection[:]
+    GLOBALLAYERS=str(OBSEL[-1].layers[:])
     ACTSCENE=bpy.context.scene
     GROUPS=OBSEL[-1].users_group
+    ERROR=False    
     
     for OBJECT in OBSEL[:-1]:
         for scene in bpy.data.scenes[:]:
-            bpy.context.window.screen.scene=scene
-            scene.objects[OBJECT.name].layers=OBSEL[-1].layers
-            scene.objects.active=OBJECT
-            for GROUP in GROUPS:
-                bpy.ops.object.group_link(group=GROUP.name)            
-            print(OBJECT.name)
+            try:
+                ISINLAYER=False
+                bpy.context.window.screen.scene=scene
+                
+                if OBSEL[-1] in bpy.context.scene.objects[:]:
+                    scene.objects[OBJECT.name].layers=OBSEL[-1].layers
+                else:
+                    scene.objects[OBJECT.name].layers=list(eval(GLOBALLAYERS))
+                    ISINLAYER=True
+                    
+                
+                scene.objects.active=OBJECT
+                
+                for GROUP in GROUPS:
+                    bpy.ops.object.group_link(group=GROUP.name)      
+                
+                if ISINLAYER == False:                          
+                    print("-- %s was successfully copied in %s" % (OBJECT.name,scene.name))
+                else:
+                    print("++ %s copy data from %s in %s" % (OBJECT.name,ACTSCENE.name,scene.name))    
+            except:
+                print ("** %s was not copied in %s" % (OBJECT.name,scene.name))  
+                ERROR = True 
+    bpy.context.window.screen.scene=ACTSCENE 
     
-    bpy.context.window.screen.scene=ACTSCENE    
+    if ERROR == False:
+        self.report({'INFO'}, "All Objects were Successfully Copied")
+    else:
+        self.report({'WARNING'}, "Some Objects Could not be Copied")    
+           
 
 class OscCopyObjectGAL (bpy.types.Operator):
     bl_idname = "objects.copy_objects_groups_layers"
@@ -2473,7 +2489,7 @@ class OscApplyOverrides(bpy.types.Operator):
         for OBJECT in bpy.data.objects[:]:
             SLOTLIST=[]
             try:
-                if OBJECT.type=="MESH":
+                if OBJECT.type=="MESH" or OBJECT.type == "META":
                     for SLOT in OBJECT.material_slots[:]:
                         SLOTLIST.append(SLOT.material)                   
                     LISTMAT.append((OBJECT,SLOTLIST))        
@@ -2482,7 +2498,7 @@ class OscApplyOverrides(bpy.types.Operator):
         try:
             for OVERRIDE in PROPTOLIST:
                 for OBJECT in bpy.data.groups[OVERRIDE[0]].objects[:]:
-                    if OBJECT.type == "MESH":
+                    if OBJECT.type == "MESH" or OBJECT.type == "META":
                         for SLOT in OBJECT.material_slots[:]:
                             SLOT.material=bpy.data.materials[OVERRIDE[1]]             
         except:
@@ -2527,7 +2543,72 @@ class OscRestoreOverrides(bpy.types.Operator):
         # CIERRO
         XML.close()
        
-        return {'FINISHED'}       
+        return {'FINISHED'}     
+    
+    
+## ------------------------------------ CHECK OVERRIDES --------------------------------------   
+
+class OscCheckOverrides (bpy.types.Operator):
+    bl_idname = "render.check_overrides"
+    bl_label = "Check Overrides" 
+    bl_options =  {"REGISTER","UNDO"}  
+   
+      
+    def execute (self, context):
+        GROUPI=False
+        GLOBAL=0
+        GLOBALERROR=0
+        
+        print("==== STARTING CHECKING ====")
+        print("")
+        
+        for SCENE in bpy.data.scenes[:]:            
+            MATLIST=[]
+            MATI=False       
+                 
+            for MATERIAL in bpy.data.materials[:]:
+                MATLIST.append(MATERIAL.name)
+                
+            GROUPLIST=[]
+            for GROUP in bpy.data.groups[:]:
+                if GROUP.users > 0:
+                    GROUPLIST.append(GROUP.name)
+                
+            print("   %s Scene is checking" % (SCENE.name))
+            
+            for OVERRIDE in list(eval(SCENE['OVERRIDE'])):
+                # REVISO OVERRIDES EN GRUPOS
+                if OVERRIDE[0] in GROUPLIST:
+                    pass
+                else:                    
+                    print("** %s group are in conflict." % (OVERRIDE[0]))
+                    GROUPI=True
+                    GLOBALERROR+=1
+                # REVISO OVERRIDES EN GRUPOS    
+                if OVERRIDE[1] in MATLIST:
+                    pass
+                else:                 
+                    print("** %s material are in conflict." % (OVERRIDE[1]))
+                    MATI=True
+                    GLOBALERROR+=1
+            
+            if MATI is False:
+                print("-- Materials are ok.") 
+            else:    
+                GLOBAL+=1
+            if GROUPI is False:
+                print("-- Groups are ok.")   
+            else:    
+                GLOBAL+=1
+      
+        if GLOBAL < 1:     
+            self.report({'INFO'}, "Materials And Groups are Ok")     
+        if GLOBALERROR > 0:
+            self.report({'WARNING'}, "Override Error: Look in the Console")    
+        print("")
+
+        return {'FINISHED'}
+          
      
    
 ##======================================================================================FIN DE SCRIPTS    
@@ -2585,3 +2666,4 @@ bpy.utils.register_class(OscRelinkObjectsBetween)
 bpy.utils.register_class(OscCopyObjectGAL) 
 bpy.utils.register_class(OscApplyOverrides)
 bpy.utils.register_class(OscRestoreOverrides)
+bpy.utils.register_class(OscCheckOverrides)

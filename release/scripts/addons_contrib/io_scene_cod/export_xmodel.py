@@ -1,4 +1,4 @@
-﻿# ##### BEGIN GPL LICENSE BLOCK #####
+# ##### BEGIN GPL LICENSE BLOCK #####
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -35,16 +35,16 @@ from datetime import datetime
 def save(self, context, filepath="",
          use_version='6',
          use_selection=False,
-         use_vertex_colors=True,
          use_apply_modifiers=True,
          use_armature=True,
+         use_vertex_colors=True,
+         use_vertex_colors_alpha=False,
          use_vertex_cleanup=False,
          use_armature_pose=False,
          use_frame_start=1,
          use_frame_end=250,
          use_weight_min=False,
-         use_weight_min_threshold=0.010097
-         ):
+         use_weight_min_threshold=0.010097):
 
     # There's no context object right after object deletion, need to set one
     if context.object:
@@ -77,14 +77,14 @@ def save(self, context, filepath="",
         result = _write(self, context, filepath,
                         use_version,
                         use_selection,
-                        use_vertex_colors,
                         use_apply_modifiers,
                         use_armature,
+                        use_vertex_colors,
+                        use_vertex_colors_alpha,
                         use_vertex_cleanup,
                         use_armature_pose,
                         use_weight_min,
-                        use_weight_min_threshold
-                        )
+                        use_weight_min_threshold)
     else:
 
         if use_frame_start < use_frame_end:
@@ -105,8 +105,8 @@ def save(self, context, filepath="",
                                               use_frame_end + frame_order,
                                               frame_order
                                               ),
-                                        frame_min
-                                        ):
+                                        frame_min):
+
             # Set frame for export
             # Don't do it directly to frame_current, as to_mesh() won't use updated frame!
             context.scene.frame_set(frame)
@@ -117,9 +117,10 @@ def save(self, context, filepath="",
             result = _write(self, context, filepath_frame,
                             use_version,
                             use_selection,
-                            use_vertex_colors,
                             use_apply_modifiers,
                             use_armature,
+                            use_vertex_colors,
+                            use_vertex_colors_alpha,
                             use_vertex_cleanup,
                             use_armature_pose,
                             use_weight_min,
@@ -143,14 +144,14 @@ def save(self, context, filepath="",
 def _write(self, context, filepath,
            use_version,
            use_selection,
-           use_vertex_colors,
            use_apply_modifiers,
            use_armature,
+           use_vertex_colors,
+           use_vertex_colors_alpha,
            use_vertex_cleanup,
            use_armature_pose,
            use_weight_min,
-           use_weight_min_threshold
-           ):
+           use_weight_min_threshold):
 
     num_verts = 0
     num_verts_unique = 0
@@ -568,7 +569,14 @@ def _write(self, context, filepath,
                             else:
                                 c = col.color4
 
-                            file.write("COLOR %.6f %.6f %.6f 1.000000\n" % (c[0], c[1], c[2]))
+                            if use_vertex_colors_alpha:
+
+                                # Turn RGB into grayscale (luminance conversion)
+                                c_lum = c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11
+                                file.write("COLOR 1.000000 1.000000 1.000000 %.6f\n" % c_lum)
+                            else:
+                                file.write("COLOR %.6f %.6f %.6f 1.000000\n" % (c[0], c[1], c[2]))
+
                         else:
                             file.write("COLOR 1.000000 1.000000 1.000000 1.000000\n")
 

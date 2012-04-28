@@ -32,4 +32,7 @@ TODO
 """
 
 def load(self, context, **keywords):
-	return {'FINISHED'}
+
+    #filepath = os.fsencode(filepath)
+
+    return {'FINISHED'}

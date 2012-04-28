@@ -54,12 +54,11 @@
 #include "MEM_guardedalloc.h"
 
 #ifdef WIN32
-#include "BLI_winstuff.h"
+#  include "BLI_winstuff.h"
 #endif
 
 #include "BLI_args.h"
 #include "BLI_threads.h"
-#include "BLI_scanfill.h" /* for BLI_setErrorCallBack, TODO, move elsewhere */
 #include "BLI_utildefines.h"
 #include "BLI_callbacks.h"
 
@@ -102,6 +101,8 @@
 
 #include "GPU_draw.h"
 #include "GPU_extensions.h"
+
+#include "BLI_scanfill.h" /* for BLI_setErrorCallBack, TODO, move elsewhere */
 
 #ifdef WITH_BUILDINFO_HEADER
 #define BUILD_DATE
@@ -1169,7 +1170,7 @@ char **environ = NULL;
 
 
 #ifdef WIN32
-int main(int argc, const char **argv_c) /*Do not mess with const*/
+int main(int argc, const char **UNUSED(argv_c)) /* Do not mess with const */
 #else
 int main(int argc, const char **argv)
 #endif
@@ -1182,8 +1183,7 @@ int main(int argc, const char **argv)
 	wchar_t **argv_16 = CommandLineToArgvW(GetCommandLineW(), &argc);
 	int argci = 0;
 	char **argv = MEM_mallocN(argc * sizeof(char *), "argv array");
-	for (argci = 0; argci < argc; argci++)
-	{
+	for (argci = 0; argci < argc; argci++) {
 		argv[argci] = alloc_utf_8_from_16(argv_16[argci], 0);
 	}
 	LocalFree(argv_16);
@@ -1257,7 +1257,7 @@ int main(int argc, const char **argv)
 #endif
 
 	/* first test for background */
-	ba = BLI_argsInit(argc, argv); /* skip binary path */
+	ba = BLI_argsInit(argc, (const char **)argv); /* skip binary path */
 	setupArguments(C, ba, &syshandle);
 
 	BLI_argsParse(ba, 1, NULL, NULL);
@@ -1282,7 +1282,7 @@ int main(int argc, const char **argv)
 		BLI_argsParse(ba, 2, NULL, NULL);
 		BLI_argsParse(ba, 3, NULL, NULL);
 
-		WM_init(C, argc, argv);
+		WM_init(C, argc, (const char **)argv);
 
 		/* this is properly initialized with user defs, but this is default */
 		/* call after loading the startup.blend so we can read U.tempdir */
@@ -1295,7 +1295,7 @@ int main(int argc, const char **argv)
 	else {
 		BLI_argsParse(ba, 3, NULL, NULL);
 
-		WM_init(C, argc, argv);
+		WM_init(C, argc, (const char **)argv);
 
 		/* don't use user preferences temp dir */
 		BLI_init_temporary_dir(NULL);

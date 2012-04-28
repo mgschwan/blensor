@@ -96,7 +96,7 @@ void BlenderSession::create_session()
 	if(b_rv3d)
 		sync->sync_view(b_v3d, b_rv3d, width, height);
 	else
-		sync->sync_camera(width, height);
+		sync->sync_camera(b_engine.camera_override(), width, height);
 
 	/* create session */
 	session = new Session(session_params);
@@ -218,11 +218,12 @@ void BlenderSession::render()
 		scene->film->passes = passes;
 		scene->film->tag_update(scene);
 
-		/* update session */
-		session->reset(buffer_params, session_params.samples);
-
 		/* update scene */
 		sync->sync_data(b_v3d, b_iter->name().c_str());
+
+		/* update session */
+		int samples = sync->get_layer_samples();
+		session->reset(buffer_params, (samples == 0)? session_params.samples: samples);
 
 		/* render */
 		session->start();
@@ -314,7 +315,7 @@ void BlenderSession::synchronize()
 	if(b_rv3d)
 		sync->sync_view(b_v3d, b_rv3d, width, height);
 	else
-		sync->sync_camera(width, height);
+		sync->sync_camera(b_engine.camera_override(), width, height);
 
 	/* unlock */
 	session->scene->mutex.unlock();

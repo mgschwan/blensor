@@ -195,12 +195,12 @@ static void logic_refresh(const bContext *UNUSED(C), ScrArea *UNUSED(sa))
 static void logic_listener(ARegion *ar, wmNotifier *wmn)
 {
 	/* context changes */
-	switch(wmn->category) {
+	switch (wmn->category) {
 		case NC_LOGIC:
 			ED_region_tag_redraw(ar);
 			break;
 		case NC_SCENE:
-			switch(wmn->data) {
+			switch (wmn->data) {
 				case ND_FRAME:
 					ED_region_tag_redraw(ar);
 					break;
@@ -336,8 +336,6 @@ void ED_spacetype_logic(void)
 	art->init= logic_buttons_area_init;
 	art->draw= logic_buttons_area_draw;
 	BLI_addhead(&st->regiontypes, art);
-
-	logic_buttons_register(art);
 
 	/* regions: header */
 	art= MEM_callocN(sizeof(ARegionType), "spacetype logic region");

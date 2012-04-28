@@ -117,6 +117,12 @@ void KX_SteeringActuator::ProcessReplica()
 	SCA_IActuator::ProcessReplica();
 }
 
+void KX_SteeringActuator::ReParent(SCA_IObject* parent)
+{
+	SCA_IActuator::ReParent(parent);
+	if (m_simulation)
+		m_obstacle = m_simulation->GetObstacle((KX_GameObject*)m_gameobj);
+}
 
 bool KX_SteeringActuator::UnlinkObject(SCA_IObject* clientobj)
 {
@@ -266,11 +272,11 @@ bool KX_SteeringActuator::Update(double curtime, bool frame)
 			if (m_simulation && m_obstacle /*&& !newvel.fuzzyZero()*/)
 			{
 				if (m_enableVisualization)
-					KX_RasterizerDrawDebugLine(mypos, mypos + newvel, MT_Vector3(1.,0.,0.));
+					KX_RasterizerDrawDebugLine(mypos, mypos + newvel, MT_Vector3(1.0, 0.0, 0.0));
 				m_simulation->AdjustObstacleVelocity(m_obstacle, m_mode!=KX_STEERING_PATHFOLLOWING ? m_navmesh : NULL, 
 								newvel, m_acceleration*delta, m_turnspeed/180.0f*M_PI*delta);
 				if (m_enableVisualization)
-					KX_RasterizerDrawDebugLine(mypos, mypos + newvel, MT_Vector3(0.,1.,0.));
+					KX_RasterizerDrawDebugLine(mypos, mypos + newvel, MT_Vector3(0.0, 1.0, 0.0));
 			}
 
 			HandleActorFace(newvel);

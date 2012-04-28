@@ -44,6 +44,8 @@
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "BKE_blender.h"
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -153,7 +155,7 @@ static int ed_undo_step(bContext *C, int step, const char *undoname)
 		ED_text_undo_step(C, step);
 	}
 	else if (obedit) {
-		if (ELEM7(obedit->type, OB_MESH, OB_FONT, OB_CURVE, OB_SURF, OB_MBALL, OB_LATTICE, OB_ARMATURE)) {
+		if (OB_TYPE_SUPPORT_EDITMODE(obedit->type)) {
 			if (undoname)
 				undo_editmode_name(C, undoname);
 			else
@@ -245,7 +247,7 @@ int ED_undo_valid(const bContext *C, const char *undoname)
 		return 1;
 	}
 	else if (obedit) {
-		if (ELEM7(obedit->type, OB_MESH, OB_FONT, OB_CURVE, OB_SURF, OB_MBALL, OB_LATTICE, OB_ARMATURE)) {
+		if (OB_TYPE_SUPPORT_EDITMODE(obedit->type)) {
 			return undo_editmode_valid(undoname);
 		}
 	}
@@ -411,9 +413,11 @@ void ED_undo_operator_repeat_cb_evt(bContext *C, void *arg_op, int UNUSED(arg_ev
 
 /* ************************** */
 
-#define UNDOSYSTEM_GLOBAL   1
-#define UNDOSYSTEM_EDITMODE 2
-#define UNDOSYSTEM_PARTICLE 3
+enum {
+	UNDOSYSTEM_GLOBAL   = 1,
+	UNDOSYSTEM_EDITMODE = 2,
+	UNDOSYSTEM_PARTICLE = 3
+};
 
 static int get_undo_system(bContext *C)
 {
@@ -421,8 +425,9 @@ static int get_undo_system(bContext *C)
 	
 	/* find out which undo system */
 	if (obedit) {
-		if (ELEM7(obedit->type, OB_MESH, OB_FONT, OB_CURVE, OB_SURF, OB_MBALL, OB_LATTICE, OB_ARMATURE))
+		if (OB_TYPE_SUPPORT_EDITMODE(obedit->type)) {
 			return UNDOSYSTEM_EDITMODE;
+		}
 	}
 	else {
 		Object *obact = CTX_data_active_object(C);
@@ -456,7 +461,9 @@ static EnumPropertyItem *rna_undo_itemf(bContext *C, int undosys, int *totitem)
 		}
 		
 		if (name) {
-			item_tmp.identifier = item_tmp.name = name;
+			item_tmp.identifier = name;
+			/* XXX This won't work with non-default contexts (e.g. operators) :/ */
+			item_tmp.name = IFACE_(name);
 			if (active)
 				item_tmp.icon = ICON_RESTRICT_VIEW_OFF;
 			else 
@@ -484,7 +491,7 @@ static int undo_history_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(even
 		EnumPropertyItem *item = rna_undo_itemf(C, undosys, &totitem);
 		
 		if (totitem > 0) {
-			uiPopupMenu *pup = uiPupMenuBegin(C, op->type->name, ICON_NONE);
+			uiPopupMenu *pup = uiPupMenuBegin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
 			uiLayout *layout = uiPupMenuLayout(pup);
 			uiLayout *split = uiLayoutSplit(layout, 0, 0), *column = NULL;
 			int i, c;

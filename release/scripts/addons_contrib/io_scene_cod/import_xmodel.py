@@ -49,6 +49,8 @@ def round_matrix_3x3(mat, precision=6):
 
 def load(self, context, filepath=""):
 
+    filepath = os.fsencode(filepath)
+
     test_0 = []
     test_1 = []
     test_2 = []

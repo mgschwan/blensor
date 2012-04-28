@@ -88,7 +88,7 @@ class DATA_PT_info_panel(bpy.types.Panel):
         tris = quads = ngons = 0
 
         for p in ob.data.polygons:
-            count = len(p.loops)
+            count = p.loop_total
             if count == 3:
                 tris += 1
             elif count == 4:

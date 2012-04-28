@@ -529,7 +529,7 @@ def WriteMeshUVCoordinates(Config, Mesh):
     Config.File.write("{}MeshTextureCoords {{ //{} UV Coordinates\n".format("  " * Config.Whitespace, LegalName(Mesh.name)))
     Config.Whitespace += 1
 
-    UVCoordinates = Mesh.uv_loop_layers.active.data
+    UVCoordinates = Mesh.uv_layers.active.data
 
     Index = 0
     VertexCount = GetMeshVertexCount(Mesh)
@@ -537,7 +537,7 @@ def WriteMeshUVCoordinates(Config, Mesh):
 
     for Polygon in Mesh.polygons:
         Vertices = []
-        for Vertex in [UVCoordinates[Vertex] for Vertex in Polygon.loops]:
+        for Vertex in [UVCoordinates[Vertex] for Vertex in Polygon.loop_indices]:
             Vertices.append(tuple(Vertex.uv))
         if Config.CoordinateSystem == 1:
             Vertices = Vertices[::-1]

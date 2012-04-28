@@ -26,6 +26,7 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_math_base.h"
 #include "BLI_math_vector.h"
 #include "BLI_utildefines.h"
 
@@ -102,8 +103,10 @@ static void *dualcon_alloc_output(int totvert, int totquad)
 	DualConOutput *output;
 
 	if (!(output = MEM_callocN(sizeof(DualConOutput),
-							  "DualConOutput")))
+	                           "DualConOutput")))
+	{
 		return NULL;
+	}
 	
 	output->dm = CDDM_new(totvert, 0, 0, 4*totquad, totquad);
 	return output;
@@ -163,7 +166,7 @@ static DerivedMesh *applyModifier(ModifierData *md,
 	if (rmd->flag & MOD_REMESH_FLOOD_FILL)
 		flags |= DUALCON_FLOOD_FILL;
 
-	switch(rmd->mode) {
+	switch (rmd->mode) {
 	case MOD_REMESH_CENTROID:
 		mode = DUALCON_CENTROID;
 		break;

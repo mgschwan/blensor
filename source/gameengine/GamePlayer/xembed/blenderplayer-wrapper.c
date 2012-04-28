@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	if (fchown(fd, new_id, -1) != 0 ){
+	if (fchown(fd, new_id, -1) != 0 ) {
 		perror("Cannot chown file\n");
 		exit(EXIT_FAILURE);
 	}
@@ -180,7 +180,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* xauth file must be readable by the privsep user */
-	if (chown(auth_file_name, new_id, -1) != 0 ){
+	if (chown(auth_file_name, new_id, -1) != 0 ) {
 		perror("Cannot chown auth file\n");
 		exit(EXIT_FAILURE);
 	}
@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "blenderplayer done!\n");
 
 		// We have to remove xauth file and I have to chown blender file back to the original user
-		if (chown(file_name, caller_id, -1) != 0 ){
+		if (chown(file_name, caller_id, -1) != 0 ) {
 			perror("Cannot chown file back to original user\n");
 			exit(EXIT_FAILURE);
 		}

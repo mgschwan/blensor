@@ -90,6 +90,7 @@ BMBVHTree *BMBVH_NewBVH(BMEditMesh *em, int flag, Scene *scene, Object *obedit)
 	SmallHash shash;
 	float cos[3][3], (*cagecos)[3] = NULL;
 	int i;
+	int tottri;
 
 	/* when initializing cage verts, we only want the first cage coordinate for each vertex,
 	 * so that e.g. mirror or array use original vertex coordinates and not mirrored or duplicate */
@@ -103,8 +104,28 @@ BMBVHTree *BMBVH_NewBVH(BMEditMesh *em, int flag, Scene *scene, Object *obedit)
 	tree->bm = em->bm;
 	tree->epsilon = FLT_EPSILON * 2.0f;
 	tree->flag = flag;
-	
-	tree->tree = BLI_bvhtree_new(em->tottri, tree->epsilon, 8, 8);
+
+	if (flag & (BMBVH_RESPECT_SELECT)) {
+		tottri = 0;
+		for (i = 0; i < em->tottri; i++) {
+			if (BM_elem_flag_test(em->looptris[i][0]->f, BM_ELEM_SELECT)) {
+				tottri++;
+			}
+		}
+	}
+	else if (flag & (BMBVH_RESPECT_HIDDEN)) {
+		tottri = 0;
+		for (i = 0; i < em->tottri; i++) {
+			if (!BM_elem_flag_test(em->looptris[i][0]->f, BM_ELEM_HIDDEN)) {
+				tottri++;
+			}
+		}
+	}
+	else {
+		tottri = em->tottri;
+	}
+
+	tree->tree = BLI_bvhtree_new(tottri, tree->epsilon, 8, 8);
 	
 	if (flag & BMBVH_USE_CAGE) {
 		BMIter iter;
@@ -112,7 +133,7 @@ BMBVHTree *BMBVH_NewBVH(BMEditMesh *em, int flag, Scene *scene, Object *obedit)
 		void *data[3];
 		
 		tree->cos = MEM_callocN(sizeof(float) * 3 * em->bm->totvert, "bmbvh cos");
-		BM_ITER_INDEX(v, &iter, em->bm, BM_VERTS_OF_MESH, NULL, i) {
+		BM_ITER_MESH_INDEX (v, &iter, em->bm, BM_VERTS_OF_MESH, i) {
 			BM_elem_index_set(v, i); /* set_inline */
 			copy_v3_v3(tree->cos[i], v->co);
 		}
@@ -132,6 +153,21 @@ BMBVHTree *BMBVH_NewBVH(BMEditMesh *em, int flag, Scene *scene, Object *obedit)
 	tree->cagecos = cagecos;
 	
 	for (i = 0; i < em->tottri; i++) {
+
+
+		if (flag & BMBVH_RESPECT_SELECT) {
+			/* note, the arrays wont allign now! take care */
+			if (!BM_elem_flag_test(em->looptris[i][0]->f, BM_ELEM_SELECT)) {
+				continue;
+			}
+		}
+		else if (flag & BMBVH_RESPECT_HIDDEN) {
+			/* note, the arrays wont allign now! take care */
+			if (BM_elem_flag_test(em->looptris[i][0]->f, BM_ELEM_HIDDEN)) {
+				continue;
+			}
+		}
+
 		if (flag & BMBVH_USE_CAGE) {
 			copy_v3_v3(cos[0], cagecos[BM_elem_index_get(em->looptris[i][0]->v)]);
 			copy_v3_v3(cos[1], cagecos[BM_elem_index_get(em->looptris[i][1]->v)]);
@@ -203,7 +239,8 @@ static void raycallback(void *userdata, int index, const BVHTreeRay *ray, BVHTre
 	}
 }
 
-BMFace *BMBVH_RayCast(BMBVHTree *tree, float *co, float *dir, float *hitout, float *cagehit)
+BMFace *BMBVH_RayCast(BMBVHTree *tree, const float co[3], const float dir[3],
+                      float r_hitout[3], float r_cagehit[3])
 {
 	BVHTreeRayHit hit;
 
@@ -214,10 +251,9 @@ BMFace *BMBVH_RayCast(BMBVHTree *tree, float *co, float *dir, float *hitout, flo
 	
 	BLI_bvhtree_ray_cast(tree->tree, co, dir, 0.0f, &hit, raycallback, tree);
 	if (hit.dist != FLT_MAX && hit.index != -1) {
-		if (hitout) {
+		if (r_hitout) {
 			if (tree->flag & BMBVH_RETURN_ORIG) {
 				BMVert *v1, *v2, *v3;
-				float co[3];
 				int i;
 				
 				v1 = tree->em->looptris[hit.index][0]->v;
@@ -225,17 +261,17 @@ BMFace *BMBVH_RayCast(BMBVHTree *tree, float *co, float *dir, float *hitout, flo
 				v3 = tree->em->looptris[hit.index][2]->v;
 				
 				for (i = 0; i < 3; i++) {
-					co[i] = v1->co[i] + ((v2->co[i] - v1->co[i]) * tree->uv[0]) +
-					                    ((v3->co[i] - v1->co[i]) * tree->uv[1]);
+					r_hitout[i] = v1->co[i] + ((v2->co[i] - v1->co[i]) * tree->uv[0]) +
+					                          ((v3->co[i] - v1->co[i]) * tree->uv[1]);
 				}
-				copy_v3_v3(hitout, co);
 			}
 			else {
-				copy_v3_v3(hitout, hit.co);
+				copy_v3_v3(r_hitout, hit.co);
 			}
 
-			if (cagehit)
-				copy_v3_v3(cagehit, hit.co);
+			if (r_cagehit) {
+				copy_v3_v3(r_cagehit, hit.co);
+			}
 		}
 
 		return tree->em->looptris[hit.index][0]->f;
@@ -304,19 +340,6 @@ BMVert *BMBVH_FindClosestVert(BMBVHTree *tree, float *co, float maxdist)
 
 	return NULL;
 }
-
-typedef struct walklist {
-	BMVert *v;
-	int valence;
-	int depth;
-	float w, r;
-	int totwalked;
-
-	/* state data */
-	BMVert *lastv;
-	BMLoop *curl, *firstl;
-	BMEdge *cure;
-} walklist;
 
 /* UNUSED */
 #if 0

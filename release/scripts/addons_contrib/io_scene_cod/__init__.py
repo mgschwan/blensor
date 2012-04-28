@@ -1,4 +1,4 @@
-﻿# ##### BEGIN GPL LICENSE BLOCK #####
+# ##### BEGIN GPL LICENSE BLOCK #####
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -34,7 +34,7 @@ TODO
 bl_info = {
     "name": "Blender-CoD - Add-On for Call of Duty modding (alpha 3)",
     "author": "CoDEmanX, Flybynyt",
-    "version": (0, 3, 4),
+    "version": (0, 3, 5),
     "blender": (2, 62, 3),
     "location": "File > Import  |  File > Export",
     "description": "Export models to *.XMODEL_EXPORT and animations to *.XANIM_EXPORT",
@@ -159,6 +159,12 @@ class ExportXmodel(bpy.types.Operator, ExportHelper):
         default=True
         )
 
+    use_vertex_colors_alpha = BoolProperty(
+        name="As alpha",
+        description="Turn RGB vertex colors into grayscale (average value) and use it as alpha transparency. White is 1 (opaque), black 0 (invisible)",
+        default=False
+        )
+
     use_apply_modifiers = BoolProperty(
         name="Apply Modifiers",
         description="Apply all mesh modifiers except Armature (preview resolution)",
@@ -252,10 +258,6 @@ class ExportXmodel(bpy.types.Operator, ExportHelper):
         col.enabled = bool(meshes_selected)
 
         col = layout.column(align=True)
-        col.active = self.use_version == '6'
-        col.prop(self, "use_vertex_colors")
-
-        col = layout.column(align=True)
         col.prop(self, "use_apply_modifiers")
 
         col = layout.column(align=True)
@@ -264,6 +266,15 @@ class ExportXmodel(bpy.types.Operator, ExportHelper):
             col.prop(self, "use_armature", "Armature  (disabled)")
         else:
             col.prop(self, "use_armature")
+
+        if self.use_version == '6':
+
+            row = layout.row(align=True)
+            row.prop(self, "use_vertex_colors")
+
+            sub = row.split()
+            sub.active = self.use_vertex_colors
+            sub.prop(self, "use_vertex_colors_alpha")
 
         col = layout.column(align=True)
         col.label("Advanced:")

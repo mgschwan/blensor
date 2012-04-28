@@ -81,12 +81,12 @@ Any case: direct data is ALWAYS after the lib block
 #include "zlib.h"
 
 #ifndef WIN32
-#include <unistd.h>
+#  include <unistd.h>
 #else
-#include "winsock2.h"
-#include <io.h>
-#include <process.h> // for getpid
-#include "BLI_winstuff.h"
+#  include "winsock2.h"
+#  include <io.h>
+#  include <process.h> // for getpid
+#  include "BLI_winstuff.h"
 #endif
 
 /* allow writefile to use deprecated functionality (for forward compatibility code) */
@@ -204,7 +204,7 @@ static WriteData *writedata_new(int file)
 	return wd;
 }
 
-static void writedata_do_write(WriteData *wd, void *mem, int memlen)
+static void writedata_do_write(WriteData *wd, const void *mem, int memlen)
 {
 	if ((wd == NULL) || wd->error || (mem == NULL) || memlen < 1) return;
 	if (wd->error) return;
@@ -239,7 +239,7 @@ static void writedata_free(WriteData *wd)
  
 #define MYWRITE_FLUSH		NULL
 
-static void mywrite( WriteData *wd, void *adr, int len)
+static void mywrite( WriteData *wd, const void *adr, int len)
 {
 	if (wd->error) return;
 
@@ -265,7 +265,7 @@ static void mywrite( WriteData *wd, void *adr, int len)
 		do {
 			int writelen= MIN2(len, MYWRITE_MAX_CHUNK);
 			writedata_do_write(wd, adr, writelen);
-			adr = (char*)adr + writelen;
+			adr = (const char *)adr + writelen;
 			len -= writelen;
 		} while (len > 0);
 
@@ -354,22 +354,22 @@ static void writestruct(WriteData *wd, int filecode, const char *structname, int
 	mywrite(wd, adr, bh.len);
 }
 
-static void writedata(WriteData *wd, int filecode, int len, void *adr)	/* do not use for structs */
+static void writedata(WriteData *wd, int filecode, int len, const void *adr)  /* do not use for structs */
 {
 	BHead bh;
 
 	if (adr==NULL) return;
 	if (len==0) return;
 
-	len+= 3;
-	len-= ( len % 4);
+	len += 3;
+	len -= (len % 4);
 
 	/* init BHead */
-	bh.code= filecode;
-	bh.old= adr;
-	bh.nr= 1;
-	bh.SDNAnr= 0;
-	bh.len= len;
+	bh.code   = filecode;
+	bh.old    = (void *)adr;  /* this is safe to cast from const */
+	bh.nr     = 1;
+	bh.SDNAnr = 0;
+	bh.len    = len;
 
 	mywrite(wd, &bh, sizeof(BHead));
 	if (len) mywrite(wd, adr, len);
@@ -488,7 +488,7 @@ static void write_fmodifiers(WriteData *wd, ListBase *fmodifiers)
 					FMod_Python *data = (FMod_Python *)fcm->data;
 					
 					/* Write ID Properties -- and copy this comment EXACTLY for easy finding
-					 of library blocks that implement this.*/
+					 * of library blocks that implement this.*/
 					IDP_WriteProperty(data->prop, wd);
 				}
 					break;
@@ -757,24 +757,30 @@ static void current_screen_compat(Main *mainvar, bScreen **screen)
 	*screen= (window)? window->screen: NULL;
 }
 
+typedef struct RenderInfo {
+	int sfra;
+	int efra;
+	char scene_name[MAX_ID_NAME - 2];
+} RenderInfo;
+
 static void write_renderinfo(WriteData *wd, Main *mainvar)		/* for renderdeamon */
 {
 	bScreen *curscreen;
 	Scene *sce;
-	int data[8];
+	RenderInfo data;
 
 	/* XXX in future, handle multiple windows with multiple screnes? */
 	current_screen_compat(mainvar, &curscreen);
 
 	for (sce= mainvar->scene.first; sce; sce= sce->id.next) {
 		if (sce->id.lib==NULL  && ( sce==curscreen->scene || (sce->r.scemode & R_BG_RENDER)) ) {
-			data[0]= sce->r.sfra;
-			data[1]= sce->r.efra;
+			data.sfra = sce->r.sfra;
+			data.efra = sce->r.efra;
+			memset(data.scene_name, 0, sizeof(data.scene_name));
 
-			memset(data+2, 0, sizeof(int)*6);
-			BLI_strncpy((char *)(data+2), sce->id.name+2, sizeof(sce->id.name)-2);
+			BLI_strncpy(data.scene_name, sce->id.name + 2, sizeof(data.scene_name));
 
-			writedata(wd, REND, 32, data);
+			writedata(wd, REND, sizeof(data), &data);
 		}
 	}
 }
@@ -831,7 +837,7 @@ static void write_boid_state(WriteData *wd, BoidState *state)
 	writestruct(wd, DATA, "BoidState", 1, state);
 
 	for (; rule; rule=rule->next) {
-		switch(rule->type) {
+		switch (rule->type) {
 			case eBoidRuleType_Goal:
 			case eBoidRuleType_Avoid:
 				writestruct(wd, DATA, "BoidRuleGoalAvoid", 1, rule);
@@ -1024,7 +1030,7 @@ static void write_sensors(WriteData *wd, ListBase *lb)
 
 		writedata(wd, DATA, sizeof(void *)*sens->totlinks, sens->links);
 
-		switch(sens->type) {
+		switch (sens->type) {
 		case SENS_NEAR:
 			writestruct(wd, DATA, "bNearSensor", 1, sens->data);
 			break;
@@ -1085,7 +1091,7 @@ static void write_controllers(WriteData *wd, ListBase *lb)
 
 		writedata(wd, DATA, sizeof(void *)*cont->totlinks, cont->links);
 
-		switch(cont->type) {
+		switch (cont->type) {
 		case CONT_EXPRESSION:
 			writestruct(wd, DATA, "bExpressionCont", 1, cont->data);
 			break;
@@ -1108,7 +1114,7 @@ static void write_actuators(WriteData *wd, ListBase *lb)
 	while (act) {
 		writestruct(wd, DATA, "bActuator", 1, act);
 
-		switch(act->type) {
+		switch (act->type) {
 		case ACT_ACTION:
 		case ACT_SHAPEACTION:
 			writestruct(wd, DATA, "bActionActuator", 1, act->data);
@@ -1212,7 +1218,7 @@ static void write_constraints(WriteData *wd, ListBase *conlist)
 						writestruct(wd, DATA, "bConstraintTarget", 1, ct);
 					
 					/* Write ID Properties -- and copy this comment EXACTLY for easy finding
-					 of library blocks that implement this.*/
+					 * of library blocks that implement this.*/
 					IDP_WriteProperty(data->prop, wd);
 				}
 					break;
@@ -1244,7 +1250,7 @@ static void write_pose(WriteData *wd, bPose *pose)
 	/* Write channels */
 	for (chan=pose->chanbase.first; chan; chan=chan->next) {
 		/* Write ID Properties -- and copy this comment EXACTLY for easy finding
-		 of library blocks that implement this.*/
+		 * of library blocks that implement this.*/
 		if (chan->prop)
 			IDP_WriteProperty(chan->prop, wd);
 		
@@ -1310,10 +1316,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 		else if (md->type==eModifierType_Smoke) {
 			SmokeModifierData *smd = (SmokeModifierData*) md;
 			
-			if (smd->type & MOD_SMOKE_TYPE_DOMAIN)
-			{
-				if (smd->domain)
-				{
+			if (smd->type & MOD_SMOKE_TYPE_DOMAIN) {
+				if (smd->domain) {
 					write_pointcaches(wd, &(smd->domain->ptcaches[0]));
 
 					/* create fake pointcache so that old blender versions can read it */
@@ -1347,8 +1351,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 		else if (md->type==eModifierType_DynamicPaint) {
 			DynamicPaintModifierData *pmd = (DynamicPaintModifierData*) md;
 			
-			if (pmd->canvas)
-			{
+			if (pmd->canvas) {
 				DynamicPaintSurface *surface;
 				writestruct(wd, DATA, "DynamicPaintCanvasSettings", 1, pmd->canvas);
 				
@@ -1362,8 +1365,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					writestruct(wd, DATA, "EffectorWeights", 1, surface->effector_weights);
 				}
 			}
-			if (pmd->brush)
-			{
+			if (pmd->brush) {
 				writestruct(wd, DATA, "DynamicPaintBrushSettings", 1, pmd->brush);
 				writestruct(wd, DATA, "ColorBand", 1, pmd->brush->paint_ramp);
 				writestruct(wd, DATA, "ColorBand", 1, pmd->brush->vel_ramp);
@@ -1417,8 +1419,8 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 			/* write LibData */
 			writestruct(wd, ID_OB, "Object", 1, ob);
 			
-			/*Write ID Properties -- and copy this comment EXACTLY for easy finding
-			  of library blocks that implement this.*/
+			/* Write ID Properties -- and copy this comment EXACTLY for easy finding
+			 * of library blocks that implement this.*/
 			if (ob->id.properties) IDP_WriteProperty(ob->id.properties, wd);
 			
 			if (ob->adt) write_animdata(wd, ob->adt);
@@ -1678,8 +1680,8 @@ static void write_customdata(WriteData *wd, ID *id, int count, CustomData *data,
 			CustomData_file_write_info(layer->type, &structname, &structnum);
 			if (structnum) {
 				/* when using partial visibility, the MEdge and MFace layers
-				   are smaller than the original, so their type and count is
-				   passed to make this work */
+				 * are smaller than the original, so their type and count is
+				 * passed to make this work */
 				if (layer->type != partial_type) datasize= structnum*count;
 				else datasize= structnum*partial_count;
 
@@ -1728,6 +1730,7 @@ static void write_meshs(WriteData *wd, ListBase *idbase)
 				if (mesh->adt) write_animdata(wd, mesh->adt);
 
 				writedata(wd, DATA, sizeof(void *)*mesh->totcol, mesh->mat);
+				writedata(wd, DATA, sizeof(MSelect) * mesh->totselect, mesh->mselect);
 
 				write_customdata(wd, &mesh->id, mesh->totvert, &mesh->vdata, -1, 0);
 				write_customdata(wd, &mesh->id, mesh->totedge, &mesh->edata, -1, 0);
@@ -1793,15 +1796,16 @@ static void write_meshs(WriteData *wd, ListBase *idbase)
 				if (mesh->adt) write_animdata(wd, mesh->adt);
 
 				writedata(wd, DATA, sizeof(void *)*mesh->totcol, mesh->mat);
+				/* writedata(wd, DATA, sizeof(MSelect) * mesh->totselect, mesh->mselect); */ /* pre-bmesh NULL's */
 
 				write_customdata(wd, &mesh->id, mesh->totvert, &mesh->vdata, -1, 0);
 				write_customdata(wd, &mesh->id, mesh->totedge, &mesh->edata, -1, 0);
 				write_customdata(wd, &mesh->id, mesh->totface, &mesh->fdata, -1, 0);
 				/* harmless for older blender versioins but _not_ writing these keeps file size down */
-				/*
+#if 0
 				write_customdata(wd, &mesh->id, mesh->totloop, &mesh->ldata, -1, 0);
 				write_customdata(wd, &mesh->id, mesh->totpoly, &mesh->pdata, -1, 0);
-				*/
+#endif
 
 				/* restore */
 				mesh->mpoly = backup_mesh.mpoly;
@@ -1959,10 +1963,10 @@ static void write_materials(WriteData *wd, ListBase *idbase)
 			/* write LibData */
 			writestruct(wd, ID_MA, "Material", 1, ma);
 			
-			/*Write ID Properties -- and copy this comment EXACTLY for easy finding
-			  of library blocks that implement this.*/
-			/*manually set head group property to IDP_GROUP, just in case it hadn't been
-			  set yet :) */
+			/* Write ID Properties -- and copy this comment EXACTLY for easy finding
+			 * of library blocks that implement this.*/
+			/* manually set head group property to IDP_GROUP, just in case it hadn't been
+			 * set yet :) */
 			if (ma->id.properties) IDP_WriteProperty(ma->id.properties, wd);
 			
 			if (ma->adt) write_animdata(wd, ma->adt);
@@ -2104,19 +2108,19 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 			
 			/* reset write flags too */
 			
-			SEQ_BEGIN(ed, seq) {
+			SEQ_BEGIN (ed, seq) {
 				if (seq->strip) seq->strip->done= 0;
 				writestruct(wd, DATA, "Sequence", 1, seq);
 			}
 			SEQ_END
 			
-			SEQ_BEGIN(ed, seq) {
+			SEQ_BEGIN (ed, seq) {
 				if (seq->strip && seq->strip->done==0) {
 					/* write strip with 'done' at 0 because readfile */
 					
 					if (seq->plugin) writestruct(wd, DATA, "PluginSeq", 1, seq->plugin);
 					if (seq->effectdata) {
-						switch(seq->type) {
+						switch (seq->type) {
 						case SEQ_COLOR:
 							writestruct(wd, DATA, "SolidColorVars", 1, seq->effectdata);
 							break;
@@ -2250,7 +2254,7 @@ static void write_region(WriteData *wd, ARegion *ar, int spacetype)
 	writestruct(wd, DATA, "ARegion", 1, ar);
 	
 	if (ar->regiondata) {
-		switch(spacetype) {
+		switch (spacetype) {
 			case SPACE_VIEW3D:
 				if (ar->regiontype==RGN_TYPE_WINDOW) {
 					RegionView3D *rv3d= ar->regiondata;
@@ -2466,7 +2470,7 @@ static void write_bone(WriteData *wd, Bone* bone)
 	writestruct(wd, DATA, "Bone", 1, bone);
 
 	/* Write ID Properties -- and copy this comment EXACTLY for easy finding
-	 of library blocks that implement this.*/
+	 * of library blocks that implement this.*/
 	if (bone->prop)
 		IDP_WriteProperty(bone->prop, wd);
 	
@@ -2762,7 +2766,7 @@ static void write_global(WriteData *wd, int fileflags, Main *mainvar)
  * second are an RGBA image (unsigned char)
  * note, this uses 'TEST' since new types will segfault on file load for older blender versions.
  */
-static void write_thumb(WriteData *wd, int *img)
+static void write_thumb(WriteData *wd, const int *img)
 {
 	if (img)
 		writedata(wd, TEST, (2 + img[0] * img[1]) * sizeof(int), img);
@@ -2770,7 +2774,7 @@ static void write_thumb(WriteData *wd, int *img)
 
 /* if MemFile * there's filesave to memory */
 static int write_file_handle(Main *mainvar, int handle, MemFile *compare, MemFile *current, 
-							 int write_user_block, int write_flags, int *thumb)
+                             int write_user_block, int write_flags, const int *thumb)
 {
 	BHead bhead;
 	ListBase mainlist;
@@ -2878,7 +2882,7 @@ static int do_history(const char *name, ReportList *reports)
 }
 
 /* return: success (1) */
-int BLO_write_file(Main *mainvar, const char *filepath, int write_flags, ReportList *reports, int *thumb)
+int BLO_write_file(Main *mainvar, const char *filepath, int write_flags, ReportList *reports, const int *thumb)
 {
 	char userfilename[FILE_MAX];
 	char tempname[FILE_MAX+1];

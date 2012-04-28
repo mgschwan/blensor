@@ -400,14 +400,14 @@ void paintface_deselect_all_visible(Object *ob, int action, short flush_flags)
 	}
 }
 
-int paintface_minmax(Object *ob, float *min, float *max)
+int paintface_minmax(Object *ob, float r_min[3], float r_max[3])
 {
 	Mesh *me;
 	MPoly *mp;
 	MTexPoly *tf;
 	MLoop *ml;
 	MVert *mvert;
-	int a, b, ok = 0;
+	int a, b, ok = FALSE;
 	float vec[3], bmat[3][3];
 
 	me = get_mesh(ob);
@@ -427,10 +427,10 @@ int paintface_minmax(Object *ob, float *min, float *max)
 			copy_v3_v3(vec, (mvert[ml->v].co));
 			mul_m3_v3(bmat, vec);
 			add_v3_v3v3(vec, vec, ob->obmat[3]);
-			DO_MINMAX(vec, min, max);		
+			DO_MINMAX(vec, r_min, r_max);
 		}
 
-		ok = 1;
+		ok = TRUE;
 	}
 
 	return ok;
@@ -735,8 +735,8 @@ typedef struct MirrTopoVert_t {
 
 static int mirrtopo_hash_sort(const void *l1, const void *l2)
 {
-	if       ((MirrTopoHash_t)(intptr_t)l1 > (MirrTopoHash_t)(intptr_t)l2) return 1;
-	else if  ((MirrTopoHash_t)(intptr_t)l1 < (MirrTopoHash_t)(intptr_t)l2) return -1;
+	if      ((MirrTopoHash_t)(intptr_t)l1 > (MirrTopoHash_t)(intptr_t)l2) return 1;
+	else if ((MirrTopoHash_t)(intptr_t)l1 < (MirrTopoHash_t)(intptr_t)l2) return -1;
 	return 0;
 }
 
@@ -814,7 +814,7 @@ void ED_mesh_mirrtopo_init(Mesh *me, const int ob_mode, MirrTopoStore_t *mesh_to
 	if (em) {
 		totedge = me->edit_btmesh->bm->totedge;
 
-		BM_ITER(eed, &iter, em->bm, BM_EDGES_OF_MESH, NULL) {
+		BM_ITER_MESH (eed, &iter, em->bm, BM_EDGES_OF_MESH) {
 			topo_hash[BM_elem_index_get(eed->v1)]++;
 			topo_hash[BM_elem_index_get(eed->v2)]++;
 		}
@@ -835,7 +835,7 @@ void ED_mesh_mirrtopo_init(Mesh *me, const int ob_mode, MirrTopoStore_t *mesh_to
 		/* use the number of edges per vert to give verts unique topology IDs */
 
 		if (em) {
-			BM_ITER(eed, &iter, em->bm, BM_EDGES_OF_MESH, NULL) {
+			BM_ITER_MESH (eed, &iter, em->bm, BM_EDGES_OF_MESH) {
 				topo_hash[BM_elem_index_get(eed->v1)] += topo_hash_prev[BM_elem_index_get(eed->v2)];
 				topo_hash[BM_elem_index_get(eed->v2)] += topo_hash_prev[BM_elem_index_get(eed->v1)];
 			}

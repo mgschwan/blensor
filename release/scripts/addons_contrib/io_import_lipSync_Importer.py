@@ -24,7 +24,7 @@ bl_info = {
     "location": "3D window > Tool Shelf",
     "description": "Plot Moho (Papagayo, Jlipsync, Yolo) file to frames and adds automatic blinking",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php?title=Extensions:2.5/Py/Scripts/Import-Export/Lipsync_Importer",
+    "wiki_url": "http://wiki.blender.org/index.php?title=Extensions:2.6/Py/Scripts/Import-Export/Lipsync Importer",
     "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=24080&group_id=153&atid=468",
     "category": "Import-Export"}
 

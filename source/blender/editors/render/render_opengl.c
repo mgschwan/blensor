@@ -318,9 +318,6 @@ static int screen_opengl_render_init(bContext *C, wmOperator *op)
 	/* stop all running jobs, currently previews frustrate Render */
 	WM_jobs_stop_all(CTX_wm_manager(C));
 
-	/* handle UI stuff */
-	WM_cursor_wait(1);
-
 	/* create offscreen buffer */
 	sizex = (scene->r.size * scene->r.xsch) / 100;
 	sizey = (scene->r.size * scene->r.ysch) / 100;
@@ -332,6 +329,9 @@ static int screen_opengl_render_init(bContext *C, wmOperator *op)
 		BKE_reportf(op->reports, RPT_ERROR, "Failed to create OpenGL offscreen buffer, %s", err_out);
 		return 0;
 	}
+
+	/* handle UI stuff */
+	WM_cursor_wait(1);
 
 	/* allocate opengl render */
 	oglrender = MEM_callocN(sizeof(OGLRender), "OGLRender");
@@ -471,7 +471,7 @@ static int screen_opengl_render_anim_step(bContext *C, wmOperator *op)
 	Object *camera = NULL;
 
 	/* update animated image textures for gpu, etc,
-	 * call before scene_update_for_newframe so modifiers with textuers don't lag 1 frame */
+	 * call before scene_update_for_newframe so modifiers with textures don't lag 1 frame */
 	ED_image_update_frame(bmain, scene->r.cfra);
 
 	/* go to next frame */

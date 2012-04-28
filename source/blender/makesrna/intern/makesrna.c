@@ -695,15 +695,18 @@ static void rna_clamp_value_range(FILE *f, PropertyRNA *prop)
 	if (prop->type == PROP_FLOAT) {
 		FloatPropertyRNA *fprop = (FloatPropertyRNA*)prop;
 		if (fprop->range) {
-			fprintf(f, "	float prop_clamp_min = -FLT_MAX, prop_clamp_max = FLT_MAX, prop_soft_min, prop_soft_max;\n");
-			fprintf(f, "	%s(ptr, &prop_clamp_min, &prop_clamp_max, &prop_soft_min, &prop_soft_max);\n", rna_function_string(fprop->range));
+			fprintf(f,
+			        "	float prop_clamp_min = -FLT_MAX, prop_clamp_max = FLT_MAX, prop_soft_min, prop_soft_max;\n");
+			fprintf(f, "	%s(ptr, &prop_clamp_min, &prop_clamp_max, &prop_soft_min, &prop_soft_max);\n",
+			        rna_function_string(fprop->range));
 		}
 	}
 	else if (prop->type == PROP_INT) {
 		IntPropertyRNA *iprop = (IntPropertyRNA*)prop;
 		if (iprop->range) {
 			fprintf(f, "	int prop_clamp_min = INT_MIN, prop_clamp_max = INT_MAX, prop_soft_min, prop_soft_max;\n");
-			fprintf(f, "	%s(ptr, &prop_clamp_min, &prop_clamp_max, &prop_soft_min, &prop_soft_max);\n", rna_function_string(iprop->range));
+			fprintf(f, "	%s(ptr, &prop_clamp_min, &prop_clamp_max, &prop_soft_min, &prop_soft_max);\n",
+			        rna_function_string(iprop->range));
 		}
 	}
 }
@@ -1356,8 +1359,10 @@ static void rna_def_property_funcs(FILE *f, StructRNA *srna, PropertyDefRNA *dp)
 			 * array get/next function, we can be sure it is an actual array */
 			if (cprop->next && cprop->get)
 				if (strcmp((const char*)cprop->next, "rna_iterator_array_next") == 0 &&
-				   strcmp((const char*)cprop->get, "rna_iterator_array_get") == 0)
+				    strcmp((const char*)cprop->get, "rna_iterator_array_get") == 0)
+				{
 					prop->flag |= PROP_RAW_ARRAY;
+				}
 
 			cprop->get = (void*)rna_def_property_get_func(f, srna, prop, dp, (const char*)cprop->get);
 			cprop->begin = (void*)rna_def_property_begin_func(f, srna, prop, dp, (const char*)cprop->begin);
@@ -1740,7 +1745,7 @@ static void rna_def_function_funcs(FILE *f, StructDefRNA *dsrna, FunctionDefRNA 
 
 		if (dparm->prop == func->c_ret)
 			fprintf(f, "\t_retdata= _data;\n");
-		else  {
+		else {
 			const char *data_str;
 			if (cptr || (flag & PROP_DYNAMIC)) {
 				ptrstr = "**";

@@ -26,7 +26,7 @@ from netrender.utils import *
 
 from bpy.props import PointerProperty, StringProperty, BoolProperty, EnumProperty, IntProperty, CollectionProperty
 
-VERSION = b"0.3"
+VERSION = b"0.5"
 
 PATH_PREFIX = "/tmp/"
 
@@ -164,6 +164,8 @@ class RENDER_PT_network_slave_settings(NetRenderButtonsPanel, bpy.types.Panel):
         netsettings = context.scene.network_render
 
         layout.prop(netsettings, "slave_tags", text="Tags")
+        layout.prop(netsettings, "slave_render")
+        layout.prop(netsettings, "slave_bake")
         layout.prop(netsettings, "use_slave_clear")
         layout.prop(netsettings, "use_slave_thumb")
         layout.prop(netsettings, "use_slave_output_log")
@@ -350,8 +352,8 @@ class RENDER_PT_network_jobs(NeedValidAddress, NetRenderButtonsPanel, bpy.types.
 
             layout.label(text="Name: %s" % job.name)
             layout.label(text="Length: %04i" % len(job))
-            layout.label(text="Done: %04i" % job.results[FRAME_DONE])
-            layout.label(text="Error: %04i" % job.results[FRAME_ERROR])
+            layout.label(text="Done: %04i" % job.results[netrender.model.FRAME_DONE])
+            layout.label(text="Error: %04i" % job.results[netrender.model.FRAME_ERROR])
 
 import bl_ui.properties_render as properties_render
 class RENDER_PT_network_output(NeedValidAddress, NetRenderButtonsPanel, bpy.types.Panel):
@@ -450,6 +452,16 @@ class NetRenderSettings(bpy.types.PropertyGroup):
                         description="Output render text log to console as well as sending it to the master",
                         default = True)
         
+        NetRenderSettings.slave_render = BoolProperty(
+                        name="Render on slave",
+                        description="Use slave for render jobs",
+                        default = True)
+
+        NetRenderSettings.slave_bake = BoolProperty(
+                        name="Bake on slave",
+                        description="Use slave for baking jobs",
+                        default = True)
+
         NetRenderSettings.use_master_clear = BoolProperty(
                         name="Clear on exit",
                         description="Delete saved files on exit",

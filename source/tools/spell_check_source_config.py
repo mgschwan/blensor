@@ -82,6 +82,9 @@ dict_custom = {
     "nurbs",
     "compositing",
     "deinterlace",
+    "shader",
+    "shaders",
+    "centroid",
 
     # blender terms
     "bpy",

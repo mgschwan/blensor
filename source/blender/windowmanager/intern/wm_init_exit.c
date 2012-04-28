@@ -63,7 +63,7 @@
 #include "BKE_tracking.h" /* free tracking clipboard */
 
 #include "BLI_listbase.h"
-#include "BLI_scanfill.h"
+// #include "BLI_scanfill.h"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 
@@ -364,7 +364,7 @@ void WM_exit_ext(bContext *C, const short do_python)
 
 	free_openrecent();
 	
-	BKE_freecubetable();
+	BKE_metaball_cubeTable_free();
 	
 	ED_preview_free_dbase();  /* frees a Main dbase, before free_blender! */
 
@@ -382,8 +382,6 @@ void WM_exit_ext(bContext *C, const short do_python)
 	free_posebuf();
 
 	BLF_exit();
-
-	BLI_scanfill_free(); /* the order this is called doesn't matter */
 
 #ifdef WITH_INTERNATIONAL
 	BLF_free_unifont();

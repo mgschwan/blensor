@@ -40,8 +40,7 @@ def save(self, context, filepath="",
          use_frame_start=1,
          use_frame_end=250,
          use_notetrack=True,
-         use_notetrack_format='1'
-         ):
+         use_notetrack_format='1'):
 
     armature = None
     last_frame_current = context.scene.frame_current

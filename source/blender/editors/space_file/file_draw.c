@@ -35,8 +35,9 @@
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 #include "BLI_dynstr.h"
+
 #ifdef WIN32
-#include "BLI_winstuff.h"
+#  include "BLI_winstuff.h"
 #endif
 
 #include "BIF_gl.h"
@@ -81,7 +82,7 @@ enum {
 
 static void do_file_buttons(bContext *C, void *UNUSED(arg), int event)
 {
-	switch(event) {
+	switch (event) {
 		case B_FS_FILENAME:
 			file_filename_exec(C, NULL);
 			break;
@@ -154,8 +155,7 @@ void file_draw_buttons(const bContext *C, ARegion *ar)
 						  btn_margin + UI_GetStringWidth(params->title));
 	}
 	
-	if (available_w <= loadbutton + separator + input_minw 
-	 || params->title[0] == 0) {
+	if (available_w <= loadbutton + separator + input_minw || params->title[0] == 0) {
 		loadbutton = 0;
 	}
 	else {
@@ -223,11 +223,11 @@ void file_draw_buttons(const bContext *C, ARegion *ar)
 	
 	/* Execute / cancel buttons. */
 	if (loadbutton) {
-		
-		uiDefButO(block, BUT, "FILE_OT_execute", WM_OP_EXEC_REGION_WIN, IFACE_(params->title),
-			max_x - loadbutton, line1_y, loadbutton, btn_h, TIP_(params->title));
+		/* params->title is already translated! */
+		uiDefButO(block, BUT, "FILE_OT_execute", WM_OP_EXEC_REGION_WIN, params->title,
+		          max_x - loadbutton, line1_y, loadbutton, btn_h, "");
 		uiDefButO(block, BUT, "FILE_OT_cancel", WM_OP_EXEC_REGION_WIN, IFACE_("Cancel"),
-			max_x - loadbutton, line2_y, loadbutton, btn_h, TIP_("Cancel"));
+		          max_x - loadbutton, line2_y, loadbutton, btn_h, "");
 	}
 	
 	uiEndBlock(C, block);
@@ -417,8 +417,7 @@ static void draw_background(FileLayout *layout, View2D *v2d)
 	int sy;
 
 	/* alternating flat shade background */
-	for (i=0; (i <= layout->rows); i+=2)
-	{
+	for (i=0; (i <= layout->rows); i+=2) {
 		sy = (int)v2d->cur.ymax - i*(layout->tile_h+2*layout->tile_border_y) - layout->tile_border_y;
 
 		UI_ThemeColorShade(TH_BACK, -7);
@@ -490,8 +489,7 @@ void file_draw_list(const bContext *C, ARegion *ar)
 
 	align = ( FILE_IMGDISPLAY == params->display) ? UI_STYLE_TEXT_CENTER : UI_STYLE_TEXT_LEFT;
 
-	for (i=offset; (i < numfiles) && (i<offset+numfiles_layout); ++i)
-	{
+	for (i = offset; (i < numfiles) && (i<offset+numfiles_layout); i++) {
 		ED_fileselect_layout_tilepos(layout, i, &sx, &sy);
 		sx += (int)(v2d->tot.xmin+2.0f);
 		sy = (int)(v2d->tot.ymax - sy);
@@ -502,7 +500,7 @@ void file_draw_list(const bContext *C, ARegion *ar)
 
 
 		if (!(file->selflag & EDITING_FILE)) {
-			if  ((params->active_file == i) || (file->selflag & HILITED_FILE) || (file->selflag & SELECTED_FILE) ) {
+			if ((params->active_file == i) || (file->selflag & HILITED_FILE) || (file->selflag & SELECTED_FILE)) {
 				int colorid = (file->selflag & SELECTED_FILE) ? TH_HILITE : TH_BACK;
 				int shade = (params->active_file == i) || (file->selflag & HILITED_FILE) ? 20 : 0;
 				draw_tile(sx, sy-1, layout->tile_w+4, sfile->layout->tile_h+layout->tile_border_y, colorid, shade);

@@ -106,7 +106,7 @@ static void special_transvert_update(Object *obedit)
 		}
 		else if (ELEM(obedit->type, OB_CURVE, OB_SURF)) {
 			Curve *cu = obedit->data;
-			ListBase *nurbs = curve_editnurbs(cu);
+			ListBase *nurbs = BKE_curve_editNurbs_get(cu);
 			Nurb *nu = nurbs->first;
 
 			while (nu) {
@@ -141,8 +141,8 @@ static void special_transvert_update(Object *obedit)
 					}
 				}
 
-				test2DNurb(nu);
-				testhandlesNurb(nu); /* test for bezier too */
+				BKE_nurb_test2D(nu);
+				BKE_nurb_handles_test(nu); /* test for bezier too */
 				nu = nu->next;
 			}
 		}
@@ -242,7 +242,7 @@ static void make_trans_verts(Object *obedit, float *min, float *max, int mode)
 		// transform now requires awareness for select mode, so we tag the f1 flags in verts
 		tottrans = 0;
 		if (em->selectmode & SCE_SELECT_VERTEX) {
-			BM_ITER(eve, &iter, bm, BM_VERTS_OF_MESH, NULL) {
+			BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
 				if (!BM_elem_flag_test(eve, BM_ELEM_HIDDEN) && BM_elem_flag_test(eve, BM_ELEM_SELECT)) {
 					BM_elem_index_set(eve, 1); /* set_dirty! */
 					tottrans++;
@@ -253,41 +253,42 @@ static void make_trans_verts(Object *obedit, float *min, float *max, int mode)
 		else if (em->selectmode & SCE_SELECT_EDGE) {
 			BMEdge *eed;
 
-			BM_ITER(eve, &iter, bm, BM_VERTS_OF_MESH, NULL) {
+			BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
 				BM_elem_index_set(eve, 0);     /* set_dirty! */
 			}
 
-			BM_ITER(eed, &iter, bm, BM_EDGES_OF_MESH, NULL) {
+			BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
 				if (!BM_elem_flag_test(eed, BM_ELEM_HIDDEN) && BM_elem_flag_test(eed, BM_ELEM_SELECT)) {
 					BM_elem_index_set(eed->v1, 1); /* set_dirty! */
 					BM_elem_index_set(eed->v2, 1); /* set_dirty! */
 				}
 			}
 
-			BM_ITER(eve, &iter, bm, BM_VERTS_OF_MESH, NULL) {
+			BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
 				if (BM_elem_index_get(eve)) tottrans++;
 			}
 		}
 		else {
 			BMFace *efa;
 
-			BM_ITER(eve, &iter, bm, BM_VERTS_OF_MESH, NULL) {
+			BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
 				BM_elem_index_set(eve, 0); /* set_dirty! */
 			}
 
-			BM_ITER(efa, &iter, bm, BM_FACES_OF_MESH, NULL) {
+			BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
 				if (!BM_elem_flag_test(efa, BM_ELEM_HIDDEN) && BM_elem_flag_test(efa, BM_ELEM_SELECT)) {
 					BMIter liter;
 					BMLoop *l;
 					
-					BM_ITER(l, &liter, bm, BM_LOOPS_OF_FACE, efa) {
+					BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
 						BM_elem_index_set(l->v, 1); /* set_dirty! */
 					}
 				}
 			}
 
-			BM_ITER(eve, &iter, bm, BM_VERTS_OF_MESH, NULL)
+			BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
 				if (BM_elem_index_get(eve)) tottrans++;
+			}
 		}
 		/* for any of the 3 loops above which all dirty the indices */
 		bm->elem_index_dirty |= BM_VERT;
@@ -297,7 +298,7 @@ static void make_trans_verts(Object *obedit, float *min, float *max, int mode)
 			tv = transvmain = MEM_callocN(tottrans * sizeof(TransVert), "maketransverts");
 		
 			a = 0;
-			BM_ITER(eve, &iter, bm, BM_VERTS_OF_MESH, NULL) {
+			BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
 				if (BM_elem_index_get(eve)) {
 					BM_elem_index_set(eve, a); /* set_dirty! */
 					copy_v3_v3(tv->oldloc, eve->co);
@@ -374,7 +375,7 @@ static void make_trans_verts(Object *obedit, float *min, float *max, int mode)
 	else if (ELEM(obedit->type, OB_CURVE, OB_SURF)) {
 		Curve *cu = obedit->data;
 		int totmalloc = 0;
-		ListBase *nurbs = curve_editnurbs(cu);
+		ListBase *nurbs = BKE_curve_editNurbs_get(cu);
 
 		for (nu = nurbs->first; nu; nu = nu->next) {
 			if (nu->type == CU_BEZIER)
@@ -556,7 +557,7 @@ static int snap_sel_to_grid(bContext *C, wmOperator *UNUSED(op))
 	else {
 		struct KeyingSet *ks = ANIM_get_keyingset_for_autokeying(scene, ANIM_KS_LOCATION_ID);
 
-		CTX_DATA_BEGIN(C, Object *, ob, selected_editable_objects) {
+		CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects) {
 			if (ob->mode & OB_MODE_POSE) {
 				bPoseChannel *pchan;
 				bArmature *arm = ob->data;
@@ -690,7 +691,7 @@ static int snap_sel_to_curs(bContext *C, wmOperator *UNUSED(op))
 	else {
 		struct KeyingSet *ks = ANIM_get_keyingset_for_autokeying(scene, ANIM_KS_LOCATION_ID);
 
-		CTX_DATA_BEGIN(C, Object *, ob, selected_editable_objects) {
+		CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects) {
 			if (ob->mode & OB_MODE_POSE) {
 				bPoseChannel *pchan;
 				bArmature *arm = ob->data;
@@ -927,7 +928,7 @@ static int snap_curs_to_sel(bContext *C, wmOperator *UNUSED(op))
 			}
 		}
 		else {
-			CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
+			CTX_DATA_BEGIN (C, Object *, ob, selected_objects) {
 				copy_v3_v3(vec, ob->obmat[3]);
 
 				/* special case for camera -- snap to bundles */
@@ -992,8 +993,8 @@ static int snap_curs_to_active(bContext *C, wmOperator *UNUSED(op))
 			Mesh *me = obedit->data;
 			BMEditSelection ese;
 			
-			if (EDBM_editselection_active_get(me->edit_btmesh, &ese)) {
-				EDBM_editselection_center(me->edit_btmesh, curs, &ese);
+			if (BM_select_history_active_get(me->edit_btmesh->bm, &ese)) {
+				BM_editselection_center(&ese, curs);
 			}
 			
 			mul_m4_v3(obedit->obmat, curs);

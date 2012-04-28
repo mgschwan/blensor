@@ -127,8 +127,7 @@ static void qsort_trans_data(TransInfo *t, TransData *head, TransData *tail, Tra
 	TransData *itail = tail;
 	*temp = *head;
 
-	while (head < tail)
-	{
+	while (head < tail) {
 		if (t->flag & T_PROP_CONNECTED) {
 			while ((tail->dist >= temp->dist) && (head < tail))
 				tail--;
@@ -138,8 +137,7 @@ static void qsort_trans_data(TransInfo *t, TransData *head, TransData *tail, Tra
 				tail--;
 		}
 
-		if (head != tail)
-		{
+		if (head != tail) {
 			*head = *tail;
 			head++;
 		}
@@ -153,8 +151,7 @@ static void qsort_trans_data(TransInfo *t, TransData *head, TransData *tail, Tra
 				head++;
 		}
 
-		if (head != tail)
-		{
+		if (head != tail) {
 			*tail = *head;
 			tail--;
 		}
@@ -309,7 +306,7 @@ static void createTransEdge(TransInfo *t)
 	int count=0, countsel=0;
 	int propmode = t->flag & T_PROP_EDIT;
 
-	BM_ITER(eed, &iter, em->bm, BM_EDGES_OF_MESH, NULL) {
+	BM_ITER_MESH (eed, &iter, em->bm, BM_EDGES_OF_MESH) {
 		if (!BM_elem_flag_test(eed, BM_ELEM_HIDDEN)) {
 			if (BM_elem_flag_test(eed, BM_ELEM_SELECT)) countsel++;
 			if (propmode) count++;
@@ -331,7 +328,7 @@ static void createTransEdge(TransInfo *t)
 	copy_m3_m4(mtx, t->obedit->obmat);
 	invert_m3_m3(smtx, mtx);
 
-	BM_ITER(eed, &iter, em->bm, BM_EDGES_OF_MESH, NULL) {
+	BM_ITER_MESH (eed, &iter, em->bm, BM_EDGES_OF_MESH) {
 		if (!BM_elem_flag_test(eed, BM_ELEM_HIDDEN) && (BM_elem_flag_test(eed, BM_ELEM_SELECT) || propmode)) { 
 			float *bweight = CustomData_bmesh_get(&em->bm->edata, eed->head.data, CD_BWEIGHT);
 			float *crease = CustomData_bmesh_get(&em->bm->edata, eed->head.data, CD_CREASE);
@@ -535,13 +532,11 @@ static void add_pose_transdata(TransInfo *t, bPoseChannel *pchan, Object *ob, Tr
 
 	td->ob = ob;
 	td->flag = TD_SELECTED;
-	if (bone->flag & BONE_HINGE_CHILD_TRANSFORM)
-	{
+	if (bone->flag & BONE_HINGE_CHILD_TRANSFORM) {
 		td->flag |= TD_NOCENTER;
 	}
 
-	if (bone->flag & BONE_TRANSFORM_CHILD)
-	{
+	if (bone->flag & BONE_TRANSFORM_CHILD) {
 		td->flag |= TD_NOCENTER;
 		td->flag |= TD_NO_LOC;
 	}
@@ -1443,7 +1438,7 @@ static void createTransCurveVerts(bContext *C, TransInfo *t)
 	if (cu->editnurb==NULL) return;
 
 	/* count total of vertices, check identical as in 2nd loop for making transdata! */
-	nurbs= curve_editnurbs(cu);
+	nurbs= BKE_curve_editNurbs_get(cu);
 	for (nu= nurbs->first; nu; nu= nu->next) {
 		if (nu->type == CU_BEZIER) {
 			for (a=0, bezt= nu->bezt; a<nu->pntsu; a++, bezt++) {
@@ -1593,7 +1588,7 @@ static void createTransCurveVerts(bContext *C, TransInfo *t)
 			 * but for now just don't change handle types */
 			if (ELEM(t->mode, TFM_CURVE_SHRINKFATTEN, TFM_TILT) == 0) {
 				/* sets the handles based on their selection, do this after the data is copied to the TransData */
-				testhandlesNurb(nu);
+				BKE_nurb_handles_test(nu);
 			}
 		}
 		else {
@@ -1888,7 +1883,7 @@ static void editmesh_set_connectivity_distance(BMEditMesh *em, float mtx[][3], f
 
 	BLI_smallhash_init(visit);
 
-	BM_ITER(v, &viter, em->bm, BM_VERTS_OF_MESH, NULL) {
+	BM_ITER_MESH (v, &viter, em->bm, BM_VERTS_OF_MESH) {
 		if (BM_elem_flag_test(v, BM_ELEM_SELECT)==0 || BM_elem_flag_test(v, BM_ELEM_HIDDEN))
 			continue;
 			
@@ -1909,7 +1904,7 @@ static void editmesh_set_connectivity_distance(BMEditMesh *em, float mtx[][3], f
 		v2 = queue[start];
 		d = dqueue[start];
 		
-		BM_ITER(e, &eiter, em->bm, BM_EDGES_OF_VERT, v2) {
+		BM_ITER_ELEM (e, &eiter, v2, BM_EDGES_OF_VERT) {
 			float d2;
 			v3 = BM_edge_other_vert(e, v2);
 			
@@ -1953,26 +1948,26 @@ static void editmesh_set_connectivity_distance(BMEditMesh *em, float mtx[][3], f
 }
 
 /* loop-in-a-loop I know, but we need it! (ton) */
- static void get_face_center(float cent_r[3], BMesh *bm, BMVert *eve)
+ static void get_face_center(float cent_r[3], BMVert *eve)
 
 {
 	BMFace *efa;
 	BMIter iter;
 
-	BM_ITER(efa, &iter, bm, BM_FACES_OF_VERT, eve) {
+	BM_ITER_ELEM (efa, &iter, eve, BM_FACES_OF_VERT) {
 		if (BM_elem_flag_test(efa, BM_ELEM_SELECT)) {
-			BM_face_center_mean_calc(bm, efa, cent_r);
+			BM_face_calc_center_mean(efa, cent_r);
 			break;
 		}
 	}
 }
 
-static void get_edge_center(float cent_r[3], BMesh *bm, BMVert *eve)
+static void get_edge_center(float cent_r[3], BMVert *eve)
 {
 	BMEdge *eed;
 	BMIter iter;
 
-	BM_ITER(eed, &iter, bm, BM_EDGES_OF_VERT, eve) {
+	BM_ITER_ELEM (eed, &iter, eve, BM_EDGES_OF_VERT) {
 		if (BM_elem_flag_test(eed, BM_ELEM_SELECT)) {
 			mid_v3_v3v3(cent_r, eed->v1->co, eed->v2->co);
 			break;
@@ -1984,7 +1979,7 @@ static void get_edge_center(float cent_r[3], BMesh *bm, BMVert *eve)
 static void VertsToTransData(TransInfo *t, TransData *td, BMEditMesh *em, BMVert *eve, float *bweight)
 {
 	td->flag = 0;
-	//if(key)
+	//if (key)
 	//	td->loc = key->co;
 	//else
 	td->loc = eve->co;
@@ -1993,9 +1988,9 @@ static void VertsToTransData(TransInfo *t, TransData *td, BMEditMesh *em, BMVert
 
 	if (t->around==V3D_LOCAL) {
 		if (em->selectmode & SCE_SELECT_FACE)
-			get_face_center(td->center, em->bm, eve);
+			get_face_center(td->center, eve);
 		else if (em->selectmode & SCE_SELECT_EDGE)
-			get_edge_center(td->center, em->bm, eve);
+			get_edge_center(td->center, eve);
 	}
 	copy_v3_v3(td->iloc, td->loc);
 
@@ -2051,7 +2046,7 @@ static void createTransEditVerts(bContext *C, TransInfo *t)
 
 	// transform now requires awareness for select mode, so we tag the f1 flags in verts
 	if (selectmode & SCE_SELECT_VERTEX) {
-		BM_ITER(eve, &iter, bm, BM_VERTS_OF_MESH, NULL) {
+		BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
 			BM_elem_flag_set(eve, BM_ELEM_TAG, BM_elem_flag_test(eve, BM_ELEM_SELECT));
 		}
 	}
@@ -2452,17 +2447,17 @@ static void createTransUVs(bContext *C, TransInfo *t)
 	if (!ED_space_image_show_uvedit(sima, t->obedit)) return;
 
 	/* count */
-	BM_ITER(efa, &iter, em->bm, BM_FACES_OF_MESH, NULL) {
+	BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
 		tf= CustomData_bmesh_get(&em->bm->pdata, efa->head.data, CD_MTEXPOLY);
 
-		if (!uvedit_face_visible(scene, ima, efa, tf)) {
+		if (!uvedit_face_visible_test(scene, ima, efa, tf)) {
 			BM_elem_flag_disable(efa, BM_ELEM_TAG);
 			continue;
 		}
 		
 		BM_elem_flag_enable(efa, BM_ELEM_TAG);
-		BM_ITER(l, &liter, em->bm, BM_LOOPS_OF_FACE, efa) {
-			if (uvedit_uv_selected(em, scene, l)) 
+		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+			if (uvedit_uv_select_test(em, scene, l)) 
 				countsel++;
 
 			if (propmode)
@@ -2485,16 +2480,16 @@ static void createTransUVs(bContext *C, TransInfo *t)
 	td= t->data;
 	td2d= t->data2d;
 
-	BM_ITER(efa, &iter, em->bm, BM_FACES_OF_MESH, NULL) {
+	BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
 		if (!BM_elem_flag_test(efa, BM_ELEM_TAG))
 			continue;
 
-		BM_ITER(l, &liter, em->bm, BM_LOOPS_OF_FACE, efa) {
-			if (!propmode && !uvedit_uv_selected(em, scene, l))
+		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+			if (!propmode && !uvedit_uv_select_test(em, scene, l))
 				continue;
 			
 			luv = CustomData_bmesh_get(&em->bm->ldata, l->head.data, CD_MLOOPUV);
-			UVsToTransData(sima, td++, td2d++, luv->uv, uvedit_uv_selected(em, scene, l));
+			UVsToTransData(sima, td++, td2d++, luv->uv, uvedit_uv_select_test(em, scene, l));
 		}
 	}
 
@@ -2662,6 +2657,7 @@ static void createTransNlaData(bContext *C, TransInfo *t)
 	td= t->data;
 	t->customData= MEM_callocN(t->total*sizeof(TransDataNla), "TransDataNla (NLA Editor)");
 	tdn= t->customData;
+	t->flag |= T_FREE_CUSTOMDATA;
 	
 	/* loop 2: build transdata array */
 	for (ale= anim_data.first; ale; ale= ale->next) {
@@ -2706,8 +2702,7 @@ static void createTransNlaData(bContext *C, TransInfo *t)
 						center[2]= 0.0f;
 						
 						/* set td's based on which handles are applicable */
-						if (FrameOnMouseSide(t->frame_side, strip->start, (float)CFRA))
-						{
+						if (FrameOnMouseSide(t->frame_side, strip->start, (float)CFRA)) {
 							/* just set tdn to assume that it only has one handle for now */
 							tdn->handle= -1;
 							
@@ -2738,8 +2733,7 @@ static void createTransNlaData(bContext *C, TransInfo *t)
 							td->extra= tdn;
 							td++;
 						}
-						if (FrameOnMouseSide(t->frame_side, strip->end, (float)CFRA))
-						{
+						if (FrameOnMouseSide(t->frame_side, strip->end, (float)CFRA)) {
 							/* if tdn is already holding the start handle, then we're doing both, otherwise, only end */
 							tdn->handle= (tdn->handle) ? 2 : 1;
 							
@@ -3992,7 +3986,7 @@ static TransData *SeqToTransData(TransData *td, TransData2D *td2d, TransDataSeq 
 {
 	int start_left;
 
-	switch(sel_flag) {
+	switch (sel_flag) {
 	case SELECT:
 		/* Use seq_tx_get_final_left() and an offset here
 		 * so transform has the left hand location of the strip.
@@ -4446,8 +4440,7 @@ static void ObjectToTransData(TransInfo *t, TransData *td, Object *ob)
 	}
 
 	/* set active flag */
-	if (ob == OBACT)
-	{
+	if (ob == OBACT) {
 		td->flag |= TD_ACTIVE;
 	}
 }
@@ -4499,8 +4492,7 @@ static void set_trans_object_base_flags(TransInfo *t)
 				parsel= parsel->parent;
 			}
 
-			if (parsel)
-			{
+			if (parsel) {
 				/* rotation around local centers are allowed to propagate */
 				if ((t->mode == TFM_ROTATION || t->mode == TFM_TRACKBALL)  && t->around == V3D_LOCAL) {
 					base->flag |= BA_TRANSFORM_CHILD;
@@ -4533,10 +4525,8 @@ static int mark_children(Object *ob)
 	if (ob->flag & (SELECT|BA_TRANSFORM_CHILD))
 		return 1;
 
-	if (ob->parent)
-	{
-		if (mark_children(ob->parent))
-		{
+	if (ob->parent) {
+		if (mark_children(ob->parent)) {
 			ob->flag |= BA_TRANSFORM_CHILD;
 			return 1;
 		}
@@ -4553,8 +4543,7 @@ static int count_proportional_objects(TransInfo *t)
 	Base *base;
 
 	/* rotations around local centers are allowed to propagate, so we take all objects */
-	if (!((t->mode == TFM_ROTATION || t->mode == TFM_TRACKBALL)  && t->around == V3D_LOCAL))
-	{
+	if (!((t->mode == TFM_ROTATION || t->mode == TFM_TRACKBALL)  && t->around == V3D_LOCAL)) {
 		/* mark all parents */
 		for (base= scene->base.first; base; base= base->next) {
 			if (TESTBASELIB_BGMODE(v3d, scene, base)) {
@@ -4615,8 +4604,7 @@ static void clear_trans_object_base_flags(TransInfo *t)
 	Scene *sce = t->scene;
 	Base *base;
 
-	for (base= sce->base.first; base; base = base->next)
-	{
+	for (base= sce->base.first; base; base = base->next) {
 		if (base->flag & BA_WAS_SEL)
 			base->flag |= SELECT;
 
@@ -4892,10 +4880,6 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 				}
 				EDBM_automerge(t->scene, t->obedit, 1);
 			}
-#if 0
-			/* BMESH_TODO: simply nothing to cancel from here, but when interpolation of
-			 * some custom layers would be added this code would eb needed
-			 * some details are in comments in projectSVData (sergey) */
 			else {
 				if (t->mode == TFM_EDGE_SLIDE) {
 					SlideData *sld = t->customData;
@@ -4904,7 +4888,6 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 					projectSVData(t, FALSE);
 				}
 			}
-#endif
 		}
 	}
 	
@@ -5074,8 +5057,7 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 		if (ANIM_animdata_get_context(C, &ac) == 0)
 			return;
 		
-		if (ac.datatype)
-		{
+		if (ac.datatype) {
 			ListBase anim_data = {NULL, NULL};
 			bAnimListElem *ale;
 			short filter= (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_FOREDIT | ANIMFILTER_CURVE_VISIBLE);
@@ -5124,8 +5106,7 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 		if (ANIM_animdata_get_context(C, &ac) == 0)
 			return;
 			
-		if (ac.datatype)
-		{
+		if (ac.datatype) {
 			ListBase anim_data = {NULL, NULL};
 			bAnimListElem *ale;
 			short filter= (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_FOREDIT);
@@ -5151,8 +5132,7 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 		}
 	}
 	else if (t->obedit) {
-		if (t->obedit->type == OB_MESH)
-		{
+		if (t->obedit->type == OB_MESH) {
 			BMEditMesh *em = BMEdit_FromObject(t->obedit);
 			/* table needs to be created for each edit command, since vertices can move etc */
 			mesh_octree_table(t->obedit, em, NULL, 'e');
@@ -5302,16 +5282,14 @@ static void createTransObject(bContext *C, TransInfo *t)
 		return;
 	}
 	
-	if (propmode)
-	{
+	if (propmode) {
 		t->total += count_proportional_objects(t);
 	}
 
 	td = t->data = MEM_callocN(t->total*sizeof(TransData), "TransOb");
 	tx = t->ext = MEM_callocN(t->total*sizeof(TransDataExtension), "TransObExtension");
 
-	CTX_DATA_BEGIN(C, Base*, base, selected_bases)
-	{
+	CTX_DATA_BEGIN (C, Base*, base, selected_bases) {
 		Object *ob= base->object;
 		
 		td->flag = TD_SELECTED;
@@ -5319,8 +5297,7 @@ static void createTransObject(bContext *C, TransInfo *t)
 		td->ext = tx;
 		td->ext->rotOrder= ob->rotmode;
 		
-		if (base->flag & BA_TRANSFORM_CHILD)
-		{
+		if (base->flag & BA_TRANSFORM_CHILD) {
 			td->flag |= TD_NOCENTER;
 			td->flag |= TD_NO_LOC;
 		}
@@ -5337,8 +5314,7 @@ static void createTransObject(bContext *C, TransInfo *t)
 	}
 	CTX_DATA_END;
 	
-	if (propmode)
-	{
+	if (propmode) {
 		Scene *scene = t->scene;
 		View3D *v3d = t->view;
 		Base *base;
@@ -5347,7 +5323,8 @@ static void createTransObject(bContext *C, TransInfo *t)
 			Object *ob= base->object;
 
 			/* if base is not selected, not a parent of selection or not a child of selection and it is editable */
-			if ((ob->flag & (SELECT|BA_TRANSFORM_CHILD|BA_TRANSFORM_PARENT)) == 0 && BASE_EDITABLE_BGMODE(v3d, scene, base))
+			if ((ob->flag & (SELECT | BA_TRANSFORM_CHILD | BA_TRANSFORM_PARENT)) == 0 &&
+			    BASE_EDITABLE_BGMODE(v3d, scene, base))
 			{
 				td->protectflag= ob->protectflag;
 				td->ext = tx;
@@ -5418,7 +5395,7 @@ static void createTransNodeData(bContext *C, TransInfo *t)
 	td = t->data = MEM_callocN(t->total*sizeof(TransData), "TransNode TransData");
 	td2d = t->data2d = MEM_callocN(t->total*sizeof(TransData2D), "TransNode TransData2D");
 
-	CTX_DATA_BEGIN(C, bNode *, selnode, selected_nodes)
+	CTX_DATA_BEGIN (C, bNode *, selnode, selected_nodes)
 		NodeToTransData(td++, td2d++, selnode);
 	CTX_DATA_END
 }
@@ -5753,10 +5730,13 @@ static void createTransTrackingData(bContext *C, TransInfo *t)
 	ARegion *ar = CTX_wm_region(C);
 	SpaceClip *sc = CTX_wm_space_clip(C);
 	MovieClip *clip = ED_space_clip(sc);
+	int width, height;
 
 	t->total = 0;
 
-	if (!clip || !BKE_movieclip_has_frame(clip, &sc->user))
+	BKE_movieclip_get_size(clip, &sc->user, &width, &height);
+
+	if (!clip || width == 0 || height == 0)
 		return;
 
 	if (!ELEM(t->mode, TFM_RESIZE, TFM_TRANSLATION))
@@ -6009,8 +5989,7 @@ void createTransData(bContext *C, TransInfo *t)
 			
 		}
 	}
-	else if (ob && (ob->mode & OB_MODE_PARTICLE_EDIT) 
-		&& PE_start_edit(PE_get_current(scene, ob))) {
+	else if (ob && (ob->mode & OB_MODE_PARTICLE_EDIT) && PE_start_edit(PE_get_current(scene, ob))) {
 		createTransParticleVerts(C, t);
 		t->flag |= T_POINTS;
 
@@ -6037,12 +6016,10 @@ void createTransData(bContext *C, TransInfo *t)
 			sort_trans_data_dist(t);
 		}
 
-		if ((t->spacetype == SPACE_VIEW3D) && (t->ar->regiontype == RGN_TYPE_WINDOW))
-		{
+		if ((t->spacetype == SPACE_VIEW3D) && (t->ar->regiontype == RGN_TYPE_WINDOW)) {
 			View3D *v3d = t->view;
 			RegionView3D *rv3d = CTX_wm_region_view3d(C);
-			if (rv3d && (t->flag & T_OBJECT) && v3d->camera == OBACT && rv3d->persp==RV3D_CAMOB)
-			{
+			if (rv3d && (t->flag & T_OBJECT) && v3d->camera == OBACT && rv3d->persp==RV3D_CAMOB) {
 				t->flag |= T_CAMERA;
 			}
 		}

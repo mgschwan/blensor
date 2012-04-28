@@ -323,7 +323,7 @@ def check_loops(loops, mapping, mesh_mod):
 # input: mesh, output: dict with the edge-key as key and face-index as value
 def dict_edge_faces(mesh):
     edge_faces = dict([[edge.key, []] for edge in mesh.edges if not edge.hide])
-    for face in mesh.faces:
+    for face in mesh.tessfaces:
         if face.hide:
             continue
         for key in face.edge_keys:
@@ -336,9 +336,9 @@ def dict_face_faces(mesh, edge_faces=False):
     if not edge_faces:
         edge_faces = dict_edge_faces(mesh)
     
-    connected_faces = dict([[face.index, []] for face in mesh.faces if \
+    connected_faces = dict([[face.index, []] for face in mesh.tessfaces if \
         not face.hide])
-    for face in mesh.faces:
+    for face in mesh.tessfaces:
         if face.hide:
             continue
         for edge_key in face.edge_keys:
@@ -365,7 +365,7 @@ def dict_vert_edges(mesh):
 # input: mesh, output: dict with the vert index as key and face index as value
 def dict_vert_faces(mesh):
     vert_faces = dict([[v.index, []] for v in mesh.vertices if not v.hide])
-    for face in mesh.faces:
+    for face in mesh.tessfaces:
         if not face.hide:
             for vert in face.vertices:
                 vert_faces[vert].append(face.index)
@@ -523,7 +523,7 @@ def get_mapping(derived, mesh, mesh_mod, single_vertices, full_search, loops):
         real_singles = [v_real for v_real in mapping.values() if v_real>-1]
         
         verts_indices = [vert.index for vert in verts]
-        for face in [face for face in mesh.faces if not face.select \
+        for face in [face for face in mesh.tessfaces if not face.select \
         and not face.hide]:
             for vert in face.vertices:
                 if vert in real_singles:
@@ -630,7 +630,7 @@ def get_parallel_loops(mesh_mod, loops):
             for side in sides:
                 extraloop = []
                 for fi in side:
-                    for key in mesh_mod.faces[fi].edge_keys:
+                    for key in mesh_mod.tessfaces[fi].edge_keys:
                         if key[0] not in verts_used and key[1] not in \
                         verts_used:
                             extraloop.append(key)
@@ -1334,10 +1334,10 @@ def bridge_create_faces(mesh, faces, twist):
             else:
                 faces[i] = [faces[i][-1]] + faces[i][:-1]
     
-    start_faces = len(mesh.faces)
-    mesh.faces.add(len(faces))
+    start_faces = len(mesh.tessfaces)
+    mesh.tessfaces.add(len(faces))
     for i in range(len(faces)):
-        mesh.faces[start_faces + i].vertices_raw = faces[i]
+        mesh.tessfaces[start_faces + i].vertices_raw = faces[i]
     mesh.update(calc_edges = True) # calc_edges prevents memory-corruption
 
 
@@ -1345,7 +1345,7 @@ def bridge_create_faces(mesh, faces, twist):
 def bridge_get_input(mesh):
     # create list of internal edges, which should be skipped
     eks_of_selected_faces = [item for sublist in [face.edge_keys for face \
-        in mesh.faces if face.select and not face.hide] for item in sublist]
+        in mesh.tessfaces if face.select and not face.hide] for item in sublist]
     edge_count = {}
     for ek in eks_of_selected_faces:
         if ek in edge_count:
@@ -1366,11 +1366,11 @@ def bridge_get_input(mesh):
 def bridge_initialise(mesh, interpolation):
     if interpolation == 'cubic':
         # dict with edge-key as key and list of connected valid faces as value
-        face_blacklist = [face.index for face in mesh.faces if face.select or \
+        face_blacklist = [face.index for face in mesh.tessfaces if face.select or \
             face.hide]
         edge_faces = dict([[edge.key, []] for edge in mesh.edges if not \
             edge.hide])
-        for face in mesh.faces:
+        for face in mesh.tessfaces:
             if face.index in face_blacklist:
                 continue
             for key in face.edge_keys:
@@ -1383,13 +1383,13 @@ def bridge_initialise(mesh, interpolation):
         edgekey_to_edge = False
     
     # selected faces input
-    old_selected_faces = [face.index for face in mesh.faces if face.select \
+    old_selected_faces = [face.index for face in mesh.tessfaces if face.select \
         and not face.hide]
     
     # find out if faces created by bridging should be smoothed
     smooth = False
-    if mesh.faces:
-        if sum([face.use_smooth for face in mesh.faces])/len(mesh.faces) \
+    if mesh.tessfaces:
+        if sum([face.use_smooth for face in mesh.tessfaces])/len(mesh.tessfaces) \
         >= 0.5:
             smooth = True
     
@@ -1494,7 +1494,7 @@ def bridge_remove_internal_faces(mesh, old_selected_faces):
     bpy.ops.mesh.select_all(action = 'DESELECT')
     bpy.ops.object.mode_set(mode = 'OBJECT')
     for face in old_selected_faces:
-        mesh.faces[face].select = True
+        mesh.tessfaces[face].select = True
     bpy.ops.object.mode_set(mode = 'EDIT')
     bpy.ops.mesh.delete(type = 'FACE')
     
@@ -1517,7 +1517,7 @@ def bridge_save_unused_faces(mesh, old_selected_faces, loops):
     # key: vertex index, value: lists of selected faces using it
     vertex_to_face = dict([[i, []] for i in range(len(mesh.vertices))])
     [[vertex_to_face[vertex_index].append(face) for vertex_index in \
-        mesh.faces[face].vertices] for face in old_selected_faces]
+        mesh.tessfaces[face].vertices] for face in old_selected_faces]
     
     # group selected faces that are connected
     groups = []
@@ -1530,7 +1530,7 @@ def bridge_save_unused_faces(mesh, old_selected_faces, loops):
         new_faces = [face]
         while new_faces:
             grow_face = new_faces[0]
-            for vertex in mesh.faces[grow_face].vertices:
+            for vertex in mesh.tessfaces[grow_face].vertices:
                 vertex_face_group = [face for face in vertex_to_face[vertex] \
                     if face not in grouped_faces]
                 new_faces += vertex_face_group
@@ -1551,7 +1551,7 @@ def bridge_save_unused_faces(mesh, old_selected_faces, loops):
         for face in group:
             if used:
                 break
-            for vertex in mesh.faces[face].vertices:
+            for vertex in mesh.tessfaces[face].vertices:
                 if used_vertices[vertex]:
                     used = True
                     break
@@ -1565,8 +1565,8 @@ def bridge_select_new_faces(mesh, amount, smooth):
     select_mode = [i for i in bpy.context.tool_settings.mesh_select_mode]
     bpy.context.tool_settings.mesh_select_mode = [False, False, True]
     for i in range(amount):
-        mesh.faces[-(i+1)].select = True
-        mesh.faces[-(i+1)].use_smooth = smooth
+        mesh.tessfaces[-(i+1)].select = True
+        mesh.tessfaces[-(i+1)].use_smooth = smooth
     bpy.ops.object.mode_set(mode = 'EDIT')
     bpy.ops.object.mode_set(mode = 'OBJECT')
     bpy.context.tool_settings.mesh_select_mode = select_mode
@@ -1708,7 +1708,7 @@ def circle_calculate_verts(flatten, mesh_mod, locs_2d, com, p, q, normal):
     else: # project the locations on the existing mesh
         vert_edges = dict_vert_edges(mesh_mod)
         vert_faces = dict_vert_faces(mesh_mod)
-        faces = [f for f in mesh_mod.faces if not f.hide]
+        faces = [f for f in mesh_mod.tessfaces if not f.hide]
         rays = [normal, -normal]
         new_locs = []
         for loc in locs_3d:
@@ -1724,7 +1724,7 @@ def circle_calculate_verts(flatten, mesh_mod, locs_2d, com, p, q, normal):
                     # quick search through adjacent faces
                     for face in vert_faces[loc[0]]:
                         verts = [mesh_mod.vertices[v].co for v in \
-                            mesh_mod.faces[face].vertices]
+                            mesh_mod.tessfaces[face].vertices]
                         if len(verts) == 3: # triangle
                             v1, v2, v3 = verts
                             v4 = False
@@ -1852,14 +1852,14 @@ def circle_get_input(object, mesh, scene):
     
     # create list of edge-keys based on selection state
     faces = False
-    for face in mesh.faces:
+    for face in mesh.tessfaces:
         if face.select and not face.hide:
             faces = True
             break
     if faces:
         # get selected, non-hidden , non-internal edge-keys
         eks_selected = [key for keys in [face.edge_keys for face in \
-            mesh_mod.faces if face.select and not face.hide] for key in keys]
+            mesh_mod.tessfaces if face.select and not face.hide] for key in keys]
         edge_count = {}
         for ek in eks_selected:
             if ek in edge_count:
@@ -1880,10 +1880,10 @@ def circle_get_input(object, mesh, scene):
         vert.select and not vert.hide and not \
         verts_connected.get(vert.index, False)]
     
-    if single_vertices and len(mesh.faces)>0:
+    if single_vertices and len(mesh.tessfaces)>0:
         vert_to_single = dict([[v.index, []] for v in mesh_mod.vertices \
             if not v.hide])
-        for face in [face for face in mesh_mod.faces if not face.select \
+        for face in [face for face in mesh_mod.tessfaces if not face.select \
         and not face.hide]:
             for vert in face.vertices:
                 if vert in single_vertices:
@@ -1901,7 +1901,7 @@ def circle_get_input(object, mesh, scene):
     
     # find out to which loops the single vertices belong
     single_loops = dict([[i, []] for i in range(len(loops))])
-    if single_vertices and len(mesh.faces)>0:
+    if single_vertices and len(mesh.tessfaces)>0:
         for i, [loop, circular] in enumerate(loops):
             for vert in loop:
                 if vert_to_single[vert]:

@@ -50,18 +50,21 @@ struct BMBVHTree *BMBVH_NewBVH(struct BMEditMesh *em, int flag, struct Scene *sc
 void BMBVH_FreeBVH(struct BMBVHTree *tree);
 struct BVHTree *BMBVH_BVHTree(struct BMBVHTree *tree);
 
-struct BMFace *BMBVH_RayCast(struct BMBVHTree *tree, float *co, float *dir, float *hitout, float *cagehit);
+struct BMFace *BMBVH_RayCast(struct BMBVHTree *tree, const float co[3], const float dir[3],
+                             float r_hitout[3], float r_cagehit[3]);
 
 int BMBVH_EdgeVisible(struct BMBVHTree *tree, struct BMEdge *e, 
                       struct ARegion *ar, struct View3D *v3d, struct Object *obedit);
 
-#define BM_SEARCH_MAXDIST	0.4f
-
 /*find a vert closest to co in a sphere of radius maxdist*/
 struct BMVert *BMBVH_FindClosestVert(struct BMBVHTree *tree, float *co, float maxdist);
                                          
-/*BMBVH_NewBVH flag parameter*/
-#define BMBVH_USE_CAGE		1 /*project geometry onto modifier cage */
-#define BMBVH_RETURN_ORIG	2 /*use with BMBVH_USE_CAGE, returns hits in relation to original geometry*/
+/* BMBVH_NewBVH flag parameter */
+enum {
+	BMBVH_USE_CAGE        = 1, /* project geometry onto modifier cage */
+	BMBVH_RETURN_ORIG     = 2, /* use with BMBVH_USE_CAGE, returns hits in relation to original geometry */
+	BMBVH_RESPECT_SELECT  = 4, /* restrict to hidden geometry (overrides BMBVH_RESPECT_HIDDEN) */
+	BMBVH_RESPECT_HIDDEN  = 8  /* omit hidden geometry */
+};
 
 #endif /* __EDITBMESH_BVH_H__ */

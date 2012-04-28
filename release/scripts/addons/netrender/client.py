@@ -104,6 +104,9 @@ def fillCommonJobSettings(job, job_name, netsettings):
         job.render = netsettings.job_render_engine_other
     else:
         job.render = netsettings.job_render_engine
+        
+    if netsettings.job_tags:
+        job.tags.update(netsettings.job_tags.split(";"))
      
     if netsettings.job_type == "JOB_BLENDER":
         job.type = netrender.model.JOB_BLENDER

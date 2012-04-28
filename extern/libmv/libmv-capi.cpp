@@ -36,6 +36,8 @@
 
 #include "Math/v3d_optimization.h"
 
+#include "libmv/numeric/numeric.h"
+
 #include "libmv/tracking/esm_region_tracker.h"
 #include "libmv/tracking/brute_region_tracker.h"
 #include "libmv/tracking/hybrid_region_tracker.h"
@@ -51,6 +53,8 @@
 #include "libmv/simple_pipeline/detect.h"
 #include "libmv/simple_pipeline/pipeline.h"
 #include "libmv/simple_pipeline/camera_intrinsics.h"
+#include "libmv/simple_pipeline/rigid_registration.h"
+#include "libmv/simple_pipeline/modal_solver.h"
 
 #include <stdlib.h>
 #include <assert.h>
@@ -381,6 +385,31 @@ int libmv_refineParametersAreValid(int parameters) {
 	                       LIBMV_REFINE_RADIAL_DISTORTION_K1));
 }
 
+void libmv_solveRefineIntrinsics(libmv::Tracks *tracks, libmv::CameraIntrinsics *intrinsics,
+			libmv::EuclideanReconstruction *reconstruction, int refine_intrinsics,
+			reconstruct_progress_update_cb progress_update_callback, void *callback_customdata)
+{
+	/* only a few combinations are supported but trust the caller */
+	int libmv_refine_flags = 0;
+
+	if (refine_intrinsics & LIBMV_REFINE_FOCAL_LENGTH) {
+		libmv_refine_flags |= libmv::BUNDLE_FOCAL_LENGTH;
+	}
+	if (refine_intrinsics & LIBMV_REFINE_PRINCIPAL_POINT) {
+		libmv_refine_flags |= libmv::BUNDLE_PRINCIPAL_POINT;
+	}
+	if (refine_intrinsics & LIBMV_REFINE_RADIAL_DISTORTION_K1) {
+		libmv_refine_flags |= libmv::BUNDLE_RADIAL_K1;
+	}
+	if (refine_intrinsics & LIBMV_REFINE_RADIAL_DISTORTION_K2) {
+		libmv_refine_flags |= libmv::BUNDLE_RADIAL_K2;
+	}
+
+	progress_update_callback(callback_customdata, 1.0, "Refining solution");
+
+	libmv::EuclideanBundleCommonIntrinsics(*(libmv::Tracks *)tracks, libmv_refine_flags,
+		reconstruction, intrinsics);
+}
 
 libmv_Reconstruction *libmv_solveReconstruction(libmv_Tracks *tracks, int keyframe1, int keyframe2,
 			int refine_intrinsics, double focal_length, double principal_x, double principal_y, double k1, double k2, double k3,
@@ -420,25 +449,44 @@ libmv_Reconstruction *libmv_solveReconstruction(libmv_Tracks *tracks, int keyfra
 	libmv::EuclideanCompleteReconstruction(normalized_tracks, reconstruction, &update_callback);
 
 	if (refine_intrinsics) {
-		/* only a few combinations are supported but trust the caller */
-		int libmv_refine_flags = 0;
-		if (refine_intrinsics & LIBMV_REFINE_FOCAL_LENGTH) {
-			libmv_refine_flags |= libmv::BUNDLE_FOCAL_LENGTH;
-		}
-		if (refine_intrinsics & LIBMV_REFINE_PRINCIPAL_POINT) {
-			libmv_refine_flags |= libmv::BUNDLE_PRINCIPAL_POINT;
-		}
-		if (refine_intrinsics & LIBMV_REFINE_RADIAL_DISTORTION_K1) {
-			libmv_refine_flags |= libmv::BUNDLE_RADIAL_K1;
-		}
-		if (refine_intrinsics & LIBMV_REFINE_RADIAL_DISTORTION_K2) {
-			libmv_refine_flags |= libmv::BUNDLE_RADIAL_K2;
-		}
-
-		progress_update_callback(callback_customdata, 1.0, "Refining solution");
-		libmv::EuclideanBundleCommonIntrinsics(*(libmv::Tracks *)tracks, libmv_refine_flags,
-			reconstruction, intrinsics);
+		libmv_solveRefineIntrinsics((libmv::Tracks *)tracks, intrinsics, reconstruction,
+			refine_intrinsics, progress_update_callback, callback_customdata);
 	}
+
+	progress_update_callback(callback_customdata, 1.0, "Finishing solution");
+	libmv_reconstruction->tracks = *(libmv::Tracks *)tracks;
+	libmv_reconstruction->error = libmv::EuclideanReprojectionError(*(libmv::Tracks *)tracks, *reconstruction, *intrinsics);
+
+	return (libmv_Reconstruction *)libmv_reconstruction;
+}
+
+struct libmv_Reconstruction *libmv_solveModal(struct libmv_Tracks *tracks, double focal_length,
+			double principal_x, double principal_y, double k1, double k2, double k3,
+			reconstruct_progress_update_cb progress_update_callback, void *callback_customdata)
+{
+	/* Invert the camera intrinsics. */
+	libmv::vector<libmv::Marker> markers = ((libmv::Tracks*)tracks)->AllMarkers();
+	libmv_Reconstruction *libmv_reconstruction = new libmv_Reconstruction();
+	libmv::EuclideanReconstruction *reconstruction = &libmv_reconstruction->reconstruction;
+	libmv::CameraIntrinsics *intrinsics = &libmv_reconstruction->intrinsics;
+
+	ReconstructUpdateCallback update_callback =
+		ReconstructUpdateCallback(progress_update_callback, callback_customdata);
+
+	intrinsics->SetFocalLength(focal_length, focal_length);
+	intrinsics->SetPrincipalPoint(principal_x, principal_y);
+	intrinsics->SetRadialDistortion(k1, k2, k3);
+
+	for (int i = 0; i < markers.size(); ++i) {
+		intrinsics->InvertIntrinsics(markers[i].x,
+			markers[i].y,
+			&(markers[i].x),
+			&(markers[i].y));
+	}
+
+	libmv::Tracks normalized_tracks(markers);
+
+	libmv::ModalSolver(normalized_tracks, reconstruction, &update_callback);
 
 	progress_update_callback(callback_customdata, 1.0, "Finishing solution");
 	libmv_reconstruction->tracks = *(libmv::Tracks *)tracks;
@@ -837,4 +885,57 @@ void libmv_InvertIntrinsics(double focal_length, double principal_x, double prin
 
 		intrinsics.InvertIntrinsics(x, y, x1, y1);
 	}
+}
+
+/* ************ point clouds ************ */
+
+void libmvTransformToMat4(libmv::Mat3 &R, libmv::Vec3 &S, libmv::Vec3 &t, double M[4][4])
+{
+	for (int j = 0; j < 3; ++j)
+		for (int k = 0; k < 3; ++k)
+			M[j][k] = R(k, j) * S(j);
+
+	for (int i = 0; i < 3; ++i) {
+		M[3][0] = t(0);
+		M[3][1] = t(1);
+		M[3][2] = t(2);
+
+		M[0][3] = M[1][3] = M[2][3] = 0;
+	}
+
+	M[3][3] = 1.0;
+}
+
+void libmv_rigidRegistration(float (*reference_points)[3], float (*points)[3], int total_points,
+                             int use_scale, int use_translation, double M[4][4])
+{
+	libmv::Mat3 R;
+	libmv::Vec3 S;
+	libmv::Vec3 t;
+	libmv::vector<libmv::Vec3> reference_points_vector, points_vector;
+
+	for (int i = 0; i < total_points; i++) {
+		reference_points_vector.push_back(libmv::Vec3(reference_points[i][0],
+		                                              reference_points[i][1],
+		                                              reference_points[i][2]));
+
+		points_vector.push_back(libmv::Vec3(points[i][0],
+		                                    points[i][1],
+		                                    points[i][2]));
+	}
+
+	if (use_scale && use_translation) {
+		libmv::RigidRegistration(reference_points_vector, points_vector, R, S, t);
+	}
+	else if (use_translation) {
+		S = libmv::Vec3(1.0, 1.0, 1.0);
+		libmv::RigidRegistration(reference_points_vector, points_vector, R, t);
+	}
+	else {
+		S = libmv::Vec3(1.0, 1.0, 1.0);
+		t = libmv::Vec3::Zero();
+		libmv::RigidRegistration(reference_points_vector, points_vector, R);
+	}
+
+	libmvTransformToMat4(R, S, t, M);
 }

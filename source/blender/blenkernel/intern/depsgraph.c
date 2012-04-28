@@ -34,7 +34,10 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_winstuff.h"
+#ifdef WIN32
+#  include "BLI_winstuff.h"
+#endif
+
 #include "BLI_utildefines.h"
 #include "BLI_listbase.h"
 #include "BLI_ghash.h"
@@ -459,7 +462,7 @@ static void build_dag_object(DagForest *dag, DagNode *scenenode, Scene *scene, O
 	if (ob->parent) {
 		node2 = dag_get_node(dag,ob->parent);
 		
-		switch(ob->partype) {
+		switch (ob->partype) {
 			case PARSKEL:
 				dag_add_relation(dag,node2,node,DAG_RL_DATA_DATA|DAG_RL_OB_OB, "Parent");
 				break;
@@ -536,7 +539,7 @@ static void build_dag_object(DagForest *dag, DagNode *scenenode, Scene *scene, O
 			break;
 		case OB_MBALL: 
 		{
-			Object *mom= find_basis_mball(scene, ob);
+			Object *mom= BKE_metaball_basis_find(scene, ob);
 			
 			if (mom!=ob) {
 				node2 = dag_get_node(dag, mom);
@@ -1306,11 +1309,11 @@ DagNodeQueue * graph_dfs(void)
 						/* is_cycle = 1; */ /* UNUSED */
 					}
 					else if (itA->node->color == DAG_BLACK) {
-						;
 						/* already processed node but we may want later to change distance either to shorter to longer.
 						 * DFS_dist is the first encounter  
 						 */
-						/*if (node->DFS_dist >= itA->node->DFS_dist)
+#if 0
+						if (node->DFS_dist >= itA->node->DFS_dist)
 							itA->node->DFS_dist = node->DFS_dist + 1;
 
 							fprintf(stderr,"dfs forward or cross edge :%15s %i-%i %15s %i-%i\n",
@@ -1320,7 +1323,7 @@ DagNodeQueue * graph_dfs(void)
 								((ID *) itA->node->ob)->name, 
 								itA->node->DFS_dvtm,
 								itA->node->DFS_fntm);
-					*/
+#endif
 					}
 					else
 						fprintf(stderr,"dfs unknown edge\n");
@@ -1576,6 +1579,7 @@ struct DagNodeQueue *get_all_childs(struct DagForest	*dag, void *ob)
 }
 
 /* unused */
+#if 0
 short	are_obs_related(struct DagForest	*dag, void *ob1, void *ob2)
 {
 	DagNode * node;
@@ -1592,6 +1596,7 @@ short	are_obs_related(struct DagForest	*dag, void *ob1, void *ob2)
 	}
 	return DAG_NO_RELATION;
 }
+#endif
 
 int	is_acyclic( DagForest	*dag)
 {
@@ -1795,12 +1800,12 @@ void DAG_scene_sort(Main *bmain, Scene *sce)
 		}
 	}
 	
-	// temporal correction for circular dependancies
+	/* temporal correction for circular dependencies */
 	base = sce->base.first;
 	while (base) {
 		BLI_remlink(&sce->base,base);
 		BLI_addhead(&tempbase,base);
-		//if(G.debug & G_DEBUG)
+		//if (G.debug & G_DEBUG)
 			printf("cyclic %s\n", base->object->id.name);
 		base = sce->base.first;
 	}
@@ -2240,7 +2245,7 @@ static void dag_object_time_update_flags(Object *ob)
 		Curve *cu;
 		Lattice *lt;
 		
-		switch(ob->type) {
+		switch (ob->type) {
 			case OB_MESH:
 				me= ob->data;
 				if (me->key) {
@@ -2913,7 +2918,7 @@ void DAG_pose_sort(Object *ob)
 		}
 	}
 	
-	// temporal correction for circular dependancies
+	/* temporal correction for circular dependencies */
 	while (pose->chanbase.first) {
 		pchan= pose->chanbase.first;
 		BLI_remlink(&pose->chanbase, pchan);

@@ -360,8 +360,9 @@ static int add_name(const char *str)
 		 * */
 		buf[i] = 0;
 		if (debugSDNA > 3) printf("Name before chomping: %s\n", buf); 
-		if ( (strncmp(buf,"(*headdraw", 10) == 0)
-			|| (strncmp(buf,"(*windraw", 9) == 0) ) {
+		if ((strncmp(buf,"(*headdraw", 10) == 0) ||
+		    (strncmp(buf,"(*windraw", 9) == 0) )
+		{
 			buf[i] = ')';
 			buf[i+1] = '(';
 			buf[i+2] = 'v'; 
@@ -888,8 +889,7 @@ void dna_write(FILE *file, void *pntr, int size)
 
 	data = (char *) pntr;
 	
-	for (i = 0 ; i < size ; i++)
-	{
+	for (i = 0 ; i < size ; i++) {
 		fprintf(file, "%d,", data[i]);
 		linelength++;
 		if (linelength >= MAX_DNA_LINE_LENGTH) {
@@ -1094,7 +1094,7 @@ static int make_structDNA(char *baseDirectory, FILE *file)
 				sp += firststruct;
 				for (a=firststruct; a<nr_types; a++, sp++) { 
 					if (*sp) {
-						fprintf(fp, "\tif(sizeof(struct %s) - %d) printf(\"ALIGN ERROR:", types[a], *sp);
+						fprintf(fp, "\tif (sizeof(struct %s) - %d) printf(\"ALIGN ERROR:", types[a], *sp);
 						fprintf(fp, "%%d %s %d ", types[a], *sp);
 						fprintf(fp, "\\n\",  sizeof(struct %s) - %d);\n", types[a], *sp);
 					}
@@ -1179,7 +1179,7 @@ int main(int argc, char ** argv)
 	return(return_status);
 }
 
-// include files for automatic dependancies
+/* include files for automatic dependencies */
 #include "DNA_listBase.h"
 #include "DNA_vec_types.h"
 #include "DNA_ID.h"

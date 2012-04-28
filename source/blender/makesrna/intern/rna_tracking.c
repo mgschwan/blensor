@@ -168,8 +168,8 @@ void rna_trackingTrack_name_set(PointerRNA *ptr, const char *value)
 	BLI_strncpy(track->name, value, sizeof(track->name));
 
 	/* TODO: it's a bit difficult to find list track came from knowing just
-	         movie clip ID and MovieTracking structure, so keep this naive
-			 search for a while */
+	 *       movie clip ID and MovieTracking structure, so keep this naive
+	 *       search for a while */
 	if (BLI_findindex(tracksbase, track) < 0) {
 		MovieTrackingObject *object = tracking->objects.first;
 
@@ -606,6 +606,12 @@ static void rna_def_trackingSettings(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", TRACKING_SETTINGS_SHOW_DEFAULT_EXPANDED);
 	RNA_def_property_ui_text(prop, "Show Expanded", "Show the expanded in the user interface");
 	RNA_def_property_ui_icon(prop, ICON_TRIA_RIGHT, 1);
+
+	/* solver settings */
+	prop = RNA_def_property(srna, "use_tripod_solver", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_boolean_sdna(prop, NULL, "motion_flag", TRACKING_MOTION_TRIPOD);
+	RNA_def_property_ui_text(prop, "Tripod Motion", "Tracking footage is shooted by tripod camera and should use special sovler for this");
 
 	/* limit frames */
 	prop = RNA_def_property(srna, "default_frames_limit", PROP_INT, PROP_NONE);
@@ -1074,7 +1080,7 @@ static void rna_def_trackingTrack(BlenderRNA *brna)
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_text(prop, "Color",
-	                         "Color of the track in the Movie Track Editor and the 3D viewport after a solve");
+	                         "Color of the track in the Movie Clip Editor and the 3D viewport after a solve");
 	RNA_def_property_update(prop, NC_MOVIECLIP|ND_DISPLAY, NULL);
 
 	/* average error */
@@ -1351,7 +1357,8 @@ static void rna_def_trackingObjects(BlenderRNA *brna, PropertyRNA *cprop)
 
 	func = RNA_def_function(srna, "new", "rna_trackingObject_new");
 	RNA_def_function_ui_description(func, "Add tracking object to this movie clip");
-	RNA_def_string(func, "name", "", 0, "", "Name of new object");
+	parm = RNA_def_string(func, "name", "", 0, "", "Name of new object");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_pointer(func, "object", "MovieTrackingObject", "", "New motion tracking object");
 	RNA_def_function_return(func, parm);
 

@@ -22,7 +22,7 @@
 bl_info = {
     "name": "Marmalade Cross-platform Apps (.group)",
     "author": "Benoit Muller",
-    "version": (0, 6, 0),
+    "version": (0, 6, 1),
     "blender": (2, 6, 3),
     "location": "File > Export > Marmalade cross-platform Apps (.group)",
     "description": "Export Marmalade Format files (.group)",
@@ -64,7 +64,8 @@ class MarmaladeExporterSettings:
                  ExportTextures=True,
                  CopyTextureFiles=True,
                  ExportArmatures=False,
-                 ExportAnimation=0,
+                 ExportAnimationFrames=0,
+                 ExportAnimationActions=0,
                  ExportMode=1,
                  MergeModes=0,
                  Verbose=False):
@@ -80,7 +81,8 @@ class MarmaladeExporterSettings:
         self.ExportTextures = ExportTextures
         self.CopyTextureFiles = CopyTextureFiles
         self.ExportArmatures = ExportArmatures
-        self.ExportAnimation = int(ExportAnimation)
+        self.ExportAnimationFrames = int(ExportAnimationFrames)
+        self.ExportAnimationActions = int(ExportAnimationActions)
         self.ExportMode = int(ExportMode)
         self.MergeModes = int(MergeModes)
         self.Verbose = Verbose
@@ -120,7 +122,7 @@ def ExportMadeWithMarmaladeGroup(Config):
     if Config.Verbose:
         print("Setting up...")
 
-    if Config.ExportAnimation:
+    if Config.ExportAnimationFrames:
         if Config.Verbose:
             print(bpy.context.scene)
             print(bpy.context.scene.frame_current)
@@ -139,7 +141,7 @@ def ExportMadeWithMarmaladeGroup(Config):
     if Config.Verbose:
         print("Objects Exported: {}".format(Config.ExportList))
 
-    if Config.ExportAnimation:
+    if Config.ExportAnimationFrames:
         if Config.Verbose:
             print("Writing Animation...")
         WriteKeyedAnimationSet(Config, bpy.context.scene)
@@ -265,7 +267,8 @@ def WriteObjects(Config, ObjectList, geoFile=None, mtlFile=None, GeoModel=None, 
                 scalematrix[1][1] = meshScale.y * Config.Scale
                 scalematrix[2][2] = meshScale.z * Config.Scale
 
-                Mesh.transform(scalematrix * X_ROT)
+                meshRot = Object.matrix_world.to_quaternion()  # Export is working, even if user doesn't have use apply Rotation in Edit mode.
+                Mesh.transform(X_ROT * meshRot.to_matrix().to_4x4() * scalematrix)
             else:
                 # In Merge mode, we need to keep relative postion of each objects, so we export in WORLD SPACE
                 SCALE_MAT = mathutils.Matrix.Scale(Config.Scale, 4)
@@ -793,11 +796,13 @@ def WriteMaterial(Config, mtlFile, Material=None):
             #if bpy.context.scene.world:
             #    MatAmbientColor = Material.ambient * bpy.context.scene.world.ambient_color
             MatAmbientColor = Material.ambient * Material.diffuse_color
-            mtlFile.write("\tcolAmbient {%.2f,%.2f,%.2f,%.2f} \n" % (MatAmbientColor[0] * 255, MatAmbientColor[1] * 255, MatAmbientColor[2] * 255, Material.alpha * 255))
-            MatDiffuseColor = Material.diffuse_intensity * Material.diffuse_color
-            mtlFile.write("\tcolDiffuse  {%.2f,%.2f,%.2f} \n" % (MatDiffuseColor * 255)[:])
-            MatSpecularColor = Material.specular_intensity * Material.specular_color
-            mtlFile.write("\tcolSpecular  {%.2f,%.2f,%.2f} \n" % (MatSpecularColor * 255)[:])
+            mtlFile.write("\tcolAmbient {%.2f,%.2f,%.2f,%.2f} \n" % (min(255, MatAmbientColor[0] * 255), min(255, MatAmbientColor[1] * 255), min(255, MatAmbientColor[2] * 255), min(255, Material.alpha * 255)))
+            MatDiffuseColor = 255 * Material.diffuse_intensity * Material.diffuse_color
+            MatDiffuseColor = min((255, 255, 255)[:],MatDiffuseColor[:])
+            mtlFile.write("\tcolDiffuse  {%.2f,%.2f,%.2f} \n" % (MatDiffuseColor[:]))
+            MatSpecularColor = 255 * Material.specular_intensity * Material.specular_color
+            MatSpecularColor = min((255, 255, 255)[:],MatSpecularColor[:])
+            mtlFile.write("\tcolSpecular  {%.2f,%.2f,%.2f} \n" % (MatSpecularColor[:]))
             # EmitColor = Material.emit * Material.diffuse_color
             # mtlFile.write("\tcolEmissive {%.2f,%.2f,%.2f} \n" % (EmitColor* 255)[:])    
     else:
@@ -834,10 +839,18 @@ def GetFirstRootBone(ArmatureObject):
 
 def GetVertexGroupFromBone(Object, Bone):
     if Bone:
-        rootBoneList = [VertexGroup for VertexGroup in Object.vertex_groups  if VertexGroup.name == Bone.name]
-        if rootBoneList:
-            return rootBoneList[0]
+        vertexGroupList = [VertexGroup for VertexGroup in Object.vertex_groups  if VertexGroup.name == Bone.name]
+        if vertexGroupList:
+            return vertexGroupList[0]
     return None
+
+
+def GetBoneListNames(Bones):
+    boneList = []
+    for Bone in Bones:
+        boneList.append(Bone.name)
+        boneList += GetBoneListNames(Bone.children)
+    return boneList
 
 
 def FindUniqueIndexForRootBone(Object, RootVertexGroup):
@@ -857,6 +870,7 @@ def WriteMeshSkinWeightsForGeoModel(Config, Object, Mesh, GeoModel):
             return
         RootBone = GetFirstRootBone(ArmatureObject)
         RootVertexGroup = GetVertexGroupFromBone(Object, RootBone)
+        BoneNames = GetBoneListNames(ArmatureObject.data.bones)
 
         GeoModel.armatureObjectName = StripName(ArmatureObject.name)
         if RootBone:
@@ -869,7 +883,7 @@ def WriteMeshSkinWeightsForGeoModel(Config, Object, Mesh, GeoModel):
         
         for Vertex in Mesh.vertices:
             VertexIndex = Vertex.index + GeoModel.vbaseIndex
-            AddVertexToDicionarySkinWeights(Config, Object, Mesh, Vertex, GeoModel.useBonesDict, GeoModel.mapVertexGroupNames, VertexIndex, RootBone, RootVertexGroup)
+            AddVertexToDicionarySkinWeights(Config, Object, Mesh, Vertex, GeoModel.useBonesDict, GeoModel.mapVertexGroupNames, VertexIndex, RootBone, RootVertexGroup, BoneNames)
             GeoModel.skinnedVertices.append(VertexIndex)
 
         if Config.MergeModes != 1:
@@ -909,7 +923,7 @@ def PrintSkinWeights(Config, ArmatureObjectName, useBonesDict, mapVertexGroupNam
         skinFile.close()
 
 
-def AddVertexToDicionarySkinWeights(Config, Object, Mesh, Vertex, useBonesDict, mapVertexGroupNames, VertexIndex, RootBone, RootVertexGroup):
+def AddVertexToDicionarySkinWeights(Config, Object, Mesh, Vertex, useBonesDict, mapVertexGroupNames, VertexIndex, RootBone, RootVertexGroup, BoneNames):
     #build useBones
     useBonesKey = 0
     vertexGroupIndices = []
@@ -918,11 +932,13 @@ def AddVertexToDicionarySkinWeights(Config, Object, Mesh, Vertex, useBonesDict, 
         print ("ERROR Vertex %d is influenced by more than 4 bones\n" % (VertexIndex))
     for VertexGroup in Vertex.groups:
         if (VertexGroup.weight > 0):
-            mapVertexGroupNames[VertexGroup.group] = StripBoneName(Object.vertex_groups[VertexGroup.group].name)
-            if (len(vertexGroupIndices))<4:  #ignore if more 4 bones are influencing the vertex
-                useBonesKey = useBonesKey + pow(2, VertexGroup.group)
-                vertexGroupIndices.append(VertexGroup.group)
-                weightTotal = weightTotal + VertexGroup.weight
+            groupName = Object.vertex_groups[VertexGroup.group].name
+            if groupName in BoneNames:
+                mapVertexGroupNames[VertexGroup.group] = StripBoneName(groupName)
+                if (len(vertexGroupIndices))<4:  #ignore if more 4 bones are influencing the vertex
+                    useBonesKey = useBonesKey + pow(2, VertexGroup.group)
+                    vertexGroupIndices.append(VertexGroup.group)
+                    weightTotal = weightTotal + VertexGroup.weight
     if (weightTotal == 0):
         bWeightTotZero = True  #avoid divide by zero later on
         if (RootBone):
@@ -990,7 +1006,6 @@ def WriteArmatureParentRootBones(Config, Object, RootBonesList, skelFile):
 
         PoseBone = PoseBones[Bone.name]
         WriteBonePosition(Config, Object, Bone, PoseBones, PoseBone, skelFile, True)
-        #WriteOneBoneRestPosition(Config, Object, Bone, PoseBones, PoseBone, skelFile, True, Vector(),Quaternion())
         if Config.Verbose:
             print("      Done")
         WriteArmatureChildBones(Config, Object, Bone.children, skelFile)
@@ -1003,57 +1018,57 @@ def WriteArmatureChildBones(Config, Object, BonesList, skelFile):
             print("      Writing Child Bone: {}...".format(Bone.name))
         PoseBone = PoseBones[Bone.name]
         WriteBonePosition(Config, Object, Bone, PoseBones, PoseBone, skelFile, True)
-        #WriteOneBoneRestPosition(Config, Object, Bone, PoseBones, PoseBone, skelFile, True, Vector(),Quaternion())
         if Config.Verbose:
             print("      Done")
             
         WriteArmatureChildBones(Config, Object, Bone.children, skelFile)
 
 
-def WriteBonePosition(Config, Object, Bone, PoseBones, PoseBone, File, isSkelFileNotAnimFile):
+def WriteBonePosition(Config, Object, Bone, PoseBones, PoseBone, File, isRestPoseNotAnimPose):
     # Compute armature scale : 
     # Many others exporter require sthe user to do Apply Scale in Object Mode to have 1,1,1 scale and so that anim data are correctly scaled
     # Here we retreive the Scale of the Armture Object.matrix_world.to_scale() and we use it to scale the bones :-)
     # So new Blender user should not complain about bad animation export if they forgot to apply the Scale to 1,1,1
-
+    
     armScale = Object.matrix_world.to_scale()
-    ## scalematrix = Matrix()
-    ## scalematrix[0][0] = armScale.x * Config.Scale
-    ## scalematrix[1][1] = armScale.y * Config.Scale
-    ## scalematrix[2][2] = armScale.z * Config.Scale
-
-    if isSkelFileNotAnimFile:
+    armRot = Object.matrix_world.to_quaternion()
+    if isRestPoseNotAnimPose:
         #skel file, bone header
         File.write("\tCIwAnimBone\n")
         File.write("\t{\n")
         File.write("\t\tname \"%s\"\n" % StripBoneName(Bone.name))
+        #get bone local matrix for rest pose
         if Bone.parent:
             File.write("\t\tparent \"%s\"\n" % StripBoneName(Bone.parent.name))
+            localmat = Bone.parent.matrix_local.inverted() * Bone.matrix_local
+        else:
+            localmat = Bone.matrix_local
     else:
         #anim file, bone header
         File.write("\t\t\n")
         File.write("\t\tbone \"%s\" \n" % StripBoneName(Bone.name))
+        localmat = PoseBone.matrix
+        #get bone local matrix for current anim pose
+        if Bone.parent:
+            ParentPoseBone = PoseBones[Bone.parent.name]
+            localmat = ParentPoseBone.matrix.inverted() * PoseBone.matrix
+        else:
+            localmat = PoseBone.matrix
 
-    if Bone.parent:
-        ParentPoseBone = PoseBones[Bone.parent.name]
-        locmat = ParentPoseBone.matrix.inverted() * PoseBone.matrix
-    else:
-        locmat = PoseBone.matrix
-        if Config.MergeModes > 0:
-            # Merge mode is in world coordinates .. anyway merge mesh doesn't work really with armature that should be local to one mesh
-            locmat = Object.matrix_world * PoseBone.matrix
-            armScale.x =  armScale.y = armScale.z = 1  
-        
-    loc = locmat.to_translation()
-    quat = locmat.to_quaternion()
-  
-    if not Bone.parent:  # and Config.MergeModes == 0:
-        #flip Y Z axes (only on root bone, other bones are local to root bones, so no need to rotate)
+    if not Bone.parent:
+        #Flip Y Z axes (only on root bone, other bones are local to root bones, so no need to rotate)
         X_ROT = mathutils.Matrix.Rotation(-math.pi / 2, 4, 'X')
-        quat.rotate(X_ROT)
-        loc.rotate(X_ROT)
+        if Config.MergeModes > 0:
+            # Merge mode is in world coordinates and not in model coordinates: so apply the world coordinate on the rootbone
+            localmat = X_ROT * Object.matrix_world * localmat
+            armScale.x =  armScale.y = armScale.z = 1
+        else:
+            localmat= X_ROT * armRot.to_matrix().to_4x4() * localmat #apply the armature rotation on the root bone
 
-        
+    
+    loc = localmat.to_translation()
+    quat = localmat.to_quaternion()
+
     #Scale the bone
     loc.x *= (armScale.x * Config.Scale)
     loc.y *= (armScale.y * Config.Scale)
@@ -1062,7 +1077,7 @@ def WriteBonePosition(Config, Object, Bone, PoseBones, PoseBone, File, isSkelFil
     File.write("\t\tpos { %.9f, %.9f, %.9f }\n" % (loc[0], loc[1], loc[2]))
     File.write("\t\trot { %.9f, %.9f, %.9f, %.9f }\n" % (quat.w, quat.x, quat.y, quat.z))
 
-    if isSkelFileNotAnimFile:
+    if isRestPoseNotAnimPose:
         File.write("\t}\n")
 
       
@@ -1070,12 +1085,25 @@ def WriteKeyedAnimationSet(Config, Scene):
     for Object in [Object for Object in Config.ObjectList if Object.animation_data]:
         if Config.Verbose:
             print("  Writing Animation Data for Object: {}".format(Object.name))
-        Action = Object.animation_data.action
-        if Action:
+        actions = []
+        if Config.ExportAnimationActions == 0 and Object.animation_data.action:
+            actions.append(Object.animation_data.action)
+        else:
+            actions = bpy.data.actions[:]   
+            DefaultAction = Object.animation_data.action
+        
+        for Action in actions:
+            if Config.ExportAnimationActions == 0:
+                animFileName = StripName(Object.name)
+            else:
+                Object.animation_data.action = Action
+                animFileName = "%s_%s" % (StripName(Object.name),StripName(Action.name))
+                          
             #Object animated (aka single bone object)
             #build key frame time list
+
             keyframeTimes = set()
-            if Config.ExportAnimation == 1:
+            if Config.ExportAnimationFrames == 1:
                 # Exports only key frames
                 for FCurve in Action.fcurves:
                     for Keyframe in FCurve.keyframe_points:
@@ -1092,7 +1120,7 @@ def WriteKeyedAnimationSet(Config, Scene):
             keyframeTimes.sort()
             if len(keyframeTimes):
                 #Create the anim file for offset animation (or single bone animation
-                animfullname = os.path.dirname(Config.FilePath) + "\\anims\\%s_offset.anim" % (StripName(Object.name))
+                animfullname = os.path.dirname(Config.FilePath) + "\\anims\\%s_offset.anim" % animFileName
                 #not yet supported
                 """
                 ##    ensure_dir(animfullname)
@@ -1106,7 +1134,7 @@ def WriteKeyedAnimationSet(Config, Scene):
                 ##    animFile.write("\tskeleton \"SingleBone\"\n")
                 ##    animFile.write("\t\t\n")
                 ##
-                ##    Config.File.write("\t\".\\anims\\%s_offset.anim\"\n" % (StripName(Object.name)))
+                ##    Config.File.write("\t\".\\anims\\%s_offset.anim\"\n" % animFileName))
                 ##
                 ##    for KeyframeTime in keyframeTimes:
                 ##        #Scene.frame_set(KeyframeTime)    
@@ -1167,7 +1195,7 @@ def WriteKeyedAnimationSet(Config, Scene):
                 #riged bones animated 
                 #build key frame time list
                 keyframeTimes = set()
-                if Config.ExportAnimation==1:
+                if Config.ExportAnimationFrames == 1:
                     # Exports only key frames
                     for FCurve in Action.fcurves:
                         for Keyframe in FCurve.keyframe_points:
@@ -1193,7 +1221,7 @@ def WriteKeyedAnimationSet(Config, Scene):
 
                 if len(keyframeTimes):
                     #Create the anim file
-                    animfullname = os.path.dirname(Config.FilePath) + "\\anims\\%s.anim" % (StripName(Object.name))
+                    animfullname = os.path.dirname(Config.FilePath) + "\\anims\\%s.anim" % animFileName
                     ensure_dir(animfullname)
                     if Config.Verbose:
                         print("      Creating anim file (bones animation) %s\n" % (animfullname))
@@ -1205,7 +1233,7 @@ def WriteKeyedAnimationSet(Config, Scene):
                     animFile.write("\tskeleton \"%s\"\n" % (StripName(Object.name)))
                     animFile.write("\t\t\n")
 
-                    Config.File.write("\t\".\\anims\\%s.anim\"\n" % (StripName(Object.name)))
+                    Config.File.write("\t\".\\anims\\%s.anim\"\n" % animFileName)
 
                     for KeyframeTime in keyframeTimes:
                         if Config.Verbose:
@@ -1229,6 +1257,9 @@ def WriteKeyedAnimationSet(Config, Scene):
             else:
                 if Config.Verbose:
                     print("    Object %s has no useable animation data." % (StripName(Object.name)))
+        if Config.ExportAnimationActions == 1:
+            #set back the original default animation
+            Object.animation_data.action = DefaultAction
         if Config.Verbose:
             print("  Done") #Done with Object
  
@@ -1274,10 +1305,15 @@ CoordinateSystems = (
     )
 
 
-AnimationModes = (
+AnimationFrameModes = (
     ("0", "None", ""),
     ("1", "Keyframes Only", ""),
     ("2", "Full Animation", ""),
+    )
+
+AnimationActions = (
+    ("0", "Default Animation", ""),
+    ("1", "All Animations", ""),
     )
 
 ExportModes = (
@@ -1351,13 +1387,20 @@ class MarmaladeExporter(bpy.types.Operator):
         name="Export Armatures",
         description="Export the bones of any armatures to deform meshes",
         default=True)
-    ExportAnimation = EnumProperty(
-        name="Animations",
+    ExportAnimationFrames = EnumProperty(
+        name="Animations Frames",
         description="Select the type of animations to export. Only object " \
-                    "and armature bone animations can be exported. Full " \
-                    "Animation exports every frame",
-        items=AnimationModes,
+                    "and armature bone animations can be exported. Keyframes exports only the keyed frames" \
+                    "Full Animation exports every frames, None disables animationq export. ",
+        items=AnimationFrameModes,
         default="1")
+    ExportAnimationActions = EnumProperty(
+        name="Animations Actions",
+        description="By default only the Default Animation Action assoiated to an armature is exported." \
+                    "However if you have defined several animations on the same armature,"\
+                    "you can select to export all animations. You can see the list of animation actions in the DopeSheet window.",
+        items=AnimationActions,
+        default="0")
     if bpy.context.scene:
         defFPS = bpy.context.scene.render.fps
     else:
@@ -1395,7 +1438,8 @@ class MarmaladeExporter(bpy.types.Operator):
                                          ExportTextures=self.ExportTextures,
                                          CopyTextureFiles=self.CopyTextureFiles,
                                          ExportArmatures=self.ExportArmatures,
-                                         ExportAnimation=self.ExportAnimation,
+                                         ExportAnimationFrames=self.ExportAnimationFrames,
+                                         ExportAnimationActions=self.ExportAnimationActions,
                                          ExportMode=self.ExportMode,
                                          MergeModes=self.MergeModes,
                                          Verbose=self.Verbose)

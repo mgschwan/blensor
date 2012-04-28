@@ -1152,10 +1152,6 @@ static int pyrna_string_to_enum(PyObject *item, PointerRNA *ptr, PropertyRNA *pr
 		return -1;
 	}
 	else {
-		/* hack so that dynamic enums used for operator properties will be able to be built (i.e. context will be supplied to itemf)
-		 * and thus running defining operator buttons for such operators in UI will work */
-		RNA_def_property_clear_flag(prop, PROP_ENUM_NO_CONTEXT);
-
 		if (!RNA_property_enum_value(BPy_GetContext(), ptr, prop, param, val)) {
 			const char *enum_str = pyrna_enum_as_string(ptr, prop);
 			PyErr_Format(PyExc_TypeError,
@@ -1428,7 +1424,7 @@ int pyrna_pydict_to_props(PointerRNA *ptr, PyObject *kw, int all_args, const cha
 
 	totkw = kw ? PyDict_Size(kw) : 0;
 
-	RNA_STRUCT_BEGIN(ptr, prop) {
+	RNA_STRUCT_BEGIN (ptr, prop) {
 		arg_name = RNA_property_identifier(prop);
 
 		if (strcmp(arg_name, "rna_type") == 0) continue;
@@ -2207,7 +2203,7 @@ int pyrna_prop_collection_subscript_str_lib_pair_ptr(BPy_PropertyRNA *self, PyOb
 		/* lib is either a valid poniter or NULL,
 		 * either way can do direct comparison with id.lib */
 
-		RNA_PROP_BEGIN(&self->ptr, itemptr, self->prop) {
+		RNA_PROP_BEGIN (&self->ptr, itemptr, self->prop) {
 			ID *id = itemptr.data; /* always an ID */
 			if (id->lib == lib && (strncmp(keyname, id->name + 2, sizeof(id->name) - 2) == 0)) {
 				found = TRUE;
@@ -3324,13 +3320,15 @@ static void pyrna_dir_members_py(PyObject *list, PyObject *self)
 	/* since this is least common case, handle it last */
 	if (BPy_PropertyRNA_Check(self)) {
 		BPy_PropertyRNA *self_prop = (BPy_PropertyRNA *)self;
-		PointerRNA r_ptr;
+		if (RNA_property_type(self_prop->prop) == PROP_COLLECTION) {
+			PointerRNA r_ptr;
 
-		if (RNA_property_collection_type_get(&self_prop->ptr, self_prop->prop, &r_ptr)) {
-			PyObject *cls = pyrna_struct_Subtype(&r_ptr); /* borrows */
-			dict = ((PyTypeObject *)cls)->tp_dict;
-			pyrna_dir_members_py__add_keys(list, dict);
-			Py_DECREF(cls);
+			if (RNA_property_collection_type_get(&self_prop->ptr, self_prop->prop, &r_ptr)) {
+				PyObject *cls = pyrna_struct_Subtype(&r_ptr); /* borrows */
+				dict = ((PyTypeObject *)cls)->tp_dict;
+				pyrna_dir_members_py__add_keys(list, dict);
+				Py_DECREF(cls);
+			}
 		}
 	}
 }
@@ -3348,7 +3346,7 @@ static void pyrna_dir_members_rna(PyObject *list, PointerRNA *ptr)
 		RNA_pointer_create(NULL, &RNA_Struct, ptr->type, &tptr);
 		iterprop = RNA_struct_find_property(&tptr, "functions");
 
-		RNA_PROP_BEGIN(&tptr, itemptr, iterprop) {
+		RNA_PROP_BEGIN (&tptr, itemptr, iterprop) {
 			idname = RNA_function_identifier(itemptr.data);
 
 			pystring = PyUnicode_FromString(idname);
@@ -3367,7 +3365,7 @@ static void pyrna_dir_members_rna(PyObject *list, PointerRNA *ptr)
 
 		iterprop = RNA_struct_iterator_property(ptr->type);
 
-		RNA_PROP_BEGIN(ptr, itemptr, iterprop) {
+		RNA_PROP_BEGIN (ptr, itemptr, iterprop) {
 			nameptr = RNA_struct_name_get_alloc(&itemptr, name, sizeof(name), &namelen);
 
 			if (nameptr) {
@@ -3982,7 +3980,7 @@ static PyObject *pyrna_prop_collection_keys(BPy_PropertyRNA *self)
 	char name[256], *nameptr;
 	int namelen;
 
-	RNA_PROP_BEGIN(&self->ptr, itemptr, self->prop) {
+	RNA_PROP_BEGIN (&self->ptr, itemptr, self->prop) {
 		nameptr = RNA_struct_name_get_alloc(&itemptr, name, sizeof(name), &namelen);
 
 		if (nameptr) {
@@ -4019,7 +4017,7 @@ static PyObject *pyrna_prop_collection_items(BPy_PropertyRNA *self)
 	int namelen;
 	int i = 0;
 
-	RNA_PROP_BEGIN(&self->ptr, itemptr, self->prop) {
+	RNA_PROP_BEGIN (&self->ptr, itemptr, self->prop) {
 		if (itemptr.data) {
 			/* add to python list */
 			item = PyTuple_New(2);
@@ -4191,7 +4189,7 @@ static PyObject *pyrna_prop_collection_find(BPy_PropertyRNA *self, PyObject *key
 
 	PYRNA_PROP_CHECK_OBJ(self);
 
-	RNA_PROP_BEGIN(&self->ptr, itemptr, self->prop) {
+	RNA_PROP_BEGIN (&self->ptr, itemptr, self->prop) {
 		nameptr = RNA_struct_name_get_alloc(&itemptr, name, sizeof(name), &namelen);
 
 		if (nameptr) {
@@ -4222,7 +4220,7 @@ static void foreach_attr_type(BPy_PropertyRNA *self, const char *attr,
 	*attr_signed = FALSE;
 
 	/* note: this is fail with zero length lists, so don't let this get caled in that case */
-	RNA_PROP_BEGIN(&self->ptr, itemptr, self->prop) {
+	RNA_PROP_BEGIN (&self->ptr, itemptr, self->prop) {
 		prop = RNA_struct_find_property(&itemptr, attr);
 		*raw_type = RNA_property_raw_type(prop);
 		*attr_tot = RNA_property_array_length(&itemptr, prop);
@@ -6403,7 +6401,7 @@ static PyObject *pyrna_basetype_dir(BPy_BaseTypeRNA *self)
 	PyObject *ret = PyList_New(0);
 	PyObject *item;
 
-	RNA_PROP_BEGIN(&self->ptr, itemptr, self->prop) {
+	RNA_PROP_BEGIN (&self->ptr, itemptr, self->prop) {
 		StructRNA *srna = itemptr.data;
 		StructRNA *srna_base = RNA_struct_base(itemptr.data);
 		/* skip own operators, these double up [#29666] */
@@ -7191,7 +7189,7 @@ void pyrna_alloc_types(void)
 	RNA_blender_rna_pointer_create(&ptr);
 	prop = RNA_struct_find_property(&ptr, "structs");
 
-	RNA_PROP_BEGIN(&ptr, itemptr, prop) {
+	RNA_PROP_BEGIN (&ptr, itemptr, prop) {
 		PyObject *item = pyrna_struct_Subtype(&itemptr);
 		if (item == NULL) {
 			if (PyErr_Occurred()) {
@@ -7219,7 +7217,7 @@ void pyrna_free_types(void)
 	prop = RNA_struct_find_property(&ptr, "structs");
 
 
-	RNA_PROP_BEGIN(&ptr, itemptr, prop) {
+	RNA_PROP_BEGIN (&ptr, itemptr, prop) {
 		StructRNA *srna = srna_from_ptr(&itemptr);
 		void *py_ptr = RNA_struct_py_type_get(srna);
 
@@ -7479,7 +7477,7 @@ static PyObject *pyrna_unregister_class(PyObject *UNUSED(self), PyObject *py_cla
 
 
 		/* loop over all structs */
-		RNA_PROP_BEGIN(&ptr_rna, itemptr, prop_rna) {
+		RNA_PROP_BEGIN (&ptr_rna, itemptr, prop_rna) {
 			srna_iter = itemptr.data;
 			if (pyrna_srna_contains_pointer_prop_srna(srna_iter, srna, &prop_identifier)) {
 				break;
