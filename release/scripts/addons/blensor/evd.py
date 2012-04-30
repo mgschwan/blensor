@@ -15,10 +15,12 @@ POINTS %d
 DATA ascii
 """
 
+PGM_VALUE_RANGE = 65535
+
 PGM_HEADER ="""P2
 #BlenSor output
 %d %d
-255
+%d
 """
 
 frame_counter = 0
@@ -32,12 +34,9 @@ WRITER_MODE_PCL = 2
 WRITER_MODE_PGM = 3
 
 class evd_file:
-    buffer = []
     filename = ""
     width  = 0
     height = 0
-    image = []
-    image_noisy = []
     max_depth=1.0
 
     def __init__(self, filename, width=0, height=0, max_depth=1.0):
@@ -129,14 +128,14 @@ class evd_file:
       try:
         pgm = open("%s%05d.pgm"%(self.filename,frame_counter),"w")
         pgm_noisy = open("%s_noisy%05d.pgm"%(self.filename,frame_counter),"w")
-        pgm.write(PGM_HEADER%(self.width,self.height))
-        pgm_noisy.write(PGM_HEADER%(self.width,self.height))
+        pgm.write(PGM_HEADER%(self.width,self.height, PGM_VALUE_RANGE))
+        pgm_noisy.write(PGM_HEADER%(self.width,self.height, PGM_VALUE_RANGE))
         for val in range(len(self.image)):
-          ival = int(255*self.image[val]/self.max_depth)
-          pgm.write("%d\n"%(ival if ival < 256 else 256))
+          ival = int(PGM_VALUE_RANGE*self.image[val]/self.max_depth)
+          pgm.write("%d\n"%(ival if ival < PGM_VALUE_RANGE else PGM_VALUE_RANGE))
         for val in range(len(self.image_noisy)):
-          ival = int(255*self.image_noisy[val]/self.max_depth)
-          pgm_noisy.write("%d\n"%(ival if ival < 256 else 256))
+          ival = int(PGM_VALUE_RANGE*self.image_noisy[val]/self.max_depth)
+          pgm_noisy.write("%d\n"%(ival if ival < PGM_VALUE_RANGE else PGM_VALUE_RANGE))
         
         pgm.close()
         pgm_noisy.close()
