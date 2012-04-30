@@ -77,6 +77,7 @@
 #include "../generic/idprop_py_api.h"
 #include "../bmesh/bmesh_py_api.h"
 #include "../mathutils/mathutils.h"
+#include "../blensor/blensor.h"
 
 
 /* for internal use, when starting and ending python scripts */
@@ -214,6 +215,7 @@ static struct _inittab bpy_internal_modules[] = {
 #endif
 	{(char *)"gpu", GPU_initPython},
 	{(char *)"idprop", BPyInit_idprop},
+	{(char *)"blensor_intern", PyInit_blensor},
 	{NULL, NULL}
 };
 

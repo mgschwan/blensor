@@ -508,9 +508,9 @@ PyMODINIT_FUNC PyInit_mathutils(void)
 	Py_INCREF(submodule);
 
 	/* Eigen submodule */
-	PyModule_AddObject(submodule, "eigen", (item = PyInit_mathutils_eigen()));
-	PyDict_SetItemString(sys_modules, "mathutils.eigen", item);
-	Py_INCREF(item);
+	PyModule_AddObject(mod, "eigen", (submodule = PyInit_mathutils_eigen()));
+	PyDict_SetItemString(sys_modules, "mathutils.eigen", submodule);
+	Py_INCREF(submodule);
 
 
 	mathutils_matrix_row_cb_index = Mathutils_RegisterCallback(&mathutils_matrix_row_cb);

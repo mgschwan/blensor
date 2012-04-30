@@ -57,6 +57,7 @@
 #include "../generic/bgl.h"
 #include "../generic/blf_py_api.h"
 #include "../mathutils/mathutils.h"
+#include "../blensor/blensor.h"
 
 PyObject *bpy_package_py = NULL;
 

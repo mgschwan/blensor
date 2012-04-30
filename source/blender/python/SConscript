@@ -35,6 +35,13 @@ sources = env.Glob('mathutils/*.c')
 env.BlenderLib( libname = 'bf_python_mathutils', sources = Split(sources), includes = Split(incs), defines = defs, libtype = ['core','player'], priority = [362,165])
 
 
+# blensor
+defs = []
+
+sources = env.Glob('blensor/*.c')
+env.BlenderLib( libname = 'bf_python_blensor', sources = Split(sources), includes = Split(incs), defines = defs, libtype = ['core','player'], priority = [364,165])
+
+
 # bpy
 defs = []
 
