@@ -31,7 +31,7 @@ env.BlenderLib( libname = 'bf_python_ext', sources = Split(sources), includes = 
 # mathutils
 defs = []
 
-sources = env.Glob('mathutils/*.c')
+sources = env.Glob('mathutils/*.c*')
 env.BlenderLib( libname = 'bf_python_mathutils', sources = Split(sources), includes = Split(incs), defines = defs, libtype = ['core','player'], priority = [362,165])
 
 
