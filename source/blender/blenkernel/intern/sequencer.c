@@ -259,7 +259,8 @@ void seq_free_editing(Scene *scene)
 	if (ed == NULL)
 		return;
 
-	SEQ_BEGIN (ed, seq) {
+	SEQ_BEGIN (ed, seq)
+	{
 		seq_free_sequence(scene, seq);
 	}
 	SEQ_END
@@ -2098,7 +2099,7 @@ static ImBuf *seq_render_scene_strip(
 	if (seq->scene_camera)	
 		camera = seq->scene_camera;
 	else {	
-		scene_camera_switch_update(scene);
+		BKE_scene_camera_switch_update(scene);
 		camera = scene->camera;
 	}
 
@@ -2126,7 +2127,7 @@ static ImBuf *seq_render_scene_strip(
 			context.scene->r.seq_prev_type = 3 /* ==OB_SOLID */; 
 
 		/* opengl offscreen render */
-		scene_update_for_newframe(context.bmain, scene, scene->lay);
+		BKE_scene_update_for_newframe(context.bmain, scene, scene->lay);
 		ibuf = sequencer_view3d_cb(scene, camera, context.rectx, context.recty,
 		                           IB_rect, context.scene->r.seq_prev_type, TRUE, err_out);
 		if (ibuf == NULL) {
@@ -2181,7 +2182,7 @@ static ImBuf *seq_render_scene_strip(
 	scene->r.cfra = oldcfra;
 
 	if (frame != oldcfra)
-		scene_update_for_newframe(context.bmain, scene, scene->lay);
+		BKE_scene_update_for_newframe(context.bmain, scene, scene->lay);
 	
 #ifdef DURIAN_CAMERA_SWITCH
 	/* stooping to new low's in hackyness :( */
@@ -3933,8 +3934,7 @@ static Sequence *seq_dupli(struct Scene *scene, struct Scene *scene_to, Sequence
 	}
 
 	if (seq->strip->color_balance) {
-		seqn->strip->color_balance
-		    = MEM_dupallocN(seq->strip->color_balance);
+		seqn->strip->color_balance = MEM_dupallocN(seq->strip->color_balance);
 	}
 
 	if (seq->type == SEQ_META) {

@@ -19,8 +19,8 @@
 bl_info = {
     "name": "Futurism",
     "author": "Oscurart",
-    "version": (1, 1),
-    "blender": (2, 5, 9),
+    "version": (1, 2),
+    "blender": (2, 6, 3),
     "location": "Object > Futurism",
     "description": "Adds a new Mesh Object",
     "warning": "",
@@ -44,6 +44,10 @@ def object_osc_futurism (self, context,STEP, HOLD):
     
     OBACT = bpy.context.active_object
     
+    # SUMO PARAMETERS AL OBJECT
+    OBACT["FUTURISM_HOLDIN"] = 0
+    OBACT["FUTURISM_HOLDOUT"] = 0
+    
     ## CREO EMPTY
     bpy.ops.object.add()
     bpy.context.active_object.name = "FuturismContainer"
@@ -64,17 +68,35 @@ def object_osc_futurism (self, context,STEP, HOLD):
             # MARCO EXPRESIONES PARA VIEW
             OBJECT.driver_add("hide")
             OBJECT.animation_data.drivers[0].driver.variables.new()
-            OBJECT.animation_data.drivers[0].driver.expression= "False if frame >= "+str(FC)+" and frame <= "+str(FC+HOLD)+" else True"
+            OBJECT.animation_data.drivers[0].driver.variables.new()
+            OBJECT.animation_data.drivers[0].driver.variables.new()
+            OBJECT.animation_data.drivers[0].driver.expression= "False if frame >= %s+var_001 and frame <= %s+var_002 else True" % (str(FC),str(FC+HOLD))
             OBJECT.animation_data.drivers[0].driver.variables[0].targets[0].id_type = 'SCENE'
             OBJECT.animation_data.drivers[0].driver.variables[0].targets[0].id= bpy.context.scene
             OBJECT.animation_data.drivers[0].driver.variables[0].targets[0].data_path = "current_frame"
+            OBJECT.animation_data.drivers[0].driver.variables[1].targets[0].id_type = 'OBJECT'
+            OBJECT.animation_data.drivers[0].driver.variables[1].targets[0].id= OBACT
+            OBJECT.animation_data.drivers[0].driver.variables[1].targets[0].data_path = '["FUTURISM_HOLDIN"]'  
+            OBJECT.animation_data.drivers[0].driver.variables[2].targets[0].id_type = 'OBJECT'
+            OBJECT.animation_data.drivers[0].driver.variables[2].targets[0].id= OBACT
+            OBJECT.animation_data.drivers[0].driver.variables[2].targets[0].data_path = '["FUTURISM_HOLDOUT"]'     
+            
             # MARCO EXPRESIONES PARA RENDER
+            OBJECT.animation_data.drivers[0].driver.variables.new()
+            OBJECT.animation_data.drivers[0].driver.variables.new()
+            OBJECT.animation_data.drivers[0].driver.variables.new()            
             OBJECT.driver_add("hide_render")
             OBJECT.animation_data.drivers[1].driver.variables.new()
-            OBJECT.animation_data.drivers[1].driver.expression= "False if frame >= "+str(FC)+" and frame <= "+str(FC+HOLD)+" else True"
+            OBJECT.animation_data.drivers[1].driver.expression= "False if frame >= %s+5 and frame <= %s else True" % (str(FC),str(FC+HOLD))
             OBJECT.animation_data.drivers[1].driver.variables[0].targets[0].id_type = 'SCENE'
             OBJECT.animation_data.drivers[1].driver.variables[0].targets[0].id= bpy.context.scene
-            OBJECT.animation_data.drivers[1].driver.variables[0].targets[0].data_path = "current_frame"            
+            OBJECT.animation_data.drivers[1].driver.variables[0].targets[0].data_path = "current_frame"   
+            OBJECT.animation_data.drivers[0].driver.variables[1].targets[0].id_type = 'OBJECT'
+            OBJECT.animation_data.drivers[0].driver.variables[1].targets[0].id= OBACT
+            OBJECT.animation_data.drivers[0].driver.variables[1].targets[0].data_path = '["FUTURISM_HOLDIN"]'  
+            OBJECT.animation_data.drivers[0].driver.variables[2].targets[0].id_type = 'OBJECT'
+            OBJECT.animation_data.drivers[0].driver.variables[2].targets[0].id= OBACT
+            OBJECT.animation_data.drivers[0].driver.variables[2].targets[0].data_path = '["FUTURISM_HOLDOUT"]'                       
             # RESETEO STEPINC
             STEPINC=0
             # COPIAMOS S R T

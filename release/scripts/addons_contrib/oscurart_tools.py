@@ -20,7 +20,7 @@ bl_info = {
     "name": "Oscurart Tools",
     "author": "Oscurart",
     "version": (2,9),
-    "blender": (2, 6, 2),
+    "blender": (2, 6, 3),
     "location": "View3D > Tools > Oscurart Tools",
     "description": "Tools for objects, render, shapes, and files.",
     "warning": "",
@@ -63,6 +63,7 @@ class OscPanelControl(bpy.types.Panel):
         col.prop(bpy.context.scene,"osc_render_tools",text="Render",icon="SCENE")
         col.prop(bpy.context.scene,"osc_files_tools",text="Files",icon="IMASEL")
         col.prop(bpy.context.scene,"osc_overrides_tools",text="Overrides",icon="GREASEPENCIL")
+
 
 # POLLS
 class OscPollObject():
@@ -1007,7 +1008,7 @@ def defRenderSelected(FRAMETYPE):
     ACTSCENE=bpy.context.scene
     LISTMAT=[]
     SCENES=bpy.data.scenes[:]
-    SCENELIST=bpy.context.scene.OscSelScenes
+    SCENELIST=list(eval(bpy.context.scene.OscSelScenes))
     FC=bpy.context.scene.frame_current    
     FS=bpy.context.scene.frame_start
     FE=bpy.context.scene.frame_end    
@@ -2371,10 +2372,10 @@ def relinkObjects (self):
     LISTSCENE=[]
     
     for SCENE in bpy.data.scenes[:]:
-        if bpy.selection[-1] in SCENE.objects[:]:
+        if bpy.selection_osc[-1] in SCENE.objects[:]:
             LISTSCENE.append(SCENE)    
 
-    OBJECTS = bpy.selection[:-1]
+    OBJECTS = bpy.selection_osc[:-1]
     
     ## REMUEVO ESCENA ACTIVA
     LISTSCENE.remove(bpy.context.scene)
@@ -2411,7 +2412,7 @@ class OscRelinkObjectsBetween (bpy.types.Operator):
 
 def CopyObjectGroupsAndLayers (self): 
               
-    OBSEL=bpy.selection[:]
+    OBSEL=bpy.selection_osc[:]
     GLOBALLAYERS=str(OBSEL[-1].layers[:])
     ACTSCENE=bpy.context.scene
     GROUPS=OBSEL[-1].users_group
@@ -2609,8 +2610,46 @@ class OscCheckOverrides (bpy.types.Operator):
 
         return {'FINISHED'}
           
-     
-   
+
+## ------------------------------------ SELECTION -------------------------------------- 
+bpy.selection_osc=[]
+
+def select_osc():
+    if bpy.context.mode=="OBJECT":
+        obj = bpy.context.object
+        sel = len(bpy.context.selected_objects)
+	
+
+        if sel==0:
+            bpy.selection_osc=[]
+        else:
+            if sel==1:
+                bpy.selection_osc=[]
+                bpy.selection_osc.append(obj)
+            elif sel>len(bpy.selection_osc):
+                for sobj in bpy.context.selected_objects:
+                    if (sobj in bpy.selection_osc)==False:
+                        bpy.selection_osc.append(sobj)
+
+            elif sel<len(bpy.selection_osc):
+                for it in bpy.selection_osc:
+                    if (it in bpy.context.selected_objects)==False:
+                        bpy.selection_osc.remove(it)
+
+class OscSelection(bpy.types.Header):
+    bl_label = "Selection Osc"
+    bl_space_type = "VIEW_3D"
+
+    def __init__(self):
+        select_osc()
+
+    def draw(self, context):
+        """
+        layout = self.layout
+        row = layout.row()
+        row.label("Sels: "+str(len(bpy.selection_osc))) 
+        """
+        
 ##======================================================================================FIN DE SCRIPTS    
     
     
@@ -2667,3 +2706,4 @@ bpy.utils.register_class(OscCopyObjectGAL)
 bpy.utils.register_class(OscApplyOverrides)
 bpy.utils.register_class(OscRestoreOverrides)
 bpy.utils.register_class(OscCheckOverrides)
+bpy.utils.register_class(OscSelection)

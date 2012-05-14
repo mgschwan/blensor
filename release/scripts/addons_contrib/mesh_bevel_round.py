@@ -262,6 +262,8 @@ class BevelRoundAlgo(object):
 
         # Creating the new faces
         for fc in self.hsh_faces.values():
+            if not fc.anynew():
+                continue
             lv = []
             for i in range(len(fc.bmverts)):
                 npl = fc.newpts[i]
@@ -274,6 +276,8 @@ class BevelRoundAlgo(object):
         # Deleting the unneeded geometry
         for f in self.hsh_faces.values():
             if f.face.is_valid:
+                if not f.anynew():
+                    continue
                 fedges = f.face.edges[::]
                 self.bm.faces.remove(f.face)
                 for e in fedges:
@@ -611,7 +615,7 @@ class BevelRoundAlgo(object):
         for i in [0, 2, 1, 3]:
             pair = pairs[i]
             lpt = pair.rounding
-            if lpt and lpt.length > 0:
+            if lpt and len(lpt) > 0:
                 if on_line(lpt[0], [pair.ptcross, ed.vec]):
                     pt = lpt[0]
                 else:
@@ -834,11 +838,14 @@ class BevelRoundAlgo(object):
         if n1 > 0:
             normalref1 = self.compute_normal_reference(ed1, face1, xsection1[0], xsection1[1])
 
-        # Parse close to the other face
+        # Part close to the other face
         if reversed:
             face2 = ed2.facemain
         else:
             face2 = find(ed2.lfaces, lambda f: f != ed2.facemain)
+        mesh2 = []
+        for i in range(0, nblat):
+            mesh1.append(self.build_lattice(i, xsection1, xsection2, None, None))
         if n2 > 0:
             normalref2 = self.compute_normal_reference(ed2, face2, xsection1[n1+1], xsection1[n1])
 
@@ -1108,9 +1115,9 @@ class BevelRoundAlgo(object):
         vec2 = ed_bronze.ptmid - vpos
         normal2 = vec1.cross(vec2)
         offset1 = (pt_silver - gold_ptcross).length
-        offset2 = (pt_bronze - gold.ptcross).length
+        offset2 = (pt_bronze - gold_ptcross).length
         pair_gold.rounding = self.profile_compute_by_offset(['C', self.num_seg],
-                gold_ptcross, ve1, offset1, vec2, offset2)
+                gold_ptcross, vec1, offset1, vec2, offset2)
 
     # Corner calculation
     def corner_compute(self, vd):
@@ -1145,16 +1152,22 @@ class BevelRoundAlgo(object):
             section = self.compute_sections_multi(ed, icorner)
             if len(vd.leds) == 1:
                 # Do we need an extra face between end of beveled
-                # edge and vd?  We do if the end of the beveled edge
-                # isn't in the plane of other faces not adjacent to the edge
-                needcornerface = False
-                for f in vd.vertex.link_faces:
-                    if f == ed.lfaces[0] or f == ed.lfaces[1]:
-                        continue
-                    plane = face_plane(f)
-                    if not (on_plane(section[0], plane) and on_plane(section[-1], plane)):
-                        needcornerface = True
-                        break
+                # edge and vd?  Usually yes, but not in certain cases.
+                # One case where we don't: if there are only 3 faces
+                # at the vertex and the 3rd face contains the
+                # beveled end completely.
+                needcornerface = True
+                vfaces = vd.vertex.link_faces
+                if len(vfaces) == 3:
+                    f3 = find(vfaces, lambda f: f != ed.lfaces[0] and f != ed.lfaces[1])
+                    if not f3:
+                        print("whoops, couldn't find 3rd face")
+                    bf3 = self.hsh_faces[f3.index]
+                    # test segment containment by containment of midpoint
+                    # in face - for this case, should be ok
+                    mid = section[0].lerp(section[1], 0.5)
+                    if bf3.contains_point(mid):
+                        needcornerface = False
                 if needcornerface:
                     facepts = section + [vd.vertex.co]
                     norm = ed.lfaces[0].normal + ed.lfaces[1].normal
@@ -2541,6 +2554,34 @@ class BFace(object):
         # self.newpts[i] is list of float triple for replacement
         self.newpts = len(self.bmverts) * [None]
 
+    def anynew(self):
+        for p in self.newpts:
+            if p is not None:
+                return True
+        return False
+
+    # Probably should give access to C routine BM_face_point_inside_test
+    # but for now reimplement it here
+    def contains_point(self, v):
+        (ax, ay) = axis_dominant(self.face.normal)
+        co2 = Vector([v[ax], v[ay]])
+        cent = Vector([0.0, 0.0])
+        for l in self.face.loops:
+            v = l.vert.co
+            cent = cent + Vector([v[ax], v[ay]])
+        cent = cent / len(self.face.loops)
+        crosses = 0
+        onepluseps = 1.0 + EPSILON * 150.0
+        out = Vector([1e30, 1e30])
+        for l in self.face.loops:
+            vprev = l.link_loop_prev.vert.co
+            v = l.vert.co
+            v1 = (Vector([vprev[ax], vprev[ay]]) - cent) * onepluseps + cent
+            v2 = (Vector([v[ax], v[ay]]) - cent) * onepluseps + cent
+            if line_segments_cross(v1, v2, co2, out):
+                crosses += 1
+        return crosses % 2 != 0
+
     def __str__(self):
         return "f%d" % self.index
 
@@ -2751,7 +2792,7 @@ def fit_plane_to_points(pts):
     for i in range(1, n):
         center = center + pts[i]
     center = center / n
-    # Newell method for normal, pretending this is a polynomail
+    # Newell method for normal, pretending this is a polygon
     sumx = 0.0
     sumy = 0.0
     sumz = 0.0
@@ -2776,7 +2817,7 @@ def on_plane(point, plane):
 # Return True if point is on the line
 def on_line(point, line):
     (lv, lvec) = line
-    (vint, _) = mathutils.geometry.intersect_point_line(point, lv, lv + vec)
+    (vint, _) = mathutils.geometry.intersect_point_line(point, lv, lv + lvec)
     return (point-vint).length < EPSILON
 
 
@@ -2802,7 +2843,57 @@ def edge_reversed_in_face(edge, face):
             return lp.vert != edge.verts[0]
     print("whoops, edge_reversed_in_face: edge not in face")
     return False
-    
+
+
+# Find the indices of axes which make for closest
+# alignment with vector axis, for a fast projection
+# of 3d -> 2d
+def axis_dominant(axis):
+    xn = abs(axis[0])
+    yn = abs(axis[1])
+    zn = abs(axis[2])
+    if zn >= xn and zn >= yn:
+        return (0, 1)
+    elif yn >= xn and yn >= zn:
+        return (0, 2)
+    else:
+        return (1, 2)
+
+
+# Return True if v3 is to the right of line v1v2
+# but False if v3 is the same as v1 or v2
+# (all points are 2d Vectors)
+def test_edge_side(v1, v2, v3):
+    inp = (v2[0] - v1[0]) * (v1[1] - v3[1]) + (v1[1] - v2[1]) * (v1[0] - v3[0])
+    if inp < 0.0:
+        return False
+    elif inp < 0.0:
+        if v1 == v3 or v2 == v3:
+            return False
+    return True
+
+
+# Return True if two line segments cross each other
+# with careful attention to edge cases
+def line_segments_cross(v1, v2, v3, v4):
+    eps = EPSILON * 15
+    w1 = test_edge_side(v1, v3, v2)
+    w2 = test_edge_side(v2, v4, v1)
+    w3 = not test_edge_side(v1, v2, v3)
+    w4 = test_edge_side(v3, v2, v4)
+    w5 = not test_edge_side(v3, v1, v4)
+    if w1 == w2 == w3 == w4 == w5:
+        return True
+    mv1= (min(v1[0], v2[0]), min(v1[1], v2[1]))
+    mv2 = (max(v1[0], v2[0]), max(v1[1], v2[1]))
+    mv3= (min(v3[0], v4[0]), min(v3[1], v4[1]))
+    mv4 = (max(v3[0], v4[0]), max(v3[1], v4[1]))
+    if abs(v1[1] - v2[1]) < eps and abs(v3[1] - v4[1]) < eps and abs(v1[1] - v3[1]) < eps:
+        return (mv4[0] >= mv1[0] and mv3[0] <= mv2[0])
+    if abs(v1[0] - v2[0]) < eps and abs(v3[0] - v4[0]) < eps and abs(v1[0] - v3[0]) < eps:
+        return (mv4[1] >= mv1[1] and mv3[1] <= mv2[1])
+    return False
+
 
 # Three-way compare
 def cmp(a, b):
@@ -2824,6 +2915,9 @@ def make_index_valid(s, i):
 # for debug prints
 def V3(v):
     return "None" if not v else "(%.2f,%.2f,%.2f)" % (v[0], v[1], v[2])
+
+def V2(v):
+    return "None" if not v else "(%.2f,%.2f)" % (v[0], v[1])
 
 def LV3(lv):
     return "None" if not lv else ",".join([V3(v) for v in lv])

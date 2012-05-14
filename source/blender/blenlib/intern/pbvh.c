@@ -35,8 +35,8 @@
 #include "BLI_pbvh.h"
 
 #include "BKE_DerivedMesh.h"
-#include "BKE_mesh.h" /* for mesh_calc_normals */
-#include "BKE_global.h" /* for mesh_calc_normals */
+#include "BKE_mesh.h" /* for BKE_mesh_calc_normals */
+#include "BKE_global.h" /* for BKE_mesh_calc_normals */
 #include "BKE_paint.h"
 #include "BKE_subsurf.h"
 
@@ -1012,15 +1012,15 @@ static void pbvh_update_normals(PBVH *bvh, PBVHNode **nodes,
 	 * we have to store for each vertex which node it is in */
 	vnor= MEM_callocN(sizeof(float)*3*bvh->totvert, "bvh temp vnors");
 
-    /* subtle assumptions:
-     * - We know that for all edited vertices, the nodes with faces
-     *   adjacent to these vertices have been marked with PBVH_UpdateNormals.
-     *   This is true because if the vertex is inside the brush radius, the
-     *   bounding box of it's adjacent faces will be as well.
-     * - However this is only true for the vertices that have actually been
-     *   edited, not for all vertices in the nodes marked for update, so we
-     *   can only update vertices marked with ME_VERT_PBVH_UPDATE.
-     */
+	/* subtle assumptions:
+	 * - We know that for all edited vertices, the nodes with faces
+	 *   adjacent to these vertices have been marked with PBVH_UpdateNormals.
+	 *   This is true because if the vertex is inside the brush radius, the
+	 *   bounding box of it's adjacent faces will be as well.
+	 * - However this is only true for the vertices that have actually been
+	 *   edited, not for all vertices in the nodes marked for update, so we
+	 *   can only update vertices marked with ME_VERT_PBVH_UPDATE.
+	 */
 
 	#pragma omp parallel for private(n) schedule(static)
 	for (n = 0; n < totnode; n++) {
@@ -1743,7 +1743,7 @@ void BLI_pbvh_apply_vertCos(PBVH *pbvh, float (*vertCos)[3])
 		}
 
 		/* coordinates are new -- normals should also be updated */
-		mesh_calc_normals_tessface(pbvh->verts, pbvh->totvert, pbvh->faces, pbvh->totprim, NULL);
+		BKE_mesh_calc_normals_tessface(pbvh->verts, pbvh->totvert, pbvh->faces, pbvh->totprim, NULL);
 
 		for (a= 0; a < pbvh->totnode; ++a)
 			BLI_pbvh_node_mark_update(&pbvh->nodes[a]);

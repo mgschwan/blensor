@@ -495,7 +495,7 @@ execute_blenderplayer(BlenderPluginInstance* instance)
 	strcpy(instance->temp_mail_file_name, file_name);
 
 	instance->pID = fork();
-	//XSelectInput(This->display , This->window, SubstructureNotifyMask);
+	//XSelectInput(This->display, This->window, SubstructureNotifyMask);
 	//XSync(This->display, FALSE);
 	
 

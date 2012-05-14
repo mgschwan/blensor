@@ -368,7 +368,7 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	if (totvert == 0) return 0;
 
 	/* add new mesh */
-	obn = add_object(scene, OB_MESH);
+	obn = BKE_object_add(scene, OB_MESH);
 	me = obn->data;
 	
 	me->totvert = totvert;
@@ -545,7 +545,7 @@ static int modifier_apply_obdata(ReportList *reports, Scene *scene, Object *ob, 
 		BKE_report(reports, RPT_INFO, "Applied modifier only changed CV points, not tessellated/bevel vertices");
 
 		vertexCos = BKE_curve_vertexCos_get(cu, &cu->nurb, &numVerts);
-		mti->deformVerts(md, ob, NULL, vertexCos, numVerts, 0, 0);
+		mti->deformVerts(md, ob, NULL, vertexCos, numVerts, 0);
 		BK_curve_vertexCos_apply(cu, &cu->nurb, vertexCos);
 
 		MEM_freeN(vertexCos);
@@ -661,7 +661,7 @@ static EnumPropertyItem *modifier_add_itemf(bContext *C, PointerRNA *UNUSED(ptr)
 			if (mti->flags & eModifierTypeFlag_NoUserAdd)
 				continue;
 
-			if (!object_support_modifier_type(ob, md_item->value))
+			if (!BKE_object_support_modifier_type_check(ob, md_item->value))
 				continue;
 		}
 		else {
@@ -1119,7 +1119,8 @@ static int multires_reshape_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	CTX_DATA_BEGIN (C, Object *, selob, selected_editable_objects) {
+	CTX_DATA_BEGIN (C, Object *, selob, selected_editable_objects)
+	{
 		if (selob->type == OB_MESH && selob != ob) {
 			secondob = selob;
 			break;
@@ -1368,13 +1369,13 @@ static int meshdeform_bind_exec(bContext *C, wmOperator *op)
 			dm->release(dm);
 		}
 		else if (ob->type == OB_LATTICE) {
-			lattice_calc_modifiers(scene, ob);
+			BKE_lattice_modifiers_calc(scene, ob);
 		}
 		else if (ob->type == OB_MBALL) {
-			makeDispListMBall(scene, ob);
+			BKE_displist_make_mball(scene, ob);
 		}
 		else if (ELEM3(ob->type, OB_CURVE, OB_SURF, OB_FONT)) {
-			makeDispListCurveTypes(scene, ob, 0);
+			BKE_displist_make_curveTypes(scene, ob, 0);
 		}
 
 		mmd->bindfunc = NULL;

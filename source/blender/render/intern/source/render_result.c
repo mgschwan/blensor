@@ -1,5 +1,4 @@
-/*  
- *
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -1021,7 +1020,7 @@ ImBuf *render_result_rect_to_ibuf(RenderResult *rr, RenderData *rd)
 	int flags = (rd->color_mgt_flag & R_COLOR_MANAGEMENT_PREDIVIDE)? IB_cm_predivide: 0;
 	ImBuf *ibuf= IMB_allocImBuf(rr->rectx, rr->recty, rd->im_format.planes, flags);
 	
-	/* if not exists, BKE_write_ibuf makes one */
+	/* if not exists, BKE_imbuf_write makes one */
 	ibuf->rect= (unsigned int *)rr->rect32;    
 	ibuf->rect_float= rr->rectf;
 	ibuf->zbuf_float= rr->rectz;

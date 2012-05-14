@@ -322,7 +322,7 @@ int DM_release(DerivedMesh *dm)
 {
 	if (dm->needsFree) {
 		bvhcache_free(&dm->bvhCache);
-		GPU_drawobject_free( dm );
+		GPU_drawobject_free(dm);
 		CustomData_free(&dm->vertData, dm->numVertData);
 		CustomData_free(&dm->edgeData, dm->numEdgeData);
 		CustomData_free(&dm->faceData, dm->numTessFaceData);
@@ -371,7 +371,7 @@ void DM_ensure_tessface(DerivedMesh *dm)
 	const int numTessFaces = dm->getNumTessFaces(dm);
 	const int numPolys =     dm->getNumPolys(dm);
 
-	if ( (numTessFaces == 0) && (numPolys != 0)) {
+	if ((numTessFaces == 0) && (numPolys != 0)) {
 		dm->recalcTessellation(dm);
 
 		if (dm->getNumTessFaces(dm) != 0) {
@@ -446,10 +446,10 @@ void DM_update_tessface_data(DerivedMesh *dm)
 				not_done--;
 			}
 		}
-		mesh_loops_to_mface_corners(fdata, ldata, pdata,
-		                            ml_idx, mf_idx, polyindex[mf_idx],
-		                            mf_len,
-		                            numTex, numCol, hasPCol, hasOrigSpace);
+		BKE_mesh_loops_to_mface_corners(fdata, ldata, pdata,
+		                                ml_idx, mf_idx, polyindex[mf_idx],
+		                                mf_len,
+		                                numTex, numCol, hasPCol, hasOrigSpace);
 	}
 
 	if (G.debug & G_DEBUG)
@@ -814,7 +814,7 @@ DerivedMesh *mesh_create_derived_for_modifier(Scene *scene, Object *ob,
 		int numVerts;
 		float (*deformedVerts)[3] = mesh_getVertexCos(me, &numVerts);
 
-		mti->deformVerts(md, ob, NULL, deformedVerts, numVerts, 0, 0);
+		mti->deformVerts(md, ob, NULL, deformedVerts, numVerts, 0);
 		dm = mesh_create_derived(me, ob, deformedVerts);
 
 		if (build_shapekey_layers)
@@ -828,7 +828,7 @@ DerivedMesh *mesh_create_derived_for_modifier(Scene *scene, Object *ob,
 		if (build_shapekey_layers)
 			add_shapekey_layers(tdm, me, ob);
 		
-		dm = mti->applyModifier(md, ob, tdm, 0, 0);
+		dm = mti->applyModifier(md, ob, tdm, 0);
 
 		if (tdm != dm) tdm->release(tdm);
 	}
@@ -870,7 +870,7 @@ static void *get_orco_coords_dm(Object *ob, BMEditMesh *em, int layer, int *free
 		if (em)
 			return (float(*)[3])get_editbmesh_orco_verts(em);
 		else
-			return (float(*)[3])get_mesh_orco_verts(ob);
+			return (float(*)[3])BKE_mesh_orco_verts_get(ob);
 	}
 	else if (layer == CD_CLOTH_ORCO) {
 		/* apply shape key for cloth, this should really be solved
@@ -932,7 +932,7 @@ static void add_orco_dm(Object *ob, BMEditMesh *em, DerivedMesh *dm,
 
 	if (orco) {
 		if (layer == CD_ORCO)
-			transform_mesh_orco_verts(ob->data, orco, totvert, 0);
+			BKE_mesh_orco_verts_transform(ob->data, orco, totvert, 0);
 
 		if (!(layerorco = DM_get_vert_data_layer(dm, layer))) {
 			DM_add_vert_layer(dm, layer, CD_CALLOC, NULL);
@@ -1383,6 +1383,13 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 	/* XXX Same as above... For now, only weights preview in WPaint mode. */
 	const int do_mod_wmcol = do_init_wmcol;
 
+	ModifierApplyFlag app_flags = useRenderParams ? MOD_APPLY_RENDER : 0;
+	ModifierApplyFlag deform_app_flags = app_flags;
+    if (useCache)
+		app_flags |= MOD_APPLY_USECACHE;
+    if (useDeform)
+		deform_app_flags |= MOD_APPLY_USECACHE;
+
 	if (mmd && !mmd->sculptlvl)
 		has_multires = 0;
 
@@ -1434,7 +1441,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 				if (!deformedVerts)
 					deformedVerts = mesh_getVertexCos(me, &numVerts);
 
-				mti->deformVerts(md, ob, NULL, deformedVerts, numVerts, useRenderParams, useDeform);
+				mti->deformVerts(md, ob, NULL, deformedVerts, numVerts, deform_app_flags);
 			}
 			else {
 				break;
@@ -1547,7 +1554,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 				}
 			}
 
-			mti->deformVerts(md, ob, dm, deformedVerts, numVerts, useRenderParams, useDeform);
+			mti->deformVerts(md, ob, dm, deformedVerts, numVerts, deform_app_flags);
 		}
 		else {
 			DerivedMesh *ndm;
@@ -1622,7 +1629,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 				}
 			}
 
-			ndm = mti->applyModifier(md, ob, dm, useRenderParams, useCache);
+			ndm = mti->applyModifier(md, ob, dm, app_flags);
 
 			if (ndm) {
 				/* if the modifier returned a new dm, release the old one */
@@ -1645,7 +1652,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 
 				nextmask &= ~CD_MASK_ORCO;
 				DM_set_only_copy(orcodm, nextmask | CD_MASK_ORIGINDEX);
-				ndm = mti->applyModifier(md, ob, orcodm, useRenderParams, 0);
+				ndm = mti->applyModifier(md, ob, orcodm, app_flags & ~MOD_APPLY_USECACHE);
 
 				if (ndm) {
 					/* if the modifier returned a new dm, release the old one */
@@ -1661,7 +1668,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 
 				nextmask &= ~CD_MASK_CLOTH_ORCO;
 				DM_set_only_copy(clothorcodm, nextmask | CD_MASK_ORIGINDEX);
-				ndm = mti->applyModifier(md, ob, clothorcodm, useRenderParams, 0);
+				ndm = mti->applyModifier(md, ob, clothorcodm, app_flags & ~MOD_APPLY_USECACHE);
 
 				if (ndm) {
 					/* if the modifier returned a new dm, release the old one */
@@ -1928,7 +1935,8 @@ static void editbmesh_calc_modifiers(Scene *scene, Object *ob, BMEditMesh *em, D
 
 			if (mti->deformVertsEM)
 				mti->deformVertsEM(md, ob, em, dm, deformedVerts, numVerts);
-			else mti->deformVerts(md, ob, dm, deformedVerts, numVerts, 0, 0);
+			else
+				mti->deformVerts(md, ob, dm, deformedVerts, numVerts, 0);
 		}
 		else {
 			DerivedMesh *ndm;
@@ -1971,7 +1979,7 @@ static void editbmesh_calc_modifiers(Scene *scene, Object *ob, BMEditMesh *em, D
 				if (mti->applyModifierEM)
 					ndm = mti->applyModifierEM(md, ob, em, orcodm);
 				else
-					ndm = mti->applyModifier(md, ob, orcodm, 0, 0);
+					ndm = mti->applyModifier(md, ob, orcodm, 0);
 
 				if (ndm) {
 					/* if the modifier returned a new dm, release the old one */
@@ -1995,7 +2003,7 @@ static void editbmesh_calc_modifiers(Scene *scene, Object *ob, BMEditMesh *em, D
 			if (mti->applyModifierEM)
 				ndm = mti->applyModifierEM(md, ob, em, dm);
 			else
-				ndm = mti->applyModifier(md, ob, dm, 0, 0);
+				ndm = mti->applyModifier(md, ob, dm, 0);
 
 			if (ndm) {
 				if (dm && dm != ndm)
@@ -2097,7 +2105,7 @@ static void clear_mesh_caches(Object *ob)
 		me->bb = NULL;
 	}
 
-	freedisplist(&ob->disp);
+	BKE_displist_free(&ob->disp);
 
 	if (ob->derivedFinal) {
 		ob->derivedFinal->needsFree = 1;
@@ -2111,7 +2119,7 @@ static void clear_mesh_caches(Object *ob)
 	}
 
 	if (ob->sculpt) {
-		object_sculpt_modifiers_changed(ob);
+		BKE_object_sculpt_modifiers_changed(ob);
 	}
 }
 
@@ -2413,7 +2421,7 @@ static void GetTextureCoordinate(const SMikkTSpaceContext * pContext, float fUV[
 	}
 	else {
 		const float *orco= pMesh->orco[(&pMesh->mface[face_num].v1)[vert_index]];
-		map_to_sphere( &fUV[0], &fUV[1], orco[0], orco[1], orco[2]);
+		map_to_sphere(&fUV[0], &fUV[1], orco[0], orco[1], orco[2]);
 	}
 }
 
@@ -2536,11 +2544,11 @@ void DM_add_tangent_layer(DerivedMesh *dm)
 
 			if (mf->v4) {
 				v4= &mvert[mf->v4];
-				normal_quad_v3( fno,v4->co, v3->co, v2->co, v1->co);
+				normal_quad_v3(fno, v4->co, v3->co, v2->co, v1->co);
 			}
 			else {
 				v4= NULL;
-				normal_tri_v3( fno,v3->co, v2->co, v1->co);
+				normal_tri_v3(fno, v3->co, v2->co, v1->co);
 			}
 		
 			if (mtface) {
@@ -2551,11 +2559,11 @@ void DM_add_tangent_layer(DerivedMesh *dm)
 			}
 			else {
 				uv1= uv[0]; uv2= uv[1]; uv3= uv[2]; uv4= uv[3];
-				map_to_sphere( &uv[0][0], &uv[0][1],orco[mf->v1][0], orco[mf->v1][1], orco[mf->v1][2]);
-				map_to_sphere( &uv[1][0], &uv[1][1],orco[mf->v2][0], orco[mf->v2][1], orco[mf->v2][2]);
-				map_to_sphere( &uv[2][0], &uv[2][1],orco[mf->v3][0], orco[mf->v3][1], orco[mf->v3][2]);
+				map_to_sphere(&uv[0][0], &uv[0][1], orco[mf->v1][0], orco[mf->v1][1], orco[mf->v1][2]);
+				map_to_sphere(&uv[1][0], &uv[1][1], orco[mf->v2][0], orco[mf->v2][1], orco[mf->v2][2]);
+				map_to_sphere(&uv[2][0], &uv[2][1], orco[mf->v3][0], orco[mf->v3][1], orco[mf->v3][2]);
 				if (v4)
-					map_to_sphere( &uv[3][0], &uv[3][1],orco[mf->v4][0], orco[mf->v4][1], orco[mf->v4][2]);
+					map_to_sphere(&uv[3][0], &uv[3][1], orco[mf->v4][0], orco[mf->v4][1], orco[mf->v4][2]);
 			}
 		
 			tangent_from_uv(uv1, uv2, uv3, v1->co, v2->co, v3->co, fno, tang);
@@ -2578,11 +2586,11 @@ void DM_add_tangent_layer(DerivedMesh *dm)
 			len= (mf->v4)? 4 : 3; 
 
 			if (mtface == NULL) {
-				map_to_sphere( &uv[0][0], &uv[0][1],orco[mf->v1][0], orco[mf->v1][1], orco[mf->v1][2]);
-				map_to_sphere( &uv[1][0], &uv[1][1],orco[mf->v2][0], orco[mf->v2][1], orco[mf->v2][2]);
-				map_to_sphere( &uv[2][0], &uv[2][1],orco[mf->v3][0], orco[mf->v3][1], orco[mf->v3][2]);
+				map_to_sphere(&uv[0][0], &uv[0][1], orco[mf->v1][0], orco[mf->v1][1], orco[mf->v1][2]);
+				map_to_sphere(&uv[1][0], &uv[1][1], orco[mf->v2][0], orco[mf->v2][1], orco[mf->v2][2]);
+				map_to_sphere(&uv[2][0], &uv[2][1], orco[mf->v3][0], orco[mf->v3][1], orco[mf->v3][2]);
 				if (len==4)
-					map_to_sphere( &uv[3][0], &uv[3][1],orco[mf->v4][0], orco[mf->v4][1], orco[mf->v4][2]);
+					map_to_sphere(&uv[3][0], &uv[3][1], orco[mf->v4][0], orco[mf->v4][1], orco[mf->v4][2]);
 			}
 		
 			mf_vi[0]= mf->v1;
@@ -2616,7 +2624,7 @@ void DM_calc_auto_bump_scale(DerivedMesh *dm)
 		int nr_accumulated = 0;
 		int f;
 
-		for ( f=0; f < totface; f++ ) {
+		for (f=0; f < totface; f++ ) {
 			{
 				float * verts[4], * tex_coords[4];
 				const int nr_verts = mface[f].v4!=0 ? 4 : 3;
@@ -2632,7 +2640,7 @@ void DM_calc_auto_bump_scale(DerivedMesh *dm)
 				// discard degenerate faces
 				is_degenerate = 0;
 				if (	equals_v3v3(verts[0], verts[1]) || equals_v3v3(verts[0], verts[2]) || equals_v3v3(verts[1], verts[2]) ||
-					equals_v2v2(tex_coords[0], tex_coords[1]) || equals_v2v2(tex_coords[0], tex_coords[2]) || equals_v2v2(tex_coords[1], tex_coords[2]) )
+					equals_v2v2(tex_coords[0], tex_coords[1]) || equals_v2v2(tex_coords[0], tex_coords[2]) || equals_v2v2(tex_coords[1], tex_coords[2]))
 				{
 					is_degenerate = 1;
 				}
@@ -2640,7 +2648,7 @@ void DM_calc_auto_bump_scale(DerivedMesh *dm)
 				// verify last vertex as well if this is a quad
 				if (is_degenerate == 0 && nr_verts == 4) {
 					if (equals_v3v3(verts[3], verts[0]) || equals_v3v3(verts[3], verts[1]) || equals_v3v3(verts[3], verts[2]) ||
-					    equals_v2v2(tex_coords[3], tex_coords[0]) || equals_v2v2(tex_coords[3], tex_coords[1]) || equals_v2v2(tex_coords[3], tex_coords[2]) )
+					    equals_v2v2(tex_coords[3], tex_coords[0]) || equals_v2v2(tex_coords[3], tex_coords[1]) || equals_v2v2(tex_coords[3], tex_coords[2]))
 					{
 						is_degenerate = 1;
 					}
@@ -2666,7 +2674,7 @@ void DM_calc_auto_bump_scale(DerivedMesh *dm)
 
 							if (is_degenerate == 0) {
 								copy_v2_v2(prev_edge, cur_edge);
-								++i;
+								i++;
 							}
 						}
 					}
@@ -2705,7 +2713,7 @@ void DM_calc_auto_bump_scale(DerivedMesh *dm)
 					if (nr_tris_to_pile==1 || nr_tris_to_pile==2) {
 						const int indices[] = {offs+0, offs+1, offs+2, offs+0, offs+2, (offs+3)&0x3 };
 						int t;
-						for ( t=0; t<nr_tris_to_pile; t++ ) {
+						for (t=0; t<nr_tris_to_pile; t++ ) {
 							float f2x_area_uv;
 							float * p0 = verts[indices[t*3+0]];
 							float * p1 = verts[indices[t*3+1]];
@@ -2725,7 +2733,7 @@ void DM_calc_auto_bump_scale(DerivedMesh *dm)
 								f2x_surf_area = len_v3(norm);
 								fsurf_ratio = f2x_surf_area/f2x_area_uv;	// tri area divided by texture area
 
-								++nr_accumulated;
+								nr_accumulated++;
 								dsum += (double)(fsurf_ratio);
 							}
 						}
@@ -2786,9 +2794,9 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 					a = attribs->tottface++;
 
 					attribs->tface[a].array = tfdata->layers[layer].data;
-					attribs->tface[a].emOffset = tfdata->layers[layer].offset;
-					attribs->tface[a].glIndex = gattribs->layer[b].glindex;
-					attribs->tface[a].glTexco = gattribs->layer[b].gltexco;
+					attribs->tface[a].em_offset = tfdata->layers[layer].offset;
+					attribs->tface[a].gl_index = gattribs->layer[b].glindex;
+					attribs->tface[a].gl_texco = gattribs->layer[b].gltexco;
 				}
 			}
 			else {
@@ -2802,9 +2810,9 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 					a = attribs->tottface++;
 
 					attribs->tface[a].array = tfdata->layers[layer].data;
-					attribs->tface[a].emOffset = tfdata->layers[layer].offset;
-					attribs->tface[a].glIndex = gattribs->layer[b].glindex;
-					attribs->tface[a].glTexco = gattribs->layer[b].gltexco;
+					attribs->tface[a].em_offset = tfdata->layers[layer].offset;
+					attribs->tface[a].gl_index = gattribs->layer[b].glindex;
+					attribs->tface[a].gl_texco = gattribs->layer[b].gltexco;
 				}
 			}
 		}
@@ -2823,8 +2831,8 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 					a = attribs->totmcol++;
 
 					attribs->mcol[a].array = tfdata->layers[layer].data;
-					attribs->mcol[a].emOffset = tfdata->layers[layer].offset;
-					attribs->mcol[a].glIndex = gattribs->layer[b].glindex;
+					attribs->mcol[a].em_offset = tfdata->layers[layer].offset;
+					attribs->mcol[a].gl_index = gattribs->layer[b].glindex;
 				}
 			}
 			else {
@@ -2839,8 +2847,8 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 					a = attribs->totmcol++;
 
 					attribs->mcol[a].array = tfdata->layers[layer].data;
-					attribs->mcol[a].emOffset = tfdata->layers[layer].offset;
-					attribs->mcol[a].glIndex = gattribs->layer[b].glindex;
+					attribs->mcol[a].em_offset = tfdata->layers[layer].offset;
+					attribs->mcol[a].gl_index = gattribs->layer[b].glindex;
 				}
 			}
 		}
@@ -2852,8 +2860,8 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 				attribs->tottang = 1;
 
 				attribs->tang.array = fdata->layers[layer].data;
-				attribs->tang.emOffset = fdata->layers[layer].offset;
-				attribs->tang.glIndex = gattribs->layer[b].glindex;
+				attribs->tang.em_offset = fdata->layers[layer].offset;
+				attribs->tang.gl_index = gattribs->layer[b].glindex;
 			}
 		}
 		else if (gattribs->layer[b].type == CD_ORCO) {
@@ -2864,9 +2872,9 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 				attribs->totorco = 1;
 
 				attribs->orco.array = vdata->layers[layer].data;
-				attribs->orco.emOffset = vdata->layers[layer].offset;
-				attribs->orco.glIndex = gattribs->layer[b].glindex;
-				attribs->orco.glTexco = gattribs->layer[b].gltexco;
+				attribs->orco.em_offset = vdata->layers[layer].offset;
+				attribs->orco.gl_index = gattribs->layer[b].glindex;
+				attribs->orco.gl_texco = gattribs->layer[b].gltexco;
 			}
 		}
 	}
@@ -2884,7 +2892,7 @@ void DM_set_object_boundbox(Object *ob, DerivedMesh *dm)
 	if (!ob->bb)
 		ob->bb= MEM_callocN(sizeof(BoundBox), "DM-BoundBox");
 
-	boundbox_set_from_min_max(ob->bb, min, max);
+	BKE_boundbox_init_from_minmax(ob->bb, min, max);
 }
 
 /* --- NAVMESH (begin) --- */
@@ -2936,7 +2944,7 @@ static void navmesh_drawColored(DerivedMesh *dm)
 
 	glDisable(GL_LIGHTING);
 	/*  if (GPU_buffer_legacy(dm) ) */ { /* TODO - VBO draw code, not high priority - campbell */
-		DEBUG_VBO( "Using legacy code. drawNavMeshColored\n" );
+		DEBUG_VBO("Using legacy code. drawNavMeshColored\n");
 		//glShadeModel(GL_SMOOTH);
 		glBegin(glmode = GL_QUADS);
 		for (a = 0; a < dm->numTessFaceData; a++, mface++) {
@@ -3117,7 +3125,7 @@ static void dm_debug_info_layers(DynStr *dynstr, DerivedMesh *dm, void *(*getEle
 			CustomData_file_write_info(type, &structname, &structnum);
 			BLI_dynstr_appendf(dynstr,
 			                   "        dict(name='%s', struct='%s', type=%d, ptr='%p', elem=%d, length=%d),\n",
-							   name, structname, type, (void *)pt, size, (int)(MEM_allocN_len(pt) / size));
+			                   name, structname, type, (void *)pt, size, (int)(MEM_allocN_len(pt) / size));
 		}
 	}
 }

@@ -188,10 +188,10 @@ void drawSnapping(const struct bContext *C, TransInfo *t)
 
 				glBegin(GL_LINES);
 					glVertex3f(t->tsnap.snapPoint[0], t->tsnap.snapPoint[1], t->tsnap.snapPoint[2]);
-					glVertex3f(	t->tsnap.snapPoint[0] + t->tsnap.snapNormal[0],
-								t->tsnap.snapPoint[1] + t->tsnap.snapNormal[1],
-								t->tsnap.snapPoint[2] + t->tsnap.snapNormal[2]);
-				glEnd();
+					glVertex3f(t->tsnap.snapPoint[0] + t->tsnap.snapNormal[0],
+					           t->tsnap.snapPoint[1] + t->tsnap.snapNormal[1],
+					           t->tsnap.snapPoint[2] + t->tsnap.snapNormal[2]);
+					glEnd();
 			}
 			
 			if (v3d->zbuf)
@@ -216,7 +216,7 @@ void drawSnapping(const struct bContext *C, TransInfo *t)
 			cpack(0xFFFFFF);
 			glTranslatef(t->tsnap.snapPoint[0], t->tsnap.snapPoint[1], 0.0f);
 			
-			//glRectf(0,0,1,1);
+			//glRectf(0, 0, 1, 1);
 			
 			setlinestyle(0);
 			cpack(0x0);
@@ -284,7 +284,7 @@ void applyProject(TransInfo *t)
 			}
 			else if (t->flag & T_OBJECT) {
 				td->ob->recalc |= OB_RECALC_OB|OB_RECALC_DATA|OB_RECALC_TIME;
-				object_handle_update(t->scene, td->ob);
+				BKE_object_handle_update(t->scene, td->ob);
 				copy_v3_v3(iloc, td->ob->obmat[3]);
 			}
 			
@@ -700,7 +700,7 @@ static float RotationBetween(TransInfo *t, float p1[3], float p2[3])
 		mul_m3_v3(mtx, end);
 		mul_m3_v3(mtx, start);
 		
-		angle = atan2(start[1],start[0]) - atan2(end[1],end[0]);
+		angle = atan2(start[1], start[0]) - atan2(end[1], end[0]);
 	}
 	
 	if (angle > (float)M_PI) {
@@ -966,7 +966,7 @@ static void TargetSnapClosest(TransInfo *t)
 		if (t->flag & T_OBJECT) {
 			int i;
 			for (td = t->data, i = 0 ; i < t->total && td->flag & TD_SELECTED ; i++, td++) {
-				struct BoundBox *bb = object_get_boundbox(td->ob);
+				struct BoundBox *bb = BKE_object_boundbox_get(td->ob);
 				
 				/* use boundbox if possible */
 				if (bb) {
@@ -1055,9 +1055,9 @@ static int snapFace(ARegion *ar, float v1co[3], float v2co[3], float v3co[3], fl
 		copy_v3_v3(location, intersect);
 		
 		if (v4co)
-			normal_quad_v3( normal,v1co, v2co, v3co, v4co);
+			normal_quad_v3(normal, v1co, v2co, v3co, v4co);
 		else
-			normal_tri_v3( normal,v1co, v2co, v3co);
+			normal_tri_v3(normal, v1co, v2co, v3co);
 
 		mul_m4_v3(obmat, location);
 		
@@ -1303,8 +1303,8 @@ static int snapDerivedMesh(short snap_mode, ARegion *ar, Object *ob, DerivedMesh
 		 * test against boundbox first
 		 * */
 		if (totface > 16) {
-			struct BoundBox *bb = object_get_boundbox(ob);
-			test = ray_hit_boundbox(bb, ray_start_local, ray_normal_local);
+			struct BoundBox *bb = BKE_object_boundbox_get(ob);
+			test = BKE_boundbox_ray_hit_check(bb, ray_start_local, ray_normal_local);
 		}
 		
 		if (test == 1) {
@@ -1709,8 +1709,8 @@ static int peelDerivedMesh(Object *ob, DerivedMesh *dm, float obmat[][4],
 		 * test against boundbox first
 		 * */
 		if (totface > 16) {
-			struct BoundBox *bb = object_get_boundbox(ob);
-			test = ray_hit_boundbox(bb, ray_start_local, ray_normal_local);
+			struct BoundBox *bb = BKE_object_boundbox_get(ob);
+			test = BKE_boundbox_ray_hit_check(bb, ray_start_local, ray_normal_local);
 		}
 		
 		if (test == 1) {
@@ -1738,9 +1738,9 @@ static int peelDerivedMesh(Object *ob, DerivedMesh *dm, float obmat[][4],
 					copy_v3_v3(location, intersect);
 					
 					if (f->v4)
-						normal_quad_v3( normal,verts[f->v1].co, verts[f->v2].co, verts[f->v3].co, verts[f->v4].co);
+						normal_quad_v3(normal, verts[f->v1].co, verts[f->v2].co, verts[f->v3].co, verts[f->v4].co);
 					else
-						normal_tri_v3( normal,verts[f->v1].co, verts[f->v2].co, verts[f->v3].co);
+						normal_tri_v3(normal, verts[f->v1].co, verts[f->v2].co, verts[f->v3].co);
 
 					mul_m4_v3(obmat, location);
 					
@@ -1767,13 +1767,13 @@ static int peelDerivedMesh(Object *ob, DerivedMesh *dm, float obmat[][4],
 						copy_v3_v3(location, intersect);
 						
 						if (f->v4)
-							normal_quad_v3( normal,verts[f->v1].co, verts[f->v2].co, verts[f->v3].co, verts[f->v4].co);
+							normal_quad_v3(normal, verts[f->v1].co, verts[f->v2].co, verts[f->v3].co, verts[f->v4].co);
 						else
-							normal_tri_v3( normal,verts[f->v1].co, verts[f->v2].co, verts[f->v3].co);
+							normal_tri_v3(normal, verts[f->v1].co, verts[f->v2].co, verts[f->v3].co);
 
 						mul_m4_v3(obmat, location);
 						
-						new_depth = len_v3v3(location, ray_start);					
+						new_depth = len_v3v3(location, ray_start);
 						
 						mul_m3_v3(timat, normal);
 						normalize_v3(normal);

@@ -20,7 +20,7 @@
 bl_info = {
     "name": "Edit Linked Library",
     "author": "Jason van Gumster (Fweeb)",
-    "version": (0, 7, 0),
+    "version": (0, 7, 1),
     "blender": (2, 6, 0),
     "location": "View3D > Toolshelf > Edit Linked Library",
     "description": "Allows editing of objects linked from a .blend library.",
@@ -149,10 +149,8 @@ class PanelLinkedEdit(bpy.types.Panel):
             self.layout.label(text = "Active object is not linked")
 
 
-bpy.app.handlers.load_post.append(linked_file_check)
-
-
 def register():
+    bpy.app.handlers.load_post.append(linked_file_check)
     bpy.utils.register_class(EditLinked)
     bpy.utils.register_class(ReturnToOriginal)
     bpy.utils.register_class(PanelLinkedEdit)
@@ -171,8 +169,9 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(EditLinked)
-    bpy.utils.unregister_class(SaveAndResume)
+    bpy.utils.unregister_class(ReturnToOriginal)
     bpy.utils.unregister_class(PanelLinkedEdit)
+    bpy.app.handlers.load_post.remove(linked_file_check)
 
     del bpy.types.Scene.edit_linked_autosave
 

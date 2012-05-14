@@ -80,7 +80,7 @@ void AnimationExporter::operator() (Object *ob)
 			    (!strcmp(transformName, "rotation_euler") && ob->rotmode == ROT_MODE_EUL)||
 			    (!strcmp(transformName, "rotation_quaternion")))
 			{
-				dae_animation(ob ,fcu, transformName, false);
+				dae_animation(ob, fcu, transformName, false);
 			}
 			fcu = fcu->next;
 		}
@@ -96,7 +96,7 @@ void AnimationExporter::operator() (Object *ob)
 			if ((!strcmp(transformName, "color")) || (!strcmp(transformName, "spot_size"))||
 			    (!strcmp(transformName, "spot_blend")) || (!strcmp(transformName, "distance")))
 			{
-				dae_animation(ob , fcu, transformName, true);
+				dae_animation(ob, fcu, transformName, true);
 			}
 			fcu = fcu->next;
 		}
@@ -112,7 +112,7 @@ void AnimationExporter::operator() (Object *ob)
 			    (!strcmp(transformName, "ortho_scale"))||
 			    (!strcmp(transformName, "clip_end"))||(!strcmp(transformName, "clip_start")))
 			{
-				dae_animation(ob , fcu, transformName, true);
+				dae_animation(ob, fcu, transformName, true);
 			}
 			fcu = fcu->next;
 		}
@@ -132,7 +132,7 @@ void AnimationExporter::operator() (Object *ob)
 				    (!strcmp(transformName, "diffuse_color"))||(!strcmp(transformName, "alpha")) ||
 					(!strcmp(transformName, "ior")))
 				{
-					dae_animation(ob ,fcu, transformName, true, ma );
+					dae_animation(ob, fcu, transformName, true, ma );
 				}
 				fcu = fcu->next;
 			}
@@ -165,7 +165,7 @@ float * AnimationExporter::get_eul_source_for_quat(Object *ob )
 		for ( int j = 0;j<4;j++)
 			temp_quat[j] = quat[(i*4)+j];
 
-		quat_to_eul(temp_eul,temp_quat);
+		quat_to_eul(temp_eul, temp_quat);
 
 		for (int k = 0;k<3;k++)
 			eul[i*3 + k] = temp_eul[k];
@@ -177,13 +177,13 @@ float * AnimationExporter::get_eul_source_for_quat(Object *ob )
 }
 
 //Get proper name for bones
-std::string AnimationExporter::getObjectBoneName( Object* ob,const FCurve* fcu ) 
+std::string AnimationExporter::getObjectBoneName( Object* ob, const FCurve* fcu ) 
 {
 	//hard-way to derive the bone name from rna_path. Must find more compact method
 	std::string rna_path = std::string(fcu->rna_path);
 
 	char* boneName = strtok((char *)rna_path.c_str(), "\"");
-	boneName = strtok(NULL,"\"");
+	boneName = strtok(NULL, "\"");
 
 	if ( boneName != NULL )
 		return /*id_name(ob) + "_" +*/ std::string(boneName);
@@ -192,7 +192,7 @@ std::string AnimationExporter::getObjectBoneName( Object* ob,const FCurve* fcu )
 }
 
 //convert f-curves to animation curves and write
-void AnimationExporter::dae_animation(Object* ob, FCurve *fcu, char* transformName , bool is_param, Material * ma )
+void AnimationExporter::dae_animation(Object* ob, FCurve *fcu, char* transformName, bool is_param, Material * ma )
 {
 	const char *axis_name = NULL;
 	char anim_id[200];
@@ -232,7 +232,7 @@ void AnimationExporter::dae_animation(Object* ob, FCurve *fcu, char* transformNa
 
 	//Create anim Id
 	if (ob->type == OB_ARMATURE) {
-		ob_name =  getObjectBoneName( ob , fcu);
+		ob_name =  getObjectBoneName(ob, fcu);
 		BLI_snprintf(anim_id, sizeof(anim_id), "%s_%s.%s", (char*)translate_id(ob_name).c_str(),
 			transformName, axis_name);
 	}
@@ -260,7 +260,7 @@ void AnimationExporter::dae_animation(Object* ob, FCurve *fcu, char* transformNa
 		for (int i = 0 ; i< fcu->totvert ; i++) {
 			eul_axis[i] = eul[i*3 + fcu->array_index];
 		}
-		output_id= create_source_from_array(COLLADASW::InputSemantic::OUTPUT, eul_axis , fcu->totvert, quatRotation, anim_id, axis_name);
+		output_id= create_source_from_array(COLLADASW::InputSemantic::OUTPUT, eul_axis, fcu->totvert, quatRotation, anim_id, axis_name);
 		MEM_freeN(eul);
 		MEM_freeN(eul_axis);
 	}
@@ -301,20 +301,20 @@ void AnimationExporter::dae_animation(Object* ob, FCurve *fcu, char* transformNa
 	std::string target;
 
 	if ( !is_param )
-		target = translate_id(ob_name)
-		+ "/" + get_transform_sid(fcu->rna_path, -1, axis_name, true);
+		target = translate_id(ob_name) +
+		         "/" + get_transform_sid(fcu->rna_path, -1, axis_name, true);
 	else {
 		if ( ob->type == OB_LAMP )
-			target = get_light_id(ob)
-			+ "/" + get_light_param_sid(fcu->rna_path, -1, axis_name, true);
+			target = get_light_id(ob) +
+			         "/" + get_light_param_sid(fcu->rna_path, -1, axis_name, true);
 
 		if ( ob->type == OB_CAMERA )
-			target = get_camera_id(ob)
-			+ "/" + get_camera_param_sid(fcu->rna_path, -1, axis_name, true);
+			target = get_camera_id(ob) +
+			         "/" + get_camera_param_sid(fcu->rna_path, -1, axis_name, true);
 
 		if ( ma ) 
-			target = translate_id(id_name(ma)) + "-effect"
-			+"/common/" /*profile common is only supported */ + get_transform_sid(fcu->rna_path, -1, axis_name, true);
+			target = translate_id(id_name(ma)) + "-effect" +
+			"/common/" /*profile common is only supported */ + get_transform_sid(fcu->rna_path, -1, axis_name, true);
 	}
 	addChannel(COLLADABU::URI(empty, sampler_id), target);
 
@@ -364,14 +364,14 @@ void AnimationExporter::sample_and_write_bone_animation_matrix(Object *ob_arm, B
 
 	FCurve* fcu = (FCurve*)ob_arm->adt->action->curves.first;
 	while (fcu) {
-		std::string bone_name = getObjectBoneName(ob_arm,fcu);
-		int val = BLI_strcasecmp((char*)bone_name.c_str(),bone->name);
+		std::string bone_name = getObjectBoneName(ob_arm, fcu);
+		int val = BLI_strcasecmp((char*)bone_name.c_str(), bone->name);
 		if (val==0) break;
 		fcu = fcu->next;
 	}
 
 	if (!(fcu)) return; 
-	bPoseChannel *pchan = get_pose_channel(ob_arm->pose, bone->name);
+	bPoseChannel *pchan = BKE_pose_channel_find_name(ob_arm->pose, bone->name);
 	if (!pchan)
 		return;
 
@@ -379,19 +379,19 @@ void AnimationExporter::sample_and_write_bone_animation_matrix(Object *ob_arm, B
 
 	if (flag & ARM_RESTPOS) {
 		arm->flag &= ~ARM_RESTPOS;
-		where_is_pose(scene, ob_arm);
+		BKE_pose_where_is(scene, ob_arm);
 	}
 
 	if (fra.size()) {
-		dae_baked_animation(fra ,ob_arm, bone );
+		dae_baked_animation(fra, ob_arm, bone );
 	}
 
 	if (flag & ARM_RESTPOS) 
 		arm->flag = flag;
-	where_is_pose(scene, ob_arm);
+	BKE_pose_where_is(scene, ob_arm);
 }
 
-void AnimationExporter::dae_baked_animation(std::vector<float> &fra, Object *ob_arm , Bone *bone)
+void AnimationExporter::dae_baked_animation(std::vector<float> &fra, Object *ob_arm, Bone *bone)
 {
 	std::string ob_name = id_name(ob_arm);
 	std::string bone_name = bone->name;
@@ -410,7 +410,7 @@ void AnimationExporter::dae_baked_animation(std::vector<float> &fra, Object *ob_
 
 	// create output source
 	std::string output_id;
-	output_id = create_4x4_source( fra, ob_arm , bone ,  anim_id);
+	output_id = create_4x4_source( fra, ob_arm, bone,  anim_id);
 
 	// create interpolations source
 	std::string interpolation_id = fake_interpolation_source(fra.size(), anim_id, "");
@@ -719,7 +719,7 @@ std::string AnimationExporter::create_source_from_vector(COLLADASW::InputSemanti
 	return source_id;
 }
 
-std::string AnimationExporter::create_4x4_source(std::vector<float> &frames , Object * ob_arm, Bone *bone , const std::string& anim_id)
+std::string AnimationExporter::create_4x4_source(std::vector<float> &frames, Object * ob_arm, Bone *bone, const std::string& anim_id)
 {
 	COLLADASW::InputSemantic::Semantics semantic = COLLADASW::InputSemantic::OUTPUT;
 	std::string source_id = anim_id + get_semantic_suffix(semantic);
@@ -739,7 +739,7 @@ std::string AnimationExporter::create_4x4_source(std::vector<float> &frames , Ob
 	bPoseChannel *pchan = NULL;
 	bPose *pose = ob_arm->pose;
 
-	pchan = get_pose_channel(pose, bone->name);
+	pchan = BKE_pose_channel_find_name(pose, bone->name);
 
 	if (!pchan)
 		return "";
@@ -753,10 +753,10 @@ std::string AnimationExporter::create_4x4_source(std::vector<float> &frames , Ob
 	for (it = frames.begin(); it != frames.end(); it++) {
 		float mat[4][4], ipar[4][4];
 
-		float ctime = BKE_frame_to_ctime(scene, *it);
+		float ctime = BKE_scene_frame_get_from_ctime(scene, *it);
 
-		BKE_animsys_evaluate_animdata(scene , &ob_arm->id, ob_arm->adt, ctime, ADT_RECALC_ANIM);
-		where_is_pose_bone(scene, ob_arm, pchan, ctime, 1);
+		BKE_animsys_evaluate_animdata(scene, &ob_arm->id, ob_arm->adt, ctime, ADT_RECALC_ANIM);
+		BKE_pose_where_is_bone(scene, ob_arm, pchan, ctime, 1);
 
 		// compute bone local mat
 		if (bone->parent) {
@@ -787,7 +787,7 @@ std::string AnimationExporter::create_4x4_source(std::vector<float> &frames , Ob
 		}
 
 		float outmat[4][4];
-		converter.mat4_to_dae(outmat,mat);
+		converter.mat4_to_dae(outmat, mat);
 
 
 		source.appendValues(outmat);
@@ -1206,7 +1206,7 @@ void AnimationExporter::sample_and_write_bone_animation(Object *ob_arm, Bone *bo
 
 	BLI_snprintf(prefix, sizeof(prefix), "pose.bones[\"%s\"]", bone->name);
 
-	bPoseChannel *pchan = get_pose_channel(ob_arm->pose, bone->name);
+	bPoseChannel *pchan = BKE_pose_channel_find_name(ob_arm->pose, bone->name);
 	if (!pchan)
 		return;
 	//Fill frame array with key frame values framed at \param:transform_type
@@ -1227,7 +1227,7 @@ void AnimationExporter::sample_and_write_bone_animation(Object *ob_arm, Bone *bo
 	// exit rest position
 	if (flag & ARM_RESTPOS) {
 		arm->flag &= ~ARM_RESTPOS;
-		where_is_pose(scene, ob_arm);
+		BKE_pose_where_is(scene, ob_arm);
 	}
 	//v array will hold all values which will be exported. 
 	if (fra.size()) {
@@ -1257,7 +1257,7 @@ void AnimationExporter::sample_and_write_bone_animation(Object *ob_arm, Bone *bo
 	// restore restpos
 	if (flag & ARM_RESTPOS) 
 		arm->flag = flag;
-	where_is_pose(scene, ob_arm);
+	BKE_pose_where_is(scene, ob_arm);
 }
 
 void AnimationExporter::sample_animation(float *v, std::vector<float> &frames, int type, Bone *bone, Object *ob_arm, bPoseChannel *pchan)
@@ -1265,7 +1265,7 @@ void AnimationExporter::sample_animation(float *v, std::vector<float> &frames, i
 	bPoseChannel *parchan = NULL;
 	bPose *pose = ob_arm->pose;
 
-	pchan = get_pose_channel(pose, bone->name);
+	pchan = BKE_pose_channel_find_name(pose, bone->name);
 
 	if (!pchan)
 		return;
@@ -1278,11 +1278,11 @@ void AnimationExporter::sample_animation(float *v, std::vector<float> &frames, i
 	for (it = frames.begin(); it != frames.end(); it++) {
 		float mat[4][4], ipar[4][4];
 
-		float ctime = BKE_frame_to_ctime(scene, *it);
+		float ctime = BKE_scene_frame_get_from_ctime(scene, *it);
 
 
-		BKE_animsys_evaluate_animdata(scene , &ob_arm->id, ob_arm->adt, ctime, ADT_RECALC_ANIM);
-		where_is_pose_bone(scene, ob_arm, pchan, ctime, 1);
+		BKE_animsys_evaluate_animdata(scene, &ob_arm->id, ob_arm->adt, ctime, ADT_RECALC_ANIM);
+		BKE_pose_where_is_bone(scene, ob_arm, pchan, ctime, 1);
 
 		// compute bone local mat
 		if (bone->parent) {

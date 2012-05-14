@@ -48,11 +48,11 @@ void TransformWriter::add_node_transform(COLLADASW::Node& node, float mat[][4], 
 
 	double dmat[4][4];
 	UnitConverter* converter = new UnitConverter();
-	converter->mat4_to_dae_double(dmat,local);
+	converter->mat4_to_dae_double(dmat, local);
 
 	TransformBase::decompose(local, loc, rot, NULL, scale);
 	if ( node.getType() == COLLADASW::Node::JOINT)
-		node.addMatrix("transform",dmat);
+		node.addMatrix("transform", dmat);
 	else
 		add_transform(node, loc, rot, scale);
 }
@@ -70,7 +70,7 @@ void TransformWriter::add_node_transform_ob(COLLADASW::Node& node, Object *ob)
 		copy_v3_v3(scale, ob->size);
 
 		ob->size[0] = ob->size[1] = ob->size[2] = 1.0f;
-		object_to_mat4(ob, C);
+		BKE_object_to_mat4(ob, C);
 		copy_v3_v3(ob->size, scale);
 
 		mul_serie_m4(tmat, ob->parent->obmat, ob->parentinv, C, NULL, NULL, NULL, NULL, NULL);

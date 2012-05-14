@@ -889,10 +889,10 @@ static PixStrMain *addpsmain(ListBase *lb)
 {
 	PixStrMain *psm;
 	
-	psm= (PixStrMain *)MEM_mallocN(sizeof(PixStrMain),"pixstrMain");
+	psm= (PixStrMain *)MEM_mallocN(sizeof(PixStrMain), "pixstrMain");
 	BLI_addtail(lb, psm);
 	
-	psm->ps= (PixStr *)MEM_mallocN(4096*sizeof(PixStr),"pixstr");
+	psm->ps= (PixStr *)MEM_mallocN(4096*sizeof(PixStr), "pixstr");
 	psm->counter= 0;
 	
 	return psm;
@@ -2567,7 +2567,7 @@ static void *do_bake_thread(void *bs_v)
 void RE_bake_ibuf_filter(ImBuf *ibuf, char *mask, const int filter)
 {
 	/* must check before filtering */
-	const short is_new_alpha= (ibuf->planes != R_IMF_PLANES_RGBA) && BKE_alphatest_ibuf(ibuf);
+	const short is_new_alpha= (ibuf->planes != R_IMF_PLANES_RGBA) && BKE_imbuf_alpha_test(ibuf);
 
 	/* Margin */
 	if (filter) {

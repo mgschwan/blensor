@@ -246,8 +246,7 @@ static void rna_Sequence_use_proxy_set(PointerRNA *ptr, int value)
 			seq->strip->proxy = MEM_callocN(sizeof(struct StripProxy), "StripProxy");
 			seq->strip->proxy->quality = 90;
 			seq->strip->proxy->build_tc_flags = SEQ_PROXY_TC_ALL;
-			seq->strip->proxy->build_size_flags
-				= SEQ_PROXY_IMAGE_SIZE_25;
+			seq->strip->proxy->build_size_flags = SEQ_PROXY_IMAGE_SIZE_25;
 		}
 	}
 	else {
@@ -1046,7 +1045,7 @@ static void rna_def_sequence(BlenderRNA *brna)
 	RNA_def_property_range(prop, 1, MAXFRAME);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_ui_text(prop, "Length", "The length of the contents of this strip after the handles are applied");
-	RNA_def_property_int_funcs(prop, "rna_Sequence_frame_length_get", "rna_Sequence_frame_length_set",NULL);
+	RNA_def_property_int_funcs(prop, "rna_Sequence_frame_length_get", "rna_Sequence_frame_length_set", NULL);
 	RNA_def_property_editable_func(prop, "rna_Sequence_frame_editable");
 	RNA_def_property_update(prop, NC_SCENE|ND_SEQUENCER, "rna_Sequence_update");
 
@@ -1061,7 +1060,7 @@ static void rna_def_sequence(BlenderRNA *brna)
 	RNA_def_property_int_sdna(prop, NULL, "start");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_ui_text(prop, "Start Frame", "");
-	RNA_def_property_int_funcs(prop, NULL, "rna_Sequence_start_frame_set",NULL); /* overlap tests and calc_seq_disp */
+	RNA_def_property_int_funcs(prop, NULL, "rna_Sequence_start_frame_set", NULL); /* overlap tests and calc_seq_disp */
 	RNA_def_property_editable_func(prop, "rna_Sequence_frame_editable");
 	RNA_def_property_update(prop, NC_SCENE|ND_SEQUENCER, "rna_Sequence_update");
 	
@@ -1116,7 +1115,7 @@ static void rna_def_sequence(BlenderRNA *brna)
 	RNA_def_property_int_sdna(prop, NULL, "machine");
 	RNA_def_property_range(prop, 0, MAXSEQ-1);
 	RNA_def_property_ui_text(prop, "Channel", "Y position of the sequence strip");
-	RNA_def_property_int_funcs(prop, NULL, "rna_Sequence_channel_set",NULL); /* overlap test */
+	RNA_def_property_int_funcs(prop, NULL, "rna_Sequence_channel_set", NULL); /* overlap test */
 	RNA_def_property_update(prop, NC_SCENE|ND_SEQUENCER, "rna_Sequence_update");
 
 	/* blending */
