@@ -2538,26 +2538,22 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
     {
   		MEM_reset_peak_memory();
 
-      scene_camera_switch_update(re->scene);
+      BKE_scene_camera_switch_update(re->scene);
   	  
-//  		MEM_reset_peak_memory();
-
-		  BLI_exec_cb(re->main, (ID *)scene, BLI_CB_EVT_RENDER_PRE);
-
-      /* moved here from the do_blensor function */
+      BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_PRE);
+		  
+      // moved here from the do_blensor function 
   	  re->scene->r.subframe = re->mblur_offs + re->field_offs;
       RE_Database_FromScene(re, re->main, re->scene, re->lay, 1); //Sets up all the stuff
-      /* */
 
     } else { printf ("Keeping the old tree\n"); }
-
 
     do_blensor(re, rays, raycount, elements_per_ray, returns, maximum_distance, bmain, scene, srl, shading);
 	
     if (keep_setup == 0)
     {
-      /* moved here from the end of do_blensor */
-    	/* free all render verts etc */
+      // moved here from the end of do_blensor 
+    	// free all render verts etc 
     	RE_Database_Free(re);
     	
     	re->scene->r.subframe = 0.f;
@@ -2567,12 +2563,11 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
     {
       render_still_available = 1;
     }  
-    /* */
 
-		BLI_exec_cb(re->main, (ID *)scene, BLI_CB_EVT_RENDER_POST); /* keep after file save */
+    BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_POST); 
 	}
-	BLI_exec_cb(re->main, (ID *)scene, G.afbreek ? BLI_CB_EVT_RENDER_CANCEL : BLI_CB_EVT_RENDER_COMPLETE);
 
+  BLI_callback_exec(re->main, (ID *)scene, G.afbreek ? BLI_CB_EVT_RENDER_CANCEL : BLI_CB_EVT_RENDER_COMPLETE);
 
 	/* UGLY WARNING */
 	G.rendering= 0;
