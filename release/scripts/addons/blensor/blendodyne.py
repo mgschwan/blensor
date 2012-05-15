@@ -18,6 +18,8 @@ import bpy
 from mathutils import Vector, Euler, Matrix
 
 from blensor import evd
+from blensor import mesh_utils
+
 import blensor
 
 
@@ -188,30 +190,11 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
         evd_storage.appendEvdFile()
 
     if add_blender_mesh:
-        scan_mesh = bpy.data.meshes.new("scan_mesh")
-        scan_mesh.vertices.add(len(verts))
-        scan_mesh.vertices.foreach_set("co", tuples_to_list(verts))
-        scan_mesh.update()
-        scan_mesh_object = bpy.data.objects.new("Scan.{0}".format(bpy.context.scene.frame_current), scan_mesh)
-        bpy.context.scene.objects.link(scan_mesh_object)
-        blensor.show_in_frame(scan_mesh_object, bpy.context.scene.frame_current)
-
-        if world_transformation == Matrix():
-            scan_mesh_object.matrix_world = bpy.context.object.matrix_world
-
+        mesh_utils.add_mesh_from_points_tf(verts, "Scan", world_transformation)
 
     if add_noisy_blender_mesh:
-        noise_scan_mesh = bpy.data.meshes.new("noisy_scan_mesh")
-        noise_scan_mesh.vertices.add(len(verts_noise))
-        noise_scan_mesh.vertices.foreach_set("co", tuples_to_list(verts_noise))
-        noise_scan_mesh.update()
-        noise_scan_mesh_object = bpy.data.objects.new("NoisyScan.{0}".format(bpy.context.scene.frame_current), noise_scan_mesh)
-        bpy.context.scene.objects.link(noise_scan_mesh_object)
-        blensor.show_in_frame(noise_scan_mesh_object, bpy.context.scene.frame_current)
-    
-        if world_transformation == Matrix():
-            noise_scan_mesh_object.matrix_world = bpy.context.object.matrix_world
-
+        mesh_utils.add_mesh_from_points_tf(verts_noise, "NoisyScan", world_transformation) 
+        
     bpy.context.scene.update()
 
     end_time = time.time()

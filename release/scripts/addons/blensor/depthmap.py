@@ -9,8 +9,9 @@ import time
 import random
 import bpy
 import blensor.globals
-from mathutils import Vector, Euler, Matrix
+from blensor import mesh_utils
 
+from mathutils import Vector, Euler, Matrix
 
 parameters = {"max_dist":200}
 
@@ -34,10 +35,11 @@ def tuples_to_list(tuples):
     return l
 
 
-def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
+def scan_advanced(scanner_object, max_distance = 120, filename=None, add_blender_mesh = False,
     world_transformation=Matrix()):
     start_time = time.time()
 
+    add_noisy_blender_mesh = scanner_object.add_noise_scan_mesh
 
     bpy.context.scene.render.resolution_percentage=100
     bpy.context.scene.render.use_antialiasing=False
@@ -80,7 +82,7 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
             object_distance =  math.sqrt(world_ddist ** 2 + zbuffer[idx] ** 2)
             
             depthmap[idx] = object_distance
-            if add_blender_mesh:
+            if add_blender_mesh or add_noisy_blender_mesh:
                 if object_distance < max_distance:
                     Z = -zbuffer[idx] 
                     X = -( Z * dx ) / focal_length
@@ -88,10 +90,7 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
                     reusable_vector.xyzw = [X,Y,Z,1.0]
                     vt = (world_transformation * reusable_vector).xyz
 
-                    verts.append(vt[0])                
-                    verts.append(vt[1])
-                    verts.append(vt[2])
-
+                    verts.append((vt[0],vt[1],vt[2]))                
 
     if filename:
         fh = open(filename, "w")
@@ -101,19 +100,11 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
         fh.close()
 
     if add_blender_mesh:
-        scan_mesh = bpy.data.meshes.new("scan_mesh")
-        scan_mesh.vertices.add(len(verts)//3)
-        scan_mesh.vertices.foreach_set("co", verts)
-        scan_mesh.update()
-        scan_mesh_object = bpy.data.objects.new("Scan.{0}".format(bpy.context.scene.frame_current), scan_mesh)
-        bpy.context.scene.objects.link(scan_mesh_object)
-        blensor.show_in_frame(scan_mesh_object, bpy.context.scene.frame_current)
+        mesh_utils.add_mesh_from_points_tf(verts, "Scan", world_transformation)
 
-        if world_transformation == Matrix():
-            scan_mesh_object.matrix_world = bpy.context.object.matrix_world
-
-
-
+    if add_noisy_blender_mesh:
+        mesh_utils.add_mesh_from_points_tf(verts, "NoisyScan", world_transformation)
+        
     bpy.context.scene.update()
 
     end_time = time.time()
@@ -129,7 +120,7 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/depthmap", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 120.0, last_frame = True,world_transformation=Matrix()):
+def scan_range(scanner_object, frame_start, frame_end, filename="/tmp/depthmap", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, max_distance = 120.0, last_frame = True,world_transformation=Matrix()):
 
     start_time = time.time()
 
@@ -140,7 +131,7 @@ def scan_range(frame_start, frame_end, filename="/tmp/depthmap", frame_time = (1
 
             bpy.context.scene.frame_current = i
 
-            ok,start_radians,scan_time = scan_advanced(filename = filename+"%04d.dmap"%i , add_blender_mesh=add_blender_mesh,  max_distance=max_distance,world_transformation=world_transformation)
+            ok,start_radians,scan_time = scan_advanced(scanner_object, filename = filename+"%04d.dmap"%i , add_blender_mesh=add_blender_mesh,  max_distance=max_distance,world_transformation=world_transformation)
 
             if not ok:
                 break

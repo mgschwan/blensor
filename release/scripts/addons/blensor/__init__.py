@@ -194,7 +194,8 @@ def dispatch_scan(obj, filename=None):
                   world_transformation=world_transformation)
 
             elif obj.scan_type == "depthmap":
-                blensor.depthmap.scan_advanced( max_distance=obj.depthmap_max_dist, 
+                blensor.depthmap.scan_advanced( scanner_object = obj, 
+                  max_distance=obj.depthmap_max_dist, 
                   add_blender_mesh=obj.add_scan_mesh, filename=filename,
                   world_transformation=world_transformation)
 
@@ -245,7 +246,8 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                   add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
 
             elif obj.scan_type == "depthmap":
-                blensor.depthmap.scan_range( max_distance=obj.depthmap_max_dist,
+                blensor.depthmap.scan_range( scanner_object = obj,
+                  max_distance=obj.depthmap_max_dist,
                   frame_start = frame, frame_end=frame+1, filename=filename,
                   world_transformation=world_transformation,
                   add_blender_mesh=obj.add_scan_mesh)

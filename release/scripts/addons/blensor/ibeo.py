@@ -24,6 +24,8 @@ import bpy
 from mathutils import Vector, Euler,geometry, Matrix
 
 from blensor import evd
+from blensor import mesh_utils
+
 import blensor
 
 parameters = {"angle_resolution":0.25, "rotation_speed":12.5,"max_dist":90,"noise_mu":0.0,"noise_sigma":0.03,
@@ -74,9 +76,8 @@ laser_noise = [0.015798891682948433, 0.030289711937446478, 0.044832263895615468,
 ## If the laser noise has to be truely randomize, call this function prior
 ## to every scan
 def randomize_distance_bias(noise_mu = 0.0, noise_sigma = 0.04):
-    laser_noise = [random.gauss(noise_mu, noise_sigma)  for i in range(len(laser_angles)) ]
-
-
+    for idx in range(len(laser_angles)):
+      laser_noise[idx] = random.gauss(noise_mu, noise_sigma)
 
 mirror = [Vector([0,0,0]), Vector([0,0,0]), Vector([0,0,0])]
 norm_mirror = Vector([0,1,0])
@@ -181,29 +182,10 @@ def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0
         evd_storage.appendEvdFile()
 
     if add_blender_mesh:
-        scan_mesh = bpy.data.meshes.new("scan_mesh")
-        scan_mesh.vertices.add(len(verts))
-        scan_mesh.vertices.foreach_set("co", tuples_to_list(verts))
-        scan_mesh.update()
-        scan_mesh_object = bpy.data.objects.new("Scan.{0}".format(bpy.context.scene.frame_current), scan_mesh)
-        bpy.context.scene.objects.link(scan_mesh_object)
-        blensor.show_in_frame(scan_mesh_object, bpy.context.scene.frame_current)
-        
-        if world_transformation == Matrix():
-            scan_mesh_object.matrix_world = bpy.context.object.matrix_world
+        mesh_utils.add_mesh_from_points_tf(verts, "Scan", world_transformation)
 
     if add_noisy_blender_mesh:
-        noise_scan_mesh = bpy.data.meshes.new("noisy_scan_mesh")
-        noise_scan_mesh.vertices.add(len(verts_noise))
-        noise_scan_mesh.vertices.foreach_set("co", tuples_to_list(verts_noise))
-        noise_scan_mesh.update()
-        noise_scan_mesh_object = bpy.data.objects.new("NoisyScan.{0}".format(bpy.context.scene.frame_current), noise_scan_mesh)
-        bpy.context.scene.objects.link(noise_scan_mesh_object)
-        blensor.show_in_frame(noise_scan_mesh_object, bpy.context.scene.frame_current)
-
-        if world_transformation == Matrix():
-            noise_scan_mesh_object.matrix_world = bpy.context.object.matrix_world
-
+        mesh_utils.add_mesh_from_points_tf(verts_noise, "NoisyScan", world_transformation) 
 
     bpy.context.scene.update()
 
