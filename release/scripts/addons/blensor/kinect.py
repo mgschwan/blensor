@@ -169,7 +169,6 @@ def scan_advanced(scanner_object, evd_file=None,
                   evd_last_scan=True, 
                   timestamp = 0.0,
                   world_transformation=Matrix()):
-
     max_distance = scanner_object.kinect_max_dist
     min_distance = scanner_object.kinect_min_dist
     add_blender_mesh = scanner_object.add_scan_mesh
@@ -181,17 +180,11 @@ def scan_advanced(scanner_object, evd_file=None,
     flength = scanner_object.kinect_flength
 
 
-    start_time = time.time()
-
-
-
     if res_x < 1 or res_y < 1:
         raise ValueError("Resolution must be > 0")
 
     pixel_width = 0.0078
     pixel_height = 0.0078
-
-    bpy.context.scene.render.resolution_percentage
 
     cx = float(res_x) /2.0
     cy = float(res_y) /2.0 
@@ -206,7 +199,10 @@ def scan_advanced(scanner_object, evd_file=None,
 
     baseline = Vector([0.075,0.0,0.0]) #Kinect has a baseline of 7.5 centimeters
 
+
+    
     rayidx=0
+    ray = Vector([0.0,0.0,0.0])
     """Calculate the rays from the projector"""
     for y in range(res_y):
         for x in range(res_x):
@@ -219,7 +215,8 @@ def scan_advanced(scanner_object, evd_file=None,
             physical_y = float(y-cy) * pixel_height
             physical_z = -float(flength)
 
-            ray = Vector([physical_x, physical_y, physical_z])
+            #ray = Vector([physical_x, physical_y, physical_z])
+            ray.xyz=[physical_x, physical_y, physical_z]
             ray.normalize()
             final_ray = max_distance*ray
             rays[rayidx*6] = final_ray[0]
@@ -240,8 +237,6 @@ def scan_advanced(scanner_object, evd_file=None,
             ray_info[rayidx][2] = timestamp
 
             rayidx += 1
-
-            
 
     """ Max distance is increased because the kinect is limited by 4m
         _normal distance_ to the imaging plane, We don't need shading in the
@@ -269,7 +264,7 @@ def scan_advanced(scanner_object, evd_file=None,
 
 
     camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False,False,True)
-
+    
     verts = []
     verts_noise = []
     evd_storage = evd.evd_file(evd_file, res_x, res_y, max_distance)
@@ -307,7 +302,11 @@ def scan_advanced(scanner_object, evd_file=None,
             disparity_quantized = camera_x_quantized + projector_point[0]
             all_quantized_disparities[projector_idx] = disparity_quantized
 
-
+    """We reuse the vector objects to spare us the object creation every
+       time
+    """
+    v = Vector([0.0,0.0,0.0])
+    vn = Vector([0.0,0.0,0.0])
     """Check if the rays of the camera meet with the rays of the projector and
        add them as valid returns if they do"""
     for i in range(len(camera_returns)):
@@ -327,17 +326,17 @@ def scan_advanced(scanner_object, evd_file=None,
             X_quantized = Z_quantized*camera_x*pixel_width/flength
             Y_quantized = Z_quantized*camera_y*pixel_width/flength
 
-
-            v = Vector([camera_returns[i][1],camera_returns[i][2],camera_returns[i][3]])
+            v.xyz=[camera_returns[i][1],camera_returns[i][2],camera_returns[i][3]]
             vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
 
             vt = (world_transformation * v.to_4d()).xyz
             verts.append ( vt )
 
-            vn = Vector([X_quantized,Y_quantized,Z_quantized])
+            vn.xyz = [X_quantized,Y_quantized,Z_quantized]
             vector_length_noise = vn.magnitude
-
-            v_noise = (world_transformation * vn.to_4d()).xyz
+            
+            #TODO@mgschwan: prevent object creation here too
+            v_noise = (world_transformation * vn.to_4d()).xyz 
             verts_noise.append( v_noise )
 
             evd_storage.addEntry(timestamp = ray_info[projector_idx][2], yaw = 0.0, pitch=0.0, distance=-camera_returns[i][3], distance_noise=-Z_quantized, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=camera_returns[i][4], color=camera_returns[i][5], idx=projector_idx)
@@ -353,15 +352,14 @@ def scan_advanced(scanner_object, evd_file=None,
         mesh_utils.add_mesh_from_points_tf(verts, "Scan", world_transformation)
 
     if add_noisy_blender_mesh:
-        mesh_utils.add_mesh_from_points_tf(verts_noise, "NoisyScan", world_transformation)
+        mesh_utils.add_mesh_from_points_tf(verts_noise, "NoisyScan", world_transformation)            
 
-
-    bpy.context.scene.update()
-
+    bpy.context.scene.update()  
+    start_time = time.time()
+    
     end_time = time.time()
     scan_time = end_time-start_time
     print ("Elapsed time: %.3f"%(scan_time))
-
 
     return True, 0.0, scan_time
 

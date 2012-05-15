@@ -96,7 +96,7 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
     rays = []
     ray_info = []
 
-
+    ray = Vector([0.0,0.0,0.0])
     for x in range(tof_res_x):
         for y in range(tof_res_y):
             """Calculate a vector that originates at the principal point
@@ -106,8 +106,7 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
             physical_x = float(x-cx) * pixel_width
             physical_y = float(y-cy) * pixel_height
             physical_z = -float(flength)
-
-            ray = Vector([physical_x, physical_y, physical_z])
+            ray.xyz = [physical_x, physical_y, physical_z]
             ray.normalize()
             final_ray = max_distance*ray
             rays.extend([final_ray[0],final_ray[1],final_ray[2]])
@@ -129,13 +128,15 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
     verts_noise = []
     evd_storage = evd.evd_file(evd_file)
 
+    reusable_vector = Vector([0.0,0.0,0.0,0.0])
     for i in range(len(returns)):
         idx = returns[i][-1]
         distance_noise =  random.gauss(noise_mu, noise_sigma)
         #If everything works substitute the previous line with this
         #distance_noise =  pixel_noise[returns[idx][-1]] + random.gauss(noise_mu, noise_sigma) 
 
-        vt = (world_transformation * Vector((returns[i][1],returns[i][2],returns[i][3],1.0))).xyz
+        reusable_vector.xyzw = [returns[i][1],returns[i][2],returns[i][3],1.0]
+        vt = (world_transformation * reusable_vector).xyz
         v = [returns[i][1],returns[i][2],returns[i][3]]
         verts.append ( vt )
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
@@ -148,7 +149,8 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
            if vector_length_noise >= max_distance/2.0:
                vector_length_noise = vector_length_noise - max_distance/2.0
 
-        v_noise = (world_transformation * Vector((norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0))).xyz
+        reusable_vector.xyzw = [norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0]
+        v_noise = (world_transformation * reusable_vector).xyz
         verts_noise.append( v_noise )
 
         evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4], color=returns[i][5])

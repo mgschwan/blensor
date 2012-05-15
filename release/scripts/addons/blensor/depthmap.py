@@ -64,6 +64,7 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
 
     verts = []
 
+    reusable_vector = Vector([0.0,0.0,0.0,0.0])
     for idx in range( len(zbuffer) ):
             x = float(idx % width)
             y = float(idx // width)
@@ -84,7 +85,8 @@ def scan_advanced(max_distance = 120, filename=None, add_blender_mesh = False,
                     Z = -zbuffer[idx] 
                     X = -( Z * dx ) / focal_length
                     Y = -( Z * dy ) / focal_length
-                    vt = (world_transformation * Vector((X,Y,Z,1.0))).xyz
+                    reusable_vector.xyzw = [X,Y,Z,1.0]
+                    vt = (world_transformation * reusable_vector).xyz
 
                     verts.append(vt[0])                
                     verts.append(vt[1])

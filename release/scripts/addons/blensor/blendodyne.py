@@ -141,11 +141,12 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
     steps_per_rotation = 360.0/angle_resolution
     time_per_step = (1.0 / rotation_speed) / steps_per_rotation
     angles = end_angle-start_angle
-
+  
     lines = (end_angle-start_angle)/angle_resolution
+    ray = Vector([0.0,0.0,0.0])
     for line in range(int(lines)):
         for laser_idx in range(len(laser_angles)):
-            ray = Vector([0,0,max_distance])
+            ray.xyz = [0,0,max_distance]
             rot_angle = 1e-6 + start_angle+float(line)*angle_resolution + 180.0
             timestamp = ( (rot_angle-180.0)/angle_resolution) * time_per_step 
             rot_angle = rot_angle%360.0
@@ -160,9 +161,13 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
     verts_noise = []
 
 #    for idx in range((len(rays)//3)):
+    
+    reusable_4dvector = Vector([0.0,0.0,0.0,0.0])
+    
     for i in range(len(returns)):
         idx = returns[i][-1]
-        vt = (world_transformation * Vector((returns[i][1],returns[i][2],returns[i][3],1.0))).xyz
+        reusable_4dvector.xyzw = (returns[i][1],returns[i][2],returns[i][3],1.0)
+        vt = (world_transformation * reusable_4dvector).xyz
         v = [returns[i][1],returns[i][2],returns[i][3]]
         verts.append ( vt )
 
@@ -170,7 +175,8 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
         norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
         vector_length_noise = vector_length+distance_noise
-        v_noise = (world_transformation * Vector((norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0))).xyz
+        reusable_4dvector.xyzw=[norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0]
+        v_noise = (world_transformation * reusable_4dvector).xyz
         verts_noise.append( v_noise )
 
         evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4], color=returns[i][5])

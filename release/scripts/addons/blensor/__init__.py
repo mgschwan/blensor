@@ -357,6 +357,7 @@ class OBJECT_OT_scan(bpy.types.Operator):
 
         try:
           dispatch_scan(obj, self.filepath)
+          pass
         except Exception as e:
             print ("Scan not successful")
             self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
@@ -378,6 +379,7 @@ class OBJECT_OT_scan(bpy.types.Operator):
             else:
                 try:
                     dispatch_scan(obj)
+                    pass
                 except Exception as e:
                     print ("Scan not successful")
                     exc_type, exc_value, exc_traceback = sys.exc_info()

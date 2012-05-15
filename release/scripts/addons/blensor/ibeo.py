@@ -77,20 +77,27 @@ def randomize_distance_bias(noise_mu = 0.0, noise_sigma = 0.04):
     laser_noise = [random.gauss(noise_mu, noise_sigma)  for i in range(len(laser_angles)) ]
 
 
+
+mirror = [Vector([0,0,0]), Vector([0,0,0]), Vector([0,0,0])]
+norm_mirror = Vector([0,1,0])
 #Create a Triangle that represents the 45° mirror
 #rotated around the main axis by <angle>
 #The mirror has a side length of 1 meter which is more
 #than enough to fit the small square mirror inside this triangle
 def createMirror(angle):
-    v1 = Vector([0,-1,-1])
-    v2 = Vector([-1,1,1])
-    v3 = Vector([1,1,1])
-    v1.rotate( Matrix.Rotation( angle, 4, Vector([0,1,0]) ) )
-    v2.rotate( Matrix.Rotation( angle, 4, Vector([0,1,0]) ) )
-    v3.rotate( Matrix.Rotation( angle, 4, Vector([0,1,0]) ) )
-    n = geometry.normal(v3,v2,v1)
-    return [v1,v2,v3,n]
+    mirror[0].xyz = [0,-1,-1]
+    mirror[1].xyz = [-1,1,1]
+    mirror[2].xyz = [1,1,1]
+    mirror[0].rotate( Matrix.Rotation( angle, 4, norm_mirror) )
+    mirror[1].rotate( Matrix.Rotation( angle, 4, norm_mirror)  )
+    mirror[2].rotate( Matrix.Rotation( angle, 4, norm_mirror)  )
+    n = geometry.normal(mirror[2],mirror[1],mirror[0])
+    return [mirror[2],mirror[1],mirror[0],n]
 
+
+ray_to_mirror = Vector([0.0,0.0,0.0])
+rotation_axis = Vector([1.0,0.0,0.0])
+reusable_ray = Vector([0.0,0.0,0.0])
 #Shoot a ray onto the mirror (like it would be inside the ibeo)
 #and calculate the intersection(reflection) point.
 #Use the angle between the ray and the normal vector of the mirror
@@ -98,15 +105,16 @@ def createMirror(angle):
 #Returns the ray, the origin of the ray and the outgoing vertical angle 
 #of the ray from the Ibeo scanner
 def calculateRay(laserAngle, mirrorAngle, laserMirrorDistance):
-    ray = Vector([0.0,-1.0,0.0]) # A ray pointing down towards the mirror
-    ray.rotate( Matrix.Rotation(laserAngle, 4, Vector([1.0,0.0,0.0])) )
+    reusable_ray.xyz = [0.0,-1.0,0.0] # A ray pointing down towards the mirror
+    reusable_ray.rotate( Matrix.Rotation(laserAngle, 4, rotation_axis) )
     [v1,v2,v3,n] = createMirror(mirrorAngle)
-    incomingAngle = n.angle(ray)%(math.pi/2.0)
-    reflectionAxis = n.cross(ray) # Calculate the axis around which the ray needs
-                                  # to be rotated to created the reflection
-    reflectionPoint = geometry.intersect_ray_tri(v1,v2,v3,ray,Vector([0.0,laserMirrorDistance,0.0]),False)
-    ray.rotate( Matrix.Rotation(2*incomingAngle, 4,reflectionAxis) )
-    return [ray, reflectionPoint, math.pi/4-incomingAngle]
+    incomingAngle = n.angle(reusable_ray)%(math.pi/2.0)
+    reflectionAxis = n.cross(reusable_ray) # Calculate the axis around which the ray needs
+                                           # to be rotated to created the reflection
+    ray_to_mirror.xyz = [0.0,laserMirrorDistance,0.0]
+    reflectionPoint = geometry.intersect_ray_tri(v1,v2,v3,reusable_ray,ray_to_mirror,False)
+    reusable_ray.rotate( Matrix.Rotation(2*incomingAngle, 4,reflectionAxis) )
+    return [reusable_ray, reflectionPoint, math.pi/4-incomingAngle]
 
 
 def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0.5, max_distance = 90, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = -35, end_angle = 50, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, simulation_time = 0.0,laser_mirror_distance=0.05, world_transformation=Matrix()):
@@ -148,9 +156,11 @@ def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0
     verts = []
     verts_noise = []
 
+    reusable_vector = Vector([0.0,0.0,0.0,0.0])
     for i in range(len(returns)):
         idx = returns[i][-1]
-        vt = (world_transformation * Vector((returns[i][1],returns[i][2],returns[i][3],1.0))).xyz
+        reusable_vector.xyzw = [returns[i][1],returns[i][2],returns[i][3],1.0]
+        vt = (world_transformation * reusable_vector).xyz
         v = [returns[i][1],returns[i][2],returns[i][3]]
         verts.append ( vt )
 
@@ -158,7 +168,8 @@ def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
         norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
         vector_length_noise = vector_length+distance_noise
-        v_noise = (world_transformation * Vector((norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0))).xyz
+        reusable_vector.xyzw = [norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0]
+        v_noise = (world_transformation * reusable_vector).xyz
         verts_noise.append( v_noise )
 
         evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4], color=returns[i][5])

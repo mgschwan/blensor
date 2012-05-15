@@ -2533,41 +2533,31 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 
 	scene->r.cfra= frame;
 
-	if(render_still_available == 1|| render_initialize_from_main(re, bmain, scene, srl, camera_override, lay, 0, 0)) {
-    if (render_still_available == 0)
-    {
-  		MEM_reset_peak_memory();
+	if(render_initialize_from_main(re, bmain, scene, srl, camera_override, lay, 0, 0)) {
+    MEM_reset_peak_memory();
 
-      BKE_scene_camera_switch_update(re->scene);
-  	  
-      BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_PRE);
-		  
-      // moved here from the do_blensor function 
-  	  re->scene->r.subframe = re->mblur_offs + re->field_offs;
-      RE_Database_FromScene(re, re->main, re->scene, re->lay, 1); //Sets up all the stuff
+    BKE_scene_camera_switch_update(re->scene);
+    
+    //BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_PRE);
+    
+    // moved here from the do_blensor function 
+    re->scene->r.subframe = re->mblur_offs + re->field_offs;
+    RE_Database_FromScene(re, re->main, re->scene, re->lay, 1); //Sets up all the stuff
 
-    } else { printf ("Keeping the old tree\n"); }
 
     do_blensor(re, rays, raycount, elements_per_ray, returns, maximum_distance, bmain, scene, srl, shading);
 	
-    if (keep_setup == 0)
-    {
-      // moved here from the end of do_blensor 
-    	// free all render verts etc 
-    	RE_Database_Free(re);
-    	
-    	re->scene->r.subframe = 0.f;
-      render_still_available = 0;
-    }
-    else 
-    {
-      render_still_available = 1;
-    }  
+    // moved here from the end of do_blensor 
+    // free all render verts etc 
+    RE_Database_Free(re);
+    
+    re->scene->r.subframe = 0.f;
+    render_still_available = 0;
 
-    BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_POST); 
-	}
+    //BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_POST); 
+  }
 
-  BLI_callback_exec(re->main, (ID *)scene, G.afbreek ? BLI_CB_EVT_RENDER_CANCEL : BLI_CB_EVT_RENDER_COMPLETE);
+  //BLI_callback_exec(re->main, (ID *)scene, G.afbreek ? BLI_CB_EVT_RENDER_CANCEL : BLI_CB_EVT_RENDER_COMPLETE);
 
 	/* UGLY WARNING */
 	G.rendering= 0;
