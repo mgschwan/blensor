@@ -29,6 +29,9 @@ from blensor import evd
 from blensor import mesh_utils
 
 
+WINDOW_INLIER_DISTANCE = 2.0 #0.5
+
+
 from mathutils import Vector, Euler, Matrix
 
 def deg2rad(deg):
@@ -147,7 +150,7 @@ def check_9x9_window_simple(idx, res_x, res_y, distances):
       if uv[0]+x >= 0 and uv[0]+x < res_x and uv[1]+y>=0 and uv[1]+y < res_y:
         val = distances[idx+y*res_x+x]
         if val < INVALID_DISPARITY:
-          if abs(distances[idx]-val)<0.5:
+          if abs(distances[idx]-val)<WINDOW_INLIER_DISTANCE:
             if x!=0 or y!=0:
               weight = 1.0/float(max(abs(x),abs(y)))
               accu = accu * float(pointcount) + weight * val 

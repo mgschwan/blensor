@@ -1,4 +1,4 @@
-all: pcd_combiner pcd_filter
+all: pcd_combiner pcd_filter pcd_ascii2bin
 
 
 
@@ -14,6 +14,8 @@ pcd_combiner: pcd_combiner.cpp
 pcd_filter: pcd_filter.cpp
 	g++ -o pcd_filter pcd_filter.cpp ${CFLAGS} -I /usr/include/eigen3/  ${LIBS}
 
+pcd_ascii2bin: pcd_ascii2bin.cpp
+	g++ -o pcd_ascii2bin pcd_ascii2bin.cpp ${CFLAGS} -I /usr/include/eigen3/  ${LIBS}
 
 
 
