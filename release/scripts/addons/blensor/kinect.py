@@ -29,7 +29,7 @@ from blensor import evd
 from blensor import mesh_utils
 
 
-WINDOW_INLIER_DISTANCE = 0.7 #0.5
+WINDOW_INLIER_DISTANCE = 0.3 #0.5
 
 
 from mathutils import Vector, Euler, Matrix
@@ -160,12 +160,12 @@ def check_9x9_window_simple(idx, res_x, res_y, distances):
               pointcount += 1
             accu = accu / float(pointcount)
            
-    if pointcount > 2.0:
-      return distances[idx]
-    elif pointcount > 1.0:
-      return accu
-    else:
-      return INVALID_DISPARITY
+  if pointcount > 2.0:
+    return distances[idx]
+  elif pointcount > 1.0:
+    return accu
+  else:
+    return INVALID_DISPARITY
 
 
 def scan_advanced(scanner_object, evd_file=None, 
