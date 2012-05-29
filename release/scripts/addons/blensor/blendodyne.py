@@ -21,13 +21,12 @@ from blensor import evd
 from blensor import mesh_utils
 
 import blensor
-
-
-
+import numpy
 
 parameters = {"angle_resolution":0.1728, "rotation_speed":10,"max_dist":120,"noise_mu":0.0,"noise_sigma":0.01,
               "start_angle":0,"end_angle":360, "distance_bias_noise_mu": 0, "distance_bias_noise_sigma": 0.078,
-              "reflectivity_distance":50,"reflectivity_limit":0.1,"reflectivity_slope":0.01}
+              "reflectivity_distance":50,"reflectivity_limit":0.1,"reflectivity_slope":0.01,
+              "noise_types": [("gaussian", "Gaussian", "Gaussian distribution (mu/simga)"),("laplace","Laplace","Laplace distribution (sigma=b)")]}
 
 def addProperties(cType):
     global parameters
@@ -41,10 +40,11 @@ def addProperties(cType):
     cType.velodyne_start_angle = bpy.props.FloatProperty( name = "Start angle", default = parameters["start_angle"], description = "The angle at which the scan is started" )
     cType.velodyne_end_angle = bpy.props.FloatProperty( name = "End angle", default = parameters["end_angle"], description = "The angle at which the scan is stopped" )
  
-
     cType.velodyne_ref_dist = bpy.props.FloatProperty( name = "Reflectivity Distance", default = parameters["reflectivity_distance"], description = "Objects closer than reflectivity distance are independent of their reflectivity" )
     cType.velodyne_ref_limit = bpy.props.FloatProperty( name = "Reflectivity Limit", default = parameters["reflectivity_limit"], description = "Minimum reflectivity for objects at the reflectivity distance" )
     cType.velodyne_ref_slope = bpy.props.FloatProperty( name = "Reflectivity Slope", default = parameters["reflectivity_slope"], description = "Slope of the reflectivity limit curve" )
+ 
+    cType.velodyne_noise_type = bpy.props.EnumProperty( items= parameters["noise_types"], name = "Noise distribution", description = "Which noise model to use for the distance bias" )
  
 
 
@@ -116,10 +116,14 @@ laser_noise =  [0.023188431056485468, 0.018160539830319688,
 # If the laser noise has to be truely randomize, call this function prior
 # to every scan
 def randomize_distance_bias(scanner_object, noise_mu = 0.0, noise_sigma = 0.04):
-    for idx in range(len(laser_noise)):
-      laser_noise[idx] = random.gauss(noise_mu, noise_sigma)
-
-
+    if scanner_object.velodyne_noise_type == "gaussian":
+      for idx in range(len(laser_noise)):
+        laser_noise[idx] = random.gauss(noise_mu, noise_sigma)
+    elif scanner_object.velodyne_noise_type == "laplace":
+      for idx in range(len(laser_noise)):
+        laser_noise[idx] = numpy.random.laplace(noise_mu, noise_sigma)
+    else:
+      raise ValueError("Noise type not supported")
 
 """
 @param world_transformation The transformation for the resulting pointcloud

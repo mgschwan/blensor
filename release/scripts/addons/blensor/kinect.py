@@ -29,7 +29,7 @@ from blensor import evd
 from blensor import mesh_utils
 
 
-WINDOW_INLIER_DISTANCE = 2.0 #0.5
+WINDOW_INLIER_DISTANCE = 0.7 #0.5
 
 
 from mathutils import Vector, Euler, Matrix
@@ -152,7 +152,7 @@ def check_9x9_window_simple(idx, res_x, res_y, distances):
         if val < INVALID_DISPARITY:
           if abs(distances[idx]-val)<WINDOW_INLIER_DISTANCE:
             if x!=0 or y!=0:
-              weight = 1.0/float(max(abs(x),abs(y)))
+              weight = 1.0/math.sqrt((x*1.5)**2+(y*1.5)**2)
               accu = accu * float(pointcount) + weight * val 
               pointcount += weight
             else:
@@ -297,10 +297,10 @@ def scan_advanced(scanner_object, evd_file=None,
 
             """ Kinect calculates the disparity with an accuracy of 1/8 pixel"""
 
-            camera_x_quantized = math.floor(camera_x*8.0)/8.0
+            camera_x_quantized = round(camera_x*8.0)/8.0
             
             #I don't know if this accurately represents the kinect 
-            camera_y_quantized = math.floor(camera_y*8.0)/8.0 
+            camera_y_quantized = round(camera_y*8.0)/8.0 
 
             disparity_quantized = camera_x_quantized + projector_point[0]
             all_quantized_disparities[projector_idx] = disparity_quantized

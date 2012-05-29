@@ -1,8 +1,13 @@
 # Author: Michael Gschwandtner
 # Contact: blensor@zero997.com
 import sys
-import traceback
 import bpy
+
+"""#TODO@mgschwan : remove this hack if numpy works out of the box"""
+sys.path.append(bpy.app.binary_path[:bpy.app.binary_path.rfind("/")]+"/"+bpy.app.version_string.split()[0]+"/python/lib/python%d.%d"%(sys.version_info.major, sys.version_info.minor)+"/site-packages")
+
+
+import traceback
 import blensor.blendodyne
 import blensor.depthmap
 import blensor.tof
@@ -14,9 +19,11 @@ import blensor.mesh_utils
 from mathutils import Matrix
 from math import pi
 
+
+
 """A package for simulating various types of range scanners inside blender"""
 
-__version__ = '1.0.0'
+__version__ = '1.0.13'
 
 __all__ = [
     'blendodyne',
@@ -65,6 +72,8 @@ def velodyne_layout(obj, layout):
             col.prop(obj, "velodyne_db_noise_mu")
             col = row.column()
             col.prop(obj, "velodyne_db_noise_sigma")
+            row = layout.row()
+            row.prop(obj,"velodyne_noise_type")
             row = layout.row()
             col = row.column()
             col.prop(obj, "velodyne_start_angle")
