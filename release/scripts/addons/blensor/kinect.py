@@ -99,38 +99,41 @@ def get_pixel_from_world(X,Z,flength_px):
 def fast_9x9_window(distances, res_x, res_y, disparity_map):
   data = distances.reshape(res_y, res_x)
   disp_data = disparity_map.reshape(res_y, res_x)
+  disp_data[:] = INVALID_DISPARITY
+  
   weights = numpy.array([1.0/float((1.2*x)**2+(1.2*y)**2) if x!=0 or y!=0 else 1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
   
+  """We don't want to fill the whole 9x9 region with the current disparity
+     this fills too much gaps in the depthmap
+  """
+  fill_weights = numpy.array([1.0/(1.0+float(x**2+y**2)) if math.sqrt(x**2+y**2)<3.0 else -1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
+  
+  interpolation_map = numpy.zeros((res_y,res_x))
+    
   for y in range(min(kinect_dots.mask.shape[0]-9, data.shape[0]-9)):
     for x in range(min(kinect_dots.mask.shape[1]-9,data.shape[1]-9)):
       if kinect_dots.mask[y+4,x+4]:
         window = data[y:y+9,x:x+9]
+        dot_window = kinect_dots.mask[y:y+9,x:x+9]
         valid_values = window < INVALID_DISPARITY
-        if numpy.sum(valid_values) > 10:
+        valid_dots = valid_values&dot_window
+        if numpy.sum(valid_dots) > numpy.sum(dot_window)/1.5:
           mean = numpy.sum(window[valid_values])/numpy.sum(valid_values)
           differences = numpy.abs(window-mean)
 
-          valids = differences<WINDOW_INLIER_DISTANCE
+          valids = (differences<WINDOW_INLIER_DISTANCE) & valid_dots
             
           pointcount = numpy.sum(weights[valids])
-          
-          
 
-          if pointcount > 1.0:
+          if numpy.sum(valids) > numpy.sum(dot_window)/1.5:
             accu = numpy.sum(window[valids]*weights[valids])/pointcount
             disp_data[y+4,x+4] = round(accu*8.0)/8.0 #Values need to be requantified
-          else:
-            disp_data[y+4,x+4] = INVALID_DISPARITY
-
-        else:
-          disp_data[y+4,x+4] = INVALID_DISPARITY
-      else:
-        disp_data[y+4,x+4] = INVALID_DISPARITY  
-
-
-
-    
-
+            
+            interpolation_window = interpolation_map[y:y+9,x:x+9]
+            disp_data_window = disp_data[y:y+9,x:x+9]
+            substitutes = interpolation_window < fill_weights
+            disp_data_window[substitutes] = disp_data[y+4,x+4]
+            interpolation_window[substitutes] = fill_weights[substitutes]
 
 def scan_advanced(scanner_object, evd_file=None, 
                   evd_last_scan=True, 
