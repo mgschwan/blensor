@@ -27,9 +27,10 @@ import blensor.globals
 import blensor.scan_interface
 from blensor import evd
 from blensor import mesh_utils
+import numpy
 
 
-WINDOW_INLIER_DISTANCE = 0.3 #0.5
+WINDOW_INLIER_DISTANCE = 0.3
 
 
 from mathutils import Vector, Euler, Matrix
@@ -95,83 +96,47 @@ def get_pixel_from_world(X,Z,flength_px):
    #TODO: determine how big the depth-difference can be to still produce a
    valid depth measurement. Note: This has to be verified by a real kinect
 """
-def check_9x9_window(idx, res_x, res_y, distances): #!!!CURRENTLY DISABLED!!! #TODO improve and reenable
-  pointcount = 0
+    
+def fast_9x9_window(distances, res_x, res_y, disparity_map):
+  data = distances.reshape(res_y, res_x)
+  disp_data = disparity_map.reshape(res_y, res_x)
+  weights = numpy.array([1.0/float((1.2*x)**2+(1.2*y)**2) if x!=0 or y!=0 else 1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
+  
+  for y in range(data.shape[0]-9):
+    for x in range(data.shape[1]-9):
+      window = data[y:y+9,x:x+9]
+      valid_values = window < INVALID_DISPARITY
+      if numpy.sum(valid_values) > 10:
+        mean = numpy.sum(window[valid_values])/numpy.sum(valid_values)
+        differences = numpy.abs(window-mean)
 
-  uv = (idx%res_x, idx//res_x)
-  accu = 0.0
-  """If the current point is invalid try to predict it from within the window"""
-  if distances[idx] == INVALID_DISPARITY:
-    bins = []    
-    for y in range (-4,5):
-      for x in range(-4,5):
-        if uv[0]+x >= 0 and uv[0]+x < res_x and uv[1]+y>=0 and uv[1]+y < res_y:
-          val = distances[idx+y*res_x+x]
-          if val < INVALID_DISPARITY:
-            found = False
-            for b in bins:
-              if abs((b[0]-val)/float(b[0]))<0.05:
-                b[1] += 1
-                found = True
-                break;
-            if found == False:
-              bins.append([val, 1])  
-    if len(bins) > 0:
-      best_b = [INVALID_DISPARITY, 0]
-      for b in bins:
-        if b[1] > best_b[1]:
-          best_b = b
-      return best_b[0]
-    else:
-      return INVALID_DISPARITY
-  else:
-    for y in range (-4,5):
-      for x in range(-4,5):
-        if uv[0]+x >= 0 and uv[0]+x < res_x and uv[1]+y>=0 and uv[1]+y < res_y:
-          val = distances[idx+y*res_x+x]
-          if val < INVALID_DISPARITY:
-            if abs(distances[idx]-val)<1.0:
-              pointcount += 1
-              accu += val
-    if pointcount > 27:
-      return distances[idx]
-    elif pointcount > 5:
-      return accu/float(pointcount)
-    else:
-      return INVALID_DISPARITY
+        valids = differences<WINDOW_INLIER_DISTANCE
+          
+        pointcount = numpy.sum(weights[valids])
+        accu = numpy.sum(window[valids]*weights[valids])/pointcount
 
-def check_9x9_window_simple(idx, res_x, res_y, distances):
-  pointcount = 0.0
+        if pointcount > 1.0:
+          disp_data[y+4,x+4] = round(accu*8.0)/8.0 #Values need to be requantified
+          
+        else:
+          disp_data[y+4,x+4] = INVALID_DISPARITY
 
-  uv = (idx%res_x, idx//res_x)
-  accu = 0.0
-  for y in range (-4,5):
-    for x in range(-4,5):
-      if uv[0]+x >= 0 and uv[0]+x < res_x and uv[1]+y>=0 and uv[1]+y < res_y:
-        val = distances[idx+y*res_x+x]
-        if val < INVALID_DISPARITY:
-          if abs(distances[idx]-val)<WINDOW_INLIER_DISTANCE:
-            if x!=0 or y!=0:
-              weight = 1.0/math.sqrt((x*1.5)**2+(y*1.5)**2)
-              accu = accu * float(pointcount) + weight * val 
-              pointcount += weight
-            else:
-              accu = accu * float(pointcount) + val 
-              pointcount += 1
-            accu = accu / float(pointcount)
-           
-  if pointcount > 2.0:
-    return distances[idx]
-  elif pointcount > 1.0:
-    return accu
-  else:
-    return INVALID_DISPARITY
+      else:
+        disp_data[y+4,x+4] = INVALID_DISPARITY
+
+
+
+
+    
 
 
 def scan_advanced(scanner_object, evd_file=None, 
                   evd_last_scan=True, 
                   timestamp = 0.0,
                   world_transformation=Matrix()):
+
+    start_time = time.time()
+
     max_distance = scanner_object.kinect_max_dist
     min_distance = scanner_object.kinect_min_dist
     add_blender_mesh = scanner_object.add_scan_mesh
@@ -191,9 +156,6 @@ def scan_advanced(scanner_object, evd_file=None,
 
     cx = float(res_x) /2.0
     cy = float(res_y) /2.0 
-
-
-
 
     evd_buffer = []
 
@@ -250,20 +212,14 @@ def scan_advanced(scanner_object, evd_file=None,
     returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True,True, False)
 
     camera_rays = []
-    projector_ray_index = [] #Stores the index to the rays array for the camera ray
-
-    """After the second pass there may be some rays missing. However for the 9x9
-       calculation we can not work with a spare representation
-    """
-    all_distances = [0.0]*res_x*res_y #Used for the 9x9 window calculation
-      
+    projector_ray_index = numpy.empty(len(returns), dtype=numpy.uint32)
 
     """Calculate the rays from the camera to the hit points of the projector rays"""
     for i in range(len(returns)):
         idx = returns[i][-1]
         camera_rays.extend([returns[i][1]+baseline.x, returns[i][2]+baseline.y, 
                             returns[i][3]+baseline.z])
-        projector_ray_index.append(idx)
+        projector_ray_index[i] = idx
 
 
     camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False,False,True)
@@ -276,10 +232,19 @@ def scan_advanced(scanner_object, evd_file=None,
     for i in range(len(camera_returns)):
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
-        all_distances[projector_idx] = camera_returns[i][3] #TODO: maybe this should be the euclidean instead of the orthogonal distance
 
 
-    all_quantized_disparities = [INVALID_DISPARITY]*res_x*res_y
+    all_quantized_disparities = numpy.empty(res_x*res_y)
+    all_quantized_disparities[:] = INVALID_DISPARITY
+    
+    disparity_weight = numpy.empty(res_x*res_y)
+    disparity_weight[:] = INVALID_DISPARITY
+
+    all_quantized_disp_mat = all_quantized_disparities.reshape(res_y,res_x)
+    disp_weight_mat = disparity_weight.reshape(res_y,res_x)
+
+    weights = numpy.array([1.0/float((1.2*x)**2+(1.2*y)**2) if x!=0 or y!=0 else 1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
+    
     """Build a quantized disparity map"""
     for i in range(len(camera_returns)):
         idx = camera_returns[i][-1] 
@@ -304,7 +269,13 @@ def scan_advanced(scanner_object, evd_file=None,
 
             disparity_quantized = camera_x_quantized + projector_point[0]
             all_quantized_disparities[projector_idx] = disparity_quantized
-
+            
+            
+            
+        
+    processed_disparities = numpy.empty(res_x*res_y)
+    fast_9x9_window(all_quantized_disparities, res_x, res_y, processed_disparities)
+    
     """We reuse the vector objects to spare us the object creation every
        time
     """
@@ -316,8 +287,9 @@ def scan_advanced(scanner_object, evd_file=None,
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
 
-        disparity_quantized = check_9x9_window_simple(projector_idx, res_x, res_y,all_quantized_disparities) 
-        if disparity_quantized < INVALID_DISPARITY:
+        disparity_quantized = processed_disparities[projector_idx]
+        
+        if disparity_quantized < INVALID_DISPARITY and disparity_quantized != 0.0:
             
             camera_x = get_pixel_from_world(camera_rays[idx*3],camera_rays[idx*3+2],
                                    flength/pixel_width)
@@ -358,7 +330,6 @@ def scan_advanced(scanner_object, evd_file=None,
         mesh_utils.add_mesh_from_points_tf(verts_noise, "NoisyScan", world_transformation)            
 
     bpy.context.scene.update()  
-    start_time = time.time()
     
     end_time = time.time()
     scan_time = end_time-start_time
