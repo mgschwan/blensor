@@ -23,15 +23,14 @@ import ctypes
 import time
 import random
 import bpy
+import numpy
 import blensor.globals
 import blensor.scan_interface
 from blensor import evd
 from blensor import mesh_utils
-import numpy
-
+from blensor import kinect_dots
 
 WINDOW_INLIER_DISTANCE = 0.3
-
 
 from mathutils import Vector, Euler, Matrix
 
@@ -102,28 +101,31 @@ def fast_9x9_window(distances, res_x, res_y, disparity_map):
   disp_data = disparity_map.reshape(res_y, res_x)
   weights = numpy.array([1.0/float((1.2*x)**2+(1.2*y)**2) if x!=0 or y!=0 else 1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
   
-  for y in range(data.shape[0]-9):
-    for x in range(data.shape[1]-9):
-      window = data[y:y+9,x:x+9]
-      valid_values = window < INVALID_DISPARITY
-      if numpy.sum(valid_values) > 10:
-        mean = numpy.sum(window[valid_values])/numpy.sum(valid_values)
-        differences = numpy.abs(window-mean)
+  for y in range(min(kinect_dots.mask.shape[0]-9, data.shape[0]-9)):
+    for x in range(min(kinect_dots.mask.shape[1]-9,data.shape[1]-9)):
+      if kinect_dots.mask[y+4,x+4]:
+        window = data[y:y+9,x:x+9]
+        valid_values = window < INVALID_DISPARITY
+        if numpy.sum(valid_values) > 10:
+          mean = numpy.sum(window[valid_values])/numpy.sum(valid_values)
+          differences = numpy.abs(window-mean)
 
-        valids = differences<WINDOW_INLIER_DISTANCE
+          valids = differences<WINDOW_INLIER_DISTANCE
+            
+          pointcount = numpy.sum(weights[valids])
           
-        pointcount = numpy.sum(weights[valids])
-        accu = numpy.sum(window[valids]*weights[valids])/pointcount
+          
 
-        if pointcount > 1.0:
-          disp_data[y+4,x+4] = round(accu*8.0)/8.0 #Values need to be requantified
-          
+          if pointcount > 1.0:
+            accu = numpy.sum(window[valids]*weights[valids])/pointcount
+            disp_data[y+4,x+4] = round(accu*8.0)/8.0 #Values need to be requantified
+          else:
+            disp_data[y+4,x+4] = INVALID_DISPARITY
+
         else:
           disp_data[y+4,x+4] = INVALID_DISPARITY
-
       else:
-        disp_data[y+4,x+4] = INVALID_DISPARITY
-
+        disp_data[y+4,x+4] = INVALID_DISPARITY  
 
 
 
