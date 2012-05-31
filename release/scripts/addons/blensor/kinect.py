@@ -30,7 +30,7 @@ from blensor import evd
 from blensor import mesh_utils
 from blensor import kinect_dots
 
-WINDOW_INLIER_DISTANCE = 0.3
+WINDOW_INLIER_DISTANCE = 0.5
 
 from mathutils import Vector, Euler, Matrix
 
@@ -106,7 +106,7 @@ def fast_9x9_window(distances, res_x, res_y, disparity_map):
   """We don't want to fill the whole 9x9 region with the current disparity
      this fills too much gaps in the depthmap
   """
-  fill_weights = numpy.array([1.0/(1.0+float(x**2+y**2)) if math.sqrt(x**2+y**2)<3.0 else -1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
+  fill_weights = numpy.array([1.0/(1.0+float(x**2+y**2)) if math.sqrt(x**2+y**2)<3.1 else -1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
   
   interpolation_map = numpy.zeros((res_y,res_x))
     
