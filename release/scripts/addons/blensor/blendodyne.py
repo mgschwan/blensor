@@ -189,6 +189,8 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
 
 
     current_angle = start_angle+float(float(int(lines))*angle_resolution)
+
+    pre_write_time = time.time()
             
     if evd_file:
         evd_storage.appendEvdFile()
@@ -202,8 +204,9 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
     bpy.context.scene.update()
 
     end_time = time.time()
-    scan_time = end_time-start_time
-    print ("Elapsed time: %.3f"%(scan_time))
+    scan_time = pre_write_time-start_time
+    total_time = end_time-start_time
+    print ("Elapsed time: %.3f (scan: %.3f)"%(total_time, scan_time))
 
     return True, current_angle, scan_time
 

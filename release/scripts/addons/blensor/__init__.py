@@ -4,7 +4,7 @@ import sys
 import bpy
 
 """#TODO@mgschwan : remove this hack if numpy works out of the box"""
-sys.path.append(bpy.app.binary_path[:bpy.app.binary_path.rfind("/")]+"/"+bpy.app.version_string.split()[0]+"/python/lib/python%d.%d"%(sys.version_info.major, sys.version_info.minor)+"/site-packages")
+sys.path.append(sys.prefix+"/lib/python%d.%d"%(sys.version_info.major, sys.version_info.minor)+"/site-packages")
 
 
 import traceback
