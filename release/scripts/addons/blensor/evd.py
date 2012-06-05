@@ -17,7 +17,7 @@ DATA ascii
 
 PCL_HEADER_WITH_LABELS = """# .PCD v0.7 - Point Cloud Data file format
 VERSION 0.7
-FIELDS x y z rgba label
+FIELDS x y z rgb label
 SIZE 4 4 4 4 4
 TYPE F F F F U
 COUNT 1 1 1 1 1
