@@ -15,6 +15,21 @@ POINTS %d
 DATA ascii
 """
 
+PCL_HEADER_WITH_LABELS = """# .PCD v0.7 - Point Cloud Data file format
+VERSION 0.7
+FIELDS x y z rgba label
+SIZE 4 4 4 4 4
+TYPE F F F F U
+COUNT 1 1 1 1 1
+WIDTH %d
+HEIGHT 1
+VIEWPOINT 0 0 0 1 0 0 0
+POINTS %d
+DATA ascii
+"""
+
+
+
 PGM_VALUE_RANGE = 65535
 
 PGM_HEADER ="""P2
@@ -23,8 +38,9 @@ PGM_HEADER ="""P2
 %d
 """
 
+#Globals (should be removed at some point)
+output_labels = True
 frame_counter = 0
-
 
 
 
@@ -43,6 +59,7 @@ class evd_file:
         self.filename = filename
         self.buffer = []
         self.mode = WRITER_MODE_EVD
+        self.output_labels = output_labels
         try:
           if self.filename[-4:] == ".pcd":
             self.mode = WRITER_MODE_PCL
@@ -99,15 +116,19 @@ class evd_file:
               evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12][0]),float(e[12][1]),float(e[12][2]),int(e[11])))
           print ("Written: %d entries"%idx)
           evd.close()
-
+  
 
     def writePCLFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
       try:
         pcl = open("%s%05d.pcd"%(self.filename,frame_counter),"w")
         pcl_noisy = open("%s_noisy%05d.pcd"%(self.filename,frame_counter),"w")
-        pcl.write(PCL_HEADER%(len(self.buffer),len(self.buffer)))
-        pcl_noisy.write(PCL_HEADER%(len(self.buffer),len(self.buffer)))
+        if self.output_labels:
+          pcl.write(PCL_HEADER_WITH_LABELS%(len(self.buffer),len(self.buffer)))
+          pcl_noisy.write(PCL_HEADER_WITH_LABELS%(len(self.buffer),len(self.buffer)))
+        else:
+          pcl.write(PCL_HEADER%(len(self.buffer),len(self.buffer)))
+          pcl_noisy.write(PCL_HEADER%(len(self.buffer),len(self.buffer)))
         idx = 0
         for e in self.buffer:
           idx = idx + 1
@@ -115,8 +136,14 @@ class evd_file:
           #That is really required by the pcl library!
           color_uint32 = (e[12][0]<<16) | (e[12][1]<<8) | (e[12][2])
           values=struct.unpack("f",struct.pack("I",color_uint32))
-          pcl.write("%f %f %f %.15e\n"%(float(e[5]),float(e[6]),float(e[7]), values[0]))        
-          pcl_noisy.write("%f %f %f %.15e\n"%(float(e[8]),float(e[9]),float(e[10]), values[0]))        
+
+          if self.output_labels:
+            pcl.write("%f %f %f %.15e %d\n"%(float(e[5]),float(e[6]),float(e[7]), values[0], int(e[11])))        
+            pcl_noisy.write("%f %f %f %.15e %d\n"%(float(e[8]),float(e[9]),float(e[10]), values[0], int(e[11])))        
+          else:
+            pcl.write("%f %f %f %.15e\n"%(float(e[5]),float(e[6]),float(e[7]), values[0]))        
+            pcl_noisy.write("%f %f %f %.15e\n"%(float(e[8]),float(e[9]),float(e[10]), values[0]))        
+
         pcl.close()
         pcl_noisy.close()
       except Exception as e:

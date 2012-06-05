@@ -167,7 +167,8 @@ def ibeo_layout(obj, layout):
 
 
             
-def dispatch_scan(obj, filename=None):
+def dispatch_scan(obj, filename=None, output_labels=True):
+            blensor.evd.output_labels = output_labels
             if obj.local_coordinates:
               world_transformation = Matrix()
             else:
@@ -225,7 +226,8 @@ def dispatch_scan(obj, filename=None):
 
 
 
-def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0/24.0):
+def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0/24.0, output_labels=True):
+            blensor.evd.output_labels = output_labels
             blensor.evd.frame_counter = frame
 
             if obj.local_coordinates:
@@ -361,13 +363,17 @@ class OBJECT_OT_scan(bpy.types.Operator):
     bl_description = "Run a laser scan" # tooltip
 
     filepath = bpy.props.StringProperty(subtype="FILE_PATH")
+    output_labels = bpy.props.BoolProperty(
+        name="Write labels",
+        description="Include labels for each point",
+        default=True)
 
 
     def execute(self, context):
         obj = context.object
 
         try:
-          dispatch_scan(obj, self.filepath)
+          dispatch_scan(obj, self.filepath, self.output_labels)
           pass
         except Exception as e:
             print ("Scan not successful")
