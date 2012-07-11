@@ -23,10 +23,15 @@ from blensor import mesh_utils
 import blensor
 import numpy
 
+BLENSOR_VELODYNE_HDL64E2 = "hdl64e2"
+BLENSOR_VELODYNE_HDL32E = "hdl32e"
+
+
 parameters = {"angle_resolution":0.1728, "rotation_speed":10,"max_dist":120,"noise_mu":0.0,"noise_sigma":0.01,
               "start_angle":0,"end_angle":360, "distance_bias_noise_mu": 0, "distance_bias_noise_sigma": 0.078,
               "reflectivity_distance":50,"reflectivity_limit":0.1,"reflectivity_slope":0.01,
-              "noise_types": [("gaussian", "Gaussian", "Gaussian distribution (mu/simga)"),("laplace","Laplace","Laplace distribution (sigma=b)")]}
+              "noise_types": [("gaussian", "Gaussian", "Gaussian distribution (mu/simga)"),("laplace","Laplace","Laplace distribution (sigma=b)")],
+              "models": [(BLENSOR_VELODYNE_HDL64E2, "HDL-64E2", "HDL-64E2"), (BLENSOR_VELODYNE_HDL32E, "HDL-32E", "HDL-32E")]}
 
 def addProperties(cType):
     global parameters
@@ -45,6 +50,7 @@ def addProperties(cType):
     cType.velodyne_ref_slope = bpy.props.FloatProperty( name = "Reflectivity Slope", default = parameters["reflectivity_slope"], description = "Slope of the reflectivity limit curve" )
  
     cType.velodyne_noise_type = bpy.props.EnumProperty( items= parameters["noise_types"], name = "Noise distribution", description = "Which noise model to use for the distance bias" )
+    cType.velodyne_model = bpy.props.EnumProperty( items= parameters["models"], name = "Model", description = "Velodyne Model" )
  
 
 
@@ -74,6 +80,13 @@ laser_angles =[-7.1143909000 ,-6.8259001000 ,0.3328709900 ,0.6607859700 ,
 -15.0140580000 ,-18.6500020000 ,-18.1543940000 ,-14.4663670000 ,-13.8276510000 ,
 -17.5921270000 ,-16.9942110000 ,-10.3347680000 ,-9.8352394000 ,-13.2298120000 ,
 -12.8963990000 ,-9.3798056000 ,-8.8888798000 ,-12.3722690000 ,-11.9693750000]
+
+laser_angles_32 = [-30.67, -9.33, -29.33, -8.00, -28.00, -6.66, -26.66,
+                   -5.33, -25.33, -4.00, -24.00, -2.67, -22.67, -1.33,
+                   -21.33, 0.00, -20.00, 1.33, -18.67, 2.67, -17.33,
+                   4.00, -16.00, 5.33, -14.67, 6.67, -13.33, 8.00,
+                   -12.00, 9.33, -10.67, 10.67]
+
 
 # The laser noise is initialized with a fixed randomized array to increase
 # repoducibility. If the noise should be randomize, call 
@@ -113,6 +126,10 @@ laser_noise =  [0.023188431056485468, 0.018160539830319688,
 
 
 
+
+
+
+
 # If the laser noise has to be truely randomize, call this function prior
 # to every scan
 def randomize_distance_bias(scanner_object, noise_mu = 0.0, noise_sigma = 0.04):
@@ -130,6 +147,12 @@ def randomize_distance_bias(scanner_object, noise_mu = 0.0, noise_sigma = 0.04):
 
 """
 def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angle_resolution = 0.1728, max_distance = 120, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = 0.0, end_angle = 360.0, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, frame_time = (1.0 / 24.0), simulation_time = 0.0, world_transformation=Matrix()):
+    
+    scanner_angles = laser_angles
+    scanner_noise = laser_noise
+    if scanner_object.velodyne_model == BLENSOR_VELODYNE_HDL32E:
+      scanner_angles = laser_angles_32
+    
     start_time = time.time()
 
     current_time = simulation_time
@@ -151,14 +174,14 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
     lines = (end_angle-start_angle)/angle_resolution
     ray = Vector([0.0,0.0,0.0])
     for line in range(int(lines)):
-        for laser_idx in range(len(laser_angles)):
+        for laser_idx in range(len(scanner_angles)):
             ray.xyz = [0,0,max_distance]
             rot_angle = 1e-6 + start_angle+float(line)*angle_resolution + 180.0
             timestamp = ( (rot_angle-180.0)/angle_resolution) * time_per_step 
             rot_angle = rot_angle%360.0
-            ray_info.append([deg2rad(rot_angle), deg2rad(laser_angles[laser_idx]), timestamp])
+            ray_info.append([deg2rad(rot_angle), deg2rad(scanner_angles[laser_idx]), timestamp])
             
-            rotator = Euler( [deg2rad(-laser_angles[laser_idx]), deg2rad(rot_angle), 0.0] )
+            rotator = Euler( [deg2rad(-scanner_angles[laser_idx]), deg2rad(rot_angle), 0.0] )
             ray.rotate( rotator )
             rays.extend([ray[0],ray[1],ray[2]])
 
@@ -177,7 +200,7 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
         v = [returns[i][1],returns[i][2],returns[i][3]]
         verts.append ( vt )
 
-        distance_noise =  laser_noise[idx%len(laser_noise)] + random.gauss(noise_mu, noise_sigma) 
+        distance_noise =  laser_noise[idx%len(scanner_angles)] + random.gauss(noise_mu, noise_sigma) 
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
         norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
         vector_length_noise = vector_length+distance_noise

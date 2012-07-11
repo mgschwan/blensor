@@ -57,6 +57,8 @@ bl_info = {
 
 def velodyne_layout(obj, layout):
             row = layout.row()
+            row.prop(obj, "velodyne_model")
+            row = layout.row()
             row.prop(obj, "velodyne_angle_resolution")
             row = layout.row()
             row.prop(obj, "velodyne_rotation_speed")
@@ -668,7 +670,7 @@ class OBJECT_OT_exporthandler(bpy.types.Operator):
 
 
 
-laser_types=[("velodyne", "Velodyne HDL-64E", "Rotating infrared laser"),("ibeo","Ibeo LUX","Line laser with 4 rays"),("tof","TOF Camera","Time of Flight camera"),("kinect","Kinect","Primesense technology"),("depthmap","Depthmap","Plain Depthmap")]
+laser_types=[("velodyne", "Velodyne HDL", "Rotating infrared laser"),("ibeo","Ibeo LUX","Line laser with 4 rays"),("tof","TOF Camera","Time of Flight camera"),("kinect","Kinect","Primesense technology"),("depthmap","Depthmap","Plain Depthmap")]
 
 
 ######################################################
