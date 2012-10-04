@@ -19,34 +19,46 @@
 #ifndef __UTIL_HASH_H__
 #define __UTIL_HASH_H__
 
+#include "util_types.h"
+
 CCL_NAMESPACE_BEGIN
 
-static inline unsigned int hash_int_2d(unsigned int kx, unsigned int ky)
+static inline uint hash_int_2d(uint kx, uint ky)
 {
 	#define rot(x,k) (((x)<<(k)) | ((x)>>(32-(k))))
 
-	unsigned int a, b, c;
+	uint a, b, c;
 
 	a = b = c = 0xdeadbeef + (2 << 2) + 13;
 	a += kx;
 	b += ky;
 
 	c ^= b; c -= rot(b,14);
-    a ^= c; a -= rot(c,11);
-    b ^= a; b -= rot(a,25);
-    c ^= b; c -= rot(b,16);
-    a ^= c; a -= rot(c,4);
-    b ^= a; b -= rot(a,14);
-    c ^= b; c -= rot(b,24);
+	a ^= c; a -= rot(c,11);
+	b ^= a; b -= rot(a,25);
+	c ^= b; c -= rot(b,16);
+	a ^= c; a -= rot(c,4);
+	b ^= a; b -= rot(a,14);
+	c ^= b; c -= rot(b,24);
 
-    return c;
+	return c;
 
 	#undef rot
 }
 
-static inline unsigned int hash_int(unsigned int k)
+static inline uint hash_int(uint k)
 {
 	return hash_int_2d(k, 0);
+}
+
+static inline uint hash_string(const char *str)
+{
+	uint i = 0, c;
+
+	while ((c = *str++))
+		i = i * 37 + c;
+
+	return i;
 }
 
 CCL_NAMESPACE_END

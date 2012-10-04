@@ -32,6 +32,7 @@ class NODE_HT_header(Header):
         snode = context.space_data
         snode_id = snode.id
         id_from = snode.id_from
+        toolsettings = context.tool_settings
 
         row = layout.row(align=True)
         row.template_header()
@@ -86,6 +87,17 @@ class NODE_HT_header(Header):
 
         layout.separator()
 
+        # Snap
+        row = layout.row(align=True)
+        row.prop(toolsettings, "use_snap", text="")
+        row.prop(toolsettings, "snap_node_element", text="", icon_only=True)
+        if toolsettings.snap_node_element != 'INCREMENT':
+            row.prop(toolsettings, "snap_target", text="")
+
+        row = layout.row(align=True)
+        row.operator("node.clipboard_copy", text="", icon='COPYDOWN')
+        row.operator("node.clipboard_paste", text="", icon='PASTEDOWN')
+
         layout.template_running_jobs()
 
 
@@ -103,6 +115,7 @@ class NODE_MT_view(Menu):
 
         layout.separator()
 
+        layout.operator("node.view_selected")
         layout.operator("node.view_all")
 
         if context.space_data.show_backdrop:
@@ -127,7 +140,8 @@ class NODE_MT_select(Menu):
         layout.operator("node.select_border")
 
         layout.separator()
-        layout.operator("node.select_all")
+        layout.operator("node.select_all").action = 'TOGGLE'
+        layout.operator("node.select_all", text="Inverse").action = 'INVERT'
         layout.operator("node.select_linked_from")
         layout.operator("node.select_linked_to")
         layout.operator("node.select_same_type")
@@ -168,6 +182,7 @@ class NODE_MT_node(Menu):
         layout.operator("node.preview_toggle")
         layout.operator("node.hide_socket_toggle")
         layout.operator("node.options_toggle")
+        layout.operator("node.collapse_hide_unused_toggle")
 
         layout.separator()
 
@@ -204,6 +219,52 @@ class NODE_PT_properties(Panel):
         col.prop(snode, "backdrop_x", text="X")
         col.prop(snode, "backdrop_y", text="Y")
         col.operator("node.backimage_move", text="Move")
+
+
+class NODE_PT_quality(bpy.types.Panel):
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'UI'
+    bl_label = "Performance"
+
+    @classmethod
+    def poll(cls, context):
+        snode = context.space_data
+        return snode.tree_type == 'COMPOSITING' and snode.node_tree is not None
+
+    def draw(self, context):
+        layout = self.layout
+
+        snode = context.space_data
+        tree = snode.node_tree
+
+        col = layout.column()
+        col.prop(tree, "render_quality", text="Render")
+        col.prop(tree, "edit_quality", text="Edit")
+        col.prop(tree, "chunk_size")
+
+        col = layout.column()
+        col.prop(tree, "use_opencl")
+        col.prop(tree, "two_pass")
+        col.prop(snode, "show_highlight")
+        col.prop(snode, "use_hidden_preview")
+
+
+class NODE_MT_node_color_presets(Menu):
+    """Predefined node color"""
+    bl_label = "Color Presets"
+    preset_subdir = "node_color"
+    preset_operator = "script.execute_preset"
+    draw = Menu.draw_preset
+
+
+class NODE_MT_node_color_specials(Menu):
+    bl_label = "Node Color Specials"
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.operator("node.node_copy_color", icon='COPY_ID')
+
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

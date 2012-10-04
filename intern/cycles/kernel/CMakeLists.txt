@@ -5,6 +5,8 @@ set(INC
 	osl
 	svm
 )
+set(INC_SYS
+)
 
 set(SRC
 	kernel.cpp
@@ -16,6 +18,7 @@ set(SRC
 set(SRC_HEADERS
 	kernel.h
 	kernel_accumulate.h
+	kernel_attribute.h
 	kernel_bvh.h
 	kernel_camera.h
 	kernel_compat_cpu.h
@@ -61,6 +64,7 @@ set(SRC_SVM_HEADERS
 	svm/svm_closure.h
 	svm/svm_convert.h
 	svm/svm_checker.h
+	svm/svm_brick.h
 	svm/svm_displace.h
 	svm/svm_fresnel.h
 	svm/svm_gamma.h
@@ -114,7 +118,7 @@ if(WITH_CYCLES_CUDA_BINARIES)
 
 		add_custom_command(
 			OUTPUT ${cuda_cubin}
-			COMMAND ${CUDA_NVCC_EXECUTABLE} -arch=${arch} -m${CUDA_BITS} --cubin ${CMAKE_CURRENT_SOURCE_DIR}/kernel.cu --use_fast_math -o ${CMAKE_CURRENT_BINARY_DIR}/${cuda_cubin} --ptxas-options="-v" --maxrregcount=24 --opencc-options -OPT:Olimit=0 -I${CMAKE_CURRENT_SOURCE_DIR}/../util -I${CMAKE_CURRENT_SOURCE_DIR}/svm -DCCL_NAMESPACE_BEGIN= -DCCL_NAMESPACE_END= -DNVCC
+			COMMAND ${CUDA_NVCC_EXECUTABLE} -arch=${arch} -m${CUDA_BITS} --cubin ${CMAKE_CURRENT_SOURCE_DIR}/kernel.cu -o ${CMAKE_CURRENT_BINARY_DIR}/${cuda_cubin} --ptxas-options="-v" --maxrregcount=24 --opencc-options -OPT:Olimit=0 -I${CMAKE_CURRENT_SOURCE_DIR}/../util -I${CMAKE_CURRENT_SOURCE_DIR}/svm -DCCL_NAMESPACE_BEGIN= -DCCL_NAMESPACE_END= -DNVCC
 			DEPENDS ${cuda_sources})
 
 		delayed_install("${CMAKE_CURRENT_BINARY_DIR}" "${cuda_cubin}" ${CYCLES_INSTALL_PATH}/lib)
@@ -133,6 +137,7 @@ endif()
 # CPU module
 
 include_directories(${INC})
+include_directories(SYSTEM ${INC_SYS})
 
 add_library(cycles_kernel ${SRC} ${SRC_HEADERS} ${SRC_SVM_HEADERS})
 

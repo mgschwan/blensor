@@ -32,20 +32,21 @@
 
 /**
  * Copyright (C) 2001 NaN Technologies B.V.
- * @author	Maarten Gribnau
- * @date	May 10, 2001
+ * \author	Maarten Gribnau
+ * \date	May 10, 2001
  */
 
 #include "GHOST_Window.h"
 
+#include <assert.h>
 
 GHOST_Window::GHOST_Window(
-	GHOST_TUns32 width, GHOST_TUns32 height,
-	GHOST_TWindowState state,
-	GHOST_TDrawingContextType type,
-	const bool stereoVisual,
-	const GHOST_TUns16 numOfAASamples)
-:
+    GHOST_TUns32 width, GHOST_TUns32 height,
+    GHOST_TWindowState state,
+    GHOST_TDrawingContextType type,
+    const bool stereoVisual,
+    const GHOST_TUns16 numOfAASamples)
+	:
 	m_drawingContextType(type),
 	m_cursorVisible(true),
 	m_cursorGrab(GHOST_kGrabDisable),
@@ -58,14 +59,14 @@ GHOST_Window::GHOST_Window(
 	
 	m_progressBarVisible = false;
 	
-    m_cursorGrabAccumPos[0] = 0;
-    m_cursorGrabAccumPos[1] = 0;
+	m_cursorGrabAccumPos[0] = 0;
+	m_cursorGrabAccumPos[1] = 0;
 
-    m_fullScreen = state == GHOST_kWindowStateFullScreen;
-    if (m_fullScreen) {
-        m_fullScreenWidth = width;
-        m_fullScreenHeight = height;
-    }
+	m_fullScreen = state == GHOST_kWindowStateFullScreen;
+	if (m_fullScreen) {
+		m_fullScreenWidth = width;
+		m_fullScreenHeight = height;
+	}
 }
 
 
@@ -73,7 +74,7 @@ GHOST_Window::~GHOST_Window()
 {
 }
 
-void* GHOST_Window::getOSWindow() const
+void *GHOST_Window::getOSWindow() const
 {
 	return NULL;
 }
@@ -105,18 +106,26 @@ GHOST_TSuccess GHOST_Window::setCursorVisibility(bool visible)
 	}
 }
 
-GHOST_TSuccess GHOST_Window::setCursorGrab(GHOST_TGrabCursorMode mode, GHOST_Rect *bounds)
+GHOST_TSuccess GHOST_Window::setCursorGrab(GHOST_TGrabCursorMode mode, GHOST_Rect *bounds, GHOST_TInt32 mouse_ungrab_xy[2])
 {
-	if(m_cursorGrab == mode)
+	if (m_cursorGrab == mode)
 		return GHOST_kSuccess;
+
+	/* override with new location */
+	if (mouse_ungrab_xy) {
+		assert(mode == GHOST_kGrabDisable);
+		m_cursorGrabInitPos[0] = mouse_ungrab_xy[0];
+		m_cursorGrabInitPos[1] = mouse_ungrab_xy[1];
+	}
 
 	if (setWindowCursorGrab(mode)) {
 
-		if(mode==GHOST_kGrabDisable)
-			m_cursorGrabBounds.m_l= m_cursorGrabBounds.m_r= -1;
+		if (mode == GHOST_kGrabDisable)
+			m_cursorGrabBounds.m_l = m_cursorGrabBounds.m_r = -1;
 		else if (bounds) {
-			m_cursorGrabBounds= *bounds;
-		} else { /* if bounds not defined, use window */
+			m_cursorGrabBounds = *bounds;
+		}
+		else {  /* if bounds not defined, use window */
 			getClientBounds(m_cursorGrabBounds);
 		}
 		m_cursorGrab = mode;
@@ -129,8 +138,8 @@ GHOST_TSuccess GHOST_Window::setCursorGrab(GHOST_TGrabCursorMode mode, GHOST_Rec
 
 GHOST_TSuccess GHOST_Window::getCursorGrabBounds(GHOST_Rect& bounds)
 {
-	bounds= m_cursorGrabBounds;
-	return (bounds.m_l==-1 && bounds.m_r==-1) ? GHOST_kFailure : GHOST_kSuccess;
+	bounds = m_cursorGrabBounds;
+	return (bounds.m_l == -1 && bounds.m_r == -1) ? GHOST_kFailure : GHOST_kSuccess;
 }
 
 GHOST_TSuccess GHOST_Window::setCursorShape(GHOST_TStandardCursor cursorShape)
@@ -148,14 +157,14 @@ GHOST_TSuccess GHOST_Window::setCustomCursorShape(GHOST_TUns8 bitmap[16][2], GHO
                                                   int hotX, int hotY)
 {
 	return setCustomCursorShape((GHOST_TUns8 *)bitmap, (GHOST_TUns8 *)mask,
-	                            16, 16, hotX, hotY, 0, 1 );
+	                            16, 16, hotX, hotY, 0, 1);
 }
 
 GHOST_TSuccess GHOST_Window::setCustomCursorShape(GHOST_TUns8 *bitmap, GHOST_TUns8 *mask, 
                                                   int sizex, int sizey, int hotX, int hotY,
                                                   int fg_color, int bg_color)
 {
-	if (setWindowCustomCursorShape(bitmap, mask, sizex, sizey,hotX, hotY, fg_color, bg_color)) {
+	if (setWindowCustomCursorShape(bitmap, mask, sizex, sizey, hotX, hotY, fg_color, bg_color)) {
 		m_cursorShape = GHOST_kStandardCursorCustom;
 		return GHOST_kSuccess;
 	}

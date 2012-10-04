@@ -104,21 +104,26 @@ class OBJECT_PT_transform_locks(ObjectButtonsPanel, Panel):
 
         ob = context.object
 
-        row = layout.row()
+        split = layout.split(percentage=0.1)
 
-        col = row.column()
-        col.prop(ob, "lock_location", text="Location")
+        col = split.column(align=True)
+        col.label(text="")
+        col.label(text="X:")
+        col.label(text="Y:")
+        col.label(text="Z:")
 
-        col = row.column()
+        col = split.row()
+        col.column().prop(ob, "lock_location", text="Location")
+        col.column().prop(ob, "lock_rotation", text="Rotation")
+        col.column().prop(ob, "lock_scale", text="Scale")
+
         if ob.rotation_mode in {'QUATERNION', 'AXIS_ANGLE'}:
-            col.prop(ob, "lock_rotations_4d", text="Rotation")
-            if ob.lock_rotations_4d:
-                col.prop(ob, "lock_rotation_w", text="W")
-            col.prop(ob, "lock_rotation", text="")
-        else:
-            col.prop(ob, "lock_rotation", text="Rotation")
+            row = layout.row()
+            row.prop(ob, "lock_rotations_4d", text="Lock Rotation")
 
-        row.column().prop(ob, "lock_scale", text="Scale")
+            sub = row.row()
+            sub.active = ob.lock_rotations_4d
+            sub.prop(ob, "lock_rotation_w", text="W")
 
 
 class OBJECT_PT_relations(ObjectButtonsPanel, Panel):
@@ -154,7 +159,7 @@ class OBJECT_PT_groups(ObjectButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        ob = context.object
+        obj = context.object
 
         row = layout.row(align=True)
         row.operator("object.group_link", text="Add to Group")
@@ -162,8 +167,13 @@ class OBJECT_PT_groups(ObjectButtonsPanel, Panel):
 
         # XXX, this is bad practice, yes, I wrote it :( - campbell
         index = 0
+        obj_name = obj.name
         for group in bpy.data.groups:
-            if ob.name in group.objects:
+            # XXX this is slow and stupid!, we need 2 checks, one thats fast
+            # and another that we can be sure its not a name collission
+            # from linked library data
+            group_objects = group.objects
+            if obj_name in group.objects and obj in group_objects[:]:
                 col = layout.column(align=True)
 
                 col.context_pointer_set("group", group)
@@ -175,7 +185,7 @@ class OBJECT_PT_groups(ObjectButtonsPanel, Panel):
                 split = col.box().split()
 
                 col = split.column()
-                col.prop(group, "layers", text="Dupli")
+                col.prop(group, "layers", text="Dupli Visibility")
 
                 col = split.column()
                 col.prop(group, "dupli_offset", text="")
@@ -209,7 +219,7 @@ class OBJECT_PT_display(ObjectButtonsPanel, Panel):
         col = split.column()
         col.prop(ob, "show_name", text="Name")
         col.prop(ob, "show_axis", text="Axis")
-        if ob.type in {"MESH", "CURVE", "SURFACE", "META", "FONT"}:
+        if ob.type in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'}:
             # Makes no sense for cameras, armtures, etc.!
             col.prop(ob, "show_wire", text="Wire")
             # Only useful with object having faces/materials...
@@ -249,7 +259,6 @@ class OBJECT_PT_duplication(ObjectButtonsPanel, Panel):
             layout.prop(ob, "use_dupli_vertices_rotation", text="Rotation")
 
         elif ob.dupli_type == 'FACES':
-
             row = layout.row()
             row.prop(ob, "use_dupli_faces_scale", text="Scale")
             row.prop(ob, "dupli_faces_scale", text="Inherit Scale")
@@ -299,9 +308,9 @@ class OBJECT_PT_motion_paths(MotionPathButtonsPanel, Panel):
         layout = self.layout
 
         ob = context.object
-        avs = ob.animation_visualisation
+        avs = ob.animation_visualization
         mpath = ob.motion_path
-        
+
         self.draw_settings(context, avs, mpath)
 
 
@@ -316,7 +325,7 @@ class OBJECT_PT_onion_skinning(OnionSkinButtonsPanel):  # , Panel): # inherit fr
     def draw(self, context):
         ob = context.object
 
-        self.draw_settings(context, ob.animation_visualisation)
+        self.draw_settings(context, ob.animation_visualization)
 
 
 class OBJECT_PT_custom_props(ObjectButtonsPanel, PropertyPanel, Panel):

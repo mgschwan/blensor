@@ -26,7 +26,11 @@ OIIO_NAMESPACE_USING
 
 #include <stdio.h>
 
-#define BOOST_FILESYSTEM_VERSION 2
+#include <boost/version.hpp>
+
+#if (BOOST_VERSION < 104400)
+#  define BOOST_FILESYSTEM_VERSION 2
+#endif
 
 #include <boost/filesystem.hpp> 
 #include <boost/algorithm/string.hpp>
@@ -60,7 +64,11 @@ string path_user_get(const string& sub)
 
 string path_filename(const string& path)
 {
+#if (BOOST_FILESYSTEM_VERSION == 2)
 	return boost::filesystem::path(path).filename();
+#else
+	return boost::filesystem::path(path).filename().string();
+#endif
 }
 
 string path_dirname(const string& path)
@@ -179,8 +187,8 @@ static bool path_read_text(const string& path, string& text)
 string path_source_replace_includes(const string& source_, const string& path)
 {
 	/* our own little c preprocessor that replaces #includes with the file
-	   contents, to work around issue of opencl drivers not supporting
-	   include paths with spaces in them */
+	 * contents, to work around issue of opencl drivers not supporting
+	 * include paths with spaces in them */
 	string source = source_;
 	const string include = "#include \"";
 	size_t n, pos = 0;

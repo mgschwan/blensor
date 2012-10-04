@@ -45,7 +45,7 @@ GHOST_DisplayManagerSDL::GHOST_DisplayManagerSDL(GHOST_SystemSDL *system)
 GHOST_TSuccess
 GHOST_DisplayManagerSDL::getNumDisplays(GHOST_TUns8& numDisplays) const
 {
-	numDisplays=  SDL_GetNumVideoDisplays();
+	numDisplays =  SDL_GetNumVideoDisplays();
 	return GHOST_kSuccess;
 }
 
@@ -140,8 +140,10 @@ GHOST_DisplayManagerSDL:: setCurrentDisplaySetting(GHOST_TUns8 display,
 			SDL_GetDisplayMode(display, i, &mode);
 
 			if (setting.xPixels > mode.w ||
-				setting.yPixels > mode.h)
+			    setting.yPixels > mode.h)
+			{
 				continue;
+			}
 
 			x = setting.xPixels - mode.w;
 			y = setting.yPixels - mode.h;

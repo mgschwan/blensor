@@ -28,13 +28,13 @@
 CCL_NAMESPACE_BEGIN
 
 /* Assertions inside the kernel only work for the CPU device, so we wrap it in
-   a macro which is empty for other devices */
+ * a macro which is empty for other devices */
 
 #define kernel_assert(cond) assert(cond)
 
 /* Texture types to be compatible with CUDA textures. These are really just
-   simple arrays and after inlining fetch hopefully revert to being a simple
-   pointer lookup. */
+ * simple arrays and after inlining fetch hopefully revert to being a simple
+ * pointer lookup. */
 
 template<typename T> struct texture  {
 	T fetch(int index)
@@ -43,7 +43,8 @@ template<typename T> struct texture  {
 		return data[index];
 	}
 
-	/*__m128 fetch_m128(int index)
+#if 0
+	__m128 fetch_m128(int index)
 	{
 		kernel_assert(index >= 0 && index < width);
 		return ((__m128*)data)[index];
@@ -53,7 +54,8 @@ template<typename T> struct texture  {
 	{
 		kernel_assert(index >= 0 && index < width);
 		return ((__m128i*)data)[index];
-	}*/
+	}
+#endif
 
 	float interp(float x, int size)
 	{
@@ -146,6 +148,7 @@ typedef texture<float> texture_float;
 typedef texture<uint> texture_uint;
 typedef texture<int> texture_int;
 typedef texture<uint4> texture_uint4;
+typedef texture<uchar4> texture_uchar4;
 typedef texture_image<float4> texture_image_float4;
 typedef texture_image<uchar4> texture_image_uchar4;
 
@@ -155,7 +158,7 @@ typedef texture_image<uchar4> texture_image_uchar4;
 #define kernel_tex_fetch_m128(tex, index) (kg->tex.fetch_m128(index))
 #define kernel_tex_fetch_m128i(tex, index) (kg->tex.fetch_m128i(index))
 #define kernel_tex_interp(tex, t, size) (kg->tex.interp(t, size))
-#define kernel_tex_image_interp(tex, x, y) (kg->tex.interp(x, y))
+#define kernel_tex_image_interp(tex, x, y) ((tex < MAX_FLOAT_IMAGES) ? kg->texture_float_images[tex].interp(x, y) : kg->texture_byte_images[tex - MAX_FLOAT_IMAGES].interp(x, y))
 
 #define kernel_data (kg->__data)
 

@@ -156,7 +156,7 @@ class INFO_MT_file_import(Menu):
 
     def draw(self, context):
         if hasattr(bpy.types, "WM_OT_collada_import"):
-            self.layout.operator("wm.collada_import", text="COLLADA (.dae)")
+            self.layout.operator("wm.collada_import", text="Collada (Default) (.dae)")
 
 
 class INFO_MT_file_export(Menu):
@@ -165,7 +165,7 @@ class INFO_MT_file_export(Menu):
 
     def draw(self, context):
         if hasattr(bpy.types, "WM_OT_collada_export"):
-            self.layout.operator("wm.collada_export", text="COLLADA (.dae)")
+            self.layout.operator("wm.collada_export", text="Collada (Default) (.dae)")
 
 
 class INFO_MT_file_external_data(Menu):
@@ -272,7 +272,9 @@ class INFO_MT_add(Menu):
 
         # note, don't use 'EXEC_SCREEN' or operators wont get the 'v3d' context.
 
-        layout.operator_context = 'EXEC_AREA'
+        # Note: was EXEC_AREA, but this context does not have the 'rv3d', which prevents
+        #       "align_view" to work on first call (see [#32719]).
+        layout.operator_context = 'EXEC_REGION_WIN'
 
         #layout.operator_menu_enum("object.mesh_add", "type", text="Mesh", icon='OUTLINER_OB_MESH')
         layout.menu("INFO_MT_mesh_add", icon='OUTLINER_OB_MESH')
@@ -282,7 +284,7 @@ class INFO_MT_add(Menu):
         #layout.operator_menu_enum("object.surface_add", "type", text="Surface", icon='OUTLINER_OB_SURFACE')
         layout.menu("INFO_MT_surface_add", icon='OUTLINER_OB_SURFACE')
         layout.operator_menu_enum("object.metaball_add", "type", text="Metaball", icon='OUTLINER_OB_META')
-        layout.operator_context = 'INVOKE_REGION_WIN'
+#        layout.operator_context = 'INVOKE_REGION_WIN'
         layout.operator("object.text_add", text="Text", icon='OUTLINER_OB_FONT')
         layout.separator()
 
@@ -295,7 +297,7 @@ class INFO_MT_add(Menu):
         layout.separator()
 
         layout.operator("object.camera_add", text="Camera", icon='OUTLINER_OB_CAMERA')
-        layout.operator_context = 'EXEC_AREA'
+#        layout.operator_context = 'EXEC_AREA'
         layout.operator_menu_enum("object.lamp_add", "type", text="Lamp", icon='OUTLINER_OB_LAMP')
         layout.separator()
 
@@ -371,16 +373,16 @@ class INFO_MT_help(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator("wm.url_open", text="Manual", icon='HELP').url = 'http://wiki.blender.org/index.php/Doc:2.6/Manual'
-        layout.operator("wm.url_open", text="Release Log", icon='URL').url = 'http://www.blender.org/development/release-logs/blender-263/'
+        layout.operator("wm.url_open", text="Manual", icon='HELP').url = "http://wiki.blender.org/index.php/Doc:2.6/Manual"
+        layout.operator("wm.url_open", text="Release Log", icon='URL').url = "http://www.blender.org/development/release-logs/blender-264"
         layout.separator()
 
-        layout.operator("wm.url_open", text="Blender Website", icon='URL').url = 'http://www.blender.org/'
-        layout.operator("wm.url_open", text="Blender e-Shop", icon='URL').url = 'http://www.blender.org/e-shop'
-        layout.operator("wm.url_open", text="Developer Community", icon='URL').url = 'http://www.blender.org/community/get-involved/'
-        layout.operator("wm.url_open", text="User Community", icon='URL').url = 'http://www.blender.org/community/user-community/'
+        layout.operator("wm.url_open", text="Blender Website", icon='URL').url = "http://www.blender.org"
+        layout.operator("wm.url_open", text="Blender e-Shop", icon='URL').url = "http://www.blender.org/e-shop"
+        layout.operator("wm.url_open", text="Developer Community", icon='URL').url = "http://www.blender.org/community/get-involved"
+        layout.operator("wm.url_open", text="User Community", icon='URL').url = "http://www.blender.org/community/user-community"
         layout.separator()
-        layout.operator("wm.url_open", text="Report a Bug", icon='URL').url = 'http://projects.blender.org/tracker/?atid=498&group_id=9&func=browse'
+        layout.operator("wm.url_open", text="Report a Bug", icon='URL').url = "http://projects.blender.org/tracker/?atid=498&group_id=9&func=browse"
         layout.separator()
 
         layout.operator("wm.url_open", text="Python API Reference", icon='URL').url = bpy.types.WM_OT_doc_view._prefix

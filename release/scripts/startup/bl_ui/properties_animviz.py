@@ -35,7 +35,7 @@ class MotionPathButtonsPanel():
         layout = self.layout
 
         mps = avs.motion_path
-        
+
         # Display Range
         layout.prop(mps, "type", expand=True)
 
@@ -44,43 +44,49 @@ class MotionPathButtonsPanel():
         col = split.column()
         col.label(text="Display Range:")
         sub = col.column(align=True)
-        if (mps.type == 'CURRENT_FRAME'):
+        if mps.type == 'CURRENT_FRAME':
             sub.prop(mps, "frame_before", text="Before")
             sub.prop(mps, "frame_after", text="After")
-        elif (mps.type == 'RANGE'):
+        elif mps.type == 'RANGE':
             sub.prop(mps, "frame_start", text="Start")
             sub.prop(mps, "frame_end", text="End")
-            
+
         sub.prop(mps, "frame_step", text="Step")
-        
+
         col = split.column()
         if bones:
             col.label(text="Cache for Bone:")
         else:
             col.label(text="Cache:")
-            
+
         if mpath:
             sub = col.column(align=True)
             sub.enabled = False
             sub.prop(mpath, "frame_start", text="From")
             sub.prop(mpath, "frame_end", text="To")
-            
+
+            sub = col.row(align=True)
             if bones:
-                col.operator("pose.paths_update", text="Update Paths", icon='BONE_DATA')
+                sub.operator("pose.paths_update", text="Update Paths", icon='BONE_DATA')
+                sub.operator("pose.paths_clear", text="", icon='X')
             else:
-                col.operator("object.paths_update", text="Update Paths", icon='OBJECT_DATA')
+                sub.operator("object.paths_update", text="Update Paths", icon='OBJECT_DATA')
+                sub.operator("object.paths_clear", text="", icon='X')
         else:
-            col.label(text="Not available yet...", icon='ERROR')
-            col.label(text="Calculate Paths first", icon='INFO')
-        
-        
+            sub = col.column(align=True)
+            sub.label(text="Nothing to show yet...", icon='ERROR')
+            if bones:
+                sub.operator("pose.paths_calculate", text="Calculate...", icon='BONE_DATA')
+            else:
+                sub.operator("object.paths_calculate", text="Calculate...", icon='OBJECT_DATA')
+
         # Display Settings
         split = layout.split()
-        
+
         col = split.column()
         col.label(text="Show:")
         col.prop(mps, "show_frame_numbers", text="Frame Numbers")
-        
+
         col = split.column()
         col.prop(mps, "show_keyframe_highlight", text="Keyframes")
         sub = col.column()

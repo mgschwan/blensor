@@ -54,7 +54,7 @@ Octree::Octree(ModelReader *mr,
 	   After playing around with this option, the only case I could
 	   find where this option gives different results is on
 	   relatively thin corners. Sometimes along these corners two
-	   vertices from seperate sides will be placed in the same
+	   vertices from separate sides will be placed in the same
 	   position, so hole gets filled with a 5-sided face, where two
 	   of those vertices are in the same 3D location. If
 	   `use_manifold' is disabled, then the modifier doesn't
@@ -345,11 +345,13 @@ void Octree::addTriangle(Triangle *trian, int triind)
 	delete proj;
 }
 
-void print_depth(int height, int maxDepth)
+#if 0
+static void print_depth(int height, int maxDepth)
 {
 	for (int i = 0; i < maxDepth - height; i++)
 		printf("  ");
 }
+#endif
 
 InternalNode *Octree::addTriangle(InternalNode *node, CubeTriangleIsect *p, int height)
 {
@@ -2108,8 +2110,8 @@ void pseudoInverse(const _Matrix_Type_ &a,
 	         svd.matrixU().adjoint();
 }
 
-void solve_least_squares(const float halfA[], const float b[],
-                         const float midpoint[], float rvalue[])
+static void solve_least_squares(const float halfA[], const float b[],
+                                const float midpoint[], float rvalue[])
 {
 	/* calculate pseudo-inverse */
 	Eigen::MatrixXf A(3, 3), pinv(3, 3);
@@ -2126,8 +2128,8 @@ void solve_least_squares(const float halfA[], const float b[],
 		rvalue[i] = result(i);
 }
 
-void minimize(float rvalue[3], float mp[3], const float pts[12][3],
-              const float norms[12][3], const int parity[12])
+static void minimize(float rvalue[3], float mp[3], const float pts[12][3],
+                     const float norms[12][3], const int parity[12])
 {
 	float ata[6] = {0, 0, 0, 0, 0, 0};
 	float atb[3] = {0, 0, 0};

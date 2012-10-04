@@ -45,6 +45,13 @@ not just open ones.
 Running this script will create a file called 'credits.html',
 the resulting data is then be copied into the Development/Credits page
 in blender.org's typo3.
+
+
+Example execution commands:
+
+   svn log https://svn.blender.org/svnroot/bf-blender/trunk/blender -v --xml > ~/svn_log.xml
+   svn log https://svn.blender.org/svnroot/bf-extensions/trunk/py/scripts/addons -v --xml > ~/svn_log_ext.xml
+   python3.2 intern/tools/credits_svn_gen.py --svn_log=~/svn_log.xml --svn_log_ext=~/svn_log_ext.xml --tracker_csv=~/tracker_report-2012-10-03.csv
 """
 
 # -----------------------------------------------------------------------------
@@ -89,7 +96,7 @@ class SvnCommit(object):
         return repr(repr_dict)
 
 
-def parse_commits(filepath):
+def parse_commits(filepath, min_rev=0):
     from xml.dom.minidom import parse
 
     svn_xml = parse(filepath)
@@ -102,7 +109,9 @@ def parse_commits(filepath):
         for commit_xml in log_entries:
 
             # get all data from the commit into a dict for more easy checking.
-            commits.append(SvnCommit(commit_xml))
+            commit = SvnCommit(commit_xml)
+            if commit.revision > min_rev:
+                commits.append(commit)
 
     return commits
 
@@ -143,6 +152,7 @@ author_name_mapping = {
     "aligorith": "Joshua Leung",
     "antont": "Toni Alatalo",
     "aphex": "Simon Clitherow",
+    "apinzonf": "Alexander Pinzon",
     "artificer": "Ben Batt",
     "ascotan": "Joseph Gilbert",
     "bdiego": "Diego Borghetti",
@@ -161,6 +171,7 @@ author_name_mapping = {
     "dfelinto": "Dalai Felinto",
     "dingto": "Thomas Dinges",
     "djcapelis": "D.J. Capelis",
+    "dna": "Dan Eicher",
     "domino": "Domino Marama",
     "dougal2": "Doug Hammond",
     "eeshlo": "Alfredo de Greef",
@@ -168,6 +179,7 @@ author_name_mapping = {
     "ender79": "Andrew Wiggin",  # an alias, not real name.
     "erwin": "Erwin Coumans",
     "frank": "Frank van Beek",
+    "gaiaclary": "Gaia Clary",
     "genscher": "Daniel Genrich",
     "goofster": "Roel Spruit",
     "gsrb3d": "gsr b3d",
@@ -178,11 +190,13 @@ author_name_mapping = {
     "hans": "Hans Lambermont",
     "harkyman": "Roland Hess",
     "hos": "Chris Want",
+    "howardt": "Howard Trickey",
     "ianwill": "Willian Padovani Germano",
     "imbusy": "Lukas Steiblys",
     "intrr": "Alexander Ewering",
     "jaguarandi": "Andre Susano Pinto",
     "jandro": "Alejandro Conty Estevez",
+    "jason_hays22": "Jason Hays",
     "jbakker": "Jeroen Bakker",
     "jbinto": "Jacques Beuarain",
     "jensverwiebe": "Jens Verwiebe",
@@ -192,13 +206,17 @@ author_name_mapping = {
     "joeedh": "Joseph Eagar",
     "jwilkins": "Jason Wilkins",
     "kakbarnf": "Robin Allen",
+    "kanttori": "Juha Mäki-Kanto",
     "kazanbas": "Arystanbek Dyussenov",
+    "keir": "Keir Mierle",
     "kester": "Kester Maddock",
     "khughes": "Ken Hughes",
+    "kupoman": "Daniel Stokes",
     "kwk": "Konrad Kleine",
     "larstiq": "Wouter van Heyst",
     "letterrip": "Tom Musgrove",
     "lmg": "M.G. Kishalmi",
+    "lockal": "Sv. Lockal",
     "loczar": "Francis Laurence",  # not 100% sure on this.
     "lonetech": "Yann Vernier",
     "lukastoenne": "Lukas Toenne",
@@ -206,20 +224,24 @@ author_name_mapping = {
     "lusque": "Ervin Weber",
     "maarten": "Maarten Gribnau",
     "mal_cando": "Mal Duffin",
+    "mdewanchand": "Monique Dewanchand",
     "mein": "Kent Mein",
     "merwin": "Mike Erwin",
     "mfoxdogg": "Michael Fox",
     "mfreixas": "Marc Freixas",
     "michel": "Michel Selten",
     "migius": "Remigiusz Fiedler",
+    "miikah": "Miika Hamalainen",
     "mikasaari": "Mika Saari",
     "mindrones": "Luca Bonavita",
     "mmikkelsen": "Morten Mikkelsen",
     "moguri": "Mitchell Stokes",
+    "mokazon": "Matthew Smith",
     "mont29": "Bastien Montagne",
     "n_t": "Nils Thuerey",
     "nazgul": "Sergey Sharybin",
     "nexyon": "Joerg Mueller",
+    "nicholas_rishel": "Nicholas Rishel",
     "nicholasbishop": "Nicholas Bishop",
     "phaethon": "Frederick Lee",
     "phase": "Rob Haarsma",
@@ -230,35 +252,75 @@ author_name_mapping = {
     "sateh": "Stefan Arentz",
     "schlaile": "Peter Schlaile",
     "scourage": "Robert Holcomb",
+    "sergof": "Sergej Reich",
     "sgefant": "Stefan Gartner",
     "sirdude": "Kent Mein",
     "smerch": "Alex Sytnik",
     "snailrose": "Charlie Carley",
     "stiv": "Stephen Swaney",
-    "trumanblending": "Andrew Hale",
     "theeth": "Martin Poirier",
     "themyers": "Ricki Myers",
     "ton": "Ton Roosendaal",
+    "trumanblending": "Andrew Hale",
     "vekoon": "Elia Sarti",
     "xat": "Xavier Thomas",
+    "xercesblue": "Francisco De La Cruz",
+    "xglasyliax": "Peter Larabell",
     "xiaoxiangquan": "Xiao Xiangquan",
+    "z0r": "Alex Fraser",
     "zaghaghi": "Hamed Zaghaghi",
     "zanqdo": "Daniel Salazar",
-    "z0r": "Alex Fraser",
     "zuster": "Daniel Dunbar",
-    "jason_hays22": "Jason Hays",
-    "miikah": "Miika Hamalainen",
-    "howardt": "Howard Trickey",
-    "kanttori": "Juha Mäki-Kanto",
-    "xglasyliax": "Peter Larabell",
-    "lockal": "Sv. Lockal",
-    "kupoman": "Daniel Stokes",
-    "xercesblue": "Francisco De La Cruz",
+    
     # TODO, find remaining names
     "nlin": "",
 
     # added for 'author_overrides'
     "farny": "Mike Farnsworth",
+    
+    # --------------------
+    # Extension Developers
+    "aurel": "Aurel W",  # TODO, full name?
+    "axon_d": "Dany Lebel",
+    "bartekskorupa": "Bartek Skorupa",
+    "bassamk": "Bassam Kurdali",
+    "benjycook": "Benjy Cook",
+    "blendphys": "Clemens Barth",
+    "codemanx": "Sebastian Nell",
+    "conz": "Constantin Rahn",
+    "cotejrp1": "Philip Cote",
+    "crouch": "Bart Crouch",
+    "darknet": "John Phan",
+    "dmbasso": "Daniel M. Basso",
+    "dreampainter": "Gerwin Damsteegt",
+    "eclectiel": "Eclectiel L",  # TODO, full name?
+    "frigi": "Fabian Fricke",
+    "gabhead": "Gabriel Beaudin",
+    "gekko": "Jesse Kaukonen",
+    "guillaum": "Bouchard Guillaume",
+    "haikalle": "Kalle-Samuli Riihikoski",
+    "imoverclocked": "Tim Spriggs",
+    "jacepriester": "Jace Priester",
+    "jaydez": "Jonathan Smith",
+    "jcbdigger": "John Brown",
+    "ken9": "Ken Nign",
+    "kiravakaan": "Chris Foster",
+    "kroopson": "Michael Krupa",
+    "lichtwerk": "Philipp Oeser",
+    "loolarge": "Ivo Grigull",
+    "mauriceraybaud": "Maurice Raybaud",
+    "meta-androcto": "Brendon Murphy",
+    "michaelw": "Michael Williamson",
+    "muraj": "Cory Perry",
+    "paulo_gomes": "Paulo Gomes",
+    "pontiac": "Martin Buerbaum",
+    "seminumerical": "Morgan Mörtsell",
+    "spudmn": "Aaron Keith",
+    "testscreenings": "Florian Meyer",
+    "tetron": "Peter Amstutz",
+    "thomasl": "Thomas Larsson",
+    "venomgfx": "Pablo Vazquez",
+    "wiseman303": "Adam Wiseman",
     }
 
 
@@ -276,6 +338,9 @@ del empty, e
 author_name_mapping_reverse = {}
 for key, value in author_name_mapping.items():
     author_name_mapping_reverse[value] = key
+
+# store users we complained about missing already
+alert_users = set()
 
 # ----------------------------------------------------------------------------
 # Since we cant detect some authors to credits, store spesific revisions
@@ -387,7 +452,7 @@ def is_credit_commit_valid(commit):
             return False
 
     def is_path_valid(path):
-        if not path.startswith("/trunk/blender/"):
+        if not (path.startswith("/trunk/blender/") or path.startswith("/trunk/py/scripts/addons")):
             return False
         for p in ignore_dir:
             if path.startswith(p):
@@ -406,7 +471,7 @@ def is_credit_commit_valid(commit):
     return True
 
 
-def main():
+def main_credits(min_rev=0, min_rev_ext=0):
 
     # ------------------------------------------------------------------------
     # Parse Args
@@ -421,8 +486,12 @@ def main():
     parser = argparse.ArgumentParser(description=usage_text)
     parser.add_argument("-s", "--svn_log", dest="svn_log",
             metavar='FILE', required=True,
-            help="File path pointing to svn log, generated by "
-                 "'svn log . -v --xml'")
+            help="File path pointing to svn log, "
+                 "generated by 'svn log . -v --xml'")
+    parser.add_argument("-se", "--svn_log_ext", dest="svn_log_ext",
+            metavar='FILE', required=True,
+            help="File path pointing to svn log (for extensions), "
+                 "generated by 'svn log . -v --xml'")
     parser.add_argument("-c", "--tracker_csv", dest="tracker_csv",
             metavar='FILE', required=True,
             help="File path pointing to CSV file saved by the patch tracker")
@@ -431,13 +500,15 @@ def main():
 
     tracker_csv = args.tracker_csv
     svn_log = args.svn_log
+    svn_log_ext = args.svn_log_ext
 
     # ------------------------------------------------------------------------
     # Main Logic
 
     patch_map = build_patch_name_map(tracker_csv)
 
-    commits = parse_commits(svn_log)
+    commits = (parse_commits(svn_log, min_rev=min_rev) +
+               parse_commits(svn_log_ext, min_rev=min_rev_ext))
 
     credits = {key: Credit() for key in author_name_mapping}
 
@@ -451,8 +522,11 @@ def main():
                                                       commit.author)
                 credit = credits.get(author)
                 if credit is None:
-                    print("warning: '%s' is not in 'author_name_mapping' !" %
-                          commit.author)
+                    
+                    if commit.author not in alert_users:
+                        print("warning: '%s' is not in "
+                              "'author_name_mapping' !" % commit.author)
+                        alert_users.add(commit.author)
 
                     # will be discarded
                     credit = Credit()
@@ -478,7 +552,14 @@ def main():
 
     # write out the wiki page
     # sort by name
-    file = open("credits.html", 'w', encoding="utf-8")
+    is_main_credits = (min_rev == 0 and min_rev_ext == 0)
+    if is_main_credits:
+        filename = "credits.html"
+    else:
+        filename = "credits_release.html"
+    
+    
+    file = open(filename, 'w', encoding="utf-8")
 
     file.write("<h3>Individual Contributors</h3>\n\n")
 
@@ -503,11 +584,15 @@ def main():
         else:
             name_string = "<b>%s</b> (%s)" % (author_real, author)
 
-        credit_range = credit.contribution_years()
-        if credit_range[0] != credit_range[1]:
-            credit_range_string = "(%d - %d)" % credit_range
+        if is_main_credits:
+            credit_range = credit.contribution_years()
+            if credit_range[0] != credit_range[1]:
+                credit_range_string = "(%d - %d)" % credit_range
+            else:
+                credit_range_string = "- %d" % credit_range[0]
         else:
-            credit_range_string = "- %d" % credit_range[0]
+            # for a single release its not interesting to show years
+            credit_range_string = ""
 
         is_plural = len(credit.commits) > 1
 
@@ -527,22 +612,29 @@ def main():
 
     file.write("\n\n")
 
+
     # -------------------------------------------------------------------------
     # Companies, hard coded
-    file.write("<h3>Contributions from Companies & Organizations</h3>\n")
-    file.write("<p>\n")
-    for line in contrib_companies:
-        file.write("%s<br />\n" % line)
-    file.write("</p>\n")
+    if is_main_credits:
+        file.write("<h3>Contributions from Companies & Organizations</h3>\n")
+        file.write("<p>\n")
+        for line in contrib_companies:
+            file.write("%s<br />\n" % line)
+        file.write("</p>\n")
 
-    import datetime
-    now = datetime.datetime.now()
-    fn = __file__.split("\\")[-1].split("/")[-1]
-    file.write("<p><center><i>Generated by '%s' %d/%d/%d</i></center></p>\n" %
-               (fn, now.year, now.month, now.day))
+        import datetime
+        now = datetime.datetime.now()
+        fn = __file__.split("\\")[-1].split("/")[-1]
+        file.write("<p><center><i>Generated by '%s' %d/%d/%d</i></center></p>\n" %
+                   (fn, now.year, now.month, now.day))
 
     file.close()
-    print("written: credits.html")
+    print("written:", filename)
+
+
+def main():
+    main_credits()
+    main_credits(min_rev=46461, min_rev_ext=3355)
 
 if __name__ == "__main__":
     main()

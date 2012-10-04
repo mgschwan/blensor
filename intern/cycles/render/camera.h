@@ -67,6 +67,9 @@ public:
 	int width, height;
 	float left, right, bottom, top;
 
+	/* border */
+	float border_left, border_right, border_bottom, border_top;
+
 	/* transformation */
 	Transform matrix;
 
@@ -75,7 +78,7 @@ public:
 	bool use_motion;
 
 	/* computed camera parameters */
-    Transform screentoworld;
+	Transform screentoworld;
 	Transform rastertoworld;
 	Transform ndctoworld;
 	Transform rastertocamera;
@@ -88,6 +91,7 @@ public:
 	/* update */
 	bool need_update;
 	bool need_device_update;
+	int previous_need_motion;
 
 	/* functions */
 	Camera();

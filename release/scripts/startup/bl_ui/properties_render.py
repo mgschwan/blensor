@@ -63,9 +63,10 @@ class RENDER_PT_render(RenderButtonsPanel, Panel):
 
         rd = context.scene.render
 
-        row = layout.row()
-        row.operator("render.render", text="Image", icon='RENDER_STILL')
+        row = layout.row(align=True)
+        row.operator("render.render", text="Render", icon='RENDER_STILL')
         row.operator("render.render", text="Animation", icon='RENDER_ANIMATION').animation = True
+        row.operator("render.play_rendered_anim", text="Play", icon='PLAY')
 
         layout.prop(rd, "display_mode", text="Display")
 
@@ -315,10 +316,6 @@ class RENDER_PT_shading(RenderButtonsPanel, Panel):
 
         col = split.column()
         col.prop(rd, "use_raytrace", text="Ray Tracing")
-        col.prop(rd, "use_color_management")
-        sub = col.row()
-        sub.active = rd.use_color_management == True
-        sub.prop(rd, "use_color_unpremultiply")
         col.prop(rd, "alpha_mode", text="Alpha")
 
 
@@ -466,7 +463,7 @@ class RENDER_PT_output(RenderButtonsPanel, Panel):
         flow.prop(rd, "use_placeholder")
         flow.prop(rd, "use_file_extension")
 
-        layout.template_image_settings(image_settings)
+        layout.template_image_settings(image_settings, color_management=False)
 
         if file_format == 'QUICKTIME_CARBON':
             layout.operator("scene.render_data_set_quicktime_codec")
@@ -526,7 +523,7 @@ class RENDER_PT_encoding(RenderButtonsPanel, Panel):
         if ffmpeg.format in {'AVI', 'QUICKTIME', 'MKV', 'OGG'}:
             split.prop(ffmpeg, "codec")
         elif rd.ffmpeg.format == 'H264':
-            split.prop(ffmpeg, 'use_lossless_output')
+            split.prop(ffmpeg, "use_lossless_output")
         else:
             split.label()
 
@@ -575,7 +572,7 @@ class RENDER_PT_bake(RenderButtonsPanel, Panel):
 
         multires_bake = False
         if rd.bake_type in ['NORMALS', 'DISPLACEMENT']:
-            layout.prop(rd, 'use_bake_multires')
+            layout.prop(rd, "use_bake_multires")
             multires_bake = rd.use_bake_multires
 
         if not multires_bake:

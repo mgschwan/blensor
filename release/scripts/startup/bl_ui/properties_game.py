@@ -49,7 +49,14 @@ class PHYSICS_PT_game_physics(PhysicsButtonsPanel, Panel):
 
         physics_type = game.physics_type
 
-        if physics_type in {'DYNAMIC', 'RIGID_BODY'}:
+        if physics_type == 'CHARACTER':
+            layout.prop(game, "use_actor")
+            layout.prop(ob, "hide_render", text="Invisible")  # out of place but useful
+            layout.prop(game, "step_height", slider=True)
+            layout.prop(game, "jump_speed")
+            layout.prop(game, "fall_speed")
+
+        elif physics_type in {'DYNAMIC', 'RIGID_BODY'}:
             split = layout.split()
 
             col = split.column()
@@ -192,7 +199,7 @@ class PHYSICS_PT_game_collision_bounds(PhysicsButtonsPanel, Panel):
     def poll(cls, context):
         game = context.object.game
         rd = context.scene.render
-        return (game.physics_type in {'DYNAMIC', 'RIGID_BODY', 'SENSOR', 'SOFT_BODY', 'STATIC'}) and (rd.engine in cls.COMPAT_ENGINES)
+        return (game.physics_type in {'DYNAMIC', 'RIGID_BODY', 'SENSOR', 'SOFT_BODY', 'STATIC', 'CHARACTER'}) and (rd.engine in cls.COMPAT_ENGINES)
 
     def draw_header(self, context):
         game = context.active_object.game
@@ -330,7 +337,6 @@ class RENDER_PT_game_stereo(RenderButtonsPanel, Panel):
 
             if dome_type in {'FISHEYE', 'TRUNCATED_REAR', 'TRUNCATED_FRONT'}:
                 col = split.column()
-
                 col.prop(gs, "dome_buffer_resolution", text="Resolution", slider=True)
                 col.prop(gs, "dome_angle", slider=True)
 
@@ -340,14 +346,13 @@ class RENDER_PT_game_stereo(RenderButtonsPanel, Panel):
 
             elif dome_type == 'PANORAM_SPH':
                 col = split.column()
-
                 col.prop(gs, "dome_buffer_resolution", text="Resolution", slider=True)
+
                 col = split.column()
                 col.prop(gs, "dome_tessellation", text="Tessellation")
 
             else:  # cube map
                 col = split.column()
-
                 col.prop(gs, "dome_buffer_resolution", text="Resolution", slider=True)
 
                 col = split.column()
@@ -389,6 +394,7 @@ class RENDER_PT_game_system(RenderButtonsPanel, Panel):
         layout = self.layout
 
         gs = context.scene.game_settings
+
         row = layout.row()
         row.prop(gs, "use_frame_rate")
         row.prop(gs, "restrict_animation_updates")
@@ -408,10 +414,10 @@ class RENDER_PT_game_display(RenderButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        row = layout.row()
-        row.prop(context.scene.render, "fps", text="Animation Frame Rate", slider=False)
-
         gs = context.scene.game_settings
+
+        layout.prop(context.scene.render, "fps", text="Animation Frame Rate", slider=False)
+
         flow = layout.column_flow()
         flow.prop(gs, "show_debug_properties", text="Debug Properties")
         flow.prop(gs, "show_framerate_profile", text="Framerate and Profile")
@@ -447,7 +453,7 @@ class SCENE_PT_game_navmesh(SceneButtonsPanel, Panel):
 
         rd = context.scene.game_settings.recast_data
 
-        layout.operator("mesh.navmesh_make", text='Build navigation mesh')
+        layout.operator("mesh.navmesh_make", text="Build navigation mesh")
 
         col = layout.column()
         col.label(text="Rasterization:")
@@ -575,14 +581,14 @@ class WORLD_PT_game_mist(WorldButtonsPanel, Panel):
         world = context.world
 
         layout.active = world.mist_settings.use_mist
-        row = layout.row()
-        row.prop(world.mist_settings, "falloff")
+
+        layout.prop(world.mist_settings, "falloff")
 
         row = layout.row(align=True)
         row.prop(world.mist_settings, "start")
         row.prop(world.mist_settings, "depth")
-        row = layout.row()
-        row.prop(world.mist_settings, "intensity", text="Minimum Intensity")
+
+        layout.prop(world.mist_settings, "intensity", text="Minimum Intensity")
 
 
 class WORLD_PT_game_physics(WorldButtonsPanel, Panel):
@@ -615,6 +621,14 @@ class WORLD_PT_game_physics(WorldButtonsPanel, Panel):
             col = split.column()
             col.label(text="Logic Steps:")
             col.prop(gs, "logic_step_max", text="Max")
+
+            col = layout.column()
+            col.label(text="Physics Deactivation:")
+            sub = col.row(align=True)
+            sub.prop(gs, "deactivation_linear_threshold", text="Linear Threshold")
+            sub.prop(gs, "deactivation_angular_threshold", text="Angular Threshold")
+            sub = col.row()
+            sub.prop(gs, "deactivation_time", text="Time")
 
             col = layout.column()
             col.prop(gs, "use_occlusion_culling", text="Occlusion Culling")

@@ -46,10 +46,10 @@ namespace OSL = ::OSL;
 
 class OSLRenderServices;
 class Scene;
-class ShaderClosure;
-class ShaderData;
-class differential3;
-class KernelGlobals;
+struct ShaderClosure;
+struct ShaderData;
+struct differential3;
+struct KernelGlobals;
 
 class OSLShader {
 public:
@@ -68,18 +68,19 @@ public:
 
 	/* sample & eval */
 	static int bsdf_sample(const ShaderData *sd, const ShaderClosure *sc,
-		float randu, float randv,
-		float3& eval, float3& omega_in, differential3& domega_in, float& pdf);
+	                       float randu, float randv,
+	                       float3& eval, float3& omega_in, differential3& domega_in, float& pdf);
 	static float3 bsdf_eval(const ShaderData *sd, const ShaderClosure *sc,
-		const float3& omega_in, float& pdf);
+	                        const float3& omega_in, float& pdf);
 
 	static float3 emissive_eval(const ShaderData *sd, const ShaderClosure *sc);
 
 	static float3 volume_eval_phase(const ShaderData *sd, const ShaderClosure *sc,
-		const float3 omega_in, const float3 omega_out);
+	                                const float3 omega_in, const float3 omega_out);
 
 	/* release */
-	static void release(KernelGlobals *kg, const ShaderData *sd);
+	static void init(KernelGlobals *kg, ShaderData *sd);
+	static void release(KernelGlobals *kg, ShaderData *sd);
 };
 
 CCL_NAMESPACE_END

@@ -50,6 +50,7 @@ typedef texture<float, 1> texture_float;
 typedef texture<uint, 1> texture_uint;
 typedef texture<int, 1> texture_int;
 typedef texture<uint4, 1> texture_uint4;
+typedef texture<uchar4, 1> texture_uchar4;
 typedef texture<float4, 2> texture_image_float4;
 typedef texture<uchar4, 2, cudaReadModeNormalizedFloat> texture_image_uchar4;
 
@@ -60,6 +61,15 @@ typedef texture<uchar4, 2, cudaReadModeNormalizedFloat> texture_image_uchar4;
 #define kernel_tex_image_interp(t, x, y) tex2D(t, x, y)
 
 #define kernel_data __data
+
+/* Use fast math functions */
+
+#define cosf(x) __cosf(((float)x))
+#define sinf(x) __sinf(((float)x))
+#define powf(x, y) __powf(((float)x), ((float)y))
+#define tanf(x) __tanf(((float)x))
+#define logf(x) __logf(((float)x))
+#define expf(x) __expf(((float)x))
 
 #endif /* __KERNEL_COMPAT_CUDA_H__ */
 

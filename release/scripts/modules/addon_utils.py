@@ -139,6 +139,8 @@ def modules(module_cache):
 
             return mod
         else:
+            print("fake_module: addon missing 'bl_info' "
+                  "gives bad performance!: %r" % mod_path)
             return None
 
     modules_stale = set(module_cache.keys())
@@ -146,7 +148,7 @@ def modules(module_cache):
     for path in path_list:
 
         # force all contrib addons to be 'TESTING'
-        if path.endswith("addons_contrib") or path.endswith("addons_extern"):
+        if path.endswith(("addons_contrib", "addons_extern")):
             force_support = 'TESTING'
         else:
             force_support = None
@@ -183,8 +185,8 @@ def modules(module_cache):
     del modules_stale
 
     mod_list = list(module_cache.values())
-    mod_list.sort(key=lambda mod: (mod.bl_info['category'],
-                                   mod.bl_info['name'],
+    mod_list.sort(key=lambda mod: (mod.bl_info["category"],
+                                   mod.bl_info["name"],
                                    ))
     return mod_list
 
@@ -273,6 +275,8 @@ def enable(module_name, default_set=True, persistent=False):
     try:
         mod.register()
     except:
+        print("Exception in module register(): %r" %
+              getattr(mod, "__file__", module_name))
         handle_error()
         del sys.modules[module_name]
         return None
@@ -314,6 +318,8 @@ def disable(module_name, default_set=True):
         try:
             mod.unregister()
         except:
+            print("Exception in module unregister(): %r" %
+                  getattr(mod, "__file__", module_name))
             import traceback
             traceback.print_exc()
     else:

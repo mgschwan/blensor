@@ -215,6 +215,8 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.label(text="Face Count" + ": %d" % md.face_count)
 
     def DISPLACE(self, layout, ob, md):
+        has_texture = (md.texture is not None)
+
         split = layout.split()
 
         col = split.column()
@@ -226,12 +228,18 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col = split.column()
         col.label(text="Direction:")
         col.prop(md, "direction", text="")
-        col.label(text="Texture Coordinates:")
-        col.prop(md, "texture_coords", text="")
+        colsub = col.column()
+        colsub.active = has_texture
+        colsub.label(text="Texture Coordinates:")
+        colsub.prop(md, "texture_coords", text="")
         if md.texture_coords == 'OBJECT':
-            layout.prop(md, "texture_coords_object", text="Object")
+            row = layout.row()
+            row.active = has_texture
+            row.prop(md, "texture_coords_object", text="Object")
         elif md.texture_coords == 'UV' and ob.type == 'MESH':
-            layout.prop_search(md, "uv_layer", ob.data, "uv_textures")
+            row = layout.row()
+            row.active = has_texture
+            row.prop_search(md, "uv_layer", ob.data, "uv_textures")
 
         layout.separator()
 
@@ -547,6 +555,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "angle")
         col.prop(md, "steps")
         col.prop(md, "render_steps")
+        col.prop(md, "use_smooth_shade")
 
         col = split.column()
         row = col.row()
@@ -681,6 +690,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row = row.row()
         row.active = md.use_rim
         row.prop(md, "material_offset_rim", text="Rim")
+        sub.prop(md, "use_flip_normals")
 
     def SUBSURF(self, layout, ob, md):
         layout.row().prop(md, "subdivision_type", expand=True)
@@ -838,6 +848,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         if md.mode == 'SHARP':
             layout.prop(md, "sharpness")
 
+        layout.prop(md, "use_smooth_shade")
         layout.prop(md, "remove_disconnected_pieces")
         row = layout.row()
         row.active = md.remove_disconnected_pieces
@@ -956,6 +967,30 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         # Common mask options
         layout.separator()
         self.vertex_weight_mask(layout, ob, md)
+
+    def SKIN(self, layout, ob, md):
+        layout.operator("object.skin_armature_create", text="Create Armature")
+
+        layout.separator()
+        layout.prop(md, "branch_smoothing")
+        layout.prop(md, "use_smooth_shade")
+
+        layout.label(text="Selected Vertices:")
+        split = layout.split()
+
+        col = split.column(align=True)
+        col.operator("object.skin_loose_mark_clear", text="Mark Loose").action = 'MARK'
+        col.operator("object.skin_loose_mark_clear", text="Clear Loose").action = 'CLEAR'
+
+        col = split.column()
+        col.operator("object.skin_root_mark", text="Mark Root")
+        col.operator("object.skin_radii_equalize", text="Equalize Radii")
+
+        layout.label(text="Symmetry Axes:")
+        col = layout.column()
+        col.prop(md, "use_x_symmetry")
+        col.prop(md, "use_y_symmetry")
+        col.prop(md, "use_z_symmetry")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

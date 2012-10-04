@@ -31,10 +31,9 @@
 
 
 /**
-
  * Copyright (C) 2001 NaN Technologies B.V.
- * @author	Maarten Gribnau
- * @date	October 25, 2001
+ * \author	Maarten Gribnau
+ * \date	October 25, 2001
  */
 
 #include "GHOST_Debug.h"
@@ -49,7 +48,7 @@ GHOST_CallbackEventConsumer::GHOST_CallbackEventConsumer(GHOST_EventCallbackProc
 }
 
 
-bool GHOST_CallbackEventConsumer::processEvent(GHOST_IEvent* event)
+bool GHOST_CallbackEventConsumer::processEvent(GHOST_IEvent *event)
 {
 	return m_eventCallback((GHOST_EventHandle)event, m_userData) != 0;
 }

@@ -20,6 +20,7 @@
 import bpy
 from bpy.types import Menu, Panel
 from bl_ui.properties_paint_common import UnifiedPaintPanel
+from bl_ui.properties_paint_common import sculpt_brush_texture_settings
 
 
 class View3DPanel():
@@ -227,11 +228,11 @@ class VIEW3D_PT_tools_curveedit(View3DPanel, Panel):
 
         col = layout.column(align=True)
         col.operator("transform.tilt", text="Tilt")
-        col.operator("transform.transform", text="Shrink/Fatten").mode = 'CURVE_SHRINKFATTEN'
+        col.operator("transform.transform", text="Scale Feather").mode = 'CURVE_SHRINKFATTEN'
 
         col = layout.column(align=True)
         col.label(text="Curve:")
-        col.operator("curve.duplicate")
+        col.operator("curve.duplicate_move", text="Duplicate")
         col.operator("curve.delete")
         col.operator("curve.cyclic_toggle")
         col.operator("curve.switch_direction")
@@ -248,7 +249,7 @@ class VIEW3D_PT_tools_curveedit(View3DPanel, Panel):
 
         col = layout.column(align=True)
         col.label(text="Modeling:")
-        col.operator("curve.extrude")
+        col.operator("curve.extrude_move", text="Extrude")
         col.operator("curve.subdivide")
 
         draw_repeat_tools(context, layout)
@@ -273,14 +274,14 @@ class VIEW3D_PT_tools_surfaceedit(View3DPanel, Panel):
 
         col = layout.column(align=True)
         col.label(text="Curve:")
-        col.operator("curve.duplicate")
+        col.operator("curve.duplicate_move", text="Duplicate")
         col.operator("curve.delete")
         col.operator("curve.cyclic_toggle")
         col.operator("curve.switch_direction")
 
         col = layout.column(align=True)
         col.label(text="Modeling:")
-        col.operator("curve.extrude")
+        col.operator("curve.extrude", text="Extrude")
         col.operator("curve.subdivide")
 
         draw_repeat_tools(context, layout)
@@ -575,6 +576,9 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
 
                 row.prop(brush, "sculpt_plane", text="")
 
+            if brush.sculpt_tool == 'MASK':
+                col.prop(brush, "mask_tool", text="")
+
             # plane_offset, use_offset_pressure, use_plane_trim, plane_trim
             if capabilities.has_plane_offset:
                 row = col.row(align=True)
@@ -672,6 +676,8 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
             row.prop(brush, "jitter", slider=True)
             row.prop(brush, "use_pressure_jitter", toggle=True, text="")
 
+            col.prop(brush, "vertex_tool", text="Blend")
+
         # Vertex Paint Mode #
         elif context.vertex_paint_object and brush:
             col = layout.column()
@@ -690,6 +696,8 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
             #row = col.row(align=True)
             #row.prop(brush, "jitter", slider=True)
             #row.prop(brush, "use_pressure_jitter", toggle=True, text="")
+
+            col.prop(brush, "vertex_tool", text="Blend")
 
 
 class VIEW3D_PT_tools_brush_texture(Panel, View3DPaintPanel):
@@ -716,45 +724,11 @@ class VIEW3D_PT_tools_brush_texture(Panel, View3DPaintPanel):
             col.prop(brush, "use_fixed_texture")
 
         if context.sculpt_object:
-            #XXX duplicated from properties_texture.py
+            sculpt_brush_texture_settings(col, brush)
 
-            col.label(text="Brush Mapping:")
-            col.row().prop(tex_slot, "map_mode", expand=True)
-
-            col.separator()
-
-            col = layout.column()
-            col.active = tex_slot.map_mode in {'FIXED'}
-            col.label(text="Angle:")
-            if brush.sculpt_capabilities.has_random_texture_angle:
-                col.prop(brush, "texture_angle_source_random", text="")
-            else:
-                col.prop(brush, "texture_angle_source_no_random", text="")
-
-            #row = col.row(align=True)
-            #row.label(text="Angle:")
-            #row.active = tex_slot.map_mode in {'FIXED', 'TILED'}
-
-            #row = col.row(align=True)
-
-            #col = row.column()
-            #col.active = tex_slot.map_mode in {'FIXED'}
-            #col.prop(brush, "use_rake", toggle=True, icon='PARTICLEMODE', text="")
-
-            col = layout.column()
-            col.active = tex_slot.map_mode in {'FIXED', 'TILED'}
-            col.prop(tex_slot, "angle", text="")
-
-            split = layout.split()
-            split.prop(tex_slot, "offset")
-            split.prop(tex_slot, "scale")
-
+            # use_texture_overlay and texture_overlay_alpha
             col = layout.column(align=True)
-            col.label(text="Sample Bias:")
-            col.prop(brush, "texture_sample_bias", slider=True, text="")
-
-            col = layout.column(align=True)
-            col.active = tex_slot.map_mode in {'FIXED', 'TILED'}
+            col.active = brush.sculpt_capabilities.has_overlay
             col.label(text="Overlay:")
 
             row = col.row()
@@ -763,7 +737,6 @@ class VIEW3D_PT_tools_brush_texture(Panel, View3DPaintPanel):
             else:
                 row.prop(brush, "use_texture_overlay", toggle=True, text="", icon='RESTRICT_VIEW_ON')
             sub = row.row()
-            sub.active = tex_slot.map_mode in {'FIXED', 'TILED'} and brush.use_texture_overlay
             sub.prop(brush, "texture_overlay_alpha", text="Alpha")
 
 
@@ -904,6 +877,8 @@ class VIEW3D_PT_sculpt_options(Panel, View3DPaintPanel):
         layout.prop(sculpt, "show_brush")
         layout.prop(sculpt, "use_deform_only")
 
+        layout.prop(sculpt, "input_samples")
+
         self.unified_paint_settings(layout, context)
 
 
@@ -1005,6 +980,7 @@ class VIEW3D_PT_tools_weightpaint_options(Panel, View3DPaintPanel):
 
         col = layout.column()
 
+        col.prop(wpaint, "use_all_faces")
         col.prop(wpaint, "use_normal")
         col.prop(wpaint, "use_spray")
         col.prop(wpaint, "use_group_restrict")
@@ -1014,6 +990,8 @@ class VIEW3D_PT_tools_weightpaint_options(Panel, View3DPaintPanel):
             mesh = obj.data
             col.prop(mesh, "use_mirror_x")
             col.prop(mesh, "use_mirror_topology")
+
+        col.prop(wpaint, "input_samples")
 
         self.unified_paint_settings(col, context)
 
@@ -1044,6 +1022,8 @@ class VIEW3D_PT_tools_vertexpaint(Panel, View3DPaintPanel):
         col.prop(vpaint, "use_all_faces")
         col.prop(vpaint, "use_normal")
         col.prop(vpaint, "use_spray")
+
+        col.prop(vpaint, "input_samples")
 
         self.unified_paint_settings(col, context)
 
@@ -1145,6 +1125,7 @@ class VIEW3D_MT_tools_projectpaint_clone(Menu):
 
     def draw(self, context):
         layout = self.layout
+
         for i, tex in enumerate(context.active_object.data.uv_textures):
             props = layout.operator("wm.context_set_int", text=tex.name)
             props.data_path = "active_object.data.uv_texture_clone_index"
@@ -1163,7 +1144,7 @@ class VIEW3D_MT_tools_projectpaint_stencil(Menu):
 
 
 class VIEW3D_PT_tools_particlemode(View3DPanel, Panel):
-    '''default tools for particle mode'''
+    """default tools for particle mode"""
     bl_context = "particlemode"
     bl_label = "Options"
 

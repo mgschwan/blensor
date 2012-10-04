@@ -48,14 +48,14 @@ def replace_help(namespace):
 
 
 def get_console(console_id):
-    '''
+    """
     helper function for console operators
     currently each text data block gets its own
     console - code.InteractiveConsole()
     ...which is stored in this function.
 
     console_id can be any hashable type
-    '''
+    """
     from code import InteractiveConsole
 
     consoles = getattr(get_console, "consoles", None)
@@ -96,7 +96,10 @@ def get_console(console_id):
 
         namespace["__builtins__"] = sys.modules["builtins"]
         namespace["bpy"] = bpy
+
+        # weak! - but highly convenient
         namespace["C"] = bpy.context
+        namespace["D"] = bpy.data
 
         replace_help(namespace)
 
@@ -287,6 +290,40 @@ def autocomplete(context):
     return {'FINISHED'}
 
 
+def copy_as_script(context):
+    sc = context.space_data
+    lines = [
+        "import bpy",
+        "import bpy.context as C",
+        "import bpy.data as D",
+        "from mathutils import *",
+        "from math import *",
+        "",
+    ]
+
+    for line in sc.scrollback:
+        text = line.body
+        type = line.type
+
+        if type == 'INFO':  # ignore autocomp.
+            continue
+        if type == 'INPUT':
+            if text.startswith(PROMPT):
+                text = text[len(PROMPT):]
+            elif text.startswith(PROMPT_MULTI):
+                text = text[len(PROMPT_MULTI):]
+        elif type == 'OUTPUT':
+            text = "#~ " + text
+        elif type == 'ERROR':
+            text = "#! " + text
+
+        lines.append(text)
+
+    context.window_manager.clipboard = "\n".join(lines)
+
+    return {'FINISHED'}
+
+
 def banner(context):
     sc = context.space_data
     version_string = sys.version.strip().replace('\n', ' ')
@@ -305,6 +342,8 @@ def banner(context):
                    'OUTPUT')
     add_scrollback("Convenience Imports: from mathutils import *; "
                    "from math import *", 'OUTPUT')
+    add_scrollback("Convenience Variables: C = bpy.context, D = bpy.data",
+                   'OUTPUT')
     add_scrollback("", 'OUTPUT')
     sc.prompt = PROMPT
 

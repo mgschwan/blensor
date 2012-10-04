@@ -16,7 +16,7 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
-# <pep8-80 compliant>
+# <pep8 compliant>
 
 import bpy
 from bpy.types import Menu, Operator
@@ -24,10 +24,10 @@ from bpy.props import StringProperty, BoolProperty
 
 
 class AddPresetBase():
-    '''Base preset class, only for subclassing
+    """Base preset class, only for subclassing
     subclasses must define
      - preset_values
-     - preset_subdir '''
+     - preset_subdir """
     # bl_idname = "script.preset_base_add"
     # bl_label = "Add a Python Preset"
     bl_options = {'REGISTER'}  # only because invoke_props_popup requires.
@@ -93,6 +93,29 @@ class AddPresetBase():
                                            filepath,
                                            preset_menu_class.preset_xml_map)
                 else:
+
+                    def rna_recursive_attr_expand(value, rna_path_step, level):
+                        if isinstance(value, bpy.types.PropertyGroup):
+                            for sub_value_attr in value.bl_rna.properties.keys():
+                                if sub_value_attr == "rna_type":
+                                    continue
+                                sub_value = getattr(value, sub_value_attr)
+                                rna_recursive_attr_expand(sub_value, "%s.%s" % (rna_path_step, sub_value_attr), level)
+                        elif type(value).__name__ == "bpy_prop_collection_idprop":  # could use nicer method
+                            file_preset.write("%s.clear()\n" % rna_path_step)
+                            for sub_value in value:
+                                file_preset.write("item_sub_%d = %s.add()\n" % (level, rna_path_step))
+                                rna_recursive_attr_expand(sub_value, "item_sub_%d" % level, level + 1)
+                        else:
+                            # convert thin wrapped sequences
+                            # to simple lists to repr()
+                            try:
+                                value = value[:]
+                            except:
+                                pass
+
+                            file_preset.write("%s = %r\n" % (rna_path_step, value))
+
                     file_preset = open(filepath, 'w')
                     file_preset.write("import bpy\n")
 
@@ -104,14 +127,7 @@ class AddPresetBase():
 
                     for rna_path in self.preset_values:
                         value = eval(rna_path)
-                        # convert thin wrapped sequences
-                        # to simple lists to repr()
-                        try:
-                            value = value[:]
-                        except:
-                            pass
-
-                        file_preset.write("%s = %r\n" % (rna_path, value))
+                        rna_recursive_attr_expand(value, rna_path, 1)
 
                     file_preset.close()
 
@@ -163,7 +179,7 @@ class AddPresetBase():
 
 
 class ExecutePreset(Operator):
-    '''Execute a preset'''
+    """Execute a preset"""
     bl_idname = "script.execute_preset"
     bl_label = "Execute a Python Preset"
 
@@ -201,7 +217,7 @@ class ExecutePreset(Operator):
 
 
 class AddPresetRender(AddPresetBase, Operator):
-    '''Add a Render Preset'''
+    """Add a Render Preset"""
     bl_idname = "render.preset_add"
     bl_label = "Add Render Preset"
     preset_menu = "RENDER_MT_presets"
@@ -227,7 +243,7 @@ class AddPresetRender(AddPresetBase, Operator):
 
 
 class AddPresetCamera(AddPresetBase, Operator):
-    '''Add a Camera Preset'''
+    """Add a Camera Preset"""
     bl_idname = "camera.preset_add"
     bl_label = "Add Camera Preset"
     preset_menu = "CAMERA_MT_presets"
@@ -246,7 +262,7 @@ class AddPresetCamera(AddPresetBase, Operator):
 
 
 class AddPresetSSS(AddPresetBase, Operator):
-    '''Add a Subsurface Scattering Preset'''
+    """Add a Subsurface Scattering Preset"""
     bl_idname = "material.sss_preset_add"
     bl_label = "Add SSS Preset"
     preset_menu = "MATERIAL_MT_sss_presets"
@@ -274,7 +290,7 @@ class AddPresetSSS(AddPresetBase, Operator):
 
 
 class AddPresetCloth(AddPresetBase, Operator):
-    '''Add a Cloth Preset'''
+    """Add a Cloth Preset"""
     bl_idname = "cloth.preset_add"
     bl_label = "Add Cloth Preset"
     preset_menu = "CLOTH_MT_presets"
@@ -296,7 +312,7 @@ class AddPresetCloth(AddPresetBase, Operator):
 
 
 class AddPresetFluid(AddPresetBase, Operator):
-    '''Add a Fluid Preset'''
+    """Add a Fluid Preset"""
     bl_idname = "fluid.preset_add"
     bl_label = "Add Fluid Preset"
     preset_menu = "FLUID_MT_presets"
@@ -314,7 +330,7 @@ class AddPresetFluid(AddPresetBase, Operator):
 
 
 class AddPresetSunSky(AddPresetBase, Operator):
-    '''Add a Sky & Atmosphere Preset'''
+    """Add a Sky & Atmosphere Preset"""
     bl_idname = "lamp.sunsky_preset_add"
     bl_label = "Add Sunsky Preset"
     preset_menu = "LAMP_MT_sunsky_presets"
@@ -343,7 +359,7 @@ class AddPresetSunSky(AddPresetBase, Operator):
 
 
 class AddPresetInteraction(AddPresetBase, Operator):
-    '''Add an Application Interaction Preset'''
+    """Add an Application Interaction Preset"""
     bl_idname = "wm.interaction_preset_add"
     bl_label = "Add Interaction Preset"
     preset_menu = "USERPREF_MT_interaction_presets"
@@ -369,7 +385,7 @@ class AddPresetInteraction(AddPresetBase, Operator):
 
 
 class AddPresetTrackingCamera(AddPresetBase, Operator):
-    '''Add a Tracking Camera Intrinsics  Preset'''
+    """Add a Tracking Camera Intrinsics  Preset"""
     bl_idname = "clip.camera_preset_add"
     bl_label = "Add Camera Preset"
     preset_menu = "CLIP_MT_camera_presets"
@@ -392,7 +408,7 @@ class AddPresetTrackingCamera(AddPresetBase, Operator):
 
 
 class AddPresetTrackingTrackColor(AddPresetBase, Operator):
-    '''Add a Clip Track Color Preset'''
+    """Add a Clip Track Color Preset"""
     bl_idname = "clip.track_color_preset_add"
     bl_label = "Add Track Color Preset"
     preset_menu = "CLIP_MT_track_color_presets"
@@ -410,7 +426,7 @@ class AddPresetTrackingTrackColor(AddPresetBase, Operator):
 
 
 class AddPresetTrackingSettings(AddPresetBase, Operator):
-    '''Add a motion tracking settings preset'''
+    """Add a motion tracking settings preset"""
     bl_idname = "clip.tracking_settings_preset_add"
     bl_label = "Add Tracking Settings Preset"
     preset_menu = "CLIP_MT_tracking_settings_presets"
@@ -420,24 +436,44 @@ class AddPresetTrackingSettings(AddPresetBase, Operator):
     ]
 
     preset_values = [
-        "settings.default_tracker",
-        "settings.default_pyramid_levels",
-        "settings.default_correlation_min",
-        "settings.default_pattern_size",
-        "settings.default_search_size",
-        "settings.default_frames_limit",
-        "settings.default_pattern_match",
-        "settings.default_margin",
-        "settings.use_default_red_channel",
-        "settings.use_default_green_channel",
-        "settings.use_default_blue_channel"
+        "default_correlation_min",
+        "default_pattern_size",
+        "default_search_size",
+        "default_frames_limit",
+        "default_pattern_match",
+        "default_margin",
+        "default_motion_model",
+        "use_default_brute",
+        "use_default_normalization",
+        "use_default_mask",
+        "use_default_red_channel",
+        "use_default_green_channel",
+        "use_default_blue_channel"
     ]
 
     preset_subdir = "tracking_settings"
 
 
+class AddPresetNodeColor(AddPresetBase, Operator):
+    """Add a Node Color Preset"""
+    bl_idname = "node.node_color_preset_add"
+    bl_label = "Add Node Color Preset"
+    preset_menu = "NODE_MT_node_color_presets"
+
+    preset_defines = [
+        "node = bpy.context.active_node"
+    ]
+
+    preset_values = [
+        "node.color",
+        "node.use_custom_color"
+    ]
+
+    preset_subdir = "node_color"
+
+
 class AddPresetInterfaceTheme(AddPresetBase, Operator):
-    '''Add a theme preset'''
+    """Add a theme preset"""
     bl_idname = "wm.interface_theme_preset_add"
     bl_label = "Add Tracking Settings Preset"
     preset_menu = "USERPREF_MT_interface_theme_presets"
@@ -445,7 +481,7 @@ class AddPresetInterfaceTheme(AddPresetBase, Operator):
 
 
 class AddPresetKeyconfig(AddPresetBase, Operator):
-    '''Add a Key-config Preset'''
+    """Add a Key-config Preset"""
     bl_idname = "wm.keyconfig_preset_add"
     bl_label = "Add Keyconfig Preset"
     preset_menu = "USERPREF_MT_keyconfigs"
@@ -468,7 +504,7 @@ class AddPresetKeyconfig(AddPresetBase, Operator):
 
 
 class AddPresetOperator(AddPresetBase, Operator):
-    '''Add an Application Interaction Preset'''
+    """Add an Application Interaction Preset"""
     bl_idname = "wm.operator_preset_add"
     bl_label = "Operator Preset"
     preset_menu = "WM_MT_operator_presets"

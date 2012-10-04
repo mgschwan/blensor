@@ -27,7 +27,7 @@
 #include "util_vector.h"
 
 /* Hacks to hook into Blender API
-   todo: clean this up ... */
+ * todo: clean this up ... */
 
 extern "C" {
 
@@ -37,12 +37,12 @@ struct RenderResult;
 ID *rna_Object_to_mesh(void *_self, void *reports, void *scene, int apply_modifiers, int settings);
 void rna_Main_meshes_remove(void *bmain, void *reports, void *mesh);
 void rna_Object_create_duplilist(void *ob, void *reports, void *sce);
-void rna_Object_free_duplilist(void *ob, void *reports);
+void rna_Object_free_duplilist(void *ob);
 void rna_RenderLayer_rect_set(PointerRNA *ptr, const float *values);
 void rna_RenderPass_rect_set(PointerRNA *ptr, const float *values);
-struct RenderResult *RE_engine_begin_result(struct RenderEngine *engine, int x, int y, int w, int h);
+struct RenderResult *RE_engine_begin_result(struct RenderEngine *engine, int x, int y, int w, int h, const char *layername);
 void RE_engine_update_result(struct RenderEngine *engine, struct RenderResult *result);
-void RE_engine_end_result(struct RenderEngine *engine, struct RenderResult *result);
+void RE_engine_end_result(struct RenderEngine *engine, struct RenderResult *result, int cancel);
 int RE_engine_test_break(struct RenderEngine *engine);
 void RE_engine_update_stats(struct RenderEngine *engine, const char *stats, const char *info);
 void RE_engine_update_progress(struct RenderEngine *engine, float progress);
@@ -53,7 +53,8 @@ int rna_Object_is_deform_modified(void *ob, void *scene, int settings);
 void BLI_timestr(double _time, char *str);
 void rna_ColorRamp_eval(void *coba, float position, float color[4]);
 void rna_Scene_frame_set(void *scene, int frame, float subframe);
-
+void BKE_image_user_frame_calc(void *iuser, int cfra, int fieldnr);
+void BKE_image_user_file_path(void *iuser, void *ima, char *path);
 }
 
 CCL_NAMESPACE_BEGIN
@@ -88,7 +89,7 @@ static inline void object_create_duplilist(BL::Object self, BL::Scene scene)
 
 static inline void object_free_duplilist(BL::Object self)
 {
-	rna_Object_free_duplilist(self.ptr.data, NULL);
+	rna_Object_free_duplilist(self.ptr.data);
 }
 
 static inline bool BKE_object_is_modified(BL::Object self, BL::Scene scene, bool preview)
@@ -99,6 +100,14 @@ static inline bool BKE_object_is_modified(BL::Object self, BL::Scene scene, bool
 static inline bool BKE_object_is_deform_modified(BL::Object self, BL::Scene scene, bool preview)
 {
 	return rna_Object_is_deform_modified(self.ptr.data, scene.ptr.data, (preview)? (1<<0): (1<<1))? true: false;
+}
+
+static inline string image_user_file_path(BL::ImageUser iuser, BL::Image ima, int cfra)
+{
+	char filepath[1024];
+	BKE_image_user_frame_calc(iuser.ptr.data, cfra, 0);
+	BKE_image_user_file_path(iuser.ptr.data, ima.ptr.data, filepath);
+	return string(filepath);
 }
 
 static inline void scene_frame_set(BL::Scene scene, int frame)
@@ -113,7 +122,7 @@ static inline Transform get_transform(BL::Array<float, 16> array)
 	Transform tfm;
 
 	/* we assume both types to be just 16 floats, and transpose because blender
-	   use column major matrix order while we use row major */
+	 * use column major matrix order while we use row major */
 	memcpy(&tfm, &array, sizeof(float)*16);
 	tfm = transform_transpose(tfm);
 
@@ -140,6 +149,11 @@ static inline float3 get_float3(BL::Array<float, 4> array)
 	return make_float3(array[0], array[1], array[2]);
 }
 
+static inline float4 get_float4(BL::Array<float, 4> array)
+{
+	return make_float4(array[0], array[1], array[2], array[3]);
+}
+
 static inline int4 get_int4(BL::Array<int, 4> array)
 {
 	return make_int4(array[0], array[1], array[2], array[3]);
@@ -156,12 +170,43 @@ static inline uint get_layer(BL::Array<int, 20> array)
 	return layer;
 }
 
-/*static inline float3 get_float3(PointerRNA& ptr, const char *name)
+static inline uint get_layer(BL::Array<int, 20> array, BL::Array<int, 8> local_array, bool use_local, bool is_light = false)
+{
+	uint layer = 0;
+
+	for(uint i = 0; i < 20; i++)
+		if(array[i])
+			layer |= (1 << i);
+
+	if(is_light) {
+		/* consider lamps on all local view layers */
+		for(uint i = 0; i < 8; i++)
+			layer |= (1 << (20+i));
+	}
+	else {
+		for(uint i = 0; i < 8; i++)
+			if(local_array[i])
+				layer |= (1 << (20+i));
+	}
+
+	/* we don't have spare bits for localview (normally 20-28) because
+	 * PATH_RAY_LAYER_SHIFT uses 20-32. So - check if we have localview and if
+	 * so, shift local view bits down to 1-8, since this is done for the view
+	 * port only - it should be OK and not conflict with render layers. */
+	if(use_local)
+		layer >>= 20;
+
+	return layer;
+}
+
+#if 0
+static inline float3 get_float3(PointerRNA& ptr, const char *name)
 {
 	float3 f;
 	RNA_float_get_array(&ptr, name, &f.x);
 	return f;
-}*/
+}
+#endif
 
 static inline bool get_boolean(PointerRNA& ptr, const char *name)
 {
@@ -353,6 +398,17 @@ struct ObjectKey {
 
 	bool operator<(const ObjectKey& k) const
 	{ return (parent < k.parent || (parent == k.parent && (index < k.index || (index == k.index && ob < k.ob)))); }
+};
+
+struct ParticleSystemKey {
+	void *ob;
+	void *psys;
+
+	ParticleSystemKey(void *ob_, void *psys_)
+	: ob(ob_), psys(psys_) {}
+
+	bool operator<(const ParticleSystemKey& k) const
+	{ return (ob < k.ob && psys < k.psys); }
 };
 
 CCL_NAMESPACE_END

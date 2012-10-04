@@ -26,7 +26,9 @@
 
 #ifndef __KERNEL_OPENCL__
 
-#define _USE_MATH_DEFINES
+#ifdef _MSC_VER
+#  define _USE_MATH_DEFINES
+#endif
 
 #include <float.h>
 #include <math.h>
@@ -162,6 +164,12 @@ __device_inline float nonzerof(float f, float eps)
 		return f;
 }
 
+__device_inline float smoothstepf(float f)
+{
+	float ff = f*f;
+	return (3.0f*ff - 2.0f*ff*f);
+}
+
 /* Float2 Vector */
 
 #ifndef __KERNEL_OPENCL__
@@ -271,6 +279,11 @@ __device_inline float cross(const float2 a, const float2 b)
 
 #ifndef __KERNEL_OPENCL__
 
+__device_inline bool operator==(const int2 a, const int2 b)
+{
+	return (a.x == b.x && a.y == b.y);
+}
+
 __device_inline float len(const float2 a)
 {
 	return sqrtf(dot(a, a));
@@ -328,7 +341,7 @@ __device_inline float2 as_float2(const float4 a)
 
 __device_inline void print_float2(const char *label, const float2& a)
 {
-	printf("%s: %.8f %.8f\n", label, a.x, a.y);
+	printf("%s: %.8f %.8f\n", label, (double)a.x, (double)a.y);
 }
 
 #endif
@@ -526,7 +539,7 @@ __device_inline float4 float3_to_float4(const float3 a)
 
 __device_inline void print_float3(const char *label, const float3& a)
 {
-	printf("%s: %.8f %.8f %.8f\n", label, a.x, a.y, a.z);
+	printf("%s: %.8f %.8f %.8f\n", label, (double)a.x, (double)a.y, (double)a.z);
 }
 
 __device_inline float3 rcp(const float3& a)
@@ -838,7 +851,7 @@ __device_inline float4 reduce_add(const float4& a)
 
 __device_inline void print_float4(const char *label, const float4& a)
 {
-	printf("%s: %.8f %.8f %.8f %.8f\n", label, a.x, a.y, a.z, a.w);
+	printf("%s: %.8f %.8f %.8f %.8f\n", label, (double)a.x, (double)a.y, (double)a.z, (double)a.w);
 }
 
 #endif
@@ -964,6 +977,20 @@ __device_inline void print_int4(const char *label, const int4& a)
 /* Int/Float conversion */
 
 #ifndef __KERNEL_OPENCL__
+
+__device_inline unsigned int as_int(uint i)
+{
+	union { unsigned int ui; int i; } u;
+	u.ui = i;
+	return u.i;
+}
+
+__device_inline unsigned int as_uint(int i)
+{
+	union { unsigned int ui; int i; } u;
+	u.i = i;
+	return u.ui;
+}
 
 __device_inline unsigned int as_uint(float f)
 {

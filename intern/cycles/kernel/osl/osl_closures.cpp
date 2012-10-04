@@ -48,7 +48,7 @@ static void generic_closure_setup(OSL::RendererServices *, int id, void *data)
 	prim->setup();
 }
 
-static bool generic_closure_mergeable(int id, const void *dataA, const void *dataB)
+static bool generic_closure_compare(int id, const void *dataA, const void *dataB)
 {
 	assert(dataA && dataB);
 
@@ -59,11 +59,7 @@ static bool generic_closure_mergeable(int id, const void *dataA, const void *dat
 
 static void register_closure(OSL::ShadingSystem *ss, const char *name, int id, OSL::ClosureParam *params, OSL::PrepareClosureFunc prepare)
 {
-	int j;
-	for(j = 0; params[j].type != TypeDesc(); ++j) {}
-	int size = params[j].offset;
-
-	ss->register_closure(name, id, params, size, prepare, generic_closure_setup, generic_closure_mergeable);
+	ss->register_closure(name, id, params, prepare, generic_closure_setup, generic_closure_compare);
 }
 
 void OSLShader::register_closures(OSL::ShadingSystem *ss)
@@ -79,6 +75,8 @@ void OSLShader::register_closures(OSL::ShadingSystem *ss)
 	register_closure(ss, "microfacet_beckmann", OSL_CLOSURE_BSDF_MICROFACET_BECKMANN_ID, bsdf_microfacet_beckmann_params, bsdf_microfacet_beckmann_prepare);
 	register_closure(ss, "microfacet_beckmann_refraction", OSL_CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID, bsdf_microfacet_beckmann_refraction_params, bsdf_microfacet_beckmann_refraction_prepare);
 	register_closure(ss, "ward", OSL_CLOSURE_BSDF_WARD_ID, bsdf_ward_params, bsdf_ward_prepare);
+	register_closure(ss, "phong", OSL_CLOSURE_BSDF_PHONG_ID, bsdf_phong_params, bsdf_phong_prepare);
+	register_closure(ss, "phong_ramp", OSL_CLOSURE_BSDF_PHONG_RAMP_ID, bsdf_phong_ramp_params, bsdf_phong_ramp_prepare);
 	register_closure(ss, "ashikhmin_velvet", OSL_CLOSURE_BSDF_ASHIKHMIN_VELVET_ID, bsdf_ashikhmin_velvet_params, bsdf_ashikhmin_velvet_prepare);
 	register_closure(ss, "westin_backscatter", OSL_CLOSURE_BSDF_WESTIN_BACKSCATTER_ID, bsdf_westin_backscatter_params, bsdf_westin_backscatter_prepare);
 	register_closure(ss, "westin_sheen", OSL_CLOSURE_BSDF_WESTIN_SHEEN_ID, bsdf_westin_sheen_params, bsdf_westin_sheen_prepare);

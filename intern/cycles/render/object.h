@@ -41,12 +41,15 @@ public:
 	Transform tfm;
 	BoundBox bounds;
 	ustring name;
+	uint random_id;
 	int pass_id;
 	vector<ParamValue> attributes;
 	uint visibility;
 	MotionTransform motion;
 	bool use_motion;
 	bool use_holdout;
+
+	int particle_id;
 
 	Object();
 	~Object();

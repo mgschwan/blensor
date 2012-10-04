@@ -74,33 +74,14 @@ bool Attribute::same_storage(TypeDesc a, TypeDesc b)
 	
 	if(a == TypeDesc::TypeColor || a == TypeDesc::TypePoint ||
 	   a == TypeDesc::TypeVector || a == TypeDesc::TypeNormal)
+	{
 		if(b == TypeDesc::TypeColor || b == TypeDesc::TypePoint ||
 		   b == TypeDesc::TypeVector || b == TypeDesc::TypeNormal)
+		{
 			return true;
-	
+		}
+	}
 	return false;
-}
-
-ustring Attribute::standard_name(AttributeStandard std)
-{
-	if(std == ATTR_STD_VERTEX_NORMAL)
-		return ustring("N");
-	else if(std == ATTR_STD_FACE_NORMAL)
-		return ustring("Ng");
-	else if(std == ATTR_STD_UV)
-		return ustring("uv");
-	else if(std == ATTR_STD_GENERATED)
-		return ustring("generated");
-	else if(std == ATTR_STD_POSITION_UNDEFORMED)
-		return ustring("undeformed");
-	else if(std == ATTR_STD_POSITION_UNDISPLACED)
-		return ustring("undisplaced");
-	else if(std == ATTR_STD_MOTION_PRE)
-		return ustring("motion_pre");
-	else if(std == ATTR_STD_MOTION_POST)
-		return ustring("motion_post");
-
-	return ustring();
 }
 
 /* Attribute Set */
@@ -173,7 +154,7 @@ Attribute *AttributeSet::add(AttributeStandard std, ustring name)
 	Attribute *attr = NULL;
 
 	if(name == ustring())
-		name = Attribute::standard_name(std);
+		name = attribute_standard_name(std);
 
 	if(std == ATTR_STD_VERTEX_NORMAL)
 		attr = add(name, TypeDesc::TypeNormal, Attribute::VERTEX);
@@ -286,10 +267,13 @@ bool AttributeRequestSet::modified(const AttributeRequestSet& other)
 		for(size_t j = 0; j < requests.size() && !found; j++)
 			if(requests[i].name == other.requests[j].name &&
 			   requests[i].std == other.requests[j].std)
+			{
 				found = true;
+			}
 
-		if(!found)
+		if(!found) {
 			return true;
+		}
 	}
 
 	return false;

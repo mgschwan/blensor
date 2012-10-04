@@ -11,10 +11,11 @@ SConscript(['audaspace/SConscript',
             'decimation/SConscript',
             'iksolver/SConscript',
             'itasc/SConscript',
-            'boolop/SConscript',
+            'opencolorio/SConscript',
             'opennl/SConscript',
             'mikktspace/SConscript',
-            'smoke/SConscript'])
+            'smoke/SConscript',
+            'raskter/SConscript'])
 
 if env ['WITH_BF_REMESH']:
     SConscript(['dualcon/SConscript'])
@@ -25,7 +26,9 @@ if env['WITH_BF_FLUID']:
 if env['WITH_BF_CYCLES']:
     SConscript(['cycles/SConscript'])
 
-SConscript(['bsp/SConscript'])
+if env['WITH_BF_BOOLEAN']:
+    SConscript(['bsp/SConscript'])
 
 if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'win64-mingw', 'linuxcross', 'win64-vc'):
     SConscript(['utfconv/SConscript'])
+

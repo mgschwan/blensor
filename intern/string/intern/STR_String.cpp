@@ -27,22 +27,17 @@
 
 /** \file string/intern/STR_String.cpp
  *  \ingroup string
- */
-
-
-/**
-
+ *
  * Copyright (C) 2001 NaN Technologies B.V.
  * This file was formerly known as: GEN_StdString.cpp.
- * @date	April, 25, 2001
  */
 
 #include <stdio.h>
 #include <stdarg.h>
-#include <stdlib.h> 
+#include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
-#if defined(__sun__) || defined( __sun ) || defined (__sparc) || defined (__sparc__) || defined (_AIX)
+#if defined(__sun__) || defined(__sun) || defined(__sparc) || defined(__sparc__) || defined(_AIX)
 #  include <strings.h>
 #endif
 #include "STR_String.h"
@@ -51,17 +46,18 @@
 	Construction / destruction
 -------------------------------------------------------------------------------------------------*/
 
-
+#define STR_STRING_SIZE_DEFAULT_WORD 32  /* default size for a new word */
+#define STR_STRING_SIZE_DEFAULT_CHAR 9   /* default size for a new char */
 
 //
 // Construct an empty string
 //
 STR_String::STR_String() :
-	pData(new char [32]), 
-	Len(0),
-	Max(32)
+	m_data(new char[STR_STRING_SIZE_DEFAULT_WORD]),
+	m_len(0),
+	m_max(STR_STRING_SIZE_DEFAULT_WORD)
 {
-	pData[0] = 0;
+	this->m_data[0] = 0;
 }
 
 
@@ -70,12 +66,12 @@ STR_String::STR_String() :
 // Construct a string of one character
 //
 STR_String::STR_String(char c) :
-	pData(new char [9]),
-	Len(1),
-	Max(9)
+	m_data(new char[STR_STRING_SIZE_DEFAULT_CHAR]),
+	m_len(1),
+	m_max(STR_STRING_SIZE_DEFAULT_CHAR)
 {
-	pData[0] = c;
-	pData[1] = 0;
+	this->m_data[0] = c;
+	this->m_data[1] = 0;
 }
 
 
@@ -84,13 +80,13 @@ STR_String::STR_String(char c) :
 // Construct a string of multiple repeating characters
 //
 STR_String::STR_String(char c, int len) :
-	pData(new char [len+8]),
-	Len(len),
-	Max(len+8)
+	m_data(new char[len + 8]),
+	m_len(len),
+	m_max(len + 8)
 {
-	assertd(pData != NULL);
-	memset(pData, c, len);
-	pData[len] = 0;
+	assertd(this->m_data != NULL);
+	memset(this->m_data, c, len);
+	this->m_data[len] = 0;
 }
 
 
@@ -102,17 +98,17 @@ STR_String::STR_String(char c, int len) :
 STR_String::STR_String(const char *str)
 {
 	if (str) {
-		Len = ::strlen(str);
-		Max = Len + 8;
-		pData = new char [Max];
-		assertd(pData != NULL);
-		::memcpy(pData, str, Len);
-		pData[Len] = 0;
+		this->m_len = ::strlen(str);
+		this->m_max = this->m_len + 8;
+		this->m_data = new char[this->m_max];
+		assertd(this->m_data != NULL);
+		::memcpy(this->m_data, str, this->m_len);
+		this->m_data[this->m_len] = 0;
 	}
 	else {
-		pData = 0;
-		Len = 0;
-		Max = 8;
+		this->m_data = 0;
+		this->m_len = 0;
+		this->m_max = 8;
 	}
 }
 
@@ -122,13 +118,13 @@ STR_String::STR_String(const char *str)
 // Construct a string from a pointer-to-ASCII-string and a length
 //
 STR_String::STR_String(const char *str, int len) :
-	pData(new char [len+8]),
-	Len(len),
-	Max(len+8)
+	m_data(new char[len + 8]),
+	m_len(len),
+	m_max(len + 8)
 {
-	assertd(pData != NULL);
-	memcpy(pData, str, len);
-	pData[len] = 0;
+	assertd(this->m_data != NULL);
+	memcpy(this->m_data, str, len);
+	this->m_data[len] = 0;
 }
 
 
@@ -137,14 +133,14 @@ STR_String::STR_String(const char *str, int len) :
 // Construct a string from another string
 //
 STR_String::STR_String(rcSTR_String str) :
-	pData(new char [str.Length()+8]),
-	Len(str.Length()),
-	Max(str.Length()+8)
+	m_data(new char[str.Length() + 8]),
+	m_len(str.Length()),
+	m_max(str.Length() + 8)
 {
-	assertd(pData != NULL);
-	assertd(str.pData != NULL);
-	memcpy(pData, str.pData, str.Length());
-	pData[str.Length()] = 0;
+	assertd(this->m_data != NULL);
+	assertd(str.this->m_data != NULL);
+	memcpy(this->m_data, str.ReadPtr(), str.Length());
+	this->m_data[str.Length()] = 0;
 }
 
 
@@ -153,14 +149,14 @@ STR_String::STR_String(rcSTR_String str) :
 // Construct a string from the first number of characters in another string
 //
 STR_String::STR_String(rcSTR_String str, int len) :
-	pData(new char [len+8]),
-	Len(len),
-	Max(len+8)
+	m_data(new char[len + 8]),
+	m_len(len),
+	m_max(len + 8)
 {
-	assertd(pData != NULL);
-	assertd(str.pData != NULL);
-	memcpy(pData, str.pData, str.Length());
-	pData[str.Length()] = 0;
+	assertd(this->m_data != NULL);
+	assertd(str.this->m_data != NULL);
+	memcpy(this->m_data, str.ReadPtr(), str.Length());
+	this->m_data[str.Length()] = 0;
 }
 
 
@@ -169,14 +165,14 @@ STR_String::STR_String(rcSTR_String str, int len) :
 // Create a string by concatenating two sources
 //
 STR_String::STR_String(const char *src1, int len1, const char *src2, int len2) :
-	pData(new char [len1+len2+8]),
-	Len(len1+len2),
-	Max(len1+len2+8)
+	m_data(new char[len1 + len2 + 8]),
+	m_len(len1 + len2),
+	m_max(len1 + len2 + 8)
 {
-	assertd(pData != NULL);
-	memcpy(pData, src1, len1);
-	memcpy(pData+len1, src2, len2);
-	pData[len1+len2] = 0;
+	assertd(this->m_data != NULL);
+	memcpy(this->m_data, src1, len1);
+	memcpy(this->m_data + len1, src2, len2);
+	this->m_data[len1 + len2] = 0;
 }
 
 
@@ -185,13 +181,13 @@ STR_String::STR_String(const char *src1, int len1, const char *src2, int len2) :
 // Create a string with an integer value
 //
 STR_String::STR_String(int val) :
-	pData(new char [32]),
-	Max(32)
+	m_data(new char[STR_STRING_SIZE_DEFAULT_WORD]),
+	m_max(STR_STRING_SIZE_DEFAULT_WORD)
 {
-	assertd(pData != NULL);
-	Len=sprintf(pData, "%d", val);
+	assertd(this->m_data != NULL);
+	this->m_len = sprintf(this->m_data, "%d", val);
 }
-	
+
 
 
 
@@ -199,11 +195,11 @@ STR_String::STR_String(int val) :
 // Create a string with a dword value
 //
 STR_String::STR_String(dword val) :
-	pData(new char [32]),
-	Max(32)
+	m_data(new char[STR_STRING_SIZE_DEFAULT_WORD]),
+	m_max(STR_STRING_SIZE_DEFAULT_WORD)
 {
-	assertd(pData != NULL);
-	Len=sprintf(pData, "%lu", val);
+	assertd(this->m_data != NULL);
+	this->m_len = sprintf(this->m_data, "%lu", val);
 }
 
 
@@ -212,11 +208,11 @@ STR_String::STR_String(dword val) :
 // Create a string with a floating point value
 //
 STR_String::STR_String(float val) :
-	pData(new char [32]),
-	Max(32)
+	m_data(new char[STR_STRING_SIZE_DEFAULT_WORD]),
+	m_max(STR_STRING_SIZE_DEFAULT_WORD)
 {
-	assertd(pData != NULL);
-	Len=sprintf(pData, "%g", val);
+	assertd(this->m_data != NULL);
+	this->m_len = sprintf(this->m_data, "%g", val);
 }
 
 
@@ -225,11 +221,11 @@ STR_String::STR_String(float val) :
 // Create a string with a double value
 //
 STR_String::STR_String(double val) :
-	pData(new char [32]),
-	Max(32)
+	m_data(new char[STR_STRING_SIZE_DEFAULT_WORD]),
+	m_max(STR_STRING_SIZE_DEFAULT_WORD)
 {
-	assertd(pData != NULL);
-	Len=sprintf(pData, "%g", val);
+	assertd(this->m_data != NULL);
+	this->m_len = sprintf(this->m_data, "%g", val);
 }
 
 
@@ -246,19 +242,21 @@ STR_String::STR_String(double val) :
 void STR_String::AllocBuffer(int len, bool keep_contents)
 {
 	// Check if we have enough space
-	if (len+1 <= Max) return;
+	if (len + 1 <= this->m_max) return;
 
 	// Reallocate string
-	char *new_data = new char [len+8];
-	if (keep_contents) memcpy(new_data, pData, Len);
-	delete[] pData;
+	char *new_data = new char[len + 8];
+	if (keep_contents) {
+		memcpy(new_data, this->m_data, this->m_len);
+	}
+	delete[] this->m_data;
 
 	// Accept new data
-	Max = len+8;
-	pData = new_data;
-	assertd(pData != NULL);
+	this->m_max = len + 8;
+	this->m_data = new_data;
+	assertd(this->m_data != NULL);
 }
-	
+
 
 
 /*-------------------------------------------------------------------------------------------------
@@ -274,12 +272,12 @@ STR_String& STR_String::Format(const char *fmt, ...)
 {
 	AllocBuffer(2048, false);
 
-	assertd(pData != NULL);
+	assertd(this->m_data != NULL);
 	// Expand arguments and format to string
 	va_list args;
 	va_start(args, fmt);
-	Len = vsprintf(pData, fmt, args);
-	assertd(Len <= 2048);
+	this->m_len = vsprintf(this->m_data, fmt, args);
+	assertd(this->m_len <= 2048);
 	va_end(args);
 
 	return *this;
@@ -294,12 +292,12 @@ STR_String& STR_String::FormatAdd(const char *fmt, ...)
 {
 	AllocBuffer(2048, false);
 
-	assertd(pData != NULL);
+	assertd(this->m_data != NULL);
 	// Expand arguments and format to string
 	va_list args;
 	va_start(args, fmt);
-	Len += vsprintf(pData+Len, fmt, args);
-	assertd(Len <= 2048);
+	this->m_len += vsprintf(this->m_data + this->m_len, fmt, args);
+	assertd(this->m_len <= 2048);
 	va_end(args);
 
 	return *this;
@@ -318,8 +316,8 @@ STR_String& STR_String::FormatAdd(const char *fmt, ...)
 //
 bool STR_String::IsUpper() const
 {
-	for (int i=0; i<Len; i++)
-		if (isLower(pData[i]))
+	for (int i = 0; i < this->m_len; i++)
+		if (isLower(this->m_data[i]))
 			return false;
 
 	return true;
@@ -332,8 +330,8 @@ bool STR_String::IsUpper() const
 //
 bool STR_String::IsLower() const
 {
-	for (int i=0; i<Len; i++)
-		if (isUpper(pData[i]))
+	for (int i = 0; i < this->m_len; i++)
+		if (isUpper(this->m_data[i]))
 			return false;
 
 	return true;
@@ -353,10 +351,10 @@ bool STR_String::IsLower() const
 int STR_String::Find(char c, int pos) const
 {
 	assertd(pos >= 0);
-	assertd(Len==0 || pos<Len);
-	assertd(pData != NULL);
-	char *find_pos = strchr(pData+pos, c);
-	return (find_pos) ? (find_pos-pData) : -1;
+	assertd(this->m_len == 0 || pos < this->m_len);
+	assertd(this->m_data != NULL);
+	char *find_pos = strchr(this->m_data + pos, c);
+	return (find_pos) ? (find_pos - this->m_data) : -1;
 }
 
 
@@ -364,13 +362,13 @@ int STR_String::Find(char c, int pos) const
 //
 // Find the first occurrence of <str> in the string
 //
-int	STR_String::Find(const char *str, int pos) const
+int STR_String::Find(const char *str, int pos) const
 {
 	assertd(pos >= 0);
-	assertd(Len==0 || pos<Len);
-	assertd(pData != NULL);
-	char *find_pos = strstr(pData+pos, str);
-	return (find_pos) ? (find_pos-pData) : -1;
+	assertd(this->m_len == 0 || pos < this->m_len);
+	assertd(this->m_data != NULL);
+	char *find_pos = strstr(this->m_data + pos, str);
+	return (find_pos) ? (find_pos - this->m_data) : -1;
 }
 
 
@@ -378,13 +376,13 @@ int	STR_String::Find(const char *str, int pos) const
 //
 // Find the first occurrence of <str> in the string
 //
-int	STR_String::Find(rcSTR_String str, int pos) const
+int STR_String::Find(rcSTR_String str, int pos) const
 {
 	assertd(pos >= 0);
-	assertd(Len==0 || pos<Len);
-	assertd(pData != NULL);
-	char *find_pos = strstr(pData+pos, str.ReadPtr());
-	return (find_pos) ? (find_pos-pData) : -1;
+	assertd(this->m_len == 0 || pos < this->m_len);
+	assertd(this->m_data != NULL);
+	char *find_pos = strstr(this->m_data + pos, str.ReadPtr());
+	return (find_pos) ? (find_pos - this->m_data) : -1;
 }
 
 
@@ -394,9 +392,9 @@ int	STR_String::Find(rcSTR_String str, int pos) const
 //
 int STR_String::RFind(char c) const
 {
-	assertd(pData != NULL);
-	char *pos = strrchr(pData, c);
-	return (pos) ? (pos-pData) : -1;
+	assertd(this->m_data != NULL);
+	char *pos = strrchr(this->m_data, c);
+	return (pos) ? (pos - this->m_data) : -1;
 }
 
 
@@ -407,10 +405,10 @@ int STR_String::RFind(char c) const
 int STR_String::FindOneOf(const char *set, int pos) const
 {
 	assertd(pos >= 0);
-	assertd(Len==0 || pos<Len);
-	assertd(pData != NULL);
-	char *find_pos = strpbrk(pData+pos, set);
-	return (find_pos) ? (find_pos-pData) : -1;
+	assertd(this->m_len == 0 || pos < this->m_len);
+	assertd(this->m_data != NULL);
+	char *find_pos = strpbrk(this->m_data + pos, set);
+	return (find_pos) ? (find_pos - this->m_data) : -1;
 }
 
 
@@ -425,17 +423,16 @@ void STR_String::Replace(int pos, rcSTR_String str)
 	if (str.Length() < 1)
 	{
 		// Remove one character from the string
-		memcpy(pData+pos, pData+pos+1, Len-pos);
+		memcpy(this->m_data + pos, this->m_data + pos + 1, this->m_len - pos);
 	}
-	else
-	{
+	else {
 		// Insert zero or more characters into the string
-		AllocBuffer(Len + str.Length() - 1, true);
-		if (str.Length() != 1) memcpy(pData+pos+str.Length(), pData+pos+1, Length()-pos);
-		memcpy(pData+pos, str.ReadPtr(), str.Length());
+		AllocBuffer(this->m_len + str.Length() - 1, true);
+		if (str.Length() != 1) memcpy(this->m_data + pos + str.Length(), this->m_data + pos + 1, Length() - pos);
+		memcpy(this->m_data + pos, str.ReadPtr(), str.Length());
 	}
 
-	Len += str.Length()-1;
+	this->m_len += str.Length() - 1;
 }
 
 
@@ -452,18 +449,17 @@ void STR_String::Replace(int pos, int num, rcSTR_String str)
 	if (str.Length() < num)
 	{
 		// Remove some data from the string by replacement
-		memcpy(pData+pos+str.Length(), pData+pos+num, Len-pos-num+1);
-		memcpy(pData+pos, str.ReadPtr(), str.Length());
+		memcpy(this->m_data + pos + str.Length(), this->m_data + pos + num, this->m_len - pos - num + 1);
+		memcpy(this->m_data + pos, str.ReadPtr(), str.Length());
 	}
-	else
-	{
+	else {
 		// Insert zero or more characters into the string
-		AllocBuffer(Len + str.Length() - num, true);
-		if (str.Length() != num) memcpy(pData+pos+str.Length(), pData+pos+num, Length()-pos-num+1);
-		memcpy(pData+pos, str.ReadPtr(), str.Length());
+		AllocBuffer(this->m_len + str.Length() - num, true);
+		if (str.Length() != num) memcpy(this->m_data + pos + str.Length(), this->m_data + pos + num, Length() - pos - num + 1);
+		memcpy(this->m_data + pos, str.ReadPtr(), str.Length());
 	}
 
-	Len += str.Length()-num;
+	this->m_len += str.Length() - num;
 }
 
 
@@ -477,9 +473,9 @@ void STR_String::Replace(int pos, int num, rcSTR_String str)
 //
 // Compare two strings and return the result, <0 if *this<rhs, >0 if *this>rhs or 0 if *this==rhs
 //
-int	STR_String::Compare(rcSTR_String rhs) const
+int STR_String::Compare(rcSTR_String rhs) const
 {
-	return strcmp(pData, rhs.pData);
+	return strcmp(this->ReadPtr(), rhs.ReadPtr());
 }
 
 
@@ -490,9 +486,9 @@ int	STR_String::Compare(rcSTR_String rhs) const
 int STR_String::CompareNoCase(rcSTR_String rhs) const
 {
 #ifdef WIN32
-	return stricmp(pData, rhs.pData);
+	return stricmp(this->ReadPtr(), rhs.ReadPtr());
 #else
-	return strcasecmp(pData, rhs.pData);
+	return strcasecmp(this->ReadPtr(), rhs.ReadPtr());
 #endif
 }
 
@@ -507,14 +503,14 @@ int STR_String::CompareNoCase(rcSTR_String rhs) const
 //
 // Capitalize string, "heLLo" -> "HELLO"
 //
-STR_String&	STR_String::Upper()
+STR_String& STR_String::Upper()
 {
-	assertd(pData != NULL);
+	assertd(this->m_data != NULL);
 #ifdef WIN32
-	_strupr(pData);
+	_strupr(this->m_data);
 #else
-	for (int i=0;i<Len;i++)
-		pData[i] = (pData[i] >= 'a' && pData[i] <= 'z')?pData[i]+'A'-'a':pData[i];
+	for (int i = 0; i < this->m_len; i++)
+		this->m_data[i] = (this->m_data[i] >= 'a' && this->m_data[i] <= 'z') ? this->m_data[i] + 'A' - 'a' : this->m_data[i];
 #endif
 	return *this;
 }
@@ -524,14 +520,14 @@ STR_String&	STR_String::Upper()
 //
 // Lower string, "heLLo" -> "hello"
 //
-STR_String&	STR_String::Lower()
+STR_String& STR_String::Lower()
 {
-	assertd(pData != NULL);
+	assertd(this->m_data != NULL);
 #ifdef WIN32
-	_strlwr(pData);
+	_strlwr(this->m_data);
 #else
-	for (int i=0;i<Len;i++)
-		pData[i] = (pData[i] >= 'A' && pData[i] <= 'Z')?pData[i]+'a'-'A':pData[i];
+	for (int i = 0; i < this->m_len; i++)
+		this->m_data[i] = (this->m_data[i] >= 'A' && this->m_data[i] <= 'Z') ? this->m_data[i] + 'a' - 'A' : this->m_data[i];
 #endif
 	return *this;
 }
@@ -541,17 +537,17 @@ STR_String&	STR_String::Lower()
 //
 // Capitalize string, "heLLo" -> "Hello"
 //
-STR_String&	STR_String::Capitalize()
+STR_String& STR_String::Capitalize()
 {
-	assertd(pData != NULL);
+	assertd(this->m_data != NULL);
 #ifdef WIN32
-	if (Len>0) pData[0] = toupper(pData[0]);
-	if (Len>1) _strlwr(pData+1);
+	if (this->m_len > 0) this->m_data[0] = toupper(this->m_data[0]);
+	if (this->m_len > 1) _strlwr(this->m_data + 1);
 #else
-	if (Len > 0)
-		pData[0] = (pData[0] >= 'A' && pData[0] <= 'A')?pData[0]+'a'-'A':pData[0];
-	for (int i=1;i<Len;i++)
-		pData[i] = (pData[i] >= 'a' && pData[i] <= 'z')?pData[i]+'A'-'a':pData[i];
+	if (this->m_len > 0)
+		this->m_data[0] = (this->m_data[0] >= 'A' && this->m_data[0] <= 'A') ? this->m_data[0] + 'a' - 'A' : this->m_data[0];
+	for (int i = 1; i < this->m_len; i++)
+		this->m_data[i] = (this->m_data[i] >= 'a' && this->m_data[i] <= 'z') ? this->m_data[i] + 'A' - 'a' : this->m_data[i];
 #endif
 	return *this;
 }
@@ -561,13 +557,13 @@ STR_String&	STR_String::Capitalize()
 //
 // Trim whitespace from the left side of the string
 //
-STR_String&	STR_String::TrimLeft()
+STR_String& STR_String::TrimLeft()
 {
 	int skip;
-	assertd(pData != NULL);
-	for (skip=0; isSpace(pData[skip]); skip++, Len--)
-		{};
-	memmove(pData, pData+skip, Len+1);
+	assertd(this->m_data != NULL);
+	for (skip = 0; isSpace(this->m_data[skip]); skip++, this->m_len--)
+	{};
+	memmove(this->m_data, this->m_data + skip, this->m_len + 1);
 	return *this;
 }
 
@@ -576,11 +572,11 @@ STR_String&	STR_String::TrimLeft()
 //
 // Trim whitespaces from the right side of the string
 //
-STR_String&	STR_String::TrimRight()
+STR_String& STR_String::TrimRight()
 {
-	assertd(pData != NULL);
-	while (Len && isSpace(pData[Len-1])) Len--;
-	pData[Len]=0;
+	assertd(this->m_data != NULL);
+	while (this->m_len && isSpace(this->m_data[this->m_len - 1])) this->m_len--;
+	this->m_data[this->m_len] = 0;
 	return *this;
 }
 
@@ -589,7 +585,7 @@ STR_String&	STR_String::TrimRight()
 //
 // Trim spaces from both sides of the character set
 //
-STR_String&	STR_String::Trim()
+STR_String& STR_String::Trim()
 {
 	TrimRight();
 	TrimLeft();
@@ -601,13 +597,13 @@ STR_String&	STR_String::Trim()
 //
 // Trim characters from the character set <set> from the left side of the string
 //
-STR_String&	STR_String::TrimLeft(char *set)
+STR_String& STR_String::TrimLeft(char *set)
 {
 	int skip;
-	assertd(pData != NULL);
-	for (skip=0; Len && strchr(set, pData[skip]); skip++, Len--)
-		{};
-	memmove(pData, pData+skip, Len+1);
+	assertd(this->m_data != NULL);
+	for (skip = 0; this->m_len && strchr(set, this->m_data[skip]); skip++, this->m_len--)
+	{};
+	memmove(this->m_data, this->m_data + skip, this->m_len + 1);
 	return *this;
 }
 
@@ -616,11 +612,11 @@ STR_String&	STR_String::TrimLeft(char *set)
 //
 // Trim characters from the character set <set> from the right side of the string
 //
-STR_String&	STR_String::TrimRight(char *set)
+STR_String& STR_String::TrimRight(char *set)
 {
-	assertd(pData != NULL);
-	while (Len && strchr(set, pData[Len-1])) Len--;
-	pData[Len]=0;
+	assertd(this->m_data != NULL);
+	while (this->m_len && strchr(set, this->m_data[this->m_len - 1])) this->m_len--;
+	this->m_data[this->m_len] = 0;
 	return *this;
 }
 
@@ -629,7 +625,7 @@ STR_String&	STR_String::TrimRight(char *set)
 //
 // Trim characters from the character set <set> from both sides of the character set
 //
-STR_String&	STR_String::Trim(char *set)
+STR_String& STR_String::Trim(char *set)
 {
 	TrimRight(set);
 	TrimLeft(set);
@@ -641,14 +637,14 @@ STR_String&	STR_String::Trim(char *set)
 //
 // Trim quotes from both sides of the string
 //
-STR_String&	STR_String::TrimQuotes()
+STR_String& STR_String::TrimQuotes()
 {
 	// Trim quotes if they are on both sides of the string
-	assertd(pData != NULL);
-	if ((Len >= 2) && (pData[0] == '\"') && (pData[Len-1] == '\"'))
+	assertd(this->m_data != NULL);
+	if ((this->m_len >= 2) && (this->m_data[0] == '\"') && (this->m_data[this->m_len - 1] == '\"'))
 	{
-		memmove(pData, pData+1, Len-2+1);
-		Len-=2;
+		memmove(this->m_data, this->m_data + 1, this->m_len - 2 + 1);
+		this->m_len -= 2;
 	}
 	return *this;
 }
@@ -666,14 +662,14 @@ STR_String&	STR_String::TrimQuotes()
 //
 rcSTR_String STR_String::Copy(const char *src, int len)
 {
-	assertd(len>=0);
+	assertd(len >= 0);
 	assertd(src);
-	assertd(pData != NULL);
+	assertd(this->m_data != NULL);
 
 	AllocBuffer(len, false);
-	Len = len;
-	memcpy(pData, src, len);
-	pData[Len] = 0;
+	this->m_len = len;
+	memcpy(this->m_data, src, len);
+	this->m_data[this->m_len] = 0;
 
 	return *this;
 }
@@ -685,27 +681,26 @@ rcSTR_String STR_String::Copy(const char *src, int len)
 //
 rcSTR_String STR_String::Concat(const char *data, int len)
 {
-	assertd(Len>=0);
-	assertd(len>=0);
+	assertd(this->m_len >= 0);
+	assertd(len >= 0);
 	assertd(data);
-	assertd(pData != NULL);
+	assertd(this->m_data != NULL);
 
-	AllocBuffer(Len+len, true);
-	memcpy(pData+Len, data, len);
-	Len+=len;
-	pData[Len] = 0;
+	AllocBuffer(this->m_len + len, true);
+	memcpy(this->m_data + this->m_len, data, len);
+	this->m_len += len;
+	this->m_data[this->m_len] = 0;
 
 	return *this;
 }
 
 
-std::vector<STR_String>	STR_String::Explode(char c) const
+std::vector<STR_String> STR_String::Explode(char c) const
 {
-	STR_String              lcv = *this;
+	STR_String lcv = *this;
 	std::vector<STR_String> uc;
 
-	while (lcv.Length())
-	{
+	while (lcv.Length()) {
 		int pos = lcv.Find(c);
 		if (pos < 0) {
 			uc.push_back(lcv);
@@ -713,7 +708,7 @@ std::vector<STR_String>	STR_String::Explode(char c) const
 		}
 		else {
 			uc.push_back(lcv.Left(pos));
-			lcv = lcv.Mid(pos+1);
+			lcv = lcv.Mid(pos + 1);
 		}
 	}
 
@@ -723,25 +718,23 @@ std::vector<STR_String>	STR_String::Explode(char c) const
 }
 
 
-/*
+#if 0
 
 int		STR_String::Serialize(pCStream stream)
 {
-	if (stream->GetAccess() == CStream::Access_Read)
-	{
+	if (stream->GetAccess() == CStream::Access_Read) {
 		int ln;
 		stream->Read(&ln, sizeof(ln));
 		AllocBuffer(ln, false);
-		stream->Read(pData, ln); 
-		pData[ln]	= '\0';
-		Len			= ln;
-	} else
-	{
-		stream->Write(&Len, sizeof(Len));
-		stream->Write(pData, Len);
+		stream->Read(this->m_data, ln);
+		this->m_data[ln]	= '\0';
+		this->m_len			= ln;
+	}
+	else {
+		stream->Write(&this->m_len, sizeof(this->m_len));
+		stream->Write(this->m_data, this->m_len);
 	}
 
-	return Len + sizeof(Len);
+	return this->m_len + sizeof(this->m_len);
 }
-*/
-
+#endif

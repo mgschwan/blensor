@@ -86,7 +86,7 @@ class PARTICLE_PT_context_particles(ParticleButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        if context.scene.render.engine == "BLENDER_GAME":
+        if context.scene.render.engine == 'BLENDER_GAME':
             layout.label("Not available in the Game Engine")
             return
 
@@ -841,7 +841,7 @@ class PARTICLE_PT_render(ParticleButtonsPanel, Panel):
                     row = layout.row()
                     row.prop(part, "use_simplify_viewport")
                     sub = row.row()
-                    sub.active = part.viewport == True
+                    sub.active = part.use_simplify_viewport == True
                     sub.prop(part, "simplify_viewport")
 
         elif part.render_type == 'OBJECT':
@@ -849,6 +849,7 @@ class PARTICLE_PT_render(ParticleButtonsPanel, Panel):
             sub = col.row()
             sub.prop(part, "use_global_dupli")
             sub.prop(part, "use_rotation_dupli")
+            sub.prop(part, "use_scale_dupli")
         elif part.render_type == 'GROUP':
             col.prop(part, "dupli_group")
             split = layout.split()
@@ -865,6 +866,7 @@ class PARTICLE_PT_render(ParticleButtonsPanel, Panel):
             sub.active = (part.use_whole_group is False)
             sub.prop(part, "use_global_dupli")
             sub.prop(part, "use_rotation_dupli")
+            sub.prop(part, "use_scale_dupli")
 
             if part.use_group_count and not part.use_whole_group:
                 row = layout.row()
@@ -1008,7 +1010,7 @@ class PARTICLE_PT_draw(ParticleButtonsPanel, Panel):
         sub.active = (part.draw_color in {'VELOCITY', 'ACCELERATION'})
         sub.prop(part, "color_maximum", text="Max")
 
-        if (path):
+        if path:
             col.prop(part, "draw_step")
 
 

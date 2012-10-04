@@ -33,12 +33,17 @@ CCL_NAMESPACE_BEGIN
 #define LIGHT_SIZE			4
 #define FILTER_TABLE_SIZE	256
 #define RAMP_TABLE_SIZE		256
+#define PARTICLE_SIZE 		5
 #define TIME_INVALID		FLT_MAX
 
 /* device capabilities */
 #ifdef __KERNEL_CPU__
 #define __KERNEL_SHADING__
 #define __KERNEL_ADV_SHADING__
+#ifdef WITH_OSL
+#define __OSL__
+#endif
+#define __NON_PROGRESSIVE__
 #endif
 
 #ifdef __KERNEL_CUDA__
@@ -49,8 +54,30 @@ CCL_NAMESPACE_BEGIN
 #endif
 
 #ifdef __KERNEL_OPENCL__
-//#define __KERNEL_SHADING__
-//#define __KERNEL_ADV_SHADING__
+
+#ifdef __KERNEL_OPENCL_NVIDIA__
+#define __KERNEL_SHADING__
+#define __MULTI_CLOSURE__
+#endif
+
+#ifdef __KERNEL_OPENCL_APPLE__
+//#define __SVM__
+//#define __EMISSION__
+//#define __IMAGE_TEXTURES__
+//#define __HOLDOUT__
+//#define __PROCEDURAL_TEXTURES__
+//#define __EXTRA_NODES__
+#endif
+
+#ifdef __KERNEL_OPENCL_AMD__
+#define __SVM__
+#define __EMISSION__
+#define __IMAGE_TEXTURES__
+#define __HOLDOUT__
+#define __PROCEDURAL_TEXTURES__
+#define __EXTRA_NODES__
+#endif
+
 #endif
 
 /* kernel features */
@@ -69,7 +96,9 @@ CCL_NAMESPACE_BEGIN
 #ifdef __KERNEL_SHADING__
 #define __SVM__
 #define __EMISSION__
-#define __TEXTURES__
+#define __PROCEDURAL_TEXTURES__
+#define __IMAGE_TEXTURES__
+#define __EXTRA_NODES__
 #define __HOLDOUT__
 #endif
 
@@ -82,10 +111,7 @@ CCL_NAMESPACE_BEGIN
 //#define __MOTION__
 #endif
 
-//#define __MULTI_LIGHT__
-//#define __OSL__
 //#define __SOBOL_FULL_SCREEN__
-//#define __MODIFY_TP__
 //#define __QBVH__
 
 /* Shader Evaluation */
@@ -146,6 +172,8 @@ enum PathRayFlag {
 
 	PATH_RAY_ALL = (1|2|4|8|16|32|64|128|256|512),
 
+	/* this gives collisions with localview bits
+	 * see: CYCLES_LOCAL_LAYER_HACK(), grr - Campbell */
 	PATH_RAY_LAYER_SHIFT = (32-20)
 };
 
@@ -260,7 +288,8 @@ typedef enum LightType {
 	LIGHT_DISTANT,
 	LIGHT_BACKGROUND,
 	LIGHT_AREA,
-	LIGHT_AO
+	LIGHT_AO,
+	LIGHT_SPOT
 } LightType;
 
 /* Camera Type */
@@ -323,21 +352,6 @@ typedef enum AttributeElement {
 	ATTR_ELEMENT_NONE
 } AttributeElement;
 
-typedef enum AttributeStandard {
-	ATTR_STD_NONE = 0,
-	ATTR_STD_VERTEX_NORMAL,
-	ATTR_STD_FACE_NORMAL,
-	ATTR_STD_UV,
-	ATTR_STD_GENERATED,
-	ATTR_STD_POSITION_UNDEFORMED,
-	ATTR_STD_POSITION_UNDISPLACED,
-	ATTR_STD_MOTION_PRE,
-	ATTR_STD_MOTION_POST,
-	ATTR_STD_NUM,
-
-	ATTR_STD_NOT_FOUND = ~0
-} AttributeStandard;
-
 /* Closure data */
 
 #define MAX_CLOSURE 8
@@ -352,10 +366,9 @@ typedef struct ShaderClosure {
 
 #ifdef __OSL__
 	void *prim;
-#else
+#endif
 	float data0;
 	float data1;
-#endif
 
 } ShaderClosure;
 
@@ -599,6 +612,15 @@ typedef struct KernelIntegrator {
 
 	/* clamp */
 	float sample_clamp;
+
+	/* non-progressive */
+	int progressive;
+	int diffuse_samples;
+	int glossy_samples;
+	int transmission_samples;
+	int ao_samples;
+	int mesh_light_samples;
+	int pad1, pad2;
 } KernelIntegrator;
 
 typedef struct KernelBVH {

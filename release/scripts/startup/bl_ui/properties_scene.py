@@ -39,6 +39,7 @@ class SCENE_PT_scene(SceneButtonsPanel, Panel):
 
     def draw(self, context):
         layout = self.layout
+
         scene = context.scene
 
         layout.prop(scene, "camera")
@@ -52,6 +53,7 @@ class SCENE_PT_audio(SceneButtonsPanel, Panel):
 
     def draw(self, context):
         layout = self.layout
+
         scene = context.scene
         rd = context.scene.render
         ffmpeg = rd.ffmpeg
@@ -81,6 +83,7 @@ class SCENE_PT_unit(SceneButtonsPanel, Panel):
 
     def draw(self, context):
         layout = self.layout
+
         unit = context.scene.unit_settings
 
         col = layout.column()
@@ -122,7 +125,7 @@ class SCENE_PT_keying_sets(SceneButtonsPanel, Panel):
             subcol.operator_context = 'INVOKE_DEFAULT'
             subcol.operator("anim.keying_set_export", text="Export to File").filepath = "keyingset.py"
 
-            col = row.column()
+            col = row.column(align=True)
             col.label(text="Keyframing Settings:")
             col.prop(ks, "bl_options")
 
@@ -161,20 +164,25 @@ class SCENE_PT_keying_set_paths(SceneButtonsPanel, Panel):
             col.template_any_ID(ksp, "id", "id_type")
             col.template_path_builder(ksp, "data_path", ksp.id)
 
+            row = col.row(align=True)
+            row.label(text="Array Target:")
+            row.prop(ksp, "use_entire_array", text="All Items")
+            if ksp.use_entire_array:
+                row.label(text=" ")  # padding
+            else:
+                row.prop(ksp, "array_index", text="Index")
+
+            layout.separator()
+
             row = layout.row()
-
-            col = row.column()
-            col.label(text="Array Target:")
-            col.prop(ksp, "use_entire_array")
-            if ksp.use_entire_array is False:
-                col.prop(ksp, "array_index")
-
             col = row.column()
             col.label(text="F-Curve Grouping:")
-            col.prop(ksp, "group_method")
+            col.prop(ksp, "group_method", text="")
             if ksp.group_method == 'NAMED':
                 col.prop(ksp, "group")
 
+            col = row.column(align=True)
+            col.label(text="Keyframing Settings:")
             col.prop(ksp, "bl_options")
 
 
@@ -221,6 +229,34 @@ class SCENE_PT_simplify(SceneButtonsPanel, Panel):
         col = split.column()
         col.prop(rd, "simplify_shadow_samples", text="Shadow Samples")
         col.prop(rd, "simplify_ao_sss", text="AO and SSS")
+
+
+class SCENE_PT_color_management(Panel):
+    bl_label = "Color Management"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "scene"
+
+    def draw(self, context):
+        layout = self.layout
+
+        scene = context.scene
+        rd = scene.render
+
+        col = layout.column()
+        col.label(text="Display:")
+        col.prop(scene.display_settings, "display_device")
+
+        col = layout.column()
+        col.separator()
+        col.label(text="Render:")
+        col.template_colormanaged_view_settings(scene, "view_settings")
+        col.prop(rd, "use_color_unpremultiply")
+
+        col = layout.column()
+        col.separator()
+        col.label(text="Sequencer:")
+        col.prop(scene.sequencer_colorspace_settings, "name")
 
 
 class SCENE_PT_custom_props(SceneButtonsPanel, PropertyPanel, Panel):

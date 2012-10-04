@@ -151,6 +151,18 @@ class AttributeBuilder(object):
     def __sub__(self, other):
         return self
 
+    def __truediv__(self, other):
+        return self
+
+    def __floordiv__(self, other):
+        return self
+
+    def __round__(self, other):
+        return self
+
+    def __float__(self):
+        return 0.0
+
     # Custom functions
     def lower(self):
         return ""
@@ -200,6 +212,7 @@ class PropertyGroup():
 def fake_main():
     bpy = module_add("bpy")
 
+    # Registerable Subclasses
     bpy.types = module_add("bpy.types")
     bpy.types.Panel = Panel
     bpy.types.Header = Header
@@ -207,6 +220,7 @@ def fake_main():
     bpy.types.PropertyGroup = PropertyGroup
     bpy.types.Operator = Operator
 
+    # ID Subclasses
     bpy.types.Armature = type("Armature", (), {})
     bpy.types.Bone = type("Bone", (), {})
     bpy.types.EditBone = type("EditBone", (), {})
@@ -219,6 +233,7 @@ def fake_main():
     bpy.types.Mesh = type("Mesh", (), {})
     bpy.types.MetaBall = type("MetaBall", (), {})
     bpy.types.Object = type("Object", (), {})
+    bpy.types.Speaker = type("Speaker", (), {})
     bpy.types.Texture = type("Texture", (), {})
     bpy.types.ParticleSettings = type("ParticleSettings", (), {})
     bpy.types.World = type("World", (), {})
@@ -234,33 +249,6 @@ def fake_main():
     bpy.props.IntProperty = dict
     bpy.props.EnumProperty = dict
 
-    bpy.data = module_add("bpy.data")
-    bpy.data.scenes = ()
-    bpy.data.groups = ()
-    bpy.data.meshes = ()
-    bpy.data.shape_keys = ()
-    bpy.data.materials = ()
-    bpy.data.lamps = ()
-    bpy.data.textures = ()
-    bpy.data.cameras = ()
-    bpy.data.curves = ()
-    bpy.data.metaballs = ()
-    bpy.data.armatures = ()
-    bpy.data.particles = ()
-
-    bpy.data.file_is_saved = True
-
-    bpy.utils = module_add("bpy.utils")
-    bpy.utils.smpte_from_frame = lambda f: ""
-    bpy.utils.script_paths = lambda f: []
-
-    bpy.app = module_add("bpy.app")
-    bpy.app.debug = False
-    bpy.app.version = 2, 55, 1
-
-    bpy.path = module_add("bpy.path")
-    bpy.path.display_name = lambda f: ""
-
 
 def fake_helper():
 
@@ -275,17 +263,69 @@ def fake_helper():
     rigify.get_submodule_types = lambda: []
 
 
+def fake_runtime():
+    """Only call this before `draw()` functions."""
+
+    # Misc Subclasses
+    bpy.types.EffectSequence = type("EffectSequence", (), {})
+
+    # Operator Subclases
+    bpy.types.WM_OT_doc_view = type("WM_OT_doc_view", (), {"_prefix": ""})
+
+    bpy.data = module_add("bpy.data")
+    bpy.data.scenes = ()
+    bpy.data.speakers = ()
+    bpy.data.groups = ()
+    bpy.data.meshes = ()
+    bpy.data.shape_keys = ()
+    bpy.data.materials = ()
+    bpy.data.lattices = ()
+    bpy.data.lamps = ()
+    bpy.data.textures = ()
+    bpy.data.cameras = ()
+    bpy.data.curves = ()
+    bpy.data.masks = ()
+    bpy.data.metaballs = ()
+    bpy.data.movieclips = ()
+    bpy.data.armatures = ()
+    bpy.data.particles = ()
+
+    bpy.data.file_is_saved = True
+    
+    bpy.utils = module_add("bpy.utils")
+    bpy.utils.smpte_from_frame = lambda f: ""
+    bpy.utils.script_paths = lambda f: []
+
+    bpy.app = module_add("bpy.app")
+    bpy.app.debug = False
+    bpy.app.version = 2, 55, 1
+
+    bpy.path = module_add("bpy.path")
+    bpy.path.display_name = lambda f: ""
+
+    bpy_extras = module_add("bpy_extras")
+    bpy_extras.keyconfig_utils = module_add("bpy_extras.keyconfig_utils")
+    bpy_extras.keyconfig_utils.KM_HIERARCHY = ()
+    bpy_extras.keyconfig_utils.keyconfig_merge = lambda a, b: ()
+
+    addon_utils = module_add("addon_utils")
+    addon_utils.modules = lambda f: ()
+    addon_utils.module_bl_info = lambda f: None
+    addon_utils.addons_fake_modules = {}
+    addon_utils.error_duplicates = ()
+    addon_utils.error_encoding = ()
+
 fake_main()
 fake_helper()
+# fake_runtime()  # call after initial import so we can catch
+#                 # bad use of modules outside of draw() functions.
 
 import bpy
-
-sys.path.insert(0, "/b/release/scripts/ui/")
 
 
 def module_classes(mod):
     classes = []
-    for value in mod.__dict__.values():
+    for key, value in mod.__dict__.items():
         try:
             is_subclass = issubclass(value, BaseFakeUI)
         except:
@@ -298,29 +338,37 @@ def module_classes(mod):
 
 
 def main():
+
     import os
+    BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "..")
+    BASE_DIR = os.path.normpath(os.path.abspath(BASE_DIR))
+    MODULE_DIR = os.path.join(BASE_DIR, "release", "scripts", "startup")
 
-    base = os.path.join(os.path.dirname(__file__), "..", "..")
-    base = os.path.normpath(base)
-    base = os.path.abspath(base)
+    print("Using base dir: %r" % BASE_DIR)
+    print("Using module dir: %r" % MODULE_DIR)
 
-    scripts_dir = os.path.join(base, "release", "scripts", "ui")
+    sys.path.insert(0, MODULE_DIR)
+
+    scripts_dir = os.path.join(MODULE_DIR, "bl_ui")
     for f in sorted(os.listdir(scripts_dir)):
-        if f.endswith(".py"):
+        if f.endswith(".py") and not f.startswith("__init__"):
             # print(f)
-            mod = __import__(f[:-3])
+            mod = __import__("bl_ui." + f[:-3]).__dict__[f[:-3]]
 
             classes = module_classes(mod)
 
             for cls in classes:
                 setattr(bpy.types, cls.__name__, cls)
 
+
+    fake_runtime()
+
     # print("running...")
     print("<ui>")
     for f in sorted(os.listdir(scripts_dir)):
-        if f.endswith(".py"):
+        if f.endswith(".py") and not f.startswith("__init__"):
             # print(f)
-            mod = __import__(f[:-3])
+            mod = __import__("bl_ui." + f[:-3]).__dict__[f[:-3]]
 
             classes = module_classes(mod)
 

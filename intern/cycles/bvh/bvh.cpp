@@ -292,13 +292,13 @@ void BVH::pack_triangles()
 void BVH::pack_instances(size_t nodes_size)
 {
 	/* The BVH's for instances are built separately, but for traversal all
-	   BVH's are stored in global arrays. This function merges them into the
-	   top level BVH, adjusting indexes and offsets where appropriate. */
+	 * BVH's are stored in global arrays. This function merges them into the
+	 * top level BVH, adjusting indexes and offsets where appropriate. */
 	bool use_qbvh = params.use_qbvh;
 	size_t nsize = (use_qbvh)? BVH_QNODE_SIZE: BVH_NODE_SIZE;
 
 	/* adjust primitive index to point to the triangle in the global array, for
-	   meshes with transform applied and already in the top level BVH */
+	 * meshes with transform applied and already in the top level BVH */
 	for(size_t i = 0; i < pack.prim_index.size(); i++)
 		if(pack.prim_index[i] != -1)
 			pack.prim_index[i] += objects[pack.prim_object[i]]->mesh->tri_offset;
@@ -356,14 +356,14 @@ void BVH::pack_instances(size_t nodes_size)
 		Mesh *mesh = ob->mesh;
 
 		/* if mesh transform is applied, that means it's already in the top
-		   level BVH, and we don't need to merge it in */
+		 * level BVH, and we don't need to merge it in */
 		if(mesh->transform_applied) {
 			pack.object_node[object_offset++] = 0;
 			continue;
 		}
 
 		/* if mesh already added once, don't add it again, but used set
-		   node offset for this object */
+		 * node offset for this object */
 		map<Mesh*, int>::iterator it = mesh_map.find(mesh);
 
 		if(mesh_map.find(mesh) != mesh_map.end()) {
@@ -378,7 +378,7 @@ void BVH::pack_instances(size_t nodes_size)
 		int mesh_tri_offset = mesh->tri_offset;
 
 		/* fill in node indexes for instances */
-		if(bvh->pack.is_leaf[0])
+		if((bvh->pack.is_leaf.size() != 0) && bvh->pack.is_leaf[0])
 			pack.object_node[object_offset++] = -noffset-1;
 		else
 			pack.object_node[object_offset++] = noffset;
@@ -411,7 +411,7 @@ void BVH::pack_instances(size_t nodes_size)
 			size_t nsize_bbox = (use_qbvh)? nsize-2: nsize-1;
 			int4 *bvh_nodes = &bvh->pack.nodes[0];
 			size_t bvh_nodes_size = bvh->pack.nodes.size(); 
-			int *bvh_is_leaf = &bvh->pack.is_leaf[0];
+			int *bvh_is_leaf = (bvh->pack.is_leaf.size() != 0) ? &bvh->pack.is_leaf[0] : NULL;
 
 			for(size_t i = 0, j = 0; i < bvh_nodes_size; i+=nsize, j++) {
 				memcpy(pack_nodes + pack_nodes_offset, bvh_nodes + i, nsize_bbox*sizeof(int4));
@@ -419,7 +419,7 @@ void BVH::pack_instances(size_t nodes_size)
 				/* modify offsets into arrays */
 				int4 data = bvh_nodes[i + nsize_bbox];
 
-				if(bvh_is_leaf[j]) {
+				if(bvh_is_leaf && bvh_is_leaf[j]) {
 					data.x += tri_offset;
 					data.y += tri_offset;
 				}

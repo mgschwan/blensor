@@ -35,6 +35,8 @@
 #define M_PI_2     1.5707963267948966        /* pi/2 */
 #define M_PI_4     0.7853981633974483        /* pi/4 */
 #define M_2_PI     0.6366197723675813        /* 2/pi */
+#define M_2PI      6.2831853071795865        /* 2*pi */
+#define M_4PI     12.566370614359173         /* 4*pi */
 #define M_2_SQRTPI 1.1283791670955126        /* 2/sqrt(pi) */
 #define M_E        2.7182818284590452        /* e (Euler's number) */
 #define M_LN2      0.6931471805599453        /* ln(2) */
@@ -121,9 +123,16 @@ PERCOMP1 (round)
 PERCOMP1 (trunc)
 PERCOMP2 (fmod)
 PERCOMP2F (fmod)
-PERCOMP2 (mod)
-PERCOMP2F (mod)
-int    mod (int x, int y) BUILTIN;
+int    mod (int    a, int    b) { return a - b*(int)floor(a/b); }
+point  mod (point  a, point  b) { return a - b*floor(a/b); }
+vector mod (vector a, vector b) { return a - b*floor(a/b); }
+normal mod (normal a, normal b) { return a - b*floor(a/b); }
+color  mod (color  a, color  b) { return a - b*floor(a/b); }
+point  mod (point  a, float  b) { return a - b*floor(a/b); }
+vector mod (vector a, float  b) { return a - b*floor(a/b); }
+normal mod (normal a, float  b) { return a - b*floor(a/b); }
+color  mod (color  a, float  b) { return a - b*floor(a/b); }
+float  mod (float  a, float  b) { return a - b*floor(a/b); }
 PERCOMP2 (min)
 PERCOMP2 (max)
 normal clamp (normal x, normal minval, normal maxval) { return max(min(x,maxval),minval); }
@@ -131,11 +140,6 @@ vector clamp (vector x, vector minval, vector maxval) { return max(min(x,maxval)
 point  clamp (point x, point minval, point maxval) { return max(min(x,maxval),minval); }
 color  clamp (color x, color minval, color maxval) { return max(min(x,maxval),minval); }
 float  clamp (float x, float minval, float maxval) { return max(min(x,maxval),minval); }
-//normal clamp (normal x, normal minval, normal maxval) BUILTIN;
-//vector clamp (vector x, vector minval, vector maxval) BUILTIN;
-//point  clamp (point x, point minval, point maxval) BUILTIN;
-//color  clamp (color x, color minval, color maxval) BUILTIN;
-//float  clamp (float x, float minval, float maxval) BUILTIN;
 normal mix (normal x, normal y, normal a) { return x*(1-a) + y*a; }
 normal mix (normal x, normal y, float  a) { return x*(1-a) + y*a; }
 vector mix (vector x, vector y, vector a) { return x*(1-a) + y*a; }
@@ -195,7 +199,6 @@ void fresnel (vector I, normal N, float eta,
         Kt = 0.0;
         T = vector (0,0,0);
     }
-#undef sqr
 }
 
 void fresnel (vector I, normal N, float eta,
@@ -205,56 +208,50 @@ void fresnel (vector I, normal N, float eta,
     fresnel(I, N, eta, Kr, Kt, R, T);
 }
 
-point rotate (point q, float angle, point a, point b) BUILTIN;
 
 normal transform (matrix Mto, normal p) BUILTIN;
 vector transform (matrix Mto, vector p) BUILTIN;
-point transform (matrix Mto, point p) BUILTIN;
-
-// Implementation of transform-with-named-space in terms of matrices:
-
-point transform (string tospace, point x)
-{
-    return transform (matrix ("common", tospace), x);
-}
-
-point transform (string fromspace, string tospace, point x)
-{
-    return transform (matrix (fromspace, tospace), x);
-}
-
-
-vector transform (string tospace, vector x)
-{
-    return transform (matrix ("common", tospace), x);
-}
-
-vector transform (string fromspace, string tospace, vector x)
-{
-    return transform (matrix (fromspace, tospace), x);
-}
-
-
-normal transform (string tospace, normal x)
-{
-    return transform (matrix ("common", tospace), x);
-}
-
-normal transform (string fromspace, string tospace, normal x)
-{
-    return transform (matrix (fromspace, tospace), x);
-}
+point  transform (matrix Mto, point p) BUILTIN;
+normal transform (string from, string to, normal p) BUILTIN;
+vector transform (string from, string to, vector p) BUILTIN;
+point  transform (string from, string to, point p) BUILTIN;
+normal transform (string to, normal p) { return transform("common",to,p); }
+vector transform (string to, vector p) { return transform("common",to,p); }
+point  transform (string to, point p)  { return transform("common",to,p); }
 
 float transformu (string tounits, float x) BUILTIN;
 float transformu (string fromunits, string tounits, float x) BUILTIN;
 
+point rotate (point p, float angle, point a, point b)
+{
+    vector axis = normalize (b - a);
+    float cosang, sinang;
+    sincos (angle, sinang, cosang);
+    float cosang1 = 1.0 - cosang;
+    float x = axis[0], y = axis[1], z = axis[2];
+    matrix M = matrix (x * x + (1.0 - x * x) * cosang,
+                       x * y * cosang1 + z * sinang,
+                       x * z * cosang1 - y * sinang,
+                       0.0,
+                       x * y * cosang1 - z * sinang,
+                       y * y + (1.0 - y * y) * cosang,
+                       y * z * cosang1 + x * sinang,
+                       0.0,
+                       x * z * cosang1 + y * sinang,
+                       y * z * cosang1 - x * sinang,
+                       z * z + (1.0 - z * z) * cosang,
+                       0.0,
+                       0.0, 0.0, 0.0, 1.0);
+    return transform (M, p-a) + a;
+}
+
+
 
 // Color functions
 
-float luminance (color c) {
-    return dot ((vector)c, vector(0.2126, 0.7152, 0.0722));
-}
-
+float luminance (color c) BUILTIN;
+color blackbody (float temperatureK) BUILTIN;
+color wavelength_color (float wavelength_nm) BUILTIN;
 
 
 color transformc (string to, color x)
@@ -442,12 +439,16 @@ closure color reflection(normal N) { return reflection (N, 0.0); }
 closure color refraction(normal N, float eta) BUILTIN;
 closure color dielectric(normal N, float eta) BUILTIN;
 closure color transparent() BUILTIN;
-closure color microfacet_ggx(normal N, float ag) BUILTIN;
+closure color microfacet_ggx(normal N, float ag, float eta) BUILTIN;
 closure color microfacet_ggx_refraction(normal N, float ag, float eta) BUILTIN;
-closure color microfacet_beckmann(normal N, float ab) BUILTIN;
+closure color microfacet_beckmann(normal N, float ab, float eta) BUILTIN;
 closure color microfacet_beckmann_refraction(normal N, float ab, float eta) BUILTIN;
 closure color ward(normal N, vector T,float ax, float ay) BUILTIN;
-closure color ashikhmin_velvet(normal N, float sigma) BUILTIN;
+closure color phong(normal N, float exponent) BUILTIN;
+closure color phong_ramp(normal N, float exponent, color colors[8]) BUILTIN;
+closure color hair_diffuse(vector T) BUILTIN;
+closure color hair_specular(vector T, float offset, float exponent) BUILTIN;
+closure color ashikhmin_velvet(normal N, float sigma, float eta) BUILTIN;
 closure color westin_backscatter(normal N, float roughness) BUILTIN;
 closure color westin_sheen(normal N, float edginess) BUILTIN;
 closure color bssrdf_cubic(color radius) BUILTIN;
@@ -457,10 +458,75 @@ closure color emission() BUILTIN;
 closure color debug(string tag) BUILTIN;
 closure color background() BUILTIN;
 closure color holdout() BUILTIN;
-closure color subsurface(float eta, float g, float mfp, float albedo) BUILTIN;
+closure color subsurface(float eta, float g, color mfp, color albedo) BUILTIN;
+
+closure color cloth(normal N, float s, float t, float dsdx, float dtdx, float dsdy, float dtdy,
+                    float area_scaled, vector dPdu, color diff_warp_col, color diff_weft_col,
+                    color spec_warp_col, color spec_weft_col, float fresnel_warp, float fresnel_weft,
+                    float spread_x_mult, float spread_y_mult, int pattern, float pattern_angle,
+                    float warp_width_scale, float weft_width_scale, float thread_count_mult_u,
+                    float thread_count_mult_v) BUILTIN;
+closure color cloth_specular(normal N, color spec_col[4], float eta[4], int thread_pattern[4],
+                             float pattern_weight[4], int   current_thread, float brdf_interp,
+                             float btf_interp, float uux, float vvx, float area_scaled, vector dPdu,
+                             float eccentricity[4], float angle[4], float Kx[4], float Ky[4],
+                             float Sx[4], float Sy[4]) BUILTIN;
+closure color fakefur_diffuse(normal N, vector T, float fur_reflectivity, float fur_transmission,
+                              float shadow_start, float shadow_end, float fur_attenuation, float fur_density,
+                              float fur_avg_radius, float fur_length, float fur_shadow_fraction) BUILTIN;
+closure color fakefur_specular(normal N, vector T, float offset, float exp, float fur_reflectivity,
+                               float fur_transmission, float shadow_start, float shadow_end,
+                               float fur_attenuation, float fur_density, float fur_avg_radius,
+                               float fur_length, float fur_shadow_fraction) BUILTIN;
+
+closure color fakefur_skin(vector N, vector T, float fur_reflectivity, float fur_transmission,
+                           float shadow_start, float shadow_end, float fur_attenuation, float fur_density,
+                           float fur_avg_radius, float fur_length) BUILTIN;
+
+
+closure color cloth(normal N, float s, float t, color diff_warp, color diff_weft, 
+                    color spec_warp, color spec_weft, float fresnel_warp, float fresnel_weft,
+                    float spread_x_mult, float spread_y_mult, int pattern, float pattern_angle,
+                    float warp_width_scale, float weft_width_scale, float thread_count_mult_u,
+                    float thread_count_mult_v)
+{
+
+    return cloth(N, s, t, Dx(s), Dx(t), Dy(s), Dy(t), area(P), dPdu, diff_warp, diff_weft, spec_warp, spec_weft,
+                 fresnel_warp, fresnel_weft, spread_x_mult, spread_y_mult, pattern, pattern_angle, 
+                 warp_width_scale, weft_width_scale, thread_count_mult_u, thread_count_mult_v);
+}
+
+closure color cloth(normal N, float s, float t, color diff_warp, color diff_weft, 
+                    color spec_warp, color spec_weft, float fresnel_warp, float fresnel_weft,
+                    float spread_x_mult, float spread_y_mult, int pattern, float pattern_angle,
+                    float warp_width_scale, float weft_width_scale, float thread_count_mult_u,
+                    float thread_count_mult_v, string tok, string val)
+{
+
+    return cloth(N, s, t, Dx(s), Dx(t), Dy(s), Dy(t), area(P), dPdu, diff_warp, diff_weft, spec_warp, spec_weft,
+                 fresnel_warp, fresnel_weft, spread_x_mult, spread_y_mult, pattern, pattern_angle, 
+                 warp_width_scale, weft_width_scale, thread_count_mult_u, thread_count_mult_v, tok, val);
+}
+
+
 
 // Renderer state
 int raytype (string typename) BUILTIN;
+// the individual 'isFOOray' functions are deprecated
+int iscameraray () { return raytype("camera"); }
+int isdiffuseray () { return raytype("diffuse"); }
+int isglossyray () { return raytype("glossy"); }
+int isshadowray () { return raytype("shadow"); }
+int getmatrix (string fromspace, string tospace, output matrix M) BUILTIN;
+int getmatrix (string fromspace, output matrix M) {
+    return getmatrix (fromspace, "common", M);
+}
+
+
+// Miscellaneous
+
+
+
 
 #undef BUILTIN
 #undef BUILTIN_DERIV
@@ -469,4 +535,3 @@ int raytype (string typename) BUILTIN;
 #undef PERCOMP2F
 
 #endif /* CCL_STDOSL_H */
-

@@ -28,6 +28,7 @@
 #include "shader.h"
 #include "mesh.h"
 #include "object.h"
+#include "particles.h"
 #include "scene.h"
 #include "svm.h"
 #include "osl.h"
@@ -37,7 +38,7 @@
 
 CCL_NAMESPACE_BEGIN
 
-Scene::Scene(const SceneParams& params_)
+Scene::Scene(const SceneParams& params_, const DeviceInfo& device_info_)
 : params(params_)
 {
 	device = NULL;
@@ -53,6 +54,10 @@ Scene::Scene(const SceneParams& params_)
 	integrator = new Integrator();
 	image_manager = new ImageManager();
 	shader_manager = ShaderManager::create(this);
+	particle_system_manager = new ParticleSystemManager();
+
+	if (device_info_.type == DEVICE_CPU)
+		image_manager->set_extended_image_limits();
 }
 
 Scene::~Scene()
@@ -92,9 +97,14 @@ Scene::~Scene()
 		delete o;
 	foreach(Light *l, lights)
 		delete l;
+	foreach(ParticleSystem *p, particle_systems)
+		delete p;
 
 	if(device) image_manager->device_free(device, &dscene);
 	delete image_manager;
+
+	if(device) particle_system_manager->device_free(device, &dscene);
+	delete particle_system_manager;
 }
 
 void Scene::device_update(Device *device_, Progress& progress)
@@ -111,6 +121,8 @@ void Scene::device_update(Device *device_, Progress& progress)
 	 * - Displacement shader must have all shader data available.
 	 * - Light manager needs final mesh data to compute emission CDF.
 	 */
+	
+	image_manager->set_pack_images(device->info.pack_images);
 
 	progress.set_status("Updating Background");
 	background->device_update(device, &dscene, this);
@@ -147,6 +159,11 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	if(progress.get_cancel()) return;
 
+	progress.set_status("Updating Particle Systems");
+	particle_system_manager->device_update(device, &dscene, this, progress);
+
+	if(progress.get_cancel()) return;
+
 	progress.set_status("Updating Filter");
 	filter->device_update(device, &dscene);
 
@@ -158,7 +175,7 @@ void Scene::device_update(Device *device_, Progress& progress)
 	if(progress.get_cancel()) return;
 
 	progress.set_status("Updating Integrator");
-	integrator->device_update(device, &dscene);
+	integrator->device_update(device, &dscene, this);
 
 	if(progress.get_cancel()) return;
 
@@ -208,7 +225,8 @@ bool Scene::need_reset()
 		|| light_manager->need_update
 		|| filter->need_update
 		|| integrator->need_update
-		|| shader_manager->need_update);
+		|| shader_manager->need_update
+		|| particle_system_manager->need_update);
 }
 
 CCL_NAMESPACE_END

@@ -204,7 +204,7 @@ InitializeHeapKeys(
 	
 	TNT::Vector<MT_Scalar> target(6,MT_Scalar(0));
 
-	for (; edge_it != edge_end; ++edge_it)  {
+	for (; edge_it != edge_end; ++edge_it) {
 		
 		TargetVertex(*edge_it,target,color_editor);
 		LOD_Edge &e = *edge_it;
@@ -295,7 +295,7 @@ ComputeEdgeCosts(
 
 	TNT::Vector<MT_Scalar> target(6,MT_Scalar(0));
 
-	for (; edge_it != edge_end; ++edge_it)  {
+	for (; edge_it != edge_end; ++edge_it) {
 		
 		TargetVertex(edge_set[*edge_it],target,color_editor);
 

@@ -22,7 +22,7 @@ CCL_NAMESPACE_BEGIN
 
 __device void differential_transfer(differential3 *dP_, const differential3 dP, float3 D, const differential3 dD, float3 Ng, float t)
 {
-	/* ray differential transfer through homogenous medium, to
+	/* ray differential transfer through homogeneous medium, to
 	 * compute dPdx/dy at a shading point from the incoming ray */
 
 	float3 tmp = D/dot(D, Ng);
@@ -49,9 +49,9 @@ __device void differential_dudv(differential *du, differential *dv, float3 dPdu,
 	 * mainly used for differentials of arbitrary mesh attributes. */
 
 	/* find most stable axis to project to 2D */
-	float xn= fabsf(Ng.x);
-	float yn= fabsf(Ng.y);
-	float zn= fabsf(Ng.z);
+	float xn = fabsf(Ng.x);
+	float yn = fabsf(Ng.y);
+	float zn = fabsf(Ng.z);
 
 	if(zn < xn || zn < yn) {
 		if(yn < xn || yn < zn) {

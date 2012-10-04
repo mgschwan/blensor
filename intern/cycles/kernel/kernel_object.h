@@ -117,6 +117,16 @@ __device_inline void object_dir_transform(KernelGlobals *kg, ShaderData *sd, flo
 #endif
 }
 
+__device_inline float3 object_location(KernelGlobals *kg, ShaderData *sd)
+{
+#ifdef __MOTION__
+	return make_float3(sd->ob_tfm.x.w, sd->ob_tfm.y.w, sd->ob_tfm.z.w);
+#else
+	Transform tfm = object_fetch_transform(kg, sd->object, 0.0f, OBJECT_TRANSFORM);
+	return make_float3(tfm.x.w, tfm.y.w, tfm.z.w);
+#endif
+}
+
 __device_inline float object_surface_area(KernelGlobals *kg, int object)
 {
 	int offset = object*OBJECT_SIZE + OBJECT_PROPERTIES;
@@ -133,6 +143,90 @@ __device_inline float object_pass_id(KernelGlobals *kg, int object)
 	float4 f = kernel_tex_fetch(__objects, offset);
 	return f.y;
 }
+
+__device_inline float object_random_number(KernelGlobals *kg, int object)
+{
+	if(object == ~0)
+		return 0.0f;
+
+	int offset = object*OBJECT_SIZE + OBJECT_PROPERTIES;
+	float4 f = kernel_tex_fetch(__objects, offset);
+	return f.z;
+}
+
+__device_inline uint object_particle_id(KernelGlobals *kg, int object)
+{
+	if(object == ~0)
+		return 0.0f;
+
+	int offset = object*OBJECT_SIZE + OBJECT_PROPERTIES;
+	float4 f = kernel_tex_fetch(__objects, offset);
+	return __float_as_int(f.w);
+}
+
+__device int shader_pass_id(KernelGlobals *kg, ShaderData *sd)
+{
+	return kernel_tex_fetch(__shader_flag, (sd->shader & SHADER_MASK)*2 + 1);
+}
+
+__device_inline float particle_index(KernelGlobals *kg, int particle)
+{
+	int offset = particle*PARTICLE_SIZE;
+	float4 f = kernel_tex_fetch(__particles, offset + 0);
+	return f.x;
+}
+
+__device float particle_age(KernelGlobals *kg, int particle)
+{
+	int offset = particle*PARTICLE_SIZE;
+	float4 f = kernel_tex_fetch(__particles, offset + 0);
+	return f.y;
+}
+
+__device float particle_lifetime(KernelGlobals *kg, int particle)
+{
+	int offset = particle*PARTICLE_SIZE;
+	float4 f = kernel_tex_fetch(__particles, offset + 0);
+	return f.z;
+}
+
+__device float particle_size(KernelGlobals *kg, int particle)
+{
+	int offset = particle*PARTICLE_SIZE;
+	float4 f = kernel_tex_fetch(__particles, offset + 0);
+	return f.w;
+}
+
+__device float4 particle_rotation(KernelGlobals *kg, int particle)
+{
+	int offset = particle*PARTICLE_SIZE;
+	float4 f = kernel_tex_fetch(__particles, offset + 1);
+	return f;
+}
+
+__device float3 particle_location(KernelGlobals *kg, int particle)
+{
+	int offset = particle*PARTICLE_SIZE;
+	float4 f = kernel_tex_fetch(__particles, offset + 2);
+	return make_float3(f.x, f.y, f.z);
+}
+
+__device float3 particle_velocity(KernelGlobals *kg, int particle)
+{
+	int offset = particle*PARTICLE_SIZE;
+	float4 f2 = kernel_tex_fetch(__particles, offset + 2);
+	float4 f3 = kernel_tex_fetch(__particles, offset + 3);
+	return make_float3(f2.w, f3.x, f3.y);
+}
+
+__device float3 particle_angular_velocity(KernelGlobals *kg, int particle)
+{
+	int offset = particle*PARTICLE_SIZE;
+	float4 f3 = kernel_tex_fetch(__particles, offset + 3);
+	float4 f4 = kernel_tex_fetch(__particles, offset + 4);
+	return make_float3(f3.z, f3.w, f4.x);
+}
+
 
 CCL_NAMESPACE_END
 

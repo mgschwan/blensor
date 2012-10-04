@@ -23,11 +23,14 @@ from bpy.types import Menu, Panel
 from bpy.types import (Brush,
                        Lamp,
                        Material,
+                       Object,
                        ParticleSettings,
                        Texture,
                        World)
 
 from rna_prop_ui import PropertyPanel
+
+from bl_ui.properties_paint_common import sculpt_brush_texture_settings
 
 
 class TEXTURE_MT_specials(Menu):
@@ -78,6 +81,15 @@ def context_tex_datablock(context):
     return idblock
 
 
+def id_tex_datablock(bid):
+    if isinstance(bid, Object):
+        if bid.type == 'LAMP':
+            return bid.data
+        return bid.active_material
+
+    return bid
+
+
 class TextureButtonsPanel():
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -104,6 +116,7 @@ class TEXTURE_PT_context_texture(TextureButtonsPanel, Panel):
 
     def draw(self, context):
         layout = self.layout
+
         slot = getattr(context, "texture_slot", None)
         node = getattr(context, "texture_node", None)
         space = context.space_data
@@ -112,7 +125,7 @@ class TEXTURE_PT_context_texture(TextureButtonsPanel, Panel):
         pin_id = space.pin_id
 
         if space.use_pin_id and not isinstance(pin_id, Texture):
-            idblock = pin_id
+            idblock = id_tex_datablock(pin_id)
             pin_id = None
 
         if not space.use_pin_id:
@@ -856,12 +869,7 @@ class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
 
         if isinstance(idblock, Brush):
             if context.sculpt_object:
-                layout.label(text="Brush Mapping:")
-                layout.prop(tex, "map_mode", expand=True)
-
-                row = layout.row()
-                row.active = tex.map_mode in {'FIXED', 'TILED'}
-                row.prop(tex, "angle")
+                sculpt_brush_texture_settings(layout, idblock)
         else:
             if isinstance(idblock, Material):
                 split = layout.split(percentage=0.3)
@@ -884,9 +892,9 @@ class TEXTURE_PT_mapping(TextureSlotPanel, Panel):
                 row.prop(tex, "mapping_y", text="")
                 row.prop(tex, "mapping_z", text="")
 
-        row = layout.row()
-        row.column().prop(tex, "offset")
-        row.column().prop(tex, "scale")
+            row = layout.row()
+            row.column().prop(tex, "offset")
+            row.column().prop(tex, "scale")
 
 
 class TEXTURE_PT_influence(TextureSlotPanel, Panel):

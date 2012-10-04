@@ -28,13 +28,14 @@
  *  \ingroup smoke
  */
 
-
 #include "FLUID_3D.h"
 #include "WTURBULENCE.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+
+#include "../extern/smoke_API.h"  /* to ensure valid prototypes */
 
 // y in smoke is z in blender
 extern "C" FLUID_3D *smoke_init(int *res, float *p0, float dtdef)
@@ -198,8 +199,8 @@ extern "C" void smoke_export(FLUID_3D *fluid, float *dt, float *dx, float **dens
 	*vyold = fluid->_yVelocityOld;
 	*vzold = fluid->_zVelocityOld;
 	*obstacles = fluid->_obstacles;
-	dt = &(fluid->_dt);
-	dx = &(fluid->_dx);
+	*dt = fluid->_dt;
+	*dx = fluid->_dx;
 
 }
 
@@ -283,10 +284,12 @@ extern "C" void smoke_get_ob_velocity(FLUID_3D *fluid, float **x, float **y, flo
 	*z = fluid->_zVelocityOb;
 }
 
+#if 0
 extern "C" unsigned char *smoke_get_obstacle_anim(FLUID_3D *fluid)
 {
 	return fluid->_obstaclesAnim;
 }
+#endif
 
 extern "C" void smoke_turbulence_set_noise(WTURBULENCE *wt, int type)
 {

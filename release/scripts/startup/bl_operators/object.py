@@ -27,15 +27,16 @@ from bpy.props import (StringProperty,
 
 
 class SelectPattern(Operator):
-    '''Select objects matching a naming pattern'''
+    """Select objects matching a naming pattern"""
     bl_idname = "object.select_pattern"
     bl_label = "Select Pattern"
     bl_options = {'REGISTER', 'UNDO'}
 
     pattern = StringProperty(
             name="Pattern",
-            description="Name filter using '*' and '?' wildcard chars",
-            maxlen=32,
+            description="Name filter using '*', '?' and "
+                        "'[abc]' unix style wildcards",
+            maxlen=64,
             default="*",
             )
     case_sensitive = BoolProperty(
@@ -104,29 +105,34 @@ class SelectPattern(Operator):
 
 
 class SelectCamera(Operator):
-    '''Select object matching a naming pattern'''
+    """Select the active camera"""
     bl_idname = "object.select_camera"
     bl_label = "Select Camera"
     bl_options = {'REGISTER', 'UNDO'}
 
-    @classmethod
-    def poll(cls, context):
-        return context.scene.camera is not None
-
     def execute(self, context):
         scene = context.scene
-        camera = scene.camera
-        if camera.name not in scene.objects:
-            self.report({'WARNING'}, "Active camera is not in this scene")
+        view = context.space_data
+        if view.type == 'VIEW_3D' and not view.lock_camera_and_layers:
+            camera = view.camera
+        else:
+            camera = scene.camera
 
-        context.scene.objects.active = camera
-        camera.select = True
-        return {'FINISHED'}
+        if camera is None:
+            self.report({'WARNING'}, "No camera found")
+        elif camera.name not in scene.objects:
+            self.report({'WARNING'}, "Active camera is not in this scene")
+        else:
+            context.scene.objects.active = camera
+            camera.select = True
+            return {'FINISHED'}
+
+        return {'CANCELLED'}
 
 
 class SelectHierarchy(Operator):
-    '''Select object relative to the active object's position ''' \
-    '''in the hierarchy'''
+    """Select object relative to the active object's position """ \
+    """in the hierarchy"""
     bl_idname = "object.select_hierarchy"
     bl_label = "Select Hierarchy"
     bl_options = {'REGISTER', 'UNDO'}
@@ -192,7 +198,7 @@ class SelectHierarchy(Operator):
 
 
 class SubdivisionSet(Operator):
-    '''Sets a Subdivision Surface Level (1-5)'''
+    """Sets a Subdivision Surface Level (1-5)"""
 
     bl_idname = "object.subdivision_set"
     bl_label = "Subdivision Set"
@@ -272,8 +278,8 @@ class SubdivisionSet(Operator):
 
 
 class ShapeTransfer(Operator):
-    '''Copy another selected objects active shape to this one by ''' \
-    '''applying the relative offsets'''
+    """Copy another selected objects active shape to this one by """ \
+    """applying the relative offsets"""
 
     bl_idname = "object.shape_key_transfer"
     bl_label = "Transfer Shape Key"
@@ -462,7 +468,7 @@ class ShapeTransfer(Operator):
 
 
 class JoinUVs(Operator):
-    '''Copy UV Layout to objects with matching geometry'''
+    """Copy UV Layout to objects with matching geometry"""
     bl_idname = "object.join_uvs"
     bl_label = "Join as UVs"
 
@@ -541,7 +547,7 @@ class JoinUVs(Operator):
 
 
 class MakeDupliFace(Operator):
-    '''Make linked objects into dupli-faces'''
+    """Make linked objects into dupli-faces"""
     bl_idname = "object.make_dupli_face"
     bl_label = "Make Dupli-Face"
 
@@ -636,7 +642,7 @@ class IsolateTypeRender(Operator):
 
 
 class ClearAllRestrictRender(Operator):
-    '''Reveal all render objects by setting the hide render flag'''
+    """Reveal all render objects by setting the hide render flag"""
     bl_idname = "object.hide_render_clear_all"
     bl_label = "Clear All Restrict Render"
     bl_options = {'REGISTER', 'UNDO'}
@@ -648,7 +654,7 @@ class ClearAllRestrictRender(Operator):
 
 
 class TransformsToDeltasAnim(Operator):
-    '''Convert object animation for normal transforms to delta transforms'''
+    """Convert object animation for normal transforms to delta transforms"""
     bl_idname = "object.anim_transforms_to_deltas"
     bl_label = "Animated Transforms to Deltas"
     bl_options = {'REGISTER', 'UNDO'}
@@ -694,7 +700,7 @@ class TransformsToDeltasAnim(Operator):
 
 
 class DupliOffsetFromCursor(Operator):
-    '''Set offset used for DupliGroup based on cursor position'''
+    """Set offset used for DupliGroup based on cursor position"""
     bl_idname = "object.dupli_offset_from_cursor"
     bl_label = "Set Offset From Cursor"
     bl_options = {'REGISTER', 'UNDO'}

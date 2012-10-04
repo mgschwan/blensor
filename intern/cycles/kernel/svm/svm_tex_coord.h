@@ -29,7 +29,7 @@ __device_inline float3 svm_background_offset(KernelGlobals *kg)
 __device_inline float3 svm_world_to_ndc(KernelGlobals *kg, ShaderData *sd, float3 P)
 {
 	if(kernel_data.cam.type != CAMERA_PANORAMA) {
-		if(sd->object != ~0)
+		if(sd->object == ~0)
 			P += svm_background_offset(kg);
 
 		Transform tfm = kernel_data.cam.worldtondc;
@@ -43,7 +43,7 @@ __device_inline float3 svm_world_to_ndc(KernelGlobals *kg, ShaderData *sd, float
 		else
 			P = normalize(transform_direction(&tfm, P));
 
-		float2 uv = direction_to_panorama(kg, P);;
+		float2 uv = direction_to_panorama(kg, P);
 
 		return make_float3(uv.x, uv.y, 0.0f);
 	}
@@ -87,7 +87,7 @@ __device void svm_node_tex_coord(KernelGlobals *kg, ShaderData *sd, float *stack
 		}
 		case NODE_TEXCO_REFLECTION: {
 			if(sd->object != ~0)
-				data = sd->I - 2.0f*dot(sd->N, sd->I)*sd->N;
+				data = 2.0f*dot(sd->N, sd->I)*sd->N - sd->I;
 			else
 				data = sd->I;
 			break;
@@ -136,7 +136,7 @@ __device void svm_node_tex_coord_bump_dx(KernelGlobals *kg, ShaderData *sd, floa
 		}
 		case NODE_TEXCO_REFLECTION: {
 			if(sd->object != ~0)
-				data = sd->I - 2.0f*dot(sd->N, sd->I)*sd->N;
+				data = 2.0f*dot(sd->N, sd->I)*sd->N - sd->I;
 			else
 				data = sd->I;
 			break;
@@ -188,7 +188,7 @@ __device void svm_node_tex_coord_bump_dy(KernelGlobals *kg, ShaderData *sd, floa
 		}
 		case NODE_TEXCO_REFLECTION: {
 			if(sd->object != ~0)
-				data = sd->I - 2.0f*dot(sd->N, sd->I)*sd->N;
+				data = 2.0f*dot(sd->N, sd->I)*sd->N - sd->I;
 			else
 				data = sd->I;
 			break;

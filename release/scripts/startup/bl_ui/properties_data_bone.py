@@ -119,21 +119,28 @@ class BONE_PT_transform_locks(BoneButtonsPanel, Panel):
         bone = context.bone
         pchan = ob.pose.bones[bone.name]
 
-        row = layout.row()
-        col = row.column()
-        col.prop(pchan, "lock_location")
-        col.active = not (bone.parent and bone.use_connect)
+        split = layout.split(percentage=0.1)
 
-        col = row.column()
+        col = split.column(align=True)
+        col.label(text="")
+        col.label(text="X:")
+        col.label(text="Y:")
+        col.label(text="Z:")
+
+        col = split.row()
+        sub = col.row()
+        sub.active = not (bone.parent and bone.use_connect)
+        sub.column().prop(pchan, "lock_location", text="Location")
+        col.column().prop(pchan, "lock_rotation", text="Rotation")
+        col.column().prop(pchan, "lock_scale", text="Scale")
+
         if pchan.rotation_mode in {'QUATERNION', 'AXIS_ANGLE'}:
-            col.prop(pchan, "lock_rotations_4d", text="Lock Rotation")
-            if pchan.lock_rotations_4d:
-                col.prop(pchan, "lock_rotation_w", text="W")
-            col.prop(pchan, "lock_rotation", text="")
-        else:
-            col.prop(pchan, "lock_rotation", text="Rotation")
+            row = layout.row()
+            row.prop(pchan, "lock_rotations_4d", text="Lock Rotation")
 
-        row.column().prop(pchan, "lock_scale")
+            sub = row.row()
+            sub.active = pchan.lock_rotations_4d
+            sub.prop(pchan, "lock_rotation_w", text="W")
 
 
 class BONE_PT_relations(BoneButtonsPanel, Panel):
@@ -355,9 +362,6 @@ class BONE_PT_deform(BoneButtonsPanel, Panel):
         sub.prop(bone, "bbone_segments", text="Segments")
         sub.prop(bone, "bbone_in", text="Ease In")
         sub.prop(bone, "bbone_out", text="Ease Out")
-
-        col.label(text="Offset:")
-        col.prop(bone, "use_cyclic_offset")
 
 
 class BONE_PT_custom_props(BoneButtonsPanel, PropertyPanel, Panel):

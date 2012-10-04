@@ -33,7 +33,7 @@ class CurveButtonsPanel():
 
 
 class CurveButtonsPanelCurve(CurveButtonsPanel):
-    '''Same as above but for curves only'''
+    """Same as above but for curves only"""
 
     @classmethod
     def poll(cls, context):
@@ -41,7 +41,7 @@ class CurveButtonsPanelCurve(CurveButtonsPanel):
 
 
 class CurveButtonsPanelActive(CurveButtonsPanel):
-    '''Same as above but for curves only'''
+    """Same as above but for curves only"""
 
     @classmethod
     def poll(cls, context):
@@ -106,7 +106,7 @@ class DATA_PT_shape_curve(CurveButtonsPanel, Panel):
             sub.prop(curve, "resolution_v", text="Preview V")
             sub.prop(curve, "render_resolution_v", text="Render V")
 
-        if (is_curve or is_text):
+        if is_curve or is_text:
             col.label(text="Fill:")
             sub = col.column()
             sub.active = (curve.dimensions == '2D' or (curve.bevel_object is None and curve.dimensions == '3D'))
@@ -406,7 +406,7 @@ class DATA_PT_text_boxes(CurveButtonsPanel, Panel):
             col.prop(box, "x", text="X")
             col.prop(box, "y", text="Y")
 
-            row.operator("font.textbox_remove", text='', icon='X', emboss=False).index = i
+            row.operator("font.textbox_remove", text="", icon='X', emboss=False).index = i
 
 
 class DATA_PT_custom_props_curve(CurveButtonsPanel, PropertyPanel, Panel):

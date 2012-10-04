@@ -75,6 +75,52 @@ static float get_node_output_value(BL::Node b_node, const string& name)
 	return sock.default_value();
 }
 
+static ShaderSocketType convert_socket_type(BL::NodeSocket::type_enum b_type)
+{
+	switch (b_type) {
+	case BL::NodeSocket::type_VALUE:
+		return SHADER_SOCKET_FLOAT;
+	case BL::NodeSocket::type_VECTOR:
+		return SHADER_SOCKET_VECTOR;
+	case BL::NodeSocket::type_RGBA:
+		return SHADER_SOCKET_COLOR;
+	case BL::NodeSocket::type_SHADER:
+		return SHADER_SOCKET_CLOSURE;
+	
+	case BL::NodeSocket::type_BOOLEAN:
+	case BL::NodeSocket::type_MESH:
+	case BL::NodeSocket::type_INT:
+	default:
+		return SHADER_SOCKET_FLOAT;
+	}
+}
+
+static void set_default_value(ShaderInput *input, BL::NodeSocket sock)
+{
+	/* copy values for non linked inputs */
+	switch(input->type) {
+	case SHADER_SOCKET_FLOAT: {
+		BL::NodeSocketFloatNone value_sock(sock);
+		input->set(value_sock.default_value());
+		break;
+	}
+	case SHADER_SOCKET_COLOR: {
+		BL::NodeSocketRGBA rgba_sock(sock);
+		input->set(get_float3(rgba_sock.default_value()));
+		break;
+	}
+	case SHADER_SOCKET_NORMAL:
+	case SHADER_SOCKET_POINT:
+	case SHADER_SOCKET_VECTOR: {
+		BL::NodeSocketVectorNone vec_sock(sock);
+		input->set(get_float3(vec_sock.default_value()));
+		break;
+	}
+	case SHADER_SOCKET_CLOSURE:
+		break;
+	}
+}
+
 static void get_tex_mapping(TextureMapping *mapping, BL::TexMapping b_mapping)
 {
 	if(!b_mapping)
@@ -106,7 +152,7 @@ static void get_tex_mapping(TextureMapping *mapping, BL::ShaderNodeMapping b_map
 		mapping->max = get_float3(b_mapping.max());
 }
 
-static ShaderNode *add_node(BL::BlendData b_data, ShaderGraph *graph, BL::ShaderNode b_node)
+static ShaderNode *add_node(BL::BlendData b_data, BL::Scene b_scene, ShaderGraph *graph, BL::ShaderNode b_node)
 {
 	ShaderNode *node = NULL;
 
@@ -117,12 +163,20 @@ static ShaderNode *add_node(BL::BlendData b_data, ShaderGraph *graph, BL::Shader
 		case BL::ShaderNode::type_MATERIAL: break;
 		case BL::ShaderNode::type_MATERIAL_EXT: break;
 		case BL::ShaderNode::type_OUTPUT: break;
-		case BL::ShaderNode::type_SCRIPT: break;
 		case BL::ShaderNode::type_SQUEEZE: break;
 		case BL::ShaderNode::type_TEXTURE: break;
 		/* handled outside this function */
 		case BL::ShaderNode::type_GROUP: break;
 		/* existing blender nodes */
+		case BL::ShaderNode::type_REROUTE: {
+			BL::Node::inputs_iterator b_input;
+			b_node.inputs.begin(b_input);
+			BL::Node::outputs_iterator b_output;
+			b_node.outputs.begin(b_output);
+			ProxyNode *proxy = new ProxyNode(convert_socket_type(b_input->type()), convert_socket_type(b_output->type()));
+			node = proxy;
+			break;
+		}
 		case BL::ShaderNode::type_CURVE_RGB: {
 			RGBCurvesNode *ramp = new RGBCurvesNode();
 			node = ramp;
@@ -167,6 +221,7 @@ static ShaderNode *add_node(BL::BlendData b_data, ShaderGraph *graph, BL::Shader
 			BL::ShaderNodeMixRGB b_mix_node(b_node);
 			MixNode *mix = new MixNode();
 			mix->type = MixNode::type_enum[b_mix_node.blend_type()];
+			mix->use_clamp = b_mix_node.use_clamp();
 			node = mix;
 			break;
 		}
@@ -190,6 +245,7 @@ static ShaderNode *add_node(BL::BlendData b_data, ShaderGraph *graph, BL::Shader
 			BL::ShaderNodeMath b_math_node(b_node);
 			MathNode *math = new MathNode();
 			math->type = MathNode::type_enum[b_math_node.operation()];
+			math->use_clamp = b_math_node.use_clamp();
 			node = math;
 			break;
 		}
@@ -334,14 +390,24 @@ static ShaderNode *add_node(BL::BlendData b_data, ShaderGraph *graph, BL::Shader
 			node = new LightFalloffNode();
 			break;
 		}
+		case BL::ShaderNode::type_OBJECT_INFO: {
+			node = new ObjectInfoNode();
+			break;
+		}
+		case BL::ShaderNode::type_PARTICLE_INFO: {
+			node = new ParticleInfoNode();
+			break;
+		}
 		case BL::ShaderNode::type_TEX_IMAGE: {
 			BL::ShaderNodeTexImage b_image_node(b_node);
 			BL::Image b_image(b_image_node.image());
 			ImageTextureNode *image = new ImageTextureNode();
 			/* todo: handle generated/builtin images */
-			if(b_image)
-				image->filename = blender_absolute_path(b_data, b_image, b_image.filepath());
+			if(b_image && b_image.source() != BL::Image::source_MOVIE)
+				image->filename = image_user_file_path(b_image_node.image_user(), b_image, b_scene.frame_current());
 			image->color_space = ImageTextureNode::color_space_enum[(int)b_image_node.color_space()];
+			image->projection = ImageTextureNode::projection_enum[(int)b_image_node.projection()];
+			image->projection_blend = b_image_node.projection_blend();
 			get_tex_mapping(&image->tex_mapping, b_image_node.texture_mapping());
 			node = image;
 			break;
@@ -350,8 +416,8 @@ static ShaderNode *add_node(BL::BlendData b_data, ShaderGraph *graph, BL::Shader
 			BL::ShaderNodeTexEnvironment b_env_node(b_node);
 			BL::Image b_image(b_env_node.image());
 			EnvironmentTextureNode *env = new EnvironmentTextureNode();
-			if(b_image)
-				env->filename = blender_absolute_path(b_data, b_image, b_image.filepath());
+			if(b_image && b_image.source() != BL::Image::source_MOVIE)
+				env->filename = image_user_file_path(b_env_node.image_user(), b_image, b_scene.frame_current());
 			env->color_space = EnvironmentTextureNode::color_space_enum[(int)b_env_node.color_space()];
 			env->projection = EnvironmentTextureNode::projection_enum[(int)b_env_node.projection()];
 			get_tex_mapping(&env->tex_mapping, b_env_node.texture_mapping());
@@ -397,6 +463,17 @@ static ShaderNode *add_node(BL::BlendData b_data, ShaderGraph *graph, BL::Shader
 			node = checker;
 			break;
 		}
+		case BL::ShaderNode::type_TEX_BRICK: {
+			BL::ShaderNodeTexBrick b_brick_node(b_node);
+			BrickTextureNode *brick = new BrickTextureNode();
+			brick->offset = b_brick_node.offset();
+			brick->offset_frequency = b_brick_node.offset_frequency();
+			brick->squash = b_brick_node.squash();
+			brick->squash_frequency = b_brick_node.squash_frequency();
+			get_tex_mapping(&brick->tex_mapping, b_brick_node.texture_mapping());
+			node = brick;
+			break;
+		}
 		case BL::ShaderNode::type_TEX_NOISE: {
 			BL::ShaderNodeTexNoise b_noise_node(b_node);
 			NoiseTextureNode *noise = new NoiseTextureNode();
@@ -413,7 +490,7 @@ static ShaderNode *add_node(BL::BlendData b_data, ShaderGraph *graph, BL::Shader
 			break;
 		}
 		case BL::ShaderNode::type_TEX_COORD: {
-			node = new TextureCoordinateNode();;
+			node = new TextureCoordinateNode();
 			break;
 		}
 		case BL::ShaderNode::type_TEX_SKY: {
@@ -481,53 +558,7 @@ static SocketPair node_socket_map_pair(PtrNodeMap& node_map, BL::Node b_node, BL
 	return SocketPair(node_map[b_node.ptr.data], name);
 }
 
-static ShaderSocketType convert_socket_type(BL::NodeSocket::type_enum b_type)
-{
-	switch (b_type) {
-	case BL::NodeSocket::type_VALUE:
-		return SHADER_SOCKET_FLOAT;
-	case BL::NodeSocket::type_VECTOR:
-		return SHADER_SOCKET_VECTOR;
-	case BL::NodeSocket::type_RGBA:
-		return SHADER_SOCKET_COLOR;
-	case BL::NodeSocket::type_SHADER:
-		return SHADER_SOCKET_CLOSURE;
-	
-	case BL::NodeSocket::type_BOOLEAN:
-	case BL::NodeSocket::type_MESH:
-	case BL::NodeSocket::type_INT:
-	default:
-		return SHADER_SOCKET_FLOAT;
-	}
-}
-
-static void set_default_value(ShaderInput *input, BL::NodeSocket sock)
-{
-	/* copy values for non linked inputs */
-	switch(input->type) {
-	case SHADER_SOCKET_FLOAT: {
-		BL::NodeSocketFloatNone value_sock(sock);
-		input->set(value_sock.default_value());
-		break;
-	}
-	case SHADER_SOCKET_COLOR: {
-		BL::NodeSocketRGBA rgba_sock(sock);
-		input->set(get_float3(rgba_sock.default_value()));
-		break;
-	}
-	case SHADER_SOCKET_NORMAL:
-	case SHADER_SOCKET_POINT:
-	case SHADER_SOCKET_VECTOR: {
-		BL::NodeSocketVectorNone vec_sock(sock);
-		input->set(get_float3(vec_sock.default_value()));
-		break;
-	}
-	case SHADER_SOCKET_CLOSURE:
-		break;
-	}
-}
-
-static void add_nodes(BL::BlendData b_data, ShaderGraph *graph, BL::ShaderNodeTree b_ntree, PtrSockMap& sockets_map)
+static void add_nodes(BL::BlendData b_data, BL::Scene b_scene, ShaderGraph *graph, BL::ShaderNodeTree b_ntree, PtrSockMap& sockets_map)
 {
 	/* add nodes */
 	BL::ShaderNodeTree::nodes_iterator b_node;
@@ -575,10 +606,10 @@ static void add_nodes(BL::BlendData b_data, ShaderGraph *graph, BL::ShaderNodeTr
 				set_default_value(proxy->inputs[0], b_output->group_socket());
 			}
 			
-			add_nodes(b_data, graph, b_group_ntree, group_sockmap);
+			add_nodes(b_data, b_scene, graph, b_group_ntree, group_sockmap);
 		}
 		else {
-			ShaderNode *node = add_node(b_data, graph, BL::ShaderNode(*b_node));
+			ShaderNode *node = add_node(b_data, b_scene, graph, BL::ShaderNode(*b_node));
 			
 			if(node) {
 				BL::Node::inputs_iterator b_input;
@@ -634,7 +665,7 @@ static void add_nodes(BL::BlendData b_data, ShaderGraph *graph, BL::ShaderNodeTr
 			to_pair = sockets_map[b_to_sock.ptr.data];
 
 		/* either node may be NULL when the node was not exported, typically
-		   because the node type is not supported */
+		 * because the node type is not supported */
 		if(from_pair.first && to_pair.first) {
 			ShaderOutput *output = from_pair.first->output(from_pair.second.c_str());
 			ShaderInput *input = to_pair.first->input(to_pair.second.c_str());
@@ -668,7 +699,7 @@ void BlenderSync::sync_materials()
 				PtrSockMap sock_to_node;
 				BL::ShaderNodeTree b_ntree(b_mat->node_tree());
 
-				add_nodes(b_data, graph, b_ntree, sock_to_node);
+				add_nodes(b_data, b_scene, graph, b_ntree, sock_to_node);
 			}
 			else {
 				ShaderNode *closure, *out;
@@ -709,7 +740,7 @@ void BlenderSync::sync_world()
 			PtrSockMap sock_to_node;
 			BL::ShaderNodeTree b_ntree(b_world.node_tree());
 
-			add_nodes(b_data, graph, b_ntree, sock_to_node);
+			add_nodes(b_data, b_scene, graph, b_ntree, sock_to_node);
 		}
 		else if(b_world) {
 			ShaderNode *closure, *out;
@@ -768,7 +799,7 @@ void BlenderSync::sync_lamps()
 				PtrSockMap sock_to_node;
 				BL::ShaderNodeTree b_ntree(b_lamp->node_tree());
 
-				add_nodes(b_data, graph, b_ntree, sock_to_node);
+				add_nodes(b_data, b_scene, graph, b_ntree, sock_to_node);
 			}
 			else {
 				ShaderNode *closure, *out;
@@ -777,7 +808,9 @@ void BlenderSync::sync_lamps()
 				if(b_lamp->type() == BL::Lamp::type_POINT ||
 				   b_lamp->type() == BL::Lamp::type_SPOT ||
 				   b_lamp->type() == BL::Lamp::type_AREA)
+				{
 					strength = 100.0f;
+				}
 
 				closure = graph->add(new EmissionNode());
 				closure->input("Color")->value = get_float3(b_lamp->color());

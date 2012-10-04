@@ -23,6 +23,8 @@
 #include "device.h"
 #include "device_intern.h"
 
+#include "buffers.h"
+
 #include "util_cuda.h"
 #include "util_debug.h"
 #include "util_map.h"
@@ -37,6 +39,7 @@ CCL_NAMESPACE_BEGIN
 class CUDADevice : public Device
 {
 public:
+	TaskPool task_pool;
 	CUdevice cuDevice;
 	CUcontext cuContext;
 	CUmodule cuModule;
@@ -192,6 +195,8 @@ public:
 
 	~CUDADevice()
 	{
+		task_pool.stop();
+
 		cuda_push_context();
 		cuda_assert(cuCtxDetach(cuContext))
 	}
@@ -226,7 +231,7 @@ public:
 		string kernel_path = path_get("kernel");
 		string md5 = path_files_md5_hash(kernel_path);
 
-		cubin = string_printf("cycles_kernel_sm%d%d_%s.cubin", major, minor, md5.c_str());;
+		cubin = string_printf("cycles_kernel_sm%d%d_%s.cubin", major, minor, md5.c_str());
 		cubin = path_user_get(path_join("cache", cubin));
 
 		/* if exists already, use it */
@@ -259,7 +264,7 @@ public:
 
 		path_create_directories(cubin);
 
-		string command = string_printf("\"%s\" -arch=sm_%d%d -m%d --cubin \"%s\" --use_fast_math "
+		string command = string_printf("\"%s\" -arch=sm_%d%d -m%d --cubin \"%s\" "
 			"-o \"%s\" --ptxas-options=\"-v\" --maxrregcount=%d --opencc-options -OPT:Olimit=0 -I\"%s\" -DNVCC",
 			nvcc.c_str(), major, minor, machine, kernel.c_str(), cubin.c_str(), maxreg, include.c_str());
 
@@ -466,13 +471,13 @@ public:
 		}
 	}
 
-	void path_trace(DeviceTask& task)
+	void path_trace(RenderTile& rtile, int sample)
 	{
 		cuda_push_context();
 
 		CUfunction cuPathTrace;
-		CUdeviceptr d_buffer = cuda_device_ptr(task.buffer);
-		CUdeviceptr d_rng_state = cuda_device_ptr(task.rng_state);
+		CUdeviceptr d_buffer = cuda_device_ptr(rtile.buffer);
+		CUdeviceptr d_rng_state = cuda_device_ptr(rtile.rng_state);
 
 		/* get kernel function */
 		cuda_assert(cuModuleGetFunction(&cuPathTrace, cuModule, "kernel_cuda_path_trace"))
@@ -486,29 +491,28 @@ public:
 		cuda_assert(cuParamSetv(cuPathTrace, offset, &d_rng_state, sizeof(d_rng_state)))
 		offset += sizeof(d_rng_state);
 
-		int sample = task.sample;
 		offset = align_up(offset, __alignof(sample));
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, task.sample))
-		offset += sizeof(task.sample);
+		cuda_assert(cuParamSeti(cuPathTrace, offset, sample))
+		offset += sizeof(sample);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, task.x))
-		offset += sizeof(task.x);
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.x))
+		offset += sizeof(rtile.x);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, task.y))
-		offset += sizeof(task.y);
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.y))
+		offset += sizeof(rtile.y);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, task.w))
-		offset += sizeof(task.w);
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.w))
+		offset += sizeof(rtile.w);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, task.h))
-		offset += sizeof(task.h);
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.h))
+		offset += sizeof(rtile.h);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, task.offset))
-		offset += sizeof(task.offset);
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.offset))
+		offset += sizeof(rtile.offset);
 
-		cuda_assert(cuParamSeti(cuPathTrace, offset, task.stride))
-		offset += sizeof(task.stride);
+		cuda_assert(cuParamSeti(cuPathTrace, offset, rtile.stride))
+		offset += sizeof(rtile.stride);
 
 		cuda_assert(cuParamSetSize(cuPathTrace, offset))
 
@@ -520,23 +524,25 @@ public:
 		int xthreads = 8;
 		int ythreads = 8;
 #endif
-		int xblocks = (task.w + xthreads - 1)/xthreads;
-		int yblocks = (task.h + ythreads - 1)/ythreads;
+		int xblocks = (rtile.w + xthreads - 1)/xthreads;
+		int yblocks = (rtile.h + ythreads - 1)/ythreads;
 
 		cuda_assert(cuFuncSetCacheConfig(cuPathTrace, CU_FUNC_CACHE_PREFER_L1))
 		cuda_assert(cuFuncSetBlockShape(cuPathTrace, xthreads, ythreads, 1))
 		cuda_assert(cuLaunchGrid(cuPathTrace, xblocks, yblocks))
 
+		cuda_assert(cuCtxSynchronize())
+
 		cuda_pop_context();
 	}
 
-	void tonemap(DeviceTask& task)
+	void tonemap(DeviceTask& task, device_ptr buffer, device_ptr rgba)
 	{
 		cuda_push_context();
 
 		CUfunction cuFilmConvert;
-		CUdeviceptr d_rgba = map_pixels(task.rgba);
-		CUdeviceptr d_buffer = cuda_device_ptr(task.buffer);
+		CUdeviceptr d_rgba = map_pixels(rgba);
+		CUdeviceptr d_buffer = cuda_device_ptr(buffer);
 
 		/* get kernel function */
 		cuda_assert(cuModuleGetFunction(&cuFilmConvert, cuModule, "kernel_cuda_tonemap"))
@@ -771,7 +777,7 @@ public:
 			cuda_push_context();
 
 			/* for multi devices, this assumes the ineffecient method that we allocate
-			   all pixels on the device even though we only render to a subset */
+			 * all pixels on the device even though we only render to a subset */
 			size_t offset = sizeof(uint8_t)*4*y*w;
 
 			glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pmem.cuPBO);
@@ -820,27 +826,71 @@ public:
 		Device::draw_pixels(mem, y, w, h, dy, width, height, transparent);
 	}
 
+	void thread_run(DeviceTask *task)
+	{
+		if(task->type == DeviceTask::PATH_TRACE) {
+			RenderTile tile;
+			
+			/* keep rendering tiles until done */
+			while(task->acquire_tile(this, tile)) {
+				int start_sample = tile.start_sample;
+				int end_sample = tile.start_sample + tile.num_samples;
+
+				for(int sample = start_sample; sample < end_sample; sample++) {
+					if (task->get_cancel())
+						break;
+
+					path_trace(tile, sample);
+
+					tile.sample = sample + 1;
+
+					task->update_progress(tile);
+				}
+
+				task->release_tile(tile);
+			}
+		}
+		else if(task->type == DeviceTask::SHADER) {
+			shader(*task);
+
+			cuda_push_context();
+			cuda_assert(cuCtxSynchronize())
+			cuda_pop_context();
+		}
+	}
+
+	class CUDADeviceTask : public DeviceTask {
+	public:
+		CUDADeviceTask(CUDADevice *device, DeviceTask& task)
+		: DeviceTask(task)
+		{
+			run = function_bind(&CUDADevice::thread_run, device, this);
+		}
+	};
+
 	void task_add(DeviceTask& task)
 	{
-		if(task.type == DeviceTask::TONEMAP)
-			tonemap(task);
-		else if(task.type == DeviceTask::PATH_TRACE)
-			path_trace(task);
-		else if(task.type == DeviceTask::SHADER)
-			shader(task);
+		if(task.type == DeviceTask::TONEMAP) {
+			/* must be done in main thread due to opengl access */
+			tonemap(task, task.buffer, task.rgba);
+
+			cuda_push_context();
+			cuda_assert(cuCtxSynchronize())
+			cuda_pop_context();
+		}
+		else {
+			task_pool.push(new CUDADeviceTask(this, task));
+		}
 	}
 
 	void task_wait()
 	{
-		cuda_push_context();
-
-		cuda_assert(cuCtxSynchronize())
-
-		cuda_pop_context();
+		task_pool.wait_work();
 	}
 
 	void task_cancel()
 	{
+		task_pool.cancel();
 	}
 };
 
@@ -877,6 +927,7 @@ void device_cuda_info(vector<DeviceInfo>& devices)
 		int major, minor;
 		cuDeviceComputeCapability(&major, &minor, num);
 		info.advanced_shading = (major >= 2);
+		info.pack_images = false;
 
 		/* if device has a kernel timeout, assume it is used for display */
 		if(cuDeviceGetAttribute(&attr, CU_DEVICE_ATTRIBUTE_KERNEL_EXEC_TIMEOUT, num) == CUDA_SUCCESS && attr == 1) {

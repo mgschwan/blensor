@@ -189,7 +189,7 @@ class BakeAction(Operator):
             name="Only Selected",
             default=True,
             )
-    clear_consraints = BoolProperty(
+    clear_constraints = BoolProperty(
             name="Clear Constraints",
             default=False,
             )
@@ -212,7 +212,7 @@ class BakeAction(Operator):
                                         self.only_selected,
                                         'POSE' in self.bake_types,
                                         'OBJECT' in self.bake_types,
-                                        self.clear_consraints,
+                                        self.clear_constraints,
                                         True,
                                  )
 
@@ -223,6 +223,11 @@ class BakeAction(Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        scene = context.scene
+        self.frame_start = scene.frame_start
+        self.frame_end = scene.frame_end
+        self.bake_types = {'POSE'} if context.mode == 'POSE' else {'OBJECT'}
+
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
 

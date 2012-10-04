@@ -66,12 +66,13 @@ static void session_print(const string& str)
 
 static void session_print_status()
 {
-	int sample;
+	int sample, tile;
 	double total_time, sample_time;
 	string status, substatus;
 
 	/* get status */
-	options.session->progress.get_sample(sample, total_time, sample_time);
+	sample = options.session->progress.get_sample();
+	options.session->progress.get_tile(tile, total_time, sample_time);
 	options.session->progress.get_status(status, substatus);
 
 	if(substatus != "")
@@ -111,7 +112,7 @@ static void session_init()
 
 static void scene_init(int width, int height)
 {
-	options.scene = new Scene(options.scene_params);
+	options.scene = new Scene(options.scene_params, options.session_params.device);
 	xml_read_file(options.scene, options.filepath.c_str());
 	
 	if (width == 0 || height == 0) {
@@ -147,11 +148,12 @@ static void display_info(Progress& progress)
 	latency = (elapsed - last);
 	last = elapsed;
 
-	int sample;
+	int sample, tile;
 	double total_time, sample_time;
 	string status, substatus;
 
-	progress.get_sample(sample, total_time, sample_time);
+	sample = progress.get_sample();
+	progress.get_tile(tile, total_time, sample_time);
 	progress.get_status(status, substatus);
 
 	if(substatus != "")
@@ -172,8 +174,8 @@ static void display()
 
 static void resize(int width, int height)
 {
-	options.width= width;
-	options.height= height;
+	options.width = width;
+	options.height = height;
 
 	if(options.session)
 		options.session->reset(session_buffer_params(), options.session_params.samples);
@@ -197,8 +199,8 @@ static int files_parse(int argc, const char *argv[])
 
 static void options_parse(int argc, const char **argv)
 {
-	options.width= 0;
-	options.height= 0;
+	options.width = 0;
+	options.height = 0;
 	options.filepath = "";
 	options.session = NULL;
 	options.quiet = false;
@@ -245,7 +247,7 @@ static void options_parse(int argc, const char **argv)
 		NULL);
 	
 	if(ap.parse(argc, argv) < 0) {
-		fprintf(stderr, "%s\n", ap.error_message().c_str());
+		fprintf(stderr, "%s\n", ap.geterror().c_str());
 		ap.usage();
 		exit(EXIT_FAILURE);
 	}
@@ -270,6 +272,9 @@ static void options_parse(int argc, const char **argv)
 		options.scene_params.shadingsystem = SceneParams::OSL;
 	else if(ssname == "svm")
 		options.scene_params.shadingsystem = SceneParams::SVM;
+		
+	/* Progressive rendering */
+	options.session_params.progressive = true;
 
 	/* find matching device */
 	DeviceType device_type = Device::type_from_string(devicename.c_str());

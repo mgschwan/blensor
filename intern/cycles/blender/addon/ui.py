@@ -44,8 +44,51 @@ class CyclesButtonsPanel():
         return rd.engine == 'CYCLES'
 
 
-class CyclesRender_PT_integrator(CyclesButtonsPanel, Panel):
-    bl_label = "Integrator"
+class CyclesRender_PT_sampling(CyclesButtonsPanel, Panel):
+    bl_label = "Sampling"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+
+        scene = context.scene
+        cscene = scene.cycles
+        device_type = context.user_preferences.system.compute_device_type
+
+        split = layout.split()
+
+        col = split.column()
+        sub = col.column()
+        sub.active = (device_type == 'NONE' or cscene.device == 'CPU')
+        sub.prop(cscene, "progressive")
+
+        sub = col.column(align=True)
+        sub.prop(cscene, "seed")
+        sub.prop(cscene, "sample_clamp")
+
+        if cscene.progressive or (device_type != 'NONE' and cscene.device == 'GPU'):
+            col = split.column()
+            col.label(text="Samples:")
+            sub = col.column(align=True)
+            sub.prop(cscene, "samples", text="Render")
+            sub.prop(cscene, "preview_samples", text="Preview")
+        else:
+            sub.label(text="AA Samples:")
+            sub.prop(cscene, "aa_samples", text="Render")
+            sub.prop(cscene, "preview_aa_samples", text="Preview")
+
+            col = split.column()
+            col.label(text="Samples:")
+            sub = col.column(align=True)
+            sub.prop(cscene, "diffuse_samples", text="Diffuse")
+            sub.prop(cscene, "glossy_samples", text="Glossy")
+            sub.prop(cscene, "transmission_samples", text="Transmission")
+            sub.prop(cscene, "ao_samples", text="AO")
+            sub.prop(cscene, "mesh_light_samples", text="Mesh Light")
+
+
+class CyclesRender_PT_light_paths(CyclesButtonsPanel, Panel):
+    bl_label = "Light Paths"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -62,18 +105,17 @@ class CyclesRender_PT_integrator(CyclesButtonsPanel, Panel):
         split = layout.split()
 
         col = split.column()
-        sub = col.column(align=True)
-        sub.label(text="Samples:")
-        sub.prop(cscene, "samples", text="Render")
-        sub.prop(cscene, "preview_samples", text="Preview")
-        sub.prop(cscene, "seed")
-        sub.prop(cscene, "sample_clamp")
 
         sub = col.column(align=True)
         sub.label("Transparency:")
         sub.prop(cscene, "transparent_max_bounces", text="Max")
         sub.prop(cscene, "transparent_min_bounces", text="Min")
         sub.prop(cscene, "use_transparent_shadows", text="Shadows")
+
+        col.separator()
+
+        col.prop(cscene, "no_caustics")
+        col.prop(cscene, "blur_glossy")
 
         col = split.column()
 
@@ -83,15 +125,9 @@ class CyclesRender_PT_integrator(CyclesButtonsPanel, Panel):
         sub.prop(cscene, "min_bounces", text="Min")
 
         sub = col.column(align=True)
-        sub.label(text="Light Paths:")
         sub.prop(cscene, "diffuse_bounces", text="Diffuse")
         sub.prop(cscene, "glossy_bounces", text="Glossy")
         sub.prop(cscene, "transmission_bounces", text="Transmission")
-
-        col.separator()
-
-        col.prop(cscene, "no_caustics")
-        col.prop(cscene, "blur_glossy")
 
 
 class CyclesRender_PT_motion_blur(CyclesButtonsPanel, Panel):
@@ -162,8 +198,13 @@ class CyclesRender_PT_performance(CyclesButtonsPanel, Panel):
 
         sub = col.column(align=True)
         sub.label(text="Tiles:")
-        sub.prop(cscene, "debug_tile_size")
-        sub.prop(cscene, "debug_min_size")
+
+        sub.prop(rd, "parts_x", text="X")
+        sub.prop(rd, "parts_y", text="Y")
+
+        subsub = sub.column()
+        subsub.enabled = not rd.use_border
+        subsub.prop(rd, "use_save_buffers")
 
         col = split.column()
 
@@ -172,6 +213,10 @@ class CyclesRender_PT_performance(CyclesButtonsPanel, Panel):
         sub.prop(cscene, "debug_bvh_type", text="")
         sub.prop(cscene, "debug_use_spatial_splits")
         sub.prop(cscene, "use_cache")
+
+        sub = col.column(align=True)
+        sub.label(text="Viewport:")
+        sub.prop(cscene, "preview_start_resolution")
 
 
 class CyclesRender_PT_layers(CyclesButtonsPanel, Panel):
@@ -393,6 +438,28 @@ class Cycles_PT_mesh_displacement(CyclesButtonsPanel, Panel):
         layout.prop(cdata, "dicing_rate")
 
 
+class Cycles_PT_mesh_normals(CyclesButtonsPanel, Panel):
+    bl_label = "Normals"
+    bl_context = "data"
+
+    @classmethod
+    def poll(cls, context):
+        return CyclesButtonsPanel.poll(context) and context.mesh
+
+    def draw(self, context):
+        layout = self.layout
+
+        mesh = context.mesh
+
+        split = layout.split()
+
+        col = split.column()
+        col.prop(mesh, "show_double_sided")
+
+        col = split.column()
+        col.label()
+
+
 class CyclesObject_PT_ray_visibility(CyclesButtonsPanel, Panel):
     bl_label = "Ray Visibility"
     bl_context = "object"
@@ -467,6 +534,8 @@ class CyclesLamp_PT_lamp(CyclesButtonsPanel, Panel):
 
         lamp = context.lamp
         clamp = lamp.cycles
+        cscene = context.scene.cycles
+        device_type = context.user_preferences.system.compute_device_type
 
         layout.prop(lamp, "type", expand=True)
 
@@ -485,12 +554,13 @@ class CyclesLamp_PT_lamp(CyclesButtonsPanel, Panel):
                 sub.prop(lamp, "size", text="Size X")
                 sub.prop(lamp, "size_y", text="Size Y")
 
+        if not cscene.progressive and (device_type == 'NONE' or cscene.device == 'CPU'):
+            col.prop(clamp, "samples")
+
         col = split.column()
         col.prop(clamp, "cast_shadow")
 
-        if lamp.type == 'SPOT':
-            layout.label(text="Not supported, interpreted as point lamp.")
-        elif lamp.type == 'HEMI':
+        if lamp.type == 'HEMI':
             layout.label(text="Not supported, interpreted as sun lamp.")
 
 
@@ -508,6 +578,31 @@ class CyclesLamp_PT_nodes(CyclesButtonsPanel, Panel):
         lamp = context.lamp
         if not panel_node_draw(layout, lamp, 'OUTPUT_LAMP', 'Surface'):
             layout.prop(lamp, "color")
+
+
+class CyclesLamp_PT_spot(CyclesButtonsPanel, Panel):
+    bl_label = "Spot Shape"
+    bl_context = "data"
+
+    @classmethod
+    def poll(cls, context):
+        lamp = context.lamp
+        return (lamp and lamp.type == 'SPOT') and CyclesButtonsPanel.poll(context)
+
+    def draw(self, context):
+        layout = self.layout
+
+        lamp = context.lamp
+
+        split = layout.split()
+
+        col = split.column()
+        sub = col.column()
+        sub.prop(lamp, "spot_size", text="Size")
+        sub.prop(lamp, "spot_blend", text="Blend", slider=True)
+
+        col = split.column()
+        col.prop(lamp, "show_cone")
 
 
 class CyclesWorld_PT_surface(CyclesButtonsPanel, Panel):
@@ -583,13 +678,17 @@ class CyclesWorld_PT_settings(CyclesButtonsPanel, Panel):
 
         world = context.world
         cworld = world.cycles
+        cscene = context.scene.cycles
+        device_type = context.user_preferences.system.compute_device_type
 
         col = layout.column()
 
         col.prop(cworld, "sample_as_light")
-        row = col.row()
-        row.active = cworld.sample_as_light
-        row.prop(cworld, "sample_map_resolution")
+        sub = col.row(align=True)
+        sub.active = cworld.sample_as_light
+        sub.prop(cworld, "sample_map_resolution")
+        if not cscene.progressive and (device_type == 'NONE' or cscene.device == 'CPU'):
+            sub.prop(cworld, "samples")
 
 
 class CyclesMaterial_PT_surface(CyclesButtonsPanel, Panel):
@@ -856,6 +955,9 @@ def draw_device(self, context):
         elif device_type == 'OPENCL' and cscene.feature_set == 'EXPERIMENTAL':
             layout.prop(cscene, "device")
 
+        if cscene.feature_set == 'EXPERIMENTAL' and cscene.device == 'CPU' and engine.with_osl():
+            layout.prop(cscene, "shading_system")
+
 
 def draw_pause(self, context):
     layout = self.layout
@@ -898,6 +1000,7 @@ def get_panels():
         bpy.types.DATA_PT_camera,
         bpy.types.DATA_PT_camera_display,
         bpy.types.DATA_PT_lens,
+        bpy.types.DATA_PT_customdata,
         bpy.types.DATA_PT_custom_props_mesh,
         bpy.types.DATA_PT_custom_props_camera,
         bpy.types.DATA_PT_custom_props_lamp,

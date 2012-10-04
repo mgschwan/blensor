@@ -57,6 +57,12 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 default='GPU_COMPATIBLE',
                 )
 
+        cls.progressive = BoolProperty(
+                name="Progressive",
+                description="Use progressive sampling of lighting",
+                default=True,
+                )
+
         cls.samples = IntProperty(
                 name="Samples",
                 description="Number of samples to render for each pixel",
@@ -80,6 +86,49 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 default=False,
                 )
 
+        cls.aa_samples = IntProperty(
+                name="AA Samples",
+                description="Number of antialiasing samples to render for each pixel",
+                min=1, max=10000,
+                default=4,
+                )
+        cls.preview_aa_samples = IntProperty(
+                name="AA Samples",
+                description="Number of antialiasing samples to render in the viewport, unlimited if 0",
+                min=0, max=10000,
+                default=4,
+                )
+        cls.diffuse_samples = IntProperty(
+                name="Diffuse Samples",
+                description="Number of diffuse bounce samples to render for each AA sample",
+                min=1, max=10000,
+                default=1,
+                )
+        cls.glossy_samples = IntProperty(
+                name="Glossy Samples",
+                description="Number of glossy bounce samples to render for each AA sample",
+                min=1, max=10000,
+                default=1,
+                )
+        cls.transmission_samples = IntProperty(
+                name="Transmission Samples",
+                description="Number of transmission bounce samples to render for each AA sample",
+                min=1, max=10000,
+                default=1,
+                )
+        cls.ao_samples = IntProperty(
+                name="Ambient Occlusion Samples",
+                description="Number of ambient occlusion samples to render for each AA sample",
+                min=1, max=10000,
+                default=1,
+                )
+        cls.mesh_light_samples = IntProperty(
+                name="Mesh Light Samples",
+                description="Number of mesh emission light samples to render for each AA sample",
+                min=1, max=10000,
+                default=1,
+                )
+
         cls.no_caustics = BoolProperty(
                 name="No Caustics",
                 description="Leave out caustics, resulting in a darker image with less noise",
@@ -94,7 +143,9 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
 
         cls.min_bounces = IntProperty(
                 name="Min Bounces",
-                description="Minimum number of bounces, setting this lower than the maximum enables probalistic path termination (faster but noisier)",
+                description="Minimum number of bounces, setting this lower "
+                            "than the maximum enables probabilistic path "
+                            "termination (faster but noisier)",
                 min=0, max=1024,
                 default=3,
                 )
@@ -126,7 +177,10 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
 
         cls.transparent_min_bounces = IntProperty(
                 name="Transparent Min Bounces",
-                description="Minimum number of transparent bounces, setting this lower than the maximum enables probalistic path termination (faster but noisier)",
+                description="Minimum number of transparent bounces, setting "
+                            "this lower than the maximum enables "
+                            "probabilistic path termination (faster but "
+                            "noisier)",
                 min=0, max=1024,
                 default=8,
                 )
@@ -187,12 +241,14 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 min=1, max=4096,
                 default=1024,
                 )
-        cls.debug_min_size = IntProperty(
-                name="Min Size",
-                description="",
-                min=1, max=4096,
+
+        cls.preview_start_resolution = IntProperty(
+                name="Start Resolution",
+                description="Resolution to start rendering preview at, progressively increasing it to the full viewport size",
+                min=8, max=16384,
                 default=64,
                 )
+
         cls.debug_reset_timeout = FloatProperty(
                 name="Reset timeout",
                 description="",
@@ -287,7 +343,7 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
         cls.fisheye_fov = FloatProperty(
                 name="Field of View",
                 description="Field of view for the fisheye lens",
-                min=0.1745, soft_max=2*math.pi, max=10.0*math.pi,
+                min=0.1745, soft_max=2 * math.pi, max=10.0 * math.pi,
                 subtype='ANGLE',
                 default=math.pi,
                 )
@@ -340,6 +396,12 @@ class CyclesLampSettings(bpy.types.PropertyGroup):
                 description="Lamp casts shadows",
                 default=True,
                 )
+        cls.samples = IntProperty(
+                name="Samples",
+                description="Number of light samples to render for each AA sample",
+                min=1, max=10000,
+                default=1,
+                )
 
     @classmethod
     def unregister(cls):
@@ -364,6 +426,12 @@ class CyclesWorldSettings(bpy.types.PropertyGroup):
                 description="Importance map size is resolution x resolution; higher values potentially produce less noise, at the cost of memory and speed",
                 min=4, max=8096,
                 default=256,
+                )
+        cls.samples = IntProperty(
+                name="Samples",
+                description="Number of light samples to render for each AA sample",
+                min=1, max=10000,
+                default=4,
                 )
 
     @classmethod

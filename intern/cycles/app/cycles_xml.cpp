@@ -254,6 +254,16 @@ static void xml_read_film(const XMLReadState& state, pugi::xml_node node)
 static void xml_read_integrator(const XMLReadState& state, pugi::xml_node node)
 {
 	Integrator *integrator = state.scene->integrator;
+	
+	xml_read_bool(&integrator->progressive, node, "progressive");
+	
+	if(!integrator->progressive) {
+		xml_read_int(&integrator->diffuse_samples, node, "diffuse_samples");
+		xml_read_int(&integrator->glossy_samples, node, "glossy_samples");
+		xml_read_int(&integrator->transmission_samples, node, "transmission_samples");
+		xml_read_int(&integrator->ao_samples, node, "ao_samples");
+		xml_read_int(&integrator->mesh_light_samples, node, "mesh_light_samples");
+	}
 
 	xml_read_int(&integrator->min_bounce, node, "min_bounce");
 	xml_read_int(&integrator->max_bounce, node, "max_bounce");
@@ -267,8 +277,10 @@ static void xml_read_integrator(const XMLReadState& state, pugi::xml_node node)
 	
 	xml_read_bool(&integrator->transparent_shadows, node, "transparent_shadows");
 	xml_read_bool(&integrator->no_caustics, node, "no_caustics");
+	xml_read_float(&integrator->filter_glossy, node, "blur_glossy");
 	
 	xml_read_int(&integrator->seed, node, "seed");
+	xml_read_float(&integrator->sample_clamp, node, "sample_clamp");
 }
 
 /* Camera */
@@ -367,6 +379,9 @@ static void xml_read_shader_graph(const XMLReadState& state, Shader *shader, pug
 		else if(string_iequals(node.name(), "checker_texture")) {
 			snode = new CheckerTextureNode();
 		}
+		else if(string_iequals(node.name(), "brick_texture")) {
+			snode = new BrickTextureNode();
+		}
 		else if(string_iequals(node.name(), "gradient_texture")) {
 			GradientTextureNode *blend = new GradientTextureNode();
 			xml_read_enum(&blend->type, GradientTextureNode::type_enum, node, "type");
@@ -392,9 +407,9 @@ static void xml_read_shader_graph(const XMLReadState& state, Shader *shader, pug
 			snode = dist;
 		}
 		else if(string_iequals(node.name(), "wave_texture")) {
-			WaveTextureNode *wood = new WaveTextureNode();
-			xml_read_enum(&wood->type, WaveTextureNode::type_enum, node, "type");
-			snode = wood;
+			WaveTextureNode *wave = new WaveTextureNode();
+			xml_read_enum(&wave->type, WaveTextureNode::type_enum, node, "type");
+			snode = wave;
 		}
 		else if(string_iequals(node.name(), "normal")) {
 			snode = new NormalNode();
@@ -472,6 +487,7 @@ static void xml_read_shader_graph(const XMLReadState& state, Shader *shader, pug
 		else if(string_iequals(node.name(), "mix")) {
 			MixNode *mix = new MixNode();
 			xml_read_enum(&mix->type, MixNode::type_enum, node, "type");
+			xml_read_bool(&mix->use_clamp, node, "use_clamp");
 			snode = mix;
 		}
 		else if(string_iequals(node.name(), "gamma")) {
@@ -503,6 +519,7 @@ static void xml_read_shader_graph(const XMLReadState& state, Shader *shader, pug
 		else if(string_iequals(node.name(), "math")) {
 			MathNode *math = new MathNode();
 			xml_read_enum(&math->type, MathNode::type_enum, node, "type");
+			xml_read_bool(&math->use_clamp, node, "use_clamp");
 			snode = math;
 		}
 		else if(string_iequals(node.name(), "vector_math")) {
@@ -673,7 +690,7 @@ static void xml_read_mesh(const XMLReadState& state, pugi::xml_node node)
 				for(int j = 0; j < nverts[i]-2; j++) {
 					int v0 = verts[index_offset];
 					int v1 = verts[index_offset + j + 1];
-					int v2 = verts[index_offset + j + 2];;
+					int v2 = verts[index_offset + j + 2];
 
 					sdmesh.add_face(v0, v1, v2);
 				}

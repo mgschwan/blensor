@@ -4,7 +4,7 @@ from bpy.props import FloatVectorProperty
 
 
 class ViewOperator(bpy.types.Operator):
-    '''Translate the view using mouse events.'''
+    """Translate the view using mouse events"""
     bl_idname = "view3d.modal_operator"
     bl_label = "Simple View Operator"
 
@@ -45,14 +45,13 @@ class ViewOperator(bpy.types.Operator):
             v3d = context.space_data
             rv3d = v3d.region_3d
 
-            context.window_manager.modal_handler_add(self)
-
             if rv3d.view_perspective == 'CAMERA':
                 rv3d.view_perspective = 'PERSP'
 
             self._initial_mouse = Vector((event.mouse_x, event.mouse_y, 0.0))
             self._initial_location = rv3d.view_location.copy()
 
+            context.window_manager.modal_handler_add(self)
             return {'RUNNING_MODAL'}
         else:
             self.report({'WARNING'}, "Active space must be a View3d")
