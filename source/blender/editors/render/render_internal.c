@@ -268,19 +268,19 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
 		    re = RE_NewRender(scene->id.name);
 	    }
 	
-	    G.afbreek= 0;
-        
- 	    //RE_test_break_cb(re, NULL, (int (*)(void *)) blender_test_break);
+  
+      G.is_break = FALSE;
+	    //RE_test_break_cb(re, NULL, (int (*)(void *)) blender_test_break);
 
 	    ima= BKE_image_verify_viewer(IMA_TYPE_R_RESULT, "Render Result");
 	    BKE_image_signal(ima, NULL, IMA_SIGNAL_FREE);
 	    BKE_image_backup_render(scene, ima);
 
-	    /* cleanup sequencer caches before starting user triggered render.
-       otherwise, invalidated cache entries can make their way into
-	       the output rendering. We can't put that into RE_BlenderFrame,
-	       since sequence rendering can call that recursively... (peter) */
-	    seq_stripelem_cache_cleanup();
+      /* cleanup sequencer caches before starting user triggered render.
+       * otherwise, invalidated cache entries can make their way into
+       * the output rendering. We can't put that into RE_BlenderFrame,
+       * since sequence rendering can call that recursively... (peter) */
+      BKE_sequencer_cache_cleanup();
 
       RE_SetReports(re, op->reports);
 
@@ -289,7 +289,7 @@ static int screen_blensor_exec(bContext *C, wmOperator *op)
     	RE_SetReports(re, NULL);
 
 	    // no redraw needed, we leave state as we entered it
-	    ED_update_for_newframe(mainp, scene, CTX_wm_screen(C), 1);
+	    ED_update_for_newframe(mainp, scene, 1);
 
 	    WM_event_add_notifier(C, NC_SCENE|ND_RENDER_RESULT, scene);
       if (keep_render_setup == 0)

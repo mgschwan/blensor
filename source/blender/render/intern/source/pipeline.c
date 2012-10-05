@@ -974,7 +974,7 @@ double Blensor_GetPropertyValue_Double(struct Object *root, const char *name, do
 
     if (root)
     {
-            prop = get_ob_property(root,name);
+            prop = BKE_bproperty_object_get(root,name);
             
             if (prop)
             {
@@ -2558,7 +2558,7 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 
   double refractive_index = 1.0; //Vacuum
 	/* ugly global still... is to prevent preview events and signal subsurfs etc to make full resol */
-	G.rendering= 1;
+	G.is_rendering= TRUE;
 	
 	printf ("Do Blensor processing: %d\n", frame);
 
@@ -2591,7 +2591,7 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
   //BLI_callback_exec(re->main, (ID *)scene, G.afbreek ? BLI_CB_EVT_RENDER_CANCEL : BLI_CB_EVT_RENDER_COMPLETE);
 
 	/* UGLY WARNING */
-	G.rendering= 0;
+	G.is_rendering= FALSE;
 }
 
 
