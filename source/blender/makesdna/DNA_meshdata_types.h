@@ -95,7 +95,7 @@ typedef struct MLoop {
 typedef struct MTexPoly {
 	struct Image *tpage;
 	char flag, transp;
-	short mode, tile, unwrap;
+	short mode, tile, pad;
 } MTexPoly;
 
 /* can copy from/to MTexPoly/MTFace */
@@ -106,8 +106,7 @@ typedef struct MTexPoly {
 	(dst)->transp = (src)->transp;  \
 	(dst)->mode   = (src)->mode;    \
 	(dst)->tile   = (src)->tile;    \
-	(dst)->unwrap = (src)->unwrap;  \
-}
+} (void)0
 
 typedef struct MLoopUV {
 	float uv[2];
@@ -120,7 +119,8 @@ typedef struct MLoopUV {
 #define MLOOPUV_PINNED	4
 
 /* at the moment alpha is abused for vertex painting
- * and not used for transparency, note that red and blue are swapped */
+ * and not used for transparency,
+ * note that red and blue are _not_ swapped, as they are with #MCol */
 typedef struct MLoopCol {
 	char r, g, b, a;
 } MLoopCol;
@@ -146,13 +146,9 @@ typedef struct MLoopCol {
 	mcol__tmp->a = mloopcol__tmp->a;            \
 } (void)0
 
-typedef struct MSticky {
-	float co[2];
-} MSticky;
-
 typedef struct MSelect {
 	int index;
-	int type; /* EDITVERT/EDITEDGE/EDITFACE */
+	int type;  /* ME_VSEL/ME_ESEL/ME_FSEL */
 } MSelect;
 
 /*tessellation uv face data*/
@@ -189,9 +185,9 @@ typedef struct MDisps {
 	float (*disps)[3];
 	
 	/* Used for hiding parts of a multires mesh. Essentially the multires
-	   equivalent of MVert.flag's ME_HIDE bit.
-	
-	   This is a bitmap, keep in sync with type used in BLI_bitmap.h */
+	 * equivalent of MVert.flag's ME_HIDE bit.
+	 *
+	 * This is a bitmap, keep in sync with type used in BLI_bitmap.h */
 	unsigned int *hidden;
 } MDisps;
 
@@ -247,6 +243,37 @@ typedef struct MRecast {
 	int		i;
 } MRecast;
 
+typedef struct GridPaintMask {
+	/* The data array contains gridsize*gridsize elements */
+	float *data;
+
+	/* The maximum multires level associated with this grid */
+	unsigned int level;
+
+	int pad;
+} GridPaintMask;
+
+typedef enum MVertSkinFlag {
+	/* Marks a vertex as the edge-graph root, used for calculating
+	 * rotations for all connected edges (recursively.) Also used to
+	 * choose a root when generating an armature. */
+	MVERT_SKIN_ROOT = 1,
+
+	/* Marks a branch vertex (vertex with more than two connected
+	 * edges) so that it's neighbors are directly hulled together,
+	 * rather than the default of generating intermediate frames. */
+	MVERT_SKIN_LOOSE = 2
+} MVertSkinFlag;
+
+typedef struct MVertSkin {
+	/* Radii of the skin, define how big the generated frames
+	 * are. Currently only the first two elements are used. */
+	float radius[3];
+
+	/* MVertSkinFlag */
+	int flag;
+} MVertSkin;
+
 /* mvert->flag (1=SELECT) */
 #define ME_SPHERETEST		2
 #define ME_VERT_TMP_TAG		4
@@ -296,7 +323,6 @@ typedef struct MRecast {
 #define TF_SEL2		8
 #define TF_SEL3		16
 #define TF_SEL4		32
-#define TF_HIDE		64 /* unused, same as TF_SELECT */
 
 /* mtface->mode */
 #define TF_DYNAMIC		1
@@ -329,13 +355,13 @@ typedef struct MRecast {
 
 
 /* mtface->unwrap */
-#define TF_DEPRECATED1	1
-#define TF_DEPRECATED2	2
-#define TF_DEPRECATED3	4
-#define TF_DEPRECATED4	8
-#define TF_PIN1		    16
-#define TF_PIN2		    32
-#define TF_PIN3	   		64
-#define TF_PIN4	    	128
+#define TF_DEPRECATED1     1
+#define TF_DEPRECATED2     2
+#define TF_DEPRECATED3     4
+#define TF_DEPRECATED4     8
+#define TF_PIN1            16
+#define TF_PIN2	           32
+#define TF_PIN3	   	       64
+#define TF_PIN4	           128
 
 #endif

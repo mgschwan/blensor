@@ -42,6 +42,7 @@
 #include "KX_PhysicsEngineEnums.h"
 #include "PHY_IPhysicsEnvironment.h"
 #include "KX_KetsjiEngine.h"
+#include "KX_PythonInit.h" // So we can handle adding new text datablocks for Python to import
 #include "KX_IPhysicsController.h"
 #include "BL_Material.h"
 #include "BL_ActionActuator.h"
@@ -159,7 +160,7 @@ KX_BlenderSceneConverter::~KX_BlenderSceneConverter()
 	while (itmat != m_materials.end()) {
 		delete (*itmat).second;
 		itmat++;
-	}	
+	}
 
 
 	vector<pair<KX_Scene*,RAS_MeshObject*> >::iterator itm = m_meshobjects.begin();
@@ -173,9 +174,9 @@ KX_BlenderSceneConverter::~KX_BlenderSceneConverter()
 #endif
 
 	/* free any data that was dynamically loaded */
-	for (vector<Main*>::iterator it=m_DynamicMaggie.begin(); !(it==m_DynamicMaggie.end()); it++) {
-		Main *main= *it;
-		free_main(main);
+	while (m_DynamicMaggie.size() != 0)
+	{
+		FreeBlendFile(m_DynamicMaggie[0]);
 	}
 
 	m_DynamicMaggie.clear();
@@ -200,7 +201,7 @@ bool KX_BlenderSceneConverter::TryAndLoadNewFile()
 	// if not, clear the newfilename
 	else
 	{
-		m_newfilename = "";	
+		m_newfilename = "";
 	}
 */
 	return result;
@@ -324,8 +325,9 @@ void KX_BlenderSceneConverter::ConvertScene(class KX_Scene* destinationscene,
 			{
 				CcdPhysicsEnvironment* ccdPhysEnv = new CcdPhysicsEnvironment(useDbvtCulling);
 				ccdPhysEnv->setDebugDrawer(new BlenderDebugDraw());
-				ccdPhysEnv->setDeactivationLinearTreshold(0.8f); // default, can be overridden by Python
-				ccdPhysEnv->setDeactivationAngularTreshold(1.0f); // default, can be overridden by Python
+				ccdPhysEnv->setDeactivationLinearTreshold(blenderscene->gm.lineardeactthreshold);
+				ccdPhysEnv->setDeactivationAngularTreshold(blenderscene->gm.angulardeactthreshold);
+				ccdPhysEnv->setDeactivationTime(blenderscene->gm.deactivationtime);
 
 				SYS_SystemHandle syshandle = SYS_GetSystem(); /*unused*/
 				int visualizePhysics = SYS_GetCommandLineInt(syshandle,"show_physics",0);
@@ -333,7 +335,7 @@ void KX_BlenderSceneConverter::ConvertScene(class KX_Scene* destinationscene,
 					ccdPhysEnv->setDebugMode(btIDebugDraw::DBG_DrawWireframe|btIDebugDraw::DBG_DrawAabb|btIDebugDraw::DBG_DrawContactPoints|btIDebugDraw::DBG_DrawText|btIDebugDraw::DBG_DrawConstraintLimits|btIDebugDraw::DBG_DrawConstraints);
 		
 				//todo: get a button in blender ?
-				//disable / enable debug drawing (contact points, aabb's etc)	
+				//disable / enable debug drawing (contact points, aabb's etc)
 				//ccdPhysEnv->setDebugMode(1);
 				destinationscene->SetPhysicsEnvironment(ccdPhysEnv);
 				break;
@@ -687,7 +689,7 @@ void	KX_BlenderSceneConverter::ResetPhysicsObjectsAnimationIpo(bool clearIpo)
 
 void	KX_BlenderSceneConverter::resetNoneDynamicObjectToIpo()
 {
-	if (addInitFromFrame) {		
+	if (addInitFromFrame) {
 		KX_SceneList* scenes = m_ketsjiEngine->CurrentScenes();
 		int numScenes = scenes->size();
 		if (numScenes>=0) {
@@ -702,7 +704,7 @@ void	KX_BlenderSceneConverter::resetNoneDynamicObjectToIpo()
 					if (blenderobject->type==OB_ARMATURE)
 						continue;
 					float eu[3];
-					mat4_to_eul(eu,blenderobject->obmat);					
+					mat4_to_eul(eu,blenderobject->obmat);
 					MT_Point3 pos = MT_Point3(
 						blenderobject->obmat[3][0],
 						blenderobject->obmat[3][1],
@@ -777,8 +779,8 @@ void	KX_BlenderSceneConverter::WritePhysicsObjectToAnimationIpo(int frameNumber)
 					//const MT_Vector3& scale = gameObj->NodeGetWorldScaling();
 					const MT_Matrix3x3& orn = gameObj->NodeGetWorldOrientation();
 					
-					float eulerAngles[3];	
-					float eulerAnglesOld[3] = {0.0f, 0.0f, 0.0f};						
+					float eulerAngles[3];
+					float eulerAnglesOld[3] = {0.0f, 0.0f, 0.0f};
 					float tmat[3][3];
 					
 					// XXX animato
@@ -929,13 +931,34 @@ bool KX_BlenderSceneConverter::LinkBlendFilePath(const char *path, char *group, 
 	return LinkBlendFile(bpy_openlib, path, group, scene_merge, err_str, options);
 }
 
+static void load_datablocks(Main *main_newlib, BlendHandle *bpy_openlib, const char *path, int idcode)
+{
+	Main *main_tmp= NULL; /* created only for linking, then freed */
+	LinkNode *names = NULL;
+	short flag= 0; /* don't need any special options */
+
+	/* here appending/linking starts */
+	main_tmp = BLO_library_append_begin(main_newlib, &bpy_openlib, (char *)path);
+
+	int totnames_dummy;
+	names = BLO_blendhandle_get_datablock_names( bpy_openlib, idcode, &totnames_dummy);
+	
+	int i=0;
+	LinkNode *n= names;
+	while(n) {
+		BLO_library_append_named_part(main_tmp, &bpy_openlib, (char *)n->link, idcode);
+		n= (LinkNode *)n->next;
+		i++;
+	}
+	BLI_linklist_free(names, free);	/* free linklist *and* each node's data */
+	
+	BLO_library_append_end(NULL, main_tmp, &bpy_openlib, idcode, flag);
+}
+
 bool KX_BlenderSceneConverter::LinkBlendFile(BlendHandle *bpy_openlib, const char *path, char *group, KX_Scene *scene_merge, char **err_str, short options)
 {
 	Main *main_newlib; /* stored as a dynamic 'main' until we free it */
-	Main *main_tmp= NULL; /* created only for linking, then freed */
-	LinkNode *names = NULL;
 	int idcode= BKE_idcode_from_name(group);
-	short flag= 0; /* don't need any special options */
 	ReportList reports;
 	static char err_local[255];
 	
@@ -961,52 +984,27 @@ bool KX_BlenderSceneConverter::LinkBlendFile(BlendHandle *bpy_openlib, const cha
 	}
 	
 	main_newlib= (Main *)MEM_callocN( sizeof(Main), "BgeMain");
-	BKE_reports_init(&reports, RPT_STORE);	
+	BKE_reports_init(&reports, RPT_STORE);
 
-	/* here appending/linking starts */
-	main_tmp = BLO_library_append_begin(main_newlib, &bpy_openlib, (char *)path);
+	load_datablocks(main_newlib, bpy_openlib, path, idcode);
 
-	int totnames_dummy;
-	names = BLO_blendhandle_get_datablock_names( bpy_openlib, idcode, &totnames_dummy);
-	
-	int i=0;
-	LinkNode *n= names;
-	while(n) {
-		BLO_library_append_named_part(main_tmp, &bpy_openlib, (char *)n->link, idcode);
-		n= (LinkNode *)n->next;
-		i++;
+	if (idcode==ID_SCE && options & LIB_LOAD_LOAD_SCRIPTS) {
+		load_datablocks(main_newlib, bpy_openlib, path, ID_TXT);
 	}
-	BLI_linklist_free(names, free);	/* free linklist *and* each node's data */
-	
-	BLO_library_append_end(NULL, main_tmp, &bpy_openlib, idcode, flag);
 
 	/* now do another round of linking for Scenes so all actions are properly loaded */
 	if (idcode==ID_SCE && options & LIB_LOAD_LOAD_ACTIONS) {
-		main_tmp = BLO_library_append_begin(main_newlib, &bpy_openlib, (char *)path);
-
-		int totnames_dummy;
-		names = BLO_blendhandle_get_datablock_names( bpy_openlib, ID_AC, &totnames_dummy);
-	
-		int i=0;
-		LinkNode *n= names;
-		while(n) {
-			BLO_library_append_named_part(main_tmp, &bpy_openlib, (char *)n->link, ID_AC);
-			n= (LinkNode *)n->next;
-			i++;
-		}
-		BLI_linklist_free(names, free);	/* free linklist *and* each node's data */
-	
-		BLO_library_append_end(NULL, main_tmp, &bpy_openlib, ID_AC, flag);
+		load_datablocks(main_newlib, bpy_openlib, path, ID_AC);
 	}
 	
 	BLO_blendhandle_close(bpy_openlib);
 
 	BKE_reports_clear(&reports);
-	/* done linking */	
+	/* done linking */
 	
 	/* needed for lookups*/
 	GetMainDynamic().push_back(main_newlib);
-	strncpy(main_newlib->name, path, sizeof(main_newlib->name));	
+	strncpy(main_newlib->name, path, sizeof(main_newlib->name));
 	
 	
 	if (idcode==ID_ME) {
@@ -1030,7 +1028,7 @@ bool KX_BlenderSceneConverter::LinkBlendFile(BlendHandle *bpy_openlib, const cha
 			scene_merge->GetLogicManager()->RegisterActionName(action->name+2, action);
 		}
 	}
-	else if (idcode==ID_SCE) {		
+	else if (idcode==ID_SCE) {
 		/* Merge all new linked in scene into the existing one */
 		ID *scene;
 		for (scene= (ID *)main_newlib->scene.first; scene; scene= (ID *)scene->next ) {
@@ -1044,6 +1042,12 @@ bool KX_BlenderSceneConverter::LinkBlendFile(BlendHandle *bpy_openlib, const cha
 			// RemoveScene(other); // Don't run this, it frees the entire scene converter data, just delete the scene
 			delete other;
 		}
+
+#ifdef WITH_PYTHON
+		/* Handle any text datablocks */
+		if (options & LIB_LOAD_LOAD_SCRIPTS)
+			addImportMain(main_newlib);
+#endif
 
 		/* Now handle all the actions */
 		if (options & LIB_LOAD_LOAD_ACTIONS) {
@@ -1113,7 +1117,7 @@ bool KX_BlenderSceneConverter::FreeBlendFile(struct Main *maggie)
 				{
 					RAS_MeshObject *meshobj= (RAS_MeshObject *) *mapStringToMeshes.at(i);
 					if (meshobj && IS_TAGGED(meshobj->GetMesh()))
-					{	
+					{
 						STR_HashedString mn = meshobj->GetName();
 						mapStringToMeshes.remove(mn);
 						m_map_mesh_to_gamemesh.remove(CHashedPtr(meshobj->GetMesh()));
@@ -1251,7 +1255,7 @@ bool KX_BlenderSceneConverter::FreeBlendFile(struct Main *maggie)
 		RAS_IPolyMaterial *mat= (*polymit).second;
 		Material *bmat= NULL;
 
-		/* Why do we need to check for RAS_BLENDERMAT if both are cast to a (PyObject*)? - Campbell */
+		/* Why do we need to check for RAS_BLENDERMAT if both are cast to a (PyObject *)? - Campbell */
 		if (mat->GetFlag() & RAS_BLENDERMAT) {
 			KX_BlenderMaterial *bl_mat = static_cast<KX_BlenderMaterial*>(mat);
 			bmat= bl_mat->GetBlenderMaterial();
@@ -1276,7 +1280,7 @@ bool KX_BlenderSceneConverter::FreeBlendFile(struct Main *maggie)
 		RAS_IPolyMaterial *mat= (*polymit).second;
 		Material *bmat= NULL;
 
-		/* Why do we need to check for RAS_BLENDERMAT if both are cast to a (PyObject*)? - Campbell */
+		/* Why do we need to check for RAS_BLENDERMAT if both are cast to a (PyObject *)? - Campbell */
 		if (mat->GetFlag() & RAS_BLENDERMAT) {
 			KX_BlenderMaterial *bl_mat = static_cast<KX_BlenderMaterial*>(mat);
 			bmat= bl_mat->GetBlenderMaterial();
@@ -1336,6 +1340,12 @@ bool KX_BlenderSceneConverter::FreeBlendFile(struct Main *maggie)
 			meshit++;
 		}
 	}
+
+#ifdef WITH_PYTHON
+	/* make sure this maggie is removed from the import list if it's there
+	 * (this operation is safe if it isn't in the list) */
+	removeImportMain(maggie);
+#endif
 
 	free_main(maggie);
 

@@ -44,7 +44,8 @@
 #include "DNA_space_types.h"
 #include "DNA_view3d_types.h"
 
-#include "BLI_blenlib.h"
+#include "BLI_listbase.h"
+#include "BLI_utildefines.h"
 
 #include "BKE_screen.h"
 
@@ -251,7 +252,7 @@ void BKE_spacedata_draw_locks(int set)
 			if (set) 
 				art->do_lock = art->lock;
 			else 
-				art->do_lock = 0;
+				art->do_lock = FALSE;
 		}
 	}
 }
@@ -355,7 +356,7 @@ ARegion *BKE_area_find_region_type(ScrArea *sa, int type)
 /* note, using this function is generally a last resort, you really want to be
  * using the context when you can - campbell
  * -1 for any type */
-struct ScrArea *BKE_screen_find_big_area(struct bScreen *sc, const int spacetype, const short min)
+ScrArea *BKE_screen_find_big_area(bScreen *sc, const int spacetype, const short min)
 {
 	ScrArea *sa, *big = NULL;
 	int size, maxsize = 0;

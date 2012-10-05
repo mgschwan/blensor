@@ -32,12 +32,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "BLI_utildefines.h"
+
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
 
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
 #include "DNA_windowmanager_types.h"
+
+#include "rna_internal.h"  /* own include */
 
 #ifdef RNA_RUNTIME
 
@@ -72,20 +76,21 @@ static int rna_event_modal_handler_add(struct bContext *C, struct wmOperator *op
 }
 
 /* XXX, need a way for python to know event types, 0x0110 is hard coded */
-struct wmTimer *rna_event_timer_add(struct wmWindowManager *wm, float time_step, wmWindow *win)
+static wmTimer *rna_event_timer_add(struct wmWindowManager *wm, float time_step, wmWindow *win)
 {
 	return WM_event_add_timer(wm, win, 0x0110, time_step);
 }
 
-void rna_event_timer_remove(struct wmWindowManager *wm, wmTimer *timer)
+static void rna_event_timer_remove(struct wmWindowManager *wm, wmTimer *timer)
 {
 	WM_event_remove_timer(wm, timer->win, timer);
 }
 
 static wmKeyMapItem *rna_KeyMap_item_new(wmKeyMap *km, ReportList *reports, const char *idname, int type, int value,
-                                         int any, int shift, int ctrl, int alt, int oskey, int keymodifier)
+                                         int any, int shift, int ctrl, int alt, int oskey, int keymodifier, int head)
 {
 /*	wmWindowManager *wm = CTX_wm_manager(C); */
+	wmKeyMapItem *kmi = NULL;
 	char idname_bl[OP_MAX_TYPENAME];
 	int modifier = 0;
 
@@ -103,8 +108,19 @@ static wmKeyMapItem *rna_KeyMap_item_new(wmKeyMap *km, ReportList *reports, cons
 	if (oskey) modifier |= KM_OSKEY;
 
 	if (any) modifier = KM_ANY;
-
-	return WM_keymap_add_item(km, idname_bl, type, value, modifier, keymodifier);
+	
+	/* create keymap item */
+	kmi = WM_keymap_add_item(km, idname_bl, type, value, modifier, keymodifier);
+	
+	/* [#32437] allow scripts to define hotkeys that get added to start of keymap 
+	 *          so that they stand a chance against catch-all defines later on
+	 */
+	if (head) {
+		BLI_remlink(&km->items, kmi);
+		BLI_addhead(&km->items, kmi);
+	}
+	
+	return kmi;
 }
 
 static wmKeyMapItem *rna_KeyMap_item_new_modal(wmKeyMap *km, ReportList *reports, const char *propvalue_str,
@@ -164,15 +180,15 @@ static wmKeyMap *rna_keymap_find_modal(wmKeyConfig *UNUSED(keyconf), const char 
 
 #else
 
-#define WM_GEN_INVOKE_EVENT (1<<0)
-#define WM_GEN_INVOKE_SIZE (1<<1)
-#define WM_GEN_INVOKE_RETURN (1<<2)
+#define WM_GEN_INVOKE_EVENT (1 << 0)
+#define WM_GEN_INVOKE_SIZE (1 << 1)
+#define WM_GEN_INVOKE_RETURN (1 << 2)
 
 static void rna_generic_op_invoke(FunctionRNA *func, int flag)
 {
 	PropertyRNA *parm;
 
-	RNA_def_function_flag(func, FUNC_NO_SELF|FUNC_USE_CONTEXT);
+	RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);
 	parm = RNA_def_pointer(func, "operator", "Operator", "", "Operator to call");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 
@@ -204,7 +220,7 @@ void RNA_api_wm(StructRNA *srna)
 	rna_generic_op_invoke(func, 0);
 
 	func = RNA_def_function(srna, "modal_handler_add", "rna_event_modal_handler_add");
-	RNA_def_function_flag(func, FUNC_NO_SELF|FUNC_USE_CONTEXT);
+	RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);
 	parm = RNA_def_pointer(func, "operator", "Operator", "", "Operator to call");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	RNA_def_function_return(func, RNA_def_boolean(func, "handle", 1, "", ""));
@@ -222,18 +238,18 @@ void RNA_api_wm(StructRNA *srna)
 
 	func = RNA_def_function(srna, "event_timer_remove", "rna_event_timer_remove");
 	parm = RNA_def_pointer(func, "timer", "Timer", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
 
 	/* invoke functions, for use with python */
 	func = RNA_def_function(srna, "invoke_props_popup", "WM_operator_props_popup");
 	RNA_def_function_ui_description(func, "Operator popup invoke");
-	rna_generic_op_invoke(func, WM_GEN_INVOKE_EVENT|WM_GEN_INVOKE_RETURN);
+	rna_generic_op_invoke(func, WM_GEN_INVOKE_EVENT | WM_GEN_INVOKE_RETURN);
 
 	/* invoked dialog opens popup with OK button, does not auto-exec operator. */
 	func = RNA_def_function(srna, "invoke_props_dialog", "WM_operator_props_dialog_popup");
 	RNA_def_function_ui_description(func, "Operator dialog (non-autoexec popup) invoke");
-	rna_generic_op_invoke(func, WM_GEN_INVOKE_SIZE|WM_GEN_INVOKE_RETURN);
+	rna_generic_op_invoke(func, WM_GEN_INVOKE_SIZE | WM_GEN_INVOKE_RETURN);
 
 	/* invoke enum */
 	func = RNA_def_function(srna, "invoke_search_popup", "rna_Operator_enum_search_invoke");
@@ -242,11 +258,11 @@ void RNA_api_wm(StructRNA *srna)
 	/* invoke functions, for use with python */
 	func = RNA_def_function(srna, "invoke_popup", "WM_operator_ui_popup");
 	RNA_def_function_ui_description(func, "Operator popup invoke");
-	rna_generic_op_invoke(func, WM_GEN_INVOKE_SIZE|WM_GEN_INVOKE_RETURN);
+	rna_generic_op_invoke(func, WM_GEN_INVOKE_SIZE | WM_GEN_INVOKE_RETURN);
 
 	func = RNA_def_function(srna, "invoke_confirm", "WM_operator_confirm");
 	RNA_def_function_ui_description(func, "Operator confirmation");
-	rna_generic_op_invoke(func, WM_GEN_INVOKE_EVENT|WM_GEN_INVOKE_RETURN);
+	rna_generic_op_invoke(func, WM_GEN_INVOKE_EVENT | WM_GEN_INVOKE_RETURN);
 	
 }
 
@@ -268,19 +284,19 @@ void RNA_api_operator(StructRNA *srna)
 	/* poll */
 	func = RNA_def_function(srna, "poll", NULL);
 	RNA_def_function_ui_description(func, "Test if the operator can be called or not");
-	RNA_def_function_flag(func, FUNC_NO_SELF|FUNC_REGISTER_OPTIONAL);
+	RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_REGISTER_OPTIONAL);
 	RNA_def_function_return(func, RNA_def_boolean(func, "visible", 1, "", ""));
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
 	/* exec */
 	func = RNA_def_function(srna, "execute", NULL);
 	RNA_def_function_ui_description(func, "Execute the operator");
 	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
-		/* better name? */
+	/* better name? */
 	parm = RNA_def_enum_flag(func, "result", operator_return_items, OPERATOR_CANCELLED, "result", "");
 	RNA_def_function_return(func, parm);
 
@@ -289,7 +305,7 @@ void RNA_api_operator(StructRNA *srna)
 	RNA_def_function_ui_description(func, "Check the operator settings, return True to signal a change to redraw");
 	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
 	parm = RNA_def_boolean(func, "result", 0, "result", ""); /* better name? */
 	RNA_def_function_return(func, parm);
@@ -299,11 +315,11 @@ void RNA_api_operator(StructRNA *srna)
 	RNA_def_function_ui_description(func, "Invoke the operator");
 	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 	parm = RNA_def_pointer(func, "event", "Event", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
-		/* better name? */
+	/* better name? */
 	parm = RNA_def_enum_flag(func, "result", operator_return_items, OPERATOR_CANCELLED, "result", "");
 	RNA_def_function_return(func, parm);
 
@@ -311,11 +327,11 @@ void RNA_api_operator(StructRNA *srna)
 	RNA_def_function_ui_description(func, "Modal operator function");
 	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 	parm = RNA_def_pointer(func, "event", "Event", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
-		/* better name? */
+	/* better name? */
 	parm = RNA_def_enum_flag(func, "result", operator_return_items, OPERATOR_CANCELLED, "result", "");
 	RNA_def_function_return(func, parm);
 
@@ -324,16 +340,16 @@ void RNA_api_operator(StructRNA *srna)
 	RNA_def_function_ui_description(func, "Draw function for the operator");
 	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
 	/* cancel */
 	func = RNA_def_function(srna, "cancel", NULL);
 	RNA_def_function_ui_description(func, "Called when the operator is canceled");
 	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
-		/* better name? */
+	/* better name? */
 	parm = RNA_def_enum_flag(func, "result", operator_return_items, OPERATOR_CANCELLED, "result", "");
 	RNA_def_function_return(func, parm);
 }
@@ -356,20 +372,20 @@ void RNA_api_macro(StructRNA *srna)
 	/* poll */
 	func = RNA_def_function(srna, "poll", NULL);
 	RNA_def_function_ui_description(func, "Test if the operator can be called or not");
-	RNA_def_function_flag(func, FUNC_NO_SELF|FUNC_REGISTER_OPTIONAL);
+	RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_REGISTER_OPTIONAL);
 	RNA_def_function_return(func, RNA_def_boolean(func, "visible", 1, "", ""));
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 
 	/* draw */
 	func = RNA_def_function(srna, "draw", NULL);
 	RNA_def_function_ui_description(func, "Draw function for the operator");
 	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 }
 
-void RNA_api_keyconfig(StructRNA *srna)
+void RNA_api_keyconfig(StructRNA *UNUSED(srna))
 {
 	/* FunctionRNA *func; */
 	/* PropertyRNA *parm; */
@@ -391,7 +407,7 @@ void RNA_api_keymap(StructRNA *srna)
 	func = RNA_def_function(srna, "restore_item_to_default", "rna_keymap_restore_item_to_default");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
 	parm = RNA_def_pointer(func, "item", "KeyMapItem", "Item", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED|PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 }
 
 void RNA_api_keymapitem(StructRNA *srna)
@@ -425,6 +441,9 @@ void RNA_api_keymapitems(StructRNA *srna)
 	RNA_def_boolean(func, "alt", 0, "Alt", "");
 	RNA_def_boolean(func, "oskey", 0, "OS Key", "");
 	RNA_def_enum(func, "key_modifier", event_type_items, 0, "Key Modifier", "");
+	RNA_def_boolean(func, "head", 0, "At Head", 
+	                "Force item to be added at start (not end) of key map so that "
+	                "it doesn't get blocked by an existing key map item");
 	parm = RNA_def_pointer(func, "item", "KeyMapItem", "Item", "Added key map item");
 	RNA_def_function_return(func, parm);
 

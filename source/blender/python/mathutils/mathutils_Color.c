@@ -147,7 +147,7 @@ static PyObject *Color_str(ColorObject *self)
 }
 
 //------------------------tp_richcmpr
-//returns -1 execption, 0 false, 1 true
+//returns -1 exception, 0 false, 1 true
 static PyObject *Color_richcmpr(PyObject *a, PyObject *b, int op)
 {
 	PyObject *res;
@@ -565,7 +565,7 @@ static PyObject *Color_div(PyObject *v1, PyObject *v2)
 	return NULL;
 }
 
-/* mulplication in-place: obj *= obj */
+/* multiplication in-place: obj *= obj */
 static PyObject *Color_imul(PyObject *v1, PyObject *v2)
 {
 	ColorObject *color = (ColorObject *)v1;
@@ -591,7 +591,7 @@ static PyObject *Color_imul(PyObject *v1, PyObject *v2)
 	return v1;
 }
 
-/* mulplication in-place: obj *= obj */
+/* multiplication in-place: obj *= obj */
 static PyObject *Color_idiv(PyObject *v1, PyObject *v2)
 {
 	ColorObject *color = (ColorObject *)v1;
@@ -644,8 +644,8 @@ static PyNumberMethods Color_NumMethods = {
 	NULL,               /*nb_remainder*/
 	NULL,               /*nb_divmod*/
 	NULL,               /*nb_power*/
-	(unaryfunc) Color_neg, /*nb_negative*/
-	(unaryfunc) NULL,   /*tp_positive*/
+	(unaryfunc) Color_neg,   /*nb_negative*/
+	(unaryfunc) Color_copy,  /*tp_positive*/
 	(unaryfunc) NULL,   /*tp_absolute*/
 	(inquiry)   NULL,   /*tp_bool*/
 	(unaryfunc) NULL,   /*nb_invert*/
@@ -723,10 +723,10 @@ static int Color_channel_hsv_set(ColorObject *self, PyObject *value, void *type)
 	if (BaseMath_ReadCallback(self) == -1)
 		return -1;
 
-	rgb_to_hsv(self->col[0], self->col[1], self->col[2], &(hsv[0]), &(hsv[1]), &(hsv[2]));
+	rgb_to_hsv_v(self->col, hsv);
 	CLAMP(f, 0.0f, 1.0f);
 	hsv[i] = f;
-	hsv_to_rgb(hsv[0], hsv[1], hsv[2], &(self->col[0]), &(self->col[1]), &(self->col[2]));
+	hsv_to_rgb_v(hsv, self->col);
 
 	if (BaseMath_WriteCallback(self) == -1)
 		return -1;
@@ -764,7 +764,7 @@ static int Color_hsv_set(ColorObject *self, PyObject *value, void *UNUSED(closur
 	CLAMP(hsv[1], 0.0f, 1.0f);
 	CLAMP(hsv[2], 0.0f, 1.0f);
 
-	hsv_to_rgb(hsv[0], hsv[1], hsv[2], &(self->col[0]), &(self->col[1]), &(self->col[2]));
+	hsv_to_rgb_v(hsv, self->col);
 
 	if (BaseMath_WriteCallback(self) == -1)
 		return -1;

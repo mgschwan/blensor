@@ -40,7 +40,7 @@ BLI_INLINE float D(float *data, const int res[3], int x, int y, int z)
 	CLAMP(x, 0, res[0] - 1);
 	CLAMP(y, 0, res[1] - 1);
 	CLAMP(z, 0, res[2] - 1);
-	return data[ BLI_VOXEL_INDEX(x, y, z, res) ];
+	return data[BLI_VOXEL_INDEX(x, y, z, res)];
 }
 
 /* *** nearest neighbor *** */
@@ -56,15 +56,18 @@ float BLI_voxel_sample_nearest(float *data, const int res[3], const float co[3])
 	return D(data, res, xi, yi, zi);
 }
 
-// returns highest integer <= x as integer (slightly faster than floor())
+/* returns highest integer <= x as integer (slightly faster than floor()) */
 BLI_INLINE int FLOORI(float x)
 {
 	const int r = (int)x;
 	return ((x >= 0.f) || (float)r == x) ? r : (r - 1);
 }
 
-// clamp function, cannot use the CLAMPIS macro, it sometimes returns unwanted results apparently related to gcc optimization flag -fstrict-overflow which is enabled at -O2
-// this causes the test (x + 2) < 0 with int x == 2147483647 to return false (x being an integer, x + 2 should wrap around to -2147483647 so the test < 0 should return true, which it doesn't)
+/* clamp function, cannot use the CLAMPIS macro, it sometimes returns unwanted results apparently related to
+ * gcc optimization flag -fstrict-overflow which is enabled at -O2
+ *
+ * this causes the test (x + 2) < 0 with int x == 2147483647 to return false (x being an integer,
+ * x + 2 should wrap around to -2147483647 so the test < 0 should return true, which it doesn't) */
 BLI_INLINE int _clamp(int a, int b, int c)
 {
 	return (a < b) ? b : ((a > c) ? c : a);
@@ -93,9 +96,9 @@ float BLI_voxel_sample_trilinear(float *data, const int res[3], const float co[3
 		const float w[2] = {1.f - dz, dz};
 	
 		return w[0] * (   v[0] * ( u[0] * data[xc[0] + yc[0] + zc[0]] + u[1] * data[xc[1] + yc[0] + zc[0]] )
-						+ v[1] * ( u[0] * data[xc[0] + yc[1] + zc[0]] + u[1] * data[xc[1] + yc[1] + zc[0]] ) )
-			 + w[1] * (   v[0] * ( u[0] * data[xc[0] + yc[0] + zc[1]] + u[1] * data[xc[1] + yc[0] + zc[1]] )
-						+ v[1] * ( u[0] * data[xc[0] + yc[1] + zc[1]] + u[1] * data[xc[1] + yc[1] + zc[1]] ) );
+		                + v[1] * ( u[0] * data[xc[0] + yc[1] + zc[0]] + u[1] * data[xc[1] + yc[1] + zc[0]] ) )
+		     + w[1] * (   v[0] * ( u[0] * data[xc[0] + yc[0] + zc[1]] + u[1] * data[xc[1] + yc[0] + zc[1]] )
+		                + v[1] * ( u[0] * data[xc[0] + yc[1] + zc[1]] + u[1] * data[xc[1] + yc[1] + zc[1]] ) );
 	
 	}
 	return 0.f;
@@ -128,7 +131,7 @@ float BLI_voxel_sample_triquadratic(float *data, const int res[3], const float c
 						+ v[1] * ( u[0] * data[xc[0] + yc[1] + zc[2]] + u[1] * data[xc[1] + yc[1] + zc[2]] + u[2] * data[xc[2] + yc[1] + zc[2]] )
 						+ v[2] * ( u[0] * data[xc[0] + yc[2] + zc[2]] + u[1] * data[xc[1] + yc[2] + zc[2]] + u[2] * data[xc[2] + yc[2] + zc[2]] ) );
 
-}
+	}
 	return 0.f;
 }
 

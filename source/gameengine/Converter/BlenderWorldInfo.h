@@ -73,36 +73,34 @@ public:
 		float g,
 		float b
 	);
-		void	
+		void
 	setMistStart(
 		float d
 	);
 
-		void	
+		void
 	setMistDistance(
 		float d
 	);
 
-		void	
+		void
 	setMistColorRed(
 		float d
 	);
 
-		void	
+		void
 	setMistColorGreen(
 		float d
 	);
 
-		void	
+		void
 	setMistColorBlue(
 		float d
 	);   
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:BlenderWorldInfo"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:BlenderWorldInfo")
 #endif
 };
 

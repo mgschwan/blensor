@@ -34,15 +34,13 @@
 #include "NOD_texture.h"
 
 static bNodeSocketTemplate outputs[]= { 
-	{ SOCK_VECTOR, 0, "Coordinates" },
+	{ SOCK_VECTOR, 0, N_("Coordinates") },
 	{ -1, 0, "" }
 };
 
 static void vectorfn(float *out, TexParams *p, bNode *UNUSED(node), bNodeStack **UNUSED(in), short UNUSED(thread))
 {
-	out[0] = p->co[0];
-	out[1] = p->co[1];
-	out[2] = p->co[2];
+	copy_v3_v3(out, p->co);
 }
 
 static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)

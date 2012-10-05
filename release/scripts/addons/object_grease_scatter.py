@@ -29,7 +29,7 @@ bl_info = {
     "description": "Scatter a group of objects onto the active mesh using "
                    "the grease pencil lines",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Object/Grease_Scatter",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=TODO",
@@ -274,7 +274,7 @@ def _main(self,
                     # align the object with worldspace
                     obj_new.matrix_world = obj_mat
 
-                    # BGE settings for testiing
+                    # BGE settings for testing
                     '''
                     inst_ob.game.physics_type = 'RIGID_BODY'
                     inst_ob.game.use_collision_bounds = True
@@ -321,7 +321,7 @@ from bpy.props import FloatProperty,  StringProperty
 
 
 class Scatter(bpy.types.Operator):
-    ''''''
+    """"""
     bl_idname = "object.scatter"
     bl_label = "Grease Pencil Scatter"
 

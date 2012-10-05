@@ -38,7 +38,7 @@ from add_mesh_walls.Blocks import *
 
 #
 class add_mesh_wallb(bpy.types.Operator):
-    '''Add a wall mesh.'''
+    """Add a wall mesh"""
     bl_idname = "mesh.wall_add"
     bl_label = "Add A Masonry Wall"
     bl_options = {'REGISTER', 'UNDO'} # removes object, does not reset to "last" modification.

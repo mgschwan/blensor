@@ -25,15 +25,15 @@
 bl_info = {
     'name': "Carnegie Mellon University Mocap Library Browser",
     'author': "Daniel Monteiro Basso <daniel@basso.inf.br>",
-    'version': (2011, 10, 30, 1),
-    'blender': (2, 6, 0),
+    'version': (2012, 6, 1, 1),
+    'blender': (2, 6, 3),
     'location': "View3D > Tools",
     'description': "Assistant for using CMU Motion Capture data",
     'warning': '',
-    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
                 "Scripts/3D_interaction/CMU_Mocap_Library_Browser",
     'tracker_url': "http://projects.blender.org/tracker/index.php?"\
-                   "func=detail&aid=29086&group_id=153&atid=467",
+                   "func=detail&aid=29086",
     'category': '3D View'}
 
 
@@ -206,15 +206,15 @@ class CMUMocapDownloadImport(bpy.types.Operator):
                 ['b', 'Kb', 'Mb', 'Gb', 'Tb', 'Eb', 'Pb'][m])  # :-p
             self.fout = open(self.local_file, 'wb')
             self.recv = 0
-            context.window_manager.modal_handler_add(self)
             self.handle = context.region.\
                 callback_add(draw_callback, (self, context), 'POST_PIXEL')
             self.timer = context.window_manager.\
                 event_timer_add(0.001, context.window)
+            context.window_manager.modal_handler_add(self)
             return {'RUNNING_MODAL'}
         else:
             self.import_or_open()
-        return {"FINISHED"}
+        return {'FINISHED'}
 
     def import_or_open(self):
         cml = bpy.data.scenes[0].cmu_mocap_lib
@@ -222,28 +222,41 @@ class CMUMocapDownloadImport(bpy.types.Operator):
             if self.local_file.endswith("mpg"):
                 bpy.ops.wm.path_open(filepath=self.local_file)
             elif self.local_file.endswith("asf"):
-                bpy.ops.import_anim.asf(
-                    filepath=self.local_file,
-                    from_inches=True,
-                    use_rot_x=True, use_rot_z=True,
-                    armature_name=cml.subject_import_name)
+                try:
+                    bpy.ops.import_anim.asf(
+                        filepath=self.local_file,
+                        from_inches=True,
+                        use_rot_x=True, use_rot_z=True,
+                        armature_name=cml.subject_import_name)
+                except AttributeError:
+                    self.report({'ERROR'}, "To use this feature "
+                        "please enable the Acclaim ASF/AMC Importer addon.")
             elif self.local_file.endswith("amc"):
                 ob = bpy.context.active_object
                 if not ob or ob.type != 'ARMATURE' or \
                     'source_file_path' not in ob:
                     self.report({'ERROR'}, "Please select a CMU Armature.")
                     return
-                bpy.ops.import_anim.amc(
-                    filepath=self.local_file,
-                    frame_skip=cml.frame_skip)
+                try:
+                    bpy.ops.import_anim.amc(
+                        filepath=self.local_file,
+                        frame_skip=cml.frame_skip)
+                except AttributeError:
+                    self.report({'ERROR'}, "To use this feature please "
+                        "enable the Acclaim ASF/AMC Importer addon.")
             elif self.local_file.endswith("c3d"):
-                bpy.ops.import_anim.c3d(
-                    filepath=self.local_file,
-                    from_inches=False,
-                    auto_scale=True,
-                    scale=cml.cloud_scale,
-                    show_names=False,
-                    frame_skip=cml.frame_skip)
+                try:
+                    bpy.ops.import_anim.c3d(
+                        filepath=self.local_file,
+                        from_inches=False,
+                        auto_scale=True,
+                        scale=cml.cloud_scale,
+                        show_names=False,
+                        frame_skip=cml.frame_skip)
+                except AttributeError:
+                    self.report({'ERROR'}, "To use this feature "
+                        "please enable the C3D Importer addon.")
+
 
 
 class CMUMocapConfig(bpy.types.Panel):
@@ -251,6 +264,7 @@ class CMUMocapConfig(bpy.types.Panel):
     bl_label = "CMU Mocap Browser Configuration"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         if not bpy:
@@ -270,6 +284,7 @@ class CMUMocapSubjectBrowser(bpy.types.Panel):
     bl_label = "CMU Mocap Subject Browser"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         if not bpy:
@@ -308,6 +323,7 @@ class CMUMocapMotionBrowser(bpy.types.Panel):
     bl_label = "CMU Mocap Motion Browser"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         if not bpy:

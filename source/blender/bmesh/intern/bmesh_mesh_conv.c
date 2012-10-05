@@ -314,7 +314,7 @@ void BM_mesh_bm_from_me(BMesh *bm, Mesh *me, int set_key, int act_key_nr)
 
 		f = BM_face_create(bm, verts, fedges, mpoly->totloop, FALSE);
 
-		if (!f) {
+		if (UNLIKELY(f == NULL)) {
 			printf("%s: Warning! Bad face in mesh"
 			       " \"%s\" at index %d!, skipping\n",
 			       __func__, me->id.name + 2, i);
@@ -494,6 +494,9 @@ BLI_INLINE void bmesh_quick_edgedraw_flag(MEdge *med, BMEdge *e)
 	     (dot_v3v3(e->l->f->no, e->l->radial_next->f->no) > 0.9995f))
 	{
 		med->flag &= ~ME_EDGEDRAW;
+	}
+	else {
+		med->flag |= ME_EDGEDRAW;
 	}
 }
 
@@ -755,7 +758,7 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, int dotess)
 			}
 
 			if (!currkey) {
-				currkey = add_keyblock(me->key, bm->vdata.layers[i].name);
+				currkey = BKE_keyblock_add(me->key, bm->vdata.layers[i].name);
 				currkey->uid = bm->vdata.layers[i].uid;
 			}
 
@@ -765,7 +768,7 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, int dotess)
 
 		/* editing the base key should update others */
 		if ((me->key->type == KEY_RELATIVE) && /* only need offsets for relative shape keys */
-		    (actkey   != NULL) &&              /* unlikely, but the active key may not be valid if the
+		    (actkey != NULL) &&                /* unlikely, but the active key may not be valid if the
 		                                        * bmesh and the mesh are out of sync */
 		    (oldverts != NULL))                /* not used here, but 'oldverts' is used later for applying 'ofs' */
 		{
@@ -790,6 +793,15 @@ void BM_mesh_bm_to_me(BMesh *bm, Mesh *me, int dotess)
 					if (keyi && *keyi != ORIGINDEX_NONE) {
 						sub_v3_v3v3(ofs[i], mvert->co, fp[*keyi]);
 					}
+					else {
+						/* if there are new vertices in the mesh, we can't propagate the offset
+						 * because it will only work for the existing vertices and not the new
+						 * ones, creating a mess when doing e.g. subdivide + translate */
+						MEM_freeN(ofs);
+						ofs = NULL;
+						break;
+					}
+
 					mvert++;
 				}
 			}

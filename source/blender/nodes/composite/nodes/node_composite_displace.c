@@ -36,16 +36,18 @@
 /* **************** Displace  ******************** */
 
 static bNodeSocketTemplate cmp_node_displace_in[]= {
-	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
-	{	SOCK_VECTOR, 1, "Vector",			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_TRANSLATION},
-	{	SOCK_FLOAT, 1, "X Scale",				0.0f, 0.0f, 0.0f, 0.0f, -1000.0f, 1000.0f, PROP_FACTOR},
-	{	SOCK_FLOAT, 1, "Y Scale",				0.0f, 0.0f, 0.0f, 0.0f, -1000.0f, 1000.0f, PROP_FACTOR},
+	{	SOCK_RGBA, 1, N_("Image"),			1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_VECTOR, 1, N_("Vector"),			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_TRANSLATION},
+	{	SOCK_FLOAT, 1, N_("X Scale"),				0.0f, 0.0f, 0.0f, 0.0f, -1000.0f, 1000.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Y Scale"),				0.0f, 0.0f, 0.0f, 0.0f, -1000.0f, 1000.0f, PROP_FACTOR},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_displace_out[]= {
-	{	SOCK_RGBA, 0, "Image"},
+	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 /* minimum distance (in pixels) a pixel has to be displaced
  * in order to take effect */
@@ -105,7 +107,7 @@ static void do_displace(bNode *node, CompBuf *stackbuf, CompBuf *cbuf, CompBuf *
 			qd_getPixel(vecbuf, x-vecbuf->xof+1, y-vecbuf->yof, vecdx);
 			qd_getPixel(vecbuf, x-vecbuf->xof, y-vecbuf->yof+1, vecdy);
 			d_dx = vecdx[0] * xs;
-			d_dy = vecdy[0] * ys;
+			d_dy = vecdy[1] * ys;
 
 			/* clamp derivatives to minimum displacement distance in UV space */
 			dxt = p_dx - d_dx;
@@ -126,7 +128,7 @@ static void do_displace(bNode *node, CompBuf *stackbuf, CompBuf *cbuf, CompBuf *
 	
 	
 /* simple method for reference, linear interpolation */
-/*	
+#if 0
 	int x, y;
 	float dx, dy;
 	float u, v;
@@ -147,7 +149,7 @@ static void do_displace(bNode *node, CompBuf *stackbuf, CompBuf *cbuf, CompBuf *
 			qd_setPixel(stackbuf, x, y, col);
 		}
 	}
-*/
+#endif
 }
 
 
@@ -182,6 +184,8 @@ static void node_composit_exec_displace(void *UNUSED(data), bNode *node, bNodeSt
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_displace(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -189,7 +193,9 @@ void register_node_type_cmp_displace(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_DISPLACE, "Displace", NODE_CLASS_DISTORT, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_displace_in, cmp_node_displace_out);
 	node_type_size(&ntype, 140, 100, 320);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_displace);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

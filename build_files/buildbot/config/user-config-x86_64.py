@@ -97,6 +97,7 @@ WITH_BF_JACK = True
 # Cycles
 WITH_BF_CYCLES = True
 WITH_BF_CYCLES_CUDA_BINARIES = True
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_13', 'sm_20', 'sm_21', 'sm_30']
 
 WITH_BF_OIIO = True
 WITH_BF_STATICOIIO = True
@@ -104,6 +105,14 @@ BF_OIIO = '/opt/oiio'
 BF_OIIO_INC = '${BF_OIIO}/include'
 BF_OIIO_LIB_STATIC = '${BF_OIIO_LIBPATH}/libOpenImageIO.a ${BF_OPENEXR}/lib/libIlmImf.a'
 BF_OIIO_LIBPATH = '${BF_OIIO}/lib'
+
+# Color management
+WITH_BF_OCIO = True
+WITH_BF_STATICOCIO = True
+BF_OCIO = '/opt/ocio'
+BF_OCIO_INC = '${BF_OCIO}/include'
+BF_OCIO_LIB_STATIC = '${BF_OCIO_LIBPATH}/libOpenColorIO.a ${BF_OCIO_LIBPATH}/libtinyxml.a ${BF_OCIO_LIBPATH}/libyaml-cpp.a'
+BF_OCIO_LIBPATH = '${BF_OCIO}/lib'
 
 WITH_BF_BOOST = True
 WITH_BF_STATICBOOST = True

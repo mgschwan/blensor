@@ -89,7 +89,7 @@ global rise
 global run               
             
 class stairs(bpy.types.Operator):
-    '''Add stair objects'''
+    """Add stair objects"""
     bl_idname = "mesh.stairs"
     bl_label = "Add Stairs"
     bl_options = {'REGISTER', 'UNDO'}

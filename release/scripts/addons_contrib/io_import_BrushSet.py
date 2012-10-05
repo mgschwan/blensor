@@ -18,7 +18,7 @@
 
 # ----------------------------------------------------------------------------#    
 
-'''
+"""
 todo:
 - add file selection for single and multiple files
 
@@ -39,7 +39,7 @@ version": (1,1,2)
 version":1.11:
     added type arg to texture.new() [L48]
     cleared default filename
-''' 
+""" 
 
 # ----------------------------------------------------------------------------#    
 
@@ -57,7 +57,7 @@ bl_info = {
     "location": "File > Import > BrushSet",
     "description": "imports all image files from a folder",
     "warning": '', # used for warning icon and text in addons panel
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/Scripts/Import-Export/BrushSet",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Import-Export/BrushSet",
     "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=25702&group_id=153&atid=467",
     }
 
@@ -102,7 +102,7 @@ def LoadBrushSet(filepath, filename):
 # ----------------------------------------------------------------------------#    
 
 class BrushSetImporter(bpy.types.Operator):
-    '''Load Brush Set'''
+    """Load Brush Set"""
     bl_idname = "import_image.brushset"
     bl_label = "Import BrushSet"
 

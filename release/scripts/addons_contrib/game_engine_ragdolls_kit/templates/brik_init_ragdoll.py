@@ -3,6 +3,7 @@
 # ***** BEGIN MIT LICENSE BLOCK *****
 #
 #Script Copyright (c) 2010 Marcus P. Jenkins (Blenderartists user name FunkyWyrm)
+# Modified by Kees Brouwer (Blenderartists user name Wraaah)
 #
 #Permission is hereby granted, free of charge, to any person obtaining a copy
 #of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +26,7 @@
 # ***** END MIT LICENCE BLOCK *****
 # --------------------------------------------------------------------------
 
-'''
+"""
 This script spawns rigid body objects when ragdoll physics is activated.
 
 It spawns the rigid body objects, turns off the mob collision object's dynamics
@@ -44,7 +45,7 @@ the rigid body objects together with rigid body joints.
 Rest orientations can be taken from the rigid body objects that remain on the
 hidden layer. I thought this would be a problem to set. It's so nice when
 something turns out easier than expected for a change. :)
-'''
+"""
 debug = False
 
 import bge
@@ -54,7 +55,7 @@ scene = bge.logic.getCurrentScene()
 objects = scene.objects
 hidden_objects = scene.objectsInactive
 
-'''
+"""
 NOTE:
     If a collision box is used then this will be the main added object
     that is added and so will have the spawn_point and spawn_id
@@ -63,13 +64,13 @@ NOTE:
     In this case, the spawn_id and spawn_point would need to be copied
     to the armature in order to properly identify which object is to be
     ultimately removed from the scene.
-'''
+"""
 
 def main():
 
-    '''
+    """
     Sensor disabled. Using brik_use_ragdoll 'changed' sensor
-    '''
+    """
     #sens = spawn_boxes_cont.sensors['brik_spawn_boxes_sens']
     #if sens.getKeyStatus(sens.key) == 1:
     
@@ -80,106 +81,157 @@ def main():
     
     
     #########################
-    hidden_armature = hidden_objects[armature.name]
+#    hidden_armature = hidden_objects[armature.name]
     #########################
     
     
-    spawn_point = armature['spawn_point']
-    spawn_id = armature['spawn_id']
+#    spawn_point = armature['spawn_point']
+#    spawn_id = armature['spawn_id']
     
     if armature['brik_use_ragdoll'] and armature['brik_init_ragdoll']:
 
         print('#########################')
         print('SPAWNING RIGID BODY OBJECTS')
+        spawn_boxes_act.instantAddObject()
+        scene = bge.logic.getCurrentScene()
+        objects = scene.objects
+        objects.reverse()
         
-        for bone_name in armature['optimal_order']:
-            box_name = armature['bone_box_dict'][bone_name]
-            print('ADDING '+box_name)
-            spawn_boxes_act.object = box_name
-            spawn_boxes_act.instantAddObject()
-            box = spawn_boxes_act.objectLastCreated
-            
-            hidden_box = hidden_objects[box_name]
-            
-            #Since the boxes are added to the armature, it is probably not necessary to store spawn info...
-            box['spawn_point'] = spawn_point
-            box['spawn_id'] = spawn_id
-            
-            #Add the box to a dictionary on the armature so it can be located in brik_use_doll_0_3.py
-            armature['driver_dict'][box_name] = box
-            
-            #Set the  drivers to the location and orientation of the hit boxes
-            hit_box_name = armature['bone_hit_box_dict'][bone_name]
-            hit_box = armature.children[hit_box_name]
-            box.worldPosition = hit_box.worldPosition
-            box.worldOrientation = hit_box.worldOrientation
-            
-            '''
-            I have absolutely NO idea why these next two lines are necessary...
-            Without these lines, object rotation appears to be set to the identity.
-            Damned weird stuff. =S
-            Update... these lines screw things up in version 35733 but leaving them for now
-            '''
-            #box.suspendDynamics()
-            #box.restoreDynamics()
-            
-            #Set up the rigid body joints for the newly spawned objects.
-            if not box['joint_target'] == 'None':
-                #Set up the rigid body joints for the newly spawned objects.
-                joint_target = armature['driver_dict'][box['joint_target']]
-                box_id = box.getPhysicsId()
-                joint_target_id = joint_target.getPhysicsId()
-                constraint_type = 12 #6DoF joint
-                flag = 128 #No collision with joined object.
-                pos = box['joint_position']
-                joint_rotation = [0.0, 0.0, 0.0]
-                joint = bge.constraints.createConstraint(box_id, joint_target_id, constraint_type, pos[0], pos[1], pos[2], 0.0, 0.0, 0.0, flag)
-                #Parameters 3 = limit x rotation, 4 = limit y rotation, 5 = limit z rotation
-                joint.setParam(3, *box['limit_rotation_x'])
-                joint.setParam(4, *box['limit_rotation_y'])
-                joint.setParam(5, *box['limit_rotation_z'])
+        #Expand existing group
+        group_objects = armature["group"]
+        
+        group = spawn_boxes_act.object
+        for ob in objects:
+            group_objects[ob.name] = ob
+            ob["pivot"] = armature
+            if ob.name == group.name:
+                #Stop for loop once group start point is found
+                break
                 
-                #Set up the copy rotation bone constraint for this driver
-                print('######################')
-                print('SETTING UP ROT BONE CONSTRAINTS FOR '+box.name)
-                print('BONE NAME '+box['bone_name'])
-                constraint_rot = armature.constraints[box['bone_name']+':brik_copy_rot']
-                constraint_rot.target = box
-            else:
-                print('######################')
-                print('SETTING UP LOC/ROT BONE CONSTRAINTS FOR '+box.name)
-                print('BONE NAME '+box['bone_name'])
-                #Set up the copy rotation constraint for this driver
-                constraint_rot = armature.constraints[box['bone_name']+':brik_copy_rot']
-                constraint_rot.target = box
-                print(constraint_rot)
+#        armature_name = spawn_empty["armature_name"]
+#        armature = group_objects[ armature_name ]
+        armature["group"] = group_objects
+
+        #Set up constraints
+        constraints = armature["constraints"]
+        for constraint in constraints:
+            settings = constraints[constraint]
+            constraint_name = settings.get("constraint_name", None)
+            print("Create 6DOF constraint")
+            print(constraint_name)
+            object = group_objects[ settings.get("object", None) ]
+            object_id = object.getPhysicsId()
+            target = group_objects[ settings.get("target", None) ]
+            target_id = target.getPhysicsId()
+            print(object)
+            print(target)
+            
+            piv_x = float( settings.get("pivot_x", 0.0) )           
+            piv_y = float( settings.get("pivot_y", 0.0) )            
+            piv_z = float( settings.get("pivot_z", 0.0) )           
+
+            piv_Rx = float( settings.get("pivot_Rx", 0.0) )           
+            piv_Ry = float( settings.get("pivot_Ry", 0.0) )           
+            piv_Rz = float( settings.get("pivot_Rz", 0.0) )           
                 
-                #Set up the copy location constraint for the empty parented to this driver
-                copy_loc_target = box.children['brik_'+armature.name+'_loc']
-                constraint_loc = armature.constraints[box['bone_name']+':brik_copy_loc']
-                constraint_loc.target = copy_loc_target
-                print(constraint_loc)
+            constraint_type = 12 #6DoF joint
+            flag = 128 #No collision with joined object.
+            joint = bge.constraints.createConstraint(object_id, target_id, constraint_type, piv_x, piv_y, piv_z, piv_Rx, piv_Ry, piv_Rz, flag)
+            joint.setParam(0, float( settings.get("x_min", 0.0) ), float( settings.get("x_max", 0.0) ) )
+            joint.setParam(1, float( settings.get("y_min", 0.0) ), float( settings.get("y_max", 0.0) ) )
+            joint.setParam(2, float( settings.get("z_min", 0.0) ), float( settings.get("z_max", 0.0) ) )
+            #Parameters 3 = limit x rotation, 4 = limit y rotation, 5 = limit z rotation
+            if settings.get("Rx_min", None):
+                joint.setParam(3, float( settings.get("Rx_min", 0.0) ), float( settings.get("Rx_max", 0.0) ) )
+            if settings.get("Ry_min", None):
+                joint.setParam(4, float( settings.get("Ry_min", 0.0) ), float( settings.get("Ry_max", 0.0) ) )
+            if settings.get("Rz_min", None):
+                joint.setParam(5, float( settings.get("Rz_min", 0.0) ), float( settings.get("Rz_max", 0.0) ) )
+                
+            #Translational motor
+            #setParam(type, vel, maxForce)
+            if settings.get("x_mot", None):
+                joint.setParam(6, float( settings.get("x_mot", 0.0) ), float( settings.get("x_mot_max", 999.0) ) )
+            if settings.get("y_mot", None):
+                joint.setParam(7, float( settings.get("y_mot", 0.0) ), float( settings.get("y_mot_max", 999.0) ) )
+            if settings.get("z_mot", None):
+                joint.setParam(8, float( settings.get("z_mot", 0.0) ), float( settings.get("z_mot_max", 999.0) ) )
+            #Rotational motor
+            #setParam(type, angVel, maxForce)
+            if settings.get("Rx_mot", None):
+                joint.setParam(9, float( settings.get("Rx_mot", 0.0) ), float( settings.get("Rx_mot_max", 999.0) ) )
+            if settings.get("Ry_mot", None):
+                joint.setParam(10, float( settings.get("Ry_mot", 0.0) ), float( settings.get("Ry_mot_max", 999.0) ) )
+            if settings.get("Rz_mot", None):
+                joint.setParam(11, float( settings.get("Rz_mot", 0.0) ), float( settings.get("Rz_mot_max", 999.0) ) )
+
+            #Translational spring
+            #setParam(type, stiffness, reset)
+            if settings.get("x_spring", None):
+                joint.setParam(12, float( settings.get("x_spring", 0.0) ), float( settings.get("x_spring_reset", 0) ) )
+            if settings.get("y_spring", None):
+                joint.setParam(13, float( settings.get("y_spring", 0.0) ), float( settings.get("y_spring_reset", 0) ) )
+            if settings.get("z_spring", None):
+                joint.setParam(14, float( settings.get("z_spring", 0.0) ), float( settings.get("z_spring_reset", 0) ) )
+            #Rotational spring
+            #setParam(type, stiffness, reset)
+            if settings.get("Rx_spring", None):
+                joint.setParam(15, float( settings.get("Rx_spring", 0.0) ), float( settings.get("Rx_spring_reset", 0) ) )
+            if settings.get("Ry_spring", None):
+                joint.setParam(16, float( settings.get("Ry_spring", 0.0) ), float( settings.get("Ry_spring_reset", 0) ) )
+            if settings.get("Rz_spring", None):
+                joint.setParam(17, float( settings.get("Rz_spring", 0.0) ), float( settings.get("Rz_spring_reset", 0) ) )
             
-            box.worldLinearVelocity = hit_box.worldLinearVelocity
-            box.worldAngularVelocity = hit_box.worldAngularVelocity
+            #Store joint in object, can be used to change the parameter settings
+            #For example when a joint is broken you can widen the angle rotations
+            #Also possible to sever the joint completely but CLEAR THE VARIABLE FIRST
+            #BEFORE REMOVING THE JOINT else BGE CRASHES
+            object[constraint_name] = joint
+
+        #Copy hitbox positions + remove hitboxes, activate armature constraints
+        bone_hitbox = armature["bone_hitbox"] 
+        bone_rigidbody = armature["bone_rigidbody"]
+        bone_loc = armature["bone_loc"]
+        
+        for bone_name in bone_hitbox:
+            hitbox = group_objects[ bone_hitbox[ bone_name ] ]
+            rigidbody = group_objects[ bone_rigidbody[ bone_name ] ]
             
-            hit_box.endObject()
+            rigidbody.worldPosition = hitbox.worldPosition
+            rigidbody.worldOrientation = hitbox.worldOrientation
             
-        for act in armature.actuators:
+            #Set up the copy rotation bone constraint for this driver
+            print('######################')
+            print('SETTING UP ROT BONE CONSTRAINTS FOR '+rigidbody.name)
+            print('BONE NAME ' + bone_name)
+            constraint_rot = armature.constraints[bone_name+":brik_copy_rot"]
+            constraint_rot.target = rigidbody
+            constraint_rot.enforce = 1.0
+            
+            copy_loc_target = bone_loc.get(bone_name, None)
+            if copy_loc_target:
+                #Set up the copy location constraint 
+                constraint_loc = armature.constraints[bone_name+':brik_copy_loc']
+                constraint_loc.target = group_objects[ copy_loc_target ]
+                constraint_loc.enforce = 1.0
+            
+            rigidbody.worldLinearVelocity = hitbox.worldLinearVelocity
+            rigidbody.worldAngularVelocity = hitbox.worldAngularVelocity
+            
+            hitbox.endObject()
+            
+        #for act in armature.actuators:
             #There appears to be no direct way of checking that an actuator is an action actuator.
             #act.type would be nice.
-            if hasattr(act, 'action'):
-                if not act.name == 'brik_use_act':
-                    init_ragdoll_controller.deactivate(act)
-                
+        #    if hasattr(act, 'action'):
+        #        if not act.name == 'brik_use_act':
+        #            init_ragdoll_controller.deactivate(act)
+        #==> Why needed?
+        
         #Needed to prevent brik_use_changed_sens second pulse from re-triggering the script.
         armature['brik_init_ragdoll'] = False
             
-        if debug == True:
-            for bone_name in armature['optimal_order']:
-                box_name = armature['bone_box_dict'][bone_name]
-                driver = armature['driver_dict'][box_name]
-                print(driver.name, driver['spawn_point'], driver['spawn_id'])
+        #if debug == True:
     
 if __name__ == '__main__':
     main()

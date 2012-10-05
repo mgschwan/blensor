@@ -80,26 +80,17 @@
 static void nla_action_get_color(AnimData *adt, bAction *act, float color[4])
 {
 	if (adt && (adt->flag & ADT_NLA_EDIT_ON)) {
-		// greenish color (same as tweaking strip) - hardcoded for now
-		color[0] = 0.30f;
-		color[1] = 0.95f;
-		color[2] = 0.10f;
-		color[3] = 0.30f;
+		/* greenish color (same as tweaking strip) */
+		UI_GetThemeColor4fv(TH_NLA_TWEAK, color);
 	}
 	else {
 		if (act) {
-			// reddish color - hardcoded for now 	
-			color[0] = 0.8f;
-			color[1] = 0.2f;
-			color[2] = 0.0f;
-			color[3] = 0.4f;
+			/* reddish color - same as dopesheet summary */
+			UI_GetThemeColor4fv(TH_ANIM_ACTIVE, color);
 		}
 		else {
-			// greyish-red color - hardcoded for now
-			color[0] = 0.6f;
-			color[1] = 0.5f;
-			color[2] = 0.5f;
-			color[3] = 0.3f;
+			/* grayish-red color */
+			UI_GetThemeColor4fv(TH_ANIM_INACTIVE, color);
 		}
 	}
 	
@@ -166,17 +157,11 @@ static void nla_strip_get_color_inside(AnimData *adt, NlaStrip *strip, float col
 		/* Transition Clip */
 		if (strip->flag & NLASTRIP_FLAG_SELECT) {
 			/* selected - use a bright blue color */
-			// FIXME: hardcoded temp-hack colors
-			color[0] = 0.18f;
-			color[1] = 0.46f;
-			color[2] = 0.86f;
+			UI_GetThemeColor3fv(TH_NLA_TRANSITION_SEL, color);
 		}
 		else {
 			/* normal, unselected strip - use (hardly noticeable) blue tinge */
-			// FIXME: hardcoded temp-hack colors
-			color[0] = 0.11f;
-			color[1] = 0.15f;
-			color[2] = 0.19f;
+			UI_GetThemeColor3fv(TH_NLA_TRANSITION, color);
 		}
 	}	
 	else if (strip->type == NLASTRIP_TYPE_META) {
@@ -184,34 +169,22 @@ static void nla_strip_get_color_inside(AnimData *adt, NlaStrip *strip, float col
 		// TODO: should temporary metas get different colors too?
 		if (strip->flag & NLASTRIP_FLAG_SELECT) {
 			/* selected - use a bold purple color */
-			// FIXME: hardcoded temp-hack colors
-			color[0] = 0.41f;
-			color[1] = 0.13f;
-			color[2] = 0.59f;
+			UI_GetThemeColor3fv(TH_NLA_META_SEL, color);
 		}
 		else {
 			/* normal, unselected strip - use (hardly noticeable) dark purple tinge */
-			// FIXME: hardcoded temp-hack colors
-			color[0] = 0.20f;
-			color[1] = 0.15f;
-			color[2] = 0.26f;
+			UI_GetThemeColor3fv(TH_NLA_META, color);
 		}
 	}
 	else if (strip->type == NLASTRIP_TYPE_SOUND) {
 		/* Sound Clip */
 		if (strip->flag & NLASTRIP_FLAG_SELECT) {
 			/* selected - use a bright teal color */
-			// FIXME: hardcoded temp-hack colors
-			color[0] = 0.12f;
-			color[1] = 0.48f;
-			color[2] = 0.48f;
+			UI_GetThemeColor3fv(TH_NLA_SOUND_SEL, color);
 		}
 		else {
 			/* normal, unselected strip - use (hardly noticeable) teal tinge */
-			// FIXME: hardcoded temp-hack colors
-			color[0] = 0.17f;
-			color[1] = 0.24f;
-			color[2] = 0.24f;
+			UI_GetThemeColor3fv(TH_NLA_SOUND, color);
 		}
 	}
 	else {
@@ -220,19 +193,13 @@ static void nla_strip_get_color_inside(AnimData *adt, NlaStrip *strip, float col
 			/* active strip should be drawn green when it is acting as the tweaking strip.
 			 * however, this case should be skipped for when not in EditMode...
 			 */
-			// FIXME: hardcoded temp-hack colors
-			color[0] = 0.3f;
-			color[1] = 0.95f;
-			color[2] = 0.1f;
+			UI_GetThemeColor3fv(TH_NLA_TWEAK, color);
 		}
 		else if (strip->flag & NLASTRIP_FLAG_TWEAKUSER) {
 			/* alert user that this strip is also used by the tweaking track (this is set when going into
 			 * 'editmode' for that strip), since the edits made here may not be what the user anticipated
 			 */
-			// FIXME: hardcoded temp-hack colors
-			color[0] = 0.85f;
-			color[1] = 0.0f;
-			color[2] = 0.0f;
+			UI_GetThemeColor3fv(TH_NLA_TWEAK_DUPLI, color);
 		}
 		else if (strip->flag & NLASTRIP_FLAG_SELECT) {
 			/* selected strip - use theme color for selected */
@@ -250,7 +217,7 @@ static void nla_draw_strip_curves(NlaStrip *strip, float yminc, float ymaxc)
 {
 	const float yheight = ymaxc - yminc;
 	
-	/* drawing color is simply a light-grey */
+	/* drawing color is simply a light-gray */
 	// TODO: is this color suitable?
 	// XXX nasty hacked color for now... which looks quite bad too...
 	glColor3f(0.7f, 0.7f, 0.7f);
@@ -513,7 +480,7 @@ static void nla_draw_strip_text(AnimData *adt, NlaTrack *nlt, NlaStrip *strip, i
 static void nla_draw_strip_frames_text(NlaTrack *UNUSED(nlt), NlaStrip *strip, View2D *v2d, float UNUSED(yminc), float ymaxc)
 {
 	const float ytol = 1.0f; /* small offset to vertical positioning of text, for legibility */
-	const char col[4] = {220, 220, 220, 255}; /* light grey */
+	const char col[4] = {220, 220, 220, 255}; /* light gray */
 	char numstr[32] = "";
 	
 	
@@ -584,7 +551,7 @@ void draw_nla_main_data(bAnimContext *ac, SpaceNla *snla, ARegion *ar)
 					/* draw each strip in the track (if visible) */
 					for (strip = nlt->strips.first, index = 1; strip; strip = strip->next, index++) {
 						if (BKE_nlastrip_within_bounds(strip, v2d->cur.xmin, v2d->cur.xmax)) {
-							/* draw the visualisation of the strip */
+							/* draw the visualization of the strip */
 							nla_draw_strip(snla, adt, nlt, strip, v2d, yminc, ymaxc);
 							
 							/* add the text for this strip to the cache */
@@ -676,7 +643,7 @@ static void draw_nla_channel_list_gl(bAnimContext *ac, ListBase *anim_data, View
 			short indent = 0, offset = 0, sel = 0, group = 0, nonSolo = 0;
 			int expand = -1, protect = -1, special = -1, mute = -1;
 			char name[128];
-			short doDraw = 0;
+			short do_draw = FALSE;
 			
 			/* determine what needs to be drawn */
 			switch (ale->type) {
@@ -695,7 +662,7 @@ static void draw_nla_channel_list_gl(bAnimContext *ac, ListBase *anim_data, View
 					if (((nlt->flag & NLATRACK_ACTIVE) && (nlt->flag & NLATRACK_DISABLED)) == 0) {
 						if (nlt->flag & NLATRACK_MUTED)
 							mute = ICON_MUTE_IPO_ON;
-						else	
+						else
 							mute = ICON_MUTE_IPO_OFF;
 							
 						if (EDITABLE_NLT(nlt))
@@ -716,8 +683,8 @@ static void draw_nla_channel_list_gl(bAnimContext *ac, ListBase *anim_data, View
 					sel = SEL_NLT(nlt);
 					BLI_strncpy(name, nlt->name, sizeof(name));
 					
-					// draw manually still
-					doDraw = 1;
+					/* draw manually still */
+					do_draw = TRUE;
 				}
 				break;
 				case ANIMTYPE_NLAACTION: /* NLA Action-Line */
@@ -733,8 +700,8 @@ static void draw_nla_channel_list_gl(bAnimContext *ac, ListBase *anim_data, View
 					else
 						BLI_strncpy(name, "<No Action>", sizeof(name));
 						
-					// draw manually still
-					doDraw = 1;
+					/* draw manually still */
+					do_draw = TRUE;
 				}
 				break;
 					
@@ -745,7 +712,7 @@ static void draw_nla_channel_list_gl(bAnimContext *ac, ListBase *anim_data, View
 			}	
 			
 			/* if special types, draw manually for now... */
-			if (doDraw) {
+			if (do_draw) {
 				if (ale->id) {
 					/* special exception for textures */
 					if (GS(ale->id->name) == ID_TE) {
@@ -792,21 +759,24 @@ static void draw_nla_channel_list_gl(bAnimContext *ac, ListBase *anim_data, View
 				glEnable(GL_BLEND);
 				
 				/* draw backing strip behind channel name */
+				// FIXME: hardcoded colors!!!
 				if (group == 5) {
-					/* Action Line */
-					// TODO: if tweaking some action, use the same color as for the tweaked track (quick hack done for now)
+					float color[4];
+					
+					/* Action Line
+					 *   The alpha values action_get_color returns are only useful for drawing 
+					 *   strips backgrounds but here we're doing channel list backgrounds instead
+					 *   so we ignore that and use our own when needed
+					 */
+					nla_action_get_color(adt, (bAction *)ale->data, color);
+					
 					if (adt && (adt->flag & ADT_NLA_EDIT_ON)) {
-						// greenish color (same as tweaking strip) - hardcoded for now
-						glColor3f(0.3f, 0.95f, 0.1f);
+						/* Yes, the color vector has 4 components, BUT we only want to be using 3 of them! */
+						glColor3fv(color);
 					}
 					else {
-						/* if a track is being solo'd, action is ignored, so draw less boldly (alpha lower) */
-						float alpha = (adt && (adt->flag & ADT_NLA_SOLO_TRACK)) ? 0.3f : 1.0f;
-						
-						if (ale->data)
-							glColor4f(0.8f, 0.2f, 0.0f, alpha);  // reddish color - hardcoded for now
-						else
-							glColor4f(0.6f, 0.5f, 0.5f, alpha);  // greyish-red color - hardcoded for now
+						float alpha = (adt && (adt->flag & ADT_NLA_SOLO_TRACK)) ? 0.3 : 1.0f;
+						glColor4f(color[0], color[1], color[2], alpha);
 					}
 					
 					offset += 7 * indent;

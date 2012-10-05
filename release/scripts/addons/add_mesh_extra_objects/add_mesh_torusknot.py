@@ -115,7 +115,7 @@ def make_knot(knotidx, ures):
 	return (verts, faces)
 
 class AddTorusKnot(bpy.types.Operator):
-	'''Add a torus-knot mesh.'''
+	"""Add a torus-knot mesh"""
 	bl_idname = "mesh.primitive_torusknot_add"
 	bl_label = "Add Torus Knot"
 	bl_options = {"REGISTER", "UNDO"}
@@ -132,7 +132,7 @@ class AddTorusKnot(bpy.types.Operator):
 		verts, faces = make_knot(self.objecttype,
 								 self.resolution)
 		obj = create_mesh_object(context, verts, [], faces, "Torus Knot")
-		return {"FINISHED"}
+		return {'FINISHED'}
 '''
 def menu_func(self, context):
 	self.layout.operator(AddTorusKnot.bl_idname, text="Torus Knot", icon="MESH_CUBE")

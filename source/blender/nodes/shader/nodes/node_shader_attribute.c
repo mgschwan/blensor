@@ -30,13 +30,13 @@
 /* **************** OUTPUT ******************** */
 
 static bNodeSocketTemplate sh_node_attribute_out[]= {
-	{	SOCK_RGBA, 0, "Color"},
-	{	SOCK_VECTOR, 0, "Vector", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "Fac", 0.0f, 0.0f, 0.0f, 0.0f, -FLT_MAX, FLT_MAX},
+	{	SOCK_RGBA, 0, N_("Color")},
+	{	SOCK_VECTOR, 0, N_("Vector"), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("Fac"), 0.0f, 0.0f, 0.0f, 0.0f, -FLT_MAX, FLT_MAX},
 	{	-1, 0, ""	}
 };
 
-static void node_shader_init_attribute(bNodeTree *UNUSED(ntree), bNode* node, bNodeTemplate *UNUSED(ntemp))
+static void node_shader_init_attribute(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
 	NodeShaderAttribute *attr = MEM_callocN(sizeof(NodeShaderAttribute), "NodeShaderAttribute");
 	node->storage = attr;

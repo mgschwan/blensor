@@ -13,7 +13,7 @@
 
 #include <map>
 #include <string>
-#  if _MSC_VER < 1600
+#  if (defined(_MSC_VER) && _MSC_VER < 1600)
 // stdint.h is not available before VS2010
 #if defined(_WIN32) && !defined(__MINGW32__)
 /* The __intXX are built-in types of the visual complier! So we don't

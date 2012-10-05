@@ -1123,7 +1123,7 @@ if False:
     #scn.IBOOL = True
 
 class runFSLGLoopOperator(bpy.types.Operator):
-    '''By The Mighty Hammer Of Thor!!!'''
+    """By The Mighty Hammer Of Thor!!!"""
     bl_idname = "object.runfslg_operator"
     bl_label = "run FSLG Loop Operator"
 
@@ -1134,7 +1134,7 @@ class runFSLGLoopOperator(bpy.types.Operator):
         return {'FINISHED'}
     
 class setupObjectsOperator(bpy.types.Operator):
-    '''create origin/ground/cloud/insulator objects'''
+    """Create origin/ground/cloud/insulator objects"""
     bl_idname = "object.setup_objects_operator"
     bl_label = "Setup Objects Operator"
 
@@ -1147,6 +1147,7 @@ class OBJECT_PT_fslg(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "TOOLS"
     bl_context = "objectmode"
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         scn = context.scene

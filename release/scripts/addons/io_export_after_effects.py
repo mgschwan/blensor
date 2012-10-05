@@ -26,7 +26,7 @@ bl_info = {
     'blender': (2, 6, 2),
     'location': 'File > Export > Adobe After Effects (.jsx)',
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Import-Export/Adobe_After_Effects",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=29858",
@@ -693,7 +693,7 @@ from bpy.props import StringProperty, BoolProperty
 
 
 class ExportJsx(bpy.types.Operator, ExportHelper):
-    '''Export selected cameras and objects animation to After Effects'''
+    """Export selected cameras and objects animation to After Effects"""
     bl_idname = "export.jsx"
     bl_label = "Export to Adobe After Effects"
     filename_ext = ".jsx"

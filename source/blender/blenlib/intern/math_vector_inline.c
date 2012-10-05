@@ -231,6 +231,13 @@ MINLINE void swap_v4_v4(float a[4], float b[4])
 
 /********************************* Arithmetic ********************************/
 
+MINLINE void add_v2_fl(float r[2], float f)
+{
+	r[0] += f;
+	r[1] += f;
+}
+
+
 MINLINE void add_v3_fl(float r[3], float f)
 {
 	r[0] += f;
@@ -270,6 +277,22 @@ MINLINE void add_v3_v3v3(float r[3], const float a[3], const float b[3])
 	r[0] = a[0] + b[0];
 	r[1] = a[1] + b[1];
 	r[2] = a[2] + b[2];
+}
+
+MINLINE void add_v4_v4(float r[4], const float a[4])
+{
+	r[0] += a[0];
+	r[1] += a[1];
+	r[2] += a[2];
+	r[3] += a[3];
+}
+
+MINLINE void add_v4_v4v4(float r[4], const float a[4], const float b[4])
+{
+	r[0] = a[0] + b[0];
+	r[1] = a[1] + b[1];
+	r[2] = a[2] + b[2];
+	r[3] = a[3] + b[3];
 }
 
 MINLINE void sub_v2_v2(float r[2], const float a[2])
@@ -361,6 +384,14 @@ MINLINE void mul_v4_fl(float r[4], float f)
 	r[3] *= f;
 }
 
+MINLINE void mul_v4_v4fl(float r[4], const float a[4], float f)
+{
+	r[0] = a[0] * f;
+	r[1] = a[1] * f;
+	r[2] = a[2] * f;
+	r[3] = a[3] * f;
+}
+
 MINLINE void madd_v2_v2fl(float r[2], const float a[2], float f)
 {
 	r[0] += a[0] * f;
@@ -407,6 +438,14 @@ MINLINE void madd_v4_v4fl(float r[4], const float a[4], float f)
 	r[1] += a[1] * f;
 	r[2] += a[2] * f;
 	r[3] += a[3] * f;
+}
+
+MINLINE void madd_v4_v4v4(float r[4], const float a[4], const float b[4])
+{
+	r[0] += a[0] * b[0];
+	r[1] += a[1] * b[1];
+	r[2] += a[2] * b[2];
+	r[3] += a[3] * b[3];
 }
 
 MINLINE void mul_v3_v3v3(float r[3], const float v1[3], const float v2[3])
@@ -458,6 +497,14 @@ MINLINE void negate_v4_v4(float r[4], const float a[4])
 	r[3] = -a[3];
 }
 
+/* could add more... */
+MINLINE void negate_v3_short(short r[3])
+{
+	r[0] = -r[0];
+	r[1] = -r[1];
+	r[2] = -r[2];
+}
+
 MINLINE float dot_v2v2(const float a[2], const float b[2])
 {
 	return a[0] * b[0] + a[1] * b[1];
@@ -481,7 +528,7 @@ MINLINE void cross_v3_v3v3(float r[3], const float a[3], const float b[3])
 }
 
 /* Newell's Method */
-/* excuse this fairly spesific function,
+/* excuse this fairly specific function,
  * its used for polygon normals all over the place
  * could use a better name */
 MINLINE void add_newell_cross_v3_v3v3(float n[3], const float v_prev[3], const float v_curr[3])
@@ -675,6 +722,15 @@ MINLINE int equals_v3v3(const float v1[3], const float v2[3])
 MINLINE int equals_v4v4(const float v1[4], const float v2[4])
 {
 	return ((v1[0] == v2[0]) && (v1[1] == v2[1]) && (v1[2] == v2[2]) && (v1[3] == v2[3]));
+}
+
+MINLINE int compare_v2v2(const float v1[2], const float v2[2], const float limit)
+{
+	if (fabsf(v1[0] - v2[0]) < limit)
+		if (fabsf(v1[1] - v2[1]) < limit)
+			return 1;
+
+	return 0;
 }
 
 MINLINE int compare_v3v3(const float v1[3], const float v2[3], const float limit)

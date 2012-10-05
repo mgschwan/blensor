@@ -63,16 +63,16 @@ public:
 		m_lastDeformUpdate(-1)
 	{};
 	virtual ~BL_MeshDeformer();
-	virtual void SetSimulatedTime(double time){}
+	virtual void SetSimulatedTime(double time) {}
 	virtual bool Apply(class RAS_IPolyMaterial *mat);
-	virtual bool Update(void){ return false; }
-	virtual bool UpdateBuckets(void){ return false; }
-	virtual	RAS_Deformer*	GetReplica(){return NULL;}
+	virtual bool Update(void) { return false; }
+	virtual bool UpdateBuckets(void) { return false; }
+	virtual	RAS_Deformer*	GetReplica() {return NULL;}
 	virtual void ProcessReplica();
 	struct Mesh* GetMesh() { return m_bmesh; }
 	virtual class RAS_MeshObject* GetRasMesh() { return (RAS_MeshObject*)m_pMeshObject; }
 	virtual float (* GetTransVerts(int *tot))[3]	{	*tot= m_tvtot; return m_transverts; }
-	//	virtual void InitDeform(double time){}
+	//	virtual void InitDeform(double time) {}
 
 protected:
 	class RAS_MeshObject*		m_pMeshObject;
@@ -90,9 +90,7 @@ protected:
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:BL_MeshDeformer"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:BL_MeshDeformer")
 #endif
 };
 

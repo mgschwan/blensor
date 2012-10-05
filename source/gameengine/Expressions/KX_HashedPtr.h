@@ -50,13 +50,11 @@ public:
 	inline friend bool operator ==( const CHashedPtr & rhs,const CHashedPtr & lhs)
 	{
 		return rhs.m_valptr == lhs.m_valptr;
-	}	
+	}
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:CHashedPtr"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:CHashedPtr")
 #endif
 };
 

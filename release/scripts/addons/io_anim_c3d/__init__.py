@@ -25,11 +25,11 @@
 bl_info = {
     'name': "C3D Graphics Lab Motion Capture file (.c3d)",
     'author': "Daniel Monteiro Basso <daniel@basso.inf.br>",
-    'version': (2011, 11, 3, 1),
-    'blender': (2, 6, 0),
+    'version': (2012, 7, 11, 1),
+    'blender': (2, 6, 3),
     'location': "File > Import",
     'description': "Imports C3D Graphics Lab Motion Capture files",
-    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Import-Export/C3D_Importer",
     'tracker_url': "http://projects.blender.org/tracker/?func=detail&atid=467"
                    "&aid=29061&group_id=153",
@@ -62,6 +62,7 @@ class C3DAnimateCloud(bpy.types.Operator):
     fskip = 0
     scale = 0
     timer = None
+    Y_up = False
 
     def modal(self, context, event):
         if event.type == 'ESC':
@@ -78,16 +79,17 @@ class C3DAnimateCloud(bpy.types.Operator):
                 name = self.unames[self.prefix + ml]
                 o = bpy.context.scene.objects[name]
                 m = self.markerset.getMarker(ml, self.curframe)
-                o.location = Vector(m.position) * self.scale
+                p = Vector(m.position) * self.scale
+                o.location = Vector((p[0], -p[2], p[1])) if self.Y_up else p
                 if m.confidence >= self.confidence:
                     o.keyframe_insert('location', frame=fno)
             self.curframe += self.fskip
         return {'PASS_THROUGH'}
 
     def execute(self, context):
-        context.window_manager.modal_handler_add(self)
         self.timer = context.window_manager.\
             event_timer_add(0.001, context.window)
+        context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def cancel(self, context):
@@ -105,6 +107,11 @@ class C3DImporter(bpy.types.Operator):
 
     filepath = StringProperty(
             subtype='FILE_PATH',
+            )
+    Y_up = BoolProperty(
+            name="Up vector is Y axis",
+            default=False,
+            description="Convert to Blender coordinates",
             )
     from_inches = BoolProperty(
             name="Convert from inches to metric",
@@ -176,6 +183,7 @@ class C3DImporter(bpy.types.Operator):
             (only works for standing poses)
         """
         zmin = None
+        hidx = 1 if self.properties.Y_up else 2
         for ml in ms.markerLabels:
             if 'LTOE' in ml:
                 hd = ml.replace('LTOE', 'LFHD')
@@ -183,10 +191,10 @@ class C3DImporter(bpy.types.Operator):
                     break
                 pmin_idx = ms.markerLabels.index(ml)
                 pmax_idx = ms.markerLabels.index(hd)
-                zmin = ms.frames[0][pmin_idx].position[2]
-                zmax = ms.frames[0][pmax_idx].position[2]
+                zmin = ms.frames[0][pmin_idx].position[hidx]
+                zmax = ms.frames[0][pmax_idx].position[hidx]
         if zmin is None:  # could not find named markers, get extremes
-            allz = [m.position[2] for m in ms.frames[0]]
+            allz = [m.position[hidx] for m in ms.frames[0]]
             zmin, zmax = min(allz), max(allz)
         return abs(zmax - zmin)
 
@@ -243,6 +251,7 @@ class C3DImporter(bpy.types.Operator):
         C3DAnimateCloud.markerset = ms
         C3DAnimateCloud.unames = unames
         C3DAnimateCloud.scale = scale
+        C3DAnimateCloud.Y_up = self.properties.Y_up
         C3DAnimateCloud.fskip = self.properties.frame_skip
         C3DAnimateCloud.prefix = self.properties.prefix
         C3DAnimateCloud.use_frame_no = self.properties.use_frame_no

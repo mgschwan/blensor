@@ -23,8 +23,8 @@ bl_info = {
     'location': '3D View -> Tool Shelf -> Object Tools Panel (at the bottom)',
     'description': 'Drop selected objects on active object',
     'warning': '',
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.5/Py/Scripts/Object/Drop_to_ground',
-    "tracker_url": "http://projects.blender.org/tracker/?func=detail&atid=467&aid=25349",
+    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Object/Drop_to_ground',
+    "tracker_url": "http://projects.blender.org/tracker/?func=detail&atid=25349",
     'category': 'Object'}
 #################################################################
 import bpy, bmesh
@@ -138,7 +138,7 @@ def drop_objects(self, context):
     
 #################################################################
 class OBJECT_OT_drop_to_ground(Operator):
-    '''Drop selected objects on active object'''
+    """Drop selected objects on active object"""
     bl_idname = "object.drop_on_active"
     bl_label = "Drop to Ground"
     bl_options = {'REGISTER', 'UNDO'}

@@ -97,7 +97,7 @@ void free_gpencil_layers(ListBase *list)
 	/* error checking */
 	if (list == NULL) return;
 	
-	/* delete layers*/
+	/* delete layers */
 	for (gpl = list->first; gpl; gpl = gpln) {
 		gpln = gpl->next;
 		
@@ -320,6 +320,19 @@ void gpencil_frame_delete_laststroke(bGPDlayer *gpl, bGPDframe *gpf)
 }
 
 /* -------- GP-Layer API ---------- */
+
+bGPDframe *BKE_gpencil_layer_find_frame(bGPDlayer *gpl, int cframe)
+{
+	bGPDframe *gpf;
+
+	for (gpf = gpl->frames.last; gpf; gpf = gpf->prev) {
+		if (gpf->framenum == cframe) {
+			return gpf;
+		}
+	}
+
+	return NULL;
+}
 
 /* get the appropriate gp-frame from a given layer
  *	- this sets the layer's actframe var (if allowed to)

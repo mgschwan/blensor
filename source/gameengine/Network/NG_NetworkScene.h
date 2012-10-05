@@ -51,7 +51,7 @@ class NG_NetworkDeviceInterface;
 
 class NG_NetworkScene
 {
-	class NG_NetworkDeviceInterface *m_networkdevice;	
+	class NG_NetworkDeviceInterface *m_networkdevice;
 	CTR_Map<STR_HashedString, class NG_NetworkObject *> m_networkObjects;
 
 	// CTR_Maps used as a 'Bloom' filter
@@ -107,13 +107,11 @@ protected:
 	 * Releases messages for the given message map.
 	 * \param map	Message map with messages.
 	 */
-	void ClearMessageMap(TMessageMap& map);	
+	void ClearMessageMap(TMessageMap& map);
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:NG_NetworkScene"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:NG_NetworkScene")
 #endif
 };
 

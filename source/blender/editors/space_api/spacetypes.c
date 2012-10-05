@@ -62,6 +62,10 @@
 #include "ED_mball.h"
 #include "ED_logic.h"
 #include "ED_clip.h"
+#include "ED_mask.h"
+#include "ED_sequencer.h"
+
+#include "io_ops.h"
 
 /* only call once on startup, storage is global in BKE kernel listbase */
 void ED_spacetypes_init(void)
@@ -70,7 +74,7 @@ void ED_spacetypes_init(void)
 	SpaceType *type;
 
 	/* UI_UNIT_X is now a variable, is used in some spacetype inits? */
-	U.widget_unit= 20;
+	U.widget_unit = 20;
 	
 	/* create space types */
 	ED_spacetype_outliner();
@@ -111,13 +115,15 @@ void ED_spacetypes_init(void)
 	ED_operatortypes_sound();
 	ED_operatortypes_render();
 	ED_operatortypes_logic();
+	ED_operatortypes_mask();
+	ED_operatortypes_io();
 	
 	UI_view2d_operatortypes();
 	UI_buttons_operatortypes();
 	
 	/* register operators */
 	spacetypes = BKE_spacetypes_list();
-	for (type=spacetypes->first; type; type=type->next) {
+	for (type = spacetypes->first; type; type = type->next) {
 		if (type->operatortypes)
 			type->operatortypes();
 	}
@@ -133,10 +139,12 @@ void ED_spacetypes_init(void)
 	ED_operatormacros_action();
 	ED_operatormacros_clip();
 	ED_operatormacros_curve();
-	
+	ED_operatormacros_mask();
+	ED_operatormacros_sequencer();
+
 	/* register dropboxes (can use macros) */
 	spacetypes = BKE_spacetypes_list();
-	for (type=spacetypes->first; type; type=type->next) {
+	for (type = spacetypes->first; type; type = type->next) {
 		if (type->dropboxes)
 			type->dropboxes();
 	}
@@ -164,15 +172,16 @@ void ED_spacetypes_keymap(wmKeyConfig *keyconf)
 	ED_keymap_physics(keyconf);
 	ED_keymap_metaball(keyconf);
 	ED_keymap_paint(keyconf);
+	ED_keymap_mask(keyconf);
 	ED_marker_keymap(keyconf);
 
 	UI_view2d_keymap(keyconf);
 
 	spacetypes = BKE_spacetypes_list();
-	for (stype=spacetypes->first; stype; stype=stype->next) {
+	for (stype = spacetypes->first; stype; stype = stype->next) {
 		if (stype->keymap)
 			stype->keymap(keyconf);
-		for (atype=stype->regiontypes.first; atype; atype=atype->next) {
+		for (atype = stype->regiontypes.first; atype; atype = atype->next) {
 			if (atype->keymap)
 				atype->keymap(keyconf);
 		}
@@ -192,15 +201,15 @@ typedef struct RegionDrawCB {
 } RegionDrawCB;
 
 void *ED_region_draw_cb_activate(ARegionType *art, 
-								 void	(*draw)(const struct bContext *, struct ARegion *, void *),
-								 void *customdata, int type)
+                                 void (*draw)(const struct bContext *, struct ARegion *, void *),
+                                 void *customdata, int type)
 {
-	RegionDrawCB *rdc= MEM_callocN(sizeof(RegionDrawCB), "RegionDrawCB");
+	RegionDrawCB *rdc = MEM_callocN(sizeof(RegionDrawCB), "RegionDrawCB");
 	
 	BLI_addtail(&art->drawcalls, rdc);
-	rdc->draw= draw;
-	rdc->customdata= customdata;
-	rdc->type= type;
+	rdc->draw = draw;
+	rdc->customdata = customdata;
+	rdc->type = type;
 	
 	return rdc;
 }
@@ -209,8 +218,8 @@ void ED_region_draw_cb_exit(ARegionType *art, void *handle)
 {
 	RegionDrawCB *rdc;
 	
-	for (rdc= art->drawcalls.first; rdc; rdc= rdc->next) {
-		if (rdc==(RegionDrawCB *)handle) {
+	for (rdc = art->drawcalls.first; rdc; rdc = rdc->next) {
+		if (rdc == (RegionDrawCB *)handle) {
 			BLI_remlink(&art->drawcalls, rdc);
 			MEM_freeN(rdc);
 			return;
@@ -227,8 +236,8 @@ void ED_region_draw_cb_draw(const bContext *C, ARegion *ar, int type)
 {
 	RegionDrawCB *rdc;
 	
-	for (rdc= ar->type->drawcalls.first; rdc; rdc= rdc->next) {
-		if (rdc->type==type)
+	for (rdc = ar->type->drawcalls.first; rdc; rdc = rdc->next) {
+		if (rdc->type == type)
 			rdc->draw(C, ar, rdc->customdata);
 	}		
 }
@@ -283,14 +292,14 @@ void ED_spacetype_xxx(void)
 {
 	static SpaceType st;
 	
-	st.spaceid= SPACE_VIEW3D;
+	st.spaceid = SPACE_VIEW3D;
 	
-	st.new= xxx_new;
-	st.free= xxx_free;
-	st.init= xxx_init;
-	st.duplicate= xxx_duplicate;
-	st.operatortypes= xxx_operatortypes;
-	st.keymap= xxx_keymap;
+	st.new = xxx_new;
+	st.free = xxx_free;
+	st.init = xxx_init;
+	st.duplicate = xxx_duplicate;
+	st.operatortypes = xxx_operatortypes;
+	st.keymap = xxx_keymap;
 	
 	BKE_spacetype_register(&st);
 }

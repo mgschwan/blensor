@@ -38,16 +38,17 @@
 /* **************** Translate  ******************** */
 
 static bNodeSocketTemplate cmp_node_moviedistortion_in[] = {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 1, N_("Image"),			0.8f, 0.8f, 0.8f, 1.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 
 static bNodeSocketTemplate cmp_node_moviedistortion_out[] = {
-	{	SOCK_RGBA, 0, "Image"},
+	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
 
-static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
+#ifdef WITH_COMPOSITOR_LEGACY
+static void node_composit_exec_moviedistortion(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
 {
 	if (in[0]->data) {
 		if (node->id) {
@@ -73,7 +74,7 @@ static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
 				BKE_movieclip_get_size(clip, &user, &width, &height);
 
 				if (!node->storage)
-					node->storage = BKE_tracking_distortion_create();
+					node->storage = BKE_tracking_distortion_new();
 
 				if (node->custom1 == 0)
 					obuf = BKE_tracking_distortion_exec(node->storage, tracking, ibuf, width, height, overscan, 1);
@@ -104,6 +105,7 @@ static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
 		}
 	}
 }
+#endif  /* WITH_COMPOSITOR_LEGACY */
 
 static const char *label(bNode *node)
 {
@@ -116,7 +118,7 @@ static const char *label(bNode *node)
 static void storage_free(bNode *node)
 {
 	if (node->storage)
-		BKE_tracking_distortion_destroy(node->storage);
+		BKE_tracking_distortion_free(node->storage);
 
 	node->storage = NULL;
 }
@@ -135,7 +137,10 @@ void register_node_type_cmp_moviedistortion(bNodeTreeType *ttype)
 	node_type_socket_templates(&ntype, cmp_node_moviedistortion_in, cmp_node_moviedistortion_out);
 	node_type_size(&ntype, 140, 100, 320);
 	node_type_label(&ntype, label);
-	node_type_exec(&ntype, exec);
+#ifdef WITH_COMPOSITOR_LEGACY
+	node_type_exec(&ntype, node_composit_exec_moviedistortion);
+#endif
+
 	node_type_storage(&ntype, NULL, storage_free, storage_copy);
 
 	nodeRegisterType(ttype, &ntype);

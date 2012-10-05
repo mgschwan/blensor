@@ -76,14 +76,13 @@ public :
 
 	virtual 
 	~SG_ParentRelation(
-	){
-	};
+	) {};
 
 	/** 
 	 * You must provide a way of duplicating an
 	 * instance of an SG_ParentRelation. This should
 	 * return a pointer to a new duplicate allocated
-	 * on the heap. Responsibilty for deleting the 
+	 * on the heap. Responsibility for deleting the
 	 * duplicate resides with the caller of this method.
 	 */
 
@@ -119,7 +118,7 @@ protected :
 	 */
 
 	SG_ParentRelation(
-	) {	
+	) {
 	};
 
 	/**
@@ -132,9 +131,7 @@ protected :
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:SG_ParentRelation"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:SG_ParentRelation")
 #endif
 };
 

@@ -39,7 +39,7 @@ bl_info = {
     "blender": (2, 6, 1),
     "location": "View3D > Add > Rock Generator",
     "description": "Adds a mesh rock to the Add Mesh menu",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6"\
         "/Py/Scripts/Add_Mesh/Rock_Generator",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=27314",

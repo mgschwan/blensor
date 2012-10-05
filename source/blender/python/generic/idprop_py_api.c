@@ -152,7 +152,7 @@ PyObject *BPy_IDGroup_WrapData(ID *id, IDProperty *prop, IDProperty *parent)
 	}
 }
 
-#if 0 /* UNUSED, currenly assignment overwrites into new properties, rather than setting in-place */
+#if 0 /* UNUSED, currently assignment overwrites into new properties, rather than setting in-place */
 static int BPy_IDGroup_SetData(BPy_IDProperty *self, IDProperty *prop, PyObject *value)
 {
 	switch (prop->type) {
@@ -277,7 +277,7 @@ static PyObject *BPy_IDGroup_Map_GetItem(BPy_IDProperty *self, PyObject *item)
 	IDProperty *idprop;
 	const char *name;
 
-	if (self->prop->type  != IDP_GROUP) {
+	if (self->prop->type != IDP_GROUP) {
 		PyErr_SetString(PyExc_TypeError, "unsubscriptable object");
 		return NULL;
 	}
@@ -483,7 +483,7 @@ const char *BPy_IDProperty_Map_ValidateAndCreate(PyObject *name_obj, IDProperty 
 
 int BPy_Wrap_SetMapItem(IDProperty *prop, PyObject *key, PyObject *val)
 {
-	if (prop->type  != IDP_GROUP) {
+	if (prop->type != IDP_GROUP) {
 		PyErr_SetString(PyExc_TypeError, "unsubscriptable object");
 		return -1;
 	}

@@ -57,7 +57,7 @@ class Retopo(bpy.types.Operator):
         from . import retopo
         scene, gp = retopo.initialise(context)
         if not gp:
-            self.report('WARNING', "No grease pencil data found")
+            self.report({'WARNING'}, "No grease pencil data found")
             return {'CANCELLED'}
 
         obj_new = retopo.calculate(gp, self.precision)

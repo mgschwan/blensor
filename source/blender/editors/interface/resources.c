@@ -91,7 +91,7 @@ const unsigned char *UI_ThemeGetColorPtr(bTheme *btheme, int spacetype, int colo
 	
 	if (btheme) {
 	
-		// first check for ui buttons theme
+		/* first check for ui buttons theme */
 		if (colorid < TH_THEMEUI) {
 		
 			switch (colorid) {
@@ -303,6 +303,8 @@ const unsigned char *UI_ThemeGetColorPtr(bTheme *btheme, int spacetype, int colo
 					cp = ts->bone_solid; break;
 				case TH_BONE_POSE:
 					cp = ts->bone_pose; break;
+				case TH_BONE_POSE_ACTIVE:
+					cp = ts->bone_pose_active; break;
 				case TH_STRIP:
 					cp = ts->strip; break;
 				case TH_STRIP_SELECT:
@@ -363,6 +365,8 @@ const unsigned char *UI_ThemeGetColorPtr(bTheme *btheme, int spacetype, int colo
 					cp = ts->syntaxv; break;
 				case TH_NODE_GROUP:
 					cp = ts->syntaxc; break;
+				case TH_NODE_FRAME:
+					cp = ts->movie; break;
 				case TH_NODE_CURVING:
 					cp = &ts->noodle_curving; break;
 
@@ -370,6 +374,8 @@ const unsigned char *UI_ThemeGetColorPtr(bTheme *btheme, int spacetype, int colo
 					cp = ts->movie; break;
 				case TH_SEQ_MOVIECLIP:
 					cp = ts->movieclip; break;
+				case TH_SEQ_MASK:
+					cp = ts->mask; break;
 				case TH_SEQ_IMAGE:
 					cp = ts->image; break;
 				case TH_SEQ_SCENE:
@@ -378,8 +384,6 @@ const unsigned char *UI_ThemeGetColorPtr(bTheme *btheme, int spacetype, int colo
 					cp = ts->audio; break;
 				case TH_SEQ_EFFECT:
 					cp = ts->effect; break;
-				case TH_SEQ_PLUGIN:
-					cp = ts->plugin; break;
 				case TH_SEQ_TRANSITION:
 					cp = ts->transition; break;
 				case TH_SEQ_META:
@@ -468,6 +472,43 @@ const unsigned char *UI_ThemeGetColorPtr(bTheme *btheme, int spacetype, int colo
 
 				case TH_SELECT_HIGHLIGHT:
 					cp = ts->selected_highlight;
+					break;
+
+				case TH_SKIN_ROOT:
+					cp = ts->skin_root;
+					break;
+					
+				case TH_ANIM_ACTIVE:
+					cp = ts->anim_active;
+					break;
+				case TH_ANIM_INACTIVE:
+					cp = ts->anim_non_active;
+					break;
+				
+				case TH_NLA_TWEAK:
+					cp = ts->nla_tweaking;
+					break;
+				case TH_NLA_TWEAK_DUPLI:
+					cp = ts->nla_tweakdupli;
+					break;
+				
+				case TH_NLA_TRANSITION:
+					cp = ts->nla_transition;
+					break;
+				case TH_NLA_TRANSITION_SEL:
+					cp = ts->nla_transition_sel;
+					break;
+				case TH_NLA_META:
+					cp = ts->nla_meta;
+					break;
+				case TH_NLA_META_SEL:
+					cp = ts->nla_meta_sel;
+					break;
+				case TH_NLA_SOUND:
+					cp = ts->nla_sound;
+					break;
+				case TH_NLA_SOUND_SEL:
+					cp = ts->nla_sound_sel;
 					break;
 			}
 		}
@@ -602,9 +643,7 @@ void ui_theme_init_default(void)
 	bTheme *btheme;
 	
 	/* we search for the theme with name Default */
-	for (btheme = U.themes.first; btheme; btheme = btheme->next) {
-		if (strcmp("Default", btheme->name) == 0) break;
-	}
+	btheme = BLI_findstring(&U.themes, "Default", offsetof(bTheme, name));
 	
 	if (btheme == NULL) {
 		btheme = MEM_callocN(sizeof(bTheme), "theme");
@@ -698,10 +737,14 @@ void ui_theme_init_default(void)
 	rgba_char_args_set(btheme->tv3d.lastsel_point,  0xff, 0xff, 0xff, 255);
 
 	rgba_char_args_set(btheme->tv3d.bone_solid, 200, 200, 200, 255);
-	rgba_char_args_set(btheme->tv3d.bone_pose, 80, 200, 255, 80);               // alpha 80 is not meant editable, used for wire+action draw
+	/* alpha 80 is not meant editable, used for wire+action draw */
+	rgba_char_args_set(btheme->tv3d.bone_pose, 80, 200, 255, 80);
+	rgba_char_args_set(btheme->tv3d.bone_pose_active, 140, 255, 255, 80);
 
 	rgba_char_args_set(btheme->tv3d.bundle_solid, 200, 200, 200, 255);
 	rgba_char_args_set(btheme->tv3d.camera_path, 0x00, 0x00, 0x00, 255);
+
+	rgba_char_args_set(btheme->tv3d.skin_root, 180, 77, 77, 255);
 	
 	/* space buttons */
 	/* to have something initialized */
@@ -729,18 +772,33 @@ void ui_theme_init_default(void)
 	rgba_char_args_set(btheme->tipo.handle_sel_auto_clamped, 0xf0, 0xaf, 0x90, 255);
 	btheme->tipo.handle_vertex_size = 4;
 	
-	rgba_char_args_set(btheme->tipo.ds_channel,     82, 96, 110, 255);
+	rgba_char_args_set(btheme->tipo.ds_channel,      82, 96, 110, 255);
 	rgba_char_args_set(btheme->tipo.ds_subchannel,  124, 137, 150, 255);
-	rgba_char_args_set(btheme->tipo.group, 79, 101, 73, 255);
-	rgba_char_args_set(btheme->tipo.group_active, 135, 177, 125, 255);
+	rgba_char_args_set(btheme->tipo.group,           79, 101, 73, 255);
+	rgba_char_args_set(btheme->tipo.group_active,   135, 177, 125, 255);
 
 	/* dopesheet */
 	btheme->tact = btheme->tipo;
 	rgba_char_args_set(btheme->tact.strip,          12, 10, 10, 128);
 	rgba_char_args_set(btheme->tact.strip_select,   255, 140, 0, 255);
 	
+	rgba_char_args_set(btheme->tact.anim_active,    204, 112, 26, 102);
+	
 	/* space nla */
 	btheme->tnla = btheme->tact;
+	
+	rgba_char_args_set(btheme->tnla.anim_active,     204, 112, 26, 102); /* same as for dopesheet; duplicate here for easier reference */
+	rgba_char_args_set(btheme->tnla.anim_non_active, 153, 135, 97, 77);
+	
+	rgba_char_args_set(btheme->tnla.nla_tweaking,   77, 243, 26, 77);
+	rgba_char_args_set(btheme->tnla.nla_tweakdupli, 217, 0, 0, 255);
+	
+	rgba_char_args_set(btheme->tnla.nla_transition,     28, 38, 48, 255);
+	rgba_char_args_set(btheme->tnla.nla_transition_sel, 46, 117, 219, 255);
+	rgba_char_args_set(btheme->tnla.nla_meta,           51, 38, 66, 255);
+	rgba_char_args_set(btheme->tnla.nla_meta_sel,       105, 33, 150, 255);
+	rgba_char_args_set(btheme->tnla.nla_sound,          43, 61, 61, 255);
+	rgba_char_args_set(btheme->tnla.nla_sound_sel,      31, 122, 122, 255);
 	
 	/* space file */
 	/* to have something initialized */
@@ -765,11 +823,11 @@ void ui_theme_init_default(void)
 	rgba_char_args_set(btheme->tseq.back,   116, 116, 116, 255);
 	rgba_char_args_set(btheme->tseq.movie,  81, 105, 135, 255);
 	rgba_char_args_set(btheme->tseq.movieclip,  32, 32, 143, 255);
+	rgba_char_args_set(btheme->tseq.mask,   152, 78, 62, 255);
 	rgba_char_args_set(btheme->tseq.image,  109, 88, 129, 255);
 	rgba_char_args_set(btheme->tseq.scene,  78, 152, 62, 255);
 	rgba_char_args_set(btheme->tseq.audio,  46, 143, 143, 255);
 	rgba_char_args_set(btheme->tseq.effect,     169, 84, 124, 255);
-	rgba_char_args_set(btheme->tseq.plugin,     126, 126, 80, 255);
 	rgba_char_args_set(btheme->tseq.transition, 162, 95, 111, 255);
 	rgba_char_args_set(btheme->tseq.meta,   109, 145, 131, 255);
 	rgba_char_args_set(btheme->tseq.preview_back,   0, 0, 0, 255);
@@ -837,12 +895,13 @@ void ui_theme_init_default(void)
 	
 	/* space node, re-uses syntax color storage */
 	btheme->tnode = btheme->tv3d;
-	rgba_char_args_set(btheme->tnode.edge_select, 255, 255, 255, 255);
+	rgba_char_args_set(btheme->tnode.edge_select, 255, 255, 255, 255);	/* wire selected */
 	rgba_char_args_set(btheme->tnode.syntaxl, 155, 155, 155, 160);  /* TH_NODE, backdrop */
 	rgba_char_args_set(btheme->tnode.syntaxn, 100, 100, 100, 255);  /* in/output */
 	rgba_char_args_set(btheme->tnode.syntaxb, 108, 105, 111, 255);  /* operator */
 	rgba_char_args_set(btheme->tnode.syntaxv, 104, 106, 117, 255);  /* generator */
 	rgba_char_args_set(btheme->tnode.syntaxc, 105, 117, 110, 255);  /* group */
+	rgba_char_args_set(btheme->tnode.movie, 155, 155, 155, 160);  /* frame */
 	btheme->tnode.noodle_curving = 5;
 
 	/* space logic */
@@ -879,14 +938,14 @@ void UI_SetTheme(int spacetype, int regionid)
 		theme_regionid = RGN_TYPE_WINDOW;
 	}
 	else {
-		// later on, a local theme can be found too
+		/* later on, a local theme can be found too */
 		theme_active = U.themes.first;
 		theme_spacetype = spacetype;
 		theme_regionid = regionid;
 	}
 }
 
-bTheme *UI_GetTheme()
+bTheme *UI_GetTheme(void)
 {
 	return U.themes.first;
 }
@@ -1028,7 +1087,7 @@ int UI_GetThemeValue(int colorid)
 
 
 // get the color, range 0.0-1.0
-void UI_GetThemeColor3fv(int colorid, float *col)
+void UI_GetThemeColor3fv(int colorid, float col[3])
 {
 	const unsigned char *cp;
 	
@@ -1038,8 +1097,19 @@ void UI_GetThemeColor3fv(int colorid, float *col)
 	col[2] = ((float)cp[2]) / 255.0f;
 }
 
+void UI_GetThemeColor4fv(int colorid, float col[4])
+{
+	const unsigned char *cp;
+	
+	cp = UI_ThemeGetColorPtr(theme_active, theme_spacetype, colorid);
+	col[0] = ((float)cp[0]) / 255.0f;
+	col[1] = ((float)cp[1]) / 255.0f;
+	col[2] = ((float)cp[2]) / 255.0f;
+	col[3] = ((float)cp[3]) / 255.0f;
+}
+
 // get the color, range 0.0-1.0, complete with shading offset
-void UI_GetThemeColorShade3fv(int colorid, int offset, float *col)
+void UI_GetThemeColorShade3fv(int colorid, int offset, float col[3])
 {
 	int r, g, b;
 	const unsigned char *cp;
@@ -1056,6 +1126,25 @@ void UI_GetThemeColorShade3fv(int colorid, int offset, float *col)
 	col[0] = ((float)r) / 255.0f;
 	col[1] = ((float)g) / 255.0f;
 	col[2] = ((float)b) / 255.0f;
+}
+
+void UI_GetThemeColorShade3ubv(int colorid, int offset, unsigned char col[3])
+{
+	int r, g, b;
+	const unsigned char *cp;
+
+	cp = UI_ThemeGetColorPtr(theme_active, theme_spacetype, colorid);
+
+	r = offset + (int) cp[0];
+	CLAMP(r, 0, 255);
+	g = offset + (int) cp[1];
+	CLAMP(g, 0, 255);
+	b = offset + (int) cp[2];
+	CLAMP(b, 0, 255);
+
+	col[0] = r;
+	col[1] = g;
+	col[2] = b;
 }
 
 // get the color, in char pointer
@@ -1126,7 +1215,8 @@ void UI_GetColorPtrShade3ubv(const unsigned char cp[3], unsigned char col[3], in
 }
 
 // get a 3 byte color, blended and shaded between two other char color pointers
-void UI_GetColorPtrBlendShade3ubv(const unsigned char cp1[3], const unsigned char cp2[3], unsigned char col[3], float fac, int offset)
+void UI_GetColorPtrBlendShade3ubv(const unsigned char cp1[3], const unsigned char cp2[3], unsigned char col[3],
+                                  float fac, int offset)
 {
 	int r, g, b;
 
@@ -1208,8 +1298,8 @@ void init_userdef_do_versions(void)
 	/* transform widget settings */
 	if (U.tw_hotspot == 0) {
 		U.tw_hotspot = 14;
-		U.tw_size = 20;          // percentage of window size
-		U.tw_handlesize = 16;    // percentage of widget radius
+		U.tw_size = 20;          /* percentage of window size */
+		U.tw_handlesize = 16;    /* percentage of widget radius */
 	}
 	if (U.pad_rot_angle == 0)
 		U.pad_rot_angle = 15;
@@ -1223,7 +1313,6 @@ void init_userdef_do_versions(void)
 	vDM_ColorBand_store((U.flag & USER_CUSTOM_RANGE) ? (&U.coba_weight) : NULL);
 
 	if (bmain->versionfile <= 191) {
-		BLI_strncpy(U.plugtexdir, U.textudir, sizeof(U.plugtexdir));
 		strcpy(U.sounddir, "/");
 	}
 	
@@ -1240,7 +1329,7 @@ void init_userdef_do_versions(void)
 		if (U.undosteps == 0) U.undosteps = 32;
 		
 		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
-			/* check for alpha==0 is safe, then color was never set */
+			/* check for (alpha == 0) is safe, then color was never set */
 			if (btheme->tv3d.edge_seam[3] == 0) {
 				rgba_char_args_set(btheme->tv3d.edge_seam, 230, 150, 50, 255);
 			}
@@ -1265,9 +1354,9 @@ void init_userdef_do_versions(void)
 		bTheme *btheme;
 		/* new space type */
 		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
-			/* check for alpha==0 is safe, then color was never set */
+			/* check for (alpha == 0) is safe, then color was never set */
 			if (btheme->ttime.back[3] == 0) {
-				// copied from ui_theme_init_default
+				/* copied from ui_theme_init_default */
 				btheme->ttime = btheme->tv3d;
 				rgba_char_args_set_fl(btheme->ttime.back,   0.45, 0.45, 0.45, 1.0);
 				rgba_char_args_set_fl(btheme->ttime.grid,   0.36, 0.36, 0.36, 1.0);
@@ -1344,7 +1433,6 @@ void init_userdef_do_versions(void)
 				rgba_char_args_set(btheme->tseq.scene,  78, 152, 62, 255);
 				rgba_char_args_set(btheme->tseq.audio,  46, 143, 143, 255);
 				rgba_char_args_set(btheme->tseq.effect,     169, 84, 124, 255);
-				rgba_char_args_set(btheme->tseq.plugin,     126, 126, 80, 255);
 				rgba_char_args_set(btheme->tseq.transition, 162, 95, 111, 255);
 				rgba_char_args_set(btheme->tseq.meta,   109, 145, 131, 255);
 			}
@@ -1655,7 +1743,8 @@ void init_userdef_do_versions(void)
 	}
 
 	if (bmain->versionfile < 257) {
-		/* clear "AUTOKEY_FLAG_ONLYKEYINGSET" flag from userprefs, so that it doesn't linger around from old configs like a ghost */
+		/* clear "AUTOKEY_FLAG_ONLYKEYINGSET" flag from userprefs,
+		 * so that it doesn't linger around from old configs like a ghost */
 		U.autokey_flag &= ~AUTOKEY_FLAG_ONLYKEYINGSET;
 	}
 
@@ -1746,7 +1835,7 @@ void init_userdef_do_versions(void)
 			rgba_char_args_set_fl(btheme->toops.selected_highlight, 0.51, 0.53, 0.55, 0.3);
 		}
 		
-		U.use_16bit_textures = 1;
+		U.use_16bit_textures = TRUE;
 	}
 
 	if (bmain->versionfile < 262 || (bmain->versionfile == 262 && bmain->subversionfile < 2)) {
@@ -1789,6 +1878,75 @@ void init_userdef_do_versions(void)
 		}
 	}
 
+	if (bmain->versionfile < 263 || (bmain->versionfile == 263 && bmain->subversionfile < 6)) {
+		bTheme *btheme;
+		for (btheme = U.themes.first; btheme; btheme = btheme->next)
+			rgba_char_args_set(btheme->tv3d.skin_root, 180, 77, 77, 255);
+	}
+	
+	if (bmain->versionfile < 263 || (bmain->versionfile == 263 && bmain->subversionfile < 7)) {
+		bTheme *btheme;
+		
+		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
+			/* DopeSheet Summary */
+			rgba_char_args_set(btheme->tact.anim_active,    204, 112, 26, 102); 
+			
+			/* NLA Colors */
+			rgba_char_args_set(btheme->tnla.anim_active,     204, 112, 26, 102); /* same as dopesheet above */
+			rgba_char_args_set(btheme->tnla.anim_non_active, 153, 135, 97, 77);
+			
+			rgba_char_args_set(btheme->tnla.nla_tweaking,   77, 243, 26, 77);
+			rgba_char_args_set(btheme->tnla.nla_tweakdupli, 217, 0, 0, 255);
+			
+			rgba_char_args_set(btheme->tnla.nla_transition,     28, 38, 48, 255);
+			rgba_char_args_set(btheme->tnla.nla_transition_sel, 46, 117, 219, 255);
+			rgba_char_args_set(btheme->tnla.nla_meta,           51, 38, 66, 255);
+			rgba_char_args_set(btheme->tnla.nla_meta_sel,       105, 33, 150, 255);
+			rgba_char_args_set(btheme->tnla.nla_sound,          43, 61, 61, 255);
+			rgba_char_args_set(btheme->tnla.nla_sound_sel,      31, 122, 122, 255);
+		}
+	}
+
+	if (bmain->versionfile < 263 || (bmain->versionfile == 263 && bmain->subversionfile < 11)) {
+		bTheme *btheme;
+		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
+			if (btheme->tseq.movieclip[0] == 0) {
+				rgba_char_args_set(btheme->tseq.mask,  152, 78, 62, 255);
+			}
+		}
+	}
+
+	if (bmain->versionfile < 263 || (bmain->versionfile == 263 && bmain->subversionfile < 15)) {
+		bTheme *btheme;
+		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
+			rgba_char_args_set(btheme->tv3d.bone_pose_active, 140, 255, 255, 80);
+		}
+	}
+
+	if (bmain->versionfile < 263 || (bmain->versionfile == 263 && bmain->subversionfile < 16)) {
+		bTheme *btheme;
+
+		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
+			if (btheme->tact.anim_active[3] == 0)
+				rgba_char_args_set(btheme->tact.anim_active, 204, 112, 26, 102);
+
+			if (btheme->tnla.anim_active[3] == 0)
+				rgba_char_args_set(btheme->tnla.anim_active, 204, 112, 26, 102);
+		}
+	}
+
+	if (bmain->versionfile < 263 || (bmain->versionfile == 263 && bmain->subversionfile < 22)) {
+		bTheme *btheme;
+
+		for (btheme = U.themes.first; btheme; btheme = btheme->next) {
+			if (btheme->tipo.lastsel_point[3] == 0)
+				rgba_char_args_set(btheme->tipo.lastsel_point, 0xff, 0xff, 0xff, 255);
+
+			if (btheme->tv3d.skin_root[3] == 0)
+				rgba_char_args_set(btheme->tv3d.skin_root, 180, 77, 77, 255);
+		}
+	}
+
 	/* GL Texture Garbage Collection (variable abused above!) */
 	if (U.textimeout == 0) {
 		U.texcollectrate = 60;
@@ -1802,9 +1960,6 @@ void init_userdef_do_versions(void)
 	}
 	if (U.dbl_click_time == 0) {
 		U.dbl_click_time = 350;
-	}
-	if (U.anim_player_preset == 0) {
-		U.anim_player_preset = 1;
 	}
 	if (U.scrcastfps == 0) {
 		U.scrcastfps = 10;
@@ -1824,6 +1979,13 @@ void init_userdef_do_versions(void)
 		U.ndof_sensitivity = 1.0f;
 		U.ndof_flag = NDOF_LOCK_HORIZON |
 		              NDOF_SHOULD_PAN | NDOF_SHOULD_ZOOM | NDOF_SHOULD_ROTATE;
+	}
+	
+	if (U.ndof_orbit_sensitivity == 0.0f) {
+		U.ndof_orbit_sensitivity = U.ndof_sensitivity;
+
+		if (!(U.flag & USER_TRACKBALL))
+			U.ndof_flag |= NDOF_TURNTABLE;
 	}
 	if (U.tweak_threshold == 0)
 		U.tweak_threshold = 10;

@@ -59,6 +59,7 @@ class DirectXExporter:
         # not exporting
         self.RootExportList = [Object for Object in self.ExportMap.values()
             if Object.BlenderObject.parent not in ExportList]
+        self.RootExportList = Util.SortByNameField(self.RootExportList)
 
         # Determine each object's children from the pool of ExportObjects
         for Object in self.ExportMap.values():
@@ -112,7 +113,7 @@ class DirectXExporter:
   <9E415A43-7BA6-4a73-8743-B73D47E88476>\n\
   DWORD AnimTicksPerSecond;\n\
 }\n\n")
-        if self.Config.ExportArmatures:
+        if self.Config.ExportSkinWeights:
             self.File.Write("template XSkinMeshHeader {\n\
   <3cf169ce-ff7c-44ab-93c0-f78f62d172e2>\n\
   WORD nMaxSkinWeightsPerVertex;\n\
@@ -150,6 +151,7 @@ class ExportObject:
         self.Exporter = Exporter
         self.BlenderObject = BlenderObject
 
+        self.name = self.BlenderObject.name # Simple alias
         self.SafeName = Util.SafeName(self.BlenderObject.name)
         self.Children = []
 
@@ -182,15 +184,13 @@ class ExportObject:
         self.Exporter.File.Write("}} // End of {}\n".format(self.SafeName))
 
     def _WriteChildren(self):
-        for Child in self.Children:
+        for Child in Util.SortByNameField(self.Children):
             Child.Write()
 
 
 class MeshExportObject(ExportObject):
     def __init__(self, Config, Exporter, BlenderObject):
         ExportObject.__init__(self, Config, Exporter, BlenderObject)
-
-        # Determine if this mesh has an armature
 
     def __repr__(self):
         return "[MeshExportObject: {}]".format(self.BlenderObject.name)
@@ -200,15 +200,17 @@ class MeshExportObject(ExportObject):
     def Write(self):
         self._OpenFrame()
 
-        # Generate the export mesh
-        if self.Config.ApplyModifiers:
-            Mesh = self.BlenderObject.to_mesh(self.Exporter.context.scene,
-                True, 'PREVIEW')
-        else:
-            Mesh = self.BlenderObject.to_mesh(self.Exporter.context.scene,
-                False, 'PREVIEW')
-
-        self.__WriteMesh(Mesh)
+        if self.Exporter.Config.ExportMeshes:
+            # Generate the export mesh
+            Mesh = None
+            if self.Config.ApplyModifiers:
+                Mesh = self.BlenderObject.to_mesh(self.Exporter.context.scene,
+                    True, 'PREVIEW')
+            else:
+                Mesh = self.BlenderObject.to_mesh(self.Exporter.context.scene,
+                    False, 'PREVIEW')
+                    
+            self.__WriteMesh(Mesh)
 
         self._WriteChildren()
 
@@ -220,34 +222,77 @@ class MeshExportObject(ExportObject):
         self.Exporter.File.Write("Mesh {{ // {} mesh\n".format(self.SafeName))
         self.Exporter.File.Indent()
 
-        # Write vertex positions
-        self.Exporter.File.Write("{};\n".format(len(Mesh.vertices)))
-        for Index, Vertex in enumerate(Mesh.vertices):
-            Position = Vertex.co
-            self.Exporter.File.Write("{:9f};{:9f};{:9f};".format(Position[0],
-                Position[1], Position[2]))
-            if Index == len(Mesh.vertices) - 1:
-                self.Exporter.File.Write(";\n", Indent=False)
-            else:
-                self.Exporter.File.Write(",\n", Indent=False)
+        if (self.Exporter.Config.ExportUVCoordinates and Mesh.uv_textures):# or \
+           #self.Exporter.Config.ExportVertexColors: XXX
+            VertexCount = 0
+            for Polygon in Mesh.polygons:
+                VertexCount += len(Polygon.vertices)
+            
+            # Write vertex positions
+            Index = 0
+            self.Exporter.File.Write("{};\n".format(VertexCount))
+            for Polygon in Mesh.polygons:
+                Vertices = list(Polygon.vertices)[::-1]
+                
+                for Vertex in [Mesh.vertices[Vertex] for Vertex in Vertices]:
+                    Position = Vertex.co
+                    self.Exporter.File.Write("{:9f};{:9f};{:9f};".format(
+                        Position[0], Position[1], Position[2]))
+                    Index += 1
+                    if Index == VertexCount:
+                        self.Exporter.File.Write(";\n", Indent=False)
+                    else:
+                        self.Exporter.File.Write(",\n", Indent=False)
+            
+            # Write face definitions
+            Index = 0
+            self.Exporter.File.Write("{};\n".format(len(Mesh.polygons)))
+            for Polygon in Mesh.polygons:
+                self.Exporter.File.Write("{};".format(len(Polygon.vertices)))
+                for Vertex in Polygon.vertices:
+                    self.Exporter.File.Write("{};".format(Index), Indent=False)
+                    Index += 1
+                if Index == VertexCount:
+                    self.Exporter.File.Write(";\n", Indent=False)
+                else:
+                    self.Exporter.File.Write(",\n", Indent=False)
+        else:
+            # Write vertex positions
+            self.Exporter.File.Write("{};\n".format(len(Mesh.vertices)))
+            for Index, Vertex in enumerate(Mesh.vertices):
+                Position = Vertex.co
+                self.Exporter.File.Write("{:9f};{:9f};{:9f};".format(
+                    Position[0], Position[1], Position[2]))
+                if Index == len(Mesh.vertices) - 1:
+                    self.Exporter.File.Write(";\n", Indent=False)
+                else:
+                    self.Exporter.File.Write(",\n", Indent=False)
+    
+            # Write face definitions
+            self.Exporter.File.Write("{};\n".format(len(Mesh.polygons)))
+            for Index, Polygon in enumerate(Mesh.polygons):
+                # Change the winding order of the face
+                Vertices = list(Polygon.vertices)[::-1]
+    
+                self.Exporter.File.Write("{};".format(len(Vertices)))
+                for Vertex in Vertices:
+                    self.Exporter.File.Write("{};".format(Vertex), Indent=False)
+                if Index == len(Mesh.polygons) - 1:
+                    self.Exporter.File.Write(";\n", Indent=False)
+                else:
+                    self.Exporter.File.Write(",\n", Indent=False)
 
-        # Write face definitions
-        self.Exporter.File.Write("{};\n".format(len(Mesh.polygons)))
-        for Index, Polygon in enumerate(Mesh.polygons):
-            # Change the winding order of the face
-            Vertices = list(Polygon.vertices)[::-1]
+        if self.Exporter.Config.ExportNormals:
+            self.__WriteMeshNormals(Mesh)
+            
+        if self.Exporter.Config.ExportUVCoordinates:
+            self.__WriteMeshUVCoordinates(Mesh)
 
-            self.Exporter.File.Write("{};".format(len(Vertices)))
-            for Vertex in Vertices:
-                self.Exporter.File.Write("{};".format(Vertex), Indent=False)
-            if Index == len(Mesh.polygons) - 1:
-                self.Exporter.File.Write(";\n", Indent=False)
-            else:
-                self.Exporter.File.Write(",\n", Indent=False)
-
-        self.__WriteMeshNormals(Mesh)
-
-        self.__WriteMeshMaterials(Mesh)
+        if self.Exporter.Config.ExportMaterials:
+            self.__WriteMeshMaterials(Mesh)
+        
+        #if self.Exporter.Config.ExportVertexColor:
+        #    self.__WriteMeshVertexColors(Mesh)
 
         self.Exporter.File.Unindent()
         self.Exporter.File.Write("}} // End of {} mesh\n".format(self.SafeName))
@@ -317,8 +362,120 @@ class MeshExportObject(ExportObject):
         self.Exporter.File.Unindent()
         self.Exporter.File.Write("}} // End of {} normals\n".format(
             self.SafeName))
+     
+    def __WriteMeshUVCoordinates(self, Mesh):
+        if not Mesh.uv_textures:
+            return
+        
+        self.Exporter.File.Write("MeshTextureCoords {{ // {} UV coordinates\n".
+            format(self.SafeName))
+        self.Exporter.File.Indent()
+        
+        UVCoordinates = Mesh.uv_layers.active.data
+        
+        VertexCount = 0
+        for Polygon in Mesh.polygons:
+            VertexCount += len(Polygon.vertices)
+        
+        Index = 0
+        self.Exporter.File.Write("{};\n".format(VertexCount))
+        for Polygon in Mesh.polygons:
+            Vertices = []
+            for Vertex in [UVCoordinates[Vertex] for Vertex in
+                Polygon.loop_indices]:
+                Vertices.append(tuple(Vertex.uv))
+            for Vertex in Vertices:
+                self.Exporter.File.Write("{:9f};{:9f};".format(Vertex[0],
+                    Vertex[1]))
+                Index += 1
+                if Index == VertexCount:
+                    self.Exporter.File.Write(";\n", Indent=False)
+                else:
+                    self.Exporter.File.Write(",\n", Indent=False)
+                    
+        self.Exporter.File.Unindent()
+        self.Exporter.File.Write("}} // End of {} UV coordinates\n".format(
+            self.SafeName))
 
-    def __WriteMeshMaterials(Mesh):
+    def __WriteMeshMaterials(self, Mesh):
+        def WriteMaterial(Exporter, Material):
+            def GetMaterialTextureFileName(Material):
+                if Material:
+                    # Create a list of Textures that have type 'IMAGE'
+                    ImageTextures = [Material.texture_slots[TextureSlot].texture
+                        for TextureSlot in Material.texture_slots.keys()
+                        if Material.texture_slots[TextureSlot].texture.type ==
+                        'IMAGE']
+                    # Refine to only image file names if applicable
+                    ImageFiles = [bpy.path.basename(Texture.image.filepath)
+                        for Texture in ImageTextures
+                        if getattr(Texture.image, "source", "") == 'FILE']
+                    if ImageFiles:
+                        return ImageFiles[0]
+                return None
+            
+            Exporter.File.Write("Material {} {{\n".format(
+                Util.SafeName(Material.name)))
+            Exporter.File.Indent()
+            
+            Diffuse = list(Vector(Material.diffuse_color) *
+                Material.diffuse_intensity)
+            Diffuse.append(Material.alpha)
+            # Map Blender's range of 1 - 511 to 0 - 1000
+            Specularity = 1000 * (Material.specular_hardness - 1.0) / 510.0
+            Specular = list(Vector(Material.specular_color) *
+                Material.specular_intensity)
+            
+            Exporter.File.Write("{:9f};{:9f};{:9f};{:9f};;\n".format(Diffuse[0],
+                Diffuse[1], Diffuse[2], Diffuse[3]))
+            Exporter.File.Write(" {:9f};\n".format(Specularity))
+            Exporter.File.Write("{:9f};{:9f};{:9f};;\n".format(Specular[0],
+                Specular[1], Specular[2]))
+            Exporter.File.Write(" 0.000000; 0.000000; 0.000000;;\n")
+            
+            TextureFileName = GetMaterialTextureFileName(Material)
+            if TextureFileName:
+                Exporter.File.Write("TextureFilename {{\"{}\";}}\n".format(
+                    TextureFileName))
+            
+            Exporter.File.Unindent()
+            Exporter.File.Write("}\n");
+        
+        Materials = Mesh.materials
+        # Do not write materials if there are none
+        if not Materials.keys():
+            return
+        
+        self.Exporter.File.Write("MeshMaterialList {{ // {} material list\n".
+            format(self.SafeName))
+        self.Exporter.File.Indent()
+        
+        self.Exporter.File.Write("{};\n".format(len(Materials)))
+        self.Exporter.File.Write("{};\n".format(len(Mesh.polygons)))
+        for Index, Polygon in enumerate(Mesh.polygons):
+            self.Exporter.File.Write("{}".format(Polygon.material_index))
+            if Index == len(Mesh.polygons) - 1:
+                self.Exporter.File.Write(";;\n", Indent=False)
+            else:
+                self.Exporter.File.Write(",\n", Indent=False)
+        
+        for Material in Materials:
+            WriteMaterial(self.Exporter, Material)
+        
+        self.Exporter.File.Unindent()
+        self.Exporter.File.Write("}} // End of {} material list\n".format(
+            self.SafeName))
+    
+    def __WriteMeshVertexColors(self, Mesh):
+        pass
+    
+    def __WriteMeshSkinWeights(self, Mesh):
+        ArmatureModifierList = [Modifier for Modifier in Object.modifiers
+            if Modifier.type == 'ARMATURE']
+        
+        if not ArmatureModifierList:
+            return
+        
         pass
 
 
@@ -328,6 +485,56 @@ class ArmatureExportObject(ExportObject):
 
     def __repr__(self):
         return "[ArmatureExportObject: {}]".format(self.BlenderObject.name)
+    
+    # "Public" Interface
+
+    def Write(self):
+        self._OpenFrame()
+        
+        if self.Config.ExportArmatureBones:
+            Armature = self.BlenderObject.data
+            RootBones = [Bone for Bone in Armature.bones if Bone.parent is None]
+            self.__WriteBones(RootBones)
+
+        self._WriteChildren()
+
+        self._CloseFrame()
+    
+    # "Private" Methods
+    
+    def __WriteBones(self, Bones):
+        for Bone in Bones:
+            BoneMatrix = Matrix()
+            
+            PoseBone = self.BlenderObject.pose.bones[Bone.name]
+            if Bone.parent:
+                BoneMatrix = PoseBone.parent.matrix.inverted()
+            BoneMatrix *= PoseBone.matrix
+            
+            BoneSafeName = Util.SafeName(Bone.name)
+            self.__OpenBoneFrame(BoneSafeName, BoneMatrix)
+            
+            self.__WriteBoneChildren(Bone)
+            
+            self.__CloseBoneFrame(BoneSafeName)
+            
+    
+    def __OpenBoneFrame(self, BoneSafeName, BoneMatrix):
+        self.Exporter.File.Write("Frame {} {{\n".format(BoneSafeName))
+        self.Exporter.File.Indent()
+
+        self.Exporter.File.Write("FrameTransformMatrix {\n")
+        self.Exporter.File.Indent()
+        Util.WriteMatrix(self.Exporter.File, BoneMatrix)
+        self.Exporter.File.Unindent()
+        self.Exporter.File.Write("}\n")
+    
+    def __CloseBoneFrame(self, BoneSafeName):
+        self.Exporter.File.Unindent()
+        self.Exporter.File.Write("}} // End of {}\n".format(BoneSafeName))
+    
+    def __WriteBoneChildren(self, Bone):
+        self.__WriteBones(Util.SortByNameField(Bone.children))
 
 
 class File:
@@ -390,3 +597,10 @@ class Util:
             Matrix[1][2], Matrix[2][2], Matrix[3][2]))
         File.Write("{:9f},{:9f},{:9f},{:9f};;\n".format(Matrix[0][3],
             Matrix[1][3], Matrix[2][3], Matrix[3][3]))
+    
+    @staticmethod
+    def SortByNameField(List):
+        def SortKey(x):
+            return x.name
+        
+        return sorted(List, key=SortKey)

@@ -46,7 +46,7 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper
 
 
 class ImportPCD(bpy.types.Operator, ImportHelper):
-    '''Load PCD (Point Cloud Data) files'''
+    """Load PCD (Point Cloud Data) files"""
     bl_idname = "import_points.stl"
     bl_label = "Import PCD"
 

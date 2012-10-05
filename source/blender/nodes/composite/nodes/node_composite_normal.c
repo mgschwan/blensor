@@ -35,15 +35,17 @@
 
 /* **************** NORMAL  ******************** */
 static bNodeSocketTemplate cmp_node_normal_in[]= {
-	{	SOCK_VECTOR, 1, "Normal",	0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, PROP_DIRECTION},
+	{	SOCK_VECTOR, 1, N_("Normal"),	0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, PROP_DIRECTION},
 	{	-1, 0, ""	}
 };
 
 static bNodeSocketTemplate cmp_node_normal_out[]= {
-	{	SOCK_VECTOR, 0, "Normal"},
-	{	SOCK_FLOAT, 0, "Dot"},
+	{	SOCK_VECTOR, 0, N_("Normal")},
+	{	SOCK_FLOAT, 0, N_("Dot")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void do_normal(bNode *node, float *out, float *in)
 {
@@ -77,9 +79,9 @@ static void node_composit_exec_normal(void *UNUSED(data), bNode *node, bNodeStac
 		
 		out[1]->data= stackbuf;
 	}
-	
-	
 }
+
+#endif  /* WITH_COMPOSITOR_LEGACY */
 
 static void init(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
@@ -99,7 +101,9 @@ void register_node_type_cmp_normal(bNodeTreeType *ttype)
 	node_type_socket_templates(&ntype, cmp_node_normal_in, cmp_node_normal_out);
 	node_type_init(&ntype, init);
 	node_type_size(&ntype, 100, 60, 200);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_normal);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

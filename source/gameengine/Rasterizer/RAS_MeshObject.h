@@ -57,7 +57,7 @@ class RAS_Deformer;
 class RAS_MeshObject
 {
 private:
-	unsigned int				m_debugcolor;
+	/* unsigned int				m_debugcolor; */ /* UNUSED */
 
 	bool						m_bModified;
 	bool						m_bMeshModified;
@@ -106,7 +106,7 @@ public:
 
 	/* modification state */
 	bool				MeshModified();
-	void				SetMeshModified(bool v){m_bMeshModified = v;}
+	void				SetMeshModified(bool v) { m_bMeshModified = v; }
 
 	/* original blender mesh */
 	Mesh*				GetMesh() { return m_mesh; }
@@ -170,12 +170,10 @@ public:
 	};
 
 	vector<vector<SharedVertex> >	m_sharedvertex_map;
-	
-	
+
+
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:RAS_MeshObject"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:RAS_MeshObject")
 #endif
 };
 

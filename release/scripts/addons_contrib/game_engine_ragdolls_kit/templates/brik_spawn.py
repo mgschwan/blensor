@@ -3,6 +3,7 @@
 # ***** BEGIN MIT LICENSE BLOCK *****
 #
 #Script Copyright (c) 2010 Marcus P. Jenkins (Blenderartists user name FunkyWyrm)
+# Modified by Kees Brouwer (Blenderartists user name Wraaah)
 #
 #Permission is hereby granted, free of charge, to any person obtaining a copy
 #of this software and associated documentation files (the "Software"), to deal
@@ -40,6 +41,7 @@ def initialize():
 def main():
 
     cont = bge.logic.getCurrentController()
+    #Best replace sensor with message?
     sens = cont.sensors['brik_Tab_sens']
     
     if sens.getKeyStatus(sens.key) == 1:
@@ -48,33 +50,54 @@ def main():
         
         spawn_act = cont.actuators['brik_spawn_act']
         
-        scene = bge.logic.getCurrentScene()
-        objects = scene.objects
-        hidden_objects = scene.objectsInactive
+        #scene = bge.logic.getCurrentScene()
+        #objects = scene.objects
+        #hidden_objects = scene.objectsInactive
         
         spawn_empty = cont.owner
         
-        mob_object = hidden_objects[spawn_empty['mob_object']]
+        #mob_object = hidden_objects[spawn_empty['mob_object']]
         #mob_object = hidden_objects['Armature.001']
         
-        spawn_act.object = mob_object.name
+        #spawn_act.object = mob_object.name
         spawn_act.instantAddObject()
-        last_spawned = spawn_act.objectLastCreated
+        scene = bge.logic.getCurrentScene()
+        objects = scene.objects
+        objects.reverse()
+
+        group_objects = {}
+        group = spawn_act.object
+        for ob in objects:
+            group_objects[ob.name] = ob
+#            ob["pivot"] = "test_pivot"
+            if ob.name == group.name:
+                #Stop for loop once group start point is found
+                break
+                
+        armature_name = spawn_empty["armature_name"]
+        armature = group_objects[ armature_name ]
+        armature["group"] = group_objects
+        
+        for ob_name in group_objects:
+            ob = group_objects[ob_name]
+            ob["pivot"] = armature
+            
+#        last_spawned = spawn_act.objectLastCreated
         #print(dir(last_spawned))
-        spawn_empty['added_objects'].append(last_spawned)
-        spawn_empty['add_count'] += 1
+#        spawn_empty['added_objects'].append(last_spawned)
+#        spawn_empty['add_count'] += 1
         
         #This is used to identify which spawn point the spawned object was added by.
-        last_spawned['spawn_point'] = spawn_empty.name
+#        last_spawned['spawn_point'] = spawn_empty.name
         #This is a unique Id used to identify the added object.
-        last_spawned['spawn_id'] = spawn_empty['add_count']
+#        last_spawned['spawn_id'] = spawn_empty['add_count']
         #This is the dictionary of drivers that are unique to the added object.
-        '''
+        """
         Originally this dictionary was defined in the brik_load.py script, but since
         dictionaries are stored as a reference, and the added objects are copies of the
         hidden object, the added objects had a copy of the reference to the dictionary
         and all used the same dictionary.
         Defining the dictionary after the objects are added to the scene ensures that
         they each have a unique dictionary.
-        '''
-        last_spawned['driver_dict'] = {}
+        """
+#        last_spawned['driver_dict'] = {}

@@ -55,7 +55,6 @@ struct RadFace;
 typedef struct VertTableNode {
 	struct VertRen *vert;
 	float *rad;
-	float *sticky;
 	float *strand;
 	float *tangent;
 	float *stress;
@@ -97,15 +96,19 @@ struct VlakRen *RE_findOrAddVlak(struct ObjectRen *obr, int nr);
 struct VertRen *RE_findOrAddVert(struct ObjectRen *obr, int nr);
 struct StrandRen *RE_findOrAddStrand(struct ObjectRen *obr, int nr);
 struct HaloRen *RE_findOrAddHalo(struct ObjectRen *obr, int nr);
-struct HaloRen *RE_inithalo(struct Render *re, struct ObjectRen *obr, struct Material *ma, float *vec, float *vec1, float *orco, float hasize,  float vectsize, int seed);
-struct HaloRen *RE_inithalo_particle(struct Render *re, struct ObjectRen *obr, struct DerivedMesh *dm, struct Material *ma,   float *vec,   float *vec1, float *orco, float *uvco, float hasize, float vectsize, int seed, float *pa_co);
+struct HaloRen *RE_inithalo(struct Render *re, struct ObjectRen *obr, struct Material *ma,
+                            const float vec[3], const float vec1[3],
+                            const float *orco, float hasize,  float vectsize, int seed);
+struct HaloRen *RE_inithalo_particle(struct Render *re, struct ObjectRen *obr, struct DerivedMesh *dm, struct Material *ma,
+                                     const float vec[3], const float vec1[3],
+                                     const float *orco, const float *uvco, float hasize, float vectsize, int seed,
+                                     const float pa_co[3]);
 struct StrandBuffer *RE_addStrandBuffer(struct ObjectRen *obr, int totvert);
 
 struct ObjectRen *RE_addRenderObject(struct Render *re, struct Object *ob, struct Object *par, int index, int psysindex, int lay);
 struct ObjectInstanceRen *RE_addRenderInstance(struct Render *re, struct ObjectRen *obr, struct Object *ob, struct Object *par, int index, int psysindex, float mat[][4], int lay);
 void RE_makeRenderInstances(struct Render *re);
 
-float *RE_vertren_get_sticky(struct ObjectRen *obr, struct VertRen *ver, int verify);
 float *RE_vertren_get_stress(struct ObjectRen *obr, struct VertRen *ver, int verify);
 float *RE_vertren_get_rad(struct ObjectRen *obr, struct VertRen *ver, int verify);
 float *RE_vertren_get_strand(struct ObjectRen *obr, struct VertRen *ver, int verify);

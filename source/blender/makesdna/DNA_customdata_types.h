@@ -36,8 +36,6 @@
 extern "C" {
 #endif
 
-#include "DNA_defs.h" /* USE_BMESH_FORWARD_COMPAT */
-
 /** descriptor and storage for a custom data layer */
 typedef struct CustomDataLayer {
 	int type;       /* type of data in layer */
@@ -63,19 +61,18 @@ typedef struct CustomDataExternal {
  * layers, each with a data type (e.g. MTFace, MDeformVert, etc.). */
 typedef struct CustomData {
 	CustomDataLayer *layers;      /* CustomDataLayers, ordered by type */
-	int typemap[34];              /* runtime only! - maps types to indices of first layer of that type,
+	int typemap[37];              /* runtime only! - maps types to indices of first layer of that type,
 	                               * MUST be >= CD_NUMTYPES, but we cant use a define here.
 	                               * Correct size is ensured in CustomData_update_typemap assert() */
-
 	int totlayer, maxlayer;       /* number of layers, size of layers array */
-	int totsize, pad2;             /* in editmode, total size of all data layers */
+	int totsize;                  /* in editmode, total size of all data layers */
 	void *pool;                   /* Bmesh: Memory pool for allocation of blocks */
 	CustomDataExternal *external; /* external file storing customdata layers */
 } CustomData;
 
 /* CustomData.type */
 #define CD_MVERT		0
-#define CD_MSTICKY		1
+#define CD_MSTICKY		1  /* DEPRECATED */
 #define CD_MDEFORMVERT	2
 #define CD_MEDGE		3
 #define CD_MFACE		4
@@ -112,11 +109,14 @@ typedef struct CustomData {
 #define CD_BM_ELEM_PYPTR	33
 /* BMESH ONLY END */
 
-#define CD_NUMTYPES		34
+#define CD_PAINT_MASK	34
+#define CD_GRID_PAINT_MASK	35
+#define CD_MVERT_SKIN	36
+#define CD_NUMTYPES		37
 
 /* Bits for CustomDataMask */
 #define CD_MASK_MVERT		(1 << CD_MVERT)
-#define CD_MASK_MSTICKY		(1 << CD_MSTICKY)
+#define CD_MASK_MSTICKY		(1 << CD_MSTICKY)  /* DEPRECATED */
 #define CD_MASK_MDEFORMVERT	(1 << CD_MDEFORMVERT)
 #define CD_MASK_MEDGE		(1 << CD_MEDGE)
 #define CD_MASK_MFACE		(1 << CD_MFACE)
@@ -150,6 +150,10 @@ typedef struct CustomData {
 #define CD_MASK_PREVIEW_MLOOPCOL (1LL << CD_PREVIEW_MLOOPCOL)
 #define CD_MASK_BM_ELEM_PYPTR (1LL << CD_BM_ELEM_PYPTR)
 /* BMESH ONLY END */
+
+#define CD_MASK_PAINT_MASK		(1LL << CD_PAINT_MASK)
+#define CD_MASK_GRID_PAINT_MASK	(1LL << CD_GRID_PAINT_MASK)
+#define CD_MASK_MVERT_SKIN		(1LL << CD_MVERT_SKIN)
 
 /* CustomData.flag */
 

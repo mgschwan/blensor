@@ -86,6 +86,7 @@ typedef struct TransSnap {
 	float	snapTarget[3]; /* to this point */
 	float	snapNormal[3];
 	float	snapTangent[3];
+	char	snapNodeBorder;
 	ListBase points;
 	TransSnapPoint	*selectedPoint;
 	float	dist; // Distance from snapPoint to snapTarget
@@ -137,6 +138,10 @@ typedef struct TransDataExtension {
 	float  isize[3];	 /* Initial size                                                                   */
 	float  obmat[4][4];	 /* Object matrix */
 	float  l_smtx[3][3]; /* use instead of td->smtx, It is the same but without the 'bone->bone_mat', see TD_PBONE_LOCAL_MTX_C */
+	float  r_mtx[3][3];  /* The rotscale matrix of pose bone, to allow using snap-align in translation mode,
+	                      * when td->mtx is the loc pose bone matrix (and hence can't be used to apply rotation in some cases,
+	                      * namely when a bone is in "NoLocal" or "Hinge" mode)... */
+	float  r_smtx[3][3]; /* Invers of previous one. */
 	int    rotOrder;	/* rotation mode,  as defined in eRotationModes (DNA_action_types.h) */
 } TransDataExtension;
 
@@ -190,7 +195,11 @@ typedef struct TransDataSlideVert {
 	struct BMVert *up, *down;
 	struct BMVert *v;
 
+	float edge_len;
+
 	float upvec[3], downvec[3];
+
+	int loop_nr;
 } TransDataSlideVert;
 
 typedef struct SlideData {
@@ -202,9 +211,16 @@ typedef struct SlideData {
 
 	int start[2], end[2];
 	struct BMEditMesh *em;
-	float perc;
+
 	/* flag that is set when origfaces is initialized */
 	int origfaces_init;
+
+	float perc;
+
+	int is_proportional;
+	int flipped_vtx;
+
+	int curr_sv_index;
 } SlideData;
 
 typedef struct TransData {
@@ -435,8 +451,6 @@ typedef struct TransInfo {
 #define POINT_INIT		4
 #define MULTI_POINTS	8
 
-void TRANSFORM_OT_transform(struct wmOperatorType *ot);
-
 int initTransform(struct bContext *C, struct TransInfo *t, struct wmOperator *op, struct wmEvent *event, int mode);
 void saveTransform(struct bContext *C, struct TransInfo *t, struct wmOperator *op);
 int  transformEvent(TransInfo *t, struct wmEvent *event);
@@ -462,6 +476,9 @@ int Shear(TransInfo *t, const int mval[2]);
 void initResize(TransInfo *t);
 int Resize(TransInfo *t, const int mval[2]);
 
+void initSkinResize(TransInfo *t);
+int SkinResize(TransInfo *t, const int mval[2]);
+
 void initTranslation(TransInfo *t);
 int Translation(TransInfo *t, const int mval[2]);
 
@@ -479,6 +496,9 @@ int Tilt(TransInfo *t, const int mval[2]);
 
 void initCurveShrinkFatten(TransInfo *t);
 int CurveShrinkFatten(TransInfo *t, const int mval[2]);
+
+void initMaskShrinkFatten(TransInfo *t);
+int MaskShrinkFatten(TransInfo *t, const int mval[2]);
 
 void initTrackball(TransInfo *t);
 int Trackball(TransInfo *t, const int mval[2]);
@@ -506,6 +526,7 @@ void initBoneRoll(TransInfo *t);
 int BoneRoll(TransInfo *t, const int mval[2]);
 
 void initEdgeSlide(TransInfo *t);
+int handleEventEdgeSlide(TransInfo *t, struct wmEvent *event);
 int EdgeSlide(TransInfo *t, const int mval[2]);
 
 void initTimeTranslate(TransInfo *t);
@@ -537,15 +558,17 @@ struct wmKeyMap *transform_modal_keymap(struct wmKeyConfig *keyconf);
 /*********************** transform_conversions.c ********** */
 struct ListBase;
 
-void flushTransGPactionData(TransInfo *t);
+void flushTransIntFrameActionData(TransInfo *t);
 void flushTransGraphData(TransInfo *t);
 void remake_graph_transdata(TransInfo *t, struct ListBase *anim_data);
 void flushTransUVs(TransInfo *t);
 void flushTransParticles(TransInfo *t);
 int clipUVTransform(TransInfo *t, float *vec, int resize);
+void clipUVData(TransInfo *t);
 void flushTransNodes(TransInfo *t);
 void flushTransSeq(TransInfo *t);
 void flushTransTracking(TransInfo *t);
+void flushTransMasking(TransInfo *t);
 
 /*********************** exported from transform_manipulator.c ********** */
 int gimbal_axis(struct Object *ob, float gmat[][3]); /* return 0 when no gimbal for selection */
@@ -646,7 +669,9 @@ int initTransInfo(struct bContext *C, TransInfo *t, struct wmOperator *op, struc
 void postTrans (struct bContext *C, TransInfo *t);
 void resetTransRestrictions(TransInfo *t);
 
-void drawLine(TransInfo *t, float *center, float *dir, char axis, short options);
+void drawLine(TransInfo *t, const float center[3], const float dir[3], char axis, short options);
+
+void drawNonPropEdge(const struct bContext *C, TransInfo *t);
 
 /* DRAWLINE options flags */
 #define DRAWLIGHT	1

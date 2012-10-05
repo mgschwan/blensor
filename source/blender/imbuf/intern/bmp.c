@@ -29,8 +29,7 @@
  *  \ingroup imbuf
  */
 
-
-#include "BLI_blenlib.h"
+#include "BLI_fileops.h"
 
 #include "imbuf.h"
 
@@ -39,23 +38,26 @@
 #include "IMB_allocimbuf.h"
 #include "IMB_filetype.h"
 
+#include "IMB_colormanagement.h"
+#include "IMB_colormanagement_intern.h"
+
 /* some code copied from article on microsoft.com, copied
  * here for enhanced BMP support in the future
  * http://www.microsoft.com/msj/defaultframe.asp?page=/msj/0197/mfcp1/mfcp1.htm&nav=/msj/0197/newnav.htm
  */
 
 typedef struct BMPINFOHEADER {
-	unsigned int	biSize;
-	unsigned int	biWidth;
-	unsigned int	biHeight;
-	unsigned short	biPlanes;
-	unsigned short	biBitCount;
-	unsigned int	biCompression;
-	unsigned int	biSizeImage;
-	unsigned int	biXPelsPerMeter;
-	unsigned int	biYPelsPerMeter;
-	unsigned int	biClrUsed;
-	unsigned int	biClrImportant;
+	unsigned int    biSize;
+	unsigned int    biWidth;
+	unsigned int    biHeight;
+	unsigned short  biPlanes;
+	unsigned short  biBitCount;
+	unsigned int    biCompression;
+	unsigned int    biSizeImage;
+	unsigned int    biXPelsPerMeter;
+	unsigned int    biYPelsPerMeter;
+	unsigned int    biClrUsed;
+	unsigned int    biClrImportant;
 } BMPINFOHEADER;
 
 typedef struct BMPHEADER {
@@ -70,16 +72,25 @@ typedef struct BMPHEADER {
 
 static int checkbmp(unsigned char *mem)
 {
+#define CHECK_HEADER_FIELD(mem, field) ((mem[0] == field[0]) && (mem[1] == field[1]))
+
 	int ret_val = 0;
 	BMPINFOHEADER bmi;
 	unsigned int u;
 
 	if (mem) {
-		if ((mem[0] == 'B') && (mem[1] == 'M')) {
+		if (CHECK_HEADER_FIELD(mem, "BM") ||
+		    CHECK_HEADER_FIELD(mem, "BA") ||
+		    CHECK_HEADER_FIELD(mem, "CI") ||
+		    CHECK_HEADER_FIELD(mem, "CP") ||
+		    CHECK_HEADER_FIELD(mem, "IC") ||
+		    CHECK_HEADER_FIELD(mem, "PT"))
+		{
 			/* skip fileheader */
 			mem += BMP_FILEHEADER_SIZE;
 		}
 		else {
+			return 0;
 		}
 
 		/* for systems where an int needs to be 4 bytes aligned */
@@ -98,6 +109,8 @@ static int checkbmp(unsigned char *mem)
 	}
 
 	return(ret_val);
+
+#undef CHECK_HEADER_FIELD
 }
 
 int imb_is_a_bmp(unsigned char *buf)
@@ -105,7 +118,7 @@ int imb_is_a_bmp(unsigned char *buf)
 	return checkbmp(buf);
 }
 
-struct ImBuf *imb_bmp_decode(unsigned char *mem, size_t size, int flags)
+struct ImBuf *imb_bmp_decode(unsigned char *mem, size_t size, int flags, char colorspace[IM_MAX_SPACE])
 {
 	struct ImBuf *ibuf = NULL;
 	BMPINFOHEADER bmi;
@@ -116,6 +129,8 @@ struct ImBuf *imb_bmp_decode(unsigned char *mem, size_t size, int flags)
 	(void)size; /* unused */
 
 	if (checkbmp(mem) == 0) return(NULL);
+
+	colorspace_set_default_role(colorspace, IM_MAX_SPACE, COLOR_ROLE_DEFAULT_BYTE);
 
 	if ((mem[0] == 'B') && (mem[1] == 'M')) {
 		/* skip fileheader */
@@ -160,7 +175,7 @@ struct ImBuf *imb_bmp_decode(unsigned char *mem, size_t size, int flags)
 		else if (depth == 24) {
 			for (i = y; i > 0; i--) {
 				int j;
-				for (j = x ; j > 0; j--) {
+				for (j = x; j > 0; j--) {
 					rect[0] = bmp[2];
 					rect[1] = bmp[1];
 					rect[2] = bmp[0];
@@ -185,7 +200,6 @@ struct ImBuf *imb_bmp_decode(unsigned char *mem, size_t size, int flags)
 
 	if (ibuf) {
 		ibuf->ftype = BMP;
-		ibuf->profile = IB_PROFILE_SRGB;
 	}
 	
 	return(ibuf);
@@ -194,16 +208,16 @@ struct ImBuf *imb_bmp_decode(unsigned char *mem, size_t size, int flags)
 /* Couple of helper functions for writing our data */
 static int putIntLSB(unsigned int ui, FILE *ofile)
 {
-	putc((ui>>0)&0xFF, ofile);
-	putc((ui>>8)&0xFF, ofile);
-	putc((ui>>16)&0xFF, ofile);
-	return putc((ui>>24)&0xFF, ofile);
+	putc((ui >> 0) & 0xFF, ofile);
+	putc((ui >> 8) & 0xFF, ofile);
+	putc((ui >> 16) & 0xFF, ofile);
+	return putc((ui >> 24) & 0xFF, ofile);
 }
 
 static int putShortLSB(unsigned short us, FILE *ofile)
 {
-	putc((us>>0)&0xFF, ofile);
-	return putc((us>>8)&0xFF, ofile);
+	putc((us >> 0) & 0xFF, ofile);
+	return putc((us >> 8) & 0xFF, ofile);
 } 
 
 /* Found write info at http://users.ece.gatech.edu/~slabaugh/personal/c/bitmapUnix.c */
@@ -216,12 +230,12 @@ int imb_savebmp(struct ImBuf *ibuf, const char *name, int flags)
 	
 	(void)flags; /* unused */
 
-	extrabytes = (4 - ibuf->x*3 % 4) % 4;
+	extrabytes = (4 - ibuf->x * 3 % 4) % 4;
 	bytesize = (ibuf->x * 3 + extrabytes) * ibuf->y;
 
 	data = (uchar *) ibuf->rect;
 	ofile = BLI_fopen(name, "wb");
-		if (!ofile) return 0;
+	if (!ofile) return 0;
 
 	putShortLSB(19778, ofile); /* "BM" */
 	putIntLSB(0, ofile); /* This can be 0 for BI_RGB bitmaps */
@@ -242,15 +256,15 @@ int imb_savebmp(struct ImBuf *ibuf, const char *name, int flags)
 	putIntLSB(0, ofile);
 
 	/* Need to write out padded image data in bgr format */
-	for (y=0;y<ibuf->y;y++) {
-		for (x=0;x<ibuf->x;x++) {
-			ptr=(x + y * ibuf->x) * 4;
-			if (putc(data[ptr+2], ofile) == EOF) return 0;
-			if (putc(data[ptr+1], ofile) == EOF) return 0;
+	for (y = 0; y < ibuf->y; y++) {
+		for (x = 0; x < ibuf->x; x++) {
+			ptr = (x + y * ibuf->x) * 4;
+			if (putc(data[ptr + 2], ofile) == EOF) return 0;
+			if (putc(data[ptr + 1], ofile) == EOF) return 0;
 			if (putc(data[ptr], ofile) == EOF) return 0;
 		}
 		/* add padding here */
-		for (t=0;t<extrabytes;t++) if (putc(0, ofile) == EOF) return 0;
+		for (t = 0; t < extrabytes; t++) if (putc(0, ofile) == EOF) return 0;
 	}
 	if (ofile) {
 		fflush(ofile);

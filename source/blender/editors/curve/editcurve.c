@@ -107,7 +107,7 @@ void selectend_nurb(Object *obedit, short selfirst, short doswap, short selstatu
 static void select_adjacent_cp(ListBase *editnurb, short next, short cont, short selstatus);
 
 /* still need to eradicate a few :( */
-#define callocstructN(x, y, name) (x *)MEM_callocN((y) * sizeof(x), name)
+#define CALLOC_STRUCT_N(x, y, name) (x *)MEM_callocN((y) * sizeof(x), name)
 
 static float nurbcircle[8][2] = {
 	{0.0, -1.0}, {-1.0, -1.0}, {-1.0, 0.0}, {-1.0,  1.0},
@@ -270,7 +270,7 @@ void printknots(Object *obedit)
 	int a, num;
 
 	for (nu = editnurb->first; nu; nu = nu->next) {
-		if (isNurbsel(nu) &&  nu->type == CU_NURBS) {
+		if (isNurbsel(nu) && nu->type == CU_NURBS) {
 			if (nu->knotsu) {
 				num = KNOTSU(nu);
 				for (a = 0; a < num; a++) printf("knotu %d: %f\n", a, nu->knotsu[a]);
@@ -311,7 +311,7 @@ static void init_editNurb_keyIndex(EditNurb *editnurb, ListBase *origBase)
 
 	if (editnurb->keyindex) return;
 
-	gh = BLI_ghash_new(BLI_ghashutil_ptrhash, BLI_ghashutil_ptrcmp, "editNurb keyIndex");
+	gh = BLI_ghash_ptr_new("editNurb keyIndex");
 
 	while (orignu) {
 		if (orignu->bezt) {
@@ -354,6 +354,11 @@ static void init_editNurb_keyIndex(EditNurb *editnurb, ListBase *origBase)
 static CVKeyIndex *getCVKeyIndex(EditNurb *editnurb, void *cv)
 {
 	return BLI_ghash_lookup(editnurb->keyindex, cv);
+}
+
+static CVKeyIndex *popCVKeyIndex(EditNurb *editnurb, void *cv)
+{
+	return BLI_ghash_pop(editnurb->keyindex, cv, NULL);
 }
 
 static BezTriple *getKeyIndexOrig_bezt(EditNurb *editnurb, BezTriple *bezt)
@@ -459,9 +464,7 @@ static void keyIndex_updateCV(EditNurb *editnurb, char *cv,
 	}
 
 	for (i = 0; i < count; i++) {
-		index = getCVKeyIndex(editnurb, cv);
-
-		BLI_ghash_remove(editnurb->keyindex, cv, NULL, NULL);
+		index = popCVKeyIndex(editnurb, cv);
 
 		if (index) {
 			BLI_ghash_insert(editnurb->keyindex, newcv, index);
@@ -496,11 +499,8 @@ static void keyIndex_updateNurb(EditNurb *editnurb, Nurb *nu, Nurb *newnu)
 
 static void keyIndex_swap(EditNurb *editnurb, void *a, void *b)
 {
-	CVKeyIndex *index1 = getCVKeyIndex(editnurb, a);
-	CVKeyIndex *index2 = getCVKeyIndex(editnurb, b);
-
-	BLI_ghash_remove(editnurb->keyindex, a, NULL, NULL);
-	BLI_ghash_remove(editnurb->keyindex, b, NULL, NULL);
+	CVKeyIndex *index1 = popCVKeyIndex(editnurb, a);
+	CVKeyIndex *index2 = popCVKeyIndex(editnurb, b);
 
 	if (index2) BLI_ghash_insert(editnurb->keyindex, a, index2);
 	if (index1) BLI_ghash_insert(editnurb->keyindex, b, index1);
@@ -667,7 +667,7 @@ static GHash *dupli_keyIndexHash(GHash *keyindex)
 	GHash *gh;
 	GHashIterator *hashIter;
 
-	gh = BLI_ghash_new(BLI_ghashutil_ptrhash, BLI_ghashutil_ptrcmp, "dupli_keyIndex gh");
+	gh = BLI_ghash_ptr_new("dupli_keyIndex gh");
 
 	for (hashIter = BLI_ghashIterator_new(keyindex);
 	     !BLI_ghashIterator_isDone(hashIter);
@@ -1199,8 +1199,6 @@ void load_editNurb(Object *obedit)
 
 	if (obedit == NULL) return;
 
-	set_actNurb(obedit, NULL);
-
 	if (ELEM(obedit->type, OB_CURVE, OB_SURF)) {
 		Curve *cu = obedit->data;
 		Nurb *nu, *newnu;
@@ -1222,8 +1220,6 @@ void load_editNurb(Object *obedit)
 
 		BKE_nurbList_free(&oldnurb);
 	}
-
-	set_actNurb(obedit, NULL);
 }
 
 /* make copy in cu->editnurb */
@@ -1234,16 +1230,15 @@ void make_editNurb(Object *obedit)
 	Nurb *nu, *newnu, *nu_act = NULL;
 	KeyBlock *actkey;
 
-
 	set_actNurb(obedit, NULL);
 
 	if (ELEM(obedit->type, OB_CURVE, OB_SURF)) {
-		actkey = ob_get_keyblock(obedit);
+		actkey = BKE_keyblock_from_object(obedit);
 
 		if (actkey) {
 			// XXX strcpy(G.editModeTitleExtra, "(Key) ");
 			undo_editmode_clear();
-			key_to_curve(actkey, cu, &cu->nurb);
+			BKE_key_convert_to_curve(actkey, cu, &cu->nurb);
 		}
 
 		if (editnurb) {
@@ -1374,6 +1369,8 @@ static int separate_exec(bContext *C, wmOperator *op)
 	
 	/* 1. duplicate the object and data */
 	newbase = ED_object_add_duplicate(bmain, scene, oldbase, 0); /* 0 = fully linked */
+	DAG_scene_sort(bmain, scene);
+
 	ED_base_object_select(newbase, BA_DESELECT);
 	newob = newbase->object;
 
@@ -1430,8 +1427,8 @@ void CURVE_OT_separate(wmOperatorType *ot)
 
 static short isNurbselUV(Nurb *nu, int *u, int *v, int flag)
 {
-	/* return u!=-1:     1 row in u-direction selected. U has value between 0-pntsv 
-	 * return v!=-1: 1 column in v-direction selected. V has value between 0-pntsu
+	/* return (u != -1): 1 row in u-direction selected. U has value between 0-pntsv
+	 * return (v != -1): 1 column in v-direction selected. V has value between 0-pntsu
 	 */
 	BPoint *bp;
 	int a, b, sel;
@@ -1448,7 +1445,7 @@ static short isNurbselUV(Nurb *nu, int *u, int *v, int flag)
 			if (*u == -1) *u = b;
 			else return 0;
 		}
-		else if (sel > 1) return 0;  /* because sel==1 is still ok */
+		else if (sel > 1) return 0;  /* because sel == 1 is still ok */
 	}
 
 	for (a = 0; a < nu->pntsu; a++) {
@@ -1941,7 +1938,7 @@ static void adduplicateflagNurb(Object *obedit, short flag)
 				}
 				else {
 
-					if (newu == 1) SWAP(short, newu, newv);
+					if (newu == 1) SWAP(int, newu, newv);
 
 					newnu = (Nurb *)MEM_mallocN(sizeof(Nurb), "adduplicateN5");
 					memcpy(newnu, nu, sizeof(Nurb));
@@ -2373,7 +2370,7 @@ void CURVE_OT_smooth_radius(wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Smooth Curve Radius";
-	ot->description = "Flatten radiuses of selected points";
+	ot->description = "Flatten radii of selected points";
 	ot->idname = "CURVE_OT_smooth_radius";
 	
 	/* api clastbacks */
@@ -2965,7 +2962,7 @@ static void subdividenurb(Object *obedit, int number_cuts)
 					BKE_nurb_knot_calc_u(nu);
 				}
 			}
-		} /* End of 'else if (nu->pntsv==1)' */
+		} /* End of 'else if (nu->pntsv == 1)' */
 		else if (nu->type == CU_NURBS) {
 			/* This is a very strange test ... */
 			/**
@@ -3085,7 +3082,7 @@ static void subdividenurb(Object *obedit, int number_cuts)
 				nu->pntsv = (number_cuts + 1) * nu->pntsv - number_cuts;
 				BKE_nurb_knot_calc_u(nu);
 				BKE_nurb_knot_calc_v(nu);
-			} /* End of 'if (sel== nu->pntsu*nu->pntsv)' (subdivide entire NURB) */
+			} /* End of 'if (sel == nu->pntsu*nu->pntsv)' (subdivide entire NURB) */
 			else {
 				/* subdivide in v direction? */
 				sel = 0;
@@ -3258,7 +3255,7 @@ static void findnearestNurbvert__doClosest(void *userData, Nurb *nu, BPoint *bp,
 
 static short findnearestNurbvert(ViewContext *vc, short sel, const int mval[2], Nurb **nurb, BezTriple **bezt, BPoint **bp)
 {
-	/* sel==1: selected gets a disadvantage */
+	/* (sel == 1): selected gets a disadvantage */
 	/* in nurb and bezt or bp the nearest is written */
 	/* return 0 1 2: handlepunt */
 	struct { BPoint *bp; BezTriple *bezt; Nurb *nurb; int dist, hpoint, select, mval[2]; } data = {NULL};
@@ -3530,7 +3527,8 @@ void CURVE_OT_spline_type_set(wmOperatorType *ot)
 //		{CU_CARDINAL, "CARDINAL", 0, "Cardinal", ""},
 //		{CU_BSPLINE, "B_SPLINE", 0, "B-Spline", ""},
 		{CU_NURBS, "NURBS", 0, "NURBS", ""},
-		{0, NULL, 0, NULL, NULL}};
+		{0, NULL, 0, NULL, NULL}
+	};
 
 	/* identifiers */
 	ot->name = "Set Spline Type";
@@ -3573,7 +3571,8 @@ void CURVE_OT_handle_type_set(wmOperatorType *ot)
 		{5, "ALIGNED", 0, "Aligned", ""},
 		{6, "FREE_ALIGN", 0, "Free", ""},
 		{3, "TOGGLE_FREE_ALIGN", 0, "Toggle Free/Align", ""},
-		{0, NULL, 0, NULL, NULL}};
+		{0, NULL, 0, NULL, NULL}
+	};
 
 	/* identifiers */
 	ot->name = "Set Handle Type";
@@ -3765,8 +3764,8 @@ static void merge_2_nurb(wmOperator *op, ListBase *editnurb, Nurb *nu1, Nurb *nu
 	
 	if (is_u_selected(nu1, nu1->pntsu - 1) ) ;
 	else {
-		/* For 2D curves blender uses orderv=0. It doesn't make any sense mathematically. */
-		/* but after rotating orderu=0 will be confusing. */
+		/* For 2D curves blender uses (orderv = 0). It doesn't make any sense mathematically. */
+		/* but after rotating (orderu = 0) will be confusing. */
 		if (nu1->orderv == 0) nu1->orderv = 1;
 
 		rotate_direction_nurb(nu1);
@@ -3935,8 +3934,8 @@ static int make_segment_exec(bContext *C, wmOperator *op)
 	ListBase *nubase = object_editcurve_get(obedit);
 	Nurb *nu, *nu1 = NULL, *nu2 = NULL;
 	BPoint *bp;
-	float *fp, offset;
-	int a, ok = 0;
+	int ok = 0;
+	/* int a; */ /* UNUSED */
 
 	/* first decide if this is a surface merge! */
 	if (obedit->type == OB_SURF) nu = nubase->first;
@@ -4044,32 +4043,19 @@ static int make_segment_exec(bContext *C, wmOperator *op)
 				MEM_freeN(nu1->bp);
 				nu1->bp = bp;
 
-				a = nu1->pntsu + nu1->orderu;
+				/* a = nu1->pntsu + nu1->orderu; */ /* UNUSED */
 
 				nu1->pntsu += nu2->pntsu;
 				BLI_remlink(nubase, nu2);
 
 				/* now join the knots */
 				if (nu1->type == CU_NURBS) {
-					if (nu1->knotsu == NULL) {
-						BKE_nurb_knot_calc_u(nu1);
-					}
-					else {
-						fp = MEM_mallocN(sizeof(float) * KNOTSU(nu1), "addsegment3");
-						memcpy(fp, nu1->knotsu, sizeof(float) * a);
+					if (nu1->knotsu != NULL) {
 						MEM_freeN(nu1->knotsu);
-						nu1->knotsu = fp;
-						
-						
-						offset = nu1->knotsu[a - 1] + 1.0f;
-						fp = nu1->knotsu + a;
-						for (a = 0; a < nu2->pntsu; a++, fp++) {
-							if (nu2->knotsu) 
-								*fp = offset + nu2->knotsu[a + 1];
-							else 
-								*fp = offset;
-						}
+						nu1->knotsu = NULL;
 					}
+
+					BKE_nurb_knot_calc_u(nu1);
 				}
 				BKE_nurb_free(nu2); nu2 = NULL;
 			}
@@ -4126,7 +4112,7 @@ void CURVE_OT_make_segment(wmOperatorType *ot)
 
 /***************** pick select from 3d view **********************/
 
-int mouse_nurb(bContext *C, const int mval[2], int extend)
+int mouse_nurb(bContext *C, const int mval[2], int extend, int deselect, int toggle)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	Curve *cu = obedit->data;
@@ -4146,12 +4132,8 @@ int mouse_nurb(bContext *C, const int mval[2], int extend)
 	hand = findnearestNurbvert(&vc, 1, location, &nu, &bezt, &bp);
 
 	if (bezt || bp) {
-		if (extend == 0) {
-		
-			setflagsNurb(editnurb, 0);
-
+		if (extend) {
 			if (bezt) {
-
 				if (hand == 1) {
 					select_beztriple(bezt, SELECT, 1, HIDDEN);
 					cu->lastsel = bezt;
@@ -4167,9 +4149,26 @@ int mouse_nurb(bContext *C, const int mval[2], int extend)
 				cu->lastsel = bp;
 				select_bpoint(bp, SELECT, 1, HIDDEN);
 			}
-
 		}
-		else {
+		else if (deselect) {
+			if (bezt) {
+				if (hand == 1) {
+					select_beztriple(bezt, DESELECT, 1, HIDDEN);
+					if (bezt == cu->lastsel) cu->lastsel = NULL;
+				}
+				else if (hand == 0) {
+					bezt->f1 &= ~SELECT;
+				}
+				else {
+					bezt->f3 &= ~SELECT;
+				}
+			}
+			else {
+				select_bpoint(bp, DESELECT, 1, HIDDEN);
+				if (cu->lastsel == bp) cu->lastsel = NULL;
+			}
+		}
+		else if (toggle) {
 			if (bezt) {
 				if (hand == 1) {
 					if (bezt->f2 & SELECT) {
@@ -4198,7 +4197,27 @@ int mouse_nurb(bContext *C, const int mval[2], int extend)
 					cu->lastsel = bp;
 				}
 			}
+		}
+		else {
+			setflagsNurb(editnurb, 0);
 
+			if (bezt) {
+
+				if (hand == 1) {
+					select_beztriple(bezt, SELECT, 1, HIDDEN);
+					cu->lastsel = bezt;
+				}
+				else {
+					if (hand == 0) bezt->f1 |= SELECT;
+					else bezt->f3 |= SELECT;
+
+					cu->lastsel = NULL;
+				}
+			}
+			else {
+				cu->lastsel = bp;
+				select_bpoint(bp, SELECT, 1, HIDDEN);
+			}
 		}
 
 		if (nu != get_actNurb(obedit))
@@ -4729,7 +4748,7 @@ void CURVE_OT_extrude(wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Extrude";
-	ot->description = "Extrude selected control point(s) and move";
+	ot->description = "Extrude selected control point(s)";
 	ot->idname = "CURVE_OT_extrude";
 	
 	/* api callbacks */
@@ -4853,7 +4872,8 @@ void CURVE_OT_cyclic_toggle(wmOperatorType *ot)
 	static EnumPropertyItem direction_items[] = {
 		{0, "CYCLIC_U", 0, "Cyclic U", ""},
 		{1, "CYCLIC_V", 0, "Cyclic V", ""},
-		{0, NULL, 0, NULL, NULL}};
+		{0, NULL, 0, NULL, NULL}
+	};
 
 	/* identifiers */
 	ot->name = "Toggle Cyclic";
@@ -5974,7 +5994,8 @@ void CURVE_OT_delete(wmOperatorType *ot)
 		{0, "SELECTED", 0, "Select", ""},
 		{1, "SEGMENT", 0, "Segment", ""},
 		{2, "ALL", 0, "All", ""},
-		{0, NULL, 0, NULL, NULL}};
+		{0, NULL, 0, NULL, NULL}
+	};
 
 	/* identifiers */
 	ot->name = "Delete";
@@ -6049,7 +6070,7 @@ void CURVE_OT_shade_flat(wmOperatorType *ot)
 }
 
 /************** join operator, to be used externally? ****************/
-
+/* TODO: shape keys - as with meshes */
 int join_curve_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Main *bmain = CTX_data_main(C);
@@ -6068,7 +6089,7 @@ int join_curve_exec(bContext *C, wmOperator *UNUSED(op))
 	/* trasnform all selected curves inverse in obact */
 	invert_m4_m4(imat, ob->obmat);
 	
-	CTX_DATA_BEGIN (C, Base *, base, selected_editable_bases)
+	CTX_DATA_BEGIN(C, Base *, base, selected_editable_bases)
 	{
 		if (base->object->type == ob->type) {
 			if (base->object != ob) {
@@ -6170,10 +6191,9 @@ static const char *get_surf_defname(int type)
 }
 
 
-Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
+Nurb *add_nurbs_primitive(bContext *C, Object *obedit, float mat[4][4], int type, int newob)
 {
 	static int xzproj = 0;   /* this function calls itself... */
-	Object *obedit = CTX_data_edit_object(C);
 	ListBase *editnurb = object_editcurve_get(obedit);
 	View3D *v3d = CTX_wm_view3d(C);
 	RegionView3D *rv3d = ED_view3d_context_rv3d(C);
@@ -6244,7 +6264,7 @@ Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
 				nu->pntsu = 4;
 				nu->pntsv = 1;
 				nu->orderu = 4;
-				nu->bp = callocstructN(BPoint, 4, "addNurbprim3");
+				nu->bp = CALLOC_STRUCT_N(BPoint, 4, "addNurbprim3");
 
 				bp = nu->bp;
 				for (a = 0; a < 4; a++, bp++) {
@@ -6280,7 +6300,7 @@ Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
 			nu->orderu = 5;
 			nu->flagu = CU_NURB_ENDPOINT; /* endpoint */
 			nu->resolu = cu->resolu;
-			nu->bp = callocstructN(BPoint, 5, "addNurbprim3");
+			nu->bp = CALLOC_STRUCT_N(BPoint, 5, "addNurbprim3");
 
 			bp = nu->bp;
 			for (a = 0; a < 5; a++, bp++) {
@@ -6313,7 +6333,7 @@ Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
 			if (cutype == CU_BEZIER) {
 				if (!force_3d) nu->flag |= CU_2D;
 				nu->pntsu = 4;
-				nu->bezt = callocstructN(BezTriple, 4, "addNurbprim1");
+				nu->bezt = CALLOC_STRUCT_N(BezTriple, 4, "addNurbprim1");
 				nu->flagu = CU_NURB_CYCLIC;
 				bezt = nu->bezt;
 
@@ -6350,7 +6370,7 @@ Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
 				nu->pntsu = 8;
 				nu->pntsv = 1;
 				nu->orderu = 4;
-				nu->bp = callocstructN(BPoint, 8, "addNurbprim6");
+				nu->bp = CALLOC_STRUCT_N(BPoint, 8, "addNurbprim6");
 				nu->flagu = CU_NURB_CYCLIC;
 				bp = nu->bp;
 
@@ -6383,7 +6403,7 @@ Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
 				nu->orderu = 4;
 				nu->orderv = 4;
 				nu->flag = CU_SMOOTH;
-				nu->bp = callocstructN(BPoint, 4 * 4, "addNurbprim6");
+				nu->bp = CALLOC_STRUCT_N(BPoint, 4 * 4, "addNurbprim6");
 				nu->flagu = 0;
 				nu->flagv = 0;
 				bp = nu->bp;
@@ -6410,7 +6430,7 @@ Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
 			break;
 		case CU_PRIM_TUBE: /* Cylinder */
 			if (cutype == CU_NURBS) {
-				nu = add_nurbs_primitive(C, mat, CU_NURBS | CU_PRIM_CIRCLE, 0); /* circle */
+				nu = add_nurbs_primitive(C, obedit, mat, CU_NURBS | CU_PRIM_CIRCLE, 0); /* circle */
 				nu->resolu = cu->resolu;
 				nu->flag = CU_SMOOTH;
 				BLI_addtail(editnurb, nu); /* temporal for extrude and translate */
@@ -6450,7 +6470,7 @@ Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
 				nu->resolu = cu->resolu;
 				nu->resolv = cu->resolv;
 				nu->flag = CU_SMOOTH;
-				nu->bp = callocstructN(BPoint, 5, "addNurbprim6");
+				nu->bp = CALLOC_STRUCT_N(BPoint, 5, "addNurbprim6");
 				nu->flagu = 0;
 				bp = nu->bp;
 
@@ -6489,7 +6509,7 @@ Nurb *add_nurbs_primitive(bContext *C, float mat[4][4], int type, int newob)
 				float tmp_vec[3] = {0.f, 0.f, 1.f};
 
 				xzproj = 1;
-				nu = add_nurbs_primitive(C, mat, CU_NURBS | CU_PRIM_CIRCLE, 0); /* circle */
+				nu = add_nurbs_primitive(C, obedit, mat, CU_NURBS | CU_PRIM_CIRCLE, 0); /* circle */
 				xzproj = 0;
 				nu->resolu = cu->resolu;
 				nu->resolv = cu->resolv;
@@ -6586,7 +6606,7 @@ static int curvesurf_prim_add(bContext *C, wmOperator *op, int type, int isSurf)
 	
 	ED_object_new_primitive_matrix(C, obedit, loc, rot, mat);
 
-	nu = add_nurbs_primitive(C, mat, type, newob);
+	nu = add_nurbs_primitive(C, obedit, mat, type, newob);
 	editnurb = object_editcurve_get(obedit);
 	BLI_addtail(editnurb, nu);
 

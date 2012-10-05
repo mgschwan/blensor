@@ -24,7 +24,7 @@ bl_info = {
     "location": "File > Import > Skeleton Mesh (.psk)",
     "description": "Import Skeleleton Mesh",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
         "Scripts/Import-Export/Unreal_psk_psa",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=21366",
@@ -585,7 +585,7 @@ def getInputFilename(self,filename,importmesh,importbone,bDebugLogPSK,importmult
         pskimport(filename,importmesh,importbone,bDebugLogPSK,importmultiuvtextures)
 #import panel
 class IMPORT_OT_psk(bpy.types.Operator):
-    '''Load a skeleton mesh psk File'''
+    """Load a skeleton mesh psk File"""
     bl_idname = "import_scene.psk"
     bl_label = "Import PSK"
     bl_space_type = "PROPERTIES"

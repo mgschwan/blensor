@@ -41,6 +41,7 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_brush.h"
+#include "BKE_context.h"
 #include "BKE_library.h"
 #include "BKE_paint.h"
 #include "BKE_subsurf.h"
@@ -60,24 +61,72 @@ Paint *paint_get_active(Scene *sce)
 		
 		if (sce->basact && sce->basact->object) {
 			switch (sce->basact->object->mode) {
-			case OB_MODE_SCULPT:
-				return &ts->sculpt->paint;
-			case OB_MODE_VERTEX_PAINT:
-				return &ts->vpaint->paint;
-			case OB_MODE_WEIGHT_PAINT:
-				return &ts->wpaint->paint;
-			case OB_MODE_TEXTURE_PAINT:
-				return &ts->imapaint.paint;
-			case OB_MODE_EDIT:
-				if (ts->use_uv_sculpt)
-					return &ts->uvsculpt->paint;
-				else
+				case OB_MODE_SCULPT:
+					return &ts->sculpt->paint;
+				case OB_MODE_VERTEX_PAINT:
+					return &ts->vpaint->paint;
+				case OB_MODE_WEIGHT_PAINT:
+					return &ts->wpaint->paint;
+				case OB_MODE_TEXTURE_PAINT:
 					return &ts->imapaint.paint;
+				case OB_MODE_EDIT:
+					if (ts->use_uv_sculpt)
+						return &ts->uvsculpt->paint;
+					else
+						return &ts->imapaint.paint;
 			}
 		}
 
 		/* default to image paint */
 		return &ts->imapaint.paint;
+	}
+
+	return NULL;
+}
+
+Paint *paint_get_active_from_context(const bContext *C)
+{
+	Scene *sce = CTX_data_scene(C);
+
+	if (sce) {
+		ToolSettings *ts = sce->toolsettings;
+		Object *obact = NULL;
+
+		if (sce->basact && sce->basact->object)
+			obact = sce->basact->object;
+
+		if (CTX_wm_space_image(C) != NULL) {
+			if (obact && obact->mode == OB_MODE_EDIT) {
+				if (ts->use_uv_sculpt)
+					return &ts->uvsculpt->paint;
+				else
+					return &ts->imapaint.paint;
+			}
+			else {
+				return &ts->imapaint.paint;
+			}
+		}
+		else if (obact) {
+			switch (obact->mode) {
+				case OB_MODE_SCULPT:
+					return &ts->sculpt->paint;
+				case OB_MODE_VERTEX_PAINT:
+					return &ts->vpaint->paint;
+				case OB_MODE_WEIGHT_PAINT:
+					return &ts->wpaint->paint;
+				case OB_MODE_TEXTURE_PAINT:
+					return &ts->imapaint.paint;
+				case OB_MODE_EDIT:
+					if (ts->use_uv_sculpt)
+						return &ts->uvsculpt->paint;
+					else
+						return &ts->imapaint.paint;
+			}
+		}
+		else {
+			/* default to image paint */
+			return &ts->imapaint.paint;
+		}
 	}
 
 	return NULL;
@@ -93,7 +142,7 @@ void paint_brush_set(Paint *p, Brush *br)
 	if (p) {
 		id_us_min((ID *)p->brush);
 		id_us_plus((ID *)br);
-		p->brush= br;
+		p->brush = br;
 	}
 }
 
@@ -104,7 +153,7 @@ int paint_facesel_test(Object *ob)
 	         (ob->type == OB_MESH) &&
 	         (ob->data != NULL) &&
 	         (((Mesh *)ob->data)->editflag & ME_EDIT_PAINT_MASK) &&
-	         (ob->mode & (OB_MODE_VERTEX_PAINT|OB_MODE_WEIGHT_PAINT|OB_MODE_TEXTURE_PAINT))
+	         (ob->mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT | OB_MODE_TEXTURE_PAINT))
 	         );
 }
 
@@ -119,14 +168,14 @@ int paint_vertsel_test(Object *ob)
 	         );
 }
 
-void paint_init(Paint *p, const char col[3])
+void BKE_paint_init(Paint *p, const char col[3])
 {
 	Brush *brush;
 
 	/* If there's no brush, create one */
 	brush = paint_brush(p);
 	if (brush == NULL)
-		brush= BKE_brush_add("Brush");
+		brush = BKE_brush_add("Brush");
 	paint_brush_set(p, brush);
 
 	memcpy(p->paint_cursor_col, col, 3);
@@ -135,18 +184,18 @@ void paint_init(Paint *p, const char col[3])
 	p->flags |= PAINT_SHOW_BRUSH;
 }
 
-void free_paint(Paint *paint)
+void BKE_paint_free(Paint *paint)
 {
 	id_us_min((ID *)paint->brush);
 }
 
 /* called when copying scene settings, so even if 'src' and 'tar' are the same
- * still do a id_us_plus(), rather then if we were copying betweem 2 existing
+ * still do a id_us_plus(), rather then if we were copying between 2 existing
  * scenes where a matching value should decrease the existing user count as
  * with paint_brush_set() */
-void copy_paint(Paint *src, Paint *tar)
+void BKE_paint_copy(Paint *src, Paint *tar)
 {
-	tar->brush= src->brush;
+	tar->brush = src->brush;
 	id_us_plus((ID *)tar->brush);
 }
 
@@ -155,20 +204,29 @@ void copy_paint(Paint *src, Paint *tar)
 int paint_is_face_hidden(const MFace *f, const MVert *mvert)
 {
 	return ((mvert[f->v1].flag & ME_HIDE) ||
-			(mvert[f->v2].flag & ME_HIDE) ||
-			(mvert[f->v3].flag & ME_HIDE) ||
-			(f->v4 && (mvert[f->v4].flag & ME_HIDE)));
+	        (mvert[f->v2].flag & ME_HIDE) ||
+	        (mvert[f->v3].flag & ME_HIDE) ||
+	        (f->v4 && (mvert[f->v4].flag & ME_HIDE)));
 }
 
 /* returns non-zero if any of the corners of the grid
  * face whose inner corner is at (x,y) are hidden,
  * zero otherwise */
 int paint_is_grid_face_hidden(const unsigned int *grid_hidden,
-							  int gridsize, int x, int y)
+                              int gridsize, int x, int y)
 {
 	/* skip face if any of its corners are hidden */
 	return (BLI_BITMAP_GET(grid_hidden, y * gridsize + x) ||
-			BLI_BITMAP_GET(grid_hidden, y * gridsize + x+1) ||
-			BLI_BITMAP_GET(grid_hidden, (y+1) * gridsize + x+1) ||
-			BLI_BITMAP_GET(grid_hidden, (y+1) * gridsize + x));
+	        BLI_BITMAP_GET(grid_hidden, y * gridsize + x + 1) ||
+	        BLI_BITMAP_GET(grid_hidden, (y + 1) * gridsize + x + 1) ||
+	        BLI_BITMAP_GET(grid_hidden, (y + 1) * gridsize + x));
+}
+
+float paint_grid_paint_mask(const GridPaintMask *gpm, unsigned level,
+                            unsigned x, unsigned y)
+{
+	int factor = ccg_factor(level, gpm->level);
+	int gridsize = ccg_gridsize(gpm->level);
+	
+	return gpm->data[(y * factor) * gridsize + (x * factor)];
 }

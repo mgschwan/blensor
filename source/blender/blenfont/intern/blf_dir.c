@@ -41,9 +41,10 @@
 
 #include "DNA_vec_types.h"
 
-#include "BKE_utildefines.h"
-
-#include "BLI_blenlib.h"
+#include "BLI_fileops.h"
+#include "BLI_listbase.h"
+#include "BLI_path_util.h"
+#include "BLI_string.h"
 
 #include "BIF_gl.h"
 
@@ -163,10 +164,10 @@ int blf_dir_split(const char *str, char *file, int *size)
 			file[i] = str[i];
 
 		file[i] = '.';
-		file[i+1] = 't';
-		file[i+2] = 't';
-		file[i+3] = 'f';
-		file[i+4] = '\0';
+		file[i + 1] = 't';
+		file[i + 2] = 't';
+		file[i + 3] = 'f';
+		file[i + 4] = '\0';
 		s++;
 		*size = atoi(s);
 		return 1;

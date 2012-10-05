@@ -100,6 +100,7 @@ void	KX_ConvertBulletObject(	class	KX_GameObject* gameobj,
 
 	bool isbulletdyna = false;
 	bool isbulletsensor = false;
+	bool isbulletchar = false;
 	bool useGimpact = false;
 	CcdConstructionInfo ci;
 	class PHY_IMotionState* motionstate = new KX_MotionState(gameobj->GetSGNode());
@@ -117,14 +118,24 @@ void	KX_ConvertBulletObject(	class	KX_GameObject* gameobj,
 
 	ci.m_MotionState = motionstate;
 	ci.m_gravity = btVector3(0,0,0);
+	ci.m_linearFactor = btVector3(objprop->m_lockXaxis? 0 : 1,
+									objprop->m_lockYaxis? 0 : 1,
+									objprop->m_lockZaxis? 0 : 1);
+	ci.m_angularFactor = btVector3(objprop->m_lockXRotaxis? 0 : 1,
+									objprop->m_lockYRotaxis? 0 : 1,
+									objprop->m_lockZRotaxis? 0 : 1);
 	ci.m_localInertiaTensor =btVector3(0,0,0);
 	ci.m_mass = objprop->m_dyna ? shapeprops->m_mass : 0.f;
 	ci.m_clamp_vel_min = shapeprops->m_clamp_vel_min;
 	ci.m_clamp_vel_max = shapeprops->m_clamp_vel_max;
 	ci.m_margin = objprop->m_margin;
+	ci.m_stepHeight = objprop->m_character ? shapeprops->m_step_height : 0.f;
+	ci.m_jumpSpeed = objprop->m_character ? shapeprops->m_jump_speed : 0.f;
+	ci.m_fallSpeed = objprop->m_character ? shapeprops->m_fall_speed : 0.f;
 	shapeInfo->m_radius = objprop->m_radius;
 	isbulletdyna = objprop->m_dyna;
 	isbulletsensor = objprop->m_sensor;
+	isbulletchar = objprop->m_character;
 	useGimpact = ((isbulletdyna || isbulletsensor) && !objprop->m_softbody);
 
 	ci.m_localInertiaTensor = btVector3(ci.m_mass/3.f,ci.m_mass/3.f,ci.m_mass/3.f);
@@ -271,7 +282,7 @@ void	KX_ConvertBulletObject(	class	KX_GameObject* gameobj,
 			relativeRot.getValue(rot);
 			shapeInfo->m_childTrans.getBasis().setFromOpenGLSubMatrix(rot);
 
-			parentShapeInfo->AddShape(shapeInfo);	
+			parentShapeInfo->AddShape(shapeInfo);
 			compoundShape->addChildShape(shapeInfo->m_childTrans,bm);
 			//do some recalc?
 			//recalc inertia for rigidbody
@@ -400,21 +411,24 @@ void	KX_ConvertBulletObject(	class	KX_GameObject* gameobj,
 	////////////////////
 	ci.m_collisionFilterGroup = 
 		(isbulletsensor) ? short(CcdConstructionInfo::SensorFilter) :
-		(isbulletdyna) ? short(CcdConstructionInfo::DefaultFilter) : 
+		(isbulletdyna) ? short(CcdConstructionInfo::DefaultFilter) :
+		(isbulletchar) ? short(CcdConstructionInfo::CharacterFilter) : 
 		short(CcdConstructionInfo::StaticFilter);
 	ci.m_collisionFilterMask = 
 		(isbulletsensor) ? short(CcdConstructionInfo::AllFilter ^ CcdConstructionInfo::SensorFilter) :
 		(isbulletdyna) ? short(CcdConstructionInfo::AllFilter) : 
+		(isbulletchar) ? short(CcdConstructionInfo::AllFilter) :
 		short(CcdConstructionInfo::AllFilter ^ CcdConstructionInfo::StaticFilter);
 	ci.m_bRigid = objprop->m_dyna && objprop->m_angular_rigidbody;
 	
 	ci.m_contactProcessingThreshold = objprop->m_contactProcessingThreshold;//todo: expose this in advanced settings, just like margin, default to 10000 or so
 	ci.m_bSoft = objprop->m_softbody;
 	ci.m_bSensor = isbulletsensor;
+	ci.m_bCharacter = isbulletchar;
 	ci.m_bGimpact = useGimpact;
 	MT_Vector3 scaling = gameobj->NodeGetWorldScaling();
 	ci.m_scaling.setValue(scaling[0], scaling[1], scaling[2]);
-	KX_BulletPhysicsController* physicscontroller = new KX_BulletPhysicsController(ci,isbulletdyna,isbulletsensor,objprop->m_hasCompoundChildren);
+	KX_BulletPhysicsController* physicscontroller = new KX_BulletPhysicsController(ci,isbulletdyna,isbulletsensor,isbulletchar,objprop->m_hasCompoundChildren);
 	// shapeInfo is reference counted, decrement now as we don't use it anymore
 	if (shapeInfo)
 		shapeInfo->Release();
@@ -425,7 +439,7 @@ void	KX_ConvertBulletObject(	class	KX_GameObject* gameobj,
 	{
 		env->addCcdPhysicsController( physicscontroller);
 	}
-	physicscontroller->setNewClientInfo(gameobj->getClientInfo());		
+	physicscontroller->setNewClientInfo(gameobj->getClientInfo());
 	{
 		btRigidBody* rbody = physicscontroller->GetRigidBody();
 
@@ -433,16 +447,8 @@ void	KX_ConvertBulletObject(	class	KX_GameObject* gameobj,
 		{
 			if (objprop->m_angular_rigidbody)
 			{
-				btVector3 linearFactor(
-					objprop->m_lockXaxis? 0 : 1,
-					objprop->m_lockYaxis? 0 : 1,
-					objprop->m_lockZaxis? 0 : 1);
-				btVector3 angularFactor(
-					objprop->m_lockXRotaxis? 0 : 1,
-					objprop->m_lockYRotaxis? 0 : 1,
-					objprop->m_lockZRotaxis? 0 : 1);
-				rbody->setLinearFactor(linearFactor);
-				rbody->setAngularFactor(angularFactor);
+				rbody->setLinearFactor(ci.m_linearFactor);
+				rbody->setAngularFactor(ci.m_angularFactor);
 			}
 
 			if (rbody && objprop->m_disableSleeping)

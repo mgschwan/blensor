@@ -24,9 +24,10 @@ bl_info = {
     "location": "View3D > UI > Geodesic...",
     "description": "Choice for objects",
     "warning": "not yet finished",
-    "wiki_url": "http://wiki.blender.org/index.php?title=Extensions:2.5/Py/Scripts/Modeling/Geodesic_Domes",
-    "tracker_url": "",
-    "category": "Mesh"}
+    "wiki_url": "http://wiki.blender.org/index.php?title=Extensions:2.6/Py/Scripts/Modeling/Geodesic_Domes",
+    "tracker_url": "http://projects.blender.org/tracker/index.php?"\
+        "func=detail&aid=29609",
+    "category": "Object"}
 
 """
 Added save and load of parameters 14-12-2011 PKHG

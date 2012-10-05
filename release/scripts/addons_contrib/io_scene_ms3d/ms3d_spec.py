@@ -25,258 +25,286 @@
 
 # ##### BEGIN COPYRIGHT BLOCK #####
 #
-# initial script copyright (c)2011 Alexander Nussbaumer
+# initial script copyright (c)2011,2012 Alexander Nussbaumer
 #
 # ##### END COPYRIGHT BLOCK #####
 
 
-#import python stuff
-import collections
-import io
-import struct
-import sys
+from struct import (
+        pack,
+        unpack,
+        )
+from sys import (
+        exc_info,
+        )
+from os import (
+        fstat,
+        )
 
-
-#import blender stuff
-import bpy_extras.io_utils
-
-
-PROP_NAME_NAME = "name"
-PROP_NAME_MODE = "mode"
-PROP_NAME_TEXTURE = "texture"
-PROP_NAME_ALPHAMAP = "alphamap"
-PROP_NAME_FLAGS = "flags"
-PROP_NAME_PARENTNAME = "parentName"
-PROP_NAME_EXTRA = "extra"
-PROP_NAME_COMMENT = "comment"
-PROP_NAME_AMBIENT = "ambient"
-PROP_NAME_EMISSIVE = "emissive"
-PROP_NAME_COLOR = "color"
-
-#
-#
+###############################################################################
 #
 # MilkShape 3D 1.8.5 File Format Specification
 #
+# all specifications were taken from SDK 1.8.5
 #
-# This specifcation is written in Python 3.1 style. (C was original)
-#
-#
-# The data structures are defined in the order as they appear
-# in the .ms3d file.
-#
-#
-#
-#
+# some additional specifications were taken from
+# MilkShape 3D Viewer v2.0 (Nov 06 2007) - msMesh.h
 #
 
-
-###############################################################################
-#
-# max values
-#
-MAX_VERTICES = 65534 # 0..65533; note: (65534???, 65535???)
-MAX_TRIANGLES = 65534 # 0..65533; note: (65534???, 65535???)
-MAX_GROUPS = 255 # 1..255; note: (0 default group)
-MAX_MATERIALS = 128 # 0..127; note: (-1 no material)
-MAX_JOINTS = 128 # 0..127; note: (-1 no joint)
-MAX_SMOOTH_GROUP = 32 # 0..32; note: (0 no smoothing group)
-
-
-###############################################################################
-#
-# flags
-#
-FLAG_NONE = 0
-FLAG_SELECTED = 1
-FLAG_HIDDEN = 2
-FLAG_SELECTED2 = 4
-FLAG_DIRTY = 8
-
-
-###############################################################################
-#
-# values
-#
-HEADER = "MS3D000000"
 
 ###############################################################################
 #
 # sizes
 #
-SIZE_BYTE = 1
-SIZE_CHAR = 1
-SIZE_WORD = 2
-SIZE_DWORD = 4
-SIZE_FLOAT = 4
+
+class Ms3dSpec:
+    ###########################################################################
+    #
+    # max values
+    #
+    MAX_VERTICES = 65534 # 0..65533; note: (65534???, 65535???)
+    MAX_TRIANGLES = 65534 # 0..65533; note: (65534???, 65535???)
+    MAX_GROUPS = 255 # 1..255; note: (0 default group)
+    MAX_MATERIALS = 128 # 0..127; note: (-1 no material)
+    MAX_JOINTS = 128 # 0..127; note: (-1 no joint)
+    MAX_SMOOTH_GROUP = 32 # 0..32; note: (0 no smoothing group)
+    MAX_TEXTURE_FILENAME_SIZE = 128
+
+    ###########################################################################
+    #
+    # flags
+    #
+    FLAG_NONE = 0
+    FLAG_SELECTED = 1
+    FLAG_HIDDEN = 2
+    FLAG_SELECTED2 = 4
+    FLAG_DIRTY = 8
+    FLAG_ISKEY = 16 # additional spec from [2]
+    FLAG_NEWLYCREATED = 32 # additional spec from [2]
+    FLAG_MARKED = 64 # additional spec from [2]
+
+    FLAG_TEXTURE_NONE = 0x00
+    FLAG_TEXTURE_COMBINE_ALPHA = 0x20
+    FLAG_TEXTURE_HAS_ALPHA = 0x40
+    FLAG_TEXTURE_SPHERE_MAP = 0x80
+
+    MODE_TRANSPARENCY_SIMPLE = 0
+    MODE_TRANSPARENCY_DEPTH_BUFFERED_WITH_ALPHA_REF = 1
+    MODE_TRANSPARENCY_DEPTH_SORTED_TRIANGLES = 2
 
 
-LENGTH_ID = 10
-LENGTH_NAME = 32
-LENGTH_FILENAME = 128
+    ###########################################################################
+    #
+    # values
+    #
+    HEADER = "MS3D000000"
+
+
+    ###########################################################################
+    #
+    # min, max, default values
+    #
+    NONE_VERTEX_BONE_ID = -1
+    NONE_GROUP_MATERIAL_INDEX = -1
+
+    DEFAULT_HEADER = HEADER
+    DEFAULT_HEADER_VERSION = 4
+    DEFAULT_VERTEX_BONE_ID = NONE_VERTEX_BONE_ID
+    DEFAULT_TRIANGLE_SMOOTHING_GROUP = 0
+    DEFAULT_TRIANGLE_GROUP = 0
+    DEFAULT_MATERIAL_MODE = FLAG_TEXTURE_NONE
+    DEFAULT_GROUP_MATERIAL_INDEX = NONE_GROUP_MATERIAL_INDEX
+    DEFAULT_MODEL_JOINT_SIZE = 1.0
+    DEFAULT_MODEL_TRANSPARENCY_MODE = MODE_TRANSPARENCY_SIMPLE
+    DEFAULT_MODEL_ANIMATION_FPS = 25.0
+    DEFAULT_MODEL_SUB_VERSION_COMMENTS = 1
+    DEFAULT_MODEL_SUB_VERSION_VERTEX_EXTRA = 2
+    DEFAULT_MODEL_SUB_VERSION_JOINT_EXTRA = 1
+    DEFAULT_MODEL_SUB_VERSION_MODEL_EXTRA = 1
+    DEFAULT_FLAGS = FLAG_NONE
+    MAX_MATERIAL_SHININESS = 128
 
 
 ###############################################################################
-def read_byte(file):
-    """ read a single byte from file """
-    value = struct.unpack("<B", file.read(SIZE_BYTE))[0]
-    return value
+#
+# helper class for basic raw io
+#
+class EOF(BaseException):
+    pass
 
-def write_byte(file, value):
-    """ write a single byte to file """
-    file.write(struct.pack("<B", value))
+class Ms3dIo:
+    # sizes for IO
+    SIZE_BYTE = 1
+    SIZE_SBYTE = 1
+    SIZE_WORD = 2
+    SIZE_DWORD = 4
+    SIZE_FLOAT = 4
+    LENGTH_ID = 10
+    LENGTH_NAME = 32
+    LENGTH_FILENAME = 128
 
-###############################################################################
-def read_char(file):
-    """ read a single char (signed byte) from file """
-    value = struct.unpack("<b", file.read(SIZE_CHAR))[0]
-    return value
+    @staticmethod
+    def raise_on_eof(file):
+        """ pseudo end of file detection """
+        fd = file.fileno()
+        stat = fstat(fd)
+        if file.tell() >= stat.st_size:
+            raise EOF()
 
-def write_char(file, value):
-    """ write a single char (signed byte) to file """
-    file.write(struct.pack("<b", value))
+    @staticmethod
+    def read_byte(file):
+        """ read a single byte from file """
+        value = unpack('<B', file.read(Ms3dIo.SIZE_BYTE))[0]
+        return value
 
-###############################################################################
-def read_word(file):
-    """ read a single word from file """
-    value = struct.unpack("<H", file.read(SIZE_WORD))[0]
-    return value
+    @staticmethod
+    def write_byte(file, value):
+        """ write a single byte to file """
+        file.write(pack('<B', value))
 
-def write_word(file, value):
-    """ write a single word to file """
-    file.write(struct.pack("<H", value))
+    @staticmethod
+    def read_sbyte(file):
+        """ read a single signed byte from file """
+        value = unpack('<b', file.read(Ms3dIo.SIZE_SBYTE))[0]
+        return value
 
-###############################################################################
-def read_dword(file):
-    """ read a single double word from file """
-    value = struct.unpack("<I", file.read(SIZE_DWORD))[0]
-    return value
+    @staticmethod
+    def write_sbyte(file, value):
+        """ write a single signed byte to file """
+        file.write(pack('<b', value))
 
-def write_dword(file, value):
-    """ write a single double word to file """
-    file.write(struct.pack("<I", value))
+    @staticmethod
+    def read_word(file):
+        """ read a word from file """
+        value = unpack('<H', file.read(Ms3dIo.SIZE_WORD))[0]
+        return value
 
-###############################################################################
-def read_float(file):
-    """ read a single float from file """
-    value = struct.unpack("<f", file.read(SIZE_FLOAT))[0]
-    return value
+    @staticmethod
+    def write_word(file, value):
+        """ write a word to file """
+        file.write(pack('<H', value))
 
-def write_float(file, value):
-    """ write a single float to file """
-    file.write(struct.pack("<f", value))
+    @staticmethod
+    def read_dword(file):
+        """ read a double word from file """
+        value = unpack('<I', file.read(Ms3dIo.SIZE_DWORD))[0]
+        return value
 
-###############################################################################
-def read_array(file, itemReader, count):
-    """ read an array[count] of objects from file, by using a itemReader """
-    value = []
-    for i in range(count):
-        itemValue = itemReader(file)
-        value.append(itemValue)
-    return tuple(value)
+    @staticmethod
+    def write_dword(file, value):
+        """ write a double word to file """
+        file.write(pack('<I', value))
 
-###############################################################################
-def write_array(file, itemWriter, count, value):
-    """ write an array[count] of objects to file, by using a itemWriter """
-    for i in range(count):
-        itemValue = value[i]
-        itemWriter(file, itemValue)
+    @staticmethod
+    def read_float(file):
+        """ read a float from file """
+        value = unpack('<f', file.read(Ms3dIo.SIZE_FLOAT))[0]
+        return value
 
-###############################################################################
-def read_array2(file, itemReader, count, count2):
-    """ read an array[count][count2] of objects from file,
-        by using a itemReader """
-    value = []
-    for i in range(count):
-        itemValue = read_array(file, itemReader, count2)
-        value.append(tuple(itemValue))
-    return value #tuple(value)
+    @staticmethod
+    def write_float(file, value):
+        """ write a float to file """
+        file.write(pack('<f', value))
 
-###############################################################################
-def write_array2(file, itemWriter, count, count2, value):
-    """ write an array[count][count2] of objects to file,
-        by using a itemWriter """
-    for i in range(count):
-        itemValue = value[i]
-        write_array(file, itemWriter, count2, itemValue)
+    @staticmethod
+    def read_array(file, itemReader, count):
+        """ read an array[count] of objects from file, by using a itemReader """
+        value = []
+        for i in range(count):
+            itemValue = itemReader(file)
+            value.append(itemValue)
+        return tuple(value)
 
-###############################################################################
-def read_string(file, length):
-    """ read a string of a specific length from file """
-    value = []
-    skip = False
-    for i in range(length):
-        raw = struct.unpack("<b", file.read(SIZE_CHAR))[0]
-        if (raw >= 32) & (raw <= 255):
-            pass
-        else:
-            if (raw == 0):
-                raw = 0
-                skip = True
-            else:
-                raw = 32
+    @staticmethod
+    def write_array(file, itemWriter, count, value):
+        """ write an array[count] of objects to file, by using a itemWriter """
+        for i in range(count):
+            itemValue = value[i]
+            itemWriter(file, itemValue)
 
-        c = chr(raw)
+    @staticmethod
+    def read_array2(file, itemReader, count, count2):
+        """ read an array[count][count2] of objects from file,
+            by using a itemReader """
+        value = []
+        for i in range(count):
+            itemValue = Ms3dIo.read_array(file, itemReader, count2)
+            value.append(tuple(itemValue))
+        return value
 
-        if (not skip):
-            value.append(c)
+    @staticmethod
+    def write_array2(file, itemWriter, count, count2, value):
+        """ write an array[count][count2] of objects to file,
+            by using a itemWriter """
+        for i in range(count):
+            itemValue = value[i]
+            Ms3dIo.write_array(file, itemWriter, count2, itemValue)
 
-    finalValue = "".join(value)
-    return finalValue
-
-###############################################################################
-def write_string(file, length, value):
-    """ write a string of a specific length to file """
-    l = len(value)
-    for i in range(length):
-        if(i < l):
-            c = value[i]
-
-            if (isinstance(c, str)):
-                c = c[0]
-                raw = ord(c)
-            elif (isinstance(c, int)):
-                raw = c
-            else:
+    @staticmethod
+    def read_string(file, length):
+        """ read a string of a specific length from file """
+        value = []
+        skip = False
+        for i in range(length):
+            raw = unpack('<b', file.read(Ms3dIo.SIZE_SBYTE))[0]
+            if (raw >= 32) & (raw <= 255):
                 pass
-        else:
-            raw = 0
+            else:
+                if (raw == 0):
+                    raw = 0
+                    skip = True
+                else:
+                    raw = 32
 
-        file.write(struct.pack("<b", raw % 255))
+            c = chr(raw)
+
+            if (not skip):
+                value.append(c)
+
+        finalValue = "".join(value)
+        return finalValue
+
+    @staticmethod
+    def write_string(file, length, value):
+        """ write a string of a specific length to file """
+        l = len(value)
+        for i in range(length):
+            if(i < l):
+                c = value[i]
+
+                if (isinstance(c, str)):
+                    c = c[0]
+                    raw = ord(c)
+                elif (isinstance(c, int)):
+                    raw = c
+                else:
+                    pass
+            else:
+                raw = 0
+
+            file.write(pack('<b', raw % 255))
 
 
 ###############################################################################
 #
 # multi complex types
 #
+
 ###############################################################################
-class ms3d_header_t:
-    """
-    ms3d_header_t
-    """
-    #char id[LENGTH_ID]; // always "MS3D000000"
-    #int version; // 4
+class Ms3dHeader:
+    """ Ms3dHeader """
     __slots__ = (
-            "id",
-            "version"
+            'id',
+            'version',
             )
 
     def __init__(
             self,
-            defaultId=HEADER,
-            defaultVersion=4
+            default_id=Ms3dSpec.DEFAULT_HEADER,
+            default_version=Ms3dSpec.DEFAULT_HEADER_VERSION
             ):
-        """
-        initialize
-
-        :arg id: magic number of file
-        :type id: :class:`string`
-        :arg version: version number of file
-        :type version: :class:`dword`
-        """
-
-        self.id = defaultId
-        self.version = defaultVersion
+        self.id = default_id
+        self.version = default_version
 
     def __repr__(self):
         return "\n<id='{0}', version={1}>".format(
@@ -293,78 +321,70 @@ class ms3d_header_t:
                 and (self.version == other.version))
 
     def read(self, file):
-        self.id = read_string(file, LENGTH_ID)
-        self.version = read_dword(file)
+        self.id = Ms3dIo.read_string(file, Ms3dIo.LENGTH_ID)
+        self.version = Ms3dIo.read_dword(file)
         return self
 
     def write(self, file):
-        write_string(file, LENGTH_ID, self.id)
-        write_dword(file, self.version)
+        Ms3dIo.write_string(file, Ms3dIo.LENGTH_ID, self.id)
+        Ms3dIo.write_dword(file, self.version)
 
 
 ###############################################################################
-class ms3d_vertex_t:
+class Ms3dVertex:
+    """ Ms3dVertex """
     """
-    ms3d_vertex_t
-    """
-    #byte flags; // FLAG_NONE | FLAG_SELECTED | FLAG_SELECTED2 | FLAG_HIDDEN
-    #float vertex[3];
-    #char boneId; // -1 = no bone
-    #byte referenceCount;
+    __slots__ was taking out,
+    to be able to inject additional attributes during runtime
     __slots__ = (
-            PROP_NAME_FLAGS,
-            "_vertex",
-            "boneId",
-            "referenceCount",
+            'flags',
+            'bone_id',
+            'reference_count',
+            '_vertex',
+            '_vertex_ex_object', # Ms3dVertexEx
             )
+    """
 
     def __init__(
             self,
-            defaultFlags=FLAG_NONE,
-            defaultVertex=(0.0 ,0.0 ,0.0),
-            defaultBoneId=-1,
-            defaultReferenceCount=0
+            default_flags=Ms3dSpec.DEFAULT_FLAGS,
+            default_vertex=(0.0, 0.0, 0.0),
+            default_bone_id=Ms3dSpec.DEFAULT_VERTEX_BONE_ID,
+            default_reference_count=0,
+            default_vertex_ex_object=None, # Ms3dVertexEx
             ):
-        """
-        initialize
+        self.flags = default_flags
+        self._vertex = default_vertex
+        self.bone_id = default_bone_id
+        self.reference_count = default_reference_count
 
-        :arg flags: selection flag
-        :type flags: :class:`byte`
-        :arg vertex: vertex
-        :type vertex: :class:`float[3]`
-        :arg boneId: bone id
-        :type boneId: :class:`char`
-        :arg referenceCount: reference count
-        :type referenceCount: :class:`byte`
-        """
-
-        self.flags = defaultFlags
-        self._vertex = defaultVertex
-        self.boneId = defaultBoneId
-        self.referenceCount = defaultReferenceCount
-        __hash_cash = None
+        if default_vertex_ex_object is None:
+            default_vertex_ex_object = Ms3dVertexEx2()
+            # Ms3dSpec.DEFAULT_MODEL_SUB_VERSION_VERTEX_EXTRA = 2
+        self._vertex_ex_object = default_vertex_ex_object
+        # Ms3dVertexEx
 
     def __repr__(self):
-        return "\n<flags={0}, vertex={1}, boneId={2},"\
-                " referenceCount={3}>".format(
+        return "\n<flags={0}, vertex={1}, bone_id={2},"\
+                " reference_count={3}>".format(
                 self.flags,
                 self._vertex,
-                self.boneId,
-                self.referenceCount
+                self.bone_id,
+                self.reference_count
                 )
 
     def __hash__(self):
         return (hash(self.vertex)
                 #^ hash(self.flags)
-                #^ hash(self.boneId)
-                #^ hash(self.referenceCount)
+                #^ hash(self.bone_id)
+                #^ hash(self.reference_count)
                 )
 
     def __eq__(self, other):
         return ((self.vertex == other.vertex)
                 #and (self.flags == other.flags)
-                #and (self.boneId == other.boneId)
-                #and (self.referenceCount == other.referenceCount)
+                #and (self.bone_id == other.bone_id)
+                #and (self.reference_count == other.reference_count)
                 )
 
 
@@ -372,103 +392,83 @@ class ms3d_vertex_t:
     def vertex(self):
         return self._vertex
 
+    @property
+    def vertex_ex_object(self):
+        return self._vertex_ex_object
+
 
     def read(self, file):
-        self.flags = read_byte(file)
-        self._vertex = read_array(file, read_float, 3)
-        self.boneId = read_char(file)
-        self.referenceCount = read_byte(file)
+        self.flags = Ms3dIo.read_byte(file)
+        self._vertex = Ms3dIo.read_array(file, Ms3dIo.read_float, 3)
+        self.bone_id = Ms3dIo.read_sbyte(file)
+        self.reference_count = Ms3dIo.read_byte(file)
         return self
 
     def write(self, file):
-        write_byte(file, self.flags)
-        write_array(file, write_float, 3, self.vertex)
-        write_char(file, self.boneId)
-        write_byte(file, self.referenceCount)
+        Ms3dIo.write_byte(file, self.flags)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 3, self.vertex)
+        Ms3dIo.write_sbyte(file, self.bone_id)
+        Ms3dIo.write_byte(file, self.reference_count)
 
 
 ###############################################################################
-class ms3d_triangle_t:
+class Ms3dTriangle:
+    """ Ms3dTriangle """
     """
-    ms3d_triangle_t
-    """
-    #word flags; // FLAG_NONE | FLAG_SELECTED | FLAG_SELECTED2 | FLAG_HIDDEN
-    #word vertexIndices[3];
-    #float vertexNormals[3][3];
-    #float s[3];
-    #float t[3];
-    #byte smoothingGroup; // 1 - 32
-    #byte groupIndex;
+    __slots__ was taking out,
+    to be able to inject additional attributes during runtime
     __slots__ = (
-            PROP_NAME_FLAGS,
-            "_vertexIndices",
-            "_vertexNormals",
-            "_s",
-            "_t",
-            "smoothingGroup",
-            "groupIndex"
+            'flags',
+            'smoothing_group',
+            'group_index',
+            '_vertex_indices',
+            '_vertex_normals',
+            '_s',
+            '_t',
             )
+    """
 
     def __init__(
             self,
-            defaultFlags=FLAG_NONE,
-            defaultVertexIndices=(0, 0, 0),
-            defaultVertexNormals=(
+            default_flags=Ms3dSpec.DEFAULT_FLAGS,
+            default_vertex_indices=(0, 0, 0),
+            default_vertex_normals=(
                     (0.0, 0.0, 0.0),
                     (0.0, 0.0, 0.0),
                     (0.0, 0.0, 0.0)),
-            defaultS=(0.0, 0.0, 0.0),
-            defaultT=(0.0, 0.0, 0.0),
-            defaultSmoothingGroup=1,
-            defaultGroupIndex=0
+            default_s=(0.0, 0.0, 0.0),
+            default_t=(0.0, 0.0, 0.0),
+            default_smoothing_group=Ms3dSpec.DEFAULT_TRIANGLE_SMOOTHING_GROUP,
+            default_group_index=Ms3dSpec.DEFAULT_TRIANGLE_GROUP
             ):
-        """
-        initialize
-
-        :arg flags: selection flag
-        :type flags: :class:`word`
-        :arg vertexIndices: vertex indices
-        :type vertexIndices: :class:`word[3]`
-        :arg vertexNormals: vertex normales
-        :type vertexNormals: :class:`float[3][3]`
-        :arg s: s-component
-        :type s: :class:`float[3]`
-        :arg t: t-component
-        :type t: :class:`float[3]`
-        :arg smoothingGroup: smooth group
-        :type smoothingGroup: :class:`byte`
-        :arg groupIndex: group index
-        :type groupIndex: :class:`byte`
-        """
-
-        self.flags = defaultFlags
-        self._vertexIndices = defaultVertexIndices
-        self._vertexNormals = defaultVertexNormals
-        self._s = defaultS
-        self._t = defaultT
-        self.smoothingGroup = defaultSmoothingGroup
-        self.groupIndex = defaultGroupIndex
+        self.flags = default_flags
+        self._vertex_indices = default_vertex_indices
+        self._vertex_normals = default_vertex_normals
+        self._s = default_s
+        self._t = default_t
+        self.smoothing_group = default_smoothing_group
+        self.group_index = default_group_index
 
     def __repr__(self):
-        return "\n<flags={0}, vertexIndices={1}, vertexNormals={2}, s={3},"\
-                " t={4}, smoothingGroup={5}, groupIndex={6}>".format(
+        return "\n<flags={0}, vertex_indices={1}, vertex_normals={2}, s={3},"\
+                " t={4}, smoothing_group={5}, group_index={6}>".format(
                 self.flags,
-                self.vertexIndices,
-                self.vertexNormals,
+                self.vertex_indices,
+                self.vertex_normals,
                 self.s,
                 self.t,
-                self.smoothingGroup,
-                self.groupIndex
+                self.smoothing_group,
+                self.group_index
                 )
 
 
     @property
-    def vertexIndices(self):
-        return self._vertexIndices
+    def vertex_indices(self):
+        return self._vertex_indices
 
     @property
-    def vertexNormals(self):
-        return self._vertexNormals
+    def vertex_normals(self):
+        return self._vertex_normals
 
     @property
     def s(self):
@@ -480,201 +480,166 @@ class ms3d_triangle_t:
 
 
     def read(self, file):
-        self.flags = read_word(file)
-        self._vertexIndices = read_array(file, read_word, 3)
-        self._vertexNormals = read_array2(file, read_float, 3, 3)
-        self._s = read_array(file, read_float, 3)
-        self._t = read_array(file, read_float, 3)
-        self.smoothingGroup = read_byte(file)
-        self.groupIndex = read_byte(file)
+        self.flags = Ms3dIo.read_word(file)
+        self._vertex_indices = Ms3dIo.read_array(file, Ms3dIo.read_word, 3)
+        self._vertex_normals = Ms3dIo.read_array2(file, Ms3dIo.read_float, 3, 3)
+        self._s = Ms3dIo.read_array(file, Ms3dIo.read_float, 3)
+        self._t = Ms3dIo.read_array(file, Ms3dIo.read_float, 3)
+        self.smoothing_group = Ms3dIo.read_byte(file)
+        self.group_index = Ms3dIo.read_byte(file)
         return self
 
     def write(self, file):
-        write_word(file, self.flags)
-        write_array(file, write_word, 3, self.vertexIndices)
-        write_array2(file, write_float, 3, 3, self.vertexNormals)
-        write_array(file, write_float, 3, self.s)
-        write_array(file, write_float, 3, self.t)
-        write_byte(file, self.smoothingGroup)
-        write_byte(file, self.groupIndex)
+        Ms3dIo.write_word(file, self.flags)
+        Ms3dIo.write_array(file, Ms3dIo.write_word, 3, self.vertex_indices)
+        Ms3dIo.write_array2(file, Ms3dIo.write_float, 3, 3, self.vertex_normals)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 3, self.s)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 3, self.t)
+        Ms3dIo.write_byte(file, self.smoothing_group)
+        Ms3dIo.write_byte(file, self.group_index)
 
 
 ###############################################################################
-class ms3d_group_t:
+class Ms3dGroup:
+    """ Ms3dGroup """
     """
-    ms3d_group_t
-    """
-    #byte flags; // FLAG_NONE | FLAG_SELECTED | FLAG_HIDDEN
-    #char name[32];
-    #word numtriangles;
-    #word triangleIndices[numtriangles]; // the groups group the triangles
-    #char materialIndex; // -1 = no material
+    __slots__ was taking out,
+    to be able to inject additional attributes during runtime
     __slots__ = (
-            PROP_NAME_FLAGS,
-            PROP_NAME_NAME,
-            "_numtriangles",
-            "_triangleIndices",
-            "materialIndex"
+            'flags',
+            'name',
+            'material_index',
+            '_triangle_indices',
+            '_comment_object', # Ms3dComment
             )
+    """
 
     def __init__(
             self,
-            defaultFlags=FLAG_NONE,
-            defaultName="",
-            defaultNumtriangles=0,
-            defaultTriangleIndices=None,
-            defaultMaterialIndex=-1
+            default_flags=Ms3dSpec.DEFAULT_FLAGS,
+            default_name="",
+            default_triangle_indices=None,
+            default_material_index=Ms3dSpec.DEFAULT_GROUP_MATERIAL_INDEX,
+            default_comment_object=None, # Ms3dComment
             ):
-        """
-        initialize
+        if (default_name is None):
+            default_name = ""
 
-        :arg flags: selection flag
-        :type flags: :class:`byte`
-        :arg name: name
-        :type name: :class:`string`
-        :arg numtriangles: number of triangles
-        :type numtriangles: :class:`word`
-        :arg triangleIndices: array of triangle indices
-        :type triangleIndices: :class:`word`
-        :arg materialIndex: material index
-        :type materialIndex: :class:`char`
-        """
+        if (default_triangle_indices is None):
+            default_triangle_indices = []
 
-        if (defaultName is None):
-            defaultName = ""
+        self.flags = default_flags
+        self.name = default_name
+        self._triangle_indices = default_triangle_indices
+        self.material_index = default_material_index
 
-        if (defaultTriangleIndices is None):
-            defaultTriangleIndices = []
-
-        self.flags = defaultFlags
-        self.name = defaultName
-        #self._numtriangles = defaultNumtriangles
-        self._triangleIndices = defaultTriangleIndices
-        self.materialIndex = defaultMaterialIndex
+        if default_comment_object is None:
+            default_comment_object = Ms3dCommentEx()
+        self._comment_object = default_comment_object # Ms3dComment
 
     def __repr__(self):
-        return "\n<flags={0}, name='{1}', numtriangles={2},"\
-                " triangleIndices={3}, materialIndex={4}>".format(
+        return "\n<flags={0}, name='{1}', number_triangles={2},"\
+                " triangle_indices={3}, material_index={4}>".format(
                 self.flags,
                 self.name,
-                self.numtriangles,
-                self.triangleIndices,
-                self.materialIndex
+                self.number_triangles,
+                self.triangle_indices,
+                self.material_index
                 )
 
 
     @property
-    def numtriangles(self):
-        if self.triangleIndices is None:
+    def number_triangles(self):
+        if self.triangle_indices is None:
             return 0
-        return len(self.triangleIndices)
+        return len(self.triangle_indices)
 
     @property
-    def triangleIndices(self):
-        return self._triangleIndices
+    def triangle_indices(self):
+        return self._triangle_indices
+
+    @property
+    def comment_object(self):
+        return self._comment_object
 
 
     def read(self, file):
-        self.flags = read_byte(file)
-        self.name = read_string(file, LENGTH_NAME)
-        _numtriangles = read_word(file)
-        self._triangleIndices = read_array(file, read_word, _numtriangles)
-        self.materialIndex = read_char(file)
+        self.flags = Ms3dIo.read_byte(file)
+        self.name = Ms3dIo.read_string(file, Ms3dIo.LENGTH_NAME)
+        _number_triangles = Ms3dIo.read_word(file)
+        self._triangle_indices = Ms3dIo.read_array(
+                file, Ms3dIo.read_word, _number_triangles)
+        self.material_index = Ms3dIo.read_sbyte(file)
         return self
 
     def write(self, file):
-        write_byte(file, self.flags)
-        write_string(file, LENGTH_NAME, self.name)
-        write_word(file, self.numtriangles)
-        write_array(file, write_word, self.numtriangles, self.triangleIndices)
-        write_char(file, self.materialIndex)
+        Ms3dIo.write_byte(file, self.flags)
+        Ms3dIo.write_string(file, Ms3dIo.LENGTH_NAME, self.name)
+        Ms3dIo.write_word(file, self.number_triangles)
+        Ms3dIo.write_array(
+                file, Ms3dIo.write_word, self.number_triangles,
+                self.triangle_indices)
+        Ms3dIo.write_sbyte(file, self.material_index)
 
 
 ###############################################################################
-class ms3d_material_t:
+class Ms3dMaterial:
+    """ Ms3dMaterial """
     """
-    ms3d_material_t
-    """
-    #char name[LENGTH_NAME];
-    #float ambient[4];
-    #float diffuse[4];
-    #float specular[4];
-    #float emissive[4];
-    #float shininess; // 0.0f - 128.0f
-    #float transparency; // 0.0f - 1.0f
-    #char mode; // 0, 1, 2 is unused now
-    #char texture[LENGTH_FILENAME]; // texture.bmp
-    #char alphamap[LENGTH_FILENAME]; // alpha.bmp
+    __slots__ was taking out,
+    to be able to inject additional attributes during runtime
     __slots__ = (
-            PROP_NAME_NAME,
-            "_ambient",
-            "_diffuse",
-            "_specular",
-            "_emissive",
-            "shininess",
-            "transparency",
-            PROP_NAME_MODE,
-            PROP_NAME_TEXTURE,
-            PROP_NAME_ALPHAMAP
+            'name',
+            'shininess',
+            'transparency',
+            'mode',
+            'texture',
+            'alphamap',
+            '_ambient',
+            '_diffuse',
+            '_specular',
+            '_emissive',
+            '_comment_object', # Ms3dComment
             )
-
+    """
+    
     def __init__(
             self,
-            defaultName="",
-            defaultAmbient=(0.0, 0.0, 0.0, 0.0),
-            defaultDiffuse=(0.0, 0.0, 0.0, 0.0),
-            defaultSpecular=(0.0, 0.0, 0.0, 0.0),
-            defaultEmissive=(0.0, 0.0, 0.0, 0.0),
-            defaultShininess=0.0,
-            defaultTransparency=0.0,
-            defaultMode=0,
-            defaultTexture="",
-            defaultAlphamap=""
+            default_name="",
+            default_ambient=(0.0, 0.0, 0.0, 0.0),
+            default_diffuse=(0.0, 0.0, 0.0, 0.0),
+            default_specular=(0.0, 0.0, 0.0, 0.0),
+            default_emissive=(0.0, 0.0, 0.0, 0.0),
+            default_shininess=0.0,
+            default_transparency=0.0,
+            default_mode=Ms3dSpec.DEFAULT_MATERIAL_MODE,
+            default_texture="",
+            default_alphamap="",
+            default_comment_object=None, # Ms3dComment
             ):
-        """
-        initialize
+        if (default_name is None):
+            default_name = ""
 
-        :arg name: name
-        :type name: :class:`string`
-        :arg ambient: ambient
-        :type ambient: :class:`float[4]`
-        :arg diffuse: diffuse
-        :type diffuse: :class:`float[4]`
-        :arg specular: specular
-        :type specular: :class:`float[4]`
-        :arg emissive: emissive
-        :type emissive: :class:`float[4]`
-        :arg shininess: shininess
-        :type shininess: :class:`float`
-        :arg transparency: transparency
-        :type transparency: :class:`float`
-        :arg mode: mode
-        :type mode: :class:`char`
-        :arg texture: texture name
-        :type texture: :class:`string`
-        :arg alphamap: alphamap name
-        :type alphamap: :class:`string`
-        """
+        if (default_texture is None):
+            default_texture = ""
 
-        if (defaultName is None):
-            defaultName = ""
+        if (default_alphamap is None):
+            default_alphamap = ""
 
-        if (defaultTexture is None):
-            defaultTexture = ""
+        self.name = default_name
+        self._ambient = default_ambient
+        self._diffuse = default_diffuse
+        self._specular = default_specular
+        self._emissive = default_emissive
+        self.shininess = default_shininess
+        self.transparency = default_transparency
+        self.mode = default_mode
+        self.texture = default_texture
+        self.alphamap = default_alphamap
 
-        if (defaultAlphamap is None):
-            defaultAlphamap = ""
-
-        self.name = defaultName
-        self._ambient = defaultAmbient
-        self._diffuse = defaultDiffuse
-        self._specular = defaultSpecular
-        self._emissive = defaultEmissive
-        self.shininess = defaultShininess
-        self.transparency = defaultTransparency
-        self.mode = defaultMode
-        self.texture = defaultTexture
-        self.alphamap = defaultAlphamap
+        if default_comment_object is None:
+            default_comment_object = Ms3dCommentEx()
+        self._comment_object = default_comment_object # Ms3dComment
 
     def __repr__(self):
         return "\n<name='{0}', ambient={1}, diffuse={2}, specular={3},"\
@@ -741,61 +706,52 @@ class ms3d_material_t:
     def emissive(self):
         return self._emissive
 
+    @property
+    def comment_object(self):
+        return self._comment_object
+
 
     def read(self, file):
-        self.name = read_string(file, LENGTH_NAME)
-        self._ambient = read_array(file, read_float, 4)
-        self._diffuse = read_array(file, read_float, 4)
-        self._specular = read_array(file, read_float, 4)
-        self._emissive = read_array(file, read_float, 4)
-        self.shininess = read_float(file)
-        self.transparency = read_float(file)
-        self.mode = read_char(file)
-        self.texture = read_string(file, LENGTH_FILENAME)
-        self.alphamap = read_string(file, LENGTH_FILENAME)
+        self.name = Ms3dIo.read_string(file, Ms3dIo.LENGTH_NAME)
+        self._ambient = Ms3dIo.read_array(file, Ms3dIo.read_float, 4)
+        self._diffuse = Ms3dIo.read_array(file, Ms3dIo.read_float, 4)
+        self._specular = Ms3dIo.read_array(file, Ms3dIo.read_float, 4)
+        self._emissive = Ms3dIo.read_array(file, Ms3dIo.read_float, 4)
+        self.shininess = Ms3dIo.read_float(file)
+        self.transparency = Ms3dIo.read_float(file)
+        self.mode = Ms3dIo.read_sbyte(file)
+        self.texture = Ms3dIo.read_string(file, Ms3dIo.LENGTH_FILENAME)
+        self.alphamap = Ms3dIo.read_string(file, Ms3dIo.LENGTH_FILENAME)
         return self
 
     def write(self, file):
-        write_string(file, LENGTH_NAME, self.name)
-        write_array(file, write_float, 4, self.ambient)
-        write_array(file, write_float, 4, self.diffuse)
-        write_array(file, write_float, 4, self.specular)
-        write_array(file, write_float, 4, self.emissive)
-        write_float(file, self.shininess)
-        write_float(file, self.transparency)
-        write_char(file, self.mode)
-        write_string(file, LENGTH_FILENAME, self.texture)
-        write_string(file, LENGTH_FILENAME, self.alphamap)
+        Ms3dIo.write_string(file, Ms3dIo.LENGTH_NAME, self.name)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 4, self.ambient)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 4, self.diffuse)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 4, self.specular)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 4, self.emissive)
+        Ms3dIo.write_float(file, self.shininess)
+        Ms3dIo.write_float(file, self.transparency)
+        Ms3dIo.write_sbyte(file, self.mode)
+        Ms3dIo.write_string(file, Ms3dIo.LENGTH_FILENAME, self.texture)
+        Ms3dIo.write_string(file, Ms3dIo.LENGTH_FILENAME, self.alphamap)
 
 
 ###############################################################################
-class ms3d_keyframe_rot_t:
-    """
-    ms3d_keyframe_rot_t
-    """
-    #float time; // time in seconds
-    #float rotation[3]; // x, y, z angles
+class Ms3dRotationKeyframe:
+    """ Ms3dRotationKeyframe """
     __slots__ = (
-            "time",
-            "_rotation"
+            'time',
+            '_rotation',
             )
 
     def __init__(
             self,
-            defaultTime=0.0,
-            defaultRotation=(0.0, 0.0, 0.0)
+            default_time=0.0,
+            default_rotation=(0.0, 0.0, 0.0)
             ):
-        """
-        initialize
-
-        :arg time: time
-        :type time: :class:float`
-        :arg rotation: rotation
-        :type rotation: :class:`float[3]`
-        """
-
-        self.time = defaultTime
-        self._rotation = defaultRotation
+        self.time = default_time
+        self._rotation = default_rotation
 
     def __repr__(self):
         return "\n<time={0}, rotation={1}>".format(
@@ -810,43 +766,30 @@ class ms3d_keyframe_rot_t:
 
 
     def read(self, file):
-        self.time = read_float(file)
-        self._rotation = read_array(file, read_float, 3)
+        self.time = Ms3dIo.read_float(file)
+        self._rotation = Ms3dIo.read_array(file, Ms3dIo.read_float, 3)
         return self
 
     def write(self, file):
-        write_float(file, self.time)
-        write_array(file, write_float, 3, self.rotation)
+        Ms3dIo.write_float(file, self.time)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 3, self.rotation)
 
 
 ###############################################################################
-class ms3d_keyframe_pos_t:
-    """
-    ms3d_keyframe_pos_t
-    """
-    #float time; // time in seconds
-    #float position[3]; // local position
+class Ms3dTranslationKeyframe:
+    """ Ms3dTranslationKeyframe """
     __slots__ = (
-            "time",
-            "_position"
+            'time',
+            '_position',
             )
 
     def __init__(
             self,
-            defaultTime=0.0,
-            defaultPosition=(0.0, 0.0, 0.0)
+            default_time=0.0,
+            default_position=(0.0, 0.0, 0.0)
             ):
-        """
-        initialize
-
-        :arg time: time
-        :type time: :class:`float`
-        :arg position: position
-        :type position: :class:`float[3]`
-        """
-
-        self.time = defaultTime
-        self._position = defaultPosition
+        self.time = default_time
+        self._position = default_position
 
     def __repr__(self):
         return "\n<time={0}, position={1}>".format(
@@ -861,113 +804,88 @@ class ms3d_keyframe_pos_t:
 
 
     def read(self, file):
-        self.time = read_float(file)
-        self._position = read_array(file, read_float, 3)
+        self.time = Ms3dIo.read_float(file)
+        self._position = Ms3dIo.read_array(file, Ms3dIo.read_float, 3)
         return self
 
     def write(self, file):
-        write_float(file, self.time)
-        write_array(file, write_float, 3, self.position)
+        Ms3dIo.write_float(file, self.time)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 3, self.position)
 
 
 ###############################################################################
-class ms3d_joint_t:
+class Ms3dJoint:
+    """ Ms3dJoint """
     """
-    ms3d_joint_t
-    """
-    #byte flags; // FLAG_NONE | FLAG_SELECTED | FLAG_DIRTY
-    #char name[LENGTH_NAME];
-    #char parentName[LENGTH_NAME];
-    #float rotation[3]; // local reference matrix
-    #float position[3];
-    #word numKeyFramesRot;
-    #word numKeyFramesTrans;
-    #// local animation matrices
-    #ms3d_keyframe_rot_t keyFramesRot[numKeyFramesRot];
-    #// local animation matrices
-    #ms3d_keyframe_pos_t keyFramesTrans[numKeyFramesTrans];
+    __slots__ was taking out,
+    to be able to inject additional attributes during runtime
     __slots__ = (
-            PROP_NAME_FLAGS,
-            PROP_NAME_NAME,
-            PROP_NAME_PARENTNAME,
-            "_rotation",
-            "_position",
-            "_numKeyFramesRot",
-            "_numKeyFramesTrans",
-            "_keyFramesRot",
-            "_keyFramesTrans"
+            'flags',
+            'name',
+            'parent_name',
+            '_rotation',
+            '_position',
+            '_rotation_keyframes',
+            '_translation_keyframes',
+            '_joint_ex_object', # Ms3dJointEx
+            '_comment_object', # Ms3dComment
             )
+    """
 
     def __init__(
             self,
-            defaultFlags=FLAG_NONE,
-            defaultName="",
-            defaultParentName="",
-            defaultRotation=(0.0, 0.0, 0.0),
-            defaultPosition=(0.0, 0.0, 0.0),
-            defaultNumKeyFramesRot=0,
-            defaultNumKeyFramesTrans=0,
-            defaultKeyFramesRot=None,
-            defaultKeyFramesTrans=None
+            default_flags=Ms3dSpec.DEFAULT_FLAGS,
+            default_name="",
+            default_parent_name="",
+            default_rotation=(0.0, 0.0, 0.0),
+            default_position=(0.0, 0.0, 0.0),
+            default_rotation_keyframes=None,
+            default_translation_keyframes=None,
+            default_joint_ex_object=None, # Ms3dJointEx
+            default_comment_object=None, # Ms3dComment
             ):
-        """
-        initialize
+        if (default_name is None):
+            default_name = ""
 
-        :arg flags: flags
-        :type flags: :class:`byte`
-        :arg name: name
-        :type name: :class:`string`
-        :arg parentName: parentName
-        :type parentName: :class:`string`
-        :arg rotation: rotation
-        :type rotation: :class:`float[3]`
-        :arg position: position
-        :type position: :class:`float[3]`
-        :arg numKeyFramesRot: numKeyFramesRot
-        :type numKeyFramesRot: :class:`word`
-        :arg numKeyFramesTrans: numKeyFramesTrans
-        :type numKeyFramesTrans: :class:`word`
-        :arg keyFramesRot: keyFramesRot
-        :type nkeyFramesRotame: :class:`ms3d_spec.ms3d_keyframe_rot_t[]`
-        :arg keyFramesTrans: keyFramesTrans
-        :type keyFramesTrans: :class:`ms3d_spec.ms3d_keyframe_pos_t[]`
-        """
+        if (default_parent_name is None):
+            default_parent_name = ""
 
-        if (defaultName is None):
-            defaultName = ""
+        if (default_rotation_keyframes is None):
+            default_rotation_keyframes = [] #Ms3dRotationKeyframe()
 
-        if (defaultParentName is None):
-            defaultParentName = ""
+        if (default_translation_keyframes is None):
+            default_translation_keyframes = [] #Ms3dTranslationKeyframe()
 
-        if (defaultKeyFramesRot is None):
-            defaultKeyFramesRot = [] #ms3d_keyframe_rot_t()
+        self.flags = default_flags
+        self.name = default_name
+        self.parent_name = default_parent_name
+        self._rotation = default_rotation
+        self._position = default_position
+        self._rotation_keyframes = default_rotation_keyframes
+        self._translation_keyframes = default_translation_keyframes
 
-        if (defaultKeyFramesTrans is None):
-            defaultKeyFramesTrans = [] #ms3d_keyframe_pos_t()
+        if default_comment_object is None:
+            default_comment_object = Ms3dCommentEx()
+        self._comment_object = default_comment_object # Ms3dComment
 
-        self.flags = defaultFlags
-        self.name = defaultName
-        self.parentName = defaultParentName
-        self._rotation = defaultRotation
-        self._position = defaultPosition
-        #self._numKeyFramesRot = defaultNumKeyFramesRot
-        #self._numKeyFramesTrans = defaultNumKeyFramesTrans
-        self._keyFramesRot = defaultKeyFramesRot
-        self._keyFramesTrans = defaultKeyFramesTrans
+        if default_joint_ex_object is None:
+            default_joint_ex_object = Ms3dJointEx()
+        self._joint_ex_object = default_joint_ex_object # Ms3dJointEx
 
     def __repr__(self):
-        return "\n<flags={0}, name='{1}', parentName='{2}', rotation={3},"\
-                " position={4}, numKeyFramesRot={5}, numKeyFramesTrans={6},"\
-                " keyFramesRot={7}, keyFramesTrans={8}>".format(
+        return "\n<flags={0}, name='{1}', parent_name='{2}', rotation={3},"\
+                " position={4}, number_rotation_keyframes={5},"\
+                " number_translation_keyframes={6},"\
+                " rotation_key_frames={7}, translation_key_frames={8}>".format(
                 self.flags,
                 self.name,
-                self.parentName,
+                self.parent_name,
                 self.rotation,
                 self.position,
-                self.numKeyFramesRot,
-                self.numKeyFramesTrans,
-                self.keyFramesRot,
-                self.keyFramesTrans
+                self.number_rotation_keyframes,
+                self.number_translation_keyframes,
+                self.rotation_key_frames,
+                self.translation_key_frames
                 )
 
 
@@ -980,404 +898,400 @@ class ms3d_joint_t:
         return self._position
 
     @property
-    def numKeyFramesRot(self):
-        if self.keyFramesRot is None:
+    def number_rotation_keyframes(self):
+        if self.rotation_key_frames is None:
             return 0
-        return len(self.keyFramesRot)
+        return len(self.rotation_key_frames)
 
     @property
-    def numKeyFramesTrans(self):
-        if self.keyFramesTrans is None:
+    def number_translation_keyframes(self):
+        if self.translation_key_frames is None:
             return 0
-        return len(self.keyFramesTrans)
+        return len(self.translation_key_frames)
 
     @property
-    def keyFramesRot(self):
-        return self._keyFramesRot
+    def rotation_key_frames(self):
+        return self._rotation_keyframes
 
     @property
-    def keyFramesTrans(self):
-        return self._keyFramesTrans
+    def translation_key_frames(self):
+        return self._translation_keyframes
+
+
+    @property
+    def joint_ex_object(self):
+        return self._joint_ex_object
+
+
+    @property
+    def comment_object(self):
+        return self._comment_object
 
 
     def read(self, file):
-        self.flags = read_byte(file)
-        self.name = read_string(file, LENGTH_NAME)
-        self.parentName = read_string(file, LENGTH_NAME)
-        self._rotation = read_array(file, read_float, 3)
-        self._position = read_array(file, read_float, 3)
-        _numKeyFramesRot = read_word(file)
-        _numKeyFramesTrans = read_word(file)
-        self._keyFramesRot = []
-        for i in range(_numKeyFramesRot):
-            self.keyFramesRot.append(ms3d_keyframe_rot_t().read(file))
-        self._keyFramesTrans = []
-        for i in range(_numKeyFramesTrans):
-            self.keyFramesTrans.append(ms3d_keyframe_pos_t().read(file))
+        self.flags = Ms3dIo.read_byte(file)
+        self.name = Ms3dIo.read_string(file, Ms3dIo.LENGTH_NAME)
+        self.parent_name = Ms3dIo.read_string(file, Ms3dIo.LENGTH_NAME)
+        self._rotation = Ms3dIo.read_array(file, Ms3dIo.read_float, 3)
+        self._position = Ms3dIo.read_array(file, Ms3dIo.read_float, 3)
+        _number_rotation_keyframes = Ms3dIo.read_word(file)
+        _number_translation_keyframes = Ms3dIo.read_word(file)
+        self._rotation_keyframes = []
+        for i in range(_number_rotation_keyframes):
+            self.rotation_key_frames.append(Ms3dRotationKeyframe().read(file))
+        self._translation_keyframes = []
+        for i in range(_number_translation_keyframes):
+            self.translation_key_frames.append(
+                    Ms3dTranslationKeyframe().read(file))
         return self
 
     def write(self, file):
-        write_byte(file, self.flags)
-        write_string(file, LENGTH_NAME, self.name)
-        write_string(file, LENGTH_NAME, self.parentName)
-        write_array(file, write_float, 3, self.rotation)
-        write_array(file, write_float, 3, self.position)
-        write_word(file, self.numKeyFramesRot)
-        write_word(file, self.numKeyFramesTrans)
-        for i in range(self.numKeyFramesRot):
-            self.keyFramesRot[i].write(file)
-        for i in range(self.numKeyFramesTrans):
-            self.keyFramesTrans[i].write(file)
+        Ms3dIo.write_byte(file, self.flags)
+        Ms3dIo.write_string(file, Ms3dIo.LENGTH_NAME, self.name)
+        Ms3dIo.write_string(file, Ms3dIo.LENGTH_NAME, self.parent_name)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 3, self.rotation)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 3, self.position)
+        Ms3dIo.write_word(file, self.number_rotation_keyframes)
+        Ms3dIo.write_word(file, self.number_translation_keyframes)
+        for i in range(self.number_rotation_keyframes):
+            self.rotation_key_frames[i].write(file)
+        for i in range(self.number_translation_keyframes):
+            self.translation_key_frames[i].write(file)
 
 
 ###############################################################################
-class ms3d_comment_t:
-    """
-    ms3d_comment_t
-    """
-    #int index; // index of group, material or joint
-    #int commentLength; // length of comment (terminating '\0' is not saved),
-    #    "MC" has comment length of 2 (not 3)
-    #char comment[commentLength]; // comment
+class Ms3dCommentEx:
+    """ Ms3dCommentEx """
     __slots__ = (
-            "index",
-            "_commentLength",
-            PROP_NAME_COMMENT
+            'index',
+            'comment',
             )
 
     def __init__(
             self,
-            defaultIndex=0,
-            defaultCommentLength=0,
-            defaultComment=""
+            default_index=0,
+            default_comment=""
             ):
-        """
-        initialize
+        if (default_comment is None):
+            default_comment = ""
 
-        :arg index: index
-        :type index: :class:`dword`
-        :arg commentLength: commentLength
-        :type commentLength: :class:`dword`
-        :arg comment: comment
-        :type comment: :class:`string`
-        """
-
-        if (defaultComment is None):
-            defaultComment = ""
-
-        self.index = defaultIndex
-        #self._commentLength = defaultCommentLength
-        self.comment = defaultComment
+        self.index = default_index
+        self.comment = default_comment
 
     def __repr__(self):
-        return "\n<index={0}, commentLength={1}, comment={2}>".format(
+        return "\n<index={0}, comment_length={1}, comment={2}>".format(
                 self.index,
-                self.commentLength,
+                self.comment_length,
                 self.comment
                 )
 
 
     @property
-    def commentLength(self):
+    def comment_length(self):
         if self.comment is None:
             return 0
         return len(self.comment)
 
 
     def read(self, file):
-        self.index = read_dword(file)
-        _commentLength = read_dword(file)
-        self.comment = read_string(file, _commentLength)
+        self.index = Ms3dIo.read_dword(file)
+        _comment_length = Ms3dIo.read_dword(file)
+        self.comment = Ms3dIo.read_string(file, _comment_length)
         return self
 
     def write(self, file):
-        write_dword(file, self.index)
-        write_dword(file, self.commentLength)
-        write_string(file, self.commentLength, self.comment)
+        Ms3dIo.write_dword(file, self.index)
+        Ms3dIo.write_dword(file, self.comment_length)
+        Ms3dIo.write_string(file, self.comment_length, self.comment)
 
 
 ###############################################################################
-class ms3d_modelcomment_t:
-    """
-    ms3d_modelcomment_t
-    """
-    #int commentLength; // length of comment (terminating '\0' is not saved),
-    #    "MC" has comment length of 2 (not 3)
-    #char comment[commentLength]; // comment
+class Ms3dComment:
+    """ Ms3dComment """
     __slots__ = (
-            "_commentLength",
-            PROP_NAME_COMMENT
+            'comment',
             )
 
     def __init__(
             self,
-            defaultCommentLength=0,
-            defaultComment=""
+            default_comment=""
             ):
-        """
-        initialize
+        if (default_comment is None):
+            default_comment = ""
 
-        :arg commentLength: commentLength
-        :type commentLength: :class:`dword`
-        :arg comment: comment
-        :type comment: :class:`string`
-        """
-
-        if (defaultComment is None):
-            defaultComment = ""
-
-        #self._commentLength = defaultCommentLength
-        self.comment = defaultComment
+        self.comment = default_comment
 
     def __repr__(self):
-        return "\n<commentLength={0}, comment={1}>".format(
-                self.commentLength,
+        return "\n<comment_length={0}, comment={1}>".format(
+                self.comment_length,
                 self.comment
                 )
 
 
     @property
-    def commentLength(self):
+    def comment_length(self):
         if self.comment is None:
             return 0
         return len(self.comment)
 
 
     def read(self, file):
-        _commentLength = read_dword(file)
-        self.comment = read_string(file, _commentLength)
+        _comment_length = Ms3dIo.read_dword(file)
+        self.comment = Ms3dIo.read_string(file, _comment_length)
         return self
 
     def write(self, file):
-        write_dword(file, self.commentLength)
-        write_string(file, self.commentLength, self.comment)
+        Ms3dIo.write_dword(file, self.comment_length)
+        Ms3dIo.write_string(file, self.comment_length, self.comment)
 
 
 ###############################################################################
-class ms3d_vertex_ex1_t:
-    """
-    ms3d_vertex_ex1_t
-    """
-    #char boneIds[3]; // index of joint or -1, if -1, then that weight is
-    #    ignored, since subVersion 1
-    #byte weights[3]; // vertex weight ranging from 0 - 255, last weight is
-    #    computed by 1.0 - sum(all weights), since subVersion 1
-    #// weight[0] is the weight for boneId in ms3d_vertex_t
-    #// weight[1] is the weight for boneIds[0]
-    #// weight[2] is the weight for boneIds[1]
-    #// 1.0f - weight[0] - weight[1] - weight[2] is the weight for boneIds[2]
+class Ms3dVertexEx1:
+    """ Ms3dVertexEx1 """
     __slots__ = (
-            "_boneIds",
-            "_weights"
+            '_bone_ids',
+            '_weights',
             )
 
     def __init__(
             self,
-            defaultBoneIds=(-1, -1, -1),
-            defaultWeights=(0, 0, 0)
+            default_bone_ids=(
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID,
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID,
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID),
+            default_weights=(0, 0, 0)
             ):
-        """
-        initialize
-
-        :arg boneIds: boneIds
-        :type boneIds: :class:`char[3]`
-        :arg weights: weights
-        :type weights: :class:`byte[3]`
-        """
-
-        self._boneIds = defaultBoneIds
-        self._weights = defaultWeights
+        self._bone_ids = default_bone_ids
+        self._weights = default_weights
 
     def __repr__(self):
-        return "\n<boneIds={0}, weights={1}>".format(
-                self.boneIds,
+        return "\n<bone_ids={0}, weights={1}>".format(
+                self.bone_ids,
                 self.weights
                 )
 
 
     @property
-    def boneIds(self):
-        return self._boneIds
+    def bone_ids(self):
+        return self._bone_ids
 
     @property
     def weights(self):
         return self._weights
 
 
+    @property
+    def weight_bone_id(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights
+        return 100
+
+    @property
+    def weight_bone_id0(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights[0]
+        return 0
+
+    @property
+    def weight_bone_id1(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights[1]
+        return 0
+
+    @property
+    def weight_bone_id2(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return 100 - (self._weights[0] + self._weights[1] \
+                    + self._weights[2])
+        return 0
+
+
     def read(self, file):
-        self._boneIds = read_array(file, read_char, 3)
-        self._weights = read_array(file, read_byte, 3)
+        self._bone_ids = Ms3dIo.read_array(file, Ms3dIo.read_sbyte, 3)
+        self._weights = Ms3dIo.read_array(file, Ms3dIo.read_byte, 3)
         return self
 
     def write(self, file):
-        write_array(file, write_char, 3, self.boneIds)
-        write_array(file, write_byte, 3, self.weights)
+        Ms3dIo.write_array(file, Ms3dIo.write_sbyte, 3, self.bone_ids)
+        Ms3dIo.write_array(file, Ms3dIo.write_byte, 3, self.weights)
 
 
 ###############################################################################
-class ms3d_vertex_ex2_t:
-    """
-    ms3d_vertex_ex2_t
-    """
-    #char boneIds[3]; // index of joint or -1, if -1, then that weight is
-    #    ignored, since subVersion 1
-    #byte weights[3]; // vertex weight ranging from 0 - 100, last weight is
-    #    computed by 1.0 - sum(all weights), since subVersion 1
-    #// weight[0] is the weight for boneId in ms3d_vertex_t
-    #// weight[1] is the weight for boneIds[0]
-    #// weight[2] is the weight for boneIds[1]
-    #// 1.0f - weight[0] - weight[1] - weight[2] is the weight for boneIds[2]
-    #unsigned int extra; // vertex extra, which can be used as color or
-    #    anything else, since subVersion 2
+class Ms3dVertexEx2:
+    """ Ms3dVertexEx2 """
     __slots__ = (
-            "_boneIds",
-            "_weights",
-            PROP_NAME_EXTRA
+            'extra',
+            '_bone_ids',
+            '_weights',
             )
 
     def __init__(
             self,
-            defaultBoneIds=(-1, -1, -1),
-            defaultWeights=(0, 0, 0),
-            defaultExtra=0
+            default_bone_ids=(
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID,
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID,
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID),
+            default_weights=(0, 0, 0),
+            default_extra=0
             ):
-        """
-        initialize
-
-        :arg boneIds: boneIds
-        :type boneIds: :class:`char[3]`
-        :arg weights: weights
-        :type weights: :class:`byte[3]`
-        :arg extra: extra
-        :type extra: :class:`dword`
-        """
-
-        self._boneIds = defaultBoneIds
-        self._weights = defaultWeights
-        self.extra = defaultExtra
+        self._bone_ids = default_bone_ids
+        self._weights = default_weights
+        self.extra = default_extra
 
     def __repr__(self):
-        return "\n<boneIds={0}, weights={1}, extra={2}>".format(
-                self.boneIds,
+        return "\n<bone_ids={0}, weights={1}, extra={2}>".format(
+                self.bone_ids,
                 self.weights,
                 self.extra
                 )
 
 
     @property
-    def boneIds(self):
-        return self._boneIds
+    def bone_ids(self):
+        return self._bone_ids
 
     @property
     def weights(self):
         return self._weights
 
 
+    @property
+    def weight_bone_id(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights
+        return 100
+
+    @property
+    def weight_bone_id0(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights[0]
+        return 0
+
+    @property
+    def weight_bone_id1(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights[1]
+        return 0
+
+    @property
+    def weight_bone_id2(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return 100 - (self._weights[0] + self._weights[1] \
+                    + self._weights[2])
+        return 0
+
+
     def read(self, file):
-        self._boneIds = read_array(file, read_char, 3)
-        self._weights = read_array(file, read_byte, 3)
-        self.extra = read_dword(file)
+        self._bone_ids = Ms3dIo.read_array(file, Ms3dIo.read_sbyte, 3)
+        self._weights = Ms3dIo.read_array(file, Ms3dIo.read_byte, 3)
+        self.extra = Ms3dIo.read_dword(file)
         return self
 
     def write(self, file):
-        write_array(file, write_char, 3, self.boneIds)
-        write_array(file, write_byte, 3, self.weights)
-        write_dword(file, self.extra)
+        Ms3dIo.write_array(file, Ms3dIo.write_sbyte, 3, self.bone_ids)
+        Ms3dIo.write_array(file, Ms3dIo.write_byte, 3, self.weights)
+        Ms3dIo.write_dword(file, self.extra)
 
 
 ###############################################################################
-class ms3d_vertex_ex3_t:
-    """
-    ms3d_vertex_ex3_t
-    """
-    #char boneIds[3]; // index of joint or -1, if -1, then that weight is
+class Ms3dVertexEx3:
+    """ Ms3dVertexEx3 """
+    #char bone_ids[3]; // index of joint or -1, if -1, then that weight is
     #    ignored, since subVersion 1
     #byte weights[3]; // vertex weight ranging from 0 - 100, last weight is
     #    computed by 1.0 - sum(all weights), since subVersion 1
-    #// weight[0] is the weight for boneId in ms3d_vertex_t
-    #// weight[1] is the weight for boneIds[0]
-    #// weight[2] is the weight for boneIds[1]
-    #// 1.0f - weight[0] - weight[1] - weight[2] is the weight for boneIds[2]
+    #// weight[0] is the weight for bone_id in Ms3dVertex
+    #// weight[1] is the weight for bone_ids[0]
+    #// weight[2] is the weight for bone_ids[1]
+    #// 1.0f - weight[0] - weight[1] - weight[2] is the weight for bone_ids[2]
     #unsigned int extra; // vertex extra, which can be used as color or
     #    anything else, since subVersion 2
     __slots__ = (
-            "_boneIds",
-            "_weights",
-            PROP_NAME_EXTRA
+            'extra',
+            '_bone_ids',
+            '_weights',
             )
 
     def __init__(
             self,
-            defaultBoneIds=(-1, -1, -1),
-            defaultWeights=(0, 0, 0),
-            defaultExtra=0
+            default_bone_ids=(
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID,
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID,
+                    Ms3dSpec.DEFAULT_VERTEX_BONE_ID),
+            default_weights=(0, 0, 0),
+            default_extra=0
             ):
-        """
-        initialize
-
-        :arg boneIds: boneIds
-        :type boneIds: :class:`char[3]`
-        :arg weights: weights
-        :type weights: :class:`byte[3]`
-        :arg extra: extra
-        :type extra: :class:`dword`
-        """
-
-        self._boneIds = defaultBoneIds
-        self._weights = defaultWeights
-        self.extra = defaultExtra
+        self._bone_ids = default_bone_ids
+        self._weights = default_weights
+        self.extra = default_extra
 
     def __repr__(self):
-        return "\n<boneIds={0}, weights={1}, extra={2}>".format(
-                self.boneIds,
+        return "\n<bone_ids={0}, weights={1}, extra={2}>".format(
+                self.bone_ids,
                 self.weights,
                 self.extra
                 )
 
 
     @property
-    def boneIds(self):
-        return self._boneIds
+    def bone_ids(self):
+        return self._bone_ids
 
     @property
     def weights(self):
         return self._weights
 
 
+    @property
+    def weight_bone_id(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights
+        return 100
+
+    @property
+    def weight_bone_id0(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights[0]
+        return 0
+
+    @property
+    def weight_bone_id1(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return self._weights[1]
+        return 0
+
+    @property
+    def weight_bone_id2(self):
+        if self._weights[0] or self._weights[1] or self._weights[2]:
+            return 100 - (self._weights[0] + self._weights[1] \
+                    + self._weights[2])
+        return 0
+
+
     def read(self, file):
-        self._boneIds = read_array(file, read_char, 3)
-        self._weights = read_array(file, read_byte, 3)
-        self.extra = read_dword(file)
+        self._bone_ids = Ms3dIo.read_array(file, Ms3dIo.read_sbyte, 3)
+        self._weights = Ms3dIo.read_array(file, Ms3dIo.read_byte, 3)
+        self.extra = Ms3dIo.read_dword(file)
         return self
 
     def write(self, file):
-        write_array(file, write_char, 3, self.boneIds)
-        write_array(file, write_byte, 3, self.weights)
-        write_dword(file, self.extra)
+        Ms3dIo.write_array(file, Ms3dIo.write_sbyte, 3, self.bone_ids)
+        Ms3dIo.write_array(file, Ms3dIo.write_byte, 3, self.weights)
+        Ms3dIo.write_dword(file, self.extra)
 
 
 ###############################################################################
-class ms3d_joint_ex_t:
-    """
-    ms3d_joint_ex_t
-    """
-    #float color[3]; // joint color, since subVersion == 1
+class Ms3dJointEx:
+    """ Ms3dJointEx """
     __slots__ = (
-            "_color"
+            '_color',
             )
 
     def __init__(
             self,
-            defaultColor=(0.0, 0.0, 0.0)
+            default_color=(0.0, 0.0, 0.0)
             ):
-        """
-        initialize
-
-        :arg color: color
-        :type color: :class:`float[3]`
-        """
-
-        self._color = defaultColor
+        self._color = default_color
 
     def __repr__(self):
         return "\n<color={0}>".format(self.color)
@@ -1389,67 +1303,50 @@ class ms3d_joint_ex_t:
 
 
     def read(self, file):
-        self._color = read_array(file, read_float, 3)
+        self._color = Ms3dIo.read_array(file, Ms3dIo.read_float, 3)
         return self
 
     def write(self, file):
-        write_array(file, write_float, 3, self.color)
+        Ms3dIo.write_array(file, Ms3dIo.write_float, 3, self.color)
 
 
 ###############################################################################
-class ms3d_model_ex_t:
-    """
-    ms3d_model_ex_t
-    """
-    #float jointSize; // joint size, since subVersion == 1
-    #int transparencyMode; // 0 = simple, 1 = depth buffered with alpha ref,
-    #    2 = depth sorted triangles, since subVersion == 1
-    #float alphaRef; // alpha reference value for transparencyMode = 1,
-    #    since subVersion == 1
+class Ms3dModelEx:
+    """ Ms3dModelEx """
     __slots__ = (
-            "jointSize",
-            "transparencyMode",
-            "alphaRef"
+            'joint_size',
+            'transparency_mode',
+            'alpha_ref',
             )
 
     def __init__(
             self,
-            defaultJointSize=0.0,
-            defaultTransparencyMode=0,
-            defaultAlphaRef=0.0
+            default_joint_size=Ms3dSpec.DEFAULT_MODEL_JOINT_SIZE,
+            default_transparency_mode\
+                    =Ms3dSpec.DEFAULT_MODEL_TRANSPARENCY_MODE,
+            default_alpha_ref=0.0
             ):
-        """
-        initialize
-
-        :arg jointSize: jointSize
-        :type jointSize: :class:`float[3]`
-        :arg transparencyMode: transparencyMode
-        :type transparencyMode: :class:`dword`
-        :arg alphaRef: alphaRef
-        :type alphaRef: :class:`float[3]`
-        """
-
-        self.jointSize = defaultJointSize
-        self.transparencyMode = defaultTransparencyMode
-        self.alphaRef = defaultAlphaRef
+        self.joint_size = default_joint_size
+        self.transparency_mode = default_transparency_mode
+        self.alpha_ref = default_alpha_ref
 
     def __repr__(self):
-        return "\n<jointSize={0}, transparencyMode={1}, alphaRef={2}>".format(
-                self.jointSize,
-                self.transparencyMode,
-                self.alphaRef
+        return "\n<joint_size={0}, transparency_mode={1}, alpha_ref={2}>".format(
+                self.joint_size,
+                self.transparency_mode,
+                self.alpha_ref
                 )
 
     def read(self, file):
-        self.jointSize = read_float(file)
-        self.transparencyMode = read_dword(file)
-        self.alphaRef = read_float(file)
+        self.joint_size = Ms3dIo.read_float(file)
+        self.transparency_mode = Ms3dIo.read_dword(file)
+        self.alpha_ref = Ms3dIo.read_float(file)
         return self
 
     def write(self, file):
-        write_float(file, self.jointSize)
-        write_dword(file, self.transparencyMode)
-        write_float(file, self.alphaRef)
+        Ms3dIo.write_float(file, self.joint_size)
+        Ms3dIo.write_dword(file, self.transparency_mode)
+        Ms3dIo.write_float(file, self.alpha_ref)
 
 
 ###############################################################################
@@ -1457,173 +1354,62 @@ class ms3d_model_ex_t:
 # file format
 #
 ###############################################################################
-class ms3d_file_t:
-    """
-    ms3d_file_t
-    """
+class Ms3dModel:
+    """ Ms3dModel """
     __slot__ = (
-            "header",
-            "_nNumVertices",
-            "_vertices",
-            "_nNumTriangles",
-            "_triangles",
-            "_nNumGroups",
-            "_groups",
-            "_nNumMaterials",
-            "_materials",
-            "fAnimationFPS",
-            "fCurrentTime",
-            "iTotalFrames",
-            "_nNumJoints",
-            "_joints",
-            "subVersionComments",
-            "_nNumGroupComments",
-            "_groupComments",
-            "_nNumMaterialComments",
-            "_materialComments",
-            "_nNumJointComments",
-            "_jointComments",
-            "_nHasModelComment",
-            "_modelComment",
-            "subVersionVertexExtra",
-            "_vertex_ex",
-            "subVersionJointExtra",
-            "_joint_ex",
-            "subVersionModelExtra",
-            "model_ex",
-            "_str_cash",
-            PROP_NAME_NAME
+            'header',
+            'animation_fps',
+            'current_time',
+            'number_total_frames',
+            'sub_version_comments',
+            'sub_version_vertex_extra',
+            'sub_version_joint_extra',
+            'sub_version_model_extra',
+            'name',
+            '_vertices',
+            '_triangles',
+            '_groups',
+            '_materials',
+            '_joints',
+            '_has_model_comment',
+            '_comment_object', # Ms3dComment
+            '_model_ex_object', # Ms3dModelEx
             )
 
     def __init__(
             self,
-            defaultName=""
+            default_name=""
             ):
-        """
-        initialize
-        """
+        if (default_name is None):
+            default_name = ""
 
-        if (defaultName is None):
-            defaultName = ""
+        self.name = default_name
 
-        self.name = defaultName
+        self.animation_fps = Ms3dSpec.DEFAULT_MODEL_ANIMATION_FPS
+        self.current_time = 0.0
+        self.number_total_frames = 0
+        self.sub_version_comments \
+                = Ms3dSpec.DEFAULT_MODEL_SUB_VERSION_COMMENTS
+        self.sub_version_vertex_extra \
+                = Ms3dSpec.DEFAULT_MODEL_SUB_VERSION_VERTEX_EXTRA
+        self.sub_version_joint_extra \
+                = Ms3dSpec.DEFAULT_MODEL_SUB_VERSION_JOINT_EXTRA
+        self.sub_version_model_extra \
+                = Ms3dSpec.DEFAULT_MODEL_SUB_VERSION_MODEL_EXTRA
 
-        # First comes the header (sizeof(ms3d_header_t) == 14)
-        self.header = ms3d_header_t()
+        self._vertices = [] #Ms3dVertex()
+        self._triangles = [] #Ms3dTriangle()
+        self._groups = [] #Ms3dGroup()
+        self._materials = [] #Ms3dMaterial()
+        self._joints = [] #Ms3dJoint()
 
-        # Then comes the number of vertices
-        #self.nNumVertices = 0
-
-        # Then comes nNumVertices times ms3d_vertex_t structs
-        # (sizeof(ms3d_vertex_t) == 15)
-        self._vertices = [] #ms3d_vertex_t()
-
-        # Then comes the number of triangles
-        #self.nNumTriangles = 0
-
-        # Then come nNumTriangles times ms3d_triangle_t structs
-        # (sizeof(ms3d_triangle_t) == 70)
-        self._triangles = [] #ms3d_triangle_t()
-
-
-        # Then comes the number of groups
-        #self.nNumGroups = 0
-
-        # Then comes nNumGroups times groups (the sizeof a group is dynamic,
-        # because of triangleIndices is numtriangles long)
-        self._groups = [] #ms3d_group_t()
-
-
-        # number of materials
-        #self.nNumMaterials = 0
-
-        # Then comes nNumMaterials times ms3d_material_t structs
-        # (sizeof(ms3d_material_t) == 361)
-        self._materials = [] #ms3d_material_t()
-
-
-        # save some keyframer data
-        self.fAnimationFPS = 0.0
-        self.fCurrentTime = 0.0
-        self.iTotalFrames = 0
-
-
-        # number of joints
-        #self.nNumJoints = 0
-
-        # Then comes nNumJoints joints (the size of joints are dynamic,
-        # because each joint has a differnt count of keys
-        self._joints = [] #ms3d_joint_t()
-
-
-        # Then comes the subVersion of the comments part, which is not
-        # available in older files
-        self.subVersionComments = 1
-
-
-        # Then comes the numer of group comments
-        #self.nNumGroupComments = 0
-
-        # Then comes nNumGroupComments times group comments, which are dynamic,
-        # because the comment can be any length
-        self._groupComments = [] #ms3d_comment_t()
-
-
-        # Then comes the number of material comments
-        #self.nNumMaterialComments = 0
-
-        # Then comes nNumMaterialComments times material comments, which are
-        # dynamic, because the comment can be any length
-        self._materialComments = [] #ms3d_comment_t()
-
-
-        # Then comes the number of joint comments
-        #self.nNumJointComments = 0
-
-        # Then comes nNumJointComments times joint comments, which are dynamic,
-        # because the comment can be any length
-        self._jointComments = [] #ms3d_comment_t()
-
-
-        # Then comes the number of model comments, which is always 0 or 1
-        #self.nHasModelComment = 0
-
-        # Then comes nHasModelComment times model comments, which are dynamic,
-        # because the comment can be any length
-        self._modelComment = None #ms3d_modelcomment_t()
-
-
-        # Then comes the subversion of the vertex extra information like bone
-        # weights, extra etc.
-        self.subVersionVertexExtra = 2
-
-        # ms3d_vertex_ex_t for subVersionVertexExtra in {1, 2, 3}
-        #ms3d_vertex_ex1_t() #ms3d_vertex_ex2_t() #ms3d_vertex_ex3_t()
-        self._vertex_ex = []
-        # Then comes nNumVertices times ms3d_vertex_ex_t structs
-        # (sizeof(ms3d_vertex_ex_t) == 10)
-        ##
-
-        # Then comes the subversion of the joint extra information like
-        # color etc.
-        self.subVersionJointExtra = 1 # ??? in spec it is 2,
-        # but in MilkShake3D 1.8.4 a joint subversion of 2 is unknown
-
-        # ms3d_joint_ex_t for subVersionJointExtra == 1
-        self._joint_ex = [] #ms3d_joint_ex_t()
-        # Then comes nNumJoints times ms3d_joint_ex_t structs
-        # (sizeof(ms3d_joint_ex_t) == 12)
-        ##
-
-        # Then comes the subversion of the model extra information
-        self.subVersionModelExtra = 1
-
-        # ms3d_model_ex_t for subVersionModelExtra == 1
-        self.model_ex = ms3d_model_ex_t()
+        self.header = Ms3dHeader()
+        self._model_ex_object = Ms3dModelEx()
+        self._comment_object = None #Ms3dComment()
 
 
     @property
-    def nNumVertices(self):
+    def number_vertices(self):
         if self.vertices is None:
             return 0
         return len(self.vertices)
@@ -1634,7 +1420,7 @@ class ms3d_file_t:
 
 
     @property
-    def nNumTriangles(self):
+    def number_triangles(self):
         if self.triangles is None:
             return 0
         return len(self.triangles)
@@ -1645,7 +1431,7 @@ class ms3d_file_t:
 
 
     @property
-    def nNumGroups(self):
+    def number_groups(self):
         if self.groups is None:
             return 0
         return len(self.groups)
@@ -1656,7 +1442,7 @@ class ms3d_file_t:
 
 
     @property
-    def nNumMaterials(self):
+    def number_materials(self):
         if self.materials is None:
             return 0
         return len(self.materials)
@@ -1667,7 +1453,7 @@ class ms3d_file_t:
 
 
     @property
-    def nNumJoints(self):
+    def number_joints(self):
         if self.joints is None:
             return 0
         return len(self.joints)
@@ -1678,139 +1464,183 @@ class ms3d_file_t:
 
 
     @property
-    def nNumGroupComments(self):
-        if self.groupComments is None:
+    def number_group_comments(self):
+        if self.groups is None:
             return 0
-        return len(self.groupComments)
+        number = 0
+        for item in self.groups:
+            if item.comment_object is not None and item.comment_object.comment:
+                number += 1
+        return number
 
     @property
-    def groupComments(self):
-        return self._groupComments
+    def group_comments(self):
+        if self.groups is None:
+            return None
+        items = []
+        for item in self.groups:
+            if item.comment_object is not None and item.comment_object.comment:
+                items.append(item)
+        return items
 
 
     @property
-    def nNumMaterialComments(self):
-        if self.materialComments is None:
+    def number_material_comments(self):
+        if self.materials is None:
             return 0
-        return len(self.materialComments)
+        number = 0
+        for item in self.materials:
+            if item.comment_object is not None and item.comment_object.comment:
+                number += 1
+        return number
 
     @property
-    def materialComments(self):
-        return self._materialComments
+    def material_comments(self):
+        if self.materials is None:
+            return None
+        items = []
+        for item in self.materials:
+            if item.comment_object is not None and item.comment_object.comment:
+                items.append(item)
+        return items
 
 
     @property
-    def nNumJointComments(self):
-        if self.jointComments is None:
+    def number_joint_comments(self):
+        if self.joints is None:
             return 0
-        return len(self.jointComments)
+        number = 0
+        for item in self.joints:
+            if item.comment_object is not None and item.comment_object.comment:
+                number += 1
+        return number
 
     @property
-    def jointComments(self):
-        return self._jointComments
+    def joint_comments(self):
+        if self.joints is None:
+            return None
+        items = []
+        for item in self.joints:
+            if item.comment_object is not None and item.comment_object.comment:
+                items.append(item)
+        return items
 
 
     @property
-    def nHasModelComment(self):
-        if self.modelComment is None:
-            return 0
-        return 1
+    def has_model_comment(self):
+        if self.comment_object is not None and self.comment_object.comment:
+            return 1
+        return 0
 
     @property
-    def modelComment(self):
-        return self._modelComment
+    def comment_object(self):
+        return self._comment_object
 
 
     @property
     def vertex_ex(self):
-        return self._vertex_ex
+        if not self.sub_version_vertex_extra:
+            return None
+        return [item.vertex_ex_object for item in self.vertices]
 
     @property
     def joint_ex(self):
-        return self._joint_ex
+        if not self.sub_version_joint_extra:
+            return None
+        return [item.joint_ex_object for item in self.joints]
+
+    @property
+    def model_ex_object(self):
+        if not self.sub_version_model_extra:
+            return None
+        return self._model_ex_object
 
 
     def print_internal(self):
         print()
         print("##############################################################")
-        print("## the internal data of ms3d_file_t object...")
+        print("## the internal data of Ms3dModel object...")
         print("##")
 
         print("header={0}".format(self.header))
 
-        print("nNumVertices={0}".format(self.nNumVertices))
+        print("number_vertices={0}".format(self.number_vertices))
         print("vertices=[", end="")
         if self.vertices:
             for obj in self.vertices:
                 print("{0}".format(obj), end="")
         print("]")
 
-        print("nNumTriangles={0}".format(self.nNumTriangles))
+        print("number_triangles={0}".format(self.number_triangles))
         print("triangles=[", end="")
         if self.triangles:
             for obj in self.triangles:
                 print("{0}".format(obj), end="")
         print("]")
 
-        print("nNumGroups={0}".format(self.nNumGroups))
+        print("number_groups={0}".format(self.number_groups))
         print("groups=[", end="")
         if self.groups:
             for obj in self.groups:
                 print("{0}".format(obj), end="")
         print("]")
 
-        print("nNumMaterials={0}".format(self.nNumMaterials))
+        print("number_materials={0}".format(self.number_materials))
         print("materials=[", end="")
         if self.materials:
             for obj in self.materials:
                 print("{0}".format(obj), end="")
         print("]")
 
-        print("fAnimationFPS={0}".format(self.fAnimationFPS))
-        print("fCurrentTime={0}".format(self.fCurrentTime))
-        print("iTotalFrames={0}".format(self.iTotalFrames))
+        print("animation_fps={0}".format(self.animation_fps))
+        print("current_time={0}".format(self.current_time))
+        print("number_total_frames={0}".format(self.number_total_frames))
 
-        print("nNumJoints={0}".format(self.nNumJoints))
+        print("number_joints={0}".format(self.number_joints))
         print("joints=[", end="")
         if self.joints:
             for obj in self.joints:
                 print("{0}".format(obj), end="")
         print("]")
 
-        print("subVersionComments={0}".format(self.subVersionComments))
+        print("sub_version_comments={0}".format(self.sub_version_comments))
 
-        print("nNumGroupComments={0}".format(self.nNumGroupComments))
-        print("groupComments=[", end="")
-        if self.groupComments:
-            for obj in self.groupComments:
+        print("number_group_comments={0}".format(self.number_group_comments))
+        print("group_comments=[", end="")
+        if self.group_comments:
+            for obj in self.group_comments:
                 print("{0}".format(obj), end="")
         print("]")
 
-        print("nNumMaterialComments={0}".format(self.nNumMaterialComments))
-        print("materialComments=[", end="")
-        if self.materialComments:
-            for obj in self.materialComments:
+        print("number_material_comments={0}".format(
+                self.number_material_comments))
+        print("material_comments=[", end="")
+        if self.material_comments:
+            for obj in self.material_comments:
                 print("{0}".format(obj), end="")
         print("]")
 
-        print("nNumJointComments={0}".format(self.nNumJointComments))
-        print("jointComments=[", end="")
-        if self.jointComments:
-            for obj in self.jointComments:
+        print("number_joint_comments={0}".format(self.number_joint_comments))
+        print("joint_comments=[", end="")
+        if self.joint_comments:
+            for obj in self.joint_comments:
                 print("{0}".format(obj), end="")
         print("]")
 
-        print("nHasModelComment={0}".format(self.nHasModelComment))
-        print("modelComment={0}".format(self.modelComment))
+        print("has_model_comment={0}".format(self.has_model_comment))
+        print("model_comment={0}".format(self.comment_object))
 
-        print("subVersionVertexExtra={0}".format(self.subVersionVertexExtra))
+        print("sub_version_vertex_extra={0}".format(
+                self.sub_version_vertex_extra))
         print("vertex_ex={0}".format(self.vertex_ex))
 
-        print("subVersionJointExtra={0}".format(self.subVersionJointExtra))
+        print("sub_version_joint_extra={0}".format(
+                self.sub_version_joint_extra))
         print("joint_ex={0}".format(self.joint_ex))
 
-        print("subVersionModelExtra={0}".format(self.subVersionModelExtra))
-        print("model_ex={0}".format(self.model_ex))
+        print("sub_version_model_extra={0}".format(
+                self.sub_version_model_extra))
+        print("model_ex={0}".format(self.model_ex_object))
 
         print("##")
         print("## ...end")
@@ -1822,158 +1652,210 @@ class ms3d_file_t:
         """
         opens, reads and pars MS3D file.
         add content to blender scene
-
-        :arg file: file
-        :type file: :class:`io.FileIO`
         """
 
         self.header.read(file)
+        if (self.header != Ms3dHeader()):
+            print("\nwarning, invalid file header")
 
-        _nNumVertices = read_word(file)
+        _number_vertices = Ms3dIo.read_word(file)
+        if (_number_vertices > Ms3dSpec.MAX_VERTICES):
+            print("\nwarning, invalid count: number_vertices: {}".format(
+                    _number_vertices))
         self._vertices = []
-        for i in range(_nNumVertices):
-            self.vertices.append(ms3d_vertex_t().read(file))
+        for i in range(_number_vertices):
+            self.vertices.append(Ms3dVertex().read(file))
 
-        _nNumTriangles = read_word(file)
+        _number_triangles = Ms3dIo.read_word(file)
+        if (_number_triangles > Ms3dSpec.MAX_TRIANGLES):
+            print("\nwarning, invalid count: number_triangles: {}".format(
+                    _number_triangles))
         self._triangles = []
-        for i in range(_nNumTriangles):
-            self.triangles.append(ms3d_triangle_t().read(file))
+        for i in range(_number_triangles):
+            self.triangles.append(Ms3dTriangle().read(file))
 
-        _nNumGroups = read_word(file)
+        _number_groups = Ms3dIo.read_word(file)
+        if (_number_groups > Ms3dSpec.MAX_GROUPS):
+            print("\nwarning, invalid count: number_groups: {}".format(
+                    _number_groups))
         self._groups = []
-        for i in range(_nNumGroups):
-            self.groups.append(ms3d_group_t().read(file))
+        for i in range(_number_groups):
+            self.groups.append(Ms3dGroup().read(file))
 
-        _nNumMaterials = read_word(file)
+        _number_materials = Ms3dIo.read_word(file)
+        if (_number_materials > Ms3dSpec.MAX_MATERIALS):
+            print("\nwarning, invalid count: number_materials: {}".format(
+                    _number_materials))
         self._materials = []
-        for i in range(_nNumMaterials):
-            self.materials.append(ms3d_material_t().read(file))
+        for i in range(_number_materials):
+            self.materials.append(Ms3dMaterial().read(file))
 
-        self.fAnimationFPS = read_float(file)
-        self.fCurrentTime = read_float(file)
-        self.iTotalFrames = read_dword(file)
+        self.animation_fps = Ms3dIo.read_float(file)
+        self.current_time = Ms3dIo.read_float(file)
+        self.number_total_frames = Ms3dIo.read_dword(file)
 
-        progressCount = 0
+        _progress = set()
 
         try:
-            # optional part
+            # optional data
             # doesn't matter if doesn't existing.
 
-            _nNumJoints = read_word(file)
+            Ms3dIo.raise_on_eof(file)
+
+            _number_joints = Ms3dIo.read_word(file)
+            if (_number_joints > Ms3dSpec.MAX_JOINTS):
+                print("\nwarning, invalid count: number_joints: {}".format(
+                        _number_joints))
             self._joints = []
-            for i in range(_nNumJoints):
-                self.joints.append(ms3d_joint_t().read(file))
+            for i in range(_number_joints):
+                self.joints.append(Ms3dJoint().read(file))
+            _progress.add('JOINTS')
 
-            progressCount += 1
+            Ms3dIo.raise_on_eof(file)
 
-            self.subVersionComments = read_dword(file)
+            self.sub_version_comments = Ms3dIo.read_dword(file)
+            _number_group_comments = Ms3dIo.read_dword(file)
+            if (_number_group_comments > Ms3dSpec.MAX_GROUPS):
+                print("\nwarning, invalid count:"\
+                        " number_group_comments: {}".format(
+                        _number_group_comments))
+            if _number_group_comments > _number_groups:
+                print("\nwarning, invalid count:"\
+                        " number_group_comments: {}, number_groups: {}".format(
+                        _number_group_comments, _number_groups))
+            for i in range(_number_group_comments):
+                item = Ms3dCommentEx().read(file)
+                if item.index >= 0 and item.index < _number_groups:
+                    self.groups[item.index]._comment_object = item
+                else:
+                    print("\nwarning, invalid index:"\
+                            " group_index: {}, number_groups: {}".format(
+                            item.index, _number_groups))
+            _progress.add('GROUP_COMMENTS')
 
-            progressCount += 1
+            _number_material_comments = Ms3dIo.read_dword(file)
+            if (_number_material_comments > Ms3dSpec.MAX_MATERIALS):
+                print("\nwarning, invalid count:"\
+                        " number_material_comments: {}".format(
+                        _number_material_comments))
+            if _number_material_comments > _number_materials:
+                print("\nwarning, invalid count:"\
+                        " number_material_comments:"\
+                        " {}, number_materials: {}".format(
+                        _number_material_comments, _number_materials))
+            for i in range(_number_material_comments):
+                item = Ms3dCommentEx().read(file)
+                if item.index >= 0 and item.index < _number_materials:
+                    self.materials[item.index]._comment_object = item
+                else:
+                    print("\nwarning, invalid index:"\
+                            " material_index: {}, number_materials:"\
+                            " {}".format(item.index, _number_materials))
+            _progress.add('MATERIAL_COMMENTS')
 
-            _nNumGroupComments = read_dword(file)
-            self._groupComments = []
-            for i in range(_nNumGroupComments):
-                self.groupComments.append(ms3d_comment_t().read(file))
+            _number_joint_comments = Ms3dIo.read_dword(file)
+            if (_number_joint_comments > Ms3dSpec.MAX_JOINTS):
+                print("\nwarning, invalid count:"\
+                        " number_joint_comments: {}".format(
+                        _number_joint_comments))
+            if _number_joint_comments > _number_joints:
+                print("\nwarning, invalid count:"\
+                        " number_joint_comments: {}, number_joints: {}".format(
+                        _number_joint_comments, _number_joints))
+            for i in range(_number_joint_comments):
+                item = Ms3dCommentEx().read(file)
+                if item.index >= 0 and item.index < _number_joints:
+                    self.joints[item.index]._comment_object = item
+                else:
+                    print("\nwarning, invalid index:"\
+                            " joint_index: {}, number_joints: {}".format(
+                            item.index, _number_joints))
+            _progress.add('JOINT_COMMENTS')
 
-            progressCount += 1
-
-            _nNumMaterialComments = read_dword(file)
-            self._materialComments = []
-            for i in range(_nNumMaterialComments):
-                self.materialComments.append(ms3d_comment_t().read(file))
-
-            progressCount += 1
-
-            _nNumJointComments = read_dword(file)
-            self._jointComments = []
-            for i in range(_nNumJointComments):
-                self.jointComments.append(ms3d_comment_t().read(file))
-
-            progressCount += 1
-
-            _nHasModelComment = read_dword(file)
-            if (_nHasModelComment != 0):
-                self._modelComment = ms3d_modelcomment_t().read(file)
+            _has_model_comment = Ms3dIo.read_dword(file)
+            if (_has_model_comment != 0):
+                self._comment_object = Ms3dComment().read(file)
             else:
-                self._modelComment = None
+                self._comment_object = None
+            _progress.add('MODEL_COMMENTS')
 
-            progressCount += 1
+            Ms3dIo.raise_on_eof(file)
 
-            self.subVersionVertexExtra = read_dword(file)
-            if (self.subVersionVertexExtra in {1, 2, 3}):
-                self._vertex_ex = []
-                for i in range(_nNumVertices):
-                    if self.subVersionVertexExtra == 1:
-                        item = ms3d_vertex_ex1_t()
-                    if self.subVersionVertexExtra == 2:
-                        item = ms3d_vertex_ex2_t()
-                    if self.subVersionVertexExtra == 3:
-                        item = ms3d_vertex_ex3_t()
-                    self.vertex_ex.append(item.read(file))
-            else:
-                self._vertex_ex = None
+            self.sub_version_vertex_extra = Ms3dIo.read_dword(file)
+            if self.sub_version_vertex_extra > 0:
+                length = len(self.joints)
+                for i in range(_number_vertices):
+                    if self.sub_version_vertex_extra == 1:
+                        item = Ms3dVertexEx1()
+                    elif self.sub_version_vertex_extra == 2:
+                        item = Ms3dVertexEx2()
+                    elif self.sub_version_vertex_extra == 3:
+                        item = Ms3dVertexEx3()
+                    else:
+                        print("\nwarning, invalid version:"\
+                                " sub_version_vertex_extra: {}".format(
+                                sub_version_vertex_extra))
+                        continue
+                    self.vertices[i]._vertex_ex_object = item.read(file)
+            _progress.add('VERTEX_EXTRA')
 
-            progressCount += 1
+            Ms3dIo.raise_on_eof(file)
 
-            self.subVersionJointExtra = read_dword(file)
-            self._joint_ex = []
-            for i in range(_nNumJoints):
-                self.joint_ex.append(ms3d_joint_ex_t().read(file))
+            self.sub_version_joint_extra = Ms3dIo.read_dword(file)
+            if self.sub_version_joint_extra > 0:
+                for i in range(_number_joints):
+                    self.joints[i]._joint_ex_object = Ms3dJointEx().read(file)
+            _progress.add('JOINT_EXTRA')
 
-            progressCount += 1
+            Ms3dIo.raise_on_eof(file)
 
-            self.subVersionModelExtra = read_dword(file)
+            self.sub_version_model_extra = Ms3dIo.read_dword(file)
+            if self.sub_version_model_extra > 0:
+                self._model_ex_object.read(file)
+            _progress.add('MODEL_EXTRA')
 
-            progressCount += 1
-
-            self.model_ex.read(file)
+        except EOF:
+            # reached end of optional data.
+            print("Ms3dModel.read - optional data read: {}".format(_progress))
+            pass
 
         except Exception:
-            #type, value, traceback = sys.exc_info()
-            #print("ms3d_file.read - exception in optional try block,"
-            #        " progressCount={0}\n  type: '{1}'\n  value: '{2}'".format(
-            #        progressCount, type, value, traceback))
-
-            if (progressCount):
-                if (progressCount <= 0):
-                    _nNumJoints = None
-                    self._joints = None
-
-                if (progressCount <= 1):
-                    self.subVersionComments = None
-
-                if (progressCount <= 2):
-                    _nNumGroupComments = None
-                    self._groupComments = None
-
-                if (progressCount <= 3):
-                    _nNumMaterialComments = None
-                    self._materialComments = None
-
-                if (progressCount <= 4):
-                    _nNumJointComments = None
-                    self._jointComments = None
-
-                if (progressCount <= 5):
-                    _nHasModelComment = None
-                    self._modelComment = None
-
-                if (progressCount <= 6):
-                    self.subVersionVertexExtra = None
-                    self._vertex_ex = None
-
-                if (progressCount <= 7):
-                    self.subVersionJointExtra = None
-                    self._joint_ex = None
-
-                if (progressCount <= 8):
-                    self.subVersionModelExtra = None
-
-                if (progressCount <= 9):
-                    self.model_ex = None
+            type, value, traceback = exc_info()
+            print("Ms3dModel.read - exception in optional try block,"
+                    " _progress={0}\n  type: '{1}'\n  value: '{2}'".format(
+                    _progress, type, value, traceback))
 
         else:
             pass
+
+        # try best to continue far as possible
+        if not 'JOINTS' in _progress:
+            _number_joints = 0
+            self._joints = []
+
+        if not 'GROUP_COMMENTS' in _progress:
+            self.sub_version_comments = 0
+            _number_group_comments = 0
+
+        if not 'MATERIAL_COMMENTS' in _progress:
+            _number_material_comments = 0
+
+        if not 'JOINT_COMMENTS' in _progress:
+            _number_joint_comments = 0
+
+        if not 'MODEL_COMMENTS' in _progress:
+            _has_model_comment = 0
+            self._comment_object = None # Ms3dComment()
+
+        if not 'VERTEX_EXTRA' in _progress:
+            self.sub_version_vertex_extra = 0
+
+        if not 'JOINT_EXTRA' in _progress:
+            self.sub_version_joint_extra = 0
+
+        if not 'MODEL_EXTRA' in _progress:
+            self.sub_version_model_extra = 0
+            self._model_ex_object = Ms3dModelEx()
 
         return
 
@@ -1982,75 +1864,72 @@ class ms3d_file_t:
         """
         add blender scene content to MS3D
         creates, writes MS3D file.
-
-        :arg file: file
-        :type file: :class:`io.FileIO`
         """
 
         self.header.write(file)
 
-        write_word(file, self.nNumVertices)
-        for i in range(self.nNumVertices):
+        Ms3dIo.write_word(file, self.number_vertices)
+        for i in range(self.number_vertices):
             self.vertices[i].write(file)
 
-        write_word(file, self.nNumTriangles)
-        for i in range(self.nNumTriangles):
+        Ms3dIo.write_word(file, self.number_triangles)
+        for i in range(self.number_triangles):
             self.triangles[i].write(file)
 
-        write_word(file, self.nNumGroups)
-        for i in range(self.nNumGroups):
+        Ms3dIo.write_word(file, self.number_groups)
+        for i in range(self.number_groups):
             self.groups[i].write(file)
 
-        write_word(file, self.nNumMaterials)
-        for i in range(self.nNumMaterials):
+        Ms3dIo.write_word(file, self.number_materials)
+        for i in range(self.number_materials):
             self.materials[i].write(file)
 
-        write_float(file, self.fAnimationFPS)
-        write_float(file, self.fCurrentTime)
-        write_dword(file, self.iTotalFrames)
+        Ms3dIo.write_float(file, self.animation_fps)
+        Ms3dIo.write_float(file, self.current_time)
+        Ms3dIo.write_dword(file, self.number_total_frames)
 
         try:
             # optional part
             # doesn't matter if it doesn't complete.
-            write_word(file, self.nNumJoints)
-            for i in range(self.nNumJoints):
+            Ms3dIo.write_word(file, self.number_joints)
+            for i in range(self.number_joints):
                 self.joints[i].write(file)
 
-            write_dword(file, self.subVersionComments)
+            Ms3dIo.write_dword(file, self.sub_version_comments)
 
-            write_dword(file, self.nNumGroupComments)
-            for i in range(self.nNumGroupComments):
-                self.groupComments[i].write(file)
+            Ms3dIo.write_dword(file, self.number_group_comments)
+            for i in range(self.number_group_comments):
+                self.group_comments[i].write(file)
 
-            write_dword(file, self.nNumMaterialComments)
-            for i in range(self.nNumMaterialComments):
-                self.materialComments[i].write(file)
+            Ms3dIo.write_dword(file, self.number_material_comments)
+            for i in range(self.number_material_comments):
+                self.material_comments[i].write(file)
 
-            write_dword(file, self.nNumJointComments)
-            for i in range(self.nNumJointComments):
-                self.jointComments[i].write(file)
+            Ms3dIo.write_dword(file, self.number_joint_comments)
+            for i in range(self.number_joint_comments):
+                self.joint_comments[i].write(file)
 
-            write_dword(file, self.nHasModelComment)
-            if (self.nHasModelComment != 0):
-                self.modelComment.write(file)
+            Ms3dIo.write_dword(file, self.has_model_comment)
+            if (self.has_model_comment != 0):
+                self.comment_object.write(file)
 
-            write_dword(file, self.subVersionVertexExtra)
-            if (self.subVersionVertexExtra in {1, 2, 3}):
-                for i in range(self.nNumVertices):
+            Ms3dIo.write_dword(file, self.sub_version_vertex_extra)
+            if (self.sub_version_vertex_extra in {1, 2, 3}):
+                for i in range(self.number_vertices):
                     self.vertex_ex[i].write(file)
 
-            write_dword(file, self.subVersionJointExtra)
-            for i in range(self.nNumJoints):
+            Ms3dIo.write_dword(file, self.sub_version_joint_extra)
+            for i in range(self.number_joints):
                 self.joint_ex[i].write(file)
 
-            write_dword(file, self.subVersionModelExtra)
-            self.model_ex.write(file)
+            Ms3dIo.write_dword(file, self.sub_version_model_extra)
+            self.model_ex_object.write(file)
 
         except Exception:
-            #type, value, traceback = sys.exc_info()
-            #print("ms3d_file.write - exception in optional try block"
-            #        "\n  type: '{0}'\n  value: '{1}'".format(
-            #        type, value, traceback))
+            type, value, traceback = exc_info()
+            print("Ms3dModel.write - exception in optional try block"
+                    "\n  type: '{0}'\n  value: '{1}'".format(
+                    type, value, traceback))
             pass
 
         else:
@@ -2059,7 +1938,7 @@ class ms3d_file_t:
         return
 
 
-    def isValid(self):
+    def is_valid(self):
         valid = True
         result = []
 
@@ -2067,201 +1946,49 @@ class ms3d_file_t:
         format2 = " limit exceeded! (limit is {0})"
 
         result.append("MS3D statistics:")
-        result.append(format1.format("vertices ........", self.nNumVertices))
-        if (self.nNumVertices > MAX_VERTICES):
-            result.append(format2.format(MAX_VERTICES))
+        result.append(format1.format("vertices ........",
+                self.number_vertices))
+        if (self.number_vertices > Ms3dSpec.MAX_VERTICES):
+            result.append(format2.format(Ms3dSpec.MAX_VERTICES))
             valid &= False
 
-        result.append(format1.format("triangles .......", self.nNumTriangles))
-        if (self.nNumTriangles > MAX_TRIANGLES):
-            result.append(format2.format(MAX_TRIANGLES))
+        result.append(format1.format("triangles .......",
+                self.number_triangles))
+        if (self.number_triangles > Ms3dSpec.MAX_TRIANGLES):
+            result.append(format2.format(Ms3dSpec.MAX_TRIANGLES))
             valid &= False
 
-        result.append(format1.format("groups ..........", self.nNumGroups))
-        if (self.nNumGroups > MAX_GROUPS):
-            result.append(format2.format(MAX_GROUPS))
+        result.append(format1.format("groups ..........",
+                self.number_groups))
+        if (self.number_groups > Ms3dSpec.MAX_GROUPS):
+            result.append(format2.format(Ms3dSpec.MAX_GROUPS))
             valid &= False
 
-        result.append(format1.format("materials .......", self.nNumMaterials))
-        if (self.nNumMaterials > MAX_MATERIALS):
-            result.append(format2.format(MAX_MATERIALS))
+        result.append(format1.format("materials .......",
+                self.number_materials))
+        if (self.number_materials > Ms3dSpec.MAX_MATERIALS):
+            result.append(format2.format(Ms3dSpec.MAX_MATERIALS))
             valid &= False
 
-        result.append(format1.format("joints ..........", self.nNumJoints))
-        if (self.nNumJoints > MAX_JOINTS):
-            result.append(format2.format(MAX_JOINTS))
+        result.append(format1.format("joints ..........",
+                self.number_joints))
+        if (self.number_joints > Ms3dSpec.MAX_JOINTS):
+            result.append(format2.format(Ms3dSpec.MAX_JOINTS))
             valid &= False
 
         result.append(format1.format("model comments ..",
-                self.nHasModelComment))
+                self.has_model_comment))
         result.append(format1.format("group comments ..",
-                self.nNumGroupComments))
+                self.number_group_comments))
         result.append(format1.format("material comments",
-                self.nNumMaterialComments))
+                self.number_material_comments))
         result.append(format1.format("joint comments ..",
-                self.nNumJointComments))
+                self.number_joint_comments))
 
         #if (not valid):
         #    result.append("\n\nthe data may be corrupted.")
 
         return (valid, ("".join(result)))
-
-
-    # some other helper
-    def get_group_by_key(self, key):
-        if key is None:
-            return None
-
-        items = self.groups
-
-        if items is None:
-            return None
-
-        elif isinstance(key, int):
-            if (key >= 0) and (key < self.nNumGroups):
-                return items[key]
-
-        elif isinstance(key, string):
-            for item in items:
-                if item.name == key:
-                    return item
-
-        elif isinstance(key, ms3d_spec.ms3d_triangle_t):
-            if (key.groupIndex >= 0) and (key.groupIndex < self.nNumGroups):
-                return item[key.groupIndex]
-
-        return None
-
-
-    def get_group_comment_by_key(self, key):
-        if key is None:
-            return None
-
-        items = self.groupComments
-
-        if items is None:
-            return None
-
-        elif isinstance(key, int):
-            for item in items:
-                if (item.index == key):
-                    return item
-
-        return None
-
-
-    def get_material_by_key(self, key):
-        if key is None:
-            return None
-
-        items = self.materials
-
-        if items is None:
-            return None
-
-        elif isinstance(key, int):
-            if (key >= 0) and (key < self.nNumMaterials):
-                return items[key]
-
-        elif isinstance(key, string):
-            for item in items:
-                if item.name == key:
-                    return item
-
-        elif isinstance(key, ms3d_spec.ms3d_group_t):
-            if (key.materialIndex >= 0) and (key.materialIndex < self.nNumMaterials):
-                return item[key.materialIndex]
-
-        return None
-
-
-    def get_material_comment_by_key(self, key):
-        if key is None:
-            return None
-
-        items = self.materialComments
-
-        if items is None:
-            return None
-
-        elif isinstance(key, int):
-            for item in items:
-                if (item.index == key):
-                    return item
-
-        return None
-
-
-    def get_joint_by_key(self, key):
-        if key is None:
-            return None
-
-        items = self.joints
-
-        if items is None:
-            return None
-
-        elif isinstance(key, int):
-            if (key >= 0) and (key < self.nNumJoints):
-                return items[key]
-
-        elif isinstance(key, string):
-            for item in items:
-                if item.name == key:
-                    return item
-
-        elif isinstance(key, ms3d_spec.ms3d_vertex_t):
-            if (key.boneId >= 0) and (key.boneId < self.nNumJoints):
-                return item[key.boneId]
-
-        return None
-
-
-    def get_joint_ex_by_key(self, key):
-        if key is None:
-            return None
-
-        items = self.joint_ex
-
-        if items is None:
-            return None
-
-        elif isinstance(key, int):
-            if (key >= 0) and (key < self.nNumJoints):
-                return items[key]
-
-        elif isinstance(key, string):
-            for i, item in enumerate(self.joints):
-                if item.name == key:
-                    return items[i]
-
-        elif isinstance(key, ms3d_spec.ms3d_joint_t):
-            for i, item in enumerate(self.joints):
-                if item.name == key.name:
-                    return items[i]
-
-        elif isinstance(key, ms3d_spec.ms3d_vertex_t):
-            if (key.boneId >= 0) and (key.boneId < self.nNumJoints):
-                return item[key.boneId]
-
-        return None
-
-
-    def get_joint_comment_by_key(self, key):
-        if key is None:
-            return None
-
-        items = self.jointComments
-
-        if items is None:
-            return None
-
-        elif isinstance(key, int):
-            for item in items:
-                if (item.index == key):
-                    return item
-
-        return None
 
 
 ###############################################################################

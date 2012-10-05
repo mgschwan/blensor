@@ -38,7 +38,7 @@ bl_info = {
 }
 
 
-'''
+"""
 
 Create a column for use as an architectural element in a scene. Basically a glorified cylinder/cube.
 
@@ -51,7 +51,7 @@ Only one column is created, at the current 3D cursor, expecting the user to dupl
 
 This script is based on features from add_mesh_gears, add_curve_aceous_galore.py, and add_mesh_BoltFactory/createMesh.py.
 
-'''
+"""
 
 #
 # List of "enhancements"/"fixes" needed to finalize this script.
@@ -159,7 +159,7 @@ def createFaces(vertIdx1, vertIdx2, closed=False, flipped=False):
 # @todo: handle odd number of sides (flat in middle).
 #
 def add_col_flute(angle, target, zpos, radius, Ad, sides=6):
-    '''
+    """
  Create "flute" for column at passed location.
 
     Parameters:
@@ -179,7 +179,7 @@ def add_col_flute(angle, target, zpos, radius, Ad, sides=6):
     Returns:
         newpoints - a list of coordinates for flute points (list of tuples), [[x,y,z],[x,y,z],...n]
             (type=list)
-    '''
+    """
     newpoints = []
 
     if sides < 2: sides = 2 # min number of sides.
@@ -327,7 +327,7 @@ def add_sawtooth2(angle, target, zpos, radius, Ad, sides=6):
 
 #####
 def add_col_face(angle, target, zpos, radius):
-    '''
+    """
 Calculate the vertex coordinates for column face.
 
     Parameters:
@@ -343,7 +343,7 @@ Calculate the vertex coordinates for column face.
     Returns:
         a list of coordinates for column face points (list of four tuples), [[x,y,z],[x,y,z],...4]
             (type=list)
-    '''
+    """
     targStep = target/4
 
     verts_outer_face = [(radius * cos(angle+(targStep*I)), radius * sin(angle+(targStep*I)), zpos)
@@ -403,7 +403,7 @@ def Fill_Ring_Face(OFFSET, NUM, FACE_DOWN = 0):
 #    base or capital if they shouldn't be same.
 #
 def add_extent(radius, height, width, zPos, type=1):
-    '''
+    """
 Create geometry for base/capital (shared function).
 
     Params:
@@ -416,7 +416,7 @@ Create geometry for base/capital (shared function).
     Returns:
 	list of vertices and edges
 
-    '''
+    """
     verts = []
     edges = []
 
@@ -614,7 +614,7 @@ Create geometry for base/capital (shared function).
 # @todo: Fix for starts, or factors not valid; return default (square) values on error.
 #
 def makeProfile(startY, startZ, endY, height, width, facets, factor1, factor2, doubler=True, twoPart=True, startRow=0):
-    '''
+    """
 Create list of vertexes and edges that outline defined shape (as per parameters).
 
     Params:
@@ -633,7 +633,7 @@ Create list of vertexes and edges that outline defined shape (as per parameters)
     Returns:
 	list of vertices and edges
 
-    '''
+    """
 
     # start here...
     shapeVerts = []
@@ -723,7 +723,7 @@ Create list of vertexes and edges that outline defined shape (as per parameters)
 # @todo: fix closing faces on top/bottom for flutes.
 #
 def add_column(colBase, radius, taper, c_faces, rows, height, flutes, Ad, fsides, skew, colCap=False):
-    '''
+    """
 Create column geometry.
 
     Params:
@@ -743,7 +743,7 @@ Create column geometry.
 	list of vertices
 	list of faces
 
-    '''
+    """
     if flutes: # set working faces and modulo/flag for doing flutes...
         c_faces -= c_faces % flutes
         fluteFaces = c_faces / flutes
@@ -806,12 +806,7 @@ Create column geometry.
 #####
 #
 class AddColumn(bpy.types.Operator):
-    '''
-Add a column mesh.
-
-    UI functions and object creation.
-
-    '''
+    """Add a column mesh"""
     bl_idname = "mesh.primitive_column"
     bl_label = "Add Column"
     bl_options = {'REGISTER', 'UNDO'}

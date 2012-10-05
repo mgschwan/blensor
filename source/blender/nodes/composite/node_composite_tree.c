@@ -33,6 +33,7 @@
 #include <stdio.h>
 
 #include "DNA_anim_types.h"
+#include "DNA_color_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_node_types.h"
 
@@ -48,8 +49,8 @@
 #include "BKE_main.h"
 #include "BKE_node.h"
 #include "BKE_tracking.h"
-#include "BKE_utildefines.h"
 
+#include "node_common.h"
 #include "node_exec.h"
 #include "node_util.h"
 
@@ -59,6 +60,10 @@
 
 #include "NOD_composite.h"
 #include "node_composite_util.h"
+
+#ifdef WITH_COMPOSITOR
+	#include "COM_compositor.h"
+#endif
 
 static void foreach_nodetree(Main *main, void *calldata, bNodeTreeCallback func)
 {
@@ -72,16 +77,16 @@ static void foreach_nodetree(Main *main, void *calldata, bNodeTreeCallback func)
 
 static void foreach_nodeclass(Scene *UNUSED(scene), void *calldata, bNodeClassCallback func)
 {
-	func(calldata, NODE_CLASS_INPUT, IFACE_("Input"));
-	func(calldata, NODE_CLASS_OUTPUT, IFACE_("Output"));
-	func(calldata, NODE_CLASS_OP_COLOR, IFACE_("Color"));
-	func(calldata, NODE_CLASS_OP_VECTOR, IFACE_("Vector"));
-	func(calldata, NODE_CLASS_OP_FILTER, IFACE_("Filter"));
-	func(calldata, NODE_CLASS_CONVERTOR, IFACE_("Convertor"));
-	func(calldata, NODE_CLASS_MATTE, IFACE_("Matte"));
-	func(calldata, NODE_CLASS_DISTORT, IFACE_("Distort"));
-	func(calldata, NODE_CLASS_GROUP, IFACE_("Group"));
-	func(calldata, NODE_CLASS_LAYOUT, IFACE_("Layout"));
+	func(calldata, NODE_CLASS_INPUT, N_("Input"));
+	func(calldata, NODE_CLASS_OUTPUT, N_("Output"));
+	func(calldata, NODE_CLASS_OP_COLOR, N_("Color"));
+	func(calldata, NODE_CLASS_OP_VECTOR, N_("Vector"));
+	func(calldata, NODE_CLASS_OP_FILTER, N_("Filter"));
+	func(calldata, NODE_CLASS_CONVERTOR, N_("Convertor"));
+	func(calldata, NODE_CLASS_MATTE, N_("Matte"));
+	func(calldata, NODE_CLASS_DISTORT, N_("Distort"));
+	func(calldata, NODE_CLASS_GROUP, N_("Group"));
+	func(calldata, NODE_CLASS_LAYOUT, N_("Layout"));
 }
 
 static void free_node_cache(bNodeTree *UNUSED(ntree), bNode *node)
@@ -90,7 +95,9 @@ static void free_node_cache(bNodeTree *UNUSED(ntree), bNode *node)
 	
 	for (sock= node->outputs.first; sock; sock= sock->next) {
 		if (sock->cache) {
+#ifdef WITH_COMPOSITOR_LEGACY
 			free_compbuf(sock->cache);
+#endif
 			sock->cache= NULL;
 		}
 	}
@@ -114,7 +121,6 @@ static void update_node(bNodeTree *ntree, bNode *node)
 		}
 	}
 	node->need_exec= 1;
-	
 	/* individual node update call */
 	if (node->typeinfo->updatefunc)
 		node->typeinfo->updatefunc(ntree, node);
@@ -129,6 +135,7 @@ static void localize(bNodeTree *localtree, bNodeTree *ntree)
 	for (node= ntree->nodes.first; node; node= node->next) {
 		/* ensure new user input gets handled ok */
 		node->need_exec= 0;
+		node->new_node->original = node;
 		
 		/* move over the compbufs */
 		/* right after ntreeCopyTree() oldsock pointers are valid */
@@ -136,26 +143,37 @@ static void localize(bNodeTree *localtree, bNodeTree *ntree)
 		if (ELEM(node->type, CMP_NODE_VIEWER, CMP_NODE_SPLITVIEWER)) {
 			if (node->id) {
 				if (node->flag & NODE_DO_OUTPUT)
-					node->new_node->id= (ID *)BKE_image_copy((Image *)node->id);
+					node->new_node->id= (ID *)node->id;
 				else
 					node->new_node->id= NULL;
 			}
 		}
 		
+		/* copy over the preview buffers to update graduatly */
+		if (node->preview) {
+			bNodePreview *preview = MEM_callocN(sizeof(bNodePreview), "Preview");
+			preview->pad = node->preview->pad;
+			preview->xsize = node->preview->xsize;
+			preview->ysize = node->preview->ysize;
+			preview->rect = MEM_dupallocN(node->preview->rect);
+			node->new_node->preview = preview;
+		}
+		
 		for (sock= node->outputs.first; sock; sock= sock->next) {
 			sock->new_sock->cache= sock->cache;
+#ifdef WITH_COMPOSITOR_LEGACY
 			compbuf_set_node(sock->new_sock->cache, node->new_node);
-			
+#endif
 			sock->cache= NULL;
 			sock->new_sock->new_sock= sock;
 		}
 	}
 	
-	/* replace muted nodes by internal links */
+	/* replace muted nodes and reroute nodes by internal links */
 	for (node= localtree->nodes.first; node; node= node_next) {
 		node_next = node->next;
 		
-		if (node->flag & NODE_MUTED) {
+		if (node->flag & NODE_MUTED || node->type == NODE_REROUTE) {
 			/* make sure the update tag isn't lost when removing the muted node.
 			 * propagate this to all downstream nodes.
 			 */
@@ -186,6 +204,7 @@ static void local_sync(bNodeTree *localtree, bNodeTree *ntree)
 					lnode->new_node->preview= lnode->preview;
 					lnode->preview= NULL;
 				}
+				
 			}
 		}
 	}
@@ -207,11 +226,11 @@ static void local_merge(bNodeTree *localtree, bNodeTree *ntree)
 			}
 			else if (lnode->type==CMP_NODE_MOVIEDISTORTION) {
 				/* special case for distortion node: distortion context is allocating in exec function
-				   and to achive much better performance on further calls this context should be
-				   copied back to original node */
+				 * and to achieve much better performance on further calls this context should be
+				 * copied back to original node */
 				if (lnode->storage) {
 					if (lnode->new_node->storage)
-						BKE_tracking_distortion_destroy(lnode->new_node->storage);
+						BKE_tracking_distortion_free(lnode->new_node->storage);
 
 					lnode->new_node->storage= BKE_tracking_distortion_copy(lnode->storage);
 				}
@@ -220,7 +239,9 @@ static void local_merge(bNodeTree *localtree, bNodeTree *ntree)
 			for (lsock= lnode->outputs.first; lsock; lsock= lsock->next) {
 				if (ntreeOutputExists(lnode->new_node, lsock->new_sock)) {
 					lsock->new_sock->cache= lsock->cache;
+#ifdef WITH_COMPOSITOR_LEGACY
 					compbuf_set_node(lsock->new_sock->cache, lnode->new_node);
+#endif
 					lsock->cache= NULL;
 					lsock->new_sock= NULL;
 				}
@@ -232,6 +253,8 @@ static void local_merge(bNodeTree *localtree, bNodeTree *ntree)
 static void update(bNodeTree *ntree)
 {
 	ntreeSetOutput(ntree);
+	
+	ntree_update_reroute_nodes(ntree);
 }
 
 bNodeTreeType ntreeType_Composite = {
@@ -339,6 +362,9 @@ void ntreeCompositEndExecTree(bNodeTreeExec *exec, int use_tree_data)
 		}
 	}
 }
+
+#ifdef WITH_COMPOSITOR
+#ifdef WITH_COMPOSITOR_LEGACY
 
 /* ***************************** threaded version for execute composite nodes ************* */
 /* these are nodes without input, only giving values */
@@ -489,9 +515,9 @@ static int setExecutableNodes(bNodeTreeExec *exec, ThreadData *thd)
 static void freeExecutableNode(bNodeTreeExec *exec)
 {
 	/* node outputs can be freed when:
-	- not a render result or image node
-	- when node outputs go to nodes all being set NODE_FINISHED
-	*/
+	 * - not a render result or image node
+	 * - when node outputs go to nodes all being set NODE_FINISHED
+	 */
 	bNodeTree *ntree = exec->nodetree;
 	bNodeExec *nodeexec;
 	bNode *node;
@@ -575,18 +601,14 @@ static  void ntree_composite_texnode(bNodeTree *ntree, int init)
 }
 
 /* optimized tree execute test for compositing */
-void ntreeCompositExecTree(bNodeTree *ntree, RenderData *rd, int do_preview)
+static void ntreeCompositExecTreeOld(bNodeTree *ntree, RenderData *rd, int do_preview)
 {
 	bNodeExec *nodeexec;
 	bNode *node;
 	ListBase threads;
 	ThreadData thdata;
-	int totnode, curnode, rendering= 1, n;
-	bNodeTreeExec *exec;
-
-	if (ntree==NULL) return;
-
-	exec = ntree->execdata;
+	int totnode, curnode, rendering = TRUE, n;
+	bNodeTreeExec *exec = ntree->execdata;
 
 	if (do_preview)
 		ntreeInitPreview(ntree, 0, 0);
@@ -667,6 +689,33 @@ void ntreeCompositExecTree(bNodeTree *ntree, RenderData *rd, int do_preview)
 	/* XXX top-level tree uses the ntree->execdata pointer */
 	ntreeCompositEndExecTree(exec, 1);
 }
+#endif  /* WITH_COMPOSITOR_LEGACY */
+#endif  /* WITH_COMPOSITOR */
+
+void *COM_linker_hack = NULL;
+
+void ntreeCompositExecTree(bNodeTree *ntree, RenderData *rd, int rendering, int do_preview,
+                           const ColorManagedViewSettings *view_settings,
+                           const ColorManagedDisplaySettings *display_settings)
+{
+#ifdef WITH_COMPOSITOR
+#ifdef WITH_COMPOSITOR_LEGACY
+	if (G.debug_value == 200)
+	{
+		ntreeCompositExecTreeOld(ntree, rd, do_preview);
+	}
+	else
+#endif
+	{
+		COM_execute(rd, ntree, rendering, view_settings, display_settings);
+	}
+#else
+	(void)ntree, (void)rd, (void)rendering, (void)do_preview;
+	(void)view_settings, (void)display_settings;
+#endif
+
+	(void)do_preview;
+}
 
 /* *********************************************** */
 
@@ -740,20 +789,19 @@ static void force_hidden_passes(bNode *node, int passflag)
 	if (!(passflag & SCE_PASS_TRANSM_INDIRECT)) sock->flag |= SOCK_UNAVAIL;
 	sock= BLI_findlink(&node->outputs, RRES_OUT_TRANSM_COLOR);
 	if (!(passflag & SCE_PASS_TRANSM_COLOR)) sock->flag |= SOCK_UNAVAIL;
-	sock= BLI_findlink(&node->outputs, RRES_OUT_TRANSM_COLOR);
 }
 
 /* based on rules, force sockets hidden always */
 void ntreeCompositForceHidden(bNodeTree *ntree, Scene *curscene)
 {
 	bNode *node;
-	
-	if (ntree==NULL) return;
-	
-	for (node= ntree->nodes.first; node; node= node->next) {
-		if ( node->type==CMP_NODE_R_LAYERS) {
-			Scene *sce= node->id?(Scene *)node->id:curscene;
-			SceneRenderLayer *srl= BLI_findlink(&sce->r.layers, node->custom1);
+
+	if (ntree == NULL) return;
+
+	for (node = ntree->nodes.first; node; node = node->next) {
+		if (node->type == CMP_NODE_R_LAYERS) {
+			Scene *sce = node->id ? (Scene *)node->id : curscene;
+			SceneRenderLayer *srl = BLI_findlink(&sce->r.layers, node->custom1);
 			if (srl)
 				force_hidden_passes(node, srl->passflag);
 		}
@@ -761,7 +809,7 @@ void ntreeCompositForceHidden(bNodeTree *ntree, Scene *curscene)
 		 * Updates should only happen when actually necessary.
 		 */
 		#if 0
-		else if ( node->type==CMP_NODE_IMAGE) {
+		else if (node->type == CMP_NODE_IMAGE) {
 			nodeUpdate(ntree, node);
 		}
 		#endif
@@ -774,15 +822,15 @@ void ntreeCompositForceHidden(bNodeTree *ntree, Scene *curscene)
 void ntreeCompositTagRender(Scene *curscene)
 {
 	Scene *sce;
-	
-	for (sce= G.main->scene.first; sce; sce= sce->id.next) {
+
+	for (sce = G.main->scene.first; sce; sce = sce->id.next) {
 		if (sce->nodetree) {
 			bNode *node;
-			
-			for (node= sce->nodetree->nodes.first; node; node= node->next) {
-				if (node->id==(ID *)curscene || node->type==CMP_NODE_COMPOSITE)
+
+			for (node = sce->nodetree->nodes.first; node; node = node->next) {
+				if (node->id == (ID *)curscene || node->type == CMP_NODE_COMPOSITE)
 					nodeUpdate(sce->nodetree, node);
-				else if (node->type==CMP_NODE_TEXTURE) /* uses scene sizex/sizey */
+				else if (node->type == CMP_NODE_TEXTURE) /* uses scene sizex/sizey */
 					nodeUpdate(sce->nodetree, node);
 			}
 		}
@@ -796,37 +844,37 @@ static int node_animation_properties(bNodeTree *ntree, bNode *node)
 	Link *link;
 	PointerRNA ptr;
 	PropertyRNA *prop;
-	
+
 	/* check to see if any of the node's properties have fcurves */
 	RNA_pointer_create((ID *)ntree, &RNA_Node, node, &ptr);
 	lb = RNA_struct_type_properties(ptr.type);
-	
-	for (link=lb->first; link; link=link->next) {
-		int driven, len=1, index;
+
+	for (link = lb->first; link; link = link->next) {
+		int driven, len = 1, index;
 		prop = (PropertyRNA *)link;
-		
+
 		if (RNA_property_array_check(prop))
 			len = RNA_property_array_length(&ptr, prop);
-		
-		for (index=0; index<len; index++) {
+
+		for (index = 0; index < len; index++) {
 			if (rna_get_fcurve(&ptr, prop, index, NULL, &driven)) {
 				nodeUpdate(ntree, node);
 				return 1;
 			}
 		}
 	}
-	
+
 	/* now check node sockets */
-	for (sock = node->inputs.first; sock; sock=sock->next) {
-		int driven, len=1, index;
-		
+	for (sock = node->inputs.first; sock; sock = sock->next) {
+		int driven, len = 1, index;
+
 		RNA_pointer_create((ID *)ntree, &RNA_NodeSocket, sock, &ptr);
 		prop = RNA_struct_find_property(&ptr, "default_value");
 		if (prop) {
 			if (RNA_property_array_check(prop))
 				len = RNA_property_array_length(&ptr, prop);
-			
-			for (index=0; index<len; index++) {
+
+			for (index = 0; index < len; index++) {
 				if (rna_get_fcurve(&ptr, prop, index, NULL, &driven)) {
 					nodeUpdate(ntree, node);
 					return 1;
@@ -842,38 +890,42 @@ static int node_animation_properties(bNodeTree *ntree, bNode *node)
 int ntreeCompositTagAnimated(bNodeTree *ntree)
 {
 	bNode *node;
-	int tagged= 0;
-	
-	if (ntree==NULL) return 0;
-	
-	for (node= ntree->nodes.first; node; node= node->next) {
-		
+	int tagged = 0;
+
+	if (ntree == NULL) return 0;
+
+	for (node = ntree->nodes.first; node; node = node->next) {
+
 		tagged = node_animation_properties(ntree, node);
-		
+
 		/* otherwise always tag these node types */
-		if (node->type==CMP_NODE_IMAGE) {
-			Image *ima= (Image *)node->id;
+		if (node->type == CMP_NODE_IMAGE) {
+			Image *ima = (Image *)node->id;
 			if (ima && ELEM(ima->source, IMA_SRC_MOVIE, IMA_SRC_SEQUENCE)) {
 				nodeUpdate(ntree, node);
-				tagged= 1;
+				tagged = 1;
 			}
 		}
-		else if (node->type==CMP_NODE_TIME) {
+		else if (node->type == CMP_NODE_TIME) {
 			nodeUpdate(ntree, node);
-			tagged= 1;
+			tagged = 1;
 		}
 		/* here was tag render layer, but this is called after a render, so re-composites fail */
-		else if (node->type==NODE_GROUP) {
-			if ( ntreeCompositTagAnimated((bNodeTree *)node->id) ) {
+		else if (node->type == NODE_GROUP) {
+			if (ntreeCompositTagAnimated((bNodeTree *)node->id) ) {
 				nodeUpdate(ntree, node);
 			}
 		}
 		else if (ELEM(node->type, CMP_NODE_MOVIECLIP, CMP_NODE_TRANSFORM)) {
 			nodeUpdate(ntree, node);
-			tagged= 1;
+			tagged = 1;
+		}
+		else if (node->type == CMP_NODE_MASK) {
+			nodeUpdate(ntree, node);
+			tagged = 1;
 		}
 	}
-	
+
 	return tagged;
 }
 
@@ -882,11 +934,11 @@ int ntreeCompositTagAnimated(bNodeTree *ntree)
 void ntreeCompositTagGenerators(bNodeTree *ntree)
 {
 	bNode *node;
-	
-	if (ntree==NULL) return;
-	
-	for (node= ntree->nodes.first; node; node= node->next) {
-		if ( ELEM(node->type, CMP_NODE_R_LAYERS, CMP_NODE_IMAGE))
+
+	if (ntree == NULL) return;
+
+	for (node = ntree->nodes.first; node; node = node->next) {
+		if (ELEM(node->type, CMP_NODE_R_LAYERS, CMP_NODE_IMAGE))
 			nodeUpdate(ntree, node);
 	}
 }
@@ -895,12 +947,12 @@ void ntreeCompositTagGenerators(bNodeTree *ntree)
 void ntreeCompositClearTags(bNodeTree *ntree)
 {
 	bNode *node;
-	
-	if (ntree==NULL) return;
-	
-	for (node= ntree->nodes.first; node; node= node->next) {
-		node->need_exec= 0;
-		if (node->type==NODE_GROUP)
+
+	if (ntree == NULL) return;
+
+	for (node = ntree->nodes.first; node; node = node->next) {
+		node->need_exec = 0;
+		if (node->type == NODE_GROUP)
 			ntreeCompositClearTags((bNodeTree *)node->id);
 	}
 }

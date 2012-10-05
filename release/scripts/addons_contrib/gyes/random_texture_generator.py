@@ -61,7 +61,7 @@ class random_texture_class:
         bpy.types.Scene.rtexture_gain = BoolProperty(name= "Gain" ,description = "Gain of the texture" , default = True)
         bpy.types.Scene.rtexture_stucci_type = BoolProperty(name= "Type" ,description = "Stucci type of the texture" , default = True)
         bpy.types.Scene.rtexture_dist_metric = BoolProperty(name= "Metric" ,description = "Distance Metric of the texture" , default = True)
-        bpy.types.Scene.rtexture_exponent = BoolProperty(name= "Exponent" ,description = "Minkovsky Exponent of the texture" , default = True)
+        bpy.types.Scene.rtexture_exponent = BoolProperty(name= "Exponent" ,description = "Minkowski Exponent of the texture" , default = True)
         bpy.types.Scene.rtexture_color_mode = BoolProperty(name= "Color Mode" ,description = "Color Mode of the texture" , default = True)
         bpy.types.Scene.rtexture_weight_1 = BoolProperty(name= "Weight 1" ,description = "Weight 1 of the texture" , default = True)
         bpy.types.Scene.rtexture_weight_2 = BoolProperty(name= "Weight 2" ,description = "Weight 2 of the texture" , default = True)

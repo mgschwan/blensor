@@ -27,12 +27,12 @@ http://www.gnu.org/copyleft/lesser.txt.
 #ifndef __TEXTURE_H__
 #define __TEXTURE_H__
 
-#include <PyObjectPlus.h>
+#include "PyObjectPlus.h"
 #include <structmember.h>
 
-#include <DNA_image_types.h>
-#include <BL_Texture.h>
-#include <KX_BlenderMaterial.h>
+#include "DNA_image_types.h"
+#include "BL_Texture.h"
+#include "KX_BlenderMaterial.h"
 
 #include "ImageBase.h"
 #include "BlendType.h"
@@ -78,14 +78,14 @@ struct Texture
 extern PyTypeObject TextureType;
 
 // load texture
-void loadTexture (unsigned int texId, unsigned int * texture, short * size,
-                  bool mipmap = false);
+void loadTexture(unsigned int texId, unsigned int *texture, short *size,
+                 bool mipmap = false);
 
 // get material
-RAS_IPolyMaterial * getMaterial (PyObject *obj, short matID);
+RAS_IPolyMaterial *getMaterial(PyObject *obj, short matID);
 
 // get material ID
-short getMaterialID (PyObject * obj, const char *name);
+short getMaterialID(PyObject *obj, const char *name);
 
 // Exceptions
 extern ExceptionID MaterialNotAvail;

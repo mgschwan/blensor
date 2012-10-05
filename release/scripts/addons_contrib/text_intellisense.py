@@ -73,7 +73,7 @@ class Intellimenu(bpy.types.Menu):
 #This operator executes when hits Ctrl+Space at the text editor
 
 class Intellisense(bpy.types.Operator):
-	#'''Tooltip'''
+	#"""Tooltip"""
 	bl_idname = "text.intellisense"
 	bl_label = "Text Editor Intellisense"
 	
@@ -102,7 +102,7 @@ class Intellisense(bpy.types.Operator):
 	
 #this operator completes the line with the options you choose from the menu
 class Intellioptions(bpy.types.Operator):
-	#'''Tooltip'''
+	#"""Tooltip"""
 	bl_idname = "text.intellioptions"
 	bl_label = "Intellisense options"
 
@@ -178,7 +178,7 @@ def send_console(context, all=0):
 	
 	
 class TestLine(bpy.types.Operator):
-	#'''Tooltip'''
+	#"""Tooltip"""
 	bl_idname = "text.test_line"
 	bl_label = "Test line"
 

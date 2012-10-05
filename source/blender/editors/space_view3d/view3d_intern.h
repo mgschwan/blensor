@@ -53,13 +53,17 @@ struct wmWindowManager;
 #define BL_NEAR_CLIP 0.001
 
 /* drawing flags: */
-#define DRAW_PICKING    1
-#define DRAW_CONSTCOLOR 2
-#define DRAW_SCENESET   4
+enum {
+	DRAW_PICKING     = (1 << 0),
+	DRAW_CONSTCOLOR  = (1 << 1),
+	DRAW_SCENESET    = (1 << 2)
+};
 
 /* draw_mesh_fancy/draw_mesh_textured draw_flags */
-#define DRAW_MODIFIERS_PREVIEW 1
-#define DRAW_FACE_SELECT 2
+enum {
+	DRAW_MODIFIERS_PREVIEW  = (1 << 0),
+	DRAW_FACE_SELECT        = (1 << 1)
+};
 
 /* view3d_header.c */
 void VIEW3D_OT_layers(struct wmOperatorType *ot);
@@ -75,6 +79,7 @@ void VIEW3D_OT_move(struct wmOperatorType *ot);
 void VIEW3D_OT_rotate(struct wmOperatorType *ot);
 void VIEW3D_OT_ndof_orbit(struct wmOperatorType *ot);
 void VIEW3D_OT_ndof_pan(struct wmOperatorType *ot);
+void VIEW3D_OT_ndof_all(struct wmOperatorType *ot);
 void VIEW3D_OT_view_all(struct wmOperatorType *ot);
 void VIEW3D_OT_viewnumpad(struct wmOperatorType *ot);
 void VIEW3D_OT_view_selected(struct wmOperatorType *ot);
@@ -112,23 +117,28 @@ void draw_motion_paths_cleanup(View3D *v3d);
 
 
 /* drawobject.c */
-void draw_object(Scene *scene, struct ARegion *ar, View3D *v3d, Base *base, int flag);
-int draw_glsl_material(Scene *scene, struct Object *ob, View3D *v3d, int dt);
-void draw_object_instance(Scene *scene, View3D *v3d, RegionView3D *rv3d, struct Object *ob, int dt, int outline);
+void draw_object(Scene *scene, struct ARegion *ar, View3D *v3d, Base *base, const short dflag);
+int draw_glsl_material(Scene *scene, struct Object *ob, View3D *v3d, const short dt);
+void draw_object_instance(Scene *scene, View3D *v3d, RegionView3D *rv3d, struct Object *ob, const short dt, int outline);
 void draw_object_backbufsel(Scene *scene, View3D *v3d, RegionView3D *rv3d, struct Object *ob);
 void drawaxes(float size, char drawtype);
 
 void view3d_cached_text_draw_begin(void);
 void view3d_cached_text_draw_add(const float co[3], const char *str, short xoffs, short flag, const unsigned char col[4]);
 void view3d_cached_text_draw_end(View3D * v3d, ARegion * ar, int depth_write, float mat[][4]);
-#define V3D_CACHE_TEXT_ZBUF         (1 << 0)
-#define V3D_CACHE_TEXT_WORLDSPACE   (1 << 1)
-#define V3D_CACHE_TEXT_ASCII        (1 << 2)
-#define V3D_CACHE_TEXT_GLOBALSPACE  (1 << 3)
-#define V3D_CACHE_TEXT_LOCALCLIP    (1 << 4)
+
+enum {
+	V3D_CACHE_TEXT_ZBUF         = (1 << 0),
+	V3D_CACHE_TEXT_WORLDSPACE   = (1 << 1),
+	V3D_CACHE_TEXT_ASCII        = (1 << 2),
+	V3D_CACHE_TEXT_GLOBALSPACE  = (1 << 3),
+	V3D_CACHE_TEXT_LOCALCLIP    = (1 << 4)
+};
 
 /* drawarmature.c */
-int draw_armature(Scene *scene, View3D *v3d, ARegion *ar, Base *base, int dt, int flag, const short is_outline);
+int draw_armature(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
+                  const short dt, const short dflag, const unsigned char ob_wire_col[4],
+                  const short is_outline);
 
 /* drawmesh.c */
 void draw_mesh_textured(Scene *scene, View3D *v3d, RegionView3D *rv3d,
@@ -140,7 +150,7 @@ void draw_mesh_paint(View3D *v3d, RegionView3D *rv3d,
 void view3d_main_area_draw(const struct bContext *C, struct ARegion *ar);
 void draw_depth(Scene *scene, struct ARegion *ar, View3D *v3d, int (*func)(void *));
 void draw_depth_gpencil(Scene *scene, ARegion *ar, View3D *v3d);
-void add_view3d_after(ListBase *lb, Base *base, int flag);
+void ED_view3d_after_add(ListBase *lb, Base *base, const short dflag);
 
 void circf(float x, float y, float rad);
 void circ(float x, float y, float rad);
@@ -164,8 +174,8 @@ void VIEW3D_OT_game_start(struct wmOperatorType *ot);
 
 int ED_view3d_boundbox_clip(RegionView3D * rv3d, float obmat[][4], struct BoundBox *bb);
 
-void smooth_view(struct bContext *C, struct View3D *v3d, struct ARegion *ar, struct Object *, struct Object *,
-                 float *ofs, float *quat, float *dist, float *lens);
+void view3d_smooth_view(struct bContext *C, struct View3D *v3d, struct ARegion *ar, struct Object *, struct Object *,
+                        float *ofs, float *quat, float *dist, float *lens);
 
 void setwinmatrixview3d(ARegion *ar, View3D *v3d, rctf *rect);  /* rect: for picking */
 void setviewmatrixview3d(Scene *scene, View3D *v3d, RegionView3D *rv3d);
@@ -186,7 +196,7 @@ void view3d_toolshelf_register(struct ARegionType *art);
 void view3d_tool_props_register(struct ARegionType *art);
 
 /* view3d_snap.c */
-int minmax_verts(struct Object *obedit, float *min, float *max);
+int ED_view3d_minmax_verts(struct Object *obedit, float min[3], float max[3]);
 
 void VIEW3D_OT_snap_selected_to_grid(struct wmOperatorType *ot);
 void VIEW3D_OT_snap_selected_to_cursor(struct wmOperatorType *ot);
@@ -202,7 +212,7 @@ ARegion *view3d_has_tools_region(ScrArea *sa);
 extern const char *view3d_context_dir[]; /* doc access */
 
 /* draw_volume.c */
-void draw_volume(struct ARegion *ar, struct GPUTexture *tex, float *min, float *max, int res[3], float dx, struct GPUTexture *tex_shadow);
+void draw_volume(struct ARegion *ar, struct GPUTexture *tex, float min[3], float max[3], int res[3], float dx, struct GPUTexture *tex_shadow);
 
 /* workaround for trivial but noticeable camera bug caused by imprecision
  * between view border calculation in 2D/3D space, workaround for bug [#28037].
@@ -211,7 +221,7 @@ void draw_volume(struct ARegion *ar, struct GPUTexture *tex, float *min, float *
  * any direction it starts to fail */
 #define VIEW3D_CAMERA_BORDER_HACK
 #ifdef VIEW3D_CAMERA_BORDER_HACK
-extern float view3d_camera_border_hack_col[4];
+extern unsigned char view3d_camera_border_hack_col[3];
 extern short view3d_camera_border_hack_test;
 #endif
 

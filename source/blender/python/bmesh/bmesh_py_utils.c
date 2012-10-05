@@ -23,7 +23,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/python/bmesh/bmesh_py_api.c
+/** \file blender/python/bmesh/bmesh_py_utils.c
  *  \ingroup pybmesh
  *
  * This file defines the 'bmesh.utils' module.
@@ -39,9 +39,7 @@
 #include "../mathutils/mathutils.h"
 
 #include "bmesh.h"
-
 #include "bmesh_py_types.h"
-
 #include "bmesh_py_utils.h" /* own include */
 
 
@@ -370,7 +368,7 @@ static PyObject *bpy_bm_utils_edge_rotate(PyObject *UNUSED(self), PyObject *args
 PyDoc_STRVAR(bpy_bm_utils_face_split_doc,
 ".. method:: face_split(face, vert_a, vert_b, coords=(), use_exist=True, example=None)\n"
 "\n"
-"   Split an edge, return the newly created data.\n"
+"   Face split with optional intermediate points.\n"
 "\n"
 "   :arg face: The face to cut.\n"
 "   :type face: :class:`bmesh.types.BMFace`\n"
@@ -457,6 +455,7 @@ static PyObject *bpy_bm_utils_face_split(PyObject *UNUSED(self), PyObject *args,
 		                        py_vert_a->v, py_vert_b->v,
 		                        (float (*)[3])coords, ncoords,
 		                        &l_new, py_edge_example ? py_edge_example->e : NULL);
+		PyMem_Free(coords);
 	}
 	else {
 		f_new = BM_face_split(bm, py_face->f,
@@ -652,34 +651,34 @@ static PyObject *bpy_bm_utils_loop_separate(PyObject *UNUSED(self), BPy_BMLoop *
 
 
 static struct PyMethodDef BPy_BM_utils_methods[] = {
-    {"vert_collapse_edge",  (PyCFunction)bpy_bm_utils_vert_collapse_edge,  METH_VARARGS, bpy_bm_utils_vert_collapse_edge_doc},
-    {"vert_collapse_faces", (PyCFunction)bpy_bm_utils_vert_collapse_faces, METH_VARARGS, bpy_bm_utils_vert_collapse_faces_doc},
-    {"vert_dissolve",       (PyCFunction)bpy_bm_utils_vert_dissolve,       METH_VARARGS, bpy_bm_utils_vert_dissolve_doc}, /* could use METH_O */
-    {"vert_separate",       (PyCFunction)bpy_bm_utils_vert_separate,       METH_VARARGS, bpy_bm_utils_vert_separate_doc},
-    {"edge_split",          (PyCFunction)bpy_bm_utils_edge_split,          METH_VARARGS, bpy_bm_utils_edge_split_doc},
-    {"edge_rotate",         (PyCFunction)bpy_bm_utils_edge_rotate,         METH_VARARGS, bpy_bm_utils_edge_rotate_doc},
-    {"face_split",          (PyCFunction)bpy_bm_utils_face_split,          METH_VARARGS | METH_KEYWORDS, bpy_bm_utils_face_split_doc},
-    {"face_join",           (PyCFunction)bpy_bm_utils_face_join,           METH_VARARGS, bpy_bm_utils_face_join_doc},
-    {"face_vert_separate",  (PyCFunction)bpy_bm_utils_face_vert_separate,  METH_VARARGS, bpy_bm_utils_face_vert_separate_doc},
-    {"face_flip",           (PyCFunction)bpy_bm_utils_face_flip,           METH_O,       bpy_bm_utils_face_flip_doc},
-    {"loop_separate",       (PyCFunction)bpy_bm_utils_loop_separate,       METH_O,       bpy_bm_utils_loop_separate_doc},
-    {NULL, NULL, 0, NULL}
+	{"vert_collapse_edge",  (PyCFunction)bpy_bm_utils_vert_collapse_edge,  METH_VARARGS, bpy_bm_utils_vert_collapse_edge_doc},
+	{"vert_collapse_faces", (PyCFunction)bpy_bm_utils_vert_collapse_faces, METH_VARARGS, bpy_bm_utils_vert_collapse_faces_doc},
+	{"vert_dissolve",       (PyCFunction)bpy_bm_utils_vert_dissolve,       METH_VARARGS, bpy_bm_utils_vert_dissolve_doc}, /* could use METH_O */
+	{"vert_separate",       (PyCFunction)bpy_bm_utils_vert_separate,       METH_VARARGS, bpy_bm_utils_vert_separate_doc},
+	{"edge_split",          (PyCFunction)bpy_bm_utils_edge_split,          METH_VARARGS, bpy_bm_utils_edge_split_doc},
+	{"edge_rotate",         (PyCFunction)bpy_bm_utils_edge_rotate,         METH_VARARGS, bpy_bm_utils_edge_rotate_doc},
+	{"face_split",          (PyCFunction)bpy_bm_utils_face_split,          METH_VARARGS | METH_KEYWORDS, bpy_bm_utils_face_split_doc},
+	{"face_join",           (PyCFunction)bpy_bm_utils_face_join,           METH_VARARGS, bpy_bm_utils_face_join_doc},
+	{"face_vert_separate",  (PyCFunction)bpy_bm_utils_face_vert_separate,  METH_VARARGS, bpy_bm_utils_face_vert_separate_doc},
+	{"face_flip",           (PyCFunction)bpy_bm_utils_face_flip,           METH_O,       bpy_bm_utils_face_flip_doc},
+	{"loop_separate",       (PyCFunction)bpy_bm_utils_loop_separate,       METH_O,       bpy_bm_utils_loop_separate_doc},
+	{NULL, NULL, 0, NULL}
 };
 
 
-PyDoc_STRVAR(BPy_BM_doc,
+PyDoc_STRVAR(BPy_BM_utils_doc,
 "This module provides access to blenders bmesh data structures."
 );
-static struct PyModuleDef BPy_BM_types_module_def = {
-    PyModuleDef_HEAD_INIT,
-    "bmesh.utils",  /* m_name */
-    BPy_BM_doc,  /* m_doc */
-    0,  /* m_size */
-    BPy_BM_utils_methods,  /* m_methods */
-    NULL,  /* m_reload */
-    NULL,  /* m_traverse */
-    NULL,  /* m_clear */
-    NULL,  /* m_free */
+static struct PyModuleDef BPy_BM_utils_module_def = {
+	PyModuleDef_HEAD_INIT,
+	"bmesh.utils",  /* m_name */
+	BPy_BM_utils_doc,  /* m_doc */
+	0,  /* m_size */
+	BPy_BM_utils_methods,  /* m_methods */
+	NULL,  /* m_reload */
+	NULL,  /* m_traverse */
+	NULL,  /* m_clear */
+	NULL,  /* m_free */
 };
 
 
@@ -687,7 +686,7 @@ PyObject *BPyInit_bmesh_utils(void)
 {
 	PyObject *submodule;
 
-	submodule = PyModule_Create(&BPy_BM_types_module_def);
+	submodule = PyModule_Create(&BPy_BM_utils_module_def);
 
 	return submodule;
 }

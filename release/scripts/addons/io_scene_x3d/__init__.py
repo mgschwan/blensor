@@ -25,7 +25,7 @@ bl_info = {
     "location": "File > Import-Export",
     "description": "Import-Export X3D, Import VRML2",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Import-Export/Web3D",
     "tracker_url": "",
     "support": 'OFFICIAL',
@@ -48,7 +48,7 @@ from bpy_extras.io_utils import (ImportHelper,
 
 
 class ImportX3D(bpy.types.Operator, ImportHelper):
-    '''Import an X3D or VRML2 file'''
+    """Import an X3D or VRML2 file"""
     bl_idname = "import_scene.x3d"
     bl_label = "Import X3D/VRML2"
     bl_options = {'PRESET', 'UNDO'}
@@ -96,7 +96,7 @@ class ImportX3D(bpy.types.Operator, ImportHelper):
 
 
 class ExportX3D(bpy.types.Operator, ExportHelper):
-    '''Export selection to Extensible 3D file (.x3d)'''
+    """Export selection to Extensible 3D file (.x3d)"""
     bl_idname = "export_scene.x3d"
     bl_label = 'Export X3D'
     bl_options = {'PRESET'}

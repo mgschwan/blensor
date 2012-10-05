@@ -35,16 +35,18 @@
 
 /* **************** SEPARATE YUVA ******************** */
 static bNodeSocketTemplate cmp_node_sepyuva_in[]= {
-	{  SOCK_RGBA, 1, "Image",        1.0f, 1.0f, 1.0f, 1.0f},
+	{  SOCK_RGBA, 1, N_("Image"),        1.0f, 1.0f, 1.0f, 1.0f},
 	{  -1, 0, ""   }
 };
 static bNodeSocketTemplate cmp_node_sepyuva_out[]= {
-	{  SOCK_FLOAT, 0, "Y"},
-	{  SOCK_FLOAT, 0, "U"},
-	{  SOCK_FLOAT, 0, "V"},
-	{  SOCK_FLOAT, 0, "A"},
+	{  SOCK_FLOAT, 0, N_("Y")},
+	{  SOCK_FLOAT, 0, N_("U")},
+	{  SOCK_FLOAT, 0, N_("V")},
+	{  SOCK_FLOAT, 0, N_("A")},
 	{  -1, 0, ""   }
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void do_sepyuva(bNode *UNUSED(node), float *out, float *in)
 {
@@ -99,6 +101,9 @@ static void node_composit_exec_sepyuva(void *UNUSED(data), bNode *node, bNodeSta
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
+
 void register_node_type_cmp_sepyuva(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -106,7 +111,9 @@ void register_node_type_cmp_sepyuva(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_SEPYUVA, "Separate YUVA", NODE_CLASS_CONVERTOR, 0);
 	node_type_socket_templates(&ntype, cmp_node_sepyuva_in, cmp_node_sepyuva_out);
 	node_type_size(&ntype, 80, 40, 140);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_sepyuva);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }
@@ -115,16 +122,18 @@ void register_node_type_cmp_sepyuva(bNodeTreeType *ttype)
 
 /* **************** COMBINE YUVA ******************** */
 static bNodeSocketTemplate cmp_node_combyuva_in[]= {
-	{	SOCK_FLOAT, 1, "Y",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
-	{	SOCK_FLOAT, 1, "U",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
-	{	SOCK_FLOAT, 1, "V",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
-	{	SOCK_FLOAT, 1, "A",			1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("Y"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("U"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("V"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("A"),			1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_combyuva_out[]= {
-	{	SOCK_RGBA, 0, "Image"},
+	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void do_comb_yuva(bNode *UNUSED(node), float *out, float *in1, float *in2, float *in3, float *in4)
 {
@@ -167,8 +176,10 @@ static void node_composit_exec_combyuva(void *UNUSED(data), bNode *node, bNodeSt
 								  do_comb_yuva, CB_VAL, CB_VAL, CB_VAL, CB_VAL);
 
 		out[0]->data= stackbuf;
-	}	
+	}
 }
+
+#endif  /* WITH_COMPOSITOR_LEGACY */
 
 void register_node_type_cmp_combyuva(bNodeTreeType *ttype)
 {
@@ -177,7 +188,9 @@ void register_node_type_cmp_combyuva(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_COMBYUVA, "Combine YUVA", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_combyuva_in, cmp_node_combyuva_out);
 	node_type_size(&ntype, 80, 40, 140);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_combyuva);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

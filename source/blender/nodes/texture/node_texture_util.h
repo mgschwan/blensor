@@ -61,11 +61,15 @@
 
 #include "node_util.h"
 
+#include "NOD_texture.h"
+
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_rand.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
@@ -95,7 +99,7 @@ typedef struct TexParams {
 	int osatex;
 
 	/* optional. we don't really want these here, but image
-	   textures need to do mapping & color correction */
+	 * textures need to do mapping & color correction */
 	ShadeInput *shi;
 	MTex *mtex;
 } TexParams;

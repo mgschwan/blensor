@@ -240,7 +240,7 @@ def import_fbx(path):
                             # get a list of floats as triples
                             blen_verts = [verts[i - 3:i] for i in range(3, len(verts) + 3, 3)]
 
-                            # get weirdo face indicies and proper edge indexs
+                            # get weirdo face indices and proper edge indexs
                             # edge_points Collects faces index, first and last verts.
 
                             face = []
@@ -476,7 +476,7 @@ from bpy_extras.io_utils import ImportHelper
 
 
 class ImportFBX(bpy.types.Operator, ImportHelper):
-    ''''''
+    """"""
     bl_idname = "import_scene.fbx"
     bl_label = "Import FBX"
 

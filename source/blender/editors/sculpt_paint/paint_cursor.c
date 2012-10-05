@@ -31,6 +31,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
+#include "BLI_rect.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_brush_types.h"
@@ -86,7 +87,7 @@ static int same_snap(Snapshot *snap, Brush *brush, ViewContext *vc)
 	         mtex->rot == snap->rot) &&
 
 	        /* make brush smaller shouldn't cause a resample */
-	        ((mtex->brush_map_mode == MTEX_MAP_MODE_FIXED &&
+	        ((mtex->brush_map_mode == MTEX_MAP_MODE_VIEW &&
 	          (BKE_brush_size_get(vc->scene, brush) <= snap->BKE_brush_size_get)) ||
 	         (BKE_brush_size_get(vc->scene, brush) == snap->BKE_brush_size_get)) &&
 
@@ -154,7 +155,7 @@ static int load_tex(Sculpt *sd, Brush *br, ViewContext *vc)
 
 		make_snap(&snap, br, vc);
 
-		if (br->mtex.brush_map_mode == MTEX_MAP_MODE_FIXED) {
+		if (br->mtex.brush_map_mode == MTEX_MAP_MODE_VIEW) {
 			int s = BKE_brush_size_get(vc->scene, br);
 			int r = 1;
 
@@ -239,7 +240,7 @@ static int load_tex(Sculpt *sd, Brush *br, ViewContext *vc)
 
 					avg += br->texture_sample_bias;
 
-					if (br->mtex.brush_map_mode == MTEX_MAP_MODE_FIXED)
+					if (br->mtex.brush_map_mode == MTEX_MAP_MODE_VIEW)
 						avg *= BKE_brush_curve_strength(br, len, 1);  /* Falloff curve */
 
 					buffer[index] = 255 - (GLubyte)(255 * avg);
@@ -278,7 +279,7 @@ static int load_tex(Sculpt *sd, Brush *br, ViewContext *vc)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	if (br->mtex.brush_map_mode == MTEX_MAP_MODE_FIXED) {
+	if (br->mtex.brush_map_mode == MTEX_MAP_MODE_VIEW) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 	}
@@ -294,7 +295,7 @@ static int project_brush_radius(ViewContext *vc,
 
 	ED_view3d_global_to_vector(vc->rv3d, location, view);
 
-	// create a vector that is not orthogonal to view
+	/* create a vector that is not orthogonal to view */
 
 	if (fabsf(view[0]) < 0.1f) {
 		nonortho[0] = view[0] + 1.0f;
@@ -312,20 +313,25 @@ static int project_brush_radius(ViewContext *vc,
 		nonortho[2] = view[2] + 1.0f;
 	}
 
-	// get a vector in the plane of the view
+	/* get a vector in the plane of the view */
 	cross_v3_v3v3(ortho, nonortho, view);
 	normalize_v3(ortho);
 
-	// make a point on the surface of the brush tagent to the view
+	/* make a point on the surface of the brush tagent to the view */
 	mul_v3_fl(ortho, radius);
 	add_v3_v3v3(offset, location, ortho);
 
-	// project the center of the brush, and the tangent point to the view onto the screen
-	project_float(vc->ar, location, p1);
-	project_float(vc->ar, offset, p2);
-
-	// the distance between these points is the size of the projected brush in pixels
-	return len_v2v2(p1, p2);
+	/* project the center of the brush, and the tangent point to the view onto the screen */
+	if ((ED_view3d_project_float_global(vc->ar, location, p1, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_SUCCESS) &&
+	    (ED_view3d_project_float_global(vc->ar, offset,   p2, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_SUCCESS))
+	{
+		/* the distance between these points is the size of the projected brush in pixels */
+		return len_v2v2(p1, p2);
+	}
+	else {
+		BLI_assert(0);  /* assert because the code that sets up the vectors should disallow this */
+		return 0;
+	}
 }
 
 static int sculpt_get_brush_geometry(bContext *C, ViewContext *vc,
@@ -333,7 +339,7 @@ static int sculpt_get_brush_geometry(bContext *C, ViewContext *vc,
                                      float location[3])
 {
 	Scene *scene = CTX_data_scene(C);
-	Paint *paint = paint_get_active(scene);
+	Paint *paint = paint_get_active_from_context(C);
 	Brush *brush = paint_brush(paint);
 	float window[2];
 	int hit;
@@ -342,7 +348,8 @@ static int sculpt_get_brush_geometry(bContext *C, ViewContext *vc,
 	window[1] = y + vc->ar->winrct.ymin;
 
 	if (vc->obact->sculpt && vc->obact->sculpt->pbvh &&
-	    sculpt_stroke_get_location(C, location, window)) {
+	    sculpt_stroke_get_location(C, location, window))
+	{
 		*pixel_radius =
 		    project_brush_radius(vc,
 		                         BKE_brush_unprojected_radius_get(scene, brush),
@@ -376,7 +383,7 @@ static void paint_draw_alpha_overlay(Sculpt *sd, Brush *brush,
 
 	/* check for overlay mode */
 	if (!(brush->flag & BRUSH_TEXTURE_OVERLAY) ||
-	    !(ELEM(brush->mtex.brush_map_mode, MTEX_MAP_MODE_FIXED, MTEX_MAP_MODE_TILED)))
+	    !(ELEM(brush->mtex.brush_map_mode, MTEX_MAP_MODE_VIEW, MTEX_MAP_MODE_TILED)))
 	{
 		return;
 	}
@@ -405,7 +412,7 @@ static void paint_draw_alpha_overlay(Sculpt *sd, Brush *brush,
 		glPushMatrix();
 		glLoadIdentity();
 
-		if (brush->mtex.brush_map_mode == MTEX_MAP_MODE_FIXED) {
+		if (brush->mtex.brush_map_mode == MTEX_MAP_MODE_VIEW) {
 			/* brush rotation */
 			glTranslatef(0.5, 0.5, 0);
 			glRotatef((double)RAD2DEGF((brush->flag & BRUSH_RAKE) ?
@@ -439,8 +446,8 @@ static void paint_draw_alpha_overlay(Sculpt *sd, Brush *brush,
 		else {
 			quad.xmin = 0;
 			quad.ymin = 0;
-			quad.xmax = vc->ar->winrct.xmax - vc->ar->winrct.xmin;
-			quad.ymax = vc->ar->winrct.ymax - vc->ar->winrct.ymin;
+			quad.xmax = BLI_rcti_size_x(&vc->ar->winrct);
+			quad.ymax = BLI_rcti_size_y(&vc->ar->winrct);
 		}
 
 		/* set quad color */
@@ -502,7 +509,7 @@ static void paint_cursor_on_hit(Sculpt *sd, Brush *brush, ViewContext *vc,
 static void paint_draw_cursor(bContext *C, int x, int y, void *UNUSED(unused))
 {
 	Scene *scene = CTX_data_scene(C);
-	Paint *paint = paint_get_active(scene);
+	Paint *paint = paint_get_active_from_context(C);
 	Brush *brush = paint_brush(paint);
 	ViewContext vc;
 	float final_radius;
@@ -604,7 +611,7 @@ static void paint_draw_cursor(bContext *C, int x, int y, void *UNUSED(unused))
 
 void paint_cursor_start(bContext *C, int (*poll)(bContext *C))
 {
-	Paint *p = paint_get_active(CTX_data_scene(C));
+	Paint *p = paint_get_active_from_context(C);
 
 	if (p && !p->paint_cursor)
 		p->paint_cursor = WM_paint_cursor_activate(CTX_wm_manager(C), poll, paint_draw_cursor, NULL);

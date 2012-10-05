@@ -36,18 +36,20 @@
 
 #include "RNA_define.h"
 
+#include "rna_internal.h"  /* own include */
+
 #ifdef RNA_RUNTIME
 
 #include <stddef.h>
 
 #include "BKE_armature.h"
 
-void rna_EditBone_align_roll(EditBone *ebo, float no[3])
+static void rna_EditBone_align_roll(EditBone *ebo, float no[3])
 {
 	ebo->roll = ED_rollBoneToVector(ebo, no, FALSE);
 }
 
-float rna_Bone_do_envelope(Bone *bone, float *vec)
+static float rna_Bone_do_envelope(Bone *bone, float *vec)
 {
 	float scale = (bone->flag & BONE_MULT_VG_ENV) == BONE_MULT_VG_ENV ? bone->weight : 1.0f;
 	return distfactor_to_bone(vec, bone->arm_head, bone->arm_tail, bone->rad_head * scale,
@@ -76,7 +78,7 @@ void RNA_api_bone(StructRNA *srna)
 	func = RNA_def_function(srna, "evaluate_envelope", "rna_Bone_do_envelope");
 	RNA_def_function_ui_description(func, "Calculate bone envelope at given point");
 	parm = RNA_def_float_vector_xyz(func, "point", 3, NULL, -FLT_MAX, FLT_MAX, "Point",
-	                               "Position in 3d space to evaluate", -FLT_MAX, FLT_MAX);
+	                                "Position in 3d space to evaluate", -FLT_MAX, FLT_MAX);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	/* return value */
 	parm = RNA_def_float(func, "factor", 0, -FLT_MAX, FLT_MAX, "Factor", "Envelope factor", -FLT_MAX, FLT_MAX);

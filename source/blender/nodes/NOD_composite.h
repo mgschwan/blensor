@@ -50,6 +50,7 @@ void register_node_type_cmp_value(struct bNodeTreeType *ttype);
 void register_node_type_cmp_rgb(struct bNodeTreeType *ttype);
 void register_node_type_cmp_curve_time(struct bNodeTreeType *ttype);
 void register_node_type_cmp_movieclip(struct bNodeTreeType *ttype);
+void register_node_type_cmp_usermask(struct bNodeTreeType *ttype);
 
 void register_node_type_cmp_composite(struct bNodeTreeType *ttype);
 void register_node_type_cmp_viewer(struct bNodeTreeType *ttype);
@@ -79,6 +80,8 @@ void register_node_type_cmp_dblur(struct bNodeTreeType *ttype);
 void register_node_type_cmp_bilateralblur(struct bNodeTreeType *ttype);
 void register_node_type_cmp_vecblur(struct bNodeTreeType *ttype);
 void register_node_type_cmp_dilateerode(struct bNodeTreeType *ttype);
+void register_node_type_cmp_inpaint(struct bNodeTreeType *ttype);
+void register_node_type_cmp_despeckle(struct bNodeTreeType *ttype);
 void register_node_type_cmp_defocus(struct bNodeTreeType *ttype);
 
 void register_node_type_cmp_valtorgb(struct bNodeTreeType *ttype);
@@ -104,6 +107,8 @@ void register_node_type_cmp_channel_matte(struct bNodeTreeType *ttype);
 void register_node_type_cmp_color_spill(struct bNodeTreeType *ttype);
 void register_node_type_cmp_luma_matte(struct bNodeTreeType *ttype); 
 void register_node_type_cmp_doubleedgemask(struct bNodeTreeType *ttype);
+void register_node_type_cmp_keyingscreen(struct bNodeTreeType *ttype);
+void register_node_type_cmp_keying(struct bNodeTreeType *ttype);
 
 void register_node_type_cmp_translate(struct bNodeTreeType *ttype);
 void register_node_type_cmp_rotate(struct bNodeTreeType *ttype);
@@ -115,9 +120,20 @@ void register_node_type_cmp_mapuv(struct bNodeTreeType *ttype);
 void register_node_type_cmp_transform(struct bNodeTreeType *ttype);
 void register_node_type_cmp_stabilize2d(struct bNodeTreeType *ttype);
 void register_node_type_cmp_moviedistortion(struct bNodeTreeType *ttype);
+void register_node_type_cmp_mask(struct bNodeTreeType *ttype);
 
 void register_node_type_cmp_glare(struct bNodeTreeType *ttype);
 void register_node_type_cmp_tonemap(struct bNodeTreeType *ttype);
 void register_node_type_cmp_lensdist(struct bNodeTreeType *ttype);
+
+
+void register_node_type_cmp_colorcorrection(struct bNodeTreeType *ttype);
+void register_node_type_cmp_boxmask(struct bNodeTreeType *ttype);
+void register_node_type_cmp_ellipsemask(struct bNodeTreeType *ttype);
+void register_node_type_cmp_bokehimage(struct bNodeTreeType *ttype);
+void register_node_type_cmp_bokehblur(struct bNodeTreeType *ttype);
+void register_node_type_cmp_switch(struct bNodeTreeType *ttype);
+
+void register_node_type_cmp_trackpos(struct bNodeTreeType *ttype);
 
 #endif

@@ -61,9 +61,10 @@ static float edbm_rip_rip_edgedist(ARegion *ar, float mat[][4],
 {
 	float vec1[3], vec2[3];
 
-	ED_view3d_project_float_v2(ar, co1, vec1, mat);
-	ED_view3d_project_float_v2(ar, co2, vec2, mat);
+	ED_view3d_project_float_v2_m4(ar, co1, vec1, mat);
+	ED_view3d_project_float_v2_m4(ar, co2, vec2, mat);
 
+	/* TODO: use dist_squared_to_line_segment_v2() looks like we only ever use for comparison */
 	return dist_to_line_segment_v2(mvalf, vec1, vec2);
 }
 
@@ -96,11 +97,11 @@ static float edbm_rip_edge_side_measure(BMEdge *e, BMLoop *e_l,
 	mid_v3_v3v3(cent, v1_other->co, v2_other->co);
 	mid_v3_v3v3(mid, e->v1->co, e->v2->co);
 
-	ED_view3d_project_float_v2(ar, cent, cent, projectMat);
-	ED_view3d_project_float_v2(ar, mid, mid, projectMat);
+	ED_view3d_project_float_v2_m4(ar, cent, cent, projectMat);
+	ED_view3d_project_float_v2_m4(ar, mid, mid, projectMat);
 
-	ED_view3d_project_float_v2(ar, e->v1->co, e_v1_co, projectMat);
-	ED_view3d_project_float_v2(ar, e->v2->co, e_v2_co, projectMat);
+	ED_view3d_project_float_v2_m4(ar, e->v1->co, e_v1_co, projectMat);
+	ED_view3d_project_float_v2_m4(ar, e->v2->co, e_v2_co, projectMat);
 
 	sub_v2_v2v2(vec, cent, mid);
 	normalize_v2(vec);
@@ -111,8 +112,8 @@ static float edbm_rip_edge_side_measure(BMEdge *e, BMLoop *e_l,
 
 	score = len_v2v2(e_v1_co, e_v2_co);
 
-	if (dist_to_line_segment_v2(fmval_tweak, e_v1_co, e_v2_co) >
-	    dist_to_line_segment_v2(fmval,       e_v1_co, e_v2_co))
+	if (dist_squared_to_line_segment_v2(fmval_tweak, e_v1_co, e_v2_co) >
+	    dist_squared_to_line_segment_v2(fmval,       e_v1_co, e_v2_co))
 	{
 		return score;
 	}
@@ -139,7 +140,7 @@ static float edbm_rip_edge_side_measure(BMEdge *e, BMLoop *e_l,
  *     connected edge loops.
  *     The reason for using loops like this is because when the edges are split we don't which face user gets the newly
  *     created edge (its as good as random so we cant assume new edges will be on once side).
- *     After splittingm, its very simple to walk along boundary loops since each only has one edge from a single side.
+ *     After splitting, its very simple to walk along boundary loops since each only has one edge from a single side.
  * - The end loop pairs are stored in an array however to support multiple edge-selection-islands, so you can rip
  *   multiple selections at once.
  * - * Execute the split *
@@ -347,8 +348,9 @@ static int edbm_rip_call_edgesplit(BMEditMesh *em, wmOperator *op)
 {
 	BMOperator bmop;
 
-	if (!EDBM_op_init(em, &bmop, op, "edgesplit edges=%he verts=%hv use_verts=%b",
-	                  BM_ELEM_TAG, BM_ELEM_SELECT, TRUE)) {
+	if (!EDBM_op_init(em, &bmop, op, "split_edges edges=%he verts=%hv use_verts=%b",
+	                  BM_ELEM_TAG, BM_ELEM_SELECT, TRUE))
+	{
 		return FALSE;
 	}
 	BMO_op_exec(em->bm, &bmop);
@@ -378,6 +380,7 @@ static int edbm_rip_invoke__vert(bContext *C, wmOperator *op, wmEvent *event)
 	float projectMat[4][4], fmval[3] = {event->mval[0], event->mval[1]};
 	float dist = FLT_MAX;
 	float d;
+	int is_wire;
 
 	BMEditSelection ese;
 	int totboundary_edge = 0;
@@ -400,6 +403,8 @@ static int edbm_rip_invoke__vert(bContext *C, wmOperator *op, wmEvent *event)
 	/* this should be impossible, but sanity checks are a good thing */
 	if (!v)
 		return OPERATOR_CANCELLED;
+
+	is_wire = BM_vert_is_wire(v);
 
 	e2 = NULL;
 
@@ -428,8 +433,11 @@ static int edbm_rip_invoke__vert(bContext *C, wmOperator *op, wmEvent *event)
 	 * - we cant find an edge - this means we are ripping a faces vert that is connected to other
 	 *   geometry only at the vertex.
 	 * - the boundary edge total is greater then 2,
-	 *   in this case edge split _can_ work but we get far nicer results if we use this special case. */
-	if (totboundary_edge > 2) {
+	 *   in this case edge split _can_ work but we get far nicer results if we use this special case.
+	 * - there are only 2 edges but we are a wire vert. */
+	if ((is_wire == FALSE && totboundary_edge > 2) ||
+	    (is_wire == TRUE  && totboundary_edge > 1))
+	{
 		BMVert **vout;
 		int vout_len;
 
@@ -456,21 +464,44 @@ static int edbm_rip_invoke__vert(bContext *C, wmOperator *op, wmEvent *event)
 
 			dist = FLT_MAX;
 
+			/* in the loop below we find the best vertex to drag based on its connected geometry,
+			 * either by its face corner, or connected edge (when no faces are attached) */
 			for (i = 0; i < vout_len; i++) {
-				BM_ITER_ELEM (l, &iter, vout[i], BM_LOOPS_OF_VERT) {
-					if (!BM_elem_flag_test(l->f, BM_ELEM_HIDDEN)) {
-						float l_mid_co[3];
-						BM_loop_calc_face_tangent(l, l_mid_co);
 
-						/* scale to average of surrounding edge size, only needs to be approx */
-						mul_v3_fl(l_mid_co, (BM_edge_calc_length(l->e) + BM_edge_calc_length(l->prev->e)) / 2.0f);
-						add_v3_v3(l_mid_co, v->co);
+				if (BM_vert_is_wire(vout[i]) == FALSE) {
+					/* find the best face corner */
+					BM_ITER_ELEM (l, &iter, vout[i], BM_LOOPS_OF_VERT) {
+						if (!BM_elem_flag_test(l->f, BM_ELEM_HIDDEN)) {
+							float l_mid_co[3];
+							BM_loop_calc_face_tangent(l, l_mid_co);
 
-						d = edbm_rip_rip_edgedist(ar, projectMat, v->co, l_mid_co, fmval);
+							/* scale to average of surrounding edge size, only needs to be approx, but should
+							 * be roughly equivalent to the check below which uses the middle of the edge. */
+							mul_v3_fl(l_mid_co, (BM_edge_calc_length(l->e) + BM_edge_calc_length(l->prev->e)) / 2.0f);
+							add_v3_v3(l_mid_co, v->co);
 
-						if (d < dist) {
-							dist = d;
-							vi_best = i;
+							d = edbm_rip_rip_edgedist(ar, projectMat, v->co, l_mid_co, fmval);
+
+							if (d < dist) {
+								dist = d;
+								vi_best = i;
+							}
+						}
+					}
+				}
+				else {
+					/* a wire vert, find the best edge */
+					BM_ITER_ELEM (e, &iter, vout[i], BM_EDGES_OF_VERT) {
+						if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN)) {
+							float e_mid_co[3];
+							mid_v3_v3v3(e_mid_co, e->v1->co, e->v2->co);
+
+							d = edbm_rip_rip_edgedist(ar, projectMat, v->co, e_mid_co, fmval);
+
+							if (d < dist) {
+								dist = d;
+								vi_best = i;
+							}
 						}
 					}
 				}
@@ -710,7 +741,7 @@ static int edbm_rip_invoke(bContext *C, wmOperator *op, wmEvent *event)
 
 	/* running in face mode hardly makes sense, so convert to region loop and rip */
 	if (em->bm->totfacesel) {
-		/* highly nifty but hard to sypport since the operator can fail and we're left
+		/* highly nifty but hard to support since the operator can fail and we're left
 		 * with modified selection */
 		// WM_operator_name_call(C, "MESH_OT_region_to_loop", WM_OP_INVOKE_DEFAULT, NULL);
 

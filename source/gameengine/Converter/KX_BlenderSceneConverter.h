@@ -182,6 +182,7 @@ public:
 	{
 		LIB_LOAD_LOAD_ACTIONS = 1,
 		LIB_LOAD_VERBOSE = 2,
+		LIB_LOAD_LOAD_SCRIPTS = 4,
 	};
 
 
@@ -191,9 +192,7 @@ public:
 #endif
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:KX_BlenderSceneConverter"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:KX_BlenderSceneConverter")
 #endif
 };
 

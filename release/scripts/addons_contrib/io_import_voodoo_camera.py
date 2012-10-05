@@ -19,12 +19,12 @@
 bl_info = {
     "name": "Import Voodoo camera",
     "author": "Fazekas Laszlo",
-    "version": (0, 7),
-    "blender": (2, 5, 7),
+    "version": (0, 8),
+    "blender": (2, 6, 3),
     "location": "File > Import > Voodoo camera",
-    "description": "Imports a Blender (2.4x or 2.5x) Python script from the Voodoo camera tracker software.",
+    "description": "Imports a Blender (2.4x or 2.5x) Python script from the Voodoo (version 1.1 or 1.2) camera tracker software.",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Import-Export/Voodoo_camera",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=22510",
@@ -32,10 +32,10 @@ bl_info = {
 
 """
 This script loads a Blender Python script from the Voodoo camera
-tracker program into Blender 2.5x.
+tracker program into Blender 2.5x+.
 
 It processes the script as a text file and not as a Python executable
-because of the incompatible Python APIs of Blender 2.4x and 2.5x.
+because of the incompatible Python APIs of Blender 2.4x/2.5x/2.6x.
 """
 
 import bpy
@@ -61,6 +61,7 @@ def voodoo_import(infile,ld_cam,ld_points):
     scene = bpy.context.scene
     initfr = scene.frame_current
     b24= True
+    voodoo_import.frwas= False
 
     dummy = bpy.data.objects.new('voodoo_scene', None)
     dummy.location = (0.0, 0.0, 0.0)
@@ -70,6 +71,7 @@ def voodoo_import(infile,ld_cam,ld_points):
 
     if ld_cam:
         data = bpy.data.cameras.new('voodoo_render_cam')
+        data.lens_unit= 'DEGREES'
         vcam = bpy.data.objects.new('voodoo_render_cam', data)
         vcam.location = (0.0, 0.0, 0.0)
         vcam.rotation_euler = (0.0, 0.0, 0.0)
@@ -88,15 +90,29 @@ def voodoo_import(infile,ld_cam,ld_points):
         data = bpy.data.meshes.new('voodoo_FP3D_cloud')
         mesh = bpy.data.objects.new('voodoo_FP3D_cloud', data)
         mesh.location = (0.0, 0.0, 0.0)
-        mesh.rotation_euler = (3.141593/2, 0.0, 0.0)
-        mesh.scale = (5.0, 5.0, 5.0)
+        # before 6.3
+        # mesh.rotation_euler = (3.141593/2, 0.0, 0.0)
+        # mesh.scale = (5.0, 5.0, 5.0)
+        mesh.rotation_euler = (0.0, 0.0, 0.0)
+        mesh.scale = (1.0, 1.0, 1.0)
         scene.objects.link(mesh)
         mesh.parent = dummy
 
     verts = []
 
+    def stri(s):
+        try:
+            ret= int(s,10)
+
+        except ValueError :
+            ret= -1
+
+        return ret
+
     def process_line(line):
         lineSplit = line.split()
+
+        if (len(lineSplit) < 1): return
 
         if (line[0] == '#'): return
 
@@ -110,28 +126,34 @@ def voodoo_import(infile,ld_cam,ld_points):
                     pos= line.find('.lens')
 
                     if (pos != -1):
-                        fr = int(lineSplit[0][1:pos],10)
-                        scene.frame_set(fr)
-                        vcam.data.lens= float(lineSplit[2])
-                        vcam.data.keyframe_insert('lens')
-                        return
+                        fr = stri(lineSplit[0][1:pos])
+
+                        if (fr >= 0):
+                            scene.frame_current = fr
+                            vcam.data.lens= float(lineSplit[2])
+                            vcam.data.keyframe_insert('lens')
+                            return
 
                 if (line[0] == 'o'):
                     pos= line.find('.setMatrix')
 
                     if (pos != -1):
-                        fr = int(lineSplit[0][1:pos],10)
-                        scene.frame_set(fr)
-                        # for up to 2.55
-                        # vcam.matrix_world = eval('mathutils.' + line.rstrip()[pos+21:-1])
-                        # for 2.56, from Michael (Meikel) Oetjen 
-                        # vcam.matrix_world = eval('mathutils.Matrix(' + line.rstrip()[pos+28:-2].replace('[','(',4).replace(']',')',4) + ')')
-                        # for 2.57
-                        vcam.matrix_world = eval('mathutils.Matrix([' + line.rstrip()[pos+28:-2] + '])')
-                        vcam.keyframe_insert('location')
-                        vcam.keyframe_insert('scale')
-                        vcam.keyframe_insert('rotation_euler')
-                        return
+                        fr = stri(lineSplit[0][1:pos])
+
+                        if (fr >= 0):
+                            scene.frame_current = fr
+                            # for up to 2.55
+                            # vcam.matrix_world = eval('mathutils.' + line.rstrip()[pos+21:-1])
+                            # for 2.56, from Michael (Meikel) Oetjen 
+                            # vcam.matrix_world = eval('mathutils.Matrix(' + line.rstrip()[pos+28:-2].replace('[','(',4).replace(']',')',4) + ')')
+                            # for 2.57
+                            # vcam.matrix_world = eval('mathutils.Matrix([' + line.rstrip()[pos+28:-2] + '])')
+                            # for 2.63
+                            vcam.matrix_world = eval('(' + line.rstrip()[pos+27:-1] + ')')
+                            vcam.keyframe_insert('location')
+                            vcam.keyframe_insert('scale')
+                            vcam.keyframe_insert('rotation_euler')
+                            return
 
             # process mesh commands
 
@@ -153,37 +175,85 @@ def voodoo_import(infile,ld_cam,ld_points):
             if (pos == -1):
                 pos= line.find('frame_set')
 
+                if (pos == -1):
+                    pos= lineSplit[0].find('frame_current')
+
+                    if (pos != -1):
+                        fr= stri(lineSplit[2])
+
+                        if (fr >= 0):
+                            scene.frame_current = fr
+                            voodoo_import.frwas= True
+
+                        return
+
             if (pos != -1):
-                scene.frame_set(eval(line[pos+9:]))
-                return
+                fr= stri(line[pos+10:-2])
 
-            pos= line.find('vcam.data.lens')
+                if (fr >= 0):
+                    scene.frame_current = fr
+                    voodoo_import.frwas= True
+                    return
 
-            if (pos != -1):
-                vcam.data.lens= float(lineSplit[2])
-                vcam.data.keyframe_insert('lens')
-                return
+            if voodoo_import.frwas:
 
-            pos= line.find('.Matrix')
+                pos= line.find('data.lens')
 
-            if (pos != -1):
+                if (pos != -1):
+                    vcam.data.lens= float(lineSplit[2])
+                    vcam.data.keyframe_insert('lens')
+                    return
 
-                # for up to 2.55
-                # vcam.matrix_world = eval('mathutils' + line[pos:])
+                pos= line.find('.Matrix')
 
-                # for 2.56
-                # if (line[pos+8] == '['):
-                #   # from Michael (Meikel) Oetjen
-                #     vcam.matrix_world = eval('mathutils.Matrix((' + line.rstrip()[pos+9:-1].replace('[','(',3).replace(']',')',4) + ')')
-                # else:
-                #   vcam.matrix_world = eval('mathutils' + line[pos:])
+                if (pos != -1):
 
-                # for 2.57
-                vcam.matrix_world = eval('mathutils.Matrix([' + line.rstrip()[pos+8:-1] + '])')
-                vcam.keyframe_insert('location')
-                vcam.keyframe_insert('scale')
-                vcam.keyframe_insert('rotation_euler')
-                return
+                    # for up to 2.55
+                    # vcam.matrix_world = eval('mathutils' + line[pos:])
+
+                    # for 2.56
+                    # if (line[pos+8] == '['):
+                    # # from Michael (Meikel) Oetjen
+                    #     vcam.matrix_world = eval('mathutils.Matrix((' + line.rstrip()[pos+9:-1].replace('[','(',3).replace(']',')',4) + ')')
+                    # else:
+                    #   vcam.matrix_world = eval('mathutils' + line[pos:])
+
+                    # for 2.57
+                    # vcam.matrix_world = eval('mathutils.Matrix([' + line.rstrip()[pos+8:-1] + '])')
+
+                    # for 2.63
+                    vcam.matrix_world = eval('(' + line.rstrip()[pos+7:] + ')')
+                    return
+
+                pos= line.find('.matrix_world')
+
+                if (pos != -1):
+                    vcam.matrix_world = eval(line.rstrip()[line.find('=')+1:])
+                    return
+
+                pos= line.find('.location')
+
+                if (pos != -1):
+                    vcam.location = eval(line[line.find('=')+1:])
+                    return
+
+                pos= line.find('.rotation_euler')
+
+                if (pos != -1):
+                    vcam.rotation_euler = eval(line[line.find('=')+1:])
+                    return
+
+                pos= line.find('.data.keyframe_insert')
+
+                if (pos != -1):
+                    vcam.data.keyframe_insert(eval(line[pos+22:-2]))
+                    return
+
+                pos= line.find('.keyframe_insert')
+
+                if (pos != -1):
+                    vcam.keyframe_insert(eval(line[pos+17:-2]))
+                    return
 
         # process mesh commands
 
@@ -212,7 +282,7 @@ def voodoo_import(infile,ld_cam,ld_points):
 
 # Operator
 class ImportVoodooCamera(bpy.types.Operator):
-    ''''''
+    """"""
     bl_idname = "import.voodoo_camera"
     bl_label = "Import Voodoo camera"
     bl_description = "Load a Blender export script from the Voodoo motion tracker"
@@ -222,8 +292,8 @@ class ImportVoodooCamera(bpy.types.Operator):
         description="Filepath used for processing the script",
         maxlen= 1024,default= "")
 
-#    filter_python = BoolProperty(name="Filter python",
-#    description="",default=True,options={'HIDDEN'})
+    # filter_python = BoolProperty(name="Filter python",
+    # description="",default=True,options={'HIDDEN'})
 
     load_camera = BoolProperty(name="Load camera",
         description="Load the camera",

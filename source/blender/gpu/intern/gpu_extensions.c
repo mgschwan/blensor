@@ -522,7 +522,7 @@ GPUTexture *GPU_texture_create_3D(int w, int h, int depth, float *fpixels)
 	return tex;
 }
 
-GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, double time, int mipmap)
+GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, int ncd, double time, int mipmap)
 {
 	GPUTexture *tex;
 	GLint w, h, border, lastbindcode, bindcode;
@@ -530,7 +530,7 @@ GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, double time, 
 	glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastbindcode);
 
 	GPU_update_image_time(ima, time);
-	bindcode = GPU_verify_image(ima, iuser, 0, 0, mipmap);
+	bindcode = GPU_verify_image(ima, iuser, 0, 0, mipmap, ncd);
 
 	if (ima->gputexture) {
 		ima->gputexture->bindcode = bindcode;
@@ -894,7 +894,7 @@ void GPU_framebuffer_blur(GPUFrameBuffer *fb, GPUTexture *tex, GPUFrameBuffer *b
 	/* Blurring horizontally */
 
 	/* We do the bind ourselves rather than using GPU_framebuffer_texture_bind() to avoid
-	   pushing unnecessary matrices onto the OpenGL stack. */
+	 * pushing unnecessary matrices onto the OpenGL stack. */
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, blurfb->object);
 
 	GPU_shader_bind(blur_shader);
@@ -1074,8 +1074,9 @@ GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, /*GPU
 	shader->object = glCreateProgramObjectARB();
 
 	if (!shader->object ||
-		(vertexcode && !shader->vertex) ||
-		(fragcode && !shader->fragment)) {
+	    (vertexcode && !shader->vertex) ||
+	    (fragcode && !shader->fragment))
+	{
 		fprintf(stderr, "GPUShader, object creation failed.\n");
 		GPU_shader_free(shader);
 		return NULL;

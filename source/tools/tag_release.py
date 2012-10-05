@@ -1,11 +1,11 @@
 #!/usr/bin/env python3.2
 
-REV_BLENDER = 44136
-REV_EXTENSIONS = 2994
-REV_LOCALE = 392
+REV_BLENDER = 51016
+REV_EXTENSIONS = 3805
+REV_LOCALE = 1097
 
-TAG_BLENDER = "blender-2.62-release"
-TAG_EXTENSIONS = TAG_LOCALE = "2_62_release"
+TAG_BLENDER = "blender-2.64-release"
+TAG_EXTENSIONS = TAG_LOCALE = "2_64_release"
 
 print("\n# Run these commands from the blender source dir:")
 

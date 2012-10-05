@@ -24,7 +24,11 @@ TO TEST THE SCRIPT :
   . start blender
   . enable then addon in  user prefs > addons
   . run the script with file > import > directX
-
+ 
+25/01/12 0.18
+  . code rewrite according to api bmesh changes (me.polygon and uv layers essentially)
+  . implemented foreachset() call for uv import (faster)
+  
 25/01/12 0.17
   . faster, 60% faster in some case : various loops improvements, infile templates parsing disabled by default
     saw another bottleneck about data chunks as string but will wait for binary support for better point of view.

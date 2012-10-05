@@ -35,13 +35,15 @@
 
 /* **************** NORMALIZE single channel, useful for Z buffer ******************** */
 static bNodeSocketTemplate cmp_node_normalize_in[]= {
-	{   SOCK_FLOAT, 1, "Value",         1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{   SOCK_FLOAT, 1, N_("Value"),         1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{   -1, 0, ""   }
 };
 static bNodeSocketTemplate cmp_node_normalize_out[]= {
-	{   SOCK_FLOAT, 0, "Value"},
+	{   SOCK_FLOAT, 0, N_("Value")},
 	{   -1, 0, ""   }
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void do_normalize(bNode *UNUSED(node), float *out, float *src, float *min, float *mult)
 {
@@ -102,6 +104,8 @@ static void node_composit_exec_normalize(void *UNUSED(data), bNode *node, bNodeS
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_normalize(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -109,7 +113,9 @@ void register_node_type_cmp_normalize(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_NORMALIZE, "Normalize", NODE_CLASS_OP_VECTOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_normalize_in, cmp_node_normalize_out);
 	node_type_size(&ntype, 100, 60, 150);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_normalize);
+#endif
 	
 	nodeRegisterType(ttype, &ntype);
 }

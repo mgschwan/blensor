@@ -25,7 +25,7 @@ bl_info = {
     "location": "File > Import-Export",
     "description": "Import-Export MDD as mesh shape keys",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Import-Export/NewTek_OBJ",
     "tracker_url": "",
     "support": 'OFFICIAL',
@@ -45,7 +45,7 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper
 
 
 class ImportMDD(bpy.types.Operator, ImportHelper):
-    '''Import MDD vertex keyframe file to shape keys'''
+    """Import MDD vertex keyframe file to shape keys"""
     bl_idname = "import_shape.mdd"
     bl_label = "Import MDD"
     bl_options = {'UNDO'}
@@ -87,7 +87,7 @@ class ImportMDD(bpy.types.Operator, ImportHelper):
 
 
 class ExportMDD(bpy.types.Operator, ExportHelper):
-    '''Animated mesh to MDD vertex keyframe file'''
+    """Animated mesh to MDD vertex keyframe file"""
     bl_idname = "export_shape.mdd"
     bl_label = "Export MDD"
 

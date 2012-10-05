@@ -50,13 +50,6 @@ set(SRC
 	intern/gpu_draw.c
 	intern/gpu_extensions.c
 	intern/gpu_material.c
-	
-	shaders/gpu_shader_material.glsl.c
-	shaders/gpu_shader_vertex.glsl.c
-	shaders/gpu_shader_sep_gaussian_blur_frag.glsl.c
-	shaders/gpu_shader_sep_gaussian_blur_vert.glsl.c
-	shaders/gpu_shader_vsm_store_frag.glsl.c
-	shaders/gpu_shader_vsm_store_vert.glsl.c
 
 	GPU_buffers.h
 	GPU_draw.h
@@ -65,11 +58,23 @@ set(SRC
 	intern/gpu_codegen.h
 )
 
+data_to_c_simple(shaders/gpu_shader_material.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_vertex.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_sep_gaussian_blur_frag.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_sep_gaussian_blur_vert.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_vsm_store_frag.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_vsm_store_vert.glsl SRC)
+
 if(WITH_MOD_SMOKE)
 	add_definitions(-DWITH_SMOKE)
 endif()
 
 add_definitions(-DGLEW_STATIC)
+
+if(WITH_IMAGE_DDS)
+	add_definitions(-DWITH_DDS)
+endif()
+
 
 blender_add_lib(bf_gpu "${SRC}" "${INC}" "${INC_SYS}")
 

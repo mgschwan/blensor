@@ -24,19 +24,19 @@ bl_info = {
     "location": "File > Export > Pointcache (.pc2)",
     "description": "Export mesh Pointcache data (.pc2)",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Import-Export/PC2_Pointcache_export",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=24703",
     "category": "Import-Export"}
 
-'''
+"""
 Usage Notes:
 
 in Maya Mel:
 cacheFile -pc2 1 -pcf "<insert filepath of source>" -f "<insert target filename w/o extension>" -dir "<insert directory path for target>" -format "OneFile";
 
-'''
+"""
 
 import bpy
 from bpy.props import *
@@ -46,9 +46,8 @@ import time
 from bpy_extras.io_utils import ExportHelper
 
 def getSampling(start, end, sampling):
-    samples = [start - sampling
-               + x * sampling
-               for x in range(start, int((end-start) * 1.0 / sampling) + 1)]
+    samples = [start + x * sampling
+               for x in range(int((end - start) / sampling) + 1)]
     return samples
 
 def do_export(context, props, filepath):
@@ -105,7 +104,7 @@ def do_export(context, props, filepath):
 
 ###### EXPORT OPERATOR #######
 class Export_pc2(bpy.types.Operator, ExportHelper):
-    '''Exports the active Object as a .pc2 Pointcache file'''
+    """Export the active Object as a .pc2 Pointcache file"""
     bl_idname = "export_shape.pc2"
     bl_label = "Export Pointcache (.pc2)"
 

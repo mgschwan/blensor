@@ -30,7 +30,7 @@ bl_info = {
     "location": "View3D > Q key",
     "description": "Menu of material tools (assign, select..)  in the 3D View",
     "warning": "Buggy, Broken in Cycles mode",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/3D interaction/Materials Utils",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=22140",
@@ -481,12 +481,20 @@ def texface_to_mat():
     if editmode:
         bpy.ops.object.mode_set(mode='EDIT')
 
+def remove_materials():
 
+	for ob in bpy.data.objects:
+		print (ob.name)
+		try:
+			bpy.ops.object.material_slot_remove()
+			print ("removed material from " + ob.name)
+		except:
+			print (ob.name + " does not have materials.")
 # -----------------------------------------------------------------------------
 # operator classes:
 
 class VIEW3D_OT_texface_to_material(bpy.types.Operator):
-    '''Create texture materials for images assigned in UV editor'''
+    """Create texture materials for images assigned in UV editor"""
     bl_idname = "view3d.texface_to_material"
     bl_label = "MW Texface Images to Material/Texture"
     bl_options = {'REGISTER', 'UNDO'}
@@ -506,7 +514,7 @@ class VIEW3D_OT_texface_to_material(bpy.types.Operator):
 
 
 class VIEW3D_OT_assign_material(bpy.types.Operator):
-    '''Assign a material to the selection'''
+    """Assign a material to the selection"""
     bl_idname = "view3d.assign_material"
     bl_label = "MW Assign Material"
     bl_options = {'REGISTER', 'UNDO'}
@@ -532,8 +540,8 @@ class VIEW3D_OT_assign_material(bpy.types.Operator):
 
 
 class VIEW3D_OT_clean_material_slots(bpy.types.Operator):
-    '''Removes any material slots from selected objects '''\
-    '''that are not used by the mesh'''
+    """Removes any material slots from selected objects """ \
+    """that are not used by the mesh"""
     bl_idname = "view3d.clean_material_slots"
     bl_label = "MW Clean Material Slots"
     bl_options = {'REGISTER', 'UNDO'}
@@ -548,7 +556,7 @@ class VIEW3D_OT_clean_material_slots(bpy.types.Operator):
 
 
 class VIEW3D_OT_material_to_texface(bpy.types.Operator):
-    '''Transfer material assignments to UV editor'''
+    """Transfer material assignments to UV editor"""
     bl_idname = "view3d.material_to_texface"
     bl_label = "MW Material Images to Texface"
     bl_options = {'REGISTER', 'UNDO'}
@@ -561,9 +569,23 @@ class VIEW3D_OT_material_to_texface(bpy.types.Operator):
         mat_to_texface()
         return {'FINISHED'}
 
+class VIEW3D_OT_material_remove(bpy.types.Operator):
+    """Remove all material slots from active objects"""
+    bl_idname = "view3d.material_remove"
+    bl_label = "Remove All Material Slots"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object != None
+
+    def execute(self, context):
+        remove_materials()
+        return {'FINISHED'}
+
 
 class VIEW3D_OT_select_material_by_name(bpy.types.Operator):
-    '''Select geometry with this material assigned to it'''
+    """Select geometry with this material assigned to it"""
     bl_idname = "view3d.select_material_by_name"
     bl_label = "MW Select Material By Name"
     bl_options = {'REGISTER', 'UNDO'}
@@ -584,7 +606,7 @@ class VIEW3D_OT_select_material_by_name(bpy.types.Operator):
 
 
 class VIEW3D_OT_replace_material(bpy.types.Operator):
-    '''Replace a material by name'''
+    """Replace a material by name"""
     bl_idname = "view3d.replace_material"
     bl_label = "MW Replace Material"
     bl_options = {'REGISTER', 'UNDO'}
@@ -630,14 +652,17 @@ class VIEW3D_MT_master_material(bpy.types.Menu):
         layout.menu("VIEW3D_MT_select_material", icon='HAND')
         layout.separator()
         layout.operator("view3d.clean_material_slots",
-                        text='Clean Material Slots',
+                        text="Clean Material Slots",
+                        icon='CANCEL')
+        layout.operator("view3d.material_remove",
+                        text="Remove Material Slots",
                         icon='CANCEL')
         layout.operator("view3d.material_to_texface",
-                        text='Material to Texface',
-                        icon='polygonsEL_HLT')
+                        text="Material to Texface",
+                        icon='MATERIAL_DATA')
         layout.operator("view3d.texface_to_material",
                         text="Texface to Material",
-                        icon='polygonsEL_HLT')
+                        icon='MATERIAL_DATA')
 
         layout.separator()
         layout.operator("view3d.replace_material",

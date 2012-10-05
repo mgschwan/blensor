@@ -157,7 +157,7 @@ def test(TestN = 13):
 #For filling a linear space with divisions
 def fill(left, right, avedst, mindst=0.0, dev=0.0, pad=(0.0,0.0), num=0,
          center=0):
-    __doc__ = '''\
+    __doc__ = """\
     Fills a linear range with points and returns an ordered list of those points
     including the end points.
 
@@ -172,7 +172,7 @@ def fill(left, right, avedst, mindst=0.0, dev=0.0, pad=(0.0,0.0), num=0,
     num: substitutes a numerical limit for the right limit.  fill will then make
         a num+1 element list
     center: flag to center the elements in the range, 0 == disabled
-        '''
+        """
 
     poslist = [left]
     curpos = left+pad[0]
@@ -220,7 +220,7 @@ def fill(left, right, avedst, mindst=0.0, dev=0.0, pad=(0.0,0.0), num=0,
 #For generating block geometry
 def MakeABlock(bounds, segsize, vll=0, Offsets=None, FaceExclude=[],
                bevel=0, xBevScl=1):
-    __doc__ = '''\
+    __doc__ = """\
     MakeABlock returns lists of points and faces to be made into a square
             cornered block, subdivided along the length, with optional bevels.
     bounds: a list of boundary positions:
@@ -240,9 +240,9 @@ def MakeABlock(bounds, segsize, vll=0, Offsets=None, FaceExclude=[],
             6:right_top_back,
             7:right_top_front,
             ]
-    FaceExclude: list of faces to exclude from the faces list.  see bounds above for indicies
+    FaceExclude: list of faces to exclude from the faces list.  see bounds above for indices
     xBevScl: how much to divide the end (+- x axis) bevel dimensions.  Set to current average radius to compensate for angular distortion on curved blocks
-    '''
+    """
 
     slices = fill(bounds[0], bounds[1], segsize, segsize, center=1)
     points = []
@@ -304,7 +304,7 @@ def MakeABlock(bounds, segsize, vll=0, Offsets=None, FaceExclude=[],
 
 #For generating Keystone Geometry
 def MakeAKeystone(xpos, width, zpos, ztop, zbtm, thick, bevel, vll=0, FaceExclude=[], xBevScl=1):
-    __doc__ = '''\
+    __doc__ = """\
     MakeAKeystone returns lists of points and faces to be made into a square cornered keystone, with optional bevels.
     xpos: x position of the centerline
     width: x width of the keystone at the widest point (discounting bevels)
@@ -316,7 +316,7 @@ def MakeAKeystone(xpos, width, zpos, ztop, zbtm, thick, bevel, vll=0, FaceExclud
     vll: the number of vertexes already in the mesh. len(mesh.verts) should give this number
     faceExclude: list of faces to exclude from the faces list.  0:left, 1:right, 2:bottom, 3:top, 4:back, 5:front
     xBevScl: how much to divide the end (+- x axis) bevel dimensions.  Set to current average radius to compensate for angular distortion on curved blocks
-    '''
+    """
 
     points = []
     faces = []
@@ -496,8 +496,8 @@ class opening:
     def edgeV(self, ht, s):
         dist = abs(self.x-ht)
         def radialAdjust(dist, sideVal):
-            '''take the distance and adjust for radial geometry, return dist.
-            '''
+            """take the distance and adjust for radial geometry, return dist.
+            """
             if radialized:
                 if slope:
                     dist = dist * abs(dims['t']*sin(sideVal*PI/(dims['t']*2)))
@@ -700,7 +700,7 @@ class rowOb:
 
 #
 def arch(ra,rt,x,z, archStart, archEnd, bevel, bevAngle, vll):
-    __doc__ = '''\
+    __doc__ = """\
     Makes a list of faces and vertexes for arches.
     ra: the radius of the arch, to the center of the bricks
     rt: the thickness of the arch
@@ -710,7 +710,7 @@ def arch(ra,rt,x,z, archStart, archEnd, bevel, bevAngle, vll):
     angleend: end angle of the arch, in radians, from vertical?
     bevel: how much to bevel the inside of the arch.
     vll: how long is the vertex list already?
-    '''
+    """
     avlist = []
     aflist = []
 
@@ -730,13 +730,13 @@ def arch(ra,rt,x,z, archStart, archEnd, bevel, bevAngle, vll):
     # Init loop variables
 
     def bevelEdgeOffset(offsets, bevel, side):
-        '''
+        """
         Take the block offsets and modify it for the correct bevel.
 
         offsets = the offset list. See MakeABlock
         bevel = how much to offset the edge
         side = -1 for left (right side), 1 for right (left side)
-        '''
+        """
         left = (0,2,3)
         right = (4,6,7)
         if side == 1: pointsToAffect = right
@@ -871,13 +871,13 @@ def wedgeBlocks(row, opening, leftPos, rightPos, edgeBinary, r1):
     return None
 
 def bevelBlockOffsets(offsets, bevel, side):
-    '''
+    """
     Take the block offsets and modify it for the correct bevel.
 
     offsets = the offset list. See MakeABlock
     bevel = how much to offset the edge
     side = -1 for left (right side), 1 for right (left side)
-    '''
+    """
 #    left = (4,6)
 #    right = (0,2)
     if side == 1: pointsToAffect = (0,2) # right

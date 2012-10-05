@@ -30,6 +30,8 @@
 
 #include "RNA_define.h"
 
+#include "rna_internal.h"  /* own include */
+
 #ifdef RNA_RUNTIME
 
 #include "WM_api.h"
@@ -38,13 +40,13 @@
 static void rna_Text_clear(Text *text)
 {
 	BKE_text_clear(text);
-	WM_main_add_notifier(NC_TEXT|NA_EDITED, text);
+	WM_main_add_notifier(NC_TEXT | NA_EDITED, text);
 }
 
 static void rna_Text_write(Text *text, const char *str)
 {
 	BKE_text_write(text, str);
-	WM_main_add_notifier(NC_TEXT|NA_EDITED, text);
+	WM_main_add_notifier(NC_TEXT | NA_EDITED, text);
 }
 
 #else

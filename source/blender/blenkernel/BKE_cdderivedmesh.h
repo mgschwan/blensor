@@ -61,12 +61,14 @@ DerivedMesh *CDDM_from_BMEditMesh(struct BMEditMesh *em, struct Mesh *me, int us
 /* merge verts  */
 DerivedMesh *CDDM_merge_verts(DerivedMesh *dm, const int *vtargetmap);
 
+DerivedMesh *CDDM_from_curve_orco(struct Scene *scene, struct Object *ob);
+
 /* creates a CDDerivedMesh from the given curve object */
 struct DerivedMesh *CDDM_from_curve(struct Object *ob);
 
 /* creates a CDDerivedMesh from the given curve object and specified dispbase */
 /* useful for OrcoDM creation for curves with constructive modifiers */
-DerivedMesh *CDDM_from_curve_customDB(struct Object *ob, struct ListBase *dispbase);
+DerivedMesh *CDDM_from_curve_displist(struct Object *ob, struct ListBase *dispbase, int **orco_index_ptr);
 
 /* Copies the given DerivedMesh with verts, faces & edges stored as
  * custom element data.
@@ -79,11 +81,11 @@ struct DerivedMesh *CDDM_copy_from_tessface(struct DerivedMesh *dm);
  * elements are initialized to all zeros
  */
 struct DerivedMesh *CDDM_from_template(struct DerivedMesh *source,
-                                  int numVerts, int numEdges, int numFaces,
-                                  int numLoops, int numPolys);
+                                       int numVerts, int numEdges, int numFaces,
+                                       int numLoops, int numPolys);
 
-/*converts mfaces to mpolys.  note things may break if there are not valid
- *medges surrounding each mface.
+/* converts mfaces to mpolys.  note things may break if there are not valid
+ * medges surrounding each mface.
  */
 void CDDM_tessfaces_to_faces(struct DerivedMesh *dm);
 

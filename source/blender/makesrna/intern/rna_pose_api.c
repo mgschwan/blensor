@@ -34,11 +34,15 @@
 #include <string.h>
 #include <time.h>
 
+#include "BLI_utildefines.h"
+
 #include "RNA_define.h"
 
 #include "DNA_object_types.h"
 
 /* #include "BLO_sys_types.h" */
+
+#include "rna_internal.h"  /* own include */
 
 #ifdef RNA_RUNTIME
 
@@ -57,7 +61,7 @@ static float rna_PoseBone_do_envelope(bPoseChannel *chan, float *vec)
 }
 #else
 
-void RNA_api_pose(StructRNA *srna)
+void RNA_api_pose(StructRNA *UNUSED(srna))
 {
 	/* FunctionRNA *func; */
 	/* PropertyRNA *parm; */
@@ -71,7 +75,7 @@ void RNA_api_pose_channel(StructRNA *srna)
 	func = RNA_def_function(srna, "evaluate_envelope", "rna_PoseBone_do_envelope");
 	RNA_def_function_ui_description(func, "Calculate bone envelope at given point");
 	parm = RNA_def_float_vector_xyz(func, "point", 3, NULL, -FLT_MAX, FLT_MAX, "Point",
-	                               "Position in 3d space to evaluate", -FLT_MAX, FLT_MAX);
+	                                "Position in 3d space to evaluate", -FLT_MAX, FLT_MAX);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	/* return value */
 	parm = RNA_def_float(func, "factor", 0, -FLT_MAX, FLT_MAX, "Factor", "Envelope factor", -FLT_MAX, FLT_MAX);

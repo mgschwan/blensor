@@ -25,7 +25,7 @@ bl_info = {
     "blender": (2, 6, 3),
     "location": "View3D > Action mouse; F10; Properties panel",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/3D_interaction/Enhanced_3D_Cursor",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=28451",
@@ -132,8 +132,7 @@ from mathutils.geometry import (intersect_line_sphere,
                                 intersect_line_plane,
                                 )
 
-from bpy_extras.view3d_utils import (region_2d_to_vector_3d,
-                                     region_2d_to_location_3d,
+from bpy_extras.view3d_utils import (region_2d_to_location_3d,
                                      location_3d_to_region_2d,
                                      )
 
@@ -263,7 +262,7 @@ class EnhancedSetCursor(bpy.types.Operator):
         
         settings_scene = context.scene.cursor_3d_tools_settings
         
-        self.setup_keymaps(context)
+        self.setup_keymaps(context, event)
         
         # Coordinate System Utility
         self.particles, self.csu = gather_particles(context=context)
@@ -309,7 +308,7 @@ class EnhancedSetCursor(bpy.types.Operator):
         
         # Initial run
         self.try_process_input(context, event, True)
-        
+
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
     
@@ -354,18 +353,28 @@ class EnhancedSetCursor(bpy.types.Operator):
         CursorDynamicSettings.active_transform_operator = None
     
     # ====== USER INPUT PROCESSING ====== #
-    def setup_keymaps(self, context):
+    def setup_keymaps(self, context, event=None):
         self.key_map = self.key_map.copy()
         
         # There is no such event as 'ACTIONMOUSE',
         # it's always 'LEFTMOUSE' or 'RIGHTMOUSE'
-        select_mouse = context.user_preferences.inputs.select_mouse
-        if select_mouse == 'RIGHT':
-            self.key_map["confirm"] = {'LEFTMOUSE'}
-            self.key_map["cancel"] = {'RIGHTMOUSE', 'ESC'}
-        else:
-            self.key_map["confirm"] = {'RIGHTMOUSE'}
-            self.key_map["cancel"] = {'LEFTMOUSE', 'ESC'}
+        if event:
+            if event.type == 'LEFTMOUSE':
+                self.key_map["confirm"] = {'LEFTMOUSE'}
+                self.key_map["cancel"] = {'RIGHTMOUSE', 'ESC'}
+            elif event.type == 'RIGHTMOUSE':
+                self.key_map["confirm"] = {'RIGHTMOUSE'}
+                self.key_map["cancel"] = {'LEFTMOUSE', 'ESC'}
+            else:
+                event = None
+        if event is None:
+            select_mouse = context.user_preferences.inputs.select_mouse
+            if select_mouse == 'RIGHT':
+                self.key_map["confirm"] = {'LEFTMOUSE'}
+                self.key_map["cancel"] = {'RIGHTMOUSE', 'ESC'}
+            else:
+                self.key_map["confirm"] = {'RIGHTMOUSE'}
+                self.key_map["cancel"] = {'LEFTMOUSE', 'ESC'}
         
         # Use user-defined "free mouse" key, if it exists
         wm = context.window_manager
@@ -2477,7 +2486,8 @@ class Snap3DUtility(SnapUtilityBase):
     def __init__(self, scene, shade):
         SnapUtilityBase.__init__(self)
         
-        self.cache = MeshCache(scene)
+        convert_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
+        self.cache = MeshCache(scene, convert_types)
         
         # ? seems that dict is enough
         self.bbox_cache = {}#collections.OrderedDict()
@@ -2489,13 +2499,10 @@ class Snap3DUtility(SnapUtilityBase):
         mesh.update(calc_tessface=True)
         #mesh.calc_tessface()
         
-        self.bbox_obj = self.cache.create_temporary_mesh_obj(mesh, Matrix())
+        self.bbox_obj = self.cache._make_obj(mesh, None)
         self.bbox_obj.hide = True
         self.bbox_obj.draw_type = 'WIRE'
         self.bbox_obj.name = "BoundBoxSnap"
-        # make it displayable
-        #self.cache.scene.objects.link(self.bbox_obj)
-        #self.cache.scene.update()
         
         self.shade_bbox = (shade == 'BOUNDBOX')
     
@@ -2522,7 +2529,7 @@ class Snap3DUtility(SnapUtilityBase):
         bpy.data.objects.remove(self.bbox_obj)
         bpy.data.meshes.remove(mesh)
         
-        self.cache.dispose()
+        self.cache.clear()
     
     def hide_bbox(self, hide):
         if self.bbox_obj.hide == hide:
@@ -2556,7 +2563,10 @@ class Snap3DUtility(SnapUtilityBase):
             m_combined = sys_matrix_inv * m
             bbox = [None, None]
             
-            mesh_obj = self.cache[obj, True, self.editmode]
+            variant = ('RAW' if (self.editmode and
+                       (obj.type == 'MESH') and (obj.mode == 'EDIT'))
+                       else 'PREVIEW')
+            mesh_obj = self.cache.get(obj, variant, reuse=False)
             if (mesh_obj is None) or self.shade_bbox or \
                     (obj.draw_type == 'BOUNDS'):
                 if is_local:
@@ -2644,9 +2654,12 @@ class Snap3DUtility(SnapUtilityBase):
             
             if not is_bbox:
                 # Ensure we work with raycastable object.
-                obj = self.cache[obj, force, edit]
-                if obj is None:
-                    continue # the object has no geometry
+                variant = ('RAW' if (edit and
+                           (obj.type == 'MESH') and (obj.mode == 'EDIT'))
+                           else 'PREVIEW')
+                obj = self.cache.get(obj, variant, reuse=(not force))
+                if (obj is None) or (not obj.data.polygons):
+                    continue # the object has no raycastable geometry
             
             # If ray must be infinite, ensure that
             # endpoints are outside of bounding volume
@@ -2887,125 +2900,276 @@ class Snap3DUtility(SnapUtilityBase):
         return n
 
 # ====== CONVERTED-TO-MESH OBJECTS CACHE ====== #
-class MeshCache:
-    # ====== INITIALIZATION / CLEANUP ====== #
-    def __init__(self, scene):
-        self.scene = scene
+#============================================================================#
+class ToggleObjectMode:
+    def __init__(self, mode='OBJECT'):
+        if not isinstance(mode, str):
+            mode = ('OBJECT' if mode else None)
         
-        self.mesh_cache = {}
-        self.object_cache = {}
-        self.edit_object = None
+        self.mode = mode
+    
+    def __enter__(self):
+        if self.mode:
+            edit_preferences = bpy.context.user_preferences.edit
+            
+            self.global_undo = edit_preferences.use_global_undo
+            self.prev_mode = bpy.context.object.mode
+            
+            if self.prev_mode != self.mode:
+                edit_preferences.use_global_undo = False
+                bpy.ops.object.mode_set(mode=self.mode)
+        
+        return self
+    
+    def __exit__(self, type, value, traceback):
+        if self.mode:
+            edit_preferences = bpy.context.user_preferences.edit
+            
+            if self.prev_mode != self.mode:
+                bpy.ops.object.mode_set(mode=self.prev_mode)
+                edit_preferences.use_global_undo = self.global_undo
+
+class MeshCacheItem:
+    def __init__(self):
+        self.variants = {}
+    
+    def __getitem__(self, variant):
+        return self.variants[variant][0]
+    
+    def __setitem__(self, variant, conversion):
+        mesh = conversion[0].data
+        #mesh.update(calc_tessface=True)
+        #mesh.calc_tessface()
+        mesh.calc_normals()
+        
+        self.variants[variant] = conversion
+    
+    def __contains__(self, variant):
+        return variant in self.variants
     
     def dispose(self):
-        if self.edit_object:
-            mesh = self.edit_object.data
-            bpy.data.objects.remove(self.edit_object)
-            bpy.data.meshes.remove(mesh)
-        del self.edit_object
-        
-        for rco in self.object_cache.values():
-            if rco:
-                bpy.data.objects.remove(rco)
-        del self.object_cache
+        for obj, converted in self.variants.values():
+            if converted:
+                mesh = obj.data
+                bpy.data.objects.remove(obj)
+                bpy.data.meshes.remove(mesh)
+        self.variants = None
+
+class MeshCache:
+    """
+    Keeps a cache of mesh equivalents of requested objects.
+    It is assumed that object's data does not change while
+    the cache is in use.
+    """
     
-        for mesh in self.mesh_cache.values():
-            bpy.data.meshes.remove(mesh)
-        del self.mesh_cache
+    variants_enum = {'RAW', 'PREVIEW', 'RENDER'}
+    variants_normalization = {
+        'MESH':{},
+        'CURVE':{},
+        'SURFACE':{},
+        'FONT':{},
+        'META':{'RAW':'PREVIEW'},
+        'ARMATURE':{'RAW':'PREVIEW', 'RENDER':'PREVIEW'},
+        'LATTICE':{'RAW':'PREVIEW', 'RENDER':'PREVIEW'},
+        'EMPTY':{'RAW':'PREVIEW', 'RENDER':'PREVIEW'},
+        'CAMERA':{'RAW':'PREVIEW', 'RENDER':'PREVIEW'},
+        'LAMP':{'RAW':'PREVIEW', 'RENDER':'PREVIEW'},
+        'SPEAKER':{'RAW':'PREVIEW', 'RENDER':'PREVIEW'},
+    }
+    conversible_types = {'MESH', 'CURVE', 'SURFACE', 'FONT',
+                         'META', 'ARMATURE', 'LATTICE'}
+    convert_types = conversible_types
     
-    # ====== GET RELEVANT MESH/OBJECT ====== #
-    def __convert(self, obj, force=False, apply_modifiers=True, \
-                  add_to_cache=True):
-        # In Edit (and Sculpt?) mode mesh will not reflect
-        # changes until mode is changed to Object.
-        unstable_shape = ('EDIT' in obj.mode) or ('SCULPT' in obj.mode)
+    def __init__(self, scene, convert_types=None):
+        self.scene = scene
+        if convert_types:
+            self.convert_types = convert_types
+        self.cached = {}
+    
+    def __del__(self):
+        self.clear()
+    
+    def clear(self, expect_zero_users=False):
+        for cache_item in self.cached.values():
+            if cache_item:
+                try:
+                    cache_item.dispose()
+                except RuntimeError:
+                    if expect_zero_users:
+                        raise
+        self.cached.clear()
+    
+    def __delitem__(self, obj):
+        cache_item = self.cached.pop(obj, None)
+        if cache_item:
+            cache_item.dispose()
+    
+    def __contains__(self, obj):
+        return obj in self.cached
+    
+    def __getitem__(self, obj):
+        if isinstance(obj, tuple):
+            return self.get(*obj)
+        return self.get(obj)
+    
+    def get(self, obj, variant='PREVIEW', reuse=True):
+        if variant not in self.variants_enum:
+            raise ValueError("Mesh variant must be one of %s" %
+                             self.variants_enum)
         
-        force = force or (len(obj.modifiers) != 0)
+        # Make sure the variant is proper for this type of object
+        variant = (self.variants_normalization[obj.type].
+                   get(variant, variant))
         
-        if (obj.data.bl_rna.name == 'Mesh'):
-            if not (force or unstable_shape):
-                # Existing mesh actually satisfies us
-                return obj
-        
-        #if (not force) and (obj.data in self.mesh_cache):
-        if obj.data in self.mesh_cache:
-            mesh = self.mesh_cache[obj.data]
+        if obj in self.cached:
+            cache_item = self.cached[obj]
+            try:
+                # cache_item is None if object isn't conversible to mesh
+                return (None if (cache_item is None)
+                        else cache_item[variant])
+            except KeyError:
+                pass
         else:
-            if unstable_shape:
-                prev_mode = obj.mode
-                bpy.ops.object.mode_set(mode='OBJECT')
-            
-            mesh = obj.to_mesh(self.scene, apply_modifiers, 'PREVIEW')
+            cache_item = None
+        
+        if obj.type not in self.conversible_types:
+            self.cached[obj] = None
+            return None
+        
+        if not cache_item:
+            cache_item = MeshCacheItem()
+            self.cached[obj] = cache_item
+        
+        conversion = self._convert(obj, variant, reuse)
+        cache_item[variant] = conversion
+        
+        return conversion[0]
+    
+    def _convert(self, obj, variant, reuse=True):
+        obj_type = obj.type
+        obj_mode = obj.mode
+        data = obj.data
+        
+        if obj_type == 'MESH':
+            if reuse and ((variant == 'RAW') or (len(obj.modifiers) == 0)):
+                return (obj, False)
+            else:
+                force_objectmode = (obj_mode in {'EDIT', 'SCULPT'})
+                return (self._to_mesh(obj, variant, force_objectmode), True)
+        elif obj_type in {'CURVE', 'SURFACE', 'FONT'}:
+            if variant == 'RAW':
+                bm = bmesh.new()
+                for spline in data.splines:
+                    for point in spline.bezier_points:
+                        bm.verts.new(point.co)
+                        bm.verts.new(point.handle_left)
+                        bm.verts.new(point.handle_right)
+                    for point in spline.points:
+                        bm.verts.new(point.co[:3])
+                return (self._make_obj(bm, obj), True)
+            else:
+                if variant == 'RENDER':
+                    resolution_u = data.resolution_u
+                    resolution_v = data.resolution_v
+                    if data.render_resolution_u != 0:
+                        data.resolution_u = data.render_resolution_u
+                    if data.render_resolution_v != 0:
+                        data.resolution_v = data.render_resolution_v
+                
+                result = (self._to_mesh(obj, variant), True)
+                
+                if variant == 'RENDER':
+                    data.resolution_u = resolution_u
+                    data.resolution_v = resolution_v
+                
+                return result
+        elif obj_type == 'META':
+            if variant == 'RAW':
+                # To avoid the hassle of snapping metaelements
+                # to themselves, we just create an empty mesh
+                bm = bmesh.new()
+                return (self._make_obj(bm, obj), True)
+            else:
+                if variant == 'RENDER':
+                    resolution = data.resolution
+                    data.resolution = data.render_resolution
+                
+                result = (self._to_mesh(obj, variant), True)
+                
+                if variant == 'RENDER':
+                    data.resolution = resolution
+                
+                return result
+        elif obj_type == 'ARMATURE':
+            bm = bmesh.new()
+            if obj_mode == 'EDIT':
+                for bone in data.edit_bones:
+                    head = bm.verts.new(bone.head)
+                    tail = bm.verts.new(bone.tail)
+                    bm.edges.new((head, tail))
+            elif obj_mode == 'POSE':
+                for bone in obj.pose.bones:
+                    head = bm.verts.new(bone.head)
+                    tail = bm.verts.new(bone.tail)
+                    bm.edges.new((head, tail))
+            else:
+                for bone in data.bones:
+                    head = bm.verts.new(bone.head_local)
+                    tail = bm.verts.new(bone.tail_local)
+                    bm.edges.new((head, tail))
+            return (self._make_obj(bm, obj), True)
+        elif obj_type == 'LATTICE':
+            bm = bmesh.new()
+            for point in data.points:
+                bm.verts.new(point.co_deform)
+            return (self._make_obj(bm, obj), True)
+    
+    def _to_mesh(self, obj, variant, force_objectmode=False):
+        tmp_name = chr(0x10ffff) # maximal Unicode value
+        
+        with ToggleObjectMode(force_objectmode):
+            if variant == 'RAW':
+                mesh = obj.to_mesh(self.scene, False, 'PREVIEW')
+            else:
+                mesh = obj.to_mesh(self.scene, True, variant)
             mesh.name = tmp_name
-            
-            if unstable_shape:
-                bpy.ops.object.mode_set(mode=prev_mode)
-            
-            if add_to_cache:
-                self.mesh_cache[obj.data] = mesh
         
-        rco = self.create_temporary_mesh_obj(mesh, obj.matrix_world)
-        rco.show_x_ray = obj.show_x_ray # necessary for corrent bbox display
-        
-        return rco
+        return self._make_obj(mesh, obj)
     
-    def __getitem__(self, args):
-        # If more than one argument is passed to getitem,
-        # Python wraps them into tuple.
-        if not isinstance(args, tuple):
-            args = (args,)
+    def _make_obj(self, mesh, src_obj):
+        tmp_name = chr(0x10ffff) # maximal Unicode value
         
-        obj = args[0]
-        force = (args[1] if len(args) > 1 else True)
-        edit = (args[2] if len(args) > 2 else False)
+        if isinstance(mesh, bmesh.types.BMesh):
+            bm = mesh
+            mesh = bpy.data.meshes.new(tmp_name)
+            bm.to_mesh(mesh)
         
-        # Currently edited object's raw mesh is a separate issue...
-        if edit and obj.data and ('EDIT' in obj.mode):
-            if (obj.data.bl_rna.name == 'Mesh'):
-                if self.edit_object is None:
-                    self.edit_object = self.__convert(
-                                obj, True, False, False)
-                    #self.edit_object.data.update(calc_tessface=True)
-                    #self.edit_object.data.calc_tessface()
-                    self.edit_object.data.calc_normals()
-                return self.edit_object
+        tmp_obj = bpy.data.objects.new(tmp_name, mesh)
         
-        # A usual object. Cached data will suffice.
-        if obj in self.object_cache:
-            return self.object_cache[obj]
-        
-        # Actually, convert and cache.
-        try:
-            rco = self.__convert(obj, force)
+        if src_obj:
+            tmp_obj.matrix_world = src_obj.matrix_world
             
-            if rco is obj:
-                # Source objects are not added to cache
-                return obj
-        except Exception as e:
-            # Object has no solid geometry, just ignore it
-            rco = None
-        
-        self.object_cache[obj] = rco
-        if rco:
-            #rco.data.update(calc_tessface=True)
-            #rco.data.calc_tessface()
-            rco.data.calc_normals()
-            pass
-        
-        return rco
-    
-    def create_temporary_mesh_obj(self, mesh, matrix=None):
-        rco = bpy.data.objects.new(tmp_name, mesh)
-        if matrix:
-            rco.matrix_world = matrix
+            # This is necessary for correct bbox display # TODO
+            # (though it'd be better to change the logic in the raycasting)
+            tmp_obj.show_x_ray = src_obj.show_x_ray
+            
+            tmp_obj.dupli_faces_scale = src_obj.dupli_faces_scale
+            tmp_obj.dupli_frames_end = src_obj.dupli_frames_end
+            tmp_obj.dupli_frames_off = src_obj.dupli_frames_off
+            tmp_obj.dupli_frames_on = src_obj.dupli_frames_on
+            tmp_obj.dupli_frames_start = src_obj.dupli_frames_start
+            tmp_obj.dupli_group = src_obj.dupli_group
+            #tmp_obj.dupli_list = src_obj.dupli_list
+            tmp_obj.dupli_type = src_obj.dupli_type
         
         # Make Blender recognize object as having geometry
         # (is there a simpler way to do this?)
-        self.scene.objects.link(rco)
+        self.scene.objects.link(tmp_obj)
         self.scene.update()
         # We don't need this object in scene
-        self.scene.objects.unlink(rco)
+        self.scene.objects.unlink(tmp_obj)
         
-        return rco
+        return tmp_obj
 
 #============================================================================#
 
@@ -3439,7 +3603,7 @@ class NewCursor3DBookmark(bpy.types.Operator):
             bookmark.pos = library.convert_from_abs(context.space_data,
                                                     cusor_pos, True)
         except Exception as exc:
-            self.report('ERROR_INVALID_CONTEXT', exc.args[0])
+            self.report({'ERROR_INVALID_CONTEXT'}, exc.args[0])
             return {'CANCELLED'}
         
         return {'FINISHED'}
@@ -3487,7 +3651,7 @@ class OverwriteCursor3DBookmark(bpy.types.Operator):
             bookmark.pos = library.convert_from_abs(context.space_data,
                                                     cusor_pos, True)
         except Exception as exc:
-            self.report('ERROR_INVALID_CONTEXT', exc.args[0])
+            self.report({'ERROR_INVALID_CONTEXT'}, exc.args[0])
             return {'CANCELLED'}
         
         CursorDynamicSettings.recalc_csu(context, 'PRESS')
@@ -3518,7 +3682,7 @@ class RecallCursor3DBookmark(bpy.types.Operator):
                                                   bookmark.pos, True)
             set_cursor_location(bookmark_pos, v3d=context.space_data)
         except Exception as exc:
-            self.report('ERROR_INVALID_CONTEXT', exc.args[0])
+            self.report({'ERROR_INVALID_CONTEXT'}, exc.args[0])
             return {'CANCELLED'}
         
         CursorDynamicSettings.recalc_csu(context)
@@ -3556,7 +3720,7 @@ class SwapCursor3DBookmark(bpy.types.Operator):
                                                     cusor_pos, True,
                 use_history=False)
         except Exception as exc:
-            self.report('ERROR_INVALID_CONTEXT', exc.args[0])
+            self.report({'ERROR_INVALID_CONTEXT'}, exc.args[0])
             return {'CANCELLED'}
         
         CursorDynamicSettings.recalc_csu(context)
@@ -3594,7 +3758,7 @@ class AddEmptyAtCursor3DBookmark(bpy.types.Operator):
                                         v3d=context.space_data, warn=True)
             bookmark_pos = matrix * bookmark.pos
         except Exception as exc:
-            self.report('ERROR_INVALID_CONTEXT', exc.args[0])
+            self.report({'ERROR_INVALID_CONTEXT'}, exc.args[0])
             return {'CANCELLED'}
         
         name = "{}.{}".format(library.name, bookmark.name)
@@ -3825,6 +3989,11 @@ class Cursor3DToolsSettings(bpy.types.PropertyGroup):
         type=TransformExtraOptionsProp,
         options={'HIDDEN'})
     
+    cursor_visible = bpy.props.BoolProperty(
+        name="Cursor visibility",
+        description="Cursor visibility",
+        default=True)
+    
     draw_guides = bpy.props.BoolProperty(
         name="Guides",
         description="Display guides",
@@ -3952,7 +4121,7 @@ class Cursor3DTools(bpy.types.Panel):
     bl_idname = "OBJECT_PT_cursor_3d_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    #bl_context = "object"
+    bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
         layout = self.layout
@@ -3985,7 +4154,12 @@ class Cursor3DTools(bpy.types.Panel):
             text="", icon='SNAP_ON', toggle=True)
         
         row = layout.row()
-        row.label(text="Draw")
+        #row.label(text="Draw")
+        #row.prop(settings, "cursor_visible", text="", toggle=True,
+        #         icon=('RESTRICT_VIEW_OFF' if settings.cursor_visible
+        #               else 'RESTRICT_VIEW_ON'))
+        row.prop(settings, "cursor_visible", text="", toggle=True,
+                 icon='RESTRICT_VIEW_OFF')
         row = row.split(1 / 3, align=True)
         row.prop(settings, "draw_N",
             text="N", toggle=True, index=0)
@@ -4279,7 +4453,7 @@ def transform_orientations_panel_extension(self, context):
 
 # ===== CURSOR MONITOR ===== #
 class CursorMonitor(bpy.types.Operator):
-    '''Monitor changes in cursor location and write to history'''
+    """Monitor changes in cursor location and write to history"""
     bl_idname = "view3d.cursor3d_monitor"
     bl_label = "Cursor Monitor"
     
@@ -4469,10 +4643,7 @@ class CursorMonitor(bpy.types.Operator):
         CursorMonitor.is_running = True
         
         CursorDynamicSettings.recalc_csu(context, 'PRESS')
-        
-        # Currently there seems to be only one window manager
-        context.window_manager.modal_handler_add(self)
-        
+
         # I suppose that cursor position would change
         # only with user interaction.
         #self._timer = context.window_manager. \
@@ -4495,6 +4666,9 @@ class CursorMonitor(bpy.types.Operator):
         
         # Here we cannot return 'PASS_THROUGH',
         # or Blender will crash!
+
+        # Currently there seems to be only one window
+        context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
     
     def cancel(self, context):
@@ -4918,7 +5092,11 @@ def gl_matrix_to_buffer(m):
 
 
 # ===== DRAWING CALLBACKS ===== #
+cursor_save_location = Vector()
+
 def draw_callback_view(self, context):
+    global cursor_save_location
+    
     settings = find_settings()
     if settings is None:
         return
@@ -4979,6 +5157,10 @@ def draw_callback_view(self, context):
             color_prev[1],
             color_prev[2],
             color_prev[3])
+    
+    cursor_save_location = Vector(bpy.context.space_data.cursor_location)
+    if not settings.cursor_visible:
+        bpy.context.space_data.cursor_location = Vector([float('nan')] * 3)
 
 def draw_callback_header_px(self, context):
     r = context.region
@@ -4997,10 +5179,14 @@ def draw_callback_header_px(self, context):
     bgl.glColor4f(0.0, 0.0, 0.0, 1.0)
 
 def draw_callback_px(self, context):
+    global cursor_save_location
     settings = find_settings()
     if settings is None:
         return
     library = settings.libraries.get_item()
+    
+    if not settings.cursor_visible:
+        bpy.context.space_data.cursor_location = cursor_save_location
     
     tfm_operator = CursorDynamicSettings.active_transform_operator
     
@@ -5156,19 +5342,24 @@ def update_keymap(activate):
             for kmi in items:
                 km.keymap_items.remove(kmi)
     
-    items = find_keymap_items(km, 'view3d.cursor3d')
-    for kmi in items:
+    for kmi in find_keymap_items(km, 'view3d.cursor3d'):
         kmi.active = not activate
     
-    km = wm.keyconfigs.active.keymaps['3D View']
-    items = find_keymap_items(km, 'view3d.cursor3d')
-    for kmi in items:
-        kmi.active = not activate
+    try:
+        km = wm.keyconfigs.active.keymaps['3D View']
+        for kmi in find_keymap_items(km, 'view3d.cursor3d'):
+            kmi.active = not activate
+    except KeyError:
+        # seems like in recent builds (after 2.63a)
+        # 'bpy_prop_collection[key]: key "3D View" not found'
+        pass
     
-    km = wm.keyconfigs.default.keymaps['3D View']
-    items = find_keymap_items(km, 'view3d.cursor3d')
-    for kmi in items:
-        kmi.active = not activate
+    try:
+        km = wm.keyconfigs.default.keymaps['3D View']
+        for kmi in find_keymap_items(km, 'view3d.cursor3d'):
+            kmi.active = not activate
+    except KeyError:
+        pass
 
 def register():
     bpy.utils.register_class(AlignOrientationProperties)
@@ -5344,12 +5535,11 @@ class DelayRegistrationOperator(bpy.types.Operator):
     
     def execute(self, context):
         self.keymap_updated = False
-        
-        context.window_manager.modal_handler_add(self)
-        
+
         self._timer = context.window_manager.\
             event_timer_add(0.1, context.window)
-        
+
+        context.window_manager.modal_handler_add(self)        
         return {'RUNNING_MODAL'}
     
     def cancel(self, context):

@@ -98,19 +98,14 @@ static int ED_uvedit_ensure_uvs(bContext *C, Scene *scene, Object *obedit)
 	SpaceLink *slink;
 	SpaceImage *sima;
 
-	if (ED_uvedit_test(obedit)) {
+	if (ED_uvedit_test(obedit))
 		return 1;
-	}
 
-	if (em && em->bm->totface && !CustomData_has_layer(&em->bm->pdata, CD_MTEXPOLY)) {
-		BM_data_layer_add(em->bm, &em->bm->pdata, CD_MTEXPOLY);
-		BM_data_layer_add(em->bm, &em->bm->ldata, CD_MLOOPUV);
-		ED_mesh_uv_loop_reset_ex(C, obedit->data, 0);
-	}
+	if (em && em->bm->totface && !CustomData_has_layer(&em->bm->pdata, CD_MTEXPOLY))
+		ED_mesh_uv_texture_add(C, obedit->data, NULL, TRUE);
 
-	if (!ED_uvedit_test(obedit)) {
+	if (!ED_uvedit_test(obedit))
 		return 0;
-	}
 
 	ima = CTX_data_edit_image(C);
 
@@ -197,16 +192,21 @@ static ParamHandle *construct_param_handle(Scene *scene, BMEditMesh *em,
 	handle = param_construct_begin();
 
 	if (correct_aspect) {
-		efa = BM_active_face_get(em->bm, TRUE);
+		int sloppy = TRUE;
+		int selected = FALSE;
+
+		efa = BM_active_face_get(em->bm, sloppy, selected);
 
 		if (efa) {
 			float aspx, aspy;
 			tf = CustomData_bmesh_get(&em->bm->pdata, efa->head.data, CD_MTEXPOLY);
 
-			ED_image_uv_aspect(tf->tpage, &aspx, &aspy);
+			ED_image_get_uv_aspect(tf->tpage, NULL, &aspx, &aspy);
 		
 			if (aspx != aspy)
 				param_aspect_ratio(handle, aspx, aspy);
+			else
+				param_aspect_ratio(handle, 1.0, 1.0);
 		}
 	}
 	
@@ -216,8 +216,8 @@ static ParamHandle *construct_param_handle(Scene *scene, BMEditMesh *em,
 	BLI_srand(0);
 	
 	BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
-		ScanFillVert *v, *lastv, *firstv;
-		ScanFillFace *sefa;
+		ScanFillVert *sf_vert, *sf_vert_last, *sf_vert_first;
+		ScanFillFace *sf_tri;
 		ParamKey key, vkeys[4];
 		ParamBool pin[4], select[4];
 		BMLoop *ls[3];
@@ -242,6 +242,7 @@ static ParamHandle *construct_param_handle(Scene *scene, BMEditMesh *em,
 
 		key = (ParamKey)efa;
 
+		// tf = CustomData_bmesh_get(&em->bm->pdata, efa->head.data, CD_MTEXPOLY);  // UNUSED
 
 		if (efa->len == 3 || efa->len == 4) {
 			/* for quads let parametrize split, it can make better decisions
@@ -264,35 +265,35 @@ static ParamHandle *construct_param_handle(Scene *scene, BMEditMesh *em,
 			/* ngon - scanfill time! */
 			BLI_scanfill_begin(&sf_ctx);
 			
-			firstv = lastv = NULL;
+			sf_vert_first = sf_vert_last = NULL;
 			BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
 				int i;
 				
-				v = BLI_scanfill_vert_add(&sf_ctx, l->v->co);
+				sf_vert = BLI_scanfill_vert_add(&sf_ctx, l->v->co);
 				
 				/* add small random offset */
 				for (i = 0; i < 3; i++) {
-					v->co[i] += (BLI_frand() - 0.5f) * FLT_EPSILON * 50;
+					sf_vert->co[i] += (BLI_frand() - 0.5f) * FLT_EPSILON * 50;
 				}
 				
-				v->tmp.p = l;
+				sf_vert->tmp.p = l;
 
-				if (lastv) {
-					BLI_scanfill_edge_add(&sf_ctx, lastv, v);
+				if (sf_vert_last) {
+					BLI_scanfill_edge_add(&sf_ctx, sf_vert_last, sf_vert);
 				}
 
-				lastv = v;
-				if (!firstv) 
-					firstv = v;
+				sf_vert_last = sf_vert;
+				if (!sf_vert_first)
+					sf_vert_first = sf_vert;
 			}
 
-			BLI_scanfill_edge_add(&sf_ctx, firstv, v);
+			BLI_scanfill_edge_add(&sf_ctx, sf_vert_first, sf_vert);
 
 			BLI_scanfill_calc_ex(&sf_ctx, TRUE, efa->no);
-			for (sefa = sf_ctx.fillfacebase.first; sefa; sefa = sefa->next) {
-				ls[0] = sefa->v1->tmp.p;
-				ls[1] = sefa->v2->tmp.p;
-				ls[2] = sefa->v3->tmp.p;
+			for (sf_tri = sf_ctx.fillfacebase.first; sf_tri; sf_tri = sf_tri->next) {
+				ls[0] = sf_tri->v1->tmp.p;
+				ls[1] = sf_tri->v2->tmp.p;
+				ls[2] = sf_tri->v3->tmp.p;
 
 				for (i = 0; i < 3; i++) {
 					MLoopUV *luv = CustomData_bmesh_get(&em->bm->ldata, ls[i]->head.data, CD_MLOOPUV);
@@ -382,17 +383,22 @@ static ParamHandle *construct_param_handle_subsurfed(Scene *scene, BMEditMesh *e
 	handle = param_construct_begin();
 
 	if (correct_aspect) {
-		editFace = BM_active_face_get(em->bm, TRUE);
+		int sloppy = TRUE;
+		int selected = FALSE;
+
+		editFace = BM_active_face_get(em->bm, sloppy, selected);
 
 		if (editFace) {
 			MTexPoly *tf;
 			float aspx, aspy;
 			tf = CustomData_bmesh_get(&em->bm->pdata, editFace->head.data, CD_MTEXPOLY);
 
-			ED_image_uv_aspect(tf->tpage, &aspx, &aspy);
+			ED_image_get_uv_aspect(tf->tpage, NULL, &aspx, &aspy);
 
 			if (aspx != aspy)
 				param_aspect_ratio(handle, aspx, aspy);
+			else
+				param_aspect_ratio(handle, 1.0, 1.0);
 		}
 	}
 
@@ -402,7 +408,7 @@ static ParamHandle *construct_param_handle_subsurfed(Scene *scene, BMEditMesh *e
 		
 	initialDerived = CDDM_from_BMEditMesh(em, NULL, 0, 0);
 	derivedMesh = subsurf_make_derived_from_derived(initialDerived, &smd,
-	                                                0, NULL, 0, 0, 1);
+	                                                NULL, SUBSURF_IN_EDIT_MODE);
 
 	initialDerived->release(initialDerived);
 
@@ -445,7 +451,7 @@ static ParamHandle *construct_param_handle_subsurfed(Scene *scene, BMEditMesh *e
 		float *co[4];
 		float *uv[4];
 		BMFace *origFace = faceMap[i];
-		
+
 		face = subsurfedFaces + i;
 
 		if (scene->toolsettings->uv_flag & UV_SYNC_SELECTION) {
@@ -870,29 +876,26 @@ static void uv_map_transform_center(Scene *scene, View3D *v3d, float *result,
 
 	switch (around) {
 		case V3D_CENTER: /* bounding box center */
-			min[0] = min[1] = min[2] = 1e20f;
-			max[0] = max[1] = max[2] = -1e20f;
+			INIT_MINMAX(min, max);
 			
 			BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
 				if (BM_elem_flag_test(efa, BM_ELEM_SELECT)) {
 					BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-						DO_MINMAX(l->v->co, min, max);
+						minmax_v3v3_v3(min, max, l->v->co);
 					}
 				}
 			}
 			mid_v3_v3v3(result, min, max);
 			break;
 
-		case V3D_CURSOR: /*cursor center*/ 
+		case V3D_CURSOR:  /* cursor center */
 			cursx = give_cursor(scene, v3d);
 			/* shift to objects world */
-			result[0] = cursx[0] - ob->obmat[3][0];
-			result[1] = cursx[1] - ob->obmat[3][1];
-			result[2] = cursx[2] - ob->obmat[3][2];
+			sub_v3_v3v3(result, cursx, ob->obmat[3]);
 			break;
 
-		case V3D_LOCAL: /*object center*/
-		case V3D_CENTROID: /* multiple objects centers, only one object here*/
+		case V3D_LOCAL:     /* object center */
+		case V3D_CENTROID:  /* multiple objects centers, only one object here*/
 		default:
 			result[0] = result[1] = result[2] = 0.0;
 			break;
@@ -1006,7 +1009,9 @@ static void uv_transform_properties(wmOperatorType *ot, int radius)
 
 static void correct_uv_aspect(BMEditMesh *em)
 {
-	BMFace *efa = BM_active_face_get(em->bm, TRUE);
+	int sloppy = TRUE;
+	int selected = FALSE;
+	BMFace *efa = BM_active_face_get(em->bm, sloppy, selected);
 	BMLoop *l;
 	BMIter iter, liter;
 	MLoopUV *luv;
@@ -1016,7 +1021,7 @@ static void correct_uv_aspect(BMEditMesh *em)
 		MTexPoly *tf;
 
 		tf = CustomData_bmesh_get(&em->bm->pdata, efa->head.data, CD_MTEXPOLY);
-		ED_image_uv_aspect(tf->tpage, &aspx, &aspy);
+		ED_image_get_uv_aspect(tf->tpage, NULL, &aspx, &aspy);
 	}
 	
 	if (aspx == aspy)
@@ -1182,9 +1187,11 @@ static int unwrap_exec(bContext *C, wmOperator *op)
 		BKE_report(op->reports, RPT_INFO, "Object scale is not 1.0. Unwrap will operate on a non-scaled version of the mesh.");
 
 	/* remember last method for live unwrap */
-	if(RNA_struct_property_is_set(op->ptr, "method"))
+	if (RNA_struct_property_is_set(op->ptr, "method"))
 		scene->toolsettings->unwrapper = method;
-	
+	else
+		RNA_enum_set(op->ptr, "method", scene->toolsettings->unwrapper);
+
 	scene->toolsettings->uv_subsurf_level = subsurf_level;
 
 	if (fill_holes) scene->toolsettings->uvcalc_flag |=  UVCALC_FILLHOLES;
@@ -1210,7 +1217,8 @@ void UV_OT_unwrap(wmOperatorType *ot)
 	static EnumPropertyItem method_items[] = {
 		{0, "ANGLE_BASED", 0, "Angle Based", ""},
 		{1, "CONFORMAL", 0, "Conformal", ""},
-		{0, NULL, 0, NULL, NULL}};
+		{0, NULL, 0, NULL, NULL}
+	};
 
 	/* identifiers */
 	ot->name = "Unwrap";

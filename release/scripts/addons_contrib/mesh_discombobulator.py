@@ -54,7 +54,7 @@ def randnum(a, b):
     return random.random()*(b-a)+a
  
 def randVertex(a, b, c, d, Verts):
-    ''' return a vector of a random vertex on a quad-polygon'''
+    """Return a vector of a random vertex on a quad-polygon"""
     i = random.randint(1,2)
     A, B, C, D = 0, 0, 0, 0
     if(a==1):
@@ -80,7 +80,7 @@ def randVertex(a, b, c, d, Verts):
 ################################ Protusions ###################################
  
 def fill_older_datas(verts, polygon):
-    ''' Specifically coded to be called by the function addProtusionToPolygon, its sets up a tuple which contains the vertices from the base and the top of the protusions. '''
+    """ Specifically coded to be called by the function addProtusionToPolygon, its sets up a tuple which contains the vertices from the base and the top of the protusions. """
     temp_vertices = []  
     temp_vertices.append(verts[polygon[0]].copy())
     temp_vertices.append(verts[polygon[1]].copy())
@@ -93,7 +93,7 @@ def fill_older_datas(verts, polygon):
     return temp_vertices
    
 def extrude_top(temp_vertices, normal, height):
-    ''' This function extrude the polygon composed of the four first members of the tuple temp_vertices along the normal multiplied by the height of the extrusion.'''
+    """ This function extrude the polygon composed of the four first members of the tuple temp_vertices along the normal multiplied by the height of the extrusion."""
     j = 0
     while j < 3:  
         temp_vertices[0][j]+=normal[j]*height
@@ -103,7 +103,7 @@ def extrude_top(temp_vertices, normal, height):
         j+=1
  
 def scale_top(temp_vertices, center, normal, height, scale_ratio):
-    ''' This function scale the polygon composed of the four first members of the tuple temp_vertices. '''
+    """ This function scale the polygon composed of the four first members of the tuple temp_vertices. """
     vec1 = [0, 0, 0]
     vec2 = [0, 0, 0]
     vec3 = [0, 0, 0]
@@ -123,7 +123,7 @@ def scale_top(temp_vertices, center, normal, height, scale_ratio):
         j+=1
  
 def add_prot_polygons(temp_vertices):
-    ''' Specifically coded to be called by addProtusionToPolygon, this function put the data from the generated protusion at the end the tuples Verts and Polygons, which will later used to generate the final mesh. '''
+    """ Specifically coded to be called by addProtusionToPolygon, this function put the data from the generated protusion at the end the tuples Verts and Polygons, which will later used to generate the final mesh. """
     global Verts
     global Polygons
     global i_prots
@@ -145,12 +145,12 @@ def add_prot_polygons(temp_vertices):
     Polygons.append(polygon4)
        
 def addProtusionToPolygon(obpolygon, verts, minHeight, maxHeight, minTaper, maxTaper):
-    '''Create a protusion from the polygon "obpolygon" of the original object and use several values sent by the user. It calls in this order the following functions:
+    """Create a protusion from the polygon "obpolygon" of the original object and use several values sent by the user. It calls in this order the following functions:
        - fill_older_data;
        - extrude_top;
        - scale_top;
        - add_prot_polygons;
-   '''
+   """
     # some useful variables
     polygon = obpolygon.vertices
     polygontop = polygon
@@ -173,7 +173,7 @@ def addProtusionToPolygon(obpolygon, verts, minHeight, maxHeight, minTaper, maxT
 ################################## Divide a polygon ##################################
  
 def divide_one(list_polygons, list_vertices, verts, polygon, findex):
-    ''' called by divide_polygon, to generate a polygon from one polygon, maybe I could simplify this process '''
+    """ called by divide_polygon, to generate a polygon from one polygon, maybe I could simplify this process """
     temp_vertices = []
     temp_vertices.append(verts[polygon[0]].copy())
     temp_vertices.append(verts[polygon[1]].copy())
@@ -185,7 +185,7 @@ def divide_one(list_polygons, list_vertices, verts, polygon, findex):
     list_polygons.append([findex+0, findex+1, findex+2, findex+3])
  
 def divide_two(list_polygons, list_vertices, verts, polygon, findex):
-    ''' called by divide_polygon, to generate two polygons from one polygon and add them to the list of polygons and vertices which form the discombobulated mesh'''
+    """ called by divide_polygon, to generate two polygons from one polygon and add them to the list of polygons and vertices which form the discombobulated mesh"""
     temp_vertices = []
     temp_vertices.append(verts[polygon[0]].copy())
     temp_vertices.append(verts[polygon[1]].copy())
@@ -200,7 +200,7 @@ def divide_two(list_polygons, list_vertices, verts, polygon, findex):
     list_polygons.append([findex+1, findex+2, findex+5, findex+4])
 
 def divide_three(list_polygons, list_vertices, verts, polygon, findex, center):
-    ''' called by divide_polygon, to generate three polygons from one polygon and add them to the list of polygons and vertices which form the discombobulated mesh'''
+    """ called by divide_polygon, to generate three polygons from one polygon and add them to the list of polygons and vertices which form the discombobulated mesh"""
     temp_vertices = []
     temp_vertices.append(verts[polygon[0]].copy())
     temp_vertices.append(verts[polygon[1]].copy())
@@ -218,7 +218,7 @@ def divide_three(list_polygons, list_vertices, verts, polygon, findex, center):
     list_polygons.append([findex+6, findex+2, findex+5, findex+7])
   
 def divide_four(list_polygons, list_vertices, verts, polygon, findex, center):
-    ''' called by divide_polygon, to generate four polygons from one polygon and add them to the list of polygons and vertices which form the discombobulated mesh'''
+    """ called by divide_polygon, to generate four polygons from one polygon and add them to the list of polygons and vertices which form the discombobulated mesh"""
     temp_vertices = []
     temp_vertices.append(verts[polygon[0]].copy())
     temp_vertices.append(verts[polygon[1]].copy())
@@ -239,7 +239,7 @@ def divide_four(list_polygons, list_vertices, verts, polygon, findex, center):
     list_polygons.append([findex+8, findex+7, findex+5, findex+3])
    
 def dividepolygon(obpolygon, verts, number):
-    '''Divide the poly into the wanted number of polygons'''
+    """Divide the poly into the wanted number of polygons"""
     global nPolygons
     global nVerts
    
@@ -265,7 +265,7 @@ def GetPolyCentroid(obpolygon,allvertcoords):
     return centroid
  
 def division(obpolygons, verts, sf1, sf2, sf3, sf4):
-    '''Function to divide each of the selected polygons'''
+    """Function to divide each of the selected polygons"""
     divide = []
     if(sf1): divide.append(1)
     if(sf2): divide.append(2)
@@ -277,7 +277,7 @@ def division(obpolygons, verts, sf1, sf2, sf3, sf4):
             dividepolygon(poly, verts, divide[a])
  
 def protusion(obverts, obpolygons, minHeight, maxHeight, minTaper, maxTaper):
-    '''function to generate the protusions'''
+    """function to generate the protusions"""
     verts = []
     for vertex in obverts:
         verts.append(vertex.co)
@@ -308,7 +308,7 @@ def angle_between_nor(nor_orig, nor_result):
     return q
  
 def doodads(object1, mesh1, dmin, dmax):
-    '''function to generate the doodads'''
+    """function to generate the doodads"""
     global dVerts
     global dPolygons
     i = 0
@@ -551,7 +551,7 @@ class unchooseDoodad(bpy.types.Operator):
 class discombobulator(bpy.types.Operator):
     bl_idname = "object.discombobulate"
     bl_label = "Discombobulate"
-    bl_options = {'REGISTER', 'UNDO'}    
+    bl_options = {'REGISTER', 'UNDO'}  
    
     def execute(self, context):
         scn = context.scene
@@ -567,10 +567,10 @@ class discombobulator(bpy.types.Operator):
 class VIEW3D_PT_tools_discombobulate(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
- 
     bl_label = "Discombobulator"
     bl_context = "objectmode"
- 
+    bl_options = {'DEFAULT_CLOSED'}
+	
     def draw(self, context):
         layout = self.layout
         row = layout.row()

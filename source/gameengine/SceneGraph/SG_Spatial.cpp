@@ -112,8 +112,8 @@ SG_Spatial::
 UpdateSpatialData(
 	        const SG_Spatial *parent,
 	        double time,
-	        bool& parentUpdated
-	        ) {
+	        bool& parentUpdated)
+{
 	bool bComputesWorldTransform = false;
 
 	// update spatial controllers
@@ -151,16 +151,18 @@ RelativeTranslate(
 ) {
 	if (local) {
 			m_localPosition += m_localRotation * trans;
-	} else {
+	}
+	else {
 		if (parent) {
 			m_localPosition += trans * parent->GetWorldOrientation();
-		} else {
+		}
+		else {
 			m_localPosition += trans;
 		}
 	}
 	SetModified();
-}	
-	
+}
+
 
 /**
  * Scaling methods.

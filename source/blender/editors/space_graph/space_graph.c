@@ -189,6 +189,8 @@ static void graph_init(struct wmWindowManager *UNUSED(wm), ScrArea *sa)
 		sipo->ads->source = (ID *)(G.main->scene.first); // FIXME: this is a really nasty hack here for now...
 	}
 	
+	/* force immediate init of any invalid F-Curve colors */
+	sipo->flag |= SIPO_TEMP_NEEDCHANSYNC;
 	ED_area_tag_refresh(sa);
 }
 
@@ -250,7 +252,7 @@ static void graph_main_area_draw(const bContext *C, ARegion *ar)
 		graph_draw_curves(&ac, sipo, ar, grid, 1);
 		
 		/* XXX the slow way to set tot rect... but for nice sliders needed (ton) */
-		get_graph_keyframe_extents(&ac, &v2d->tot.xmin, &v2d->tot.xmax, &v2d->tot.ymin, &v2d->tot.ymax, FALSE);
+		get_graph_keyframe_extents(&ac, &v2d->tot.xmin, &v2d->tot.xmax, &v2d->tot.ymin, &v2d->tot.ymax, FALSE, TRUE);
 		/* extra offset so that these items are visible */
 		v2d->tot.xmin -= 10.0f;
 		v2d->tot.xmax += 10.0f;
@@ -477,10 +479,16 @@ static void graph_listener(ScrArea *sa, wmNotifier *wmn)
 			if (wmn->data == ND_SPACE_GRAPH)
 				ED_area_tag_redraw(sa);
 			break;
-		
+		case NC_WINDOW:
+			if (sipo->flag & SIPO_TEMP_NEEDCHANSYNC) {
+				/* force redraw/refresh after undo/redo - prevents "black curve" problem */
+				ED_area_tag_refresh(sa);
+			}
+			break;
+			
 			// XXX: restore the case below if not enough updates occur...
 			//default:
-			//	if (wmn->data==ND_KEYS)
+			//	if (wmn->data == ND_KEYS)
 			//		ED_area_tag_redraw(sa);
 	}
 }

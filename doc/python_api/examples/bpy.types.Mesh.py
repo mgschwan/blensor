@@ -17,7 +17,7 @@ Each polygon reference a slice in the loop array, this way, polygons do not stor
 only a reference to loops that the polygon uses.
 
 :class:`Mesh.loops`, :class:`Mesh.uv_layers` :class:`Mesh.vertex_colors` are all aligned so the same polygon loop
-indicies can be used to find the UV's and vertex colors as with as the vertices.
+indices can be used to find the UV's and vertex colors as with as the vertices.
 
 To compare mesh API options see: :ref:`NGons and Tessellation Faces <info_gotcha_mesh_faces>`
 
@@ -28,7 +28,7 @@ This example script prints the vertices and UV's for each polygon, assumes the a
 import bpy
 
 me = bpy.context.object.data
-uv_layer = me.uv.layers.active.data
+uv_layer = me.uv_layers.active.data
 
 for poly in me.polygons:
     print("Polygon index: %d, length: %d" % (poly.index, poly.loop_total))

@@ -73,15 +73,13 @@ public:
 	};
 
 protected:
-	bool			m_useShapeDrivers;	
+	bool			m_useShapeDrivers;
 	double			m_lastShapeUpdate;
 	struct Key*		m_key;
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:BL_ShapeDeformer"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:BL_ShapeDeformer")
 #endif
 };
 

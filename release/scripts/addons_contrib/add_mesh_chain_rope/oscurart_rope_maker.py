@@ -165,7 +165,7 @@ class OBJECT_OT_add_object(bpy.types.Operator):
     strands = IntProperty (name="Strands", default=5 , min=1, max=1000, step=1)
     diameter = FloatProperty (name="Diameter", default=1 , min=0, max=1000)
     distPos= FloatProperty (name="Stretch", default=1 , min=0.01, max=100.0)
-    vertices= IntProperty (name="Lenght", default=10 , min=0, max=1000, step=1)
+    vertices= IntProperty (name="Length", default=10 , min=0, max=1000, step=1)
     distResU= IntProperty (name="Resolution V", default=5 , min=1, max=1000, step=1)
     stResU= IntProperty (name="Resolution U", default=5 , min=1, max=1000, step=1)
     radio= FloatProperty (name="Radius", default=1 , min=0, max=1000)

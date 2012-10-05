@@ -87,7 +87,7 @@ protected:
 	/** Height of the context. */
 	int m_height;
 	/** Rect that defines the area used for rendering,
-	    relative to the context */
+	 * relative to the context */
 	RAS_Rect m_displayarea;
 
 	/** Storage for the banners to display. */
@@ -103,7 +103,7 @@ public:
 
 	void Resize(int width, int height);
 
-	virtual void ResizeWindow(int width, int height){};
+	virtual void ResizeWindow(int width, int height) {}
 
 	/**
 	 * \section Methods inherited from abstract base class RAS_ICanvas.
@@ -163,7 +163,7 @@ public:
 	
 	void SetMouseState(RAS_MouseState mousestate)
 	{
-		// not yet		
+		// not yet
 	}
 
 	void SetMousePosition(int x, int y)
@@ -250,7 +250,7 @@ protected:
 		int oldWriteMask;
 	};
 
-		void			
+		void
 	PushRenderState(
 		CanvasRenderState & render_state
 	);

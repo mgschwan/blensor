@@ -45,17 +45,19 @@ struct MTex;
 struct Image;
 
 typedef struct BrushClone {
-	struct Image *image;		/* image for clone tool */
-	float offset[2];		/* offset of clone image from canvas */
-	float alpha, pad;		/* transparency for drawing of clone image */
+	struct Image *image;    /* image for clone tool */
+	float offset[2];        /* offset of clone image from canvas */
+	float alpha, pad;       /* transparency for drawing of clone image */
 } BrushClone;
 
 typedef struct Brush {
 	ID id;
 
 	struct BrushClone clone;
-	struct CurveMapping *curve;	/* falloff curve */
+	struct CurveMapping *curve; /* falloff curve */
 	struct MTex mtex;
+
+	struct Brush *toggle_brush;
 
 	struct ImBuf *icon_imbuf;
 	PreviewImage *preview;
@@ -63,38 +65,38 @@ typedef struct Brush {
 
 	float normal_weight;
 
-	short blend;		/* blend mode */
-	short ob_mode;		/* & with ob->mode to see if the brush is compatible, use for display only. */
-	float weight;		/* brush weight */
-	int size;			/* brush diameter */
-	int flag;			/* general purpose flag */	
-	float jitter;			/* jitter the position of the brush */
-	int spacing;			/* spacing of paint operations */
-	int smooth_stroke_radius;	/* turning radius (in pixels) for smooth stroke */
-	float smooth_stroke_factor;	/* higher values limit fast changes in the stroke direction */
-	float rate;			/* paint operations / second (airbrush) */
+	short blend;        /* blend mode */
+	short ob_mode;      /* & with ob->mode to see if the brush is compatible, use for display only. */
+	float weight;       /* brush weight */
+	int size;           /* brush diameter */
+	int flag;           /* general purpose flag */
+	float jitter;       /* jitter the position of the brush */
+	int spacing;        /* spacing of paint operations */
+	int smooth_stroke_radius;   /* turning radius (in pixels) for smooth stroke */
+	float smooth_stroke_factor; /* higher values limit fast changes in the stroke direction */
+	float rate;         /* paint operations / second (airbrush) */
 
-	float rgb[3];			/* color */
-	float alpha;			/* opacity */
+	float rgb[3];           /* color */
+	float alpha;            /* opacity */
 
-	int sculpt_plane;		/* the direction of movement for sculpt vertices */
+	int sculpt_plane;       /* the direction of movement for sculpt vertices */
 
-	float plane_offset;		/* offset for plane brushes (clay, flatten, fill, scrape) */
+	float plane_offset;     /* offset for plane brushes (clay, flatten, fill, scrape) */
 
-	char sculpt_tool;		/* active sculpt tool */
-	char vertexpaint_tool;		/* active vertex/weight paint blend mode (poorly named) */
-	char imagepaint_tool;		/* active image paint tool */
-	char pad;
+	char sculpt_tool;       /* active sculpt tool */
+	char vertexpaint_tool;  /* active vertex/weight paint blend mode (poorly named) */
+	char imagepaint_tool;   /* active image paint tool */
+	char mask_tool;         /* enum BrushMaskTool, only used if sculpt_tool is SCULPT_TOOL_MASK */
 
 	float autosmooth_factor;
 
 	float crease_pinch_factor;
 
 	float plane_trim;
-	float height;			/* affectable height of brush (layer height for layer tool, i.e.) */
+	float height;           /* affectable height of brush (layer height for layer tool, i.e.) */
 
 	float texture_sample_bias;
-	int   texture_overlay_alpha;
+	int texture_overlay_alpha;
 
 	float unprojected_radius;
 
@@ -104,38 +106,38 @@ typedef struct Brush {
 
 /* Brush.flag */
 typedef enum BrushFlags {
-	BRUSH_AIRBRUSH = (1<<0),
-	BRUSH_TORUS = (1<<1),
-	BRUSH_ALPHA_PRESSURE = (1<<2),
-	BRUSH_SIZE_PRESSURE = (1<<3),
-	BRUSH_JITTER_PRESSURE = (1<<4),
-	BRUSH_SPACING_PRESSURE = (1<<5),
-	BRUSH_FIXED_TEX = (1<<6),
-	BRUSH_RAKE = (1<<7),
-	BRUSH_ANCHORED = (1<<8),
-	BRUSH_DIR_IN = (1<<9),
-	BRUSH_SPACE = (1<<10),
-	BRUSH_SMOOTH_STROKE = (1<<11),
-	BRUSH_PERSISTENT = (1<<12),
-	BRUSH_ACCUMULATE = (1<<13),
-	BRUSH_LOCK_ALPHA = (1<<14),
-	BRUSH_ORIGINAL_NORMAL = (1<<15),
-	BRUSH_OFFSET_PRESSURE = (1<<16),
-	BRUSH_SPACE_ATTEN = (1<<18),
-	BRUSH_ADAPTIVE_SPACE = (1<<19),
-	BRUSH_LOCK_SIZE = (1<<20),
-	BRUSH_TEXTURE_OVERLAY = (1<<21),
-	BRUSH_EDGE_TO_EDGE = (1<<22),
-	BRUSH_RESTORE_MESH = (1<<23),
-	BRUSH_INVERSE_SMOOTH_PRESSURE = (1<<24),
-	BRUSH_RANDOM_ROTATION = (1<<25),
-	BRUSH_PLANE_TRIM = (1<<26),
-	BRUSH_FRONTFACE = (1<<27),
-	BRUSH_CUSTOM_ICON = (1<<28),
+	BRUSH_AIRBRUSH = (1 << 0),
+	BRUSH_TORUS = (1 << 1),
+	BRUSH_ALPHA_PRESSURE = (1 << 2),
+	BRUSH_SIZE_PRESSURE = (1 << 3),
+	BRUSH_JITTER_PRESSURE = (1 << 4),
+	BRUSH_SPACING_PRESSURE = (1 << 5),
+	BRUSH_FIXED_TEX = (1 << 6),
+	BRUSH_RAKE = (1 << 7),
+	BRUSH_ANCHORED = (1 << 8),
+	BRUSH_DIR_IN = (1 << 9),
+	BRUSH_SPACE = (1 << 10),
+	BRUSH_SMOOTH_STROKE = (1 << 11),
+	BRUSH_PERSISTENT = (1 << 12),
+	BRUSH_ACCUMULATE = (1 << 13),
+	BRUSH_LOCK_ALPHA = (1 << 14),
+	BRUSH_ORIGINAL_NORMAL = (1 << 15),
+	BRUSH_OFFSET_PRESSURE = (1 << 16),
+	BRUSH_SPACE_ATTEN = (1 << 18),
+	BRUSH_ADAPTIVE_SPACE = (1 << 19),
+	BRUSH_LOCK_SIZE = (1 << 20),
+	BRUSH_TEXTURE_OVERLAY = (1 << 21),
+	BRUSH_EDGE_TO_EDGE = (1 << 22),
+	BRUSH_RESTORE_MESH = (1 << 23),
+	BRUSH_INVERSE_SMOOTH_PRESSURE = (1 << 24),
+	BRUSH_RANDOM_ROTATION = (1 << 25),
+	BRUSH_PLANE_TRIM = (1 << 26),
+	BRUSH_FRONTFACE = (1 << 27),
+	BRUSH_CUSTOM_ICON = (1 << 28),
 
 	/* temporary flag which sets up automatically for correct brush
 	 * drawing when inverted modal operator is running */
-	BRUSH_INVERTED = (1<<29)
+	BRUSH_INVERTED = (1 << 29)
 } BrushFlags;
 
 /* Brush.sculpt_tool */
@@ -160,34 +162,39 @@ typedef enum BrushSculptTool {
 	
 	SCULPT_TOOL_CREASE = 16,
 	SCULPT_TOOL_BLOB = 17,
-	SCULPT_TOOL_CLAY_STRIPS = 18
+	SCULPT_TOOL_CLAY_STRIPS = 18,
+	SCULPT_TOOL_MASK = 19
 } BrushSculptTool;
 
 /* ImagePaintSettings.tool */
-#define PAINT_TOOL_DRAW		0
-#define PAINT_TOOL_SOFTEN	1
-#define PAINT_TOOL_SMEAR	2
-#define PAINT_TOOL_CLONE	3
+#define PAINT_TOOL_DRAW     0
+#define PAINT_TOOL_SOFTEN   1
+#define PAINT_TOOL_SMEAR    2
+#define PAINT_TOOL_CLONE    3
 
 /* direction that the brush displaces along */
 enum {
-	SCULPT_DISP_DIR_AREA,
-	SCULPT_DISP_DIR_VIEW,
-	SCULPT_DISP_DIR_X,
-	SCULPT_DISP_DIR_Y,
-	SCULPT_DISP_DIR_Z
+	SCULPT_DISP_DIR_AREA = 0,
+	SCULPT_DISP_DIR_VIEW = 1,
+	SCULPT_DISP_DIR_X = 2,
+	SCULPT_DISP_DIR_Y = 3,
+	SCULPT_DISP_DIR_Z = 4
 };
 
 enum {
-	PAINT_BLEND_MIX,
-	PAINT_BLEND_ADD,
-	PAINT_BLEND_SUB,
-	PAINT_BLEND_MUL,
-	PAINT_BLEND_BLUR,
-	PAINT_BLEND_LIGHTEN,
-	PAINT_BLEND_DARKEN
+	PAINT_BLEND_MIX = 0,
+	PAINT_BLEND_ADD = 1,
+	PAINT_BLEND_SUB = 2,
+	PAINT_BLEND_MUL = 3,
+	PAINT_BLEND_BLUR = 4,
+	PAINT_BLEND_LIGHTEN = 5,
+	PAINT_BLEND_DARKEN = 6
 };
 
+typedef enum {
+	BRUSH_MASK_DRAW = 0,
+	BRUSH_MASK_SMOOTH = 1
+} BrushMaskTool;
 
 #define MAX_BRUSH_PIXEL_RADIUS 200
 

@@ -3,8 +3,9 @@ bl_info = {
     "name": "DirectX Importer",
     "description": "Import directX Model Format (.x)",
     "author": "Littleneo (Jerome Mahieux)",
-    "version": (0, 17),
-    "blender": (2, 6, 1),
+    "version": (0, 18),
+    "blender": (2, 6, 3),
+    "api": 42615,
     "location": "File > Import > DirectX (.x)",
     "warning": "",
     "wiki_url": "https://github.com/littleneo/directX_blender/wiki",
@@ -32,22 +33,9 @@ from bpy_extras.io_utils import (ExportHelper,
                                  path_reference_mode,
                                  axis_conversion,
                                  )
-
-'''
-class DisplayTree(bpy.types.Operator) :
-    bl_idname = 'city.selector'
-    bl_label = 'preview'
-
-    def execute(self,context) :
-'''
-
-def hide_templates(self,context) :
-    if self.use_templates == False : self.show_templates = False
-
-def not_parented(self,context) :
-    self.parented = False
-    self.use_templates = False
-
+try : import bel
+except : import io_directx_bel.bel
+    
 class ImportX(bpy.types.Operator, ImportHelper):
     '''Load a Direct x File'''
     bl_idname = "import_scene.x"
@@ -66,7 +54,7 @@ class ImportX(bpy.types.Operator, ImportHelper):
             )
     show_templates = BoolProperty(
             name="Show x templates",
-            description="display any token structure definition found in the .x file",
+            description="display templates defined in the .x file",
             default=False,
             )
     show_geninfo = BoolProperty(
@@ -79,20 +67,12 @@ class ImportX(bpy.types.Operator, ImportHelper):
             name="Quick mode",
             description="only retrieve mesh basics",
             default=False,
-            update=not_parented
             )
     
     parented = BoolProperty(
             name="Object Relationships",
             description="import armatures, empties, rebuild parent-childs relations",
             default=True,
-            )
-
-    use_templates = BoolProperty(
-            name="Use infile x templates",
-            description="parse any token structure definition found in the .x file, use it prior to standard ones",
-            default=False,
-            update=hide_templates
             )
     
     bone_maxlength = FloatProperty(
@@ -106,8 +86,6 @@ class ImportX(bpy.types.Operator, ImportHelper):
     chunksize = EnumProperty(
             name="Chunksize",
             items=(('0', "all", ""),
-                   ('16384', "16KB", ""),
-                   ('8192', "8KB", ""),
                    ('4096', "4KB", ""),
                    ('2048', "2KB", ""),
                    ('1024', "1KB", ""),
@@ -205,7 +183,6 @@ class ImportX(bpy.types.Operator, ImportHelper):
             )
 
     def execute(self, context):
-        from . import bel
         from . import import_x
         if self.split_mode == 'OFF':
             self.use_split_objects = False
@@ -227,7 +204,7 @@ class ImportX(bpy.types.Operator, ImportHelper):
         keywords["global_matrix"] = global_matrix
 
     
-        bel.fs.saveOptions('import_scene.x', self.as_keywords(ignore=(
+        bel.fs.saveOptions(self,'import_scene.x', self.as_keywords(ignore=(
                                             "filter_glob",
                                             "filepath",
                                             )))
@@ -241,15 +218,16 @@ class ImportX(bpy.types.Operator, ImportHelper):
         col = box.column(align=True)
         col.label('Import Options :')  
         col.prop(self, "chunksize")
-        col.prop(self, "use_smooth_groups")      
-        col.prop(self, "quickmode")
+        col.prop(self, "use_smooth_groups")
+        actif = not(self.quickmode)
         row = col.row()
-        row.enabled = not(self.quickmode)
+        row.enabled = actif
         row.prop(self, "parented")
-        #if self.parented :
-        row = col.row()
-        row.enabled = self.parented
-        row.prop(self, "bone_maxlength")
+        if self.parented :
+            row = col.row()
+            row.enabled = actif
+            row.prop(self, "bone_maxlength")      
+        col.prop(self, "quickmode")
         
         # source orientation box
         box = layout.box()
@@ -269,11 +247,8 @@ class ImportX(bpy.types.Operator, ImportHelper):
         col = box.column(align=True)
         col.label('Info / Debug :')
         col.prop(self, "show_tree")
+        col.prop(self, "show_templates")
         col.prop(self, "show_geninfo")
-        col.prop(self, "use_templates")
-        row = col.row()
-        row.enabled = self.use_templates
-        row.prop(self, "show_templates")  
         
         #row = layout.row(align=True)
         #row.prop(self, "use_ngons")

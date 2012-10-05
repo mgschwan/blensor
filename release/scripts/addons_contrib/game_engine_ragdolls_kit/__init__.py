@@ -1,6 +1,7 @@
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # Script copyright (C) Marcus Jenkins (Blenderartists user name FunkyWyrm)
+# Modified by Kees Brouwer (Blenderartists user name Wraaah)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -24,6 +25,7 @@ bl_info = {
     "author": "FunkyWyrm",
     "version": (0,2),
     "blender": (2, 5, 5),
+    "api": 31965,
     "location": "View 3D > Tool Shelf > BRIK Panel",
     "description": "Kit for creating ragdoll structures from armatures and implementing them in the game engine.",
     "warning": "Preliminary release for testing purposes. Use with caution on important files.",
@@ -43,14 +45,47 @@ else:
 import bpy
 
 ################################################################################
+
 ##### REGISTER #####
 def register():
+    #Register brik add-on
     bpy.utils.register_module(__name__)
+
+    #Set-up gui menu properties using the bpy.types.Scene type
+    scnType = bpy.types.Scene
+    
+    FloatProperty = bpy.props.FloatProperty
+    scnType.brik_ragdoll_mass = FloatProperty( name = "Ragdoll mass", 
+                                               default = 80.0, min = 0.05, max= 99999,
+                                               description = "The total mass of the ragdoll rigid body structure created with BRIK",  
+                                               update = brik.calc_ragdoll_mass)
+                                    
+    # triplet setup.... ( return value, name, description )
+    EnumProperty = bpy.props.EnumProperty
+    menu_options = [  ( "All", "All", "Use all armature bones" ) ]
+    #enumProp = EnumProperty( name = "Bone selection", items = menu_options, 
+    enumProp = EnumProperty( name = "Bone selection", items = brik_bone_list, 
+                    description = "Use the bones from the selected bone group" )
+  
+    scnType.brik_bone_groups = enumProp
     pass
 
 def unregister():
     bpy.utils.unregister_module(__name__)
     pass
     
+def brik_bone_list(self, context):
+    ob = bpy.context.object
+    group_list = [  ( "All", "All", "Use all armature bones" ) ]
+    if ob.type == 'ARMATURE':
+        #Select bone groups
+        ob_pose = ob.pose
+        bone_groups = ob_pose.bone_groups
+        for item in bone_groups:
+            group_list = group_list + [(item.name, item.name, "Use bones in selected bone group")]
+            
+    return group_list
+
 if __name__ == "__main__":
     register()
+    

@@ -30,11 +30,17 @@ import re
 # configuration
 
 # files containing the category data for OpenGL tokens
-core_filename       = "core.gl"
-system_filename     = "system.gl"
-extensions_filename = "extensions.gl"
-es11_filename       = "es11.gl"
-es20_filename       = "es20.gl"
+core_filepath       = "core.gl"
+deprecated_filepath = "deprecated.gl"
+agl_filepath        = "agl.gl"
+cgl_filepath        = "cgl.gl"
+egl_filepath        = "egl.gl"
+glX_filepath        = "glX.gl"
+wgl_filepath        = "wgl.gl"
+libraries_filepath  = "libraries.gl"
+extensions_filepath = "extensions.gl"
+es11_filepath       = "es11.gl"
+es20_filepath       = "es20.gl"
 
 # location of source code to be scanned relative to this script
 source_location = "../../../"
@@ -49,17 +55,6 @@ stop_files = [
     os.path.join('extern', 'glew', 'src', 'glew.c'),
     os.path.join('source', 'blender', 'python', 'generic', 'bgl.h'),
     os.path.join('source', 'blender', 'python', 'generic', 'bgl.c')]
-
-# these are the directories containing the original opengl spec data
-# for now you will need to edit the script to regenerate the .gl files
-# also, you'll have get those files from jwilkins
-core_raw_dir       = "d:/glreport/core"
-system_raw_dir     = "d:/glreport/system"
-extensions_raw_dir = "d:/glreport/extensions"
-es11_raw_dir       = "d:/glreport/es11"
-es20_raw_dir       = "d:/glreport/es20"
-
-do_regenerate_database = False
 
 # for_all_files will visit every file in a file hierarchy
 # doDirCallback  - called on each directory
@@ -138,19 +133,36 @@ def never(path, unprefixed_path, item):
 
 # XXX: TODO: It may be better to make an explicit list of allowed symbols so this can be simplified somewhat later
 
-token_re = re.compile(r'''
+tokenizer = re.compile(r'''
     \b(?:
         # entry points
-        (?:(?:gl|glu|glut|glew|glX|wgl|agl|glm)[A-Z_][a-zA-Z0-9_]*)|
+        (?:(?:gl|glu|glut|glew|glX|wgl|agl|CGL|glm)[A-Z_][a-zA-Z0-9_]*)|
 
         # enums
         (?:(?:GL|GLU|GLUT|GLEW|GLX|WGL|AGL|GLM)_[a-zA-Z0-9_]*])|
 
-        # types
-        (?:(?:GL|GLU|AGL|GLM)[a-z0-9_][a-zA-Z0-9_]*)|
+        # lower-case types
+        (?:(?:GL|GLU|GLM)[a-z0-9_][a-zA-Z0-9_]*)|
+
+        # camel-case types
+        (?:(?:AGL|CGL|kCGL|GLX)[a-zA-Z0-9_]*)|
 
         # possible fakes
-        (?:(?:glx|GLX|wgl|WGL|agl|AGL|glew|GLEW)[a-zA-Z0-9_]+)
+        (?:(?:glx|wgl|WGL|agl|AGL|glew|GLEW|CGL)[a-zA-Z0-9_]+)|
+
+        # misc
+        ChoosePixelFormat|
+        DescribePixelFormat|
+        GetEnhMetaFilePixelFormat|
+        GetPixelFormat|
+        SetPixelFormat|
+        SwapBuffers|
+        GLYPHMETRICSFLOAT|
+        LAYERPLANEDESCRIPTOR|
+        PIXELFORMATDESCRIPTOR|
+        POINTFLOAT|
+        GLDEBUGPROCAMD|
+        GLDEBUGPROCARB
       )\b''', re.X)
 
 summaryExtensions = set()
@@ -158,8 +170,8 @@ summaryTokens     = set()
 summaryUnknown    = {}
 
 database      = {}
-database_es11 = {}
-database_es20 = {}
+platform_es11 = {}
+platform_es20 = {}
 
 report = {}
 
@@ -169,8 +181,8 @@ def add_report_entry(path, unprefixed_path, item):
     global summaryUnknown
 
     global database
-    global database_es11
-    global database_es20
+    global platform_es11
+    global platform_es20
 
     global report
 
@@ -180,7 +192,7 @@ def add_report_entry(path, unprefixed_path, item):
     s = f.read()
     f.close()
 
-    matches = token_re.findall(s)
+    matches = tokenizer.findall(s)
 
     if matches:
         tokens = set(matches)
@@ -199,10 +211,10 @@ def add_report_entry(path, unprefixed_path, item):
                 extensions.update(database[token])
                 summaryExtensions.update(database[token])
 
-                if not token in database_es11:
+                if not token in platform_es11:
                     non_es11.add(token)
 
-                if not token in database_es20:
+                if not token in platform_es20:
                     non_es20.add(token)
 
             else:
@@ -226,27 +238,6 @@ def add_report_entry(path, unprefixed_path, item):
         report[unprefixed_path] = (extensionsTokens, extensions, tokens, unknownTokens, non_es11, non_es20)
 
 
-# old function that read a pivoted database directly from the raw files
-# def add_database_entries_from_fileFromFile(path, unprefixed_path, item):
-    # print("Scanning: " + , unprefixed_path + " ...");
-
-    # f = open(path)
-    # s = f.read()
-    # f.close()
-
-    # matches = token_re.findall(s)
-
-    # if matches:
-        # tokens = set(matches)
-        # basename = os.path.basename(path)
-
-        # for token in tokens:
-            # if not token in database:
-                # database[token] = set()
-
-            # database[token].add(basename)
-
-
 
 def sorted_list(seq):
     outList = list(seq)
@@ -254,30 +245,6 @@ def sorted_list(seq):
 
     return outList
 
-
-
-def writeDatabaseEntry(path, unprefixed_path, item):
-    print("Scanning: " + unprefixed_path + " ...");
-
-    f = open(path)
-    tokens = set(token_re.findall(f.read()))
-    f.close()
-
-    global db_out
-    db_out.write("'" + os.path.basename(path) + "': set([\n\t'")
-    db_out.write("',\n\t'".join(sorted_list(tokens)))
-    db_out.write("']),\n\n")
-
-
-
-def writeDatabase(inputDir, outputFile):
-    global db_out
-    db_out = open(outputFile, "w")
-    db_out.write("# This file is generated by a script.\n")
-    db_out.write("# If you edit it directly then your changes may be lost!\n\n")
-    for_all_files(inputDir, printDirectory, writeDatabaseEntry, isSvn, None)
-    db_out.close()
-    db_out = None
 
 
 # files are of the format "category: set([tokens...])"
@@ -296,68 +263,77 @@ def pivot_database(db_out, db_in):
 
             
             
-def regenerate_database():
-    writeDatabase(core_raw_dir,       core_filename)
-    writeDatabase(system_raw_dir,     system_filename)
-    writeDatabase(extensions_raw_dir, extensions_filename)
-    writeDatabase(es11_raw_dir,       es11_filename)
-    writeDatabase(es20_raw_dir,       es20_filename)
-
-
-
 def read_database():
-    core_file       = open('core.gl')
-    system_file     = open('system.gl')
-    extensions_file = open('extensions.gl')
-    es11_file       = open('es11.gl')
-    es20_file       = open('es20.gl')
+    global core_filepath
+    global deprecated_filepath
+    global agl_filepath
+    global cgl_filepath
+    global egl_filepath
+    global glX_filepath
+    global wgl_filepath
+    global libraries_filepath
+    global extensions_filepath
+    global es11_filepath
+    global es20_filepath
+
+    core_file       = open(core_filepath)
+    deprecated_file = open(deprecated_filepath)
+    extensions_file = open(extensions_filepath)
+    agl_file        = open(agl_filepath)
+    cgl_file        = open(cgl_filepath)
+    egl_file        = open(egl_filepath)
+    glX_file        = open(glX_filepath)
+    wgl_file        = open(wgl_filepath)
+    libraries_file  = open(libraries_filepath)
+    es11_file       = open(es11_filepath)
+    es20_file       = open(es20_filepath)
 
     core_str       = core_file.read()
-    system_str     = system_file.read()
+    deprecated_str = deprecated_file.read()
     extensions_str = extensions_file.read()
+    agl_str        = agl_file.read()
+    cgl_str        = cgl_file.read()
+    egl_str        = egl_file.read()
+    glX_str        = glX_file.read()
+    wgl_str        = wgl_file.read()
+    libraries_str  = libraries_file.read()
     es11_str       = es11_file.read()
     es20_str       = es20_file.read()
 
     # fill the database with all categories
     # database is used to classify tokens
-    global database
-    pivot_database(database, eval('{' + core_str + system_str + extensions_str + es11_str + es20_str + '}'))
+    database_str = '{ %s %s %s %s %s %s %s %s %s }' % (
+        core_str, deprecated_str, extensions_str,
+        agl_str, cgl_str, egl_str, glX_str, wgl_str,
+        libraries_str)
 
-    # database_es11 and database_es20 contain platforms
+    global database
+    pivot_database(database, eval(database_str))
+
+    # platform_es11 and platform_es20 contain platforms
     # they are used to find tokens that do not belong on a particular platform
-    # system is included because otherwise system functions are
-    # considered to all be incompatible with each platform
-    global database_es11
-    global database_es20
-    pivot_database(database_es11, eval('{' + es11_str + system_str + '}'))
-    pivot_database(database_es20, eval('{' + es20_str + system_str + '}'))
+    # library functions included because otherwise library functions would be
+    # considered to all be incompatible with each platform, 
+    # which is noisy and not particularly true
+    platform_es11_str = '{ %s %s %s %s %s %s %s }' % (
+        es11_str, agl_str, cgl_str, egl_str, glX_str, wgl_str, libraries_str)
 
+    global platform_es11
+    pivot_database(platform_es11, eval(platform_es11_str))
 
-# old function kept for reference, used to read raw data directly into database
-# def read_database_from_file()
-     # for_all_files("./core",       printDirectory, add_database_entries_from_file, isSvn, isDummy)
-     # for_all_files("./system",     printDirectory, add_database_entries_from_file, isSvn, isDummy)
-     # for_all_files("./extensions", printDirectory, add_database_entries_from_file, isSvn, isDummy)
-     # for_all_files("./es11",       printDirectory, add_database_entries_from_file, isSvn, isDummy)
-     # for_all_files("./es20",       printDirectory, add_database_entries_from_file, isSvn, isDummy)
+    platform_es20_str = '{ %s %s %s %s %s %s %s }' %  (
+        es20_str, agl_str, cgl_str, egl_str, glX_str, wgl_str, libraries_str)
 
+    global platform_es20
+    pivot_database(platform_es20, eval(platform_es20_str))
 
-# insert a couple of symbols by hand
-def fixup_database():
-    global database
-
-    # The GL[A-Z]+ style symbol would conflict too easily with legit tokens
-    database["GLDEBUGPROCAMD"] = "GL_AMD_debug_output"
-    database["GLDEBUGPROCARB"] = "GL_ARB_debug_output"
-
-    # OpenCL interop
-    database["cl_context"] = "GL_ARB_cl_event"
-    database["cl_event"] = "GL_ARB_cl_event"
 
 
 def make_report():
     global source_location
     for_all_files(source_location, printDirectory, add_report_entry, isSvn, isNotGLUserFile)
+
+
 
 def write_plain_text_report(filepath):
     global summaryExtensions
@@ -365,8 +341,8 @@ def write_plain_text_report(filepath):
     global summaryUnknown
 
     global database
-    global database_es11
-    global database_es20
+    global platform_es11
+    global platform_es20
 
     global report
     
@@ -449,11 +425,7 @@ def write_plain_text_report(filepath):
     out.close()
 
     
-
-if do_regenerate_database:
-   regenerate_database()
-
+# main
 read_database()
-fixup_database()
 make_report()
 write_plain_text_report(report_filepath)

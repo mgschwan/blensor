@@ -104,42 +104,42 @@ void KX_RadarSensor::SynchronizeTransform()
 		{
 			MT_Quaternion rotquatje(MT_Vector3(0,0,1),MT_radians(90));
 			trans.rotate(rotquatje);
-			trans.translate(MT_Vector3 (0, -m_coneheight/2.0 ,0));
+			trans.translate(MT_Vector3 (0, -m_coneheight/2.0, 0));
 			break;
 		};
 	case SENS_RADAR_Y_AXIS: // +Y Axis
 		{
 			MT_Quaternion rotquatje(MT_Vector3(1,0,0),MT_radians(-180));
 			trans.rotate(rotquatje);
-			trans.translate(MT_Vector3 (0, -m_coneheight/2.0 ,0));
+			trans.translate(MT_Vector3 (0, -m_coneheight/2.0, 0));
 			break;
 		};
 	case SENS_RADAR_Z_AXIS: // +Z Axis
 		{
 			MT_Quaternion rotquatje(MT_Vector3(1,0,0),MT_radians(-90));
 			trans.rotate(rotquatje);
-			trans.translate(MT_Vector3 (0, -m_coneheight/2.0 ,0));
+			trans.translate(MT_Vector3 (0, -m_coneheight/2.0, 0));
 			break;
 		};
 	case SENS_RADAR_NEG_X_AXIS: // -X Axis
 		{
 			MT_Quaternion rotquatje(MT_Vector3(0,0,1),MT_radians(-90));
 			trans.rotate(rotquatje);
-			trans.translate(MT_Vector3 (0, -m_coneheight/2.0 ,0));
+			trans.translate(MT_Vector3 (0, -m_coneheight/2.0, 0));
 			break;
 		};
 	case SENS_RADAR_NEG_Y_AXIS: // -Y Axis
 		{
 			//MT_Quaternion rotquatje(MT_Vector3(1,0,0),MT_radians(-180));
 			//trans.rotate(rotquatje);
-			trans.translate(MT_Vector3 (0, -m_coneheight/2.0 ,0));
+			trans.translate(MT_Vector3 (0, -m_coneheight/2.0, 0));
 			break;
 		};
 	case SENS_RADAR_NEG_Z_AXIS: // -Z Axis
 		{
 			MT_Quaternion rotquatje(MT_Vector3(1,0,0),MT_radians(90));
 			trans.rotate(rotquatje);
-			trans.translate(MT_Vector3 (0, -m_coneheight/2.0 ,0));
+			trans.translate(MT_Vector3 (0, -m_coneheight/2.0, 0));
 			break;
 		};
 	default:
@@ -154,7 +154,7 @@ void KX_RadarSensor::SynchronizeTransform()
 	m_cone_origin[1] = temp[1];
 	m_cone_origin[2] = temp[2];
 
-	temp = trans(MT_Point3(0, -m_coneheight/2.0 ,0));
+	temp = trans(MT_Point3(0, -m_coneheight/2.0, 0));
 	m_cone_target[0] = temp[0];
 	m_cone_target[1] = temp[1];
 	m_cone_target[2] = temp[2];
@@ -212,9 +212,19 @@ PyAttributeDef KX_RadarSensor::Attributes[] = {
 	KX_PYATTRIBUTE_FLOAT_ARRAY_RO("coneOrigin", KX_RadarSensor, m_cone_origin, 3),
 	KX_PYATTRIBUTE_FLOAT_ARRAY_RO("coneTarget", KX_RadarSensor, m_cone_target, 3),
 	KX_PYATTRIBUTE_FLOAT_RO("distance", KX_RadarSensor, m_coneheight),
-	KX_PYATTRIBUTE_FLOAT_RW("angle", 0, 360, KX_RadarSensor, m_coneradius),
+	KX_PYATTRIBUTE_RO_FUNCTION("angle", KX_RadarSensor, pyattr_get_angle),
 	KX_PYATTRIBUTE_INT_RW("axis", 0, 5, true, KX_RadarSensor, m_axis),
 	{NULL} //Sentinel
 };
+
+PyObject *KX_RadarSensor::pyattr_get_angle(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
+{
+	KX_RadarSensor* self= static_cast<KX_RadarSensor*>(self_v);
+
+	// The original angle from the gui was converted, so we recalculate the value here to maintain
+	// consistency between Python and the gui
+	return PyFloat_FromDouble(MT_degrees(atan(self->m_coneradius / self->m_coneheight)) * 2);
+	
+}
 
 #endif // WITH_PYTHON

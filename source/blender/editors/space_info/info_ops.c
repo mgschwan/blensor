@@ -315,7 +315,8 @@ void FILE_OT_find_missing_files(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, 0, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
+	WM_operator_properties_filesel(ot, 0, FILE_SPECIAL, FILE_OPENFILE,
+	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 }
 
 /********************* report box operator *********************/
@@ -340,7 +341,7 @@ static int update_reports_display_invoke(bContext *C, wmOperator *UNUSED(op), wm
 	ReportTimerInfo *rti;
 	float progress = 0.0, color_progress = 0.0;
 	float neutral_col[3] = {0.35, 0.35, 0.35};
-	float neutral_grey = 0.6;
+	float neutral_gray = 0.6;
 	float timeout = 0.0, color_timeout = 0.0;
 	int send_note = 0;
 	
@@ -385,7 +386,7 @@ static int update_reports_display_invoke(bContext *C, wmOperator *UNUSED(op), wm
 			rti->col[1] = 0.45;
 			rti->col[2] = 0.7;
 		}
-		rti->greyscale = 0.75;
+		rti->grayscale = 0.75;
 		rti->widthfac = 1.0;
 	}
 	
@@ -398,7 +399,7 @@ static int update_reports_display_invoke(bContext *C, wmOperator *UNUSED(op), wm
 		
 		/* fade colors out sharply according to progress through fade-out duration */
 		interp_v3_v3v3(rti->col, rti->col, neutral_col, color_progress);
-		rti->greyscale = interpf(neutral_grey, rti->greyscale, color_progress);
+		rti->grayscale = interpf(neutral_gray, rti->grayscale, color_progress);
 	}
 
 	/* collapse report at end of timeout */

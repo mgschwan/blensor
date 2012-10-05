@@ -40,10 +40,10 @@ from bpy_extras.image_utils import load_image
 
 
 def line_value(line_split):
-    '''
+    """
     Returns 1 string represneting the value for this line
     None will be returned if theres only 1 word
-    '''
+    """
     length = len(line_split)
     if length == 1:
         return None
@@ -56,10 +56,10 @@ def line_value(line_split):
 
 
 def obj_image_load(imagepath, DIR, recursive):
-    '''
+    """
     Mainly uses comprehensiveImageLoad
     but tries to replace '_' with ' ' for Max's exporter replaces spaces with underscores.
-    '''
+    """
     if b'_' in imagepath:
         image = load_image(imagepath.replace(b'_', b' '), DIR, recursive=recursive)
         if image:
@@ -69,10 +69,10 @@ def obj_image_load(imagepath, DIR, recursive):
 
 
 def create_materials(filepath, material_libs, unique_materials, unique_material_images, use_image_search):
-    '''
+    """
     Create all the used materials in this obj,
     assign colors and images to the materials from all referenced material libs
-    '''
+    """
     DIR = os.path.dirname(filepath)
 
     #==================================================================================#
@@ -212,7 +212,7 @@ def create_materials(filepath, material_libs, unique_materials, unique_material_
                         context_material.specular_hardness = int((float(line_split[1]) * 0.51))
                     elif line_lower.startswith(b'ni'):  # Refraction index
                         context_material.raytrace_transparency.ior = max(1, min(float(line_split[1]), 3))  # between 1 and 3
-                    elif line_lower.startswith(b'd') or line_lower.startswith(b'tr'):
+                    elif line_lower.startswith((b'd', b'tr')):
                         context_material.alpha = float(line_split[1])
                         context_material.use_transparency = True
                         context_material.transparency_method = 'Z_TRANSPARENCY'
@@ -330,11 +330,11 @@ def create_materials(filepath, material_libs, unique_materials, unique_material_
                         img_filepath = line_value(line.split())
                         if img_filepath:
                             load_material_image(context_material, context_material_name, img_filepath, 'Kd')
-                    elif line_lower.startswith(b'map_bump') or line_lower.startswith(b'bump'):  # 'bump' is incorrect but some files use it.
+                    elif line_lower.startswith((b'map_bump', b'bump')):  # 'bump' is incorrect but some files use it.
                         img_filepath = line_value(line.split())
                         if img_filepath:
                             load_material_image(context_material, context_material_name, img_filepath, 'Bump')
-                    elif line_lower.startswith(b'map_d') or line_lower.startswith(b'map_tr'):  # Alpha map - Dissolve
+                    elif line_lower.startswith((b'map_d', b'map_tr')):  # Alpha map - Dissolve
                         img_filepath = line_value(line.split())
                         if img_filepath:
                             load_material_image(context_material, context_material_name, img_filepath, 'D')
@@ -349,10 +349,10 @@ def create_materials(filepath, material_libs, unique_materials, unique_material_
 
 
 def split_mesh(verts_loc, faces, unique_materials, filepath, SPLIT_OB_OR_GROUP):
-    '''
+    """
     Takes vert_loc and faces, and separates into multiple sets of
     (verts_loc, faces, unique_materials, dataname)
-    '''
+    """
 
     filename = os.path.splitext((os.path.basename(filepath)))[0]
 
@@ -424,10 +424,10 @@ def create_mesh(new_objects,
                 vertex_groups,
                 dataname,
                 ):
-    '''
+    """
     Takes all the data gathered and generates a mesh, adding the new object to new_objects
-    deals with fgons, sharp edges and assigning materials
-    '''
+    deals with ngons, sharp edges and assigning materials
+    """
     from bpy_extras.mesh_utils import ngon_tessellate
 
     if not has_ngons:
@@ -438,7 +438,7 @@ def create_mesh(new_objects,
         smooth_group_users = {context_smooth_group: {} for context_smooth_group in list(unique_smooth_groups.keys())}
         context_smooth_group_old = -1
 
-    # Split fgons into tri's
+    # Split ngons into tri's
     fgon_edges = {}  # Used for storing fgon keys
     if use_edges:
         edges = []
@@ -487,7 +487,7 @@ def create_mesh(new_objects,
                     except KeyError:
                         edge_dict[i1, i2] = 1
 
-            # FGons into triangles
+            # NGons into triangles
             if has_ngons and len_face_vert_loc_indices > 4:
 
                 ngon_face_indices = ngon_tessellate(verts_loc, face_vert_loc_indices)
@@ -506,7 +506,7 @@ def create_mesh(new_objects,
                              for ngon in ngon_face_indices]
                             )
 
-                # edges to make fgons
+                # edges to make ngons
                 if use_ngons:
                     edge_users = {}
                     for ngon in ngon_face_indices:
@@ -644,6 +644,27 @@ def create_mesh(new_objects,
     def edges_match(e1, e2):
         return (e1[0] == e2[0] and e1[1] == e2[1]) or (e1[0] == e2[1] and e1[1] == e2[0])
 
+    me.validate()
+    me.update(calc_edges=use_edges)
+
+    if unique_smooth_groups and sharp_edges:
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        # to avoid slow iterator lookups later / indexing verts is slow in bmesh
+        bm_verts = bm.verts[:]
+
+        for sharp_edge in sharp_edges.keys():
+            vert1 = bm_verts[sharp_edge[0]]
+            vert2 = bm_verts[sharp_edge[1]]
+            if vert1 != vert2:
+                edge = bm.edges.get((vert1, vert2))
+                if edge is not None:
+                    me.edges[edge.index].use_edge_sharp = True
+
+        bm.free()
+        del bm
+
     # XXX slow
 #     if use_ngons and fgon_edges:
 #         for fgon_edge in fgon_edges.keys():
@@ -672,10 +693,7 @@ def create_mesh(new_objects,
 #                 me_edges[ed].flag |= SHARP
 #         del SHARP
 
-    me.validate()
-    me.update(calc_edges=use_edges)
-
-    ob = bpy.data.objects.new("Mesh", me)
+    ob = bpy.data.objects.new(me.name, me)
     new_objects.append(ob)
 
     # Create the vertex groups. No need to have the flag passed here since we test for the
@@ -687,9 +705,9 @@ def create_mesh(new_objects,
 
 
 def create_nurbs(context_nurbs, vert_loc, new_objects):
-    '''
+    """
     Add nurbs object to blender, only support one type at the moment
-    '''
+    """
     deg = context_nurbs.get(b'deg', (3,))
     curv_range = context_nurbs.get(b'curv_range')
     curv_idx = context_nurbs.get(b'curv_idx', [])
@@ -770,10 +788,10 @@ def strip_slash(line_split):
 
 
 def get_float_func(filepath):
-    '''
+    """
     find the float function for this obj file
     - whether to replace commas or not
-    '''
+    """
     file = open(filepath, 'rb')
     for line in file:  # .readlines():
         line = line.lstrip()
@@ -801,12 +819,12 @@ def load(operator, context, filepath,
          use_groups_as_vgroups=False,
          global_matrix=None,
          ):
-    '''
+    """
     Called by the user interface or another script.
     load_obj(path) - should give acceptable results.
     This function passes the file and sends the data off
         to be split into objects and then converted into mesh objects
-    '''
+    """
     print('\nimporting obj %r' % filepath)
 
     filepath = os.fsencode(filepath)

@@ -44,6 +44,7 @@
 
 #include "BLI_listbase.h"
 #include "BLI_string.h"
+#include "BLI_utildefines.h"
 
 #include "BKE_context.h"
 #include "BKE_main.h"
@@ -241,6 +242,8 @@ static void *ctx_wm_python_context_get(const bContext *C, const char *member, vo
 		if (result.ptr.data)
 			return result.ptr.data;
 	}
+#else
+	(void)C, (void)member;
 #endif
 
 	return fall_through;
@@ -251,7 +254,7 @@ static int ctx_data_get(bContext *C, const char *member, bContextDataResult *res
 	bScreen *sc;
 	ScrArea *sa;
 	ARegion *ar;
-	int done = 0, recursion = C->data.recursion;
+	int done = FALSE, recursion = C->data.recursion;
 	int ret = 0;
 
 	memset(result, 0, sizeof(bContextDataResult));
@@ -266,7 +269,7 @@ static int ctx_data_get(bContext *C, const char *member, bContextDataResult *res
 	 * loops requesting data from ourselfs in a context callback */
 
 	/* Ok, this looks evil...
-	 * if (ret) done= -(-ret | -done);
+	 * if (ret) done = -(-ret | -done);
 	 *
 	 * Values in order of importance
 	 * (0, -1, 1) - Where 1 is highest priority
@@ -279,7 +282,7 @@ static int ctx_data_get(bContext *C, const char *member, bContextDataResult *res
 		entry = BLI_rfindstring(&C->wm.store->entries, member, offsetof(bContextStoreEntry, name));
 		if (entry) {
 			result->ptr = entry->ptr;
-			done = 1;
+			done = TRUE;
 		}
 	}
 	if (done != 1 && recursion < 2 && (ar = CTX_wm_region(C))) {
@@ -369,8 +372,15 @@ PointerRNA CTX_data_pointer_get_type(const bContext *C, const char *member, Stru
 {
 	PointerRNA ptr = CTX_data_pointer_get(C, member);
 
-	if (ptr.data && RNA_struct_is_a(ptr.type, type))
-		return ptr;
+	if (ptr.data) {
+		if (RNA_struct_is_a(ptr.type, type)) {
+			return ptr;
+		}
+		else {
+			printf("%s: warning, member '%s' is '%s', not '%s'\n",
+			       __func__, member, RNA_struct_identifier(ptr.type), RNA_struct_identifier(type));
+		}
+	}
 	
 	return PointerRNA_NULL;
 }
@@ -970,6 +980,11 @@ struct Text *CTX_data_edit_text(const bContext *C)
 struct MovieClip *CTX_data_edit_movieclip(const bContext *C)
 {
 	return ctx_data_pointer_get(C, "edit_movieclip");
+}
+
+struct Mask *CTX_data_edit_mask(const bContext *C)
+{
+	return ctx_data_pointer_get(C, "edit_mask");
 }
 
 struct EditBone *CTX_data_active_bone(const bContext *C)

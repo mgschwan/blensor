@@ -98,7 +98,7 @@ private:
 	/* The current list of scenes. */
 	KX_SceneList		m_scenes;
 	/* State variable recording the presence of object debug info in the current scene list. */
-	bool				m_propertiesPresent;	
+	bool				m_propertiesPresent;
 
 	bool				m_bInitialized;
 	int					m_activecam;
@@ -136,7 +136,7 @@ private:
 	int				m_drawingmode;
 	float			m_cameraZoom;
 	
-	bool			m_overrideCam;	
+	bool			m_overrideCam;
 	STR_String		m_overrideSceneName;
 	
 	bool			m_overrideCamUseOrtho;
@@ -150,8 +150,7 @@ private:
 	int m_curreye;
 
 	/** Categories for profiling display. */
-	typedef enum
-	{
+	typedef enum {
 		tc_first = 0,
 		tc_physics = 0,
 		tc_logic,
@@ -221,7 +220,7 @@ public:
 	void			SetRenderTools(RAS_IRenderTools* rendertools);
 	void			SetRasterizer(RAS_IRasterizer* rasterizer);
 #ifdef WITH_PYTHON
-	void			SetPyNamespace(PyObject* pythondictionary);
+	void			SetPyNamespace(PyObject *pythondictionary);
 	PyObject*		GetPyNamespace() { return m_pythondictionary; }
 #endif
 	void			SetSceneConverter(KX_ISceneConverter* sceneconverter);
@@ -416,7 +415,7 @@ public:
 	KX_Scene*		CreateScene(const STR_String& scenename);
 	KX_Scene*		CreateScene(Scene *scene);
 
-	GlobalSettings*	GetGlobalSettings(void);	
+	GlobalSettings*	GetGlobalSettings(void);
 	void			SetGlobalSettings(GlobalSettings* gs);
 
 protected:
@@ -444,9 +443,7 @@ protected:
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:KX_KetsjiEngine"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:KX_KetsjiEngine")
 #endif
 };
 

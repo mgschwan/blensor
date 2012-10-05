@@ -34,15 +34,17 @@
 
 /* **************** TEXTURE ******************** */
 static bNodeSocketTemplate cmp_node_texture_in[]= {
-	{	SOCK_VECTOR, 1, "Offset",		0.0f, 0.0f, 0.0f, 0.0f, -2.0f, 2.0f, PROP_TRANSLATION},
-	{	SOCK_VECTOR, 1, "Scale",		1.0f, 1.0f, 1.0f, 1.0f, -10.0f, 10.0f, PROP_XYZ},
+	{	SOCK_VECTOR, 1, N_("Offset"),		0.0f, 0.0f, 0.0f, 0.0f, -2.0f, 2.0f, PROP_TRANSLATION},
+	{	SOCK_VECTOR, 1, N_("Scale"),		1.0f, 1.0f, 1.0f, 1.0f, -10.0f, 10.0f, PROP_XYZ},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_texture_out[]= {
-	{	SOCK_FLOAT, 0, "Value"},
-	{	SOCK_RGBA, 0, "Color"},
+	{	SOCK_FLOAT, 0, N_("Value")},
+	{	SOCK_RGBA, 0, N_("Color")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 /* called without rect allocated */
 static void texture_procedural(CompBuf *cbuf, float *out, float xco, float yco)
@@ -142,6 +144,8 @@ static void node_composit_exec_texture(void *data, bNode *node, bNodeStack **in,
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_texture(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -149,7 +153,9 @@ void register_node_type_cmp_texture(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_TEXTURE, "Texture", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
 	node_type_socket_templates(&ntype, cmp_node_texture_in, cmp_node_texture_out);
 	node_type_size(&ntype, 120, 80, 240);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_texture);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

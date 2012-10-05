@@ -174,7 +174,7 @@ public:
 	virtual bool		UsesObjectColor() const;
 	virtual bool		CastsShadows() const;
 
-	virtual void		Replace_IScene(SCA_IScene *val) {}; /* overridden by KX_BlenderMaterial */
+	virtual void		Replace_IScene(SCA_IScene *val) {} /* overridden by KX_BlenderMaterial */
 
 	/**
 	* \return the equivalent drawing mode for the material settings (equivalent to old TexFace tface->mode).
@@ -184,13 +184,11 @@ public:
 	/*
 	 * PreCalculate texture gen
 	 */
-	virtual void OnConstruction(int layer){}
-		
-		
+	virtual void OnConstruction(int layer) {}
+
+
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:RAS_IPolyMaterial"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:RAS_IPolyMaterial")
 #endif
 };
 

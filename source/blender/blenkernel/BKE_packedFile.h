@@ -32,8 +32,8 @@
  *  \since March 2001
  *  \author nzc
  */
-#define RET_OK		0
-#define RET_ERROR	1
+#define RET_OK      0
+#define RET_ERROR   1
 
 struct bSound;
 struct Image;
@@ -43,6 +43,7 @@ struct ReportList;
 struct VFont;
 
 /* pack */
+struct PackedFile *dupPackedFile(const struct PackedFile *pf_src);
 struct PackedFile *newPackedFile(struct ReportList *reports, const char *filename, const char *relabase);
 struct PackedFile *newPackedFileMemory(void *mem, int memlen);
 

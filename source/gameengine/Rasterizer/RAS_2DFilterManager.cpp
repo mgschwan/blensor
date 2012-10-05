@@ -52,8 +52,7 @@
 
 RAS_2DFilterManager::RAS_2DFilterManager():
 texturewidth(-1), textureheight(-1),
-canvaswidth(-1), canvasheight(-1),
-numberoffilters(0), need_tex_update(true)
+/* numberoffilters(0), */ /* UNUSED */ need_tex_update(true)
 {
 	isshadersupported = GLEW_ARB_shader_objects &&
 		GLEW_ARB_fragment_shader && GLEW_ARB_multitexture;
@@ -111,7 +110,7 @@ void RAS_2DFilterManager::PrintShaderErrors(unsigned int shader, const char *tas
 
 unsigned int RAS_2DFilterManager::CreateShaderProgram(const char* shadersource)
 {
-	GLuint program = 0;	
+	GLuint program = 0;
 	GLuint fShader = glCreateShaderObjectARB(GL_FRAGMENT_SHADER);
 	GLint success;
 
@@ -323,23 +322,24 @@ void RAS_2DFilterManager::SetupTextures(bool depth, bool luminance)
 
 void RAS_2DFilterManager::UpdateOffsetMatrix(RAS_ICanvas* canvas)
 {
-	RAS_Rect canvas_rect = canvas->GetWindowArea();
-	canvaswidth = canvas->GetWidth();
-	canvasheight = canvas->GetHeight();
-
-	texturewidth = canvaswidth + canvas_rect.GetLeft();
-	textureheight = canvasheight + canvas_rect.GetBottom();
+	/* RAS_Rect canvas_rect = canvas->GetWindowArea(); */ /* UNUSED */
+	texturewidth = canvas->GetWidth()+1;
+	textureheight = canvas->GetHeight()+1;
 	GLint i,j;
-	i = 0;
-	while ((1 << i) <= texturewidth)
-		i++;
-	texturewidth = (1 << (i));
 
-	// Now for height
-	i = 0;
-	while ((1 << i) <= textureheight)
-		i++;
-	textureheight = (1 << (i));
+	if (!GL_ARB_texture_non_power_of_two)
+	{
+		i = 0;
+		while ((1 << i) <= texturewidth)
+			i++;
+		texturewidth = (1 << (i));
+
+		// Now for height
+		i = 0;
+		while ((1 << i) <= textureheight)
+			i++;
+		textureheight = (1 << (i));
+	}
 
 	GLfloat	xInc = 1.0f / (GLfloat)texturewidth;
 	GLfloat yInc = 1.0f / (GLfloat)textureheight;
@@ -400,8 +400,10 @@ void RAS_2DFilterManager::RenderFilters(RAS_ICanvas* canvas)
 
 	GLuint	viewport[4]={0};
 	glGetIntegerv(GL_VIEWPORT,(GLint *)viewport);
+	RAS_Rect rect = canvas->GetWindowArea();
+	int rect_width = rect.GetWidth()+1, rect_height = rect.GetHeight()+1;
 
-	if (canvaswidth != canvas->GetWidth() || canvasheight != canvas->GetHeight())
+	if (texturewidth != rect_width || textureheight != rect_height)
 	{
 		UpdateOffsetMatrix(canvas);
 		UpdateCanvasTextureCoord((unsigned int*)viewport);
@@ -417,19 +419,19 @@ void RAS_2DFilterManager::RenderFilters(RAS_ICanvas* canvas)
 	if (need_depth) {
 		glActiveTextureARB(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, texname[1]);
-		glCopyTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT, 0, 0, texturewidth,textureheight, 0);
+		glCopyTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT, rect.GetLeft(), rect.GetBottom(), rect_width, rect_height, 0);
 	}
 	
 	if (need_luminance) {
 		glActiveTextureARB(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, texname[2]);
-		glCopyTexImage2D(GL_TEXTURE_2D,0,GL_LUMINANCE16, 0, 0, texturewidth,textureheight, 0);
+		glCopyTexImage2D(GL_TEXTURE_2D,0,GL_LUMINANCE16, rect.GetLeft(), rect.GetBottom(), rect_width, rect_height, 0);
 	}
 
 	// reverting to texunit 0, without this we get bug [#28462]
 	glActiveTextureARB(GL_TEXTURE0);
 
-	glViewport(0,0, texturewidth, textureheight);
+	glViewport(rect.GetLeft(), rect.GetBottom(), rect_width, rect_height);
 
 	glDisable(GL_DEPTH_TEST);
 	// in case the previous material was wire
@@ -452,7 +454,7 @@ void RAS_2DFilterManager::RenderFilters(RAS_ICanvas* canvas)
 
 			glActiveTextureARB(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, texname[0]);
-			glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, texturewidth, textureheight, 0);
+			glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rect.GetLeft(), rect.GetBottom(), rect_width, rect_height, 0); // Don't use texturewidth and textureheight in case we don't have NPOT support
 			glClear(GL_COLOR_BUFFER_BIT);
 
 			glBegin(GL_QUADS);
@@ -467,7 +469,7 @@ void RAS_2DFilterManager::RenderFilters(RAS_ICanvas* canvas)
 
 	glEnable(GL_DEPTH_TEST);
 	glViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
-	EndShaderProgram();	
+	EndShaderProgram();
 	glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);
 	glPopMatrix();

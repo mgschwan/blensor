@@ -22,6 +22,7 @@ DEBUG = False
 
 # This should work without a blender at all
 import os
+import shlex
 
 
 def imageConvertCompat(path):
@@ -55,9 +56,9 @@ def imageConvertCompat(path):
 # =============================== VRML Spesific
 
 def vrmlFormat(data):
-    '''
+    """
     Keep this as a valid vrml file, but format in a way we can predict.
-    '''
+    """
     # Strip all commends - # not in strings - warning multiline strings are ignored.
     def strip_comment(l):
         #l = ' '.join(l.split())
@@ -270,9 +271,9 @@ def is_nodeline(i, words):
 
 
 def is_numline(i):
-    '''
+    """
     Does this line start with a number?
-    '''
+    """
 
     # Works but too slow.
     '''
@@ -490,7 +491,7 @@ class vrmlNode(object):
                 return child
 
     def getSerialized(self, results, ancestry):
-        ''' Return this node and all its children in a flat list '''
+        """ Return this node and all its children in a flat list """
         ancestry = ancestry[:]  # always use a copy
 
         # self_real = self.getRealNode()
@@ -720,9 +721,9 @@ class vrmlNode(object):
             return default
 
     def getFieldAsArray(self, field, group, ancestry):
-        '''
+        """
         For this parser arrays are children
-        '''
+        """
 
         def array_as_number(array_string):
             array_data = []
@@ -813,9 +814,9 @@ class vrmlNode(object):
         return new_array
 
     def getFieldAsStringArray(self, field, ancestry):
-        '''
+        """
         Get a list of strings
-        '''
+        """
         self_real = self.getRealNode()  # in case we're an instance
 
         child_array = None
@@ -1173,7 +1174,8 @@ class vrmlNode(object):
                             else:
                                 value += '\n' + l
 
-                    value_all = value.split()
+                    # use shlex so we get '"a b" "b v"' --> '"a b"', '"b v"'
+                    value_all = shlex.split(value, posix=False)
 
                     def iskey(k):
                         if k[0] != '"' and k[0].isalpha() and k.upper() not in {'TRUE', 'FALSE'}:
@@ -1181,10 +1183,10 @@ class vrmlNode(object):
                         return False
 
                     def split_fields(value):
-                        '''
+                        """
                         key 0.0 otherkey 1,2,3 opt1 opt1 0.0
                             -> [key 0.0], [otherkey 1,2,3], [opt1 opt1 0.0]
-                        '''
+                        """
                         field_list = []
                         field_context = []
 
@@ -1243,10 +1245,10 @@ def gzipOpen(path):
 
 
 def vrml_parse(path):
-    '''
+    """
     Sets up the root node and returns it so load_web3d() can deal with the blender side of things.
     Return root (vrmlNode, '') or (None, 'Error String')
-    '''
+    """
     data = gzipOpen(path)
 
     if data is None:
@@ -1358,10 +1360,10 @@ class x3dNode(vrmlNode):
 
 
 def x3d_parse(path):
-    '''
+    """
     Sets up the root node and returns it so load_web3d() can deal with the blender side of things.
     Return root (x3dNode, '') or (None, 'Error String')
-    '''
+    """
 
     try:
         import xml.dom.minidom
@@ -1422,7 +1424,7 @@ GLOBALS = {'CIRCLE_DETAIL': 16}
 
 
 def translateRotation(rot):
-    ''' axis, angle '''
+    """ axis, angle """
     return Matrix.Rotation(rot[3], 4, Vector(rot[:3]))
 
 
@@ -1576,7 +1578,8 @@ def importMesh_IndexedFaceSet(geom, bpyima, ancestry):
         coords_tex = geom.getChildBySpec('TextureCoordinate')
 
         if coords_tex:
-            ifs_texpoints = coords_tex.getFieldAsArray('point', 2, ancestry)
+            ifs_texpoints = [(0, 0)] # EEKADOODLE - vertex start at 1
+            ifs_texpoints.extend(coords_tex.getFieldAsArray('point', 2, ancestry))
             ifs_texfaces = geom.getFieldAsArray('texCoordIndex', 0, ancestry)
 
             if not ifs_texpoints:
@@ -1707,14 +1710,14 @@ def importMesh_IndexedFaceSet(geom, bpyima, ancestry):
         # we have to create VRML's coords as UVs instead.
 
         # VRML docs
-        '''
+        """
         If the texCoord field is NULL, a default texture coordinate mapping is calculated using the local
         coordinate system bounding box of the shape. The longest dimension of the bounding box defines the S coordinates,
         and the next longest defines the T coordinates. If two or all three dimensions of the bounding box are equal,
         ties shall be broken by choosing the X, Y, or Z dimension in that order of preference.
         The value of the S coordinate ranges from 0 to 1, from one end of the bounding box to the other.
         The T coordinate ranges between 0 and the ratio of the second greatest dimension of the bounding box to the greatest dimension.
-        '''
+        """
 
         # Note, S,T == U,V
         # U gets longest, V gets second longest
@@ -1938,7 +1941,7 @@ def importMesh_Cylinder(geom, ancestry):
     bpy.ops.mesh.primitive_cylinder_add(vertices=GLOBALS['CIRCLE_DETAIL'],
                                         radius=diameter,
                                         depth=height,
-                                        cap_ends=True,
+                                        end_fill_type='NGON',
                                         view_align=False,
                                         enter_editmode=False,
                                         )
@@ -1980,9 +1983,10 @@ def importMesh_Cone(geom, ancestry):
     # bpymesh = Mesh.Primitives.Cone(GLOBALS['CIRCLE_DETAIL'], diameter, height)
 
     bpy.ops.mesh.primitive_cone_add(vertices=GLOBALS['CIRCLE_DETAIL'],
-                                    radius=diameter,
+                                    radius1=diameter,
+                                    radius2=0,
                                     depth=height,
-                                    cap_end=True,
+                                    end_fill_type='NGON',
                                     view_align=False,
                                     enter_editmode=False,
                                     )
@@ -2046,6 +2050,7 @@ def importShape(node, ancestry, global_matrix):
         texmtx = None
 
         depth = 0  # so we can set alpha face flag later
+        is_vcol = (geom.getChildBySpec('Color') is not None)
 
         if appr:
 
@@ -2086,6 +2091,8 @@ def importShape(node, ancestry, global_matrix):
                 bpymat.alpha = 1.0 - mat.getFieldAsFloat('transparency', 0.0, ancestry)
                 if bpymat.alpha < 0.999:
                     bpymat.use_transparency = True
+                if is_vcol:
+                    bpymat.use_vertex_color_paint = True
 
             if ima:
                 ima_url = ima.getFieldAsString('url', None, ancestry)
@@ -2421,10 +2428,10 @@ def translateScalarInterpolator(node, action, ancestry):
 
 
 def translateTimeSensor(node, action, ancestry):
-    '''
+    """
     Apply a time sensor to an action, VRML has many combinations of loop/start/stop/cycle times
     to give different results, for now just do the basics
-    '''
+    """
 
     # XXX25 TODO
     if 1:
@@ -2451,9 +2458,9 @@ def translateTimeSensor(node, action, ancestry):
 
 
 def importRoute(node, ancestry):
-    '''
+    """
     Animation route only at the moment
-    '''
+    """
 
     if not hasattr(node, 'fields'):
         return
@@ -2469,7 +2476,7 @@ def importRoute(node, ancestry):
 
     # for getting definitions
     defDict = node.getDefDict()
-    '''
+    """
     Handles routing nodes to eachother
 
 ROUTE vpPI.value_changed TO champFly001.set_position
@@ -2477,7 +2484,7 @@ ROUTE vpOI.value_changed TO champFly001.set_orientation
 ROUTE vpTs.fraction_changed TO vpPI.set_fraction
 ROUTE vpTs.fraction_changed TO vpOI.set_fraction
 ROUTE champFly001.bindTime TO vpTs.set_startTime
-    '''
+    """
 
     #from_id, from_type = node.id[1].split('.')
     #to_id, to_type = node.id[3].split('.')

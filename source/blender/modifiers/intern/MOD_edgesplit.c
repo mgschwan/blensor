@@ -79,7 +79,11 @@ static DerivedMesh *doEdgeSplit(DerivedMesh *dm, EdgeSplitModifierData *emd, Obj
 			if ((l1 = e->l) &&
 			    (l2 = e->l->radial_next) != l1)
 			{
-				if (dot_v3v3(l1->f->no, l2->f->no) < threshold) {
+				if (/* 3+ faces on this edge, always split */
+				    UNLIKELY(l1 != l2->radial_next) ||
+				    /* 2 face edge - check angle*/
+				    (dot_v3v3(l1->f->no, l2->f->no) < threshold))
+				{
 					BMO_elem_flag_enable(bm, e, EDGE_MARK);
 				}
 			}
@@ -99,7 +103,8 @@ static DerivedMesh *doEdgeSplit(DerivedMesh *dm, EdgeSplitModifierData *emd, Obj
 		}
 	}
 	
-	BMO_op_callf(bm, "edgesplit edges=%fe", EDGE_MARK);
+	BMO_op_callf(bm, BMO_FLAG_DEFAULTS,
+	             "split_edges edges=%fe", EDGE_MARK);
 	
 	BMO_pop(bm);
 

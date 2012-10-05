@@ -43,7 +43,7 @@
 class	PHY_IMotionState
 
 {
-	public:		
+	public:
 		virtual ~PHY_IMotionState();
 
 		virtual void	getWorldPosition(float& posX,float& posY,float& posZ)=0;
@@ -61,9 +61,7 @@ class	PHY_IMotionState
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:PHY_IMotionState"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:PHY_IMotionState")
 #endif
 };
 

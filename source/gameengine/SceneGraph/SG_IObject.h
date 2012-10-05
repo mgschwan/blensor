@@ -174,7 +174,7 @@ public:
 	 * this object is deleted.
 	 */
 	
-		void				
+		void
 	AddSGController(
 		SG_Controller* cont
 	);
@@ -196,7 +196,7 @@ public:
 	 * leaks.
 	 */
 	
-		void				
+		void
 	RemoveAllControllers(
 	); 
 
@@ -233,7 +233,7 @@ public:
 	 * This may be NULL.
 	 */
 
-	inline const void* GetSGClientObject() const	
+	inline const void* GetSGClientObject() const
 	{
 		return m_SGclientObject;
 	}
@@ -280,7 +280,7 @@ public:
 	void SetControllerTime(double time);
 	
 	virtual 
-		void		
+		void
 	Destruct(
 	) = 0;
 
@@ -367,9 +367,7 @@ protected :
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:SG_IObject"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:SG_IObject")
 #endif
 };
 

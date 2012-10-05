@@ -43,6 +43,7 @@
 #include "DNA_world_types.h"
 
 #include "BLI_utildefines.h"
+#include "BLI_listbase.h"
 
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
@@ -52,6 +53,7 @@
 #include "ED_armature.h"
 #include "ED_object.h"
 #include "ED_screen.h"
+#include "ED_sequencer.h"
 #include "ED_util.h"
 
 #include "WM_api.h"
@@ -67,7 +69,7 @@
 #include "outliner_intern.h"
 
 /* ****************************************************** */
-/* Outliner Selection (grey-blue highlight for rows) */
+/* Outliner Selection (gray-blue highlight for rows) */
 
 static int outliner_select(SpaceOops *soops, ListBase *lb, int *index, short *selecting)
 {
@@ -431,8 +433,11 @@ static int tree_element_active_bone(bContext *C, Scene *scene, TreeElement *te, 
 	
 	if (set) {
 		if (!(bone->flag & BONE_HIDDEN_P)) {
-			if (set == 2) ED_pose_deselectall(OBACT, 2);  // 2 is clear active tag
-			else ED_pose_deselectall(OBACT, 0);
+			Object *ob = OBACT;
+			if (ob) {
+				if (set == 2) ED_pose_deselectall(ob, 2);  // 2 is clear active tag
+				else ED_pose_deselectall(ob, 0);
+			}
 			
 			if (set == 2 && (bone->flag & BONE_SELECTED)) {
 				bone->flag &= ~BONE_SELECTED;
@@ -442,7 +447,7 @@ static int tree_element_active_bone(bContext *C, Scene *scene, TreeElement *te, 
 				arm->act_bone = bone;
 			}
 			
-			WM_event_add_notifier(C, NC_OBJECT | ND_BONE_ACTIVE, OBACT);
+			WM_event_add_notifier(C, NC_OBJECT | ND_BONE_ACTIVE, ob);
 		}
 	}
 	else {
@@ -568,16 +573,34 @@ static int tree_element_active_pose(bContext *C, Scene *scene, TreeElement *UNUS
 	return 0;
 }
 
-static int tree_element_active_sequence(TreeElement *te, TreeStoreElem *UNUSED(tselem), int set)
+static int tree_element_active_sequence(bContext *C, Scene *scene, TreeElement *te, TreeStoreElem *UNUSED(tselem), int set)
 {
 	Sequence *seq = (Sequence *) te->directdata;
+	Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
 
 	if (set) {
-// XXX		select_single_seq(seq, 1);
+		/* only check on setting */
+		if (BLI_findindex(ed->seqbasep, seq) != -1) {
+			if (set == 2) {
+				BKE_sequencer_active_set(scene, NULL);
+			}
+			ED_sequencer_deselect_all(scene);
+
+			if (set == 2 && seq->flag & SELECT) {
+				seq->flag &= ~SELECT;
+			}
+			else {
+				seq->flag |= SELECT;
+				BKE_sequencer_active_set(scene, seq);
+			}
+		}
+
+		WM_event_add_notifier(C, NC_SCENE | ND_SEQUENCER | NA_SELECTED, scene);
 	}
 	else {
-		if (seq->flag & SELECT)
-			return(1);
+		if (ed->act_seq == seq && seq->flag & SELECT) {
+			return 1;
+		}
 	}
 	return(0);
 }
@@ -585,7 +608,7 @@ static int tree_element_active_sequence(TreeElement *te, TreeStoreElem *UNUSED(t
 static int tree_element_active_sequence_dup(Scene *scene, TreeElement *te, TreeStoreElem *UNUSED(tselem), int set)
 {
 	Sequence *seq, *p;
-	Editing *ed = seq_give_editing(scene, FALSE);
+	Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
 
 	seq = (Sequence *)te->directdata;
 	if (set == 0) {
@@ -650,7 +673,8 @@ int tree_element_active(bContext *C, Scene *scene, SpaceOops *soops, TreeElement
 
 /* generic call for non-id data to make/check active in UI */
 /* Context can be NULL when set==0 */
-int tree_element_type_active(bContext *C, Scene *scene, SpaceOops *soops, TreeElement *te, TreeStoreElem *tselem, int set)
+int tree_element_type_active(bContext *C, Scene *scene, SpaceOops *soops,
+                             TreeElement *te, TreeStoreElem *tselem, int set)
 {
 	switch (tselem->type) {
 		case TSE_DEFGROUP:
@@ -678,7 +702,7 @@ int tree_element_type_active(bContext *C, Scene *scene, SpaceOops *soops, TreeEl
 		case TSE_POSEGRP:
 			return tree_element_active_posegroup(C, scene, te, tselem, set);
 		case TSE_SEQUENCE:
-			return tree_element_active_sequence(te, tselem, set);
+			return tree_element_active_sequence(C, scene, te, tselem, set);
 		case TSE_SEQUENCE_DUP:
 			return tree_element_active_sequence_dup(scene, te, tselem, set);
 		case TSE_KEYMAP_ITEM:
@@ -690,7 +714,8 @@ int tree_element_type_active(bContext *C, Scene *scene, SpaceOops *soops, TreeEl
 
 /* ================================================ */
 
-static int do_outliner_item_activate(bContext *C, Scene *scene, ARegion *ar, SpaceOops *soops, TreeElement *te, int extend, const float mval[2])
+static int do_outliner_item_activate(bContext *C, Scene *scene, ARegion *ar, SpaceOops *soops,
+                                     TreeElement *te, int extend, const float mval[2])
 {
 	
 	if (mval[1] > te->ys && mval[1] < te->ys + UI_UNIT_Y) {
@@ -877,12 +902,9 @@ static int outliner_border_select_exec(bContext *C, wmOperator *op)
 	rctf rectf;
 	int gesture_mode = RNA_int_get(op->ptr, "gesture_mode");
 
-	rect.xmin = RNA_int_get(op->ptr, "xmin");
-	rect.ymin = RNA_int_get(op->ptr, "ymin");
-	UI_view2d_region_to_view(&ar->v2d, rect.xmin, rect.ymin, &rectf.xmin, &rectf.ymin);
+	WM_operator_properties_border_to_rcti(op, &rect);
 
-	rect.xmax = RNA_int_get(op->ptr, "xmax");
-	rect.ymax = RNA_int_get(op->ptr, "ymax");
+	UI_view2d_region_to_view(&ar->v2d, rect.xmin, rect.ymin, &rectf.xmin, &rectf.ymin);
 	UI_view2d_region_to_view(&ar->v2d, rect.xmax, rect.ymax, &rectf.xmax, &rectf.ymax);
 
 	for (te = soops->tree.first; te; te = te->next) {

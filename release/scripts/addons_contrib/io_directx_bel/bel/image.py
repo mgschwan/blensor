@@ -1,7 +1,8 @@
 import bpy
 import bpy.path
-import io_directx_bel.bel.fs
-from io_directx_bel import bel
+
+from . import __init__ as bel
+from . import fs
 
 debuglevel = 0
 
@@ -12,16 +13,16 @@ def dprint(str,l=2) :
 # create or retrieve a bdata image
 # given its path 
 def new(path, name=False, relative = True, premul = True) :
-    path = bel.fs.clean(path)
+    path = fs.clean(path)
     # check file
-    if bel.fs.isfile(path) == False :
+    if fs.isfile(path) == False :
         dprint('Texture image not found')
         return False
 
     if relative :
         try :
             path = bpy.path.relpath(path)
-            path = bel.fs.clean(path)
+            path = fs.clean(path)
         except : 
             print('cant turn path into relative one (.blend and img path drive letters ?) ')
         
@@ -29,7 +30,7 @@ def new(path, name=False, relative = True, premul = True) :
     # returns img if paths match
     for img in bpy.data.images :
         if img.filepath != '' :
-            if bpy.path.abspath(path) == bpy.path.abspath(bel.fs.clean(img.filepath)) :
+            if bpy.path.abspath(path) == bpy.path.abspath(fs.clean(img.filepath)) :
                 return img
 
     # create a unique name in image slot

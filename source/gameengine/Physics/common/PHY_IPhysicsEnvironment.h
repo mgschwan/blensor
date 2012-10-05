@@ -48,7 +48,7 @@ class PHY_IPhysicsController;
  */
 struct PHY_RayCastResult
 {
-	PHY_IPhysicsController* m_controller;	
+	PHY_IPhysicsController* m_controller;
 	PHY__Vector3			m_hitPoint;
 	PHY__Vector3			m_hitNormal;
 	const RAS_MeshObject*	m_meshObject;	// !=NULL for mesh object (only for Bullet controllers) 
@@ -87,11 +87,10 @@ public:
 		m_faceUV(faceUV)
 	{
 	}
-	
+
+
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:PHY_IRayCastFilterCallback"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:PHY_IRayCastFilterCallback")
 #endif
 };
 
@@ -108,7 +107,7 @@ class PHY_IPhysicsEnvironment
 		/// Perform an integration step of duration 'timeStep'.
 		virtual	bool		proceedDeltaTime(double curTime,float timeStep,float interval)=0;
 		///draw debug lines (make sure to call this during the render phase, otherwise lines are not drawn properly)
-		virtual void		debugDrawWorld(){}
+		virtual void		debugDrawWorld() {}
 		virtual	void		setFixedTimeStep(bool useFixedTimeStep,float fixedTimeStep)=0;
 		//returns 0.f if no fixed timestep is used
 		virtual	float		getFixedTimeStep()=0;
@@ -118,7 +117,7 @@ class PHY_IPhysicsEnvironment
 		///setNumIterations set the number of iterations for iterative solvers
 		virtual void		setNumIterations(int numIter) {}
 		///setNumTimeSubSteps set the number of divisions of the timestep. Tradeoff quality versus performance.
-		virtual void		setNumTimeSubSteps(int numTimeSubSteps){}
+		virtual void		setNumTimeSubSteps(int numTimeSubSteps) {}
 		///setDeactivationTime sets the minimum time that an objects has to stay within the velocity tresholds until it gets fully deactivated
 		virtual void		setDeactivationTime(float dTime) {}
 		///setDeactivationLinearTreshold sets the linear velocity treshold, see setDeactivationTime
@@ -151,7 +150,7 @@ class PHY_IPhysicsEnvironment
 			float axis2X=0,float axis2Y=0,float axis2Z=0,int flag=0
 		)=0;
 		virtual void		removeConstraint(int	constraintid)=0;
-		virtual float		getAppliedImpulse(int	constraintid){ return 0.f;}
+		virtual float		getAppliedImpulse(int	constraintid) { return 0.0f; }
 
 
 		//complex constraint for vehicles
@@ -179,11 +178,10 @@ class PHY_IPhysicsEnvironment
 		virtual float	getConstraintParam(int constraintId,int param) = 0;
 		
 		virtual void	exportFile(const char* filename) {};
-		
+
+
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:PHY_IPhysicsEnvironment"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:PHY_IPhysicsEnvironment")
 #endif
 };
 

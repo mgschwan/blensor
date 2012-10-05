@@ -18,7 +18,7 @@
 
 # <pep8 compliant>
 
-'''
+"""
 Even though this is in a package this can run as a stand alone scripts.
 
 # --- example usage
@@ -32,7 +32,7 @@ config = [
     ]
 # ---
 /data/src/blender/lib/tests/rendering/
-'''
+"""
 
 import bpy
 import time
@@ -43,7 +43,6 @@ DEMO_CFG = "demo.py"
 
 # populate from script
 global_config_files = []
-
 
 global_config = dict(anim_cycles=1,
                      anim_render=False,
@@ -74,6 +73,7 @@ global_state = {
     "timer": None,
     "basedir": "",  # demo.py is stored here
     "demo_index": 0,
+    "exit": False,
 }
 
 
@@ -131,8 +131,22 @@ def demo_mode_auto_select():
 
 
 def demo_mode_next_file(step=1):
+
+    # support for temp
+    if global_config_files[global_state["demo_index"]].get("is_tmp"):
+        del global_config_files[global_state["demo_index"]]
+        global_state["demo_index"] -= 1
+
     print(global_state["demo_index"])
-    global_state["demo_index"] = (global_state["demo_index"] + step) % len(global_config_files)
+    demo_index_next = (global_state["demo_index"] + step) % len(global_config_files)
+
+    if global_state["exit"] and step > 0:
+        # check if we cycled
+        if demo_index_next < global_state["demo_index"]:
+            import sys
+            sys.exit(0)
+
+    global_state["demo_index"] = demo_index_next
     print(global_state["demo_index"], "....")
     print("func:demo_mode_next_file", global_state["demo_index"])
     filepath = global_config_files[global_state["demo_index"]]["file"]
@@ -157,6 +171,22 @@ def demo_mode_load_file():
     print("func:demo_mode_load_file")
     DemoMode.first_run = True
     bpy.ops.wm.demo_mode('EXEC_DEFAULT')
+
+
+def demo_mode_temp_file():
+    """ Initialize a temp config for the duration of the play time.
+        Use this so we can initialize the demo intro screen but not show again.
+    """
+    assert(global_state["demo_index"] == 0)
+
+    temp_config = global_config_fallback.copy()
+    temp_config["anim_time_min"] = 0.0
+    temp_config["anim_time_max"] = 60.0
+    temp_config["anim_cycles"] = 0  # ensures we switch when hitting the end
+    temp_config["mode"] = 'PLAY'
+    temp_config["is_tmp"] = True
+
+    global_config_files.insert(0, temp_config)
 
 
 def demo_mode_init():
@@ -189,6 +219,8 @@ def demo_mode_init():
         scene.render.use_file_extension = False
         scene.render.use_placeholder = False
         try:
+            # XXX - without this rendering will crash because of a bug in blender!
+            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
             if global_config["anim_render"]:
                 bpy.ops.render.render('INVOKE_DEFAULT', animation=True)
             else:
@@ -343,12 +375,19 @@ class DemoMode(bpy.types.Operator):
     def execute(self, context):
         print("func:DemoMode.execute:", len(global_config_files), "files")
 
+        use_temp = False
+
         # load config if not loaded
         if not global_config_files:
             load_config()
+            use_temp = True
+
         if not global_config_files:
             self.report({'INFO'}, "No configuration found with text or file: %s. Run File -> Demo Mode Setup" % DEMO_CFG)
             return {'CANCELLED'}
+
+        if use_temp:
+            demo_mode_temp_file()  # play this once through then never again
 
         # toggle
         if DemoMode.enabled and DemoMode.first_run == False:
@@ -357,8 +396,8 @@ class DemoMode(bpy.types.Operator):
             return {'CANCELLED'}
         else:
             DemoMode.enabled = True
-            context.window_manager.modal_handler_add(self)
 
+            context.window_manager.modal_handler_add(self)
             return {'RUNNING_MODAL'}
 
     def cancel(self, context):
@@ -402,8 +441,7 @@ def menu_func(self, context):
     # print("func:menu_func - DemoMode.enabled:", DemoMode.enabled, "bpy.app.driver_namespace:", DemoKeepAlive.secret_attr not in bpy.app.driver_namespace, 'global_state["timer"]:', global_state["timer"])
     layout = self.layout
     layout.operator_context = 'EXEC_DEFAULT'
-    box = layout.row()  # BOX messes layout
-    row = box.row(align=True)
+    row = layout.row(align=True)
     row.label("Demo Mode:")
     if not DemoMode.enabled:
         row.operator("wm.demo_mode", icon='PLAY', text="")
@@ -458,6 +496,7 @@ def load_config(cfg_name=DEMO_CFG):
 
     demo_config = namespace["config"]
     demo_search_path = namespace.get("search_path")
+    global_state["exit"] = namespace.get("exit", False)
 
     if demo_search_path is None:
         print("reading: %r, no search_path found, missing files wont be searched." % demo_path)

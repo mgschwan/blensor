@@ -50,6 +50,36 @@ int libmv_regionTrackerTrack(struct libmv_RegionTracker *libmv_tracker, const fl
 			int width, int height, double  x1, double  y1, double *x2, double *y2);
 void libmv_regionTrackerDestroy(struct libmv_RegionTracker *libmv_tracker);
 
+/* TrackRegion (new planar tracker) */
+struct libmv_trackRegionOptions {
+	int motion_model;
+	int num_iterations;
+	int use_brute;
+	int use_normalization;
+	double minimum_correlation;
+	double sigma;
+	float *image1_mask;
+};
+
+struct libmv_trackRegionResult {
+	int termination;
+	const char *termination_reason;
+	double correlation;
+};
+
+int libmv_trackRegion(const struct libmv_trackRegionOptions *options,
+                      const float *image1, int image1_width, int image1_height,
+                      const float *image2, int image2_width, int image2_height,
+                      const double *x1, const double *y1,
+                      struct libmv_trackRegionResult *result,
+                      double *x2, double *y2);
+
+void libmv_samplePlanarPatch(const float *image, int width, int height,
+                             int channels, const double *xs, const double *ys,
+                             int num_samples_x, int num_samples_y,
+                             const float *mask, float *patch,
+                             double *warped_position_x, double *warped_position_y);
+
 /* Tracks */
 struct libmv_Tracks *libmv_tracksNew(void);
 void libmv_tracksInsert(struct libmv_Tracks *libmv_tracks, int image, int track, double x, double y);
@@ -117,14 +147,14 @@ void libmv_CameraIntrinsicsDistortFloat(struct libmv_CameraIntrinsics *libmvIntr
 
 /* dsitortion */
 void libmv_undistortByte(double focal_length, double principal_x, double principal_y, double k1, double k2, double k3,
-			unsigned char *src, unsigned char *dst, int width, int height, int channels);
+			unsigned char *src, unsigned char *dst, int width, int height, float overscan, int channels);
 void libmv_undistortFloat(double focal_length, double principal_x, double principal_y, double k1, double k2, double k3,
-			float *src, float *dst, int width, int height, int channels);
+			float *src, float *dst, int width, int height, float overscan, int channels);
 
 void libmv_distortByte(double focal_length, double principal_x, double principal_y, double k1, double k2, double k3,
-			unsigned char *src, unsigned char *dst, int width, int height, int channels);
+			unsigned char *src, unsigned char *dst, int width, int height, float overscan, int channels);
 void libmv_distortFloat(double focal_length, double principal_x, double principal_y, double k1, double k2, double k3,
-			float *src, float *dst, int width, int height, int channels);
+			float *src, float *dst, int width, int height, float overscan, int channels);
 
 /* utils */
 void libmv_applyCameraIntrinsics(double focal_length, double principal_x, double principal_y, double k1, double k2, double k3,

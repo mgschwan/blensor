@@ -64,7 +64,7 @@
 #include "UI_interface.h"
 #include "UI_resources.h"
 
-#include "view3d_intern.h"  // own include
+#include "view3d_intern.h"  /* own include */
 
 
 /* ******************* view3d space & buttons ************** */
@@ -78,15 +78,17 @@ static void view3d_panel_operator_redo_header(const bContext *C, Panel *pa)
 {
 	wmOperator *op = WM_operator_last_redo(C);
 
-	if (op) BLI_strncpy(pa->drawname, op->type->name, sizeof(pa->drawname));
-	else BLI_strncpy(pa->drawname, IFACE_("Operator"), sizeof(pa->drawname));
+	if (op)
+		BLI_strncpy(pa->drawname, RNA_struct_ui_name(op->type->srna), sizeof(pa->drawname));
+	else
+		BLI_strncpy(pa->drawname, IFACE_("Operator"), sizeof(pa->drawname));
 }
 
 static void view3d_panel_operator_redo_operator(const bContext *C, Panel *pa, wmOperator *op)
 {
 	if (op->type->flag & OPTYPE_MACRO) {
 		for (op = op->macro.first; op; op = op->next) {
-			uiItemL(pa->layout, op->type->name, ICON_NONE);
+			uiItemL(pa->layout, RNA_struct_ui_name(op->type->srna), ICON_NONE);
 			view3d_panel_operator_redo_operator(C, pa, op);
 		}
 	}
@@ -109,7 +111,7 @@ static void view3d_panel_operator_redo(const bContext *C, Panel *pa)
 	block = uiLayoutGetBlock(pa->layout);
 	
 	if (!WM_operator_check_ui_enabled(C, op->type->name))
-		uiLayoutSetEnabled(pa->layout, 0);
+		uiLayoutSetEnabled(pa->layout, FALSE);
 
 	/* note, blockfunc is a default but->func, use Handle func to allow button callbacks too */
 	uiBlockSetHandleFunc(block, ED_undo_operator_repeat_cb_evt, op);
@@ -209,12 +211,12 @@ static void view3d_panel_tool_shelf(const bContext *C, Panel *pa)
 		
 		for (ct = st->toolshelf.first; ct; ct = ct->next) {
 			if (0 == strncmp(context, ct->context, OP_MAX_TYPENAME)) {
-				col = uiLayoutColumn(pa->layout, 1);
+				col = uiLayoutColumn(pa->layout, TRUE);
 				uiItemFullO(col, ct->opname, NULL, ICON_NONE, NULL, WM_OP_INVOKE_REGION_WIN, 0);
 			}
 		}
 	}
-	col = uiLayoutColumn(pa->layout, 1);
+	col = uiLayoutColumn(pa->layout, TRUE);
 	uiDefBlockBut(uiLayoutGetBlock(pa->layout), tool_search_menu, &st->toolshelf, "Add Tool", 0, 0, UI_UNIT_X, UI_UNIT_Y, "Add Tool in shelf, gets saved in files");
 }
 

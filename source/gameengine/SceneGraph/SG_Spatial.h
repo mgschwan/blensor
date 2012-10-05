@@ -137,7 +137,7 @@ public:
 	}
 
 	
-		void				
+		void
 	RelativeRotate(
 		const MT_Matrix3x3& rot,
 		bool local
@@ -178,12 +178,12 @@ public:
 		m_worldScaling = scale;
 	}
 
-	const MT_Point3& GetLocalPosition() const	
+	const MT_Point3& GetLocalPosition() const
 	{
 		return m_localPosition;
 	}
 
-	const MT_Matrix3x3& GetLocalOrientation() const	
+	const MT_Matrix3x3& GetLocalOrientation() const
 	{
 		return m_localRotation;
 	}
@@ -193,17 +193,17 @@ public:
 		return m_localScaling;
 	}
 
-	const MT_Point3& GetWorldPosition() const	
+	const MT_Point3& GetWorldPosition() const
 	{
 		return m_worldPosition;
 	}
 
-	const MT_Matrix3x3&	GetWorldOrientation() const	
+	const MT_Matrix3x3&	GetWorldOrientation() const
 	{
 		return m_worldRotation;
 	}
 
-	const MT_Vector3& GetWorldScaling() const	
+	const MT_Vector3& GetWorldScaling() const
 	{
 		return m_worldScaling;
 	}
@@ -287,9 +287,7 @@ protected:
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:SG_Spatial"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:SG_Spatial")
 #endif
 };
 

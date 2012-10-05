@@ -78,9 +78,8 @@ variables on the UI for now
 #include "BKE_DerivedMesh.h"
 #include "BKE_pointcache.h"
 #include "BKE_deform.h"
-#include "BKE_mesh.h" 
-//XXX #include  "BIF_editdeform.h"
-//XXX #include  "BIF_graphics.h"
+#include "BKE_mesh.h"
+
 #include  "PIL_time.h"
 // #include  "ONL_opennl.h" remove linking to ONL for now
 
@@ -144,13 +143,15 @@ typedef struct  SB_thread_context {
 } SB_thread_context;
 
 #define NLF_BUILD  1
-#define NLF_SOLVE  2
+#if 0
+#  define NLF_SOLVE  2
+#endif
 
 #define MID_PRESERVE 1
 
 #define SOFTGOALSNAP  0.999f
 /* if bp-> goal is above make it a *forced follow original* and skip all ODE stuff for this bp
- * removes *unnecessary* stiffnes from ODE system
+ * removes *unnecessary* stiffness from ODE system
  */
 #define HEUNWARNLIMIT 1 /* 500 would be fine i think for detecting severe *stiff* stuff */
 
@@ -697,7 +698,7 @@ static void add_2nd_order_roller(Object *ob, float UNUSED(stiffness), int *count
 			if (bpo) {/* so now we have a 2nd order humpdidump */
 				for (c=bpo->nofsprings;c>0;c--) {
 					bs2 = sb->bspring + bpo->springs[c-1];
-					if ((bs2->v1 != notthis)  && (bs2->v1 > v0)) {
+					if ((bs2->v1 != notthis) && (bs2->v1 > v0)) {
 						(*counter)++;/*hit */
 						if (addsprings) {
 							bs3->v1= v0;
@@ -1054,11 +1055,12 @@ static int sb_detect_aabb_collisionCached(float UNUSED(force[3]), unsigned int U
 					a = ccdm->totface;
 #endif
 					if ((aabbmax[0] < ccdm->bbmin[0]) ||
-						(aabbmax[1] < ccdm->bbmin[1]) ||
-						(aabbmax[2] < ccdm->bbmin[2]) ||
-						(aabbmin[0] > ccdm->bbmax[0]) ||
-						(aabbmin[1] > ccdm->bbmax[1]) ||
-						(aabbmin[2] > ccdm->bbmax[2]) ) {
+					    (aabbmax[1] < ccdm->bbmin[1]) ||
+					    (aabbmax[2] < ccdm->bbmin[2]) ||
+					    (aabbmin[0] > ccdm->bbmax[0]) ||
+					    (aabbmin[1] > ccdm->bbmax[1]) ||
+					    (aabbmin[2] > ccdm->bbmax[2]) )
+					{
 						/* boxes don't intersect */
 						BLI_ghashIterator_step(ihash);
 						continue;
@@ -1125,11 +1127,12 @@ static int sb_detect_face_pointCached(float face_v1[3], float face_v2[3], float 
 					mprevvert= ccdm->mprevvert;
 					outerfacethickness = ob->pd->pdef_sboft;
 					if ((aabbmax[0] < ccdm->bbmin[0]) ||
-						(aabbmax[1] < ccdm->bbmin[1]) ||
-						(aabbmax[2] < ccdm->bbmin[2]) ||
-						(aabbmin[0] > ccdm->bbmax[0]) ||
-						(aabbmin[1] > ccdm->bbmax[1]) ||
-						(aabbmin[2] > ccdm->bbmax[2]) ) {
+					    (aabbmax[1] < ccdm->bbmin[1]) ||
+					    (aabbmax[2] < ccdm->bbmin[2]) ||
+					    (aabbmin[0] > ccdm->bbmax[0]) ||
+					    (aabbmin[1] > ccdm->bbmax[1]) ||
+					    (aabbmin[2] > ccdm->bbmax[2]) )
+					{
 						/* boxes don't intersect */
 						BLI_ghashIterator_step(ihash);
 						continue;
@@ -1220,11 +1223,12 @@ static int sb_detect_face_collisionCached(float face_v1[3], float face_v2[3], fl
 					a = ccdm->totface;
 
 					if ((aabbmax[0] < ccdm->bbmin[0]) ||
-						(aabbmax[1] < ccdm->bbmin[1]) ||
-						(aabbmax[2] < ccdm->bbmin[2]) ||
-						(aabbmin[0] > ccdm->bbmax[0]) ||
-						(aabbmin[1] > ccdm->bbmax[1]) ||
-						(aabbmin[2] > ccdm->bbmax[2]) ) {
+					    (aabbmax[1] < ccdm->bbmin[1]) ||
+					    (aabbmax[2] < ccdm->bbmin[2]) ||
+					    (aabbmin[0] > ccdm->bbmax[0]) ||
+					    (aabbmin[1] > ccdm->bbmax[1]) ||
+					    (aabbmin[2] > ccdm->bbmax[2]) )
+					{
 						/* boxes don't intersect */
 						BLI_ghashIterator_step(ihash);
 						continue;
@@ -1447,11 +1451,12 @@ static int sb_detect_edge_collisionCached(float edge_v1[3], float edge_v2[3], fl
 					a = ccdm->totface;
 
 					if ((aabbmax[0] < ccdm->bbmin[0]) ||
-						(aabbmax[1] < ccdm->bbmin[1]) ||
-						(aabbmax[2] < ccdm->bbmin[2]) ||
-						(aabbmin[0] > ccdm->bbmax[0]) ||
-						(aabbmin[1] > ccdm->bbmax[1]) ||
-						(aabbmin[2] > ccdm->bbmax[2]) ) {
+					    (aabbmax[1] < ccdm->bbmin[1]) ||
+					    (aabbmax[2] < ccdm->bbmin[2]) ||
+					    (aabbmin[0] > ccdm->bbmax[0]) ||
+					    (aabbmin[1] > ccdm->bbmax[1]) ||
+					    (aabbmin[2] > ccdm->bbmax[2]) )
+					{
 						/* boxes don't intersect */
 						BLI_ghashIterator_step(ihash);
 						continue;
@@ -1685,7 +1690,7 @@ static void sb_sfesf_threads_run(Scene *scene, struct Object *ob, float timenow,
 		else
 			sb_threads[i].ifirst  = 0;
 		sb_threads[i].do_effector = do_effector;
-		sb_threads[i].do_deflector = 0;// not used here
+		sb_threads[i].do_deflector = FALSE;// not used here
 		sb_threads[i].fieldfactor = 0.0f;// not used here
 		sb_threads[i].windfactor  = 0.0f;// not used here
 		sb_threads[i].nr= i;
@@ -1714,15 +1719,15 @@ static int choose_winner(float*w, float* pos, float*a, float*b, float*c, float*c
 {
 	float mindist, cp;
 	int winner =1;
-	mindist = ABS(dot_v3v3(pos, a));
+	mindist = fabsf(dot_v3v3(pos, a));
 
-	cp = ABS(dot_v3v3(pos, b));
+	cp = fabsf(dot_v3v3(pos, b));
 	if ( mindist < cp ) {
 		mindist = cp;
 		winner =2;
 	}
 
-	cp = ABS(dot_v3v3(pos, c));
+	cp = fabsf(dot_v3v3(pos, c));
 	if (mindist < cp ) {
 		mindist = cp;
 		winner =3;
@@ -1785,14 +1790,15 @@ static int sb_detect_vertex_collisionCached(float opco[3], float facenormal[3], 
 					maxz = ccdm->bbmax[2];
 
 					if ((opco[0] < minx) ||
-						(opco[1] < miny) ||
-						(opco[2] < minz) ||
-						(opco[0] > maxx) ||
-						(opco[1] > maxy) ||
-						(opco[2] > maxz) ) {
-							/* outside the padded boundbox --> collision object is too far away */
-												BLI_ghashIterator_step(ihash);
-							continue;
+					    (opco[1] < miny) ||
+					    (opco[2] < minz) ||
+					    (opco[0] > maxx) ||
+					    (opco[1] > maxy) ||
+					    (opco[2] > maxz) )
+					{
+						/* outside the padded boundbox --> collision object is too far away */
+						BLI_ghashIterator_step(ihash);
+						continue;
 					}
 				}
 				else {
@@ -1937,7 +1943,7 @@ static int sb_detect_vertex_collisionCached(float opco[3], float facenormal[3], 
 							}
 
 						}
-						if ((deflected < 2)&& (G.rt != 444)) { /* we did not hit a face until now */
+						if ((deflected < 2)&& (G.debug_value != 444)) { /* we did not hit a face until now */
 							/* see if 'outer' hits an edge */
 							float dist;
 
@@ -2228,7 +2234,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 					attached = 0;
 					for (b=obp->nofsprings;b>0;b--) {
 						bs = sb->bspring + obp->springs[b-1];
-						if (( ilast-bb == bs->v2)  || ( ilast-bb == bs->v1)) {
+						if (( ilast-bb == bs->v2) || ( ilast-bb == bs->v1)) {
 							attached=1;
 							continue;}
 					}
@@ -2287,7 +2293,7 @@ static int _softbody_calc_forces_slice_in_a_thread(Scene *scene, Object *ob, flo
 			/* done goal stuff */
 
 			/* gravitation */
-			if (sb && scene->physics_settings.flag & PHYS_GLOBAL_GRAVITY) {
+			if (scene->physics_settings.flag & PHYS_GLOBAL_GRAVITY) {
 				float gravity[3];
 				copy_v3_v3(gravity, scene->physics_settings.gravity);
 				mul_v3_fl(gravity, sb_grav_force_scale(ob)*_final_mass(ob, bp)*sb->effector_weights->global_gravity); /* individual mass of node here */
@@ -2489,7 +2495,7 @@ static void softbody_calc_forcesEx(Scene *scene, Object *ob, float forcetime, fl
 static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, float timenow, int nl_flags)
 {
 	/* redirection to the new threaded Version */
-	if (!(G.rt & 0x10)) { // 16
+	if (!(G.debug_value & 0x10)) { // 16
 		softbody_calc_forcesEx(scene, ob, forcetime, timenow, nl_flags);
 		return;
 	}
@@ -2500,7 +2506,7 @@ static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, floa
 		/*backward compatibility note:
 		fixing bug [17428] which forces adaptive step size to tiny steps
 		in some situations
-		.. keeping G.rt==17 0x11 option for old files 'needing' the bug*/
+		.. keeping G.debug_value==17 0x11 option for old files 'needing' the bug*/
 
 		/* rule we never alter free variables :bp->vec bp->pos in here !
 		* this will ruin adaptive stepsize AKA heun! (BM)
@@ -2600,7 +2606,7 @@ static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, floa
 						attached = 0;
 						for (b=obp->nofsprings;b>0;b--) {
 							bs = sb->bspring + obp->springs[b-1];
-							if (( sb->totpoint-a == bs->v2)  || ( sb->totpoint-a == bs->v1)) {
+							if (( sb->totpoint-a == bs->v2) || ( sb->totpoint-a == bs->v1)) {
 								attached=1;
 								continue;}
 						}
@@ -2752,9 +2758,9 @@ static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, floa
 
 					if (sb_deflect_face(ob, bp->pos, facenormal, defforce, &cf, timenow, vel, &intrusion)) {
 						if ((!nl_flags)&&(intrusion < 0.0f)) {
-							if (G.rt & 0x01) { // 17 we did check for bit 0x10 before
+							if (G.debug_value & 0x01) { // 17 we did check for bit 0x10 before
 								/*fixing bug [17428] this forces adaptive step size to tiny steps
-								in some situations .. keeping G.rt==17 option for old files 'needing' the bug
+								in some situations .. keeping G.debug_value==17 option for old files 'needing' the bug
 								*/
 								/*bjornmose:  uugh.. what an evil hack
 								violation of the 'don't touch bp->pos in here' rule
@@ -2833,7 +2839,7 @@ static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, floa
 			nlEnd(NL_MATRIX);
 			nlEnd(NL_SYSTEM);
 
-			if ((G.rt == 32) && (nl_flags & NLF_BUILD)) {
+			if ((G.debug_value == 32) && (nl_flags & NLF_BUILD)) {
 				printf("####MEE#####\n");
 				nlPrintMatrix();
 			}
@@ -2845,7 +2851,7 @@ static void softbody_calc_forces(Scene *scene, Object *ob, float forcetime, floa
 				float f;
 				int index =0;
 				/* for debug purpose .. anyhow cropping B vector looks like working */
-				if (G.rt ==32)
+				if (G.debug_value ==32)
 					for (a=2*sb->totpoint, bp= sb->bpoint; a>0; a--, bp++) {
 						f=nlGetVariable(0, index);
 						printf("(%f ", f);index++;
@@ -2909,7 +2915,7 @@ static void softbody_apply_forces(Object *ob, float forcetime, int mode, float *
 	aabbmin[0]=aabbmin[1]=aabbmin[2] = 1e20f;
 	aabbmax[0]=aabbmax[1]=aabbmax[2] = -1e20f;
 
-	/* old one with homogenous masses  */
+	/* old one with homogeneous masses  */
 	/* claim a minimum mass for vertex */
 	/*
 	if (sb->nodemass > 0.009999f) timeovermass = forcetime/sb->nodemass;
@@ -3233,9 +3239,9 @@ static void springs_from_mesh(Object *ob)
 	sb= ob->soft;
 	if (me && sb) {
 	/* using bp->origS as a container for spring calcualtions here
-	** will be overwritten sbObjectStep() to receive
-	** actual modifier stack positions
-	*/
+	 * will be overwritten sbObjectStep() to receive
+	 * actual modifier stack positions
+	 */
 		if (me->totvert) {
 			bp= ob->soft->bpoint;
 			for (a=0; a<me->totvert; a++, bp++) {
@@ -3283,16 +3289,16 @@ static void mesh_to_softbody(Scene *scene, Object *ob)
 
 	for (a=0; a<me->totvert; a++, bp++) {
 		/* get scalar values needed  *per vertex* from vertex group functions,
-		so we can *paint* them nicly ..
-		they are normalized [0.0..1.0] so may be we need amplitude for scale
-		which can be done by caller but still .. i'd like it to go this way
-		*/
+		 * so we can *paint* them nicly ..
+		 * they are normalized [0.0..1.0] so may be we need amplitude for scale
+		 * which can be done by caller but still .. i'd like it to go this way
+		 */
 
 		if ((ob->softflag & OB_SB_GOAL) && sb->vertgroup) { /* even this is a deprecated evil hack */
 		   /* I'd like to have it  .. if (sb->namedVG_Goal[0]) */
 
 			get_scalar_from_vertexgroup(ob, a, (short) (sb->vertgroup-1), &bp->goal);
-			/* do this always, regardless successfull read from vertex group */
+			/* do this always, regardless successful read from vertex group */
 			/* this is where '2.5 every thing is animatable' goes wrong in the first place jow_go_for2_5 */
 			/* 1st coding action to take : move this to frame level */
 			/* reads: leave the bp->goal as it was read from vertex group / or default .. we will need it at per frame call */
@@ -3305,9 +3311,9 @@ static void mesh_to_softbody(Scene *scene, Object *ob)
 			if (ob->softflag & OB_SB_GOAL) {bp->goal = sb->defgoal;}
 		}
 
-		/* to proove the concept
-		this enables per vertex *mass painting*
-		*/
+		/* to proof the concept
+		 * this enables per vertex *mass painting*
+		 */
 
 		if (sb->namedVG_Mass[0]) {
 			int grp= defgroup_name_index (ob, sb->namedVG_Mass);
@@ -3411,9 +3417,9 @@ static void reference_to_scratch(Object *ob)
 }
 
 /*
-helper function to get proper spring length
-when object is rescaled
-*/
+ * helper function to get proper spring length
+ * when object is rescaled
+ */
 static float globallen(float *v1, float *v2, Object *ob)
 {
 	float p1[3], p2[3];
@@ -3509,7 +3515,9 @@ static void lattice_to_softbody(Scene *scene, Object *ob)
 {
 	Lattice *lt= ob->data;
 	SoftBody *sb;
-	int totvert, totspring = 0;
+	int totvert, totspring = 0, a;
+	BodyPoint *bp;
+	BPoint *bpnt = lt->def;
 
 	totvert= lt->pntsu*lt->pntsv*lt->pntsw;
 
@@ -3526,18 +3534,17 @@ static void lattice_to_softbody(Scene *scene, Object *ob)
 	/* renew ends with ob->soft with points and edges, also checks & makes ob->soft */
 	renew_softbody(scene, ob, totvert, totspring);
 	sb= ob->soft;	/* can be created in renew_softbody() */
+	bp = sb->bpoint;
 
-	/* weights from bpoints, same code used as for mesh vertices */
-	/* if ((ob->softflag & OB_SB_GOAL) && sb->vertgroup) { 2.4x one*/
-	/* new! take the weights from lattice vertex anyhow */
-	if (ob->softflag & OB_SB_GOAL) {
-		BodyPoint *bp= sb->bpoint;
-		BPoint *bpnt= lt->def;
-		/* jow_go_for2_5 */
-		int a;
-
-		for (a=0; a<totvert; a++, bp++, bpnt++) {
-			bp->goal= bpnt->weight;
+	/* same code used as for mesh vertices */
+	for (a = 0; a < totvert; a++, bp++, bpnt++) {
+		if ((ob->softflag & OB_SB_GOAL) && sb->vertgroup) {
+			get_scalar_from_vertexgroup(ob, a, (short) (sb->vertgroup - 1), &bp->goal);
+		}
+		else {
+			if (ob->softflag & OB_SB_GOAL) {
+				bp->goal = sb->defgoal;
+			}
 		}
 	}
 
@@ -3669,7 +3676,7 @@ static void sb_new_scratch(SoftBody *sb)
 {
 	if (!sb) return;
 	sb->scratch = MEM_callocN(sizeof(SBScratch), "SBScratch");
-	sb->scratch->colliderhash = BLI_ghash_new(BLI_ghashutil_ptrhash, BLI_ghashutil_ptrcmp, "sb_new_scratch gh");
+	sb->scratch->colliderhash = BLI_ghash_ptr_new("sb_new_scratch gh");
 	sb->scratch->bodyface = NULL;
 	sb->scratch->totface = 0;
 	sb->scratch->aabbmax[0]=sb->scratch->aabbmax[1]=sb->scratch->aabbmax[2] = 1.0e30f;
@@ -3793,7 +3800,7 @@ static void softbody_update_positions(Object *ob, SoftBody *sb, float (*vertexCo
 		/* vertexCos came from local world, go global */
 		mul_m4_v3(ob->obmat, bp->origE);
 		/* just to be save give bp->origT a defined value
-		will be calulated in interpolate_exciter()*/
+		 * will be calculated in interpolate_exciter() */
 		copy_v3_v3(bp->origT, bp->origE);
 	}
 }
@@ -3805,7 +3812,7 @@ static void softbody_update_positions(Object *ob, SoftBody *sb, float (*vertexCo
  * that is:
  * a precise position vector denoting the motion of the center of mass
  * give a rotation/scale matrix using averaging method, that's why estimate and not calculate
- * see: this is kind of reverse engeneering: having to states of a point cloud and recover what happend
+ * see: this is kind of reverse engineering: having to states of a point cloud and recover what happend
  * our advantage here we know the identity of the vertex
  * there are others methods giving other results.
  * lloc, lrot, lscale are allowed to be NULL, just in case you don't need it.
@@ -3918,7 +3925,7 @@ static void softbody_step(Scene *scene, Object *ob, SoftBody *sb, float dtime)
 
 	sst=PIL_check_seconds_timer();
 	/* Integration back in time is possible in theory, but pretty useless here.
-	 * So we refuse to do so. Since we do not know anything about 'outside' canges
+	 * So we refuse to do so. Since we do not know anything about 'outside' changes
 	 * especially colliders we refuse to go more than 10 frames.
 	 */
 	if (dtime < 0 || dtime > 10.5f) return;
@@ -4078,7 +4085,8 @@ void sbObjectStep(Scene *scene, Object *ob, float cfra, float (*vertexCos)[3], i
 
 	/* verify if we need to create the softbody data */
 	if (sb->bpoint == NULL ||
-	   ((ob->softflag & OB_SB_EDGES) && !ob->soft->bspring && object_has_edges(ob))) {
+	   ((ob->softflag & OB_SB_EDGES) && !ob->soft->bspring && object_has_edges(ob)))
+	{
 
 		switch (ob->type) {
 			case OB_MESH:

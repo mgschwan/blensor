@@ -34,14 +34,16 @@
 
 /* **************** Flip  ******************** */
 static bNodeSocketTemplate cmp_node_flip_in[]= {
-	{	SOCK_RGBA, 1, "Image",		    1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_RGBA, 1, N_("Image"),		    1.0f, 1.0f, 1.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 
 static bNodeSocketTemplate cmp_node_flip_out[]= {
-	{	SOCK_RGBA, 0, "Image"},
+	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void node_composit_exec_flip(void *UNUSED(data), bNode *node, bNodeStack **in, bNodeStack **out)
 {
@@ -88,6 +90,8 @@ static void node_composit_exec_flip(void *UNUSED(data), bNode *node, bNodeStack 
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_flip(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -95,7 +99,9 @@ void register_node_type_cmp_flip(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_FLIP, "Flip", NODE_CLASS_DISTORT, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_flip_in, cmp_node_flip_out);
 	node_type_size(&ntype, 140, 100, 320);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_flip);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

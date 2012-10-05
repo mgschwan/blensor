@@ -425,8 +425,8 @@ static void curve_to_displist(Curve *cu, ListBase *nubase, ListBase *dispbase, i
 void BKE_displist_fill(ListBase *dispbase, ListBase *to, int flipnormal)
 {
 	ScanFillContext sf_ctx;
-	ScanFillVert *eve, *v1, *vlast;
-	ScanFillFace *efa;
+	ScanFillVert *sf_vert, *sf_vert_new, *sf_vert_last;
+	ScanFillFace *sf_tri;
 	DispList *dlnew = NULL, *dl;
 	float *f1;
 	int colnr = 0, charidx = 0, cont = 1, tot, a, *index, nextcol = 0;
@@ -454,24 +454,24 @@ void BKE_displist_fill(ListBase *dispbase, ListBase *to, int flipnormal)
 						/* make editverts and edges */
 						f1 = dl->verts;
 						a = dl->nr;
-						eve = v1 = NULL;
+						sf_vert = sf_vert_new = NULL;
 
 						while (a--) {
-							vlast = eve;
+							sf_vert_last = sf_vert;
 
-							eve = BLI_scanfill_vert_add(&sf_ctx, f1);
+							sf_vert = BLI_scanfill_vert_add(&sf_ctx, f1);
 							totvert++;
 
-							if (vlast == NULL)
-								v1 = eve;
+							if (sf_vert_last == NULL)
+								sf_vert_new = sf_vert;
 							else {
-								BLI_scanfill_edge_add(&sf_ctx, vlast, eve);
+								BLI_scanfill_edge_add(&sf_ctx, sf_vert_last, sf_vert);
 							}
 							f1 += 3;
 						}
 
-						if (eve != NULL && v1 != NULL) {
-							BLI_scanfill_edge_add(&sf_ctx, eve, v1);
+						if (sf_vert != NULL && sf_vert_new != NULL) {
+							BLI_scanfill_edge_add(&sf_ctx, sf_vert, sf_vert_new);
 						}
 					}
 					else if (colnr < dl->col) {
@@ -499,31 +499,29 @@ void BKE_displist_fill(ListBase *dispbase, ListBase *to, int flipnormal)
 				/* vert data */
 				f1 = dlnew->verts;
 				totvert = 0;
-				eve = sf_ctx.fillvertbase.first;
-				while (eve) {
-					copy_v3_v3(f1, eve->co);
+
+				for (sf_vert = sf_ctx.fillvertbase.first; sf_vert; sf_vert = sf_vert->next) {
+					copy_v3_v3(f1, sf_vert->co);
 					f1 += 3;
 
 					/* index number */
-					eve->tmp.l = totvert;
+					sf_vert->tmp.l = totvert;
 					totvert++;
-
-					eve = eve->next;
 				}
 
 				/* index data */
-				efa = sf_ctx.fillfacebase.first;
+				sf_tri = sf_ctx.fillfacebase.first;
 				index = dlnew->index;
-				while (efa) {
-					index[0] = (intptr_t)efa->v1->tmp.l;
-					index[1] = (intptr_t)efa->v2->tmp.l;
-					index[2] = (intptr_t)efa->v3->tmp.l;
+				while (sf_tri) {
+					index[0] = (intptr_t)sf_tri->v1->tmp.l;
+					index[1] = (intptr_t)sf_tri->v2->tmp.l;
+					index[2] = (intptr_t)sf_tri->v3->tmp.l;
 
 					if (flipnormal)
 						SWAP(int, index[0], index[2]);
 
 					index += 3;
-					efa = efa->next;
+					sf_tri = sf_tri->next;
 				}
 			}
 
@@ -679,7 +677,7 @@ void BKE_displist_make_mball(Scene *scene, Object *ob)
 	/* XXX: mball stuff uses plenty of global variables
 	 *      while this is unchanged updating during render is unsafe
 	 */
-	if (G.rendering)
+	if (G.is_rendering)
 		return;
 
 	BKE_displist_free(&(ob->disp));
@@ -752,7 +750,7 @@ static void curve_calc_modifiers_pre(Scene *scene, Object *ob, int forRender, fl
 	Curve *cu = ob->data;
 	ListBase *nurb = BKE_curve_nurbs_get(cu);
 	int numVerts = 0;
-	const int editmode = (!forRender && cu->editnurb);
+	const int editmode = (!forRender && (cu->editnurb || cu->editfont));
 	ModifierApplyFlag app_flag = 0;
 	float (*originalVerts)[3] = NULL;
 	float (*deformedVerts)[3] = NULL;
@@ -783,7 +781,7 @@ static void curve_calc_modifiers_pre(Scene *scene, Object *ob, int forRender, fl
 			 * shape key modifier yet. */
 			deformedVerts = BKE_curve_keyVertexCos_get(cu, nurb, keyVerts);
 			originalVerts = MEM_dupallocN(deformedVerts);
-			numVerts = BKE_nurbList_verts_count_without_handles(nurb);
+			numVerts = BKE_nurbList_verts_count(nurb);
 		}
 	}
 
@@ -793,9 +791,7 @@ static void curve_calc_modifiers_pre(Scene *scene, Object *ob, int forRender, fl
 
 			md->scene = scene;
 
-			if ((md->mode & required_mode) != required_mode)
-				continue;
-			if (mti->isDisabled && mti->isDisabled(md, forRender))
+			if (!modifier_isEnabled(scene, md, required_mode))
 				continue;
 			if (mti->type != eModifierTypeType_OnlyDeform)
 				continue;
@@ -867,7 +863,7 @@ static void curve_calc_modifiers_post(Scene *scene, Object *ob, ListBase *dispba
 	Curve *cu = ob->data;
 	ListBase *nurb = BKE_curve_nurbs_get(cu);
 	int required_mode = 0, totvert = 0;
-	int editmode = (!forRender && cu->editnurb);
+	int editmode = (!forRender && (cu->editnurb || cu->editfont));
 	DerivedMesh *dm = NULL, *ndm;
 	float (*vertCos)[3] = NULL;
 	int useCache = !forRender;
@@ -899,13 +895,12 @@ static void curve_calc_modifiers_post(Scene *scene, Object *ob, ListBase *dispba
 
 		md->scene = scene;
 
-		if ((md->mode & required_mode) != required_mode)
-			continue;
-		if (mti->isDisabled && mti->isDisabled(md, forRender))
+		if (!modifier_isEnabled(scene, md, required_mode))
 			continue;
 
 		if (mti->type == eModifierTypeType_OnlyDeform ||
-		    (mti->type == eModifierTypeType_DeformOrConstruct && !dm)) {
+		    (mti->type == eModifierTypeType_DeformOrConstruct && !dm))
+		{
 			if (editmode)
 				appf |= MOD_APPLY_USECACHE;
 			if (dm) {
@@ -953,7 +948,7 @@ static void curve_calc_modifiers_post(Scene *scene, Object *ob, ListBase *dispba
 					curve_to_filledpoly(cu, nurb, dispbase);
 				}
 
-				dm = CDDM_from_curve_customDB(ob, dispbase);
+				dm = CDDM_from_curve_displist(ob, dispbase, NULL);
 
 				CDDM_calc_normals_mapping(dm);
 			}
@@ -1043,7 +1038,7 @@ static DerivedMesh *create_orco_dm(Scene *scene, Object *ob)
 
 	/* OrcoDM should be created from underformed disp lists */
 	BKE_displist_make_curveTypes_forOrco(scene, ob, &disp);
-	dm = CDDM_from_curve_customDB(ob, &disp);
+	dm = CDDM_from_curve_displist(ob, &disp, NULL);
 
 	BKE_displist_free(&disp);
 
@@ -1095,7 +1090,7 @@ static void curve_calc_orcodm(Scene *scene, Object *ob, DerivedMesh *derivedFina
 	ModifierData *pretessellatePoint;
 	Curve *cu = ob->data;
 	int required_mode;
-	int editmode = (!forRender && cu->editnurb);
+	int editmode = (!forRender && (cu->editnurb || cu->editfont));
 	DerivedMesh *ndm, *orcodm = NULL;
 	const ModifierApplyFlag app_flag = forRender ? MOD_APPLY_RENDER : 0;
 
@@ -1118,9 +1113,7 @@ static void curve_calc_orcodm(Scene *scene, Object *ob, DerivedMesh *derivedFina
 
 		md->scene = scene;
 
-		if ((md->mode & required_mode) != required_mode)
-			continue;
-		if (mti->isDisabled && mti->isDisabled(md, forRender))
+		if (!modifier_isEnabled(scene, md, required_mode))
 			continue;
 		if (mti->type != eModifierTypeType_Constructive)
 			continue;
@@ -1391,17 +1384,18 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 						ListBase top_capbase = {NULL, NULL};
 
 						for (dlb = dlbev.first; dlb; dlb = dlb->next) {
-							int i, start, steps;
-							float bevfac1 = MIN2(cu->bevfac1, cu->bevfac2), bevfac2 = MAX2(cu->bevfac1, cu->bevfac2);
+							const float bevfac1 = minf(cu->bevfac1, cu->bevfac2);
+							const float bevfac2 = maxf(cu->bevfac1, cu->bevfac2);
 							float firstblend = 0.0f, lastblend = 0.0f;
+							int i, start, steps;
 
-							if (cu->bevfac1 - cu->bevfac2 == 0.0f)
+							if (bevfac2 - bevfac1 == 0.0f)
 								continue;
 
 							start = (int)(bevfac1 * (bl->nr - 1));
 							steps = 2 + (int)((bevfac2) * (bl->nr - 1)) - start;
-							firstblend = 1.0f - ((float)bevfac1 * (bl->nr - 1) - (int)((float)bevfac1 * (bl->nr - 1)));
-							lastblend  = (float)bevfac2 * (bl->nr - 1) - (int)((float)bevfac2 * (bl->nr - 1));
+							firstblend = 1.0f - (bevfac1 * (bl->nr - 1) - (int)(bevfac1 * (bl->nr - 1)));
+							lastblend  =         bevfac2 * (bl->nr - 1) - (int)(bevfac2 * (bl->nr - 1));
 
 							if (steps > bl->nr) {
 								steps = bl->nr;
@@ -1606,19 +1600,13 @@ static void boundbox_displist(Object *ob)
 		if (cu->bb == NULL) cu->bb = MEM_callocN(sizeof(BoundBox), "boundbox");
 		bb = cu->bb;
 
-		dl = ob->disp.first;
-
-		while (dl) {
-			if (dl->type == DL_INDEX3) tot = dl->nr;
-			else tot = dl->nr * dl->parts;
-
+		for (dl = ob->disp.first; dl; dl = dl->next) {
+			tot = (dl->type == DL_INDEX3) ? dl->nr : dl->nr * dl->parts;
 			vert = dl->verts;
 			for (a = 0; a < tot; a++, vert += 3) {
-				doit = 1;
-				DO_MINMAX(vert, min, max);
+				minmax_v3v3_v3(min, max, vert);
 			}
-
-			dl = dl->next;
+			doit = (tot != 0);
 		}
 
 		if (!doit) {

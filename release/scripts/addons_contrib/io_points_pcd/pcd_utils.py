@@ -22,10 +22,10 @@ from . import pcdparser
 
 
 def create_and_link_mesh(name, points):
-    '''
+    """
     Create a blender mesh and object called name from a list of
     *points* and link it in the current scene.
-    '''
+    """
 
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(points, [], [])

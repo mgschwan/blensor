@@ -29,8 +29,6 @@
  *  \ingroup edutil
  */
 
-
-
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -44,7 +42,7 @@
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
-
+#include "BKE_blender.h"
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
@@ -82,8 +80,6 @@
 static void error(const char *UNUSED(arg)) {}
 /* ****** XXX ***** */
 
-
-#define MAXUNDONAME 64
 typedef struct UndoElem {
 	struct UndoElem *next, *prev;
 	ID id;          // copy of editmode object ID
@@ -91,7 +87,7 @@ typedef struct UndoElem {
 	int type;       // type of edited object
 	void *undodata;
 	uintptr_t undosize;
-	char name[MAXUNDONAME];
+	char name[BKE_UNDO_STR_MAX];
 	void * (*getdata)(bContext * C);
 	void (*freedata)(void *);
 	void (*to_editmode)(void *, void *, void *);
@@ -129,7 +125,7 @@ void undo_editmode_push(bContext *C, const char *name,
 	/* at first here was code to prevent an "original" key to be inserted twice
 	 * this was giving conflicts for example when mesh changed due to keys or apply */
 	
-	/* remove all undos after (also when curundo==NULL) */
+	/* remove all undos after (also when curundo == NULL) */
 	while (undobase.last != curundo) {
 		uel = undobase.last;
 		uel->freedata(uel->undodata);
@@ -209,19 +205,19 @@ static void undo_clean_stack(bContext *C)
 	uel = undobase.first;
 	while (uel) {
 		void *editdata = uel->getdata(C);
-		int isvalid = 0;
+		int is_valid = FALSE;
 		next = uel->next;
 		
 		/* for when objects are converted, renamed, or global undo changes pointers... */
 		if (uel->type == obedit->type) {
 			if (strcmp(uel->id.name, obedit->id.name) == 0) {
 				if (uel->validate_undo == NULL)
-					isvalid = 1;
+					is_valid = TRUE;
 				else if (uel->validate_undo(uel->undodata, editdata))
-					isvalid = 1;
+					is_valid = TRUE;
 			}
 		}
-		if (isvalid) 
+		if (is_valid)
 			uel->ob = obedit;
 		else {
 			if (uel == curundo)

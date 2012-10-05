@@ -82,8 +82,6 @@
 #include "BKE_tessmesh.h"
 #include "BKE_tracking.h"
 #include "BKE_movieclip.h"
-#include "BKE_tracking.h"
-#include "BKE_movieclip.h"
 
 #ifdef WITH_PYTHON
 #include "BPY_extern.h"
@@ -418,8 +416,7 @@ void constraint_mat_convertspace(Object *ob, bPoseChannel *pchan, float mat[][4]
 static void contarget_get_mesh_mat(Object *ob, const char *substring, float mat[][4])
 {
 	DerivedMesh *dm = NULL;
-	Mesh *me = ob->data;
-	BMEditMesh *em = me->edit_btmesh;
+	BMEditMesh *em = BMEdit_FromObject(ob);
 	float vec[3] = {0.0f, 0.0f, 0.0f};
 	float normal[3] = {0.0f, 0.0f, 0.0f}, plane[3];
 	float imat[3][3], tmat[3][3];
@@ -701,7 +698,7 @@ static void default_get_tarmat(bConstraint *con, bConstraintOb *UNUSED(cob), bCo
 		} \
 		 \
 		BLI_addtail(list, ct); \
-	}
+	} (void)0
 	
 /* This following macro should be used for all standard single-target *_get_tars functions 
  * to save typing and reduce maintenance woes. It does not do the subtarget related operations
@@ -720,7 +717,7 @@ static void default_get_tarmat(bConstraint *con, bConstraintOb *UNUSED(cob), bCo
 		if (ct->tar) ct->type = CONSTRAINT_OBTYPE_OBJECT; \
 		 \
 		BLI_addtail(list, ct); \
-	}
+	} (void)0
 
 /* This following macro should be used for all standard single-target *_flush_tars functions
  * to save typing and reduce maintenance woes.
@@ -741,7 +738,7 @@ static void default_get_tarmat(bConstraint *con, bConstraintOb *UNUSED(cob), bCo
 			BLI_freelinkN(list, ct); \
 			ct = ctn; \
 		} \
-	}
+	} (void)0
 	
 /* This following macro should be used for all standard single-target *_flush_tars functions
  * to save typing and reduce maintenance woes. It does not do the subtarget related operations.
@@ -761,7 +758,7 @@ static void default_get_tarmat(bConstraint *con, bConstraintOb *UNUSED(cob), bCo
 			BLI_freelinkN(list, ct); \
 			ct = ctn; \
 		} \
-	}
+	} (void)0
  
 /* --------- ChildOf Constraint ------------ */
 
@@ -790,7 +787,7 @@ static int childof_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -805,7 +802,7 @@ static void childof_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -822,12 +819,12 @@ static void childof_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
 		if (data->flag == CHILDOF_ALL) {
 			
 			/* multiply target (parent matrix) by offset (parent inverse) to get 
-			 * the effect of the parent that will be exherted on the owner
+			 * the effect of the parent that will be exerted on the owner
 			 */
 			mult_m4_m4m4(parmat, ct->matrix, data->invmat);
 			
 			/* now multiply the parent matrix by the owner matrix to get the 
-			 * the effect of this constraint (i.e.  owner is 'parented' to parent)
+			 * the effect of this constraint (i.e. owner is 'parented' to parent)
 			 */
 			mult_m4_m4m4(cob->matrix, parmat, cob->matrix);
 		}
@@ -864,7 +861,7 @@ static void childof_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
 			loc_eulO_size_to_mat4(invmat, loco, eulo, sizo, cob->rotOrder);
 			
 			/* multiply target (parent matrix) by offset (parent inverse) to get 
-			 * the effect of the parent that will be exherted on the owner
+			 * the effect of the parent that will be exerted on the owner
 			 */
 			mult_m4_m4m4(parmat, ct->matrix, invmat);
 			
@@ -925,7 +922,7 @@ static int trackto_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -940,7 +937,7 @@ static void trackto_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -961,7 +958,7 @@ static int basis_cross(int n, int m)
 	}
 }
 
-static void vectomat(float *vec, float *target_up, short axis, short upflag, short flags, float m[][3])
+static void vectomat(const float vec[3], const float target_up[3], short axis, short upflag, short flags, float m[][3])
 {
 	float n[3];
 	float u[3]; /* vector specifying the up axis */
@@ -1033,7 +1030,6 @@ static void trackto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
 	if (VALID_CONS_TARGET(ct)) {
 		float size[3], vec[3];
 		float totmat[3][3];
-		float tmat[4][4];
 		
 		/* Get size property, since ob->size is only the object's own relative size, not its global one */
 		mat4_to_size(size, cob->matrix);
@@ -1056,9 +1052,8 @@ static void trackto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
 		vectomat(vec, ct->matrix[2], 
 		         (short)data->reserved1, (short)data->reserved2,
 		         data->flags, totmat);
-		
-		copy_m4_m4(tmat, cob->matrix);
-		mul_m4_m3m4(cob->matrix, totmat, tmat);
+
+		mul_m4_m3m4(cob->matrix, totmat, cob->matrix);
 	}
 }
 
@@ -1108,8 +1103,8 @@ static int kinematic_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints is used twice here */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
-		SINGLETARGET_GET_TARS(con, data->poletar, data->polesubtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
+		SINGLETARGET_GET_TARS(con, data->poletar, data->polesubtarget, ct, list);
 		
 		return 2;
 	}
@@ -1124,8 +1119,8 @@ static void kinematic_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
-		SINGLETARGET_FLUSH_TARS(con, data->poletar, data->polesubtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
+		SINGLETARGET_FLUSH_TARS(con, data->poletar, data->polesubtarget, ct, list, nocopy);
 	}
 }
 
@@ -1197,7 +1192,7 @@ static int followpath_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints without subtargets */
-		SINGLETARGETNS_GET_TARS(con, data->tar, ct, list)
+		SINGLETARGETNS_GET_TARS(con, data->tar, ct, list);
 		
 		return 1;
 	}
@@ -1212,7 +1207,7 @@ static void followpath_flush_tars(bConstraint *con, ListBase *list, short nocopy
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGETNS_FLUSH_TARS(con, data->tar, ct, list, nocopy)
+		SINGLETARGETNS_FLUSH_TARS(con, data->tar, ct, list, nocopy);
 	}
 }
 
@@ -1316,7 +1311,7 @@ static void followpath_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *
 		bFollowPathConstraint *data = con->data;
 		
 		/* get Object transform (loc/rot/size) to determine transformation from path */
-		// TODO: this used to be local at one point, but is probably more useful as-is
+		/* TODO: this used to be local at one point, but is probably more useful as-is */
 		copy_m4_m4(obmat, cob->matrix);
 		
 		/* get scaling of object before applying constraint */
@@ -1460,7 +1455,7 @@ static bConstraintTypeInfo CTI_ROTLIMIT = {
 	rotlimit_evaluate /* evaluate */
 };
 
-/* --------- Limit Scaling --------- */
+/* --------- Limit Scale --------- */
 
 
 static void sizelimit_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *UNUSED(targets))
@@ -1507,7 +1502,7 @@ static void sizelimit_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *U
 static bConstraintTypeInfo CTI_SIZELIMIT = {
 	CONSTRAINT_TYPE_SIZELIMIT, /* type */
 	sizeof(bSizeLimitConstraint), /* size */
-	"Limit Scaling", /* name */
+	"Limit Scale", /* name */
 	"bSizeLimitConstraint", /* struct name */
 	NULL, /* free data */
 	NULL, /* id looper */
@@ -1543,7 +1538,7 @@ static int loclike_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -1558,7 +1553,7 @@ static void loclike_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -1620,7 +1615,7 @@ static void rotlike_new_data(void *cdata)
 
 static void rotlike_id_looper(bConstraint *con, ConstraintIDFunc func, void *userdata)
 {
-	bChildOfConstraint *data = con->data;
+	bRotateLikeConstraint *data = con->data;
 	
 	/* target only */
 	func(con, (ID **)&data->tar, FALSE, userdata);
@@ -1633,7 +1628,7 @@ static int rotlike_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -1648,7 +1643,7 @@ static void rotlike_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -1721,7 +1716,7 @@ static bConstraintTypeInfo CTI_ROTLIKE = {
 	rotlike_evaluate /* evaluate */
 };
 
-/* ---------- Copy Scaling ---------- */
+/* ---------- Copy Scale ---------- */
 
 static void sizelike_new_data(void *cdata)
 {
@@ -1745,7 +1740,7 @@ static int sizelike_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -1760,7 +1755,7 @@ static void sizelike_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -1834,7 +1829,7 @@ static int translike_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -1849,7 +1844,7 @@ static void translike_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -2093,7 +2088,7 @@ static int actcon_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -2108,7 +2103,7 @@ static void actcon_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -2159,7 +2154,15 @@ static void actcon_get_tarmat(bConstraint *con, bConstraintOb *cob, bConstraintT
 			printf("do Action Constraint %s - Ob %s Pchan %s\n", con->name, cob->ob->id.name + 2, (cob->pchan) ? cob->pchan->name : NULL);
 		
 		/* Get the appropriate information from the action */
-		if (cob->type == CONSTRAINT_OBTYPE_BONE) {
+		if (cob->type == CONSTRAINT_OBTYPE_OBJECT || (data->flag & ACTCON_BONE_USE_OBJECT_ACTION)) {
+			Object workob;
+			
+			/* evaluate using workob */
+			/* FIXME: we don't have any consistent standards on limiting effects on object... */
+			what_does_obaction(cob->ob, &workob, NULL, data->act, NULL, t);
+			BKE_object_to_mat4(&workob, ct->matrix);
+		}
+		else if (cob->type == CONSTRAINT_OBTYPE_BONE) {
 			Object workob;
 			bPose *pose;
 			bPoseChannel *pchan, *tchan;
@@ -2184,14 +2187,6 @@ static void actcon_get_tarmat(bConstraint *con, bConstraintOb *cob, bConstraintT
 			
 			/* Clean up */
 			BKE_pose_free(pose);
-		}
-		else if (cob->type == CONSTRAINT_OBTYPE_OBJECT) {
-			Object workob;
-			
-			/* evaluate using workob */
-			// FIXME: we don't have any consistent standards on limiting effects on object...
-			what_does_obaction(cob->ob, &workob, NULL, data->act, NULL, t);
-			BKE_object_to_mat4(&workob, ct->matrix);
 		}
 		else {
 			/* behavior undefined... */
@@ -2255,7 +2250,7 @@ static int locktrack_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -2270,7 +2265,7 @@ static void locktrack_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -2284,7 +2279,6 @@ static void locktrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		float totmat[3][3];
 		float tmpmat[3][3];
 		float invmat[3][3];
-		float tmat[4][4];
 		float mdet;
 		
 		/* Vector object -> target */
@@ -2512,8 +2506,6 @@ static void locktrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		totmat[1][0] = tmpmat[1][0]; totmat[1][1] = tmpmat[1][1]; totmat[1][2] = tmpmat[1][2];
 		totmat[2][0] = tmpmat[2][0]; totmat[2][1] = tmpmat[2][1]; totmat[2][2] = tmpmat[2][2];
 		
-		copy_m4_m4(tmat, cob->matrix);
-		
 		mdet = determinant_m3(totmat[0][0], totmat[0][1], totmat[0][2],
 		                      totmat[1][0], totmat[1][1], totmat[1][2],
 		                      totmat[2][0], totmat[2][1], totmat[2][2]);
@@ -2522,7 +2514,7 @@ static void locktrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		}
 		
 		/* apply out transformaton to the object */
-		mul_m4_m3m4(cob->matrix, totmat, tmat);
+		mul_m4_m3m4(cob->matrix, totmat, cob->matrix);
 	}
 }
 
@@ -2565,7 +2557,7 @@ static int distlimit_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -2580,7 +2572,7 @@ static void distlimit_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -2623,7 +2615,7 @@ static void distlimit_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 			}
 			/* if soft-distance is enabled, start fading once owner is dist-soft from the target */
 			else if (data->flag & LIMITDIST_USESOFT) {
-				// FIXME: there's a problem with "jumping" when this kicks in
+				/* FIXME: there's a problem with "jumping" when this kicks in */
 				if (dist >= (data->dist - data->soft)) {
 					sfac = (float)(data->soft * (1.0f - expf(-(dist - data->dist) / data->soft)) + data->dist);
 					if (dist != 0.0f) sfac /= dist;
@@ -2692,7 +2684,7 @@ static int stretchto_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -2707,7 +2699,7 @@ static void stretchto_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -2720,7 +2712,6 @@ static void stretchto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 	if (VALID_CONS_TARGET(ct)) {
 		float size[3], scale[3], vec[3], xx[3], zz[3], orth[3];
 		float totmat[3][3];
-		float tmat[4][4];
 		float dist;
 		
 		/* store scaling before destroying obmat */
@@ -2818,9 +2809,8 @@ static void stretchto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 				normalize_v3_v3(totmat[2], zz);
 				break;
 		} /* switch (data->plane) */
-		
-		copy_m4_m4(tmat, cob->matrix);
-		mul_m4_m3m4(cob->matrix, totmat, tmat);
+
+		mul_m4_m3m4(cob->matrix, totmat, cob->matrix);
 	}
 }
 
@@ -2866,7 +2856,7 @@ static int minmax_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -2881,7 +2871,7 @@ static void minmax_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -2989,7 +2979,7 @@ static void rbj_new_data(void *cdata)
 {
 	bRigidBodyJointConstraint *data = (bRigidBodyJointConstraint *)cdata;
 	
-	// removed code which set target of this constraint  
+	/* removed code which set target of this constraint */
 	data->type = 1;
 }
 
@@ -3009,7 +2999,7 @@ static int rbj_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints without subtargets */
-		SINGLETARGETNS_GET_TARS(con, data->tar, ct, list)
+		SINGLETARGETNS_GET_TARS(con, data->tar, ct, list);
 		
 		return 1;
 	}
@@ -3024,7 +3014,7 @@ static void rbj_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGETNS_FLUSH_TARS(con, data->tar, ct, list, nocopy)
+		SINGLETARGETNS_FLUSH_TARS(con, data->tar, ct, list, nocopy);
 	}
 }
 
@@ -3060,7 +3050,7 @@ static int clampto_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints without subtargets */
-		SINGLETARGETNS_GET_TARS(con, data->tar, ct, list)
+		SINGLETARGETNS_GET_TARS(con, data->tar, ct, list);
 		
 		return 1;
 	}
@@ -3075,7 +3065,7 @@ static void clampto_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGETNS_FLUSH_TARS(con, data->tar, ct, list, nocopy)
+		SINGLETARGETNS_FLUSH_TARS(con, data->tar, ct, list, nocopy);
 	}
 }
 
@@ -3115,8 +3105,9 @@ static void clampto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
 		copy_m4_m4(obmat, cob->matrix);
 		copy_v3_v3(ownLoc, obmat[3]);
 		
-		INIT_MINMAX(curveMin, curveMax)
-		BKE_object_minmax(ct->tar, curveMin, curveMax);
+		INIT_MINMAX(curveMin, curveMax);
+		/* XXX - don't think this is good calling this here - campbell */
+		BKE_object_minmax(ct->tar, curveMin, curveMax, TRUE);
 		
 		/* get targetmatrix */
 		if (cu->path && cu->path->data) {
@@ -3155,7 +3146,7 @@ static void clampto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *tar
 					/* find bounding-box range where target is located */
 					if (ownLoc[clamp_axis] < curveMin[clamp_axis]) {
 						/* bounding-box range is before */
-						offset = curveMin[clamp_axis] - ceil((curveMin[clamp_axis] - ownLoc[clamp_axis]) / len) * len;
+						offset = curveMin[clamp_axis] - ceilf((curveMin[clamp_axis] - ownLoc[clamp_axis]) / len) * len;
 
 						/* now, we calculate as per normal, except using offset instead of curveMin[clamp_axis] */
 						curvetime = (ownLoc[clamp_axis] - offset) / (len);
@@ -3244,7 +3235,7 @@ static int transform_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -3259,7 +3250,7 @@ static void transform_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -3278,6 +3269,15 @@ static void transform_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		switch (data->from) {
 			case 2: /* scale */
 				mat4_to_size(dvec, ct->matrix);
+				
+				if (is_negative_m4(ct->matrix)) {
+					/* Bugfix [#27886] 
+					 * We can't be sure which axis/axes are negative, though we know that something is negative.
+					 * Assume we don't care about negativity of separate axes. <--- This is a limitation that
+					 * riggers will have to live with for now.
+					 */
+					negate_v3(dvec);
+				}
 				break;
 			case 1: /* rotation (convert to degrees first) */
 				mat4_to_eulO(dvec, cob->rotOrder, ct->matrix);
@@ -3352,7 +3352,7 @@ static void transform_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 static bConstraintTypeInfo CTI_TRANSFORM = {
 	CONSTRAINT_TYPE_TRANSFORM, /* type */
 	sizeof(bTransformConstraint), /* size */
-	"Transform", /* name */
+	"Transformation", /* name */
 	"bTransformConstraint", /* struct name */
 	NULL, /* free data */
 	transform_id_looper, /* id looper */
@@ -3380,7 +3380,7 @@ static int shrinkwrap_get_tars(bConstraint *con, ListBase *list)
 		bShrinkwrapConstraint *data = con->data;
 		bConstraintTarget *ct;
 		
-		SINGLETARGETNS_GET_TARS(con, data->target, ct, list)
+		SINGLETARGETNS_GET_TARS(con, data->target, ct, list);
 		
 		return 1;
 	}
@@ -3395,7 +3395,7 @@ static void shrinkwrap_flush_tars(bConstraint *con, ListBase *list, short nocopy
 		bShrinkwrapConstraint *data = con->data;
 		bConstraintTarget *ct = list->first;
 		
-		SINGLETARGETNS_FLUSH_TARS(con, data->target, ct, list, nocopy)
+		SINGLETARGETNS_FLUSH_TARS(con, data->target, ct, list, nocopy);
 	}
 }
 
@@ -3545,7 +3545,7 @@ static int damptrack_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -3560,7 +3560,7 @@ static void damptrack_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -3599,7 +3599,7 @@ static void damptrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		
 		if (normalize_v3(tarvec) == 0.0f) {
 			/* the target is sitting on the owner, so just make them use the same direction vectors */
-			// FIXME: or would it be better to use the pure direction vector?
+			/* FIXME: or would it be better to use the pure direction vector? */
 			copy_v3_v3(tarvec, obvec);
 			//copy_v3_v3(tarvec, track_dir_vecs[data->trackflag]);
 		}
@@ -3615,7 +3615,7 @@ static void damptrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		cross_v3_v3v3(raxis, obvec, tarvec);
 		
 		rangle = dot_v3v3(obvec, tarvec);
-		rangle = acos(MAX2(-1.0f, MIN2(1.0f, rangle)) );
+		rangle = acos(maxf(-1.0f, minf(1.0f, rangle)));
 		
 		/* construct rotation matrix from the axis-angle rotation found above 
 		 *	- this call takes care to make sure that the axis provided is a unit vector first
@@ -3690,7 +3690,7 @@ static int splineik_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints without subtargets */
-		SINGLETARGETNS_GET_TARS(con, data->tar, ct, list)
+		SINGLETARGETNS_GET_TARS(con, data->tar, ct, list);
 		
 		return 1;
 	}
@@ -3705,7 +3705,7 @@ static void splineik_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGETNS_FLUSH_TARS(con, data->tar, ct, list, nocopy)
+		SINGLETARGETNS_FLUSH_TARS(con, data->tar, ct, list, nocopy);
 	}
 }
 
@@ -3762,7 +3762,7 @@ static int pivotcon_get_tars(bConstraint *con, ListBase *list)
 		bConstraintTarget *ct;
 		
 		/* standard target-getting macro for single-target constraints */
-		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list)
+		SINGLETARGET_GET_TARS(con, data->tar, data->subtarget, ct, list);
 		
 		return 1;
 	}
@@ -3777,7 +3777,7 @@ static void pivotcon_flush_tars(bConstraint *con, ListBase *list, short nocopy)
 		bConstraintTarget *ct = list->first;
 		
 		/* the following macro is used for all standard single-target constraints */
-		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy)
+		SINGLETARGET_FLUSH_TARS(con, data->tar, data->subtarget, ct, list, nocopy);
 	}
 }
 
@@ -3830,7 +3830,7 @@ static void pivotcon_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *ta
 	}
 	
 	/* get rotation matrix representing the rotation of the owner */
-	// TODO: perhaps we might want to include scaling based on the pivot too?
+	/* TODO: perhaps we might want to include scaling based on the pivot too? */
 	copy_m3_m4(rotMat, cob->matrix);
 	normalize_m3(rotMat);
 
@@ -3897,6 +3897,7 @@ static void followtrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase 
 	MovieTrackingTrack *track;
 	MovieTrackingObject *tracking_object;
 	Object *camob = data->camera ? data->camera : scene->camera;
+	int framenr;
 
 	if (data->flag & FOLLOWTRACK_ACTIVECLIP)
 		clip = scene->clip;
@@ -3907,17 +3908,19 @@ static void followtrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase 
 	tracking = &clip->tracking;
 
 	if (data->object[0])
-		tracking_object = BKE_tracking_named_object(tracking, data->object);
+		tracking_object = BKE_tracking_object_get_named(tracking, data->object);
 	else
-		tracking_object = BKE_tracking_get_camera_object(tracking);
+		tracking_object = BKE_tracking_object_get_camera(tracking);
 
 	if (!tracking_object)
 		return;
 
-	track = BKE_tracking_named_track(tracking, tracking_object, data->track);
+	track = BKE_tracking_track_get_named(tracking, tracking_object, data->track);
 
 	if (!track)
 		return;
+
+	framenr = BKE_movieclip_remap_scene_to_clip_frame(clip, scene->r.cfra);
 
 	if (data->flag & FOLLOWTRACK_USE_3D_POSITION) {
 		if (track->flag & TRACK_HAS_BUNDLE) {
@@ -3930,14 +3933,14 @@ static void followtrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase 
 
 				copy_m4_m4(mat, camob->obmat);
 
-				BKE_tracking_get_interpolated_camera(tracking, tracking_object, scene->r.cfra, imat);
+				BKE_tracking_camera_get_reconstructed_interpolate(tracking, tracking_object, framenr, imat);
 				invert_m4(imat);
 
 				mul_serie_m4(cob->matrix, obmat, mat, imat, NULL, NULL, NULL, NULL, NULL);
 				translate_m4(cob->matrix, track->bundle_pos[0], track->bundle_pos[1], track->bundle_pos[2]);
 			}
 			else {
-				BKE_get_tracking_mat(cob->scene, camob, mat);
+				BKE_tracking_get_camera_object_matrix(cob->scene, camob, mat);
 
 				mult_m4_m4m4(cob->matrix, obmat, mat);
 				translate_m4(cob->matrix, track->bundle_pos[0], track->bundle_pos[1], track->bundle_pos[2]);
@@ -3969,9 +3972,44 @@ static void followtrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase 
 			CameraParams params;
 			float pos[2], rmat[4][4];
 
-			marker = BKE_tracking_get_marker(track, scene->r.cfra);
+			marker = BKE_tracking_marker_get(track, framenr);
 
 			add_v2_v2v2(pos, marker->pos, track->offset);
+
+			/* aspect correction */
+			if (data->frame_method != FOLLOWTRACK_FRAME_STRETCH) {
+				int width, height;
+				float w_src, h_src, w_dst, h_dst, asp_src, asp_dst;
+
+				BKE_movieclip_get_size(clip, NULL, &width, &height);
+
+				/* apply clip display aspect */
+				w_src = width * clip->aspx;
+				h_src = height * clip->aspy;
+
+				w_dst = scene->r.xsch * scene->r.xasp;
+				h_dst = scene->r.ysch * scene->r.yasp;
+
+				asp_src = w_src / h_src;
+				asp_dst = w_dst / h_dst;
+
+				if (fabsf(asp_src - asp_dst) >= FLT_EPSILON) {
+					if ((asp_src > asp_dst) == (data->frame_method == FOLLOWTRACK_FRAME_CROP)) {
+						/* fit X */
+						float div = asp_src / asp_dst;
+						float cent = (float) width / 2.0f;
+
+						pos[0] = (((pos[0] * width - cent) * div) + cent) / width;
+					}
+					else {
+						/* fit Y */
+						float div = asp_dst / asp_src;
+						float cent = (float) height / 2.0f;
+
+						pos[1] = (((pos[1] * height - cent) * div) + cent) / height;
+					}
+				}
+			}
 
 			BKE_camera_params_init(&params);
 			BKE_camera_params_from_object(&params, camob);
@@ -4016,32 +4054,36 @@ static void followtrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase 
 				copy_v3_v3(cob->matrix[3], disp);
 			}
 
-			if (data->depth_ob && data->depth_ob->derivedFinal) {
+			if (data->depth_ob) {
 				Object *depth_ob = data->depth_ob;
-				BVHTreeFromMesh treeData = NULL_BVHTreeFromMesh;
-				BVHTreeRayHit hit;
-				float ray_start[3], ray_end[3], ray_nor[3], imat[4][4];
-				int result;
+				DerivedMesh *target = object_get_derived_final(depth_ob);
+				if (target) {
+					BVHTreeFromMesh treeData = NULL_BVHTreeFromMesh;
+					BVHTreeRayHit hit;
+					float ray_start[3], ray_end[3], ray_nor[3], imat[4][4];
+					int result;
 
-				invert_m4_m4(imat, depth_ob->obmat);
+					invert_m4_m4(imat, depth_ob->obmat);
 
-				mul_v3_m4v3(ray_start, imat, camob->obmat[3]);
-				mul_v3_m4v3(ray_end, imat, cob->matrix[3]);
+					mul_v3_m4v3(ray_start, imat, camob->obmat[3]);
+					mul_v3_m4v3(ray_end, imat, cob->matrix[3]);
 
-				sub_v3_v3v3(ray_nor, ray_end, ray_start);
+					sub_v3_v3v3(ray_nor, ray_end, ray_start);
 
-				bvhtree_from_mesh_faces(&treeData, depth_ob->derivedFinal, 0.0f, 4, 6);
+					bvhtree_from_mesh_faces(&treeData, target, 0.0f, 4, 6);
 
-				hit.dist = FLT_MAX;
-				hit.index = -1;
+					hit.dist = FLT_MAX;
+					hit.index = -1;
 
-				result = BLI_bvhtree_ray_cast(treeData.tree, ray_start, ray_nor, 0.0f, &hit, treeData.raycast_callback, &treeData);
+					result = BLI_bvhtree_ray_cast(treeData.tree, ray_start, ray_nor, 0.0f, &hit, treeData.raycast_callback, &treeData);
 
-				if (result != -1) {
-					mul_v3_m4v3(cob->matrix[3], depth_ob->obmat, hit.co);
+					if (result != -1) {
+						mul_v3_m4v3(cob->matrix[3], depth_ob->obmat, hit.co);
+					}
+
+					free_bvhtree_from_mesh(&treeData);
+					target->release(target);
 				}
-
-				free_bvhtree_from_mesh(&treeData);
 			}
 		}
 	}
@@ -4091,9 +4133,10 @@ static void camerasolver_evaluate(bConstraint *con, bConstraintOb *cob, ListBase
 	if (clip) {
 		float mat[4][4], obmat[4][4];
 		MovieTracking *tracking = &clip->tracking;
-		MovieTrackingObject *object = BKE_tracking_get_camera_object(tracking);
+		MovieTrackingObject *object = BKE_tracking_object_get_camera(tracking);
+		int framenr = BKE_movieclip_remap_scene_to_clip_frame(clip, scene->r.cfra);
 
-		BKE_tracking_get_interpolated_camera(tracking, object, scene->r.cfra, mat);
+		BKE_tracking_camera_get_reconstructed_interpolate(tracking, object, framenr, mat);
 
 		copy_m4_m4(obmat, cob->matrix);
 
@@ -4152,14 +4195,15 @@ static void objectsolver_evaluate(bConstraint *con, bConstraintOb *cob, ListBase
 		MovieTracking *tracking = &clip->tracking;
 		MovieTrackingObject *object;
 
-		object = BKE_tracking_named_object(tracking, data->object);
+		object = BKE_tracking_object_get_named(tracking, data->object);
 
 		if (object) {
 			float mat[4][4], obmat[4][4], imat[4][4], cammat[4][4], camimat[4][4], parmat[4][4];
+			int framenr = BKE_movieclip_remap_scene_to_clip_frame(clip, scene->r.cfra);
 
 			BKE_object_where_is_calc_mat4(scene, camob, cammat);
 
-			BKE_tracking_get_interpolated_camera(tracking, object, scene->r.cfra, mat);
+			BKE_tracking_camera_get_reconstructed_interpolate(tracking, object, framenr, mat);
 
 			invert_m4_m4(camimat, cammat);
 			mult_m4_m4m4(parmat, cammat, data->invmat);
@@ -4208,10 +4252,10 @@ static void constraints_init_typeinfo(void)
 	constraintsTypeInfo[4] =  &CTI_FOLLOWPATH;       /* Follow-Path Constraint */
 	constraintsTypeInfo[5] =  &CTI_ROTLIMIT;         /* Limit Rotation Constraint */
 	constraintsTypeInfo[6] =  &CTI_LOCLIMIT;         /* Limit Location Constraint */
-	constraintsTypeInfo[7] =  &CTI_SIZELIMIT;        /* Limit Scaling Constraint */
+	constraintsTypeInfo[7] =  &CTI_SIZELIMIT;        /* Limit Scale Constraint */
 	constraintsTypeInfo[8] =  &CTI_ROTLIKE;          /* Copy Rotation Constraint */
 	constraintsTypeInfo[9] =  &CTI_LOCLIKE;          /* Copy Location Constraint */
-	constraintsTypeInfo[10] = &CTI_SIZELIKE;         /* Copy Scaling Constraint */
+	constraintsTypeInfo[10] = &CTI_SIZELIKE;         /* Copy Scale Constraint */
 	constraintsTypeInfo[11] = &CTI_PYTHON;           /* Python/Script Constraint */
 	constraintsTypeInfo[12] = &CTI_ACTION;           /* Action Constraint */
 	constraintsTypeInfo[13] = &CTI_LOCKTRACK;        /* Locked-Track Constraint */
@@ -4244,8 +4288,8 @@ bConstraintTypeInfo *get_constraint_typeinfo(int type)
 	}
 	
 	/* only return for valid types */
-	if ( (type >= CONSTRAINT_TYPE_NULL) && 
-	     (type < NUM_CONSTRAINT_TYPES) )
+	if ((type >= CONSTRAINT_TYPE_NULL) &&
+	    (type < NUM_CONSTRAINT_TYPES))
 	{
 		/* there shouldn't be any segfaults here... */
 		return constraintsTypeInfo[type];
@@ -4381,7 +4425,7 @@ static bConstraint *add_new_constraint_internal(const char *name, short type)
 	}
 	else {
 		/* if no name is provided, use the generic "Const" name */
-		// NOTE: any constraint type that gets here really shouldn't get added...
+		/* NOTE: any constraint type that gets here really shouldn't get added... */
 		newName = (name && name[0]) ? name : "Const";
 	}
 	
@@ -4421,9 +4465,9 @@ static bConstraint *add_new_constraint(Object *ob, bPoseChannel *pchan, const ch
 		/* make this constraint the active one */
 		constraints_set_active(list, con);
 	}
-	
+
 	/* set type+owner specific immutable settings */
-	// TODO: does action constraint need anything here - i.e. spaceonce?
+	/* TODO: does action constraint need anything here - i.e. spaceonce? */
 	switch (type) {
 		case CONSTRAINT_TYPE_CHILDOF:
 		{
@@ -4466,7 +4510,7 @@ static void con_relink_id_cb(bConstraint *UNUSED(con), ID **idpoin, short UNUSED
 	 * since we've got the actual ID block, let's just inline this
 	 * code. 
 	 *
-	 * See ID_NEW(a) in BKE_utildefines.h
+	 * See ID_NEW(a) in DNA_ID.h
 	 */
 	if ((*idpoin) && (*idpoin)->newid)
 		(*idpoin) = (void *)(*idpoin)->newid;

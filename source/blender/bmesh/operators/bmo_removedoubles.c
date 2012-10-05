@@ -96,7 +96,7 @@ int remdoubles_face_overlaps(BMesh *bm, BMVert **varr,
 }
 #endif
 
-void bmo_weldverts_exec(BMesh *bm, BMOperator *op)
+void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 {
 	BMIter iter, liter;
 	BMVert *v, *v2;
@@ -227,7 +227,7 @@ void bmo_weldverts_exec(BMesh *bm, BMOperator *op)
 		}
 	}
 
-	BMO_op_callf(bm, "del geom=%fvef context=%i", ELE_DEL, DEL_ONLYTAGGED);
+	BMO_op_callf(bm, op->flag, "delete geom=%fvef context=%i", ELE_DEL, DEL_ONLYTAGGED);
 
 	BLI_array_free(edges);
 	BLI_array_free(loops);
@@ -244,11 +244,11 @@ static int vergaverco(const void *e1, const void *e2)
 	else return 0;
 }
 
-#define VERT_TESTED	1
+// #define VERT_TESTED	1 // UNUSED
 #define VERT_DOUBLE	2
 #define VERT_TARGET	4
 #define VERT_KEEP	8
-#define VERT_MARK	16
+// #define VERT_MARK	16 // UNUSED
 #define VERT_IN		32
 
 #define EDGE_MARK	1
@@ -301,7 +301,7 @@ void bmo_pointmerge_facedata_exec(BMesh *bm, BMOperator *op)
 	}
 }
 
-void bmo_vert_average_facedata_exec(BMesh *bm, BMOperator *op)
+void bmo_average_vert_facedata_exec(BMesh *bm, BMOperator *op)
 {
 	BMOIter siter;
 	BMIter iter;
@@ -345,10 +345,10 @@ void bmo_pointmerge_exec(BMesh *bm, BMOperator *op)
 	BMVert *v, *snapv = NULL;
 	float vec[3];
 	
-	BMO_slot_vec_get(op, "mergeco", vec);
+	BMO_slot_vec_get(op, "merge_co", vec);
 
-	//BMO_op_callf(bm, "collapse_uvs edges=%s", op, "edges");
-	BMO_op_init(bm, &weldop, "weldverts");
+	//BMO_op_callf(bm, op->flag, "collapse_uvs edges=%s", op, "edges");
+	BMO_op_init(bm, &weldop, op->flag, "weld_verts");
 	
 	BMO_ITER (v, &siter, bm, op, "verts", BM_VERT) {
 		if (!snapv) {
@@ -374,8 +374,8 @@ void bmo_collapse_exec(BMesh *bm, BMOperator *op)
 	float min[3], max[3];
 	int i, tot;
 	
-	BMO_op_callf(bm, "collapse_uvs edges=%s", op, "edges");
-	BMO_op_init(bm, &weldop, "weldverts");
+	BMO_op_callf(bm, op->flag, "collapse_uvs edges=%s", op, "edges");
+	BMO_op_init(bm, &weldop, op->flag, "weld_verts");
 
 	BMO_slot_buffer_flag_enable(bm, op, "edges", BM_EDGE, EDGE_MARK);
 
@@ -396,8 +396,8 @@ void bmo_collapse_exec(BMesh *bm, BMOperator *op)
 			BLI_array_grow_one(edges);
 			edges[tot] = e;
 
-			DO_MINMAX(e->v1->co, min, max);
-			DO_MINMAX(e->v2->co, min, max);
+			minmax_v3v3_v3(min, max, e->v1->co);
+			minmax_v3v3_v3(min, max, e->v2->co);
 		}
 
 		add_v3_v3v3(min, min, max);
@@ -487,7 +487,7 @@ void bmo_collapse_uvs_exec(BMesh *bm, BMOperator *op)
 	}
 }
 
-void bmesh_finddoubles_common(BMesh *bm, BMOperator *op, BMOperator *optarget, const char *targetmapname)
+static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op, BMOperator *optarget, const char *targetmapname)
 {
 	BMOIter oiter;
 	BMVert *v, *v2;
@@ -505,17 +505,17 @@ void bmesh_finddoubles_common(BMesh *bm, BMOperator *op, BMOperator *optarget, c
 		verts[i++] = v;
 	}
 
-	/* Test whether keepverts arg exists and is non-empty */
-	if (BMO_slot_exists(op, "keepverts")) {
-		keepvert = BMO_iter_new(&oiter, bm, op, "keepverts", BM_VERT) != NULL;
+	/* Test whether keep_verts arg exists and is non-empty */
+	if (BMO_slot_exists(op, "keep_verts")) {
+		keepvert = BMO_iter_new(&oiter, bm, op, "keep_verts", BM_VERT) != NULL;
 	}
 
 	/* sort by vertex coordinates added together */
 	qsort(verts, BLI_array_count(verts), sizeof(void *), vergaverco);
 
-	/* Flag keepverts */
+	/* Flag keep_verts */
 	if (keepvert) {
-		BMO_slot_buffer_flag_enable(bm, op, "keepverts", BM_VERT, VERT_KEEP);
+		BMO_slot_buffer_flag_enable(bm, op, "keep_verts", BM_VERT, VERT_KEEP);
 	}
 
 	len = BLI_array_count(verts);
@@ -557,20 +557,20 @@ void bmesh_finddoubles_common(BMesh *bm, BMOperator *op, BMOperator *optarget, c
 	BLI_array_free(verts);
 }
 
-void bmo_removedoubles_exec(BMesh *bm, BMOperator *op)
+void bmo_remove_doubles_exec(BMesh *bm, BMOperator *op)
 {
 	BMOperator weldop;
 
-	BMO_op_init(bm, &weldop, "weldverts");
-	bmesh_finddoubles_common(bm, op, &weldop, "targetmap");
+	BMO_op_init(bm, &weldop, op->flag, "weld_verts");
+	bmesh_find_doubles_common(bm, op, &weldop, "targetmap");
 	BMO_op_exec(bm, &weldop);
 	BMO_op_finish(bm, &weldop);
 }
 
 
-void bmo_finddoubles_exec(BMesh *bm, BMOperator *op)
+void bmo_find_doubles_exec(BMesh *bm, BMOperator *op)
 {
-	bmesh_finddoubles_common(bm, op, op, "targetmapout");
+	bmesh_find_doubles_common(bm, op, op, "targetmapout");
 }
 
 void bmo_automerge_exec(BMesh *bm, BMOperator *op)
@@ -591,12 +591,12 @@ void bmo_automerge_exec(BMesh *bm, BMOperator *op)
 
 	/* Search for doubles among all vertices, but only merge non-VERT_KEEP
 	 * vertices into VERT_KEEP vertices. */
-	BMO_op_initf(bm, &findop, "finddoubles verts=%av keepverts=%fv", VERT_KEEP);
+	BMO_op_initf(bm, &findop, op->flag, "find_doubles verts=%av keep_verts=%fv", VERT_KEEP);
 	BMO_slot_copy(op, &findop, "dist", "dist");
 	BMO_op_exec(bm, &findop);
 
 	/* weld the vertices */
-	BMO_op_init(bm, &weldop, "weldverts");
+	BMO_op_init(bm, &weldop, op->flag, "weld_verts");
 	BMO_slot_copy(&findop, &weldop, "targetmapout", "targetmap");
 	BMO_op_exec(bm, &weldop);
 

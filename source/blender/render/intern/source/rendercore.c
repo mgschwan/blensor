@@ -62,6 +62,7 @@
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
+#include "IMB_colormanagement.h"
 
 /* local include */
 #include "rayintersection.h"
@@ -107,11 +108,11 @@ void calc_view_vector(float *view, float x, float y)
 		}
 		
 		/* move x and y to real viewplane coords */
-		x= (x/(float)R.winx);
-		view[0]= R.viewplane.xmin + x*(R.viewplane.xmax - R.viewplane.xmin);
+		x = (x / (float)R.winx);
+		view[0] = R.viewplane.xmin + x * BLI_rctf_size_x(&R.viewplane);
 		
-		y= (y/(float)R.winy);
-		view[1]= R.viewplane.ymin + y*(R.viewplane.ymax - R.viewplane.ymin);
+		y = (y / (float)R.winy);
+		view[1] = R.viewplane.ymin + y * BLI_rctf_size_y(&R.viewplane);
 		
 //		if (R.flag & R_SEC_FIELD) {
 //			if (R.r.mode & R_ODDFIELD) view[1]= (y+R.ystart)*R.ycor;
@@ -683,7 +684,7 @@ static void sky_tile(RenderPart *pa, RenderLayer *rl)
 	for (y=pa->disprect.ymin; y<pa->disprect.ymax; y++) {
 		for (x=pa->disprect.xmin; x<pa->disprect.xmax; x++, od+=4) {
 			float col[4];
-			int sample, done= 0;
+			int sample, done = FALSE;
 			
 			for (sample= 0; sample<totsample; sample++) {
 				float *pass= rlpp[sample]->rectf + od;
@@ -692,7 +693,7 @@ static void sky_tile(RenderPart *pa, RenderLayer *rl)
 					
 					if (done==0) {
 						shadeSkyPixel(col, x, y, pa->thread);
-						done= 1;
+						done = TRUE;
 					}
 					
 					if (pass[3]==0.0f) {
@@ -748,7 +749,7 @@ static void atm_tile(RenderPart *pa, RenderLayer *rl)
 				float *zrect= RE_RenderLayerGetPass(rlpp[sample], SCE_PASS_Z) + od;
 				float *rgbrect = rlpp[sample]->rectf + 4*od;
 				float rgb[3] = {0};
-				int done= 0;
+				int done = FALSE;
 				
 				for (go=R.lights.first; go; go= go->next) {
 				
@@ -780,7 +781,7 @@ static void atm_tile(RenderPart *pa, RenderLayer *rl)
 							
 							if (done==0) {
 								copy_v3_v3(rgb, tmp_rgb);
-								done = 1;						
+								done = TRUE;
 							}
 							else {
 								rgb[0] = 0.5f*rgb[0] + 0.5f*tmp_rgb[0];
@@ -985,6 +986,30 @@ static void convert_to_key_alpha(RenderPart *pa, RenderLayer *rl)
 				rectf[1] /= rectf[3];
 				rectf[2] /= rectf[3];
 			}
+		}
+	}
+}
+
+/* clamp alpha and RGB to 0..1 and 0..inf, can go outside due to filter */
+static void clamp_alpha_rgb_range(RenderPart *pa, RenderLayer *rl)
+{
+	RenderLayer *rlpp[RE_MAX_OSA];
+	int y, sample, totsample;
+	
+	totsample= get_sample_layers(pa, rl, rlpp);
+
+	/* not for full sample, there we clamp after compositing */
+	if (totsample > 1)
+		return;
+	
+	for (sample= 0; sample<totsample; sample++) {
+		float *rectf= rlpp[sample]->rectf;
+		
+		for (y= pa->rectx*pa->recty; y>0; y--, rectf+=4) {
+			rectf[0] = MAX2(rectf[0], 0.0f);
+			rectf[1] = MAX2(rectf[1], 0.0f);
+			rectf[2] = MAX2(rectf[2], 0.0f);
+			CLAMP(rectf[3], 0.0f, 1.0f);
 		}
 	}
 }
@@ -1269,6 +1294,9 @@ void zbufshadeDA_tile(RenderPart *pa)
 		
 		if (rl->passflag & SCE_PASS_VECTOR)
 			reset_sky_speed(pa, rl);
+
+		/* clamp alpha to 0..1 range, can go outside due to filter */
+		clamp_alpha_rgb_range(pa, rl);
 		
 		/* de-premul alpha */
 		if (R.r.alphamode & R_ALPHAKEY)
@@ -1509,7 +1537,7 @@ static void addps_sss(void *cb_handle, int obi, int facenr, int x, int y, int z)
 	}
 }
 
-static void shade_sample_sss(ShadeSample *ssamp, Material *mat, ObjectInstanceRen *obi, VlakRen *vlr, int quad, float x, float y, float z, float *co, float *color, float *area)
+static void shade_sample_sss(ShadeSample *ssamp, Material *mat, ObjectInstanceRen *obi, VlakRen *vlr, int quad, float x, float y, float z, float *co, float color[3], float *area)
 {
 	ShadeInput *shi= ssamp->shi;
 	ShadeResult shr;
@@ -1541,8 +1569,7 @@ static void shade_sample_sss(ShadeSample *ssamp, Material *mat, ObjectInstanceRe
 
 	copy_v3_v3(shi->facenor, nor);
 	shade_input_set_viewco(shi, x, y, sx, sy, z);
-	*area= len_v3(shi->dxco)*len_v3(shi->dyco);
-	*area= MIN2(*area, 2.0f*orthoarea);
+	*area = minf(len_v3(shi->dxco) * len_v3(shi->dyco), 2.0f * orthoarea);
 
 	shade_input_set_uv(shi);
 	shade_input_set_normals(shi);
@@ -1866,7 +1893,7 @@ static void renderflare(RenderResult *rr, float *rectf, HaloRen *har)
 	alfa= har->alfa;
 	
 	visifac= R.ycor*(har->pixels);
-	/* all radials added / r^3  == 1.0f! */
+	/* all radials added / r^3 == 1.0f! */
 	visifac /= (har->rad*har->rad*har->rad);
 	visifac*= visifac;
 
@@ -1935,7 +1962,7 @@ void add_halo_flare(Render *re)
 	RenderResult *rr= re->result;
 	RenderLayer *rl;
 	HaloRen *har;
-	int a, mode, do_draw=0;
+	int a, mode, do_draw = FALSE;
 	
 	/* for now, we get the first renderlayer in list with halos set */
 	for (rl= rr->layers.first; rl; rl= rl->next)
@@ -1954,7 +1981,7 @@ void add_halo_flare(Render *re)
 		har= R.sortedhalos[a];
 		
 		if (har->flarec) {
-			do_draw= 1;
+			do_draw = TRUE;
 			renderflare(rr, rl->rectf, har);
 		}
 	}
@@ -1988,12 +2015,14 @@ typedef struct BakeShade {
 	unsigned int *rect;
 	float *rect_float;
 	
-	int usemask;
+	int use_mask;
 	char *rect_mask; /* bake pixel mask */
 
 	float dxco[3], dyco[3];
 
 	short *do_update;
+
+	struct ColorSpace *rect_colorspace;
 } BakeShade;
 
 static void bake_set_shade_input(ObjectInstanceRen *obi, VlakRen *vlr, ShadeInput *shi, int quad, int UNUSED(isect), int x, int y, float u, float v)
@@ -2098,12 +2127,12 @@ static void bake_shade(void *handle, Object *ob, ShadeInput *shi, int UNUSED(qua
 
 			normalize_v3(nor); /* in case object has scaling */
 
-			// The invert of the red channel is to make
-			// the normal map compliant with the outside world.
-			// It needs to be done because in Blender
-			// the normal used in the renderer points inward. It is generated
-			// this way in calc_vertexnormals(). Should this ever change
-			// this negate must be removed.
+			/* The invert of the red channel is to make
+			 * the normal map compliant with the outside world.
+			 * It needs to be done because in Blender
+			 * the normal used in the renderer points inward. It is generated
+			 * this way in calc_vertexnormals(). Should this ever change
+			 * this negate must be removed. */
 			shr.combined[0]= (-nor[0])/2.0f + 0.5f;
 			shr.combined[1]= nor[1]/2.0f + 0.5f;
 			shr.combined[2]= nor[2]/2.0f + 0.5f;
@@ -2169,8 +2198,12 @@ static void bake_shade(void *handle, Object *ob, ShadeInput *shi, int UNUSED(qua
 	else {
 		unsigned char *col= (unsigned char *)(bs->rect + bs->rectx*y + x);
 
-		if (ELEM(bs->type, RE_BAKE_ALL, RE_BAKE_TEXTURE) &&	(R.r.color_mgt_flag & R_COLOR_MANAGEMENT)) {
-			linearrgb_to_srgb_uchar3(col, shr.combined);
+		if (ELEM(bs->type, RE_BAKE_ALL, RE_BAKE_TEXTURE)) {
+			float rgb[3];
+
+			copy_v3_v3(rgb, shr.combined);
+			IMB_colormanagement_scene_linear_to_colorspace_v3(rgb, bs->rect_colorspace);
+			rgb_float_to_uchar(col, rgb);
 		}
 		else {
 			rgb_float_to_uchar(col, shr.combined);
@@ -2408,12 +2441,12 @@ static int get_next_bake_face(BakeShade *bs)
 	ObjectRen *obr;
 	VlakRen *vlr;
 	MTFace *tface;
-	static int v= 0, vdone= 0;
+	static int v= 0, vdone = FALSE;
 	static ObjectInstanceRen *obi= NULL;
 	
 	if (bs==NULL) {
 		vlr= NULL;
-		v= vdone= 0;
+		v= vdone = FALSE;
 		obi= R.instancetable.first;
 		return 0;
 	}
@@ -2504,10 +2537,11 @@ static void shade_tface(BakeShade *bs)
 	bs->rectx= bs->ibuf->x;
 	bs->recty= bs->ibuf->y;
 	bs->rect= bs->ibuf->rect;
+	bs->rect_colorspace= bs->ibuf->rect_colorspace;
 	bs->rect_float= bs->ibuf->rect_float;
 	bs->quad= 0;
 	
-	if (bs->usemask) {
+	if (bs->use_mask) {
 		if (bs->ibuf->userdata==NULL) {
 			BLI_lock_thread(LOCK_CUSTOM1);
 			if (bs->ibuf->userdata==NULL) /* since the thread was locked, its possible another thread alloced the value */
@@ -2594,7 +2628,7 @@ int RE_bake_shade_all_selected(Render *re, int type, Object *actob, short *do_up
 	BakeShade *handles;
 	ListBase threads;
 	Image *ima;
-	int a, vdone=0, usemask=0, result=BAKE_RESULT_OK;
+	int a, vdone = FALSE, use_mask = FALSE, result = BAKE_RESULT_OK;
 	
 	/* initialize render global */
 	R= *re;
@@ -2605,7 +2639,7 @@ int RE_bake_shade_all_selected(Render *re, int type, Object *actob, short *do_up
 	
 	/* do we need a mask? */
 	if (re->r.bake_filter)
-		usemask = 1;
+		use_mask = TRUE;
 	
 	/* baker uses this flag to detect if image was initialized */
 	for (ima= G.main->image.first; ima; ima= ima->id.next) {
@@ -2614,8 +2648,6 @@ int RE_bake_shade_all_selected(Render *re, int type, Object *actob, short *do_up
 		ima->flag&= ~IMA_USED_FOR_RENDER;
 		if (ibuf) {
 			ibuf->userdata = NULL; /* use for masking if needed */
-			if (ibuf->rect_float)
-				ibuf->profile = IB_PROFILE_LINEAR_RGB;
 		}
 	}
 	
@@ -2642,7 +2674,7 @@ int RE_bake_shade_all_selected(Render *re, int type, Object *actob, short *do_up
 		handles[a].actob= actob;
 		handles[a].zspan= MEM_callocN(sizeof(ZSpan), "zspan for bake");
 		
-		handles[a].usemask = usemask;
+		handles[a].use_mask = use_mask;
 
 		handles[a].do_update = do_update; /* use to tell the view to update */
 		
@@ -2655,7 +2687,7 @@ int RE_bake_shade_all_selected(Render *re, int type, Object *actob, short *do_up
 		PIL_sleep_ms(50);
 
 		/* calculate progress */
-		for (vdone=0, a=0; a<re->r.threads; a++)
+		for (vdone = FALSE, a=0; a<re->r.threads; a++)
 			vdone+= handles[a].vdone;
 		if (progress)
 			*progress = (float)(vdone / (float)re->totvlak);

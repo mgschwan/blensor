@@ -53,7 +53,8 @@ struct MovieClip;
 void BKE_object_workob_clear(struct Object *workob);
 void BKE_object_workob_calc_parent(struct Scene *scene, struct Object *ob, struct Object *workob);
 
-struct SoftBody *copy_softbody(struct SoftBody *sb);
+void BKE_object_transform_copy(struct Object *ob_tar, const struct Object *ob_src);
+struct SoftBody *copy_softbody(struct SoftBody *sb, int copy_caches);
 struct BulletSoftBody *copy_bulletsoftbody(struct BulletSoftBody *sb);
 void BKE_object_copy_particlesystems(struct Object *obn, struct Object *ob);
 void BKE_object_copy_softbody(struct Object *obn, struct Object *ob);
@@ -81,6 +82,7 @@ struct Object *BKE_object_add(struct Scene *scene, int type);
 void *BKE_object_obdata_add_from_type(int type);
 
 struct Object *BKE_object_copy(struct Object *ob);
+struct Object *BKE_object_copy_with_caches(struct Object *ob);
 void BKE_object_make_local(struct Object *ob);
 int  BKE_object_is_libdata(struct Object *ob);
 int  BKE_object_obdata_is_libdata(struct Object *ob);
@@ -92,6 +94,7 @@ void BKE_object_to_mat3(struct Object *ob, float mat[][3]);
 void BKE_object_to_mat4(struct Object *ob, float mat[][4]);
 void BKE_object_apply_mat4(struct Object *ob, float mat[][4], const short use_compat, const short use_parent);
 
+int BKE_object_pose_context_check(struct Object *ob);
 struct Object *BKE_object_pose_armature_get(struct Object *ob);
 
 void BKE_object_where_is_calc(struct Scene *scene, struct Object *ob);
@@ -101,25 +104,23 @@ void BKE_object_where_is_calc_mat4(struct Scene *scene, struct Object *ob, float
 
 /* possibly belong in own moduke? */
 struct BoundBox *BKE_boundbox_alloc_unit(void);
-void             BKE_boundbox_init_from_minmax(struct BoundBox *bb, float min[3], float max[3]);
-int              BKE_boundbox_ray_hit_check(struct BoundBox *bb, float ray_start[3], float ray_normal[3]);
+void BKE_boundbox_init_from_minmax(struct BoundBox *bb, float min[3], float max[3]);
+int BKE_boundbox_ray_hit_check(struct BoundBox *bb, float ray_start[3], float ray_normal[3]);
 
 struct BoundBox *BKE_object_boundbox_get(struct Object *ob);
 void BKE_object_dimensions_get(struct Object *ob, float vec[3]);
 void BKE_object_dimensions_set(struct Object *ob, const float *value);
 void BKE_object_boundbox_flag(struct Object *ob, int flag, int set);
-void BKE_object_minmax(struct Object *ob, float r_min[3], float r_max[3]);
-int  BKE_object_minmax_dupli(struct Scene *scene, struct Object *ob, float r_min[3], float r_max[3]);
+void BKE_object_minmax(struct Object *ob, float r_min[3], float r_max[3], const short use_hidden);
+int BKE_object_minmax_dupli(struct Scene *scene, struct Object *ob, float r_min[3], float r_max[3], const short use_hidden);
 
 /* sometimes min-max isn't enough, we need to loop over each point */
-void BKE_object_foreach_display_point(
-        struct Object *ob, float obmat[4][4],
-        void (*func_cb)(const float[3], void *), void *user_data);
-void BKE_scene_foreach_display_point(
-        struct Scene *scene,
-        struct View3D *v3d,
-        const short flag,
-        void (*func_cb)(const float[3], void *), void *user_data);
+void BKE_object_foreach_display_point(struct Object *ob, float obmat[4][4],
+                                      void (*func_cb)(const float[3], void *), void *user_data);
+void BKE_scene_foreach_display_point(struct Scene *scene,
+                                     struct View3D *v3d,
+                                     const short flag,
+                                     void (*func_cb)(const float[3], void *), void *user_data);
 
 int BKE_object_parent_loop_check(const struct Object *parent, const struct Object *ob);
 
@@ -136,11 +137,11 @@ typedef struct ObjectTfmProtectedChannels {
 } ObjectTfmProtectedChannels;
 
 void BKE_object_tfm_protected_backup(const struct Object *ob,
-									 ObjectTfmProtectedChannels *obtfm);
+                                     ObjectTfmProtectedChannels *obtfm);
 
 void BKE_object_tfm_protected_restore(struct Object *ob,
-									  const ObjectTfmProtectedChannels *obtfm,
-									  const short protectflag);
+                                      const ObjectTfmProtectedChannels *obtfm,
+                                      const short protectflag);
 
 void BKE_object_handle_update(struct Scene *scene, struct Object *ob);
 void BKE_object_sculpt_modifiers_changed(struct Object *ob);
@@ -153,10 +154,33 @@ struct KeyBlock *BKE_object_insert_shape_key(struct Scene *scene, struct Object 
 
 int BKE_object_is_modified(struct Scene *scene, struct Object *ob);
 int BKE_object_is_deform_modified(struct Scene *scene, struct Object *ob);
+int BKE_object_is_animated(struct Scene *scene, struct Object *ob);
 
 void BKE_object_relink(struct Object *ob);
 
 struct MovieClip *BKE_object_movieclip_get(struct Scene *scene, struct Object *ob, int use_default);
+
+/* this function returns a superset of the scenes selection based on relationships */
+
+typedef enum eObRelationTypes {
+	OB_REL_NONE               = 0,        /* just the selection as is */
+	OB_REL_PARENT             = (1 << 0), /* immediate parent */
+	OB_REL_PARENT_RECURSIVE   = (1 << 1), /* parents up to root of selection tree*/
+	OB_REL_CHILDREN           = (1 << 2), /* immediate children */
+	OB_REL_CHILDREN_RECURSIVE = (1 << 3), /* All children */
+	OB_REL_MOD_ARMATURE       = (1 << 4), /* Armatures related to the selected objects */
+	OB_REL_SCENE_CAMERA       = (1 << 5), /* you might want the scene camera too even if unselected? */
+} eObRelationTypes;
+
+typedef enum eObjectSet {
+	OB_SET_SELECTED, /* Selected Objects */
+	OB_SET_VISIBLE,  /* Visible Objects  */
+	OB_SET_ALL       /* All Objects      */
+} eObjectSet;
+
+struct LinkNode *BKE_object_relational_superset(struct Scene *scene, eObjectSet objectSet, eObRelationTypes includeFilter);
+struct LinkNode *BKE_object_groups(struct Object *ob);
+void             BKE_object_groups_clear(struct Scene *scene, struct Base *base, struct Object *object);
 
 #ifdef __cplusplus
 }

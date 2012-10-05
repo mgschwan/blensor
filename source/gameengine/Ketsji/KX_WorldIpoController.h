@@ -72,15 +72,15 @@ public:
 		m_modified = true;
 	}
 
-	void	SetModifyMistStart(bool modify) {	
+	void	SetModifyMistStart(bool modify) {
 		m_modify_mist_start = modify;
 	}
 
-	void	SetModifyMistColor(bool modify) {	
+	void	SetModifyMistColor(bool modify) {
 		m_modify_mist_color = modify;
 	}
 
-	void	SetModifyMistDist(bool modify) {	
+	void	SetModifyMistDist(bool modify) {
 		m_modify_mist_dist = modify;
 	}
 
@@ -88,7 +88,7 @@ public:
 	SetOption(
 		int option,
 		int value
-	){
+	) {
 		// intentionally empty
 	};
 
@@ -96,9 +96,7 @@ public:
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:KX_WorldIpoController"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:KX_WorldIpoController")
 #endif
 };
 

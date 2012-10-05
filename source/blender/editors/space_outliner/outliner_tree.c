@@ -132,6 +132,14 @@ static void outliner_storage_cleanup(SpaceOops *soops)
 	}
 }
 
+/* XXX - THIS FUNCTION IS INCREDIBLY SLOW
+ * ... it can bring blenders tools and viewport to a grinding halt becuase of searching
+ * for duplicate items every times they are added.
+ *
+ * TODO (possible speedups)
+ * - use a hash for duplicate (could even store a hash per type)
+ * - use mempool for TreeElements
+ * */
 static void check_persistent(SpaceOops *soops, TreeElement *te, ID *id, short type, short nr)
 {
 	TreeStore *ts;
@@ -147,8 +155,8 @@ static void check_persistent(SpaceOops *soops, TreeElement *te, ID *id, short ty
 	/* check if 'te' is in treestore */
 	tselem = ts->data;
 	for (a = 0; a < ts->usedelem; a++, tselem++) {
-		if (tselem->id == id && tselem->used == 0) {
-			if ((type == 0 && tselem->type == 0) || (tselem->type == type && tselem->nr == nr)) {
+		if ((tselem->used == 0) && (tselem->type == type) && (tselem->id == id)) {
+			if ((type == 0) || (tselem->nr == nr)) {
 				te->store_index = a;
 				tselem->used = 1;
 				return;
@@ -889,24 +897,16 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 		 */
 		te->idcode = seq->type;
 		te->directdata = seq;
+		te->name = seq->name + 2;
 
-		if (seq->type < 7) {
+		if (seq->type < SEQ_TYPE_EFFECT) {
 			/*
 			 * This work like the sequence.
 			 * If the sequence have a name (not default name)
 			 * show it, in other case put the filename.
 			 */
-			if (strcmp(seq->name, "SQ"))
-				te->name = seq->name;
-			else {
-				if ((seq->strip) && (seq->strip->stripdata))
-					te->name = seq->strip->stripdata->name;
-				else
-					te->name = "SQ None";
-			}
 
-			if (seq->type == SEQ_META) {
-				te->name = "Meta Strip";
+			if (seq->type == SEQ_TYPE_META) {
 				p = seq->seqbase.first;
 				while (p) {
 					outliner_add_element(soops, &te->subtree, (void *)p, te, TSE_SEQUENCE, index);
@@ -916,8 +916,6 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 			else
 				outliner_add_element(soops, &te->subtree, (void *)seq->strip, te, TSE_SEQ_STRIP, index);
 		}
-		else
-			te->name = "Effect";
 	}
 	else if (type == TSE_SEQ_STRIP) {
 		Strip *strip = (Strip *)idv;
@@ -1218,8 +1216,8 @@ static int treesort_obtype_alpha(const void *v1, const void *v2)
 	else {
 		/* 2nd we check ob type */
 		if (x1->idcode == ID_OB && x2->idcode == ID_OB) {
-			if ( ((Object *)x1->id)->type > ((Object *)x2->id)->type) return 1;
-			else if ( ((Object *)x1->id)->type > ((Object *)x2->id)->type) return -1;
+			if (((Object *)x1->id)->type > ((Object *)x2->id)->type) return 1;
+			else if (((Object *)x1->id)->type > ((Object *)x2->id)->type) return -1;
 			else return 0;
 		}
 		else {
@@ -1245,7 +1243,7 @@ static void outliner_sort(SpaceOops *soops, ListBase *lb)
 	tselem = TREESTORE(te);
 	
 	/* sorting rules; only object lists or deformgroups */
-	if ( (tselem->type == TSE_DEFGROUP) || (tselem->type == 0 && te->idcode == ID_OB)) {
+	if ((tselem->type == TSE_DEFGROUP) || (tselem->type == 0 && te->idcode == ID_OB)) {
 		
 		/* count first */
 		for (te = lb->first; te; te = te->next) totelem++;
@@ -1508,7 +1506,7 @@ void outliner_build_tree(Main *mainvar, Scene *scene, SpaceOops *soops)
 	}
 	else if (soops->outlinevis == SO_SEQUENCE) {
 		Sequence *seq;
-		Editing *ed = seq_give_editing(scene, FALSE);
+		Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
 		int op;
 
 		if (ed == NULL)

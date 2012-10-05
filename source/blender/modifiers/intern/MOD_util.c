@@ -81,7 +81,7 @@ void get_texture_value(Tex *texture, float *tex_co, TexResult *texres)
 	 * if the texture didn't give an RGB value, copy the intensity across
 	 */
 	if (result_type & TEX_RGB) {
-		texres->tin= (1.0f / 3.0f) * (texres->tr + texres->tg + texres->tb);
+		texres->tin = (1.0f / 3.0f) * (texres->tr + texres->tg + texres->tb);
 	}
 	else {
 		copy_v3_fl(&texres->tr, texres->tin);
@@ -276,5 +276,6 @@ void modifier_type_init(ModifierTypeInfo *types[])
 	INIT_TYPE(WeightVGProximity);
 	INIT_TYPE(DynamicPaint);
 	INIT_TYPE(Remesh);
+	INIT_TYPE(Skin);
 #undef INIT_TYPE
 }

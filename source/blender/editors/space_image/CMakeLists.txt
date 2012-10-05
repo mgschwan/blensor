@@ -40,11 +40,16 @@ set(INC_SYS
 set(SRC
 	image_buttons.c
 	image_draw.c
+	image_edit.c
 	image_ops.c
 	space_image.c
 
 	image_intern.h
 )
+
+if(WITH_INTERNATIONAL)
+	add_definitions(-DWITH_INTERNATIONAL)
+endif()
 
 if(WITH_IMAGE_OPENJPEG)
 	add_definitions(-DWITH_OPENJPEG)

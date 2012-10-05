@@ -88,8 +88,7 @@
 #include "BKE_pointcache.h"
 #include "BKE_screen.h"
 #include "BKE_sequencer.h"
-#include "BKE_texture.h" // for open_plugin_tex
-#include "BKE_utildefines.h" // SWITCH_INT DATA ENDB DNA1 O_BINARY GLOB USER TEST REND
+#include "BKE_texture.h"
 #include "BKE_sound.h"
 
 #include "NOD_socket.h"
@@ -129,7 +128,7 @@ static void area_add_header_region(ScrArea *sa, ListBase *lb)
 	ar->v2d.flag = (V2D_PIXELOFS_X|V2D_PIXELOFS_Y);
 }
 
-static void sequencer_init_preview_region(ARegion* ar)
+static void sequencer_init_preview_region(ARegion *ar)
 {
 	// XXX a bit ugly still, copied from space_sequencer
 	/* NOTE: if you change values here, also change them in space_sequencer.c, sequencer_new */
@@ -623,7 +622,7 @@ static void do_version_constraints_radians_degrees_250(ListBase *lb)
 {
 	bConstraint *con;
 
-	for	(con = lb->first; con; con = con->next) {
+	for (con = lb->first; con; con = con->next) {
 		if (con->type == CONSTRAINT_TYPE_RIGIDBODYJOINT) {
 			bRigidBodyJointConstraint *data = con->data;
 			data->axX *= (float)(M_PI / 180.0);
@@ -653,7 +652,7 @@ static void do_versions_seq_unique_name_all_strips(Scene * sce, ListBase *seqbas
 	Sequence * seq = seqbasep->first;
 
 	while (seq) {
-		seqbase_unique_name_recursive(&sce->ed->seqbase, seq);
+		BKE_sequence_base_unique_name_recursive(&sce->ed->seqbase, seq);
 		if (seq->seqbase.first) {
 			do_versions_seq_unique_name_all_strips(sce, &seq->seqbase);
 		}
@@ -744,7 +743,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 			if (scene->ed && scene->ed->seqbasep) {
 				SEQ_BEGIN (scene->ed, seq)
 				{
-					if (seq->type == SEQ_HD_SOUND) {
+					if (seq->type == SEQ_TYPE_SOUND_HD) {
 						char str[FILE_MAX];
 						BLI_join_dirfile(str, sizeof(str), seq->strip->dir, seq->strip->stripdata->name);
 						BLI_path_abs(str, main->name);
@@ -1084,7 +1083,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 		World *wo;
 		Tex *tex;
 		ParticleSettings *part;
-		int do_gravity = 0;
+		int do_gravity = FALSE;
 
 		for (sce = main->scene.first; sce; sce = sce->id.next)
 			if (sce->unit.scale_length == 0.0f)
@@ -1140,7 +1139,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 				sce->physics_settings.gravity[0] = sce->physics_settings.gravity[1] = 0.0f;
 				sce->physics_settings.gravity[2] = -9.81f;
 				sce->physics_settings.flag = PHYS_GLOBAL_GRAVITY;
-				do_gravity = 1;
+				do_gravity = TRUE;
 			}
 		}
 
@@ -1787,7 +1786,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 				SpaceLink *sl;
 				for (sl = sa->spacedata.first; sl; sl = sl->next) {
 					if (sl->spacetype == SPACE_VIEW3D) {
-						View3D* v3d = (View3D *)sl;
+						View3D *v3d = (View3D *)sl;
 						v3d->flag2 &= ~V3D_RENDER_OVERRIDE;
 					}
 				}
@@ -2206,7 +2205,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 			bActuator *act;
 			for (act = ob->actuators.first; act; act = act->next) {
 				if (act->type == ACT_STEERING) {
-					bSteeringActuator* stact = act->data;
+					bSteeringActuator *stact = act->data;
 					if (stact->facingaxis == 0) {
 						stact->facingaxis = 1;
 					}
@@ -2331,7 +2330,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 		}
 
 		/* redraws flag in SpaceTime has been moved to Screen level */
-		for (sc  = main->screen.first; sc; sc = sc->id.next) {
+		for (sc = main->screen.first; sc; sc = sc->id.next) {
 			if (sc->redraws_flag == 0) {
 				/* just initialize to default? */
 				// XXX: we could also have iterated through areas, and taken them from the first timeline available...
@@ -2435,7 +2434,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 						tex->pd->falloff_curve->preset = CURVE_PRESET_LINE;
 						tex->pd->falloff_curve->cm->flag &= ~CUMA_EXTEND_EXTRAPOLATE;
 						curvemap_reset(tex->pd->falloff_curve->cm, &tex->pd->falloff_curve->clipr, tex->pd->falloff_curve->preset, CURVEMAP_SLOPE_POSITIVE);
-						curvemapping_changed(tex->pd->falloff_curve, 0);
+						curvemapping_changed(tex->pd->falloff_curve, FALSE);
 					}
 				}
 			}
@@ -2558,11 +2557,11 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 			for (ob = main->object.first; ob; ob = ob->id.next) {
 				for (act = ob->actuators.first; act; act = act->next) {
 					if (act->type == ACT_IPO) {
-						// Create the new actuator
+						/* Create the new actuator */
 						ia = act->data;
 						aa = MEM_callocN(sizeof(bActionActuator), "fcurve -> action actuator do_version");
 
-						// Copy values
+						/* Copy values */
 						aa->type = ia->type;
 						aa->flag = ia->flag;
 						aa->sta = ia->sta;
@@ -2572,12 +2571,18 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 						if (ob->adt)
 							aa->act = ob->adt->action;
 
-						// Get rid of the old actuator
+						/* Get rid of the old actuator */
 						MEM_freeN(ia);
 
-						// Assign the new actuator
+						/* Assign the new actuator */
 						act->data = aa;
 						act->type = act->otype = ACT_ACTION;
+
+						/* Fix for converting 2.4x files: if we don't have an action, but we have an
+						 * object IPO, then leave the actuator as an IPO actuator for now and let the
+						 * IPO conversion code handle it */
+						if (ob->ipo && !aa->act)
+							act->type = ACT_IPO;
 					}
 					else if (act->type == ACT_SHAPEACTION) {
 						act->type = act->otype = ACT_ACTION;

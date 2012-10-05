@@ -5,10 +5,10 @@
 
 # I don't want to load the whole file as it can be huge : go chunks
 # also I want random access to 3d datas to import pieces, not always everything
-# so step1 is a whole file fast parsing, retrieving tokens name and building the internal dict
-# with no 3d datas inside.
-# step 2 is to call any token by their names and retrieve the 3d datas thanks to a pointer stored in dicts
-# between stp1 and step 2 a script ui should be provided to select, transform etc before import.
+# so step1 is a whole file fast parsing, retrieving tokens name and building en empty internal dict
+# with only pointers and no 3d datas.
+# step 2 is to call any token by their names and retrieve the 3d datas thanks to pointers stored in dicts
+# between step 1 and step 2 a script ui should be provided to select, transform etc before import.
 # > I need to know the pointer position of tokens but data.tell() is slow
 # a += pointer computed from line length is way faster. so I need eol -> rb mode
 # and readline() is ok in binary mode 'rb' with \r\n (win) \n (unix) but not \r mac..
@@ -27,18 +27,21 @@ import struct, binascii
 import time
 
 import bpy
+import mathutils as bmat
 from mathutils import Vector, Matrix
 
+try :
+	import bel
+	import bel.mesh
+	import bel.image
+	import bel.uv
+	import bel.material
+	import bel.ob
+	import bel.fs
+except :
+	import io_directx_bel.bel as bel
+	from .bel import mesh,image,uv,material,ob,fs
 
-import io_directx_bel.bel.mesh
-import io_directx_bel.bel.image
-import io_directx_bel.bel.uv
-import io_directx_bel.bel.material
-import io_directx_bel.bel.ob
-import io_directx_bel.bel.fs
-from io_directx_bel import bel
-
-# XXX, should use explicit names
 from .templates_x import *
 
 '''
@@ -62,9 +65,8 @@ def load(operator, context, filepath,
          show_geninfo=False,
          quickmode=False,
          parented=False,
-         use_templates=False,
          bone_maxlength=1.0,
-         chunksize=2048,
+         chunksize=False,
          naming_method=0,
          use_ngons=True,
          use_edges=True,
@@ -215,6 +217,7 @@ BINARY FORMAT
         trunkated = False
         previouslvl = False
         while True :
+        #for l in data.readlines() :
             lines, trunkated = nextFileChunk(data,trunkated)
             if lines == None : break
             for l in lines :
@@ -248,7 +251,7 @@ BINARY FORMAT
                 
                 if quickmode == False :
                     ## look for templates
-                    if use_templates and re.match(r_template,l) :
+                    if re.match(r_template,l) :
                         tname = l.split(' ')[1]
                         templates[tname] = {'pointer' : ptr, 'line' : c}
                         continue
@@ -307,7 +310,6 @@ BINARY FORMAT
         if format == 'txt' :
             lines = chunk.decode('utf-8', errors='ignore')
             #if stream : return lines.replace('\r','').replace('\n','')
-            #lines = [ l + '\n' for l in lines.replace('\r','\n').split('\n') ]
             lines = lines.replace('\r','\n').split('\n')
             if trunkated : lines[0] = trunkated + lines[0]
             if len(lines) == 1 : 
@@ -403,12 +405,10 @@ BINARY FORMAT
     def dXtemplateData(tpl,block,ptr=0) :
         #print('dxTPL',block[ptr])
         pack = []
-        append = pack.append
-        namespace = locals()
         for member in tpl['members'] :
             #print(member)
-            datatype = member[0].lower()
             dataname = member[-1]
+            datatype = member[0].lower()
             if datatype ==  'array' :
                 datatype = member[1].lower()
                 s = dataname.index('[') + 1
@@ -426,9 +426,8 @@ BINARY FORMAT
             #if len(str(datavalue)) > 50 : dispvalue = str(datavalue[0:25]) + ' [...] ' + str(datavalue[-25:])
             #else : dispvalue = str(datavalue)
             #print('%s :  %s %s'%(dataname,dispvalue,type(datavalue)))
-            #exec('%s = datavalue'%(dataname))
-            namespace[dataname] = datavalue
-            append( datavalue )
+            exec('%s = datavalue'%(dataname))
+            pack.append( datavalue )
         return pack, ptr + 1
     
     def dXdata(block,datatype,length,s=0,eof=';') :
@@ -463,14 +462,13 @@ BINARY FORMAT
     def dXarray(block, datatype, length, s=0) :
         #print('dxARR',block[s])
         lst = []
-        append = lst.append
         if datatype in reserved_type :
             eoi=','
             for i in range(length) :
                 if i+1 == length : eoi = ';'
                 datavalue, s = dXdata(block,datatype,1,s,eoi)
-                append( datavalue )
-        
+                lst.append( datavalue )
+            
         else :
             eoi = ';,'
             for i in range(length) :
@@ -479,7 +477,7 @@ BINARY FORMAT
                 e = block.index(eoi,s)
                 #except : print(block,s) ; popo()
                 datavalue, na = dXdata(block[s:e+1],datatype,1)
-                append( datavalue )
+                lst.append( datavalue )
                 s = e + 2
         return lst, s
     
@@ -492,19 +490,20 @@ BINARY FORMAT
         line = templates[tpl_name]['line']
         #print('> %s at line %s (chr %s)'%(tpl_name,line,ptr))
         data.seek(ptr)
-        lines = []
-        append = lines.append
+        block = ''
         trunkated = False
         go = True
         while go :
-            rawlines, trunkated = nextFileChunk(data,trunkated,chunksize) # stream ?
-            if rawlines == None : break
-            for l in rawlines :
-                append(l.strip())
+            lines, trunkated = nextFileChunk(data,trunkated,chunksize) # stream ?
+            if lines == None : 
+                break
+            for l in lines :
+                #l = data.readline().decode().strip()
+                block += l.strip()
                 if '}' in l :
                     go = False
                     break
-        block = ''.join(lines)
+        
         uuid = re.search(r'<.+>',block).group()
         templates[tpl_name]['uuid'] = uuid.lower()
         templates[tpl_name]['members'] = []
@@ -544,42 +543,36 @@ BINARY FORMAT
                     #            print('  %s'%str(member)[1:-1].replace(',',' ').replace("'",''))
                 else :
                     print('MATCHES BUILTIN TEMPLATE')
-
+    
+            
     ##  read any kind of token data block
     # by default the block is cleaned from inline comment space etc to allow data parsing
     # useclean = False (retrieve all bytes) if you need to compute a file byte pointer
-    # to mimic the file.tell() function and use it with file.seek() later
+    # to mimic the file.tell() function and use it with file.seek()
     def readBlock(data,token, clean=True) :
-        data.seek(token['pointer'])
-        lines = []
-        append = lines.append
-        strip = str.strip
+        ptr = token['pointer']
+        data.seek(ptr)
+        block = ''
+        #lvl = 0
+        trunkated = False
         go = True
-        init = True
-        
-        def cleanLine(l):
-            if '//' in l : l = l[0:l.index('//')]
-            if '#' in l : l = l[0:l.index('#')]
-            return l.strip().replace(' ','').replace('\t','')
-            
         while go :
-            chunk = data.read(512).decode('utf-8', errors='ignore')
-            chunk = chunk.replace('\r','\n').split('\n')
-            for l in map(cleanLine, chunk) :
-                if l == '' : continue
-                if init :
-                    l = l[l.index('{')+1:]
-                    init = False
-                if '}' in l :
-                    append(l[0:l.index('}')])
+            lines, trunkated = nextFileChunk(data,trunkated,chunksize)
+            if lines == None : break
+            for l in lines :
+                #eol = len(l) + 1
+                l = l.strip()
+                #c += 1
+                block += l+'\n'
+                if re.match(r_endsection,l) :
                     go = False
                     break
-                append(l)
-        
-        block = ''.join(lines)
+        s = block.index('{') + 1
+        e = block.index('}')
+        block = block[s:e]
+        if clean : block = cleanBlock(block)
         return block
-
-
+    
     def getChilds(tokenname) :
         childs = []
         # '*' in childname means it's a reference. always perform this test
@@ -589,7 +582,7 @@ BINARY FORMAT
             childs.append( childname )
         return childs
     
-	# the input nested list of [bonename, matrix, [child0,child1..]] is given by import_dXtree()
+    # the input nested list of [bonename, matrix, [child0,child1..]] is given by import_dXtree()
     def buildArm(armdata, child,lvl=0,parent_matrix=False) :
         
         bonename, bonemat, bonechilds = child
@@ -778,7 +771,8 @@ BINARY FORMAT
             # UV
             if tokentype == 'meshtexturecoords' :
                 uv = readToken(childname)
-                uv = bel.uv.asVertsLocation(uv, faces)
+                #uv = bel.uv.asVertsLocation(uv, faces)
+                uv = bel.uv.asFlatList(uv, faces)
                 uvs.append(uv)
                 
                 if debug : print('uv       : %s'%(len(uv)))
@@ -942,7 +936,8 @@ BINARY FORMAT
                 walk_dXtree(tokens.keys())
             
             ## DATA IMPORTATION
-            if show_geninfo :
+            if show_geninfo : 
+                #print(tokens)
                 print('Root frames :\n %s'%rootTokens)
             if parented :
                 import_dXtree(rootTokens)

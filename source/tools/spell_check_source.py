@@ -28,7 +28,16 @@ Currently only python source is checked.
 """
 
 ONLY_ONCE = True
+USE_COLOR = True
 _only_once_ids = set()
+
+if USE_COLOR:
+    COLOR_WORD = "\033[92m"
+    COLOR_ENDC = "\033[0m"
+else:
+    COLOR_FAIL = ""
+    COLOR_ENDC = ""
+
 
 import enchant
 dict_spelling = enchant.Dict("en_US")
@@ -44,6 +53,8 @@ def words_from_text(text):
     text = text.strip("#'\"")
     text = text.replace("/", " ")
     text = text.replace("-", " ")
+    text = text.replace("+", " ")
+    text = text.replace("%", " ")
     text = text.replace(",", " ")
     words = text.split()
 
@@ -114,7 +125,6 @@ class Comment:
 
 def extract_py_comments(filepath):
 
-    import sys
     import token
     import tokenize
 
@@ -280,10 +290,12 @@ def spell_check_comments(filepath):
                     else:
                         _only_once_ids.add(w_lower)
 
-                print("%s:%d: %s, suggest (%s)" %
+                print("%s:%d: %s%s%s, suggest (%s)" %
                       (comment.file,
                        comment.line,
+                       COLOR_WORD,
                        w,
+                       COLOR_ENDC,
                        " ".join(dict_spelling.suggest(w)),
                        ))
 

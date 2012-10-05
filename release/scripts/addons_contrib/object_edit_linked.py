@@ -24,8 +24,8 @@ bl_info = {
     "blender": (2, 6, 0),
     "location": "View3D > Toolshelf > Edit Linked Library",
     "description": "Allows editing of objects linked from a .blend library.",
-    "wiki_url": "http://wiki.blender.org/index.php?title=Extensions:2.5/Py/Scripts/Object/Edit_Linked_Library",
-    "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=29630&group_id=153&atid=467",
+    "wiki_url": "http://wiki.blender.org/index.php?title=Extensions:2.6/Py/Scripts/Object/Edit_Linked_Library",
+    "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=29630",
     "category": "Object"}
     
 
@@ -56,7 +56,7 @@ def linked_file_check(context):
 
 
 class EditLinked(bpy.types.Operator):
-    '''Edit Linked Library'''
+    """Edit Linked Library"""
     bl_idname = "object.edit_linked"
     bl_label = "Edit Linked Library"
 
@@ -98,7 +98,7 @@ class EditLinked(bpy.types.Operator):
 
 
 class ReturnToOriginal(bpy.types.Operator):
-    '''Return to the original file after editing the linked library .blend'''
+    """Return to the original file after editing the linked library .blend"""
     bl_idname = "wm.return_to_original"
     bl_label = "Return to Original File"
 

@@ -109,7 +109,7 @@ public :
 	 */
 
 	const
-		RAS_FrameType &		
+		RAS_FrameType &
 	FrameType(
 	) const {
 		return m_frame_type;
@@ -143,13 +143,13 @@ public :
 		unsigned int
 	DesignAspectWidth(
 	) const {
-		return m_design_aspect_width;	
+		return m_design_aspect_width;
 	};
 
 		unsigned int
 	DesignAspectHeight(
 	) const {
-		return m_design_aspect_height;	
+		return m_design_aspect_height;
 	};
 
 private :
@@ -163,9 +163,7 @@ private :
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:RAS_FrameSettings"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:RAS_FrameSettings")
 #endif
 }; 
 
@@ -264,7 +262,7 @@ public :
 		const short sensor_fit,
 		const float design_aspect_ratio,
 		RAS_FrameFrustum & frustum
-	);	
+	);
 
 	static
 		void
@@ -291,7 +289,7 @@ private :
 
 	/**
 	 * Private constructor - this class is not meant
-	 * for instanciation.
+	 * for instantiation.
 	 */
 
 	RAS_FramingManager(
@@ -300,14 +298,11 @@ private :
 	RAS_FramingManager(
 		const RAS_FramingManager &
 	);
-	
+
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:RAS_FramingManager"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:RAS_FramingManager")
 #endif
 };
 
 #endif
-

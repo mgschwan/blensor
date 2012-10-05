@@ -36,12 +36,13 @@
 
 #include "BKE_modifier.h"
 #include "BKE_ocean.h"
-#include "BKE_utildefines.h"
 
 #include "render_types.h"
 #include "RE_shader_ext.h"
 
 #include "texture.h"
+
+#include "texture_ocean.h"  /* own include */
 
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
@@ -56,7 +57,7 @@ extern struct Render R;
 /* ***** actual texture sampling ***** */
 int ocean_texture(Tex *tex, float *texvec, TexResult *texres)
 {
-	OceanTex *ot= tex->ot;
+	OceanTex *ot = tex->ot;
 	ModifierData *md;
 	OceanModifierData *omd;
 
@@ -64,8 +65,8 @@ int ocean_texture(Tex *tex, float *texvec, TexResult *texres)
 
 	if ( !(ot) ||
 	     !(ot->object) ||
-	     !(md = (ModifierData *)modifiers_findByType(ot->object, eModifierType_Ocean)) ||
-	     !(omd= (OceanModifierData *)md)->ocean)
+	     !(md  = (ModifierData *)modifiers_findByType(ot->object, eModifierType_Ocean)) ||
+	     !(omd = (OceanModifierData *)md)->ocean)
 	{
 		return 0;
 	}
@@ -75,20 +76,20 @@ int ocean_texture(Tex *tex, float *texvec, TexResult *texres)
 		int retval = TEX_INT;
 
 		OceanResult ocr;
-		const float u = 0.5f+0.5f*texvec[0];
-		const float v = 0.5f+0.5f*texvec[1];
+		const float u = 0.5f + 0.5f * texvec[0];
+		const float v = 0.5f + 0.5f * texvec[1];
 
-		if (omd->oceancache && omd->cached==TRUE) {
+		if (omd->oceancache && omd->cached == TRUE) {
 
 			CLAMP(cfra, omd->bakestart, omd->bakeend);
-			cfra -= omd->bakestart;	// shift to 0 based
+			cfra -= omd->bakestart;	/* shift to 0 based */
 
 			BKE_ocean_cache_eval_uv(omd->oceancache, &ocr, cfra, u, v);
 
 		}
-		else {	// non-cached
+		else {	/* non-cached */
 
-			if (G.rendering)
+			if (G.is_rendering)
 				BKE_ocean_eval_uv_catrom(omd->ocean, &ocr, u, v);
 			else
 				BKE_ocean_eval_uv(omd->ocean, &ocr, u, v);

@@ -24,7 +24,7 @@ bl_info = {
     "location": "File > Import > GIMP Image to Scene(.xcf/.xjt)",
     "description": "Imports GIMP multilayer image files as a series of multiple planes",
     "warning": "XCF import requires xcftools installed",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Import-Export/GIMPImageToScene",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=25136",
@@ -85,11 +85,11 @@ def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
                 for Segment in Line.split():
                     if Segment.startswith('w/h:'):
                         ResX, ResY = map (int, Segment[4:].split(','))
-            if Line.startswith("b'L") or Line.startswith("b'l"):
+            if Line.startswith(("b'L", "b'l")):
                 
-                '''The "nice" method to check if layer has alpha channel
+                """The "nice" method to check if layer has alpha channel
                 sadly GIMP sometimes decides not to export an alpha channel
-                if it's pure white so we are not completly sure here yet'''
+                if it's pure white so we are not completly sure here yet"""
                 if Line.startswith("b'L"): HasAlpha = True
                 else: HasAlpha = False
                 
@@ -103,8 +103,8 @@ def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
                         imageFile = 'l' + Segment[3:] + '.jpg'
                         imageFileAlpha ='la'+Segment[3:]+'.jpg'
                         
-                        '''Phisically double checking if alpha image exists
-                        now we can be sure! (damn GIMP)'''
+                        """Phisically double checking if alpha image exists
+                        now we can be sure! (damn GIMP)"""
                         if HasAlpha:
                             if not os.path.isfile(PathSaveRaw+imageFileAlpha): HasAlpha = False
                         
@@ -471,29 +471,29 @@ def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
                 Mode = LayerList[Offset][1] # has to go one step further
                 LayerOpacity = LayerList[Offset][2]
                 
-                if not Mode in ('Normal', '-1'):
+                if not Mode in {'Normal', '-1'}:
                     
                     Node = Tree.nodes.new('MIX_RGB')
                     if OpacityMode == 'COMPO': Node.inputs['Fac'].default_value[0] = LayerOpacity
                     else: Node.inputs['Fac'].default_value[0] = 1
                     Node.use_alpha = True
                     
-                    if Mode in ('Addition', '7'): Node.blend_type = 'ADD'
-                    elif Mode in ('Subtract', '8'): Node.blend_type = 'SUBTRACT'
-                    elif Mode in ('Multiply', '3'): Node.blend_type = 'MULTIPLY'
-                    elif Mode in ('DarkenOnly', '9'): Node.blend_type = 'DARKEN'
-                    elif Mode in ('Dodge', '16'): Node.blend_type = 'DODGE'
-                    elif Mode in ('LightenOnly', '10'): Node.blend_type = 'LIGHTEN'
-                    elif Mode in ('Difference', '6'): Node.blend_type = 'DIFFERENCE'
-                    elif Mode in ('Divide', '15'): Node.blend_type = 'DIVIDE'
-                    elif Mode in ('Overlay', '5'): Node.blend_type = 'OVERLAY'
-                    elif Mode in ('Screen', '4'): Node.blend_type = 'SCREEN'
-                    elif Mode in ('Burn', '17'): Node.blend_type = 'BURN'
-                    elif Mode in ('Color', '13'): Node.blend_type = 'COLOR'
-                    elif Mode in ('Value', '14'): Node.blend_type = 'VALUE'
-                    elif Mode in ('Saturation', '12'): Node.blend_type = 'SATURATION'
-                    elif Mode in ('Hue', '11'): Node.blend_type = 'HUE'
-                    elif Mode in ('Softlight', '19'): Node.blend_type = 'SOFT_LIGHT'
+                    if Mode in {'Addition', '7'}: Node.blend_type = 'ADD'
+                    elif Mode in {'Subtract', '8'}: Node.blend_type = 'SUBTRACT'
+                    elif Mode in {'Multiply', '3'}: Node.blend_type = 'MULTIPLY'
+                    elif Mode in {'DarkenOnly', '9'}: Node.blend_type = 'DARKEN'
+                    elif Mode in {'Dodge', '16'}: Node.blend_type = 'DODGE'
+                    elif Mode in {'LightenOnly', '10'}: Node.blend_type = 'LIGHTEN'
+                    elif Mode in {'Difference', '6'}: Node.blend_type = 'DIFFERENCE'
+                    elif Mode in {'Divide', '15'}: Node.blend_type = 'DIVIDE'
+                    elif Mode in {'Overlay', '5'}: Node.blend_type = 'OVERLAY'
+                    elif Mode in {'Screen', '4'}: Node.blend_type = 'SCREEN'
+                    elif Mode in {'Burn', '17'}: Node.blend_type = 'BURN'
+                    elif Mode in {'Color', '13'}: Node.blend_type = 'COLOR'
+                    elif Mode in {'Value', '14'}: Node.blend_type = 'VALUE'
+                    elif Mode in {'Saturation', '12'}: Node.blend_type = 'SATURATION'
+                    elif Mode in {'Hue', '11'}: Node.blend_type = 'HUE'
+                    elif Mode in {'Softlight', '19'}: Node.blend_type = 'SOFT_LIGHT'
                     else: pass
                     
                 else:
@@ -517,7 +517,7 @@ def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
         Nodes = bpy.context.scene.node_tree.nodes
         
         if LayerLen > 1:
-            for i in range (1, LayerLen+1):
+            for i in range (1, LayerLen + 1):
                 if i == 1:
                     Tree.links.new(Nodes['R_'+str(i)].outputs[0], Nodes['M_'+str(i)].inputs[1])
                 if 1 < i < LayerLen:
@@ -541,7 +541,7 @@ from math import pi
 
 # Operator
 class GIMPImageToScene(bpy.types.Operator):
-    ''''''
+    """"""
     bl_idname = "import.gimp_image_to_scene"
     bl_label = "GIMP Image to Scene"
     bl_description = "Imports GIMP multilayer image files into 3D Scenes"

@@ -23,12 +23,12 @@
 bl_info = {
     "name": "Paint Palettes",
     "author": "Dany Lebel (Axon D)",
-    "version": (0,9,0),
-    "blender": (2, 5, 8),
+    "version": (0,9,1),
+    "blender": (2, 63, 12),
     "location": "Image Editor and 3D View > Any Paint mode > Color Palette or Weight Palette panel",
     "description": "Palettes for color and weight paint modes",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/Scripts/Paint/Palettes",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Paint/Palettes",
     "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=25908",
     "category": "Paint"}
 
@@ -67,7 +67,7 @@ def current_brush():
         brush = context.tool_settings.vertex_paint.brush
     elif context.area.type == 'VIEW_3D' and context.image_paint_object:
         brush = context.tool_settings.image_paint.brush
-    elif context.area.type == 'IMAGE_EDITOR' and  context.space_data.use_image_paint:
+    elif context.area.type == 'IMAGE_EDITOR' and  context.space_data.mode == 'PAINT':
         brush = context.tool_settings.image_paint.brush
     else :
         brush = None
@@ -77,7 +77,7 @@ def current_brush():
 def update_weight_value():
     pp = bpy.context.scene.palette_props
     tt = bpy.context.tool_settings
-    tt.vertex_group_weight = pp.weight_value
+    tt.unified_paint_settings.weight = pp.weight_value
     return None
 
 
@@ -131,7 +131,7 @@ class PALETTE_MT_menu(bpy.types.Menu):
 
 
 class LoadGimpPalette(bpy.types.Operator):
-    ''' Executes a preset '''
+    """Execute a preset"""
     bl_idname = "palette.load_gimp_palette"
     bl_label = "Load a Gimp palette"
 
@@ -201,10 +201,10 @@ class LoadGimpPalette(bpy.types.Operator):
 
 
 class WriteGimpPalette():
-    '''Base preset class, only for subclassing
+    """Base preset class, only for subclassing
     subclasses must define
      - preset_values
-     - preset_subdir '''
+     - preset_subdir """
     bl_options = {'REGISTER'}  # only because invoke_props_popup requires.
 
 
@@ -298,7 +298,7 @@ class WriteGimpPalette():
 
 
 class AddPresetPalette(WriteGimpPalette, bpy.types.Operator):
-    '''Add a Palette Preset'''
+    """Add a Palette Preset"""
     bl_idname = "palette.preset_add"
     bl_label = "Add Palette Preset"
     preset_menu = "PALETTE_MT_menu"
@@ -328,7 +328,7 @@ class PALETTE_OT_add_color(bpy.types.Operator):
         pp.current_color_index = new_index
         sample()
         update_panels()
-        return {"FINISHED"}
+        return {'FINISHED'}
 
 
 class PALETTE_OT_remove_color(bpy.types.Operator):
@@ -349,7 +349,7 @@ class PALETTE_OT_remove_color(bpy.types.Operator):
 
         if pp.current_color_index >= pp.colors.__len__():
             pp.index = pp.current_color_index = pp.colors.__len__() - 1
-        return {"FINISHED"}
+        return {'FINISHED'}
 
 
 class PALETTE_OT_sample_tool_color(bpy.types.Operator):
@@ -361,7 +361,7 @@ class PALETTE_OT_sample_tool_color(bpy.types.Operator):
         pp = bpy.context.scene.palette_props
         brush = current_brush()
         pp.colors[pp.current_color_index].color = brush.color
-        return {"FINISHED"}
+        return {'FINISHED'}
 
 
 class IMAGE_OT_select_color(bpy.types.Operator):
@@ -377,7 +377,7 @@ class IMAGE_OT_select_color(bpy.types.Operator):
         palette_props.current_color_index = self.color_index
 
         update_panels()
-        return {"FINISHED"}
+        return {'FINISHED'}
 
 
 def color_palette_draw(self, context):
@@ -543,7 +543,7 @@ class VIEW3D_OT_select_weight(bpy.types.Operator):
             weight = palette_props.weight_10
         palette_props.weight = weight
         #bpy.context.tool_settings.vertex_group_weight = weight
-        return {"FINISHED"}
+        return {'FINISHED'}
 
 
 class VIEW3D_OT_reset_weight_palette(bpy.types.Operator):
@@ -597,7 +597,7 @@ class VIEW3D_OT_reset_weight_palette(bpy.types.Operator):
         if palette_props.current_weight_index == 10:
             palette_props.weight = 1.0
         palette_props.weight_10 = 1.0
-        return {"FINISHED"}
+        return {'FINISHED'}
 
 class VIEW3D_PT_weight_palette(PaintPanel, bpy.types.Panel):
     bl_label = "Weight Palette"
@@ -609,7 +609,7 @@ class VIEW3D_PT_weight_palette(PaintPanel, bpy.types.Panel):
 
     def draw(self, context):
         palette_props = bpy.context.scene.palette_props
-        vertex_group_weight = bpy.context.tool_settings.vertex_group_weight
+        #vertex_group_weight = bpy.context.tool_settings.unified_paint_settings.weight
 
         layout = self.layout
         row = layout.row()
@@ -757,7 +757,8 @@ class PaletteProps(bpy.types.PropertyGroup):
             pp.weight_9 = weight
         elif pp.current_weight_index == 10:
             pp.weight_10 = weight
-        bpy.context.tool_settings.vertex_group_weight = weight
+        bpy.context.tool_settings.unified_paint_settings.weight = weight
+        #bpy.context.tool_settings.vertex_group_weight = weight
         return None
 
     palette_name = StringProperty(

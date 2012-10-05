@@ -60,6 +60,7 @@
 #include "DNA_speaker_types.h"
 #include "DNA_world_types.h"
 #include "DNA_gpencil_types.h"
+#include "DNA_mask_types.h"
 
 #include "BKE_key.h"
 #include "BKE_material.h"
@@ -184,6 +185,50 @@ static void nupdate_ak_gpframe(void *node, void *data)
 	ak->modified += 1;
 }
 
+/* ......... */
+
+/* Comparator callback used for ActKeyColumns and GPencil frame */
+static short compare_ak_masklayshape(void *node, void *data)
+{
+	ActKeyColumn *ak = (ActKeyColumn *)node;
+	MaskLayerShape *masklay_shape = (MaskLayerShape *)data;
+
+	if (masklay_shape->frame < ak->cfra)
+		return -1;
+	else if (masklay_shape->frame > ak->cfra)
+		return 1;
+	else
+		return 0;
+}
+
+/* New node callback used for building ActKeyColumns from GPencil frames */
+static DLRBT_Node *nalloc_ak_masklayshape(void *data)
+{
+	ActKeyColumn *ak = MEM_callocN(sizeof(ActKeyColumn), "ActKeyColumnGPF");
+	MaskLayerShape *masklay_shape = (MaskLayerShape *)data;
+
+	/* store settings based on state of BezTriple */
+	ak->cfra = masklay_shape->frame;
+	ak->sel = (masklay_shape->flag & MASK_SHAPE_SELECT) ? SELECT : 0;
+
+	/* set 'modified', since this is used to identify long keyframes */
+	ak->modified = 1;
+
+	return (DLRBT_Node *)ak;
+}
+
+/* Node updater callback used for building ActKeyColumns from GPencil frames */
+static void nupdate_ak_masklayshape(void *node, void *data)
+{
+	ActKeyColumn *ak = (ActKeyColumn *)node;
+	MaskLayerShape *masklay_shape = (MaskLayerShape *)data;
+
+	/* set selection status and 'touched' status */
+	if (masklay_shape->flag & MASK_SHAPE_SELECT) ak->sel = SELECT;
+	ak->modified += 1;
+}
+
+
 /* --------------- */
 
 /* Add the given BezTriple to the given 'list' of Keyframes */
@@ -202,6 +247,15 @@ static void add_gpframe_to_keycolumns_list(DLRBT_Tree *keys, bGPDframe *gpf)
 		return;
 	else
 		BLI_dlrbTree_add(keys, compare_ak_gpframe, nalloc_ak_gpframe, nupdate_ak_gpframe, gpf);
+}
+
+/* Add the given MaskLayerShape Frame to the given 'list' of Keyframes */
+static void add_masklay_to_keycolumns_list(DLRBT_Tree *keys, MaskLayerShape *masklay_shape)
+{
+	if (ELEM(NULL, keys, masklay_shape))
+		return;
+	else
+		BLI_dlrbTree_add(keys, compare_ak_masklayshape, nalloc_ak_masklayshape, nupdate_ak_masklayshape, masklay_shape);
 }
 
 /* ActBeztColumns (Helpers for Long Keyframes) ------------------------------ */
@@ -358,7 +412,7 @@ static void add_bezt_to_keyblocks_list(DLRBT_Tree *blocks, DLRBT_Tree *beztTree,
 	 *	-> firstly, handles must have same central value as each other
 	 *	-> secondly, handles which control that section of the curve must be constant
 	 */
-	if ((!prev) || (!beztn)) return;
+	if (prev == NULL) return;
 	if (IS_EQF(beztn->vec[1][1], prev->vec[1][1]) == 0) return;
 	if (IS_EQF(beztn->vec[1][1], beztn->vec[0][1]) == 0) return;
 	if (IS_EQF(prev->vec[1][1], prev->vec[2][1]) == 0) return;
@@ -619,23 +673,23 @@ static void draw_keylist(View2D *v2d, DLRBT_Tree *keys, DLRBT_Tree *blocks, floa
 	/* draw keys */
 	if (keys) {
 		/* locked channels are less strongly shown, as feedback for locked channels in DopeSheet */
-		// TODO: allow this opacity factor to be themed?
-		float kalpha = (channelLocked) ? 0.35f : 1.0f;
+		/* TODO: allow this opacity factor to be themed? */
+		float kalpha = (channelLocked) ? 0.25f : 1.0f;
 		
 		for (ak = keys->first; ak; ak = ak->next) {
-			/* optimization: if keyframe doesn't appear within 5 units (screenspace) in visible area, don't draw 
+			/* optimization: if keyframe doesn't appear within 5 units (screenspace) in visible area, don't draw
 			 *	- this might give some improvements, since we current have to flip between view/region matrices
 			 */
 			if (IN_RANGE_INCL(ak->cfra, v2d->cur.xmin, v2d->cur.xmax) == 0)
 				continue;
 			
 			/* draw using OpenGL - uglier but faster */
-			// NOTE1: a previous version of this didn't work nice for some intel cards
-			// NOTE2: if we wanted to go back to icons, these are  icon = (ak->sel & SELECT) ? ICON_SPACE2 : ICON_SPACE3;
+			/* NOTE1: a previous version of this didn't work nice for some intel cards
+			 * NOTE2: if we wanted to go back to icons, these are  icon = (ak->sel & SELECT) ? ICON_SPACE2 : ICON_SPACE3; */
 			draw_keyframe_shape(ak->cfra, ypos, xscale, 5.0f, (ak->sel & SELECT), ak->key_type, KEYFRAME_SHAPE_BOTH, kalpha);
-		}	
+		}
 	}
-	
+
 	glDisable(GL_BLEND);
 }
 
@@ -699,6 +753,10 @@ void draw_fcurve_channel(View2D *v2d, AnimData *adt, FCurve *fcu, float ypos)
 {
 	DLRBT_Tree keys, blocks;
 	
+	short locked = (fcu->flag & FCURVE_PROTECTED) ||
+	               ((fcu->grp) && (fcu->grp->flag & AGRP_PROTECTED)) ||
+	               ((adt && adt->action) && (adt->action->id.lib));
+	
 	BLI_dlrbTree_init(&keys);
 	BLI_dlrbTree_init(&blocks);
 	
@@ -707,7 +765,7 @@ void draw_fcurve_channel(View2D *v2d, AnimData *adt, FCurve *fcu, float ypos)
 	BLI_dlrbTree_linkedlist_sync(&keys);
 	BLI_dlrbTree_linkedlist_sync(&blocks);
 	
-	draw_keylist(v2d, &keys, &blocks, ypos, (fcu->flag & FCURVE_PROTECTED));
+	draw_keylist(v2d, &keys, &blocks, ypos, locked);
 	
 	BLI_dlrbTree_free(&keys);
 	BLI_dlrbTree_free(&blocks);
@@ -717,6 +775,9 @@ void draw_agroup_channel(View2D *v2d, AnimData *adt, bActionGroup *agrp, float y
 {
 	DLRBT_Tree keys, blocks;
 	
+	short locked = (agrp->flag & AGRP_PROTECTED) ||
+	               ((adt && adt->action) && (adt->action->id.lib));
+	
 	BLI_dlrbTree_init(&keys);
 	BLI_dlrbTree_init(&blocks);
 	
@@ -725,7 +786,7 @@ void draw_agroup_channel(View2D *v2d, AnimData *adt, bActionGroup *agrp, float y
 	BLI_dlrbTree_linkedlist_sync(&keys);
 	BLI_dlrbTree_linkedlist_sync(&blocks);
 	
-	draw_keylist(v2d, &keys, &blocks, ypos, (agrp->flag & AGRP_PROTECTED));
+	draw_keylist(v2d, &keys, &blocks, ypos, locked);
 	
 	BLI_dlrbTree_free(&keys);
 	BLI_dlrbTree_free(&blocks);
@@ -735,6 +796,8 @@ void draw_action_channel(View2D *v2d, AnimData *adt, bAction *act, float ypos)
 {
 	DLRBT_Tree keys, blocks;
 	
+	short locked = (act && act->id.lib != 0);
+	
 	BLI_dlrbTree_init(&keys);
 	BLI_dlrbTree_init(&blocks);
 	
@@ -743,7 +806,7 @@ void draw_action_channel(View2D *v2d, AnimData *adt, bAction *act, float ypos)
 	BLI_dlrbTree_linkedlist_sync(&keys);
 	BLI_dlrbTree_linkedlist_sync(&blocks);
 	
-	draw_keylist(v2d, &keys, &blocks, ypos, 0);
+	draw_keylist(v2d, &keys, &blocks, ypos, locked);
 	
 	BLI_dlrbTree_free(&keys);
 	BLI_dlrbTree_free(&blocks);
@@ -764,6 +827,21 @@ void draw_gpl_channel(View2D *v2d, bDopeSheet *ads, bGPDlayer *gpl, float ypos)
 	BLI_dlrbTree_free(&keys);
 }
 
+void draw_masklay_channel(View2D *v2d, bDopeSheet *ads, MaskLayer *masklay, float ypos)
+{
+	DLRBT_Tree keys;
+
+	BLI_dlrbTree_init(&keys);
+
+	mask_to_keylist(ads, masklay, &keys);
+
+	BLI_dlrbTree_linkedlist_sync(&keys);
+
+	draw_keylist(v2d, &keys, NULL, ypos, (masklay->flag & MASK_LAYERFLAG_LOCKED));
+
+	BLI_dlrbTree_free(&keys);
+}
+
 /* *************************** Keyframe List Conversions *************************** */
 
 void summary_to_keylist(bAnimContext *ac, DLRBT_Tree *keys, DLRBT_Tree *blocks)
@@ -774,13 +852,33 @@ void summary_to_keylist(bAnimContext *ac, DLRBT_Tree *keys, DLRBT_Tree *blocks)
 		int filter;
 		
 		/* get F-Curves to take keyframes from */
-		filter = ANIMFILTER_DATA_VISIBLE; // curves only
+		filter = ANIMFILTER_DATA_VISIBLE;
 		ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 		
 		/* loop through each F-Curve, grabbing the keyframes */
-		for (ale = anim_data.first; ale; ale = ale->next)
-			fcurve_to_keylist(ale->adt, ale->data, keys, blocks);
-		
+		for (ale = anim_data.first; ale; ale = ale->next) {
+
+			/* Why not use all #eAnim_KeyType here?
+			 * All of the other key types are actually "summaries" themselves, and will just end up duplicating stuff
+			 * that comes up through standard filtering of just F-Curves.
+			 * Given the way that these work, there isn't really any benefit at all from including them. - Aligorith */
+
+			switch (ale->datatype) {
+				case ALE_FCURVE:
+					fcurve_to_keylist(ale->adt, ale->data, keys, blocks);
+					break;
+				case ALE_MASKLAY:
+					mask_to_keylist(ac->ads, ale->data, keys);
+					break;
+				case ALE_GPFRAME:
+					gpl_to_keylist(ac->ads, ale->data, keys);
+					break;
+				default:
+					// printf("%s: datatype %d unhandled\n", __func__, ale->datatype);
+					break;
+			}
+		}
+
 		BLI_freelistN(&anim_data);
 	}
 }
@@ -937,6 +1035,20 @@ void gpl_to_keylist(bDopeSheet *UNUSED(ads), bGPDlayer *gpl, DLRBT_Tree *keys)
 		/* although the frames should already be in an ordered list, they are not suitable for displaying yet */
 		for (gpf = gpl->frames.first; gpf; gpf = gpf->next)
 			add_gpframe_to_keycolumns_list(keys, gpf);
+	}
+}
+
+void mask_to_keylist(bDopeSheet *UNUSED(ads), MaskLayer *masklay, DLRBT_Tree *keys)
+{
+	MaskLayerShape *masklay_shape;
+
+	if (masklay && keys) {
+		for (masklay_shape = masklay->splines_shapes.first;
+		     masklay_shape;
+		     masklay_shape = masklay_shape->next)
+		{
+			add_masklay_to_keycolumns_list(keys, masklay_shape);
+		}
 	}
 }
 

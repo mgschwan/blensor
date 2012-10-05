@@ -71,21 +71,19 @@ SCA_PythonController::SCA_PythonController(SCA_IObject* gameobj, int mode)
 	
 }
 
-/*
+#if 0
 //debugging
-CValue*		SCA_PythonController::AddRef()
+CValue *SCA_PythonController::AddRef()
 {
 	//printf("AddRef refcount = %i\n",GetRefCount());
 	return CValue::AddRef();
 }
-int			SCA_PythonController::Release()
+int SCA_PythonController::Release()
 {
 	//printf("Release refcount = %i\n",GetRefCount());
 	return CValue::Release();
 }
-*/
-
-
+#endif
 
 SCA_PythonController::~SCA_PythonController()
 {
@@ -122,13 +120,14 @@ CValue* SCA_PythonController::GetReplica()
 	if (m_pythondictionary)
 		replica->m_pythondictionary = PyDict_Copy(m_pythondictionary);
 		
-	/*
+#if 0
 	// The other option is to incref the replica->m_pythondictionary -
 	// the replica objects can then share data.
 	if (m_pythondictionary)
 		Py_INCREF(replica->m_pythondictionary);
-	*/
 #endif
+
+#endif /* WITH_PYTHON */
 	
 	// this will copy properties and so on...
 	replica->ProcessReplica();
@@ -180,7 +179,7 @@ int SCA_PythonController::IsTriggered(class SCA_ISensor* sensor)
 #ifdef WITH_PYTHON
 
 /* warning, self is not the SCA_PythonController, its a PyObjectPlus_Proxy */
-PyObject* SCA_PythonController::sPyGetCurrentController(PyObject *self)
+PyObject *SCA_PythonController::sPyGetCurrentController(PyObject *self)
 {
 	if (m_sCurrentController==NULL)
 	{
@@ -209,7 +208,7 @@ SCA_IActuator* SCA_PythonController::LinkedActuatorFromPy(PyObject *value)
 	else if (PyObject_TypeCheck(value, &SCA_IActuator::Type)) {
 		PyObjectPlus *value_plus= BGE_PROXY_REF(value);
 		for (it = lacts.begin(); it!= lacts.end(); ++it) {
-			if ( static_cast<SCA_IActuator*>(value_plus) == (*it) ) {
+			if (static_cast<SCA_IActuator*>(value_plus) == (*it)) {
 				return *it;
 			}
 		}
@@ -272,7 +271,7 @@ void SCA_PythonController::ErrorPrint(const char *error_msg)
 }
 
 bool SCA_PythonController::Compile()
-{	
+{
 	//printf("py script modified '%s'\n", m_scriptName.Ptr());
 	m_bModified= false;
 	
@@ -375,7 +374,7 @@ void SCA_PythonController::Trigger(SCA_LogicManager* logicmgr)
 	m_sCurrentLogicManager = logicmgr;
 	
 	PyObject *excdict=		NULL;
-	PyObject* resultobj=	NULL;
+	PyObject *resultobj=	NULL;
 	
 	switch(m_mode) {
 	case SCA_PYEXEC_SCRIPT:
@@ -448,13 +447,13 @@ void SCA_PythonController::Trigger(SCA_LogicManager* logicmgr)
 		// This doesn't appear to be needed anymore
 		//PyDict_Clear(excdict);
 		Py_DECREF(excdict);
-	}	
+	}
 	
 	m_triggeredSensors.clear();
 	m_sCurrentController = NULL;
 }
 
-PyObject* SCA_PythonController::PyActivate(PyObject *value)
+PyObject *SCA_PythonController::PyActivate(PyObject *value)
 {
 	if (m_sCurrentController != this) {
 		PyErr_SetString(PyExc_SystemError, "Cannot add an actuator from a non-active controller");
@@ -469,7 +468,7 @@ PyObject* SCA_PythonController::PyActivate(PyObject *value)
 	Py_RETURN_NONE;
 }
 
-PyObject* SCA_PythonController::PyDeActivate(PyObject *value)
+PyObject *SCA_PythonController::PyDeActivate(PyObject *value)
 {
 	if (m_sCurrentController != this) {
 		PyErr_SetString(PyExc_SystemError, "Cannot add an actuator from a non-active controller");
@@ -484,7 +483,7 @@ PyObject* SCA_PythonController::PyDeActivate(PyObject *value)
 	Py_RETURN_NONE;
 }
 
-PyObject* SCA_PythonController::pyattr_get_script(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
+PyObject *SCA_PythonController::pyattr_get_script(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
 	//SCA_PythonController* self= static_cast<SCA_PythonController*>(static_cast<SCA_IController*>(static_cast<SCA_ILogicBrick*>(static_cast<CValue*>(static_cast<PyObjectPlus*>(self_v)))));
 	// static_cast<void *>(dynamic_cast<Derived *>(obj)) - static_cast<void *>(obj)
@@ -507,7 +506,7 @@ int SCA_PythonController::pyattr_set_script(void *self_v, const KX_PYATTRIBUTE_D
 	}
 
 	/* set scripttext sets m_bModified to true, 
-		so next time the script is needed, a reparse into byte code is done */
+	 * so next time the script is needed, a reparse into byte code is done */
 	self->SetScriptText(scriptArg);
 		
 	return PY_SET_ATTR_SUCCESS;

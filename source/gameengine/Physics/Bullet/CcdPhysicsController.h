@@ -29,6 +29,7 @@ subject to the following restrictions:
 ///	PHY_IPhysicsController is the abstract simplified Interface to a physical object.
 ///	It contains the IMotionState and IDeformableMesh Interfaces.
 #include "btBulletDynamicsCommon.h"
+#include "BulletDynamics/Character/btKinematicCharacterController.h"
 #include "LinearMath/btTransform.h"
 
 #include "PHY_IMotionState.h"
@@ -170,7 +171,7 @@ public:
 	btVector3				m_halfExtend;
 	btTransform				m_childTrans;
 	btVector3				m_childScale;
-	void*					m_userData;	
+	void*					m_userData;
 	btAlignedObjectArray<btScalar>	m_vertexArray;	// Contains both vertex array for polytope shape and
 											// triangle array for concave mesh shape. Each vertex is 3 consecutive values
 											// In this case a triangle is made of 3 consecutive points
@@ -202,9 +203,7 @@ protected:
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:CcdShapeConstructionInfo"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:CcdShapeConstructionInfo")
 #endif
 };
 
@@ -221,7 +220,8 @@ struct CcdConstructionInfo
 		KinematicFilter = 4,
 		DebrisFilter = 8,
 		SensorFilter = 16,
-		AllFilter = DefaultFilter | StaticFilter | KinematicFilter | DebrisFilter | SensorFilter,
+		CharacterFilter = 32,
+		AllFilter = DefaultFilter | StaticFilter | KinematicFilter | DebrisFilter | SensorFilter | CharacterFilter,
 	};
 
 
@@ -229,6 +229,8 @@ struct CcdConstructionInfo
 	    :m_localInertiaTensor(1.f, 1.f, 1.f),
 		m_gravity(0,0,0),
 		m_scaling(1.f,1.f,1.f),
+		m_linearFactor(0.f, 0.f, 0.f),
+		m_angularFactor(0.f, 0.f, 0.f),
 		m_mass(0.f),
 		m_clamp_vel_min(-1.f),
 		m_clamp_vel_max(-1.f),
@@ -267,6 +269,7 @@ struct CcdConstructionInfo
 		m_bRigid(false),
 		m_bSoft(false),
 		m_bSensor(false),
+		m_bCharacter(false),
 		m_bGimpact(false),
 		m_collisionFilterGroup(DefaultFilter),
 		m_collisionFilterMask(AllFilter),
@@ -291,6 +294,8 @@ struct CcdConstructionInfo
 	btVector3	m_localInertiaTensor;
 	btVector3	m_gravity;
 	btVector3	m_scaling;
+	btVector3	m_linearFactor;
+	btVector3	m_angularFactor;
 	btScalar	m_mass;
 	btScalar	m_clamp_vel_min;  
 	btScalar	m_clamp_vel_max;  
@@ -301,6 +306,10 @@ struct CcdConstructionInfo
 	btScalar	m_margin;
 
 	////////////////////
+	float	m_stepHeight;
+	float	m_jumpSpeed;
+	float	m_fallSpeed;
+	
 	int		m_gamesoftFlag;
 	float	m_soft_linStiff;			/* linear stiffness 0..1 */
 	float	m_soft_angStiff;		/* angular stiffness 0..1 */
@@ -343,6 +352,7 @@ struct CcdConstructionInfo
 	bool		m_bRigid;
 	bool		m_bSoft;
 	bool		m_bSensor;
+	bool		m_bCharacter;
 	bool		m_bGimpact;			// use Gimpact for mesh body
 
 	///optional use of collision group/mask:
@@ -387,10 +397,11 @@ class btCollisionObject;
 class btSoftBody;
 
 ///CcdPhysicsController is a physics object that supports continuous collision detection and time of impact based physics resolution.
-class CcdPhysicsController : public PHY_IPhysicsController	
+class CcdPhysicsController : public PHY_IPhysicsController
 {
 protected:
 	btCollisionObject* m_object;
+	btKinematicCharacterController* m_characterController;
 	
 
 	class PHY_IMotionState*		m_MotionState;
@@ -417,6 +428,7 @@ protected:
 
 	void CreateRigidbody();
 	bool CreateSoftbody();
+	bool CreateCharacterController();
 
 	bool Register()	{ 
 		return (m_registerCount++ == 0) ? true : false;
@@ -453,6 +465,7 @@ protected:
 		btRigidBody* GetRigidBody();
 		btCollisionObject*	GetCollisionObject();
 		btSoftBody* GetSoftBody();
+		btKinematicCharacterController* GetCharacterController();
 
 		CcdShapeConstructionInfo* GetShapeInfo() { return m_shapeInfo; }
 
@@ -615,9 +628,7 @@ protected:
 		}
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:CcdPhysicsController"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:CcdPhysicsController")
 #endif
 };
 
@@ -649,9 +660,7 @@ class	DefaultMotionState : public PHY_IMotionState
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:DefaultMotionState"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:DefaultMotionState")
 #endif
 };
 

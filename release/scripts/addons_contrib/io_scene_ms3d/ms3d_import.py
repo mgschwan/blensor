@@ -25,305 +25,165 @@
 
 # ##### BEGIN COPYRIGHT BLOCK #####
 #
-# initial script copyright (c)2011 Alexander Nussbaumer
+# initial script copyright (c)2011,2012 Alexander Nussbaumer
 #
 # ##### END COPYRIGHT BLOCK #####
 
 
 #import python stuff
 import io
-import math
-import mathutils
-import os
-import sys
-import time
+from math import (
+        radians,
+        )
+from mathutils import (
+        Vector,
+        Euler,
+        Matrix,
+        )
+from os import (
+        path,
+        )
+from sys import (
+        exc_info,
+        float_info,
+        )
+from time import (
+        time,
+        )
 
 
 # To support reload properly, try to access a package var,
 # if it's there, reload everything
-if ("bpy" in locals()):
+if ('bpy' in locals()):
     import imp
-    if "ms3d_spec" in locals():
-        imp.reload(ms3d_spec)
-    if "ms3d_utils" in locals():
-        imp.reload(ms3d_utils)
+    if 'io_scene_ms3d.ms3d_strings' in locals():
+        imp.reload(io_scene_ms3d.ms3d_strings)
+    if 'io_scene_ms3d.ms3d_spec' in locals():
+        imp.reload(io_scene_ms3d.ms3d_spec)
+    if 'io_scene_ms3d.ms3d_utils' in locals():
+        imp.reload(io_scene_ms3d.ms3d_utils)
+    if 'io_scene_ms3d.ms3d_ui' in locals():
+        imp.reload(io_scene_ms3d.ms3d_ui)
     pass
-
 else:
-    from . import ms3d_spec
-    from . import ms3d_utils
+    from io_scene_ms3d.ms3d_strings import (
+            ms3d_str,
+            )
+    from io_scene_ms3d.ms3d_spec import (
+            Ms3dSpec,
+            Ms3dModel,
+            )
+    from io_scene_ms3d.ms3d_utils import (
+            select_all,
+            enable_pose_mode,
+            enable_edit_mode,
+            pre_setup_environment,
+            post_setup_environment,
+            )
+    from io_scene_ms3d.ms3d_ui import (
+            Ms3dUi,
+            )
     pass
 
 
 #import blender stuff
-import bpy
-import bpy_extras.io_utils
-
-from bpy_extras.image_utils import load_image
-from bpy.props import (
-        BoolProperty,
-        EnumProperty,
-        FloatProperty,
-        StringProperty,
+from bpy import (
+        data,
+        ops,
+        )
+import bmesh
+from bpy_extras.image_utils import (
+        load_image,
         )
 
 
 ###############################################################################
-def prop(name):
-    return "ms3d_{0}".format(name)
-
-
-###############################################################################
-def hashStr(obj):
-    return str(hash(obj))
-
-
-PROP_NAME_HASH = "import_hash"
-PROP_NAME_SMOOTH_GROUP = "smoothingGroup{0}"
-
-
-###############################################################################
-_idb_ms3d = 0
-_idb_blender = 1
-_idb_roll = 2
-
-_bone_dummy = 1.0
-_bone_distort = 0.00001 # sys.float_info.epsilon
-
-
-###############################################################################
-# registered entry point import
-class ImportMS3D(
-        bpy.types.Operator,
-        bpy_extras.io_utils.ImportHelper
-        ):
+class Ms3dImporter():
     """ Load a MilkShape3D MS3D File """
+    def __init__(self, options):
+        self.options = options
+        pass
 
-    bl_idname = "io_scene_ms3d.ms3d_import"
-    bl_label = "Import MS3D"
-    bl_description = "Import from a MS3D file format (.ms3d)"
-    bl_options = {'PRESET'}
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-
-    filename_ext = ms3d_utils.FILE_EXT
-    filter_glob = StringProperty(
-            default=ms3d_utils.FILE_FILTER,
-            options={'HIDDEN'}
-            )
-
-    filepath = StringProperty(subtype='FILE_PATH')
-
-    prop_verbose = BoolProperty(
-            name=ms3d_utils.PROP_NAME_VERBOSE,
-            description=ms3d_utils.PROP_DESC_VERBOSE,
-            default=ms3d_utils.PROP_DEFAULT_VERBOSE,
-            options=ms3d_utils.PROP_OPT_VERBOSE,
-            )
-
-    prop_coordinate_system = EnumProperty(
-            name=ms3d_utils.PROP_NAME_COORDINATESYSTEM,
-            description=ms3d_utils.PROP_DESC_COORDINATESYSTEM,
-            items=ms3d_utils.PROP_ITEMS_COORDINATESYSTEM,
-            default=ms3d_utils.PROP_DEFAULT_COORDINATESYSTEM_IMP,
-            options=ms3d_utils.PROP_OPT_COORDINATESYSTEM,
-            )
-
-    prop_scale = FloatProperty(
-            name=ms3d_utils.PROP_NAME_SCALE,
-            description=ms3d_utils.PROP_DESC_SCALE,
-            default=ms3d_utils.PROP_DEFAULT_SCALE,
-            min=ms3d_utils.PROP_MIN_SCALE,
-            max=ms3d_utils.PROP_MAX_SCALE,
-            soft_min=ms3d_utils.PROP_SMIN_SCALE,
-            soft_max=ms3d_utils.PROP_SMAX_SCALE,
-            options=ms3d_utils.PROP_OPT_SCALE,
-            )
-
-    prop_unit_mm = BoolProperty(
-            name=ms3d_utils.PROP_NAME_UNIT_MM,
-            description=ms3d_utils.PROP_DESC_UNIT_MM,
-            default=ms3d_utils.PROP_DEFAULT_UNIT_MM,
-            options=ms3d_utils.PROP_OPT_UNIT_MM,
-            )
-
-    prop_objects = EnumProperty(
-            name=ms3d_utils.PROP_NAME_OBJECTS_IMP,
-            description=ms3d_utils.PROP_DESC_OBJECTS_IMP,
-            items=ms3d_utils.PROP_ITEMS_OBJECTS_IMP,
-            default=ms3d_utils.PROP_DEFAULT_OBJECTS_IMP,
-            options=ms3d_utils.PROP_OPT_OBJECTS_IMP,
-            )
-
-    prop_animation = BoolProperty(
-            name=ms3d_utils.PROP_NAME_ANIMATION,
-            description=ms3d_utils.PROP_DESC_ANIMATION,
-            default=ms3d_utils.PROP_DEFAULT_ANIMATION,
-            options=ms3d_utils.PROP_OPT_ANIMATION,
-            )
-
-    prop_reuse = EnumProperty(
-            name=ms3d_utils.PROP_NAME_REUSE,
-            description=ms3d_utils.PROP_DESC_REUSE,
-            items=ms3d_utils.PROP_ITEMS_REUSE,
-            default=ms3d_utils.PROP_DEFAULT_REUSE,
-            options=ms3d_utils.PROP_OPT_REUSE,
-            )
-
-
-    # draw the option panel
-    def draw(self, context):
-        layout = self.layout
-        ms3d_utils.SetupMenuImport(self, layout)
-
-    # entrypoint for MS3D -> blender
-    def execute(self, blenderContext):
-        """ start executing """
-        return self.ReadMs3d(blenderContext)
-
-    def invoke(self, blenderContext, event):
-        blenderContext.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
-
-    # create empty blender ms3dTemplate
+    ###########################################################################
+    # create empty blender ms3d_model
     # read ms3d file
-    # fill blender with ms3dTemplate content
-    def ReadMs3d(self, blenderContext):
+    # fill blender with ms3d_model content
+    def read(self, blender_context):
         """ read ms3d file and convert ms3d content to bender content """
 
-        t1 = time.time()
+        t1 = time()
         t2 = None
+        self.has_textures = False
 
         try:
             # setup environment
-            ms3d_utils.PreSetupEnvironment(self)
+            pre_setup_environment(self, blender_context)
 
             # create an empty ms3d template
-            ms3dTemplate = ms3d_spec.ms3d_file_t(self.filepath_splitted[1])
+            ms3d_model = Ms3dModel(self.filepath_splitted[1])
 
-            # open ms3d file
-            self.file = io.FileIO(self.properties.filepath, "r")
+            self.file = None
+            try:
+                # open ms3d file
+                self.file = io.FileIO(self.options.filepath, 'rb')
 
-            # read and inject ms3d data disk to blender
-            ms3dTemplate.read(self.file)
+                # read and inject ms3d data from disk to internal structure
+                ms3d_model.read(self.file)
+            finally:
+                # close ms3d file
+                if self.file is not None:
+                    self.file.close()
 
-            # close ms3d file
-            self.file.close()
+            # if option is set, this time will enlargs the io time
+            if self.options.prop_verbose:
+                ms3d_model.print_internal()
 
-            t2 = time.time()
+            t2 = time()
 
-            # inject dictionaries
-            # handle internal ms3d names to external blender names
-            # to prevent potential name collisions on multiple imports
-            # with same names but different content
-            self.dict_actions = {}
-            self.dict_armatures = {}
-            self.dict_armature_objects = {}
-            self.dict_groups = {}
-            self.dict_images = {}
-            self.dict_materials = {}
-            self.dict_meshes = {}
-            self.dict_mesh_objects = {}
-            self.dict_textures = {}
-            self.dict_comment_objects = {}
+            is_valid, statistics = ms3d_model.is_valid()
 
-            # inject ms3d data to blender
-            self.BlenderFromMs3d(blenderContext, ms3dTemplate)
+            if is_valid:
+                # inject ms3d data to blender
+                self.to_blender(blender_context, ms3d_model)
 
-            # finalize/restore environment
-            ms3d_utils.PostSetupEnvironment(self, self.prop_unit_mm)
+                blender_scene = blender_context.scene
 
-        except Exception:
-            type, value, traceback = sys.exc_info()
-            print("ReadMs3d - exception in try block\n  type: '{0}'\n"
-                    "  value: '{1}'".format(type, value, traceback))
-
-            if t2 is None:
-                t2 = time.time()
-
-            raise
-
-        else:
-            pass
-
-        t3 = time.time()
-        print("elapsed time: {0:.4}s (disk io: ~{1:.4}s, converter:"
-                " ~{2:.4}s)".format((t3 - t1), (t2 - t1), (t3 - t2)))
-
-        return {"FINISHED"}
+                # finalize/restore environment
+                if self.options.prop_unit_mm:
+                    # set metrics
+                    blender_scene.unit_settings.system = 'METRIC'
+                    blender_scene.unit_settings.system_rotation = 'DEGREES'
+                    blender_scene.unit_settings.scale_length = 0.001 #1.0mm
+                    blender_scene.unit_settings.use_separate = False
+                    blender_context.tool_settings.normal_size = 1.0 # 1.0mm
 
 
-    ###########################################################################
-    def BlenderFromMs3d(self, blenderContext, ms3dTemplate):
-        isValid, statistics = ms3dTemplate.isValid()
+                    # set all 3D views to texture shaded
+                    # and set up the clipping
+                    if self.has_textures:
+                        viewport_shade = 'TEXTURED'
+                    else:
+                        viewport_shade = 'SOLID'
 
-        if (self.prop_verbose):
-            ms3dTemplate.print_internal()
+                    for screen in blender_context.blend_data.screens:
+                        for area in screen.areas:
+                            if (area.type != 'VIEW_3D'):
+                                continue
 
-        if (isValid):
-            if ms3dTemplate.modelComment is not None:
-                blenderEmpty, setupEmpty = self.GetCommentObject(ms3dTemplate)
-                blenderContext.scene.objects.link(blenderEmpty)
-                if setupEmpty:
-                    blenderEmpty[prop(ms3d_spec.PROP_NAME_COMMENT)] = \
-                            ms3dTemplate.modelComment.comment
+                            for space in area.spaces:
+                                if (space.type != 'VIEW_3D'):
+                                    continue
 
-            if (ms3d_utils.PROP_ITEM_OBJECT_JOINT in self.prop_objects):
-                dict_bones, blenderArmatureObject = self.CreateArmature(
-                        blenderContext, ms3dTemplate)
+                                space.viewport_shade = viewport_shade
+                                #screen.scene.game_settings.material_mode \
+                                #        = 'MULTITEXTURE'
+                                #space.show_textured_solid = True
+                                space.clip_start = 0.1 # 0.1mm
+                                space.clip_end = 1000000.0 # 1km
 
-                if self.prop_animation:
-                    self.CreateAnimation(blenderContext, ms3dTemplate,
-                            dict_bones, blenderArmatureObject)
-                    pass
+                blender_scene.update()
 
-            for ms3dGroupIndex, ms3dGroup in enumerate(ms3dTemplate.groups):
-                blenderMesh = self.CreateMesh(blenderContext, ms3dTemplate,
-                        ms3dGroup, ms3dGroupIndex)
-
-                # apply material if available
-                if ((ms3d_utils.PROP_ITEM_OBJECT_MATERIAL in self.prop_objects)
-                        and (ms3dGroup.materialIndex >= 0)):
-                    blenderMaterial = self.CreateMaterial(blenderContext,
-                            ms3dTemplate, ms3dGroup.materialIndex,
-                            blenderMesh.uv_textures[0])
-                    blenderMesh.materials.append(blenderMaterial)
-
-                # apply smoothing groups
-                if (ms3d_utils.PROP_ITEM_OBJECT_SMOOTHGROUPS in
-                        self.prop_objects):
-                    self.GenerateSmoothGroups(blenderContext, ms3dTemplate,
-                            ms3dGroup, blenderMesh.faces)
-
-                # apply tris to quads
-                if (ms3d_utils.PROP_ITEM_OBJECT_TRI_TO_QUAD in
-                        self.prop_objects):
-                    ms3d_utils.EnableEditMode(True)
-
-                    # remove double vertices
-                    ms3d_utils.SelectAll(True) # mesh
-
-                    # convert tris to quads
-                    if bpy.ops.mesh.tris_convert_to_quads.poll():
-                        bpy.ops.mesh.tris_convert_to_quads()
-
-                    ms3d_utils.EnableEditMode(False)
-
-                self.PostSetupMesh()
-
-            # put all objects to group
-            if (ms3d_utils.PROP_ITEM_OBJECT_GROUP in self.prop_objects):
-                blenderGroup, setupGroup = self.GetGroup(ms3dTemplate)
-                if setupGroup:
-                    for item in self.dict_mesh_objects.values():
-                        blenderGroup.objects.link(item)
-                        item.select = True
-                    for item in self.dict_armature_objects.values():
-                        blenderGroup.objects.link(item)
-                        item.select = True
-                    for item in self.dict_comment_objects.values():
-                        blenderGroup.objects.link(item)
-                        item.select = True
+                post_setup_environment(self, blender_context)
 
             print()
             print("##########################################################")
@@ -331,917 +191,629 @@ class ImportMS3D(
             print(statistics)
             print("##########################################################")
 
+        except Exception:
+            type, value, traceback = exc_info()
+            print("read - exception in try block\n  type: '{0}'\n"
+                    "  value: '{1}'".format(type, value, traceback))
 
-    ###########################################################################
-    def CreateArmature(self, blenderContext, ms3dTemplate):
-        if (ms3dTemplate.nNumJoints <= 0):
-            return None, None
+            if t2 is None:
+                t2 = time()
 
-        blenderScene = blenderContext.scene
+            raise
 
-        blenderArmature, setupArmature = self.GetArmature(ms3dTemplate)
-        if setupArmature:
-            blenderArmature.draw_type = 'STICK'
-            blenderArmature.show_axes = True
-            blenderArmature.use_auto_ik = True
-
-        blenderObject, setupObject = self.GetArmatureObject(ms3dTemplate,
-                blenderArmature)
-        if setupObject:
-            blenderObject.location = blenderContext.scene.cursor_location
-            blenderObject.show_x_ray = True
-            blenderScene.objects.link(blenderObject)
-
-        blenderScene.objects.active = blenderObject
-
-        ms3d_utils.EnableEditMode(True)
-
-        dict_bones = {}
-        for iBone, ms3dJoint in enumerate(ms3dTemplate.joints):
-            blenderBone = blenderArmature.edit_bones.new(ms3dJoint.name)
-            blenderBone[prop(ms3d_spec.PROP_NAME_NAME)] = ms3dJoint.name
-            blenderBone[prop(ms3d_spec.PROP_NAME_FLAGS)] = ms3dJoint.flags
-
-            ms3dComment = ms3dTemplate.get_joint_comment_by_key(iBone)
-            if ms3dComment is not None:
-                blenderBone[prop(ms3d_spec.PROP_NAME_COMMENT)] = \
-                        ms3dComment.comment
-
-            ms3dJointEx = ms3dTemplate.get_joint_ex_by_key(iBone)
-            if ms3dJointEx is not None:
-                blenderBone[prop(ms3d_spec.PROP_NAME_COLOR)] = \
-                        ms3dJointEx.color
-
-            blenderBone.select = True
-            blenderArmature.edit_bones.active = blenderBone
-
-            # [ms3d bone, number of references, blender bone, roll vector]
-            dict_bones[ms3dJoint.name] = [ms3dJoint, blenderBone, None]
-
-            mathVector = mathutils.Vector(ms3dJoint.position)
-            mathVector = mathVector * self.matrixViewport
-
-            if (not ms3dJoint.parentName):
-                blenderBone.head = mathVector
-                matrixRotation = None
-
-                #dummy tail
-                blenderBone.tail = blenderBone.head + mathutils.Vector(
-                        (_bone_dummy, 0.0, 0.0))
-
-            else:
-                boneItem = dict_bones[ms3dJoint.parentName]
-                blenderBoneParent = boneItem[_idb_blender]
-
-                blenderBone.parent = blenderBoneParent
-                if self.prop_animation:
-                    blenderBone.use_inherit_rotation = False
-                    blenderBone.use_inherit_scale = False
-
-                matrixRotation = mathutils.Matrix()
-                for blenderBoneParent in blenderBone.parent_recursive:
-                    key = blenderBoneParent.name
-
-                    # correct rotaion axis
-                    rotationAxis = mathutils.Vector((
-                            -dict_bones[key][_idb_ms3d].rotation[0],
-                            -dict_bones[key][_idb_ms3d].rotation[1],
-                            -dict_bones[key][_idb_ms3d].rotation[2]))
-                    rotationAxis = rotationAxis * self.matrixSwapAxis
-
-                    mathRotation = mathutils.Euler(rotationAxis, 'XZY')
-                    matrixRotation = matrixRotation * mathRotation.to_matrix(
-                            ).to_4x4()
-
-                mathVector = blenderBone.parent.head + (mathVector
-                        * matrixRotation)
-
-                # at some very rare models, bones share the same place.
-                # but blender removes bones that share the same space,
-                # so distort the location a little bit
-                if mathVector ==  blenderBone.parent.head:
-                    mathVector -= mathutils.Vector((_bone_distort, 0.0, 0.0))
-                    print("Info: distort bone in blender: '{0}'".format(blenderBone.name))
-
-                blenderBone.head = mathVector
-
-                # dummy tail
-                blenderBone.tail = blenderBone.head + (
-                        mathutils.Vector((_bone_dummy, 0.0, 0.0))
-                        * self.matrixSwapAxis
-                        * matrixRotation)
-
-            if matrixRotation is not None:
-                mathRollVector = (mathutils.Vector((0.0, 0.0, 1.0))
-                        * matrixRotation)
-                boneItem[_idb_roll] = mathRollVector
-
-        # an adjustment pass
-        # to adjust connection and tails of bones
-        for blenderBone in blenderArmature.edit_bones:
-            # skip if it has no parent
-            if blenderBone.parent is None:
-                continue
-
-            # make nice blunt ending
-            if not blenderBone.children:
-                blenderBone.tail = blenderBone.parent.head
-
-            # skip if parent has more than one children
-            numberChildren = len(blenderBone.children)
-            if (numberChildren == 1):
-                blenderBone.tail = blenderBone.children[0].head
-                blenderBone.children[0].use_connect = True
-
-        # an extra additional adjustment pass
-        # to re-correct possible modified bonerolls
-        for key in dict_bones:
-            boneItem = dict_bones[key]
-            blenderBone = boneItem[_idb_blender]
-            mathRollVector = boneItem[_idb_roll]
-            if mathRollVector is not None:
-                blenderBone.align_roll(mathRollVector)
-
-            # make dict lightweight
-            boneItem[_idb_blender] = boneItem[_idb_blender].name
-            #boneItem[_idb_ms3d] = boneItem[_idb_ms3d]
-            boneItem[_idb_roll] = None
-
-        ms3d_utils.EnableEditMode(False)
-
-        return dict_bones, blenderObject
-
-
-    ###########################################################################
-    def CreateAnimation(self, blenderContext, ms3dTemplate, dict_bones, blenderObject):
-        if (ms3dTemplate.nNumJoints <= 0):
-            return None
-
-        blenderScene = blenderContext.scene
-
-        blenderScene.render.fps = ms3dTemplate.fAnimationFPS
-        if ms3dTemplate.fAnimationFPS:
-            blenderScene.render.fps_base = (blenderScene.render.fps /
-                    ms3dTemplate.fAnimationFPS)
-        blenderScene.frame_start = 1
-        blenderScene.frame_end = (ms3dTemplate.iTotalFrames
-                + blenderScene.frame_start) - 1
-        blenderScene.frame_current = (ms3dTemplate.fCurrentTime
-                * blenderScene.render.fps
-                / blenderScene.render.fps_base)
-
-        blenderAction, setupAction = self.GetAction(ms3dTemplate)
-        if blenderObject.animation_data is None:
-            blenderObject.animation_data_create()
-        blenderObject.animation_data.action = blenderAction
-
-        for boneName in dict_bones:
-            item = dict_bones[boneName]
-            blenderBoneName = item[_idb_blender]
-            ms3dJoint =  item[_idb_ms3d]
-
-            blenderBoneObject = blenderObject.pose.bones.get(blenderBoneName)
-            if blenderBoneObject is None:
-                # no idea why at some models are
-                # bones are missing in blender, but are present in dict
-                print("Info: missing bone in blender: '{0}'".format(blenderBoneName))
-                continue
-
-            blenderBone = blenderObject.data.bones.get(blenderBoneName)
-
-            data_path = blenderBoneObject.path_from_id("location")
-            fcurveTransX = blenderAction.fcurves.new(data_path, index=0)
-            fcurveTransY = blenderAction.fcurves.new(data_path, index=1)
-            fcurveTransZ = blenderAction.fcurves.new(data_path, index=2)
-            for keyFramesTrans in ms3dJoint.keyFramesTrans:
-                frame = (keyFramesTrans.time
-                        * blenderScene.render.fps
-                        / blenderScene.render.fps_base)
-                translationAxis = mathutils.Vector((
-                        keyFramesTrans.position[0],
-                        keyFramesTrans.position[1],
-                        keyFramesTrans.position[2]))
-                translationAxis = translationAxis * self.matrixSwapAxis
-                fcurveTransX.keyframe_points.insert(frame, translationAxis[0])
-                fcurveTransY.keyframe_points.insert(frame, translationAxis[1])
-                fcurveTransZ.keyframe_points.insert(frame, translationAxis[2])
-
-            data_path = blenderBoneObject.path_from_id("rotation_euler")
-            blenderBoneObject.rotation_mode = 'XZY'
-            #data_path = blenderBoneObject.path_from_id("rotation_quaternion")
-            #fcurveRotW = blenderAction.fcurves.new(data_path, index=0)
-            fcurveRotX = blenderAction.fcurves.new(data_path, index=0)
-            fcurveRotY = blenderAction.fcurves.new(data_path, index=1)
-            fcurveRotZ = blenderAction.fcurves.new(data_path, index=2)
-            for keyFramesRot in ms3dJoint.keyFramesRot:
-                frame = (keyFramesRot.time
-                        * blenderScene.render.fps
-                        / blenderScene.render.fps_base)
-                rotationAxis = mathutils.Vector((
-                        -keyFramesRot.rotation[0],
-                        -keyFramesRot.rotation[1],
-                        -keyFramesRot.rotation[2]))
-                rotationAxis = rotationAxis * self.matrixSwapAxis
-                mathRotEuler = mathutils.Euler(rotationAxis, 'XZY')
-
-                fcurveRotX.keyframe_points.insert(frame, mathRotEuler.x)
-                fcurveRotY.keyframe_points.insert(frame, mathRotEuler.y)
-                fcurveRotZ.keyframe_points.insert(frame, mathRotEuler.z)
-
-                #mathRotQuaternion = mathRotEuler.to_quaternion()
-                #fcurveRotW.keyframe_points.insert(frame, mathRotQuaternion.w)
-                #fcurveRotX.keyframe_points.insert(frame, mathRotQuaternion.x)
-                #fcurveRotY.keyframe_points.insert(frame, mathRotQuaternion.y)
-                #fcurveRotZ.keyframe_points.insert(frame, mathRotQuaternion.z)
-
-
-    ###########################################################################
-    def CreateImageTexture(self, ms3dMaterial, alphamap, allow_create=True):
-        blenderImage, setupImage = self.GetImage(ms3dMaterial, alphamap,
-                allow_create=allow_create)
-        if setupImage:
+        else:
             pass
 
-        blenderTexture, setupTexture = self.GetTexture(ms3dMaterial, alphamap,
-                blenderImage, allow_create=allow_create)
-        if setupTexture:
-            blenderTexture.image = blenderImage
+        t3 = time()
+        print(ms3d_str['SUMMARY_IMPORT'].format(
+                (t3 - t1), (t2 - t1), (t3 - t2)))
 
-            if (alphamap):
-                blenderTexture.use_preview_alpha = True
-
-        return blenderTexture
+        return {"FINISHED"}
 
 
     ###########################################################################
-    def CreateMaterial(self, blenderContext, ms3dTemplate, ms3dMaterialIndex,
-            blenderUvLayer):
-        ms3dMaterial = ms3dTemplate.materials[ms3dMaterialIndex]
+    def to_blender(self, blender_context, ms3d_model):
+        blender_mesh_object = self.create_geometry(blender_context, ms3d_model)
+        blender_armature_object = self.create_animation(blender_context, ms3d_model, blender_mesh_object)
 
-        blenderMaterial, setupMaterial = self.GetMaterial(ms3dMaterial)
-        if setupMaterial:
-            blenderMaterial[prop(PROP_NAME_HASH)] = hashStr(ms3dMaterial)
-            blenderMaterial[prop(ms3d_spec.PROP_NAME_MODE)] = ms3dMaterial.mode
-            blenderMaterial[prop(ms3d_spec.PROP_NAME_AMBIENT)] = \
-                    ms3dMaterial.ambient
-            blenderMaterial[prop(ms3d_spec.PROP_NAME_EMISSIVE)] = \
-                    ms3dMaterial.emissive
+        self.organize_objects(blender_context, ms3d_model, [blender_mesh_object, blender_armature_object])
 
-            ms3dComment = \
-                    ms3dTemplate.get_material_comment_by_key(ms3dMaterialIndex)
-            if ms3dComment is not None:
-                blenderMaterial[prop(ms3d_spec.PROP_NAME_COMMENT)] = \
-                        ms3dComment.comment
 
-            blenderMaterial.ambient = ((
-                    (ms3dMaterial.ambient[0]
-                    + ms3dMaterial.ambient[1]
-                    + ms3dMaterial.ambient[2]) / 3.0)
-                    * ms3dMaterial.ambient[3])
+    ###########################################################################
+    def organize_objects(self, blender_context, ms3d_model, blender_objects):
+        ##########################
+        # blender_armature_object to blender_mesh_object
+        # that has bad side effects to the armature
+        # and causes cyclic dependecies
+        ###blender_armature_object.parent = blender_mesh_object
+        ###blender_mesh_object.parent = blender_armature_object
 
-            blenderMaterial.diffuse_color[0] = ms3dMaterial.diffuse[0]
-            blenderMaterial.diffuse_color[1] = ms3dMaterial.diffuse[1]
-            blenderMaterial.diffuse_color[2] = ms3dMaterial.diffuse[2]
-            blenderMaterial.diffuse_intensity = ms3dMaterial.diffuse[3]
+        blender_scene = blender_context.scene
 
-            blenderMaterial.specular_color[0] = ms3dMaterial.specular[0]
-            blenderMaterial.specular_color[1] = ms3dMaterial.specular[1]
-            blenderMaterial.specular_color[2] = ms3dMaterial.specular[2]
-            blenderMaterial.specular_intensity = ms3dMaterial.specular[3]
+        blender_group = blender_context.blend_data.groups.new(ms3d_model.name + ".g")
+        blender_empty_object = blender_context.blend_data.objects.new(ms3d_model.name + ".e", None)
+        blender_empty_object.location = blender_scene.cursor_location
+        blender_scene.objects.link(blender_empty_object)
+        blender_group.objects.link(blender_empty_object)
 
-            blenderMaterial.emit = ((
-                    (ms3dMaterial.emissive[0]
-                    + ms3dMaterial.emissive[1]
-                    + ms3dMaterial.emissive[2]) / 3.0)
-                    * ms3dMaterial.emissive[3])
+        for blender_object in blender_objects:
+            if blender_object is not None:
+                blender_group.objects.link(blender_object)
+                blender_object.parent = blender_empty_object
 
-            blenderMaterial.specular_hardness = ms3dMaterial.shininess * 2.0
 
-            if (ms3dMaterial.transparency):
-                blenderMaterial.use_transparency = True
-                blenderMaterial.alpha = ms3dMaterial.transparency
-                blenderMaterial.specular_alpha = blenderMaterial.alpha
+    ###########################################################################
+    def create_geometry(self, blender_context, ms3d_model):
+        ##########################
+        # blender stuff:
+        # create a blender Mesh
+        blender_mesh = blender_context.blend_data.meshes.new(ms3d_model.name + ".m")
+        blender_mesh.ms3d.name = ms3d_model.name
+        ms3d_comment = ms3d_model.comment_object
+        if ms3d_comment is not None:
+            blender_mesh.ms3d.comment = ms3d_comment.comment
+        ms3d_model_ex = ms3d_model.model_ex_object
+        if ms3d_model_ex is not None:
+            blender_mesh.ms3d.joint_size = ms3d_model_ex.joint_size
+            blender_mesh.ms3d.alpha_ref = ms3d_model_ex.alpha_ref
+            blender_mesh.ms3d.transparency_mode \
+                    = Ms3dUi.transparency_mode_from_ms3d(
+                            ms3d_model_ex.transparency_mode)
 
-            if (blenderMaterial.game_settings):
-                blenderMaterial.game_settings.use_backface_culling = False
-                blenderMaterial.game_settings.alpha_blend = 'ALPHA'
+        ##########################
+        # blender stuff:
+        # link to blender object
+        blender_mesh_object = blender_context.blend_data.objects.new(
+                ms3d_model.name + ".m", blender_mesh)
+
+        ##########################
+        # blender stuff:
+        # create edge split modifire, to make sharp edges visible
+        blender_modifier = blender_mesh_object.modifiers.new(
+                "ms3d_smoothing_groups", type='EDGE_SPLIT')
+        blender_modifier.show_expanded = False
+        blender_modifier.use_edge_angle = False
+        blender_modifier.use_edge_sharp = True
+
+        ##########################
+        # blender stuff:
+        # link to blender scene
+        blender_scene = blender_context.scene
+        blender_scene.objects.link(blender_mesh_object)
+        blender_mesh_object.location = blender_scene.cursor_location
+        enable_edit_mode(False)
+        select_all(False)
+        blender_mesh_object.select = True
+        blender_scene.objects.active = blender_mesh_object
+
+        ##########################
+        # blender stuff:
+        # create all (ms3d) groups
+        ms3d_to_blender_group_index = {}
+        blender_group_manager = blender_mesh.ms3d
+        for ms3d_group_index, ms3d_group in enumerate(ms3d_model.groups):
+            blender_group = blender_group_manager.create_group()
+            blender_group.name = ms3d_group.name
+            blender_group.flags = Ms3dUi.flags_from_ms3d(ms3d_group.flags)
+            blender_group.material_index = ms3d_group.material_index
+
+            ms3d_comment = ms3d_group.comment_object
+            if ms3d_comment is not None:
+                blender_group.comment = ms3d_comment.comment
+
+            # translation dictionary
+            ms3d_to_blender_group_index[ms3d_group_index] = blender_group.id
+
+        ####################################################
+        # begin BMesh stuff
+        #
+
+        ##########################
+        # BMesh stuff:
+        # create an empty BMesh
+        bm = bmesh.new()
+
+        ##########################
+        # BMesh stuff:
+        # create new Layers for custom data per "mesh face"
+        layer_texture = bm.faces.layers.tex.get(
+                ms3d_str['OBJECT_LAYER_TEXTURE'])
+        if layer_texture is None:
+            layer_texture = bm.faces.layers.tex.new(
+                    ms3d_str['OBJECT_LAYER_TEXTURE'])
+
+        layer_smoothing_group = bm.faces.layers.int.get(
+                ms3d_str['OBJECT_LAYER_SMOOTHING_GROUP'])
+        if layer_smoothing_group is None:
+            layer_smoothing_group = bm.faces.layers.int.new(
+                    ms3d_str['OBJECT_LAYER_SMOOTHING_GROUP'])
+
+        layer_group = bm.faces.layers.int.get(
+                ms3d_str['OBJECT_LAYER_GROUP'])
+        if layer_group is None:
+            layer_group = bm.faces.layers.int.new(
+                    ms3d_str['OBJECT_LAYER_GROUP'])
+
+        ##########################
+        # BMesh stuff:
+        # create new Layers for custom data per "face vertex"
+        layer_uv = bm.loops.layers.uv.get(ms3d_str['OBJECT_LAYER_UV'])
+        if layer_uv is None:
+            layer_uv = bm.loops.layers.uv.new(ms3d_str['OBJECT_LAYER_UV'])
+
+        ##########################
+        # BMesh stuff:
+        # create all vertices
+        for ms3d_vertex_index, ms3d_vertex in enumerate(ms3d_model.vertices):
+            bmv = bm.verts.new(
+                    self.matrix_scaled_coordination_system
+                    * Vector(ms3d_vertex.vertex))
+
+        ##########################
+        # blender stuff (uses BMesh stuff):
+        # create all materials / image textures
+        ms3d_to_blender_material = {}
+        for ms3d_material_index, ms3d_material in enumerate(
+                ms3d_model.materials):
+            blender_material = blender_context.blend_data.materials.new(ms3d_material.name)
+
+            # custom datas
+            blender_material.ms3d.name = ms3d_material.name
+            blender_material.ms3d.ambient = ms3d_material.ambient
+            blender_material.ms3d.diffuse = ms3d_material.diffuse
+            blender_material.ms3d.specular = ms3d_material.specular
+            blender_material.ms3d.emissive = ms3d_material.emissive
+            blender_material.ms3d.shininess = ms3d_material.shininess
+            blender_material.ms3d.transparency = ms3d_material.transparency
+            blender_material.ms3d.mode = Ms3dUi.texture_mode_from_ms3d(
+                    ms3d_material.mode)
+
+            if ms3d_material.texture:
+                blender_material.ms3d.texture = ms3d_material.texture
+                self.has_textures = True
+
+            if ms3d_material.alphamap:
+                blender_material.ms3d.alphamap = ms3d_material.alphamap
+
+            ms3d_comment = ms3d_material.comment_object
+            if ms3d_comment is not None:
+                blender_material.ms3d.comment = ms3d_comment.comment
+
+            # blender datas
+            blender_material.ambient = ((
+                    (ms3d_material.ambient[0]
+                    + ms3d_material.ambient[1]
+                    + ms3d_material.ambient[2]) / 3.0)
+                    * ms3d_material.ambient[3])
+
+            blender_material.diffuse_color[0] = ms3d_material.diffuse[0]
+            blender_material.diffuse_color[1] = ms3d_material.diffuse[1]
+            blender_material.diffuse_color[2] = ms3d_material.diffuse[2]
+            blender_material.diffuse_intensity = ms3d_material.diffuse[3]
+
+            blender_material.specular_color[0] = ms3d_material.specular[0]
+            blender_material.specular_color[1] = ms3d_material.specular[1]
+            blender_material.specular_color[2] = ms3d_material.specular[2]
+            blender_material.specular_intensity = ms3d_material.specular[3]
+
+            blender_material.emit = ((
+                    (ms3d_material.emissive[0]
+                    + ms3d_material.emissive[1]
+                    + ms3d_material.emissive[2]) / 3.0)
+                    * ms3d_material.emissive[3])
+
+            blender_material.specular_hardness = ms3d_material.shininess * 2.0
+
+            if (ms3d_material.transparency):
+                blender_material.use_transparency = True
+                blender_material.alpha = ms3d_material.transparency
+                blender_material.specular_alpha = blender_material.alpha
+
+            if (blender_material.game_settings):
+                blender_material.game_settings.use_backface_culling = False
+                blender_material.game_settings.alpha_blend = 'ALPHA'
 
             # diffuse texture
-            if (ms3dMaterial.texture):
-                blenderMaterial[prop(ms3d_spec.PROP_NAME_TEXTURE)] = \
-                        ms3dMaterial.texture
-                blenderTexture = self.CreateImageTexture(ms3dMaterial, False)
-
-                blenderTextureSlot = blenderMaterial.texture_slots.add()
-                blenderTextureSlot.texture = blenderTexture
-                blenderTextureSlot.texture_coords = 'UV'
-                blenderTextureSlot.uv_layer = blenderUvLayer.name
-                blenderTextureSlot.use_map_color_diffuse = True
-                blenderTextureSlot.use_map_alpha = False
-
-                # apply image also to uv's
-                for blenderTextureFace in blenderUvLayer.data:
-                    blenderTextureFace.image = blenderTexture.image
+            if ms3d_material.texture:
+                dir_name_diffuse = self.filepath_splitted[0]
+                file_name_diffuse = path.split(ms3d_material.texture)[1]
+                blender_image_diffuse = load_image(
+                        file_name_diffuse, dir_name_diffuse)
+                blender_texture_diffuse = blender_context.blend_data.textures.new(
+                        name=file_name_diffuse, type='IMAGE')
+                blender_texture_diffuse.image = blender_image_diffuse
+                blender_texture_slot_diffuse \
+                        = blender_material.texture_slots.add()
+                blender_texture_slot_diffuse.texture = blender_texture_diffuse
+                blender_texture_slot_diffuse.texture_coords = 'UV'
+                blender_texture_slot_diffuse.uv_layer = layer_uv.name
+                blender_texture_slot_diffuse.use_map_color_diffuse = True
+                blender_texture_slot_diffuse.use_map_alpha = False
+            else:
+                blender_image_diffuse = None
 
             # alpha texture
-            if (ms3dMaterial.alphamap):
-                blenderMaterial[prop(ms3d_spec.PROP_NAME_ALPHAMAP)] = \
-                        ms3dMaterial.alphamap
-                blenderMaterial.alpha = 0
-                blenderMaterial.specular_alpha = 0
+            if ms3d_material.alphamap:
+                dir_name_alpha = self.filepath_splitted[0]
+                file_name_alpha = path.split(ms3d_material.alphamap)[1]
+                blender_image_alpha = load_image(
+                        file_name_alpha, dir_name_alpha)
+                blender_texture_alpha = blender_context.blend_data.textures.new(
+                        name=file_name_alpha, type='IMAGE')
+                blender_texture_alpha.image = blender_image_alpha
+                blender_texture_slot_alpha \
+                        = blender_material.texture_slots.add()
+                blender_texture_slot_alpha.texture = blender_texture_alpha
+                blender_texture_slot_alpha.texture_coords = 'UV'
+                blender_texture_slot_alpha.uv_layer = layer_uv.name
+                blender_texture_slot_alpha.use_map_color_diffuse = False
+                blender_texture_slot_alpha.use_map_alpha = True
+                blender_texture_slot_alpha.use_rgb_to_intensity = True
+                blender_material.alpha = 0
+                blender_material.specular_alpha = 0
 
-                blenderTexture = self.CreateImageTexture(ms3dMaterial, True)
+            # append blender material to blender mesh, to be linked to
+            blender_mesh.materials.append(blender_material)
 
-                blenderTextureSlot = blenderMaterial.texture_slots.add()
-                blenderTextureSlot.texture = blenderTexture
-                blenderTextureSlot.texture_coords = 'UV'
-                blenderTextureSlot.uv_layer = blenderUvLayer.name
-                blenderTextureSlot.use_map_color_diffuse = False
-                blenderTextureSlot.use_map_alpha = True
-                blenderTextureSlot.use_rgb_to_intensity = True
+            # translation dictionary
+            ms3d_to_blender_material[ms3d_material_index] \
+                    = blender_image_diffuse
 
-        else:
-            if (ms3dMaterial.texture):
-                blenderTexture = self.CreateImageTexture(ms3dMaterial, False,
-                        allow_create=False)
+        ##########################
+        # BMesh stuff:
+        # create all triangles
+        smoothing_group_blender_faces = {}
+        for ms3d_triangle_index, ms3d_triangle in enumerate(
+                ms3d_model.triangles):
+            bmv_list = []
+            for vert_index in ms3d_triangle.vertex_indices:
+                bmv = bm.verts[vert_index]
+                if [[x] for x in bmv_list if x == bmv]:
+                    self.options.report(
+                            {'WARNING', 'INFO'},
+                            ms3d_str['WARNING_IMPORT_SKIP_VERTEX_DOUBLE'].format(
+                                    ms3d_triangle_index))
+                    continue
+                bmv_list.append(bmv)
 
-                # apply image also to uv's
-                if blenderTexture:
-                    for blenderTextureFace in blenderUvLayer.data:
-                        blenderTextureFace.image = blenderTexture.image
+            if len(bmv_list) < 3:
+                self.options.report(
+                        {'WARNING', 'INFO'},
+                        ms3d_str['WARNING_IMPORT_SKIP_LESS_VERTICES'].format(
+                                ms3d_triangle_index))
+                continue
+            bmf = bm.faces.get(bmv_list)
+            if bmf is not None:
+                self.options.report(
+                        {'WARNING', 'INFO'},
+                        ms3d_str['WARNING_IMPORT_SKIP_FACE_DOUBLE'].format(
+                                ms3d_triangle_index))
+                continue
 
-        return blenderMaterial
+            bmf = bm.faces.new(bmv_list)
 
+            # blender uv custom data per "face vertex"
+            bmf.loops[0][layer_uv].uv = Vector(
+                    (ms3d_triangle.s[0], 1.0 - ms3d_triangle.t[0]))
+            bmf.loops[1][layer_uv].uv = Vector(
+                    (ms3d_triangle.s[1], 1.0 - ms3d_triangle.t[1]))
+            bmf.loops[2][layer_uv].uv = Vector(
+                    (ms3d_triangle.s[2], 1.0 - ms3d_triangle.t[2]))
 
-    ###########################################################################
-    def CreateMesh(self, blenderContext, ms3dTemplate, ms3dGroup,
-            ms3dGroupIndex):
-        vertices = []
-        edges = []
-        faces = []
+            # ms3d custom data per "mesh face"
+            bmf[layer_smoothing_group] = ms3d_triangle.smoothing_group
 
-        boneIds = {}
-        dict_vertices = {}
+            blender_group_id = ms3d_to_blender_group_index.get(
+                    ms3d_triangle.group_index)
+            if blender_group_id is not None:
+                bmf[layer_group] = blender_group_id
 
-        for iTriangle in ms3dGroup.triangleIndices:
-            face = []
-            for iVertex in ms3dTemplate.triangles[iTriangle].vertexIndices:
-                iiVertex = dict_vertices.get(iVertex)
-                if iiVertex is None:
-                    # add to ms3d to blender translation dictionary
-                    dict_vertices[iVertex] = iiVertex = len(vertices)
+            if ms3d_triangle.group_index >= 0 \
+                    and ms3d_triangle.group_index < len(ms3d_model.groups):
+                ms3d_material_index \
+                        = ms3d_model.groups[ms3d_triangle.group_index].material_index
+                if ms3d_material_index != Ms3dSpec.NONE_GROUP_MATERIAL_INDEX:
+                    # BMFace.material_index expects...
+                    # index of material in types.Mesh.materials,
+                    # not index of material in blender_context.blend_data.materials!
+                    bmf.material_index = ms3d_material_index
 
-                    # prepare vertices of mesh
-                    ms3dVertex = ms3dTemplate.vertices[iVertex]
-                    mathVector = mathutils.Vector(ms3dVertex.vertex)
-                    mathVector = mathVector * self.matrixViewport
-                    vertices.append(mathVector)
+                    # apply diffuse texture image to face, to be visible in 3d view
+                    bmf[layer_texture].image = ms3d_to_blender_material.get(
+                            ms3d_material_index)
+                else:
+                    # set material index to highes possible index
+                    # - in most cases there is no maretial assigned ;)
+                    bmf.material_index = 32766
+                    pass
 
-                    # prepare boneId dictionary for later use
-                    iBone = boneIds.get(ms3dVertex.boneId)
-                    if iBone is not None:
-                        iBone.append(iiVertex)
+            # helper dictionary for post-processing smoothing_groups
+            smoothing_group_blender_face = smoothing_group_blender_faces.get(
+                    ms3d_triangle.smoothing_group)
+            if smoothing_group_blender_face is None:
+                smoothing_group_blender_face = []
+                smoothing_group_blender_faces[ms3d_triangle.smoothing_group] \
+                        = smoothing_group_blender_face
+            smoothing_group_blender_face.append(bmf)
+
+        ##########################
+        # BMesh stuff:
+        # create all sharp edges for blender to make smoothing_groups visible
+        for ms3d_smoothing_group_index, blender_face_list \
+                in smoothing_group_blender_faces.items():
+            edge_dict = {}
+            for bmf in blender_face_list:
+                bmf.smooth = True
+                for bme in bmf.edges:
+                    if edge_dict.get(bme) is None:
+                        edge_dict[bme] = 0
                     else:
-                        boneIds[ms3dVertex.boneId] = [iiVertex, ]
+                        edge_dict[bme] += 1
+                    bme.seam = (edge_dict[bme] == 0)
+                    bme.smooth = (edge_dict[bme] != 0)
 
-                face.append(iiVertex)
-            faces.append(face)
+        ##########################
+        # BMesh stuff:
+        # finally tranfer BMesh to Mesh
+        bm.to_mesh(blender_mesh)
+        bm.free()
 
-        blenderScene = blenderContext.scene
 
-        blenderMesh, setupMesh = self.GetMesh(ms3dGroup)
+        #
+        # end BMesh stuff
+        ####################################################
 
-        blenderObject, setupObject = self.GetMeshObject(ms3dGroup, blenderMesh)
-        blenderObject.location = blenderScene.cursor_location
-        blenderScene.objects.link(blenderObject)
-        if setupObject:
-            blenderObject[prop(ms3d_spec.PROP_NAME_FLAGS)] = ms3dGroup.flags
-            ms3dComment = ms3dTemplate.get_group_comment_by_key(ms3dGroupIndex)
-            if ms3dComment is not None:
-                blenderObject[prop(ms3d_spec.PROP_NAME_COMMENT)] = \
-                        ms3dComment.comment
-
-        # setup mesh
-        blenderMesh.from_pydata(vertices, edges, faces)
-        if (not edges):
-            blenderMesh.update(calc_edges=True)
-
-        # make new object as active and only selected object
-        ms3d_utils.SelectAll(False) # object
-        blenderObject.select = True
-        bpy.context.scene.objects.active = blenderObject
-
-        # create vertex groups for boneIds
-        for boneId, vertexIndices in boneIds.items():
-            if boneId < 0:
-                continue
-
-            # put selected to vertex_group
-            #n = ms3dTemplate.get_joint_by_key(boneId)
-            n = ms3dTemplate.joints[boneId]
-            blenderBoneIdKey = n.name
-            blenderVertexGroup = \
-                bpy.context.active_object.vertex_groups.new(blenderBoneIdKey)
-
-            for iiVertex in vertexIndices:
-                blenderVertexGroup.add([iiVertex], 1.0, 'REPLACE')
-
-            # add group to armature modifier
-            if (ms3d_utils.PROP_ITEM_OBJECT_JOINT in self.prop_objects):
-                blenderArmatureObject = self.GetArmatureObject(
-                        ms3dTemplate, None)
-                if blenderArmatureObject[0] is not None:
-                    name = ms3dTemplate.get_joint_by_key(boneId).name
-                    blenderBone = blenderArmatureObject[0].data.bones.get(name)
-                    if blenderBone is not None:
-                        blenderModifier = blenderObject.modifiers.new(
-                                name, type='ARMATURE')
-                        blenderModifier.object = blenderArmatureObject[0]
-                        blenderModifier.vertex_group = blenderVertexGroup.name
-
-        # handle UVs
-        # add UVs
-        if ((not blenderMesh.uv_textures)
-                and bpy.ops.mesh.uv_texture_add.poll()):
-            bpy.ops.mesh.uv_texture_add()
-
-        # convert ms3d-ST to blender-UV
-        for i, blenderUv in enumerate(blenderMesh.uv_textures[0].data):
-            blenderUv.uv1[0], blenderUv.uv1[1] = ms3dTemplate.triangles[
-                    ms3dGroup.triangleIndices[i]].s[0], (1.0 -
-                    ms3dTemplate.triangles[ms3dGroup.triangleIndices[i]].t[0])
-            blenderUv.uv2[0], blenderUv.uv2[1] = ms3dTemplate.triangles[
-                    ms3dGroup.triangleIndices[i]].s[1], (1.0 -
-                    ms3dTemplate.triangles[ms3dGroup.triangleIndices[i]].t[1])
-            blenderUv.uv3[0], blenderUv.uv3[1] = ms3dTemplate.triangles[
-                    ms3dGroup.triangleIndices[i]].s[2], (1.0 -
-                    ms3dTemplate.triangles[ms3dGroup.triangleIndices[i]].t[2])
-
-        ms3d_utils.EnableEditMode(False)
-
-        return blenderMesh
-
+        return blender_mesh_object
 
     ###########################################################################
-    def GenerateSmoothGroups(self, blenderContext, ms3dTemplate, ms3dGroup,
-            blenderFaces):
-        """ split faces of a smoothingGroup.
-            it will preserve the UVs and materials.
+    def create_animation(self, blender_context, ms3d_model, blender_mesh_object):
+        ##########################
+        # setup scene
+        blender_scene = blender_context.scene
+        blender_scene.render.fps = ms3d_model.animation_fps
+        if ms3d_model.animation_fps:
+            blender_scene.render.fps_base = (blender_scene.render.fps /
+                    ms3d_model.animation_fps)
 
-            SIDE-EFFECT: it will change the order of faces! """
+        blender_scene.frame_start = 1
+        blender_scene.frame_end = (ms3d_model.number_total_frames
+                + blender_scene.frame_start) - 1
+        blender_scene.frame_current = (ms3d_model.current_time
+                * ms3d_model.animation_fps)
 
-        # smooth mesh to see its smoothed region
-        if bpy.ops.object.shade_smooth.poll():
-            bpy.ops.object.shade_smooth()
-
-        nFaces = len(blenderFaces)
-
-        # collect smoothgroups and its faces
-        smoothGroupFaceIndices = {}
-        for iTriangle, ms3dTriangleIndex in \
-                enumerate(ms3dGroup.triangleIndices):
-            smoothGroupKey = \
-                    ms3dTemplate.triangles[ms3dTriangleIndex].smoothingGroup
-
-            if (smoothGroupKey == 0):
-                continue
-
-            if (smoothGroupKey not in smoothGroupFaceIndices):
-                smoothGroupFaceIndices[smoothGroupKey] = []
-
-            smoothGroupFaceIndices[smoothGroupKey].append(iTriangle)
-
-        nKeys = len(smoothGroupFaceIndices)
-
-        # handle smoothgroups, if more than one is available
-        if (nKeys <= 1):
+        ##########################
+        if not ms3d_model.joints:
             return
 
-        # enable edit-mode
-        ms3d_utils.EnableEditMode(True)
-
-        for smoothGroupKey in smoothGroupFaceIndices:
-            # deselect all "faces"
-            ms3d_utils.SelectAll(False) # mesh
-
-            # enable object-mode (important for face.select = value)
-            ms3d_utils.EnableEditMode(False)
-
-            # select faces of current smoothgroup
-            for faceIndex in smoothGroupFaceIndices[smoothGroupKey]:
-                blenderFaces[faceIndex].select = True
-
-            # enable edit-mode again
-            ms3d_utils.EnableEditMode(True)
-
-            ## split selected faces
-            ## WARNING: it will reorder the faces!
-            ## after that, with that logic, it is impossible to use the
-            ## dictionary for the next outstanding smoothgroups anymore
-            # if bpy.ops.mesh.split.poll():
-            #     bpy.ops.mesh.split()
-
-            # SPLIT WORKAROUND part 1
-            # duplicate selected faces
-            if bpy.ops.mesh.duplicate.poll():
-                bpy.ops.mesh.duplicate()
-
-            # put selected to vertex_group
-            blenderVertexGroup = bpy.context.active_object.vertex_groups.new(
-                    prop(PROP_NAME_SMOOTH_GROUP).format(smoothGroupKey))
-            bpy.context.active_object.vertex_groups.active = blenderVertexGroup
-            if bpy.ops.object.vertex_group_assign.poll():
-                bpy.ops.object.vertex_group_assign()
-
-        ## SPLIT WORKAROUND START part 2
-        # cleanup old faces
-        #
-        ms3d_utils.SelectAll(False) # mesh
-
-        # enable object-mode (important for face.select = value)
-        ms3d_utils.EnableEditMode(False)
-
-        # select all old faces
-        for faceIndex in range(nFaces):
-            blenderFaces[faceIndex].select = True
-            pass
-
-        # enable edit-mode again
-        ms3d_utils.EnableEditMode(True)
-
-        # delete old faces and its vertices
-        if bpy.ops.mesh.delete.poll():
-            bpy.ops.mesh.delete(type='VERT')
-        #
-        ## SPLIT WORKAROUND END part 2
-
-
-        # enable object-mode
-        ms3d_utils.EnableEditMode(False)
-
-        pass
-
-
-    ###########################################################################
-    def PostSetupMesh(self):
-        ms3d_utils.EnableEditMode(True)
-        ms3d_utils.SelectAll(True) # mesh
-        ms3d_utils.EnableEditMode(False)
-
-
-    ###########################################################################
-    def GetAction(self, ms3dObject):
-        nameAction = ms3dObject.name
-
-        # already available
-        blenderAction = self.dict_actions.get(nameAction)
-        if blenderAction is not None:
-            return blenderAction, False
-
-        # create new
-        blenderAction = bpy.data.actions.new(nameAction)
-        self.dict_actions[nameAction] = blenderAction
-        if blenderAction is not None:
-            blenderAction[prop(ms3d_spec.PROP_NAME_NAME)] = nameAction
-        return blenderAction, True
-
-
-    ###########################################################################
-    def GetArmature(self, ms3dObject):
-        nameArmature = ms3dObject.name
-
-        # already available
-        blenderArmature = self.dict_armatures.get(nameArmature)
-        if blenderArmature is not None:
-            return blenderArmature, False
-
-        # create new
-        blenderArmature = bpy.data.armatures.new(nameArmature)
-        self.dict_armatures[nameArmature] = blenderArmature
-        if blenderArmature is not None:
-            blenderArmature[prop(ms3d_spec.PROP_NAME_NAME)] = nameArmature
-        return blenderArmature, True
-
-
-    ###########################################################################
-    def GetArmatureObject(self, ms3dObject, objectData):
-        nameObject = ms3dObject.name
-
-        # already available
-        blenderObject = self.dict_armature_objects.get(nameObject)
-        if blenderObject is not None:
-            return blenderObject, False
-
-        # create new
-        blenderObject = bpy.data.objects.new(nameObject, objectData)
-        self.dict_armature_objects[nameObject] = blenderObject
-        if blenderObject is not None:
-            blenderObject[prop(ms3d_spec.PROP_NAME_NAME)] = nameObject
-        return blenderObject, True
-
-
-    ###########################################################################
-    def GetGroup(self, ms3dObject):
-        nameGroup = ms3dObject.name
-
-        # already available
-        blenderGroup = self.dict_groups.get(nameGroup)
-        if blenderGroup is not None:
-            return blenderGroup, False
-
-        # create new
-        blenderGroup = bpy.data.groups.new(nameGroup)
-        self.dict_groups[nameGroup] = blenderGroup
-        if blenderGroup is not None:
-            blenderGroup[prop(ms3d_spec.PROP_NAME_NAME)] = nameGroup
-        return blenderGroup, True
-
-
-    ###########################################################################
-    def GetImage(self, ms3dMaterial, alphamap, allow_create=True):
-        if alphamap:
-            nameImageRaw = ms3dMaterial.alphamap
-            propName = ms3d_spec.PROP_NAME_ALPHAMAP
-        else:
-            nameImageRaw = ms3dMaterial.texture
-            propName = ms3d_spec.PROP_NAME_TEXTURE
-
-        nameImage = os.path.split(nameImageRaw)[1]
-        nameDirectory = self.filepath_splitted[0]
-
-        # already available
-        blenderImage = self.dict_images.get(nameImage)
-        if blenderImage is not None:
-            return blenderImage, False
-
-        # OPTIONAL: try to find an existing one, that fits
-        if (self.prop_reuse == ms3d_utils.PROP_ITEM_REUSE_MATCH_VALUES):
-            testBlenderImage = bpy.data.images.get(nameImage, None)
-            if (testBlenderImage):
-                # take a closer look to its content
-                if ((not testBlenderImage.library)
-                        and (os.path.split(
-                        testBlenderImage.filepath)[1] == nameImage)):
-                    return testBlenderImage, False
-
-        # elif (self.prop_reuse == ms3d_utils.PROP_ITEM_REUSE_MATCH_HASH):
-        #     # irrespecting its real content
-        #     # take materials, that have the same "ms3d_import_hash"
-        #     # custom property (of an previous import)
-        #     propKey = prop(PROP_NAME_HASH)
-        #     hexHash = hex(hash(nameImage))
-        #     for testBlenderImage in bpy.data.images:
-        #         if ((testBlenderImage) and (not testBlenderImage.library)
-        #                 and (propKey in testBlenderImage)
-        #                 and (testBlenderImage[propKey] == hexHash)):
-        #             return testBlenderImage, False
-
-        if not allow_create:
-            return None, False
-
-        # create new
-        blenderImage = load_image(nameImage, nameDirectory)
-        self.dict_images[nameImage] = blenderImage
-        if blenderImage is not None:
-            blenderImage[prop(ms3d_spec.PROP_NAME_NAME)] = ms3dMaterial.name
-            blenderImage[prop(propName)] = nameImageRaw
-        return blenderImage, True
-
-
-    ###########################################################################
-    def GetTexture(self, ms3dMaterial, alphamap, blenderImage,
-            allow_create=True):
-        if alphamap:
-            nameTextureRaw = ms3dMaterial.alphamap
-            propName = ms3d_spec.PROP_NAME_ALPHAMAP
-        else:
-            nameTextureRaw = ms3dMaterial.texture
-            propName = ms3d_spec.PROP_NAME_TEXTURE
-
-        nameTexture = os.path.split(nameTextureRaw)[1]
-
-        # already available
-        blenderTexture = self.dict_textures.get(nameTexture)
-        if blenderTexture is not None:
-            return blenderTexture, False
-
-        # OPTIONAL: try to find an existing one, that fits
-        if self.prop_reuse == ms3d_utils.PROP_ITEM_REUSE_MATCH_VALUES:
-            testBlenderTexture = bpy.data.textures.get(nameTexture, None)
-            if (testBlenderTexture):
-                # take a closer look to its content
-                if ((not testBlenderTexture.library)
-                        and (testBlenderTexture.type == 'IMAGE')
-                        and (testBlenderTexture.image)
-                        and (blenderImage)
-                        and (testBlenderTexture.image.filepath
-                        == blenderImage.filepath)
-                        ):
-                    return testBlenderTexture, False
-
-        #elif self.prop_reuse == ms3d_utils.PROP_ITEM_REUSE_MATCH_HASH:
-        #    # irrespecting its real content
-        #    # take materials, that have the same "ms3d_import_hash"
-        #    # custom property (of an previous import)
-        #    propKey = prop(PROP_NAME_HASH)
-        #    hexHash = hex(hash(nameTexture))
-        #    for testBlenderTexture in bpy.data.textures:
-        #        if ((testBlenderTexture) and (not testBlenderTexture.library)
-        #                 and (propKey in testBlenderTexture)
-        #                 and (testBlenderTexture[propKey] == hexHash)):
-        #            return testBlenderTexture, False
-
-        if not allow_create:
-            return None, False
-
-        # create new
-        blenderTexture = bpy.data.textures.new(name=nameTexture, type='IMAGE')
-        self.dict_textures[nameTexture] = blenderTexture
-        if blenderTexture is not None:
-            blenderTexture[prop(ms3d_spec.PROP_NAME_NAME)] = ms3dMaterial.name
-            blenderTexture[prop(propName)] = nameTextureRaw
-        return blenderTexture, True
-
-
-    ###########################################################################
-    def GetMaterial(self, ms3dMaterial):
-        nameMaterial = ms3dMaterial.name
-
-        # already available
-        blenderMaterial = self.dict_materials.get(nameMaterial)
-        if blenderMaterial is not None:
-            return blenderMaterial, False
-
-        # OPTIONAL: try to find an existing one, that fits
-        if self.prop_reuse == ms3d_utils.PROP_ITEM_REUSE_MATCH_VALUES:
-            # irrespecting non tested real content
-            # take materials, that have similar values
-            epsilon = 0.00001
-            for testBlenderMaterial in bpy.data.materials:
-                # take a closer look to its content
-                if ((testBlenderMaterial)
-                        and (not testBlenderMaterial.library)
-                        and (epsilon > abs(testBlenderMaterial.ambient - ((
-                            ms3dMaterial.ambient[0] + ms3dMaterial.ambient[1]
-                            + ms3dMaterial.ambient[2]) / 3.0)
-                            * ms3dMaterial.ambient[3]))
-                        and (epsilon > abs(testBlenderMaterial.diffuse_color[0]
-                            - ms3dMaterial.diffuse[0]))
-                        and (epsilon > abs(testBlenderMaterial.diffuse_color[1]
-                            - ms3dMaterial.diffuse[1]))
-                        and (epsilon > abs(testBlenderMaterial.diffuse_color[2]
-                            - ms3dMaterial.diffuse[2]))
-                        and (epsilon > abs(
-                            testBlenderMaterial.diffuse_intensity
-                            - ms3dMaterial.diffuse[3]))
-                        and (epsilon > abs(
-                            testBlenderMaterial.specular_color[0]
-                            - ms3dMaterial.specular[0]))
-                        and (epsilon > abs(
-                            testBlenderMaterial.specular_color[1]
-                            - ms3dMaterial.specular[1]))
-                        and (epsilon > abs(
-                            testBlenderMaterial.specular_color[2]
-                            - ms3dMaterial.specular[2]))
-                        and (epsilon > abs(
-                            testBlenderMaterial.specular_intensity
-                            - ms3dMaterial.specular[3]))
-                        and (epsilon > abs(testBlenderMaterial.emit - ((
-                            ms3dMaterial.emissive[0] + ms3dMaterial.emissive[1]
-                            + ms3dMaterial.emissive[2]) / 3.0)
-                            * ms3dMaterial.emissive[3]))
-                        and (epsilon > abs(
-                            testBlenderMaterial.specular_hardness
-                            - (ms3dMaterial.shininess * 2.0)))
-                        ):
-
-                    # diffuse texture
-                    fitTexture = False
-                    testTexture = False
-                    if (ms3dMaterial.texture):
-                        testTexture = True
-
-                        if (testBlenderMaterial.texture_slots):
-                            nameTexture = os.path.split(ms3dMaterial.texture)[1]
-
-                            for blenderTextureSlot in testBlenderMaterial.texture_slots:
-                                if ((blenderTextureSlot)
-                                        and (blenderTextureSlot.use_map_color_diffuse)
-                                        and (blenderTextureSlot.texture)
-                                        and (blenderTextureSlot.texture.type == 'IMAGE')
-                                        and (
-                                            ((blenderTextureSlot.texture.image)
-                                                and (blenderTextureSlot.texture.image.filepath)
-                                                and (os.path.split(blenderTextureSlot.texture.image.filepath)[1] == nameTexture)
-                                            )
-                                            or
-                                            ((not blenderTextureSlot.texture.image)
-                                                and (blenderTextureSlot.texture.name == nameTexture)
-                                            )
-                                        )):
-                                    fitTexture = True
-                                    break;
-
-                    fitAlpha = False
-                    testAlpha = False
-                    # alpha texture
-                    if (ms3dMaterial.alphamap):
-                        testAlpha = True
-
-                        if (testBlenderMaterial.texture_slots):
-                            nameAlpha = os.path.split(ms3dMaterial.alphamap)[1]
-
-                            for blenderTextureSlot in testBlenderMaterial.texture_slots:
-                                if ((blenderTextureSlot)
-                                        and (blenderTextureSlot.use_map_alpha)
-                                        and (blenderTextureSlot.texture)
-                                        and (blenderTextureSlot.texture.type == 'IMAGE')
-                                        and (
-                                            ((blenderTextureSlot.texture.image)
-                                                and (blenderTextureSlot.texture.image.filepath)
-                                                and (os.path.split(blenderTextureSlot.texture.image.filepath)[1] == nameAlpha)
-                                            )
-                                            or
-                                            ((not blenderTextureSlot.texture.image)
-                                                and (blenderTextureSlot.texture.name == nameAlpha)
-                                                )
-                                        )):
-                                    fitAlpha = True
-                                    break;
-
-                    if (((not testTexture) or (testTexture and fitTexture))
-                            and ((not testAlpha) or (testAlpha and fitAlpha))):
-                        return testBlenderMaterial, False
-
-        # elif self.prop_reuse == ms3d_utils.PROP_ITEM_REUSE_MATCH_HASH:
-        #    # irrespecting its real content
-        #    # take materials, that have the same "ms3d_import_hash"
-        #    # custom property (of an previous import)
-        #    propKey = prop(PROP_NAME_HASH)
-        #    hexHash = hex(hash(ms3dMaterial))
-        #    for testBlenderMaterial in bpy.data.materials:
-        #        if ((testBlenderMaterial) and (not testBlenderMaterial.library)
-        #                and (propKey in testBlenderMaterial)
-        #                and (testBlenderMaterial[propKey] == hexHash)):
-        #            return testBlenderMaterial, False
-
-        # create new
-        blenderMaterial = bpy.data.materials.new(nameMaterial)
-        self.dict_materials[nameMaterial] = blenderMaterial
-        if blenderMaterial is not None:
-            blenderMaterial[prop(ms3d_spec.PROP_NAME_NAME)] = nameMaterial
-        return blenderMaterial, True
-
-
-    ###########################################################################
-    def GetMesh(self, ms3dGroup):
-        nameMesh = ms3dGroup.name
-
-        # already available
-        blenderMesh = self.dict_meshes.get(nameMesh)
-        if blenderMesh is not None:
-            return blenderMesh, False
-
-        # create new
-        blenderMesh = bpy.data.meshes.new(nameMesh)
-        self.dict_meshes[nameMesh] = blenderMesh
-        if blenderMesh is not None:
-            blenderMesh[prop(ms3d_spec.PROP_NAME_NAME)] = nameMesh
-        return blenderMesh, True
-
-
-    ###########################################################################
-    def GetMeshObject(self, ms3dObject, objectData):
-        nameObject = ms3dObject.name
-
-        # already available
-        blenderObject = self.dict_mesh_objects.get(nameObject)
-        if blenderObject is not None:
-            return blenderObject, False
-
-        # create new
-        blenderObject = bpy.data.objects.new(nameObject, objectData)
-        self.dict_mesh_objects[nameObject] = blenderObject
-        if blenderObject is not None:
-            blenderObject[prop(ms3d_spec.PROP_NAME_NAME)] = nameObject
-        return blenderObject, True
-
-
-    ###########################################################################
-    def GetCommentObject(self, ms3dObject):
-        nameObject = ms3dObject.name
-
-        # already available
-        blenderObject = self.dict_comment_objects.get(nameObject)
-        if blenderObject is not None:
-            return blenderObject, False
-
-        # create new
-        blenderObject = bpy.data.objects.new(nameObject, None)
-        self.dict_comment_objects[nameObject] = blenderObject
-        if blenderObject is not None:
-            blenderObject[prop(ms3d_spec.PROP_NAME_NAME)] = nameObject
-        return blenderObject, True
+        ##########################
+        ms3d_armature_name = ms3d_model.name + ".a"
+        ms3d_action_name = ms3d_model.name + ".act"
+
+        ##########################
+        # create new blender_armature_object
+        blender_armature = blender_context.blend_data.armatures.new(ms3d_armature_name)
+        blender_armature.ms3d.name = ms3d_model.name
+        blender_armature.draw_type = 'STICK'
+        blender_armature.show_axes = True
+        blender_armature.use_auto_ik = True
+        blender_armature_object = blender_context.blend_data.objects.new(
+                ms3d_armature_name, blender_armature)
+        blender_scene.objects.link(blender_armature_object)
+        blender_armature_object.location = blender_scene.cursor_location
+        blender_armature_object.show_x_ray = True
+
+        ##########################
+        # prepare for vertex groups
+        ms3d_to_blender_vertex_groups = {}
+        for ms3d_vertex_index, ms3d_vertex in enumerate(ms3d_model.vertices):
+            # prepare for later use for blender vertex group
+            if ms3d_vertex.bone_id != Ms3dSpec.NONE_VERTEX_BONE_ID:
+                blender_vertex_group = ms3d_to_blender_vertex_groups.get(
+                        ms3d_vertex.bone_id)
+                if blender_vertex_group is None:
+                    ms3d_to_blender_vertex_groups[ms3d_vertex.bone_id] \
+                            = blender_vertex_group = []
+                blender_vertex_group.append(ms3d_vertex_index)
+
+        ##########################
+        # blender stuff:
+        # create all vertex groups to be used for bones
+        for ms3d_bone_id, blender_vertex_index_list \
+                in ms3d_to_blender_vertex_groups.items():
+            ms3d_name = ms3d_model.joints[ms3d_bone_id].name
+            blender_vertex_group = blender_mesh_object.vertex_groups.new(
+                    ms3d_name)
+            blender_vertex_group.add(blender_vertex_index_list, 1.0, 'REPLACE')
+
+        blender_modifier = blender_mesh_object.modifiers.new(
+                ms3d_armature_name, type='ARMATURE')
+        blender_modifier.show_expanded = False
+        blender_modifier.use_vertex_groups = True
+        blender_modifier.use_bone_envelopes = False
+        blender_modifier.object = blender_armature_object
+
+        ##########################
+        # prepare joint data for later use
+        ms3d_joint_by_name = {}
+        for ms3d_joint in ms3d_model.joints:
+            item = ms3d_joint_by_name.get(ms3d_joint.name)
+            if item is None:
+                ms3d_joint.__children = []
+                ms3d_joint.__matrix_local = Matrix()
+                ms3d_joint.__matrix_global = Matrix()
+                ms3d_joint_by_name[ms3d_joint.name] = ms3d_joint
+
+            matrix_local = (Matrix.Rotation(ms3d_joint.rotation[2], 4, 'Z')
+                    * Matrix.Rotation(ms3d_joint.rotation[1], 4, 'Y')
+                    ) * Matrix.Rotation(ms3d_joint.rotation[0], 4, 'X')
+            matrix_local = Matrix.Translation(Vector(ms3d_joint.position)
+                    ) * matrix_local
+
+            ms3d_joint.__matrix_local = matrix_local
+            ms3d_joint.__matrix_global = matrix_local
+
+            if ms3d_joint.parent_name:
+                ms3d_joint_parent = ms3d_joint_by_name.get(
+                        ms3d_joint.parent_name)
+                if ms3d_joint_parent is not None:
+                    ms3d_joint_parent.__children.append(ms3d_joint)
+
+                    matrix_global = ms3d_joint_parent.__matrix_global \
+                            * matrix_local
+                    ms3d_joint.__matrix_global = matrix_global
+
+        ##########################
+        # ms3d_joint to blender_edit_bone
+        blender_scene.objects.active = blender_armature_object
+        enable_edit_mode(True)
+        for ms3d_joint in ms3d_model.joints:
+            blender_edit_bone = blender_armature.edit_bones.new(ms3d_joint.name)
+            blender_edit_bone.use_connect = False
+            blender_edit_bone.use_inherit_rotation = True
+            blender_edit_bone.use_inherit_scale = True
+            blender_edit_bone.use_local_location = True
+            blender_armature.edit_bones.active = blender_edit_bone
+
+            ms3d_joint = ms3d_joint_by_name[ms3d_joint.name]
+            ms3d_joint_vector = ms3d_joint.__matrix_global * Vector()
+
+            blender_edit_bone.head \
+                    = self.matrix_scaled_coordination_system \
+                    * ms3d_joint_vector
+
+            number_children = len(ms3d_joint.__children)
+            if number_children > 0:
+                vector_midpoint = Vector()
+                for item_child in ms3d_joint.__children:
+                    ms3d_joint_child_vector \
+                            = ms3d_joint_by_name[item_child.name].__matrix_global \
+                            * Vector()
+                    vector_midpoint += ms3d_joint_child_vector \
+                            - ms3d_joint_vector
+                vector_midpoint /= number_children
+                vector_midpoint.normalize()
+                blender_edit_bone.tail = blender_edit_bone.head \
+                        + self.matrix_scaled_coordination_system \
+                        * vector_midpoint
+            else:
+                vector_tail_end = Vector()
+                if ms3d_joint.parent_name:
+                    ms3d_joint_parent_vector \
+                            = ms3d_joint_by_name[ms3d_joint.parent_name].__matrix_global \
+                            * Vector()
+                    vector_tail_end = ms3d_joint_vector \
+                            - ms3d_joint_parent_vector
+                else:
+                    #dummy tail
+                    vector_tail_end = ms3d_joint.__matrix_global * Vector()
+                vector_tail_end.normalize()
+                blender_edit_bone.tail = blender_edit_bone.head \
+                        + self.matrix_scaled_coordination_system * vector_tail_end
+
+            if ms3d_joint.parent_name:
+                ms3d_joint_parent = ms3d_joint_by_name[ms3d_joint.parent_name]
+                blender_edit_bone_parent = ms3d_joint_parent.blender_edit_bone
+                blender_edit_bone.parent = blender_edit_bone_parent
+
+            ms3d_joint.blender_bone_name = blender_edit_bone.name
+            ms3d_joint.blender_edit_bone = blender_edit_bone
+        enable_edit_mode(False)
+
+        ##########################
+        # post process bones
+        enable_edit_mode(True)
+        select_all(True)
+        if ops.armature.calculate_roll.poll():
+            ops.armature.calculate_roll(type='Y')
+        select_all(False)
+        enable_edit_mode(False)
+
+        ##########################
+        # post process bones
+        enable_edit_mode(False)
+        for ms3d_joint_name, ms3d_joint in ms3d_joint_by_name.items():
+            blender_bone = blender_armature.bones.get(
+                    ms3d_joint.blender_bone_name)
+            if blender_bone is None:
+                continue
+
+            blender_bone.ms3d.name = ms3d_joint.name
+            blender_bone.ms3d.flags = Ms3dUi.flags_from_ms3d(ms3d_joint.flags)
+
+            ms3d_joint_ex = ms3d_joint.joint_ex_object
+            if ms3d_joint_ex is not None:
+                blender_bone.ms3d.color = ms3d_joint_ex.color
+
+            ms3d_comment = ms3d_joint.comment_object
+            if ms3d_comment is not None:
+                blender_bone.ms3d.comment = ms3d_comment.comment
+
+        ##########################
+        if not self.options.prop_animation:
+            return blender_armature_object
+
+
+        ##########################
+        # process pose bones
+        enable_pose_mode(True)
+
+        blender_action = blender_context.blend_data.actions.new(ms3d_action_name)
+        if blender_armature_object.animation_data is None:
+            blender_armature_object.animation_data_create()
+        blender_armature_object.animation_data.action = blender_action
+
+        ##########################
+        # this part is not correct implemented !
+        # currently i have absolute no idea how to fix.
+        # maybe somebody else can fix it.
+        for ms3d_joint_name, ms3d_joint  in ms3d_joint_by_name.items():
+            blender_pose_bone = blender_armature_object.pose.bones.get(
+                    ms3d_joint.blender_bone_name)
+            if blender_pose_bone is None:
+                continue
+            ms3d_joint_local_matrix = ms3d_joint.__matrix_local
+            ms3d_joint_global_matrix = ms3d_joint.__matrix_global
+
+            data_path = blender_pose_bone.path_from_id('location')
+            fcurve_location_x = blender_action.fcurves.new(data_path, index=0)
+            fcurve_location_y = blender_action.fcurves.new(data_path, index=1)
+            fcurve_location_z = blender_action.fcurves.new(data_path, index=2)
+            for translation_key_frames in ms3d_joint.translation_key_frames:
+                frame = (translation_key_frames.time * ms3d_model.animation_fps)
+                matrix_local = Matrix.Translation(
+                        Vector(translation_key_frames.position))
+                v = (matrix_local) * Vector()
+                fcurve_location_x.keyframe_points.insert(frame, v[0])
+                fcurve_location_y.keyframe_points.insert(frame, v[1])
+                fcurve_location_z.keyframe_points.insert(frame, v[2])
+
+            blender_pose_bone.rotation_mode = 'QUATERNION'
+            data_path = blender_pose_bone.path_from_id("rotation_quaternion")
+            fcurve_rotation_w = blender_action.fcurves.new(data_path, index=0)
+            fcurve_rotation_x = blender_action.fcurves.new(data_path, index=1)
+            fcurve_rotation_y = blender_action.fcurves.new(data_path, index=2)
+            fcurve_rotation_z = blender_action.fcurves.new(data_path, index=3)
+            for rotation_key_frames in ms3d_joint.rotation_key_frames:
+                frame = (rotation_key_frames.time * ms3d_model.animation_fps)
+                matrix_local = (Matrix.Rotation(
+                        rotation_key_frames.rotation[2], 4, 'Z')
+                        * Matrix.Rotation(
+                                rotation_key_frames.rotation[1],
+                                4,
+                                'Y')) \
+                                * Matrix.Rotation(
+                                        rotation_key_frames.rotation[0],
+                                        4,
+                                        'X')
+                q = (matrix_local).to_quaternion()
+                fcurve_rotation_w.keyframe_points.insert(frame, q.w)
+                fcurve_rotation_x.keyframe_points.insert(frame, q.x)
+                fcurve_rotation_y.keyframe_points.insert(frame, q.y)
+                fcurve_rotation_z.keyframe_points.insert(frame, q.z)
+
+        enable_pose_mode(False)
+
+        return blender_armature_object
 
 
 ###############################################################################

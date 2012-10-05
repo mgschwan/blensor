@@ -45,7 +45,8 @@ EnumPropertyItem region_type_items[] = {
 	{RGN_TYPE_TOOLS, "TOOLS", 0, "Tools", ""},
 	{RGN_TYPE_TOOL_PROPS, "TOOL_PROPS", 0, "Tool Properties", ""},
 	{RGN_TYPE_PREVIEW, "PREVIEW", 0, "Preview", ""},
-	{0, NULL, 0, NULL, NULL}};
+	{0, NULL, 0, NULL, NULL}
+};
 
 #include "ED_screen.h"
 
@@ -56,9 +57,11 @@ EnumPropertyItem region_type_items[] = {
 
 #include "BKE_global.h"
 
+#include "UI_view2d.h"
+
 static void rna_Screen_scene_set(PointerRNA *ptr, PointerRNA value)
 {
-	bScreen *sc = (bScreen*)ptr->data;
+	bScreen *sc = (bScreen *)ptr->data;
 
 	if (value.data == NULL)
 		return;
@@ -68,12 +71,12 @@ static void rna_Screen_scene_set(PointerRNA *ptr, PointerRNA value)
 
 static void rna_Screen_scene_update(bContext *C, PointerRNA *ptr)
 {
-	bScreen *sc = (bScreen*)ptr->data;
+	bScreen *sc = (bScreen *)ptr->data;
 
 	/* exception: must use context so notifier gets to the right window  */
 	if (sc->newscene) {
 		ED_screen_set_scene(C, sc, sc->newscene);
-		WM_event_add_notifier(C, NC_SCENE|ND_SCENEBROWSE, sc->newscene);
+		WM_event_add_notifier(C, NC_SCENE | ND_SCENEBROWSE, sc->newscene);
 
 		if (G.debug & G_DEBUG)
 			printf("scene set %p\n", sc->newscene);
@@ -93,19 +96,18 @@ static void rna_Screen_redraw_update(Main *UNUSED(bmain), Scene *UNUSED(scene), 
 
 static int rna_Screen_is_animation_playing_get(PointerRNA *ptr)
 {
-	bScreen *sc = (bScreen*)ptr->data;
-	return (sc->animtimer != NULL);
+	return (ED_screen_animation_playing(G.main->wm.first) != NULL);
 }
 
 static int rna_Screen_fullscreen_get(PointerRNA *ptr)
 {
-	bScreen *sc = (bScreen*)ptr->data;
+	bScreen *sc = (bScreen *)ptr->data;
 	return (sc->full != 0);
 }
 
 static void rna_Area_type_set(PointerRNA *ptr, int value)
 {
-	ScrArea *sa = (ScrArea*)ptr->data;
+	ScrArea *sa = (ScrArea *)ptr->data;
 	sa->butspacetype = value;
 }
 
@@ -113,12 +115,12 @@ static void rna_Area_type_update(bContext *C, PointerRNA *ptr)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmWindow *win;
-	bScreen *sc = (bScreen*)ptr->id.data;
-	ScrArea *sa = (ScrArea*)ptr->data;
+	bScreen *sc = (bScreen *)ptr->id.data;
+	ScrArea *sa = (ScrArea *)ptr->data;
 
 	/* XXX this call still use context, so we trick it to work in the right context */
-	for(win=wm->windows.first; win; win=win->next) {
-		if(sc == win->screen) {
+	for (win = wm->windows.first; win; win = win->next) {
+		if (sc == win->screen) {
 			wmWindow *prevwin = CTX_wm_window(C);
 			ScrArea *prevsa = CTX_wm_area(C);
 			ARegion *prevar = CTX_wm_region(C);
@@ -136,6 +138,19 @@ static void rna_Area_type_update(bContext *C, PointerRNA *ptr)
 			break;
 		}
 	}
+}
+
+static void rna_View2D_region_to_view(struct View2D *v2d, int x, int y, float result[2])
+{
+	UI_view2d_region_to_view(v2d, x, y, &result[0], &result[1]);
+}
+
+static void rna_View2D_view_to_region(struct View2D *v2d, float x, float y, int clip, int result[2])
+{
+	if (clip)
+		UI_view2d_view_to_region(v2d, x, y, &result[0], &result[1]);
+	else
+		UI_view2d_to_region_no_clip(v2d, x, y, &result[0], &result[1]);
 }
 
 #else
@@ -193,6 +208,16 @@ static void rna_def_area(BlenderRNA *brna)
 	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
 	RNA_def_property_update(prop, 0, "rna_Area_type_update");
 
+	prop = RNA_def_property(srna, "x", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "totrct.xmin");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "X Position", "The window relative vertical location of the area");
+
+	prop = RNA_def_property(srna, "y", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "totrct.ymin");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Y Position", "The window relative horizontal location of the area");
+
 	prop = RNA_def_property(srna, "width", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_int_sdna(prop, NULL, "winx");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
@@ -208,6 +233,50 @@ static void rna_def_area(BlenderRNA *brna)
 	func = RNA_def_function(srna, "header_text_set", "ED_area_headerprint");
 	RNA_def_function_ui_description(func, "Set the header text");
 	RNA_def_string(func, "text", NULL, 0, "Text", "New string for the header, no argument clears the text");
+}
+
+static void rna_def_view2d_api(StructRNA *srna)
+{
+	FunctionRNA *func;
+	PropertyRNA *parm;
+	
+	static const float view_default[2] = {0.0f, 0.0f};
+	static const int region_default[2] = {0.0f, 0.0f};
+	
+	func = RNA_def_function(srna, "region_to_view", "rna_View2D_region_to_view");
+	RNA_def_function_ui_description(func, "Transform region coordinates to 2D view");
+	parm = RNA_def_int(func, "x", 0, INT_MIN, INT_MAX, "x", "Region x coordinate", -10000, 10000);
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_int(func, "y", 0, INT_MIN, INT_MAX, "y", "Region y coordinate", -10000, 10000);
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_float_array(func, "result", 2, view_default, -FLT_MAX, FLT_MAX, "Result", "View coordinates", -10000.0f, 10000.0f);
+	RNA_def_property_flag(parm, PROP_THICK_WRAP);
+	RNA_def_function_output(func, parm);
+
+	func = RNA_def_function(srna, "view_to_region", "rna_View2D_view_to_region");
+	RNA_def_function_ui_description(func, "Transform 2D view coordinates to region");
+	parm = RNA_def_float(func, "x", 0.0f, -FLT_MAX, FLT_MAX, "x", "2D View x coordinate", -10000.0f, 10000.0f);
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_float(func, "y", 0.0f, -FLT_MAX, FLT_MAX, "y", "2D View y coordinate", -10000.0f, 10000.0f);
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_boolean(func, "clip", 1, "Clip", "Clip coordinates to the visible region");
+	parm = RNA_def_int_array(func, "result", 2, region_default, INT_MIN, INT_MAX, "Result", "Region coordinates", -10000, 10000);
+	RNA_def_property_flag(parm, PROP_THICK_WRAP);
+	RNA_def_function_output(func, parm);
+}
+
+static void rna_def_view2d(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	/* PropertyRNA *prop; */
+
+	srna = RNA_def_struct(brna, "View2D", NULL);
+	RNA_def_struct_ui_text(srna, "View2D", "Scroll and zoom for a 2D region");
+	RNA_def_struct_sdna(srna, "View2D");
+	
+	/* TODO more View2D properties could be exposed here (read-only) */
+	
+	rna_def_view2d_api(srna);
 }
 
 static void rna_def_region(BlenderRNA *brna)
@@ -230,6 +299,16 @@ static void rna_def_region(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Region Type", "Type of this region");
 
+	prop = RNA_def_property(srna, "x", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "winrct.xmin");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "X Position", "The window relative vertical location of the region");
+
+	prop = RNA_def_property(srna, "y", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "winrct.ymin");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Y Position", "The window relative horizontal location of the region");
+
 	prop = RNA_def_property(srna, "width", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_int_sdna(prop, NULL, "winx");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
@@ -239,6 +318,12 @@ static void rna_def_region(BlenderRNA *brna)
 	RNA_def_property_int_sdna(prop, NULL, "winy");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Height", "Region height");
+
+	prop = RNA_def_property(srna, "view2d", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "v2d");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_flag(prop, PROP_NEVER_NULL);
+	RNA_def_property_ui_text(prop, "View2D", "2D view of the region");
 
 	RNA_def_function(srna, "tag_redraw", "ED_region_tag_redraw");
 }
@@ -255,7 +340,7 @@ static void rna_def_screen(BlenderRNA *brna)
 
 	/* pointers */
 	prop = RNA_def_property(srna, "scene", PROP_POINTER, PROP_NONE);
-	RNA_def_property_flag(prop, PROP_EDITABLE|PROP_NEVER_NULL);
+	RNA_def_property_flag(prop, PROP_EDITABLE | PROP_NEVER_NULL);
 	RNA_def_property_pointer_funcs(prop, NULL, "rna_Screen_scene_set", NULL, NULL);
 	RNA_def_property_ui_text(prop, "Scene", "Active scene to be edited in the screen");
 	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
@@ -276,48 +361,48 @@ static void rna_def_screen(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "show_fullscreen", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_boolean_funcs(prop, "rna_Screen_fullscreen_get", NULL);
-	RNA_def_property_ui_text(prop, "Fullscreen", "An area is maximised, filling this screen");
+	RNA_def_property_ui_text(prop, "Fullscreen", "An area is maximized, filling this screen");
 
 	/* Define Anim Playback Areas */
 	prop = RNA_def_property(srna, "use_play_top_left_3d_editor", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_REGION);
 	RNA_def_property_ui_text(prop, "Top-Left 3D Editor", "");
-	RNA_def_property_update(prop, NC_SPACE|ND_SPACE_TIME, "rna_Screen_redraw_update");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 
 	prop = RNA_def_property(srna, "use_play_3d_editors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_ALL_3D_WIN);
 	RNA_def_property_ui_text(prop, "All 3D View Editors", "");
-	RNA_def_property_update(prop, NC_SPACE|ND_SPACE_TIME, "rna_Screen_redraw_update");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 
 	prop = RNA_def_property(srna, "use_play_animation_editors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_ALL_ANIM_WIN);
 	RNA_def_property_ui_text(prop, "Animation Editors", "");
-	RNA_def_property_update(prop, NC_SPACE|ND_SPACE_TIME, "rna_Screen_redraw_update");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 
 	prop = RNA_def_property(srna, "use_play_properties_editors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_ALL_BUTS_WIN);
 	RNA_def_property_ui_text(prop, "Property Editors", "");
-	RNA_def_property_update(prop, NC_SPACE|ND_SPACE_TIME, "rna_Screen_redraw_update");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 
 	prop = RNA_def_property(srna, "use_play_image_editors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_ALL_IMAGE_WIN);
 	RNA_def_property_ui_text(prop, "Image Editors", "");
-	RNA_def_property_update(prop, NC_SPACE|ND_SPACE_TIME, "rna_Screen_redraw_update");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 
 	prop = RNA_def_property(srna, "use_play_sequence_editors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_SEQ);
 	RNA_def_property_ui_text(prop, "Sequencer Editors", "");
-	RNA_def_property_update(prop, NC_SPACE|ND_SPACE_TIME, "rna_Screen_redraw_update");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 
 	prop = RNA_def_property(srna, "use_play_node_editors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_NODES);
 	RNA_def_property_ui_text(prop, "Node Editors", "");
-	RNA_def_property_update(prop, NC_SPACE|ND_SPACE_TIME, "rna_Screen_redraw_update");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 
 	prop = RNA_def_property(srna, "use_play_clip_editors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_CLIPS);
 	RNA_def_property_ui_text(prop, "Clip Editors", "");
-	RNA_def_property_update(prop, NC_SPACE|ND_SPACE_TIME, "rna_Screen_redraw_update");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 }
 
 void RNA_def_screen(BlenderRNA *brna)
@@ -325,6 +410,7 @@ void RNA_def_screen(BlenderRNA *brna)
 	rna_def_screen(brna);
 	rna_def_area(brna);
 	rna_def_region(brna);
+	rna_def_view2d(brna);
 }
 
 #endif

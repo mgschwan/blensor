@@ -29,18 +29,18 @@
  *  \ingroup edtransform
  */
 
-
 #include <string.h>
 #include <math.h>
 
 #include "MEM_guardedalloc.h"
 
-#include "BLO_sys_types.h" // for intptr_t support
+#include "BLO_sys_types.h" /* for intptr_t support */
 
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_screen_types.h"
+#include "DNA_sequence_types.h"
 #include "DNA_space_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
@@ -49,6 +49,7 @@
 #include "DNA_view3d_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_movieclip_types.h"
+#include "DNA_mask_types.h"
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
@@ -57,14 +58,8 @@
 
 #include "RNA_access.h"
 
-//#include "BIF_screen.h"
-//#include "BIF_mywindow.h"
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
-//#include "BIF_editmesh.h"
-//#include "BIF_editsima.h"
-//#include "BIF_editparticle.h"
-//#include "BIF_meshtools.h"
 
 #include "BKE_animsys.h"
 #include "BKE_action.h"
@@ -77,8 +72,10 @@
 #include "BKE_mesh.h"
 #include "BKE_nla.h"
 #include "BKE_context.h"
+#include "BKE_sequencer.h"
 #include "BKE_tessmesh.h"
 #include "BKE_tracking.h"
+#include "BKE_mask.h"
 
 #include "ED_anim_api.h"
 #include "ED_armature.h"
@@ -93,17 +90,12 @@
 #include "ED_view3d.h"
 #include "ED_curve.h" /* for curve_editnurbs */
 #include "ED_clip.h"
-
-//#include "BDR_unwrapper.h"
+#include "ED_screen.h"
 
 #include "WM_types.h"
 #include "WM_api.h"
 
 #include "UI_resources.h"
-
-//#include "blendef.h"
-//
-//#include "mydevice.h"
 
 #include "transform.h"
 
@@ -138,13 +130,13 @@ void getViewVector(TransInfo *t, float coord[3], float vec[3])
 
 static void clipMirrorModifier(TransInfo *t, Object *ob)
 {
-	ModifierData *md= ob->modifiers.first;
+	ModifierData *md = ob->modifiers.first;
 	float tolerance[3] = {0.0f, 0.0f, 0.0f};
 	int axis = 0;
 	
-	for (; md; md=md->next) {
-		if ((md->type==eModifierType_Mirror) && (md->mode & eModifierMode_Realtime)) {
-			MirrorModifierData *mmd = (MirrorModifierData*) md;
+	for (; md; md = md->next) {
+		if ((md->type == eModifierType_Mirror) && (md->mode & eModifierMode_Realtime)) {
+			MirrorModifierData *mmd = (MirrorModifierData *) md;
 			
 			if (mmd->flag & MOD_MIR_CLIPPING) {
 				axis = 0;
@@ -173,13 +165,13 @@ static void clipMirrorModifier(TransInfo *t, Object *ob)
 						invert_m4_m4(imtx, mtx);
 					}
 					
-					for (i = 0 ; i < t->total; i++, td++) {
+					for (i = 0; i < t->total; i++, td++) {
 						int clip;
 						float loc[3], iloc[3];
 						
 						if (td->flag & TD_NOACTION)
 							break;
-						if (td->loc==NULL)
+						if (td->loc == NULL)
 							break;
 						
 						if (td->flag & TD_SKIP)
@@ -195,27 +187,27 @@ static void clipMirrorModifier(TransInfo *t, Object *ob)
 						
 						clip = 0;
 						if (axis & 1) {
-							if (fabsf(iloc[0])<=tolerance[0] ||
-							   loc[0]*iloc[0]<0.0f)
+							if (fabsf(iloc[0]) <= tolerance[0] ||
+							    loc[0] * iloc[0] < 0.0f)
 							{
-								loc[0]= 0.0f;
+								loc[0] = 0.0f;
 								clip = 1;
 							}
 						}
 						
 						if (axis & 2) {
 							if (fabsf(iloc[1]) <= tolerance[1] ||
-							   loc[1] * iloc[1]<0.0f)
+							    loc[1] * iloc[1] < 0.0f)
 							{
-								loc[1]= 0.0f;
+								loc[1] = 0.0f;
 								clip = 1;
 							}
 						}
 						if (axis & 4) {
 							if (fabsf(iloc[2]) <= tolerance[2] ||
-							   loc[2] * iloc[2] < 0.0f)
+							    loc[2] * iloc[2] < 0.0f)
 							{
-								loc[2]= 0.0f;
+								loc[2] = 0.0f;
 								clip = 1;
 							}
 						}
@@ -240,19 +232,19 @@ static void editbmesh_apply_to_mirror(TransInfo *t)
 	BMVert *eve;
 	int i;
 	
-	for (i = 0 ; i < t->total; i++, td++) {
+	for (i = 0; i < t->total; i++, td++) {
 		if (td->flag & TD_NOACTION)
 			break;
-		if (td->loc==NULL)
+		if (td->loc == NULL)
 			break;
 		if (td->flag & TD_SKIP)
 			continue;
 		
 		eve = td->extra;
 		if (eve) {
-			eve->co[0]= -td->loc[0];
-			eve->co[1]= td->loc[1];
-			eve->co[2]= td->loc[2];
+			eve->co[0] = -td->loc[0];
+			eve->co[1] = td->loc[1];
+			eve->co[2] = td->loc[2];
 		}
 		
 		if (td->flag & TD_MIRROR_EDGE) {
@@ -262,23 +254,23 @@ static void editbmesh_apply_to_mirror(TransInfo *t)
 }
 
 /* for the realtime animation recording feature, handle overlapping data */
-static void animrecord_check_state (Scene *scene, ID *id, wmTimer *animtimer)
+static void animrecord_check_state(Scene *scene, ID *id, wmTimer *animtimer)
 {
-	ScreenAnimData *sad= (animtimer) ? animtimer->customdata : NULL;
+	ScreenAnimData *sad = (animtimer) ? animtimer->customdata : NULL;
 	
 	/* sanity checks */
 	if (ELEM3(NULL, scene, id, sad))
 		return;
 	
 	/* check if we need a new strip if:
-	 * 	- if animtimer is running 
+	 *  - if animtimer is running
 	 *	- we're not only keying for available channels
 	 *	- the option to add new actions for each round is not enabled
 	 */
-	if (IS_AUTOKEY_FLAG(scene, INSERTAVAIL)==0 && (scene->toolsettings->autokey_flag & ANIMRECORD_FLAG_WITHNLA)) {
+	if (IS_AUTOKEY_FLAG(scene, INSERTAVAIL) == 0 && (scene->toolsettings->autokey_flag & ANIMRECORD_FLAG_WITHNLA)) {
 		/* if playback has just looped around, we need to add a new NLA track+strip to allow a clean pass to occur */
 		if ((sad) && (sad->flag & ANIMPLAY_FLAG_JUMPED)) {
-			AnimData *adt= BKE_animdata_from_id(id);
+			AnimData *adt = BKE_animdata_from_id(id);
 			
 			/* perform push-down manually with some differences 
 			 * NOTE: BKE_nla_action_pushdown() sync warning...
@@ -288,21 +280,21 @@ static void animrecord_check_state (Scene *scene, ID *id, wmTimer *animtimer)
 				
 				/* only push down if action is more than 1-2 frames long */
 				calc_action_range(adt->action, &astart, &aend, 1);
-				if (aend > astart+2.0f) {
-					NlaStrip *strip= add_nlastrip_to_stack(adt, adt->action);
+				if (aend > astart + 2.0f) {
+					NlaStrip *strip = add_nlastrip_to_stack(adt, adt->action);
 					
 					/* clear reference to action now that we've pushed it onto the stack */
 					adt->action->id.us--;
-					adt->action= NULL;
+					adt->action = NULL;
 					
 					/* adjust blending + extend so that they will behave correctly */
-					strip->extendmode= NLASTRIP_EXTEND_NOTHING;
-					strip->flag &= ~(NLASTRIP_FLAG_AUTO_BLENDS|NLASTRIP_FLAG_SELECT|NLASTRIP_FLAG_ACTIVE);
+					strip->extendmode = NLASTRIP_EXTEND_NOTHING;
+					strip->flag &= ~(NLASTRIP_FLAG_AUTO_BLENDS | NLASTRIP_FLAG_SELECT | NLASTRIP_FLAG_ACTIVE);
 					
 					/* also, adjust the AnimData's action extend mode to be on 
 					 * 'nothing' so that previous result still play 
 					 */
-					adt->act_extendmode= NLASTRIP_EXTEND_NOTHING;
+					adt->act_extendmode = NLASTRIP_EXTEND_NOTHING;
 				}
 			}
 		}
@@ -311,13 +303,13 @@ static void animrecord_check_state (Scene *scene, ID *id, wmTimer *animtimer)
 
 static int fcu_test_selected(FCurve *fcu)
 {
-	BezTriple *bezt= fcu->bezt;
+	BezTriple *bezt = fcu->bezt;
 	unsigned int i;
 
-	if (bezt==NULL) /* ignore baked */
+	if (bezt == NULL) /* ignore baked */
 		return 0;
 
-	for (i=0; i < fcu->totvert; i++, bezt++) {
+	for (i = 0; i < fcu->totvert; i++, bezt++) {
 		if (BEZSELECTED(bezt)) return 1;
 	}
 
@@ -327,41 +319,41 @@ static int fcu_test_selected(FCurve *fcu)
 /* helper for recalcData() - for Action Editor transforms */
 static void recalcData_actedit(TransInfo *t)
 {
-	Scene *scene= t->scene;
-	SpaceAction *saction= (SpaceAction *)t->sa->spacedata.first;
+	Scene *scene = t->scene;
+	SpaceAction *saction = (SpaceAction *)t->sa->spacedata.first;
 	
-	bAnimContext ac= {NULL};
+	bAnimContext ac = {NULL};
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale;
 	int filter;
 	
 	/* initialize relevant anim-context 'context' data from TransInfo data */
-		/* NOTE: sync this with the code in ANIM_animdata_get_context() */
-	ac.scene= t->scene;
-	ac.obact= OBACT;
-	ac.sa= t->sa;
-	ac.ar= t->ar;
-	ac.sl= (t->sa)? t->sa->spacedata.first : NULL;
-	ac.spacetype= (t->sa)? t->sa->spacetype : 0;
-	ac.regiontype= (t->ar)? t->ar->regiontype : 0;
+	/* NOTE: sync this with the code in ANIM_animdata_get_context() */
+	ac.scene = t->scene;
+	ac.obact = OBACT;
+	ac.sa = t->sa;
+	ac.ar = t->ar;
+	ac.sl = (t->sa) ? t->sa->spacedata.first : NULL;
+	ac.spacetype = (t->sa) ? t->sa->spacetype : 0;
+	ac.regiontype = (t->ar) ? t->ar->regiontype : 0;
 	
 	ANIM_animdata_context_getdata(&ac);
 	
 	/* perform flush */
-	if (ac.datatype == ANIMCONT_GPENCIL) {
+	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK)) {
 		/* flush transform values back to actual coordinates */
-		flushTransGPactionData(t);
+		flushTransIntFrameActionData(t);
 	}
 	else {
 		/* get animdata blocks visible in editor, assuming that these will be the ones where things changed */
-		filter= (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_ANIMDATA);
+		filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_ANIMDATA);
 		ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
 		
 		/* just tag these animdata-blocks to recalc, assuming that some data there changed 
 		 * BUT only do this if realtime updates are enabled
 		 */
 		if ((saction->flag & SACTION_NOREALTIMEUPDATES) == 0) {
-			for (ale= anim_data.first; ale; ale= ale->next) {
+			for (ale = anim_data.first; ale; ale = ale->next) {
 				/* set refresh tags for objects using this animation */
 				ANIM_list_elem_update(t->scene, ale);
 			}
@@ -374,11 +366,11 @@ static void recalcData_actedit(TransInfo *t)
 /* helper for recalcData() - for Graph Editor transforms */
 static void recalcData_graphedit(TransInfo *t)
 {
-	SpaceIpo *sipo= (SpaceIpo *)t->sa->spacedata.first;
+	SpaceIpo *sipo = (SpaceIpo *)t->sa->spacedata.first;
 	Scene *scene;
 	
 	ListBase anim_data = {NULL, NULL};
-	bAnimContext ac= {NULL};
+	bAnimContext ac = {NULL};
 	int filter;
 	
 	bAnimListElem *ale;
@@ -386,14 +378,14 @@ static void recalcData_graphedit(TransInfo *t)
 	
 	
 	/* initialize relevant anim-context 'context' data from TransInfo data */
-		/* NOTE: sync this with the code in ANIM_animdata_get_context() */
-	scene= ac.scene= t->scene;
-	ac.obact= OBACT;
-	ac.sa= t->sa;
-	ac.ar= t->ar;
-	ac.sl= (t->sa)? t->sa->spacedata.first : NULL;
-	ac.spacetype= (t->sa)? t->sa->spacetype : 0;
-	ac.regiontype= (t->ar)? t->ar->regiontype : 0;
+	/* NOTE: sync this with the code in ANIM_animdata_get_context() */
+	scene = ac.scene = t->scene;
+	ac.obact = OBACT;
+	ac.sa = t->sa;
+	ac.ar = t->ar;
+	ac.sl = (t->sa) ? t->sa->spacedata.first : NULL;
+	ac.spacetype = (t->sa) ? t->sa->spacetype : 0;
+	ac.regiontype = (t->ar) ? t->ar->regiontype : 0;
 	
 	ANIM_animdata_context_getdata(&ac);
 	
@@ -401,19 +393,19 @@ static void recalcData_graphedit(TransInfo *t)
 	flushTransGraphData(t);
 	
 	/* get curves to check if a re-sort is needed */
-	filter= (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_FOREDIT | ANIMFILTER_CURVE_VISIBLE);
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_FOREDIT | ANIMFILTER_CURVE_VISIBLE);
 	ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
 	
 	/* now test if there is a need to re-sort */
-	for (ale= anim_data.first; ale; ale= ale->next) {
-		FCurve *fcu= (FCurve *)ale->key_data;
+	for (ale = anim_data.first; ale; ale = ale->next) {
+		FCurve *fcu = (FCurve *)ale->key_data;
 		
 		/* ignore unselected fcurves */
 		if (!fcu_test_selected(fcu))
 			continue;
 		
 		// fixme: only do this for selected verts...
-		ANIM_unit_mapping_apply_fcurve(ac.scene, ale->id, ale->key_data, ANIM_UNITCONV_ONLYSEL|ANIM_UNITCONV_SELVERTS|ANIM_UNITCONV_RESTORE);
+		ANIM_unit_mapping_apply_fcurve(ac.scene, ale->id, ale->key_data, ANIM_UNITCONV_ONLYSEL | ANIM_UNITCONV_SELVERTS | ANIM_UNITCONV_RESTORE);
 		
 		
 		/* watch it: if the time is wrong: do not correct handles yet */
@@ -439,10 +431,10 @@ static void recalcData_graphedit(TransInfo *t)
 /* helper for recalcData() - for NLA Editor transforms */
 static void recalcData_nla(TransInfo *t)
 {
-	TransDataNla *tdn= (TransDataNla *)t->customData;
-	SpaceNla *snla= (SpaceNla *)t->sa->spacedata.first;
-	Scene *scene= t->scene;
-	double secf= FPS;
+	TransDataNla *tdn = (TransDataNla *)t->customData;
+	SpaceNla *snla = (SpaceNla *)t->sa->spacedata.first;
+	Scene *scene = t->scene;
+	double secf = FPS;
 	int i;
 	
 	/* for each strip we've got, perform some additional validation of the values that got set before
@@ -450,7 +442,7 @@ static void recalcData_nla(TransInfo *t)
 	 * sure that everything works ok)
 	 */
 	for (i = 0; i < t->total; i++, tdn++) {
-		NlaStrip *strip= tdn->strip;
+		NlaStrip *strip = tdn->strip;
 		PointerRNA strip_ptr;
 		short pExceeded, nExceeded, iter;
 		int delta_y1, delta_y2;
@@ -472,16 +464,16 @@ static void recalcData_nla(TransInfo *t)
 			 */
 			
 			/* start */
-			strip->start= tdn->h1[0];
+			strip->start = tdn->h1[0];
 			
 			if ((strip->prev) && (strip->prev->type == NLASTRIP_TYPE_TRANSITION))
-				strip->prev->end= tdn->h1[0];
+				strip->prev->end = tdn->h1[0];
 			
 			/* end */
-			strip->end= tdn->h2[0];
+			strip->end = tdn->h2[0];
 			
 			if ((strip->next) && (strip->next->type == NLASTRIP_TYPE_TRANSITION))
-				strip->next->start= tdn->h2[0];
+				strip->next->start = tdn->h2[0];
 			
 			/* flush transforms to child strips (since this should be a meta) */
 			BKE_nlameta_flush_transforms(strip);
@@ -501,9 +493,9 @@ static void recalcData_nla(TransInfo *t)
 		 *
 		 * this is done as a iterative procedure (done 5 times max for now)
 		 */
-		for (iter=0; iter < 5; iter++) {
-			pExceeded= ((strip->prev) && (strip->prev->type != NLASTRIP_TYPE_TRANSITION) && (tdn->h1[0] < strip->prev->end));
-			nExceeded= ((strip->next) && (strip->next->type != NLASTRIP_TYPE_TRANSITION) && (tdn->h2[0] > strip->next->start));
+		for (iter = 0; iter < 5; iter++) {
+			pExceeded = ((strip->prev) && (strip->prev->type != NLASTRIP_TYPE_TRANSITION) && (tdn->h1[0] < strip->prev->end));
+			nExceeded = ((strip->next) && (strip->next->type != NLASTRIP_TYPE_TRANSITION) && (tdn->h2[0] > strip->next->start));
 			
 			if ((pExceeded && nExceeded) || (iter == 4) ) {
 				/* both endpoints exceeded (or iteration ping-pong'd meaning that we need a compromise)
@@ -511,24 +503,24 @@ static void recalcData_nla(TransInfo *t)
 				 *	- if there were no neighbors, clear the transforms (make it default to the strip's current values)
 				 */
 				if (strip->prev && strip->next) {
-					tdn->h1[0]= strip->prev->end;
-					tdn->h2[0]= strip->next->start;
+					tdn->h1[0] = strip->prev->end;
+					tdn->h2[0] = strip->next->start;
 				}
 				else {
-					tdn->h1[0]= strip->start;
-					tdn->h2[0]= strip->end;
+					tdn->h1[0] = strip->start;
+					tdn->h2[0] = strip->end;
 				}
 			}
 			else if (nExceeded) {
 				/* move backwards */
-				float offset= tdn->h2[0] - strip->next->start;
+				float offset = tdn->h2[0] - strip->next->start;
 				
 				tdn->h1[0] -= offset;
 				tdn->h2[0] -= offset;
 			}
 			else if (pExceeded) {
 				/* more forwards */
-				float offset= strip->prev->end - tdn->h1[0];
+				float offset = strip->prev->end - tdn->h1[0];
 				
 				tdn->h1[0] += offset;
 				tdn->h2[0] += offset;
@@ -551,8 +543,8 @@ static void recalcData_nla(TransInfo *t)
 				break;
 			
 			case SACTSNAP_MARKER: /* snap to nearest marker */
-				tdn->h1[0]= (float)ED_markers_find_nearest_marker_time(&t->scene->markers, tdn->h1[0]);
-				tdn->h2[0]= (float)ED_markers_find_nearest_marker_time(&t->scene->markers, tdn->h2[0]);
+				tdn->h1[0] = (float)ED_markers_find_nearest_marker_time(&t->scene->markers, tdn->h1[0]);
+				tdn->h2[0] = (float)ED_markers_find_nearest_marker_time(&t->scene->markers, tdn->h2[0]);
 				break;
 		}
 		
@@ -570,8 +562,8 @@ static void recalcData_nla(TransInfo *t)
 		/* now, check if we need to try and move track
 		 *	- we need to calculate both, as only one may have been altered by transform if only 1 handle moved
 		 */
-		delta_y1= ((int)tdn->h1[1] / NLACHANNEL_STEP(snla) - tdn->trackIndex);
-		delta_y2= ((int)tdn->h2[1] / NLACHANNEL_STEP(snla) - tdn->trackIndex);
+		delta_y1 = ((int)tdn->h1[1] / NLACHANNEL_STEP(snla) - tdn->trackIndex);
+		delta_y2 = ((int)tdn->h2[1] / NLACHANNEL_STEP(snla) - tdn->trackIndex);
 		
 		if (delta_y1 || delta_y2) {
 			NlaTrack *track;
@@ -582,14 +574,14 @@ static void recalcData_nla(TransInfo *t)
 			 * stopping on the last track available or that we're able to fit in
 			 */
 			if (delta > 0) {
-				for (track=tdn->nlt->next, n=0; (track) && (n < delta); track=track->next, n++) {
+				for (track = tdn->nlt->next, n = 0; (track) && (n < delta); track = track->next, n++) {
 					/* check if space in this track for the strip */
 					if (BKE_nlatrack_has_space(track, strip->start, strip->end)) {
 						/* move strip to this track */
 						BLI_remlink(&tdn->nlt->strips, strip);
 						BKE_nlatrack_add_strip(track, strip);
 						
-						tdn->nlt= track;
+						tdn->nlt = track;
 						tdn->trackIndex++;
 					}
 					else /* can't move any further */
@@ -598,16 +590,16 @@ static void recalcData_nla(TransInfo *t)
 			}
 			else {
 				/* make delta 'positive' before using it, since we now know to go backwards */
-				delta= -delta;
+				delta = -delta;
 				
-				for (track=tdn->nlt->prev, n=0; (track) && (n < delta); track=track->prev, n++) {
+				for (track = tdn->nlt->prev, n = 0; (track) && (n < delta); track = track->prev, n++) {
 					/* check if space in this track for the strip */
 					if (BKE_nlatrack_has_space(track, strip->start, strip->end)) {
 						/* move strip to this track */
 						BLI_remlink(&tdn->nlt->strips, strip);
 						BKE_nlatrack_add_strip(track, strip);
 						
-						tdn->nlt= track;
+						tdn->nlt = track;
 						tdn->trackIndex--;
 					}
 					else /* can't move any further */
@@ -618,11 +610,23 @@ static void recalcData_nla(TransInfo *t)
 	}
 }
 
+static void recalcData_mask_common(TransInfo *t)
+{
+	Mask *mask = CTX_data_edit_mask(t->context);
+
+	flushTransMasking(t);
+
+	DAG_id_tag_update(&mask->id, 0);
+}
+
 /* helper for recalcData() - for Image Editor transforms */
 static void recalcData_image(TransInfo *t)
 {
-	if (t->obedit && t->obedit->type == OB_MESH) {
-		SpaceImage *sima= t->sa->spacedata.first;
+	if (t->options & CTX_MASK) {
+		recalcData_mask_common(t);
+	}
+	else if (t->obedit && t->obedit->type == OB_MESH) {
+		SpaceImage *sima = t->sa->spacedata.first;
 		
 		flushTransUVs(t);
 		if (sima->flag & SI_LIVE_UNWRAP)
@@ -637,33 +641,45 @@ static void recalcData_spaceclip(TransInfo *t)
 {
 	SpaceClip *sc = t->sa->spacedata.first;
 
-	MovieClip *clip = ED_space_clip(sc);
-	ListBase *tracksbase = BKE_tracking_get_tracks(&clip->tracking);
-	MovieTrackingTrack *track;
+	if (ED_space_clip_check_show_trackedit(sc)) {
+		MovieClip *clip = ED_space_clip_get_clip(sc);
+		ListBase *tracksbase = BKE_tracking_get_active_tracks(&clip->tracking);
+		MovieTrackingTrack *track;
+		int framenr = ED_space_clip_get_clip_frame_number(sc);
 
-	flushTransTracking(t);
+		flushTransTracking(t);
 
-	track = tracksbase->first;
-	while (track) {
-		if (TRACK_VIEW_SELECTED(sc, track) && (track->flag & TRACK_LOCKED)==0) {
-			if (t->mode == TFM_TRANSLATION) {
-				if (TRACK_AREA_SELECTED(track, TRACK_AREA_PAT))
-					BKE_tracking_clamp_track(track, CLAMP_PAT_POS);
-				if (TRACK_AREA_SELECTED(track, TRACK_AREA_SEARCH))
-					BKE_tracking_clamp_track(track, CLAMP_SEARCH_POS);
+		track = tracksbase->first;
+		while (track) {
+			if (TRACK_VIEW_SELECTED(sc, track) && (track->flag & TRACK_LOCKED) == 0) {
+				MovieTrackingMarker *marker = BKE_tracking_marker_get(track, framenr);
+
+				if (t->mode == TFM_TRANSLATION) {
+					if (TRACK_AREA_SELECTED(track, TRACK_AREA_PAT))
+						BKE_tracking_marker_clamp(marker, CLAMP_PAT_POS);
+					if (TRACK_AREA_SELECTED(track, TRACK_AREA_SEARCH))
+						BKE_tracking_marker_clamp(marker, CLAMP_SEARCH_POS);
+				}
+				else if (t->mode == TFM_RESIZE) {
+					if (TRACK_AREA_SELECTED(track, TRACK_AREA_PAT))
+						BKE_tracking_marker_clamp(marker, CLAMP_PAT_DIM);
+					if (TRACK_AREA_SELECTED(track, TRACK_AREA_SEARCH))
+						BKE_tracking_marker_clamp(marker, CLAMP_SEARCH_DIM);
+				}
+				else if (t->mode == TFM_ROTATION) {
+					if (TRACK_AREA_SELECTED(track, TRACK_AREA_PAT))
+						BKE_tracking_marker_clamp(marker, CLAMP_PAT_POS);
+				}
 			}
-			else if (t->mode == TFM_RESIZE) {
-				if (TRACK_AREA_SELECTED(track, TRACK_AREA_PAT))
-					BKE_tracking_clamp_track(track, CLAMP_PAT_DIM);
-				if (TRACK_AREA_SELECTED(track, TRACK_AREA_SEARCH))
-					BKE_tracking_clamp_track(track, CLAMP_SEARCH_DIM);
-			}
+
+			track = track->next;
 		}
 
-		track = track->next;
+		DAG_id_tag_update(&clip->id, 0);
 	}
-
-	DAG_id_tag_update(&clip->id, 0);
+	else if (t->options & CTX_MASK) {
+		recalcData_mask_common(t);
+	}
 }
 
 /* helper for recalcData() - for 3d-view transforms */
@@ -673,9 +689,9 @@ static void recalcData_view3d(TransInfo *t)
 	
 	if (t->obedit) {
 		if (ELEM(t->obedit->type, OB_CURVE, OB_SURF)) {
-			Curve *cu= t->obedit->data;
-			ListBase *nurbs= BKE_curve_editNurbs_get(cu);
-			Nurb *nu= nurbs->first;
+			Curve *cu = t->obedit->data;
+			ListBase *nurbs = BKE_curve_editNurbs_get(cu);
+			Nurb *nu = nurbs->first;
 			
 			if (t->state != TRANS_CANCEL) {
 				clipMirrorModifier(t, t->obedit);
@@ -687,7 +703,7 @@ static void recalcData_view3d(TransInfo *t)
 			if (t->state == TRANS_CANCEL) {
 				while (nu) {
 					BKE_nurb_handles_calc(nu); /* Cant do testhandlesNurb here, it messes up the h1 and h2 flags */
-					nu= nu->next;
+					nu = nu->next;
 				}
 			} 
 			else {
@@ -695,12 +711,12 @@ static void recalcData_view3d(TransInfo *t)
 				while (nu) {
 					BKE_nurb_test2D(nu);
 					BKE_nurb_handles_calc(nu);
-					nu= nu->next;
+					nu = nu->next;
 				}
 			}
 		}
-		else if (t->obedit->type==OB_LATTICE) {
-			Lattice *la= t->obedit->data;
+		else if (t->obedit->type == OB_LATTICE) {
+			Lattice *la = t->obedit->data;
 			
 			if (t->state != TRANS_CANCEL) {
 				applyProject(t);
@@ -726,8 +742,8 @@ static void recalcData_view3d(TransInfo *t)
 			EDBM_mesh_normals_update(em);
 			BMEdit_RecalcTessellation(em);
 		}
-		else if (t->obedit->type==OB_ARMATURE) { /* no recalc flag, does pose */
-			bArmature *arm= t->obedit->data;
+		else if (t->obedit->type == OB_ARMATURE) { /* no recalc flag, does pose */
+			bArmature *arm = t->obedit->data;
 			ListBase *edbo = arm->edbo;
 			EditBone *ebo;
 			TransData *td = t->data;
@@ -743,33 +759,33 @@ static void recalcData_view3d(TransInfo *t)
 				if ((ebo->flag & BONE_CONNECTED) && ebo->parent) {
 					/* If this bone has a parent tip that has been moved */
 					if (ebo->parent->flag & BONE_TIPSEL) {
-						copy_v3_v3 (ebo->head, ebo->parent->tail);
-						if (t->mode==TFM_BONE_ENVELOPE) ebo->rad_head= ebo->parent->rad_tail;
+						copy_v3_v3(ebo->head, ebo->parent->tail);
+						if (t->mode == TFM_BONE_ENVELOPE) ebo->rad_head = ebo->parent->rad_tail;
 					}
 					/* If this bone has a parent tip that has NOT been moved */
 					else {
-						copy_v3_v3 (ebo->parent->tail, ebo->head);
-						if (t->mode==TFM_BONE_ENVELOPE) ebo->parent->rad_tail= ebo->rad_head;
+						copy_v3_v3(ebo->parent->tail, ebo->head);
+						if (t->mode == TFM_BONE_ENVELOPE) ebo->parent->rad_tail = ebo->rad_head;
 					}
 				}
 				
 				/* on extrude bones, oldlength==0.0f, so we scale radius of points */
-				ebo->length= len_v3v3(ebo->head, ebo->tail);
-				if (ebo->oldlength==0.0f) {
-					ebo->rad_head= 0.25f*ebo->length;
-					ebo->rad_tail= 0.10f*ebo->length;
-					ebo->dist= 0.25f*ebo->length;
+				ebo->length = len_v3v3(ebo->head, ebo->tail);
+				if (ebo->oldlength == 0.0f) {
+					ebo->rad_head = 0.25f * ebo->length;
+					ebo->rad_tail = 0.10f * ebo->length;
+					ebo->dist = 0.25f * ebo->length;
 					if (ebo->parent) {
 						if (ebo->rad_head > ebo->parent->rad_tail)
-							ebo->rad_head= ebo->parent->rad_tail;
+							ebo->rad_head = ebo->parent->rad_tail;
 					}
 				}
-				else if (t->mode!=TFM_BONE_ENVELOPE) {
+				else if (t->mode != TFM_BONE_ENVELOPE) {
 					/* if bones change length, lets do that for the deform distance as well */
-					ebo->dist*= ebo->length/ebo->oldlength;
-					ebo->rad_head*= ebo->length/ebo->oldlength;
-					ebo->rad_tail*= ebo->length/ebo->oldlength;
-					ebo->oldlength= ebo->length;
+					ebo->dist *= ebo->length / ebo->oldlength;
+					ebo->rad_head *= ebo->length / ebo->oldlength;
+					ebo->rad_tail *= ebo->length / ebo->oldlength;
+					ebo->oldlength = ebo->length;
 				}
 			}
 			
@@ -810,9 +826,9 @@ static void recalcData_view3d(TransInfo *t)
 			DAG_id_tag_update(t->obedit->data, 0);  /* sets recalc flags */
 		}
 	}
-	else if ( (t->flag & T_POSE) && t->poseobj) {
-		Object *ob= t->poseobj;
-		bArmature *arm= ob->data;
+	else if ((t->flag & T_POSE) && t->poseobj) {
+		Object *ob = t->poseobj;
+		bArmature *arm = ob->data;
 		
 		/* if animtimer is running, and the object already has animation data,
 		 * check if the auto-record feature means that we should record 'samples'
@@ -822,7 +838,7 @@ static void recalcData_view3d(TransInfo *t)
 		 */
 		// TODO: autokeyframe calls need some setting to specify to add samples (FPoints) instead of keyframes?
 		if ((t->animtimer) && (t->context) && IS_AUTOKEY_ON(t->scene)) {
-			int targetless_ik= (t->flag & T_AUTOIK); // XXX this currently doesn't work, since flags aren't set yet!
+			int targetless_ik = (t->flag & T_AUTOIK); // XXX this currently doesn't work, since flags aren't set yet!
 			
 			animrecord_check_state(t->scene, &ob->id, t->animtimer);
 			autokeyframe_pose_cb_func(t->context, t->scene, (View3D *)t->view, ob, t->mode, targetless_ik);
@@ -876,14 +892,37 @@ static void recalcData_view3d(TransInfo *t)
 	}
 }
 
+/* helper for recalcData() - for sequencer transforms */
+static void recalcData_sequencer(TransInfo *t)
+{
+	TransData *td;
+	int a;
+	Sequence *seq_prev = NULL;
+
+	for (a = 0, td = t->data; a < t->total; a++, td++) {
+		TransDataSeq *tdsq = (TransDataSeq *) td->extra;
+		Sequence *seq = tdsq->seq;
+
+		if (seq != seq_prev) {
+			BKE_sequence_invalidate_dependent(t->scene, seq);
+		}
+
+		seq_prev = seq;
+	}
+
+	BKE_sequencer_preprocessed_cache_cleanup();
+
+	flushTransSeq(t);
+}
+
 /* called for updating while transform acts, once per redraw */
 void recalcData(TransInfo *t)
 {
-	if (t->spacetype==SPACE_NODE) {
+	if (t->spacetype == SPACE_NODE) {
 		flushTransNodes(t);
 	}
-	else if (t->spacetype==SPACE_SEQ) {
-		flushTransSeq(t);
+	else if (t->spacetype == SPACE_SEQ) {
+		recalcData_sequencer(t);
 	}
 	else if (t->spacetype == SPACE_ACTION) {
 		recalcData_actedit(t);
@@ -903,9 +942,13 @@ void recalcData(TransInfo *t)
 	else if (t->spacetype == SPACE_CLIP) {
 		recalcData_spaceclip(t);
 	}
+
+	if (t->options & CTX_MASK) {
+
+	}
 }
 
-void drawLine(TransInfo *t, float *center, float *dir, char axis, short options)
+void drawLine(TransInfo *t, const float center[3], const float dir[3], char axis, short options)
 {
 	float v1[3], v2[3], v3[3];
 	unsigned char col[3], col2[3];
@@ -935,8 +978,8 @@ void drawLine(TransInfo *t, float *center, float *dir, char axis, short options)
 		
 		setlinestyle(0);
 		glBegin(GL_LINE_STRIP);
-			glVertex3fv(v1);
-			glVertex3fv(v2);
+		glVertex3fv(v1);
+		glVertex3fv(v2);
 		glEnd();
 		
 		glPopMatrix();
@@ -993,21 +1036,16 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
 	t->mval[0] = t->imval[0];
 	t->mval[1] = t->imval[1];
 	
-	t->transform		= NULL;
-	t->handleEvent		= NULL;
+	t->transform        = NULL;
+	t->handleEvent      = NULL;
 	
-	t->total			= 0;
+	t->total            = 0;
 	
 	t->val = 0.0f;
-	
-	t->vec[0]			=
-		t->vec[1]		=
-		t->vec[2]		= 0.0f;
-	
-	t->center[0]		=
-		t->center[1]	=
-		t->center[2]	= 0.0f;
-	
+
+	zero_v3(t->vec);
+	zero_v3(t->center);
+
 	unit_m3(t->mat);
 	
 	/* if there's an event, we're modal */
@@ -1016,7 +1054,7 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
 	}
 
 	/* Crease needs edge flag */
-	if (t->mode == TFM_CREASE) {
+	if (ELEM(t->mode, TFM_CREASE, TFM_BWEIGHT)) {
 		t->options |= CTX_EDGE;
 	}
 
@@ -1024,23 +1062,24 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
 	/* Assign the space type, some exceptions for running in different mode */
 	if (sa == NULL) {
 		/* background mode */
-		t->spacetype= SPACE_EMPTY;
+		t->spacetype = SPACE_EMPTY;
 	}
 	else if ((ar == NULL) && (sa->spacetype == SPACE_VIEW3D)) {
 		/* running in the text editor */
-		t->spacetype= SPACE_EMPTY;
+		t->spacetype = SPACE_EMPTY;
 	}
 	else {
 		/* normal operation */
-		t->spacetype= sa->spacetype;
+		t->spacetype = sa->spacetype;
 	}
 
 
 	if (t->spacetype == SPACE_VIEW3D) {
 		View3D *v3d = sa->spacedata.first;
+		bScreen *animscreen = ED_screen_animation_playing(CTX_wm_manager(C));
 		
 		t->view = v3d;
-		t->animtimer= CTX_wm_screen(C)->animtimer;
+		t->animtimer = (animscreen) ? animscreen->animtimer : NULL;
 		
 		/* turn manipulator off during transform */
 		// FIXME: but don't do this when USING the manipulator...
@@ -1066,7 +1105,7 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
 		}
 
 		/* exceptional case */
-		if (t->around==V3D_LOCAL && (t->settings->selectmode & SCE_SELECT_FACE)) {
+		if (t->around == V3D_LOCAL && (t->settings->selectmode & SCE_SELECT_FACE)) {
 			if (ELEM3(t->mode, TFM_ROTATION, TFM_RESIZE, TFM_TRACKBALL)) {
 				t->options |= CTX_NO_PET;
 			}
@@ -1088,21 +1127,41 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
 		}
 
 	}
-	else if (t->spacetype==SPACE_IMAGE) {
+	else if (t->spacetype == SPACE_IMAGE) {
 		SpaceImage *sima = sa->spacedata.first;
 		// XXX for now, get View2D from the active region
 		t->view = &ar->v2d;
 		t->around = sima->around;
+
+		if (ED_space_image_show_uvedit(sima, t->obedit)) {
+			/* UV transform */
+		}
+		else if (sima->mode == SI_MODE_MASK) {
+			t->options |= CTX_MASK;
+		}
+		else {
+			BLI_assert(0);
+		}
 	}
-	else if (t->spacetype==SPACE_NODE) {
+	else if (t->spacetype == SPACE_NODE) {
 		// XXX for now, get View2D from the active region
 		t->view = &ar->v2d;
 		t->around = V3D_CENTER;
 	}
-	else if (t->spacetype==SPACE_IPO) {
-		SpaceIpo *sipo= sa->spacedata.first;
+	else if (t->spacetype == SPACE_IPO) {
+		SpaceIpo *sipo = sa->spacedata.first;
 		t->view = &ar->v2d;
 		t->around = sipo->around;
+	}
+	else if (t->spacetype == SPACE_CLIP) {
+		SpaceClip *sclip = sa->spacedata.first;
+		t->view = &ar->v2d;
+		t->around = sclip->around;
+
+		if (ED_space_clip_check_show_trackedit(sclip))
+			t->options |= CTX_MOVIECLIP;
+		else if (ED_space_clip_check_show_maskedit(sclip))
+			t->options |= CTX_MASK;
 	}
 	else {
 		if (ar) {
@@ -1111,7 +1170,7 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
 			// XXX for now, the center point is the midpoint of the data
 		}
 		else {
-			t->view= NULL;
+			t->view = NULL;
 		}
 		t->around = V3D_CENTER;
 	}
@@ -1163,6 +1222,15 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
 
 						if (ts->proportional == PROP_EDIT_CONNECTED) {
 							t->flag |= T_PROP_CONNECTED;
+						}
+					}
+					else if (t->options & CTX_MASK) {
+						if (ts->proportional_mask) {
+							t->flag |= T_PROP_EDIT;
+
+							if (ts->proportional == PROP_EDIT_CONNECTED) {
+								t->flag |= T_PROP_CONNECTED;
+							}
 						}
 					}
 					else if (t->obedit == NULL && ts->proportional_objects) {
@@ -1229,19 +1297,26 @@ void postTrans(bContext *C, TransInfo *t)
 	if (t->customFree) {
 		/* Can take over freeing t->data and data2d etc... */
 		t->customFree(t);
+		BLI_assert(t->customData == NULL);
 	}
 	else if ((t->customData != NULL) && (t->flag & T_FREE_CUSTOMDATA)) {
 		MEM_freeN(t->customData);
+		t->customData = NULL;
 	}
 
 	/* postTrans can be called when nothing is selected, so data is NULL already */
 	if (t->data) {
-		int a;
 		
 		/* free data malloced per trans-data */
-		for (a=0, td= t->data; a<t->total; a++, td++) {
-			if (td->flag & TD_BEZTRIPLE) 
-				MEM_freeN(td->hdata);
+		if ((t->obedit && ELEM(t->obedit->type, OB_CURVE, OB_SURF)) ||
+		    (t->spacetype == SPACE_IPO))
+		{
+			int a;
+			for (a = 0, td = t->data; a < t->total; a++, td++) {
+				if (td->flag & TD_BEZTRIPLE) {
+					MEM_freeN(td->hdata);
+				}
+			}
 		}
 		MEM_freeN(t->data);
 	}
@@ -1251,15 +1326,20 @@ void postTrans(bContext *C, TransInfo *t)
 	if (t->ext) MEM_freeN(t->ext);
 	if (t->data2d) {
 		MEM_freeN(t->data2d);
-		t->data2d= NULL;
+		t->data2d = NULL;
 	}
 	
-	if (t->spacetype==SPACE_IMAGE) {
-		SpaceImage *sima= t->sa->spacedata.first;
-		if (sima->flag & SI_LIVE_UNWRAP)
-			ED_uvedit_live_unwrap_end(t->state == TRANS_CANCEL);
+	if (t->spacetype == SPACE_IMAGE) {
+		if (t->options & CTX_MASK) {
+			/* pass */
+		}
+		else {
+			SpaceImage *sima = t->sa->spacedata.first;
+			if (sima->flag & SI_LIVE_UNWRAP)
+				ED_uvedit_live_unwrap_end(t->state == TRANS_CANCEL);
+		}
 	}
-	else if (t->spacetype==SPACE_VIEW3D) {
+	else if (t->spacetype == SPACE_VIEW3D) {
 		View3D *v3d = t->sa->spacedata.first;
 		/* restore manipulator */
 		if (t->flag & T_MODAL) {
@@ -1298,12 +1378,12 @@ static void restoreElement(TransData *td)
 		*td->val = td->ival;
 	}
 
-	if (td->ext && (td->flag&TD_NO_EXT)==0) {
+	if (td->ext && (td->flag & TD_NO_EXT) == 0) {
 		if (td->ext->rot) {
 			copy_v3_v3(td->ext->rot, td->ext->irot);
 		}
 		if (td->ext->rotAngle) {
-			*td->ext->rotAngle= td->ext->irotAngle;
+			*td->ext->rotAngle = td->ext->irotAngle;
 		}
 		if (td->ext->rotAxis) {
 			copy_v3_v3(td->ext->rotAxis, td->ext->irotAxis);
@@ -1332,7 +1412,7 @@ void restoreTransObjects(TransInfo *t)
 		restoreElement(td);
 	}
 	
-	for (td2d=t->data2d; t->data2d && td2d < t->data2d + t->total; td2d++) {
+	for (td2d = t->data2d; t->data2d && td2d < t->data2d + t->total; td2d++) {
 		if (td2d->h1) {
 			td2d->h1[0] = td2d->ih1[0];
 			td2d->h1[1] = td2d->ih1[1];
@@ -1350,8 +1430,8 @@ void restoreTransObjects(TransInfo *t)
 
 void calculateCenter2D(TransInfo *t)
 {
-	if (t->flag & (T_EDIT|T_POSE)) {
-		Object *ob= t->obedit?t->obedit:t->poseobj;
+	if (t->flag & (T_EDIT | T_POSE)) {
+		Object *ob = t->obedit ? t->obedit : t->poseobj;
 		float vec[3];
 		
 		copy_v3_v3(vec, t->center);
@@ -1371,8 +1451,8 @@ void calculateCenterCursor(TransInfo *t)
 	copy_v3_v3(t->center, cursor);
 	
 	/* If edit or pose mode, move cursor in local space */
-	if (t->flag & (T_EDIT|T_POSE)) {
-		Object *ob = t->obedit?t->obedit:t->poseobj;
+	if (t->flag & (T_EDIT | T_POSE)) {
+		Object *ob = t->obedit ? t->obedit : t->poseobj;
 		float mat[3][3], imat[3][3];
 		
 		sub_v3_v3v3(t->center, t->center, ob->obmat[3]);
@@ -1386,19 +1466,39 @@ void calculateCenterCursor(TransInfo *t)
 
 void calculateCenterCursor2D(TransInfo *t)
 {
-	float aspx=1.0, aspy=1.0;
-	float *cursor= NULL;
+	float aspx = 1.0, aspy = 1.0;
+	float *cursor = NULL;
 	
-	if (t->spacetype==SPACE_IMAGE) {
-		SpaceImage *sima= (SpaceImage *)t->sa->spacedata.first;
+	if (t->spacetype == SPACE_IMAGE) {
+		SpaceImage *sima = (SpaceImage *)t->sa->spacedata.first;
 		/* only space supported right now but may change */
-		ED_space_image_uv_aspect(sima, &aspx, &aspy);
+		if (t->options & CTX_MASK) {
+			ED_space_image_get_aspect(sima, &aspx, &aspy);
+		}
+		else {
+			ED_space_image_get_uv_aspect(sima, &aspx, &aspy);
+		}
 		cursor = sima->cursor;
 	}
 	
 	if (cursor) {
-		t->center[0] = cursor[0] * aspx;
-		t->center[1] = cursor[1] * aspy;
+		if (t->options & CTX_MASK) {
+			float co[2];
+			float frame_size[2];
+			SpaceImage *sima = (SpaceImage *)t->sa->spacedata.first;
+			ED_space_image_get_size_fl(sima, frame_size);
+
+			BKE_mask_coord_from_frame(co, cursor, frame_size);
+
+			ED_space_image_get_aspect(sima, &aspx, &aspy);
+
+			t->center[0] = co[0] * aspx;
+			t->center[1] = co[1] * aspy;
+		}
+		else {
+			t->center[0] = cursor[0] * aspx;
+			t->center[1] = cursor[1] * aspy;
+		}
 	}
 	
 	calculateCenter2D(t);
@@ -1406,12 +1506,12 @@ void calculateCenterCursor2D(TransInfo *t)
 
 static void calculateCenterCursorGraph2D(TransInfo *t)
 {
-	SpaceIpo *sipo= (SpaceIpo *)t->sa->spacedata.first;
-	Scene *scene= t->scene;
+	SpaceIpo *sipo = (SpaceIpo *)t->sa->spacedata.first;
+	Scene *scene = t->scene;
 	
 	/* cursor is combination of current frame, and graph-editor cursor value */
-	t->center[0]= (float)(scene->r.cfra);
-	t->center[1]= sipo->cursorVal;
+	t->center[0] = (float)(scene->r.cfra);
+	t->center[1] = sipo->cursorVal;
 	
 	calculateCenter2D(t);
 }
@@ -1477,95 +1577,95 @@ void calculateCenterBound(TransInfo *t)
 void calculateCenter(TransInfo *t)
 {
 	switch (t->around) {
-	case V3D_CENTER:
-		calculateCenterBound(t);
-		break;
-	case V3D_CENTROID:
-		calculateCenterMedian(t);
-		break;
-	case V3D_CURSOR:
-		if (t->spacetype==SPACE_IMAGE)
-			calculateCenterCursor2D(t);
-		else if (t->spacetype==SPACE_IPO)
-			calculateCenterCursorGraph2D(t);
-		else
-			calculateCenterCursor(t);
-		break;
-	case V3D_LOCAL:
-		/* Individual element center uses median center for helpline and such */
-		calculateCenterMedian(t);
-		break;
-	case V3D_ACTIVE:
+		case V3D_CENTER:
+			calculateCenterBound(t);
+			break;
+		case V3D_CENTROID:
+			calculateCenterMedian(t);
+			break;
+		case V3D_CURSOR:
+			if (t->spacetype == SPACE_IMAGE)
+				calculateCenterCursor2D(t);
+			else if (t->spacetype == SPACE_IPO)
+				calculateCenterCursorGraph2D(t);
+			else
+				calculateCenterCursor(t);
+			break;
+		case V3D_LOCAL:
+			/* Individual element center uses median center for helpline and such */
+			calculateCenterMedian(t);
+			break;
+		case V3D_ACTIVE:
 		{
-		/* set median, and if if if... do object center */
+			/* set median, and if if if... do object center */
 		
-		/* EDIT MODE ACTIVE EDITMODE ELEMENT */
+			/* EDIT MODE ACTIVE EDITMODE ELEMENT */
 
-		if (t->obedit) {
-			if (t->obedit && t->obedit->type == OB_MESH) {
-				BMEditSelection ese;
-				BMEditMesh *em = BMEdit_FromObject(t->obedit);
+			if (t->obedit) {
+				if (t->obedit && t->obedit->type == OB_MESH) {
+					BMEditSelection ese;
+					BMEditMesh *em = BMEdit_FromObject(t->obedit);
 
-				if (BM_select_history_active_get(em->bm, &ese)) {
-					BM_editselection_center(&ese, t->center);
-					calculateCenter2D(t);
-					break;
+					if (BM_select_history_active_get(em->bm, &ese)) {
+						BM_editselection_center(&ese, t->center);
+						calculateCenter2D(t);
+						break;
+					}
+				}
+				else if (ELEM(t->obedit->type, OB_CURVE, OB_SURF)) {
+					float center[3];
+					Curve *cu = (Curve *)t->obedit->data;
+
+					if (ED_curve_actSelection(cu, center)) {
+						copy_v3_v3(t->center, center);
+						calculateCenter2D(t);
+						break;
+					}
+				}
+			} /* END EDIT MODE ACTIVE ELEMENT */
+
+			calculateCenterMedian(t);
+			if ((t->flag & (T_EDIT | T_POSE)) == 0) {
+				Scene *scene = t->scene;
+				Object *ob = OBACT;
+				if (ob) {
+					copy_v3_v3(t->center, ob->obmat[3]);
+					projectIntView(t, t->center, t->center2d);
 				}
 			}
-			else if (ELEM(t->obedit->type, OB_CURVE, OB_SURF)) {
-				float center[3];
-				Curve *cu= (Curve *)t->obedit->data;
-
-				if (ED_curve_actSelection(cu, center)) {
-					copy_v3_v3(t->center, center);
-					calculateCenter2D(t);
-					break;
-				}
-			}
-		} /* END EDIT MODE ACTIVE ELEMENT */
-
-		calculateCenterMedian(t);
-		if ((t->flag & (T_EDIT|T_POSE))==0) {
-			Scene *scene = t->scene;
-			Object *ob= OBACT;
-			if (ob) {
-				copy_v3_v3(t->center, ob->obmat[3]);
-				projectIntView(t, t->center, t->center2d);
-			}
-		}
 		
 		}
 	}
 	
 	/* setting constraint center */
 	copy_v3_v3(t->con.center, t->center);
-	if (t->flag & (T_EDIT|T_POSE)) {
-		Object *ob= t->obedit?t->obedit:t->poseobj;
+	if (t->flag & (T_EDIT | T_POSE)) {
+		Object *ob = t->obedit ? t->obedit : t->poseobj;
 		mul_m4_v3(ob->obmat, t->con.center);
 	}
 	
 	/* for panning from cameraview */
 	if (t->flag & T_OBJECT) {
-		if (t->spacetype==SPACE_VIEW3D && t->ar && t->ar->regiontype == RGN_TYPE_WINDOW) {
+		if (t->spacetype == SPACE_VIEW3D && t->ar && t->ar->regiontype == RGN_TYPE_WINDOW) {
 			View3D *v3d = t->view;
 			Scene *scene = t->scene;
 			RegionView3D *rv3d = t->ar->regiondata;
 			
-			if (v3d->camera == OBACT && rv3d->persp==RV3D_CAMOB) {
+			if (v3d->camera == OBACT && rv3d->persp == RV3D_CAMOB) {
 				float axis[3];
 				/* persinv is nasty, use viewinv instead, always right */
 				copy_v3_v3(axis, t->viewinv[2]);
 				normalize_v3(axis);
 				
 				/* 6.0 = 6 grid units */
-				axis[0]= t->center[0]- 6.0f*axis[0];
-				axis[1]= t->center[1]- 6.0f*axis[1];
-				axis[2]= t->center[2]- 6.0f*axis[2];
+				axis[0] = t->center[0] - 6.0f * axis[0];
+				axis[1] = t->center[1] - 6.0f * axis[1];
+				axis[2] = t->center[2] - 6.0f * axis[2];
 				
 				projectIntView(t, axis, t->center2d);
 				
 				/* rotate only needs correct 2d center, grab needs initgrabz() value */
-				if (t->mode==TFM_TRANSLATION) {
+				if (t->mode == TFM_TRANSLATION) {
 					copy_v3_v3(t->center, axis);
 					copy_v3_v3(t->con.center, t->center);
 				}
@@ -1573,10 +1673,10 @@ void calculateCenter(TransInfo *t)
 		}
 	}
 	
-	if (t->spacetype==SPACE_VIEW3D) {
+	if (t->spacetype == SPACE_VIEW3D) {
 		/* initgrabz() defines a factor for perspective depth correction, used in window_to_3d_delta() */
-		if (t->flag & (T_EDIT|T_POSE)) {
-			Object *ob= t->obedit?t->obedit:t->poseobj;
+		if (t->flag & (T_EDIT | T_POSE)) {
+			Object *ob = t->obedit ? t->obedit : t->poseobj;
 			float vec[3];
 			
 			copy_v3_v3(vec, t->center);
@@ -1597,7 +1697,7 @@ void calculatePropRatio(TransInfo *t)
 	short connected = t->flag & T_PROP_CONNECTED;
 
 	if (t->flag & T_PROP_EDIT) {
-		for (i = 0 ; i < t->total; i++, td++) {
+		for (i = 0; i < t->total; i++, td++) {
 			if (td->flag & TD_SELECTED) {
 				td->factor = 1.0f;
 			}
@@ -1606,7 +1706,7 @@ void calculatePropRatio(TransInfo *t)
 				td->factor = 0.0f;
 				restoreElement(td);
 			}
-			else if	((connected && (td->flag & TD_NOTCONNECTED || td->dist > t->prop_size)) ||
+			else if ((connected && (td->flag & TD_NOTCONNECTED || td->dist > t->prop_size)) ||
 			         (connected == 0 && td->rdist > t->prop_size))
 			{
 				/*
@@ -1622,9 +1722,9 @@ void calculatePropRatio(TransInfo *t)
 				td->flag &= ~TD_NOACTION;
 				
 				if (connected)
-					dist= (t->prop_size-td->dist)/t->prop_size;
+					dist = (t->prop_size - td->dist) / t->prop_size;
 				else
-					dist= (t->prop_size-td->rdist)/t->prop_size;
+					dist = (t->prop_size - td->rdist) / t->prop_size;
 
 				/*
 				 * Clamp to positive numbers.
@@ -1635,63 +1735,63 @@ void calculatePropRatio(TransInfo *t)
 					dist = 0.0f;
 				
 				switch (t->prop_mode) {
-				case PROP_SHARP:
-					td->factor= dist*dist;
-					break;
-				case PROP_SMOOTH:
-					td->factor= 3.0f*dist*dist - 2.0f*dist*dist*dist;
-					break;
-				case PROP_ROOT:
-					td->factor = (float)sqrt(dist);
-					break;
-				case PROP_LIN:
-					td->factor = dist;
-					break;
-				case PROP_CONST:
-					td->factor = 1.0f;
-					break;
-				case PROP_SPHERE:
-					td->factor = (float)sqrt(2*dist - dist * dist);
-					break;
-				case PROP_RANDOM:
-					BLI_srand(BLI_rand()); /* random seed */
-					td->factor = BLI_frand()*dist;
-					break;
-				default:
-					td->factor = 1;
+					case PROP_SHARP:
+						td->factor = dist * dist;
+						break;
+					case PROP_SMOOTH:
+						td->factor = 3.0f * dist * dist - 2.0f * dist * dist * dist;
+						break;
+					case PROP_ROOT:
+						td->factor = (float)sqrt(dist);
+						break;
+					case PROP_LIN:
+						td->factor = dist;
+						break;
+					case PROP_CONST:
+						td->factor = 1.0f;
+						break;
+					case PROP_SPHERE:
+						td->factor = (float)sqrt(2 * dist - dist * dist);
+						break;
+					case PROP_RANDOM:
+						BLI_srand(BLI_rand()); /* random seed */
+						td->factor = BLI_frand() * dist;
+						break;
+					default:
+						td->factor = 1;
 				}
 			}
 		}
 		switch (t->prop_mode) {
-		case PROP_SHARP:
-			strcpy(t->proptext, "(Sharp)");
-			break;
-		case PROP_SMOOTH:
-			strcpy(t->proptext, "(Smooth)");
-			break;
-		case PROP_ROOT:
-			strcpy(t->proptext, "(Root)");
-			break;
-		case PROP_LIN:
-			strcpy(t->proptext, "(Linear)");
-			break;
-		case PROP_CONST:
-			strcpy(t->proptext, "(Constant)");
-			break;
-		case PROP_SPHERE:
-			strcpy(t->proptext, "(Sphere)");
-			break;
-		case PROP_RANDOM:
-			strcpy(t->proptext, "(Random)");
-			break;
-		default:
-			t->proptext[0]= '\0';
+			case PROP_SHARP:
+				strcpy(t->proptext, "(Sharp)");
+				break;
+			case PROP_SMOOTH:
+				strcpy(t->proptext, "(Smooth)");
+				break;
+			case PROP_ROOT:
+				strcpy(t->proptext, "(Root)");
+				break;
+			case PROP_LIN:
+				strcpy(t->proptext, "(Linear)");
+				break;
+			case PROP_CONST:
+				strcpy(t->proptext, "(Constant)");
+				break;
+			case PROP_SPHERE:
+				strcpy(t->proptext, "(Sphere)");
+				break;
+			case PROP_RANDOM:
+				strcpy(t->proptext, "(Random)");
+				break;
+			default:
+				t->proptext[0] = '\0';
 		}
 	}
 	else {
-		for (i = 0 ; i < t->total; i++, td++) {
+		for (i = 0; i < t->total; i++, td++) {
 			td->factor = 1.0;
 		}
-		t->proptext[0]= '\0';
+		t->proptext[0] = '\0';
 	}
 }

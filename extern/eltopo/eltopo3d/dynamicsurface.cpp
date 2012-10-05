@@ -504,7 +504,7 @@ void DynamicSurface::integrate( double desired_dt, double& actual_dt )
             bool all_collisions_handled = false;
             
             all_collisions_handled = m_collision_pipeline->handle_collisions( curr_dt );
-            
+
             
             // failsafe impact zones 
             
@@ -555,22 +555,22 @@ void DynamicSurface::integrate( double desired_dt, double& actual_dt )
                     assert( false );
                 }
                 
-                if ( m_verbose )
-                {
+				if ( m_verbose )
+				{
                     std::cout << "Intersection in predicted mesh, cutting timestep." << std::endl;
-                }
-                
+				}
+
                 // back up and try again:
                 
                 curr_dt = 0.5 * curr_dt;
-                for ( size_t i = 0; i < get_num_vertices(); ++i )
-                {
-                    set_newposition( i, get_position(i) + 0.5 * ( saved_predicted_positions[i] - get_position(i) ) );
-                }
+				for ( size_t i = 0; i < get_num_vertices(); ++i )
+				{
+					set_newposition( i, get_position(i) + 0.5 * ( saved_predicted_positions[i] - get_position(i) ) );
+				}
                 
-                continue;      
+				continue;   
                 
-            }                 
+			}               
             
         }
         

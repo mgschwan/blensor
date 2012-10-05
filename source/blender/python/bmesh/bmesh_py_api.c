@@ -40,6 +40,7 @@
 #include "bmesh_py_types_customdata.h"
 #include "bmesh_py_types_meshdata.h"
 
+#include "bmesh_py_ops.h"
 #include "bmesh_py_utils.h"
 
 #include "BKE_tessmesh.h"
@@ -72,7 +73,7 @@ PyDoc_STRVAR(bpy_bm_from_edit_mesh_doc,
 "\n"
 "   Return a BMesh from this mesh, currently the mesh must already be in editmode.\n"
 "\n"
-"   :return: the BMesh assosiated with this mesh.\n"
+"   :return: the BMesh associated with this mesh.\n"
 "   :rtype: :class:`bmesh.types.BMesh`\n"
 );
 static PyObject *bpy_bm_from_edit_mesh(PyObject *UNUSED(self), PyObject *value)
@@ -96,9 +97,9 @@ static PyObject *bpy_bm_from_edit_mesh(PyObject *UNUSED(self), PyObject *value)
 }
 
 static struct PyMethodDef BPy_BM_methods[] = {
-    {"new",            (PyCFunction)bpy_bm_new,            METH_NOARGS,  bpy_bm_new_doc},
-    {"from_edit_mesh", (PyCFunction)bpy_bm_from_edit_mesh, METH_O,       bpy_bm_from_edit_mesh_doc},
-    {NULL, NULL, 0, NULL}
+	{"new",            (PyCFunction)bpy_bm_new,            METH_NOARGS,  bpy_bm_new_doc},
+	{"from_edit_mesh", (PyCFunction)bpy_bm_from_edit_mesh, METH_O,       bpy_bm_from_edit_mesh_doc},
+	{NULL, NULL, 0, NULL}
 };
 
 PyDoc_STRVAR(BPy_BM_doc,
@@ -141,6 +142,11 @@ PyObject *BPyInit_bmesh(void)
 	/* bmesh.types */
 	PyModule_AddObject(mod, "types", (submodule = BPyInit_bmesh_types()));
 	PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule);
+	Py_INCREF(submodule);
+
+	PyModule_AddObject(mod, "ops", (submodule = BPyInit_bmesh_ops()));
+	/* PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule); */
+	PyDict_SetItemString(sys_modules, "bmesh.ops", submodule); /* fake module */
 	Py_INCREF(submodule);
 
 	PyModule_AddObject(mod, "utils", (submodule = BPyInit_bmesh_utils()));

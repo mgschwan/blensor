@@ -126,7 +126,7 @@ void CollisionPipeline::apply_impulse( const Vec4d& alphas,
     double s3 = alphas[3];
     
     double i = impulse_magnitude / (s0*s0*inv_m0 + s1*s1*inv_m1 + s2*s2*inv_m2 + s3*s3*inv_m3);
-    
+
     if ( i > 100.0 / dt )
     {
         std::cout << "big impulse: " << i << std::endl;
@@ -732,7 +732,7 @@ void CollisionPipeline::process_collision_candidates( double dt,
                 
                 g_stats.add_to_int( "CollisionPipeline::total_num_collisions", 1 );
                 
-                double relvel = collision.m_relative_displacement / dt;
+                double relvel = collision.m_relative_displacement * dt;
                 double desired_relative_velocity = 0.0;
                 double impulse = IMPULSE_MULTIPLIER * (desired_relative_velocity - relvel);
                 apply_edge_edge_impulse( collision, impulse, dt );
@@ -752,7 +752,8 @@ void CollisionPipeline::process_collision_candidates( double dt,
                     add_point_update_candidates( collision.m_vertex_indices[3], new_candidates);
                 }
             }
-        }
+		}
+
         else
         {
             // point-triangle
@@ -763,7 +764,8 @@ void CollisionPipeline::process_collision_candidates( double dt,
                 
                 g_stats.add_to_int( "CollisionPipeline::total_num_collisions", 1 );
                 
-                double relvel = collision.m_relative_displacement / dt;
+                double relvel = collision.m_relative_displacement * dt;
+				// printf("collision.m_relative_displacement: %lf\n", collision.m_relative_displacement);
                 double desired_relative_velocity = 0.0;
                 double impulse = IMPULSE_MULTIPLIER * (desired_relative_velocity - relvel);
                 apply_triangle_point_impulse( collision, impulse, dt );
@@ -784,7 +786,8 @@ void CollisionPipeline::process_collision_candidates( double dt,
                 }  
             }
             
-        }
+		}
+
     }
     
     if ( m_surface.m_verbose && max_iteration > 0 && i >= max_iteration )
@@ -1040,14 +1043,14 @@ bool CollisionPipeline::handle_collisions(double dt)
         status.all_candidates_processed = false;
         
         // dynamic point vs solid triangles
-        
+      
         dynamic_point_vs_solid_triangle_collisions( dt,
                                                    collect_candidates,
                                                    update_collision_candidates,
                                                    status );
         
         collision_found |= status.collision_found;
-        
+
         // dynamic triangle vs static points
         // dynamic triangle vs dynamic points
         
@@ -1067,7 +1070,7 @@ bool CollisionPipeline::handle_collisions(double dt)
                                             status );
         
         collision_found |= status.collision_found;
-        
+  
         if ( status.overflow )
         {
             if ( verbose )

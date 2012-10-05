@@ -10,6 +10,9 @@
 #include <eltopo.h>
 #include <surftrack.h>
 
+#include "../common/runstats.h"
+RunStats g_stats;
+
 // ---------------------------------------------------------
 ///
 /// Static operations: edge collapse, edge split, edge flip, null-space smoothing, and topological changes
@@ -225,7 +228,7 @@ void el_topo_integrate( const ElTopoMesh* inputs,
     //
     
     // build a DynamicSurface
-    DynamicSurface dynamic_surface( vs, ts, masses, general_options->m_proximity_epsilon, options->m_friction_coefficient, general_options->m_collision_safety );
+	DynamicSurface dynamic_surface( vs, ts, masses, general_options->m_proximity_epsilon, options->m_friction_coefficient, general_options->m_collision_safety, general_options->m_verbose );
     
     dynamic_surface.set_all_newpositions( inputs->num_vertices, in_vertex_new_locations );
     

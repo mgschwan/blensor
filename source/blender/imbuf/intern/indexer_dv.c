@@ -22,17 +22,20 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#include "IMB_indexer.h"
 #include "MEM_guardedalloc.h"
+
 #include "BLI_utildefines.h"
+#include "BLI_path_util.h"
+
+#include "IMB_indexer.h"
 #include <time.h>
 
 typedef struct indexer_dv_bitstream {
-	unsigned char* buffer;
+	unsigned char *buffer;
 	int bit_pos;
 } indexer_dv_bitstream;
 
-static indexer_dv_bitstream bitstream_new(unsigned char* buffer_) 
+static indexer_dv_bitstream bitstream_new(unsigned char *buffer_)
 {
 	indexer_dv_bitstream rv;
 
@@ -42,27 +45,27 @@ static indexer_dv_bitstream bitstream_new(unsigned char* buffer_)
 	return rv;
 }
 
-static unsigned long bitstream_get_bits(indexer_dv_bitstream * This, int num) 
+static unsigned long bitstream_get_bits(indexer_dv_bitstream *This, int num)
 {
 	int byte_pos = This->bit_pos >> 3;
 	unsigned long i = 
-		This->buffer[byte_pos] | (This->buffer[byte_pos + 1] << 8) |
-		(This->buffer[byte_pos + 2] << 16) | 
-		(This->buffer[byte_pos + 3] << 24);
+	        This->buffer[byte_pos] | (This->buffer[byte_pos + 1] << 8) |
+	        (This->buffer[byte_pos + 2] << 16) |
+	        (This->buffer[byte_pos + 3] << 24);
 	int rval = (i >> (This->bit_pos & 0x7)) & ((1 << num) - 1);
 	This->bit_pos += num;
 	return rval;
 }
 
-static int parse_num(indexer_dv_bitstream * b, int numbits)
+static int parse_num(indexer_dv_bitstream *b, int numbits)
 {
 	return bitstream_get_bits(b, numbits);
 }
 
-static int parse_bcd(indexer_dv_bitstream * b, int n) 
+static int parse_bcd(indexer_dv_bitstream *b, int n)
 {
 	char s[256];
-	char * p = s + (n+3)/4;
+	char *p = s + (n + 3) / 4;
 
 	*p-- = 0;
 
@@ -93,8 +96,7 @@ static int parse_bcd(indexer_dv_bitstream * b, int n)
 	return atol(s);
 }
 
-typedef struct indexer_dv_context
-{
+typedef struct indexer_dv_context {
 	int rec_curr_frame;
 	int rec_curr_second;
 	int rec_curr_minute;
@@ -119,10 +121,10 @@ typedef struct indexer_dv_context
 	anim_index_entry backbuffer[31];
 	int fsize;
 
-	anim_index_builder * idx;
+	anim_index_builder *idx;
 } indexer_dv_context;
 
-static void parse_packet(indexer_dv_context * This, unsigned char * p)
+static void parse_packet(indexer_dv_context *This, unsigned char *p)
 {
 	indexer_dv_bitstream b;
 	int type = p[0];
@@ -130,7 +132,7 @@ static void parse_packet(indexer_dv_context * This, unsigned char * p)
 	b = bitstream_new(p + 1);
 
 	switch (type) {
-		case 0x62: // Record date
+		case 0x62: /* Record date */
 			parse_num(&b, 8);
 			This->rec_curr_day = parse_bcd(&b, 6);
 			parse_num(&b, 2);
@@ -145,7 +147,7 @@ static void parse_packet(indexer_dv_context * This, unsigned char * p)
 			}
 			This->got_record_date = 1;
 			break;
-		case 0x63: // Record time
+		case 0x63: /* Record time */
 			This->rec_curr_frame = parse_bcd(&b, 6);
 			parse_num(&b, 2);
 			This->rec_curr_second = parse_bcd(&b, 7);
@@ -158,7 +160,7 @@ static void parse_packet(indexer_dv_context * This, unsigned char * p)
 	}
 }
 
-static void parse_header_block(indexer_dv_context * This, unsigned char* target)
+static void parse_header_block(indexer_dv_context *This, unsigned char *target)
 {
 	int i;
 	for (i = 3; i < 80; i += 5) {
@@ -169,7 +171,7 @@ static void parse_header_block(indexer_dv_context * This, unsigned char* target)
 }
 
 static void parse_subcode_blocks(
-        indexer_dv_context * This, unsigned char* target)
+        indexer_dv_context *This, unsigned char *target)
 {
 	int i, j;
 
@@ -183,7 +185,7 @@ static void parse_subcode_blocks(
 }
 
 static void parse_vaux_blocks(
-        indexer_dv_context * This, unsigned char* target)
+        indexer_dv_context *This, unsigned char *target)
 {
 	int i, j;
 
@@ -198,7 +200,7 @@ static void parse_vaux_blocks(
 }
 
 static void parse_audio_headers(
-        indexer_dv_context * This, unsigned char* target)
+        indexer_dv_context *This, unsigned char *target)
 {
 	int i;
 
@@ -210,11 +212,11 @@ static void parse_audio_headers(
 	}
 }
 
-static void parse_frame(indexer_dv_context * This, 
-                        unsigned char * framebuffer, int isPAL)
+static void parse_frame(indexer_dv_context *This,
+                        unsigned char *framebuffer, int isPAL)
 {
 	int numDIFseq = isPAL ? 12 : 10;
-	unsigned char* target = framebuffer;
+	unsigned char *target = framebuffer;
 	int ds;
 
 	for (ds = 0; ds < numDIFseq; ds++) {
@@ -229,7 +231,7 @@ static void parse_frame(indexer_dv_context * This,
 	}
 }
 
-static void inc_frame(int * frame, time_t * t, int isPAL)
+static void inc_frame(int *frame, time_t *t, int isPAL)
 {
 	if ((isPAL && *frame >= 25) || (!isPAL && *frame >= 30)) {
 		fprintf(stderr, "Ouchie: inc_frame: invalid_frameno: %d\n",
@@ -246,20 +248,21 @@ static void inc_frame(int * frame, time_t * t, int isPAL)
 	}
 }
 
-static void write_index(indexer_dv_context * This, anim_index_entry * entry)
+static void write_index(indexer_dv_context *This, anim_index_entry *entry)
 {
 	IMB_index_builder_add_entry(
-		This->idx, entry->frameno + This->frameno_offset, 
-		entry->seek_pos, entry->seek_pos_dts, entry->pts);
+	        This->idx, entry->frameno + This->frameno_offset,
+	        entry->seek_pos, entry->seek_pos_dts, entry->pts);
 }
 
-static void fill_gap(indexer_dv_context * This, int isPAL)
+static void fill_gap(indexer_dv_context *This, int isPAL)
 {
 	int i;
 
 	for (i = 0; i < This->fsize; i++) {
 		if (This->gap_start == This->ref_time_read &&
-		        This->gap_frame == This->curr_frame) {
+		    This->gap_frame == This->curr_frame)
+		{
 			fprintf(stderr,
 			        "indexer_dv::fill_gap: "
 			        "can't seek backwards !\n");
@@ -269,7 +272,8 @@ static void fill_gap(indexer_dv_context * This, int isPAL)
 	}
 
 	while (This->gap_start != This->ref_time_read ||
-	       This->gap_frame != This->curr_frame) {
+	       This->gap_frame != This->curr_frame)
+	{
 		inc_frame(&This->gap_frame, &This->gap_start, isPAL);
 		This->frameno_offset++;
 	}
@@ -280,8 +284,8 @@ static void fill_gap(indexer_dv_context * This, int isPAL)
 	This->fsize = 0;
 }
 
-static void proc_frame(indexer_dv_context * This,
-                       unsigned char* UNUSED(framebuffer), int isPAL)
+static void proc_frame(indexer_dv_context *This,
+                       unsigned char *UNUSED(framebuffer), int isPAL)
 {
 	struct tm recDate;
 	time_t t;
@@ -320,8 +324,8 @@ static void proc_frame(indexer_dv_context * This,
 				This->gap_frame = -1;
 			}
 		}
-		else if (This->ref_time_read_new  == This->ref_time_read) {
-			// do nothing
+		else if (This->ref_time_read_new == This->ref_time_read) {
+			/* do nothing */
 		}
 		else {
 			This->gap_start = This->ref_time_read;
@@ -332,14 +336,14 @@ static void proc_frame(indexer_dv_context * This,
 	}
 }
 
-static void indexer_dv_proc_frame(anim_index_builder * idx, 
-                                  unsigned char * buffer,
+static void indexer_dv_proc_frame(anim_index_builder *idx,
+                                  unsigned char *buffer,
                                   int UNUSED(data_size),
-                                  struct anim_index_entry * entry)
+                                  struct anim_index_entry *entry)
 {
 	int isPAL;
 	
-	indexer_dv_context * This = (indexer_dv_context *) idx->private_data;
+	indexer_dv_context *This = (indexer_dv_context *) idx->private_data;
 
 	isPAL = (buffer[3] & 0x80);
 
@@ -362,29 +366,29 @@ static void indexer_dv_proc_frame(anim_index_builder * idx,
 			        "backbuffer overrun, emergency flush");
 
 			for (i = 0; i < This->fsize; i++) {
-				write_index(This, This->backbuffer+i);
+				write_index(This, This->backbuffer + i);
 			}
 			This->fsize = 0;
 		}
 	}
 }
 
-static void indexer_dv_delete(anim_index_builder * idx)
+static void indexer_dv_delete(anim_index_builder *idx)
 {
 	int i = 0;
-	indexer_dv_context * This = (indexer_dv_context *) idx->private_data;
+	indexer_dv_context *This = (indexer_dv_context *) idx->private_data;
 
 	for (i = 0; i < This->fsize; i++) {
-		write_index(This, This->backbuffer+i);
+		write_index(This, This->backbuffer + i);
 	}
 
 	MEM_freeN(This);
 }
 
-void IMB_indexer_dv_new(anim_index_builder * idx)
+static void UNUSED_FUNCTION(IMB_indexer_dv_new)(anim_index_builder *idx)
 {
-	indexer_dv_context * rv = MEM_callocN(
-	            sizeof(indexer_dv_context), "index_dv builder context");
+	indexer_dv_context *rv = MEM_callocN(
+	        sizeof(indexer_dv_context), "index_dv builder context");
 
 	rv->ref_time_read = -1;
 	rv->curr_frame = -1;

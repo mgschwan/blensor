@@ -57,12 +57,14 @@
 
 #include "BKE_anim.h"
 #include "BKE_animsys.h"
+#include "BKE_colortools.h"
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_group.h"
 #include "BKE_idprop.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
+#include "BKE_mask.h"
 #include "BKE_node.h"
 #include "BKE_object.h"
 #include "BKE_paint.h"
@@ -74,6 +76,8 @@
 #include "BKE_sound.h"
 
 #include "RE_engine.h"
+
+#include "IMB_colormanagement.h"
 
 //XXX #include "BIF_previewrender.h"
 //XXX #include "BIF_editseq.h"
@@ -152,7 +156,8 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 		BKE_keyingsets_copy(&(scen->keyingsets), &(sce->keyingsets));
 
 		if (sce->nodetree) {
-			scen->nodetree = ntreeCopyTree(sce->nodetree); /* copies actions */
+			/* ID's are managed on both copy and switch */
+			scen->nodetree = ntreeCopyTree(sce->nodetree);
 			ntreeSwitchID(scen->nodetree, &sce->id, &scen->id);
 		}
 
@@ -165,6 +170,11 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 			obase = obase->next;
 			base = base->next;
 		}
+
+		/* copy color management settings */
+		BKE_color_managed_display_settings_copy(&scen->display_settings, &sce->display_settings);
+		BKE_color_managed_view_settings_copy(&scen->view_settings, &sce->view_settings);
+		BKE_color_managed_view_settings_copy(&scen->r.im_format.view_settings, &sce->r.im_format.view_settings);
 	}
 
 	/* tool settings */
@@ -177,21 +187,21 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 			ts->vpaint->paintcursor = NULL;
 			ts->vpaint->vpaint_prev = NULL;
 			ts->vpaint->wpaint_prev = NULL;
-			copy_paint(&ts->vpaint->paint, &ts->vpaint->paint);
+			BKE_paint_copy(&ts->vpaint->paint, &ts->vpaint->paint);
 		}
 		if (ts->wpaint) {
 			ts->wpaint = MEM_dupallocN(ts->wpaint);
 			ts->wpaint->paintcursor = NULL;
 			ts->wpaint->vpaint_prev = NULL;
 			ts->wpaint->wpaint_prev = NULL;
-			copy_paint(&ts->wpaint->paint, &ts->wpaint->paint);
+			BKE_paint_copy(&ts->wpaint->paint, &ts->wpaint->paint);
 		}
 		if (ts->sculpt) {
 			ts->sculpt = MEM_dupallocN(ts->sculpt);
-			copy_paint(&ts->sculpt->paint, &ts->sculpt->paint);
+			BKE_paint_copy(&ts->sculpt->paint, &ts->sculpt->paint);
 		}
 
-		copy_paint(&ts->imapaint.paint, &ts->imapaint.paint);
+		BKE_paint_copy(&ts->imapaint.paint, &ts->imapaint.paint);
 		ts->imapaint.paintcursor = NULL;
 		ts->particle.paintcursor = NULL;
 	}
@@ -236,7 +246,7 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 		if (sce->ed) {
 			scen->ed = MEM_callocN(sizeof(Editing), "addseq");
 			scen->ed->seqbasep = &scen->ed->seqbase;
-			seqbase_dupli_recursive(sce, scen, &scen->ed->seqbase, &sce->ed->seqbase, SEQ_DUPE_ALL);
+			BKE_sequence_base_dupli_recursive(sce, scen, &scen->ed->seqbase, &sce->ed->seqbase, SEQ_DUPE_ALL);
 		}
 	}
 
@@ -256,17 +266,17 @@ void BKE_scene_free(Scene *sce)
 	/* do not free objects! */
 	
 	if (sce->gpd) {
-#if 0   // removed since this can be invalid memory when freeing everything
-		// since the grease pencil data is freed before the scene.
-		// since grease pencil data is not (yet?), shared between objects
-		// its probably safe not to do this, some save and reload will free this.
+#if 0   /* removed since this can be invalid memory when freeing everything */
+		/* since the grease pencil data is freed before the scene.
+		 * since grease pencil data is not (yet?), shared between objects
+		 * its probably safe not to do this, some save and reload will free this. */
 		sce->gpd->id.us--;
 #endif
 		sce->gpd = NULL;
 	}
 
 	BLI_freelistN(&sce->base);
-	seq_free_editing(sce);
+	BKE_sequencer_editing_free(sce);
 
 	BKE_free_animdata((ID *)sce);
 	BKE_keyingsets_free(&sce->keyingsets);
@@ -293,22 +303,22 @@ void BKE_scene_free(Scene *sce)
 	
 	if (sce->toolsettings) {
 		if (sce->toolsettings->vpaint) {
-			free_paint(&sce->toolsettings->vpaint->paint);
+			BKE_paint_free(&sce->toolsettings->vpaint->paint);
 			MEM_freeN(sce->toolsettings->vpaint);
 		}
 		if (sce->toolsettings->wpaint) {
-			free_paint(&sce->toolsettings->wpaint->paint);
+			BKE_paint_free(&sce->toolsettings->wpaint->paint);
 			MEM_freeN(sce->toolsettings->wpaint);
 		}
 		if (sce->toolsettings->sculpt) {
-			free_paint(&sce->toolsettings->sculpt->paint);
+			BKE_paint_free(&sce->toolsettings->sculpt->paint);
 			MEM_freeN(sce->toolsettings->sculpt);
 		}
 		if (sce->toolsettings->uvsculpt) {
-			free_paint(&sce->toolsettings->uvsculpt->paint);
+			BKE_paint_free(&sce->toolsettings->uvsculpt->paint);
 			MEM_freeN(sce->toolsettings->uvsculpt);
 		}
-		free_paint(&sce->toolsettings->imapaint.paint);
+		BKE_paint_free(&sce->toolsettings->imapaint.paint);
 
 		MEM_freeN(sce->toolsettings);
 		sce->toolsettings = NULL;	
@@ -330,6 +340,8 @@ void BKE_scene_free(Scene *sce)
 		MEM_freeN(sce->fps_info);
 
 	sound_destroy_scene(sce);
+
+	BKE_color_managed_view_settings_free(&sce->view_settings);
 }
 
 Scene *BKE_scene_add(const char *name)
@@ -370,7 +382,14 @@ Scene *BKE_scene_add(const char *name)
 	sce->r.frs_sec_base = 1;
 	sce->r.edgeint = 10;
 	sce->r.ocres = 128;
+
+	/* OCIO_TODO: for forwards compatibility only, so if no tonecurve are used,
+	 *            images would look in the same way as in current blender
+	 *
+	 *            perhaps at some point should be completely deprecated?
+	 */
 	sce->r.color_mgt_flag |= R_COLOR_MANAGEMENT;
+
 	sce->r.gauss = 1.0;
 	
 	/* deprecated but keep for upwards compat */
@@ -486,7 +505,7 @@ Scene *BKE_scene_add(const char *name)
 
 	BLI_strncpy(sce->r.pic, U.renderdir, sizeof(sce->r.pic));
 
-	BLI_init_rctf(&sce->r.safety, 0.1f, 0.9f, 0.1f, 0.9f);
+	BLI_rctf_init(&sce->r.safety, 0.1f, 0.9f, 0.1f, 0.9f);
 	sce->r.osa = 8;
 
 	/* note; in header_info.c the scene copy happens..., if you add more to renderdata it has to be checked there */
@@ -516,6 +535,9 @@ Scene *BKE_scene_add(const char *name)
 	sce->gm.maxlogicstep = 5;
 	sce->gm.physubstep = 1;
 	sce->gm.maxphystep = 5;
+	sce->gm.lineardeactthreshold = 0.8f;
+	sce->gm.angulardeactthreshold = 1.0f;
+	sce->gm.deactivationtime = 0.0f;
 
 	sce->gm.flag = GAME_DISPLAY_LISTS;
 	sce->gm.matmode = GAME_MAT_MULTITEX;
@@ -541,19 +563,15 @@ Scene *BKE_scene_add(const char *name)
 
 	sound_create_scene(sce);
 
+	BKE_color_managed_display_settings_init(&sce->display_settings);
+	BKE_color_managed_view_settings_init(&sce->view_settings);
+
 	return sce;
 }
 
 Base *BKE_scene_base_find(Scene *scene, Object *ob)
 {
-	Base *base;
-	
-	base = scene->base.first;
-	while (base) {
-		if (base->object == ob) return base;
-		base = base->next;
-	}
-	return NULL;
+	return BLI_findptr(&scene->base, ob, offsetof(Base, object));
 }
 
 void BKE_scene_set_background(Main *bmain, Scene *scene)
@@ -578,10 +596,10 @@ void BKE_scene_set_background(Main *bmain, Scene *scene)
 
 	/* group flags again */
 	for (group = bmain->group.first; group; group = group->id.next) {
-		go = group->gobject.first;
-		while (go) {
-			if (go->ob) go->ob->flag |= OB_FROMGROUP;
-			go = go->next;
+		for (go = group->gobject.first; go; go = go->next) {
+			if (go->ob) {
+				go->ob->flag |= OB_FROMGROUP;
+			}
 		}
 	}
 
@@ -604,10 +622,8 @@ void BKE_scene_set_background(Main *bmain, Scene *scene)
 		base->flag |= flag;
 		
 		/* not too nice... for recovering objects with lost data */
-		//if (ob->pose==NULL) base->flag &= ~OB_POSEMODE;
+		//if (ob->pose == NULL) base->flag &= ~OB_POSEMODE;
 		ob->flag = base->flag;
-		
-		ob->ctime = -1234567.0;  /* force ipo to be calculated later */
 	}
 	/* no full animation update, this to enable render code to work (render code calls own animation updates) */
 }
@@ -637,7 +653,7 @@ void BKE_scene_unlink(Main *bmain, Scene *sce, Scene *newsce)
 			sce1->set = NULL;
 	
 	/* check all sequences */
-	clear_scene_in_allseqs(bmain, sce);
+	BKE_sequencer_clear_scene_in_allseqs(bmain, sce);
 
 	/* check render layer nodes in other scenes */
 	clear_scene_in_nodes(bmain, sce);
@@ -728,7 +744,7 @@ int BKE_scene_base_iter_next(Scene **scene, int val, Base **base, Object **ob)
 						 * this enters eternal loop because of 
 						 * makeDispListMBall getting called inside of group_duplilist */
 						if ((*base)->object->dup_group == NULL) {
-							duplilist = object_duplilist((*scene), (*base)->object);
+							duplilist = object_duplilist((*scene), (*base)->object, FALSE);
 							
 							dupob = duplilist->first;
 
@@ -950,9 +966,9 @@ static void scene_update_drivers(Main *UNUSED(bmain), Scene *scene)
 	if (scene->adt && scene->adt->drivers.first) {
 		BKE_animsys_evaluate_animdata(scene, &scene->id, scene->adt, ctime, ADT_RECALC_DRIVERS);
 	}
-	
+
 	/* world */
-	// TODO: what about world textures? but then those have nodes too...
+	/* TODO: what about world textures? but then those have nodes too... */
 	if (scene->world) {
 		ID *wid = (ID *)scene->world;
 		AnimData *adt = BKE_animdata_from_id(wid);
@@ -1001,6 +1017,9 @@ static void scene_update_tagged_recursive(Main *bmain, Scene *scene, Scene *scen
 
 	/* update sound system animation */
 	sound_update_scene(scene);
+
+	/* update masking curves */
+	BKE_mask_update_scene(bmain, scene, FALSE);
 }
 
 /* this is called in main loop, doing tagged updates before redraw */
@@ -1013,6 +1032,11 @@ void BKE_scene_update_tagged(Main *bmain, Scene *scene)
 	DAG_ids_flush_tagged(bmain);
 
 	scene->physics_settings.quick_cache_step = 0;
+	
+	/* clear "LIB_DOIT" flag from all materials, to prevent infinite recursion problems later 
+	 * when trying to find materials with drivers that need evaluating [#32017] 
+	 */
+	tag_main_idcode(bmain, ID_MA, FALSE);
 
 	/* update all objects: drivers, matrices, displists, etc. flags set
 	 * by depgraph or manual, no layer check here, gets correct flushed
@@ -1055,7 +1079,7 @@ void BKE_scene_update_for_newframe(Main *bmain, Scene *sce, unsigned int lay)
 	sound_set_cfra(sce->r.cfra);
 	
 	/* clear animation overrides */
-	// XXX TODO...
+	/* XXX TODO... */
 
 	for (sce_iter = sce; sce_iter; sce_iter = sce_iter->set) {
 		if (sce_iter->theDag == NULL)
@@ -1070,6 +1094,8 @@ void BKE_scene_update_for_newframe(Main *bmain, Scene *sce, unsigned int lay)
 	/* Following 2 functions are recursive
 	 * so don't call within 'scene_update_tagged_recursive' */
 	DAG_scene_update_flags(bmain, sce, lay, TRUE);   // only stuff that moves or needs display still
+
+	BKE_mask_evaluate_all_masks(bmain, ctime, TRUE);
 
 	/* All 'standard' (i.e. without any dependencies) animation is handled here,
 	 * with an 'local' to 'macro' order of evaluation. This should ensure that
@@ -1233,4 +1259,27 @@ void BKE_scene_base_flag_from_objects(struct Scene *scene)
 		base->flag = base->object->flag;
 		base = base->next;
 	}
+}
+
+void BKE_scene_disable_color_management(Scene *scene)
+{
+	ColorManagedDisplaySettings *display_settings = &scene->display_settings;
+	ColorManagedViewSettings *view_settings = &scene->view_settings;
+	const char *view;
+	const char *none_display_name;
+
+	none_display_name = IMB_colormanagement_display_get_none_name();
+
+	BLI_strncpy(display_settings->display_device, none_display_name, sizeof(display_settings->display_device));
+
+	view = IMB_colormanagement_view_get_default_name(display_settings->display_device);
+
+	if (view) {
+		BLI_strncpy(view_settings->view_transform, view, sizeof(view_settings->view_transform));
+	}
+}
+
+int BKE_scene_check_color_management_enabled(const Scene *scene)
+{
+	return strcmp(scene->display_settings.display_device, "None") != 0;
 }

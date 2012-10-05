@@ -34,13 +34,13 @@
 
 
 #include <stddef.h>
+#include <math.h>
 
 #include "BoolValue.h"
 #include "IntValue.h"
 #include "FloatValue.h"
 #include "SCA_IActuator.h"
 #include "SCA_RandomActuator.h"
-#include "math.h"
 #include "MT_Transform.h"
 
 /* ------------------------------------------------------------------------- */
@@ -141,8 +141,7 @@ bool SCA_RandomActuator::Update()
 		int res; 
 		/* The [0, 1] interval is projected onto the [min, max+1] domain,    */
 		/* and then rounded.                                                 */
-		res = (int) floor( ((m_parameter2 - m_parameter1 + 1) * m_base->DrawFloat())
-						   + m_parameter1);
+		res = (int)floor( ((m_parameter2 - m_parameter1 + 1) * m_base->DrawFloat()) + m_parameter1);
 		tmpval = new CIntValue(res);
 	}
 	break;
@@ -162,7 +161,7 @@ bool SCA_RandomActuator::Update()
 		while (b >= a) {
 			b = b * m_base->DrawFloat();
 			res++;
-		};	
+		};
 		tmpval = new CIntValue(res);
 	}
 	break;
@@ -172,8 +171,7 @@ bool SCA_RandomActuator::Update()
 	}
 	break;
 	case KX_RANDOMACT_FLOAT_UNIFORM: {
-		float res = ((m_parameter2 - m_parameter1) * m_base->DrawFloat())
-			+ m_parameter1;
+		float res = ((m_parameter2 - m_parameter1) * m_base->DrawFloat()) + m_parameter1;
 		tmpval = new CFloatValue(res);
 	}
 	break;
@@ -239,8 +237,7 @@ bool SCA_RandomActuator::Update()
 		/* controlling parameter. Using the 'normal' exponent is not very     */
 		/* intuitive...                                                       */
 		/* tmpval = new CFloatValue( (1.0 / m_parameter1)                     */
-		tmpval = new CFloatValue( (m_parameter1) 
-								  * (-log(1.0 - m_base->DrawFloat())) );
+		tmpval = new CFloatValue((m_parameter1)  * (-log(1.0 - m_base->DrawFloat())));
 
 	}
 	break;
@@ -364,9 +361,9 @@ PyAttributeDef SCA_RandomActuator::Attributes[] = {
 	KX_PYATTRIBUTE_STRING_RW_CHECK("propName",0,MAX_PROP_NAME,false,SCA_RandomActuator,m_propname,CheckProperty),
 	KX_PYATTRIBUTE_RW_FUNCTION("seed",SCA_RandomActuator,pyattr_get_seed,pyattr_set_seed),
 	{ NULL }	//Sentinel
-};	
+};
 
-PyObject* SCA_RandomActuator::pyattr_get_seed(void *self, const struct KX_PYATTRIBUTE_DEF *attrdef)
+PyObject *SCA_RandomActuator::pyattr_get_seed(void *self, const struct KX_PYATTRIBUTE_DEF *attrdef)
 {
 	SCA_RandomActuator* act = static_cast<SCA_RandomActuator*>(self);
 	return PyLong_FromSsize_t(act->m_base->GetSeed());
@@ -423,7 +420,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setBoolBernouilli,
 	}
 	
 	m_distribution = KX_RANDOMACT_BOOL_BERNOUILLI;
-	m_parameter1 = paraArg;	
+	m_parameter1 = paraArg;
 	enforceConstraints();
 	Py_RETURN_NONE;
 }
@@ -476,7 +473,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setIntPoisson,
 	}
 	
 	m_distribution = KX_RANDOMACT_INT_POISSON;
-	m_parameter1 = paraArg;	
+	m_parameter1 = paraArg;
 	enforceConstraints();
 	Py_RETURN_NONE;
 }
@@ -492,7 +489,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setFloatConst,
 	}
 	
 	m_distribution = KX_RANDOMACT_FLOAT_CONST;
-	m_parameter1 = paraArg;	
+	m_parameter1 = paraArg;
 	enforceConstraints();
 	Py_RETURN_NONE;
 }
@@ -547,7 +544,7 @@ KX_PYMETHODDEF_DOC_VARARGS(SCA_RandomActuator, setFloatNegativeExponential,
 	}
 	
 	m_distribution = KX_RANDOMACT_FLOAT_NEGATIVE_EXPONENTIAL;
-	m_parameter1 = paraArg;	
+	m_parameter1 = paraArg;
 	enforceConstraints();
 	Py_RETURN_NONE;
 }

@@ -380,7 +380,7 @@ BMFace *BM_face_create_ngon_vcloud(BMesh *bm, BMVert **vert_arr, int totv, int n
 	}
 
 	sub_v3_v3v3(far_vec, far, cent);
-	far_dist = len_v3(far_vec); /* real dist */
+	// far_dist = len_v3(far_vec); /* real dist */ /* UNUSED */
 
 	/* --- */
 
@@ -539,8 +539,8 @@ void BMO_remove_tagged_verts(BMesh *bm, const short oflag)
 	}
 }
 
-/*************************************************************/
-/* you need to make remove tagged verts/edges/faces
+/**
+ * you need to make remove tagged verts/edges/faces
  * api functions that take a filter callback.....
  * and this new filter type will be for opstack flags.
  * This is because the BM_remove_taggedXXX functions bypass iterator API.
@@ -902,8 +902,9 @@ BMesh *BM_mesh_copy(BMesh *bm_old)
 		}
 
 		f2 = BM_face_create_ngon(bm_new, v, v2, edges, f->len, FALSE);
-		if (!f2)
+		if (UNLIKELY(f2 == NULL)) {
 			continue;
+		}
 		/* use totface in case adding some faces fails */
 		BM_elem_index_set(f2, (bm_new->totface - 1)); /* set_inline */
 
@@ -973,6 +974,7 @@ char BM_edge_flag_from_mflag(const short meflag)
 {
 	return ( ((meflag & SELECT)        ? BM_ELEM_SELECT : 0) |
 	         ((meflag & ME_SEAM)       ? BM_ELEM_SEAM   : 0) |
+	         ((meflag & ME_EDGEDRAW)   ? BM_ELEM_DRAW   : 0) |
 	         ((meflag & ME_SHARP) == 0 ? BM_ELEM_SMOOTH : 0) | /* invert */
 	         ((meflag & ME_HIDE)       ? BM_ELEM_HIDDEN : 0)
 	         );
@@ -994,16 +996,18 @@ char  BM_vert_flag_to_mflag(BMVert *eve)
 	         ((hflag & BM_ELEM_HIDDEN)  ? ME_HIDE : 0)
 	         );
 }
+
 short BM_edge_flag_to_mflag(BMEdge *eed)
 {
 	const char hflag = eed->head.hflag;
 
-	return ( ((hflag & BM_ELEM_SELECT)       ? SELECT    : 0) |
-	         ((hflag & BM_ELEM_SEAM)         ? ME_SEAM   : 0) |
-	         ((hflag & BM_ELEM_SMOOTH) == 0  ? ME_SHARP  : 0) |
-	         ((hflag & BM_ELEM_HIDDEN)       ? ME_HIDE   : 0) |
-	         ((BM_edge_is_wire(eed)) ? ME_LOOSEEDGE : 0) | /* not typical */
-	         (ME_EDGEDRAW | ME_EDGERENDER)
+	return ( ((hflag & BM_ELEM_SELECT)       ? SELECT       : 0) |
+	         ((hflag & BM_ELEM_SEAM)         ? ME_SEAM      : 0) |
+	         ((hflag & BM_ELEM_DRAW)         ? ME_EDGEDRAW  : 0) |
+	         ((hflag & BM_ELEM_SMOOTH) == 0  ? ME_SHARP     : 0) |
+	         ((hflag & BM_ELEM_HIDDEN)       ? ME_HIDE      : 0) |
+	         ((BM_edge_is_wire(eed))         ? ME_LOOSEEDGE : 0) | /* not typical */
+	         ME_EDGERENDER
 	         );
 }
 char  BM_face_flag_to_mflag(BMFace *efa)

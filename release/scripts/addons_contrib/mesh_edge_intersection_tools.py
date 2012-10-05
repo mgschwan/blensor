@@ -27,12 +27,12 @@ bl_info = {
     "location": "View3D > EditMode > (w) Specials",
     "warning": "Still under development",
     "wiki_url": "http://wiki.blender.org/index.php/"\
-        "Extensions:2.5/Py/Scripts/Modeling/Edge_Slice",
+        "Extensions:2.6/Py/Scripts/Modeling/Edge_Slice",
     "tracker_url": "http://projects.blender.org/tracker/"\
         "?func=detail&aid=25227"
    }
 
-'''
+"""
 parts based on Keith (Wahooney) Boshoff, cursor to intersection script and
 Paul Bourke's Shortest Line Between 2 lines, and thanks to PKHG from BA.org
 for attempting to explain things to me that i'm not familiar with.
@@ -43,7 +43,7 @@ TODO: [ ] streamline this code !
 2) Edge Slice Intersecting ( X )
 3) Edge Project Converging  ( V )
 
-'''
+"""
 
 import bpy
 import sys
@@ -289,7 +289,7 @@ def initScriptX(context, self):
 
 
 class EdgeIntersections(bpy.types.Operator):
-    '''Makes a weld/slice/extend to intersecting edges/lines'''
+    """Makes a weld/slice/extend to intersecting edges/lines"""
     bl_idname = 'mesh.intersections'
     bl_label = 'Edge tools : tinyCAD VTX'
     # bl_options = {'REGISTER', 'UNDO'}

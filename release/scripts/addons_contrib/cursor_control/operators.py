@@ -50,7 +50,7 @@ from geometry_utils import *
 
 
 class VIEW3D_OT_cursor_to_origin(bpy.types.Operator):
-    '''Move to world origin'''
+    """Move to world origin"""
     bl_idname = "view3d.cursor_to_origin"
     bl_label = "Move to world origin"
     bl_options = {'REGISTER'}
@@ -67,7 +67,7 @@ class VIEW3D_OT_cursor_to_origin(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_active_object_center(bpy.types.Operator):
-    '''Move to active object origin'''
+    """Move to active object origin"""
     bl_idname = "view3d.cursor_to_active_object_center"
     bl_label = "Move to active object origin"
     bl_options = {'REGISTER'}
@@ -84,7 +84,7 @@ class VIEW3D_OT_cursor_to_active_object_center(bpy.types.Operator):
 
 
 #class VIEW3D_OT_cursor_to_nearest_object(bpy.types.Operator):
-    #'''Move to center of nearest object'''
+    #"""Move to center of nearest object"""
     #bl_idname = "view3d.cursor_to_nearest_object"
     #bl_label = "Move to center of nearest object"
     #bl_options = {'REGISTER'}
@@ -99,7 +99,7 @@ class VIEW3D_OT_cursor_to_active_object_center(bpy.types.Operator):
 
 
 #class VIEW3D_OT_cursor_to_selection_midpoint(bpy.types.Operator):
-    #'''Move to active objects median'''
+    #"""Move to active objects median"""
     #bl_idname = "view3d.cursor_to_selection_midpoint"
     #bl_label = "Move to active objects median"
     #bl_options = {'REGISTER'}
@@ -122,7 +122,7 @@ class VIEW3D_OT_cursor_to_active_object_center(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_sl(bpy.types.Operator):
-    '''Move to saved location'''
+    """Move to saved location"""
     bl_idname = "view3d.cursor_to_sl"
     bl_label = "Move to saved location"
     bl_options = {'REGISTER'}
@@ -141,7 +141,7 @@ class VIEW3D_OT_cursor_to_sl(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_sl_mirror(bpy.types.Operator):
-    '''Mirror cursor around SL or selection'''
+    """Mirror cursor around SL or selection"""
     bl_idname = "view3d.cursor_to_sl_mirror"
     bl_label = "Mirror cursor around SL or selection"
     bl_options = {'REGISTER'}
@@ -208,7 +208,7 @@ class VIEW3D_OT_cursor_to_sl_mirror(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_vertex(bpy.types.Operator):
-    '''Move to closest vertex'''
+    """Move to closest vertex"""
     bl_idname = "view3d.cursor_to_vertex"
     bl_label = "Move to closest vertex"
     bl_options = {'REGISTER'}
@@ -243,7 +243,7 @@ class VIEW3D_OT_cursor_to_vertex(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_line(bpy.types.Operator):
-    '''Move to closest point on line'''
+    """Move to closest point on line"""
     bl_idname = "view3d.cursor_to_line"
     bl_label = "Move to closest point on line"
     bl_options = {'REGISTER'}
@@ -289,7 +289,7 @@ class VIEW3D_OT_cursor_to_line(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_edge(bpy.types.Operator):
-    '''Move to closest point on edge'''
+    """Move to closest point on edge"""
     bl_idname = "view3d.cursor_to_edge"
     bl_label = "Move to closest point on edge"
     bl_options = {'REGISTER'}
@@ -335,7 +335,7 @@ class VIEW3D_OT_cursor_to_edge(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_plane(bpy.types.Operator):
-    '''Move to closest point on a plane'''
+    """Move to closest point on a plane"""
     bl_idname = "view3d.cursor_to_plane"
     bl_label = "Move to closest point on a plane"
     bl_options = {'REGISTER'}
@@ -370,7 +370,7 @@ class VIEW3D_OT_cursor_to_plane(bpy.types.Operator):
         c = mati*Vector(CursorAccess.getCursor())
         q = None
         d = -1
-        for ff in obj.data.faces:
+        for ff in obj.data.polygons:
             if not ff.select:
                 continue
             qq = G3.closestP2S(c, Vector(obj.data.vertices[ff.vertices[0]].co), ff.normal)
@@ -385,7 +385,7 @@ class VIEW3D_OT_cursor_to_plane(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_face(bpy.types.Operator):
-    '''Move to closest point on a face'''
+    """Move to closest point on a face"""
     bl_idname = "view3d.cursor_to_face"
     bl_label = "Move to closest point on a face"
     bl_options = {'REGISTER'}
@@ -420,7 +420,7 @@ class VIEW3D_OT_cursor_to_face(bpy.types.Operator):
         qqq = []
         q = None
         d = -1
-        for ff in obj.data.faces:
+        for ff in obj.data.polygons:
             if not ff.select:
                 continue
             fv=[]
@@ -447,7 +447,7 @@ class VIEW3D_OT_cursor_to_face(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_vertex_median(bpy.types.Operator):
-    '''Move to median of vertices'''
+    """Move to median of vertices"""
     bl_idname = "view3d.cursor_to_vertex_median"
     bl_label = "Move to median of vertices"
     bl_options = {'REGISTER'}
@@ -475,7 +475,7 @@ class VIEW3D_OT_cursor_to_vertex_median(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_linex(bpy.types.Operator):
-    '''Alternate between closest encounter points of two lines'''
+    """Alternate between closest encounter points of two lines"""
     bl_idname = "view3d.cursor_to_linex"
     bl_label = "Alternate between to closest encounter points of two lines"
     bl_options = {'REGISTER'}
@@ -517,7 +517,7 @@ class VIEW3D_OT_cursor_to_linex(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_cylinderaxis(bpy.types.Operator):
-    '''Move to closest point on cylinder axis'''
+    """Move to closest point on cylinder axis"""
     bl_idname = "view3d.cursor_to_cylinderaxis"
     bl_label = "Move to closest point on cylinder axis"
     bl_options = {'REGISTER'}
@@ -549,7 +549,7 @@ class VIEW3D_OT_cursor_to_cylinderaxis(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_spherecenter(bpy.types.Operator):
-    '''Move to center of cylinder or sphere'''
+    """Move to center of cylinder or sphere"""
     bl_idname = "view3d.cursor_to_spherecenter"
     bl_label = "Move to center of cylinder or sphere"
     bl_options = {'REGISTER'}
@@ -597,7 +597,7 @@ class VIEW3D_OT_cursor_to_spherecenter(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_to_perimeter(bpy.types.Operator):
-    '''Move to perimeter of cylinder or sphere'''
+    """Move to perimeter of cylinder or sphere"""
     bl_idname = "view3d.cursor_to_perimeter"
     bl_label = "Move to perimeter of cylinder or sphere"
     bl_options = {'REGISTER'}
@@ -645,7 +645,7 @@ class VIEW3D_OT_cursor_to_perimeter(bpy.types.Operator):
 
 
 #class VIEW3D_OT_cursor_offset_from_radius(bpy.types.Operator):
-    #'''Calculate offset from radius'''
+    #"""Calculate offset from radius"""
     #bl_idname = "view3d.cursor_offset_from_radius"
     #bl_label = "Calculate offset from radius"
     #bl_options = {'REGISTER'}
@@ -690,7 +690,7 @@ class VIEW3D_OT_cursor_to_perimeter(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_stepval_phinv(bpy.types.Operator):
-    '''Set step value to 1/Phi'''
+    """Set step value to 1/Phi"""
     bl_idname = "view3d.cursor_stepval_phinv"
     bl_label = "Set step value to 1/Phi"
     bl_options = {'REGISTER'}
@@ -707,7 +707,7 @@ class VIEW3D_OT_cursor_stepval_phinv(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_stepval_phi(bpy.types.Operator):
-    '''Set step value to Phi'''
+    """Set step value to Phi"""
     bl_idname = "view3d.cursor_stepval_phi"
     bl_label = "Set step value to Phi"
     bl_options = {'REGISTER'}
@@ -724,7 +724,7 @@ class VIEW3D_OT_cursor_stepval_phi(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_stepval_phi2(bpy.types.Operator):
-    '''Set step value to Phi²'''
+    """Set step value to Phi²"""
     bl_idname = "view3d.cursor_stepval_phi2"
     bl_label = "Set step value to Phi²"
     bl_options = {'REGISTER'}
@@ -741,7 +741,7 @@ class VIEW3D_OT_cursor_stepval_phi2(bpy.types.Operator):
 
 
 class VIEW3D_OT_cursor_stepval_vvdist(bpy.types.Operator):
-    '''Set step value to distance vertex-vertex'''
+    """Set step value to distance vertex-vertex"""
     bl_idname = "view3d.cursor_stepval_vvdist"
     bl_label = "Set step value to distance vertex-vertex"
     bl_options = {'REGISTER'}
@@ -773,7 +773,7 @@ class VIEW3D_OT_cursor_stepval_vvdist(bpy.types.Operator):
 
 
 class VIEW3D_OT_ccdelta_invert(bpy.types.Operator):
-    '''Invert delta vector'''
+    """Invert delta vector"""
     bl_idname = "view3d.ccdelta_invert"
     bl_label = "Invert delta vector"
     bl_options = {'REGISTER'}
@@ -789,7 +789,7 @@ class VIEW3D_OT_ccdelta_invert(bpy.types.Operator):
 
 
 class VIEW3D_OT_ccdelta_normalize(bpy.types.Operator):
-    '''Normalize delta vector'''
+    """Normalize delta vector"""
     bl_idname = "view3d.ccdelta_normalize"
     bl_label = "Normalize delta vector"
     bl_options = {'REGISTER'}
@@ -805,7 +805,7 @@ class VIEW3D_OT_ccdelta_normalize(bpy.types.Operator):
 
 
 class VIEW3D_OT_ccdelta_add(bpy.types.Operator):
-    '''Add delta vector to 3D cursor'''
+    """Add delta vector to 3D cursor"""
     bl_idname = "view3d.ccdelta_add"
     bl_label = "Add delta vector to 3D cursor"
     bl_options = {'REGISTER'}
@@ -821,7 +821,7 @@ class VIEW3D_OT_ccdelta_add(bpy.types.Operator):
 
 
 class VIEW3D_OT_ccdelta_sub(bpy.types.Operator):
-    '''Subtract delta vector to 3D cursor'''
+    """Subtract delta vector to 3D cursor"""
     bl_idname = "view3d.ccdelta_sub"
     bl_label = "Subtract delta vector to 3D cursor"
     bl_options = {'REGISTER'}
@@ -837,7 +837,7 @@ class VIEW3D_OT_ccdelta_sub(bpy.types.Operator):
 
 
 class VIEW3D_OT_ccdelta_vvdist(bpy.types.Operator):
-    '''Set delta vector from selection'''
+    """Set delta vector from selection"""
     bl_idname = "view3d.ccdelta_vvdist"
     bl_label = "Set delta vector from selection"
     bl_options = {'REGISTER'}

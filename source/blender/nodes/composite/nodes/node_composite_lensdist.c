@@ -33,15 +33,17 @@
 #include "node_composite_util.h"
 
 static bNodeSocketTemplate cmp_node_lensdist_in[]= {
-	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
-	{	SOCK_FLOAT, 1, "Distort", 	0.f, 0.f, 0.f, 0.f, -0.999f, 1.f, PROP_NONE},
-	{	SOCK_FLOAT, 1, "Dispersion", 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, PROP_NONE},
+	{	SOCK_RGBA, 1, N_("Image"),			1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_FLOAT, 1, N_("Distort"), 	0.f, 0.f, 0.f, 0.f, -0.999f, 1.f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("Dispersion"), 0.f, 0.f, 0.f, 0.f, 0.f, 1.f, PROP_NONE},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_lensdist_out[]= {
-	{	SOCK_RGBA, 0, "Image"},
+	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 /* assumes *dst is type RGBA */
 static void lensDistort(CompBuf *dst, CompBuf *src, float kr, float kg, float kb, int jit, int proj, int fit)
@@ -98,19 +100,20 @@ static void lensDistort(CompBuf *dst, CompBuf *src, float kr, float kg, float kb
 				float d, t, ln[6] = {0, 0, 0, 0, 0, 0};
 				fRGB c1, tc = {0, 0, 0, 0};
 				const float u = sc*((x + 0.5f) - cx)/cx;
+				const float uv_dot = u * u + v * v;
 				int sta = 0, mid = 0, end = 0;
 				
-				if ((t = 1.f - kr*(u*u + v*v)) >= 0.f) {
+				if ((t = 1.f - kr*uv_dot) >= 0.f) {
 					d = 1.f/(1.f + sqrtf(t));
 					ln[0] = (u*d + 0.5f)*dst->x - 0.5f, ln[1] = (v*d + 0.5f)*dst->y - 0.5f;
 					sta = 1;
 				}
-				if ((t = 1.f - kg*(u*u + v*v)) >= 0.f) {
+				if ((t = 1.f - kg*uv_dot) >= 0.f) {
 					d = 1.f/(1.f + sqrtf(t));
 					ln[2] = (u*d + 0.5f)*dst->x - 0.5f, ln[3] = (v*d + 0.5f)*dst->y - 0.5f;
 					mid = 1;
 				}
-				if ((t = 1.f - kb*(u*u + v*v)) >= 0.f) {
+				if ((t = 1.f - kb*uv_dot) >= 0.f) {
 					d = 1.f/(1.f + sqrtf(t));
 					ln[4] = (u*d + 0.5f)*dst->x - 0.5f, ln[5] = (v*d + 0.5f)*dst->y - 0.5f;
 					end = 1;
@@ -125,7 +128,7 @@ static void lensDistort(CompBuf *dst, CompBuf *src, float kr, float kg, float kb
 					
 					for (z=0; z<ds; ++z) {
 						const float tz = ((float)z + (jit ? BLI_frand() : 0.5f))*sd;
-						t = 1.f - (kr + tz*drg)*(u*u + v*v);
+						t = 1.f - (kr + tz*drg)*uv_dot;
 						d = 1.f / (1.f + sqrtf(t));
 						qd_getPixelLerp(src, (u*d + 0.5f)*dst->x - 0.5f, (v*d + 0.5f)*dst->y - 0.5f, c1);
 						if (src->type == CB_VAL) c1[1] = c1[2] = c1[0];
@@ -141,7 +144,7 @@ static void lensDistort(CompBuf *dst, CompBuf *src, float kr, float kg, float kb
 						
 						for (z=0; z<ds; ++z) {
 							const float tz = ((float)z + (jit ? BLI_frand() : 0.5f))*sd;
-							t = 1.f - (kg + tz*dgb)*(u*u + v*v);
+							t = 1.f - (kg + tz*dgb)*uv_dot;
 							d = 1.f / (1.f + sqrtf(t));
 							qd_getPixelLerp(src, (u*d + 0.5f)*dst->x - 0.5f, (v*d + 0.5f)*dst->y - 0.5f, c1);
 							if (src->type == CB_VAL) c1[1] = c1[2] = c1[0];
@@ -181,8 +184,9 @@ static void node_composit_exec_lensdist(void *UNUSED(data), bNode *node, bNodeSt
 	out[0]->data = new;
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
 
-static void node_composit_init_lensdist(bNodeTree *UNUSED(ntree), bNode* node, bNodeTemplate *UNUSED(ntemp))
+static void node_composit_init_lensdist(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
 	NodeLensDist *nld = MEM_callocN(sizeof(NodeLensDist), "node lensdist data");
 	nld->jit = nld->proj = nld->fit = 0;
@@ -199,7 +203,9 @@ void register_node_type_cmp_lensdist(bNodeTreeType *ttype)
 	node_type_size(&ntype, 150, 120, 200);
 	node_type_init(&ntype, node_composit_init_lensdist);
 	node_type_storage(&ntype, "NodeLensDist", node_free_standard_storage, node_copy_standard_storage);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_lensdist);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

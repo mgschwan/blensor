@@ -47,7 +47,6 @@ struct ColorBand;
 /* ************************ style definitions ******************** */
 
 #define MAX_STYLE_NAME	64
-#define MAX_FONT_NAME	256
 
 /* default uifont_id offered by Blender */
 #define UIFONT_DEFAULT	0
@@ -215,7 +214,7 @@ typedef struct ThemeSpace {
 	char extra_edge_len[4], extra_face_angle[4], extra_face_area[4], pad3[4];
 	char normal[4];
 	char vertex_normal[4];
-	char bone_solid[4], bone_pose[4];
+	char bone_solid[4], bone_pose[4], bone_pose_active[4];
 	char strip[4], strip_select[4];
 	char cframe[4];
 	
@@ -236,8 +235,8 @@ typedef struct ThemeSpace {
 	char syntaxl[4], syntaxn[4], syntaxb[4]; // syntax for textwindow and nodes
 	char syntaxv[4], syntaxc[4];
 	
-	char movie[4], movieclip[4], image[4], scene[4], audio[4];		// for sequence editor
-	char effect[4], plugin[4], transition[4], meta[4];
+	char movie[4], movieclip[4], mask[4], image[4], scene[4], audio[4];		// for sequence editor
+	char effect[4], hpad0[4], transition[4], meta[4];
 	char editmesh_active[4]; 
 
 	char handle_vertex[4];
@@ -249,7 +248,7 @@ typedef struct ThemeSpace {
 	char bundle_solid[4];
 	char path_before[4], path_after[4];
 	char camera_path[4];
-	char hpad[7];
+	char hpad[3];
 	
 	char preview_back[4];
 	char preview_stitch_face[4];
@@ -261,6 +260,19 @@ typedef struct ThemeSpace {
 	
 	char match[4];				/* outliner - filter match */
 	char selected_highlight[4];	/* outliner - selected item */
+
+	char skin_root[4]; /* Skin modifier root color */
+	
+	/* NLA */
+	char anim_active[4];	 /* Active Action + Summary Channel */
+	char anim_non_active[4]; /* Active Action = NULL */
+	
+	char nla_tweaking[4];   /* NLA 'Tweaking' action/strip */
+	char nla_tweakdupli[4]; /* NLA - warning color for duplicate instances of tweaking strip */
+	
+	char nla_transition[4], nla_transition_sel[4]; /* NLA "Transition" strips */
+	char nla_meta[4], nla_meta_sel[4];             /* NLA "Meta" strips */
+	char nla_sound[4], nla_sound_sel[4];           /* NLA "Sound" strips */
 } ThemeSpace;
 
 
@@ -330,10 +342,9 @@ typedef struct UserDef {
 	char fontdir[768];
 	char renderdir[1024]; /* FILE_MAX length */
 	char textudir[768];
-	char plugtexdir[768];
-	char plugseqdir[768];
 	char pythondir[768];
 	char sounddir[768];
+	char i18ndir[768];
 	char image_editor[1024];	/* 1024 = FILE_MAX */
 	char anim_player[1024];	/* 1024 = FILE_MAX */
 	int anim_player_preset;
@@ -399,9 +410,11 @@ typedef struct UserDef {
 	
 	short widget_unit;		/* defaults to 20 for 72 DPI setting */
 	short anisotropic_filter;
-	short use_16bit_textures, pad8;
+	short use_16bit_textures, use_gpu_mipmap;
 
 	float ndof_sensitivity;	/* overall sensitivity of 3D mouse */
+	float ndof_orbit_sensitivity;
+	float pad4;
 	int ndof_flag;			/* flags for 3D mouse */
 
 	float glalphaclip;
@@ -470,11 +483,10 @@ extern UserDef U; /* from blenkernel blender.c */
 #define USER_TOOLTIPS_PYTHON    (1 << 26)
 
 /* helper macro for checking frame clamping */
-#define FRAMENUMBER_MIN_CLAMP(cfra)                                           \
-	{                                                                         \
-		if ((U.flag & USER_NONEGFRAMES) && (cfra < 0))                        \
-			cfra = 0;                                                         \
-	}
+#define FRAMENUMBER_MIN_CLAMP(cfra)  {                                        \
+	if ((U.flag & USER_NONEGFRAMES) && (cfra < 0))                            \
+		cfra = 0;                                                             \
+	} (void)0
 
 /* viewzom */
 #define USER_ZOOM_CONT			0
@@ -492,13 +504,12 @@ extern UserDef U; /* from blenkernel blender.c */
 /*#define USER_FLIPFULLSCREEN		(1 << 7)*/ /* deprecated */
 #define USER_ALLWINCODECS		(1 << 8)
 #define USER_MENUOPENAUTO		(1 << 9)
-/*#define USER_PANELPINNED		(1 << 10)		deprecated */
+#define USER_ZBUF_CURSOR		(1 << 10)
 #define USER_AUTOPERSP     		(1 << 11)
 #define USER_LOCKAROUND     	(1 << 12)
 #define USER_GLOBALUNDO     	(1 << 13)
 #define USER_ORBIT_SELECTION	(1 << 14)
-// old flag for #define USER_KEYINSERTAVAI		(1 << 15)
-#define USER_ORBIT_ZBUF			(1 << 15)
+#define USER_ZBUF_ORBIT			(1 << 15)
 #define USER_HIDE_DOT			(1 << 16)
 #define USER_SHOW_ROTVIEWICON	(1 << 17)
 #define USER_SHOW_VIEWPORTNAME	(1 << 18)
@@ -509,7 +520,7 @@ extern UserDef U; /* from blenkernel blender.c */
 #define USER_MENUFIXEDORDER		(1 << 23)
 #define USER_CONTINUOUS_MOUSE	(1 << 24)
 #define USER_ZOOM_INVERT		(1 << 25)
-#define USER_ZOOM_HORIZ		(1 << 26) /* for CONTINUE and DOLLY zoom */
+#define USER_ZOOM_HORIZ			(1 << 26) /* for CONTINUE and DOLLY zoom */
 #define USER_SPLASH_DISABLE		(1 << 27)
 #define USER_HIDE_RECENT		(1 << 28)
 #define USER_SHOW_THUMBNAILS	(1 << 29)
@@ -639,6 +650,7 @@ extern UserDef U; /* from blenkernel blender.c */
 #define NDOF_PANX_INVERT_AXIS (1 << 12)
 #define NDOF_PANY_INVERT_AXIS (1 << 13)
 #define NDOF_PANZ_INVERT_AXIS (1 << 14)
+#define NDOF_TURNTABLE (1 << 15)
 
 /* compute_device_type */
 #define USER_COMPUTE_DEVICE_NONE	0

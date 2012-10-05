@@ -196,6 +196,11 @@
  *
  * There may be a better place for this section, but adding here for now.
  *
+ * \subsection bm_todo_api API
+ *
+ * - make crease and bevel weight optional, they come for free in meshes but are allocated layers
+ *   in the bmesh data structure.
+ *
  *
  * \subsection bm_todo_tools Tools
  *
@@ -225,7 +230,7 @@
  *
  * - face inset interpolate loop data from face (currently copies - but this stretches UV's in an ugly way)
  * - vert slide UV correction (like we have for edge slide)
- * - fill-face edge net - produce consistant normals, currently it won't, fix should be to fill in edge-net node
+ * - fill-face edge net - produce consistent normals, currently it won't, fix should be to fill in edge-net node
  *   connected with previous one - since they already check for normals of adjacent edge-faces before creating.
  */
 

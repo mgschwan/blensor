@@ -27,6 +27,17 @@
 #ifndef __ED_SEQUENCER_H__
 #define __ED_SEQUENCER_H__
 
-#define SEQ_ZOOM_FAC(szoom) ((szoom) > 0.0f)? (szoom) : ((szoom) == 0.0f)? (1.0f) : (-1.0f/(szoom))
+struct Scene;
+struct Sequence;
+struct SpaceSeq;
+
+void ED_sequencer_select_sequence_single(struct Scene *scene, struct Sequence *seq, int deselect_all);
+void ED_sequencer_deselect_all(struct Scene *scene);
+
+int ED_space_sequencer_maskedit_mask_poll(struct bContext *C);
+int ED_space_sequencer_check_show_maskedit(struct SpaceSeq *sseq, struct Scene *scene);
+int ED_space_sequencer_maskedit_poll(struct bContext *C);
+
+void ED_operatormacros_sequencer(void);
 
 #endif /*  __ED_SEQUENCER_H__ */

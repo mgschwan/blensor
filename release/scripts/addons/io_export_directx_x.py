@@ -23,7 +23,7 @@ bl_info = {
     "location": "File > Export > DirectX (.x)",
     "description": "Export DirectX Model Format (.x)",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Import-Export/DirectX_Exporter",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=22795",
@@ -1269,7 +1269,7 @@ class DirectXExporter(bpy.types.Operator):
                                          Verbose=self.Verbose)
 
         ExportDirectX(Config)
-        return {"FINISHED"}
+        return {'FINISHED'}
 
     def invoke(self, context, event):
         if not self.filepath:

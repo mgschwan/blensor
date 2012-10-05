@@ -62,7 +62,7 @@ class KX_BlenderRenderTools  : public RAS_IRenderTools
 
 public:
 						KX_BlenderRenderTools();
-	virtual				~KX_BlenderRenderTools();	
+	virtual				~KX_BlenderRenderTools();
 
 	void				EndFrame(RAS_IRasterizer* rasty);
 	void				BeginFrame(RAS_IRasterizer* rasty);
@@ -108,9 +108,7 @@ public:
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:KX_BlenderRenderTools"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:KX_BlenderRenderTools")
 #endif
 };
 

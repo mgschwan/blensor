@@ -159,15 +159,26 @@ BF_OIIO_INC = BF_OIIO + '/include'
 BF_OIIO_LIB = 'OpenImageIO'
 BF_OIIO_LIBPATH = BF_OIIO + '/lib'
 
+WITH_BF_OCIO = True
+BF_OCIO = LIBDIR + '/opencolorio'
+BF_OCIO_INC = BF_OCIO + '/include'
+BF_OCIO_LIB = 'OpenColorIO'
+BF_OCIO_LIBPATH = BF_OCIO + '/lib'
+
 WITH_BF_BOOST = True
 BF_BOOST = LIBDIR + '/boost'
 BF_BOOST_INC = BF_BOOST + '/include'
-BF_BOOST_LIB = 'boost_date_time-mgw46-mt-s-1_47 boost_filesystem-mgw46-mt-s-1_47 boost_regex-mgw46-mt-s-1_47 boost_system-mgw46-mt-s-1_47 boost_thread-mgw46-mt-s-1_47'
+BF_BOOST_LIB = 'boost_date_time-mgw46-mt-s-1_49 boost_filesystem-mgw46-mt-s-1_49 boost_regex-mgw46-mt-s-1_49 boost_system-mgw46-mt-s-1_49 boost_thread-mgw46-mt-s-1_49'
 BF_BOOST_LIBPATH = BF_BOOST + '/lib'
 
 #Ray trace optimization
 WITH_BF_RAYOPTIMIZATION = True
 BF_RAYOPTIMIZATION_SSE_FLAGS = ['-msse']
+
+#CUDA
+WITH_BF_CYCLES_CUDA_BINARIES = False
+#BF_CYCLES_CUDA_NVCC = "" # Path to the nvidia compiler
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_13', 'sm_20', 'sm_21', 'sm_30']
 
 ##
 CC = 'gcc'
@@ -176,7 +187,7 @@ CXX = 'g++'
 CCFLAGS = [ '-pipe', '-funsigned-char', '-fno-strict-aliasing' ]
 CXXFLAGS = []
 
-CPPFLAGS = ['-DWIN32', '-DFREE_WINDOWS', '-D_LARGEFILE_SOURCE', '-D_FILE_OFFSET_BITS=64', '-D_LARGEFILE64_SOURCE', '-DBOOST_ALL_NO_LIB', '-DBOOST_THREAD_USE_LIB', '-DGLEW_STATIC']
+CPPFLAGS = ['-DWIN32', '-DFREE_WINDOWS', '-D_LARGEFILE_SOURCE', '-D_FILE_OFFSET_BITS=64', '-D_LARGEFILE64_SOURCE', '-DBOOST_ALL_NO_LIB', '-DBOOST_THREAD_USE_LIB', '-DGLEW_STATIC', '-DOPJ_STATIC']
 REL_CFLAGS = []
 REL_CXXFLAGS = []
 REL_CCFLAGS = ['-DNDEBUG',  '-O2']
@@ -190,7 +201,7 @@ LLIBS = ['-lshell32', '-lshfolder', '-lgdi32', '-lmsvcrt', '-lwinmm', '-lmingw32
 PLATFORM_LINKFLAGS = ['-Xlinker', '--stack=2097152']
 
 ## DISABLED, causes linking errors!
-## for re-distrobution, so users dont need mingw installed
+## for re-distribution, so users dont need mingw installed
 # PLATFORM_LINKFLAGS += ["-static-libgcc", "-static-libstdc++"]
 
 BF_DEBUG = False

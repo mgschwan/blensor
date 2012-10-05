@@ -175,7 +175,7 @@ static void buttons_texture_users_from_context(ListBase *users, const bContext *
 	if (!(pinid || pinid == &scene->id)) {
 		ob = (scene->basact) ? scene->basact->object : NULL;
 		wrld = scene->world;
-		brush = paint_brush(paint_get_active(scene));
+		brush = paint_brush(paint_get_active_from_context(C));
 	}
 
 	if (ob && ob->type == OB_LAMP && !la)
@@ -341,7 +341,7 @@ static void template_texture_user_menu(bContext *C, uiLayout *layout, void *UNUS
 {
 	/* callback when opening texture user selection menu, to create buttons. */
 	SpaceButs *sbuts = CTX_wm_space_buts(C);
-	ButsContextTexture *ct = (sbuts) ? sbuts->texuser : NULL;
+	ButsContextTexture *ct = sbuts->texuser;
 	ButsTextureUser *user;
 	uiBlock *block = uiLayoutGetBlock(layout);
 	const char *last_category = NULL;

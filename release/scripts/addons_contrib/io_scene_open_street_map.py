@@ -20,8 +20,8 @@
 
 bl_info = {
     "name": "Open Street Map (.osm)",
-    "author": "Michael Anthrax Schlachter",
-    "version": (0, 1),
+    "author": "Michael Anthrax Schlachter, ideasman42, littleneo",
+    "version": (0, 2),
     "blender": (2, 6, 3),
     "location": "File > Import",
     "description": "Load Open Street Map File",
@@ -30,14 +30,72 @@ bl_info = {
     "category": "Import-Export"}
 
 # originally written for blender 2.4x by (manthrax _at_ hotmail.com),
-# updated by for blender 2.6x by ideasman42
+# updated for blender 2.6x by ideasman42
 # If you use it for something cool, send me an email and let me know!
+
+# littleneo (v0.2 - september 2012) :
+
+## added a lat/lon to UTM conversion option geoToUTM() :
+# the generated mesh now almost match the exported osm image of the same area, just play with scale and rotate a bit.
+
+## added ability to retrieve openstreet tags as vertex groups :
+# add every way id as a vgroup if the tag exists in osmkeys.
+# add nodes id as vgroup  if the tag value pair exists in osmvals.
+# any elligible is added in the corresponding osmkeys or value ('_V_...'  vgroup
+
+## added bpy access to addon : 
+# bpy.ops.import_mesh.osm(filepath="....", scale=100, utm=False, tag=False)
+
+## added custom properties to generated object so it can be used as source for other osm related scripts :
+# osmfile   path to osm xml file
+# tagged   bool. osm tags included
+# utm       bool. default True
+
+# modified the matrix approximation for utm = False
+# ! corrected lat/lon x/y mismatch
 
 import bpy
 from mathutils import Vector, Matrix
+import math
+from math import radians, sin, cos, tan, sqrt
 
+## add more osm tags here.
+# http://wiki.openstreetmap.org/wiki/Map_Features
+osmkeys = [
+    'highway',
+    'barrier',
+    'wall',
+    'cycleway',
+    'bicycle',
+    'waterway',
+    'railway',
+    'aeroway',
+    'aerialway',
+    'power',
+    'man_made',
+    'building',
+    'leisure',
+    'amenity',
+    'office',
+    'shop',
+    'craft',
+    'emergency',
+    'tourism',
+    'historic',
+    'landuse',
+    'military',
+    'natural',
+]
 
-def parseBranch(nodes, bm, nmap, scale=100.0):
+# just a try for nodes, for retrieving v tag values.
+# keyname must exists in osmkeys
+osmvals = {'highway':['traffic_signals']}
+
+# vertex group name -> vertex group index lookup
+grouplookup = {}
+
+def parseBranch(nodes, bm, nmap, obj, scale=100.0, tag=False, UTM=False):
+    vgroups = bm.verts.layers.deform.verify()
     tidx = 0
     inNode = 0
     dlat = dlong = clat = clong = minlat = maxlat = minlong = maxlong = 0.0
@@ -58,12 +116,21 @@ def parseBranch(nodes, bm, nmap, scale=100.0):
                 dlong = maxlong - minlong
                 clat = (maxlat + minlat) * 0.5
                 clong = (maxlong + minlong) * 0.5
+                
+                if UTM : 
+                    dlong, dlat = geoToUTM(dlong, dlat)
+                    clong, clat = geoToUTM(clong, clat)
 
                 print(dlat, dlong, clat, clong)
 
         if node.localName == "way":
+            
+            wayid = node.getAttribute('id')
             nid = None
             refs = []
+            if tag :
+                group = obj.vertex_groups.new('way_%s'%wayid)
+                gid = len(obj.vertex_groups) -1
             '''
             if node.hasAttributes():
                 for i in range(node.attributes.length):
@@ -71,14 +138,27 @@ def parseBranch(nodes, bm, nmap, scale=100.0):
                     print(at.name)
             '''
 
+            if tag :
+                metagid = []
+                for ch in node.childNodes:
+                    if ch.localName == "tag":
+                        key = ch.getAttribute('k')
+                        if key in osmkeys :
+                            metagid.append(grouplookup[key])
+
             for ch in node.childNodes:
                 if ch.localName == "nd":
                     for i in range(ch.attributes.length):
                         at = ch.attributes.item(i)
-                        #print(at.name)
                         if at.name == "ref":
-                            refs.append(int(at.nodeValue))
-
+                            vid = int(at.nodeValue)
+                            refs.append(vid)
+                            if tag :
+                                vert = nmap[vid]
+                                weigths = vert[vgroups]
+                                weigths[gid] = 1.0
+                                for mid in metagid : weigths[mid] = 1.0
+                
             first = 1
             for r in refs:
                 if first == 0:
@@ -92,59 +172,86 @@ def parseBranch(nodes, bm, nmap, scale=100.0):
 
         if node.localName == "node":
             if node.hasAttributes():
-                nid = None
-                nlong = None
-                nlat = None
-                logged = 0
-                for i in range(node.attributes.length):
-                    at = node.attributes.item(i)
-                    #print(at.name)
-                    if at.name == "id":
-                        nid = at.nodeValue
-                    elif at.name == "lon":
-                        nlong = at.nodeValue
-                    elif at.name == "lat":
-                        nlat = at.nodeValue
+                nid = node.getAttribute('id')
+                nlong = node.getAttribute('lon')
+                nlat = node.getAttribute('lat')
 
-                    if (nid is not None) and (nlat is not None) and (nlong is not None):
-                        fla = (float(nlat) - clat) * scale / dlat
-                        flo = (float(nlong) - clong) * scale / dlat
-                        vert = bm.verts.new((fla, flo, 0.0))
-                        nmap[int(nid)] = vert
-                        logged = 1
-                        break
+                # is this test necessary ? maybe for faulty .osm files
+                if (nid != '') and (nlat != '') and (nlong != '') :
+
+                    if UTM : 
+                        nlong, nlat = geoToUTM(float(nlong),float(nlat))
+                    else :
+                        nlat = float(nlat)
+                        nlong = float(nlong)
+                    
+                    x = (nlong - clong) * scale / dlat
+                    y = (nlat - clat) * scale / dlat
+                    vert = bm.verts.new((x, y, 0.0))
+                    nmap[int(nid)] = vert
+                    if tag :
+                        metagid = []
+                        for ch in node.childNodes:
+                            if ch.localName == "tag":
+                                key = ch.getAttribute('k')
+                                val = ch.getAttribute('v')
+                                if key in osmvals and val in osmvals[key] :
+                                    metagid.append(grouplookup[key])
+                                    metagid.append(grouplookup['_V_'+val])
+                                    weigths = vert[vgroups]
+                                    group = obj.vertex_groups.new('node_%s'%nid)
+                                    gid = len(obj.vertex_groups) -1
+                                    weigths[gid] = 1.0
+                                    for mid in metagid : weigths[mid] = 1.0
+
+                else : print('node is missing some elements : %s %s %s'%(nid,nlat,nlong))
+
         tidx += 1
         #if tidx > 1000:
         #    break
-        tidx += parseBranch(node.childNodes, bm, nmap)
+        tidx += parseBranch(node.childNodes, bm, nmap, obj,scale,tag,UTM)
 
     return tidx
 
-
-def read(context, filepath, scale=100.0):
+def read(context, filepath, scale=100.0, tag=False, utm=False) :
     import bmesh
     from xml.dom import minidom
 
-    xmldoc = minidom.parse(filepath)
-
-    print("Starting parse: %r..." % filepath)
-    bm = bmesh.new()
-
-    nmap = {}
-    tidx = parseBranch(xmldoc.childNodes, bm, nmap)
-
     # create mesh
+    bm = bmesh.new()
     name = bpy.path.display_name_from_filepath(filepath)
-    me = bpy.data.meshes.new(name)
-    bm.to_mesh(me)
+    me = bpy.data.meshes.new(name)    
     obj = bpy.data.objects.new(name, me)
 
-    # scale by 1.5 is odd, need to look into that
-    global_matrix = Matrix(((+0.0, +1.0, +0.0, +0.0),
-                            (+1.5, -0.0, +0.0, +0.0),
-                            (+0.0, -0.0, -1.0, +0.0),
-                            (+0.0, +0.0, +0.0, +1.0)))
-    me.transform(global_matrix)
+    # osm tags option
+    if tag :
+        tvid = 0
+        for gid, grname in enumerate(osmkeys) :
+            obj.vertex_groups.new('_'+grname)
+            grouplookup[grname] = gid + tvid
+            if grname in osmvals :
+                for val in osmvals[grname] :
+                    tvid += 1
+                    obj.vertex_groups.new('_V_'+val)
+                    grouplookup['_V_'+val] = gid + tvid
+
+    # get xml then feed bmesh
+    print("Reading xml...")
+    xmldoc = minidom.parse(filepath)
+    
+    print("Starting parse: %r..." % filepath)
+    nmap = {}
+    tidx = parseBranch(xmldoc.childNodes, bm, nmap, obj,scale,tag,utm)
+
+    bm.to_mesh(me)
+
+    # fast approximation of utm for not too big area
+    if utm == False :
+        global_matrix = Matrix(((0.65, 0.0, 0.0, 0.0),
+                                (0.0, 1.0, 0.0, 0.0),
+                                (0.0, 0.0, 1.0, 0.0),
+                                (0.0, 0.0, 0.0, 1.0)))
+        me.transform(global_matrix)
 
     # create the object in the scene
     scene = context.scene
@@ -152,9 +259,53 @@ def read(context, filepath, scale=100.0):
     scene.objects.active = obj
     obj.select = True
 
+    # entry points for other addons
+    obj['osmfile'] = filepath
+    obj['tagged'] = tag
+    obj['utm'] = utm
+
     print("Parse done... %d" % tidx)
 
     return {'FINISHED'}
+
+# given lat and longitude in degrees, returns x and y in UTM kilometers.
+# accuracy : supposed to be centimeter :)
+# http://fr.wikipedia.org/wiki/Projection_UTM
+# http://fr.wikipedia.org/wiki/WGS_84
+# http://earth-info.nga.mil/GandG/publications/tr8350.2/wgs84fin.pdf
+# http://geodesie.ign.fr/contenu/fichiers/documentation/algorithmes/alg0071.pdf
+def geoToUTM(lon, lat) :
+
+    # if abs(lat) > 80 : lat = 80 #wrong coords.
+    
+    # UTM zone, longitude origin, then lat lon in radians
+    z = int( (lon + 180)  / 6 ) + 1
+    lon0 = radians(6*z - 183)
+    lat = radians(lat)
+    lon = radians(lon)
+
+    # CONSTANTS (see refs.)
+    # rayon de la terre à l'équateur
+    a = 6378.137
+    K0 = 0.9996
+    # flattening consts
+    f  = 0.0033528106647474805  # 1 / 298.257223563
+    e2 = 0.0066943799901413165  # 2*f - f**2
+    e4 = 4.481472345240445e-05  # e2**2
+    e6 = 3.0000678794349315e-07 # e2**3
+
+    # lat0. 10000 for South, 0 for North
+    N0 = 10000 if lat < 0 else 0
+
+    # wiki is your friend (don't ask me Im just a writing monkey.)
+    A = (lon - lon0) * cos(lat)
+    C = (e2 / (1 - e2)) * cos(lat)**2
+    T = tan(lat)**2
+    vlat = 1 / sqrt( 1 - e2 * sin(lat)**2 )
+    slat = (1-(e2/4)-((3*e4)/64)-((5*e6)/256))*lat - (((3*e2)/8)+((3*e4)/32)+((45*e6)/1024))*sin(lat*2) + (((15*e4)/256) + ((45*e6)/1024) )*sin(lat*4) - ((35*e6)/3072)*sin(lat*6)
+    E = 500 + (K0 * a * vlat) * (A + (1-T+C)*((A**3)/6) + (5 - 18 * T + T**2) * ((A**5)/120) )
+    N = N0 + (K0 * a) * ( slat+vlat*tan(lat)* (A**2/2 + (5-T+9*C+4*C**2) * (A**4/24) + (61-58*T+T**2) * A**6/720) )
+    return E,N
 
 ## for testing
 #if __name__ == "__main__":
@@ -167,12 +318,12 @@ def read(context, filepath, scale=100.0):
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 
-from bpy.props import StringProperty, FloatProperty
-
+from bpy.props import StringProperty, FloatProperty, BoolProperty
 
 class ImportOSM(Operator, ImportHelper):
-    '''Import OSM'''
-    bl_idname = "import.open_street_map"
+    """Import OSM"""
+    #bl_idname = "import.open_street_map"
+    bl_idname = "import_mesh.osm"
     bl_label = "Import OpenStreetMap (.osm)"
 
     # ExportHelper mixin class uses this
@@ -190,8 +341,18 @@ class ImportOSM(Operator, ImportHelper):
             default=100.0,
             )
 
-    def execute(self, context):
-        return read(context, self.filepath, self.scale)
+    utm = BoolProperty(
+            name="in UTM coordinates",
+            default=True,
+            )
+
+    tag = BoolProperty(
+            name="retrieve .osm tags as vertex groups",
+            default=False,
+            )
+
+    def execute(self, context) :
+        return read(context, self.filepath, self.scale, self.tag, self.utm)
 
 
 # Only needed if you want to add into a dynamic menu

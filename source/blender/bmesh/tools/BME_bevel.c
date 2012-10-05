@@ -38,7 +38,6 @@
 #include "BLI_ghash.h"
 #include "BLI_memarena.h"
 
-#include "BKE_utildefines.h"
 #include "BKE_tessmesh.h"
 #include "BKE_bmesh.h"
 
@@ -67,12 +66,12 @@
 
 /* ------- Bevel code starts here -------- */
 
-BME_TransData_Head *BME_init_transdata(int bufsize)
+static BME_TransData_Head *BME_init_transdata(int bufsize)
 {
 	BME_TransData_Head *td;
 
 	td = MEM_callocN(sizeof(BME_TransData_Head), "BM transdata header");
-	td->gh = BLI_ghash_new(BLI_ghashutil_ptrhash, BLI_ghashutil_ptrcmp, "BME_init_transdata gh");
+	td->gh = BLI_ghash_ptr_new("BME_init_transdata gh");
 	td->ma = BLI_memarena_new(bufsize, "BME_TransData arena");
 	BLI_memarena_use_calloc(td->ma);
 
@@ -86,9 +85,9 @@ void BME_free_transdata(BME_TransData_Head *td)
 	MEM_freeN(td);
 }
 
-BME_TransData *BME_assign_transdata(BME_TransData_Head *td, BMesh *bm, BMVert *v,
-                                    float *co, float *org, float *vec, float *loc,
-                                    float factor, float weight, float maxfactor, float *max)
+static BME_TransData *BME_assign_transdata(BME_TransData_Head *td, BMesh *bm, BMVert *v,
+                                           float *co, float *org, float *vec, float *loc,
+                                           float factor, float weight, float maxfactor, float *max)
 {
 	BME_TransData *vtd;
 	int is_new = 0;
@@ -141,7 +140,7 @@ BME_TransData *BME_get_transdata(BME_TransData_Head *td, BMVert *v)
 }
 
 /* a hack (?) to use the transdata memarena to allocate floats for use with the max limits */
-float *BME_new_transdata_float(BME_TransData_Head *td)
+static float *BME_new_transdata_float(BME_TransData_Head *td)
 {
 	return BLI_memarena_alloc(td->ma, sizeof(float));
 }
@@ -155,9 +154,9 @@ static void BME_Bevel_Dissolve_Disk(BMesh *bm, BMVert *v)
 	int done;
 
 	if (v->e) {
-		done = 0;
+		done = FALSE;
 		while (!done) {
-			done = 1;
+			done = TRUE;
 			e = v->e; /*loop the edge looking for a edge to dissolve*/
 			do {
 				f = NULL;
@@ -165,7 +164,7 @@ static void BME_Bevel_Dissolve_Disk(BMesh *bm, BMVert *v)
 					f = bmesh_jfke(bm, e->l->f, e->l->radial_next->f, e);
 				}
 				if (f) {
-					done = 0;
+					done = FALSE;
 					break;
 				}
 				e = bmesh_disk_edge_next(e, v);
@@ -195,7 +194,7 @@ static int BME_bevel_is_split_vert(BMesh *bm, BMLoop *l)
  * the bevel operation as a whole based on the relationship between v1 and v2
  * (won't necessarily be a vec from v1->co to v2->co, though it probably will be);
  * the return value is -1 for failure, 0 if we used vert co's, and 1 if we used transform origins */
-static int BME_bevel_get_vec(float *vec, BMVert *v1, BMVert *v2, BME_TransData_Head *td)
+static int BME_bevel_get_vec(float vec[3], BMVert *v1, BMVert *v2, BME_TransData_Head *td)
 {
 	BME_TransData *vtd1, *vtd2;
 
@@ -1029,17 +1028,16 @@ static BMesh *BME_bevel_reinitialize(BMesh *bm)
 #endif
 
 /**
- *			BME_bevel_mesh
+ * BME_bevel_mesh
  *
- *	Mesh beveling tool:
+ * Mesh beveling tool:
  *
- *	Bevels an entire mesh. It currently uses the flags of
- *	its vertices and edges to track topological changes.
- *  The parameter "value" is the distance to inset (should be negative).
- *  The parameter "options" is not currently used.
+ * Bevels an entire mesh. It currently uses the flags of
+ * its vertices and edges to track topological changes.
+ * The parameter "value" is the distance to inset (should be negative).
+ * The parameter "options" is not currently used.
  *
- *	Returns -
- *  A BMesh pointer to the BM passed as a parameter.
+ * \return A BMesh pointer to the BM passed as a parameter.
  */
 
 static BMesh *BME_bevel_mesh(BMesh *bm, float value, int UNUSED(res), int options,
@@ -1129,7 +1127,7 @@ BMesh *BME_bevel(BMEditMesh *em, float value, int res, int options, int defgrp_i
 	}
 
 	/* possibly needed when running as a tool (which is no longer functional)
-	 * but keep as an optioin for now */
+	 * but keep as an option for now */
 	if (do_tessface) {
 		BMEdit_RecalcTessellation(em);
 	}

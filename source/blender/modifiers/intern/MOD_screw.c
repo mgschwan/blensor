@@ -94,7 +94,7 @@ static void screwvert_iter_step(ScrewVertIter *iter)
 		iter->v_other = iter->v;
 		iter->v = iter->v_poin->v[0];
 	}
-	if (iter->v >= 0)   {
+	if (iter->v >= 0) {
 		iter->v_poin = &iter->v_array[iter->v];
 		iter->e = iter->v_poin->e[(iter->v_poin->e[0] == iter->e)];
 	}
@@ -111,7 +111,7 @@ static void initData(ModifierData *md)
 	ltmd->ob_axis = NULL;
 	ltmd->angle = M_PI * 2.0;
 	ltmd->axis = 2;
-	ltmd->flag = 0;
+	ltmd->flag = MOD_SCREW_SMOOTH_SHADING;
 	ltmd->steps = 16;
 	ltmd->render_steps = 16;
 	ltmd->iter = 1;
@@ -174,6 +174,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	MVert *mvert_new, *mvert_orig, *mv_orig, *mv_new, *mv_new_base;
 
 	ScrewVertConnect *vc, *vc_tmp, *vert_connect = NULL;
+
+	const char mpoly_flag = (ltmd->flag & MOD_SCREW_SMOOTH_SHADING) ? ME_SMOOTH : 0;
 
 	/* don't do anything? */
 	if (!totvert)
@@ -280,10 +282,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		step_tot--;
 		if (step_tot < 3) step_tot = 3;
 	
-		maxVerts =  totvert  * step_tot;   /* -1 because we're joining back up */
-		maxEdges =  (totvert * step_tot) + /* these are the edges between new verts */
-		            (totedge * step_tot);  /* -1 because vert edges join */
-		maxPolys =  totedge * step_tot;
+		maxVerts = totvert  * step_tot;   /* -1 because we're joining back up */
+		maxEdges = (totvert * step_tot) + /* these are the edges between new verts */
+		           (totedge * step_tot);  /* -1 because vert edges join */
+		maxPolys = totedge * step_tot;
 
 		screw_ofs = 0.0f;
 	}
@@ -391,7 +393,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 					mul_m4_v3(mtx_tx, vc->co);
 					/* length in 2d, don't sqrt because this is only for comparison */
-					vc->dist =  vc->co[other_axis_1] * vc->co[other_axis_1] +
+					vc->dist = vc->co[other_axis_1] * vc->co[other_axis_1] +
 					           vc->co[other_axis_2] * vc->co[other_axis_2];
 
 					/* printf("location %f %f %f -- %f\n", vc->co[0], vc->co[1], vc->co[2], vc->dist);*/
@@ -408,7 +410,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					vc->v[0] = vc->v[1] = -1;
 
 					/* length in 2d, don't sqrt because this is only for comparison */
-					vc->dist =  vc->co[other_axis_1] * vc->co[other_axis_1] +
+					vc->dist = vc->co[other_axis_1] * vc->co[other_axis_1] +
 					           vc->co[other_axis_2] * vc->co[other_axis_2];
 
 					/* printf("location %f %f %f -- %f\n", vc->co[0], vc->co[1], vc->co[2], vc->dist);*/
@@ -428,7 +430,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					vc->e[1] = med_new;
 				}
 				else {
-					vc->v[0] = vc->v[1] = -2; /* erro value  - don't use, 3 edges on vert */
+					vc->v[0] = vc->v[1] = -2; /* error value  - don't use, 3 edges on vert */
 				}
 
 				vc = &vert_connect[med_new->v2];
@@ -443,7 +445,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					vc->e[1] = med_new;
 				}
 				else {
-					vc->v[0] = vc->v[1] = -2; /* erro value  - don't use, 3 edges on vert */
+					vc->v[0] = vc->v[1] = -2; /* error value  - don't use, 3 edges on vert */
 				}
 			}
 
@@ -810,7 +812,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 			mp_new->loopstart = mpoly_index * 4;
 			mp_new->totloop = 4;
-			mp_new->flag = ME_SMOOTH;
+			mp_new->flag = mpoly_flag;
 			origindex[mpoly_index] = ORIGINDEX_NONE;
 			mp_new++;
 			ml_new += 4;
@@ -855,7 +857,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 			mp_new->loopstart = mpoly_index * 4;
 			mp_new->totloop = 4;
-			mp_new->flag = ME_SMOOTH;
+			mp_new->flag = mpoly_flag;
 			origindex[mpoly_index] = ORIGINDEX_NONE;
 			mp_new++;
 			ml_new += 4;

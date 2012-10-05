@@ -40,6 +40,11 @@
 #include "COLLADAFWTypes.h"
 #include "COLLADAFWUniqueId.h"
 
+#include "ArmatureImporter.h"
+#include "collada_utils.h"
+
+extern "C" {
+#include "BLI_edgehash.h"
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
@@ -47,8 +52,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_texture_types.h"
 
-#include "ArmatureImporter.h"
-#include "collada_utils.h"
+}
 
 // only for ArmatureImporter to "see" MeshImporter::get_object_by_geom_uid
 class MeshImporterBase
@@ -81,6 +85,7 @@ private:
 
 	std::map<COLLADAFW::UniqueId, Mesh*> uid_mesh_map; // geometry unique id-to-mesh map
 	std::map<COLLADAFW::UniqueId, Object*> uid_object_map; // geom uid-to-object
+	std::vector<Object*> imported_objects; // list of imported objects
 	// this structure is used to assign material indices to faces
 	// it holds a portion of Mesh faces and corresponds to a DAE primitive list (<triangles>, <polylist>, etc.)
 	struct Primitive {
@@ -101,10 +106,10 @@ private:
 #endif
 	
 	void set_face_uv(MTFace *mtface, UVDataWrapper &uvs,
-					 COLLADAFW::IndexList& index_list, unsigned int *tris_indices);
+	                 COLLADAFW::IndexList& index_list, unsigned int *tris_indices);
 
 	void set_face_uv(MTFace *mtface, UVDataWrapper &uvs,
-					COLLADAFW::IndexList& index_list, int index, bool quad);
+	                 COLLADAFW::IndexList& index_list, int index, bool quad);
 
 #ifdef COLLADA_DEBUG
 	void print_index_list(COLLADAFW::IndexList& index_list);
@@ -118,13 +123,27 @@ private:
 	
 	int count_new_tris(COLLADAFW::Mesh *mesh, Mesh *me);
 	
+	bool primitive_has_useable_normals(COLLADAFW::MeshPrimitive *mp);
+	bool primitive_has_faces(COLLADAFW::MeshPrimitive *mp);
+
+	static void mesh_add_edges(Mesh *mesh, int len);
+
+	unsigned int get_loose_edge_count(COLLADAFW::Mesh *mesh);
+
+	CustomData create_edge_custom_data(EdgeHash *eh);
+
+	void allocate_face_data(COLLADAFW::Mesh *mesh, Mesh *me, int new_tris);
+
 	// TODO: import uv set names
 	void read_faces(COLLADAFW::Mesh *mesh, Mesh *me, int new_tris);
+	void read_lines(COLLADAFW::Mesh *mesh, Mesh *me);
 
 	void get_vector(float v[3], COLLADAFW::MeshVertexData& arr, int i, int stride);
 
 	bool flat_face(unsigned int *nind, COLLADAFW::MeshVertexData& nor, int count);
-	
+
+	std::vector<Object *> get_all_users_of(Mesh *reference_mesh);
+
 public:
 
 	MeshImporter(UnitConverter *unitconv, ArmatureImporter *arm, Scene *sce);
@@ -134,20 +153,22 @@ public:
 	virtual Object *get_object_by_geom_uid(const COLLADAFW::UniqueId& geom_uid);
 	
 	MTex *assign_textures_to_uvlayer(COLLADAFW::TextureCoordinateBinding &ctexture,
-									 Mesh *me, TexIndexTextureArrayMap& texindex_texarray_map,
-									 MTex *color_texture);
-	
+	                                 Mesh *me, TexIndexTextureArrayMap& texindex_texarray_map,
+	                                 MTex *color_texture);
+
+	void optimize_material_assignments();
+
 	MTFace *assign_material_to_geom(COLLADAFW::MaterialBinding cmaterial,
-									std::map<COLLADAFW::UniqueId, Material*>& uid_material_map,
-									Object *ob, const COLLADAFW::UniqueId *geom_uid, 
-									MTex **color_texture, char *layername, MTFace *texture_face,
-									std::map<Material*, TexIndexTextureArrayMap>& material_texture_mapping_map, short mat_index);
+	                                std::map<COLLADAFW::UniqueId, Material*>& uid_material_map,
+	                                Object *ob, const COLLADAFW::UniqueId *geom_uid,
+	                                MTex **color_texture, char *layername, MTFace *texture_face,
+	                                std::map<Material*, TexIndexTextureArrayMap>& material_texture_mapping_map, short mat_index);
 	
 	
 	Object *create_mesh_object(COLLADAFW::Node *node, COLLADAFW::InstanceGeometry *geom,
-							   bool isController,
-							   std::map<COLLADAFW::UniqueId, Material*>& uid_material_map,
-							   std::map<Material*, TexIndexTextureArrayMap>& material_texture_mapping_map);
+	                           bool isController,
+	                           std::map<COLLADAFW::UniqueId, Material*>& uid_material_map,
+	                           std::map<Material*, TexIndexTextureArrayMap>& material_texture_mapping_map);
 
 	// create a mesh storing a pointer in a map so it can be retrieved later by geometry UID
 	bool write_geometry(const COLLADAFW::Geometry* geom);

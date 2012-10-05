@@ -92,9 +92,9 @@ void make_editLatt(Object *obedit)
 
 	free_editLatt(obedit);
 
-	actkey = ob_get_keyblock(obedit);
+	actkey = BKE_keyblock_from_object(obedit);
 	if (actkey)
-		key_to_latt(actkey, lt);
+		BKE_key_convert_to_lattice(actkey, lt);
 
 	lt->editlatt = MEM_callocN(sizeof(EditLatt), "editlatt");
 	lt->editlatt->latt = MEM_dupallocN(lt);
@@ -102,7 +102,7 @@ void make_editLatt(Object *obedit)
 
 	if (lt->dvert) {
 		int tot = lt->pntsu * lt->pntsv * lt->pntsw;
-		lt->editlatt->latt->dvert = MEM_mallocN(sizeof (MDeformVert) * tot, "Lattice MDeformVert");
+		lt->editlatt->latt->dvert = MEM_mallocN(sizeof(MDeformVert) * tot, "Lattice MDeformVert");
 		copy_dverts(lt->editlatt->latt->dvert, lt->dvert, tot);
 	}
 
@@ -162,7 +162,7 @@ void load_editLatt(Object *obedit)
 	if (editlt->dvert) {
 		tot = lt->pntsu * lt->pntsv * lt->pntsw;
 
-		lt->dvert = MEM_mallocN(sizeof (MDeformVert) * tot, "Lattice MDeformVert");
+		lt->dvert = MEM_mallocN(sizeof(MDeformVert) * tot, "Lattice MDeformVert");
 		copy_dverts(lt->dvert, editlt->dvert, tot);
 	}
 }
@@ -203,7 +203,7 @@ static int lattice_select_all_exec(bContext *C, wmOperator *op)
 
 		while (a--) {
 			if (bp->hide == 0) {
-				if (bp->f1) {
+				if (bp->f1 & SELECT) {
 					action = SEL_DESELECT;
 					break;
 				}
@@ -225,7 +225,7 @@ static int lattice_select_all_exec(bContext *C, wmOperator *op)
 
 			while (a--) {
 				if (bp->hide == 0) {
-					bp->f1 ^= 1;
+					bp->f1 ^= SELECT;
 				}
 				bp++;
 			}
@@ -335,7 +335,7 @@ static BPoint *findnearestLattvert(ViewContext *vc, const int mval[2], int sel)
 	return data.bp;
 }
 
-int mouse_lattice(bContext *C, const int mval[2], int extend)
+int mouse_lattice(bContext *C, const int mval[2], int extend, int deselect, int toggle)
 {
 	ViewContext vc;
 	BPoint *bp = NULL;
@@ -344,12 +344,19 @@ int mouse_lattice(bContext *C, const int mval[2], int extend)
 	bp = findnearestLattvert(&vc, mval, 1);
 
 	if (bp) {
-		if (extend == 0) {
+		if (extend) {
+			bp->f1 |= SELECT;
+		}
+		else if (deselect) {
+			bp->f1 &= ~SELECT;
+		}
+		else if (toggle) {
+			bp->f1 ^= SELECT;  /* swap */
+		}
+		else {
 			ED_setflagsLatt(vc.obedit, 0);
 			bp->f1 |= SELECT;
 		}
-		else
-			bp->f1 ^= SELECT;  /* swap */
 
 		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, vc.obedit->data);
 

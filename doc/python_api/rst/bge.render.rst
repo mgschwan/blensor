@@ -11,39 +11,41 @@ Intro
 .. code-block:: python
 
    # Example Uses an L{SCA_MouseSensor}, and two L{KX_ObjectActuator}s to implement MouseLook::
-   # To use a mouse movement sensor "Mouse" and a 
+   # To use a mouse movement sensor "Mouse" and a
    # motion actuator to mouse look:
-   import bge.render
-   import bge.logic
+   import bge
 
    # scale sets the speed of motion
    scale = 1.0, 0.5
-   
+
    co = bge.logic.getCurrentController()
-   obj = co.getOwner()
-   mouse = co.getSensor("Mouse")
-   lmotion = co.getActuator("LMove")
-   wmotion = co.getActuator("WMove")
-   
+   obj = co.owner
+   mouse = co.sensors["Mouse"]
+   lmotion = co.actuators["LMove"]
+   wmotion = co.actuators["WMove"]
+
    # Transform the mouse coordinates to see how far the mouse has moved.
    def mousePos():
-      x = (bge.render.getWindowWidth() / 2 - mouse.getXPosition()) * scale[0]
-      y = (bge.render.getWindowHeight() / 2 - mouse.getYPosition()) * scale[1]
+      x = (bge.render.getWindowWidth() / 2 - mouse.position[0]) * scale[0]
+      y = (bge.render.getWindowHeight() / 2 - mouse.position[1]) * scale[1]
       return (x, y)
-   
+
    pos = mousePos()
-   
+
    # Set the amount of motion: X is applied in world coordinates...
-   lmotion.setTorque(0.0, 0.0, pos[0], False)
+   wmotion.useLocalTorque = False
+   wmotion.torque = ((0.0, 0.0, pos[0]))
+
    # ...Y is applied in local coordinates
-   wmotion.setTorque(-pos[1], 0.0, 0.0, True)
-   
+   lmotion.useLocalTorque = True
+   lmotion.torque = ((-pos[1], 0.0, 0.0))
+
    # Activate both actuators
-   bge.logic.addActiveActuator(lmotion, True)
-   bge.logic.addActiveActuator(wmotion, True)
-   
+   co.activate(lmotion)
+   co.activate(wmotion)
+
    # Centre the mouse
-   bge.render.setMousePosition(bge.render.getWindowWidth() / 2, bge.render.getWindowHeight() / 2)
+   bge.render.setMousePosition(int(bge.render.getWindowWidth() / 2), int(bge.render.getWindowHeight() / 2))
 
 *********
 Constants
@@ -92,11 +94,11 @@ Functions
    If filename starts with // the image will be saved relative to the current directory.
    If the filename contains # it will be replaced with the frame number.
    
-   The standalone player saves .png files. It does not support colour space conversion 
+   The standalone player saves .png files. It does not support color space conversion 
    or gamma correction.
    
    When run from Blender, makeScreenshot supports Iris, IrisZ, TGA, Raw TGA, PNG, HamX, and Jpeg.
-   Gamma, Colourspace conversion and Jpeg compression are taken from the Render settings panels.
+   Gamma, Colorspace conversion and Jpeg compression are taken from the Render settings panels.
    
    :type filename: string
 
@@ -123,14 +125,14 @@ Functions
 
 .. function:: setBackgroundColor(rgba)
 
-   Sets the window background colour.
+   Sets the window background color.
    
    :type rgba: list [r, g, b, a]
 
 
 .. function:: setMistColor(rgb)
 
-   Sets the mist colour.
+   Sets the mist color.
    
    :type rgb: list [r, g, b]
 
@@ -151,8 +153,8 @@ Functions
 
 .. function:: setMistEnd(end)
 
-   Sets the mist end value.  Objects further away from this will be coloured solid with
-   the colour set by setMistColor().
+   Sets the mist end value.  Objects further away from this will be colored solid with
+   the color set by setMistColor().
    
    :type end: float
 

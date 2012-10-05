@@ -24,7 +24,7 @@ bl_info = {
     "location": "File > Import > HiRISE DTM from PDS IMG (.IMG)",
     "description": "Import a HiRISE DTM formatted as a PDS IMG file",
     "warning": "May consume a lot of memory",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Import-Export/HiRISE_DTM_from_PDS_IMG",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=24897&group_id=153&atid=469",
@@ -59,7 +59,7 @@ from bpy_extras.io_utils import ImportHelper
 
 
 class ImportHiRISEIMGDTM(bpy.types.Operator, ImportHelper):
-    '''Import a HiRISE DTM formatted as a PDS IMG file'''
+    """Import a HiRISE DTM formatted as a PDS IMG file"""
     bl_idname = "import_shape.img"
     bl_label  = "Import HiRISE DTM from PDS IMG"
     bl_options = {'UNDO'}

@@ -356,8 +356,15 @@ static void test_constraints(Object *owner, bPoseChannel *pchan)
 				bActionConstraint *data = curcon->data;
 				
 				/* validate action */
-				if (data->act == NULL) 
+				if (data->act == NULL) {
+					/* must have action */
 					curcon->flag |= CONSTRAINT_DISABLE;
+				}
+				else if (data->act->idroot != ID_OB) {
+					/* only object-rooted actions can be used */
+					data->act = NULL;
+					curcon->flag |= CONSTRAINT_DISABLE;
+				}
 			}
 			else if (curcon->type == CONSTRAINT_TYPE_FOLLOWPATH) {
 				bFollowPathConstraint *data = curcon->data;
@@ -409,17 +416,17 @@ static void test_constraints(Object *owner, bPoseChannel *pchan)
 					if (data->clip != NULL && data->track[0]) {
 						MovieTracking *tracking = &data->clip->tracking;
 						MovieTrackingObject *tracking_object;
-
+						
 						if (data->object[0])
-							tracking_object = BKE_tracking_named_object(tracking, data->object);
+							tracking_object = BKE_tracking_object_get_named(tracking, data->object);
 						else
-							tracking_object = BKE_tracking_get_camera_object(tracking);
-
+							tracking_object = BKE_tracking_object_get_camera(tracking);
+						
 						if (!tracking_object) {
 							curcon->flag |= CONSTRAINT_DISABLE;
 						}
 						else {
-							if (!BKE_tracking_named_track(tracking, tracking_object, data->track))
+							if (!BKE_tracking_track_get_named(tracking, tracking_object, data->track))
 								curcon->flag |= CONSTRAINT_DISABLE;
 						}
 					}
@@ -428,14 +435,14 @@ static void test_constraints(Object *owner, bPoseChannel *pchan)
 			}
 			else if (curcon->type == CONSTRAINT_TYPE_CAMERASOLVER) {
 				bCameraSolverConstraint *data = curcon->data;
-
-				if ((data->flag & CAMERASOLVER_ACTIVECLIP) == 0 && data->clip == NULL)
+				
+				if ((data->flag & CAMERASOLVER_ACTIVECLIP) == 0 && (data->clip == NULL))
 					curcon->flag |= CONSTRAINT_DISABLE;
 			}
 			else if (curcon->type == CONSTRAINT_TYPE_OBJECTSOLVER) {
 				bObjectSolverConstraint *data = curcon->data;
-
-				if ((data->flag & CAMERASOLVER_ACTIVECLIP) == 0 && data->clip == NULL)
+				
+				if ((data->flag & CAMERASOLVER_ACTIVECLIP) == 0 && (data->clip == NULL))
 					curcon->flag |= CONSTRAINT_DISABLE;
 			}
 			
@@ -455,7 +462,7 @@ static void test_constraints(Object *owner, bPoseChannel *pchan)
 						if (type == CONSTRAINT_OBTYPE_BONE) {
 							if (!BKE_armature_find_bone_name(BKE_armature_from_object(owner), ct->subtarget)) {
 								/* bone must exist in armature... */
-								// TODO: clear subtarget?
+								/* TODO: clear subtarget? */
 								curcon->flag |= CONSTRAINT_DISABLE;
 							}
 							else if (strcmp(pchan->name, ct->subtarget) == 0) {
@@ -711,7 +718,7 @@ static void child_get_inverse_matrix(Scene *scene, Object *ob, bConstraint *con,
 	unit_m4(invmat);
 	
 	/* try to find a pose channel - assume that this is the constraint owner */
-	// TODO: get from context instead?
+	/* TODO: get from context instead? */
 	if (ob && ob->pose)
 		pchan = BKE_pose_channel_active(ob);
 	
@@ -967,7 +974,7 @@ void ED_object_constraint_set_active(Object *ob, bConstraint *con)
 	ListBase *lb = get_constraint_lb(ob, con, NULL);
 	
 	/* lets be nice and escape if its active already */
-	// NOTE: this assumes that the stack doesn't have other active ones set...
+	/* NOTE: this assumes that the stack doesn't have other active ones set... */
 	if ((lb && con) && (con->flag & CONSTRAINT_ACTIVE))
 		return;
 	
@@ -1178,7 +1185,7 @@ void POSE_OT_constraints_clear(wmOperatorType *ot)
 	
 	/* callbacks */
 	ot->exec = pose_constraints_clear_exec;
-	ot->poll = ED_operator_posemode; // XXX - do we want to ensure there are selected bones too?
+	ot->poll = ED_operator_posemode_exclusive; // XXX - do we want to ensure there are selected bones too?
 }
 
 
@@ -1259,7 +1266,7 @@ void POSE_OT_constraints_copy(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->exec = pose_constraint_copy_exec;
-	ot->poll = ED_operator_posemode;
+	ot->poll = ED_operator_posemode_exclusive;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -1385,9 +1392,9 @@ static short get_new_constraint_target(bContext *C, int con_type, Object **tar_o
 			/* just use the first object we encounter (that isn't the active object) 
 			 * and which fulfills the criteria for the object-target that we've got 
 			 */
-			if ( (ob != obact) &&
-			     ((!only_curve) || (ob->type == OB_CURVE)) &&
-			     ((!only_mesh) || (ob->type == OB_MESH)) )
+			if ((ob != obact) &&
+			    ((!only_curve) || (ob->type == OB_CURVE)) &&
+			    ((!only_mesh) || (ob->type == OB_MESH)))
 			{
 				/* set target */
 				*tar_ob = ob;
@@ -1471,15 +1478,15 @@ static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase
 	if (type == CONSTRAINT_TYPE_NULL) {
 		return OPERATOR_CANCELLED;
 	}
-	if ( (type == CONSTRAINT_TYPE_RIGIDBODYJOINT) && (list != &ob->constraints) ) {
+	if ((type == CONSTRAINT_TYPE_RIGIDBODYJOINT) && (list != &ob->constraints)) {
 		BKE_report(op->reports, RPT_ERROR, "Rigid Body Joint Constraint can only be added to Objects");
 		return OPERATOR_CANCELLED;
 	}
-	if ( (type == CONSTRAINT_TYPE_KINEMATIC) && ((!pchan) || (list != &pchan->constraints)) ) {
+	if ((type == CONSTRAINT_TYPE_KINEMATIC) && ((!pchan) || (list != &pchan->constraints))) {
 		BKE_report(op->reports, RPT_ERROR, "IK Constraint can only be added to Bones");
 		return OPERATOR_CANCELLED;
 	}
-	if ( (type == CONSTRAINT_TYPE_SPLINEIK) && ((!pchan) || (list != &pchan->constraints)) ) {
+	if ((type == CONSTRAINT_TYPE_SPLINEIK) && ((!pchan) || (list != &pchan->constraints))) {
 		BKE_report(op->reports, RPT_ERROR, "Spline IK Constraint can only be added to Bones");
 		return OPERATOR_CANCELLED;
 	}
@@ -1511,16 +1518,16 @@ static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase
 	
 	/* do type-specific tweaking to the constraint settings  */
 	switch (type) {
-		case CONSTRAINT_TYPE_PYTHON: // FIXME: this code is not really valid anymore
+		case CONSTRAINT_TYPE_PYTHON: /* FIXME: this code is not really valid anymore */
 		{
 #ifdef WITH_PYTHON
 			char *menustr;
 			int scriptint = 0;
 			/* popup a list of usable scripts */
 			menustr = buildmenu_pyconstraints(NULL, &scriptint);
-			// XXX scriptint = pupmenu(menustr);
+			/* XXX scriptint = pupmenu(menustr); */
 			MEM_freeN(menustr);
-			
+
 			/* only add constraint if a script was chosen */
 			if (scriptint) {
 				/* add constraint */
@@ -1654,7 +1661,7 @@ void POSE_OT_constraint_add(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = WM_menu_invoke;
 	ot->exec = pose_constraint_add_exec;
-	ot->poll = ED_operator_posemode;
+	ot->poll = ED_operator_posemode_exclusive;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -1673,7 +1680,7 @@ void POSE_OT_constraint_add_with_targets(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = WM_menu_invoke;
 	ot->exec = pose_constraint_add_exec;
-	ot->poll = ED_operator_posemode;
+	ot->poll = ED_operator_posemode_exclusive;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -1759,7 +1766,7 @@ void POSE_OT_ik_add(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = pose_ik_add_invoke;
 	ot->exec = pose_ik_add_exec;
-	ot->poll = ED_operator_posemode;
+	ot->poll = ED_operator_posemode_exclusive;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -1780,7 +1787,7 @@ static int pose_ik_clear_exec(bContext *C, wmOperator *UNUSED(op))
 	{
 		bConstraint *con, *next;
 		
-		// TODO: should we be checking if these contraints were local before we try and remove them?
+		/* TODO: should we be checking if these contraints were local before we try and remove them? */
 		for (con = pchan->constraints.first; con; con = next) {
 			next = con->next;
 			if (con->type == CONSTRAINT_TYPE_KINEMATIC) {
@@ -1809,7 +1816,7 @@ void POSE_OT_ik_clear(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->exec = pose_ik_clear_exec;
-	ot->poll = ED_operator_posemode;
+	ot->poll = ED_operator_posemode_exclusive;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;

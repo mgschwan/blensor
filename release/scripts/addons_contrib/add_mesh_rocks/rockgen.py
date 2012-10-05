@@ -1350,7 +1350,7 @@ def generateRocks(context, scaleX, skewX, scaleY, skewY, scaleZ, skewZ,
 # I have left it undocumented.
 
 class rocks(bpy.types.Operator):
-    '''Add rock objects'''
+    """Add rock objects"""
     bl_idname = "mesh.rocks"
     bl_label = "Add Rocks"
     bl_options = {'REGISTER', 'UNDO'}

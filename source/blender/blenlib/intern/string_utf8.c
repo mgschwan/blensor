@@ -58,11 +58,11 @@ static const char trailingBytesForUTF8[256] = {
 
 int BLI_utf8_invalid_byte(const char *str, int length)
 {
-	const unsigned char *p, *pend = (unsigned char*)str + length;
+	const unsigned char *p, *pend = (unsigned char *)str + length;
 	unsigned char c;
 	int ab;
 
-	for (p = (unsigned char*)str; p < pend; p++) {
+	for (p = (unsigned char *)str; p < pend; p++) {
 		c = *p;
 		if (c < 128)
 			continue;
@@ -178,14 +178,14 @@ static const size_t utf8_skip_data[256] = {
 			}                                                                 \
 		}                                                                     \
 		*dst= '\0';                                                           \
-	}
+	} (void)0
 
 char *BLI_strncpy_utf8(char *dst, const char *src, size_t maxncpy)
 {
 	char *dst_r= dst;
 
 	/* note: currently we don't attempt to deal with invalid utf8 chars */
-	BLI_STR_UTF8_CPY(dst, src, maxncpy)
+	BLI_STR_UTF8_CPY(dst, src, maxncpy);
 
 	return dst_r;
 }
@@ -197,7 +197,7 @@ char *BLI_strncat_utf8(char *dst, const char *src, size_t maxncpy)
 		maxncpy--;
 	}
 
-	BLI_STR_UTF8_CPY(dst, src, maxncpy)
+	BLI_STR_UTF8_CPY(dst, src, maxncpy);
 
 	return dst;
 }
@@ -211,7 +211,7 @@ size_t BLI_strncpy_wchar_as_utf8(char *dst, const wchar_t *src, const size_t max
 {
 	size_t len = 0;
 	while (*src && len < maxcpy) { /* XXX can still run over the buffer because utf8 size isn't known :| */
-		len += BLI_str_utf8_from_unicode(*src++, dst+len);
+		len += BLI_str_utf8_from_unicode(*src++, dst + len);
 	}
 
 	dst[len]= '\0';
@@ -234,7 +234,7 @@ size_t BLI_wstrlen_utf8(const wchar_t *src)
 // utf8slen
 size_t BLI_strlen_utf8(const char *strc)
 {
-	int len=0;
+	int len = 0;
 
 	while (*strc) {
 		if ((*strc & 0xe0) == 0xc0) {
@@ -259,9 +259,11 @@ size_t BLI_strlen_utf8(const char *strc)
 
 size_t BLI_strncpy_wchar_from_utf8(wchar_t *dst_w, const char *src_c, const size_t maxcpy)
 {
-	int len=0;
+	int len = 0;
 
-	if (dst_w==NULL || src_c==NULL) return(0);
+	if (dst_w == NULL || src_c == NULL) {
+		return 0;
+	}
 
 	while (*src_c && len < maxcpy) {
 		size_t step= 0;
@@ -315,7 +317,7 @@ size_t BLI_strncpy_wchar_from_utf8(wchar_t *dst_w, const char *src_c, const size
 	}                                                                         \
 	else {                                                                    \
 		Len = -1;                                                             \
-	}
+	} (void)0
 
 /* same as glib define but added an 'Err' arg */
 #define UTF8_GET(Result, Chars, Count, Mask, Len, Err)                        \
@@ -327,7 +329,7 @@ size_t BLI_strncpy_wchar_from_utf8(wchar_t *dst_w, const char *src_c, const size
 		}                                                                     \
 		(Result) <<= 6;                                                       \
 		(Result) |= ((Chars)[(Count)] & 0x3f);                                \
-	}
+	} (void)0
 
 
 /* uses glib functions but not from glib */
@@ -335,9 +337,9 @@ size_t BLI_strncpy_wchar_from_utf8(wchar_t *dst_w, const char *src_c, const size
 int BLI_str_utf8_size(const char *p)
 {
 	int mask = 0, len;
-    unsigned char c = (unsigned char) *p;
+	unsigned char c = (unsigned char) *p;
 
-    UTF8_COMPUTE (c, mask, len);
+	UTF8_COMPUTE (c, mask, len);
 
 	(void)mask; /* quiet warning */
 

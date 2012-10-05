@@ -32,8 +32,6 @@
 
 #include <string.h>
 
-#include "DNA_action_types.h"
-#include "DNA_anim_types.h"
 #include "DNA_node_types.h"
 
 #include "BLI_listbase.h"
@@ -42,14 +40,11 @@
 
 #include "BLF_translation.h"
 
-#include "BKE_action.h"
-#include "BKE_animsys.h"
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BLI_math.h"
 #include "BKE_node.h"
-#include "BKE_utildefines.h"
 
 #include "RNA_access.h"
 #include "RNA_types.h"
@@ -57,6 +52,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "node_common.h"
+#include "node_util.h"
 #include "node_exec.h"
 #include "NOD_socket.h"
 
@@ -109,294 +105,6 @@ bNodeSocket *node_group_add_extern_socket(bNodeTree *UNUSED(ntree), ListBase *lb
 		BLI_addtail(lb, sock);
 	
 	return sock;
-}
-
-bNode *node_group_make_from_selected(bNodeTree *ntree)
-{
-	bNodeLink *link, *linkn;
-	bNode *node, *gnode, *nextn;
-	bNodeTree *ngroup;
-	bNodeSocket *gsock;
-	ListBase anim_basepaths = {NULL, NULL};
-	float min[2], max[2];
-	int totnode=0;
-	bNodeTemplate ntemp;
-	
-	INIT_MINMAX2(min, max);
-	
-	/* is there something to group? also do some clearing */
-	for (node= ntree->nodes.first; node; node= node->next) {
-		if (node->flag & NODE_SELECT) {
-			/* no groups in groups */
-			if (node->type==NODE_GROUP)
-				return NULL;
-			DO_MINMAX2((&node->locx), min, max);
-			totnode++;
-		}
-		node->done= 0;
-	}
-	if (totnode==0) return NULL;
-	
-	/* check if all connections are OK, no unselected node has both
-	 * inputs and outputs to a selection */
-	for (link= ntree->links.first; link; link= link->next) {
-		if (link->fromnode && link->tonode && link->fromnode->flag & NODE_SELECT)
-			link->tonode->done |= 1;
-		if (link->fromnode && link->tonode && link->tonode->flag & NODE_SELECT)
-			link->fromnode->done |= 2;
-	}	
-	
-	for (node= ntree->nodes.first; node; node= node->next) {
-		if ((node->flag & NODE_SELECT)==0)
-			if (node->done==3)
-				break;
-	}
-	if (node) 
-		return NULL;
-	
-	/* OK! new nodetree */
-	ngroup= ntreeAddTree("NodeGroup", ntree->type, NODE_GROUP);
-	
-	/* move nodes over */
-	for (node= ntree->nodes.first; node; node= nextn) {
-		nextn= node->next;
-		if (node->flag & NODE_SELECT) {
-			/* keep track of this node's RNA "base" path (the part of the pat identifying the node) 
-			 * if the old nodetree has animation data which potentially covers this node
-			 */
-			if (ntree->adt) {
-				PointerRNA ptr;
-				char *path;
-				
-				RNA_pointer_create(&ntree->id, &RNA_Node, node, &ptr);
-				path = RNA_path_from_ID_to_struct(&ptr);
-				
-				if (path)
-					BLI_addtail(&anim_basepaths, BLI_genericNodeN(path));
-			}
-			
-			/* change node-collection membership */
-			BLI_remlink(&ntree->nodes, node);
-			BLI_addtail(&ngroup->nodes, node);
-			
-			node->locx-= 0.5f*(min[0]+max[0]);
-			node->locy-= 0.5f*(min[1]+max[1]);
-		}
-	}
-
-	/* move animation data over */
-	if (ntree->adt) {
-		LinkData *ld, *ldn=NULL;
-		
-		BKE_animdata_separate_by_basepath(&ntree->id, &ngroup->id, &anim_basepaths);
-		
-		/* paths + their wrappers need to be freed */
-		for (ld = anim_basepaths.first; ld; ld = ldn) {
-			ldn = ld->next;
-			
-			MEM_freeN(ld->data);
-			BLI_freelinkN(&anim_basepaths, ld);
-		}
-	}
-	
-	/* node groups don't use internal cached data */
-	ntreeFreeCache(ngroup);
-	
-	/* make group node */
-	ntemp.type = NODE_GROUP;
-	ntemp.ngroup = ngroup;
-	gnode= nodeAddNode(ntree, &ntemp);
-	gnode->locx= 0.5f*(min[0]+max[0]);
-	gnode->locy= 0.5f*(min[1]+max[1]);
-	
-	/* relink external sockets */
-	for (link= ntree->links.first; link; link= linkn) {
-		linkn= link->next;
-		
-		if (link->fromnode && link->tonode && (link->fromnode->flag & link->tonode->flag & NODE_SELECT)) {
-			BLI_remlink(&ntree->links, link);
-			BLI_addtail(&ngroup->links, link);
-		}
-		else if (link->tonode && (link->tonode->flag & NODE_SELECT)) {
-			gsock = node_group_expose_socket(ngroup, link->tosock, SOCK_IN);
-			link->tosock->link = nodeAddLink(ngroup, NULL, gsock, link->tonode, link->tosock);
-			link->tosock = node_group_add_extern_socket(ntree, &gnode->inputs, SOCK_IN, gsock);
-			link->tonode = gnode;
-		}
-		else if (link->fromnode && (link->fromnode->flag & NODE_SELECT)) {
-			/* search for existing group node socket */
-			for (gsock=ngroup->outputs.first; gsock; gsock=gsock->next)
-				if (gsock->link && gsock->link->fromsock==link->fromsock)
-					break;
-			if (!gsock) {
-				gsock = node_group_expose_socket(ngroup, link->fromsock, SOCK_OUT);
-				gsock->link = nodeAddLink(ngroup, link->fromnode, link->fromsock, NULL, gsock);
-				link->fromsock = node_group_add_extern_socket(ntree, &gnode->outputs, SOCK_OUT, gsock);
-			}
-			else
-				link->fromsock = node_group_find_output(gnode, gsock);
-			link->fromnode = gnode;
-		}
-	}
-
-	/* update of the group tree */
-	ngroup->update |= NTREE_UPDATE;
-	ntreeUpdateTree(ngroup);
-	/* update of the tree containing the group instance node */
-	ntree->update |= NTREE_UPDATE_NODES | NTREE_UPDATE_LINKS;
-	ntreeUpdateTree(ntree);
-
-	return gnode;
-}
-
-/* returns 1 if its OK */
-int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
-{
-	bNodeLink *link, *linkn;
-	bNode *node, *nextn;
-	bNodeTree *ngroup, *wgroup;
-	ListBase anim_basepaths = {NULL, NULL};
-	
-	ngroup= (bNodeTree *)gnode->id;
-	if (ngroup==NULL) return 0;
-	
-	/* clear new pointers, set in copytree */
-	for (node= ntree->nodes.first; node; node= node->next)
-		node->new_node= NULL;
-	
-	/* wgroup is a temporary copy of the NodeTree we're merging in
-	 *	- all of wgroup's nodes are transferred across to their new home
-	 *	- ngroup (i.e. the source NodeTree) is left unscathed
-	 */
-	wgroup= ntreeCopyTree(ngroup);
-	
-	/* add the nodes into the ntree */
-	for (node= wgroup->nodes.first; node; node= nextn) {
-		nextn= node->next;
-		
-		/* keep track of this node's RNA "base" path (the part of the pat identifying the node) 
-		 * if the old nodetree has animation data which potentially covers this node
-		 */
-		if (wgroup->adt) {
-			PointerRNA ptr;
-			char *path;
-			
-			RNA_pointer_create(&wgroup->id, &RNA_Node, node, &ptr);
-			path = RNA_path_from_ID_to_struct(&ptr);
-			
-			if (path)
-				BLI_addtail(&anim_basepaths, BLI_genericNodeN(path));
-		}
-		
-		/* migrate node */
-		BLI_remlink(&wgroup->nodes, node);
-		BLI_addtail(&ntree->nodes, node);
-		
-		node->locx+= gnode->locx;
-		node->locy+= gnode->locy;
-		
-		node->flag |= NODE_SELECT;
-	}
-	
-	/* restore external links to and from the gnode */
-	for (link= ntree->links.first; link; link= link->next) {
-		if (link->fromnode==gnode) {
-			if (link->fromsock->groupsock) {
-				bNodeSocket *gsock= link->fromsock->groupsock;
-				if (gsock->link) {
-					if (gsock->link->fromnode) {
-						/* NB: using the new internal copies here! the groupsock pointer still maps to the old tree */
-						link->fromnode = (gsock->link->fromnode ? gsock->link->fromnode->new_node : NULL);
-						link->fromsock = gsock->link->fromsock->new_sock;
-					}
-					else {
-						/* group output directly maps to group input */
-						bNodeSocket *insock= node_group_find_input(gnode, gsock->link->fromsock);
-						if (insock->link) {
-							link->fromnode = insock->link->fromnode;
-							link->fromsock = insock->link->fromsock;
-						}
-					}
-				}
-				else {
-					/* copy the default input value from the group socket default to the external socket */
-					node_socket_convert_default_value(link->tosock->type, link->tosock->default_value, gsock->type, gsock->default_value);
-				}
-			}
-		}
-	}
-	/* remove internal output links, these are not used anymore */
-	for (link=wgroup->links.first; link; link= linkn) {
-		linkn = link->next;
-		if (!link->tonode)
-			nodeRemLink(wgroup, link);
-	}
-	/* restore links from internal nodes */
-	for (link= wgroup->links.first; link; link= link->next) {
-		/* indicates link to group input */
-		if (!link->fromnode) {
-			/* NB: can't use find_group_node_input here,
-			 * because gnode sockets still point to the old tree!
-			 */
-			bNodeSocket *insock;
-			for (insock= gnode->inputs.first; insock; insock= insock->next)
-				if (insock->groupsock->new_sock == link->fromsock)
-					break;
-			if (insock->link) {
-				link->fromnode = insock->link->fromnode;
-				link->fromsock = insock->link->fromsock;
-			}
-			else {
-				/* copy the default input value from the group node socket default to the internal socket */
-				node_socket_convert_default_value(link->tosock->type, link->tosock->default_value, insock->type, insock->default_value);
-				nodeRemLink(wgroup, link);
-			}
-		}
-	}
-	
-	/* add internal links to the ntree */
-	for (link= wgroup->links.first; link; link= linkn) {
-		linkn= link->next;
-		BLI_remlink(&wgroup->links, link);
-		BLI_addtail(&ntree->links, link);
-	}
-	
-	/* and copy across the animation,
-	 * note that the animation data's action can be NULL here */
-	if (wgroup->adt) {
-		LinkData *ld, *ldn=NULL;
-		bAction *waction;
-		
-		/* firstly, wgroup needs to temporary dummy action that can be destroyed, as it shares copies */
-		waction = wgroup->adt->action = BKE_action_copy(wgroup->adt->action);
-		
-		/* now perform the moving */
-		BKE_animdata_separate_by_basepath(&wgroup->id, &ntree->id, &anim_basepaths);
-		
-		/* paths + their wrappers need to be freed */
-		for (ld = anim_basepaths.first; ld; ld = ldn) {
-			ldn = ld->next;
-			
-			MEM_freeN(ld->data);
-			BLI_freelinkN(&anim_basepaths, ld);
-		}
-		
-		/* free temp action too */
-		if (waction) {
-			BKE_libblock_free(&G.main->action, waction);
-		}
-	}
-	
-	/* delete the group instance. this also removes old input links! */
-	nodeFreeNode(ntree, gnode);
-
-	/* free the group tree (takes care of user count) */
-	BKE_libblock_free(&G.main->nodetree, wgroup);
-	
-	ntree->update |= NTREE_UPDATE_NODES | NTREE_UPDATE_LINKS;
-	ntreeUpdateTree(ntree);
-	
-	return 1;
 }
 
 bNodeSocket *node_group_add_socket(bNodeTree *ngroup, const char *name, int type, int in_out)
@@ -515,13 +223,13 @@ bNodeTemplate node_group_template(bNode *node)
 {
 	bNodeTemplate ntemp;
 	ntemp.type = NODE_GROUP;
-	ntemp.ngroup = (bNodeTree*)node->id;
+	ntemp.ngroup = (bNodeTree *)node->id;
 	return ntemp;
 }
 
 void node_group_init(bNodeTree *ntree, bNode *node, bNodeTemplate *ntemp)
 {
-	node->id = (ID*)ntemp->ngroup;
+	node->id = (ID *)ntemp->ngroup;
 	
 	/* NB: group socket input/output roles are inverted internally!
 	 * Group "inputs" work as outputs in links and vice versa.
@@ -551,7 +259,7 @@ static bNodeSocket *group_verify_socket(bNodeTree *ntree, ListBase *lb, int in_o
 		sock->groupsock = gsock;
 		
 		BLI_strncpy(sock->name, gsock->name, sizeof(sock->name));
-		if(gsock->type != sock->type)
+		if (gsock->type != sock->type)
 			nodeSocketSetType(sock, gsock->type);
 		
 		/* XXX hack: group socket input/output roles are inverted internally,
@@ -641,7 +349,7 @@ void node_group_edit_clear(bNode *node)
 			nodeGroupEditClear(inode);
 }
 
-void node_group_link(bNodeTree *ntree, bNodeSocket *sock, int in_out)
+static void UNUSED_FUNCTION(node_group_link)(bNodeTree *ntree, bNodeSocket *sock, int in_out)
 {
 	node_group_expose_socket(ntree, sock, in_out);
 }
@@ -810,15 +518,147 @@ bNodeTemplate node_whileloop_template(bNode *node)
 
 /**** FRAME ****/
 
+static void node_frame_init(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
+{
+	NodeFrame *data = (NodeFrame *)MEM_callocN(sizeof(NodeFrame), "frame node storage");
+	node->storage = data;
+	
+	data->flag |= NODE_FRAME_SHRINK;
+	
+	data->label_size = 20;
+}
+
 void register_node_type_frame(bNodeTreeType *ttype)
 {
 	/* frame type is used for all tree types, needs dynamic allocation */
 	bNodeType *ntype= MEM_callocN(sizeof(bNodeType), "frame node type");
 
-	node_type_base(ttype, ntype, NODE_FRAME, "Frame", NODE_CLASS_LAYOUT, NODE_BACKGROUND);
+	node_type_base(ttype, ntype, NODE_FRAME, "Frame", NODE_CLASS_LAYOUT, NODE_BACKGROUND|NODE_OPTIONS);
+	node_type_init(ntype, node_frame_init);
+	node_type_storage(ntype, "NodeFrame", node_free_standard_storage, node_copy_standard_storage);
 	node_type_size(ntype, 150, 100, 0);
 	node_type_compatibility(ntype, NODE_OLD_SHADING|NODE_NEW_SHADING);
 	
 	ntype->needs_free = 1;
 	nodeRegisterType(ttype, ntype);
+}
+
+
+/* **************** REROUTE ******************** */
+
+/* simple, only a single input and output here */
+static ListBase node_reroute_internal_connect(bNodeTree *ntree, bNode *node)
+{
+	bNodeLink *link;
+	ListBase ret;
+
+	ret.first = ret.last = NULL;
+
+	/* Security check! */
+	if (!ntree)
+		return ret;
+
+	link = MEM_callocN(sizeof(bNodeLink), "internal node link");
+	link->fromnode = node;
+	link->fromsock = node->inputs.first;
+	link->tonode = node;
+	link->tosock = node->outputs.first;
+	/* internal link is always valid */
+	link->flag |= NODE_LINK_VALID;
+	BLI_addtail(&ret, link);
+
+	return ret;
+}
+
+static void node_reroute_init(bNodeTree *ntree, bNode *node, bNodeTemplate *UNUSED(ntemp))
+{
+	/* Note: Cannot use socket templates for this, since it would reset the socket type
+	 * on each file read via the template verification procedure.
+	 */
+	nodeAddSocket(ntree, node, SOCK_IN, "Input", SOCK_RGBA);
+	nodeAddSocket(ntree, node, SOCK_OUT, "Output", SOCK_RGBA);
+}
+
+void register_node_type_reroute(bNodeTreeType *ttype)
+{
+	/* frame type is used for all tree types, needs dynamic allocation */
+	bNodeType *ntype= MEM_callocN(sizeof(bNodeType), "frame node type");
+	
+	node_type_base(ttype, ntype, NODE_REROUTE, "Reroute", NODE_CLASS_LAYOUT, 0);
+	node_type_init(ntype, node_reroute_init);
+	node_type_internal_connect(ntype, node_reroute_internal_connect);
+	
+	ntype->needs_free = 1;
+	nodeRegisterType(ttype, ntype);
+}
+
+static void node_reroute_inherit_type_recursive(bNodeTree *ntree, bNode *node)
+{
+	bNodeSocket *input = node->inputs.first;
+	bNodeSocket *output = node->outputs.first;
+	int type = SOCK_FLOAT;
+	bNodeLink *link;
+	
+	/* XXX it would be a little bit more efficient to restrict actual updates
+	 * to rerout nodes connected to an updated node, but there's no reliable flag
+	 * to indicate updated nodes (node->update is not set on linking).
+	 */
+	
+	node->done = 1;
+	
+	/* recursive update */
+	for (link = ntree->links.first; link; link = link->next)
+	{
+		bNode *fromnode = link->fromnode;
+		bNode *tonode = link->tonode;
+		if (!tonode || !fromnode)
+			continue;
+		
+		if (tonode == node && fromnode->type == NODE_REROUTE && !fromnode->done)
+			node_reroute_inherit_type_recursive(ntree, fromnode);
+		
+		if (fromnode == node && tonode->type == NODE_REROUTE && !tonode->done)
+			node_reroute_inherit_type_recursive(ntree, tonode);
+	}
+	
+	/* determine socket type from unambiguous input/output connection if possible */
+	if (input->limit==1 && input->link)
+		type = input->link->fromsock->type;
+	else if (output->limit==1 && output->link)
+		type = output->link->tosock->type;
+	
+	/* arbitrary, could also test output->type, both are the same */
+	if (input->type != type) {
+		/* same type for input/output */
+		nodeSocketSetType(input, type);
+		nodeSocketSetType(output, type);
+	}
+}
+
+/* Global update function for Reroute node types.
+ * This depends on connected nodes, so must be done as a tree-wide update.
+ */
+void ntree_update_reroute_nodes(bNodeTree *ntree)
+{
+	bNode *node;
+	
+	/* clear tags */
+	for (node = ntree->nodes.first; node; node = node->next)
+		node->done = 0;
+	
+	for (node = ntree->nodes.first; node; node = node->next)
+		if (node->type == NODE_REROUTE && !node->done)
+			node_reroute_inherit_type_recursive(ntree, node);
+}
+
+void BKE_node_tree_unlink_id_cb(void *calldata, struct ID *UNUSED(owner_id), struct bNodeTree *ntree)
+{
+	ID *id = (ID *)calldata;
+	bNode *node;
+
+	for (node = ntree->nodes.first; node; node = node->next) {
+		if (node->id == id) {
+			node->id = NULL;
+		}
+	}
 }

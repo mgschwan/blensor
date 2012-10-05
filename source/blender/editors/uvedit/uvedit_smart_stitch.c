@@ -118,6 +118,8 @@ typedef struct StitchState {
 	char midpoints;
 	/* editmesh, cached for use in modal handler */
 	BMEditMesh *em;
+	/* clear seams of stitched edges after stitch */
+	char clear_seams;
 	/* element map for getting info about uv connectivity */
 	UvElementMap *element_map;
 	/* edge container */
@@ -319,7 +321,7 @@ static void stitch_calculate_island_snapping(StitchState *state, PreviewPosition
 	int i;
 	UvElement *element;
 
-	for (i = 0; i <  state->element_map->totalIslands; i++) {
+	for (i = 0; i < state->element_map->totalIslands; i++) {
 		if (island_stitch_data[i].addedForPreview) {
 			int numOfIslandUVs = 0, j;
 
@@ -403,7 +405,9 @@ static void stitch_island_calculate_edge_rotation(UvEdge *edge, StitchState *sta
 	edgecos = uv1[0] * uv2[0] + uv1[1] * uv2[1];
 	edgesin = uv1[0] * uv2[1] - uv2[0] * uv1[1];
 
-	rotation = (edgesin > 0.0f) ? acosf(MAX2(-1.0f, MIN2(1.0f, edgecos))) : -acosf(MAX2(-1.0f, MIN2(1.0f, edgecos)));
+	rotation = (edgesin > 0.0f) ?
+	            +acosf(maxf(-1.0f, minf(1.0f, edgecos))) :
+	            -acosf(maxf(-1.0f, minf(1.0f, edgecos)));
 
 	island_stitch_data[element1->island].num_rot_elements++;
 	island_stitch_data[element1->island].rotation += rotation;
@@ -649,7 +653,7 @@ static int stitch_process_data(StitchState *state, Scene *scene, int final)
 	 *  Setup preview for stitchable islands *
 	 *****************************************/
 	if (state->snap_islands) {
-		for (i = 0; i <  state->element_map->totalIslands; i++) {
+		for (i = 0; i < state->element_map->totalIslands; i++) {
 			if (island_stitch_data[i].addedForPreview) {
 				int numOfIslandUVs = 0, j;
 				UvElement *element;
@@ -827,7 +831,16 @@ static int stitch_process_data(StitchState *state, Scene *scene, int final)
 			UvEdge *edge = state->edges + i;
 			if ((state->uvs[edge->uv1]->flag & STITCH_STITCHABLE) && (state->uvs[edge->uv2]->flag & STITCH_STITCHABLE)) {
 				stitch_island_calculate_edge_rotation(edge, state, final_position, uvfinal_map, island_stitch_data);
-				island_stitch_data[state->uvs[edge->uv1]->island].use_edge_rotation = 1;
+				island_stitch_data[state->uvs[edge->uv1]->island].use_edge_rotation = TRUE;
+			}
+		}
+
+		/* clear seams of stitched edges */
+		if (final && state->clear_seams) {
+			for (i = 0; i < state->total_boundary_edges; i++) {
+				UvEdge *edge = state->edges + i;
+				if ((state->uvs[edge->uv1]->flag & STITCH_STITCHABLE) && (state->uvs[edge->uv2]->flag & STITCH_STITCHABLE))
+					BM_elem_flag_disable(edge->element->l->e, BM_ELEM_SEAM);
 			}
 		}
 
@@ -1002,6 +1015,7 @@ static int stitch_init(bContext *C, wmOperator *op)
 	state->snap_islands = RNA_boolean_get(op->ptr, "snap_islands");
 	state->static_island = RNA_int_get(op->ptr, "static_island");
 	state->midpoints = RNA_boolean_get(op->ptr, "midpoint_snap");
+	state->clear_seams = RNA_boolean_get(op->ptr, "clear_seams");
 	/* in uv synch selection, all uv's are visible */
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
 		state->element_map = EDBM_uv_element_map_create(state->em, 0, 1);
@@ -1486,6 +1500,8 @@ void UV_OT_stitch(wmOperatorType *ot)
 	            "Island that stays in place when stitching islands", 0, INT_MAX);
 	RNA_def_boolean(ot->srna, "midpoint_snap", 0, "Snap At Midpoint",
 	                "UVs are stitched at midpoint instead of at static island");
+	RNA_def_boolean(ot->srna, "clear_seams", 1, "Clear Seams",
+	                "Clear seams of stitched edges");
 	prop = RNA_def_collection_runtime(ot->srna, "selection", &RNA_SelectedUvElement, "Selection", "");
 	/* Selection should not be editable or viewed in toolbar */
 	RNA_def_property_flag(prop, PROP_HIDDEN);

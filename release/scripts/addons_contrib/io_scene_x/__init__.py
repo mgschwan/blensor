@@ -40,7 +40,7 @@ from bpy.props import StringProperty
 
 
 class ExportDirectX(bpy.types.Operator):
-    '''Export selection to DirectX'''
+    """Export selection to DirectX"""
 
     bl_idname = "export_scene.x"
     bl_label = "Export DirectX"
@@ -56,26 +56,47 @@ class ExportDirectX(bpy.types.Operator):
         name="Apply Modifiers",
         description="Apply object modifiers before export",
         default=False)
-
-    ExportArmatures = BoolProperty(
-        name="Export Armatures",
-        description="Export the bones armatures",
-        default=False)
-
-    ExportTextures = BoolProperty(
-        name="Export Textures",
-        description="Reference external image files to be used by the model",
+        
+    # XXX Change this stuff to property groups if possible
+    ExportMeshes = BoolProperty(
+        name="Export Meshes",
+        description="Export mesh objects",
+        default=True)
+        
+    ExportNormals = BoolProperty(
+        name="    Export Normals",
+        description="Export mesh normals",
+        default=True)
+    
+    ExportUVCoordinates = BoolProperty(
+        name="    Export UV Coordinates",
+        description="Export mesh UV coordinates, if any",
         default=True)
 
-    ExportVertexColors = BoolProperty(
-        name="Export Vertex Colors",
-        description="Export mesh vertex colors, if any",
-        default=False)
+    ExportMaterials = BoolProperty(
+        name="    Export Materials",
+        description="Export material properties and reference image textures",
+        default=True)
 
-    IncludeFrameRate = BoolProperty(
-        name="Include Frame Rate",
-        description="Include the AnimTicksPerSecond template which is "\
-            "used by some engines to control animation speed",
+    #ExportVertexColors = BoolProperty(
+    #    name="    Export Vertex Colors",
+    #    description="Export mesh vertex colors, if any",
+    #    default=False)
+    
+    ExportSkinWeights = BoolProperty(
+        name="    Export Skin Weights",
+        description="Bind mesh vertices to armature bones",
+        default=False)
+    
+    ExportArmatureBones = BoolProperty(
+        name="Export Armature Bones",
+        description="Export armatures bones",
+        default=False)
+    
+    ExportRestBone = BoolProperty(
+        name="    Export Rest Position",
+        description="Export bones in their rest position (recommended for "\
+            "animation)",
         default=False)
 
     ExportAnimation = EnumProperty(
@@ -88,13 +109,19 @@ class ExportDirectX(bpy.types.Operator):
             ('KEYS', "Keyframes Only", ""),
             ('FULL', "Full Animation", "")),
         default='NONE')
-
-    ExportActionsAsSets = BoolProperty(
-        name="Export Actions as AnimationSets",
-        description="Export each action of each object as a separate "\
-            "AnimationSet. Otherwise all current actions are lumped "\
-            "together into a single set",
+    
+    IncludeFrameRate = BoolProperty(
+        name="Include Frame Rate",
+        description="Include the AnimTicksPerSecond template which is "\
+            "used by some engines to control animation speed",
         default=False)
+
+    #ExportActionsAsSets = BoolProperty(
+    #    name="Export Actions as AnimationSets",
+    #    description="Export each action of each object as a separate "\
+    #        "AnimationSet. Otherwise all current actions are lumped "\
+    #        "together into a single set",
+    #    default=False)
 
     Verbose = BoolProperty(
         name="Verbose",
@@ -107,7 +134,7 @@ class ExportDirectX(bpy.types.Operator):
 
         import export_x
         Exporter = export_x.DirectXExporter(self, context)
-        Exporter.Export() # XXX CHANGE THIS
+        Exporter.Export() # XXX Rename this
         return {'FINISHED'}
 
     def invoke(self, context, event):
@@ -135,3 +162,4 @@ def unregister():
 
 if __name__ == "__main__":
     register()
+

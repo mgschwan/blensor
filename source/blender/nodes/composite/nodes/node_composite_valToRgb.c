@@ -35,14 +35,16 @@
 
 /* **************** VALTORGB ******************** */
 static bNodeSocketTemplate cmp_node_valtorgb_in[]= {
-	{	SOCK_FLOAT, 1, "Fac",			0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Fac"),			0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_valtorgb_out[]= {
-	{	SOCK_RGBA, 0, "Image"},
-	{	SOCK_FLOAT, 0, "Alpha"},
+	{	SOCK_RGBA, 0, N_("Image")},
+	{	SOCK_FLOAT, 0, N_("Alpha")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void do_colorband_composit(bNode *node, float *out, float *in)
 {
@@ -78,7 +80,9 @@ static void node_composit_exec_valtorgb(void *UNUSED(data), bNode *node, bNodeSt
 	}
 }
 
-static void node_composit_init_valtorgb(bNodeTree *UNUSED(ntree), bNode* node, bNodeTemplate *UNUSED(ntemp))
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
+static void node_composit_init_valtorgb(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
 	node->storage= add_colorband(1);
 }
@@ -92,7 +96,9 @@ void register_node_type_cmp_valtorgb(bNodeTreeType *ttype)
 	node_type_size(&ntype, 240, 200, 300);
 	node_type_init(&ntype, node_composit_init_valtorgb);
 	node_type_storage(&ntype, "ColorBand", node_free_standard_storage, node_copy_standard_storage);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_valtorgb);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }
@@ -101,17 +107,19 @@ void register_node_type_cmp_valtorgb(bNodeTreeType *ttype)
 
 /* **************** RGBTOBW ******************** */
 static bNodeSocketTemplate cmp_node_rgbtobw_in[]= {
-	{	SOCK_RGBA, 1, "Image",			0.8f, 0.8f, 0.8f, 1.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 1, N_("Image"),			0.8f, 0.8f, 0.8f, 1.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_rgbtobw_out[]= {
-	{	SOCK_FLOAT, 0, "Val",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("Val"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 
+#ifdef WITH_COMPOSITOR_LEGACY
+
 static void do_rgbtobw(bNode *UNUSED(node), float *out, float *in)
 {
-	out[0]= in[0]*0.35f + in[1]*0.45f + in[2]*0.2f;
+	out[0] = rgb_to_bw(in);
 }
 
 static void node_composit_exec_rgbtobw(void *UNUSED(data), bNode *node, bNodeStack **in, bNodeStack **out)
@@ -137,6 +145,8 @@ static void node_composit_exec_rgbtobw(void *UNUSED(data), bNode *node, bNodeSta
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_rgbtobw(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -144,7 +154,9 @@ void register_node_type_cmp_rgbtobw(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_RGBTOBW, "RGB to BW", NODE_CLASS_CONVERTOR, 0);
 	node_type_socket_templates(&ntype, cmp_node_rgbtobw_in, cmp_node_rgbtobw_out);
 	node_type_size(&ntype, 80, 40, 120);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_rgbtobw);
+#endif
 	
 	nodeRegisterType(ttype, &ntype);
 }

@@ -19,19 +19,19 @@
 # <pep8 compliant>
 
 bl_info = {
-        "name": "MilkShape3D MS3D format (.ms3d)",
-        "description": "Import / Export MilkShape3D MS3D files"
+        'name': "MilkShape3D MS3D format (.ms3d)",
+        'description': "Import / Export MilkShape3D MS3D files"\
                 " (conform with v1.8.4)",
-        "author": "Alexander Nussbaumer",
-        "version": (0, 3, 8),
-        "blender": (2, 60, 0),
-        "location": "File > Import-Export",
-        "warning": "[2012-01-17] side-by-side implementation for Matrix handling around rev.42816",
-        "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
+        'author': "Alexander Nussbaumer",
+        'version': (0, 4, 0, 3),
+        'blender': (2, 6, 3, 0),
+        'location': "File > Import & File > Export",
+        'warning': "[2012-07-10] currently only the importer is implemented",
+        'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
                 "Scripts/Import-Export/MilkShape3D_MS3D",
-        "tracker_url": "http://projects.blender.org/tracker/index.php"\
+        'tracker_url': "http://projects.blender.org/tracker/index.php"\
                 "?func=detail&aid=29404",
-        "category": 'Import-Export',
+        'category': 'Import-Export',
         }
 
 ###############################################################################
@@ -41,63 +41,47 @@ bl_info = {
 
 # ##### BEGIN COPYRIGHT BLOCK #####
 #
-# initial script copyright (c)2011 Alexander Nussbaumer
+# initial script copyright (c)2011,2012 Alexander Nussbaumer
 #
 # ##### END COPYRIGHT BLOCK #####
 
 
 # To support reload properly, try to access a package var,
 # if it's there, reload everything
-if ("bpy" in locals()):
+if ('bpy' in locals()):
     import imp
-    if "ms3d_utils" in locals():
-        imp.reload(ms3d_utils)
-    if "ms3d_export" in locals():
-        imp.reload(ms3d_export)
-    if "ms3d_import" in locals():
-        imp.reload(ms3d_import)
-    pass
-
+    if 'io_scene_ms3d.ms3d_ui' in locals():
+        imp.reload(io_scene_ms3d.ms3d_ui)
 else:
-    from . import ms3d_utils
-    from . import ms3d_export
-    from . import ms3d_import
-    pass
+    from io_scene_ms3d.ms3d_ui import (
+            Ms3dImportOperator,
+            Ms3dExportOperator,
+            )
 
 
 #import blender stuff
-import bpy
-import bpy_extras
+from bpy.utils import (
+        register_module,
+        unregister_module,
+        )
+from bpy.types import (
+        INFO_MT_file_export,
+        INFO_MT_file_import,
+        )
 
 
 ###############################################################################
 # registration
-def menu_func_import(self, context):
-    self.layout.operator(
-            ms3d_import.ImportMS3D.bl_idname,
-            text=ms3d_utils.TEXT_OPERATOR
-            )
-
-
-def menu_func_export(self, context):
-    self.layout.operator(
-            ms3d_export.ExportMS3D.bl_idname,
-            text=ms3d_utils.TEXT_OPERATOR
-            )
-
-
 def register():
-    bpy.utils.register_module(__name__)
-
-    bpy.types.INFO_MT_file_export.append(menu_func_export)
-    bpy.types.INFO_MT_file_import.append(menu_func_import)
+    register_module(__name__)
+    INFO_MT_file_export.append(Ms3dExportOperator.menu_func)
+    INFO_MT_file_import.append(Ms3dImportOperator.menu_func)
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
-
-    bpy.types.INFO_MT_file_export.remove(menu_func_export)
-    bpy.types.INFO_MT_file_import.remove(menu_func_import)
+    unregister_module(__name__)
+    INFO_MT_file_export.remove(Ms3dExportOperator.menu_func)
+    INFO_MT_file_import.remove(Ms3dImportOperator.menu_func)
 
 
 ###############################################################################

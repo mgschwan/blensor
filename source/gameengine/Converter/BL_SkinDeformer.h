@@ -109,15 +109,14 @@ protected:
 	bool					m_recalcNormal;
 	bool					m_copyNormals; // dirty flag so we know if Apply() needs to copy normal information (used for BGEDeformVerts())
 	struct bPoseChannel**	m_dfnrToPC;
+	short					m_deformflags;
 
 	void BlenderDeformVerts();
 	void BGEDeformVerts();
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:BL_SkinDeformer"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:BL_SkinDeformer")
 #endif
 };
 

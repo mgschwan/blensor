@@ -25,7 +25,7 @@ bl_info = {
     "blender": (2, 5, 7),
     "location": "View3D > Tool Shelf or Console",
     "description": "Display console defined mathutils variables in the 3D view",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/3D_interaction/Math_Viz",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=25545",
@@ -59,7 +59,8 @@ class VIEW3D_PT_math_vis(bpy.types.Panel):
 
 
 class SetupMathView(bpy.types.Operator):
-    '''Visualize mathutils type python variables from the interactive console, see addon docs'''
+    """Visualize mathutils type python variables from the """ \
+    """interactive console, see addon docs"""
     bl_idname = "view3d.math_vis_toggle"
     bl_label = "Use Math Vis"
 

@@ -452,7 +452,7 @@ class EditList(object):
         for line in file:
             line = " ".join(line.split())
 
-            if not line or line.startswith("*") or line.startswith("#"):
+            if not line or line.startswith(("*", "#")):
                 continue
             elif line.startswith("TITLE:"):
                 self.title = " ".join(line.split()[1:])
@@ -600,7 +600,7 @@ def apply_dissolve_ipo(mov, blendin):
     icu.append((0, 0))
     icu.append(((int(blendin) / len_disp) * 100, 1))
 
-    if mov.type not in (SEQ_HD_SOUND, SEQ_RAM_SOUND):
+    if mov.type not in {SEQ_HD_SOUND, SEQ_RAM_SOUND}:
         mov.blendMode = Blender.Scene.Sequence.BlendModes.ALPHAOVER
 
 

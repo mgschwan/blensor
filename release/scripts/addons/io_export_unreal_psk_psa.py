@@ -25,7 +25,7 @@ bl_info = {
     "location": "File > Export > Skeletal Mesh/Animation Data (.psk/.psa)",
     "description": "Export Skeleletal Mesh/Animation Data",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Import-Export/Unreal_psk_psa",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=21366",
@@ -2179,8 +2179,7 @@ class Panel_UDKExport( bpy.types.Panel ):
 		#layout.separator()
 
 class ExportUDKAnimData(bpy.types.Operator):
-    
-    '''Export Skeleton Mesh / Animation Data file(s)'''
+    """Export Skeleton Mesh / Animation Data file(s)"""
     bl_idname = "export_anim.udk" # this is important since its how bpy.ops.export.udk_anim_data is constructed
     bl_label = "Export PSK/PSA"
     __doc__ = """One mesh and one armature else select one mesh or armature to be exported"""

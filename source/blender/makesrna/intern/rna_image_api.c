@@ -41,6 +41,8 @@
 
 #include "BIF_gl.h"
 
+#include "rna_internal.h"  /* own include */
+
 #ifdef RNA_RUNTIME
 
 #include "BKE_image.h"
@@ -50,6 +52,7 @@
 #include "BKE_global.h" /* grr: G.main->name */
 
 #include "IMB_imbuf.h"
+#include "IMB_colormanagement.h"
 
 #include "BIF_gl.h"
 #include "GPU_draw.h"
@@ -121,16 +124,20 @@ static void rna_Image_save_render(Image *image, bContext *C, ReportList *reports
 			BKE_reportf(reports, RPT_ERROR, "Couldn't acquire buffer from image");
 		}
 		else {
-			/* temp swap out the color */
-			const unsigned char imb_planes_back = ibuf->planes;
-			const float dither_back = ibuf->dither;
-			ibuf->planes = scene->r.im_format.planes;
-			ibuf->dither = scene->r.dither_intensity;
-			if (!BKE_imbuf_write(ibuf, path, &scene->r.im_format)) {
+			ImBuf *write_ibuf;
+
+			write_ibuf = IMB_colormanagement_imbuf_for_write(ibuf, TRUE, TRUE, &scene->view_settings,
+			                                                 &scene->display_settings, &scene->r.im_format);
+
+			write_ibuf->planes = scene->r.im_format.planes;
+			write_ibuf->dither = scene->r.dither_intensity;
+
+			if (!BKE_imbuf_write(write_ibuf, path, &scene->r.im_format)) {
 				BKE_reportf(reports, RPT_ERROR, "Couldn't write image: %s", path);
 			}
-			ibuf->planes = imb_planes_back;
-			ibuf->dither = dither_back;
+
+			if (write_ibuf != ibuf)
+				IMB_freeImBuf(write_ibuf);
 		}
 
 		BKE_image_release_ibuf(image, lock);
@@ -150,7 +157,7 @@ static void rna_Image_save(Image *image, ReportList *reports)
 
 		if (image->packedfile) {
 			if (writePackedFile(reports, image->name, image->packedfile, 0) != RET_OK) {
-				BKE_reportf(reports, RPT_ERROR, "Image \"%s\" could saved packed file to \"%s\"", image->id.name+2, image->name);
+				BKE_reportf(reports, RPT_ERROR, "Image \"%s\" could saved packed file to \"%s\"", image->id.name + 2, image->name);
 			}
 		}
 		else if (IMB_saveiff(ibuf, filename, ibuf->flags)) {
@@ -159,14 +166,16 @@ static void rna_Image_save(Image *image, ReportList *reports)
 			if (image->source == IMA_SRC_GENERATED)
 				image->source = IMA_SRC_FILE;
 
+			IMB_colormanagment_colorspace_from_ibuf_ftype(&image->colorspace_settings, ibuf);
+
 			ibuf->userflags &= ~IB_BITMAPDIRTY;
 		}
 		else {
-			BKE_reportf(reports, RPT_ERROR, "Image \"%s\" could not be saved to \"%s\"", image->id.name+2, image->name);
+			BKE_reportf(reports, RPT_ERROR, "Image \"%s\" could not be saved to \"%s\"", image->id.name + 2, image->name);
 		}
 	}
 	else {
-		BKE_reportf(reports, RPT_ERROR, "Image \"%s\" does not have any image data", image->id.name+2);
+		BKE_reportf(reports, RPT_ERROR, "Image \"%s\" does not have any image data", image->id.name + 2);
 	}
 }
 
@@ -198,7 +207,7 @@ static void rna_Image_unpack(Image *image, ReportList *reports, int method)
 	}
 	else {
 		/* reports its own error on failure */
-		unpackImage (reports, image, method);
+		unpackImage(reports, image, method);
 	}
 }
 
@@ -212,11 +221,18 @@ static void rna_Image_update(Image *image, ReportList *reports)
 	ImBuf *ibuf = BKE_image_get_ibuf(image, NULL);
 
 	if (ibuf == NULL) {
-		BKE_reportf(reports, RPT_ERROR, "Image \"%s\" does not have any image data", image->id.name+2);
+		BKE_reportf(reports, RPT_ERROR, "Image \"%s\" does not have any image data", image->id.name + 2);
 		return;
 	}
 
 	IMB_rect_from_float(ibuf);
+}
+
+static void rna_Image_scale(Image *image, ReportList *reports, int width, int height)
+{
+	if (!BKE_image_scale(image, width, height)) {
+		BKE_reportf(reports, RPT_ERROR, "Image \"%s\" does not have any image data", image->id.name + 2);
+	}
 }
 
 static int rna_Image_gl_load(Image *image, ReportList *reports, int filter, int mag)
@@ -230,19 +246,22 @@ static int rna_Image_gl_load(Image *image, ReportList *reports, int filter, int 
 
 	ibuf = BKE_image_get_ibuf(image, NULL);
 
-	if (ibuf == NULL || ibuf->rect == NULL ) {
-		BKE_reportf(reports, RPT_ERROR, "Image \"%s\" does not have any image data", image->id.name+2);
+	if (ibuf == NULL || ibuf->rect == NULL) {
+		BKE_reportf(reports, RPT_ERROR, "Image \"%s\" does not have any image data", image->id.name + 2);
 		return (int)GL_INVALID_OPERATION;
 	}
 
 	/* could be made into a function? */
-	glGenTextures(1, (GLuint*)bind);
+	glGenTextures(1, (GLuint *)bind);
 	glBindTexture(GL_TEXTURE_2D, *bind);
 
 	if (filter != GL_NEAREST && filter != GL_LINEAR)
 		error = (int)gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE, ibuf->rect);
 
 	if (!error) {
+		/* clean glError buffer */
+		while (glGetError() != GL_NO_ERROR) {}
+
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, image->tpageflag & IMA_CLAMP_U ? GL_CLAMP : GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, image->tpageflag & IMA_CLAMP_V ? GL_CLAMP : GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLint)filter);
@@ -253,9 +272,22 @@ static int rna_Image_gl_load(Image *image, ReportList *reports, int filter, int 
 	}
 
 	if (error) {
-		glDeleteTextures(1, (GLuint*)bind);
+		glDeleteTextures(1, (GLuint *)bind);
 		image->bindcode = 0;
 	}
+
+	return error;
+}
+
+static int rna_Image_gl_touch(Image *image, ReportList *reports, int filter, int mag)
+{
+	unsigned int *bind = &image->bindcode;
+	int error = GL_NO_ERROR;
+
+	BKE_image_tag_time(image);
+
+	if (*bind == 0)
+		error = rna_Image_gl_load(image, reports, filter, mag);
 
 	return error;
 }
@@ -277,7 +309,7 @@ void RNA_api_image(StructRNA *srna)
 
 	func = RNA_def_function(srna, "save_render", "rna_Image_save_render");
 	RNA_def_function_ui_description(func, "Save image to a specific path using a scenes render settings");
-	RNA_def_function_flag(func, FUNC_USE_CONTEXT|FUNC_USE_REPORTS);
+	RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
 	parm = RNA_def_string_file_path(func, "filepath", "", 0, "", "Save path");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	RNA_def_pointer(func, "scene", "Scene", "", "Scene to take image parameters from");
@@ -302,6 +334,25 @@ void RNA_api_image(StructRNA *srna)
 	func = RNA_def_function(srna, "update", "rna_Image_update");
 	RNA_def_function_ui_description(func, "Update the display image from the floating point buffer");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+
+	func = RNA_def_function(srna, "scale", "rna_Image_scale");
+	RNA_def_function_ui_description(func, "Scale the image in pixels");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+	parm = RNA_def_int(func, "width", 0, 1, 10000, "", "Width", 1, 10000);
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_int(func, "height", 0, 1, 10000, "", "Height", 1, 10000);
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+
+	func = RNA_def_function(srna, "gl_touch", "rna_Image_gl_touch");
+	RNA_def_function_ui_description(func, "Delay the image from being cleaned from the cache due inactivity");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+	RNA_def_int(func, "filter", GL_LINEAR_MIPMAP_NEAREST, -INT_MAX, INT_MAX, "Filter",
+	            "The texture minifying function to use if the image wan't loaded", -INT_MAX, INT_MAX);
+	RNA_def_int(func, "mag", GL_LINEAR, -INT_MAX, INT_MAX, "Magnification",
+	            "The texture magnification function to use if the image wan't loaded", -INT_MAX, INT_MAX);
+	/* return value */
+	parm = RNA_def_int(func, "error", 0, -INT_MAX, INT_MAX, "Error", "OpenGL error value", -INT_MAX, INT_MAX);
+	RNA_def_function_return(func, parm);
 
 	func = RNA_def_function(srna, "gl_load", "rna_Image_gl_load");
 	RNA_def_function_ui_description(func, "Load the image into OpenGL graphics memory");

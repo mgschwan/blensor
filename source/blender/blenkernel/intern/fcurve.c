@@ -55,7 +55,6 @@
 #include "BKE_curve.h" 
 #include "BKE_global.h"
 #include "BKE_object.h"
-#include "BKE_utildefines.h"
 
 #include "RNA_access.h"
 
@@ -75,12 +74,10 @@ void free_fcurve(FCurve *fcu)
 {
 	if (fcu == NULL) 
 		return;
-	
+
 	/* free curve data */
-	if (fcu) {
-		if (fcu->bezt) MEM_freeN(fcu->bezt);
-		if (fcu->fpt) MEM_freeN(fcu->fpt);
-	}
+	if (fcu->bezt) MEM_freeN(fcu->bezt);
+	if (fcu->fpt)  MEM_freeN(fcu->fpt);
 	
 	/* free RNA-path, as this were allocated when getting the path string */
 	if (fcu->rna_path)
@@ -285,12 +282,12 @@ int list_find_data_fcurves(ListBase *dst, ListBase *src, const char *dataPrefix,
 	for (fcu = src->first; fcu; fcu = fcu->next) {
 		/* check if quoted string matches the path */
 		if ((fcu->rna_path) && strstr(fcu->rna_path, dataPrefix)) {
-			char *quotedName = BLI_getQuotedStr(fcu->rna_path, dataPrefix);
+			char *quotedName = BLI_str_quoted_substrN(fcu->rna_path, dataPrefix);
 			
 			if (quotedName) {
 				/* check if the quoted name matches the required name */
 				if (strcmp(quotedName, dataName) == 0) {
-					LinkData *ld = MEM_callocN(sizeof(LinkData), "list_find_data_fcurves");
+					LinkData *ld = MEM_callocN(sizeof(LinkData), __func__);
 					
 					ld->data = fcu;
 					BLI_addtail(dst, ld);
@@ -365,7 +362,7 @@ int binarysearch_bezt_index(BezTriple array[], float frame, int arraylen, short 
 	/* initialize replace-flag first */
 	*replace = 0;
 	
-	/* sneaky optimisations (don't go through searching process if...):
+	/* sneaky optimizations (don't go through searching process if...):
 	 *	- keyframe to be added is to be added out of current bounds
 	 *	- keyframe to be added would replace one of the existing ones on bounds
 	 */
@@ -422,7 +419,7 @@ int binarysearch_bezt_index(BezTriple array[], float frame, int arraylen, short 
 	if (loopbreaker == (maxloop - 1)) {
 		printf("Error: binarysearch_bezt_index() was taking too long\n");
 		
-		// include debug info 
+		/* include debug info */
 		printf("\tround = %d: start = %d, end = %d, arraylen = %d\n", loopbreaker, start, end, arraylen);
 	}
 	
@@ -433,16 +430,18 @@ int binarysearch_bezt_index(BezTriple array[], float frame, int arraylen, short 
 /* ...................................... */
 
 /* helper for calc_fcurve_* functions -> find first and last BezTriple to be used */
-static void get_fcurve_end_keyframes(FCurve *fcu, BezTriple **first, BezTriple **last,
-                                     const short do_sel_only)
+static short get_fcurve_end_keyframes(FCurve *fcu, BezTriple **first, BezTriple **last,
+                                      const short do_sel_only)
 {
+	short found = FALSE;
+	
 	/* init outputs */
 	*first = NULL;
 	*last = NULL;
 	
 	/* sanity checks */
 	if (fcu->bezt == NULL)
-		return;
+		return found;
 	
 	/* only include selected items? */
 	if (do_sel_only) {
@@ -454,6 +453,7 @@ static void get_fcurve_end_keyframes(FCurve *fcu, BezTriple **first, BezTriple *
 		for (i = 0; i < fcu->totvert; bezt++, i++) {
 			if (BEZSELECTED(bezt)) {
 				*first = bezt;
+				found = TRUE;
 				break;
 			}
 		}
@@ -463,6 +463,7 @@ static void get_fcurve_end_keyframes(FCurve *fcu, BezTriple **first, BezTriple *
 		for (i = 0; i < fcu->totvert; bezt--, i++) {
 			if (BEZSELECTED(bezt)) {
 				*last = bezt;
+				found = TRUE;
 				break;
 			}
 		}
@@ -471,13 +472,16 @@ static void get_fcurve_end_keyframes(FCurve *fcu, BezTriple **first, BezTriple *
 		/* just full array */
 		*first = fcu->bezt;
 		*last = ARRAY_LAST_ITEM(fcu->bezt, BezTriple, sizeof(BezTriple), fcu->totvert);
+		found = TRUE;
 	}
+	
+	return found;
 }
 
 
 /* Calculate the extents of F-Curve's data */
-void calc_fcurve_bounds(FCurve *fcu, float *xmin, float *xmax, float *ymin, float *ymax,
-                        const short do_sel_only)
+short calc_fcurve_bounds(FCurve *fcu, float *xmin, float *xmax, float *ymin, float *ymax,
+                         const short do_sel_only, const short include_handles)
 {
 	float xminv = 999999999.0f, xmaxv = -999999999.0f;
 	float yminv = 999999999.0f, ymaxv = -999999999.0f;
@@ -490,13 +494,19 @@ void calc_fcurve_bounds(FCurve *fcu, float *xmin, float *xmax, float *ymin, floa
 			
 			if (xmin || xmax) {
 				/* get endpoint keyframes */
-				get_fcurve_end_keyframes(fcu, &bezt_first, &bezt_last, do_sel_only);
+				foundvert = get_fcurve_end_keyframes(fcu, &bezt_first, &bezt_last, do_sel_only);
 				
 				if (bezt_first) {
 					BLI_assert(bezt_last != NULL);
 					
-					xminv = MIN2(xminv, bezt_first->vec[1][0]);
-					xmaxv = MAX2(xmaxv, bezt_last->vec[1][0]);
+					if (include_handles) {
+						xminv = MIN3(xminv, bezt_first->vec[0][0], bezt_first->vec[1][0]);
+						xmaxv = MAX3(xmaxv, bezt_last->vec[1][0],  bezt_last->vec[2][0]);
+					}
+					else {
+						xminv = minf(xminv, bezt_first->vec[1][0]);
+						xmaxv = maxf(xmaxv, bezt_last->vec[1][0]);
+					}
 				}
 			}
 			
@@ -505,11 +515,16 @@ void calc_fcurve_bounds(FCurve *fcu, float *xmin, float *xmax, float *ymin, floa
 				BezTriple *bezt;
 				
 				for (bezt = fcu->bezt, i = 0; i < fcu->totvert; bezt++, i++) {
-					if ((do_sel_only == 0) || BEZSELECTED(bezt)) {
-						if (bezt->vec[1][1] < yminv)
-							yminv = bezt->vec[1][1];
-						if (bezt->vec[1][1] > ymaxv)
-							ymaxv = bezt->vec[1][1];
+					if ((do_sel_only == FALSE) || BEZSELECTED(bezt)) {
+						if (include_handles) {
+							yminv = MIN4(yminv, bezt->vec[1][1], bezt->vec[0][1], bezt->vec[2][1]);
+							ymaxv = MAX4(ymaxv, bezt->vec[1][1], bezt->vec[0][1], bezt->vec[2][1]);
+						}
+						else {
+							yminv = minf(yminv, bezt->vec[1][1]);
+							ymaxv = maxf(ymaxv, bezt->vec[1][1]);
+						}
+						
 						foundvert = TRUE;
 					}
 				}
@@ -518,8 +533,8 @@ void calc_fcurve_bounds(FCurve *fcu, float *xmin, float *xmax, float *ymin, floa
 		else if (fcu->fpt) {
 			/* frame range can be directly calculated from end verts */
 			if (xmin || xmax) {
-				xminv = MIN2(xminv, fcu->fpt[0].vec[0]);
-				xmaxv = MAX2(xmaxv, fcu->fpt[fcu->totvert - 1].vec[0]);
+				xminv = minf(xminv, fcu->fpt[0].vec[0]);
+				xmaxv = maxf(xmaxv, fcu->fpt[fcu->totvert - 1].vec[0]);
 			}
 			
 			/* only loop over keyframes to find extents for values if needed */
@@ -531,7 +546,7 @@ void calc_fcurve_bounds(FCurve *fcu, float *xmin, float *xmax, float *ymin, floa
 						yminv = fpt->vec[1];
 					if (fpt->vec[1] > ymaxv)
 						ymaxv = fpt->vec[1];
-
+					
 					foundvert = TRUE;
 				}
 			}
@@ -555,6 +570,8 @@ void calc_fcurve_bounds(FCurve *fcu, float *xmin, float *xmax, float *ymin, floa
 		if (ymin) *ymin = 0.0f;
 		if (ymax) *ymax = 1.0f;
 	}
+	
+	return foundvert;
 }
 
 /* Calculate the extents of F-Curve's keyframes */
@@ -570,20 +587,20 @@ void calc_fcurve_range(FCurve *fcu, float *start, float *end,
 			
 			/* get endpoint keyframes */
 			get_fcurve_end_keyframes(fcu, &bezt_first, &bezt_last, do_sel_only);
-
+			
 			if (bezt_first) {
 				BLI_assert(bezt_last != NULL);
-
-				min = MIN2(min, bezt_first->vec[1][0]);
-				max = MAX2(max, bezt_last->vec[1][0]);
-
+				
+				min = minf(min, bezt_first->vec[1][0]);
+				max = maxf(max, bezt_last->vec[1][0]);
+				
 				foundvert = TRUE;
 			}
 		}
 		else if (fcu->fpt) {
-			min = MIN2(min, fcu->fpt[0].vec[0]);
-			max = MAX2(max, fcu->fpt[fcu->totvert - 1].vec[0]);
-
+			min = minf(min, fcu->fpt[0].vec[0]);
+			max = maxf(max, fcu->fpt[fcu->totvert - 1].vec[0]);
+			
 			foundvert = TRUE;
 		}
 		
@@ -623,9 +640,9 @@ short fcurve_are_keyframes_usable(FCurve *fcu)
 	/* if it has modifiers, none of these should "drastically" alter the curve */
 	if (fcu->modifiers.first) {
 		FModifier *fcm;
-		
+
 		/* check modifiers from last to first, as last will be more influential */
-		// TODO: optionally, only check modifier if it is the active one...
+		/* TODO: optionally, only check modifier if it is the active one... */
 		for (fcm = fcu->modifiers.last; fcm; fcm = fcm->prev) {
 			/* ignore if muted/disabled */
 			if (fcm->flag & (FMODIFIER_FLAG_DISABLED | FMODIFIER_FLAG_MUTED))
@@ -737,7 +754,7 @@ void fcurve_store_samples(FCurve *fcu, void *data, int start, int end, FcuSample
 	int cfra;
 	
 	/* sanity checks */
-	// TODO: make these tests report errors using reports not printf's
+	/* TODO: make these tests report errors using reports not printf's */
 	if (ELEM(NULL, fcu, sample_cb)) {
 		printf("Error: No F-Curve with F-Curve Modifiers to Bake\n");
 		return;
@@ -800,7 +817,7 @@ void calchandles_fcurve(FCurve *fcu)
 		if (bezt->vec[2][0] < bezt->vec[1][0]) bezt->vec[2][0] = bezt->vec[1][0];
 		
 		/* calculate auto-handles */
-		BKE_nurb_handle_calc(bezt, prev, next, 1);  /* 1==special autohandle */
+		BKE_nurb_handle_calc(bezt, prev, next, 1);  /* (1 == special) autohandle */
 		
 		/* for automatic ease in and out */
 		if (ELEM(bezt->h1, HD_AUTO, HD_AUTO_ANIM) && ELEM(bezt->h2, HD_AUTO, HD_AUTO_ANIM)) {
@@ -1007,7 +1024,7 @@ static float dtar_get_prop_val(ChannelDriver *driver, DriverTarget *dtar)
 	id = dtar_id_ensure_proxy_from(dtar->id);
 	
 	/* error check for missing pointer... */
-	// TODO: tag the specific target too as having issues
+	/* TODO: tag the specific target too as having issues */
 	if (id == NULL) {
 		printf("Error: driver has an invalid target to use\n");
 		if (G.debug & G_DEBUG) printf("\tpath = %s\n", dtar->rna_path);
@@ -1141,14 +1158,14 @@ static float dvar_eval_rotDiff(ChannelDriver *driver, DriverVar *dvar)
 }
 
 /* evaluate 'location difference' driver variable */
-// TODO: this needs to take into account space conversions...
+/* TODO: this needs to take into account space conversions... */
 static float dvar_eval_locDiff(ChannelDriver *driver, DriverVar *dvar)
 {
 	float loc1[3] = {0.0f, 0.0f, 0.0f};
 	float loc2[3] = {0.0f, 0.0f, 0.0f};
 	
 	/* get two location values */
-	// NOTE: for now, these are all just worldspace
+	/* NOTE: for now, these are all just worldspace */
 	DRIVER_TARGETS_USED_LOOPER(dvar)
 	{
 		/* get pointer to loc values to store in */
@@ -1195,7 +1212,7 @@ static float dvar_eval_locDiff(ChannelDriver *driver, DriverVar *dvar)
 			/* object */
 			if (dtar->flag & DTAR_FLAG_LOCALSPACE) {
 				if (dtar->flag & DTAR_FLAG_LOCAL_CONSTS) {
-					// XXX: this should practically be the same as transform space...
+					/* XXX: this should practically be the same as transform space... */
 					float mat[4][4];
 					
 					/* extract transform just like how the constraints do it! */
@@ -1241,7 +1258,7 @@ static float dvar_eval_transChan(ChannelDriver *driver, DriverVar *dvar)
 	bPoseChannel *pchan;
 	float mat[4][4];
 	float oldEul[3] = {0.0f, 0.0f, 0.0f};
-	short useEulers = 0, rotOrder = ROT_MODE_EUL;
+	short use_eulers = FALSE, rot_order = ROT_MODE_EUL;
 	
 	/* check if this target has valid data */
 	if ((ob == NULL) || (GS(ob->id.name) != ID_OB)) {
@@ -1263,8 +1280,8 @@ static float dvar_eval_transChan(ChannelDriver *driver, DriverVar *dvar)
 		/* bone */
 		if (pchan->rotmode > 0) {
 			copy_v3_v3(oldEul, pchan->eul);
-			rotOrder = pchan->rotmode;
-			useEulers = 1;
+			rot_order = pchan->rotmode;
+			use_eulers = TRUE;
 		}
 		
 		if (dtar->flag & DTAR_FLAG_LOCALSPACE) {
@@ -1290,8 +1307,8 @@ static float dvar_eval_transChan(ChannelDriver *driver, DriverVar *dvar)
 		/* object */
 		if (ob->rotmode > 0) {
 			copy_v3_v3(oldEul, ob->rot);
-			rotOrder = ob->rotmode;
-			useEulers = 1;
+			rot_order = ob->rotmode;
+			use_eulers = TRUE;
 		}
 		
 		if (dtar->flag & DTAR_FLAG_LOCALSPACE) {
@@ -1334,9 +1351,9 @@ static float dvar_eval_transChan(ChannelDriver *driver, DriverVar *dvar)
 		 */
 		float eul[3];
 		
-		mat4_to_eulO(eul, rotOrder, mat);
+		mat4_to_eulO(eul, rot_order, mat);
 		
-		if (useEulers) {
+		if (use_eulers) {
 			compatible_eul(eul, oldEul);
 		}
 		
@@ -1785,7 +1802,7 @@ static int findzero(float x, float q0, float q1, float q2, float q3, float *o)
 		c = c0;
 		
 		if (a != 0.0) {
-			// discriminant
+			/* discriminant */
 			p = b * b - 4 * a * c;
 			
 			if (p > 0) {

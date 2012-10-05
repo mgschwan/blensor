@@ -45,8 +45,18 @@ struct bContext;
 struct PointerRNA;
 struct PropertyRNA;
 
-void *BKE_libblock_alloc(struct ListBase *lb, short type, const char *name);
-void *BKE_libblock_copy(struct ID *id);
+void *BKE_libblock_alloc(struct ListBase *lb, short type, const char *name)
+#ifdef __GNUC__
+__attribute__((warn_unused_result))
+__attribute__((nonnull))
+#endif
+;
+void *BKE_libblock_copy(struct ID *id)
+#ifdef __GNUC__
+__attribute__((warn_unused_result))
+__attribute__((nonnull))
+#endif
+;
 void  BKE_libblock_copy_data(struct ID *id, const struct ID *id_from, const short do_action);
 
 void BKE_id_lib_local_paths(struct Main *bmain, struct Library *lib, struct ID *id);
@@ -66,7 +76,7 @@ void id_clear_lib_data(struct Main *bmain, struct ID *id);
 
 struct ListBase *which_libbase(struct Main *mainlib, short type);
 
-#define MAX_LIBARRAY	40
+#define MAX_LIBARRAY    41
 int set_listbasepointers(struct Main *main, struct ListBase **lb);
 
 void BKE_libblock_free(struct ListBase *lb, void *idv);
@@ -82,11 +92,16 @@ void name_uiprefix_id(char *name, struct ID *id);
 void test_idbutton(char *name);
 void text_idbutton(struct ID *id, char *text);
 void BKE_library_make_local(struct Main *bmain, struct Library *lib, int untagged_only);
-struct ID *BKE_libblock_find_name(const short type, const char *name);
+struct ID *BKE_libblock_find_name(const short type, const char *name)
+#ifdef __GNUC__
+__attribute__((warn_unused_result))
+__attribute__((nonnull))
+#endif
+;
 void clear_id_newpoins(void);
 
 void IDnames_to_pupstring(const char **str, const char *title, const char *extraops,
-                          struct ListBase *lb, struct ID* link, short *nr);
+                          struct ListBase *lb, struct ID *link, short *nr);
 void IMAnames_to_pupstring(const char **str, const char *title, const char *extraops,
                            struct ListBase *lb, struct ID *link, short *nr);
 

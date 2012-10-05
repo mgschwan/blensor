@@ -77,8 +77,6 @@ typedef struct bScreen {
 	
 	struct wmTimer *animtimer;			/* if set, screen has timer handler added in window */
 	void *context;						/* context callback */
-	
-	short handler[8];					/* similar to space handler */
 } bScreen;
 
 typedef struct ScrVert {
@@ -214,24 +212,17 @@ typedef struct ARegion {
 #define PNL_DEFAULT_CLOSED		1
 #define PNL_NO_HEADER			2
 
-/* screen handlers */
-#define SCREEN_MAXHANDLER		8
-
-#define SCREEN_HANDLER_ANIM		1
-#define SCREEN_HANDLER_PYTHON   2
-#define SCREEN_HANDLER_VERSE	3
-
 /* regiontype, first two are the default set */
 /* Do NOT change order, append on end. Types are hardcoded needed */
 enum {
 	RGN_TYPE_WINDOW = 0,
-	RGN_TYPE_HEADER,
-	RGN_TYPE_CHANNELS,
-	RGN_TYPE_TEMPORARY,
-	RGN_TYPE_UI,
-	RGN_TYPE_TOOLS,
-	RGN_TYPE_TOOL_PROPS,
-	RGN_TYPE_PREVIEW
+	RGN_TYPE_HEADER = 1,
+	RGN_TYPE_CHANNELS = 2,
+	RGN_TYPE_TEMPORARY = 3,
+	RGN_TYPE_UI = 4,
+	RGN_TYPE_TOOLS = 5,
+	RGN_TYPE_TOOL_PROPS = 6,
+	RGN_TYPE_PREVIEW = 7
 };
 
 /* region alignment */

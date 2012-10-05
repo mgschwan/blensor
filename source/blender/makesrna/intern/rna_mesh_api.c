@@ -36,13 +36,17 @@
 
 #include "BLO_sys_types.h"
 
+#include "BLI_utildefines.h"
+
 #include "BKE_mesh.h"
 #include "ED_mesh.h"
 
+#include "rna_internal.h"  /* own include */
+
 #ifdef RNA_RUNTIME
-const char *rna_Mesh_unit_test_compare(struct Mesh *mesh, bContext *C, struct Mesh *mesh2)
+static const char *rna_Mesh_unit_test_compare(struct Mesh *mesh, bContext *C, struct Mesh *mesh2)
 {
-	const char *ret = BKE_mesh_cmp(mesh, mesh2, FLT_EPSILON*60);
+	const char *ret = BKE_mesh_cmp(mesh, mesh2, FLT_EPSILON * 60);
 	
 	if (!ret)
 		ret = "Same";
@@ -82,7 +86,7 @@ void RNA_api_mesh(StructRNA *srna)
 
 	func = RNA_def_function(srna, "validate", "BKE_mesh_validate");
 	RNA_def_function_ui_description(func, "validate geometry, return True when the mesh has had "
-	                                      "invalid geometry corrected/removed");
+	                                "invalid geometry corrected/removed");
 	RNA_def_boolean(func, "verbose", 0, "Verbose", "Output information about the errors found");
 	parm = RNA_def_boolean(func, "result", 0, "Result", "");
 	RNA_def_function_return(func, parm);

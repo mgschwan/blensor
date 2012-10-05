@@ -24,14 +24,15 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "BLI_path_util.h"
 
 #include "RNA_define.h"
-#include "BKE_utildefines.h"
+
+#include "rna_internal.h"  /* own include */
 
 #ifdef RNA_RUNTIME
 
@@ -43,8 +44,8 @@
 #include "RE_pipeline.h"
 #include "RE_shader_ext.h"
 
-void save_envmap(struct EnvMap *env, bContext *C, ReportList *reports, const char* filepath,
-                 struct Scene *scene, float layout[12])
+static void save_envmap(struct EnvMap *env, bContext *C, ReportList *reports, const char *filepath,
+                        struct Scene *scene, float layout[12])
 {
 	if (scene == NULL) {
 		scene = CTX_data_scene(C);
@@ -53,7 +54,7 @@ void save_envmap(struct EnvMap *env, bContext *C, ReportList *reports, const cha
 	RE_WriteEnvmapResult(reports, scene, env, filepath, scene->r.im_format.imtype, layout);
 }
 
-void clear_envmap(struct EnvMap *env, bContext *C)
+static void clear_envmap(struct EnvMap *env, bContext *C)
 {
 	Main *bmain = CTX_data_main(C);
 	Tex *tex;
@@ -62,12 +63,12 @@ void clear_envmap(struct EnvMap *env, bContext *C)
 	
 	for (tex = bmain->tex.first; tex; tex = tex->id.next)
 		if (tex->env == env) {
-			WM_event_add_notifier(C, NC_TEXTURE|NA_EDITED, tex);
+			WM_event_add_notifier(C, NC_TEXTURE | NA_EDITED, tex);
 			break;
 		}
 }
 
-void texture_evaluate(struct Tex *tex, float value[3], float color_r[4])
+static void texture_evaluate(struct Tex *tex, float value[3], float color_r[4])
 {
 	TexResult texres = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, NULL};
 	multitex_ext(tex, value, NULL, NULL, 1, &texres);
@@ -112,7 +113,7 @@ void RNA_api_environment_map(StructRNA *srna)
 
 	func = RNA_def_function(srna, "save", "save_envmap");
 	RNA_def_function_ui_description(func, "Save the environment map to disc using the scene render settings");
-	RNA_def_function_flag(func, FUNC_USE_CONTEXT|FUNC_USE_REPORTS);
+	RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
 
 	parm = RNA_def_string_file_name(func, "filepath", "", FILE_MAX, "File path", "Location of the output file");
 	RNA_def_property_flag(parm, PROP_REQUIRED);

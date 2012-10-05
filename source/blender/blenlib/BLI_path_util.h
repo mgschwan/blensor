@@ -48,29 +48,27 @@ char *BLI_get_folder_version(const int id, const int ver, const int do_check);
 /* folder_id */
 
 /* general, will find based on user/local/system priority */
-#define BLENDER_DATAFILES			2
+#define BLENDER_DATAFILES           2
 
 /* user-specific */
-#define BLENDER_USER_CONFIG			31
-#define BLENDER_USER_DATAFILES		32
-#define BLENDER_USER_SCRIPTS		33
-#define BLENDER_USER_PLUGINS		34
-#define BLENDER_USER_AUTOSAVE		35
+#define BLENDER_USER_CONFIG         31
+#define BLENDER_USER_DATAFILES      32
+#define BLENDER_USER_SCRIPTS        33
+#define BLENDER_USER_AUTOSAVE       34
 
 /* system */
-#define BLENDER_SYSTEM_DATAFILES	52
-#define BLENDER_SYSTEM_SCRIPTS		53
-#define BLENDER_SYSTEM_PLUGINS		54
-#define BLENDER_SYSTEM_PYTHON		54
+#define BLENDER_SYSTEM_DATAFILES    52
+#define BLENDER_SYSTEM_SCRIPTS      53
+#define BLENDER_SYSTEM_PYTHON       54
 
 /* for BLI_get_folder_version only */
-#define BLENDER_RESOURCE_PATH_USER		0
-#define BLENDER_RESOURCE_PATH_LOCAL		1
-#define BLENDER_RESOURCE_PATH_SYSTEM	2
+#define BLENDER_RESOURCE_PATH_USER      0
+#define BLENDER_RESOURCE_PATH_LOCAL     1
+#define BLENDER_RESOURCE_PATH_SYSTEM    2
 
-#define BLENDER_STARTUP_FILE	"startup.blend"
-#define BLENDER_BOOKMARK_FILE	"bookmarks.txt"
-#define BLENDER_HISTORY_FILE	"recent-files.txt"
+#define BLENDER_STARTUP_FILE    "startup.blend"
+#define BLENDER_BOOKMARK_FILE   "bookmarks.txt"
+#define BLENDER_HISTORY_FILE    "recent-files.txt"
 
 #ifdef WIN32
 #define SEP '\\'
@@ -81,7 +79,7 @@ char *BLI_get_folder_version(const int id, const int ver, const int do_check);
 #endif
 
 void BLI_setenv(const char *env, const char *val);
-void BLI_setenv_if_new(const char *env, const char* val);
+void BLI_setenv_if_new(const char *env, const char *val);
 
 void BLI_make_file_string(const char *relabase, char *string,  const char *dir, const char *file);
 void BLI_make_exist(char *dir);
@@ -91,13 +89,21 @@ void BLI_split_dir_part(const char *string, char *dir, const size_t dirlen);
 void BLI_split_file_part(const char *string, char *file, const size_t filelen);
 void BLI_join_dirfile(char *string, const size_t maxlen, const char *dir, const char *file);
 char *BLI_path_basename(char *path);
-int BKE_rebase_path(char *abs, size_t abs_len, char *rel, size_t rel_len, const char *base_dir, const char *src_dir, const char *dest_dir);
+
+typedef enum bli_rebase_state {
+	BLI_REBASE_NO_SRCDIR = 0,
+	BLI_REBASE_OK        = 1,
+	BLI_REBASE_IDENTITY  = 2
+} bli_rebase_state;
+
+int BLI_rebase_path(char *abs, size_t abs_len, char *rel, size_t rel_len, const char *base_dir, const char *src_dir, const char *dest_dir);
+
 char *BLI_last_slash(const char *string);
-int	  BLI_add_slash(char *string);
+int   BLI_add_slash(char *string);
 void  BLI_del_slash(char *string);
 char *BLI_first_slash(char *string);
 
-void BLI_getlastdir(const char* dir, char *last, const size_t maxlen);
+void BLI_getlastdir(const char *dir, char *last, const size_t maxlen);
 int BLI_testextensie(const char *str, const char *ext);
 int BLI_testextensie_array(const char *str, const char **ext_array);
 int BLI_testextensie_glob(const char *str, const char *ext_fnmatch);
@@ -105,7 +111,7 @@ int BLI_replace_extension(char *path, size_t maxlen, const char *ext);
 int BLI_ensure_extension(char *path, size_t maxlen, const char *ext);
 void BLI_uniquename(struct ListBase *list, void *vlink, const char defname[], char delim, short name_offs, short len);
 int BLI_uniquename_cb(int (*unique_check)(void *, const char *), void *arg, const char defname[], char delim, char *name, short name_len);
-void BLI_newname(char * name, int add);
+void BLI_newname(char *name, int add);
 int BLI_stringdec(const char *string, char *head, char *start, unsigned short *numlen);
 void BLI_stringenc(char *string, const char *head, const char *tail, unsigned short numlen, int pic);
 int BLI_split_name_num(char *left, int *nr, const char *name, const char delim);
@@ -147,6 +153,8 @@ int BLI_path_frame_range(char *path, int sta, int end, int digits);
 int BLI_path_cwd(char *path);
 void BLI_path_rel(char *file, const char *relfile);
 
+int BLI_path_is_rel(const char *path);
+
 #ifdef WIN32
 #  define BLI_path_cmp BLI_strcasecmp
 #  define BLI_path_ncmp BLI_strncasecmp
@@ -165,23 +173,31 @@ void BLI_path_rel(char *file, const char *relfile);
  */
 void BLI_char_switch(char *string, char from, char to);
 
-	/* Initialize path to program executable */
+/* Initialize path to program executable */
 void BLI_init_program_path(const char *argv0);
-	/* Initialize path to temporary directory.
-	 * NOTE: On Window userdir will be set to the temporary directory! */
+/* Initialize path to temporary directory.
+ * NOTE: On Window userdir will be set to the temporary directory! */
 void BLI_init_temporary_dir(char *userdir);
 
-	/* Path to executable */
+/* Path to executable */
 const char *BLI_program_path(void);
-	/* Path to directory of executable */
+/* Path to directory of executable */
 const char *BLI_program_dir(void);
-	/* Path to temporary directory (with trailing slash) */
+/* Path to temporary directory (with trailing slash) */
 const char *BLI_temporary_dir(void);
-	/* Path to the system temporary directory (with trailing slash) */
+/* Path to the system temporary directory (with trailing slash) */
 void BLI_system_temporary_dir(char *dir);
 
 #ifdef WITH_ICONV
 void BLI_string_to_utf8(char *original, char *utf_8, const char *code);
+#endif
+
+/* these values need to be hardcoded in structs, dna does not recognize defines */
+/* also defined in DNA_space_types.h */
+#ifndef FILE_MAXDIR
+#  define FILE_MAXDIR         768
+#  define FILE_MAXFILE        256
+#  define FILE_MAX            1024
 #endif
 
 #ifdef __cplusplus

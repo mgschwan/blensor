@@ -1,4 +1,3 @@
-# -*- mode: cmake; indent-tabs-mode: t; -*-
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -32,12 +31,6 @@ if(WITH_CODEC_QUICKTIME)
 	add_definitions(-DWITH_QUICKTIME)
 endif()
 
-add_custom_command(
-	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/dna.c
-	COMMAND ${CMAKE_BINARY_DIR}/bin/${CMAKE_CFG_INTDIR}/makesdna ${CMAKE_CURRENT_BINARY_DIR}/dna.c ${CMAKE_SOURCE_DIR}/source/blender/makesdna/
-	DEPENDS ${CMAKE_BINARY_DIR}/bin/${CMAKE_CFG_INTDIR}/makesdna
-)
-
 if(WIN32 AND NOT UNIX)
 	string(SUBSTRING ${BLENDER_VERSION} 0 1 bver1)
 	string(SUBSTRING ${BLENDER_VERSION} 2 1 bver2)
@@ -61,10 +54,10 @@ if(WIN32 AND NOT UNIX)
 		)
 	endif()
 
-	add_executable(blenderplayer ${EXETYPE} ${CMAKE_CURRENT_BINARY_DIR}/dna.c ../icons/winblender.rc)
+	add_executable(blenderplayer ${EXETYPE} bad_level_call_stubs/stubs.c ../icons/winblender.rc)
 
 elseif(APPLE)
-	add_executable(blenderplayer ${EXETYPE} ${CMAKE_CURRENT_BINARY_DIR}/dna.c)
+	add_executable(blenderplayer ${EXETYPE} bad_level_call_stubs/stubs.c)
 	# setup Info.plist
 	execute_process(COMMAND date "+%Y-%m-%d" OUTPUT_VARIABLE BLENDER_DATE OUTPUT_STRIP_TRAILING_WHITESPACE)
 	set(PLAYER_SOURCEDIR ${CMAKE_SOURCE_DIR}/source/darwin/blenderplayer.app)
@@ -75,7 +68,7 @@ elseif(APPLE)
 		MACOSX_BUNDLE_LONG_VERSION_STRING "${BLENDER_VERSION} ${BLENDER_DATE}")
 
 else()
-	add_executable(blenderplayer ${CMAKE_CURRENT_BINARY_DIR}/dna.c)
+	add_executable(blenderplayer bad_level_call_stubs/stubs.c)
 endif()
 
 add_dependencies(blenderplayer makesdna)
@@ -102,8 +95,7 @@ endif()
 		bf_rna
 		bf_bmesh
 		bf_blenkernel
-		bf_blenloader 
-		bf_blenpluginapi 
+		bf_blenloader
 		ge_blen_routines
 		bf_editor_datafiles
 		ge_converter 
@@ -118,7 +110,7 @@ endif()
 		ge_scenegraph
 		bf_ikplugin
 		bf_intern_itasc
-		bf_intern_ik
+		bf_intern_iksolver
 		bf_intern_smoke
 		bf_modifiers
 		bf_intern_moto 
@@ -155,13 +147,15 @@ endif()
 		bf_blenkernel # duplicate for linking
 		bf_intern_mikktspace
 		extern_recastnavigation
+		bf_intern_raskter
+		bf_intern_opencolorio
 	)
 
 	if(WITH_MOD_CLOTH_ELTOPO)
 		list(APPEND BLENDER_SORTED_LIBS extern_eltopo)
 	endif()
 
-	if(WITH_BUILTIN_GLEW)
+	if(NOT WITH_SYSTEM_GLEW)
 		list(APPEND BLENDER_SORTED_LIBS extern_glew)
 	endif()
 
@@ -171,6 +165,7 @@ endif()
 
 	if(WITH_LIBMV)
 		list(APPEND BLENDER_SORTED_LIBS extern_libmv)
+		list(APPEND BLENDER_SORTED_LIBS extern_ceres)
 	endif()
 
 	list(APPEND BLENDER_SORTED_LIBS extern_colamd)
@@ -181,11 +176,10 @@ endif()
 
 	if(WITH_MOD_BOOLEAN)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_bsp)
-		list(APPEND BLENDER_SORTED_LIBS bf_intern_bop)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_moto)
 	endif()
 
-	if(WITH_CARVE)
+	if(WITH_MOD_BOOLEAN)
 		list(APPEND BLENDER_SORTED_LIBS extern_carve)
 	endif()
 

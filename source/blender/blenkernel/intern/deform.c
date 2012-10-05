@@ -33,6 +33,7 @@
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 #include "MEM_guardedalloc.h"
 
@@ -41,7 +42,10 @@
 
 #include "BKE_deform.h"
 
-#include "BLI_blenlib.h"
+#include "BLI_listbase.h"
+#include "BLI_math.h"
+#include "BLI_path_util.h"
+#include "BLI_string.h"
 #include "BLI_utildefines.h"
 
 
@@ -204,13 +208,15 @@ void defvert_normalize(MDeformVert *dvert)
 	}
 }
 
-void defvert_normalize_lock(MDeformVert *dvert, const int def_nr_lock)
+void defvert_normalize_lock_single(MDeformVert *dvert, const int def_nr_lock)
 {
 	if (dvert->totweight <= 0) {
 		/* nothing */
 	}
 	else if (dvert->totweight == 1) {
-		dvert->dw[0].weight = 1.0f;
+		if (def_nr_lock != 0) {
+			dvert->dw[0].weight = 1.0f;
+		}
 	}
 	else {
 		MDeformWeight *dw_lock = NULL;
@@ -246,12 +252,56 @@ void defvert_normalize_lock(MDeformVert *dvert, const int def_nr_lock)
 	}
 }
 
+void defvert_normalize_lock_map(MDeformVert *dvert, const char *lock_flags, const int defbase_tot)
+{
+	if (dvert->totweight <= 0) {
+		/* nothing */
+	}
+	else if (dvert->totweight == 1) {
+		if (LIKELY(defbase_tot >= 1) && lock_flags[0]) {
+			dvert->dw[0].weight = 1.0f;
+		}
+	}
+	else {
+		MDeformWeight *dw;
+		unsigned int i;
+		float tot_weight = 0.0f;
+		float lock_iweight = 0.0f;
+
+		for (i = dvert->totweight, dw = dvert->dw; i != 0; i--, dw++) {
+			if ((dw->def_nr < defbase_tot) && (lock_flags[dw->def_nr] == FALSE)) {
+				tot_weight += dw->weight;
+			}
+			else {
+				/* invert after */
+				lock_iweight += dw->weight;
+			}
+		}
+
+		lock_iweight = maxf(0.0f, 1.0f - lock_iweight);
+
+		if (tot_weight > 0.0f) {
+			/* paranoid, should be 1.0 but in case of float error clamp anyway */
+
+			float scalar = (1.0f / tot_weight) * lock_iweight;
+			for (i = dvert->totweight, dw = dvert->dw; i != 0; i--, dw++) {
+				if ((dw->def_nr < defbase_tot) && (lock_flags[dw->def_nr] == FALSE)) {
+					dw->weight *= scalar;
+
+					/* in case of division errors with very low weights */
+					CLAMP(dw->weight, 0.0f, 1.0f);
+				}
+			}
+		}
+	}
+}
+
 void defvert_flip(MDeformVert *dvert, const int *flip_map, const int flip_map_len)
 {
 	MDeformWeight *dw;
 	int i;
 
-	for (dw = dvert->dw, i = 0; i<dvert->totweight; dw++, i++) {
+	for (dw = dvert->dw, i = 0; i < dvert->totweight; dw++, i++) {
 		if (dw->def_nr < flip_map_len) {
 			if (flip_map[dw->def_nr] >= 0) {
 				dw->def_nr = flip_map[dw->def_nr];
@@ -424,13 +474,13 @@ static int defgroup_find_name_dupe(const char *name, bDeformGroup *dg, Object *o
 
 static int defgroup_unique_check(void *arg, const char *name)
 {
-	struct {Object *ob; void *dg;} *data = arg;
+	struct {Object *ob; void *dg; } *data = arg;
 	return defgroup_find_name_dupe(name, data->dg, data->ob);
 }
 
 void defgroup_unique_name(bDeformGroup *dg, Object *ob)
 {
-	struct {Object *ob; void *dg;} data;
+	struct {Object *ob; void *dg; } data;
 	data.ob = ob;
 	data.dg = dg;
 
@@ -538,7 +588,7 @@ void flip_side_name(char name[MAX_VGROUP_NAME], const char from_name[MAX_VGROUP_
 				break;
 		}
 	}
-	/* case; beginning with r R l L , with separator after it */
+	/* case; beginning with r R l L, with separator after it */
 	else if (is_char_sep(name[1])) {
 		switch (name[0]) {
 			case 'l':
@@ -595,7 +645,7 @@ void flip_side_name(char name[MAX_VGROUP_NAME], const char from_name[MAX_VGROUP_
 		}
 	}
 
-	BLI_snprintf (name, MAX_VGROUP_NAME, "%s%s%s%s", prefix, replace, suffix, number);
+	BLI_snprintf(name, MAX_VGROUP_NAME, "%s%s%s%s", prefix, replace, suffix, number);
 }
 
 float defvert_find_weight(const struct MDeformVert *dvert, const int defgroup)
@@ -710,7 +760,7 @@ void defvert_remove_group(MDeformVert *dvert, MDeformWeight *dw)
 		if (dvert->totweight) {
 			dw_new = MEM_mallocN(sizeof(MDeformWeight) * (dvert->totweight), __func__);
 			if (dvert->dw) {
-#if 1			/* since we don't care about order, swap this with the last, save a memcpy */
+#if 1           /* since we don't care about order, swap this with the last, save a memcpy */
 				if (i != dvert->totweight) {
 					dvert->dw[i] = dvert->dw[dvert->totweight];
 				}

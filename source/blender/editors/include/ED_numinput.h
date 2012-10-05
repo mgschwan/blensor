@@ -48,15 +48,16 @@ typedef struct NumInput {
 } NumInput;
 
 /* NUMINPUT FLAGS */
-#define NUM_NULL_ONE		2
-#define NUM_NO_NEGATIVE		4
-#define	NUM_NO_ZERO			8
-#define NUM_NO_FRACTION		16
-#define	NUM_AFFECT_ALL		32
+#define NUM_NULL_ONE        2
+#define NUM_NO_NEGATIVE     4
+#define NUM_NO_ZERO         8
+#define NUM_NO_FRACTION     16
+#define NUM_AFFECT_ALL      32
 
 /*********************** NumInput ********************************/
 
 void initNumInput(NumInput *n);
+#define NUM_STR_REP_LEN 20 /* str must be NUM_STR_LEN * (idx_max + 1) length. */
 void outputNumInput(NumInput *n, char *str);
 short hasNumInput(NumInput *n);
 void applyNumInput(NumInput *n, float *vec);

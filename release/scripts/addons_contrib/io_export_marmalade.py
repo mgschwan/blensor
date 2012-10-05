@@ -22,7 +22,7 @@
 bl_info = {
     "name": "Marmalade Cross-platform Apps (.group)",
     "author": "Benoit Muller",
-    "version": (0, 6, 1),
+    "version": (0, 6, 2),
     "blender": (2, 6, 3),
     "location": "File > Export > Marmalade cross-platform Apps (.group)",
     "description": "Export Marmalade Format files (.group)",
@@ -206,7 +206,7 @@ def WriteObjects(Config, ObjectList, geoFile=None, mtlFile=None, GeoModel=None, 
             if Config.Verbose:
                 print("    Writing Armature Bones...")
             #Create the skel file
-            skelfullname = os.path.dirname(Config.FilePath) + "\models\%s.skel" % (StripName(Object.name))
+            skelfullname = os.path.dirname(Config.FilePath) + os.sep + "models" + os.sep + "%s.skel" % (StripName(Object.name))
             ensure_dir(skelfullname)
             if Config.Verbose:
                 print("      Creating skel file %s" % (skelfullname))
@@ -344,7 +344,7 @@ def WriteObjects(Config, ObjectList, geoFile=None, mtlFile=None, GeoModel=None, 
 
 def CreateGeoMtlFiles(Config, Name):
     #Create the geo file
-    geofullname = os.path.dirname(Config.FilePath) + ("\models\%s.geo" % Name)
+    geofullname = os.path.dirname(Config.FilePath) + os.sep + "models" + os.sep + "%s.geo" % Name
     ensure_dir(geofullname)
     if Config.Verbose:
         print("      Creating geo file %s" % (geofullname))  
@@ -357,7 +357,7 @@ def CreateGeoMtlFiles(Config, Name):
     Config.File.write("\t\".\models\%s.geo\"\n" % Name)
 
     # Create the mtl file
-    mtlfullname = os.path.dirname(Config.FilePath) + "\models\%s.mtl" % (Name)
+    mtlfullname = os.path.dirname(Config.FilePath) + os.sep + "models" + os.sep + "%s.mtl" % Name
     ensure_dir(mtlfullname)
     if Config.Verbose:
         print("      Creating mtl file %s" % (mtlfullname))
@@ -707,9 +707,9 @@ def BuildOptimizedGeo(Config, Object, Mesh, GeoModel):
             Normal = -Normal
         GeoModel.AddVertexNormal(Normal)
     #Check if some colors have been defined
-    vertexColours = None
+    vertexColors = None
     if Config.ExportVertexColors and (len(Mesh.vertex_colors) > 0):
-        vertexColours = Mesh.tessface_vertex_colors[0].data
+        vertexColors = Mesh.tessface_vertex_colors[0].data
 
     #Check if some uv coordinates have been defined
     UVCoordinates = None
@@ -726,8 +726,8 @@ def BuildOptimizedGeo(Config, Object, Mesh, GeoModel):
         if Config.CoordinateSystem == 1:
             Vertices = Vertices[::-1]
         # stream for vertex colors
-        if vertexColours:
-            MeshColor = vertexColours[Face.index]
+        if vertexColors:
+            MeshColor = vertexColors[Face.index]
             if len(Vertices) == 3:
                 FaceColors = list((MeshColor.color1, MeshColor.color2, MeshColor.color3))
             else:
@@ -819,7 +819,7 @@ def WriteMaterial(Config, mtlFile, Material=None):
                     #try relative path to the blend file
                     Texture = os.path.dirname(bpy.data.filepath) + Texture
                 if os.path.exists(Texture):
-                    textureDest = os.path.dirname(Config.FilePath) + "\\models\\textures\\%s" % (bpy.path.basename(Texture))
+                    textureDest = os.path.dirname(Config.FilePath) + os.sep + "models" + os.sep + "textures" + os.sep + ("%s" % bpy.path.basename(Texture))
                     ensure_dir(textureDest)
                     if Config.Verbose:
                         print("      Copying the texture file %s ---> %s" % (Texture, textureDest))
@@ -893,7 +893,7 @@ def WriteMeshSkinWeightsForGeoModel(Config, Object, Mesh, GeoModel):
 
 def PrintSkinWeights(Config, ArmatureObjectName, useBonesDict, mapVertexGroupNames, GeoName):        
         #Create the skin file
-        skinfullname = os.path.dirname(Config.FilePath) + "\models\%s.skin" % GeoName
+        skinfullname = os.path.dirname(Config.FilePath) + os.sep + "models" + os.sep + "%s.skin" % GeoName
         ensure_dir(skinfullname)
         if Config.Verbose:
             print("      Creating skin file %s" % (skinfullname))
@@ -1120,7 +1120,7 @@ def WriteKeyedAnimationSet(Config, Scene):
             keyframeTimes.sort()
             if len(keyframeTimes):
                 #Create the anim file for offset animation (or single bone animation
-                animfullname = os.path.dirname(Config.FilePath) + "\\anims\\%s_offset.anim" % animFileName
+                animfullname = os.path.dirname(Config.FilePath) + os.sep + "anims" + os.sep + "%s_offset.anim" % animFileName
                 #not yet supported
                 """
                 ##    ensure_dir(animfullname)
@@ -1221,7 +1221,7 @@ def WriteKeyedAnimationSet(Config, Scene):
 
                 if len(keyframeTimes):
                     #Create the anim file
-                    animfullname = os.path.dirname(Config.FilePath) + "\\anims\\%s.anim" % animFileName
+                    animfullname = os.path.dirname(Config.FilePath) + os.sep + "anims" + os.sep + "%s.anim" % animFileName
                     ensure_dir(animfullname)
                     if Config.Verbose:
                         print("      Creating anim file (bones animation) %s\n" % (animfullname))
@@ -1449,14 +1449,14 @@ class MarmaladeExporter(bpy.types.Operator):
             bpy.ops.object.mode_set(mode='OBJECT')
 
         ExportMadeWithMarmaladeGroup(Config)
-        return {"FINISHED"}
+        return {'FINISHED'}
 
     def invoke(self, context, event):
         if not self.filepath:
             self.filepath = bpy.path.ensure_ext(bpy.data.filepath, ".group")
         WindowManager = context.window_manager
         WindowManager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
+        return {'RUNNING_MODAL'}
 
 
 def menu_func(self, context):

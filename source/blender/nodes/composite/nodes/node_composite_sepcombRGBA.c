@@ -34,16 +34,18 @@
 
 /* **************** SEPARATE RGBA ******************** */
 static bNodeSocketTemplate cmp_node_seprgba_in[]= {
-	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_RGBA, 1, N_("Image"),			1.0f, 1.0f, 1.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_seprgba_out[]= {
-	{	SOCK_FLOAT, 0, "R"},
-	{	SOCK_FLOAT, 0, "G"},
-	{	SOCK_FLOAT, 0, "B"},
-	{	SOCK_FLOAT, 0, "A"},
+	{	SOCK_FLOAT, 0, N_("R")},
+	{	SOCK_FLOAT, 0, N_("G")},
+	{	SOCK_FLOAT, 0, N_("B")},
+	{	SOCK_FLOAT, 0, N_("A")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void node_composit_exec_seprgba(void *UNUSED(data), bNode *UNUSED(node), bNodeStack **in, bNodeStack **out)
 {
@@ -77,6 +79,8 @@ static void node_composit_exec_seprgba(void *UNUSED(data), bNode *UNUSED(node), 
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_seprgba(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -84,7 +88,9 @@ void register_node_type_cmp_seprgba(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_SEPRGBA, "Separate RGBA", NODE_CLASS_CONVERTOR, 0);
 	node_type_socket_templates(&ntype, cmp_node_seprgba_in, cmp_node_seprgba_out);
 	node_type_size(&ntype, 80, 40, 140);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_seprgba);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }
@@ -93,16 +99,18 @@ void register_node_type_cmp_seprgba(bNodeTreeType *ttype)
 
 /* **************** COMBINE RGBA ******************** */
 static bNodeSocketTemplate cmp_node_combrgba_in[]= {
-	{	SOCK_FLOAT, 1, "R",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
-	{	SOCK_FLOAT, 1, "G",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
-	{	SOCK_FLOAT, 1, "B",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
-	{	SOCK_FLOAT, 1, "A",			1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("R"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("G"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("B"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("A"),			1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_combrgba_out[]= {
-	{	SOCK_RGBA, 0, "Image"},
+	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void do_combrgba(bNode *UNUSED(node), float *out, float *in1, float *in2, float *in3, float *in4)
 {
@@ -145,6 +153,8 @@ static void node_composit_exec_combrgba(void *UNUSED(data), bNode *node, bNodeSt
 	}	
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_combrgba(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -152,7 +162,9 @@ void register_node_type_cmp_combrgba(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_COMBRGBA, "Combine RGBA", NODE_CLASS_CONVERTOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_combrgba_in, cmp_node_combrgba_out);
 	node_type_size(&ntype, 80, 40, 140);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_combrgba);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

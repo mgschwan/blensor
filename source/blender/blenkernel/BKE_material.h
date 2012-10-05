@@ -42,11 +42,13 @@ struct ID;
 struct Object;
 struct Mesh;
 struct MTFace;
+struct Scene;
 
 /* materials */
 
 void init_def_material(void);
 void BKE_material_free(struct Material *sc); 
+void BKE_material_free_ex(struct Material *ma, int do_id_user);
 void test_object_materials(struct ID *id);
 void resize_object_material(struct Object *ob, const short totcol);
 void init_material(struct Material *ma);
@@ -66,10 +68,16 @@ short *give_totcolp(struct Object *ob);
 struct Material ***give_matarar_id(struct ID *id); /* same but for ID's */
 short *give_totcolp_id(struct ID *id);
 
+enum {
+	BKE_MAT_ASSIGN_USERPREF,
+	BKE_MAT_ASSIGN_OBDATA,
+	BKE_MAT_ASSIGN_OBJECT
+};
+
 struct Material *give_current_material(struct Object *ob, short act);
 struct ID *material_from(struct Object *ob, short act);
 void assign_material_id(struct ID *id, struct Material *ma, short act);
-void assign_material(struct Object *ob, struct Material *ma, short act);
+void assign_material(struct Object *ob, struct Material *ma, short act, int assign_type);
 void assign_matarar(struct Object *ob, struct Material ***matar, short totcol);
 
 short find_material_index(struct Object *ob, struct Material *ma);
@@ -90,7 +98,10 @@ void end_render_materials(struct Main *);
 
 int material_in_material(struct Material *parmat, struct Material *mat);
 
-void	ramp_blend(int type, float r_col[3], const float fac, const float col[3]);
+void ramp_blend(int type, float r_col[3], const float fac, const float col[3]);
+
+/* driver update hacks */
+void material_drivers_update(struct Scene *scene, struct Material *mat, float ctime);
 
 /* copy/paste */
 void clear_matcopybuf(void);
@@ -106,4 +117,3 @@ int do_version_tface(struct Main *main, int fileload);
 #endif
 
 #endif
-

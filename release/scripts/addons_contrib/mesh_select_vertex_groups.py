@@ -24,7 +24,7 @@ bl_info = {
     'location': 'Toolbox',
     'description': 'Finds all the vertex groups that chosen verts are in, & any verts that are not in any group',
     'warning': 'Buggy', # used for warning icon and text in addons panel
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Modeling/Select_Vertex_Groups",
     'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
         'func=detail&aid=22025',
@@ -165,18 +165,17 @@ def found_verts(vertex_group):
     obj = bpy.context.active_object
     if vertex_group == 'no group':
         for v in obj.data.vertices:
-            if v.index in used_vertexes and len(v.groups) == 0:
-                gfound.append(v)
+            if v.index in used_vertexes and (not v.groups):
+                vgfound.append(v)
     else:
-        vgnum = -1
-        for vg in obj.vertex_groups:
-            if vg.name == vertex_group: vgnum = vg.index
+        vgnum = obj.vertex_groups.find(vertex_group)
         for v in obj.data.vertices:
             if v.index in used_vertexes:
-                found = False
                 for g in v.groups:
-                        if g.group == vgnum: found = True
-                if found: vgfound.append(v)
+                    if g.group == vgnum:
+                        vgfound.append(v)
+                        break
+
     print('%d vertexes found for %s' % (len(vgfound), vertex_group))
     return vgfound
 
@@ -185,6 +184,7 @@ class VIEW3D_PT_FixVertexGroups(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "TOOLS"
     bl_label = "Select Vertex Groups"
+    bl_options = {'DEFAULT_CLOSED'}
 
     @classmethod
     def poll(self, context):

@@ -28,8 +28,6 @@
 
 #define MOZ_X11 1
 
-/* -*- Mode: C; tab-width: 8; c-set-style: bsd -*- */
-
 /* UnixShell.c was adapted from the template in the Netscape API. */
 
 /* System: */     
@@ -67,7 +65,7 @@ log_entry(char* msg);
 
 
 void
-execute_blenderplayer(BlenderPluginInstance*);
+execute_blenderplayer(BlenderPluginInstance *);
 
 /* --------------------------------------------------------------------- */
 /* Implementations:                                                      */
@@ -150,7 +148,7 @@ NPP_New(
 	NPSavedData* saved
 	)
 {
-	BlenderPluginInstance* This  = NULL;
+	BlenderPluginInstance *This = NULL;
 	int i = 0;
 	int retval = 0;
 
@@ -163,7 +161,7 @@ NPP_New(
 	if (instance->pdata == 0)
 		return NPERR_OUT_OF_MEMORY_ERROR;
 	
-	This = (BlenderPluginInstance*) instance->pdata;
+	This = (BlenderPluginInstance *) instance->pdata;
 	This->browser_instance = instance;
 	This->pID = 0;
 	This->blend_file = 0;
@@ -215,14 +213,14 @@ NPP_New(
 NPError 
 NPP_Destroy( NPP instance, NPSavedData** save )
 {
-	BlenderPluginInstance* This;
+	BlenderPluginInstance *This;
 
 	log_entry("NPP_Destroy");
 
 	if (instance == NULL)
 		return NPERR_INVALID_INSTANCE_ERROR;
 
-	This = (BlenderPluginInstance*) instance->pdata;
+	This = (BlenderPluginInstance *) instance->pdata;
 	printf("NPP_Destroy ID:  0x%x %d\n", This->window, This->window);
 
 	if (This != NULL) {
@@ -237,7 +235,7 @@ NPP_Destroy( NPP instance, NPSavedData** save )
 			unlink(This->temp_mail_file_name);
 		}
 
-		// sometimes FF doesn't delete it's own window...
+		/* sometimes FF doesn't delete it's own window... */
 		//printf("%s\n", NPN_UserAgent(instance));
 		/*if (This->display != NULL && This->window != 0)
 			XDestroyWindow(This->display, This->window);
@@ -257,7 +255,7 @@ NPP_Destroy( NPP instance, NPSavedData** save )
 NPError 
 NPP_SetWindow( NPP instance,NPWindow* window ) 
 {
-	BlenderPluginInstance* This;
+	BlenderPluginInstance *This;
 
 	log_entry("NPP_SetWindow");
 
@@ -272,7 +270,7 @@ NPP_SetWindow( NPP instance,NPWindow* window )
 	if (window->ws_info == NULL)
 		return NPERR_NO_ERROR; /* mmmmmm  */
 
-	This = (BlenderPluginInstance*) instance->pdata;
+	This = (BlenderPluginInstance *) instance->pdata;
 
 	if (This) {
 		This->window = (Window) window->window;
@@ -299,20 +297,20 @@ NPP_NewStream(
 	)
 {
 	//NPByteRange range;
-	BlenderPluginInstance* This;
+	BlenderPluginInstance *This;
 
 	log_entry("NPP_NewStream");
 	
 	if (instance == NULL)
 		return NPERR_INVALID_INSTANCE_ERROR;
 
-	This = (BlenderPluginInstance*) instance->pdata;
+	This = (BlenderPluginInstance *) instance->pdata;
 
 	if (!This) 
 		return NPERR_INVALID_INSTANCE_ERROR;
 
 	printf("Loading main file %s (%s)\n", stream->url, type);
-	if ( strcmp(type,"text/html") == 0 ) // original HTML file 
+	if ( strcmp(type,"text/html") == 0 ) /* original HTML file */
 		return NPERR_NO_ERROR;
 	
 	This->stream_total = stream->end;
@@ -352,7 +350,7 @@ NPP_WriteReady(
 	NPStream *stream
 	)
 {
-	BlenderPluginInstance* This = NULL;
+	BlenderPluginInstance *This = NULL;
 	int acceptable = 0;
 	
 	log_entry("NPP_WriteReady");
@@ -360,7 +358,7 @@ NPP_WriteReady(
 	if (instance == NULL)	
 		return NPERR_INVALID_INSTANCE_ERROR;
 
-	This = (BlenderPluginInstance*) instance->pdata;
+	This = (BlenderPluginInstance *) instance->pdata;
 
 	if (This == NULL)	
 		return NPERR_INVALID_INSTANCE_ERROR;
@@ -385,7 +383,7 @@ NPP_Write(
 	void *buffer
 	)
 {
-	BlenderPluginInstance* This = NULL;
+	BlenderPluginInstance *This = NULL;
 	int accepted = 0;
 	
 	log_entry("NPP_Write");
@@ -393,7 +391,7 @@ NPP_Write(
 	if (instance == NULL)	
 		return NPERR_INVALID_INSTANCE_ERROR;
 	
-	This = (BlenderPluginInstance*) instance->pdata;
+	This = (BlenderPluginInstance *) instance->pdata;
 
 	if (This == NULL)	
 		return NPERR_INVALID_INSTANCE_ERROR;
@@ -429,20 +427,20 @@ NPP_DestroyStream(
 	NPError reason
 	)
 {
-	BlenderPluginInstance* This = NULL;
+	BlenderPluginInstance *This = NULL;
 
 	log_entry("NPP_DestroyStream");
 
 	if (instance == NULL)
 		return NPERR_INVALID_INSTANCE_ERROR;
-	This = (BlenderPluginInstance*) instance->pdata;
+	This = (BlenderPluginInstance *) instance->pdata;
 
 	if (This) {
 		if (reason != NPRES_DONE) {
-			if (stream == This->main_file_stream) {				
-				// stream destroyed by NPP_Destroy
+			if (stream == This->main_file_stream) {
+				/* stream destroyed by NPP_Destroy */
 				NPN_Status(instance, "Cannot read animation file");
-				//main_file_failed(This->application);
+				/* main_file_failed(This->application); */
 			}
 		}
 		return NPERR_NO_ERROR;
@@ -482,7 +480,7 @@ NPP_Print(NPP instance, NPPrint* printInfo )
 
 
 void
-execute_blenderplayer(BlenderPluginInstance* instance)
+execute_blenderplayer(BlenderPluginInstance *instance)
 {
 
 	char file_name[] = "/tmp/blender.XXXXXX";

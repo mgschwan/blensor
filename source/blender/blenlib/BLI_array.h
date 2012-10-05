@@ -25,7 +25,10 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/*
+/** \file BLI_array.h
+ *  \ingroup bli
+ *  \brief A macro array library.
+ *
  * this library needs to be changed to not use macros quite so heavily,
  * and to be more of a complete array API.  The way arrays are
  * exposed to client code as normal C arrays is very useful though, imho.
@@ -43,9 +46,9 @@
  * BLI_array_declare(arr);
  * int i;
  *
- * for (i=0; i<10; i++) {
+ * for (i = 0; i < 10; i++) {
  *     BLI_array_grow_one(arr);
- * 	    arr[i] = something;
+ *     arr[i] = something;
  * }
  * BLI_array_free(arr);
  *
@@ -105,7 +108,7 @@
 	                              arr,                                        \
 	                              sizeof(*arr) * _##arr##_count)              \
 	                ),                                                        \
-	        (void) (arr && ((void *)(arr) != (void*)_##arr##_static ?         \
+	        (void) (arr && ((void *)(arr) != (void *)_##arr##_static ?        \
 	                (MEM_freeN(arr), arr) :                                   \
 	                arr)                                                      \
 	                ),                                                        \
@@ -118,7 +121,7 @@
 /* grow an array by a specified number of items */
 #define BLI_array_grow_items(arr, num)  (                                     \
 	((void *)(arr) == NULL && (void *)(_##arr##_static) != NULL) ?            \
-	    ((arr = (void*)_##arr##_static), (_##arr##_count += num)) :           \
+	    ((arr = (void *)_##arr##_static), (_##arr##_count += num)) :          \
 	    _bli_array_grow_items(arr, num)                                       \
 )
 
@@ -148,7 +151,7 @@
 	if (arr && (char *)arr != _##arr##_static) {                              \
 	    BLI_array_fake_user(arr);                                             \
 	    MEM_freeN(arr);                                                       \
-	}
+	} (void)0
 
 #define BLI_array_pop(arr)  (                                                 \
 	(arr && _##arr##_count) ?                                                 \
@@ -159,12 +162,12 @@
 /* resets the logical size of an array to zero, but doesn't
  * free the memory. */
 #define BLI_array_empty(arr)                                                  \
-	_##arr##_count = 0
+	_##arr##_count = 0; (void)0
 
 /* set the count of the array, doesn't actually increase the allocated array
  * size.  don't use this unless you know what you're doing. */
 #define BLI_array_length_set(arr, count)                                      \
-	_##arr##_count = (count)
+	_##arr##_count = (count); (void)0
 
 /* only to prevent unused warnings */
 #define BLI_array_fake_user(arr)                                              \
@@ -185,5 +188,6 @@
 	    )                                                                     \
 
 #define BLI_array_fixedstack_free(arr)                                        \
-	if (_##arr##_is_static) MEM_freeN(arr)                                    \
-
+	if (_##arr##_is_static) {                                                 \
+		MEM_freeN(arr);                                                       \
+	} (void)0

@@ -34,6 +34,7 @@
 #define __DNA_SEQUENCE_TYPES_H__
 
 #include "DNA_defs.h"
+#include "DNA_color_types.h"
 #include "DNA_listBase.h"
 #include "DNA_vec_types.h"
 
@@ -72,7 +73,7 @@ typedef struct StripColorBalance {
 } StripColorBalance;
 
 typedef struct StripProxy {
-	char dir[768];	       // custom directory for index and proxy files
+	char dir[768];         // custom directory for index and proxy files
 	                       // (defaults to BL_proxy)
 
 	char file[256];        // custom file
@@ -81,7 +82,7 @@ typedef struct StripProxy {
 	short tc;              // time code in use
 
 	short quality;         // proxy build quality
-	short build_size_flags;// size flags (see below) of all proxies 
+	short build_size_flags; // size flags (see below) of all proxies
 	                       // to build
 	short build_tc_flags;  // time code flags (see below) of all tc indices
 	                       // to build
@@ -98,81 +99,67 @@ typedef struct Strip {
 	StripProxy *proxy;
 	StripCrop *crop;
 	StripTransform *transform;
-	StripColorBalance *color_balance;
+	StripColorBalance *color_balance DNA_DEPRECATED;
 } Strip;
 
-
-typedef struct PluginSeq {
-	char name[1024]; /* 1024 = FILE_MAX */
-	void *handle;
-
-	char *pname;
-
-	int vars, version;
-
-	void *varstr;
-	float *cfra;
-
-	float data[32];
-
-	void *instance_private_data;
-	void **current_private_data;
-
-	void (*doit)(void);
-
-	void (*callback)(void);
-} PluginSeq;
-
-/* The sequence structure is the basic struct used by any strip. each of the strips uses a different sequence structure.*/
-/* WATCH IT: first part identical to ID (for use in ipo's) */
-
+/**
+ * The sequence structure is the basic struct used by any strip.
+ * each of the strips uses a different sequence structure.
+ *
+ * \warning The first part identical to ID (for use in ipo's)
+ * the commend above is historic, probably we can drop the ID compatibility,
+ * but take care making this change.
+ *
+ * \warning This is really a 'Strip' in the UI!, name is highly confusing.
+ */
 typedef struct Sequence {
 	struct Sequence *next, *prev;
 	void *tmp; /* tmp var for copying, and tagging for linked selection */
 	void *lib; /* needed (to be like ipo), else it will raise libdata warnings, this should never be used */
 	char name[64]; /* SEQ_NAME_MAXSTR - name, set by default and needs to be unique, for RNA paths */
 
-	int flag, type;	/*flags bitmap (see below) and the type of sequence*/
+	int flag, type; /*flags bitmap (see below) and the type of sequence*/
 	int len; /* the length of the contents of this strip - before handles are applied */
 	int start, startofs, endofs;
 	int startstill, endstill;
 	int machine, depth; /*machine - the strip channel, depth - the depth in the sequence when dealing with metastrips */
-	int startdisp, enddisp;	/*starting and ending points in the sequence*/
+	int startdisp, enddisp; /*starting and ending points in the sequence*/
 	float sat;
 	float mul, handsize;
 
 	short anim_preseek;
-	short streamindex;   /* streamindex for movie or sound files with several streams */
+	short streamindex;    /* streamindex for movie or sound files with several streams */
 	int multicam_source;  /* for multicam source selection */
-	int clip_flag;          /* MOVIECLIP render flags */
+	int clip_flag;        /* MOVIECLIP render flags */
 
 	Strip *strip;
 
-	struct Ipo *ipo  DNA_DEPRECATED;  /* old animation system, deprecated for 2.5 */
-	struct Scene *scene;
-	struct Object *scene_camera; /* override scene camera */
+	struct Ipo *ipo DNA_DEPRECATED;   /* old animation system, deprecated for 2.5 */
+
+	/* these ID vars should never be NULL but can be when linked libs fail to load, so check on access */
+	struct Scene     *scene;
+	struct Object    *scene_camera;  /* override scene camera */
+	struct MovieClip *clip;          /* for MOVIECLIP strips */
+	struct Mask      *mask;          /* for MASK strips */
 
 	struct anim *anim;      /* for MOVIE strips */
-	struct MovieClip *clip; /* for MOVIECLIP strips */
 
 	float effect_fader;
 	float speed_fader;
 
-	PluginSeq *plugin;
-
 	/* pointers for effects: */
 	struct Sequence *seq1, *seq2, *seq3;
 
-	ListBase seqbase;	/* list of strips for metastrips */
+	ListBase seqbase;       /* list of strips for metastrips */
 
-	struct bSound *sound;	/* the linked "bSound" object */
+	struct bSound *sound;   /* the linked "bSound" object */
 	void *scene_sound;
 	float volume;
 
-	float pitch, pan;	/* pitch (-0.1..10), pan -2..2 */
+	float pitch, pan;     /* pitch (-0.1..10), pan -2..2 */
 	float strobe;
 
-	void *effectdata;	/* Struct pointer for effect settings */
+	void *effectdata;     /* Struct pointer for effect settings */
 
 	int anim_startofs;    /* only use part of animation file */
 	int anim_endofs;      /* is subtle different to startofs / endofs */
@@ -181,8 +168,11 @@ typedef struct Sequence {
 	int blend_mode;
 	float blend_opacity;
 
-			/* is sfra needed anymore? - it looks like its only used in one place */
-	int sfra, pad;	/* starting frame according to the timeline of the scene. */
+	/* is sfra needed anymore? - it looks like its only used in one place */
+	int sfra, pad;  /* starting frame according to the timeline of the scene. */
+
+	/* modifiers */
+	ListBase modifiers;
 } Sequence;
 
 typedef struct MetaStack {
@@ -193,7 +183,7 @@ typedef struct MetaStack {
 
 typedef struct Editing {
 	ListBase *seqbasep; /* pointer to the current list of seq's being edited (can be within a meta strip) */
-	ListBase seqbase;	/* pointer to the top-most seq's */
+	ListBase seqbase;   /* pointer to the top-most seq's */
 	ListBase metastack;
 	
 	/* Context vars, used to be static */
@@ -213,12 +203,12 @@ typedef struct WipeVars {
 } WipeVars;
 
 typedef struct GlowVars {	
-	float fMini;	/*	Minimum intensity to trigger a glow */
+	float fMini;    /*	Minimum intensity to trigger a glow */
 	float fClamp;
-	float fBoost;	/*	Amount to multiply glow intensity */
-	float dDist;	/*	Radius of glow blurring */
-	int	dQuality;
-	int	bNoComp;	/*	SHOW/HIDE glow buffer */
+	float fBoost;   /*	Amount to multiply glow intensity */
+	float dDist;    /*	Radius of glow blurring */
+	int dQuality;
+	int bNoComp;    /*	SHOW/HIDE glow buffer */
 } GlowVars;
 
 typedef struct TransformVars {
@@ -238,23 +228,75 @@ typedef struct SolidColorVars {
 } SolidColorVars;
 
 typedef struct SpeedControlVars {
-	float * frameMap;
+	float *frameMap;
 	float globalSpeed;
 	int flags;
 	int length;
 	int lastValidFrame;
 } SpeedControlVars;
 
+/* ***************** Sequence modifiers ****************** */
+
+typedef struct SequenceModifierData {
+	struct SequenceModifierData *next, *prev;
+	int type, flag;
+	char name[64]; /* MAX_NAME */
+
+	/* mask input, either sequence or maks ID */
+	int mask_input_type, pad;
+
+	struct Sequence *mask_sequence;
+	struct Mask     *mask_id;
+} SequenceModifierData;
+
+typedef struct ColorBalanceModifierData {
+	SequenceModifierData modifier;
+
+	StripColorBalance color_balance;
+	float color_multiply;
+} ColorBalanceModifierData;
+
+typedef struct CurvesModifierData {
+	SequenceModifierData modifier;
+
+	struct CurveMapping curve_mapping;
+} CurvesModifierData;
+
+typedef struct HueCorrectModifierData {
+	SequenceModifierData modifier;
+
+	struct CurveMapping curve_mapping;
+} HueCorrectModifierData;
+
+typedef struct BrightContrastModifierData {
+	SequenceModifierData modifier;
+
+	float bright;
+	float contrast;
+} BrightContrastModifierData;
+
+/* ***************** Scopes ****************** */
+
+typedef struct SequencerScopes {
+	struct ImBuf *reference_ibuf;
+
+	struct ImBuf *zebra_ibuf;
+	struct ImBuf *waveform_ibuf;
+	struct ImBuf *sep_waveform_ibuf;
+	struct ImBuf *vector_ibuf;
+	struct ImBuf *histogram_ibuf;
+} SequencerScopes;
+
 #define MAXSEQ          32
 
 #define SELECT 1
 
 /* Editor->over_flag */
-#define SEQ_EDIT_OVERLAY_SHOW			1
-#define SEQ_EDIT_OVERLAY_ABS			2
+#define SEQ_EDIT_OVERLAY_SHOW           1
+#define SEQ_EDIT_OVERLAY_ABS            2
 
-#define SEQ_STRIP_OFSBOTTOM		0.2f
-#define SEQ_STRIP_OFSTOP		0.8f
+#define SEQ_STRIP_OFSBOTTOM     0.2f
+#define SEQ_STRIP_OFSTOP        0.8f
 
 /* SpeedControlVars->flags */
 #define SEQ_SPEED_INTEGRATE      1
@@ -262,42 +304,43 @@ typedef struct SpeedControlVars {
 #define SEQ_SPEED_COMPRESS_IPO_Y 4
 
 /* ***************** SEQUENCE ****************** */
-#define SEQ_NAME_MAXSTR			64
+#define SEQ_NAME_MAXSTR         64
 
 /* seq->flag */
-#define SEQ_LEFTSEL                 (1<<1)
-#define SEQ_RIGHTSEL                (1<<2)
-#define SEQ_OVERLAP                 (1<<3)
-#define SEQ_FILTERY                 (1<<4)
-#define SEQ_MUTE                    (1<<5)
-#define SEQ_MAKE_PREMUL             (1<<6)
-#define SEQ_REVERSE_FRAMES          (1<<7)
-#define SEQ_IPO_FRAME_LOCKED        (1<<8)
-#define SEQ_EFFECT_NOT_LOADED       (1<<9)
-#define SEQ_FLAG_DELETE             (1<<10)
-#define SEQ_FLIPX                   (1<<11)
-#define SEQ_FLIPY                   (1<<12)
-#define SEQ_MAKE_FLOAT              (1<<13)
-#define SEQ_LOCK                    (1<<14)
-#define SEQ_USE_PROXY               (1<<15)
-#define SEQ_USE_TRANSFORM           (1<<16)
-#define SEQ_USE_CROP                (1<<17)
-#define SEQ_USE_COLOR_BALANCE       (1<<18)
-#define SEQ_USE_PROXY_CUSTOM_DIR    (1<<19)
+#define SEQ_LEFTSEL                 (1 << 1)
+#define SEQ_RIGHTSEL                (1 << 2)
+#define SEQ_OVERLAP                 (1 << 3)
+#define SEQ_FILTERY                 (1 << 4)
+#define SEQ_MUTE                    (1 << 5)
+#define SEQ_MAKE_PREMUL             (1 << 6)
+#define SEQ_REVERSE_FRAMES          (1 << 7)
+#define SEQ_IPO_FRAME_LOCKED        (1 << 8)
+#define SEQ_EFFECT_NOT_LOADED       (1 << 9)
+#define SEQ_FLAG_DELETE             (1 << 10)
+#define SEQ_FLIPX                   (1 << 11)
+#define SEQ_FLIPY                   (1 << 12)
+#define SEQ_MAKE_FLOAT              (1 << 13)
+#define SEQ_LOCK                    (1 << 14)
+#define SEQ_USE_PROXY               (1 << 15)
+#define SEQ_USE_TRANSFORM           (1 << 16)
+#define SEQ_USE_CROP                (1 << 17)
+/* #define SEQ_USE_COLOR_BALANCE       (1 << 18) */ /* DEPRECATED */
+#define SEQ_USE_PROXY_CUSTOM_DIR    (1 << 19)
 
-#define SEQ_USE_PROXY_CUSTOM_FILE   (1<<21)
-#define SEQ_USE_EFFECT_DEFAULT_FADE (1<<22)
+#define SEQ_USE_PROXY_CUSTOM_FILE   (1 << 21)
+#define SEQ_USE_EFFECT_DEFAULT_FADE (1 << 22)
+#define SEQ_USE_LINEAR_MODIFIERS    (1 << 23)
 
 // flags for whether those properties are animated or not
-#define SEQ_AUDIO_VOLUME_ANIMATED   (1<<24)
-#define SEQ_AUDIO_PITCH_ANIMATED    (1<<25)
-#define SEQ_AUDIO_PAN_ANIMATED      (1<<26)
-#define SEQ_AUDIO_DRAW_WAVEFORM     (1<<27)
+#define SEQ_AUDIO_VOLUME_ANIMATED   (1 << 24)
+#define SEQ_AUDIO_PITCH_ANIMATED    (1 << 25)
+#define SEQ_AUDIO_PAN_ANIMATED      (1 << 26)
+#define SEQ_AUDIO_DRAW_WAVEFORM     (1 << 27)
 
-#define SEQ_INVALID_EFFECT          (1<<31)
+#define SEQ_INVALID_EFFECT          (1 << 31)
 
 /* convenience define for all selection flags */
-#define SEQ_ALLSEL	(SELECT+SEQ_LEFTSEL+SEQ_RIGHTSEL)
+#define SEQ_ALLSEL  (SELECT + SEQ_LEFTSEL + SEQ_RIGHTSEL)
 
 /* deprecated, don't use a flag anymore*/
 /*#define SEQ_ACTIVE                            1048576*/
@@ -320,51 +363,70 @@ typedef struct SpeedControlVars {
 #define SEQ_PROXY_TC_RECORD_RUN_NO_GAPS         8
 #define SEQ_PROXY_TC_ALL                        15
 
-/* seq->type WATCH IT: SEQ_EFFECT BIT is used to determine if this is an effect strip!!! */
-#define SEQ_IMAGE		0
-#define SEQ_META		1
-#define SEQ_SCENE		2
-#define SEQ_MOVIE		3
-#define SEQ_RAM_SOUND		4
-#define SEQ_HD_SOUND            5
-#define SEQ_SOUND		4
-#define SEQ_MOVIECLIP           6
+/* seq->type WATCH IT: SEQ_TYPE_EFFECT BIT is used to determine if this is an effect strip!!! */
+enum {
+	SEQ_TYPE_IMAGE       = 0,
+	SEQ_TYPE_META        = 1,
+	SEQ_TYPE_SCENE       = 2,
+	SEQ_TYPE_MOVIE       = 3,
+	SEQ_TYPE_SOUND_RAM   = 4,
+	SEQ_TYPE_SOUND_HD    = 5,
+	SEQ_TYPE_MOVIECLIP   = 6,
+	SEQ_TYPE_MASK        = 7,
 
-#define SEQ_EFFECT		8
-#define SEQ_CROSS		8
-#define SEQ_ADD			9
-#define SEQ_SUB			10
-#define SEQ_ALPHAOVER	11
-#define SEQ_ALPHAUNDER	12
-#define SEQ_GAMCROSS	13
-#define SEQ_MUL			14
-#define SEQ_OVERDROP	15
-#define SEQ_PLUGIN		24
-#define SEQ_WIPE		25
-#define SEQ_GLOW		26
-#define SEQ_TRANSFORM		27
-#define SEQ_COLOR               28
-#define SEQ_SPEED               29
-#define SEQ_MULTICAM            30
-#define SEQ_ADJUSTMENT          31
-#define SEQ_EFFECT_MAX          31
+	SEQ_TYPE_EFFECT      = 8,
+	SEQ_TYPE_CROSS       = 8,
+	SEQ_TYPE_ADD         = 9,
+	SEQ_TYPE_SUB         = 10,
+	SEQ_TYPE_ALPHAOVER   = 11,
+	SEQ_TYPE_ALPHAUNDER  = 12,
+	SEQ_TYPE_GAMCROSS    = 13,
+	SEQ_TYPE_MUL         = 14,
+	SEQ_TYPE_OVERDROP    = 15,
+	/* SEQ_TYPE_PLUGIN      = 24, */ /* Deprecated */
+	SEQ_TYPE_WIPE        = 25,
+	SEQ_TYPE_GLOW        = 26,
+	SEQ_TYPE_TRANSFORM   = 27,
+	SEQ_TYPE_COLOR       = 28,
+	SEQ_TYPE_SPEED       = 29,
+	SEQ_TYPE_MULTICAM    = 30,
+	SEQ_TYPE_ADJUSTMENT  = 31,
+	SEQ_TYPE_EFFECT_MAX  = 31
+};
 
-#define STRIPELEM_FAILED       0
-#define STRIPELEM_OK           1
-
-#define STRIPELEM_PREVIEW_DONE  1
-
-#define SEQ_MOVIECLIP_RENDER_UNDISTORTED (1<<0)
-#define SEQ_MOVIECLIP_RENDER_STABILIZED  (1<<1)
+#define SEQ_MOVIECLIP_RENDER_UNDISTORTED (1 << 0)
+#define SEQ_MOVIECLIP_RENDER_STABILIZED  (1 << 1)
 
 #define SEQ_BLEND_REPLACE      0
-/* all other BLEND_MODEs are simple SEQ_EFFECT ids and therefore identical
+/* all other BLEND_MODEs are simple SEQ_TYPE_EFFECT ids and therefore identical
  * to the table above. (Only those effects that handle _exactly_ two inputs,
  * otherwise, you can't really blend, right :) !)
  */
 
 
-#define SEQ_HAS_PATH(_seq) (ELEM4((_seq)->type, SEQ_MOVIE, SEQ_IMAGE, SEQ_RAM_SOUND, SEQ_HD_SOUND))
+#define SEQ_HAS_PATH(_seq) (ELEM4((_seq)->type, SEQ_TYPE_MOVIE, SEQ_TYPE_IMAGE, SEQ_TYPE_SOUND_RAM, SEQ_TYPE_SOUND_HD))
+
+/* modifiers */
+
+/* SequenceModifierData->type */
+enum {
+	seqModifierType_ColorBalance   = 1,
+	seqModifierType_Curves         = 2,
+	seqModifierType_HueCorrect     = 3,
+	seqModifierType_BrightContrast = 4,
+
+	NUM_SEQUENCE_MODIFIER_TYPES
+};
+
+/* SequenceModifierData->flag */
+enum {
+	SEQUENCE_MODIFIER_MUTE      = (1 << 0),
+	SEQUENCE_MODIFIER_EXPANDED  = (1 << 1),
+};
+
+enum {
+	SEQUENCE_MASK_INPUT_STRIP   = 0,
+	SEQUENCE_MASK_INPUT_ID      = 1
+};
 
 #endif
-

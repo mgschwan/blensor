@@ -27,7 +27,7 @@ bl_info = {
     "blender": (2, 6, 0),
     "location": "View3D > Left panel ",
     "warning": '',  # used for warning icon and text in addons panel
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/Scripts/System/Gyes",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/System/Gyes",
     "tracker_url": "https://github.com/kilon/Gyes",
     "category": "Material"}
 
@@ -58,7 +58,7 @@ class gyes_panel(bpy.types.Panel):
     bl_label = "Gyes"
     bl_space_type = "VIEW_3D"
     bl_region_type = "TOOLS"
-   
+    bl_options = {'DEFAULT_CLOSED'}   
     def draw(self, context):
         layout = self.layout
         row = layout.row()

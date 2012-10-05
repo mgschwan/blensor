@@ -72,7 +72,7 @@ def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
             fw('Ns %.6f\n' % tspec)
             del tspec
 
-            fw('Ka %.6f %.6f %.6f\n' % (mat.ambient * world_amb)[:])  # Ambient, uses mirror colour,
+            fw('Ka %.6f %.6f %.6f\n' % (mat.ambient * world_amb)[:])  # Ambient, uses mirror color,
             fw('Kd %.6f %.6f %.6f\n' % (mat.diffuse_intensity * mat.diffuse_color)[:])  # Diffuse
             fw('Ks %.6f %.6f %.6f\n' % (mat.specular_intensity * mat.specular_color)[:])  # Specular
             if hasattr(mat, "ior"):
@@ -92,7 +92,7 @@ def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
         else:
             #write a dummy material here?
             fw('Ns 0\n')
-            fw('Ka %.6f %.6f %.6f\n' % world_amb[:])  # Ambient, uses mirror colour,
+            fw('Ka %.6f %.6f %.6f\n' % world_amb[:])  # Ambient, uses mirror color,
             fw('Kd 0.8 0.8 0.8\n')
             fw('Ks 0.8 0.8 0.8\n')
             fw('d 1\n')  # No alpha
@@ -229,12 +229,12 @@ def write_file(filepath, objects, scene,
                EXPORT_GLOBAL_MATRIX=None,
                EXPORT_PATH_MODE='AUTO',
                ):
-    '''
+    """
     Basic write function. The context and options must be already set
     This can be accessed externaly
     eg.
     write( 'c:\\test\\foobar.obj', Blender.Object.GetSelected() ) # Using default options.
-    '''
+    """
 
     if EXPORT_GLOBAL_MATRIX is None:
         EXPORT_GLOBAL_MATRIX = mathutils.Matrix()
@@ -291,6 +291,10 @@ def write_file(filepath, objects, scene,
     # A Dict of Materials
     # (material.name, image.name):matname_imagename # matname_imagename has gaps removed.
     mtl_dict = {}
+    # Used to reduce the usage of matname_texname materials, which can become annoying in case of
+    # repeated exports/imports, yet keeping unique mat names per keys!
+    # mtl_name: (material.name, image.name)
+    mtl_rev_dict = {}
 
     copy_set = set()
 
@@ -505,10 +509,21 @@ def write_file(filepath, objects, scene,
                             # converting any spaces to underscores with name_compat.
 
                             # If none image dont bother adding it to the name
-                            if key[1] is None:
-                                mat_data = mtl_dict[key] = ("%s" % name_compat(key[0])), materials[f_mat], f_image
-                            else:
-                                mat_data = mtl_dict[key] = ("%s_%s" % (name_compat(key[0]), name_compat(key[1]))), materials[f_mat], f_image
+                            # Try to avoid as much as possible adding texname (or other things)
+                            # to the mtl name (see [#32102])...
+                            mtl_name = "%s" % name_compat(key[0])
+                            if mtl_rev_dict.get(mtl_name, None) not in {key, None}:
+                                if key[1] is None:
+                                    tmp_ext = "_NONE"
+                                else:
+                                    tmp_ext = "_%s" % name_compat(key[1])
+                                i = 0
+                                while mtl_rev_dict.get(mtl_name + tmp_ext, None) not in {key, None}:
+                                    i += 1
+                                    tmp_ext = "_%3d" % i
+                                mtl_name += tmp_ext
+                            mat_data = mtl_dict[key] = mtl_name, materials[f_mat], f_image
+                            mtl_rev_dict[mtl_name] = key
 
                         if EXPORT_GROUP_BY_MAT:
                             fw("g %s_%s_%s\n" % (name_compat(ob.name), name_compat(ob.data.name), mat_data[0]))  # can be mat_image or (null)
@@ -684,11 +699,11 @@ def _write(context, filepath,
 #   Window.WaitCursor(0)
 
 
-'''
+"""
 Currently the exporter lacks these features:
 * multiple scene export (only active scene is written)
 * particles
-'''
+"""
 
 
 def save(operator, context, filepath="",

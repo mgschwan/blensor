@@ -1,4 +1,3 @@
-# -*- mode: cmake; indent-tabs-mode: t; -*-
 # ##### BEGIN GPL LICENSE BLOCK #####
 #
 #  This program is free software; you can redistribute it and/or
@@ -49,6 +48,6 @@ set(SRC
 )
 
 blender_include_dirs("${INC}")
-add_library(blender_plugin SHARED ${SRC} )
+add_library(blender_plugin SHARED ${SRC})
 
 

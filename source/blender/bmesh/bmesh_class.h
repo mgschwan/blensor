@@ -198,8 +198,6 @@ typedef struct BMesh {
 	ListBase errorstack;
 
 	void *py_handle;
-
-	int opflag; /* current operator flag */
 } BMesh;
 
 /* BMHeader->htype (char) */
@@ -225,9 +223,10 @@ enum {
                                  * when temp tagging is handy.
                                  * always assume dirty & clear before use. */
 
-	/* we have 2 spare flags which is awesome but since we're limited to 8
+	BM_ELEM_DRAW    = (1 << 5), /* edge display */
+
+	/* we have 1 spare flag which is awesome but since we're limited to 8
 	 * only add new flags with care! - campbell */
-	/* BM_ELEM_SPARE  = (1 << 5), */
 	/* BM_ELEM_SPARE  = (1 << 6), */
 
 	BM_ELEM_INTERNAL_TAG = (1 << 7) /* for low level internal API tagging,

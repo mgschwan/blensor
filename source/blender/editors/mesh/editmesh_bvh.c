@@ -49,13 +49,14 @@
 #include "ED_mesh.h"
 #include "ED_view3d.h"
 
+#include "editmesh_bvh.h"  /* own include */
 
 typedef struct BMBVHTree {
 	BMEditMesh *em;
 	BMesh *bm;
 	BVHTree *tree;
 	float epsilon;
-	float maxdist; //for nearest point search
+	float maxdist; /* for nearest point search */
 	float uv[2];
 	
 	/* stuff for topological vert search */
@@ -201,12 +202,13 @@ void BMBVH_FreeBVH(BMBVHTree *tree)
 }
 
 /* taken from bvhutils.c */
-static float ray_tri_intersection(const BVHTreeRay *ray, const float UNUSED(m_dist), float *v0, 
-                                  float *v1, float *v2, float *uv, float UNUSED(e))
+static float ray_tri_intersection(const BVHTreeRay *ray, const float UNUSED(m_dist),
+                                  const float v0[3],  const float v1[3], const float v2[3],
+                                  float r_uv[2], float UNUSED(e))
 {
 	float dist;
 
-	if (isect_ray_tri_v3((float *)ray->origin, (float *)ray->direction, v0, v1, v2, &dist, uv)) {
+	if (isect_ray_tri_v3((float *)ray->origin, (float *)ray->direction, v0, v1, v2, &dist, r_uv)) {
 		return dist;
 	}
 
@@ -307,7 +309,7 @@ static void vertsearchcallback(void *userdata, int index, const float *UNUSED(co
 	}
 }
 
-BMVert *BMBVH_FindClosestVert(BMBVHTree *tree, float *co, float maxdist)
+BMVert *BMBVH_FindClosestVert(BMBVHTree *tree, const float co[3], const float maxdist)
 {
 	BVHTreeNearest hit;
 
@@ -323,7 +325,7 @@ BMVert *BMBVH_FindClosestVert(BMBVHTree *tree, float *co, float maxdist)
 		float dist, curdist = tree->maxdist, v[3];
 		int cur = 0, i;
 
-		maxdist = tree->maxdist;
+		/* maxdist = tree->maxdist; */  /* UNUSED */
 
 		for (i = 0; i < 3; i++) {
 			sub_v3_v3v3(v, hit.co, ls[i]->v->co);
@@ -343,7 +345,7 @@ BMVert *BMBVH_FindClosestVert(BMBVHTree *tree, float *co, float maxdist)
 
 /* UNUSED */
 #if 0
-static short winding(float *v1, float *v2, float *v3)
+static short winding(const float v1[3], const float v2[3], const float v3[3])
 /* is v3 to the right of (v1 - v2) ? With exception: v3 == v1 || v3 == v2 */
 {
 	double inp;
@@ -369,7 +371,7 @@ int BMBVH_VertVisible(BMBVHTree *tree, BMEdge *e, RegionView3D *r3d)
 }
 #endif
 
-static BMFace *edge_ray_cast(BMBVHTree *tree, float *co, float *dir, float *hitout, BMEdge *e)
+static BMFace *edge_ray_cast(BMBVHTree *tree, const float co[3], const float dir[3], float *hitout, BMEdge *e)
 {
 	BMFace *f = BMBVH_RayCast(tree, co, dir, hitout, NULL);
 	
@@ -379,7 +381,7 @@ static BMFace *edge_ray_cast(BMBVHTree *tree, float *co, float *dir, float *hito
 	return f;
 }
 
-static void scale_point(float *c1, float *p, float s)
+static void scale_point(float c1[3], const float p[3], const float s)
 {
 	sub_v3_v3(c1, p);
 	mul_v3_fl(c1, s);
@@ -393,15 +395,10 @@ int BMBVH_EdgeVisible(BMBVHTree *tree, BMEdge *e, ARegion *ar, View3D *v3d, Obje
 	float co1[3], co2[3], co3[3], dir1[4], dir2[4], dir3[4];
 	float origin[3], invmat[4][4];
 	float epsilon = 0.01f; 
-	float mval_f[2], end[3];
-	
-	if (!ar) {
-		printf("error in BMBVH_EdgeVisible!\n");
-		return 0;
-	}
-	
-	mval_f[0] = ar->winx / 2.0f;
-	mval_f[1] = ar->winy / 2.0f;
+	float end[3];
+	const float mval_f[2] = {ar->winx / 2.0f,
+	                         ar->winy / 2.0f};
+
 	ED_view3d_win_to_segment_clip(ar, v3d, mval_f, origin, end);
 	
 	invert_m4_m4(invmat, obedit->obmat);

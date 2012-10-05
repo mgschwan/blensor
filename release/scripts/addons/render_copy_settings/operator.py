@@ -49,10 +49,8 @@ def collection_property_sort(collection, sortkey, start_idx=0):
 
 
 class RenderCopySettingsPrepare(bpy.types.Operator):
-    '''
-    Prepare internal data for render_copy_settings (gathering all existing
-    render settings, and scenes)
-    '''
+    """Prepare internal data for render_copy_settings (gathering all """ \
+    """existingrender settings, and scenes)"""
     bl_idname = "scene.render_copy_settings_prepare"
     bl_label = "Render: Copy Settings Prepare"
     bl_option = {'REGISTER'}
@@ -94,12 +92,12 @@ class RenderCopySettingsPrepare(bpy.types.Operator):
                 try:
                     regex = re.compile(cp_sett.filter_scene)
                 except Exception as e:
-                    self.report('ERROR_INVALID_INPUT', "The filter-scene "
+                    self.report({'ERROR_INVALID_INPUT'}, "The filter-scene "
                                 "regex did not compile:\n    (%s)." % str(e))
                     return {'CANCELLED'}
             except:
                 regex = None
-                self.report('WARNING', "Unable to import the re module. "
+                self.report({'WARNING'}, "Unable to import the re module. "
                             "Regex scene filtering will be disabled!")
         scenes = set()
         for scene in bpy.data.scenes:
@@ -128,7 +126,7 @@ from bpy.props import EnumProperty
 
 
 class RenderCopySettingsPreset(bpy.types.Operator):
-    '''Apply some presets of render settings to copy to other scenes'''
+    """Apply some presets of render settings to copy to other scenes"""
     bl_idname = "scene.render_copy_settings_preset"
     bl_label = "Render: Copy Settings Preset"
     bl_description = "Apply or clear this preset of render settings"
@@ -137,7 +135,7 @@ class RenderCopySettingsPreset(bpy.types.Operator):
 
     presets = EnumProperty(items=(p.rna_enum for p in presets.presets),
                            default=set(),
-                           options={"ENUM_FLAG"})
+                           options={'ENUM_FLAG'})
 
     @staticmethod
     def process_elements(settings, elts):
@@ -179,7 +177,7 @@ def do_copy(context, affected_settings, allowed_scenes):
 
 
 class RenderCopySettings(bpy.types.Operator):
-    '''Copy render settings from current scene to others'''
+    """Copy render settings from current scene to others"""
     bl_idname = "scene.render_copy_settings"
     bl_label = "Render: Copy Settings"
     # Enable undo…

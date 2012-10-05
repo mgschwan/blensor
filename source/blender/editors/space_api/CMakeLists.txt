@@ -20,6 +20,7 @@
 
 set(INC
 	../include
+	../io
 	../../blenkernel
 	../../blenlib
 	../../blenloader
@@ -35,7 +36,6 @@ set(INC_SYS
 )
 
 set(SRC
-	space.c
 	spacetypes.c
 )
 

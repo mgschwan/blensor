@@ -7,7 +7,6 @@ SConscript(['avi/SConscript',
             'blenkernel/SConscript',
             'blenlib/SConscript',
             'blenloader/SConscript',
-            'blenpluginapi/SConscript',
             'gpu/SConscript',
             'editors/SConscript',
             'imbuf/SConscript',
@@ -38,3 +37,7 @@ if env['WITH_BF_QUICKTIME']:
 
 if env['WITH_BF_COLLADA']:
     SConscript (['collada/SConscript'])
+    
+if env['WITH_BF_COMPOSITOR']:
+    SConscript (['compositor/SConscript',
+                 'opencl/SConscript'])

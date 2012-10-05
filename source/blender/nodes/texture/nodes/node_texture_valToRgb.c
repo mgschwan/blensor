@@ -35,11 +35,11 @@
 
 /* **************** VALTORGB ******************** */
 static bNodeSocketTemplate valtorgb_in[]= {
-	{	SOCK_FLOAT, 1, "Fac",			0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Fac"),			0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate valtorgb_out[]= {
-	{	SOCK_RGBA, 0, "Color"},
+	{	SOCK_RGBA, 0, N_("Color")},
 	{	-1, 0, ""	}
 };
 
@@ -57,7 +57,7 @@ static void valtorgb_exec(void *data, bNode *node, bNodeStack **in, bNodeStack *
 	tex_output(node, in, out[0], &valtorgb_colorfn, data);
 }
 
-static void valtorgb_init(bNodeTree *UNUSED(ntree), bNode* node, bNodeTemplate *UNUSED(ntemp))
+static void valtorgb_init(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
 	node->storage = add_colorband(1);
 }
@@ -78,11 +78,11 @@ void register_node_type_tex_valtorgb(bNodeTreeType *ttype)
 
 /* **************** RGBTOBW ******************** */
 static bNodeSocketTemplate rgbtobw_in[]= {
-	{	SOCK_RGBA, 1, "Color",			0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 1, N_("Color"),			0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate rgbtobw_out[]= {
-	{	SOCK_FLOAT, 0, "Val",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("Val"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 
@@ -91,8 +91,7 @@ static void rgbtobw_valuefn(float *out, TexParams *p, bNode *UNUSED(node), bNode
 {
 	float cin[4];
 	tex_input_rgba(cin, in[0], p, thread);
-	
-	*out = cin[0] * 0.35f + cin[1] * 0.45f + cin[2] * 0.2f;
+	*out = rgb_to_bw(cin);
 }
 
 static void rgbtobw_exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)

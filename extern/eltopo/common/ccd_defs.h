@@ -11,7 +11,7 @@
 // Uncomment one of the following (cubic solver version has been tested hardest):
 //
 
-//#define USE_CUBIC_SOLVER_CCD
+// #define USE_CUBIC_SOLVER_CCD
 #define USE_TUNICATE_CCD
 
 #endif

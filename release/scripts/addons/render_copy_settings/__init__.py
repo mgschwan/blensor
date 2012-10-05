@@ -26,7 +26,7 @@ bl_info = {
     "location": "Render buttons (Properties window)",
     "description": "Allows to copy a selection of render settings from "
                    "current scene to others.",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Render/Copy Settings",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=25832",
@@ -61,7 +61,7 @@ class RenderCopySettingsScene(bpy.types.PropertyGroup):
     # A string of identifiers (colon delimited) which property’s controls
     # should be displayed in a template_list.
     template_list_controls = StringProperty(default="allowed",
-                                            options={"HIDDEN"})
+                                            options={'HIDDEN'})
 
 
 class RenderCopySettingsSetting(bpy.types.PropertyGroup):
@@ -71,7 +71,7 @@ class RenderCopySettingsSetting(bpy.types.PropertyGroup):
     # A string of identifiers (colon delimited) which property’s controls
     # should be displayed in a template_list.
     template_list_controls = StringProperty(default="copy",
-                                            options={"HIDDEN"})
+                                            options={'HIDDEN'})
 
 
 class RenderCopySettings(bpy.types.PropertyGroup):

@@ -38,7 +38,7 @@ from bpy.props import FloatProperty, EnumProperty, IntProperty, BoolProperty, Fl
 
 
 def deselect_others(ob, context):
-    '''For tool menu select, deselects others if one selected'''
+    """For tool menu select, deselects others if one selected"""
     selected = addTracerObjectPanel.selected
     ob[selected] = False
     keys = [key for key in ob.keys() if ob[key]]  # all the True keys
@@ -52,7 +52,7 @@ def deselect_others(ob, context):
 
 # Class for properties panel
 class TracerPropertiesMenu(bpy.types.PropertyGroup):
-    '''Toolbar show/hide booleans for tool options'''
+    """Toolbar show/hide booleans for tool options"""
     tool_objectTrace = BoolProperty(name="Object Trace", default=False, description="Trace selected mesh object with a curve", update=deselect_others)
     tool_objectsConnect = BoolProperty(name="Objects Connect", default=False, description="Connect objects with a curve controlled by hooks", update=deselect_others)
     tool_particleTrace = BoolProperty(name="Particle Trace", default=False, description="Trace particle path with a  curve", update=deselect_others)
@@ -66,7 +66,7 @@ class TracerPropertiesMenu(bpy.types.PropertyGroup):
 
 # Class to define properties
 class TracerProperties(bpy.types.PropertyGroup):
-    '''Options for tools'''
+    """Options for tools"""
     curve_spline = EnumProperty(name="Spline", items=(("POLY", "Poly", "Use Poly spline type"),  ("NURBS", "Nurbs", "Use Nurbs spline type"), ("BEZIER", "Bezier", "Use Bezier spline type")), description="Choose which type of spline to use when curve is created", default="BEZIER")
     curve_handle = EnumProperty(name="Handle", items=(("ALIGNED", "Aligned", "Use Aligned Handle Type"), ("AUTOMATIC", "Automatic", "Use Auto Handle Type"), ("FREE_ALIGN", "Free Align", "Use Free Handle Type"), ("VECTOR", "Vector", "Use Vector Handle Type")), description="Choose which type of handle to use when curve is created",  default="VECTOR")
     curve_resolution = IntProperty(name="Bevel Resolution", min=1, max=32, default=4, description="Adjust the Bevel resolution")
@@ -191,6 +191,7 @@ class addTracerObjectPanel(bpy.types.Panel):
     bl_region_type = 'TOOLS'
     bl_context = 'objectmode'
     selected = "tool_objectTrace"
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         layout = self.layout
@@ -203,7 +204,7 @@ class addTracerObjectPanel(bpy.types.Panel):
         ## Color Blender Panel options
         ############################
         def color_blender():
-            '''Buttons for Color Blender'''
+            """Buttons for Color Blender"""
             row = box.row()
             row.label("Color palette")
             row.prop(Btrace, 'mmColors', text="")
@@ -251,7 +252,7 @@ class addTracerObjectPanel(bpy.types.Panel):
         ## Curve Panel options
         ############################
         def curve_settings():
-            '''Button for curve options'''
+            """Button for curve options"""
             row = self.layout.row()
             row = box.row(align=True)
 
@@ -301,7 +302,7 @@ class addTracerObjectPanel(bpy.types.Panel):
         ## Grow Animation Panel options
         ############################
         def add_grow():
-            '''Button for grow animation option'''
+            """Button for grow animation option"""
             row = box.row()
             row.label(text="Animate Final Curve")
             row = box.row()
@@ -646,7 +647,7 @@ class OBJECT_OT_objecttrace(bpy.types.Operator):
                 addtracemat(bpy.context.object.data)
             if Btrace.animate:
                 bpy.ops.curve.btgrow()
-        return{"FINISHED"}
+        return {'FINISHED'}
 
 
 ################## ################## ################## ############
@@ -734,7 +735,7 @@ class OBJECT_OT_objectconnect(bpy.types.Operator):
         bpy.ops.object.group_link(group="Btrace") # add to Btrace group
         if Btrace.animate:
             bpy.ops.curve.btgrow() # Add grow curve
-        return{"FINISHED"}
+        return {'FINISHED'}
 
 
 ################## ################## ################## ############
@@ -811,7 +812,7 @@ class OBJECT_OT_particletrace(bpy.types.Operator):
         if Btrace.animate:
             bpy.ops.curve.btgrow()  # Add grow curve
 
-        return{"FINISHED"}
+        return {'FINISHED'}
 
 
 ###########################################################################
@@ -837,7 +838,7 @@ class OBJECT_OT_traceallparticles(bpy.types.Operator):
 
         # Grids distribution not supported
         if set.distribution == 'GRID':
-            self.report('INFO',"Grid distribution mode for particles not supported.")
+            self.report({'INFO'},"Grid distribution mode for particles not supported.")
             return{'FINISHED'}
         
         Btrace = bpy.context.window_manager.curve_tracer
@@ -1040,11 +1041,11 @@ class OBJECT_OT_convertcurve(bpy.types.Operator):
         if Btrace.distort_curve: 
             scale = Btrace.distort_modscale
             if scale == 0:
-                return{"FINISHED"}
+                return {'FINISHED'}
             for u in obj.data.splines:
                 for v in u.bezier_points:
                     v.radius = scale*round(random.random(),3) 
-        return{"FINISHED"}
+        return {'FINISHED'}
 
 
 ################## ################## ################## ############
@@ -1439,7 +1440,7 @@ class OBJECT_OT_fcnoise(bpy.types.Operator):
                             n.strength = amplitude
                             n.scale = time_scale
                             n.phase = random.randint(0,999)
-        return{"FINISHED"}
+        return {'FINISHED'}
 
 ################## ################## ################## ############
 ## Curve Grow Animation

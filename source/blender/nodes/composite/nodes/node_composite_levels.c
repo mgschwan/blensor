@@ -35,22 +35,19 @@
 
 /* **************** LEVELS ******************** */
 static bNodeSocketTemplate cmp_node_view_levels_in[]= {
-	{	SOCK_RGBA, 1, "Image", 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 1, N_("Image"), 0.0f, 0.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 
 static bNodeSocketTemplate cmp_node_view_levels_out[]={
-	{SOCK_FLOAT, 0, "Mean"},
-	{SOCK_FLOAT, 0, "Std Dev"},
+	{SOCK_FLOAT, 0, N_("Mean")},
+	{SOCK_FLOAT, 0, N_("Std Dev")},
 	{-1, 0, ""}
 };
 
-static void rgb_tobw(float r, float g, float b, float* out)
-{
-	*out= r*0.35f + g*0.45f + b*0.2f;
-}
+#ifdef WITH_COMPOSITOR_LEGACY
 
-static void fill_bins(bNode* node, CompBuf* in, int* bins)
+static void fill_bins(bNode *node, CompBuf* in, int* bins)
 {
 	float value[4];
 	int ivalue=0;
@@ -66,7 +63,7 @@ static void fill_bins(bNode* node, CompBuf* in, int* bins)
 			if (value[3] > 0.0f) { /* don't count transparent pixels */
 				switch (node->custom1) {
 					case 1: { /* all colors */
-						rgb_tobw(value[0], value[1], value[2], &value[0]);
+						value[0] = rgb_to_bw(value);
 						value[0]=value[0]*255; /* scale to 0-255 range */
 						ivalue=(int)value[0];
 						break;
@@ -107,7 +104,7 @@ static void fill_bins(bNode* node, CompBuf* in, int* bins)
 	}	
 }
 
-static float brightness_mean(bNode* node, CompBuf* in)
+static float brightness_mean(bNode *node, CompBuf* in)
 {
 	float sum=0.0;
 	int numPixels=0.0;
@@ -125,7 +122,7 @@ static float brightness_mean(bNode* node, CompBuf* in)
 				switch (node->custom1) {
 				case 1:
 					{
-						rgb_tobw(value[0], value[1], value[2], &value[0]);
+						value[0] = rgb_to_bw(value);
 						sum+=value[0];
 						break;
 					}
@@ -158,7 +155,7 @@ static float brightness_mean(bNode* node, CompBuf* in)
 	return sum/numPixels;
 }
 
-static float brightness_standard_deviation(bNode* node, CompBuf* in, float mean)
+static float brightness_standard_deviation(bNode *node, CompBuf* in, float mean)
 {
 	float sum=0.0;
 	int numPixels=0.0;
@@ -176,7 +173,7 @@ static float brightness_standard_deviation(bNode* node, CompBuf* in, float mean)
 				switch (node->custom1) {
 				case 1:
 					{
-						rgb_tobw(value[0], value[1], value[2], &value[0]);
+						value[0] = rgb_to_bw(value);
 						sum+=(value[0]-mean)*(value[0]-mean);
 						break;
 					}
@@ -296,10 +293,11 @@ static void node_composit_exec_view_levels(void *data, bNode *node, bNodeStack *
 	mean=brightness_mean(node, in[0]->data);
 	std_dev=brightness_standard_deviation(node, in[0]->data, mean);
 
-	/*  Printf debuging ;) 
+	/*  Printf debuging ;) */
+#if 0
 	printf("Mean: %f\n", mean);
 	printf("Std Dev: %f\n", std_dev);
-	*/
+#endif
 
 	if (out[0]->hasoutput)
 			out[0]->vec[0]= mean;
@@ -313,7 +311,9 @@ static void node_composit_exec_view_levels(void *data, bNode *node, bNodeStack *
 	free_compbuf(histogram);
 }
 
-static void node_composit_init_view_levels(bNodeTree *UNUSED(ntree), bNode* node, bNodeTemplate *UNUSED(ntemp))
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
+static void node_composit_init_view_levels(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
 	node->custom1=1; /*All channels*/
 }
@@ -327,7 +327,9 @@ void register_node_type_cmp_view_levels(bNodeTreeType *ttype)
 	node_type_size(&ntype, 140, 100, 320);
 	node_type_init(&ntype, node_composit_init_view_levels);
 	node_type_storage(&ntype, "ImageUser", NULL, NULL);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_view_levels);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

@@ -37,8 +37,6 @@
 
 struct bNodeTree;
 
-struct bNodeSocket *node_group_add_extern_socket(struct bNodeTree *ntree, ListBase *lb, int in_out, struct bNodeSocket *gsock);
-
 void node_group_init(struct bNodeTree *ntree, struct bNode *node, struct bNodeTemplate *ntemp);
 void node_forloop_init(struct bNodeTree *ntree, struct bNode *node, struct bNodeTemplate *ntemp);
 void node_whileloop_init(struct bNodeTree *ntree, struct bNode *node, struct bNodeTemplate *ntemp);
@@ -60,5 +58,7 @@ struct bNodeTree *node_group_edit_set(struct bNode *node, int edit);
 void node_group_edit_clear(bNode *node);
 
 void node_loop_update_tree(struct bNodeTree *ngroup);
+
+void ntree_update_reroute_nodes(struct bNodeTree *ntree);
 
 #endif

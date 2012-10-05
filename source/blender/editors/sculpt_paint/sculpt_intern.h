@@ -53,11 +53,13 @@ struct SculptStroke;
 /* Interface */
 struct MultiresModifierData *sculpt_multires_active(struct Scene *scene, struct Object *ob);
 
-void sculpt(Sculpt *sd);
+void sculpt(struct Sculpt *sd);
 
 int sculpt_mode_poll(struct bContext *C);
+int sculpt_mode_poll_view3d(struct bContext *C);
 int sculpt_poll(struct bContext *C);
-void sculpt_update_mesh_elements(struct Scene *scene, struct Sculpt *sd, struct Object *ob, int need_pmap);
+void sculpt_update_mesh_elements(struct Scene *scene, struct Sculpt *sd, struct Object *ob,
+                                 int need_pmap, int need_mask);
 
 /* Deformed mesh sculpt */
 void free_sculptsession_deformMats(struct SculptSession *ss);
@@ -69,7 +71,8 @@ int sculpt_stroke_get_location(bContext *C, float out[3], float mouse[2]);
 
 typedef enum {
 	SCULPT_UNDO_COORDS,
-	SCULPT_UNDO_HIDDEN
+	SCULPT_UNDO_HIDDEN,
+	SCULPT_UNDO_MASK
 } SculptUndoType;
 
 typedef struct SculptUndoNode {
@@ -77,24 +80,25 @@ typedef struct SculptUndoNode {
 
 	SculptUndoType type;
 
-	char idname[MAX_ID_NAME];	/* name instead of pointer*/
-	void *node;					/* only during push, not valid afterwards! */
+	char idname[MAX_ID_NAME];   /* name instead of pointer*/
+	void *node;                 /* only during push, not valid afterwards! */
 
 	float (*co)[3];
 	float (*orig_co)[3];
 	short (*no)[3];
+	float *mask;
 	int totvert;
 
 	/* non-multires */
-	int maxvert;				/* to verify if totvert it still the same */
-	int *index;					/* to restore into right location */
+	int maxvert;                /* to verify if totvert it still the same */
+	int *index;                 /* to restore into right location */
 	BLI_bitmap vert_hidden;
 
 	/* multires */
-	int maxgrid;				/* same for grid */
-	int gridsize;				/* same for grid */
-	int totgrid;				/* to restore into right location */
-	int *grids;					/* to restore into right location */
+	int maxgrid;                /* same for grid */
+	int gridsize;               /* same for grid */
+	int totgrid;                /* to restore into right location */
+	int *grids;                 /* to restore into right location */
 	BLI_bitmap *grid_hidden;
 
 	/* layer brush */

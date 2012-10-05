@@ -43,41 +43,50 @@ typedef enum FSMenuCategory {
 	FS_CATEGORY_RECENT
 } FSMenuCategory;
 
+typedef enum FSMenuInsert {
+	FS_INSERT_SORTED = (1 << 0),
+	FS_INSERT_SAVE   = (1 << 1),
+	FS_INSERT_FIRST  = (1 << 2)   /* moves the item to the front of the list when its not already there */
+} FSMenuInsert;
+
 struct FSMenu;
 
-struct FSMenu* fsmenu_get		(void);
+struct FSMenu *fsmenu_get(void);
 
-	/** Returns the number of entries in the Fileselect Menu */
-int		fsmenu_get_nentries		(struct FSMenu* fsmenu, FSMenuCategory category);
+/** Returns the number of entries in the Fileselect Menu */
+int     fsmenu_get_nentries(struct FSMenu *fsmenu, FSMenuCategory category);
 
-	/** Returns the fsmenu entry at \a index (or NULL if a bad index)
-	 * or a separator.
-	 */
-char*	fsmenu_get_entry		(struct FSMenu* fsmenu, FSMenuCategory category, int index);
+/** Returns the fsmenu entry at \a index (or NULL if a bad index)
+ * or a separator.
+ */
+char *fsmenu_get_entry(struct FSMenu *fsmenu, FSMenuCategory category, int index);
 
-	/** Inserts a new fsmenu entry with the given \a path.
-	 * Duplicate entries are not added.
-	 * \param sorted Should entry be inserted in sorted order?
-	 */
-void	fsmenu_insert_entry		(struct FSMenu* fsmenu, FSMenuCategory category, const char *path, int sorted, short save);
+/** Inserts a new fsmenu entry with the given \a path.
+ * Duplicate entries are not added.
+ * \param sorted Should entry be inserted in sorted order?
+ */
+void    fsmenu_insert_entry(struct FSMenu *fsmenu, FSMenuCategory category, const char *path, const FSMenuInsert flag);
 
-	/** Return whether the entry was created by the user and can be saved and deleted */
-short   fsmenu_can_save			(struct FSMenu* fsmenu, FSMenuCategory category, int index);
+/** Return whether the entry was created by the user and can be saved and deleted */
+short   fsmenu_can_save(struct FSMenu *fsmenu, FSMenuCategory category, int index);
 
-	/** Removes the fsmenu entry at the given \a index. */
-void	fsmenu_remove_entry		(struct FSMenu* fsmenu, FSMenuCategory category, int index);
+/** Removes the fsmenu entry at the given \a index. */
+void    fsmenu_remove_entry(struct FSMenu *fsmenu, FSMenuCategory category, int index);
 
-	/** saves the 'bookmarks' to the specified file */
-void	fsmenu_write_file		(struct FSMenu* fsmenu, const char *filename);
+/** saves the 'bookmarks' to the specified file */
+void    fsmenu_write_file(struct FSMenu *fsmenu, const char *filename);
 	
-	/** reads the 'bookmarks' from the specified file */
-void	fsmenu_read_bookmarks	(struct FSMenu* fsmenu, const char *filename);
+/** reads the 'bookmarks' from the specified file */
+void    fsmenu_read_bookmarks(struct FSMenu *fsmenu, const char *filename);
 
-	/** adds system specific directories */
-void	fsmenu_read_system	(struct FSMenu* fsmenu);
+/** adds system specific directories */
+void    fsmenu_read_system(struct FSMenu *fsmenu, int read_bookmarks);
 
-	/** Free's all the memory associated with the fsmenu */
-void	fsmenu_free				(struct FSMenu* fsmenu);
+/** Free's all the memory associated with the fsmenu */
+void    fsmenu_free(struct FSMenu *fsmenu);
+
+/** Refresh system directory menu */
+void    fsmenu_refresh_system_category(struct FSMenu *fsmenu);
 
 #endif
 

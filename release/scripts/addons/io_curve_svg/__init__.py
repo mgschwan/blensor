@@ -25,7 +25,7 @@ bl_info = {
     "location": "File > Import > Scalable Vector Graphics (.svg)",
     "description": "Import SVG as curves",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Import-Export/SVG",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=26166&",
@@ -46,7 +46,7 @@ from bpy_extras.io_utils import ImportHelper
 
 
 class ImportSVG(bpy.types.Operator, ImportHelper):
-    '''Load a SVG file'''
+    """Load a SVG file"""
     bl_idname = "import_curve.svg"
     bl_label = "Import SVG"
     bl_options = {'UNDO'}

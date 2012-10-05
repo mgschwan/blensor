@@ -147,6 +147,7 @@ static PyObject *pyop_call(PyObject *UNUSED(self), PyObject *args)
 
 	/* note that context is an int, python does the conversion in this case */
 	int context = WM_OP_EXEC_DEFAULT;
+	int is_undo = FALSE;
 
 	/* XXX Todo, work out a better solution for passing on context,
 	 * could make a tuple from self and pack the name and Context into it... */
@@ -157,8 +158,11 @@ static PyObject *pyop_call(PyObject *UNUSED(self), PyObject *args)
 		return NULL;
 	}
 	
-	if (!PyArg_ParseTuple(args, "sO|O!s:_bpy.ops.call", &opname, &context_dict, &PyDict_Type, &kw, &context_str))
+	if (!PyArg_ParseTuple(args, "sO|O!si:_bpy.ops.call",
+	                      &opname, &context_dict, &PyDict_Type, &kw, &context_str, &is_undo))
+	{
 		return NULL;
+	}
 
 	ot = WM_operatortype_find(opname, TRUE);
 
@@ -230,13 +234,13 @@ static PyObject *pyop_call(PyObject *UNUSED(self), PyObject *args)
 #ifdef BPY_RELEASE_GIL
 			/* release GIL, since a thread could be started from an operator
 			 * that updates a driver */
-			/* note: I havve not seen any examples of code that does this
+			/* note: I have not seen any examples of code that does this
 			 * so it may not be officially supported but seems to work ok. */
 			{
 				PyThreadState *ts = PyEval_SaveThread();
 #endif
 
-				operator_ret = WM_operator_call_py(C, ot, context, &ptr, reports);
+				operator_ret = WM_operator_call_py(C, ot, context, &ptr, reports, is_undo);
 
 #ifdef BPY_RELEASE_GIL
 				/* regain GIL */
@@ -389,7 +393,7 @@ static PyObject *pyop_getrna(PyObject *UNUSED(self), PyObject *value)
 		return NULL;
 	}
 	ot = WM_operatortype_find(opname, TRUE);
-	if (ot  == NULL) {
+	if (ot == NULL) {
 		PyErr_Format(PyExc_KeyError, "_bpy.ops.get_rna(\"%s\") not found", opname);
 		return NULL;
 	}

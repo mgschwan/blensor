@@ -27,8 +27,7 @@
  *  \ingroup bmesh
  */
 
-typedef struct BMEditSelection
-{
+typedef struct BMEditSelection {
 	struct BMEditSelection *next, *prev;
 	BMElem *ele;
 	char htype;
@@ -61,6 +60,7 @@ void BM_edge_select_set(BMesh *bm, BMEdge *e, int select);
 void BM_face_select_set(BMesh *bm, BMFace *f, int select);
 
 void BM_mesh_select_mode_set(BMesh *bm, int selectmode);
+void BM_mesh_select_mode_flush_ex(BMesh *bm, const short selectmode);
 void BM_mesh_select_mode_flush(BMesh *bm);
 
 void BM_mesh_deselect_flush(BMesh *bm);
@@ -71,7 +71,7 @@ int BM_mesh_elem_hflag_count_disabled(BMesh *bm, const char htype, const char hf
 
 /* edit selection stuff */
 void    BM_active_face_set(BMesh *bm, BMFace *f);
-BMFace *BM_active_face_get(BMesh *bm, int sloppy);
+BMFace *BM_active_face_get(BMesh *bm, int sloppy, int selected);
 
 void    BM_editselection_center(BMEditSelection *ese, float r_center[3]);
 void    BM_editselection_normal(BMEditSelection *ese, float r_normal[3]);
@@ -82,7 +82,7 @@ void    BM_editselection_plane(BMEditSelection *ese,  float r_plane[3]);
 #define BM_select_history_store_notest(bm, ele) _bm_select_history_store_notest(bm, &(ele)->head)
 #define BM_select_history_store(bm, ele)        _bm_select_history_store(bm,        &(ele)->head)
 
-int  _bm_select_history_check(BMesh *bm, const  BMHeader *ele);
+int  _bm_select_history_check(BMesh *bm,  const BMHeader *ele);
 int  _bm_select_history_remove(BMesh *bm,       BMHeader *ele);
 void _bm_select_history_store_notest(BMesh *bm, BMHeader *ele);
 void _bm_select_history_store(BMesh *bm,        BMHeader *ele);

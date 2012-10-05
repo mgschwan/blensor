@@ -26,7 +26,7 @@ bl_info = {
     "location": "File > Import-Export > Stl",
     "description": "Import-Export STL files",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Import-Export/STL",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=22837",
@@ -64,7 +64,7 @@ from bpy.types import Operator, OperatorFileListElement
 
 
 class ImportSTL(Operator, ImportHelper):
-    '''Load STL triangle mesh data'''
+    """Load STL triangle mesh data"""
     bl_idname = "import_mesh.stl"
     bl_label = "Import STL"
     bl_options = {'UNDO'}
@@ -108,7 +108,7 @@ class ImportSTL(Operator, ImportHelper):
 
 
 class ExportSTL(Operator, ExportHelper):
-    '''Save STL triangle mesh data from the active object'''
+    """Save STL triangle mesh data from the active object"""
     bl_idname = "export_mesh.stl"
     bl_label = "Export STL"
 

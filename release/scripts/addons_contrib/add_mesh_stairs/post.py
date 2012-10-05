@@ -55,7 +55,7 @@ class Posts:
         self.Create()
 
     def Intersect(self,i,d):
-        '''find intersection point, x, for rail and post'''
+        """find intersection point, x, for rail and post"""
         x3=self.x1+i*self.sp+Vector([d,d,d])
         x4=x3+Vector([0,0,self.x2[-1]])
         a=self.x2-self.x1

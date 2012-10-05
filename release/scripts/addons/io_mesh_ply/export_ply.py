@@ -20,7 +20,7 @@
 
 """
 This script exports Stanford PLY files from Blender. It supports normals,
-colours, and texture coordinates per face or per vertex.
+colors, and texture coordinates per face or per vertex.
 Only one mesh can be exported at a time.
 """
 
@@ -64,6 +64,10 @@ def save(operator,
         raise Exception("Error, could not get mesh data from active object")
 
     # mesh.transform(obj.matrix_world) # XXX
+
+    # Be sure tessface & co are available!
+    if not mesh.tessfaces and mesh.polygons:
+        mesh.calc_tessface()
 
     has_uv = (len(mesh.tessface_uv_textures) > 0)
     has_uv_vertex = (len(mesh.sticky) > 0)

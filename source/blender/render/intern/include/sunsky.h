@@ -27,12 +27,9 @@
 #ifndef __SUNSKY_H__
 #define __SUNSKY_H__
 
-#define SPECTRUM_MAX_COMPONENTS     100
-#define SPECTRUM_START              350.0
-#define SPECTRUM_END                800.0
+// #define SPECTRUM_MAX_COMPONENTS     100
 
-typedef struct SunSky
-{
+typedef struct SunSky {
 	short effect_type, skyblendtype, sky_colorspace;
 	float turbidity;
 	float theta, phi;

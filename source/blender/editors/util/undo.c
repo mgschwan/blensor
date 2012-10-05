@@ -74,8 +74,6 @@
 
 #include "util_intern.h"
 
-#define MAXUNDONAME 64 /* XXX, make common define */
-
 /* ***************** generic undo system ********************* */
 
 void ED_undo_push(bContext *C, const char *str)
@@ -109,8 +107,7 @@ void ED_undo_push(bContext *C, const char *str)
 		PE_undo_push(CTX_data_scene(C), str);
 	}
 	else {
-		if (U.uiflag & USER_GLOBALUNDO) 
-			BKE_write_undo(C, str);
+		BKE_write_undo(C, str);
 	}
 	
 	if (wm->file_saved) {
@@ -129,7 +126,7 @@ static int ed_undo_step(bContext *C, int step, const char *undoname)
 
 	/* undo during jobs are running can easily lead to freeing data using by jobs,
 	 * or they can just lead to freezing job in some other cases */
-	if (WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C))) {
+	if (WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_ANY)) {
 		return OPERATOR_CANCELLED;
 	}
 
@@ -138,20 +135,20 @@ static int ed_undo_step(bContext *C, int step, const char *undoname)
 		return ED_undo_gpencil_step(C, step, undoname);
 	}
 
-	if (sa && sa->spacetype == SPACE_IMAGE) {
+	if (sa && (sa->spacetype == SPACE_IMAGE)) {
 		SpaceImage *sima = (SpaceImage *)sa->spacedata.first;
 		
-		if ((obact && obact->mode & OB_MODE_TEXTURE_PAINT) || sima->flag & SI_DRAWTOOL) {
+		if ((obact && (obact->mode & OB_MODE_TEXTURE_PAINT)) || (sima->mode == SI_MODE_PAINT)) {
 			if (!ED_undo_paint_step(C, UNDO_PAINT_IMAGE, step, undoname) && undoname)
 				if (U.uiflag & USER_GLOBALUNDO)
 					BKE_undo_name(C, undoname);
-
+			
 			WM_event_add_notifier(C, NC_WINDOW, NULL);
 			return OPERATOR_FINISHED;
 		}
 	}
 
-	if (sa && sa->spacetype == SPACE_TEXT) {
+	if (sa && (sa->spacetype == SPACE_TEXT)) {
 		ED_text_undo_step(C, step);
 	}
 	else if (obedit) {
@@ -160,20 +157,20 @@ static int ed_undo_step(bContext *C, int step, const char *undoname)
 				undo_editmode_name(C, undoname);
 			else
 				undo_editmode_step(C, step);
-
+			
 			WM_event_add_notifier(C, NC_GEOM | ND_DATA, NULL);
 		}
 	}
 	else {
-		int do_glob_undo = 0;
+		int do_glob_undo = FALSE;
 		
 		if (obact && obact->mode & OB_MODE_TEXTURE_PAINT) {
 			if (!ED_undo_paint_step(C, UNDO_PAINT_IMAGE, step, undoname))
-				do_glob_undo = 1;
+				do_glob_undo = TRUE;
 		}
 		else if (obact && obact->mode & OB_MODE_SCULPT) {
 			if (!ED_undo_paint_step(C, UNDO_PAINT_MESH, step, undoname))
-				do_glob_undo = 1;
+				do_glob_undo = TRUE;
 		}
 		else if (obact && obact->mode & OB_MODE_PARTICLE_EDIT) {
 			if (step == 1)
@@ -182,7 +179,7 @@ static int ed_undo_step(bContext *C, int step, const char *undoname)
 				PE_redo(CTX_data_scene(C));
 		}
 		else {
-			do_glob_undo = 1;
+			do_glob_undo = TRUE;
 		}
 		
 		if (do_glob_undo) {
@@ -195,7 +192,7 @@ static int ed_undo_step(bContext *C, int step, const char *undoname)
 					BKE_undo_name(C, undoname);
 				else
 					BKE_undo_step(C, step);
-
+				
 				WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, CTX_data_scene(C));
 			}
 			
@@ -238,12 +235,12 @@ int ED_undo_valid(const bContext *C, const char *undoname)
 	if (sa && sa->spacetype == SPACE_IMAGE) {
 		SpaceImage *sima = (SpaceImage *)sa->spacedata.first;
 		
-		if ((obact && obact->mode & OB_MODE_TEXTURE_PAINT) || sima->flag & SI_DRAWTOOL) {
+		if ((obact && (obact->mode & OB_MODE_TEXTURE_PAINT)) || (sima->mode == SI_MODE_PAINT)) {
 			return 1;
 		}
 	}
 	
-	if (sa && sa->spacetype == SPACE_TEXT) {
+	if (sa && (sa->spacetype == SPACE_TEXT)) {
 		return 1;
 	}
 	else if (obedit) {
@@ -256,11 +253,11 @@ int ED_undo_valid(const bContext *C, const char *undoname)
 		/* if below tests fail, global undo gets executed */
 		
 		if (obact && obact->mode & OB_MODE_TEXTURE_PAINT) {
-			if (ED_undo_paint_valid(UNDO_PAINT_IMAGE, undoname) )
+			if (ED_undo_paint_valid(UNDO_PAINT_IMAGE, undoname))
 				return 1;
 		}
 		else if (obact && obact->mode & OB_MODE_SCULPT) {
-			if (ED_undo_paint_valid(UNDO_PAINT_MESH, undoname) )
+			if (ED_undo_paint_valid(UNDO_PAINT_MESH, undoname))
 				return 1;
 		}
 		else if (obact && obact->mode & OB_MODE_PARTICLE_EDIT) {
@@ -276,14 +273,14 @@ int ED_undo_valid(const bContext *C, const char *undoname)
 
 static int ed_undo_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	/* "last operator" should disappear, later we can tie ths with undo stack nicer */
+	/* "last operator" should disappear, later we can tie this with undo stack nicer */
 	WM_operator_stack_clear(CTX_wm_manager(C));
 	return ed_undo_step(C, 1, NULL);
 }
 
 static int ed_undo_push_exec(bContext *C, wmOperator *op)
 {
-	char str[MAXUNDONAME];
+	char str[BKE_UNDO_STR_MAX];
 	RNA_string_get(op->ptr, "message", str);
 	ED_undo_push(C, str);
 	return OPERATOR_FINISHED;
@@ -321,7 +318,7 @@ void ED_OT_undo_push(wmOperatorType *ot)
 
 	ot->flag = OPTYPE_INTERNAL;
 
-	RNA_def_string(ot->srna, "message", "Add an undo step *function may be moved*", MAXUNDONAME, "Undo Message", "");
+	RNA_def_string(ot->srna, "message", "Add an undo step *function may be moved*", BKE_UNDO_STR_MAX, "Undo Message", "");
 }
 
 void ED_OT_redo(wmOperatorType *ot)
@@ -359,7 +356,7 @@ int ED_undo_operator_repeat(bContext *C, struct wmOperator *op)
 		      * (which copy their data), wont stop redo, see [#29579]],
 		      *
 		      * note, - WM_operator_check_ui_enabled() jobs test _must_ stay in sync with this */
-		     (WM_jobs_test(wm, scene) == 0))
+		     (WM_jobs_test(wm, scene, WM_JOB_TYPE_ANY) == 0))
 		{
 			int retval;
 
@@ -493,12 +490,13 @@ static int undo_history_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(even
 		if (totitem > 0) {
 			uiPopupMenu *pup = uiPupMenuBegin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
 			uiLayout *layout = uiPupMenuLayout(pup);
-			uiLayout *split = uiLayoutSplit(layout, 0, 0), *column = NULL;
+			uiLayout *split = uiLayoutSplit(layout, 0.0f, FALSE);
+			uiLayout *column = NULL;
 			int i, c;
 			
 			for (c = 0, i = totitem - 1; i >= 0; i--, c++) {
 				if ( (c % 20) == 0)
-					column = uiLayoutColumn(split, 0);
+					column = uiLayoutColumn(split, FALSE);
 				if (item[i].identifier)
 					uiItemIntO(column, item[i].name, item[i].icon, op->type->idname, "item", item[i].value);
 				

@@ -77,7 +77,7 @@ ListBase *get_lights(ShadeInput *shi)
 }
 
 #if 0
-static void fogcolor(float *colf, float *rco, float *view)
+static void fogcolor(const float colf[3], float *rco, float *view)
 {
 	float alpha, stepsize, startdist, dist, hor[4], zen[3], vec[3], dview[3];
 	float div=0.0f, distfac;
@@ -161,7 +161,7 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 	double a, b, c, disc, nray[3], npos[3];
 	double t0, t1 = 0.0f, t2= 0.0f, t3;
 	float p1[3], p2[3], ladist, maxz = 0.0f, maxy = 0.0f, haint;
-	int snijp, doclip=1, use_yco=0;
+	int snijp, do_clip = TRUE, use_yco = FALSE;
 
 	*intens= 0.0f;
 	haint= lar->haint;
@@ -173,7 +173,7 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 		p1[1]= shi->co[1]-lar->co[1];
 		p1[2]= -lar->co[2];
 		mul_m3_v3(lar->imat, p1);
-		copy_v3db_v3fl(npos, p1);	// npos is double!
+		copy_v3db_v3fl(npos, p1);  /* npos is double! */
 		
 		/* pre-scale */
 		npos[2] *= (double)lar->sh_zfac;
@@ -196,7 +196,9 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 
 
 	/* rotate maxz */
-	if (shi->co[2]==0.0f) doclip= 0;	/* for when halo at sky */
+	if (shi->co[2]==0.0f) {
+		do_clip = FALSE;  /* for when halo at sky */
+	}
 	else {
 		p1[0]= shi->co[0]-lar->co[0];
 		p1[1]= shi->co[1]-lar->co[1];
@@ -206,7 +208,9 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 		maxz*= lar->sh_zfac;
 		maxy= lar->imat[0][1]*p1[0]+lar->imat[1][1]*p1[1]+lar->imat[2][1]*p1[2];
 
-		if ( fabs(nray[2]) < FLT_EPSILON ) use_yco= 1;
+		if (fabsf(nray[2]) < FLT_EPSILON) {
+			use_yco = TRUE;
+		}
 	}
 	
 	/* scale z to make sure volume is normalized */	
@@ -261,7 +265,7 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 		if (ok1==0 && ok2==0) return;
 		
 		/* intersction point with -ladist, the bottom of the cone */
-		if (use_yco==0) {
+		if (use_yco == FALSE) {
 			t3= ((double)(-ladist)-npos[2])/nray[2];
 				
 			/* de we have to replace one of the intersection points? */
@@ -294,12 +298,12 @@ static void spothalo(struct LampRen *lar, ShadeInput *shi, float *intens)
 		}
 		
 		/* calculate t0: is the maximum visible z (when halo is intersected by face) */ 
-		if (doclip) {
-			if (use_yco==0) t0= (maxz-npos[2])/nray[2];
-			else t0= (maxy-npos[1])/nray[1];
+		if (do_clip) {
+			if (use_yco == FALSE) t0 = (maxz - npos[2]) / nray[2];
+			else t0 = (maxy - npos[1]) / nray[1];
 
-			if (t0<t1) return;
-			if (t0<t2) t2= t0;
+			if (t0 < t1) return;
+			if (t0 < t2) t2= t0;
 		}
 
 		/* calc points */
@@ -367,11 +371,12 @@ void renderspothalo(ShadeInput *shi, float col[4], float alpha)
 				continue;
 			
 			spothalo(lar, shi, &i);
-			if (i>0.0f) {
-				col[3]+= i*alpha;			// all premul
-				col[0]+= i*lar->r*alpha;
-				col[1]+= i*lar->g*alpha;
-				col[2]+= i*lar->b*alpha;	
+			if (i > 0.0f) {
+				const float i_alpha = i * alpha;
+				col[0] += i_alpha * lar->r;
+				col[1] += i_alpha * lar->g;
+				col[2] += i_alpha * lar->b;
+				col[3] += i_alpha;  /* all premul */
 			}
 		}
 	}
@@ -404,13 +409,13 @@ static double Normalize_d(double *n)
 }
 
 /* mix of 'real' fresnel and allowing control. grad defines blending gradient */
-float fresnel_fac(float *view, float *vn, float grad, float fac)
+float fresnel_fac(const float view[3], const float vn[3], float grad, float fac)
 {
 	float t1, t2;
 	
 	if (fac==0.0f) return 1.0f;
 	
-	t1= (view[0]*vn[0] + view[1]*vn[1] + view[2]*vn[2]);
+	t1 = dot_v3v3(view, vn);
 	if (t1>0.0f)  t2= 1.0f+t1;
 	else t2= 1.0f-t1;
 	
@@ -429,7 +434,7 @@ static double saacos_d(double fac)
 }
 
 /* Stoke's form factor. Need doubles here for extreme small area sizes */
-static float area_lamp_energy(float (*area)[3], float *co, float *vn)
+static float area_lamp_energy(float (*area)[3], const float co[3], const float vn[3])
 {
 	double fac;
 	double vec[4][3];	/* vectors of rendered co to vertices lamp */
@@ -447,10 +452,18 @@ static float area_lamp_energy(float (*area)[3], float *co, float *vn)
 	Normalize_d(vec[3]);
 
 	/* cross product */
+#define CROSS(dest, a, b) \
+	{ dest[0]= a[1] * b[2] - a[2] * b[1]; \
+	  dest[1]= a[2] * b[0] - a[0] * b[2]; \
+	  dest[2]= a[0] * b[1] - a[1] * b[0]; \
+	} (void)0
+
 	CROSS(cross[0], vec[0], vec[1]);
 	CROSS(cross[1], vec[1], vec[2]);
 	CROSS(cross[2], vec[2], vec[3]);
 	CROSS(cross[3], vec[3], vec[0]);
+
+#undef CROSS
 
 	Normalize_d(cross[0]);
 	Normalize_d(cross[1]);
@@ -478,7 +491,7 @@ static float area_lamp_energy(float (*area)[3], float *co, float *vn)
 	return fac;
 }
 
-static float area_lamp_energy_multisample(LampRen *lar, float *co, float *vn)
+static float area_lamp_energy_multisample(LampRen *lar, const float co[3], float *vn)
 {
 	/* corner vectors are moved around according lamp jitter */
 	float *jitlamp= lar->jitter, vec[3];
@@ -507,7 +520,7 @@ static float area_lamp_energy_multisample(LampRen *lar, float *co, float *vn)
 	}
 	intens /= (float)lar->ray_totsamp;
 	
-	return pow(intens*lar->areasize, lar->k);	// corrected for buttons size and lar->dist^2
+	return pow(intens * lar->areasize, lar->k);	/* corrected for buttons size and lar->dist^2 */
 }
 
 static float spec(float inp, int hard)	
@@ -550,7 +563,7 @@ static float spec(float inp, int hard)
 	return inp;
 }
 
-static float Phong_Spec(float *n, float *l, float *v, int hard, int tangent )
+static float Phong_Spec(const float n[3], const float l[3], const float v[3], int hard, int tangent )
 {
 	float h[3];
 	float rslt;
@@ -571,7 +584,7 @@ static float Phong_Spec(float *n, float *l, float *v, int hard, int tangent )
 
 
 /* reduced cook torrance spec (for off-specular peak) */
-static float CookTorr_Spec(float *n, float *l, float *v, int hard, int tangent)
+static float CookTorr_Spec(const float n[3], const float l[3], const float v[3], int hard, int tangent)
 {
 	float i, nh, nv, h[3];
 
@@ -595,7 +608,7 @@ static float CookTorr_Spec(float *n, float *l, float *v, int hard, int tangent)
 }
 
 /* Blinn spec */
-static float Blinn_Spec(float *n, float *l, float *v, float refrac, float spec_power, int tangent)
+static float Blinn_Spec(const float n[3], const float l[3], const float v[3], float refrac, float spec_power, int tangent)
 {
 	float i, nh, nv, nl, vh, h[3];
 	float a, b, c, g=0.0f, p, f, ang;
@@ -649,7 +662,7 @@ static float Blinn_Spec(float *n, float *l, float *v, float refrac, float spec_p
 }
 
 /* cartoon render spec */
-static float Toon_Spec(float *n, float *l, float *v, float size, float smooth, int tangent)
+static float Toon_Spec(const float n[3], const float l[3], const float v[3], float size, float smooth, int tangent)
 {
 	float h[3];
 	float ang;
@@ -673,7 +686,7 @@ static float Toon_Spec(float *n, float *l, float *v, float size, float smooth, i
 }
 
 /* Ward isotropic gaussian spec */
-static float WardIso_Spec(float *n, float *l, float *v, float rms, int tangent)
+static float WardIso_Spec(const float n[3], const float l[3], const float v[3], float rms, int tangent)
 {
 	float i, nh, nv, nl, h[3], angle, alpha;
 
@@ -705,7 +718,7 @@ static float WardIso_Spec(float *n, float *l, float *v, float rms, int tangent)
 }
 
 /* cartoon render diffuse */
-static float Toon_Diff(float *n, float *l, float *UNUSED(v), float size, float smooth)
+static float Toon_Diff(const float n[3], const float l[3], const float UNUSED(v[3]), float size, float smooth)
 {
 	float rslt, ang;
 
@@ -724,7 +737,7 @@ static float Toon_Diff(float *n, float *l, float *UNUSED(v), float size, float s
 
 /* 'nl' is either dot product, or return value of area light */
 /* in latter case, only last multiplication uses 'nl' */
-static float OrenNayar_Diff(float nl, float *n, float *l, float *v, float rough )
+static float OrenNayar_Diff(float nl, const float n[3], const float l[3], const float v[3], float rough )
 {
 	float i/*, nh*/, nv /*, vh */, realnl, h[3];
 	float a, b, t, A, B;
@@ -784,9 +797,8 @@ static float OrenNayar_Diff(float nl, float *n, float *l, float *v, float rough 
 }
 
 /* Minnaert diffuse */
-static float Minnaert_Diff(float nl, float *n, float *v, float darkness)
+static float Minnaert_Diff(float nl, const float n[3], const float v[3], float darkness)
 {
-
 	float i, nv;
 
 	/* nl = dot product between surface normal and light vector */
@@ -794,12 +806,12 @@ static float Minnaert_Diff(float nl, float *n, float *v, float darkness)
 		return 0.0f;
 
 	/* nv = dot product between surface normal and view vector */
-	nv = n[0]*v[0]+n[1]*v[1]+n[2]*v[2];
+	nv = dot_v3v3(n, v);
 	if (nv < 0.0f)
 		nv = 0.0f;
 
 	if (darkness <= 1.0f)
-		i = nl * pow(MAX2(nv*nl, 0.1f), (darkness - 1.0f) ); /*The Real model*/
+		i = nl * pow(maxf(nv * nl, 0.1f), (darkness - 1.0f) ); /*The Real model*/
 	else
 		i = nl * pow( (1.001f - nv), (darkness  - 1.0f) ); /*Nvidia model*/
 
@@ -921,7 +933,7 @@ static void add_to_diffuse(float *diff, ShadeInput *shi, float is, float r, floa
 		
 		/* MA_RAMP_IN_RESULT is exceptional */
 		if (ma->rampin_col==MA_RAMP_IN_RESULT) {
-			// normal add
+			/* normal add */
 			diff[0] += r * shi->r;
 			diff[1] += g * shi->g;
 			diff[2] += b * shi->b;
@@ -1180,6 +1192,7 @@ float lamp_get_visibility(LampRen *lar, const float co[3], float lv[3], float *d
 						visifac*= lar->distkw/(lar->distkw+lar->ld2*dist[0]*dist[0]);
 					break;
 				case LA_FALLOFF_CURVE:
+					/* curvemapping_initialize is called from #add_render_lamp */
 					visifac = curvemapping_evaluateF(lar->curfalloff, 0, dist[0]/lar->dist);
 					break;
 			}
@@ -1357,10 +1370,10 @@ static void shade_one_light(LampRen *lar, ShadeInput *shi, ShadeResult *shr, int
 	
 	/* diffuse shaders */
 	if (lar->mode & LA_NO_DIFF) {
-		is= 0.0f;	// skip shaders
+		is = 0.0f;  /* skip shaders */
 	}
 	else if (lar->type==LA_HEMI) {
-		is= 0.5f*inp + 0.5f;
+		is = 0.5f * inp + 0.5f;
 	}
 	else {
 		
@@ -1372,12 +1385,13 @@ static void shade_one_light(LampRen *lar, ShadeInput *shi, ShadeResult *shr, int
 		else if (ma->diff_shader==MA_DIFF_TOON) is= Toon_Diff(vn, lv, view, ma->param[0], ma->param[1]);
 		else if (ma->diff_shader==MA_DIFF_MINNAERT) is= Minnaert_Diff(inp, vn, view, ma->darkness);
 		else if (ma->diff_shader==MA_DIFF_FRESNEL) is= Fresnel_Diff(vn, lv, view, ma->param[0], ma->param[1]);
-		else is= inp;	// Lambert
+		else is= inp;  /* Lambert */
 	}
-	
+
 	/* 'is' is diffuse */
-	if ((ma->shade_flag & MA_CUBIC) && is>0.0f && is<1.0f)
-		is= 3.0f*is*is - 2.0f*is*is*is;	// nicer termination of shades
+	if ((ma->shade_flag & MA_CUBIC) && is > 0.0f && is < 1.0f) {
+		is= 3.0f * is * is - 2.0f * is * is * is;  /* nicer termination of shades */
+	}
 
 	i= is*phongcorr;
 	
@@ -1386,7 +1400,7 @@ static void shade_one_light(LampRen *lar, ShadeInput *shi, ShadeResult *shr, int
 	}
 	i_noshad= i;
 	
-	vn= shi->vn;	// bring back original vector, we use special specular shaders for tangent
+	vn = shi->vn;  /* bring back original vector, we use special specular shaders for tangent */
 	if (ma->mode & MA_TANGENT_V)
 		vn= shi->tang;
 	
@@ -1717,7 +1731,7 @@ void shade_lamp_loop(ShadeInput *shi, ShadeResult *shr)
 		return;
 	}
 
-	if ( (ma->mode & (MA_VERTEXCOL|MA_VERTEXCOLP))== MA_VERTEXCOL ) {	// vertexcolor light
+	if ( (ma->mode & (MA_VERTEXCOL|MA_VERTEXCOLP))== MA_VERTEXCOL ) {	/* vertexcolor light */
 		shr->emit[0]= shi->r*(shi->emit+shi->vcol[0]*shi->vcol[3]);
 		shr->emit[1]= shi->g*(shi->emit+shi->vcol[1]*shi->vcol[3]);
 		shr->emit[2]= shi->b*(shi->emit+shi->vcol[2]*shi->vcol[3]);
@@ -1738,8 +1752,8 @@ void shade_lamp_loop(ShadeInput *shi, ShadeResult *shr)
 				if (shi->depth || shi->volume_depth)
 					ambient_occlusion(shi);
 				copy_v3_v3(shr->ao, shi->ao);
-				copy_v3_v3(shr->env, shi->env); // XXX multiply
-				copy_v3_v3(shr->indirect, shi->indirect); // XXX multiply
+				copy_v3_v3(shr->env, shi->env); /* XXX multiply */
+				copy_v3_v3(shr->indirect, shi->indirect); /* XXX multiply */
 			}
 		}
 	}
@@ -1803,7 +1817,7 @@ void shade_lamp_loop(ShadeInput *shi, ShadeResult *shr)
 				shr->diff[1]= sss[1]*col[1];
 				shr->diff[2]= sss[2]*col[2];
 
-				if (shi->combinedflag & SCE_PASS_SHADOW)	{
+				if (shi->combinedflag & SCE_PASS_SHADOW) {
 					shr->shad[0]= shr->diff[0];
 					shr->shad[1]= shr->diff[1];
 					shr->shad[2]= shr->diff[2];

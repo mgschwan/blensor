@@ -57,7 +57,7 @@ public :
 	static 
 		KX_BoneParentRelation *
 	New(Bone* bone
-	);		
+	);
 
 	/**
 	 *  Updates the childs world coordinates relative to the parent's
@@ -89,9 +89,7 @@ private :
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:KX_BoneParentRelation"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:KX_BoneParentRelation")
 #endif
 };
 

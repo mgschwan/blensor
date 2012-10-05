@@ -29,18 +29,17 @@
  *  \ingroup cmpnodes
  */
 
-
 #include "node_composite_util.h"
-
-
 
 /* **************** COMPOSITE ******************** */
 static bNodeSocketTemplate cmp_node_composite_in[]= {
-	{	SOCK_RGBA, 1, "Image",		0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 1, "Alpha",		1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
-	{	SOCK_FLOAT, 1, "Z",			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_RGBA, 1, N_("Image"),		0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 1, N_("Alpha"),		1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Z"),			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 /* applies to render pipeline */
 static void node_composit_exec_composite(void *data, bNode *node, bNodeStack **in, bNodeStack **UNUSED(out))
@@ -97,6 +96,8 @@ static void node_composit_exec_composite(void *data, bNode *node, bNodeStack **i
 		generate_preview(data, node, in[0]->data);
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_composite(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -104,7 +105,10 @@ void register_node_type_cmp_composite(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_COMPOSITE, "Composite", NODE_CLASS_OUTPUT, NODE_PREVIEW);
 	node_type_socket_templates(&ntype, cmp_node_composite_in, NULL);
 	node_type_size(&ntype, 80, 60, 200);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_composite);
+#endif
+
 	/* Do not allow muting for this node. */
 	node_type_internal_connect(&ntype, NULL);
 

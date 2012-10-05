@@ -36,6 +36,7 @@ class Geodesic_Domes_Operator_Panel(bpy.types.Panel):
     bl_label = "Geodesic Domes"
     bl_region_type = "TOOLS" #UI possible too
     bl_space_type = "VIEW_3D"
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self,context):
         sce = context.scene
@@ -760,7 +761,7 @@ class GenerateGeodesicDome(bpy.types.Operator):
                 if obj_name == "None":
                     message = "fill in a name \nof an existing mesh\nto be imported"
                     context.scene.error_message = message
-                    self.report({"INFO"}, message)
+                    self.report({'INFO'}, message)
                     print("***INFO*** you have to fill in the name of an existing mesh")
                 else:
 #                    obj_in_scene = context.objects

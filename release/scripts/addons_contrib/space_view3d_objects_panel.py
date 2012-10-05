@@ -24,7 +24,7 @@ bl_info = {
     "location": "View3D > Toolbar",
     "description": "add objects(mesh, curve etc.) from Toolbar",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=22154",
@@ -42,6 +42,7 @@ class View3DPanel():
 class VIEW3D_PT_add_menu(View3DPanel,bpy.types.Panel):
     bl_context = "objectmode"
     bl_label = "Add Objects"
+    bl_options = {"DEFAULT_CLOSED"}
     
     def draw(self, context):
         layout = self.layout

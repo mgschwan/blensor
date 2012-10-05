@@ -55,9 +55,7 @@ private:
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:BL_ScalarInterpolator"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:BL_ScalarInterpolator")
 #endif
 };
 
@@ -67,13 +65,11 @@ public:
 	BL_InterpolatorList(struct bAction *action);
 	~BL_InterpolatorList();
 
-	KX_IScalarInterpolator *GetScalarInterpolator(const char *rna_path, int array_index);	
+	KX_IScalarInterpolator *GetScalarInterpolator(const char *rna_path, int array_index);
 
 
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:BL_InterpolatorList"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:BL_InterpolatorList")
 #endif
 };
 

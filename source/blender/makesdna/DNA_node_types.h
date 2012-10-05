@@ -68,6 +68,14 @@ typedef struct bNodeStack {
 #define NS_OSA_VECTORS		1
 #define NS_OSA_VALUES		2
 
+/* node socket/node socket type -b conversion rules */
+#define NS_CR_CENTER		0
+#define NS_CR_NONE			1
+#define NS_CR_FIT_WIDTH		2
+#define NS_CR_FIT_HEIGHT	3
+#define NS_CR_FIT			4
+#define NS_CR_STRETCH		5
+
 typedef struct bNodeSocket {
 	struct bNodeSocket *next, *prev, *new_sock;
 	
@@ -87,7 +95,7 @@ typedef struct bNodeSocket {
 	short stack_index;			/* local stack index */
 	/* XXX deprecated, kept for forward compatibility */
 	short stack_type  DNA_DEPRECATED;
-	int pad2;
+	int resizemode;				/* compositor resize mode of the socket */
 	void *cache;				/* cached data from execution */
 	
 	/* internal data to retrieve relations and groups */
@@ -119,7 +127,7 @@ typedef struct bNodeSocket {
 /* sock->flag, first bit is select */
 	/* hidden is user defined, to hide unused */
 #define SOCK_HIDDEN				2
-	/* only used now for groups... */
+	/* for quick check if socket is linked */
 #define SOCK_IN_USE				4	/* XXX deprecated */
 	/* unavailable is for dynamic sockets */
 #define SOCK_UNAVAIL			8
@@ -146,31 +154,34 @@ typedef struct bNode {
 	struct bNode *next, *prev, *new_node;
 	
 	char name[64];	/* MAX_NAME */
-	short type, flag;
+	int flag;
+	short type, pad2;
 	short done, level;		/* both for dependency and sorting */
 	short lasty, menunr;	/* lasty: check preview render status, menunr: browse ID blocks */
 	short stack_index;		/* for groupnode, offset in global caller stack */
 	short nr;				/* number of this node in list, used for UI exec events */
+	float color[3];			/* custom user-defined color */
 	
 	ListBase inputs, outputs;
 	struct bNode *parent;	/* parent node */
 	struct ID *id;			/* optional link to libdata */
 	void *storage;			/* custom data, must be struct, for storage in file */
+	struct bNode *original;	/* the original node in the tree (for localized tree) */
 	
-	float locx, locy;		/* root offset for drawing */
+	float locx, locy;		/* root offset for drawing (parent space) */
 	float width, height;	/* node custom width and height */
 	float miniwidth;		/* node width if hidden */
+	float offsetx, offsety;	/* additional offset from loc */
 	
 	int update;				/* update flags */
 	
 	char label[64];			/* custom user-defined label, MAX_NAME */
 	short custom1, custom2;	/* to be abused for buttons */
 	float custom3, custom4;
-	
+
 	short need_exec, exec;	/* need_exec is set as UI execution event, exec is flag during exec */
 	void *threaddata;		/* optional extra storage for use in thread (read only then!) */
-	
-	rctf totr;				/* entire boundbox */
+	rctf totr;				/* entire boundbox (worldspace) */
 	rctf butr;				/* optional buttons area */
 	rctf prvr;				/* optional preview area */
 	bNodePreview *preview;	/* optional preview image */
@@ -200,7 +211,14 @@ typedef struct bNode {
 	/* automatic flag for nodes included in transforms */
 #define NODE_TRANSFORM		(1<<13)
 	/* node is active texture */
+
+	/* note: take care with this flag since its possible it gets
+	 * `stuck` inside/outside the active group - which makes buttons
+	 * window texture not update, we try to avoid it by clearing the
+	 * flag when toggling group editing - Campbell */
 #define NODE_ACTIVE_TEXTURE	(1<<14)
+	/* use a custom color for the node */
+#define NODE_CUSTOM_COLOR	(1<<15)
 
 /* node->update */
 /* XXX NODE_UPDATE is a generic update flag. More fine-grained updates
@@ -223,6 +241,19 @@ typedef struct bNodeLink {
 #define NODE_LINKFLAG_HILITE	1		/* link has been successfully validated */
 #define NODE_LINK_VALID			2
 
+/* tree->edit_quality/tree->render_quality */
+#define NTREE_QUALITY_HIGH    0
+#define NTREE_QUALITY_MEDIUM  1
+#define NTREE_QUALITY_LOW     2
+
+/* tree->chunksize */
+#define NTREE_CHUNCKSIZE_32 32
+#define NTREE_CHUNCKSIZE_64 64
+#define NTREE_CHUNCKSIZE_128 128
+#define NTREE_CHUNCKSIZE_256 256
+#define NTREE_CHUNCKSIZE_512 512
+#define NTREE_CHUNCKSIZE_1024 1024
+
 /* the basis for a Node tree, all links and nodes reside internal here */
 /* only re-usable node trees are in the library though, materials and textures allocate own tree struct */
 typedef struct bNodeTree {
@@ -240,6 +271,10 @@ typedef struct bNodeTree {
 	int update;						/* update flags */
 	
 	int nodetype;					/* specific node type this tree is used for */
+
+	short edit_quality;				/* Quality setting when editing */
+	short render_quality;				/* Quality setting when rendering */
+	int chunksize;					/* tile size for compositor engine */
 	
 	ListBase inputs, outputs;		/* external sockets for group nodes */
 	
@@ -271,6 +306,8 @@ typedef struct bNodeTree {
 
 /* ntree->flag */
 #define NTREE_DS_EXPAND		1	/* for animation editors */
+#define NTREE_COM_OPENCL	2	/* use opencl */
+#define NTREE_TWO_PASS		4	/* two pass */
 /* XXX not nice, but needed as a temporary flags
  * for group updates after library linking.
  */
@@ -316,13 +353,111 @@ typedef struct bNodeSocketValueRGBA {
 
 
 /* data structs, for node->storage */
+enum {
+	CMP_NODE_MASKTYPE_ADD         = 0,
+	CMP_NODE_MASKTYPE_SUBTRACT    = 1,
+	CMP_NODE_MASKTYPE_MULTIPLY    = 2,
+	CMP_NODE_MASKTYPE_NOT         = 3
+};
+
+enum {
+	CMP_NODE_LENSFLARE_GHOST   = 1,
+	CMP_NODE_LENSFLARE_GLOW    = 2,
+	CMP_NODE_LENSFLARE_CIRCLE  = 4,
+	CMP_NODE_LENSFLARE_STREAKS = 8
+};
+
+enum {
+	CMP_NODE_DILATEERODE_STEP             = 0,
+	CMP_NODE_DILATEERODE_DISTANCE_THRESH  = 1,
+	CMP_NODE_DILATEERODE_DISTANCE         = 2,
+	CMP_NODE_DILATEERODE_DISTANCE_FEATHER = 3
+};
+
+enum {
+	CMP_NODE_INPAINT_SIMPLE               = 0
+};
+
+enum {
+	CMP_NODEFLAG_MASK_AA          = (1 << 0),
+	CMP_NODEFLAG_MASK_NO_FEATHER  = (1 << 1),
+	CMP_NODEFLAG_MASK_MOTION_BLUR = (1 << 2),
+
+	/* we may want multiple aspect options, exposed as an rna enum */
+	CMP_NODEFLAG_MASK_FIXED       = (1 << 8),
+	CMP_NODEFLAG_MASK_FIXED_SCENE = (1 << 9)
+};
+
+enum {
+	CMP_NODEFLAG_BLUR_VARIABLE_SIZE = (1 << 0)
+};
+
+typedef struct NodeFrame {
+	short flag;
+	short label_size;
+} NodeFrame;
 
 /* this one has been replaced with ImageUser, keep it for do_versions() */
 typedef struct NodeImageAnim {
-	int frames, sfra, nr;
-	char cyclic, movie;
+	int frames   DNA_DEPRECATED;
+	int sfra     DNA_DEPRECATED;
+	int nr       DNA_DEPRECATED;
+	char cyclic  DNA_DEPRECATED;
+	char movie   DNA_DEPRECATED;
 	short pad;
 } NodeImageAnim;
+
+typedef struct ColorCorrectionData {
+	float saturation;
+	float contrast;
+	float gamma;
+	float gain;
+	float lift;
+	int pad;
+} ColorCorrectionData;
+
+typedef struct NodeColorCorrection {
+	ColorCorrectionData master;
+	ColorCorrectionData shadows;
+	ColorCorrectionData midtones;
+	ColorCorrectionData highlights;
+	float startmidtones;
+	float endmidtones;
+} NodeColorCorrection;
+
+typedef struct NodeBokehImage {
+	float angle;
+	int flaps;
+	float rounding;
+	float catadioptric;
+	float lensshift;
+} NodeBokehImage;
+
+typedef struct NodeBoxMask {
+	float x;
+	float y;
+	float rotation;
+	float height;
+	float width;
+	int pad;
+} NodeBoxMask;
+
+typedef struct NodeEllipseMask {
+	float x;
+	float y;
+	float rotation;
+	float height;
+	float width;
+	int pad;
+} NodeEllipseMask;
+
+/* layer info for image node outputs */
+typedef struct NodeImageLayer {
+	/* index in the Image->layers->passes lists */
+	int pass_index;
+	/* render pass flag, in case this is an original render pass */
+	int pass_flag;
+} NodeImageLayer;
 
 typedef struct NodeBlurData {
 	short sizex, sizey;
@@ -364,11 +499,16 @@ typedef struct NodeImageMultiFile {
 	int pad;
 } NodeImageMultiFile;
 typedef struct NodeImageMultiFileSocket {
+	/* single layer file output */
 	short use_render_format  DNA_DEPRECATED;
 	short use_node_format;	/* use overall node image format */
-	int pad2;
-	char path[1024];	/* 1024 = FILE_MAX */
+	int pad1;
+	char path[1024];		/* 1024 = FILE_MAX */
 	ImageFormatData format;
+	
+	/* multilayer output */
+	char layer[30];		/* EXR_TOT_MAXNAME-2 ('.' and channel char are appended) */
+	char pad2[2];
 } NodeImageMultiFileSocket;
 
 typedef struct NodeChroma {
@@ -451,6 +591,15 @@ typedef struct NodeColorspill {
 	float uspillr, uspillg, uspillb;
 } NodeColorspill;
 
+typedef struct NodeDilateErode {
+	char falloff;
+	char pad[7];
+} NodeDilateErode;
+
+typedef struct NodeMask {
+	int size_x, size_y;
+} NodeMask;
+
 typedef struct NodeTexBase {
 	TexMapping tex_mapping;
 	ColorMapping color_mapping;
@@ -464,16 +613,28 @@ typedef struct NodeTexSky {
 
 typedef struct NodeTexImage {
 	NodeTexBase base;
-	int color_space, pad;
+	ImageUser iuser;
+	int color_space;
+	int projection;
+	float projection_blend;
+	int pad;
 } NodeTexImage;
 
 typedef struct NodeTexChecker {
 	NodeTexBase base;
 } NodeTexChecker;
 
+typedef struct NodeTexBrick {
+	NodeTexBase base;
+	int offset_freq, squash_freq;
+	float offset, squash;
+} NodeTexBrick;
+
 typedef struct NodeTexEnvironment {
 	NodeTexBase base;
-	int color_space, projection;
+	ImageUser iuser;
+	int color_space;
+	int projection;
 } NodeTexEnvironment;
 
 typedef struct NodeTexGradient {
@@ -518,6 +679,32 @@ typedef struct NodeShaderAttribute {
 typedef struct TexNodeOutput {
 	char name[64];
 } TexNodeOutput;
+
+typedef struct NodeKeyingScreenData {
+	char tracking_object[64];
+} NodeKeyingScreenData;
+
+typedef struct NodeKeyingData {
+	float screen_balance;
+	float despill_factor;
+	float despill_balance;
+	int edge_kernel_radius;
+	float edge_kernel_tolerance;
+	float clip_black, clip_white;
+	int dilate_distance;
+	int feather_distance;
+	int feather_falloff;
+	int blur_pre, blur_post;
+} NodeKeyingData;
+
+typedef struct NodeTrackPosData {
+	char tracking_object[64];
+	char track_name[64];
+} NodeTrackPosData;
+
+/* frame node flags */
+#define NODE_FRAME_SHRINK		1	/* keep the bounding box minimal */
+#define NODE_FRAME_RESIZEABLE	2	/* test flag, if frame can be resized by user */
 
 /* comp channel matte */
 #define CMP_NODE_CHANNEL_MATTE_CS_RGB	1
@@ -587,9 +774,15 @@ typedef struct TexNodeOutput {
 #define SHD_PROJ_EQUIRECTANGULAR	0
 #define SHD_PROJ_MIRROR_BALL		1
 
+/* image texture */
+#define SHD_PROJ_FLAT				0
+#define SHD_PROJ_BOX				1
+
 /* blur node */
 #define CMP_NODE_BLUR_ASPECT_NONE		0
 #define CMP_NODE_BLUR_ASPECT_Y			1
 #define CMP_NODE_BLUR_ASPECT_X			2
+
+#define CMP_NODE_MASK_MBLUR_SAMPLES_MAX 64
 
 #endif

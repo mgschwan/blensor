@@ -27,13 +27,29 @@
 #ifndef __EXPORTSETTINGS_H__
 #define __EXPORTSETTINGS_H__
 
-struct ExportSettings
-{
- public:
- bool selected;
- bool apply_modifiers;
- bool second_life;
- char *filepath;
+#include "collada.h"
+
+struct ExportSettings {
+public:
+	bool apply_modifiers;
+	BC_export_mesh_type export_mesh_type;
+
+	bool selected;
+	bool include_children;
+	bool include_armatures;
+	bool deform_bones_only;
+
+	bool active_uv_only;
+	bool include_uv_textures;
+	bool include_material_textures;
+	bool use_texture_copies;
+
+	bool use_object_instantiation;
+	bool sort_by_name;
+	bool second_life;
+
+	char *filepath;
+	LinkNode *export_set;
 };
 
 #endif

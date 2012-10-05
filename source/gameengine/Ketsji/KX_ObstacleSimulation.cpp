@@ -40,7 +40,7 @@ namespace
 	inline float vdist(const float* a, const float* b) { return sqrtf(vdistsqr(a,b)); }
 	inline void vcpy(float* a, const float* b) { a[0]=b[0]; a[1]=b[1]; }
 	inline float vdot(const float* a, const float* b) { return a[0]*b[0] + a[1]*b[1]; }
-	inline float vperp(const float* a, const float* b) { return a[0]*b[1] - a[1]*b[0]; }
+/*	inline float vperp(const float* a, const float* b) { return a[0]*b[1] - a[1]*b[0]; } */ /* UNUSED */
 	inline void vsub(float* v, const float* a, const float* b) { v[0] = a[0]-b[0]; v[1] = a[1]-b[1]; }
 	inline void vadd(float* v, const float* a, const float* b) { v[0] = a[0]+b[0]; v[1] = a[1]+b[1]; }
 	inline void vscale(float* v, const float* a, const float s) { v[0] = a[0]*s; v[1] = a[1]*s; }
@@ -48,7 +48,7 @@ namespace
 	inline float vlensqr(const float* v) { return vdot(v,v); }
 	inline float vlen(const float* v) { return sqrtf(vlensqr(v)); }
 	inline void vlerp(float* v, const float* a, const float* b, float t) { v[0] = lerp(a[0], b[0], t); v[1] = lerp(a[1], b[1], t); }
-	inline void vmad(float* v, const float* a, const float* b, float s) { v[0] = a[0] + b[0]*s; v[1] = a[1] + b[1]*s; }
+/*	inline void vmad(float* v, const float* a, const float* b, float s) { v[0] = a[0] + b[0]*s; v[1] = a[1] + b[1]*s; } */ /* UNUSED */
 	inline void vnorm(float* v)
 	{
 		float d = vlen(v);
@@ -257,7 +257,7 @@ void KX_ObstacleSimulation::AddObstacleForObj(KX_GameObject* gameobj)
 }
 
 void KX_ObstacleSimulation::AddObstaclesForNavMesh(KX_NavMeshObject* navmeshobj)
-{	
+{
 	dtStatNavMesh* navmesh = navmeshobj->GetNavMesh();
 	if (navmesh)
 	{
@@ -267,7 +267,7 @@ void KX_ObstacleSimulation::AddObstaclesForNavMesh(KX_NavMeshObject* navmeshobj)
 			const dtStatPoly* poly = navmesh->getPoly(pi);
 
 			for (int i = 0, j = (int)poly->nv-1; i < (int)poly->nv; j = i++)
-			{	
+			{
 				if (poly->n[j]) continue;
 				const float* vj = navmesh->getVertex(poly->v[j]);
 				const float* vi = navmesh->getVertex(poly->v[i]);
@@ -364,9 +364,9 @@ void KX_ObstacleSimulation::DrawObstacles()
 		else if (m_obstacles[i]->m_shape==KX_OBSTACLE_CIRCLE)
 		{
 			KX_RasterizerDrawDebugCircle(m_obstacles[i]->m_pos, m_obstacles[i]->m_rad, bluecolor,
-										normal, SECTORS_NUM);
+			                             normal, SECTORS_NUM);
 		}
-	}	
+	}
 }
 
 static MT_Point3 nearestPointToObstacle(MT_Point3& pos ,KX_Obstacle* obstacle)
@@ -378,13 +378,14 @@ static MT_Point3 nearestPointToObstacle(MT_Point3& pos ,KX_Obstacle* obstacle)
 		MT_Vector3 ab = obstacle->m_pos2 - obstacle->m_pos;
 		if (!ab.fuzzyZero())
 		{
+			const MT_Scalar dist = ab.length();
 			MT_Vector3 abdir = ab.normalized();
 			MT_Vector3  v = pos - obstacle->m_pos;
 			MT_Scalar proj = abdir.dot(v);
-			CLAMP(proj, 0, ab.length());
+			CLAMP(proj, 0, dist);
 			MT_Point3 res = obstacle->m_pos + abdir*proj;
 			return res;
-		}		
+		}
 	}
 	case KX_OBSTACLE_CIRCLE :
 	default:
@@ -423,7 +424,7 @@ KX_ObstacleSimulationTOI::KX_ObstacleSimulationTOI(MT_Scalar levelHeight, bool e
 
 
 void KX_ObstacleSimulationTOI::AdjustObstacleVelocity(KX_Obstacle* activeObst, KX_NavMeshObject* activeNavMeshObj, 
-														   MT_Vector3& velocity, MT_Scalar maxDeltaSpeed, MT_Scalar maxDeltaAngle)
+                                                      MT_Vector3& velocity, MT_Scalar maxDeltaSpeed, MT_Scalar maxDeltaAngle)
 {
 	int nobs = m_obstacles.size();
 	int obstidx = std::find(m_obstacles.begin(), m_obstacles.end(), activeObst) - m_obstacles.begin();
@@ -445,7 +446,7 @@ void KX_ObstacleSimulationTOI::AdjustObstacleVelocity(KX_Obstacle* activeObst, K
 	vadd(vel, activeObst->vel, dv);
 
 	velocity.x() = vel[0];
-	velocity.y() = vel[1];	
+	velocity.y() = vel[1];
 }
 
 ///////////*********TOI_rays**********/////////////////
@@ -549,6 +550,9 @@ void KX_ObstacleSimulationTOI_rays::sampleRVO(KX_Obstacle* activeObst, KX_NavMes
 					p1, p2, ob->m_rad, htmin, htmax))
 					continue;
 			}
+			else {
+				continue;
+			}
 
 			if (htmin > 0.0f)
 			{
@@ -638,7 +642,7 @@ static void processSamples(KX_Obstacle* activeObst, KX_NavMeshObject* activeNavM
 	for (int n = 0; n < nspos; ++n)
 	{
 		float vcand[2];
-		vcpy(vcand, &spos[n*2]);		
+		vcpy(vcand, &spos[n*2]);
 
 		// Find min time of impact and exit amongst all obstacles.
 		float tmin = maxToi;
@@ -742,6 +746,9 @@ static void processSamples(KX_Obstacle* activeObst, KX_NavMeshObject* activeNavM
 
 				// Avoid less when facing walls.
 				htmin *= 2.0f;
+			}
+			else {
+				continue;
 			}
 
 			if (htmin >= 0.0f)

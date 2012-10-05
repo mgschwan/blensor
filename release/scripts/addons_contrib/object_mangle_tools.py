@@ -26,7 +26,7 @@ bl_info = {
     "location": "View3D > Tools",
     "description": "Set of tools to mangle curves, meshes, and shape keys",
     "warning": "", # used for warning icon and text in addons panel
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=29071",
@@ -57,8 +57,8 @@ def move_coordinate(context, co, is_curve=False):
 
 
 class MeshManglerOperator(bpy.types.Operator):
-    '''push vertices on the selected object around in random directions to 
-    create a crumpled look'''
+    """Push vertices on the selected object around in random """ \
+    """directions to create a crumpled look"""
     bl_idname = "ba.mesh_mangler"
     bl_label = "Mangle Mesh"
     bl_options = { "REGISTER", "UNDO" }
@@ -77,7 +77,7 @@ class MeshManglerOperator(bpy.types.Operator):
         random.seed( time.time() )
 
         if mesh.shape_keys != None:
-            self.report( {"INFO"}, "Cannot mangle mesh: Shape keys present" )
+            self.report({'INFO'}, "Cannot mangle mesh: Shape keys present")
             return {'CANCELLED'}
         
         for vert in verts:
@@ -94,7 +94,8 @@ class MeshManglerOperator(bpy.types.Operator):
 
 
 class AnimanglerOperator(bpy.types.Operator):
-    '''makes a shape key and pushes the verts around on it to set up for random pulsating animation'''
+    """Make a shape key and pushes the verts around on it """ \
+    """to set up for random pulsating animation"""
     bl_idname = "ba.ani_mangler"
     bl_label = "Mangle Shape Key"
 
@@ -118,7 +119,7 @@ class AnimanglerOperator(bpy.types.Operator):
 
 
 class CurveManglerOp(bpy.types.Operator):
-    '''Mangles a curve to the degree the user specifies'''
+    """Mangle a curve to the degree the user specifies"""
     bl_idname = "ba.curve_mangler"
     bl_label = "Mangle Curve"
     bl_options = { 'REGISTER', 'UNDO' }
@@ -133,14 +134,14 @@ class CurveManglerOp(bpy.types.Operator):
 
         ob = context.active_object
         if ob.data.shape_keys != None:
-            self.report({"INFO"}, "Cannot mangle curve.  Shape keys present")
+            self.report({'INFO'}, "Cannot mangle curve.  Shape keys present")
             return {'CANCELLED'}
         splines = context.object.data.splines
         
         for spline in splines:
             if spline.type == 'BEZIER':
                 points = spline.bezier_points
-            elif spline.type in ('POLY', 'NURBS'):
+            elif spline.type in {'POLY', 'NURBS'}:
                 points = spline.points
 
             for point in points:

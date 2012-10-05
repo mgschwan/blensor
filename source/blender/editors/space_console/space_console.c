@@ -142,7 +142,7 @@ static void console_main_area_init(wmWindowManager *wm, ARegion *ar)
 
 	/* always keep the bottom part of the view aligned, less annoying */
 	if (prev_y_min != ar->v2d.cur.ymin) {
-		const float cur_y_range = ar->v2d.cur.ymax - ar->v2d.cur.ymin;
+		const float cur_y_range = BLI_rctf_size_y(&ar->v2d.cur);
 		ar->v2d.cur.ymin = prev_y_min;
 		ar->v2d.cur.ymax = prev_y_min + cur_y_range;
 	}
@@ -246,6 +246,9 @@ static void console_operatortypes(void)
 	WM_operatortype_append(CONSOLE_OT_move);
 	WM_operatortype_append(CONSOLE_OT_delete);
 	WM_operatortype_append(CONSOLE_OT_insert);
+
+	WM_operatortype_append(CONSOLE_OT_indent);
+	WM_operatortype_append(CONSOLE_OT_unindent);
 	
 	/* for use by python only */
 	WM_operatortype_append(CONSOLE_OT_history_append); 
@@ -323,6 +326,7 @@ static void console_keymap(struct wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "CONSOLE_OT_autocomplete", SPACEKEY, KM_PRESS, KM_CTRL, 0); /* python operator - space_text.py */
 #endif
 
+	WM_keymap_add_item(keymap, "CONSOLE_OT_copy_as_script", CKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
 	WM_keymap_add_item(keymap, "CONSOLE_OT_copy", CKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "CONSOLE_OT_paste", VKEY, KM_PRESS, KM_CTRL, 0);
 #ifdef __APPLE__
@@ -332,7 +336,11 @@ static void console_keymap(struct wmKeyConfig *keyconf)
 	
 	WM_keymap_add_item(keymap, "CONSOLE_OT_select_set", LEFTMOUSE, KM_PRESS, 0, 0);
 
-	RNA_string_set(WM_keymap_add_item(keymap, "CONSOLE_OT_insert", TABKEY, KM_PRESS, 0, 0)->ptr, "text", "\t"); /* fake tabs */
+	RNA_string_set(WM_keymap_add_item(keymap, "CONSOLE_OT_insert", TABKEY, KM_PRESS, KM_CTRL, 0)->ptr, "text", "\t"); /* fake tabs */
+
+	WM_keymap_add_item(keymap, "CONSOLE_OT_indent", TABKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "CONSOLE_OT_unindent", TABKEY, KM_PRESS, KM_SHIFT, 0);
+
 	WM_keymap_add_item(keymap, "CONSOLE_OT_insert", KM_TEXTINPUT, KM_ANY, KM_ANY, 0); // last!
 }
 

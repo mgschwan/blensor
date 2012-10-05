@@ -285,7 +285,7 @@ static int dynamicPaint_bakeImageSequence(bContext *C, DynamicPaintSurface *surf
 	/* Set frame to start point (also inits modifier data) */
 	frame = surface->start_frame;
 	scene->r.cfra = (int)frame;
-	ED_update_for_newframe(CTX_data_main(C), scene, win->screen, 1);
+	ED_update_for_newframe(CTX_data_main(C), scene, 1);
 
 	/* Init surface	*/
 	if (!dynamicPaint_createUVSurface(surface)) return 0;
@@ -299,11 +299,11 @@ static int dynamicPaint_bakeImageSequence(bContext *C, DynamicPaintSurface *surf
 		if (blender_test_break()) return 0;
 
 		/* Update progress bar cursor */
-		WM_timecursor(win, (int)progress);
+		WM_cursor_time(win, (int)progress);
 
 		/* calculate a frame */
 		scene->r.cfra = (int)frame;
-		ED_update_for_newframe(CTX_data_main(C), scene, win->screen, 1);
+		ED_update_for_newframe(CTX_data_main(C), scene, 1);
 		if (!dynamicPaint_calculateFrame(surface, scene, cObject, frame)) return 0;
 
 		/*
@@ -369,7 +369,7 @@ static int dynamicPaint_initBake(struct bContext *C, struct wmOperator *op)
 	/* Set state to baking and init surface */
 	canvas->error[0] = '\0';
 	canvas->flags |= MOD_DPAINT_BAKING;
-	G.afbreek= 0;	/* reset blender_test_break*/
+	G.is_break = FALSE;  /* reset blender_test_break*/
 
 	/*  Bake Dynamic Paint	*/
 	status = dynamicPaint_bakeImageSequence(C, surface, ob);

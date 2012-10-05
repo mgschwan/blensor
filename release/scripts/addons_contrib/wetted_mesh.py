@@ -24,7 +24,7 @@ bl_info = {
     "location": "View3D > Tool Shelf > Wetted Mesh Panel",
     "description": "Adds separated fluid, dry and wetted mesh for selected pair.",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Mesh/Wetted_Mesh",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=27156",
@@ -36,11 +36,12 @@ import math
 
 ### Tool Panel ###
 class VIEW3D_PT_tools_WettedMesh(bpy.types.Panel):
-    '''Wetted Mesh Tool Panel'''
+    """Wetted Mesh Tool Panel"""
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
     bl_label = 'Wetted Mesh'
     bl_context = 'objectmode'
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         layout = self.layout
@@ -60,7 +61,7 @@ class VIEW3D_PT_tools_WettedMesh(bpy.types.Panel):
 
 ### Operator ###
 class AddWettedMesh(bpy.types.Operator):
-    '''Add wetted mesh for selected mesh pair'''
+    """Add wetted mesh for selected mesh pair"""
     bl_idname = "mesh.primitive_wetted_mesh_add"
     bl_label = "Add Wetted Mesh"
     bl_options = {'REGISTER', 'UNDO'}

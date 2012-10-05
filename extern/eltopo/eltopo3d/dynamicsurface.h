@@ -633,7 +633,10 @@ inline double DynamicSurface::get_average_edge_length() const
         if ( e[0] == e[1] )  { continue; }
         sum_lengths += mag( get_position(e[1]) - get_position(e[0]) ); 
     }
-    return sum_lengths / (double) m_mesh.m_edges.size();   
+
+	double len = sum_lengths / (double) m_mesh.m_edges.size();
+
+    return len;   
 }
 
 // --------------------------------------------------------

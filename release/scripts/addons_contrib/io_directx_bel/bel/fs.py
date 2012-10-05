@@ -48,7 +48,9 @@ def scanDir(path,ext='all') :
             files.extend(scanDir(path + '/' + item))
     return files
 
-def saveOptions(operator_name, tokens, filename='last_run'):
+def saveOptions(op,operator_name, tokens, filename='last_run'):
+    #print(op.as_keywords())
+    #print(dir(op))
     target_path = os_path.join("operator", operator_name)
     target_path = os_path.join("presets", target_path)
     target_path = bpy.utils.user_resource('SCRIPTS',target_path,create=True)

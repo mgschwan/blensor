@@ -61,11 +61,6 @@
 #include "strand.h"
 #include "zbuf.h"
 
-/* to be removed */
-void hoco_to_zco(ZSpan *zspan, float *zco, float *hoco);
-void zspan_scanconvert_strand(ZSpan *zspan, void *handle, float *v1, float *v2, float *v3, void (*func)(void *, int, int, float, float, float) );
-void zbufsinglewire(ZSpan *zspan, int obi, int zvlnr, float *ho1, float *ho2);
-
 /* *************** */
 
 static float strand_eval_width(Material *ma, float strandco)
@@ -333,8 +328,8 @@ StrandShadeCache *strand_shade_cache_create(void)
 	StrandShadeCache *cache;
 
 	cache= MEM_callocN(sizeof(StrandShadeCache), "StrandShadeCache");
-	cache->resulthash= BLI_ghash_new(BLI_ghashutil_pairhash, BLI_ghashutil_paircmp, "strand_shade_cache_create1 gh");
-	cache->refcounthash= BLI_ghash_new(BLI_ghashutil_pairhash, BLI_ghashutil_paircmp, "strand_shade_cache_create2 gh");
+	cache->resulthash= BLI_ghash_pair_new("strand_shade_cache_create1 gh");
+	cache->refcounthash= BLI_ghash_pair_new("strand_shade_cache_create2 gh");
 	cache->memarena= BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "strand shade cache arena");
 	
 	return cache;
@@ -400,7 +395,7 @@ void strand_shade_segment(Render *re, StrandShadeCache *cache, StrandSegment *ss
 	interpolate_shade_result(&shr1, &shr2, t, ssamp->shr, addpassflag);
 
 	/* apply alpha along width */
-	if (sseg->buffer->widthfade != 0.0f) {
+	if (sseg->buffer->widthfade != -1.0f) {
 		s = 1.0f - powf(fabsf(s), sseg->buffer->widthfade);
 
 		strand_apply_shaderesult_alpha(ssamp->shr, s);
@@ -569,16 +564,16 @@ static void do_strand_fillac(void *handle, int x, int y, float u, float v, float
 
 #define CHECK_ADD(n) \
 	if (apn->p[n]==strnr && apn->obi[n]==obi && apn->seg[n]==seg) \
-	{ if (!(apn->mask[n] & mask)) { apn->mask[n] |= mask; apn->v[n] += t; apn->u[n] += s; } break; }
+	{ if (!(apn->mask[n] & mask)) { apn->mask[n] |= mask; apn->v[n] += t; apn->u[n] += s; } break; } (void)0
 #define CHECK_ASSIGN(n) \
 	if (apn->p[n]==0) \
-	{apn->obi[n]= obi; apn->p[n]= strnr; apn->z[n]= zverg; apn->mask[n]= mask; apn->v[n]= t; apn->u[n]= s; apn->seg[n]= seg; break; }
+	{apn->obi[n]= obi; apn->p[n]= strnr; apn->z[n]= zverg; apn->mask[n]= mask; apn->v[n]= t; apn->u[n]= s; apn->seg[n]= seg; break; } (void)0
 
 	/* add to pixel list */
 	if (zverg < bufferz && (spart->totapixbuf[offset] < MAX_ZROW)) {
 		if (!spart->rectmask || zverg > maskz) {
-			t = u*spart->t[0] + v*spart->t[1] + (1.0f-u-v)*spart->t[2];
-			s = fabs(u*spart->s[0] + v*spart->s[1] + (1.0f-u-v)*spart->s[2]);
+			t = u * spart->t[0] + v * spart->t[1] + (1.0f - u - v) * spart->t[2];
+			s = fabsf(u * spart->s[0] + v * spart->s[1] + (1.0f - u - v) * spart->s[2]);
 
 			apn= spart->apixbuf + offset;
 			while (apn) {
@@ -1060,21 +1055,22 @@ void free_strand_surface(Render *re)
 	BLI_freelistN(&re->strandsurface);
 }
 
-void strand_minmax(StrandRen *strand, float *min, float *max, float width)
+void strand_minmax(StrandRen *strand, float min[3], float max[3], const float width)
 {
 	StrandVert *svert;
-	float vec[3], width2= 2.0f*width;
+	const float width2 = width * 2.0f;
+	float vec[3];
 	int a;
 
 	for (a=0, svert=strand->vert; a<strand->totvert; a++, svert++) {
 		copy_v3_v3(vec, svert->co);
-		DO_MINMAX(vec, min, max);
+		minmax_v3v3_v3(min, max, vec);
 		
 		if (width!=0.0f) {
-			vec[0]+= width; vec[1]+= width; vec[2]+= width;
-			DO_MINMAX(vec, min, max);
-			vec[0]-= width2; vec[1]-= width2; vec[2]-= width2;
-			DO_MINMAX(vec, min, max);
+			add_v3_fl(vec, width);
+			minmax_v3v3_v3(min, max, vec);
+			add_v3_fl(vec, -width2);
+			minmax_v3v3_v3(min, max, vec);
 		}
 	}
 }

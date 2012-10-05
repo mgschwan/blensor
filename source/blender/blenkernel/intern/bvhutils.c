@@ -330,7 +330,7 @@ float nearest_point_in_tri_surface(const float v0[3], const float v1[3], const f
 		}
 	}
 
-	// Account for numerical round-off error
+	/* Account for numerical round-off error */
 	if (sqrDist < FLT_EPSILON)
 		sqrDist = 0.0f;
 	
@@ -345,7 +345,7 @@ float nearest_point_in_tri_surface(const float v0[3], const float v1[3], const f
 		add_v3_v3v3(z, z, y);
 		//sub_v3_v3v3(d, p, z);
 		copy_v3_v3(nearest, z);
-		// d = p - ( v0 + S * e0 + T * e1 );
+		//d = p - ( v0 + S * e0 + T * e1 );
 	}
 	*v = lv;
 	*e = le;
@@ -383,6 +383,9 @@ static void mesh_faces_nearest_point(void *userdata, int index, const float co[3
 			nearest->dist = dist;
 			copy_v3_v3(nearest->co, nearest_tmp);
 			normal_tri_v3(nearest->no, t0, t1, t2);
+
+			if (t1 == vert[face->v3].co)
+				nearest->flags |= BVH_ONQUAD;
 		}
 
 		t1 = t2;
@@ -420,6 +423,9 @@ static void mesh_faces_spherecast(void *userdata, int index, const BVHTreeRay *r
 			madd_v3_v3v3fl(hit->co, ray->origin, ray->direction, dist);
 
 			normal_tri_v3(hit->no, t0, t1, t2);
+
+			if (t1 == vert[face->v3].co)
+				hit->flags |= BVH_ONQUAD;
 		}
 
 		t1 = t2;

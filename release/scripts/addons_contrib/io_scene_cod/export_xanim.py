@@ -206,7 +206,7 @@ def save(self, context, filepath="",
     # Close to flush buffers!
     file.close()
 
-    if use_notetrack and use_notetrack_format in ('5', '7'):
+    if use_notetrack and use_notetrack_format in {'5', '7'}:
 
         import os.path
         filepath = os.path.splitext(filepath)[0] + ".NT_EXPORT"

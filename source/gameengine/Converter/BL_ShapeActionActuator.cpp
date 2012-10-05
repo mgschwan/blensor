@@ -83,7 +83,7 @@ BL_ShapeActionActuator::BL_ShapeActionActuator(SCA_IObject* gameobj,
 	m_playtype(playtype),
 	m_priority(priority),
 	m_action(action),
-	m_framepropname(framepropname),	
+	m_framepropname(framepropname),
 	m_propname(propname)
 {
 	m_idptr = new PointerRNA();
@@ -316,7 +316,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 			m_localtime += (length/m_stridelength) * deltapos.length();
 			m_lastpos = newpos;
 		}
-		else{
+		else {
 			SetLocalTime(curtime);
 		}
 	}
@@ -466,7 +466,7 @@ bool BL_ShapeActionActuator::Update(double curtime, bool frame)
 				BLI_freelistN(&tchanbase);
 			}
 		}
-		else{
+		else {
 			m_blendframe = 0.0f;
 		}
 	}
@@ -526,7 +526,7 @@ PyAttributeDef BL_ShapeActionActuator::Attributes[] = {
 	{ NULL }	//Sentinel
 };
 
-PyObject* BL_ShapeActionActuator::pyattr_get_action(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
+PyObject *BL_ShapeActionActuator::pyattr_get_action(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
 	BL_ShapeActionActuator* self= static_cast<BL_ShapeActionActuator*>(self_v);
 	return PyUnicode_FromString(self->GetAction() ? self->GetAction()->id.name+2 : "");

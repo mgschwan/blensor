@@ -24,7 +24,7 @@ bl_info = {
     "location": "View3D > Add > Mesh",
     "description": "Adds Chain with curve guide for easy creation",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Object/Add_Chain",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=22203",
@@ -142,7 +142,7 @@ def Add_Chain():
 
 #makes AddChain an operator
 class AddChain(bpy.types.Operator):
-    '''Add a Chain'''
+    """Add a Chain"""
     bl_idname = "mesh.primitive_chain_add"
     bl_label = "Add Chain"
     bl_options = {'REGISTER', 'UNDO'}

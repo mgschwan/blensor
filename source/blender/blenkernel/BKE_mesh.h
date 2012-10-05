@@ -33,6 +33,7 @@
 
 /***/
 
+struct ID;
 struct BoundBox;
 struct DispList;
 struct ListBase;
@@ -87,8 +88,8 @@ int BKE_mesh_mpoly_to_mface(struct CustomData *fdata, struct CustomData *ldata,
                             struct CustomData *pdata, int totface, int totloop, int totpoly);
 
 /*calculates a face normal.*/
-void mesh_calc_poly_normal(struct MPoly *mpoly, struct MLoop *loopstart, 
-                           struct MVert *mvarray, float no[3]);
+void BKE_mesh_calc_poly_normal(struct MPoly *mpoly, struct MLoop *loopstart,
+                               struct MVert *mvarray, float no[3]);
 
 void BKE_mesh_calc_poly_normal_coords(struct MPoly *mpoly, struct MLoop *loopstart,
                                       const float (*vertex_coords)[3], float no[3]);
@@ -97,7 +98,7 @@ void BKE_mesh_calc_poly_center(struct MPoly *mpoly, struct MLoop *loopstart,
                                struct MVert *mvarray, float cent[3]);
 
 float BKE_mesh_calc_poly_area(struct MPoly *mpoly, struct MLoop *loopstart,
-                              struct MVert *mvarray, float polynormal[3]);
+                              struct MVert *mvarray, const float polynormal[3]);
 
 /* Find the index of the loop in 'poly' which references vertex,
  * returns -1 if not found */
@@ -110,6 +111,10 @@ int poly_find_loop_from_vert(const struct MPoly *poly,
  * vertex is not in 'poly' */
 int poly_get_adj_loops_from_vert(unsigned adj_r[3], const struct MPoly *poly,
                                  const struct MLoop *mloop, unsigned vert);
+
+/* Return the index of the edge vert that is not equal to 'v'. If
+ * neither edge vertex is equal to 'v', returns -1. */
+int BKE_mesh_edge_other_vert(const struct MEdge *e, int v);
 
 /* update the hide flag for edges and polys from the corresponding
  * flag in verts */
@@ -136,16 +141,29 @@ void BKE_mesh_from_metaball(struct ListBase *lb, struct Mesh *me);
 int  BKE_mesh_nurbs_to_mdata(struct Object *ob, struct MVert **allvert, int *totvert,
                              struct MEdge **alledge, int *totedge, struct MLoop **allloop, struct MPoly **allpoly,
                              int *totloop, int *totpoly);
-int BKE_mesh_nurbs_to_mdata_customdb(struct Object *ob, struct ListBase *dispbase, struct MVert **allvert, int *_totvert,
+int BKE_mesh_nurbs_displist_to_mdata(struct Object *ob, struct ListBase *dispbase, struct MVert **allvert, int *_totvert,
                                      struct MEdge **alledge, int *_totedge, struct MLoop **allloop, struct MPoly **allpoly,
-                                     int *_totloop, int *_totpoly);
+                                     int *_totloop, int *_totpoly, int **orco_index_ptr);
+void BKE_mesh_nurbs_to_mdata_orco(struct MPoly *mpoly, int totpoly,
+                                  struct MLoop *mloops, struct MLoopUV *mloopuvs,
+                                  float (*orco)[3], int (*orco_index)[4]);
 void BKE_mesh_from_nurbs(struct Object *ob);
+void BKE_mesh_from_nurbs_displist(struct Object *ob, struct ListBase *dispbase,
+                                  int **orco_index_ptr);
 void BKE_mesh_from_curve(struct Scene *scene, struct Object *ob);
 void free_dverts(struct MDeformVert *dvert, int totvert);
 void copy_dverts(struct MDeformVert *dst, struct MDeformVert *src, int totvert); /* __NLA */
 void BKE_mesh_delete_material_index(struct Mesh *me, short index);
 void BKE_mesh_smooth_flag_set(struct Object *meshOb, int enableSmooth);
 void BKE_mesh_convert_mfaces_to_mpolys(struct Mesh *mesh);
+void BKE_mesh_do_versions_convert_mfaces_to_mpolys(struct Mesh *mesh);
+void BKE_mesh_convert_mfaces_to_mpolys_ex(struct ID *id,
+                                          struct CustomData *fdata, struct CustomData *ldata, struct CustomData *pdata,
+                                          int totedge_i, int totface_i, int totloop_i, int totpoly_i,
+                                          struct MEdge *medge, struct MFace *mface,
+                                          int *totloop_r, int *totpoly_r,
+                                          struct MLoop **mloop_r, struct MPoly **mpoly_r);
+
 void BKE_mesh_calc_normals_tessface(struct MVert *mverts, int numVerts, struct MFace *mfaces, int numFaces, float (*faceNors_r)[3]);
 
 /* used for unit testing; compares two meshes, checking only
@@ -164,14 +182,14 @@ void BKE_mesh_strip_loose_faces(struct Mesh *me); /* Needed for compatibility (s
 void BKE_mesh_strip_loose_polysloops(struct Mesh *me);
 void BKE_mesh_strip_loose_edges(struct Mesh *me);
 
-	/* Calculate vertex and face normals, face normals are returned in *faceNors_r if non-NULL
-	 * and vertex normals are stored in actual mverts.
-	 */
+/* Calculate vertex and face normals, face normals are returned in *faceNors_r if non-NULL
+ * and vertex normals are stored in actual mverts.
+ */
 void BKE_mesh_calc_normals_mapping(
         struct MVert *mverts, int numVerts,
         struct MLoop *mloop, struct MPoly *mpolys, int numLoops, int numPolys, float (*polyNors_r)[3],
         struct MFace *mfaces, int numFaces, int *origIndexFace, float (*faceNors_r)[3]);
-	/* extended version of 'BKE_mesh_calc_normals' with option not to calc vertex normals */
+/* extended version of 'BKE_mesh_calc_normals' with option not to calc vertex normals */
 void BKE_mesh_calc_normals_mapping_ex(
         struct MVert *mverts, int numVerts,
         struct MLoop *mloop, struct MPoly *mpolys, int numLoops, int numPolys, float (*polyNors_r)[3],
@@ -183,15 +201,15 @@ void BKE_mesh_calc_normals(
         struct MLoop *mloop, struct MPoly *mpolys,
         int numLoops, int numPolys, float (*polyNors_r)[3]);
 
-	/* Return a newly MEM_malloc'd array of all the mesh vertex locations
-	 * (_numVerts_r_ may be NULL) */
+/* Return a newly MEM_malloc'd array of all the mesh vertex locations
+ * (_numVerts_r_ may be NULL) */
 float (*mesh_getVertexCos(struct Mesh *me, int *numVerts_r))[3];
 
 /* map from uv vertex to face (for select linked, stitch, uv suburf) */
 
 /* UvVertMap */
 
-#define STD_UV_CONNECT_LIMIT	0.0001f
+#define STD_UV_CONNECT_LIMIT  0.0001f
 
 typedef struct UvVertMap {
 	struct UvMapVert **vert;
@@ -266,14 +284,14 @@ void create_vert_poly_map(MeshElemMap **map, int **mem,
                           const struct MPoly *mface, const struct MLoop *mloop,
                           int totvert, int totface, int totloop);
 	
-void create_vert_edge_map(struct ListBase **map, IndexNode **mem, const struct MEdge *medge,
-                          const int totvert, const int totedge);
+void create_vert_edge_map(MeshElemMap **map, int **mem,
+						  const struct MEdge *medge, int totvert, int totedge);
 
 /* vertex level transformations & checks (no derived mesh) */
 
-int  BKE_mesh_minmax(struct Mesh *me, float r_min[3], float r_max[3]);
-int  BKE_mesh_center_median(struct Mesh *me, float cent[3]);
-int  BKE_mesh_center_bounds(struct Mesh *me, float cent[3]);
+int BKE_mesh_minmax(struct Mesh *me, float r_min[3], float r_max[3]);
+int BKE_mesh_center_median(struct Mesh *me, float cent[3]);
+int BKE_mesh_center_bounds(struct Mesh *me, float cent[3]);
 void BKE_mesh_translate(struct Mesh *me, float offset[3], int do_keys);
 
 /* mesh_validate.c */
@@ -283,6 +301,7 @@ int BKE_mesh_validate_arrays(
         struct Mesh *me,
         struct MVert *mverts, unsigned int totvert,
         struct MEdge *medges, unsigned int totedge,
+        struct MFace *mfaces, unsigned int totface,
         struct MLoop *mloops, unsigned int totloop,
         struct MPoly *mpolys, unsigned int totpoly,
         struct MDeformVert *dverts, /* assume totvert length */

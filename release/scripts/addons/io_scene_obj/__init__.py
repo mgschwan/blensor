@@ -26,7 +26,7 @@ bl_info = {
     "description": "Import-Export OBJ, Import OBJ mesh, UV's, "
                    "materials and textures",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Import-Export/Wavefront_OBJ",
     "tracker_url": "",
     "support": 'OFFICIAL',
@@ -54,7 +54,7 @@ from bpy_extras.io_utils import (ExportHelper,
 
 
 class ImportOBJ(bpy.types.Operator, ImportHelper):
-    '''Load a Wavefront OBJ File'''
+    """Load a Wavefront OBJ File"""
     bl_idname = "import_scene.obj"
     bl_label = "Import OBJ"
     bl_options = {'PRESET', 'UNDO'}
@@ -67,7 +67,7 @@ class ImportOBJ(bpy.types.Operator, ImportHelper):
 
     use_ngons = BoolProperty(
             name="NGons",
-            description="Import faces with more than 4 verts as fgons",
+            description="Import faces with more than 4 verts as ngons",
             default=True,
             )
     use_edges = BoolProperty(
@@ -100,7 +100,7 @@ class ImportOBJ(bpy.types.Operator, ImportHelper):
 
     use_image_search = BoolProperty(
             name="Image Search",
-            description="Search subdirs for any assosiated images " \
+            description="Search subdirs for any associated images "
                         "(Warning, may be slow)",
             default=True,
             )
@@ -113,8 +113,8 @@ class ImportOBJ(bpy.types.Operator, ImportHelper):
             )
 
     global_clamp_size = FloatProperty(
-            name="Clamp Scale",
-            description="Clamp the size to this maximum (Zero to Disable)",
+            name="Clamp Size",
+            description="Clamp bounds under this value (zero to disable)",
             min=0.0, max=1000.0,
             soft_min=0.0, soft_max=1000.0,
             default=0.0,
@@ -196,7 +196,7 @@ class ImportOBJ(bpy.types.Operator, ImportHelper):
 
 
 class ExportOBJ(bpy.types.Operator, ExportHelper):
-    '''Save a Wavefront OBJ File'''
+    """Save a Wavefront OBJ File"""
 
     bl_idname = "export_scene.obj"
     bl_label = 'Export OBJ'

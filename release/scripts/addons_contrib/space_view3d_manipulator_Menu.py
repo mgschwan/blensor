@@ -26,7 +26,7 @@ bl_info = {
     'blender': (2, 6, 1),
     'location': 'View3D > Ctrl Space ',
     'description': 'Menu to change the manipulator type and/or disable it',
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.5/Py/'\
+    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/'\
         'Scripts/3D_interaction/Manipulator_Menu',
     'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
         'func=detail&aid=22092',
@@ -43,7 +43,7 @@ def main(context):
     bpy.context.space_data.manipulator = False
 
 #class VIEW3D_OT_disable_manipulator(bpy.types.Operator):
-#    ''''''
+#    """"""
 #    bl_idname = "VIEW3D_OT_disable_manipulator"
 #    bl_label = "disable manipulator"
 #

@@ -86,7 +86,7 @@ typedef struct IDProperty {
 #define IDP_STRING_SUB_UTF8  0 /* default */
 #define IDP_STRING_SUB_BYTE  1 /* arbitrary byte array, _not_ null terminated */
 /*->flag*/
-#define IDP_FLAG_GHOST (1<<7)  /* this means the propery is set but RNA will return
+#define IDP_FLAG_GHOST (1<<7)  /* this means the property is set but RNA will return
                                 * false when checking 'RNA_property_is_set',
                                 * currently this is a runtime flag */
 
@@ -108,7 +108,7 @@ typedef struct ID {
 	void *next, *prev;
 	struct ID *newid;
 	struct Library *lib;
-	char name[66];
+	char name[66]; /* MAX_ID_NAME */
 	short pad, us;
 	/**
 	 * LIB_... flags report on status of the datablock this ID belongs
@@ -139,8 +139,8 @@ typedef struct Library {
 } Library;
 
 enum eIconSizes {
-	ICON_SIZE_ICON,
-	ICON_SIZE_PREVIEW
+	ICON_SIZE_ICON = 0,
+	ICON_SIZE_PREVIEW = 1
 };
 #define NUM_ICON_SIZES (ICON_SIZE_PREVIEW + 1)
 
@@ -206,6 +206,7 @@ typedef struct PreviewImage {
 #define ID_GD		MAKE_ID2('G', 'D') /* GreasePencil */
 #define ID_WM		MAKE_ID2('W', 'M') /* WindowManager */
 #define ID_MC		MAKE_ID2('M', 'C') /* MovieClip */
+#define ID_MSK		MAKE_ID2('M', 'S') /* Mask */
 
 	/* NOTE! Fake IDs, needed for g.sipo->blocktype or outliner */
 #define ID_SEQ		MAKE_ID2('S', 'Q')
@@ -225,19 +226,23 @@ typedef struct PreviewImage {
 #define ID_BLEND_PATH(_bmain, _id) ((_id)->lib ? (_id)->lib->filepath : (_bmain)->name)
 
 #ifdef GS
-#undef GS
+#  undef GS
 #endif
 #define GS(a)	(*((short *)(a)))
+
+#define ID_NEW(a)		if (      (a) && (a)->id.newid ) (a) = (void *)(a)->id.newid
+#define ID_NEW_US(a)	if (      (a)->id.newid)       { (a) = (void *)(a)->id.newid;       (a)->id.us++; }
+#define ID_NEW_US2(a)	if (((ID *)a)->newid)          { (a) = ((ID  *)a)->newid;     ((ID *)a)->us++;    }
 
 /* id->flag: set frist 8 bits always at zero while reading */
 #define LIB_LOCAL		0
 #define LIB_EXTERN		1
 #define LIB_INDIRECT	2
-#define LIB_TEST		8
-#define LIB_TESTEXT		(LIB_TEST | LIB_EXTERN)
-#define LIB_TESTIND		(LIB_TEST | LIB_INDIRECT)
+#define LIB_NEED_EXPAND	8
+#define LIB_TESTEXT		(LIB_NEED_EXPAND | LIB_EXTERN)
+#define LIB_TESTIND		(LIB_NEED_EXPAND | LIB_INDIRECT)
 #define LIB_READ		16
-#define LIB_NEEDLINK	32
+#define LIB_NEED_LINK	32
 
 #define LIB_NEW			256
 #define LIB_FAKEUSER	512

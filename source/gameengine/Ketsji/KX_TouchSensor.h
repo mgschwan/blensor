@@ -56,7 +56,7 @@ protected:
 	/**
 	 * The sensor should only look for objects with this property.
 	 */
-	STR_String				m_touchedpropname;	
+	STR_String				m_touchedpropname;
 	bool					m_bFindMaterial;
 	bool					m_bTouchPulse;		/* changes in the colliding objects trigger pulses */
 	
@@ -93,8 +93,10 @@ public:
 	virtual void UnregisterSumo(KX_TouchEventManager* touchman);
 	virtual void UnregisterToManager();
 
-//	virtual DT_Bool HandleCollision(void* obj1,void* obj2,
-//						 const DT_CollData * coll_data); 
+#if 0
+	virtual DT_Bool HandleCollision(void* obj1,void* obj2,
+	                                const DT_CollData * coll_data);
+#endif
 
 	virtual bool	NewHandleCollision(void*obj1,void*obj2,const PHY_CollData* colldata);
 

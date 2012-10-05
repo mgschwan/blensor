@@ -33,10 +33,10 @@ set(INC
 	../../windowmanager
 	../../gpu
 	../../../../intern/guardedalloc
-	${GLEW_INCLUDE_PATH}
 )
 
 set(INC_SYS
+	${GLEW_INCLUDE_PATH}
 )
 
 set(SRC
@@ -52,6 +52,7 @@ set(SRC
 	clip_utils.c
 	space_clip.c
 	tracking_ops.c
+	tracking_select.c
 
 	clip_intern.h
 )

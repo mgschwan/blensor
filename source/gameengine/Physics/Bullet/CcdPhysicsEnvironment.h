@@ -83,8 +83,6 @@ protected:
 	int	m_profileTimings;
 	bool m_enableSatCollisionDetection;
 
-	btContactSolverInfo	m_solverInfo;
-	
 	void	processFhSprings(double curTime,float timeStep);
 
 	public:
@@ -280,6 +278,8 @@ protected:
 
 		class CcdOverlapFilterCallBack* m_filterCallback;
 
+		class btGhostPairCallback*	m_ghostPairCallback;
+
 		class btDispatcher* m_ownDispatcher;
 
 		bool	m_scalingPropagated;
@@ -288,9 +288,7 @@ protected:
 
 		
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:CcdPhysicsEnvironment"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:CcdPhysicsEnvironment")
 #endif
 };
 

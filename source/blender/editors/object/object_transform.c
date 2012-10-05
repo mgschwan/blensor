@@ -119,7 +119,7 @@ static void object_clear_rot(Object *ob)
 				if ((ob->protectflag & OB_LOCK_ROTZ) == 0)
 					ob->quat[3] = ob->dquat[3] = 0.0f;
 					
-				// TODO: does this quat need normalizing now?
+				/* TODO: does this quat need normalizing now? */
 			}
 			else {
 				/* the flag may have been set for the other modes, so just ignore the extra flag... */
@@ -133,7 +133,7 @@ static void object_clear_rot(Object *ob)
 		}
 		else {
 			/* perform clamping using euler form (3-components) */
-			// FIXME: deltas are not handled for these cases yet...
+			/* FIXME: deltas are not handled for these cases yet... */
 			float eul[3], oldeul[3], quat1[4] = {0};
 			
 			if (ob->rotmode == ROT_MODE_QUAT) {
@@ -361,7 +361,7 @@ void OBJECT_OT_origin_clear(wmOperatorType *ot)
 /*************************** Apply Transformation ****************************/
 
 /* use this when the loc/size/rot of the parent has changed but the children
-* should stay in the same place, e.g. for apply-size-rot or object center */
+ * should stay in the same place, e.g. for apply-size-rot or object center */
 static void ignore_parent_tx(Main *bmain, Scene *scene, Object *ob)
 {
 	Object workob;
@@ -382,7 +382,7 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	float rsmat[3][3], tmat[3][3], obmat[3][3], iobmat[3][3], mat[4][4], scale;
-	int a, change = 0;
+	int a, change = 1;
 	
 	/* first check if we can execute */
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
@@ -391,19 +391,19 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 		if (ob->type == OB_MESH) {
 			if (ID_REAL_USERS(ob->data) > 1) {
 				BKE_report(reports, RPT_ERROR, "Can't apply to a multi user mesh, doing nothing");
-				return OPERATOR_CANCELLED;
+				change = 0;
 			}
 		}
 		else if (ob->type == OB_ARMATURE) {
 			if (ID_REAL_USERS(ob->data) > 1) {
 				BKE_report(reports, RPT_ERROR, "Can't apply to a multi user armature, doing nothing");
-				return OPERATOR_CANCELLED;
+				change = 0;
 			}
 		}
 		else if (ob->type == OB_LATTICE) {
 			if (ID_REAL_USERS(ob->data) > 1) {
 				BKE_report(reports, RPT_ERROR, "Can't apply to a multi user lattice, doing nothing");
-				return OPERATOR_CANCELLED;
+				change = 0;
 			}
 		}
 		else if (ELEM(ob->type, OB_CURVE, OB_SURF)) {
@@ -411,23 +411,28 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 
 			if (ID_REAL_USERS(ob->data) > 1) {
 				BKE_report(reports, RPT_ERROR, "Can't apply to a multi user curve, doing nothing");
-				return OPERATOR_CANCELLED;
+				change = 0;
 			}
 
 			cu = ob->data;
 
 			if (!(cu->flag & CU_3D) && (apply_rot || apply_loc)) {
 				BKE_report(reports, RPT_ERROR, "Neither rotation nor location could be applied to a 2d curve, doing nothing");
-				return OPERATOR_CANCELLED;
+				change = 0;
 			}
 			if (cu->key) {
 				BKE_report(reports, RPT_ERROR, "Can't apply to a curve with vertex keys, doing nothing");
-				return OPERATOR_CANCELLED;
+				change = 0;
 			}
 		}
 	}
 	CTX_DATA_END;
 	
+	if (!change)
+		return OPERATOR_CANCELLED;
+
+	change = 0;
+
 	/* now execute */
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
@@ -472,7 +477,8 @@ static int apply_objects_internal(bContext *C, ReportList *reports, int apply_lo
 			Mesh *me = ob->data;
 			MVert *mvert;
 
-			multiresModifier_scale_disp(scene, ob);
+			if (apply_scale)
+				multiresModifier_scale_disp(scene, ob);
 			
 			/* adjust data */
 			mvert = me->mvert;
@@ -653,7 +659,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
 	Object *tob;
-	float cursor[3], cent[3], cent_neg[3], centn[3], min[3], max[3];
+	float cursor[3], cent[3], cent_neg[3], centn[3];
 	int centermode = RNA_enum_get(op->ptr, "type");
 	int around = RNA_enum_get(op->ptr, "center"); /* initialized from v3d->around */
 
@@ -675,14 +681,11 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 	zero_v3(cent);
 
 	if (obedit) {
-		INIT_MINMAX(min, max);
-
 		if (obedit->type == OB_MESH) {
 			Mesh *me = obedit->data;
 			BMEditMesh *em = me->edit_btmesh;
 			BMVert *eve;
 			BMIter iter;
-			int total = 0;
 			
 			if (centermode == ORIGIN_TO_CURSOR) {
 				copy_v3_v3(cent, cursor);
@@ -690,16 +693,19 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 				mul_m4_v3(obedit->imat, cent);
 			}
 			else {
-				BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
-					if (around == V3D_CENTROID) {
-						total++;
-						add_v3_v3(cent, eve->co);
-						mul_v3_fl(cent, 1.0f / (float)total);
+				if (around == V3D_CENTROID) {
+					const float total_div = 1.0f / (float)em->bm->totvert;
+					BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
+						madd_v3_v3fl(cent, eve->co, total_div);
 					}
-					else {
-						DO_MINMAX(eve->co, min, max);
-						mid_v3_v3v3(cent, min, max);
+				}
+				else {
+					float min[3], max[3];
+					INIT_MINMAX(min, max);
+					BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
+						minmax_v3v3_v3(min, max, eve->co);
 					}
+					mid_v3_v3v3(cent, min, max);
 				}
 			}
 			
@@ -746,11 +752,14 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 						tot_lib_error++;
 					}
 					else {
-						if (centermode == ORIGIN_TO_CURSOR) { /* done */ }
+						if (centermode == ORIGIN_TO_CURSOR) {
+							/* done */
+						}
 						else {
+							float min[3], max[3];
 							/* only bounds support */
 							INIT_MINMAX(min, max);
-							BKE_object_minmax_dupli(scene, ob, min, max);
+							BKE_object_minmax_dupli(scene, ob, min, max, TRUE);
 							mid_v3_v3v3(cent, min, max);
 							invert_m4_m4(ob->imat, ob->obmat);
 							mul_m4_v3(ob->imat, cent);

@@ -58,12 +58,12 @@ struct Heap {
 #define HEAP_LEFT(i)   ((i << 1) + 1)
 #define HEAP_RIGHT(i)  ((i << 1) + 2)
 #define HEAP_COMPARE(a, b) (a->value < b->value)
-#define HEAP_EQUALS(a, b) (a->value == b->value)
+// #define HEAP_EQUALS(a, b) (a->value == b->value) // UNUSED
 #define HEAP_SWAP(heap, i, j) \
-{                                                                             \
-	SWAP(int, heap->tree[i]->index, heap->tree[j]->index);                    \
-	SWAP(HeapNode *, heap->tree[i], heap->tree[j]);                           \
-}
+	{                                                                            \
+		SWAP(int, heap->tree[i]->index, heap->tree[j]->index);                   \
+		SWAP(HeapNode *, heap->tree[i], heap->tree[j]);                          \
+	} (void)0
 
 /***/
 
@@ -184,7 +184,7 @@ void *BLI_heap_popmin(Heap *heap)
 	if (heap->size == 1)
 		heap->size--;
 	else {
-		HEAP_SWAP(heap, 0, heap->size-1);
+		HEAP_SWAP(heap, 0, heap->size - 1);
 		heap->size--;
 
 		BLI_heap_down(heap, 0);

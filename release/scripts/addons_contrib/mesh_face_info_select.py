@@ -21,11 +21,13 @@ bl_info = {
     "author": "CoDEmanX",
     "version": (0, 0, 3),
     "blender": (2, 6, 2),
-    "location": "Object data > Face info / select",
-    "description": "Displays triangle, quad and ngon count of the active object. Allows to select faces by these type.",
+    "location": "Properties > Object data > Face info / select",
+    "description": "Displays triangle, quad and ngon count of the active object. Allows to select faces by these types.",
     "warning": "",
-    "wiki_url": "",
-    "tracker_url": "",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
+        "Scripts/Mesh/Face_Info_Select",
+    "tracker_url": "http://projects.blender.org/tracker/index.php?"\
+        "func=detail&aid=31926",
     "support": 'TESTING',
     "category": "Mesh"
 }
@@ -37,7 +39,7 @@ import bpy
 from bpy.props import EnumProperty
 
 class DATA_OP_facetype_select(bpy.types.Operator):
-    '''Selects all faces of a certain type'''
+    """Select all faces of a certain type"""
     bl_idname = "data.facetype_select"
     bl_label = "Select by face type"
     bl_options = {'REGISTER', 'UNDO'}
@@ -74,6 +76,7 @@ class DATA_PT_info_panel(bpy.types.Panel):
     bl_space_type = "PROPERTIES"
     bl_region_type = "WINDOW"
     bl_context = "data"
+    bl_options = {'DEFAULT_CLOSED'}
 
     @classmethod
     def poll(self, context):

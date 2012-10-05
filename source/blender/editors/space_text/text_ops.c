@@ -310,7 +310,8 @@ void TEXT_OT_open(wmOperatorType *ot)
 	ot->flag = OPTYPE_UNDO;
 	
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | TEXTFILE | PYSCRIPTFILE, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);  //XXX TODO, relative_path
+	WM_operator_properties_filesel(ot, FOLDERFILE | TEXTFILE | PYSCRIPTFILE, FILE_SPECIAL, FILE_OPENFILE,
+	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);  //XXX TODO, relative_path
 	RNA_def_boolean(ot->srna, "internal", 0, "Make internal", "Make text file internal after loading");
 }
 
@@ -570,7 +571,8 @@ void TEXT_OT_save_as(wmOperatorType *ot)
 	ot->poll = text_edit_poll;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | TEXTFILE | PYSCRIPTFILE, FILE_SPECIAL, FILE_SAVE, WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);  //XXX TODO, relative_path
+	WM_operator_properties_filesel(ot, FOLDERFILE | TEXTFILE | PYSCRIPTFILE, FILE_SPECIAL, FILE_SAVE,
+	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);  //XXX TODO, relative_path
 }
 
 /******************* run script operator *********************/
@@ -600,9 +602,12 @@ static int text_run_script(bContext *C, ReportList *reports)
 
 	/* Don't report error messages while live editing */
 	if (!is_live) {
-		if (text->curl != curl_prev || curc_prev != text->curc) {
-			text_update_cursor_moved(C);
-			WM_event_add_notifier(C, NC_TEXT | NA_EDITED, text);
+		/* text may have freed its self */
+		if (CTX_data_edit_text(C) == text) {
+			if (text->curl != curl_prev || curc_prev != text->curc) {
+				text_update_cursor_moved(C);
+				WM_event_add_notifier(C, NC_TEXT | NA_EDITED, text);
+			}
 		}
 
 		BKE_report(reports, RPT_ERROR, "Python script fail, look in the console for now...");
@@ -830,7 +835,7 @@ void TEXT_OT_paste(wmOperatorType *ot)
 
 static int text_duplicate_line_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	Text *text= CTX_data_edit_text(C);
+	Text *text = CTX_data_edit_text(C);
 	
 	txt_duplicate_line(text);
 	
@@ -1341,7 +1346,7 @@ static int move_lines_exec(bContext *C, wmOperator *op)
 	txt_move_lines(text, direction);
 	
 	text_update_cursor_moved(C);
-	WM_event_add_notifier(C, NC_TEXT|NA_EDITED, text);
+	WM_event_add_notifier(C, NC_TEXT | NA_EDITED, text);
 
 	/* run the script while editing, evil but useful */
 	if (CTX_wm_space_text(C)->live_edit)
@@ -1352,7 +1357,7 @@ static int move_lines_exec(bContext *C, wmOperator *op)
 
 void TEXT_OT_move_lines(wmOperatorType *ot)
 {
-	static EnumPropertyItem direction_items[]= {
+	static EnumPropertyItem direction_items[] = {
 		{TXT_MOVE_LINE_UP, "UP", 0, "Up", ""},
 		{TXT_MOVE_LINE_DOWN, "DOWN", 0, "Down", ""},
 		{0, NULL, 0, NULL, NULL}
@@ -2407,8 +2412,8 @@ static int text_scroll_bar_invoke(bContext *C, wmOperator *op, wmEvent *event)
 
 	/* jump scroll, works in v2d but needs to be added here too :S */
 	if (event->type == MIDDLEMOUSE) {
-		tsc->old[0] = ar->winrct.xmin + (st->txtbar.xmax + st->txtbar.xmin) / 2;
-		tsc->old[1] = ar->winrct.ymin + (st->txtbar.ymax + st->txtbar.ymin) / 2;
+		tsc->old[0] = ar->winrct.xmin + BLI_rcti_cent_x(&st->txtbar);
+		tsc->old[1] = ar->winrct.ymin + BLI_rcti_cent_y(&st->txtbar);
 
 		tsc->delta[0] = 0;
 		tsc->delta[1] = 0;
@@ -2888,7 +2893,7 @@ static int text_insert_exec(bContext *C, wmOperator *op)
 	SpaceText *st = CTX_wm_space_text(C);
 	Text *text = CTX_data_edit_text(C);
 	char *str;
-	int done = 0;
+	int done = FALSE;
 	size_t i = 0;
 	unsigned int code;
 
@@ -2928,8 +2933,11 @@ static int text_insert_invoke(bContext *C, wmOperator *op, wmEvent *event)
 
 	// if (!RNA_struct_property_is_set(op->ptr, "text")) { /* always set from keymap XXX */
 	if (!RNA_string_length(op->ptr, "text")) {
-		/* if alt/ctrl/super are pressed pass through */
-		if (event->ctrl || event->oskey) {
+		/* if alt/ctrl/super are pressed pass through except for utf8 character event
+		 * (when input method are used for utf8 inputs, the user may assign key event
+		 * including alt/ctrl/super like ctrl+m to commit utf8 string.  in such case,
+		 * the modifiers in the utf8 character event make no sense.) */
+		if ((event->ctrl || event->oskey) && !event->utf8_buf[0]) {
 			return OPERATOR_PASS_THROUGH;
 		}
 		else {

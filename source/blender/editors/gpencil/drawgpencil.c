@@ -37,10 +37,8 @@
 
 #include "BLO_sys_types.h"
 
-#include "IMB_imbuf_types.h"
-
-#include "BLI_math.h"
 #include "BLI_blenlib.h"
+#include "BLI_math.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_gpencil_types.h"
@@ -53,8 +51,6 @@
 #include "BKE_global.h"
 #include "BKE_gpencil.h"
 
-
-
 #include "WM_api.h"
 
 #include "BIF_gl.h"
@@ -63,7 +59,6 @@
 #include "ED_gpencil.h"
 #include "ED_sequencer.h"
 #include "ED_view3d.h"
-
 
 #include "gpencil_intern.h"
 
@@ -182,8 +177,8 @@ static void gp_draw_stroke_point(bGPDspoint *points, short thickness, short dfla
 		/* if thickness is less than GP_DRAWTHICKNESS_SPECIAL, simple dot looks ok
 		 *  - also mandatory in if Image Editor 'image-based' dot
 		 */
-		if ( (thickness < GP_DRAWTHICKNESS_SPECIAL) ||
-		     ((dflag & GP_DRAWDATA_IEDITHACK) && (sflag & GP_STROKE_2DSPACE)) )
+		if ((thickness < GP_DRAWTHICKNESS_SPECIAL) ||
+		    ((dflag & GP_DRAWDATA_IEDITHACK) && (sflag & GP_STROKE_2DSPACE)))
 		{
 			glBegin(GL_POINTS);
 			glVertex2fv(co);
@@ -225,7 +220,7 @@ static void gp_draw_stroke_3d(bGPDspoint *points, int totpoints, short thickness
 			
 			/* need to roll-back one point to ensure that there are no gaps in the stroke */
 			if (i != 0) glVertex3fv(&(pt - 1)->x);
-
+			
 			/* now the point we want... */
 			glVertex3fv(&pt->x);
 			
@@ -258,8 +253,8 @@ static void gp_draw_stroke(bGPDspoint *points, int totpoints, short thickness_s,
 	/* if thickness is less than GP_DRAWTHICKNESS_SPECIAL, 'smooth' opengl lines look better
 	 *  - 'smooth' opengl lines are also required if Image Editor 'image-based' stroke
 	 */
-	if ( (thickness < GP_DRAWTHICKNESS_SPECIAL) || 
-	     ((dflag & GP_DRAWDATA_IEDITHACK) && (dflag & GP_DRAWDATA_ONLYV2D)) )
+	if ((thickness < GP_DRAWTHICKNESS_SPECIAL) ||
+	    ((dflag & GP_DRAWDATA_IEDITHACK) && (dflag & GP_DRAWDATA_ONLYV2D)))
 	{
 		bGPDspoint *pt;
 		int i;
@@ -286,7 +281,7 @@ static void gp_draw_stroke(bGPDspoint *points, int totpoints, short thickness_s,
 	}
 	
 	/* tessellation code - draw stroke as series of connected quads with connection
-	 * edges rotated to minimise shrinking artifacts, and rounded endcaps
+	 * edges rotated to minimize shrinking artifacts, and rounded endcaps
 	 */
 	else {
 		bGPDspoint *pt1, *pt2;
@@ -340,7 +335,7 @@ static void gp_draw_stroke(bGPDspoint *points, int totpoints, short thickness_s,
 				mt[1] = m2[1] * pthick * 0.5f;
 				sc[0] = s0[0] - (m1[0] * pthick * 0.75f);
 				sc[1] = s0[1] - (m1[1] * pthick * 0.75f);
-
+				
 				t0[0] = sc[0] - mt[0];
 				t0[1] = sc[1] - mt[1];
 				t1[0] = sc[0] + mt[0];
@@ -382,7 +377,7 @@ static void gp_draw_stroke(bGPDspoint *points, int totpoints, short thickness_s,
 				mt[1] = mb[1] * pthick;
 				athick = len_v2(mt);
 				dfac = pthick - (athick * 2);
-
+				
 				if (((athick * 2.0f) < pthick) && (IS_EQF(athick, pthick) == 0)) {
 					mt[0] += (mb[0] * dfac);
 					mt[1] += (mb[1] * dfac);
@@ -429,7 +424,7 @@ static void gp_draw_stroke(bGPDspoint *points, int totpoints, short thickness_s,
 				mt[1] = m2[1] * pthick * 0.5f;
 				sc[0] = s1[0] + (m1[0] * pthick * 0.75f);
 				sc[1] = s1[1] + (m1[1] * pthick * 0.75f);
-
+				
 				t0[0] = sc[0] - mt[0];
 				t0[1] = sc[1] - mt[1];
 				t1[0] = sc[0] + mt[0];
@@ -669,7 +664,7 @@ static void gp_draw_data(bGPdata *gpd, int offsx, int offsy, int winx, int winy,
 // ............................
 
 /* draw grease-pencil sketches to specified 2d-view that uses ibuf corrections */
-void draw_gpencil_2dimage(bContext *C, ImBuf *ibuf)
+void draw_gpencil_2dimage(const bContext *C)
 {
 	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = CTX_wm_region(C);
@@ -678,8 +673,6 @@ void draw_gpencil_2dimage(bContext *C, ImBuf *ibuf)
 	int offsx, offsy, sizex, sizey;
 	int dflag = GP_DRAWDATA_NOSTATUS;
 	
-	/* check that we have grease-pencil stuff to draw */
-	if (ELEM(NULL, sa, ibuf)) return;
 	gpd = gpencil_data_get_active(C); // XXX
 	if (gpd == NULL) return;
 	
@@ -690,7 +683,7 @@ void draw_gpencil_2dimage(bContext *C, ImBuf *ibuf)
 		{
 			
 			/* just draw using standard scaling (settings here are currently ignored anyways) */
-			// FIXME: the opengl poly-strokes don't draw at right thickness when done this way, so disabled
+			/* FIXME: the opengl poly-strokes don't draw at right thickness when done this way, so disabled */
 			offsx = 0;
 			offsy = 0;
 			sizex = ar->winx;
@@ -701,32 +694,20 @@ void draw_gpencil_2dimage(bContext *C, ImBuf *ibuf)
 			dflag |= GP_DRAWDATA_ONLYV2D | GP_DRAWDATA_IEDITHACK;
 		}
 		break;
-#if 0   /* removed since 2.5x, needs to be added back */
 		case SPACE_SEQ: /* sequence */
 		{
-			SpaceSeq *sseq = (SpaceSeq *)sa->spacedata.first;
-			float zoom, zoomx, zoomy;
+			/* just draw using standard scaling (settings here are currently ignored anyways) */
+			offsx = 0;
+			offsy = 0;
+			sizex = ar->winx;
+			sizey = ar->winy;
 			
-			/* calculate accessory values */
-			zoom = (float)(SEQ_ZOOM_FAC(sseq->zoom));
-			if (sseq->mainb == SEQ_DRAW_IMG_IMBUF) {
-				/* XXX sequencer zoom should store it? */
-				zoomx = zoom; //  * (G.scene->r.xasp / G.scene->r.yasp);
-				zoomy = zoom;
-			} 
-			else
-				zoomx = zoomy = zoom;
-			
-			/* calculate transforms (Note: we use ibuf here, as we have it) */
-			sizex = (int)(zoomx * ibuf->x);
-			sizey = (int)(zoomy * ibuf->y);
-			offsx = (int)( (ar->winx - sizex) / 2 + sseq->xof);
-			offsy = (int)( (ar->winy - sizey) / 2 + sseq->yof);
-			
-			dflag |= GP_DRAWDATA_ONLYI2D;
+			/* NOTE: I2D was used in 2.4x, but the old settings for that have been deprecated 
+			 * and everything moved to standard View2d 
+			 */
+			dflag |= GP_DRAWDATA_ONLYV2D;
 		}
 		break;
-#endif
 		default: /* for spacetype not yet handled */
 			offsx = 0;
 			offsy = 0;
@@ -745,7 +726,7 @@ void draw_gpencil_2dimage(bContext *C, ImBuf *ibuf)
 /* draw grease-pencil sketches to specified 2d-view assuming that matrices are already set correctly 
  * Note: this gets called twice - first time with onlyv2d=1 to draw 'canvas' strokes, second time with onlyv2d=0 for screen-aligned strokes
  */
-void draw_gpencil_view2d(bContext *C, short onlyv2d)
+void draw_gpencil_view2d(const bContext *C, short onlyv2d)
 {
 	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = CTX_wm_region(C);
@@ -759,7 +740,7 @@ void draw_gpencil_view2d(bContext *C, short onlyv2d)
 	if (gpd == NULL) return;
 	
 	/* special hack for Image Editor */
-	// FIXME: the opengl poly-strokes don't draw at right thickness when done this way, so disabled
+	/* FIXME: the opengl poly-strokes don't draw at right thickness when done this way, so disabled */
 	if (ELEM(sa->spacetype, SPACE_IMAGE, SPACE_CLIP))
 		dflag |= GP_DRAWDATA_IEDITHACK;
 	
@@ -776,8 +757,8 @@ void draw_gpencil_view3d(Scene *scene, View3D *v3d, ARegion *ar, short only3d)
 {
 	bGPdata *gpd;
 	int dflag = 0;
-	rcti rect;
 	RegionView3D *rv3d = ar->regiondata;
+	int offsx,  offsy,  winx,  winy;
 
 	/* check that we have grease-pencil stuff to draw */
 	gpd = gpencil_data_get_active_v3d(scene); // XXX
@@ -788,19 +769,23 @@ void draw_gpencil_view3d(Scene *scene, View3D *v3d, ARegion *ar, short only3d)
 	if ((rv3d->persp == RV3D_CAMOB) && !(G.f & G_RENDER_OGL)) {
 		rctf rectf;
 		ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, &rectf, TRUE); /* no shift */
-		BLI_copy_rcti_rctf(&rect, &rectf);
+
+		offsx = floorf(rectf.xmin + 0.5f);
+		offsy = floorf(rectf.ymin + 0.5f);
+		winx  = floorf((rectf.xmax - rectf.xmin) + 0.5f);
+		winy  = floorf((rectf.ymax - rectf.ymin) + 0.5f);
 	}
 	else {
-		rect.xmin = 0;
-		rect.ymin = 0;
-		rect.xmax = ar->winx;
-		rect.ymax = ar->winy;
+		offsx = 0;
+		offsy = 0;
+		winx  = ar->winx;
+		winy  = ar->winy;
 	}
 	
 	/* draw it! */
 	if (only3d) dflag |= (GP_DRAWDATA_ONLY3D | GP_DRAWDATA_NOSTATUS);
 
-	gp_draw_data(gpd, rect.xmin, rect.ymin, rect.xmax, rect.ymax, CFRA, dflag);
+	gp_draw_data(gpd, offsx, offsy, winx, winy, CFRA, dflag);
 }
 
 /* ************************************************** */

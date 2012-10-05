@@ -49,7 +49,7 @@ typedef struct bArgDoc {
 	const char *short_arg;
 	const char *long_arg;
 	const char *documentation;
-	int  done;
+	int done;
 } bArgDoc;
 
 typedef struct bAKey {
@@ -68,27 +68,27 @@ typedef struct bArgument {
 struct bArgs {
 	ListBase docs;
 	GHash  *items;
-	int 	argc;
+	int argc;
 	const char  **argv;
-	int	  *passes;
+	int *passes;
 };
 
 static unsigned int case_strhash(const void *ptr)
 {
-	const char *s= ptr;
-	unsigned int i= 0;
+	const char *s = ptr;
+	unsigned int i = 0;
 	unsigned char c;
 
-	while ( (c= tolower(*s++)) )
-		i= i*37 + c;
+	while ( (c = tolower(*s++)) )
+		i = i * 37 + c;
 
 	return i;
 }
 
-static unsigned int	keyhash(const void *ptr)
+static unsigned int keyhash(const void *ptr)
 {
 	const bAKey *k = ptr;
-	return case_strhash(k->arg); // ^ BLI_ghashutil_inthash((void*)k->pass);
+	return case_strhash(k->arg);  /* ^ BLI_ghashutil_inthash((void *)k->pass); */
 }
 
 static int keycmp(const void *a, const void *b)
@@ -102,7 +102,7 @@ static int keycmp(const void *a, const void *b)
 			return strcmp(ka->arg, kb->arg);
 	}
 	else {
-		return BLI_ghashutil_intcmp((const void*)ka->pass, (const void*)kb->pass);
+		return BLI_ghashutil_intcmp((const void *)ka->pass, (const void *)kb->pass);
 	}
 }
 
@@ -173,7 +173,8 @@ static bArgDoc *internalDocs(struct bArgs *ba, const char *short_arg, const char
 	return d;
 }
 
-static void internalAdd(struct bArgs *ba, const char *arg, int pass, int case_str, BA_ArgCallback cb, void *data, bArgDoc *d)
+static void internalAdd(struct bArgs *ba, const char *arg, int pass,
+                        int case_str, BA_ArgCallback cb, void *data, bArgDoc *d)
 {
 	bArgument *a;
 	bAKey *key;
@@ -182,8 +183,10 @@ static void internalAdd(struct bArgs *ba, const char *arg, int pass, int case_st
 
 	if (a) {
 		printf("WARNING: conflicting argument\n");
-		printf("\ttrying to add '%s' on pass %i, %scase sensitive\n", arg, pass, case_str == 1? "not ": "");
-		printf("\tconflict with '%s' on pass %i, %scase sensitive\n\n", a->key->arg, (int)a->key->pass, a->key->case_str == 1? "not ": "");
+		printf("\ttrying to add '%s' on pass %i, %scase sensitive\n",
+		       arg, pass, case_str == 1 ? "not " : "");
+		printf("\tconflict with '%s' on pass %i, %scase sensitive\n\n",
+		       a->key->arg, (int)a->key->pass, a->key->case_str == 1 ? "not " : "");
 	}
 
 	a = MEM_callocN(sizeof(bArgument), "bArgument");
@@ -201,7 +204,10 @@ static void internalAdd(struct bArgs *ba, const char *arg, int pass, int case_st
 	BLI_ghash_insert(ba->items, key, a);
 }
 
-void BLI_argsAddCase(struct bArgs *ba, int pass, const char *short_arg, int short_case, const char *long_arg, int long_case, const char *doc, BA_ArgCallback cb, void *data)
+void BLI_argsAddCase(struct bArgs *ba, int pass,
+                     const char *short_arg, int short_case,
+                     const char *long_arg, int long_case,
+                     const char *doc, BA_ArgCallback cb, void *data)
 {
 	bArgDoc *d = internalDocs(ba, short_arg, long_arg, doc);
 
@@ -214,7 +220,9 @@ void BLI_argsAddCase(struct bArgs *ba, int pass, const char *short_arg, int shor
 
 }
 
-void BLI_argsAdd(struct bArgs *ba, int pass, const char *short_arg, const char *long_arg, const char *doc, BA_ArgCallback cb, void *data)
+void BLI_argsAdd(struct bArgs *ba, int pass,
+                 const char *short_arg, const char *long_arg,
+                 const char *doc, BA_ArgCallback cb, void *data)
 {
 	BLI_argsAddCase(ba, pass, short_arg, 0, long_arg, 0, doc, cb, data);
 }
@@ -240,7 +248,7 @@ void BLI_argsPrintArgDoc(struct bArgs *ba, const char *arg)
 
 		internalDocPrint(d);
 
-		d->done = 1;
+		d->done = TRUE;
 	}
 }
 
@@ -259,9 +267,9 @@ void BLI_argsParse(struct bArgs *ba, int pass, BA_ArgCallback default_cb, void *
 {
 	int i = 0;
 
-	for ( i = 1; i < ba->argc; i++) { /* skip argv[0] */
+	for (i = 1; i < ba->argc; i++) {  /* skip argv[0] */
 		if (ba->passes[i] == 0) {
-			 /* -1 signal what side of the comparison it is */
+			/* -1 signal what side of the comparison it is */
 			bArgument *a = lookUp(ba, ba->argv[i], pass, -1);
 			BA_ArgCallback func = NULL;
 			void *data = NULL;

@@ -22,6 +22,7 @@ subject to the following restrictions:
 
 #include "CcdPhysicsController.h"
 #include "btBulletDynamicsCommon.h"
+#include "BulletCollision/CollisionDispatch/btGhostObject.h"
 #include "BulletCollision/CollisionShapes/btScaledBvhTriangleMeshShape.h"
 
 #include "BulletCollision/CollisionShapes/btTriangleIndexVertexArray.h"
@@ -59,8 +60,8 @@ extern float gDeactivationTime;
 extern bool gDisableDeactivation;
 
 
-float gLinearSleepingTreshold = 0.8f;
-float gAngularSleepingTreshold = 1.0f;
+float gLinearSleepingTreshold;
+float gAngularSleepingTreshold;
 
 
 btVector3 startVel(0,0,0);//-10000);
@@ -88,7 +89,7 @@ CcdPhysicsController::CcdPhysicsController (const CcdConstructionInfo& ci)
 		m_shapeInfo->AddRef();
 	
 	m_bulletMotionState = 0;
-	
+	m_characterController = 0;
 	
 	CreateRigidbody();
 	
@@ -151,6 +152,24 @@ public:
 
 };
 
+class BlenderBulletCharacterController : public btKinematicCharacterController
+{
+private:
+	btMotionState* m_motionState;
+
+public:
+	BlenderBulletCharacterController(btMotionState *motionState, btPairCachingGhostObject *ghost, btConvexShape* shape, float stepHeight)
+		: btKinematicCharacterController(ghost,shape,stepHeight,2),
+		  m_motionState(motionState)
+	{
+	}
+
+	virtual void updateAction(btCollisionWorld *collisionWorld, btScalar dt)
+	{
+		btKinematicCharacterController::updateAction(collisionWorld,dt);
+		m_motionState->setWorldTransform(getGhostObject()->getWorldTransform());
+	}
+};
 
 btRigidBody* CcdPhysicsController::GetRigidBody()
 {
@@ -163,6 +182,10 @@ btCollisionObject*	CcdPhysicsController::GetCollisionObject()
 btSoftBody* CcdPhysicsController::GetSoftBody()
 {
 	return btSoftBody::upcast(m_object);
+}
+btKinematicCharacterController* CcdPhysicsController::GetCharacterController()
+{
+	return m_characterController;
 }
 
 #include "BulletSoftBody/btSoftBodyHelpers.h"
@@ -425,6 +448,29 @@ bool CcdPhysicsController::CreateSoftbody()
 	return true;
 }
 
+bool CcdPhysicsController::CreateCharacterController()
+{
+	if (!m_cci.m_bCharacter)
+		return false;
+ 
+	m_object = new btPairCachingGhostObject();
+	m_object->setCollisionShape(m_collisionShape);
+	m_object->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
+
+	btTransform trans;
+	m_bulletMotionState->getWorldTransform(trans);
+	m_object->setWorldTransform(trans);
+
+	m_characterController = new BlenderBulletCharacterController(m_bulletMotionState,(btPairCachingGhostObject*)m_object,(btConvexShape*)m_collisionShape,m_cci.m_stepHeight);
+
+	PHY__Vector3 gravity;
+	m_cci.m_physicsEnv->getGravity(gravity);
+	m_characterController->setGravity(-gravity.m_vec[2]); // need positive gravity
+	m_characterController->setJumpSpeed(m_cci.m_jumpSpeed);
+	m_characterController->setFallSpeed(m_cci.m_fallSpeed);
+
+	return true;
+}
 
 void CcdPhysicsController::CreateRigidbody()
 {
@@ -433,7 +479,7 @@ void CcdPhysicsController::CreateRigidbody()
 	m_bulletMotionState = new BlenderBulletMotionState(m_MotionState);
 
 	///either create a btCollisionObject, btRigidBody or btSoftBody
-	if (CreateSoftbody())
+	if (CreateSoftbody() || CreateCharacterController())
 		// soft body created, done
 		return;
 
@@ -473,6 +519,7 @@ void CcdPhysicsController::CreateRigidbody()
 			body->setAngularFactor(0.f);
 		}
 		body->setContactProcessingThreshold(m_cci.m_contactProcessingThreshold);
+		body->setSleepingThresholds(gLinearSleepingTreshold, gAngularSleepingTreshold);
 
 	}
 	if (m_object && m_cci.m_do_anisotropic)
@@ -488,6 +535,13 @@ static void DeleteBulletShape(btCollisionShape* shape, bool free)
 	{
 		// shapes based on meshes use an interface that contains the vertices.
 		btTriangleMeshShape* meshShape = static_cast<btTriangleMeshShape*>(shape);
+		btStridingMeshInterface* meshInterface = meshShape->getMeshInterface();
+		if (meshInterface)
+			delete meshInterface;
+	}
+	else if (shape->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+	{
+		btGImpactMeshShape* meshShape = static_cast<btGImpactMeshShape*>(shape);
 		btStridingMeshInterface* meshInterface = meshShape->getMeshInterface();
 		if (meshInterface)
 			delete meshInterface;
@@ -578,6 +632,8 @@ CcdPhysicsController::~CcdPhysicsController()
 		delete m_MotionState;
 	if (m_bulletMotionState)
 		delete m_bulletMotionState;
+	if (m_characterController)
+		delete m_characterController;
 	delete m_object;
 
 	DeleteControllerShape();
@@ -731,7 +787,7 @@ void		CcdPhysicsController::PostProcessReplica(class PHY_IMotionState* motionsta
 			if (oldbody->getActivationState() == DISABLE_DEACTIVATION)
 				body->setActivationState(DISABLE_DEACTIVATION);
 		}
-	}	
+	}
 	// sensor object are added when needed
 	if (!m_cci.m_bSensor)
 		m_cci.m_physicsEnv->addCcdPhysicsController(this);
@@ -750,7 +806,7 @@ void		CcdPhysicsController::PostProcessReplica(class PHY_IMotionState* motionsta
 	
 	m_sumoObj	=	new SM_Object(
 		orgsumoobject->getShapeHandle(), 
-		orgsumoobject->getMaterialProps(),			
+		orgsumoobject->getMaterialProps(),
 		orgsumoobject->getShapeProps(),
 		dynaparent);
 	
@@ -782,6 +838,11 @@ void	CcdPhysicsController::SetPhysicsEnvironment(class PHY_IPhysicsEnvironment *
 		if (m_cci.m_physicsEnv->removeCcdPhysicsController(this))
 		{
 			physicsEnv->addCcdPhysicsController(this);
+
+			// Set the object to be active so it can at least by evaluated once.
+			// This fixes issues with static objects not having their physics meshes
+			// in the right spot when lib loading.
+			this->GetCollisionObject()->setActivationState(ACTIVE_TAG);
 		}
 		m_cci.m_physicsEnv = physicsEnv;
 	}
@@ -1081,7 +1142,7 @@ void		CcdPhysicsController::ApplyForce(float forceX,float forceY,float forceZ,bo
 		btTransform xform = m_object->getWorldTransform();
 		
 		if (local)
-		{	
+		{
 			force	= xform.getBasis()*force;
 		}
 		btRigidBody* body = GetRigidBody();
@@ -1240,17 +1301,16 @@ void		CcdPhysicsController::getReactionForce(float& forceX,float& forceY,float& 
 		// dyna's that are rigidbody are free in orientation, dyna's with non-rigidbody are restricted 
 void		CcdPhysicsController::setRigidBody(bool rigid)
 {
-	if (!rigid)
+	btRigidBody* body = GetRigidBody();
+	if (body)
 	{
-		btRigidBody* body = GetRigidBody();
-		if (body)
-		{
-			//fake it for now
-			btVector3 inertia = body->getInvInertiaDiagLocal();
-			inertia[1] = 0.f;
-			body->setInvInertiaDiagLocal(inertia);
-			body->updateInertiaTensor();
+		m_cci.m_bRigid = rigid;
+		if (!rigid) {
+			body->setAngularFactor(0.f);
+			body->setAngularVelocity(btVector3(0.f, 0.f, 0.f));
 		}
+		else
+			body->setAngularFactor(m_cci.m_angularFactor);
 	}
 }
 
@@ -1601,7 +1661,7 @@ bool CcdShapeConstructionInfo::SetMesh(RAS_MeshObject* meshobj, DerivedMesh* dm,
 				}
 				if (vert_tag_array[mf->v3]==true) { /* *** v3 *** */
 					vert_tag_array[mf->v3]= false;
-					*bt++ = v3->co[0];	
+					*bt++ = v3->co[0];
 					*bt++ = v3->co[1];
 					*bt++ = v3->co[2];
 				}
@@ -1633,7 +1693,7 @@ bool CcdShapeConstructionInfo::SetMesh(RAS_MeshObject* meshobj, DerivedMesh* dm,
 					if (vert_tag_array[mf->v4]==true) { /* *** v4 *** */
 						vert_tag_array[mf->v4]= false;
 						*bt++ = v4->co[0];
-						*bt++ = v4->co[1];	
+						*bt++ = v4->co[1];
 						*bt++ = v4->co[2];
 					}
 				}
@@ -1995,6 +2055,15 @@ bool CcdShapeConstructionInfo::UpdateMesh(class KX_GameObject* gameobj, class RA
 		m_forceReInstance= true;
 	}
 
+	// Make sure to also replace the mesh in the shape map! Otherwise we leave dangling references when we free.
+	// Note, this whole business could cause issues with shared meshes. If we update one mesh, do we replace
+	// them all?
+	std::map<RAS_MeshObject*,CcdShapeConstructionInfo*>::iterator mit = m_meshShapeMap.find(m_meshObject);
+	if (mit != m_meshShapeMap.end()) {
+		m_meshShapeMap.erase(mit);
+		m_meshShapeMap[meshobj] = this;
+	}
+
 	m_meshObject= meshobj;
 	
 	if (dm) {
@@ -2020,7 +2089,7 @@ bool CcdShapeConstructionInfo::SetProxy(CcdShapeConstructionInfo* shapeInfo)
 btCollisionShape* CcdShapeConstructionInfo::CreateBulletShape(btScalar margin, bool useGimpact, bool useBvh)
 {
 	btCollisionShape* collisionShape = 0;
-	btCompoundShape* compoundShape = 0;	
+	btCompoundShape* compoundShape = 0;
 
 	if (m_shapeType == PHY_SHAPE_PROXY && m_shapeProxy != NULL)
 		return m_shapeProxy->CreateBulletShape(margin, useGimpact, useBvh);
@@ -2069,7 +2138,7 @@ btCollisionShape* CcdShapeConstructionInfo::CreateBulletShape(btScalar margin, b
 		// One possible optimization is to use directly the btBvhTriangleMeshShape when the scale is 1,1,1
 		// and btScaledBvhTriangleMeshShape otherwise.
 		if (useGimpact)
-		{				
+		{
 				btTriangleIndexVertexArray* indexVertexArrays = new btTriangleIndexVertexArray(
 						m_polygonIndexArray.size(),
 						&m_triFaceArray[0],
@@ -2078,7 +2147,6 @@ btCollisionShape* CcdShapeConstructionInfo::CreateBulletShape(btScalar margin, b
 						&m_vertexArray[0],
 						3*sizeof(btScalar)
 				);
-				
 				btGImpactMeshShape* gimpactShape =  new btGImpactMeshShape(indexVertexArrays);
 				gimpactShape->setMargin(margin);
 				collisionShape = gimpactShape;

@@ -24,11 +24,10 @@
  *  \ingroup edarmature
  */
 
- 
 #include <math.h>
-#include <string.h> // for memcpy
+#include <string.h> /* for memcpy */
 #include <stdio.h>
-#include <stdlib.h> // for qsort
+#include <stdlib.h> /* for qsort */
 #include <float.h>
 
 #include "DNA_scene_types.h"
@@ -45,15 +44,7 @@
 #include "BLI_ghash.h"
 #include "BLI_heap.h"
 
-//#include "BDR_editobject.h"
-
-//#include "BIF_interface.h"
-//#include "BIF_toolbox.h"
-//#include "BIF_graphics.h"
-
 #include "BKE_mesh.h"
-
-//#include "blendef.h"
 
 #include "ONL_opennl.h"
 
@@ -354,7 +345,7 @@ static ReebArc *copyArc(ReebGraph *rg, ReebArc *arc)
 	memcpy(cp_arc->buckets, arc->buckets, sizeof(EmbedBucket) * cp_arc->bcount);
 	
 	/* copy faces map */
-	cp_arc->faces = BLI_ghash_new(BLI_ghashutil_ptrhash, BLI_ghashutil_ptrcmp, "copyArc gh");
+	cp_arc->faces = BLI_ghash_ptr_new("copyArc gh");
 	mergeArcFaces(rg, cp_arc, arc);
 	
 	/* find corresponding head and tail */
@@ -475,8 +466,8 @@ static void NodeDegreeIncrement(ReebGraph *UNUSED(rg), ReebNode *node)
 }
 
 #else
-#define NodeDegreeDecrement(rg, node) {node->degree--; }
-#define NodeDegreeIncrement(rg, node) {node->degree++; }
+#  define NodeDegreeDecrement(rg, node) {node->degree--; } (void)0
+#  define NodeDegreeIncrement(rg, node) {node->degree++; } (void)0
 #endif
 
 void repositionNodes(ReebGraph *rg)
@@ -1753,18 +1744,18 @@ int filterSmartReebGraph(ReebGraph *UNUSED(rg), float UNUSED(threshold))
 #endif
 			
 			arc->angle = avg_angle;
-			
+
 			if (avg_angle > threshold)
 				merging = 1;
-			
+
 			if (merging) {
 				ReebNode *terminalNode = NULL;
 				ReebNode *middleNode = NULL;
 				ReebNode *newNode = NULL;
 				ReebNode *removedNode = NULL;
 				int merging = 0;
-				
-				// Assign terminal and middle nodes
+
+				/* Assign terminal and middle nodes */
 				if (arc->head->degree == 1) {
 					terminalNode = arc->head;
 					middleNode = arc->tail;
@@ -1773,31 +1764,31 @@ int filterSmartReebGraph(ReebGraph *UNUSED(rg), float UNUSED(threshold))
 					terminalNode = arc->tail;
 					middleNode = arc->head;
 				}
-				
-				// If middle node is a normal node, merge to terminal node
+
+				/* If middle node is a normal node, merge to terminal node */
 				if (middleNode->degree == 2) {
 					merging = 1;
 					newNode = terminalNode;
 					removedNode = middleNode;
 				}
-				// Otherwise, just plain remove of the arc
+				/* Otherwise, just plain remove of the arc */
 				else {
 					merging = 0;
 					newNode = middleNode;
 					removedNode = terminalNode;
 				}
-				
-				// Merging arc
+
+				/* Merging arc */
 				if (merging) {
 					filterArc(rg, newNode, removedNode, arc, 1);
 				}
 				else {
-					// removing arc, so we need to decrease the degree of the remaining node
-					//newNode->degree--;
+					/* removing arc, so we need to decrease the degree of the remaining node
+					 *newNode->degree--; */
 					NodeDegreeDecrement(rg, newNode);
 				}
-	
-				// Reset nextArc, it might have changed
+
+				/* Reset nextArc, it might have changed */
 				nextArc = arc->next;
 				
 				BLI_remlink(&rg->arcs, arc);
@@ -1818,7 +1809,7 @@ int filterSmartReebGraph(ReebGraph *UNUSED(rg), float UNUSED(threshold))
 
 static void filterGraph(ReebGraph *rg, short options, float threshold_internal, float threshold_external)
 {
-	int done = 1;
+	int done = TRUE;
 	
 	calculateGraphLength(rg);
 
@@ -1833,7 +1824,7 @@ static void filterGraph(ReebGraph *rg, short options, float threshold_internal, 
 	if (threshold_internal > 0 || threshold_external > 0) {
 		/* filter until there's nothing more to do */
 		while (done == 1) {
-			done = 0; /* no work done yet */
+			done = FALSE; /* no work done yet */
 			
 			done = filterInternalExternalReebGraph(rg, threshold_internal, threshold_external);
 		}
@@ -1860,7 +1851,7 @@ static void finalizeGraph(ReebGraph *rg, char passes, char method)
 	
 	sortArcs(rg);
 	
-	for (i = 0; i <  passes; i++) {
+	for (i = 0; i < passes; i++) {
 		postprocessGraph(rg, method);
 	}
 	
@@ -2295,7 +2286,7 @@ static ReebEdge *createArc(ReebGraph *rg, ReebNode *node1, ReebNode *node2)
 		
 		arc->flag = 0; // clear flag on init
 		arc->symmetry_level = 0;
-		arc->faces = BLI_ghash_new(BLI_ghashutil_ptrhash, BLI_ghashutil_ptrcmp, "createArc gh");
+		arc->faces = BLI_ghash_ptr_new("createArc gh");
 		
 		if (node1->weight <= node2->weight) {
 			v1 = node1;	
@@ -3281,7 +3272,7 @@ ReebGraph *BIF_ReebGraphFromEditMesh(void)
 	freeEdgeIndex(&indexed_edges);
 	
 #ifdef DEBUG_REEB
-	weightToVCol(em, 1);
+//	weightToVCol(em, 1);
 #endif
 	
 	rg = generateReebGraph(em, G.scene->toolsettings->skgen_resolution);

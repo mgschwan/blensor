@@ -35,6 +35,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_anim_types.h"
+#include "DNA_armature_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_key_types.h"
 #include "DNA_mesh_types.h"
@@ -42,9 +43,11 @@
 #include "DNA_object_force.h"
 #include "DNA_scene_types.h"
 
+#include "BLI_bitmap.h"
 #include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_string.h"
+#include "BLI_string_utf8.h"
 #include "BLI_path_util.h"
 #include "BLI_utildefines.h"
 
@@ -76,12 +79,16 @@
 #include "ED_armature.h"
 #include "ED_object.h"
 #include "ED_screen.h"
+#include "ED_sculpt.h"
 #include "ED_mesh.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
 
 #include "object_intern.h"
+
+static void modifier_skin_customdata_ensure(struct Object *ob);
+static void modifier_skin_customdata_delete(struct Object *ob);
 
 /******************************** API ****************************/
 
@@ -124,8 +131,9 @@ ModifierData *ED_object_modifier_add(ReportList *reports, Main *bmain, Scene *sc
 		else
 			BLI_addtail(&ob->modifiers, new_md);
 
-		if (name)
-			BLI_strncpy(new_md->name, name, sizeof(new_md->name));
+		if (name) {
+			BLI_strncpy_utf8(new_md->name, name, sizeof(new_md->name));
+		}
 
 		/* make sure modifier data has unique name */
 
@@ -147,9 +155,19 @@ ModifierData *ED_object_modifier_add(ReportList *reports, Main *bmain, Scene *sc
 		}
 		else if (type == eModifierType_Surface)
 			DAG_scene_sort(bmain, scene);
-		else if (type == eModifierType_Multires)
+		else if (type == eModifierType_Multires) {
 			/* set totlvl from existing MDISPS layer if object already had it */
 			multiresModifier_set_levels_from_disps((MultiresModifierData *)new_md, ob);
+
+			if (ob->mode & OB_MODE_SCULPT) {
+				/* ensure that grid paint mask layer is created */
+				ED_sculpt_mask_layers_ensure(ob, (MultiresModifierData *)new_md);
+			}
+		}
+		else if (type == eModifierType_Skin) {
+			/* ensure skin-node customdata exists */
+			modifier_skin_customdata_ensure(ob);
+		}
 	}
 
 	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
@@ -157,19 +175,107 @@ ModifierData *ED_object_modifier_add(ReportList *reports, Main *bmain, Scene *sc
 	return new_md;
 }
 
-static int object_modifier_remove(Object *ob, ModifierData *md, int *sort_depsgraph)
+/* Return TRUE if the object has a modifier of type 'type' other than
+ * the modifier pointed to be 'exclude', otherwise returns FALSE. */
+static int object_has_modifier(const Object *ob, const ModifierData *exclude,
+                               ModifierType type)
 {
-	ModifierData *obmd;
+	ModifierData *md;
 
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if ((md != exclude) && (md->type == type))
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+/* If the object data of 'orig_ob' has other users, run 'callback' on
+ * each of them.
+ *
+ * If include_orig is TRUE, the callback will run on 'orig_ob' too.
+ * 
+ * If the callback ever returns TRUE, iteration will stop and the
+ * function value will be TRUE. Otherwise the function returns FALSE.
+ */
+int ED_object_iter_other(Main *bmain, Object *orig_ob, int include_orig,
+                         int (*callback)(Object *ob, void *callback_data),
+                         void *callback_data)
+{
+	ID *ob_data_id = orig_ob->data;
+	int users = ob_data_id->us;
+
+	if (ob_data_id->flag & LIB_FAKEUSER)
+		users--;
+
+	/* First check that the object's data has multiple users */
+	if (users > 1) {
+		Object *ob;
+		int totfound = include_orig ? 0 : 1;
+
+		for (ob = bmain->object.first; ob && totfound < users;
+		     ob = ob->id.next)
+		{
+			if (((ob != orig_ob) || include_orig) &&
+			    (ob->data == orig_ob->data))
+			{
+				if (callback(ob, callback_data))
+					return TRUE;
+
+				totfound++;
+			}
+		}
+	}
+	else if (include_orig) {
+		return callback(orig_ob, callback_data);
+	}
+
+	return FALSE;
+}
+
+static int object_has_modifier_cb(Object *ob, void *data)
+{
+	ModifierType type = *((ModifierType *)data);
+
+	return object_has_modifier(ob, NULL, type);
+}
+
+/* Use with ED_object_iter_other(). Sets the total number of levels
+ * for any multires modifiers on the object to the int pointed to by
+ * callback_data. */
+int ED_object_multires_update_totlevels_cb(Object *ob, void *totlevel_v)
+{
+	ModifierData *md;
+	int totlevel = *((int *)totlevel_v);
+
+	for (md = ob->modifiers.first; md; md = md->next) {
+		if (md->type == eModifierType_Multires) {
+			multires_set_tot_level(ob, (MultiresModifierData *)md, totlevel);
+			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		}
+	}
+	return FALSE;
+}
+
+/* Return TRUE if no modifier of type 'type' other than 'exclude' */
+static int object_modifier_safe_to_delete(Main *bmain, Object *ob,
+                                          ModifierData *exclude,
+                                          ModifierType type)
+{
+	return (!object_has_modifier(ob, exclude, type) &&
+	        !ED_object_iter_other(bmain, ob, FALSE,
+	                              object_has_modifier_cb, &type));
+}
+
+static int object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
+                                  int *sort_depsgraph)
+{
 	/* It seems on rapid delete it is possible to
 	 * get called twice on same modifier, so make
 	 * sure it is in list. */
-	for (obmd = ob->modifiers.first; obmd; obmd = obmd->next)
-		if (obmd == md)
-			break;
-
-	if (!obmd)
+	if (BLI_findindex(&ob->modifiers, md) == -1) {
 		return 0;
+	}
 
 	/* special cases */
 	if (md->type == eModifierType_ParticleSystem) {
@@ -202,23 +308,19 @@ static int object_modifier_remove(Object *ob, ModifierData *md, int *sort_depsgr
 		ob->dt = OB_TEXTURE;
 	}
 	else if (md->type == eModifierType_Multires) {
-		int ok = 1;
-		ModifierData *tmpmd;
-
-		/* ensure MDISPS CustomData layer isn't used by another multires modifiers */
-		for (tmpmd = ob->modifiers.first; tmpmd; tmpmd = tmpmd->next)
-			if (tmpmd != md && tmpmd->type == eModifierType_Multires) {
-				ok = 0;
-				break;
-			}
-
-		if (ok) {
+		/* Delete MDisps layer if not used by another multires modifier */
+		if (object_modifier_safe_to_delete(bmain, ob, md, eModifierType_Multires))
 			multires_customdata_delete(ob->data);
-		}
+	}
+	else if (md->type == eModifierType_Skin) {
+		/* Delete MVertSkin layer if not used by another skin modifier */
+		if (object_modifier_safe_to_delete(bmain, ob, md, eModifierType_Skin))
+			modifier_skin_customdata_delete(ob);
 	}
 
 	if (ELEM(md->type, eModifierType_Softbody, eModifierType_Cloth) &&
-	    ob->particlesystem.first == NULL) {
+	    ob->particlesystem.first == NULL)
+	{
 		ob->mode &= ~OB_MODE_PARTICLE_EDIT;
 	}
 
@@ -233,10 +335,10 @@ int ED_object_modifier_remove(ReportList *reports, Main *bmain, Scene *scene, Ob
 	int sort_depsgraph = 0;
 	int ok;
 
-	ok = object_modifier_remove(ob, md, &sort_depsgraph);
+	ok = object_modifier_remove(bmain, ob, md, &sort_depsgraph);
 
 	if (!ok) {
-		BKE_reportf(reports, RPT_ERROR, "Modifier '%s' not in object '%s'", ob->id.name, md->name);
+		BKE_reportf(reports, RPT_ERROR, "Modifier '%s' not in object '%s'", md->name, ob->id.name);
 		return 0;
 	}
 
@@ -262,7 +364,7 @@ void ED_object_modifier_clear(Main *bmain, Scene *scene, Object *ob)
 
 		next_md = md->next;
 
-		object_modifier_remove(ob, md, &sort_depsgraph);
+		object_modifier_remove(bmain, ob, md, &sort_depsgraph);
 
 		md = next_md;
 	}
@@ -465,15 +567,15 @@ static int modifier_apply_shape(ReportList *reports, Scene *scene, Object *ob, M
 		}
 		
 		if (key == NULL) {
-			key = me->key = add_key((ID *)me);
+			key = me->key = BKE_key_add((ID *)me);
 			key->type = KEY_RELATIVE;
 			/* if that was the first key block added, then it was the basis.
 			 * Initialize it with the mesh, and add another for the modifier */
-			kb = add_keyblock(key, NULL);
-			mesh_to_key(me, kb);
+			kb = BKE_keyblock_add(key, NULL);
+			BKE_key_convert_from_mesh(me, kb);
 		}
 
-		kb = add_keyblock(key, md->name);
+		kb = BKE_keyblock_add(key, md->name);
 		DM_to_meshkey(dm, me, kb);
 		
 		dm->release(dm);
@@ -734,19 +836,21 @@ static void edit_modifier_properties(wmOperatorType *ot)
 
 static int edit_modifier_invoke_properties(bContext *C, wmOperator *op)
 {
-	PointerRNA ptr = CTX_data_pointer_get_type(C, "modifier", &RNA_Modifier);
 	ModifierData *md;
 	
-	if (RNA_struct_property_is_set(op->ptr, "modifier"))
-		return 1;
-	
-	if (ptr.data) {
-		md = ptr.data;
-		RNA_string_set(op->ptr, "modifier", md->name);
-		return 1;
+	if (RNA_struct_property_is_set(op->ptr, "modifier")) {
+		return TRUE;
 	}
-	
-	return 0;
+	else {
+		PointerRNA ptr = CTX_data_pointer_get_type(C, "modifier", &RNA_Modifier);
+		if (ptr.data) {
+			md = ptr.data;
+			RNA_string_set(op->ptr, "modifier", md->name);
+			return TRUE;
+		}
+	}
+
+	return FALSE;
 }
 
 static ModifierData *edit_modifier_property_get(wmOperator *op, Object *ob, int type)
@@ -806,7 +910,7 @@ void OBJECT_OT_modifier_remove(wmOperatorType *ot)
 	ot->poll = edit_modifier_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -845,7 +949,7 @@ void OBJECT_OT_modifier_move_up(wmOperatorType *ot)
 	ot->poll = edit_modifier_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -884,7 +988,7 @@ void OBJECT_OT_modifier_move_down(wmOperatorType *ot)
 	ot->poll = edit_modifier_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -918,7 +1022,8 @@ static int modifier_apply_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(ev
 static EnumPropertyItem modifier_apply_as_items[] = {
 	{MODIFIER_APPLY_DATA, "DATA", 0, "Object Data", "Apply modifier to the object's data"},
 	{MODIFIER_APPLY_SHAPE, "SHAPE", 0, "New Shape", "Apply deform-only modifier to a new shape on this object"},
-	{0, NULL, 0, NULL, NULL}};
+	{0, NULL, 0, NULL, NULL}
+};
 
 void OBJECT_OT_modifier_apply(wmOperatorType *ot)
 {
@@ -931,7 +1036,7 @@ void OBJECT_OT_modifier_apply(wmOperatorType *ot)
 	ot->poll = edit_modifier_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	
 	RNA_def_enum(ot->srna, "apply_as", modifier_apply_as_items, MODIFIER_APPLY_DATA, "Apply as", "How to apply the modifier to the geometry");
 	edit_modifier_properties(ot);
@@ -974,7 +1079,7 @@ void OBJECT_OT_modifier_convert(wmOperatorType *ot)
 	ot->poll = edit_modifier_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -1013,7 +1118,7 @@ void OBJECT_OT_modifier_copy(wmOperatorType *ot)
 	ot->poll = edit_modifier_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -1033,6 +1138,10 @@ static int multires_higher_levels_delete_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	
 	multiresModifier_del_levels(mmd, ob, 1);
+
+	ED_object_iter_other(CTX_data_main(C), ob, TRUE,
+	                     ED_object_multires_update_totlevels_cb,
+	                     &mmd->totlvl);
 	
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
 	
@@ -1058,7 +1167,7 @@ void OBJECT_OT_multires_higher_levels_delete(wmOperatorType *ot)
 	ot->exec = multires_higher_levels_delete_exec;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -1073,6 +1182,10 @@ static int multires_subdivide_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	
 	multiresModifier_subdivide(mmd, ob, 0, mmd->simple);
+
+	ED_object_iter_other(CTX_data_main(C), ob, TRUE,
+	                     ED_object_multires_update_totlevels_cb,
+	                     &mmd->totlvl);
 
 	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
@@ -1099,7 +1212,7 @@ void OBJECT_OT_multires_subdivide(wmOperatorType *ot)
 	ot->exec = multires_subdivide_exec;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -1119,7 +1232,7 @@ static int multires_reshape_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	CTX_DATA_BEGIN (C, Object *, selob, selected_editable_objects)
+	CTX_DATA_BEGIN(C, Object *, selob, selected_editable_objects)
 	{
 		if (selob->type == OB_MESH && selob != ob) {
 			secondob = selob;
@@ -1163,7 +1276,7 @@ void OBJECT_OT_multires_reshape(wmOperatorType *ot)
 	ot->exec = multires_reshape_exec;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -1232,15 +1345,16 @@ void OBJECT_OT_multires_external_save(wmOperatorType *ot)
 	ot->description = "Save displacements to an external file";
 	ot->idname = "OBJECT_OT_multires_external_save";
 
-	// XXX modifier no longer in context after file browser .. ot->poll = multires_poll;
+	/* XXX modifier no longer in context after file browser .. ot->poll = multires_poll; */
 	ot->exec = multires_external_save_exec;
 	ot->invoke = multires_external_save_invoke;
 	ot->poll = multires_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
-	WM_operator_properties_filesel(ot, FOLDERFILE | BTXFILE, FILE_SPECIAL, FILE_SAVE, WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
+	WM_operator_properties_filesel(ot, FOLDERFILE | BTXFILE, FILE_SPECIAL, FILE_SAVE,
+	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 	edit_modifier_properties(ot);
 }
 
@@ -1254,7 +1368,7 @@ static int multires_external_pack_exec(bContext *C, wmOperator *UNUSED(op))
 	if (!CustomData_external_test(&me->ldata, CD_MDISPS))
 		return OPERATOR_CANCELLED;
 
-	// XXX don't remove..
+	/* XXX don't remove.. */
 	CustomData_external_remove(&me->ldata, &me->id, CD_MDISPS, me->totloop);
 	
 	return OPERATOR_FINISHED;
@@ -1310,10 +1424,432 @@ void OBJECT_OT_multires_base_apply(wmOperatorType *ot)
 	ot->exec = multires_base_apply_exec;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
+
+/************************** skin modifier ***********************/
+
+static void modifier_skin_customdata_ensure(Object *ob)
+{
+	Mesh *me = ob->data;
+	BMesh *bm = me->edit_btmesh ? me->edit_btmesh->bm : NULL;
+	MVertSkin *vs;
+
+	if (bm && !CustomData_has_layer(&bm->vdata, CD_MVERT_SKIN)) {
+		BMVert *v;
+		BMIter iter;
+
+		BM_data_layer_add(bm, &bm->vdata, CD_MVERT_SKIN);
+		
+		/* Mark an arbitrary vertex as root */
+		BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+			vs = CustomData_bmesh_get(&bm->vdata, v->head.data,
+			                          CD_MVERT_SKIN);
+			vs->flag |= MVERT_SKIN_ROOT;
+			break;
+		}
+	}
+	else if (!CustomData_has_layer(&me->vdata, CD_MVERT_SKIN)) {
+		vs = CustomData_add_layer(&me->vdata,
+		                          CD_MVERT_SKIN,
+		                          CD_DEFAULT,
+		                          NULL,
+		                          me->totvert);
+
+		/* Mark an arbitrary vertex as root */
+		if (vs)
+			vs->flag |= MVERT_SKIN_ROOT;
+	}
+}
+
+static void modifier_skin_customdata_delete(Object *ob)
+{
+	Mesh *me = ob->data;
+	BMEditMesh *em = me->edit_btmesh;
+	
+	if (em)
+		BM_data_layer_free(em->bm, &em->bm->vdata, CD_MVERT_SKIN);
+	else
+		CustomData_free_layer_active(&me->vdata, CD_MVERT_SKIN, me->totvert);
+}
+
+static int skin_poll(bContext *C)
+{
+	return (!CTX_data_edit_object(C) &&
+	        edit_modifier_poll_generic(C, &RNA_SkinModifier, (1 << OB_MESH)));
+}
+
+static int skin_edit_poll(bContext *C)
+{
+	return (CTX_data_edit_object(C) &&
+	        edit_modifier_poll_generic(C, &RNA_SkinModifier, (1 << OB_MESH)));
+}
+
+static void skin_root_clear(BMesh *bm, BMVert *bm_vert, GHash *visited)
+{
+	BMEdge *bm_edge;
+	BMIter bm_iter;
+	
+	BM_ITER_ELEM (bm_edge, &bm_iter, bm_vert, BM_EDGES_OF_VERT) {
+		BMVert *v2 = BM_edge_other_vert(bm_edge, bm_vert);
+
+		if (!BLI_ghash_lookup(visited, v2)) {
+			MVertSkin *vs = CustomData_bmesh_get(&bm->vdata,
+			                                     v2->head.data,
+			                                     CD_MVERT_SKIN);
+
+			/* clear vertex root flag and add to visited set */
+			vs->flag &= ~MVERT_SKIN_ROOT;
+			BLI_ghash_insert(visited, v2, v2);
+
+			skin_root_clear(bm, v2, visited);
+		}
+	}
+}
+
+static int skin_root_mark_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = CTX_data_edit_object(C);
+	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMesh *bm = em->bm;
+	BMVert *bm_vert;
+	BMIter bm_iter;
+	GHash *visited;
+
+	visited = BLI_ghash_ptr_new("skin_root_mark_exec visited");
+
+	modifier_skin_customdata_ensure(ob);
+
+	BM_ITER_MESH (bm_vert, &bm_iter, bm, BM_VERTS_OF_MESH) {
+		if (!BLI_ghash_lookup(visited, bm_vert) &&
+		    bm_vert->head.hflag & BM_ELEM_SELECT)
+		{
+			MVertSkin *vs = CustomData_bmesh_get(&bm->vdata,
+			                                     bm_vert->head.data,
+			                                     CD_MVERT_SKIN);
+
+			/* mark vertex as root and add to visited set */
+			vs->flag |= MVERT_SKIN_ROOT;
+			BLI_ghash_insert(visited, bm_vert, bm_vert);
+
+			/* clear root flag from all connected vertices (recursively) */
+			skin_root_clear(bm, bm_vert, visited);
+		}
+	}
+
+	BLI_ghash_free(visited, NULL, NULL);
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	
+	return OPERATOR_FINISHED;
+}
+
+void OBJECT_OT_skin_root_mark(wmOperatorType *ot)
+{
+	ot->name = "Skin Root Mark";
+	ot->description = "Mark selected vertices as roots";
+	ot->idname = "OBJECT_OT_skin_root_mark";
+
+	ot->poll = skin_edit_poll;
+	ot->exec = skin_root_mark_exec;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+typedef enum {
+	SKIN_LOOSE_MARK,
+	SKIN_LOOSE_CLEAR
+} SkinLooseAction;
+
+static int skin_loose_mark_clear_exec(bContext *C, wmOperator *op)
+{
+	Object *ob = CTX_data_edit_object(C);
+	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMesh *bm = em->bm;
+	BMVert *bm_vert;
+	BMIter bm_iter;
+	SkinLooseAction action = RNA_enum_get(op->ptr, "action");
+
+	if (!CustomData_has_layer(&bm->vdata, CD_MVERT_SKIN)) {
+		return OPERATOR_CANCELLED;
+	}
+
+	BM_ITER_MESH (bm_vert, &bm_iter, bm, BM_VERTS_OF_MESH) {
+		if (bm_vert->head.hflag & BM_ELEM_SELECT) {
+			MVertSkin *vs = CustomData_bmesh_get(&bm->vdata,
+			                                     bm_vert->head.data,
+			                                     CD_MVERT_SKIN);
+
+
+			switch (action) {
+				case SKIN_LOOSE_MARK:
+					vs->flag |= MVERT_SKIN_LOOSE;
+					break;
+				case SKIN_LOOSE_CLEAR:
+					vs->flag &= ~MVERT_SKIN_LOOSE;
+					break;
+			}
+		}
+	}
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	
+	return OPERATOR_FINISHED;
+}
+
+void OBJECT_OT_skin_loose_mark_clear(wmOperatorType *ot)
+{
+	static EnumPropertyItem action_items[] = {
+		{SKIN_LOOSE_MARK, "MARK", 0, "Mark", "Mark selected vertices as loose"},
+		{SKIN_LOOSE_CLEAR, "CLEAR", 0, "Clear", "Set selected vertices as not loose"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	ot->name = "Skin Mark/Clear Loose";
+	ot->description = "Mark/clear selected vertices as loose";
+	ot->idname = "OBJECT_OT_skin_loose_mark_clear";
+
+	ot->poll = skin_edit_poll;
+	ot->exec = skin_loose_mark_clear_exec;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	RNA_def_enum(ot->srna, "action", action_items, SKIN_LOOSE_MARK, "Action", NULL);
+}
+
+static int skin_radii_equalize_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Object *ob = CTX_data_edit_object(C);
+	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMesh *bm = em->bm;
+	BMVert *bm_vert;
+	BMIter bm_iter;
+
+	if (!CustomData_has_layer(&bm->vdata, CD_MVERT_SKIN)) {
+		return OPERATOR_CANCELLED;
+	}
+
+	BM_ITER_MESH (bm_vert, &bm_iter, bm, BM_VERTS_OF_MESH) {
+		if (bm_vert->head.hflag & BM_ELEM_SELECT) {
+			MVertSkin *vs = CustomData_bmesh_get(&bm->vdata,
+			                                     bm_vert->head.data,
+			                                     CD_MVERT_SKIN);
+			float avg = (vs->radius[0] + vs->radius[1]) * 0.5f;
+
+			vs->radius[0] = vs->radius[1] = avg;
+		}
+	}
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+	
+	return OPERATOR_FINISHED;
+}
+
+void OBJECT_OT_skin_radii_equalize(wmOperatorType *ot)
+{
+	ot->name = "Skin Radii Equalize";
+	ot->description = "Make skin radii of selected vertices equal on each axis";
+	ot->idname = "OBJECT_OT_skin_radii_equalize";
+
+	ot->poll = skin_edit_poll;
+	ot->exec = skin_radii_equalize_exec;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static void skin_armature_bone_create(Object *skin_ob,
+                                      MVert *mvert, MEdge *medge,
+                                      bArmature *arm,
+                                      BLI_bitmap edges_visited,
+                                      const MeshElemMap *emap,
+                                      EditBone *parent_bone,
+                                      int parent_v)
+{
+	int i;
+
+	for (i = 0; i < emap[parent_v].count; i++) {
+		int endx = emap[parent_v].indices[i];
+		const MEdge *e = &medge[endx];
+		EditBone *bone;
+		bDeformGroup *dg;
+		int v;
+
+		/* ignore edge if already visited */
+		if (BLI_BITMAP_GET(edges_visited, endx))
+			continue;
+		BLI_BITMAP_SET(edges_visited, endx);
+
+		v = (e->v1 == parent_v ? e->v2 : e->v1);
+
+		bone = ED_armature_edit_bone_add(arm, "Bone");
+
+		bone->parent = parent_bone;
+		bone->flag |= BONE_CONNECTED;
+
+		copy_v3_v3(bone->head, mvert[parent_v].co);
+		copy_v3_v3(bone->tail, mvert[v].co);
+		bone->rad_head = bone->rad_tail = 0.25;
+		BLI_snprintf(bone->name, sizeof(bone->name), "Bone.%.2d", endx);
+
+		/* add bDeformGroup */
+		if ((dg = ED_vgroup_add_name(skin_ob, bone->name))) {
+			ED_vgroup_vert_add(skin_ob, dg, parent_v, 1, WEIGHT_REPLACE);
+			ED_vgroup_vert_add(skin_ob, dg, v, 1, WEIGHT_REPLACE);
+		}
+		
+		skin_armature_bone_create(skin_ob,
+		                          mvert, medge,
+		                          arm,
+		                          edges_visited,
+		                          emap,
+		                          bone,
+		                          v);
+	}
+}
+
+static Object *modifier_skin_armature_create(struct Scene *scene,
+                                             Object *skin_ob)
+{
+	BLI_bitmap edges_visited;
+	DerivedMesh *deform_dm;
+	MVert *mvert;
+	Mesh *me = skin_ob->data;
+	Object *arm_ob;
+	bArmature *arm;
+	MVertSkin *mvert_skin;
+	MeshElemMap *emap;
+	int *emap_mem;
+	int v;
+
+	deform_dm = mesh_get_derived_deform(scene, skin_ob, CD_MASK_BAREMESH);
+	mvert = deform_dm->getVertArray(deform_dm);
+
+	/* add vertex weights to original mesh */
+	CustomData_add_layer(&me->vdata,
+	                     CD_MDEFORMVERT,
+	                     CD_CALLOC,
+	                     NULL,
+	                     me->totvert);
+	
+	arm_ob = BKE_object_add(scene, OB_ARMATURE);
+	BKE_object_transform_copy(arm_ob, skin_ob);
+	arm = arm_ob->data;
+	arm->layer = 1;
+	arm_ob->dtx |= OB_DRAWXRAY;
+	arm->drawtype = ARM_LINE;
+	arm->edbo = MEM_callocN(sizeof(ListBase), "edbo armature");
+
+	mvert_skin = CustomData_get_layer(&me->vdata, CD_MVERT_SKIN);
+	create_vert_edge_map(&emap, &emap_mem,
+	                     me->medge, me->totvert, me->totedge);
+
+	edges_visited = BLI_BITMAP_NEW(me->totedge, "edge_visited");
+
+	/* note: we use EditBones here, easier to set them up and use
+	 * edit-armature functions to convert back to regular bones */
+	for (v = 0; v < me->totvert; v++) {
+		if (mvert_skin[v].flag & MVERT_SKIN_ROOT) {
+			EditBone *bone = NULL;
+
+			/* Unless the skin root has just one adjacent edge, create
+			 * a fake root bone (have it going off in the Y direction
+			 * (arbitrary) */
+			if (emap[v].count > 1) {
+				bone = ED_armature_edit_bone_add(arm, "Bone");
+
+				copy_v3_v3(bone->head, me->mvert[v].co);
+				copy_v3_v3(bone->tail, me->mvert[v].co);
+
+				bone->head[1] = 1.0f;
+				bone->rad_head = bone->rad_tail = 0.25;
+			}
+			
+			if (emap[v].count >= 1) {
+				skin_armature_bone_create(skin_ob,
+				                          mvert, me->medge,
+				                          arm,
+				                          edges_visited,
+				                          emap,
+				                          bone,
+				                          v);
+			}
+		}
+	}
+
+	MEM_freeN(edges_visited);
+	MEM_freeN(emap);
+	MEM_freeN(emap_mem);
+
+	ED_armature_from_edit(arm_ob);
+	ED_armature_edit_free(arm_ob);
+
+	return arm_ob;
+}
+
+static int skin_armature_create_exec(bContext *C, wmOperator *op)
+{
+	Main *bmain = CTX_data_main(C);
+	Scene *scene = CTX_data_scene(C);
+	Object *ob = CTX_data_active_object(C), *arm_ob;
+	Mesh *me = ob->data;
+	ModifierData *skin_md;
+	ArmatureModifierData *arm_md;
+
+	if (!CustomData_has_layer(&me->vdata, CD_MVERT_SKIN)) {
+		BKE_reportf(op->reports, RPT_WARNING, "Mesh '%s' has no skin vertex data", me->id.name + 2);
+		return OPERATOR_CANCELLED;
+	}
+
+	/* create new armature */
+	arm_ob = modifier_skin_armature_create(scene, ob);
+
+	/* add a modifier to connect the new armature to the mesh */
+	arm_md = (ArmatureModifierData *)modifier_new(eModifierType_Armature);
+	if (arm_md) {
+		skin_md = edit_modifier_property_get(op, ob, eModifierType_Skin);
+		BLI_insertlinkafter(&ob->modifiers, skin_md, arm_md);
+
+		arm_md->object = arm_ob;
+		arm_md->deformflag = ARM_DEF_VGROUP | ARM_DEF_QUATERNION;
+		DAG_scene_sort(bmain, scene);
+		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	}
+
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+
+	return OPERATOR_FINISHED;
+}
+
+static int skin_armature_create_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+{
+	if (edit_modifier_invoke_properties(C, op))
+		return skin_armature_create_exec(C, op);
+	else
+		return OPERATOR_CANCELLED;
+}
+
+void OBJECT_OT_skin_armature_create(wmOperatorType *ot)
+{
+	ot->name = "Skin Armature Create";
+	ot->description = "Create an armature that parallels the skin layout";
+	ot->idname = "OBJECT_OT_skin_armature_create";
+
+	ot->poll = skin_poll;
+	ot->invoke = skin_armature_create_invoke;
+	ot->exec = skin_armature_create_exec;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}
 
 /************************ mdef bind operator *********************/
 
@@ -1406,7 +1942,7 @@ void OBJECT_OT_meshdeform_bind(wmOperatorType *ot)
 	ot->exec = meshdeform_bind_exec;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -1453,7 +1989,7 @@ void OBJECT_OT_explode_refresh(wmOperatorType *ot)
 	ot->exec = explode_refresh_exec;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 }
 
@@ -1504,13 +2040,13 @@ static void oceanbake_free(void *customdata)
 /* called by oceanbake, only to check job 'stop' value */
 static int oceanbake_breakjob(void *UNUSED(customdata))
 {
-	//OceanBakeJob *ob= (OceanBakeJob *)customdata;
+	//OceanBakeJob *ob = (OceanBakeJob *)customdata;
 	//return *(ob->stop);
 	
 	/* this is not nice yet, need to make the jobs list template better 
 	 * for identifying/acting upon various different jobs */
 	/* but for now we'll reuse the render break... */
-	return (G.afbreek);
+	return (G.is_break);
 }
 
 /* called by oceanbake, wmJob sends notifier */
@@ -1521,7 +2057,7 @@ static void oceanbake_update(void *customdata, float progress, int *cancel)
 	if (oceanbake_breakjob(oj))
 		*cancel = 1;
 	
-	*(oj->do_update) = 1;
+	*(oj->do_update) = TRUE;
 	*(oj->progress) = progress;
 }
 
@@ -1533,11 +2069,11 @@ static void oceanbake_startjob(void *customdata, short *stop, short *do_update, 
 	oj->do_update = do_update;
 	oj->progress = progress;
 	
-	G.afbreek = 0;   /* XXX shared with render - replace with job 'stop' switch */
+	G.is_break = FALSE;   /* XXX shared with render - replace with job 'stop' switch */
 	
 	BKE_bake_ocean(oj->ocean, oj->och, oceanbake_update, (void *)oj);
 	
-	*do_update = 1;
+	*do_update = TRUE;
 	*stop = 0;
 }
 
@@ -1564,7 +2100,7 @@ static int ocean_bake_exec(bContext *C, wmOperator *op)
 	int f, cfra, i = 0;
 	int free = RNA_boolean_get(op->ptr, "free");
 	
-	wmJob *steve;
+	wmJob *wm_job;
 	OceanBakeJob *oj;
 	
 	if (!omd)
@@ -1600,7 +2136,7 @@ static int ocean_bake_exec(bContext *C, wmOperator *op)
 		 * this part of the process before a threaded job is created */
 		
 		//scene->r.cfra = f;
-		//ED_update_for_newframe(CTX_data_main(C), scene, CTX_wm_screen(C), 1);
+		//ED_update_for_newframe(CTX_data_main(C), scene, 1);
 		
 		/* ok, this doesn't work with drivers, but is way faster. 
 		 * let's use this for now and hope nobody wants to drive the time value... */
@@ -1631,17 +2167,18 @@ static int ocean_bake_exec(bContext *C, wmOperator *op)
 	scene->r.cfra = cfra;
 	
 	/* setup job */
-	steve = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Ocean Simulation", WM_JOB_PROGRESS);
+	wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Ocean Simulation",
+	                     WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_SIM_OCEAN);
 	oj = MEM_callocN(sizeof(OceanBakeJob), "ocean bake job");
 	oj->ocean = ocean;
 	oj->och = och;
 	oj->omd = omd;
 	
-	WM_jobs_customdata(steve, oj, oceanbake_free);
-	WM_jobs_timer(steve, 0.1, NC_OBJECT | ND_MODIFIER, NC_OBJECT | ND_MODIFIER);
-	WM_jobs_callbacks(steve, oceanbake_startjob, NULL, NULL, oceanbake_endjob);
+	WM_jobs_customdata_set(wm_job, oj, oceanbake_free);
+	WM_jobs_timer(wm_job, 0.1, NC_OBJECT | ND_MODIFIER, NC_OBJECT | ND_MODIFIER);
+	WM_jobs_callbacks(wm_job, oceanbake_startjob, NULL, NULL, oceanbake_endjob);
 	
-	WM_jobs_start(CTX_wm_manager(C), steve);
+	WM_jobs_start(CTX_wm_manager(C), wm_job);
 	
 	
 	
@@ -1668,7 +2205,7 @@ void OBJECT_OT_ocean_bake(wmOperatorType *ot)
 	ot->exec = ocean_bake_exec;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 	edit_modifier_properties(ot);
 	
 	RNA_def_boolean(ot->srna, "free", FALSE, "Free", "Free the bake, rather than generating it");

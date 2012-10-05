@@ -34,15 +34,17 @@
 
 /* **************** SCALAR MATH ******************** */ 
 static bNodeSocketTemplate cmp_node_math_in[]= { 
-	{ SOCK_FLOAT, 1, "Value", 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE}, 
-	{ SOCK_FLOAT, 1, "Value", 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE}, 
+	{ SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE}, 
+	{ SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE}, 
 	{ -1, 0, "" } 
 };
 
 static bNodeSocketTemplate cmp_node_math_out[]= { 
-	{ SOCK_FLOAT, 0, "Value"}, 
+	{ SOCK_FLOAT, 0, N_("Value")}, 
 	{ -1, 0, "" } 
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void do_math(bNode *node, float *out, float *in, float *in2)
 {
@@ -180,12 +182,12 @@ static void node_composit_exec_math(void *UNUSED(data), bNode *node, bNodeStack 
 		return;
 	}
 
-	/*create output based on first input */
+	/* create output based on first input */
 	if (cbuf) {
 		stackbuf=alloc_compbuf(cbuf->x, cbuf->y, CB_VAL, 1);
 	}
 	/* and if it doesn't exist use the second input since we 
-	 know that one of them must exist at this point*/
+	 * know that one of them must exist at this point*/
 	else {
 		stackbuf=alloc_compbuf(cbuf2->x, cbuf2->y, CB_VAL, 1);
 	}
@@ -195,6 +197,8 @@ static void node_composit_exec_math(void *UNUSED(data), bNode *node, bNodeStack 
 	out[0]->data= stackbuf;
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_math(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -203,7 +207,9 @@ void register_node_type_cmp_math(bNodeTreeType *ttype)
 	node_type_socket_templates(&ntype, cmp_node_math_in, cmp_node_math_out);
 	node_type_size(&ntype, 120, 110, 160);
 	node_type_label(&ntype, node_math_label);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_math);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

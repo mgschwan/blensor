@@ -65,7 +65,7 @@ def func_add_corrective_pose_shape_fast(source, target):
     return result
     
 class add_corrective_pose_shape_fast(bpy.types.Operator):   
-    '''Adds 1st object as shape to 2nd object as pose shape (only 1 armature)'''
+    """Add 1st object as shape to 2nd object as pose shape (only 1 armature)"""
     bl_idname = "object.add_corrective_pose_shape_fast"
     bl_label = "Add object as corrective shape faster"
     

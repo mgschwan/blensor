@@ -35,44 +35,48 @@
 /* **************** IMAGE (and RenderResult, multilayer image) ******************** */
 
 static bNodeSocketTemplate cmp_node_rlayers_out[]= {
-	{	SOCK_RGBA, 0, "Image",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "Alpha",					1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "Z",						1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_VECTOR, 0, "Normal",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_VECTOR, 0, "UV",					1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_VECTOR, 0, "Speed",				1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Color",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Diffuse",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Specular",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Shadow",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "AO",						0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Reflect",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Refract",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Indirect",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "IndexOB",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "IndexMA",				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 0, "Mist",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Emit",					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Environment",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Diffuse Direct",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Diffuse Indirect",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Diffuse Color",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Glossy Direct",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Glossy Indirect",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Glossy Color",			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Transmission Direct",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Transmission Indirect",	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_RGBA, 0, "Transmission Color",		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Image"),					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("Alpha"),					1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("Z"),						1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_VECTOR, 0, N_("Normal"),				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_VECTOR, 0, N_("UV"),					1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_VECTOR, 0, N_("Speed"),				1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Color"),					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Diffuse"),				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Specular"),				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Shadow"),					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("AO"),						0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Reflect"),				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Refract"),				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Indirect"),				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("IndexOB"),				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("IndexMA"),				0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("Mist"),					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Emit"),					0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Environment"),			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Diffuse Direct"),			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Diffuse Indirect"),		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Diffuse Color"),			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Glossy Direct"),			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Glossy Indirect"),		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Glossy Color"),			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Transmission Direct"),	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Transmission Indirect"),	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 0, N_("Transmission Color"),		0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 
-static bNodeSocket *cmp_node_image_add_render_pass_output(bNodeTree *ntree, bNode *node, int UNUSED(pass), int rres_index)
+static bNodeSocket *cmp_node_image_add_render_pass_output(bNodeTree *ntree, bNode *node, int pass, int rres_index)
 {
 	bNodeSocket *sock;
+	NodeImageLayer *sockdata;
 	
 	sock = node_add_output_from_template(ntree, node, &cmp_node_rlayers_out[rres_index]);
-	/* for render pass outputs store the pass type index as a lookup key */
-	sock->storage = SET_INT_IN_POINTER(rres_index);
+	/* extra socket info */
+	sockdata = MEM_callocN(sizeof(NodeImageLayer), "node image layer");
+	sock->storage = sockdata;
+	
+	sockdata->pass_flag = pass;
 	
 	return sock;
 }
@@ -144,6 +148,7 @@ static void cmp_node_image_add_render_pass_outputs(bNodeTree *ntree, bNode *node
 static void cmp_node_image_add_multilayer_outputs(bNodeTree *ntree, bNode *node, RenderLayer *rl)
 {
 	bNodeSocket *sock;
+	NodeImageLayer *sockdata;
 	RenderPass *rpass;
 	int index;
 	for (rpass=rl->passes.first, index=0; rpass; rpass=rpass->next, ++index) {
@@ -154,8 +159,12 @@ static void cmp_node_image_add_multilayer_outputs(bNodeTree *ntree, bNode *node,
 			type = SOCK_RGBA;
 		
 		sock = nodeAddSocket(ntree, node, SOCK_OUT, rpass->name, type);
-		/* for multilayer image use pass index directly as key */
-		sock->storage = SET_INT_IN_POINTER(index);
+		/* extra socket info */
+		sockdata = MEM_callocN(sizeof(NodeImageLayer), "node image layer");
+		sock->storage = sockdata;
+		
+		sockdata->pass_index = index;
+		sockdata->pass_flag = rpass->passtype;
 	}
 }
 
@@ -261,6 +270,7 @@ static void cmp_node_image_verify_outputs(bNodeTree *ntree, bNode *node)
 	 */
 	for (oldsock=oldsocklist.first; oldsock; oldsock=oldsock_next) {
 		oldsock_next = oldsock->next;
+		MEM_freeN(oldsock->storage);
 		nodeRemoveSocket(ntree, node, oldsock);
 	}
 }
@@ -272,6 +282,8 @@ static void cmp_node_image_update(bNodeTree *ntree, bNode *node)
 		cmp_node_image_verify_outputs(ntree, node);
 }
 
+#ifdef WITH_COMPOSITOR_LEGACY
+
 /* float buffer from the image with matching color management */
 float *node_composit_get_float_buffer(RenderData *rd, ImBuf *ibuf, int *alloc)
 {
@@ -280,33 +292,20 @@ float *node_composit_get_float_buffer(RenderData *rd, ImBuf *ibuf, int *alloc)
 
 	*alloc= FALSE;
 
+	/* OCIO_TODO: this is a part of legacy compositor system, don't bother with porting this code
+	 *            to new color management system since this code would likely be simply removed soon
+	 */
 	if (rd->color_mgt_flag & R_COLOR_MANAGEMENT) {
-		if (ibuf->profile != IB_PROFILE_NONE) {
-			rect= ibuf->rect_float;
-		}
-		else {
-			rect= MEM_mapallocN(sizeof(float) * 4 * ibuf->x * ibuf->y, "node_composit_get_image");
-
-			IMB_buffer_float_from_float(rect, ibuf->rect_float,
-				4, IB_PROFILE_LINEAR_RGB, IB_PROFILE_SRGB, predivide,
-				ibuf->x, ibuf->y, ibuf->x, ibuf->x);
-
-			*alloc= TRUE;
-		}
+		rect= ibuf->rect_float;
 	}
 	else {
-		if (ibuf->profile == IB_PROFILE_NONE) {
-			rect= ibuf->rect_float;
-		}
-		else {
-			rect= MEM_mapallocN(sizeof(float) * 4 * ibuf->x * ibuf->y, "node_composit_get_image");
+		rect= MEM_mapallocN(sizeof(float) * 4 * ibuf->x * ibuf->y, "node_composit_get_image");
 
-			IMB_buffer_float_from_float(rect, ibuf->rect_float,
-				4, IB_PROFILE_SRGB, IB_PROFILE_LINEAR_RGB, predivide,
-				ibuf->x, ibuf->y, ibuf->x, ibuf->x);
+		IMB_buffer_float_from_float(rect, ibuf->rect_float,
+			4, IB_PROFILE_SRGB, IB_PROFILE_LINEAR_RGB, predivide,
+			ibuf->x, ibuf->y, ibuf->x, ibuf->x);
 
 			*alloc= TRUE;
-		}
 	}
 
 	return rect;
@@ -358,9 +357,11 @@ static CompBuf *node_composit_get_image(RenderData *rd, Image *ima, ImageUser *i
 		stackbuf->malloc= alloc;
 	}
 	
-	/*code to respect the premul flag of images; I'm
-	  not sure if this is a good idea for multilayer images,
-	  since it never worked before for them.
+	/* code to respect the premul flag of images; I'm
+	 * not sure if this is a good idea for multilayer images,
+	 * since it never worked before for them.
+	 */
+#if 0
 	if (type==CB_RGBA && ima->flag & IMA_DO_PREMUL) {
 		//premul the image
 		int i;
@@ -372,7 +373,7 @@ static CompBuf *node_composit_get_image(RenderData *rd, Image *ima, ImageUser *i
 			pixel[2] *= pixel[3];
 		}
 	}
-	*/
+#endif
 	return stackbuf;
 }
 
@@ -411,7 +412,6 @@ static CompBuf *compbuf_multilayer_get(RenderData *rd, RenderLayer *rl, Image *i
 
 static void node_composit_exec_image(void *data, bNode *node, bNodeStack **UNUSED(in), bNodeStack **out)
 {
-	
 	/* image assigned to output */
 	/* stack order input sockets: col, alpha */
 	if (node->id) {
@@ -431,13 +431,14 @@ static void node_composit_exec_image(void *data, bNode *node, bNodeStack **UNUSE
 			
 			if (rl) {
 				bNodeSocket *sock;
+				NodeImageLayer *sockdata;
 				int out_index;
 				CompBuf *combinedbuf= NULL, *firstbuf= NULL;
 				
 				for (sock=node->outputs.first, out_index=0; sock; sock=sock->next, ++out_index) {
-					int passindex = GET_INT_FROM_POINTER(sock->storage);
+					sockdata = sock->storage;
 					if (out[out_index]->hasoutput) {
-						CompBuf *stackbuf = out[out_index]->data = compbuf_multilayer_get(rd, rl, ima, iuser, passindex);
+						CompBuf *stackbuf = out[out_index]->data = compbuf_multilayer_get(rd, rl, ima, iuser, sockdata->pass_index);
 						if (stackbuf) {
 							/* preview policy: take first 'Combined' pass if available,
 							 * otherwise just use the first layer.
@@ -471,8 +472,8 @@ static void node_composit_exec_image(void *data, bNode *node, bNodeStack **UNUSE
 					int i;
 					float *pixel;
 			
-					/*first duplicate stackbuf->rect, since it's just a pointer
-					  to the source imbuf, and we don't want to change that.*/
+					/* first duplicate stackbuf->rect, since it's just a pointer
+					 * to the source imbuf, and we don't want to change that.*/
 					stackbuf->rect = MEM_dupallocN(stackbuf->rect);
 					
 					/* since stackbuf now has allocated memory, rather than just a pointer,
@@ -507,7 +508,9 @@ static void node_composit_exec_image(void *data, bNode *node, bNodeStack **UNUSE
 	}	
 }
 
-static void node_composit_init_image(bNodeTree *ntree, bNode* node, bNodeTemplate *UNUSED(ntemp))
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
+static void node_composit_init_image(bNodeTree *ntree, bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
 	ImageUser *iuser= MEM_callocN(sizeof(ImageUser), "node image user");
 	node->storage= iuser;
@@ -520,6 +523,28 @@ static void node_composit_init_image(bNodeTree *ntree, bNode* node, bNodeTemplat
 	cmp_node_image_verify_outputs(ntree, node);
 }
 
+static void node_composit_free_image(bNode *node)
+{
+	bNodeSocket *sock;
+	
+	/* free extra socket info */
+	for (sock=node->outputs.first; sock; sock=sock->next)
+		MEM_freeN(sock->storage);
+	
+	MEM_freeN(node->storage);
+}
+
+static void node_composit_copy_image(bNode *orig_node, bNode *new_node)
+{
+	bNodeSocket *sock;
+	
+	new_node->storage= MEM_dupallocN(orig_node->storage);
+	
+	/* copy extra socket info */
+	for (sock=orig_node->outputs.first; sock; sock=sock->next)
+		sock->new_sock->storage = MEM_dupallocN(sock->storage);
+}
+
 void register_node_type_cmp_image(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -527,15 +552,19 @@ void register_node_type_cmp_image(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_IMAGE, "Image", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_size(&ntype, 120, 80, 300);
 	node_type_init(&ntype, node_composit_init_image);
-	node_type_storage(&ntype, "ImageUser", node_free_standard_storage, node_copy_standard_storage);
+	node_type_storage(&ntype, "ImageUser", node_composit_free_image, node_composit_copy_image);
 	node_type_update(&ntype, cmp_node_image_update, NULL);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_image);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }
 
 
 /* **************** RENDER RESULT ******************** */
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static CompBuf *compbuf_from_pass(RenderData *rd, RenderLayer *rl, int rectx, int recty, int passcode)
 {
@@ -619,8 +648,6 @@ static void node_composit_rlayers_out(RenderData *rd, RenderLayer *rl, bNodeStac
 		out[RRES_OUT_TRANSM_COLOR]->data= compbuf_from_pass(rd, rl, rectx, recty, SCE_PASS_TRANSM_COLOR);
 }
 
-
-
 static void node_composit_exec_rlayers(void *data, bNode *node, bNodeStack **UNUSED(in), bNodeStack **out)
 {
 	Scene *sce= (Scene *)node->id;
@@ -670,6 +697,7 @@ static void node_composit_exec_rlayers(void *data, bNode *node, bNodeStack **UNU
 		RE_ReleaseResult(re);
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
 
 void register_node_type_cmp_rlayers(bNodeTreeType *ttype)
 {
@@ -678,7 +706,9 @@ void register_node_type_cmp_rlayers(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_R_LAYERS, "Render Layers", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, NULL, cmp_node_rlayers_out);
 	node_type_size(&ntype, 150, 100, 300);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_rlayers);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

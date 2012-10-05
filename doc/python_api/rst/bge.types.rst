@@ -4,6 +4,33 @@ Game Types (bge.types)
 
 .. module:: bge.types
 
+************
+Introduction
+************
+
+This module contains the classes that appear as instances in the Game Engine. A
+script must interact with these classes if it is to affect the behaviour of
+objects in a game.
+
+The following example would move an object (i.e. an instance of
+:class:`KX_GameObject`) one unit up.
+
+.. code-block:: python
+
+   # bge.types.SCA_PythonController
+   cont = bge.logic.getCurrentController()
+
+   # bge.types.KX_GameObject
+   obj = cont.owner
+   obj.worldPosition.z += 1
+
+To run the code, it could be placed in a Blender text block and executed with
+a :class:`SCA_PythonController` logic brick.
+
+*****
+Types
+*****
+
 .. class:: PyObjectPlus
 
    PyObjectPlus base class of most other types in the Game Engine.
@@ -71,6 +98,20 @@ Game Types (bge.types)
       A dictionary containing the status of only the active keyboard events or keys. (read-only).
 
       :type: dictionary {:ref:`keycode<keyboard-keys>`::ref:`status<input-status>`, ...}
+
+
+   .. function:: getClipboard()
+
+      Gets the clipboard text.
+
+      :rtype: string
+
+   .. function:: setClipboard(text)
+
+      Sets the clipboard text.
+
+      :arg text: New clipboard text
+      :type text: string
 
 .. class:: SCA_PythonMouse(PyObjectPlus)
 
@@ -242,12 +283,6 @@ Game Types (bge.types)
 
       :type: string
 
-   .. attribute:: channelNames
-
-      A list of channel names that may be used with :data:`setChannel` and :data:`getChannel`.
-
-      :type: list of strings
-
    .. attribute:: frameStart
 
       Specifies the starting frame of the animation.
@@ -307,26 +342,6 @@ Game Types (bge.types)
       The name of the property that is set to the current frame number.
 
       :type: string
-
-   .. method:: setChannel(channel, matrix)
-
-      Alternative to the 2 arguments, 4 arguments (channel, matrix, loc, size, quat) are also supported.
-
-      :arg channel: A string specifying the name of the bone channel, error raised if not in :data:`channelNames`.
-      :type channel: string
-      :arg matrix: A 4x4 matrix specifying the overriding transformation as an offset from the bone's rest position.
-      :arg  matrix: list [[float]]
-
-      .. note::
-         
-         These values are relative to the bones rest position, currently the api has no way to get this info (which is annoying), but can be worked around by using bones with a rest pose that has no translation.
-
-   .. method:: getChannel(channel)
-
-      :arg channel: A string specifying the name of the bone channel. error raised if not in :data:`channelNames`.
-      :type channel: string
-      :return: (loc, size, quat)
-      :rtype: tuple
 
 .. class:: BL_Shader(PyObjectPlus)
 
@@ -866,6 +881,52 @@ Game Types (bge.types)
       
       Calling ANY method or attribute on an object that has been removed from a scene will raise a SystemError, if an object may have been removed since last accessing it use the :data:`invalid` attribute to check.
 
+   KX_GameObject can be subclassed to extend functionality. For example:
+
+   .. code-block:: python
+
+        import bge
+
+        class CustomGameObject(bge.types.KX_GameObject):
+            RATE = 0.05
+
+            def __init__(self, old_owner):
+                # "old_owner" can just be ignored. At this point, "self" is
+                # already the object in the scene, and "old_owner" has been
+                # destroyed.
+
+                # New attributes can be defined - but we could also use a game
+                # property, like "self['rate']".
+                self.rate = CustomGameObject.RATE
+
+            def update(self):
+                self.worldPosition.z += self.rate
+
+                # switch direction
+                if self.worldPosition.z > 1.0:
+                    self.rate = -CustomGameObject.RATE
+                elif self.worldPosition.z < 0.0:
+                    self.rate = CustomGameObject.RATE
+
+        # Called first
+        def mutate(cont):
+            old_object = cont.owner
+            mutated_object = CustomGameObject(cont.owner)
+
+            # After calling the constructor above, references to the old object
+            # should not be used.
+            assert(old_object is not mutated_object)
+            assert(old_object.invalid)
+            assert(mutated_object is cont.owner)
+
+        # Called later - note we are now working with the mutated object.
+        def update(cont):
+            cont.owner.update()
+
+   When subclassing objects other than empties and meshes, the specific type
+   should be used - e.g. inherit from :class:`BL_ArmatureObject` when the object
+   to mutate is an armature.
+
    .. attribute:: name
 
       The object's name. (read-only).
@@ -1347,17 +1408,9 @@ Game Types (bge.types)
 
       Rigid body physics allows the object to roll on collisions.
 
-      .. note::
-         
-         This is not working with bullet physics yet.
-
    .. method:: disableRigidBody()
 
       Disables rigid body physics for this object.
-
-      .. note::
-
-         This is not working with bullet physics yet. The angular is removed but rigid body physics can still rotate it later.
 
    .. method:: setParent(parent, compound=True, ghost=True)
 
@@ -1695,7 +1748,7 @@ Game Types (bge.types)
       light = co.owner
 
       light.energy = 1.0
-      light.colour = [1.0, 0.0, 0.0]
+      light.color = [1.0, 0.0, 0.0]
 
    .. data:: SPOT
 
@@ -1731,15 +1784,15 @@ Game Types (bge.types)
 
       :type: float
 
-   .. attribute:: colour
+   .. attribute:: color
 
-      The colour of this light. Black = [0.0, 0.0, 0.0], White = [1.0, 1.0, 1.0].
+      The color of this light. Black = [0.0, 0.0, 0.0], White = [1.0, 1.0, 1.0].
 
       :type: list [r, g, b]
 
-   .. attribute:: color
+   .. attribute:: colour
 
-      Synonym for colour.
+      Synonym for color.
 
    .. attribute:: lin_attenuation
 
@@ -1794,7 +1847,7 @@ Game Types (bge.types)
       #. They are at the same position
       #. UV coordinates are the same
       #. Their normals are the same (both polygons are "Set Smooth")
-      #. They are the same colour, for example: a cube has 24 vertices: 6 faces with 4 vertices per face.
+      #. They are the same color, for example: a cube has 24 vertices: 6 faces with 4 vertices per face.
 
    The correct method of iterating over every :class:`KX_VertexProxy` in a game object
    
@@ -1810,8 +1863,8 @@ Game Types (bge.types)
             for v_index in range(mesh.getVertexArrayLength(m_index)):
                vertex = mesh.getVertex(m_index, v_index)
                # Do something with vertex here...
-               # ... eg: colour the vertex red.
-               vertex.colour = [1.0, 0.0, 0.0, 1.0]
+               # ... eg: color the vertex red.
+               vertex.color = [1.0, 0.0, 0.0, 1.0]
 
    .. attribute:: materials
 
@@ -2550,13 +2603,13 @@ Game Types (bge.types)
 
    .. attribute:: diffuse
 
-      The diffuse colour of the material. black = [0.0, 0.0, 0.0] white = [1.0, 1.0, 1.0].
+      The diffuse color of the material. black = [0.0, 0.0, 0.0] white = [1.0, 1.0, 1.0].
 
       :type: list [r, g, b]
 
    .. attribute:: specular
 
-      The specular colour of the material. black = [0.0, 0.0, 0.0] white = [1.0, 1.0, 1.0].
+      The specular color of the material. black = [0.0, 0.0, 0.0] white = [1.0, 1.0, 1.0].
 
       :type: list [r, g, b]
 
@@ -2692,7 +2745,7 @@ Game Types (bge.types)
 
       The angle of the cone (in degrees) with which to test.
 
-      :type: float from 0 to 360
+      :type: float
 
    .. attribute:: axis
 
@@ -2702,11 +2755,6 @@ Game Types (bge.types)
 
       KX_RADAR_AXIS_POS_X, KX_RADAR_AXIS_POS_Y, KX_RADAR_AXIS_POS_Z, 
       KX_RADAR_AXIS_NEG_X, KX_RADAR_AXIS_NEG_Y, KX_RADAR_AXIS_NEG_Z
-
-   .. method:: getConeHeight()
-
-      :return: The height of the cone with which to test.
-      :rtype: float
 
 .. class:: KX_RaySensor(SCA_ISensor)
 
@@ -3398,7 +3446,7 @@ Game Types (bge.types)
 
 .. class:: KX_VertexProxy(SCA_IObject)
 
-   A vertex holds position, UV, colour and normal information.
+   A vertex holds position, UV, color and normal information.
 
    Note:
    The physics simulation is NOT currently updated - physics will not respond
@@ -3422,17 +3470,17 @@ Game Types (bge.types)
 
       :type: list [nx, ny, nz]
 
-   .. attribute:: colour
+   .. attribute:: color
 
-      The colour of the vertex.
+      The color of the vertex.
 
       :type: list [r, g, b, a]
 
       Black = [0.0, 0.0, 0.0, 1.0], White = [1.0, 1.0, 1.0, 1.0]
 
-   .. attribute:: color
+   .. attribute:: colour
 
-      Synonym for colour.
+      Synonym for color.
 
    .. attribute:: x
 
@@ -3478,25 +3526,25 @@ Game Types (bge.types)
 
    .. attribute:: r
 
-      The red component of the vertex colour. 0.0 <= r <= 1.0.
+      The red component of the vertex color. 0.0 <= r <= 1.0.
 
       :type: float
 
    .. attribute:: g
 
-      The green component of the vertex colour. 0.0 <= g <= 1.0.
+      The green component of the vertex color. 0.0 <= g <= 1.0.
 
       :type: float
 
    .. attribute:: b
 
-      The blue component of the vertex colour. 0.0 <= b <= 1.0.
+      The blue component of the vertex color. 0.0 <= b <= 1.0.
 
       :type: float
 
    .. attribute:: a
 
-      The alpha component of the vertex colour. 0.0 <= a <= 1.0.
+      The alpha component of the vertex color. 0.0 <= a <= 1.0.
 
       :type: float
 
@@ -3546,15 +3594,15 @@ Game Types (bge.types)
 
    .. method:: getRGBA()
 
-      Gets the colour of this vertex.
+      Gets the color of this vertex.
 
-      The colour is represented as four bytes packed into an integer value.  The colour is
+      The color is represented as four bytes packed into an integer value.  The color is
       packed as RGBA.
 
       Since Python offers no way to get each byte without shifting, you must use the struct module to
-      access colour in an machine independent way.
+      access color in an machine independent way.
 
-      Because of this, it is suggested you use the r, g, b and a attributes or the colour attribute instead.
+      Because of this, it is suggested you use the r, g, b and a attributes or the color attribute instead.
 
       .. code-block:: python
 
@@ -3564,17 +3612,17 @@ Game Types (bge.types)
          # black = (  0, 0, 0, 255)
          # white = (255, 255, 255, 255)
 
-      :return: packed colour. 4 byte integer with one byte per colour channel in RGBA format.
+      :return: packed color. 4 byte integer with one byte per color channel in RGBA format.
       :rtype: integer
 
    .. method:: setRGBA(col)
 
-      Sets the colour of this vertex.
+      Sets the color of this vertex.
 
       See getRGBA() for the format of col, and its relevant problems.  Use the r, g, b and a attributes
-      or the colour attribute instead.
+      or the color attribute instead.
 
-      setRGBA() also accepts a four component list as argument col.  The list represents the colour as [r, g, b, a]
+      setRGBA() also accepts a four component list as argument col.  The list represents the color as [r, g, b, a]
       with black = [0.0, 0.0, 0.0, 1.0] and white = [1.0, 1.0, 1.0, 1.0]
 
       .. code-block:: python
@@ -3584,14 +3632,14 @@ Game Types (bge.types)
          v.setRGBA([1.0, 0.0, 0.0, 1.0]) # Red
          v.setRGBA([0.0, 1.0, 0.0, 1.0]) # Green on all platforms.
 
-      :arg col: the new colour of this vertex in packed RGBA format.
+      :arg col: the new color of this vertex in packed RGBA format.
       :type col: integer or list [r, g, b, a]
 
    .. method:: getNormal()
 
       Gets the normal vector of this vertex.
 
-      :return: normalised normal vector.
+      :return: normalized normal vector.
       :rtype: list [nx, ny, nz]
 
    .. method:: setNormal(normal)
@@ -4239,6 +4287,10 @@ Game Types (bge.types)
    .. attribute:: projection_matrix
 
       This camera's 4x4 projection matrix.
+	  
+      .. note::
+      
+         This is the identity matrix prior to rendering the first frame (any Python done on frame 1). 
 
       :type: 4x4 Matrix [[float]]
 
@@ -4250,7 +4302,7 @@ Game Types (bge.types)
 
       .. note::
       
-         This matrix is regenerated every frame from the camera's position and orientation. 
+         This matrix is regenerated every frame from the camera's position and orientation. Also, this is the identity matrix prior to rendering the first frame (any Python done on frame 1).
 
    .. attribute:: camera_to_world
 

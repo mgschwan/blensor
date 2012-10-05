@@ -27,17 +27,47 @@
 #ifndef __COLLADA_H__
 #define __COLLADA_H__
 
-struct bContext;
-struct Scene;
-
+#include <stdlib.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
-	/*
-	 * both return 1 on success, 0 on error
-	 */
-	int collada_import(bContext *C, const char *filepath);
-	int collada_export(Scene *sce, const char *filepath, int selected, int apply_modifiers, int second_life);
+
+#include "BLI_linklist.h"
+#include "RNA_types.h"
+
+typedef enum BC_export_mesh_type {
+	BC_MESH_TYPE_VIEW,
+	BC_MESH_TYPE_RENDER
+} BC_export_mesh_type;
+
+struct bContext;
+struct Scene;
+
+/*
+ * both return 1 on success, 0 on error
+ */
+int collada_import(bContext *C, const char *filepath);
+int collada_export(Scene *sce,
+                   const char *filepath,
+                   int apply_modifiers,
+                   BC_export_mesh_type export_mesh_type,
+
+                   int selected,
+                   int include_children,
+                   int include_armatures,
+                   int deform_bones_only,
+
+				   int active_uv_only,
+				   int include_uv_textures,
+				   int include_material_textures,
+				   int use_texture_copies,
+
+                   int use_object_instantiation,
+                   int sort_by_name,
+                   int second_life);
+
+
+
 #ifdef __cplusplus
 }
 #endif

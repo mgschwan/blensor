@@ -41,11 +41,13 @@
 #include "COLLADAFWEffect.h"
 #include "COLLADAFWInstanceGeometry.h"
 
+extern "C" {
 #include "DNA_anim_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_camera_types.h"
+}
 
 //#include "ArmatureImporter.h"
 #include "TransformReader.h"
@@ -100,8 +102,10 @@ private:
 //		INANIMATE = 0,
 		CAMERA_XFOV = 2,
 		CAMERA_XMAG = 4,
-		CAMERA_ZFAR = 8,
-		CAMERA_ZNEAR = 16
+		CAMERA_YFOV = 8,
+		CAMERA_YMAG = 16,
+		CAMERA_ZFAR = 32,
+		CAMERA_ZNEAR = 64
 	};
 
 	enum matAnim
@@ -161,6 +165,7 @@ public:
 
 	void Assign_color_animations(const COLLADAFW::UniqueId& listid, ListBase *AnimCurves, const char * anim_type);
 	void Assign_float_animations(const COLLADAFW::UniqueId& listid, ListBase *AnimCurves, const char * anim_type);
+	void Assign_lens_animations(const COLLADAFW::UniqueId& listid, ListBase *AnimCurves, const double aspect, Camera *cam, const char *anim_type, int fov_type);
 
 	int setAnimType ( const COLLADAFW::Animatable * prop, int type, int addition);
 	

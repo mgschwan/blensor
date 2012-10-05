@@ -24,7 +24,7 @@ bl_info = {
     "location": "3D window > Tool Shelf",
     "description": "Import DTM from LRO Lola and MGS Mola",
     "warning": "May consume a lot of memory",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Import-Export/NASA_IMG_Importer",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=25462",
@@ -537,7 +537,7 @@ class Img_Importer(bpy.types.Panel):
                 split = col.split(align=True)
                 split.label("Message: " + Message)
 
-            if bpy.context.scene.fpath.upper().endswith("IMG") or bpy.context.scene.fpath.upper().endswith("LBL"):  # Check if is selected the correct file
+            if bpy.context.scene.fpath.upper().endswith(("IMG", "LBL")):  # Check if is selected the correct file
                 VertNumbers = (((RealLat(bpy.context.scene.FromLat) - RealLat(bpy.context.scene.ToLat)) * MAP_RESOLUTION) + 1) * ((RealLong(bpy.context.scene.ToLong) - RealLong(bpy.context.scene.FromLong)) * MAP_RESOLUTION + 1)
             else:
                 VertNumbers = 0

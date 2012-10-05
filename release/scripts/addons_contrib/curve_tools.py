@@ -24,7 +24,7 @@ bl_info = {
     "location": "Properties > Object data",
     "description": "Creates driven Lofts or Birails between curves",
     "warning": "may be buggy or incomplete",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Curve/Curve_Tools",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=27720",
@@ -557,7 +557,7 @@ def loft(objs, steps, spans, interpolation=1, tension=0.0, bias=0.5):
 #loft operator
 
 class LoftOperator(bpy.types.Operator):
-    '''Tooltip'''
+    """Tooltip"""
     bl_idname = "mesh.loft_operator"
     bl_label = "Loft between bezier curves"
 
@@ -613,7 +613,7 @@ class LoftOperator(bpy.types.Operator):
         return {'FINISHED'}
 
 class UpdateFix(bpy.types.Operator):
-    '''Tooltip'''
+    """Tooltip"""
     bl_idname = "mesh.update_fix"
     bl_label = "Update fix"
 
@@ -781,7 +781,7 @@ class Birail1Operator(bpy.types.Operator):
         objs = bpy.selection
 
         if len(objs)!=3:
-            self.report("ERROR","Please select 3 curves")
+            self.report({'ERROR'},"Please select 3 curves")
             return {'FINISHED'}
 
         scn = context.scene
@@ -1141,7 +1141,7 @@ def cutcurve(obj, t, method=True):
             obj.data.splines.remove(spline)
 
 class CutCurveOperator(bpy.types.Operator):
-    '''Subdivide / Split a bezier curve.'''
+    """Subdivide / Split a bezier curve"""
     bl_idname = "curve.cut_operator"
     bl_label = "Cut curve operator"
 
@@ -1195,7 +1195,6 @@ class CutCurveOperator(bpy.types.Operator):
     def invoke(self, context, event):
 
         if context.object:
-
             context.window_manager.modal_handler_add(self)
             return {'RUNNING_MODAL'}
         else:
@@ -1260,7 +1259,7 @@ class CurvePanel(bpy.types.Panel):
     bl_region_type = "TOOLS"
     #bl_options = {'REGISTER', 'UNDO'}
     #bl_context = "data"
-
+    bl_options = {'DEFAULT_CLOSED'}
     steps = IntProperty(min=2, default = 12)
 
     @classmethod

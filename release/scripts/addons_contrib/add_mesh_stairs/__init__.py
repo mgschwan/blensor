@@ -35,8 +35,10 @@ bl_info = {
     "location": "View3D > Add > Stairs",
     "description": "Creates a straight-run staircase with railings and stringer",
     "warning": "Add-on is very feature incomplete beyond basic functionality.",
-    "wiki_url": "",
-    "tracker_url": "",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
+        "Scripts/Add_Mesh/Stair_Builder",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"\
+        "func=detail&aid=28767",
     "category": "Add Mesh"}
 
 if "bpy" in locals():

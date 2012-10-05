@@ -35,15 +35,15 @@
 
 
 static bNodeSocketTemplate inputs[]= {
-	{ SOCK_FLOAT, 1, "Hue",        0.0f, 0.0f, 0.0f, 0.0f, -0.5f, 0.5f, PROP_NONE },
-	{ SOCK_FLOAT, 1, "Saturation", 1.0f, 0.0f, 0.0f, 0.0f,  0.0f, 2.0f, PROP_FACTOR },
-	{ SOCK_FLOAT, 1, "Value",      1.0f, 0.0f, 0.0f, 0.0f,  0.0f, 2.0f, PROP_FACTOR },
-	{ SOCK_FLOAT, 1, "Factor",     1.0f, 0.0f, 0.0f, 0.0f,  0.0f, 1.0f, PROP_FACTOR },
-	{ SOCK_RGBA,  1, "Color",      0.8f, 0.8f, 0.8f, 1.0f },
+	{ SOCK_FLOAT, 1, N_("Hue"),        0.0f, 0.0f, 0.0f, 0.0f, -0.5f, 0.5f, PROP_NONE },
+	{ SOCK_FLOAT, 1, N_("Saturation"), 1.0f, 0.0f, 0.0f, 0.0f,  0.0f, 2.0f, PROP_FACTOR },
+	{ SOCK_FLOAT, 1, N_("Value"),      1.0f, 0.0f, 0.0f, 0.0f,  0.0f, 2.0f, PROP_FACTOR },
+	{ SOCK_FLOAT, 1, N_("Factor"),     1.0f, 0.0f, 0.0f, 0.0f,  0.0f, 1.0f, PROP_FACTOR },
+	{ SOCK_RGBA,  1, N_("Color"),      0.8f, 0.8f, 0.8f, 1.0f },
 	{ -1, 0, "" }
 };
 static bNodeSocketTemplate outputs[]= {
-	{ SOCK_RGBA, 0, "Color" },
+	{ SOCK_RGBA, 0, N_("Color") },
 	{ -1, 0, "" }
 };
 
@@ -80,7 +80,7 @@ static void colorfn(float *out, TexParams *p, bNode *node, bNodeStack **in, shor
 	float col[4];
 	tex_input_rgba(col, in[4], p, thread);
 	
-	hue += 0.5f; /* [-.5, .5] -> [0, 1] */
+	hue += 0.5f; /* [-0.5, 0.5] -> [0, 1] */
 	
 	do_hue_sat_fac(node, out, hue, sat, val, col, fac);
 	

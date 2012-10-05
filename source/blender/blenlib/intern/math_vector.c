@@ -136,6 +136,19 @@ float angle_v3v3v3(const float v1[3], const float v2[3], const float v3[3])
 	return angle_normalized_v3v3(vec1, vec2);
 }
 
+/* Quicker than full angle computation */
+float cos_v3v3v3(const float p1[3], const float p2[3], const float p3[3])
+{
+	float vec1[3], vec2[3];
+
+	sub_v3_v3v3(vec1, p2, p1);
+	sub_v3_v3v3(vec2, p2, p3);
+	normalize_v3(vec1);
+	normalize_v3(vec2);
+
+	return dot_v3v3(vec1, vec2);
+}
+
 /* Return the shortest angle in radians between the 2 vectors */
 float angle_v3v3(const float v1[3], const float v2[3])
 {
@@ -438,6 +451,29 @@ void minmax_v3v3_v3(float min[3], float max[3], const float vec[3])
 	if (max[2] < vec[2]) max[2] = vec[2];
 }
 
+/** ensure \a v1 is \a dist from \a v2 */
+void dist_ensure_v3_v3fl(float v1[3], const float v2[3], const float dist)
+{
+	if (!equals_v3v3(v2, v1)) {
+		float nor[3];
+
+		sub_v3_v3v3(nor, v1, v2);
+		normalize_v3(nor);
+		madd_v3_v3v3fl(v1, v2, nor, dist);
+	}
+}
+
+void dist_ensure_v2_v2fl(float v1[2], const float v2[2], const float dist)
+{
+	if (!equals_v2v2(v2, v1)) {
+		float nor[2];
+
+		sub_v2_v2v2(nor, v1, v2);
+		normalize_v2(nor);
+		madd_v2_v2v2fl(v1, v2, nor, dist);
+	}
+}
+
 /***************************** Array Functions *******************************/
 
 double dot_vn_vn(const float *array_src_a, const float *array_src_b, const int size)
@@ -550,6 +586,27 @@ void add_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_
 	}
 }
 
+void madd_vn_vn(float *array_tar, const float *array_src, const float f, const int size)
+{
+	float *tar = array_tar + (size - 1);
+	const float *src = array_src + (size - 1);
+	int i = size;
+	while (i--) {
+		*(tar--) += *(src--) * f;
+	}
+}
+
+void madd_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_src_b, const float f, const int size)
+{
+	float *tar = array_tar + (size - 1);
+	const float *src_a = array_src_a + (size - 1);
+	const float *src_b = array_src_b + (size - 1);
+	int i = size;
+	while (i--) {
+		*(tar--) = *(src_a--) + (*(src_b--) * f);
+	}
+}
+
 void sub_vn_vn(float *array_tar, const float *array_src, const int size)
 {
 	float *tar = array_tar + (size - 1);
@@ -568,6 +625,27 @@ void sub_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_
 	int i = size;
 	while (i--) {
 		*(tar--) = *(src_a--) - *(src_b--);
+	}
+}
+
+void msub_vn_vn(float *array_tar, const float *array_src, const float f, const int size)
+{
+	float *tar = array_tar + (size - 1);
+	const float *src = array_src + (size - 1);
+	int i = size;
+	while (i--) {
+		*(tar--) -= *(src--) * f;
+	}
+}
+
+void msub_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_src_b, const float f, const int size)
+{
+	float *tar = array_tar + (size - 1);
+	const float *src_a = array_src_a + (size - 1);
+	const float *src_b = array_src_b + (size - 1);
+	int i = size;
+	while (i--) {
+		*(tar--) = *(src_a--) - (*(src_b--) * f);
 	}
 }
 

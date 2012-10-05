@@ -83,8 +83,11 @@
 
 /* Get the min/max keyframes*/
 /* note: it should return total boundbox, filter for selection only can be argument... */
-void get_graph_keyframe_extents(bAnimContext *ac, float *xmin, float *xmax, float *ymin, float *ymax, const short selOnly)
+void get_graph_keyframe_extents(bAnimContext *ac, float *xmin, float *xmax, float *ymin, float *ymax, 
+                                const short do_sel_only, const short include_handles)
 {
+	Scene *scene = ac->scene;
+	
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale;
 	int filter;
@@ -93,7 +96,7 @@ void get_graph_keyframe_extents(bAnimContext *ac, float *xmin, float *xmax, floa
 	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_CURVE_VISIBLE | ANIMFILTER_NODUPLIS);
 	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
-	/* set large values to try to override */
+	/* set large values initial values that will be easy to override */
 	if (xmin) *xmin = 999999999.0f;
 	if (xmax) *xmax = -999999999.0f;
 	if (ymin) *ymin = 999999999.0f;
@@ -101,6 +104,8 @@ void get_graph_keyframe_extents(bAnimContext *ac, float *xmin, float *xmax, floa
 	
 	/* check if any channels to set range with */
 	if (anim_data.first) {
+		short foundBounds = FALSE;
+		
 		/* go through channels, finding max extents */
 		for (ale = anim_data.first; ale; ale = ale->next) {
 			AnimData *adt = ANIM_nla_mapping_get(ac, ale);
@@ -109,29 +114,39 @@ void get_graph_keyframe_extents(bAnimContext *ac, float *xmin, float *xmax, floa
 			float unitFac;
 			
 			/* get range */
-			calc_fcurve_bounds(fcu, &txmin, &txmax, &tymin, &tymax, selOnly);
-			
-			/* apply NLA scaling */
-			if (adt) {
-				txmin = BKE_nla_tweakedit_remap(adt, txmin, NLATIME_CONVERT_MAP);
-				txmax = BKE_nla_tweakedit_remap(adt, txmax, NLATIME_CONVERT_MAP);
+			if (calc_fcurve_bounds(fcu, &txmin, &txmax, &tymin, &tymax, do_sel_only, include_handles)) {
+				/* apply NLA scaling */
+				if (adt) {
+					txmin = BKE_nla_tweakedit_remap(adt, txmin, NLATIME_CONVERT_MAP);
+					txmax = BKE_nla_tweakedit_remap(adt, txmax, NLATIME_CONVERT_MAP);
+				}
+				
+				/* apply unit corrections */
+				unitFac = ANIM_unit_mapping_get_factor(ac->scene, ale->id, fcu, 0);
+				tymin *= unitFac;
+				tymax *= unitFac;
+				
+				/* try to set cur using these values, if they're more extreme than previously set values */
+				if ((xmin) && (txmin < *xmin)) *xmin = txmin;
+				if ((xmax) && (txmax > *xmax)) *xmax = txmax;
+				if ((ymin) && (tymin < *ymin)) *ymin = tymin;
+				if ((ymax) && (tymax > *ymax)) *ymax = tymax;
+				
+				foundBounds = TRUE;
 			}
-			
-			/* apply unit corrections */
-			unitFac = ANIM_unit_mapping_get_factor(ac->scene, ale->id, fcu, 0);
-			tymin *= unitFac;
-			tymax *= unitFac;
-			
-			/* try to set cur using these values, if they're more extreme than previously set values */
-			if ((xmin) && (txmin < *xmin)) *xmin = txmin;
-			if ((xmax) && (txmax > *xmax)) *xmax = txmax;
-			if ((ymin) && (tymin < *ymin)) *ymin = tymin;
-			if ((ymax) && (tymax > *ymax)) *ymax = tymax;
 		}
 		
 		/* ensure that the extents are not too extreme that view implodes...*/
-		if ((xmin && xmax) && (fabsf(*xmax - *xmin) < 0.1f)) *xmax += 0.1f;
-		if ((ymin && ymax) && (fabsf(*ymax - *ymin) < 0.1f)) *ymax += 0.1f;
+		if (foundBounds) {
+			if ((xmin && xmax) && (fabsf(*xmax - *xmin) < 0.1f)) *xmax += 0.1f;
+			if ((ymin && ymax) && (fabsf(*ymax - *ymin) < 0.1f)) *ymax += 0.1f;
+		}
+		else {
+			if (xmin) *xmin = (float)PSFRA;
+			if (xmax) *xmax = (float)PEFRA;
+			if (ymin) *ymin = -5;
+			if (ymax) *ymax = 5;
+		}
 		
 		/* free memory */
 		BLI_freelistN(&anim_data);
@@ -139,8 +154,8 @@ void get_graph_keyframe_extents(bAnimContext *ac, float *xmin, float *xmax, floa
 	else {
 		/* set default range */
 		if (ac->scene) {
-			if (xmin) *xmin = (float)ac->scene->r.sfra;
-			if (xmax) *xmax = (float)ac->scene->r.efra;
+			if (xmin) *xmin = (float)PSFRA;
+			if (xmax) *xmax = (float)PEFRA;
 		}
 		else {
 			if (xmin) *xmin = -5;
@@ -169,7 +184,7 @@ static int graphkeys_previewrange_exec(bContext *C, wmOperator *UNUSED(op))
 		scene = ac.scene;
 	
 	/* set the range directly */
-	get_graph_keyframe_extents(&ac, &min, &max, NULL, NULL, FALSE);
+	get_graph_keyframe_extents(&ac, &min, &max, NULL, NULL, FALSE, FALSE);
 	scene->r.flag |= SCER_PRV_RANGE;
 	scene->r.psfra = (int)floor(min + 0.5f);
 	scene->r.pefra = (int)floor(max + 0.5f);
@@ -198,49 +213,51 @@ void GRAPH_OT_previewrange_set(wmOperatorType *ot)
 
 /* ****************** View-All Operator ****************** */
 
-static int graphkeys_viewall(bContext *C, const short selOnly)
+static int graphkeys_viewall(bContext *C, const short do_sel_only, const short include_handles)
 {
 	bAnimContext ac;
-	View2D *v2d;
 	float extra;
+	rctf cur_new;
 
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-	v2d = &ac.ar->v2d;
 
 	/* set the horizontal range, with an extra offset so that the extreme keys will be in view */
-	get_graph_keyframe_extents(&ac, &v2d->cur.xmin, &v2d->cur.xmax, &v2d->cur.ymin, &v2d->cur.ymax, selOnly);
+	get_graph_keyframe_extents(&ac,
+	                           &cur_new.xmin, &cur_new.xmax,
+	                           &cur_new.ymin, &cur_new.ymax,
+	                           do_sel_only, include_handles);
 
-	extra = 0.1f * (v2d->cur.xmax - v2d->cur.xmin);
-	v2d->cur.xmin -= extra;
-	v2d->cur.xmax += extra;
+	extra = 0.1f * BLI_rctf_size_x(&cur_new);
+	cur_new.xmin -= extra;
+	cur_new.xmax += extra;
 
-	extra = 0.1f * (v2d->cur.ymax - v2d->cur.ymin);
-	v2d->cur.ymin -= extra;
-	v2d->cur.ymax += extra;
+	extra = 0.1f * BLI_rctf_size_y(&cur_new);
+	cur_new.ymin -= extra;
+	cur_new.ymax += extra;
 
-	/* do View2D syncing */
-	UI_view2d_sync(CTX_wm_screen(C), CTX_wm_area(C), v2d, V2D_LOCK_COPY);
-
-	/* set notifier that things have changed */
-	ED_area_tag_redraw(CTX_wm_area(C));
+	UI_view2d_smooth_view(C, ac.ar, &cur_new);
 
 	return OPERATOR_FINISHED;
 }
 
 /* ......... */
 
-static int graphkeys_viewall_exec(bContext *C, wmOperator *UNUSED(op))
+static int graphkeys_viewall_exec(bContext *C, wmOperator *op)
 {
+	short include_handles = RNA_boolean_get(op->ptr, "include_handles");
+	
 	/* whole range */
-	return graphkeys_viewall(C, FALSE);
+	return graphkeys_viewall(C, FALSE, include_handles);
 }
  
-static int graphkeys_view_selected_exec(bContext *C, wmOperator *UNUSED(op))
+static int graphkeys_view_selected_exec(bContext *C, wmOperator *op)
 {
+	short include_handles = RNA_boolean_get(op->ptr, "include_handles");
+	
 	/* only selected */
-	return graphkeys_viewall(C, TRUE);
+	return graphkeys_viewall(C, TRUE, include_handles);
 }
 
 void GRAPH_OT_view_all(wmOperatorType *ot)
@@ -252,10 +269,14 @@ void GRAPH_OT_view_all(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->exec = graphkeys_viewall_exec;
-	ot->poll = ED_operator_graphedit_active; // XXX: unchecked poll to get fsamples working too, but makes modifier damage trickier...
-	
+	ot->poll = ED_operator_graphedit_active; /* XXX: unchecked poll to get fsamples working too, but makes modifier damage trickier... */
+
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	
+	/* props */
+	ot->prop = RNA_def_boolean(ot->srna, "include_handles", TRUE, "Include Handles", 
+	                           "Include handles of keyframes when calculating extents");
 }
 
 void GRAPH_OT_view_selected(wmOperatorType *ot)
@@ -267,10 +288,14 @@ void GRAPH_OT_view_selected(wmOperatorType *ot)
 
 	/* api callbacks */
 	ot->exec = graphkeys_view_selected_exec;
-	ot->poll = ED_operator_graphedit_active; // XXX: unchecked poll to get fsamples working too, but makes modifier damage trickier...
+	ot->poll = ED_operator_graphedit_active; /* XXX: unchecked poll to get fsamples working too, but makes modifier damage trickier... */
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	
+	/* props */
+	ot->prop = RNA_def_boolean(ot->srna, "include_handles", TRUE, "Include Handles", 
+	                           "Include handles of keyframes when calculating extents");
 }
 
 /* ******************** Create Ghost-Curves Operator *********************** */
@@ -668,9 +693,16 @@ static short paste_graph_keys(bAnimContext *ac,
 	ListBase anim_data = {NULL, NULL};
 	int filter, ok = 0;
 	
-	/* filter data */
-	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_CURVE_VISIBLE | ANIMFILTER_SEL | ANIMFILTER_FOREDIT | ANIMFILTER_NODUPLIS);
-	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
+	/* filter data 
+	 * - First time we try to filter more strictly, allowing only selected channels 
+	 *   to allow copying animation between channels
+	 * - Second time, we loosen things up if nothing was found the first time, allowing
+	 *   users to just paste keyframes back into the original curve again [#31670]
+	 */
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_CURVE_VISIBLE | ANIMFILTER_FOREDIT | ANIMFILTER_NODUPLIS);
+	
+	if (ANIM_animdata_filter(ac, &anim_data, filter | ANIMFILTER_SEL, ac->data, ac->datatype) == 0)
+		ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
 	/* paste keyframes */
 	ok = paste_animedit_keys(ac, &anim_data, offset_mode, merge_mode);
@@ -760,7 +792,8 @@ void GRAPH_OT_paste(wmOperatorType *ot)
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
-
+	
+	/* props */
 	RNA_def_enum(ot->srna, "offset", keyframe_paste_offset_items, KEYFRAME_PASTE_OFFSET_CFRA_START, "Offset", "Paste time offset of keys");
 	RNA_def_enum(ot->srna, "merge", keyframe_paste_merge_items, KEYFRAME_PASTE_MERGE_MIX, "Type", "Method of merging pasted keys and existing");
 }
@@ -1190,7 +1223,8 @@ void GRAPH_OT_sound_bake(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE, WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
+	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE,
+	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 	RNA_def_float(ot->srna, "low", 0.0f, 0.0, 100000.0, "Lowest frequency", "", 0.1, 1000.00);
 	RNA_def_float(ot->srna, "high", 100000.0, 0.0, 100000.0, "Highest frequency", "", 0.1, 1000.00);
 	RNA_def_float(ot->srna, "attack", 0.005, 0.0, 2.0, "Attack time", "", 0.01, 0.1);
@@ -1617,7 +1651,7 @@ static int graphkeys_euler_filter_exec(bContext *C, wmOperator *op)
 		int f;
 		
 		/* sanity check: ensure that there are enough F-Curves to work on in this group */
-		// TODO: also enforce assumption that there be a full set of keyframes at each position by ensuring that totvert counts are same?
+		/* TODO: also enforce assumption that there be a full set of keyframes at each position by ensuring that totvert counts are same? */
 		if (ELEM3(NULL, euf->fcurves[0], euf->fcurves[1], euf->fcurves[2])) {
 			/* report which components are missing */
 			BKE_reportf(op->reports, RPT_WARNING,
@@ -1631,9 +1665,9 @@ static int graphkeys_euler_filter_exec(bContext *C, wmOperator *op)
 			failed++;
 			continue;
 		}
-		
+
 		/* simple method: just treat any difference between keys of greater than 180 degrees as being a flip */
-		// FIXME: there are more complicated methods that will be needed to fix more cases than just some
+		/* FIXME: there are more complicated methods that will be needed to fix more cases than just some */
 		for (f = 0; f < 3; f++) {
 			FCurve *fcu = euf->fcurves[f];
 			BezTriple *bezt, *prev = NULL;
@@ -2032,7 +2066,7 @@ static int graphkeys_smooth_exec(bContext *C, wmOperator *UNUSED(op))
 	/* smooth keyframes */
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		/* For now, we can only smooth by flattening handles AND smoothing curve values.
-		 * Perhaps the mode argument could be removed, as that functionality is offerred through 
+		 * Perhaps the mode argument could be removed, as that functionality is offered through
 		 * Snap->Flatten Handles anyway.
 		 */
 		smooth_fcurve(ale->key_data);
@@ -2193,10 +2227,10 @@ static int graph_fmodifier_copy_exec(bContext *C, wmOperator *op)
 	/* if this exists, call the copy F-Modifiers API function */
 	if (ale && ale->data) {
 		FCurve *fcu = (FCurve *)ale->data;
-		
-		// TODO: when 'active' vs 'all' boolean is added, change last param!
+
+		/* TODO: when 'active' vs 'all' boolean is added, change last param! */
 		ok = ANIM_fmodifiers_copy_to_buf(&fcu->modifiers, 0);
-		
+
 		/* free temp data now */
 		MEM_freeN(ale);
 	}
@@ -2248,11 +2282,11 @@ static int graph_fmodifier_paste_exec(bContext *C, wmOperator *op)
 	/* paste modifiers */
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		FCurve *fcu = (FCurve *)ale->data;
-		
-		// TODO: do we want to replace existing modifiers? add user pref for that!
+
+		/* TODO: do we want to replace existing modifiers? add user pref for that! */
 		ok += ANIM_fmodifiers_paste_from_buf(&fcu->modifiers, 0);
 	}
-	
+
 	/* clean up */
 	BLI_freelistN(&anim_data);
 	

@@ -101,6 +101,11 @@ BF_BULLET = '#extern/bullet2/src'
 BF_BULLET_INC = '${BF_BULLET}'
 BF_BULLET_LIB = 'extern_bullet'
 
+WITH_BF_ELTOPO = False
+BF_LAPACK = LIBDIR + '/lapack'
+BF_LAPACK_LIB = 'libf2c clapack_nowrap BLAS_nowrap'
+BF_LAPACK_LIBPATH = '${BF_LAPACK}/lib'
+
 BF_WINTAB = LIBDIR + '/wintab'
 BF_WINTAB_INC = '${BF_WINTAB}/INCLUDE'
 
@@ -156,16 +161,22 @@ BF_OIIO_INC = '${BF_OIIO}/include'
 BF_OIIO_LIB = 'OpenImageIO'
 BF_OIIO_LIBPATH = '${BF_OIIO}/lib'
 
+WITH_BF_OCIO = True
+BF_OCIO = '${LIBDIR}/opencolorio'
+BF_OCIO_INC = '${BF_OCIO}/include'
+BF_OCIO_LIB = 'OpenColorIO'
+BF_OCIO_LIBPATH = '${BF_OCIO}/lib'
+
 WITH_BF_BOOST = True
 BF_BOOST = '${LIBDIR}/boost'
 BF_BOOST_INC = '${BF_BOOST}/include'
-BF_BOOST_LIB = 'libboost_date_time-vc90-mt-s-1_47 libboost_filesystem-vc90-mt-s-1_47 libboost_regex-vc90-mt-s-1_47 libboost_system-vc90-mt-s-1_47 libboost_thread-vc90-mt-s-1_47'
+BF_BOOST_LIB = 'libboost_date_time-vc90-mt-s-1_49 libboost_filesystem-vc90-mt-s-1_49 libboost_regex-vc90-mt-s-1_49 libboost_system-vc90-mt-s-1_49 libboost_thread-vc90-mt-s-1_49'
 BF_BOOST_LIBPATH = '${BF_BOOST}/lib'
 
 #CUDA
 WITH_BF_CYCLES_CUDA_BINARIES = False
 #BF_CYCLES_CUDA_NVCC = "" # Path to the nvidia compiler
-BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_13', 'sm_20', 'sm_21']
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_13', 'sm_20', 'sm_21', 'sm_30']
 
 #Ray trace optimization
 WITH_BF_RAYOPTIMIZATION = True
@@ -188,7 +199,7 @@ BGE_CXXFLAGS = ['/O2', '/EHsc', '/GR', '/fp:fast', '/arch:SSE']
 
 BF_DEBUG_CCFLAGS = ['/Zi', '/FR${TARGET}.sbr']
 
-CPPFLAGS = ['-DWIN32','-D_CONSOLE', '-D_LIB', '-D_CRT_SECURE_NO_DEPRECATE']
+CPPFLAGS = ['-DWIN32','-D_CONSOLE', '-D_LIB', '-D_CRT_SECURE_NO_DEPRECATE', '-DOPJ_STATIC']
 REL_CFLAGS = []
 REL_CXXFLAGS = []
 REL_CCFLAGS = ['-O2', '-DNDEBUG']

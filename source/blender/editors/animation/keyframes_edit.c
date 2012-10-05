@@ -429,7 +429,7 @@ void ANIM_editkeyframes_refresh(bAnimContext *ac)
 			if (check(2)) \
 				ok |= KEYFRAME_OK_H2; \
 		} \
-	}	
+	} (void)0
  
 /* ------------------------ */
  
@@ -505,7 +505,7 @@ static short ok_bezier_region(KeyframeEditData *ked, BezTriple *bezt)
 	if (ked->data) {
 		short ok = 0;
 		
-		#define KEY_CHECK_OK(_index) BLI_in_rctf(ked->data, bezt->vec[_index][0], bezt->vec[_index][1])
+		#define KEY_CHECK_OK(_index) BLI_rctf_isect_pt_v(ked->data, bezt->vec[_index])
 		KEYFRAME_OK_CHECKS(KEY_CHECK_OK);
 		#undef KEY_CHECK_OK
 		
@@ -766,7 +766,7 @@ KeyframeEditFunc ANIM_editkeyframes_mirror(short type)
 			bezt->h1 = HD_FREE;                                               \
 		if (ELEM3(bezt->h2, HD_ALIGN, HD_AUTO, HD_AUTO_ANIM))                 \
 			bezt->h2 = HD_FREE;                                               \
-	}
+	} (void)0
 
 /* Sets the selected bezier handles to type 'auto' */
 static short set_bezier_auto(KeyframeEditData *UNUSED(ked), BezTriple *bezt) 

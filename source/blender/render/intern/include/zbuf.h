@@ -46,7 +46,7 @@ struct StrandShadeCache;
 void fillrect(int *rect, int x, int y, int val);
 
 /**
- * Converts a world coordinate into a homogenous coordinate in view
+ * Converts a world coordinate into a homogeneous coordinate in view
  * coordinates. 
  */
 void projectvert(const float v1[3], float winmat[][4], float adr[4]);
@@ -55,7 +55,7 @@ int testclip(const float v[3]);
 
 void zbuffer_shadow(struct Render *re, float winmat[][4], struct LampRen *lar, int *rectz, int size, float jitx, float jity);
 void zbuffer_abuf_shadow(struct Render *re, struct LampRen *lar, float winmat[][4], struct APixstr *APixbuf, struct APixstrand *apixbuf, struct ListBase *apsmbase, int size, int samples, float (*jit)[2]);
-void zbuffer_solid(struct RenderPart *pa, struct RenderLayer *rl, void (*fillfunc)(struct RenderPart*, struct ZSpan*, int, void*), void *data);
+void zbuffer_solid(struct RenderPart *pa, struct RenderLayer *rl, void (*fillfunc)(struct RenderPart *, struct ZSpan *, int, void*), void *data);
 
 unsigned short *zbuffer_transp_shade(struct RenderPart *pa, struct RenderLayer *rl, float *pass, struct ListBase *psmlist);
 void zbuffer_sss(RenderPart *pa, unsigned int lay, void *handle, void (*func)(void*, int, int, int, int, int));
@@ -80,8 +80,7 @@ typedef struct APixstrand {
 	struct APixstrand *next;
 } APixstrand;
 
-typedef struct APixstrMain
-{
+typedef struct APixstrMain {
 	struct APixstrMain *next, *prev;
 	void *ps;
 } APixstrMain;
@@ -91,12 +90,12 @@ typedef struct ZSpan {
 	int rectx, recty;						/* range for clipping */
 	
 	int miny1, maxy1, miny2, maxy2;			/* actual filled in range */
-	float *minp1, *maxp1, *minp2, *maxp2;	/* vertex pointers detect min/max range in */
+	const float *minp1, *maxp1, *minp2, *maxp2;	/* vertex pointers detect min/max range in */
 	float *span1, *span2;
 	
 	float zmulx, zmuly, zofsx, zofsy;		/* transform from hoco to zbuf co */
 	
-	int *rectz, *arectz;					/* zbuffers, arectz is for transparant */
+	int *rectz, *arectz;					/* zbuffers, arectz is for transparent */
 	int *rectz1;							/* seconday z buffer for shadowbuffer (2nd closest z) */
 	int *rectp;								/* polygon index buffer */
 	int *recto;								/* object buffer */
@@ -115,27 +114,35 @@ typedef struct ZSpan {
 	void *sss_handle;						/* used by sss */
 	void (*sss_func)(void *, int, int, int, int, int);
 	
-	void (*zbuffunc)(struct ZSpan *, int, int, float *, float *, float *, float *);
-	void (*zbuflinefunc)(struct ZSpan *, int, int, float *, float *);
+	void (*zbuffunc)(struct ZSpan *, int, int, const float *, const float *, const float *, const float *);
+	void (*zbuflinefunc)(struct ZSpan *, int, int, const float *, const float *);
 	
 } ZSpan;
 
 /* exported to shadbuf.c */
-void zbufclip4(struct ZSpan *zspan, int obi, int zvlnr, float *f1, float *f2, float *f3, float *f4, int c1, int c2, int c3, int c4);
+void zbufclip4(struct ZSpan *zspan, int obi, int zvlnr, float *f1, float *f2, float *f3, float *f4,
+               int c1, int c2, int c3, int c4);
 void zbuf_free_span(struct ZSpan *zspan);
 void freepsA(struct ListBase *lb);
 
 /* to rendercore.c */
-void zspan_scanconvert(struct ZSpan *zpan, void *handle, float *v1, float *v2, float *v3, void (*func)(void *, int, int, float, float) );
+void zspan_scanconvert(struct ZSpan *zpan, void *handle, float *v1, float *v2, float *v3,
+                       void (*func)(void *, int, int, float, float) );
 
 /* exported to edge render... */
 void zbufclip(struct ZSpan *zspan, int obi, int zvlnr, float *f1, float *f2, float *f3, int c1, int c2, int c3);
 void zbuf_alloc_span(struct ZSpan *zspan, int rectx, int recty, float clipcrop);
-void zbufclipwire(struct ZSpan *zspan, int obi, int zvlnr, int ec, float *ho1, float *ho2, float *ho3, float *ho4, int c1, int c2, int c3, int c4);
+void zbufclipwire(struct ZSpan *zspan, int obi, int zvlnr, int ec,
+                  float *ho1, float *ho2, float *ho3, float *ho4, int c1, int c2, int c3, int c4);
 
 /* exported to shadeinput.c */
 void zbuf_make_winmat(Render *re, float winmat[][4]);
 void zbuf_render_project(float winmat[][4], const float co[3], float ho[4]);
+
+/* sould not really be exposed, bad! */
+void hoco_to_zco(ZSpan *zspan, float zco[3], const float hoco[4]);
+void zspan_scanconvert_strand(ZSpan *zspan, void *handle, float *v1, float *v2, float *v3, void (*func)(void *, int, int, float, float, float) );
+void zbufsinglewire(ZSpan *zspan, int obi, int zvlnr, const float ho1[4], const float ho2[4]);
 
 #endif
 

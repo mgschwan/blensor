@@ -27,8 +27,10 @@ bl_info = {
     "location": "3D View > Properties Region > Show Weights",
     "description": "Finds the vertex groups of a selected vertex and displays the corresponding weights",
     "warning": "Requires bmesh",
-    "wiki_url": "http://wiki.blender.org/index.php?title=Extensions:2.6/Py/Scripts/Modeling/Show_Vertex_Group_Weights",
-    "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=30609&group_id=153&atid=467",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
+        "Scripts/Modeling/Show_Vertex_Group_Weights",
+    "tracker_url": "http://projects.blender.org/tracker/index.php?"\
+        "func=detail&aid=30609",
     "category": "Mesh"}
 
 #TODO - Add button for selecting vertices with no groups
@@ -37,7 +39,7 @@ bl_info = {
 import bpy, bmesh, bgl, blf, mathutils
 
 
-# Borrowed/Modified from Bart Crouch's old Index Visualiser add-on
+# Borrowed/Modified from Bart Crouch's old Index Visualizer add-on
 def calc_callback(self, context):
     #polling
     if context.mode != "EDIT_MESH" or len(context.active_object.vertex_groups) == 0:
@@ -172,11 +174,11 @@ class ShowVGroupWeights(bpy.types.Operator):
             if context.scene.display_indices < 1:
                 # operator is called for the first time, start everything
                 context.scene.display_indices = 1
-                context.window_manager.modal_handler_add(self)
                 self.handle1 = context.region.callback_add(calc_callback,
                     (self, context), 'POST_VIEW')
                 self.handle2 = context.region.callback_add(draw_callback,
                     (self, context), 'POST_PIXEL')
+                context.window_manager.modal_handler_add(self)
                 return {'RUNNING_MODAL'}
             else:
                 # operator is called again, stop displaying
@@ -184,7 +186,7 @@ class ShowVGroupWeights(bpy.types.Operator):
                 clear_properties(full=False)
                 return {'RUNNING_MODAL'}
         else:
-            self.report({"WARNING"}, "View3D not found, can't run operator")
+            self.report({'WARNING'}, "View3D not found, can't run operator")
             return {'CANCELLED'}
 
 
@@ -354,6 +356,7 @@ class PanelShowWeights(bpy.types.Panel):
     bl_label = "Show Weights"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
+    bl_options = {'DEFAULT_CLOSED'}
 
     @classmethod
     def poll(cls, context):

@@ -43,7 +43,7 @@ class MT_CmMatrix4x4;
 class KX_WorldInfo
 {
 public:
-	KX_WorldInfo(){}
+	KX_WorldInfo() {}
 	virtual ~KX_WorldInfo();
 
 	virtual bool	hasWorld()=0;
@@ -70,9 +70,7 @@ public:
 	
 	
 #ifdef WITH_CXX_GUARDEDALLOC
-public:
-	void *operator new(size_t num_bytes) { return MEM_mallocN(num_bytes, "GE:KX_WorldInfo"); }
-	void operator delete( void *mem ) { MEM_freeN(mem); }
+	MEM_CXX_CLASS_ALLOC_FUNCS("GE:KX_WorldInfo")
 #endif
 };
 

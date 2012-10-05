@@ -44,7 +44,8 @@
 	'glDebugMessageCallbackAMD',
 	'glDebugMessageEnableAMD',
 	'glDebugMessageInsertAMD',
-	'glGetDebugMessageLogAMD']),
+	'glGetDebugMessageLogAMD',
+	'GLDEBUGPROCAMD']),
 
 'GL_AMD_depth_clamp_separate': set([
 	'GL_AMD_depth_clamp_separate',
@@ -356,7 +357,8 @@
 	'glDebugMessageCallbackARB',
 	'glDebugMessageControlARB',
 	'glDebugMessageInsertARB',
-	'glGetDebugMessageLogARB']),
+	'glGetDebugMessageLogARB',
+	'GLDEBUGPROCARB']),
 
 'GL_ARB_depth_buffer_float': set([
 	'GL_ARB_depth_buffer_float',

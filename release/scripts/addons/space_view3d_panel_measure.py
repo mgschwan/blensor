@@ -32,7 +32,7 @@ bl_info = {
     "location": "View3D > Properties > Measure Panel",
     "description": "Measure distances between objects",
     "warning": "Script needs repairs",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/" \
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/" \
         "Scripts/3D_interaction/Panel_Measure",
     "tracker_url": "https://projects.blender.org/tracker/index.php?" \
         "func=detail&aid=21445",
@@ -904,7 +904,7 @@ def draw_measurements_callback(self, context):
 
 
 class VIEW3D_OT_display_measurements(bpy.types.Operator):
-    '''Display the measurements made in the 'Measure' panel'''
+    """Display the measurements made in the 'Measure' panel"""
     bl_idname = "view3d.display_measurements"
     bl_label = "Display the measurements made in the" \
         " 'Measure' panel in the 3D View"
@@ -922,7 +922,6 @@ class VIEW3D_OT_display_measurements(bpy.types.Operator):
                 # Add the region OpenGL drawing callback
                 for WINregion in context.area.regions:
                     if WINregion.type == 'WINDOW':
-                        context.window_manager.modal_handler_add(self)
                         self._handle = WINregion.callback_add(
                             draw_measurements_callback,
                             (self, context),
@@ -930,6 +929,7 @@ class VIEW3D_OT_display_measurements(bpy.types.Operator):
 
                         print("Measure panel display callback added")
 
+                        context.window_manager.modal_handler_add(self)
                         return {'RUNNING_MODAL'}
 
             return {'CANCELLED'}

@@ -57,6 +57,7 @@
 #include "BKE_library.h"
 #include "BKE_object.h"
 #include "BKE_report.h"
+#include "BKE_tracking.h"
 
 
 #include "WM_api.h"
@@ -77,8 +78,9 @@
 /* Context Wrangling... */
 
 /* Get pointer to active Grease Pencil datablock, and an RNA-pointer to trace back to whatever owns it */
-bGPdata **gpencil_data_get_pointers(bContext *C, PointerRNA *ptr)
+bGPdata **gpencil_data_get_pointers(const bContext *C, PointerRNA *ptr)
 {
+	ID *screen_id = (ID *)CTX_wm_screen(C);
 	Scene *scene = CTX_data_scene(C);
 	ScrArea *sa = CTX_wm_area(C);
 	
@@ -91,8 +93,8 @@ bGPdata **gpencil_data_get_pointers(bContext *C, PointerRNA *ptr)
 			{
 				Object *ob = CTX_data_active_object(C);
 				
-				// TODO: we can include other data-types such as bones later if need be...
-				
+				/* TODO: we can include other data-types such as bones later if need be... */
+
 				/* just in case no active object */
 				if (ob) {
 					/* for now, as long as there's an object, default to using that in 3D-View */
@@ -121,19 +123,22 @@ bGPdata **gpencil_data_get_pointers(bContext *C, PointerRNA *ptr)
 				
 			case SPACE_SEQ: /* Sequencer */
 			{
-				//SpaceSeq *sseq= (SpaceSeq *)CTX_wm_space_data(C);
+				SpaceSeq *sseq = (SpaceSeq *)CTX_wm_space_data(C);
 				
-				/* return the GP data for the active strips/image/etc. */
+				/* for now, Grease Pencil data is associated with the space (actually preview region only) */
+				/* XXX our convention for everything else is to link to data though... */
+				if (ptr) RNA_pointer_create(screen_id, &RNA_SpaceSequenceEditor, sseq, ptr);
+				return &sseq->gpd;
 			}
 			break;
-				
+
 			case SPACE_IMAGE: /* Image/UV Editor */
 			{
 				SpaceImage *sima = (SpaceImage *)CTX_wm_space_data(C);
-				
+
 				/* for now, Grease Pencil data is associated with the space... */
-				// XXX our convention for everything else is to link to data though...
-				if (ptr) RNA_pointer_create((ID *)CTX_wm_screen(C), &RNA_SpaceImageEditor, sima, ptr);
+				/* XXX our convention for everything else is to link to data though... */
+				if (ptr) RNA_pointer_create(screen_id, &RNA_SpaceImageEditor, sima, ptr);
 				return &sima->gpd;
 			}
 			break;
@@ -141,12 +146,26 @@ bGPdata **gpencil_data_get_pointers(bContext *C, PointerRNA *ptr)
 			case SPACE_CLIP: /* Nodes Editor */
 			{
 				SpaceClip *sc = (SpaceClip *)CTX_wm_space_data(C);
-				MovieClip *clip = ED_space_clip(sc);
-
+				MovieClip *clip = ED_space_clip_get_clip(sc);
+				
 				if (clip) {
-					/* for now, as long as there's a clip, default to using that in Clip Editor */
-					if (ptr) RNA_id_pointer_create(&clip->id, ptr);
-					return &clip->gpd;
+					if (sc->gpencil_src == SC_GPENCIL_SRC_TRACK) {
+						MovieTrackingTrack *track = BKE_tracking_track_get_active(&clip->tracking);
+
+						if (!track)
+							return NULL;
+
+						if (ptr)
+							RNA_pointer_create(&clip->id, &RNA_MovieTrackingTrack, track, ptr);
+
+						return &track->gpd;
+					}
+					else {
+						if (ptr)
+							RNA_id_pointer_create(&clip->id, ptr);
+
+						return &clip->gpd;
+					}
 				}
 			}
 			break;
@@ -162,7 +181,7 @@ bGPdata **gpencil_data_get_pointers(bContext *C, PointerRNA *ptr)
 }
 
 /* Get the active Grease Pencil datablock */
-bGPdata *gpencil_data_get_active(bContext *C)
+bGPdata *gpencil_data_get_active(const bContext *C)
 {
 	bGPdata **gpd_ptr = gpencil_data_get_pointers(C, NULL);
 	return (gpd_ptr) ? *(gpd_ptr) : NULL;
@@ -199,7 +218,7 @@ static int gp_data_add_exec(bContext *C, wmOperator *op)
 	else {
 		/* decrement user count and add new datablock */
 		bGPdata *gpd = (*gpd_ptr);
-
+		
 		id_us_min(&gpd->id);
 		*gpd_ptr = gpencil_data_addnew("GPencil");
 	}
@@ -403,8 +422,8 @@ static void gp_strokepoint_convertcoords(bContext *C, bGPDstroke *gps, bGPDspoin
 		}
 		else {
 			if (subrect) {
-				mvalf[0] = (((float)pt->x / 100.0f) * (subrect->xmax - subrect->xmin)) + subrect->xmin;
-				mvalf[1] = (((float)pt->y / 100.0f) * (subrect->ymax - subrect->ymin)) + subrect->ymin;
+				mvalf[0] = (((float)pt->x / 100.0f) * BLI_rctf_size_x(subrect)) + subrect->xmin;
+				mvalf[1] = (((float)pt->y / 100.0f) * BLI_rctf_size_y(subrect)) + subrect->ymin;
 			}
 			else {
 				mvalf[0] = (float)pt->x / 100.0f * ar->winx;
@@ -464,7 +483,7 @@ static int gp_camera_view_subrect(bContext *C, rctf *subrect)
 
 	if (v3d) {
 		RegionView3D *rv3d = ar->regiondata;
-
+		
 		/* for camera view set the subrect */
 		if (rv3d->persp == RV3D_CAMOB) {
 			Scene *scene = CTX_data_scene(C);
@@ -508,26 +527,26 @@ static void gp_stroke_to_bezier(bContext *C, bGPDlayer *gpl, bGPDstroke *gps, Cu
 	/* add points */
 	for (i = 0, bezt = nu->bezt; i < tot; i++, pt++, bezt++) {
 		float h1[3], h2[3];
-
+		
 		if (i) interp_v3_v3v3(h1, p3d_cur, p3d_prev, 0.3);
 		else interp_v3_v3v3(h1, p3d_cur, p3d_next, -0.3);
-
+		
 		if (i < tot - 1) interp_v3_v3v3(h2, p3d_cur, p3d_next, 0.3);
 		else interp_v3_v3v3(h2, p3d_cur, p3d_prev, -0.3);
-
+		
 		copy_v3_v3(bezt->vec[0], h1);
 		copy_v3_v3(bezt->vec[1], p3d_cur);
 		copy_v3_v3(bezt->vec[2], h2);
-
+		
 		/* set settings */
 		bezt->h1 = bezt->h2 = HD_FREE;
 		bezt->f1 = bezt->f2 = bezt->f3 = SELECT;
 		bezt->radius = bezt->weight = pt->pressure * gpl->thickness * 0.1f;
-
+		
 		/* shift coord vects */
 		copy_v3_v3(p3d_prev, p3d_cur);
 		copy_v3_v3(p3d_cur, p3d_next);
-
+		
 		if (i + 2 < tot) {
 			gp_strokepoint_convertcoords(C, gps, pt + 2, p3d_next, subrect);
 		}

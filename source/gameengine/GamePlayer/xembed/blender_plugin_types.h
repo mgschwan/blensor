@@ -53,8 +53,7 @@ extern "C" {
 
 	struct netscape_plugin_Plugin;
 	
-	typedef struct _BlenderPluginInstance
-	{
+	typedef struct _BlenderPluginInstance {
 		/** reach back to the browser: needed for file
 		 * streaming */
 		NPP browser_instance;

@@ -250,8 +250,7 @@ int modifier_couldBeCage(struct Scene *scene, ModifierData *md)
 int modifier_sameTopology(ModifierData *md)
 {
 	ModifierTypeInfo *mti = modifierType_getInfo(md->type);
-	return ELEM3(mti->type, eModifierTypeType_OnlyDeform, eModifierTypeType_Nonconstructive,
-	             eModifierTypeType_NonGeometrical);
+	return ELEM(mti->type, eModifierTypeType_OnlyDeform, eModifierTypeType_NonGeometrical);
 }
 
 int modifier_nonGeometrical(ModifierData *md)
@@ -328,6 +327,13 @@ int modifiers_isSoftbodyEnabled(Object *ob)
 int modifiers_isClothEnabled(Object *ob)
 {
 	ModifierData *md = modifiers_findByType(ob, eModifierType_Cloth);
+
+	return (md && md->mode & (eModifierMode_Realtime | eModifierMode_Render));
+}
+
+int modifiers_isModifierEnabled(Object *ob, int modifierType)
+{
+	ModifierData *md = modifiers_findByType(ob, modifierType);
 
 	return (md && md->mode & (eModifierMode_Realtime | eModifierMode_Render));
 }
@@ -476,7 +482,7 @@ ModifierData *modifiers_getVirtualModifierList(Object *ob)
 	}
 
 	/* shape key modifier, not yet for curves */
-	if (ELEM(ob->type, OB_MESH, OB_LATTICE) && ob_get_key(ob)) {
+	if (ELEM(ob->type, OB_MESH, OB_LATTICE) && BKE_key_from_object(ob)) {
 		if (ob->type == OB_MESH && (ob->shapeflag & OB_SHAPE_EDIT_MODE))
 			smd.modifier.mode |= eModifierMode_Editmode | eModifierMode_OnCage;
 		else

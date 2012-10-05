@@ -48,6 +48,7 @@
 
 #include "DNA_constraint_types.h"
 #include "DNA_controller_types.h"
+#include "DNA_actuator_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
@@ -528,6 +529,7 @@ void BKE_text_unlink(Main *bmain, Text *text)
 	SpaceLink *sl;
 	Object *ob;
 	bController *cont;
+	bActuator *act;
 	bConstraint *con;
 	short update;
 
@@ -539,6 +541,15 @@ void BKE_text_unlink(Main *bmain, Text *text)
 				
 				pc = cont->data;
 				if (pc->text == text) pc->text = NULL;
+			}
+		}
+		/* game actuators */
+		for (act = ob->actuators.first; act; act = act->next) {
+			if (act->type == ACT_2DFILTER) {
+				bTwoDFilterActuator *tfa;
+				
+				tfa = act->data;
+				if (tfa->text == text) tfa->text = NULL;
 			}
 		}
 
@@ -570,9 +581,6 @@ void BKE_text_unlink(Main *bmain, Text *text)
 		if (update)
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 	}
-
-	/* pynodes */
-	// XXX nodeDynamicUnlinkText(&text->id);
 	
 	/* text space */
 	for (scr = bmain->screen.first; scr; scr = scr->id.next) {
@@ -813,7 +821,7 @@ void txt_move_up(Text *text, short sel)
 	if (sel) txt_curs_sel(text, &linep, &charp);
 	else { txt_pop_first(text); txt_curs_cur(text, &linep, &charp); }
 	if (!*linep) return;
-	/* old= *charp; */ /* UNUSED */
+	/* old = *charp; */ /* UNUSED */
 
 	if ((*linep)->prev) {
 		int index = txt_utf8_offset_to_index((*linep)->line, *charp);
@@ -841,7 +849,7 @@ void txt_move_down(Text *text, short sel)
 	if (sel) txt_curs_sel(text, &linep, &charp);
 	else { txt_pop_last(text); txt_curs_cur(text, &linep, &charp); }
 	if (!*linep) return;
-	/* old= *charp; */ /* UNUSED */
+	/* old = *charp; */ /* UNUSED */
 
 	if ((*linep)->next) {
 		int index = txt_utf8_offset_to_index((*linep)->line, *charp);
@@ -912,7 +920,7 @@ void txt_move_left(Text *text, short sel)
 void txt_move_right(Text *text, short sel) 
 {
 	TextLine **linep;
-	int *charp, oundoing = undoing, do_tab = 0, i;
+	int *charp, oundoing = undoing, do_tab = FALSE, i;
 	
 	if (!text) return;
 	if (sel) txt_curs_sel(text, &linep, &charp);
@@ -931,10 +939,10 @@ void txt_move_right(Text *text, short sel)
 		// do nice right only if there are only spaces
 		// spaces hardcoded in DNA_text_types.h
 		if (text->flags & TXT_TABSTOSPACES && (*linep)->line[*charp] == ' ') {
-			do_tab = 1;
+			do_tab = TRUE;
 			for (i = 0; i < *charp; i++)
 				if ((*linep)->line[i] != ' ') {
-					do_tab = 0;
+					do_tab = FALSE;
 					break;
 				}
 		}
@@ -1124,7 +1132,8 @@ static void txt_pop_first(Text *text)
 {
 			
 	if (txt_get_span(text->curl, text->sell) < 0 ||
-	    (text->curl == text->sell && text->curc > text->selc)) {
+	    (text->curl == text->sell && text->curc > text->selc))
+	{
 		txt_curs_swap(text);
 	}
 
@@ -1140,7 +1149,8 @@ static void txt_pop_first(Text *text)
 static void txt_pop_last(Text *text)
 {
 	if (txt_get_span(text->curl, text->sell) > 0 ||
-	    (text->curl == text->sell && text->curc < text->selc)) {
+	    (text->curl == text->sell && text->curc < text->selc))
+	{
 		txt_curs_swap(text);
 	}
 
@@ -1685,7 +1695,8 @@ void txt_print_undo(Text *text)
 					printf("%c%c%c", text->undo_buf[i], text->undo_buf[i + 1], text->undo_buf[i + 2]);
 					i += 3;
 					break;
-				case UNDO_INSERT_4: case UNDO_BS_4: case UNDO_DEL_4: {
+				case UNDO_INSERT_4: case UNDO_BS_4: case UNDO_DEL_4:
+				{
 					unsigned int uc;
 					char c[BLI_UTF8_MAX + 1];
 					size_t c_len;
@@ -1919,6 +1930,7 @@ static unsigned int txt_undo_read_unicode(const char *undo_buf, int *undo_pos, s
 			break;
 		case 4: /* 32-bit unicode symbol */
 			unicode = txt_undo_read_uint32(undo_buf, undo_pos);
+			break;
 		default:
 			/* should never happen */
 			BLI_assert(0);
@@ -1970,6 +1982,7 @@ static unsigned int txt_redo_read_unicode(const char *undo_buf, int *undo_pos, s
 			break;
 		case 4: /* 32-bit unicode symbol */
 			unicode = txt_undo_read_uint32(undo_buf, undo_pos);
+			break;
 		default:
 			/* should never happen */
 			BLI_assert(0);
@@ -3031,30 +3044,6 @@ void txt_uncomment(Text *text)
 	}
 }
 
-
-void txt_move_lines_up(struct Text *text)
-{
-	TextLine *prev_line;
-	
-	if (!text || !text->curl || !text->sell) return;
-	
-	txt_order_cursors(text);
-	
-	prev_line = text->curl->prev;
-	
-	if (!prev_line) return;
-	
-	BLI_remlink(&text->lines, prev_line);
-	BLI_insertlinkafter(&text->lines, text->sell, prev_line);
-	
-	txt_make_dirty(text);
-	txt_clean_text(text);
-	
-	if (!undoing) {
-		txt_undo_add_op(text, UNDO_MOVE_LINES_UP);
-	}
-}
-
 void txt_move_lines(struct Text *text, const int direction)
 {
 	TextLine *line_other;
@@ -3094,7 +3083,6 @@ int setcurr_tab_spaces(Text *text, int space)
 	const char *comm = "#";
 	const char indent = (text->flags & TXT_TABSTOSPACES) ? ' ' : '\t';
 	static const char *back_words[] = {"return", "break", "continue", "pass", "yield", NULL};
-	if (!text) return 0;
 	if (!text->curl) return 0;
 
 	while (text->curl->line[i] == indent) {
@@ -3214,7 +3202,8 @@ short txt_clear_marker_region(Text *text, TextLine *line, int start, int end, in
 		else if (marker->lineno > lineno) break;
 
 		if ((marker->start == marker->end && start <= marker->start && marker->start <= end) ||
-		    (marker->start < end && marker->end > start)) {
+		    (marker->start < end && marker->end > start))
+		{
 			BLI_freelinkN(&text->markers, marker);
 			cleared = 1;
 		}
@@ -3223,8 +3212,8 @@ short txt_clear_marker_region(Text *text, TextLine *line, int start, int end, in
 }
 
 /* Clears all markers in the specified group (if given) with at least the
- * specified flags set. Useful for clearing temporary markers (group=0,
- * flags=TMARK_TEMP) */
+ * specified flags set. Useful for clearing temporary markers (group = 0,
+ * flags = TMARK_TEMP) */
 short txt_clear_markers(Text *text, int group, int flags)
 {
 	TextMarker *marker, *next;
@@ -3234,7 +3223,8 @@ short txt_clear_markers(Text *text, int group, int flags)
 		next = marker->next;
 
 		if ((!group || marker->group == group) &&
-		    (marker->flags & flags) == flags) {
+		    (marker->flags & flags) == flags)
+		{
 			BLI_freelinkN(&text->markers, marker);
 			cleared = 1;
 		}
@@ -3272,7 +3262,7 @@ TextMarker *txt_prev_marker(Text *text, TextMarker *marker)
 		if (tmp->group == marker->group)
 			return tmp;
 	}
-	return NULL; /* Only if marker==NULL */
+	return NULL; /* Only if (marker == NULL) */
 }
 
 /* Finds the next marker in the same group. If no other is found, the same
@@ -3286,7 +3276,7 @@ TextMarker *txt_next_marker(Text *text, TextMarker *marker)
 		if (tmp->group == marker->group)
 			return tmp;
 	}
-	return NULL; /* Only if marker==NULL */
+	return NULL; /* Only if (marker == NULL) */
 }
 
 

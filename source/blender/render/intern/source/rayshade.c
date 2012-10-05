@@ -99,7 +99,7 @@ static RayObject*  RE_rayobject_create(Render *re, int type, int size)
 	RayObject * res = NULL;
 
 	if (type == R_RAYSTRUCTURE_AUTO) {
-		//TODO
+		/* TODO */
 		//if (detect_simd())
 #ifdef __SSE__
 		type = BLI_cpu_support_sse2()? R_RAYSTRUCTURE_SIMD_SVBVH: R_RAYSTRUCTURE_VBVH;
@@ -216,12 +216,12 @@ static int is_raytraceable(Render *re, ObjectInstanceRen *obi)
 
 RayObject* makeraytree_object(Render *re, ObjectInstanceRen *obi)
 {
-	//TODO
-	// out-of-memory safeproof
-	// break render
-	// update render stats
+	/*TODO
+	 * out-of-memory safeproof
+	 * break render
+	 * update render stats */
 	ObjectRen *obr = obi->obr;
-	
+
 	if (obr->raytree == NULL) {
 		RayObject *raytree;
 		RayFace *face = NULL;
@@ -421,8 +421,8 @@ void makeraytree(Render *re)
 		re->stats_draw(re->sdh, &re->i);
 	}
 	else {
-		//Calculate raytree max_size
-		//This is ONLY needed to kept a bogus behavior of SUN and HEMI lights
+		/* Calculate raytree max_size
+		 * This is ONLY needed to kept a bogus behavior of SUN and HEMI lights */
 		INIT_MINMAX(min, max);
 		RE_rayobject_merge_bb(re->raytree, min, max);
 		for (i=0; i<3; i++) {
@@ -604,7 +604,7 @@ static void reflection(float ref[3], float n[3], const float view[3], const floa
 }
 
 #if 0
-static void color_combine(float *result, float fac1, float fac2, float *col1, float *col2)
+static void color_combine(float *result, float fac1, float fac2, float col1[3], float col2[3])
 {
 	float col1t[3], col2t[3];
 	
@@ -721,7 +721,7 @@ static void traceray(ShadeInput *origshi, ShadeResult *origshr, short depth, con
 		shi.lay= origshi->lay;
 		shi.passflag= SCE_PASS_COMBINED; /* result of tracing needs no pass info */
 		shi.combinedflag= 0xFFFFFF;		 /* ray trace does all options */
-		//shi.do_preview= 0; // memset above, so don't need this
+		//shi.do_preview = FALSE; // memset above, so don't need this
 		shi.light_override= origshi->light_override;
 		shi.mat_override= origshi->mat_override;
 		
@@ -739,8 +739,8 @@ static void traceray(ShadeInput *origshi, ShadeResult *origshr, short depth, con
 				tracol[0]= shi.r;
 				tracol[1]= shi.g;
 				tracol[2]= shi.b;
-				tracol[3]= col[3];	// we pass on and accumulate alpha
-				
+				tracol[3]= col[3];	/* we pass on and accumulate alpha */
+
 				if ((shi.mat->mode & MA_TRANSP) && (shi.mat->mode & MA_RAYTRANSP)) {
 					/* don't overwrite traflag, it's value is used in mirror reflection */
 					int new_traflag = traflag;
@@ -883,12 +883,12 @@ static void DP_energy(float *table, float vec[2], int tot, float xsize, float ys
 	}
 	vec[0] += 0.1f*min*result[0]/(float)tot;
 	vec[1] += 0.1f*min*result[1]/(float)tot;
-	// cyclic clamping
+	/* cyclic clamping */
 	vec[0]= vec[0] - xsize*floorf(vec[0]/xsize + 0.5f);
 	vec[1]= vec[1] - ysize*floorf(vec[1]/ysize + 0.5f);
 }
 
-// random offset of 1 in 2
+/* random offset of 1 in 2 */
 static void jitter_plane_offset(float *jitter1, float *jitter2, int tot, float sizex, float sizey, float ofsx, float ofsy)
 {
 	float dsizex= sizex*ofsx;
@@ -974,10 +974,10 @@ static float *give_jitter_plane(LampRen *lar, int thread, int xs, int ys)
 
 static void halton_sample(double *ht_invprimes, double *ht_nums, double *v)
 {
-	// incremental halton sequence generator, from:
-	// "Instant Radiosity", Keller A.
+	/* incremental halton sequence generator, from:
+	 * "Instant Radiosity", Keller A. */
 	unsigned int i;
-	
+
 	for (i = 0; i < 2; i++) {
 		double r = fabs((1.0 - ht_nums[i]) - 1e-10);
 		
@@ -1043,7 +1043,7 @@ static void QMC_initPixel(QMCSampler *qsa, int thread)
 	}
 	else { 	/* SAMP_TYPE_HALTON */
 		
-		/* generate a new randomised halton sequence per pixel
+		/* generate a new randomized halton sequence per pixel
 		 * to alleviate qmc artifacts and make it reproducible 
 		 * between threads/frames */
 		double ht_invprimes[2], ht_nums[2];
@@ -1176,13 +1176,13 @@ static QMCSampler *get_thread_qmcsampler(Render *re, int thread, int type, int t
 
 	for (qsa=re->qmcsamplers[thread].first; qsa; qsa=qsa->next) {
 		if (qsa->type == type && qsa->tot == tot && !qsa->used) {
-			qsa->used= 1;
+			qsa->used = TRUE;
 			return qsa;
 		}
 	}
 
 	qsa= QMC_initSampler(type, tot);
-	qsa->used= 1;
+	qsa->used = TRUE;
 	BLI_addtail(&re->qmcsamplers[thread], qsa);
 
 	return qsa;
@@ -1483,8 +1483,8 @@ void ray_trace(ShadeInput *shi, ShadeResult *shr)
 	float diff[3];
 	int do_tra, do_mir;
 	
-	do_tra= ((shi->mode & MA_TRANSP) && (shi->mode & MA_RAYTRANSP) && shr->alpha!=1.0f && (shi->depth <= shi->mat->ray_depth_tra));
-	do_mir= ((shi->mat->mode & MA_RAYMIRROR) && shi->ray_mirror!=0.0f && (shi->depth <= shi->mat->ray_depth));
+	do_tra = ((shi->mode & MA_TRANSP) && (shi->mode & MA_RAYTRANSP) && shr->alpha != 1.0f && (shi->depth <= shi->mat->ray_depth_tra));
+	do_mir = ((shi->mat->mode & MA_RAYMIRROR) && shi->ray_mirror != 0.0f && (shi->depth <= shi->mat->ray_depth));
 	
 	/* raytrace mirror and refract like to separate the spec color */
 	if (shi->combinedflag & SCE_PASS_SPEC)
@@ -1515,7 +1515,7 @@ void ray_trace(ShadeInput *shi, ShadeResult *shr)
 		if (!(shi->combinedflag & SCE_PASS_REFRACT))
 			sub_v3_v3v3(diff, diff, shr->refr);
 		
-		shr->alpha= MIN2(1.0f, tracol[3]);
+		shr->alpha = minf(1.0f, tracol[3]);
 	}
 	
 	if (do_mir) {
@@ -1812,7 +1812,7 @@ static float *sphere_sampler(int type, int resol, int thread, int xs, int ys, in
 		float *sphere;
 		int a;
 		
-		// always returns table
+		/* always returns table */
 		sphere= threadsafe_table_sphere(0, thread, xs, ys, tot);
 
 		/* total random sampling. NOT THREADSAFE! (should be removed, is not useful) */
@@ -1827,7 +1827,7 @@ static float *sphere_sampler(int type, int resol, int thread, int xs, int ys, in
 		float *sphere;
 		float *vec1;
 		
-		// returns table if xs and ys were equal to last call, and not resetting
+		/* returns table if xs and ys were equal to last call, and not resetting */
 		sphere= (reset)? NULL: threadsafe_table_sphere(1, thread, xs, ys, tot);
 		if (sphere==NULL) {
 			float cosfi, sinfi, cost, sint;
@@ -1836,7 +1836,7 @@ static float *sphere_sampler(int type, int resol, int thread, int xs, int ys, in
 
 			sphere= threadsafe_table_sphere(0, thread, xs, ys, tot);
 			
-			// random rotation
+			/* random rotation */
 			ang= BLI_thread_frand(thread);
 			sinfi= sin(ang); cosfi= cos(ang);
 			ang= BLI_thread_frand(thread);
@@ -2056,7 +2056,7 @@ static void ray_ao_spheresamp(ShadeInput *shi, float ao[3], float env[3])
 	 * for strand render we always require a new sampler because x/y are not set */
 	vec= sphere_sampler(R.wrld.aomode, resol, shi->thread, shi->xs, shi->ys, shi->strand != NULL);
 	
-	// warning: since we use full sphere now, and dotproduct is below, we do twice as much
+	/* warning: since we use full sphere now, and dotproduct is below, we do twice as much */
 	tot= 2*resol*resol;
 
 	if (envcolor == WO_AOSKYTEX) {
@@ -2116,7 +2116,7 @@ static void ray_ao_spheresamp(ShadeInput *shi, float ao[3], float env[3])
 				skyadded++;
 			}
 		}
-		// samples
+		/* samples */
 		vec+= 3;
 	}
 	
@@ -2195,7 +2195,7 @@ static void ray_shadow_qmc(ShadeInput *shi, LampRen *lar, const float lampco[3],
 	float adapt_thresh = lar->adapt_thresh;
 	int min_adapt_samples=4, max_samples = lar->ray_totsamp;
 	float *co;
-	int do_soft=1, full_osa=0, i;
+	int do_soft = TRUE, full_osa = FALSE, i;
 
 	float min[3], max[3];
 	RayHint bb_hint;
@@ -2210,8 +2210,8 @@ static void ray_shadow_qmc(ShadeInput *shi, LampRen *lar, const float lampco[3],
 	else
 		shadfac[3]= 1.0f;
 	
-	if (lar->ray_totsamp < 2) do_soft = 0;
-	if ((R.r.mode & R_OSA) && (R.osa > 0) && (shi->vlr->flag & R_FULL_OSA)) full_osa = 1;
+	if (lar->ray_totsamp < 2) do_soft = FALSE;
+	if ((R.r.mode & R_OSA) && (R.osa > 0) && (shi->vlr->flag & R_FULL_OSA)) full_osa = TRUE;
 	
 	if (full_osa) {
 		if (do_soft) max_samples  = max_samples/R.osa + 1;
@@ -2234,8 +2234,8 @@ static void ray_shadow_qmc(ShadeInput *shi, LampRen *lar, const float lampco[3],
 	QMC_initPixel(qsa, shi->thread);
 
 	INIT_MINMAX(min, max);
-	for (i=0; i<totjitco; i++) {
-		DO_MINMAX(jitco[i], min, max);
+	for (i = 0; i < totjitco; i++) {
+		minmax_v3v3_v3(min, max, jitco[i]);
 	}
 	RE_rayobject_hint_bb(R.raytree, &bb_hint, min, max);
 	
@@ -2436,7 +2436,7 @@ static void ray_shadow_jitter(ShadeInput *shi, LampRen *lar, const float lampco[
 		shadfac[3] /= div;
 	}
 	else {
-		// sqrt makes nice umbra effect
+		/* sqrt makes nice umbra effect */
 		if (lar->ray_samp_type & LA_SAMP_UMBRA)
 			shadfac[3]= sqrt(1.0f-fac/div);
 		else
@@ -2501,8 +2501,8 @@ void ray_shadow(ShadeInput *shi, LampRen *lar, float shadfac[4])
 			isec.orig.ob   = shi->obi;
 			isec.orig.face = shi->vlr;
 			
-			shadfac[3]= 1.0f; // 1.0=full light
-			
+			shadfac[3]= 1.0f;  /* 1.0=full light */
+
 			/* set up isec.dir */
 			copy_v3_v3(isec.start, shi->co);
 			sub_v3_v3v3(isec.dir, lampco, isec.start);

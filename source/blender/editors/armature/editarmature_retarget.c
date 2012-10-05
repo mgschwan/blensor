@@ -25,7 +25,6 @@
  *  \ingroup edarmature
  */
 
-
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,8 +48,6 @@
 #include "BLI_rand.h"
 #include "BLI_threads.h"
 
-//#include "BDR_editobject.h"
-
 #include "BKE_constraint.h"
 #include "BKE_armature.h"
 #include "BKE_context.h"
@@ -60,10 +57,7 @@
 
 #include "BIF_retarget.h"
 
-
-//#include "mydevice.h"
-#include "reeb.h" // FIX ME
-//#include "blendef.h"
+#include "reeb.h" /* FIX ME */
 
 #include "armature_intern.h"
 
@@ -81,20 +75,17 @@ typedef struct RetargetParam {
 	bContext    *context;
 } RetargetParam;
 
-typedef enum 
-{
+typedef enum  {
 	RETARGET_LENGTH,
 	RETARGET_AGGRESSIVE
 } RetargetMode; 
 
-typedef enum
-{
+typedef enum {
 	METHOD_BRUTE_FORCE = 0,
 	METHOD_MEMOIZE = 1
 } RetargetMethod;
 
-typedef enum
-{
+typedef enum {
 	ARC_FREE = 0,
 	ARC_TAKEN = 1,
 	ARC_USED = 2
@@ -298,8 +289,8 @@ static RigGraph *newRigGraph(void)
 	
 	rg->head = NULL;
 	
-	rg->bones_map = BLI_ghash_new(BLI_ghashutil_strhash, BLI_ghashutil_strcmp, "newRigGraph bones gh");
-	rg->controls_map = BLI_ghash_new(BLI_ghashutil_strhash, BLI_ghashutil_strcmp, "newRigGraph cont gh");
+	rg->bones_map = BLI_ghash_str_new("newRigGraph bones gh");
+	rg->controls_map = BLI_ghash_str_new("newRigGraph cont gh");
 	
 	rg->free_arc = RIG_freeRigArc;
 	rg->free_node = NULL;
@@ -532,7 +523,7 @@ static RigGraph *cloneRigGraph(RigGraph *src, ListBase *editbones, Object *ob, c
 	RigControl *ctrl;
 	RigGraph *rg;
 	
-	ptr_hash = BLI_ghash_new(BLI_ghashutil_ptrhash, BLI_ghashutil_ptrcmp, "cloneRigGraph gh");
+	ptr_hash = BLI_ghash_ptr_new("cloneRigGraph gh");
 
 	rg = newRigGraph();
 	
@@ -733,7 +724,7 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 		
 		/* DO SOME MAGIC HERE */
 		for (pchan = rg->ob->pose->chanbase.first; pchan; pchan = pchan->next) {
-			for (con = pchan->constraints.first; con; con = con->next)  {
+			for (con = pchan->constraints.first; con; con = con->next) {
 				bConstraintTypeInfo *cti = constraint_get_typeinfo(con);
 				ListBase targets = {NULL, NULL};
 				bConstraintTarget *ct;
@@ -858,7 +849,7 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 				
 				/* DO SOME MAGIC HERE */
 				for (pchan = rg->ob->pose->chanbase.first; pchan; pchan = pchan->next) {
-					for (con = pchan->constraints.first; con; con = con->next)  {
+					for (con = pchan->constraints.first; con; con = con->next) {
 						bConstraintTypeInfo *cti = constraint_get_typeinfo(con);
 						ListBase targets = {NULL, NULL};
 						bConstraintTarget *ct;
@@ -2388,7 +2379,7 @@ static void findCorrespondingArc(RigGraph *rigg, RigArc *start_arc, RigNode *sta
 //		printf("CANDIDATES\n");
 //		for (i = 0; i < enode->degree; i++)
 //		{
-//			next_earc = (ReebArc*)enode->arcs[i];
+//			next_earc = (ReebArc *)enode->arcs[i];
 //			printf("flag %i -- level %i -- flag %i -- group %i\n", next_earc->flag, next_earc->symmetry_level, next_earc->symmetry_flag, next_earc->symmetry_group);
 //		}
 		

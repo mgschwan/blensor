@@ -27,7 +27,7 @@ bl_info = {
     "description": "Adds generated ivy to a mesh object starting at the 3D"\
                    " cursor",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
                 "Scripts/Curve/Ivy_Gen",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"\
                    "func=detail&aid=27234",
@@ -44,7 +44,7 @@ import time
 
 
 def createIvyGeometry(IVY, growLeaves):
-    '''Create the curve geometry for IVY'''
+    """Create the curve geometry for IVY"""
     # Compute the local size and the gauss weight filter
     #local_ivyBranchSize = IVY.ivyBranchSize  # * radius * IVY.ivySize
     gaussWeight = (1.0, 2.0, 4.0, 7.0, 9.0, 10.0, 9.0, 7.0, 4.0, 2.0, 1.0)
@@ -109,7 +109,7 @@ def createIvyGeometry(IVY, growLeaves):
                     node = root.ivyNodes[i]
                     nodeNext = root.ivyNodes[i + 1]
 
-                    # Find the weight and normalise the smooth adhesion vector
+                    # Find the weight and normalize the smooth adhesion vector
                     weight = pow(node.length * prevIvyLength, 0.7)
 
                     # Calculate the ground ivy and the new weight
@@ -276,7 +276,7 @@ class Ivy:
         self.maxAdhesionDistance = maxAdhesionDistance
         self.maxLength = 0.0
 
-        # Normalise all the weights only on intialisation
+        # Normalize all the weights only on intialisation
         sum = self.primaryWeight + self.randomWeight + self.adhesionWeight
         self.primaryWeight /= sum
         self.randomWeight /= sum
@@ -312,7 +312,7 @@ class Ivy:
             # Set the primary direction from the last node
             primaryVector = prevIvy.primaryDir
 
-            # Make the random vector and normalise
+            # Make the random vector and normalize
             randomVector = Vector((rand_val() - 0.5, rand_val() - 0.5,
                                    rand_val() - 0.5)) + Vector((0, 0, 0.2))
             randomVector.normalize()

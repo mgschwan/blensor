@@ -24,7 +24,7 @@ bl_info = {
     "location": "Search > (rename)",
     "description": "Batch renaming of datablocks (e.g. rename materials after objectnames)",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/Object/Batch_Rename_Datablocks",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=25242",
@@ -90,7 +90,7 @@ def rename_datablocks_main(self, context):
                                 m_slot.material.name = name
 
 class OBJECT_OT_batch_rename_datablocks(bpy.types.Operator):
-    '''Batch rename Datablocks'''
+    """Batch rename Datablocks"""
     bl_idname = "object.batch_rename_datablocks"
     bl_label = "Batch Rename Datablocks"
     bl_options = {'REGISTER', 'UNDO'}

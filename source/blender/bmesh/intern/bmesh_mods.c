@@ -45,20 +45,21 @@
  * Turns the face region surrounding a manifold vertex into a single polygon.
  *
  * \par Example:
- *
+ * <pre>
  *              +---------+             +---------+
  *              |  \   /  |             |         |
  *     Before:  |    v    |      After: |         |
  *              |  /   \  |             |         |
  *              +---------+             +---------+
- *
+ * </pre>
  *
  * This function can also collapse edges too
  * in cases when it cant merge into faces.
  *
  * \par Example:
- *
+ * <pre>
  *     Before:  +----v----+      After: +---------+
+ * </pre>
  *
  * \note dissolves vert, in more situations then BM_disk_dissolve
  * (e.g. if the vert is part of a wire edge, etc).
@@ -161,10 +162,10 @@ int BM_disk_dissolve(BMesh *bm, BMVert *v)
 	}
 
 	if (keepedge) {
-		int done = 0;
+		int done = FALSE;
 
 		while (!done) {
-			done = 1;
+			done = TRUE;
 			e = v->e;
 			do {
 				f = NULL;
@@ -173,14 +174,14 @@ int BM_disk_dissolve(BMesh *bm, BMVert *v)
 					f = BM_faces_join_pair(bm, e->l->f, e->l->radial_next->f, e, TRUE);
 					/* return if couldn't join faces in manifold
 					 * conditions */
-					//!disabled for testing why bad things happen
+					/* !disabled for testing why bad things happen */
 					if (!f) {
 						return FALSE;
 					}
 				}
 
 				if (f) {
-					done = 0;
+					done = FALSE;
 					break;
 				}
 				e = bmesh_disk_edge_next(e, v);
@@ -354,12 +355,12 @@ BMFace *BM_face_split(BMesh *bm, BMFace *f, BMVert *v1, BMVert *v2, BMLoop **r_l
 
 			l_iter = l_first = BM_FACE_FIRST_LOOP(f);
 			do {
-				BM_loop_interp_from_face(bm, l_iter, of, FALSE, TRUE);
+				BM_loop_interp_multires(bm, l_iter, of);
 			} while ((l_iter = l_iter->next) != l_first);
 
 			l_iter = l_first = BM_FACE_FIRST_LOOP(nf);
 			do {
-				BM_loop_interp_from_face(bm, l_iter, of, FALSE, TRUE);
+				BM_loop_interp_multires(bm, l_iter, of);
 			} while ((l_iter = l_iter->next) != l_first);
 
 			BM_face_kill(bm, of);
@@ -383,7 +384,7 @@ BMFace *BM_face_split(BMesh *bm, BMFace *f, BMVert *v1, BMVert *v2, BMLoop **r_l
  * \param bm The bmesh
  * \param f the original face
  * \param v1, v2 vertices which define the split edge, must be different
- * \param co Array of coordinates for intermediate points
+ * \param cos Array of coordinates for intermediate points
  * \param n Length of \a cos (must be > 0)
  * \param r_l pointer which will receive the BMLoop for the first split edge (from \a v1) in the new face
  * \param example Edge used for attributes of splitting edge, if non-NULL
@@ -557,7 +558,7 @@ BMEdge *BM_vert_collapse_faces(BMesh *bm, BMEdge *ke, BMVert *kv, float fac,
 				/* cant kill data we loop on, build a list and remove those */
 				BLI_array_empty(bad_faces);
 				BM_ITER_ELEM (f, &fiter, verts[i], BM_FACES_OF_VERT) {
-					if (f->len < 3) {
+					if (UNLIKELY(f->len < 3)) {
 						BLI_array_append(bad_faces, f);
 					}
 				}
@@ -887,6 +888,7 @@ int BM_edge_rotate_check(BMEdge *e)
  * 1) does the newly forms edge form a flipped face (compare with previous cross product)
  * 2) does the newly formed edge cause a zero area corner (or close enough to be almost zero)
  *
+ * \param e The edge to test rotation.
  * \param l1,l2 are the loops of the proposed verts to rotate too and should
  * be the result of calling #BM_edge_calc_rotate
  */

@@ -40,7 +40,7 @@
  * Slides a vertex along a connected edge
  *
  */
-void bmo_vertex_slide_exec(BMesh *bm, BMOperator *op)
+void bmo_slide_vert_exec(BMesh *bm, BMOperator *op)
 {
 	BMOIter oiter;
 	BMIter iter;
@@ -61,7 +61,7 @@ void bmo_vertex_slide_exec(BMesh *bm, BMOperator *op)
 
 	if (!vertex) {
 		if (G.debug & G_DEBUG) {
-			fprintf(stderr, "vertex_slide: No vertex selected...");
+			fprintf(stderr, "slide_vert: No vertex selected...");
 		}
 		BMO_error_raise(bm, op, BMERR_INVALID_SELECTION, "Vertex Slide Error: Invalid selection.");
 		return;
@@ -81,13 +81,14 @@ void bmo_vertex_slide_exec(BMesh *bm, BMOperator *op)
 	/* Only allow sliding if an edge is selected */
 	if (selected_edges == 0) {
 		if (G.debug & G_DEBUG) {
-			fprintf(stderr, "vertex_slide: select a single edge\n");
+			fprintf(stderr, "slide_vert: select a single edge\n");
 		}
 		BMO_error_raise(bm, op, BMERR_INVALID_SELECTION, "Vertex Slide Error: Invalid selection.");
 		return;
 	}
 
 	/* Make sure we get the correct edge. */
+	slide_edge = NULL;
 	BM_ITER_ELEM (edge, &iter, vertex, BM_EDGES_OF_VERT) {
 		if (BMO_elem_flag_test(bm, edge, EDGE_MARK) && BM_vert_in_edge(edge, vertex)) {
 			slide_edge = edge;

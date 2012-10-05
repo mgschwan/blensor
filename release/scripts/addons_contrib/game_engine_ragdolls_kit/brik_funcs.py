@@ -3,6 +3,7 @@
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # Script copyright (C) Marcus Jenkins (Blenderartists user name FunkyWyrm)
+# Modified by Kees Brouwer (Blenderartists user name Wraaah)
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -21,10 +22,10 @@
 # ***** END GPL LICENCE BLOCK *****
 # --------------------------------------------------------------------------
 
-'''
+"""
 This will be a collection of useful functions that can be reused across the different operators.
 
-'''
+"""
 
 import bpy
 
@@ -125,3 +126,48 @@ def create_box(prefix, length, width, armature, bone):
     volume = x*y*z
     
     return(obj, volume)
+
+#Function to select only the correct bones from an armature
+#so only deform bones in the selected bone group(s)
+def bone_group_list(armature):
+    bones = armature.pose.bones
+    scn = bpy.context.scene
+    bone_groups = scn.brik_bone_groups
+    
+    #Check if bone is part of the selected bone group(s)
+    bone_list = []
+    for bone in bones:
+        use_bone = True
+        #Check bone group membership
+        if bone_groups != "All":
+            if bone.bone_group:
+                if bone.bone_group.name != bone_groups:
+                    use_bone = False
+            else:
+                use_bone = False
+        #Check deform bone
+        if bone.bone.use_deform == False:
+            use_bone = False
+            
+        if use_bone == True:
+            bone_list = bone_list + [bone]
+        
+    #Return list of bones to be used
+    return bone_list
+
+#Orient the box to the bone and set the box object centre to the bone location
+def position_box( armature, bone, box):
+    #scene = bpy.context.scene
+    
+    #Set the box to the bone orientation and location
+    box.matrix_world = bone.matrix
+    box.location = armature.location + ( bone.bone.head_local + bone.bone.tail_local ) / 2
+
+
+        
+def select_name( name = "", extend = True ):
+    if extend == False:
+        bpy.ops.object.select_all(action='DESELECT')
+    ob = bpy.data.objects.get(name)
+    ob.select = True
+    bpy.context.scene.objects.active = ob

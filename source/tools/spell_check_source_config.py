@@ -22,6 +22,7 @@
 
 # correct spelling but ignore
 dict_custom = {
+    "instantiation",
     "iterable",
     "prepend",
     "subclass", "subclasses", "subclassing",
@@ -58,6 +59,7 @@ dict_custom = {
     "tooltip",
 
     # general computer terms
+    "contructor",
     "unicode",
     "jitter",
     "quantized",
@@ -69,22 +71,32 @@ dict_custom = {
     "opengl",
     "boids",
     "keymap",
-    "voxel",
+    "voxel", "voxels",
     "vert", "verts",
     "euler", "eulers",
     "booleans",
     "intrinsics",
     "xml",
 
+    # spesific computer terms/brands
+    "amiga",
+    "netscape",
+    "mozilla",
+    "irix",
+    "kde",
+
     # general computer graphics terms
     "radiosity",
     "specular",
     "nurbs",
+    "bicubic",
     "compositing",
     "deinterlace",
     "shader",
     "shaders",
     "centroid",
+    "emissive",
+    "quaternions",
 
     # blender terms
     "bpy",

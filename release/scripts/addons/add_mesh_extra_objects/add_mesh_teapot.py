@@ -37,7 +37,7 @@ bl_info = {
 import bpy, mathutils, io, operator, functools
 
 class AddTeapot(bpy.types.Operator):
-	'''Add a teapot mesh.'''
+	"""Add a teapot mesh"""
 	bl_idname = "mesh.primitive_teapot_add"
 	bl_label = "Add Teapot"
 	bl_options = {"REGISTER", "UNDO"}
@@ -53,9 +53,9 @@ class AddTeapot(bpy.types.Operator):
 	def execute(self, context):
 		verts, faces = make_teapot(self.objecttype,
 								   self.resolution)
-        # Actually create the mesh object from this geometry data.
+		# Actually create the mesh object from this geometry data.
 		obj = create_mesh_object(context, verts, [], faces, "Teapot")
-		return {"FINISHED"}
+		return {'FINISHED'}
 
 def menu_func(self, context):
 	self.layout.operator(AddTeapot.bl_idname, text="Teapot+", icon="MESH_CUBE")

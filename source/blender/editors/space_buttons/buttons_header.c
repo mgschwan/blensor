@@ -116,8 +116,8 @@ void buttons_header_buttons(const bContext *C, ARegion *ar)
 	uiBlockSetEmboss(block, UI_EMBOSS);
 
 	xco -= UI_UNIT_X;
-	
-	// Default panels
+
+	/* Default panels */
 
 	uiBlockBeginAlign(block);
 
@@ -125,9 +125,9 @@ void buttons_header_buttons(const bContext *C, ARegion *ar)
 	if (sbuts->pathflag & (1 << _ctx)) { \
 		but = uiDefIconButS(block, ROW, B_CONTEXT_SWITCH, _icon, xco += BUT_UNIT_X, yco, BUT_UNIT_X, UI_UNIT_Y, &(sbuts->mainb), 0.0, (float)_ctx, 0, 0, TIP_(_tip)); \
 		uiButClearFlag(but, UI_BUT_UNDO); \
-	} \
+	} (void)0
 
-	BUTTON_HEADER_CTX(BCONTEXT_RENDER, ICON_SCENE, N_("Render"))
+	BUTTON_HEADER_CTX(BCONTEXT_RENDER, ICON_SCENE, N_("Render"));
 	BUTTON_HEADER_CTX(BCONTEXT_SCENE, ICON_SCENE_DATA, N_("Scene"));
 	BUTTON_HEADER_CTX(BCONTEXT_WORLD, ICON_WORLD, N_("World"));
 	BUTTON_HEADER_CTX(BCONTEXT_OBJECT, ICON_OBJECT_DATA, N_("Object"));
@@ -148,7 +148,7 @@ void buttons_header_buttons(const bContext *C, ARegion *ar)
 	uiBlockEndAlign(block);
 	
 	/* always as last  */
-	UI_view2d_totRect_set(&ar->v2d, xco + (UI_UNIT_X / 2), ar->v2d.tot.ymax - ar->v2d.tot.ymin);
+	UI_view2d_totRect_set(&ar->v2d, xco + (UI_UNIT_X / 2), BLI_rctf_size_y(&ar->v2d.tot));
 	
 	uiEndBlock(C, block);
 	uiDrawBlock(C, block);

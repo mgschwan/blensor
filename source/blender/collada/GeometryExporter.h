@@ -42,6 +42,8 @@
 
 #include "ExportSettings.h"
 
+extern Object *bc_get_highest_selected_ancestor_or_self(Object *ob);
+
 // TODO: optimize UV sets by making indexed list with duplicates removed
 class GeometryExporter : COLLADASW::LibraryGeometries
 {
@@ -63,6 +65,11 @@ public:
 	void exportGeom(Scene *sce);
 
 	void operator()(Object *ob);
+
+	void createLooseEdgeList(Object *ob,
+						     Mesh   *me,
+						     std::string& geom_id,
+						     std::vector<Face>& norind);
 
 	// powerful because it handles both cases when there is material and when there's not
 	void createPolylist(short material_index,
@@ -100,28 +107,21 @@ private:
 	
 	const ExportSettings *export_settings;
 
-	Mesh * get_mesh(Object *ob, int apply_modifiers);
+	Mesh * get_mesh(Scene *sce, Object *ob, int apply_modifiers);
 };
 
 struct GeometryFunctor {
 	// f should have
 	// void operator()(Object* ob)
 	template<class Functor>
-	void forEachMeshObjectInScene(Scene *sce, Functor &f, bool export_selected)
+	void forEachMeshObjectInExportSet(Scene *sce, Functor &f, LinkNode *export_set)
 	{
-		
-		Base *base= (Base*) sce->base.first;
-		while (base) {
-			Object *ob = base->object;
-			
-			if (ob->type == OB_MESH && ob->data &&
-			    !(export_selected && !(ob->flag & SELECT)) &&
-			    ((sce->lay & ob->lay)!=0))
-			{
+		LinkNode *node;
+		for (node=export_set; node; node = node->next) {
+			Object *ob = (Object *)node->link;
+			if (ob->type == OB_MESH) {
 				f(ob);
 			}
-			base= base->next;
-			
 		}
 	}
 };

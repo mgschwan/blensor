@@ -50,6 +50,7 @@
 #include "BLI_math.h"
 #include "BLI_edgehash.h"
 #include "BLI_scanfill.h"
+#include "BLI_array.h"
 
 #include "BKE_animsys.h"
 #include "BKE_main.h"
@@ -70,11 +71,6 @@
 #include "BKE_tessmesh.h"
 #include "BLI_edgehash.h"
 
-#include "BLI_blenlib.h"
-#include "BLI_math.h"
-#include "BLI_array.h"
-#include "BLI_edgehash.h"
-
 #include "bmesh.h"
 
 enum {
@@ -88,7 +84,7 @@ enum {
 	MESHCMP_POLYMISMATCH,
 	MESHCMP_EDGEUNKNOWN,
 	MESHCMP_VERTCOMISMATCH,
-	MESHCMP_CDLAYERS_MISMATCH,
+	MESHCMP_CDLAYERS_MISMATCH
 };
 
 static const char *cmpcode_to_str(int code)
@@ -171,7 +167,7 @@ static int customdata_compare(CustomData *c1, CustomData *c2, Mesh *m1, Mesh *m2
 			for (j = 0; j < vtot; j++, v1++, v2++) {
 				if (len_v3v3(v1->co, v2->co) > thresh)
 					return MESHCMP_VERTCOMISMATCH;
-				/*I don't care about normals, let's just do coodinates*/
+				/* I don't care about normals, let's just do coodinates */
 			}
 		}
 		
@@ -371,7 +367,6 @@ void mesh_update_customdata_pointers(Mesh *me, const short do_ensure_tess_cd)
 
 	me->mvert = CustomData_get_layer(&me->vdata, CD_MVERT);
 	me->dvert = CustomData_get_layer(&me->vdata, CD_MDEFORMVERT);
-	me->msticky = CustomData_get_layer(&me->vdata, CD_MSTICKY);
 
 	me->medge = CustomData_get_layer(&me->edata, CD_MEDGE);
 
@@ -398,6 +393,7 @@ void BKE_mesh_unlink(Mesh *me)
 	
 	if (me == NULL) return;
 	
+	if (me->mat)
 	for (a = 0; a < me->totcol; a++) {
 		if (me->mat[a]) me->mat[a]->id.us--;
 		me->mat[a] = NULL;
@@ -448,7 +444,7 @@ void copy_dverts(MDeformVert *dst, MDeformVert *src, int copycount)
 	for (i = 0; i < copycount; i++) {
 		if (src[i].dw) {
 			dst[i].dw = MEM_callocN(sizeof(MDeformWeight) * src[i].totweight, "copy_deformWeight");
-			memcpy(dst[i].dw, src[i].dw, sizeof (MDeformWeight) * src[i].totweight);
+			memcpy(dst[i].dw, src[i].dw, sizeof(MDeformWeight) * src[i].totweight);
 		}
 	}
 
@@ -792,7 +788,7 @@ int test_index_face(MFace *mface, CustomData *fdata, int mfindex, int nr)
 		nr--;
 	}
 
-	/* check corrupt cases, bowtie geometry, cant handle these because edge data wont exist so just return 0 */
+	/* check corrupt cases, bow-tie geometry, cant handle these because edge data wont exist so just return 0 */
 	if (nr == 3) {
 		if (
 		    /* real edges */
@@ -812,8 +808,8 @@ int test_index_face(MFace *mface, CustomData *fdata, int mfindex, int nr)
 		    mface->v4 == mface->v1 ||
 		    /* across the face */
 		    mface->v1 == mface->v3 ||
-		    mface->v2 == mface->v4
-		    ) {
+		    mface->v2 == mface->v4)
+		{
 			return 0;
 		}
 	}
@@ -961,7 +957,7 @@ static void make_edges_mdata(MVert *UNUSED(allvert), MFace *allface, MLoop *alll
 	}
 	final++;
 
-	(*alledge) = medge = MEM_callocN(sizeof (MEdge) * final, "BKE_mesh_make_edges mdge");
+	(*alledge) = medge = MEM_callocN(sizeof(MEdge) * final, "BKE_mesh_make_edges mdge");
 	(*_totedge) = final;
 
 	for (a = totedge, ed = edsort; a > 1; a--, ed++) {
@@ -993,7 +989,7 @@ static void make_edges_mdata(MVert *UNUSED(allvert), MFace *allface, MLoop *alll
 
 	MEM_freeN(edsort);
 	
-	/*set edge members of mloops*/
+	/* set edge members of mloops */
 	medge = *alledge;
 	for (a = 0; a < *_totedge; a++, medge++) {
 		BLI_edgehash_insert(hash, medge->v1, medge->v2, SET_INT_IN_POINTER(a));
@@ -1234,23 +1230,25 @@ int BKE_mesh_nurbs_to_mdata(Object *ob, MVert **allvert, int *totvert,
                             MEdge **alledge, int *totedge, MLoop **allloop, MPoly **allpoly,
                             int *totloop, int *totpoly)
 {
-	return BKE_mesh_nurbs_to_mdata_customdb(ob, &ob->disp,
+	return BKE_mesh_nurbs_displist_to_mdata(ob, &ob->disp,
 	                                        allvert, totvert,
 	                                        alledge, totedge,
 	                                        allloop, allpoly,
-	                                        totloop, totpoly);
+	                                        totloop, totpoly, NULL);
 }
 
 /* BMESH: this doesn't calculate all edges from polygons,
  * only free standing edges are calculated */
 
 /* Initialize mverts, medges and, faces for converting nurbs to mesh and derived mesh */
-/* use specified dispbase  */
-int BKE_mesh_nurbs_to_mdata_customdb(Object *ob, ListBase *dispbase,
+/* use specified dispbase */
+/* TODO: orco values for non DL_SURF types */
+int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
                                      MVert **allvert, int *_totvert,
                                      MEdge **alledge, int *_totedge,
                                      MLoop **allloop, MPoly **allpoly,
-                                     int *_totloop, int *_totpoly)
+                                     int *_totloop, int *_totpoly,
+                                     int **orco_index_ptr)
 {
 	DispList *dl;
 	Curve *cu;
@@ -1262,6 +1260,7 @@ int BKE_mesh_nurbs_to_mdata_customdb(Object *ob, ListBase *dispbase,
 	int a, b, ofs, vertcount, startvert, totvert = 0, totedge = 0, totloop = 0, totvlak = 0;
 	int p1, p2, p3, p4, *index;
 	int conv_polys = 0;
+	int (*orco_index)[4] = NULL;
 
 	cu = ob->data;
 
@@ -1311,6 +1310,11 @@ int BKE_mesh_nurbs_to_mdata_customdb(Object *ob, ListBase *dispbase,
 	
 	/* verts and faces */
 	vertcount = 0;
+
+	if (orco_index_ptr) {
+		*orco_index_ptr = MEM_callocN(sizeof(int) * totvlak * 4, "nurbs_init orco");
+		orco_index = (int (*)[4]) *orco_index_ptr;
+	}
 
 	dl = dispbase->first;
 	while (dl) {
@@ -1389,8 +1393,6 @@ int BKE_mesh_nurbs_to_mdata_customdb(Object *ob, ListBase *dispbase,
 				mloop += 3;
 				index += 3;
 			}
-
-
 		}
 		else if (dl->type == DL_SURF) {
 			startvert = vertcount;
@@ -1435,6 +1437,15 @@ int BKE_mesh_nurbs_to_mdata_customdb(Object *ob, ListBase *dispbase,
 					mpoly->totloop = 4;
 					mpoly->mat_nr = dl->col;
 
+					if (orco_index) {
+						const int poly_index = mpoly - *allpoly;
+						const int p_orco_base = startvert + ((dl->nr + 1) * a) + b;
+						orco_index[poly_index][0] = p_orco_base + 1;
+						orco_index[poly_index][1] = p_orco_base + dl->nr + 2;
+						orco_index[poly_index][2] = p_orco_base + dl->nr + 1;
+						orco_index[poly_index][3] = p_orco_base;
+					}
+
 					if (smooth) mpoly->flag |= ME_SMOOTH;
 					mpoly++;
 					mloop += 4;
@@ -1465,8 +1476,34 @@ int BKE_mesh_nurbs_to_mdata_customdb(Object *ob, ListBase *dispbase,
 	return 0;
 }
 
+
+MINLINE void copy_uv_orco_v2_v2(float r[2], const float a[2])
+{
+	r[0] = 0.5f + a[0] * 0.5f;
+	r[1] = 0.5f + a[1] * 0.5f;
+}
+
+/**
+ * orco is normally from #BKE_curve_make_orco
+ */
+void BKE_mesh_nurbs_to_mdata_orco(MPoly *mpoly, int totpoly,
+                                  MLoop *mloops, MLoopUV *mloopuvs,
+                                  float (*orco)[3], int (*orco_index)[4])
+{
+	MPoly *mp;
+
+	int i, j;
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+		MLoop *ml = mloops + mp->loopstart;
+		MLoopUV *mluv = mloopuvs + mp->loopstart;
+		for (j = 0; j < mp->totloop; j++, ml++, mluv++) {
+			copy_uv_orco_v2_v2(mluv->uv, orco[orco_index[i][j]]);
+		}
+	}
+}
+
 /* this may fail replacing ob->data, be sure to check ob->type */
-void BKE_mesh_from_nurbs(Object *ob)
+void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, int **orco_index_ptr)
 {
 	Main *bmain = G.main;
 	Object *ob1;
@@ -1482,9 +1519,9 @@ void BKE_mesh_from_nurbs(Object *ob)
 	cu = ob->data;
 
 	if (dm == NULL) {
-		if (BKE_mesh_nurbs_to_mdata(ob, &allvert, &totvert,
-		                            &alledge, &totedge, &allloop,
-		                            &allpoly, &totloop, &totpoly) != 0)
+		if (BKE_mesh_nurbs_displist_to_mdata(ob, dispbase, &allvert, &totvert,
+		                                     &alledge, &totedge, &allloop,
+		                                     &allpoly, &totloop, &totpoly, orco_index_ptr) != 0)
 		{
 			/* Error initializing */
 			return;
@@ -1536,6 +1573,11 @@ void BKE_mesh_from_nurbs(Object *ob)
 		}
 		ob1 = ob1->id.next;
 	}
+}
+
+void BKE_mesh_from_nurbs(Object *ob)
+{
+	BKE_mesh_from_nurbs_displist(ob, &ob->disp, NULL);
 }
 
 typedef struct EdgeLink {
@@ -1803,7 +1845,7 @@ void BKE_mesh_calc_normals_mapping_ex(MVert *mverts, int numVerts,
 		return;
 	}
 
-	/* if we are not calculating verts and no verts were passes thene we have nothign to do */
+	/* if we are not calculating verts and no verts were passes then we have nothing to do */
 	if ((only_face_normals == TRUE) && (polyNors_r == NULL) && (faceNors_r == NULL)) {
 		printf("%s: called with nothing to do\n", __func__);
 		return;
@@ -1822,12 +1864,12 @@ void BKE_mesh_calc_normals_mapping_ex(MVert *mverts, int numVerts,
 		/* only calc poly normals */
 		mp = mpolys;
 		for (i = 0; i < numPolys; i++, mp++) {
-			mesh_calc_poly_normal(mp, mloop + mp->loopstart, mverts, pnors[i]);
+			BKE_mesh_calc_poly_normal(mp, mloop + mp->loopstart, mverts, pnors[i]);
 		}
 	}
 
 	if (origIndexFace &&
-	    /* fnors==faceNors_r */ /* NO NEED TO ALLOC YET */
+	    /* fnors == faceNors_r */ /* NO NEED TO ALLOC YET */
 	    fnors != NULL &&
 	    numFaces)
 	{
@@ -1867,12 +1909,12 @@ void BKE_mesh_calc_normals(MVert *mverts, int numVerts, MLoop *mloop, MPoly *mpo
 
 	if (!pnors) pnors = MEM_callocN(sizeof(float) * 3 * numPolys, "poly_nors mesh.c");
 
-	/*first go through and calculate normals for all the polys*/
+	/* first go through and calculate normals for all the polys */
 	tnorms = MEM_callocN(sizeof(float) * 3 * numVerts, "tnorms mesh.c");
 
 	mp = mpolys;
 	for (i = 0; i < numPolys; i++, mp++) {
-		mesh_calc_poly_normal(mp, mloop + mp->loopstart, mverts, pnors[i]);
+		BKE_mesh_calc_poly_normal(mp, mloop + mp->loopstart, mverts, pnors[i]);
 		ml = mloop + mp->loopstart;
 
 		BLI_array_empty(vertcos);
@@ -1901,8 +1943,9 @@ void BKE_mesh_calc_normals(MVert *mverts, int numVerts, MLoop *mloop, MPoly *mpo
 		MVert *mv = &mverts[i];
 		float *no = tnorms[i];
 
-		if (normalize_v3(no) == 0.0f)
+		if (UNLIKELY(normalize_v3(no) == 0.0f)) {
 			normalize_v3_v3(no, mv->co);
+		}
 
 		normal_float_to_short_v3(mv->no, no);
 	}
@@ -1938,8 +1981,9 @@ void BKE_mesh_calc_normals_tessface(MVert *mverts, int numVerts, MFace *mfaces, 
 		MVert *mv = &mverts[i];
 		float *no = tnorms[i];
 		
-		if (normalize_v3(no) == 0.0f)
+		if (UNLIKELY(normalize_v3(no) == 0.0f)) {
 			normalize_v3_v3(no, mv->co);
+		}
 
 		normal_float_to_short_v3(mv->no, no);
 	}
@@ -1950,8 +1994,8 @@ void BKE_mesh_calc_normals_tessface(MVert *mverts, int numVerts, MFace *mfaces, 
 		MEM_freeN(fnors);
 }
 
-
-static void bm_corners_to_loops(Mesh *me, int findex, int loopstart, int numTex, int numCol)
+static void bm_corners_to_loops_ex(ID *id, CustomData *fdata, CustomData *ldata, CustomData *pdata,
+                                   MFace *mface, int totloop, int findex, int loopstart, int numTex, int numCol)
 {
 	MTFace *texface;
 	MTexPoly *texpoly;
@@ -1961,15 +2005,15 @@ static void bm_corners_to_loops(Mesh *me, int findex, int loopstart, int numTex,
 	MFace *mf;
 	int i;
 
-	mf = me->mface + findex;
+	mf = mface + findex;
 
 	for (i = 0; i < numTex; i++) {
-		texface = CustomData_get_n(&me->fdata, CD_MTFACE, findex, i);
-		texpoly = CustomData_get_n(&me->pdata, CD_MTEXPOLY, findex, i); 
-		
+		texface = CustomData_get_n(fdata, CD_MTFACE, findex, i);
+		texpoly = CustomData_get_n(pdata, CD_MTEXPOLY, findex, i);
+
 		ME_MTEXFACE_CPY(texpoly, texface);
-	
-		mloopuv = CustomData_get_n(&me->ldata, CD_MLOOPUV, loopstart, i);
+
+		mloopuv = CustomData_get_n(ldata, CD_MLOOPUV, loopstart, i);
 		copy_v2_v2(mloopuv->uv, texface->uv[0]); mloopuv++;
 		copy_v2_v2(mloopuv->uv, texface->uv[1]); mloopuv++;
 		copy_v2_v2(mloopuv->uv, texface->uv[2]); mloopuv++;
@@ -1980,8 +2024,8 @@ static void bm_corners_to_loops(Mesh *me, int findex, int loopstart, int numTex,
 	}
 
 	for (i = 0; i < numCol; i++) {
-		mloopcol = CustomData_get_n(&me->ldata, CD_MLOOPCOL, loopstart, i);
-		mcol = CustomData_get_n(&me->fdata, CD_MCOL, findex, i);
+		mloopcol = CustomData_get_n(ldata, CD_MLOOPCOL, loopstart, i);
+		mcol = CustomData_get_n(fdata, CD_MCOL, findex, i);
 
 		MESH_MLOOPCOL_FROM_MCOL(mloopcol, &mcol[0]); mloopcol++;
 		MESH_MLOOPCOL_FROM_MCOL(mloopcol, &mcol[1]); mloopcol++;
@@ -1990,37 +2034,39 @@ static void bm_corners_to_loops(Mesh *me, int findex, int loopstart, int numTex,
 			MESH_MLOOPCOL_FROM_MCOL(mloopcol, &mcol[3]); mloopcol++;
 		}
 	}
-	
-	if (CustomData_has_layer(&me->fdata, CD_MDISPS)) {
-		MDisps *ld = CustomData_get(&me->ldata, loopstart, CD_MDISPS);
-		MDisps *fd = CustomData_get(&me->fdata, findex, CD_MDISPS);
+
+	if (CustomData_has_layer(fdata, CD_MDISPS)) {
+		MDisps *ld = CustomData_get(ldata, loopstart, CD_MDISPS);
+		MDisps *fd = CustomData_get(fdata, findex, CD_MDISPS);
 		float (*disps)[3] = fd->disps;
 		int i, tot = mf->v4 ? 4 : 3;
 		int side, corners;
 
-		if (CustomData_external_test(&me->fdata, CD_MDISPS)) {
-			CustomData_external_add(&me->ldata, &me->id, CD_MDISPS,
-			                        me->totloop, me->fdata.external->filename);
+		if (CustomData_external_test(fdata, CD_MDISPS)) {
+			if (id && fdata->external) {
+				CustomData_external_add(ldata, id, CD_MDISPS,
+				                        totloop, fdata->external->filename);
+			}
 		}
-		
+
 		corners = multires_mdisp_corners(fd);
-		
+
 		if (corners == 0) {
 			/* Empty MDisp layers appear in at least one of the sintel.blend files.
 			 * Not sure why this happens, but it seems fine to just ignore them here.
-			 * If corners==0 for a non-empty layer though, something went wrong. */
+			 * If (corners == 0) for a non-empty layer though, something went wrong. */
 			BLI_assert(fd->totdisp == 0);
 		}
 		else {
 			side = sqrt(fd->totdisp / corners);
-		
+
 			for (i = 0; i < tot; i++, disps += side * side, ld++) {
 				ld->totdisp = side * side;
 				ld->level = (int)(logf(side - 1.0f) / (float)M_LN2) + 1;
-			
+
 				if (ld->disps)
 					MEM_freeN(ld->disps);
-			
+
 				ld->disps = MEM_callocN(sizeof(float) * 3 * side * side, "converted loop mdisps");
 				if (fd->disps) {
 					memcpy(ld->disps, disps, sizeof(float) * 3 * side * side);
@@ -2032,69 +2078,109 @@ static void bm_corners_to_loops(Mesh *me, int findex, int loopstart, int numTex,
 
 void BKE_mesh_convert_mfaces_to_mpolys(Mesh *mesh)
 {
+	BKE_mesh_convert_mfaces_to_mpolys_ex(&mesh->id, &mesh->fdata, &mesh->ldata, &mesh->pdata,
+	                                     mesh->totedge, mesh->totface, mesh->totloop, mesh->totpoly,
+	                                     mesh->medge, mesh->mface,
+	                                     &mesh->totloop, &mesh->totpoly, &mesh->mloop, &mesh->mpoly);
+
+	mesh_update_customdata_pointers(mesh, TRUE);
+}
+
+/* the same as BKE_mesh_convert_mfaces_to_mpolys but oriented to be used in do_versions from readfile.c
+ * the difference is how active/render/clone/stencil indices are handled here
+ *
+ * normally thay're being set from pdata which totally makes sense for meshes which are already
+ * converted to bmesh structures, but when loading older files indices shall be updated in other
+ * way around, so newly added pdata and ldata would have this indices set based on fdata layer
+ *
+ * this is normally only needed when reading older files, in all other cases BKE_mesh_convert_mfaces_to_mpolys
+ * shall be always used
+ */
+void BKE_mesh_do_versions_convert_mfaces_to_mpolys(Mesh *mesh)
+{
+	BKE_mesh_convert_mfaces_to_mpolys_ex(&mesh->id, &mesh->fdata, &mesh->ldata, &mesh->pdata,
+	                                     mesh->totedge, mesh->totface, mesh->totloop, mesh->totpoly,
+	                                     mesh->medge, mesh->mface,
+	                                     &mesh->totloop, &mesh->totpoly, &mesh->mloop, &mesh->mpoly);
+
+	CustomData_bmesh_do_versions_update_active_layers(&mesh->fdata, &mesh->pdata, &mesh->ldata);
+
+	mesh_update_customdata_pointers(mesh, TRUE);
+}
+
+void BKE_mesh_convert_mfaces_to_mpolys_ex(ID *id, CustomData *fdata, CustomData *ldata, CustomData *pdata,
+                                          int totedge_i, int totface_i, int totloop_i, int totpoly_i,
+                                          MEdge *medge, MFace *mface,
+                                          int *totloop_r, int *totpoly_r,
+                                          MLoop **mloop_r, MPoly **mpoly_r)
+{
 	MFace *mf;
-	MLoop *ml;
-	MPoly *mp;
+	MLoop *ml, *mloop;
+	MPoly *mp, *mpoly;
 	MEdge *me;
 	EdgeHash *eh;
 	int numTex, numCol;
-	int i, j, totloop;
+	int i, j, totloop, totpoly, *polyindex;
 
 	/* just in case some of these layers are filled in (can happen with python created meshes) */
-	CustomData_free(&mesh->ldata, mesh->totloop);
-	CustomData_free(&mesh->pdata, mesh->totpoly);
-	memset(&mesh->ldata, 0, sizeof(mesh->ldata));
-	memset(&mesh->pdata, 0, sizeof(mesh->pdata));
+	CustomData_free(ldata, totloop_i);
+	CustomData_free(pdata, totpoly_i);
+	memset(ldata, 0, sizeof(*ldata));
+	memset(pdata, 0, sizeof(*pdata));
 
-	mesh->totpoly = mesh->totface;
-	mesh->mpoly = MEM_callocN(sizeof(MPoly) * mesh->totpoly, "mpoly converted");
-	CustomData_add_layer(&mesh->pdata, CD_MPOLY, CD_ASSIGN, mesh->mpoly, mesh->totpoly);
+	totpoly = totface_i;
+	mpoly = MEM_callocN(sizeof(MPoly) * totpoly, "mpoly converted");
+	CustomData_add_layer(pdata, CD_MPOLY, CD_ASSIGN, mpoly, totpoly);
 
-	numTex = CustomData_number_of_layers(&mesh->fdata, CD_MTFACE);
-	numCol = CustomData_number_of_layers(&mesh->fdata, CD_MCOL);
-	
+	numTex = CustomData_number_of_layers(fdata, CD_MTFACE);
+	numCol = CustomData_number_of_layers(fdata, CD_MCOL);
+
 	totloop = 0;
-	mf = mesh->mface;
-	for (i = 0; i < mesh->totface; i++, mf++) {
+	mf = mface;
+	for (i = 0; i < totface_i; i++, mf++) {
 		totloop += mf->v4 ? 4 : 3;
 	}
-	
-	mesh->totloop = totloop;
-	mesh->mloop = MEM_callocN(sizeof(MLoop) * mesh->totloop, "mloop converted");
 
-	CustomData_add_layer(&mesh->ldata, CD_MLOOP, CD_ASSIGN, mesh->mloop, totloop);
-	CustomData_to_bmeshpoly(&mesh->fdata, &mesh->pdata, &mesh->ldata,
-	                        mesh->totloop, mesh->totpoly);
+	mloop = MEM_callocN(sizeof(MLoop) * totloop, "mloop converted");
 
-	/* ensure external data is transferred */
-	CustomData_external_read(&mesh->fdata, &mesh->id, CD_MASK_MDISPS, mesh->totface);
+	CustomData_add_layer(ldata, CD_MLOOP, CD_ASSIGN, mloop, totloop);
+
+	CustomData_to_bmeshpoly(fdata, pdata, ldata, totloop, totpoly);
+
+	if (id) {
+		/* ensure external data is transferred */
+		CustomData_external_read(fdata, id, CD_MASK_MDISPS, totface_i);
+	}
 
 	eh = BLI_edgehash_new();
 
-	/*build edge hash*/
-	me = mesh->medge;
-	for (i = 0; i < mesh->totedge; i++, me++) {
+	/* build edge hash */
+	me = medge;
+	for (i = 0; i < totedge_i; i++, me++) {
 		BLI_edgehash_insert(eh, me->v1, me->v2, SET_INT_IN_POINTER(i));
 
 		/* unrelated but avoid having the FGON flag enabled, so we can reuse it later for something else */
 		me->flag &= ~ME_FGON;
 	}
 
-	j = 0; /*current loop index*/
-	ml = mesh->mloop;
-	mf = mesh->mface;
-	mp = mesh->mpoly;
-	for (i = 0; i < mesh->totface; i++, mf++, mp++) {
+	polyindex = CustomData_get_layer(fdata, CD_POLYINDEX);
+
+	j = 0; /* current loop index */
+	ml = mloop;
+	mf = mface;
+	mp = mpoly;
+	for (i = 0; i < totface_i; i++, mf++, mp++) {
 		mp->loopstart = j;
-		
+
 		mp->totloop = mf->v4 ? 4 : 3;
 
 		mp->mat_nr = mf->mat_nr;
 		mp->flag = mf->flag;
-		
-#       define ML(v1, v2) {ml->v = mf->v1; ml->e = GET_INT_FROM_POINTER(BLI_edgehash_lookup(eh, mf->v1, mf->v2)); ml++; j++; \
-}
-		
+
+#       define ML(v1, v2) { \
+			ml->v = mf->v1; ml->e = GET_INT_FROM_POINTER(BLI_edgehash_lookup(eh, mf->v1, mf->v2)); ml++; j++; \
+		} (void)0
+
 		ML(v1, v2);
 		ML(v2, v3);
 		if (mf->v4) {
@@ -2104,18 +2190,26 @@ void BKE_mesh_convert_mfaces_to_mpolys(Mesh *mesh)
 		else {
 			ML(v3, v1);
 		}
-		
+
 #       undef ML
 
-		bm_corners_to_loops(mesh, i, mp->loopstart, numTex, numCol);
+		bm_corners_to_loops_ex(id, fdata, ldata, pdata, mface, totloop, i, mp->loopstart, numTex, numCol);
+
+		if (polyindex) {
+			*polyindex = i;
+			polyindex++;
+		}
 	}
 
-	/* note, we don't convert FGons at all, these are not even real ngons,
+	/* note, we don't convert NGons at all, these are not even real ngons,
 	 * they have their own UV's, colors etc - its more an editing feature. */
 
-	mesh_update_customdata_pointers(mesh, TRUE);
-
 	BLI_edgehash_free(eh, NULL);
+
+	*totpoly_r = totpoly;
+	*totloop_r = totloop;
+	*mpoly_r = mpoly;
+	*mloop_r = mloop;
 }
 
 float (*mesh_getVertexCos(Mesh * me, int *numVerts_r))[3]
@@ -2287,21 +2381,39 @@ void create_vert_poly_map(MeshElemMap **map, int **mem,
 /* Generates a map where the key is the vertex and the value is a list
  * of edges that use that vertex as an endpoint. The lists are allocated
  * from one memory pool. */
-void create_vert_edge_map(ListBase **map, IndexNode **mem, const MEdge *medge, const int totvert, const int totedge)
+void create_vert_edge_map(MeshElemMap **map, int **mem,
+						  const MEdge *medge, int totvert, int totedge)
 {
-	int i, j;
-	IndexNode *node = NULL;
- 
-	(*map) = MEM_callocN(sizeof(ListBase) * totvert, "vert edge map");
-	(*mem) = MEM_callocN(sizeof(IndexNode) * totedge * 2, "vert edge map mem");
-	node = *mem;
+	int i, *indices;
 
+	(*map) = MEM_callocN(sizeof(MeshElemMap) * totvert, "vert-edge map");
+	(*mem) = MEM_mallocN(sizeof(int) * totedge * 2, "vert-edge map mem");
+
+	/* Count number of edges for each vertex */
+	for (i = 0; i < totedge; i++) {
+		(*map)[medge[i].v1].count++;
+		(*map)[medge[i].v2].count++;
+	}
+
+	/* Assign indices mem */
+	indices = (*mem);
+	for (i = 0; i < totvert; i++) {
+		(*map)[i].indices = indices;
+		indices += (*map)[i].count;
+
+		/* Reset 'count' for use as index in last loop */
+		(*map)[i].count = 0;
+	}
+		
 	/* Find the users */
-	for (i = 0; i < totedge; ++i) {
-		for (j = 0; j < 2; ++j, ++node) {
-			node->index = i;
-			BLI_addtail(&(*map)[((unsigned int *)(&medge[i].v1))[j]], node);
-		}
+	for (i = 0; i < totedge; i++) {
+		const int v[2] = {medge[i].v1, medge[i].v2};
+
+		(*map)[v[0]].indices[(*map)[v[0]].count] = i;
+		(*map)[v[1]].indices[(*map)[v[1]].count] = i;
+		
+		(*map)[v[0]].count++;
+		(*map)[v[1]].count++;
 	}
 }
 
@@ -2391,8 +2503,8 @@ int BKE_mesh_recalc_tessellation(CustomData *fdata,
 	MFace *mface = NULL, *mf;
 	BLI_array_declare(mface);
 	ScanFillContext sf_ctx;
-	ScanFillVert *v, *lastv, *firstv;
-	ScanFillFace *f;
+	ScanFillVert *sf_vert, *sf_vert_last, *sf_vert_first;
+	ScanFillFace *sf_tri;
 	int *mface_orig_index = NULL;
 	BLI_array_declare(mface_orig_index);
 	int *mface_to_poly_map = NULL;
@@ -2485,21 +2597,21 @@ int BKE_mesh_recalc_tessellation(CustomData *fdata,
 			ml = mloop + mp->loopstart;
 			
 			BLI_scanfill_begin(&sf_ctx);
-			firstv = NULL;
-			lastv = NULL;
+			sf_vert_first = NULL;
+			sf_vert_last = NULL;
 			for (j = 0; j < mp->totloop; j++, ml++) {
-				v = BLI_scanfill_vert_add(&sf_ctx, mvert[ml->v].co);
+				sf_vert = BLI_scanfill_vert_add(&sf_ctx, mvert[ml->v].co);
 	
-				v->keyindex = mp->loopstart + j;
+				sf_vert->keyindex = mp->loopstart + j;
 	
-				if (lastv)
-					BLI_scanfill_edge_add(&sf_ctx, lastv, v);
+				if (sf_vert_last)
+					BLI_scanfill_edge_add(&sf_ctx, sf_vert_last, sf_vert);
 	
-				if (!firstv)
-					firstv = v;
-				lastv = v;
+				if (!sf_vert_first)
+					sf_vert_first = sf_vert;
+				sf_vert_last = sf_vert;
 			}
-			BLI_scanfill_edge_add(&sf_ctx, lastv, firstv);
+			BLI_scanfill_edge_add(&sf_ctx, sf_vert_last, sf_vert_first);
 			
 			totfilltri = BLI_scanfill_calc(&sf_ctx, FALSE);
 			if (totfilltri) {
@@ -2509,14 +2621,14 @@ int BKE_mesh_recalc_tessellation(CustomData *fdata,
 					BLI_array_grow_items(mface_orig_index, totfilltri);
 				}
 
-				for (f = sf_ctx.fillfacebase.first; f; f = f->next, mf++) {
+				for (sf_tri = sf_ctx.fillfacebase.first; sf_tri; sf_tri = sf_tri->next, mf++) {
 					mface_to_poly_map[mface_index] = poly_index;
 					mf = &mface[mface_index];
 
 					/* set loop indices, transformed to vert indices later */
-					mf->v1 = f->v1->keyindex;
-					mf->v2 = f->v2->keyindex;
-					mf->v3 = f->v3->keyindex;
+					mf->v1 = sf_tri->v1->keyindex;
+					mf->v2 = sf_tri->v2->keyindex;
+					mf->v3 = sf_tri->v3->keyindex;
 					mf->v4 = 0;
 
 					mf->mat_nr = mp->mat_nr;
@@ -2591,13 +2703,13 @@ int BKE_mesh_recalc_tessellation(CustomData *fdata,
 #endif
 		{
 			/* sort loop indices to ensure winding is correct */
-			if (mf->v1 > mf->v2) SWAP(int, mf->v1, mf->v2);
-			if (mf->v2 > mf->v3) SWAP(int, mf->v2, mf->v3);
-			if (mf->v1 > mf->v2) SWAP(int, mf->v1, mf->v2);
+			if (mf->v1 > mf->v2) SWAP(unsigned int, mf->v1, mf->v2);
+			if (mf->v2 > mf->v3) SWAP(unsigned int, mf->v2, mf->v3);
+			if (mf->v1 > mf->v2) SWAP(unsigned int, mf->v1, mf->v2);
 
-			if (mf->v1 > mf->v2) SWAP(int, mf->v1, mf->v2);
-			if (mf->v2 > mf->v3) SWAP(int, mf->v2, mf->v3);
-			if (mf->v1 > mf->v2) SWAP(int, mf->v1, mf->v2);
+			if (mf->v1 > mf->v2) SWAP(unsigned int, mf->v1, mf->v2);
+			if (mf->v2 > mf->v3) SWAP(unsigned int, mf->v2, mf->v3);
+			if (mf->v1 > mf->v2) SWAP(unsigned int, mf->v1, mf->v2);
 		}
 
 		/* end abusing the edcode */
@@ -2709,7 +2821,7 @@ int BKE_mesh_mpoly_to_mface(struct CustomData *fdata, struct CustomData *ldata,
 			mf = &mface[k];
 
 			if (mf->edcode == 3) {
-				/*sort loop indices to ensure winding is correct*/
+				/* sort loop indices to ensure winding is correct */
 				/* NO SORT - looks like we can skip this */
 
 				lindex[0] = mf->v1;
@@ -2717,7 +2829,7 @@ int BKE_mesh_mpoly_to_mface(struct CustomData *fdata, struct CustomData *ldata,
 				lindex[2] = mf->v3;
 				lindex[3] = 0; /* unused */
 
-				/*transform loop indices to vert indices*/
+				/* transform loop indices to vert indices */
 				mf->v1 = mloop[mf->v1].v;
 				mf->v2 = mloop[mf->v2].v;
 				mf->v3 = mloop[mf->v3].v;
@@ -2728,7 +2840,7 @@ int BKE_mesh_mpoly_to_mface(struct CustomData *fdata, struct CustomData *ldata,
 				test_index_face(mf, fdata, k, 3);
 			}
 			else {
-				/*sort loop indices to ensure winding is correct*/
+				/* sort loop indices to ensure winding is correct */
 				/* NO SORT - looks like we can skip this */
 
 				lindex[0] = mf->v1;
@@ -2736,7 +2848,7 @@ int BKE_mesh_mpoly_to_mface(struct CustomData *fdata, struct CustomData *ldata,
 				lindex[2] = mf->v3;
 				lindex[3] = mf->v4;
 
-				/*transform loop indices to vert indices*/
+				/* transform loop indices to vert indices */
 				mf->v1 = mloop[mf->v1].v;
 				mf->v2 = mloop[mf->v2].v;
 				mf->v3 = mloop[mf->v3].v;
@@ -2771,22 +2883,25 @@ static void mesh_calc_ngon_normal(MPoly *mpoly, MLoop *loopstart,
 {
 	const int nverts = mpoly->totloop;
 	float const *v_prev = mvert[loopstart[nverts - 1].v].co;
-	float const *v_curr = mvert[loopstart->v].co;
-	float n[3] = {0.0f};
+	float const *v_curr;
 	int i;
 
+	zero_v3(normal);
+
 	/* Newell's Method */
-	for (i = 0; i < nverts; v_prev = v_curr, v_curr = mvert[loopstart[++i].v].co) {
-		add_newell_cross_v3_v3v3(n, v_prev, v_curr);
+	for (i = 0; i < nverts; i++) {
+		v_curr = mvert[loopstart[i].v].co;
+		add_newell_cross_v3_v3v3(normal, v_prev, v_curr);
+		v_prev = v_curr;
 	}
 
-	if (UNLIKELY(normalize_v3_v3(normal, n) == 0.0f)) {
+	if (UNLIKELY(normalize_v3(normal) == 0.0f)) {
 		normal[2] = 1.0f; /* other axis set to 0.0 */
 	}
 }
 
-void mesh_calc_poly_normal(MPoly *mpoly, MLoop *loopstart, 
-                           MVert *mvarray, float no[3])
+void BKE_mesh_calc_poly_normal(MPoly *mpoly, MLoop *loopstart,
+                               MVert *mvarray, float no[3])
 {
 	if (mpoly->totloop > 4) {
 		mesh_calc_ngon_normal(mpoly, loopstart, mvarray, no);
@@ -2818,16 +2933,19 @@ static void mesh_calc_ngon_normal_coords(MPoly *mpoly, MLoop *loopstart,
 {
 	const int nverts = mpoly->totloop;
 	float const *v_prev = vertex_coords[loopstart[nverts - 1].v];
-	float const *v_curr = vertex_coords[loopstart->v];
-	float n[3] = {0.0f};
+	float const *v_curr;
 	int i;
 
+	zero_v3(normal);
+
 	/* Newell's Method */
-	for (i = 0; i < nverts; v_prev = v_curr, v_curr = vertex_coords[loopstart[++i].v]) {
-		add_newell_cross_v3_v3v3(n, v_prev, v_curr);
+	for (i = 0; i < nverts; i++) {
+		v_curr = vertex_coords[loopstart[i].v];
+		add_newell_cross_v3_v3v3(normal, v_prev, v_curr);
+		v_prev = v_curr;
 	}
 
-	if (UNLIKELY(normalize_v3_v3(normal, n) == 0.0f)) {
+	if (UNLIKELY(normalize_v3(normal) == 0.0f)) {
 		normal[2] = 1.0f; /* other axis set to 0.0 */
 	}
 }
@@ -2898,7 +3016,7 @@ void BKE_mesh_calc_poly_center(MPoly *mpoly, MLoop *loopstart,
 
 /* note, passing polynormal is only a speedup so we can skip calculating it */
 float BKE_mesh_calc_poly_area(MPoly *mpoly, MLoop *loopstart,
-                              MVert *mvarray, float polynormal[3])
+                              MVert *mvarray, const float polynormal[3])
 {
 	if (mpoly->totloop == 3) {
 		return area_tri_v3(mvarray[loopstart[0].v].co,
@@ -2917,7 +3035,7 @@ float BKE_mesh_calc_poly_area(MPoly *mpoly, MLoop *loopstart,
 		int i;
 		MLoop *l_iter = loopstart;
 		float area, polynorm_local[3], (*vertexcos)[3];
-		float *no = polynormal ? polynormal : polynorm_local;
+		const float *no = polynormal ? polynormal : polynorm_local;
 		BLI_array_fixedstack_declare(vertexcos, BM_NGON_STACK_SIZE, mpoly->totloop, __func__);
 
 		/* pack vertex cos into an array for area_poly_v3 */
@@ -2927,7 +3045,7 @@ float BKE_mesh_calc_poly_area(MPoly *mpoly, MLoop *loopstart,
 
 		/* need normal for area_poly_v3 as well */
 		if (polynormal == NULL) {
-			mesh_calc_poly_normal(mpoly, loopstart, mvarray, no);
+			BKE_mesh_calc_poly_normal(mpoly, loopstart, mvarray, polynorm_local);
 		}
 
 		/* finally calculate the area */
@@ -2975,6 +3093,18 @@ int poly_get_adj_loops_from_vert(unsigned adj_r[3], const MPoly *poly,
 	return corner;
 }
 
+/* Return the index of the edge vert that is not equal to 'v'. If
+ * neither edge vertex is equal to 'v', returns -1. */
+int BKE_mesh_edge_other_vert(const MEdge *e, int v)
+{
+	if (e->v1 == v)
+		return e->v2;
+	else if (e->v2 == v)
+		return e->v1;
+	else
+		return -1;
+}
+
 /* update the hide flag for edges and faces from the corresponding
  * flag in verts */
 void BKE_mesh_flush_hidden_from_verts(const MVert *mvert,
@@ -3011,7 +3141,7 @@ int BKE_mesh_minmax(Mesh *me, float r_min[3], float r_max[3])
 	int i = me->totvert;
 	MVert *mvert;
 	for (mvert = me->mvert; i--; mvert++) {
-		DO_MINMAX(mvert->co, r_min, r_max);
+		minmax_v3v3_v3(r_min, r_max, mvert->co);
 	}
 	
 	return (me->totvert != 0);
@@ -3064,19 +3194,17 @@ void BKE_mesh_translate(Mesh *me, float offset[3], int do_keys)
 	}
 }
 
-
 void BKE_mesh_ensure_navmesh(Mesh *me)
 {
 	if (!CustomData_has_layer(&me->pdata, CD_RECAST)) {
 		int i;
 		int numFaces = me->totpoly;
 		int *recastData;
-		CustomData_add_layer_named(&me->pdata, CD_RECAST, CD_CALLOC, NULL, numFaces, "recastData");
-		recastData = (int *)CustomData_get_layer(&me->pdata, CD_RECAST);
+		recastData = (int *)MEM_mallocN(numFaces * sizeof(int), __func__);
 		for (i = 0; i < numFaces; i++) {
 			recastData[i] = i + 1;
 		}
-		CustomData_add_layer_named(&me->pdata, CD_RECAST, CD_REFERENCE, recastData, numFaces, "recastData");
+		CustomData_add_layer_named(&me->pdata, CD_RECAST, CD_ASSIGN, recastData, numFaces, "recastData");
 	}
 }
 

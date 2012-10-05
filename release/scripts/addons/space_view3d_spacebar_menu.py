@@ -26,7 +26,7 @@ bl_info = {
     "location": "View3D > Spacebar Key",
     "description": "Context Sensitive Spacebar Menu",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"\
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
         "Scripts/3D_interaction/Dynamic_Spacebar_Menu",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=22060",
@@ -843,16 +843,12 @@ class VIEW3D_MT_SelectEditMenu(bpy.types.Menu):
         layout.operator("mesh.select_axis", text="Side of Active")
         layout.separator()
 
-        layout.operator("mesh.select_by_number_vertices",
-                        text="Triangles").type = 'TRIANGLES'
-        layout.operator("mesh.select_by_number_vertices",
-                        text="Quads").type = 'QUADS'
+        layout.operator("mesh.select_by_number_vertices", text="By Number of Verts")
         if context.scene.tool_settings.mesh_select_mode[2] == False:
-            layout.operator("mesh.select_non_manifold",
-                            text="Non Manifold")
-        layout.operator("mesh.select_by_number_vertices",
-                        text="Loose Verts/Edges").type = 'OTHER'
+            layout.operator("mesh.select_non_manifold", text="Non Manifold")
+        layout.operator("mesh.select_loose_verts", text="Loose Verts/Edges")
         layout.operator("mesh.select_similar", text="Similar")
+
         layout.separator()
 
         layout.operator("mesh.select_less", text="Less")
@@ -1405,7 +1401,7 @@ def unregister():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        km = kc.addon.keymaps['3D View']
+        km = kc.keymaps['3D View']
         for kmi in km.keymap_items:
             if kmi.idname == 'wm.call_menu':
                 if kmi.properties.name == "VIEW3D_MT_Space_Dynamic_Menu":

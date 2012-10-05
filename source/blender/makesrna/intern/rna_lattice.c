@@ -28,6 +28,7 @@
 #include <stdlib.h>
 
 #include "RNA_define.h"
+#include "RNA_enum_types.h"
 
 #include "rna_internal.h"
 
@@ -51,27 +52,27 @@
 
 static void rna_LatticePoint_co_get(PointerRNA *ptr, float *values)
 {
-	Lattice *lt = (Lattice*)ptr->id.data;
-	BPoint *bp = (BPoint*)ptr->data;
+	Lattice *lt = (Lattice *)ptr->id.data;
+	BPoint *bp = (BPoint *)ptr->data;
 	int a = bp - lt->def;
 	int x = a % lt->pntsu;
-	int y = (a/lt->pntsu) % lt->pntsv;
-	int z = (a/(lt->pntsu*lt->pntsv));
+	int y = (a / lt->pntsu) % lt->pntsv;
+	int z = (a / (lt->pntsu * lt->pntsv));
 
-	values[0] = lt->fu + x*lt->du;
-	values[1] = lt->fv + y*lt->dv;
-	values[2] = lt->fw + z*lt->dw;
+	values[0] = lt->fu + x * lt->du;
+	values[1] = lt->fv + y * lt->dv;
+	values[2] = lt->fw + z * lt->dw;
 }
 
 static void rna_LatticePoint_groups_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
 {
-	Lattice *lt = (Lattice*)ptr->id.data;
+	Lattice *lt = (Lattice *)ptr->id.data;
 
 	if (lt->dvert) {
-		BPoint *bp = (BPoint*)ptr->data;
-		MDeformVert *dvert = lt->dvert + (bp-lt->def);
+		BPoint *bp = (BPoint *)ptr->data;
+		MDeformVert *dvert = lt->dvert + (bp - lt->def);
 
-		rna_iterator_array_begin(iter, (void*)dvert->dw, sizeof(MDeformWeight), dvert->totweight, 0, NULL);
+		rna_iterator_array_begin(iter, (void *)dvert->dw, sizeof(MDeformWeight), dvert->totweight, 0, NULL);
 	}
 	else
 		rna_iterator_array_begin(iter, NULL, 0, 0, 0, NULL);
@@ -79,13 +80,13 @@ static void rna_LatticePoint_groups_begin(CollectionPropertyIterator *iter, Poin
 
 static void rna_Lattice_points_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
 {
-	Lattice *lt = (Lattice*)ptr->data;
-	int tot = lt->pntsu*lt->pntsv*lt->pntsw;
+	Lattice *lt = (Lattice *)ptr->data;
+	int tot = lt->pntsu * lt->pntsv * lt->pntsw;
 
 	if (lt->editlatt && lt->editlatt->latt->def)
-		rna_iterator_array_begin(iter, (void*)lt->editlatt->latt->def, sizeof(BPoint), tot, 0, NULL);
+		rna_iterator_array_begin(iter, (void *)lt->editlatt->latt->def, sizeof(BPoint), tot, 0, NULL);
 	else if (lt->def)
-		rna_iterator_array_begin(iter, (void*)lt->def, sizeof(BPoint), tot, 0, NULL);
+		rna_iterator_array_begin(iter, (void *)lt->def, sizeof(BPoint), tot, 0, NULL);
 	else
 		rna_iterator_array_begin(iter, NULL, 0, 0, 0, NULL);
 }
@@ -95,7 +96,7 @@ static void rna_Lattice_update_data(Main *UNUSED(bmain), Scene *UNUSED(scene), P
 	ID *id = ptr->id.data;
 
 	DAG_id_tag_update(id, 0);
-	WM_main_add_notifier(NC_GEOM|ND_DATA, id);
+	WM_main_add_notifier(NC_GEOM | ND_DATA, id);
 }
 
 static void rna_Lattice_update_size(Main *bmain, Scene *scene, PointerRNA *ptr)
@@ -105,9 +106,9 @@ static void rna_Lattice_update_size(Main *bmain, Scene *scene, PointerRNA *ptr)
 	int newu, newv, neww;
 
 	/* we don't modify the actual pnts, but go through opnts instead */
-	newu = (lt->opntsu > 0)? lt->opntsu: lt->pntsu;
-	newv = (lt->opntsv > 0)? lt->opntsv: lt->pntsv;
-	neww = (lt->opntsw > 0)? lt->opntsw: lt->pntsw;
+	newu = (lt->opntsu > 0) ? lt->opntsu : lt->pntsu;
+	newv = (lt->opntsv > 0) ? lt->opntsv : lt->pntsv;
+	neww = (lt->opntsw > 0) ? lt->opntsw : lt->pntsw;
 
 	/* BKE_lattice_resize needs an object, any object will have the same result */
 	for (ob = bmain->object.first; ob; ob = ob->id.next) {
@@ -148,28 +149,28 @@ static void rna_Lattice_use_outside_set(PointerRNA *ptr, int value)
 
 static int rna_Lattice_size_editable(PointerRNA *ptr)
 {
-	Lattice *lt = (Lattice*)ptr->data;
+	Lattice *lt = (Lattice *)ptr->data;
 
 	return lt->key == NULL;
 }
 
 static void rna_Lattice_points_u_set(PointerRNA *ptr, int value)
 {
-	Lattice *lt = (Lattice*)ptr->data;
+	Lattice *lt = (Lattice *)ptr->data;
 
 	lt->opntsu = CLAMPIS(value, 1, 64);
 }
 
 static void rna_Lattice_points_v_set(PointerRNA *ptr, int value)
 {
-	Lattice *lt = (Lattice*)ptr->data;
+	Lattice *lt = (Lattice *)ptr->data;
 
 	lt->opntsv = CLAMPIS(value, 1, 64);
 }
 
 static void rna_Lattice_points_w_set(PointerRNA *ptr, int value)
 {
-	Lattice *lt = (Lattice*)ptr->data;
+	Lattice *lt = (Lattice *)ptr->data;
 
 	lt->opntsw = CLAMPIS(value, 1, 64);
 }
@@ -187,7 +188,7 @@ static void rna_Lattice_vg_name_set(PointerRNA *ptr, const char *value)
 /* annoying, but is a consequence of RNA structures... */
 static char *rna_LatticePoint_path(PointerRNA *ptr)
 {
-	Lattice *lt = (Lattice*)ptr->id.data;
+	Lattice *lt = (Lattice *)ptr->id.data;
 	void *point = ptr->data;
 	BPoint *points = NULL;
 	
@@ -197,7 +198,7 @@ static char *rna_LatticePoint_path(PointerRNA *ptr)
 		points = lt->def;
 	
 	if (points && point) {
-		int tot = lt->pntsu*lt->pntsv*lt->pntsw;
+		int tot = lt->pntsu * lt->pntsv * lt->pntsw;
 		
 		/* only return index if in range */
 		if ((point >= (void *)points) && (point < (void *)(points + tot))) {
@@ -223,6 +224,10 @@ static void rna_def_latticepoint(BlenderRNA *brna)
 	RNA_def_struct_ui_text(srna, "LatticePoint", "Point in the lattice grid");
 	RNA_def_struct_path_func(srna, "rna_LatticePoint_path");
 
+	prop = RNA_def_property(srna, "select", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "f1", 0);
+	RNA_def_property_ui_text(prop, "Point selected", "Selection status");
+
 	prop = RNA_def_property(srna, "co", PROP_FLOAT, PROP_TRANSLATION);
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
@@ -247,12 +252,6 @@ static void rna_def_lattice(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	PropertyRNA *prop;
-
-	static EnumPropertyItem prop_keyblock_type_items[] = {
-		{KEY_LINEAR, "KEY_LINEAR", 0, "Linear", ""},
-		{KEY_CARDINAL, "KEY_CARDINAL", 0, "Cardinal", ""},
-		{KEY_BSPLINE, "KEY_BSPLINE", 0, "BSpline", ""},
-		{0, NULL, 0, NULL, NULL}};
 
 	srna = RNA_def_struct(brna, "Lattice", "ID");
 	RNA_def_struct_ui_text(srna, "Lattice", "Lattice datablock defining a grid for deforming other objects");
@@ -284,19 +283,19 @@ static void rna_def_lattice(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "interpolation_type_u", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "typeu");
-	RNA_def_property_enum_items(prop, prop_keyblock_type_items);
+	RNA_def_property_enum_items(prop, keyblock_type_items);
 	RNA_def_property_ui_text(prop, "Interpolation Type U", "");
 	RNA_def_property_update(prop, 0, "rna_Lattice_update_data");
 
 	prop = RNA_def_property(srna, "interpolation_type_v", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "typev");
-	RNA_def_property_enum_items(prop, prop_keyblock_type_items);
+	RNA_def_property_enum_items(prop, keyblock_type_items);
 	RNA_def_property_ui_text(prop, "Interpolation Type V", "");
 	RNA_def_property_update(prop, 0, "rna_Lattice_update_data");
 
 	prop = RNA_def_property(srna, "interpolation_type_w", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "typew");
-	RNA_def_property_enum_items(prop, prop_keyblock_type_items);
+	RNA_def_property_enum_items(prop, keyblock_type_items);
 	RNA_def_property_ui_text(prop, "Interpolation Type W", "");
 	RNA_def_property_update(prop, 0, "rna_Lattice_update_data");
 

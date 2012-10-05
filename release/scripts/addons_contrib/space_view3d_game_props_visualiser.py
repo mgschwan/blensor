@@ -20,14 +20,15 @@
 
 
 bl_info = {
-    'name': 'Game Property Visualiser',
+    'name': 'Game Property Visualizer',
     'author': 'Bartius Crouch/Vilem Novak',
     'version': (2,5),
     'blender': (2, 5, 3),
     'location': 'View3D > Properties panel > Display tab',
     'description': 'Display the game properties next to selected objects '\
         'in the 3d-view',
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.5/Py/Scripts/3D_interaction/Game_Property_Visualiser',
+    'warning': 'Script is returning errors',
+    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/3D_interaction/Game_Property_Visualiser',
     'tracker_url': 'http://projects.blender.org/tracker/?func=detail&aid=22607&group_id=153&atid=468',
     'category': '3D View'}
 
@@ -35,7 +36,7 @@ bl_info = {
 Displays game properties next to selected objects(under name)
 
 How to use:
-    just toggle the button 'Visualise game props' in the right side panel
+    just toggle the button 'Visualize game props' in the right side panel
 """
 
 import bgl
@@ -73,7 +74,7 @@ def calc_callback(self, context):
         total_mat = view_mat*ob_mat
  
         for p in ob.game.properties:
-            d=0.0#{'data':p.name+':'+str(p.value)}
+            # d = {'data':p.name+':'+str(p.value)}
             # print (d)
             locs.append([ mathutils.Vector([0,0,0]).resize_4d()])
     
@@ -90,7 +91,7 @@ def calc_callback(self, context):
 
     # store as ID property in mesh
     #print (texts)
-    context.scene['GamePropsVisualiser'] = texts
+    context.scene['GamePropsVisualizer'] = texts
 
 
 # draw in 3d-view
@@ -100,8 +101,8 @@ def draw_callback(self, context):
         return
     # retrieving ID property data
     try:
-        #print(context.scene['GamePropsVisualiser'])
-        texts = context.scene['GamePropsVisualiser']
+        #print(context.scene['GamePropsVisualizer'])
+        texts = context.scene['GamePropsVisualizer']
         
     except:
         return
@@ -127,10 +128,10 @@ def draw_callback(self, context):
 
 
 # operator
-class GamePropertyVisualiser(bpy.types.Operator):
-    bl_idname = "view3d.game_props_visualiser"
-    bl_label = "Game Properties Visualiser"
-    bl_description = "Toggle the visualisation of game properties"
+class GamePropertyVisualizer(bpy.types.Operator):
+    bl_idname = "view3d.game_props_visualizer"
+    bl_label = "Game Properties Visualizer"
+    bl_description = "Toggle the visualization of game properties"
     
     @classmethod
     def poll(cls, context):
@@ -160,11 +161,12 @@ class GamePropertyVisualiser(bpy.types.Operator):
                 print('init')
                 # operator is called for the first time, start everything
                 context.scene.display_game_properties = 1
-                context.window_manager.modal_handler_add(self)
                 self.handle1 = context.region.callback_add(calc_callback,
                     (self, context), 'POST_VIEW')
                 self.handle2 = context.region.callback_add(draw_callback,
                     (self, context), 'POST_PIXEL')
+
+                context.window_manager.modal_handler_add(self)
                 return {'RUNNING_MODAL'}
             else:
                 # operator is called again, stop displaying
@@ -180,12 +182,12 @@ class GamePropertyVisualiser(bpy.types.Operator):
 # defining the panel
 def menu_func(self, context):
     col = self.layout.column(align=True)
-    col.operator(GamePropertyVisualiser.bl_idname, text="Visualise game props")
+    col.operator(GamePropertyVisualizer.bl_idname, text="Visualize game props")
     self.layout.separator()
 
 
 def register():
-    bpy.types.Scene.display_game_properties = bpy.props.IntProperty(name='Visualise Game Poperties')
+    bpy.types.Scene.display_game_properties = bpy.props.IntProperty(name='Visualize Game Poperties')
     bpy.types.VIEW3D_PT_view3d_display.prepend(menu_func)
 
 def unregister():

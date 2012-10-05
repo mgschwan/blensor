@@ -325,8 +325,7 @@ void free_pointdensities(Render *re)
 	}
 }
 
-typedef struct PointDensityRangeData
-{
+typedef struct PointDensityRangeData {
 	float *density;
 	float squared_radius;
 	float *point_data;
@@ -380,6 +379,7 @@ static void accum_density(void *userdata, int index, float squared_dist)
 	}
 	
 	if (pdr->density_curve && dist != 0.0f) {
+		curvemapping_initialize(pdr->density_curve);
 		density = curvemapping_evaluateF(pdr->density_curve, 0, density/dist)*dist;
 	}
 	

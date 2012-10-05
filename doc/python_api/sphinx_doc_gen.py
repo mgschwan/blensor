@@ -849,7 +849,7 @@ def pymodule2sphinx(basepath, module_name, module, title):
         elif value_type in (bool, int, float, str, tuple):
             # constant, not much fun we can do here except to list it.
             # TODO, figure out some way to document these!
-            #fw(".. data:: %s\n\n" % attribute)
+            fw(".. data:: %s\n\n" % attribute)
             write_indented_lines("   ", fw, "constant value %s" % repr(value), False)
             fw("\n")
         else:
@@ -934,6 +934,8 @@ def pycontext2sphinx(basepath):
         "image_context_dir",
         "node_context_dir",
         "text_context_dir",
+        "clip_context_dir",
+        "sequencer_context_dir",
     )
 
     # Changes in blender will force errors here
@@ -943,6 +945,7 @@ def pycontext2sphinx(basepath):
         "active_object": ("Object", False),
         "active_operator": ("Operator", False),
         "active_pose_bone": ("PoseBone", False),
+        "active_node": ("Node", False),
         "armature": ("Armature", False),
         "bone": ("Bone", False),
         "brush": ("Brush", False),
@@ -953,6 +956,8 @@ def pycontext2sphinx(basepath):
         "dynamic_paint": ("DynamicPaintModifier", False),
         "edit_bone": ("EditBone", False),
         "edit_image": ("Image", False),
+        "edit_mask": ("Mask", False),
+        "edit_movieclip": ("MovieClip", False),
         "edit_object": ("Object", False),
         "edit_text": ("Text", False),
         "editable_bones": ("EditBone", True),
@@ -966,6 +971,7 @@ def pycontext2sphinx(basepath):
         "meta_ball": ("MetaBall", False),
         "object": ("Object", False),
         "particle_edit_object": ("Object", False),
+        "particle_settings": ("ParticleSettings", False),
         "particle_system": ("ParticleSystem", False),
         "particle_system_editable": ("ParticleSystem", False),
         "pose_bone": ("PoseBone", False),

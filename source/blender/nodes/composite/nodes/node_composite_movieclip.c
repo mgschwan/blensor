@@ -34,13 +34,15 @@
 #include "node_composite_util.h"
 
 static bNodeSocketTemplate cmp_node_movieclip_out[] = {
-	{	SOCK_RGBA,		0,	"Image"},
-	{	SOCK_FLOAT,		1,	"Offset X"},
-	{	SOCK_FLOAT,		1,	"Offset Y"},
-	{	SOCK_FLOAT,		1,	"Scale"},
-	{	SOCK_FLOAT,		1,	"Angle"},
+	{	SOCK_RGBA,		0,	N_("Image")},
+	{	SOCK_FLOAT,		1,	N_("Offset X")},
+	{	SOCK_FLOAT,		1,	N_("Offset Y")},
+	{	SOCK_FLOAT,		1,	N_("Scale")},
+	{	SOCK_FLOAT,		1,	N_("Angle")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static CompBuf *node_composit_get_movieclip(RenderData *rd, MovieClip *clip, MovieClipUser *user)
 {
@@ -120,8 +122,9 @@ static void node_composit_exec_movieclip(void *data, bNode *node, bNodeStack **U
 
 			if (stab->flag & TRACKING_2D_STABILIZATION) {
 				float loc[2], scale, angle;
+				int clip_framenr = BKE_movieclip_remap_scene_to_clip_frame(clip, rd->cfra);
 
-				BKE_tracking_stabilization_data(&clip->tracking, rd->cfra, stackbuf->x, stackbuf->y,
+				BKE_tracking_stabilization_data_get(&clip->tracking, clip_framenr, stackbuf->x, stackbuf->y,
 							loc, &scale, &angle);
 
 				out[1]->vec[0] = loc[0];
@@ -136,6 +139,8 @@ static void node_composit_exec_movieclip(void *data, bNode *node, bNodeStack **U
 		}
 	}
 }
+
+#endif  /* WITH_COMPOSITOR_LEGACY */
 
 static void init(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
@@ -154,7 +159,9 @@ void register_node_type_cmp_movieclip(bNodeTreeType *ttype)
 	node_type_size(&ntype, 120, 80, 300);
 	node_type_init(&ntype, init);
 	node_type_storage(&ntype, "MovieClipUser", node_free_standard_storage, node_copy_standard_storage);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_movieclip);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

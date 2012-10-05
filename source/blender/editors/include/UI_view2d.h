@@ -35,12 +35,12 @@
 #define __UI_VIEW2D_H__
 
 /* ------------------------------------------ */
-/* Settings and Defines: 					*/
+/* Settings and Defines:                      */
 
 /* ---- General Defines ---- */
 
 /* generic value to use when coordinate lies out of view when converting */
-#define V2D_IS_CLIPPED	12000
+#define V2D_IS_CLIPPED  12000
 
 /* Common View2D view types 
  * NOTE: only define a type here if it completely sets all (+/- a few) of the relevant flags 
@@ -48,24 +48,24 @@
  *	    than one specific place
  */
 enum {
-		/* custom view type (region has defined all necessary flags already) */
+	/* custom view type (region has defined all necessary flags already) */
 	V2D_COMMONVIEW_CUSTOM = -1,
-		/* standard (only use this when setting up a new view, as a sensible base for most settings) */
+	/* standard (only use this when setting up a new view, as a sensible base for most settings) */
 	V2D_COMMONVIEW_STANDARD,
-		/* listview (i.e. Outliner) */
+	/* listview (i.e. Outliner) */
 	V2D_COMMONVIEW_LIST,
-		/* stackview (this is basically a list where new items are added at the top) */
+	/* stackview (this is basically a list where new items are added at the top) */
 	V2D_COMMONVIEW_STACK,
-		/* headers (this is basically the same as listview, but no y-panning) */
+	/* headers (this is basically the same as listview, but no y-panning) */
 	V2D_COMMONVIEW_HEADER,
-		/* ui region containing panels */
+	/* ui region containing panels */
 	V2D_COMMONVIEW_PANELS_UI
 } eView2D_CommonViewTypes;
 
 /* ---- Defines for Scroller/Grid Arguments ----- */
 
 /* 'dummy' argument to pass when argument is irrelevant */
-#define V2D_ARG_DUMMY		-1
+#define V2D_ARG_DUMMY       -1
 
 /* Grid units */
 enum {
@@ -89,42 +89,42 @@ enum {
 
 /* flags for grid-lines to draw */
 enum {
-	V2D_HORIZONTAL_LINES		= (1<<0),
-	V2D_VERTICAL_LINES			= (1<<1),
-	V2D_HORIZONTAL_AXIS			= (1<<2),
-	V2D_VERTICAL_AXIS			= (1<<3),
-	V2D_HORIZONTAL_FINELINES	= (1<<4),
+	V2D_HORIZONTAL_LINES        = (1 << 0),
+	V2D_VERTICAL_LINES          = (1 << 1),
+	V2D_HORIZONTAL_AXIS         = (1 << 2),
+	V2D_VERTICAL_AXIS           = (1 << 3),
+	V2D_HORIZONTAL_FINELINES    = (1 << 4),
 	
-	V2D_GRIDLINES_MAJOR			= (V2D_VERTICAL_LINES|V2D_VERTICAL_AXIS|V2D_HORIZONTAL_LINES|V2D_HORIZONTAL_AXIS),
-	V2D_GRIDLINES_ALL			= (V2D_GRIDLINES_MAJOR|V2D_HORIZONTAL_FINELINES),
+	V2D_GRIDLINES_MAJOR         = (V2D_VERTICAL_LINES | V2D_VERTICAL_AXIS | V2D_HORIZONTAL_LINES | V2D_HORIZONTAL_AXIS),
+	V2D_GRIDLINES_ALL           = (V2D_GRIDLINES_MAJOR | V2D_HORIZONTAL_FINELINES),
 } eView2D_Gridlines;
 
 /* ------ Defines for Scrollers ----- */
 
 /* scroller area */
-#define V2D_SCROLL_HEIGHT	17
-#define V2D_SCROLL_WIDTH	17
+#define V2D_SCROLL_HEIGHT   17
+#define V2D_SCROLL_WIDTH    17
 
 /* scroller 'handles' hotspot radius for mouse */
-#define V2D_SCROLLER_HANDLE_SIZE	12
+#define V2D_SCROLLER_HANDLE_SIZE    12
 
 /* ------ Define for UI_view2d_sync ----- */
 
 /* means copy it from another v2d */
-#define V2D_LOCK_SET	0
+#define V2D_LOCK_SET    0
 /* means copy it to the other v2ds */
-#define V2D_LOCK_COPY	1
+#define V2D_LOCK_COPY   1
 
 
 /* ------------------------------------------ */
 /* Macros:								*/
 
 /* test if mouse in a scrollbar (assume that scroller availability has been tested) */
-#define IN_2D_VERT_SCROLL(v2d, co) (BLI_in_rcti(&v2d->vert, co[0], co[1]))
-#define IN_2D_HORIZ_SCROLL(v2d, co) (BLI_in_rcti(&v2d->hor, co[0], co[1]))
+#define IN_2D_VERT_SCROLL(v2d, co)   (BLI_rcti_isect_pt_v(&v2d->vert, co))
+#define IN_2D_HORIZ_SCROLL(v2d, co)  (BLI_rcti_isect_pt_v(&v2d->hor,  co))
 
 /* ------------------------------------------ */
-/* Type definitions: 						*/
+/* Type definitions:                          */
 
 struct View2D;
 struct View2DGrid;
@@ -141,7 +141,7 @@ typedef struct View2DGrid View2DGrid;
 typedef struct View2DScrollers View2DScrollers;
 
 /* ----------------------------------------- */
-/* Prototypes:						    */
+/* Prototypes:                               */
 
 /* refresh and validation (of view rects) */
 void UI_view2d_region_reinit(struct View2D *v2d, short type, int winx, int winy);
@@ -163,21 +163,30 @@ void UI_view2d_view_orthoSpecial(struct ARegion *ar, struct View2D *v2d, short x
 void UI_view2d_view_restore(const struct bContext *C);
 
 /* grid drawing */
-View2DGrid *UI_view2d_grid_calc(struct Scene *scene, struct View2D *v2d, short xunits, short xclamp, short yunits, short yclamp, int winx, int winy);
+View2DGrid *UI_view2d_grid_calc(struct Scene *scene, struct View2D *v2d,
+                                short xunits, short xclamp, short yunits, short yclamp, int winx, int winy);
 void UI_view2d_grid_draw(struct View2D *v2d, View2DGrid *grid, int flag);
 void UI_view2d_constant_grid_draw(struct View2D *v2d);
+void UI_view2d_multi_grid_draw(struct View2D *v2d, float step, int level_size, int totlevels);
 void UI_view2d_grid_size(View2DGrid *grid, float *r_dx, float *r_dy);
 void UI_view2d_grid_free(View2DGrid *grid);
 
 /* scrollbar drawing */
-View2DScrollers *UI_view2d_scrollers_calc(const struct bContext *C, struct View2D *v2d, short xunits, short xclamp, short yunits, short yclamp);
+View2DScrollers *UI_view2d_scrollers_calc(const struct bContext *C, struct View2D *v2d,
+                                          short xunits, short xclamp, short yunits, short yclamp);
 void UI_view2d_scrollers_draw(const struct bContext *C, struct View2D *v2d, View2DScrollers *scrollers);
 void UI_view2d_scrollers_free(View2DScrollers *scrollers);
 
 /* list view tools */
-void UI_view2d_listview_cell_to_view(struct View2D *v2d, short columnwidth, short rowheight, float startx, float starty, int column, int row, struct rctf *rect);
-void UI_view2d_listview_view_to_cell(struct View2D *v2d, short columnwidth, short rowheight, float startx, float starty, float viewx, float viewy, int *column, int *row);
-void UI_view2d_listview_visible_cells(struct View2D *v2d, short columnwidth, short rowheight, float startx, float starty, int *column_min, int *column_max, int *row_min, int *row_max);
+void UI_view2d_listview_cell_to_view(struct View2D *v2d, short columnwidth, short rowheight,
+                                     float startx, float starty, int column, int row,
+                                     struct rctf *rect);
+void UI_view2d_listview_view_to_cell(struct View2D *v2d, short columnwidth, short rowheight,
+                                     float startx, float starty, float viewx, float viewy,
+                                     int *column, int *row);
+void UI_view2d_listview_visible_cells(struct View2D *v2d, short columnwidth, short rowheight,
+                                      float startx, float starty, int *column_min, int *column_max,
+                                      int *row_min, int *row_max);
 
 /* coordinate conversion */
 void UI_view2d_region_to_view(struct View2D *v2d, int x, int y, float *viewx, float *viewy);
@@ -200,6 +209,9 @@ void UI_view2d_text_cache_draw(struct ARegion *ar);
 /* operators */
 void UI_view2d_operatortypes(void);
 void UI_view2d_keymap(struct wmKeyConfig *keyconf);
+
+void UI_view2d_smooth_view(struct bContext *C, struct ARegion *ar,
+                           const struct rctf *cur);
 
 #endif /* __UI_VIEW2D_H__ */
 

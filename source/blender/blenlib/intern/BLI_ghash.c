@@ -35,8 +35,6 @@
 
 #include "MEM_guardedalloc.h"
 
-// #include "BLI_blenlib.h"
-
 #include "BLI_utildefines.h"
 #include "BLI_mempool.h"
 #include "BLI_ghash.h"
@@ -78,7 +76,7 @@ int BLI_ghash_size(GHash *gh)
 void BLI_ghash_insert(GHash *gh, void *key, void *val)
 {
 	unsigned int hash = gh->hashfp(key) % gh->nbuckets;
-	Entry *e = (Entry*)BLI_mempool_alloc(gh->entrypool);
+	Entry *e = (Entry *)BLI_mempool_alloc(gh->entrypool);
 
 	e->key = key;
 	e->val = val;
@@ -90,11 +88,11 @@ void BLI_ghash_insert(GHash *gh, void *key, void *val)
 		int i, nold = gh->nbuckets;
 
 		gh->nbuckets = hashsizes[++gh->cursize];
-		gh->buckets = (Entry**)MEM_mallocN(gh->nbuckets * sizeof(*gh->buckets), "buckets");
+		gh->buckets = (Entry **)MEM_mallocN(gh->nbuckets * sizeof(*gh->buckets), "buckets");
 		memset(gh->buckets, 0, gh->nbuckets * sizeof(*gh->buckets));
 
 		for (i = 0; i < nold; i++) {
-			for (e = old[i]; e;) {
+			for (e = old[i]; e; ) {
 				Entry *n = e->next;
 
 				hash = gh->hashfp(e->key) % gh->nbuckets;
@@ -132,18 +130,14 @@ int BLI_ghash_remove(GHash *gh, void *key, GHashKeyFreeFP keyfreefp, GHashValFre
 		if (gh->cmpfp(key, e->key) == 0) {
 			Entry *n = e->next;
 
-			if (keyfreefp)
-				keyfreefp(e->key);
-			if (valfreefp)
-				valfreefp(e->val);
+			if (keyfreefp) keyfreefp(e->key);
+			if (valfreefp) valfreefp(e->val);
 			BLI_mempool_free(gh->entrypool, e);
 
 			/* correct but 'e' isn't used before return */
 			/* e= n; *//*UNUSED*/
-			if (p)
-				p->next = n;
-			else
-				gh->buckets[hash] = n;
+			if (p) p->next = n;
+			else   gh->buckets[hash] = n;
 
 			gh->nentries--;
 			return 1;
@@ -152,6 +146,36 @@ int BLI_ghash_remove(GHash *gh, void *key, GHashKeyFreeFP keyfreefp, GHashValFre
 	}
 
 	return 0;
+}
+
+/* same as above but return the value,
+ * no free value argument since it will be returned */
+void *BLI_ghash_pop(GHash *gh, void *key, GHashKeyFreeFP keyfreefp)
+{
+	unsigned int hash = gh->hashfp(key) % gh->nbuckets;
+	Entry *e;
+	Entry *p = NULL;
+
+	for (e = gh->buckets[hash]; e; e = e->next) {
+		if (gh->cmpfp(key, e->key) == 0) {
+			Entry *n = e->next;
+			void *value = e->val;
+
+			if (keyfreefp) keyfreefp(e->key);
+			BLI_mempool_free(gh->entrypool, e);
+
+			/* correct but 'e' isn't used before return */
+			/* e= n; *//*UNUSED*/
+			if (p) p->next = n;
+			else   gh->buckets[hash] = n;
+
+			gh->nentries--;
+			return value;
+		}
+		p = e;
+	}
+
+	return NULL;
 }
 
 int BLI_ghash_haskey(GHash *gh, void *key)
@@ -174,7 +198,7 @@ void BLI_ghash_free(GHash *gh, GHashKeyFreeFP keyfreefp, GHashValFreeFP valfreef
 		for (i = 0; i < gh->nbuckets; i++) {
 			Entry *e;
 
-			for (e = gh->buckets[i]; e;) {
+			for (e = gh->buckets[i]; e; ) {
 				Entry *n = e->next;
 
 				if (keyfreefp) keyfreefp(e->key);
@@ -305,6 +329,23 @@ int BLI_ghashutil_strcmp(const void *a, const void *b)
 	return strcmp(a, b);
 }
 
+GHash *BLI_ghash_ptr_new(const char *info)
+{
+	return BLI_ghash_new(BLI_ghashutil_ptrhash, BLI_ghashutil_ptrcmp, info);
+}
+GHash *BLI_ghash_str_new(const char *info)
+{
+	return BLI_ghash_new(BLI_ghashutil_strhash, BLI_ghashutil_strcmp, info);
+}
+GHash *BLI_ghash_int_new(const char *info)
+{
+	return BLI_ghash_new(BLI_ghashutil_inthash, BLI_ghashutil_intcmp, info);
+}
+GHash *BLI_ghash_pair_new(const char *info)
+{
+	return BLI_ghash_new(BLI_ghashutil_pairhash, BLI_ghashutil_paircmp, info);
+}
+
 GHashPair *BLI_ghashutil_pairalloc(const void *first, const void *second)
 {
 	GHashPair *pair = MEM_mallocN(sizeof(GHashPair), "GHashPair");
@@ -333,6 +374,6 @@ int BLI_ghashutil_paircmp(const void *a, const void *b)
 
 void BLI_ghashutil_pairfree(void *ptr)
 {
-	MEM_freeN((void*)ptr);
+	MEM_freeN((void *)ptr);
 }
 

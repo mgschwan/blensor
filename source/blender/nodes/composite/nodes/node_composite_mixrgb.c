@@ -33,15 +33,17 @@
 
 /* **************** MIX RGB ******************** */
 static bNodeSocketTemplate cmp_node_mix_rgb_in[]= {
-	{	SOCK_FLOAT, 1, "Fac",			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, PROP_FACTOR},
-	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
-	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_FLOAT, 1, N_("Fac"),			1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, PROP_FACTOR},
+	{	SOCK_RGBA, 1, N_("Image"),			1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_RGBA, 1, N_("Image"),			1.0f, 1.0f, 1.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_mix_rgb_out[]= {
-	{	SOCK_RGBA, 0, "Image"},
+	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void do_mix_rgb(bNode *node, float *out, float *in1, float *in2, float *fac)
 {
@@ -81,6 +83,8 @@ static void node_composit_exec_mix_rgb(void *data, bNode *node, bNodeStack **in,
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 /* custom1 = mix type */
 void register_node_type_cmp_mix_rgb(bNodeTreeType *ttype)
 {
@@ -90,7 +94,9 @@ void register_node_type_cmp_mix_rgb(bNodeTreeType *ttype)
 	node_type_socket_templates(&ntype, cmp_node_mix_rgb_in, cmp_node_mix_rgb_out);
 	node_type_size(&ntype, 110, 60, 120);
 	node_type_label(&ntype, node_blend_label);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_mix_rgb);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

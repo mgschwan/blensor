@@ -50,15 +50,25 @@ set(SRC
 	common/makelevelset3.cpp
 	common/marching_triangles.cpp
 	common/predicates.cpp
+	common/runstats.cpp
 	common/sos_ccd_wrapper.cpp
 	common/wallclocktime.cpp
 	eltopo3d/accelerationgrid.cpp
 	eltopo3d/broadphasegrid.cpp
+	eltopo3d/collisionpipeline.cpp
 	eltopo3d/dynamicsurface.cpp
+	eltopo3d/edgecollapser.cpp
+	eltopo3d/edgeflipper.cpp
+	eltopo3d/edgesplitter.cpp
 	eltopo3d/eltopo.cpp
+	eltopo3d/impactzonesolver.cpp
+	eltopo3d/meshmerger.cpp
+	eltopo3d/meshsmoother.cpp
+	eltopo3d/meshpincher.cpp
 	eltopo3d/nondestructivetrimesh.cpp
 	eltopo3d/subdivisionscheme.cpp
 	eltopo3d/surftrack.cpp
+	eltopo3d/trianglequality.cpp
 	common/newsparse/dense_matrix.cpp
 	common/newsparse/krylov_solvers.cpp
 	common/newsparse/sparse_matrix.cpp

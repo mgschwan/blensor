@@ -46,7 +46,9 @@
 /* for a given socket, find the actual stack entry */
 bNodeStack *node_get_socket_stack(bNodeStack *stack, bNodeSocket *sock)
 {
-	return stack + sock->stack_index;
+	if (stack && sock)
+		return stack + sock->stack_index;
+	return NULL;
 }
 
 void node_get_stack(bNode *node, bNodeStack *stack, bNodeStack **in, bNodeStack **out)
@@ -242,7 +244,7 @@ bNodeThreadStack *ntreeGetThreadStack(bNodeTreeExec *exec, int thread)
 	
 	for (nts=lb->first; nts; nts=nts->next) {
 		if (!nts->used) {
-			nts->used= 1;
+			nts->used = TRUE;
 			break;
 		}
 	}
@@ -250,7 +252,7 @@ bNodeThreadStack *ntreeGetThreadStack(bNodeTreeExec *exec, int thread)
 	if (!nts) {
 		nts= MEM_callocN(sizeof(bNodeThreadStack), "bNodeThreadStack");
 		nts->stack= MEM_dupallocN(exec->stack);
-		nts->used= 1;
+		nts->used = TRUE;
 		BLI_addtail(lb, nts);
 	}
 

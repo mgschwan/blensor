@@ -25,7 +25,7 @@ bl_info = {
     "location": "File > Import-Export",
     "description": "Import-Export PLY mesh data withs UV's and vertex colors",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Import-Export/Stanford_PLY",
     "tracker_url": "",
     "support": 'OFFICIAL',
@@ -51,7 +51,7 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 
 class ImportPLY(bpy.types.Operator, ImportHelper):
-    '''Load a PLY geometry file'''
+    """Load a PLY geometry file"""
     bl_idname = "import_mesh.ply"
     bl_label = "Import PLY"
     bl_options = {'UNDO'}
@@ -81,8 +81,8 @@ class ImportPLY(bpy.types.Operator, ImportHelper):
 
 
 class ExportPLY(bpy.types.Operator, ExportHelper):
-    '''Export a single object as a stanford PLY with normals, ''' \
-    '''colours and texture coordinates'''
+    """Export a single object as a Stanford PLY with normals, """ \
+    """colors and texture coordinates"""
     bl_idname = "export_mesh.ply"
     bl_label = "Export PLY"
 

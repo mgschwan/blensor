@@ -34,12 +34,12 @@
 
 /* **************** VALTORGB ******************** */
 static bNodeSocketTemplate sh_node_valtorgb_in[]= {
-	{	SOCK_FLOAT, 1, "Fac",			0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Fac"),			0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate sh_node_valtorgb_out[]= {
-	{	SOCK_RGBA, 0, "Color"},
-	{	SOCK_FLOAT, 0, "Alpha"},
+	{	SOCK_RGBA, 0, N_("Color")},
+	{	SOCK_FLOAT, 0, N_("Alpha")},
 	{	-1, 0, ""	}
 };
 
@@ -57,7 +57,7 @@ static void node_shader_exec_valtorgb(void *UNUSED(data), bNode *node, bNodeStac
 	}
 }
 
-static void node_shader_init_valtorgb(bNodeTree *UNUSED(ntree), bNode* node, bNodeTemplate *UNUSED(ntemp))
+static void node_shader_init_valtorgb(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
 {
 	node->storage= add_colorband(1);
 }
@@ -90,11 +90,11 @@ void register_node_type_sh_valtorgb(bNodeTreeType *ttype)
 
 /* **************** RGBTOBW ******************** */
 static bNodeSocketTemplate sh_node_rgbtobw_in[]= {
-	{	SOCK_RGBA, 1, "Color",			0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 1.0f},
+	{	SOCK_RGBA, 1, N_("Color"),			0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate sh_node_rgbtobw_out[]= {
-	{	SOCK_FLOAT, 0, "Val",			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f},
+	{	SOCK_FLOAT, 0, N_("Val"),			0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
 };
 
@@ -104,7 +104,7 @@ static void node_shader_exec_rgbtobw(void *UNUSED(data), bNode *UNUSED(node), bN
 	/* stack order out: bw */
 	/* stack order in: col */
 
-	out[0]->vec[0]= in[0]->vec[0]*0.35f + in[0]->vec[1]*0.45f + in[0]->vec[2]*0.2f;
+	out[0]->vec[0] = rgb_to_bw(in[0]->vec);
 }
 
 static int gpu_shader_rgbtobw(GPUMaterial *mat, bNode *UNUSED(node), GPUNodeStack *in, GPUNodeStack *out)

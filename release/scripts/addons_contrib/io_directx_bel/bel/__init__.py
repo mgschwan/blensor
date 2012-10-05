@@ -1,7 +1,7 @@
 # set a given name to a unique
 # blender data name in its collection
-def bpyname(name,collection,suffix=4) :
-    name = name[:20-suffix]
+def bpyname(name,collection,limit=63,suffix=4) :
+    name = name[:limit-suffix]
     tpl = '%s.%.'+str(suffix)+'d'
     bname = name
     id = 0

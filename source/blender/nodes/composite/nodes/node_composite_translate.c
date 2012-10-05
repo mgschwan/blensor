@@ -36,15 +36,17 @@
 /* **************** Translate  ******************** */
 
 static bNodeSocketTemplate cmp_node_translate_in[]= {
-	{	SOCK_RGBA, 1, "Image",			1.0f, 1.0f, 1.0f, 1.0f},
-	{	SOCK_FLOAT, 1, "X",	0.0f, 0.0f, 0.0f, 0.0f, -10000.0f, 10000.0f, PROP_NONE},
-	{	SOCK_FLOAT, 1, "Y",	0.0f, 0.0f, 0.0f, 0.0f, -10000.0f, 10000.0f, PROP_NONE},
+	{	SOCK_RGBA, 1, N_("Image"),			1.0f, 1.0f, 1.0f, 1.0f},
+	{	SOCK_FLOAT, 1, N_("X"),	0.0f, 0.0f, 0.0f, 0.0f, -10000.0f, 10000.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("Y"),	0.0f, 0.0f, 0.0f, 0.0f, -10000.0f, 10000.0f, PROP_NONE},
 	{	-1, 0, ""	}
 };
 static bNodeSocketTemplate cmp_node_translate_out[]= {
-	{	SOCK_RGBA, 0, "Image"},
+	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
+
+#ifdef WITH_COMPOSITOR_LEGACY
 
 static void node_composit_exec_translate(void *UNUSED(data), bNode *UNUSED(node), bNodeStack **in, bNodeStack **out)
 {
@@ -59,6 +61,8 @@ static void node_composit_exec_translate(void *UNUSED(data), bNode *UNUSED(node)
 	}
 }
 
+#endif  /* WITH_COMPOSITOR_LEGACY */
+
 void register_node_type_cmp_translate(bNodeTreeType *ttype)
 {
 	static bNodeType ntype;
@@ -66,7 +70,9 @@ void register_node_type_cmp_translate(bNodeTreeType *ttype)
 	node_type_base(ttype, &ntype, CMP_NODE_TRANSLATE, "Translate", NODE_CLASS_DISTORT, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_translate_in, cmp_node_translate_out);
 	node_type_size(&ntype, 140, 100, 320);
+#ifdef WITH_COMPOSITOR_LEGACY
 	node_type_exec(&ntype, node_composit_exec_translate);
+#endif
 
 	nodeRegisterType(ttype, &ntype);
 }

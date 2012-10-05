@@ -16,6 +16,21 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+#
+#
+#  Authors           : Clemens Barth (Blendphys@root-1.de), ...
+#
+#  Homepage(Wiki)    : http://development.root-1.de/Atomic_Blender.php
+#  Tracker           : ... soon
+#
+#  Start of project              : 2011-12-01 by Clemens Barth
+#  First publication in Blender  : 2011-12-18
+#  Last modified                 : 2012-06-07
+#
+#  Acknowledgements: Thanks to ideasman, meta_androcto, truman, kilon,
+#  dairin0d, PKHG, Valter, etc
+#
+
 bl_info = {
     "name": "XYZ Atomic Blender",
     "description": "Loading and manipulating atoms from XYZ files",
@@ -195,9 +210,11 @@ class CLASS_atom_xyz_Properties(bpy.types.PropertyGroup):
         name = "Distances", default=1.0, min=0.0,
         description = "Scale factor for all distances")
     use_center = BoolProperty(
-        name = "Object to origin", default=False,
-        description = "Shall the object first put into the global origin "
-        "before applying the offsets on the left?")
+        name = "Object to origin (first frames)", default=False,
+        description = "Put the object into the global origin, the first frame only")           
+    use_center_all = BoolProperty(
+        name = "Object to origin (all frames)", default=True,
+        description = "Put the object into the global origin, all frames") 
     atomradius = EnumProperty(
         name="Type of radius",
         description="Choose type of atom radius",
@@ -721,8 +738,11 @@ class CLASS_ImportXYZ(Operator, ImportHelper):
                ('2', "van der Waals", "Use van der Waals radius")),
                default='0',)            
     use_center = BoolProperty(
-        name = "Object to origin", default=True,
-        description = "Put the object into the global origin")           
+        name = "Object to origin (first frames)", default=False,
+        description = "Put the object into the global origin, the first frame only")           
+    use_center_all = BoolProperty(
+        name = "Object to origin (all frames)", default=True,
+        description = "Put the object into the global origin, all frames") 
     datafile = StringProperty(
         name = "", description="Path to your custom data file",
         maxlen = 256, default = "", subtype='FILE_PATH')    
@@ -746,6 +766,8 @@ class CLASS_ImportXYZ(Operator, ImportHelper):
         col.prop(self, "scale_distances")
         row = layout.row()
         row.prop(self, "use_center")
+        row = layout.row()
+        row.prop(self, "use_center_all")
         row = layout.row()
         row.prop(self, "atomradius")
         row = layout.row()
@@ -771,6 +793,7 @@ class CLASS_ImportXYZ(Operator, ImportHelper):
                       self.atomradius,
                       self.scale_distances,
                       self.use_center,
+                      self.use_center_all,
                       self.use_camera,
                       self.use_lamp,
                       self.datafile)
@@ -784,6 +807,7 @@ class CLASS_ImportXYZ(Operator, ImportHelper):
         scn.atomradius = self.atomradius
         scn.scale_distances = self.scale_distances
         scn.use_center = self.use_center
+        scn.use_center_all = self.use_center_all
         scn.use_camera = self.use_camera
         scn.use_lamp = self.use_lamp
         scn.datafile = self.datafile              

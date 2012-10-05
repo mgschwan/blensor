@@ -26,7 +26,7 @@ bl_info = {
     "location": "File > Import/Export > Nuke (.chan)",
     "description": "Import/Export object's animation with nuke",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/"
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/Import-Export/Nuke",
     "tracker_url": "http://projects.blender.org/tracker/?"
                    "func=detail&atid=467&aid=28368&group_id=153",
@@ -66,8 +66,8 @@ rotation_order = EnumProperty(
 
 
 class ImportChan(Operator, ImportHelper):
-    '''Import animation from .chan file, exported from nuke or houdini. ''' \
-    '''The importer uses frame numbers from the file'''
+    """Import animation from .chan file, exported from nuke or houdini """ \
+    """(the importer uses frame numbers from the file)"""
     bl_idname = "import_scene.import_chan"
     bl_label = "Import chan file"
 
@@ -106,8 +106,8 @@ class ImportChan(Operator, ImportHelper):
 
 
 class ExportChan(Operator, ExportHelper):
-    '''Export the animation to .chan file, readable by nuke and houdini. ''' \
-    '''The exporter uses frames from the frames range'''
+    """Export the animation to .chan file, readable by nuke and houdini """ \
+    """(the exporter uses frames from the frames range)"""
     bl_idname = "export.export_chan"
     bl_label = "Export chan file"
 

@@ -31,25 +31,23 @@
 
  
 /*
-	HOW TEXTURE NODES WORK
-
-	In contrast to Shader nodes, which place a color into the output
-	stack when executed, Texture nodes place a TexDelegate* there. To
-	obtain a color value from this, a node further up the chain reads
-	the TexDelegate* from its input stack, and uses tex_call_delegate to
-	retrieve the color from the delegate.
- 
-	comments: (ton)
-
-	This system needs recode, a node system should rely on the stack, and 
-	callbacks for nodes only should evaluate own node, not recursively go
-	over other previous ones.
-*/
+ * HOW TEXTURE NODES WORK
+ *
+ * In contrast to Shader nodes, which place a color into the output
+ * stack when executed, Texture nodes place a TexDelegate* there. To
+ * obtain a color value from this, a node further up the chain reads
+ * the TexDelegate* from its input stack, and uses tex_call_delegate to
+ * retrieve the color from the delegate.
+ *
+ * comments: (ton)
+ *
+ * This system needs recode, a node system should rely on the stack, and
+ * callbacks for nodes only should evaluate own node, not recursively go
+ * over other previous ones.
+ */
 
 #include <assert.h>
 #include "node_texture_util.h"
-
-#define PREV_RES 128 /* default preview resolution */
 
 static void tex_call_delegate(TexDelegate *dg, float *out, TexParams *params, short thread)
 {
@@ -88,9 +86,9 @@ void tex_input_rgba(float *out, bNodeStack *in, TexParams *params, short thread)
 	}
 	
 	if (in->hasoutput && in->sockettype == SOCK_VECTOR) {
-		out[0] = out[0] * .5f + .5f;
-		out[1] = out[1] * .5f + .5f;
-		out[2] = out[2] * .5f + .5f;
+		out[0] = out[0] * 0.5f + 0.5f;
+		out[1] = out[1] * 0.5f + 0.5f;
+		out[2] = out[2] * 0.5f + 0.5f;
 		out[3] = 1;
 	}
 }

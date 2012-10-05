@@ -127,7 +127,7 @@ bool BL_Action::Play(const char* name,
 
 	// Only start playing a new action if we're done, or if
 	// the new action has a higher priority
-	if (priority != 0 && !IsDone() && priority >= m_priority)
+	if (!IsDone() && priority > m_priority)
 		return false;
 	m_priority = priority;
 	bAction* prev_action = m_action;
@@ -140,6 +140,16 @@ bool BL_Action::Play(const char* name,
 		m_done = true;
 		return false;
 	}
+
+	// If we have the same settings, don't play again
+	// This is to resolve potential issues with pulses on sensors such as the ones
+	// reported in bug #29412. The fix is here so it works for both logic bricks and Python.
+	// However, this may eventually lead to issues where a user wants to override an already
+	// playing action with the same action and settings. If this becomes an issue,
+	// then this fix may have to be re-evaluated.
+	if (!IsDone() && m_action == prev_action && m_startframe == start && m_endframe == end
+			&& m_priority == priority && m_speed == playback_speed)
+		return false;
 
 	if (prev_action != m_action)
 	{
@@ -196,7 +206,7 @@ bool BL_Action::Play(const char* name,
 	}
 
 	// Now that we have an action, we have something we can play
-	m_starttime = KX_GetActiveEngine()->GetFrameTime();
+	m_starttime = -1.f; // We get the start time on our first update
 	m_startframe = m_localtime = start;
 	m_endframe = end;
 	m_blendin = blendin;
@@ -327,6 +337,11 @@ void BL_Action::Update(float curtime)
 		return;
 
 	curtime -= KX_KetsjiEngine::GetSuspendedDelta();
+
+	// Grab the start time here so we don't end up with a negative m_localtime when
+	// suspending and resuming scenes.
+	if (m_starttime < 0)
+		m_starttime = curtime;
 
 	if (m_calc_localtime)
 		SetLocalTime(curtime);

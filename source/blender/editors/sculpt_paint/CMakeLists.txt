@@ -20,6 +20,7 @@
 
 set(INC
 	../include
+	../uvedit
 	../../blenkernel
 	../../blenlib
 	../../blenloader
@@ -28,7 +29,6 @@ set(INC
 	../../imbuf
 	../../makesdna
 	../../makesrna
-	../uvedit
 	../../render/extern/include
 	../../windowmanager
 	../../../../intern/guardedalloc
@@ -42,6 +42,7 @@ set(SRC
 	paint_cursor.c
 	paint_hide.c
 	paint_image.c
+	paint_mask.c
 	paint_ops.c
 	paint_stroke.c
 	paint_undo.c

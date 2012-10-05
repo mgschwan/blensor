@@ -134,7 +134,6 @@ void ED_operatortypes_mesh(void)
 	WM_operatortype_append(MESH_OT_vertices_smooth);
 	WM_operatortype_append(MESH_OT_noise);
 	WM_operatortype_append(MESH_OT_flip_normals);
-	//WM_operatortype_append(MESH_OT_knife_cut);
 	WM_operatortype_append(MESH_OT_rip);
 	WM_operatortype_append(MESH_OT_blend_from_shape);
 	WM_operatortype_append(MESH_OT_shape_propagate_to_all);
@@ -143,8 +142,8 @@ void ED_operatortypes_mesh(void)
 	WM_operatortype_append(MESH_OT_uv_texture_remove);
 	WM_operatortype_append(MESH_OT_vertex_color_add);
 	WM_operatortype_append(MESH_OT_vertex_color_remove);
-	WM_operatortype_append(MESH_OT_sticky_add);
-	WM_operatortype_append(MESH_OT_sticky_remove);
+	WM_operatortype_append(MESH_OT_customdata_clear_mask);
+	WM_operatortype_append(MESH_OT_customdata_clear_skin);
 	WM_operatortype_append(MESH_OT_drop_named_image);
 
 	WM_operatortype_append(MESH_OT_edgering_select);
@@ -255,6 +254,8 @@ void ED_keymap_mesh(wmKeyConfig *keyconf)
 	keymap->poll = ED_operator_editmesh;
 	
 	WM_keymap_add_item(keymap, "MESH_OT_loopcut_slide", RKEY, KM_PRESS, KM_CTRL, 0);
+	WM_keymap_add_item(keymap, "MESH_OT_bevel", BKEY, KM_PRESS, KM_CTRL, 0);
+	WM_keymap_add_item(keymap, "MESH_OT_inset", IKEY, KM_PRESS, 0, 0);
 
 	/* selecting */
 	/* standard mouse selection goes via space_view3d */
@@ -374,7 +375,9 @@ void ED_keymap_mesh(wmKeyConfig *keyconf)
 		RNA_int_set(kmi->ptr, "level", i);
 	}
 	
-	ED_object_generic_keymap(keyconf, keymap, 3);
+	ED_keymap_proportional_cycle(keyconf, keymap);
+	ED_keymap_proportional_editmode(keyconf, keymap, TRUE);
+
 	knifetool_modal_keymap(keyconf);
 }
 

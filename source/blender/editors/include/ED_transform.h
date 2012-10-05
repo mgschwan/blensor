@@ -58,6 +58,7 @@ enum {
 	TFM_TRANSLATION,
 	TFM_ROTATION,
 	TFM_RESIZE,
+	TFM_SKIN_RESIZE,
 	TFM_TOSPHERE,
 	TFM_SHEAR,
 	TFM_WARP,
@@ -70,6 +71,7 @@ enum {
 	TFM_BONESIZE,
 	TFM_BONE_ENVELOPE,
 	TFM_CURVE_SHRINKFATTEN,
+	TFM_MASK_SHRINKFATTEN,
 	TFM_BONE_ROLL,
 	TFM_TIME_TRANSLATE,
 	TFM_TIME_SLIDE,
@@ -85,22 +87,23 @@ enum {
 } TfmMode;
 
 /* TRANSFORM CONTEXTS */
-#define CTX_NONE			0
-#define CTX_TEXTURE			1
-#define CTX_EDGE			2
-#define CTX_NO_PET			4
-#define CTX_TWEAK			8
-#define CTX_NO_MIRROR		16
-#define CTX_AUTOCONFIRM		32
-#define CTX_BMESH			64
-#define CTX_NDOF			128
-#define CTX_MOVIECLIP		256
+#define CTX_NONE            0
+#define CTX_TEXTURE         1
+#define CTX_EDGE            2
+#define CTX_NO_PET          4
+#define CTX_TWEAK           8
+#define CTX_NO_MIRROR       16
+#define CTX_AUTOCONFIRM     32
+#define CTX_BMESH           64
+#define CTX_NDOF            128
+#define CTX_MOVIECLIP       256
+#define CTX_MASK            512
 
 /* Standalone call to get the transformation center corresponding to the current situation
  * returns 1 if successful, 0 otherwise (usually means there's no selection)
  * (if 0 is returns, *vec is unmodified)
  * */
-int calculateTransformCenter(struct bContext *C, int centerMode, float *vec);
+int calculateTransformCenter(struct bContext *C, int centerMode, float cent3d[3], int cent2d[2]);
 
 struct TransInfo;
 struct ScrArea;
@@ -124,7 +127,7 @@ void BIF_selectTransformOrientationValue(struct bContext *C, int orientation);
 void ED_getTransformOrientationMatrix(const struct bContext *C, float orientation_mat[][3], int activeOnly);
 
 struct EnumPropertyItem *BIF_enumTransformOrientation(struct bContext *C);
-const char * BIF_menustringTransformOrientation(const struct bContext *C, const char *title); /* the returned value was allocated and needs to be freed after use */
+const char *BIF_menustringTransformOrientation(const struct bContext *C, const char *title);  /* the returned value was allocated and needs to be freed after use */
 int BIF_countTransformOrientation(const struct bContext *C);
 
 void BIF_TransformSetUndo(const char *str);
@@ -133,15 +136,15 @@ void BIF_selectOrientation(void);
 
 /* to be able to add operator properties to other operators */
 
-#define P_MIRROR		(1 << 0)
-#define P_PROPORTIONAL	(1 << 1)
-#define P_AXIS			(1 << 2)
-#define P_SNAP			(1 << 3)
-#define P_GEO_SNAP		(P_SNAP|(1 << 4))
-#define P_ALIGN_SNAP	(P_GEO_SNAP|(1 << 5))
-#define P_CONSTRAINT	(1 << 6)
-#define P_OPTIONS		(1 << 7)
-#define P_CORRECT_UV 	(1 << 8)
+#define P_MIRROR        (1 << 0)
+#define P_PROPORTIONAL  (1 << 1)
+#define P_AXIS          (1 << 2)
+#define P_SNAP          (1 << 3)
+#define P_GEO_SNAP      (P_SNAP | (1 << 4))
+#define P_ALIGN_SNAP    (P_GEO_SNAP | (1 << 5))
+#define P_CONSTRAINT    (1 << 6)
+#define P_OPTIONS       (1 << 7)
+#define P_CORRECT_UV    (1 << 8)
 
 void Transform_Properties(struct wmOperatorType *ot, int flags);
 
@@ -153,8 +156,7 @@ void BIF_draw_manipulator(const struct bContext *C);
 /* Snapping */
 
 
-typedef struct DepthPeel
-{
+typedef struct DepthPeel {
 	struct DepthPeel *next, *prev;
 
 	float depth;
@@ -166,8 +168,7 @@ typedef struct DepthPeel
 
 struct ListBase;
 
-typedef enum SnapMode
-{
+typedef enum SnapMode {
 	SNAP_ALL = 0,
 	SNAP_NOT_SELECTED = 1,
 	SNAP_NOT_OBEDIT = 2
@@ -179,6 +180,8 @@ int peelObjectsTransForm(struct TransInfo *t, struct ListBase *depth_peels, cons
 int peelObjectsContext(struct bContext *C, struct ListBase *depth_peels, const float mval[2], SnapMode mode);
 int snapObjectsTransform(struct TransInfo *t, const float mval[2], int *r_dist, float r_loc[3], float r_no[3], SnapMode mode);
 int snapObjectsContext(struct bContext *C, const float mval[2], int *r_dist, float r_loc[3], float r_no[3], SnapMode mode);
+int snapNodesTransform(struct TransInfo *t, const int mval[2], int *r_dist, float r_loc[2], char *r_node_border, SnapMode mode);
+int snapNodesContext(struct bContext *C, const int mval[2], int *r_dist, float r_loc[2], char *r_node_border, SnapMode mode);
 
 #endif
 

@@ -127,8 +127,8 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 }
 
 static void sphere_do(
-    CastModifierData *cmd, Object *ob, DerivedMesh *dm,
-    float (*vertexCos)[3], int numVerts)
+        CastModifierData *cmd, Object *ob, DerivedMesh *dm,
+        float (*vertexCos)[3], int numVerts)
 {
 	MDeformVert *dvert = NULL;
 
@@ -299,8 +299,8 @@ static void sphere_do(
 }
 
 static void cuboid_do(
-    CastModifierData *cmd, Object *ob, DerivedMesh *dm,
-    float (*vertexCos)[3], int numVerts)
+        CastModifierData *cmd, Object *ob, DerivedMesh *dm,
+        float (*vertexCos)[3], int numVerts)
 {
 	MDeformVert *dvert = NULL;
 	Object *ctrl_ob = NULL;
@@ -367,23 +367,23 @@ static void cuboid_do(
 			float vec[3];
 
 			/* let the center of the ctrl_ob be part of the bound box: */
-			DO_MINMAX(center, min, max);
+			minmax_v3v3_v3(min, max, center);
 
 			for (i = 0; i < numVerts; i++) {
 				sub_v3_v3v3(vec, vertexCos[i], center);
-				DO_MINMAX(vec, min, max);
+				minmax_v3v3_v3(min, max, vec);
 			}
 		}
 		else {
 			for (i = 0; i < numVerts; i++) {
-				DO_MINMAX(vertexCos[i], min, max);
+				minmax_v3v3_v3(min, max, vertexCos[i]);
 			}
 		}
 
 		/* we want a symmetric bound box around the origin */
-		if (fabs(min[0]) > fabs(max[0])) max[0] = fabs(min[0]); 
-		if (fabs(min[1]) > fabs(max[1])) max[1] = fabs(min[1]); 
-		if (fabs(min[2]) > fabs(max[2])) max[2] = fabs(min[2]);
+		if (fabsf(min[0]) > fabsf(max[0])) max[0] = fabsf(min[0]);
+		if (fabsf(min[1]) > fabsf(max[1])) max[1] = fabsf(min[1]);
+		if (fabsf(min[2]) > fabsf(max[2])) max[2] = fabsf(min[2]);
 		min[0] = -max[0];
 		min[1] = -max[1];
 		min[2] = -max[2];
@@ -600,8 +600,8 @@ static void deformVerts(ModifierData *md, Object *ob,
 }
 
 static void deformVertsEM(
-    ModifierData *md, Object *ob, struct BMEditMesh *editData,
-    DerivedMesh *derivedData, float (*vertexCos)[3], int numVerts)
+        ModifierData *md, Object *ob, struct BMEditMesh *editData,
+        DerivedMesh *derivedData, float (*vertexCos)[3], int numVerts)
 {
 	DerivedMesh *dm = get_dm(ob, editData, derivedData, NULL, 0);
 	CastModifierData *cmd = (CastModifierData *)md;

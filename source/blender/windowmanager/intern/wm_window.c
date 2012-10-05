@@ -238,8 +238,8 @@ wmWindow *wm_window_copy(bContext *C, wmWindow *winorig)
 	BLI_strncpy(win->screenname, win->screen->id.name + 2, sizeof(win->screenname));
 	win->screen->winid = win->winid;
 
-	win->screen->do_refresh = 1;
-	win->screen->do_draw = 1;
+	win->screen->do_refresh = TRUE;
+	win->screen->do_draw = TRUE;
 
 	win->drawmethod = -1;
 	win->drawdata = NULL;
@@ -340,12 +340,6 @@ static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
 	wm_get_screensize(&scr_w, &scr_h);
 	posy = (scr_h - win->posy - win->sizey);
 	
-#if defined(__APPLE__) && !defined(GHOST_COCOA)
-	{
-		extern int macPrefState; /* creator.c */
-		initial_state += macPrefState;
-	}
-#endif
 	/* Disable AA for now, as GL_SELECT (used for border, lasso, ... select)
 	 * doesn't work well when AA is initialized, even if not used. */
 	ghostwin = GHOST_CreateWindow(g_system, title,
@@ -368,8 +362,8 @@ static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
 		if (win->eventstate == NULL)
 			win->eventstate = MEM_callocN(sizeof(wmEvent), "window event state");
 		
-		/* until screens get drawn, make it nice grey */
-		glClearColor(.55, .55, .55, 0.0);
+		/* until screens get drawn, make it nice gray */
+		glClearColor(0.55, 0.55, 0.55, 0.0);
 		/* Crash on OSS ATI: bugs.launchpad.net/ubuntu/+source/mesa/+bug/656100 */
 		if (!GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_UNIX, GPU_DRIVER_OPENSOURCE)) {
 			glClear(GL_COLOR_BUFFER_BIT);
@@ -402,7 +396,7 @@ void wm_window_add_ghostwindows(wmWindowManager *wm)
 		wm_get_screensize(&wm_init_state.size_x, &wm_init_state.size_y);
 		
 #if defined(__APPLE__) && !defined(GHOST_COCOA)
-//Cocoa provides functions to get correct max window size
+		/* Cocoa provides functions to get correct max window size */
 		{
 			extern void wm_set_apple_prefsize(int, int);    /* wm_apple.c */
 			
@@ -464,8 +458,8 @@ wmWindow *WM_window_open(bContext *C, rcti *rect)
 	
 	win->posx = rect->xmin;
 	win->posy = rect->ymin;
-	win->sizex = rect->xmax - rect->xmin;
-	win->sizey = rect->ymax - rect->ymin;
+	win->sizex = BLI_rcti_size_x(rect);
+	win->sizey = BLI_rcti_size_y(rect);
 
 	win->drawmethod = -1;
 	win->drawdata = NULL;
@@ -477,7 +471,7 @@ wmWindow *WM_window_open(bContext *C, rcti *rect)
 
 /* uses screen->temp tag to define what to do, currently it limits
  * to only one "temp" window for render out, preferences, filewindow, etc */
-/* type is #define in WM_api.h */
+/* type is defined in WM_api.h */
 
 void WM_window_open_temp(bContext *C, rcti *position, int type)
 {
@@ -500,8 +494,8 @@ void WM_window_open_temp(bContext *C, rcti *position, int type)
 		win->posy = position->ymin;
 	}
 	
-	win->sizex = position->xmax - position->xmin;
-	win->sizey = position->ymax - position->ymin;
+	win->sizex = BLI_rcti_size_x(position);
+	win->sizey = BLI_rcti_size_y(position);
 	
 	if (win->ghostwin) {
 		wm_window_set_size(win, win->sizex, win->sizey);
@@ -577,12 +571,11 @@ int wm_window_fullscreen_toggle_exec(bContext *C, wmOperator *UNUSED(op))
 
 /* ************ events *************** */
 
-typedef enum
-{
-	SHIFT = 's',
-	CONTROL = 'c',
-	ALT = 'a',
-	OS = 'C'
+typedef enum {
+	SHIFT    = 's',
+	CONTROL  = 'c',
+	ALT      = 'a',
+	OS       = 'C'
 } modifierKeyType;
 
 /* check if specified modifier key type is pressed */
@@ -622,7 +615,7 @@ void wm_window_make_drawable(bContext *C, wmWindow *win)
 	wmWindowManager *wm = CTX_wm_manager(C);
 
 	if (win != wm->windrawable && win->ghostwin) {
-//		win->lmbut= 0;	/* keeps hanging when mousepressed while other window opened */
+//		win->lmbut = 0;	/* keeps hanging when mousepressed while other window opened */
 		
 		wm->windrawable = win;
 		if (G.debug & G_DEBUG_EVENTS) {
@@ -633,9 +626,9 @@ void wm_window_make_drawable(bContext *C, wmWindow *win)
 }
 
 /* called by ghost, here we handle events for windows themselves or send to event system */
-static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr private) 
+static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr C_void_ptr)
 {
-	bContext *C = private;
+	bContext *C = C_void_ptr;
 	wmWindowManager *wm = CTX_wm_manager(C);
 	GHOST_TEventType type = GHOST_GetEventType(evt);
 	int time = GHOST_GetEventTime(evt);
@@ -649,14 +642,14 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr private)
 		wmWindow *win;
 		
 		if (!ghostwin) {
-			// XXX - should be checked, why are we getting an event here, and
-			//	what is it?
+			/* XXX - should be checked, why are we getting an event here, and */
+			/* what is it? */
 			puts("<!> event has no window");
 			return 1;
 		}
 		else if (!GHOST_ValidWindow(g_system, ghostwin)) {
-			// XXX - should be checked, why are we getting an event here, and
-			//	what is it?
+			/* XXX - should be checked, why are we getting an event here, and */
+			/* what is it? */
 			puts("<!> event has invalid window");			
 			return 1;
 		}
@@ -672,6 +665,7 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr private)
 			case GHOST_kEventWindowActivate: 
 			{
 				GHOST_TEventKeyData kdata;
+				wmEvent event;
 				int cx, cy, wx, wy;
 				
 				wm->winactive = win; /* no context change! c->wm->windrawable is drawable, or for area queues */
@@ -711,13 +705,32 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr private)
 				win->addmousemove = 1;   /* enables highlighted buttons */
 				
 				wm_window_make_drawable(C, win);
+
+				/* window might be focused by mouse click in configuration of window manager
+				 * when focus is not following mouse
+				 * click could have been done on a button and depending on window manager settings
+				 * click would be passed to blender or not, but in any case button under cursor
+				 * should be activated, so at max next click on button without moving mouse
+				 * would trigger it's handle function
+				 * currently it seems to be common practice to generate new event for, but probably
+				 * we'll need utility function for this? (sergey)
+				 */
+				event = *(win->eventstate);
+				event.type = MOUSEMOVE;
+				event.prevx = event.x;
+				event.prevy = event.y;
+
+				wm_event_add(win, &event);
+
 				break;
 			}
-			case GHOST_kEventWindowClose: {
+			case GHOST_kEventWindowClose:
+			{
 				wm_window_close(C, wm, win);
 				break;
 			}
-			case GHOST_kEventWindowUpdate: {
+			case GHOST_kEventWindowUpdate:
+			{
 				if (G.debug & G_DEBUG_EVENTS) {
 					printf("%s: ghost redraw %d\n", __func__, win->winid);
 				}
@@ -728,7 +741,8 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr private)
 				break;
 			}
 			case GHOST_kEventWindowSize:
-			case GHOST_kEventWindowMove: {
+			case GHOST_kEventWindowMove:
+			{
 				GHOST_TWindowState state;
 				state = GHOST_GetWindowState(win->ghostwin);
 				win->windowstate = state;
@@ -842,7 +856,7 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr private)
 				
 				event = *(win->eventstate);  /* copy last state, like mouse coords */
 				
-				// activate region
+				/* activate region */
 				event.type = MOUSEMOVE;
 				event.prevx = event.x;
 				event.prevy = event.y;
@@ -877,7 +891,7 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr private)
 						
 						WM_event_start_drag(C, icon, WM_DRAG_PATH, stra->strings[a], 0.0);
 						/* void poin should point to string, it makes a copy */
-						break; // only one drop element supported now 
+						break; /* only one drop element supported now */
 					}
 				}
 				
@@ -914,12 +928,12 @@ static int wm_window_timer(const bContext *C)
 		wtnext = wt->next; /* in case timer gets removed */
 		win = wt->win;
 
-		if (wt->sleep== 0) {
+		if (wt->sleep == 0) {
 			if (time > wt->ntime) {
 				wt->delta = time - wt->ltime;
 				wt->duration += wt->delta;
 				wt->ltime = time;
-				wt->ntime = wt->stime + wt->timestep *ceil(wt->duration / wt->timestep);
+				wt->ntime = wt->stime + wt->timestep * ceil(wt->duration / wt->timestep);
 
 				if (wt->event_type == TIMERJOBS)
 					wm_jobs_timer(C, wm, wt);
@@ -970,7 +984,7 @@ void wm_window_testbreak(void)
 	/* only check for breaks every 50 milliseconds
 	 * if we get called more often.
 	 */
-	if ((curtime - ltime) > .05) {
+	if ((curtime - ltime) > 0.05) {
 		int hasevent = GHOST_ProcessEvents(g_system, 0); /* 0 is no wait */
 		
 		if (hasevent)
@@ -1185,7 +1199,7 @@ void wm_get_cursor_position(wmWindow *win, int *x, int *y)
 
 
 /* called whem no ghost system was initialized */
-void WM_setprefsize(int stax, int stay, int sizx, int sizy)
+void WM_init_state_size_set(int stax, int stay, int sizx, int sizy)
 {
 	wm_init_state.start_x = stax; /* left hand pos */
 	wm_init_state.start_y = stay; /* bottom pos */
@@ -1195,13 +1209,13 @@ void WM_setprefsize(int stax, int stay, int sizx, int sizy)
 }
 
 /* for borderless and border windows set from command-line */
-void WM_setinitialstate_fullscreen(void)
+void WM_init_state_fullscreen_set(void)
 {
 	wm_init_state.windowstate = GHOST_kWindowStateFullScreen;
 	wm_init_state.override_flag |= WIN_OVERRIDE_WINSTATE;
 }
 
-void WM_setinitialstate_normal(void)
+void WM_init_state_normal_set(void)
 {
 	wm_init_state.windowstate = GHOST_kWindowStateNormal;
 	wm_init_state.override_flag |= WIN_OVERRIDE_WINSTATE;

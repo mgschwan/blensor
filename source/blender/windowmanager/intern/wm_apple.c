@@ -41,7 +41,7 @@
 #include <Carbon/Carbon.h>
 
 /* To avoid killing small end comps, we want to allow
- * blender to start maximised if all the followings are true :
+ * blender to start maximized if all the followings are true :
  * - Renderer is OpenGL capable
  * - Hardware acceleration
  * - VRAM > 16 Mo
@@ -124,14 +124,14 @@ void wm_set_apple_prefsize(int scr_x, int scr_y)
 		short top, left, bottom, right;
 		
 		getMacAvailableBounds(&top, &left, &bottom, &right);
-		WM_setprefsize(left + 10, scr_y - bottom + 10, right - left - 20, bottom - 64);
+		WM_init_state_size_set(left + 10, scr_y - bottom + 10, right - left - 20, bottom - 64);
 		G.windowstate = 0;
 		
 	}
 	else {
 		
 		/* 40 + 684 + (headers) 22 + 22 = 768, the powerbook screen height */
-		WM_setprefsize(120, 40, 850, 684);
+		WM_init_state_size_set(120, 40, 850, 684);
 		G.windowstate = 0;
 	}
 }

@@ -24,7 +24,7 @@ bl_info = {
     "location": "Properties > Render > Bake Panel",
     "description": "Renderbakes a series of frames",
     "category": "Object",
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.5/Py/' \
+    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/' \
         'Scripts/Object/Animated_Render_Baker',
     'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
         'func=detail&aid=24836'}
@@ -39,9 +39,9 @@ class OBJECT_OT_animrenderbake(bpy.types.Operator):
     bl_register = True
 
     def framefile(self, orig, frame):
-        '''
+        """
         Set frame number to file name image.png -> image0013.png
-        '''
+        """
         dot = orig.rfind(".")
         return orig[:dot] + ('%04d' % frame) + orig[dot:]
     

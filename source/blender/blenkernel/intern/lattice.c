@@ -29,8 +29,6 @@
  *  \ingroup bke
  */
 
-
-
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -65,7 +63,6 @@
 
 #include "BKE_deform.h"
 
-//XXX #include "BIF_editdeform.h"
 
 void calc_lat_fudu(int flag, int res, float *fu, float *du)
 {
@@ -212,7 +209,7 @@ Lattice *BKE_lattice_copy(Lattice *lt)
 	
 	if (lt->dvert) {
 		int tot = lt->pntsu * lt->pntsv * lt->pntsw;
-		ltn->dvert = MEM_mallocN(sizeof (MDeformVert) * tot, "Lattice MDeformVert");
+		ltn->dvert = MEM_mallocN(sizeof(MDeformVert) * tot, "Lattice MDeformVert");
 		copy_dverts(ltn->dvert, lt->dvert, tot);
 	}
 
@@ -305,7 +302,7 @@ void init_latt_deform(Object *oblatt, Object *ob)
 	
 	fp = lt->latticedata = MEM_mallocN(sizeof(float) * 3 * lt->pntsu * lt->pntsv * lt->pntsw, "latticedata");
 	
-	/* for example with a particle system: ob==0 */
+	/* for example with a particle system: (ob == NULL) */
 	if (ob == NULL) {
 		/* in deformspace, calc matrix  */
 		invert_m4_m4(lt->latmat, oblatt->obmat);
@@ -491,7 +488,7 @@ static int where_on_path_deform(Object *ob, float ctime, float vec[4], float dir
 	/* test for cyclic */
 	bl = cu->bev.first;
 	if (!bl->nr) return 0;
-	if (bl && bl->poly > -1) cycl = 1;
+	if (bl->poly > -1) cycl = 1;
 
 	if (cycl == 0) {
 		ctime1 = CLAMPIS(ctime, 0.0f, 1.0f);
@@ -658,13 +655,16 @@ void curve_deform_verts(Scene *scene, Object *cuOb, Object *target,
 	 */
 	if (target && target->type == OB_MESH) {
 		/* if there's derived data without deformverts, don't use vgroups */
-		if (dm && !dm->getVertData(dm, 0, CD_MDEFORMVERT))
-			use_vgroups = 0;
-		else
-			use_vgroups = 1;
+		if (dm) {
+			use_vgroups = (dm->getVertData(dm, 0, CD_MDEFORMVERT) != NULL);
+		}
+		else {
+			Mesh *me = target->data;
+			use_vgroups = (me->dvert != NULL);
+		}
 	}
 	else {
-		use_vgroups = 0;
+		use_vgroups = FALSE;
 	}
 	
 	if (vgroup && vgroup[0] && use_vgroups) {
@@ -701,7 +701,7 @@ void curve_deform_verts(Scene *scene, Object *cuOb, Object *target,
 					
 					if (defvert_find_weight(dvert, index) > 0.0f) {
 						mul_m4_v3(cd.curvespace, vertexCos[a]);
-						DO_MINMAX(vertexCos[a], cd.dmin, cd.dmax);
+						minmax_v3v3_v3(cd.dmin, cd.dmax, vertexCos[a]);
 					}
 				}
 	
@@ -736,7 +736,7 @@ void curve_deform_verts(Scene *scene, Object *cuOb, Object *target,
 				
 			for (a = 0; a < numVerts; a++) {
 				mul_m4_v3(cd.curvespace, vertexCos[a]);
-				DO_MINMAX(vertexCos[a], cd.dmin, cd.dmax);
+				minmax_v3v3_v3(cd.dmin, cd.dmax, vertexCos[a]);
 			}
 	
 			for (a = 0; a < numVerts; a++) {
@@ -801,13 +801,16 @@ void lattice_deform_verts(Object *laOb, Object *target, DerivedMesh *dm,
 	 */
 	if (target && target->type == OB_MESH) {
 		/* if there's derived data without deformverts, don't use vgroups */
-		if (dm && !dm->getVertData(dm, 0, CD_MDEFORMVERT))
-			use_vgroups = 0;
-		else
-			use_vgroups = 1;
+		if (dm) {
+			use_vgroups = (dm->getVertData(dm, 0, CD_MDEFORMVERT) != NULL);
+		}
+		else {
+			Mesh *me = target->data;
+			use_vgroups = (me->dvert != NULL);
+		}
 	}
 	else {
-		use_vgroups = 0;
+		use_vgroups = FALSE;
 	}
 	
 	if (vgroup && vgroup[0] && use_vgroups) {

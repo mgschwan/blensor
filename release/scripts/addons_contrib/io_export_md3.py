@@ -24,7 +24,7 @@ bl_info = {
     'location': 'File > Export',
     'description': 'Save a Quake Model 3 File)',
     'warning': '', # used for warning icon and text in addons panel
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.5/Py/'\
+    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/'\
         'Scripts/',
     'tracker_url': 'http://projects.blender.org/tracker/index.php?'\
         'func=detail&aid=23160',
@@ -642,7 +642,7 @@ def save_md3(settings):
 
 from bpy.props import *
 class ExportMD3(bpy.types.Operator):
-  '''Export to Quake Model 3 (.md3)'''
+  """Export to Quake Model 3 (.md3)"""
   bl_idname = "export.md3"
   bl_label = 'Export MD3'
 

@@ -80,9 +80,9 @@
 /* UNUSED so far, may be enabled later */
 /* #define USE_SMOKE_COLLISION_DM */
 
-#ifdef WITH_SMOKE
-
 #include "smoke_API.h"
+
+#ifdef WITH_SMOKE
 
 #ifdef _WIN32
 #include <time.h>
@@ -103,7 +103,7 @@ static void tend ( void )
 {
 	QueryPerformanceCounter ( &liCurrentTime );
 }
-static double tval( void )
+static double UNUSED_FUNCTION(tval)( void )
 {
 	return ((double)( (liCurrentTime.QuadPart - liStartTime.QuadPart)* (double)1000.0/(double)liFrequency.QuadPart ));
 }
@@ -120,7 +120,7 @@ static void tend ( void )
 	gettimeofday ( &_tend,&tz );
 }
 
-static double tval( void )
+static double UNUSED_FUNCTION(tval)( void )
 {
 	double t1, t2;
 	t1 = ( double ) _tstart.tv_sec*1000 + ( double ) _tstart.tv_usec/ ( 1000 );
@@ -141,15 +141,16 @@ struct SmokeModifierData;
 
 /* forward declerations */
 static void calcTriangleDivs(Object *ob, MVert *verts, int numverts, MFace *tris, int numfaces, int numtris, int **tridivs, float cell_len);
-static void get_cell(float *p0, int res[3], float dx, float *pos, int *cell, int correct);
+static void get_cell(const float p0[3], const int res[3], float dx, const float pos[3], int cell[3], int correct);
 static void fill_scs_points(Object *ob, DerivedMesh *dm, SmokeCollSettings *scs);
 
 #else /* WITH_SMOKE */
 
 /* Stubs to use when smoke is disabled */
 struct WTURBULENCE *smoke_turbulence_init(int *UNUSED(res), int UNUSED(amplify), int UNUSED(noisetype)) { return NULL; }
-struct FLUID_3D *smoke_init(int *UNUSED(res), float *UNUSED(p0)) { return NULL; }
+// struct FLUID_3D *smoke_init(int *UNUSED(res), float *UNUSED(p0)) { return NULL; }
 void smoke_free(struct FLUID_3D *UNUSED(fluid)) {}
+float *smoke_get_density(struct FLUID_3D *UNUSED(fluid)) { return NULL; }
 void smoke_turbulence_free(struct WTURBULENCE *UNUSED(wt)) {}
 void smoke_initWaveletBlenderRNA(struct WTURBULENCE *UNUSED(wt), float *UNUSED(strength)) {}
 void smoke_initBlenderRNA(struct FLUID_3D *UNUSED(fluid), float *UNUSED(alpha), float *UNUSED(beta), float *UNUSED(dt_factor), float *UNUSED(vorticity), int *UNUSED(border_colli)) {}
@@ -198,8 +199,6 @@ static int smokeModifier_init (SmokeModifierData *smd, Object *ob, Scene *scene,
 		// calc other res with max_res provided
 		sub_v3_v3v3(size, max, min);
 
-		// printf("size: %f, %f, %f\n", size[0], size[1], size[2]);
-
 		// prevent crash when initializing a plane as domain
 		if((size[0] < FLT_EPSILON) || (size[1] < FLT_EPSILON) || (size[2] < FLT_EPSILON))
 			return 0;
@@ -209,14 +208,16 @@ static int smokeModifier_init (SmokeModifierData *smd, Object *ob, Scene *scene,
 			if(size[0] > size[2])
 			{
 				scale = res / size[0];
-				smd->domain->dx = size[0] / res; // dx is in global coords
+				smd->domain->scale = size[0];
+				smd->domain->dx = 1.0f / res; 
 				smd->domain->res[0] = res;
 				smd->domain->res[1] = (int)(size[1] * scale + 0.5);
 				smd->domain->res[2] = (int)(size[2] * scale + 0.5);
 			}
 			else {
 				scale = res / size[2];
-				smd->domain->dx = size[2] / res; // dx is in global coords
+				smd->domain->scale = size[2];
+				smd->domain->dx = 1.0f / res;
 				smd->domain->res[2] = res;
 				smd->domain->res[0] = (int)(size[0] * scale + 0.5);
 				smd->domain->res[1] = (int)(size[1] * scale + 0.5);
@@ -226,25 +227,24 @@ static int smokeModifier_init (SmokeModifierData *smd, Object *ob, Scene *scene,
 			if(size[1] > size[2])
 			{
 				scale = res / size[1];
-				smd->domain->dx = size[1] / res; // dx is in global coords
+				smd->domain->scale = size[1];
+				smd->domain->dx = 1.0f / res; 
 				smd->domain->res[1] = res;
 				smd->domain->res[0] = (int)(size[0] * scale + 0.5);
 				smd->domain->res[2] = (int)(size[2] * scale + 0.5);
 			}
 			else {
 				scale = res / size[2];
-				smd->domain->dx = size[2] / res;
+				smd->domain->scale = size[2];
+				smd->domain->dx = 1.0f / res;
 				smd->domain->res[2] = res;
 				smd->domain->res[0] = (int)(size[0] * scale + 0.5);
 				smd->domain->res[1] = (int)(size[1] * scale + 0.5);
 			}
 		}
 
-		// printf("smd->domain->dx: %f\n", smd->domain->dx);
-
 		// TODO: put in failsafe if res<=0 - dg
 
-		// printf("res[0]: %d, res[1]: %d, res[2]: %d\n", smd->domain->res[0], smd->domain->res[1], smd->domain->res[2]);
 		// dt max is 0.1
 		smd->domain->fluid = smoke_init(smd->domain->res, smd->domain->p0, DT_DEFAULT);
 		smd->time = scene->r.cfra;
@@ -256,8 +256,6 @@ static int smokeModifier_init (SmokeModifierData *smd, Object *ob, Scene *scene,
 			smd->domain->res_wt[1] = smd->domain->res[1] * (smd->domain->amplify + 1);			
 			smd->domain->res_wt[2] = smd->domain->res[2] * (smd->domain->amplify + 1);			
 			smd->domain->dx_wt = smd->domain->dx / (smd->domain->amplify + 1);		
-			// printf("smd->domain->amplify: %d\n",  smd->domain->amplify);
-			// printf("(smd->domain->flags & MOD_SMOKE_HIGHRES)\n");
 		}
 
 		if(!smd->domain->shadow)
@@ -268,7 +266,6 @@ static int smokeModifier_init (SmokeModifierData *smd, Object *ob, Scene *scene,
 		if(smd->domain->wt)	
 		{
 			smoke_initWaveletBlenderRNA(smd->domain->wt, &(smd->domain->strength));
-			// printf("smoke_initWaveletBlenderRNA\n");
 		}
 		return 1;
 	}
@@ -303,8 +300,6 @@ static int smokeModifier_init (SmokeModifierData *smd, Object *ob, Scene *scene,
 
 			DM_ensure_tessface(dm);
 			fill_scs_points(ob, dm, scs);
-
-			// DEBUG printf("scs->dx: %f\n", scs->dx);
 		}
 
 		if(!smd->coll->bvhtree)
@@ -1178,13 +1173,13 @@ static void update_obstacles(Scene *scene, Object *ob, SmokeDomainSettings *sds,
 
 				sub_v3_v3v3(vel, pos, oldpos);
 				/* Scale velocity to incorperate the object movement during this step */
-				mul_v3_fl(vel, 1.0 / (totalsteps * dt));
+				mul_v3_fl(vel, 1.0 / (totalsteps * dt * sds->scale));
 				// mul_v3_fl(vel, 1.0 / dt);
 
 				// DG TODO: cap velocity to maxVelMag (or maxvel)
 
 				// oldpos + velocity * dt = newpos
-				get_cell(sds->p0, sds->res, sds->dx, cOldpos /* use current position here instead of "pos" */, cell, 0);
+				get_cell(sds->p0, sds->res, sds->dx*sds->scale, cOldpos /* use current position here instead of "pos" */, cell, 0);
 
 				// check if cell is valid (in the domain boundary)
 				for(j = 0; j < 3; j++)
@@ -1329,7 +1324,7 @@ static void update_flowsfluids(Scene *scene, Object *ob, SmokeDomainSettings *sd
 					// copy_v3_v3(pos, pa->state.co);
 					// mul_m4_v3(ob->imat, pos);
 					// 1. get corresponding cell
-					get_cell(sds->p0, sds->res, sds->dx, state.co, cell, 0);																	
+					get_cell(sds->p0, sds->res, sds->dx*sds->scale, state.co, cell, 0);																	
 					// check if cell is valid (in the domain boundary)									
 					for(i = 0; i < 3; i++)									
 					{										
@@ -1555,9 +1550,9 @@ static void update_effectors(Scene *scene, Object *ob, SmokeDomainSettings *sds,
 			vel[1] = velocity_y[index];
 			vel[2] = velocity_z[index];
 
-			voxelCenter[0] = sds->p0[0] + sds->dx *  x + sds->dx * 0.5;
-			voxelCenter[1] = sds->p0[1] + sds->dx *  y + sds->dx * 0.5;
-			voxelCenter[2] = sds->p0[2] + sds->dx *  z + sds->dx * 0.5;
+			voxelCenter[0] = sds->p0[0] + sds->dx * sds->scale * x + sds->dx * sds->scale * 0.5;
+			voxelCenter[1] = sds->p0[1] + sds->dx * sds->scale * y + sds->dx * sds->scale * 0.5;
+			voxelCenter[2] = sds->p0[2] + sds->dx * sds->scale * z + sds->dx * sds->scale * 0.5;
 
 			pd_point_from_loc(scene, voxelCenter, vel, index, &epoint);
 			pdDoEffectors(effectors, NULL, sds->effector_weights, &epoint, retvel, NULL);
@@ -1598,8 +1593,8 @@ static void step(Scene *scene, Object *ob, SmokeModifierData *smd, float fps)
 	/* adapt timestep for different framerates, dt = 0.1 is at 25fps */
 	dt *= (25.0f / fps);
 
-	// printf("test maxVel: %f\n", (sds->dx * 1.5) / dt); // gives 0.9
-	maxVel = (sds->dx * 1.5);
+	// maximum timestep/"CFL" constraint: dt < 5.0 *dx / maxVel
+	maxVel = (sds->dx * 5.0);
 
 	for(i = 0; i < size; i++)
 	{
@@ -1613,7 +1608,8 @@ static void step(Scene *scene, Object *ob, SmokeModifierData *smd, float fps)
 	totalSubsteps = (totalSubsteps < 1) ? 1 : totalSubsteps;
 	totalSubsteps = (totalSubsteps > maxSubSteps) ? maxSubSteps : totalSubsteps;
 
-	// totalSubsteps = 2.0f; // DEBUG
+	/* Disable substeps for now, since it results in numerical instability */
+	totalSubsteps = 1.0f; 
 
 	dtSubdiv = (float)dt / (float)totalSubsteps;
 
@@ -1667,6 +1663,7 @@ void smokeModifier_do(SmokeModifierData *smd, Scene *scene, Object *ob, DerivedM
 			Base *base = scene->base.first;
 			int changed = 0;
 			float dx = FLT_MAX;
+			float scale = 1.0f;
 			int haveDomain = 0;
 
 			for ( ; base; base = base->next) 
@@ -1677,9 +1674,10 @@ void smokeModifier_do(SmokeModifierData *smd, Scene *scene, Object *ob, DerivedM
 				{
 					SmokeDomainSettings *sds = smd2->domain;
 
-					if(sds->dx < dx)
+					if(sds->dx * sds->scale < dx)
 					{
 						dx = sds->dx;
+						scale = sds->scale;
 						changed = 1;
 					}
 
@@ -1692,9 +1690,9 @@ void smokeModifier_do(SmokeModifierData *smd, Scene *scene, Object *ob, DerivedM
 			
 			if(changed)
 			{
-				if(dx != scs->dx)
+				if(dx*scale != scs->dx)
 				{
-					scs->dx = dx;
+					scs->dx = dx*scale;
 					smokeModifier_reset(smd);
 				}
 			}
@@ -1858,7 +1856,7 @@ void smokeModifier_do(SmokeModifierData *smd, Scene *scene, Object *ob, DerivedM
 			BKE_ptcache_write(&pid, framenr);
 
 		tend();
-		// printf ( "Frame: %d, Time: %f\n\n", (int)smd->time, ( float ) tval() );
+		// printf ( "Frame: %d, Time: %f\n\n", (int)smd->time, (float) tval() );
 	}
 }
 
@@ -1871,7 +1869,7 @@ static float calc_voxel_transp(float *result, float *input, int res[3], int *pix
 	
 	if(result[index] < 0.0f)	
 	{
-#pragma omp critical		
+// #pragma omp critical		
 		result[index] = *tRay;	
 	}	
 
@@ -1979,7 +1977,7 @@ static void bresenham_linie_3D(int x1, int y1, int z1, int x2, int y2, int z2, f
 	cb(result, input, res, pixel, tRay, correct);
 }
 
-static void get_cell(float *p0, int res[3], float dx, float *pos, int *cell, int correct)
+static void get_cell(const float p0[3], const int res[3], float dx, const float pos[3], int cell[3], int correct)
 {
 	float tmp[3];
 
@@ -2015,7 +2013,7 @@ static void smoke_calc_transparency(float *result, float *input, float *p0, floa
 	bv[4] = p0[2];
 	bv[5] = p1[2];
 
-#pragma omp parallel for schedule(static,1)
+// #pragma omp parallel for schedule(static,1)
 	for(z = 0; z < res[2]; z++)
 	{
 		size_t index = z*slabsize;
