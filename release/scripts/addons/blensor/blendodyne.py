@@ -243,7 +243,7 @@ def scan_range(scanner_object, frame_start, frame_end, filename="/tmp/landscape.
 
     angle_per_second = 360.0 * rotation_speed
     angle_per_frame = angle_per_second * frame_time
-
+    
     try:
         for i in range(frame_start,frame_end):
                 bpy.context.scene.frame_current = i
