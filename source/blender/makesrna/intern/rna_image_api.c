@@ -99,7 +99,7 @@ static void rna_Image_zbuf(Image *image, bContext *C, ReportList *reports, int *
         }
 
 	}
-	BKE_image_release_ibuf(image, lock);
+	BKE_image_release_ibuf(image, ibuf, lock);
 
 }
 
