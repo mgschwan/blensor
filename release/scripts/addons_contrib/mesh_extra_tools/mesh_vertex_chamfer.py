@@ -133,6 +133,7 @@ class chamfer_help(bpy.types.Operator):
 		layout.label('To use:')
 		layout.label('Make a selection or selection of verts ')
 		layout.label('Result is triangle chamfer, works on single vert.')
+		layout.label('To Help:')
 		layout.label('In some cases may need to press F to fill result.')
 	
 	def execute(self, context):

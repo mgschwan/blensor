@@ -450,7 +450,7 @@ static void p_chart_uv_bbox(PChart *chart, float minv[2], float maxv[2])
 	INIT_MINMAX2(minv, maxv);
 
 	for (v = chart->verts; v; v = v->nextlink) {
-		DO_MINMAX2(v->uv, minv, maxv);
+		minmax_v2v2_v2(minv, maxv, v->uv);
 	}
 }
 
@@ -1566,7 +1566,7 @@ static void p_vert_harmonic_insert(PVert *v)
 
 		e = v->edge;
 		do {
-			npoints++;	
+			npoints++;
 			e = p_wheel_edge_next(e);
 		} while (e && (e != v->edge));
 
@@ -3306,7 +3306,7 @@ static void p_chart_stretch_minimize(PChart *chart, RNG *rng)
 
 		trusted_radius /= 2 * nedges;
 
-		random_angle = rng_getFloat(rng) * 2.0f * (float)M_PI;
+		random_angle = BLI_rng_get_float(rng) * 2.0f * (float)M_PI;
 		dir[0] = trusted_radius * cosf(random_angle);
 		dir[1] = trusted_radius * sinf(random_angle);
 
@@ -3891,9 +3891,9 @@ static void p_smooth(PChart *chart)
 
 		INIT_MINMAX2(fmin, fmax);
 
-		DO_MINMAX2(e1->vert->uv, fmin, fmax);
-		DO_MINMAX2(e2->vert->uv, fmin, fmax);
-		DO_MINMAX2(e3->vert->uv, fmin, fmax);
+		minmax_v2v2_v2(fmin, fmax, e1->vert->uv);
+		minmax_v2v2_v2(fmin, fmax, e2->vert->uv);
+		minmax_v2v2_v2(fmin, fmax, e3->vert->uv);
 
 		bx1 = (int)((fmin[0] - minv[0]) * invmedian);
 		by1 = (int)((fmin[1] - minv[1]) * invmedian);
@@ -3988,7 +3988,7 @@ static void p_smooth(PChart *chart)
 					diff[1] = p[1] - oldp[1];
 
 					length = sqrt(diff[0] * diff[0] + diff[1] * diff[1]);
-					d = MAX2(d, length);
+					d = max_ff(d, length);
 					moved += length;
 				}
 			}
@@ -4285,7 +4285,7 @@ void param_stretch_begin(ParamHandle *handle)
 	param_assert(phandle->state == PHANDLE_STATE_CONSTRUCTED);
 	phandle->state = PHANDLE_STATE_STRETCH;
 
-	phandle->rng = rng_new(31415926);
+	phandle->rng = BLI_rng_new(31415926);
 	phandle->blend = 0.0f;
 
 	for (i = 0; i < phandle->ncharts; i++) {
@@ -4332,7 +4332,7 @@ void param_stretch_end(ParamHandle *handle)
 	param_assert(phandle->state == PHANDLE_STATE_STRETCH);
 	phandle->state = PHANDLE_STATE_CONSTRUCTED;
 
-	rng_free(phandle->rng);
+	BLI_rng_free(phandle->rng);
 	phandle->rng = NULL;
 }
 
@@ -4400,7 +4400,7 @@ void param_pack(ParamHandle *handle, float margin)
 		
 		if (margin > 0.0f)
 			area += sqrt(box->w * box->h);
-	}	
+	}
 	
 	if (margin > 0.0f) {
 		/* multiply the margin by the area to give predictable results not dependent on UV scale,

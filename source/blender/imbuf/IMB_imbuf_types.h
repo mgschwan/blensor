@@ -93,7 +93,7 @@ typedef struct ImBuf {
 	/* tiled pixel storage */
 	int tilex, tiley;
 	int xtiles, ytiles;
-	unsigned int **tiles;	
+	unsigned int **tiles;
 
 	/* zbuffer */
 	int	*zbuf;				/* z buffer data, original zbuffer */
@@ -200,6 +200,10 @@ typedef struct ImBuf {
 #ifdef WITH_CINEON
 #define CINEON			(1 << 21)
 #define DPX				(1 << 20)
+#define CINEON_LOG		(1 << 8)
+#define CINEON_16BIT	(1 << 7)
+#define CINEON_12BIT	(1 << 6)
+#define CINEON_10BIT	(1 << 5)
 #endif
 
 #ifdef WITH_DDS
@@ -242,7 +246,7 @@ typedef struct ImBuf {
 	((unsigned long)(unsigned char)(ch1) << 8) | \
 	((unsigned long)(unsigned char)(ch2) << 16) | \
 	((unsigned long)(unsigned char)(ch3) << 24))
-#endif //MAKEFOURCC
+#endif  /* MAKEFOURCC */
 
 /*
  * FOURCC codes for DX compressed-texture pixel formats
@@ -255,7 +259,7 @@ typedef struct ImBuf {
 #define FOURCC_DXT4  (MAKEFOURCC('D','X','T','4'))
 #define FOURCC_DXT5  (MAKEFOURCC('D','X','T','5'))
 
-#endif // DDS
+#endif  /* DDS */
 extern const char *imb_ext_image[];
 extern const char *imb_ext_image_qt[];
 extern const char *imb_ext_movie[];

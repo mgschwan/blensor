@@ -43,6 +43,7 @@
 #include "DNA_meta_types.h"
 #include "DNA_object_fluidsim.h"
 #include "DNA_object_force.h"
+#include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_speaker_types.h"
 #include "DNA_vfont_types.h"
@@ -135,6 +136,7 @@ static EnumPropertyItem field_type_items[] = {
 	{PFIELD_BOID, "BOID", ICON_FORCE_BOID, "Boid", ""},
 	{PFIELD_TURBULENCE, "TURBULENCE", ICON_FORCE_TURBULENCE, "Turbulence", ""},
 	{PFIELD_DRAG, "DRAG", ICON_FORCE_DRAG, "Drag", ""},
+	{PFIELD_SMOKEFLOW, "SMOKE", ICON_FORCE_SMOKEFLOW, "Smoke Flow", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -184,7 +186,8 @@ void ED_object_base_init_transform(bContext *C, Base *base, const float loc[3], 
 /* Uses context to figure out transform for primitive.
  * Returns standard diameter. */
 float ED_object_new_primitive_matrix(bContext *C, Object *obedit,
-                                     const float loc[3], const float rot[3], float primmat[][4])
+                                     const float loc[3], const float rot[3], float primmat[4][4],
+                                     int apply_diameter)
 {
 	Scene *scene = CTX_data_scene(C);
 	View3D *v3d = CTX_wm_view3d(C);
@@ -207,8 +210,17 @@ float ED_object_new_primitive_matrix(bContext *C, Object *obedit,
 	invert_m3_m3(imat, mat);
 	mul_m3_v3(imat, primmat[3]);
 
-	if (v3d)
-		return ED_view3d_grid_scale(scene, v3d, NULL);
+	{
+		const float dia = v3d ? ED_view3d_grid_scale(scene, v3d, NULL) : ED_scene_grid_scale(scene, NULL);
+
+		if (apply_diameter) {
+			primmat[0][0] *= dia;
+			primmat[1][1] *= dia;
+			primmat[2][2] *= dia;
+		}
+
+		return dia;
+	}
 
 	return 1.0f;
 }
@@ -245,100 +257,100 @@ void ED_object_add_generic_props(wmOperatorType *ot, int do_editmode)
 	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 }
 
-static void object_add_generic_invoke_options(bContext *C, wmOperator *op)
-{
-	if (RNA_struct_find_property(op->ptr, "enter_editmode")) /* optional */
-		if (!RNA_struct_property_is_set(op->ptr, "enter_editmode"))
-			RNA_boolean_set(op->ptr, "enter_editmode", U.flag & USER_ADD_EDITMODE);
-
-	if (!RNA_struct_property_is_set(op->ptr, "location")) {
-		float loc[3];
-
-		ED_object_location_from_view(C, loc);
-		RNA_float_set_array(op->ptr, "location", loc);
-	}
-
-	if (!RNA_struct_property_is_set(op->ptr, "layers")) {
-		View3D *v3d = CTX_wm_view3d(C);
-		Scene *scene = CTX_data_scene(C);
-		int a, values[20], layer;
-
-		if (v3d) {
-			layer = (v3d->scenelock && !v3d->localvd) ? scene->layact : v3d->layact;
-		}
-		else {
-			layer = scene->layact;
-		}
-
-		for (a = 0; a < 20; a++) {
-			values[a] = (layer & (1 << a));
-		}
-
-		RNA_boolean_set_array(op->ptr, "layers", values);
-	}
-}
-
-int ED_object_add_generic_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
-{
-	object_add_generic_invoke_options(C, op);
-	return op->type->exec(C, op);
-}
-
 int ED_object_add_generic_get_opts(bContext *C, wmOperator *op, float loc[3], float rot[3],
                                    int *enter_editmode, unsigned int *layer, int *is_view_aligned)
 {
 	View3D *v3d = CTX_wm_view3d(C);
-	int a, layer_values[20];
-	int view_align;
 
-	*enter_editmode = FALSE;
-	if (RNA_struct_find_property(op->ptr, "enter_editmode") && RNA_boolean_get(op->ptr, "enter_editmode")) {
-		*enter_editmode = TRUE;
-	}
+	/* Switch to Edit mode? */
+	if (RNA_struct_find_property(op->ptr, "enter_editmode")) { /* optional */
+		int _enter_editmode;
+		if (!enter_editmode)
+			enter_editmode = &_enter_editmode;
 
-	if (RNA_struct_property_is_set(op->ptr, "layers")) {
-		RNA_boolean_get_array(op->ptr, "layers", layer_values);
-		*layer = 0;
-		for (a = 0; a < 20; a++) {
-			if (layer_values[a])
-				*layer |= (1 << a);
-			else
-				*layer &= ~(1 << a);
+		if (RNA_struct_property_is_set(op->ptr, "enter_editmode") && enter_editmode)
+			*enter_editmode = RNA_boolean_get(op->ptr, "enter_editmode");
+		else {
+			*enter_editmode = (U.flag & USER_ADD_EDITMODE) != 0;
+			RNA_boolean_set(op->ptr, "enter_editmode", *enter_editmode);
 		}
 	}
-	else {
-		/* not set, use the scenes layers */
-		Scene *scene = CTX_data_scene(C);
-		*layer = scene->layact;
+
+	/* Get layers! */
+	{
+		int a, layer_values[20];
+		unsigned int _layer;
+		if (!layer)
+			layer = &_layer;
+
+		if (RNA_struct_property_is_set(op->ptr, "layers")) {
+			RNA_boolean_get_array(op->ptr, "layers", layer_values);
+			*layer = 0;
+			for (a = 0; a < 20; a++) {
+				if (layer_values[a])
+					*layer |= (1 << a);
+			}
+		}
+		else {
+			Scene *scene = CTX_data_scene(C);
+			if (v3d)
+				*layer = (v3d->scenelock && !v3d->localvd) ? scene->layact : v3d->layact;
+			else
+				*layer = scene->layact;
+			for (a = 0; a < 20; a++) {
+				layer_values[a] = *layer & (1 << a);
+			}
+			RNA_boolean_set_array(op->ptr, "layers", layer_values);
+		}
+
+		/* in local view we additionally add local view layers,
+		 * not part of operator properties */
+		if (v3d && v3d->localvd)
+			*layer |= v3d->lay;
 	}
 
-	/* in local view we additionally add local view layers,
-	 * not part of operator properties */
-	if (v3d && v3d->localvd)
-		*layer |= v3d->lay;
+	/* Location! */
+	{
+		float _loc[3];
+		if (!loc)
+			loc = _loc;
 
-	if (RNA_struct_property_is_set(op->ptr, "rotation"))
-		view_align = FALSE;
-	else if (RNA_struct_property_is_set(op->ptr, "view_align"))
-		view_align = RNA_boolean_get(op->ptr, "view_align");
-	else {
-		view_align = U.flag & USER_ADD_VIEWALIGNED;
-		RNA_boolean_set(op->ptr, "view_align", view_align);
+		if (RNA_struct_property_is_set(op->ptr, "location")) {
+			RNA_float_get_array(op->ptr, "location", loc);
+		}
+		else {
+			ED_object_location_from_view(C, loc);
+			RNA_float_set_array(op->ptr, "location", loc);
+		}
 	}
 
-	if (view_align) {
-		ED_object_rotation_from_view(C, rot);
-		RNA_float_set_array(op->ptr, "rotation", rot);
+	/* Rotation! */
+	{
+		int _is_view_aligned;
+		float _rot[3];
+		if (!is_view_aligned)
+			is_view_aligned = &_is_view_aligned;
+		if (!rot)
+			rot = _rot;
+
+		if (RNA_struct_property_is_set(op->ptr, "rotation"))
+			*is_view_aligned = FALSE;
+		else if (RNA_struct_property_is_set(op->ptr, "view_align"))
+			*is_view_aligned = RNA_boolean_get(op->ptr, "view_align");
+		else {
+			*is_view_aligned = U.flag & USER_ADD_VIEWALIGNED;
+			RNA_boolean_set(op->ptr, "view_align", *is_view_aligned);
+		}
+
+		if (*is_view_aligned) {
+			ED_object_rotation_from_view(C, rot);
+			RNA_float_set_array(op->ptr, "rotation", rot);
+		}
+		else
+			RNA_float_get_array(op->ptr, "rotation", rot);
 	}
-	else
-		RNA_float_get_array(op->ptr, "rotation", rot);
 
-	if (is_view_aligned)
-		*is_view_aligned = view_align;
-
-	RNA_float_get_array(op->ptr, "location", loc);
-
-	if (*layer == 0) {
+	if (layer && *layer == 0) {
 		BKE_report(op->reports, RPT_ERROR, "Property 'layer' has no values set");
 		return 0;
 	}
@@ -355,7 +367,7 @@ Object *ED_object_add_type(bContext *C, int type, const float loc[3], const floa
 	Scene *scene = CTX_data_scene(C);
 	Object *ob;
 
-	/* For as long scene has editmode... */
+	/* for as long scene has editmode... */
 	if (CTX_data_edit_object(C)) 
 		ED_object_exit_editmode(C, EM_FREEDATA | EM_FREEUNDO | EM_WAITCURSOR | EM_DO_UNDO);  /* freedata, and undo */
 
@@ -405,9 +417,7 @@ void OBJECT_OT_add(wmOperatorType *ot)
 	ot->idname = "OBJECT_OT_add";
 
 	/* api callbacks */
-	ot->invoke = ED_object_add_generic_invoke;
 	ot->exec = object_add_exec;
-
 	ot->poll = ED_operator_objectmode;
 
 	/* flags */
@@ -420,56 +430,46 @@ void OBJECT_OT_add(wmOperatorType *ot)
 
 /********************* Add Effector Operator ********************/
 
-/* for effector add primitive operators */
-static Object *effector_add_type(bContext *C, wmOperator *op, int type)
+/* for object add operator */
+static int effector_add_exec(bContext *C, wmOperator *op)
 {
 	Object *ob;
-	int enter_editmode;
+	int type, enter_editmode;
 	unsigned int layer;
 	float loc[3], rot[3];
 	float mat[4][4];
 
-	object_add_generic_invoke_options(C, op);
-
 	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, NULL))
-		return NULL;
+		return OPERATOR_CANCELLED;
+
+	type = RNA_enum_get(op->ptr, "type");
 
 	if (type == PFIELD_GUIDE) {
 		ob = ED_object_add_type(C, OB_CURVE, loc, rot, FALSE, layer);
-		rename_id(&ob->id, "CurveGuide");
+		if (!ob)
+			return OPERATOR_CANCELLED;
 
+		rename_id(&ob->id, "CurveGuide");
 		((Curve *)ob->data)->flag |= CU_PATH | CU_3D;
 		ED_object_enter_editmode(C, 0);
-		ED_object_new_primitive_matrix(C, ob, loc, rot, mat);
+		ED_object_new_primitive_matrix(C, ob, loc, rot, mat, FALSE);
 		BLI_addtail(object_editcurve_get(ob), add_nurbs_primitive(C, ob, mat, CU_NURBS | CU_PRIM_PATH, 1));
-
 		if (!enter_editmode)
 			ED_object_exit_editmode(C, EM_FREEDATA);
 	}
 	else {
 		ob = ED_object_add_type(C, OB_EMPTY, loc, rot, FALSE, layer);
-		rename_id(&ob->id, "Field");
+		if (!ob)
+			return OPERATOR_CANCELLED;
 
-		switch (type) {
-			case PFIELD_WIND:
-			case PFIELD_VORTEX:
-				ob->empty_drawtype = OB_SINGLE_ARROW;
-				break;
-		}
+		rename_id(&ob->id, "Field");
+		if (ELEM(type, PFIELD_WIND, PFIELD_VORTEX))
+			ob->empty_drawtype = OB_SINGLE_ARROW;
 	}
 
 	ob->pd = object_add_collision_fields(type);
 
 	DAG_scene_sort(CTX_data_main(C), CTX_data_scene(C));
-
-	return ob;
-}
-
-/* for object add operator */
-static int effector_add_exec(bContext *C, wmOperator *op)
-{
-	if (effector_add_type(C, op, RNA_enum_get(op->ptr, "type")) == NULL)
-		return OPERATOR_CANCELLED;
 
 	return OPERATOR_FINISHED;
 }
@@ -482,9 +482,7 @@ void OBJECT_OT_effector_add(wmOperatorType *ot)
 	ot->idname = "OBJECT_OT_effector_add";
 
 	/* api callbacks */
-	ot->invoke = WM_menu_invoke;
 	ot->exec = effector_add_exec;
-
 	ot->poll = ED_operator_objectmode;
 
 	/* flags */
@@ -508,8 +506,6 @@ static int object_camera_add_exec(bContext *C, wmOperator *op)
 
 	/* force view align for cameras */
 	RNA_boolean_set(op->ptr, "view_align", TRUE);
-
-	object_add_generic_invoke_options(C, op);
 
 	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, NULL))
 		return OPERATOR_CANCELLED;
@@ -561,8 +557,7 @@ static int object_metaball_add_exec(bContext *C, wmOperator *op)
 	unsigned int layer;
 	float loc[3], rot[3];
 	float mat[4][4];
-
-	object_add_generic_invoke_options(C, op); /* XXX these props don't get set right when only exec() is called */
+	float dia;
 
 	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, NULL))
 		return OPERATOR_CANCELLED;
@@ -571,11 +566,12 @@ static int object_metaball_add_exec(bContext *C, wmOperator *op)
 		obedit = ED_object_add_type(C, OB_MBALL, loc, rot, TRUE, layer);
 		newob = 1;
 	}
-	else DAG_id_tag_update(&obedit->id, OB_RECALC_DATA);
+	else
+		DAG_id_tag_update(&obedit->id, OB_RECALC_DATA);
 
-	ED_object_new_primitive_matrix(C, obedit, loc, rot, mat);
+	dia = ED_object_new_primitive_matrix(C, obedit, loc, rot, mat, FALSE);
 
-	add_metaball_primitive(C, obedit, mat, RNA_enum_get(op->ptr, "type"), newob);
+	add_metaball_primitive(C, obedit, mat, dia, RNA_enum_get(op->ptr, "type"), newob);
 
 	/* userdef */
 	if (newob && !enter_editmode) {
@@ -587,25 +583,6 @@ static int object_metaball_add_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int object_metaball_add_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
-{
-	Object *obedit = CTX_data_edit_object(C);
-	uiPopupMenu *pup;
-	uiLayout *layout;
-
-	object_add_generic_invoke_options(C, op);
-
-	pup = uiPupMenuBegin(C, op->type->name, ICON_NONE);
-	layout = uiPupMenuLayout(pup);
-	if (!obedit || obedit->type == OB_MBALL)
-		uiItemsEnumO(layout, op->type->idname, "type");
-	else
-		uiItemsEnumO(layout, "OBJECT_OT_metaball_add", "type");
-	uiPupMenuEnd(C, pup);
-
-	return OPERATOR_CANCELLED;
-}
-
 void OBJECT_OT_metaball_add(wmOperatorType *ot)
 {
 	/* identifiers */
@@ -614,14 +591,15 @@ void OBJECT_OT_metaball_add(wmOperatorType *ot)
 	ot->idname = "OBJECT_OT_metaball_add";
 
 	/* api callbacks */
-	ot->invoke = object_metaball_add_invoke;
+	ot->invoke = WM_menu_invoke;/* object_metaball_add_invoke; */
 	ot->exec = object_metaball_add_exec;
 	ot->poll = ED_operator_scene_editable;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	RNA_def_enum(ot->srna, "type", metaelem_type_items, 0, "Primitive", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", metaelem_type_items, 0, "Primitive", "");
+
 	ED_object_add_generic_props(ot, TRUE);
 }
 
@@ -634,7 +612,6 @@ static int object_add_text_exec(bContext *C, wmOperator *op)
 	unsigned int layer;
 	float loc[3], rot[3];
 
-	object_add_generic_invoke_options(C, op); /* XXX these props don't get set right when only exec() is called */
 	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
@@ -656,7 +633,6 @@ void OBJECT_OT_text_add(wmOperatorType *ot)
 	ot->idname = "OBJECT_OT_text_add";
 
 	/* api callbacks */
-	ot->invoke = ED_object_add_generic_invoke;
 	ot->exec = object_add_text_exec;
 	ot->poll = ED_operator_objectmode;
 
@@ -677,7 +653,6 @@ static int object_armature_add_exec(bContext *C, wmOperator *op)
 	unsigned int layer;
 	float loc[3], rot[3];
 
-	object_add_generic_invoke_options(C, op); /* XXX these props don't get set right when only exec() is called */
 	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
@@ -713,13 +688,51 @@ void OBJECT_OT_armature_add(wmOperatorType *ot)
 	ot->idname = "OBJECT_OT_armature_add";
 
 	/* api callbacks */
-	ot->invoke = ED_object_add_generic_invoke;
 	ot->exec = object_armature_add_exec;
 	ot->poll = ED_operator_objectmode;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	ED_object_add_generic_props(ot, TRUE);
+}
+
+/********************* Add Empty Operator ********************/
+
+static int object_empty_add_exec(bContext *C, wmOperator *op)
+{
+	Object *ob;
+	int type = RNA_enum_get(op->ptr, "type");
+	unsigned int layer;
+	float loc[3], rot[3];
+
+	if (!ED_object_add_generic_get_opts(C, op, loc, rot, NULL, &layer, NULL))
+		return OPERATOR_CANCELLED;
+
+	ob = ED_object_add_type(C, OB_EMPTY, loc, rot, FALSE, layer);
+	ob->empty_drawtype = type;
+
+	return OPERATOR_FINISHED;
+}
+
+void OBJECT_OT_empty_add(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Add Empty";
+	ot->description = "Add an empty object to the scene";
+	ot->idname = "OBJECT_OT_empty_add";
+
+	/* api callbacks */
+	ot->invoke = WM_menu_invoke;
+	ot->exec = object_empty_add_exec;
+	ot->poll = ED_operator_objectmode;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	/* properties */
+	ot->prop = RNA_def_enum(ot->srna, "type", object_empty_drawtype_items, 0, "Type", "");
+
+	ED_object_add_generic_props(ot, FALSE);
 }
 
 /********************* Add Lamp Operator ********************/
@@ -743,12 +756,10 @@ static int object_lamp_add_exec(bContext *C, wmOperator *op)
 	Object *ob;
 	Lamp *la;
 	int type = RNA_enum_get(op->ptr, "type");
-	int enter_editmode;
 	unsigned int layer;
 	float loc[3], rot[3];
 
-	object_add_generic_invoke_options(C, op);
-	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, NULL))
+	if (!ED_object_add_generic_get_opts(C, op, loc, rot, NULL, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
 	ob = ED_object_add_type(C, OB_LAMP, loc, rot, FALSE, layer);
@@ -793,12 +804,10 @@ static int group_instance_add_exec(bContext *C, wmOperator *op)
 {
 	Group *group = BLI_findlink(&CTX_data_main(C)->group, RNA_enum_get(op->ptr, "group"));
 
-	int enter_editmode;
 	unsigned int layer;
 	float loc[3], rot[3];
 
-	object_add_generic_invoke_options(C, op);
-	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, NULL))
+	if (!ED_object_add_generic_get_opts(C, op, loc, rot, NULL, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
 	if (group) {
@@ -824,8 +833,6 @@ static int group_instance_add_exec(bContext *C, wmOperator *op)
 /* only used as menu */
 void OBJECT_OT_group_instance_add(wmOperatorType *ot)
 {
-	PropertyRNA *prop;
-
 	/* identifiers */
 	ot->name = "Add Group Instance";
 	ot->description = "Add a dupligroup instance";
@@ -834,16 +841,14 @@ void OBJECT_OT_group_instance_add(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = WM_enum_search_invoke;
 	ot->exec = group_instance_add_exec;
-
 	ot->poll = ED_operator_objectmode;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	prop = RNA_def_enum(ot->srna, "group", DummyRNA_NULL_items, 0, "Group", "");
-	RNA_def_enum_funcs(prop, RNA_group_itemf);
-	ot->prop = prop;
+	ot->prop = RNA_def_enum(ot->srna, "group", DummyRNA_NULL_items, 0, "Group", "");
+	RNA_def_enum_funcs(ot->prop, RNA_group_itemf);
 	ED_object_add_generic_props(ot, FALSE);
 }
 
@@ -852,13 +857,11 @@ void OBJECT_OT_group_instance_add(wmOperatorType *ot)
 static int object_speaker_add_exec(bContext *C, wmOperator *op)
 {
 	Object *ob;
-	int enter_editmode;
 	unsigned int layer;
 	float loc[3], rot[3];
 	Scene *scene = CTX_data_scene(C);
 
-	object_add_generic_invoke_options(C, op);
-	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, NULL))
+	if (!ED_object_add_generic_get_opts(C, op, loc, rot, NULL, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
 	ob = ED_object_add_type(C, OB_SPEAKER, loc, rot, FALSE, layer);
@@ -1118,13 +1121,13 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 		basen->object = ob;
 
 		/* make sure apply works */
-		BKE_free_animdata(&ob->id);	
+		BKE_free_animdata(&ob->id);
 		ob->adt = NULL;
 
 		ob->parent = NULL;
 		ob->constraints.first = ob->constraints.last = NULL;
 		ob->disp.first = ob->disp.last = NULL;
-		ob->transflag &= ~OB_DUPLI;	
+		ob->transflag &= ~OB_DUPLI;
 		ob->lay = base->lay;
 
 		copy_m4_m4(ob->obmat, dob->mat);
@@ -1133,7 +1136,7 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 		if (dupli_gh)
 			BLI_ghash_insert(dupli_gh, dob, ob);
 		if (parent_gh)
-			BLI_ghash_insert(parent_gh, BLI_ghashutil_pairalloc(dob->ob, SET_INT_IN_POINTER(dob->index)), ob);
+			BLI_ghash_insert(parent_gh, BLI_ghashutil_pairalloc(dob->ob, SET_INT_IN_POINTER(dob->persistent_id[0])), ob);
 	}
 
 	if (use_hierarchy) {
@@ -1147,7 +1150,7 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 
 			/* find parent that was also made real */
 			if (ob_src_par) {
-				GHashPair *pair = BLI_ghashutil_pairalloc(ob_src_par, SET_INT_IN_POINTER(dob->index));
+				GHashPair *pair = BLI_ghashutil_pairalloc(ob_src_par, SET_INT_IN_POINTER(dob->persistent_id[0]));
 				ob_dst_par = BLI_ghash_lookup(parent_gh, pair);
 				BLI_ghashutil_pairfree(pair);
 			}
@@ -1404,7 +1407,7 @@ static int convert_exec(bContext *C, wmOperator *op)
 			 * cases this doesnt give correct results (when MDEF is used for eg)
 			 */
 			dm = mesh_get_derived_final(scene, newob, CD_MASK_MESH);
-			/* dm= mesh_create_derived_no_deform(ob1, NULL);	this was called original (instead of get_derived). man o man why! (ton) */
+			// dm = mesh_create_derived_no_deform(ob1, NULL);  /* this was called original (instead of get_derived). man o man why! (ton) */
 
 			DM_to_mesh(dm, newob->data, newob);
 
@@ -1570,7 +1573,7 @@ static int convert_exec(bContext *C, wmOperator *op)
 		/* delete original if needed */
 		if (basedel) {
 			if (!keep_original)
-				ED_base_object_free_and_unlink(bmain, scene, basedel);	
+				ED_base_object_free_and_unlink(bmain, scene, basedel);
 
 			basedel = NULL;
 		}
@@ -2054,11 +2057,11 @@ static int join_exec(bContext *C, wmOperator *op)
 	Object *ob = CTX_data_active_object(C);
 
 	if (scene->obedit) {
-		BKE_report(op->reports, RPT_ERROR, "This data does not support joining in editmode");
+		BKE_report(op->reports, RPT_ERROR, "This data does not support joining in edit mode");
 		return OPERATOR_CANCELLED;
 	}
 	else if (BKE_object_obdata_is_libdata(ob)) {
-		BKE_report(op->reports, RPT_ERROR, "Can't edit external libdata");
+		BKE_report(op->reports, RPT_ERROR, "Cannot edit external libdata");
 		return OPERATOR_CANCELLED;
 	}
 
@@ -2108,11 +2111,11 @@ static int join_shapes_exec(bContext *C, wmOperator *op)
 	Object *ob = CTX_data_active_object(C);
 
 	if (scene->obedit) {
-		BKE_report(op->reports, RPT_ERROR, "This data does not support joining in editmode");
+		BKE_report(op->reports, RPT_ERROR, "This data does not support joining in edit mode");
 		return OPERATOR_CANCELLED;
 	}
 	else if (BKE_object_obdata_is_libdata(ob)) {
-		BKE_report(op->reports, RPT_ERROR, "Can't edit external libdata");
+		BKE_report(op->reports, RPT_ERROR, "Cannot edit external libdata");
 		return OPERATOR_CANCELLED;
 	}
 

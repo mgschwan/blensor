@@ -26,7 +26,7 @@
 CCL_NAMESPACE_BEGIN
 
 class ImageManager;
-class Shadr;
+class Shader;
 
 /* Texture Mapping */
 
@@ -36,6 +36,7 @@ public:
 	Transform compute_transform();
 	bool skip();
 	void compile(SVMCompiler& compiler, int offset_in, int offset_out);
+	void compile(OSLCompiler &compiler);
 
 	float3 translation;
 	float3 rotation;
@@ -67,11 +68,12 @@ public:
 
 	ImageManager *image_manager;
 	int slot;
-	bool is_float;
+	int is_float;
 	string filename;
 	ustring color_space;
 	ustring projection;
 	float projection_blend;
+	bool animated;
 
 	static ShaderEnum color_space_enum;
 	static ShaderEnum projection_enum;
@@ -85,10 +87,11 @@ public:
 
 	ImageManager *image_manager;
 	int slot;
-	bool is_float;
+	int is_float;
 	string filename;
 	ustring color_space;
 	ustring projection;
+	bool animated;
 
 	static ShaderEnum color_space_enum;
 	static ShaderEnum projection_enum;
@@ -193,7 +196,7 @@ class BsdfNode : public ShaderNode {
 public:
 	SHADER_NODE_CLASS(BsdfNode)
 
-	void compile(SVMCompiler& compiler, ShaderInput *param1, ShaderInput *param2);
+	void compile(SVMCompiler& compiler, ShaderInput *param1, ShaderInput *param2, ShaderInput *param3 = NULL);
 
 	ClosureType closure;
 };
@@ -201,6 +204,7 @@ public:
 class WardBsdfNode : public BsdfNode {
 public:
 	SHADER_NODE_CLASS(WardBsdfNode)
+	void attributes(AttributeRequestSet *attributes);
 };
 
 class DiffuseBsdfNode : public BsdfNode {
@@ -216,6 +220,8 @@ public:
 class TransparentBsdfNode : public BsdfNode {
 public:
 	SHADER_NODE_CLASS(TransparentBsdfNode)
+
+	bool has_surface_transparent() { return true; }
 };
 
 class VelvetBsdfNode : public BsdfNode {
@@ -239,9 +245,19 @@ public:
 	static ShaderEnum distribution_enum;
 };
 
+class RefractionBsdfNode : public BsdfNode {
+public:
+	SHADER_NODE_CLASS(RefractionBsdfNode)
+
+	ustring distribution;
+	static ShaderEnum distribution_enum;
+};
+
 class EmissionNode : public ShaderNode {
 public:
 	SHADER_NODE_CLASS(EmissionNode)
+
+	bool has_surface_emission() { return true; }
 
 	bool total_power;
 };
@@ -254,6 +270,11 @@ public:
 class HoldoutNode : public ShaderNode {
 public:
 	SHADER_NODE_CLASS(HoldoutNode)
+};
+
+class AmbientOcclusionNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(AmbientOcclusionNode)
 };
 
 class VolumeNode : public ShaderNode {
@@ -278,6 +299,7 @@ public:
 class GeometryNode : public ShaderNode {
 public:
 	SHADER_NODE_CLASS(GeometryNode)
+	void attributes(AttributeRequestSet *attributes);
 };
 
 class TextureCoordinateNode : public ShaderNode {
@@ -331,6 +353,11 @@ public:
 class MixClosureNode : public ShaderNode {
 public:
 	SHADER_NODE_CLASS(MixClosureNode)
+};
+
+class MixClosureWeightNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(MixClosureWeightNode);
 };
 
 class InvertNode : public ShaderNode {
@@ -432,10 +459,58 @@ public:
 	float4 curves[RAMP_TABLE_SIZE];
 };
 
+class VectorCurvesNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(VectorCurvesNode)
+	float4 curves[RAMP_TABLE_SIZE];
+};
+
 class RGBRampNode : public ShaderNode {
 public:
 	SHADER_NODE_CLASS(RGBRampNode)
 	float4 ramp[RAMP_TABLE_SIZE];
+};
+
+class SetNormalNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(SetNormalNode)
+};
+
+class OSLScriptNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(OSLScriptNode)
+	string filepath;
+	string bytecode_hash;
+	
+	/* ShaderInput/ShaderOutput only stores a shallow string copy (const char *)!
+	 * The actual socket names have to be stored externally to avoid memory errors. */
+	vector<ustring> input_names;
+	vector<ustring> output_names;
+};
+
+class NormalMapNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(NormalMapNode)
+	void attributes(AttributeRequestSet *attributes);
+
+	ustring space;
+	static ShaderEnum space_enum;
+
+	ustring attribute;
+};
+
+class TangentNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(TangentNode)
+	void attributes(AttributeRequestSet *attributes);
+
+	ustring direction_type;
+	static ShaderEnum direction_type_enum;
+
+	ustring axis;
+	static ShaderEnum axis_enum;
+
+	ustring attribute;
 };
 
 CCL_NAMESPACE_END

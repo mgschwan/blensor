@@ -150,8 +150,8 @@ static void postConstraintChecks(TransInfo *t, float vec[3], float pvec[3])
 
 	if (hasNumInput(&t->num)) {
 		applyNumInput(&t->num, vec);
-		removeAspectRatio(t, vec);
 		constraintNumInput(t, vec);
+		removeAspectRatio(t, vec);
 	}
 
 	/* autovalues is operator param, use that directly but not if snapping is forced */
@@ -782,7 +782,7 @@ void startConstraint(TransInfo *t)
 {
 	t->con.mode |= CON_APPLY;
 	*t->con.text = ' ';
-	t->num.idx_max = MIN2(getConstraintSpaceDimension(t) - 1, t->idx_max);
+	t->num.idx_max = min_ii(getConstraintSpaceDimension(t) - 1, t->idx_max);
 }
 
 void stopConstraint(TransInfo *t)

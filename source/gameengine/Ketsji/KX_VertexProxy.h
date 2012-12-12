@@ -92,8 +92,8 @@ public:
 
 	KX_PYMETHOD_NOARGS(KX_VertexProxy,GetXYZ);
 	KX_PYMETHOD_O(KX_VertexProxy,SetXYZ);
-	KX_PYMETHOD_NOARGS(KX_VertexProxy,GetUV);
-	KX_PYMETHOD_O(KX_VertexProxy,SetUV);
+	KX_PYMETHOD_NOARGS(KX_VertexProxy,GetUV1);
+	KX_PYMETHOD_O(KX_VertexProxy,SetUV1);
 	
 	KX_PYMETHOD_NOARGS(KX_VertexProxy,GetUV2);
 	KX_PYMETHOD_VARARGS(KX_VertexProxy,SetUV2);
@@ -105,7 +105,6 @@ public:
 
 };
 
-#endif // WITH_PYTHON
+#endif  /* WITH_PYTHON */
 
-#endif //__KX_VERTEXPROXY_H__
-
+#endif  /* __KX_VERTEXPROXY_H__ */

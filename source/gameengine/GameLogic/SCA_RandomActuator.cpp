@@ -48,13 +48,13 @@
 /* ------------------------------------------------------------------------- */
 
 SCA_RandomActuator::SCA_RandomActuator(SCA_IObject *gameobj, 
-									 long seed,
-									 SCA_RandomActuator::KX_RANDOMACT_MODE mode,
-									 float para1,
-									 float para2,
-									 const STR_String &propName)
-	: SCA_IActuator(gameobj, KX_ACT_RANDOM),
-	  m_propname(propName),
+                                       long seed,
+                                       SCA_RandomActuator::KX_RANDOMACT_MODE mode,
+                                       float para1,
+                                       float para2,
+                                       const STR_String &propName)
+    : SCA_IActuator(gameobj, KX_ACT_RANDOM),
+      m_propname(propName),
 	  m_parameter1(para1),
 	  m_parameter2(para2),
 	  m_distribution(mode)
@@ -196,38 +196,35 @@ bool SCA_RandomActuator::Update()
 
 			 */
 			tmpval = new CFloatValue(m_parameter1);
-		} else {
-			/*
-
-			  070301 - nzc 
-			  Now, with seed != 0, we will most assuredly get some
-			  sensible values. The termination condition states two 
-			  things: 
-			  1. s >= 0 is not allowed: to prevent the distro from 
-				 getting a bias towards high values. This is a small
-				 correction, really, and might also be left out.
-			  2. s == 0 is not allowed: to prevent a division by zero
-				 when renormalising the drawn value to the desired
-				 distribution shape. As a side effect, the distro will
-				 never yield the exact mean. 
-			  I am not sure whether this is consistent, since the error 
-			  cause by #2 is of the same magnitude as the one 
-			  prevented by #1. The error introduced into the SD will be 
-			  improved, though. By how much? Hard to say... If you like
-			  the maths, feel free to analyse. Be aware that this is 
-			  one of the really old standard algorithms. I think the 
-			  original came in Fortran, was translated to Pascal, and 
-			  then someone came up with the C code. My guess it that
-			  this will be quite sufficient here.
-
+		}
+		else {
+			/* 070301 - nzc
+			 * Now, with seed != 0, we will most assuredly get some
+			 * sensible values. The termination condition states two
+			 * things:
+			 * 1. s >= 0 is not allowed: to prevent the distro from
+			 *    getting a bias towards high values. This is a small
+			 *    correction, really, and might also be left out.
+			 * 2. s == 0 is not allowed: to prevent a division by zero
+			 *    when renormalising the drawn value to the desired
+			 *    distribution shape. As a side effect, the distro will
+			 *    never yield the exact mean.
+			 * I am not sure whether this is consistent, since the error
+			 * cause by #2 is of the same magnitude as the one
+			 * prevented by #1. The error introduced into the SD will be
+			 * improved, though. By how much? Hard to say... If you like
+			 * the maths, feel free to analyse. Be aware that this is
+			 * one of the really old standard algorithms. I think the
+			 * original came in Fortran, was translated to Pascal, and
+			 * then someone came up with the C code. My guess it that
+			 * this will be quite sufficient here.
 			 */
-			do 
-			{
-				x = 2.0 * m_base->DrawFloat() - 1.0;
-				y = 2.0 * m_base->DrawFloat() - 1.0;
-				s = x*x + y*y;
-			} while ( (s >= 1.0) || (s == 0.0) );
-			t = x * sqrt( (-2.0 * log(s)) / s);
+			do {
+				x = 2.0f * m_base->DrawFloat() - 1.0f;
+				y = 2.0f * m_base->DrawFloat() - 1.0f;
+				s = x * x + y * y;
+			} while ((s >= 1.0f) || (s == 0.0f));
+			t = x * sqrtf((-2.0 * log(s)) / s);
 			tmpval = new CFloatValue(m_parameter1 + m_parameter2 * t);
 		}
 	}
@@ -366,17 +363,17 @@ PyAttributeDef SCA_RandomActuator::Attributes[] = {
 PyObject *SCA_RandomActuator::pyattr_get_seed(void *self, const struct KX_PYATTRIBUTE_DEF *attrdef)
 {
 	SCA_RandomActuator* act = static_cast<SCA_RandomActuator*>(self);
-	return PyLong_FromSsize_t(act->m_base->GetSeed());
+	return PyLong_FromLong(act->m_base->GetSeed());
 }
 
 int SCA_RandomActuator::pyattr_set_seed(void *self, const struct KX_PYATTRIBUTE_DEF *attrdef, PyObject *value)
 {
 	SCA_RandomActuator* act = static_cast<SCA_RandomActuator*>(self);
-	if (PyLong_Check(value))	{
-		int ival = PyLong_AsSsize_t(value);
-		act->m_base->SetSeed(ival);
+	if (PyLong_Check(value)) {
+		act->m_base->SetSeed(PyLong_AsLong(value));
 		return PY_SET_ATTR_SUCCESS;
-	} else {
+	}
+	else {
 		PyErr_SetString(PyExc_TypeError, "actuator.seed = int: Random Actuator, expected an integer");
 		return PY_SET_ATTR_FAIL;
 	}

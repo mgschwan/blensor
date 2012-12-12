@@ -378,8 +378,8 @@ float BKE_mask_spline_project_co(MaskSpline *spline, MaskSplinePoint *point,
 
 				if (len_squared_v2(v1) > proj_eps_squared) {
 					ang1 = angle_v2v2(v1, n1);
-					if (ang1 > M_PI / 2.0f)
-						ang1 = M_PI  - ang1;
+					if (ang1 > (float)M_PI / 2.0f)
+						ang1 = (float)M_PI - ang1;
 
 					if (ang < 0.0f || ang1 < ang) {
 						ang = ang1;
@@ -405,8 +405,8 @@ float BKE_mask_spline_project_co(MaskSpline *spline, MaskSplinePoint *point,
 
 				if (len_squared_v2(v2) > proj_eps_squared) {
 					ang2 = angle_v2v2(v2, n2);
-					if (ang2 > M_PI / 2.0f)
-						ang2 = M_PI  - ang2;
+					if (ang2 > (float)M_PI / 2.0f)
+						ang2 = (float)M_PI - ang2;
 
 					if (ang2 < ang) {
 						ang = ang2;
@@ -555,7 +555,7 @@ float BKE_mask_point_weight_scalar(MaskSpline *spline, MaskSplinePoint *point, c
 	if (!bezt_next) {
 		return bezt->weight;
 	}
-	else if (u <= 0.0) {
+	else if (u <= 0.0f) {
 		return bezt->weight;
 	}
 	else if (u >= 1.0f) {
@@ -576,7 +576,7 @@ float BKE_mask_point_weight(MaskSpline *spline, MaskSplinePoint *point, const fl
 	if (!bezt_next) {
 		return bezt->weight;
 	}
-	else if (u <= 0.0) {
+	else if (u <= 0.0f) {
 		return bezt->weight;
 	}
 	else if (u >= 1.0f) {
@@ -1416,7 +1416,7 @@ void BKE_mask_layer_evaluate(MaskLayer *masklay, const float ctime, const int do
 
 		for (spline = masklay->splines.first; spline; spline = spline->next) {
 			int i;
-			int has_auto = FALSE;
+			int need_handle_recalc = FALSE;
 
 			BKE_mask_spline_ensure_deform(spline);
 
@@ -1436,16 +1436,16 @@ void BKE_mask_layer_evaluate(MaskLayer *masklay, const float ctime, const int do
 					add_v2_v2(point_deform->bezt.vec[2], delta);
 				}
 
-				if (point->bezt.h1 == HD_AUTO) {
-					has_auto = TRUE;
+				if (ELEM(point->bezt.h1, HD_AUTO, HD_VECT)) {
+					need_handle_recalc = TRUE;
 				}
 			}
 
-			/* if the spline has auto handles, these need to be recalculated after deformation */
-			if (has_auto) {
+			/* if the spline has auto or vector handles, these need to be recalculated after deformation */
+			if (need_handle_recalc) {
 				for (i = 0; i < spline->tot_point; i++) {
 					MaskSplinePoint *point_deform = &spline->points_deform[i];
-					if (point_deform->bezt.h1 == HD_AUTO) {
+					if (ELEM(point_deform->bezt.h1, HD_AUTO, HD_VECT)) {
 						BKE_mask_calc_handle_point(spline, point_deform);
 					}
 				}
@@ -1805,7 +1805,7 @@ static void interp_weights_uv_v2_calc(float r_uv[2], const float pt[2], const fl
 	float pt_on_line[2];
 	r_uv[0] = closest_to_line_v2(pt_on_line, pt, pt_a, pt_b);
 	r_uv[1] = (len_v2v2(pt_on_line, pt) / len_v2v2(pt_a, pt_b)) *
-	          ((line_point_side_v2(pt_a, pt_b, pt) < 0.0f) ? -1.0 : 1.0);  /* this line only sets the sign */
+	          ((line_point_side_v2(pt_a, pt_b, pt) < 0.0f) ? -1.0f : 1.0f);  /* this line only sets the sign */
 }
 
 
@@ -1955,5 +1955,5 @@ void BKE_mask_layer_shape_changed_remove(MaskLayer *masklay, int index, int coun
 
 int BKE_mask_get_duration(Mask *mask)
 {
-	return maxi(1, mask->efra - mask->sfra);
+	return max_ii(1, mask->efra - mask->sfra);
 }

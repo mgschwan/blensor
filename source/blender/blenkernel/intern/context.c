@@ -44,6 +44,7 @@
 
 #include "BLI_listbase.h"
 #include "BLI_string.h"
+#include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -234,9 +235,8 @@ struct bContextDataResult {
 static void *ctx_wm_python_context_get(const bContext *C, const char *member, void *fall_through)
 {
 #ifdef WITH_PYTHON
-	bContextDataResult result;
-
-	if (C && CTX_py_dict_get(C)) {
+	if (UNLIKELY(C && CTX_py_dict_get(C))) {
+		bContextDataResult result;
 		memset(&result, 0, sizeof(bContextDataResult));
 		BPY_context_member_get((bContext *)C, member, &result);
 		if (result.ptr.data)
@@ -245,6 +245,10 @@ static void *ctx_wm_python_context_get(const bContext *C, const char *member, vo
 #else
 	(void)C, (void)member;
 #endif
+
+	/* don't allow UI context access from non-main threads */
+	if (!BLI_thread_is_main())
+		return NULL;
 
 	return fall_through;
 }
@@ -265,6 +269,11 @@ static int ctx_data_get(bContext *C, const char *member, bContextDataResult *res
 //			return 1;
 	}
 #endif
+
+	/* don't allow UI context access from non-main threads */
+	if (!BLI_thread_is_main())
+		return done;
+
 	/* we check recursion to ensure that we do not get infinite
 	 * loops requesting data from ourselfs in a context callback */
 

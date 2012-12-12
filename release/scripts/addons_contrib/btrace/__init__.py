@@ -24,7 +24,7 @@ bl_info = {
     'location': "View3D > Tools",
     'description': "Tools for converting/animating objects/particles into curves",
     'warning': "Still under development, bug reports appreciated",
-    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts",
+    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Curve/Btrace",
     'tracker_url': "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=29563",
     'category': "Add Curve"

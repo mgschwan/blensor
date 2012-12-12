@@ -51,7 +51,7 @@ Node::Node(bNode *editorNode, bool create_sockets): NodeBase()
 			if (input->type == SOCK_VECTOR) dt = COM_DT_VECTOR;
 			
 			this->addInputSocket(dt, (InputSocketResizeMode)input->resizemode, input);
-			input = (bNodeSocket *)input->next;
+			input = input->next;
 		}
 		bNodeSocket *output = (bNodeSocket *)editorNode->outputs.first;
 		while (output != NULL) {
@@ -60,14 +60,14 @@ Node::Node(bNode *editorNode, bool create_sockets): NodeBase()
 			if (output->type == SOCK_VECTOR) dt = COM_DT_VECTOR;
 			
 			this->addOutputSocket(dt, output);
-			output = (bNodeSocket *)output->next;
+			output = output->next;
 		}
 	}
 }
 
 void Node::addSetValueOperation(ExecutionSystem *graph, InputSocket *inputsocket, int editorNodeInputSocketIndex)
 {
-	bNodeSocket *bSock = (bNodeSocket *)this->getEditorInputSocket(editorNodeInputSocketIndex);
+	bNodeSocket *bSock = this->getEditorInputSocket(editorNodeInputSocketIndex);
 	SetValueOperation *operation = new SetValueOperation();
 	bNodeSocketValueFloat *val = (bNodeSocketValueFloat *)bSock->default_value;
 	operation->setValue(val->value);
@@ -114,7 +114,7 @@ SocketConnection *Node::addLink(ExecutionSystem *graph, OutputSocket *outputSock
 
 void Node::addSetColorOperation(ExecutionSystem *graph, InputSocket *inputsocket, int editorNodeInputSocketIndex)
 {
-	bNodeSocket *bSock = (bNodeSocket *)this->getEditorInputSocket(editorNodeInputSocketIndex);
+	bNodeSocket *bSock = this->getEditorInputSocket(editorNodeInputSocketIndex);
 	SetColorOperation *operation = new SetColorOperation();
 	bNodeSocketValueRGBA *val = (bNodeSocketValueRGBA *)bSock->default_value;
 	operation->setChannel1(val->value[0]);
@@ -127,7 +127,7 @@ void Node::addSetColorOperation(ExecutionSystem *graph, InputSocket *inputsocket
 
 void Node::addSetVectorOperation(ExecutionSystem *graph, InputSocket *inputsocket, int editorNodeInputSocketIndex)
 {
-	bNodeSocket *bSock = (bNodeSocket *)this->getEditorInputSocket(editorNodeInputSocketIndex);
+	bNodeSocket *bSock = this->getEditorInputSocket(editorNodeInputSocketIndex);
 	bNodeSocketValueVector *val = (bNodeSocketValueVector *)bSock->default_value;
 	SetVectorOperation *operation = new SetVectorOperation();
 	operation->setX(val->value[0]);
@@ -137,18 +137,26 @@ void Node::addSetVectorOperation(ExecutionSystem *graph, InputSocket *inputsocke
 	graph->addOperation(operation);
 }
 
-/* when a node has no valid data (missing image or group pointer) */
+NodeOperation *Node::convertToOperations_invalid_index(ExecutionSystem *graph, int index)
+{
+	const float warning_color[4] = {1.0f, 0.0f, 1.0f, 1.0f};
+	SetColorOperation *operation = new SetColorOperation();
+	operation->setChannels(warning_color);
+
+	/* link the operation */
+	this->getOutputSocket(index)->relinkConnections(operation->getOutputSocket());
+	graph->addOperation(operation);
+	return operation;
+}
+
+/* when a node has no valid data (missing image / group pointer, or missing renderlayer from EXR) */
 void Node::convertToOperations_invalid(ExecutionSystem *graph, CompositorContext *context)
 {
 	/* this is a really bad situation - bring on the pink! - so artists know this is bad */
-	const float warning_color[4] = {1.0f, 0.0f, 1.0f, 1.0f};
 	int index;
 	vector<OutputSocket *> &outputsockets = this->getOutputSockets();
 	for (index = 0; index < outputsockets.size(); index++) {
-		SetColorOperation *operation = new SetColorOperation();
-		this->getOutputSocket(index)->relinkConnections(operation->getOutputSocket());
-		operation->setChannels(warning_color);
-		graph->addOperation(operation);
+		convertToOperations_invalid_index(graph, index);
 	}
 }
 

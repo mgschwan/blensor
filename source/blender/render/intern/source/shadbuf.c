@@ -89,7 +89,7 @@ extern struct Render R;
 
 static void copy_to_ztile(int *rectz, int size, int x1, int y1, int tile, char *r1)
 {
-	int len4, *rz;	
+	int len4, *rz;
 	int x2, y2;
 	
 	x2= x1+tile;
@@ -159,9 +159,9 @@ static void make_jitter_weight_tab(Render *re, ShadBuf *shb, short filtertype)
 	
 	for (jit= shb->jit, a=0; a<tot; a++, jit+=2) {
 		if (filtertype==LA_SHADBUF_TENT)
-			shb->weight[a]= 0.71f - sqrt(jit[0]*jit[0] + jit[1]*jit[1]);
+			shb->weight[a] = 0.71f - sqrtf(jit[0] * jit[0] + jit[1] * jit[1]);
 		else if (filtertype==LA_SHADBUF_GAUSS)
-			shb->weight[a]= RE_filter_value(R_FILTER_GAUSS, 1.8f*sqrt(jit[0]*jit[0] + jit[1]*jit[1]));
+			shb->weight[a] = RE_filter_value(R_FILTER_GAUSS, 1.8f * sqrtf(jit[0] * jit[0] + jit[1] * jit[1]));
 		else
 			shb->weight[a]= 1.0f;
 		
@@ -217,15 +217,15 @@ static int compress_deepsamples(DeepSample *dsample, int tot, float epsilon)
 			if (ds->z == newds->z) {
 				/* still in same z position, simply check
 				 * visibility difference against epsilon */
-				if (!(fabs(newds->v - ds->v) <= epsilon)) {
+				if (!(fabsf(newds->v - ds->v) <= epsilon)) {
 					break;
 				}
 			}
 			else {
 				/* compute slopes */
-				div= (double)0x7FFFFFFF/((double)ds->z - (double)newds->z);
-				min= ((ds->v - epsilon) - newds->v)*div;
-				max= ((ds->v + epsilon) - newds->v)*div;
+				div= (double)0x7FFFFFFF / ((double)ds->z - (double)newds->z);
+				min= (double)((ds->v - epsilon) - newds->v) * div;
+				max= (double)((ds->v + epsilon) - newds->v) * div;
 
 				/* adapt existing slopes */
 				if (first) {
@@ -264,8 +264,8 @@ static int compress_deepsamples(DeepSample *dsample, int tot, float epsilon)
 		}
 		else {
 			/* compute visibility at center between slopes at z */
-			slope= (slopemin+slopemax)*0.5f;
-			v= newds->v + slope*((z - newds->z)/(double)0x7FFFFFFF);
+			slope = (slopemin + slopemax) * 0.5;
+			v = (double)newds->v + slope * ((double)(z - newds->z) / (double)0x7FFFFFFF);
 		}
 
 		newds++;
@@ -528,21 +528,21 @@ static void compress_shadowbuf(ShadBuf *shb, int *rectz, int square)
 	
 	for (y=0; y<size; y+=16) {
 		if (y< size/2) miny= y+15-size/2;
-		else miny= y-size/2;	
+		else miny= y-size/2;
 		
 		for (x=0; x<size; x+=16) {
 			
 			/* is tile within spotbundle? */
 			a= size/2;
 			if (x< a) minx= x+15-a;
-			else minx= x-a;	
+			else minx= x-a;
 			
 			dist= sqrt( (float)(minx*minx+miny*miny) );
 			
 			if (square==0 && dist>(float)(a+12)) {	/* 12, tested with a onlyshadow lamp */
 				a= 256; verg= 0; /* 0x80000000; */ /* 0x7FFFFFFF; */
 				rz1= (&verg)+1;
-			} 
+			}
 			else {
 				copy_to_ztile(rectz, size, x, y, 16, rcline);
 				rz1= (int *)rcline;
@@ -637,7 +637,7 @@ static void shadowbuf_autoclip(Render *re, LampRen *lar)
 
 	maxtotvert= 0;
 	for (obr=re->objecttable.first; obr; obr=obr->next)
-		maxtotvert= MAX2(obr->totvert, maxtotvert);
+		maxtotvert = max_ii(obr->totvert, maxtotvert);
 
 	clipflag= MEM_callocN(sizeof(char)*maxtotvert, "autoclipflag");
 
@@ -669,8 +669,8 @@ static void shadowbuf_autoclip(Render *re, LampRen *lar)
 				clipflag[vlr->v2->index]= 1;
 				clipflag[vlr->v3->index]= 1;
 				if (vlr->v4) clipflag[vlr->v4->index]= 1;
-			}				
-		}		
+			}
+		}
 		
 		/* calculate min and max */
 		for (a=0; a< obr->totvert;a++) {
@@ -778,7 +778,7 @@ void makeshadowbuf(Render *re, LampRen *lar)
 	 * transforming from observer view to lamp view, including lamp window matrix */
 	
 	angle= saacos(lar->spotsi);
-	temp= 0.5f*shb->size*cos(angle)/sin(angle);
+	temp = 0.5f * shb->size * cosf(angle) / sinf(angle);
 	shb->pixsize= (shb->d)/temp;
 	wsize= shb->pixsize*(shb->size/2.0f);
 	
@@ -856,10 +856,10 @@ void threaded_makeshadowbufs(Render *re)
 			if (lar->shb)
 				totthread++;
 		
-		totthread= MIN2(totthread, re->r.threads);
+		totthread = min_ii(totthread, re->r.threads);
 	}
 	else
-		totthread= 1; /* preview render */
+		totthread = 1; /* preview render */
 
 	if (totthread <= 1) {
 		for (lar=re->lampren.first; lar; lar= lar->next) {
@@ -1302,7 +1302,7 @@ float shadow_halo(LampRen *lar, const float p1[3], const float p2[3])
 	ShadBuf *shb= lar->shb;
 	ShadSampleBuf *shsample;
 	float co[4], siz;
-	float labda, labdao, labdax, labday, ldx, ldy;
+	float lambda, lambda_o, lambda_x, lambda_y, ldx, ldy;
 	float zf, xf1, yf1, zf1, xf2, yf2, zf2;
 	float count, lightcount;
 	int x, y, z, xs1, ys1;
@@ -1336,68 +1336,68 @@ float shadow_halo(LampRen *lar, const float p1[3], const float p2[3])
 
 	if (xf1 != xf2) {
 		if (xf2-xf1 > 0.0f) {
-			labdax= (xf1-xs1-1.0f)/(xf1-xf2);
+			lambda_x= (xf1-xs1-1.0f)/(xf1-xf2);
 			ldx= -shb->shadhalostep/(xf1-xf2);
 			dx= shb->shadhalostep;
 		}
 		else {
-			labdax= (xf1-xs1)/(xf1-xf2);
+			lambda_x= (xf1-xs1)/(xf1-xf2);
 			ldx= shb->shadhalostep/(xf1-xf2);
 			dx= -shb->shadhalostep;
 		}
 	}
 	else {
-		labdax= 1.0;
+		lambda_x= 1.0;
 		ldx= 0.0;
 	}
 
 	if (yf1 != yf2) {
 		if (yf2-yf1 > 0.0f) {
-			labday= (yf1-ys1-1.0f)/(yf1-yf2);
+			lambda_y= (yf1-ys1-1.0f)/(yf1-yf2);
 			ldy= -shb->shadhalostep/(yf1-yf2);
 			dy= shb->shadhalostep;
 		}
 		else {
-			labday= (yf1-ys1)/(yf1-yf2);
+			lambda_y= (yf1-ys1)/(yf1-yf2);
 			ldy= shb->shadhalostep/(yf1-yf2);
 			dy= -shb->shadhalostep;
 		}
 	}
 	else {
-		labday= 1.0;
+		lambda_y= 1.0;
 		ldy= 0.0;
 	}
 	
 	x= xs1;
 	y= ys1;
-	labda= count= lightcount= 0.0;
+	lambda= count= lightcount= 0.0;
 
 /* printf("start %x %x	\n", (int)(0x7FFFFFFF*zf1), (int)(0x7FFFFFFF*zf2)); */
 
 	while (1) {
-		labdao= labda;
+		lambda_o= lambda;
 		
-		if (labdax==labday) {
-			labdax+= ldx;
+		if (lambda_x==lambda_y) {
+			lambda_x+= ldx;
 			x+= dx;
-			labday+= ldy;
+			lambda_y+= ldy;
 			y+= dy;
 		}
 		else {
-			if (labdax<labday) {
-				labdax+= ldx;
+			if (lambda_x<lambda_y) {
+				lambda_x+= ldx;
 				x+= dx;
 			}
 			else {
-				labday+= ldy;
+				lambda_y+= ldy;
 				y+= dy;
 			}
 		}
 		
-		labda = minf(labdax, labday);
-		if (labda==labdao || labda>=1.0f) break;
+		lambda = min_ff(lambda_x, lambda_y);
+		if (lambda==lambda_o || lambda>=1.0f) break;
 		
-		zf= zf1 + labda*(zf2-zf1);
+		zf= zf1 + lambda*(zf2-zf1);
 		count+= (float)shb->totbuf;
 
 		if (zf<= -1.0f) lightcount += 1.0f;	/* close to the spot */
@@ -1663,9 +1663,9 @@ static void bspface_init_strand(BSPFace *face)
 	
 	face->len= face->rc[0]*face->rc[0]+ face->rc[1]*face->rc[1];
 	
-	if (face->len!=0.0f) {
-		face->radline_end= face->radline/sqrt(face->len);
-		face->len= 1.0f/face->len;
+	if (face->len != 0.0f) {
+		face->radline_end = face->radline / sqrtf(face->len);
+		face->len = 1.0f / face->len;
 	}
 }
 
@@ -1686,21 +1686,21 @@ static int point_behind_strand(const float p[3], BSPFace *face)
 			return 1;
 	}
 	else {
-		float labda= ( face->rc[0]*(p[0]-face->vec1[0]) + face->rc[1]*(p[1]-face->vec1[1]) )*face->len;
+		float lambda= ( face->rc[0]*(p[0]-face->vec1[0]) + face->rc[1]*(p[1]-face->vec1[1]) )*face->len;
 		
-		if (labda > -face->radline_end && labda < 1.0f+face->radline_end) {
+		if (lambda > -face->radline_end && lambda < 1.0f+face->radline_end) {
 			/* hesse for dist: */
 			//dist= (float)(fabs( (p[0]-vec2[0])*rc[1] + (p[1]-vec2[1])*rc[0])/len);
 			
-			pt[0]= labda*face->rc[0]+face->vec1[0];
-			pt[1]= labda*face->rc[1]+face->vec1[1];
+			pt[0]= lambda*face->rc[0]+face->vec1[0];
+			pt[1]= lambda*face->rc[1]+face->vec1[1];
 			
 			rc[0]= pt[0]-p[0];
 			rc[1]= pt[1]-p[1];
 			dist= (float)sqrt(rc[0]*rc[0]+ rc[1]*rc[1]);
 			
 			if (dist < face->radline) {
-				float zval= face->vec1[2] + labda*face->rc[2];
+				float zval= face->vec1[2] + lambda*face->rc[2];
 				if (p[2] > zval)
 					return 1;
 			}
@@ -1867,7 +1867,7 @@ static void isb_bsp_recalc_box(ISBBranch *root)
 		init_box(&root->box);
 		for (a=root->totsamp-1; a>=0; a--)
 			bound_boxf(&root->box, root->samples[a]->zco);
-	}	
+	}
 }
 
 /* callback function for zbuf clip */
@@ -2040,7 +2040,7 @@ static void isb_bsp_fillfaces(Render *re, LampRen *lar, ISBBranch *root)
 					if (vlr->v4)
 						c4= testclip(hoco[3]); 
 					
-					/* ***** NO WIRE YET */			
+					/* ***** NO WIRE YET */
 					if (ma->material_type == MA_TYPE_WIRE) {
 						if (vlr->v4)
 							zbufclipwire(&zspan, i, a+1, vlr->ec, hoco[0], hoco[1], hoco[2], hoco[3], c1, c2, c3, c4);
@@ -2187,7 +2187,7 @@ static int isb_add_samples(RenderPart *pa, ISBBranch *root, MemArena *memarena, 
 			}
 			if (bsp_err) break;
 		}
-	}	
+	}
 	
 	MEM_freeN(xcos);
 	MEM_freeN(ycos);
@@ -2394,7 +2394,7 @@ static int isb_add_samples_transp(RenderPart *pa, ISBBranch *root, MemArena *mem
 			}
 			if (bsp_err) break;
 		}
-	}	
+	}
 	
 	MEM_freeN(xcos);
 	MEM_freeN(ycos);

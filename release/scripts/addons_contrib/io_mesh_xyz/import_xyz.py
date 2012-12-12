@@ -17,23 +17,8 @@
 # ##### END GPL LICENSE BLOCK #####
 
 import bpy
-import io
-import math
-import os
-from math import pi, cos, sin
+from math import pi, sqrt
 from mathutils import Vector, Matrix
-
-# These are variables, which contain the name of the XYZ file and
-# the path of the XYZ file.
-# They are used almost everywhere, which is the reason why they
-# should stay global. First, they are empty and get 'filled' directly
-# after having chosen the XYZ file (see 'class LoadXYZ' further below).
-
-ATOM_XYZ_FILEPATH = ""
-
-# Some string stuff for the console.
-ATOM_XYZ_STRING = "Atomic Blender\n==================="
-
 
 # -----------------------------------------------------------------------------
 #                                                  Atom and element data
@@ -50,7 +35,7 @@ ATOM_XYZ_STRING = "Atomic Blender\n==================="
 # charge states for any atom are listed, if existing.
 # The list is fixed and cannot be changed ... (see below)
 
-ATOM_XYZ_ELEMENTS_DEFAULT = (
+ELEMENTS_DEFAULT = (
 ( 1,      "Hydrogen",        "H", (  1.0,   1.0,   1.0), 0.32, 0.32, 0.79 , -1 , 1.54 ),
 ( 2,        "Helium",       "He", ( 0.85,   1.0,   1.0), 0.93, 0.93, 0.49 ),
 ( 3,       "Lithium",       "Li", (  0.8,  0.50,   1.0), 1.23, 1.23, 2.05 ,  1 , 0.68 ),
@@ -162,23 +147,23 @@ ATOM_XYZ_ELEMENTS_DEFAULT = (
 # This list here contains all data of the elements and will be used during
 # runtime. It is a list of classes.
 # During executing Atomic Blender, the list will be initialized with the fixed
-# data from above via the class structure below (CLASS_atom_xyz_Elements). We
+# data from above via the class structure below (ElementProp). We
 # have then one fixed list (above), which will never be changed, and a list of
 # classes with same data. The latter can be modified via loading a separate
 # custom data file for instance.
-ATOM_XYZ_ELEMENTS = []
+ELEMENTS = []
 
 # This is the list, which contains all atoms of all frames! Each item is a 
 # list which contains the atoms of a single frame. It is a list of  
-# 'CLASS_atom_xyz_atom'.
+# 'AtomProp'.
 ALL_FRAMES = []
-NUMBER_FRAMES = 0
 
 # A list of ALL balls which are put into the scene
 STRUCTURE = []
 
+
 # This is the class, which stores the properties for one element.
-class CLASS_atom_xyz_Elements(object):
+class ElementProp(object):
     __slots__ = ('number', 'name', 'short_name', 'color', 'radii', 'radii_ionic')
     def __init__(self, number, name, short_name, color, radii, radii_ionic):
         self.number = number
@@ -189,7 +174,7 @@ class CLASS_atom_xyz_Elements(object):
         self.radii_ionic = radii_ionic
 
 # This is the class, which stores the properties of one atom.
-class CLASS_atom_xyz_atom(object):  
+class AtomProp(object):  
     __slots__ = ('element', 'name', 'location', 'radius', 'color', 'material')
     def __init__(self, element, name, location, radius, color, material):
         self.element = element
@@ -198,147 +183,16 @@ class CLASS_atom_xyz_atom(object):
         self.radius = radius
         self.color = color
         self.material = material
-        
+
 
 # -----------------------------------------------------------------------------
-#                                                          Some small routines
+#                                                           Some basic routines        
 
+def read_elements():
 
+    del ELEMENTS[:]
 
-# This function measures the distance between two objects (atoms),
-# which are active.
-def DEF_atom_xyz_distance():
-
-    if len(bpy.context.selected_bases) > 1:
-        object_1 = bpy.context.selected_objects[0]
-        object_2 = bpy.context.selected_objects[1]
-    else:
-        return "N.A."
-
-    dv = object_2.location - object_1.location
-    return str(dv.length)
-
-
-# Routine to modify the radii via the type:
-#
-#        pre-defined, atomic or van der Waals
-#
-# Explanations here are also valid for the next 3 DEFs.
-def DEF_atom_xyz_radius_type(rtype,how):
-
-    if how == "ALL_IN_LAYER":
-
-        # Note all layers that are active.
-        layers = []
-        for i in range(20):
-            if bpy.context.scene.layers[i] == True:
-                layers.append(i)
-        # Put all objects, which are in the layers, into a list.
-        change_objects = []
-        for obj in bpy.context.scene.objects:
-            for layer in layers:
-                if obj.layers[layer] == True:
-                    change_objects.append(obj)
-        # Consider all objects, which are in the list 'change_objects'.
-        for obj in change_objects:
-            if len(obj.children) != 0:
-                if obj.children[0].type == "SURFACE" or obj.children[0].type  == "MESH":
-                    for element in ATOM_XYZ_ELEMENTS:
-                        if element.name in obj.name:
-                            obj.children[0].scale = (element.radii[int(rtype)],) * 3
-            else:
-                if obj.type == "SURFACE" or obj.type == "MESH":
-                    for element in ATOM_XYZ_ELEMENTS:
-                        if element.name in obj.name:
-                            obj.scale = (element.radii[int(rtype)],) * 3
-
-    if how == "ALL_ACTIVE":
-        for obj in bpy.context.selected_objects:
-            if len(obj.children) != 0:
-                if obj.children[0].type == "SURFACE" or obj.children[0].type  == "MESH":
-                    for element in ATOM_XYZ_ELEMENTS:
-                        if element.name in obj.name:
-                            obj.children[0].scale = (element.radii[int(rtype)],) * 3
-            else:
-                if obj.type == "SURFACE" or obj.type == "MESH":
-                    for element in ATOM_XYZ_ELEMENTS:
-                        if element.name in obj.name:
-                            obj.scale = (element.radii[int(rtype)],) * 3
-
-
-# Routine to modify the radii in picometer of a specific type of atom
-def DEF_atom_xyz_radius_pm(atomname, radius_pm, how):
-
-    if how == "ALL_IN_LAYER":
-
-        layers = []
-        for i in range(20):
-            if bpy.context.scene.layers[i] == True:
-                layers.append(i)
-        change_objects = []
-        for obj in bpy.context.scene.objects:
-            for layer in layers:
-                if obj.layers[layer] == True:
-                    change_objects.append(obj)
-        for obj in change_objects:
-            if len(obj.children) != 0:
-                if obj.children[0].type == "SURFACE" or obj.children[0].type  == "MESH":
-                    if atomname in obj.name:
-                        obj.children[0].scale = (radius_pm/100,) * 3
-            else:
-                if obj.type == "SURFACE" or obj.type == "MESH":
-                    if atomname in obj.name:
-                        obj.scale = (radius_pm/100,) * 3
-
-    if how == "ALL_ACTIVE":
-        for obj in bpy.context.selected_objects:
-            if len(obj.children) != 0:
-                if obj.children[0].type == "SURFACE" or obj.children[0].type  == "MESH":
-                    if atomname in obj.name:
-                        obj.children[0].scale = (radius_pm/100,) * 3
-            else:
-                if obj.type == "SURFACE" or obj.type == "MESH":
-                    if atomname in obj.name:
-                        obj.scale = (radius_pm/100,) * 3
-
-
-# Routine to scale the radii of all atoms
-def DEF_atom_xyz_radius_all(scale, how):
-
-    if how == "ALL_IN_LAYER":
-
-        layers = []
-        for i in range(20):
-            if bpy.context.scene.layers[i] == True:
-                layers.append(i)
-        change_objects = []
-        for obj in bpy.context.scene.objects:
-            for layer in layers:
-                if obj.layers[layer] == True:
-                    change_objects.append(obj)
-        for obj in change_objects:
-            if len(obj.children) != 0:
-                if obj.children[0].type == "SURFACE" or obj.children[0].type  == "MESH":
-                    obj.children[0].scale *= scale
-            else:
-                if obj.type == "SURFACE" or obj.type == "MESH":
-                    obj.scale *= scale
-
-    if how == "ALL_ACTIVE":
-        for obj in bpy.context.selected_objects:
-            if len(obj.children) != 0:
-                if obj.children[0].type == "SURFACE" or obj.children[0].type  == "MESH":
-                    obj.children[0].scale *= scale
-            else:
-                if obj.type == "SURFACE" or obj.type == "MESH":
-                    obj.scale *= scale
-
-
-def DEF_atom_xyz_read_elements():
-
-    ATOM_XYZ_ELEMENTS[:] = []
-
-    for item in ATOM_XYZ_ELEMENTS_DEFAULT:
+    for item in ELEMENTS_DEFAULT:
 
         # All three radii into a list
         radii = [item[4],item[5],item[6]]
@@ -346,21 +200,26 @@ def DEF_atom_xyz_read_elements():
         # empty list.
         radii_ionic = []
 
-        li = CLASS_atom_xyz_Elements(item[0],item[1],item[2],item[3],
+        li = ElementProp(item[0],item[1],item[2],item[3],
                                      radii,radii_ionic)
-        ATOM_XYZ_ELEMENTS.append(li)
+        ELEMENTS.append(li)
 
 
-def DEF_atom_xyz_read_xyz_file(filepath,radiustype):
+# filepath_pdb: path to pdb file
+# radiustype  : '0' default
+#               '1' atomic radii
+#               '2' van der Waals
+def read_xyz_file(filepath_xyz,radiustype):
 
-    global NUMBER_FRAMES
+    number_frames = 0
+    total_number_atoms = 0
 
     # Open the file ...
-    ATOM_XYZ_FILEPATH_p = io.open(ATOM_XYZ_FILEPATH, "r")
+    filepath_xyz_p = open(filepath_xyz, "r")
 
     #Go through the whole file.
     FLAG = False
-    for line in ATOM_XYZ_FILEPATH_p:
+    for line in filepath_xyz_p:
 
         # ... the loop is broken here (EOF) ...
         if line == "":
@@ -370,12 +229,11 @@ def DEF_atom_xyz_read_xyz_file(filepath,radiustype):
 
         if len(split_list) == 1:
             number_atoms = int(split_list[0])
-            #print(number_atoms)
             FLAG = True
             
         if FLAG == True:
         
-            line = ATOM_XYZ_FILEPATH_p.readline()
+            line = filepath_xyz_p.readline()
             line = line.rstrip()
             
             all_atoms= []
@@ -390,19 +248,19 @@ def DEF_atom_xyz_read_xyz_file(filepath,radiustype):
                 # is used.
                 # By time, I will allow varying atom numbers ... but this takes 
                 # some time ...            
-                if NUMBER_FRAMES != 0:
+                if number_frames != 0:
                     if i >= total_number_atoms:
                         break
                         
        
-                line = ATOM_XYZ_FILEPATH_p.readline()
+                line = filepath_xyz_p.readline()
                 line = line.rstrip()
                 split_list = line.rsplit()
                 short_name = str(split_list[0])
                      
                 # Go through all elements and find the element of the current atom.
                 FLAG_FOUND = False
-                for element in ATOM_XYZ_ELEMENTS:
+                for element in ELEMENTS:
                     if str.upper(short_name) == str.upper(element.short_name):
                         # Give the atom its proper name, color and radius:
                         name = element.name
@@ -420,15 +278,15 @@ def DEF_atom_xyz_read_xyz_file(filepath,radiustype):
                     if "X" in short_name:
                         short_name = "VAC"
                         name = "Vacancy"
-                        radius = float(ATOM_XYZ_ELEMENTS[-3].radii[int(radiustype)])
-                        color = ATOM_XYZ_ELEMENTS[-3].color
+                        radius = float(ELEMENTS[-3].radii[int(radiustype)])
+                        color = ELEMENTS[-3].color
                     # ... take what is written in the xyz file. These are somewhat
                     # unknown atoms. This should never happen, the element list is
                     # almost complete. However, we do this due to security reasons.
                     else:
                         name = str.upper(short_name)
-                        radius = float(ATOM_XYZ_ELEMENTS[-2].radii[int(radiustype)])
-                        color = ATOM_XYZ_ELEMENTS[-2].color
+                        radius = float(ELEMENTS[-2].radii[int(radiustype)])
+                        color = ELEMENTS[-2].color
               
                 x = float(split_list[1])
                 y = float(split_list[2])
@@ -439,7 +297,7 @@ def DEF_atom_xyz_read_xyz_file(filepath,radiustype):
                 all_atoms.append([short_name, name, location, radius, color])
             
             # We note here all elements. This needs to be done only once. 
-            if NUMBER_FRAMES == 0:
+            if number_frames == 0:
             
                 # This is a guarantee that only the total number of atoms of the
                 # first frame is used. Condition is, so far, that the number of
@@ -473,103 +331,36 @@ def DEF_atom_xyz_read_xyz_file(filepath,radiustype):
                 atoms_one_type = []
                 for atom in all_atoms:
                     if atom[1] == element:
-                        atoms_one_type.append(CLASS_atom_xyz_atom(
-                                                           atom[0],
-                                                           atom[1],
-                                                           atom[2],
-                                                           atom[3],
-                                                           atom[4],[]))
+                        atoms_one_type.append(AtomProp(atom[0],
+                                                       atom[1],
+                                                       atom[2],
+                                                       atom[3],
+                                                       atom[4],[]))
                 structure.append(atoms_one_type)
 
             ALL_FRAMES.append(structure)
-            NUMBER_FRAMES += 1
+            number_frames += 1
             FLAG = False
 
-    ATOM_XYZ_FILEPATH_p.close()
+    filepath_xyz_p.close()
     
-    """
-    for frame in ALL_FRAMES:
-        for element in frame:
-            for atom in element:
-                print(atom.element + "	" + str(atom.location))
-        print()    
-    """
     return total_number_atoms
 
-
-# This reads a custom data file.
-def DEF_atom_xyz_custom_datafile(path_datafile):
-
-    if path_datafile == "":
-        return False
-
-    path_datafile = bpy.path.abspath(path_datafile)
-
-    if os.path.isfile(path_datafile) == False:
-        return False
-
-    # The whole list gets deleted! We build it new.
-    ATOM_XYZ_ELEMENTS[:] = []
-
-    # Read the data file, which contains all data
-    # (atom name, radii, colors, etc.)
-    data_file_p = io.open(path_datafile, "r")
-
-    for line in data_file_p:
-
-        if "Atom" in line:
-
-            line = data_file_p.readline()
-            # Number
-            line = data_file_p.readline()
-            number = line[19:-1]
-            # Name
-            line = data_file_p.readline()
-            name = line[19:-1]
-            # Short name
-            line = data_file_p.readline()
-            short_name = line[19:-1]
-            # Color
-            line = data_file_p.readline()
-            color_value = line[19:-1].split(',')
-            color = [float(color_value[0]),
-                     float(color_value[1]),
-                     float(color_value[2])]
-            # Used radius
-            line = data_file_p.readline()
-            radius_used = float(line[19:-1])
-            # Atomic radius
-            line = data_file_p.readline()
-            radius_atomic = float(line[19:-1])
-            # Van der Waals radius
-            line = data_file_p.readline()
-            radius_vdW = float(line[19:-1])
-            radii = [radius_used,radius_atomic,radius_vdW]
-            radii_ionic = []
-
-            element = CLASS_atom_xyz_Elements(number,name,short_name,color,
-                                              radii, radii_ionic)
-
-            ATOM_XYZ_ELEMENTS.append(element)
-
-    data_file_p.close()
-
-    return True
 
 # -----------------------------------------------------------------------------
 #                                                            The main routine
 
-def DEF_atom_xyz_main(use_mesh,
-                      Ball_azimuth,
-                      Ball_zenith,
-                      Ball_radius_factor,
-                      radiustype,
-                      Ball_distance_factor,
-                      put_to_center, 
-                      put_to_center_all,
-                      use_camera,
-                      use_lamp,
-                      path_datafile):
+def import_xyz(Ball_type,
+               Ball_azimuth,
+               Ball_zenith,
+               Ball_radius_factor,
+               radiustype,
+               Ball_distance_factor,
+               put_to_center, 
+               put_to_center_all,
+               use_camera,
+               use_lamp,
+               filepath_xyz):
 
     # List of materials
     atom_material_list = []
@@ -577,12 +368,12 @@ def DEF_atom_xyz_main(use_mesh,
     # ------------------------------------------------------------------------
     # INITIALIZE THE ELEMENT LIST
 
-    DEF_atom_xyz_read_elements()
+    read_elements()
 
     # ------------------------------------------------------------------------
     # READING DATA OF ATOMS
 
-    Number_of_total_atoms = DEF_atom_xyz_read_xyz_file(ATOM_XYZ_FILEPATH, 
+    Number_of_total_atoms = read_xyz_file(filepath_xyz, 
                                                        radiustype)
                                                
     # We show the atoms of the first frame.
@@ -721,25 +512,23 @@ def DEF_atom_xyz_main(use_mesh,
 
         # Assume that the object is put into the global origin. Then, the
         # camera is moved in x and z direction, not in y. The object has its
-        # size at distance math.sqrt(object_size) from the origin. So, move the
+        # size at distance sqrt(object_size) from the origin. So, move the
         # camera by this distance times a factor of camera_factor in x and z.
         # Then add x, y and z of the origin of the object.
-        object_camera_vec = Vector((math.sqrt(object_size) * camera_factor,
+        object_camera_vec = Vector((sqrt(object_size) * camera_factor,
                                     0.0,
-                                    math.sqrt(object_size) * camera_factor))
+                                    sqrt(object_size) * camera_factor))
         camera_xyz_vec = object_center_vec + object_camera_vec
 
         # Create the camera
-        current_layers=bpy.context.scene.layers
-        bpy.ops.object.camera_add(view_align=False, enter_editmode=False,
-                               location=camera_xyz_vec,
-                               rotation=(0.0, 0.0, 0.0), layers=current_layers)
-        # Some properties of the camera are changed.
-        camera = bpy.context.scene.objects.active
-        camera.name = "A_camera"
-        camera.data.name = "A_camera"
-        camera.data.lens = 45
-        camera.data.clip_end = 500.0
+        current_layers=bpy.context.scene.layers 
+        camera_data = bpy.data.cameras.new("A_camera")
+        camera_data.lens = 45
+        camera_data.clip_end = 500.0
+        camera = bpy.data.objects.new("A_camera", camera_data)
+        camera.location = camera_xyz_vec
+        camera.layers = current_layers
+        bpy.context.scene.objects.link(camera) 
 
         # Here the camera is rotated such it looks towards the center of
         # the object. The [0.0, 0.0, 1.0] vector along the z axis
@@ -750,12 +539,13 @@ def DEF_atom_xyz_main(use_mesh,
         axis_vec               = z_axis_vec.cross(object_camera_vec)
         # Rotate 'axis_vec' by 'angle' and convert this to euler parameters.
         # 4 is the size of the matrix.
-        euler                  = Matrix.Rotation(angle, 4, axis_vec).to_euler()
-        camera.rotation_euler  = euler
+        camera.rotation_euler  = Matrix.Rotation(angle, 4, axis_vec).to_euler()
 
         # Rotate the camera around its axis by 90° such that we have a nice
         # camera position and view onto the object.
-        bpy.ops.transform.rotate(value=(90.0*2*math.pi/360.0,),
+        bpy.ops.object.select_all(action='DESELECT')        
+        camera.select = True         
+        bpy.ops.transform.rotate(value=(90.0*2*pi/360.0),
                                  axis=object_camera_vec,
                                  constraint_axis=(False, False, False),
                                  constraint_orientation='GLOBAL',
@@ -766,18 +556,12 @@ def DEF_atom_xyz_main(use_mesh,
                                  snap_align=False, snap_normal=(0, 0, 0),
                                  release_confirm=False)
 
-        # This does not work, I don't know why.
-        #
-        #for area in bpy.context.screen.areas:
-        #    if area.type == 'VIEW_3D':
-        #        area.spaces[0].region_3d.view_perspective = 'CAMERA'
-
     # Here a lamp is put into the scene, if chosen.
     if use_lamp == True:
 
         # This is the distance from the object measured in terms of %
         # of the camera distance. It is set onto 50% (1/2) distance.
-        lamp_dl = math.sqrt(object_size) * 15 * 0.5
+        lamp_dl = sqrt(object_size) * 15 * 0.5
         # This is a factor to which extend the lamp shall go to the right
         # (from the camera  point of view).
         lamp_dy_right = lamp_dl * (3.0/4.0)
@@ -788,33 +572,18 @@ def DEF_atom_xyz_main(use_mesh,
 
         # Create the lamp
         current_layers=bpy.context.scene.layers
-        bpy.ops.object.lamp_add (type = 'POINT', view_align=False,
-                                 location=lamp_xyz_vec,
-                                 rotation=(0.0, 0.0, 0.0),
-                                 layers=current_layers)
-        # Some properties of the lamp are changed.
-        lamp = bpy.context.scene.objects.active
-        lamp.data.name = "A_lamp"
-        lamp.name = "A_lamp"
-        lamp.data.distance = 500.0
-        lamp.data.energy = 3.0
-        lamp.data.shadow_method = 'RAY_SHADOW'
+        lamp_data = bpy.data.lamps.new(name="A_lamp", type="POINT")
+        lamp_data.distance = 500.0
+        lamp_data.energy = 3.0
+        lamp_data.shadow_method = 'RAY_SHADOW'        
+        lamp = bpy.data.objects.new("A_lamp", lamp_data)
+        lamp.location = lamp_xyz_vec
+        lamp.layers = current_layers
+        bpy.context.scene.objects.link(lamp)         
 
         bpy.context.scene.world.light_settings.use_ambient_occlusion = True
         bpy.context.scene.world.light_settings.ao_factor = 0.2
-
-    # ------------------------------------------------------------------------
-    # SOME OUTPUT ON THE CONSOLE
-
-    print()
-    print()
-    print()
-    print(ATOM_XYZ_STRING)
-    print()
-    print("Total number of atoms       : " + str(Number_of_total_atoms))
-    print("Center of object (Angstrom) : ", object_center_vec)
-    print("Size of object (Angstrom)   : ", object_size)
-    print()
+        
 
     # ------------------------------------------------------------------------
     # DRAWING THE ATOMS
@@ -851,18 +620,23 @@ def DEF_atom_xyz_main(use_mesh,
                             layers=current_layers)
         else:
             # NURBS balls
-            if use_mesh == False:
+            if Ball_type == "0":
                 bpy.ops.surface.primitive_nurbs_surface_sphere_add(
                             view_align=False, enter_editmode=False,
                             location=(0,0,0), rotation=(0.0, 0.0, 0.0),
                             layers=current_layers)
             # UV balls
-            else:
+            elif Ball_type == "1":
                 bpy.ops.mesh.primitive_uv_sphere_add(
                             segments=Ball_azimuth, ring_count=Ball_zenith,
                             size=1, view_align=False, enter_editmode=False,
                             location=(0,0,0), rotation=(0, 0, 0),
                             layers=current_layers)
+            # Meta balls
+            elif Ball_type == "2":
+                bpy.ops.object.metaball_add(type='BALL', view_align=False, 
+                            enter_editmode=False, location=(0, 0, 0), 
+                            rotation=(0, 0, 0), layers=current_layers)
 
         ball = bpy.context.scene.objects.active
         ball.scale  = (atom.radius*Ball_radius_factor,) * 3
@@ -878,8 +652,6 @@ def DEF_atom_xyz_main(use_mesh,
         new_atom_mesh.location = object_center_vec
         STRUCTURE.append(new_atom_mesh)
 
-    print()
-
     # ------------------------------------------------------------------------
     # SELECT ALL LOADED OBJECTS
     
@@ -890,16 +662,12 @@ def DEF_atom_xyz_main(use_mesh,
     # activate the last selected object (perhaps another should be active?)
     if obj:
         bpy.context.scene.objects.active = obj
-    print("\n\nAll atoms (%d) have been drawn - finished.\n\n"
-           % (Number_of_total_atoms))
 
-    return Number_of_total_atoms
-    
 
-def DEF_atom_xyz_build_frames(frame_delta, frame_skip):
+
+def build_frames(frame_delta, frame_skip):
 
     scn = bpy.context.scene
-    current_layers = scn.layers
 
     # Introduce the basis for all elements that appear in the structure.     
     for element in STRUCTURE:
@@ -907,7 +675,7 @@ def DEF_atom_xyz_build_frames(frame_delta, frame_skip):
         bpy.ops.object.select_all(action='DESELECT')   
         bpy.context.scene.objects.active = element
         element.select = True
-        bpy.ops.object.shape_key_add(None)
+        bpy.ops.object.shape_key_add(True)
         
     frame_skip += 1    
 
@@ -946,6 +714,8 @@ def DEF_atom_xyz_build_frames(frame_delta, frame_skip):
         element.data.shape_keys.key_blocks[2].keyframe_insert("value")         
 
         scn.frame_current += frame_delta
+
+        number = 0
     
         for number in range(num_frames)[2:]:#-1]:
     

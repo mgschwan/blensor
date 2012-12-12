@@ -21,6 +21,7 @@
 
 #include "kernel_types.h"
 
+#include "util_boundbox.h"
 #include "util_transform.h"
 #include "util_types.h"
 
@@ -65,10 +66,10 @@ public:
 
 	/* screen */
 	int width, height;
-	float left, right, bottom, top;
+	BoundBox2D viewplane;
 
 	/* border */
-	float border_left, border_right, border_bottom, border_top;
+	BoundBox2D border;
 
 	/* transformation */
 	Transform matrix;
@@ -81,9 +82,15 @@ public:
 	Transform screentoworld;
 	Transform rastertoworld;
 	Transform ndctoworld;
-	Transform rastertocamera;
 	Transform cameratoworld;
+
 	Transform worldtoraster;
+	Transform worldtoscreen;
+	Transform worldtondc;
+	Transform worldtocamera;
+
+	Transform rastertocamera;
+	Transform cameratoraster;;
 
 	float3 dx;
 	float3 dy;
@@ -103,6 +110,7 @@ public:
 	void device_free(Device *device, DeviceScene *dscene);
 
 	bool modified(const Camera& cam);
+	bool motion_modified(const Camera& cam);
 	void tag_update();
 };
 

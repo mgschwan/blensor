@@ -161,11 +161,11 @@ static int remove_active_keyingset_exec(bContext *C, wmOperator *op)
 	 *	- return error if it doesn't exist
 	 */
 	if (scene->active_keyingset == 0) {
-		BKE_report(op->reports, RPT_ERROR, "No active Keying Set to remove");
+		BKE_report(op->reports, RPT_ERROR, "No active keying set to remove");
 		return OPERATOR_CANCELLED;
 	}
 	else if (scene->active_keyingset < 0) {
-		BKE_report(op->reports, RPT_ERROR, "Cannot remove built in Keying Set");
+		BKE_report(op->reports, RPT_ERROR, "Cannot remove built in keying set");
 		return OPERATOR_CANCELLED;
 	}
 	else
@@ -209,7 +209,7 @@ static int add_empty_ks_path_exec(bContext *C, wmOperator *op)
 	 *	- return error if it doesn't exist
 	 */
 	if (scene->active_keyingset == 0) {
-		BKE_report(op->reports, RPT_ERROR, "No active Keying Set to add empty path to");
+		BKE_report(op->reports, RPT_ERROR, "No active keying set to add empty path to");
 		return OPERATOR_CANCELLED;
 	}
 	else
@@ -258,12 +258,12 @@ static int remove_active_ks_path_exec(bContext *C, wmOperator *op)
 			ks->active_path--;
 		}
 		else {
-			BKE_report(op->reports, RPT_ERROR, "No active Keying Set Path to remove");
+			BKE_report(op->reports, RPT_ERROR, "No active keying set path to remove");
 			return OPERATOR_CANCELLED;
 		}
 	}
 	else {
-		BKE_report(op->reports, RPT_ERROR, "No active Keying Set to remove a path from");
+		BKE_report(op->reports, RPT_ERROR, "No active keying set to remove a path from");
 		return OPERATOR_CANCELLED;
 	}
 	
@@ -322,11 +322,12 @@ static int add_keyingset_button_exec(bContext *C, wmOperator *op)
 		scene->active_keyingset = BLI_countlist(&scene->keyingsets);
 	}
 	else if (scene->active_keyingset < 0) {
-		BKE_report(op->reports, RPT_ERROR, "Cannot add property to built in Keying Set");
+		BKE_report(op->reports, RPT_ERROR, "Cannot add property to built in keying set");
 		return OPERATOR_CANCELLED;
 	}
-	else
+	else {
 		ks = BLI_findlink(&scene->keyingsets, scene->active_keyingset - 1);
+	}
 	
 	/* try to add to keyingset using property retrieved from UI */
 	uiContextActiveProperty(C, &ptr, &prop, &index);
@@ -360,9 +361,10 @@ static int add_keyingset_button_exec(bContext *C, wmOperator *op)
 	if (success) {
 		/* send updates */
 		DAG_ids_flush_update(bmain, 0);
-		
-		/* for now, only send ND_KEYS for KeyingSets */
 		WM_event_add_notifier(C, NC_SCENE | ND_KEYINGSET, NULL);
+		
+		/* show notification/report header, so that users notice that something changed */
+		BKE_reportf(op->reports, RPT_INFO, "Property added to Keying Set: '%s'", ks->name);
 	}
 	
 	return (success) ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
@@ -377,7 +379,7 @@ void ANIM_OT_keyingset_button_add(wmOperatorType *ot)
 	
 	/* callbacks */
 	ot->exec = add_keyingset_button_exec; 
-	//op->poll= ???
+	//op->poll = ???
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -404,15 +406,16 @@ static int remove_keyingset_button_exec(bContext *C, wmOperator *op)
 	 *	- return error if it doesn't exist
 	 */
 	if (scene->active_keyingset == 0) {
-		BKE_report(op->reports, RPT_ERROR, "No active Keying Set to remove property from");
+		BKE_report(op->reports, RPT_ERROR, "No active keying set to remove property from");
 		return OPERATOR_CANCELLED;
 	}
 	else if (scene->active_keyingset < 0) {
-		BKE_report(op->reports, RPT_ERROR, "Cannot remove property from built in Keying Set");
+		BKE_report(op->reports, RPT_ERROR, "Cannot remove property from built in keying set");
 		return OPERATOR_CANCELLED;
 	}
-	else
+	else {
 		ks = BLI_findlink(&scene->keyingsets, scene->active_keyingset - 1);
+	}
 	
 	/* try to add to keyingset using property retrieved from UI */
 	uiContextActiveProperty(C, &ptr, &prop, &index);
@@ -425,7 +428,7 @@ static int remove_keyingset_button_exec(bContext *C, wmOperator *op)
 			
 			/* try to find a path matching this description */
 			ksp = BKE_keyingset_find_path(ks, ptr.id.data, ks->name, path, index, KSP_GROUP_KSNAME);
-
+			
 			if (ksp) {
 				BKE_keyingset_free_path(ks, ksp);
 				success = 1;
@@ -440,9 +443,10 @@ static int remove_keyingset_button_exec(bContext *C, wmOperator *op)
 	if (success) {
 		/* send updates */
 		DAG_ids_flush_update(bmain, 0);
-		
-		/* for now, only send ND_KEYS for KeyingSets */
 		WM_event_add_notifier(C, NC_SCENE | ND_KEYINGSET, NULL);
+		
+		/* show warning */
+		BKE_report(op->reports, RPT_INFO, "Property removed from Keying Set");
 	}
 	
 	return (success) ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
@@ -457,7 +461,7 @@ void ANIM_OT_keyingset_button_remove(wmOperatorType *ot)
 	
 	/* callbacks */
 	ot->exec = remove_keyingset_button_exec; 
-	//op->poll= ???
+	//op->poll = ???
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -891,11 +895,13 @@ short ANIM_validate_keyingset(bContext *C, ListBase *dsources, KeyingSet *ks)
 				ksi->iter(ksi, C, ks);
 				
 			/* if we don't have any paths now, then this still qualifies as invalid context */
+			// FIXME: we need some error conditions (to be retrieved from the iterator why this failed!)
 			if (ks->paths.first == NULL)
 				return MODIFYKEY_INVALID_CONTEXT;
 		}
 		else {
 			/* poll callback tells us that KeyingSet is useless in current context */
+			// FIXME: the poll callback needs to give us more info why
 			return MODIFYKEY_INVALID_CONTEXT;
 		}
 	}
@@ -947,7 +953,7 @@ int ANIM_apply_keyingset(bContext *C, ListBase *dsources, bAction *act, KeyingSe
 		/* skip path if no ID pointer is specified */
 		if (ksp->id == NULL) {
 			BKE_reportf(reports, RPT_WARNING,
-			            "Skipping path in Keying Set, as it has no ID (KS = '%s', Path = '%s'[%d])",
+			            "Skipping path in keying set, as it has no ID (KS = '%s', path = '%s[%d]')",
 			            ks->name, ksp->rna_path, ksp->array_index);
 			continue;
 		}

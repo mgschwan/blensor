@@ -40,6 +40,7 @@ struct ARegionType;
 struct BoundBox;
 struct DerivedMesh;
 struct Object;
+struct SmokeDomainSettings;
 struct ViewContext;
 struct bAnimVizSettings;
 struct bContext;
@@ -49,8 +50,6 @@ struct bScreen;
 struct wmNDOFMotionData;
 struct wmOperatorType;
 struct wmWindowManager;
-
-#define BL_NEAR_CLIP 0.001
 
 /* drawing flags: */
 enum {
@@ -97,6 +96,7 @@ void VIEW3D_OT_cursor3d(struct wmOperatorType *ot);
 void VIEW3D_OT_manipulator(struct wmOperatorType *ot);
 void VIEW3D_OT_enable_manipulator(struct wmOperatorType *ot);
 void VIEW3D_OT_render_border(struct wmOperatorType *ot);
+void VIEW3D_OT_clear_render_border(struct wmOperatorType *ot);
 void VIEW3D_OT_zoom_border(struct wmOperatorType *ot);
 
 void view3d_boxview_copy(ScrArea *sa, ARegion *ar);
@@ -125,7 +125,7 @@ void drawaxes(float size, char drawtype);
 
 void view3d_cached_text_draw_begin(void);
 void view3d_cached_text_draw_add(const float co[3], const char *str, short xoffs, short flag, const unsigned char col[4]);
-void view3d_cached_text_draw_end(View3D * v3d, ARegion * ar, int depth_write, float mat[][4]);
+void view3d_cached_text_draw_end(View3D * v3d, ARegion * ar, int depth_write, float mat[4][4]);
 
 enum {
 	V3D_CACHE_TEXT_ZBUF         = (1 << 0),
@@ -172,12 +172,12 @@ void VIEW3D_OT_localview(struct wmOperatorType *ot);
 void VIEW3D_OT_game_start(struct wmOperatorType *ot);
 
 
-int ED_view3d_boundbox_clip(RegionView3D * rv3d, float obmat[][4], struct BoundBox *bb);
+int ED_view3d_boundbox_clip(RegionView3D * rv3d, float obmat[4][4], struct BoundBox *bb);
 
 void view3d_smooth_view(struct bContext *C, struct View3D *v3d, struct ARegion *ar, struct Object *, struct Object *,
                         float *ofs, float *quat, float *dist, float *lens);
 
-void setwinmatrixview3d(ARegion *ar, View3D *v3d, rctf *rect);  /* rect: for picking */
+void setwinmatrixview3d(ARegion *ar, View3D *v3d, rctf *rect);
 void setviewmatrixview3d(Scene *scene, View3D *v3d, RegionView3D *rv3d);
 
 void fly_modal_keymap(struct wmKeyConfig *keyconf);
@@ -212,7 +212,20 @@ ARegion *view3d_has_tools_region(ScrArea *sa);
 extern const char *view3d_context_dir[]; /* doc access */
 
 /* draw_volume.c */
-void draw_volume(struct ARegion *ar, struct GPUTexture *tex, float min[3], float max[3], int res[3], float dx, struct GPUTexture *tex_shadow);
+void draw_smoke_volume(struct SmokeDomainSettings *sds, struct Object *ob,
+                       struct GPUTexture *tex, float min[3], float max[3],
+                       int res[3], float dx, float base_scale, float viewnormal[3],
+                       struct GPUTexture *tex_shadow, struct GPUTexture *tex_flame);
+
+//#define SMOKE_DEBUG_VELOCITY
+//#define SMOKE_DEBUG_HEAT
+
+#ifdef SMOKE_DEBUG_VELOCITY
+void draw_smoke_velocity(struct SmokeDomainSettings *domain, struct Object *ob);
+#endif
+#ifdef SMOKE_DEBUG_HEAT
+void draw_smoke_heat(struct SmokeDomainSettings *domain, struct Object *ob);
+#endif
 
 /* workaround for trivial but noticeable camera bug caused by imprecision
  * between view border calculation in 2D/3D space, workaround for bug [#28037].

@@ -20,11 +20,14 @@
 #define __OSL_H__
 
 #include "util_set.h"
+#include "util_string.h"
 
 #include "shader.h"
 
 #ifdef WITH_OSL
+#include <OSL/oslcomp.h>
 #include <OSL/oslexec.h>
+#include <OSL/oslquery.h>
 #endif
 
 CCL_NAMESPACE_BEGIN
@@ -42,6 +45,18 @@ class ShaderOutput;
 
 #ifdef WITH_OSL
 
+/* OSL Shader Info
+ * to auto detect closures in the shader for MIS and transparent shadows */
+
+struct OSLShaderInfo {
+	OSLShaderInfo()
+	: has_surface_emission(false), has_surface_transparent(false)
+	{}
+
+	bool has_surface_emission;
+	bool has_surface_transparent;
+};
+
 /* Shader Manage */
 
 class OSLShaderManager : public ShaderManager {
@@ -49,14 +64,30 @@ public:
 	OSLShaderManager();
 	~OSLShaderManager();
 
+	bool use_osl() { return true; }
+
 	void device_update(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
 	void device_free(Device *device, DeviceScene *dscene);
 
-private:
+	/* osl compile and query */
+	static bool osl_compile(const string& inputfile, const string& outputfile);
+	static bool osl_query(OSL::OSLQuery& query, const string& filepath);
+
+	/* shader file loading, all functions return pointer to hash string if found */
+	const char *shader_test_loaded(const string& hash);
+	const char *shader_load_bytecode(const string& hash, const string& bytecode);
+	const char *shader_load_filepath(string filepath);
+	OSLShaderInfo *shader_loaded_info(const string& hash);
+
+protected:
+	void texture_system_init();
+	void shading_system_init();
+
 	OSL::ShadingSystem *ss;
 	OSL::TextureSystem *ts;
 	OSLRenderServices *services;
 	OSL::ErrorHandler errhandler;
+	map<string, OSLShaderInfo> loaded_shaders;
 };
 
 #endif
@@ -65,10 +96,10 @@ private:
 
 class OSLCompiler {
 public:
-	OSLCompiler(void *shadingsys);
+	OSLCompiler(void *manager, void *shadingsys, ImageManager *image_manager);
 	void compile(OSLGlobals *og, Shader *shader);
 
-	void add(ShaderNode *node, const char *name);
+	void add(ShaderNode *node, const char *name, bool isfilepath = false);
 
 	void parameter(const char *name, float f);
 	void parameter_color(const char *name, float3 f);
@@ -92,6 +123,7 @@ public:
 	ShaderType output_type() { return current_type; }
 
 	bool background;
+	ImageManager *image_manager;
 
 private:
 	string id(ShaderNode *node);
@@ -104,6 +136,7 @@ private:
 	void generate_nodes(const set<ShaderNode*>& nodes);
 
 	void *shadingsys;
+	void *manager;
 	ShaderType current_type;
 	Shader *current_shader;
 };

@@ -43,7 +43,6 @@ if "bpy" in locals():
     imp.reload(mesh_polyredux)
     imp.reload(mesh_vertex_chamfer)
     imp.reload(mesh_mextrude_plus)
-    imp.reload(mesh_bevel_round)
 
 else:
     from . import mesh_bump
@@ -54,10 +53,8 @@ else:
     from . import mesh_polyredux
     from . import mesh_vertex_chamfer
     from . import mesh_mextrude_plus
-    from . import mesh_bevel_round
 
 import bpy
-
 
 class VIEW3D_MT_edit_mesh_extras(bpy.types.Menu):
     # Define the "Extras" menu
@@ -67,61 +64,60 @@ class VIEW3D_MT_edit_mesh_extras(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         layout.operator_context = 'INVOKE_REGION_WIN'
-        layout.operator("mesh.bump",
-            text="Inset Extrude Bump")
-        layout.operator("fif.op0_id",
+        layout.operator("faceinfillet.op0_id",
             text="Face Inset Fillet")
-        layout.operator("mesh.mbevel",
-            text="Edge Bevel")
-        layout.operator("f.op0_id",
+        layout.operator("fillet.op0_id",
             text="Edge Fillet Plus")
-        layout.operator("normal.smooth",
-            text="Normal Smooth")
         layout.operator("object.mextrude",
             text="Multi Extrude")
-        layout.operator("mesh.polyredux",
-            text="Poly Redux")
+        layout.operator("mesh.bump",
+            text="Inset Extrude Bump")
+        layout.operator("mesh.mbevel",
+            text="Bevel Selected")
         layout.operator("mesh.vertex_chamfer",
             text="Vertex Chamfer")
-        layout.operator("mesh.bevel_round",
-            text="Bevel Round")
+        layout.operator("mesh.polyredux",
+            text="Poly Redux")
+        layout.operator("normal.smooth",
+            text="Normal Smooth")
 
 
 class ExtrasPanel(bpy.types.Panel):
     bl_label = 'Mesh Extra Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_context = 'mesh_edit'
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         layout = self.layout
         row = layout.split(0.80)
-        row.operator('mesh.bump', text = 'Inset Bump')
-        row.operator('help.bump', text = '?')
+        row.operator('faceinfillet.op0_id', text = 'Face Inset Fillet', icon = 'PLUGIN')
+        row.operator('help.face_inset', text = '', icon = 'INFO')
         row = layout.split(0.80)
-        row.operator('fif.op0_id', text = 'Face Inset Fillet')
-        row.operator('help.face_inset', text = '?')
+        row.operator('fillet.op0_id', text = 'Edge Fillet plus', icon = 'PLUGIN')
+        row.operator('help.edge_fillet', text = '', icon = 'INFO')
         row = layout.split(0.80)
-        row.operator('mesh.bevel_round', text = 'Bevel Round')
-        row.operator('help.bevelround', text = '?')
+        row.operator('object.mextrude', text = 'Multi Face Extrude', icon = 'PLUGIN')
+        row.operator('help.mextrude', text = '', icon = 'INFO')
         row = layout.split(0.80)
-        row.operator('mesh.mbevel', text = 'Edge Bevel')
-        row.operator('help.edge_bevel', text = '?')
+        row.operator('mesh.bump', text = 'Inset Bump', icon = 'PLUGIN')
+        row.operator('help.bump', text = '', icon = 'INFO')
         row = layout.split(0.80)
-        row.operator('f.op0_id', text = 'Edge Fillet plus')
-        row.operator('f.op1_id', text = '?')
+        row.operator('mesh.mbevel', text = 'Bevel Selected', icon = 'PLUGIN')
+        row.operator('help.edge_bevel', text = '', icon = 'INFO')
         row = layout.split(0.80)
-        row.operator('normal.smooth', text = 'Normal Smooth')
-        row.operator('help.normal_smooth', text = '?')
+        row.operator('mesh.vertex_chamfer', text = 'Vertex Chamfer' , icon = 'PLUGIN')
+        row.operator('help.vertexchamfer', text = '', icon = 'INFO')
         row = layout.split(0.80)
-        row.operator('mesh.polyredux', text = 'Poly Redux')
-        row.operator('help.polyredux', text = '?')
+        row.operator('mesh.polyredux', text = 'Poly Redux', icon = 'PLUGIN')
+        row.operator('help.polyredux', text = '', icon = 'INFO')
         row = layout.split(0.80)
-        row.operator('mesh.vertex_chamfer', text = 'Vertex Chamfer')
-        row.operator('help.vertexchamfer', text = '?')
-        row = layout.split(0.80)
-        row.operator('object.mextrude', text = 'Multi Face Extrude')
-        row.operator('help.mextrude', text = '?')
+        row.operator('normal.smooth', text = 'Normal Smooth', icon = 'PLUGIN')
+        row.operator('help.normal_smooth', text = '', icon = 'INFO')
+        row = layout.split(0.50)
+        row.operator('mesh.flip_normals', text = 'Normals Flip')
+        row.operator('mesh.remove_doubles', text = 'Remove Doubles')
 
 
 # Multi Extrude Panel
@@ -134,16 +130,16 @@ class ExtrudePanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        prop = layout.operator("wm.context_set_value", text="Face Select",
-            icon='FACESEL')
-        prop.value = "(False, False, True)"
-        prop.data_path = "tool_settings.mesh_select_mode"
-        layout.operator('object.mextrude')
-        layout.operator('mesh.bump')
-        layout.operator('object.mesh2bones')
+        row = layout.split(0.80)
+        row.operator('object.mextrude', text = 'Multi Face Extrude', icon = 'PLUGIN')
+        row.operator('help.mextrude', text = '', icon = 'INFO')
+        row = layout.split(0.80)
+        row.operator('object.mesh2bones', text = 'Add Armature', icon = 'PLUGIN')
+        row.operator('help.addarm', text = '', icon = 'INFO')
+
 # Define "Extras" menu
 def menu_func(self, context):
-    self.layout.menu("VIEW3D_MT_edit_mesh_extras", icon="PLUGIN")
+    self.layout.menu('VIEW3D_MT_edit_mesh_extras', icon='PLUGIN')
 
 
 def register():

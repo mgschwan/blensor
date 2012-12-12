@@ -38,6 +38,9 @@ except:
     from . import (settings, utils)
 
 
+LANGUAGES_CATEGORIES = settings.LANGUAGES_CATEGORIES
+LANGUAGES = settings.LANGUAGES
+
 COMMENT_PREFIX = settings.COMMENT_PREFIX
 COMMENT_PREFIX_SOURCE = settings.COMMENT_PREFIX_SOURCE
 CONTEXT_PREFIX = settings.CONTEXT_PREFIX
@@ -49,6 +52,7 @@ SRC_POTFILES = settings.FILE_NAME_SRC_POTFILES
 
 CONTEXT_DEFAULT = settings.CONTEXT_DEFAULT
 PYGETTEXT_ALLOWED_EXTS = settings.PYGETTEXT_ALLOWED_EXTS
+PYGETTEXT_MAX_MULTI_CTXT = settings.PYGETTEXT_MAX_MULTI_CTXT
 
 SVN_EXECUTABLE = settings.SVN_EXECUTABLE
 
@@ -76,6 +80,31 @@ clean_str = lambda s: "".join(m.group("clean") for m in _clean_str(s))
 
 
 def check_file(path, rel_path, messages):
+    def process_entry(ctxt, msg):
+        # Context.
+        if ctxt:
+            if ctxt in CONTEXTS:
+                ctxt = CONTEXTS[ctxt]
+            elif '"' in ctxt or "'" in ctxt:
+                ctxt = clean_str(ctxt)
+            else:
+                print("WARNING: raw context “{}” couldn’t be resolved!"
+                      "".format(ctxt))
+                ctxt = CONTEXT_DEFAULT
+        else:
+            ctxt = CONTEXT_DEFAULT
+        # Message.
+        if msg:
+            if '"' in msg or "'" in msg:
+                msg = clean_str(msg)
+            else:
+                print("WARNING: raw message “{}” couldn’t be resolved!"
+                      "".format(msg))
+                msg = ""
+        else:
+            msg = ""
+        return (ctxt, msg)
+
     with open(path, encoding="utf-8") as f:
         f = f.read()
         for srch in pygettexts:
@@ -83,62 +112,53 @@ def check_file(path, rel_path, messages):
             line = pos = 0
             while m:
                 d = m.groupdict()
-                # Context.
-                ctxt = d.get("ctxt_raw")
-                if ctxt:
-                    if ctxt in CONTEXTS:
-                        ctxt = CONTEXTS[ctxt]
-                    elif '"' in ctxt or "'" in ctxt:
-                        ctxt = clean_str(ctxt)
-                    else:
-                        print("WARNING: raw context “{}” couldn’t be resolved!"
-                              "".format(ctxt))
-                        ctxt = CONTEXT_DEFAULT
-                else:
-                    ctxt = CONTEXT_DEFAULT
-                # Message.
-                msg = d.get("msg_raw")
-                if msg:
-                    if '"' in msg or "'" in msg:
-                        msg = clean_str(msg)
-                    else:
-                        print("WARNING: raw message “{}” couldn’t be resolved!"
-                              "".format(msg))
-                        msg = ""
-                else:
-                    msg = ""
                 # Line.
                 line += f[pos:m.start()].count('\n')
-                # And we are done for this item!
-                messages.setdefault((ctxt, msg), []).append(":".join((rel_path, str(line))))
+                msg = d.get("msg_raw")
+                # First, try the "multi-contexts" stuff!
+                ctxts = tuple(d.get("ctxt_raw{}".format(i)) for i in range(PYGETTEXT_MAX_MULTI_CTXT))
+                if ctxts[0]:
+                    for ctxt in ctxts:
+                        if not ctxt:
+                            break
+                        ctxt, _msg = process_entry(ctxt, msg)
+                        # And we are done for this item!
+                        messages.setdefault((ctxt, _msg), []).append(":".join((rel_path, str(line))))
+                else:
+                    ctxt = d.get("ctxt_raw")
+                    ctxt, msg = process_entry(ctxt, msg)
+                    # And we are done for this item!
+                    messages.setdefault((ctxt, msg), []).append(":".join((rel_path, str(line))))
                 pos = m.end()
                 line += f[m.start():pos].count('\n')
                 m = srch(f, pos)
 
 
 def py_xgettext(messages):
+    forbidden = set()
+    forced = set()
     with open(SRC_POTFILES) as src:
-        forbidden = set()
-        forced = set()
         for l in src:
             if l[0] == '-':
                 forbidden.add(l[1:].rstrip('\n'))
             elif l[0] != '#':
                 forced.add(l.rstrip('\n'))
-        for root, dirs, files in os.walk(POTFILES_DIR):
-            if "/.svn" in root:
+    for root, dirs, files in os.walk(POTFILES_DIR):
+        if "/.svn" in root:
+            continue
+        for fname in files:
+            if os.path.splitext(fname)[1] not in PYGETTEXT_ALLOWED_EXTS:
                 continue
-            for fname in files:
-                if os.path.splitext(fname)[1] not in PYGETTEXT_ALLOWED_EXTS:
-                    continue
-                path = os.path.join(root, fname)
-                rel_path = os.path.relpath(path, SOURCE_DIR)
-                if rel_path in forbidden | forced:
-                    continue
-                check_file(path, rel_path, messages)
-        for path in forced:
-            if os.path.exists(path):
-                check_file(os.path.join(SOURCE_DIR, path), path, messages)
+            path = os.path.join(root, fname)
+            rel_path = os.path.relpath(path, SOURCE_DIR)
+            if rel_path in forbidden:
+                continue
+            elif rel_path not in forced:
+                forced.add(rel_path)
+    for rel_path in sorted(forced):
+        path = os.path.join(SOURCE_DIR, rel_path)
+        if os.path.exists(path):
+            check_file(path, rel_path, messages)
 
 
 # Spell checking!
@@ -187,7 +207,7 @@ def get_svnrev():
 
 
 def gen_empty_pot():
-    blender_rev = get_svnrev()
+    blender_rev = get_svnrev().decode()
     utctime = time.gmtime()
     time_str = time.strftime("%Y-%m-%d %H:%M+0000", utctime)
     year_str = time.strftime("%Y", utctime)
@@ -231,8 +251,8 @@ def merge_messages(msgs, states, messages, do_checks, spell_cache):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Update blender.pot file " \
-                                                 "from messages.txt")
+    parser = argparse.ArgumentParser(description="Update blender.pot file from messages.txt and source code parsing, "
+                                                 "and performs some checks over msgids.")
     parser.add_argument('-w', '--warning', action="store_true",
                         help="Show warnings.")
     parser.add_argument('-i', '--input', metavar="File",
@@ -250,7 +270,7 @@ def main():
 
     print("Running fake py gettext…")
     # Not using any more xgettext, simpler to do it ourself!
-    messages = {}
+    messages = utils.new_messages()
     py_xgettext(messages)
     print("Finished, found {} messages.".format(len(messages)))
 
@@ -259,7 +279,6 @@ def main():
             spell_cache = pickle.load(f)
     else:
         spell_cache = set()
-    print(len(spell_cache))
 
     print("Generating POT file {}…".format(FILE_NAME_POT))
     msgs, states = gen_empty_pot()
@@ -268,7 +287,7 @@ def main():
 
     # add messages collected automatically from RNA
     print("\tMerging RNA messages from {}…".format(FILE_NAME_MESSAGES))
-    messages = {}
+    messages = utils.new_messages()
     with open(FILE_NAME_MESSAGES, encoding="utf-8") as f:
         srcs = []
         context = ""
@@ -290,11 +309,22 @@ def main():
     print("\tMerged {} messages ({} were already present)."
           "".format(num_added, num_present))
 
+    print("\tAdding languages labels...")
+    messages = {(CONTEXT_DEFAULT, lng[1]):
+                ("Languages’ labels from bl_i18n_utils/settings.py",)
+                for lng in LANGUAGES}
+    messages.update({(CONTEXT_DEFAULT, cat[1]):
+                     ("Language categories’ labels from bl_i18n_utils/settings.py",)
+                     for cat in LANGUAGES_CATEGORIES})
+    num_added, num_present = merge_messages(msgs, states, messages,
+                                            True, spell_cache)
+    tot_messages += num_added
+    print("\tAdded {} language messages.".format(num_added))
+
     # Write back all messages into blender.pot.
     utils.write_messages(FILE_NAME_POT, msgs, states["comm_msg"],
                          states["fuzzy_msg"])
 
-    print(len(spell_cache))
     if SPELL_CACHE and spell_cache:
         with open(SPELL_CACHE, 'wb') as f:
             pickle.dump(spell_cache, f)

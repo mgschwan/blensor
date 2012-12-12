@@ -30,54 +30,48 @@
  *  \ingroup ketsji
  */
 
-
 #include "GL/glew.h"
 
-#if defined(WIN32) && !defined(FREE_WINDOWS)
-#pragma warning (disable : 4786)
-#endif //WIN32
+#ifdef _MSC_VER
+#  pragma warning (disable:4786)
+#endif
 
 #ifdef WITH_PYTHON
-
-#ifdef _POSIX_C_SOURCE
-#undef _POSIX_C_SOURCE
-#endif
-
-#ifdef _XOPEN_SOURCE
-#undef _XOPEN_SOURCE
-#endif
-
-#if defined(__sun) || defined(sun) 
-#if defined(_XPG4) 
-#undef _XPG4 
-#endif 
-#endif 
-
-#include <Python.h>
+#  ifdef   _POSIX_C_SOURCE
+#    undef _POSIX_C_SOURCE
+#  endif
+#  ifdef   _XOPEN_SOURCE
+#    undef _XOPEN_SOURCE
+#  endif
+#  if defined(__sun) || defined(sun)
+#    if defined(_XPG4)
+#      undef _XPG4
+#    endif
+#  endif
+#  include <Python.h>
 
 extern "C" {
-	#include "bpy_internal_import.h"  /* from the blender python api, but we want to import text too! */
-	#include "py_capi_utils.h"
-	#include "mathutils.h" // 'mathutils' module copied here so the blenderlayer can use.
-	#include "bgl.h"
-	#include "blf_py_api.h"
+	#  include "bpy_internal_import.h"  /* from the blender python api, but we want to import text too! */
+	#  include "py_capi_utils.h"
+	#  include "mathutils.h" // 'mathutils' module copied here so the blenderlayer can use.
+	#  include "bgl.h"
+	#  include "blf_py_api.h"
 
-	#include "marshal.h" /* python header for loading/saving dicts */
+	#  include "marshal.h" /* python header for loading/saving dicts */
 }
-
 #include "AUD_PyInit.h"
 
-#endif
+#endif  /* WITH_PYTHON */
 
 #include "KX_PythonInit.h"
 
 // directory header for py function getBlendFileList
 #ifndef WIN32
-  #include <dirent.h>
-  #include <stdlib.h>
+#  include <dirent.h>
+#  include <stdlib.h>
 #else
-  #include <io.h>
-  #include "BLI_winstuff.h"
+#  include <io.h>
+#  include "BLI_winstuff.h"
 #endif
 
 //python physics binding
@@ -186,8 +180,8 @@ void	KX_RasterizerDrawDebugLine(const MT_Vector3& from,const MT_Vector3& to,cons
 		gp_Rasterizer->DrawDebugLine(from,to,color);
 }
 
-void	KX_RasterizerDrawDebugCircle(const MT_Vector3& center, const MT_Scalar radius, const MT_Vector3& color,
-									 const MT_Vector3& normal, int nsector)
+void KX_RasterizerDrawDebugCircle(const MT_Vector3& center, const MT_Scalar radius, const MT_Vector3& color,
+                                  const MT_Vector3& normal, int nsector)
 {
 	if (gp_Rasterizer)
 		gp_Rasterizer->DrawDebugCircle(center, radius, color, normal, nsector);
@@ -199,10 +193,10 @@ static PyObject *gp_OrigPythonSysPath= NULL;
 static PyObject *gp_OrigPythonSysModules= NULL;
 
 /* Macro for building the keyboard translation */
-//#define KX_MACRO_addToDict(dict, name) PyDict_SetItemString(dict, #name, PyLong_FromSsize_t(SCA_IInputDevice::KX_##name))
-#define KX_MACRO_addToDict(dict, name) PyDict_SetItemString(dict, #name, item=PyLong_FromSsize_t(name)); Py_DECREF(item)
+//#define KX_MACRO_addToDict(dict, name) PyDict_SetItemString(dict, #name, PyLong_FromLong(SCA_IInputDevice::KX_##name))
+#define KX_MACRO_addToDict(dict, name) PyDict_SetItemString(dict, #name, item=PyLong_FromLong(name)); Py_DECREF(item)
 /* For the defines for types from logic bricks, we do stuff explicitly... */
-#define KX_MACRO_addTypesToDict(dict, name, name2) PyDict_SetItemString(dict, #name, item=PyLong_FromSsize_t(name2)); Py_DECREF(item)
+#define KX_MACRO_addTypesToDict(dict, name, name2) PyDict_SetItemString(dict, #name, item=PyLong_FromLong(name2)); Py_DECREF(item)
 
 
 // temporarily python stuff, will be put in another place later !
@@ -435,7 +429,7 @@ static PyObject *gPySetExitKey(PyObject *, PyObject *args)
 
 static PyObject *gPyGetExitKey(PyObject *)
 {
-	return PyLong_FromSsize_t(KX_KetsjiEngine::GetExitKey());
+	return PyLong_FromLong(KX_KetsjiEngine::GetExitKey());
 }
 
 static PyObject *gPySetMaxLogicFrame(PyObject *, PyObject *args)
@@ -450,7 +444,7 @@ static PyObject *gPySetMaxLogicFrame(PyObject *, PyObject *args)
 
 static PyObject *gPyGetMaxLogicFrame(PyObject *)
 {
-	return PyLong_FromSsize_t(KX_KetsjiEngine::GetMaxLogicFrame());
+	return PyLong_FromLong(KX_KetsjiEngine::GetMaxLogicFrame());
 }
 
 static PyObject *gPySetMaxPhysicsFrame(PyObject *, PyObject *args)
@@ -465,7 +459,7 @@ static PyObject *gPySetMaxPhysicsFrame(PyObject *, PyObject *args)
 
 static PyObject *gPyGetMaxPhysicsFrame(PyObject *)
 {
-	return PyLong_FromSsize_t(KX_KetsjiEngine::GetMaxPhysicsFrame());
+	return PyLong_FromLong(KX_KetsjiEngine::GetMaxPhysicsFrame());
 }
 
 static PyObject *gPySetPhysicsTicRate(PyObject *, PyObject *args)
@@ -868,14 +862,14 @@ static struct PyMethodDef game_methods[] = {
 
 static PyObject *gPyGetWindowHeight(PyObject *, PyObject *args)
 {
-	return PyLong_FromSsize_t((gp_Canvas ? gp_Canvas->GetHeight() : 0));
+	return PyLong_FromLong((gp_Canvas ? gp_Canvas->GetHeight() : 0));
 }
 
 
 
 static PyObject *gPyGetWindowWidth(PyObject *, PyObject *args)
 {
-	return PyLong_FromSsize_t((gp_Canvas ? gp_Canvas->GetWidth() : 0));
+	return PyLong_FromLong((gp_Canvas ? gp_Canvas->GetWidth() : 0));
 }
 
 
@@ -1209,7 +1203,7 @@ static PyObject *gPyGetGLSLMaterialSetting(PyObject *,
 	}
 
 	enabled = ((gs->glslflag & flag) != 0);
-	return PyLong_FromSsize_t(enabled);
+	return PyLong_FromLong(enabled);
 }
 
 #define KX_TEXFACE_MATERIAL				0
@@ -1252,7 +1246,7 @@ static PyObject *gPyGetMaterialType(PyObject *)
 	else
 		flag = KX_TEXFACE_MATERIAL;
 	
-	return PyLong_FromSsize_t(flag);
+	return PyLong_FromLong(flag);
 }
 
 static PyObject *gPySetAnisotropicFiltering(PyObject *, PyObject *args)
@@ -1317,48 +1311,47 @@ static PyObject *gPySetWindowSize(PyObject *, PyObject *args)
 }
 
 static struct PyMethodDef rasterizer_methods[] = {
-  {"getWindowWidth",(PyCFunction) gPyGetWindowWidth,
-   METH_VARARGS, "getWindowWidth doc"},
-   {"getWindowHeight",(PyCFunction) gPyGetWindowHeight,
-   METH_VARARGS, "getWindowHeight doc"},
-  {"makeScreenshot",(PyCFunction)gPyMakeScreenshot,
-	METH_VARARGS, "make Screenshot doc"},
-   {"enableVisibility",(PyCFunction) gPyEnableVisibility,
-   METH_VARARGS, "enableVisibility doc"},
+	{"getWindowWidth",(PyCFunction) gPyGetWindowWidth,
+	 METH_VARARGS, "getWindowWidth doc"},
+	{"getWindowHeight",(PyCFunction) gPyGetWindowHeight,
+	 METH_VARARGS, "getWindowHeight doc"},
+	{"makeScreenshot",(PyCFunction)gPyMakeScreenshot,
+	 METH_VARARGS, "make Screenshot doc"},
+	{"enableVisibility",(PyCFunction) gPyEnableVisibility,
+	 METH_VARARGS, "enableVisibility doc"},
 	{"showMouse",(PyCFunction) gPyShowMouse,
-   METH_VARARGS, "showMouse(bool visible)"},
-   {"setMousePosition",(PyCFunction) gPySetMousePosition,
-   METH_VARARGS, "setMousePosition(int x,int y)"},
-  {"setBackgroundColor",(PyCFunction)gPySetBackgroundColor,METH_O,"set Background Color (rgb)"},
+	 METH_VARARGS, "showMouse(bool visible)"},
+	{"setMousePosition",(PyCFunction) gPySetMousePosition,
+	 METH_VARARGS, "setMousePosition(int x,int y)"},
+	{"setBackgroundColor",(PyCFunction)gPySetBackgroundColor,METH_O,"set Background Color (rgb)"},
 	{"setAmbientColor",(PyCFunction)gPySetAmbientColor,METH_O,"set Ambient Color (rgb)"},
- {"disableMist",(PyCFunction)gPyDisableMist,METH_NOARGS,"turn off mist"},
- {"setMistColor",(PyCFunction)gPySetMistColor,METH_O,"set Mist Color (rgb)"},
-  {"setMistStart",(PyCFunction)gPySetMistStart,METH_VARARGS,"set Mist Start(rgb)"},
-  {"setMistEnd",(PyCFunction)gPySetMistEnd,METH_VARARGS,"set Mist End(rgb)"},
-  {"enableMotionBlur",(PyCFunction)gPyEnableMotionBlur,METH_VARARGS,"enable motion blur"},
-  {"disableMotionBlur",(PyCFunction)gPyDisableMotionBlur,METH_NOARGS,"disable motion blur"},
+	{"disableMist",(PyCFunction)gPyDisableMist,METH_NOARGS,"turn off mist"},
+	{"setMistColor",(PyCFunction)gPySetMistColor,METH_O,"set Mist Color (rgb)"},
+	{"setMistStart",(PyCFunction)gPySetMistStart,METH_VARARGS,"set Mist Start(rgb)"},
+	{"setMistEnd",(PyCFunction)gPySetMistEnd,METH_VARARGS,"set Mist End(rgb)"},
+	{"enableMotionBlur",(PyCFunction)gPyEnableMotionBlur,METH_VARARGS,"enable motion blur"},
+	{"disableMotionBlur",(PyCFunction)gPyDisableMotionBlur,METH_NOARGS,"disable motion blur"},
 
-  
-  {"setEyeSeparation", (PyCFunction) gPySetEyeSeparation, METH_VARARGS, "set the eye separation for stereo mode"},
-  {"getEyeSeparation", (PyCFunction) gPyGetEyeSeparation, METH_NOARGS, "get the eye separation for stereo mode"},
-  {"setFocalLength", (PyCFunction) gPySetFocalLength, METH_VARARGS, "set the focal length for stereo mode"},
-  {"getFocalLength", (PyCFunction) gPyGetFocalLength, METH_VARARGS, "get the focal length for stereo mode"},
-  {"setMaterialMode",(PyCFunction) gPySetMaterialType,
-   METH_VARARGS, "set the material mode to use for OpenGL rendering"},
-  {"getMaterialMode",(PyCFunction) gPyGetMaterialType,
-   METH_NOARGS, "get the material mode being used for OpenGL rendering"},
-  {"setGLSLMaterialSetting",(PyCFunction) gPySetGLSLMaterialSetting,
-   METH_VARARGS, "set the state of a GLSL material setting"},
-  {"getGLSLMaterialSetting",(PyCFunction) gPyGetGLSLMaterialSetting,
-   METH_VARARGS, "get the state of a GLSL material setting"},
-  {"setAnisotropicFiltering", (PyCFunction) gPySetAnisotropicFiltering,
-  METH_VARARGS, "set the anisotropic filtering level (must be one of 1, 2, 4, 8, 16)"},
-  {"getAnisotropicFiltering", (PyCFunction) gPyGetAnisotropicFiltering,
-  METH_VARARGS, "get the anisotropic filtering level"},
-  {"drawLine", (PyCFunction) gPyDrawLine,
-   METH_VARARGS, "draw a line on the screen"},
-  {"setWindowSize", (PyCFunction) gPySetWindowSize, METH_VARARGS, ""},
-  { NULL, (PyCFunction) NULL, 0, NULL }
+	{"setEyeSeparation", (PyCFunction) gPySetEyeSeparation, METH_VARARGS, "set the eye separation for stereo mode"},
+	{"getEyeSeparation", (PyCFunction) gPyGetEyeSeparation, METH_NOARGS, "get the eye separation for stereo mode"},
+	{"setFocalLength", (PyCFunction) gPySetFocalLength, METH_VARARGS, "set the focal length for stereo mode"},
+	{"getFocalLength", (PyCFunction) gPyGetFocalLength, METH_VARARGS, "get the focal length for stereo mode"},
+	{"setMaterialMode",(PyCFunction) gPySetMaterialType,
+	 METH_VARARGS, "set the material mode to use for OpenGL rendering"},
+	{"getMaterialMode",(PyCFunction) gPyGetMaterialType,
+	 METH_NOARGS, "get the material mode being used for OpenGL rendering"},
+	{"setGLSLMaterialSetting",(PyCFunction) gPySetGLSLMaterialSetting,
+	 METH_VARARGS, "set the state of a GLSL material setting"},
+	{"getGLSLMaterialSetting",(PyCFunction) gPyGetGLSLMaterialSetting,
+	 METH_VARARGS, "get the state of a GLSL material setting"},
+	{"setAnisotropicFiltering", (PyCFunction) gPySetAnisotropicFiltering,
+	 METH_VARARGS, "set the anisotropic filtering level (must be one of 1, 2, 4, 8, 16)"},
+	{"getAnisotropicFiltering", (PyCFunction) gPyGetAnisotropicFiltering,
+	 METH_VARARGS, "get the anisotropic filtering level"},
+	{"drawLine", (PyCFunction) gPyDrawLine,
+	 METH_VARARGS, "draw a line on the screen"},
+	{"setWindowSize", (PyCFunction) gPySetWindowSize, METH_VARARGS, ""},
+	{ NULL, (PyCFunction) NULL, 0, NULL }
 };
 
 // Initialization function for the module (*must* be called initGameLogic)
@@ -1695,6 +1688,7 @@ PyObject *initGameLogic(KX_KetsjiEngine *engine, KX_Scene* scene) // quick hack 
 	KX_MACRO_addTypesToDict(d, KX_ACT_ARMATURE_DISABLE, ACT_ARM_DISABLE);
 	KX_MACRO_addTypesToDict(d, KX_ACT_ARMATURE_SETTARGET, ACT_ARM_SETTARGET);
 	KX_MACRO_addTypesToDict(d, KX_ACT_ARMATURE_SETWEIGHT, ACT_ARM_SETWEIGHT);
+	KX_MACRO_addTypesToDict(d, KX_ACT_ARMATURE_SETINFLUENCE, ACT_ARM_SETINFLUENCE);
 
 	/* BL_Armature Channel rotation_mode */
 	KX_MACRO_addTypesToDict(d, ROT_MODE_QUAT, ROT_MODE_QUAT);
@@ -1802,7 +1796,7 @@ static void initPySysObjects(Main *maggie)
 	
 	Library *lib= (Library *)maggie->library.first;
 	
-	while(lib) {
+	while (lib) {
 		/* lib->name wont work in some cases (on win32),
 		 * even when expanding with gp_GamePythonPath, using lib->filename is less trouble */
 		initPySysObjects__append(sys_path, lib->filepath);
@@ -1850,7 +1844,7 @@ void removeImportMain(struct Main *maggie)
 }
 
 // Copied from bpy_interface.c
-static struct _inittab bge_internal_modules[]= {
+static struct _inittab bge_internal_modules[] = {
 	{(char *)"mathutils", PyInit_mathutils},
 	{(char *)"bgl", BPyInit_bgl},
 	{(char *)"blf", BPyInit_blf},
@@ -2246,9 +2240,9 @@ PyObject *initGameKeys()
 	KX_MACRO_addTypesToDict(d, CAPSLOCKKEY, SCA_IInputDevice::KX_CAPSLOCKKEY);
 		
 	KX_MACRO_addTypesToDict(d, LEFTCTRLKEY, SCA_IInputDevice::KX_LEFTCTRLKEY);
-	KX_MACRO_addTypesToDict(d, LEFTALTKEY, SCA_IInputDevice::KX_LEFTALTKEY); 		
-	KX_MACRO_addTypesToDict(d, RIGHTALTKEY, SCA_IInputDevice::KX_RIGHTALTKEY); 	
-	KX_MACRO_addTypesToDict(d, RIGHTCTRLKEY, SCA_IInputDevice::KX_RIGHTCTRLKEY); 	
+	KX_MACRO_addTypesToDict(d, LEFTALTKEY, SCA_IInputDevice::KX_LEFTALTKEY);
+	KX_MACRO_addTypesToDict(d, RIGHTALTKEY, SCA_IInputDevice::KX_RIGHTALTKEY);
+	KX_MACRO_addTypesToDict(d, RIGHTCTRLKEY, SCA_IInputDevice::KX_RIGHTCTRLKEY);
 	KX_MACRO_addTypesToDict(d, RIGHTSHIFTKEY, SCA_IInputDevice::KX_RIGHTSHIFTKEY);
 	KX_MACRO_addTypesToDict(d, LEFTSHIFTKEY, SCA_IInputDevice::KX_LEFTSHIFTKEY);
 		

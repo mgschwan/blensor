@@ -30,29 +30,7 @@
  * todo: clean this up ... */
 
 extern "C" {
-
-struct RenderEngine;
-struct RenderResult;
-
-ID *rna_Object_to_mesh(void *_self, void *reports, void *scene, int apply_modifiers, int settings);
-void rna_Main_meshes_remove(void *bmain, void *reports, void *mesh);
-void rna_Object_create_duplilist(void *ob, void *reports, void *sce, int settings);
-void rna_Object_free_duplilist(void *ob);
-void rna_RenderLayer_rect_set(PointerRNA *ptr, const float *values);
-void rna_RenderPass_rect_set(PointerRNA *ptr, const float *values);
-struct RenderResult *RE_engine_begin_result(struct RenderEngine *engine, int x, int y, int w, int h, const char *layername);
-void RE_engine_update_result(struct RenderEngine *engine, struct RenderResult *result);
-void RE_engine_end_result(struct RenderEngine *engine, struct RenderResult *result, int cancel);
-int RE_engine_test_break(struct RenderEngine *engine);
-void RE_engine_update_stats(struct RenderEngine *engine, const char *stats, const char *info);
-void RE_engine_update_progress(struct RenderEngine *engine, float progress);
-void engine_tag_redraw(void *engine);
-void engine_tag_update(void *engine);
-int rna_Object_is_modified(void *ob, void *scene, int settings);
-int rna_Object_is_deform_modified(void *ob, void *scene, int settings);
 void BLI_timestr(double _time, char *str);
-void rna_ColorRamp_eval(void *coba, float position, float color[4]);
-void rna_Scene_frame_set(void *scene, int frame, float subframe);
 void BKE_image_user_frame_calc(void *iuser, int cfra, int fieldnr);
 void BKE_image_user_file_path(void *iuser, void *ima, char *path);
 }
@@ -61,10 +39,7 @@ CCL_NAMESPACE_BEGIN
 
 static inline BL::Mesh object_to_mesh(BL::Object self, BL::Scene scene, bool apply_modifiers, bool render)
 {
-	ID *data = rna_Object_to_mesh(self.ptr.data, NULL, scene.ptr.data, apply_modifiers, (render)? 2: 1);
-	PointerRNA ptr;
-	RNA_id_pointer_create(data, &ptr);
-	return BL::Mesh(ptr);
+	return self.to_mesh(scene, apply_modifiers, (render)? 2: 1);
 }
 
 static inline void colorramp_to_array(BL::ColorRamp ramp, float4 *data, int size)
@@ -72,34 +47,49 @@ static inline void colorramp_to_array(BL::ColorRamp ramp, float4 *data, int size
 	for(int i = 0; i < size; i++) {
 		float color[4];
 
-		rna_ColorRamp_eval(ramp.ptr.data, i/(float)(size-1), color);
+		ramp.evaluate(i/(float)(size-1), color);
 		data[i] = make_float4(color[0], color[1], color[2], color[3]);
 	}
 }
 
-static inline void object_remove_mesh(BL::BlendData data, BL::Mesh mesh)
+static inline void curvemapping_color_to_array(BL::CurveMapping cumap, float4 *data, int size, bool rgb_curve)
 {
-	rna_Main_meshes_remove(data.ptr.data, NULL, mesh.ptr.data);
-}
+	cumap.update();
 
-static inline void object_create_duplilist(BL::Object self, BL::Scene scene)
-{
-	rna_Object_create_duplilist(self.ptr.data, NULL, scene.ptr.data, 2);
-}
+	BL::CurveMap mapR = cumap.curves[0];
+	BL::CurveMap mapG = cumap.curves[1];
+	BL::CurveMap mapB = cumap.curves[2];
 
-static inline void object_free_duplilist(BL::Object self)
-{
-	rna_Object_free_duplilist(self.ptr.data);
+	if(rgb_curve) {
+		BL::CurveMap mapI = cumap.curves[3];
+
+		for(int i = 0; i < size; i++) {
+			float t = i/(float)(size-1);
+
+			data[i][0] = mapR.evaluate(mapI.evaluate(t));
+			data[i][1] = mapG.evaluate(mapI.evaluate(t));
+			data[i][2] = mapB.evaluate(mapI.evaluate(t));
+		}
+	}
+	else {
+		for(int i = 0; i < size; i++) {
+			float t = i/(float)(size-1);
+
+			data[i][0] = mapR.evaluate(t);
+			data[i][1] = mapG.evaluate(t);
+			data[i][2] = mapB.evaluate(t);
+		}
+	}
 }
 
 static inline bool BKE_object_is_modified(BL::Object self, BL::Scene scene, bool preview)
 {
-	return rna_Object_is_modified(self.ptr.data, scene.ptr.data, (preview)? (1<<0): (1<<1))? true: false;
+	return self.is_modified(scene, (preview)? (1<<0): (1<<1))? true: false;
 }
 
 static inline bool BKE_object_is_deform_modified(BL::Object self, BL::Scene scene, bool preview)
 {
-	return rna_Object_is_deform_modified(self.ptr.data, scene.ptr.data, (preview)? (1<<0): (1<<1))? true: false;
+	return self.is_deform_modified(scene, (preview)? (1<<0): (1<<1))? true: false;
 }
 
 static inline string image_user_file_path(BL::ImageUser iuser, BL::Image ima, int cfra)
@@ -108,11 +98,6 @@ static inline string image_user_file_path(BL::ImageUser iuser, BL::Image ima, in
 	BKE_image_user_frame_calc(iuser.ptr.data, cfra, 0);
 	BKE_image_user_file_path(iuser.ptr.data, ima.ptr.data, filepath);
 	return string(filepath);
-}
-
-static inline void scene_frame_set(BL::Scene scene, int frame)
-{
-	rna_Scene_frame_set(scene.ptr.data, frame, 0.0f);
 }
 
 /* Utilities */
@@ -329,6 +314,12 @@ public:
 		return recalc;
 	}
 
+	bool is_used(const K& key)
+	{
+		T *data = find(key);
+		return (data) ? used_set.find(data) != used_set.end() : false;
+	}
+
 	void used(T *data)
 	{
 		/* tag data as still in use */
@@ -388,27 +379,63 @@ protected:
 
 /* Object Key */
 
+enum { OBJECT_PERSISTENT_ID_SIZE = 8 };
+
 struct ObjectKey {
 	void *parent;
-	int index;
+	int id[OBJECT_PERSISTENT_ID_SIZE];
 	void *ob;
 
-	ObjectKey(void *parent_, int index_, void *ob_)
-	: parent(parent_), index(index_), ob(ob_) {}
+	ObjectKey(void *parent_, int id_[OBJECT_PERSISTENT_ID_SIZE], void *ob_)
+	: parent(parent_), ob(ob_)
+	{
+		if(id_)
+			memcpy(id, id_, sizeof(id));
+		else
+			memset(id, 0, sizeof(id));
+	}
 
 	bool operator<(const ObjectKey& k) const
-	{ return (parent < k.parent || (parent == k.parent && (index < k.index || (index == k.index && ob < k.ob)))); }
+	{
+		if(ob < k.ob) {
+			return true;
+		}
+		else if(ob == k.ob) {
+			if(parent < k.parent)
+				return true;
+			else if(parent == k.parent)
+				return memcmp(id, k.id, sizeof(id)) < 0;
+		}
+
+		return false;
+	}
 };
+
+/* Particle System Key */
 
 struct ParticleSystemKey {
 	void *ob;
-	void *psys;
+	int id[OBJECT_PERSISTENT_ID_SIZE];
 
-	ParticleSystemKey(void *ob_, void *psys_)
-	: ob(ob_), psys(psys_) {}
+	ParticleSystemKey(void *ob_, int id_[OBJECT_PERSISTENT_ID_SIZE])
+	: ob(ob_)
+	{
+		if(id_)
+			memcpy(id, id_, sizeof(id));
+		else
+			memset(id, 0, sizeof(id));
+	}
 
 	bool operator<(const ParticleSystemKey& k) const
-	{ return (ob < k.ob && psys < k.psys); }
+	{
+		/* first id is particle index, we don't compare that */
+		if(ob < k.ob)
+			return true;
+		else if(ob == k.ob)
+			return memcmp(id+1, k.id+1, sizeof(int)*(OBJECT_PERSISTENT_ID_SIZE-1)) < 0;
+
+		return false;
+	}
 };
 
 CCL_NAMESPACE_END

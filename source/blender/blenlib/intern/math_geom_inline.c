@@ -27,11 +27,12 @@
  *  \ingroup bli
  */
 
+#ifndef __MATH_GEOM_INLINE_C__
+#define __MATH_GEOM_INLINE_C__
 
 #include "BLI_math.h"
 
-#ifndef __MATH_GEOM_INLINE_C__
-#define __MATH_GEOM_INLINE_C__
+#include <string.h>
 
 /****************************** Spherical Harmonics **************************/
 
@@ -135,6 +136,26 @@ MINLINE void madd_sh_shfl(float r[9], const float sh[9], const float f)
 	copy_sh_sh(tmp, sh);
 	mul_sh_fl(tmp, f);
 	add_sh_shsh(r, r, tmp);
+}
+
+MINLINE int max_axis_v3(const float vec[3])
+{
+	const float x = vec[0];
+	const float y = vec[1];
+	const float z = vec[2];
+	return ((x > y) ?
+	       ((x > z) ? 0 : 2) :
+	       ((y > z) ? 1 : 2));
+}
+
+MINLINE int min_axis_v3(const float vec[3])
+{
+	const float x = vec[0];
+	const float y = vec[1];
+	const float z = vec[2];
+	return ((x < y) ?
+	       ((x < z) ? 0 : 2) :
+	       ((y < z) ? 1 : 2));
 }
 
 #endif /* __MATH_GEOM_INLINE_C__ */

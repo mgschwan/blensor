@@ -175,7 +175,7 @@ static short actedit_get_context(bAnimContext *ac, SpaceAction *saction)
 			return 1;
 			
 		case SACTCONT_MASK: /* Mask */ /* XXX review how this mode is handled... */
-{
+		{
 			/* TODO, other methods to get the mask */
 			// Sequence *seq = BKE_sequencer_active_get(ac->scene);
 			//MovieClip *clip = ac->scene->clip;
@@ -189,7 +189,7 @@ static short actedit_get_context(bAnimContext *ac, SpaceAction *saction)
 			
 			ac->mode = saction->mode;
 			return 1;
-}
+		}
 		case SACTCONT_DOPESHEET: /* DopeSheet */
 			/* update scene-pointer (no need to check for pinning yet, as not implemented) */
 			saction->ads.source = (ID *)ac->scene;
@@ -682,7 +682,7 @@ static bAnimListElem *make_new_animlistelem(void *data, short datatype, ID *owne
 				ale->datatype = ALE_ACT;
 				
 				ale->adt = BKE_animdata_from_id(data);
-			}	
+			}
 			break;
 			case ANIMTYPE_DSSPK:
 			{
@@ -811,7 +811,7 @@ static bAnimListElem *make_new_animlistelem(void *data, short datatype, ID *owne
 					}
 					ale->datatype = (ale->key_data) ? ALE_FCURVE : ALE_NONE;
 				}
-			}	
+			}
 			break;
 			
 			case ANIMTYPE_GPLAYER:
@@ -911,14 +911,16 @@ static short skip_fcurve_selected_data(bDopeSheet *ads, FCurve *fcu, ID *owner_i
 		/* only consider if F-Curve involves sequence_editor.sequences */
 		if ((fcu->rna_path) && strstr(fcu->rna_path, "sequences_all")) {
 			Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
-			Sequence *seq;
+			Sequence *seq = NULL;
 			char *seq_name;
-			
-			/* get strip name, and check if this strip is selected */
-			seq_name = BLI_str_quoted_substrN(fcu->rna_path, "sequences_all[");
-			seq = BKE_sequence_get_by_name(ed->seqbasep, seq_name, FALSE);
-			if (seq_name) MEM_freeN(seq_name);
-			
+
+			if (ed) {
+				/* get strip name, and check if this strip is selected */
+				seq_name = BLI_str_quoted_substrN(fcu->rna_path, "sequences_all[");
+				seq = BKE_sequence_get_by_name(ed->seqbasep, seq_name, FALSE);
+				if (seq_name) MEM_freeN(seq_name);
+			}
+
 			/* can only add this F-Curve if it is selected */
 			if (ads->filterflag & ADS_FILTER_ONLYSEL) {
 				if ((seq == NULL) || (seq->flag & SELECT) == 0)
@@ -980,6 +982,27 @@ static short skip_fcurve_with_name(bDopeSheet *ads, FCurve *fcu, ID *owner_id)
 	return 1;
 }
 
+/* Check if F-Curve has errors and/or is disabled 
+ * > returns: (bool) True if F-Curve has errors/is disabled
+ */
+static short fcurve_has_errors(FCurve *fcu)
+{
+	/* F-Curve disabled - path eval error */
+	if (fcu->flag & FCURVE_DISABLED) {
+		return 1;
+	}
+	
+	/* driver? */
+	if (fcu->driver) {
+		/* for now, just check if the entire thing got disabled... */
+		if (fcu->driver->flag & DRIVER_FLAG_INVALID)
+			return 1;
+	}
+	
+	/* no errors found */
+	return 0;
+}
+
 /* find the next F-Curve that is usable for inclusion */
 static FCurve *animfilter_fcurve_next(bDopeSheet *ads, FCurve *first, bActionGroup *grp, int filter_mode, ID *owner_id)
 {
@@ -1002,7 +1025,7 @@ static FCurve *animfilter_fcurve_next(bDopeSheet *ads, FCurve *first, bActionGro
 				if (skip_fcurve_selected_data(ads, fcu, owner_id, filter_mode))
 					continue;
 			}
-		}	
+		}
 		
 		/* only include if visible (Graph Editor check, not channels check) */
 		if (!(filter_mode & ANIMFILTER_CURVE_VISIBLE) || (fcu->flag & FCURVE_VISIBLE)) {
@@ -1015,6 +1038,13 @@ static FCurve *animfilter_fcurve_next(bDopeSheet *ads, FCurve *first, bActionGro
 						/* name based filtering... */
 						if ( ((ads) && (ads->filterflag & ADS_FILTER_BY_FCU_NAME)) && (owner_id) ) {
 							if (skip_fcurve_with_name(ads, fcu, owner_id))
+								continue;
+						}
+						
+						/* error-based filtering... */
+						if ((ads) && (ads->filterflag & ADS_FILTER_ONLY_ERRORS)) {
+							/* skip if no errors... */
+							if (fcurve_has_errors(fcu) == 0)
 								continue;
 						}
 						
@@ -1183,7 +1213,7 @@ static size_t animfilter_nla(bAnimContext *UNUSED(ac), ListBase *anim_data, bDop
 		 */
 		if (!(ads->filterflag & ADS_FILTER_NLA_NOACT) || (adt->action)) {
 			/* there isn't really anything editable here, so skip if need editable */
-			if ((filter_mode & ANIMFILTER_FOREDIT) == 0) { 
+			if ((filter_mode & ANIMFILTER_FOREDIT) == 0) {
 				/* just add the action track now (this MUST appear for drawing)
 				 *	- as AnimData may not have an action, we pass a dummy pointer just to get the list elem created, then
 				 *	  overwrite this with the real value - REVIEW THIS...

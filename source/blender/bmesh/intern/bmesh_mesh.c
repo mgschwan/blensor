@@ -42,8 +42,8 @@
 #include "intern/bmesh_private.h"
 
 /* used as an extern, defined in bmesh.h */
-BMAllocTemplate bm_mesh_allocsize_default = {512, 1024, 2048, 512};
-BMAllocTemplate bm_mesh_chunksize_default = {512, 1024, 2048, 512};
+const BMAllocTemplate bm_mesh_allocsize_default = {512, 1024, 2048, 512};
+const BMAllocTemplate bm_mesh_chunksize_default = {512, 1024, 2048, 512};
 
 static void bm_mempool_init(BMesh *bm, const BMAllocTemplate *allocsize)
 {
@@ -57,11 +57,69 @@ static void bm_mempool_init(BMesh *bm, const BMAllocTemplate *allocsize)
 	                               bm_mesh_chunksize_default.totface, BLI_MEMPOOL_ALLOW_ITER);
 
 #ifdef USE_BMESH_HOLES
-	bm->looplistpool = BLI_mempool_create(sizeof(BMLoopList), allocsize[3], allocsize[3], FALSE, FALSE);
+	bm->looplistpool = BLI_mempool_create(sizeof(BMLoopList), 512, 512, 0);
 #endif
+}
 
-	/* allocate one flag pool that we don't get rid of. */
-	bm->toolflagpool = BLI_mempool_create(sizeof(BMFlagLayer), 512, 512, 0);
+void BM_mesh_elem_toolflags_ensure(BMesh *bm)
+{
+	if (bm->vtoolflagpool && bm->etoolflagpool && bm->ftoolflagpool) {
+		return;
+	}
+
+	bm->vtoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer), max_ii(512, bm->totvert), 512, 0);
+	bm->etoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer), max_ii(512, bm->totedge), 512, 0);
+	bm->ftoolflagpool = BLI_mempool_create(sizeof(BMFlagLayer), max_ii(512, bm->totface), 512, 0);
+
+#pragma omp parallel sections if (bm->totvert + bm->totedge + bm->totface >= BM_OMP_LIMIT)
+	{
+#pragma omp section
+		{
+			BLI_mempool *toolflagpool = bm->vtoolflagpool;
+			BMIter iter;
+			BMElemF *ele;
+			BM_ITER_MESH (ele, &iter, bm, BM_VERTS_OF_MESH) {
+				ele->oflags = BLI_mempool_calloc(toolflagpool);
+			}
+		}
+#pragma omp section
+		{
+			BLI_mempool *toolflagpool = bm->etoolflagpool;
+			BMIter iter;
+			BMElemF *ele;
+			BM_ITER_MESH (ele, &iter, bm, BM_EDGES_OF_MESH) {
+				ele->oflags = BLI_mempool_calloc(toolflagpool);
+			}
+		}
+#pragma omp section
+		{
+			BLI_mempool *toolflagpool = bm->ftoolflagpool;
+			BMIter iter;
+			BMElemF *ele;
+			BM_ITER_MESH (ele, &iter, bm, BM_FACES_OF_MESH) {
+				ele->oflags = BLI_mempool_calloc(toolflagpool);
+			}
+		}
+	}
+
+
+	bm->totflags = 1;
+}
+
+void BM_mesh_elem_toolflags_clear(BMesh *bm)
+{
+	if (bm->vtoolflagpool) {
+		BLI_mempool_destroy(bm->vtoolflagpool);
+		bm->vtoolflagpool = NULL;
+	}
+	if (bm->etoolflagpool) {
+		BLI_mempool_destroy(bm->etoolflagpool);
+		bm->etoolflagpool = NULL;
+	}
+	if (bm->ftoolflagpool) {
+		BLI_mempool_destroy(bm->ftoolflagpool);
+		bm->ftoolflagpool = NULL;
+	}
 }
 
 /**
@@ -73,7 +131,7 @@ static void bm_mempool_init(BMesh *bm, const BMAllocTemplate *allocsize)
  *
  * \note ob is needed by multires
  */
-BMesh *BM_mesh_create(BMAllocTemplate *allocsize)
+BMesh *BM_mesh_create(const BMAllocTemplate *allocsize)
 {
 	/* allocate the structure */
 	BMesh *bm = MEM_callocN(sizeof(BMesh), __func__);
@@ -83,7 +141,12 @@ BMesh *BM_mesh_create(BMAllocTemplate *allocsize)
 
 	/* allocate one flag pool that we don't get rid of. */
 	bm->stackdepth = 1;
-	bm->totflags = 1;
+	bm->totflags = 0;
+
+	CustomData_reset(&bm->vdata);
+	CustomData_reset(&bm->edata);
+	CustomData_reset(&bm->ldata);
+	CustomData_reset(&bm->pdata);
 
 	return bm;
 }
@@ -138,7 +201,7 @@ void BM_mesh_data_free(BMesh *bm)
 	BLI_mempool_destroy(bm->fpool);
 
 	/* destroy flag pool */
-	BLI_mempool_destroy(bm->toolflagpool);
+	BM_mesh_elem_toolflags_clear(bm);
 
 #ifdef USE_BMESH_HOLES
 	BLI_mempool_destroy(bm->looplistpool);
@@ -165,6 +228,11 @@ void BM_mesh_clear(BMesh *bm)
 
 	bm->stackdepth = 1;
 	bm->totflags = 1;
+
+	CustomData_reset(&bm->vdata);
+	CustomData_reset(&bm->edata);
+	CustomData_reset(&bm->ldata);
+	CustomData_reset(&bm->pdata);
 }
 
 /**
@@ -295,7 +363,7 @@ static void UNUSED_FUNCTION(bm_mdisps_space_set)(Object *ob, BMesh *bm, int from
 	/* switch multires data out of tangent space */
 	if (CustomData_has_layer(&bm->ldata, CD_MDISPS)) {
 		BMEditMesh *em = BMEdit_Create(bm, FALSE);
-		DerivedMesh *dm = CDDM_from_BMEditMesh(em, NULL, TRUE, FALSE);
+		DerivedMesh *dm = CDDM_from_editbmesh(em, TRUE, FALSE);
 		MDisps *mdisps;
 		BMFace *f;
 		BMIter iter;
@@ -400,50 +468,58 @@ void BM_mesh_elem_index_ensure(BMesh *bm, const char hflag)
 	BM_ELEM_INDEX_VALIDATE(bm, "Should Never Fail!", __func__);
 #endif
 
-	if (hflag & BM_VERT) {
-		if (bm->elem_index_dirty & BM_VERT) {
-			int index = 0;
-			BM_ITER_MESH (ele, &iter, bm, BM_VERTS_OF_MESH) {
-				BM_elem_index_set(ele, index); /* set_ok */
-				index++;
+#pragma omp parallel sections if (bm->totvert + bm->totedge + bm->totface >= BM_OMP_LIMIT)
+	{
+#pragma omp section
+		{
+			if (hflag & BM_VERT) {
+				if (bm->elem_index_dirty & BM_VERT) {
+					int index;
+					BM_ITER_MESH_INDEX (ele, &iter, bm, BM_VERTS_OF_MESH, index) {
+						BM_elem_index_set(ele, index); /* set_ok */
+					}
+					BLI_assert(index == bm->totvert);
+				}
+				else {
+					// printf("%s: skipping vert index calc!\n", __func__);
+				}
 			}
-			bm->elem_index_dirty &= ~BM_VERT;
-			BLI_assert(index == bm->totvert);
 		}
-		else {
-			// printf("%s: skipping vert index calc!\n", __func__);
+
+#pragma omp section
+		{
+			if (hflag & BM_EDGE) {
+				if (bm->elem_index_dirty & BM_EDGE) {
+					int index;
+					BM_ITER_MESH_INDEX (ele, &iter, bm, BM_EDGES_OF_MESH, index) {
+						BM_elem_index_set(ele, index); /* set_ok */
+					}
+					BLI_assert(index == bm->totedge);
+				}
+				else {
+					// printf("%s: skipping edge index calc!\n", __func__);
+				}
+			}
+		}
+
+#pragma omp section
+		{
+			if (hflag & BM_FACE) {
+				if (bm->elem_index_dirty & BM_FACE) {
+					int index;
+					BM_ITER_MESH_INDEX (ele, &iter, bm, BM_FACES_OF_MESH, index) {
+						BM_elem_index_set(ele, index); /* set_ok */
+					}
+					BLI_assert(index == bm->totface);
+				}
+				else {
+					// printf("%s: skipping face index calc!\n", __func__);
+				}
+			}
 		}
 	}
 
-	if (hflag & BM_EDGE) {
-		if (bm->elem_index_dirty & BM_EDGE) {
-			int index = 0;
-			BM_ITER_MESH (ele, &iter, bm, BM_EDGES_OF_MESH) {
-				BM_elem_index_set(ele, index); /* set_ok */
-				index++;
-			}
-			bm->elem_index_dirty &= ~BM_EDGE;
-			BLI_assert(index == bm->totedge);
-		}
-		else {
-			// printf("%s: skipping edge index calc!\n", __func__);
-		}
-	}
-
-	if (hflag & BM_FACE) {
-		if (bm->elem_index_dirty & BM_FACE) {
-			int index = 0;
-			BM_ITER_MESH (ele, &iter, bm, BM_FACES_OF_MESH) {
-				BM_elem_index_set(ele, index); /* set_ok */
-				index++;
-			}
-			bm->elem_index_dirty &= ~BM_FACE;
-			BLI_assert(index == bm->totface);
-		}
-		else {
-			// printf("%s: skipping face index calc!\n", __func__);
-		}
-	}
+	bm->elem_index_dirty &= ~hflag;
 }
 
 

@@ -70,6 +70,7 @@
 #include "BKE_displist.h"
 #include "BKE_global.h"
 #include "BKE_idprop.h"
+#include "BKE_image.h"
 #include "BKE_ipo.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
@@ -113,13 +114,14 @@ void free_blender(void)
 	BKE_spacetypes_free();      /* after free main, it uses space callbacks */
 	
 	IMB_exit();
+	BKE_images_exit();
 
 	BLI_callback_global_finalize();
 
 	BKE_sequencer_cache_destruct();
 	IMB_moviecache_destruct();
 	
-	free_nodesystem();	
+	free_nodesystem();
 }
 
 void initglobals(void)
@@ -237,7 +239,7 @@ static void setup_app_data(bContext *C, BlendFileData *bfd, const char *filepath
 	
 	/* free G.main Main database */
 //	CTX_wm_manager_set(C, NULL);
-	clear_global();	
+	clear_global();
 	
 	/* clear old property update cache, in case some old references are left dangling */
 	RNA_property_update_cache_free();
@@ -266,7 +268,7 @@ static void setup_app_data(bContext *C, BlendFileData *bfd, const char *filepath
 		G.winpos = bfd->winpos;
 		G.displaymode = bfd->displaymode;
 		G.fileflags = bfd->fileflags;
-		CTX_wm_manager_set(C, bfd->main->wm.first);
+		CTX_wm_manager_set(C, G.main->wm.first);
 		CTX_wm_screen_set(C, bfd->curscreen);
 		CTX_data_scene_set(C, bfd->curscreen->scene);
 		CTX_wm_area_set(C, NULL);
@@ -276,7 +278,11 @@ static void setup_app_data(bContext *C, BlendFileData *bfd, const char *filepath
 	
 	/* this can happen when active scene was lib-linked, and doesn't exist anymore */
 	if (CTX_data_scene(C) == NULL) {
-		CTX_data_scene_set(C, bfd->main->scene.first);
+		/* in case we don't even have a local scene, add one */
+		if (!G.main->scene.first)
+			BKE_scene_add("Scene");
+
+		CTX_data_scene_set(C, G.main->scene.first);
 		CTX_wm_screen(C)->scene = CTX_data_scene(C);
 		curscene = CTX_data_scene(C);
 	}
@@ -338,7 +344,7 @@ static int handle_subversion_warning(Main *main, ReportList *reports)
 	    (main->minversionfile == BLENDER_VERSION &&
 	     main->minsubversionfile > BLENDER_SUBVERSION))
 	{
-		BKE_reportf(reports, RPT_ERROR, "File written by newer Blender binary: %d.%d, expect loss of data!",
+		BKE_reportf(reports, RPT_ERROR, "File written by newer Blender binary (%d.%d), expect loss of data!",
 		            main->minversionfile, main->minsubversionfile);
 	}
 
@@ -407,9 +413,9 @@ int BKE_read_file(bContext *C, const char *filepath, ReportList *reports)
 		}
 		else
 			setup_app_data(C, bfd, filepath);  // frees BFD
-	} 
+	}
 	else
-		BKE_reports_prependf(reports, "Loading %s failed: ", filepath);
+		BKE_reports_prependf(reports, "Loading '%s' failed: ", filepath);
 		
 	return (bfd ? retval : BKE_READ_FILE_FAIL);
 }
@@ -485,7 +491,7 @@ static int read_undosave(bContext *C, UndoElem *uel)
 	int success = 0, fileflags;
 	
 	/* This is needed so undoing/redoing doesn't crash with threaded previews going */
-	WM_jobs_stop_all(CTX_wm_manager(C));
+	WM_jobs_kill_all_except(CTX_wm_manager(C), CTX_wm_screen(C));
 
 	BLI_strncpy(mainstr, G.main->name, sizeof(mainstr));    /* temporal store */
 
@@ -612,7 +618,7 @@ void BKE_write_undo(bContext *C, const char *name)
 	}
 }
 
-/* 1= an undo, -1 is a redo. we have to make sure 'curundo' remains at current situation */
+/* 1 = an undo, -1 is a redo. we have to make sure 'curundo' remains at current situation */
 void BKE_undo_step(bContext *C, int step)
 {
 	
@@ -621,7 +627,9 @@ void BKE_undo_step(bContext *C, int step)
 	}
 	else if (step == 1) {
 		/* curundo should never be NULL, after restart or load file it should call undo_save */
-		if (curundo == NULL || curundo->prev == NULL) ;  // XXX error("No undo available");
+		if (curundo == NULL || curundo->prev == NULL) {
+			// XXX error("No undo available");
+		}
 		else {
 			if (G.debug & G_DEBUG) printf("undo %s\n", curundo->name);
 			curundo = curundo->prev;
@@ -631,7 +639,9 @@ void BKE_undo_step(bContext *C, int step)
 	else {
 		/* curundo has to remain current situation! */
 		
-		if (curundo == NULL || curundo->next == NULL) ;  // XXX error("No redo available");
+		if (curundo == NULL || curundo->next == NULL) {
+			// XXX error("No redo available");
+		}
 		else {
 			read_undosave(C, curundo->next);
 			curundo = curundo->next;

@@ -173,16 +173,16 @@ static uiBlock *tool_search_menu(bContext *C, ARegion *ar, void *arg_listbase)
 	search[0] = 0;
 	
 	block = uiBeginBlock(C, ar, "_popup", UI_EMBOSS);
-	uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_REDRAW | UI_BLOCK_RET_1);
+	uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_REDRAW | UI_BLOCK_SEARCH_MENU);
 	
 	/* fake button, it holds space for search items */
-	uiDefBut(block, LABEL, 0, "", 10, 15, 150, uiSearchBoxhHeight(), NULL, 0, 0, 0, 0, NULL);
+	uiDefBut(block, LABEL, 0, "", 10, 15, uiSearchBoxWidth(), uiSearchBoxHeight(), NULL, 0, 0, 0, 0, NULL);
 	
 	but = uiDefSearchBut(block, search, 0, ICON_VIEWZOOM, sizeof(search), 10, 0, 150, 19, 0, 0, "");
 	uiButSetSearchFunc(but, operator_search_cb, arg_listbase, operator_call_cb, NULL);
 	
 	uiBoundsBlock(block, 6);
-	uiBlockSetDirection(block, UI_DOWN);	
+	uiBlockSetDirection(block, UI_DOWN);
 	uiEndBlock(C, block);
 	
 	event = *(win->eventstate);  /* XXX huh huh? make api call */

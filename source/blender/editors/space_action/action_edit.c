@@ -52,6 +52,7 @@
 
 #include "BKE_action.h"
 #include "BKE_fcurve.h"
+#include "BKE_global.h"
 #include "BKE_nla.h"
 #include "BKE_context.h"
 #include "BKE_report.h"
@@ -132,7 +133,7 @@ void ACTION_OT_new(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->exec = act_new_exec;
-	// NOTE: this is used in the NLA too...
+	/* NOTE: this is used in the NLA too... */
 	//ot->poll = ED_operator_action_active;
 	
 	/* flags */
@@ -234,8 +235,8 @@ static void get_keyframe_extents(bAnimContext *ac, float *min, float *max, const
 	int filter;
 	
 	/* get data to filter, from Action or Dopesheet */
-	// XXX: what is sel doing here?!
-	//      Commented it, was breaking things (eg. the "auto preview range" tool).
+	/* XXX: what is sel doing here?!
+	 *      Commented it, was breaking things (eg. the "auto preview range" tool). */
 	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE /*| ANIMFILTER_SEL *//*| ANIMFILTER_CURVESONLY*/ | ANIMFILTER_NODUPLIS);
 	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
@@ -254,8 +255,9 @@ static void get_keyframe_extents(bAnimContext *ac, float *min, float *max, const
 
 				/* find gp-frame which is less than or equal to cframe */
 				for (gpf = gpl->frames.first; gpf; gpf = gpf->next) {
-					*min = MIN2(*min, gpf->framenum);
-					*max = MAX2(*max, gpf->framenum);
+					const float framenum = (float)gpf->framenum;
+					*min = min_ff(*min, framenum);
+					*max = max_ff(*max, framenum);
 				}
 			}
 			else if (ale->datatype == ALE_MASKLAY) {
@@ -267,8 +269,9 @@ static void get_keyframe_extents(bAnimContext *ac, float *min, float *max, const
 				     masklay_shape;
 				     masklay_shape = masklay_shape->next)
 				{
-					*min = MIN2(*min, masklay_shape->frame);
-					*max = MAX2(*max, masklay_shape->frame);
+					const float framenum = (float)masklay_shape->frame;
+					*min = min_ff(*min, framenum);
+					*max = max_ff(*max, framenum);
 				}
 			}
 			else {
@@ -284,8 +287,8 @@ static void get_keyframe_extents(bAnimContext *ac, float *min, float *max, const
 				}
 
 				/* try to set cur using these values, if they're more extreme than previously set values */
-				*min = MIN2(*min, tmin);
-				*max = MAX2(*max, tmax);
+				*min = min_ff(*min, tmin);
+				*max = max_ff(*max, tmax);
 			}
 		}
 		
@@ -491,9 +494,9 @@ static int actkeys_copy_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	/* copy keyframes */
-	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK)) {
+	if (ac.datatype == ANIMCONT_GPENCIL) {
 		/* FIXME... */
-		BKE_report(op->reports, RPT_ERROR, "Keyframe pasting is not available for Grease Pencil mode");
+		BKE_report(op->reports, RPT_ERROR, "Keyframe pasting is not available for grease pencil mode");
 		return OPERATOR_CANCELLED;
 	}
 	else if (ac.datatype == ANIMCONT_MASK) {
@@ -502,7 +505,7 @@ static int actkeys_copy_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	else {
-		if (copy_action_keys(&ac)) {	
+		if (copy_action_keys(&ac)) {
 			BKE_report(op->reports, RPT_ERROR, "No keyframes copied to keyframes copy/paste buffer");
 			return OPERATOR_CANCELLED;
 		}
@@ -542,8 +545,8 @@ static int actkeys_paste_exec(bContext *C, wmOperator *op)
 	
 	/* paste keyframes */
 	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK)) {
-		// FIXME...
-		BKE_report(op->reports, RPT_ERROR, "Keyframe pasting is not available for Grease Pencil or Mask mode");
+		/* FIXME... */
+		BKE_report(op->reports, RPT_ERROR, "Keyframe pasting is not available for grease pencil or mask mode");
 		return OPERATOR_CANCELLED;
 	}
 	else {
@@ -588,7 +591,7 @@ void ACTION_OT_paste(wmOperatorType *ot)
 static EnumPropertyItem prop_actkeys_insertkey_types[] = {
 	{1, "ALL", 0, "All Channels", ""},
 	{2, "SEL", 0, "Only Selected Channels", ""},
-	{3, "GROUP", 0, "In Active Group", ""}, // xxx not in all cases
+	{3, "GROUP", 0, "In Active Group", ""},  /* XXX not in all cases */
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -976,8 +979,8 @@ void ACTION_OT_sample(wmOperatorType *ot)
 
 /* defines for set extrapolation-type for selected keyframes tool */
 static EnumPropertyItem prop_actkeys_expo_types[] = {
-	{FCURVE_EXTRAPOLATE_CONSTANT, "CONSTANT", 0, "Constant Extrapolation", ""},
-	{FCURVE_EXTRAPOLATE_LINEAR, "LINEAR", 0, "Linear Extrapolation", ""},
+	{FCURVE_EXTRAPOLATE_CONSTANT, "CONSTANT", 0, "Constant Extrapolation", "Values on endpoint keyframes are held"},
+	{FCURVE_EXTRAPOLATE_LINEAR, "LINEAR", 0, "Linear Extrapolation", "Straight-line slope of end segments are extended past the endpoint keyframes"},
 	
 	{MAKE_CYCLIC_EXPO, "MAKE_CYCLIC", 0, "Make Cyclic (F-Modifier)", "Add Cycles F-Modifier if one doesn't exist already"},
 	{CLEAR_CYCLIC_EXPO, "CLEAR_CYCLIC", 0, "Clear Cyclic (F-Modifier)", "Remove Cycles F-Modifier if not needed anymore"},
@@ -1010,7 +1013,7 @@ static void setexpo_action_keys(bAnimContext *ac, short mode)
 			if (mode == MAKE_CYCLIC_EXPO) {
 				/* only add if one doesn't exist */
 				if (list_has_suitable_fmodifier(&fcu->modifiers, FMODIFIER_TYPE_CYCLES, -1) == 0) {
-					// TODO: add some more preset versions which set different extrapolation options?
+					/* TODO: add some more preset versions which set different extrapolation options? */
 					add_fmodifier(&fcu->modifiers, FMODIFIER_TYPE_CYCLES);
 				}
 			}
@@ -1306,6 +1309,15 @@ void ACTION_OT_keyframe_type(wmOperatorType *ot)
 
 /* ***************** Jump to Selected Frames Operator *********************** */
 
+static int actkeys_framejump_poll(bContext *C)
+{
+	/* prevent changes during render */
+	if (G.is_rendering)
+		return 0;
+
+	return ED_operator_action_active(C);
+}
+
 /* snap current-frame indicator to 'average time' of selected keyframe */
 static int actkeys_framejump_exec(bContext *C, wmOperator *UNUSED(op))
 {
@@ -1319,7 +1331,7 @@ static int actkeys_framejump_exec(bContext *C, wmOperator *UNUSED(op))
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
 	
-	/* init edit data */	
+	/* init edit data */
 	/* loop over action data, averaging values */
 	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE /*| ANIMFILTER_CURVESONLY */ | ANIMFILTER_NODUPLIS);
 	ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
@@ -1353,13 +1365,13 @@ static int actkeys_framejump_exec(bContext *C, wmOperator *UNUSED(op))
 void ACTION_OT_frame_jump(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name = "Jump to Frame";
+	ot->name = "Jump to Keyframes";
 	ot->idname = "ACTION_OT_frame_jump";
-	ot->description = "Set the current frame to the average frame of the selected keyframes";
+	ot->description = "Set the current frame to the average frame value of selected keyframes";
 	
 	/* api callbacks */
 	ot->exec = actkeys_framejump_exec;
-	ot->poll = ED_operator_action_active;
+	ot->poll = actkeys_framejump_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -1369,10 +1381,14 @@ void ACTION_OT_frame_jump(wmOperatorType *ot)
 
 /* defines for snap keyframes tool */
 static EnumPropertyItem prop_actkeys_snap_types[] = {
-	{ACTKEYS_SNAP_CFRA, "CFRA", 0, "Current frame", ""},
-	{ACTKEYS_SNAP_NEAREST_FRAME, "NEAREST_FRAME", 0, "Nearest Frame", ""}, // XXX as single entry?
-	{ACTKEYS_SNAP_NEAREST_SECOND, "NEAREST_SECOND", 0, "Nearest Second", ""}, // XXX as single entry?
-	{ACTKEYS_SNAP_NEAREST_MARKER, "NEAREST_MARKER", 0, "Nearest Marker", ""},
+	{ACTKEYS_SNAP_CFRA, "CFRA", 0, "Current frame",
+	 "Snap selected keyframes to the current frame"},
+	{ACTKEYS_SNAP_NEAREST_FRAME, "NEAREST_FRAME", 0, "Nearest Frame",
+	 "Snap selected keyframes to the nearest (whole) frame (use to fix accidental sub-frame offsets)"},
+	{ACTKEYS_SNAP_NEAREST_SECOND, "NEAREST_SECOND", 0, "Nearest Second",
+	 "Snap selected keyframes to the nearest second"},
+	{ACTKEYS_SNAP_NEAREST_MARKER, "NEAREST_MARKER", 0, "Nearest Marker",
+	 "Snap selected keyframes to the nearest marker"},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -1406,15 +1422,20 @@ static void snap_action_keys(bAnimContext *ac, short mode)
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		AnimData *adt = ANIM_nla_mapping_get(ac, ale);
 		
-		if (adt) {
+		if (ale->type == ANIMTYPE_GPLAYER) {
+			ED_gplayer_snap_frames(ale->data, ac->scene, mode);
+		}
+		else if (ale->type == ANIMTYPE_MASKLAYER) {
+			ED_masklayer_snap_frames(ale->data, ac->scene, mode);
+		}
+		else if (adt) {
 			ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 0, 1); 
 			ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
 			ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 1, 1);
 		}
-		//else if (ale->type == ACTTYPE_GPLAYER)
-		//	snap_gplayer_frames(ale->data, mode);
-		else 
+		else {
 			ANIM_fcurve_keyframes_loop(&ked, ale->key_data, NULL, edit_cb, calchandles_fcurve);
+		}
 	}
 	
 	BLI_freelistN(&anim_data);
@@ -1430,11 +1451,7 @@ static int actkeys_snap_exec(bContext *C, wmOperator *op)
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-		
-	// XXX...
-	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
-		return OPERATOR_PASS_THROUGH;
-		
+	
 	/* get snapping mode */
 	mode = RNA_enum_get(op->ptr, "type");
 	
@@ -1442,7 +1459,8 @@ static int actkeys_snap_exec(bContext *C, wmOperator *op)
 	snap_action_keys(&ac, mode);
 	
 	/* validate keyframes after editing */
-	ANIM_editkeyframes_refresh(&ac);
+	if (!ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
+		ANIM_editkeyframes_refresh(&ac);
 	
 	/* set notifier that keyframes have changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
@@ -1473,9 +1491,12 @@ void ACTION_OT_snap(wmOperatorType *ot)
 
 /* defines for mirror keyframes tool */
 static EnumPropertyItem prop_actkeys_mirror_types[] = {
-	{ACTKEYS_MIRROR_CFRA, "CFRA", 0, "By Times over Current frame", ""},
-	{ACTKEYS_MIRROR_XAXIS, "XAXIS", 0, "By Values over Value=0", ""},
-	{ACTKEYS_MIRROR_MARKER, "MARKER", 0, "By Times over First Selected Marker", ""},
+	{ACTKEYS_MIRROR_CFRA, "CFRA", 0, "By Times over Current frame",
+	 "Flip times of selected keyframes using the current frame as the mirror line"},
+	{ACTKEYS_MIRROR_XAXIS, "XAXIS", 0, "By Values over Value=0",
+	 "Flip values of selected keyframes (i.e. negative values become positive, and vice versa)"},
+	{ACTKEYS_MIRROR_MARKER, "MARKER", 0, "By Times over First Selected Marker",
+	 "Flip times of selected keyframes using the first selected marker as the reference point"},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -1495,14 +1516,10 @@ static void mirror_action_keys(bAnimContext *ac, short mode)
 	ked.scene = ac->scene;
 	
 	/* for 'first selected marker' mode, need to find first selected marker first! */
-	// XXX should this be made into a helper func in the API?
+	/* XXX should this be made into a helper func in the API? */
 	if (mode == ACTKEYS_MIRROR_MARKER) {
-		TimeMarker *marker = NULL;
+		TimeMarker *marker = ED_markers_get_first_selected(ac->markers);
 		
-		/* find first selected marker */
-		marker = ED_markers_get_first_selected(ac->markers);
-		
-		/* store marker's time (if available) */
 		if (marker)
 			ked.f1 = (float)marker->frame;
 		else
@@ -1545,7 +1562,7 @@ static int actkeys_mirror_exec(bContext *C, wmOperator *op)
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
 		
-	// XXX...
+	/* XXX... */
 	if (ELEM(ac.datatype, ANIMCONT_GPENCIL, ANIMCONT_MASK))
 		return OPERATOR_PASS_THROUGH;
 		

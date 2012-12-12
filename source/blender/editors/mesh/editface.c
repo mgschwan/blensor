@@ -85,7 +85,7 @@ void paintface_flush_flags(Object *ob)
 	 *  - Final derived polys => Final derived tessfaces
 	 */
 
-	if ((index_array = CustomData_get_layer(&me->fdata, CD_POLYINDEX))) {
+	if ((index_array = CustomData_get_layer(&me->fdata, CD_ORIGINDEX))) {
 		faces = me->mface;
 		totface = me->totface;
 		
@@ -109,7 +109,7 @@ void paintface_flush_flags(Object *ob)
 		}
 	}
 
-	if ((index_array = CustomData_get_layer(&dm->faceData, CD_POLYINDEX))) {
+	if ((index_array = CustomData_get_layer(&dm->faceData, CD_ORIGINDEX))) {
 		polys = dm->getPolyArray(dm);
 		faces = dm->getTessFaceArray(dm);
 		totface = dm->getNumTessFaces(dm);
@@ -214,7 +214,9 @@ static void select_linked_tfaces_with_seams(int mode, Mesh *me, unsigned int ind
 		/* fill array by selection */
 		mp = me->mpoly;
 		for (a = 0; a < me->totpoly; a++, mp++) {
-			if (mp->flag & ME_HIDE) ;
+			if (mp->flag & ME_HIDE) {
+				/* pass */
+			}
 			else if (mp->flag & ME_FACE_SEL) {
 				hash_add_face(ehash, mp, me->mloop + mp->loopstart);
 				linkflag[a] = 1;
@@ -572,7 +574,9 @@ int do_paintface_box_select(ViewContext *vc, rcti *rect, int select, int extend)
 	mpoly = me->mpoly;
 	for (a = 1; a <= me->totpoly; a++, mpoly++) {
 		if (selar[a]) {
-			if (mpoly->flag & ME_HIDE) ;
+			if (mpoly->flag & ME_HIDE) {
+				/* pass */
+			}
 			else {
 				if (select) mpoly->flag |= ME_FACE_SEL;
 				else mpoly->flag &= ~ME_FACE_SEL;
@@ -848,7 +852,7 @@ void ED_mesh_mirrtopo_init(Mesh *me, const int ob_mode, MirrTopoStore_t *mesh_to
 
 	if (em) {
 		if (skip_em_vert_array_init == FALSE) {
-			EDBM_index_arrays_init(em, 1, 0, 0);
+			EDBM_index_arrays_ensure(em, BM_VERT);
 		}
 	}
 
@@ -882,11 +886,6 @@ void ED_mesh_mirrtopo_init(Mesh *me, const int ob_mode, MirrTopoStore_t *mesh_to
 				}
 			}
 			last = a;
-		}
-	}
-	if (em) {
-		if (skip_em_vert_array_init == FALSE) {
-			EDBM_index_arrays_free(em);
 		}
 	}
 

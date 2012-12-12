@@ -60,7 +60,6 @@ struct Image;
 struct ImageUser;
 struct KeyingSet;
 struct KeyingSetInfo;
-struct LOD_Decimation_Info;
 struct MCol;
 struct MTex;
 struct Main;
@@ -76,6 +75,7 @@ struct Nurb;
 struct Object;
 struct PBVHNode;
 struct PyObject;
+struct Quadric;
 struct Render;
 struct RenderEngine;
 struct RenderEngineType;
@@ -134,6 +134,13 @@ int BLI_smallhash_count(struct SmallHash *hash) { return 0; }
 void *BLI_smallhash_iternext(struct SmallHashIter *iter, uintptr_t *key) { return NULL; }
 void *BLI_smallhash_iternew(struct SmallHash *hash, struct SmallHashIter *iter, uintptr_t *key) { return NULL; }
 
+void  BLI_quadric_from_v3_dist(struct Quadric *q, const float v[3], const float offset) {}
+void  BLI_quadric_add_qu_qu(struct Quadric *a, const struct Quadric *b) {}
+void  BLI_quadric_add_qu_ququ(struct Quadric *r, const struct Quadric *a, const struct Quadric *b) {}
+void  BLI_quadric_mul(struct Quadric *a, const float scalar) {}
+float BLI_quadric_evaluate(const struct Quadric *q, const float v[3]) {return 0.0f;}
+int   BLI_quadric_optimize(const struct Quadric *q, float v[3]) {return 0;}
+
 float *RE_RenderLayerGetPass(struct RenderLayer *rl, int passtype) {return (float *) NULL;}
 float RE_filter_value(int type, float x) {return 0.0f;}
 struct RenderLayer *RE_GetRenderLayer(struct RenderResult *rr, const char *name) {return (struct RenderLayer *)NULL;}
@@ -169,7 +176,7 @@ int RE_RenderInProgress(struct Render *re) {return 0;}
 struct Scene *RE_GetScene(struct Render *re) {return (struct Scene *) NULL;}
 void RE_Database_Free(struct Render *re) {}
 void RE_FreeRender(struct Render *re) {}
-void RE_DataBase_GetView(struct Render *re, float mat[][4]) {}
+void RE_DataBase_GetView(struct Render *re, float mat[4][4]) {}
 int externtex(struct MTex *mtex, float *vec, float *tin, float *tr, float *tg, float *tb, float *ta) {return 0;}
 float texture_value_blend(float tex, float out, float fact, float facg, int blendtype, int flip) {return 0.0f;}
 void texture_rgb_blend(float *in, float *tex, float *out, float fact, float facg, int blendtype) {}
@@ -191,7 +198,7 @@ struct MenuType *WM_menutype_find(const char *idname, int quiet) {return (struct
 void WM_operator_stack_clear(struct bContext *C) {}
 
 void WM_autosave_init(struct bContext *C) {}
-void WM_jobs_stop_all(struct wmWindowManager *wm) {}
+void WM_jobs_kill_all_except(struct wmWindowManager *wm) {}
 
 char *WM_clipboard_text_get(int selection) {return (char*)0;}
 void WM_clipboard_text_set(char *buf, int selection) {}
@@ -292,12 +299,13 @@ void ED_node_tree_update(struct SpaceNode *snode, struct Scene *scene) {}
 void ED_view3d_scene_layers_update(struct Main *bmain, struct Scene *scene) {}
 int ED_view3d_scene_layer_set(int lay, const int *values) {return 0;}
 void ED_view3d_quadview_update(struct ScrArea *sa, struct ARegion *ar) {}
-void ED_view3d_from_m4(float mat[][4], float ofs[3], float quat[4], float *dist) {}
+void ED_view3d_from_m4(float mat[4][4], float ofs[3], float quat[4], float *dist) {}
 struct BGpic *ED_view3D_background_image_new(struct View3D *v3d) {return (struct BGpic *) NULL;}
 void ED_view3D_background_image_remove(struct View3D *v3d, struct BGpic *bgpic) {}
 void ED_view3D_background_image_clear(struct View3D *v3d) {}
-void ED_view3d_update_viewmat(struct Scene *scene, struct View3D *v3d, struct ARegion *ar, float viewmat[][4], float winmat[][4]) {}
-void view3d_apply_mat4(float mat[][4], float *ofs, float *quat, float *dist) {}
+void ED_view3d_update_viewmat(struct Scene *scene, struct View3D *v3d, struct ARegion *ar, float viewmat[4][4], float winmat[4][4]) {}
+float ED_view3d_grid_scale(struct Scene *scene, struct View3D *v3d, const char **grid_unit) {return 0.0f;}
+void view3d_apply_mat4(float mat[4][4], float *ofs, float *quat, float *dist) {}
 int text_file_modified(struct Text *text) {return 0;}
 void ED_node_shader_default(struct Material *ma) {}
 void ED_screen_animation_timer_update(struct bContext *C, int redraws) {}
@@ -414,7 +422,7 @@ void uiTemplateEditModeSelection(struct uiLayout *layout, struct bContext *C) {}
 void uiTemplateTextureImage(struct uiLayout *layout, struct bContext *C, struct Tex *tex) {}
 void uiTemplateImage(struct uiLayout *layout, struct bContext *C, struct PointerRNA *ptr, char *propname, struct PointerRNA *userptr, int compact) {}
 void uiTemplateDopeSheetFilter(struct uiLayout *layout, struct bContext *C, struct PointerRNA *ptr) {}
-void uiTemplateColorWheel(struct uiLayout *layout, struct PointerRNA *ptr, char *propname, int value_slider) {}
+void uiTemplateColorPicker(struct uiLayout *layout, struct PointerRNA *ptr, char *propname, int value_slider) {}
 void uiTemplateHistogram(struct uiLayout *layout, struct PointerRNA *ptr, char *propname, int expand) {}
 void uiTemplateReportsBanner(struct uiLayout *layout, struct bContext *C, struct wmOperator *op) {}
 void uiTemplateWaveform(struct uiLayout *layout, struct PointerRNA *ptr, char *propname, int expand) {}
@@ -452,6 +460,9 @@ void RE_engine_report(struct RenderEngine *engine, int type, const char *msg) {}
 ListBase R_engines = {NULL, NULL};
 void RE_engine_free(struct RenderEngine *engine) {}
 struct RenderEngineType *RE_engines_find(const char *idname) { return NULL; }
+void RE_engine_update_memory_stats(struct RenderEngine *engine, float mem_used, float mem_peak) {};
+struct RenderEngine *RE_engine_create(struct RenderEngineType *type) { return NULL; };
+void RE_FreePersistentData(void) {}
 
 /* python */
 struct wmOperatorType *WM_operatortype_find(const char *idname, int quiet) {return (struct wmOperatorType *) NULL;}

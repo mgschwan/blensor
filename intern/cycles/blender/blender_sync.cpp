@@ -17,6 +17,7 @@
  */
 
 #include "background.h"
+#include "camera.h"
 #include "film.h"
 #include "../render/filter.h"
 #include "graph.h"
@@ -141,7 +142,6 @@ void BlenderSync::sync_data(BL::SpaceView3D b_v3d, BL::Object b_override, const 
 	sync_film();
 	sync_shaders();
 	sync_objects(b_v3d);
-	sync_particle_systems();
 	sync_motion(b_v3d, b_override);
 }
 
@@ -149,6 +149,9 @@ void BlenderSync::sync_data(BL::SpaceView3D b_v3d, BL::Object b_override, const 
 
 void BlenderSync::sync_integrator()
 {
+#ifdef __CAMERA_MOTION__
+	BL::RenderSettings r = b_scene.render();
+#endif
 	PointerRNA cscene = RNA_pointer_get(&b_scene.ptr, "cycles");
 
 	experimental = (RNA_enum_get(&cscene, "feature_set") != 0);
@@ -175,8 +178,15 @@ void BlenderSync::sync_integrator()
 	integrator->layer_flag = render_layer.layer;
 
 	integrator->sample_clamp = get_float(cscene, "sample_clamp");
-#ifdef __MOTION__
-	integrator->motion_blur = (!preview && r.use_motion_blur());
+#ifdef __CAMERA_MOTION__
+	if(!preview) {
+		if(integrator->motion_blur != r.use_motion_blur()) {
+			scene->object_manager->tag_update(scene);
+			scene->camera->tag_update();
+		}
+
+		integrator->motion_blur = r.use_motion_blur();
+	}
 #endif
 
 	integrator->diffuse_samples = get_int(cscene, "diffuse_samples");
@@ -233,6 +243,7 @@ void BlenderSync::sync_render_layers(BL::SpaceView3D b_v3d, const char *layer)
 			render_layer.use_localview = (b_v3d.local_view() ? true : false);
 			render_layer.scene_layer = get_layer(b_v3d.layers(), b_v3d.layers_local_view(), render_layer.use_localview);
 			render_layer.layer = render_layer.scene_layer;
+			render_layer.exclude_layer = 0;
 			render_layer.holdout_layer = 0;
 			render_layer.material_override = PointerRNA_NULL;
 			render_layer.use_background = true;
@@ -250,10 +261,16 @@ void BlenderSync::sync_render_layers(BL::SpaceView3D b_v3d, const char *layer)
 	for(r.layers.begin(b_rlay); b_rlay != r.layers.end(); ++b_rlay) {
 		if((!layer && first_layer) || (layer && b_rlay->name() == layer)) {
 			render_layer.name = b_rlay->name();
-			render_layer.scene_layer = get_layer(b_scene.layers()) & ~get_layer(b_rlay->layers_exclude());
-			render_layer.layer = get_layer(b_rlay->layers());
+
 			render_layer.holdout_layer = get_layer(b_rlay->layers_zmask());
+			render_layer.exclude_layer = get_layer(b_rlay->layers_exclude());
+
+			render_layer.scene_layer = get_layer(b_scene.layers()) & ~render_layer.exclude_layer;
+			render_layer.scene_layer |= render_layer.exclude_layer & render_layer.holdout_layer;
+
+			render_layer.layer = get_layer(b_rlay->layers());
 			render_layer.layer |= render_layer.holdout_layer;
+
 			render_layer.material_override = b_rlay->material_override();
 			render_layer.use_background = b_rlay->use_sky();
 			render_layer.use_viewport_visibility = false;
@@ -269,6 +286,7 @@ void BlenderSync::sync_render_layers(BL::SpaceView3D b_v3d, const char *layer)
 
 SceneParams BlenderSync::get_scene_params(BL::Scene b_scene, bool background)
 {
+	BL::RenderSettings r = b_scene.render();
 	SceneParams params;
 	PointerRNA cscene = RNA_pointer_get(&b_scene.ptr, "cycles");
 	int shadingsystem = RNA_enum_get(&cscene, "shading_system");
@@ -285,6 +303,8 @@ SceneParams BlenderSync::get_scene_params(BL::Scene b_scene, bool background)
 
 	params.use_bvh_spatial_split = RNA_boolean_get(&cscene, "debug_use_spatial_splits");
 	params.use_bvh_cache = (background)? RNA_boolean_get(&cscene, "use_cache"): false;
+
+	params.persistent_images = (background)? r.use_persistent_data(): false;
 
 	return params;
 }
@@ -371,19 +391,36 @@ SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine, BL::Use
 	params.start_resolution = get_int(cscene, "preview_start_resolution");
 
 	/* other parameters */
-	params.threads = b_scene.render().threads();
+	if(b_scene.render().threads_mode() == BL::RenderSettings::threads_mode_FIXED)
+		params.threads = b_scene.render().threads();
+	else
+		params.threads = 0;
 
 	params.cancel_timeout = get_float(cscene, "debug_cancel_timeout");
 	params.reset_timeout = get_float(cscene, "debug_reset_timeout");
 	params.text_timeout = get_float(cscene, "debug_text_timeout");
 
+	params.progressive_refine = get_boolean(cscene, "use_progressive_refine");
+
 	if(background) {
-		params.progressive = false;
+		if(params.progressive_refine)
+			params.progressive = true;
+		else
+			params.progressive = false;
+
 		params.start_resolution = INT_MAX;
 	}
 	else
 		params.progressive = true;
-	
+
+	/* shading system - scene level needs full refresh */
+	int shadingsystem = RNA_enum_get(&cscene, "shading_system");
+
+	if(shadingsystem == 0)
+		params.shadingsystem = SessionParams::SVM;
+	else if(shadingsystem == 1)
+		params.shadingsystem = SessionParams::OSL;
+
 	return params;
 }
 

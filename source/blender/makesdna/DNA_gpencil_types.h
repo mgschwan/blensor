@@ -39,8 +39,9 @@
  *	   This assumes that the bottom-left corner is (0,0)
  */
 typedef struct bGPDspoint {
-	float x, y, z;			/* co-ordinates of point (usually 2d, but can be 3d as well) */				
+	float x, y, z;			/* co-ordinates of point (usually 2d, but can be 3d as well) */
 	float pressure;			/* pressure of input device (from 0 to 1) at this point */
+	float time;				/* seconds since start of stroke */
 } bGPDspoint;
 
 /* Grease-Pencil Annotations - 'Stroke'
@@ -49,12 +50,14 @@ typedef struct bGPDspoint {
  */
 typedef struct bGPDstroke {
 	struct bGPDstroke *next, *prev;
-	
 	bGPDspoint *points;		/* array of data-points for stroke */
+	void *pad;				/* keep 4 pointers at the beginning, padding for 'inittime' is tricky 64/32bit */
 	int totpoints;			/* number of data-points in array */
 	
-	short thickness;		/* thickness of stroke (currently not used) */	
+	short thickness;		/* thickness of stroke (currently not used) */
 	short flag;				/* various settings about this stroke */
+
+	double inittime;		/* Init time of stroke */
 } bGPDstroke;
 
 /* bGPDstroke->flag */
@@ -94,7 +97,7 @@ typedef struct bGPDlayer {
 	ListBase frames;		/* list of annotations to display for frames (bGPDframe list) */
 	bGPDframe *actframe;	/* active frame (should be the frame that is currently being displayed) */
 	
-	int flag;				/* settings for layer */		
+	int flag;				/* settings for layer */
 	short thickness;		/* current thickness to apply to strokes */
 	short gstep;			/* max number of frames between active and ghost to show (0=only those on either side) */
 	

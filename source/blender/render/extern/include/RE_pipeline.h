@@ -83,7 +83,7 @@ typedef struct RenderLayer {
 	/* copy of RenderData */
 	char name[RE_MAXNAME];
 	unsigned int lay, lay_zmask, lay_exclude;
-	int layflag, passflag, pass_xor;		
+	int layflag, passflag, pass_xor;
 	
 	struct Material *mat_override;
 	struct Group *light_override;
@@ -148,6 +148,7 @@ typedef struct RenderStats {
 	double starttime, lastframetime;
 	const char *infostr, *statstr;
 	char scene_name[MAX_ID_NAME - 2];
+	float mem_used, mem_peak;
 } RenderStats;
 
 /* *********************** API ******************** */
@@ -169,6 +170,8 @@ void RE_FreeRender (struct Render *re);
 void RE_FreeAllRender (void);
 /* only call on file load */
 void RE_FreeAllRenderResults(void);
+/* for external render engines that can keep persistent data */
+void RE_FreePersistentData(void);
 
 /* get results and statistics */
 void RE_FreeRenderResult(struct RenderResult *rr);
@@ -195,7 +198,7 @@ void RE_SetOrtho (struct Render *re, rctf *viewplane, float clipsta, float clipe
 void RE_SetPixelSize(struct Render *re, float pixsize);
 
 /* option to set viewmatrix before making dbase */
-void RE_SetView (struct Render *re, float mat[][4]);
+void RE_SetView (struct Render *re, float mat[4][4]);
 
 /* make or free the dbase */
 void RE_Database_FromScene(struct Render *re, struct Main *bmain, struct Scene *scene, unsigned int lay, int use_camera_view);
@@ -235,7 +238,7 @@ void RE_MergeFullSample(struct Render *re, struct Main *bmain, struct Scene *sce
 
 /* ancient stars function... go away! */
 void RE_make_stars(struct Render *re, struct Scene *scenev3d, void (*initfunc)(void),
-                   void (*vertexfunc)(float*),  void (*termfunc)(void));
+                   void (*vertexfunc)(float *),  void (*termfunc)(void));
 
 /* display and event callbacks */
 void RE_display_init_cb	(struct Render *re, void *handle, void (*f)(void *handle, RenderResult *rr));
@@ -270,8 +273,8 @@ int RE_seq_render_active(struct Scene *scene, struct RenderData *rd);
 
 void RE_Database_Baking(struct Render *re, struct Main *bmain, struct Scene *scene, unsigned int lay, const int type, struct Object *actob);
 
-void RE_DataBase_GetView(struct Render *re, float mat[][4]);
-void RE_GetCameraWindow(struct Render *re, struct Object *camera, int frame, float mat[][4]);
+void RE_DataBase_GetView(struct Render *re, float mat[4][4]);
+void RE_GetCameraWindow(struct Render *re, struct Object *camera, int frame, float mat[4][4]);
 struct Scene *RE_GetScene(struct Render *re);
 
 int RE_is_rendering_allowed(struct Scene *scene, struct Object *camera_override, struct ReportList *reports);

@@ -31,10 +31,12 @@
 #define __AUD_IDEVICE_H__
 
 #include "AUD_Space.h"
-#include "AUD_Reference.h"
 #include "AUD_IFactory.h"
 #include "AUD_IReader.h"
 #include "AUD_IHandle.h"
+#include "AUD_ILockable.h"
+
+#include <boost/shared_ptr.hpp>
 
 /**
  * This class represents an output device for sound sources.
@@ -44,7 +46,7 @@
  * \warning Thread safety must be insured so that no reader is beeing called
  *          twice at the same time.
  */
-class AUD_IDevice
+class AUD_IDevice : public AUD_ILockable
 {
 public:
 	/**
@@ -67,7 +69,7 @@ public:
 	 * \exception AUD_Exception Thrown if there's an unexpected (from the
 	 *            device side) error during creation of the reader.
 	 */
-	virtual AUD_Reference<AUD_IHandle> play(AUD_Reference<AUD_IReader> reader, bool keep = false)=0;
+	virtual boost::shared_ptr<AUD_IHandle> play(boost::shared_ptr<AUD_IReader> reader, bool keep = false)=0;
 
 	/**
 	 * Plays a sound source.
@@ -79,7 +81,7 @@ public:
 	 * \exception AUD_Exception Thrown if there's an unexpected (from the
 	 *            device side) error during creation of the reader.
 	 */
-	virtual AUD_Reference<AUD_IHandle> play(AUD_Reference<AUD_IFactory> factory, bool keep = false)=0;
+	virtual boost::shared_ptr<AUD_IHandle> play(boost::shared_ptr<AUD_IFactory> factory, bool keep = false)=0;
 
 	/**
 	 * Stops all playing sounds.

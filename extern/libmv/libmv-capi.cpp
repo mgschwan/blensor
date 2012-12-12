@@ -192,7 +192,7 @@ static void imageToFloatBuf(const libmv::FloatImage *image, int channels, float 
 }
 
 #if defined(DUMP_FAILURE) || defined (DUMP_ALWAYS)
-void savePNGImage(png_bytep *row_pointers, int width, int height, int depth, int color_type, char *file_name)
+static void savePNGImage(png_bytep *row_pointers, int width, int height, int depth, int color_type, char *file_name)
 {
 	png_infop info_ptr;
 	png_structp png_ptr;
@@ -437,6 +437,9 @@ int libmv_trackRegion(const struct libmv_trackRegionOptions *options,
 #endif
 		saveImage("old_patch", old_patch, x1[4], y1[4]);
 		saveImage("new_patch", new_patch, x2[4], y2[4]);
+
+		if (options->image1_mask)
+			saveImage("mask", image1_mask, x2[4], y2[4]);
 	}
 #endif
 
@@ -550,7 +553,8 @@ static void libmv_solveRefineIntrinsics(libmv::Tracks *tracks, libmv::CameraIntr
 }
 
 libmv_Reconstruction *libmv_solveReconstruction(libmv_Tracks *tracks, int keyframe1, int keyframe2,
-			int refine_intrinsics, double focal_length, double principal_x, double principal_y, double k1, double k2, double k3,
+			int refine_intrinsics, double focal_length, double principal_x, double principal_y,
+			double k1, double k2, double k3, struct libmv_reconstructionOptions *options,
 			reconstruct_progress_update_cb progress_update_callback, void *callback_customdata)
 {
 	/* Invert the camera intrinsics. */
@@ -558,6 +562,7 @@ libmv_Reconstruction *libmv_solveReconstruction(libmv_Tracks *tracks, int keyfra
 	libmv_Reconstruction *libmv_reconstruction = new libmv_Reconstruction();
 	libmv::EuclideanReconstruction *reconstruction = &libmv_reconstruction->reconstruction;
 	libmv::CameraIntrinsics *intrinsics = &libmv_reconstruction->intrinsics;
+	libmv::ReconstructionOptions reconstruction_options;
 
 	ReconstructUpdateCallback update_callback =
 		ReconstructUpdateCallback(progress_update_callback, callback_customdata);
@@ -565,6 +570,9 @@ libmv_Reconstruction *libmv_solveReconstruction(libmv_Tracks *tracks, int keyfra
 	intrinsics->SetFocalLength(focal_length, focal_length);
 	intrinsics->SetPrincipalPoint(principal_x, principal_y);
 	intrinsics->SetRadialDistortion(k1, k2, k3);
+
+	reconstruction_options.success_threshold = options->success_threshold;
+	reconstruction_options.use_fallback_reconstruction = options->use_fallback_reconstruction;
 
 	for (int i = 0; i < markers.size(); ++i) {
 		intrinsics->InvertIntrinsics(markers[i].x,
@@ -584,7 +592,8 @@ libmv_Reconstruction *libmv_solveReconstruction(libmv_Tracks *tracks, int keyfra
 
 	libmv::EuclideanReconstructTwoFrames(keyframe_markers, reconstruction);
 	libmv::EuclideanBundle(normalized_tracks, reconstruction);
-	libmv::EuclideanCompleteReconstruction(normalized_tracks, reconstruction, &update_callback);
+	libmv::EuclideanCompleteReconstruction(reconstruction_options, normalized_tracks,
+	                                       reconstruction, &update_callback);
 
 	if (refine_intrinsics) {
 		libmv_solveRefineIntrinsics((libmv::Tracks *)tracks, intrinsics, reconstruction,
@@ -891,7 +900,7 @@ void libmv_CameraIntrinsicsUpdate(struct libmv_CameraIntrinsics *libmvIntrinsics
 		intrinsics->SetFocalLength(focal_length, focal_length);
 
 	if (intrinsics->principal_point_x() != principal_x || intrinsics->principal_point_y() != principal_y)
-		intrinsics->SetFocalLength(focal_length, focal_length);
+		intrinsics->SetPrincipalPoint(principal_x, principal_y);
 
 	if (intrinsics->k1() != k1 || intrinsics->k2() != k2 || intrinsics->k3() != k3)
 		intrinsics->SetRadialDistortion(k1, k2, k3);

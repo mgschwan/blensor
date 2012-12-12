@@ -37,6 +37,8 @@ import bmesh
 import time
 import random
 
+#r06
+
 ## CREA PANELES EN TOOLS
 
 # VARIABLES DE ENTORNO
@@ -199,19 +201,25 @@ class OscPanelRender(OscPollRender, bpy.types.Panel):
 
         col.operator("file.create_batch_maker_osc", icon="LINENUMBERS_ON", text="Make Render Batch")
         colrow = col.row()
-        colrow.operator("render.render_layers_at_time_osc", icon="RENDER_STILL", text="All Scenes")
-        colrow.operator("render.render_layers_at_time_osc_cf", icon="RENDER_STILL", text="> Frame")
+        col.operator("file.create_batch_python", icon="LINENUMBERS_ON", text="Make Python Batch")
         colrow = col.row()
-        colrow.operator("render.render_current_scene_osc", icon="RENDER_STILL", text="Active Scene")
-        colrow.operator("render.render_current_scene_osc_cf", icon="RENDER_STILL", text="> Frame")
-        colrow = col.row(align=1)
-        colrow.prop(bpy.context.scene, "OscSelScenes", text="")
-        colrow.operator("render.render_selected_scenes_osc", icon="RENDER_STILL", text="Selected Scenes")
-        colrow.operator("render.render_selected_scenes_osc_cf", icon="RENDER_STILL", text="> Fame")
+        colrow.operator("render.render_all_scenes_osc", icon="RENDER_STILL", text="All Scenes").frametype=False
+        colrow.operator("render.render_all_scenes_osc", icon="RENDER_STILL", text="> Frame").frametype=True
+        colrow = col.row()
+        colrow.operator("render.render_current_scene_osc", icon="RENDER_STILL", text="Active Scene").frametype=False
+        colrow.operator("render.render_current_scene_osc", icon="RENDER_STILL", text="> Frame").frametype=True
+
 
         colrow = col.row(align=1)
         colrow.prop(bpy.context.scene, "rcPARTS", text="Render Crop Parts")
         colrow.operator("render.render_crop_osc", icon="RENDER_REGION")
+        
+        col = layout.column(align=1)
+        colrow = col.row(align=1)
+        colrow.prop(bpy.context.scene, "use_render_scene", text="")  
+        colrow.operator("render.render_selected_scenes_osc", icon="RENDER_STILL", text="Selected Scenes").frametype=False
+        colrow.operator("render.render_selected_scenes_osc", icon="RENDER_STILL", text="> Fame").frametype=True   
+   
 
 
 class OscPanelFiles(OscPollFiles, bpy.types.Panel):
@@ -248,7 +256,8 @@ class OscPanelOverrides(OscPollOverrides, bpy.types.Panel):
         col.label(text="Active Scene: " + bpy.context.scene.name)
         col.label(text="Example: [[Group,Material]]")
         col.prop(bpy.context.scene, '["OVERRIDE"]', text="")
-        col.operator("render.check_overrides", text="Check List", icon="ZOOM_ALL")       
+        col.operator("render.check_overrides", text="Check List", icon="ZOOM_ALL")
+        col.operator("render.overrides_on", text="On / Off", icon="QUIT")                
 
         boxcol=layout.box().column(align=1)
         boxcol.label(text="Danger Zone")
@@ -397,20 +406,36 @@ class SelectMenor (bpy.types.Operator):
 
 
 ##-----------------------------------CREATE SHAPES----------------
-class CreaShapes(bpy.types.Operator):
-    bl_idname = "mesh.split_lr_shapes_osc"
-    bl_label = "Split LR Shapes"
-    bl_options = {"REGISTER", "UNDO"}
-    def execute(self, context):
-        ## VARIABLES
-        ACTOBJ=bpy.context.active_object
-        LENKB=len(ACTOBJ.data.shape_keys.key_blocks)
 
-        ## RECORTO NOMBRES
+def DefSplitShapes(self,ACTIVESHAPE,LAYOUTCOMPAT):
+    #PASO A OBJECT MODE
+    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+    
+    ## VARIABLES
+    ACTOBJ=bpy.context.active_object
+    LENKB=len(ACTOBJ.data.shape_keys.key_blocks)
+    INDEX=ACTOBJ.active_shape_key_index    
+    
+    ## RECORTO NOMBRES
+    if not LAYOUTCOMPAT:
         for SHAPE in ACTOBJ.data.shape_keys.key_blocks:
             if len(SHAPE.name) > 7:
                 SHAPE.name=SHAPE.name[:8]
-
+ 
+    if ACTIVESHAPE:  
+        print(INDEX)
+        ACTOBJ.active_shape_key_index=INDEX          
+        AS=ACTOBJ.active_shape_key
+        AS.value=1
+        bpy.ops.object.shape_key_add(from_mix=True)
+        ACTOBJ.data.shape_keys.key_blocks[-1].name=AS.name[:8]+"_L"
+        ACTOBJ.data.shape_keys.key_blocks[-1].vertex_group="_L"
+        bpy.ops.object.shape_key_add(from_mix=True)
+        ACTOBJ.data.shape_keys.key_blocks[-1].name=AS.name[:8]+"_R"
+        ACTOBJ.data.shape_keys.key_blocks[-1].vertex_group="_R"
+        bpy.ops.object.shape_key_clear()
+           
+    else:     
         ## DUPLICO SHAPES Y CONECTO GRUPO
         for SHAPE in ACTOBJ.data.shape_keys.key_blocks[1:]:
             SHAPE.value=1
@@ -421,10 +446,26 @@ class CreaShapes(bpy.types.Operator):
             ACTOBJ.data.shape_keys.key_blocks[-1].name=SHAPE.name[:8]+"_R"
             ACTOBJ.data.shape_keys.key_blocks[-1].vertex_group="_R"
             bpy.ops.object.shape_key_clear()
+        ACTOBJ.active_shape_key_index=INDEX 
 
-        print("OPERACION TERMINADA")
+
+class CreaShapes(bpy.types.Operator):
+    bl_idname = "mesh.split_lr_shapes_osc"
+    bl_label = "Split LR Shapes"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.object is not None
+
+    activeshape=bpy.props.BoolProperty(name="Only Active Shape", default=False)  
+    layoutcompat=bpy.props.BoolProperty(name="Layout Compatible", default=False)
+
+    def execute(self, context):
+
+        DefSplitShapes(self,self.activeshape,self.layoutcompat)
+
         return {'FINISHED'}
-
 
 ##----------------------------SHAPES LAYOUT-----------------------
 
@@ -643,21 +684,17 @@ class normalsOutside(bpy.types.Operator):
 
 
 
-##--------------------------------RENDER LAYER AT TIME----------------------------
+##-------------------------------- RENDER ALL SCENES ----------------------------
 
 
-def defRenderAll (FRAMETYPE):
-    
-
+def defRenderAll (frametype):
     LISTMAT=[]
     SCENES=bpy.data.scenes[:]
     ACTSCENE=bpy.context.scene
     FC=bpy.context.scene.frame_current
     FS=bpy.context.scene.frame_start
     FE=bpy.context.scene.frame_end
-
     print("---------------------")
-
     ## GUARDO MATERIALES DE OBJETOS EN GRUPOS
     for OBJECT in bpy.data.objects[:]:
         SLOTLIST=[]
@@ -670,27 +707,19 @@ def defRenderAll (FRAMETYPE):
 
         except:
             pass
-
-
     for SCENE in SCENES:
         PROPTOLIST=list(eval(SCENE['OVERRIDE']))
         CURSC= SCENE.name
         PATH = SCENE.render.filepath
         ENDPATH = PATH
         FILEPATH=bpy.data.filepath
-
-
-
         # CAMBIO SCENE
         bpy.context.window.screen.scene=SCENE
-
-        if FRAMETYPE == True:
+        if frametype == True:
             bpy.context.scene.frame_start=FC
             bpy.context.scene.frame_end=FC
             bpy.context.scene.frame_end=FC
             bpy.context.scene.frame_start=FC
-
-
         ## SETEO MATERIALES  DE OVERRIDES
         try:
             for OVERRIDE in PROPTOLIST:
@@ -700,41 +729,28 @@ def defRenderAll (FRAMETYPE):
                             SLOT.material=bpy.data.materials[OVERRIDE[1]]
         except:
             pass
-
-        if sys.platform.startswith("w"):
-            print("PLATFORM: WINDOWS")
-            SCENENAME=(FILEPATH.rsplit("\\")[-1])[:-6]
-        else:
-            print("PLATFORM:LINUX")
-            SCENENAME=(FILEPATH.rsplit("/")[-1])[:-6]
-
+        SCENENAME=os.path.basename(FILEPATH.rpartition(".")[0])
         LAYERLIST=[]
         for layer in SCENE.render.layers:
             if layer.use == 1:
                 LAYERLIST.append(layer)
-
         for layers in LAYERLIST:
             for rl in LAYERLIST:
                 rl.use= 0
-
             print("SCENE: "+CURSC)
             print("LAYER: "+layers.name)
             print("OVERRIDE: "+str(PROPTOLIST))
-
-            SCENE.render.filepath = PATH + "/" + SCENENAME + "/" + CURSC + "/" + layers.name + "/" + SCENENAME + "_" + SCENE.name + "_" + layers.name + "_"
+            SCENE.render.filepath = "%s/%s/%s/%s/%s_%s_%s_" % (PATH,SCENENAME,CURSC,layers.name,SCENENAME,SCENE.name,layers.name)
             SCENE.render.layers[layers.name].use = 1
             bpy.ops.render.render(animation=True, write_still=True, layer=layers.name, scene= SCENE.name)
-
             print("DONE")
             print("---------------------")
 
         ## REESTABLECE LOS LAYERS
         for layer in LAYERLIST:
             layer.use = 1
-
         ## RESTAURA EL PATH FINAL
         SCENE.render.filepath = ENDPATH
-
         #RESTAURO MATERIALES  DE OVERRIDES
         for OBJECT in LISTMAT:
             SLOTIND=0
@@ -745,7 +761,7 @@ def defRenderAll (FRAMETYPE):
             except:
                 print("OUT OF RANGE")
         # RESTAURO FRAMES
-        if FRAMETYPE == True:
+        if frametype == True:
             SCENE.frame_start=FS
             SCENE.frame_end=FE
             SCENE.frame_end=FE
@@ -755,42 +771,28 @@ def defRenderAll (FRAMETYPE):
 
 
 class renderAll (bpy.types.Operator):
-    bl_idname="render.render_layers_at_time_osc"
-    bl_label="Render layers at time"
+    bl_idname="render.render_all_scenes_osc"
+    bl_label="Render All Scenes"
 
-    FRAMETYPE=bpy.props.BoolProperty(default=False)
-
-
-    def execute(self,context):
-        defRenderAll(self.FRAMETYPE)
-        return {'FINISHED'}
-
-class renderAllCF (bpy.types.Operator):
-    bl_idname="render.render_layers_at_time_osc_cf"
-    bl_label="Render layers at time Current Frame"
-
-    FRAMETYPE=bpy.props.BoolProperty(default=True)
+    frametype=bpy.props.BoolProperty(default=False)
 
 
     def execute(self,context):
-        defRenderAll(self.FRAMETYPE)
+        defRenderAll(self.frametype)
         return {'FINISHED'}
+
 
 
 ##--------------------------------RENDER SELECTED SCENES----------------------------
 
 
-bpy.types.Scene.OscSelScenes = bpy.props.StringProperty(default="[]")
+bpy.types.Scene.use_render_scene = bpy.props.BoolProperty()
 
 
-def defRenderSelected(FRAMETYPE):
-
-
-
+def defRenderSelected(frametype):
     ACTSCENE = bpy.context.scene
     LISTMAT = []
     SCENES = bpy.data.scenes[:]
-    SCENELIST = eval(bpy.context.scene.OscSelScenes)
     FC = bpy.context.scene.frame_current
     FS = bpy.context.scene.frame_start
     FE = bpy.context.scene.frame_end
@@ -805,27 +807,21 @@ def defRenderSelected(FRAMETYPE):
                 LISTMAT.append((OBJECT,SLOTLIST))
         except:
             pass
-
-
     for SCENE in SCENES:
-        if SCENE.name in SCENELIST:
+        if SCENE.use_render_scene:
             PROPTOLIST = list(eval(SCENE['OVERRIDE']))
             CURSC = SCENE.name
             PATH = SCENE.render.filepath
             ENDPATH = PATH
             FILEPATH = bpy.data.filepath
-
             print("---------------------")
-
             # CAMBIO SCENE
             bpy.context.window.screen.scene = SCENE
-
-            if FRAMETYPE  ==  True:
+            if frametype  ==  True:
                 bpy.context.scene.frame_start = FC
                 bpy.context.scene.frame_end = FC
                 bpy.context.scene.frame_end = FC
                 bpy.context.scene.frame_start = FC
-
             ## SETEO MATERIALES  DE OVERRIDES
             try:
                 for OVERRIDE in PROPTOLIST:
@@ -835,41 +831,27 @@ def defRenderSelected(FRAMETYPE):
                                 SLOT.material=bpy.data.materials[OVERRIDE[1]]
             except:
                 pass
-
-            if sys.platform.startswith("w"):
-                print("PLATFORM: WINDOWS")
-                SCENENAME=(FILEPATH.rsplit("\\")[-1])[:-6]
-            else:
-                print("PLATFORM:LINUX")
-                SCENENAME=(FILEPATH.rsplit("/")[-1])[:-6]
-
+            SCENENAME=os.path.basename(FILEPATH.rpartition(".")[0])
             LAYERLIST=[]
             for layer in SCENE.render.layers:
                 if layer.use == 1:
                     LAYERLIST.append(layer)
-
             for layers in LAYERLIST:
                 for rl in LAYERLIST:
                     rl.use= 0
-
                 print("SCENE: "+CURSC)
                 print("LAYER: "+layers.name)
                 print("OVERRIDE: "+str(PROPTOLIST))
-
-                SCENE.render.filepath = PATH + "/" + SCENENAME + "/" + CURSC + "/" + layers.name + "/" + SCENENAME + "_" + SCENE.name + "_" + layers.name + "_"
+                SCENE.render.filepath = "%s/%s/%s/%s/%s_%s_%s_" % (PATH,SCENENAME,CURSC,layers.name,SCENENAME,SCENE.name,layers.name)
                 SCENE.render.layers[layers.name].use = 1
                 bpy.ops.render.render(animation=True, layer=layers.name, write_still=True, scene= SCENE.name)
-
                 print("DONE")
                 print("---------------------")
-
             ## REESTABLECE LOS LAYERS
             for layer in LAYERLIST:
                 layer.use = 1
-
             ## RESTAURA EL PATH FINAL
             SCENE.render.filepath = ENDPATH
-
             #RESTAURO MATERIALES  DE OVERRIDES
             for OBJECT in LISTMAT:
                 SLOTIND = 0
@@ -879,15 +861,12 @@ def defRenderSelected(FRAMETYPE):
                         SLOTIND += 1
                 except:
                     print("OUT OF RANGE")
-
             # RESTAURO FRAMES
-            if FRAMETYPE == True:
+            if frametype == True:
                 SCENE.frame_start = FS
                 SCENE.frame_end = FE
                 SCENE.frame_end = FE
                 SCENE.frame_start = FS
-
-
     # RESTAURO SCENE
     bpy.context.window.screen.scene = ACTSCENE
 
@@ -896,36 +875,26 @@ class renderSelected (bpy.types.Operator):
     bl_idname="render.render_selected_scenes_osc"
     bl_label="Render Selected Scenes"
 
-    FRAMETYPE=bpy.props.BoolProperty(default=False)
+    frametype=bpy.props.BoolProperty(default=False)
 
     def execute(self,context):
-        defRenderSelected(self.FRAMETYPE)
+        defRenderSelected(self.frametype)
         return {'FINISHED'}
 
-class renderSelectedCF (bpy.types.Operator):
-    bl_idname="render.render_selected_scenes_osc_cf"
-    bl_label="Render Selected Scenes Curent Frame"
 
-    FRAMETYPE=bpy.props.BoolProperty(default=True)
-
-    def execute(self,context):
-        defRenderSelected(self.FRAMETYPE)
-        return {'FINISHED'}
 
 
 ##--------------------------------RENDER CURRENT SCENE----------------------------
 
 
-def defRenderCurrent (FRAMETYPE):
+def defRenderCurrent (frametype):
     LISTMAT = []
     SCENE = bpy.context.scene
     FC = bpy.context.scene.frame_current
     FS = bpy.context.scene.frame_start
     FE = bpy.context.scene.frame_end
 
-
     print("---------------------")
-
     ## GUARDO MATERIALES DE OBJETOS EN GRUPOS
     for OBJECT in bpy.data.objects[:]:
         SLOTLIST = []
@@ -936,21 +905,16 @@ def defRenderCurrent (FRAMETYPE):
                 LISTMAT.append((OBJECT,SLOTLIST))
         except:
             pass
-
-
     PROPTOLIST = list(eval(SCENE['OVERRIDE']))
     CURSC = SCENE.name
     PATH = SCENE.render.filepath
     ENDPATH = PATH
     FILEPATH = bpy.data.filepath
-
-
-    if FRAMETYPE == True:
+    if frametype == True:
         bpy.context.scene.frame_start = FC
         bpy.context.scene.frame_end = FC
         bpy.context.scene.frame_end = FC
         bpy.context.scene.frame_start = FC
-
     ## SETEO MATERIALES  DE OVERRIDES
     try:
         for OVERRIDE in PROPTOLIST:
@@ -960,42 +924,27 @@ def defRenderCurrent (FRAMETYPE):
                         SLOT.material = bpy.data.materials[OVERRIDE[1]]
     except:
         pass
-
-    if sys.platform.startswith("w"):
-        print("PLATFORM: WINDOWS")
-        SCENENAME=(FILEPATH.rsplit("\\")[-1])[:-6]
-    else:
-        print("PLATFORM:LINUX")
-        SCENENAME=(FILEPATH.rsplit("/")[-1])[:-6]
-
+    SCENENAME=os.path.basename(FILEPATH.rpartition(".")[0])
     LAYERLIST=[]
     for layer in SCENE.render.layers:
         if layer.use == 1:
             LAYERLIST.append(layer)
-
     for layers in LAYERLIST:
         for rl in LAYERLIST:
             rl.use= 0
-
         print("SCENE: "+CURSC)
         print("LAYER: "+layers.name)
         print("OVERRIDE: "+str(PROPTOLIST))
-
-
-        SCENE.render.filepath = PATH + "/" + SCENENAME + "/" + CURSC + "/" + layers.name + "/" + SCENENAME + "_" + SCENE.name + "_" + layers.name + "_"
+        SCENE.render.filepath = "%s/%s/%s/%s/%s_%s_%s_" % (PATH,SCENENAME,CURSC,layers.name,SCENENAME,SCENE.name,layers.name)
         SCENE.render.layers[layers.name].use = 1
         bpy.ops.render.render(animation=True, layer=layers.name, write_still=1, scene= SCENE.name)
-
         print("DONE")
         print("---------------------")
-
     ## REESTABLECE LOS LAYERS
     for layer in LAYERLIST:
         layer.use = 1
-
     ## RESTAURA EL PATH FINAL
     SCENE.render.filepath = ENDPATH
-
     #RESTAURO MATERIALES  DE OVERRIDES
     for OBJECT in LISTMAT:
         SLOTIND = 0
@@ -1005,9 +954,8 @@ def defRenderCurrent (FRAMETYPE):
                 SLOTIND += 1
         except:
             print("FUERA DE RANGO")
-
     # RESTAURO FRAMES
-    if FRAMETYPE == True:
+    if frametype == True:
         SCENE.frame_start = FS
         SCENE.frame_end = FE
         SCENE.frame_end = FE
@@ -1018,32 +966,19 @@ class renderCurrent (bpy.types.Operator):
     bl_idname="render.render_current_scene_osc"
     bl_label="Render Current Scene"
 
-    FRAMETYPE=bpy.props.BoolProperty(default=False)
+    frametype=bpy.props.BoolProperty(default=False)
 
     def execute(self,context):
 
-        defRenderCurrent(self.FRAMETYPE)
+        defRenderCurrent(self.frametype)
 
         return {'FINISHED'}
 
 
-class renderCurrentCF (bpy.types.Operator):
-    bl_idname="render.render_current_scene_osc_cf"
-    bl_label="Render Current Scene Current Frame"
 
-    FRAMETYPE=bpy.props.BoolProperty(default=True)
-
-    def execute(self,context):
-
-        defRenderCurrent(self.FRAMETYPE)
-
-        return {'FINISHED'}
 
 
 ##--------------------------RENDER CROP----------------------
-## SETEO EL STATUS DEL PANEL PARA EL IF
-bpy.types.Scene.RcropStatus = bpy.props.BoolProperty(default=0)
-
 ## CREO DATA PARA EL SLIDER
 bpy.types.Scene.rcPARTS = bpy.props.IntProperty(default=0, min=2, max=50, step=1)
 
@@ -1053,105 +988,41 @@ class renderCrop (bpy.types.Operator):
     bl_label="Render Crop: Render!"
     def execute(self,context):
 
-
-
-        ##AVERIGUO EL SISTEMA
-        if sys.platform.startswith("w"):    
-            print("PLATFORM: WINDOWS")
-            VARSYSTEM= "\\"
-        else:
-            print("PLATFORM:LINUX")
-            VARSYSTEM= "/"
-
-
-        ## NOMBRE DE LA ESCENA
-        SCENENAME=(bpy.data.filepath.rsplit(VARSYSTEM)[-1]).rsplit(".")[0]
-
-        ## CREA ARRAY
-        PARTES = []
-        START = 1
+        FILEPATH = bpy.data.filepath
+        SCENENAME=os.path.basename(FILEPATH.rpartition(".")[0])
         PARTS = bpy.context.scene.rcPARTS
         PARTS = PARTS+1
-        while START < PARTS:
-            PARTES.append(START)
-            START = START+1
-        print(PARTES)
+        PARTES=[i for i in range(1,PARTS)]            
 
-
-        ##SETEO VARIABLE PARA LA FUNCION DE RENDER
         NUMERODECORTE=1
-
-        ##ESCENA ACTIVA
         SCACT = bpy.context.scene
-
-        ## SETEO CROP
-        bpy.data.scenes[SCACT.name].render.use_crop_to_border = 1
-        bpy.data.scenes[SCACT.name].render.use_border = 1
-
-        ##A VERIGUO RES EN Y
-        RESY = bpy.data.scenes[SCACT.name].render.resolution_y
-
-        ## AVERIGUO EL PATH DE LA ESCENA
-        OUTPUTFILEPATH = bpy.data.scenes[SCACT.name].render.filepath
-        bpy.context.scene.render.filepath = OUTPUTFILEPATH+bpy.context.scene.name
-
-
-        ## CUANTAS PARTES HARA
+        SCACT.render.use_crop_to_border = 1
+        SCACT.render.use_border = 1
+        RESY = SCACT.render.resolution_y
+        OUTPUTFILEPATH = SCACT.render.filepath
         LENPARTES = len(PARTES)
-
-        ## DIVIDE 1 SOBRE LA CANTIDAD DE PARTES
         DIVISOR = 1/PARTES[LENPARTES-1]
-
-        ## SETEA VARIABLE DEL MARCO MINIMO Y MAXIMO
         CMIN = 0
         CMAX = DIVISOR
-
-        ## REMUEVE EL ULTIMO OBJETO DEL ARRAY PARTES
         PARTESRESTADA = PARTES.pop(LENPARTES-1)
-
-        ## SETEA EL MINIMO Y EL MAXIMO CON LOS VALORES DE ARRIBA
-        bpy.data.scenes[SCACT.name].render.border_min_y = CMIN
-        bpy.data.scenes[SCACT.name].render.border_max_y = CMAX
-
-
-        ##SETEA EL OUTPUT PARA LA PRIMERA PARTE
-        OUTPUTFILEPATH+bpy.context.scene.name
-        bpy.context.scene.render.filepath = OUTPUTFILEPATH + SCENENAME + VARSYSTEM + SCENENAME + "_PART" + str(PARTES[0]) + "_"
-
-        ##RENDER PRIMERA PARTE
+        SCACT.render.border_min_y = CMIN
+        SCACT.render.border_max_y = CMAX
+        SCACT.render.filepath =  "%s/%s/%s_PART%s_" % (OUTPUTFILEPATH,SCENENAME,SCENENAME,str(PARTES[0]))
         bpy.ops.render.render(animation=True)
         bpy.context.scene.render.filepath
-
-        ##SUMO UN NUMERO AL CORTE
         NUMERODECORTE = NUMERODECORTE + 1
-
-
         ## RENDER!
         for PARTE in PARTES:
-            ## SUMA A LOS VALORES DEL CROP
             CMIN = CMIN + DIVISOR
             CMAX = CMAX + DIVISOR
-            print("EL CROP ES DE " + str(CMIN) + " A " + str(CMAX))
-            ## SETEA BORDE
-            bpy.data.scenes[SCACT.name].render.border_min_y = CMIN
-            bpy.data.scenes[SCACT.name].render.border_max_y = CMAX
-            ## SETEA EL OUTPUT
-            bpy.context.scene.render.filepath = OUTPUTFILEPATH + SCENENAME + VARSYSTEM + SCENENAME + "_PART" + str(NUMERODECORTE) + "_"
-            print("EL OUTPUT DE LA FUNCION ES " + bpy.context.scene.render.filepath)
-            ## PRINTEA EL NUMERO DE CORTE
-            print(PARTE)
-            ## RENDER
+            SCACT.render.border_min_y = CMIN
+            SCACT.render.border_max_y = CMAX
+            bpy.context.scene.render.filepath =  "%s%s/%s_PART%s_" % (OUTPUTFILEPATH,SCENENAME,SCENENAME,str(NUMERODECORTE))
             bpy.ops.render.render(animation=True)
-            ## SUMO NUMERO DE CORTE
             NUMERODECORTE = NUMERODECORTE + 1
 
-
-        ## REESTABLEZCO EL FILEPATH
-        bpy.context.scene.render.filepath = OUTPUTFILEPATH
-
-
-        print("RENDER TERMINADO")
-
+        SCACT.render.filepath = OUTPUTFILEPATH
+        SCACT.render.use_border = False
         return {'FINISHED'}
 
 
@@ -1618,7 +1489,7 @@ def defoscBatchMaker(TYPE):
                 os.chmod(RLATFILE, stat.S_IRWXU)  
             except:
                 print("** Oscurart Batch maker can not modify the permissions.")                             
-        FILESC.writelines("import bpy \nbpy.ops.render.render_layers_at_time_osc()\nbpy.ops.wm.quit_blender()")
+        FILESC.writelines("import bpy \nbpy.ops.render.render_all_scenes_osc()\nbpy.ops.wm.quit_blender()")
         FILESC.close()
     else:
         print("The All Python files Skips: Already exist!")   
@@ -1640,7 +1511,6 @@ class oscBatchMaker (bpy.types.Operator):
     bl_idname = "file.create_batch_maker_osc"
     bl_label = "Make render batch"
     bl_options = {'REGISTER', 'UNDO'}
-
 
     type = bpy.props.EnumProperty(
             name="Render Mode",
@@ -2058,7 +1928,29 @@ class OscRestoreOverrides(bpy.types.Operator):
         return {'FINISHED'}
 
 
+OVERRIDESSTATUS = False
 
+    
+class OscOverridesOn(bpy.types.Operator):
+    bl_idname = "render.overrides_on"
+    bl_label = "Turn On Overrides"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute (self, context):
+        
+        global OVERRIDESSTATUS
+        
+        if OVERRIDESSTATUS == False:
+            bpy.app.handlers.render_pre.append(DefOscApplyOverrides)
+            bpy.app.handlers.render_post.append(DefOscRestoreOverrides)  
+            OVERRIDESSTATUS = True
+            print("Overrides on!")
+        else:    
+            bpy.app.handlers.render_pre.remove(DefOscApplyOverrides)
+            bpy.app.handlers.render_post.remove(DefOscRestoreOverrides)    
+            OVERRIDESSTATUS = False
+            print("Overrides off!")           
+        return {'FINISHED'}  
 
 
 
@@ -2193,7 +2085,7 @@ def reSymSave (self):
     XML.close()
     SYMAP.clear()
 
-def reSymMesh (self):
+def reSymMesh (self, SELECTED, SIDE):
     
     bpy.ops.object.mode_set(mode='EDIT')
     
@@ -2209,17 +2101,52 @@ def reSymMesh (self):
     ENTFILEPATH= "%s%s%s_%s_SYM_TEMPLATE.xml" %  (ACTIVEFOLDER, SYSBAR, bpy.context.scene.name, bpy.context.object.name)
     XML=open(ENTFILEPATH ,mode="r")
     
-    SYMAP = eval(XML.readlines()[0])
+    SYMAP = eval(XML.readlines()[0])    
     
-    for VERT in SYMAP:
-        if VERT == SYMAP[VERT]:
-            BM.verts[VERT].co[0] = 0
-            BM.verts[VERT].co[1] = BM.verts[SYMAP[VERT]].co[1]
-            BM.verts[VERT].co[2] = BM.verts[SYMAP[VERT]].co[2]            
+    if SIDE == "+-":
+        if SELECTED:
+            for VERT in SYMAP:
+                if BM.verts[SYMAP[VERT]].select:
+                    if VERT == SYMAP[VERT]:
+                        BM.verts[VERT].co[0] = 0
+                        BM.verts[VERT].co[1] = BM.verts[SYMAP[VERT]].co[1]
+                        BM.verts[VERT].co[2] = BM.verts[SYMAP[VERT]].co[2]            
+                    else:    
+                        BM.verts[VERT].co[0] = -BM.verts[SYMAP[VERT]].co[0]
+                        BM.verts[VERT].co[1] = BM.verts[SYMAP[VERT]].co[1]
+                        BM.verts[VERT].co[2] = BM.verts[SYMAP[VERT]].co[2]        
         else:    
-            BM.verts[VERT].co[0] = -BM.verts[SYMAP[VERT]].co[0]
-            BM.verts[VERT].co[1] = BM.verts[SYMAP[VERT]].co[1]
-            BM.verts[VERT].co[2] = BM.verts[SYMAP[VERT]].co[2]
+            for VERT in SYMAP:
+                if VERT == SYMAP[VERT]:
+                    BM.verts[VERT].co[0] = 0
+                    BM.verts[VERT].co[1] = BM.verts[SYMAP[VERT]].co[1]
+                    BM.verts[VERT].co[2] = BM.verts[SYMAP[VERT]].co[2]            
+                else:    
+                    BM.verts[VERT].co[0] = -BM.verts[SYMAP[VERT]].co[0]
+                    BM.verts[VERT].co[1] = BM.verts[SYMAP[VERT]].co[1]
+                    BM.verts[VERT].co[2] = BM.verts[SYMAP[VERT]].co[2]
+    else:
+        if SELECTED:
+            for VERT in SYMAP:
+                if BM.verts[VERT].select:
+                    if VERT == SYMAP[VERT]:
+                        BM.verts[SYMAP[VERT]].co[0] = 0
+                        BM.verts[SYMAP[VERT]].co[1] = BM.verts[VERT].co[1]
+                        BM.verts[SYMAP[VERT]].co[2] = BM.verts[VERT].co[2]            
+                    else:    
+                        BM.verts[SYMAP[VERT]].co[0] = -BM.verts[VERT].co[0]
+                        BM.verts[SYMAP[VERT]].co[1] = BM.verts[VERT].co[1]
+                        BM.verts[SYMAP[VERT]].co[2] = BM.verts[VERT].co[2]        
+        else:    
+            for VERT in SYMAP:
+                if VERT == SYMAP[VERT]:
+                    BM.verts[SYMAP[VERT]].co[0] = 0
+                    BM.verts[SYMAP[VERT]].co[1] = BM.verts[VERT].co[1]
+                    BM.verts[SYMAP[VERT]].co[2] = BM.verts[VERT].co[2]            
+                else:    
+                    BM.verts[SYMAP[VERT]].co[0] = -BM.verts[VERT].co[0]
+                    BM.verts[SYMAP[VERT]].co[1] = BM.verts[VERT].co[1]
+                    BM.verts[SYMAP[VERT]].co[2] = BM.verts[VERT].co[2]                        
     
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.mode_set(mode='EDIT')
@@ -2243,9 +2170,18 @@ class OscResymMesh (bpy.types.Operator):
     bl_label = "Resym save Apply XML"
     bl_options = {"REGISTER", "UNDO"}
 
-
+    selected=bpy.props.BoolProperty(default=False, name="Only Selected")
+    
+    side = bpy.props.EnumProperty(
+            name="Side_",
+            description="Select Side.",
+            items=(('+-', "+X to -X", "+X to -X"),
+                   ('-+', "-X to +X", "-X to +X")),
+            default='+-',
+            )    
+    
     def execute (self, context):
-        reSymMesh(self)
+        reSymMesh(self, self.selected,self.side)
         return {'FINISHED'}
     
 ##=============== DISTRIBUTE ======================    
@@ -2410,6 +2346,87 @@ class OscRemoveOverridesSlot (bpy.types.Operator):
 bpy.utils.register_class(OscTransferOverrides)
 bpy.utils.register_class(OscAddOverridesSlot)
 bpy.utils.register_class(OscRemoveOverridesSlot)
+
+## --------------------------------------PYTHON BATCH--------------------------------------------------------
+def defoscPythonBatchMaker(BATCHTYPE,SIZE):
+    # REVISO SISTEMA
+    if sys.platform.startswith("w"):
+        print("PLATFORM: WINDOWS")
+        SYSBAR = "\\"
+        EXTSYS = ".bat"
+        QUOTES = '"'
+    else:
+        print("PLATFORM:LINUX")
+        SYSBAR = "/"
+        EXTSYS = ".sh"    
+        QUOTES = ''
+    
+    # CREO VARIABLES
+    FILENAME = bpy.data.filepath.rpartition(SYSBAR)[-1].rpartition(".")[0]
+    SHFILE = "%s%s%s_PythonSecureBatch.py"   % (bpy.data.filepath.rpartition(SYSBAR)[0],SYSBAR,FILENAME)
+    BATCHLOCATION = "%s%s%s%s"   % (bpy.data.filepath.rpartition(SYSBAR)[0],SYSBAR,FILENAME,EXTSYS)
+
+    FILEBATCH = open(SHFILE,"w")
+    
+    if EXTSYS == ".bat":
+        BATCHLOCATION=BATCHLOCATION.replace("\\","/")    
+    
+    # SI EL OUTPUT TIENE DOBLE BARRA LA REEMPLAZO
+    FRO=bpy.context.scene.render.filepath        
+    if bpy.context.scene.render.filepath.count("//"):
+        FRO=bpy.context.scene.render.filepath.replace("//", bpy.data.filepath.rpartition(SYSBAR)[0]+SYSBAR)         
+    if EXTSYS == ".bat":
+        FRO=FRO.replace("\\","/")        
+          
+        
+                 
+    #CREO BATCH
+    bpy.ops.file.create_batch_maker_osc(type=BATCHTYPE)
+    
+    SCRIPT = "import os \nREPITE= True \nBAT= '%s'\nSCENENAME ='%s' \nDIR='%s%s' \ndef RENDER():\n    os.system(BAT) \ndef CLEAN():\n    global REPITE\n    FILES  = [root+'/'+FILE for root, dirs, files in os.walk(os.getcwd()) if len(files) > 0 for FILE in files if FILE.count('~') == False]\n    RESPUESTA=False\n    for FILE in FILES:\n        if os.path.getsize(FILE) < %s:\n            os.remove(FILE)\n            RESPUESTA= True\n    if RESPUESTA:\n        REPITE=True\n    else:\n        REPITE=False\nREPITE=True\nwhile REPITE:\n    global REPITE\n    REPITE=False\n    RENDER()\n    os.chdir(DIR)\n    CLEAN()" % (BATCHLOCATION,FILENAME,FRO,FILENAME,SIZE)
+    
+    
+    # DEFINO ARCHIVO DE BATCH
+    FILEBATCH.writelines(SCRIPT)
+    FILEBATCH.close()  
+    
+    
+    # ARCHIVO CALL
+    CALLFILENAME = bpy.data.filepath.rpartition(SYSBAR)[-1].rpartition(".")[0]
+    CALLFILE = "%s%s%s_CallPythonSecureBatch%s"   % (bpy.data.filepath.rpartition(SYSBAR)[0],SYSBAR,CALLFILENAME,EXTSYS)  
+    CALLFILEBATCH = open(CALLFILE,"w")  
+    
+    SCRIPT = "python %s" % (SHFILE)
+    CALLFILEBATCH.writelines(SCRIPT)
+    CALLFILEBATCH.close()
+    
+    if EXTSYS == ".sh":
+        try:
+            os.chmod(CALLFILE, stat.S_IRWXU)  
+            os.chmod(SHFILE, stat.S_IRWXU) 
+        except:
+            print("** Oscurart Batch maker can not modify the permissions.")      
+    
+    
+    
+class oscPythonBatchMaker (bpy.types.Operator):
+    bl_idname = "file.create_batch_python"
+    bl_label = "Make Batch Python"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    size = bpy.props.IntProperty(name="Size in Bytes", default=10, min=0)
+    
+    type = bpy.props.EnumProperty(
+            name="Render Mode",
+            description="Select Render Mode.",
+            items=(('osRlat', "All Scenes", "Render All Layers At Time"),
+                   ('osRSlat', "Selected Scenes", "Render Only The Selected Scenes")),
+            default='osRlat',
+            )
+
+    def execute(self,context):
+        defoscPythonBatchMaker(self.type, self.size)
+        return {'FINISHED'}
  
 ##======================================================================================FIN DE SCRIPTS
 

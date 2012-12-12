@@ -28,11 +28,14 @@ set(INC
 
 set(INC_SYS
 	${PTHREADS_INCLUDE_DIRS}
+	${BOOST_INCLUDE_DIR}
 )
 
 set(SRC
 	FX/AUD_AccumulatorFactory.cpp
+	FX/AUD_BandpassCalculator.cpp
 	FX/AUD_BaseIIRFilterReader.cpp
+	FX/AUD_ButterworthCalculator.cpp
 	FX/AUD_ButterworthFactory.cpp
 	FX/AUD_CallbackIIRFilterReader.cpp
 	FX/AUD_DelayFactory.cpp
@@ -46,6 +49,7 @@ set(SRC
 	FX/AUD_EnvelopeFactory.cpp
 	FX/AUD_FaderFactory.cpp
 	FX/AUD_FaderReader.cpp
+	FX/AUD_HighpassCalculator.cpp
 	FX/AUD_HighpassFactory.cpp
 	FX/AUD_IIRFilterFactory.cpp
 	FX/AUD_IIRFilterReader.cpp
@@ -53,6 +57,7 @@ set(SRC
 	FX/AUD_LimiterReader.cpp
 	FX/AUD_LoopFactory.cpp
 	FX/AUD_LoopReader.cpp
+	FX/AUD_LowpassCalculator.cpp
 	FX/AUD_LowpassFactory.cpp
 	FX/AUD_PingPongFactory.cpp
 	FX/AUD_PitchFactory.cpp
@@ -94,6 +99,7 @@ set(SRC
 	intern/AUD_IDevice.h
 	intern/AUD_IFactory.h
 	intern/AUD_IHandle.h
+	intern/AUD_ILockable.h
 	intern/AUD_IReader.h
 	intern/AUD_IWriter.h
 	intern/AUD_JOSResampleFactory.cpp
@@ -108,16 +114,17 @@ set(SRC
 	intern/AUD_Mixer.h
 	intern/AUD_MixerFactory.cpp
 	intern/AUD_MixerFactory.h
+	intern/AUD_MutexLock.h
 	intern/AUD_NULLDevice.cpp
 	intern/AUD_NULLDevice.h
 	intern/AUD_PyInit.h
 	intern/AUD_ReadDevice.cpp
 	intern/AUD_ReadDevice.h
-	intern/AUD_Reference.h
-	intern/AUD_ReferenceHandler.cpp
 	intern/AUD_ResampleFactory.h
 	intern/AUD_ResampleReader.cpp
 	intern/AUD_ResampleReader.h
+	intern/AUD_Sequencer.cpp
+	intern/AUD_Sequencer.h
 	intern/AUD_SequencerEntry.cpp
 	intern/AUD_SequencerEntry.h
 	intern/AUD_SequencerFactory.cpp
@@ -141,13 +148,16 @@ set(SRC
 	intern/AUD_StreamBufferFactory.h
 
 	FX/AUD_AccumulatorFactory.h
+	FX/AUD_BandpassCalculator.h
 	FX/AUD_BaseIIRFilterReader.h
+	FX/AUD_ButterworthCalculator.h
 	FX/AUD_ButterworthFactory.h
 	FX/AUD_CallbackIIRFilterReader.h
 	FX/AUD_DelayFactory.h
 	FX/AUD_DelayReader.h
 	FX/AUD_DoubleFactory.h
 	FX/AUD_DoubleReader.h
+	FX/AUD_IDynamicIIRFilterCalculator.h
 	FX/AUD_DynamicIIRFilterFactory.h
 	FX/AUD_DynamicIIRFilterReader.h
 	FX/AUD_EffectFactory.h
@@ -155,6 +165,7 @@ set(SRC
 	FX/AUD_EnvelopeFactory.h
 	FX/AUD_FaderFactory.h
 	FX/AUD_FaderReader.h
+	FX/AUD_HighpassCalculator.h
 	FX/AUD_HighpassFactory.h
 	FX/AUD_IIRFilterFactory.h
 	FX/AUD_IIRFilterReader.h
@@ -162,6 +173,7 @@ set(SRC
 	FX/AUD_LimiterReader.h
 	FX/AUD_LoopFactory.h
 	FX/AUD_LoopReader.h
+	FX/AUD_LowpassCalculator.h
 	FX/AUD_LowpassFactory.h
 	FX/AUD_PingPongFactory.h
 	FX/AUD_PitchFactory.h

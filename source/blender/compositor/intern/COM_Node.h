@@ -20,8 +20,8 @@
  *		Monique Dewanchand
  */
 
-#ifndef _COM_Node_h
-#define _COM_Node_h
+#ifndef __COM_NODE_H__
+#define __COM_NODE_H__
 
 #include "COM_NodeBase.h"
 #include "COM_InputSocket.h"
@@ -106,6 +106,10 @@ public:
 	void addSetVectorOperation(ExecutionSystem *graph, InputSocket *inputsocket, int editorNodeInputSocketIndex);
 	
 	/**
+	 * Create dummy warning operation, use when we can't get the source data.
+	 */
+	NodeOperation *convertToOperations_invalid_index(ExecutionSystem *graph, int index);
+	/**
 	 * when a node has no valid data (missing image or a group nodes ID pointer is NULL)
 	 * call this function from #convertToOperations, this way the node sockets are converted
 	 * into valid outputs, without this the compositor system gets confused and crashes, see [#32490]
@@ -152,4 +156,4 @@ protected:
 private:
 };
 
-#endif
+#endif  /* __COM_NODE_H__ */

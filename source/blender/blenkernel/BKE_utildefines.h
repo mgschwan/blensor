@@ -32,10 +32,14 @@
 extern "C" {
 #endif
 
-/* currently unused but we may want to add macros here for BKE later */
+#define BKE_BIT_TEST_SET(value, test, flag) \
+{                                           \
+	if (test) (value) |=  flag;             \
+	else      (value) &= ~flag;             \
+} (void)0
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // __BKE_UTILDEFINES_H__
+#endif  /* __BKE_UTILDEFINES_H__ */

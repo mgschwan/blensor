@@ -142,7 +142,7 @@ TransformOrientation *createObjectSpace(bContext *C, ReportList *UNUSED(reports)
 		strncpy(name, ob->id.name + 2, MAX_ID_NAME - 2);
 	}
 
-	return addMatrixSpace(C, mat, name, overwrite);	
+	return addMatrixSpace(C, mat, name, overwrite);
 }
 
 TransformOrientation *createBoneSpace(bContext *C, ReportList *reports, char *name, int overwrite)
@@ -631,7 +631,6 @@ int getTransformOrientation(const bContext *C, float normal[3], float plane[3], 
 					/* if there's an edge available, use that for the tangent */
 					if (em->bm->totedgesel >= 1) {
 						BMEdge *eed = NULL;
-						BMIter iter;
 						
 						BM_ITER_MESH (eed, &iter, em->bm, BM_EDGES_OF_MESH) {
 							if (BM_elem_flag_test(eed, BM_ELEM_SELECT)) {
@@ -746,14 +745,14 @@ int getTransformOrientation(const bContext *C, float normal[3], float plane[3], 
 			MetaBall *mb = obedit->data;
 			
 			if (mb->lastelem) {
-				float mat[4][4];
+				float qmat[3][3];
 
 				/* Rotation of MetaElem is stored in quat */
-				quat_to_mat4(mat, mb->lastelem->quat);
+				quat_to_mat3(qmat, mb->lastelem->quat);
 
-				copy_v3_v3(normal, mat[2]);
+				copy_v3_v3(normal, qmat[2]);
 
-				negate_v3_v3(plane, mat[1]);
+				negate_v3_v3(plane, qmat[1]);
 				
 				result = ORIENTATION_FACE;
 			}
@@ -852,7 +851,7 @@ int getTransformOrientation(const bContext *C, float normal[3], float plane[3], 
 	return result;
 }
 
-void ED_getTransformOrientationMatrix(const bContext *C, float orientation_mat[][3], int activeOnly)
+void ED_getTransformOrientationMatrix(const bContext *C, float orientation_mat[3][3], int activeOnly)
 {
 	float normal[3] = {0.0, 0.0, 0.0};
 	float plane[3] = {0.0, 0.0, 0.0};

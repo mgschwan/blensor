@@ -118,8 +118,8 @@ static void DirectionToThetaPhi(float *toSun, float *theta, float *phi)
 
 /**
  * PerezFunction:
- * compute perez function value based on input paramters
- * */
+ * compute perez function value based on input parameters
+ */
 static float PerezFunction(struct SunSky *sunsky, const float *lam, float theta, float gamma, float lvz)
 {
 	float den, num;
@@ -146,7 +146,7 @@ static float PerezFunction(struct SunSky *sunsky, const float *lam, float theta,
  * sun_size, controls sun's size
  * back_scatter, controls back scatter light
  * */
-void InitSunSky(struct SunSky *sunsky, float turb, float *toSun, float horizon_brightness, 
+void InitSunSky(struct SunSky *sunsky, float turb, const float toSun[3], float horizon_brightness,
                 float spread, float sun_brightness, float sun_size, float back_scatter,
                 float skyblendfac, short skyblendtype, float sky_exposure, float sky_colorspace)
 {
@@ -217,8 +217,7 @@ void InitSunSky(struct SunSky *sunsky, float turb, float *toSun, float horizon_b
 	sunsky->perez_y[3] = -0.04405f * T - 1.65369f;
 	sunsky->perez_y[4] = -0.01092f * T + 0.05291f;
 	
-	/* suggested by glome in 
-	 * http://projects.blender.org/tracker/?func=detail&atid=127&aid=8063&group_id=9*/
+	/* suggested by glome in patch [#8063] */
 	sunsky->perez_Y[0] *= sunsky->horizon_brightness;
 	sunsky->perez_x[0] *= sunsky->horizon_brightness;
 	sunsky->perez_y[0] *= sunsky->horizon_brightness;
@@ -330,8 +329,8 @@ static void ComputeAttenuatedSunlight(float theta, int turbidity, float fTau[3])
 
 	int i;
 	float fLambda[3]; 
-	fLambda[0] = 0.65f;	
-	fLambda[1] = 0.57f;	
+	fLambda[0] = 0.65f;
+	fLambda[1] = 0.57f;
 	fLambda[2] = 0.475f;
 
 	fAlpha = 1.3f;

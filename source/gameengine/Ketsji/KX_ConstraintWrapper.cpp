@@ -52,7 +52,7 @@ KX_ConstraintWrapper::~KX_ConstraintWrapper()
 
 PyObject *KX_ConstraintWrapper::PyGetConstraintId()
 {
-	return PyLong_FromSsize_t(m_constraintId);
+	return PyLong_FromLong(m_constraintId);
 }
 
 
@@ -119,7 +119,7 @@ PyAttributeDef KX_ConstraintWrapper::Attributes[] = {
 
 PyObject *KX_ConstraintWrapper::pyattr_get_constraintId(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
-	KX_ConstraintWrapper* self= static_cast<KX_ConstraintWrapper*>(self_v);
+	KX_ConstraintWrapper* self = static_cast<KX_ConstraintWrapper*>(self_v);
 	return self->PyGetConstraintId();
 }
 

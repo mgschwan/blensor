@@ -29,10 +29,9 @@
  *  \ingroup bgeconv
  */
 
-
-#if defined(WIN32) && !defined(FREE_WINDOWS)
-// don't show stl-warnings
-#pragma warning (disable:4786)
+#ifdef _MSC_VER
+   /* don't show stl-warnings */
+#  pragma warning (disable:4786)
 #endif
 
 #include "BKE_material.h" /* give_current_material */
@@ -97,7 +96,7 @@ SG_Controller *BL_CreateIPO(struct bAction *action, KX_GameObject* gameobj, KX_B
 
 	const char *rotmode, *drotmode;
 
-	switch(blenderobject->rotmode) {
+	switch (blenderobject->rotmode) {
 	case ROT_MODE_AXISANGLE:
 		rotmode = "rotation_axis_angle";
 		drotmode = "delta_rotation_axis_angle";

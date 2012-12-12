@@ -1,3 +1,5 @@
+.. _info_overview:
+
 *******************
 Python API Overview
 *******************
@@ -71,7 +73,7 @@ The only difference between addons and built-in python modules is that addons mu
 
 The user preferences addon listing uses **bl_info** to display information about each addon.
 
-`See Addons <http://wiki.blender.org/index.php/Dev:2.6/Py/Scripts/Guidelines/Addons>`_ for details on the **bl_info** dictionary.
+`See Addons <http://wiki.blender.org/index.php/Dev:2.5/Py/Scripts/Guidelines/Addons>`_ for details on the **bl_info** dictionary.
 
 
 Integration through Classes

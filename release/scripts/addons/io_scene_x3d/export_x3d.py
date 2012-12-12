@@ -369,7 +369,7 @@ def export(file,
 
         loc, rot, scale = matrix.decompose()
         rot = rot.to_axis_angle()
-        rot = rot[0][:] + (rot[1], )
+        rot = rot[0].normalized()[:] + (rot[1], )
 
         ident_step = ident + (' ' * (-len(ident) + \
         fw('%s<Viewpoint ' % ident)))
@@ -853,7 +853,9 @@ def export(file,
                         # --- Write IndexedFaceSet Attributes (same as IndexedTriangleSet)
                         fw('solid="%s"\n' % ('true' if material and material.game_settings.use_backface_culling else 'false'))
                         if is_smooth:
-                            fw(ident_step + 'creaseAngle="%.4f"\n' % mesh.auto_smooth_angle)
+                            # use Auto-Smooth angle, if enabled. Otherwise make
+                            # the mesh perfectly smooth by creaseAngle > pi.
+                            fw(ident_step + 'creaseAngle="%.4f"\n' % (mesh.auto_smooth_angle if mesh.use_auto_smooth else 4.0))
 
                         if use_normals:
                             # currently not optional, could be made so:
@@ -1333,9 +1335,9 @@ def export(file,
         # Blend Gradient
         elif blending == (True, False, False):
             fw(ident_step + 'groundColor="%.3f %.3f %.3f, %.3f %.3f %.3f"\n' % (grd_triple + mix_triple))
-            fw(ident_step + 'groundAngle="1.57, 1.57"\n')
+            fw(ident_step + 'groundAngle="1.57"\n')
             fw(ident_step + 'skyColor="%.3f %.3f %.3f, %.3f %.3f %.3f"\n' % (sky_triple + mix_triple))
-            fw(ident_step + 'skyAngle="1.57, 1.57"\n')
+            fw(ident_step + 'skyAngle="1.57"\n')
         # Blend+Real Gradient Inverse
         elif blending == (True, False, True):
             fw(ident_step + 'groundColor="%.3f %.3f %.3f, %.3f %.3f %.3f"\n' % (sky_triple + grd_triple))
@@ -1349,9 +1351,9 @@ def export(file,
         # Blend+Real+Paper - komplex gradient
         elif blending == (True, True, True):
             fw(ident_step + 'groundColor="%.3f %.3f %.3f, %.3f %.3f %.3f"\n' % (sky_triple + grd_triple))
-            fw(ident_step + 'groundAngle="1.57, 1.57"\n')
+            fw(ident_step + 'groundAngle="1.57"\n')
             fw(ident_step + 'skyColor="%.3f %.3f %.3f, %.3f %.3f %.3f"\n' % (sky_triple + grd_triple))
-            fw(ident_step + 'skyAngle="1.57, 1.57"\n')
+            fw(ident_step + 'skyAngle="1.57"\n')
         # Any Other two colors
         else:
             fw(ident_step + 'groundColor="%.3f %.3f %.3f"\n' % grd_triple)

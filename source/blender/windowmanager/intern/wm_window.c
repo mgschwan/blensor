@@ -164,7 +164,7 @@ void wm_window_free(bContext *C, wmWindowManager *wm, wmWindow *win)
 
 		if (CTX_wm_window(C) == win)
 			CTX_wm_window_set(C, NULL);
-	}	
+	}
 
 	/* always set drawable and active to NULL,
 	 * prevents non-drawable state of main windows (bugs #22967 and #25071, possibly #22477 too) */
@@ -300,11 +300,9 @@ void wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win)
 
 void wm_window_title(wmWindowManager *wm, wmWindow *win)
 {
-	/* handle the 'temp' window, only set title when not set before */
 	if (win->screen && win->screen->temp) {
-		char *title = GHOST_GetTitle(win->ghostwin);
-		if (title == NULL || title[0] == 0)
-			GHOST_SetTitle(win->ghostwin, "Blender");
+		/* nothing to do for 'temp' windows,
+		 * because WM_window_open_temp always sets window title  */
 	}
 	else {
 		
@@ -335,7 +333,13 @@ void wm_window_title(wmWindowManager *wm, wmWindow *win)
 static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
 {
 	GHOST_WindowHandle ghostwin;
+	static int multisamples = -1;
 	int scr_w, scr_h, posy;
+	
+	/* force setting multisamples only once, it requires restart - and you cannot 
+	 * mix it, either all windows have it, or none (tested in OSX opengl) */
+	if (multisamples == -1)
+		multisamples = U.ogl_multisamples;
 	
 	wm_get_screensize(&scr_w, &scr_h);
 	posy = (scr_h - win->posy - win->sizey);
@@ -347,7 +351,7 @@ static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
 	                              (GHOST_TWindowState)win->windowstate,
 	                              GHOST_kDrawingContextTypeOpenGL,
 	                              0 /* no stereo */,
-	                              0 /* no AA */);
+	                              multisamples /* AA */);
 	
 	if (ghostwin) {
 		/* needed so we can detect the graphics card below */
@@ -375,7 +379,6 @@ static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
 		
 		/* standard state vars for window */
 		glEnable(GL_SCISSOR_TEST);
-		
 		GPU_state_init();
 	}
 }
@@ -416,6 +419,10 @@ void wm_window_add_ghostwindows(wmWindowManager *wm)
 				win->posy = wm_init_state.start_y;
 				win->sizex = wm_init_state.size_x;
 				win->sizey = wm_init_state.size_y;
+
+				/* we can't properly resize a maximized window */
+				win->windowstate = GHOST_kWindowStateNormal;
+
 				wm_init_state.override_flag &= ~WIN_OVERRIDE_GEOM;
 			}
 
@@ -650,7 +657,7 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr C_void_ptr
 		else if (!GHOST_ValidWindow(g_system, ghostwin)) {
 			/* XXX - should be checked, why are we getting an event here, and */
 			/* what is it? */
-			puts("<!> event has invalid window");			
+			puts("<!> event has invalid window");
 			return 1;
 		}
 		else {
@@ -747,6 +754,11 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr C_void_ptr
 				state = GHOST_GetWindowState(win->ghostwin);
 				win->windowstate = state;
 
+				/* stop screencast if resize */
+				if (type == GHOST_kEventWindowSize) {
+					WM_jobs_stop(CTX_wm_manager(C), win->screen, NULL);
+				}
+				
 				/* win32: gives undefined window size when minimized */
 				if (state != GHOST_kWindowStateMinimized) {
 					GHOST_RectangleHandle client_rect;
@@ -943,6 +955,8 @@ static int wm_window_timer(const bContext *C)
 					wmEvent event = *(win->eventstate);
 					
 					event.type = wt->event_type;
+					event.val = 0;
+					event.keymodifier = 0;
 					event.custom = EVT_DATA_TIMER;
 					event.customdata = wt;
 					wm_event_add(win, &event);
@@ -1003,7 +1017,7 @@ void wm_ghost_init(bContext *C)
 		
 		g_system = GHOST_CreateSystem();
 		GHOST_AddEventConsumer(g_system, consumer);
-	}	
+	}
 }
 
 void wm_ghost_exit(void)
@@ -1078,7 +1092,7 @@ char *WM_clipboard_text_get(int selection)
 		return NULL;
 	
 	/* always convert from \r\n to \n */
-	newbuf = MEM_callocN(strlen(buf) + 1, "WM_clipboard_text_get");
+	newbuf = MEM_callocN(strlen(buf) + 1, __func__);
 
 	for (p = buf, p2 = newbuf; *p; p++) {
 		if (*p != '\r')

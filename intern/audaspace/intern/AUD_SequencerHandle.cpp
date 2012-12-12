@@ -29,18 +29,19 @@
 
 #include "AUD_SequencerHandle.h"
 #include "AUD_ReadDevice.h"
+#include "AUD_MutexLock.h"
 
-AUD_SequencerHandle::AUD_SequencerHandle(AUD_Reference<AUD_SequencerEntry> entry, AUD_ReadDevice& device) :
+AUD_SequencerHandle::AUD_SequencerHandle(boost::shared_ptr<AUD_SequencerEntry> entry, AUD_ReadDevice& device) :
 	m_entry(entry),
 	m_status(0),
 	m_pos_status(0),
 	m_sound_status(0),
 	m_device(device)
 {
-	if(!entry->m_sound.isNull())
+	if(entry->m_sound.get())
 	{
 		m_handle = device.play(entry->m_sound, true);
-		m_3dhandle = AUD_Reference<AUD_I3DHandle>(m_handle);
+		m_3dhandle = boost::dynamic_pointer_cast<AUD_I3DHandle>(m_handle);
 	}
 }
 
@@ -49,7 +50,7 @@ AUD_SequencerHandle::~AUD_SequencerHandle()
 	stop();
 }
 
-int AUD_SequencerHandle::compare(AUD_Reference<AUD_SequencerEntry> entry) const
+int AUD_SequencerHandle::compare(boost::shared_ptr<AUD_SequencerEntry> entry) const
 {
 	if(m_entry->getID() < entry->getID())
 		return -1;
@@ -60,15 +61,15 @@ int AUD_SequencerHandle::compare(AUD_Reference<AUD_SequencerEntry> entry) const
 
 void AUD_SequencerHandle::stop()
 {
-	if(!m_handle.isNull())
+	if(m_handle.get())
 		m_handle->stop();
 }
 
 void AUD_SequencerHandle::update(float position, float frame, float fps)
 {
-	if(!m_handle.isNull())
+	if(m_handle.get())
 	{
-		m_entry->lock();
+		AUD_MutexLock lock(*m_entry);
 		if(position >= m_entry->m_end && m_entry->m_end >= 0)
 			m_handle->pause();
 		else if(position >= m_entry->m_begin)
@@ -76,13 +77,13 @@ void AUD_SequencerHandle::update(float position, float frame, float fps)
 
 		if(m_sound_status != m_entry->m_sound_status)
 		{
-			if(!m_handle.isNull())
+			if(m_handle.get())
 				m_handle->stop();
 
-			if(!m_entry->m_sound.isNull())
+			if(m_entry->m_sound.get())
 			{
 				m_handle = m_device.play(m_entry->m_sound, true);
-				m_3dhandle = AUD_Reference<AUD_I3DHandle>(m_handle);
+				m_3dhandle = boost::dynamic_pointer_cast<AUD_I3DHandle>(m_handle);
 			}
 
 			m_sound_status = m_entry->m_sound_status;
@@ -134,19 +135,17 @@ void AUD_SequencerHandle::update(float position, float frame, float fps)
 
 		if(m_entry->m_muted)
 			m_handle->setVolume(0);
-		m_entry->unlock();
 	}
 }
 
 void AUD_SequencerHandle::seek(float position)
 {
-	if(!m_handle.isNull())
+	if(m_handle.get())
 	{
-		m_entry->lock();
+		AUD_MutexLock lock(*m_entry);
 		if(position >= m_entry->m_end && m_entry->m_end >= 0)
 		{
 			m_handle->pause();
-			m_entry->unlock();
 			return;
 		}
 
@@ -160,6 +159,5 @@ void AUD_SequencerHandle::seek(float position)
 			m_handle->pause();
 		else
 			m_handle->resume();
-		m_entry->unlock();
 	}
 }

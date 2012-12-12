@@ -53,7 +53,6 @@
 #include "BKE_modifier.h"
 #include "BKE_mesh.h"
 
-
 #ifdef RIGID_DEFORM
 #include "BLI_polardecomp.h"
 #endif
@@ -563,7 +562,7 @@ static void heat_set_H(LaplacianSystem *sys, int vertex)
 
 	/* compute H entry */
 	if (numclosest > 0) {
-		mindist = maxf(mindist, 1e-4f);
+		mindist = max_ff(mindist, 1e-4f);
 		h = numclosest * C_WEIGHT / (mindist * mindist);
 	}
 	else
@@ -794,7 +793,7 @@ void heat_bone_weighting(Object *ob, Mesh *me, float (*verts)[3], int numsource,
 			}
 		}
 		else if (*err_str == NULL) {
-			*err_str = "Bone Heat Weighting: failed to find solution for one or more bones";
+			*err_str = N_("Bone Heat Weighting: failed to find solution for one or more bones");
 			break;
 		}
 
@@ -863,7 +862,7 @@ static void rigid_add_edge_to_R(LaplacianSystem *sys, EditVert *v1, EditVert *v2
 	rigid_add_half_edge_to_R(sys, v2, v1, w);
 }
 
-static void rigid_orthogonalize_R(float R[][3])
+static void rigid_orthogonalize_R(float R[3][3])
 {
 	HMatrix M, Q, S;
 
@@ -1121,7 +1120,7 @@ typedef struct MeshDeformBind {
 typedef struct MeshDeformIsect {
 	float start[3];
 	float vec[3];
-	float labda;
+	float lambda;
 
 	void *face;
 	int isect;
@@ -1195,7 +1194,7 @@ static int meshdeform_tri_intersect(const float orig[3], const float end[3], con
 }
 
 static void harmonic_ray_callback(void *userdata, int index, const BVHTreeRay *ray, BVHTreeRayHit *hit)
- {
+{
 	void **data = userdata;
 	MeshDeformBind *mdb = data[1];
 	MFace *mface = data[0], *mf;
@@ -1210,7 +1209,7 @@ static void harmonic_ray_callback(void *userdata, int index, const BVHTreeRay *r
 	if (mf->v4)
 		copy_v3_v3(face[3], mdb->cagecos[mf->v4]);
 	
- 	add_v3_v3v3(end, isec->start, isec->vec);
+	add_v3_v3v3(end, isec->start, isec->vec);
 	
 	if (!meshdeform_tri_intersect(ray->origin, end, face[0], face[1], face[2], co, uvw)) 
 		if (!mf->v4 || !meshdeform_tri_intersect(ray->origin, end, face[0], face[2], face[3], co, uvw))
@@ -1221,14 +1220,14 @@ static void harmonic_ray_callback(void *userdata, int index, const BVHTreeRay *r
 	else
 		normal_quad_v3(no, face[0], face[1], face[2], face[3]);
 	
-	dist = len_v3v3(ray->origin, co)/len_v3(isec->vec);
+	dist = len_v3v3(ray->origin, co) / len_v3(isec->vec);
 	if (dist < hit->dist) {
 		hit->index = index;
 		hit->dist = dist;
 		copy_v3_v3(hit->co, co);
 		
-		isec->isect = dot_v3v3(no, ray->direction) <= 0.0;
-		isec->labda = dist;
+		isec->isect = (dot_v3v3(no, ray->direction) <= 0.0f);
+		isec->lambda = dist;
 		isec->face = mf;
 	}
 }
@@ -1246,7 +1245,7 @@ static MDefBoundIsect *meshdeform_ray_tree_intersect(MeshDeformBind *mdb, float 
 
 	/* setup isec */
 	memset(&isect_mdef, 0, sizeof(isect_mdef));
-	isect_mdef.labda = 1e10f;
+	isect_mdef.lambda = 1e10f;
 
 	add_v3_v3v3(isect_mdef.start, co1, epsilon);
 	add_v3_v3v3(end, co2, epsilon);
@@ -1254,8 +1253,10 @@ static MDefBoundIsect *meshdeform_ray_tree_intersect(MeshDeformBind *mdb, float 
 
 	hit.index = -1;
 	hit.dist = FLT_MAX;
-	if (BLI_bvhtree_ray_cast(mdb->bvhtree, isect_mdef.start, isect_mdef.vec, 0.0, &hit, harmonic_ray_callback, data) != -1) {
- 		len= isect_mdef.labda;
+	if (BLI_bvhtree_ray_cast(mdb->bvhtree, isect_mdef.start, isect_mdef.vec,
+	                         0.0, &hit, harmonic_ray_callback, data) != -1)
+	{
+		len = isect_mdef.lambda;
 		isect_mdef.face = mface = mface1 + hit.index;
 
 		/* create MDefBoundIsect */
@@ -1720,7 +1721,7 @@ static void meshdeform_matrix_solve(MeshDeformModifierData *mmd, MeshDeformBind 
 			}
 		}
 		else {
-			modifier_setError(&mmd->modifier, "%s", TIP_("Failed to find bind solution (increase precision?)."));
+			modifier_setError(&mmd->modifier, "Failed to find bind solution (increase precision?)");
 			error("Mesh Deform: failed to find bind solution.");
 			break;
 		}
@@ -1955,7 +1956,7 @@ static void heat_weighting_bind(Scene *scene, DerivedMesh *dm, MeshDeformModifie
 }
 #endif
 
-void mesh_deform_bind(Scene *scene, MeshDeformModifierData *mmd, float *vertexcos, int totvert, float cagemat[][4])
+void mesh_deform_bind(Scene *scene, MeshDeformModifierData *mmd, float *vertexcos, int totvert, float cagemat[4][4])
 {
 	MeshDeformBind mdb;
 	MVert *mvert;

@@ -61,6 +61,7 @@ struct BMEditMesh;
 struct BMEditSelection;
 struct BMesh;
 struct BMVert;
+struct BMLoop;
 struct MLoopCol;
 struct BMEdge;
 struct BMFace;
@@ -85,11 +86,15 @@ void EDBM_mesh_clear(struct BMEditMesh *em);
 
 void EDBM_selectmode_to_scene(struct bContext *C);
 void EDBM_mesh_make(struct ToolSettings *ts, struct Scene *scene, struct Object *ob);
-void EDBM_mesh_free(struct BMEditMesh *tm);
+void EDBM_mesh_free(struct BMEditMesh *em);
 void EDBM_mesh_load(struct Object *ob);
 
-void           EDBM_index_arrays_init(struct BMEditMesh *em, int forvert, int foredge, int forface);
+void           EDBM_index_arrays_ensure(struct BMEditMesh *em, const char htype);
+void           EDBM_index_arrays_init(struct BMEditMesh *em, const char htype);
 void           EDBM_index_arrays_free(struct BMEditMesh *em);
+#ifdef DEBUG
+int            EDBM_index_arrays_check(struct BMEditMesh *em);
+#endif
 struct BMVert *EDBM_vert_at_index(struct BMEditMesh *em, int index);
 struct BMEdge *EDBM_edge_at_index(struct BMEditMesh *em, int index);
 struct BMFace *EDBM_face_at_index(struct BMEditMesh *em, int index);
@@ -114,17 +119,19 @@ int  EDBM_vert_color_check(struct BMEditMesh *em);
 void EDBM_mesh_hide(struct BMEditMesh *em, int swap);
 void EDBM_mesh_reveal(struct BMEditMesh *em);
 
-void EDBM_update_generic(struct bContext *C, struct BMEditMesh *em, const short do_tessface);
+void EDBM_update_generic(struct bContext *C, struct BMEditMesh *em,
+                         const short do_tessface, const short is_destructive);
 
 struct UvElementMap *EDBM_uv_element_map_create(struct BMEditMesh *em, int selected, int doIslands);
 void                 EDBM_uv_element_map_free(struct UvElementMap *vmap);
+struct UvElement *ED_uv_element_get(struct UvElementMap *map, struct BMFace *efa, struct BMLoop *l);
 
 int              EDBM_mtexpoly_check(struct BMEditMesh *em);
 struct MTexPoly *EDBM_mtexpoly_active_get(struct BMEditMesh *em, struct BMFace **r_act_efa, int sloppy, int selected);
 
 void              EDBM_uv_vert_map_free(struct UvVertMap *vmap);
 struct UvMapVert *EDBM_uv_vert_map_at_index(struct UvVertMap *vmap, unsigned int v);
-struct UvVertMap *EDBM_uv_vert_map_create(struct BMEditMesh *em, int selected, int do_face_idx_array, const float limit[2]);
+struct UvVertMap *EDBM_uv_vert_map_create(struct BMEditMesh *em, int selected, const float limit[2]);
 
 void EDBM_flag_enable_all(struct BMEditMesh *em, const char hflag);
 void EDBM_flag_disable_all(struct BMEditMesh *em, const char hflag);
@@ -138,18 +145,23 @@ int  EDBM_backbuf_border_init(struct ViewContext *vc, short xmin, short ymin, sh
 int  EDBM_backbuf_check(unsigned int index);
 void EDBM_backbuf_free(void);
 
-int  EDBM_backbuf_border_mask_init(struct ViewContext *vc, int mcords[][2], short tot,
+int  EDBM_backbuf_border_mask_init(struct ViewContext *vc, const int mcords[][2], short tot,
                                    short xmin, short ymin, short xmax, short ymax);
 int  EDBM_backbuf_circle_init(struct ViewContext *vc, short xs, short ys, short rads);
 
-struct BMVert *EDBM_vert_find_nearest(struct ViewContext *vc, int *dist, short sel, short strict);
-struct BMEdge *EDBM_edge_find_nearest(struct ViewContext *vc, int *dist);
-struct BMFace *EDBM_face_find_nearest(struct ViewContext *vc, int *dist);
+struct BMVert *EDBM_vert_find_nearest(struct ViewContext *vc, float *r_dist, const short sel, const short strict);
+struct BMEdge *EDBM_edge_find_nearest(struct ViewContext *vc, float *r_dist);
+struct BMFace *EDBM_face_find_nearest(struct ViewContext *vc, float *r_dist);
 
 int  EDBM_select_pick(struct bContext *C, const int mval[2], short extend, short deselect, short toggle);
 
 void EDBM_selectmode_set(struct BMEditMesh *em);
-void EDBM_selectmode_convert(struct BMEditMesh *em, short selectmode_old, const short selectmode_new);
+void EDBM_selectmode_convert(struct BMEditMesh *em, const short selectmode_old, const short selectmode_new);
+
+/* user access this */
+int EDBM_selectmode_toggle(struct bContext *C, const short selectmode_new,
+                           const int action, const int use_extend, const int use_expand);
+
 
 void EDBM_deselect_by_material(struct BMEditMesh *em, const short index, const short select);
 
@@ -248,7 +260,7 @@ void ED_mesh_update(struct Mesh *mesh, struct bContext *C, int calc_edges, int c
 int ED_mesh_uv_texture_add(struct bContext *C, struct Mesh *me, const char *name, int active_set);
 int ED_mesh_uv_texture_remove(struct bContext *C, struct Object *ob, struct Mesh *me);
 int ED_mesh_uv_loop_reset(struct bContext *C, struct Mesh *me);
-int ED_mesh_uv_loop_reset_ex(struct bContext *C, struct Mesh *me, const int layernum);
+int ED_mesh_uv_loop_reset_ex(struct Mesh *me, const int layernum);
 int ED_mesh_color_add(struct bContext *C, struct Scene *scene, struct Object *ob, struct Mesh *me, const char *name, int active_set);
 int ED_mesh_color_remove(struct bContext *C, struct Object *ob, struct Mesh *me);
 int ED_mesh_color_remove_named(struct bContext *C, struct Object *ob, struct Mesh *me, const char *name);

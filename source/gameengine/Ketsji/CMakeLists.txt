@@ -57,6 +57,7 @@ set(INC
 set(INC_SYS
 	${PTHREADS_INCLUDE_DIRS}
 	${GLEW_INCLUDE_PATH}
+	${BOOST_INCLUDE_DIR}
 	../../../extern/recastnavigation/Recast/Include
 	../../../extern/recastnavigation/Detour/Include
 )
@@ -74,6 +75,7 @@ set(SRC
 	KX_Camera.cpp
 	KX_CameraActuator.cpp
 	KX_CameraIpoSGController.cpp
+	KX_CharacterWrapper.cpp
 	KX_ConstraintActuator.cpp
 	KX_ConstraintWrapper.cpp
 	KX_ConvertPhysicsObjects.cpp
@@ -99,7 +101,6 @@ set(SRC
 	KX_ObstacleSimulation.cpp
 	KX_OrientationInterpolator.cpp
 	KX_ParentActuator.cpp
-	KX_PhysicsObjectWrapper.cpp
 	KX_PolyProxy.cpp
 	KX_PolygonMaterial.cpp
 	KX_PositionInterpolator.cpp
@@ -149,6 +150,7 @@ set(SRC
 	KX_Camera.h
 	KX_CameraActuator.h
 	KX_CameraIpoSGController.h
+	KX_CharacterWrapper.h
 	KX_ClientObjectInfo.h
 	KX_ConstraintActuator.h
 	KX_ConstraintWrapper.h
@@ -181,7 +183,6 @@ set(SRC
 	KX_OrientationInterpolator.h
 	KX_ParentActuator.h
 	KX_PhysicsEngineEnums.h
-	KX_PhysicsObjectWrapper.h
 	KX_PhysicsPropertiesobsolete.h
 	KX_PolyProxy.h
 	KX_PolygonMaterial.h
@@ -248,8 +249,10 @@ endif()
 
 if(WITH_BULLET)
 	list(APPEND INC
-		../../../extern/bullet2/src
 		../Physics/Bullet
+	)
+	list(APPEND INC
+		../../../extern/bullet2/src
 	)
 	add_definitions(-DUSE_BULLET)
 endif()

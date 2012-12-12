@@ -34,8 +34,6 @@
 
 #include "DNA_listBase.h"
 
-#include "RNA_types.h"
-
 /* not very important, but the stack solver likes to know a maximum */
 #define MAX_SOCKET	64
 
@@ -82,7 +80,7 @@ typedef struct bNodeSocketTemplate {
 	char name[64];	/* MAX_NAME */
 	float val1, val2, val3, val4;   /* default alloc value for inputs */
 	float min, max;
-	PropertySubType subtype;
+	int subtype;  /* would use PropertySubType but this is a bad level include to use RNA */
 	int flag;
 	
 	/* after this line is used internal only */
@@ -193,10 +191,8 @@ typedef struct bNodeType {
 	struct bNodeTree *(*group_edit_set)(struct bNode *node, int edit);
 	void (*group_edit_clear)(struct bNode *node);
 	
-	/* Generate a temporary list of internal links (bNodeLink), for muting and disconnect operators.
-	 * Result must be freed by caller!
-	 */
-	ListBase (*internal_connect)(struct bNodeTree *, struct bNode *node);
+	/* Update the internal links list, for muting and disconnect operators. */
+	void (*update_internal_links)(struct bNodeTree *, struct bNode *node);
 	
 	/* **** execution callbacks **** */
 	void *(*initexecfunc)(struct bNode *node);
@@ -247,6 +243,7 @@ typedef struct bNodeType {
 #define NODE_CLASS_PARTICLES		25
 #define NODE_CLASS_TRANSFORM		30
 #define NODE_CLASS_COMBINE			31
+#define NODE_CLASS_SCRIPT			32
 #define NODE_CLASS_SHADER 			40
 #define NODE_CLASS_LAYOUT			100
 
@@ -293,7 +290,7 @@ typedef struct bNodeTreeType {
 	int (*validate_link)(struct bNodeTree *ntree, struct bNodeLink *link);
 
 	/* Default internal linking. */
-	ListBase (*internal_connect)(struct bNodeTree *, struct bNode *node);
+	void (*update_internal_links)(struct bNodeTree *, struct bNode *node);
 } bNodeTreeType;
 
 /* ************** GENERIC API, TREES *************** */
@@ -316,6 +313,8 @@ void              ntreeSwitchID(struct bNodeTree *ntree, struct ID *sce_from, st
 void              ntreeUserIncrefID(struct bNodeTree *ntree);
 void              ntreeUserDecrefID(struct bNodeTree *ntree);
 
+
+struct bNodeTree *ntreeFromID(struct ID *id);
 
 void              ntreeMakeLocal(struct bNodeTree *ntree);
 int               ntreeHasType(struct bNodeTree *ntree, int type);
@@ -349,7 +348,7 @@ struct bNodeSocket *nodeInsertSocket(struct bNodeTree *ntree, struct bNode *node
 void nodeRemoveSocket(struct bNodeTree *ntree, struct bNode *node, struct bNodeSocket *sock);
 void nodeRemoveAllSockets(struct bNodeTree *ntree, struct bNode *node);
 
-void            nodeAddToPreview(struct bNode *node, float col[4], int x, int y, int do_manage);
+void            nodeAddToPreview(struct bNode *node, const float col[4], int x, int y, int do_manage);
 
 struct bNode	*nodeAddNode(struct bNodeTree *ntree, struct bNodeTemplate *ntemp);
 void            nodeUnlinkNode(struct bNodeTree *ntree, struct bNode *node);
@@ -389,6 +388,7 @@ struct bNode   *nodeGetActiveTexture(struct bNodeTree *ntree);
 
 void            nodeUpdate(struct bNodeTree *ntree, struct bNode *node);
 int             nodeUpdateID(struct bNodeTree *ntree, struct ID *id);
+void            nodeUpdateInternalLinks(struct bNodeTree *ntree, struct bNode *node);
 
 void            nodeFreePreview(struct bNode *node);
 
@@ -445,7 +445,7 @@ void            node_type_exec_new(struct bNodeType *ntype,
                                    void (*freeexecfunc)(struct bNode *node, void *nodedata),
                                    void (*newexecfunc)(void *data, int thread, struct bNode *, void *nodedata,
                                                        struct bNodeStack **, struct bNodeStack **));
-void            node_type_internal_connect(struct bNodeType *ntype, ListBase (*internal_connect)(struct bNodeTree *, struct bNode *));
+void            node_type_internal_links(struct bNodeType *ntype, void (*update_internal_links)(struct bNodeTree *, struct bNode *));
 void            node_type_gpu(struct bNodeType *ntype, int (*gpufunc)(struct GPUMaterial *mat, struct bNode *node,
                                                                       struct GPUNodeStack *in, struct GPUNodeStack *out));
 void            node_type_gpu_ext(struct bNodeType *ntype, int (*gpuextfunc)(struct GPUMaterial *mat, struct bNode *node,
@@ -456,8 +456,8 @@ void            node_type_compatibility(struct bNodeType *ntype, short compatibi
 /* ************** COMMON NODES *************** */
 
 #define NODE_GROUP		2
-#define NODE_FORLOOP	3
-#define NODE_WHILELOOP	4
+#define __NODE_FORLOOP	3	/* deprecated */
+#define __NODE_WHILELOOP	4	/* deprecated */
 #define NODE_FRAME		5
 #define NODE_REROUTE	6
 
@@ -551,6 +551,12 @@ struct ShadeResult;
 #define SH_NODE_OBJECT_INFO				167
 #define SH_NODE_PARTICLE_INFO           168
 #define SH_NODE_TEX_BRICK				169
+#define SH_NODE_BUMP					170
+#define SH_NODE_SCRIPT					171
+#define SH_NODE_AMBIENT_OCCLUSION		172
+#define SH_NODE_BSDF_REFRACTION			173
+#define SH_NODE_TANGENT					174
+#define SH_NODE_NORMAL_MAP				175
 
 /* custom defines options for Material node */
 #define SH_NODE_MAT_DIFF   1
@@ -698,6 +704,9 @@ void            ntreeGPUMaterialNodes(struct bNodeTree *ntree, struct GPUMateria
 #define CMP_NODE_BOKEHIMAGE     315
 #define CMP_NODE_BOKEHBLUR      316
 #define CMP_NODE_SWITCH         317
+#define CMP_NODE_PIXELATE       318
+
+#define CMP_NODE_MAP_RANGE	319
 
 /* channel toggles */
 #define CMP_CHAN_RGB		1
@@ -784,7 +793,9 @@ void ntreeTexCheckCyclics(struct bNodeTree *ntree);
 
 struct bNodeTreeExec *ntreeTexBeginExecTree(struct bNodeTree *ntree, int use_tree_data);
 void ntreeTexEndExecTree(struct bNodeTreeExec *exec, int use_tree_data);
-int ntreeTexExecTree(struct bNodeTree *ntree, struct TexResult *target, float *coord, float *dxt, float *dyt, int osatex, short thread, struct Tex *tex, short which_output, int cfra, int preview, struct ShadeInput *shi, struct MTex *mtex);
+int ntreeTexExecTree(struct bNodeTree *ntree, struct TexResult *target,
+                     float coord[3], float dxt[3], float dyt[3], int osatex, const short thread,
+                     struct Tex *tex, short which_output, int cfra, int preview, struct ShadeInput *shi, struct MTex *mtex);
 
 
 /*************************************************/

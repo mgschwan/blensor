@@ -1,24 +1,28 @@
 /*
------------------------------------------------------------------------------
-This source file is part of VideoTexture library
-
-Copyright (c) 2007 The Zdeno Ash Miklas
-
-This program is free software; you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the Free Software
-Foundation; either version 2 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with
-this program; if not, write to the Free Software Foundation, Inc., 59 Temple
-Place - Suite 330, Boston, MA 02111-1307, USA, or go to
-http://www.gnu.org/copyleft/lesser.txt.
------------------------------------------------------------------------------
-*/
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software  Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * Copyright (c) 2007 The Zdeno Ash Miklas
+ *
+ * This source file is part of VideoTexture library
+ *
+ * Contributor(s):
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 /** \file gameengine/VideoTexture/ImageViewport.cpp
  *  \ingroup bgevideotex
@@ -50,6 +54,8 @@ ImageViewport::ImageViewport (void) : m_alpha(false), m_texInit(false)
 	
 	//glGetIntegerv(GL_VIEWPORT, m_viewport);
 	// create buffer for viewport image
+	// Warning: this buffer is also used to get the depth buffer as an array of
+	//          float (1 float = 4 bytes per pixel)
 	m_viewportImage = new BYTE [4 * getViewportSize()[0] * getViewportSize()[1]];
 	// set attributes
 	setWhole(false);
@@ -57,7 +63,9 @@ ImageViewport::ImageViewport (void) : m_alpha(false), m_texInit(false)
 
 // destructor
 ImageViewport::~ImageViewport (void)
-{ delete [] m_viewportImage; }
+{
+	delete [] m_viewportImage;
+}
 
 
 // use whole viewport to capture image
@@ -81,7 +89,7 @@ void ImageViewport::setWhole (bool whole)
 	setPosition();
 }
 
-void ImageViewport::setCaptureSize (short * size)
+void ImageViewport::setCaptureSize (short size[2])
 {
 	m_whole = false;
 	if (size == NULL) 
@@ -101,7 +109,7 @@ void ImageViewport::setCaptureSize (short * size)
 }
 
 // set position of capture rectangle
-void ImageViewport::setPosition (GLint * pos)
+void ImageViewport::setPosition (GLint pos[2])
 {
 	// if new position is not provided, use existing position
 	if (pos == NULL) pos = m_position;
@@ -123,15 +131,14 @@ void ImageViewport::calcImage (unsigned int texId, double ts)
 		// reset image
 		init(m_capSize[0], m_capSize[1]);
 	// if texture wasn't initialized
-	if (!m_texInit)
-	{
+	if (!m_texInit) {
 		// initialize it
 		loadTexture(texId, m_image, m_size);
 		m_texInit = true;
 	}
 	// if texture can be directly created
 	if (texId != 0 && m_pyfilter == NULL && m_capSize[0] == calcSize(m_capSize[0])
-	        && m_capSize[1] == calcSize(m_capSize[1]) && !m_flip)
+	    && m_capSize[1] == calcSize(m_capSize[1]) && !m_flip && !m_zbuff && !m_depth)
 	{
 		// just copy current viewport to texture
 		glBindTexture(GL_TEXTURE_2D, texId);
@@ -140,24 +147,47 @@ void ImageViewport::calcImage (unsigned int texId, double ts)
 		m_avail = false;
 	}
 	// otherwise copy viewport to buffer, if image is not available
-	else if (!m_avail)
-	{
-		// get frame buffer data
-		if (m_alpha)
-		{
-			glReadPixels(m_upLeft[0], m_upLeft[1], (GLsizei)m_capSize[0], (GLsizei)m_capSize[1], GL_RGBA,
-			             GL_UNSIGNED_BYTE, m_viewportImage);
+	else if (!m_avail) {
+		if (m_zbuff) {
+			// Use read pixels with the depth buffer
+			// *** misusing m_viewportImage here, but since it has the correct size
+			//     (4 bytes per pixel = size of float) and we just need it to apply
+			//     the filter, it's ok
+			glReadPixels(m_upLeft[0], m_upLeft[1], (GLsizei)m_capSize[0], (GLsizei)m_capSize[1],
+			        GL_DEPTH_COMPONENT, GL_FLOAT, m_viewportImage);
 			// filter loaded data
-			FilterRGBA32 filt;
-			filterImage(filt, m_viewportImage, m_capSize);
+			FilterZZZA filt;
+			filterImage(filt, (float *)m_viewportImage, m_capSize);
 		}
-		else
-		{
-			glReadPixels(m_upLeft[0], m_upLeft[1], (GLsizei)m_capSize[0], (GLsizei)m_capSize[1], GL_RGB,
-			             GL_UNSIGNED_BYTE, m_viewportImage);
-			// filter loaded data
-			FilterRGB24 filt;
-			filterImage(filt, m_viewportImage, m_capSize);
+		else {
+
+			if (m_depth) {
+				// Use read pixels with the depth buffer
+				// See warning above about m_viewportImage.
+				glReadPixels(m_upLeft[0], m_upLeft[1], (GLsizei)m_capSize[0], (GLsizei)m_capSize[1],
+				        GL_DEPTH_COMPONENT, GL_FLOAT, m_viewportImage);
+				// filter loaded data
+				FilterDEPTH filt;
+				filterImage(filt, (float *)m_viewportImage, m_capSize);
+			}
+			else {
+
+				// get frame buffer data
+				if (m_alpha) {
+					glReadPixels(m_upLeft[0], m_upLeft[1], (GLsizei)m_capSize[0], (GLsizei)m_capSize[1], GL_RGBA,
+					        GL_UNSIGNED_BYTE, m_viewportImage);
+					// filter loaded data
+					FilterRGBA32 filt;
+					filterImage(filt, m_viewportImage, m_capSize);
+				}
+				else {
+					glReadPixels(m_upLeft[0], m_upLeft[1], (GLsizei)m_capSize[0], (GLsizei)m_capSize[1], GL_RGB,
+					        GL_UNSIGNED_BYTE, m_viewportImage);
+					// filter loaded data
+					FilterRGB24 filt;
+					filterImage(filt, m_viewportImage, m_capSize);
+				}
+			}
 		}
 	}
 }
@@ -228,25 +258,30 @@ int ImageViewport_setAlpha (PyImage *self, PyObject *value, void *closure)
 // get position
 static PyObject *ImageViewport_getPosition (PyImage *self, void *closure)
 {
-	return Py_BuildValue("(ii)", getImageViewport(self)->getPosition()[0],
-		getImageViewport(self)->getPosition()[1]);
+	GLint *pos = getImageViewport(self)->getPosition();
+	PyObject *ret = PyTuple_New(2);
+	PyTuple_SET_ITEM(ret, 0, PyLong_FromLong(pos[0]));
+	PyTuple_SET_ITEM(ret, 1, PyLong_FromLong(pos[1]));
+	return ret;
 }
 
 // set position
 static int ImageViewport_setPosition (PyImage *self, PyObject *value, void *closure)
 {
 	// check validity of parameter
-	if (value == NULL || !PySequence_Check(value) || PySequence_Size(value) != 2
-		|| !PyLong_Check(PySequence_Fast_GET_ITEM(value, 0))
-		|| !PyLong_Check(PySequence_Fast_GET_ITEM(value, 1)))
+	if (value == NULL ||
+	    !(PyTuple_Check(value) || PyList_Check(value)) ||
+	    PySequence_Fast_GET_SIZE(value) != 2 ||
+	    !PyLong_Check(PySequence_Fast_GET_ITEM(value, 0)) ||
+	    !PyLong_Check(PySequence_Fast_GET_ITEM(value, 1)))
 	{
 		PyErr_SetString(PyExc_TypeError, "The value must be a sequence of 2 ints");
 		return -1;
 	}
 	// set position
-	GLint pos [] = {
-		GLint(PyLong_AsSsize_t(PySequence_Fast_GET_ITEM(value, 0))),
-			GLint(PyLong_AsSsize_t(PySequence_Fast_GET_ITEM(value, 1)))
+	GLint pos[2] = {
+	    GLint(PyLong_AsLong(PySequence_Fast_GET_ITEM(value, 0))),
+	    GLint(PyLong_AsLong(PySequence_Fast_GET_ITEM(value, 1)))
 	};
 	getImageViewport(self)->setPosition(pos);
 	// success
@@ -256,25 +291,30 @@ static int ImageViewport_setPosition (PyImage *self, PyObject *value, void *clos
 // get capture size
 PyObject *ImageViewport_getCaptureSize (PyImage *self, void *closure)
 {
-	return Py_BuildValue("(ii)", getImageViewport(self)->getCaptureSize()[0],
-		getImageViewport(self)->getCaptureSize()[1]);
+	short *size = getImageViewport(self)->getCaptureSize();
+	PyObject *ret = PyTuple_New(2);
+	PyTuple_SET_ITEM(ret, 0, PyLong_FromLong(size[0]));
+	PyTuple_SET_ITEM(ret, 1, PyLong_FromLong(size[1]));
+	return ret;
 }
 
 // set capture size
 int ImageViewport_setCaptureSize (PyImage *self, PyObject *value, void *closure)
 {
 	// check validity of parameter
-	if (value == NULL || !PySequence_Check(value) || PySequence_Size(value) != 2
-		|| !PyLong_Check(PySequence_Fast_GET_ITEM(value, 0))
-		|| !PyLong_Check(PySequence_Fast_GET_ITEM(value, 1)))
+	if (value == NULL ||
+	    !(PyTuple_Check(value) || PyList_Check(value)) ||
+	    PySequence_Fast_GET_SIZE(value) != 2 ||
+	    !PyLong_Check(PySequence_Fast_GET_ITEM(value, 0)) ||
+	    !PyLong_Check(PySequence_Fast_GET_ITEM(value, 1)))
 	{
 		PyErr_SetString(PyExc_TypeError, "The value must be a sequence of 2 ints");
 		return -1;
 	}
 	// set capture size
-	short size [] = {
-		short(PyLong_AsSsize_t(PySequence_Fast_GET_ITEM(value, 0))),
-			short(PyLong_AsSsize_t(PySequence_Fast_GET_ITEM(value, 1)))
+	short size[2] = {
+	    short(PyLong_AsLong(PySequence_Fast_GET_ITEM(value, 0))),
+	    short(PyLong_AsLong(PySequence_Fast_GET_ITEM(value, 1)))
 	};
 	try
 	{
@@ -310,6 +350,8 @@ static PyGetSetDef imageViewportGetSets[] =
 	{(char*)"size", (getter)Image_getSize, NULL, (char*)"image size", NULL},
 	{(char*)"scale", (getter)Image_getScale, (setter)Image_setScale, (char*)"fast scale of image (near neighbor)", NULL},
 	{(char*)"flip", (getter)Image_getFlip, (setter)Image_setFlip, (char*)"flip image vertically", NULL},
+	{(char*)"zbuff", (getter)Image_getZbuff, (setter)Image_setZbuff, (char*)"use depth buffer as texture", NULL},
+	{(char*)"depth", (getter)Image_getDepth, (setter)Image_setDepth, (char*)"get depth information from z-buffer as array of float", NULL},
 	{(char*)"filter", (getter)Image_getFilter, (setter)Image_setFilter, (char*)"pixel filter", NULL},
 	{NULL}
 };

@@ -18,21 +18,7 @@
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 # ***** END GPL LICENCE BLOCK *****
-
-# ------ ------
-bl_info = {
-    'name': 'face_inset_fillet',
-    'author': '',
-    'version': (0, 1, 7),
-    'blender': (2, 6, 3),
-    'api': 46962,
-    'location': 'View3D > Tool Shelf',
-    'description': '',
-    'warning': '',
-    'wiki_url': '',
-    'tracker_url': '',
-    'category': 'Mesh' }
-
+# based completely on addon by zmj100
 # ------ ------
 import bpy
 import bmesh
@@ -152,14 +138,13 @@ def f_(bme, list_0, opp, adj1, n_, out, radius, en0, kp):
                     bme.faces.new( [ dict_0[k_][kk], dict_0[k_][(kk + 1) % n3_], q_ ] )
                     bme.faces.index_update()
 
+
     del_ = [bme.faces.remove(f) for f in list_del]
     del del_
 
-
-
 # ------ operator 0 ------
-class fif_op0(bpy.types.Operator):
-    bl_idname = 'fif.op0_id'
+class faceinfillet_op0(bpy.types.Operator):
+    bl_idname = 'faceinfillet.op0_id'
     bl_label = 'Face Inset Fillet'
     bl_description = 'inset selected faces'
     bl_options = {'REGISTER', 'UNDO'}
@@ -228,30 +213,14 @@ class inset_help(bpy.types.Operator):
 	def draw(self, context):
 		layout = self.layout
 		layout.label('To use:')
-		layout.label('Select A face or Faces & inset.')
-		layout.label('Inset on a per face basis')
+		layout.label('Select a face or faces & inset.')
 		layout.label('Inset square, circle or outside.')
+		layout.label('To Help:')
+		layout.label('Circle: use remove doubles to tidy joins.')
+		layout.label('Outset: select & use normals flip before extruding.')
 	
 	def execute(self, context):
 		return {'FINISHED'}
 
 	def invoke(self, context, event):
-		return context.window_manager.invoke_popup(self, width = 300)
-'''
-# ------ ------
-class_list = [ fif_op0, fif_p0 ]
-
-# ------ register ------
-def register():
-    for c in class_list:
-        bpy.utils.register_class(c)
-
-# ------ unregister ------
-def unregister():
-    for c in class_list:
-        bpy.utils.unregister_class(c)
-
-# ------ ------
-if __name__ == "__main__":
-    register()
-'''
+		return context.window_manager.invoke_popup(self, width = 350)

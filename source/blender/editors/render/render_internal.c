@@ -80,11 +80,10 @@ void image_buffer_rect_update(Scene *scene, RenderResult *rr, ImBuf *ibuf, volat
 	float *rectf = NULL;
 	int ymin, ymax, xmin, xmax;
 	int rymin, rxmin;
-	/* unsigned char *rectc; */  /* UNUSED */
 
 	/* if renrect argument, we only refresh scanlines */
 	if (renrect) {
-		/* if ymax==recty, rendering of layer is ready, we should not draw, other things happen... */
+		/* if (ymax == recty), rendering of layer is ready, we should not draw, other things happen... */
 		if (rr->renlay == NULL || renrect->ymax >= rr->recty)
 			return;
 
@@ -143,11 +142,10 @@ void image_buffer_rect_update(Scene *scene, RenderResult *rr, ImBuf *ibuf, volat
 		imb_addrectImBuf(ibuf);
 	
 	rectf += 4 * (rr->rectx * ymin + xmin);
-	/* rectc = (unsigned char *)(ibuf->rect + ibuf->x * rymin + rxmin); */  /* UNUSED */
 
 	IMB_partial_display_buffer_update(ibuf, rectf, NULL, rr->rectx, rxmin, rymin,
 	                                  &scene->view_settings, &scene->display_settings,
-	                                  rxmin, rymin, rxmin + xmax, rymin + ymax);
+	                                  rxmin, rymin, rxmin + xmax, rymin + ymax, TRUE);
 }
 
 /* ****************************** render invoking ***************** */
@@ -322,7 +320,7 @@ static int screen_render_exec(bContext *C, wmOperator *op)
 	screen_render_scene_layer_set(op, mainp, &scene, &srl);
 
 	if (!is_animation && is_write_still && BKE_imtype_is_movie(scene->r.im_format.imtype)) {
-		BKE_report(op->reports, RPT_ERROR, "Can't write a single file with an animation format selected");
+		BKE_report(op->reports, RPT_ERROR, "Cannot write a single file with an animation format selected");
 		return OPERATOR_CANCELLED;
 	}
 
@@ -415,7 +413,11 @@ static void make_renderinfo_string(RenderStats *rs, Scene *scene, char *str)
 		if (rs->tothalo) spos += sprintf(spos, "Ha:%d ", rs->tothalo);
 		if (rs->totstrand) spos += sprintf(spos, "St:%d ", rs->totstrand);
 		if (rs->totlamp) spos += sprintf(spos, "La:%d ", rs->totlamp);
-		spos += sprintf(spos, "Mem:%.2fM (%.2fM, peak %.2fM) ", megs_used_memory, mmap_used_memory, megs_peak_memory);
+
+		if (rs->mem_peak == 0.0f)
+			spos += sprintf(spos, "Mem:%.2fM (%.2fM, peak %.2fM) ", megs_used_memory, mmap_used_memory, megs_peak_memory);
+		else
+			spos += sprintf(spos, "Mem:%.2fM, Peak: %.2fM ", rs->mem_used, rs->mem_peak);
 
 		if (rs->curfield)
 			spos += sprintf(spos, "Field %d ", rs->curfield);
@@ -491,7 +493,7 @@ static void image_rect_update(void *rjv, RenderResult *rr, volatile rcti *renrec
 		/* make jobs timer to send notifier */
 		*(rj->do_update) = TRUE;
 	}
-	BKE_image_release_ibuf(ima, lock);
+	BKE_image_release_ibuf(ima, ibuf, lock);
 }
 
 static void render_startjob(void *rjv, short *stop, short *do_update, float *progress)
@@ -614,12 +616,12 @@ static int screen_render_invoke(bContext *C, wmOperator *op, wmEvent *event)
 	}
 
 	if (!is_animation && is_write_still && BKE_imtype_is_movie(scene->r.im_format.imtype)) {
-		BKE_report(op->reports, RPT_ERROR, "Can't write a single file with an animation format selected");
+		BKE_report(op->reports, RPT_ERROR, "Cannot write a single file with an animation format selected");
 		return OPERATOR_CANCELLED;
-	}	
+	}
 	
-	/* stop all running jobs, currently previews frustrate Render */
-	WM_jobs_stop_all(CTX_wm_manager(C));
+	/* stop all running jobs, except screen one. currently previews frustrate Render */
+	WM_jobs_kill_all_except(CTX_wm_manager(C), CTX_wm_screen(C));
 
 	/* get main */
 	if (G.debug_value == 101) {
@@ -670,12 +672,19 @@ static int screen_render_invoke(bContext *C, wmOperator *op, wmEvent *event)
 	rj->win = CTX_wm_window(C);
 	rj->srl = srl;
 	rj->camera_override = camera_override;
-	rj->lay = (v3d) ? v3d->lay : scene->lay;
+	rj->lay = scene->lay;
 	rj->anim = is_animation;
 	rj->write_still = is_write_still && !is_animation;
 	rj->iuser.scene = scene;
 	rj->iuser.ok = 1;
 	rj->reports = op->reports;
+
+	if (v3d) {
+		rj->lay = v3d->lay;
+
+		if (v3d->localvd)
+			rj->lay |= v3d->localvd->lay;
+	}
 
 	/* setup job */
 	if (RE_seq_render_active(scene, &scene->r)) name = "Sequence Render";
@@ -728,6 +737,8 @@ static int screen_render_invoke(bContext *C, wmOperator *op, wmEvent *event)
 /* contextual render, using current scene, view3d? */
 void RENDER_OT_render(wmOperatorType *ot)
 {
+	PropertyRNA *prop;
+
 	/* identifiers */
 	ot->name = "Render";
 	ot->description = "Render active scene";
@@ -742,8 +753,10 @@ void RENDER_OT_render(wmOperatorType *ot)
 
 	RNA_def_boolean(ot->srna, "animation", 0, "Animation", "Render files from the animation range of this scene");
 	RNA_def_boolean(ot->srna, "write_still", 0, "Write Image", "Save rendered the image to the output path (used only when animation is disabled)");
-	RNA_def_string(ot->srna, "layer", "", RE_MAXNAME, "Render Layer", "Single render layer to re-render (used only when animation is disabled)");
-	RNA_def_string(ot->srna, "scene", "", MAX_ID_NAME - 2, "Scene", "Scene to render, current scene if not specified");
+	prop = RNA_def_string(ot->srna, "layer", "", RE_MAXNAME, "Render Layer", "Single render layer to re-render (used only when animation is disabled)");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	prop = RNA_def_string(ot->srna, "scene", "", MAX_ID_NAME - 2, "Scene", "Scene to render, current scene if not specified");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
 

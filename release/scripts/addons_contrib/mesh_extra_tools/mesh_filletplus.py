@@ -42,7 +42,7 @@ from math import cos, pi, degrees, sin, tan
 
 
 def list_clear_(l):
-	l[:] = []
+	del l[:]
 	return l
 
 def get_adj_v_(list_):
@@ -245,8 +245,8 @@ class f_p0(bpy.types.Panel):
 		row.operator('f.op1_id', text = '?')
 '''
 # ------ operator 0 ------
-class f_op0(bpy.types.Operator):
-	bl_idname = 'f.op0_id'
+class fillet_op0(bpy.types.Operator):
+	bl_idname = 'fillet.op0_id'
 	bl_label = 'Fillet'
 	bl_description = 'Fillet ajoining edges'
 	bl_options = {'REGISTER', 'UNDO'}
@@ -337,24 +337,26 @@ class f_op0(bpy.types.Operator):
 			return {'CANCELLED'}
 
 # ------ operator 1 ------
-class f_op1(bpy.types.Operator):
-	bl_idname = 'f.op1_id'
+class filletedgehelp(bpy.types.Operator):
+	bl_idname = 'help.edge_fillet'
 	bl_label = ''
 
 	def draw(self, context):
 		layout = self.layout
 		layout.label('To use:')
 		layout.label('Select two adjacent edges and press Fillet button.')
+		layout.label('To Help:')
+		layout.label('best used on flat plane.')
 	
 	def execute(self, context):
 		return {'FINISHED'}
 
 	def invoke(self, context, event):
-		return context.window_manager.invoke_popup(self, width = 400)
+		return context.window_manager.invoke_popup(self, width = 350)
 
 # ------ operator 2 ------
-class f_op2(bpy.types.Operator):
-	bl_idname = 'f.op2_id'
+class fillet_op2(bpy.types.Operator):
+	bl_idname = 'fillet.op2_id'
 	bl_label = ''
 
 	def execute(self, context):

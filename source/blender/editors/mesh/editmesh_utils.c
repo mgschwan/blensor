@@ -263,11 +263,13 @@ int EDBM_op_callf(BMEditMesh *em, wmOperator *op, const char *fmt, ...)
 	return EDBM_op_finish(em, &bmop, op, TRUE);
 }
 
-int EDBM_op_call_and_selectf(BMEditMesh *em, wmOperator *op, const char *selectslot, const char *fmt, ...)
+int EDBM_op_call_and_selectf(BMEditMesh *em, wmOperator *op, const char *select_slot_out, const char *fmt, ...)
 {
+	BMOpSlot *slot_select_out;
 	BMesh *bm = em->bm;
 	BMOperator bmop;
 	va_list list;
+	char hflag;
 
 	va_start(list, fmt);
 
@@ -283,9 +285,12 @@ int EDBM_op_call_and_selectf(BMEditMesh *em, wmOperator *op, const char *selects
 
 	BMO_op_exec(bm, &bmop);
 
+	slot_select_out = BMO_slot_get(bmop.slots_out, select_slot_out);
+	hflag = slot_select_out->slot_subtype.elem & BM_ALL_NOLOOP;
+
 	BM_mesh_elem_hflag_disable_all(em->bm, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT, FALSE);
 
-	BMO_slot_buffer_hflag_enable(em->bm, &bmop, selectslot, BM_ALL, BM_ELEM_SELECT, TRUE);
+	BMO_slot_buffer_hflag_enable(em->bm, bmop.slots_out, select_slot_out, hflag, BM_ELEM_SELECT, TRUE);
 
 	va_end(list);
 	return EDBM_op_finish(em, &bmop, op, TRUE);
@@ -386,81 +391,129 @@ void EDBM_mesh_free(BMEditMesh *em)
 	BMEdit_Free(em);
 }
 
-void EDBM_index_arrays_init(BMEditMesh *tm, int forvert, int foredge, int forface)
+
+void EDBM_index_arrays_ensure(BMEditMesh *em, const char htype)
 {
-	EDBM_index_arrays_free(tm);
+	/* assume if the array is non-null then its valid and no need to recalc */
+	const char htype_needed = ((em->vert_index ? 0 : BM_VERT) |
+	                           (em->edge_index ? 0 : BM_EDGE) |
+	                           (em->face_index ? 0 : BM_FACE)) & htype;
 
-	if (forvert) {
-		BMIter iter;
-		BMVert *ele;
-		int i = 0;
-		
-		tm->vert_index = MEM_mallocN(sizeof(void **) * tm->bm->totvert, "tm->vert_index");
+	BLI_assert((htype & ~BM_ALL_NOLOOP) == 0);
 
-		ele = BM_iter_new(&iter, tm->bm, BM_VERTS_OF_MESH, NULL);
-		for ( ; ele; ele = BM_iter_step(&iter)) {
-			tm->vert_index[i++] = ele;
+	/* in debug mode double check we didn't need to recalculate */
+	BLI_assert(EDBM_index_arrays_check(em) == TRUE);
+
+	if (htype_needed & BM_VERT) {
+		em->vert_index = MEM_mallocN(sizeof(void **) * em->bm->totvert, "em->vert_index");
+	}
+	if (htype_needed & BM_EDGE) {
+		em->edge_index = MEM_mallocN(sizeof(void **) * em->bm->totedge, "em->edge_index");
+	}
+	if (htype_needed & BM_FACE) {
+		em->face_index = MEM_mallocN(sizeof(void **) * em->bm->totface, "em->face_index");
+	}
+
+#pragma omp parallel sections if (em->bm->totvert + em->bm->totedge + em->bm->totface >= BM_OMP_LIMIT)
+	{
+#pragma omp section
+		{
+			if (htype_needed & BM_VERT) {
+				BM_iter_as_array(em->bm, BM_VERTS_OF_MESH, NULL, (void **)em->vert_index, em->bm->totvert);
+			}
+		}
+#pragma omp section
+		{
+			if (htype_needed & BM_EDGE) {
+				BM_iter_as_array(em->bm, BM_EDGES_OF_MESH, NULL, (void **)em->edge_index, em->bm->totedge);
+			}
+		}
+#pragma omp section
+		{
+			if (htype_needed & BM_FACE) {
+				BM_iter_as_array(em->bm, BM_FACES_OF_MESH, NULL, (void **)em->face_index, em->bm->totface);
+			}
+		}
+	}
+}
+
+/* use EDBM_index_arrays_ensure where possible to avoid full rebuild */
+void EDBM_index_arrays_init(BMEditMesh *em, const char htype)
+{
+	BLI_assert((htype & ~BM_ALL_NOLOOP) == 0);
+
+	/* force recalc */
+	EDBM_index_arrays_free(em);
+	EDBM_index_arrays_ensure(em, htype);
+}
+
+void EDBM_index_arrays_free(BMEditMesh *em)
+{
+	if (em->vert_index) {
+		MEM_freeN(em->vert_index);
+		em->vert_index = NULL;
+	}
+
+	if (em->edge_index) {
+		MEM_freeN(em->edge_index);
+		em->edge_index = NULL;
+	}
+
+	if (em->face_index) {
+		MEM_freeN(em->face_index);
+		em->face_index = NULL;
+	}
+}
+
+/* debug check only - no need to optimize */
+#ifdef DEBUG
+int EDBM_index_arrays_check(BMEditMesh *em)
+{
+	BMIter iter;
+	BMElem *ele;
+	int i;
+
+	if (em->vert_index) {
+		BM_ITER_MESH_INDEX (ele, &iter, em->bm, BM_VERTS_OF_MESH, i) {
+			if (ele != (BMElem *)em->vert_index[i]) {
+				return FALSE;
+			}
 		}
 	}
 
-	if (foredge) {
-		BMIter iter;
-		BMEdge *ele;
-		int i = 0;
-		
-		tm->edge_index = MEM_mallocN(sizeof(void **) * tm->bm->totedge, "tm->edge_index");
-
-		ele = BM_iter_new(&iter, tm->bm, BM_EDGES_OF_MESH, NULL);
-		for ( ; ele; ele = BM_iter_step(&iter)) {
-			tm->edge_index[i++] = ele;
+	if (em->edge_index) {
+		BM_ITER_MESH_INDEX (ele, &iter, em->bm, BM_EDGES_OF_MESH, i) {
+			if (ele != (BMElem *)em->edge_index[i]) {
+				return FALSE;
+			}
 		}
 	}
 
-	if (forface) {
-		BMIter iter;
-		BMFace *ele;
-		int i = 0;
-		
-		tm->face_index = MEM_mallocN(sizeof(void **) * tm->bm->totface, "tm->face_index");
-
-		ele = BM_iter_new(&iter, tm->bm, BM_FACES_OF_MESH, NULL);
-		for ( ; ele; ele = BM_iter_step(&iter)) {
-			tm->face_index[i++] = ele;
+	if (em->face_index) {
+		BM_ITER_MESH_INDEX (ele, &iter, em->bm, BM_FACES_OF_MESH, i) {
+			if (ele != (BMElem *)em->face_index[i]) {
+				return FALSE;
+			}
 		}
 	}
+
+	return TRUE;
+}
+#endif
+
+BMVert *EDBM_vert_at_index(BMEditMesh *em, int index)
+{
+	return em->vert_index && index < em->bm->totvert ? em->vert_index[index] : NULL;
 }
 
-void EDBM_index_arrays_free(BMEditMesh *tm)
+BMEdge *EDBM_edge_at_index(BMEditMesh *em, int index)
 {
-	if (tm->vert_index) {
-		MEM_freeN(tm->vert_index);
-		tm->vert_index = NULL;
-	}
-
-	if (tm->edge_index) {
-		MEM_freeN(tm->edge_index);
-		tm->edge_index = NULL;
-	}
-
-	if (tm->face_index) {
-		MEM_freeN(tm->face_index);
-		tm->face_index = NULL;
-	}
+	return em->edge_index && index < em->bm->totedge ? em->edge_index[index] : NULL;
 }
 
-BMVert *EDBM_vert_at_index(BMEditMesh *tm, int index)
+BMFace *EDBM_face_at_index(BMEditMesh *em, int index)
 {
-	return tm->vert_index && index < tm->bm->totvert ? tm->vert_index[index] : NULL;
-}
-
-BMEdge *EDBM_edge_at_index(BMEditMesh *tm, int index)
-{
-	return tm->edge_index && index < tm->bm->totedge ? tm->edge_index[index] : NULL;
-}
-
-BMFace *EDBM_face_at_index(BMEditMesh *tm, int index)
-{
-	return (tm->face_index && index < tm->bm->totface && index >= 0) ? tm->face_index[index] : NULL;
+	return (em->face_index && index < em->bm->totface && index >= 0) ? em->face_index[index] : NULL;
 }
 
 void EDBM_selectmode_flush_ex(BMEditMesh *em, const short selectmode)
@@ -494,11 +547,11 @@ void EDBM_select_more(BMEditMesh *em)
 	int use_faces = em->selectmode == SCE_SELECT_FACE;
 
 	BMO_op_initf(em->bm, &bmop, BMO_FLAG_DEFAULTS,
-	             "region_extend geom=%hvef constrict=%b use_faces=%b",
+	             "region_extend geom=%hvef use_constrict=%b use_faces=%b",
 	             BM_ELEM_SELECT, FALSE, use_faces);
 	BMO_op_exec(em->bm, &bmop);
 	/* don't flush selection in edge/vertex mode  */
-	BMO_slot_buffer_hflag_enable(em->bm, &bmop, "geomout", BM_ALL, BM_ELEM_SELECT, use_faces ? TRUE : FALSE);
+	BMO_slot_buffer_hflag_enable(em->bm, bmop.slots_out, "geom.out", BM_ALL_NOLOOP, BM_ELEM_SELECT, use_faces ? TRUE : FALSE);
 	BMO_op_finish(em->bm, &bmop);
 
 	EDBM_select_flush(em);
@@ -510,11 +563,11 @@ void EDBM_select_less(BMEditMesh *em)
 	int use_faces = em->selectmode == SCE_SELECT_FACE;
 
 	BMO_op_initf(em->bm, &bmop, BMO_FLAG_DEFAULTS,
-	             "region_extend geom=%hvef constrict=%b use_faces=%b",
+	             "region_extend geom=%hvef use_constrict=%b use_faces=%b",
 	             BM_ELEM_SELECT, TRUE, use_faces);
 	BMO_op_exec(em->bm, &bmop);
 	/* don't flush selection in edge/vertex mode  */
-	BMO_slot_buffer_hflag_disable(em->bm, &bmop, "geomout", BM_ALL, BM_ELEM_SELECT, use_faces ? TRUE : FALSE);
+	BMO_slot_buffer_hflag_disable(em->bm, bmop.slots_out, "geom.out", BM_ALL_NOLOOP, BM_ELEM_SELECT, use_faces ? TRUE : FALSE);
 	BMO_op_finish(em->bm, &bmop);
 
 	EDBM_selectmode_flush(em);
@@ -634,7 +687,7 @@ void undo_push_mesh(bContext *C, const char *name)
 }
 
 /* write comment here */
-UvVertMap *EDBM_uv_vert_map_create(BMEditMesh *em, int selected, int do_face_idx_array, const float limit[2])
+UvVertMap *EDBM_uv_vert_map_create(BMEditMesh *em, int selected, const float limit[2])
 {
 	BMVert *ev;
 	BMFace *efa;
@@ -647,11 +700,8 @@ UvVertMap *EDBM_uv_vert_map_create(BMEditMesh *em, int selected, int do_face_idx
 	MLoopUV *luv;
 	unsigned int a;
 	int totverts, i, totuv;
-	
-	if (do_face_idx_array)
-		EDBM_index_arrays_init(em, 0, 0, 1);
 
-	BM_mesh_elem_index_ensure(em->bm, BM_VERT);
+	BM_mesh_elem_index_ensure(em->bm, BM_VERT | BM_FACE);
 	
 	totverts = em->bm->totvert;
 	totuv = 0;
@@ -663,14 +713,10 @@ UvVertMap *EDBM_uv_vert_map_create(BMEditMesh *em, int selected, int do_face_idx
 	}
 
 	if (totuv == 0) {
-		if (do_face_idx_array)
-			EDBM_index_arrays_free(em);
 		return NULL;
 	}
 	vmap = (UvVertMap *)MEM_callocN(sizeof(*vmap), "UvVertMap");
 	if (!vmap) {
-		if (do_face_idx_array)
-			EDBM_index_arrays_free(em);
 		return NULL;
 	}
 
@@ -679,8 +725,6 @@ UvVertMap *EDBM_uv_vert_map_create(BMEditMesh *em, int selected, int do_face_idx
 
 	if (!vmap->vert || !vmap->buf) {
 		BKE_mesh_uv_vert_map_free(vmap);
-		if (do_face_idx_array)
-			EDBM_index_arrays_free(em);
 		return NULL;
 	}
 	
@@ -757,10 +801,7 @@ UvVertMap *EDBM_uv_vert_map_create(BMEditMesh *em, int selected, int do_face_idx
 		vmap->vert[a] = newvlist;
 		a++;
 	}
-	
-	if (do_face_idx_array)
-		EDBM_index_arrays_free(em);
-	
+
 	return vmap;
 }
 
@@ -1012,6 +1053,19 @@ void EDBM_uv_element_map_free(UvElementMap *element_map)
 	}
 }
 
+UvElement *ED_uv_element_get(UvElementMap *map, BMFace *efa, BMLoop *l)
+{
+	UvElement *element;
+
+	element = map->vert[BM_elem_index_get(l->v)];
+
+	for (; element; element = element->next)
+		if (element->face == efa)
+			return element;
+
+	return NULL;
+}
+
 /* last_sel, use em->act_face otherwise get the last selected face in the editselections
  * at the moment, last_sel is mainly useful for making sure the space image dosnt flicker */
 MTexPoly *EDBM_mtexpoly_active_get(BMEditMesh *em, BMFace **r_act_efa, int sloppy, int selected)
@@ -1092,10 +1146,7 @@ void EDBM_verts_mirror_cache_begin(BMEditMesh *em, const short use_select)
 		topo = 1;
 	}
 
-	if (!em->vert_index) {
-		EDBM_index_arrays_init(em, 1, 0, 0);
-		em->mirr_free_arrays = 1;
-	}
+	EDBM_index_arrays_ensure(em, BM_VERT);
 
 	if (!CustomData_get_layer_named(&bm->vdata, CD_PROP_INT, BM_CD_LAYER_ID)) {
 		BM_data_layer_add_named(bm, &bm->vdata, CD_PROP_INT, BM_CD_LAYER_ID);
@@ -1187,11 +1238,6 @@ void EDBM_verts_mirror_cache_clear(BMEditMesh *em, BMVert *v)
 
 void EDBM_verts_mirror_cache_end(BMEditMesh *em)
 {
-	if (em->mirr_free_arrays) {
-		MEM_freeN(em->vert_index);
-		em->vert_index = NULL;
-	}
-
 	em->mirror_cdlayer = -1;
 }
 
@@ -1265,6 +1311,7 @@ void EDBM_mesh_reveal(BMEditMesh *em)
 
 	/* Use tag flag to remember what was hidden before all is revealed.
 	 * BM_ELEM_HIDDEN --> BM_ELEM_TAG */
+#pragma omp parallel for schedule(dynamic) if (em->bm->totvert + em->bm->totedge + em->bm->totface >= BM_OMP_LIMIT)
 	for (i = 0; i < 3; i++) {
 		BM_ITER_MESH (ele, &iter, em->bm, iter_types[i]) {
 			BM_elem_flag_set(ele, BM_ELEM_TAG, BM_elem_flag_test(ele, BM_ELEM_HIDDEN));
@@ -1295,7 +1342,8 @@ void EDBM_mesh_reveal(BMEditMesh *em)
 
 /* so many tools call these that we better make it a generic function.
  */
-void EDBM_update_generic(bContext *C, BMEditMesh *em, const short do_tessface)
+void EDBM_update_generic(bContext *C, BMEditMesh *em,
+                         const short do_tessface, const short is_destructive)
 {
 	Object *ob = em->ob;
 	/* order of calling isn't important */
@@ -1304,5 +1352,13 @@ void EDBM_update_generic(bContext *C, BMEditMesh *em, const short do_tessface)
 
 	if (do_tessface) {
 		BMEdit_RecalcTessellation(em);
+	}
+
+	if (is_destructive) {
+		EDBM_index_arrays_free(em);
+	}
+	else {
+		/* in debug mode double check we didn't need to recalculate */
+		BLI_assert(EDBM_index_arrays_check(em) == TRUE);
 	}
 }

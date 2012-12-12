@@ -26,18 +26,19 @@
 #       functionality, though it will sadly be a little clumsier to use due
 #       to Blender's selection limitations.
 #
-# Tasks:
-#   - Figure out how to do a GUI for "Shaft", especially for controlling radius?
+# Notes:
 #   - Buggy parts have been hidden behind bpy.app.debug.  Run Blender in debug
 #       to expose those.  Example: Shaft with more than two edges selected.
+#   - Some functions have started to crash, despite working correctly before.
+#       What could be causing that?  Blender bug?  Or coding bug?
 #
 # Paul "BrikBot" Marshall
 # Created: January 28, 2012
-# Last Modified: August 25, 2012
+# Last Modified: October 6, 2012
 # Homepage (blog): http://post.darkarsenic.com/
 #                       //blog.darkarsenic.com/
 #
-# Coded in IDLE, tested in Blender 2.63.
+# Coded in IDLE, tested in Blender 2.6.
 # Search for "@todo" to quickly find sections that need work.
 #
 # Remeber -
@@ -71,13 +72,12 @@ bl_info = {
     'name': "EdgeTools",
     'author': "Paul Marshall",
     'version': (0, 8),
-    'blender': (2, 6, 3),
+    'blender': (2, 6, 4),
     'location': "View3D > Toolbar and View3D > Specials (W-key)",
     'warning': "",
     'description': "CAD style edge manipulation tools",
     'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Modeling/EdgeTools",
-    'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
-                   'func=detail&aid=31566',
+    'tracker_url': "https://blenderpython.svn.sourceforge.net/svnroot/blenderpython/scripts_library/scripts/addons_extern/mesh_edgetools.py",
     'category': 'Mesh'}
 
 import bpy, bmesh, mathutils
@@ -93,6 +93,8 @@ from bpy.props import (BoolProperty,
                        IntProperty,
                        FloatProperty,
                        EnumProperty)
+
+integrated = False
 
 # Quick an dirty method for getting the sign of a number:
 def sign(number):
@@ -525,10 +527,15 @@ def intersect_line_face(edge, face, is_infinite = False, error = 0.000002):
         int_co = intersect_line_plane(edge.verts[0].co, edge.verts[1].co, p1, face.normal)
 
         # Only check if the triangle is not being treated as an infinite plane:
+        # Math based from http://paulbourke.net/geometry/linefacet/
         if int_co != None and not is_infinite:
             pA = p1 - int_co
             pB = p2 - int_co
             pC = p3 - int_co
+            # These must be unit vectors, else we risk a domain error:
+            pA.length = 1
+            pB.length = 1
+            pC.length = 1
             aAB = acos(pA.dot(pB))
             aBC = acos(pB.dot(pC))
             aCA = acos(pC.dot(pA))
@@ -896,7 +903,7 @@ class Spline(bpy.types.Operator):
 #
 # @todo Change method from a cross product to a rotation matrix to make the
 #   angle part work.
-#   --- todo completed Feb 4th, but still needs work ---
+#   --- todo completed 2/4/2012, but still needs work ---
 # @todo Figure out a way to make +/- predictable
 #   - Maybe use angel between edges and vector direction definition?
 #   --- TODO COMPLETED ON 2/9/2012 ---
@@ -1207,7 +1214,8 @@ class Shaft(bpy.types.Operator):
 
             self.shaftType = 0
         # If there is more than one edge selected:
-        # There are some issues with it ATM, so don't expose is it to normal users:
+        # There are some issues with it ATM, so don't expose is it to normal users
+        # @todo Fix edge connection ordering issue
         elif len(edges) > 2 and bpy.app.debug:
             if isinstance(bm.select_history.active, bmesh.types.BMEdge):
                 active = bm.select_history.active
@@ -1245,8 +1253,8 @@ class Shaft(bpy.types.Operator):
         else:
             axis = verts[1].co - verts[0].co
 
-        # We will need a series of rotation matrices.  We could use one which would be
-        # faster but also might cause propagation of error.
+        # We will need a series of rotation matrices.  We could use one which
+        # would be faster but also might cause propagation of error.
 ##        matrices = []
 ##        for i in range(numV):
 ##            matrices.append(Matrix.Rotation((rads * i) + rotRange[0], 3, axis))
@@ -1318,7 +1326,7 @@ class Shaft(bpy.types.Operator):
                     e.select = True
 
             # Faces:
-            # There is a problem with this right now:
+            # There is a problem with this right now
             for i in range(len(edges)):
                 for j in range(numE):
                     f = bFaces.new((newVerts[i], newVerts[i + 1],
@@ -1354,6 +1362,8 @@ class Shaft(bpy.types.Operator):
 
 
 # "Slices" edges crossing a plane defined by a face.
+# @todo Selecting a face as the cutting plane will cause Blender to crash when
+#   using "Rip".
 class Slice(bpy.types.Operator):
     bl_idname = "mesh.edgetools_slice"
     bl_label = "Slice"
@@ -1409,6 +1419,12 @@ class Slice(bpy.types.Operator):
         normal = None
 
         # Find the selected face.  This will provide the plane to project onto:
+        #   - First check to use the active face.  This allows users to just
+        #       select a bunch of faces with the last being the cutting plane.
+        #       This is try and make the tool act more like a built-in Blender
+        #       function.
+        #   - If that fails, then use the first found selected face in the BMesh
+        #       face list.
         if isinstance(bm.select_history.active, bmesh.types.BMFace):
             face = bm.select_history.active
             normal = bm.select_history.active.normal
@@ -1421,28 +1437,55 @@ class Slice(bpy.types.Operator):
                     f.select = False
                     break
 
+        # If we don't find a selected face, we have problem.  Exit:
         if face == None:
             bpy.ops.object.editmode_toggle()
             self.report({'ERROR_INVALID_INPUT'},
                         "You must select a face as the cutting plane.")
             return {'CANCELLED'}
+        # Warn the user if they are using an n-gon.  We can work with it, but it
+        # might lead to some odd results.
         elif len(face.verts) > 4 and not is_face_planar(face):
             self.report({'WARNING'},
                         "Selected face is an n-gon.  Results may be unpredictable.")
 
+        # @todo DEBUG TRACKER - DELETE WHEN FINISHED:
+        dbg = 0
+        if bpy.app.debug:
+            print(len(bEdges))
+
+        # Iterate over the edges:
         for e in bEdges:
+            # @todo DEBUG TRACKER - DELETE WHEN FINISHED:
+            if bpy.app.debug:
+                print(dbg)
+                dbg = dbg + 1
+
+            # Get the end verts on the edge:
             v1 = e.verts[0]
             v2 = e.verts[1]
+            
+            # Make sure that verts are not a part of the cutting plane:
             if e.select and (v1 not in face.verts and v2 not in face.verts):
                 if len(face.verts) < 5:  # Not an n-gon
                     intersection = intersect_line_face(e, face, True)
                 else:
                     intersection = intersect_line_plane(v1.co, v2.co, face.verts[0].co, normal)
 
+                # More debug info - I think this can stay.
+                if bpy.app.debug:
+                    print("Intersection", end = ': ')
+                    print(intersection)
+
+                # If an intersection exists find the distance of each of the end
+                # points from the plane, with "positive" being in the direction
+                # of the cutting plane's normal.  If the points are on opposite
+                # side of the plane, then it intersects and we need to cut it.
                 if intersection != None:
                     d1 = distance_point_to_plane(v1.co, face.verts[0].co, normal)
                     d2 = distance_point_to_plane(v2.co, face.verts[0].co, normal)
-                    # If they have different signs, then the edge crosses the plane:
+                    # If they have different signs, then the edge crosses the
+                    # cutting plane:
                     if abs(d1 + d2) < abs(d1 - d2):
                         # Make the first vertice the positive vertice:
                         if d1 < d2:
@@ -1450,20 +1493,31 @@ class Slice(bpy.types.Operator):
                         if self.make_copy:
                             new = bVerts.new()
                             new.co = intersection
+                            new.select = True
                         elif self.rip:
                             newV1 = bVerts.new()
                             newV1.co = intersection
+
+                            if bpy.app.debug:
+                                print("newV1 created", end = '; ')
+
                             newV2 = bVerts.new()
                             newV2.co = intersection
+
                             if bpy.app.debug:
-                                print("New vertices were successfully created")
+                                print("newV2 created", end = '; ')
+
                             newE1 = bEdges.new((v1, newV1))
                             newE2 = bEdges.new((v2, newV2))
+
                             if bpy.app.debug:
-                                print("New edges were successfully created")
+                                print("new edges created", end = '; ')
+
                             bEdges.remove(e)
+
                             if bpy.app.debug:
-                                print("Old edge successfully removed")
+                                print("old edge removed.")
+                                print("We're done with this edge.")
                         else:
                             new = list(bmesh.utils.edge_split(e, v1, 0.5))
                             new[1].co = intersection
@@ -1479,6 +1533,8 @@ class Slice(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# This projects the selected edges onto the selected plane.  This projects both
+# points on the selected edge.
 class Project(bpy.types.Operator):
     bl_idname = "mesh.edgetools_project"
     bl_label = "Project"
@@ -1516,6 +1572,7 @@ class Project(bpy.types.Operator):
         fVerts = []
 
         # Find the selected face.  This will provide the plane to project onto:
+        # @todo Check first for an active face
         for f in bFaces:
             if f.select:
                 for v in f.verts:
@@ -1842,6 +1899,7 @@ class VIEW3D_MT_edit_mesh_edgetools(bpy.types.Menu):
     bl_label = "EdgeTools"
     
     def draw(self, context):
+        global integrated
         layout = self.layout
         
         layout.operator("mesh.edgetools_extend")
@@ -1856,6 +1914,12 @@ class VIEW3D_MT_edit_mesh_edgetools(bpy.types.Menu):
             layout.operator("mesh.edgetools_fillet")
             ## For internal testing ONLY:
             layout.operator("mesh.edgetools_ilf")
+        # If TinyCAD VTX exists, add it to the menu.
+        # @todo This does not work.
+        if integrated and bpy.app.debug:
+            layout.operator(EdgeIntersections.bl_idname, text="Edges V Intersection").mode = -1
+            layout.operator(EdgeIntersections.bl_idname, text="Edges T Intersection").mode = 0
+            layout.operator(EdgeIntersections.bl_idname, text="Edges X Intersection").mode = 1
 
 
 def menu_func(self, context):
@@ -1878,13 +1942,27 @@ classes = [VIEW3D_MT_edit_mesh_edgetools,
 
 # registering and menu integration
 def register():
+    global integrated
     if int(bpy.app.build_revision[0:5]) < 44800:
         print("Error in Edgetools:")
         print("This version of Blender does not support the necessary BMesh API.")
         print("Please download Blender 2.63 or newer.")
         return {'ERROR'}
+        
     for c in classes:
         bpy.utils.register_class(c)
+
+    # I would like this script to integrate the TinyCAD VTX menu options into
+    # the edge tools menu if it exists.  This should make the UI a little nicer
+    # for users.
+    # @todo Remove TinyCAD VTX menu entries and add them too EdgeTool's menu
+    import inspect, os.path
+
+    path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+    if os.path.isfile(path + "\mesh_edge_intersection_tools.py"):
+        print("EdgeTools UI integration test - TinyCAD VTX Found")
+        integrated = True
+    
     bpy.types.VIEW3D_MT_edit_mesh_specials.prepend(menu_func)
 
 
@@ -1892,6 +1970,7 @@ def register():
 def unregister():
     for c in classes:
         bpy.utils.unregister_class(c)
+
     bpy.types.VIEW3D_MT_edit_mesh_specials.remove(menu_func)
 
 

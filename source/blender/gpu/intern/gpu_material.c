@@ -282,7 +282,7 @@ void GPU_material_bind(GPUMaterial *material, int oblay, int viewlay, double tim
 	}
 }
 
-void GPU_material_bind_uniforms(GPUMaterial *material, float obmat[][4], float viewmat[][4], float viewinv[][4], float obcol[4], float autobumpscale)
+void GPU_material_bind_uniforms(GPUMaterial *material, float obmat[4][4], float viewmat[4][4], float viewinv[4][4], float obcol[4], float autobumpscale)
 {
 	if (material->pass) {
 		GPUShader *shader = GPU_pass_shader(material->pass);
@@ -780,7 +780,9 @@ static void shade_one_light(GPUShadeInput *shi, GPUShadeResult *shr, GPULamp *la
 		}
 	}
 
-	if (mat->scene->gm.flag & GAME_GLSL_NO_SHADERS);
+	if (mat->scene->gm.flag & GAME_GLSL_NO_SHADERS) {
+		/* pass */
+	}
 	else if (!(lamp->mode & LA_NO_SPEC) && !(lamp->mode & LA_ONLYSHADOW) &&
 	         (GPU_link_changed(shi->spec) || ma->spec != 0.0f))
 	{
@@ -1127,7 +1129,7 @@ static void do_material_tex(GPUShadeInput *shi)
 							newnor = tnor;
 						}
 						
-						norfac = minf(fabsf(mtex->norfac), 1.0f);
+						norfac = min_ff(fabsf(mtex->norfac), 1.0f);
 						
 						if (norfac == 1.0f && !GPU_link_changed(stencil)) {
 							shi->vn = newnor;
@@ -1163,13 +1165,14 @@ static void do_material_tex(GPUShadeInput *shi)
 
 						// resolve texture resolution
 						if ( (mtex->texflag & MTEX_BUMP_TEXTURESPACE) || found_deriv_map ) {
-							ImBuf *ibuf= BKE_image_get_ibuf(tex->ima, &tex->iuser);
+							ImBuf *ibuf= BKE_image_acquire_ibuf(tex->ima, &tex->iuser, NULL);
 							ima_x= 512.0f; ima_y= 512.f;		// prevent calling textureSize, glsl 1.3 only
 							if (ibuf) {
 								ima_x= ibuf->x;
 								ima_y= ibuf->y;
 								aspect = ((float) ima_y) / ima_x;
 							}
+							BKE_image_release_ibuf(tex->ima, ibuf, NULL);
 						}
 
 						// The negate on norfac is done because the
@@ -1494,6 +1497,16 @@ static GPUNodeLink *GPU_blender_material(GPUMaterial *mat, Material *ma)
 	return shr.combined;
 }
 
+static GPUNodeLink *gpu_material_diffuse_bsdf(GPUMaterial *mat, Material *ma)
+{
+	static float roughness = 0.0f;
+	GPUNodeLink *outlink;
+
+	GPU_link(mat, "node_bsdf_diffuse", GPU_uniform(&ma->r), GPU_uniform(&roughness), GPU_builtin(GPU_VIEW_NORMAL), &outlink);
+
+	return outlink;
+}
+
 GPUMaterial *GPU_material_from_blender(Scene *scene, Material *ma)
 {
 	GPUMaterial *mat;
@@ -1513,8 +1526,15 @@ GPUMaterial *GPU_material_from_blender(Scene *scene, Material *ma)
 		ntreeGPUMaterialNodes(ma->nodetree, mat);
 	}
 	else {
-		/* create material */
-		outlink = GPU_blender_material(mat, ma);
+		if(BKE_scene_use_new_shading_nodes(scene)) {
+			/* create simple diffuse material instead of nodes */
+			outlink = gpu_material_diffuse_bsdf(mat, ma);
+		}
+		else {
+			/* create blender material */
+			outlink = GPU_blender_material(mat, ma);
+		}
+
 		GPU_material_output_link(mat, outlink);
 	}
 
@@ -1552,7 +1572,7 @@ void GPU_materials_free(void)
 
 /* Lamps and shadow buffers */
 
-void GPU_lamp_update(GPULamp *lamp, int lay, int hide, float obmat[][4])
+void GPU_lamp_update(GPULamp *lamp, int lay, int hide, float obmat[4][4])
 {
 	float mat[4][4];
 
@@ -1587,8 +1607,8 @@ void GPU_lamp_update_distance(GPULamp *lamp, float distance, float att1, float a
 
 void GPU_lamp_update_spot(GPULamp *lamp, float spotsize, float spotblend)
 {
-	lamp->spotsi= cos(M_PI*spotsize/360.0);
-	lamp->spotbl= (1.0f - lamp->spotsi)*spotblend;
+	lamp->spotsi= cosf((float)M_PI * spotsize / 360.0f);
+	lamp->spotbl= (1.0f - lamp->spotsi) * spotblend;
 }
 
 static void gpu_lamp_from_blender(Scene *scene, Object *ob, Object *par, Lamp *la, GPULamp *lamp)
@@ -1834,7 +1854,7 @@ void GPU_lamp_update_buffer_mats(GPULamp *lamp)
 	mult_m4_m4m4(lamp->persmat, rangemat, persmat);
 }
 
-void GPU_lamp_shadow_buffer_bind(GPULamp *lamp, float viewmat[][4], int *winsize, float winmat[][4])
+void GPU_lamp_shadow_buffer_bind(GPULamp *lamp, float viewmat[4][4], int *winsize, float winmat[4][4])
 {
 	GPU_lamp_update_buffer_mats(lamp);
 
@@ -1879,7 +1899,7 @@ GPUShaderExport *GPU_shader_export(struct Scene *scene, struct Material *ma)
 		GPUBuiltin gputype;
 		GPUDynamicType dynamictype;
 		GPUDataType datatype;
-	} builtins[] = { 
+	} builtins[] = {
 		{ GPU_VIEW_MATRIX, GPU_DYNAMIC_OBJECT_VIEWMAT, GPU_DATA_16F },
 		{ GPU_INVERSE_VIEW_MATRIX, GPU_DYNAMIC_OBJECT_VIEWIMAT, GPU_DATA_16F },
 		{ GPU_OBJECT_MATRIX, GPU_DYNAMIC_OBJECT_MAT, GPU_DATA_16F },

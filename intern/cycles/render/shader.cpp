@@ -49,6 +49,8 @@ Shader::Shader()
 	has_volume = false;
 	has_displacement = false;
 
+	used = false;
+
 	need_update = true;
 	need_update_attributes = true;
 }
@@ -98,6 +100,16 @@ void Shader::tag_update(Scene *scene)
 	}
 }
 
+void Shader::tag_used(Scene *scene)
+{
+	/* if an unused shader suddenly gets used somewhere, it needs to be
+	 * recompiled because it was skipped for compilation before */
+	if(!used) {
+		need_update = true;
+		scene->shader_manager->need_update = true;
+	}
+}
+
 /* Shader Manager */
 
 ShaderManager::ShaderManager()
@@ -109,12 +121,12 @@ ShaderManager::~ShaderManager()
 {
 }
 
-ShaderManager *ShaderManager::create(Scene *scene)
+ShaderManager *ShaderManager::create(Scene *scene, int shadingsystem)
 {
 	ShaderManager *manager;
 
 #ifdef WITH_OSL
-	if(scene->params.shadingsystem == SceneParams::OSL)
+	if(shadingsystem == SceneParams::OSL)
 		manager = new OSLShaderManager();
 	else
 #endif
@@ -159,6 +171,27 @@ int ShaderManager::get_shader_id(uint shader, Mesh *mesh, bool smooth)
 	id |= SHADER_CAST_SHADOW|SHADER_AREA_LIGHT;
 	
 	return id;
+}
+
+void ShaderManager::device_update_shaders_used(Scene *scene)
+{
+	/* figure out which shaders are in use, so SVM/OSL can skip compiling them
+	 * for speed and avoid loading image textures into memory */
+	foreach(Shader *shader, scene->shaders)
+		shader->used = false;
+
+	scene->shaders[scene->default_surface]->used = true;
+	scene->shaders[scene->default_light]->used = true;
+	scene->shaders[scene->default_background]->used = true;
+	scene->shaders[scene->default_holdout]->used = true;
+	scene->shaders[scene->default_empty]->used = true;
+
+	foreach(Mesh *mesh, scene->meshes)
+		foreach(uint shader, mesh->used_shaders)
+			scene->shaders[shader]->used = true;
+
+	foreach(Light *light, scene->lights)
+		scene->shaders[light->shader]->used = true;
 }
 
 void ShaderManager::device_update_common(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress)

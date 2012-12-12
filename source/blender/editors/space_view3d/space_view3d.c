@@ -185,7 +185,7 @@ int ED_view3d_context_user_region(bContext *C, View3D **v3d_r, ARegion **ar_r)
 								ar_unlock_user = ar;
 								break;
 							}
-						} 
+						}
 					}
 				}
 
@@ -702,6 +702,7 @@ static void view3d_main_area_listener(ARegion *ar, wmNotifier *wmn)
 		case NC_GEOM:
 			switch (wmn->data) {
 				case ND_DATA:
+				case ND_VERTEX_GROUP:
 				case ND_SELECT:
 					ED_region_tag_redraw(ar);
 					break;
@@ -719,10 +720,11 @@ static void view3d_main_area_listener(ARegion *ar, wmNotifier *wmn)
 		case NC_BRUSH:
 			if (wmn->action == NA_EDITED)
 				ED_region_tag_redraw_overlay(ar);
-			break;			
+			break;
 		case NC_MATERIAL:
 			switch (wmn->data) {
 				case ND_SHADING_DRAW:
+				case ND_SHADING_LINKS:
 					ED_region_tag_redraw(ar);
 					break;
 			}
@@ -748,12 +750,12 @@ static void view3d_main_area_listener(ARegion *ar, wmNotifier *wmn)
 					break;
 			}
 			break;
-		case NC_IMAGE:	
+		case NC_IMAGE:
 			/* this could be more fine grained checks if we had
 			 * more context than just the region */
 			ED_region_tag_redraw(ar);
 			break;
-		case NC_TEXTURE:	
+		case NC_TEXTURE:
 			/* same as above */
 			ED_region_tag_redraw(ar);
 			break;
@@ -776,7 +778,6 @@ static void view3d_main_area_listener(ARegion *ar, wmNotifier *wmn)
 			break;
 		case NC_SCREEN:
 			switch (wmn->data) {
-				case ND_GPENCIL:
 				case ND_ANIMPLAY:
 				case ND_SKETCH:
 					ED_region_tag_redraw(ar);
@@ -792,6 +793,10 @@ static void view3d_main_area_listener(ARegion *ar, wmNotifier *wmn)
 					break;
 			}
 
+			break;
+		case NC_GPENCIL:
+			if (wmn->action == NA_EDITED)
+				ED_region_tag_redraw(ar);
 			break;
 	}
 }
@@ -879,7 +884,7 @@ static void view3d_buttons_area_listener(ARegion *ar, wmNotifier *wmn)
 				case ND_KEYFRAME:
 					if (wmn->action == NA_EDITED)
 						ED_region_tag_redraw(ar);
-					break;	
+					break;
 			}
 			break;
 		case NC_SCENE:
@@ -917,6 +922,7 @@ static void view3d_buttons_area_listener(ARegion *ar, wmNotifier *wmn)
 		case NC_GEOM:
 			switch (wmn->data) {
 				case ND_DATA:
+				case ND_VERTEX_GROUP:
 				case ND_SELECT:
 					ED_region_tag_redraw(ar);
 					break;
@@ -941,8 +947,8 @@ static void view3d_buttons_area_listener(ARegion *ar, wmNotifier *wmn)
 			if (wmn->action == NA_RENAME)
 				ED_region_tag_redraw(ar);
 			break;
-		case NC_SCREEN: 
-			if (wmn->data == ND_GPENCIL)
+		case NC_GPENCIL:
+			if (wmn->data == ND_DATA || wmn->action == NA_EDITED)
 				ED_region_tag_redraw(ar);
 			break;
 	}
@@ -1116,16 +1122,21 @@ static int view3d_context(const bContext *C, const char *member, bContextDataRes
 		return 1;
 	}
 	else if (CTX_data_equals(member, "active_base")) {
-		if (scene->basact && (scene->basact->lay & lay))
-			if ((scene->basact->object->restrictflag & OB_RESTRICT_VIEW) == 0)
+		if (scene->basact && (scene->basact->lay & lay)) {
+			Object *ob = scene->basact->object;
+			/* if hidden but in edit mode, we still display, can happen with animation */
+			if ((ob->restrictflag & OB_RESTRICT_VIEW) == 0 || (ob->mode & OB_MODE_EDIT))
 				CTX_data_pointer_set(result, &scene->id, &RNA_ObjectBase, scene->basact);
+		}
 		
 		return 1;
 	}
 	else if (CTX_data_equals(member, "active_object")) {
-		if (scene->basact && (scene->basact->lay & lay))
-			if ((scene->basact->object->restrictflag & OB_RESTRICT_VIEW) == 0)
+		if (scene->basact && (scene->basact->lay & lay)) {
+			Object *ob = scene->basact->object;
+			if ((ob->restrictflag & OB_RESTRICT_VIEW) == 0 || (ob->mode & OB_MODE_EDIT))
 				CTX_data_id_pointer_set(result, &scene->basact->object->id);
+		}
 		
 		return 1;
 	}

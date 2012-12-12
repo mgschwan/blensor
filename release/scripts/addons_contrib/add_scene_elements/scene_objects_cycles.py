@@ -171,8 +171,8 @@ class add_scene(bpy.types.Operator):
         mtex.color = (1.000, 0.207, 0.000)
 #add monkey #
         bpy.ops.mesh.primitive_monkey_add(location = (-0.32639,0.08901,1.49976))
-        bpy.ops.transform.rotate(value=(1.15019,), axis=(0, 0, 1))
-        bpy.ops.transform.rotate(value=(-0.683882,), axis=(0, 1, 0))
+        bpy.ops.transform.rotate(value=(1.15019), axis=(0, 0, 1))
+        bpy.ops.transform.rotate(value=(-0.683882), axis=(0, 1, 0))
         bpy.ops.object.modifier_add(type='SUBSURF')
         bpy.ops.object.shade_smooth()
         monkey = bpy.context.active_object
@@ -202,7 +202,7 @@ class add_scene(bpy.types.Operator):
 # add plane
 
         bpy.ops.mesh.primitive_plane_add(location = (0.0,0.0,-1.0))
-        bpy.ops.transform.rotate(value=(-0.820305,), axis=(0, 0, 1))
+        bpy.ops.transform.rotate(value=(-0.820305), axis=(0, 0, 1))
         bpy.ops.transform.resize(value=(22.0, 22.0, 0.0))
         bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 

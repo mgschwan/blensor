@@ -44,6 +44,7 @@
 
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
+#include "BLI_string.h"
 #include "BLI_rect.h"
 
 #include "GPU_extensions.h"
@@ -348,7 +349,7 @@ static int selected_boundbox(SpaceClip *sc, float min[2], float max[2])
 
 				mul_v3_m4v3(pos, sc->stabmat, pos);
 
-				DO_MINMAX2(pos, min, max);
+				minmax_v2v2_v2(min, max, pos);
 
 				ok = TRUE;
 			}
@@ -394,7 +395,7 @@ int ED_clip_view_selection(const bContext *C, ARegion *ar, int fit)
 		zoomx = (float)width / w / aspx;
 		zoomy = (float)height / h / aspy;
 
-		newzoom = 1.0f / power_of_2(1.0f / minf(zoomx, zoomy));
+		newzoom = 1.0f / power_of_2(1.0f / min_ff(zoomx, zoomy));
 
 		if (fit || sc->zoom > newzoom)
 			sc->zoom = newzoom;
@@ -692,7 +693,7 @@ int ED_space_clip_load_movieclip_buffer(SpaceClip *sc, ImBuf *ibuf, const unsign
 		context->start_frame = clip->start_frame;
 		context->frame_offset = clip->frame_offset;
 
-		strcpy(context->colorspace, clip->colorspace_settings.name);
+		BLI_strncpy(context->colorspace, clip->colorspace_settings.name, sizeof(context->colorspace));
 	}
 	else {
 		/* displaying exactly the same image which was loaded t oa texture,

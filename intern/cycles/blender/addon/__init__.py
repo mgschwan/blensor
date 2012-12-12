@@ -48,7 +48,11 @@ class CyclesRender(bpy.types.RenderEngine):
 
     # final render
     def update(self, data, scene):
-        engine.create(self, data, scene)
+        if not self.session:
+            engine.create(self, data, scene)
+        else:
+            engine.reset(self, data, scene)
+
         engine.update(self, data, scene)
 
     def render(self, scene):
@@ -71,6 +75,13 @@ class CyclesRender(bpy.types.RenderEngine):
     def view_draw(self, context):
         engine.draw(self, context.region, context.space_data, context.region_data)
 
+    def update_script_node(self, node):
+        if engine.with_osl():
+            from . import osl
+            osl.update_script_node(node, self.report)
+        else:
+            self.report({'ERROR'}, "OSL support disabled in this build.")
+
 
 def register():
     properties.register()
@@ -84,3 +95,4 @@ def unregister():
     properties.unregister()
     presets.unregister()
     bpy.utils.unregister_module(__name__)
+

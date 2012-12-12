@@ -3991,7 +3991,7 @@ class Cursor3DToolsSettings(bpy.types.PropertyGroup):
     
     cursor_visible = bpy.props.BoolProperty(
         name="Cursor visibility",
-        description="Cursor visibility",
+        description="Cursor visibility (causing bugs, commented out)",
         default=True)
     
     draw_guides = bpy.props.BoolProperty(
@@ -4102,7 +4102,7 @@ class TransformExtraOptions(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     #bl_context = "object"
-    #bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
         layout = self.layout
@@ -4158,7 +4158,10 @@ class Cursor3DTools(bpy.types.Panel):
         #row.prop(settings, "cursor_visible", text="", toggle=True,
         #         icon=('RESTRICT_VIEW_OFF' if settings.cursor_visible
         #               else 'RESTRICT_VIEW_ON'))
-        row.prop(settings, "cursor_visible", text="", toggle=True,
+        subrow = row.row()
+        subrow.enabled = False
+        subrow.alert = True
+        subrow.prop(settings, "cursor_visible", text="", toggle=True,
                  icon='RESTRICT_VIEW_OFF')
         row = row.split(1 / 3, align=True)
         row.prop(settings, "draw_N",
@@ -5160,7 +5163,10 @@ def draw_callback_view(self, context):
     
     cursor_save_location = Vector(bpy.context.space_data.cursor_location)
     if not settings.cursor_visible:
-        bpy.context.space_data.cursor_location = Vector([float('nan')] * 3)
+        # This is causing problems! See <http://projects.blender.org/
+        # tracker/index.php?func=detail&aid=33197&group_id=9&atid=498>
+        #bpy.context.space_data.cursor_location = Vector([float('nan')] * 3)
+        pass
 
 def draw_callback_header_px(self, context):
     r = context.region

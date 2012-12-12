@@ -966,18 +966,20 @@ static SequenceModifierData *rna_Sequence_modifier_new(Sequence *seq, bContext *
 	}
 }
 
-static void rna_Sequence_modifier_remove(Sequence *seq, bContext *C, ReportList *reports, SequenceModifierData *smd)
+static void rna_Sequence_modifier_remove(Sequence *seq, bContext *C, ReportList *reports, PointerRNA *smd_ptr)
 {
+	SequenceModifierData *smd = smd_ptr->data;
 	Scene *scene = CTX_data_scene(C);
 
-	if (BKE_sequence_modifier_remove(seq, smd)) {
-		BKE_sequence_invalidate_cache_for_modifier(scene, seq);
-
-		WM_main_add_notifier(NC_SCENE | ND_SEQUENCER, NULL);
-	}
-	else {
+	if (BKE_sequence_modifier_remove(seq, smd) == FALSE) {
 		BKE_report(reports, RPT_ERROR, "Modifier was not found in the stack");
+		return;
 	}
+
+	RNA_POINTER_INVALIDATE(smd_ptr);
+	BKE_sequence_invalidate_cache_for_modifier(scene, seq);
+
+	WM_main_add_notifier(NC_SCENE | ND_SEQUENCER, NULL);
 }
 
 static void rna_Sequence_modifier_clear(Sequence *seq, bContext *C)
@@ -1267,7 +1269,8 @@ static void rna_def_sequence_modifiers(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_ui_description(func, "Remove an existing modifier from the sequence");
 	/* modifier to remove */
 	parm = RNA_def_pointer(func, "modifier", "SequenceModifier", "", "Modifier to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
+	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
 
 	/* clear all modifiers */
 	func = RNA_def_function(srna, "clear", "rna_Sequence_modifier_clear");
@@ -1685,6 +1688,16 @@ static void rna_def_effect_inputs(StructRNA *srna, int count)
 #endif
 }
 
+static void rna_def_color_management(StructRNA *srna)
+{
+	PropertyRNA *prop;
+
+	prop = RNA_def_property(srna, "colorspace_settings", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "strip->colorspace_settings");
+	RNA_def_property_struct_type(prop, "ColorManagedColorspaceSettings");
+	RNA_def_property_ui_text(prop, "Color Space Settings", "Input color space settings");
+}
+
 static void rna_def_image(BlenderRNA *brna)
 {
 	StructRNA *srna;
@@ -1711,6 +1724,7 @@ static void rna_def_image(BlenderRNA *brna)
 	rna_def_filter_video(srna);
 	rna_def_proxy(srna);
 	rna_def_input(srna);
+	rna_def_color_management(srna);
 }
 
 static void rna_def_meta(BlenderRNA *brna)
@@ -1796,6 +1810,7 @@ static void rna_def_movie(BlenderRNA *brna)
 	rna_def_filter_video(srna);
 	rna_def_proxy(srna);
 	rna_def_input(srna);
+	rna_def_color_management(srna);
 }
 
 static void rna_def_movieclip(BlenderRNA *brna)
@@ -1860,7 +1875,7 @@ static void rna_def_sound(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "volume");
 	RNA_def_property_range(prop, 0.0f, 100.0f);
 	RNA_def_property_ui_text(prop, "Volume", "Playback volume of the sound");
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_AUDIO);
+	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_SOUND);
 	RNA_def_property_float_funcs(prop, NULL, "rna_Sequence_volume_set", NULL);
 	RNA_def_property_update(prop, NC_SCENE | ND_SEQUENCER, "rna_Sequence_update");
 
@@ -1868,7 +1883,7 @@ static void rna_def_sound(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "pitch");
 	RNA_def_property_range(prop, 0.1f, 10.0f);
 	RNA_def_property_ui_text(prop, "Pitch", "Playback pitch of the sound");
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_AUDIO);
+	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_SOUND);
 	RNA_def_property_float_funcs(prop, NULL, "rna_Sequence_pitch_set", NULL);
 	RNA_def_property_update(prop, NC_SCENE | ND_SEQUENCER, "rna_Sequence_update");
 

@@ -285,7 +285,8 @@ enum {
 
 /* for event checks */
 	/* only used for KM_TEXTINPUT, so assume that we want all user-inputtable ascii codes included */
-#define ISTEXTINPUT(event)  (event >= ' ' && event <= 255)
+	/* UNUSED - see wm_eventmatch - BUG [#30479] */
+// #define ISTEXTINPUT(event)  (event >= ' ' && event <= 255)
 
 	/* test whether the event is a key on the keyboard */
 #define ISKEYBOARD(event)  (event >= ' ' && event <= 320)

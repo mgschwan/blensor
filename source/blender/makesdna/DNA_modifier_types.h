@@ -75,6 +75,8 @@ typedef enum ModifierType {
 	eModifierType_DynamicPaint      = 40,
 	eModifierType_Remesh            = 41,
 	eModifierType_Skin              = 42,
+	eModifierType_LaplacianSmooth   = 43,
+	eModifierType_Triangulate		= 44,
 	NUM_MODIFIER_TYPES
 } ModifierType;
 
@@ -348,7 +350,7 @@ typedef struct UVProjectModifierData {
 	int flags;
 	int num_projectors;
 	float aspectx, aspecty;
-	float scalex, scaley;												
+	float scalex, scaley;
 	char uvlayer_name[64];	/* MAX_CUSTOMDATA_LAYER_NAME */
 	int uvlayer_tmp, pad;
 } UVProjectModifierData;
@@ -361,9 +363,29 @@ typedef struct UVProjectModifierData {
 typedef struct DecimateModifierData {
 	ModifierData modifier;
 
-	float percent;
-	int faceCount;
+	float percent;  /* (mode == MOD_DECIM_MODE_COLLAPSE) */
+	short   iter;   /* (mode == MOD_DECIM_MODE_UNSUBDIV) */
+	short   pad;
+	float   angle;  /* (mode == MOD_DECIM_MODE_DISSOLVE) */
+
+	char defgrp_name[64];	/* MAX_VGROUP_NAME */
+	short flag, mode;
+
+	/* runtime only */
+	int face_count, pad2;
 } DecimateModifierData;
+
+enum {
+	MOD_DECIM_FLAG_INVERT_VGROUP       = (1 << 0),
+	MOD_DECIM_FLAG_TRIANGULATE         = (1 << 1),  /* for collapse only. dont convert tri pairs back to quads */
+	MOD_DECIM_FLAG_ALL_BOUNDARY_VERTS  = (1 << 2)   /* for dissolve only. collapse all verts between 2 faces */
+};
+
+enum {
+	MOD_DECIM_MODE_COLLAPSE,
+	MOD_DECIM_MODE_UNSUBDIV,
+	MOD_DECIM_MODE_DISSOLVE   /* called planar in the UI */
+};
 
 /* Smooth modifier flags */
 #define MOD_SMOOTH_X (1<<1)
@@ -564,7 +586,7 @@ typedef struct MeshDeformModifierData {
 	/* runtime */
 	void (*bindfunc)(struct Scene *scene,
 		struct MeshDeformModifierData *mmd,
-		float *vertexcos, int totvert, float cagemat[][4]);
+		float *vertexcos, int totvert, float cagemat[4][4]);
 } MeshDeformModifierData;
 
 typedef enum {
@@ -644,7 +666,8 @@ typedef struct ShrinkwrapModifierData {
 	float keepDist;			/* distance offset to keep from mesh/projection point */
 	short shrinkType;		/* shrink type projection */
 	short shrinkOpts;		/* shrink options */
-	char projAxis;			/* axis to project over */
+	float projLimit;		/* limit the projection ray cast */
+	char  projAxis;			/* axis to project over */
 
 	/*
 	 * if using projection over vertex normal this controls the
@@ -653,7 +676,7 @@ typedef struct ShrinkwrapModifierData {
 	 */
 	char subsurfLevels;
 
-	char pad[6];
+	char pad[2];
 
 } ShrinkwrapModifierData;
 
@@ -683,7 +706,7 @@ typedef struct SimpleDeformModifierData {
 	struct Object *origin;	/* object to control the origin of modifier space coordinates */
 	char vgroup_name[64];	/* optional vertexgroup name, MAX_VGROUP_NAME */
 	float factor;			/* factors to control simple deforms */
-	float limit[2];			/* lower and upper limit */		
+	float limit[2];			/* lower and upper limit */
 
 	char mode;				/* deform function */
 	char axis;				/* lock axis (for taper and strech) */
@@ -1091,5 +1114,30 @@ enum {
 enum {
 	MOD_SKIN_SMOOTH_SHADING = 1
 };
+
+/* Triangulate modifier */
+
+typedef struct TriangulateModifierData {
+	ModifierData modifier;
+	int flag;
+	int pad;
+} TriangulateModifierData;
+
+enum {
+	MOD_TRIANGULATE_BEAUTY = (1 << 0),
+};
+
+/* Smooth modifier flags */
+#define MOD_LAPLACIANSMOOTH_X (1<<1)
+#define MOD_LAPLACIANSMOOTH_Y (1<<2)
+#define MOD_LAPLACIANSMOOTH_Z (1<<3)
+#define MOD_LAPLACIANSMOOTH_PRESERVE_VOLUME (1 << 4)
+
+typedef struct LaplacianSmoothModifierData {
+	ModifierData modifier;
+	float lambda, lambda_border, pad1;
+	char defgrp_name[64]; /* MAX_VGROUP_NAME */
+	short flag, repeat;
+} LaplacianSmoothModifierData;
 
 #endif

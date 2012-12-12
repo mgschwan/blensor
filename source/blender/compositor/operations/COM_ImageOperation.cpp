@@ -65,8 +65,9 @@ ImBuf *BaseImageOperation::getImBuf()
 {
 	ImBuf *ibuf;
 	
-	ibuf = BKE_image_get_ibuf(this->m_image, this->m_imageUser);
+	ibuf = BKE_image_acquire_ibuf(this->m_image, this->m_imageUser, NULL);
 	if (ibuf == NULL || (ibuf->rect == NULL && ibuf->rect_float == NULL)) {
+		BKE_image_release_ibuf(this->m_image, ibuf, NULL);
 		return NULL;
 	}
 	
@@ -93,6 +94,7 @@ void BaseImageOperation::initExecution()
 void BaseImageOperation::deinitExecution()
 {
 	this->m_imageBuffer = NULL;
+	BKE_image_release_ibuf(this->m_image, this->m_buffer, NULL);
 }
 
 void BaseImageOperation::determineResolution(unsigned int resolution[2], unsigned int preferredResolution[2])
@@ -106,6 +108,8 @@ void BaseImageOperation::determineResolution(unsigned int resolution[2], unsigne
 		resolution[0] = stackbuf->x;
 		resolution[1] = stackbuf->y;
 	}
+
+	BKE_image_release_ibuf(this->m_image, stackbuf, NULL);
 }
 
 void ImageOperation::executePixel(float output[4], float x, float y, PixelSampler sampler)
@@ -116,7 +120,7 @@ void ImageOperation::executePixel(float output[4], float x, float y, PixelSample
 	else {
 		switch (sampler) {
 			case COM_PS_NEAREST:
-				neareast_interpolation_color(this->m_buffer, NULL, output, x, y);
+				nearest_interpolation_color(this->m_buffer, NULL, output, x, y);
 				break;
 			case COM_PS_BILINEAR:
 				bilinear_interpolation_color(this->m_buffer, NULL, output, x, y);
@@ -139,7 +143,7 @@ void ImageAlphaOperation::executePixel(float output[4], float x, float y, PixelS
 		tempcolor[3] = 1.0f;
 		switch (sampler) {
 			case COM_PS_NEAREST:
-				neareast_interpolation_color(this->m_buffer, NULL, tempcolor, x, y);
+				nearest_interpolation_color(this->m_buffer, NULL, tempcolor, x, y);
 				break;
 			case COM_PS_BILINEAR:
 				bilinear_interpolation_color(this->m_buffer, NULL, tempcolor, x, y);

@@ -21,11 +21,10 @@
 #  Authors           : Clemens Barth, Christine Mottet (Icosahedra), ...
 #
 #  Homepage(Wiki)    : http://development.root-1.de/Atomic_Blender.php
-#  Tracker           : ...
 #
 #  Start of project              : 2012-03-25 by Clemens Barth
 #  First publication in Blender  : 2012-05-27 by Clemens Barth
-#  Last modified                 : 2012-06-08
+#  Last modified                 : 2012-11-03
 #
 #
 #
@@ -263,7 +262,7 @@ class CLASS_atom_cluster_load_button(Operator):
         scn    = context.scene.atom_cluster[0]
 
         add_mesh_cluster.DEF_atom_read_atom_data()
-        add_mesh_cluster.ATOM_CLUSTER_ALL_ATOMS[:] = []
+        del add_mesh_cluster.ATOM_CLUSTER_ALL_ATOMS[:]
 
         if scn.shape in ["parabolid_ab", "parabolid_abc", "parabolid_square"]:
             parameter1 = scn.parabol_height
@@ -511,7 +510,7 @@ def DEF_atom_cluster_radius_all(scale, how):
 
 # The entry into the menu 'file -> import'
 def DEF_menu_func(self, context):
-    self.layout.operator(CLASS_ImportCluster.bl_idname, icon='MESH_CUBE')
+    self.layout.operator(CLASS_ImportCluster.bl_idname, icon='PLUGIN')
 
 def register_atom_class():
     bpy.types.Scene.atom_cluster = bpy.props.CollectionProperty(type=CLASS_atom_cluster_Properties)    

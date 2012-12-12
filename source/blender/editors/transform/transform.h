@@ -197,6 +197,7 @@ typedef struct TransDataSlideVert {
 
 	float edge_len;
 
+	/* add origvert.co to get the original locations */
 	float upvec[3], downvec[3];
 
 	int loop_nr;
@@ -322,7 +323,7 @@ typedef struct TransInfo {
 	float		auto_values[4];
 	float		axis[3];
 	float		axis_orig[3];	/* TransCon can change 'axis', store the original value here */
-
+	
 	void		*view;
 	struct bContext *context; /* Only valid (non null) during an operator called function. */
 	struct ScrArea	*sa;
@@ -571,7 +572,7 @@ void flushTransTracking(TransInfo *t);
 void flushTransMasking(TransInfo *t);
 
 /*********************** exported from transform_manipulator.c ********** */
-int gimbal_axis(struct Object *ob, float gmat[][3]); /* return 0 when no gimbal for selection */
+int gimbal_axis(struct Object *ob, float gmat[3][3]); /* return 0 when no gimbal for selection */
 int calc_manipulator_stats(const struct bContext *C);
 
 /*********************** TransData Creation and General Handling *********** */

@@ -23,10 +23,10 @@ bl_info = {
         'description': "Import / Export MilkShape3D MS3D files"\
                 " (conform with v1.8.4)",
         'author': "Alexander Nussbaumer",
-        'version': (0, 4, 0, 3),
+        'version': (0, 6, 0, 3),
         'blender': (2, 6, 3, 0),
         'location': "File > Import & File > Export",
-        'warning': "[2012-07-10] currently only the importer is implemented",
+        #'warning': "",
         'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
                 "Scripts/Import-Export/MilkShape3D_MS3D",
         'tracker_url': "http://projects.blender.org/tracker/index.php"\
@@ -48,7 +48,7 @@ bl_info = {
 
 # To support reload properly, try to access a package var,
 # if it's there, reload everything
-if ('bpy' in locals()):
+if 'bpy' in locals():
     import imp
     if 'io_scene_ms3d.ms3d_ui' in locals():
         imp.reload(io_scene_ms3d.ms3d_ui)
@@ -73,12 +73,23 @@ from bpy.types import (
 ###############################################################################
 # registration
 def register():
+    ####################
+    # F8 - key
+    import imp
+    imp.reload(ms3d_ui)
+    # F8 - key
+    ####################
+
+    ms3d_ui.register()
+
     register_module(__name__)
     INFO_MT_file_export.append(Ms3dExportOperator.menu_func)
     INFO_MT_file_import.append(Ms3dImportOperator.menu_func)
 
 
 def unregister():
+    ms3d_ui.unregister()
+
     unregister_module(__name__)
     INFO_MT_file_export.remove(Ms3dExportOperator.menu_func)
     INFO_MT_file_import.remove(Ms3dImportOperator.menu_func)

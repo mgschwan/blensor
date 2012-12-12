@@ -211,7 +211,22 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.row().prop(md, "deform_axis", expand=True)
 
     def DECIMATE(self, layout, ob, md):
-        layout.prop(md, "ratio")
+        row = layout.row()
+        row.prop(md, "decimate_type", expand=True)
+        decimate_type = md.decimate_type
+
+        if decimate_type == 'COLLAPSE':
+            layout.prop(md, "ratio")
+            row = layout.row()
+            row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+            row.prop(md, "invert_vertex_group")
+            layout.prop(md, "use_collapse_triangulate")
+        elif decimate_type == 'UNSUBDIV':
+            layout.prop(md, "iterations")
+        else:  # decimate_type == 'DISSOLVE':
+            layout.prop(md, "angle_limit")
+            layout.prop(md, "use_dissolve_boundaries")
+
         layout.label(text="Face Count" + ": %d" % md.face_count)
 
     def DISPLACE(self, layout, ob, md):
@@ -316,6 +331,28 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             row.operator("object.hook_select", text="Select")
             row.operator("object.hook_assign", text="Assign")
 
+    def LAPLACIANSMOOTH(self, layout, ob, md):
+        layout.prop(md, "iterations")
+        
+        split = layout.split(percentage=0.25)
+        
+        col = split.column()
+        col.label(text="Axis:")
+        col.prop(md, "use_x")
+        col.prop(md, "use_y")
+        col.prop(md, "use_z")
+        
+        col = split.column()
+        col.label(text="Lambda:")
+        col.prop(md, "lambda_factor", text="Factor")
+        col.prop(md, "lambda_border", text="Border")
+        
+        col.separator()
+        col.prop(md, "use_volume_preserve")
+        
+        layout.label(text="Vertex Group:")
+        layout.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+
     def LATTICE(self, layout, ob, md):
         split = layout.split()
 
@@ -397,7 +434,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         col = layout.column()
 
-        if md.use_mirror_merge == True:
+        if md.use_mirror_merge is True:
             col.prop(md, "merge_threshold")
         col.label(text="Mirror Object:")
         col.prop(md, "mirror_object", text="")
@@ -559,7 +596,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         col = split.column()
         row = col.row()
-        row.active = (md.object is None or md.use_object_screw_offset == False)
+        row.active = (md.object is None or md.use_object_screw_offset is False)
         row.prop(md, "screw_offset")
         row = col.row()
         row.active = (md.object is not None)
@@ -588,6 +625,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "wrap_method", text="")
 
         if md.wrap_method == 'PROJECT':
+            col.prop(md, "project_limit", text="Limit")
             split = layout.split(percentage=0.25)
 
             col = split.column()
@@ -605,8 +643,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col.label(text="Cull Faces:")
             col.prop(md, "cull_face", expand=True)
 
-            layout.label(text="Auxiliary Target:")
-            layout.prop(md, "auxiliary_target", text="")
+            layout.prop(md, "auxiliary_target")
 
         elif md.wrap_method == 'NEAREST_SURFACEPOINT':
             layout.prop(md, "use_keep_above_surface")
@@ -991,6 +1028,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "use_x_symmetry")
         col.prop(md, "use_y_symmetry")
         col.prop(md, "use_z_symmetry")
+
+    def TRIANGULATE(self, layout, ob, md):
+        layout.prop(md, "use_beauty")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

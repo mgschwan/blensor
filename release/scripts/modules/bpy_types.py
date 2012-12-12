@@ -394,7 +394,7 @@ class Mesh(bpy_types.ID):
             p.vertices = f
             loop_index += loop_len
 
-        # if no edges - calculae them
+        # if no edges - calculate them
         if faces and (not edges):
             self.update(calc_edges=True)
 
@@ -689,10 +689,10 @@ class Menu(StructRNA, _GenericUI, metaclass=RNAMeta):
         files = []
         for directory in searchpaths:
             files.extend([(f, os.path.join(directory, f))
-                           for f in os.listdir(directory)
-                           if (not f.startswith("."))
-                           if ((filter_ext is None) or
-                               (filter_ext(os.path.splitext(f)[1])))
+                          for f in os.listdir(directory)
+                          if (not f.startswith("."))
+                          if ((filter_ext is None) or
+                              (filter_ext(os.path.splitext(f)[1])))
                           ])
 
         files.sort()

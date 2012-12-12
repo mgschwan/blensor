@@ -41,7 +41,7 @@
 
 #include "openjpeg.h"
 
-#define JP2_FILEHEADER_SIZE 14
+// #define JP2_FILEHEADER_SIZE 14  /* UNUSED */
 
 static char JP2_HEAD[] = {0x0, 0x0, 0x0, 0x0C, 0x6A, 0x50, 0x20, 0x20, 0x0D, 0x0A, 0x87, 0x0A};
 static char J2K_HEAD[] = {0xFF, 0x4F, 0xFF, 0x51, 0x00};
@@ -387,8 +387,8 @@ BLI_INLINE int DOWNSAMPLE_FLOAT_TO_16BIT(const float _val)
 /*
  * 2048x1080 (2K) at 24 fps or 48 fps, or 4096x2160 (4K) at 24 fps; 3x12 bits per pixel, XYZ color space
  *
- * - In 2K, for Scope (2.39:1) presentation 2048x858 pixels of the imager is used
- * - In 2K, for Flat (1.85:1) presentation 1998x1080 pixels of the imager is used
+ * - In 2K, for Scope (2.39:1) presentation 2048x858  pixels of the image is used
+ * - In 2K, for Flat  (1.85:1) presentation 1998x1080 pixels of the image is used
  */
 
 /* ****************************** COPIED FROM image_to_j2k.c */
@@ -436,7 +436,7 @@ static void cinema_parameters(opj_cparameters_t *parameters)
 	parameters->image_offset_y0 = 0;
 
 	/*Codeblock size = 32 * 32*/
-	parameters->cblockw_init = 32;	
+	parameters->cblockw_init = 32;
 	parameters->cblockh_init = 32;
 	parameters->csty |= 0x01;
 
@@ -602,7 +602,7 @@ static opj_image_t *ibuftoimage(ImBuf *ibuf, opj_cparameters_t *parameters)
 		prec = 12;
 		numcomps = 3;
 	}
-	else { 
+	else {
 		/* Get settings from the imbuf */
 		color_space = (ibuf->ftype & JP2_YCC) ? CLRSPC_SYCC : CLRSPC_SRGB;
 		

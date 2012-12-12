@@ -253,6 +253,9 @@ static void GPU_print_framebuffer_error(GLenum status, char err_out[256])
 	switch (status) {
 		case GL_FRAMEBUFFER_COMPLETE_EXT:
 			break;
+		case GL_INVALID_OPERATION:
+			err= "Invalid operation";
+			break;
 		case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT:
 			err= "Incomplete attachment";
 			break;
@@ -442,7 +445,7 @@ static GPUTexture *GPU_texture_create_nD(int w, int h, int n, float *fpixels, in
 }
 
 
-GPUTexture *GPU_texture_create_3D(int w, int h, int depth, float *fpixels)
+GPUTexture *GPU_texture_create_3D(int w, int h, int depth, int channels, float *fpixels)
 {
 	GPUTexture *tex;
 	GLenum type, format, internalformat;
@@ -480,9 +483,15 @@ GPUTexture *GPU_texture_create_3D(int w, int h, int depth, float *fpixels)
 
 	GPU_print_error("3D glBindTexture");
 
-	type = GL_FLOAT; // GL_UNSIGNED_BYTE
-	format = GL_RED;
-	internalformat = GL_INTENSITY;
+	type = GL_FLOAT;
+	if (channels == 4) {
+		format = GL_RGBA;
+		internalformat = GL_RGBA;
+	}
+	else {
+		format = GL_RED;
+		internalformat = GL_INTENSITY;
+	}
 
 	//if (fpixels)
 	//	pixels = GPU_texture_convert_pixels(w*h*depth, fpixels);
@@ -522,7 +531,7 @@ GPUTexture *GPU_texture_create_3D(int w, int h, int depth, float *fpixels)
 	return tex;
 }
 
-GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, int ncd, double time, int mipmap)
+GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, int isdata, double time, int mipmap)
 {
 	GPUTexture *tex;
 	GLint w, h, border, lastbindcode, bindcode;
@@ -530,7 +539,7 @@ GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, int ncd, doub
 	glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastbindcode);
 
 	GPU_update_image_time(ima, time);
-	bindcode = GPU_verify_image(ima, iuser, 0, 0, mipmap, ncd);
+	bindcode = GPU_verify_image(ima, iuser, 0, 0, mipmap, isdata);
 
 	if (ima->gputexture) {
 		ima->gputexture->bindcode = bindcode;
@@ -748,6 +757,7 @@ int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, char err
 {
 	GLenum status;
 	GLenum attachment;
+	GLenum error;
 
 	if (tex->depth)
 		attachment = GL_DEPTH_ATTACHMENT_EXT;
@@ -759,6 +769,14 @@ int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, char err
 
 	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, attachment, 
 		tex->target, tex->bindcode, 0);
+
+	error = glGetError();
+
+	if (error == GL_INVALID_OPERATION) {
+		GPU_framebuffer_restore();
+		GPU_print_framebuffer_error(error, err_out);
+		return 0;
+	}
 
 	if (tex->depth) {
 		glDrawBuffer(GL_NONE);
@@ -1289,7 +1307,7 @@ GPUShader *GPU_shader_get_builtin_shader(GPUBuiltinShader shader)
 	return retval;
 }
 
-void GPU_shader_free_builtin_shaders()
+void GPU_shader_free_builtin_shaders(void)
 {
 	if (GG.shaders.vsm_store) {
 		MEM_freeN(GG.shaders.vsm_store);

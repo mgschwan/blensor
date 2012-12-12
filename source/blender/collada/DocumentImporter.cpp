@@ -311,7 +311,7 @@ bool DocumentImporter::writeScene(const COLLADAFW::Scene *scene)
 Object *DocumentImporter::create_camera_object(COLLADAFW::InstanceCamera *camera, Scene *sce)
 {
 	const COLLADAFW::UniqueId& cam_uid = camera->getInstanciatedObjectId();
-	if (uid_camera_map.find(cam_uid) == uid_camera_map.end()) {	
+	if (uid_camera_map.find(cam_uid) == uid_camera_map.end()) {
 		// fprintf(stderr, "Couldn't find camera by UID.\n");
 		return NULL;
 	}
@@ -329,7 +329,7 @@ Object *DocumentImporter::create_camera_object(COLLADAFW::InstanceCamera *camera
 Object *DocumentImporter::create_lamp_object(COLLADAFW::InstanceLight *lamp, Scene *sce)
 {
 	const COLLADAFW::UniqueId& lamp_uid = lamp->getInstanciatedObjectId();
-	if (uid_lamp_map.find(lamp_uid) == uid_lamp_map.end()) {	
+	if (uid_lamp_map.find(lamp_uid) == uid_lamp_map.end()) {
 		fprintf(stderr, "Couldn't find lamp by UID.\n");
 		return NULL;
 	}
@@ -524,7 +524,7 @@ void DocumentImporter::write_node(COLLADAFW::Node *node, COLLADAFW::Node *parent
 	}
 	// if node has child nodes write them
 	COLLADAFW::NodePointerArray &child_nodes = node->getChildNodes();
-	for (unsigned int i = 0; i < child_nodes.getCount(); i++) {	
+	for (unsigned int i = 0; i < child_nodes.getCount(); i++) {
 		write_node(child_nodes[i], node, sce, ob, is_library_node);
 	}
 }
@@ -552,8 +552,8 @@ bool DocumentImporter::writeVisualScene(const COLLADAFW::VisualScene *visualScen
 }
 
 /** When this method is called, the writer must handle all nodes contained in the 
-* library nodes.
-* \return The writer should return true, if writing succeeded, false otherwise.*/
+ * library nodes.
+ * \return The writer should return true, if writing succeeded, false otherwise.*/
 bool DocumentImporter::writeLibraryNodes(const COLLADAFW::LibraryNodes *libraryNodes)
 {
 	if (mImportStage != General)

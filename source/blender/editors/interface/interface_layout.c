@@ -41,6 +41,7 @@
 #include "BLI_string.h"
 #include "BLI_rect.h"
 #include "BLI_utildefines.h"
+#include "BLI_math.h"
 
 #include "BLF_translation.h"
 
@@ -66,6 +67,8 @@
 
 #define EM_SEPR_X       6
 #define EM_SEPR_Y       6
+
+// #define USE_OP_RESET_BUT  // we may want to make this optional, disable for now.
 
 #define UI_OPERATOR_ERROR_RET(_ot, _opname, return_statement)                 \
 	if (ot == NULL) {                                                         \
@@ -427,7 +430,7 @@ static void ui_item_array(uiLayout *layout, uiBlock *block, const char *name, in
 				but->type = NUMSLI;
 		}
 	}
-	else if (subtype == PROP_DIRECTION) {
+	else if (subtype == PROP_DIRECTION && !expand) {
 		uiDefButR_prop(block, BUT_NORMAL, 0, name, x, y, UI_UNIT_X * 3, UI_UNIT_Y * 3, ptr, prop, 0, 0, 0, -1, -1, NULL);
 	}
 	else {
@@ -835,8 +838,9 @@ void uiItemsFullEnumO(uiLayout *layout, const char *opname, const char *propname
 					bt = block->buttons.last;
 					bt->flag = UI_TEXT_LEFT;
 				}
-				else /* XXX bug here, collums draw bottom item badly */
+				else {  /* XXX bug here, colums draw bottom item badly */
 					uiItemS(column);
+				}
 			}
 		}
 
@@ -1312,7 +1316,7 @@ static void rna_search_cb(const struct bContext *C, void *arg_but, const char *s
 				BLI_addtail(items_list, cis);
 			}
 			MEM_freeN(name);
-		}			
+		}
 
 		i++;
 	}
@@ -1375,10 +1379,16 @@ void ui_but_add_search(uiBut *but, PointerRNA *ptr, PropertyRNA *prop, PointerRN
 	/* turn button into search button */
 	if (searchprop) {
 		but->type = SEARCH_MENU;
-		but->hardmax = MAX2(but->hardmax, 256);
+		but->hardmax = MAX2(but->hardmax, 256.0f);
 		but->rnasearchpoin = *searchptr;
 		but->rnasearchprop = searchprop;
 		but->flag |= UI_ICON_LEFT | UI_TEXT_LEFT;
+
+		if (RNA_property_type(prop) == PROP_ENUM) {
+			/* XXX, this will have a menu string,
+			 * but in this case we just want the text */
+			but->str[0] = 0;
+		}
 
 		uiButSetSearchFunc(but, rna_search_cb, but, NULL, NULL);
 	}
@@ -1397,13 +1407,14 @@ void uiItemPointerR(uiLayout *layout, struct PointerRNA *ptr, const char *propna
 	prop = RNA_struct_find_property(ptr, propname);
 
 	if (!prop) {
-		RNA_warning("property not found: %s.%s", RNA_struct_identifier(ptr->type), propname);
+		RNA_warning("property not found: %s.%s",
+		            RNA_struct_identifier(ptr->type), propname);
 		return;
 	}
 	
 	type = RNA_property_type(prop);
-	if (!ELEM(type, PROP_POINTER, PROP_STRING)) {
-		RNA_warning("Property %s must be a pointer or string", propname);
+	if (!ELEM3(type, PROP_POINTER, PROP_STRING, PROP_ENUM)) {
+		RNA_warning("Property %s must be a pointer, string or enum", propname);
 		return;
 	}
 
@@ -1411,11 +1422,13 @@ void uiItemPointerR(uiLayout *layout, struct PointerRNA *ptr, const char *propna
 
 
 	if (!searchprop) {
-		RNA_warning("search collection property not found: %s.%s", RNA_struct_identifier(ptr->type), searchpropname);
+		RNA_warning("search collection property not found: %s.%s",
+		            RNA_struct_identifier(searchptr->type), searchpropname);
 		return;
 	}
 	else if (RNA_property_type(searchprop) != PROP_COLLECTION) {
-		RNA_warning("search collection property is not a collection type: %s.%s", RNA_struct_identifier(ptr->type), searchpropname);
+		RNA_warning("search collection property is not a collection type: %s.%s",
+		            RNA_struct_identifier(searchptr->type), searchpropname);
 		return;
 	}
 
@@ -1448,6 +1461,11 @@ static void ui_item_menutype_func(bContext *C, uiLayout *layout, void *arg_mt)
 
 	menu.type = mt;
 	menu.layout = layout;
+
+	if (G.debug & G_DEBUG_WM) {
+		printf("%s: opening menu \"%s\"\n", __func__, mt->idname);
+	}
+
 	mt->draw(C, &menu);
 }
 
@@ -1707,7 +1725,7 @@ static void ui_litem_layout_row(uiLayout *litem)
 	int x, y, w, tot, totw, neww, itemw, minw, itemh, offset;
 	int fixedw, freew, fixedx, freex, flag = 0, lastw = 0;
 
-	/* x= litem->x; */ /* UNUSED */
+	/* x = litem->x; */ /* UNUSED */
 	y = litem->y;
 	w = litem->w;
 	totw = 0;
@@ -1773,7 +1791,7 @@ static void ui_litem_layout_row(uiLayout *litem)
 
 		if (item->flag) {
 			/* fixed minimum size items */
-			itemw = ui_item_fit(minw, fixedx, fixedw, MIN2(w, fixedw), !item->next, litem->alignment, NULL);
+			itemw = ui_item_fit(minw, fixedx, fixedw, min_ii(w, fixedw), !item->next, litem->alignment, NULL);
 			fixedx += itemw;
 		}
 		else {
@@ -1931,8 +1949,8 @@ static void ui_litem_estimate_column_flow(uiLayout *litem)
 			return;
 		}
 
-		flow->totcol = MAX2(litem->root->emw / maxw, 1);
-		flow->totcol = MIN2(flow->totcol, totitem);
+		flow->totcol = max_ii(litem->root->emw / maxw, 1);
+		flow->totcol = min_ii(flow->totcol, totitem);
 	}
 	else
 		flow->totcol = flow->number;
@@ -1952,9 +1970,9 @@ static void ui_litem_estimate_column_flow(uiLayout *litem)
 		ui_item_size(item, &itemw, &itemh);
 
 		y -= itemh + style->buttonspacey;
-		miny = MIN2(miny, y);
+		miny = min_ii(miny, y);
 		emy -= itemh;
-		maxw = MAX2(itemw, maxw);
+		maxw = max_ii(itemw, maxw);
 
 		/* decide to go to next one */
 		if (col < flow->totcol - 1 && emy <= -emh) {
@@ -2006,7 +2024,7 @@ static void ui_litem_layout_column_flow(uiLayout *litem)
 		emy -= itemh;
 		ui_item_position(item, x + offset, y, itemw, itemh);
 		y -= style->buttonspacey;
-		miny = MIN2(miny, y);
+		miny = min_ii(miny, y);
 
 		/* decide to go to next one */
 		if (col < flow->totcol - 1 && emy <= -emh) {
@@ -2037,8 +2055,8 @@ static void ui_litem_estimate_absolute(uiLayout *litem)
 		ui_item_offset(item, &itemx, &itemy);
 		ui_item_size(item, &itemw, &itemh);
 
-		minx = MIN2(minx, itemx);
-		miny = MIN2(miny, itemy);
+		minx = min_ii(minx, itemx);
+		miny = min_ii(miny, itemy);
 
 		litem->w = MAX2(litem->w, itemx + itemw);
 		litem->h = MAX2(litem->h, itemy + itemh);
@@ -2063,11 +2081,11 @@ static void ui_litem_layout_absolute(uiLayout *litem)
 		ui_item_offset(item, &itemx, &itemy);
 		ui_item_size(item, &itemw, &itemh);
 
-		minx = MIN2(minx, itemx);
-		miny = MIN2(miny, itemy);
+		minx = min_ii(minx, itemx);
+		miny = min_ii(miny, itemy);
 
-		totw = MAX2(totw, itemx + itemw);
-		toth = MAX2(toth, itemy + itemh);
+		totw = max_ii(totw, itemx + itemw);
+		toth = max_ii(toth, itemy + itemh);
 	}
 
 	totw -= minx;
@@ -2515,8 +2533,12 @@ static void ui_item_align(uiLayout *litem, short nr)
 				if (!bitem->but->alignnr)
 					bitem->but->alignnr = nr;
 		}
-		else if (item->type == ITEM_LAYOUT_ABSOLUTE) ;
-		else if (item->type == ITEM_LAYOUT_OVERLAP) ;
+		else if (item->type == ITEM_LAYOUT_ABSOLUTE) {
+			/* pass */
+		}
+		else if (item->type == ITEM_LAYOUT_OVERLAP) {
+			/* pass */
+		}
 		else if (item->type == ITEM_LAYOUT_BOX) {
 			box = (uiLayoutItemBx *)item;
 			box->roundbox->alignnr = nr;
@@ -2829,10 +2851,12 @@ const char *uiLayoutIntrospect(uiLayout *layout)
 	return str;
 }
 
+#ifdef USE_OP_RESET_BUT
 static void ui_layout_operator_buts__reset_cb(bContext *UNUSED(C), void *op_pt, void *UNUSED(arg_dummy2))
 {
 	WM_operator_properties_reset((wmOperator *)op_pt);
 }
+#endif
 
 /* this function does not initialize the layout, functions can be called on the layout before and after */
 void uiLayoutOperatorButs(const bContext *C, uiLayout *layout, wmOperator *op,
@@ -2900,6 +2924,7 @@ void uiLayoutOperatorButs(const bContext *C, uiLayout *layout, wmOperator *op,
 		}
 	}
 
+#ifdef USE_OP_RESET_BUT
 	/* its possible that reset can do nothing if all have PROP_SKIP_SAVE enabled
 	 * but this is not so important if this button is drawn in those cases
 	 * (which isn't all that likely anyway) - campbell */
@@ -2914,6 +2939,7 @@ void uiLayoutOperatorButs(const bContext *C, uiLayout *layout, wmOperator *op,
 		                       NULL, 0.0, 0.0, 0.0, 0.0, TIP_("Reset operator defaults"));
 		uiButSetFunc(but, ui_layout_operator_buts__reset_cb, op, NULL);
 	}
+#endif
 
 	/* set various special settings for buttons */
 	{

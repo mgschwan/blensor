@@ -1,24 +1,28 @@
 /*
------------------------------------------------------------------------------
-This source file is part of VideoTexture library
-
-Copyright (c) 2007 The Zdeno Ash Miklas
-
-This program is free software; you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the Free Software
-Foundation; either version 2 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with
-this program; if not, write to the Free Software Foundation, Inc., 59 Temple
-Place - Suite 330, Boston, MA 02111-1307, USA, or go to
-http://www.gnu.org/copyleft/lesser.txt.
------------------------------------------------------------------------------
-*/
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software  Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * Copyright (c) 2007 The Zdeno Ash Miklas
+ *
+ * This source file is part of VideoTexture library
+ *
+ * Contributor(s):
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 /** \file gameengine/VideoTexture/VideoFFmpeg.cpp
  *  \ingroup bgevideotex
@@ -485,13 +489,13 @@ void VideoFFmpeg::stopCache()
 			av_free(frame->frame);
 			delete frame;
 		}
-		while((packet = (CachePacket *)m_packetCacheBase.first) != NULL)
+		while ((packet = (CachePacket *)m_packetCacheBase.first) != NULL)
 		{
 			BLI_remlink(&m_packetCacheBase, packet);
 			av_free_packet(&packet->packet);
 			delete packet;
 		}
-		while((packet = (CachePacket *)m_packetCacheFree.first) != NULL)
+		while ((packet = (CachePacket *)m_packetCacheFree.first) != NULL)
 		{
 			BLI_remlink(&m_packetCacheFree, packet);
 			delete packet;
@@ -921,7 +925,7 @@ AVFrame *VideoFFmpeg::grabFrame(long position)
 			&& m_preseek 
 			&& position - (m_curPosition + 1) < m_preseek) 
 		{
-			while(av_read_frame(m_formatCtx, &packet)>=0) 
+			while (av_read_frame(m_formatCtx, &packet)>=0)
 			{
 				if (packet.stream_index == m_videoStream) 
 				{
@@ -996,7 +1000,7 @@ AVFrame *VideoFFmpeg::grabFrame(long position)
 
 	// find the correct frame, in case of streaming and no cache, it means just
 	// return the next frame. This is not quite correct, may need more work
-	while(av_read_frame(m_formatCtx, &packet)>=0) 
+	while (av_read_frame(m_formatCtx, &packet) >= 0)
 	{
 		if (packet.stream_index == m_videoStream) 
 		{
@@ -1138,7 +1142,7 @@ static int VideoFFmpeg_setPreseek(PyImage *self, PyObject *value, void *closure)
 		return -1;
 	}
 	// set preseek
-	getFFmpeg(self)->setPreseek(PyLong_AsSsize_t(value));
+	getFFmpeg(self)->setPreseek(PyLong_AsLong(value));
 	// success
 	return 0;
 }

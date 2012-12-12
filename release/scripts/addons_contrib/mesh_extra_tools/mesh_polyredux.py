@@ -70,7 +70,8 @@ class redux_help(bpy.types.Operator):
 		layout = self.layout
 		layout.label('To use:')
 		layout.label('Make a selection of verts or polygons to reduce.')
-		layout.label('works on whole mesh')
+		layout.label('works on whole mesh or selected')
+		layout.label('To Help:')
 		layout.label('Single operation, no parameters.')
 	
 	def execute(self, context):

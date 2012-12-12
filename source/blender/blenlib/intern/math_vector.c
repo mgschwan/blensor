@@ -115,6 +115,13 @@ void mid_v2_v2v2(float v[2], const float v1[2], const float v2[2])
 	v[1] = 0.5f * (v1[1] + v2[1]);
 }
 
+void mid_v3_v3v3v3(float v[3], const float v1[3], const float v2[3], const float v3[3])
+{
+	v[0] = (v1[0] + v2[0] + v3[0]) / 3.0f;
+	v[1] = (v1[1] + v2[1] + v3[1]) / 3.0f;
+	v[2] = (v1[2] + v2[2] + v3[2]) / 3.0f;
+}
+
 /********************************** Angles ***********************************/
 
 /* Return the angle in radians between vecs 1-2 and 2-3 in radians
@@ -201,6 +208,13 @@ float angle_signed_v2v2(const float v1[2], const float v2[2])
 
 float angle_normalized_v3v3(const float v1[3], const float v2[3])
 {
+	/* double check they are normalized */
+#ifdef DEBUG
+	float test;
+	BLI_assert(fabsf((test = len_squared_v3(v1)) - 1.0f) < 0.0001f || fabsf(test) < 0.0001f);
+	BLI_assert(fabsf((test = len_squared_v3(v2)) - 1.0f) < 0.0001f || fabsf(test) < 0.0001f);
+#endif
+
 	/* this is the same as acos(dot_v3v3(v1, v2)), but more accurate */
 	if (dot_v3v3(v1, v2) < 0.0f) {
 		float vec[3];
@@ -217,6 +231,13 @@ float angle_normalized_v3v3(const float v1[3], const float v2[3])
 
 float angle_normalized_v2v2(const float v1[2], const float v2[2])
 {
+	/* double check they are normalized */
+#ifdef DEBUG
+	float test;
+	BLI_assert(fabsf((test = len_squared_v2(v1)) - 1.0f) < 0.0001f || fabsf(test) < 0.0001f);
+	BLI_assert(fabsf((test = len_squared_v2(v2)) - 1.0f) < 0.0001f || fabsf(test) < 0.0001f);
+#endif
+
 	/* this is the same as acos(dot_v3v3(v1, v2)), but more accurate */
 	if (dot_v2v2(v1, v2) < 0.0f) {
 		float vec[2];
@@ -401,6 +422,12 @@ void rotate_normalized_v3_v3v3fl(float r[3], const float p[3], const float axis[
 	const float costheta = cos(angle);
 	const float sintheta = sin(angle);
 
+	/* double check they are normalized */
+#ifdef DEBUG
+	float test;
+	BLI_assert(fabsf((test = len_squared_v3(axis)) - 1.0f) < 0.0001f || fabsf(test) < 0.0001f);
+#endif
+
 	r[0] = ((costheta + (1 - costheta) * axis[0] * axis[0]) * p[0]) +
 	       (((1 - costheta) * axis[0] * axis[1] - axis[2] * sintheta) * p[1]) +
 	       (((1 - costheta) * axis[0] * axis[2] + axis[1] * sintheta) * p[2]);
@@ -451,6 +478,15 @@ void minmax_v3v3_v3(float min[3], float max[3], const float vec[3])
 	if (max[2] < vec[2]) max[2] = vec[2];
 }
 
+void minmax_v2v2_v2(float min[2], float max[2], const float vec[2])
+{
+	if (min[0] > vec[0]) min[0] = vec[0];
+	if (min[1] > vec[1]) min[1] = vec[1];
+
+	if (max[0] < vec[0]) max[0] = vec[0];
+	if (max[1] < vec[1]) max[1] = vec[1];
+}
+
 /** ensure \a v1 is \a dist from \a v2 */
 void dist_ensure_v3_v3fl(float v1[3], const float v2[3], const float dist)
 {
@@ -483,7 +519,7 @@ double dot_vn_vn(const float *array_src_a, const float *array_src_b, const int s
 	const float *array_pt_b = array_src_b + (size - 1);
 	int i = size;
 	while (i--) {
-		d += *(array_pt_a--) * *(array_pt_b--);
+		d += (double)(*(array_pt_a--) * *(array_pt_b--));
 	}
 	return d;
 }

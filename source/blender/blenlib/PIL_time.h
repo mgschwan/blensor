@@ -20,7 +20,7 @@
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): none yet.
+ * Contributor(s): Campbell Barton
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -30,7 +30,6 @@
  *  \brief Platform independent time functions.
  */
 
- 
 #ifndef __PIL_TIME_H__
 #define __PIL_TIME_H__
 
@@ -61,20 +60,35 @@ void    PIL_sleep_ms(int ms);
 		double _timeit_##var = PIL_check_seconds_timer();                     \
 		printf("time start (" #var "):  " AT "\n");                           \
 		fflush(stdout);                                                       \
-		{ (void)0                                                             \
-
+		{ (void)0
 
 #define TIMEIT_VALUE(var) (float)(PIL_check_seconds_timer() - _timeit_##var)
 
+#define TIMEIT_VALUE_PRINT(var)                                               \
+	{                                                                         \
+		printf("time update(" #var "): %.6f" "  " AT "\n", TIMEIT_VALUE(var));\
+		fflush(stdout);                                                       \
+	} (void)0
 
 #define TIMEIT_END(var)                                                       \
 	}                                                                         \
-	printf("time end   (" #var "): %.6f" "  " AT "\n",  TIMEIT_VALUE(var));   \
+	printf("time end   (" #var "): %.6f" "  " AT "\n", TIMEIT_VALUE(var));    \
 	fflush(stdout);                                                           \
-} (void)0                                                                     \
+} (void)0
+
+/**
+ * Given some function/expression:
+ *   TIMEIT_BENCH(some_function(), some_unique_description);
+ */
+#define TIMEIT_BENCH(expr, id)                                                \
+	{                                                                         \
+		TIMEIT_START(id);                                                     \
+		(expr);                                                               \
+		TIMEIT_END(id);                                                       \
+	} (void)0
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* !__PIL_TIME_H__ */
+#endif  /* !__PIL_TIME_H__ */

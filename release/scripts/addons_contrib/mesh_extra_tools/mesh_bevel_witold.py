@@ -89,19 +89,21 @@ class bevel_help(bpy.types.Operator):
 		layout = self.layout
 		layout.label('To use:')
 		layout.label('Select A edge or edges & bevel.')
-		layout.label('Simple Straight bevel')
 		layout.label('or Select 2 or more verices & bevel.')
+		layout.label('To Help:')
+		layout.label('best used on flat edges & simple edgeflow')
+		layout.label('may error if vert joins multiple edges/complex edge selection')
 	
 	def execute(self, context):
 		return {'FINISHED'}
 
 	def invoke(self, context, event):
-		return context.window_manager.invoke_popup(self, width = 300)
+		return context.window_manager.invoke_popup(self, width = 350)
 #--- ### Operator
 class Bevel(bpy.types.Operator):
     ''' Bevels selected edges of the mesh'''
     bl_idname = "mesh.mbevel" #it is not named mesh.bevel, to not confuse with the standard bevel in the future...
-    bl_label = "Edge Bevel"
+    bl_label = "Bevel Selected"
     bl_description = "Bevels selected edges"
     bl_options = {'REGISTER', 'UNDO'} #Set this options, if you want to update  
     #                                  parameters of this operator interactively 
@@ -112,7 +114,7 @@ class Bevel(bpy.types.Operator):
     width = FloatProperty(name="Width", description="Bevel width value (it is multiplied by 10^Exponent)", 
                           subtype = 'DISTANCE', default = 0.1, min = 0.0, 
                                                     step = 1, precision = 2)
-    exponent = IntProperty(name="Exponent", description="Order of magnitude of the bevel width (the power of 10)", default = 0)
+#    exponent = IntProperty(name="Exponent", description="Order of magnitude of the bevel width (the power of 10)", default = 0)
     
     use_scale = BoolProperty(name="Use object scale", description="Multiply bevel width by the scale of this object", default = False)
 

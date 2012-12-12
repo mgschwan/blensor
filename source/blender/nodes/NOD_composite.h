@@ -40,8 +40,6 @@ extern bNodeTreeType ntreeType_Composite;
 /* ****************** types array for all composite nodes ****************** */
 
 void register_node_type_cmp_group(struct bNodeTreeType *ttype);
-void register_node_type_cmp_forloop(struct bNodeTreeType *ttype);
-void register_node_type_cmp_whileloop(struct bNodeTreeType *ttype);
 
 void register_node_type_cmp_rlayers(struct bNodeTreeType *ttype);
 void register_node_type_cmp_image(struct bNodeTreeType *ttype);
@@ -72,6 +70,7 @@ void register_node_type_cmp_huecorrect(struct bNodeTreeType *ttype);
 void register_node_type_cmp_normal(struct bNodeTreeType *ttype);
 void register_node_type_cmp_curve_vec(struct bNodeTreeType *ttype);
 void register_node_type_cmp_map_value(struct bNodeTreeType *ttype);
+void register_node_type_cmp_map_range(struct bNodeTreeType *ttype);
 void register_node_type_cmp_normalize(struct bNodeTreeType *ttype);
 
 void register_node_type_cmp_filter(struct bNodeTreeType *ttype);
@@ -96,7 +95,7 @@ void register_node_type_cmp_combhsva(struct bNodeTreeType *ttype);
 void register_node_type_cmp_sepyuva(struct bNodeTreeType *ttype);
 void register_node_type_cmp_combyuva(struct bNodeTreeType *ttype);
 void register_node_type_cmp_sepycca(struct bNodeTreeType *ttype);
-void register_node_type_cmp_combycca(struct bNodeTreeType *ttype); 
+void register_node_type_cmp_combycca(struct bNodeTreeType *ttype);
 void register_node_type_cmp_premulkey(struct bNodeTreeType *ttype);
 
 void register_node_type_cmp_diff_matte(struct bNodeTreeType *ttype);
@@ -105,7 +104,7 @@ void register_node_type_cmp_chroma_matte(struct bNodeTreeType *ttype);
 void register_node_type_cmp_color_matte(struct bNodeTreeType *ttype);
 void register_node_type_cmp_channel_matte(struct bNodeTreeType *ttype);
 void register_node_type_cmp_color_spill(struct bNodeTreeType *ttype);
-void register_node_type_cmp_luma_matte(struct bNodeTreeType *ttype); 
+void register_node_type_cmp_luma_matte(struct bNodeTreeType *ttype);
 void register_node_type_cmp_doubleedgemask(struct bNodeTreeType *ttype);
 void register_node_type_cmp_keyingscreen(struct bNodeTreeType *ttype);
 void register_node_type_cmp_keying(struct bNodeTreeType *ttype);
@@ -133,7 +132,7 @@ void register_node_type_cmp_ellipsemask(struct bNodeTreeType *ttype);
 void register_node_type_cmp_bokehimage(struct bNodeTreeType *ttype);
 void register_node_type_cmp_bokehblur(struct bNodeTreeType *ttype);
 void register_node_type_cmp_switch(struct bNodeTreeType *ttype);
-
+void register_node_type_cmp_pixelate(struct bNodeTreeType *ttype);
 void register_node_type_cmp_trackpos(struct bNodeTreeType *ttype);
 
 #endif

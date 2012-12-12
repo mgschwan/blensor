@@ -199,7 +199,7 @@ static int test_rotmode_euler(short rotmode)
 	return (ELEM(rotmode, ROT_MODE_AXISANGLE, ROT_MODE_QUAT)) ? 0 : 1;
 }
 
-int gimbal_axis(Object *ob, float gmat[][3])
+int gimbal_axis(Object *ob, float gmat[3][3])
 {
 	if (ob) {
 		if (ob->mode & OB_MODE_POSE) {
@@ -441,7 +441,7 @@ int calc_manipulator_stats(const bContext *C)
 		}
 		else if (obedit->type == OB_MBALL) {
 			MetaBall *mb = (MetaBall *)obedit->data;
-			MetaElem *ml /* , *ml_sel=NULL */ /* UNUSED */;
+			MetaElem *ml /* , *ml_sel = NULL */ /* UNUSED */;
 
 			ml = mb->editelems->first;
 			while (ml) {
@@ -498,7 +498,7 @@ int calc_manipulator_stats(const bContext *C)
 		}
 	}
 	else if (ob && (ob->mode & OB_MODE_ALL_PAINT)) {
-		;
+		/* pass */
 	}
 	else if (ob && ob->mode & OB_MODE_PARTICLE_EDIT) {
 		PTCacheEdit *edit = PE_get_current(scene, ob);
@@ -638,7 +638,7 @@ static void test_manipulator_axis(const bContext *C)
 
 /* ******************** DRAWING STUFFIES *********** */
 
-static float screen_aligned(RegionView3D *rv3d, float mat[][4])
+static float screen_aligned(RegionView3D *rv3d, float mat[4][4])
 {
 	glTranslatef(mat[3][0], mat[3][1], mat[3][2]);
 
@@ -744,7 +744,7 @@ static char axisBlendAngle(float angle)
 	return (char)(255.0f * (angle - 5) / 15.0f);
 }
 
-/* three colors can be set;
+/* three colors can be set:
  * gray for ghosting
  * moving: in transform theme color
  * else the red/green/blue
@@ -776,15 +776,13 @@ static void manipulator_setcolor(View3D *v3d, char axis, int colcode, unsigned c
 				}
 				break;
 			case 'X':
-				col[0] = 220;
+				UI_GetThemeColor3ubv(TH_AXIS_X, col);
 				break;
 			case 'Y':
-				col[1] = 220;
+				UI_GetThemeColor3ubv(TH_AXIS_Y, col);
 				break;
 			case 'Z':
-				col[0] = 30;
-				col[1] = 30;
-				col[2] = 220;
+				UI_GetThemeColor3ubv(TH_AXIS_Z, col);
 				break;
 			default:
 				BLI_assert(!"invalid axis arg");
@@ -828,7 +826,7 @@ static void draw_manipulator_axes(View3D *v3d, RegionView3D *rv3d, int colcode, 
 	}
 }
 
-static void preOrthoFront(int ortho, float twmat[][4], int axis)
+static void preOrthoFront(int ortho, float twmat[4][4], int axis)
 {
 	if (ortho == 0) {
 		float omat[4][4];

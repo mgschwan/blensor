@@ -569,7 +569,7 @@ static const char *material_adrcodes_to_paths(int adrcode, int *array_index)
 			return mtex_adrcodes_to_paths(adrcode, array_index);
 	}
 	
-	return NULL;	
+	return NULL;
 }
 
 /* Camera Types */
@@ -727,7 +727,7 @@ static const char *world_adrcodes_to_paths(int adrcode, int *array_index)
 			return mtex_adrcodes_to_paths(adrcode, array_index);
 	}
 		
-	return NULL;	
+	return NULL;
 }
 
 /* Particle Types */
@@ -873,7 +873,7 @@ static char *get_rna_access(int blocktype, int adrcode, char actname[], char con
 			propname = "eval_time";
 			break;
 		
-		/* XXX problematic blocktypes */		
+		/* XXX problematic blocktypes */
 		case ID_SEQ: /* sequencer strip */
 			//SEQ_FAC1:
 			switch (adrcode) {
@@ -981,21 +981,21 @@ static char *get_rna_access(int blocktype, int adrcode, char actname[], char con
 static short adrcode_to_dtar_transchan(short adrcode)
 {
 	switch (adrcode) {
-		case OB_LOC_X:	
+		case OB_LOC_X:
 			return DTAR_TRANSCHAN_LOCX;
 		case OB_LOC_Y:
 			return DTAR_TRANSCHAN_LOCY;
 		case OB_LOC_Z:
 			return DTAR_TRANSCHAN_LOCZ;
 		
-		case OB_ROT_X:	
+		case OB_ROT_X:
 			return DTAR_TRANSCHAN_ROTX;
 		case OB_ROT_Y:
 			return DTAR_TRANSCHAN_ROTY;
 		case OB_ROT_Z:
 			return DTAR_TRANSCHAN_ROTZ;
 		
-		case OB_SIZE_X:	
+		case OB_SIZE_X:
 			return DTAR_TRANSCHAN_SCALEX;
 		case OB_SIZE_Y:
 			return DTAR_TRANSCHAN_SCALEX;
@@ -1359,8 +1359,8 @@ static void icu_to_fcurves(ID *id, ListBase *groups, ListBase *list, IpoCurve *i
 				
 				/* correct values for sequencer curves, that were not locked to frame */
 				if (seq && (seq->flag & SEQ_IPO_FRAME_LOCKED) == 0) {
-					double mul = (seq->enddisp - seq->startdisp) / 100.0f;
-					double offset = seq->startdisp;
+					const float mul = (seq->enddisp - seq->startdisp) / 100.0f;
+					const float offset = seq->startdisp;
 					
 					dst->vec[0][0] *= mul;
 					dst->vec[0][0] += offset;
@@ -1645,7 +1645,7 @@ static void nlastrips_to_animdata(ID *id, ListBase *strips)
 				/* by default, we now always extrapolate, while in the past this was optional */
 				if ((as->flag & ACTSTRIP_HOLDLASTFRAME) == 0)
 					strip->extendmode = NLASTRIP_EXTEND_NOTHING;
-			}	
+			}
 			
 			/* try to add this strip to the current NLA-Track (i.e. the 'last' one on the stack atm) */
 			if (BKE_nlatrack_add_strip(nlt, strip) == 0) {
@@ -2093,7 +2093,7 @@ void do_versions_ipos_to_animato(Main *main)
 			bAction *new_act;
 			
 			/* add a new action for this, and convert all data into that action */
-			new_act = add_empty_action(id->name+2);
+			new_act = add_empty_action(id->name + 2);
 			ipo_to_animato(NULL, ipo, NULL, NULL, NULL, NULL, &new_act->curves, &drivers);
 			new_act->idroot = ipo->blocktype;
 		}

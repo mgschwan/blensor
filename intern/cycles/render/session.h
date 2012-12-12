@@ -24,7 +24,9 @@
 #include "tile.h"
 
 #include "util_progress.h"
+#include "util_stats.h"
 #include "util_thread.h"
+#include "util_vector.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -42,6 +44,7 @@ class SessionParams {
 public:
 	DeviceInfo device;
 	bool background;
+	bool progressive_refine;
 	string output_path;
 
 	bool progressive;
@@ -55,9 +58,12 @@ public:
 	double reset_timeout;
 	double text_timeout;
 
+	enum { OSL, SVM } shadingsystem;
+
 	SessionParams()
 	{
 		background = false;
+		progressive_refine = false;
 		output_path = "";
 
 		progressive = false;
@@ -70,12 +76,15 @@ public:
 		cancel_timeout = 0.1;
 		reset_timeout = 0.1;
 		text_timeout = 1.0;
+
+		shadingsystem = SVM;
 	}
 
 	bool modified(const SessionParams& params)
 	{ return !(device.type == params.device.type
 		&& device.id == params.device.id
 		&& background == params.background
+		&& progressive_refine == params.progressive_refine
 		&& output_path == params.output_path
 		/* && samples == params.samples */
 		&& progressive == params.progressive
@@ -85,7 +94,8 @@ public:
 		&& threads == params.threads
 		&& cancel_timeout == params.cancel_timeout
 		&& reset_timeout == params.reset_timeout
-		&& text_timeout == params.text_timeout); }
+		&& text_timeout == params.text_timeout
+		&& shadingsystem == params.shadingsystem); }
 
 };
 
@@ -103,6 +113,7 @@ public:
 	Progress progress;
 	SessionParams params;
 	TileManager tile_manager;
+	Stats stats;
 
 	boost::function<void(RenderTile&)> write_render_tile_cb;
 	boost::function<void(RenderTile&)> update_render_tile_cb;
@@ -119,6 +130,7 @@ public:
 	void set_samples(int samples);
 	void set_pause(bool pause);
 
+	void device_free();
 protected:
 	struct DelayedReset {
 		thread_mutex mutex;
@@ -173,6 +185,12 @@ protected:
 	double reset_time;
 	double preview_time;
 	double paused_time;
+
+	/* progressive refine */
+	double last_update_time;
+	bool update_progressive_refine(bool cancel);
+
+	vector<RenderBuffers *> tile_buffers;
 };
 
 CCL_NAMESPACE_END

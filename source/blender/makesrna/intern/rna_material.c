@@ -81,12 +81,14 @@ EnumPropertyItem ramp_blend_items[] = {
 #include "MEM_guardedalloc.h"
 
 #include "DNA_node_types.h"
+#include "DNA_object_types.h"
 
 #include "BKE_depsgraph.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_texture.h"
 #include "BKE_node.h"
+#include "BKE_paint.h"
 
 #include "ED_node.h"
 
@@ -105,7 +107,18 @@ static void rna_Material_update(Main *UNUSED(bmain), Scene *scene, PointerRNA *p
 	}
 }
 
-static void rna_Material_draw_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
+static void rna_Material_update_previews(Main *bmain, Scene *scene, PointerRNA *ptr)
+{
+	Material *ma = ptr->id.data;
+	
+	if (ma->nodetree)
+		ntreeClearPreview(ma->nodetree);
+		
+	rna_Material_update(bmain, scene, ptr);
+}
+
+
+static void rna_Material_draw_update(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
 	Material *ma = ptr->id.data;
 
@@ -319,7 +332,7 @@ MTex *rna_mtex_texture_slots_add(ID *self_id, struct bContext *C, ReportList *re
 {
 	MTex *mtex = add_mtex_id(self_id, -1);
 	if (mtex == NULL) {
-		BKE_reportf(reports, RPT_ERROR, "maximum number of textures added %d", MAX_MTEX);
+		BKE_reportf(reports, RPT_ERROR, "Maximum number of textures added %d", MAX_MTEX);
 		return NULL;
 	}
 
@@ -334,7 +347,7 @@ MTex *rna_mtex_texture_slots_create(ID *self_id, struct bContext *C, ReportList 
 	MTex *mtex;
 
 	if (index < 0 || index >= MAX_MTEX) {
-		BKE_reportf(reports, RPT_ERROR, "index %d is invalid", index);
+		BKE_reportf(reports, RPT_ERROR, "Index %d is invalid", index);
 		return NULL;
 	}
 
@@ -354,12 +367,12 @@ void rna_mtex_texture_slots_clear(ID *self_id, struct bContext *C, ReportList *r
 	give_active_mtex(self_id, &mtex_ar, &act);
 
 	if (mtex_ar == NULL) {
-		BKE_report(reports, RPT_ERROR, "mtex not found for this type");
+		BKE_report(reports, RPT_ERROR, "Mtex not found for this type");
 		return;
 	}
 	
 	if (index < 0 || index >= MAX_MTEX) {
-		BKE_reportf(reports, RPT_ERROR, "index %d is invalid", index);
+		BKE_reportf(reports, RPT_ERROR, "Index %d is invalid", index);
 		return;
 	}
 
@@ -466,6 +479,12 @@ static void rna_def_material_mtex(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "From Dupli",
 	                         "Dupli's instanced from verts, faces or particles, inherit texture coordinate "
 	                         "from their parent");
+	RNA_def_property_update(prop, 0, "rna_Material_update");
+
+	prop = RNA_def_property(srna, "use_map_to_bounds", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "texflag", MTEX_MAPTO_BOUNDS);
+	RNA_def_property_ui_text(prop, "Map to Bounds",
+	                         "Map coordinates in object bounds");
 	RNA_def_property_update(prop, 0, "rna_Material_update");
 
 	prop = RNA_def_property(srna, "use_from_original", PROP_BOOLEAN, PROP_NONE);
@@ -1749,7 +1768,7 @@ void RNA_def_material(BlenderRNA *brna)
 	RNA_def_property_enum_sdna(prop, NULL, "pr_type");
 	RNA_def_property_enum_items(prop, preview_type_items);
 	RNA_def_property_ui_text(prop, "Preview render type", "Type of preview render");
-	RNA_def_property_update(prop, 0, "rna_Material_update");
+	RNA_def_property_update(prop, 0, "rna_Material_update_previews");
 	
 	prop = RNA_def_property(srna, "ambient", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "amb");
@@ -1817,7 +1836,12 @@ void RNA_def_material(BlenderRNA *brna)
 	                         "Material uses the light group exclusively - these lamps are excluded "
 	                         "from other scene lighting");
 	RNA_def_property_update(prop, 0, "rna_Material_update");
-	
+
+	prop = RNA_def_property(srna, "use_light_group_local", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "shade_flag", MA_GROUP_LOCAL);
+	RNA_def_property_ui_text(prop, "Light Group Local", "When linked in, material uses local light group with the same name");
+	RNA_def_property_update(prop, 0, "rna_Material_update");
+
 	prop = RNA_def_property(srna, "use_raytrace", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "mode", MA_TRACEBLE);
 	RNA_def_property_ui_text(prop, "Traceable",
@@ -2097,13 +2121,13 @@ void rna_def_mtex_common(BlenderRNA *brna, StructRNA *srna, const char *begin,
 		RNA_def_property_editable_func(prop, activeeditable);
 	RNA_def_property_pointer_funcs(prop, activeget, activeset, NULL, NULL);
 	RNA_def_property_ui_text(prop, "Active Texture", "Active texture slot being displayed");
-	RNA_def_property_update(prop, 0, update);
+	RNA_def_property_update(prop, NC_MATERIAL | ND_SHADING_LINKS, update);
 
 	prop = RNA_def_property(srna, "active_texture_index", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_int_sdna(prop, NULL, "texact");
 	RNA_def_property_range(prop, 0, MAX_MTEX - 1);
 	RNA_def_property_ui_text(prop, "Active Texture Index", "Index of active texture slot");
-	RNA_def_property_update(prop, 0, update);
+	RNA_def_property_update(prop, NC_MATERIAL | ND_SHADING_LINKS, update);
 }
 
 #endif

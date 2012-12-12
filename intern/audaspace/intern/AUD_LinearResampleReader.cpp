@@ -34,7 +34,7 @@
 
 #define CC m_channels + channel
 
-AUD_LinearResampleReader::AUD_LinearResampleReader(AUD_Reference<AUD_IReader> reader,
+AUD_LinearResampleReader::AUD_LinearResampleReader(boost::shared_ptr<AUD_IReader> reader,
 												   AUD_Specs specs) :
 	AUD_ResampleReader(reader, specs.rate),
 	m_channels(reader->getSpecs().channels),
@@ -81,7 +81,7 @@ void AUD_LinearResampleReader::read(int& length, bool& eos, sample_t* buffer)
 	int samplesize = AUD_SAMPLE_SIZE(specs);
 	int size = length;
 	float factor = m_rate / m_reader->getSpecs().rate;
-	float spos;
+	float spos = 0.0f;
 	sample_t low, high;
 	eos = false;
 

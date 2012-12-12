@@ -168,6 +168,8 @@ class VIEW3D_MT_transform(VIEW3D_MT_transform_base):
 
         # generic...
         layout = self.layout
+        layout.operator("transform.shrink_fatten", text="Shrink Fatten")
+
         layout.separator()
 
         layout.operator("transform.translate", text="Move Texture Space").texture_space = True
@@ -223,8 +225,8 @@ class VIEW3D_MT_transform_armature(VIEW3D_MT_transform_base):
         layout.separator()
 
         obj = context.object
-        if (obj.type == 'ARMATURE' and obj.mode in {'EDIT', 'POSE'} and
-            obj.data.draw_type in {'BBONE', 'ENVELOPE'}):
+        if     (obj.type == 'ARMATURE' and obj.mode in {'EDIT', 'POSE'} and
+                obj.data.draw_type in {'BBONE', 'ENVELOPE'}):
             layout.operator("transform.transform", text="Scale Envelope/BBone").mode = 'BONE_SIZE'
 
         if context.edit_object and context.edit_object.type == 'ARMATURE':
@@ -356,6 +358,7 @@ class VIEW3D_MT_view(Menu):
 
         layout.operator("view3d.clip_border", text="Clipping Border...")
         layout.operator("view3d.zoom_border", text="Zoom Border...")
+        layout.operator("view3d.render_border", text="Render Border...")
 
         layout.separator()
 
@@ -571,7 +574,7 @@ class VIEW3D_MT_select_edit_mesh(Menu):
         layout.separator()
 
         layout.operator("mesh.select_random", text="Random")
-        layout.operator("mesh.select_nth", text="Every N Number of Verts")
+        layout.operator("mesh.select_nth")
         layout.operator("mesh.edges_select_sharp", text="Sharp Edges")
         layout.operator("mesh.faces_select_linked_flat", text="Linked Flat Faces")
         layout.operator("mesh.select_interior_faces", text="Interior Faces")
@@ -579,8 +582,8 @@ class VIEW3D_MT_select_edit_mesh(Menu):
 
         layout.separator()
 
-        layout.operator("mesh.select_by_number_vertices", text="By Number of Verts")
-        if context.scene.tool_settings.mesh_select_mode[2] == False:
+        layout.operator("mesh.select_face_by_sides")
+        if context.scene.tool_settings.mesh_select_mode[2] is False:
             layout.operator("mesh.select_non_manifold", text="Non Manifold")
         layout.operator("mesh.select_loose_verts", text="Loose Verts/Edges")
         layout.operator_menu_enum("mesh.select_similar", "type", text="Similar")
@@ -968,8 +971,9 @@ class VIEW3D_MT_object_parent(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator_menu_enum("object.parent_set", "type", text="Set")
-        layout.operator_menu_enum("object.parent_clear", "type", text="Clear")
+        layout.operator_enum("object.parent_set", "type")
+        layout.separator()
+        layout.operator_enum("object.parent_clear", "type")
 
 
 class VIEW3D_MT_object_track(Menu):
@@ -978,8 +982,9 @@ class VIEW3D_MT_object_track(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator_menu_enum("object.track_set", "type", text="Set")
-        layout.operator_menu_enum("object.track_clear", "type", text="Clear")
+        layout.operator_enum("object.track_set", "type")
+        layout.separator()
+        layout.operator_enum("object.track_clear", "type")
 
 
 class VIEW3D_MT_object_group(Menu):
@@ -1247,6 +1252,8 @@ class VIEW3D_MT_paint_weight(Menu):
         layout.operator("object.vertex_group_clean", text="Clean")
         layout.operator("object.vertex_group_levels", text="Levels")
         layout.operator("object.vertex_group_blend", text="Blend")
+        layout.operator("object.vertex_group_transfer_weight", text="Transfer Weights")
+        layout.operator("object.vertex_group_limit_total", text="Limit Total")
         layout.operator("object.vertex_group_fix", text="Fix Deforms")
 
         layout.separator()
@@ -1283,6 +1290,7 @@ class VIEW3D_MT_sculpt(Menu):
         layout.prop(sculpt, "show_low_resolution")
         layout.prop(sculpt, "show_brush")
         layout.prop(sculpt, "use_deform_only")
+        layout.prop(sculpt, "show_diffuse_color")
 
 
 class VIEW3D_MT_hide_mask(Menu):
@@ -1528,13 +1536,20 @@ class VIEW3D_MT_pose_group(Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("pose.group_add")
-        layout.operator("pose.group_remove")
+        
+        pose = context.active_object.pose
 
-        layout.separator()
+        layout.operator_context = 'EXEC_AREA'
+        layout.operator("pose.group_assign", text="Assign to New Group").type = 0
+        if pose.bone_groups:
+            active_group = pose.bone_groups.active_index + 1
+            layout.operator("pose.group_assign", text="Assign to Group").type = active_group
 
-        layout.operator("pose.group_assign")
-        layout.operator("pose.group_unassign")
+            layout.separator()
+
+            #layout.operator_context = 'INVOKE_AREA'
+            layout.operator("pose.group_unassign")
+            layout.operator("pose.group_remove")
 
 
 class VIEW3D_MT_pose_ik(Menu):
@@ -1659,7 +1674,7 @@ class VIEW3D_MT_edit_mesh(Menu):
         layout.menu("VIEW3D_MT_uv_map", text="UV Unwrap...")
 
         layout.separator()
-
+        layout.operator("mesh.symmetrize")
         layout.operator("view3d.edit_mesh_extrude_move_normal", text="Extrude Region")
         layout.operator("view3d.edit_mesh_extrude_individual_move", text="Extrude Individual")
         layout.operator("mesh.duplicate_move")
@@ -1701,6 +1716,7 @@ class VIEW3D_MT_edit_mesh_specials(Menu):
         layout.operator("mesh.select_all", text="Select Inverse").action = 'INVERT'
         layout.operator("mesh.flip_normals")
         layout.operator("mesh.vertices_smooth", text="Smooth")
+        layout.operator("mesh.vertices_smooth_laplacian", text="Laplacian Smooth")
         layout.operator("mesh.inset")
         layout.operator("mesh.bevel", text="Bevel")
         layout.operator("mesh.bridge_edge_loops")
@@ -1710,6 +1726,7 @@ class VIEW3D_MT_edit_mesh_specials(Menu):
         layout.operator("mesh.shape_propagate_to_all")
         layout.operator("mesh.select_vertex_path")
         layout.operator("mesh.sort_elements")
+        layout.operator("mesh.symmetrize")
 
 
 class VIEW3D_MT_edit_mesh_select_mode(Menu):
@@ -1719,18 +1736,9 @@ class VIEW3D_MT_edit_mesh_select_mode(Menu):
         layout = self.layout
 
         layout.operator_context = 'INVOKE_REGION_WIN'
-
-        props = layout.operator("wm.context_set_value", text="Vertex", icon='VERTEXSEL')
-        props.value = "(True, False, False)"
-        props.data_path = "tool_settings.mesh_select_mode"
-
-        props = layout.operator("wm.context_set_value", text="Edge", icon='EDGESEL')
-        props.value = "(False, True, False)"
-        props.data_path = "tool_settings.mesh_select_mode"
-
-        props = layout.operator("wm.context_set_value", text="Face", icon='FACESEL')
-        props.value = "(False, False, True)"
-        props.data_path = "tool_settings.mesh_select_mode"
+        layout.operator("mesh.select_mode", text="Vertex", icon='VERTEXSEL').type = 'VERT'
+        layout.operator("mesh.select_mode", text="Edge", icon='EDGESEL').type = 'EDGE'
+        layout.operator("mesh.select_mode", text="Face", icon='FACESEL').type = 'FACE'
 
 
 class VIEW3D_MT_edit_mesh_extrude(Menu):
@@ -1776,6 +1784,7 @@ class VIEW3D_MT_edit_mesh_vertices(Menu):
 
         layout.operator("mesh.merge")
         layout.operator("mesh.rip_move")
+        layout.operator("mesh.rip_move_fill")
         layout.operator("mesh.split")
         layout.operator_menu_enum("mesh.separate", "type")
         layout.operator("mesh.vert_connect")
@@ -1810,6 +1819,7 @@ class VIEW3D_MT_edit_mesh_edges(Menu):
 
         layout.operator("mesh.edge_face_add")
         layout.operator("mesh.subdivide")
+        layout.operator("mesh.unsubdivide")
 
         layout.separator()
 
@@ -1828,8 +1838,8 @@ class VIEW3D_MT_edit_mesh_edges(Menu):
 
         layout.separator()
 
-        layout.operator("mesh.edge_rotate", text="Rotate Edge CW").direction = 'CW'
-        layout.operator("mesh.edge_rotate", text="Rotate Edge CCW").direction = 'CCW'
+        layout.operator("mesh.edge_rotate", text="Rotate Edge CW").use_ccw = False
+        layout.operator("mesh.edge_rotate", text="Rotate Edge CCW").use_ccw = True
 
         layout.separator()
 
@@ -1878,13 +1888,13 @@ class VIEW3D_MT_edit_mesh_faces(Menu):
 
         layout.separator()
 
-        layout.operator("mesh.edge_rotate", text="Rotate Edge CW").direction = 'CW'
+        layout.operator("mesh.edge_rotate", text="Rotate Edge CW").use_ccw = False
 
         layout.separator()
 
-        layout.operator_menu_enum("mesh.uvs_rotate", "direction")
+        layout.operator("mesh.uvs_rotate")
         layout.operator("mesh.uvs_reverse")
-        layout.operator_menu_enum("mesh.colors_rotate", "direction")
+        layout.operator("mesh.colors_rotate")
         layout.operator("mesh.colors_reverse")
 
 
@@ -1924,10 +1934,6 @@ class VIEW3D_MT_edit_mesh_dissolve(Menu):
         layout = self.layout
 
         layout.operator("mesh.dissolve")
-
-        layout.separator()
-
-        layout.operator_enum("mesh.dissolve", "type")
 
         layout.separator()
 
@@ -2145,6 +2151,7 @@ class VIEW3D_MT_edit_lattice(Menu):
         layout.menu("VIEW3D_MT_transform")
         layout.menu("VIEW3D_MT_mirror")
         layout.menu("VIEW3D_MT_snap")
+        layout.operator_menu_enum("lattice.flip", "axis")
 
         layout.separator()
 
@@ -2282,7 +2289,7 @@ class VIEW3D_PT_view3d_properties(Panel):
             if lock_object.type == 'ARMATURE':
                 col.prop_search(view, "lock_bone", lock_object.data,
                                 "edit_bones" if lock_object.mode == 'EDIT'
-                                             else "bones",
+                                else "bones",
                                 text="")
         else:
             col.prop(view, "lock_cursor", text="Lock to Cursor")
@@ -2299,6 +2306,9 @@ class VIEW3D_PT_view3d_properties(Panel):
         subcol.enabled = not view.lock_camera_and_layers
         subcol.label(text="Local Camera:")
         subcol.prop(view, "camera", text="")
+
+        col = layout.column(align=True)
+        col.prop(view, "use_render_border")
 
 
 class VIEW3D_PT_view3d_cursor(Panel):

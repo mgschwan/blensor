@@ -68,6 +68,7 @@
 #include "BLI_string.h"
 #include "BLI_path_util.h"
 #include "BLI_fileops.h"
+#include "BLI_threads.h"
 #include "BLI_rand.h"
 #include "BLI_callbacks.h"
 
@@ -264,6 +265,7 @@ Render *RE_GetRender(const char *name)
 	return re;
 }
 
+
 /* if you want to know exactly what has been done */
 RenderResult *RE_AcquireResultRead(Render *re)
 {
@@ -407,6 +409,9 @@ void RE_InitRenderCB(Render *re)
 /* only call this while you know it will remove the link too */
 void RE_FreeRender(Render *re)
 {
+	if (re->engine)
+		RE_engine_free(re->engine);
+
 	BLI_rw_mutex_end(&re->resultmutex);
 	
 	free_renderdata_tables(re);
@@ -438,6 +443,22 @@ void RE_FreeAllRenderResults(void)
 
 		re->result = NULL;
 		re->pushedresult = NULL;
+	}
+}
+
+void RE_FreePersistentData(void)
+{
+	Render *re;
+
+	/* render engines can be kept around for quick re-render, this clears all */
+	for (re = RenderGlobal.renderlist.first; re; re = re->next) {
+		if (re->engine) {
+			/* if engine is currently rendering, just tag it to be freed when render is finished */
+			if (!(re->engine->flag & RE_ENGINE_RENDERING))
+				RE_engine_free(re->engine);
+
+			re->engine = NULL;
+		}
 	}
 }
 
@@ -519,13 +540,15 @@ void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *
 	}
 		
 	/* always call, checks for gamma, gamma tables and jitter too */
-	make_sample_tables(re);	
+	make_sample_tables(re);
 	
 	/* if preview render, we try to keep old result */
 	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
 
 	if (re->r.scemode & R_PREVIEWBUTS) {
-		if (re->result && re->result->rectx == re->rectx && re->result->recty == re->recty) ;
+		if (re->result && re->result->rectx == re->rectx && re->result->recty == re->recty) {
+			/* pass */
+		}
 		else {
 			render_result_free(re->result);
 			re->result = NULL;
@@ -579,7 +602,7 @@ void RE_SetOrtho(Render *re, rctf *viewplane, float clipsta, float clipend)
 	                re->viewplane.ymin, re->viewplane.ymax, re->clipsta, re->clipend);
 }
 
-void RE_SetView(Render *re, float mat[][4])
+void RE_SetView(Render *re, float mat[4][4])
 {
 	/* re->ok flag? */
 	copy_m4_m4(re->viewmat, mat);
@@ -674,8 +697,12 @@ static void *do_part_thread(void *pa_v)
 		}
 		else if (render_display_draw_enabled(&R)) {
 			/* on break, don't merge in result for preview renders, looks nicer */
-			if (R.test_break(R.tbh) && (R.r.scemode & R_PREVIEWBUTS)) ;
-			else render_result_merge(R.result, pa->result);
+			if (R.test_break(R.tbh) && (R.r.scemode & R_PREVIEWBUTS)) {
+				/* pass */
+			}
+			else {
+				render_result_merge(R.result, pa->result);
+			}
 		}
 	}
 	
@@ -686,11 +713,12 @@ static void *do_part_thread(void *pa_v)
 
 /* calculus for how much 1 pixel rendered should rotate the 3d geometry */
 /* is not that simple, needs to be corrected for errors of larger viewplane sizes */
-/* called in initrender.c, initparts() and convertblender.c, for speedvectors */
+/* called in initrender.c, RE_parts_init() and convertblender.c, for speedvectors */
 float panorama_pixel_rot(Render *re)
 {
 	float psize, phi, xfac;
 	float borderfac = (float)BLI_rcti_size_x(&re->disprect) / (float)re->winx;
+	int xparts = (re->rectx + re->partx - 1) / re->partx;
 	
 	/* size of 1 pixel mapped to viewplane coords */
 	psize = BLI_rctf_size_x(&re->viewplane) / (float)re->winx;
@@ -698,7 +726,7 @@ float panorama_pixel_rot(Render *re)
 	phi = atan(psize / re->clipsta);
 	
 	/* correction factor for viewplane shifting, first calculate how much the viewplane angle is */
-	xfac = borderfac * BLI_rctf_size_x(&re->viewplane) / (float)re->xparts;
+	xfac = borderfac * BLI_rctf_size_x(&re->viewplane) / (float)xparts;
 	xfac = atan(0.5f * xfac / re->clipsta);
 	/* and how much the same viewplane angle is wrapped */
 	psize = 0.5f * phi * ((float)re->partx);
@@ -828,7 +856,7 @@ static void threaded_tile_processor(Render *re)
 	
 	/* warning; no return here without closing exr file */
 	
-	initparts(re, TRUE);
+	RE_parts_init(re, TRUE);
 
 	if (re->result->do_exr_tile)
 		render_result_exr_file_begin(re);
@@ -920,7 +948,7 @@ static void threaded_tile_processor(Render *re)
 	g_break = 0;
 	
 	BLI_end_threads(&threads);
-	freeparts(re);
+	RE_parts_free(re);
 	re->viewplane = viewplane; /* restore viewplane, modified by pano render */
 }
 
@@ -1411,6 +1439,7 @@ static void do_render_3d(Render *re)
 		return;
 
 	/* internal */
+	RE_parts_clamp(re);
 	
 //	re->cfra= cfra;	/* <- unused! */
 	re->scene->r.subframe = re->mblur_offs + re->field_offs;
@@ -1470,7 +1499,7 @@ static void addblur_rect_key(RenderResult *rr, float *rectf, float *rectf1, floa
 					rf[1] = mfac * rf[1] + blurfac * rf1[1];
 					rf[2] = mfac * rf[2] + blurfac * rf1[2];
 					rf[3] = mfac * rf[3] + blurfac * rf1[3];
-				}				
+				}
 			}
 		}
 		rectf += stride;
@@ -1562,7 +1591,7 @@ static void do_render_blur_3d(Render *re)
 	
 	/* weak... the display callback wants an active renderlayer pointer... */
 	re->result->renlay = render_get_active_layer(re, re->result);
-	re->display_draw(re->ddh, re->result, NULL);	
+	re->display_draw(re->ddh, re->result, NULL);
 }
 
 
@@ -2005,6 +2034,7 @@ void RE_MergeFullSample(Render *re, Main *bmain, Scene *sce, bNodeTree *ntree)
 	
 	re->main = bmain;
 	re->scene = sce;
+	re->scene_color_manage = BKE_scene_check_color_management_enabled(sce);
 	
 	/* first call RE_ReadRenderResult on every renderlayer scene. this creates Render structs */
 	
@@ -2052,7 +2082,7 @@ static void do_render_composite_fields_blur_3d(Render *re)
 		ntreeFreeCache(ntree);
 		
 		do_render_fields_blur_3d(re);
-	} 
+	}
 	else {
 		/* ensure new result gets added, like for regular renders */
 		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
@@ -2357,7 +2387,7 @@ int RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *r
 		if (scene->r.border.xmax <= scene->r.border.xmin ||
 		    scene->r.border.ymax <= scene->r.border.ymin)
 		{
-			BKE_report(reports, RPT_ERROR, "No border area selected.");
+			BKE_report(reports, RPT_ERROR, "No border area selected");
 			return 0;
 		}
 	}
@@ -2368,13 +2398,13 @@ int RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *r
 		render_result_exr_file_path(scene, "", 0, str);
 		
 		if (BLI_file_is_writable(str) == 0) {
-			BKE_report(reports, RPT_ERROR, "Can not save render buffers, check the temp default path");
+			BKE_report(reports, RPT_ERROR, "Cannot save render buffers, check the temp default path");
 			return 0;
 		}
 		
 		/* no fullsample and edge */
 		if ((scene->r.scemode & R_FULL_SAMPLE) && (scene->r.mode & R_EDGE)) {
-			BKE_report(reports, RPT_ERROR, "Full Sample doesn't support Edge Enhance");
+			BKE_report(reports, RPT_ERROR, "Full sample does not support edge enhance");
 			return 0;
 		}
 		
@@ -2385,18 +2415,18 @@ int RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *r
 	if (scene->r.scemode & R_DOCOMP) {
 		if (scene->use_nodes) {
 			if (!scene->nodetree) {
-				BKE_report(reports, RPT_ERROR, "No Nodetree in Scene");
+				BKE_report(reports, RPT_ERROR, "No node tree in scene");
 				return 0;
 			}
 			
 			if (!check_composite_output(scene)) {
-				BKE_report(reports, RPT_ERROR, "No Render Output Node in Scene");
+				BKE_report(reports, RPT_ERROR, "No render output node in scene");
 				return 0;
 			}
 			
 			if (scene->r.scemode & R_FULL_SAMPLE) {
 				if (composite_needs_render(scene, 0) == 0) {
-					BKE_report(reports, RPT_ERROR, "Full Sample AA not supported without 3d rendering");
+					BKE_report(reports, RPT_ERROR, "Full sample AA not supported without 3D rendering");
 					return 0;
 				}
 			}
@@ -2415,7 +2445,7 @@ int RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *r
 	/* forbidden combinations */
 	if (scene->r.mode & R_PANORAMA) {
 		if (scene->r.mode & R_ORTHO) {
-			BKE_report(reports, RPT_ERROR, "No Ortho render possible for Panorama");
+			BKE_report(reports, RPT_ERROR, "No ortho render possible for panorama");
 			return 0;
 		}
 	}
@@ -2431,7 +2461,7 @@ int RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *r
 		if (!(srl->layflag & SCE_LAY_DISABLE))
 			break;
 	if (srl == NULL) {
-		BKE_report(reports, RPT_ERROR, "All RenderLayers are disabled");
+		BKE_report(reports, RPT_ERROR, "All render layers are disabled");
 		return 0;
 	}
 
@@ -2500,6 +2530,7 @@ static int render_initialize_from_main(Render *re, Main *bmain, Scene *scene, Sc
 	
 	re->main = bmain;
 	re->scene = scene;
+	re->scene_color_manage = BKE_scene_check_color_management_enabled(scene);
 	re->camera_override = camera_override;
 	re->lay = lay;
 	
@@ -2650,6 +2681,7 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 		/* note; the way it gets 32 bits rects is weak... */
 		if (ibuf->rect == NULL) {
 			ibuf->rect = MEM_mapallocN(sizeof(int) * rres.rectx * rres.recty, "temp 32 bits rect");
+			ibuf->mall |= IB_rect;
 			RE_ResultGet32(re, ibuf->rect);
 			do_free = TRUE;
 		}
@@ -2663,13 +2695,14 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 		if (do_free) {
 			MEM_freeN(ibuf->rect);
 			ibuf->rect = NULL;
+			ibuf->mall &= ~IB_rect;
 		}
 
 		/* imbuf knows which rects are not part of ibuf */
 		IMB_freeImBuf(ibuf);
 
 		printf("Append frame %d", scene->r.cfra);
-	} 
+	}
 	else {
 		if (name_override)
 			BLI_strncpy(name, name_override, sizeof(name));
@@ -2883,6 +2916,7 @@ void RE_PreviewRender(Render *re, Main *bmain, Scene *sce)
 
 	re->main = bmain;
 	re->scene = sce;
+	re->scene_color_manage = BKE_scene_check_color_management_enabled(sce);
 	re->lay = sce->lay;
 
 	camera = RE_GetCamera(re);
@@ -2927,6 +2961,7 @@ int RE_ReadRenderResult(Scene *scene, Scene *scenode)
 		re = RE_NewRender(scene->id.name);
 	RE_InitState(re, NULL, &scene->r, NULL, winx, winy, &disprect);
 	re->scene = scene;
+	re->scene_color_manage = BKE_scene_check_color_management_enabled(scene);
 	
 	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
 	success = render_result_exr_file_read(re, 0);
@@ -2987,25 +3022,25 @@ void RE_layer_load_from_file(RenderLayer *layer, ReportList *reports, const char
 					IMB_freeImBuf(ibuf_clip);
 				}
 				else {
-					BKE_reportf(reports, RPT_ERROR, "RE_result_rect_from_file: failed to allocate clip buffer '%s'\n", filename);
+					BKE_reportf(reports, RPT_ERROR, "RE_result_rect_from_file: failed to allocate clip buffer '%s'", filename);
 				}
 			}
 			else {
-				BKE_reportf(reports, RPT_ERROR, "RE_result_rect_from_file: incorrect dimensions for partial copy '%s'\n", filename);
+				BKE_reportf(reports, RPT_ERROR, "RE_result_rect_from_file: incorrect dimensions for partial copy '%s'", filename);
 			}
 		}
 
 		IMB_freeImBuf(ibuf);
 	}
 	else {
-		BKE_reportf(reports, RPT_ERROR, "RE_result_rect_from_file: failed to load '%s'\n", filename);
+		BKE_reportf(reports, RPT_ERROR, "RE_result_rect_from_file: failed to load '%s'", filename);
 	}
 }
 
 void RE_result_load_from_file(RenderResult *result, ReportList *reports, const char *filename)
 {
 	if (!render_result_exr_file_read_path(result, NULL, filename)) {
-		BKE_reportf(reports, RPT_ERROR, "RE_result_rect_from_file: failed to load '%s'\n", filename);
+		BKE_reportf(reports, RPT_ERROR, "RE_result_rect_from_file: failed to load '%s'", filename);
 		return;
 	}
 }
@@ -3033,8 +3068,8 @@ int RE_WriteEnvmapResult(struct ReportList *reports, Scene *scene, EnvMap *env, 
 
 	if (env->type == ENV_CUBE) {
 		for (i = 0; i < 12; i += 2) {
-			maxX = MAX2(maxX, layout[i] + 1);
-			maxY = MAX2(maxY, layout[i + 1] + 1);
+			maxX = max_ii(maxX, (int)layout[i] + 1);
+			maxY = max_ii(maxY, (int)layout[i + 1] + 1);
 		}
 
 		ibuf = IMB_allocImBuf(maxX * dx, maxY * dx, 24, IB_rectfloat);
@@ -3066,7 +3101,7 @@ int RE_WriteEnvmapResult(struct ReportList *reports, Scene *scene, EnvMap *env, 
 		return TRUE;
 	}
 	else {
-		BKE_report(reports, RPT_ERROR, "Error writing environment map.");
+		BKE_report(reports, RPT_ERROR, "Error writing environment map");
 		return FALSE;
 	}
 }

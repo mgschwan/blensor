@@ -189,6 +189,8 @@ class RAS_MeshMaterial
 public:
 	RAS_MeshSlot *m_baseslot;
 	class RAS_MaterialBucket *m_bucket;
+
+	/* the KX_GameObject is used as a key here */
 	CTR_Map<CTR_HashedPtr,RAS_MeshSlot*> m_slots;
 
 
@@ -254,4 +256,4 @@ private:
 #endif
 };
 
-#endif //__RAS_MATERIAL_BUCKET
+#endif  /* __RAS_MATERIAL_BUCKET */

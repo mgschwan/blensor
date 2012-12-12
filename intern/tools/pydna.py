@@ -139,80 +139,103 @@ def _api():
 
         return blend_sdna_names, blend_sdna_types, blend_sdna_typelens, blend_sdna_structs
 
+    def _create_dna_structs__recursive(ctypes_basic, ctypes_structs, blend_sdna_structs_dict, struct_name, stack):
+        ctype_struct = ctypes_structs[struct_name]
+        if hasattr(ctype_struct, "_fields_"):
+            return
+
+        stack.append(struct_name)
+        
+        struct_type_name_pairs = blend_sdna_structs_dict[struct_name]
+        fields = []
+        fields_orig = []
+
+        for stype, sname in struct_type_name_pairs:
+            name_string = blend_sdna_names[sname]
+            type_string = blend_sdna_types[stype]
+            type_py = ctypes_basic.get(type_string)
+            type_py_orig = None
+            if type_py is None:
+                type_py = type_py_orig = ctypes_structs.get(type_string)
+
+            # todo, these might need to be changed
+            name_string = name_string.replace(b"(", b"")
+            name_string = name_string.replace(b")", b"")
+
+            # * First parse the pointer *
+            pointer_count = 0
+            while name_string[0] == 42:  # '*'
+                pointer_count += 1
+                name_string = name_string[1:]
+
+            # alredy a pointer
+            if type_py is ctypes.c_void_p:
+                pointer_count -= 1
+            elif type_py is ctypes.c_char and pointer_count == 1:
+                type_py = ctypes.c_char_p
+                pointer_count = 0
+
+            if pointer_count < 0:
+                Exception("error parsing pointer")
+
+            for i in range(pointer_count):
+                type_py = ctypes.POINTER(type_py)
+
+            # ---
+            # Ensure we have the members initialized!
+            if type_py is type_py_orig:
+                if type_py_orig.orig_name not in stack:
+                    _create_dna_structs__recursive(ctypes_basic, ctypes_structs, blend_sdna_structs_dict, type_py_orig.orig_name, stack)
+            # ---
+
+            # * Now parse the array [] *
+            if b'[' in name_string:
+                name_string = name_string.replace(b'[', b' ')
+                name_string = name_string.replace(b']', b' ')
+                name_split = name_string.split()
+                name_string = name_split[0]
+                for array_dim in reversed(name_split[1:]):
+                    type_py = type_py * int(array_dim)
+
+            fields.append((name_string.decode(), type_py))
+        stack.pop()
+
+        ctype_struct._fields_ = fields
+        del fields
+
     def create_dna_structs(blend_sdna_names, blend_sdna_types, blend_sdna_typelens, blend_sdna_structs):
 
         # create all subclasses of ctypes.Structure
-        ctypes_structs = {name: type(name.decode(), (ctypes.Structure, MixIn), {}) for name in blend_sdna_types}
-        ctypes_basic = {b"float": ctypes.c_float, b"double": ctypes.c_double, b"int": ctypes.c_int, b"short": ctypes.c_short, b"char": ctypes.c_char, b"void": ctypes.c_void_p}
+        ctypes_structs = {name: type(name.decode(), (ctypes.Structure, MixIn), {"orig_name": name}) for name in blend_sdna_types}
+        ctypes_basic = {
+            b"float": ctypes.c_float,
+            b"double": ctypes.c_double,
+            b"int": ctypes.c_int,
+            b"uint64_t": ctypes.c_uint64,
+            b"short": ctypes.c_short,
+            b"char": ctypes.c_char,
+            b"void": ctypes.c_void_p,
+        }
         ctypes_fields = {}
 
-        # collect fields
-        for struct_id, struct_type_name_pairs in blend_sdna_structs:
-            struct_name = blend_sdna_types[struct_id]
-            ctype_struct = ctypes_structs[struct_name]
-            fields = []
-
-            for stype, sname in struct_type_name_pairs:
-                name_string = blend_sdna_names[sname]
-                type_string = blend_sdna_types[stype]
-                type_py = ctypes_basic.get(type_string)
-                if type_py is None:
-                    type_py = ctypes_structs.get(type_string)
-
-                # todo, these might need to be changed
-                name_string = name_string.replace(b"(", b"")
-                name_string = name_string.replace(b")", b"")
-
-                # * First parse the pointer *
-                pointer_count = 0
-                while name_string[0] == 42:  # '*'
-                    pointer_count += 1
-                    name_string = name_string[1:]
-
-                # alredy a pointer
-                if type_py is ctypes.c_void_p:
-                    pointer_count -= 1
-                elif type_py is ctypes.c_char and pointer_count == 1:
-                    type_py = ctypes.c_char_p
-                    pointer_count = 0
-
-                if pointer_count < 0:
-                    Exception("error parsing pointer")
-
-                for i in range(pointer_count):
-                    type_py = ctypes.POINTER(type_py)
-
-                # * Now parse the array [] *
-                if b'[' in name_string:
-                    name_string = name_string.replace(b'[', b' ')
-                    name_string = name_string.replace(b']', b' ')
-                    name_split = name_string.split()
-                    name_string = name_split[0]
-                    for array_dim in reversed(name_split[1:]):
-                        type_py = type_py * int(array_dim)
-
-                fields.append((name_string.decode(), type_py))
-
-            ctypes_fields[struct_name] = fields
-
         # apply fields all in one go!
+        blend_sdna_structs_dict = {
+            blend_sdna_types[struct_id]: struct_type_name_pairs
+            for struct_id, struct_type_name_pairs in blend_sdna_structs}
+
         for struct_id, struct_type_name_pairs in blend_sdna_structs:
             struct_name = blend_sdna_types[struct_id]
-            ctype_struct = ctypes_structs[struct_name]
-            try:
-                ctype_struct._fields_ = ctypes_fields[struct_name]
-            except:
-                print("Error:", struct_name)
-                import traceback
-                traceback.print_exc()
-                # print(fields)
+            _create_dna_structs__recursive(ctypes_basic, ctypes_structs, blend_sdna_structs_dict, struct_name, [struct_name])
+
 
         # test fields
+        error = 0
         for struct_id, struct_type_name_pairs in blend_sdna_structs:
             ctype_struct = ctypes_structs[blend_sdna_types[struct_id]]
             if blend_sdna_typelens[struct_id] != ctypes.sizeof(ctype_struct):
                 print("Size Mismatch for %r blender:%d vs python:%d" % (blend_sdna_types[struct_id], blend_sdna_typelens[struct_id], ctypes.sizeof(ctype_struct)))
-
+                error += 1
+        print("Size Mismatch errors (total): %d!" % error)
         return ctypes_structs
 
     def decorate_api(struct_dict):
@@ -287,7 +310,7 @@ def _api():
     _lb = struct_dict[b"ListBase"]
     Main._fields_ = [("next", ctypes.POINTER(Main)),
                      ("prev", ctypes.POINTER(Main)),
-                     ("name", ctypes.c_char * 240),
+                     ("name", ctypes.c_char * 1024),
                      ("versionfile", ctypes.c_short),
                      ("subversionfile", ctypes.c_short),
                      ("minversionfile", ctypes.c_short),
@@ -322,6 +345,8 @@ def _api():
                      ("particle", _lb),
                      ("wm", _lb),
                      ("gpencil", _lb),
+                     ("movieclip", _lb),
+                     ("mask", _lb),
                      ]
     del _lb
 

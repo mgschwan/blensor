@@ -81,7 +81,7 @@ static int outliner_open_back(SpaceOops *soops, TreeElement *te)
 	
 	for (te = te->parent; te; te = te->parent) {
 		tselem = TREESTORE(te);
-		if (tselem->flag & TSE_CLOSED) { 
+		if (tselem->flag & TSE_CLOSED) {
 			tselem->flag &= ~TSE_CLOSED;
 			retval = 1;
 		}
@@ -197,10 +197,10 @@ static void do_item_rename(ARegion *ar, TreeElement *te, TreeStoreElem *tselem, 
 	}
 	else if (tselem->id->lib) {
 		// XXX						error_libdata();
-	} 
+	}
 	else if (te->idcode == ID_LI && te->parent) {
 		BKE_report(reports, RPT_WARNING, "Cannot edit the path of an indirectly linked library");
-	} 
+	}
 	else {
 		tselem->flag |= TSE_TEXTBUT;
 		ED_region_tag_redraw(ar);
@@ -368,12 +368,14 @@ void group_toggle_visibility_cb(bContext *UNUSED(C), Scene *scene, TreeElement *
 
 static int outliner_toggle_visibility_exec(bContext *C, wmOperator *UNUSED(op))
 {
+	Main *bmain = CTX_data_main(C);
 	SpaceOops *soops = CTX_wm_space_outliner(C);
 	Scene *scene = CTX_data_scene(C);
 	ARegion *ar = CTX_wm_region(C);
 	
 	outliner_do_object_operation(C, scene, soops, &soops->tree, object_toggle_visibility_cb);
 	
+	DAG_id_type_tag(bmain, ID_OB);
 	WM_event_add_notifier(C, NC_SCENE | ND_OB_VISIBLE, scene);
 	ED_region_tag_redraw(ar);
 	
@@ -464,11 +466,13 @@ void group_toggle_renderability_cb(bContext *UNUSED(C), Scene *scene, TreeElemen
 
 static int outliner_toggle_renderability_exec(bContext *C, wmOperator *UNUSED(op))
 {
+	Main *bmain = CTX_data_main(C);
 	SpaceOops *soops = CTX_wm_space_outliner(C);
 	Scene *scene = CTX_data_scene(C);
 	
 	outliner_do_object_operation(C, scene, soops, &soops->tree, object_toggle_renderability_cb);
 	
+	DAG_id_type_tag(bmain, ID_OB);
 	WM_event_add_notifier(C, NC_SCENE | ND_OB_RENDER, scene);
 	
 	return OPERATOR_FINISHED;
@@ -726,7 +730,7 @@ static void outliner_find_panel(Scene *UNUSED(scene), ARegion *ar, SpaceOops *so
 	
 	/* determine which type of search to do */
 	if (again && last_find) {
-		/* no popup panel - previous + user wanted to search for next after previous */		
+		/* no popup panel - previous + user wanted to search for next after previous */
 		BLI_strncpy(name, soops->search_string, sizeof(name));
 		flags = soops->search_flags;
 		
@@ -742,7 +746,7 @@ static void outliner_find_panel(Scene *UNUSED(scene), ARegion *ar, SpaceOops *so
 		/* pop up panel - no previous, or user didn't want search after previous */
 		name[0] = '\0';
 // XXX		if (sbutton(name, 0, sizeof(name)-1, "Find: ") && name[0]) {
-//			te= outliner_find_name(soops, &soops->tree, name, flags, NULL, &prevFound);
+//			te = outliner_find_name(soops, &soops->tree, name, flags, NULL, &prevFound);
 //		}
 //		else return; /* XXX RETURN! XXX */
 	}
@@ -782,7 +786,7 @@ static void outliner_find_panel(Scene *UNUSED(scene), ARegion *ar, SpaceOops *so
 	}
 	else {
 		/* no tree-element found */
-		BKE_report(reports, RPT_WARNING, "Not found: %s", name);
+		BKE_reportf(reports, RPT_WARNING, "Not found: %s", name);
 	}
 }
 #endif
@@ -832,6 +836,8 @@ static int outliner_one_level_exec(bContext *C, wmOperator *op)
 
 void OUTLINER_OT_show_one_level(wmOperatorType *ot)
 {
+	PropertyRNA *prop;
+
 	/* identifiers */
 	ot->name = "Show/Hide One Level";
 	ot->idname = "OUTLINER_OT_show_one_level";
@@ -844,7 +850,8 @@ void OUTLINER_OT_show_one_level(wmOperatorType *ot)
 	/* no undo or registry, UI option */
 	
 	/* properties */
-	RNA_def_boolean(ot->srna, "open", 1, "Open", "Expand all entries one level deep");
+	prop = RNA_def_boolean(ot->srna, "open", 1, "Open", "Expand all entries one level deep");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
 /* Show Hierarchy ----------------------------------------------- */
@@ -994,7 +1001,7 @@ static void tree_element_to_path(SpaceOops *soops, TreeElement *te, TreeStoreEle
 					char buf[128], *name;
 					
 					temnext = (TreeElement *)(ld->next->data);
-					/* tsenext= TREESTORE(temnext); */ /* UNUSED */
+					/* tsenext = TREESTORE(temnext); */ /* UNUSED */
 					
 					nextptr = &temnext->rnaptr;
 					name = RNA_struct_name_get_alloc(nextptr, buf, sizeof(buf), NULL);
@@ -1340,7 +1347,7 @@ static int outliner_keyingset_additems_exec(bContext *C, wmOperator *op)
 	
 	/* check for invalid states */
 	if (ks == NULL) {
-		BKE_report(op->reports, RPT_ERROR, "Operation requires an Active Keying Set");
+		BKE_report(op->reports, RPT_ERROR, "Operation requires an active keying set");
 		return OPERATOR_CANCELLED;
 	}
 	if (soutliner == NULL)
@@ -1854,8 +1861,8 @@ static int material_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
 		assign_material(ob, ma, ob->totcol + 1, BKE_MAT_ASSIGN_USERPREF);
 
 		DAG_ids_flush_update(bmain, 0);
-		WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, CTX_wm_view3d(C));		
-		WM_event_add_notifier(C, NC_MATERIAL | ND_SHADING, ma);
+		WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, CTX_wm_view3d(C));
+		WM_event_add_notifier(C, NC_MATERIAL | ND_SHADING_LINKS, ma);
 
 		return OPERATOR_FINISHED;
 	}

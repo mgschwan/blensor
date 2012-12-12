@@ -124,7 +124,7 @@ MTFace* KX_BlenderMaterial::GetMTFace(void) const
 unsigned int* KX_BlenderMaterial::GetMCol(void) const 
 {
 	// fonts on polys
-	return mMaterial->rgb;
+	return &mMaterial->m_mcol;
 }
 
 void KX_BlenderMaterial::GetMaterialRGBAColor(unsigned char *rgba) const
@@ -136,6 +136,11 @@ void KX_BlenderMaterial::GetMaterialRGBAColor(unsigned char *rgba) const
 		*rgba++ = (unsigned char)(mMaterial->matcolor[3] * 255.0f);
 	} else
 		RAS_IPolyMaterial::GetMaterialRGBAColor(rgba);
+}
+
+bool KX_BlenderMaterial::IsMaterial(const BL_Material *bl_mat) const
+{
+	return (mMaterial == bl_mat);
 }
 
 Material *KX_BlenderMaterial::GetBlenderMaterial() const
@@ -165,11 +170,11 @@ void KX_BlenderMaterial::InitTextures()
 				continue;
 			}
 			if (!mTextures[i].InitCubeMap(i, mMaterial->cubemap[i] ) )
-				spit("unable to initialize image("<<i<<") in "<< 
-						 mMaterial->matname<< ", image will not be available");
-		} 
-		// If we're using glsl materials, the textures are handled by bf_gpu, so don't load them twice!
-		// However, if we're using a custom shader, then we still need to load the textures ourselves.
+				spit("unable to initialize image("<<i<<") in "<<
+				     mMaterial->matname<< ", image will not be available");
+		}
+		/* If we're using glsl materials, the textures are handled by bf_gpu, so don't load them twice!
+		 * However, if we're using a custom shader, then we still need to load the textures ourselves. */
 		else if (!mMaterial->glslmat || mShader) {
 			if ( mMaterial->img[i] ) {
 				if ( ! mTextures[i].InitFromImage(i, mMaterial->img[i], (mMaterial->flag[i] &MIPMAP)!=0 ))
@@ -726,7 +731,7 @@ void KX_BlenderMaterial::setObjectMatrixData(int i, RAS_IRasterizer *ras)
 	GLenum plane = GL_EYE_PLANE;
 
 	// figure plane gen
-	float proj[4]= {0.f,0.f,0.f,0.f};
+	float proj[4] = {0.f,0.f,0.f,0.f};
 	GetProjPlane(mMaterial, i, 0, proj);
 	glTexGenfv(GL_S, plane, proj);
 	
@@ -837,26 +842,26 @@ PyTypeObject KX_BlenderMaterial::Type = {
 
 PyObject *KX_BlenderMaterial::pyattr_get_shader(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
-	KX_BlenderMaterial* self= static_cast<KX_BlenderMaterial*>(self_v);
+	KX_BlenderMaterial* self = static_cast<KX_BlenderMaterial*>(self_v);
 	return self->PygetShader(NULL, NULL);
 }
 
 PyObject *KX_BlenderMaterial::pyattr_get_materialIndex(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
-	KX_BlenderMaterial* self= static_cast<KX_BlenderMaterial*>(self_v);
-	return PyLong_FromSsize_t(self->GetMaterialIndex());
+	KX_BlenderMaterial* self = static_cast<KX_BlenderMaterial*>(self_v);
+	return PyLong_FromLong(self->GetMaterialIndex());
 }
 
 PyObject *KX_BlenderMaterial::pyattr_get_blending(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
-	KX_BlenderMaterial* self= static_cast<KX_BlenderMaterial*>(self_v);
+	KX_BlenderMaterial* self = static_cast<KX_BlenderMaterial*>(self_v);
 	unsigned int* bfunc = self->getBlendFunc();
 	return Py_BuildValue("(ll)", (long int)bfunc[0], (long int)bfunc[1]);
 }
 
 int KX_BlenderMaterial::pyattr_set_blending(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value)
 {
-	KX_BlenderMaterial* self= static_cast<KX_BlenderMaterial*>(self_v);
+	KX_BlenderMaterial* self = static_cast<KX_BlenderMaterial*>(self_v);
 	PyObject *obj = self->PysetBlending(value, NULL);
 	if (obj)
 	{
@@ -926,7 +931,7 @@ KX_PYMETHODDEF_DOC( KX_BlenderMaterial, getShader , "getShader()")
 
 KX_PYMETHODDEF_DOC( KX_BlenderMaterial, getMaterialIndex, "getMaterialIndex()")
 {
-	return PyLong_FromSsize_t( GetMaterialIndex() );
+	return PyLong_FromLong(GetMaterialIndex());
 }
 
 KX_PYMETHODDEF_DOC( KX_BlenderMaterial, getTexture, "getTexture( index )" )

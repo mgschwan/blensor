@@ -24,15 +24,12 @@
  *  \ingroup pythonintern
  */
 
-
 #ifndef __BPY_UTIL_H__
 #define __BPY_UTIL_H__
 
-#if PY_VERSION_HEX <  0x03020000
-#error "Python 3.2 or greater is required, you'll need to update your python."
+#if PY_VERSION_HEX <  0x03030000
+#  error "Python 3.3 or greater is required, you'll need to update your python."
 #endif
-
-#include "RNA_types.h" /* for EnumPropertyItem only */
 
 struct EnumPropertyItem;
 struct ReportList;
@@ -51,4 +48,5 @@ void BPy_SetContext(struct bContext *C);
 
 extern void bpy_context_set(struct bContext *C, PyGILState_STATE *gilstate);
 extern void bpy_context_clear(struct bContext *C, PyGILState_STATE *gilstate);
-#endif
+
+#endif  /* __BPY_UTIL_H__ */

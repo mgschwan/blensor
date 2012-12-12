@@ -33,17 +33,17 @@
 
 #include <stdio.h>
 
-#if defined(WIN32) && !defined(FREE_WINDOWS)
-#pragma warning (disable : 4786)
-#endif //WIN32
+#ifdef _MSC_VER
+#  pragma warning (disable:4786)
+#endif
 
 #include "wm_event_types.h"
 #include "KX_BlenderSceneConverter.h"
 #include "KX_ConvertSensors.h"
 
 /* This little block needed for linking to Blender... */
-#if defined(WIN32) && !defined(FREE_WINDOWS)
-#include "BLI_winstuff.h"
+#ifdef _MSC_VER
+#  include "BLI_winstuff.h"
 #endif
 
 #include "DNA_object_types.h"
@@ -118,8 +118,8 @@ void BL_ConvertSensors(struct Object* blenderobject,
 	}
 	gameobj->ReserveSensor(count);
 	sens = (bSensor*)blenderobject->sensors.first;
-	while(sens)
-	{
+
+	while (sens) {
 		SCA_ISensor* gamesensor=NULL;
 		/* All sensors have a pulse toggle, frequency, and invert field.     */
 		/* These are extracted here, and set when the sensor is added to the */
@@ -398,7 +398,7 @@ void BL_ConvertSensors(struct Object* blenderobject,
 					
 					/* Better do an explicit conversion here! (was implicit      */
 					/* before...)                                                */
-					switch(blenderpropsensor->type) {
+					switch (blenderpropsensor->type) {
 					case SENS_PROP_EQUAL:
 						propchecktype = SCA_PropertySensor::KX_PROPSENSOR_EQUAL;
 						break;
@@ -573,8 +573,7 @@ void BL_ConvertSensors(struct Object* blenderobject,
 					int hatf	=0;
 					int prec	=0;
 					
-					switch(bjoy->type)
-					{
+					switch (bjoy->type) {
 					case SENS_JOY_AXIS:
 						axis	= bjoy->axis;
 						axisf	= bjoy->axisf;
@@ -633,9 +632,9 @@ void BL_ConvertSensors(struct Object* blenderobject,
 			uniqueval->Release();
 			
 			/* Conversion succeeded, so we can set the generic props here.   */
-			gamesensor->SetPulseMode(pos_pulsemode, 
-									 neg_pulsemode, 
-									 frequency);
+			gamesensor->SetPulseMode(pos_pulsemode,
+			                         neg_pulsemode,
+			                         frequency);
 			gamesensor->SetInvert(invert);
 			gamesensor->SetLevel(level);
 			gamesensor->SetTap(tap);

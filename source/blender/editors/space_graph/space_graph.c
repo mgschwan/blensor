@@ -441,7 +441,7 @@ static void graph_listener(ScrArea *sa, wmNotifier *wmn)
 				ED_area_tag_refresh(sa);
 			break;
 		case NC_SCENE:
-			switch (wmn->data) {	
+			switch (wmn->data) {
 				case ND_OB_ACTIVE:  /* selection changed, so force refresh to flush (needs flag set to do syncing)  */
 				case ND_OB_SELECT:
 					sipo->flag |= SIPO_TEMP_NEEDCHANSYNC;
@@ -461,7 +461,7 @@ static void graph_listener(ScrArea *sa, wmNotifier *wmn)
 					ED_area_tag_refresh(sa);
 					break;
 				case ND_TRANSFORM:
-					break; /*do nothing*/					
+					break; /*do nothing*/
 					
 				default: /* just redrawing the view will do */
 					ED_area_tag_redraw(sa);
@@ -563,13 +563,13 @@ static void graph_refresh(const bContext *C, ScrArea *sa)
 					
 					switch (fcu->array_index) {
 						case 0:
-							col[0] = 1.0f; col[1] = 0.0f; col[2] = 0.0f;
+							UI_GetThemeColor3fv(TH_AXIS_X, col);
 							break;
 						case 1:
-							col[0] = 0.0f; col[1] = 1.0f; col[2] = 0.0f;
+							UI_GetThemeColor3fv(TH_AXIS_Y, col);
 							break;
 						case 2:
-							col[0] = 0.0f; col[1] = 0.0f; col[2] = 1.0f;
+							UI_GetThemeColor3fv(TH_AXIS_Z, col);
 							break;
 						default:
 							/* 'unknown' color - bluish so as to not conflict with handles */

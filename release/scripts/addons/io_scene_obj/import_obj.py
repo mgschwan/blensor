@@ -68,7 +68,7 @@ def obj_image_load(imagepath, DIR, recursive):
     return load_image(imagepath, DIR, recursive=recursive, place_holder=True)
 
 
-def create_materials(filepath, material_libs, unique_materials, unique_material_images, use_image_search):
+def create_materials(filepath, material_libs, unique_materials, unique_material_images, use_image_search, float_func):
     """
     Create all the used materials in this obj,
     assign colors and images to the materials from all referenced material libs
@@ -85,14 +85,18 @@ def create_materials(filepath, material_libs, unique_materials, unique_material_
         # Absolute path - c:\.. etc would work here
         image = obj_image_load(imagepath, DIR, use_image_search)
         has_data = False
+        image_depth = 0
 
         if image:
             texture.image = image
+            # note, this causes the image to load, see: [#32637]
+            # which makes the following has_data work as expected.
+            image_depth = image.depth
             has_data = image.has_data
 
         # Adds textures for materials (rendering)
         if type == 'Kd':
-            if has_data and image.depth == 32:
+            if image_depth in {32, 128}:
                 # Image has alpha
 
                 mtex = blender_material.texture_slots.add()
@@ -159,9 +163,8 @@ def create_materials(filepath, material_libs, unique_materials, unique_material_
             mtex.use_map_color_diffuse = False
 
             mtex.texture = texture
-            mtex.texture_coords = 'UV'
-            mtex.use_map_reflect = True
-
+            mtex.texture_coords = 'REFLECTION'
+            mtex.use_map_color_diffuse = True
         else:
             raise Exception("invalid type %r" % type)
 
@@ -203,19 +206,21 @@ def create_materials(filepath, material_libs, unique_materials, unique_material_
                     line_split = line.split()
                     line_lower = line.lower().lstrip()
                     if line_lower.startswith(b'ka'):
-                        context_material.mirror_color = float(line_split[1]), float(line_split[2]), float(line_split[3])
+                        context_material.mirror_color = float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3])
                     elif line_lower.startswith(b'kd'):
-                        context_material.diffuse_color = float(line_split[1]), float(line_split[2]), float(line_split[3])
+                        context_material.diffuse_color = float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3])
                     elif line_lower.startswith(b'ks'):
-                        context_material.specular_color = float(line_split[1]), float(line_split[2]), float(line_split[3])
+                        context_material.specular_color = float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3])
                     elif line_lower.startswith(b'ns'):
-                        context_material.specular_hardness = int((float(line_split[1]) * 0.51))
+                        context_material.specular_hardness = int((float_func(line_split[1]) * 0.51))
                     elif line_lower.startswith(b'ni'):  # Refraction index
-                        context_material.raytrace_transparency.ior = max(1, min(float(line_split[1]), 3))  # between 1 and 3
-                    elif line_lower.startswith((b'd', b'tr')):
-                        context_material.alpha = float(line_split[1])
+                        context_material.raytrace_transparency.ior = max(1, min(float_func(line_split[1]), 3))  # between 1 and 3
+                    elif line_lower.startswith(b'd'):  # dissolve (trancparency)
+                        context_material.alpha = float_func(line_split[1])
                         context_material.use_transparency = True
                         context_material.transparency_method = 'Z_TRANSPARENCY'
+                    elif line_lower.startswith(b'tr'):  # trancelucency
+                        context_material.translucency = float_func(line_split[1])
                     elif line_lower.startswith(b'tf'):
                         # rgb, filter color, blender has no support for this.
                         pass
@@ -339,7 +344,7 @@ def create_materials(filepath, material_libs, unique_materials, unique_material_
                         if img_filepath:
                             load_material_image(context_material, context_material_name, img_filepath, 'D')
 
-                    elif line_lower.startswith(b'refl'):  # reflectionmap
+                    elif line_lower.startswith((b'map_refl', b'refl')):  # reflectionmap
                         img_filepath = line_value(line.split())
                         if img_filepath:
                             load_material_image(context_material, context_material_name, img_filepath, 'refl')
@@ -1080,7 +1085,7 @@ def load(operator, context, filepath,
     time_sub = time_new
 
     print('\tloading materials and images...')
-    create_materials(filepath, material_libs, unique_materials, unique_material_images, use_image_search)
+    create_materials(filepath, material_libs, unique_materials, unique_material_images, use_image_search, float_func)
 
     time_new = time.time()
     print("%.4f sec" % (time_new - time_sub))

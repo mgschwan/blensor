@@ -33,6 +33,7 @@
 #include "AUD_IFactory.h"
 #include "AUD_JOSResampleReader.h"
 #include "AUD_LinearResampleReader.h"
+#include "AUD_MutexLock.h"
 
 #include <cstring>
 #include <cmath>
@@ -56,7 +57,7 @@ typedef enum
 /********************** AUD_SoftwareHandle Handle Code ************************/
 /******************************************************************************/
 
-AUD_SoftwareDevice::AUD_SoftwareHandle::AUD_SoftwareHandle(AUD_SoftwareDevice* device, AUD_Reference<AUD_IReader> reader, AUD_Reference<AUD_PitchReader> pitch, AUD_Reference<AUD_ResampleReader> resampler, AUD_Reference<AUD_ChannelMapperReader> mapper, bool keep) :
+AUD_SoftwareDevice::AUD_SoftwareHandle::AUD_SoftwareHandle(AUD_SoftwareDevice* device, boost::shared_ptr<AUD_IReader> reader, boost::shared_ptr<AUD_PitchReader> pitch, boost::shared_ptr<AUD_ResampleReader> resampler, boost::shared_ptr<AUD_ChannelMapperReader> mapper, bool keep) :
 	m_reader(reader), m_pitch(pitch), m_resampler(resampler), m_mapper(mapper), m_keep(keep), m_user_pitch(1.0f), m_user_volume(1.0f), m_user_pan(0.0f), m_volume(1.0f), m_loopcount(0),
 	m_relative(true), m_volume_max(1.0f), m_volume_min(0), m_distance_max(std::numeric_limits<float>::max()),
 	m_distance_reference(1.0f), m_attenuation(1.0f), m_cone_angle_outer(M_PI), m_cone_angle_inner(M_PI), m_cone_volume_outer(0),
@@ -226,22 +227,28 @@ bool AUD_SoftwareDevice::AUD_SoftwareHandle::pause()
 {
 	if(m_status)
 	{
-		m_device->lock();
+		AUD_MutexLock lock(*m_device);
 
 		if(m_status == AUD_STATUS_PLAYING)
 		{
-			m_device->m_playingSounds.remove(this);
-			m_device->m_pausedSounds.push_back(this);
+			for(AUD_HandleIterator it = m_device->m_playingSounds.begin(); it != m_device->m_playingSounds.end(); it++)
+			{
+				if(it->get() == this)
+				{
+					boost::shared_ptr<AUD_SoftwareHandle> This = *it;
 
-			if(m_device->m_playingSounds.empty())
-				m_device->playing(m_device->m_playback = false);
-			m_status = AUD_STATUS_PAUSED;
-			m_device->unlock();
+					m_device->m_playingSounds.erase(it);
+					m_device->m_pausedSounds.push_back(This);
 
-			return true;
+					if(m_device->m_playingSounds.empty())
+						m_device->playing(m_device->m_playback = false);
+
+					m_status = AUD_STATUS_PAUSED;
+
+					return true;
+				}
+			}
 		}
-
-		m_device->unlock();
 	}
 
 	return false;
@@ -251,21 +258,29 @@ bool AUD_SoftwareDevice::AUD_SoftwareHandle::resume()
 {
 	if(m_status)
 	{
-		m_device->lock();
+		AUD_MutexLock lock(*m_device);
 
 		if(m_status == AUD_STATUS_PAUSED)
 		{
-			m_device->m_pausedSounds.remove(this);
-			m_device->m_playingSounds.push_back(this);
+			for(AUD_HandleIterator it = m_device->m_pausedSounds.begin(); it != m_device->m_pausedSounds.end(); it++)
+			{
+				if(it->get() == this)
+				{
+					boost::shared_ptr<AUD_SoftwareHandle> This = *it;
 
-			if(!m_device->m_playback)
-				m_device->playing(m_device->m_playback = true);
-			m_status = AUD_STATUS_PLAYING;
-			m_device->unlock();
-			return true;
+					m_device->m_pausedSounds.erase(it);
+
+					m_device->m_playingSounds.push_back(This);
+
+					if(!m_device->m_playback)
+						m_device->playing(m_device->m_playback = true);
+					m_status = AUD_STATUS_PLAYING;
+
+					return true;
+				}
+			}
 		}
 
-		m_device->unlock();
 	}
 
 	return false;
@@ -276,25 +291,38 @@ bool AUD_SoftwareDevice::AUD_SoftwareHandle::stop()
 	if(!m_status)
 		return false;
 
-	m_device->lock();
+	AUD_MutexLock lock(*m_device);
 
-	// AUD_XXX Create a reference of our own object so that it doesn't get
-	// deleted before the end of this function
-	AUD_Reference<AUD_SoftwareHandle> This = this;
+	if(!m_status)
+		return false;
 
-	if(m_status == AUD_STATUS_PLAYING)
-	{
-		m_device->m_playingSounds.remove(This);
-
-		if(m_device->m_playingSounds.empty())
-			m_device->playing(m_device->m_playback = false);
-	}
-	else
-		m_device->m_pausedSounds.remove(This);
-
-	m_device->unlock();
 	m_status = AUD_STATUS_INVALID;
-	return true;
+
+	for(AUD_HandleIterator it = m_device->m_playingSounds.begin(); it != m_device->m_playingSounds.end(); it++)
+	{
+		if(it->get() == this)
+		{
+			boost::shared_ptr<AUD_SoftwareHandle> This = *it;
+
+			m_device->m_playingSounds.erase(it);
+
+			if(m_device->m_playingSounds.empty())
+				m_device->playing(m_device->m_playback = false);
+
+			return true;
+		}
+	}
+
+	for(AUD_HandleIterator it = m_device->m_pausedSounds.begin(); it != m_device->m_pausedSounds.end(); it++)
+	{
+		if(it->get() == this)
+		{
+			m_device->m_pausedSounds.erase(it);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool AUD_SoftwareDevice::AUD_SoftwareHandle::getKeep()
@@ -310,11 +338,12 @@ bool AUD_SoftwareDevice::AUD_SoftwareHandle::setKeep(bool keep)
 	if(!m_status)
 		return false;
 
-	m_device->lock();
+	AUD_MutexLock lock(*m_device);
+
+	if(!m_status)
+		return false;
 
 	m_keep = keep;
-
-	m_device->unlock();
 
 	return true;
 }
@@ -324,11 +353,12 @@ bool AUD_SoftwareDevice::AUD_SoftwareHandle::seek(float position)
 	if(!m_status)
 		return false;
 
-	m_device->lock();
+	AUD_MutexLock lock(*m_device);
+
+	if(!m_status)
+		return false;
 
 	m_reader->seek((int)(position * m_reader->getSpecs().rate));
-
-	m_device->unlock();
 
 	return true;
 }
@@ -336,13 +366,14 @@ bool AUD_SoftwareDevice::AUD_SoftwareHandle::seek(float position)
 float AUD_SoftwareDevice::AUD_SoftwareHandle::getPosition()
 {
 	if(!m_status)
+		return false;
+
+	AUD_MutexLock lock(*m_device);
+
+	if(!m_status)
 		return 0.0f;
 
-	m_device->lock();
-
 	float position = m_reader->getPosition() / (float)m_device->m_specs.rate;
-
-	m_device->unlock();
 
 	return position;
 }
@@ -407,12 +438,13 @@ bool AUD_SoftwareDevice::AUD_SoftwareHandle::setStopCallback(stopCallback callba
 	if(!m_status)
 		return false;
 
-	m_device->lock();
+	AUD_MutexLock lock(*m_device);
+
+	if(!m_status)
+		return false;
 
 	m_stop = callback;
 	m_stop_data = data;
-
-	m_device->unlock();
 
 	return true;
 }
@@ -657,7 +689,7 @@ void AUD_SoftwareDevice::create()
 {
 	m_playback = false;
 	m_volume = 1.0f;
-	m_mixer = new AUD_Mixer(m_specs);
+	m_mixer = boost::shared_ptr<AUD_Mixer>(new AUD_Mixer(m_specs));
 	m_speed_of_sound = 343.0f;
 	m_doppler_factor = 1.0f;
 	m_distance_model = AUD_DISTANCE_MODEL_INVERSE_CLAMPED;
@@ -691,15 +723,15 @@ void AUD_SoftwareDevice::mix(data_t* buffer, int length)
 {
 	m_buffer.assureSize(length * AUD_SAMPLE_SIZE(m_specs));
 
-	lock();
+	AUD_MutexLock lock(*this);
 
 	{
-		AUD_Reference<AUD_SoftwareDevice::AUD_SoftwareHandle> sound;
+		boost::shared_ptr<AUD_SoftwareDevice::AUD_SoftwareHandle> sound;
 		int len;
 		int pos;
 		bool eos;
-		std::list<AUD_Reference<AUD_SoftwareDevice::AUD_SoftwareHandle> > stopSounds;
-		std::list<AUD_Reference<AUD_SoftwareDevice::AUD_SoftwareHandle> > pauseSounds;
+		std::list<boost::shared_ptr<AUD_SoftwareDevice::AUD_SoftwareHandle> > stopSounds;
+		std::list<boost::shared_ptr<AUD_SoftwareDevice::AUD_SoftwareHandle> > pauseSounds;
 		sample_t* buf = m_buffer.getBuffer();
 
 		m_mixer->clear(length);
@@ -775,8 +807,6 @@ void AUD_SoftwareDevice::mix(data_t* buffer, int length)
 			sound->pause();
 		}
 	}
-
-	unlock();
 }
 
 void AUD_SoftwareDevice::setPanning(AUD_IHandle* handle, float pan)
@@ -806,59 +836,57 @@ AUD_DeviceSpecs AUD_SoftwareDevice::getSpecs() const
 	return m_specs;
 }
 
-AUD_Reference<AUD_IHandle> AUD_SoftwareDevice::play(AUD_Reference<AUD_IReader> reader, bool keep)
+boost::shared_ptr<AUD_IHandle> AUD_SoftwareDevice::play(boost::shared_ptr<AUD_IReader> reader, bool keep)
 {
 	// prepare the reader
 	// pitch
 
-	AUD_Reference<AUD_PitchReader> pitch = new AUD_PitchReader(reader, 1);
-	reader = AUD_Reference<AUD_IReader>(pitch);
+	boost::shared_ptr<AUD_PitchReader> pitch = boost::shared_ptr<AUD_PitchReader>(new AUD_PitchReader(reader, 1));
+	reader = boost::shared_ptr<AUD_IReader>(pitch);
 
-	AUD_Reference<AUD_ResampleReader> resampler;
+	boost::shared_ptr<AUD_ResampleReader> resampler;
 
 	// resample
 	if(m_quality)
-		resampler = new AUD_JOSResampleReader(reader, m_specs.specs);
+		resampler = boost::shared_ptr<AUD_ResampleReader>(new AUD_JOSResampleReader(reader, m_specs.specs));
 	else
-		resampler = new AUD_LinearResampleReader(reader, m_specs.specs);
-	reader = AUD_Reference<AUD_IReader>(resampler);
+		resampler = boost::shared_ptr<AUD_ResampleReader>(new AUD_LinearResampleReader(reader, m_specs.specs));
+	reader = boost::shared_ptr<AUD_IReader>(resampler);
 
 	// rechannel
-	AUD_Reference<AUD_ChannelMapperReader> mapper = new AUD_ChannelMapperReader(reader, m_specs.channels);
-	reader = AUD_Reference<AUD_IReader>(mapper);
+	boost::shared_ptr<AUD_ChannelMapperReader> mapper = boost::shared_ptr<AUD_ChannelMapperReader>(new AUD_ChannelMapperReader(reader, m_specs.channels));
+	reader = boost::shared_ptr<AUD_IReader>(mapper);
 
-	if(reader.isNull())
-		return AUD_Reference<AUD_IHandle>();
+	if(!reader.get())
+		return boost::shared_ptr<AUD_IHandle>();
 
 	// play sound
-	AUD_Reference<AUD_SoftwareDevice::AUD_SoftwareHandle> sound = new AUD_SoftwareDevice::AUD_SoftwareHandle(this, reader, pitch, resampler, mapper, keep);
+	boost::shared_ptr<AUD_SoftwareDevice::AUD_SoftwareHandle> sound = boost::shared_ptr<AUD_SoftwareDevice::AUD_SoftwareHandle>(new AUD_SoftwareDevice::AUD_SoftwareHandle(this, reader, pitch, resampler, mapper, keep));
 
-	lock();
+	AUD_MutexLock lock(*this);
+
 	m_playingSounds.push_back(sound);
 
 	if(!m_playback)
 		playing(m_playback = true);
-	unlock();
 
-	return AUD_Reference<AUD_IHandle>(sound);
+	return boost::shared_ptr<AUD_IHandle>(sound);
 }
 
-AUD_Reference<AUD_IHandle> AUD_SoftwareDevice::play(AUD_Reference<AUD_IFactory> factory, bool keep)
+boost::shared_ptr<AUD_IHandle> AUD_SoftwareDevice::play(boost::shared_ptr<AUD_IFactory> factory, bool keep)
 {
 	return play(factory->createReader(), keep);
 }
 
 void AUD_SoftwareDevice::stopAll()
 {
-	lock();
+	AUD_MutexLock lock(*this);
 
 	while(!m_playingSounds.empty())
 		m_playingSounds.front()->stop();
 
 	while(!m_pausedSounds.empty())
 		m_pausedSounds.front()->stop();
-
-	unlock();
 }
 
 void AUD_SoftwareDevice::lock()

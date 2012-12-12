@@ -353,17 +353,17 @@ void sound_load(struct Main *bmain, bSound *sound)
 		}
 // XXX unused currently
 #if 0
-		break;
+			break;
+		}
+		case SOUND_TYPE_BUFFER:
+			if (sound->child_sound && sound->child_sound->handle)
+				sound->handle = AUD_bufferSound(sound->child_sound->handle);
+			break;
+		case SOUND_TYPE_LIMITER:
+			if (sound->child_sound && sound->child_sound->handle)
+				sound->handle = AUD_limitSound(sound->child_sound, sound->start, sound->end);
+			break;
 	}
-	case SOUND_TYPE_BUFFER:
-		if (sound->child_sound && sound->child_sound->handle)
-			sound->handle = AUD_bufferSound(sound->child_sound->handle);
-		break;
-	case SOUND_TYPE_LIMITER:
-		if (sound->child_sound && sound->child_sound->handle)
-			sound->handle = AUD_limitSound(sound->child_sound, sound->start, sound->end);
-		break;
-}
 #endif
 		if (sound->flags & SOUND_FLAGS_MONO) {
 			void *handle = AUD_monoSound(sound->handle);
@@ -701,7 +701,7 @@ void sound_update_scene(struct Scene *scene)
 
 							if (AUD_removeSet(scene->speaker_handles, strip->speaker_handle)) {
 								if (speaker->sound)
-									AUD_moveSequence(strip->speaker_handle, strip->start / FPS, -1, 0);
+									AUD_moveSequence(strip->speaker_handle, (double)strip->start / FPS, -1, 0);
 								else {
 									AUD_removeSequence(scene->sound_scene, strip->speaker_handle);
 									strip->speaker_handle = NULL;
@@ -709,7 +709,9 @@ void sound_update_scene(struct Scene *scene)
 							}
 							else {
 								if (speaker->sound) {
-									strip->speaker_handle = AUD_addSequence(scene->sound_scene, speaker->sound->playback_handle, strip->start / FPS, -1, 0);
+									strip->speaker_handle = AUD_addSequence(scene->sound_scene,
+									                                        speaker->sound->playback_handle,
+									                                        (double)strip->start / FPS, -1, 0);
 									AUD_setRelativeSequence(strip->speaker_handle, 0);
 								}
 							}

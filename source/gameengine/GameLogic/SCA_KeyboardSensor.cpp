@@ -225,37 +225,37 @@ bool SCA_KeyboardSensor::Evaluate()
 		 */
 		if (m_qual > 0) {
 			const SCA_InputEvent & qualevent = inputdev->GetEventValue((SCA_IInputDevice::KX_EnumInputs) m_qual);
-			switch(qualevent.m_status) {
-			case SCA_InputEvent::KX_NO_INPUTSTATUS:
-				qual = false;
-				break;
-			case SCA_InputEvent::KX_JUSTRELEASED:
-				qual_change = true;
-				qual = false;
-				break;
-			case SCA_InputEvent::KX_JUSTACTIVATED:
-				qual_change = true;
-			case SCA_InputEvent::KX_ACTIVE:
-				/* do nothing */
-				break;
+			switch (qualevent.m_status) {
+				case SCA_InputEvent::KX_NO_INPUTSTATUS:
+					qual = false;
+					break;
+				case SCA_InputEvent::KX_JUSTRELEASED:
+					qual_change = true;
+					qual = false;
+					break;
+				case SCA_InputEvent::KX_JUSTACTIVATED:
+					qual_change = true;
+				case SCA_InputEvent::KX_ACTIVE:
+					/* do nothing */
+					break;
 			}
 		}
 		if (m_qual2 > 0 && qual==true) {
 			const SCA_InputEvent & qualevent = inputdev->GetEventValue((SCA_IInputDevice::KX_EnumInputs) m_qual2);
 			/* copy of above */
-			switch(qualevent.m_status) {
-			case SCA_InputEvent::KX_NO_INPUTSTATUS:
-				qual = false;
-				break;
-			case SCA_InputEvent::KX_JUSTRELEASED:
-				qual_change = true;
-				qual = false;
-				break;
-			case SCA_InputEvent::KX_JUSTACTIVATED:
-				qual_change = true;
-			case SCA_InputEvent::KX_ACTIVE:
-				/* do nothing */
-				break;
+			switch (qualevent.m_status) {
+				case SCA_InputEvent::KX_NO_INPUTSTATUS:
+					qual = false;
+					break;
+				case SCA_InputEvent::KX_JUSTRELEASED:
+					qual_change = true;
+					qual = false;
+					break;
+				case SCA_InputEvent::KX_JUSTACTIVATED:
+					qual_change = true;
+				case SCA_InputEvent::KX_ACTIVE:
+					/* do nothing */
+					break;
 			}
 		}
 		/* done reading qualifiers */
@@ -439,17 +439,18 @@ KX_PYMETHODDEF_DOC_O(SCA_KeyboardSensor, getKeyStatus,
 		return NULL;
 	}
 	
-	int keycode = PyLong_AsSsize_t(value);
+	SCA_IInputDevice::KX_EnumInputs keycode = (SCA_IInputDevice::KX_EnumInputs)PyLong_AsLong(value);
 	
-	if ((keycode < SCA_IInputDevice::KX_BEGINKEY)
-		|| (keycode > SCA_IInputDevice::KX_ENDKEY)) {
+	if ((keycode < SCA_IInputDevice::KX_BEGINKEY) ||
+	    (keycode > SCA_IInputDevice::KX_ENDKEY))
+	{
 		PyErr_SetString(PyExc_AttributeError, "sensor.getKeyStatus(int): Keyboard Sensor, invalid keycode specified!");
 		return NULL;
 	}
 	
 	SCA_IInputDevice* inputdev = ((SCA_KeyboardManager *)m_eventmgr)->GetInputDevice();
-	const SCA_InputEvent & inevent = inputdev->GetEventValue((SCA_IInputDevice::KX_EnumInputs) keycode);
-	return PyLong_FromSsize_t(inevent.m_status);
+	const SCA_InputEvent & inevent = inputdev->GetEventValue(keycode);
+	return PyLong_FromLong(inevent.m_status);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -497,7 +498,7 @@ PyAttributeDef SCA_KeyboardSensor::Attributes[] = {
 
 PyObject *SCA_KeyboardSensor::pyattr_get_events(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
-	SCA_KeyboardSensor* self= static_cast<SCA_KeyboardSensor*>(self_v);
+	SCA_KeyboardSensor* self = static_cast<SCA_KeyboardSensor*>(self_v);
 	
 	SCA_IInputDevice* inputdev = ((SCA_KeyboardManager *)self->m_eventmgr)->GetInputDevice();
 
@@ -509,8 +510,8 @@ PyObject *SCA_KeyboardSensor::pyattr_get_events(void *self_v, const KX_PYATTRIBU
 		if (inevent.m_status != SCA_InputEvent::KX_NO_INPUTSTATUS)
 		{
 			PyObject *keypair = PyList_New(2);
-			PyList_SET_ITEM(keypair,0,PyLong_FromSsize_t(i));
-			PyList_SET_ITEM(keypair,1,PyLong_FromSsize_t(inevent.m_status));
+			PyList_SET_ITEM(keypair,0,PyLong_FromLong(i));
+			PyList_SET_ITEM(keypair,1,PyLong_FromLong(inevent.m_status));
 			PyList_Append(resultlist,keypair);
 		}
 	}

@@ -181,7 +181,7 @@ class CLASS_atom_cluster_atom(object):
         
 def DEF_atom_read_atom_data():
 
-    ATOM_CLUSTER_ELEMENTS[:] = []
+    del ATOM_CLUSTER_ELEMENTS[:]
 
     for item in ATOM_CLUSTER_ELEMENTS_DEFAULT:
 
@@ -1085,14 +1085,14 @@ def create_square_lattice(ctype, size, skin, lattice):
 # Note that the icosahedron needs a special treatment since it requires a
 # non-common crystal lattice. The faces are (111) facets and the geometry
 # is five-fold. So far, a max size of 8217 atoms can be chosen.
-# More details can be found in:
+# More details about icosahedron shaped clusters can be found in:
 #
 # 1. C. Mottet, G. Tréglia, B. Legrand, Surface Science 383 (1997) L719-L727
 # 2. C. R. Henry, Surface Science Reports 31 (1998) 231-325
 
-# This routine is a translation from an existing Fortran code into Python.
-# The Fortran code has been created by Christine Mottet and translated by
-# Clemens Barth. 
+# The following code is a translation from an existing Fortran code into Python.
+# The Fortran code has been created by Christine Mottet and translated by me
+# (Clemens Barth). 
 
 # Although a couple of code lines are non-typical for Python, it is best to
 # leave the code as is.

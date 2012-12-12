@@ -196,18 +196,18 @@ int BKE_object_support_modifier_type_check(Object *ob, int modifier_type)
 	return TRUE;
 }
 
-void BKE_object_link_modifiers(struct Object *ob, struct Object *from)
+void BKE_object_link_modifiers(struct Object *ob_dst, struct Object *ob_src)
 {
 	ModifierData *md;
-	BKE_object_free_modifiers(ob);
+	BKE_object_free_modifiers(ob_dst);
 
-	if (!ELEM5(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_LATTICE)) {
+	if (!ELEM5(ob_dst->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_LATTICE)) {
 		/* only objects listed above can have modifiers and linking them to objects
 		 * which doesn't have modifiers stack is quite silly */
 		return;
 	}
 
-	for (md = from->modifiers.first; md; md = md->next) {
+	for (md = ob_src->modifiers.first; md; md = md->next) {
 		ModifierData *nmd = NULL;
 
 		if (ELEM4(md->type,
@@ -219,16 +219,18 @@ void BKE_object_link_modifiers(struct Object *ob, struct Object *from)
 			continue;
 		}
 
-		if (!BKE_object_support_modifier_type_check(ob, md->type))
+		if (!BKE_object_support_modifier_type_check(ob_dst, md->type))
 			continue;
 
 		nmd = modifier_new(md->type);
+		BLI_strncpy(nmd->name, md->name, sizeof(nmd->name));
 		modifier_copyData(md, nmd);
-		BLI_addtail(&ob->modifiers, nmd);
+		BLI_addtail(&ob_dst->modifiers, nmd);
+		modifier_unique_name(&ob_dst->modifiers, nmd);
 	}
 
-	BKE_object_copy_particlesystems(ob, from);
-	BKE_object_copy_softbody(ob, from);
+	BKE_object_copy_particlesystems(ob_dst, ob_src);
+	BKE_object_copy_softbody(ob_dst, ob_src);
 
 	/* TODO: smoke?, cloth? */
 }
@@ -300,11 +302,11 @@ void BKE_object_free(Object *ob)
 	
 	BKE_object_free_display(ob);
 	
-	/* disconnect specific data */
+	/* disconnect specific data, but not for lib data (might be indirect data, can get relinked) */
 	if (ob->data) {
 		ID *id = ob->data;
 		id->us--;
-		if (id->us == 0) {
+		if (id->us == 0 && id->lib == NULL) {
 			switch (ob->type) {
 				case OB_MESH:
 					BKE_mesh_unlink((Mesh *)id);
@@ -454,7 +456,7 @@ void BKE_object_unlink(Object *ob)
 				if (pchan->custom == ob)
 					pchan->custom = NULL;
 			}
-		} 
+		}
 		else if (ELEM(OB_MBALL, ob->type, obt->type)) {
 			if (BKE_mball_is_basis_for(obt, ob))
 				obt->recalc |= OB_RECALC_DATA;
@@ -689,8 +691,8 @@ void BKE_object_unlink(Object *ob)
 
 					if (so->treestore) {
 						TreeStoreElem *tselem = so->treestore->data;
-						int a;
-						for (a = 0; a < so->treestore->usedelem; a++, tselem++) {
+						int i;
+						for (i = 0; i < so->treestore->usedelem; i++, tselem++) {
 							if (tselem->id == (ID *)ob) tselem->id = NULL;
 						}
 					}
@@ -854,7 +856,9 @@ Object *BKE_object_add_only_object(int type, const char *name)
 	ob->step_height = 0.15f;
 	ob->jump_speed = 10.0f;
 	ob->fall_speed = 55.0f;
-	
+	ob->col_group = 0x01;
+	ob->col_mask = 0xff;
+
 	/* NT fluid sim defaults */
 	ob->fluidsimSettings = NULL;
 
@@ -1484,14 +1488,14 @@ void BKE_object_make_proxy(Object *ob, Object *target, Object *gob)
 
 /* *************** CALC ****************** */
 
-void BKE_object_scale_to_mat3(Object *ob, float mat[][3])
+void BKE_object_scale_to_mat3(Object *ob, float mat[3][3])
 {
 	float vec[3];
 	mul_v3_v3v3(vec, ob->size, ob->dscale);
 	size_to_mat3(mat, vec);
 }
 
-void BKE_object_rot_to_mat3(Object *ob, float mat[][3])
+void BKE_object_rot_to_mat3(Object *ob, float mat[3][3])
 {
 	float rmat[3][3], dmat[3][3];
 	
@@ -1525,7 +1529,7 @@ void BKE_object_rot_to_mat3(Object *ob, float mat[][3])
 	mul_m3_m3m3(mat, dmat, rmat);
 }
 
-void BKE_object_mat3_to_rot(Object *ob, float mat[][3], short use_compat)
+void BKE_object_mat3_to_rot(Object *ob, float mat[3][3], short use_compat)
 {
 	switch (ob->rotmode) {
 		case ROT_MODE_QUAT:
@@ -1628,7 +1632,7 @@ void BKE_object_tfm_protected_restore(Object *ob,
 }
 
 /* see BKE_pchan_apply_mat4() for the equivalent 'pchan' function */
-void BKE_object_apply_mat4(Object *ob, float mat[][4], const short use_compat, const short use_parent)
+void BKE_object_apply_mat4(Object *ob, float mat[4][4], const short use_compat, const short use_parent)
 {
 	float rot[3][3];
 
@@ -1657,7 +1661,7 @@ void BKE_object_apply_mat4(Object *ob, float mat[][4], const short use_compat, c
 	/* BKE_object_mat3_to_rot handles delta rotations */
 }
 
-void BKE_object_to_mat3(Object *ob, float mat[][3]) /* no parent */
+void BKE_object_to_mat3(Object *ob, float mat[3][3]) /* no parent */
 {
 	float smat[3][3];
 	float rmat[3][3];
@@ -1671,7 +1675,7 @@ void BKE_object_to_mat3(Object *ob, float mat[][3]) /* no parent */
 	mul_m3_m3m3(mat, rmat, smat);
 }
 
-void BKE_object_to_mat4(Object *ob, float mat[][4])
+void BKE_object_to_mat4(Object *ob, float mat[4][4])
 {
 	float tmat[3][3];
 	
@@ -1685,7 +1689,7 @@ void BKE_object_to_mat4(Object *ob, float mat[][4])
 /* extern */
 int enable_cu_speed = 1;
 
-static void ob_parcurve(Scene *scene, Object *ob, Object *par, float mat[][4])
+static void ob_parcurve(Scene *scene, Object *ob, Object *par, float mat[4][4])
 {
 	Curve *cu;
 	float vec[4], dir[3], quat[4], radius, ctime;
@@ -1769,7 +1773,7 @@ static void ob_parcurve(Scene *scene, Object *ob, Object *par, float mat[][4])
 	}
 }
 
-static void ob_parbone(Object *ob, Object *par, float mat[][4])
+static void ob_parbone(Object *ob, Object *par, float mat[4][4])
 {	
 	bPoseChannel *pchan;
 	float vec[3];
@@ -1781,7 +1785,7 @@ static void ob_parbone(Object *ob, Object *par, float mat[][4])
 	
 	/* Make sure the bone is still valid */
 	pchan = BKE_pose_channel_find_name(par->pose, ob->parsubstr);
-	if (!pchan) {
+	if (!pchan || !pchan->bone) {
 		printf("Object %s with Bone parent: bone %s doesn't exist\n", ob->id.name + 2, ob->parsubstr);
 		unit_m4(mat);
 		return;
@@ -1899,7 +1903,7 @@ static void give_parvert(Object *par, int nr, float vec[3])
 	}
 }
 
-static void ob_parvert3(Object *ob, Object *par, float mat[][4])
+static void ob_parvert3(Object *ob, Object *par, float mat[4][4])
 {
 	float cmat[3][3], v1[3], v2[3], v3[3], q[4];
 
@@ -1927,7 +1931,7 @@ static void ob_parvert3(Object *ob, Object *par, float mat[][4])
 	}
 }
 
-static void solve_parenting(Scene *scene, Object *ob, Object *par, float obmat[][4], float slowmat[][4], int simul)
+static void solve_parenting(Scene *scene, Object *ob, Object *par, float obmat[4][4], float slowmat[4][4], int simul)
 {
 	float totmat[4][4];
 	float tmat[4][4];
@@ -2300,11 +2304,9 @@ void BKE_object_minmax(Object *ob, float min_r[3], float max_r[3], const short u
 				bPoseChannel *pchan;
 
 				for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
-
-					if ((use_hidden == FALSE) && (PBONE_VISIBLE(arm, pchan->bone) == FALSE)) {
-						/* pass */
-					}
-					else {
+					/* XXX pchan->bone may be NULL for duplicated bones, see duplicateEditBoneObjects() comment
+					 *     (editarmature.c:2592)... Skip in this case too! */
+					if (pchan->bone && !((use_hidden == FALSE) && (PBONE_VISIBLE(arm, pchan->bone) == FALSE))) {
 						mul_v3_m4v3(vec, ob->obmat, pchan->pose_head);
 						minmax_v3v3_v3(min_r, max_r, vec);
 						mul_v3_m4v3(vec, ob->obmat, pchan->pose_tail);
@@ -2573,9 +2575,7 @@ void BKE_object_handle_update(Scene *scene, Object *ob)
 		if (ob->recalc & OB_RECALC_DATA) {
 			ID *data_id = (ID *)ob->data;
 			AnimData *adt = BKE_animdata_from_id(data_id);
-			float ctime = (float)scene->r.cfra; // XXX this is bad...
-			ListBase pidlist;
-			PTCacheID *pid;
+			float ctime = (float)scene->r.cfra;  /* XXX this is bad... */
 			
 			if (G.debug & G_DEBUG)
 				printf("recalcdata %s\n", ob->id.name + 2);
@@ -2656,6 +2656,8 @@ void BKE_object_handle_update(Scene *scene, Object *ob)
 					}
 				}
 			}
+			else if (ob->type == OB_LAMP)
+				lamp_drivers_update(scene, ob->data, ctime);
 			
 			/* particles */
 			if (ob->particlesystem.first) {
@@ -2698,26 +2700,8 @@ void BKE_object_handle_update(Scene *scene, Object *ob)
 						psys_get_modifier(ob, psys)->flag &= ~eParticleSystemFlag_psys_updated;
 				}
 			}
-
-			/* check if quick cache is needed */
-			BKE_ptcache_ids_from_object(&pidlist, ob, scene, MAX_DUPLI_RECUR);
-
-			for (pid = pidlist.first; pid; pid = pid->next) {
-				if ((pid->cache->flag & PTCACHE_BAKED) ||
-				    (pid->cache->flag & PTCACHE_QUICK_CACHE) == 0)
-				{
-					continue;
-				}
-
-				if (pid->cache->flag & PTCACHE_OUTDATED || (pid->cache->flag & PTCACHE_SIMULATION_VALID) == 0) {
-					scene->physics_settings.quick_cache_step =
-					        scene->physics_settings.quick_cache_step ?
-					        mini(scene->physics_settings.quick_cache_step, pid->cache->step) :
-					        pid->cache->step;
-				}
-			}
-
-			BLI_freelistN(&pidlist);
+			
+			/* quick cache removed */
 		}
 
 		/* the no-group proxy case, we call update */

@@ -35,7 +35,10 @@
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-#include "BLI_dynstr.h"
+
+#ifndef MATH_STANDALONE
+#  include "BLI_dynstr.h"
+#endif
 
 #define MAX_DIMENSIONS 4
 
@@ -1100,12 +1103,12 @@ static PyObject *Vector_project(VectorObject *self, PyObject *value)
 	if (BaseMath_ReadCallback(self) == -1)
 		return NULL;
 
-	//get dot products
+	/* get dot products */
 	for (x = 0; x < size; x++) {
 		dot += (double)(self->vec[x] * tvec[x]);
 		dot2 += (double)(tvec[x] * tvec[x]);
 	}
-	//projection
+	/* projection */
 	dot /= dot2;
 	for (x = 0; x < size; x++) {
 		vec[x] = (float)dot * tvec[x];
@@ -1231,6 +1234,7 @@ static PyObject *Vector_repr(VectorObject *self)
 	return ret;
 }
 
+#ifndef MATH_STANDALONE
 static PyObject *Vector_str(VectorObject *self)
 {
 	int i;
@@ -1252,7 +1256,7 @@ static PyObject *Vector_str(VectorObject *self)
 
 	return mathutils_dynstr_to_py(ds); /* frees ds */
 }
-
+#endif
 
 /* Sequence Protocol */
 /* sequence length len(vector) */
@@ -1976,7 +1980,7 @@ static PyObject *Vector_subscript(VectorObject *self, PyObject *item)
 	else if (PySlice_Check(item)) {
 		Py_ssize_t start, stop, step, slicelength;
 
-		if (PySlice_GetIndicesEx((void *)item, self->size, &start, &stop, &step, &slicelength) < 0)
+		if (PySlice_GetIndicesEx(item, self->size, &start, &stop, &step, &slicelength) < 0)
 			return NULL;
 
 		if (slicelength <= 0) {
@@ -2012,7 +2016,7 @@ static int Vector_ass_subscript(VectorObject *self, PyObject *item, PyObject *va
 	else if (PySlice_Check(item)) {
 		Py_ssize_t start, stop, step, slicelength;
 
-		if (PySlice_GetIndicesEx((void *)item, self->size, &start, &stop, &step, &slicelength) < 0)
+		if (PySlice_GetIndicesEx(item, self->size, &start, &stop, &step, &slicelength) < 0)
 			return -1;
 
 		if (step == 1)
@@ -2709,11 +2713,11 @@ static int row_vector_multiplication(float r_vec[MAX_DIMENSIONS], VectorObject *
 	memcpy(vec_cpy, vec->vec, vec_size * sizeof(float));
 
 	r_vec[3] = 1.0f;
-	//muliplication
+	/* muliplication */
 	for (col = 0; col < mat->num_col; col++) {
 		double dot = 0.0;
 		for (row = 0; row < mat->num_row; row++) {
-			dot += MATRIX_ITEM(mat, row, col) * vec_cpy[row];
+			dot += (double)(MATRIX_ITEM(mat, row, col) * vec_cpy[row]);
 		}
 		r_vec[z++] = (float)dot;
 	}
@@ -2733,7 +2737,7 @@ static PyObject *Vector_negate(VectorObject *self)
 
 	negate_vn(self->vec, self->size);
 
-	(void)BaseMath_WriteCallback(self); // already checked for error
+	(void)BaseMath_WriteCallback(self);  /* already checked for error */
 	Py_RETURN_NONE;
 }
 
@@ -2784,7 +2788,7 @@ static struct PyMethodDef Vector_methods[] = {
 /* Note
  * Py_TPFLAGS_CHECKTYPES allows us to avoid casting all types to Vector when coercing
  * but this means for eg that
- * (vec * mat) and (mat * vec) both get sent to Vector_mul and it neesd to sort out the order
+ * (vec * mat) and (mat * vec) both get sent to Vector_mul and it needs to sort out the order
  */
 
 PyDoc_STRVAR(vector_doc,
@@ -2816,7 +2820,11 @@ PyTypeObject vector_Type = {
 
 	NULL,                       /* hashfunc tp_hash; */
 	NULL,                       /* ternaryfunc tp_call; */
+#ifndef MATH_STANDALONE
 	(reprfunc)Vector_str,       /* reprfunc tp_str; */
+#else
+	NULL,                       /* reprfunc tp_str; */
+#endif
 	NULL,                       /* getattrofunc tp_getattro; */
 	NULL,                       /* setattrofunc tp_setattro; */
 
@@ -2829,10 +2837,10 @@ PyTypeObject vector_Type = {
 	/*** Assigned meaning in release 2.0 ***/
 
 	/* call function for all accessible objects */
-	(traverseproc)BaseMathObject_traverse,  //tp_traverse
+	(traverseproc)BaseMathObject_traverse,  /* tp_traverse */
 
 	/* delete references to contained objects */
-	(inquiry)BaseMathObject_clear,  //tp_clear
+	(inquiry)BaseMathObject_clear,  /* tp_clear */
 
 	/***  Assigned meaning in release 2.1 ***/
 	/*** rich comparisons ***/

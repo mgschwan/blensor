@@ -78,7 +78,9 @@
 
 #include "imbuf.h"
 
-#include "AVI_avi.h"
+#ifdef WITH_AVI
+#  include "AVI_avi.h"
+#endif
 
 #ifdef WITH_QUICKTIME
 #if defined(_WIN32) || defined(__APPLE__)
@@ -185,6 +187,7 @@ static void an_stringenc(char *string, const char *head, const char *tail, unsig
 	BLI_stringenc(string, head, tail, numlen, pic);
 }
 
+#ifdef WITH_AVI
 static void free_anim_avi(struct anim *anim)
 {
 #if defined(_WIN32) && !defined(FREE_WINDOWS)
@@ -219,6 +222,7 @@ static void free_anim_avi(struct anim *anim)
 
 	anim->duration = 0;
 }
+#endif  /* WITH_AVI */
 
 #ifdef WITH_FFMPEG
 static void free_anim_ffmpeg(struct anim *anim);
@@ -235,7 +239,10 @@ void IMB_free_anim(struct anim *anim)
 	}
 
 	free_anim_movie(anim);
+
+#ifdef WITH_AVI
 	free_anim_avi(anim);
+#endif
 
 #ifdef WITH_QUICKTIME
 	free_anim_quicktime(anim);
@@ -287,7 +294,7 @@ struct anim *IMB_open_anim(const char *name, int ib_flags, int streamindex, char
 	return(anim);
 }
 
-
+#ifdef WITH_AVI
 static int startavi(struct anim *anim)
 {
 
@@ -397,7 +404,9 @@ static int startavi(struct anim *anim)
 
 	return 0;
 }
+#endif  /* WITH_AVI */
 
+#ifdef WITH_AVI
 static ImBuf *avi_fetchibuf(struct anim *anim, int position)
 {
 	ImBuf *ibuf = NULL;
@@ -447,6 +456,7 @@ static ImBuf *avi_fetchibuf(struct anim *anim, int position)
 
 	return ibuf;
 }
+#endif  /* WITH_AVI */
 
 #ifdef WITH_FFMPEG
 
@@ -811,6 +821,14 @@ static int ffmpeg_decode_video_frame(struct anim *anim)
 	}
 	
 	if (rval == AVERROR_EOF) {
+		/* this sets size and data fields to zero,
+		   which is necessary to decode the remaining data
+		   in the decoder engine after EOF. It also prevents a memory
+		   leak, since av_read_frame spills out a full size packet even
+		   on EOF... (and: it's save to call on NULL packets) */
+
+		av_free_packet(&anim->next_packet);
+
 		anim->next_packet.size = 0;
 		anim->next_packet.data = 0;
 
@@ -1206,7 +1224,11 @@ static ImBuf *anim_getnew(struct anim *anim)
 	if (anim == NULL) return(NULL);
 
 	free_anim_movie(anim);
+
+#ifdef WITH_AVI
 	free_anim_avi(anim);
+#endif
+
 #ifdef WITH_QUICKTIME
 	free_anim_quicktime(anim);
 #endif
@@ -1219,7 +1241,7 @@ static ImBuf *anim_getnew(struct anim *anim)
 
 
 	if (anim->curtype != 0) return (NULL);
-	anim->curtype = imb_get_anim_type(anim->name);	
+	anim->curtype = imb_get_anim_type(anim->name);
 
 	switch (anim->curtype) {
 		case ANIM_SEQUENCE:
@@ -1233,6 +1255,7 @@ static ImBuf *anim_getnew(struct anim *anim)
 			if (startmovie(anim)) return (NULL);
 			ibuf = IMB_allocImBuf(anim->x, anim->y, 24, 0); /* fake */
 			break;
+#ifdef WITH_AVI
 		case ANIM_AVI:
 			if (startavi(anim)) {
 				printf("couldnt start avi\n");
@@ -1240,6 +1263,7 @@ static ImBuf *anim_getnew(struct anim *anim)
 			}
 			ibuf = IMB_allocImBuf(anim->x, anim->y, 24, 0);
 			break;
+#endif
 #ifdef WITH_QUICKTIME
 		case ANIM_QTIME:
 			if (startquicktime(anim)) return (0);
@@ -1331,11 +1355,13 @@ struct ImBuf *IMB_anim_absolute(struct anim *anim, int position,
 				IMB_convert_rgba_to_abgr(ibuf);
 			}
 			break;
+#ifdef WITH_AVI
 		case ANIM_AVI:
 			ibuf = avi_fetchibuf(anim, position);
 			if (ibuf)
 				anim->curposition = position;
 			break;
+#endif
 #ifdef WITH_QUICKTIME
 		case ANIM_QTIME:
 			ibuf = qtime_fetchibuf(anim, position);

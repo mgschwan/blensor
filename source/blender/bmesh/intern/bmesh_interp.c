@@ -172,11 +172,9 @@ void BM_face_interp_from_face(BMesh *bm, BMFace *target, BMFace *source)
 	BMLoop *l_iter;
 	BMLoop *l_first;
 
-	void **blocks = NULL;
-	float (*cos)[3] = NULL, *w = NULL;
-	BLI_array_fixedstack_declare(cos,     BM_NGON_STACK_SIZE, source->len, __func__);
-	BLI_array_fixedstack_declare(w,       BM_NGON_STACK_SIZE, source->len, __func__);
-	BLI_array_fixedstack_declare(blocks,  BM_NGON_STACK_SIZE, source->len, __func__);
+	void **blocks   = BLI_array_alloca(blocks, source->len);
+	float (*cos)[3] = BLI_array_alloca(cos,    source->len);
+	float *w        = BLI_array_alloca(w,      source->len);
 	int i;
 	
 	BM_elem_attrs_copy(bm, bm, source, target);
@@ -196,10 +194,6 @@ void BM_face_interp_from_face(BMesh *bm, BMFace *target, BMFace *source)
 		CustomData_bmesh_interp(&bm->ldata, blocks, w, NULL, source->len, l_iter->head.data);
 		i++;
 	} while ((l_iter = l_iter->next) != l_first);
-
-	BLI_array_fixedstack_free(cos);
-	BLI_array_fixedstack_free(w);
-	BLI_array_fixedstack_free(blocks);
 }
 
 /**
@@ -224,10 +218,8 @@ static int compute_mdisp_quad(BMLoop *l, float v1[3], float v2[3], float v3[3], 
 	/* computer center */
 	BM_face_calc_center_mean(l->f, cent);
 
-	add_v3_v3v3(p, l->prev->v->co, l->v->co);
-	mul_v3_fl(p, 0.5);
-	add_v3_v3v3(n, l->next->v->co, l->v->co);
-	mul_v3_fl(n, 0.5);
+	mid_v3_v3v3(p, l->prev->v->co, l->v->co);
+	mid_v3_v3v3(n, l->next->v->co, l->v->co);
 	
 	copy_v3_v3(v1, cent);
 	copy_v3_v3(v2, p);
@@ -257,7 +249,7 @@ static float quad_coord(float aa[3], float bb[3], float cc[3], float dd[3], int 
 
 		f1 = fabsf(f1);
 		f2 = fabsf(f2);
-		f1 = minf(f1, f2);
+		f1 = min_ff(f1, f2);
 		CLAMP(f1, 0.0f, 1.0f + FLT_EPSILON);
 	}
 	else {
@@ -345,9 +337,9 @@ static int mdisp_in_mdispquad(BMLoop *l, BMLoop *tl, float p[3], float *x, float
 	float v1[3], v2[3], c[3], v3[3], v4[3], e1[3], e2[3];
 	float eps = FLT_EPSILON * 4000;
 	
-	if (len_v3(l->v->no) == 0.0f)
+	if (is_zero_v3(l->v->no))
 		BM_vert_normal_update_all(l->v);
-	if (len_v3(tl->v->no) == 0.0f)
+	if (is_zero_v3(tl->v->no))
 		BM_vert_normal_update_all(tl->v);
 
 	compute_mdisp_quad(tl, v1, v2, v3, v4, e1, e2);
@@ -490,7 +482,7 @@ static void bm_loop_interp_mdisps(BMesh *bm, BMLoop *target, BMFace *source)
 }
 
 /**
- * smoothes boundaries between multires grids,
+ * smooths boundaries between multires grids,
  * including some borders in adjacent faces
  */
 void BM_face_multires_bounds_smooth(BMesh *bm, BMFace *f)
@@ -525,8 +517,7 @@ void BM_face_multires_bounds_smooth(BMesh *bm, BMFace *f)
 
 		sides = (int)sqrt(mdp->totdisp);
 		for (y = 0; y < sides; y++) {
-			add_v3_v3v3(co1, mdn->disps[y * sides], mdl->disps[y]);
-			mul_v3_fl(co1, 0.5);
+			mid_v3_v3v3(co1, mdn->disps[y * sides], mdl->disps[y]);
 
 			copy_v3_v3(mdn->disps[y * sides], co1);
 			copy_v3_v3(mdl->disps[y], co1);
@@ -612,14 +603,12 @@ void BM_loop_interp_from_face(BMesh *bm, BMLoop *target, BMFace *source,
 {
 	BMLoop *l_iter;
 	BMLoop *l_first;
-	void **blocks = NULL;
-	void **vblocks = NULL;
-	float (*cos)[3] = NULL, co[3], *w = NULL;
+	void **vblocks  = BLI_array_alloca(vblocks, do_vertex ? source->len : 0);
+	void **blocks   = BLI_array_alloca(blocks,  source->len);
+	float (*cos)[3] = BLI_array_alloca(cos,     source->len);
+	float *w        = BLI_array_alloca(w,       source->len);
+	float co[3];
 	float cent[3] = {0.0f, 0.0f, 0.0f};
-	BLI_array_fixedstack_declare(cos,      BM_NGON_STACK_SIZE, source->len, __func__);
-	BLI_array_fixedstack_declare(w,        BM_NGON_STACK_SIZE, source->len, __func__);
-	BLI_array_fixedstack_declare(blocks,   BM_NGON_STACK_SIZE, source->len, __func__);
-	BLI_array_fixedstack_declare(vblocks,  BM_NGON_STACK_SIZE, do_vertex ? source->len : 0, __func__);
 	int i, ax, ay;
 
 	BM_elem_attrs_copy(bm, bm, source, target->f);
@@ -670,12 +659,7 @@ void BM_loop_interp_from_face(BMesh *bm, BMLoop *target, BMFace *source,
 	CustomData_bmesh_interp(&bm->ldata, blocks, w, NULL, source->len, target->head.data);
 	if (do_vertex) {
 		CustomData_bmesh_interp(&bm->vdata, vblocks, w, NULL, source->len, target->v->head.data);
-		BLI_array_fixedstack_free(vblocks);
 	}
-
-	BLI_array_fixedstack_free(cos);
-	BLI_array_fixedstack_free(w);
-	BLI_array_fixedstack_free(blocks);
 
 	if (do_multires) {
 		if (CustomData_has_layer(&bm->ldata, CD_MDISPS)) {
@@ -689,12 +673,10 @@ void BM_vert_interp_from_face(BMesh *bm, BMVert *v, BMFace *source)
 {
 	BMLoop *l_iter;
 	BMLoop *l_first;
-	void **blocks = NULL;
-	float (*cos)[3] = NULL, *w = NULL;
+	void **blocks   = BLI_array_alloca(blocks, source->len);
+	float (*cos)[3] = BLI_array_alloca(cos,    source->len);
+	float *w        = BLI_array_alloca(w,      source->len);
 	float cent[3] = {0.0f, 0.0f, 0.0f};
-	BLI_array_fixedstack_declare(cos,      BM_NGON_STACK_SIZE, source->len, __func__);
-	BLI_array_fixedstack_declare(w,        BM_NGON_STACK_SIZE, source->len, __func__);
-	BLI_array_fixedstack_declare(blocks,   BM_NGON_STACK_SIZE, source->len, __func__);
 	int i;
 
 	i = 0;
@@ -721,10 +703,6 @@ void BM_vert_interp_from_face(BMesh *bm, BMVert *v, BMFace *source)
 	/* interpolate */
 	interp_weights_poly_v3(w, cos, source->len, v->co);
 	CustomData_bmesh_interp(&bm->vdata, blocks, w, NULL, source->len, v->head.data);
-
-	BLI_array_fixedstack_free(cos);
-	BLI_array_fixedstack_free(w);
-	BLI_array_fixedstack_free(blocks);
 }
 
 static void update_data_blocks(BMesh *bm, CustomData *olddata, CustomData *data)

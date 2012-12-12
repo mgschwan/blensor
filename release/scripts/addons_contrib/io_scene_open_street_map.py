@@ -246,7 +246,7 @@ def read(context, filepath, scale=100.0, tag=False, utm=False) :
     bm.to_mesh(me)
 
     # fast approximation of utm for not too big area
-    if utm == False :
+    if utm is False :
         global_matrix = Matrix(((0.65, 0.0, 0.0, 0.0),
                                 (0.0, 1.0, 0.0, 0.0),
                                 (0.0, 0.0, 1.0, 0.0),

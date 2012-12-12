@@ -27,7 +27,7 @@
 /* defines VIEW3D_OT_fly modal operator */
 
 //#define NDOF_FLY_DEBUG
-//#define NDOF_FLY_DRAW_TOOMUCH // is this needed for ndof? - commented so redraw doesnt thrash - campbell
+//#define NDOF_FLY_DRAW_TOOMUCH  /* is this needed for ndof? - commented so redraw doesnt thrash - campbell */
 #include "DNA_anim_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
@@ -284,6 +284,11 @@ static int initFlyInfo(bContext *C, FlyInfo *fly, wmOperator *op, wmEvent *event
 	puts("\n-- fly begin --");
 #endif
 
+	/* sanity check: for rare but possible case (if lib-linking the camera fails) */
+	if ((fly->rv3d->persp == RV3D_CAMOB) && (fly->v3d->camera == NULL)) {
+		fly->rv3d->persp = RV3D_PERSP;
+	}
+
 	if (fly->rv3d->persp == RV3D_CAMOB && fly->v3d->camera->id.lib) {
 		BKE_report(op->reports, RPT_ERROR, "Cannot fly a camera from an external library");
 		return FALSE;
@@ -364,8 +369,6 @@ static int initFlyInfo(bContext *C, FlyInfo *fly, wmOperator *op, wmEvent *event
 		}
 
 		/* store the original camera loc and rot */
-		/* TODO. axis angle etc */
-
 		fly->obtfm = BKE_object_tfm_backup(ob_back);
 
 		BKE_object_where_is_calc(fly->scene, fly->v3d->camera);
@@ -421,7 +424,6 @@ static int flyEnd(bContext *C, FlyInfo *fly)
 	ED_region_draw_cb_exit(fly->ar->type, fly->draw_handle_pixel);
 
 	rv3d->dist = fly->dist_backup;
-
 	if (fly->state == FLY_CANCEL) {
 		/* Revert to original view? */
 		if (fly->persp_backup == RV3D_CAMOB) { /* a camera view */
@@ -436,12 +438,16 @@ static int flyEnd(bContext *C, FlyInfo *fly)
 		else {
 			/* Non Camera we need to reset the view back to the original location bacause the user canceled*/
 			copy_qt_qt(rv3d->viewquat, fly->rot_backup);
-			copy_v3_v3(rv3d->ofs, fly->ofs_backup);
 			rv3d->persp = fly->persp_backup;
 		}
+		/* always, is set to zero otherwise */
+		copy_v3_v3(rv3d->ofs, fly->ofs_backup);
 	}
 	else if (fly->persp_backup == RV3D_CAMOB) { /* camera */
 		DAG_id_tag_update(fly->root_parent ? &fly->root_parent->id : &v3d->camera->id, OB_RECALC_OB);
+		
+		/* always, is set to zero otherwise */
+		copy_v3_v3(rv3d->ofs, fly->ofs_backup);
 	}
 	else { /* not camera */
 
@@ -548,7 +554,7 @@ static void flyEvent(FlyInfo *fly, wmEvent *event)
 				time_wheel = (float)(time_currwheel - fly->time_lastwheel);
 				fly->time_lastwheel = time_currwheel;
 				/* Mouse wheel delays range from (0.5 == slow) to (0.01 == fast) */
-				time_wheel = 1.0f + (10.0f - (20.0f * minf(time_wheel, 0.5f))); /* 0-0.5 -> 0-5.0 */
+				time_wheel = 1.0f + (10.0f - (20.0f * min_ff(time_wheel, 0.5f))); /* 0-0.5 -> 0-5.0 */
 
 				if (fly->speed < 0.0f) {
 					fly->speed = 0.0f;
@@ -566,7 +572,7 @@ static void flyEvent(FlyInfo *fly, wmEvent *event)
 				time_currwheel = PIL_check_seconds_timer();
 				time_wheel = (float)(time_currwheel - fly->time_lastwheel);
 				fly->time_lastwheel = time_currwheel;
-				time_wheel = 1.0f + (10.0f - (20.0f * minf(time_wheel, 0.5f))); /* 0-0.5 -> 0-5.0 */
+				time_wheel = 1.0f + (10.0f - (20.0f * min_ff(time_wheel, 0.5f))); /* 0-0.5 -> 0-5.0 */
 
 				if (fly->speed > 0.0f) {
 					fly->speed = 0;
@@ -790,8 +796,8 @@ static int flyApply(bContext *C, FlyInfo *fly)
 	ymargin = ar->winy / 20.0f;
 
 	// UNUSED
-	// cent_orig[0]= ar->winrct.xmin + ar->winx/2;
-	// cent_orig[1]= ar->winrct.ymin + ar->winy/2;
+	// cent_orig[0] = ar->winrct.xmin + ar->winx / 2;
+	// cent_orig[1] = ar->winrct.ymin + ar->winy / 2;
 
 	{
 
@@ -842,7 +848,7 @@ static int flyApply(bContext *C, FlyInfo *fly)
 #endif
 			time_current = PIL_check_seconds_timer();
 			time_redraw = (float)(time_current - fly->time_lastdraw);
-			time_redraw_clamped = minf(0.05f, time_redraw); /* clamp redraw time to avoid jitter in roll correction */
+			time_redraw_clamped = min_ff(0.05f, time_redraw); /* clamp redraw time to avoid jitter in roll correction */
 			fly->time_lastdraw = time_current;
 
 			/* Scale the time to use shift to scale the speed down- just like

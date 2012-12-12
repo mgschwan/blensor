@@ -216,7 +216,7 @@ def runCleanUp():
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='TOGGLE')
     bpy.ops.mesh.select_all(action='TOGGLE')
-    bpy.ops.mesh.remove_doubles(mergedist=VTX_PRECISION)
+    bpy.ops.mesh.remove_doubles(threshold=VTX_PRECISION)
     bpy.ops.mesh.select_all(action='TOGGLE') #unselect all
 
 

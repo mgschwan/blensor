@@ -135,7 +135,7 @@ int BLI_ghash_remove(GHash *gh, void *key, GHashKeyFreeFP keyfreefp, GHashValFre
 			BLI_mempool_free(gh->entrypool, e);
 
 			/* correct but 'e' isn't used before return */
-			/* e= n; *//*UNUSED*/
+			/* e = n; *//*UNUSED*/
 			if (p) p->next = n;
 			else   gh->buckets[hash] = n;
 
@@ -165,7 +165,7 @@ void *BLI_ghash_pop(GHash *gh, void *key, GHashKeyFreeFP keyfreefp)
 			BLI_mempool_free(gh->entrypool, e);
 
 			/* correct but 'e' isn't used before return */
-			/* e= n; *//*UNUSED*/
+			/* e = n; *//*UNUSED*/
 			if (p) p->next = n;
 			else   gh->buckets[hash] = n;
 
@@ -178,7 +178,7 @@ void *BLI_ghash_pop(GHash *gh, void *key, GHashKeyFreeFP keyfreefp)
 	return NULL;
 }
 
-int BLI_ghash_haskey(GHash *gh, void *key)
+int BLI_ghash_haskey(GHash *gh, const void *key)
 {
 	unsigned int hash = gh->hashfp(key) % gh->nbuckets;
 	Entry *e;
@@ -312,17 +312,25 @@ int BLI_ghashutil_intcmp(const void *a, const void *b)
 		return (a < b) ? -1 : 1;
 }
 
+/**
+ * This function implements the widely used "djb" hash apparently posted
+ * by Daniel Bernstein to comp.lang.c some time ago.  The 32 bit
+ * unsigned hash value starts at 5381 and for each byte 'c' in the
+ * string, is updated: <literal>hash = hash * 33 + c</literal>.  This
+ * function uses the signed value of each byte.
+ *
+ * note: this is the same hash method that glib 2.34.0 uses.
+ */
 unsigned int BLI_ghashutil_strhash(const void *ptr)
 {
-	const char *s = ptr;
-	unsigned int i = 0;
-	unsigned char c;
+	const signed char *p;
+	unsigned int h = 5381;
 
-	while ((c = *s++)) {
-		i = i * 37 + c;
+	for (p = ptr; *p != '\0'; p++) {
+		h = (h << 5) + h + *p;
 	}
 
-	return i;
+	return h;
 }
 int BLI_ghashutil_strcmp(const void *a, const void *b)
 {
@@ -376,4 +384,3 @@ void BLI_ghashutil_pairfree(void *ptr)
 {
 	MEM_freeN((void *)ptr);
 }
-

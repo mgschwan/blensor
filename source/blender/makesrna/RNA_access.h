@@ -148,6 +148,7 @@ extern StructRNA RNA_CompositorNodeLevels;
 extern StructRNA RNA_CompositorNodeLumaMatte;
 extern StructRNA RNA_CompositorNodeMapUV;
 extern StructRNA RNA_CompositorNodeMapValue;
+extern StructRNA RNA_CompositorNodeMapRange;
 extern StructRNA RNA_CompositorNodeMath;
 extern StructRNA RNA_CompositorNodeMask;
 extern StructRNA RNA_CompositorNodeMixRGB;
@@ -286,6 +287,7 @@ extern StructRNA RNA_KinematicConstraint;
 extern StructRNA RNA_Lamp;
 extern StructRNA RNA_LampSkySettings;
 extern StructRNA RNA_LampTextureSlot;
+extern StructRNA RNA_LaplacianSmoothModifier;
 extern StructRNA RNA_Lattice;
 extern StructRNA RNA_LatticeModifier;
 extern StructRNA RNA_LatticePoint;
@@ -456,6 +458,7 @@ extern StructRNA RNA_ShaderNodeMath;
 extern StructRNA RNA_ShaderNodeMixRGB;
 extern StructRNA RNA_ShaderNodeNormal;
 extern StructRNA RNA_ShaderNodeOutput;
+extern StructRNA RNA_ShaderNodeScript;
 extern StructRNA RNA_ShaderNodeRGB;
 extern StructRNA RNA_ShaderNodeRGBCurve;
 extern StructRNA RNA_ShaderNodeRGBToBW;
@@ -523,7 +526,6 @@ extern StructRNA RNA_TextBox;
 extern StructRNA RNA_TextCharacterFormat;
 extern StructRNA RNA_TextCurve;
 extern StructRNA RNA_TextLine;
-extern StructRNA RNA_TextMarker;
 extern StructRNA RNA_Texture;
 extern StructRNA RNA_TextureNode;
 extern StructRNA RNA_TextureNodeBricks;
@@ -860,6 +862,7 @@ int RNA_path_resolve_full(PointerRNA *ptr, const char *path,
 
 char *RNA_path_from_ID_to_struct(PointerRNA *ptr);
 char *RNA_path_from_ID_to_property(PointerRNA *ptr, PropertyRNA *prop);
+char *RNA_path_from_ID_python(struct ID *id);
 
 /* Quick name based property access
  *
@@ -960,7 +963,9 @@ void RNA_collection_clear(PointerRNA *ptr, const char *name);
 	}
 
 /* check if the idproperty exists, for operators */
+int RNA_property_is_set_ex(PointerRNA *ptr, PropertyRNA *prop, int use_ghost);
 int RNA_property_is_set(PointerRNA *ptr, PropertyRNA *prop);
+int RNA_struct_property_is_set_ex(PointerRNA *ptr, const char *identifier, int use_ghost);
 int RNA_struct_property_is_set(PointerRNA *ptr, const char *identifier);
 int RNA_property_is_idprop(PropertyRNA *prop);
 
@@ -1029,6 +1034,13 @@ short RNA_type_to_ID_code(StructRNA *type);
 StructRNA *ID_code_to_RNA_type(short idcode);
 
 
+#define RNA_POINTER_INVALIDATE(ptr) {                                         \
+	/* this is checked for validity */                                        \
+	(ptr)->type =                                                             \
+	/* should not be needed but prevent bad pointer access, just in case */   \
+	(ptr)->id.data = NULL;                                                    \
+} (void)0
+
 /* macro which inserts the function name */
 #if defined __GNUC__ || defined __sun
 #  define RNA_warning(format, args ...) _RNA_warning("%s: " format "\n", __func__, ##args)
@@ -1041,6 +1053,11 @@ void _RNA_warning(const char *format, ...)
 __attribute__ ((format(printf, 1, 2)))
 #endif
 ;
+
+/* Equals test (skips pointers and collections) */
+
+int RNA_property_equals(struct PointerRNA *a, struct PointerRNA *b, struct PropertyRNA *prop);
+int RNA_struct_equals(struct PointerRNA *a, struct PointerRNA *b);
 
 #ifdef __cplusplus
 }

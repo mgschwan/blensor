@@ -1,24 +1,28 @@
 /*
------------------------------------------------------------------------------
-This source file is part of VideoTexture library
-
-Copyright (c) 2007 The Zdeno Ash Miklas
-
-This program is free software; you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the Free Software
-Foundation; either version 2 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with
-this program; if not, write to the Free Software Foundation, Inc., 59 Temple
-Place - Suite 330, Boston, MA 02111-1307, USA, or go to
-http://www.gnu.org/copyleft/lesser.txt.
------------------------------------------------------------------------------
-*/
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software  Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * Copyright (c) 2007 The Zdeno Ash Miklas
+ *
+ * This source file is part of VideoTexture library
+ *
+ * Contributor(s):
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 /** \file gameengine/VideoTexture/ImageBase.cpp
  *  \ingroup bgevideotex
@@ -49,6 +53,8 @@ extern "C" {
 // constructor
 ImageBase::ImageBase (bool staticSrc) : m_image(NULL), m_imgSize(0),
 m_avail(false), m_scale(false), m_scaleChange(false), m_flip(false),
+m_zbuff(false),
+m_depth(false),
 m_staticSources(staticSrc), m_pyfilter(NULL)
 {
 	m_size[0] = m_size[1] = 0;
@@ -402,6 +408,18 @@ PyObject *Image_getImage (PyImage *self, char * mode)
 			{
 				buffer = BGL_MakeBuffer( GL_BYTE, 1, &dimensions, image);
 			}
+			else if (!strcasecmp(mode, "F"))
+			{
+				// this mode returns the image as an array of float.
+				// This makes sense ONLY for the depth buffer:
+				//   source = VideoTexture.ImageViewport()
+				//   source.depth = True
+				//   depth = VideoTexture.imageToArray(source, 'F')
+
+				// adapt dimension from byte to float
+				dimensions /= sizeof(float);
+				buffer = BGL_MakeBuffer( GL_FLOAT, 1, &dimensions, image);
+			}
 			else 
 			{
 				int i, c, ncolor, pixels;
@@ -531,6 +549,52 @@ int Image_setFlip (PyImage *self, PyObject *value, void *closure)
 	// success
 	return 0;
 }
+
+// get zbuff
+PyObject * Image_getZbuff (PyImage * self, void * closure)
+{
+	if (self->m_image != NULL && self->m_image->getZbuff()) Py_RETURN_TRUE;
+	else Py_RETURN_FALSE;
+}
+
+// set zbuff
+int Image_setZbuff (PyImage * self, PyObject * value, void * closure)
+{
+	// check parameter, report failure
+	if (value == NULL || !PyBool_Check(value))
+	{
+		PyErr_SetString(PyExc_TypeError, "The value must be a bool");
+		return -1;
+	}
+	// set scale
+	if (self->m_image != NULL) self->m_image->setZbuff(value == Py_True);
+	// success
+	return 0;
+}
+
+// get depth
+PyObject * Image_getDepth (PyImage * self, void * closure)
+{
+	if (self->m_image != NULL && self->m_image->getDepth()) Py_RETURN_TRUE;
+	else Py_RETURN_FALSE;
+}
+
+// set depth
+int Image_setDepth (PyImage * self, PyObject * value, void * closure)
+{
+	// check parameter, report failure
+	if (value == NULL || !PyBool_Check(value))
+	{
+		PyErr_SetString(PyExc_TypeError, "The value must be a bool");
+		return -1;
+	}
+	// set scale
+	if (self->m_image != NULL) self->m_image->setDepth(value == Py_True);
+	// success
+	return 0;
+}
+
+
 
 
 // get filter source object

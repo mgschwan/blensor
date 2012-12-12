@@ -346,7 +346,7 @@ void psys_calc_dmcache(Object *ob, DerivedMesh *dm, ParticleSystem *psys)
 	if (!dm->deformedOnly) {
 		/* Will use later to speed up subsurf/derivedmesh */
 		LinkNode *node, *nodedmelem, **nodearray;
-		int totdmelem, totelem, i, *origindex;
+		int totdmelem, totelem, i, *origindex, *origindex_poly = NULL;
 
 		if (psys->part->from == PART_FROM_VERT) {
 			totdmelem= dm->getNumVerts(dm);
@@ -356,23 +356,38 @@ void psys_calc_dmcache(Object *ob, DerivedMesh *dm, ParticleSystem *psys)
 		else { /* FROM_FACE/FROM_VOLUME */
 			totdmelem= dm->getNumTessFaces(dm);
 			totelem= me->totpoly;
-			origindex= dm->getTessFaceDataArray(dm, CD_ORIGINDEX);
+			origindex = dm->getTessFaceDataArray(dm, CD_ORIGINDEX);
+			/* for face lookups we need the poly origindex too */
+			origindex_poly = dm->getPolyDataArray(dm, CD_ORIGINDEX);
+			if (origindex_poly == NULL) {
+				origindex = NULL;
+			}
 		}
 	
 		nodedmelem= MEM_callocN(sizeof(LinkNode)*totdmelem, "psys node elems");
 		nodearray= MEM_callocN(sizeof(LinkNode *)*totelem, "psys node array");
 		
-		for (i=0, node=nodedmelem; i<totdmelem; i++, origindex++, node++) {
-			node->link= SET_INT_IN_POINTER(i);
+		for (i=0, node=nodedmelem; i<totdmelem; i++, node++) {
+			int origindex_final;
+			node->link = SET_INT_IN_POINTER(i);
 
-			if (*origindex != -1) {
-				if (nodearray[*origindex]) {
+			/* may be vertex or face origindex */
+			origindex_final = origindex ? origindex[i] : ORIGINDEX_NONE;
+
+			/* if we have a poly source, do an index lookup */
+			if (origindex_poly && origindex_final != ORIGINDEX_NONE) {
+				origindex_final = origindex_poly[origindex_final];
+			}
+
+			if (origindex_final != ORIGINDEX_NONE) {
+				if (nodearray[origindex_final]) {
 					/* prepend */
-					node->next = nodearray[*origindex];
-					nodearray[*origindex]= node;
+					node->next = nodearray[origindex_final];
+					nodearray[origindex_final] = node;
 				}
-				else
-					nodearray[*origindex]= node;
+				else {
+					nodearray[origindex_final] = node;
+				}
 			}
 		}
 		
@@ -452,13 +467,7 @@ static void distribute_grid(DerivedMesh *dm, ParticleSystem *psys)
 	mv++;
 
 	for (i=1; i<totvert; i++, mv++) {
-		min[0]=MIN2(min[0],mv->co[0]);
-		min[1]=MIN2(min[1],mv->co[1]);
-		min[2]=MIN2(min[2],mv->co[2]);
-
-		max[0]=MAX2(max[0],mv->co[0]);
-		max[1]=MAX2(max[1],mv->co[1]);
-		max[2]=MAX2(max[2],mv->co[2]);
+		minmax_v3v3_v3(min, max, mv->co);
 	}
 
 	sub_v3_v3v3(delta, max, min);
@@ -556,8 +565,7 @@ static void distribute_grid(DerivedMesh *dm, ParticleSystem *psys)
 							else /* store number of intersections */
 								(pa+(int)(lambda*size[a])*a0mul)->hair_index++;
 						}
-						
-						if (mface->v4) {
+						else if (mface->v4) {
 							copy_v3_v3(v4, mvert[mface->v4].co);
 
 							if (isect_axial_line_tri_v3(a, co1, co2, v4, v1, v3, &lambda)) {
@@ -632,10 +640,10 @@ static void hammersley_create(float *out, int n, int seed, float amount)
 	double p, t, offs[2];
 	int k, kk;
 
-	rng = rng_new(31415926 + n + seed);
-	offs[0]= rng_getDouble(rng) + (double)amount;
-	offs[1]= rng_getDouble(rng) + (double)amount;
-	rng_free(rng);
+	rng = BLI_rng_new(31415926 + n + seed);
+	offs[0] = BLI_rng_get_double(rng) + (double)amount;
+	offs[1] = BLI_rng_get_double(rng) + (double)amount;
+	BLI_rng_free(rng);
 
 	for (k = 0; k < n; k++) {
 		t = 0;
@@ -643,8 +651,8 @@ static void hammersley_create(float *out, int n, int seed, float amount)
 			if (kk & 1) /* kk mod 2 = 1 */
 				t += p;
 
-		out[2*k + 0]= fmod((double)k/(double)n + offs[0], 1.0);
-		out[2*k + 1]= fmod(t + offs[1], 1.0);
+		out[2*k + 0] = fmod((double)k/(double)n + offs[0], 1.0);
+		out[2*k + 1] = fmod(t + offs[1], 1.0);
 	}
 }
 
@@ -661,13 +669,13 @@ static void init_mv_jit(float *jit, int num, int seed2, float amount)
 	rad2= (float)(1.0f/((float)num));
 	rad3= (float)sqrt((float)num)/((float)num);
 
-	rng = rng_new(31415926 + num + seed2);
+	rng = BLI_rng_new(31415926 + num + seed2);
 	x= 0;
 		num2 = 2 * num;
 	for (i=0; i<num2; i+=2) {
 	
-		jit[i]= x + amount*rad1*(0.5f - rng_getFloat(rng));
-		jit[i+1]= i/(2.0f*num) + amount*rad1*(0.5f - rng_getFloat(rng));
+		jit[i] = x + amount*rad1*(0.5f - BLI_rng_get_float(rng));
+		jit[i+1] = i/(2.0f*num) + amount*rad1*(0.5f - BLI_rng_get_float(rng));
 		
 		jit[i]-= (float)floor(jit[i]);
 		jit[i+1]-= (float)floor(jit[i+1]);
@@ -684,7 +692,7 @@ static void init_mv_jit(float *jit, int num, int seed2, float amount)
 		BLI_jitterate2(jit, jit2, num, rad2);
 	}
 	MEM_freeN(jit2);
-	rng_free(rng);
+	BLI_rng_free(rng);
 }
 
 static void psys_uv_to_w(float u, float v, int quad, float *w)
@@ -698,21 +706,21 @@ static void psys_uv_to_w(float u, float v, int quad, float *w)
 			u= 1.0f-u;
 	}
 
-	vert[0][0]= 0.0f; vert[0][1]= 0.0f; vert[0][2]= 0.0f;
-	vert[1][0]= 1.0f; vert[1][1]= 0.0f; vert[1][2]= 0.0f;
-	vert[2][0]= 1.0f; vert[2][1]= 1.0f; vert[2][2]= 0.0f;
+	vert[0][0] = 0.0f; vert[0][1] = 0.0f; vert[0][2] = 0.0f;
+	vert[1][0] = 1.0f; vert[1][1] = 0.0f; vert[1][2] = 0.0f;
+	vert[2][0] = 1.0f; vert[2][1] = 1.0f; vert[2][2] = 0.0f;
 
-	co[0]= u;
-	co[1]= v;
-	co[2]= 0.0f;
+	co[0] = u;
+	co[1] = v;
+	co[2] = 0.0f;
 
 	if (quad) {
-		vert[3][0]= 0.0f; vert[3][1]= 1.0f; vert[3][2]= 0.0f;
+		vert[3][0] = 0.0f; vert[3][1] = 1.0f; vert[3][2] = 0.0f;
 		interp_weights_poly_v3( w,vert, 4, co);
 	}
 	else {
 		interp_weights_poly_v3( w,vert, 3, co);
-		w[3]= 0.0f;
+		w[3] = 0.0f;
 	}
 }
 
@@ -804,8 +812,8 @@ static void distribute_threads_exec(ParticleThread *thread, ParticleData *pa, Ch
 			}
 			break;
 		case PART_DISTR_RAND:
-			randu= rng_getFloat(thread->rng);
-			randv= rng_getFloat(thread->rng);
+			randu= BLI_rng_get_float(thread->rng);
+			randv= BLI_rng_get_float(thread->rng);
 			rng_skip_tot -= 2;
 
 			psys_uv_to_w(randu, randv, mface->v4, pa->fuv);
@@ -881,8 +889,8 @@ static void distribute_threads_exec(ParticleThread *thread, ParticleData *pa, Ch
 
 		mf= dm->getTessFaceData(dm, ctx->index[p], CD_MFACE);
 
-		randu= rng_getFloat(thread->rng);
-		randv= rng_getFloat(thread->rng);
+		randu= BLI_rng_get_float(thread->rng);
+		randv= BLI_rng_get_float(thread->rng);
 		rng_skip_tot -= 2;
 
 		psys_uv_to_w(randu, randv, mf->v4, cpa->fuv);
@@ -934,7 +942,7 @@ static void distribute_threads_exec(ParticleThread *thread, ParticleData *pa, Ch
 	}
 
 	if (rng_skip_tot > 0) /* should never be below zero */
-		rng_skip(thread->rng, rng_skip_tot);
+		BLI_rng_skip(thread->rng, rng_skip_tot);
 }
 
 static void *distribute_threads_exec_cb(void *data)
@@ -951,12 +959,12 @@ static void *distribute_threads_exec_cb(void *data)
 
 		for (p=0; p<totpart; p++, cpa++) {
 			if (thread->ctx->skip) /* simplification skip */
-				rng_skip(thread->rng, PSYS_RND_DIST_SKIP * thread->ctx->skip[p]);
+				BLI_rng_skip(thread->rng, PSYS_RND_DIST_SKIP * thread->ctx->skip[p]);
 
 			if ((p+thread->num) % thread->tot == 0)
 				distribute_threads_exec(thread, NULL, cpa, p);
 			else /* thread skip */
-				rng_skip(thread->rng, PSYS_RND_DIST_SKIP);
+				BLI_rng_skip(thread->rng, PSYS_RND_DIST_SKIP);
 		}
 	}
 	else {
@@ -973,8 +981,8 @@ static void *distribute_threads_exec_cb(void *data)
 static int *COMPARE_ORIG_INDEX = NULL;
 static int distribute_compare_orig_index(const void *p1, const void *p2)
 {
-	int index1 = COMPARE_ORIG_INDEX[*(const int*)p1];
-	int index2 = COMPARE_ORIG_INDEX[*(const int*)p2];
+	int index1 = COMPARE_ORIG_INDEX[*(const int *)p1];
+	int index2 = COMPARE_ORIG_INDEX[*(const int *)p2];
 
 	if (index1 < index2)
 		return -1;
@@ -1000,7 +1008,7 @@ static void distribute_invalid(Scene *scene, ParticleSystem *psys, int from)
 
 		if (psys->child && totchild) {
 			for (p=0,cpa=psys->child; p<totchild; p++,cpa++) {
-				cpa->fuv[0]=cpa->fuv[1]=cpa->fuv[2]=cpa->fuv[3]= 0.0;
+				cpa->fuv[0]=cpa->fuv[1]=cpa->fuv[2]=cpa->fuv[3] = 0.0;
 				cpa->foffset= 0.0f;
 				cpa->parent=0;
 				cpa->pa[0]=cpa->pa[1]=cpa->pa[2]=cpa->pa[3]=0;
@@ -1011,7 +1019,7 @@ static void distribute_invalid(Scene *scene, ParticleSystem *psys, int from)
 	else {
 		PARTICLE_P;
 		LOOP_PARTICLES {
-			pa->fuv[0]=pa->fuv[1]=pa->fuv[2]= pa->fuv[3]= 0.0;
+			pa->fuv[0] = pa->fuv[1] = pa->fuv[2] = pa->fuv[3] = 0.0;
 			pa->foffset= 0.0f;
 			pa->num= -1;
 		}
@@ -1113,7 +1121,7 @@ static int distribute_threads_init_data(ParticleThread *threads, Scene *scene, D
 
 		if (from == PART_FROM_VERT) {
 			MVert *mv= dm->getVertDataArray(dm, CD_MVERT);
-			float (*orcodata)[3]= dm->getVertDataArray(dm, CD_ORCO);
+			float (*orcodata)[3] = dm->getVertDataArray(dm, CD_ORCO);
 			int totvert = dm->getNumVerts(dm);
 
 			tree=BLI_kdtree_new(totvert);
@@ -1245,9 +1253,9 @@ static int distribute_threads_init_data(ParticleThread *threads, Scene *scene, D
 	inv_totweight = (totweight > 0.f ? 1.f/totweight : 0.f);
 
 	/* Calculate cumulative weights */
-	element_sum[0]= 0.0f;
+	element_sum[0] = 0.0f;
 	for (i=0; i<totelem; i++)
-		element_sum[i+1]= element_sum[i] + element_weight[i] * inv_totweight;
+		element_sum[i+1] = element_sum[i] + element_weight[i] * inv_totweight;
 	
 	/* Finally assign elements to particles */
 	if ((part->flag&PART_TRAND) || (part->simplify_flag&PART_SIMPLIFY_ENABLE)) {
@@ -1256,9 +1264,9 @@ static int distribute_threads_init_data(ParticleThread *threads, Scene *scene, D
 		for (p=0; p<totpart; p++) {
 			/* In theory element_sum[totelem] should be 1.0, but due to float errors this is not necessarily always true, so scale pos accordingly. */
 			pos= BLI_frand() * element_sum[totelem];
-			particle_element[p]= distribute_binary_search(element_sum, totelem, pos);
-			particle_element[p]= MIN2(totelem-1, particle_element[p]);
-			jitter_offset[particle_element[p]]= pos;
+			particle_element[p] = distribute_binary_search(element_sum, totelem, pos);
+			particle_element[p] = MIN2(totelem-1, particle_element[p]);
+			jitter_offset[particle_element[p]] = pos;
 		}
 	}
 	else {
@@ -1269,16 +1277,16 @@ static int distribute_threads_init_data(ParticleThread *threads, Scene *scene, D
 		i= 0;
 
 		for (p=0; p<totpart; p++, pos+=step) {
-			while ((i < totelem) && (pos > element_sum[i+1]))
+			while ((i < totelem) && (pos > (double)element_sum[i + 1]))
 				i++;
 
-			particle_element[p]= MIN2(totelem-1, i);
+			particle_element[p] = MIN2(totelem-1, i);
 
 			/* avoid zero weight face */
 			if (p == totpart-1 && element_weight[particle_element[p]] == 0.0f)
-				particle_element[p]= particle_element[p-1];
+				particle_element[p] = particle_element[p-1];
 
-			jitter_offset[particle_element[p]]= pos;
+			jitter_offset[particle_element[p]] = pos;
 		}
 	}
 
@@ -1353,7 +1361,7 @@ static int distribute_threads_init_data(ParticleThread *threads, Scene *scene, D
 	
 	seed= 31415926 + ctx->sim.psys->seed;
 	for (i=0; i<totthread; i++) {
-		threads[i].rng= rng_new(seed);
+		threads[i].rng= BLI_rng_new(seed);
 		threads[i].tot= totthread;
 	}
 
@@ -1492,9 +1500,9 @@ void psys_threads_free(ParticleThread *threads)
 	/* threads */
 	for (i=0; i<totthread; i++) {
 		if (threads[i].rng)
-			rng_free(threads[i].rng);
+			BLI_rng_free(threads[i].rng);
 		if (threads[i].rng_path)
-			rng_free(threads[i].rng_path);
+			BLI_rng_free(threads[i].rng_path);
 	}
 
 	MEM_freeN(ctx);
@@ -1583,7 +1591,7 @@ static void get_angular_velocity_vector(short avemode, ParticleKey *state, float
 	switch (avemode) {
 		case PART_AVE_VELOCITY:
 			copy_v3_v3(vec, state->vel);
-			break;	
+			break;
 		case PART_AVE_HORIZONTAL:
 		{
 			float zvec[3];
@@ -1622,9 +1630,9 @@ void psys_get_birth_coordinates(ParticleSimulationData *sim, ParticleData *pa, P
 	ParticleSystem *psys = sim->psys;
 	ParticleSettings *part;
 	ParticleTexture ptex;
-	float fac, phasefac, nor[3]={0,0,0},loc[3],vel[3]={0.0,0.0,0.0},rot[4],q2[4];
-	float r_vel[3],r_ave[3],r_rot[4],vec[3],p_vel[3]={0.0,0.0,0.0};
-	float x_vec[3]={1.0,0.0,0.0}, utan[3]={0.0,1.0,0.0}, vtan[3]={0.0,0.0,1.0}, rot_vec[3]={0.0,0.0,0.0};
+	float fac, phasefac, nor[3] = {0,0,0},loc[3],vel[3] = {0.0,0.0,0.0},rot[4],q2[4];
+	float r_vel[3],r_ave[3],r_rot[4],vec[3],p_vel[3] = {0.0,0.0,0.0};
+	float x_vec[3] = {1.0,0.0,0.0}, utan[3] = {0.0,1.0,0.0}, vtan[3] = {0.0,0.0,1.0}, rot_vec[3] = {0.0,0.0,0.0};
 	float q_phase[4];
 	int p = pa - psys->particles;
 	part=psys->part;
@@ -2132,16 +2140,22 @@ static void psys_update_effectors(ParticleSimulationData *sim)
 	precalc_guides(sim, sim->psys->effectors);
 }
 
-static void integrate_particle(ParticleSettings *part, ParticleData *pa, float dtime, float *external_acceleration, void (*force_func)(void *forcedata, ParticleKey *state, float *force, float *impulse), void *forcedata)
+static void integrate_particle(ParticleSettings *part, ParticleData *pa, float dtime, float *external_acceleration,
+                               void (*force_func)(void *forcedata, ParticleKey *state, float *force, float *impulse),
+                               void *forcedata)
 {
+#define ZERO_F43 {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}}
+
 	ParticleKey states[5];
-	float force[3],acceleration[3],impulse[3],dx[4][3],dv[4][3],oldpos[3];
+	float force[3], acceleration[3], impulse[3], dx[4][3] = ZERO_F43, dv[4][3] = ZERO_F43, oldpos[3];
 	float pa_mass= (part->flag & PART_SIZEMASS ? part->mass * pa->size : part->mass);
 	int i, steps=1;
 	int integrator = part->integrator;
 
+#undef ZERO_F43
+
 	copy_v3_v3(oldpos, pa->state.co);
-	
+
 	/* Verlet integration behaves strangely with moving emitters, so do first step with euler. */
 	if (pa->prev_state.time < 0.f && integrator == PART_INT_VERLET)
 		integrator = PART_INT_EULER;
@@ -2537,7 +2551,7 @@ static void sph_force_cb(void *sphdata_v, ParticleKey *state, float *force, floa
 		madd_v3_v3fl(force, vec, -(pressure + near_pressure*q)*q);
 
 		/* Viscosity */
-		if (visc > 0.f	|| stiff_visc > 0.f) {		
+		if (visc > 0.f  || stiff_visc > 0.f) {
 			sub_v3_v3v3(dv, vel, state->vel);
 			u = dot_v3v3(vec, dv);
 
@@ -2736,7 +2750,7 @@ static void basic_integrate(ParticleSimulationData *sim, int p, float dfra, floa
 }
 static void basic_rotate(ParticleSettings *part, ParticleData *pa, float dfra, float timestep)
 {
-	float rotfac, rot1[4], rot2[4]={1.0,0.0,0.0,0.0}, dtime=dfra*timestep, extrotfac;
+	float rotfac, rot1[4], rot2[4] = {1.0,0.0,0.0,0.0}, dtime=dfra*timestep, extrotfac;
 
 	if ((part->flag & PART_ROTATIONS) == 0) {
 		unit_qt(pa->state.rot);
@@ -3166,8 +3180,7 @@ void BKE_psys_collision_neartest_cb(void *userdata, int index, const BVHTreeRay 
 	if (col->hit == col->current && col->pce.index == index && col->pce.tot == 3)
 		return;
 
-	do
-	{	
+	do {
 		collision = collision_sphere_to_tri(col, ray->radius, &pce, &t);
 		if (col->pce.inside == 0) {
 			collision += collision_sphere_to_edges(col, ray->radius, &pce, &t);
@@ -4076,7 +4089,7 @@ static void particles_fluid_step(ParticleSimulationData *sim, int UNUSED(cfra))
 	{
 		FluidsimModifierData *fluidmd = (FluidsimModifierData *)modifiers_findByType(sim->ob, eModifierType_Fluidsim);
 		
-		if ( fluidmd && fluidmd->fss) { 
+		if ( fluidmd && fluidmd->fss) {
 			FluidsimSettings *fss= fluidmd->fss;
 			ParticleSettings *part = psys->part;
 			ParticleData *pa=NULL;
@@ -4121,7 +4134,7 @@ static void particles_fluid_step(ParticleSimulationData *sim, int UNUSED(cfra))
 				int ptype=0;
 	
 				gzread(gzf, &ptype, sizeof( ptype )); 
-				if (ptype&readMask) {
+				if (ptype & readMask) {
 					activeParts++;
 	
 					gzread(gzf, &(pa->size), sizeof(float));

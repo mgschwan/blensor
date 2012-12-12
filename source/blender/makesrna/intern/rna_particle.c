@@ -530,8 +530,7 @@ static void rna_ParticleSystem_active_particle_target_index_range(PointerRNA *pt
 {
 	ParticleSystem *psys = (ParticleSystem *)ptr->data;
 	*min = 0;
-	*max = BLI_countlist(&psys->targets) - 1;
-	*max = MAX2(0, *max);
+	*max = max_ii(0, BLI_countlist(&psys->targets) - 1);
 }
 
 static int rna_ParticleSystem_active_particle_target_index_get(PointerRNA *ptr)
@@ -670,8 +669,7 @@ static void rna_ParticleDupliWeight_active_index_range(PointerRNA *ptr, int *min
 {
 	ParticleSettings *part = (ParticleSettings *)ptr->id.data;
 	*min = 0;
-	*max = BLI_countlist(&part->dupliweights) - 1;
-	*max = MAX2(0, *max);
+	*max = max_ii(0, BLI_countlist(&part->dupliweights) - 1);
 }
 
 static int rna_ParticleDupliWeight_active_index_get(PointerRNA *ptr)
@@ -823,12 +821,12 @@ static void psys_vg_name_set__internal(PointerRNA *ptr, const char *value, int i
 		psys->vgroup[index] = 0;
 	}
 	else {
-		int vgroup_num = defgroup_name_index(ob, value);
+		int defgrp_index = defgroup_name_index(ob, value);
 
-		if (vgroup_num == -1)
+		if (defgrp_index == -1)
 			return;
 
-		psys->vgroup[index] = vgroup_num + 1;
+		psys->vgroup[index] = defgrp_index + 1;
 	}
 }
 

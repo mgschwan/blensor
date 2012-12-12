@@ -48,6 +48,8 @@ struct Object;
  * hrm. it doesn't but stull works ok, remove the comment above? - campbell.
  */
 
+// #pragma GCC diagnostic error "-Wpadded"
+
 /**
  * BMHeader
  *
@@ -69,9 +71,18 @@ typedef struct BMHeader {
 	            *   this is abused by various tools which set it dirty.
 	            * - For loops this is used for sorting during tessellation. */
 
-	char htype; /* element geometric type (verts/edges/loops/faces) */
-	char hflag; /* this would be a CD layer, see below */
+	char htype;    /* element geometric type (verts/edges/loops/faces) */
+	char hflag;    /* this would be a CD layer, see below */
+
+	/* internal use only!
+	 * note,.we are very picky about not bloating this struct
+	 * but in this case its padded up to 16 bytes anyway,
+	 * so adding a flag here gives no increase in size */
+	char api_flag;
+//	char _pad;
 } BMHeader;
+
+BLI_STATIC_ASSERT((sizeof(BMHeader) <= 16), "BMHeader size has grown!");
 
 /* note: need some way to specify custom locations for custom data layers.  so we can
  * make them point directly into structs.  and some way to make it only happen to the
@@ -122,7 +133,10 @@ typedef struct BMLoop {
 /* can cast BMFace/BMEdge/BMVert, but NOT BMLoop, since these don't have a flag layer */
 typedef struct BMElemF {
 	BMHeader head;
-	struct BMFlagLayer *oflags; /* keep after header, an array of flags, mostly used by the operator stack */
+
+	/* keep directly after header,
+	 * optional array of flags, only used by the operator stack */
+	struct BMFlagLayer *oflags;
 } BMElemF;
 
 /* can cast anything to this, including BMLoop */
@@ -142,20 +156,23 @@ typedef struct BMFace {
 	BMHeader head;
 	struct BMFlagLayer *oflags; /* an array of flags, mostly used by the operator stack */
 
-	int len; /*includes all boundary loops*/
 #ifdef USE_BMESH_HOLES
 	int totbounds; /*total boundaries, is one plus the number of holes in the face*/
 	ListBase loops;
 #else
 	BMLoop *l_first;
 #endif
-	float no[3]; /*yes, we do store this here*/
+	int   len;   /* includes all boundary loops */
+	float no[3]; /* yes, we do store this here */
 	short mat_nr;
+//	short _pad[3];
 } BMFace;
 
 typedef struct BMFlagLayer {
-	short f, pflag; /* flags */
+	short f; /* flags */
 } BMFlagLayer;
+
+// #pragma GCC diagnostic ignored "-Wpadded"
 
 typedef struct BMesh {
 	int totvert, totedge, totloop, totface;
@@ -166,12 +183,13 @@ typedef struct BMesh {
 	 * valid flags are - BM_VERT | BM_EDGE | BM_FACE.
 	 * BM_LOOP isn't handled so far. */
 	char elem_index_dirty;
-	
+
 	/*element pools*/
 	struct BLI_mempool *vpool, *epool, *lpool, *fpool;
 
-	/*operator api stuff*/
-	struct BLI_mempool *toolflagpool;
+	/*operator api stuff (must be all NULL or all alloc'd)*/
+	struct BLI_mempool *vtoolflagpool, *etoolflagpool, *ftoolflagpool;
+
 	int stackdepth;
 	struct BMOperator *currentop;
 	
@@ -192,7 +210,7 @@ typedef struct BMesh {
 	
 	int walkers, totflags;
 	ListBase selected, error_stack;
-	
+
 	BMFace *act_face;
 
 	ListBase errorstack;
@@ -209,6 +227,7 @@ enum {
 };
 
 #define BM_ALL (BM_VERT | BM_EDGE | BM_LOOP | BM_FACE)
+#define BM_ALL_NOLOOP (BM_VERT | BM_EDGE | BM_FACE)
 
 /* BMHeader->hflag (char) */
 enum {
@@ -225,9 +244,8 @@ enum {
 
 	BM_ELEM_DRAW    = (1 << 5), /* edge display */
 
-	/* we have 1 spare flag which is awesome but since we're limited to 8
-	 * only add new flags with care! - campbell */
-	/* BM_ELEM_SPARE  = (1 << 6), */
+	/* spare tag, assumed dirty, use define in each function to name based on use */
+	// _BM_ELEM_TAG_ALT = (1 << 6),  // UNUSED
 
 	BM_ELEM_INTERNAL_TAG = (1 << 7) /* for low level internal API tagging,
                                      * since tools may want to tag verts and
@@ -244,14 +262,21 @@ enum {
 #  define BM_FACE_FIRST_LOOP(p) ((p)->l_first)
 #endif
 
-/* size to use for static arrays when dealing with NGons,
+/**
+ * size to use for stack arrays when dealing with NGons,
  * alloc after this limit is reached.
  * this value is rather arbitrary */
-#define BM_NGON_STACK_SIZE 32
+#define BM_DEFAULT_NGON_STACK_SIZE 32
+/**
+ * size to use for stack arrays dealing with connected mesh data
+ * verts of faces, edges of vert - etc.
+ * often used with #BM_iter_as_arrayN() */
+#define BM_DEFAULT_ITER_STACK_SIZE 16
 
 /* avoid inf loop, this value is arbitrary
  * but should not error on valid cases */
 #define BM_LOOP_RADIAL_MAX 10000
 #define BM_NGON_MAX 100000
+#define BM_OMP_LIMIT 10000
 
 #endif /* __BMESH_CLASS_H__ */

@@ -20,8 +20,8 @@
 bl_info = {
     "name": "Scene Elements",
     "author": "Meta Androcto, ",
-    "version": (0, 1),
-    "blender": (2, 6, 3),
+    "version": (0, 2),
+    "blender": (2, 6, 4),
     "location": "View3D > Add > Scene Elements",
     "description": "Add Scenes & Lights, Objects.",
     "warning": "",
@@ -57,8 +57,6 @@ class INFO_MT_mesh_objects_add(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         layout.operator_context = 'INVOKE_REGION_WIN'
-        layout.menu("INFO_MT_lighting.add",
-            text="Scene_Lighting")
         layout.operator("camera.add_scene",
             text="Scene_Camera")
         layout.operator("materials.add_scene",
@@ -68,11 +66,28 @@ class INFO_MT_mesh_objects_add(bpy.types.Menu):
         layout.operator("objects_cycles.add_scene",
             text="Scene_Objects_Cycles")
 
+class INFO_MT_mesh_lamps_add(bpy.types.Menu):
+    # Define the "mesh objects" menu
+    bl_idname = "INFO_MT_scene_lamps"
+    bl_label = "Lighting Elements"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator_context = 'INVOKE_REGION_WIN'
+        layout.operator("object.add_single_spot",
+            text="Add Single Spot")
+        layout.operator("object.add_basic_3point",
+            text="Add 3 Point Spot Setup")
+        layout.operator("object.add_basic_2point",
+            text="Add 2 Point Setup")
+        layout.operator("object.add_area_3point",
+            text="Add 3 Point Setup")
+
 # Register all operators and panels
 # Define "Extras" menu
 def menu_func(self, context):
     self.layout.menu("INFO_MT_scene_elements", icon="PLUGIN")
-
+    self.layout.menu("INFO_MT_scene_lamps", icon="PLUGIN")
 def register():
     bpy.utils.register_module(__name__)
     # Add "Extras" menu to the "Add Mesh" menu

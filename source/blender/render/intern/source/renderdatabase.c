@@ -244,7 +244,7 @@ VertRen *RE_findOrAddVert(ObjectRen *obr, int nr)
 		memset(obr->vertnodes+obr->vertnodeslen, 0, TABLEINITSIZE*sizeof(VertTableNode));
 		
 		obr->vertnodeslen+=TABLEINITSIZE; 
-		if (temp) MEM_freeN(temp);	
+		if (temp) MEM_freeN(temp);
 	}
 	
 	v= obr->vertnodes[a].vert;
@@ -487,7 +487,7 @@ VlakRen *RE_findOrAddVlak(ObjectRen *obr, int nr)
 		memset(obr->vlaknodes+obr->vlaknodeslen, 0, TABLEINITSIZE*sizeof(VlakTableNode));
 
 		obr->vlaknodeslen+=TABLEINITSIZE;  /*Does this really need to be power of 2?*/
-		if (temp) MEM_freeN(temp);	
+		if (temp) MEM_freeN(temp);
 	}
 
 	v= obr->vlaknodes[a].vlak;
@@ -658,7 +658,7 @@ StrandRen *RE_findOrAddStrand(ObjectRen *obr, int nr)
 		memset(obr->strandnodes+obr->strandnodeslen, 0, TABLEINITSIZE*sizeof(StrandTableNode));
 
 		obr->strandnodeslen+=TABLEINITSIZE;  /*Does this really need to be power of 2?*/
-		if (temp) MEM_freeN(temp);	
+		if (temp) MEM_freeN(temp);
 	}
 
 	v= obr->strandnodes[a].strand;
@@ -892,7 +892,7 @@ HaloRen *RE_findOrAddHalo(ObjectRen *obr, int nr)
 		if (temp) memcpy(obr->bloha, temp, obr->blohalen*sizeof(void*));
 		memset(&(obr->bloha[obr->blohalen]), 0, TABLEINITSIZE*sizeof(void*));
 		obr->blohalen+=TABLEINITSIZE;  /*Does this really need to be power of 2?*/
-		if (temp) MEM_freeN(temp);	
+		if (temp) MEM_freeN(temp);
 	}
 	
 	h= obr->bloha[a];
@@ -976,10 +976,13 @@ HaloRen *RE_inithalo(Render *re, ObjectRen *obr, Material *ma,
 
 	if (ma->mtex[0]) {
 
-		if ( (ma->mode & MA_HALOTEX) ) har->tex= 1;
-		else if (har->mat->septex & (1<<0));	/* only 1 level textures */
+		if (ma->mode & MA_HALOTEX) {
+			har->tex = 1;
+		}
+		else if (har->mat->septex & (1 << 0)) {
+			/* only 1 level textures */
+		}
 		else {
-
 			mtex= ma->mtex[0];
 			copy_v3_v3(texvec, vec);
 
@@ -1176,29 +1179,36 @@ HaloRen *RE_inithalo_particle(Render *re, ObjectRen *obr, DerivedMesh *dm, Mater
 /* -------------------------- operations on entire database ----------------------- */
 
 /* ugly function for halos in panorama */
-static int panotestclip(Render *re, int do_pano, float *v)
+static int panotestclip(Render *re, int do_pano, float v[4])
 {
-	/* to be used for halos en infos */
-	float abs4;
-	short c=0;
+	/* part size (ensure we run RE_parts_clamp first) */
+	BLI_assert(re->partx == min_ii(re->r.tilex, re->rectx));
+	BLI_assert(re->party == min_ii(re->r.tiley, re->recty));
 
 	if (do_pano == FALSE) {
 		return testclip(v);
 	}
+	else {
+		/* to be used for halos en infos */
+		float abs4;
+		short c = 0;
 
-	abs4= fabs(v[3]);
+		int xparts = (re->rectx + re->partx - 1) / re->partx;
 
-	if (v[2]< -abs4) c=16;		/* this used to be " if (v[2]<0) ", see clippz() */
-	else if (v[2]> abs4) c+= 32;
+		abs4= fabsf(v[3]);
 
-	if ( v[1]>abs4) c+=4;
-	else if ( v[1]< -abs4) c+=8;
+		if (v[2]< -abs4) c=16;		/* this used to be " if (v[2]<0) ", see clippz() */
+		else if (v[2]> abs4) c+= 32;
 
-	abs4*= re->xparts;
-	if ( v[0]>abs4) c+=2;
-	else if ( v[0]< -abs4) c+=1;
+		if ( v[1]>abs4) c+=4;
+		else if ( v[1]< -abs4) c+=8;
 
-	return c;
+		abs4*= xparts;
+		if ( v[0]>abs4) c+=2;
+		else if ( v[0]< -abs4) c+=1;
+
+		return c;
+	}
 }
 
 /**
@@ -1211,7 +1221,9 @@ static int panotestclip(Render *re, int do_pano, float *v)
  * - shadow buffering (shadbuf.c)
  */
 
-void project_renderdata(Render *re, void (*projectfunc)(const float *, float mat[][4], float *),  int do_pano, float xoffs, int UNUSED(do_buckets))
+void project_renderdata(Render *re,
+                        void (*projectfunc)(const float *, float mat[4][4], float *),
+                        int do_pano, float xoffs, int UNUSED(do_buckets))
 {
 	ObjectRen *obr;
 	HaloRen *har = NULL;
@@ -1298,7 +1310,7 @@ void project_renderdata(Render *re, void (*projectfunc)(const float *, float mat
 
 /* ------------------------------------------------------------------------- */
 
-ObjectInstanceRen *RE_addRenderInstance(Render *re, ObjectRen *obr, Object *ob, Object *par, int index, int psysindex, float mat[][4], int lay)
+ObjectInstanceRen *RE_addRenderInstance(Render *re, ObjectRen *obr, Object *ob, Object *par, int index, int psysindex, float mat[4][4], int lay)
 {
 	ObjectInstanceRen *obi;
 	float mat3[3][3];
@@ -1353,40 +1365,42 @@ void RE_makeRenderInstances(Render *re)
 	re->instancetable= newlist;
 }
 
-int clip_render_object(float boundbox[][3], float *bounds, float winmat[][4])
+int clip_render_object(float boundbox[2][3], float bounds[4], float winmat[4][4])
 {
 	float mat[4][4], vec[4];
-	int a, fl, flag= -1;
+	int a, fl, flag = -1;
 
 	copy_m4_m4(mat, winmat);
 
-	for (a=0; a<8; a++) {
+	for (a=0; a < 8; a++) {
 		vec[0]= (a & 1)? boundbox[0][0]: boundbox[1][0];
 		vec[1]= (a & 2)? boundbox[0][1]: boundbox[1][1];
 		vec[2]= (a & 4)? boundbox[0][2]: boundbox[1][2];
 		vec[3]= 1.0;
 		mul_m4_v4(mat, vec);
 
-		fl= 0;
+		fl = 0;
 		if (bounds) {
-			if (vec[0] < bounds[0]*vec[3]) fl |= 1;
-			else if (vec[0] > bounds[1]*vec[3]) fl |= 2;
+			if      (vec[0] < bounds[0] * vec[3]) fl |= 1;
+			else if (vec[0] > bounds[1] * vec[3]) fl |= 2;
 			
-			if (vec[1] > bounds[3]*vec[3]) fl |= 4;
-			else if (vec[1]< bounds[2]*vec[3]) fl |= 8;
+			if      (vec[1] > bounds[3] * vec[3]) fl |= 4;
+			else if (vec[1] < bounds[2] * vec[3]) fl |= 8;
 		}
 		else {
-			if (vec[0] < -vec[3]) fl |= 1;
-			else if (vec[0] > vec[3]) fl |= 2;
+			if      (vec[0] < -vec[3]) fl |= 1;
+			else if (vec[0] >  vec[3]) fl |= 2;
 			
-			if (vec[1] > vec[3]) fl |= 4;
+			if      (vec[1] >  vec[3]) fl |= 4;
 			else if (vec[1] < -vec[3]) fl |= 8;
 		}
-		if (vec[2] < -vec[3]) fl |= 16;
-		else if (vec[2] > vec[3]) fl |= 32;
+		if      (vec[2] < -vec[3]) fl |= 16;
+		else if (vec[2] >  vec[3]) fl |= 32;
 
 		flag &= fl;
-		if (flag==0) return 0;
+		if (flag == 0) {
+			return 0;
+		}
 	}
 
 	return flag;

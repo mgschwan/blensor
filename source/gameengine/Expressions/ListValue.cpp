@@ -365,7 +365,7 @@ static PyObject *listvalue_mapping_subscript(PyObject *self, PyObject *key)
 		}
 	}
 	else if (PyIndex_Check(key)) {
-		int index = PyLong_AsSsize_t(key);
+		Py_ssize_t index = PyLong_AsSsize_t(key);
 		return listvalue_buffer_item(self, index); /* wont add a ref */
 	}
 	else if (PySlice_Check(key)) {
@@ -468,9 +468,9 @@ static PyObject *listvalue_buffer_concat(PyObject *self, PyObject *other)
 
 static int listvalue_buffer_contains(PyObject *self_v, PyObject *value)
 {
-	CListValue *self= static_cast<CListValue *>(BGE_PROXY_REF(self_v));
+	CListValue *self = static_cast<CListValue *>(BGE_PROXY_REF(self_v));
 	
-	if (self==NULL) {
+	if (self == NULL) {
 		PyErr_SetString(PyExc_SystemError, "val in CList, "BGE_PROXY_ERROR_MSG);
 		return -1;
 	}
@@ -602,10 +602,10 @@ PyObject *CListValue::Pyindex(PyObject *value)
 	int numelem = GetCount();
 	for (int i=0;i<numelem;i++)
 	{
-		CValue* elem = 			GetValue(i);
+		CValue* elem = GetValue(i);
 		if (checkobj==elem || CheckEqual(checkobj,elem))
 		{
-			result = PyLong_FromSsize_t(i);
+			result = PyLong_FromLong(i);
 			break;
 		}
 	}
@@ -628,7 +628,7 @@ PyObject *CListValue::Pycount(PyObject *value)
 
 	if (checkobj==NULL) { /* in this case just return that there are no items in the list */
 		PyErr_Clear();
-		return PyLong_FromSsize_t(0);
+		return PyLong_FromLong(0);
 	}
 
 	int numelem = GetCount();
@@ -642,7 +642,7 @@ PyObject *CListValue::Pycount(PyObject *value)
 	}
 	checkobj->Release();
 
-	return PyLong_FromSsize_t(numfound);
+	return PyLong_FromLong(numfound);
 }
 
 /* Matches python dict.get(key, [default]) */

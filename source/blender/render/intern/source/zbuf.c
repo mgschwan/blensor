@@ -76,6 +76,11 @@
 /* own includes */
 #include "zbuf.h"
 
+/* could enable at some point but for now there are far too many conversions */
+#ifdef __GNUC__
+#  pragma GCC diagnostic ignored "-Wdouble-promotion"
+#endif
+
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 /* defined in pipeline.c, is hardcopy of active dynamic allocated Render */
 /* only to be used here in this file, it's for speed */
@@ -150,7 +155,7 @@ static void zbuf_add_to_span(ZSpan *zspan, const float *v1, const float *v2)
 	}
 	else {
 		dx0 = 0.0f;
-		xs0 = minf(minv[0], maxv[0]);
+		xs0 = min_ff(minv[0], maxv[0]);
 	}
 	
 	/* empty span */
@@ -409,7 +414,7 @@ static void zbuffillAc4(ZSpan *zspan, int obi, int zvlnr,
 							if (apn->p[3]==zvlnr && apn->obi[3]==obi) {apn->mask[3]|= mask; break; }
 							if (apn->next==NULL) apn->next= addpsA(zspan);
 							apn= apn->next;
-						}				
+						}
 					}
 				}
 				zverg+= zxd;
@@ -501,7 +506,7 @@ static void zbuflineAc(ZSpan *zspan, int obi, int zvlnr, const float vec1[3], co
 							if (apn->p[3]==zvlnr && apn->obi[3]==obi) {apn->mask[3]|= mask; break; }
 							if (apn->next==0) apn->next= addpsA(zspan);
 							apn= apn->next;
-						}				
+						}
 					}
 				}
 			}
@@ -572,7 +577,7 @@ static void zbuflineAc(ZSpan *zspan, int obi, int zvlnr, const float vec1[3], co
 							if (apn->p[3]==zvlnr) {apn->mask[3]|= mask; break; }
 							if (apn->next==0) apn->next= addpsA(zspan);
 							apn= apn->next;
-						}	
+						}
 					}
 				}
 			}
@@ -1029,7 +1034,7 @@ void zbufsinglewire(ZSpan *zspan, int obi, int zvlnr, const float ho1[4], const 
 
 /**
  * Fill the z buffer, but invert z order, and add the face index to
- * the corresponing face buffer.
+ * the corresponding face buffer.
  *
  * This is one of the z buffer fill functions called in zbufclip() and
  * zbufwireclip(). 
@@ -1595,8 +1600,8 @@ void zspan_scanconvert(ZSpan *zspan, void *handle, float *v1, float *v2, float *
 
 /**
  * (clip pyramid)
- * Sets labda: flag, and parametrize the clipping of vertices in
- * viewspace coordinates. labda = -1 means no clipping, labda in [0, 1] means a clipping.
+ * Sets lambda: flag, and parametrize the clipping of vertices in
+ * viewspace coordinates. lambda = -1 means no clipping, lambda in [0, 1] means a clipping.
  * Note: uses globals.
  * \param v1 start coordinate s
  * \param v2 target coordinate t
@@ -1606,13 +1611,13 @@ void zspan_scanconvert(ZSpan *zspan, void *handle, float *v1, float *v2, float *
  * \param a index for coordinate (x, y, or z)
  */
 
-static void clippyra(float *labda, float *v1, float *v2, int *b2, int *b3, int a, float clipcrop)
+static void clippyra(float *lambda, float *v1, float *v2, int *b2, int *b3, int a, float clipcrop)
 {
 	float da, dw, u1=0.0, u2=1.0;
 	float v13;
 	
-	labda[0]= -1.0;
-	labda[1]= -1.0;
+	lambda[0]= -1.0;
+	lambda[1]= -1.0;
 
 	da= v2[a]-v1[a];
 	/* prob; we clip slightly larger, osa renders add 2 pixels on edges, should become variable? */
@@ -1624,7 +1629,7 @@ static void clippyra(float *labda, float *v1, float *v2, int *b2, int *b3, int a
 	else {
 		dw= clipcrop*(v2[3]-v1[3]);
 		v13= clipcrop*v1[3];
-	}	
+	}
 	/* according the original article by Liang&Barsky, for clipping of
 	 * homogeneous coordinates with viewplane, the value of "0" is used instead of "-w" .
 	 * This differs from the other clipping cases (like left or top) and I considered
@@ -1636,16 +1641,16 @@ static void clippyra(float *labda, float *v1, float *v2, int *b2, int *b3, int a
 		if (cliptestf(da, -dw, v13, -v1[a], &u1, &u2)) {
 			*b3=1;
 			if (u2<1.0f) {
-				labda[1]= u2;
+				lambda[1]= u2;
 				*b2=1;
 			}
-			else labda[1]=1.0;  /* u2 */
+			else lambda[1]=1.0;  /* u2 */
 			if (u1>0.0f) {
-				labda[0] = u1;
+				lambda[0] = u1;
 				*b2 = 1;
 			}
 			else {
-				labda[0] = 0.0;
+				lambda[0] = 0.0;
 			}
 		}
 	}
@@ -1653,8 +1658,8 @@ static void clippyra(float *labda, float *v1, float *v2, int *b2, int *b3, int a
 
 /**
  * (make vertex pyramide clip)
- * Checks labda and uses this to make decision about clipping the line
- * segment from v1 to v2. labda is the factor by which the vector is
+ * Checks lambda and uses this to make decision about clipping the line
+ * segment from v1 to v2. lambda is the factor by which the vector is
  * cut. ( calculate s + l * ( t - s )). The result is appended to the
  * vertex list of this face.
  * 
@@ -1666,12 +1671,12 @@ static void clippyra(float *labda, float *v1, float *v2, int *b2, int *b3, int a
  * \param clve vertex vector.
  */
 
-static void makevertpyra(float *vez, float *labda, float **trias, float *v1, float *v2, int *b1, int *clve)
+static void makevertpyra(float *vez, float *lambda, float **trias, float *v1, float *v2, int *b1, int *clve)
 {
 	float l1, l2, *adr;
 
-	l1= labda[0];
-	l2= labda[1];
+	l1= lambda[0];
+	l2= lambda[1];
 
 	if (l1!= -1.0f) {
 		if (l1!= 0.0f) {
@@ -1682,7 +1687,7 @@ static void makevertpyra(float *vez, float *labda, float **trias, float *v1, flo
 			adr[1]= v1[1]+l1*(v2[1]-v1[1]);
 			adr[2]= v1[2]+l1*(v2[2]-v1[2]);
 			adr[3]= v1[3]+l1*(v2[3]-v1[3]);
-		} 
+		}
 		else trias[*b1]= v1;
 		
 		(*b1)++;
@@ -1703,7 +1708,7 @@ static void makevertpyra(float *vez, float *labda, float **trias, float *v1, flo
 
 /* ------------------------------------------------------------------------- */
 
-void projectverto(const float v1[3], float winmat[][4], float adr[4])
+void projectverto(const float v1[3], float winmat[4][4], float adr[4])
 {
 	/* calcs homogenic coord of vertex v1 */
 	float x, y, z;
@@ -1721,7 +1726,7 @@ void projectverto(const float v1[3], float winmat[][4], float adr[4])
 
 /* ------------------------------------------------------------------------- */
 
-void projectvert(const float v1[3], float winmat[][4], float adr[4])
+void projectvert(const float v1[3], float winmat[4][4], float adr[4])
 {
 	/* calcs homogenic coord of vertex v1 */
 	float x, y, z;
@@ -1756,7 +1761,7 @@ static void zbuf_project_cache_clear(ZbufProjectCache *cache, int size)
 		cache[i].index= -1;
 }
 
-static int zbuf_shadow_project(ZbufProjectCache *cache, int index, float winmat[][4], float *co, float *ho)
+static int zbuf_shadow_project(ZbufProjectCache *cache, int index, float winmat[4][4], float *co, float *ho)
 {
 	int cindex= index & 255;
 
@@ -1785,7 +1790,7 @@ static void zbuffer_part_bounds(int winx, int winy, RenderPart *pa, float *bound
 	bounds[3]= (2*pa->disprect.ymax - winy+1)/(float)winy;
 }
 
-static int zbuf_part_project(ZbufProjectCache *cache, int index, float winmat[][4], float *bounds, float *co, float *ho)
+static int zbuf_part_project(ZbufProjectCache *cache, int index, float winmat[4][4], float *bounds, float *co, float *ho)
 {
 	float vec[3];
 	int cindex= index & 255;
@@ -1814,7 +1819,7 @@ static int zbuf_part_project(ZbufProjectCache *cache, int index, float winmat[][
 	}
 }
 
-void zbuf_render_project(float winmat[][4], const float co[3], float ho[4])
+void zbuf_render_project(float winmat[4][4], const float co[3], float ho[4])
 {
 	float vec[3];
 
@@ -1822,7 +1827,7 @@ void zbuf_render_project(float winmat[][4], const float co[3], float ho[4])
 	projectvert(vec, winmat, ho);
 }
 
-void zbuf_make_winmat(Render *re, float winmat[][4])
+void zbuf_make_winmat(Render *re, float winmat[4][4])
 {
 	if (re->r.mode & R_PANORAMA) {
 		float panomat[4][4]= MAT4_UNITY;
@@ -1842,7 +1847,7 @@ void zbuf_make_winmat(Render *re, float winmat[][4])
 
 void zbufclip(ZSpan *zspan, int obi, int zvlnr, float *f1, float *f2, float *f3, int c1, int c2, int c3)
 {
-	float *vlzp[32][3], labda[3][2];
+	float *vlzp[32][3], lambda[3][2];
 	float vez[400], *trias[40];
 	
 	if (c1 | c2 | c3) {	/* not in middle */
@@ -1882,9 +1887,9 @@ void zbufclip(ZSpan *zspan, int obi, int zvlnr, float *f1, float *f2, float *f3,
 							else if (b==1) arg= 0;
 							else arg= 1;
 							
-							clippyra(labda[0], vlzp[v][0], vlzp[v][1], &b2, &b3, arg, zspan->clipcrop);
-							clippyra(labda[1], vlzp[v][1], vlzp[v][2], &b2, &b3, arg, zspan->clipcrop);
-							clippyra(labda[2], vlzp[v][2], vlzp[v][0], &b2, &b3, arg, zspan->clipcrop);
+							clippyra(lambda[0], vlzp[v][0], vlzp[v][1], &b2, &b3, arg, zspan->clipcrop);
+							clippyra(lambda[1], vlzp[v][1], vlzp[v][2], &b2, &b3, arg, zspan->clipcrop);
+							clippyra(lambda[2], vlzp[v][2], vlzp[v][0], &b2, &b3, arg, zspan->clipcrop);
 
 							if (b2==0 && b3==1) {
 								/* completely 'in', but we copy because of last for () loop in this section */;
@@ -1900,9 +1905,9 @@ void zbufclip(ZSpan *zspan, int obi, int zvlnr, float *f1, float *f2, float *f3,
 							}
 							else {
 								b1=0;
-								makevertpyra(vez, labda[0], trias, vlzp[v][0], vlzp[v][1], &b1, &clve);
-								makevertpyra(vez, labda[1], trias, vlzp[v][1], vlzp[v][2], &b1, &clve);
-								makevertpyra(vez, labda[2], trias, vlzp[v][2], vlzp[v][0], &b1, &clve);
+								makevertpyra(vez, lambda[0], trias, vlzp[v][0], vlzp[v][1], &b1, &clve);
+								makevertpyra(vez, lambda[1], trias, vlzp[v][1], vlzp[v][2], &b1, &clve);
+								makevertpyra(vez, lambda[2], trias, vlzp[v][2], vlzp[v][0], &b1, &clve);
 
 								/* after front clip done: now set clip flags */
 								if (b==0) {
@@ -2022,7 +2027,7 @@ static void zmask_rect(int *rectz, int *rectp, int xs, int ys, int neg)
 					EXTEND_PIXEL(row1 + 2);
 					EXTEND_PIXEL(row2 + 2);
 					EXTEND_PIXEL(row3 + 2);
-				}					
+				}
 				if (tot) {
 					len++;
 					curz[0]= (int)(z/(float)tot);
@@ -2038,14 +2043,16 @@ static void zmask_rect(int *rectz, int *rectp, int xs, int ys, int neg)
 
 	MEM_freeN(temprectp);
 	
-	if (neg); /* z values for negative are already correct */
+	if (neg) {
+		/* z values for negative are already correct */
+	}
 	else {
 		/* clear not filled z values */
 		for (len= xs*ys -1; len>=0; len--) {
 			if (rectp[len]==0) {
 				rectz[len] = -0x7FFFFFFF;
 				rectp[len]= -1;	/* env code */
-			}	
+			}
 		}
 	}
 }
@@ -2289,7 +2296,7 @@ void zbuffer_solid(RenderPart *pa, RenderLayer *rl, void(*fillfunc)(RenderPart*,
 	}
 }
 
-void zbuffer_shadow(Render *re, float winmat[][4], LampRen *lar, int *rectz, int size, float jitx, float jity)
+void zbuffer_shadow(Render *re, float winmat[4][4], LampRen *lar, int *rectz, int size, float jitx, float jity)
 {
 	ZbufProjectCache cache[ZBUF_PROJECT_CACHE_SIZE];
 	ZSpan zspan;
@@ -2730,7 +2737,7 @@ static void zbuf_fill_in_rgba(ZSpan *zspan, DrawBufPixel *col, float *v1, float 
 			x= sn2-sn1;
 			
 			while (x>=0) {
-				if ( zverg < *rz) {
+				if (zverg < (double)*rz) {
 					*rz= zverg;
 					*rp= *col;
 				}
@@ -3231,7 +3238,7 @@ static void copyto_abufz(RenderPart *pa, int *arectz, int *rectmask, int sample)
 			
 			*rza= 0x7FFFFFFF;
 			if (rectmask) *rma= 0x7FFFFFFF;
-			if (*rd) {	
+			if (*rd) {
 				/* when there's a sky pixstruct, fill in sky-Z, otherwise solid Z */
 				for (ps= (PixStr *)(*rd); ps; ps= ps->next) {
 					if (sample & ps->mask) {
@@ -3254,7 +3261,7 @@ static void copyto_abufz(RenderPart *pa, int *arectz, int *rectmask, int sample)
  * Do accumulation z buffering.
  */
 
-static int zbuffer_abuf(Render *re, RenderPart *pa, APixstr *APixbuf, ListBase *apsmbase, unsigned int lay, int negzmask, float winmat[][4], int winx, int winy, int samples, float (*jit)[2], float UNUSED(clipcrop), int shadow)
+static int zbuffer_abuf(Render *re, RenderPart *pa, APixstr *APixbuf, ListBase *apsmbase, unsigned int lay, int negzmask, float winmat[4][4], int winx, int winy, int samples, float (*jit)[2], float UNUSED(clipcrop), int shadow)
 {
 	ZbufProjectCache cache[ZBUF_PROJECT_CACHE_SIZE];
 	ZSpan zspans[16], *zspan;	/* MAX_OSA */
@@ -3452,7 +3459,7 @@ static int zbuffer_abuf_render(RenderPart *pa, APixstr *APixbuf, APixstrand *APi
 	return doztra;
 }
 
-void zbuffer_abuf_shadow(Render *re, LampRen *lar, float winmat[][4], APixstr *APixbuf, APixstrand *APixbufstrand, ListBase *apsmbase, int size, int samples, float (*jit)[2])
+void zbuffer_abuf_shadow(Render *re, LampRen *lar, float winmat[4][4], APixstr *APixbuf, APixstrand *APixbufstrand, ListBase *apsmbase, int size, int samples, float (*jit)[2])
 {
 	RenderPart pa;
 	int lay= -1;
@@ -3515,9 +3522,22 @@ static void add_transp_obindex(RenderLayer *rl, int offset, Object *ob)
 	RenderPass *rpass;
 	
 	for (rpass= rl->passes.first; rpass; rpass= rpass->next) {
-		if (rpass->passtype == SCE_PASS_INDEXOB||rpass->passtype == SCE_PASS_INDEXMA) {
+		if (rpass->passtype == SCE_PASS_INDEXOB) {
 			float *fp= rpass->rect + offset;
 			*fp= (float)ob->index;
+			break;
+		}
+	}
+}
+
+static void add_transp_material_index(RenderLayer *rl, int offset, Material *mat)
+{
+	RenderPass *rpass;
+	
+	for (rpass= rl->passes.first; rpass; rpass= rpass->next) {
+		if (rpass->passtype == SCE_PASS_INDEXMA) {
+			float *fp= rpass->rect + offset;
+			*fp= (float)mat->index;
 			break;
 		}
 	}
@@ -3874,7 +3894,7 @@ static int addtosamp_shr(ShadeResult *samp_shr, ShadeSample *ssamp, int addpassf
 				
 				addAlphaUnderFloat(samp_shr->combined, shr->combined);
 				
-				samp_shr->z = minf(samp_shr->z, shr->z);
+				samp_shr->z = min_ff(samp_shr->z, shr->z);
 
 				if (addpassflag & SCE_PASS_VECTOR) {
 					copy_v4_v4(samp_shr->winspeed, shr->winspeed);
@@ -4127,10 +4147,12 @@ unsigned short *zbuffer_transp_shade(RenderPart *pa, RenderLayer *rl, float *pas
 					}
 				}
 				if (addpassflag & SCE_PASS_INDEXMA) {
-					ObjectRen *obr= R.objectinstance[zrow[totface-1].obi].obr;
-					if (obr->ob) {
+					ObjectRen *obr = R.objectinstance[zrow[totface-1].obi].obr;
+					VlakRen *vr = obr->vlaknodes->vlak;
+					Material *mat = vr->mat;
+					if (mat) {
 						for (a= 0; a<totfullsample; a++)
-							add_transp_obindex(rlpp[a], od, obr->ob);
+							add_transp_material_index(rlpp[a], od, mat);
 					}
 				}
 
@@ -4241,7 +4263,7 @@ unsigned short *zbuffer_transp_shade(RenderPart *pa, RenderLayer *rl, float *pas
 		MEM_freeN(APixbufstrand);
 	if (sscache)
 		strand_shade_cache_free(sscache);
-	freepsA(&apsmbase);	
+	freepsA(&apsmbase);
 
 	if (R.r.mode & R_SHADOW)
 		ISB_free(pa);

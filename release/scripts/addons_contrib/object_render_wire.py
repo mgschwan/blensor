@@ -214,7 +214,7 @@ def create_wired_mesh(me2, me, thick):
     me2.tessfaces.foreach_set("vertices_raw", cfaces)
     me2.update(calc_edges=True)
 
-# panel containing tools
+# Add built in wireframe
 def wire_add(mallas):
     if mallas:
         bpy.ops.object.select_all(action='DESELECT')
@@ -225,19 +225,15 @@ def wire_add(mallas):
         for mod in obj.modifiers: obj.modifiers.remove(mod)
         bpy.ops.object.join()
         bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.delete(type='ONLY_FACE')
+        bpy.ops.mesh.wireframe(thickness=0.005)
         bpy.ops.object.mode_set()
-        bpy.ops.object.convert(target='CURVE')
+        for mat in obj.material_slots: bpy.ops.object.material_slot_remove()
         if 'wire_object' in sce.objects.keys():
             sce.objects.get('wire_object').data = obj.data
             sce.objects.get('wire_object').matrix_world = mallas[0].matrix_world
             sce.objects.unlink(obj)
         else:
             obj.name = 'wire_object'
-        obj.data.resolution_u = 1
-        obj.data.bevel_depth = 0.005
-        obj.data.fill_mode = 'FULL'
         obj.data.materials.append(bpy.data.materials.get('mat_wireobj'))
 
     return{'FINISHED'}
@@ -302,13 +298,13 @@ class SolidifyWireframe(bpy.types.Operator):
 		
 class WireMaterials(bpy.types.Operator):
     bl_idname = 'scene.wire_render'
-    bl_label = 'Create Materials'
+    bl_label = 'Apply Materials'
     bl_description = 'Set Up Materials for a Wire Render'
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
         wm = bpy.context.window_manager
-        scn = bpy.context.scene
+        sce = bpy.context.scene
 
         if 'mat_clay' not in bpy.data.materials:
             mat = bpy.data.materials.new('mat_clay')
@@ -322,7 +318,7 @@ class WireMaterials(bpy.types.Operator):
             mat.specular_intensity = 0
             mat.use_transparency = True
             mat.type = 'WIRE'
-            mat.offset_z = 0.1
+            mat.offset_z = 0.05
         else: mat = bpy.data.materials.get('mat_wire')
         mat.diffuse_color = wm.col_wire
         mat.use_shadeless = wm.shadeless_mat
@@ -331,12 +327,12 @@ class WireMaterials(bpy.types.Operator):
         except: pass
 
         if wm.selected_meshes: objetos = bpy.context.selected_objects
-        else: objetos = bpy.data.objects
+        else: objetos = sce.objects
 
-        mallas = [o for o in objetos if o.type == 'MESH' and o.is_visible(scn)]
+        mallas = [o for o in objetos if o.type == 'MESH' and o.is_visible(sce) and o.name != 'wire_object']
 
         for obj in mallas:
-            scn.objects.active = obj
+            sce.objects.active = obj
             print ('procesando >', obj.name)
             obj.show_wire = wm.wire_view
             for mat in obj.material_slots:
@@ -392,7 +388,7 @@ bpy.types.WindowManager.shadeless_mat = bpy.props.BoolProperty(name='Shadeless',
 bpy.types.WindowManager.col_clay = bpy.props.FloatVectorProperty(name='', description='Clay Color', default=(1.0, 0.9, 0.8), min=0, max=1, step=1, precision=3, subtype='COLOR_GAMMA', size=3)
 bpy.types.WindowManager.col_wire = bpy.props.FloatVectorProperty(name='', description='Wire Color', default=(0.1 ,0.0 ,0.0), min=0, max=1, step=1, precision=3, subtype='COLOR_GAMMA', size=3)
 bpy.types.WindowManager.wire_view = bpy.props.BoolProperty(name='Viewport Wires', default=False, description='Overlay wires display over solid in Viewports')
-bpy.types.WindowManager.wire_object = bpy.props.BoolProperty(name='Create Curve Object', default=False, description='Very slow! - Add a Wire Object to scene to be able to render wires in Cycles')
+bpy.types.WindowManager.wire_object = bpy.props.BoolProperty(name='Create Mesh Object', default=False, description='Add a Wire Object to scene to be able to render wires in Cycles')
 bpy.types.Scene.swThickness = bpy.props.FloatProperty(name="Thickness", description="Thickness of the skinned edges", default=0.01)
 bpy.types.Scene.swSelectNew = bpy.props.BoolProperty(name="Select wire", description="If checked, the wire object will be selected after creation", default=True)
 

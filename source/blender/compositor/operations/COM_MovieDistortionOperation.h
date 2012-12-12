@@ -115,10 +115,10 @@ public:
 
 			if (!this->m_bufferCalculated[offset]) {
 				//float overscan = 0.0f;
-				float w = (float)this->m_width /* / (1 + overscan) */;
-				float h = (float)this->m_height /* / (1 + overscan) */;
-				float aspx = (float)w / this->m_calibration_width;
-				float aspy = (float)h / this->m_calibration_height;
+				const float w = (float)this->m_width /* / (1 + overscan) */;
+				const float h = (float)this->m_height /* / (1 + overscan) */;
+				const float aspx = w / (float)this->m_calibration_width;
+				const float aspy = h / (float)this->m_calibration_height;
 				float in[2];
 				float out[2];
 
@@ -155,7 +155,6 @@ protected:
 
 public:
 	MovieDistortionOperation(bool distortion);
-	bool determineDependingAreaOfInterest(rcti *input, ReadBufferOperation *readOperation, rcti *output);
 	void executePixel(float output[4], float x, float y, PixelSampler sampler);
 
 	void initExecution();

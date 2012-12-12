@@ -120,6 +120,7 @@ public:
 	bool use_bvh_cache;
 	bool use_bvh_spatial_split;
 	bool use_qbvh;
+	bool persistent_images;
 
 	SceneParams()
 	{
@@ -139,7 +140,8 @@ public:
 		&& bvh_type == params.bvh_type
 		&& use_bvh_cache == params.use_bvh_cache
 		&& use_bvh_spatial_split == params.use_bvh_spatial_split
-		&& use_qbvh == params.use_qbvh); }
+		&& use_qbvh == params.use_qbvh
+		&& persistent_images == params.persistent_images); }
 };
 
 /* Scene */
@@ -194,10 +196,16 @@ public:
 	void need_global_attributes(AttributeRequestSet& attributes);
 
 	enum MotionType { MOTION_NONE = 0, MOTION_PASS, MOTION_BLUR };
-	MotionType need_motion();
+	MotionType need_motion(bool advanced_shading = true);
 
 	bool need_update();
 	bool need_reset();
+
+	void reset();
+	void device_free();
+
+protected:
+	void free_memory(bool final);
 };
 
 CCL_NAMESPACE_END

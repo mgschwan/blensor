@@ -97,6 +97,11 @@ typedef enum {
 	UI_WTYPE_PROGRESSBAR
 } uiWidgetTypeEnum;
 
+/* menu scrolling */
+#define UI_MENU_SCROLL_ARROW	12
+#define UI_MENU_SCROLL_MOUSE	(UI_MENU_SCROLL_ARROW + 2)
+#define UI_MENU_SCROLL_PAD		4
+
 /* panel limits */
 #define UI_PANEL_MINX   100
 #define UI_PANEL_MINY   70
@@ -160,7 +165,8 @@ struct uiBut {
 	int flag, drawflag;
 	eButType         type;
 	eButPointerType  pointype;
-	short bit, bitnr, retval, strwidth, ofs, pos, selsta, selend, alignnr;
+	short bit, bitnr, retval, strwidth, alignnr;
+	short ofs, pos, selsta, selend;
 
 	char *str;
 	char strdata[UI_MAX_NAME_STR];
@@ -170,7 +176,25 @@ struct uiBut {
 
 	char *poin;
 	float hardmin, hardmax, softmin, softmax;
-	float a1, a2;
+
+	/* both these values use depends on the button type
+	 * (polymorphic struct or union would be nicer for this stuff) */
+
+	/* (type == COLOR),      Use UI_GRAD_* values.
+	 * (type == NUM),        Use to store RNA 'step' value, for dragging and click-step.
+	 * (type == LABEL),      Use (a1 == 1.0f) to use a2 as a blending factor (wow, this is imaginative!).
+	 * (type == SCROLL)      Use as scroll size.
+	 * (type == SEARCH_MENU) Use as number or rows.
+	 */
+	float a1;
+
+	/* (type == HSVCIRCLE ), Use to store the luminosity.
+	 * (type == NUM),        Use to store RNA 'precision' value, for dragging and click-step.
+	 * (type == LABEL),      If (a1 == 1.0f) use a2 as a blending factor.
+	 * (type == SEARCH_MENU) Use as number or columns.
+	 */
+	float a2;
+
 	float aspect;
 	unsigned char col[4];
 
@@ -334,7 +358,7 @@ struct uiBlock {
 
 	char color_profile;         /* color profile for correcting linear colors for display */
 
-	char *display_device;       /* display devide name used to display this block,
+	const char *display_device; /* display device name used to display this block,
 	                             * used by color widgets to transform colors from/to scene linear
 	                             */
 };
@@ -484,6 +508,7 @@ extern void ui_button_activate_do(struct bContext *C, struct ARegion *ar, uiBut 
 extern void ui_button_active_free(const struct bContext *C, uiBut *but);
 extern int ui_button_is_active(struct ARegion *ar);
 extern int ui_button_open_menu_direction(uiBut *but);
+extern void ui_button_text_password_hide(char password_str[UI_MAX_DRAW_STR], uiBut *but, int restore);
 
 /* interface_widgets.c */
 void ui_draw_anti_tria(float x1, float y1, float x2, float y2, float x3, float y3);

@@ -33,7 +33,7 @@
 #include "node_composite_util.h"
 
 /* **************** SPLIT VIEWER ******************** */
-static bNodeSocketTemplate cmp_node_splitviewer_in[]= {
+static bNodeSocketTemplate cmp_node_splitviewer_in[] = {
 	{	SOCK_RGBA, 1, N_("Image"),		0.0f, 0.0f, 0.0f, 1.0f},
 	{	SOCK_RGBA, 1, N_("Image"),		0.0f, 0.0f, 0.0f, 1.0f},
 	{	-1, 0, ""	}
@@ -77,7 +77,7 @@ static void node_composit_exec_splitviewer(void *data, bNode *node, bNodeStack *
 		ibuf= BKE_image_acquire_ibuf(ima, node->storage, &lock);
 		if (ibuf==NULL) {
 			printf("node_composit_exec_viewer error\n");
-			BKE_image_release_ibuf(ima, lock);
+			BKE_image_release_ibuf(ima, ibuf, lock);
 			return;
 		}
 		
@@ -128,7 +128,7 @@ static void node_composit_exec_splitviewer(void *data, bNode *node, bNodeStack *
 		
 		composit3_pixel_processor(node, cbuf, buf1, in[0]->vec, buf2, in[1]->vec, mask, NULL, do_copy_split_rgba, CB_RGBA, CB_RGBA, CB_VAL);
 		
-		BKE_image_release_ibuf(ima, lock);
+		BKE_image_release_ibuf(ima, ibuf, lock);
 		
 		generate_preview(data, node, cbuf);
 		free_compbuf(cbuf);
@@ -167,7 +167,7 @@ void register_node_type_cmp_splitviewer(bNodeTreeType *ttype)
 #endif
 
 	/* Do not allow muting for this node. */
-	node_type_internal_connect(&ntype, NULL);
+	node_type_internal_links(&ntype, NULL);
 
 	nodeRegisterType(ttype, &ntype);
 }

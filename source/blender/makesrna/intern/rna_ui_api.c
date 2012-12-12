@@ -236,41 +236,41 @@ void RNA_api_ui_layout(StructRNA *srna)
 	/* useful in C but not in python */
 #if 0
 
-	func= RNA_def_function(srna, "operator_enum_single", "uiItemEnumO_string");
+	func = RNA_def_function(srna, "operator_enum_single", "uiItemEnumO_string");
 	api_ui_item_op_common(func);
-	parm= RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
+	parm = RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm= RNA_def_string(func, "value", "", 0, "", "Enum property value");
+	parm = RNA_def_string(func, "value", "", 0, "", "Enum property value");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 
-	func= RNA_def_function(srna, "operator_boolean", "uiItemBooleanO");
+	func = RNA_def_function(srna, "operator_boolean", "uiItemBooleanO");
 	api_ui_item_op_common(func);
-	parm= RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
+	parm = RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm= RNA_def_boolean(func, "value", 0, "", "Value of the property to call the operator with");
+	parm = RNA_def_boolean(func, "value", 0, "", "Value of the property to call the operator with");
 	RNA_def_property_flag(parm, PROP_REQUIRED); */
 
-	func= RNA_def_function(srna, "operator_int", "uiItemIntO");
+	func = RNA_def_function(srna, "operator_int", "uiItemIntO");
 	api_ui_item_op_common(func);
-	parm= RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
+	parm = RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm= RNA_def_int(func, "value", 0, INT_MIN, INT_MAX, "",
+	parm = RNA_def_int(func, "value", 0, INT_MIN, INT_MAX, "",
 	                  "Value of the property to call the operator with", INT_MIN, INT_MAX);
 	RNA_def_property_flag(parm, PROP_REQUIRED); */
 
-	func= RNA_def_function(srna, "operator_float", "uiItemFloatO");
+	func = RNA_def_function(srna, "operator_float", "uiItemFloatO");
 	api_ui_item_op_common(func);
-	parm= RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
+	parm = RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm= RNA_def_float(func, "value", 0, -FLT_MAX, FLT_MAX, "",
+	parm = RNA_def_float(func, "value", 0, -FLT_MAX, FLT_MAX, "",
 	                    "Value of the property to call the operator with", -FLT_MAX, FLT_MAX);
 	RNA_def_property_flag(parm, PROP_REQUIRED); */
 
-	func= RNA_def_function(srna, "operator_string", "uiItemStringO");
+	func = RNA_def_function(srna, "operator_string", "uiItemStringO");
 	api_ui_item_op_common(func);
-	parm= RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
+	parm = RNA_def_string(func, "property", "", 0, "", "Identifier of property in operator");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm= RNA_def_string(func, "value", "", 0, "", "Value of the property to call the operator with");
+	parm = RNA_def_string(func, "value", "", 0, "", "Value of the property to call the operator with");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 #endif
 
@@ -390,7 +390,7 @@ void RNA_api_ui_layout(StructRNA *srna)
 	parm = RNA_def_int(func, "active_layer", 0, 0, INT_MAX, "Active Layer", "", 0, INT_MAX);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	
-	func = RNA_def_function(srna, "template_color_wheel", "uiTemplateColorWheel");
+	func = RNA_def_function(srna, "template_color_picker", "uiTemplateColorPicker");
 	RNA_def_function_ui_description(func, "Item. A color wheel widget to pick colors");
 	api_ui_item_rna_common(func);
 	RNA_def_boolean(func, "value_slider", 0, "", "Display the value slider to the right of the color wheel");
@@ -439,7 +439,8 @@ void RNA_api_ui_layout(StructRNA *srna)
 	RNA_def_boolean(func, "compact", 0, "", "Use more compact layout");
 
 	func = RNA_def_function(srna, "template_list", "uiTemplateList");
-	RNA_def_function_ui_description(func, "Item. A list widget to display data. e.g. vertexgroups");
+	RNA_def_function_ui_description(func, "Item. A list widget to display data, e.g. vertexgroups "
+	                                      "(WARNING: only one per panel allowed!).");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
 	parm = RNA_def_pointer(func, "data", "AnyType", "", "Data from which to take property");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_RNAPTR);

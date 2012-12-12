@@ -246,14 +246,14 @@ class App:
             mask.append(m)
             bitmap.append(b)
 
-        print "\n\nstatic char bitmap[]={" %vars(),
+        print "\n\nstatic char bitmap[] = {" %vars(),
         for i in range(numbytes):
             b1=bitmap[i]
             if not(i%8): print "\n\t",
             print "0x%(b1)02x, "%vars(),
         print "\n};"
 
-        print "\nstatic char mask[]={" %vars(),
+        print "\nstatic char mask[] = {" %vars(),
         for i in range(numbytes):
             b1=mask[i]
             if not(i%8): print "\n\t",

@@ -1,25 +1,27 @@
 /*
- * -----------------------------------------------------------------------------
+ * ***** BEGIN GPL LICENSE BLOCK *****
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU Lesser General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU Lesser General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- * Place - Suite 330, Boston, MA 02111-1307, USA, or go to
- * http://www.gnu.org/copyleft/lesser.txt.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software  Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  * Contributor(s): Dalai Felinto
  *
  * This code is originally inspired on some of the ideas and codes from Paul Bourke.
- * Developed as part of a Research and Development project for SAT - La Société des arts technologiques.
- * -----------------------------------------------------------------------------
+ * Developed as part of a Research and Development project for
+ * SAT - La Société des arts technologiques.
+ *
+ * ***** END GPL LICENSE BLOCK *****
  */
 
 /** \file gameengine/Ketsji/KX_Dome.cpp
@@ -90,12 +92,11 @@ KX_Dome::KX_Dome (
 	}
 
 	//setting the viewport size
-	GLuint	viewport[4]={0};
-	glGetIntegerv(GL_VIEWPORT,(GLint *)viewport);
+	const int *viewport = m_canvas->GetViewPort();
 
 	SetViewPort(viewport);
 
-	switch(m_mode) {
+	switch (m_mode) {
 		case DOME_FISHEYE:
 			if (m_angle <= 180) {
 				cubetop.resize(1);
@@ -178,7 +179,7 @@ KX_Dome::~KX_Dome (void)
 		glDeleteLists(dlistId, (GLsizei) m_numimages);
 }
 
-void KX_Dome::SetViewPort(GLuint viewport[4])
+void KX_Dome::SetViewPort(const int viewport[4])
 {
 	if (canvaswidth != m_viewport.GetWidth() || canvasheight != m_viewport.GetHeight())
 	{
@@ -1621,7 +1622,7 @@ void KX_Dome::Draw(void)
 		glScissor(0,0,warp.imagesize, warp.imagesize);
 	}
 
-	switch(m_mode) {
+	switch (m_mode) {
 		case DOME_FISHEYE:
 			DrawDomeFisheye();
 			break;

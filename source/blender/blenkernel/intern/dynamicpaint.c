@@ -32,6 +32,8 @@
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
 #include "DNA_constraint_types.h"
@@ -84,7 +86,12 @@
 #include "RE_shader_ext.h"
 
 #ifdef _OPENMP
-#include <omp.h>
+#  include <omp.h>
+#endif
+
+/* could enable at some point but for now there are far too many conversions */
+#ifdef __GNUC__
+#  pragma GCC diagnostic ignored "-Wdouble-promotion"
 #endif
 
 /* precalculated gaussian factors for 5x super sampling	*/
@@ -120,8 +127,16 @@ static int neighY[8] = {0, 1, 1, 1, 0, -1, -1, -1};
 /* drying limits */
 #define MIN_WETNESS 0.001f
 #define MAX_WETNESS 5.0f
-/* dissolve macro */
-#define VALUE_DISSOLVE(VALUE, TIME, SCALE, LOG) (VALUE) = (LOG) ? (VALUE) *(pow(MIN_WETNESS, 1.0f / (1.2f * ((float)(TIME)) / (SCALE)))) : (VALUE) -1.0f / (TIME)*(SCALE)
+
+
+/* dissolve inline function */
+BLI_INLINE void value_dissolve(float *r_value, const float time, const float scale, const int is_log)
+{
+	*r_value = (is_log) ?
+	              (*r_value) * (powf(MIN_WETNESS, 1.0f / (1.2f * time / scale))) :
+	              (*r_value) - 1.0f / time * scale;
+}
+
 
 /***************************** Internal Structs ***************************/
 
@@ -569,7 +584,7 @@ static void scene_setSubframe(Scene *scene, float subframe)
 static int surface_getBrushFlags(DynamicPaintSurface *surface, Scene *scene)
 {
 	Base *base = NULL;
-	GroupObject *go = NULL;	
+	GroupObject *go = NULL;
 	Object *brushObj = NULL;
 	ModifierData *md = NULL;
 
@@ -757,7 +772,7 @@ static void surfaceGenerateGrid(struct DynamicPaintSurface *surface)
 		volume = td[0] * td[1] * td[2];
 
 		/* determine final grid size by trying to fit average 10.000 points per grid cell */
-		dim_factor = (float)pow(volume / ((double)sData->total_points / 10000.0), 1.0 / (double)axis);
+		dim_factor = (float)pow((double)volume / ((double)sData->total_points / 10000.0), 1.0 / (double)axis);
 
 		/* define final grid size using dim_factor, use min 3 for active axises */
 		for (i = 0; i < 3; i++) {
@@ -848,7 +863,7 @@ static void surfaceGenerateGrid(struct DynamicPaintSurface *surface)
 		grid->s_num = MEM_reallocN(grid->s_num, sizeof(int) * grid_cells);
 
 		if (error || !grid->s_num) {
-			setError(surface->canvas, "Not enough free memory.");
+			setError(surface->canvas, N_("Not enough free memory"));
 			freeGrid(sData);
 		}
 	}
@@ -1235,7 +1250,7 @@ static void dynamicPaint_allocateSurfaceType(DynamicPaintSurface *surface)
 			break;
 	}
 
-	if (sData->type_data == NULL) setError(surface->canvas, "Not enough free memory!");
+	if (sData->type_data == NULL) setError(surface->canvas, N_("Not enough free memory"));
 }
 
 static int surface_usesAdjDistance(DynamicPaintSurface *surface)
@@ -1292,7 +1307,7 @@ static void dynamicPaint_initAdjacencyData(DynamicPaintSurface *surface, int for
 	if (!ad->n_index || !ad->n_num || !ad->n_target || !temp_data) {
 		dynamicPaint_freeAdjData(sData);
 		if (temp_data) MEM_freeN(temp_data);
-		setError(surface->canvas, "Not enough free memory.");
+		setError(surface->canvas, N_("Not enough free memory"));
 		return;
 	}
 
@@ -1762,10 +1777,10 @@ static DerivedMesh *dynamicPaint_Modifier_apply(DynamicPaintModifierData *pmd,
 						}
 
 						/* apply weights into a vertex group, if doesnt exists add a new layer */
-						if (defgrp_index >= 0 && !dvert && (surface->output_name[0] != '\0'))
+						if (defgrp_index != -1 && !dvert && (surface->output_name[0] != '\0'))
 							dvert = CustomData_add_layer_named(&result->vertData, CD_MDEFORMVERT, CD_CALLOC,
 							                                   NULL, sData->total_points, surface->output_name);
-						if (defgrp_index >= 0 && dvert) {
+						if (defgrp_index != -1 && dvert) {
 							int i;
 							for (i = 0; i < sData->total_points; i++) {
 								MDeformVert *dv = &dvert[i];
@@ -2165,8 +2180,10 @@ int dynamicPaint_createUVSurface(DynamicPaintSurface *surface)
 	int *final_index;
 	int aa_samples;
 
-	if (!dm) return setError(canvas, "Canvas mesh not updated.");
-	if (surface->format != MOD_DPAINT_SURFACE_F_IMAGESEQ) return setError(canvas, "Can't bake non-\"image sequence\" formats.");
+	if (!dm)
+		return setError(canvas, N_("Canvas mesh not updated"));
+	if (surface->format != MOD_DPAINT_SURFACE_F_IMAGESEQ)
+		return setError(canvas, N_("Cannot bake non-'image sequence' formats"));
 
 	numOfFaces = dm->getNumTessFaces(dm);
 	mface = dm->getTessFaceArray(dm);
@@ -2176,8 +2193,10 @@ int dynamicPaint_createUVSurface(DynamicPaintSurface *surface)
 	tface = CustomData_get_layer_named(&dm->faceData, CD_MTFACE, uvname);
 
 	/* Check for validity	*/
-	if (!tface) return setError(canvas, "No UV data on canvas.");
-	if (surface->image_resolution < 16 || surface->image_resolution > 8192) return setError(canvas, "Invalid resolution.");
+	if (!tface)
+		return setError(canvas, N_("No UV data on canvas"));
+	if (surface->image_resolution < 16 || surface->image_resolution > 8192)
+		return setError(canvas, N_("Invalid resolution"));
 
 	w = h = surface->image_resolution;
 
@@ -2189,7 +2208,8 @@ int dynamicPaint_createUVSurface(DynamicPaintSurface *surface)
 	/* Init data struct */
 	if (surface->data) dynamicPaint_freeSurfaceData(surface);
 	sData = surface->data = MEM_callocN(sizeof(PaintSurfaceData), "PaintSurfaceData");
-	if (!surface->data) return setError(canvas, "Not enough free memory.");
+	if (!surface->data)
+		return setError(canvas, N_("Not enough free memory"));
 
 	aa_samples = (surface->flags & MOD_DPAINT_ANTIALIAS) ? 5 : 1;
 	tempPoints = (struct PaintUVPoint *) MEM_callocN(w * h * sizeof(struct PaintUVPoint), "Temp PaintUVPoint");
@@ -2547,7 +2567,8 @@ int dynamicPaint_createUVSurface(DynamicPaintSurface *surface)
 			}
 		}
 	}
-	if (error == 1) setError(canvas, "Not enough free memory.");
+	if (error == 1)
+		setError(canvas, N_("Not enough free memory"));
 
 	if (faceBB) MEM_freeN(faceBB);
 	if (tempPoints) MEM_freeN(tempPoints);
@@ -2598,7 +2619,10 @@ void dynamicPaint_outputSurfaceImage(DynamicPaintSurface *surface, char *filenam
 	int format = (surface->image_fileformat & MOD_DPAINT_IMGFORMAT_OPENEXR) ? R_IMF_IMTYPE_OPENEXR : R_IMF_IMTYPE_PNG;
 	char output_file[FILE_MAX];
 
-	if (!sData->type_data) { setError(surface->canvas, "Image save failed: Invalid surface."); return; }
+	if (!sData->type_data) {
+		setError(surface->canvas, N_("Image save failed: invalid surface"));
+		return;
+	}
 	/* if selected format is openexr, but current build doesnt support one */
 	#ifndef WITH_OPENEXR
 	if (format == R_IMF_IMTYPE_OPENEXR) format = R_IMF_IMTYPE_PNG;
@@ -2612,7 +2636,10 @@ void dynamicPaint_outputSurfaceImage(DynamicPaintSurface *surface, char *filenam
 
 	/* Init image buffer	*/
 	ibuf = IMB_allocImBuf(surface->image_resolution, surface->image_resolution, 32, IB_rectfloat);
-	if (ibuf == NULL) { setError(surface->canvas, "Image save failed: Not enough free memory."); return; }
+	if (ibuf == NULL) {
+		setError(surface->canvas, N_("Image save failed: not enough free memory"));
+		return;
+	}
 
 	#pragma omp parallel for schedule(static)
 	for (index = 0; index < sData->total_points; index++) {
@@ -3339,7 +3366,7 @@ static int dynamicPaint_paintMesh(DynamicPaintSurface *surface,
 							    (!hit_found || (brush->flags & MOD_DPAINT_INVERSE_PROX)))
 							{
 								float proxDist = -1.0f;
-								float hitCo[3];
+								float hitCo[3] = {0.0f, 0.0f, 0.0f};
 								short hQuad;
 								int face;
 
@@ -3696,6 +3723,8 @@ static int dynamicPaint_paintParticles(DynamicPaintSurface *surface,
 					float smooth_range = smooth * (1.0f - strength), dist;
 					/* calculate max range that can have particles with higher influence than the nearest one */
 					float max_range = smooth - strength * smooth + solidradius;
+					/* Make gcc happy! */
+					dist = max_range;
 
 					particles = BLI_kdtree_range_search(tree, max_range, bData->realCoord[bData->s_pos[index]].v, NULL, &nearest);
 
@@ -4473,7 +4502,7 @@ static void dynamicPaint_surfacePreStep(DynamicPaintSurface *surface, float time
 					int i;
 					float dry_ratio, f_color[4];
 					float p_wetness = pPoint->wetness;
-					VALUE_DISSOLVE(pPoint->wetness, surface->dry_speed, timescale, (surface->flags & MOD_DPAINT_DRY_LOG));
+					value_dissolve(&pPoint->wetness, surface->dry_speed, timescale, (surface->flags & MOD_DPAINT_DRY_LOG));
 					if (pPoint->wetness < 0.0f) pPoint->wetness = 0.0f;
 
 					if (pPoint->wetness < surface->color_dry_threshold) {
@@ -4518,10 +4547,10 @@ static void dynamicPaint_surfacePreStep(DynamicPaintSurface *surface, float time
 			}
 
 			if (surface->flags & MOD_DPAINT_DISSOLVE) {
-				VALUE_DISSOLVE(pPoint->alpha, surface->diss_speed, timescale, (surface->flags & MOD_DPAINT_DISSOLVE_LOG));
+				value_dissolve(&pPoint->alpha, surface->diss_speed, timescale, (surface->flags & MOD_DPAINT_DISSOLVE_LOG));
 				if (pPoint->alpha < 0.0f) pPoint->alpha = 0.0f;
 
-				VALUE_DISSOLVE(pPoint->e_alpha, surface->diss_speed, timescale, (surface->flags & MOD_DPAINT_DISSOLVE_LOG));
+				value_dissolve(&pPoint->e_alpha, surface->diss_speed, timescale, (surface->flags & MOD_DPAINT_DISSOLVE_LOG));
 				if (pPoint->e_alpha < 0.0f) pPoint->e_alpha = 0.0f;
 			}
 		}
@@ -4533,7 +4562,7 @@ static void dynamicPaint_surfacePreStep(DynamicPaintSurface *surface, float time
 
 			float *point = &((float *)sData->type_data)[index];
 			/* log or linear */
-			VALUE_DISSOLVE(*point, surface->diss_speed, timescale, (surface->flags & MOD_DPAINT_DISSOLVE_LOG));
+			value_dissolve(point, surface->diss_speed, timescale, (surface->flags & MOD_DPAINT_DISSOLVE_LOG));
 			if (*point < 0.0f) *point = 0.0f;
 		}
 	}
@@ -4649,7 +4678,7 @@ static int dynamicPaint_generateBakeData(DynamicPaintSurface *surface, Scene *sc
 			if (bData->realCoord) MEM_freeN(bData->realCoord);
 			if (canvas_verts) MEM_freeN(canvas_verts);
 
-			return setError(surface->canvas, "Not enough free memory.");
+			return setError(surface->canvas, N_("Not enough free memory"));
 		}
 
 		new_bdata = 1;
@@ -4811,7 +4840,7 @@ static int dynamicPaint_doStep(Scene *scene, Object *ob, DynamicPaintSurface *su
 	 */
 	{
 		Base *base = NULL;
-		GroupObject *go = NULL;	
+		GroupObject *go = NULL;
 		Object *brushObj = NULL;
 		ModifierData *md = NULL;
 
@@ -4878,7 +4907,7 @@ static int dynamicPaint_doStep(Scene *scene, Object *ob, DynamicPaintSurface *su
 					/* Apply brush on the surface depending on it's collision type */
 					/* Particle brush: */
 					if (brush->collision == MOD_DPAINT_COL_PSYS) {
-						if (brush->psys && brush->psys->part && brush->psys->part->type == PART_EMITTER &&
+						if (brush->psys && brush->psys->part && ELEM(brush->psys->part->type, PART_EMITTER, PART_FLUID) &&
 						    psys_check_enabled(brushObj, brush->psys))
 						{
 
@@ -4934,7 +4963,7 @@ static int dynamicPaint_doStep(Scene *scene, Object *ob, DynamicPaintSurface *su
 			/* Allocate memory for surface previous points to read unchanged values from	*/
 			prevPoint = MEM_mallocN(sData->total_points * sizeof(struct PaintPoint), "PaintSurfaceDataCopy");
 			if (!prevPoint)
-				return setError(canvas, "Not enough free memory.");
+				return setError(canvas, N_("Not enough free memory"));
 
 			/* Prepare effects and get number of required steps */
 			steps = dynamicPaint_prepareEffectStep(surface, scene, ob, &force, timescale);

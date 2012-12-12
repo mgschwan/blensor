@@ -34,6 +34,8 @@
 #include "BLI_array.h"
 #include "BLI_math.h"
 
+#include "BLF_translation.h"
+
 #include "BKE_context.h"
 #include "BKE_report.h"
 #include "BKE_tessmesh.h"
@@ -113,11 +115,11 @@ static int vtx_slide_init(bContext *C, wmOperator *op)
 	/* Custom data */
 	VertexSlideOp *vso;
 
-	const char *header_str = "Vertex Slide: Hover over an edge and left-click to select slide edge. "
-	                         "Left-Shift: Midpoint Snap, Left-Alt: Snap, Left-Ctrl: Snap&Merge";
+	const char *header_str = TIP_("Vertex Slide: Hover over an edge and left-click to select slide edge. "
+	                              "Left-Shift: Midpoint Snap, Left-Alt: Snap, Left-Ctrl: Snap & Merge");
 
 	if (!obedit) {
-		BKE_report(op->reports, RPT_ERROR, "Vertex Slide Error: Not object in context");
+		BKE_report(op->reports, RPT_ERROR, "Vertex slide error: no object in context");
 		return FALSE;
 	}
 
@@ -126,7 +128,7 @@ static int vtx_slide_init(bContext *C, wmOperator *op)
 
 	/* Is there a starting vertex  ? */
 	if (ese == NULL || (ese->htype != BM_VERT && ese->htype != BM_EDGE)) {
-		BKE_report(op->reports, RPT_ERROR_INVALID_INPUT, "Vertex Slide Error: Select a (single) vertex");
+		BKE_report(op->reports, RPT_ERROR_INVALID_INPUT, "Vertex slide error: select a (single) vertex");
 		return FALSE;
 	}
 
@@ -177,7 +179,7 @@ static int vtx_slide_init(bContext *C, wmOperator *op)
 
 	/* Init frame */
 	if (!vtx_slide_set_frame(vso)) {
-		BKE_report(op->reports, RPT_ERROR_INVALID_INPUT, "Vertex Slide: Can't find starting vertex!");
+		BKE_report(op->reports, RPT_ERROR_INVALID_INPUT, "Vertex slide error: cannot find starting vertex!");
 		vtx_slide_exit(C, op);
 		return FALSE;
 	}
@@ -262,7 +264,7 @@ static void vtx_slide_confirm(bContext *C, wmOperator *op)
 	EDBM_selectmode_flush(em);
 	
 	/* NC_GEOM | ND_DATA & Retess */
-	EDBM_update_generic(C, em, TRUE);
+	EDBM_update_generic(C, em, TRUE, FALSE);
 	
 	ED_region_tag_redraw(vso->active_region);
 }
@@ -390,8 +392,8 @@ static BMEdge *vtx_slide_nrst_in_frame(VertexSlideOp *vso, const float mval[2])
 			mul_v3_m4v3(v2_proj, vso->obj->obmat, edge->v2->co);
 
 			/* we could use ED_view3d_project_float_object here, but for now dont since we dont have the context */
-			if ((ED_view3d_project_float_global(vso->active_region, v1_proj, v1_proj, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_SUCCESS) &&
-			    (ED_view3d_project_float_global(vso->active_region, v2_proj, v2_proj, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_SUCCESS))
+			if ((ED_view3d_project_float_global(vso->active_region, v1_proj, v1_proj, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) &&
+			    (ED_view3d_project_float_global(vso->active_region, v2_proj, v2_proj, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK))
 			{
 				const float dist = dist_to_line_segment_v2(mval, v1_proj, v2_proj);
 				if (dist < min_dist) {
@@ -409,7 +411,8 @@ static void vtx_slide_find_edge(VertexSlideOp *vso, wmEvent *event)
 	/* Nearest edge */
 	BMEdge *nst_edge = NULL;
 
-	const float mval_float[] = { (float)event->mval[0], (float)event->mval[1]};
+	const float mval_float[2] = {(float)event->mval[0],
+	                             (float)event->mval[1]};
 
 	/* Set mouse coords */
 	copy_v2_v2_int(vso->view_context->mval, event->mval);
@@ -458,8 +461,8 @@ static void vtx_slide_update(VertexSlideOp *vso, wmEvent *event)
 		mul_v3_m4v3(start_vtx_proj, vso->obj->obmat, vso->start_vtx->co);
 		mul_v3_m4v3(edge_other_proj, vso->obj->obmat, other->co);
 
-		if ((ED_view3d_project_float_global(vso->active_region, edge_other_proj, edge_other_proj, V3D_PROJ_TEST_NOP) != V3D_PROJ_RET_SUCCESS) ||
-		    (ED_view3d_project_float_global(vso->active_region, start_vtx_proj, start_vtx_proj, V3D_PROJ_TEST_NOP) != V3D_PROJ_RET_SUCCESS))
+		if ((ED_view3d_project_float_global(vso->active_region, edge_other_proj, edge_other_proj, V3D_PROJ_TEST_NOP) != V3D_PROJ_RET_OK) ||
+		    (ED_view3d_project_float_global(vso->active_region, start_vtx_proj, start_vtx_proj, V3D_PROJ_TEST_NOP) != V3D_PROJ_RET_OK))
 		{
 			/* not much we can do here */
 			return;
@@ -692,7 +695,7 @@ static int edbm_vertex_slide_exec_ex(bContext *C, wmOperator *op, const int do_u
 	BMOperator bmop;
 	BMEditSelection *ese = (BMEditSelection *)em->bm->selected.last;
 
-	float distance_t = 0.0f;
+	float factor = 0.0f;
 
 	/* Invoked modally? */
 	if (op->type->modal == edbm_vertex_slide_modal && op->customdata) {
@@ -708,17 +711,17 @@ static int edbm_vertex_slide_exec_ex(bContext *C, wmOperator *op, const int do_u
 			BM_select_history_store(em->bm, vso->start_vtx);
 			ese = (BMEditSelection *)em->bm->selected.last;
 		}
-		distance_t = vso->distance;
-		RNA_float_set(op->ptr, "distance_t", distance_t);
+		factor = vso->distance;
+		RNA_float_set(op->ptr, "factor", factor);
 	}
 	else {
 		/* Get Properties */
-		distance_t = RNA_float_get(op->ptr, "distance_t");
+		factor = RNA_float_get(op->ptr, "factor");
 	}
 
 	/* Is there a starting vertex  ? */
 	if ((ese == NULL) || (ese->htype != BM_VERT && ese->htype != BM_EDGE)) {
-		BKE_report(op->reports, RPT_ERROR_INVALID_INPUT, "Vertex Slide Error: Select a (single) vertex");
+		BKE_report(op->reports, RPT_ERROR_INVALID_INPUT, "Vertex slide error: select a (single) vertex");
 		return OPERATOR_CANCELLED;
 	}
 
@@ -726,8 +729,8 @@ static int edbm_vertex_slide_exec_ex(bContext *C, wmOperator *op, const int do_u
 
 	/* Prepare operator */
 	if (!EDBM_op_init(em, &bmop, op,
-	                  "slide_vert vert=%e edge=%hev distance_t=%f",
-	                  start_vert, BM_ELEM_SELECT, distance_t))
+	                  "slide_vert vert=%e edges=%he factor=%f",
+	                  start_vert, BM_ELEM_SELECT, factor))
 	{
 		return OPERATOR_CANCELLED;
 	}
@@ -735,10 +738,10 @@ static int edbm_vertex_slide_exec_ex(bContext *C, wmOperator *op, const int do_u
 	BMO_op_exec(bm, &bmop);
 
 	/* Deselect the input edges */
-	BMO_slot_buffer_hflag_disable(bm, &bmop, "edge", BM_ALL, BM_ELEM_SELECT, TRUE);
+	BMO_slot_buffer_hflag_disable(bm, bmop.slots_in, "edges", BM_EDGE, BM_ELEM_SELECT, TRUE);
 
 	/* Select the output vert */
-	BMO_slot_buffer_hflag_enable(bm, &bmop, "vertout", BM_ALL, BM_ELEM_SELECT, TRUE);
+	BMO_slot_buffer_hflag_enable(bm, bmop.slots_out, "verts.out", BM_VERT, BM_ELEM_SELECT, TRUE);
 
 	/* Flush the select buffers */
 	EDBM_selectmode_flush(em);
@@ -749,7 +752,7 @@ static int edbm_vertex_slide_exec_ex(bContext *C, wmOperator *op, const int do_u
 
 	if (do_update) {
 		/* Update Geometry */
-		EDBM_update_generic(C, em, TRUE);
+		EDBM_update_generic(C, em, TRUE, FALSE);
 	}
 
 	return OPERATOR_FINISHED;
@@ -784,7 +787,7 @@ void MESH_OT_vert_slide(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* Properties for vertex slide */
-	prop = RNA_def_float(ot->srna, "distance_t", 0.0f, -FLT_MAX, FLT_MAX, "Distance", "Distance", -5.0f, 5.0f);
+	prop = RNA_def_float(ot->srna, "factor", 0.0f, -FLT_MAX, FLT_MAX, "Distance", "Distance", -5.0f, 5.0f);
 	RNA_def_property_ui_range(prop, -5.0f, 5.0f, 0.1, 4);
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }

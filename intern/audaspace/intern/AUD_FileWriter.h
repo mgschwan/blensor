@@ -32,8 +32,7 @@
 
 #include <string>
 #include <vector>
-
-#include "AUD_Reference.h"
+#include <boost/shared_ptr.hpp>
 
 #include "AUD_IWriter.h"
 #include "AUD_IReader.h"
@@ -59,25 +58,25 @@ public:
 	 * \param bitrate The bitrate for encoding.
 	 * \return The writer to write data to.
 	 */
-	static AUD_Reference<AUD_IWriter> createWriter(std::string filename, AUD_DeviceSpecs specs, AUD_Container format, AUD_Codec codec, unsigned int bitrate);
+	static boost::shared_ptr<AUD_IWriter> createWriter(std::string filename, AUD_DeviceSpecs specs, AUD_Container format, AUD_Codec codec, unsigned int bitrate);
 
 	/**
 	 * Writes a reader to a writer.
 	 * \param reader The reader to read from.
 	 * \param writer The writer to write to.
-	 * \param length How many samples should be transfered.
-	 * \param buffersize How many samples should be transfered at once.
+	 * \param length How many samples should be transferred.
+	 * \param buffersize How many samples should be transferred at once.
 	 */
-	static void writeReader(AUD_Reference<AUD_IReader> reader, AUD_Reference<AUD_IWriter> writer, unsigned int length, unsigned int buffersize);
+	static void writeReader(boost::shared_ptr<AUD_IReader> reader, boost::shared_ptr<AUD_IWriter> writer, unsigned int length, unsigned int buffersize);
 
 	/**
 	 * Writes a reader to several writers.
 	 * \param reader The reader to read from.
 	 * \param writers The writers to write to.
-	 * \param length How many samples should be transfered.
-	 * \param buffersize How many samples should be transfered at once.
+	 * \param length How many samples should be transferred.
+	 * \param buffersize How many samples should be transferred at once.
 	 */
-	static void writeReader(AUD_Reference<AUD_IReader> reader, std::vector<AUD_Reference<AUD_IWriter> >& writers, unsigned int length, unsigned int buffersize);
+	static void writeReader(boost::shared_ptr<AUD_IReader> reader, std::vector<boost::shared_ptr<AUD_IWriter> >& writers, unsigned int length, unsigned int buffersize);
 };
 
 #endif //__AUD_FILEWRITER_H__

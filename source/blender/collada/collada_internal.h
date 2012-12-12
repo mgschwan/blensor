@@ -69,17 +69,17 @@ public:
 		
 	// TODO need also for angle conversion, time conversion...
 
-	void dae_matrix_to_mat4_(float out[][4], const COLLADABU::Math::Matrix4& in);
+	void dae_matrix_to_mat4_(float out[4][4], const COLLADABU::Math::Matrix4& in);
 
-	void mat4_to_dae(float out[][4], float in[][4]);
+	void mat4_to_dae(float out[4][4], float in[4][4]);
 
-	void mat4_to_dae_double(double out[][4], float in[][4]);
+	void mat4_to_dae_double(double out[4][4], float in[4][4]);
 };
 
 class TransformBase
 {
 public:
-	void decompose(float mat[][4], float *loc, float eul[3], float quat[4], float *size);
+	void decompose(float mat[4][4], float *loc, float eul[3], float quat[4], float *size);
 };
 
 extern void clear_global_id_map();
@@ -88,6 +88,7 @@ extern std::string translate_id(const std::string &id);
 
 extern std::string id_name(void *id);
 
+extern std::string get_geometry_id(Object *ob);
 extern std::string get_geometry_id(Object *ob, bool use_instantiation);
 
 extern std::string get_light_id(Object *ob);

@@ -113,7 +113,7 @@ paper_presets_data = {idname: paper_enum_parse(idname)
 
 def update_settings_cb(self, context):
     # annoying workaround for recursive call
-    if update_settings_cb.level == False:
+    if update_settings_cb.level is False:
         update_settings_cb.level = True
         pixels_from_print(self)
         update_settings_cb.level = False

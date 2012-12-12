@@ -69,7 +69,7 @@ unsigned int BKE_mask_spline_resolution(MaskSpline *spline, int width, int heigh
 	unsigned int i, resol = 1;
 
 	if (width != 0 && height != 0) {
-		max_segment = 1.0f / (float)maxi(width, height);
+		max_segment = 1.0f / (float)max_ii(width, height);
 	}
 
 	for (i = 0; i < spline->tot_point; i++) {
@@ -131,7 +131,7 @@ unsigned int BKE_mask_spline_feather_resolution(MaskSpline *spline, int width, i
 			if (u_diff > FLT_EPSILON) {
 				float jump = fabsf(w_diff / u_diff);
 
-				max_jump = MAX2(max_jump, jump);
+				max_jump = max_ff(max_jump, jump);
 			}
 
 			prev_u = point->uw[j].u;
@@ -245,7 +245,7 @@ static void feather_bucket_add_edge(FeatherEdgesBucket *bucket, int start, int e
 		}
 		else {
 			bucket->segments = MEM_reallocN(bucket->segments,
-					(alloc_delta + bucket->tot_segment) * sizeof(*bucket->segments));
+			                                (alloc_delta + bucket->tot_segment) * sizeof(*bucket->segments));
 		}
 
 		bucket->alloc_segment += alloc_delta;
@@ -289,10 +289,10 @@ static void feather_bucket_check_intersect(float (*feather_points)[2], int tot_f
 			/* collapse loop with smaller AABB */
 			for (k = 0; k < tot_feather_point; k++) {
 				if (k >= check_b && k <= cur_a) {
-					DO_MINMAX2(feather_points[k], min_a, max_a);
+					minmax_v2v2_v2(min_a, max_a, feather_points[k]);
 				}
 				else {
-					DO_MINMAX2(feather_points[k], min_b, max_b);
+					minmax_v2v2_v2(min_b, max_b, feather_points[k]);
 				}
 			}
 
@@ -379,7 +379,7 @@ void BKE_mask_spline_feather_collapse_inner_loops(MaskSpline *spline, float (*fe
 		int next = i + 1;
 		float delta;
 
-		DO_MINMAX2(feather_points[i], min, max);
+		minmax_v2v2_v2(min, max, feather_points[i]);
 
 		if (next == tot_feather_point) {
 			if (spline->flag & MASK_SPLINE_CYCLIC)
@@ -418,7 +418,7 @@ void BKE_mask_spline_feather_collapse_inner_loops(MaskSpline *spline, float (*fe
 
 	max_delta = MAX2(max_delta_x, max_delta_y);
 
-	buckets_per_side = MIN2(512, 0.9f / max_delta);
+	buckets_per_side = min_ii(512, 0.9f / max_delta);
 
 	if (buckets_per_side == 0) {
 		/* happens when some segment fills the whole bounding box across some of dimension */

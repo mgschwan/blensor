@@ -103,7 +103,7 @@ class add_scene(bpy.types.Operator):
 # add plane
 
         bpy.ops.mesh.primitive_plane_add(location = (0.0,0.0,-1.0))
-        bpy.ops.transform.rotate(value=(-0.820305,), axis=(0, 0, 1))
+        bpy.ops.transform.rotate(value=(-0.820305), axis=(0, 0, 1))
         bpy.ops.transform.resize(value=(22.0, 22.0, 0.0))
         bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 

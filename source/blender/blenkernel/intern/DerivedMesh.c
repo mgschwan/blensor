@@ -51,8 +51,6 @@
 #include "BLI_utildefines.h"
 #include "BLI_linklist.h"
 
-#include "BLF_translation.h"
-
 #include "BKE_cdderivedmesh.h"
 #include "BKE_displist.h"
 #include "BKE_key.h"
@@ -267,9 +265,11 @@ void DM_init_funcs(DerivedMesh *dm)
 	dm->getVertData = DM_get_vert_data;
 	dm->getEdgeData = DM_get_edge_data;
 	dm->getTessFaceData = DM_get_tessface_data;
+	dm->getPolyData = DM_get_poly_data;
 	dm->getVertDataArray = DM_get_vert_data_layer;
 	dm->getEdgeDataArray = DM_get_edge_data_layer;
 	dm->getTessFaceDataArray = DM_get_tessface_data_layer;
+	dm->getPolyDataArray = DM_get_poly_data_layer;
 
 	bvhcache_init(&dm->bvhCache);
 }
@@ -289,6 +289,13 @@ void DM_init(DerivedMesh *dm, DerivedMeshType type, int numVerts, int numEdges,
 	dm->needsFree = 1;
 	dm->auto_bump_scale = -1.0f;
 	dm->dirty = 0;
+
+	/* don't use CustomData_reset(...); because we dont want to touch customdata */
+	fill_vn_i(dm->vertData.typemap, CD_NUMTYPES, -1);
+	fill_vn_i(dm->edgeData.typemap, CD_NUMTYPES, -1);
+	fill_vn_i(dm->faceData.typemap, CD_NUMTYPES, -1);
+	fill_vn_i(dm->loopData.typemap, CD_NUMTYPES, -1);
+	fill_vn_i(dm->polyData.typemap, CD_NUMTYPES, -1);
 }
 
 void DM_from_template(DerivedMesh *dm, DerivedMesh *source, DerivedMeshType type,
@@ -385,7 +392,7 @@ void DM_ensure_tessface(DerivedMesh *dm)
 	}
 
 	else if (dm->dirty & DM_DIRTY_TESS_CDLAYERS) {
-		BLI_assert(CustomData_has_layer(&dm->faceData, CD_POLYINDEX));
+		BLI_assert(CustomData_has_layer(&dm->faceData, CD_ORIGINDEX) || numTessFaces == 0);
 		DM_update_tessface_data(dm);
 	}
 
@@ -409,7 +416,7 @@ void DM_update_tessface_data(DerivedMesh *dm)
 	const int hasPCol = CustomData_has_layer(ldata, CD_PREVIEW_MLOOPCOL);
 	const int hasOrigSpace = CustomData_has_layer(ldata, CD_ORIGSPACE_MLOOP);
 
-	int *polyindex = CustomData_get_layer(fdata, CD_POLYINDEX);
+	int *polyindex = CustomData_get_layer(fdata, CD_ORIGINDEX);
 
 	int mf_idx,
 	    totface = dm->getNumTessFaces(dm),
@@ -466,11 +473,11 @@ void DM_to_mesh(DerivedMesh *dm, Mesh *me, Object *ob)
 	int totvert, totedge /*, totface */ /* UNUSED */, totloop, totpoly;
 	int did_shapekeys = 0;
 	
-	memset(&tmp.vdata, 0, sizeof(tmp.vdata));
-	memset(&tmp.edata, 0, sizeof(tmp.edata));
-	memset(&tmp.fdata, 0, sizeof(tmp.fdata));
-	memset(&tmp.ldata, 0, sizeof(tmp.ldata));
-	memset(&tmp.pdata, 0, sizeof(tmp.pdata));
+	CustomData_reset(&tmp.vdata);
+	CustomData_reset(&tmp.edata);
+	CustomData_reset(&tmp.fdata);
+	CustomData_reset(&tmp.ldata);
+	CustomData_reset(&tmp.pdata);
 
 	totvert = tmp.totvert = dm->getNumVerts(dm);
 	totedge = tmp.totedge = dm->getNumEdges(dm);
@@ -626,6 +633,12 @@ void *DM_get_tessface_data(DerivedMesh *dm, int index, int type)
 {
 	return CustomData_get(&dm->faceData, index, type);
 }
+
+void *DM_get_poly_data(DerivedMesh *dm, int index, int type)
+{
+	return CustomData_get(&dm->polyData, index, type);
+}
+
 
 void *DM_get_vert_data_layer(DerivedMesh *dm, int type)
 {
@@ -903,7 +916,7 @@ static DerivedMesh *create_orco_dm(Object *ob, Mesh *me, BMEditMesh *em, int lay
 	float (*orco)[3];
 	int free;
 
-	if (em) dm = CDDM_from_BMEditMesh(em, me, FALSE, FALSE);
+	if (em) dm = CDDM_from_editbmesh(em, FALSE, FALSE);
 	else dm = CDDM_from_mesh(me, ob);
 
 	orco = get_orco_coords_dm(ob, em, layer, &free);
@@ -1146,119 +1159,64 @@ void DM_update_weight_mcol(Object *ob, DerivedMesh *dm, int const draw_flag,
 	ColorBand *coba = stored_cb; /* warning, not a local var */
 
 	unsigned char *wtcol_v;
-#if 0 /* See coment below. */
-	unsigned char *wtcol_f = dm->getTessFaceDataArray(dm, CD_PREVIEW_MCOL);
-#endif
 	unsigned char(*wtcol_l)[4] = CustomData_get_layer(dm->getLoopDataLayout(dm), CD_PREVIEW_MLOOPCOL);
-#if 0 /* See coment below. */
-	MFace *mf = dm->getTessFaceArray(dm);
-#endif
 	MLoop *mloop = dm->getLoopArray(dm), *ml;
 	MPoly *mp = dm->getPolyArray(dm);
-#if 0
-	int numFaces = dm->getNumTessFaces(dm);
-#endif
 	int numVerts = dm->getNumVerts(dm);
 	int totloop;
 	int i, j;
 
-#if 0 /* See comment below */
-	  /* If no CD_PREVIEW_MCOL existed yet, add a new one! */
-	if (!wtcol_f)
-		wtcol_f = CustomData_add_layer(&dm->faceData, CD_PREVIEW_MCOL, CD_CALLOC, NULL, numFaces);
-
-	if (wtcol_f) {
-		unsigned char *wtcol_f_step = wtcol_f;
-# else
-#if 0
-	/* XXX We have to create a CD_PREVIEW_MCOL, else it might sigsev (after a SubSurf mod, eg)... */
-	if (!dm->getTessFaceDataArray(dm, CD_PREVIEW_MCOL))
-		CustomData_add_layer(&dm->faceData, CD_PREVIEW_MCOL, CD_CALLOC, NULL, numFaces);
-#endif
-
-	{
-#endif
-
-		/* Weights are given by caller. */
-		if (weights) {
-			float *w = weights;
-			/* If indices is not NULL, it means we do not have weights for all vertices,
-			 * so we must create them (and set them to zero)... */
-			if (indices) {
-				w = MEM_callocN(sizeof(float) * numVerts, "Temp weight array DM_update_weight_mcol");
-				i = num;
-				while (i--)
-					w[indices[i]] = weights[i];
-			}
-
-			/* Convert float weights to colors. */
-			wtcol_v = calc_colors_from_weights_array(numVerts, w);
-
-			if (indices)
-				MEM_freeN(w);
+	/* Weights are given by caller. */
+	if (weights) {
+		float *w = weights;
+		/* If indices is not NULL, it means we do not have weights for all vertices,
+		 * so we must create them (and set them to zero)... */
+		if (indices) {
+			w = MEM_callocN(sizeof(float) * numVerts, "Temp weight array DM_update_weight_mcol");
+			i = num;
+			while (i--)
+				w[indices[i]] = weights[i];
 		}
 
-		/* No weights given, take them from active vgroup(s). */
-		else
-			wtcol_v = calc_weightpaint_vert_array(ob, dm, draw_flag, coba);
+		/* Convert float weights to colors. */
+		wtcol_v = calc_colors_from_weights_array(numVerts, w);
 
-		/* Now copy colors in all face verts. */
-		/* first add colors to the tessellation faces */
-		/* XXX Why update that layer? We have to update WEIGHT_MLOOPCOL anyway, 
-		 *     and tessellation recreates mface layers from mloop/mpoly ones, so no
-		 *     need to fill WEIGHT_MCOL here. */
-#if 0
-		for (i = 0; i < numFaces; i++, mf++, wtcol_f_step += (4 * 4)) {
-			/*origindex being NULL means we're operating on original mesh data*/
-#if 0
-			unsigned int fidx = mf->v4 ? 3 : 2;
-
-#else   /* better zero out triangles 4th component. else valgrind complains when the buffer's copied */
-			unsigned int fidx;
-			if (mf->v4) {
-				fidx = 3;
-			}
-			else {
-				fidx = 2;
-				*(int *)(&wtcol_f_step[3 * 4]) = 0;
-			}
-#endif
-
-			do {
-				copy_v4_v4_char((char *)&wtcol_f_step[fidx * 4],
-				                (char *)&wtcol_v[4 * (*(&mf->v1 + fidx))]);
-			} while (fidx--);
-		}
-#endif
-		/*now add to loops, so the data can be passed through the modifier stack*/
-		/* If no CD_PREVIEW_MLOOPCOL existed yet, we have to add a new one! */
-		if (!wtcol_l) {
-			BLI_array_declare(wtcol_l);
-			totloop = 0;
-			for (i = 0; i < dm->numPolyData; i++, mp++) {
-				ml = mloop + mp->loopstart;
-
-				BLI_array_grow_items(wtcol_l, mp->totloop);
-				for (j = 0; j < mp->totloop; j++, ml++, totloop++) {
-					copy_v4_v4_char((char *)&wtcol_l[totloop],
-					                (char *)&wtcol_v[4 * ml->v]);
-				}
-			}
-			CustomData_add_layer(&dm->loopData, CD_PREVIEW_MLOOPCOL, CD_ASSIGN, wtcol_l, totloop);
-		}
-		else {
-			totloop = 0;
-			for (i = 0; i < dm->numPolyData; i++, mp++) {
-				ml = mloop + mp->loopstart;
-
-				for (j = 0; j < mp->totloop; j++, ml++, totloop++) {
-					copy_v4_v4_char((char *)&wtcol_l[totloop],
-					                (char *)&wtcol_v[4 * ml->v]);
-				}
-			}
-		}
-		MEM_freeN(wtcol_v);
+		if (indices)
+			MEM_freeN(w);
 	}
+
+	/* No weights given, take them from active vgroup(s). */
+	else
+		wtcol_v = calc_weightpaint_vert_array(ob, dm, draw_flag, coba);
+
+	/* now add to loops, so the data can be passed through the modifier stack */
+	/* If no CD_PREVIEW_MLOOPCOL existed yet, we have to add a new one! */
+	if (!wtcol_l) {
+		BLI_array_declare(wtcol_l);
+		totloop = 0;
+		for (i = 0; i < dm->numPolyData; i++, mp++) {
+			ml = mloop + mp->loopstart;
+
+			BLI_array_grow_items(wtcol_l, mp->totloop);
+			for (j = 0; j < mp->totloop; j++, ml++, totloop++) {
+				copy_v4_v4_char((char *)&wtcol_l[totloop],
+				                (char *)&wtcol_v[4 * ml->v]);
+			}
+		}
+		CustomData_add_layer(&dm->loopData, CD_PREVIEW_MLOOPCOL, CD_ASSIGN, wtcol_l, totloop);
+	}
+	else {
+		totloop = 0;
+		for (i = 0; i < dm->numPolyData; i++, mp++) {
+			ml = mloop + mp->loopstart;
+
+			for (j = 0; j < mp->totloop; j++, ml++, totloop++) {
+				copy_v4_v4_char((char *)&wtcol_l[totloop],
+				                (char *)&wtcol_v[4 * ml->v]);
+			}
+		}
+	}
+	MEM_freeN(wtcol_v);
 
 	dm->dirty |= DM_DIRTY_TESS_CDLAYERS;
 }
@@ -1270,7 +1228,7 @@ static void shapekey_layers_to_keyblocks(DerivedMesh *dm, Mesh *me, int actshape
 	int i, j, tot;
 	
 	if (!me->key)
-		return;	
+		return;
 	
 	tot = CustomData_number_of_layers(&dm->vertData, CD_SHAPEKEY);
 	for (i = 0; i < tot; i++) {
@@ -1375,7 +1333,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 	ModifierData *firstmd, *md, *previewmd = NULL;
 	CDMaskLink *datamasks, *curr;
 	/* XXX Always copying POLYINDEX, else tessellated data are no more valid! */
-	CustomDataMask mask, nextmask, append_mask = CD_MASK_POLYINDEX;
+	CustomDataMask mask, nextmask, append_mask = CD_MASK_ORIGINDEX;
 	float (*deformedVerts)[3] = NULL;
 	DerivedMesh *dm = NULL, *orcodm, *clothorcodm, *finaldm;
 	int numVerts = me->totvert;
@@ -1507,7 +1465,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 		if (!modifier_isEnabled(scene, md, required_mode)) continue;
 		if (mti->type == eModifierTypeType_OnlyDeform && !useDeform) continue;
 		if ((mti->flags & eModifierTypeFlag_RequiresOriginalData) && dm) {
-			modifier_setError(md, "%s", TIP_("Modifier requires original data, bad stack position."));
+			modifier_setError(md, "Modifier requires original data, bad stack position");
 			continue;
 		}
 		if (sculpt_mode && (!has_multires || multires_applied)) {
@@ -1520,7 +1478,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 			unsupported |= multires_applied;
 
 			if (unsupported) {
-				modifier_setError(md, "%s", TIP_("Not supported in sculpt mode."));
+				modifier_setError(md, "Not supported in sculpt mode");
 				continue;
 			}
 		}
@@ -1667,8 +1625,8 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 
 				nextmask &= ~CD_MASK_ORCO;
 				DM_set_only_copy(orcodm, nextmask | CD_MASK_ORIGINDEX |
-								 (mti->requiredDataMask ?
-								  mti->requiredDataMask(ob, md) : 0));
+				                 (mti->requiredDataMask ?
+				                  mti->requiredDataMask(ob, md) : 0));
 				ndm = mti->applyModifier(md, ob, orcodm, app_flags & ~MOD_APPLY_USECACHE);
 
 				if (ndm) {
@@ -1803,7 +1761,7 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 #if 0
 		if (num_tessface == 0 && finaldm->getNumTessFaces(finaldm) == 0)
 #else
-		if (finaldm->getNumTessFaces(finaldm) == 0) /* || !CustomData_has_layer(&finaldm->faceData, CD_POLYINDEX)) */
+		if (finaldm->getNumTessFaces(finaldm) == 0) /* || !CustomData_has_layer(&finaldm->faceData, CD_ORIGINDEX)) */
 #endif
 		{
 			finaldm->recalcTessellation(finaldm);
@@ -1811,8 +1769,8 @@ static void mesh_calc_modifiers(Scene *scene, Object *ob, float (*inputVertexCos
 		/* Even if tessellation is not needed, some modifiers might have modified CD layers
 		 * (like mloopcol or mloopuv), hence we have to update those. */
 		else if (finaldm->dirty & DM_DIRTY_TESS_CDLAYERS) {
-			/* A tessellation already exists, it should always have a CD_POLYINDEX. */
-			BLI_assert(CustomData_has_layer(&finaldm->faceData, CD_POLYINDEX));
+			/* A tessellation already exists, it should always have a CD_ORIGINDEX. */
+			BLI_assert(CustomData_has_layer(&finaldm->faceData, CD_ORIGINDEX));
 			DM_update_tessface_data(finaldm);
 		}
 		/* Need to watch this, it can cause issues, see bug [#29338]             */
@@ -1881,7 +1839,7 @@ int editbmesh_modifier_is_enabled(Scene *scene, ModifierData *md, DerivedMesh *d
 
 	if (!modifier_isEnabled(scene, md, required_mode)) return 0;
 	if ((mti->flags & eModifierTypeFlag_RequiresOriginalData) && dm) {
-		modifier_setError(md, "%s", TIP_("Modifier requires original data, bad stack position."));
+		modifier_setError(md, "Modifier requires original data, bad stack position");
 		return 0;
 	}
 	
@@ -1976,7 +1934,7 @@ static void editbmesh_calc_modifiers(Scene *scene, Object *ob, BMEditMesh *em, D
 
 			}
 			else {
-				dm = CDDM_from_BMEditMesh(em, ob->data, FALSE, FALSE);
+				dm = CDDM_from_editbmesh(em, FALSE, FALSE);
 
 				if (deformedVerts) {
 					CDDM_apply_vert_coords(dm, deformedVerts);
@@ -2067,12 +2025,18 @@ static void editbmesh_calc_modifiers(Scene *scene, Object *ob, BMEditMesh *em, D
 	}
 	else if (dm) {
 		*final_r = dm;
-		(*final_r)->calcNormals(*final_r); /* BMESH_ONLY - BMESH_TODO. check if this is needed */
+
+		/* once we support skipping normal calculation with modifiers we may want to add this back */
+#if 0	// was added for bmesh but is not needed
+		(*final_r)->calcNormals(*final_r);
+#endif
 	}
 	else if (!deformedVerts && cage_r && *cage_r) {
 		/* cage should already have up to date normals */
 		*final_r = *cage_r;
-		(*final_r)->calcNormals(*final_r); /* BMESH_ONLY - BMESH_TODO. check if this is needed */
+#if 0	// was added for bmesh but is not needed
+		(*final_r)->calcNormals(*final_r);
+#endif
 	}
 	else {
 		/* this is just a copy of the editmesh, no need to calc normals */
@@ -2147,6 +2111,8 @@ static void mesh_build_data(Scene *scene, Object *ob, CustomDataMask dataMask,
 	int editing = paint_facesel_test(ob);
 	/* weight paint and face select need original indices because of selection buffer drawing */
 	int needMapping = (ob == obact) && (editing || (ob->mode & (OB_MODE_WEIGHT_PAINT | OB_MODE_VERTEX_PAINT | OB_MODE_TEXTURE_PAINT)));
+
+	BLI_assert(ob->type == OB_MESH);
 
 	clear_mesh_caches(ob);
 
@@ -2249,7 +2215,15 @@ DerivedMesh *mesh_create_derived_view(Scene *scene, Object *ob, CustomDataMask d
 {
 	DerivedMesh *final;
 
+	/* XXX hack
+	 * psys modifier updates particle state when called during dupli-list generation,
+	 * which can lead to wrong transforms. This disables particle system modifier execution.
+	 */
+	ob->transflag |= OB_NO_PSYS_UPDATE;
+
 	mesh_calc_modifiers(scene, ob, NULL, NULL, &final, 0, 1, 0, dataMask, -1, 0, 0);
+
+	ob->transflag &= ~OB_NO_PSYS_UPDATE;
 
 	return final;
 }
@@ -2420,7 +2394,7 @@ static int GetNumVertsOfFace(const SMikkTSpaceContext *pContext, const int face_
 
 static void GetPosition(const SMikkTSpaceContext *pContext, float fPos[], const int face_num, const int vert_index)
 {
-	//assert(vert_index>=0 && vert_index<4);
+	//assert(vert_index >= 0 && vert_index < 4);
 	SGLSLMeshToTangent *pMesh = (SGLSLMeshToTangent *) pContext->m_pUserData;
 	const float *co = pMesh->mvert[(&pMesh->mface[face_num].v1)[vert_index]].co;
 	copy_v3_v3(fPos, co);
@@ -2428,7 +2402,7 @@ static void GetPosition(const SMikkTSpaceContext *pContext, float fPos[], const 
 
 static void GetTextureCoordinate(const SMikkTSpaceContext *pContext, float fUV[], const int face_num, const int vert_index)
 {
-	//assert(vert_index>=0 && vert_index<4);
+	//assert(vert_index >= 0 && vert_index < 4);
 	SGLSLMeshToTangent *pMesh = (SGLSLMeshToTangent *) pContext->m_pUserData;
 
 	if (pMesh->mtface != NULL) {
@@ -2443,7 +2417,7 @@ static void GetTextureCoordinate(const SMikkTSpaceContext *pContext, float fUV[]
 
 static void GetNormal(const SMikkTSpaceContext *pContext, float fNorm[], const int face_num, const int vert_index)
 {
-	//assert(vert_index>=0 && vert_index<4);
+	//assert(vert_index >= 0 && vert_index < 4);
 	SGLSLMeshToTangent *pMesh = (SGLSLMeshToTangent *) pContext->m_pUserData;
 
 	const int smoothnormal = (pMesh->mface[face_num].flag & ME_SMOOTH);
@@ -2473,7 +2447,7 @@ static void GetNormal(const SMikkTSpaceContext *pContext, float fNorm[], const i
 }
 static void SetTSpace(const SMikkTSpaceContext *pContext, const float fvTangent[], const float fSign, const int face_num, const int iVert)
 {
-	//assert(vert_index>=0 && vert_index<4);
+	//assert(vert_index >= 0 && vert_index < 4);
 	SGLSLMeshToTangent *pMesh = (SGLSLMeshToTangent *) pContext->m_pUserData;
 	float *pRes = pMesh->tangent[4 * face_num + iVert];
 	copy_v3_v3(pRes, fvTangent);
@@ -2484,15 +2458,11 @@ static void SetTSpace(const SMikkTSpaceContext *pContext, const float fvTangent[
 void DM_add_tangent_layer(DerivedMesh *dm)
 {
 	/* mesh vars */
-	MTFace *mtface, *tf;
-	MFace *mface, *mf;
-	MVert *mvert, *v1, *v2, *v3, *v4;
-	MemArena *arena = NULL;
-	VertexTangent **vtangents = NULL;
+	MVert *mvert;
+	MTFace *mtface;
+	MFace *mface;
 	float (*orco)[3] = NULL, (*tangent)[4];
-	float *uv1, *uv2, *uv3, *uv4, *vtang;
-	float fno[3], tang[3], uv[4][2];
-	int i, j, len, mf_vi[4], totvert, totface, iCalcNewMethod;
+	int /* totvert, */ totface;
 	float *nors;
 
 	if (CustomData_get_layer_index(&dm->faceData, CD_TANGENT) != -1)
@@ -2501,7 +2471,7 @@ void DM_add_tangent_layer(DerivedMesh *dm)
 	nors = dm->getTessFaceDataArray(dm, CD_NORMAL);
 
 	/* check we have all the needed layers */
-	totvert = dm->getNumVerts(dm);
+	/* totvert = dm->getNumVerts(dm); */ /* UNUSED */
 	totface = dm->getNumTessFaces(dm);
 
 	mvert = dm->getVertArray(dm);
@@ -2518,14 +2488,8 @@ void DM_add_tangent_layer(DerivedMesh *dm)
 	DM_add_tessface_layer(dm, CD_TANGENT, CD_CALLOC, NULL);
 	tangent = DM_get_tessface_data_layer(dm, CD_TANGENT);
 	
-	/* allocate some space */
-	arena = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "tangent layer arena");
-	BLI_memarena_use_calloc(arena);
-	vtangents = MEM_callocN(sizeof(VertexTangent *) * totvert, "VertexTangent");
-
 	/* new computation method */
-	iCalcNewMethod = 1;
-	if (iCalcNewMethod != 0) {
+	{
 		SGLSLMeshToTangent mesh2tangent = {0};
 		SMikkTSpaceContext sContext = {0};
 		SMikkTSpaceInterface sInterface = {0};
@@ -2548,87 +2512,13 @@ void DM_add_tangent_layer(DerivedMesh *dm)
 		sInterface.m_setTSpaceBasic = SetTSpace;
 
 		/* 0 if failed */
-		iCalcNewMethod = genTangSpaceDefault(&sContext);
+		genTangSpaceDefault(&sContext);
 	}
-
-	if (!iCalcNewMethod) {
-		/* sum tangents at connected vertices */
-		for (i = 0, tf = mtface, mf = mface; i < totface; mf++, tf++, i++) {
-			v1 = &mvert[mf->v1];
-			v2 = &mvert[mf->v2];
-			v3 = &mvert[mf->v3];
-
-			if (mf->v4) {
-				v4 = &mvert[mf->v4];
-				normal_quad_v3(fno, v4->co, v3->co, v2->co, v1->co);
-			}
-			else {
-				v4 = NULL;
-				normal_tri_v3(fno, v3->co, v2->co, v1->co);
-			}
-		
-			if (mtface) {
-				uv1 = tf->uv[0];
-				uv2 = tf->uv[1];
-				uv3 = tf->uv[2];
-				uv4 = tf->uv[3];
-			}
-			else {
-				uv1 = uv[0]; uv2 = uv[1]; uv3 = uv[2]; uv4 = uv[3];
-				map_to_sphere(&uv[0][0], &uv[0][1], orco[mf->v1][0], orco[mf->v1][1], orco[mf->v1][2]);
-				map_to_sphere(&uv[1][0], &uv[1][1], orco[mf->v2][0], orco[mf->v2][1], orco[mf->v2][2]);
-				map_to_sphere(&uv[2][0], &uv[2][1], orco[mf->v3][0], orco[mf->v3][1], orco[mf->v3][2]);
-				if (v4)
-					map_to_sphere(&uv[3][0], &uv[3][1], orco[mf->v4][0], orco[mf->v4][1], orco[mf->v4][2]);
-			}
-		
-			tangent_from_uv(uv1, uv2, uv3, v1->co, v2->co, v3->co, fno, tang);
-			sum_or_add_vertex_tangent(arena, &vtangents[mf->v1], tang, uv1);
-			sum_or_add_vertex_tangent(arena, &vtangents[mf->v2], tang, uv2);
-			sum_or_add_vertex_tangent(arena, &vtangents[mf->v3], tang, uv3);
-		
-			if (mf->v4) {
-				v4 = &mvert[mf->v4];
-			
-				tangent_from_uv(uv1, uv3, uv4, v1->co, v3->co, v4->co, fno, tang);
-				sum_or_add_vertex_tangent(arena, &vtangents[mf->v1], tang, uv1);
-				sum_or_add_vertex_tangent(arena, &vtangents[mf->v3], tang, uv3);
-				sum_or_add_vertex_tangent(arena, &vtangents[mf->v4], tang, uv4);
-			}
-		}
-	
-		/* write tangent to layer */
-		for (i = 0, tf = mtface, mf = mface; i < totface; mf++, tf++, i++, tangent += 4) {
-			len = (mf->v4) ? 4 : 3;
-
-			if (mtface == NULL) {
-				map_to_sphere(&uv[0][0], &uv[0][1], orco[mf->v1][0], orco[mf->v1][1], orco[mf->v1][2]);
-				map_to_sphere(&uv[1][0], &uv[1][1], orco[mf->v2][0], orco[mf->v2][1], orco[mf->v2][2]);
-				map_to_sphere(&uv[2][0], &uv[2][1], orco[mf->v3][0], orco[mf->v3][1], orco[mf->v3][2]);
-				if (len == 4)
-					map_to_sphere(&uv[3][0], &uv[3][1], orco[mf->v4][0], orco[mf->v4][1], orco[mf->v4][2]);
-			}
-		
-			mf_vi[0] = mf->v1;
-			mf_vi[1] = mf->v2;
-			mf_vi[2] = mf->v3;
-			mf_vi[3] = mf->v4;
-		
-			for (j = 0; j < len; j++) {
-				vtang = find_vertex_tangent(vtangents[mf_vi[j]], mtface ? tf->uv[j] : uv[j]);
-				normalize_v3_v3(tangent[j], vtang);
-				((float *) tangent[j])[3] = 1.0f;
-			}
-		}
-	}
-	
-	BLI_memarena_free(arena);
-	MEM_freeN(vtangents);
 }
 
 void DM_calc_auto_bump_scale(DerivedMesh *dm)
 {
-	/* int totvert= dm->getNumVerts(dm); */ /* UNUSED */
+	/* int totvert = dm->getNumVerts(dm); */ /* UNUSED */
 	int totface = dm->getNumTessFaces(dm);
 
 	MVert *mvert = dm->getVertArray(dm);

@@ -43,8 +43,9 @@
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_modifier.h"
-#include "BKE_tessmesh.h"
 #include "BKE_mesh.h"
+
+#include "bmesh.h"
 
 #include "DNA_object_types.h"
 
@@ -61,16 +62,12 @@ static DerivedMesh *doEdgeSplit(DerivedMesh *dm, EdgeSplitModifierData *emd, Obj
 {
 	DerivedMesh *result;
 	BMesh *bm;
-	BMEditMesh *em;
 	BMIter iter;
 	BMEdge *e;
 	float threshold = cosf((emd->split_angle + 0.00001f) * (float)M_PI / 180.0f);
 
-	em = DM_to_editbmesh(dm, NULL, FALSE);
-	bm = em->bm;
-
-	BM_mesh_normals_update(bm, FALSE);
-	BMO_push(bm, NULL);
+	bm = DM_to_bmesh(dm);
+	BM_mesh_elem_toolflags_ensure(bm);
 	
 	if (emd->flags & MOD_EDGESPLIT_FROMANGLE) {
 		BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
@@ -105,15 +102,11 @@ static DerivedMesh *doEdgeSplit(DerivedMesh *dm, EdgeSplitModifierData *emd, Obj
 	
 	BMO_op_callf(bm, BMO_FLAG_DEFAULTS,
 	             "split_edges edges=%fe", EDGE_MARK);
-	
-	BMO_pop(bm);
 
 	/* BM_mesh_validate(bm); */ /* for troubleshooting */
 
-	BLI_assert(em->looptris == NULL);
-	result = CDDM_from_BMEditMesh(em, NULL, TRUE, FALSE);
-	BMEdit_Free(em);
-	MEM_freeN(em);
+	result = CDDM_from_bmesh(bm, TRUE);
+	BM_mesh_free(bm);
 	
 	return result;
 }

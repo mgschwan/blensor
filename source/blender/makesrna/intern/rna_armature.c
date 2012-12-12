@@ -29,6 +29,7 @@
 
 #include "BLI_math.h"
 
+#include "RNA_access.h"
 #include "RNA_define.h"
 
 #include "rna_internal.h"
@@ -103,25 +104,27 @@ static void rna_Armature_act_edit_bone_set(PointerRNA *ptr, PointerRNA value)
 static EditBone *rna_Armature_edit_bone_new(bArmature *arm, ReportList *reports, const char *name)
 {
 	if (arm->edbo == NULL) {
-		BKE_reportf(reports, RPT_ERROR, "Armature '%s' not in editmode, cant add an editbone", arm->id.name + 2);
+		BKE_reportf(reports, RPT_ERROR, "Armature '%s' not in edit mode, cannot add an editbone", arm->id.name + 2);
 		return NULL;
 	}
 	return ED_armature_edit_bone_add(arm, name);
 }
 
-static void rna_Armature_edit_bone_remove(bArmature *arm, ReportList *reports, EditBone *ebone)
+static void rna_Armature_edit_bone_remove(bArmature *arm, ReportList *reports, PointerRNA *ebone_ptr)
 {
+	EditBone *ebone = ebone_ptr->data;
 	if (arm->edbo == NULL) {
-		BKE_reportf(reports, RPT_ERROR, "Armature '%s' not in editmode, cant remove an editbone", arm->id.name + 2);
+		BKE_reportf(reports, RPT_ERROR, "Armature '%s' not in edit mode, cannot remove an editbone", arm->id.name + 2);
 		return;
 	}
 
 	if (BLI_findindex(arm->edbo, ebone) == -1) {
-		BKE_reportf(reports, RPT_ERROR, "Armature '%s' doesn't contain bone '%s'", arm->id.name + 2, ebone->name);
+		BKE_reportf(reports, RPT_ERROR, "Armature '%s' does not contain bone '%s'", arm->id.name + 2, ebone->name);
 		return;
 	}
 
 	ED_armature_edit_bone_remove(arm, ebone);
+	RNA_POINTER_INVALIDATE(ebone_ptr);
 }
 
 static void rna_Armature_update_layers(Main *bmain, Scene *UNUSED(scene), PointerRNA *ptr)
@@ -564,7 +567,7 @@ static void rna_def_bone_common(StructRNA *srna, int editbone)
 	if (editbone) RNA_def_property_update(prop, 0, "rna_Armature_editbone_transform_update");
 	else RNA_def_property_update(prop, 0, "rna_Armature_update_data");
 	RNA_def_property_float_sdna(prop, NULL, "rad_head");
-	/* XXX range is 0 to lim, where lim= 10000.0f*MAX2(1.0, view3d->grid); */
+	/* XXX range is 0 to lim, where lim = 10000.0f * MAX2(1.0, view3d->grid); */
 	/*RNA_def_property_range(prop, 0, 1000); */
 	RNA_def_property_ui_range(prop, 0.01, 100, 0.1, 3);
 	RNA_def_property_ui_text(prop, "Envelope Head Radius", "Radius of head of bone (for Envelope deform only)");
@@ -573,7 +576,7 @@ static void rna_def_bone_common(StructRNA *srna, int editbone)
 	if (editbone) RNA_def_property_update(prop, 0, "rna_Armature_editbone_transform_update");
 	else RNA_def_property_update(prop, 0, "rna_Armature_update_data");
 	RNA_def_property_float_sdna(prop, NULL, "rad_tail");
-	/* XXX range is 0 to lim, where lim= 10000.0f*MAX2(1.0, view3d->grid); */
+	/* XXX range is 0 to lim, where lim = 10000.0f * MAX2(1.0, view3d->grid); */
 	/*RNA_def_property_range(prop, 0, 1000); */
 	RNA_def_property_ui_range(prop, 0.01, 100, 0.1, 3);
 	RNA_def_property_ui_text(prop, "Envelope Tail Radius", "Radius of tail of bone (for Envelope deform only)");
@@ -865,7 +868,8 @@ static void rna_def_armature_edit_bones(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_ui_description(func, "Remove an existing bone from the armature");
 	/* target to remove*/
 	parm = RNA_def_pointer(func, "bone", "EditBone", "", "EditBone to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
+	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
 }
 
 static void rna_def_armature(BlenderRNA *brna)

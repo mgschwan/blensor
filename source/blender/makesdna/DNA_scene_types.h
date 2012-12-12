@@ -318,10 +318,11 @@ typedef struct ImageFormatData {
 /* return values from BKE_imtype_valid_depths, note this is depts per channel */
 #define R_IMF_CHAN_DEPTH_1  (1<<0) /* 1bits  (unused) */
 #define R_IMF_CHAN_DEPTH_8  (1<<1) /* 8bits  (default) */
-#define R_IMF_CHAN_DEPTH_12 (1<<2) /* 12bits (uncommon, jp2 supports) */
-#define R_IMF_CHAN_DEPTH_16 (1<<3) /* 16bits (tiff, halff float exr) */
-#define R_IMF_CHAN_DEPTH_24 (1<<4) /* 24bits (unused) */
-#define R_IMF_CHAN_DEPTH_32 (1<<5) /* 32bits (full float exr) */
+#define R_IMF_CHAN_DEPTH_10 (1<<2) /* 10bits (uncommon, Cineon/DPX support) */
+#define R_IMF_CHAN_DEPTH_12 (1<<3) /* 12bits (uncommon, jp2/DPX support) */
+#define R_IMF_CHAN_DEPTH_16 (1<<4) /* 16bits (tiff, halff float exr) */
+#define R_IMF_CHAN_DEPTH_24 (1<<5) /* 24bits (unused) */
+#define R_IMF_CHAN_DEPTH_32 (1<<6) /* 32bits (full float exr) */
 
 /* ImageFormatData.planes */
 #define R_IMF_PLANES_RGB   24
@@ -395,11 +396,16 @@ typedef struct RenderData {
 	/**
 	 * The number of part to use in the x direction
 	 */
-	short xparts;
+	short xparts DNA_DEPRECATED;
 	/**
 	 * The number of part to use in the y direction
 	 */
-	short yparts;
+	short yparts DNA_DEPRECATED;
+
+	/**
+	 * render tile dimensions
+	 */
+	short tilex, tiley;
 
 	short planes  DNA_DEPRECATED, imtype  DNA_DEPRECATED, subimtype  DNA_DEPRECATED, quality  DNA_DEPRECATED; /*deprecated!*/
 	
@@ -447,6 +453,8 @@ typedef struct RenderData {
 
 	short frs_sec, edgeint;
 
+	int pad;
+
 	
 	/* safety, border and display rect */
 	rctf safety, border;
@@ -475,7 +483,7 @@ typedef struct RenderData {
 	int color_mgt_flag;
 	
 	/** post-production settings. deprecated, but here for upwards compat (initialized to 1) */
-	float postgamma, posthue, postsat;	 
+	float postgamma, posthue, postsat;
 	
 	 /* Dither noise intensity */
 	float dither_intensity;
@@ -1001,7 +1009,7 @@ typedef struct ToolSettings {
 
 	/* Transform */
 	char snap_mode, snap_node_mode;
-	char pad3;
+	char snap_uv_mode;
 	short snap_flag, snap_target;
 	short proportional, prop_mode;
 	char proportional_objects; /* proportional edit, object mode */
@@ -1086,7 +1094,7 @@ typedef struct Scene {
 	
 	short use_nodes;
 	
-	struct bNodeTree *nodetree;	
+	struct bNodeTree *nodetree;
 	
 	struct Editing *ed;								/* sequence editor data is allocated here */
 	
@@ -1179,15 +1187,17 @@ typedef struct Scene {
 		/* Use the same flag for autothreads */
 #define R_FIXED_THREADS		0x80000 
 
-#define R_SPEED			0x100000
-#define R_SSS			0x200000
-#define R_NO_OVERWRITE	0x400000 /* skip existing files */
-#define R_TOUCH			0x800000 /* touch files before rendering */
-#define R_SIMPLIFY		0x1000000
+#define R_SPEED				0x100000
+#define R_SSS				0x200000
+#define R_NO_OVERWRITE		0x400000  /* skip existing files */
+#define R_TOUCH				0x800000  /* touch files before rendering */
+#define R_SIMPLIFY			0x1000000
+#define R_EDGE_FRS			0x2000000 /* R_EDGE reserved for Freestyle */
+#define R_PERSISTENT_DATA	0x4000000 /* keep data around for re-render */
 
 /* seq_flag */
 #define R_SEQ_GL_PREV 1
-#define R_SEQ_GL_REND 2
+// #define R_SEQ_GL_REND 2  // UNUSED, opengl render has its own operator now.
 
 /* displaymode */
 
@@ -1301,6 +1311,7 @@ typedef struct Scene {
 /* sequencer seq_prev_type seq_rend_type */
 
 
+
 /* **************** SCENE ********************* */
 
 /* for general use */
@@ -1318,46 +1329,46 @@ typedef struct Scene {
 #define TESTBASE(v3d, base)  (                                                \
 	((base)->flag & SELECT) &&                                                \
 	((base)->lay & v3d->lay) &&                                               \
-	(((base)->object->restrictflag & OB_RESTRICT_VIEW)==0)  )
+	(((base)->object->restrictflag & OB_RESTRICT_VIEW) == 0))
 #define TESTBASELIB(v3d, base)  (                                             \
 	((base)->flag & SELECT) &&                                                \
 	((base)->lay & v3d->lay) &&                                               \
-	((base)->object->id.lib==NULL) &&                                         \
-	(((base)->object->restrictflag & OB_RESTRICT_VIEW)==0)  )
+	((base)->object->id.lib == NULL) &&                                       \
+	(((base)->object->restrictflag & OB_RESTRICT_VIEW) == 0))
 #define TESTBASELIB_BGMODE(v3d, scene, base)  (                               \
 	((base)->flag & SELECT) &&                                                \
 	((base)->lay & (v3d ? v3d->lay : scene->lay)) &&                          \
-	((base)->object->id.lib==NULL) &&                                         \
-	(((base)->object->restrictflag & OB_RESTRICT_VIEW)==0)  )
+	((base)->object->id.lib == NULL) &&                                       \
+	(((base)->object->restrictflag & OB_RESTRICT_VIEW) == 0))
 #define BASE_EDITABLE_BGMODE(v3d, scene, base)  (                             \
 	((base)->lay & (v3d ? v3d->lay : scene->lay)) &&                          \
-	((base)->object->id.lib==NULL) &&                                         \
-	(((base)->object->restrictflag & OB_RESTRICT_VIEW)==0))
+	((base)->object->id.lib == NULL) &&                                       \
+	(((base)->object->restrictflag & OB_RESTRICT_VIEW) == 0))
 #define BASE_SELECTABLE(v3d, base)  (                                         \
 	(base->lay & v3d->lay) &&                                                 \
-	(base->object->restrictflag & (OB_RESTRICT_SELECT|OB_RESTRICT_VIEW))==0  )
+	(base->object->restrictflag & (OB_RESTRICT_SELECT | OB_RESTRICT_VIEW)) == 0)
 #define BASE_VISIBLE(v3d, base)  (                                            \
 	(base->lay & v3d->lay) &&                                                 \
-	(base->object->restrictflag & OB_RESTRICT_VIEW)==0  )
+	(base->object->restrictflag & OB_RESTRICT_VIEW) == 0)
 
 #define FIRSTBASE		scene->base.first
 #define LASTBASE		scene->base.last
 #define BASACT			(scene->basact)
-#define OBACT			(BASACT? BASACT->object: NULL)
+#define OBACT			(BASACT ? BASACT->object: NULL)
 
 #define V3D_CAMERA_LOCAL(v3d) ((!(v3d)->scenelock && (v3d)->camera) ? (v3d)->camera : NULL)
 #define V3D_CAMERA_SCENE(scene, v3d) ((!(v3d)->scenelock && (v3d)->camera) ? (v3d)->camera : (scene)->camera)
 
-#define	CFRA			(scene->r.cfra)
-#define SUBFRA			(scene->r.subframe)
-#define	SFRA			(scene->r.sfra)
-#define	EFRA			(scene->r.efra)
-#define PRVRANGEON		(scene->r.flag & SCER_PRV_RANGE)
-#define PSFRA			((PRVRANGEON)? (scene->r.psfra): (scene->r.sfra))
-#define PEFRA			((PRVRANGEON)? (scene->r.pefra): (scene->r.efra))
-#define FRA2TIME(a)           ((((double) scene->r.frs_sec_base) * (double)(a)) / (double)scene->r.frs_sec)
-#define TIME2FRA(a)           ((((double) scene->r.frs_sec) * (double)(a)) / (double)scene->r.frs_sec_base)
-#define FPS                     (((double) scene->r.frs_sec) / (double)scene->r.frs_sec_base)
+#define CFRA            (scene->r.cfra)
+#define SUBFRA          (scene->r.subframe)
+#define SFRA            (scene->r.sfra)
+#define EFRA            (scene->r.efra)
+#define PRVRANGEON      (scene->r.flag & SCER_PRV_RANGE)
+#define PSFRA           ((PRVRANGEON) ? (scene->r.psfra) : (scene->r.sfra))
+#define PEFRA           ((PRVRANGEON) ? (scene->r.pefra) : (scene->r.efra))
+#define FRA2TIME(a)     ((((double) scene->r.frs_sec_base) * (double)(a)) / (double)scene->r.frs_sec)
+#define TIME2FRA(a)     ((((double) scene->r.frs_sec) * (double)(a)) / (double)scene->r.frs_sec_base)
+#define FPS              (((double) scene->r.frs_sec) / (double)scene->r.frs_sec_base)
 
 /* base->flag is in DNA_object_types.h */
 
@@ -1435,9 +1446,9 @@ typedef struct Scene {
 
 /* Paint.flags */
 typedef enum {
-	PAINT_SHOW_BRUSH = (1<<0),
-	PAINT_FAST_NAVIGATE = (1<<1),
-	PAINT_SHOW_BRUSH_ON_SURFACE = (1<<2),
+	PAINT_SHOW_BRUSH = (1 << 0),
+	PAINT_FAST_NAVIGATE = (1 << 1),
+	PAINT_SHOW_BRUSH_ON_SURFACE = (1 << 2),
 } PaintFlags;
 
 /* Sculpt.flags */
@@ -1452,6 +1463,7 @@ typedef enum SculptFlags {
 	SCULPT_SYMMETRY_FEATHER = (1<<6),
 	SCULPT_USE_OPENMP = (1<<7),
 	SCULPT_ONLY_DEFORM = (1<<8),
+	SCULPT_SHOW_DIFFUSE = (1<<9),
 } SculptFlags;
 
 /* ImagePaintSettings.flag */
@@ -1588,4 +1600,4 @@ typedef enum SculptFlags {
 }
 #endif
 
-#endif
+#endif  /* __DNA_SCENE_TYPES_H__ */

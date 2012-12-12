@@ -21,8 +21,7 @@ bl_info = {
     "description": "Its job is to easily add scifi details to a surface to create nice-looking space-ships or futuristic cities.",
     "author": "Evan J. Rosky (syrux), Chichiri, Jace Priester",
     "version": (0,2),
-    "blender": (2, 6, 3),
-    "api": 45996,
+    "blender": (2, 6, 4),
     "location": "Spacebar > Discombobulate",
     "warning": 'Beta',
     'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts',
@@ -563,7 +562,26 @@ class discombobulator(bpy.types.Operator):
             discombobulate(scn.minHeight, scn.maxHeight, scn.minTaper, scn.maxTaper, scn.subpolygon1, scn.subpolygon2, scn.subpolygon3, scn.subpolygon4, scn.mindoodads, scn.maxdoodads, scn.repeatprot, scn.sideProtMat, scn.topProtMat, isLast)
             i+=1
         return {'FINISHED'}
- 
+
+class discombob_help(bpy.types.Operator):
+	bl_idname = 'help.discombobulator'
+	bl_label = ''
+
+	def draw(self, context):
+		layout = self.layout
+		layout.label('To use:')
+		layout.label('Works with Quads only not Ngons.')
+		layout.label('Select a face or faces')
+		layout.label('Press Discombobulate to create greebles')
+
+
+	
+	def execute(self, context):
+		return {'FINISHED'}
+
+	def invoke(self, context, event):
+		return context.window_manager.invoke_popup(self, width = 300)
+		
 class VIEW3D_PT_tools_discombobulate(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -574,7 +592,9 @@ class VIEW3D_PT_tools_discombobulate(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         row = layout.row()
-        row.operator("object.discombobulate", text = "Discombobulate")
+        row = layout.split(0.80)
+        row.operator('object.discombobulate', text = 'Discombobulate', icon = 'PLUGIN')
+        row.operator('help.discombobulator', icon = 'INFO')
         box = layout.box()
         box.label("Protusions settings")
         row = box.row()
@@ -651,6 +671,7 @@ def register():
     bpy.utils.register_class(chooseDoodad)
     bpy.utils.register_class(unchooseDoodad)
     bpy.utils.register_class(VIEW3D_PT_tools_discombobulate)
+    bpy.utils.register_class(discombob_help)
  
 # unregistering and removing menus
 def unregister():
@@ -658,6 +679,7 @@ def unregister():
     bpy.utils.unregister_class(chooseDoodad)
     bpy.utils.unregister_class(unchooseDoodad)
     bpy.utils.unregister_class(VIEW3D_PT_tools_discombobulate)
+    bpy.utils.unregister_class(discombob_help)
  
 if __name__ == "__main__":
     register()

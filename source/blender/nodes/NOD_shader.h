@@ -41,8 +41,6 @@ extern struct bNodeTreeType ntreeType_Shader;
 /* ****************** types array for all shaders ****************** */
 
 void register_node_type_sh_group(struct bNodeTreeType *ttype);
-void register_node_type_sh_forloop(struct bNodeTreeType *ttype);
-void register_node_type_sh_whileloop(struct bNodeTreeType *ttype);
 
 void register_node_type_sh_output(struct bNodeTreeType *ttype);
 void register_node_type_sh_material(struct bNodeTreeType *ttype);
@@ -80,14 +78,20 @@ void register_node_type_sh_fresnel(struct bNodeTreeType *ttype);
 void register_node_type_sh_layer_weight(struct bNodeTreeType *ttype);
 void register_node_type_sh_tex_coord(struct bNodeTreeType *ttype);
 void register_node_type_sh_particle_info(struct bNodeTreeType *ttype);
+void register_node_type_sh_script(struct bNodeTreeType *ttype);
+void register_node_type_sh_normal_map(struct bNodeTreeType *ttype);
+void register_node_type_sh_tangent(struct bNodeTreeType *ttype);
 
+void register_node_type_sh_ambient_occlusion(struct bNodeTreeType *ttype);
 void register_node_type_sh_background(struct bNodeTreeType *ttype);
 void register_node_type_sh_bsdf_diffuse(struct bNodeTreeType *ttype);
 void register_node_type_sh_bsdf_glossy(struct bNodeTreeType *ttype);
 void register_node_type_sh_bsdf_glass(struct bNodeTreeType *ttype);
+void register_node_type_sh_bsdf_refraction(struct bNodeTreeType *ttype);
 void register_node_type_sh_bsdf_translucent(struct bNodeTreeType *ttype);
 void register_node_type_sh_bsdf_transparent(struct bNodeTreeType *ttype);
 void register_node_type_sh_bsdf_velvet(struct bNodeTreeType *ttype);
+void register_node_type_sh_bsdf_anisotropic(struct bNodeTreeType *ttype);
 void register_node_type_sh_emission(struct bNodeTreeType *ttype);
 void register_node_type_sh_holdout(struct bNodeTreeType *ttype);
 void register_node_type_sh_volume_transparent(struct bNodeTreeType *ttype);
@@ -109,6 +113,7 @@ void register_node_type_sh_tex_wave(struct bNodeTreeType *ttype);
 void register_node_type_sh_tex_musgrave(struct bNodeTreeType *ttype);
 void register_node_type_sh_tex_noise(struct bNodeTreeType *ttype);
 void register_node_type_sh_tex_checker(struct bNodeTreeType *ttype);
+void register_node_type_sh_bump(struct bNodeTreeType *ttype);
 
 #endif
 

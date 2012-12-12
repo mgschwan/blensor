@@ -91,7 +91,7 @@ static SpaceLink *console_new(const bContext *UNUSED(C))
 	ar->v2d.minzoom = ar->v2d.maxzoom = 1.0f;
 
 	/* for now, aspect ratio should be maintained, and zoom is clamped within sane default limits */
-	//ar->v2d.keepzoom= (V2D_KEEPASPECT|V2D_LIMITZOOM);
+	//ar->v2d.keepzoom = (V2D_KEEPASPECT|V2D_LIMITZOOM);
 
 	return (SpaceLink *)sconsole;
 }
@@ -162,7 +162,7 @@ static void console_main_area_init(wmWindowManager *wm, ARegion *ar)
 
 static int id_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event))
 {
-//	SpaceConsole *sc= CTX_wm_space_console(C);
+//	SpaceConsole *sc = CTX_wm_space_console(C);
 	if (drag->type == WM_DRAG_ID)
 		return 1;
 	return 0;
@@ -170,21 +170,18 @@ static int id_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event
 
 static void id_drop_copy(wmDrag *drag, wmDropBox *drop)
 {
-	char text[64];
+	char *text;
 	ID *id = drag->poin;
-	char id_esc[(sizeof(id->name) - 2) * 2];
-
-	BLI_strescape(id_esc, id->name + 2, sizeof(id_esc));
-
-	BLI_snprintf(text, sizeof(text), "bpy.data.%s[\"%s\"]", BKE_idcode_to_name_plural(GS(id->name)), id_esc);
 
 	/* copy drag path to properties */
+	text = RNA_path_from_ID_python(id);
 	RNA_string_set(drop->ptr, "text", text);
+	MEM_freeN(text);
 }
 
 static int path_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event))
 {
-//    SpaceConsole *sc= CTX_wm_space_console(C);
+	// SpaceConsole *sc = CTX_wm_space_console(C);
 	if (drag->type == WM_DRAG_PATH)
 		return 1;
 	return 0;
@@ -359,7 +356,7 @@ static void console_header_area_draw(const bContext *C, ARegion *ar)
 
 static void console_main_area_listener(ARegion *ar, wmNotifier *wmn)
 {
-	// SpaceInfo *sinfo= sa->spacedata.first;
+	// SpaceInfo *sinfo = sa->spacedata.first;
 
 	/* context changes */
 	switch (wmn->category) {

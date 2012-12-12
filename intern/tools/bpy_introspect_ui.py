@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.2
+#!/usr/bin/env python3
 
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
@@ -37,7 +37,7 @@ def module_add(name):
     return mod
 
 
-class AttributeBuilder(object):
+class AttributeBuilder:
     """__slots__ = (
         "_attr", "_attr_list", "_item_set", "_args",
         "active", "operator_context", "enabled", "index", "data"
@@ -291,10 +291,11 @@ def fake_runtime():
     bpy.data.particles = ()
 
     bpy.data.file_is_saved = True
-    
+
     bpy.utils = module_add("bpy.utils")
     bpy.utils.smpte_from_frame = lambda f: ""
-    bpy.utils.script_paths = lambda f: []
+    bpy.utils.script_paths = lambda f: ()
+    bpy.utils.user_resource = lambda a, b: ()
 
     bpy.app = module_add("bpy.app")
     bpy.app.debug = False
@@ -359,7 +360,6 @@ def main():
 
             for cls in classes:
                 setattr(bpy.types, cls.__name__, cls)
-
 
     fake_runtime()
 

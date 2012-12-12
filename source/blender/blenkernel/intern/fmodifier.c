@@ -42,6 +42,7 @@
 #include "BLF_translation.h"
 
 #include "BLI_blenlib.h"
+#include "BLI_noise.h"
 #include "BLI_math.h" /* windows needs for M_PI */
 #include "BLI_utildefines.h"
 
@@ -155,7 +156,7 @@ static void fcm_generator_verify(FModifier *fcm)
 						
 					/* free the old data */
 					MEM_freeN(data->coefficients);
-				}	
+				}
 				
 				/* set the new data */
 				data->coefficients = nc;
@@ -181,7 +182,7 @@ static void fcm_generator_verify(FModifier *fcm)
 						
 					/* free the old data */
 					MEM_freeN(data->coefficients);
-				}	
+				}
 				
 				/* set the new data */
 				data->coefficients = nc;
@@ -275,7 +276,7 @@ static FModifierTypeInfo FMI_GENERATOR = {
 /* Built-In Function Generator F-Curve Modifier --------------------------- */
 
 /* This uses the general equation for equations:
- *   y = amplitude * fn(phase_multiplier*x + phase_offset) + y_offset
+ *   y = amplitude * fn(phase_multiplier * x + phase_offset) + y_offset
  *
  * where amplitude, phase_multiplier/offset, y_offset are user-defined coefficients,
  * x is the evaluation 'time', and 'y' is the resultant value
@@ -315,7 +316,7 @@ static void fcm_fn_generator_evaluate(FCurve *UNUSED(fcu), FModifier *fcm, float
 	 * WARNING: must perform special argument validation hereto guard against crashes  
 	 */
 	switch (data->type) {
-		/* simple ones */			
+		/* simple ones */
 		case FCM_GENERATOR_FN_SIN: /* sine wave */
 			fn = sin;
 			break;
@@ -1021,7 +1022,7 @@ FModifier *add_fmodifier(ListBase *modifiers, int type)
 	fcm->data = MEM_callocN(fmi->size, fmi->structName);
 	
 	/* init custom settings if necessary */
-	if (fmi->new_data)	
+	if (fmi->new_data)
 		fmi->new_data(fcm->data);
 		
 	/* return modifier for further editing */
@@ -1098,7 +1099,7 @@ int remove_fmodifier(ListBase *modifiers, FModifier *fcm)
 	if (modifiers) {
 		BLI_freelinkN(modifiers, fcm);
 		return 1;
-	} 
+	}
 	else {
 		/* XXX this case can probably be removed some day, as it shouldn't happen... */
 		printf("remove_fmodifier() - no modifier stack given\n");

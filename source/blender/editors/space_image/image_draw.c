@@ -578,7 +578,7 @@ void draw_image_grease_pencil(bContext *C, short onlyv2d)
 	}
 	else {
 		/* assume that UI_view2d_restore(C) has been called... */
-		//SpaceImage *sima= (SpaceImage *)CTX_wm_space_data(C);
+		//SpaceImage *sima = (SpaceImage *)CTX_wm_space_data(C);
 		
 		/* draw grease-pencil ('screen' strokes) */
 		draw_gpencil_view2d(C, 0);
@@ -652,7 +652,7 @@ static unsigned char *get_alpha_clone_image(const bContext *C, Scene *scene, int
 	if (!brush || !brush->clone.image)
 		return NULL;
 	
-	ibuf = BKE_image_get_ibuf(brush->clone.image, NULL);
+	ibuf = BKE_image_acquire_ibuf(brush->clone.image, NULL, NULL);
 
 	if (!ibuf)
 		return NULL;
@@ -660,6 +660,7 @@ static unsigned char *get_alpha_clone_image(const bContext *C, Scene *scene, int
 	display_buffer = IMB_display_buffer_acquire_ctx(C, ibuf, &cache_handle);
 
 	if (!display_buffer) {
+		BKE_image_release_ibuf(brush->clone.image, ibuf, NULL);
 		IMB_display_buffer_release(cache_handle);
 
 		return NULL;
@@ -669,8 +670,10 @@ static unsigned char *get_alpha_clone_image(const bContext *C, Scene *scene, int
 
 	IMB_display_buffer_release(cache_handle);
 
-	if (!rect)
+	if (!rect) {
+		BKE_image_release_ibuf(brush->clone.image, ibuf, NULL);
 		return NULL;
+	}
 
 	*width = ibuf->x;
 	*height = ibuf->y;
@@ -683,6 +686,8 @@ static unsigned char *get_alpha_clone_image(const bContext *C, Scene *scene, int
 		cp[3] = alpha;
 		cp += 4;
 	}
+
+	BKE_image_release_ibuf(brush->clone.image, ibuf, NULL);
 
 	return rect;
 }
@@ -791,7 +796,7 @@ void draw_image_main(const bContext *C, ARegion *ar)
 			xoffs = scene->r.disprect.xmin;
 			yoffs = scene->r.disprect.ymin;
 			glColor3ub(0, 0, 0);
-			calc_image_view(sima, 'f');	
+			calc_image_view(sima, 'f');
 			myortho2(G.v2d->cur.xmin, G.v2d->cur.xmax, G.v2d->cur.ymin, G.v2d->cur.ymax);
 			glRectf(0.0f, 0.0f, 1.0f, 1.0f);
 			glLoadIdentity();
@@ -799,7 +804,7 @@ void draw_image_main(const bContext *C, ARegion *ar)
 	}
 #endif
 
-	ED_space_image_release_buffer(sima, lock);
+	ED_space_image_release_buffer(sima, ibuf, lock);
 
 	if (show_viewer) {
 		BLI_unlock_thread(LOCK_DRAW_IMAGE);

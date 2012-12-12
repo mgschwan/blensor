@@ -35,13 +35,13 @@
 
 
 /* ******************* Color Balance ********************************* */
-static bNodeSocketTemplate cmp_node_colorbalance_in[]={
+static bNodeSocketTemplate cmp_node_colorbalance_in[] = {
 	{SOCK_FLOAT, 1, N_("Fac"),	1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_FACTOR},
 	{SOCK_RGBA, 1, N_("Image"), 1.0f, 1.0f, 1.0f, 1.0f},
 	{-1, 0, ""}
 };
 
-static bNodeSocketTemplate cmp_node_colorbalance_out[]={
+static bNodeSocketTemplate cmp_node_colorbalance_out[] = {
 	{SOCK_RGBA, 0, N_("Image")},
 	{-1, 0, ""}
 };
@@ -49,14 +49,14 @@ static bNodeSocketTemplate cmp_node_colorbalance_out[]={
 #ifdef WITH_COMPOSITOR_LEGACY
 
 /* this function implements ASC-CDL according to the spec at http://www.asctech.org/
- Slope
-       S = in * slope
- Offset
-       O = S + offset 
-         = (in * slope) + offset
- Power
-     out = Clamp(O) ^ power
-         = Clamp((in * slope) + offset) ^ power
+ * Slope
+ *       S = in * slope
+ * Offset
+ *       O = S + offset
+ *         = (in * slope) + offset
+ * Power
+ *     out = Clamp(O) ^ power
+ *         = Clamp((in * slope) + offset) ^ power
  */
 DO_INLINE float colorbalance_cdl(float in, float offset, float power, float slope)
 {

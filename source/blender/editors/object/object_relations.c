@@ -423,29 +423,92 @@ void OBJECT_OT_proxy_make(wmOperatorType *ot)
 
 /********************** Clear Parent Operator ******************* */
 
+typedef enum eObClearParentTypes {
+	CLEAR_PARENT_ALL = 0,
+	CLEAR_PARENT_KEEP_TRANSFORM,
+	CLEAR_PARENT_INVERSE
+} eObClearParentTypes;
+
 EnumPropertyItem prop_clear_parent_types[] = {
-	{0, "CLEAR", 0, "Clear Parent", ""},
-	{1, "CLEAR_KEEP_TRANSFORM", 0, "Clear and Keep Transformation", ""},
-	{2, "CLEAR_INVERSE", 0, "Clear Parent Inverse", ""},
+	{CLEAR_PARENT_ALL, "CLEAR", 0, "Clear Parent", ""},
+	{CLEAR_PARENT_KEEP_TRANSFORM, "CLEAR_KEEP_TRANSFORM", 0, "Clear and Keep Transformation", ""},
+	{CLEAR_PARENT_INVERSE, "CLEAR_INVERSE", 0, "Clear Parent Inverse", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
+/* Helper for ED_object_parent_clear() - Remove deform-modifiers associated with parent */
+static void object_remove_parent_deform_modifiers(Object *ob, const Object *par)
+{
+	if (ELEM3(par->type, OB_ARMATURE, OB_LATTICE, OB_CURVE)) {
+		ModifierData *md, *mdn;
+		
+		/* assume that we only need to remove the first instance of matching deform modifier here */
+		for (md = ob->modifiers.first; md; md = mdn) {
+			short free = FALSE;
+			
+			mdn = md->next;
+			
+			/* need to match types (modifier + parent) and references */
+			if ((md->type == eModifierType_Armature) && (par->type == OB_ARMATURE)) {
+				ArmatureModifierData *amd = (ArmatureModifierData *)md;
+				if (amd->object == par) {
+					free = TRUE;
+				}
+			}
+			else if ((md->type == eModifierType_Lattice) && (par->type == OB_LATTICE)) {
+				LatticeModifierData *lmd = (LatticeModifierData *)md;
+				if (lmd->object == par) {
+					free = TRUE;
+				}
+			}
+			else if ((md->type == eModifierType_Curve) && (par->type == OB_CURVE)) {
+				CurveModifierData *cmd = (CurveModifierData *)md;
+				if (cmd->object == par) {
+					free = TRUE;
+				}
+			}
+			
+			/* free modifier if match */
+			if (free) {
+				BLI_remlink(&ob->modifiers, md);
+				modifier_free(md);
+			}
+		}
+	}
+}
+
 void ED_object_parent_clear(Object *ob, int type)
 {
-
 	if (ob->parent == NULL)
 		return;
+	
+	switch (type) {
+		case CLEAR_PARENT_ALL:
+		{
+			/* for deformers, remove corresponding modifiers to prevent a large number of modifiers building up */
+			object_remove_parent_deform_modifiers(ob, ob->parent);
+			
+			/* clear parenting relationship completely */
+			ob->parent = NULL;
+		}
+		break;
 		
-	if (type == 0) {
-		ob->parent = NULL;
-	}
-	else if (type == 1) {
-		ob->parent = NULL;
-		BKE_object_apply_mat4(ob, ob->obmat, TRUE, FALSE);
-	}
-	else if (type == 2)
-		unit_m4(ob->parentinv);
+		case CLEAR_PARENT_KEEP_TRANSFORM:
+		{
+			/* remove parent, and apply the parented transform result as object's local transforms */
+			ob->parent = NULL;
+			BKE_object_apply_mat4(ob, ob->obmat, TRUE, FALSE);
+		}
+		break;
 		
+		case CLEAR_PARENT_INVERSE:
+		{
+			/* object stays parented, but the parent inverse (i.e. offset from parent to retain binding state) is cleared */
+			unit_m4(ob->parentinv);
+		}
+		break;
+	}
+	
 	ob->recalc |= OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME;
 }
 
@@ -559,13 +622,13 @@ int ED_object_parent_set(ReportList *reports, Main *bmain, Scene *scene, Object 
 			/* fall back on regular parenting now (for follow only) */
 			if (partype == PAR_FOLLOW)
 				partype = PAR_OBJECT;
-		}		
+		}
 	}
 	else if (partype == PAR_BONE) {
 		pchan = BKE_pose_channel_active(par);
 		
 		if (pchan == NULL) {
-			BKE_report(reports, RPT_ERROR, "No active Bone");
+			BKE_report(reports, RPT_ERROR, "No active bone");
 			return 0;
 		}
 	}
@@ -580,8 +643,8 @@ int ED_object_parent_set(ReportList *reports, Main *bmain, Scene *scene, Object 
 
 			/* apply transformation of previous parenting */
 			if (keep_transform) {
-				 /* was removed because of bug [#23577],
-				  * but this can be handy in some cases too [#32616], so make optional */
+				/* was removed because of bug [#23577],
+				 * but this can be handy in some cases too [#32616], so make optional */
 				BKE_object_apply_mat4(ob, ob->obmat, FALSE, FALSE);
 			}
 
@@ -604,25 +667,40 @@ int ED_object_parent_set(ReportList *reports, Main *bmain, Scene *scene, Object 
 				 * NOTE: the old (2.4x) method was to set ob->partype = PARSKEL, creating the virtual modifiers
 				 */
 				ob->partype = PAROBJECT; /* note, dna define, not operator property */
-				//ob->partype= PARSKEL; /* note, dna define, not operator property */
+				//ob->partype = PARSKEL; /* note, dna define, not operator property */
 				
-				/* BUT, to keep the deforms, we need a modifier, and then we need to set the object that it uses */
+				/* BUT, to keep the deforms, we need a modifier, and then we need to set the object that it uses 
+				 * - We need to ensure that the modifier we're adding doesn't already exist, so we check this by
+				 *   assuming that the parent is selected too...
+				 */
 				// XXX currently this should only happen for meshes, curves, surfaces, and lattices - this stuff isn't available for metas yet
 				if (ELEM5(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_LATTICE)) {
 					ModifierData *md;
 					
 					switch (partype) {
 						case PAR_CURVE: /* curve deform */
-							md = ED_object_modifier_add(reports, bmain, scene, ob, NULL, eModifierType_Curve);
-							((CurveModifierData *)md)->object = par;
+							if ( modifiers_isDeformedByCurve(ob) != par) {
+								md = ED_object_modifier_add(reports, bmain, scene, ob, NULL, eModifierType_Curve);
+								if (md) {
+									((CurveModifierData *)md)->object = par;
+								}
+							}
 							break;
 						case PAR_LATTICE: /* lattice deform */
-							md = ED_object_modifier_add(reports, bmain, scene, ob, NULL, eModifierType_Lattice);
-							((LatticeModifierData *)md)->object = par;
+							if (modifiers_isDeformedByLattice(ob) != par) {
+								md = ED_object_modifier_add(reports, bmain, scene, ob, NULL, eModifierType_Lattice);
+								if (md) {
+									((LatticeModifierData *)md)->object = par;
+								}
+							}
 							break;
 						default: /* armature deform */
-							md = ED_object_modifier_add(reports, bmain, scene, ob, NULL, eModifierType_Armature);
-							((ArmatureModifierData *)md)->object = par;
+							if (modifiers_isDeformedByArmature(ob) != par) {
+								md = ED_object_modifier_add(reports, bmain, scene, ob, NULL, eModifierType_Armature);
+								if (md) {
+									((ArmatureModifierData *)md)->object = par;
+								}
+							}
 							break;
 					}
 				}
@@ -958,7 +1036,7 @@ static int object_track_clear_exec(bContext *C, wmOperator *op)
 	int type = RNA_enum_get(op->ptr, "type");
 
 	if (CTX_data_edit_object(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Operation cannot be performed in EditMode");
+		BKE_report(op->reports, RPT_ERROR, "Operation cannot be performed in edit mode");
 		return OPERATOR_CANCELLED;
 	}
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
@@ -1182,7 +1260,7 @@ static int move_to_layer_exec(bContext *C, wmOperator *op)
 			base->object->lay = lay;
 			base->object->flag &= ~SELECT;
 			base->flag &= ~SELECT;
-			/* if (base->object->type==OB_LAMP) is_lamp = TRUE; */
+			/* if (base->object->type == OB_LAMP) is_lamp = TRUE; */
 		}
 		CTX_DATA_END;
 	}
@@ -1195,7 +1273,7 @@ static int move_to_layer_exec(bContext *C, wmOperator *op)
 			local = base->lay & 0xFF000000;
 			base->lay = lay + local;
 			base->object->lay = lay;
-			/* if (base->object->type==OB_LAMP) is_lamp = TRUE; */
+			/* if (base->object->type == OB_LAMP) is_lamp = TRUE; */
 		}
 		CTX_DATA_END;
 	}
@@ -1272,17 +1350,17 @@ static int make_links_scene_exec(bContext *C, wmOperator *op)
 	Scene *scene_to = BLI_findlink(&CTX_data_main(C)->scene, RNA_enum_get(op->ptr, "scene"));
 
 	if (scene_to == NULL) {
-		BKE_report(op->reports, RPT_ERROR, "Couldn't find scene");
+		BKE_report(op->reports, RPT_ERROR, "Could not find scene");
 		return OPERATOR_CANCELLED;
 	}
 
 	if (scene_to == CTX_data_scene(C)) {
-		BKE_report(op->reports, RPT_ERROR, "Can't link objects into the same scene");
+		BKE_report(op->reports, RPT_ERROR, "Cannot link objects into the same scene");
 		return OPERATOR_CANCELLED;
 	}
 
 	if (scene_to->id.lib) {
-		BKE_report(op->reports, RPT_ERROR, "Can't link objects into a linked scene");
+		BKE_report(op->reports, RPT_ERROR, "Cannot link objects into a linked scene");
 		return OPERATOR_CANCELLED;
 	}
 
@@ -1632,7 +1710,7 @@ static void single_obdata_users(Main *bmain, Scene *scene, int flag)
 						break;
 					case OB_MESH:
 						ob->data = BKE_mesh_copy(ob->data);
-						//me= ob->data;
+						//me = ob->data;
 						//if (me && me->key)
 						//	ipo_idnew(me->key->ipo);	/* drivers */
 						break;
@@ -2070,7 +2148,7 @@ static int drop_named_material_invoke(bContext *C, wmOperator *op, wmEvent *even
 	
 	DAG_ids_flush_update(bmain, 0);
 	WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, CTX_wm_view3d(C));
-	WM_event_add_notifier(C, NC_MATERIAL | ND_SHADING, ma);
+	WM_event_add_notifier(C, NC_MATERIAL | ND_SHADING_LINKS, ma);
 	
 	return OPERATOR_FINISHED;
 }

@@ -76,6 +76,8 @@ public:
 		TCachingInfo& cachingInfo
 	)const;
 
+	/* mMaterial is private, but need this for conversion */
+	bool IsMaterial(const BL_Material *bl_mat) const;
 	Material* GetBlenderMaterial() const;
 	MTFace* GetMTFace(void) const;
 	unsigned int* GetMCol(void) const;
@@ -119,7 +121,7 @@ public:
 	KX_PYMETHOD_DOC(KX_BlenderMaterial, setTexture);
 
 	KX_PYMETHOD_DOC(KX_BlenderMaterial, setBlending);
-#endif // WITH_PYTHON
+#endif  /* WITH_PYTHON */
 
 	// --------------------------------
 	// pre calculate to avoid pops/lag at startup

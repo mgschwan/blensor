@@ -46,11 +46,18 @@ enum {
 	SUBDIV_SELECT_LOOPCUT
 };
 
+enum {
+	SIM_CMP_EQ = 0,
+	SIM_CMP_GT,
+	SIM_CMP_LT
+};
+
 /* similar face selection slot values */
 enum {
 	SIMFACE_MATERIAL = 201,
 	SIMFACE_IMAGE,
 	SIMFACE_AREA,
+	SIMFACE_SIDES,
 	SIMFACE_PERIMETER,
 	SIMFACE_NORMAL,
 	SIMFACE_COPLANAR
@@ -76,34 +83,22 @@ enum {
 	SIMVERT_EDGE
 };
 
-enum {
-	OPUVC_AXIS_X = 1,
-	OPUVC_AXIS_Y
-};
-
-enum {
-	DIRECTION_CW = 1,
-	DIRECTION_CCW
-};
-
 /* vertex path selection values */
 enum {
 	VPATH_SELECT_EDGE_LENGTH = 0,
 	VPATH_SELECT_TOPOLOGICAL
 };
 
-extern BMOpDefine *opdefines[];
-extern int bmesh_total_ops;
+extern const BMOpDefine *bmo_opdefines[];
+extern const int         bmo_opdefines_total;
 
 /*------specific operator helper functions-------*/
-
-struct Object;
-
 void BM_mesh_esubdivide(BMesh *bm, const char edge_hflag,
                         float smooth, float fractal, float along_normal,
                         int numcuts,
                         int seltype, int cornertype,
-                        const short use_singleedge, const short use_gridfill,
+                        const short use_single_edge, const short use_grid_fill,
+                        const short use_only_quads,
                         int seed);
 
 #include "intern/bmesh_operator_api_inline.h"

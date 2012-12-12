@@ -186,14 +186,17 @@ class bump_help(bpy.types.Operator):
 		layout = self.layout
 		layout.label('To use:')
 		layout.label('Make a selection or selection of Faces ')
-		layout.label('Choose from the bump types in the menu.')
-		layout.label('Keep extrusions small to prevent overlapping.')
+		layout.label('Choose from the bump types in the menu')
+		layout.label('To Help:')
+		layout.label('Keep extrusions small to prevent overlapping')
+		layout.label('Do not select all faces')
+		layout.label('if using with create armature, enter object mode first')
 	
 	def execute(self, context):
 		return {'FINISHED'}
 
 	def invoke(self, context, event):
-		return context.window_manager.invoke_popup(self, width = 300)		
+		return context.window_manager.invoke_popup(self, width = 350)		
 '''
 def menu_func(self, context):
 	self.layout.operator(Bump_init.bl_idname, text="Bump")

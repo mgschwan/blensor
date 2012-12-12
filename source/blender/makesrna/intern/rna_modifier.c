@@ -78,12 +78,14 @@ EnumPropertyItem modifier_type_items[] = {
 	{eModifierType_Skin, "SKIN", ICON_MOD_SKIN, "Skin", ""},
 	{eModifierType_Solidify, "SOLIDIFY", ICON_MOD_SOLIDIFY, "Solidify", ""},
 	{eModifierType_Subsurf, "SUBSURF", ICON_MOD_SUBSURF, "Subdivision Surface", ""},
+	{eModifierType_Triangulate, "TRIANGULATE", ICON_MOD_TRIANGULATE, "Triangulate", ""},
 	{0, "", 0, N_("Deform"), ""},
 	{eModifierType_Armature, "ARMATURE", ICON_MOD_ARMATURE, "Armature", ""},
 	{eModifierType_Cast, "CAST", ICON_MOD_CAST, "Cast", ""},
 	{eModifierType_Curve, "CURVE", ICON_MOD_CURVE, "Curve", ""},
 	{eModifierType_Displace, "DISPLACE", ICON_MOD_DISPLACE, "Displace", ""},
 	{eModifierType_Hook, "HOOK", ICON_HOOK, "Hook", ""},
+	{eModifierType_LaplacianSmooth, "LAPLACIANSMOOTH", ICON_MOD_SMOOTH, "Laplacian Smooth", ""},
 	{eModifierType_Lattice, "LATTICE", ICON_MOD_LATTICE, "Lattice", ""},
 	{eModifierType_MeshDeform, "MESH_DEFORM", ICON_MOD_MESHDEFORM, "Mesh Deform", ""},
 	{eModifierType_Shrinkwrap, "SHRINKWRAP", ICON_MOD_SHRINKWRAP, "Shrinkwrap", ""},
@@ -210,6 +212,10 @@ static StructRNA *rna_Modifier_refine(struct PointerRNA *ptr)
 			return &RNA_RemeshModifier;
 		case eModifierType_Skin:
 			return &RNA_SkinModifier;
+		case eModifierType_LaplacianSmooth:
+			return &RNA_LaplacianSmoothModifier;
+		case eModifierType_Triangulate:
+			return &RNA_TriangulateModifier;
 		default:
 			return &RNA_Modifier;
 	}
@@ -257,9 +263,6 @@ static void rna_Smoke_set_type(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	SmokeModifierData *smd = (SmokeModifierData *)ptr->data;
 	Object *ob = (Object *)ptr->id.data;
-	ParticleSystemModifierData *psmd = NULL;
-	ParticleSystem *psys = NULL;
-	ParticleSettings *part = NULL;
 
 	/* nothing changed */
 	if ((smd->type & MOD_SMOKE_TYPE_DOMAIN) && smd->domain)
@@ -273,28 +276,6 @@ static void rna_Smoke_set_type(Main *bmain, Scene *scene, PointerRNA *ptr)
 			ob->dt = OB_WIRE;
 			break;
 		case MOD_SMOKE_TYPE_FLOW:
-			for (psys = ob->particlesystem.first; psys; psys = psys->next)
-				if (psys->part->type == PART_EMITTER)
-					break;
-			if (ob->type == OB_MESH && !psys) {
-				/* add particle system */
-				psmd = (ParticleSystemModifierData *)object_add_particle_system(scene, ob, NULL);
-				if (psmd) {
-					psys = psmd->psys;
-					part = psys->part;
-					part->lifetime = 1.0f;
-					part->sta = 1.0f;
-					part->end = 250.0f;
-					part->ren_as = PART_DRAW_NOT;
-					part->flag |= PART_UNBORN;
-					part->draw_as = PART_DRAW_DOT;
-					BLI_strncpy(psys->name, "SmokeParticles", sizeof(psys->name));
-					psys->recalc |= (PSYS_RECALC_RESET | PSYS_RECALC_PHYS);
-					DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
-				}
-			}
-			if (smd->flow)
-				smd->flow->psys = psys;
 		case MOD_SMOKE_TYPE_COLL:
 		case 0:
 		default:
@@ -384,6 +365,12 @@ static void rna_SmoothModifier_vgroup_set(PointerRNA *ptr, const char *value)
 	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
 }
 
+static void rna_LaplacianSmoothModifier_vgroup_set(PointerRNA *ptr, const char *value)
+{
+	LaplacianSmoothModifierData *lmd = (LaplacianSmoothModifierData *)ptr->data;
+	rna_object_vgroup_name_set(ptr, value, lmd->defgrp_name, sizeof(lmd->defgrp_name));
+}
+
 static void rna_WaveModifier_vgroup_set(PointerRNA *ptr, const char *value)
 {
 	WaveModifierData *lmd = (WaveModifierData *)ptr->data;
@@ -400,6 +387,12 @@ static void rna_SolidifyModifier_vgroup_set(PointerRNA *ptr, const char *value)
 {
 	SolidifyModifierData *smd = (SolidifyModifierData *)ptr->data;
 	rna_object_vgroup_name_set(ptr, value, smd->defgrp_name, sizeof(smd->defgrp_name));
+}
+
+static void rna_DecimateModifier_vgroup_set(PointerRNA *ptr, const char *value)
+{
+	DecimateModifierData *dmd = (DecimateModifierData *)ptr->data;
+	rna_object_vgroup_name_set(ptr, value, dmd->defgrp_name, sizeof(dmd->defgrp_name));
 }
 
 static void rna_WeightVGModifier_vgroup_set(PointerRNA *ptr, const char *value)
@@ -491,8 +484,7 @@ static void rna_MultiresModifier_level_range(PointerRNA *ptr, int *min, int *max
 	MultiresModifierData *mmd = (MultiresModifierData *)ptr->data;
 
 	*min = 0;
-	*max = mmd->totlvl; /* intentionally _not_ -1 */
-	*max = MAX2(0, *max);
+	*max = max_ii(0, mmd->totlvl);  /* intentionally _not_ -1 */
 }
 
 static int rna_MultiresModifier_external_get(PointerRNA *ptr)
@@ -1129,6 +1121,13 @@ static void rna_def_modifier_mirror(BlenderRNA *brna)
 
 static void rna_def_modifier_decimate(BlenderRNA *brna)
 {
+	static EnumPropertyItem modifier_decim_mode_items[] = {
+		{MOD_DECIM_MODE_COLLAPSE, "COLLAPSE", 0, "Collapse", "Use edge collapsing"},
+		{MOD_DECIM_MODE_UNSUBDIV, "UNSUBDIV", 0, "Un-Subdivide", "Use un-subdivide face reduction"},
+		{MOD_DECIM_MODE_DISSOLVE, "DISSOLVE", 0, "Planar", "Dissolve geometry to form planar polygons"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	StructRNA *srna;
 	PropertyRNA *prop;
 
@@ -1137,15 +1136,65 @@ static void rna_def_modifier_decimate(BlenderRNA *brna)
 	RNA_def_struct_sdna(srna, "DecimateModifierData");
 	RNA_def_struct_ui_icon(srna, ICON_MOD_DECIM);
 
+	prop = RNA_def_property(srna, "decimate_type", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "mode");
+	RNA_def_property_enum_items(prop, modifier_decim_mode_items);
+	RNA_def_property_ui_text(prop, "Mode", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/* (mode == MOD_DECIM_MODE_COLLAPSE) */
 	prop = RNA_def_property(srna, "ratio", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "percent");
 	RNA_def_property_range(prop, 0, 1);
-	RNA_def_property_ui_range(prop, 0, 1, 1, 2);
-	RNA_def_property_ui_text(prop, "Ratio", "Ratio of triangles to reduce to");
+	RNA_def_property_ui_range(prop, 0, 1, 1, 4);
+	RNA_def_property_ui_text(prop, "Ratio", "Ratio of triangles to reduce to (collapse only)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	/* (mode == MOD_DECIM_MODE_UNSUBDIV) */
+	prop = RNA_def_property(srna, "iterations", PROP_INT, PROP_UNSIGNED);
+	RNA_def_property_int_sdna(prop, NULL, "iter");
+	RNA_def_property_range(prop, 0, SHRT_MAX);
+	RNA_def_property_ui_range(prop, 0, 100, 1, 0);
+	RNA_def_property_ui_text(prop, "Iterations", "Number of times reduce the geometry (unsubdivide only)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/* (mode == MOD_DECIM_MODE_DISSOLVE) */
+	prop = RNA_def_property(srna, "angle_limit", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "angle");
+	RNA_def_property_range(prop, 0, DEG2RAD(180));
+	RNA_def_property_ui_range(prop, 0, DEG2RAD(180), 100, 2);
+	RNA_def_property_ui_text(prop, "Angle Limit", "Only dissolve angles below this (planar only)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/* (mode == MOD_DECIM_MODE_COLLAPSE) */
+	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
+	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name (collapse only)");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_DecimateModifier_vgroup_set");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "invert_vertex_group", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_DECIM_FLAG_INVERT_VGROUP);
+	RNA_def_property_ui_text(prop, "Invert", "Invert vertex group influence (collapse only)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_collapse_triangulate", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_DECIM_FLAG_TRIANGULATE);
+	RNA_def_property_ui_text(prop, "Triangulate", "Keep triangulated faces resulting from decimation (collapse only)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	/* end collapse-only option */
+
+	/* (mode == MOD_DECIM_MODE_DISSOLVE) */
+	prop = RNA_def_property(srna, "use_dissolve_boundaries", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_DECIM_FLAG_ALL_BOUNDARY_VERTS);
+	RNA_def_property_ui_text(prop, "All Boundaries", "Dissolve all vertices inbetween face boundaries (planar only)");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	/* end dissolve-only option */
+
+
+
+	/* all modes use this */
 	prop = RNA_def_property(srna, "face_count", PROP_INT, PROP_NONE);
-	RNA_def_property_int_sdna(prop, NULL, "faceCount");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Face Count", "The current number of faces in the decimated mesh");
 }
@@ -1742,6 +1791,64 @@ static void rna_def_modifier_smooth(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
+static void rna_def_modifier_laplaciansmooth(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "LaplacianSmoothModifier", "Modifier");
+	RNA_def_struct_ui_text(srna, "Laplacian Smooth Modifier", "Smoothing effect modifier");
+	RNA_def_struct_sdna(srna, "LaplacianSmoothModifierData");
+	RNA_def_struct_ui_icon(srna, ICON_MOD_SMOOTH);
+
+	prop = RNA_def_property(srna, "use_x", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_LAPLACIANSMOOTH_X);
+	RNA_def_property_ui_text(prop, "X", "Smooth object along X axis");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_y", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_LAPLACIANSMOOTH_Y);
+	RNA_def_property_ui_text(prop, "Y", "Smooth object along Y axis");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_z", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_LAPLACIANSMOOTH_Z);
+	RNA_def_property_ui_text(prop, "Z", "Smooth object along Z axis");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_volume_preserve", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_LAPLACIANSMOOTH_PRESERVE_VOLUME);
+	RNA_def_property_ui_text(prop, "Preserve Volume", "Apply volume preservation after smooth");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "lambda_factor", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "lambda");
+	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.0000001, 1000.0, 0.0000001, 8);
+	RNA_def_property_ui_text(prop, "Lambda Factor", "Smooth factor effect");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "lambda_border", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "lambda_border");
+	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.0000001, 1000.0, 0.0000001, 8);
+	RNA_def_property_ui_text(prop, "Lambda Border", "Lambda factor in border");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "iterations", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "repeat");
+	RNA_def_property_ui_range(prop, 0, 200, 1, 0);
+	RNA_def_property_ui_text(prop, "Repeat", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	
+	prop = RNA_def_property(srna, "vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "defgrp_name");
+	RNA_def_property_ui_text(prop, "Vertex Group",
+	                         "Name of Vertex Group which determines influence of modifier per point");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_LaplacianSmoothModifier_vgroup_set");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+}
+
 static void rna_def_modifier_cast(BlenderRNA *brna)
 {
 	StructRNA *srna;
@@ -2100,6 +2207,7 @@ static void rna_def_modifier_smoke(BlenderRNA *brna)
 	RNA_def_property_enum_sdna(prop, NULL, "type");
 	RNA_def_property_enum_items(prop, prop_smoke_type_items);
 	RNA_def_property_ui_text(prop, "Type", "");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Smoke_set_type");
 }
 
@@ -2294,6 +2402,13 @@ static void rna_def_modifier_shrinkwrap(BlenderRNA *brna)
 	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
 	RNA_def_property_ui_range(prop, -100, 100, 1, 2);
 	RNA_def_property_ui_text(prop, "Offset", "Distance to keep from the target");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "project_limit", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "projLimit");
+	RNA_def_property_range(prop, 0.0, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0, 100, 1, 2);
+	RNA_def_property_ui_text(prop, "Project Limit", "Limit the distance used for projection (zero disables)");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_project_x", PROP_BOOLEAN, PROP_NONE);
@@ -3007,7 +3122,7 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "octree_depth", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "depth");
-	RNA_def_property_range(prop, 1, 10);
+	RNA_def_property_range(prop, 1, 12);
 	RNA_def_property_ui_text(prop, "Octree Depth", "Resolution of the octree; higher values give finer details");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -3250,6 +3365,22 @@ static void rna_def_modifier_skin(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
+static void rna_def_modifier_triangulate(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "TriangulateModifier", "Modifier");
+	RNA_def_struct_ui_text(srna, "Triangulate Modifier", "Triangulate Mesh");
+	RNA_def_struct_sdna(srna, "TriangulateModifierData");
+	RNA_def_struct_ui_icon(srna, ICON_MOD_TRIANGULATE);
+
+	prop = RNA_def_property(srna, "use_beauty", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_TRIANGULATE_BEAUTY);
+	RNA_def_property_ui_text(prop, "Beauty Subdivide", "Subdivide across shortest diagonal");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+}
+
 void RNA_def_modifier(BlenderRNA *brna)
 {
 	StructRNA *srna;
@@ -3356,6 +3487,8 @@ void RNA_def_modifier(BlenderRNA *brna)
 	rna_def_modifier_ocean(brna);
 	rna_def_modifier_remesh(brna);
 	rna_def_modifier_skin(brna);
+	rna_def_modifier_laplaciansmooth(brna);
+	rna_def_modifier_triangulate(brna);
 }
 
 #endif

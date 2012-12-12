@@ -407,8 +407,6 @@ static void clip_listener(ScrArea *sa, wmNotifier *wmn)
 		case NC_SCREEN:
 			switch (wmn->data) {
 				case ND_ANIMPLAY:
-				case ND_GPENCIL:
-					clip_scopes_check_gpencil_change(sa);
 					ED_area_tag_redraw(sa);
 					break;
 			}
@@ -417,6 +415,12 @@ static void clip_listener(ScrArea *sa, wmNotifier *wmn)
 			if (wmn->data == ND_SPACE_CLIP) {
 				clip_scopes_tag_refresh(sa);
 				clip_stabilization_tag_refresh(sa);
+				ED_area_tag_redraw(sa);
+			}
+			break;
+		case NC_GPENCIL:
+			if (wmn->action == NA_EDITED) {
+				clip_scopes_check_gpencil_change(sa);
 				ED_area_tag_redraw(sa);
 			}
 			break;
@@ -1024,17 +1028,14 @@ static void clip_refresh(const bContext *C, ScrArea *sa)
 static void movieclip_main_area_set_view2d(const bContext *C, ARegion *ar)
 {
 	SpaceClip *sc = CTX_wm_space_clip(C);
-	MovieClip *clip = ED_space_clip_get_clip(sc);
-	float x1, y1, w, h;
+	float x1, y1, w, h, aspx, aspy;
 	int width, height, winx, winy;
 
 	ED_space_clip_get_size(sc, &width, &height);
+	ED_space_clip_get_aspect(sc, &aspx, &aspy);
 
-	w = width;
-	h = height;
-
-	if (clip)
-		h *= clip->aspy / clip->aspx / clip->tracking.camera.pixel_aspect;
+	w = width * aspx;
+	h = height * aspy;
 
 	winx = BLI_rcti_size_x(&ar->winrct) + 1;
 	winy = BLI_rcti_size_y(&ar->winrct) + 1;
@@ -1159,8 +1160,8 @@ static void clip_main_area_listener(ARegion *ar, wmNotifier *wmn)
 {
 	/* context changes */
 	switch (wmn->category) {
-		case NC_SCREEN:
-			if (wmn->data == ND_GPENCIL)
+		case NC_GPENCIL:
+			if (wmn->action == NA_EDITED)
 				ED_region_tag_redraw(ar);
 			break;
 	}
@@ -1373,8 +1374,8 @@ static void clip_props_area_listener(ARegion *ar, wmNotifier *wmn)
 			if (wmn->data == ND_SPACE_CLIP)
 				ED_region_tag_redraw(ar);
 			break;
-		case NC_SCREEN:
-			if (wmn->data == ND_GPENCIL)
+		case NC_GPENCIL:
+			if (wmn->action == NA_EDITED)
 				ED_region_tag_redraw(ar);
 			break;
 	}
@@ -1406,8 +1407,8 @@ static void clip_properties_area_listener(ARegion *ar, wmNotifier *wmn)
 {
 	/* context changes */
 	switch (wmn->category) {
-		case NC_SCREEN:
-			if (wmn->data == ND_GPENCIL)
+		case NC_GPENCIL:
+			if (wmn->data == ND_DATA)
 				ED_region_tag_redraw(ar);
 			break;
 		case NC_BRUSH:

@@ -689,8 +689,16 @@ static BMFace *BME_bevel_poly(BMesh *bm, BMFace *f, float value, int options, BM
 		         BMO_elem_flag_test(bm, l->v, BME_BEVEL_ORIG) &&
 		         !BMO_elem_flag_test(bm, l->prev->e, BME_BEVEL_BEVEL))
 		{
-			max = 1.0f;
-			l = BME_bevel_vert(bm, l, value, options, up_vec, td);
+			/* avoid making double vertices [#33438] */
+			BME_TransData *vtd;
+			vtd = BME_get_transdata(td, l->v);
+			if (vtd->weight == 0.0f) {
+				BMO_elem_flag_disable(bm, l->v, BME_BEVEL_BEVEL);
+			}
+			else {
+				max = 1.0f;
+				l = BME_bevel_vert(bm, l, value, options, up_vec, td);
+			}
 		}
 	}
 
@@ -957,7 +965,7 @@ static BMesh *BME_bevel_initialize(BMesh *bm, int options,
 	BMIter iter;
 	int /* wire, */ len;
 
-	/* tag non-manifold geometr */
+	/* tag non-manifold geometry */
 	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
 		BMO_elem_flag_enable(bm, v, BME_BEVEL_ORIG);
 		if (v->e) {
@@ -1096,10 +1104,9 @@ static BMesh *BME_bevel_mesh(BMesh *bm, float value, int UNUSED(res), int option
 	return bm;
 }
 
-BMesh *BME_bevel(BMEditMesh *em, float value, int res, int options, int defgrp_index, float angle,
-                 BME_TransData_Head **rtd, int do_tessface)
+BMesh *BME_bevel(BMesh *bm, float value, int res, int options, int defgrp_index, float angle,
+                 BME_TransData_Head **rtd)
 {
-	BMesh *bm = em->bm;
 	BMVert *v;
 	BMIter iter;
 
@@ -1111,9 +1118,12 @@ BMesh *BME_bevel(BMEditMesh *em, float value, int res, int options, int defgrp_i
 	td = BME_init_transdata(BLI_MEMARENA_STD_BUFSIZE);
 	/* recursion math courtesy of Martin Poirier (theeth) */
 	for (i = 0; i < res - 1; i++) {
-		if (i == 0) fac += 1.0 / 3.0; else fac += 1.0 / (3.0 * i * 2.0);
+		if (i == 0) fac += 1.0 / 3.0;
+		else        fac += 1.0 / (3.0 * i * 2.0);
 	}
 	d = 1.0 / fac;
+
+	BM_mesh_elem_toolflags_ensure(bm);
 
 	for (i = 0; i < res || (res == 0 && i == 0); i++) {
 		BMO_push(bm, NULL);
@@ -1124,12 +1134,6 @@ BMesh *BME_bevel(BMEditMesh *em, float value, int res, int options, int defgrp_i
 		bmesh_edit_end(bm, 0);
 		d /= (i == 0) ? 3.0 : 2.0;
 		BMO_pop(bm);
-	}
-
-	/* possibly needed when running as a tool (which is no longer functional)
-	 * but keep as an option for now */
-	if (do_tessface) {
-		BMEdit_RecalcTessellation(em);
 	}
 
 	/* interactive preview? */

@@ -1077,7 +1077,9 @@ static void setupArguments(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 		"\n\t\t-p <sx> <sy>\tOpen with lower left corner at <sx>, <sy>"
 		"\n\t\t-m\t\tRead from disk (Don't buffer)"
 		"\n\t\t-f <fps> <fps-base>\t\tSpecify FPS to start with"
-		"\n\t\t-j <frame>\tSet frame step to <frame>";
+		"\n\t\t-j <frame>\tSet frame step to <frame>"
+		"\n\t\t-s <frame>\tPlay from <frame>"
+		"\n\t\t-e <frame>\tPlay until <frame>";
 
 	static char game_doc[] = "Game Engine specific options"
 		"\n\t-g fixedtime\t\tRun on 50 hertz without dropping frames"
@@ -1128,6 +1130,7 @@ static void setupArguments(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 #endif
 	BLI_argsAdd(ba, 1, NULL, "--debug-python", "\n\tEnable debug messages for python", debug_mode_generic, (void *)G_DEBUG_PYTHON);
 	BLI_argsAdd(ba, 1, NULL, "--debug-events", "\n\tEnable debug messages for the event system", debug_mode_generic, (void *)G_DEBUG_EVENTS);
+	BLI_argsAdd(ba, 1, NULL, "--debug-handlers", "\n\tEnable debug messages for event handling", debug_mode_generic, (void *)G_DEBUG_HANDLERS);
 	BLI_argsAdd(ba, 1, NULL, "--debug-wm",     "\n\tEnable debug messages for the window manager", debug_mode_generic, (void *)G_DEBUG_WM);
 	BLI_argsAdd(ba, 1, NULL, "--debug-all",    "\n\tEnable all debug messages (excludes libmv)", debug_mode_generic, (void *)G_DEBUG_ALL);
 
@@ -1269,6 +1272,7 @@ int main(int argc, const char **argv)
 	initglobals();  /* blender.c */
 
 	IMB_init();
+	BKE_images_init();
 
 #ifdef WITH_FFMPEG
 	IMB_ffmpeg_init();

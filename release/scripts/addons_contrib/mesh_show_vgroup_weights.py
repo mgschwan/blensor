@@ -270,7 +270,7 @@ class RemoveFromVertexGroup(bpy.types.Operator):
         # Save current selection
         selected_verts = []
         for v in bm.verts:
-            if v.select == True:
+            if v.select is True:
                 selected_verts.append(v.index)
                 if v.index != self.vert_and_group[0]:
                     v.select = False
@@ -327,7 +327,7 @@ class AddToVertexGroup(bpy.types.Operator):
         # Save current selection
         selected_verts = []
         for v in bm.verts:
-            if v.select == True:
+            if v.select is True:
                 selected_verts.append(v.index)
                 if v.index != self.vertex:
                     v.select = False

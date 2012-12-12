@@ -45,14 +45,15 @@ def vloc(self, r):
     return self.off * (1 + random.gauss(0, self.var1 / 3))
 
 def vrot(self,r):
-    random.seed(self.ran+r)
+    random.seed(self.ran + r)
     return Euler((radians(self.rotx) + random.gauss(0, self.var2 / 3), \
         radians(self.roty) + random.gauss(0, self.var2 / 3), \
         radians(self.rotz) + random.gauss(0,self.var2 / 3)), 'XYZ')
 
 def vsca(self, r):
     random.seed(self.ran + r)
-    return [self.sca * (1 + random.gauss(0, self.var3 / 3))] * 3
+    return self.sca * (1 + random.gauss(0, self.var3 / 3))
+
 # centroide de una seleccion de vertices
 def centro(ver):
     vvv = [v for v in ver if v.select]
@@ -84,7 +85,7 @@ class MExtrude(bpy.types.Operator):
     rotz = FloatProperty(name='Rot Z', min=-85, soft_min=-30, \
         soft_max=30, max=85, default=-0, description='Z rotation')
     sca = FloatProperty(name='Scale', min=0.1, soft_min=0.5, \
-        soft_max=1.2, max =2, default=.9, description='Scaling')
+        soft_max=1.2, max =2, default=1.0, description='Scaling')
     var1 = FloatProperty(name='Offset Var', min=-5, soft_min=-1, \
         soft_max=1, max=5, default=0, description='Offset variation')
     var2 = FloatProperty(name='Rotation Var', min=-5, soft_min=-1, \
@@ -98,7 +99,8 @@ class MExtrude(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return (context.object and context.object.type == 'MESH')
+        obj = context.object
+        return (obj and obj.type == 'MESH')
 
     def draw(self, context):
         layout = self.layout
@@ -120,65 +122,53 @@ class MExtrude(bpy.types.Operator):
 
     def execute(self, context):
         obj = bpy.context.object
-        data, om, msv =  obj.data, obj.mode, []
-        msm = bpy.context.tool_settings.mesh_select_mode
+        data, om =  obj.data, obj.mode
         bpy.context.tool_settings.mesh_select_mode = [False, False, True]
 
-        # disable modifiers
-        for i in range(len(obj.modifiers)):
-            msv.append(obj.modifiers[i].show_viewport)
-            obj.modifiers[i].show_viewport = False
-
-        # isolate selection
+        # bmesh operations
         bpy.ops.object.mode_set()
-        bpy.ops.object.mode_set(mode='EDIT')
-        total = data.total_face_sel
-        try: bpy.ops.mesh.select_inverse()
-        except: bpy.ops.mesh.select_all(action='INVERT')
-        bpy.ops.object.vertex_group_assign(new=True)
-        bpy.ops.mesh.hide()
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        sel = [f for f in bm.faces if f.select]
 
         # faces loop
-        for i in range(total):
-            bpy.ops.object.editmode_toggle()
-            # is bmesh..?
-            try:
-                faces = data.polygons
-            except:
-                faces = data.faces
-            for f in faces:
-                if not f.hide:
-                    f.select = True
-                    break
-            norm = f.normal.copy()
-            rot, loc = vrot(self, i), vloc(self, i)
-            norm.rotate(obj.matrix_world.to_quaternion())
-            bpy.ops.object.editmode_toggle()
+        for i, of in enumerate(sel):
+            rot = vrot(self, i)
+            off = vloc(self, i)
+            of.normal_update()
 
-            # extrude loop
-            for a in range(self.num):
-                norm.rotate(rot)
-                r2q = rot.to_quaternion()
-                bpy.ops.mesh.extrude_faces_move()
-                bpy.ops.transform.translate(value = norm * loc)
-                bpy.ops.transform.rotate(value = [r2q.angle], axis = r2q.axis)
-                bpy.ops.transform.resize(value = vsca(self, i + a))
-            bpy.ops.object.vertex_group_remove_from()
-            bpy.ops.mesh.hide()
+            # extrusion loop
+            for r in range(self.num):
+                nf = of.copy()
+                nf.normal_update()
+                no = nf.normal.copy()
+                ce = nf.calc_center_bounds()
+                s = vsca(self, i + r)
 
-        # keep just last faces selected
-        bpy.ops.mesh.reveal()
-        bpy.ops.object.vertex_group_deselect()
-        bpy.ops.object.vertex_group_remove()
-        bpy.ops.object.mode_set()
+                for v in nf.verts:
+                    v.co -= ce
+                    v.co.rotate(rot)
+                    v.co += ce + no * off
+                    v.co = v.co.lerp(ce, 1 - s)
 
+                # extrude code from TrumanBlending
+                for a, b in zip(of.loops, nf.loops):
+                    sf = bm.faces.new((a.vert, a.link_loop_next.vert, \
+                        b.link_loop_next.vert, b.vert))
+                    sf.normal_update()
+
+                bm.faces.remove(of)
+                of = nf
+
+        for v in bm.verts: v.select = False
+        for e in bm.edges: e.select = False
+        bm.to_mesh(obj.data)
+        obj.data.update()
 
         # restore user settings
-        for i in range(len(obj.modifiers)): 
-            obj.modifiers[i].show_viewport = msv[i]
-        bpy.context.tool_settings.mesh_select_mode = msm
         bpy.ops.object.mode_set(mode=om)
-        if not total:
+
+        if not len(sel):
             self.report({'INFO'}, 'Select one or more faces...')
         return{'FINISHED'}
 
@@ -191,14 +181,27 @@ class mextrude_help(bpy.types.Operator):
 		layout.label('To use:')
 		layout.label('Make a selection or selection of Faces.')
 		layout.label('Extrude, rotate extrusions & more.')
-		layout.label('For rigging capabilities, see Multi Extrude panel.')
-	
+		layout.label('For rigging capabilities, see Multi Extrude Plus panel.')
+	def invoke(self, context, event):
+		return context.window_manager.invoke_popup(self, width = 300)
+
+class addarm_help(bpy.types.Operator):
+	bl_idname = 'help.addarm'
+	bl_label = ''
+
+	def draw(self, context):
+		layout = self.layout
+		layout.label('To use:')
+		layout.label('With Multi extrude to rig extrusions.')
+		layout.label('Adds Empty to control rig.')
+		layout.label('Based on selected face/s & object center.')
+
 	def execute(self, context):
 		return {'FINISHED'}
 
 	def invoke(self, context, event):
 		return context.window_manager.invoke_popup(self, width = 300)
-		
+
 class BB(bpy.types.Operator):
     bl_idname = 'object.mesh2bones'
     bl_label = 'Create Armature'

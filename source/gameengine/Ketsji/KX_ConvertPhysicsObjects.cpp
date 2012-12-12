@@ -29,8 +29,8 @@
  *  \ingroup ketsji
  */
 
-#if defined(WIN32) && !defined(FREE_WINDOWS)
-#pragma warning (disable : 4786)
+#ifdef _MSC_VER
+#  pragma warning (disable:4786)
 #endif
 
 #include "MT_assert.h"
@@ -54,6 +54,7 @@
 #include "KX_MotionState.h" // bridge between motionstate and scenegraph node
 
 extern "C"{
+	#include "BLI_utildefines.h"
 	#include "BKE_DerivedMesh.h"
 }
 

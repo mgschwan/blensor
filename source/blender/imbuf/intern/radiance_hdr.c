@@ -65,7 +65,6 @@
 #define BLU 2
 #define EXP 3
 #define COLXS 128
-#define STR_MAX 540
 typedef unsigned char RGBE[4];
 typedef float fCOLOR[3];
 
@@ -154,7 +153,7 @@ static void FLOAT2RGBE(fCOLOR fcol, RGBE rgbe)
 	if (d <= 1e-32f)
 		rgbe[RED] = rgbe[GRN] = rgbe[BLU] = rgbe[EXP] = 0;
 	else {
-		d = frexp(d, &e) * 256.f / d;
+		d = (float)frexp(d, &e) * 256.0f / d;
 		rgbe[RED] = (unsigned char)(fcol[RED] * d);
 		rgbe[GRN] = (unsigned char)(fcol[GRN] * d);
 		rgbe[BLU] = (unsigned char)(fcol[BLU] * d);

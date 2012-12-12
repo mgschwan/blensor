@@ -46,7 +46,7 @@ struct Lattice *BKE_lattice_add(const char *name);
 struct Lattice *BKE_lattice_copy(struct Lattice *lt);
 void BKE_lattice_free(struct Lattice *lt);
 void BKE_lattice_make_local(struct Lattice *lt);
-void calc_lat_fudu(int flag, int res, float *fu, float *du);
+void calc_lat_fudu(int flag, int res, float *r_fu, float *r_du);
 
 void init_latt_deform(struct Object *oblatt, struct Object *ob);
 void calc_latt_deform(struct Object *, float co[3], float weight);
@@ -59,7 +59,7 @@ void curve_deform_verts(struct Scene *scene, struct Object *cuOb, struct Object 
                         struct DerivedMesh *dm, float (*vertexCos)[3],
                         int numVerts, const char *vgroup, short defaxis);
 void curve_deform_vector(struct Scene *scene, struct Object *cuOb, struct Object *target,
-                         float orco[3], float vec[3], float mat[][3], int no_rot_axis);
+                         float orco[3], float vec[3], float mat[3][3], int no_rot_axis);
 
 void lattice_deform_verts(struct Object *laOb, struct Object *target,
                           struct DerivedMesh *dm, float (*vertexCos)[3],

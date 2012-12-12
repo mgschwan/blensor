@@ -87,12 +87,6 @@ extern struct Render R;
  *
  */
 
-#define VECADDISFAC(v1,v3,fac)  {   \
-	*(v1 + 0) += *(v3 + 0) * (fac); \
-	*(v1 + 1) += *(v3 + 1) * (fac); \
-	*(v1 + 2) += *(v3 + 2) * (fac); \
-} (void)0
-
 /* initialize material variables in shadeinput, 
  * doing inverse gamma correction where applicable */
 void shade_input_init_material(ShadeInput *shi)
@@ -121,13 +115,13 @@ void shade_material_loop(ShadeInput *shi, ShadeResult *shr)
 		shi->depth--;
 
 		/* a couple of passes */
-		VECADDISFAC(shr->combined, shr_t.combined, fac);
+		madd_v3_v3fl(shr->combined, shr_t.combined, fac);
 		if (shi->passflag & SCE_PASS_SPEC)
-			VECADDISFAC(shr->spec, shr_t.spec, fac);
+			madd_v3_v3fl(shr->spec, shr_t.spec, fac);
 		if (shi->passflag & SCE_PASS_DIFFUSE)
-			VECADDISFAC(shr->diff, shr_t.diff, fac);
+			madd_v3_v3fl(shr->diff, shr_t.diff, fac);
 		if (shi->passflag & SCE_PASS_SHADOW)
-			VECADDISFAC(shr->shad, shr_t.shad, fac);
+			madd_v3_v3fl(shr->shad, shr_t.shad, fac);
 
 		negate_v3(shi->vn);
 		negate_v3(shi->facenor);
@@ -242,7 +236,7 @@ void vlr_set_uv_indices(VlakRen *vlr, int *i1, int *i2, int *i3)
 	/*		1---2		1---2 	0 = orig face, 1 = new face */
 	
 	/* Update vert nums to point to correct verts of original face */
-	if (vlr->flag & R_DIVIDE_24) {  
+	if (vlr->flag & R_DIVIDE_24) {
 		if (vlr->flag & R_FACE_SPLIT) {
 			(*i1)++; (*i2)++; (*i3)++;
 		}
@@ -783,7 +777,7 @@ void shade_input_set_uv(ShadeInput *shi)
 			CLAMP(shi->u, -2.0f, 1.0f);
 			CLAMP(shi->v, -2.0f, 1.0f);
 		}
-	}	
+	}
 }
 
 void shade_input_set_normals(ShadeInput *shi)

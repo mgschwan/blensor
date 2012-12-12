@@ -51,6 +51,7 @@
 
 #include "BKE_DerivedMesh.h"
 #include "BKE_effect.h"
+#include "BKE_global.h"
 #include "BKE_image.h"
 #include "BKE_material.h"
 #include "BKE_paint.h"
@@ -382,7 +383,7 @@ static void draw_textured_begin(Scene *scene, View3D *v3d, RegionView3D *rv3d, O
 		glEnable(GL_CULL_FACE);
 		glCullFace(GL_BACK);
 	}
-	else {		
+	else {
 		glDisable(GL_CULL_FACE);
 	}
 	glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, (me->flag & ME_TWOSIDED) ? GL_TRUE : GL_FALSE);
@@ -406,7 +407,7 @@ static void draw_textured_end(void)
 	 *  - zr
 	 */
 	glPushMatrix();
-	glLoadIdentity();	
+	glLoadIdentity();
 	GPU_default_lights();
 	glPopMatrix();
 }
@@ -533,8 +534,7 @@ static void update_tface_color_layer(DerivedMesh *dm)
 			}
 			else {
 				float col[3];
-				Material *ma = give_current_material(Gtexdraw.ob, mface[i].mat_nr + 1);
-				
+
 				if (ma) {
 					if (Gtexdraw.color_profile) linearrgb_to_srgb_v3_v3(col, &ma->r);
 					else copy_v3_v3(col, &ma->r);
@@ -637,7 +637,7 @@ static void draw_mesh_text(Scene *scene, Object *ob, int glsl)
 	int a, totpoly = me->totpoly;
 
 	/* fake values to pass to GPU_render_text() */
-	MCol tmp_mcol[4]  = {{0}};
+	MCol  tmp_mcol[4]  = {{0}};
 	MCol *tmp_mcol_pt  = mloopcol ? tmp_mcol : NULL;
 	MTFace tmp_tf      = {{{0}}};
 
@@ -704,7 +704,7 @@ static void draw_mesh_text(Scene *scene, Object *ob, int glsl)
 
 			/* COLOR */
 			if (mloopcol) {
-				unsigned int totloop_clamp = MIN2(4, mp->totloop);
+				unsigned int totloop_clamp = min_ii(4, mp->totloop);
 				unsigned int j;
 				lcol = &mloopcol[mp->loopstart];
 
@@ -729,7 +729,7 @@ static void draw_mesh_text(Scene *scene, Object *ob, int glsl)
 			BKE_bproperty_set_valstr(prop, string);
 			characters = strlen(string);
 			
-			if (!BKE_image_get_ibuf(mtpoly->tpage, NULL))
+			if (!BKE_image_has_ibuf(mtpoly->tpage, NULL))
 				characters = 0;
 
 			if (!mf_smooth) {
@@ -966,7 +966,7 @@ void draw_mesh_textured(Scene *scene, View3D *v3d, RegionView3D *rv3d,
 		Mesh *me = ob->data;
 		TexMatCallback data = {scene, ob, me, dm};
 		int (*set_face_cb)(void *, int);
-		int glsl;
+		int glsl, picking = (G.f & G_PICKSEL);
 		
 		/* face hiding callback depending on mode */
 		if (ob == scene->obedit)
@@ -977,11 +977,11 @@ void draw_mesh_textured(Scene *scene, View3D *v3d, RegionView3D *rv3d,
 			set_face_cb = NULL;
 
 		/* test if we can use glsl */
-		glsl = (v3d->drawtype == OB_MATERIAL) && GPU_glsl_support();
+		glsl = (v3d->drawtype == OB_MATERIAL) && GPU_glsl_support() && !picking;
 
 		GPU_begin_object_materials(v3d, rv3d, scene, ob, glsl, NULL);
 
-		if (glsl) {
+		if (glsl || picking) {
 			/* draw glsl */
 			dm->drawMappedFacesMat(dm,
 			                       tex_mat_set_material_cb,

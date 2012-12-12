@@ -88,7 +88,6 @@ class ConstraintButtonsPanel():
 
         col = split.column()
         col.prop(con, "chain_count")
-        col.prop(con, "use_target")
 
     def CHILD_OF(self, context, layout, con):
         self.target_template(layout, con)
@@ -135,7 +134,7 @@ class ConstraintButtonsPanel():
             layout.prop(con, "ik_type")
             getattr(self, 'IK_' + con.ik_type)(context, layout, con)
         else:
-            # Legacy IK constraint
+            # Standard IK constraint
             self.target_template(layout, con)
             layout.prop(con, "pole_target")
 
@@ -152,18 +151,27 @@ class ConstraintButtonsPanel():
             col.prop(con, "iterations")
             col.prop(con, "chain_count")
 
-            col.label(text="Weight:")
-            col.prop(con, "weight", text="Position", slider=True)
-            sub = col.column()
-            sub.active = con.use_rotation
-            sub.prop(con, "orient_weight", text="Rotation", slider=True)
-
             col = split.column()
             col.prop(con, "use_tail")
             col.prop(con, "use_stretch")
-            col.separator()
-            col.prop(con, "use_target")
-            col.prop(con, "use_rotation")
+
+            layout.label(text="Weight:")
+
+            split = layout.split()
+            col = split.column()
+            row = col.row(align=True)
+            row.prop(con, "use_location", text="")
+            sub = row.row()
+            sub.active = con.use_location
+            sub.prop(con, "weight", text="Position", slider=True)
+
+            col = split.column()
+            row = col.row(align=True)
+            row.prop(con, "use_rotation", text="")
+            sub = row.row()
+            sub.active = con.use_rotation
+            sub.prop(con, "orient_weight", text="Rotation", slider=True)
+
 
     def IK_COPY_POSE(self, context, layout, con):
         self.target_template(layout, con)
@@ -212,6 +220,7 @@ class ConstraintButtonsPanel():
 
     def FOLLOW_PATH(self, context, layout, con):
         self.target_template(layout, con)
+        layout.operator("constraint.followpath_path_animate", text="Animate Path", icon='ANIM_DATA')
 
         split = layout.split()
 
@@ -483,6 +492,8 @@ class ConstraintButtonsPanel():
         row = layout.row()
         row.prop(con, "use_transform_limit")
         row.label()
+
+        self.space_template(layout, con)
 
     def STRETCH_TO(self, context, layout, con):
         self.target_template(layout, con)

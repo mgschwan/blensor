@@ -100,7 +100,7 @@ class DirectXExporter:
         self.File.Close()
 
     def Log(self, String, MessageVerbose=True):
-        if self.Config.Verbose == True or MessageVerbose == False:
+        if self.Config.Verbose is True or MessageVerbose == False:
             print(String)
 
     # "Private" Methods

@@ -27,6 +27,8 @@
  *  \ingroup bli
  */
 
+#ifndef __MATH_BASE_INLINE_C__
+#define __MATH_BASE_INLINE_C__
 
 #include <float.h>
 #include <stdio.h>
@@ -34,9 +36,6 @@
 #include <string.h>
 
 #include "BLI_math.h"
-
-#ifndef __MATH_BASE_INLINE_C__
-#define __MATH_BASE_INLINE_C__
 
 /* A few small defines. Keep'em local! */
 #define SMALL_NUMBER  1.e-8f
@@ -59,34 +58,34 @@ MINLINE float saacos(float fac)
 {
 	if (fac <= -1.0f) return (float)M_PI;
 	else if (fac >= 1.0f) return 0.0;
-	else return (float)acos(fac);
+	else return acosf(fac);
 }
 
 MINLINE float saasin(float fac)
 {
 	if (fac <= -1.0f) return (float)-M_PI / 2.0f;
 	else if (fac >= 1.0f) return (float)M_PI / 2.0f;
-	else return (float)asin(fac);
+	else return asinf(fac);
 }
 
 MINLINE float sasqrt(float fac)
 {
 	if (fac <= 0.0f) return 0.0f;
-	return (float)sqrt(fac);
+	return sqrtf(fac);
 }
 
 MINLINE float saacosf(float fac)
 {
 	if (fac <= -1.0f) return (float)M_PI;
 	else if (fac >= 1.0f) return 0.0f;
-	else return (float)acosf(fac);
+	else return acosf(fac);
 }
 
 MINLINE float saasinf(float fac)
 {
 	if (fac <= -1.0f) return (float)-M_PI / 2.0f;
 	else if (fac >= 1.0f) return (float)M_PI / 2.0f;
-	else return (float)asinf(fac);
+	else return asinf(fac);
 }
 
 MINLINE float sasqrtf(float fac)
@@ -139,20 +138,39 @@ MINLINE int power_of_2_min_i(int n)
 	return n;
 }
 
-MINLINE float minf(float a, float b)
+MINLINE unsigned int highest_order_bit_i(unsigned int n)
+{
+	n |= (n >>  1);
+	n |= (n >>  2);
+	n |= (n >>  4);
+	n |= (n >>  8);
+	n |= (n >> 16);
+	return n - (n >> 1);
+}
+
+MINLINE unsigned short highest_order_bit_s(unsigned short n)
+{
+	n |= (n >>  1);
+	n |= (n >>  2);
+	n |= (n >>  4);
+	n |= (n >>  8);
+	return n - (n >> 1);
+}
+
+MINLINE float min_ff(float a, float b)
 {
 	return (a < b) ? a : b;
 }
-MINLINE float maxf(float a, float b)
+MINLINE float max_ff(float a, float b)
 {
 	return (a > b) ? a : b;
 }
 
-MINLINE int mini(int a, int b)
+MINLINE int min_ii(int a, int b)
 {
 	return (a < b) ? a : b;
 }
-MINLINE int maxi(int a, int b)
+MINLINE int max_ii(int a, int b)
 {
 	return (b < a) ? a : b;
 }

@@ -134,10 +134,6 @@ class CyclesRender_PT_motion_blur(CyclesButtonsPanel, Panel):
     bl_label = "Motion Blur"
     bl_options = {'DEFAULT_CLOSED'}
 
-    @classmethod
-    def poll(cls, context):
-        return False
-
     def draw_header(self, context):
         rd = context.scene.render
 
@@ -197,10 +193,12 @@ class CyclesRender_PT_performance(CyclesButtonsPanel, Panel):
         sub.prop(rd, "threads")
 
         sub = col.column(align=True)
-        sub.label(text="Tiles:")
+        sub.label(text="Tile Size:")
 
-        sub.prop(rd, "parts_x", text="X")
-        sub.prop(rd, "parts_y", text="Y")
+        sub.prop(rd, "tile_x", text="X")
+        sub.prop(rd, "tile_y", text="Y")
+
+        sub.prop(cscene, "use_progressive_refine")
 
         subsub = sub.column()
         subsub.enabled = not rd.use_border
@@ -217,6 +215,10 @@ class CyclesRender_PT_performance(CyclesButtonsPanel, Panel):
         sub = col.column(align=True)
         sub.label(text="Viewport:")
         sub.prop(cscene, "preview_start_resolution")
+
+        sub = col.column(align=True)
+        sub.label(text="Final Render:")
+        sub.prop(rd, "use_persistent_data", text="Persistent Images")
 
 
 class CyclesRender_PT_layers(CyclesButtonsPanel, Panel):
@@ -955,7 +957,7 @@ def draw_device(self, context):
         elif device_type == 'OPENCL' and cscene.feature_set == 'EXPERIMENTAL':
             layout.prop(cscene, "device")
 
-        if cscene.feature_set == 'EXPERIMENTAL' and cscene.device == 'CPU' and engine.with_osl():
+        if engine.with_osl() and (cscene.device == 'CPU' or device_type == 'NONE'):
             layout.prop(cscene, "shading_system")
 
 
@@ -990,6 +992,7 @@ def get_panels():
         bpy.types.DATA_PT_context_mesh,
         bpy.types.DATA_PT_context_camera,
         bpy.types.DATA_PT_context_lamp,
+        bpy.types.DATA_PT_context_speaker,
         bpy.types.DATA_PT_texture_space,
         bpy.types.DATA_PT_curve_texture_space,
         bpy.types.DATA_PT_mball_texture_space,
@@ -1000,10 +1003,14 @@ def get_panels():
         bpy.types.DATA_PT_camera,
         bpy.types.DATA_PT_camera_display,
         bpy.types.DATA_PT_lens,
+        bpy.types.DATA_PT_speaker,
+        bpy.types.DATA_PT_distance,
+        bpy.types.DATA_PT_cone,
         bpy.types.DATA_PT_customdata,
         bpy.types.DATA_PT_custom_props_mesh,
         bpy.types.DATA_PT_custom_props_camera,
         bpy.types.DATA_PT_custom_props_lamp,
+        bpy.types.DATA_PT_custom_props_speaker,
         bpy.types.TEXTURE_PT_clouds,
         bpy.types.TEXTURE_PT_wood,
         bpy.types.TEXTURE_PT_marble,
@@ -1019,6 +1026,8 @@ def get_panels():
         bpy.types.TEXTURE_PT_voxeldata,
         bpy.types.TEXTURE_PT_pointdensity,
         bpy.types.TEXTURE_PT_pointdensity_turbulence,
+        bpy.types.TEXTURE_PT_mapping,
+        bpy.types.TEXTURE_PT_influence,
         bpy.types.PARTICLE_PT_context_particles,
         bpy.types.PARTICLE_PT_emission,
         bpy.types.PARTICLE_PT_hair_dynamics,

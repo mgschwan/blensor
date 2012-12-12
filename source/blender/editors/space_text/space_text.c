@@ -196,10 +196,6 @@ static void text_operatortypes(void)
 	WM_operatortype_append(TEXT_OT_unindent);
 	WM_operatortype_append(TEXT_OT_indent);
 
-	WM_operatortype_append(TEXT_OT_markers_clear);
-	WM_operatortype_append(TEXT_OT_next_marker);
-	WM_operatortype_append(TEXT_OT_previous_marker);
-
 	WM_operatortype_append(TEXT_OT_select_line);
 	WM_operatortype_append(TEXT_OT_select_all);
 	WM_operatortype_append(TEXT_OT_select_word);
@@ -227,7 +223,6 @@ static void text_operatortypes(void)
 	WM_operatortype_append(TEXT_OT_find_set_selected);
 	WM_operatortype_append(TEXT_OT_replace);
 	WM_operatortype_append(TEXT_OT_replace_set_selected);
-	WM_operatortype_append(TEXT_OT_mark_all);
 
 	WM_operatortype_append(TEXT_OT_to_3d_object);
 
@@ -431,7 +426,7 @@ static void text_main_area_draw(const bContext *C, ARegion *ar)
 {
 	/* draw entirely, view changes should be handled here */
 	SpaceText *st = CTX_wm_space_text(C);
-	//View2D *v2d= &ar->v2d;
+	//View2D *v2d = &ar->v2d;
 	
 	/* clear and setup matrix */
 	UI_ThemeClearColor(TH_BACK);

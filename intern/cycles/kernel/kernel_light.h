@@ -301,8 +301,13 @@ __device void triangle_light_sample(KernelGlobals *kg, int prim, int object,
 #ifdef __INSTANCING__
 	/* instance transform */
 	if(ls->object >= 0) {
-		Transform tfm = object_fetch_transform(kg, ls->object, time, OBJECT_TRANSFORM);
-		Transform itfm = object_fetch_transform(kg, ls->object, time, OBJECT_INVERSE_TRANSFORM);
+#ifdef __OBJECT_MOTION__
+		Transform itfm;
+		Transform tfm = object_fetch_transform_motion_test(kg, object, time, &itfm);
+#else
+		Transform tfm = object_fetch_transform(kg, ls->object, OBJECT_TRANSFORM);
+		Transform itfm = object_fetch_transform(kg, ls->object, OBJECT_INVERSE_TRANSFORM);
+#endif
 
 		ls->P = transform_point(&tfm, ls->P);
 		ls->Ng = normalize(transform_direction_transposed(&itfm, ls->Ng));
@@ -345,10 +350,9 @@ __device int light_distribution_sample(KernelGlobals *kg, float randt)
 		}
 	}
 
-	first = max(0, first-1);
-	kernel_assert(first >= 0 && first < kernel_data.integrator.num_distribution);
-
-	return first;
+	/* clamping should not be needed but float rounding errors seem to
+	 * make this fail on rare occasions */
+	return clamp(first-1, 0, kernel_data.integrator.num_distribution-1);
 }
 
 /* Generic Light */

@@ -35,16 +35,16 @@
 
 
 /* **************** VECTOR MATH ******************** */ 
-static bNodeSocketTemplate sh_node_vect_math_in[]= { 
-        { SOCK_VECTOR, 1, N_("Vector"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
-        { SOCK_VECTOR, 1, N_("Vector"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
-	{ -1, 0, "" } 
+static bNodeSocketTemplate sh_node_vect_math_in[] = {
+	{ SOCK_VECTOR, 1, N_("Vector"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
+	{ SOCK_VECTOR, 1, N_("Vector"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
+	{ -1, 0, "" }
 };
 
-static bNodeSocketTemplate sh_node_vect_math_out[]= {
-	{ SOCK_VECTOR, 0, N_("Vector")}, 
+static bNodeSocketTemplate sh_node_vect_math_out[] = {
+	{ SOCK_VECTOR, 0, N_("Vector")},
 	{ SOCK_FLOAT, 0, N_("Value")},
-	{ -1, 0, "" } 
+	{ -1, 0, "" }
 };
 
 static void node_shader_exec_vect_math(void *UNUSED(data), bNode *node, bNodeStack **in, bNodeStack **out) 
@@ -55,46 +55,46 @@ static void node_shader_exec_vect_math(void *UNUSED(data), bNode *node, bNodeSta
 	nodestack_get_vec(vec2, SOCK_VECTOR, in[1]);
 	
 	if (node->custom1 == 0) {	/* Add */
-		out[0]->vec[0]= vec1[0] + vec2[0];
-		out[0]->vec[1]= vec1[1] + vec2[1];
-		out[0]->vec[2]= vec1[2] + vec2[2];
+		out[0]->vec[0] = vec1[0] + vec2[0];
+		out[0]->vec[1] = vec1[1] + vec2[1];
+		out[0]->vec[2] = vec1[2] + vec2[2];
 		
-		out[1]->vec[0]= (fabs(out[0]->vec[0]) + fabs(out[0]->vec[0]) + fabs(out[0]->vec[0])) / 3;
+		out[1]->vec[0] = (fabs(out[0]->vec[0]) + fabs(out[0]->vec[0]) + fabs(out[0]->vec[0])) / 3;
 	}
 	else if (node->custom1 == 1) {	/* Subtract */
-		out[0]->vec[0]= vec1[0] - vec2[0];
-		out[0]->vec[1]= vec1[1] - vec2[1];
-		out[0]->vec[2]= vec1[2] - vec2[2];
+		out[0]->vec[0] = vec1[0] - vec2[0];
+		out[0]->vec[1] = vec1[1] - vec2[1];
+		out[0]->vec[2] = vec1[2] - vec2[2];
 		
-		out[1]->vec[0]= (fabs(out[0]->vec[0]) + fabs(out[0]->vec[0]) + fabs(out[0]->vec[0])) / 3;
+		out[1]->vec[0] = (fabs(out[0]->vec[0]) + fabs(out[0]->vec[0]) + fabs(out[0]->vec[0])) / 3;
 	}
 	else if (node->custom1 == 2) {	/* Average */
-		out[0]->vec[0]= vec1[0] + vec2[0];
-		out[0]->vec[1]= vec1[1] + vec2[1];
-		out[0]->vec[2]= vec1[2] + vec2[2];
+		out[0]->vec[0] = vec1[0] + vec2[0];
+		out[0]->vec[1] = vec1[1] + vec2[1];
+		out[0]->vec[2] = vec1[2] + vec2[2];
 		
 		out[1]->vec[0] = normalize_v3(out[0]->vec );
 	}
 	else if (node->custom1 == 3) {	/* Dot product */
-		out[1]->vec[0]= (vec1[0] * vec2[0]) + (vec1[1] * vec2[1]) + (vec1[2] * vec2[2]);
+		out[1]->vec[0] = (vec1[0] * vec2[0]) + (vec1[1] * vec2[1]) + (vec1[2] * vec2[2]);
 	}
 	else if (node->custom1 == 4) {	/* Cross product */
-		out[0]->vec[0]= (vec1[1] * vec2[2]) - (vec1[2] * vec2[1]);
-		out[0]->vec[1]= (vec1[2] * vec2[0]) - (vec1[0] * vec2[2]);
-		out[0]->vec[2]= (vec1[0] * vec2[1]) - (vec1[1] * vec2[0]);
+		out[0]->vec[0] = (vec1[1] * vec2[2]) - (vec1[2] * vec2[1]);
+		out[0]->vec[1] = (vec1[2] * vec2[0]) - (vec1[0] * vec2[2]);
+		out[0]->vec[2] = (vec1[0] * vec2[1]) - (vec1[1] * vec2[0]);
 		
 		out[1]->vec[0] = normalize_v3(out[0]->vec );
 	}
 	else if (node->custom1 == 5) {	/* Normalize */
 		if (in[0]->hasinput || !in[1]->hasinput) {	/* This one only takes one input, so we've got to choose. */
-			out[0]->vec[0]= vec1[0];
-			out[0]->vec[1]= vec1[1];
-			out[0]->vec[2]= vec1[2];
+			out[0]->vec[0] = vec1[0];
+			out[0]->vec[1] = vec1[1];
+			out[0]->vec[2] = vec1[2];
 		}
 		else {
-			out[0]->vec[0]= vec2[0];
-			out[0]->vec[1]= vec2[1];
-			out[0]->vec[2]= vec2[2];
+			out[0]->vec[0] = vec2[0];
+			out[0]->vec[1] = vec2[1];
+			out[0]->vec[2] = vec2[2];
 		}
 		
 		out[1]->vec[0] = normalize_v3(out[0]->vec );
@@ -114,14 +114,23 @@ static int gpu_shader_vect_math(GPUMaterial *mat, bNode *node, GPUNodeStack *in,
 		case 2:
 		case 3:
 		case 4:
-			GPU_stack_link(mat, names[node->custom1], NULL, out,
-				GPU_socket(&in[0]), GPU_socket(&in[1]));
+			GPU_stack_link(mat, names[node->custom1], in, out);
 			break;
 		case 5:
-			if (in[0].hasinput || !in[1].hasinput)
-				GPU_stack_link(mat, names[node->custom1], NULL, out, GPU_socket(&in[0]));
-			else
-				GPU_stack_link(mat, names[node->custom1], NULL, out, GPU_socket(&in[1]));
+			if (in[0].hasinput || !in[1].hasinput) {
+				/* use only first item and terminator */
+				GPUNodeStack tmp_in[2];
+				memcpy(&tmp_in[0], &in[0], sizeof(GPUNodeStack));
+				memcpy(&tmp_in[1], &in[2], sizeof(GPUNodeStack));
+				GPU_stack_link(mat, names[node->custom1], tmp_in, out);
+			}
+			else {
+				/* use only second item and terminator */
+				GPUNodeStack tmp_in[2];
+				memcpy(&tmp_in[0], &in[1], sizeof(GPUNodeStack));
+				memcpy(&tmp_in[1], &in[2], sizeof(GPUNodeStack));
+				GPU_stack_link(mat, names[node->custom1], tmp_in, out);
+			}
 			break;
 		default:
 			return 0;

@@ -89,7 +89,7 @@ class PlayRenderedAnim(Operator):
         if player_path == "":
             player_path = guess_player_path(preset)
 
-        if is_movie == False and preset in {'FRAMECYCLER', 'RV', 'MPLAYER'}:
+        if is_movie is False and preset in {'FRAMECYCLER', 'RV', 'MPLAYER'}:
             # replace the number with '#'
             file_a = rd.frame_path(frame=0)
 
@@ -116,8 +116,12 @@ class PlayRenderedAnim(Operator):
         cmd = [player_path]
         # extra options, fps controls etc.
         if preset in {'BLENDER24', 'INTERNAL'}:
-            opts = ["-a", "-f", str(rd.fps), str(rd.fps_base),
-                    "-j", str(scene.frame_step), file]
+            opts = ["-a",
+                    "-f", str(rd.fps), str(rd.fps_base),
+                    "-s", str(scene.frame_start),
+                    "-e", str(scene.frame_end),
+                    "-j", str(scene.frame_step),
+                    file]
             cmd.extend(opts)
         elif preset == 'DJV':
             opts = [file, "-playback_speed", "%d" % int(rd.fps / rd.fps_base)]

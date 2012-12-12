@@ -99,13 +99,13 @@ ModifierData *ED_object_modifier_add(ReportList *reports, Main *bmain, Scene *sc
 	
 	/* only geometry objects should be able to get modifiers [#25291] */
 	if (!ELEM5(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_LATTICE)) {
-		BKE_reportf(reports, RPT_WARNING, "Modifiers cannot be added to Object '%s'", ob->id.name + 2);
+		BKE_reportf(reports, RPT_WARNING, "Modifiers cannot be added to object '%s'", ob->id.name + 2);
 		return NULL;
 	}
 	
 	if (mti->flags & eModifierTypeFlag_Single) {
 		if (modifiers_findByType(ob, type)) {
-			BKE_report(reports, RPT_WARNING, "Only one modifier of this type allowed");
+			BKE_report(reports, RPT_WARNING, "Only one modifier of this type is allowed");
 			return NULL;
 		}
 	}
@@ -555,8 +555,8 @@ static int modifier_apply_shape(ReportList *reports, Scene *scene, Object *ob, M
 		Key *key = me->key;
 		KeyBlock *kb;
 		
-		if (!modifier_sameTopology(md) || mti->type == eModifierTypeType_NonGeometrical) {
-			BKE_report(reports, RPT_ERROR, "Only deforming modifiers can be applied to Shapes");
+		if (!modifier_isSameTopology(md) || mti->type == eModifierTypeType_NonGeometrical) {
+			BKE_report(reports, RPT_ERROR, "Only deforming modifiers can be applied to shapes");
 			return 0;
 		}
 		
@@ -604,7 +604,7 @@ static int modifier_apply_obdata(ReportList *reports, Scene *scene, Object *ob, 
 		MultiresModifierData *mmd = find_multires_modifier_before(scene, md);
 
 		if (me->key && mti->type != eModifierTypeType_NonGeometrical) {
-			BKE_report(reports, RPT_ERROR, "Modifier cannot be applied to Mesh with Shape Keys");
+			BKE_report(reports, RPT_ERROR, "Modifier cannot be applied to a mesh with shape keys");
 			return 0;
 		}
 
@@ -681,11 +681,18 @@ int ED_object_modifier_apply(ReportList *reports, Scene *scene, Object *ob, Modi
 	int prev_mode;
 
 	if (scene->obedit) {
-		BKE_report(reports, RPT_ERROR, "Modifiers cannot be applied in editmode");
+		BKE_report(reports, RPT_ERROR, "Modifiers cannot be applied in edit mode");
 		return 0;
 	}
 	else if (((ID *) ob->data)->us > 1) {
 		BKE_report(reports, RPT_ERROR, "Modifiers cannot be applied to multi-user data");
+		return 0;
+	}
+	else if ((ob->mode & OB_MODE_SCULPT) &&
+	         (find_multires_modifier_before(scene, md)) &&
+	         (modifier_isSameTopology(md) == FALSE))
+	{
+		BKE_report(reports, RPT_ERROR, "Constructive modifier cannot be applied to multi-res data in sculpt mode");
 		return 0;
 	}
 
@@ -1000,7 +1007,7 @@ static int modifier_apply_exec(bContext *C, wmOperator *op)
 	Object *ob = ED_object_active_context(C);
 	ModifierData *md = edit_modifier_property_get(op, ob, 0);
 	int apply_as = RNA_enum_get(op->ptr, "apply_as");
-	
+
 	if (!ob || !md || !ED_object_modifier_apply(op->reports, scene, ob, md, apply_as)) {
 		return OPERATOR_CANCELLED;
 	}
@@ -1242,7 +1249,7 @@ static int multires_reshape_exec(bContext *C, wmOperator *op)
 	CTX_DATA_END;
 
 	if (!secondob) {
-		BKE_report(op->reports, RPT_ERROR, "Second selected mesh object require to copy shape from");
+		BKE_report(op->reports, RPT_ERROR, "Second selected mesh object required to copy shape from");
 		return OPERATOR_CANCELLED;
 	}
 

@@ -1,4 +1,3 @@
-# $Id: CMakeLists.txt 14444 2008-04-16 22:40:48Z hos $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -268,9 +267,16 @@ set(SRC
 	nodes/COM_MathNode.h
 	nodes/COM_MapValueNode.cpp
 	nodes/COM_MapValueNode.h
+	nodes/COM_MapRangeNode.cpp
+	nodes/COM_MapRangeNode.h
 
 	operations/COM_NormalizeOperation.cpp
 	operations/COM_NormalizeOperation.h
+
+	nodes/COM_PixelateNode.cpp
+	nodes/COM_PixelateNode.h
+	operations/COM_PixelateOperation.cpp
+	operations/COM_PixelateOperation.h
 
 	# Filter nodes
 	nodes/COM_BilateralBlurNode.cpp
@@ -568,6 +574,8 @@ set(SRC
 	operations/COM_SetAlphaOperation.h
 	operations/COM_MapValueOperation.cpp
 	operations/COM_MapValueOperation.h
+	operations/COM_MapRangeOperation.cpp
+	operations/COM_MapRangeOperation.h
 
 	# Distort operation
 	operations/COM_TranslateOperation.h
@@ -650,6 +658,6 @@ list(APPEND INC
 	${CMAKE_CURRENT_BINARY_DIR}/operations
 )
 data_to_c(${CMAKE_CURRENT_SOURCE_DIR}/operations/COM_OpenCLKernels.cl
-          ${CMAKE_CURRENT_BINARY_DIR}/operations/COM_OpenCLKernels.cl.h SRC)
+		  ${CMAKE_CURRENT_BINARY_DIR}/operations/COM_OpenCLKernels.cl.h SRC)
 
 blender_add_lib(bf_compositor "${SRC}" "${INC}" "${INC_SYS}")

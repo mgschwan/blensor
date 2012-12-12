@@ -65,10 +65,10 @@ void curvemapping_set_defaults(CurveMapping *cumap, int tot, float minx, float m
 	cumap->flag = CUMA_DO_CLIP;
 	if (tot == 4) cumap->cur = 3;   /* rhms, hack for 'col' curve? */
 	
-	clipminx = minf(minx, maxx);
-	clipminy = minf(miny, maxy);
-	clipmaxx = maxf(minx, maxx);
-	clipmaxy = maxf(miny, maxy);
+	clipminx = min_ff(minx, maxx);
+	clipminy = min_ff(miny, maxy);
+	clipmaxx = max_ff(minx, maxx);
+	clipmaxy = max_ff(miny, maxy);
 	
 	BLI_rctf_init(&cumap->curr, clipminx, clipmaxx, clipminy, clipmaxy);
 	cumap->clipr = cumap->curr;
@@ -85,7 +85,7 @@ void curvemapping_set_defaults(CurveMapping *cumap, int tot, float minx, float m
 		cumap->cm[a].curve[0].y = miny;
 		cumap->cm[a].curve[1].x = maxx;
 		cumap->cm[a].curve[1].y = maxy;
-	}	
+	}
 
 	cumap->changed_timestamp = 0;
 }
@@ -160,7 +160,7 @@ void curvemapping_set_black_white_ex(const float black[3], const float white[3],
 	int a;
 
 	for (a = 0; a < 3; a++) {
-		const float delta = maxf(white[a] - black[a], 1e-5f);
+		const float delta = max_ff(white[a] - black[a], 1e-5f);
 		r_bwmul[a] = 1.0f / delta;
 	}
 }
@@ -182,14 +182,14 @@ void curvemapping_set_black_white(CurveMapping *cumap, const float black[3], con
 /* ********** NOTE: requires curvemapping_changed() call after ******** */
 
 /* remove specified point */
-void curvemap_remove_point(CurveMap *cuma, CurveMapPoint *point)
+int curvemap_remove_point(CurveMap *cuma, CurveMapPoint *point)
 {
 	CurveMapPoint *cmp;
 	int a, b, removed = 0;
 	
 	/* must have 2 points minimum */
 	if (cuma->totpoint <= 2)
-		return;
+		return FALSE;
 
 	cmp = MEM_mallocN((cuma->totpoint) * sizeof(CurveMapPoint), "curve points");
 
@@ -205,6 +205,7 @@ void curvemap_remove_point(CurveMap *cuma, CurveMapPoint *point)
 	MEM_freeN(cuma->curve);
 	cuma->curve = cmp;
 	cuma->totpoint -= removed;
+	return (removed != 0);
 }
 
 /* removes with flag set */
@@ -498,8 +499,8 @@ static void curvemap_make_table(CurveMap *cuma, const rctf *clipr)
 	bezt = MEM_callocN(cuma->totpoint * sizeof(BezTriple), "beztarr");
 	
 	for (a = 0; a < cuma->totpoint; a++) {
-		cuma->mintable = minf(cuma->mintable, cmp[a].x);
-		cuma->maxtable = maxf(cuma->maxtable, cmp[a].x);
+		cuma->mintable = min_ff(cuma->mintable, cmp[a].x);
+		cuma->maxtable = max_ff(cuma->maxtable, cmp[a].x);
 		bezt[a].vec[1][0] = cmp[a].x;
 		bezt[a].vec[1][1] = cmp[a].y;
 		if (cmp[a].flag & CUMA_VECTOR)
@@ -555,7 +556,7 @@ static void curvemap_make_table(CurveMap *cuma, const rctf *clipr)
 				sub_v3_v3v3(bezt[a].vec[2], bezt[a].vec[1], vec);
 			}
 		}
-	}	
+	}
 	/* make the bezier curve */
 	if (cuma->table)
 		MEM_freeN(cuma->table);
@@ -690,13 +691,13 @@ void curvemapping_changed(CurveMapping *cumap, int rem_doubles)
 		for (a = 0; a < cuma->totpoint; a++) {
 			if (cmp[a].flag & CUMA_SELECT) {
 				if (cmp[a].x < clipr->xmin)
-					dx = minf(dx, cmp[a].x - clipr->xmin);
+					dx = min_ff(dx, cmp[a].x - clipr->xmin);
 				else if (cmp[a].x > clipr->xmax)
-					dx = maxf(dx, cmp[a].x - clipr->xmax);
+					dx = max_ff(dx, cmp[a].x - clipr->xmax);
 				if (cmp[a].y < clipr->ymin)
-					dy = minf(dy, cmp[a].y - clipr->ymin);
+					dy = min_ff(dy, cmp[a].y - clipr->ymin);
 				else if (cmp[a].y > clipr->ymax)
-					dy = maxf(dy, cmp[a].y - clipr->ymax);
+					dy = max_ff(dy, cmp[a].y - clipr->ymax);
 			}
 		}
 		for (a = 0; a < cuma->totpoint; a++) {
@@ -731,7 +732,7 @@ void curvemapping_changed(CurveMapping *cumap, int rem_doubles)
 		}
 		if (a != cuma->totpoint - 1)
 			curvemap_remove(cuma, 2);
-	}	
+	}
 	curvemap_make_table(cuma, clipr);
 }
 
@@ -833,64 +834,6 @@ void curvemapping_evaluate_premulRGB(const CurveMapping *cumap, unsigned char ve
 	vecout_byte[0] = FTOCHAR(vecout[0]);
 	vecout_byte[1] = FTOCHAR(vecout[1]);
 	vecout_byte[2] = FTOCHAR(vecout[2]);
-}
-
-
-/* only used for image editor curves */
-void curvemapping_do_ibuf(CurveMapping *cumap, ImBuf *ibuf)
-{
-	ImBuf *tmpbuf;
-	int pixel;
-	float *pix_in;
-	float col[3];
-	int stride = 4;
-	float *pix_out;
-	
-	if (ibuf == NULL)
-		return;
-	if (ibuf->rect_float == NULL)
-		IMB_float_from_rect(ibuf);
-	else if (ibuf->rect == NULL)
-		imb_addrectImBuf(ibuf);
-	
-	if (!ibuf->rect || !ibuf->rect_float)
-		return;
-	
-	/* work on a temp buffer, so can color manage afterwards.
-	 * No worse off memory wise than comp nodes */
-	tmpbuf = IMB_dupImBuf(ibuf);
-	
-	curvemapping_premultiply(cumap, 0);
-	
-	pix_in = ibuf->rect_float;
-	pix_out = tmpbuf->rect_float;
-
-	if (ibuf->channels)
-		stride = ibuf->channels;
-	
-	for (pixel = ibuf->x * ibuf->y; pixel > 0; pixel--, pix_in += stride, pix_out += stride) {
-		if (stride < 3) {
-			col[0] = curvemap_evaluateF(cumap->cm, *pix_in);
-			
-			pix_out[1] = pix_out[2] = pix_out[3] = pix_out[0] = col[0];
-		}
-		else {
-			curvemapping_evaluate_premulRGBF(cumap, col, pix_in);
-			pix_out[0] = col[0];
-			pix_out[1] = col[1];
-			pix_out[2] = col[2];
-			if (stride > 3)
-				pix_out[3] = pix_in[3];
-			else
-				pix_out[3] = 1.f;
-		}
-	}
-	
-	IMB_rect_from_float(tmpbuf);
-	SWAP(unsigned int *, tmpbuf->rect, ibuf->rect);
-	IMB_freeImBuf(tmpbuf);
-	
-	curvemapping_premultiply(cumap, 1);
 }
 
 int curvemapping_RGBA_does_something(const CurveMapping *cumap)
@@ -1065,8 +1008,8 @@ void scopes_update(Scopes *scopes, ImBuf *ibuf, const ColorManagedViewSettings *
                    const ColorManagedDisplaySettings *display_settings)
 {
 	int x, y, c;
-	unsigned int n, nl;
-	double div, divl;
+	unsigned int nl, na, nr, ng, nb;
+	double divl, diva, divr, divg, divb;
 	float *rf = NULL;
 	unsigned char *rc = NULL;
 	unsigned int *bin_lum, *bin_r, *bin_g, *bin_b, *bin_a;
@@ -1206,24 +1149,37 @@ void scopes_update(Scopes *scopes, ImBuf *ibuf, const ColorManagedViewSettings *
 			savedlines += 1;
 	}
 
+	/* test for nicer distribution even - non standard, leave it out for a while */
+#if 0
+	for (x = 0; x < 256; x++) {
+		bin_lum[x] = sqrt (bin_lum[x]);
+		bin_r[x] = sqrt(bin_r[x]);
+		bin_g[x] = sqrt(bin_g[x]);
+		bin_b[x] = sqrt(bin_b[x]);
+		bin_a[x] = sqrt(bin_a[x]);
+	}
+#endif
+	
 	/* convert hist data to float (proportional to max count) */
-	n = 0;
-	nl = 0;
+	nl = na = nr = nb = ng = 0;
 	for (x = 0; x < 256; x++) {
 		if (bin_lum[x] > nl) nl = bin_lum[x];
-		if (bin_r[x]   > n) n = bin_r[x];
-		if (bin_g[x]   > n) n = bin_g[x];
-		if (bin_b[x]   > n) n = bin_b[x];
-		if (bin_a[x]   > n) n = bin_a[x];
+		if (bin_r[x]   > nr) nr = bin_r[x];
+		if (bin_g[x]   > ng) ng = bin_g[x];
+		if (bin_b[x]   > nb) nb = bin_b[x];
+		if (bin_a[x]   > na) na = bin_a[x];
 	}
-	div = 1.0 / (double)n;
 	divl = 1.0 / (double)nl;
+	diva = 1.0 / (double)na;
+	divr = 1.0 / (double)nr;
+	divg = 1.0 / (double)ng;
+	divb = 1.0 / (double)nb;
 	for (x = 0; x < 256; x++) {
 		scopes->hist.data_luma[x] = bin_lum[x] * divl;
-		scopes->hist.data_r[x] = bin_r[x] * div;
-		scopes->hist.data_g[x] = bin_g[x] * div;
-		scopes->hist.data_b[x] = bin_b[x] * div;
-		scopes->hist.data_a[x] = bin_a[x] * div;
+		scopes->hist.data_r[x] = bin_r[x] * divr;
+		scopes->hist.data_g[x] = bin_g[x] * divg;
+		scopes->hist.data_b[x] = bin_b[x] * divb;
+		scopes->hist.data_a[x] = bin_a[x] * diva;
 	}
 	MEM_freeN(bin_lum);
 	MEM_freeN(bin_r);

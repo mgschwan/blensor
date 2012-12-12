@@ -53,7 +53,7 @@
 
 
 
-void rna_Scene_frame_set(Scene *scene, int frame, float subframe)
+static void rna_Scene_frame_set(Scene *scene, int frame, float subframe)
 {
 	scene->r.cfra = frame;
 	scene->r.subframe = subframe;
@@ -62,12 +62,16 @@ void rna_Scene_frame_set(Scene *scene, int frame, float subframe)
 	BKE_scene_update_for_newframe(G.main, scene, (1 << 20) - 1);
 	BKE_scene_camera_switch_update(scene);
 
-	/* cant use NC_SCENE|ND_FRAME because this causes wm_event_do_notifiers to call
-	 * BKE_scene_update_for_newframe which will loose any un-keyed changes [#24690] */
-	/* WM_main_add_notifier(NC_SCENE|ND_FRAME, scene); */
-	
-	/* instead just redraw the views */
-	WM_main_add_notifier(NC_WINDOW, NULL);
+	/* don't do notifier when we're rendering, avoid some viewport crashes
+	 * redrawing while the data is being modified for render */
+	if (!G.is_rendering) {
+		/* cant use NC_SCENE|ND_FRAME because this causes wm_event_do_notifiers to call
+		 * BKE_scene_update_for_newframe which will loose any un-keyed changes [#24690] */
+		/* WM_main_add_notifier(NC_SCENE|ND_FRAME, scene); */
+		
+		/* instead just redraw the views */
+		WM_main_add_notifier(NC_WINDOW, NULL);
+	}
 }
 
 static void rna_Scene_update_tagged(Scene *scene)
@@ -89,29 +93,29 @@ static void rna_SceneRender_get_frame_path(RenderData *rd, int frame, char *name
 #include "../../collada/collada.h"
 
 static void rna_Scene_collada_export(
-    Scene *scene,
-    const char *filepath,
-    int apply_modifiers,
-	int export_mesh_type,
+        Scene *scene,
+        const char *filepath,
+        int apply_modifiers,
+        int export_mesh_type,
 
-	int selected,
-    int include_children,
-    int include_armatures,
-    int deform_bones_only,
+        int selected,
+        int include_children,
+        int include_armatures,
+        int deform_bones_only,
 
-	int active_uv_only,
-	int include_uv_textures,
-	int include_material_textures,
-	int use_texture_copies,
+        int active_uv_only,
+        int include_uv_textures,
+        int include_material_textures,
+        int use_texture_copies,
 
-    int use_object_instantiation,
-    int sort_by_name,
-    int second_life)
+        int use_object_instantiation,
+        int sort_by_name,
+        int second_life)
 {
-	collada_export(scene, filepath, apply_modifiers, export_mesh_type, selected,  
+	collada_export(scene, filepath, apply_modifiers, export_mesh_type, selected,
 	               include_children, include_armatures, deform_bones_only,
-				   active_uv_only, include_uv_textures, include_material_textures,
-				   use_texture_copies, use_object_instantiation, sort_by_name, second_life);
+	               active_uv_only, include_uv_textures, include_material_textures,
+	               use_texture_copies, use_object_instantiation, sort_by_name, second_life);
 }
 
 #endif

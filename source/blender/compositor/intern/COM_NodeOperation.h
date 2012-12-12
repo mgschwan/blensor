@@ -77,7 +77,7 @@ private:
 	ThreadMutex m_mutex;
 	
 	/**
-	 * @brief reference to the editing bNodeTree only used for break callback
+	 * @brief reference to the editing bNodeTree, used for break and update callback
 	 */
 	const bNodeTree *m_btree;
 
@@ -94,7 +94,7 @@ public:
 	 * @brief determine the resolution of this node
 	 * @note this method will not set the resolution, this is the responsibility of the caller
 	 * @param resolution the result of this operation
-	 * @param preferredResolution the preferrable resolution as no resolution could be determined
+	 * @param preferredResolution the preferable resolution as no resolution could be determined
 	 */
 	virtual void determineResolution(unsigned int resolution[2], unsigned int preferredResolution[2]);
 
@@ -163,7 +163,10 @@ public:
 	 * @param clMemToCleanUp all created cl_mem references must be added to this list. Framework will clean this after execution
 	 * @param clKernelsToCleanUp all created cl_kernel references must be added to this list. Framework will clean this after execution
 	 */
-	virtual void executeOpenCL(OpenCLDevice *device, MemoryBuffer *outputMemoryBuffer, cl_mem clOutputBuffer, MemoryBuffer **inputMemoryBuffers, list<cl_mem> *clMemToCleanUp, list<cl_kernel> *clKernelsToCleanUp) {}
+	virtual void executeOpenCL(OpenCLDevice *device,
+	                           MemoryBuffer *outputMemoryBuffer, cl_mem clOutputBuffer,
+	                           MemoryBuffer **inputMemoryBuffers, list<cl_mem> *clMemToCleanUp,
+	                           list<cl_kernel> *clKernelsToCleanUp) {}
 	virtual void deinitExecution();
 
 	bool isResolutionSet() {
@@ -244,6 +247,10 @@ public:
 		return this->m_btree->test_break(this->m_btree->tbh);
 	}
 
+	inline void updateDraw() {
+		if (this->m_btree->update_draw)
+			this->m_btree->update_draw(this->m_btree->udh);
+	}
 protected:
 	NodeOperation();
 

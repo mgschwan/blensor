@@ -61,7 +61,7 @@ def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
         # Get the Blender data for the material and the image.
         # Having an image named None will make a bug, dont do it :)
 
-        fw('newmtl %s\n' % mtl_mat_name)  # Define a new material: matname_imgname
+        fw('\nnewmtl %s\n' % mtl_mat_name)  # Define a new material: matname_imgname
 
         if mat:
             # convert from blenders spec to 0 - 1000 range.
@@ -100,9 +100,16 @@ def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
 
         # Write images!
         if face_img:  # We have an image on the face!
-            # write relative image path
-            rel = bpy_extras.io_utils.path_reference(face_img.filepath, source_dir, dest_dir, path_mode, "", copy_set, face_img.library)
-            fw('map_Kd %s\n' % rel)  # Diffuse mapping image
+            filepath = face_img.filepath
+            if filepath:  # may be '' for generated images
+                # write relative image path
+                filepath = bpy_extras.io_utils.path_reference(filepath, source_dir, dest_dir,
+                                                              path_mode, "", copy_set, face_img.library)
+                fw('map_Kd %s\n' % filepath)  # Diffuse mapping image
+                del filepath
+            else:
+                # so we write the materials image.
+                face_img = None
 
         if mat:  # No face image. if we havea material search for MTex image.
             image_map = {}
@@ -112,26 +119,39 @@ def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
                     image = mtex.texture.image
                     if image:
                         # texface overrides others
-                        if mtex.use_map_color_diffuse and face_img is None:
+                        if      (mtex.use_map_color_diffuse and
+                                (face_img is None) and
+                                (mtex.use_map_warp is False) and
+                                (mtex.texture_coords != 'REFLECTION')):
                             image_map["map_Kd"] = image
                         if mtex.use_map_ambient:
                             image_map["map_Ka"] = image
+                        # this is the Spec intensity channel but Ks stands for specular Color
+                        '''
                         if mtex.use_map_specular:
                             image_map["map_Ks"] = image
+                        '''
+                        if mtex.use_map_color_spec:  # specular color
+                            image_map["map_Ks"] = image
+                        if mtex.use_map_hardness:  # specular hardness/glossiness
+                            image_map["map_Ns"] = image
                         if mtex.use_map_alpha:
                             image_map["map_d"] = image
                         if mtex.use_map_translucency:
                             image_map["map_Tr"] = image
-                        if mtex.use_map_normal:
+                        if mtex.use_map_normal and (mtex.texture.use_normal_map is True):
                             image_map["map_Bump"] = image
-                        if mtex.use_map_hardness:
-                            image_map["map_Ns"] = image
+                        if mtex.use_map_normal and (mtex.texture.use_normal_map is False):
+                            image_map["map_Disp"] = image                      
+                        if mtex.use_map_color_diffuse and (mtex.texture_coords == 'REFLECTION'):
+                            image_map["map_refl"] = image
+                        if mtex.use_map_emit:
+                            image_map["map_Ke"] = image
 
             for key, image in image_map.items():
-                filepath = bpy_extras.io_utils.path_reference(image.filepath, source_dir, dest_dir, path_mode, "", copy_set, image.library)
+                filepath = bpy_extras.io_utils.path_reference(image.filepath, source_dir, dest_dir,
+                                                              path_mode, "", copy_set, image.library)
                 fw('%s %s\n' % (key, repr(filepath)[1:-1]))
-
-        fw('\n\n')
 
     file.close()
 
@@ -373,7 +393,7 @@ def write_file(filepath, objects, scene,
             # avoid bad index errors
             if not materials:
                 materials = [None]
-                material_names = [""]
+                material_names = [name_compat(None)]
 
             # Sort by Material, then images
             # so we dont over context switch in the obj file.
@@ -457,12 +477,12 @@ def write_file(filepath, objects, scene,
             if EXPORT_POLYGROUPS:
                 # Retrieve the list of vertex groups
                 vertGroupNames = ob.vertex_groups.keys()
-
-                currentVGroup = ''
-                # Create a dictionary keyed by face id and listing, for each vertex, the vertex groups it belongs to
-                vgroupsMap = [[] for _i in range(len(me_verts))]
-                for v_idx, v_ls in enumerate(vgroupsMap):
-                    v_ls[:] = [(vertGroupNames[g.group], g.weight) for g in me_verts[v_idx].groups]
+                if vertGroupNames:
+                    currentVGroup = ''
+                    # Create a dictionary keyed by face id and listing, for each vertex, the vertex groups it belongs to
+                    vgroupsMap = [[] for _i in range(len(me_verts))]
+                    for v_idx, v_ls in enumerate(vgroupsMap):
+                        v_ls[:] = [(vertGroupNames[g.group], g.weight) for g in me_verts[v_idx].groups]
 
             for f, f_index in face_index_pairs:
                 f_smooth = f.use_smooth
@@ -480,7 +500,7 @@ def write_file(filepath, objects, scene,
 
                 # Write the vertex group
                 if EXPORT_POLYGROUPS:
-                    if ob.vertex_groups:
+                    if vertGroupNames:
                         # find what vertext group the face belongs to
                         vgroup_of_face = findVertexGroupName(f, vgroupsMap)
                         if vgroup_of_face != currentVGroup:

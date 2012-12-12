@@ -35,6 +35,7 @@
 #include "BKE_movieclip.h"
 #include "BKE_tracking.h"
 
+#include "RNA_access.h"
 #include "RNA_define.h"
 
 #include "rna_internal.h"
@@ -119,8 +120,7 @@ static void rna_tracking_active_object_index_range(PointerRNA *ptr, int *min, in
 	MovieClip *clip = (MovieClip *)ptr->id.data;
 
 	*min = 0;
-	*max = clip->tracking.tot_object - 1;
-	*max = MAX2(0, *max);
+	*max = max_ii(0, clip->tracking.tot_object - 1);
 }
 
 static PointerRNA rna_tracking_active_track_get(PointerRNA *ptr)
@@ -262,8 +262,7 @@ static void rna_tracking_stabTracks_active_index_range(PointerRNA *ptr, int *min
 	MovieClip *clip = (MovieClip *)ptr->id.data;
 
 	*min = 0;
-	*max = clip->tracking.stabilization.tot_track - 1;
-	*max = MAX2(0, *max);
+	*max = max_ii(0, clip->tracking.stabilization.tot_track - 1);
 }
 
 static void rna_tracking_flushUpdate(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
@@ -447,9 +446,15 @@ static MovieTrackingObject *rna_trackingObject_new(MovieTracking *tracking, cons
 	return object;
 }
 
-static void rna_trackingObject_remove(MovieTracking *tracking, MovieTrackingObject *object)
+static void rna_trackingObject_remove(MovieTracking *tracking, ReportList *reports, PointerRNA *object_ptr)
 {
-	BKE_tracking_object_delete(tracking, object);
+	MovieTrackingObject *object = object_ptr->data;
+	if (BKE_tracking_object_delete(tracking, object) == FALSE) {
+		BKE_reportf(reports, RPT_ERROR, "MovieTracking '%s' cannot be removed", object->name);
+		return;
+	}
+
+	RNA_POINTER_INVALIDATE(object_ptr);
 
 	WM_main_add_notifier(NC_MOVIECLIP | NA_EDITED, NULL);
 }
@@ -567,17 +572,21 @@ static void rna_def_trackingSettings(BlenderRNA *brna)
 	                         "Limit speed of tracking to make visual feedback easier "
 	                         "(this does not affect the tracking quality)");
 
-	/* keyframe_a */
-	prop = RNA_def_property(srna, "keyframe_a", PROP_INT, PROP_NONE);
+	/* reconstruction success_threshold */
+	prop = RNA_def_property(srna, "reconstruction_success_threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_int_sdna(prop, NULL, "keyframe1");
-	RNA_def_property_ui_text(prop, "Keyframe A", "First keyframe used for reconstruction initialization");
+	RNA_def_property_float_default(prop, 0.001f);
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Success Threshold",
+	                         "Threshold value of reconstruction error which is still considered successful");
 
-	/* keyframe_b */
-	prop = RNA_def_property(srna, "keyframe_b", PROP_INT, PROP_NONE);
+	/* use fallback reconstruction */
+	prop = RNA_def_property(srna, "use_fallback_reconstruction", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_int_sdna(prop, NULL, "keyframe2");
-	RNA_def_property_ui_text(prop, "Keyframe B", "Second keyframe used for reconstruction initialization");
+	RNA_def_property_boolean_sdna(prop, NULL, "reconstruction_flag", TRACKING_USE_FALLBACK_RECONSTRUCTION);
+	RNA_def_property_ui_text(prop, "Use Fallback",
+	                         "Use fallback reconstruction algorithm in cases main reconstruction algorithm failed "
+	                         "(could give better solution with bad tracks)");
 
 	/* intrinsics refinement during bundle adjustment */
 	prop = RNA_def_property(srna, "refine_intrinsics", PROP_ENUM, PROP_NONE);
@@ -628,7 +637,8 @@ static void rna_def_trackingSettings(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_tripod_solver", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_boolean_sdna(prop, NULL, "motion_flag", TRACKING_MOTION_TRIPOD);
-	RNA_def_property_ui_text(prop, "Tripod Motion", "Use special solver to track a stable camera position, such as a tripod");
+	RNA_def_property_ui_text(prop, "Tripod Motion",
+	                         "Use special solver to track a stable camera position, such as a tripod");
 
 	/* default_limit_frames */
 	prop = RNA_def_property(srna, "default_frames_limit", PROP_INT, PROP_NONE);
@@ -668,7 +678,9 @@ static void rna_def_trackingSettings(BlenderRNA *brna)
 	/* default_use_brute */
 	prop = RNA_def_property(srna, "use_default_mask", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "default_algorithm_flag", TRACK_ALGORITHM_FLAG_USE_MASK);
-	RNA_def_property_ui_text(prop, "Use Mask", "Use a grease pencil datablock as a mask to use only specified areas of pattern when tracking");
+	RNA_def_property_ui_text(prop, "Use Mask",
+	                         "Use a grease pencil datablock as a mask to use only specified areas of pattern "
+	                         "when tracking");
 	RNA_def_property_update(prop, NC_MOVIECLIP | ND_DISPLAY, NULL);
 
 	/* default_use_normalization */
@@ -909,8 +921,8 @@ static void rna_def_trackingMarkers(BlenderRNA *brna, PropertyRNA *cprop)
 	parm = RNA_def_int(func, "frame", 1, MINFRAME, MAXFRAME, "Frame",
 	                   "Frame number to find marker for", MINFRAME, MAXFRAME);
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_boolean(func, "exact", TRUE, "Exact",
-	                       "Get marker at exact frame number rather than get estimated marker");
+	RNA_def_boolean(func, "exact", TRUE, "Exact",
+	                "Get marker at exact frame number rather than get estimated marker");
 	parm = RNA_def_pointer(func, "marker", "MovieTrackingMarker", "", "Marker for specified frame");
 	RNA_def_function_return(func, parm);
 
@@ -1005,7 +1017,9 @@ static void rna_def_trackingTrack(BlenderRNA *brna)
 	/* use_brute */
 	prop = RNA_def_property(srna, "use_mask", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "algorithm_flag", TRACK_ALGORITHM_FLAG_USE_MASK);
-	RNA_def_property_ui_text(prop, "Use Mask", "Use a grease pencil datablock as a mask to use only specified areas of pattern when tracking");
+	RNA_def_property_ui_text(prop, "Use Mask",
+	                         "Use a grease pencil datablock as a mask to use only specified areas of pattern "
+	                         "when tracking");
 	RNA_def_property_update(prop, NC_MOVIECLIP | ND_DISPLAY, NULL);
 
 	/* use_normalization */
@@ -1147,7 +1161,7 @@ static void rna_def_trackingStabilization(BlenderRNA *brna)
 	PropertyRNA *prop;
 
 	static EnumPropertyItem filter_items[] = {
-		{TRACKING_FILTER_NEAREAST, "NEAREST",   0, "Nearest",   ""},
+		{TRACKING_FILTER_NEAREST, "NEAREST",   0, "Nearest",   ""},
 		{TRACKING_FILTER_BILINEAR, "BILINEAR",   0, "Bilinear",   ""},
 		{TRACKING_FILTER_BICUBIC, "BICUBIC", 0, "Bicubic", ""},
 		{0, NULL, 0, NULL, NULL}
@@ -1393,6 +1407,18 @@ static void rna_def_trackingObject(BlenderRNA *brna)
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Scale", "Scale of object solution in camera space");
 	RNA_def_property_update(prop, NC_MOVIECLIP | NA_EDITED, "rna_trackingObject_flushUpdate");
+
+	/* keyframe_a */
+	prop = RNA_def_property(srna, "keyframe_a", PROP_INT, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_int_sdna(prop, NULL, "keyframe1");
+	RNA_def_property_ui_text(prop, "Keyframe A", "First keyframe used for reconstruction initialization");
+
+	/* keyframe_b */
+	prop = RNA_def_property(srna, "keyframe_b", PROP_INT, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_int_sdna(prop, NULL, "keyframe2");
+	RNA_def_property_ui_text(prop, "Keyframe B", "Second keyframe used for reconstruction initialization");
 }
 
 static void rna_def_trackingObjects(BlenderRNA *brna, PropertyRNA *cprop)
@@ -1416,8 +1442,11 @@ static void rna_def_trackingObjects(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_return(func, parm);
 
 	func = RNA_def_function(srna, "remove", "rna_trackingObject_remove");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	RNA_def_function_ui_description(func, "Remove tracking object from this movie clip");
-	RNA_def_pointer(func, "object", "MovieTrackingObject", "", "Motion tracking object to be removed");
+	parm = RNA_def_pointer(func, "object", "MovieTrackingObject", "", "Motion tracking object to be removed");
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
+	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
 
 	/* active object */
 	prop = RNA_def_property(srna, "active", PROP_POINTER, PROP_NONE);
@@ -1437,7 +1466,8 @@ static void rna_def_trackingDopesheet(BlenderRNA *brna)
 		{TRACKING_DOPE_SORT_NAME, "NAME", 0, "Name", "Sort channels by their names"},
 		{TRACKING_DOPE_SORT_LONGEST, "LONGEST", 0, "Longest", "Sort channels by longest tracked segment"},
 		{TRACKING_DOPE_SORT_TOTAL, "TOTAL", 0, "Total", "Sort channels by overall amount of tracked segments"},
-		{TRACKING_DOPE_SORT_AVERAGE_ERROR, "AVERAGE_ERROR", 0, "Average Error", "Sort channels by average reprojection error of tracks after solve"},
+		{TRACKING_DOPE_SORT_AVERAGE_ERROR, "AVERAGE_ERROR", 0, "Average Error",
+		                                   "Sort channels by average reprojection error of tracks after solve"},
 		{0, NULL, 0, NULL, NULL}
 	};
 

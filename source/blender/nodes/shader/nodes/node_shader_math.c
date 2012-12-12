@@ -34,61 +34,61 @@
 
 
 /* **************** SCALAR MATH ******************** */ 
-static bNodeSocketTemplate sh_node_math_in[]= { 
-	{ SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE}, 
-	{ SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE}, 
-	{ -1, 0, "" } 
+static bNodeSocketTemplate sh_node_math_in[] = {
+	{ SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
+	{ SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
+	{ -1, 0, "" }
 };
 
-static bNodeSocketTemplate sh_node_math_out[]= { 
-	{ SOCK_FLOAT, 0, N_("Value")}, 
-	{ -1, 0, "" } 
+static bNodeSocketTemplate sh_node_math_out[] = {
+	{ SOCK_FLOAT, 0, N_("Value")},
+	{ -1, 0, "" }
 };
 
 static void node_shader_exec_math(void *UNUSED(data), bNode *node, bNodeStack **in, 
 bNodeStack **out) 
 {
-	switch (node->custom1) { 
+	switch (node->custom1) {
 	
 	case 0: /* Add */
-		out[0]->vec[0]= in[0]->vec[0] + in[1]->vec[0]; 
+		out[0]->vec[0] = in[0]->vec[0] + in[1]->vec[0];
 		break; 
 	case 1: /* Subtract */
-		out[0]->vec[0]= in[0]->vec[0] - in[1]->vec[0];
+		out[0]->vec[0] = in[0]->vec[0] - in[1]->vec[0];
 		break; 
 	case 2: /* Multiply */
-		out[0]->vec[0]= in[0]->vec[0] * in[1]->vec[0]; 
+		out[0]->vec[0] = in[0]->vec[0] * in[1]->vec[0];
 		break; 
 	case 3: /* Divide */
 		{
 			if (in[1]->vec[0]==0)	/* We don't want to divide by zero. */
-				out[0]->vec[0]= 0.0;
+				out[0]->vec[0] = 0.0;
 			else
-				out[0]->vec[0]= in[0]->vec[0] / in[1]->vec[0];
+				out[0]->vec[0] = in[0]->vec[0] / in[1]->vec[0];
 			}
 		break;
 	case 4: /* Sine */
 		{
 			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
-				out[0]->vec[0]= sin(in[0]->vec[0]);
+				out[0]->vec[0] = sin(in[0]->vec[0]);
 			else
-				out[0]->vec[0]= sin(in[1]->vec[0]);
+				out[0]->vec[0] = sin(in[1]->vec[0]);
 		}
 		break;
 	case 5: /* Cosine */
 		{
-			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */	
-				out[0]->vec[0]= cos(in[0]->vec[0]);
+			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
+				out[0]->vec[0] = cos(in[0]->vec[0]);
 			else
-				out[0]->vec[0]= cos(in[1]->vec[0]);
+				out[0]->vec[0] = cos(in[1]->vec[0]);
 		}
 		break;
 	case 6: /* Tangent */
 		{
-			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */	
-				out[0]->vec[0]= tan(in[0]->vec[0]);
+			if (in[0]->hasinput || !in[1]->hasinput)  /* This one only takes one input, so we've got to choose. */
+				out[0]->vec[0] = tan(in[0]->vec[0]);
 			else
-				out[0]->vec[0]= tan(in[1]->vec[0]);
+				out[0]->vec[0] = tan(in[1]->vec[0]);
 		}
 		break;
 	case 7: /* Arc-Sine */
@@ -96,16 +96,16 @@ bNodeStack **out)
 			if (in[0]->hasinput || !in[1]->hasinput) { /* This one only takes one input, so we've got to choose. */
 				/* Can't do the impossible... */
 				if ( in[0]->vec[0] <= 1 && in[0]->vec[0] >= -1 )
-					out[0]->vec[0]= asin(in[0]->vec[0]);
+					out[0]->vec[0] = asin(in[0]->vec[0]);
 				else
-					out[0]->vec[0]= 0.0;
+					out[0]->vec[0] = 0.0;
 			}
 			else {
 				/* Can't do the impossible... */
 				if ( in[1]->vec[0] <= 1 && in[1]->vec[0] >= -1 )
-					out[0]->vec[0]= asin(in[1]->vec[0]);
+					out[0]->vec[0] = asin(in[1]->vec[0]);
 				else
-					out[0]->vec[0]= 0.0;
+					out[0]->vec[0] = 0.0;
 			}
 		}
 		break;
@@ -114,86 +114,97 @@ bNodeStack **out)
 			if (in[0]->hasinput || !in[1]->hasinput) { /* This one only takes one input, so we've got to choose. */
 				/* Can't do the impossible... */
 				if ( in[0]->vec[0] <= 1 && in[0]->vec[0] >= -1 )
-					out[0]->vec[0]= acos(in[0]->vec[0]);
+					out[0]->vec[0] = acos(in[0]->vec[0]);
 				else
-					out[0]->vec[0]= 0.0;
+					out[0]->vec[0] = 0.0;
 			}
 			else {
 				/* Can't do the impossible... */
 				if ( in[1]->vec[0] <= 1 && in[1]->vec[0] >= -1 )
-					out[0]->vec[0]= acos(in[1]->vec[0]);
+					out[0]->vec[0] = acos(in[1]->vec[0]);
 				else
-					out[0]->vec[0]= 0.0;
+					out[0]->vec[0] = 0.0;
 			}
 		}
 		break;
 	case 9: /* Arc-Tangent */
 		{
 			if (in[0]->hasinput || !in[1]->hasinput) /* This one only takes one input, so we've got to choose. */
-				out[0]->vec[0]= atan(in[0]->vec[0]);
+				out[0]->vec[0] = atan(in[0]->vec[0]);
 			else
-				out[0]->vec[0]= atan(in[1]->vec[0]);
+				out[0]->vec[0] = atan(in[1]->vec[0]);
 		}
 		break;
 	case 10: /* Power */
 		{
-			/* Don't want any imaginary numbers... */
-			if ( in[0]->vec[0] >= 0 )
-				out[0]->vec[0]= pow(in[0]->vec[0], in[1]->vec[0]);
-			else
-				out[0]->vec[0]= 0.0;
+			/* Only raise negative numbers by full integers */
+			if ( in[0]->vec[0] >= 0 ) {
+				out[0]->vec[0] = pow(in[0]->vec[0], in[1]->vec[0]);
+			}
+			else {
+				float y_mod_1 = fabsf(fmodf(in[1]->vec[0], 1.0f));
+				
+				/* if input value is not nearly an integer, fall back to zero, nicer than straight rounding */
+				if (y_mod_1 > 0.999f || y_mod_1 < 0.001f) {
+					out[0]->vec[0] = powf(in[0]->vec[0], floorf(in[1]->vec[0] + 0.5f));
+				}
+				else {
+					out[0]->vec[0] = 0.0f;
+				}
+			}
+
 		}
 		break;
 	case 11: /* Logarithm */
 		{
 			/* Don't want any imaginary numbers... */
 			if ( in[0]->vec[0] > 0  && in[1]->vec[0] > 0 )
-				out[0]->vec[0]= log(in[0]->vec[0]) / log(in[1]->vec[0]);
+				out[0]->vec[0] = log(in[0]->vec[0]) / log(in[1]->vec[0]);
 			else
-				out[0]->vec[0]= 0.0;
+				out[0]->vec[0] = 0.0;
 		}
 		break;
 	case 12: /* Minimum */
 		{
 			if ( in[0]->vec[0] < in[1]->vec[0] )
-				out[0]->vec[0]= in[0]->vec[0];
+				out[0]->vec[0] = in[0]->vec[0];
 			else
-				out[0]->vec[0]= in[1]->vec[0];
+				out[0]->vec[0] = in[1]->vec[0];
 		}
 		break;
 	case 13: /* Maximum */
 		{
 			if ( in[0]->vec[0] > in[1]->vec[0] )
-				out[0]->vec[0]= in[0]->vec[0];
+				out[0]->vec[0] = in[0]->vec[0];
 			else
-				out[0]->vec[0]= in[1]->vec[0];
+				out[0]->vec[0] = in[1]->vec[0];
 		}
 		break;
 	case 14: /* Round */
 		{
 			if (in[0]->hasinput || !in[1]->hasinput) /* This one only takes one input, so we've got to choose. */
-				out[0]->vec[0]= (in[0]->vec[0]<0)?(int)(in[0]->vec[0] - 0.5f):(int)(in[0]->vec[0] + 0.5f);
+				out[0]->vec[0] = (in[0]->vec[0]<0)?(int)(in[0]->vec[0] - 0.5f):(int)(in[0]->vec[0] + 0.5f);
 			else
-				out[0]->vec[0]= (in[1]->vec[0]<0)?(int)(in[1]->vec[0] - 0.5f):(int)(in[1]->vec[0] + 0.5f);
+				out[0]->vec[0] = (in[1]->vec[0]<0)?(int)(in[1]->vec[0] - 0.5f):(int)(in[1]->vec[0] + 0.5f);
 		}
 		break;
 	case 15: /* Less Than */
 		{
 			if ( in[0]->vec[0] < in[1]->vec[0] )
-				out[0]->vec[0]= 1.0f;
+				out[0]->vec[0] = 1.0f;
 			else
-				out[0]->vec[0]= 0.0f;
+				out[0]->vec[0] = 0.0f;
 		}
 		break;
 	case 16: /* Greater Than */
 		{
 			if ( in[0]->vec[0] > in[1]->vec[0] )
-				out[0]->vec[0]= 1.0f;
+				out[0]->vec[0] = 1.0f;
 			else
-				out[0]->vec[0]= 0.0f;
+				out[0]->vec[0] = 0.0f;
 		}
 		break;
-	} 
+	}
 }
 
 static int gpu_shader_math(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUNodeStack *out)
@@ -214,8 +225,7 @@ static int gpu_shader_math(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUN
 		case 13:
 		case 15:
 		case 16:
-			GPU_stack_link(mat, names[node->custom1], NULL, out,
-				GPU_socket(&in[0]), GPU_socket(&in[1]));
+			GPU_stack_link(mat, names[node->custom1], in, out);
 			break;
 		case 4:
 		case 5:
@@ -224,10 +234,20 @@ static int gpu_shader_math(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUN
 		case 8:
 		case 9:
 		case 14:
-			if (in[0].hasinput || !in[1].hasinput)
-				GPU_stack_link(mat, names[node->custom1], NULL, out, GPU_socket(&in[0]));
-			else
-				GPU_stack_link(mat, names[node->custom1], NULL, out, GPU_socket(&in[1]));
+			if (in[0].hasinput || !in[1].hasinput) {
+				/* use only first item and terminator */
+				GPUNodeStack tmp_in[2];
+				memcpy(&tmp_in[0], &in[0], sizeof(GPUNodeStack));
+				memcpy(&tmp_in[1], &in[2], sizeof(GPUNodeStack));
+				GPU_stack_link(mat, names[node->custom1], tmp_in, out);
+			}
+			else {
+				/* use only second item and terminator */
+				GPUNodeStack tmp_in[2];
+				memcpy(&tmp_in[0], &in[1], sizeof(GPUNodeStack));
+				memcpy(&tmp_in[1], &in[2], sizeof(GPUNodeStack));
+				GPU_stack_link(mat, names[node->custom1], tmp_in, out);
+			}
 			break;
 		default:
 			return 0;

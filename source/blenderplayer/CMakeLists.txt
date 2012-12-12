@@ -60,7 +60,7 @@ elseif(APPLE)
 	add_executable(blenderplayer ${EXETYPE} bad_level_call_stubs/stubs.c)
 	# setup Info.plist
 	execute_process(COMMAND date "+%Y-%m-%d" OUTPUT_VARIABLE BLENDER_DATE OUTPUT_STRIP_TRAILING_WHITESPACE)
-	set(PLAYER_SOURCEDIR ${CMAKE_SOURCE_DIR}/source/darwin/blenderplayer.app)
+	set(PLAYER_SOURCEDIR ${CMAKE_SOURCE_DIR}/release/darwin/blenderplayer.app)
 	set(PLAYER_SOURCEINFO ${PLAYER_SOURCEDIR}/Contents/Info.plist)
 	set_target_properties(blenderplayer PROPERTIES
 		MACOSX_BUNDLE_INFO_PLIST ${PLAYER_SOURCEINFO}
@@ -149,6 +149,7 @@ endif()
 		extern_recastnavigation
 		bf_intern_raskter
 		bf_intern_opencolorio
+		bf_intern_opennl
 	)
 
 	if(WITH_MOD_CLOTH_ELTOPO)
@@ -170,10 +171,6 @@ endif()
 
 	list(APPEND BLENDER_SORTED_LIBS extern_colamd)
 
-	if(WITH_MOD_DECIMATE)
-		list(APPEND BLENDER_SORTED_LIBS bf_intern_decimate)
-	endif()
-
 	if(WITH_MOD_BOOLEAN)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_bsp)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_moto)
@@ -193,6 +190,10 @@ endif()
 
 	if(WITH_CXX_GUARDEDALLOC)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_guardedalloc_cpp)
+	endif()
+
+	if(WITH_INTERNATIONAL)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_locale)
 	endif()
 
 	foreach(SORTLIB ${BLENDER_SORTED_LIBS})

@@ -319,8 +319,8 @@ int           modifier_dependsOnTime(struct ModifierData *md);
 int           modifier_supportsMapping(struct ModifierData *md);
 int           modifier_couldBeCage(struct Scene *scene, struct ModifierData *md);
 int           modifier_isCorrectableDeformed(struct ModifierData *md);
-int           modifier_sameTopology(ModifierData *md);
-int           modifier_nonGeometrical(ModifierData *md);
+int           modifier_isSameTopology(ModifierData *md);
+int           modifier_isNonGeometrical(ModifierData *md);
 int           modifier_isEnabled(struct Scene *scene, struct ModifierData *md, int required_mode);
 void          modifier_setError(struct ModifierData *md, const char *format, ...)
 #ifdef __GNUC__
@@ -352,6 +352,7 @@ int           modifiers_isParticleEnabled(struct Object *ob);
 
 struct Object *modifiers_isDeformedByArmature(struct Object *ob);
 struct Object *modifiers_isDeformedByLattice(struct Object *ob);
+struct Object *modifiers_isDeformedByCurve(struct Object *ob);
 int           modifiers_usesArmature(struct Object *ob, struct bArmature *arm);
 int           modifiers_isCorrectableDeformed(struct Object *ob);
 void          modifier_freeTemporaryData(struct ModifierData *md);

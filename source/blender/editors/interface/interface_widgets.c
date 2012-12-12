@@ -345,7 +345,7 @@ static void round_box__edges(uiWidgetBase *wt, int roundboxalign, rcti *rect, fl
 	const int vnum = ((roundboxalign & (UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT)) == (UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT) ||
 	                  (roundboxalign & (UI_CNR_TOP_RIGHT | UI_CNR_BOTTOM_RIGHT)) == (UI_CNR_TOP_RIGHT | UI_CNR_BOTTOM_RIGHT)) ? 1 : 2;
 
-	minsize = mini(BLI_rcti_size_x(rect) * hnum,
+	minsize = min_ii(BLI_rcti_size_x(rect) * hnum,
 	               BLI_rcti_size_y(rect) * vnum);
 	
 	if (2.0f * rad > minsize)
@@ -491,7 +491,7 @@ static void widget_num_tria(uiWidgetTrias *tria, rcti *rect, float triasize, cha
 	float centx, centy, sizex, sizey, minsize;
 	int a, i1 = 0, i2 = 1;
 	
-	minsize = mini(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect));
+	minsize = min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect));
 	
 	/* center position and size */
 	centx = (float)rect->xmin + 0.5f * minsize;
@@ -501,16 +501,16 @@ static void widget_num_tria(uiWidgetTrias *tria, rcti *rect, float triasize, cha
 	if (where == 'r') {
 		centx = (float)rect->xmax - 0.5f * minsize;
 		sizex = -sizex;
-	}	
+	}
 	else if (where == 't') {
 		centy = (float)rect->ymax - 0.5f * minsize;
 		sizey = -sizey;
 		i2 = 0; i1 = 1;
-	}	
+	}
 	else if (where == 'b') {
 		sizex = -sizex;
 		i2 = 0; i1 = 1;
-	}	
+	}
 	
 	for (a = 0; a < 3; a++) {
 		tria->vec[a][0] = sizex * num_tria_vert[a][i1] + centx;
@@ -526,7 +526,7 @@ static void widget_scroll_circle(uiWidgetTrias *tria, rcti *rect, float triasize
 	float centx, centy, sizex, sizey, minsize;
 	int a, i1 = 0, i2 = 1;
 	
-	minsize = mini(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect));
+	minsize = min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect));
 	
 	/* center position and size */
 	centx = (float)rect->xmin + 0.5f * minsize;
@@ -536,16 +536,16 @@ static void widget_scroll_circle(uiWidgetTrias *tria, rcti *rect, float triasize
 	if (where == 'r') {
 		centx = (float)rect->xmax - 0.5f * minsize;
 		sizex = -sizex;
-	}	
+	}
 	else if (where == 't') {
 		centy = (float)rect->ymax - 0.5f * minsize;
 		sizey = -sizey;
 		i2 = 0; i1 = 1;
-	}	
+	}
 	else if (where == 'b') {
 		sizex = -sizex;
 		i2 = 0; i1 = 1;
-	}	
+	}
 	
 	for (a = 0; a < 16; a++) {
 		tria->vec[a][0] = sizex * scroll_circle_vert[a][i1] + centx;
@@ -572,12 +572,12 @@ static void widget_menu_trias(uiWidgetTrias *tria, rcti *rect)
 	/* center position and size */
 	centx = rect->xmax - 0.5f * BLI_rcti_size_y(rect);
 	centy = rect->ymin + 0.5f * BLI_rcti_size_y(rect);
-	size = 0.4f * BLI_rcti_size_y(rect);
+	size = 0.4f * (float)BLI_rcti_size_y(rect);
 	
 	/* XXX exception */
 	asp = ((float)BLI_rcti_size_x(rect)) / ((float)BLI_rcti_size_y(rect));
 	if (asp > 1.2f && asp < 2.6f)
-		centx = rect->xmax - 0.3f * BLI_rcti_size_y(rect);
+		centx = rect->xmax - 0.4f * (float)BLI_rcti_size_y(rect);
 	
 	for (a = 0; a < 6; a++) {
 		tria->vec[a][0] = size * menu_tria_vert[a][0] + centx;
@@ -651,8 +651,8 @@ static void widget_verts_to_quad_strip_open(uiWidgetBase *wtb, const int totvert
 	for (a = 0; a < totvert; a++) {
 		quad_strip[a * 2][0] = wtb->outer_v[a][0];
 		quad_strip[a * 2][1] = wtb->outer_v[a][1];
-		quad_strip[a * 2 + 1][0] = wtb->outer_v[a][0];
-		quad_strip[a * 2 + 1][1] = wtb->outer_v[a][1] - 1.0f;
+		quad_strip[a * 2 + 1][0] = wtb->inner_v[a][0];
+		quad_strip[a * 2 + 1][1] = wtb->inner_v[a][1];
 	}
 }
 
@@ -878,7 +878,7 @@ static void widget_draw_icon(uiBut *but, BIFIconID icon, float alpha, rcti *rect
 	aspect = but->block->aspect;
 	if (aspect != but->aspect) {
 		/* prevent scaling up icon in pupmenu */
-		if (aspect < 1.0f) {			
+		if (aspect < 1.0f) {
 			height = UI_DPI_ICON_SIZE;
 			aspect = 1.0f;
 			
@@ -891,8 +891,8 @@ static void widget_draw_icon(uiBut *but, BIFIconID icon, float alpha, rcti *rect
 	
 	/* calculate blend color */
 	if (ELEM4(but->type, TOG, ROW, TOGN, LISTROW)) {
-		if (but->flag & UI_SELECT) ;
-		else if (but->flag & UI_ACTIVE) ;
+		if (but->flag & UI_SELECT) {}
+		else if (but->flag & UI_ACTIVE) {}
 		else alpha = 0.5f;
 	}
 	
@@ -1044,6 +1044,8 @@ static void ui_text_clip_cursor(uiFontStyle *fstyle, uiBut *but, rcti *rect)
 				ui_text_clip_give_prev_off(but);
 			len = strlen(but->drawstr);
 			bytes = BLI_str_utf8_size(BLI_str_find_prev_char_utf8(but->drawstr, but->drawstr + len));
+			if (bytes < 0)
+				bytes = 1;
 			but->drawstr[len - bytes] = 0;
 		}
 
@@ -1276,9 +1278,12 @@ static void widget_draw_text(uiFontStyle *fstyle, uiWidgetColors *wcol, uiBut *b
 /* draws text and icons for buttons */
 static void widget_draw_text_icon(uiFontStyle *fstyle, uiWidgetColors *wcol, uiBut *but, rcti *rect)
 {
-	if (but == NULL) {
+	char password_str[UI_MAX_DRAW_STR];
+
+	if (but == NULL)
 		return;
-	}
+
+	ui_button_text_password_hide(password_str, but, FALSE);
 
 	/* clip but->drawstr to fit in available space */
 	if (but->editstr && but->pos >= 0) {
@@ -1337,6 +1342,8 @@ static void widget_draw_text_icon(uiFontStyle *fstyle, uiWidgetColors *wcol, uiB
 		widget_draw_text(fstyle, wcol, but, rect);
 
 	}
+
+	ui_button_text_password_hide(password_str, but, TRUE);
 }
 
 
@@ -1852,7 +1859,7 @@ static void widget_menu_back(uiWidgetColors *wcol, rcti *rect, int flag, int dir
 	else if (direction == UI_DOWN) {
 		roundboxalign = (UI_CNR_BOTTOM_RIGHT | UI_CNR_BOTTOM_LEFT);
 		rect->ymin -= 4.0;
-	} 
+	}
 	else if (direction == UI_TOP) {
 		roundboxalign = UI_CNR_TOP_LEFT | UI_CNR_TOP_RIGHT;
 		rect->ymax += 4.0;
@@ -1895,7 +1902,7 @@ void ui_hsvcircle_vals_from_pos(float *val_rad, float *val_dist, const rcti *rec
 	/* duplication of code... well, simple is better now */
 	const float centx = BLI_rcti_cent_x_fl(rect);
 	const float centy = BLI_rcti_cent_y_fl(rect);
-	const float radius = (float)mini(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect)) / 2.0f;
+	const float radius = (float)min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect)) / 2.0f;
 	const float m_delta[2] = {mx - centx, my - centy};
 	const float dist_squared = len_squared_v2(m_delta);
 
@@ -1910,7 +1917,7 @@ static void ui_draw_but_HSVCIRCLE(uiBut *but, uiWidgetColors *wcol, const rcti *
 
 	const float centx = BLI_rcti_cent_x_fl(rect);
 	const float centy = BLI_rcti_cent_y_fl(rect);
-	float radius = (float)mini(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect)) / 2.0f;
+	float radius = (float)min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect)) / 2.0f;
 
 	/* gouraud triangle fan */
 	const float *hsv_ptr = ui_block_hsv_get(but->block);
@@ -1995,7 +2002,7 @@ static void ui_draw_but_HSVCIRCLE(uiBut *but, uiWidgetColors *wcol, const rcti *
 /* draws in resolution of 20x4 colors */
 void ui_draw_gradient(rcti *rect, const float hsv[3], const int type, const float alpha)
 {
-	const float color_step = (type == UI_GRAD_H) ? 0.02 : 0.05f;
+	const float color_step = (type == UI_GRAD_H) ? 0.02f : 0.05f;
 	int a;
 	float h = hsv[0], s = hsv[1], v = hsv[2];
 	float dx, dy, sx1, sx2, sy;
@@ -2052,7 +2059,7 @@ void ui_draw_gradient(rcti *rect, const float hsv[3], const int type, const floa
 	
 	/* old below */
 	
-	for (dx = 0.0f; dx < 1.0f; dx += color_step) {
+	for (dx = 0.0f; dx < 0.999f; dx += color_step) { /* 0.999 = prevent float inaccuracy for steps */
 		/* previous color */
 		copy_v3_v3(col0[0], col1[0]);
 		copy_v3_v3(col0[1], col1[1]);
@@ -2107,7 +2114,7 @@ void ui_draw_gradient(rcti *rect, const float hsv[3], const int type, const floa
 		sx1 = rect->xmin +  dx               * BLI_rcti_size_x(rect);
 		sx2 = rect->xmin + (dx + color_step) * BLI_rcti_size_x(rect);
 		sy = rect->ymin;
-		dy = BLI_rcti_size_y(rect) / 3.0;
+		dy = (float)BLI_rcti_size_y(rect) / 3.0f;
 		
 		glBegin(GL_QUADS);
 		for (a = 0; a < 3; a++, sy += dy) {
@@ -2364,7 +2371,7 @@ void uiWidgetScrollDraw(uiWidgetColors *wcol, rcti *rect, rcti *slider, int stat
 		wtb.emboss = 0; /* only emboss once */
 		
 		/* exception for progress bar */
-		if (state & UI_SCROLL_NO_OUTLINE)	
+		if (state & UI_SCROLL_NO_OUTLINE)
 			SWAP(short, outline, wtb.outline);
 		
 		round_box_edges(&wtb, UI_CNR_ALL, slider, rad);
@@ -2388,7 +2395,7 @@ void uiWidgetScrollDraw(uiWidgetColors *wcol, rcti *rect, rcti *slider, int stat
 		
 		if (state & UI_SCROLL_NO_OUTLINE)
 			SWAP(short, outline, wtb.outline);
-	}	
+	}
 }
 
 static void widget_scroll(uiBut *but, uiWidgetColors *wcol, rcti *rect, int state, int UNUSED(roundboxalign))
@@ -2402,7 +2409,7 @@ static void widget_scroll(uiBut *but, uiWidgetColors *wcol, rcti *rect, int stat
 	value = ui_get_but_val(but);
 
 	size = (but->softmax + but->a1 - but->softmin);
-	size = MAX2(size, 2);
+	size = max_ff(size, 2.0f);
 	
 	/* position */
 	rect1 = *rect;
@@ -2423,7 +2430,7 @@ static void widget_scroll(uiBut *but, uiWidgetColors *wcol, rcti *rect, int stat
 
 			if (rect1.xmax > rect->xmax) {
 				rect1.xmax = rect->xmax;
-				rect1.xmin = maxi(rect1.xmax - min, rect->xmin);
+				rect1.xmin = max_ii(rect1.xmax - min, rect->xmin);
 			}
 		}
 	}
@@ -2440,7 +2447,7 @@ static void widget_scroll(uiBut *but, uiWidgetColors *wcol, rcti *rect, int stat
 
 			if (rect1.ymax > rect->ymax) {
 				rect1.ymax = rect->ymax;
-				rect1.ymin = MAX2(rect1.ymax - min, rect->ymin);
+				rect1.ymin = max_ii(rect1.ymax - min, rect->ymin);
 			}
 		}
 	}
@@ -2616,6 +2623,11 @@ static void widget_swatch(uiBut *but, uiWidgetColors *wcol, rcti *rect, int stat
 	
 }
 
+static void widget_normal(uiBut *but, uiWidgetColors *wcol, rcti *rect, int UNUSED(state), int UNUSED(roundboxalign))
+{
+	ui_draw_but_NORMAL(but, wcol, rect);
+}
+
 static void widget_icon_has_anim(uiBut *UNUSED(but), uiWidgetColors *wcol, rcti *rect, int state, int UNUSED(roundboxalign))
 {
 	if (state & (UI_BUT_ANIMATED | UI_BUT_ANIMATED_KEY | UI_BUT_DRIVEN | UI_BUT_REDALERT)) {
@@ -2627,7 +2639,7 @@ static void widget_icon_has_anim(uiBut *UNUSED(but), uiWidgetColors *wcol, rcti 
 		/* rounded */
 		round_box_edges(&wtb, UI_CNR_ALL, rect, 10.0f);
 		widgetbase_draw(&wtb, wcol);
-	}	
+	}
 }
 
 
@@ -2662,8 +2674,8 @@ static void widget_menubut(uiWidgetColors *wcol, rcti *rect, int UNUSED(state), 
 	
 	widgetbase_draw(&wtb, wcol);
 	
-	/* text space */
-	rect->xmax -= BLI_rcti_size_y(rect);
+	/* text space, arrows are about 0.6 height of button */
+	rect->xmax -= (6 * BLI_rcti_size_y(rect)) / 10;
 }
 
 static void widget_menuiconbut(uiWidgetColors *wcol, rcti *rect, int UNUSED(state), int roundboxalign)
@@ -3023,6 +3035,7 @@ static uiWidgetType *widget_type(uiWidgetTypeEnum type)
 			break;
 			
 		case UI_WTYPE_NORMAL:
+			wt.custom = widget_normal;
 			break;
 
 		case UI_WTYPE_SCROLL:
@@ -3094,14 +3107,10 @@ static int widget_roundbox_set(uiBut *but, rcti *rect)
 	if (but->active) {
 		int direction = ui_button_open_menu_direction(but);
 
-		if (direction == UI_TOP)
-			roundbox &= ~(UI_CNR_TOP_RIGHT|UI_CNR_TOP_LEFT);
-		else if (direction == UI_DOWN)
-			roundbox &= ~(UI_CNR_BOTTOM_RIGHT|UI_CNR_BOTTOM_LEFT);
-		else if (direction == UI_LEFT)
-			roundbox &= ~(UI_CNR_TOP_LEFT|UI_CNR_BOTTOM_LEFT);
-		else if (direction == UI_RIGHT)
-			roundbox &= ~(UI_CNR_TOP_RIGHT|UI_CNR_BOTTOM_RIGHT);
+		if      (direction == UI_TOP)   roundbox &= ~(UI_CNR_TOP_RIGHT | UI_CNR_TOP_LEFT);
+		else if (direction == UI_DOWN)  roundbox &= ~(UI_CNR_BOTTOM_RIGHT | UI_CNR_BOTTOM_LEFT);
+		else if (direction == UI_LEFT)  roundbox &= ~(UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT);
+		else if (direction == UI_RIGHT) roundbox &= ~(UI_CNR_TOP_RIGHT | UI_CNR_BOTTOM_RIGHT);
 	}
 
 	return roundbox;
@@ -3266,7 +3275,7 @@ void ui_draw_but(const bContext *C, ARegion *ar, uiStyle *style, uiBut *but, rct
 				break;
 				
 			case BUT_NORMAL:
-				ui_draw_but_NORMAL(but, &tui->wcol_regular, rect);
+				wt = widget_type(UI_WTYPE_NORMAL);
 				break;
 				
 			case BUT_IMAGE:
@@ -3350,7 +3359,7 @@ void ui_draw_menu_back(uiStyle *UNUSED(style), uiBlock *block, rcti *rect)
 			glColor3ubv((unsigned char *)wt->wcol.text);
 			UI_DrawTriIcon(BLI_rcti_cent_x(rect), rect->ymin + 10, 'v');
 		}
-	}	
+	}
 }
 
 uiWidgetColors *ui_tooltip_get_theme(void)

@@ -355,12 +355,12 @@ NPP_WriteReady(
 	
 	log_entry("NPP_WriteReady");
 
-	if (instance == NULL)	
+	if (instance == NULL)
 		return NPERR_INVALID_INSTANCE_ERROR;
 
 	This = (BlenderPluginInstance *) instance->pdata;
 
-	if (This == NULL)	
+	if (This == NULL)
 		return NPERR_INVALID_INSTANCE_ERROR;
 
 	/* Check whether buffers already exist: */
@@ -388,12 +388,12 @@ NPP_Write(
 	
 	log_entry("NPP_Write");
 
-	if (instance == NULL)	
+	if (instance == NULL)
 		return NPERR_INVALID_INSTANCE_ERROR;
 	
 	This = (BlenderPluginInstance *) instance->pdata;
 
-	if (This == NULL)	
+	if (This == NULL)
 		return NPERR_INVALID_INSTANCE_ERROR;
 
 	
@@ -517,14 +517,14 @@ execute_blenderplayer(BlenderPluginInstance *instance)
 	
 	}
 	else if (instance->pID < 0) {           // failed to fork
-		printf("Failed to fork!!!\n");					
+		printf("Failed to fork!!!\n");
 	}
 
 	/*XEvent e;
 	int started = 0;
 	while (!started) {
 		XNextEvent(This->display, &e);
-		printf("Event type %d\n", e.type);					
+		printf("Event type %d\n", e.type);
 		if (e.type == MapNotify) {
 			started = 1;
 			XCreateWindowEvent event =  e.xcreatewindow;

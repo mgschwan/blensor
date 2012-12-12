@@ -35,6 +35,7 @@
 #include "DNA_material_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
+#include "DNA_text_types.h"
 #include "DNA_world_types.h"
 
 #include "BLI_math.h"
@@ -54,6 +55,7 @@
 #include "BKE_scene.h"
 #include "BKE_texture.h"
 
+#include "RE_engine.h"
 #include "RE_pipeline.h"
 
 
@@ -84,6 +86,7 @@ typedef struct CompoJob {
 	short *stop;
 	short *do_update;
 	float *progress;
+	short need_sync;
 } CompoJob;
 
 /* called by compo, only to check job 'stop' value */
@@ -100,8 +103,17 @@ static int compo_breakjob(void *cjv)
 	        );
 }
 
+/* called by compo, wmJob sends notifier, old compositor system only */
+static void compo_statsdrawjob(void *cjv, char *UNUSED(str))
+{
+	CompoJob *cj = cjv;
+	
+	*(cj->do_update) = TRUE;
+	cj->need_sync = TRUE;
+}
+
 /* called by compo, wmJob sends notifier */
-static void compo_redrawjob(void *cjv, char *UNUSED(str))
+static void compo_redrawjob(void *cjv)
 {
 	CompoJob *cj = cjv;
 	
@@ -131,8 +143,15 @@ static void compo_initjob(void *cjv)
 static void compo_updatejob(void *cjv)
 {
 	CompoJob *cj = cjv;
-	
-	ntreeLocalSync(cj->localtree, cj->ntree);
+
+	if (cj->need_sync) {
+		/* was used by old compositor system only */
+		ntreeLocalSync(cj->localtree, cj->ntree);
+
+		cj->need_sync = FALSE;
+	}
+
+	WM_main_add_notifier(NC_WINDOW | ND_DRAW, NULL);
 }
 
 static void compo_progressjob(void *cjv, float progress)
@@ -159,11 +178,13 @@ static void compo_startjob(void *cjv, short *stop, short *do_update, float *prog
 
 	ntree->test_break = compo_breakjob;
 	ntree->tbh = cj;
-	ntree->stats_draw = compo_redrawjob;
+	ntree->stats_draw = compo_statsdrawjob;
 	ntree->sdh = cj;
 	ntree->progress = compo_progressjob;
 	ntree->prh = cj;
-	
+	ntree->update_draw = compo_redrawjob;
+	ntree->udh = cj;
+
 	// XXX BIF_store_spare();
 	
 	ntreeCompositExecTree(ntree, &cj->scene->r, 0, 1, &scene->view_settings, &scene->display_settings);  /* 1 is do_previews */
@@ -175,7 +196,7 @@ static void compo_startjob(void *cjv, short *stop, short *do_update, float *prog
 }
 
 /**
- * \param sa_owner is the owner of the job,
+ * \param scene_owner is the owner of the job,
  * we don't use it for anything else currently so could also be a void pointer,
  * but for now keep it an 'Scene' for consistency.
  *
@@ -1622,7 +1643,7 @@ static int node_mute_exec(bContext *C, wmOperator *UNUSED(op))
 
 	for (node = snode->edittree->nodes.first; node; node = node->next) {
 		/* Only allow muting of nodes having a mute func! */
-		if ((node->flag & SELECT) && node->typeinfo->internal_connect) {
+		if ((node->flag & SELECT) && node->typeinfo->update_internal_links) {
 			node->flag ^= NODE_MUTED;
 			snode_update(snode, node);
 		}
@@ -1935,7 +1956,7 @@ static int node_clipboard_copy_exec(bContext *C, wmOperator *UNUSED(op))
 	bNodeTree *ntree = snode->edittree;
 	bNode *gnode = node_tree_get_editgroup(snode->nodetree);
 	float gnode_x = 0.0f, gnode_y = 0.0f;
-	bNode *node, *new_node;
+	bNode *node;
 	bNodeLink *link, *newlink;
 
 	ED_preview_kill_jobs(C);
@@ -1950,6 +1971,7 @@ static int node_clipboard_copy_exec(bContext *C, wmOperator *UNUSED(op))
 	
 	for (node = ntree->nodes.first; node; node = node->next) {
 		if (node->flag & SELECT) {
+			bNode *new_node;
 			new_node = nodeCopyNode(NULL, node);
 			BKE_node_clipboard_add_node(new_node);
 		}
@@ -1971,7 +1993,7 @@ static int node_clipboard_copy_exec(bContext *C, wmOperator *UNUSED(op))
 			}
 
 			/* transform to basic view space. child node location is relative to parent */
-			if (!new_node->parent) {	
+			if (!new_node->parent) {
 				new_node->locx += gnode_x;
 				new_node->locy += gnode_y;
 			}
@@ -2136,3 +2158,120 @@ void NODE_OT_clipboard_paste(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
+
+/* ********************** Shader Script Update ******************/
+
+typedef struct ScriptUpdateData {
+	RenderEngine *engine;
+	RenderEngineType *type;
+
+	Text *text;
+	int found;
+} ScriptUpdateData;
+
+static int node_shader_script_update_poll(bContext *C)
+{
+	Scene *scene = CTX_data_scene(C);
+	RenderEngineType *type = RE_engines_find(scene->r.engine);
+	bNode *node;
+	Text *text;
+
+	/* test if we have a render engine that supports shaders scripts */
+	if (!(type && type->update_script_node))
+		return 0;
+
+	/* see if we have a shader script node in context */
+	node = CTX_data_pointer_get_type(C, "node", &RNA_ShaderNodeScript).data;
+	if (node && node->type == SH_NODE_SCRIPT) {
+		NodeShaderScript *nss = node->storage;
+
+		if (node->id || nss->filepath[0]) {
+			return 1;
+		}
+	}
+
+	/* see if we have a text datablock in context */
+	text = CTX_data_pointer_get_type(C, "edit_text", &RNA_Text).data;
+	if (text)
+		return 1;
+
+	/* we don't check if text datablock is actually in use, too slow for poll */
+
+	return 0;
+}
+
+static void node_shader_script_update_text(void *data_, ID *UNUSED(id), bNodeTree *ntree)
+{
+	ScriptUpdateData *data = (ScriptUpdateData *)data_;
+	bNode *node;
+
+	/* update each script that is using this text datablock */
+	for (node = ntree->nodes.first; node; node = node->next) {
+		if (node->type == NODE_GROUP) {
+			node_shader_script_update_text(data_, NULL, (bNodeTree *)node->id);
+		}
+		else if (node->type == SH_NODE_SCRIPT && node->id == &data->text->id) {
+			data->type->update_script_node(data->engine, ntree, node);
+			data->found = TRUE;
+		}
+	}
+}
+
+static int node_shader_script_update_exec(bContext *C, wmOperator *op)
+{
+	Main *bmain = CTX_data_main(C);
+	Scene *scene = CTX_data_scene(C);
+	ScriptUpdateData data;
+	PointerRNA nodeptr = CTX_data_pointer_get_type(C, "node", &RNA_ShaderNodeScript);
+
+	/* setup render engine */
+	data.type = RE_engines_find(scene->r.engine);
+	data.engine = RE_engine_create(data.type);
+	data.engine->reports = op->reports;
+	data.text = NULL;
+	data.found = FALSE;
+
+	if (nodeptr.data) {
+		/* update single node */
+		bNodeTree *ntree = nodeptr.id.data;
+		bNode *node = nodeptr.data;
+
+		data.type->update_script_node(data.engine, ntree, node);
+
+		data.found = TRUE;
+	}
+	else {
+		/* update all nodes using text datablock */
+		data.text = CTX_data_pointer_get_type(C, "edit_text", &RNA_Text).data;
+
+		if (data.text) {
+			bNodeTreeType *ntreetype = ntreeGetType(NTREE_SHADER);
+
+			if (ntreetype && ntreetype->foreach_nodetree)
+				ntreetype->foreach_nodetree(bmain, &data, node_shader_script_update_text);
+
+			if (!data.found)
+				BKE_report(op->reports, RPT_INFO, "Text not used by any node, no update done");
+		}
+	}
+
+	RE_engine_free(data.engine);
+
+	return (data.found)? OPERATOR_FINISHED: OPERATOR_CANCELLED;
+}
+
+void NODE_OT_shader_script_update(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Script Node Update";
+	ot->description = "Update shader script node with new sockets and options from the script";
+	ot->idname = "NODE_OT_shader_script_update";
+
+	/* api callbacks */
+	ot->exec = node_shader_script_update_exec;
+	ot->poll = node_shader_script_update_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+

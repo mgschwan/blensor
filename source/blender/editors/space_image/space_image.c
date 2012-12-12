@@ -414,8 +414,9 @@ static void image_refresh(const bContext *C, ScrArea *sa)
 					/* don't need to check for pin here, see above */
 					sima->image = tf->tpage;
 					
-					if (sima->flag & SI_EDITTILE) ;
-					else sima->curtile = tf->tile;
+					if ((sima->flag & SI_EDITTILE) == 0) {
+						sima->curtile = tf->tile;
+					}
 				}
 			}
 		}
@@ -456,7 +457,7 @@ static void image_listener(ScrArea *sa, wmNotifier *wmn)
 				ED_area_tag_redraw(sa);
 			}
 			break;
-		case NC_SPACE:	
+		case NC_SPACE:
 			if (wmn->data == ND_SPACE_IMAGE) {
 				image_scopes_tag_refresh(sa);
 				ED_area_tag_redraw(sa);
@@ -549,7 +550,7 @@ static void image_main_area_set_view2d(SpaceImage *sima, ARegion *ar)
 	int width, height, winx, winy;
 	
 #if 0
-	if (image_preview_active(curarea, &width, &height)) ;
+	if (image_preview_active(curarea, &width, &height)) {}
 	else
 #endif
 	ED_space_image_get_size(sima, &width, &height);
@@ -708,8 +709,8 @@ static void image_main_area_listener(ARegion *ar, wmNotifier *wmn)
 {
 	/* context changes */
 	switch (wmn->category) {
-		case NC_SCREEN:
-			if (wmn->data == ND_GPENCIL)
+		case NC_GPENCIL:
+			if (wmn->action == NA_EDITED)
 				ED_region_tag_redraw(ar);
 			break;
 	}
@@ -737,8 +738,8 @@ static void image_buttons_area_listener(ARegion *ar, wmNotifier *wmn)
 {
 	/* context changes */
 	switch (wmn->category) {
-		case NC_SCREEN:
-			if (wmn->data == ND_GPENCIL)
+		case NC_GPENCIL:
+			if (wmn->data == ND_DATA)
 				ED_region_tag_redraw(ar);
 			break;
 		case NC_BRUSH:
@@ -779,7 +780,7 @@ static void image_scope_area_draw(const bContext *C, ARegion *ar)
 		}
 		scopes_update(&sima->scopes, ibuf, &scene->view_settings, &scene->display_settings);
 	}
-	ED_space_image_release_buffer(sima, lock);
+	ED_space_image_release_buffer(sima, ibuf, lock);
 	
 	ED_region_panels(C, ar, 1, NULL, -1);
 }

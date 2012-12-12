@@ -50,6 +50,7 @@ public:
 	OutputSocket(DataType datatype, int inputSocketDataTypeDeterminatorIndex);
 	OutputSocket(OutputSocket *from);
 	void addConnection(SocketConnection *connection);
+	void removeConnection(SocketConnection *connection);
 	SocketConnection *getConnection(unsigned int index) { return this->m_connections[index]; }
 	const int isConnected() const;
 	int isOutputSocket() const;
@@ -57,7 +58,7 @@ public:
 	/**
 	 * @brief determine the resolution of this socket
 	 * @param resolution the result of this operation
-	 * @param preferredResolution the preferrable resolution as no resolution could be determined
+	 * @param preferredResolution the preferable resolution as no resolution could be determined
 	 */
 	void determineResolution(unsigned int resolution[2], unsigned int preferredResolution[2]);
 	

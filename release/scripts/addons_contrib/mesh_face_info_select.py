@@ -60,11 +60,11 @@ class DATA_OP_facetype_select(bpy.types.Operator):
         context.tool_settings.mesh_select_mode=(False, False, True)
 
         if self.face_type == "3":
-            bpy.ops.mesh.select_by_number_vertices(number=3, type='EQUAL')
+            bpy.ops.mesh.select_face_by_sides(number=3, type='EQUAL')
         elif self.face_type == "4":
-            bpy.ops.mesh.select_by_number_vertices(number=4, type='EQUAL')
+            bpy.ops.mesh.select_face_by_sides(number=4, type='EQUAL')
         else:
-            bpy.ops.mesh.select_by_number_vertices(number=4, type='GREATER')
+            bpy.ops.mesh.select_face_by_sides(number=4, type='GREATER')
 
         return {'FINISHED'}
         

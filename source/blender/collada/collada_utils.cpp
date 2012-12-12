@@ -35,7 +35,6 @@
 #include "collada_utils.h"
 
 extern "C" {
-
 #include "DNA_modifier_types.h"
 #include "DNA_customdata_types.h"
 #include "DNA_object_types.h"
@@ -44,6 +43,7 @@ extern "C" {
 #include "DNA_armature_types.h"
 
 #include "BLI_math.h"
+#include "BLI_linklist.h"
 
 #include "BKE_context.h"
 #include "BKE_customdata.h"
@@ -51,10 +51,7 @@ extern "C" {
 #include "BKE_object.h"
 #include "BKE_mesh.h"
 #include "BKE_scene.h"
-
 #include "BKE_DerivedMesh.h"
-#include "BLI_linklist.h"
-
 
 #include "WM_api.h" // XXX hrm, see if we can do without this
 #include "WM_types.h"
@@ -142,7 +139,7 @@ Mesh *bc_to_mesh_apply_modifiers(Scene *scene, Object *ob, BC_export_mesh_type e
 {
 	Mesh *tmpmesh;
 	CustomDataMask mask = CD_MASK_MESH;
-	DerivedMesh *dm;
+	DerivedMesh *dm = NULL;
 	switch (export_mesh_type) {
 		case BC_MESH_TYPE_VIEW: {
 			dm = mesh_create_derived_view(scene, ob, mask);
@@ -154,7 +151,7 @@ Mesh *bc_to_mesh_apply_modifiers(Scene *scene, Object *ob, BC_export_mesh_type e
 		}
 	}
 
-	tmpmesh             = BKE_mesh_add("ColladaMesh"); // name is not important here
+	tmpmesh = BKE_mesh_add("ColladaMesh"); // name is not important here
 	DM_to_mesh(dm, tmpmesh, ob);
 	dm->release(dm);
 	return tmpmesh;

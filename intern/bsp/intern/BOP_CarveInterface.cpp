@@ -60,7 +60,7 @@ static bool isQuadPlanar(carve::geom3d::Vector &v1, carve::geom3d::Vector &v2,
 	float production = carve::geom::dot(cross, vec3);
 	float magnitude = 1e-5 * cross.length();
 
-	return fabs(production) < magnitude;
+	return fabsf(production) < magnitude;
 }
 
 static bool isFacePlanar(CSG_IFace &face, std::vector<carve::geom3d::Vector> &vertices)
@@ -135,10 +135,10 @@ static bool Carve_checkEdgeFaceIntersections(carve::csg::Intersections &intersec
 
 static inline bool Carve_facesAreCoplanar(const MeshSet<3>::face_t *a, const MeshSet<3>::face_t *b)
 {
-  carve::geom3d::Ray temp;
-  // XXX: Find a better definition. This may be a source of problems
-  // if floating point inaccuracies cause an incorrect answer.
-  return !carve::geom3d::planeIntersection(a->plane, b->plane, temp);
+	carve::geom3d::Ray temp;
+	// XXX: Find a better definition. This may be a source of problems
+	// if floating point inaccuracies cause an incorrect answer.
+	return !carve::geom3d::planeIntersection(a->plane, b->plane, temp);
 }
 
 static bool Carve_checkMeshSetInterseciton_do(carve::csg::Intersections &intersections,
@@ -205,7 +205,7 @@ static void Carve_getIntersectedOperandMeshes(std::vector<MeshSet<3>::mesh_t*> &
 	std::vector<MeshSet<3>::mesh_t*>::iterator it = meshes.begin();
 	std::vector< RTreeNode<3, Face<3> *> *> meshRTree;
 
-	while(it != meshes.end()) {
+	while (it != meshes.end()) {
 		MeshSet<3>::mesh_t *mesh = *it;
 		bool isAdded = false;
 
@@ -279,7 +279,7 @@ static MeshSet<3> *Carve_unionIntersectingMeshes(MeshSet<3> *poly,
 		return poly;
 	}
 
-	while(orig_meshes.size()) {
+	while (orig_meshes.size()) {
 		MeshSet<3> *right = Carve_getIntersectedOperand(orig_meshes, otherAABB);
 
 		if (!right) {
@@ -559,8 +559,6 @@ static bool Carve_checkDegeneratedFace(std::map<MeshSet<3>::vertex_t*, uint> *ve
 
 		if (v1 == v2 || v2 == v3 || v1 == v3)
 			return true;
-
-		return triangleArea(face->edge->prev->vert->v, face->edge->vert->v, face->edge->next->vert->v) < DBL_EPSILON;
 	}
 	else if (face->n_edges == 4) {
 		uint v1, v2, v3, v4;
@@ -572,9 +570,6 @@ static bool Carve_checkDegeneratedFace(std::map<MeshSet<3>::vertex_t*, uint> *ve
 
 		if (v1 == v2 || v1 == v3 || v1 == v4 || v2 == v3 || v2 == v4 || v3 == v4)
 			return true;
-
-		return triangleArea(face->edge->vert->v, face->edge->next->vert->v, face->edge->next->next->vert->v) +
-		       triangleArea(face->edge->prev->vert->v, face->edge->vert->v, face->edge->next->next->vert->v) < DBL_EPSILON;
 	}
 
 	return false;

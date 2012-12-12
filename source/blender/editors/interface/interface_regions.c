@@ -46,6 +46,8 @@
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
+#include "BKE_idcode.h"
+#include "BKE_global.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -213,7 +215,7 @@ static MenuData *decompose_menu_string(const char *str)
 				else {
 					menudata_add_item(md, nitem, nretval, nicon, 0);
 					nretval = md->nitems + 1;
-				} 
+				}
 				
 				nitem = NULL;
 				nicon = 0;
@@ -425,7 +427,6 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 	rctf rect_fl;
 	rcti rect_i;
 
-	const int nbr_info = 6;
 	uiStringInfo but_tip = {BUT_GET_TIP, NULL};
 	uiStringInfo enum_label = {BUT_GET_RNAENUM_LABEL, NULL};
 	uiStringInfo enum_tip = {BUT_GET_RNAENUM_TIP, NULL};
@@ -439,50 +440,11 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 	/* create tooltip data */
 	data = MEM_callocN(sizeof(uiTooltipData), "uiTooltipData");
 
-	uiButGetStrInfo(C, but, nbr_info, &but_tip, &enum_label, &enum_tip, &op_keymap, &rna_struct, &rna_prop);
+	uiButGetStrInfo(C, but, &but_tip, &enum_label, &enum_tip, &op_keymap, &rna_struct, &rna_prop, NULL);
 
 	/* special case, enum rna buttons only have enum item description,
 	 * use general enum description too before the specific one */
-#if 0
-	if (but->rnaprop && RNA_property_type(but->rnaprop) == PROP_ENUM) {
-		const char *descr = RNA_property_description(but->rnaprop);
-		if (descr && descr[0]) {
-			BLI_strncpy(data->lines[data->totline], descr, sizeof(data->lines[0]));
-			data->color_id[data->totline] = UI_TIP_LC_MAIN;
-			data->totline++;
-		}
 
-		if (ELEM(but->type, ROW, MENU)) {
-			EnumPropertyItem *item;
-			int totitem, free;
-			int value = (but->type == ROW) ? (int)but->hardmax : (int)ui_get_but_val(but);
-
-			RNA_property_enum_items_gettexted(C, &but->rnapoin, but->rnaprop, &item, &totitem, &free);
-
-			for (i = 0; i < totitem; i++) {
-				if (item[i].identifier[0] && item[i].value == value) {
-					if (item[i].description && item[i].description[0]) {
-						BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]), "%s: %s",
-						             item[i].name, item[i].description);
-						data->color_id[data->totline] = UI_TIP_LC_SUBMENU;
-						data->totline++;
-					}
-					break;
-				}
-			}
-
-			if (free) {
-				MEM_freeN(item);
-			}
-		}
-	}
-	
-	if (but->tip && but->tip[0] != '\0') {
-		BLI_strncpy(data->lines[data->totline], but->tip, sizeof(data->lines[0]));
-		data->color_id[data->totline] = UI_TIP_LC_MAIN;
-		data->totline++;
-	}
-#else
 	/* Tip */
 	if (but_tip.strinfo) {
 		BLI_strncpy(data->lines[data->totline], but_tip.strinfo, sizeof(data->lines[0]));
@@ -496,29 +458,13 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 		data->color_id[data->totline] = UI_TIP_LC_SUBMENU;
 		data->totline++;
 	}
-#endif
 
-#if 0
-	if (but->optype && !(but->block->flag & UI_BLOCK_LOOP)) {
-		/* operator keymap (not menus, they already have it) */
-		prop = (but->opptr) ? but->opptr->data : NULL;
-
-		if (WM_key_event_operator_string(C, but->optype->idname, but->opcontext, prop, TRUE,
-		                                 buf, sizeof(buf)))
-		{
-			BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]), TIP_("Shortcut: %s"), buf);
-			data->color_id[data->totline] = UI_TIP_LC_NORMAL;
-			data->totline++;
-		}
-	}
-#else
 	/* Op shortcut */
 	if (op_keymap.strinfo) {
 		BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]), TIP_("Shortcut: %s"), op_keymap.strinfo);
 		data->color_id[data->totline] = UI_TIP_LC_NORMAL;
 		data->totline++;
 	}
-#endif
 
 	if (ELEM3(but->type, TEX, IDPOIN, SEARCH_MENU)) {
 		/* full string */
@@ -552,15 +498,7 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 				data->totline++;
 			}
 		}
-#if 0
-		/* rna info */
-		if ((U.flag & USER_TOOLTIPS_PYTHON) == 0) {
-			BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]), TIP_("Python: %s.%s"),
-			             RNA_struct_identifier(but->rnapoin.type), RNA_property_identifier(but->rnaprop));
-			data->color_id[data->totline] = UI_TIP_LC_PYTHON;
-			data->totline++;
-		}
-#endif
+
 		if (but->rnapoin.id.data) {
 			ID *id = but->rnapoin.id.data;
 			if (id->lib && id->lib->name) {
@@ -602,30 +540,55 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 			}
 		}
 	}
-#if 0
-	else if (ELEM(but->type, MENU, PULLDOWN)) {
-		if ((U.flag & USER_TOOLTIPS_PYTHON) == 0) {
-			MenuType *mt = uiButGetMenuType(but);
-			if (mt) {
-				BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]), TIP_("Python: %s"), mt->idname);
-				data->color_id[data->totline] = UI_TIP_LC_PYTHON;
-				data->totline++;
-			}
-		}
-	}
-#else
 	if ((U.flag & USER_TOOLTIPS_PYTHON) == 0 && !but->optype && rna_struct.strinfo) {
-		if (rna_prop.strinfo)
+		if (rna_prop.strinfo) {
 			/* Struct and prop */
 			BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]),
-			             TIP_("Python: %s.%s"), rna_struct.strinfo, rna_prop.strinfo);
-		else
+			             TIP_("Python: %s.%s"),
+			             rna_struct.strinfo, rna_prop.strinfo);
+		}
+		else {
 			/* Only struct (e.g. menus) */
-			BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]), TIP_("Python: %s"), rna_struct.strinfo);
+			BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]),
+			             TIP_("Python: %s"), rna_struct.strinfo);
+		}
 		data->color_id[data->totline] = UI_TIP_LC_PYTHON;
 		data->totline++;
+
+		if (but->rnapoin.id.data) {
+			/* this could get its own 'BUT_GET_...' type */
+			PointerRNA *ptr = &but->rnapoin;
+			PropertyRNA *prop = but->rnaprop;
+			ID *id = ptr->id.data;
+
+			char *id_path;
+			char *data_path = NULL;
+
+			/* never fails */
+			id_path = RNA_path_from_ID_python(id);
+
+			if (ptr->id.data && ptr->data && prop) {
+				data_path = RNA_path_from_ID_to_property(ptr, prop);
+			}
+
+			if (data_path) {
+				BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]),
+				             "%s.%s",  /* no need to translate */
+				             id_path, data_path);
+				MEM_freeN(data_path);
+			}
+			else if (prop) {
+				/* can't find the path. be explicit in our ignorance "..." */
+				BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]),
+				             "%s ... %s",  /* no need to translate */
+				             id_path, rna_prop.strinfo ? rna_prop.strinfo : RNA_property_identifier(prop));
+			}
+			MEM_freeN(id_path);
+
+			data->color_id[data->totline] = UI_TIP_LC_PYTHON;
+			data->totline++;
+		}
 	}
-#endif
 
 	/* Free strinfo's... */
 	if (but_tip.strinfo)
@@ -641,7 +604,7 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 	if (rna_prop.strinfo)
 		MEM_freeN(rna_prop.strinfo);
 
-	assert(data->totline < MAX_TOOLTIP_LINES);
+	BLI_assert(data->totline < MAX_TOOLTIP_LINES);
 	
 	if (data->totline == 0) {
 		MEM_freeN(data);
@@ -670,7 +633,7 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 
 	for (a = 0, fontw = 0, fonth = 0; a < data->totline; a++) {
 		w = BLF_width(data->fstyle.uifont_id, data->lines[a]);
-		fontw = MAX2(fontw, w);
+		fontw = max_ff(fontw, (float)w);
 		fonth += (a == 0) ? h : h + TIP_MARGIN_Y;
 	}
 
@@ -825,9 +788,15 @@ int uiSearchItemAdd(uiSearchItems *items, const char *name, void *poin, int icon
 	return 1;
 }
 
-int uiSearchBoxhHeight(void)
+int uiSearchBoxHeight(void)
 {
 	return SEARCH_ITEMS * UI_UNIT_Y + 2 * MENU_TOP;
+}
+
+int uiSearchBoxWidth(void)
+{
+	/* was hardcoded at 150 */
+	return 9 * UI_UNIT_X;
 }
 
 /* ar is the search box itself */
@@ -1159,7 +1128,7 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 	
 	/* special case, hardcoded feature, not draw backdrop when called from menus,
 	 * assume for design that popup already added it */
-	if (but->block->flag & UI_BLOCK_LOOP)
+	if (but->block->flag & UI_BLOCK_SEARCH_MENU)
 		data->noback = 1;
 	
 	if (but->a1 > 0 && but->a2 > 0) {
@@ -1169,7 +1138,7 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 	}
 	
 	/* compute position */
-	if (but->block->flag & UI_BLOCK_LOOP) {
+	if (but->block->flag & UI_BLOCK_SEARCH_MENU) {
 		/* this case is search menu inside other menu */
 		/* we copy region size */
 
@@ -1190,10 +1159,11 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 		}
 	}
 	else {
+		const int searchbox_width = uiSearchBoxWidth();
 		rect_fl.xmin = but->rect.xmin - 5;   /* align text with button */
 		rect_fl.xmax = but->rect.xmax + 5;   /* symmetrical */
 		rect_fl.ymax = but->rect.ymin;
-		rect_fl.ymin = rect_fl.ymax - uiSearchBoxhHeight();
+		rect_fl.ymin = rect_fl.ymax - uiSearchBoxHeight();
 
 		ofsx = (but->block->panel) ? but->block->panel->ofsx : 0;
 		ofsy = (but->block->panel) ? but->block->panel->ofsy : 0;
@@ -1201,8 +1171,8 @@ ARegion *ui_searchbox_create(bContext *C, ARegion *butregion, uiBut *but)
 		BLI_rctf_translate(&rect_fl, ofsx, ofsy);
 	
 		/* minimal width */
-		if (BLI_rctf_size_x(&rect_fl) < 150) {
-			rect_fl.xmax = rect_fl.xmin + 150;  /* XXX arbitrary */
+		if (BLI_rctf_size_x(&rect_fl) < searchbox_width) {
+			rect_fl.xmax = rect_fl.xmin + searchbox_width;
 		}
 		
 		/* copy to int, gets projected if possible too */
@@ -1408,8 +1378,8 @@ static void ui_block_position(wmWindow *window, ARegion *butregion, uiBut *but, 
 			dir1 &= (UI_TOP | UI_DOWN);
 		}
 
-		if (dir2 == 0) if (dir1 == UI_LEFT || dir1 == UI_RIGHT) dir2 = UI_DOWN;
-		if (dir2 == 0) if (dir1 == UI_TOP || dir1 == UI_DOWN) dir2 = UI_LEFT;
+		if ((dir2 == 0) && (dir1 == UI_LEFT || dir1 == UI_RIGHT)) dir2 = UI_DOWN;
+		if ((dir2 == 0) && (dir1 == UI_TOP  || dir1 == UI_DOWN))  dir2 = UI_LEFT;
 		
 		/* no space at all? don't change */
 		if (left || right) {
@@ -1463,7 +1433,7 @@ static void ui_block_position(wmWindow *window, ARegion *butregion, uiBut *but, 
 		if (top == 0 && down == 0) {
 			if (dir1 == UI_LEFT || dir1 == UI_RIGHT) {
 				/* align with bottom of screen */
-				// yof= ysize; (not with menu scrolls)
+				// yof = ysize; (not with menu scrolls)
 			}
 		}
 		
@@ -1548,7 +1518,11 @@ static void ui_block_region_draw(const bContext *C, ARegion *ar)
 static void ui_popup_block_clip(wmWindow *window, uiBlock *block)
 {
 	int winx, winy;
-	
+
+	if (block->flag & UI_BLOCK_NO_WIN_CLIP) {
+		return;
+	}
+
 	wm_window_get_size(window, &winx, &winy);
 	
 	if (block->rect.xmin < MENU_SHADOW_SIDE)
@@ -1565,8 +1539,6 @@ static void ui_popup_block_clip(wmWindow *window, uiBlock *block)
 void ui_popup_block_scrolltest(uiBlock *block)
 {
 	uiBut *bt;
-	/* Knowing direction is necessary for multi-column menus... */
-	int is_flip = (block->direction & UI_TOP) && !(block->flag & UI_BLOCK_NO_FLIP);
 	
 	block->flag &= ~(UI_BLOCK_CLIPBOTTOM | UI_BLOCK_CLIPTOP);
 	
@@ -1576,29 +1548,27 @@ void ui_popup_block_scrolltest(uiBlock *block)
 	if (block->buttons.first == block->buttons.last)
 		return;
 	
-	/* mark buttons that are outside boundary and the ones next to it for arrow(s) */
+	/* mark buttons that are outside boundary */
 	for (bt = block->buttons.first; bt; bt = bt->next) {
 		if (bt->rect.ymin < block->rect.ymin) {
 			bt->flag |= UI_SCROLLED;
 			block->flag |= UI_BLOCK_CLIPBOTTOM;
-			/* make space for arrow */
-			if (bt->rect.ymax < block->rect.ymin + 10) {
-				if (is_flip && bt->next && bt->next->rect.ymin > bt->rect.ymin)
-					bt->next->flag |= UI_SCROLLED;
-				else if (!is_flip && bt->prev && bt->prev->rect.ymin > bt->rect.ymin)
-					bt->prev->flag |= UI_SCROLLED;
-			}
 		}
 		if (bt->rect.ymax > block->rect.ymax) {
 			bt->flag |= UI_SCROLLED;
 			block->flag |= UI_BLOCK_CLIPTOP;
-			/* make space for arrow */
-			if (bt->rect.ymin > block->rect.ymax - 10) {
-				if (!is_flip && bt->next && bt->next->rect.ymax < bt->rect.ymax)
-					bt->next->flag |= UI_SCROLLED;
-				else if (is_flip && bt->prev && bt->prev->rect.ymax < bt->rect.ymax)
-					bt->prev->flag |= UI_SCROLLED;
-			}
+		}
+	}
+
+	/* mark buttons overlapping arrows, if we have them */
+	for (bt = block->buttons.first; bt; bt = bt->next) {
+		if (block->flag & UI_BLOCK_CLIPBOTTOM) {
+			if (bt->rect.ymin < block->rect.ymin + UI_MENU_SCROLL_ARROW)
+				bt->flag |= UI_SCROLLED;
+		}
+		if (block->flag & UI_BLOCK_CLIPTOP) {
+			if (bt->rect.ymax > block->rect.ymax - UI_MENU_SCROLL_ARROW)
+				bt->flag |= UI_SCROLLED;
 		}
 	}
 }
@@ -1950,7 +1920,7 @@ static void ui_update_block_buts_rgb(uiBlock *block, const float rgb[3])
 			else if (bt->str[0] == 'V') {
 				ui_set_but_val(bt, hsv[2]);
 			}
-		}		
+		}
 
 		ui_check_but(bt);
 	}
@@ -2253,13 +2223,11 @@ uiBlock *ui_block_func_COLOR(bContext *C, uiPopupBlockHandle *handle, void *arg_
 		show_picker = (but->block->flag & UI_BLOCK_POPUP) == 0;
 	}
 	
-	uiBlockSetFlag(block, UI_BLOCK_MOVEMOUSE_QUIT);
-	
 	copy_v3_v3(handle->retvec, but->editvec);
 	
 	uiBlockPicker(block, handle->retvec, &but->rnapoin, but->rnaprop, show_picker);
 	
-	block->flag = UI_BLOCK_LOOP | UI_BLOCK_REDRAW | UI_BLOCK_KEEP_OPEN | UI_BLOCK_OUT_1;
+	block->flag = UI_BLOCK_LOOP | UI_BLOCK_REDRAW | UI_BLOCK_KEEP_OPEN | UI_BLOCK_OUT_1 | UI_BLOCK_MOVEMOUSE_QUIT;
 	uiBoundsBlock(block, 10);
 	
 	block->block_event_func = ui_picker_small_wheel_cb;
@@ -2272,7 +2240,7 @@ uiBlock *ui_block_func_COLOR(bContext *C, uiPopupBlockHandle *handle, void *arg_
 
 /************************ Popup Menu Memory ****************************/
 
-static int ui_popup_string_hash(char *str)
+static int ui_popup_string_hash(const char *str)
 {
 	/* sometimes button contains hotkey, sometimes not, strip for proper compare */
 	int hash;
@@ -2377,7 +2345,7 @@ static uiBlock *ui_block_func_POPUP(bContext *C, uiPopupBlockHandle *handle, voi
 	uiBlockSetFlag(block, UI_BLOCK_MOVEMOUSE_QUIT);
 	
 	if (pup->popup) {
-		uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_REDRAW | UI_BLOCK_NUMSELECT | UI_BLOCK_RET_1);
+		uiBlockSetFlag(block, UI_BLOCK_LOOP | UI_BLOCK_REDRAW | UI_BLOCK_NUMSELECT);
 		uiBlockSetDirection(block, direction);
 
 		/* offset the mouse position, possibly based on earlier selection */
@@ -2396,7 +2364,7 @@ static uiBlock *ui_block_func_POPUP(bContext *C, uiPopupBlockHandle *handle, voi
 			 * on the first item */
 			offset[0] = 0;
 			for (bt = block->buttons.first; bt; bt = bt->next)
-				offset[0] = mini(offset[0], -(bt->rect.xmin + 0.8f * BLI_rctf_size_x(&bt->rect)));
+				offset[0] = min_ii(offset[0], -(bt->rect.xmin + 0.8f * BLI_rctf_size_x(&bt->rect)));
 
 			offset[1] = 1.5 * UI_UNIT_Y;
 		}
@@ -2506,6 +2474,9 @@ uiPopupMenu *uiPupMenuBegin(bContext *C, const char *title, int icon)
 	pup->block->flag |= UI_BLOCK_POPUP_MEMORY;
 	pup->block->puphash = ui_popup_menu_hash(title);
 	pup->layout = uiBlockLayout(pup->block, UI_LAYOUT_VERTICAL, UI_LAYOUT_MENU, 0, 0, 200, 0, style);
+
+	/* note, this intentionally differs from the menu & submenu default because many operators
+	 * use popups like this to select one of their options - where having invoke doesn't make sense */
 	uiLayoutSetOperatorContext(pup->layout, WM_OP_EXEC_REGION_WIN);
 
 	/* create in advance so we can let buttons point to retval already */
@@ -2674,14 +2645,18 @@ void uiPupMenuReports(bContext *C, ReportList *reports)
 	ds = BLI_dynstr_new();
 
 	for (report = reports->list.first; report; report = report->next) {
-		if (report->type < reports->printlevel)
-			;  /* pass */
-		else if (report->type >= RPT_ERROR)
+		if (report->type < reports->printlevel) {
+			/* pass */
+		}
+		else if (report->type >= RPT_ERROR) {
 			BLI_dynstr_appendf(ds, "Error %%i%d%%t|%s", ICON_ERROR, report->message);
-		else if (report->type >= RPT_WARNING)
+		}
+		else if (report->type >= RPT_WARNING) {
 			BLI_dynstr_appendf(ds, "Warning %%i%d%%t|%s", ICON_ERROR, report->message);
-		else if (report->type >= RPT_INFO)
+		}
+		else if (report->type >= RPT_INFO) {
 			BLI_dynstr_appendf(ds, "Info %%i%d%%t|%s", ICON_INFO, report->message);
+		}
 	}
 
 	str = BLI_dynstr_get_cstring(ds);
@@ -2712,6 +2687,10 @@ void uiPupMenuInvoke(bContext *C, const char *idname)
 
 	menu.layout = layout;
 	menu.type = mt;
+
+	if (G.debug & G_DEBUG_WM) {
+		printf("%s: opening menu \"%s\"\n", __func__, idname);
+	}
 
 	mt->draw(C, &menu);
 

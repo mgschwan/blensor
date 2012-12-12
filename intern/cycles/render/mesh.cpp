@@ -19,6 +19,7 @@
 #include "bvh.h"
 #include "bvh_build.h"
 
+#include "camera.h"
 #include "device.h"
 #include "shader.h"
 #include "light.h"
@@ -324,6 +325,7 @@ void MeshManager::update_osl_attributes(Device *device, Scene *scene, vector<Att
 
 	og->object_name_map.clear();
 	og->attribute_map.clear();
+	og->object_names.clear();
 
 	og->attribute_map.resize(scene->objects.size());
 
@@ -331,6 +333,7 @@ void MeshManager::update_osl_attributes(Device *device, Scene *scene, vector<Att
 		/* set object name to object index map */
 		Object *object = scene->objects[i];
 		og->object_name_map[object->name] = i;
+		og->object_names.push_back(object->name);
 
 		/* set object attributes */
 		foreach(ParamValue& attr, object->attributes) {
@@ -354,6 +357,9 @@ void MeshManager::update_osl_attributes(Device *device, Scene *scene, vector<Att
 
 		/* set object attributes */
 		foreach(AttributeRequest& req, attributes.requests) {
+			if(req.element == ATTR_ELEMENT_NONE)
+				continue;
+
 			OSLGlobals::Attribute osl_attr;
 
 			osl_attr.elem = req.element;
@@ -365,8 +371,8 @@ void MeshManager::update_osl_attributes(Device *device, Scene *scene, vector<Att
 				osl_attr.type = TypeDesc::TypeColor;
 
 			if(req.std != ATTR_STD_NONE) {
-				/* if standard attribute, add lookup by std:: name convention */
-				ustring stdname(std::string("std::") + std::string(attribute_standard_name(req.std)));
+				/* if standard attribute, add lookup by geom: name convention */
+				ustring stdname(string("geom:") + string(attribute_standard_name(req.std)));
 				og->attribute_map[i][stdname] = osl_attr;
 			}
 			else if(req.name != ustring()) {
@@ -541,7 +547,7 @@ void MeshManager::device_update_attributes(Device *device, DeviceScene *dscene, 
 	}
 
 	/* create attribute lookup maps */
-	if(scene->params.shadingsystem == SceneParams::OSL)
+	if(scene->shader_manager->use_osl())
 		update_osl_attributes(device, scene, mesh_attributes);
 	else
 		update_svm_attributes(device, dscene, scene, mesh_attributes);
@@ -722,10 +728,16 @@ void MeshManager::device_update(Device *device, DeviceScene *dscene, Scene *scen
 	foreach(Shader *shader, scene->shaders)
 		shader->need_update_attributes = false;
 
-	bool motion_blur = scene->need_motion() == Scene::MOTION_BLUR;
+	float shuttertime = scene->camera->shuttertime;
+#ifdef __OBJECT_MOTION__
+	Scene::MotionType need_motion = scene->need_motion(device->info.advanced_shading);
+	bool motion_blur = need_motion == Scene::MOTION_BLUR;
+#else
+	bool motion_blur = false;
+#endif
 
 	foreach(Object *object, scene->objects)
-		object->compute_bounds(motion_blur);
+		object->compute_bounds(motion_blur, shuttertime);
 
 	if(progress.get_cancel()) return;
 

@@ -49,11 +49,6 @@ if(WITH_MOD_SMOKE)
 	add_subdirectory(smoke)
 endif()
 
-if(WITH_MOD_DECIMATE)
-	add_subdirectory(container)
-	add_subdirectory(decimation)
-endif()
-
 if(WITH_MOD_BOOLEAN)
 	add_subdirectory(bsp)
 endif()
@@ -68,6 +63,10 @@ endif()
 
 if(WITH_CYCLES)
 	add_subdirectory(cycles)
+endif()
+
+if(WITH_INTERNATIONAL)
+	add_subdirectory(locale)
 endif()
 
 # only windows needs utf16 converter

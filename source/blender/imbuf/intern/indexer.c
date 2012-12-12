@@ -36,18 +36,19 @@
 
 #include "IMB_indexer.h"
 #include "IMB_anim.h"
-#include "AVI_avi.h"
 #include "imbuf.h"
 
 #include "MEM_guardedalloc.h"
 #include "DNA_userdef_types.h"
 #include "BKE_global.h"
 
+#ifdef WITH_AVI
+#  include "AVI_avi.h"
+#endif
+
 #ifdef WITH_FFMPEG
-
-#include "ffmpeg_compat.h"
-
-#endif //WITH_FFMPEG
+#  include "ffmpeg_compat.h"
+#endif
 
 
 static char magic[] = "BlenMIdx";
@@ -869,9 +870,9 @@ static void index_rebuild_ffmpeg_proc_decoded_frame(
 		context->start_pts_set = TRUE;
 	}
 
-	context->frameno = floor((pts - context->start_pts) 
-				 * context->pts_time_base 
-				 * context->frame_rate + 0.5f);
+	context->frameno = floor((pts - context->start_pts) *
+	                         context->pts_time_base  *
+	                         context->frame_rate + 0.5);
 
 	/* decoding starts *always* on I-Frames,
 	 * so: P-Frames won't work, even if all the
@@ -910,6 +911,8 @@ static int index_rebuild_ffmpeg(FFmpegIndexBuilderContext *context,
 	AVFrame *in_frame = 0;
 	AVPacket next_packet;
 	uint64_t stream_size;
+
+	memset(&next_packet, 0, sizeof(AVPacket));
 
 	in_frame = avcodec_alloc_frame();
 
@@ -958,11 +961,12 @@ static int index_rebuild_ffmpeg(FFmpegIndexBuilderContext *context,
 	 * according to ffmpeg docs using 0-size packets.
 	 *
 	 * At least, if we haven't already stopped... */
+
+	/* this creates the 0-size packet and prevents a memory leak. */
+	av_free_packet(&next_packet);
+
 	if (!*stop) {
 		int frame_finished;
-
-		next_packet.size = 0;
-		next_packet.data = 0;
 
 		do {
 			frame_finished = 0;
@@ -989,6 +993,7 @@ static int index_rebuild_ffmpeg(FFmpegIndexBuilderContext *context,
  * - internal AVI (fallback) rebuilder
  * ---------------------------------------------------------------------- */
 
+#ifdef WITH_AVI
 typedef struct FallbackIndexBuilderContext {
 	int anim_type;
 
@@ -1149,6 +1154,8 @@ static void index_rebuild_fallback(FallbackIndexBuilderContext *context,
 	}
 }
 
+#endif  /* WITH_AVI */
+
 /* ----------------------------------------------------------------------
  * - public API
  * ---------------------------------------------------------------------- */
@@ -1164,15 +1171,19 @@ IndexBuildContext *IMB_anim_index_rebuild_context(struct anim *anim, IMB_Timecod
 			context = index_ffmpeg_create_context(anim, tcs_in_use, proxy_sizes_in_use, quality);
 			break;
 #endif
+#ifdef WITH_AVI
 		default:
 			context = index_fallback_create_context(anim, tcs_in_use, proxy_sizes_in_use, quality);
 			break;
+#endif
 	}
 
 	if (context)
 		context->anim_type = anim->curtype;
 
 	return context;
+
+	(void)tcs_in_use, (void)proxy_sizes_in_use, (void)quality;
 }
 
 void IMB_anim_index_rebuild(struct IndexBuildContext *context,
@@ -1184,10 +1195,14 @@ void IMB_anim_index_rebuild(struct IndexBuildContext *context,
 			index_rebuild_ffmpeg((FFmpegIndexBuilderContext *)context, stop, do_update, progress);
 			break;
 #endif
+#ifdef WITH_AVI
 		default:
 			index_rebuild_fallback((FallbackIndexBuilderContext *)context, stop, do_update, progress);
 			break;
+#endif
 	}
+
+	(void)stop, (void)do_update, (void)progress;
 }
 
 void IMB_anim_index_rebuild_finish(IndexBuildContext *context, short stop)
@@ -1198,10 +1213,15 @@ void IMB_anim_index_rebuild_finish(IndexBuildContext *context, short stop)
 			index_rebuild_ffmpeg_finish((FFmpegIndexBuilderContext *)context, stop);
 			break;
 #endif
+#ifdef WITH_AVI
 		default:
 			index_rebuild_fallback_finish((FallbackIndexBuilderContext *)context, stop);
 			break;
+#endif
 	}
+
+	(void)stop;
+	(void)proxy_sizes;  /* static defined at top of the file */
 }
 
 

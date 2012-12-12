@@ -642,7 +642,7 @@ static void view_zoomstep_apply(bContext *C, wmOperator *op)
 				
 				v2d->cur.ymin += ofs + dy;
 				v2d->cur.ymax += ofs - dy;
-			} 
+			}
 			else {
 				v2d->cur.ymin += dy;
 				v2d->cur.ymax -= dy;
@@ -827,6 +827,11 @@ static void view_zoomdrag_apply(bContext *C, wmOperator *op)
 	dx = RNA_float_get(op->ptr, "deltax");
 	dy = RNA_float_get(op->ptr, "deltay");
 
+	if (U.uiflag & USER_ZOOM_INVERT) {
+		dx *= -1;
+		dy *= -1;
+	}
+	
 	/* continuous zoom shouldn't move that fast... */
 	if (U.viewzoom == USER_ZOOM_CONT) { // XXX store this setting as RNA prop?
 		double time = PIL_check_seconds_timer();
@@ -849,12 +854,12 @@ static void view_zoomdrag_apply(bContext *C, wmOperator *op)
 				float mval_faci = 1.0f - mval_fac;
 				float ofs = (mval_fac * dx) - (mval_faci * dx);
 				
-				v2d->cur.xmin += ofs - dx;
-				v2d->cur.xmax += ofs + dx;
+				v2d->cur.xmin += ofs + dx;
+				v2d->cur.xmax += ofs - dx;
 			}
 			else {
-				v2d->cur.xmin -= dx;
-				v2d->cur.xmax += dx;
+				v2d->cur.xmin += dx;
+				v2d->cur.xmax -= dx;
 			}
 		}
 	}
@@ -868,12 +873,12 @@ static void view_zoomdrag_apply(bContext *C, wmOperator *op)
 				float mval_faci = 1.0f - mval_fac;
 				float ofs = (mval_fac * dy) - (mval_faci * dy);
 				
-				v2d->cur.ymin += ofs - dy;
-				v2d->cur.ymax += ofs + dy;
+				v2d->cur.ymin += ofs + dy;
+				v2d->cur.ymax += ofs - dy;
 			}
 			else {
-				v2d->cur.ymin -= dy;
-				v2d->cur.ymax += dy;
+				v2d->cur.ymin += dy;
+				v2d->cur.ymax -= dy;
 			}
 		}
 	}
@@ -951,7 +956,7 @@ static int view_zoomdrag_invoke(bContext *C, wmOperator *op, wmEvent *event)
 		view_zoomdrag_apply(C, op);
 		view_zoomdrag_exit(C, op);
 		return OPERATOR_FINISHED;
-	}	
+	}
 	
 	/* set initial settings */
 	vzd->lastx = event->x;
@@ -1044,14 +1049,9 @@ static int view_zoomdrag_modal(bContext *C, wmOperator *op, wmEvent *event)
 		}
 		
 		/* set transform amount, and add current deltas to stored total delta (for redo) */
-		if (U.uiflag & USER_ZOOM_INVERT) {
-			RNA_float_set(op->ptr, "deltax", -dx);
-			RNA_float_set(op->ptr, "deltay", -dy);
-		}
-		else {
-			RNA_float_set(op->ptr, "deltax", dx);
-			RNA_float_set(op->ptr, "deltay", dy);
-		}
+		RNA_float_set(op->ptr, "deltax", dx);
+		RNA_float_set(op->ptr, "deltay", dy);
+
 		vzd->dx += dx;
 		vzd->dy += dy;
 		
@@ -1065,7 +1065,7 @@ static int view_zoomdrag_modal(bContext *C, wmOperator *op, wmEvent *event)
 		
 		/* apply zooming */
 		view_zoomdrag_apply(C, op);
-	} 
+	}
 	else if (event->type == vzd->invoke_event || event->type == ESCKEY) {
 		if (event->val == KM_RELEASE) {
 			
@@ -1243,16 +1243,16 @@ static float smooth_view_rect_to_fac(const rctf *rect_a, const rctf *rect_b)
 
 	for (i = 0; i < 2; i++) {
 		/* axis translation normalized to scale */
-		tfac = fabsf(cent_a[i] - cent_b[i]) / minf(size_a[i], size_b[i]);
-		fac_max = maxf(fac_max, tfac);
+		tfac = fabsf(cent_a[i] - cent_b[i]) / min_ff(size_a[i], size_b[i]);
+		fac_max = max_ff(fac_max, tfac);
 		if (fac_max >= 1.0f) break;
 
 		/* axis scale difference, x2 so doubling or half gives 1.0f */
-		tfac = (1.0f - (minf(size_a[i], size_b[i]) / maxf(size_a[i], size_b[i]))) * 2.0f;
-		fac_max = maxf(fac_max, tfac);
+		tfac = (1.0f - (min_ff(size_a[i], size_b[i]) / max_ff(size_a[i], size_b[i]))) * 2.0f;
+		fac_max = max_ff(fac_max, tfac);
 		if (fac_max >= 1.0f) break;
 	}
-	return minf(fac_max, 1.0f);
+	return min_ff(fac_max, 1.0f);
 }
 
 /* will start timer if appropriate */
@@ -1469,7 +1469,7 @@ static short mouse_in_scroller_handle(int mouse, int sc_min, int sc_max, int sh_
 	else if (in_min)
 		return SCROLLHANDLE_MIN;
 	else if (out_min)
-		return SCROLLHANDLE_MIN_OUTSIDE;			  
+		return SCROLLHANDLE_MIN_OUTSIDE;
 	else if (out_max)
 		return SCROLLHANDLE_MAX_OUTSIDE;
 	
@@ -1751,7 +1751,7 @@ static int scroller_activate_invoke(bContext *C, wmOperator *op, wmEvent *event)
 				
 				/* can't catch this event for ourselves, so let it go to someone else? */
 				return OPERATOR_PASS_THROUGH;
-			}			
+			}
 		}
 		
 		/* zone is also inappropriate if scroller is not visible... */

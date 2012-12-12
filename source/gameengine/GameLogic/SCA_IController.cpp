@@ -240,8 +240,8 @@ PyAttributeDef SCA_IController::Attributes[] = {
 
 PyObject *SCA_IController::pyattr_get_state(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
-	SCA_IController* self= static_cast<SCA_IController*>(self_v);
-	return PyLong_FromSsize_t(self->m_statemask);
+	SCA_IController* self = static_cast<SCA_IController*>(self_v);
+	return PyLong_FromLong(self->m_statemask);
 }
 
 PyObject *SCA_IController::pyattr_get_sensors(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)

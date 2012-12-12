@@ -34,12 +34,12 @@
 
 /* **************** Rotate  ******************** */
 
-static bNodeSocketTemplate cmp_node_rotate_in[]= {
+static bNodeSocketTemplate cmp_node_rotate_in[] = {
 	{	SOCK_RGBA, 1, N_("Image"),			1.0f, 1.0f, 1.0f, 1.0f},
 	{	SOCK_FLOAT, 1, N_("Degr"),			0.0f, 0.0f, 0.0f, 0.0f, -10000.0f, 10000.0f, PROP_ANGLE},
 	{	-1, 0, ""	}
 };
-static bNodeSocketTemplate cmp_node_rotate_out[]= {
+static bNodeSocketTemplate cmp_node_rotate_out[] = {
 	{	SOCK_RGBA, 0, N_("Image")},
 	{	-1, 0, ""	}
 };
@@ -91,7 +91,7 @@ static void node_composit_exec_rotate(void *UNUSED(data), bNode *node, bNodeStac
 
 					switch (node->custom1) {
 					case 0:
-						neareast_interpolation(ibuf, obuf, u, v, xo, yo);
+						nearest_interpolation(ibuf, obuf, u, v, xo, yo);
 						break;
 					case 1:
 						bilinear_interpolation(ibuf, obuf, u, v, xo, yo);

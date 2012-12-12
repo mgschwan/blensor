@@ -206,7 +206,7 @@ static void make_dmats(bPoseChannel *pchan)
 /* applies IK matrix to pchan, IK is done separated */
 /* formula: pose_mat(b) = pose_mat(b-1) * diffmat(b-1, b) * ik_mat(b) */
 /* to make this work, the diffmats have to be precalculated! Stored in chan_mat */
-static void where_is_ik_bone(bPoseChannel *pchan, float ik_mat[][3])   // nr = to detect if this is first bone
+static void where_is_ik_bone(bPoseChannel *pchan, float ik_mat[3][3])   // nr = to detect if this is first bone
 {
 	float vec[3], ikmat[4][4];
 
@@ -379,6 +379,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 
 		copy_v3_v3(goalpos, goal[3]);
 		copy_m3_m4(goalrot, goal);
+		normalize_m3(goalrot);
 
 		/* same for pole vector target */
 		if (data->poletar) {
@@ -433,7 +434,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 
 		iktarget = iktree[target->tip];
 
-		if (data->weight != 0.0f) {
+		if ((data->flag & CONSTRAINT_IK_POS) && data->weight != 0.0f) {
 			if (poleconstrain)
 				IK_SolverSetPoleVectorConstraint(solver, iktarget, goalpos,
 				                                 polepos, data->poleangle, (poleangledata == data));

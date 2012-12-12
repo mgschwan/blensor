@@ -64,7 +64,7 @@ def Alternative_Clay(self, msg):
             if (mat.Mat_Clay):
                 i += 1
 
-    if msg == True:
+    if msg is True:
         if (i == 1):
             self.report({'INFO'}, "The material \"" + AM.name + "\" is set "\
                 "as Clay!")

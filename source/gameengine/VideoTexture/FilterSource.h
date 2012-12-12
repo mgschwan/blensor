@@ -1,36 +1,39 @@
 /*
------------------------------------------------------------------------------
-This source file is part of blendTex library
-
-Copyright (c) 2007 The Zdeno Ash Miklas
-
-This program is free software; you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the Free Software
-Foundation; either version 2 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with
-this program; if not, write to the Free Software Foundation, Inc., 59 Temple
-Place - Suite 330, Boston, MA 02111-1307, USA, or go to
-http://www.gnu.org/copyleft/lesser.txt.
------------------------------------------------------------------------------
-*/
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software  Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * Copyright (c) 2007 The Zdeno Ash Miklas
+ *
+ * This source file is part of blendTex library
+ *
+ * Contributor(s):
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 /** \file FilterSource.h
  *  \ingroup bgevideotex
  */
- 
+
 #ifndef __FILTERSOURCE_H__
 #define __FILTERSOURCE_H__
 
 #include "Common.h"
 
 #include "FilterBase.h"
-
 
 /// class for RGB24 conversion
 class FilterRGB24 : public FilterBase
@@ -96,6 +99,65 @@ protected:
 		short * size, unsigned int pixSize, unsigned int val)
 	{ VT_RGBA(val,src[2],src[1],src[0],0xFF); return val; }
 };
+
+/// class for Z_buffer conversion
+class FilterZZZA : public FilterBase
+{
+public:
+	/// constructor
+	FilterZZZA (void) {}
+	/// destructor
+	virtual ~FilterZZZA (void) {}
+
+	/// get source pixel size
+	virtual unsigned int getPixelSize (void) { return 1; }
+
+protected:
+	/// filter pixel, source float buffer
+	virtual unsigned int filter (float * src, short x, short y,
+		short * size, unsigned int pixSize, unsigned int val)
+	{
+		// calculate gray value
+        // convert float to unsigned char
+		unsigned int depth = int(src[0] * 255);
+		// return depth scale value
+		VT_R(val) = depth;
+		VT_G(val) = depth;
+		VT_B(val) = depth;
+		VT_A(val) = 0xFF;
+
+		return val;
+	}
+};
+
+
+/// class for Z_buffer conversion
+class FilterDEPTH : public FilterBase
+{
+public:
+	/// constructor
+	FilterDEPTH (void) {}
+	/// destructor
+	virtual ~FilterDEPTH (void) {}
+
+	/// get source pixel size
+	virtual unsigned int getPixelSize (void) { return 1; }
+
+protected:
+	/// filter pixel, source float buffer
+	virtual unsigned int filter (float * src, short x, short y,
+	                             short * size, unsigned int pixSize, unsigned int val)
+	{
+		/* Copy the float value straight away
+		 * The user can retrieve the original float value by using
+		 * 'F' mode in BGL buffer */
+		memcpy(&val, src, sizeof (unsigned int));
+		return val;
+	}
+};
+
+
+
 
 /// class for YV12 conversion
 class FilterYV12 : public FilterBase

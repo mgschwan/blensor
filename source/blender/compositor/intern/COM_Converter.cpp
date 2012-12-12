@@ -83,6 +83,7 @@
 #include "COM_LuminanceMatteNode.h"
 #include "COM_MapUVNode.h"
 #include "COM_MapValueNode.h"
+#include "COM_MapRangeNode.h"
 #include "COM_MaskNode.h"
 #include "COM_MathNode.h"
 #include "COM_MixNode.h"
@@ -119,6 +120,7 @@
 #include "COM_ViewLevelsNode.h"
 #include "COM_ViewerNode.h"
 #include "COM_ZCombineNode.h"
+#include "COM_PixelateNode.h"
 
 Node *Converter::convert(bNode *b_node, bool fast)
 {
@@ -350,6 +352,9 @@ Node *Converter::convert(bNode *b_node, bool fast)
 		case CMP_NODE_MAP_VALUE:
 			node = new MapValueNode(b_node);
 			break;
+		case CMP_NODE_MAP_RANGE:
+			node = new MapRangeNode(b_node);
+			break;
 		case CMP_NODE_TRANSFORM:
 			node = new TransformNode(b_node);
 			break;
@@ -390,6 +395,9 @@ Node *Converter::convert(bNode *b_node, bool fast)
 			node = new TrackPositionNode(b_node);
 			break;
 		/* not inplemented yet */
+		case CMP_NODE_PIXELATE:
+			node = new PixelateNode(b_node);
+			break;
 		default:
 			node = new MuteNode(b_node);
 			break;

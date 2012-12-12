@@ -45,6 +45,7 @@
 #include "DNA_material_types.h"
 #include "DNA_movieclip_types.h"
 #include "DNA_node_types.h"
+#include "DNA_sequence_types.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -53,6 +54,7 @@
 #include "BKE_image.h"
 #include "BKE_movieclip.h"
 #include "BKE_node.h"
+#include "BKE_sequencer.h"
 #include "BKE_texture.h"
 
 #include "ED_node.h"
@@ -314,7 +316,7 @@ static void rna_ColorRamp_update(Main *bmain, Scene *UNUSED(scene), PointerRNA *
 	}
 }
 
-void rna_ColorRamp_eval(struct ColorBand *coba, float position, float color[4])
+static void rna_ColorRamp_eval(struct ColorBand *coba, float position, float color[4])
 {
 	do_colorband(coba, position, color);
 }
@@ -329,12 +331,27 @@ static CBData *rna_ColorRampElement_new(struct ColorBand *coba, ReportList *repo
 	return element;
 }
 
-static void rna_ColorRampElement_remove(struct ColorBand *coba, ReportList *reports, CBData *element)
+static void rna_ColorRampElement_remove(struct ColorBand *coba, ReportList *reports, PointerRNA *element_ptr)
 {
+	CBData *element = element_ptr->data;
 	int index = (int)(element - coba->data);
-	if (colorband_element_remove(coba, index) == 0)
+	if (colorband_element_remove(coba, index) == FALSE) {
 		BKE_report(reports, RPT_ERROR, "Element not found in element collection or last element");
+		return;
+	}
 
+	RNA_POINTER_INVALIDATE(element_ptr);
+}
+
+void rna_CurveMap_remove_point(CurveMap *cuma, ReportList *reports, PointerRNA *point_ptr)
+{
+	CurveMapPoint *point = point_ptr->data;
+	if (curvemap_remove_point(cuma, point) == FALSE) {
+		BKE_report(reports, RPT_ERROR, "Unable to remove curve point");
+		return;
+	}
+
+	RNA_POINTER_INVALIDATE(point_ptr);
 }
 
 static void rna_Scopes_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
@@ -474,14 +491,55 @@ static void rna_ColorManagedColorspaceSettings_reload_update(Main *UNUSED(bmain)
 	if (GS(id->name) == ID_IM) {
 		Image *ima = (Image *) id;
 
-		BKE_image_signal(ima, NULL, IMA_SIGNAL_RELOAD);
+		DAG_id_tag_update(&ima->id, 0);
+
+		BKE_image_signal(ima, NULL, IMA_SIGNAL_COLORMANAGE);
+
 		WM_main_add_notifier(NC_IMAGE | ND_DISPLAY, &ima->id);
+		WM_main_add_notifier(NC_IMAGE | NA_EDITED, &ima->id);
 	}
 	else if (GS(id->name) == ID_MC) {
 		MovieClip *clip = (MovieClip *) id;
 
 		BKE_movieclip_reload(clip);
+
+		/* all sequencers for now, we don't know which scenes are using this clip as a strip */
+		BKE_sequencer_cache_cleanup();
+		BKE_sequencer_preprocessed_cache_cleanup();
+
 		WM_main_add_notifier(NC_MOVIECLIP | ND_DISPLAY, &clip->id);
+		WM_main_add_notifier(NC_MOVIECLIP | NA_EDITED, &clip->id);
+	}
+	else if (GS(id->name) == ID_SCE) {
+		Scene *scene = (Scene *) id;
+
+		if (scene->ed) {
+			ColorManagedColorspaceSettings *colorspace_settings = (ColorManagedColorspaceSettings *) ptr->data;
+			Sequence *seq;
+			int seq_found = FALSE;
+
+			if (&scene->sequencer_colorspace_settings != colorspace_settings) {
+				SEQ_BEGIN(scene->ed, seq);
+				{
+					if (seq->strip && &seq->strip->colorspace_settings == colorspace_settings) {
+						seq_found = TRUE;
+						break;
+					}
+				}
+				SEQ_END;
+			}
+
+			if (seq_found) {
+				BKE_sequence_invalidate_cache(scene, seq);
+				BKE_sequencer_preprocessed_cache_cleanup_sequence(seq);
+			}
+			else {
+				BKE_sequencer_cache_cleanup();
+				BKE_sequencer_preprocessed_cache_cleanup();
+			}
+
+			WM_main_add_notifier(NC_SCENE | ND_SEQUENCER, NULL);
+		}
 	}
 }
 
@@ -553,10 +611,12 @@ static void rna_def_curvemap_points_api(BlenderRNA *brna, PropertyRNA *cprop)
 	parm = RNA_def_pointer(func, "point", "CurveMapPoint", "", "New point");
 	RNA_def_function_return(func, parm);
 
-	func = RNA_def_function(srna, "remove", "curvemap_remove_point");
+	func = RNA_def_function(srna, "remove", "rna_CurveMap_remove_point");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	RNA_def_function_ui_description(func, "Delete point from CurveMap");
 	parm = RNA_def_pointer(func, "point", "CurveMapPoint", "", "PointElement to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
+	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
 }
 
 static void rna_def_curvemap(BlenderRNA *brna)
@@ -705,7 +765,8 @@ static void rna_def_color_ramp_element_api(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_ui_description(func, "Delete element from ColorRamp");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_pointer(func, "element", "ColorRampElement", "", "Element to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
+	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
 }
 
 static void rna_def_color_ramp(BlenderRNA *brna)

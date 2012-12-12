@@ -35,32 +35,19 @@ from random import (
         randrange,
         )
 
-# To support reload properly, try to access a package var,
-# if it's there, reload everything
-if ('bpy' in locals()):
-    import imp
-    if 'io_scene_ms3d.ms3d_strings' in locals():
-        imp.reload(io_scene_ms3d.ms3d_strings)
-    if 'io_scene_ms3d.ms3d_spec' in locals():
-        imp.reload(io_scene_ms3d.ms3d_spec)
-    if 'io_scene_ms3d.ms3d_utils' in locals():
-        imp.reload(io_scene_ms3d.ms3d_utils)
-    #if 'io_scene_ms3d.ms3d_import' in locals():
-    #    imp.reload(io_scene_ms3d.ms3d_import)
-    #if 'io_scene_ms3d.ms3d_export' in locals():
-    #    imp.reload(io_scene_ms3d.ms3d_export)
-else:
-    from io_scene_ms3d.ms3d_strings import (
-            ms3d_str,
-            )
-    from io_scene_ms3d.ms3d_spec import (
-            Ms3dSpec,
-            )
-    from io_scene_ms3d.ms3d_utils import (
-            enable_edit_mode,
-            )
-    #from io_scene_ms3d.ms3d_import import ( Ms3dImporter, )
-    #from io_scene_ms3d.ms3d_export import ( Ms3dExporter, )
+
+# import io_scene_ms3d stuff
+from io_scene_ms3d.ms3d_strings import (
+        ms3d_str,
+        )
+from io_scene_ms3d.ms3d_spec import (
+        Ms3dSpec,
+        )
+from io_scene_ms3d.ms3d_utils import (
+        enable_edit_mode,
+        get_edge_split_modifier_add_if,
+        set_sence_to_metric,
+        )
 
 
 #import blender stuff
@@ -214,162 +201,119 @@ class Ms3dUi:
     ICON_OBJECT = 'WORLD'
     ICON_PROCESSING = 'OBJECT_DATAMODE'
     ICON_ANIMATION = 'RENDER_ANIMATION'
-
+    ICON_ROTATION_MODE = 'BONE_DATA'
+    ICON_ERROR = 'ERROR'
 
     ###########################################################################
     PROP_DEFAULT_VERBOSE = DEFAULT_VERBOSE
 
+    ###########################################################################
+    PROP_DEFAULT_USE_JOINT_SIZE = False
+    PROP_DEFAULT_JOINT_SIZE = 0.01
+    PROP_JOINT_SIZE_MIN = 0.01
+    PROP_JOINT_SIZE_MAX = 10.0
+    PROP_JOINT_SIZE_STEP = 0.1
+    PROP_JOINT_SIZE_PRECISION = 2
 
     ###########################################################################
-    PROP_ITEM_COORDINATESYSTEM_1BY1 = '0'
-    PROP_ITEM_COORDINATESYSTEM_IMP = '1'
-    PROP_ITEM_COORDINATESYSTEM_EXP = '2'
-    PROP_DEFAULT_COORDINATESYSTEM_IMP = PROP_ITEM_COORDINATESYSTEM_IMP
-    PROP_DEFAULT_COORDINATESYSTEM_EXP = PROP_ITEM_COORDINATESYSTEM_EXP
-
-
-    ###########################################################################
-    PROP_DEFAULT_SCALE = 1.0
-    PROP_MIN_SCALE = 0.001
-    PROP_MAX_SCALE = 1000.0
-    PROP_SMIN_SCALE = 0.01
-    PROP_SMAX_SCALE = 100.0
-
+    PROP_DEFAULT_ANIMATION = True
+    PROP_DEFAULT_NORMALIZE_WEIGHTS = True
+    PROP_DEFAULT_SHRINK_TO_KEYS = False
+    PROP_DEFAULT_BAKE_EACH_FRAME = True
+    PROP_DEFAULT_JOINT_TO_BONES = False
+    PROP_DEFAULT_USE_BLENDER_NAMES = True
+    PROP_DEFAULT_USE_BLENDER_MATERIALS = False
 
     ###########################################################################
-    PROP_DEFAULT_UNIT_MM = True
-
-
-    ###########################################################################
-    PROP_DEFAULT_SELECTED = False
-
-
-    ###########################################################################
-    PROP_ITEM_OBJECT_ANIMATION = 'ANIMATION'
-    PROP_ITEM_OBJECT_GROUP = 'GROUP'
-    PROP_ITEM_OBJECT_JOINT = 'JOINT'
-    PROP_ITEM_OBJECT_MATERIAL = 'MATERIAL'
-    PROP_ITEM_OBJECT_MESH = 'MESH'
-    PROP_ITEM_OBJECT_SMOOTHGROUPS = 'SMOOTHGROUPS'
-    ###########################################################################
-    PROP_DEFAULT_OBJECTS_IMP = {
-            #PROP_ITEM_OBJECT_MESH,
-            PROP_ITEM_OBJECT_MATERIAL,
-            PROP_ITEM_OBJECT_JOINT,
-            PROP_ITEM_OBJECT_SMOOTHGROUPS,
-            PROP_ITEM_OBJECT_GROUP,
-            }
-
-
-    ###########################################################################
-    PROP_DEFAULT_OBJECTS_EXP = {
-            #PROP_ITEM_OBJECT_MESH,
-            PROP_ITEM_OBJECT_MATERIAL,
-            }
-
-
-    ###########################################################################
-    PROP_DEFAULT_ANIMATION = False
-
-    ###########################################################################
-    PROP_DEFAULT_APPLY_MODIFIER = False
-    PROP_ITEM_APPLY_MODIFIER_MODE_PREVIEW = 'PREVIEW'
-    PROP_ITEM_APPLY_MODIFIER_MODE_RENDER = 'RENDER'
-    PROP_DEFAULT_APPLY_MODIFIER_MODE = PROP_ITEM_APPLY_MODIFIER_MODE_PREVIEW
+    PROP_ITEM_ROTATION_MODE_EULER = 'EULER'
+    PROP_ITEM_ROTATION_MODE_QUATERNION = 'QUATERNION'
+    PROP_DEFAULT_ANIMATION_ROTATION = PROP_ITEM_ROTATION_MODE_EULER
 
     ###########################################################################
     OPT_SMOOTHING_GROUP_APPLY = 'io_scene_ms3d.apply_smoothing_group'
     OPT_GROUP_APPLY = 'io_scene_ms3d.apply_group'
+    OPT_MATERIAL_APPLY = 'io_scene_ms3d.apply_material'
 
 
 ###############################################################################
 class Ms3dImportOperator(Operator, ImportHelper):
     """ Load a MilkShape3D MS3D File """
-    bl_idname = 'io_scene_ms3d.import'
+    bl_idname = 'import_scene.ms3d'
     bl_label = ms3d_str['BL_LABEL_IMPORTER']
     bl_description = ms3d_str['BL_DESCRIPTION_IMPORTER']
     bl_options = {'PRESET', }
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
 
-    @staticmethod
-    def menu_func(cls, context):
-        cls.layout.operator(
-                Ms3dImportOperator.bl_idname,
-                text=ms3d_str['TEXT_OPERATOR'],
-                )
-
     filename_ext = ms3d_str['FILE_EXT']
 
     filter_glob = StringProperty(
             default=ms3d_str['FILE_FILTER'],
-            options={'HIDDEN', 'SKIP_SAVE', }
+            options={'HIDDEN', }
             )
 
     filepath = StringProperty(
             subtype='FILE_PATH',
-            options={'HIDDEN', 'SKIP_SAVE', }
+            options={'HIDDEN', }
             )
 
-    prop_verbose = BoolProperty(
+    verbose = BoolProperty(
             name=ms3d_str['PROP_NAME_VERBOSE'],
             description=ms3d_str['PROP_DESC_VERBOSE'],
             default=Ms3dUi.PROP_DEFAULT_VERBOSE,
             )
 
-    prop_coordinate_system = EnumProperty(
-            name=ms3d_str['PROP_NAME_COORDINATESYSTEM'],
-            description=ms3d_str['PROP_DESC_COORDINATESYSTEM'],
-            items=( (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_1BY1,
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_1_BY_1_1'],
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_1_BY_1_2']),
-                    (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_IMP,
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_IMP_1'],
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_IMP_2']),
-                    (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_EXP,
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_EXP_1'],
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_EXP_2']),
-                    ),
-            default=Ms3dUi.PROP_DEFAULT_COORDINATESYSTEM_IMP,
-            )
-
-    prop_scale = FloatProperty(
-            name=ms3d_str['PROP_NAME_SCALE'],
-            description=ms3d_str['PROP_DESC_SCALE'],
-            default=Ms3dUi.PROP_DEFAULT_SCALE,
-            min=Ms3dUi.PROP_MIN_SCALE,
-            max=Ms3dUi.PROP_MAX_SCALE,
-            soft_min=Ms3dUi.PROP_SMIN_SCALE,
-            soft_max=Ms3dUi.PROP_SMAX_SCALE,
-            )
-
-    prop_unit_mm = BoolProperty(
-            name=ms3d_str['PROP_NAME_UNIT_MM'],
-            description=ms3d_str['PROP_DESC_UNIT_MM'],
-            default=Ms3dUi.PROP_DEFAULT_UNIT_MM,
-            )
-
-    prop_animation = BoolProperty(
+    animation = BoolProperty(
             name=ms3d_str['PROP_NAME_ANIMATION'],
             description=ms3d_str['PROP_DESC_ANIMATION'],
             default=Ms3dUi.PROP_DEFAULT_ANIMATION,
             )
 
+    rotation_mode = EnumProperty(
+            name=ms3d_str['PROP_NAME_ROTATION_MODE'],
+            description=ms3d_str['PROP_DESC_ROTATION_MODE'],
+            items=( (Ms3dUi.PROP_ITEM_ROTATION_MODE_EULER,
+                            ms3d_str['PROP_ITEM_ROTATION_MODE_EULER_1'],
+                            ms3d_str['PROP_ITEM_ROTATION_MODE_EULER_2']),
+                    (Ms3dUi.PROP_ITEM_ROTATION_MODE_QUATERNION,
+                            ms3d_str['PROP_ITEM_ROTATION_MODE_QUATERNION_1'],
+                            ms3d_str['PROP_ITEM_ROTATION_MODE_QUATERNION_2']),
+                    ),
+            default=Ms3dUi.PROP_DEFAULT_ANIMATION_ROTATION,
+            )
+
+    use_joint_size = BoolProperty(
+            name=ms3d_str['PROP_NAME_USE_JOINT_SIZE'],
+            description=ms3d_str['PROP_DESC_USE_JOINT_SIZE'],
+            default=Ms3dUi.PROP_DEFAULT_USE_JOINT_SIZE,
+            )
+
+    joint_size = FloatProperty(
+            name=ms3d_str['PROP_NAME_IMPORT_JOINT_SIZE'],
+            description=ms3d_str['PROP_DESC_IMPORT_JOINT_SIZE'],
+            min=Ms3dUi.PROP_JOINT_SIZE_MIN, max=Ms3dUi.PROP_JOINT_SIZE_MAX,
+            precision=Ms3dUi.PROP_JOINT_SIZE_PRECISION, step=Ms3dUi.PROP_JOINT_SIZE_STEP,
+            default=Ms3dUi.PROP_DEFAULT_JOINT_SIZE,
+            subtype='FACTOR',
+            #options={'HIDDEN', },
+            )
+
+    joint_to_bones = BoolProperty(
+            name=ms3d_str['PROP_NAME_JOINT_TO_BONES'],
+            description=ms3d_str['PROP_DESC_JOINT_TO_BONES'],
+            default=Ms3dUi.PROP_DEFAULT_JOINT_TO_BONES,
+            )
+
 
     @property
-    def is_coordinate_system_1by1(self):
-        return (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_1BY1 \
-                in self.prop_coordinate_system)
+    def is_rotation_mode_euler(self):
+        return (Ms3dUi.PROP_ITEM_ROTATION_MODE_EULER \
+                in self.rotation_mode)
 
     @property
-    def is_coordinate_system_import(self):
-        return (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_IMP \
-                in self.prop_coordinate_system)
-
-    @property
-    def is_coordinate_system_export(self):
-        return (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_EXP \
-                in self.prop_coordinate_system)
+    def is_rotation_mode_quaternion(self):
+        return (Ms3dUi.PROP_ITEM_ROTATION_MODE_QUATERNION \
+                in self.rotation_mode)
 
 
     # draw the option panel
@@ -378,19 +322,21 @@ class Ms3dImportOperator(Operator, ImportHelper):
 
         box = layout.box()
         box.label(ms3d_str['LABEL_NAME_OPTIONS'], icon=Ms3dUi.ICON_OPTIONS)
-        box.prop(self, 'prop_verbose', icon='SPEAKER')
-
-        box = layout.box()
-        box.label(ms3d_str['LABEL_NAME_OBJECT'], icon=Ms3dUi.ICON_OBJECT)
-        box.prop(self, 'prop_unit_mm', icon='SCENE_DATA', expand=True)
-        box.prop(self, 'prop_coordinate_system', icon='WORLD_DATA', expand=True)
-        box.prop(self, 'prop_scale', icon='MESH_DATA')
+        box.prop(self, 'verbose', icon='SPEAKER')
 
         box = layout.box()
         box.label(ms3d_str['LABEL_NAME_ANIMATION'], icon=Ms3dUi.ICON_ANIMATION)
-        box.prop(self, 'prop_animation')
-        if (self.prop_animation):
-            box.label(ms3d_str['REMARKS_2'], icon='ERROR')
+        box.prop(self, 'animation')
+        if (self.animation):
+            box.prop(self, 'rotation_mode', icon=Ms3dUi.ICON_ROTATION_MODE, expand=False)
+            box.prop(self, 'use_joint_size')
+            if (self.use_joint_size):
+                col = box.column()
+                row = col.row()
+                row.prop(self, 'joint_size')
+            box.prop(self, 'joint_to_bones')
+            if (self.joint_to_bones):
+                box.box().label(ms3d_str['LABEL_NAME_JOINT_TO_BONES'], icon=Ms3dUi.ICON_ERROR)
 
     # entrypoint for MS3D -> blender
     def execute(self, blender_context):
@@ -402,184 +348,107 @@ class Ms3dImportOperator(Operator, ImportHelper):
         blender_context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL', }
 
+    @staticmethod
+    def menu_func(cls, context):
+        cls.layout.operator(
+                Ms3dImportOperator.bl_idname,
+                text=ms3d_str['TEXT_OPERATOR'],
+                )
+
 
 class Ms3dExportOperator(Operator, ExportHelper):
     """Save a MilkShape3D MS3D File"""
-    bl_idname = 'io_scene_ms3d.export'
+    bl_idname = 'export_scene.ms3d'
     bl_label = ms3d_str['BL_LABEL_EXPORTER']
     bl_description = ms3d_str['BL_DESCRIPTION_EXPORTER']
     bl_options = {'PRESET', }
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
 
-    def menu_func(cls, context):
-        cls.layout.operator(
-                Ms3dExportOperator.bl_idname,
-                text=ms3d_str['TEXT_OPERATOR']
-                )
-
     filename_ext = ms3d_str['FILE_EXT']
 
     filter_glob = StringProperty(
             default=ms3d_str['FILE_FILTER'],
-            options={'HIDDEN', 'SKIP_SAVE', }
+            options={'HIDDEN', }
             )
 
     filepath = StringProperty(
             subtype='FILE_PATH',
-            options={'HIDDEN', 'SKIP_SAVE', }
+            options={'HIDDEN', }
             )
 
-    prop_verbose = BoolProperty(
+    verbose = BoolProperty(
             name=ms3d_str['PROP_NAME_VERBOSE'],
             description=ms3d_str['PROP_DESC_VERBOSE'],
             default=Ms3dUi.PROP_DEFAULT_VERBOSE,
             )
 
-    prop_coordinate_system = EnumProperty(
-            name=ms3d_str['PROP_NAME_COORDINATESYSTEM'],
-            description=ms3d_str['PROP_DESC_COORDINATESYSTEM'],
-            items=( (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_1BY1,
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_1_BY_1_1'],
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_1_BY_1_2']),
-                    (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_IMP,
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_IMP_1'],
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_IMP_2']),
-                    (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_EXP,
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_EXP_1'],
-                            ms3d_str['PROP_ITEM_COORDINATESYSTEM_EXP_2']),
-                    ),
-            default=Ms3dUi.PROP_DEFAULT_COORDINATESYSTEM_EXP,
+    use_blender_names = BoolProperty(
+            name=ms3d_str['PROP_NAME_USE_BLENDER_NAMES'],
+            description=ms3d_str['PROP_DESC_USE_BLENDER_NAMES'],
+            default=Ms3dUi.PROP_DEFAULT_USE_BLENDER_NAMES,
             )
 
-    prop_scale = FloatProperty(
-            name=ms3d_str['PROP_NAME_SCALE'],
-            description=ms3d_str['PROP_DESC_SCALE'],
-            default=1.0 / Ms3dUi.PROP_DEFAULT_SCALE,
-            min=Ms3dUi.PROP_MIN_SCALE,
-            max=Ms3dUi.PROP_MAX_SCALE,
-            soft_min=Ms3dUi.PROP_SMIN_SCALE,
-            soft_max=Ms3dUi.PROP_SMAX_SCALE,
+    use_blender_materials = BoolProperty(
+            name=ms3d_str['PROP_NAME_USE_BLENDER_MATERIALS'],
+            description=ms3d_str['PROP_DESC_USE_BLENDER_MATERIALS'],
+            default=Ms3dUi.PROP_DEFAULT_USE_BLENDER_MATERIALS,
             )
 
-    prop_objects = EnumProperty(
-            name=ms3d_str['PROP_NAME_OBJECTS_EXP'],
-            description=ms3d_str['PROP_DESC_OBJECTS_EXP'],
-            items=( #(Ms3dUi.PROP_ITEM_OBJECT_MESH,
-                    #        ms3d_str['PROP_ITEM_OBJECT_MESH_1'],
-                    #        ms3d_str['PROP_ITEM_OBJECT_MESH_2']),
-                    (Ms3dUi.PROP_ITEM_OBJECT_MATERIAL,
-                            ms3d_str['PROP_ITEM_OBJECT_MATERIAL_1'],
-                            ms3d_str['PROP_ITEM_OBJECT_MATERIAL_2']),
-                    (Ms3dUi.PROP_ITEM_OBJECT_JOINT,
-                            ms3d_str['PROP_ITEM_OBJECT_JOINT_1'],
-                            ms3d_str['PROP_ITEM_OBJECT_JOINT_2']),
-                    #(Ms3dUi.PROP_ITEM_OBJECT_ANIMATION,
-                    #        ms3d_str['PROP_ITEM_OBJECT_ANIMATION_1'],
-                    #        ms3d_str['PROP_ITEM_OBJECT_ANIMATION_2']),
-                    ),
-            default=Ms3dUi.PROP_DEFAULT_OBJECTS_EXP,
-            options={'ENUM_FLAG', 'ANIMATABLE', },
+    normalize_weights = BoolProperty(
+            name=ms3d_str['PROP_NAME_NORMALIZE_WEIGHTS'],
+            description=ms3d_str['PROP_DESC_NORMALIZE_WEIGHTS'],
+            default=Ms3dUi.PROP_DEFAULT_NORMALIZE_WEIGHTS,
             )
 
-    prop_selected = BoolProperty(
-            name=ms3d_str['PROP_NAME_SELECTED'],
-            description=ms3d_str['PROP_DESC_SELECTED'],
-            default=Ms3dUi.PROP_DEFAULT_SELECTED,
+    shrink_to_keys = BoolProperty(
+            name=ms3d_str['PROP_NAME_SHRINK_TO_KEYS'],
+            description=ms3d_str['PROP_DESC_SHRINK_TO_KEYS'],
+            default=Ms3dUi.PROP_DEFAULT_SHRINK_TO_KEYS,
             )
 
-    prop_animation = BoolProperty(
-            name=ms3d_str['PROP_NAME_ANIMATION'],
-            description=ms3d_str['PROP_DESC_ANIMATION'],
-            default=Ms3dUi.PROP_DEFAULT_ANIMATION,
+    bake_each_frame = BoolProperty(
+            name=ms3d_str['PROP_NAME_BAKE_EACH_FRAME'],
+            description=ms3d_str['PROP_DESC_BAKE_EACH_FRAME'],
+            default=Ms3dUi.PROP_DEFAULT_BAKE_EACH_FRAME,
             )
 
-    prop_apply_modifier = BoolProperty(
-            name=ms3d_str['PROP_NAME_APPLY_MODIFIER'],
-            description=ms3d_str['PROP_DESC_APPLY_MODIFIER'],
-            default=Ms3dUi.PROP_DEFAULT_APPLY_MODIFIER,
-            )
-    prop_apply_modifier_mode = EnumProperty(
-            name=ms3d_str['PROP_NAME_APPLY_MODIFIER_MODE'],
-            description=ms3d_str['PROP_DESC_APPLY_MODIFIER_MODE'],
-            items=( (Ms3dUi.PROP_ITEM_APPLY_MODIFIER_MODE_PREVIEW,
-                            ms3d_str['PROP_ITEM_APPLY_MODIFIER_MODE_PREVIEW_1'],
-                            ms3d_str['PROP_ITEM_APPLY_MODIFIER_MODE_PREVIEW_2']),
-                    (Ms3dUi.PROP_ITEM_APPLY_MODIFIER_MODE_RENDER,
-                            ms3d_str['PROP_ITEM_APPLY_MODIFIER_MODE_RENDER_1'],
-                            ms3d_str['PROP_ITEM_APPLY_MODIFIER_MODE_RENDER_2']),
-                    ),
-            default=Ms3dUi.PROP_DEFAULT_APPLY_MODIFIER_MODE,
-            )
 
-    @property
-    def handle_animation(self):
-        return (Ms3dUi.PROP_ITEM_OBJECT_ANIMATION in self.prop_objects)
-
-    @property
-    def handle_materials(self):
-        return (Ms3dUi.PROP_ITEM_OBJECT_MATERIAL in self.prop_objects)
-
-    @property
-    def handle_joints(self):
-        return (Ms3dUi.PROP_ITEM_OBJECT_JOINT in self.prop_objects)
-
-    @property
-    def handle_smoothing_groups(self):
-        return (Ms3dUi.PROP_ITEM_OBJECT_SMOOTHGROUPS in self.prop_objects)
-
-    @property
-    def handle_groups(self):
-        return (Ms3dUi.PROP_ITEM_OBJECT_GROUP in self.prop_objects)
-
-
-    @property
-    def is_coordinate_system_1by1(self):
-        return (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_1BY1 \
-                in self.prop_coordinate_system)
-
-    @property
-    def is_coordinate_system_import(self):
-        return (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_IMP \
-                in self.prop_coordinate_system)
-
-    @property
-    def is_coordinate_system_export(self):
-        return (Ms3dUi.PROP_ITEM_COORDINATESYSTEM_EXP \
-                in self.prop_coordinate_system)
-
+    ##EXPORT_ACTIVE_ONLY:
+    ##limit availability to only active mesh object
+    @classmethod
+    def poll(cls, context):
+        return (context
+                and context.active_object
+                and context.active_object.type in {'MESH', }
+                and context.active_object.data
+                and context.active_object.data.ms3d is not None
+                )
 
     # draw the option panel
     def draw(self, context):
         layout = self.layout
 
-        # DEBUG:
-        layout.row().label(ms3d_str['REMARKS_2'], icon='ERROR')
-
         box = layout.box()
         box.label(ms3d_str['LABEL_NAME_OPTIONS'], icon=Ms3dUi.ICON_OPTIONS)
-        box.prop(self, 'prop_verbose', icon='SPEAKER')
-
-        box = layout.box()
-        box.label(ms3d_str['LABEL_NAME_OBJECT'], icon=Ms3dUi.ICON_OBJECT)
-        box.prop(self, 'prop_coordinate_system', icon='WORLD_DATA', expand=True)
-        box.prop(self, 'prop_scale', icon='MESH_DATA')
+        box.prop(self, 'verbose', icon='SPEAKER')
 
         box = layout.box()
         box.label(ms3d_str['LABEL_NAME_PROCESSING'],
                 icon=Ms3dUi.ICON_PROCESSING)
-        box.prop(self, 'prop_selected', icon='ROTACTIVE')
-        """
-        box.prop(self, 'prop_objects', icon='MESH_DATA', expand=True)
+        row = box.row()
+        row.label(ms3d_str['PROP_NAME_ACTIVE'], icon='ROTACTIVE')
+        row.label(context.active_object.name)
+        #box.prop(self, 'use_blender_names', icon='LINK_BLEND')
+        box.prop(self, 'use_blender_names')
+        box.prop(self, 'use_blender_materials')
 
-        if (Ms3dUi.PROP_ITEM_OBJECT_JOINT in self.prop_objects):
-            box.label(ms3d_str['REMARKS_2'], icon='ERROR')
-
-            box = layout.box()
-            box.label(ms3d_str['LABEL_NAME_ANIMATION'],
-                    icon=Ms3dUi.ICON_ANIMATION)
-            box.prop(self, 'prop_animation')
-        """
+        box = layout.box()
+        box.label(ms3d_str['LABEL_NAME_ANIMATION'],
+                icon=Ms3dUi.ICON_ANIMATION)
+        box.prop(self, 'normalize_weights')
+        box.prop(self, 'shrink_to_keys')
+        box.prop(self, 'bake_each_frame')
 
     # entrypoint for blender -> MS3D
     def execute(self, blender_context):
@@ -591,6 +460,13 @@ class Ms3dExportOperator(Operator, ExportHelper):
     def invoke(self, blender_context, event):
         blender_context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL", }
+
+    @staticmethod
+    def menu_func(cls, context):
+        cls.layout.operator(
+                Ms3dExportOperator.bl_idname,
+                text=ms3d_str['TEXT_OPERATOR']
+                )
 
 
 ###############################################################################
@@ -638,15 +514,7 @@ class Ms3dSetSmoothingGroupOperator(Operator):
                 layer_smoothing_group = bm.faces.layers.int.new(
                         ms3d_str['OBJECT_LAYER_SMOOTHING_GROUP'])
                 blender_mesh_object = context.object
-                blender_modifier = blender_mesh_object.modifiers.get(
-                        ms3d_str['OBJECT_MODIFIER_SMOOTHING_GROUP'])
-                if blender_modifier is None:
-                    blender_modifier = blender_mesh_object.modifiers.new(
-                            ms3d_str['OBJECT_MODIFIER_SMOOTHING_GROUP'],
-                            type='EDGE_SPLIT')
-                    blender_modifier.show_expanded = False
-                    blender_modifier.use_edge_angle = False
-                    blender_modifier.use_edge_sharp = True
+                get_edge_split_modifier_add_if(blender_mesh_object)
             blender_face_list = []
             for bmf in bm.faces:
                 if not bmf.smooth:
@@ -774,6 +642,53 @@ class Ms3dGroupOperator(Operator):
         return {'FINISHED', }
 
 
+class Ms3dMaterialOperator(Operator):
+    bl_idname = Ms3dUi.OPT_MATERIAL_APPLY
+    bl_label = ms3d_str['BL_LABEL_MATERIAL_OPERATOR']
+    bl_options = {'INTERNAL', }
+
+    mode = EnumProperty(
+            items=( ('', "", ""),
+                    ('FROM_BLENDER',
+                            ms3d_str['ENUM_FROM_BLENDER_1'],
+                            ms3d_str['ENUM_FROM_BLENDER_2']),
+                    ('TO_BLENDER',
+                            ms3d_str['ENUM_TO_BLENDER_1'],
+                            ms3d_str['ENUM_TO_BLENDER_2']),
+                    ),
+            options={'HIDDEN', 'SKIP_SAVE', },
+            )
+
+    @classmethod
+    def poll(cls, context):
+        return (context
+                and context.object
+                and context.object.type in {'MESH', }
+                and context.object.data
+                and context.object.data.ms3d is not None
+                and context.material
+                and context.material.ms3d is not None
+                )
+
+    def execute(self, context):
+        blender_material = context.active_object.active_material
+        ms3d_material = blender_material.ms3d
+
+        if self.mode == 'FROM_BLENDER':
+            Ms3dMaterialHelper.copy_from_blender(self, context, ms3d_material, blender_material)
+            pass
+
+        elif self.mode == 'TO_BLENDER':
+            # not implemented
+            pass
+
+        return {'FINISHED', }
+
+    # entrypoint for option via UI
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+
 ###############################################################################
 class Ms3dGroupProperties(PropertyGroup):
     name = StringProperty(
@@ -848,8 +763,9 @@ class Ms3dModelProperties(PropertyGroup):
     joint_size = FloatProperty(
             name=ms3d_str['PROP_NAME_JOINT_SIZE'],
             description=ms3d_str['PROP_DESC_JOINT_SIZE'],
-            min=0, max=1, precision=3, step=0.1,
-            default=Ms3dSpec.DEFAULT_MODEL_JOINT_SIZE,
+            min=Ms3dUi.PROP_JOINT_SIZE_MIN, max=Ms3dUi.PROP_JOINT_SIZE_MAX,
+            precision=Ms3dUi.PROP_JOINT_SIZE_PRECISION, step=Ms3dUi.PROP_JOINT_SIZE_STEP,
+            default=Ms3dUi.PROP_DEFAULT_JOINT_SIZE,
             subtype='FACTOR',
             #options={'HIDDEN', },
             )
@@ -1006,7 +922,7 @@ class Ms3dJointProperties(PropertyGroup):
             name=ms3d_str['PROP_NAME_COLOR'],
             description=ms3d_str['PROP_DESC_COLOR_JOINT'],
             subtype='COLOR', size=3, min=0, max=1, precision=3, step=0.1,
-            default=(0.8, 0.8, 0.8),
+            default=Ms3dSpec.DEFAULT_JOINT_COLOR,
             #options={'HIDDEN', },
             )
 
@@ -1020,36 +936,85 @@ class Ms3dJointProperties(PropertyGroup):
 
 class Ms3dMaterialHelper:
     @staticmethod
-    def on_update_ambient(cls, context):
+    def copy_to_blender_ambient(cls, context):
         pass
 
     @staticmethod
-    def on_update_diffuse(cls, context):
+    def copy_to_blender_diffuse(cls, context):
         cls.id_data.diffuse_color = cls.diffuse[0:3]
-        cls.id_data.diffuse_intensity = cls.diffuse[3]
+        #cls.id_data.diffuse_intensity = cls.diffuse[3]
         pass
 
     @staticmethod
-    def on_update_specular(cls, context):
+    def copy_to_blender_specular(cls, context):
         cls.id_data.specular_color = cls.specular[0:3]
-        cls.id_data.specular_intensity = cls.specular[3]
+        #cls.id_data.specular_intensity = cls.specular[3]
         pass
 
     @staticmethod
-    def on_update_emissive(cls, context):
+    def copy_to_blender_emissive(cls, context):
         cls.id_data.emit = (cls.emissive[0] + cls.emissive[1] \
                 + cls.emissive[2]) / 3.0
         pass
 
     @staticmethod
-    def on_update_shininess(cls, context):
+    def copy_to_blender_shininess(cls, context):
         cls.id_data.specular_hardness = cls.shininess * 4.0
         pass
 
     @staticmethod
-    def on_update_transparency(cls, context):
-        cls.id_data.alpha = cls.transparency
+    def copy_to_blender_transparency(cls, context):
+        cls.id_data.alpha = 1.0 - cls.transparency
         pass
+
+
+    @staticmethod
+    def copy_from_blender(cls, context, ms3d_material, blender_material):
+        # copy, bacause of auto update, it would distord original values
+        blender_material_diffuse_color = blender_material.diffuse_color.copy()
+        blender_material_diffuse_intensity = blender_material.diffuse_intensity
+        blender_material_specular_color = blender_material.specular_color.copy()
+        blender_material_specular_intensity = blender_material.specular_intensity
+        blender_material_emit = blender_material.emit
+        blender_material_specular_hardness = blender_material.specular_hardness
+        blender_material_alpha = blender_material.alpha
+
+        blender_material_texture = None
+        for slot in blender_material.texture_slots:
+            if slot and slot.use_map_color_diffuse and slot.texture.type == 'IMAGE':
+                blender_material_texture = slot.texture.image.filepath
+                break
+
+        blender_material_alphamap = None
+        for slot in blender_material.texture_slots:
+            if slot and not slot.use_map_color_diffuse and slot.use_map_alpha and slot.texture.type == 'IMAGE':
+                blender_material_alphamap = slot.texture.image.filepath
+                break
+
+        ms3d_material.diffuse[0] = blender_material_diffuse_color[0]
+        ms3d_material.diffuse[1] = blender_material_diffuse_color[1]
+        ms3d_material.diffuse[2] = blender_material_diffuse_color[2]
+        ms3d_material.diffuse[3] = 1.0
+        ms3d_material.specular[0] = blender_material_specular_color[0]
+        ms3d_material.specular[1] = blender_material_specular_color[1]
+        ms3d_material.specular[2] = blender_material_specular_color[2]
+        ms3d_material.specular[3] = 1.0
+        ms3d_material.emissive[0] = blender_material_emit
+        ms3d_material.emissive[1] = blender_material_emit
+        ms3d_material.emissive[2] = blender_material_emit
+        ms3d_material.emissive[3] = 1.0
+        ms3d_material.shininess = blender_material_specular_hardness / 4.0
+        ms3d_material.transparency = 1.0 - blender_material_alpha
+
+        if blender_material_texture:
+            ms3d_material.texture = blender_material_texture
+        else:
+            ms3d_material.texture = ""
+
+        if blender_material_alphamap:
+            ms3d_material.alphamap = blender_material_alphamap
+        else:
+            ms3d_material.alphamap = ""
 
 
 class Ms3dMaterialProperties(PropertyGroup):
@@ -1064,8 +1029,8 @@ class Ms3dMaterialProperties(PropertyGroup):
             name=ms3d_str['PROP_NAME_AMBIENT'],
             description=ms3d_str['PROP_DESC_AMBIENT'],
             subtype='COLOR', size=4, min=0, max=1, precision=3, step=0.1,
-            default=(0.2, 0.2, 0.2, 1.0), # OpenGL default for ambient
-            update=Ms3dMaterialHelper.on_update_ambient,
+            default=Ms3dSpec.DEFAULT_MATERIAL_AMBIENT,
+            update=Ms3dMaterialHelper.copy_to_blender_ambient,
             #options={'HIDDEN', },
             )
 
@@ -1073,8 +1038,8 @@ class Ms3dMaterialProperties(PropertyGroup):
             name=ms3d_str['PROP_NAME_DIFFUSE'],
             description=ms3d_str['PROP_DESC_DIFFUSE'],
             subtype='COLOR', size=4, min=0, max=1, precision=3, step=0.1,
-            default=(0.8, 0.8, 0.8, 1.0), # OpenGL default for diffuse
-            update=Ms3dMaterialHelper.on_update_diffuse,
+            default=Ms3dSpec.DEFAULT_MATERIAL_DIFFUSE,
+            update=Ms3dMaterialHelper.copy_to_blender_diffuse,
             #options={'HIDDEN', },
             )
 
@@ -1082,8 +1047,8 @@ class Ms3dMaterialProperties(PropertyGroup):
             name=ms3d_str['PROP_NAME_SPECULAR'],
             description=ms3d_str['PROP_DESC_SPECULAR'],
             subtype='COLOR', size=4, min=0, max=1, precision=3, step=0.1,
-            default=(0.0, 0.0, 0.0, 1.0), # OpenGL default for specular
-            update=Ms3dMaterialHelper.on_update_specular,
+            default=Ms3dSpec.DEFAULT_MATERIAL_SPECULAR,
+            update=Ms3dMaterialHelper.copy_to_blender_specular,
             #options={'HIDDEN', },
             )
 
@@ -1091,8 +1056,8 @@ class Ms3dMaterialProperties(PropertyGroup):
             name=ms3d_str['PROP_NAME_EMISSIVE'],
             description=ms3d_str['PROP_DESC_EMISSIVE'],
             subtype='COLOR', size=4, min=0, max=1, precision=3, step=0.1,
-            default=(0.0, 0.0, 0.0, 1.0), # OpenGL default for emissive
-            update=Ms3dMaterialHelper.on_update_emissive,
+            default=Ms3dSpec.DEFAULT_MATERIAL_EMISSIVE,
+            update=Ms3dMaterialHelper.copy_to_blender_emissive,
             #options={'HIDDEN', },
             )
 
@@ -1100,9 +1065,9 @@ class Ms3dMaterialProperties(PropertyGroup):
             name=ms3d_str['PROP_NAME_SHININESS'],
             description=ms3d_str['PROP_DESC_SHININESS'],
             min=0, max=Ms3dSpec.MAX_MATERIAL_SHININESS, precision=3, step=0.1,
-            default=0,
+            default=Ms3dSpec.DEFAULT_MATERIAL_SHININESS,
             subtype='FACTOR',
-            update=Ms3dMaterialHelper.on_update_shininess,
+            update=Ms3dMaterialHelper.copy_to_blender_shininess,
             #options={'HIDDEN', },
             )
 
@@ -1112,7 +1077,7 @@ class Ms3dMaterialProperties(PropertyGroup):
             min=0, max=1, precision=3, step=0.1,
             default=0,
             subtype='FACTOR',
-            update=Ms3dMaterialHelper.on_update_transparency,
+            update=Ms3dMaterialHelper.copy_to_blender_transparency,
             #options={'HIDDEN', },
             )
 
@@ -1230,8 +1195,8 @@ class Ms3dMaterialPanel(Panel):
 
         col = layout.column()
         row = col.row()
-        row.prop(custom_data, 'ambient')
         row.prop(custom_data, 'diffuse')
+        row.prop(custom_data, 'ambient')
         row = col.row()
         row.prop(custom_data, 'specular')
         row.prop(custom_data, 'emissive')
@@ -1249,6 +1214,16 @@ class Ms3dMaterialPanel(Panel):
 
         row = layout.row()
         row.prop(custom_data, 'comment')
+
+        layout.row().operator(
+                Ms3dUi.OPT_MATERIAL_APPLY,
+                text=ms3d_str['ENUM_FROM_BLENDER_1'], icon='APPEND_BLEND').mode = 'FROM_BLENDER'
+
+        # not implemented
+        #layout.row().operator(
+        #        Ms3dUi.OPT_MATERIAL_APPLY,
+        #        text=ms3d_str['ENUM_TO_BLENDER_1'], icon='IMPORT').mode = 'TO_BLENDER'
+        pass
 
 
 class Ms3dBonePanel(Panel):
@@ -1307,6 +1282,8 @@ class Ms3dGroupPanel(Panel):
     def draw(self, context):
         layout = self.layout
         custom_data = context.object.data.ms3d
+        layout.enabled = (context.mode == 'EDIT_MESH') and (
+                context.tool_settings.mesh_select_mode[2])
 
         row = layout.row()
         row.template_list(
@@ -1331,23 +1308,21 @@ class Ms3dGroupPanel(Panel):
             row = layout.row()
             row.prop(collection[index], 'name')
 
-            if (context.mode == 'EDIT_MESH') and (
-                    context.tool_settings.mesh_select_mode[2]):
-                row = layout.row()
-                subrow = row.row(align=True)
-                subrow.operator(
-                        Ms3dUi.OPT_GROUP_APPLY,
-                        text=ms3d_str['ENUM_ASSIGN_1']).mode = 'ASSIGN'
-                subrow.operator(
-                        Ms3dUi.OPT_GROUP_APPLY,
-                        text=ms3d_str['ENUM_REMOVE_1']).mode = 'REMOVE'
-                subrow = row.row(align=True)
-                subrow.operator(
-                        Ms3dUi.OPT_GROUP_APPLY,
-                        text=ms3d_str['ENUM_SELECT_1']).mode = 'SELECT'
-                subrow.operator(
-                        Ms3dUi.OPT_GROUP_APPLY,
-                        text=ms3d_str['ENUM_DESELECT_1']).mode = 'DESELECT'
+            row = layout.row()
+            subrow = row.row(align=True)
+            subrow.operator(
+                    Ms3dUi.OPT_GROUP_APPLY,
+                    text=ms3d_str['ENUM_ASSIGN_1']).mode = 'ASSIGN'
+            subrow.operator(
+                    Ms3dUi.OPT_GROUP_APPLY,
+                    text=ms3d_str['ENUM_REMOVE_1']).mode = 'REMOVE'
+            subrow = row.row(align=True)
+            subrow.operator(
+                    Ms3dUi.OPT_GROUP_APPLY,
+                    text=ms3d_str['ENUM_SELECT_1']).mode = 'SELECT'
+            subrow.operator(
+                    Ms3dUi.OPT_GROUP_APPLY,
+                    text=ms3d_str['ENUM_DESELECT_1']).mode = 'DESELECT'
 
             row = layout.row()
             row.prop(collection[index], 'flags', expand=True)
@@ -1410,303 +1385,184 @@ class Ms3dSmoothingGroupPanel(Panel):
 
         custom_data = context.object.data.ms3d
         layout = self.layout
+        layout.enabled = (context.mode == 'EDIT_MESH') and (
+                context.tool_settings.mesh_select_mode[2])
 
-        if True:
-            row = layout.row()
-            row.enabled = (context.mode == 'EDIT_MESH') and (
-                    context.tool_settings.mesh_select_mode[2])
-            subrow = row.row()
-            subrow.prop(custom_data, 'apply_mode', expand=True)
+        row = layout.row()
+        subrow = row.row()
+        subrow.prop(custom_data, 'apply_mode', expand=True)
 
-            col = layout.column(align=True)
-            subrow = col.row(align=True)
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 1, "1")
-                    ).smoothing_group_index = 1
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 2, "2")
-                    ).smoothing_group_index = 2
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 3, "3")
-                    ).smoothing_group_index = 3
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 4, "4")
-                    ).smoothing_group_index = 4
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 5, "5")
-                    ).smoothing_group_index = 5
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 6, "6")
-                    ).smoothing_group_index = 6
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 7, "7")
-                    ).smoothing_group_index = 7
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 8, "8")
-                    ).smoothing_group_index = 8
-            subrow = col.row(align=True)
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 9, "9")
-                    ).smoothing_group_index = 9
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 10, "10")
-                    ).smoothing_group_index = 10
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 11, "11")
-                    ).smoothing_group_index = 11
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 12, "12")
-                    ).smoothing_group_index = 12
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 13, "13")
-                    ).smoothing_group_index = 13
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 14, "14")
-                    ).smoothing_group_index = 14
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 15, "15")
-                    ).smoothing_group_index = 15
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 16, "16")
-                    ).smoothing_group_index = 16
-            subrow = col.row(align=True)
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 17, "17")
-                    ).smoothing_group_index = 17
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 18, "18")
-                    ).smoothing_group_index = 18
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 19, "19")
-                    ).smoothing_group_index = 19
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 20, "20")
-                    ).smoothing_group_index = 20
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 21, "21")
-                    ).smoothing_group_index = 21
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 22, "22")
-                    ).smoothing_group_index = 22
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 23, "23")
-                    ).smoothing_group_index = 23
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 24, "24")
-                    ).smoothing_group_index = 24
-            subrow = col.row(align=True)
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 25, "25")
-                    ).smoothing_group_index = 25
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 26, "26")
-                    ).smoothing_group_index = 26
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 27, "27")
-                    ).smoothing_group_index = 27
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 28, "28")
-                    ).smoothing_group_index = 28
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 29, "29")
-                    ).smoothing_group_index = 29
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 30, "30")
-                    ).smoothing_group_index = 30
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 31, "31")
-                    ).smoothing_group_index = 31
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 32, "32")
-                    ).smoothing_group_index = 32
-            subrow = col.row()
-            subrow.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 0, ms3d_str['LABEL_PANEL_BUTTON_NONE'])
-                    ).smoothing_group_index = 0
-        else:
-            col = layout.column()
-            #box = col.box()
-            col.enabled = (context.mode == 'EDIT_MESH') and (
-                    context.tool_settings.mesh_select_mode[2])
-            row = col.row()
-            row.prop(custom_data, 'apply_mode', expand=True)
+        col = layout.column(align=True)
+        subrow = col.row(align=True)
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 1, "1")
+                ).smoothing_group_index = 1
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 2, "2")
+                ).smoothing_group_index = 2
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 3, "3")
+                ).smoothing_group_index = 3
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 4, "4")
+                ).smoothing_group_index = 4
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 5, "5")
+                ).smoothing_group_index = 5
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 6, "6")
+                ).smoothing_group_index = 6
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 7, "7")
+                ).smoothing_group_index = 7
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 8, "8")
+                ).smoothing_group_index = 8
+        subrow = col.row(align=True)
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 9, "9")
+                ).smoothing_group_index = 9
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 10, "10")
+                ).smoothing_group_index = 10
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 11, "11")
+                ).smoothing_group_index = 11
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 12, "12")
+                ).smoothing_group_index = 12
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 13, "13")
+                ).smoothing_group_index = 13
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 14, "14")
+                ).smoothing_group_index = 14
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 15, "15")
+                ).smoothing_group_index = 15
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 16, "16")
+                ).smoothing_group_index = 16
+        subrow = col.row(align=True)
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 17, "17")
+                ).smoothing_group_index = 17
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 18, "18")
+                ).smoothing_group_index = 18
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 19, "19")
+                ).smoothing_group_index = 19
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 20, "20")
+                ).smoothing_group_index = 20
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 21, "21")
+                ).smoothing_group_index = 21
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 22, "22")
+                ).smoothing_group_index = 22
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 23, "23")
+                ).smoothing_group_index = 23
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 24, "24")
+                ).smoothing_group_index = 24
+        subrow = col.row(align=True)
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 25, "25")
+                ).smoothing_group_index = 25
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 26, "26")
+                ).smoothing_group_index = 26
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 27, "27")
+                ).smoothing_group_index = 27
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 28, "28")
+                ).smoothing_group_index = 28
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 29, "29")
+                ).smoothing_group_index = 29
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 30, "30")
+                ).smoothing_group_index = 30
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 31, "31")
+                ).smoothing_group_index = 31
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 32, "32")
+                ).smoothing_group_index = 32
+        subrow = col.row()
+        subrow.operator(
+                Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
+                text=self.preview(dict, 0, ms3d_str['LABEL_PANEL_BUTTON_NONE'])
+                ).smoothing_group_index = 0
 
-            col = col.column(align=True)
-            row = col.row(align=True)
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 1, "1")
-                    ).smoothing_group_index = 1
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 2, "2")
-                    ).smoothing_group_index = 2
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 3, "3")
-                    ).smoothing_group_index = 3
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 4, "4")
-                    ).smoothing_group_index = 4
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 5, "5")
-                    ).smoothing_group_index = 5
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 6, "6")
-                    ).smoothing_group_index = 6
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 7, "7")
-                    ).smoothing_group_index = 7
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 8, "8")
-                    ).smoothing_group_index = 8
-            row = col.row(align=True)
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 9, "9")
-                    ).smoothing_group_index = 9
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 10, "10")
-                    ).smoothing_group_index = 10
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 11, "11")
-                    ).smoothing_group_index = 11
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 12, "12")
-                    ).smoothing_group_index = 12
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 13, "13")
-                    ).smoothing_group_index = 13
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 14, "14")
-                    ).smoothing_group_index = 14
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 15, "15")
-                    ).smoothing_group_index = 15
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 16, "16")
-                    ).smoothing_group_index = 16
-            row = col.row(align=True)
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 17, "17")
-                    ).smoothing_group_index = 17
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 18, "18")
-                    ).smoothing_group_index = 18
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 19, "19")
-                    ).smoothing_group_index = 19
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 20, "20")
-                    ).smoothing_group_index = 20
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 21, "21")
-                    ).smoothing_group_index = 21
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 22, "22")
-                    ).smoothing_group_index = 22
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 23, "23")
-                    ).smoothing_group_index = 23
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 24, "24")
-                    ).smoothing_group_index = 24
-            row = col.row(align=True)
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 25, "25")
-                    ).smoothing_group_index = 25
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 26, "26")
-                    ).smoothing_group_index = 26
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 27, "27")
-                    ).smoothing_group_index = 27
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 28, "28")
-                    ).smoothing_group_index = 28
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 29, "29")
-                    ).smoothing_group_index = 29
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 30, "30")
-                    ).smoothing_group_index = 30
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 31, "31")
-                    ).smoothing_group_index = 31
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 32, "32")
-                    ).smoothing_group_index = 32
-            row = col.row()
-            row.operator(
-                    Ms3dUi.OPT_SMOOTHING_GROUP_APPLY,
-                    text=self.preview(dict, 0, ms3d_str['LABEL_PANEL_BUTTON_NONE'])
-                    ).smoothing_group_index = 0
 
+###############################################################################
+class Ms3dSetSceneToMetricOperator(Operator):
+    """ . """
+    bl_idname = 'io_scene_ms3d.set_sence_to_metric'
+    bl_label = ms3d_str['BL_LABEL_SET_SCENE_TO_METRIC']
+    bl_description = ms3d_str['BL_DESC_SET_SCENE_TO_METRIC']
+
+
+    #
+    @classmethod
+    def poll(cls, context):
+        return True
+
+    # entrypoint for option
+    def execute(self, context):
+        return self.set_sence_to_metric(context)
+
+    # entrypoint for option via UI
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+
+    ###########################################################################
+    def set_sence_to_metric(self, context):
+        set_sence_to_metric(context)
+        return {"FINISHED"}
 
 
 ###############################################################################
 def register():
+    register_class(Ms3dSetSceneToMetricOperator)
     register_class(Ms3dGroupProperties)
     register_class(Ms3dModelProperties)
     register_class(Ms3dArmatureProperties)
@@ -1725,6 +1581,7 @@ def unregister():
     unregister_class(Ms3dArmatureProperties)
     unregister_class(Ms3dModelProperties)
     unregister_class(Ms3dGroupProperties)
+    unregister_class(Ms3dSetSceneToMetricOperator)
 
 def inject_properties():
     Mesh.ms3d = PointerProperty(type=Ms3dModelProperties)
@@ -1743,7 +1600,6 @@ def delete_properties():
     del Group.ms3d
 
 ###############################################################################
-register()
 
 
 ###############################################################################

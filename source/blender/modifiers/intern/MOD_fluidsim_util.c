@@ -301,7 +301,7 @@ static DerivedMesh *fluidsim_read_obj(const char *filename, const MPoly *mp_exam
 }
 
 
-void fluid_get_bb(MVert *mvert, int totvert, float obmat[][4],
+void fluid_get_bb(MVert *mvert, int totvert, float obmat[4][4],
                   /*RET*/ float start[3], /*RET*/ float size[3])
 {
 	float bbsx = 0.0, bbsy = 0.0, bbsz = 0.0;
@@ -426,7 +426,11 @@ static DerivedMesh *fluidsim_read_cache(Object *ob, DerivedMesh *orgdm,
                                         FluidsimModifierData *fluidmd, int framenr, int useRenderParams)
 {
 	int displaymode = 0;
-	int curFrame = framenr - 1 /*scene->r.sfra*/; /* start with 0 at start frame */
+	
+	int curFrame = framenr /* - 1 */ /*scene->r.sfra*/; /* start with 0 at start frame */ 
+	/*  why start with 0 as start frame?? Animations + time are frozen for frame 0 anyway. (See physics_fluid.c for that. - DG */
+	/* If we start with frame 0, we need to remap all animation channels, too, because they will all be 1 frame late if using frame-1! - DG */
+
 	char targetFile[FILE_MAX];
 	FluidsimSettings *fss = fluidmd->fss;
 	DerivedMesh *dm = NULL;
@@ -529,7 +533,7 @@ DerivedMesh *fluidsimModifier_do(FluidsimModifierData *fluidmd, Scene *scene,
 	fss = fluidmd->fss;
 
 	/* timescale not supported yet
-	 * clmd->sim_parms->timescale= timescale; */
+	 * clmd->sim_parms->timescale = timescale; */
 
 	/* support reversing of baked fluid frames here */
 	if ((fss->flag & OB_FLUIDSIM_REVERSE) && (fss->lastgoodframe >= 0)) {

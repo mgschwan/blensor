@@ -30,6 +30,8 @@
 
 #include "RNA_types.h"
 
+#include "BLI_utildefines.h"
+
 #include "bpy_rna.h"
 #include "BKE_global.h"
 #include "MEM_guardedalloc.h"
@@ -505,7 +507,7 @@ static void py_to_float(PyObject *py, char *data)
 
 static void py_to_int(PyObject *py, char *data)
 {
-	*(int *)data = (int)PyLong_AsSsize_t(py);
+	*(int *)data = (int)PyLong_AsLong(py);
 }
 
 static void py_to_bool(PyObject *py, char *data)
@@ -607,7 +609,7 @@ PyObject *pyrna_array_index(PointerRNA *ptr, PropertyRNA *prop, int index)
 			item = PyBool_FromLong(RNA_property_boolean_get_index(ptr, prop, index));
 			break;
 		case PROP_INT:
-			item = PyLong_FromSsize_t(RNA_property_int_get_index(ptr, prop, index));
+			item = PyLong_FromLong(RNA_property_int_get_index(ptr, prop, index));
 			break;
 		default:
 			PyErr_SetString(PyExc_TypeError, "not an array type");
@@ -664,7 +666,8 @@ PyObject *pyrna_py_from_array_index(BPy_PropertyArrayRNA *self, PointerRNA *ptr,
 	len = RNA_property_multi_array_length(ptr, prop, arraydim);
 	if (index >= len || index < 0) {
 		/* this shouldn't happen because higher level funcs must check for invalid index */
-		if (G.debug & G_DEBUG_PYTHON) printf("pyrna_py_from_array_index: invalid index %d for array with length=%d\n", index, len);
+		if (G.debug & G_DEBUG_PYTHON)
+			printf("%s: invalid index %d for array with length=%d\n", __func__, index, len);
 
 		PyErr_SetString(PyExc_IndexError, "out of range");
 		return NULL;
@@ -763,7 +766,7 @@ int pyrna_array_contains_py(PointerRNA *ptr, PropertyRNA *prop, PyObject *value)
 		case PROP_BOOLEAN:
 		case PROP_INT:
 		{
-			int value_i = PyLong_AsSsize_t(value);
+			int value_i = PyLong_AsLong(value);
 			if (value_i == -1 && PyErr_Occurred()) {
 				PyErr_Clear();
 				return 0;

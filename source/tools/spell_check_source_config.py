@@ -33,6 +33,7 @@ dict_custom = {
     "subdirectory",
     "decrement",
     "boolean",
+    "decrementing",
 
     # python types
     "str",
@@ -59,6 +60,7 @@ dict_custom = {
     "tooltip",
 
     # general computer terms
+    "endian",
     "contructor",
     "unicode",
     "jitter",
@@ -66,7 +68,6 @@ dict_custom = {
     "searchable",
     "metadata",
     "hashable",
-    "normals",
     "stdin",
     "opengl",
     "boids",
@@ -79,6 +80,8 @@ dict_custom = {
     "xml",
 
     # spesific computer terms/brands
+    "posix",
+    "unix",
     "amiga",
     "netscape",
     "mozilla",
@@ -86,9 +89,14 @@ dict_custom = {
     "kde",
 
     # general computer graphics terms
+    "colinear",
+    "coplanar",
+    "bezier",
     "radiosity",
+    "reflectance",
     "specular",
     "nurbs",
+    "ngon", "ngons",
     "bicubic",
     "compositing",
     "deinterlace",
@@ -97,6 +105,7 @@ dict_custom = {
     "centroid",
     "emissive",
     "quaternions",
+    "normals",
 
     # blender terms
     "bpy",

@@ -32,6 +32,9 @@
 
 #include <Python.h>
 
+#include "RNA_types.h"
+#include "RNA_access.h"
+
 #include "bpy.h" 
 #include "bpy_util.h" 
 #include "bpy_rna.h"
@@ -48,8 +51,6 @@
 #include "BKE_main.h"
 #include "BKE_global.h" /* XXX, G.main only */
 #include "BKE_blender.h"
-
-#include "RNA_access.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -279,7 +280,7 @@ void BPy_init_modules(void)
 	bpy_import_test("bpy_types");
 	PyModule_AddObject(mod, "data", BPY_rna_module()); /* imports bpy_types by running this */
 	bpy_import_test("bpy_types");
-	PyModule_AddObject(mod, "props", BPY_rna_props());	
+	PyModule_AddObject(mod, "props", BPY_rna_props());
 	/* ops is now a python module that does the conversion from SOME_OT_foo -> some.foo */
 	PyModule_AddObject(mod, "ops", BPY_operator_module());
 	PyModule_AddObject(mod, "app", BPY_app_struct());

@@ -1172,10 +1172,8 @@ static IK_Scene *convert_tree(Scene *blscene, Object *ob, bPoseChannel *pchan)
 		switch (ikchan->jointType & ~IK_TRANSY) {
 			case 0:
 				// fixed bone
-				if (!(ikchan->jointType & IK_TRANSY)) {
-					joint += ":F";
-					ret = arm->addSegment(joint, parent, KDL::Joint::None, 0.0, tip);
-				}
+				joint += ":F";
+				ret = arm->addSegment(joint, parent, KDL::Joint::None, 0.0, tip);
 				break;
 			case IK_XDOF:
 				// RX only, get the X rotation
@@ -1255,7 +1253,7 @@ static IK_Scene *convert_tree(Scene *blscene, Object *ob, bPoseChannel *pchan)
 			ret = arm->addSegment(joint, parent, KDL::Joint::TransY, rot[ikchan->ndof - 1]);
 			const float ikstretch = pchan->ikstretch * pchan->ikstretch;
 			/* why invert twice here? */
-			weight[1] = (1.0 - minf(1.0 - ikstretch, 1.0f - 0.001f));
+			weight[1] = (1.0 - min_ff(1.0 - ikstretch, 1.0f - 0.001f));
 			weights.push_back(weight[1]);
 		}
 		if (!ret)
@@ -1638,7 +1636,7 @@ static void execute_scene(Scene *blscene, IK_Scene *ikscene, bItasc *ikparam, fl
 	// compute constraint error
 	for (i = ikscene->targets.size(); i > 0; --i) {
 		IK_Target *iktarget = ikscene->targets[i - 1];
-		if (!(iktarget->blenderConstraint->flag & CONSTRAINT_OFF)) {
+		if (!(iktarget->blenderConstraint->flag & CONSTRAINT_OFF) && iktarget->constraint) {
 			unsigned int nvalues;
 			const iTaSC::ConstraintValues *values;
 			values = iktarget->constraint->getControlParameters(&nvalues);

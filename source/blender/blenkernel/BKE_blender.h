@@ -41,12 +41,11 @@ extern "C" {
 /* these lines are grep'd, watch out for our not-so-awesome regex
  * and keep comment above the defines.
  * Use STRINGIFY() rather than defining with quotes */
-#define BLENDER_VERSION         264
-#define BLENDER_SUBVERSION      1
+#define BLENDER_VERSION         265
+#define BLENDER_SUBVERSION      0
 
-/* 262 was the last editmesh release but its has compatibility code for bmesh data,
- * so set the minversion to 2.61 */
-#define BLENDER_MINVERSION      261
+/* 262 was the last editmesh release but it has compatibility code for bmesh data */
+#define BLENDER_MINVERSION      262
 #define BLENDER_MINSUBVERSION   0
 
 /* used by packaging tools */

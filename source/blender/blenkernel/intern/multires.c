@@ -984,7 +984,7 @@ static void grid_tangent(const CCGKey *key, int x, int y, int axis, CCGElem *gri
 
 /* Construct 3x3 tangent-space matrix in 'mat' */
 static void grid_tangent_matrix(float mat[3][3], const CCGKey *key,
-								int x, int y, CCGElem *grid)
+                                int x, int y, CCGElem *grid)
 {
 	grid_tangent(key, x, y, 0, grid, mat[0]);
 	normalize_v3(mat[0]);
@@ -1045,7 +1045,7 @@ static void multiresModifier_disp_run(DerivedMesh *dm, Mesh *me, DerivedMesh *dm
 
 	k = 0; /*current loop/mdisp index within the mloop array*/
 
-	#pragma omp parallel for private(i) if (totloop*gridSize*gridSize >= CCG_OMP_LIMIT)
+	#pragma omp parallel for private(i) if (totloop * gridSize * gridSize >= CCG_OMP_LIMIT)
 
 	for (i = 0; i < totpoly; ++i) {
 		const int numVerts = mpoly[i].totloop;
@@ -1161,7 +1161,6 @@ void multires_modifier_update_mdisps(struct DerivedMesh *dm)
 		int totlvl = ccgdm->multires.totlvl;
 		
 		if (lvl < totlvl) {
-			Mesh *me = ob->data;
 			DerivedMesh *lowdm, *cddm, *highdm;
 			CCGElem **highGridData, **lowGridData, **subGridData, **gridData, *diffGrid;
 			CCGKey highGridKey, lowGridKey;
@@ -1326,7 +1325,7 @@ void multires_set_space(DerivedMesh *dm, Object *ob, int from, int to)
 
 	k = 0; /*current loop/mdisp index within the mloop array*/
 
-	//#pragma omp parallel for private(i) if (dm->numLoopData*gridSize*gridSize >= CCG_OMP_LIMIT)
+	//#pragma omp parallel for private(i) if (dm->numLoopData * gridSize * gridSize >= CCG_OMP_LIMIT)
 
 	for (i = 0; i < dm->numPolyData; ++i) {
 		const int numVerts = mpoly[i].totloop;
@@ -1631,7 +1630,7 @@ void multires_free(Multires *mr)
 		}
 
 		while (lvl) {
-			multires_free_level(lvl);			
+			multires_free_level(lvl);
 			lvl = lvl->next;
 		}
 
@@ -2086,8 +2085,8 @@ void multires_load_old(Object *ob, Mesh *me)
 		CustomData_add_layer(&me->vdata, l->type, CD_REFERENCE, l->data, me->totvert);
 	for (i = 0, l = me->mr->fdata.layers; i < me->mr->fdata.totlayer; ++i, ++l)
 		CustomData_add_layer(&me->fdata, l->type, CD_REFERENCE, l->data, me->totface);
-	memset(&me->mr->vdata, 0, sizeof(CustomData));
-	memset(&me->mr->fdata, 0, sizeof(CustomData));
+	CustomData_reset(&me->mr->vdata);
+	CustomData_reset(&me->mr->fdata);
 
 	multires_load_old_vcols(me);
 	multires_load_old_face_flags(me);
@@ -2201,7 +2200,7 @@ static void multires_apply_smat(Scene *scene, Object *ob, float smat[3][3])
 	dGridSize = multires_side_tot[high_mmd.totlvl];
 	dSkip = (dGridSize - 1) / (gridSize - 1);
 
-	#pragma omp parallel for private(i) if (me->totface*gridSize*gridSize*4 >= CCG_OMP_LIMIT)
+	#pragma omp parallel for private(i) if (me->totface * gridSize * gridSize * 4 >= CCG_OMP_LIMIT)
 	for (i = 0; i < me->totpoly; ++i) {
 		const int numVerts = mpoly[i].totloop;
 		MDisps *mdisp = &mdisps[mpoly[i].loopstart];

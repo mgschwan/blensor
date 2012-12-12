@@ -73,23 +73,17 @@ ms3d_strings.py     : most of the strings used in the addon to have a
 
 known issues:
   importer issues:
-    - does not import keyframes
+    -/-
 
   exporter issues:
-    - does only export the first existing material, if more than one material
-            is used per mesh
+    - does only export active mesh object
     - does only export the first existing UV texture coordinates,
             if more than one UV texture is used per mesh
-    - does not export bones
-    - does not export joints
-    - does not export keyframes
-    - does not export comments (will never be supported - blender doesn't
-            have similar stuff)
 
 
-todo:
-- add support for bones and joints in exporter
-- add support for keyframes
+todo / nice to have:
+    - export options to ms3d joints/animation/extra parts optional
+
 
 ###############################################################################
     exporter:
@@ -97,61 +91,61 @@ todo:
             .vertices
                 Ms3dVertex
                     .vertex: 100%
-                    .bone_id: 0%
-                    .reference_count: 0%
+                    .bone_id: 100%
+                    .reference_count: 100%
                     .flags: 0%
                     .vertex_ex
                         Ms3dVertexEx
-                            .bone_ids: 0%
-                            .weights: 0%
-                            .extra: 0%
+                            .bone_ids: 100%
+                            .weights: 100%
+                            .extra: 100% (not exposed to UI)
             .triangles
                 Ms3dTriangle
                     .vertex_indices: 100%
                     .s: 100%
                     .t: 100%
-                    .group_index: 20% (not tested yet: TODO: auto generate groups from blender data, by materials)
+                    .group_index: 100%
                     .smoothing_group: 100%
                     .flags: 0%
-                    .vertex_normals: 80% (not tested yet)
+                    .vertex_normals: 100%
             .groups
                 Ms3dGroup
                     .name: 100%
                     .triangle_indices: 100%
-                    .material_index: 0% (TODO: auto generate groups from blender data, by materials)
+                    .material_index: 100%
                     .comment: 100%
                     .flags: 100%
             .materials
                 Ms3dMaterial
-                    name: 0%
-                    ambient: 0%
-                    diffuse: 0%
-                    specular: 0%
-                    emissive: 0%
-                    shininess: 0%
-                    transparency: 0%
-                    mode: 0%
-                    texture: 0%
-                    alphamap: 0%
-                    comment: 0%
-            .comment: 0%
+                    name: 100%
+                    ambient: 100%
+                    diffuse: 100%
+                    specular: 100%
+                    emissive: 100%
+                    shininess: 100%
+                    transparency: 100%
+                    mode: 100%
+                    texture: 100%
+                    alphamap: 100%
+                    comment: 100%
+            .comment: 100%
             .model_ex
                 Ms3dModelEx
-                    .joint_size: 0%
-                    .transparency_mode: 0%
-                    .alpha_ref: 0%
+                    .joint_size: 100%
+                    .transparency_mode: 100%
+                    .alpha_ref: 100%
             .joints
                 Ms3dJoint
-                    .name: 0%
-                    .parent_name: 0%
-                    .rotation: 0%
-                    .position: 0%
-                    .rotation_keyframes: 0%
-                    .translation_keyframes: 0%
+                    .name: 100%
+                    .parent_name: 100%
+                    .rotation: 100%
+                    .position: 100%
+                    .rotation_keyframes: 100%
+                    .translation_keyframes: 100%
                     .joint_ex
                         Ms3DJointEx
-                            .color: 0%
-                    .comment: 0%
+                            .color: 100%
+                    .comment: 100%
 ###############################################################################
     importer:
         Ms3dModel
@@ -159,60 +153,58 @@ todo:
                 Ms3dVertex
                     .vertex: 100%
                     .bone_id: 100%
-                    .reference_count: 0% (100% will be calculated on export)
-                    .flags: 0% (value only)
+                    .reference_count: 0%
+                    .flags: 0%
                     .vertex_ex
                         Ms3dVertexEx
-                            .bone_ids: 0%
-                            .weights: 0%
-                            .extra: 0%
+                            .bone_ids: 100%
+                            .weights: 100%
+                            .extra: 100% (not exposed to UI)
             .triangles
                 Ms3dTriangle
                     .vertex_indices: 100%
                     .s: 100%
                     .t: 100%
                     .group_index: 100%
-                    .smoothing_group: 100% (BUG: generation of sharp edges
-                            does not work well on isolated faces
-                            - faces, that does not share edges with neighbors)
+                    .smoothing_group: 100%
                     .flags: 0%
-                    .vertex_normals: 0% (not/never for import)
+                    .vertex_normals: 0%
             .groups
                 Ms3dGroup
-                    .name: 100% (value only)
+                    .name: 100%
                     .triangle_indices: 100%
                     .material_index: 100%
-                    .comment: 100% (value only)
-                    .flags: 100% (value only)
+                    .comment: 100%
+                    .flags: 100%
             .materials
                 Ms3dMaterial
-                    name: 100% (value only)
+                    name: 100%
                     ambient: 100%
                     diffuse: 100%
                     specular: 100%
                     emissive: 100%
                     shininess: 100%
                     transparency: 100%
-                    mode: 100% (value only)
-                    texture: 100% (value only)
-                    alphamap: 100% (value only)
-                    comment: 100% (value only)
-            .comment: 100% (value only)
+                    mode: 100%
+                    texture: 100%
+                    alphamap: 100%
+                    comment: 100%
+            .comment: 100%
             .model_ex
                 Ms3dModelEx
-                    .joint_size: 100% (value only)
-                    .transparency_mode: 100% (value only)
-                    .alpha_ref: 100% (value only)
+                    .joint_size: 100%
+                    .transparency_mode: 100%
+                    .alpha_ref: 100%
             .joints
                 Ms3dJoint
                     .name: 100%
                     .parent_name: 100%
                     .rotation: 100%
                     .position: 100%
-                    .rotation_keyframes: 0%
-                    .translation_keyframes: 0%
+                    .rotation_keyframes: 100%
+                    .translation_keyframes: 100%
                     .joint_ex
                         Ms3DJointEx
-                            .color: 100% (value only)
+                            .color: 100%
                     .comment: 100%
 ###############################################################################

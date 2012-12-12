@@ -515,7 +515,7 @@ void RE_SetPixelSize(Render *re, float pixsize)
 	re->viewdy = re->ycor * pixsize;
 }
 
-void RE_GetCameraWindow(struct Render *re, struct Object *camera, int frame, float mat[][4])
+void RE_GetCameraWindow(struct Render *re, struct Object *camera, int frame, float mat[4][4])
 {
 	re->r.cfra = frame;
 	RE_SetCamera(re, camera);
@@ -525,7 +525,7 @@ void RE_GetCameraWindow(struct Render *re, struct Object *camera, int frame, flo
 /* ~~~~~~~~~~~~~~~~ part (tile) calculus ~~~~~~~~~~~~~~~~~~~~~~ */
 
 
-void freeparts(Render *re)
+void RE_parts_free(Render *re)
 {
 	RenderPart *part = re->parts.first;
 	
@@ -537,12 +537,19 @@ void freeparts(Render *re)
 	BLI_freelistN(&re->parts);
 }
 
-void initparts(Render *re, int do_crop)
+void RE_parts_clamp(Render *re)
+{
+	/* part size */
+	re->partx = min_ii(re->r.tilex, re->rectx);
+	re->party = min_ii(re->r.tiley, re->recty);
+}
+
+void RE_parts_init(Render *re, int do_crop)
 {
 	int nr, xd, yd, partx, party, xparts, yparts;
 	int xminb, xmaxb, yminb, ymaxb;
 	
-	freeparts(re);
+	RE_parts_free(re);
 	
 	/* this is render info for caller, is not reset when parts are freed! */
 	re->i.totpart = 0;
@@ -555,31 +562,13 @@ void initparts(Render *re, int do_crop)
 	xmaxb = re->disprect.xmax;
 	ymaxb = re->disprect.ymax;
 	
-	xparts = re->r.xparts;
-	yparts = re->r.yparts;
-	
-	/* mininum part size, but for exr tile saving it was checked already */
-	if (!(re->r.scemode & (R_EXR_TILE_FILE | R_FULL_SAMPLE))) {
-		if (re->r.mode & R_PANORAMA) {
-			if (ceil(re->rectx / (float)xparts) < 8)
-				xparts = 1 + re->rectx / 8;
-		}
-		else
-		if (ceil(re->rectx / (float)xparts) < 64)
-			xparts = 1 + re->rectx / 64;
-		
-		if (ceil(re->recty / (float)yparts) < 64)
-			yparts = 1 + re->recty / 64;
-	}
-	
-	/* part size */
-	partx = ceil(re->rectx / (float)xparts);
-	party = ceil(re->recty / (float)yparts);
-	
-	re->xparts = xparts;
-	re->yparts = yparts;
-	re->partx = partx;
-	re->party = party;
+	RE_parts_clamp(re);
+
+	partx = re->partx;
+	party = re->party;
+	/* part count */
+	xparts = (re->rectx + partx - 1) / partx;
+	yparts = (re->recty + party - 1) / party;
 	
 	/* calculate rotation factor of 1 pixel */
 	if (re->r.mode & R_PANORAMA)

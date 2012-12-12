@@ -223,6 +223,12 @@ def draw_callback_px_box(self, context):
     self.key = self.key[:final]
     self.time = self.time[:final]
 
+
+def draw_callback_px(self, context):
+    draw_callback_px_text(self, context)
+    draw_callback_px_box(self, context)
+
+
 def draw_last_operator(context, pos_x, pos_y):
 
     wm = context.window_manager
@@ -597,9 +603,7 @@ class ScreencastKeysStatus(bpy.types.Operator):
                 self.mouse = []
                 self.mouse_time = []
                 ScreencastKeysStatus.overall_time = []
-                self._handle = context.region.callback_add(draw_callback_px_box,
-                    (self, context), 'POST_PIXEL')
-                self._handle = context.region.callback_add(draw_callback_px_text,
+                self._handle = context.region.callback_add(draw_callback_px,
                     (self, context), 'POST_PIXEL')
                 self._timer = context.window_manager.event_timer_add(0.075,
                     context.window)

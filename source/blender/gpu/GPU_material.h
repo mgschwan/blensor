@@ -107,10 +107,9 @@ typedef struct GPUNodeStack {
 GPUNodeLink *GPU_attribute(int type, const char *name);
 GPUNodeLink *GPU_uniform(float *num);
 GPUNodeLink *GPU_dynamic_uniform(float *num, int dynamictype, void *data);
-GPUNodeLink *GPU_image(struct Image *ima, struct ImageUser *iuser, int ncd);
+GPUNodeLink *GPU_image(struct Image *ima, struct ImageUser *iuser, int isdata);
 GPUNodeLink *GPU_texture(int size, float *pixels);
 GPUNodeLink *GPU_dynamic_texture(struct GPUTexture *tex, int dynamictype, void *data);
-GPUNodeLink *GPU_socket(GPUNodeStack *sock);
 GPUNodeLink *GPU_builtin(GPUBuiltin builtin);
 
 int GPU_link(GPUMaterial *mat, const char *name, ...);
@@ -128,7 +127,7 @@ void GPU_material_free(struct Material *ma);
 void GPU_materials_free(void);
 
 void GPU_material_bind(GPUMaterial *material, int oblay, int viewlay, double time, int mipmap);
-void GPU_material_bind_uniforms(GPUMaterial *material, float obmat[][4], float viewmat[][4], float viewinv[][4], float obcol[4], float autobumpscale);
+void GPU_material_bind_uniforms(GPUMaterial *material, float obmat[4][4], float viewmat[4][4], float viewinv[4][4], float obcol[4], float autobumpscale);
 void GPU_material_unbind(GPUMaterial *material);
 int GPU_material_bound(GPUMaterial *material);
 
@@ -233,10 +232,10 @@ void GPU_lamp_free(struct Object *ob);
 
 int GPU_lamp_has_shadow_buffer(GPULamp *lamp);
 void GPU_lamp_update_buffer_mats(GPULamp *lamp);
-void GPU_lamp_shadow_buffer_bind(GPULamp *lamp, float viewmat[][4], int *winsize, float winmat[][4]);
+void GPU_lamp_shadow_buffer_bind(GPULamp *lamp, float viewmat[4][4], int *winsize, float winmat[4][4]);
 void GPU_lamp_shadow_buffer_unbind(GPULamp *lamp);
 
-void GPU_lamp_update(GPULamp *lamp, int lay, int hide, float obmat[][4]);
+void GPU_lamp_update(GPULamp *lamp, int lay, int hide, float obmat[4][4]);
 void GPU_lamp_update_colors(GPULamp *lamp, float r, float g, float b, float energy);
 void GPU_lamp_update_distance(GPULamp *lamp, float distance, float att1, float att2);
 void GPU_lamp_update_spot(GPULamp *lamp, float spotsize, float spotblend);

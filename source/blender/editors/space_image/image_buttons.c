@@ -191,7 +191,7 @@ void image_preview_event(int event)
 		waitcursor(0);
 		
 		WM_event_add_notifier(C, NC_IMAGE, ima_v);
-	}	
+	}
 }
 
 
@@ -593,7 +593,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 		if (ima->source == IMA_SRC_VIEWER) {
 			ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
 			image_info(scene, iuser, ima, ibuf, str);
-			BKE_image_release_ibuf(ima, lock);
+			BKE_image_release_ibuf(ima, ibuf, lock);
 
 			uiItemL(layout, ima->id.name + 2, ICON_NONE);
 			uiItemL(layout, str, ICON_NONE);
@@ -663,7 +663,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 				if (compact == 0) {
 					ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
 					image_info(scene, iuser, ima, ibuf, str);
-					BKE_image_release_ibuf(ima, lock);
+					BKE_image_release_ibuf(ima, ibuf, lock);
 					uiItemL(layout, str, ICON_NONE);
 				}
 			}
@@ -724,6 +724,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 				col = uiLayoutColumn(split, TRUE);
 				uiItemR(col, &imaptr, "generated_width", 0, "X", ICON_NONE);
 				uiItemR(col, &imaptr, "generated_height", 0, "Y", ICON_NONE);
+				
 				uiItemR(col, &imaptr, "use_generated_float", 0, NULL, ICON_NONE);
 
 				uiItemR(split, &imaptr, "generated_type", UI_ITEM_R_EXPAND, NULL, ICON_NONE);
@@ -759,9 +760,10 @@ void uiTemplateImageSettings(uiLayout *layout, PointerRNA *imfptr, int color_man
 	uiItemR(sub, imfptr, "color_mode", UI_ITEM_R_EXPAND, IFACE_("Color"), ICON_NONE);
 
 	/* only display depth setting if multiple depths can be used */
-	if ((ELEM6(depth_ok,
+	if ((ELEM7(depth_ok,
 	           R_IMF_CHAN_DEPTH_1,
 	           R_IMF_CHAN_DEPTH_8,
+	           R_IMF_CHAN_DEPTH_10,
 	           R_IMF_CHAN_DEPTH_12,
 	           R_IMF_CHAN_DEPTH_16,
 	           R_IMF_CHAN_DEPTH_24,
@@ -801,9 +803,13 @@ void uiTemplateImageSettings(uiLayout *layout, PointerRNA *imfptr, int color_man
 		uiItemR(col, imfptr, "use_jpeg2k_ycc", 0, NULL, ICON_NONE);
 	}
 
+	if (imf->imtype == R_IMF_IMTYPE_DPX) {
+		uiItemR(col, imfptr, "use_cineon_log", 0, NULL, ICON_NONE);
+	}
+
 	if (imf->imtype == R_IMF_IMTYPE_CINEON) {
 #if 1
-		uiItemL(col, IFACE_("Hard coded Non-Linear, Gamma: 1.0"), ICON_NONE);
+		uiItemL(col, IFACE_("Hard coded Non-Linear, Gamma:1.7"), ICON_NONE);
 #else
 		uiItemR(col, imfptr, "use_cineon_log", 0, NULL, ICON_NONE);
 		uiItemR(col, imfptr, "cineon_black", 0, NULL, ICON_NONE);

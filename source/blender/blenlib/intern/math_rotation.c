@@ -84,7 +84,7 @@ void mul_qt_qtqt(float q[4], const float q1[4], const float q2[4])
  * \note:
  * Assumes a unit quaternion?
  *
- * in fact not, but you may wan't to use a unit quat, read on...
+ * in fact not, but you may want to use a unit quat, read on...
  *
  * Shortcut for 'q v q*' when \a v is actually a quaternion.
  * This removes the need for converting a vector to a quaternion,
@@ -185,7 +185,7 @@ void mul_fac_qt_fl(float q[4], const float fac)
 }
 
 /* skip error check, currently only needed by mat3_to_quat_is_ok */
-static void quat_to_mat3_no_error(float m[][3], const float q[4])
+static void quat_to_mat3_no_error(float m[3][3], const float q[4])
 {
 	double q0, q1, q2, q3, qda, qdb, qdc, qaa, qab, qac, qbb, qbc, qcc;
 
@@ -217,7 +217,7 @@ static void quat_to_mat3_no_error(float m[][3], const float q[4])
 	m[2][2] = (float)(1.0 - qaa - qbb);
 }
 
-void quat_to_mat3(float m[][3], const float q[4])
+void quat_to_mat3(float m[3][3], const float q[4])
 {
 #ifdef DEBUG
 	float f;
@@ -229,12 +229,12 @@ void quat_to_mat3(float m[][3], const float q[4])
 	quat_to_mat3_no_error(m, q);
 }
 
-void quat_to_mat4(float m[][4], const float q[4])
+void quat_to_mat4(float m[4][4], const float q[4])
 {
 	double q0, q1, q2, q3, qda, qdb, qdc, qaa, qab, qac, qbb, qbc, qcc;
 
 #ifdef DEBUG
-	if (!((q0 = dot_qtqt(q, q)) == 0.0f || (fabsf(q0 - 1.0) < QUAT_EPSILON))) {
+	if (!((q0 = dot_qtqt(q, q)) == 0.0 || (fabs(q0 - 1.0) < QUAT_EPSILON))) {
 		fprintf(stderr, "Warning! quat_to_mat4() called with non-normalized: size %.8f *** report a bug ***\n", (float)q0);
 	}
 #endif
@@ -273,7 +273,7 @@ void quat_to_mat4(float m[][4], const float q[4])
 	m[3][3] = 1.0f;
 }
 
-void mat3_to_quat(float q[4], float wmat[][3])
+void mat3_to_quat(float q[4], float wmat[3][3])
 {
 	double tr, s;
 	float mat[3][3];
@@ -288,9 +288,9 @@ void mat3_to_quat(float q[4], float wmat[][3])
 		s = sqrt(tr);
 		q[0] = (float)s;
 		s = 1.0 / (4.0 * s);
-		q[1] = (float)((mat[1][2] - mat[2][1]) * s);
-		q[2] = (float)((mat[2][0] - mat[0][2]) * s);
-		q[3] = (float)((mat[0][1] - mat[1][0]) * s);
+		q[1] = (float)((double)(mat[1][2] - mat[2][1]) * s);
+		q[2] = (float)((double)(mat[2][0] - mat[0][2]) * s);
+		q[3] = (float)((double)(mat[0][1] - mat[1][0]) * s);
 	}
 	else {
 		if (mat[0][0] > mat[1][1] && mat[0][0] > mat[2][2]) {
@@ -325,7 +325,7 @@ void mat3_to_quat(float q[4], float wmat[][3])
 	normalize_qt(q);
 }
 
-void mat4_to_quat(float q[4], float m[][4])
+void mat4_to_quat(float q[4], float m[4][4])
 {
 	float mat[3][3];
 
@@ -797,7 +797,7 @@ void mat3_to_axis_angle(float axis[3], float *angle, float mat[3][3])
 	float q[4];
 
 	/* use quaternions as intermediate representation */
-	// TODO: it would be nicer to go straight there...
+	/* TODO: it would be nicer to go straight there... */
 	mat3_to_quat(q, mat);
 	quat_to_axis_angle(axis, angle, q);
 }
@@ -808,7 +808,7 @@ void mat4_to_axis_angle(float axis[3], float *angle, float mat[4][4])
 	float q[4];
 
 	/* use quaternions as intermediate representation */
-	// TODO: it would be nicer to go straight there...
+	/* TODO: it would be nicer to go straight there... */
 	mat4_to_quat(q, mat);
 	quat_to_axis_angle(axis, angle, q);
 }
@@ -861,7 +861,7 @@ void single_axis_angle_to_mat3(float mat[3][3], const char axis, const float ang
 /* TODO: the following calls should probably be deprecated sometime         */
 
 /* TODO, replace use of this function with axis_angle_to_mat3() */
-void vec_rot_to_mat3(float mat[][3], const float vec[3], const float phi)
+void vec_rot_to_mat3(float mat[3][3], const float vec[3], const float phi)
 {
 	/* rotation of phi radials around vec */
 	float vx, vx2, vy, vy2, vz, vz2, co, si;
@@ -889,7 +889,7 @@ void vec_rot_to_mat3(float mat[][3], const float vec[3], const float phi)
 /******************************** XYZ Eulers *********************************/
 
 /* XYZ order */
-void eul_to_mat3(float mat[][3], const float eul[3])
+void eul_to_mat3(float mat[3][3], const float eul[3])
 {
 	double ci, cj, ch, si, sj, sh, cc, cs, sc, ss;
 
@@ -917,7 +917,7 @@ void eul_to_mat3(float mat[][3], const float eul[3])
 }
 
 /* XYZ order */
-void eul_to_mat4(float mat[][4], const float eul[3])
+void eul_to_mat4(float mat[4][4], const float eul[3])
 {
 	double ci, cj, ch, si, sj, sh, cc, cs, sc, ss;
 
@@ -950,7 +950,7 @@ void eul_to_mat4(float mat[][4], const float eul[3])
 /* returns two euler calculation methods, so we can pick the best */
 
 /* XYZ order */
-static void mat3_to_eul2(float tmat[][3], float eul1[3], float eul2[3])
+static void mat3_to_eul2(float tmat[3][3], float eul1[3], float eul2[3])
 {
 	float cy, quat[4], mat[3][3];
 
@@ -982,7 +982,7 @@ static void mat3_to_eul2(float tmat[][3], float eul1[3], float eul2[3])
 }
 
 /* XYZ order */
-void mat3_to_eul(float *eul, float tmat[][3])
+void mat3_to_eul(float *eul, float tmat[3][3])
 {
 	float eul1[3], eul2[3];
 
@@ -998,7 +998,7 @@ void mat3_to_eul(float *eul, float tmat[][3])
 }
 
 /* XYZ order */
-void mat4_to_eul(float *eul, float tmat[][4])
+void mat4_to_eul(float *eul, float tmat[4][4])
 {
 	float tempMat[3][3];
 
@@ -1077,11 +1077,11 @@ void compatible_eul(float eul[3], const float oldrot[3])
 	for (i = 0; i < 3; i++) {
 		deul[i] = eul[i] - oldrot[i];
 		if (deul[i] > pi_thresh) {
-			eul[i] -= floorf(( deul[i] / pi_x2) + 0.5) * pi_x2;
+			eul[i] -= floorf(( deul[i] / pi_x2) + 0.5f) * pi_x2;
 			deul[i] = eul[i] - oldrot[i];
 		}
 		else if (deul[i] < -pi_thresh) {
-			eul[i] += floorf((-deul[i] / pi_x2) + 0.5) * pi_x2;
+			eul[i] += floorf((-deul[i] / pi_x2) + 0.5f) * pi_x2;
 			deul[i] = eul[i] - oldrot[i];
 		}
 	}
@@ -1107,7 +1107,7 @@ void compatible_eul(float eul[3], const float oldrot[3])
 /* uses 2 methods to retrieve eulers, and picks the closest */
 
 /* XYZ order */
-void mat3_to_compatible_eul(float eul[3], const float oldrot[3], float mat[][3])
+void mat3_to_compatible_eul(float eul[3], const float oldrot[3], float mat[3][3])
 {
 	float eul1[3], eul2[3];
 	float d1, d2;
@@ -1363,7 +1363,7 @@ void mat4_to_compatible_eulO(float eul[3], float oldrot[3], const short order, f
 	mat3_to_compatible_eulO(eul, oldrot, order, m);
 }
 /* rotate the given euler by the given angle on the specified axis */
-// NOTE: is this safe to do with different axis orders?
+/* NOTE: is this safe to do with different axis orders? */
 
 void rotate_eulO(float beul[3], const short order, char axis, float ang)
 {
@@ -1388,7 +1388,7 @@ void rotate_eulO(float beul[3], const short order, char axis, float ang)
 }
 
 /* the matrix is written to as 3 axis vectors */
-void eulO_to_gimbal_axis(float gmat[][3], const float eul[3], const short order)
+void eulO_to_gimbal_axis(float gmat[3][3], const float eul[3], const short order)
 {
 	const RotOrderInfo *R = GET_ROTATIONORDER_INFO(order);
 
@@ -1447,7 +1447,7 @@ void eulO_to_gimbal_axis(float gmat[][3], const float eul[3], const short order)
  * - added support for scaling
  */
 
-void mat4_to_dquat(DualQuat *dq, float basemat[][4], float mat[][4])
+void mat4_to_dquat(DualQuat *dq, float basemat[4][4], float mat[4][4])
 {
 	float *t, *q, dscale[3], scale[3], basequat[4];
 	float baseRS[4][4], baseinv[4][4], baseR[4][4], baseRinv[4][4];
@@ -1502,7 +1502,7 @@ void mat4_to_dquat(DualQuat *dq, float basemat[][4], float mat[][4])
 	dq->trans[3] =  0.5f * ( t[0] * q[2] - t[1] * q[1] + t[2] * q[0]);
 }
 
-void dquat_to_mat4(float mat[][4], DualQuat *dq)
+void dquat_to_mat4(float mat[4][4], DualQuat *dq)
 {
 	float len, *t, q0[4];
 
@@ -1583,7 +1583,7 @@ void normalize_dq(DualQuat *dq, float totweight)
 	}
 }
 
-void mul_v3m3_dq(float co[3], float mat[][3], DualQuat *dq)
+void mul_v3m3_dq(float co[3], float mat[3][3], DualQuat *dq)
 {
 	float M[3][3], t[3], scalemat[3][3], len2;
 	float w = dq->quat[0], x = dq->quat[1], y = dq->quat[2], z = dq->quat[3];
@@ -1679,34 +1679,34 @@ void vec_apply_track(float vec[3], short axis)
 
 	switch (axis) {
 		case 0: /* pos-x */
-			/* vec[0]=  0.0; */
+			/* vec[0] =  0.0; */
 			vec[1] = tvec[2];
 			vec[2] = -tvec[1];
 			break;
 		case 1: /* pos-y */
-			/* vec[0]= tvec[0]; */
-			/* vec[1]=  0.0; */
-			/* vec[2]= tvec[2]; */
+			/* vec[0] = tvec[0]; */
+			/* vec[1] =  0.0; */
+			/* vec[2] = tvec[2]; */
 			break;
 		case 2: /* pos-z */
-			/* vec[0]= tvec[0]; */
-			/* vec[1]= tvec[1]; */
-			// vec[2]=  0.0; */
+			/* vec[0] = tvec[0]; */
+			/* vec[1] = tvec[1]; */
+			/* vec[2] =  0.0; */
 			break;
 		case 3: /* neg-x */
-			/* vec[0]=  0.0; */
+			/* vec[0] =  0.0; */
 			vec[1] = tvec[2];
 			vec[2] = -tvec[1];
 			break;
 		case 4: /* neg-y */
 			vec[0] = -tvec[2];
-			/* vec[1]=  0.0; */
+			/* vec[1] =  0.0; */
 			vec[2] = tvec[0];
 			break;
 		case 5: /* neg-z */
 			vec[0] = -tvec[0];
 			vec[1] = -tvec[1];
-			/* vec[2]=  0.0; */
+			/* vec[2] =  0.0; */
 			break;
 	}
 }

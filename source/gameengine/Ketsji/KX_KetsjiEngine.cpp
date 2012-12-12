@@ -30,10 +30,9 @@
  *  \ingroup ketsji
  */
 
-
-#if defined(WIN32) && !defined(FREE_WINDOWS)
-#pragma warning (disable : 4786)
-#endif //WIN32
+#ifdef _MSC_VER
+#  pragma warning (disable:4786)
+#endif
 
 #include <iostream>
 #include <stdio.h>
@@ -46,7 +45,6 @@
 #include "BoolValue.h"
 #include "FloatValue.h"
 
-#define KX_NUM_ITERATIONS 4
 #include "RAS_BucketManager.h"
 #include "RAS_Rect.h"
 #include "RAS_IRasterizer.h"
@@ -275,8 +273,7 @@ void KX_KetsjiEngine::InitDome(short res, short mode, short angle, float resbuf,
 
 void KX_KetsjiEngine::RenderDome()
 {
-	GLuint	viewport[4]={0};
-	glGetIntegerv(GL_VIEWPORT,(GLint *)viewport);
+	const GLint *viewport = m_canvas->GetViewPort();
 	
 	m_dome->SetViewPort(viewport);
 
@@ -337,8 +334,7 @@ void KX_KetsjiEngine::RenderDome()
 			
 			// Draw the scene once for each camera with an enabled viewport
 			list<KX_Camera*>::iterator it = cameras->begin();
-			while(it != cameras->end())
-			{
+			while (it != cameras->end()) {
 				if ((*it)->GetViewport())
 				{
 					if (scene->IsClearingZBuffer())
@@ -538,29 +534,27 @@ bool KX_KetsjiEngine::NextFrame()
 {
 	double timestep = 1.0/m_ticrate;
 	double framestep = timestep;
-//	static hidden::Clock sClock;
+	//	static hidden::Clock sClock;
 
-m_logger->StartLog(tc_services, m_kxsystem->GetTimeInSeconds(),true);
+	m_logger->StartLog(tc_services, m_kxsystem->GetTimeInSeconds(),true);
 
-//float dt = sClock.getTimeMicroseconds() * 0.000001f;
-//sClock.reset();
+	//float dt = sClock.getTimeMicroseconds() * 0.000001f;
+	//sClock.reset();
 
-if (m_bFixedTime)
-	m_clockTime += timestep;
-else
-{
-
-//	m_clockTime += dt;
-	m_clockTime = m_kxsystem->GetTimeInSeconds();
-}
+	if (m_bFixedTime) {
+		m_clockTime += timestep;
+	}
+	else {
+		// m_clockTime += dt;
+		m_clockTime = m_kxsystem->GetTimeInSeconds();
+	}
 	
 	double deltatime = m_clockTime - m_frameTime;
 	if (deltatime<0.f)
 	{
-		printf("problem with clock\n");
-		deltatime = 0.f;
-		m_clockTime = 0.f;
-		m_frameTime = 0.f;
+		// We got here too quickly, which means there is nothing todo, just return and don't render.
+		// Not sure if this is the best fix, but it seems to stop the jumping framerate issue (#33088)
+		return false;
 	}
 
 
@@ -892,8 +886,7 @@ void KX_KetsjiEngine::Render()
 		
 		// Draw the scene once for each camera with an enabled viewport
 		list<KX_Camera*>::iterator it = cameras->begin();
-		while(it != cameras->end())
-		{
+		while (it != cameras->end()) {
 			if ((*it)->GetViewport())
 			{
 				if (scene->IsClearingZBuffer())
@@ -942,8 +935,7 @@ void KX_KetsjiEngine::Render()
 	
 			// Draw the scene once for each camera with an enabled viewport
 			list<KX_Camera*>::iterator it = cameras->begin();
-			while(it != cameras->end())
-			{
+			while (it != cameras->end()) {
 				if ((*it)->GetViewport())
 				{
 					if (scene->IsClearingZBuffer())
@@ -1330,8 +1322,7 @@ void KX_KetsjiEngine::RenderFonts(KX_Scene* scene)
 	list<class KX_FontObject*>* fonts = scene->GetFonts();
 	
 	list<KX_FontObject*>::iterator it = fonts->begin();
-	while(it != fonts->end())
-	{
+	while (it != fonts->end()) {
 		(*it)->DrawText();
 		++it;
 	}
@@ -1443,8 +1434,17 @@ void KX_KetsjiEngine::PostProcessScene(KX_Scene* scene)
 void KX_KetsjiEngine::RenderDebugProperties()
 {
 	STR_String debugtxt;
-	int xcoord = 10;	// mmmm, these constants were taken from blender source
-	int ycoord = 14;	// to 'mimic' behavior
+	int title_xmargin = -7;
+	int title_y_top_margin = 4;
+	int title_y_bottom_margin = 2;
+
+	int const_xindent = 4;
+	int const_ysize = 14;
+
+	int xcoord = 12;	// mmmm, these constants were taken from blender source
+	int ycoord = 17;	// to 'mimic' behavior
+	
+	int profile_indent = 64;
 
 	float tottime = m_logger->GetAverage();
 	if (tottime < 1e-6f) {
@@ -1455,19 +1455,44 @@ void KX_KetsjiEngine::RenderDebugProperties()
 	RAS_Rect viewport;
 	m_canvas->SetViewPort(0, 0, int(m_canvas->GetWidth()), int(m_canvas->GetHeight()));
 	
-	/* Framerate display */
-	if (m_show_framerate) {
-		debugtxt.Format("swap : %.3f (%.3f frames per second)", tottime, 1.0/tottime);
-		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
+	if (m_show_framerate || m_show_profile)	{
+		/* Title for profiling("Profile") */
+		debugtxt.Format("Profile");
+		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
 									debugtxt.Ptr(),
-									xcoord,
-									ycoord, 
-									m_canvas->GetWidth() /* RdV, TODO ?? */, 
+									xcoord + const_xindent + title_xmargin, // Adds the constant x indent (0 for now) to the title x margin
+									ycoord,
+									m_canvas->GetWidth() /* RdV, TODO ?? */,
 									m_canvas->GetHeight() /* RdV, TODO ?? */);
-		ycoord += 14;
+
+		// Increase the indent by default increase
+		ycoord += const_ysize;
+		// Add the title indent afterwards
+		ycoord += title_y_bottom_margin;
 	}
 
-	/* Profile and framerate display */
+	/* Framerate display */
+	if (m_show_framerate) {
+		debugtxt.Format("Frametime :");
+		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
+									debugtxt.Ptr(),
+									xcoord + const_xindent,
+									ycoord, 
+									m_canvas->GetWidth() /* RdV, TODO ?? */,
+									m_canvas->GetHeight() /* RdV, TODO ?? */);
+		
+		debugtxt.Format("%5.1fms (%5.1f fps)", tottime * 1000.f, 1.0/tottime);
+		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
+									debugtxt.Ptr(),
+									xcoord + const_xindent + profile_indent,
+									ycoord,
+									m_canvas->GetWidth() /* RdV, TODO ?? */,
+									m_canvas->GetHeight() /* RdV, TODO ?? */);
+		// Increase the indent by default increase
+		ycoord += const_ysize;
+	}
+
+	/* Profile display */
 	if (m_show_profile)
 	{
 		for (int j = tc_first; j < tc_numCategories; j++)
@@ -1475,23 +1500,43 @@ void KX_KetsjiEngine::RenderDebugProperties()
 			debugtxt.Format(m_profileLabels[j]);
 			m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
 			                            debugtxt.Ptr(),
-			                            xcoord,ycoord,
+			                            xcoord + const_xindent,
+										ycoord,
 			                            m_canvas->GetWidth(),
 			                            m_canvas->GetHeight());
+
 			double time = m_logger->GetAverage((KX_TimeCategory)j);
-			debugtxt.Format("%.3fms (%2.2f %%)", time*1000.f, time/tottime * 100.f);
+
+			debugtxt.Format("%5.2fms (%2d%%)", time*1000.f, (int)(time/tottime * 100.f));
 			m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
 			                            debugtxt.Ptr(),
-			                            xcoord + 60, ycoord,
+			                            xcoord + const_xindent + profile_indent, ycoord,
 			                            m_canvas->GetWidth(),
 			                            m_canvas->GetHeight());
-			ycoord += 14;
+			ycoord += const_ysize;
 		}
 	}
+	// Add the ymargin for titles below the other section of debug info
+	ycoord += title_y_top_margin;
 
 	/* Property display*/
 	if (m_show_debug_properties && m_propertiesPresent)
 	{
+
+		/* Title for debugging("Debug properties") */
+		debugtxt.Format("Debug Properties");
+		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
+									debugtxt.Ptr(),
+									xcoord + const_xindent + title_xmargin, // Adds the constant x indent (0 for now) to the title x margin
+									ycoord, 
+									m_canvas->GetWidth() /* RdV, TODO ?? */, 
+									m_canvas->GetHeight() /* RdV, TODO ?? */);
+
+		// Increase the indent by default increase
+		ycoord += const_ysize;
+		// Add the title indent afterwards
+		ycoord += title_y_bottom_margin;
+
 		KX_SceneList::iterator sceneit;
 		for (sceneit = m_scenes.begin();sceneit != m_scenes.end() ; sceneit++)
 		{
@@ -1526,11 +1571,11 @@ void KX_KetsjiEngine::RenderDebugProperties()
 					}
 					m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
 													debugtxt.Ptr(),
-													xcoord,
+													xcoord + const_xindent,
 													ycoord,
 													m_canvas->GetWidth(),
 													m_canvas->GetHeight());
-					ycoord += 14;
+					ycoord += const_ysize;
 				}
 				else
 				{
@@ -1538,14 +1583,14 @@ void KX_KetsjiEngine::RenderDebugProperties()
 					if (propval)
 					{
 						STR_String text = propval->GetText();
-						debugtxt = objname + "." + propname + " = " + text;
+						debugtxt = objname + ": '" + propname + "' = " + text;
 						m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
 													debugtxt.Ptr(),
-													xcoord,
+													xcoord + const_xindent,
 													ycoord,
 													m_canvas->GetWidth(),
 													m_canvas->GetHeight());
-						ycoord += 14;
+						ycoord += const_ysize;
 					}
 				}
 			}

@@ -211,7 +211,12 @@ int IMB_ispic(const char *filename)
 
 static int isavi(const char *name)
 {
+#ifdef WITH_AVI
 	return AVI_is_avi(name);
+#else
+	(void)name;
+	return FALSE;
+#endif
 }
 
 #ifdef WITH_QUICKTIME
@@ -223,12 +228,27 @@ static int isqtime(const char *name)
 
 #ifdef WITH_FFMPEG
 
+#ifdef _MSC_VER
+#define va_copy(dst, src) ((dst) = (src))
+#endif
+
+/* BLI_vsnprintf in ffmpeg_log_callback() causes invalid warning */
+#ifdef __GNUC__
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmissing-format-attribute"
+#endif
+
 static char ffmpeg_last_error[1024];
 
 static void ffmpeg_log_callback(void *ptr, int level, const char *format, va_list arg)
 {
 	if (ELEM(level, AV_LOG_FATAL, AV_LOG_ERROR)) {
-		size_t n = BLI_vsnprintf(ffmpeg_last_error, sizeof(ffmpeg_last_error), format, arg);
+		size_t n;
+		va_list arg2;
+
+		va_copy(arg2, arg);
+
+		n = BLI_vsnprintf(ffmpeg_last_error, sizeof(ffmpeg_last_error), format, arg2);
 
 		/* strip trailing \n */
 		ffmpeg_last_error[n - 1] = '\0';
@@ -239,6 +259,10 @@ static void ffmpeg_log_callback(void *ptr, int level, const char *format, va_lis
 		av_log_default_callback(ptr, level, format, arg);
 	}
 }
+
+#ifdef __GNUC__
+#  pragma GCC diagnostic pop
+#endif
 
 void IMB_ffmpeg_init(void)
 {
@@ -405,7 +429,7 @@ int IMB_isanim(const char *filename)
 				type = imb_get_anim_type(filename);
 			}
 			else {
-				return(FALSE);			
+				return(FALSE);
 			}
 		}
 		else { /* no quicktime */

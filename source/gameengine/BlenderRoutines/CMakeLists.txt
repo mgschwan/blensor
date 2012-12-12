@@ -23,7 +23,6 @@ set(INC
 	../../blender/makesdna
 	../../blender/makesrna
 	../../blender/windowmanager
-	../../../extern/bullet2/src
 	../../../intern/container
 	../../../intern/guardedalloc
 	../../../intern/moto/include
@@ -31,8 +30,10 @@ set(INC
 )
 
 set(INC_SYS
+	../../../extern/bullet2/src
 	${PTHREADS_INCLUDE_DIRS}
 	${GLEW_INCLUDE_PATH}
+	${BOOST_INCLUDE_DIR}
 )
 
 set(SRC

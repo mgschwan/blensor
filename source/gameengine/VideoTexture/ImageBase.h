@@ -1,29 +1,33 @@
 /*
------------------------------------------------------------------------------
-This source file is part of blendTex library
-
-Copyright (c) 2007 The Zdeno Ash Miklas
-
-This program is free software; you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the Free Software
-Foundation; either version 2 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with
-this program; if not, write to the Free Software Foundation, Inc., 59 Temple
-Place - Suite 330, Boston, MA 02111-1307, USA, or go to
-http://www.gnu.org/copyleft/lesser.txt.
------------------------------------------------------------------------------
-*/
+ * ***** BEGIN GPL LICENSE BLOCK *****
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software  Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ * Copyright (c) 2007 The Zdeno Ash Miklas
+ *
+ * This source file is part of blendTex library
+ *
+ * Contributor(s):
+ *
+ * ***** END GPL LICENSE BLOCK *****
+ */
 
 /** \file ImageBase.h
  *  \ingroup bgevideotex
  */
- 
+
 #ifndef __IMAGEBASE_H__
 #define __IMAGEBASE_H__
 
@@ -78,6 +82,14 @@ public:
 	bool getFlip (void) { return m_flip; }
 	/// set vertical flip
 	void setFlip (bool flip) { m_flip = flip; }
+	/// get Z buffer
+	bool getZbuff (void) { return m_zbuff; }
+	/// set Z buffer
+	void setZbuff (bool zbuff) { m_zbuff = zbuff; }
+	/// get depth
+	bool getDepth (void) { return m_depth; }
+	/// set depth
+	void setDepth (bool depth) { m_depth = depth; }
 
 	/// get source object
 	PyImage * getSource (const char * id);
@@ -111,6 +123,10 @@ protected:
 	bool m_scaleChange;
 	/// flip image vertically
 	bool m_flip;
+	/// use the Z buffer as a texture
+	bool m_zbuff;
+	/// extract the Z buffer with unisgned int precision
+	bool m_depth;
 
 	/// source image list
 	ImageSourceList m_sources;
@@ -347,7 +363,15 @@ int Image_setFlip (PyImage *self, PyObject *value, void *closure);
 PyObject *Image_getSource (PyImage *self, PyObject *args);
 // set filter source object
 PyObject *Image_setSource (PyImage *self, PyObject *args);
-
+// get Z buffer
+PyObject * Image_getZbuff (PyImage * self, void * closure);
+// set Z buffer
+int Image_setZbuff (PyImage * self, PyObject * value, void * closure);
+// get depth
+PyObject * Image_getDepth (PyImage * self, void * closure);
+// set depth
+int Image_setDepth (PyImage * self, PyObject * value, void * closure);
+ 
 // get pixel filter object
 PyObject *Image_getFilter (PyImage *self, void *closure);
 // set pixel filter object

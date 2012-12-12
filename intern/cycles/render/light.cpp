@@ -68,20 +68,15 @@ static void dump_background_pixels(Device *device, DeviceScene *dscene, int res,
 	main_task.shader_w = width*height;
 
 	/* disabled splitting for now, there's an issue with multi-GPU mem_copy_from */
-#if 0
 	list<DeviceTask> split_tasks;
 	main_task.split_max_size(split_tasks, 128*128); 
 
 	foreach(DeviceTask& task, split_tasks) {
 		device->task_add(task);
 		device->task_wait();
+		device->mem_copy_from(d_output, task.shader_x, 1, task.shader_w, sizeof(float4));
 	}
-#else
-	device->task_add(main_task);
-	device->task_wait();
-#endif
 
-	device->mem_copy_from(d_output, 0, 1, d_output.size(), sizeof(float4));
 	device->mem_free(d_input);
 	device->mem_free(d_output);
 
@@ -152,6 +147,10 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 		Mesh *mesh = object->mesh;
 		bool have_emission = false;
 
+		/* skip if we are not visible for BSDFs */
+		if(!(object->visibility & (PATH_RAY_DIFFUSE|PATH_RAY_GLOSSY|PATH_RAY_TRANSMIT)))
+			continue;
+
 		/* skip if we have no emission shaders */
 		foreach(uint sindex, mesh->used_shaders) {
 			Shader *shader = scene->shaders[sindex];
@@ -187,6 +186,10 @@ void LightManager::device_update_distribution(Device *device, DeviceScene *dscen
 	foreach(Object *object, scene->objects) {
 		Mesh *mesh = object->mesh;
 		bool have_emission = false;
+
+		/* skip if we are not visible for BSDFs */
+		if(!(object->visibility & (PATH_RAY_DIFFUSE|PATH_RAY_GLOSSY|PATH_RAY_TRANSMIT)))
+			continue;
 
 		/* skip if we have no emission shaders */
 		foreach(uint sindex, mesh->used_shaders) {

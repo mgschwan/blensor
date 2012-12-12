@@ -131,7 +131,7 @@ void wm_subwindow_getorigin(wmWindow *win, int swinid, int *x, int *y)
 	}
 }
 
-void wm_subwindow_getmatrix(wmWindow *win, int swinid, float mat[][4])
+void wm_subwindow_getmatrix(wmWindow *win, int swinid, float mat[4][4])
 {
 	wmSubWindow *swin = swin_from_swinid(win, swinid);
 
@@ -163,10 +163,6 @@ int wm_subwindow_open(wmWindow *win, rcti *winrct)
 	win->curswin = swin = MEM_callocN(sizeof(wmSubWindow), "swinopen");
 	BLI_addtail(&win->subwindows, swin);
 	
-	if (G.debug & G_DEBUG_EVENTS) {
-		printf("%s: swin %d added\n", __func__, freewinid);
-	}
-
 	swin->swinid = freewinid;
 	swin->winrct = *winrct;
 
@@ -192,7 +188,7 @@ void wm_subwindow_close(wmWindow *win, int swinid)
 		wm_subwindow_free(swin);
 		BLI_remlink(&win->subwindows, swin);
 		MEM_freeN(swin);
-	} 
+	}
 	else {
 		printf("%s: Internal error, bad winid: %d\n", __func__, swinid);
 	}
@@ -398,7 +394,7 @@ int WM_framebuffer_to_index(unsigned int col)
 			return col & 0xFFFFFF;
 		default: // 18 bits...
 			return ((col & 0xFC0000) >> 6) + ((col & 0xFC00) >> 4) + ((col & 0xFC) >> 2);
-	}		
+	}
 }
 
 
