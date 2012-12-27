@@ -9,7 +9,7 @@ SIZE 4 4 4 4
 TYPE F F F F
 COUNT 1 1 1 1
 WIDTH %d
-HEIGHT 1
+HEIGHT %d
 VIEWPOINT 0 0 0 1 0 0 0
 POINTS %d
 DATA ascii
@@ -22,7 +22,7 @@ SIZE 4 4 4 4 4
 TYPE F F F F U
 COUNT 1 1 1 1 1
 WIDTH %d
-HEIGHT 1
+HEIGHT %d
 VIEWPOINT 0 0 0 1 0 0 0
 POINTS %d
 DATA ascii
@@ -37,6 +37,11 @@ PGM_HEADER ="""P2
 %d %d
 %d
 """
+
+INVALID_POINT = [0.0, 0.0, 0.0, float('NaN'), float('NaN'),
+                 float('NaN'),float('NaN'),float('NaN'),float('NaN'),
+                 float('NaN'),float('NaN'),-1,(0,0,0),-1]
+
 
 #Globals (should be removed at some point)
 output_labels = True
@@ -60,6 +65,8 @@ class evd_file:
         self.buffer = []
         self.mode = WRITER_MODE_EVD
         self.output_labels = output_labels
+        self.width = width
+        self.height = height
         try:
           if self.filename[-4:] == ".pcd":
             self.mode = WRITER_MODE_PCL
@@ -67,8 +74,6 @@ class evd_file:
           elif self.filename[-4:] == ".pgm":
             if width==0 or height==0:
               raise Exception("Width or Height not set")
-            self.width = width
-            self.height = height
             self.image = [0.0]*(width*height)
             self.image_noisy = [0.0]*(width*height)
             self.max_depth=max_depth
@@ -87,7 +92,7 @@ class evd_file:
             self.image_noisy[idx]=distance_noise
         else:
           self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
-                       x,y,z,x_noise,y_noise,z_noise,object_id,(int(255*color[0]),int(255*color[1]),int(255*color[2]))])
+                       x,y,z,x_noise,y_noise,z_noise,object_id,(int(255*color[0]),int(255*color[1]),int(255*color[2])),idx])
 
     def writeEvdFile(self):
         if self.mode == WRITER_MODE_PCL:
@@ -117,38 +122,61 @@ class evd_file:
           print ("Written: %d entries"%idx)
           evd.close()
   
+    def write_point(self, pcl, pcl_noisy, e, output_labels):
+      #Storing color values packed into a single floating point number??? 
+      #That is really required by the pcl library!
+      color_uint32 = (e[12][0]<<16) | (e[12][1]<<8) | (e[12][2])
+      values=struct.unpack("f",struct.pack("I",color_uint32))
+
+      if output_labels:
+        pcl.write("%f %f %f %.15e %d\n"%(float(e[5]),float(e[6]),float(e[7]), values[0], int(e[11])))        
+        pcl_noisy.write("%f %f %f %.15e %d\n"%(float(e[8]),float(e[9]),float(e[10]), values[0], int(e[11])))        
+      else:
+        pcl.write("%f %f %f %.15e\n"%(float(e[5]),float(e[6]),float(e[7]), values[0]))        
+        pcl_noisy.write("%f %f %f %.15e\n"%(float(e[8]),float(e[9]),float(e[10]), values[0]))        
+
 
     def writePCLFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
-      try:
+      
+      sparse_mode = True #Write only valid points
+      if self.width == 0 or self.height == 0:
+        width=len(self.buffer)
+        height = 1
+      else:
+        sparse_mode = False # Write all points
+        width = self.width
+        height = self.height
+      if True:  
+      #try:
         pcl = open("%s%05d.pcd"%(self.filename,frame_counter),"w")
         pcl_noisy = open("%s_noisy%05d.pcd"%(self.filename,frame_counter),"w")
         if self.output_labels:
-          pcl.write(PCL_HEADER_WITH_LABELS%(len(self.buffer),len(self.buffer)))
-          pcl_noisy.write(PCL_HEADER_WITH_LABELS%(len(self.buffer),len(self.buffer)))
+          pcl.write(PCL_HEADER_WITH_LABELS%(width,height,width*height))
+          pcl_noisy.write(PCL_HEADER_WITH_LABELS%(width,height,width*height))
         else:
-          pcl.write(PCL_HEADER%(len(self.buffer),len(self.buffer)))
-          pcl_noisy.write(PCL_HEADER%(len(self.buffer),len(self.buffer)))
+          pcl.write(PCL_HEADER%(width,height,width*height))
+          pcl_noisy.write(PCL_HEADER%(width,height,width*height))
         idx = 0
         for e in self.buffer:
-          idx = idx + 1
-          #Storing color values packed into a single floating point number??? 
-          #That is really required by the pcl library!
-          color_uint32 = (e[12][0]<<16) | (e[12][1]<<8) | (e[12][2])
-          values=struct.unpack("f",struct.pack("I",color_uint32))
-
-          if self.output_labels:
-            pcl.write("%f %f %f %.15e %d\n"%(float(e[5]),float(e[6]),float(e[7]), values[0], int(e[11])))        
-            pcl_noisy.write("%f %f %f %.15e %d\n"%(float(e[8]),float(e[9]),float(e[10]), values[0], int(e[11])))        
-          else:
-            pcl.write("%f %f %f %.15e\n"%(float(e[5]),float(e[6]),float(e[7]), values[0]))        
-            pcl_noisy.write("%f %f %f %.15e\n"%(float(e[8]),float(e[9]),float(e[10]), values[0]))        
-
+          if e[13] > idx and not sparse_mode: # e[13] is the idx of the point
+            for i in range(idx, e[13]):
+              self.write_point(pcl, pcl_noisy, INVALID_POINT, self.output_labels)
+              idx += 1
+          
+          idx += 1
+          self.write_point(pcl, pcl_noisy, e, self.output_labels)
+      
+        if idx < width*height:
+          for i in range(idx, width*height):
+            self.write_point(pcl, pcl_noisy, INVALID_POINT, self.output_labels)
+      
+      
         pcl.close()
         pcl_noisy.close()
-      except Exception as e:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        traceback.print_tb(exc_traceback)
+      #except Exception as e:
+      #  exc_type, exc_value, exc_traceback = sys.exc_info()
+      #  traceback.print_tb(exc_traceback)
 
     def writePGMFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist

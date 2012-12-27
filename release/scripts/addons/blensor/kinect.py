@@ -30,7 +30,7 @@ from blensor import evd
 from blensor import mesh_utils
 from blensor import kinect_dots
 
-WINDOW_INLIER_DISTANCE = 0.5
+WINDOW_INLIER_DISTANCE = 0.2
 
 from mathutils import Vector, Euler, Matrix
 
@@ -112,22 +112,22 @@ def fast_9x9_window(distances, res_x, res_y, disparity_map):
     
   for y in range(min(kinect_dots.mask.shape[0]-9, data.shape[0]-9)):
     for x in range(min(kinect_dots.mask.shape[1]-9,data.shape[1]-9)):
-      if kinect_dots.mask[y+4,x+4]:
+      if kinect_dots.mask[y+4,x+4] and data[y+4,x+4] < INVALID_DISPARITY:
         window = data[y:y+9,x:x+9]
         dot_window = kinect_dots.mask[y:y+9,x:x+9]
         valid_values = window < INVALID_DISPARITY
         valid_dots = valid_values&dot_window
         if numpy.sum(valid_dots) > numpy.sum(dot_window)/1.5:
           mean = numpy.sum(window[valid_values])/numpy.sum(valid_values)
-          differences = numpy.abs(window-mean)
+          differences = numpy.abs(window-mean)*weights
 
           valids = (differences<WINDOW_INLIER_DISTANCE) & valid_dots
             
           pointcount = numpy.sum(weights[valids])
-
           if numpy.sum(valids) > numpy.sum(dot_window)/1.5:
-            accu = numpy.sum(window[valids]*weights[valids])/pointcount
-            disp_data[y+4,x+4] = round(accu*8.0)/8.0 #Values need to be requantified
+            accu = window[4,4]
+            
+            disp_data[y+4,x+4] = accu #round(accu*8.0)/8.0 #Values need to be requantified
             
             interpolation_window = interpolation_map[y:y+9,x:x+9]
             disp_data_window = disp_data[y:y+9,x:x+9]
@@ -214,30 +214,30 @@ def scan_advanced(scanner_object, evd_file=None,
         #TODO: the shading requirements might change when transmission
         is implemented (the rays might pass through glass)
     """
-    returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True,True, False)
+    returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True,True,True,True)
 
     camera_rays = []
     projector_ray_index = numpy.empty(len(returns), dtype=numpy.uint32)
 
+    kinect_image = numpy.zeros((res_x*res_y,16))
+    kinect_image[:,3:11] = float('NaN')
+    kinect_image[:,11] = -1.0
     """Calculate the rays from the camera to the hit points of the projector rays"""
     for i in range(len(returns)):
         idx = returns[i][-1]
-        camera_rays.extend([returns[i][1]+baseline.x, returns[i][2]+baseline.y, 
+        kinect_image[idx,12:15] = returns[i][5]
+
+        if returns[i][0] < max_distance:
+          camera_rays.extend([returns[i][1]+baseline.x, returns[i][2]+baseline.y, 
                             returns[i][3]+baseline.z])
-        projector_ray_index[i] = idx
+          projector_ray_index[i] = idx
 
 
-    camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False,False,True)
+    camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False,False,False)
     
     verts = []
     verts_noise = []
     evd_storage = evd.evd_file(evd_file, res_x, res_y, max_distance)
-
-
-    for i in range(len(camera_returns)):
-        idx = camera_returns[i][-1] 
-        projector_idx = projector_ray_index[idx] # Get the index of the original ray
-
 
     all_quantized_disparities = numpy.empty(res_x*res_y)
     all_quantized_disparities[:] = INVALID_DISPARITY
@@ -274,9 +274,6 @@ def scan_advanced(scanner_object, evd_file=None,
 
             disparity_quantized = camera_x_quantized + projector_point[0]
             all_quantized_disparities[projector_idx] = disparity_quantized
-            
-            
-            
         
     processed_disparities = numpy.empty(res_x*res_y)
     fast_9x9_window(all_quantized_disparities, res_x, res_y, processed_disparities)
@@ -288,25 +285,25 @@ def scan_advanced(scanner_object, evd_file=None,
     vn = Vector([0.0,0.0,0.0])
     """Check if the rays of the camera meet with the rays of the projector and
        add them as valid returns if they do"""
+    image_idx = 0
+    
+    
     for i in range(len(camera_returns)):
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
-
+        
         disparity_quantized = processed_disparities[projector_idx]
         
         if disparity_quantized < INVALID_DISPARITY and disparity_quantized != 0.0:
-            
-            camera_x = get_pixel_from_world(camera_rays[idx*3],camera_rays[idx*3+2],
-                                   flength/pixel_width)
-
-            camera_y = get_pixel_from_world(camera_rays[idx*3+1],camera_rays[idx*3+2],
-                                   flength/pixel_width)
-
+            disparity_quantized = -disparity_quantized
+            camera_x,camera_y = get_uv_from_idx(projector_idx, res_x,res_y)
+                                   
             Z_quantized = (flength*(baseline.x))/(disparity_quantized*pixel_width)
-            X_quantized = Z_quantized*camera_x*pixel_width/flength
-            Y_quantized = Z_quantized*camera_y*pixel_width/flength
-
-            v.xyz=[camera_returns[i][1],camera_returns[i][2],camera_returns[i][3]]
+            X_quantized = baseline.x+Z_quantized*camera_x*pixel_width/flength
+            Y_quantized = baseline.y+Z_quantized*camera_y*pixel_width/flength
+            Z_quantized = -(Z_quantized+baseline.z)
+            
+            v.xyz=[returns[idx][1]+baseline.x,returns[idx][2]+baseline.y,returns[idx][3]+baseline.z]
             vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
 
             vt = (world_transformation * v.to_4d()).xyz
@@ -318,12 +315,23 @@ def scan_advanced(scanner_object, evd_file=None,
             #TODO@mgschwan: prevent object creation here too
             v_noise = (world_transformation * vn.to_4d()).xyz 
             verts_noise.append( v_noise )
-
-            evd_storage.addEntry(timestamp = ray_info[projector_idx][2], yaw = 0.0, pitch=0.0, distance=-camera_returns[i][3], distance_noise=-Z_quantized, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=camera_returns[i][4], color=camera_returns[i][5], idx=projector_idx)
+             
+            kinect_image[projector_idx] = [ray_info[projector_idx][2], 
+               0.0, 0.0, -returns[idx][3], -Z_quantized, vt[0], 
+               vt[1], vt[2], v_noise[0], v_noise[1], v_noise[2], 
+               returns[idx][4], returns[idx][5][0], returns[idx][5][1],
+               returns[idx][5][2],projector_idx]
+            image_idx += 1
         else:
           """Occlusion"""
           pass
 
+    for e in kinect_image:
+      evd_storage.addEntry(timestamp = e[0], yaw = e[1], pitch=e[2], 
+        distance=e[3], distance_noise=e[4], x=e[5], y=e[6], z=e[7], 
+        x_noise=e[8], y_noise=e[9], z_noise=e[10], object_id=e[11], 
+        color=[e[12],e[13],e[14]], idx=e[15])
+        
 
     if evd_file:
         evd_storage.appendEvdFile()

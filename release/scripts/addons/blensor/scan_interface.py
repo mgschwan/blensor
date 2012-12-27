@@ -22,7 +22,7 @@ SIZEOF_FLOAT = 4
     keep_render_setup is passed to the blender internal code to keep the renderer
     setup for additional calls
 """
-def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do_shading=True):
+def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do_shading=True, return_all = False):
 
     elementsPerRay = 3
     if ray_origins == True:
@@ -49,25 +49,30 @@ def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do
 
 
       for idx in range(numberOfRays):
-          if returns_buffer[idx*ELEMENTS_PER_RETURN] < max_distance and returns_buffer[idx*ELEMENTS_PER_RETURN]>0.0 :
-              #The ray may have been reflecten and refracted. But the laser
-              #does not know that so we need to calculate the point which
-              #is the measured distance away from the sensor but without
-              #beeing reflected/refracted. We use the original ray direction
-              vec = [float(rays[idx*elementsPerRay]), 
-                     float(rays[idx*elementsPerRay+1]),
-                     float(rays[idx*elementsPerRay+2])]
-              veclen = math.sqrt(vec[0]**2+vec[1]**2+vec[2]**2)
-              raydistance = float(returns_buffer[idx*ELEMENTS_PER_RETURN])
-              vec[0] = raydistance * vec[0]/veclen
-              vec[1] = raydistance * vec[1]/veclen
-              vec[2] = raydistance * vec[2]/veclen
-
-
+          if return_all or (returns_buffer[idx*ELEMENTS_PER_RETURN] < max_distance and returns_buffer[idx*ELEMENTS_PER_RETURN]>0.0 ):
               ret = [ float(returns_buffer[e + idx*ELEMENTS_PER_RETURN]) for e in range(4) ]            
-              ret[1] = vec[0]
-              ret[2] = vec[1]
-              ret[3] = vec[2]
+              ret[1] = float('NaN')
+              ret[2] = float('NaN')
+              ret[3] = float('NaN')
+              
+              if returns_buffer[idx*ELEMENTS_PER_RETURN] > 0.0:
+                #The ray may have been reflecten and refracted. But the laser
+                #does not know that so we need to calculate the point which
+                #is the measured distance away from the sensor but without
+                #beeing reflected/refracted. We use the original ray direction
+                vec = [float(rays[idx*elementsPerRay]), 
+                       float(rays[idx*elementsPerRay+1]),
+                       float(rays[idx*elementsPerRay+2])]
+                veclen = math.sqrt(vec[0]**2+vec[1]**2+vec[2]**2)
+                raydistance = float(returns_buffer[idx*ELEMENTS_PER_RETURN])
+                vec[0] = raydistance * vec[0]/veclen
+                vec[1] = raydistance * vec[1]/veclen
+                vec[2] = raydistance * vec[2]/veclen
+
+
+                ret[1] = vec[0]
+                ret[2] = vec[1]
+                ret[3] = vec[2]
               ret.append(returns_buffer_uint[idx*ELEMENTS_PER_RETURN+4]) #objectid
               ret.append((returns_buffer[idx*ELEMENTS_PER_RETURN+5],
                           returns_buffer[idx*ELEMENTS_PER_RETURN+6],

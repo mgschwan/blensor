@@ -374,12 +374,13 @@ class OBJECT_OT_scan(bpy.types.Operator):
     def execute(self, context):
         obj = context.object
 
-        try:
+        if True:
+        #try:
           dispatch_scan(obj, self.filepath, self.output_labels)
-          pass
-        except Exception as e:
-            print ("Scan not successful")
-            self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
+
+        #except Exception as e:
+        #    print ("Scan not successful")
+        #    self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
 
         return {'FINISHED'}
  
@@ -396,14 +397,14 @@ class OBJECT_OT_scan(bpy.types.Operator):
                context.window_manager.fileselect_add(self)
                return {'RUNNING_MODAL'}
             else:
-                try:
+                if True:
+                #try:
                     dispatch_scan(obj)
-                    pass
-                except Exception as e:
-                    print ("Scan not successful")
-                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                    traceback.print_tb(exc_traceback)
-                    self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
+                #except Exception as e:
+                #    print ("Scan not successful")
+                #    exc_type, exc_value, exc_traceback = sys.exc_info()
+                #    traceback.print_tb(exc_traceback)
+                #    self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
         return{'FINISHED'}
 
 class OBJECT_OT_scanrange(bpy.types.Operator):

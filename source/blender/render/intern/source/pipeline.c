@@ -1414,13 +1414,14 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
         } while((reflection || transmission) && raydistance <= maxdist);
         
 
+        returns[idx*BLENSOR_ELEMENTS_PER_RETURN+5] = intersection[12]; //r-value
+        returns[idx*BLENSOR_ELEMENTS_PER_RETURN+6] = intersection[13]; //g-value
+        returns[idx*BLENSOR_ELEMENTS_PER_RETURN+7] = intersection[14]; //b-value
+        
         if (raydistance <= maxdist && valid_signal != 0)
         {   
             intersection[0] = raydistance;
             memcpy(&returns[idx*BLENSOR_ELEMENTS_PER_RETURN], intersection, 5*sizeof(float));
-            returns[idx*BLENSOR_ELEMENTS_PER_RETURN+5] = intersection[12]; //r-value
-            returns[idx*BLENSOR_ELEMENTS_PER_RETURN+6] = intersection[13]; //g-value
-            returns[idx*BLENSOR_ELEMENTS_PER_RETURN+7] = intersection[14]; //b-value
         }
         else 
         {
