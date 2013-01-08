@@ -1,6 +1,7 @@
 import sys
 import traceback
 import struct
+import math
 
 PCL_HEADER = """# .PCD v.7 - Exported by BlenSor
 VERSION .7
@@ -86,6 +87,7 @@ class evd_file:
     def addEntry(self, timestamp=0.0, yaw=0.0, pitch=0.0, distance=0.0, 
                  distance_noise=0.0, x=0.0, y=0.0, z=0.0,
                  x_noise = 0.0, y_noise = 0.0, z_noise = 0.0, object_id=0, color=(1.0,1.0,1.0), idx=0):
+        idx = int(idx) #If the index is a numpy.float (from the kinect)
         if self.mode == WRITER_MODE_PGM:
           if idx >=0 and idx < len(self.image):
             self.image[idx]=distance
@@ -147,8 +149,7 @@ class evd_file:
         sparse_mode = False # Write all points
         width = self.width
         height = self.height
-      if True:  
-      #try:
+      try:
         pcl = open("%s%05d.pcd"%(self.filename,frame_counter),"w")
         pcl_noisy = open("%s_noisy%05d.pcd"%(self.filename,frame_counter),"w")
         if self.output_labels:
@@ -174,10 +175,9 @@ class evd_file:
       
         pcl.close()
         pcl_noisy.close()
-      #except Exception as e:
-      #  exc_type, exc_value, exc_traceback = sys.exc_info()
-      #  traceback.print_tb(exc_traceback)
-
+      except Exception as e:
+        traceback.print_exc()      
+        
     def writePGMFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
       try:
@@ -186,19 +186,22 @@ class evd_file:
         pgm.write(PGM_HEADER%(self.width,self.height, PGM_VALUE_RANGE))
         pgm_noisy.write(PGM_HEADER%(self.width,self.height, PGM_VALUE_RANGE))
         for val in range(len(self.image)):
-          ival = int(PGM_VALUE_RANGE*self.image[val]/self.max_depth)
+          if not math.isnan(self.image[val]):
+            ival = int(PGM_VALUE_RANGE*self.image[val]/self.max_depth)
+          else:
+            ival = 0
           pgm.write("%d\n"%(ival if ival < PGM_VALUE_RANGE else PGM_VALUE_RANGE))
         for val in range(len(self.image_noisy)):
-          ival = int(PGM_VALUE_RANGE*self.image_noisy[val]/self.max_depth)
+          if not math.isnan(self.image_noisy[val]):
+            ival = int(PGM_VALUE_RANGE*self.image_noisy[val]/self.max_depth)
+          else:
+            ival = 0
           pgm_noisy.write("%d\n"%(ival if ival < PGM_VALUE_RANGE else PGM_VALUE_RANGE))
         
         pgm.close()
         pgm_noisy.close()
       except Exception as e:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        traceback.print_tb(exc_traceback)
-      
-
+        traceback.print_exc()
 
 
     def finishEvdFile(self):
