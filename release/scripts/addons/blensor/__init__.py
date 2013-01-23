@@ -13,9 +13,11 @@ import blensor.depthmap
 import blensor.tof
 import blensor.evd
 import blensor.ibeo
+import blensor.generic_lidar
 import blensor.kinect
 import blensor.exportmotion
 import blensor.mesh_utils
+import blensor.noise
 from mathutils import Matrix
 from math import pi
 
@@ -23,7 +25,7 @@ from math import pi
 
 """A package for simulating various types of range scanners inside blender"""
 
-__version__ = '1.0.13'
+__version__ = '1.0.15'
 
 __all__ = [
     'blendodyne',
@@ -32,8 +34,10 @@ __all__ = [
     'tof',
     'kinect'
     'ibeo',
+    'generic_lidar',
     'exportmotion',
-    'mesh_utils'
+    'mesh_utils',
+    'noise'
     ]
 
 
@@ -125,6 +129,10 @@ def kinect_layout(obj, layout):
             col = row.column()
             col.prop(obj, "kinect_noise_sigma")
             row = layout.row()
+            row.prop(obj, "kinect_noise_scale")
+            row = layout.row()
+            row.prop(obj, "kinect_noise_smooth")
+            row = layout.row()
             col = row.column()
             col.prop(obj, "kinect_ref_dist")
             col = row.column()
@@ -165,6 +173,33 @@ def ibeo_layout(obj, layout):
             col = row.column()
             col.prop(obj, "ibeo_ref_slope")
 
+def generic_layout(obj, layout):
+            row = layout.row()
+            row.prop(obj, "generic_angle_resolution")
+            row = layout.row()
+            row.prop(obj, "generic_laser_angles")
+            row = layout.row()
+            row.prop(obj, "generic_rotation_speed")
+            row = layout.row()
+            row.prop(obj, "generic_max_dist")
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "generic_noise_mu")
+            col = row.column()
+            col.prop(obj, "generic_noise_sigma")
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "generic_start_angle")
+            col = row.column()
+            col.prop(obj, "generic_end_angle")
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "generic_ref_dist")
+            col = row.column()
+            col.prop(obj, "generic_ref_limit")
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "generic_ref_slope")
 
 
 
@@ -203,6 +238,16 @@ def dispatch_scan(obj, filename=None, output_labels=True):
                   noise_sigma=obj.ibeo_noise_sigma, add_blender_mesh=obj.add_scan_mesh, 
                   add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
                   rotation_speed = obj.ibeo_rotation_speed, evd_file=filename,
+                  world_transformation=world_transformation)
+
+            elif obj.scan_type == "generic":
+                obj.ref_dist = obj.ibeo_ref_dist
+                obj.ref_limit = obj.ibeo_ref_limit
+                obj.ref_slope = obj.ibeo_ref_slope
+
+                blensor.generic_lidar.scan_advanced( scanner_object = obj, add_blender_mesh=obj.add_scan_mesh, 
+                  add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
+                  evd_file=filename,
                   world_transformation=world_transformation)
 
             elif obj.scan_type == "depthmap":
@@ -257,6 +302,12 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                   frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame,
                   world_transformation=world_transformation,
                   add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
+
+            elif obj.scan_type == "generic":
+                blensor.generic_lidar.scan_range( scanner_object = obj, add_blender_mesh=obj.add_scan_mesh, 
+                  frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame, 
+                  add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
+                  world_transformation=world_transformation)
 
             elif obj.scan_type == "depthmap":
                 blensor.depthmap.scan_range( scanner_object = obj,
@@ -327,6 +378,8 @@ class OBJECT_PT_sensor(bpy.types.Panel):
                 kinect_layout(obj,layout)
             elif obj.scan_type == "ibeo":
                 ibeo_layout(obj,layout)
+            elif obj.scan_type == "generic":
+                generic_layout(obj,layout)
             elif obj.scan_type == "depthmap":
                 depthmap_layout(obj,layout)
 
@@ -671,7 +724,7 @@ class OBJECT_OT_exporthandler(bpy.types.Operator):
 
 
 
-laser_types=[("velodyne", "Velodyne HDL", "Rotating infrared laser"),("ibeo","Ibeo LUX","Line laser with 4 rays"),("tof","TOF Camera","Time of Flight camera"),("kinect","Kinect","Primesense technology"),("depthmap","Depthmap","Plain Depthmap")]
+laser_types=[("velodyne", "Velodyne HDL", "Rotating infrared laser"),("ibeo","Ibeo LUX","Line laser with 4 rays"),("tof","TOF Camera","Time of Flight camera"),("kinect","Kinect","Primesense technology"),("generic","Generic LIDAR","Generic LIDAR sensor"),("depthmap","Depthmap","Plain Depthmap")]
 
 
 ######################################################
@@ -760,6 +813,7 @@ def register():
     blensor.ibeo.addProperties(cType)
     blensor.tof.addProperties(cType)
     blensor.kinect.addProperties(cType)
+    blensor.generic_lidar.addProperties(cType)
     blensor.depthmap.addProperties(cType)
 """Unregister the blender addon"""
 def unregister():

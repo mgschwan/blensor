@@ -30,7 +30,12 @@ from blensor import evd
 from blensor import mesh_utils
 from blensor import kinect_dots
 
-WINDOW_INLIER_DISTANCE = 0.2
+"""Highly experimental. Just a quick hack for alexandru"""
+from blensor.noise import PerlinNoise
+"""---------"""  
+
+
+WINDOW_INLIER_DISTANCE = 0.1
 
 from mathutils import Vector, Euler, Matrix
 
@@ -51,7 +56,7 @@ INVALID_DISPARITY = 99999999.9
 
 parameters = {"max_dist":6.0,"min_dist": 0.7, "noise_mu":0.0,"noise_sigma":0.0,  
               "xres": 640, "yres": 480, "flength": 4.73, "reflectivity_distance":0.0,
-              "reflectivity_limit":0.01,"reflectivity_slope":0.16}
+              "reflectivity_limit":0.01,"reflectivity_slope":0.16, "noise_scale": 0.25, "noise_smooth":1.5}
 
 def addProperties(cType):
     global parameters
@@ -69,7 +74,8 @@ def addProperties(cType):
     cType.kinect_ref_limit = bpy.props.FloatProperty( name = "Reflectivity Limit", default = parameters["reflectivity_limit"], description = "Minimum reflectivity for objects at the reflectivity distance" )
     cType.kinect_ref_slope = bpy.props.FloatProperty( name = "Reflectivity Slope", default = parameters["reflectivity_slope"], description = "Slope of the reflectivity limit curve" )
 
-
+    cType.kinect_noise_smooth = bpy.props.FloatProperty( name = "Global Noise Smoothness", default = parameters["noise_smooth"], min = 1.0, max = 100.0, description = "Smoothness of the global noise (higher values are smoother" )
+    cType.kinect_noise_scale = bpy.props.FloatProperty( name = "Global Noise Scale", default = parameters["noise_scale"], min = 0.0, max = 10.0, description = "Strength of the global noise" )
 
 
 """ Calculates the Image coordinates on the sensor for a given ray
@@ -96,13 +102,20 @@ def get_pixel_from_world(X,Z,flength_px):
    valid depth measurement. Note: This has to be verified by a real kinect
 """
     
-def fast_9x9_window(distances, res_x, res_y, disparity_map):
+def fast_9x9_window(distances, res_x, res_y, disparity_map, noise_smooth, noise_scale):
   data = distances.reshape(res_y, res_x)
   disp_data = disparity_map.reshape(res_y, res_x)
   disp_data[:] = INVALID_DISPARITY
   
-  weights = numpy.array([1.0/float((1.2*x)**2+(1.2*y)**2) if x!=0 or y!=0 else 1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
+  """Highly experimental. Just a quick hack for alexandru"""
+  pnoise = PerlinNoise(size=(res_x,res_y))
+  #It is important to reshape it exactly as it was generated (w,h)
+  noise_field = (pnoise.getData(scale=32.0)-1.0).reshape((res_x,res_y)) 
+  """-------------"""
+
   
+  weights = numpy.array([1.0/float((1.2*x)**2+(1.2*y)**2) if x!=0 or y!=0 else 1.0 for x in range(-4,5) for y in range (-4,5)]).reshape((9,9))
+
   """We don't want to fill the whole 9x9 region with the current disparity
      this fills too much gaps in the depthmap
   """
@@ -127,7 +140,8 @@ def fast_9x9_window(distances, res_x, res_y, disparity_map):
           if numpy.sum(valids) > numpy.sum(dot_window)/1.5:
             accu = window[4,4]
             
-            disp_data[y+4,x+4] = accu #round(accu*8.0)/8.0 #Values need to be requantified
+            disp_data[y+4,x+4] = round((accu + noise_scale*noise_field[(x+4)/noise_smooth,(y+4)/noise_smooth])*8.0)/8.0
+            #round(accu*8.0)/8.0 #Values need to be requantified
             
             interpolation_window = interpolation_map[y:y+9,x:x+9]
             disp_data_window = disp_data[y:y+9,x:x+9]
@@ -148,9 +162,12 @@ def scan_advanced(scanner_object, evd_file=None,
     add_noisy_blender_mesh = scanner_object.add_noise_scan_mesh
     noise_mu = scanner_object.kinect_noise_mu
     noise_sigma = scanner_object.kinect_noise_sigma                
+    noise_scale = scanner_object.kinect_noise_scale
+    noise_smooth = scanner_object.kinect_noise_smooth                
     res_x = scanner_object.kinect_xres 
     res_y = scanner_object.kinect_yres
     flength = scanner_object.kinect_flength
+    
 
 
     if res_x < 1 or res_y < 1:
@@ -276,7 +293,7 @@ def scan_advanced(scanner_object, evd_file=None,
             all_quantized_disparities[projector_idx] = disparity_quantized
         
     processed_disparities = numpy.empty(res_x*res_y)
-    fast_9x9_window(all_quantized_disparities, res_x, res_y, processed_disparities)
+    fast_9x9_window(all_quantized_disparities, res_x, res_y, processed_disparities, noise_smooth, noise_scale)
     
     """We reuse the vector objects to spare us the object creation every
        time
@@ -291,12 +308,14 @@ def scan_advanced(scanner_object, evd_file=None,
     for i in range(len(camera_returns)):
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
+        camera_x,camera_y = get_uv_from_idx(projector_idx, res_x,res_y)
+
         
-        disparity_quantized = processed_disparities[projector_idx]
+        
+        disparity_quantized = processed_disparities[projector_idx] 
         
         if disparity_quantized < INVALID_DISPARITY and disparity_quantized != 0.0:
             disparity_quantized = -disparity_quantized
-            camera_x,camera_y = get_uv_from_idx(projector_idx, res_x,res_y)
                                    
             Z_quantized = (flength*(baseline.x))/(disparity_quantized*pixel_width)
             X_quantized = baseline.x+Z_quantized*camera_x*pixel_width/flength

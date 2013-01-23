@@ -181,6 +181,7 @@ class evd_file:
     def writePGMFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
       try:
+        print ("Writing PGM file %s%05d.pgm"%(self.filename,frame_counter))
         pgm = open("%s%05d.pgm"%(self.filename,frame_counter),"w")
         pgm_noisy = open("%s_noisy%05d.pgm"%(self.filename,frame_counter),"w")
         pgm.write(PGM_HEADER%(self.width,self.height, PGM_VALUE_RANGE))
