@@ -731,30 +731,23 @@ laser_types=[("velodyne", "Velodyne HDL", "Rotating infrared laser"),("ibeo","Ib
 
 def show_in_frame(obj, frame):
     """ Make obj only appear in the specified frame """
-    # Cache current frame
-    cur_frame = bpy.context.scene.frame_current  
     # Clear existing animation data
     obj.animation_data_clear()
     # Turn off display in previous frame
-    bpy.context.scene.frame_current = cur_frame - 1
     obj.hide = True
-    obj.keyframe_insert('hide')
+    obj.keyframe_insert('hide', frame=frame - 1)
     obj.hide_render = True
-    obj.keyframe_insert('hide_render')
+    obj.keyframe_insert('hide_render', frame=frame - 1)
     # Turn on display in desired frame
-    bpy.context.scene.frame_set(frame)
     obj.hide = False
-    obj.keyframe_insert('hide')
+    obj.keyframe_insert('hide', frame=frame)
     obj.hide_render = False
-    obj.keyframe_insert('hide_render')
+    obj.keyframe_insert('hide_render', frame=frame)
     # Turn off display in following frame
-    bpy.context.scene.frame_current = cur_frame + 1
     obj.hide = True
-    obj.keyframe_insert('hide')
+    obj.keyframe_insert('hide', frame=frame + 1)
     obj.hide_render = True
-    obj.keyframe_insert('hide_render')
-    # Return to cached frame
-    bpy.context.scene.frame_current =  cur_frame
+    obj.keyframe_insert('hide_render', frame=frame + 1)
 
 
 ########################################################
