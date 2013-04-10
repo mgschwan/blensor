@@ -61,14 +61,48 @@ public:
 
 	__forceinline void grow(const float3& pt)  
 	{
-		min = ccl::min(min, pt);
-		max = ccl::max(max, pt);
+		/* the order of arguments to min is such that if pt is nan, it will not
+		 * influence the resulting bounding box */
+		min = ccl::min(pt, min);
+		max = ccl::max(pt, max);
+	}
+
+	__forceinline void grow(const float3& pt, float border)  
+	{
+		float3 shift = {border, border, border, 0.0f};
+		min = ccl::min(pt - shift, min);
+		max = ccl::max(pt + shift, max);
 	}
 
 	__forceinline void grow(const BoundBox& bbox)
 	{
 		grow(bbox.min);
 		grow(bbox.max);
+	}
+
+	__forceinline void grow_safe(const float3& pt)  
+	{
+		/* the order of arguments to min is such that if pt is nan, it will not
+		 * influence the resulting bounding box */
+		if(isfinite(pt.x) && isfinite(pt.y) && isfinite(pt.z)) {
+			min = ccl::min(pt, min);
+			max = ccl::max(pt, max);
+		}
+	}
+
+	__forceinline void grow_safe(const float3& pt, float border)  
+	{
+		if(isfinite(pt.x) && isfinite(pt.y) && isfinite(pt.z) && isfinite(border)) {
+			float3 shift = {border, border, border, 0.0f};
+			min = ccl::min(pt - shift, min);
+			max = ccl::max(pt + shift, max);
+		}
+	}
+
+	__forceinline void grow_safe(const BoundBox& bbox)
+	{
+		grow_safe(bbox.min);
+		grow_safe(bbox.max);
 	}
 
 	__forceinline void intersect(const BoundBox& bbox) 
@@ -111,7 +145,7 @@ public:
 	{
 		return max - min;
 	}
-	
+
 	__forceinline bool valid() const
 	{
 		return (min.x <= max.x) && (min.y <= max.y) && (min.z <= max.z) &&

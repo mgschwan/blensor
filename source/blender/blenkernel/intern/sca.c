@@ -705,7 +705,7 @@ void sca_move_sensor(bSensor *sens_to_move, Object *ob, int move_up)
 	bSensor *sens, *tmp;
 
 	int val;
-	val = move_up ? 1:2;
+	val = move_up ? 1 : 2;
 
 	/* make sure this sensor belongs to this object */
 	sens= ob->sensors.first;
@@ -734,7 +734,7 @@ void sca_move_sensor(bSensor *sens_to_move, Object *ob, int move_up)
 		}
 		if (tmp) {
 			BLI_remlink(&ob->sensors, sens);
-			BLI_insertlink(&ob->sensors, tmp, sens);
+			BLI_insertlinkafter(&ob->sensors, tmp, sens);
 		}
 	}
 }
@@ -744,7 +744,7 @@ void sca_move_controller(bController *cont_to_move, Object *ob, int move_up)
 	bController *cont, *tmp;
 
 	int val;
-	val = move_up ? 1:2;
+	val = move_up ? 1 : 2;
 
 	/* make sure this controller belongs to this object */
 	cont= ob->controllers.first;
@@ -778,7 +778,7 @@ void sca_move_controller(bController *cont_to_move, Object *ob, int move_up)
 			tmp = tmp->next;
 		}
 		BLI_remlink(&ob->controllers, cont);
-		BLI_insertlink(&ob->controllers, tmp, cont);
+		BLI_insertlinkafter(&ob->controllers, tmp, cont);
 	}
 }
 
@@ -787,7 +787,7 @@ void sca_move_actuator(bActuator *act_to_move, Object *ob, int move_up)
 	bActuator *act, *tmp;
 	int val;
 
-	val = move_up ? 1:2;
+	val = move_up ? 1 : 2;
 
 	/* make sure this actuator belongs to this object */
 	act= ob->actuators.first;
@@ -818,7 +818,7 @@ void sca_move_actuator(bActuator *act_to_move, Object *ob, int move_up)
 		}
 		if (tmp) {
 			BLI_remlink(&ob->actuators, act);
-			BLI_insertlink(&ob->actuators, tmp, act);
+			BLI_insertlinkafter(&ob->actuators, tmp, act);
 		}
 	}
 }

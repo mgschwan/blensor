@@ -22,7 +22,7 @@ bl_info = {
     "name": "Import: Autodesk FBX",
     "author": "Campbell Barton",
     "version": (0, 0, 1),
-    "blender": (2, 5, 6),
+    "blender": (2, 56, 0),
     "location": "File > Import ",
     "description": "This script is WIP and not intended for general use yet!",
     "warning": "Work in progress",

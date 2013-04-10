@@ -19,8 +19,8 @@
 bl_info = {
     "name": "LipSync Importer & Blinker",
     "author": "Yousef Harfoush - bat3a ;)",
-    "version": (0, 5, 0),
-    "blender": (2, 6, 2),
+    "version": (0, 5, 1),
+    "blender": (2, 65, 0),
     "location": "3D window > Tool Shelf",
     "description": "Plot Moho (Papagayo, Jlipsync, Yolo) file to frames and adds automatic blinking",
     "warning": "",
@@ -36,10 +36,6 @@ from bpy.props import IntProperty, FloatProperty, StringProperty
 
 global lastPhoneme
 lastPhoneme="nothing"
-
-# truning off relative path - it causes an error if it was true
-if bpy.context.user_preferences.filepaths.use_relative_paths == True:
-    bpy.context.user_preferences.filepaths.use_relative_paths = False
 
 # add blinking
 def blinker():
@@ -104,11 +100,11 @@ def resetBoneScale(bone):
         else:
             exec("bone.%s = %f" % (attribute, 0.0))
 
-def addBoneKey(bone, data_path, index=-1, value=None, frame=bpy.context.scene.frame_current, group=""):
+def addBoneKey(bone, data_path, index=-1, value=None, frame=0, group=""):
     # set a value and keyframe for the bone
     # it assumes the 'bone' variable was defined before
     # and it's the current selected bone
-
+    frame=bpy.context.scene.frame_current
     if value != None:
         if index != -1:
             # bone.location[0] = 0.0
@@ -337,7 +333,6 @@ class LipSyncUI(bpy.types.Panel):
     bl_label = "LipSync Importer & Blinker"
     
     newType= bpy.types.Scene
-    scn = bpy.context.scene
     
     newType.fpath = StringProperty(name="Import File ", description="Select your voice file", subtype="FILE_PATH")
     newType.skscale = FloatProperty(description="Smoothing shape key values", min=0.1, max=1.0, default=0.8)

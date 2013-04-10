@@ -28,7 +28,7 @@ bl_info = {
     "name": "Auto Save Render",
     "author": "tstscr",
     "version": (1, 0),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "Rendertab -> Render Panel",
     "description": "Automatically save the image after rendering",
     "warning": "",

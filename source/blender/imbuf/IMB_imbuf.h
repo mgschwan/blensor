@@ -134,7 +134,7 @@ struct ImBuf *IMB_allocImBuf(unsigned int x, unsigned int y,
  */
 
 void IMB_refImBuf(struct ImBuf *ibuf);
-struct ImBuf * IMB_makeSingleUser(struct ImBuf *ibuf);
+struct ImBuf *IMB_makeSingleUser(struct ImBuf *ibuf);
 
 /**
  *
@@ -213,9 +213,9 @@ typedef enum IMB_Proxy_Size {
 } IMB_Proxy_Size;
 
 /* defaults to BL_proxy within the directory of the animation */
-void IMB_anim_set_index_dir(struct anim * anim, const char * dir);
+void IMB_anim_set_index_dir(struct anim *anim, const char *dir);
 
-int IMB_anim_index_get_frame_index(struct anim * anim, IMB_Timecode_Type tc,
+int IMB_anim_index_get_frame_index(struct anim *anim, IMB_Timecode_Type tc,
                                    int position);
 
 struct IndexBuildContext;
@@ -241,8 +241,8 @@ int IMB_anim_get_duration(struct anim *anim, IMB_Timecode_Type tc);
  * Return the fps contained in movie files (function rval is FALSE,
  * and frs_sec and frs_sec_base untouched if none available!)
  */
-int IMB_anim_get_fps(struct anim * anim, 
-                     short * frs_sec, float * frs_sec_base);
+int IMB_anim_get_fps(struct anim *anim,
+                     short *frs_sec, float *frs_sec_base);
 
 /**
  *
@@ -338,6 +338,12 @@ struct ImBuf *IMB_scalefastImBuf(struct ImBuf *ibuf, unsigned int newx, unsigned
 
 /**
  *
+ * \attention Defined in scaling.c
+ */
+void IMB_scaleImBuf_threaded(struct ImBuf *ibuf, unsigned int newx, unsigned int newy);
+
+/**
+ *
  * \attention Defined in writeimage.c
  */
 short IMB_saveiff(struct ImBuf *ibuf, const char *filepath, int flags);
@@ -373,9 +379,6 @@ void IMB_rect_from_float(struct ImBuf *ibuf);
  * Changed part will be stored in buffer. This is expected to be used for texture painting updates */
 void IMB_partial_rect_from_float(struct ImBuf *ibuf, float *buffer, int x, int y, int w, int h, int is_data);
 void IMB_float_from_rect(struct ImBuf *ibuf);
-void IMB_float_from_rect_simple(struct ImBuf *ibuf); /* no profile conversion */
-/* note, check that the conversion exists, only some are supported */
-float *IMB_float_profile_ensure(struct ImBuf *ibuf, int profile, int *alloc);
 void IMB_color_to_bw(struct ImBuf *ibuf);
 void IMB_saturation(struct ImBuf *ibuf, float sat);
 
@@ -393,6 +396,8 @@ void IMB_buffer_byte_from_byte(unsigned char *rect_to, const unsigned char *rect
 	int profile_to, int profile_from, int predivide,
 	int width, int height, int stride_to, int stride_from);
 void IMB_buffer_float_clamp(float *buf, int width, int height);
+void IMB_buffer_float_unpremultiply(float *buf, int width, int height);
+void IMB_buffer_float_premultiply(float *buf, int width, int height);
 
 /**
  * Change the ordering of the color bytes pointed to by rect from
@@ -414,6 +419,9 @@ void bicubic_interpolation_color(struct ImBuf *in, unsigned char col[4], float c
 void nearest_interpolation_color(struct ImBuf *in, unsigned char col[4], float col_float[4], float u, float v);
 void bilinear_interpolation_color(struct ImBuf *in, unsigned char col[4], float col_float[4], float u, float v);
 void bilinear_interpolation_color_wrap(struct ImBuf *in, unsigned char col[4], float col_float[4], float u, float v);
+
+void IMB_alpha_under_color_float(float *rect_float, int x, int y, float backcol[3]);
+void IMB_alpha_under_color_byte(unsigned char *rect, int x, int y, float backcol[3]);
 
 /**
  *
@@ -467,6 +475,7 @@ void IMB_flipy(struct ImBuf *ibuf);
 /* Premultiply alpha */
 
 void IMB_premultiply_alpha(struct ImBuf *ibuf);
+void IMB_unpremultiply_alpha(struct ImBuf *ibuf);
 
 /**
  *

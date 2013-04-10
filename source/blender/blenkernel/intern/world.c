@@ -40,7 +40,6 @@
 
 #include "BLI_listbase.h"
 #include "BLI_utildefines.h"
-#include "BLI_bpath.h"
 
 #include "BKE_animsys.h"
 #include "BKE_global.h"
@@ -80,9 +79,8 @@ void BKE_world_free(World *wrld)
 	BKE_world_free_ex(wrld, TRUE);
 }
 
-World *add_world(const char *name)
+World *add_world(Main *bmain, const char *name)
 {
-	Main *bmain = G.main;
 	World *wrld;
 
 	wrld = BKE_libblock_alloc(&bmain->world, ID_WO, name);

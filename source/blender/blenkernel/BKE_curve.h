@@ -38,7 +38,7 @@ struct BezTriple;
 struct Curve;
 struct EditNurb;
 struct ListBase;
-struct ListBase;
+struct Main;
 struct Nurb;
 struct Object;
 struct Scene;
@@ -57,7 +57,7 @@ struct Scene;
 void BKE_curve_unlink(struct Curve *cu);
 void BKE_curve_free(struct Curve *cu);
 void BKE_curve_editfont_free(struct Curve *cu);
-struct Curve *BKE_curve_add(const char *name, int type);
+struct Curve *BKE_curve_add(struct Main *bmain, const char *name, int type);
 struct Curve *BKE_curve_copy(struct Curve *cu);
 void BKE_curve_make_local(struct Curve *cu);
 short BKE_curve_type_get(struct Curve *cu);
@@ -65,9 +65,9 @@ void BKE_curve_type_test(struct Object *ob);
 void BKE_curve_curve_dimension_update(struct Curve *cu);
 void BKE_curve_texspace_calc(struct Curve *cu);
 
-int BKE_curve_minmax(struct Curve *cu, float min[3], float max[3]);
-int BKE_curve_center_median(struct Curve *cu, float cent[3]);
-int BKE_curve_center_bounds(struct Curve *cu, float cent[3]);
+bool BKE_curve_minmax(struct Curve *cu, float min[3], float max[3]);
+bool BKE_curve_center_median(struct Curve *cu, float cent[3]);
+bool BKE_curve_center_bounds(struct Curve *cu, float cent[3]);
 void BKE_curve_translate(struct Curve *cu, float offset[3], int do_keys);
 void BKE_curve_delete_material_index(struct Curve *cu, int index);
 
@@ -87,7 +87,7 @@ float *BKE_curve_make_orco(struct Scene *scene, struct Object *ob);
 float *BKE_curve_surf_make_orco(struct Object *ob);
 
 void BKE_curve_bevelList_make(struct Object *ob);
-void BKE_curve_bevel_make(struct Scene *scene, struct Object *ob,  struct ListBase *disp, int forRender);
+void BKE_curve_bevel_make(struct Scene *scene, struct Object *ob,  struct ListBase *disp, int forRender, int renderResolution);
 
 void BKE_curve_forward_diff_bezier(float q0, float q1, float q2, float q3, float *p, int it, int stride);
 
@@ -117,13 +117,14 @@ void BKE_nurb_knot_calc_u(struct Nurb *nu);
 void BKE_nurb_knot_calc_v(struct Nurb *nu);
 
 /* nurb checks if they can be drawn, also clamp order func */
-int BKE_nurb_check_valid_u(struct Nurb *nu);
-int BKE_nurb_check_valid_v(struct Nurb *nu);
+bool BKE_nurb_check_valid_u(struct Nurb *nu);
+bool BKE_nurb_check_valid_v(struct Nurb *nu);
 
-int BKE_nurb_order_clamp_u(struct Nurb *nu);
-int BKE_nurb_order_clamp_v(struct Nurb *nu);
+bool BKE_nurb_order_clamp_u(struct Nurb *nu);
+bool BKE_nurb_order_clamp_v(struct Nurb *nu);
 
 void BKE_nurb_direction_switch(struct Nurb *nu);
+bool BKE_nurb_type_convert(struct Nurb *nu, const short type, const bool use_handles);
 
 void BKE_nurb_points_add(struct Nurb *nu, int number);
 void BKE_nurb_bezierPoints_add(struct Nurb *nu, int number);
@@ -134,4 +135,4 @@ void BKE_nurb_handles_calc(struct Nurb *nu);
 void BKE_nurb_handles_autocalc(struct Nurb *nu, int flag);
 void BKE_nurb_handles_test(struct Nurb *nu);
 
-#endif
+#endif  /* __BKE_CURVE_H__ */

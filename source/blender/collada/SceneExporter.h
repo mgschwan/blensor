@@ -43,6 +43,7 @@ extern "C" {
 #include "DNA_anim_types.h"
 #include "DNA_action_types.h"
 #include "DNA_curve_types.h"
+#include "DNA_constraint_types.h"
 #include "DNA_armature_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_userdef_types.h"
@@ -51,6 +52,7 @@ extern "C" {
 #include "BKE_fcurve.h"
 #include "BKE_animsys.h"
 #include "BLI_path_util.h"
+#include "BKE_constraint.h"
 #include "BLI_fileops.h"
 #include "ED_keyframing.h"
 }
@@ -95,8 +97,10 @@ class SceneExporter: COLLADASW::LibraryVisualScenes, protected TransformWriter, 
 public:
 	SceneExporter(COLLADASW::StreamWriter *sw, ArmatureExporter *arm, const ExportSettings *export_settings);
 	void exportScene(Scene *sce);
+	void setExportTransformationType(BC_export_transformation_type transformation_type);
 
 private:
+	BC_export_transformation_type transformation_type;
 	// required for writeNodes() for bone-parented objects
 	friend class ArmatureExporter;
 	void exportHierarchy(Scene *sce);

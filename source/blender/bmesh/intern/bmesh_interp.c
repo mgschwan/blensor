@@ -36,11 +36,11 @@
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 
-#include "BKE_customdata.h"
-#include "BKE_multires.h"
-
 #include "BLI_array.h"
 #include "BLI_math.h"
+
+#include "BKE_customdata.h"
+#include "BKE_multires.h"
 
 #include "bmesh.h"
 #include "intern/bmesh_private.h"
@@ -126,7 +126,7 @@ void BM_data_interp_face_vert_edge(BMesh *bm, BMVert *v1, BMVert *UNUSED(v2), BM
 {
 	void *src[2];
 	float w[2];
-	BMLoop *v1loop = NULL, *vloop = NULL, *v2loop = NULL;
+	BMLoop *l_v1 = NULL, *l_v = NULL, *l_v2 = NULL;
 	BMLoop *l_iter = NULL;
 
 	if (!e1->l) {
@@ -139,23 +139,23 @@ void BM_data_interp_face_vert_edge(BMesh *bm, BMVert *v1, BMVert *UNUSED(v2), BM
 	l_iter = e1->l;
 	do {
 		if (l_iter->v == v1) {
-			v1loop = l_iter;
-			vloop = v1loop->next;
-			v2loop = vloop->next;
+			l_v1 = l_iter;
+			l_v = l_v1->next;
+			l_v2 = l_v->next;
 		}
 		else if (l_iter->v == v) {
-			v1loop = l_iter->next;
-			vloop = l_iter;
-			v2loop = l_iter->prev;
+			l_v1 = l_iter->next;
+			l_v = l_iter;
+			l_v2 = l_iter->prev;
 		}
 		
-		if (!v1loop || !v2loop)
+		if (!l_v1 || !l_v2)
 			return;
 		
-		src[0] = v1loop->head.data;
-		src[1] = v2loop->head.data;
+		src[0] = l_v1->head.data;
+		src[1] = l_v2->head.data;
 
-		CustomData_bmesh_interp(&bm->ldata, src, w, NULL, 2, vloop->head.data);
+		CustomData_bmesh_interp(&bm->ldata, src, w, NULL, 2, l_v->head.data);
 	} while ((l_iter = l_iter->radial_next) != e1->l);
 }
 
@@ -167,33 +167,51 @@ void BM_data_interp_face_vert_edge(BMesh *bm, BMVert *v1, BMVert *UNUSED(v2), BM
  *
  * \note Only handles loop customdata. multires is handled.
  */
+void BM_face_interp_from_face_ex(BMesh *bm, BMFace *target, BMFace *source,
+                                 void **blocks, float (*cos_2d)[2], float axis_mat[3][3])
+{
+	BMLoop *l_iter;
+	BMLoop *l_first;
+
+	float *w = BLI_array_alloca(w, source->len);
+	float co[2];
+	int i;
+
+	if (source != target)
+		BM_elem_attrs_copy(bm, bm, source, target);
+
+	/* interpolate */
+	i = 0;
+	l_iter = l_first = BM_FACE_FIRST_LOOP(target);
+	do {
+		mul_v2_m3v3(co, axis_mat, l_iter->v->co);
+		interp_weights_poly_v2(w, cos_2d, source->len, co);
+		CustomData_bmesh_interp(&bm->ldata, blocks, w, NULL, source->len, l_iter->head.data);
+	} while (i++, (l_iter = l_iter->next) != l_first);
+}
+
 void BM_face_interp_from_face(BMesh *bm, BMFace *target, BMFace *source)
 {
 	BMLoop *l_iter;
 	BMLoop *l_first;
 
 	void **blocks   = BLI_array_alloca(blocks, source->len);
-	float (*cos)[3] = BLI_array_alloca(cos,    source->len);
-	float *w        = BLI_array_alloca(w,      source->len);
+	float (*cos_2d)[2] = BLI_array_alloca(cos_2d, source->len);
+	float axis_mat[3][3];  /* use normal to transform into 2d xy coords */
 	int i;
-	
-	BM_elem_attrs_copy(bm, bm, source, target);
+
+	/* convert the 3d coords into 2d for projection */
+	axis_dominant_v3_to_m3(axis_mat, source->no);
 
 	i = 0;
 	l_iter = l_first = BM_FACE_FIRST_LOOP(source);
 	do {
-		copy_v3_v3(cos[i], l_iter->v->co);
+		mul_v2_m3v3(cos_2d[i], axis_mat, l_iter->v->co);
 		blocks[i] = l_iter->head.data;
-		i++;
-	} while ((l_iter = l_iter->next) != l_first);
+	} while (i++, (l_iter = l_iter->next) != l_first);
 
-	i = 0;
-	l_iter = l_first = BM_FACE_FIRST_LOOP(target);
-	do {
-		interp_weights_poly_v3(w, cos, source->len, l_iter->v->co);
-		CustomData_bmesh_interp(&bm->ldata, blocks, w, NULL, source->len, l_iter->head.data);
-		i++;
-	} while ((l_iter = l_iter->next) != l_first);
+	BM_face_interp_from_face_ex(bm, target, source,
+	                            blocks, cos_2d, axis_mat);
 }
 
 /**
@@ -599,63 +617,38 @@ void BM_loop_interp_multires(BMesh *bm, BMLoop *target, BMFace *source)
  * if do_vertex is true, target's vert data will also get interpolated.
  */
 void BM_loop_interp_from_face(BMesh *bm, BMLoop *target, BMFace *source,
-                              int do_vertex, int do_multires)
+                              const bool do_vertex, const bool do_multires)
 {
 	BMLoop *l_iter;
 	BMLoop *l_first;
-	void **vblocks  = BLI_array_alloca(vblocks, do_vertex ? source->len : 0);
-	void **blocks   = BLI_array_alloca(blocks,  source->len);
-	float (*cos)[3] = BLI_array_alloca(cos,     source->len);
-	float *w        = BLI_array_alloca(w,       source->len);
-	float co[3];
-	float cent[3] = {0.0f, 0.0f, 0.0f};
-	int i, ax, ay;
+	void **vblocks  = do_vertex ? BLI_array_alloca(vblocks, source->len) : NULL;
+	void **blocks   = BLI_array_alloca(blocks, source->len);
+	float (*cos_2d)[2] = BLI_array_alloca(cos_2d, source->len);
+	float *w        = BLI_array_alloca(w, source->len);
+	float axis_mat[3][3];  /* use normal to transform into 2d xy coords */
+	float co[2];
+	int i;
+
+	/* convert the 3d coords into 2d for projection */
+	axis_dominant_v3_to_m3(axis_mat, source->no);
 
 	BM_elem_attrs_copy(bm, bm, source, target->f);
 
 	i = 0;
 	l_iter = l_first = BM_FACE_FIRST_LOOP(source);
 	do {
-		copy_v3_v3(cos[i], l_iter->v->co);
-		add_v3_v3(cent, cos[i]);
-
-		w[i] = 0.0f;
+		mul_v2_m3v3(cos_2d[i], axis_mat, l_iter->v->co);
 		blocks[i] = l_iter->head.data;
 
 		if (do_vertex) {
 			vblocks[i] = l_iter->v->head.data;
 		}
-		i++;
+	} while (i++, (l_iter = l_iter->next) != l_first);
 
-	} while ((l_iter = l_iter->next) != l_first);
-
-	/* find best projection of face XY, XZ or YZ: barycentric weights of
-	 * the 2d projected coords are the same and faster to compute */
-
-	axis_dominant_v3(&ax, &ay, source->no);
-
-	/* scale source face coordinates a bit, so points sitting directly on an
-	 * edge will work. */
-	mul_v3_fl(cent, 1.0f / (float)source->len);
-	for (i = 0; i < source->len; i++) {
-		float vec[3], tmp[3];
-		sub_v3_v3v3(vec, cent, cos[i]);
-		mul_v3_fl(vec, 0.001f);
-		add_v3_v3(cos[i], vec);
-
-		copy_v3_v3(tmp, cos[i]);
-		cos[i][0] = tmp[ax];
-		cos[i][1] = tmp[ay];
-		cos[i][2] = 0.0f;
-	}
-
+	mul_v2_m3v3(co, axis_mat, target->v->co);
 
 	/* interpolate */
-	co[0] = target->v->co[ax];
-	co[1] = target->v->co[ay];
-	co[2] = 0.0f;
-
-	interp_weights_poly_v3(w, cos, source->len, co);
+	interp_weights_poly_v2(w, cos_2d, source->len, co);
 	CustomData_bmesh_interp(&bm->ldata, blocks, w, NULL, source->len, target->head.data);
 	if (do_vertex) {
 		CustomData_bmesh_interp(&bm->vdata, vblocks, w, NULL, source->len, target->v->head.data);
@@ -674,34 +667,26 @@ void BM_vert_interp_from_face(BMesh *bm, BMVert *v, BMFace *source)
 	BMLoop *l_iter;
 	BMLoop *l_first;
 	void **blocks   = BLI_array_alloca(blocks, source->len);
-	float (*cos)[3] = BLI_array_alloca(cos,    source->len);
+	float (*cos_2d)[2] = BLI_array_alloca(cos_2d, source->len);
 	float *w        = BLI_array_alloca(w,      source->len);
-	float cent[3] = {0.0f, 0.0f, 0.0f};
+	float axis_mat[3][3];  /* use normal to transform into 2d xy coords */
+	float co[2];
 	int i;
+
+	/* convert the 3d coords into 2d for projection */
+	axis_dominant_v3_to_m3(axis_mat, source->no);
 
 	i = 0;
 	l_iter = l_first = BM_FACE_FIRST_LOOP(source);
 	do {
-		copy_v3_v3(cos[i], l_iter->v->co);
-		add_v3_v3(cent, cos[i]);
-
-		w[i] = 0.0f;
+		mul_v2_m3v3(cos_2d[i], axis_mat, l_iter->v->co);
 		blocks[i] = l_iter->v->head.data;
-		i++;
-	} while ((l_iter = l_iter->next) != l_first);
+	} while (i++, (l_iter = l_iter->next) != l_first);
 
-	/* scale source face coordinates a bit, so points sitting directly on an
-	 * edge will work. */
-	mul_v3_fl(cent, 1.0f / (float)source->len);
-	for (i = 0; i < source->len; i++) {
-		float vec[3];
-		sub_v3_v3v3(vec, cent, cos[i]);
-		mul_v3_fl(vec, 0.01f);
-		add_v3_v3(cos[i], vec);
-	}
+	mul_v2_m3v3(co, axis_mat, v->co);
 
 	/* interpolate */
-	interp_weights_poly_v3(w, cos, source->len, v->co);
+	interp_weights_poly_v2(w, cos_2d, source->len, co);
 	CustomData_bmesh_interp(&bm->vdata, blocks, w, NULL, source->len, v->head.data);
 }
 

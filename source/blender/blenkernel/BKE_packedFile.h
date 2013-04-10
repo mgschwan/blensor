@@ -35,6 +35,7 @@
 #define RET_OK      0
 #define RET_ERROR   1
 
+struct ID;
 struct bSound;
 struct Image;
 struct Main;
@@ -48,6 +49,7 @@ struct PackedFile *newPackedFile(struct ReportList *reports, const char *filenam
 struct PackedFile *newPackedFileMemory(void *mem, int memlen);
 
 void packAll(struct Main *bmain, struct ReportList *reports);
+void packLibraries(struct Main *bmain, struct ReportList *reports);
 
 /* unpack */
 char *unpackFile(struct ReportList *reports, const char *abs_name, const char *local_name, struct PackedFile *pf, int how);
@@ -55,6 +57,7 @@ int unpackVFont(struct ReportList *reports, struct VFont *vfont, int how);
 int unpackSound(struct Main *bmain, struct ReportList *reports, struct bSound *sound, int how);
 int unpackImage(struct ReportList *reports, struct Image *ima, int how);
 void unpackAll(struct Main *bmain, struct ReportList *reports, int how);
+int unpackLibraries(struct Main *bmain, struct ReportList *reports);
 
 int writePackedFile(struct ReportList *reports, const char *filename, struct PackedFile *pf, int guimode);
 
@@ -69,6 +72,11 @@ int checkPackedFile(const char *filename, struct PackedFile *pf);
 int seekPackedFile(struct PackedFile *pf, int offset, int whence);
 void rewindPackedFile(struct PackedFile *pf);
 int readPackedFile(struct PackedFile *pf, void *data, int size);
+
+/* ID should be not NULL, return 1 if there's a packed file */
+bool BKE_pack_check(struct ID *id);
+/* ID should be not NULL, throws error when ID is Library */
+void BKE_unpack_id(struct Main *bmain, struct ID *id, struct ReportList *reports, int how);
 
 #endif
 

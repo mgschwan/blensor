@@ -95,6 +95,8 @@ struct BMEditMesh;
 struct ListBase;
 struct PBVH;
 
+#define DM_OMP_LIMIT 10000  /* setting zero so we can catch bugs in OpenMP/BMesh */
+
 /* number of sub-elements each mesh element has (for interpolation) */
 #define SUB_ELEMS_VERT 0
 #define SUB_ELEMS_EDGE 2
@@ -104,6 +106,11 @@ struct PBVH;
  * Note: all mface interfaces now officially operate on tessellated data.
  *       Also, the mface origindex layer indexes mpolys, not mfaces.
  */
+
+typedef struct DMCoNo {
+	float co[3];
+	float no[3];
+} DMCoNo;
 
 typedef struct DMGridAdjacency {
 	int index[4];
@@ -168,6 +175,9 @@ struct DerivedMesh {
 	float auto_bump_scale;
 	DMDirtyFlag dirty;
 
+	/* use for converting to BMesh which doesn't store bevel weight and edge crease by default */
+	char cd_flag;
+
 	/** Calculate vert and face normals */
 	void (*calcNormals)(DerivedMesh *dm);
 
@@ -225,19 +235,20 @@ struct DerivedMesh {
 	 * from the derived mesh (this gives a pointer to the actual data, not
 	 * a copy)
 	 */
-	void *(*getVertData)(DerivedMesh * dm, int index, int type);
-	void *(*getEdgeData)(DerivedMesh * dm, int index, int type);
-	void *(*getTessFaceData)(DerivedMesh * dm, int index, int type);
-	void *(*getPolyData)(DerivedMesh * dm, int index, int type);
+	void *(*getVertData)(DerivedMesh *dm, int index, int type);
+	void *(*getEdgeData)(DerivedMesh *dm, int index, int type);
+	void *(*getTessFaceData)(DerivedMesh *dm, int index, int type);
+	void *(*getPolyData)(DerivedMesh *dm, int index, int type);
 
 	/** Return a pointer to the entire array of vert/edge/face custom data
 	 * from the derived mesh (this gives a pointer to the actual data, not
 	 * a copy)
 	 */
-	void *(*getVertDataArray)(DerivedMesh * dm, int type);
-	void *(*getEdgeDataArray)(DerivedMesh * dm, int type);
-	void *(*getTessFaceDataArray)(DerivedMesh * dm, int type);
-	void *(*getPolyDataArray)(DerivedMesh * dm, int type);
+	void *(*getVertDataArray)(DerivedMesh *dm, int type);
+	void *(*getEdgeDataArray)(DerivedMesh *dm, int type);
+	void *(*getTessFaceDataArray)(DerivedMesh *dm, int type);
+	void *(*getLoopDataArray)(DerivedMesh *dm, int type);
+	void *(*getPolyDataArray)(DerivedMesh *dm, int type);
 
 	/** Retrieves the base CustomData structures for
 	 * verts/edges/tessfaces/loops/facdes*/
@@ -598,12 +609,12 @@ void DM_interp_poly_data(struct DerivedMesh *source, struct DerivedMesh *dest,
                          float *weights, int count, int dest_index);
 
 /* Temporary? A function to give a colorband to derivedmesh for vertexcolor ranges */
-void vDM_ColorBand_store(struct ColorBand *coba);
+void vDM_ColorBand_store(const struct ColorBand *coba, const char alert_color[4]);
 
 /** Simple function to get me->totvert amount of vertices/normals,
  * correctly deformed and subsurfered. Needed especially when vertexgroups are involved.
  * In use now by vertex/weight paint and particles */
-float *mesh_get_mapped_verts_nors(struct Scene *scene, struct Object *ob);
+DMCoNo *mesh_get_mapped_verts_nors(struct Scene *scene, struct Object *ob);
 
 /* */
 DerivedMesh *mesh_get_derived_final(struct Scene *scene, struct Object *ob,
@@ -721,4 +732,4 @@ BLI_INLINE int DM_origindex_mface_mpoly(const int *index_mf_to_mpoly, const int 
 	return (j != ORIGINDEX_NONE) ? (index_mp_to_orig ? index_mp_to_orig[j] : j) : ORIGINDEX_NONE;
 }
 
-#endif
+#endif  /* __BKE_DERIVEDMESH_H__ */

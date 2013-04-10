@@ -24,7 +24,7 @@
 #
 #  Start of project              : 2012-03-25 by Clemens Barth
 #  First publication in Blender  : 2012-05-27 by Clemens Barth
-#  Last modified                 : 2012-11-03
+#  Last modified                 : 2013-01-03
 #
 #
 #
@@ -41,8 +41,8 @@ bl_info = {
     "name": "Atomic Blender - Cluster",
     "description": "Creating cluster formed by atoms",
     "author": "Clemens Barth",
-    "version": (0,5),
-    "blender": (2,6),
+    "version": (0, 5),
+    "blender": (2, 60, 0),
     "location": "Panel: View 3D - Tools (left side)",
     "warning": "",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Add_Mesh/Cluster",
@@ -102,10 +102,7 @@ class CLASS_atom_cluster_panel(Panel):
     def draw(self, context):
         layout = self.layout
         
-        if len(context.scene.atom_cluster) == 0:
-            bpy.context.scene.atom_cluster.add()
-        
-        scn = context.scene.atom_cluster[0]
+        scn = context.scene.atom_cluster
 
         row = layout.row()
         row.label(text="Cluster properties")
@@ -176,7 +173,7 @@ class CLASS_atom_cluster_panel(Panel):
 class CLASS_atom_cluster_Properties(bpy.types.PropertyGroup):
 
     def Callback_radius_type(self, context):
-        scn = bpy.context.scene.atom_cluster[0]
+        scn = bpy.context.scene.atom_cluster
         DEF_atom_cluster_radius_type(scn.radius_type,
                                      scn.radius_how,)
 
@@ -259,7 +256,7 @@ class CLASS_atom_cluster_load_button(Operator):
     bl_description = "Load the cluster"
 
     def execute(self, context):
-        scn    = context.scene.atom_cluster[0]
+        scn    = context.scene.atom_cluster
 
         add_mesh_cluster.DEF_atom_read_atom_data()
         del add_mesh_cluster.ATOM_CLUSTER_ALL_ATOMS[:]
@@ -448,7 +445,7 @@ class CLASS_atom_cluster_radius_all_bigger_button(Operator):
     bl_description = "Increase the radii of the atoms"
 
     def execute(self, context):
-        scn = bpy.context.scene.atom_cluster[0]
+        scn = bpy.context.scene.atom_cluster
         DEF_atom_cluster_radius_all(
                 scn.radius_all,
                 scn.radius_how,)
@@ -462,7 +459,7 @@ class CLASS_atom_cluster_radius_all_smaller_button(Operator):
     bl_description = "Decrease the radii of the atoms"
 
     def execute(self, context):
-        scn = bpy.context.scene.atom_cluster[0]
+        scn = bpy.context.scene.atom_cluster
         DEF_atom_cluster_radius_all(
                 1.0/scn.radius_all,
                 scn.radius_how,)
@@ -512,13 +509,10 @@ def DEF_atom_cluster_radius_all(scale, how):
 def DEF_menu_func(self, context):
     self.layout.operator(CLASS_ImportCluster.bl_idname, icon='PLUGIN')
 
-def register_atom_class():
-    bpy.types.Scene.atom_cluster = bpy.props.CollectionProperty(type=CLASS_atom_cluster_Properties)    
-    bpy.context.scene.atom_cluster.add()
-
 def register():
     bpy.utils.register_module(__name__)
-    register_atom_class()
+    bpy.types.Scene.atom_cluster = bpy.props.PointerProperty(type=
+                                                  CLASS_atom_cluster_Properties)    
     bpy.types.INFO_MT_mesh_add.append(DEF_menu_func)
     
 def unregister():

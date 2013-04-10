@@ -20,7 +20,7 @@ bl_info = {
     "name": "Curve Tools",
     "author": "Zak",
     "version": (0, 1, 5),
-    "blender": (2, 5, 9),
+    "blender": (2, 59, 0),
     "location": "Properties > Object data",
     "description": "Creates driven Lofts or Birails between curves",
     "warning": "may be buggy or incomplete",

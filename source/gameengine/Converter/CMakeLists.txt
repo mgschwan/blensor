@@ -82,7 +82,7 @@ set(SRC
 	KX_ConvertControllers.cpp
 	KX_ConvertProperties.cpp
 	KX_ConvertSensors.cpp
-	KX_IpoConvert.cpp
+	KX_LibLoadStatus.cpp
 	KX_SoftBodyDeformer.cpp
 
 	BL_ActionActuator.h
@@ -104,15 +104,15 @@ set(SRC
 	KX_ConvertControllers.h
 	KX_ConvertProperties.h
 	KX_ConvertSensors.h
-	KX_IpoConvert.h
+	KX_LibLoadStatus.h
 	KX_SoftBodyDeformer.h
 )
 
 if(WITH_BULLET)
 	list(APPEND INC_SYS
-		../../../extern/bullet2/src
+		${BULLET_INCLUDE_DIRS}
 	)
-	add_definitions(-DUSE_BULLET)
+	add_definitions(-DWITH_BULLET)
 endif()
 
 if(WITH_AUDASPACE)

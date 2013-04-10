@@ -33,6 +33,7 @@ import os
 from check_style_c_config import IGNORE, IGNORE_DIR, SOURCE_DIR
 IGNORE = tuple([os.path.join(SOURCE_DIR, ig) for ig in IGNORE])
 IGNORE_DIR = tuple([os.path.join(SOURCE_DIR, ig) for ig in IGNORE_DIR])
+WARN_TEXT = False
 
 
 def is_ignore(f):
@@ -49,11 +50,7 @@ print("Scanning:", SOURCE_DIR)
 # TODO
 #
 # Add checks for:
-# - space around operators
 # - macro brace use
-# - spaces around brackets with function call: func(args)
-# - braces with function definitions
-# - braces with typedefs
 # - line length - in a not-too-annoying way
 #   (allow for long arrays in struct definitions, PyMethodDef for eg)
 
@@ -91,16 +88,18 @@ def tk_range_to_str(a, b):
 
 
 def tk_item_is_newline(tok):
-    return tok.type == Token.Text and tok.text == "\n"
+    return tok.type == Token.Text and tok.text.strip("\t ") == "\n"
 
 
 def tk_item_is_ws_newline(tok):
-    return (tok.type == Token.Text and tok.text.isspace()) or \
+    return (tok.text == "") or \
+           (tok.type == Token.Text and tok.text.isspace()) or \
            (tok.type in Token.Comment)
 
 
 def tk_item_is_ws(tok):
-    return (tok.type == Token.Text and tok.text != "\n" and tok.text.isspace()) or \
+    return (tok.text == "") or \
+           (tok.type == Token.Text and tok.text.strip("\t ") != "\n" and tok.text.isspace()) or \
            (tok.type in Token.Comment)
 
 
@@ -111,10 +110,32 @@ def tk_advance_ws(index, direction):
     return index
 
 
+def tk_advance_no_ws(index, direction):
+    index += direction
+    while tk_item_is_ws(tokens[index]) and index > 0:
+        index += direction
+    return index
+
+
 def tk_advance_ws_newline(index, direction):
     while tk_item_is_ws_newline(tokens[index + direction]) and index > 0:
         index += direction
     return index + direction
+
+
+def tk_advance_line_start(index):
+    """ Go the the first non-whitespace token of the line.
+    """
+    while tokens[index].line == tokens[index - 1].line and index > 0:
+        index -= 1
+    return tk_advance_no_ws(index, 1)
+
+
+def tk_advance_line(index, direction):
+    line = tokens[index].line
+    while tokens[index + direction].line == line or tokens[index].text == "\n":
+        index += direction
+    return index
 
 
 def tk_match_backet(index):
@@ -164,13 +185,13 @@ def extract_statement_if(index_kw):
 
     # print(tokens[i_next])
 
+    # ignore preprocessor
+    i_linestart = tk_advance_line_start(index_kw)
+    if tokens[i_linestart].text.startswith("#"):
+        return None
+
     if tokens[i_next].type != Token.Punctuation or tokens[i_next].text != "(":
-        print("Error line: %d" % tokens[index_kw].line)
-        print("if (\n"
-              "   ^\n"
-              ""
-              "Character not found, insetad found:")
-        print(tk_range_to_str(i_start, i_next))
+        warning("no '(' after '%s'" % tokens[index_kw].text, i_start, i_next)
         return None
 
     i_end = tk_match_backet(i_next)
@@ -187,11 +208,88 @@ def extract_operator(index_op):
     return op_text, index_op + (i - 1)
 
 
+def extract_cast(index):
+    # to detect a cast is quite involved... sigh
+    # assert(tokens[index].text == "(")
+
+    # TODO, comment within cast, but thats rare
+    i_start = index
+    i_end = tk_match_backet(index)
+
+    # first check we are not '()'
+    if i_start + 1 == i_end:
+        return None
+
+    # check we have punctuation before the cast
+    i = i_start - 1
+    while tokens[i].text.isspace():
+        i -= 1
+    i_prev_no_ws = i
+    if tokens[i].type in {Token.Keyword, Token.Name}:
+        # avoids  'foo(bar)test'
+        # but not ' = (bar)test'
+        return None
+
+    # validate types
+    tokens_cast = [tokens[i] for i in range(i_start + 1, i_end)]
+    for t in tokens_cast:
+        if t.type == Token.Keyword:
+            return None
+        elif t.type == Token.Operator and t.text != "*":
+            # prevent '(a + b)'
+            # note, we could have '(float(*)[1+2])' but this is unlikely
+            return None
+        elif t.type == Token.Punctuation and t.text not in '()[]':
+            # prevent '(a, b)'
+            return None
+    tokens_cast_strip = []
+    for t in tokens_cast:
+        if t.type in Token.Comment:
+            pass
+        elif t.type == Token.Text and t.text.isspace():
+            pass
+        else:
+            tokens_cast_strip.append(t)
+    # check token order and types
+    if not tokens_cast_strip:
+        return None
+    if tokens_cast_strip[0].type not in {Token.Name, Token.Type, Token.Keyword.Type}:
+        return None
+    t_prev = None
+    for t in tokens_cast_strip[1:]:
+        # prevent identifiers after the first: '(a b)'
+        if t.type in {Token.Keyword.Type, Token.Name, Token.Text}:
+            return None
+        # prevent: '(a * 4)'
+        # allow:   '(a (*)[4])'
+        if t_prev is not None and t_prev.text == "*" and t.type != Token.Punctuation:
+            return None
+        t_prev = t
+    del t_prev
+
+    # debug only
+    '''
+    string = "".join(tokens[i].text for i in range(i_start, i_end + 1))
+    #string = "".join(tokens[i].text for i in range(i_start + 1, i_end))
+    #types = [tokens[i].type for i in range(i_start + 1, i_end)]
+    types = [t.type for t in tokens_cast_strip]
+
+    print("STRING:", string)
+    print("TYPES: ", types)
+    print()
+    '''
+
+    return (i_start, i_end)
+
+
 def warning(message, index_kw_start, index_kw_end):
     if PRINT_QTC_TASKFORMAT:
         print("%s\t%d\t%s\t%s" % (filepath, tokens[index_kw_start].line, "comment", message))
     else:
         print("%s:%d: warning: %s" % (filepath, tokens[index_kw_start].line, message))
+        if WARN_TEXT:
+            print("".join([tokens[i].text for i in range(index_kw_start, index_kw_end + 1)]))
+
 
 def warning_lineonly(message, line):
     if PRINT_QTC_TASKFORMAT:
@@ -229,6 +327,22 @@ def blender_check_kw_if(index_kw_start, index_kw, index_kw_end):
         if tokens[index_kw].line != tokens[index_kw_end].line:
             warning("multi-line if should use a brace '%s (\\n\\n) statement;'" % tokens[index_kw].text, index_kw, index_kw_end)
 
+    # check for: if (a &&
+    #                b) { ...
+    # brace should be on a newline.
+    if (tokens[index_kw].line != tokens[index_kw_end].line):
+        if tokens[index_kw_end].line == tokens[index_next].line:
+            warning("multi-line should use a on a new line '%s (\\n\\n) {'" % tokens[index_kw].text, index_kw, index_kw_end)
+
+    # check for: if () { ... };
+    #
+    # no need to have semicolon after brace.
+    if tokens[index_next].text == "{":
+        index_final = tk_match_backet(index_next)
+        index_final_step = tk_advance_no_ws(index_final, 1)
+        if tokens[index_final_step].text == ";":
+            warning("semi-colon after brace '%s () { ... };'" % tokens[index_kw].text, index_final_step, index_final_step)
+
 
 def blender_check_kw_else(index_kw):
     # for 'else if' use the if check.
@@ -239,7 +353,7 @@ def blender_check_kw_else(index_kw):
     if index_kw + 1 == i_next:
         warning("else has no space between following brace 'else{'", index_kw, i_next)
 
-    # check if there are more then 1 spaces after else, but nothing after the following brace
+    # check if there are more than 1 spaces after else, but nothing after the following brace
     # else     {
     #     ...
     #
@@ -259,10 +373,20 @@ def blender_check_kw_else(index_kw):
     # else
     # {
     # ... which is never OK
+    #
+    # ... except if you have
+    # else
+    # #preprocessor
+    # {
 
     if tokens[i_next].type == Token.Punctuation and tokens[i_next].text == "{":
         if tokens[index_kw].line < tokens[i_next].line:
-            warning("else body brace on a new line 'else\\n{'", index_kw, i_next)
+            # check for preproc
+            i_newline = tk_advance_line(index_kw, 1)
+            if tokens[i_newline].text.startswith("#"):
+                pass
+            else:
+                warning("else body brace on a new line 'else\\n{'", index_kw, i_next)
 
     # this check only tests for:
     # else
@@ -271,6 +395,40 @@ def blender_check_kw_else(index_kw):
     if tokens[i_next].type == Token.Keyword and tokens[i_next].text == "if":
         if tokens[index_kw].line < tokens[i_next].line:
             warning("else if is split by a new line 'else\\nif'", index_kw, i_next)
+
+    # check
+    # } else
+    # ... which is never OK
+    i_prev = tk_advance_no_ws(index_kw, -1)
+    if tokens[i_prev].type == Token.Punctuation and tokens[i_prev].text == "}":
+        if tokens[index_kw].line == tokens[i_prev].line:
+            warning("else has no newline before the brace '} else'", i_prev, index_kw)
+
+
+def blender_check_kw_sizeof(index_kw):
+    if tokens[index_kw + 1].text != "(":
+        warning("expected '%s('" % tokens[index_kw].text, index_kw, index_kw + 1)
+
+
+def blender_check_cast(index_kw_start, index_kw_end):
+    # detect: '( float...'
+    if tokens[index_kw_start + 1].text.isspace():
+        warning("cast has space after first bracket '( type...'", index_kw_start, index_kw_end)
+    # detect: '...float )'
+    if tokens[index_kw_end - 1].text.isspace():
+        warning("cast has space before last bracket '... )'", index_kw_start, index_kw_end)
+    # detect no space before operator: '(float*)'
+
+    for i in range(index_kw_start + 1, index_kw_end):
+        if tokens[i].text == "*":
+            # allow: '(*)'
+            if tokens[i - 1].type == Token.Punctuation:
+                pass
+            elif tokens[i - 1].text.isspace():
+                pass
+            else:
+                warning("cast has no preceeding whitespace '(type*)'", index_kw_start, index_kw_end)
+
 
 def blender_check_comma(index_kw):
     i_next = tk_advance_ws_newline(index_kw, 1)
@@ -282,6 +440,18 @@ def blender_check_comma(index_kw):
 
     if tokens[index_kw - 1].type == Token.Text and tokens[index_kw - 1].text.isspace():
         warning("comma space before it 'sometext ,", index_kw, i_next)
+
+
+def blender_check_period(index_kw):
+    # check we're now apart of ...
+    if (tokens[index_kw - 1].text == ".") or (tokens[index_kw + 1].text == "."):
+        return
+
+    # 'a.b'
+    if tokens[index_kw - 1].type == Token.Text and tokens[index_kw - 1].text.isspace():
+        warning("period space before it 'sometext .", index_kw, index_kw)
+    if tokens[index_kw + 1].type == Token.Text and tokens[index_kw + 1].text.isspace():
+        warning("period space after it '. sometext", index_kw, index_kw)
 
 
 def _is_ws_pad(index_start, index_end):
@@ -313,7 +483,12 @@ def blender_check_operator(index_start, index_end, op_text, is_cpp):
         elif op_text == "&":
             pass  # TODO, check if this is a pointer reference or not
         elif op_text == "*":
-            pass  # TODO, check if this is a pointer reference or not
+           # This check could be improved, its a bit fuzzy
+            if     ((tokens[index_start - 1].type in Token.Number) or
+                    (tokens[index_start + 1].type in Token.Number)):
+                warning("no space around operator '%s'" % op_text, index_start, index_end)
+            elif not (tokens[index_start - 1].text.isspace() or tokens[index_start - 1].text in {"(", "[", "{"}):
+                warning("no space before operator '%s'" % op_text, index_start, index_end)
     elif len(op_text) == 2:
         # todo, remove operator check from `if`
         if op_text in {"+=", "-=", "*=", "/=", "&=", "|=", "^=",
@@ -322,7 +497,7 @@ def blender_check_operator(index_start, index_end, op_text, is_cpp):
                        "<<", ">>",
                        "%=",
                        # not operators, pointer mix-ins
-                       ">*", "<*", "-*", "+*", "=*", "/*", "%*", "^*", "!*", "|*",
+                       ">*", "<*", "-*", "+*", "=*", "/*", "%*", "^*", "|*",
                        }:
             if not _is_ws_pad(index_start, index_end):
                 if not (is_cpp and ("<" in op_text or ">" in op_text)):
@@ -335,7 +510,9 @@ def blender_check_operator(index_start, index_end, op_text, is_cpp):
                     tokens[index_end   + 1].text.isspace()):
                 warning("spaces surrounding operator '%s'" % op_text, index_start, index_end)
             '''
-        elif op_text == "!!":
+        elif op_text in {"!!", "!*"}:
+            # operators we _dont_ want whitespace after (pointers mainly)
+            # we can assume these are pointers
             if tokens[index_end + 1].text.isspace():
                 warning("spaces after operator '%s'" % op_text, index_start, index_end)
 
@@ -370,6 +547,10 @@ def blender_check_operator(index_start, index_end, op_text, is_cpp):
         pass  # *a = b
     elif len(op_text) == 1 and op_text[0] == "-" and tokens[index_start + 1].text.isspace() is False:
         pass  # -1
+    elif len(op_text) == 2 and op_text == "++" and tokens[index_start + 1].text.isspace() is False:
+        pass  # ++a
+    elif len(op_text) == 2 and op_text == "--" and tokens[index_start + 1].text.isspace() is False:
+        pass  # --a
     elif len(op_text) == 1 and op_text[0] == "&":
         # if (a &&
         #     &b)
@@ -400,6 +581,74 @@ def blender_check_linelength(index_start, index_end, length):
                 warning("line length %d > %d" % (len(l), LIN_SIZE), index_start, index_end)
 
 
+def blender_check_function_definition(i):
+    # Warning, this is a fairly slow check and guesses
+    # based on some fuzzy rules
+
+    # assert(tokens[index] == "{")
+
+    # check function declaration is not:
+    #  'void myfunc() {'
+    # ... other uses are handled by checks for statements
+    # this check is rather simplistic but tends to work well enough.
+
+    i_prev = i - 1
+    while tokens[i_prev].text == "":
+        i_prev -= 1
+
+    # ensure this isnt '{' in its own line
+    if tokens[i_prev].line == tokens[i].line:
+
+        # check we '}' isnt on same line...
+        i_next = i + 1
+        found = False
+        while tokens[i_next].line == tokens[i].line:
+            if tokens[i_next].text == "}":
+                found = True
+                break
+            i_next += 1
+        del i_next
+
+        if found is False:
+
+            # First check this isnt an assignment
+            i_prev = tk_advance_no_ws(i, -1)
+            # avoid '= {'
+            #if tokens(index_prev).text != "="
+            # print(tokens[i_prev].text)
+            # allow:
+            # - 'func()[] {'
+            # - 'func() {'
+
+            if tokens[i_prev].text in {")", "]"}:
+                i_prev = i - 1
+                while tokens[i_prev].line == tokens[i].line:
+                    i_prev -= 1
+                split = tokens[i_prev].text.rsplit("\n", 1)
+                if len(split) > 1 and split[-1] != "":
+                    split_line = split[-1]
+                else:
+                    split_line = tokens[i_prev + 1].text
+
+                if split_line and split_line[0].isspace():
+                    pass
+                else:
+                    # no whitespace!
+                    i_begin = i_prev + 1
+
+                    # skip blank
+                    if tokens[i_begin].text == "":
+                        i_begin += 1
+                    # skip static
+                    if tokens[i_begin].text == "static":
+                        i_begin += 1
+                    while tokens[i_begin].text.isspace():
+                        i_begin += 1
+                    # now we are done skipping stuff
+
+                    warning("function's '{' must be on a newline", i_begin, i)
+
+
 def quick_check_indentation(code):
     """
     Quick check for multiple tab indents.
@@ -407,10 +656,10 @@ def quick_check_indentation(code):
     t_prev = -1
     m_comment_prev = False
     ls_prev = ""
-    
+
     for i, l in enumerate(code.split("\n")):
         skip = False
-        
+
         # skip blank lines
         ls = l.strip()
 
@@ -460,11 +709,15 @@ def scan_source(fp, args):
     is_cpp = fp.endswith((".cpp", ".cxx"))
 
     filepath = fp
+
+    #if "displist.c" not in filepath:
+    #    return
+
     filepath_base = os.path.basename(filepath)
 
     #print(highlight(code, CLexer(), RawTokenFormatter()).decode('utf-8'))
     code = open(filepath, 'r', encoding="utf-8").read()
-    
+
     quick_check_indentation(code)
     # return
 
@@ -472,8 +725,9 @@ def scan_source(fp, args):
     line = 1
 
     for ttype, text in lex(code, CLexer()):
-        tokens.append(TokStore(ttype, text, line))
-        line += text.count("\n")
+        if text:
+            tokens.append(TokStore(ttype, text, line))
+            line += text.count("\n")
 
     col = 0  # track line length
     index_line_start = 0
@@ -487,9 +741,35 @@ def scan_source(fp, args):
                     blender_check_kw_if(item_range[0], i, item_range[1])
             elif tok.text == "else":
                 blender_check_kw_else(i)
+            elif tok.text == "sizeof":
+                blender_check_kw_sizeof(i)
         elif tok.type == Token.Punctuation:
             if tok.text == ",":
                 blender_check_comma(i)
+            elif tok.text == ".":
+                blender_check_period(i)
+            elif tok.text == "[":
+                # note, we're quite relaxed about this but
+                # disallow 'foo ['
+                if tokens[i - 1].text.isspace():
+                    if is_cpp and tokens[i + 1].text == "]":
+                        # c++ can do delete []
+                        pass
+                    else:
+                        warning("space before '['", i, i)
+            elif tok.text == "(":
+                # check if this is a cast, eg:
+                #  (char), (char **), (float (*)[3])
+                item_range = extract_cast(i)
+                if item_range is not None:
+                    blender_check_cast(item_range[0], item_range[1])
+            elif tok.text == "{":
+                # check previous character is either a '{' or whitespace.
+                if (tokens[i - 1].line == tok.line) and not (tokens[i - 1].text.isspace() or tokens[i - 1].text == "{"):
+                    warning("no space before '{'", i, i)
+
+                blender_check_function_definition(i)
+
         elif tok.type == Token.Operator:
             # we check these in pairs, only want first
             if tokens[i - 1].type != Token.Operator:
@@ -561,18 +841,18 @@ if __name__ == "__main__":
     import sys
     import os
 
-    if 0:
-        SOURCE_DIR = os.path.normpath(os.path.abspath(os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))))
-        #scan_source_recursive(os.path.join(SOURCE_DIR, "source", "blender", "bmesh"))
-        scan_source_recursive(os.path.join(SOURCE_DIR, "source", "blender", "modifiers"))
-        sys.exit(0)
-
     desc = 'Check C/C++ code for conformance with blenders style guide:\nhttp://wiki.blender.org/index.php/Dev:Doc/CodeStyle)'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument("paths", nargs='+', help="list of files or directories to check")
     parser.add_argument("-l", "--no-length-check", action="store_true",
                         help="skip warnings for long lines")
     args = parser.parse_args()
+
+    if 0:
+        SOURCE_DIR = os.path.normpath(os.path.abspath(os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))))
+        #scan_source_recursive(os.path.join(SOURCE_DIR, "source", "blender", "bmesh"))
+        scan_source_recursive(os.path.join(SOURCE_DIR, "source/blender/makesrna/intern"), args)
+        sys.exit(0)
 
     for filepath in args.paths:
         if os.path.isdir(filepath):

@@ -39,6 +39,7 @@
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 #include "IMB_allocimbuf.h"
+#include "IMB_filter.h"
 
 #include "IMB_colormanagement.h"
 #include "IMB_colormanagement_intern.h"
@@ -249,10 +250,24 @@ void IMB_buffer_byte_from_float(uchar *rect_to, const float *rect_from,
 			uchar *to = rect_to + stride_to * y * 4;
 
 			if (profile_to == profile_from) {
+				float straight[4];
+
 				/* no color space conversion */
-				if (dither) {
+				if (dither && predivide) {
+					for (x = 0; x < width; x++, from += 4, to += 4) {
+						premul_to_straight_v4_v4(straight, from);
+						float_to_byte_dither_v4(to, straight, di);
+					}
+				}
+				else if (dither) {
 					for (x = 0; x < width; x++, from += 4, to += 4)
 						float_to_byte_dither_v4(to, from, di);
+				}
+				else if (predivide) {
+					for (x = 0; x < width; x++, from += 4, to += 4) {
+						premul_to_straight_v4_v4(straight, from);
+						rgba_float_to_uchar(to, straight);
+					}
 				}
 				else {
 					for (x = 0; x < width; x++, from += 4, to += 4)
@@ -262,10 +277,12 @@ void IMB_buffer_byte_from_float(uchar *rect_to, const float *rect_from,
 			else if (profile_to == IB_PROFILE_SRGB) {
 				/* convert from linear to sRGB */
 				unsigned short us[4];
+				float straight[4];
 
 				if (dither && predivide) {
 					for (x = 0; x < width; x++, from += 4, to += 4) {
-						linearrgb_to_srgb_ushort4_predivide(us, from);
+						premul_to_straight_v4_v4(straight, from);
+						linearrgb_to_srgb_ushort4(us, from);
 						ushort_to_byte_dither_v4(to, us, di);
 					}
 				}
@@ -277,7 +294,8 @@ void IMB_buffer_byte_from_float(uchar *rect_to, const float *rect_from,
 				}
 				else if (predivide) {
 					for (x = 0; x < width; x++, from += 4, to += 4) {
-						linearrgb_to_srgb_ushort4_predivide(us, from);
+						premul_to_straight_v4_v4(straight, from);
+						linearrgb_to_srgb_ushort4(us, from);
 						ushort_to_byte_v4(to, us);
 					}
 				}
@@ -526,7 +544,6 @@ void IMB_buffer_byte_from_byte(uchar *rect_to, const uchar *rect_from,
 
 void IMB_rect_from_float(ImBuf *ibuf)
 {
-	int predivide = (ibuf->flags & IB_cm_predivide);
 	float *buffer;
 	const char *from_colorspace;
 
@@ -548,7 +565,10 @@ void IMB_rect_from_float(ImBuf *ibuf)
 	buffer = MEM_dupallocN(ibuf->rect_float);
 
 	/* first make float buffer in byte space */
-	IMB_colormanagement_transform(buffer, ibuf->x, ibuf->y, ibuf->channels, from_colorspace, ibuf->rect_colorspace->name, predivide);
+	IMB_colormanagement_transform(buffer, ibuf->x, ibuf->y, ibuf->channels, from_colorspace, ibuf->rect_colorspace->name, TRUE);
+
+	/* convert from float's premul alpha to byte's straight alpha */
+	IMB_unpremultiply_rect_float(buffer, ibuf->planes, ibuf->x, ibuf->y);
 
 	/* convert float to byte */
 	IMB_buffer_byte_from_float((unsigned char *) ibuf->rect, buffer, ibuf->channels, ibuf->dither, IB_PROFILE_SRGB, IB_PROFILE_SRGB,
@@ -565,7 +585,6 @@ void IMB_partial_rect_from_float(ImBuf *ibuf, float *buffer, int x, int y, int w
 {
 	float *rect_float;
 	uchar *rect_byte;
-	int predivide = (ibuf->flags & IB_cm_predivide);
 	int profile_from = IB_PROFILE_LINEAR_RGB;
 
 	/* verify we have a float buffer */
@@ -588,12 +607,12 @@ void IMB_partial_rect_from_float(ImBuf *ibuf, float *buffer, int x, int y, int w
 
 		/* and do color space conversion to byte */
 		IMB_buffer_byte_from_float(rect_byte, rect_float,
-		                           4, ibuf->dither, IB_PROFILE_SRGB, profile_from, predivide,
+		                           4, ibuf->dither, IB_PROFILE_SRGB, profile_from, TRUE,
 		                           w, h, ibuf->x, w);
 	}
 	else {
 		IMB_buffer_float_from_float(buffer, rect_float,
-		                            ibuf->channels, IB_PROFILE_SRGB, profile_from, predivide,
+		                            ibuf->channels, IB_PROFILE_SRGB, profile_from, TRUE,
 		                            w, h, w, ibuf->x);
 
 		/* XXX: need to convert to image buffer's rect space */
@@ -608,8 +627,6 @@ void IMB_partial_rect_from_float(ImBuf *ibuf, float *buffer, int x, int y, int w
 
 void IMB_float_from_rect(ImBuf *ibuf)
 {
-	int predivide = (ibuf->flags & IB_cm_predivide);
-
 	/* verify if we byte and float buffers */
 	if (ibuf->rect == NULL)
 		return;
@@ -634,69 +651,12 @@ void IMB_float_from_rect(ImBuf *ibuf)
 
 	/* then make float be in linear space */
 	IMB_colormanagement_colorspace_to_scene_linear(ibuf->rect_float, ibuf->x, ibuf->y, ibuf->channels,
-	                                               ibuf->rect_colorspace, predivide);
+	                                               ibuf->rect_colorspace, FALSE);
+
+	/* byte buffer is straight alpha, float should always be premul */
+	IMB_premultiply_rect_float(ibuf->rect_float, ibuf->planes, ibuf->x, ibuf->y);
 
 	BLI_unlock_thread(LOCK_COLORMANAGE);
-}
-
-/* no profile conversion */
-void IMB_float_from_rect_simple(ImBuf *ibuf)
-{
-	int predivide = (ibuf->flags & IB_cm_predivide);
-
-	if (ibuf->rect_float == NULL)
-		imb_addrectfloatImBuf(ibuf);
-
-	IMB_buffer_float_from_byte(ibuf->rect_float, (uchar *)ibuf->rect,
-	                           IB_PROFILE_SRGB, IB_PROFILE_SRGB, predivide,
-	                           ibuf->x, ibuf->y, ibuf->x, ibuf->x);
-}
-
-/* use when you need to get a buffer with a certain profile
- * if the return  */
-
-/* OCIO_TODO: used only by Cineon/DPX exporter which is still broken, so can not guarantee
- *            this function is working properly
- */
-float *IMB_float_profile_ensure(ImBuf *ibuf, int profile, int *alloc)
-{
-	int predivide = (ibuf->flags & IB_cm_predivide);
-	int profile_from = IB_PROFILE_LINEAR_RGB;
-	int profile_to;
-
-	/* determine profile */
-	if (profile == IB_PROFILE_NONE)
-		profile_to = IB_PROFILE_LINEAR_RGB;
-	else
-		profile_to = IB_PROFILE_SRGB;
-	
-	if (profile_from == profile_to) {
-		/* simple case, just allocate the buffer and return */
-		*alloc = 0;
-
-		if (ibuf->rect_float == NULL)
-			IMB_float_from_rect(ibuf);
-
-		return ibuf->rect_float;
-	}
-	else {
-		/* conversion is needed, first check */
-		float *fbuf = MEM_mallocN(ibuf->x * ibuf->y * sizeof(float) * 4, "IMB_float_profile_ensure");
-		*alloc = 1;
-
-		if (ibuf->rect_float == NULL) {
-			IMB_buffer_float_from_byte(fbuf, (uchar *)ibuf->rect,
-			                           profile_to, profile_from, predivide,
-			                           ibuf->x, ibuf->y, ibuf->x, ibuf->x);
-		}
-		else {
-			IMB_buffer_float_from_float(fbuf, ibuf->rect_float,
-			                            4, profile_to, profile_from, predivide,
-			                            ibuf->x, ibuf->y, ibuf->x, ibuf->x);
-		}
-
-		return fbuf;
-	}
 }
 
 /**************************** Color to Grayscale *****************************/
@@ -704,13 +664,13 @@ float *IMB_float_profile_ensure(ImBuf *ibuf, int profile, int *alloc)
 /* no profile conversion */
 void IMB_color_to_bw(ImBuf *ibuf)
 {
-	float *rctf = ibuf->rect_float;
+	float *rct_fl = ibuf->rect_float;
 	uchar *rct = (uchar *)ibuf->rect;
 	int i;
 
-	if (rctf) {
-		for (i = ibuf->x * ibuf->y; i > 0; i--, rctf += 4)
-			rctf[0] = rctf[1] = rctf[2] = rgb_to_grayscale(rctf);
+	if (rct_fl) {
+		for (i = ibuf->x * ibuf->y; i > 0; i--, rct_fl += 4)
+			rct_fl[0] = rct_fl[1] = rct_fl[2] = rgb_to_grayscale(rct_fl);
 	}
 
 	if (rct) {
@@ -727,13 +687,33 @@ void IMB_buffer_float_clamp(float *buf, int width, int height)
 	}
 }
 
+void IMB_buffer_float_unpremultiply(float *buf, int width, int height)
+{
+	int total = width * height;
+	float *fp = buf;
+	while (total--) {
+		premul_to_straight_v4(fp);
+		fp += 4;
+	}
+}
+
+void IMB_buffer_float_premultiply(float *buf, int width, int height)
+{
+	int total = width * height;
+	float *fp = buf;
+	while (total--) {
+		straight_to_premul_v4(fp);
+		fp += 4;
+	}
+}
+
 /**************************** alter saturation *****************************/
 
 void IMB_saturation(ImBuf *ibuf, float sat)
 {
 	int i;
 	unsigned char *rct = (unsigned char *)ibuf->rect;
-	float *rctf = ibuf->rect_float;
+	float *rct_fl = ibuf->rect_float;
 	float hsv[3];
 
 	if (rct) {
@@ -746,10 +726,10 @@ void IMB_saturation(ImBuf *ibuf, float sat)
 		}
 	}
 
-	if (rctf) {
-		for (i = ibuf->x * ibuf->y; i > 0; i--, rctf += 4) {
-			rgb_to_hsv_v(rctf, hsv);
-			hsv_to_rgb(hsv[0], hsv[1] * sat, hsv[2], rctf, rctf + 1, rctf + 2);
+	if (rct_fl) {
+		for (i = ibuf->x * ibuf->y; i > 0; i--, rct_fl += 4) {
+			rgb_to_hsv_v(rct_fl, hsv);
+			hsv_to_rgb(hsv[0], hsv[1] * sat, hsv[2], rct_fl, rct_fl + 1, rct_fl + 2);
 		}
 	}
 }

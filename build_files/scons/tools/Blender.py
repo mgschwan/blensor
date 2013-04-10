@@ -29,6 +29,7 @@ from SCons.Script.SConscript import SConsEnvironment
 import SCons.Action
 import SCons.Util
 import SCons.Builder
+import SCons.Subst
 import SCons.Tool
 import bcolors
 bc = bcolors.bcolors()
@@ -146,10 +147,8 @@ def setup_staticlibs(lenv):
         libincs += Split(lenv['BF_PYTHON_LIBPATH'])
     if lenv['WITH_BF_SDL']:
         libincs += Split(lenv['BF_SDL_LIBPATH'])
-    if lenv['WITH_BF_JACK']:
+    if lenv['WITH_BF_JACK'] and not lenv['WITH_BF_JACK_DYNLOAD']:
         libincs += Split(lenv['BF_JACK_LIBPATH'])
-        if lenv['WITH_BF_STATICJACK']:
-            statlibs += Split(lenv['BF_JACK_LIB_STATIC'])
     if lenv['WITH_BF_SNDFILE']:
         libincs += Split(lenv['BF_SNDFILE_LIBPATH'])
     if lenv['WITH_BF_OPENEXR']:
@@ -234,10 +233,6 @@ def setup_staticlibs(lenv):
         if lenv['WITH_BF_STATICLLVM']:
             statlibs += Split(lenv['BF_LLVM_LIB_STATIC'])
 
-    # setting this last so any overriding of manually libs could be handled
-    if lenv['OURPLATFORM'] not in ('win32-vc', 'win32-mingw', 'win64-vc', 'linuxcross', 'win64-mingw'):
-        libincs.append('/usr/lib')
-
     if lenv['WITH_BF_JEMALLOC']:
         libincs += Split(lenv['BF_JEMALLOC_LIBPATH'])
         if lenv['WITH_BF_STATICJEMALLOC']:
@@ -248,6 +243,12 @@ def setup_staticlibs(lenv):
             libincs += Split(lenv['BF_3DMOUSE_LIBPATH'])
             if lenv['WITH_BF_STATIC3DMOUSE']:
                 statlibs += Split(lenv['BF_3DMOUSE_LIB_STATIC'])
+
+    # setting this last so any overriding of manually libs could be handled
+    if lenv['OURPLATFORM'] not in ('win32-vc', 'win32-mingw', 'win64-vc', 'linuxcross', 'win64-mingw'):
+        # We must remove any previous items defining this path, for same reason stated above!
+        libincs = [e for e in libincs if SCons.Subst.scons_subst(e, lenv, gvars=lenv.Dictionary()) != "/usr/lib"]
+        libincs.append('/usr/lib')
 
     return statlibs, libincs
 
@@ -289,7 +290,7 @@ def setup_syslibs(lenv):
         syslibs += Split(lenv['BF_FFMPEG_LIB'])
         if lenv['WITH_BF_OGG']:
             syslibs += Split(lenv['BF_OGG_LIB'])
-    if lenv['WITH_BF_JACK'] and not lenv['WITH_BF_STATICJACK']:
+    if lenv['WITH_BF_JACK'] and not lenv['WITH_BF_JACK_DYNLOAD']:
         syslibs += Split(lenv['BF_JACK_LIB'])
     if lenv['WITH_BF_SNDFILE'] and not lenv['WITH_BF_STATICSNDFILE']:
         syslibs += Split(lenv['BF_SNDFILE_LIB'])
@@ -388,6 +389,10 @@ def creator(env):
         if env['BF_DEBUG']:
             defs.append('_DEBUG')
 
+    if env['WITH_BF_FREESTYLE']:
+        incs.append('#/source/blender/freestyle')
+        defs.append('WITH_FREESTYLE')
+
     if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc', 'win64-mingw'):
         incs.append(env['BF_PTHREADS_INC'])
         incs.append('#/intern/utfconv')
@@ -452,22 +457,22 @@ def my_print_cmd_line(self, s, target, source, env):
 def my_compile_print(target, source, env):
     a = '%s' % (source[0])
     d, f = os.path.split(a)
-    return bc.OKBLUE+"Compiling"+bc.ENDC +" ==> '"+bc.OKGREEN+"%s" % (f) + "'"+bc.ENDC
+    return bc.OKBLUE + "Compiling" + bc.ENDC + " ==> '" + bc.OKGREEN + ("%s" % f) + bc.ENDC + "'"
 
 def my_moc_print(target, source, env):
     a = '%s' % (source[0])
     d, f = os.path.split(a)
-    return bc.OKBLUE+"Creating MOC"+bc.ENDC+ " ==> '"+bc.OKGREEN+"%s" %(f) + "'"+bc.ENDC
+    return bc.OKBLUE + "Creating MOC" + bc.ENDC + " ==> '" + bc.OKGREEN + ("%s" % f) + bc.ENDC + "'"
 
 def my_linking_print(target, source, env):
     t = '%s' % (target[0])
     d, f = os.path.split(t)
-    return bc.OKBLUE+"Linking library"+bc.ENDC +" ==> '"+bc.OKGREEN+"%s" % (f) + "'"+bc.ENDC
+    return bc.OKBLUE + "Linking library" + bc.ENDC + " ==> '" + bc.OKGREEN + ("%s" % f) + bc.ENDC + "'"
 
 def my_program_print(target, source, env):
     t = '%s' % (target[0])
     d, f = os.path.split(t)
-    return bc.OKBLUE+"Linking program"+bc.ENDC +" ==> '"+bc.OKGREEN+"%s" % (f) + "'"+bc.ENDC
+    return bc.OKBLUE + "Linking program" + bc.ENDC + " ==> '" + bc.OKGREEN + ("%s" % f) + bc.ENDC + "'"
 
 def msvc_hack(env):
     static_lib = SCons.Tool.createStaticLibBuilder(env)

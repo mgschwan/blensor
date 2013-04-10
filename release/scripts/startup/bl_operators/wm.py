@@ -29,12 +29,15 @@ from bpy.props import (StringProperty,
 
 from rna_prop_ui import rna_idprop_ui_prop_get, rna_idprop_ui_prop_clear
 
+from bpy.app.translations import pgettext_tip as tip_
+
 
 class MESH_OT_delete_edgeloop(Operator):
     """Delete an edge loop by merging the faces on each side """ \
     """to a single face loop"""
     bl_idname = "mesh.delete_edgeloop"
     bl_label = "Delete Edge Loop"
+    bl_options = {'UNDO', 'REGISTER'}
 
     @classmethod
     def poll(cls, context):
@@ -44,7 +47,7 @@ class MESH_OT_delete_edgeloop(Operator):
         mesh = context.object.data
         use_mirror_x = mesh.use_mirror_x
         mesh.use_mirror_x = False
-        if 'FINISHED' in bpy.ops.transform.edge_slide(value=1.0):
+        if 'FINISHED' in bpy.ops.transform.edge_slide(value=1.0, correct_uv=True):
             bpy.ops.mesh.select_more()
             bpy.ops.mesh.remove_doubles()
             ret = {'FINISHED'}
@@ -500,18 +503,16 @@ class WM_MT_context_menu_enum(Menu):
 
     def draw(self, context):
         data_path = self.data_path
-        value = context_path_validate(bpy.context, data_path)
+        value = context_path_validate(context, data_path)
         if value is Ellipsis:
             return {'PASS_THROUGH'}
         base_path, prop_string = data_path.rsplit(".", 1)
         value_base = context_path_validate(context, base_path)
+        prop = value_base.bl_rna.properties[prop_string]
 
-        values = [(i.name, i.identifier) for i in value_base.bl_rna.properties[prop_string].enum_items]
-
-        for name, identifier in values:
-            props = self.layout.operator("wm.context_set_enum", text=name)
-            props.data_path = data_path
-            props.value = identifier
+        layout = self.layout
+        layout.label(prop.name, icon=prop.icon)
+        layout.prop(value_base, prop_string, expand=True)
 
 
 class WM_OT_context_menu_enum(Operator):
@@ -821,25 +822,42 @@ def _wm_doc_get_id(doc_id, do_url=True, url_prefix=""):
     elif len(id_split) == 2:  # rna, class.prop
         class_name, class_prop = id_split
 
+        # an operator (common case - just button referencing an op)
         if hasattr(bpy.types, class_name.upper() + "_OT_" + class_prop):
             if do_url:
                 url = ("%s/bpy.ops.%s.html#bpy.ops.%s.%s" % (url_prefix, class_name, class_name, class_prop))
             else:
                 rna = "bpy.ops.%s.%s" % (class_name, class_prop)
         else:
+            rna_class = getattr(bpy.types, class_name)
 
-            # detect if this is a inherited member and use that name instead
-            rna_parent = getattr(bpy.types, class_name).bl_rna
-            rna_prop = rna_parent.properties[class_prop]
-            rna_parent = rna_parent.base
-            while rna_parent and rna_prop == rna_parent.properties.get(class_prop):
-                class_name = rna_parent.identifier
-                rna_parent = rna_parent.base
-
-            if do_url:
-                url = ("%s/bpy.types.%s.html#bpy.types.%s.%s" % (url_prefix, class_name, class_name, class_prop))
+            # an operator setting (selected from a running operator), rare case
+            # note: Py defined operators are subclass of Operator,
+            #       C defined operators are subclass of OperatorProperties.
+            #       we may need to check on this at some point.
+            if issubclass(rna_class, (bpy.types.Operator, bpy.types.OperatorProperties)):
+                # note: ignore the prop name since we don't have a way to link into it
+                class_name, class_prop = class_name.split("_OT_", 1)
+                class_name = class_name.lower()
+                if do_url:
+                    url = ("%s/bpy.ops.%s.html#bpy.ops.%s.%s" % (url_prefix, class_name, class_name, class_prop))
+                else:
+                    rna = "bpy.ops.%s.%s" % (class_name, class_prop)
             else:
-                rna = ("bpy.types.%s.%s" % (class_name, class_prop))
+                # an RNA setting, common case
+
+                # detect if this is a inherited member and use that name instead
+                rna_parent = rna_class.bl_rna
+                rna_prop = rna_parent.properties[class_prop]
+                rna_parent = rna_parent.base
+                while rna_parent and rna_prop == rna_parent.properties.get(class_prop):
+                    class_name = rna_parent.identifier
+                    rna_parent = rna_parent.base
+
+                if do_url:
+                    url = ("%s/bpy.types.%s.html#bpy.types.%s.%s" % (url_prefix, class_name, class_name, class_prop))
+                else:
+                    rna = ("bpy.types.%s.%s" % (class_name, class_prop))
 
     return url if do_url else rna
 
@@ -1255,18 +1273,15 @@ class WM_OT_copy_prev_settings(Operator):
         else:
             shutil.copytree(path_src, path_dst, symlinks=True)
 
-            # in 2.57 and earlier windows installers, system scripts were copied
-            # into the configuration directory, don't want to copy those
-            system_script = os.path.join(path_dst, "scripts/modules/bpy_types.py")
-            if os.path.isfile(system_script):
-                shutil.rmtree(os.path.join(path_dst, "scripts"))
-                shutil.rmtree(os.path.join(path_dst, "plugins"))
+            # reload recent-files.txt
+            bpy.ops.wm.read_history()
 
             # don't loose users work if they open the splash later.
             if bpy.data.is_saved is bpy.data.is_dirty is False:
                 bpy.ops.wm.read_homefile()
             else:
                 self.report({'INFO'}, "Reload Start-Up file to restore settings")
+
             return {'FINISHED'}
 
         return {'CANCELLED'}
@@ -1596,7 +1611,7 @@ class WM_OT_addon_enable(Operator):
                                           "version %d.%d.%d and might not "
                                           "function (correctly), "
                                           "though it is enabled") %
-                                          info_ver)
+                                         info_ver)
             return {'FINISHED'}
         else:
             return {'CANCELLED'}
@@ -1620,7 +1635,7 @@ class WM_OT_addon_disable(Operator):
 
 
 class WM_OT_theme_install(Operator):
-    "Install a theme"
+    "Load and apply a Blender XML theme file"
     bl_idname = "wm.theme_install"
     bl_label = "Install Theme..."
 
@@ -1739,7 +1754,7 @@ class WM_OT_addon_install(Operator):
             # don't use bpy.utils.script_paths("addons") because we may not be able to write to it.
             path_addons = bpy.utils.user_resource('SCRIPTS', "addons", create=True)
         else:
-            path_addons = bpy.context.user_preferences.filepaths.script_directory
+            path_addons = context.user_preferences.filepaths.script_directory
             if path_addons:
                 path_addons = os.path.join(path_addons, "addons")
 
@@ -1748,8 +1763,7 @@ class WM_OT_addon_install(Operator):
             return {'CANCELLED'}
 
         # create dir is if missing.
-        if not os.path.exists(path_addons):
-            os.makedirs(path_addons)
+        os.makedirs(path_addons, exist_ok=True)
 
         # Check if we are installing from a target path,
         # doing so causes 2+ addons of same name or when the same from/to
@@ -1830,7 +1844,7 @@ class WM_OT_addon_install(Operator):
         bpy.utils.refresh_script_paths()
 
         # print message
-        msg = "Modules Installed from %r into %r (%s)" % (pyfile, path_addons, ", ".join(sorted(addons_new)))
+        msg = tip_("Modules Installed from %r into %r (%s)") % (pyfile, path_addons, ", ".join(sorted(addons_new)))
         print(msg)
         self.report({'INFO'}, msg)
 

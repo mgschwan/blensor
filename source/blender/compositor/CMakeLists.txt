@@ -35,13 +35,13 @@ set(INC
 	../imbuf
 	../makesdna
 	../makesrna
-	../opencl
 	../windowmanager
 	../nodes
 	../nodes/composite
 	../nodes/intern
 	../render/extern/include
 	../render/intern/include
+	../../../intern/opencl
 	../../../intern/guardedalloc
 )
 
@@ -491,10 +491,10 @@ set(SRC
 	operations/COM_ColorMatteOperation.h
 	operations/COM_ChannelMatteOperation.cpp
 	operations/COM_ChannelMatteOperation.h
-	operations/COM_ConvertPremulToKeyOperation.cpp
-	operations/COM_ConvertPremulToKeyOperation.h
-	operations/COM_ConvertKeyToPremulOperation.cpp
-	operations/COM_ConvertKeyToPremulOperation.h
+	operations/COM_ConvertPremulToStraightOperation.cpp
+	operations/COM_ConvertPremulToStraightOperation.h
+	operations/COM_ConvertStraightToPremulOperation.cpp
+	operations/COM_ConvertStraightToPremulOperation.h
 
 	operations/COM_ReadBufferOperation.cpp
 	operations/COM_ReadBufferOperation.h
@@ -580,6 +580,8 @@ set(SRC
 	# Distort operation
 	operations/COM_TranslateOperation.h
 	operations/COM_TranslateOperation.cpp
+	operations/COM_WrapOperation.h
+	operations/COM_WrapOperation.cpp
 	operations/COM_RotateOperation.h
 	operations/COM_RotateOperation.cpp
 	operations/COM_ScaleOperation.h
@@ -658,6 +660,6 @@ list(APPEND INC
 	${CMAKE_CURRENT_BINARY_DIR}/operations
 )
 data_to_c(${CMAKE_CURRENT_SOURCE_DIR}/operations/COM_OpenCLKernels.cl
-		  ${CMAKE_CURRENT_BINARY_DIR}/operations/COM_OpenCLKernels.cl.h SRC)
+          ${CMAKE_CURRENT_BINARY_DIR}/operations/COM_OpenCLKernels.cl.h SRC)
 
 blender_add_lib(bf_compositor "${SRC}" "${INC}" "${INC_SYS}")

@@ -20,9 +20,7 @@ import bpy
 from bpy.props import StringProperty
 
 class SEQExportStrip(bpy.types.Operator):
-    """
-    Export (render) selected strips in sequencer
-    """
+    """Export (render) selected strips in sequencer"""
     bl_idname = "sequencer.export_strips"
     bl_label = "Export Strips"
     filepath = StringProperty(subtype='FILE_PATH')
@@ -69,4 +67,3 @@ class SEQExportStrip(bpy.types.Operator):
         winman = context.window_manager
         winman.fileselect_add(self)
         return {'RUNNING_MODAL'}
-

@@ -24,7 +24,7 @@ bl_info = {
     "name": "BRIK - Blender Ragdoll Implementation Kit",
     "author": "FunkyWyrm",
     "version": (0,2),
-    "blender": (2, 5, 5),
+    "blender": (2, 55, 0),
     "api": 31965,
     "location": "View 3D > Tool Shelf > BRIK Panel",
     "description": "Kit for creating ragdoll structures from armatures and implementing them in the game engine.",

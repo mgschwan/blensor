@@ -20,7 +20,7 @@ bl_info = {
     "name": "Add Wetted Mesh",
     "author": "freejack",
     "version": (0, 2, 1),
-    "blender": (2, 5, 8),
+    "blender": (2, 58, 0),
     "location": "View3D > Tool Shelf > Wetted Mesh Panel",
     "description": "Adds separated fluid, dry and wetted mesh for selected pair.",
     "warning": "",

@@ -80,6 +80,11 @@ if(WITH_BINRELOC)
 	blender_include_dirs(${BINRELOC_INCLUDE_DIRS})
 endif()
 
+if(WITH_FREESTYLE)
+	add_definitions(-DWITH_FREESTYLE)
+	blender_include_dirs(../blender/freestyle)
+endif()
+
 # Setup the exe sources and buildinfo
 set(SRC
 	creator.c
@@ -279,15 +284,24 @@ if(WITH_PYTHON)
 		set(ADDON_EXCLUDE_CONDITIONAL "_addons_contrib/*")  # dummy, wont do anything
 	endif()
 
+	# do not install freestyle dir if disabled
+	if(NOT WITH_FREESTYLE)
+		set(FREESTYLE_EXCLUDE_CONDITIONAL "freestyle/*")
+	else()
+		set(FREESTYLE_EXCLUDE_CONDITIONAL "_freestyle/*")  # dummy, wont do anything
+	endif()
+
 	install(
 		DIRECTORY ${CMAKE_SOURCE_DIR}/release/scripts
 		DESTINATION ${TARGETDIR_VER}
 		PATTERN ".svn" EXCLUDE
 		PATTERN "__pycache__" EXCLUDE
 		PATTERN "${ADDON_EXCLUDE_CONDITIONAL}" EXCLUDE
+		PATTERN "${FREESTYLE_EXCLUDE_CONDITIONAL}" EXCLUDE
 	)
 	
 	unset(ADDON_EXCLUDE_CONDITIONAL)
+	unset(FREESTYLE_EXCLUDE_CONDITIONAL)
 endif()
 
 # localization
@@ -472,7 +486,7 @@ elseif(WIN32)
 	if(WITH_PYTHON)
 		set_lib_path(PYLIB "python")
 
-		STRING(REPLACE "." "" _PYTHON_VERSION_NO_DOTS ${PYTHON_VERSION})
+		string(REPLACE "." "" _PYTHON_VERSION_NO_DOTS ${PYTHON_VERSION})
 
 		install(
 			FILES ${PYLIB}/lib/python${_PYTHON_VERSION_NO_DOTS}.dll
@@ -689,7 +703,7 @@ elseif(APPLE)
 	)
 
 	# python
-	if(WITH_PYTHON AND NOT WITH_PYTHON_MODULE)
+	if(WITH_PYTHON AND NOT WITH_PYTHON_MODULE AND NOT WITH_PYTHON_FRAMEWORK)
 		# the python zip is first extract as part of the build process,
 		# and then later installed as part of make install. this is much
 		# quicker, and means we can easily exclude files on copy
@@ -742,7 +756,7 @@ elseif(APPLE)
 		)
 
 		# python
-		if(WITH_PYTHON)
+		if(WITH_PYTHON AND NOT WITH_PYTHON_FRAMEWORK)
 			add_custom_command(
 				OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/python
 				COMMAND rm -rf ${CMAKE_CURRENT_BINARY_DIR}/python/
@@ -779,8 +793,7 @@ add_dependencies(blender makesdna)
 
 get_property(BLENDER_LINK_LIBS GLOBAL PROPERTY BLENDER_LINK_LIBS)
 
-set(BLENDER_LINK_LIBS
-	${BLENDER_LINK_LIBS}
+list(APPEND BLENDER_LINK_LIBS
 	bf_windowmanager
 	bf_render
 )
@@ -831,12 +844,12 @@ endif()
 		bf_editor_util
 		bf_editor_uvedit
 		bf_editor_curve
-		bf_editor_armature
 		bf_editor_gpencil
 		bf_editor_interface
 		bf_editor_mesh
 		bf_editor_metaball
 		bf_editor_object
+		bf_editor_armature
 		bf_editor_physics
 		bf_editor_render
 		bf_editor_screen
@@ -854,6 +867,7 @@ endif()
 		bf_python_mathutils
 		bf_python_bmesh
 		bf_python_blensor
+		bf_freestyle
 		bf_ikplugin
 		bf_modifiers
 		bf_bmesh
@@ -886,7 +900,6 @@ endif()
 		extern_colamd
 		ge_logic_ketsji
 		extern_recastnavigation
-		ge_phys_common
 		ge_logic
 		ge_rasterizer
 		ge_oglrasterizer
@@ -894,7 +907,6 @@ endif()
 		ge_scenegraph
 		ge_logic_network
 		ge_logic_ngnetwork
-		extern_bullet
 		ge_logic_loopbacknetwork
 		bf_intern_moto
 		extern_openjpeg
@@ -915,12 +927,14 @@ endif()
 		cycles_subd
 		bf_intern_raskter
 		bf_intern_opencolorio
+		extern_rangetree
+		extern_wcwidth
 	)
 
 	if(WITH_COMPOSITOR)
 		# added for opencl compositor
 		list_insert_before(BLENDER_SORTED_LIBS "bf_blenkernel" "bf_compositor")
-		list_insert_after(BLENDER_SORTED_LIBS "bf_compositor" "bf_opencl")
+		list_insert_after(BLENDER_SORTED_LIBS "bf_compositor" "bf_intern_opencl")
 	endif()
 
 	if(WITH_LIBMV)
@@ -970,6 +984,14 @@ endif()
 
 	if(WITH_INTERNATIONAL)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_locale)
+	endif()
+
+	if(WITH_BULLET)
+		list_insert_after(BLENDER_SORTED_LIBS "bf_blenkernel" "bf_intern_rigidbody")
+	endif()
+
+	if(WITH_BULLET AND NOT WITH_SYSTEM_BULLET)
+		list_insert_after(BLENDER_SORTED_LIBS "ge_logic_ngnetwork" "extern_bullet")
 	endif()
 
 	foreach(SORTLIB ${BLENDER_SORTED_LIBS})

@@ -33,6 +33,7 @@
 #include <string.h>
 #include <wchar.h>
 #include <wctype.h>
+#include <wcwidth.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -114,7 +115,7 @@ int BLI_utf8_invalid_byte(const char *str, int length)
 
 		/* Check for valid bytes after the 2nd, if any; all must start 10 */
 		while (--ab > 0) {
-			if ((*(p+1) & 0xc0) != 0x80) goto utf8_error;
+			if ((*(p + 1) & 0xc0) != 0x80) goto utf8_error;
 			p++; /* do this after so we get usable offset - campbell */
 		}
 	}
@@ -317,6 +318,42 @@ size_t BLI_strncpy_wchar_from_utf8(wchar_t *__restrict dst_w, const char *__rest
 /* end wchar_t / utf8 functions  */
 /* --------------------------------------------------------------------------*/
 
+/* count columns that character/string occupies, based on wcwidth.c */
+
+int BLI_wcwidth(wchar_t ucs)
+{
+	return mk_wcwidth(ucs);
+}
+
+int BLI_wcswidth(const wchar_t *pwcs, size_t n)
+{
+	return mk_wcswidth(pwcs, n);
+}
+
+int BLI_str_utf8_char_width(const char *p)
+{
+	unsigned int unicode = BLI_str_utf8_as_unicode(p);
+	if (unicode == BLI_UTF8_ERR)
+		return -1;
+
+	return BLI_wcwidth((wchar_t)unicode);
+}
+
+int BLI_str_utf8_char_width_safe(const char *p)
+{
+	int columns;
+
+	unsigned int unicode = BLI_str_utf8_as_unicode(p);
+	if (unicode == BLI_UTF8_ERR)
+		return 1;
+
+	columns = BLI_wcwidth((wchar_t)unicode);
+
+	return (columns < 0) ? 1 : columns;
+}
+
+/* --------------------------------------------------------------------------*/
+
 /* copied from glib's gutf8.c, added 'Err' arg */
 
 /* note, glib uses unsigned int for unicode, best we do the same,
@@ -369,7 +406,7 @@ size_t BLI_strncpy_wchar_from_utf8(wchar_t *__restrict dst_w, const char *__rest
 int BLI_str_utf8_size(const char *p)
 {
 	int mask = 0, len;
-	unsigned char c = (unsigned char) *p;
+	const unsigned char c = (unsigned char) *p;
 
 	UTF8_COMPUTE (c, mask, len, -1);
 
@@ -382,7 +419,7 @@ int BLI_str_utf8_size(const char *p)
 int BLI_str_utf8_size_safe(const char *p)
 {
 	int mask = 0, len;
-	unsigned char c = (unsigned char) *p;
+	const unsigned char c = (unsigned char) *p;
 
 	UTF8_COMPUTE (c, mask, len, 1);
 
@@ -408,10 +445,10 @@ unsigned int BLI_str_utf8_as_unicode(const char *p)
 {
 	int i, mask = 0, len;
 	unsigned int result;
-	unsigned char c = (unsigned char) *p;
+	const unsigned char c = (unsigned char) *p;
 
 	UTF8_COMPUTE (c, mask, len, -1);
-	if (len == -1)
+	if (UNLIKELY(len == -1))
 		return BLI_UTF8_ERR;
 	UTF8_GET (result, p, i, mask, len, BLI_UTF8_ERR);
 
@@ -423,11 +460,27 @@ unsigned int BLI_str_utf8_as_unicode_and_size(const char *__restrict p, size_t *
 {
 	int i, mask = 0, len;
 	unsigned int result;
-	unsigned char c = (unsigned char) *p;
+	const unsigned char c = (unsigned char) *p;
 
 	UTF8_COMPUTE (c, mask, len, -1);
-	if (len == -1)
+	if (UNLIKELY(len == -1))
 		return BLI_UTF8_ERR;
+	UTF8_GET (result, p, i, mask, len, BLI_UTF8_ERR);
+	*index += len;
+	return result;
+}
+
+unsigned int BLI_str_utf8_as_unicode_and_size_safe(const char *__restrict p, size_t *__restrict index)
+{
+	int i, mask = 0, len;
+	unsigned int result;
+	const unsigned char c = (unsigned char) *p;
+
+	UTF8_COMPUTE (c, mask, len, -1);
+	if (UNLIKELY(len == -1)) {
+		*index += 1;
+		return c;
+	}
 	UTF8_GET (result, p, i, mask, len, BLI_UTF8_ERR);
 	*index += len;
 	return result;
@@ -445,7 +498,7 @@ unsigned int BLI_str_utf8_as_unicode_step(const char *__restrict p, size_t *__re
 	c = (unsigned char) *p;
 
 	UTF8_COMPUTE (c, mask, len, -1);
-	if (len == -1) {
+	if (UNLIKELY(len == -1)) {
 		/* when called with NULL end, result will never be NULL,
 		 * checks for a NULL character */
 		char *p_next = BLI_str_find_next_char_utf8(p, NULL);
@@ -549,7 +602,7 @@ size_t BLI_str_utf8_from_unicode(unsigned int c, char *outbuf)
  *
  * Return value: a pointer to the found character or %NULL.
  **/
-char * BLI_str_find_prev_char_utf8(const char *str, const char *p)
+char *BLI_str_find_prev_char_utf8(const char *str, const char *p)
 {
 	for (--p; p >= str; --p) {
 		if ((*p & 0xc0) != 0x80) {

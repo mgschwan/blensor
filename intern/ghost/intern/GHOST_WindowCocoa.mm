@@ -28,7 +28,7 @@
 
 #include <Cocoa/Cocoa.h>
 
-#if MAC_OS_X_VERSION_MIN_REQUIRED <= MAC_OS_X_VERSION_10_5
+#if MAC_OS_X_VERSION_MIN_REQUIRED <= 1050
 //Use of the SetSystemUIMode function (64bit compatible)
 #include <Carbon/Carbon.h>
 #endif
@@ -58,34 +58,29 @@ extern "C" {
 	extern void wm_draw_update(bContext *C);
 };*/
 @interface CocoaWindowDelegate : NSObject
-#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_6
 <NSWindowDelegate>
-#endif
 {
 	GHOST_SystemCocoa *systemCocoa;
 	GHOST_WindowCocoa *associatedWindow;
 }
 
 - (void)setSystemAndWindowCocoa:(GHOST_SystemCocoa *)sysCocoa windowCocoa:(GHOST_WindowCocoa *)winCocoa;
-- (void)windowWillClose:(NSNotification *)notification;
 - (void)windowDidBecomeKey:(NSNotification *)notification;
 - (void)windowDidResignKey:(NSNotification *)notification;
 - (void)windowDidExpose:(NSNotification *)notification;
 - (void)windowDidResize:(NSNotification *)notification;
 - (void)windowDidMove:(NSNotification *)notification;
 - (void)windowWillMove:(NSNotification *)notification;
+- (BOOL)windowShouldClose:(id)sender;	
+- (void)windowDidChangeBackingProperties:(NSNotification *)notification;
 @end
+
 
 @implementation CocoaWindowDelegate : NSObject
 - (void)setSystemAndWindowCocoa:(GHOST_SystemCocoa *)sysCocoa windowCocoa:(GHOST_WindowCocoa *)winCocoa
 {
 	systemCocoa = sysCocoa;
 	associatedWindow = winCocoa;
-}
-
-- (void)windowWillClose:(NSNotification *)notification
-{
-	systemCocoa->handleWindowEvent(GHOST_kEventWindowClose, associatedWindow);
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)notification
@@ -115,12 +110,12 @@ extern "C" {
 
 - (void)windowDidResize:(NSNotification *)notification
 {
-#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_6
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
 	//if (![[notification object] inLiveResize]) {
 		//Send event only once, at end of resize operation (when user has released mouse button)
 #endif
 		systemCocoa->handleWindowEvent(GHOST_kEventWindowSize, associatedWindow);
-#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_6
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
 	//}
 #endif
 	/* Live resize ugly patch. Needed because live resize runs in a modal loop, not letting main loop run
@@ -132,6 +127,19 @@ extern "C" {
 		wm_draw_update(ghostC);
 	}*/
 }
+
+- (void)windowDidChangeBackingProperties:(NSNotification *)notification
+{
+	systemCocoa->handleWindowEvent(GHOST_kEventNativeResolutionChange, associatedWindow);
+}
+
+- (BOOL)windowShouldClose:(id)sender;
+{
+	//Let Blender close the window rather than closing immediately
+	systemCocoa->handleWindowEvent(GHOST_kEventWindowClose, associatedWindow);
+	return false;
+}
+
 @end
 
 #pragma mark NSWindow subclass
@@ -287,7 +295,7 @@ extern "C" {
 	}
 }
 
-#if MAC_OS_X_VERSION_MIN_REQUIRED <= MAC_OS_X_VERSION_10_4
+#if MAC_OS_X_VERSION_MIN_REQUIRED <= 1040
 //Cmd+key are handled differently before 10.5
 - (BOOL)performKeyEquivalent:(NSEvent *)theEvent
 {
@@ -425,6 +433,14 @@ extern "C" {
 
 #pragma mark initialization / finalization
 
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 1070
+@interface NSView (NSOpenGLSurfaceResolution)
+- (BOOL)wantsBestResolutionOpenGLSurface;
+- (void)setWantsBestResolutionOpenGLSurface:(BOOL)flag;
+- (NSRect)convertRectToBacking:(NSRect)bounds;
+@end
+#endif
+
 NSOpenGLContext* GHOST_WindowCocoa::s_firstOpenGLcontext = nil;
 
 GHOST_WindowCocoa::GHOST_WindowCocoa(
@@ -438,7 +454,7 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 	GHOST_TDrawingContextType type,
 	const bool stereoVisual, const GHOST_TUns16 numOfAASamples
 ) :
-	GHOST_Window(width, height, state, GHOST_kDrawingContextTypeNone, stereoVisual, numOfAASamples),
+	GHOST_Window(width, height, state, GHOST_kDrawingContextTypeNone, stereoVisual, false, numOfAASamples),
 	m_customCursor(0)
 {
 	NSOpenGLPixelFormatAttribute pixelFormatAttrsWindow[40];
@@ -498,6 +514,8 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 	pixelFormatAttrsWindow[i++] = NSOpenGLPFADepthSize;
 	pixelFormatAttrsWindow[i++] = (NSOpenGLPixelFormatAttribute) 32;
 	
+	pixelFormatAttrsWindow[i++] = NSOpenGLPFAAccumSize;
+	pixelFormatAttrsWindow[i++] = (NSOpenGLPixelFormatAttribute) 32;
 	
 	if (stereoVisual) pixelFormatAttrsWindow[i++] = NSOpenGLPFAStereo;
 	
@@ -540,6 +558,9 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 		
 		pixelFormatAttrsWindow[i++] = NSOpenGLPFADepthSize;
 		pixelFormatAttrsWindow[i++] = (NSOpenGLPixelFormatAttribute) 32;
+
+		pixelFormatAttrsWindow[i++] = NSOpenGLPFAAccumSize;
+		pixelFormatAttrsWindow[i++] = (NSOpenGLPixelFormatAttribute) 32;
 		
 		if (stereoVisual) pixelFormatAttrsWindow[i++] = NSOpenGLPFAStereo;
 		
@@ -571,13 +592,20 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 	[m_window setContentView:m_openGLView];
 	[m_window setInitialFirstResponder:m_openGLView];
 	
-	[m_window setReleasedWhenClosed:NO]; //To avoid bad pointer exception in case of user closing the window
-	
 	[m_window makeKeyAndOrderFront:nil];
 	
 	setDrawingContextType(type);
 	updateDrawingContext();
 	activateDrawingContext();
+
+	if (m_systemCocoa->m_nativePixel) {
+		if ([m_openGLView respondsToSelector:@selector(setWantsBestResolutionOpenGLSurface:)]) {
+			[m_openGLView setWantsBestResolutionOpenGLSurface:YES];
+		
+			NSRect backingBounds = [m_openGLView convertRectToBacking:[m_openGLView bounds]];
+			m_nativePixelSize = (float)backingBounds.size.width / (float)rect.size.width;
+		}
+	}
 	
 	m_tablet.Active = GHOST_kTabletModeNone;
 	
@@ -587,9 +615,20 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 	
 	[m_window setAcceptsMouseMovedEvents:YES];
 	
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+	NSView *view = [m_window contentView];
+	[view setAcceptsTouchEvents:YES];
+#endif
+	
 	[m_window registerForDraggedTypes:[NSArray arrayWithObjects:NSFilenamesPboardType,
 										  NSStringPboardType, NSTIFFPboardType, nil]];
-										  
+	
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+	if (state != GHOST_kWindowStateFullScreen) {
+		[m_window setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary];
+	}
+#endif
+	
 	if (state == GHOST_kWindowStateFullScreen)
 		setState(GHOST_kWindowStateFullScreen);
 		
@@ -609,20 +648,20 @@ GHOST_WindowCocoa::~GHOST_WindowCocoa()
 	[m_openGLView release];
 	
 	if (m_window) {
-		// previously we called [m_window release], but on 10.8 this does not
-		// remove the window from [NSApp orderedWindows] and perhaps other
-		// places, leading to crashes. so instead we set setReleasedWhenClosed
-		// back to YES right before closing
-		[m_window setReleasedWhenClosed:YES];
 		[m_window close];
-		m_window = nil;
 	}
 	
-	//Check for other blender opened windows and make the frontmost key
+	// Check for other blender opened windows and make the frontmost key
+	// Note: for some reason the closed window is still in the list
 	NSArray *windowsList = [NSApp orderedWindows];
-	if ([windowsList count]) {
-		[[windowsList objectAtIndex:0] makeKeyAndOrderFront:nil];
+	for (int a = 0; a < [windowsList count]; a++) {
+		if (m_window != (CocoaWindow *)[windowsList objectAtIndex:a]) {
+			[[windowsList objectAtIndex:a] makeKeyWindow];
+			break;
+		}
 	}
+	m_window = nil;
+
 	[pool drain];
 }
 
@@ -888,6 +927,19 @@ NSScreen* GHOST_WindowCocoa::getScreen()
 	return [m_window screen];
 }
 
+/* called for event, when window leaves monitor to another */
+void GHOST_WindowCocoa::setNativePixelSize(void)
+{
+	/* make sure 10.6 keeps running */
+	if ([m_openGLView respondsToSelector:@selector(setWantsBestResolutionOpenGLSurface:)]) {
+		NSRect backingBounds = [m_openGLView convertRectToBacking:[m_openGLView bounds]];
+		
+		GHOST_Rect rect;
+		getClientBounds(rect);
+
+		m_nativePixelSize = (float)backingBounds.size.width / (float)rect.getWidth();
+	}
+}
 
 /**
  * \note Fullscreen switch is not actual fullscreen with display capture.
@@ -916,11 +968,11 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				 * doesn't know view/window difference. */
 				m_fullScreen = true;
 
-#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_6
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
 				//10.6 provides Cocoa functions to autoshow menu bar, and to change a window style
-				//Hide menu & dock if needed
+				//Hide menu & dock if on primary screen. else only menu
 				if ([[m_window screen] isEqual:[[NSScreen screens] objectAtIndex:0]]) {
-					[NSApp setPresentationOptions:(NSApplicationPresentationHideDock | NSApplicationPresentationAutoHideMenuBar)];
+					[NSApp setPresentationOptions:(NSApplicationPresentationAutoHideDock | NSApplicationPresentationAutoHideMenuBar)];
 				}
 				//Make window borderless and enlarge it
 				[m_window setStyleMask:NSBorderlessWindowMask];
@@ -943,7 +995,6 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				//Copy current window parameters
 				[tmpWindow setTitle:[m_window title]];
 				[tmpWindow setRepresentedFilename:[m_window representedFilename]];
-				[tmpWindow setReleasedWhenClosed:NO];
 				[tmpWindow setAcceptsMouseMovedEvents:YES];
 				[tmpWindow setDelegate:[m_window delegate]];
 				[tmpWindow setSystemAndWindowCocoa:[m_window systemCocoa] windowCocoa:this];
@@ -956,9 +1007,7 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				//Show the new window
 				[tmpWindow makeKeyAndOrderFront:m_openGLView];
 				//Close and release old window
-				[m_window setDelegate:nil]; // To avoid the notification of "window closed" event
 				[m_window close];
-				[m_window release];
 				m_window = tmpWindow;
 #endif
 			
@@ -975,7 +1024,7 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				m_fullScreen = false;
 
 				//Exit fullscreen
-#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_6
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
 				//Show again menu & dock if needed
 				if ([[m_window screen] isEqual:[NSScreen mainScreen]]) {
 					[NSApp setPresentationOptions:NSApplicationPresentationDefault];
@@ -1001,7 +1050,6 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				//Copy current window parameters
 				[tmpWindow setTitle:[m_window title]];
 				[tmpWindow setRepresentedFilename:[m_window representedFilename]];
-				[tmpWindow setReleasedWhenClosed:NO];
 				[tmpWindow setAcceptsMouseMovedEvents:YES];
 				[tmpWindow setDelegate:[m_window delegate]];
 				[tmpWindow setSystemAndWindowCocoa:[m_window systemCocoa] windowCocoa:this];
@@ -1016,9 +1064,7 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				//Show the new window
 				[tmpWindow makeKeyAndOrderFront:nil];
 				//Close and release old window
-				[m_window setDelegate:nil]; // To avoid the notification of "window closed" event
 				[m_window close];
-				[m_window release];
 				m_window = tmpWindow;
 #endif
 			

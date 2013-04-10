@@ -20,18 +20,18 @@
 
 
 bl_info = {
-    'name': "Motion Trail",
-    'author': "Bart Crouch",
-    'version': (3, 1, 1),
-    'blender': (2, 6, 1),
-    'location': "View3D > Toolbar > Motion Trail tab",
-    'warning': "",
-    'description': "Display and edit motion trails in the 3d-view",
-    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/"\
-        "Py/Scripts/Animation/Motion_Trail",
-    'tracker_url': "http://projects.blender.org/tracker/index.php?"\
-        "func=detail&aid=26374",
-    'category': 'Animation'}
+    "name": "Motion Trail",
+    "author": "Bart Crouch",
+    "version": (3, 1, 2),
+    "blender": (2, 65, 4),
+    "location": "View3D > Toolbar > Motion Trail tab",
+    "warning": "",
+    "description": "Display and edit motion trails in the 3d-view",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/"
+                "Py/Scripts/Animation/Motion_Trail",
+    "tracker_url": "http://projects.blender.org/tracker/index.php?"
+                    "func=detail&aid=26374",
+    "category": "Animation"}
 
 
 import bgl
@@ -59,10 +59,10 @@ class fake_fcurve():
         else:
             self.loc = object.rotation_euler[index]
         self.keyframe_points = []
-    
+
     def evaluate(self, frame):
         return(self.loc)
-    
+
     def range(self):
         return([])
 
@@ -92,7 +92,7 @@ def get_curves(object, child=False):
                 if current_strip.strips:
                     # meta strip
                     not_handled += [s for s in current_strip.strips]
-        
+
         for strip in strips:
             if child:
                 # posebone
@@ -109,7 +109,7 @@ def get_curves(object, child=False):
     else:
         # should not happen?
         curves = []
-    
+
     # ensure we have three curves per object
     fcx = None
     fcy = None
@@ -137,7 +137,7 @@ def screen_to_world(context, x, y):
         context.region, context.region_data, [x,y])
     vector = view3d_utils.region_2d_to_location_3d(\
         context.region, context.region_data, [x,y], depth_vector)
-    
+
     return(vector)
 
 
@@ -150,7 +150,7 @@ def world_to_screen(context, vector):
 
     x = int(width_half + width_half * (prj.x / prj.w))
     y = int(height_half + height_half * (prj.y / prj.w))
-    
+
     # correction for corner cases in perspective mode
     if prj.w < 0:
         if x < 0:
@@ -161,7 +161,7 @@ def world_to_screen(context, vector):
             y = context.region.height * 2
         else:
             y = context.region.height * -2
-    
+
     return(x, y)
 
 
@@ -184,7 +184,7 @@ def get_location(frame, display_ob, offset_ob, curves):
         locy = fcy.evaluate(frame)
         locz = fcz.evaluate(frame)
         loc = mathutils.Vector([locx, locy, locz])
-    
+
     return(loc)
 
 
@@ -192,14 +192,14 @@ def get_location(frame, display_ob, offset_ob, curves):
 def get_original_animation_data(context, keyframes):
     keyframes_ori = {}
     handles_ori = {}
-    
+
     if context.active_object and context.active_object.mode == 'POSE':
         armature_ob = context.active_object
         objects = [[armature_ob, pb, armature_ob] for pb in \
             context.selected_pose_bones]
     else:
         objects = [[ob, False, False] for ob in context.selected_objects]
-    
+
     for action_ob, child, offset_ob in objects:
         if not action_ob.animation_data:
             continue
@@ -211,14 +211,14 @@ def get_original_animation_data(context, keyframes):
             display_ob = child
         else:
             display_ob = action_ob
-        
+
         # get keyframe positions
         frame_old = context.scene.frame_current
         keyframes_ori[display_ob.name] = {}
         for frame in keyframes[display_ob.name]:
             loc = get_location(frame, display_ob, offset_ob, curves)
             keyframes_ori[display_ob.name][frame] = [frame, loc]
-        
+
         # get handle positions
         handles_ori[display_ob.name] = {}
         for frame in keyframes[display_ob.name]:
@@ -248,10 +248,10 @@ def get_original_animation_data(context, keyframes):
                 left_z]
             handles_ori[display_ob.name][frame]["right"] = [right_x, right_y,
                 right_z]
-        
+
         if context.scene.frame_current != frame_old:
             context.scene.frame_set(frame_old)
-    
+
     return(keyframes_ori, handles_ori)
 
 
@@ -267,12 +267,12 @@ def calc_callback(self, context):
         selection_change = False
     else:
         selection_change = True
-    
+
     if self.lock and not selection_change and \
     context.region_data.perspective_matrix == self.perspective and not \
     context.window_manager.motion_trail.force_update:
         return
-    
+
     # dictionaries with key: objectname
     self.paths = {} # value: list of lists with x, y, color
     self.keyframes = {} # value: dict with frame as key and [x,y] as value
@@ -294,10 +294,10 @@ def calc_callback(self, context):
     self.perspective = context.region_data.perspective_matrix.copy()
     self.displayed = objects # store, so it can be checked next time
     context.window_manager.motion_trail.force_update = False
-   
+
     global_undo = context.user_preferences.edit.use_global_undo
     context.user_preferences.edit.use_global_undo = False
-    
+
     for action_ob, child, offset_ob in objects:
         if selection_change:
             if not child:
@@ -308,13 +308,13 @@ def calc_callback(self, context):
                 mat = editbones[child.name].matrix.copy().to_3x3().inverted()
                 bpy.ops.object.mode_set(mode='POSE')
                 self.edit_bones[child.name] = mat
-        
+
         if not action_ob.animation_data:
             continue
         curves = get_curves(action_ob, child)
         if len(curves) == 0:
             continue
-        
+
         if context.window_manager.motion_trail.path_before == 0:
             range_min = context.scene.frame_start
         else:
@@ -332,13 +332,13 @@ def calc_callback(self, context):
             display_ob = child
         else:
             display_ob = action_ob
-        
+
         # get location data of motion path
         path = []
         speeds = []
         frame_old = context.scene.frame_current
         step = 11 - context.window_manager.motion_trail.path_resolution
-        
+
         if not use_cache:
             if display_ob.name not in self.cached["path"]:
                 self.cached["path"][display_ob.name] = {}
@@ -347,7 +347,7 @@ def calc_callback(self, context):
         else:
             prev_loc = get_location(range_min-1, display_ob, offset_ob, curves)
             self.cached["path"][display_ob.name][range_min-1] = prev_loc
-        
+
         for frame in range(range_min, range_max + 1, step):
             if use_cache and frame in self.cached["path"][display_ob.name]:
                 loc = self.cached["path"][display_ob.name][frame]
@@ -364,7 +364,7 @@ def calc_callback(self, context):
                 path.append([x, y, dloc, frame, action_ob, child])
                 speeds.append(dloc)
                 prev_loc = loc
-        
+
         # calculate color of path
         if context.window_manager.motion_trail.path_style == 'speed':
             speeds.sort()
@@ -398,7 +398,7 @@ def calc_callback(self, context):
                 else:
                     path[i][2] = [1.0, 1.0, 0.0]
         self.paths[display_ob.name] = path
-        
+
         # get keyframes and handles
         keyframes = {}
         handle_difs = {}
@@ -407,7 +407,7 @@ def calc_callback(self, context):
         if not use_cache:
             if display_ob.name not in self.cached["keyframes"]:
                 self.cached["keyframes"][display_ob.name] = {}
-        
+
         for fc in curves:
             for kf in fc.keyframe_points:
                 # handles for location mode
@@ -426,7 +426,7 @@ def calc_callback(self, context):
                     continue
                 kf_time.append(kf.co[0])
                 co = kf.co[0]
-                
+
                 if use_cache and co in \
                 self.cached["keyframes"][display_ob.name]:
                     loc = self.cached["keyframes"][display_ob.name][co]
@@ -435,7 +435,7 @@ def calc_callback(self, context):
                     self.cached["keyframes"][display_ob.name][co] = loc
                 if handle_difs:
                     handle_difs[co]["keyframe_loc"] = loc
-                
+
                 x, y = world_to_screen(context, loc)
                 keyframes[kf.co[0]] = [x, y]
                 if context.window_manager.motion_trail.mode != 'speed':
@@ -443,7 +443,7 @@ def calc_callback(self, context):
                     click.append([kf.co[0], "keyframe",
                         mathutils.Vector([x,y]), action_ob, child])
         self.keyframes[display_ob.name] = keyframes
-        
+
         # handles are only shown in location-altering mode
         if context.window_manager.motion_trail.mode == 'location' and \
         context.window_manager.motion_trail.handle_display:
@@ -474,7 +474,7 @@ def calc_callback(self, context):
                 click.append([frame, "handle_right",
                     mathutils.Vector([x_right, y_right]), action_ob, child])
             self.handles[display_ob.name] = handles
-        
+
         # calculate timebeads for timing mode
         if context.window_manager.motion_trail.mode == 'timing':
             timebeads = {}
@@ -484,7 +484,7 @@ def calc_callback(self, context):
             if not use_cache:
                 if display_ob.name not in self.cached["timebeads_timing"]:
                     self.cached["timebeads_timing"][display_ob.name] = {}
-            
+
             for i in range(1, n+1):
                 frame = range_min + i * dframe
                 if use_cache and frame in \
@@ -500,7 +500,7 @@ def calc_callback(self, context):
                 click.append([frame, "timebead", mathutils.Vector([x,y]),
                     action_ob, child])
             self.timebeads[display_ob.name] = timebeads
-        
+
         # calculate timebeads for speed mode
         if context.window_manager.motion_trail.mode == 'speed':
             angles = dict([[kf, {"left":[], "right":[]}] for kf in \
@@ -524,7 +524,7 @@ def calc_callback(self, context):
             if not use_cache:
                 if display_ob.name not in self.cached["timebeads_speed"]:
                     self.cached["timebeads_speed"][display_ob.name] = {}
-            
+
             for frame, sides in angles.items():
                 if sides["left"]:
                     perc = (sum(sides["left"]) / len(sides["left"])) / \
@@ -565,29 +565,29 @@ def calc_callback(self, context):
                     click.append([bead_frame, "timebead", mathutils.\
                         Vector([x,y]), action_ob, child])
             self.timebeads[display_ob.name] = timebeads
-        
+
         # add frame positions to click-list
         if context.window_manager.motion_trail.frame_display:
             path = self.paths[display_ob.name]
             for x, y, color, frame, action_ob, child in path:
                 click.append([frame, "frame", mathutils.Vector([x,y]),
                     action_ob, child])
-        
+
         self.click[display_ob.name] = click
-        
+
         if context.scene.frame_current != frame_old:
             context.scene.frame_set(frame_old)
-    
+
     context.user_preferences.edit.use_global_undo = global_undo
 
 
 # draw in 3d-view
 def draw_callback(self, context):
     # polling
-    if context.mode not in ['OBJECT', 'POSE'] or \
-    context.window_manager.motion_trail.enabled != 1:
+    if (context.mode not in ('OBJECT', 'POSE') or
+        not context.window_manager.motion_trail.enabled):
         return
-    
+
     # display limits
     if context.window_manager.motion_trail.path_before != 0:
         limit_min = context.scene.frame_current - \
@@ -599,7 +599,7 @@ def draw_callback(self, context):
             context.window_manager.motion_trail.path_after
     else:
         limit_max = 1e6
-    
+
     # draw motion path
     bgl.glEnable(bgl.GL_BLEND)
     bgl.glLineWidth(context.window_manager.motion_trail.path_width)
@@ -636,7 +636,7 @@ def draw_callback(self, context):
                     bgl.glVertex2i(x, y)
                     bgl.glVertex2i(int(halfway[0]), int(halfway[1]))
                     bgl.glEnd()
-    
+
     # draw frames
     if context.window_manager.motion_trail.frame_display:
         bgl.glColor4f(1.0, 1.0, 1.0, 1.0)
@@ -660,9 +660,9 @@ def draw_callback(self, context):
                 else:
                     bgl.glVertex2i(x,y)
         bgl.glEnd()
-    
+
     # time beads are shown in speed and timing modes
-    if context.window_manager.motion_trail.mode in ['speed', 'timing']:
+    if context.window_manager.motion_trail.mode in ('speed', 'timing'):
         bgl.glColor4f(0.0, 1.0, 0.0, 1.0)
         bgl.glPointSize(4)
         bgl.glBegin(bgl.GL_POINTS)
@@ -683,7 +683,7 @@ def draw_callback(self, context):
                 else:
                     bgl.glVertex2i(coords[0], coords[1])
         bgl.glEnd()
-    
+
     # handles are only shown in location mode
     if context.window_manager.motion_trail.mode == 'location':
         # draw handle-lines
@@ -713,7 +713,7 @@ def draw_callback(self, context):
                             self.keyframes[objectname][frame][1])
                         bgl.glVertex2i(coords[0], coords[1])
         bgl.glEnd()
-        
+
         # draw handles
         bgl.glColor4f(1.0, 1.0, 0.0, 1.0)
         bgl.glPointSize(4)
@@ -737,7 +737,7 @@ def draw_callback(self, context):
                     else:
                         bgl.glVertex2i(coords[0], coords[1])
         bgl.glEnd()
-        
+
     # draw keyframes
     bgl.glColor4f(1.0, 1.0, 0.0, 1.0)
     bgl.glPointSize(6)
@@ -759,7 +759,7 @@ def draw_callback(self, context):
             else:
                 bgl.glVertex2i(coords[0], coords[1])
     bgl.glEnd()
-    
+
     # draw keyframe-numbers
     if context.window_manager.motion_trail.keyframe_numbers:
         blf.size(0, 12, 72)
@@ -784,7 +784,7 @@ def draw_callback(self, context):
                     bgl.glColor4f(1.0, 1.0, 0.0, 1.0)
                 else:
                     blf.draw(0, text)
-    
+
     # restore opengl defaults
     bgl.glLineWidth(1)
     bgl.glDisable(bgl.GL_BLEND)
@@ -804,18 +804,18 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                 edit_bones[child.name].copy().to_4x4()
         else:
             mat = 1
-        
+
         mouse_ori_world = screen_to_world(context, drag_mouse_ori[0],
             drag_mouse_ori[1]) * mat
         vector = screen_to_world(context, event.mouse_region_x,
             event.mouse_region_y) * mat
         d = vector - mouse_ori_world
-        
+
         loc_ori_ws = keyframes_ori[objectname][frame][1]
         loc_ori_bs = loc_ori_ws * mat
         new_loc = loc_ori_bs + d
         curves = get_curves(action_ob, child)
-        
+
         for i, curve in enumerate(curves):
             for kf in curve.keyframe_points:
                 if kf.co[0] == frame:
@@ -825,7 +825,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                     kf.handle_right[1] = handles_ori[objectname][frame]\
                         ["right"][i][1] + d[i]
                     break
-    
+
     # change 3d-location of handle
     elif context.window_manager.motion_trail.mode == 'location' and \
     active_handle:
@@ -835,29 +835,34 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                 edit_bones[child.name].copy().to_4x4()
         else:
             mat = 1
-        
+
         mouse_ori_world = screen_to_world(context, drag_mouse_ori[0],
             drag_mouse_ori[1]) * mat
         vector = screen_to_world(context, event.mouse_region_x,
             event.mouse_region_y) * mat
         d = vector - mouse_ori_world
         curves = get_curves(action_ob, child)
-        
+
         for i, curve in enumerate(curves):
             for kf in curve.keyframe_points:
                 if kf.co[0] == frame:
                     if side == "left":
                         # change handle type, if necessary
-                        if kf.handle_left_type in ['AUTO', 'AUTO_CLAMPED',
-                        'ANIM_CLAMPED']:
+                        if kf.handle_left_type in (
+                            'AUTO',
+                            'AUTO_CLAMPED',
+                            'ANIM_CLAMPED'):
                             kf.handle_left_type = 'ALIGNED'
                         elif kf.handle_left_type == 'VECTOR':
                             kf.handle_left_type = 'FREE'
                         # change handle position(s)
                         kf.handle_left[1] = handles_ori[objectname][frame]\
                             ["left"][i][1] + d[i]
-                        if kf.handle_left_type in ['ALIGNED', 'ANIM_CLAMPED',
-                        'AUTO', 'AUTO_CLAMPED']:
+                        if kf.handle_left_type in (
+                            'ALIGNED',
+                            'ANIM_CLAMPED',
+                            'AUTO',
+                            'AUTO_CLAMPED'):
                             dif = (abs(handles_ori[objectname][frame]["right"]\
                                 [i][0] - kf.co[0]) / abs(kf.handle_left[0] - \
                                 kf.co[0])) * d[i]
@@ -865,8 +870,10 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                                 [frame]["right"][i][1] - dif
                     elif side == "right":
                         # change handle type, if necessary
-                        if kf.handle_right_type in ['AUTO', 'AUTO_CLAMPED',
-                        'ANIM_CLAMPED']:
+                        if kf.handle_right_type in (
+                            'AUTO',
+                            'AUTO_CLAMPED',
+                            'ANIM_CLAMPED'):
                             kf.handle_left_type = 'ALIGNED'
                             kf.handle_right_type = 'ALIGNED'
                         elif kf.handle_right_type == 'VECTOR':
@@ -875,15 +882,18 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                         # change handle position(s)
                         kf.handle_right[1] = handles_ori[objectname][frame]\
                             ["right"][i][1] + d[i]
-                        if kf.handle_right_type in ['ALIGNED', 'ANIM_CLAMPED',
-                        'AUTO', 'AUTO_CLAMPED']:
+                        if kf.handle_right_type in (
+                            'ALIGNED',
+                            'ANIM_CLAMPED',
+                            'AUTO',
+                            'AUTO_CLAMPED'):
                             dif = (abs(handles_ori[objectname][frame]["left"]\
                                 [i][0] - kf.co[0]) / abs(kf.handle_right[0] - \
                                 kf.co[0])) * d[i]
                             kf.handle_left[1] = handles_ori[objectname]\
                                 [frame]["left"][i][1] - dif
                     break
-    
+
     # change position of all keyframes on timeline
     elif context.window_manager.motion_trail.mode == 'timing' and \
     active_timebead:
@@ -900,7 +910,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
         new_frame = frame + dx_screen
         shift_low = max(1e-4, (new_frame - range_min) / (frame - range_min))
         shift_high = max(1e-4, (range_max - new_frame) / (range_max - frame))
-        
+
         new_mapping = {}
         for i, curve in enumerate(curves):
             for j, kf in enumerate(curve.keyframe_points):
@@ -936,7 +946,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
         keyframes_ori[objectname] = {}
         for new_frame, value in new_mapping.items():
             keyframes_ori[objectname][new_frame] = value
-    
+
     # change position of active keyframe on the timeline
     elif context.window_manager.motion_trail.mode == 'timing' and \
     active_keyframe:
@@ -946,13 +956,13 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                 edit_bones[child.name].copy().to_4x4()
         else:
             mat = action_ob.matrix_world.copy().inverted()
-        
+
         mouse_ori_world = screen_to_world(context, drag_mouse_ori[0],
             drag_mouse_ori[1]) * mat
         vector = screen_to_world(context, event.mouse_region_x,
             event.mouse_region_y) * mat
         d = vector - mouse_ori_world
-        
+
         locs_ori = [[f_ori, coords] for f_mapped, [f_ori, coords] in \
             keyframes_ori[objectname].items()]
         locs_ori.sort()
@@ -1002,7 +1012,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
         new_frame = min(max_frame - 1, max(min_frame + 1, new_frame))
         d_frame = new_frame - frame_ori
         curves = get_curves(action_ob, child)
-        
+
         for i, curve in enumerate(curves):
             for kf in curve.keyframe_points:
                 if abs(kf.co[0] - frame) < 1e-4:
@@ -1013,7 +1023,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                         ["right"][i][0] + d_frame
                     break
         active_keyframe = [objectname, new_frame, frame_ori, action_ob, child]
-    
+
     # change position of active timebead on the timeline, thus altering speed
     elif context.window_manager.motion_trail.mode == 'speed' and \
     active_timebead:
@@ -1023,13 +1033,13 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                 edit_bones[child.name].copy().to_4x4()
         else:
             mat = 1
-        
+
         mouse_ori_world = screen_to_world(context, drag_mouse_ori[0],
             drag_mouse_ori[1]) * mat
         vector = screen_to_world(context, event.mouse_region_x,
             event.mouse_region_y) * mat
         d = vector - mouse_ori_world
-        
+
         # determine direction (to next or previous keyframe)
         curves = get_curves(action_ob, child)
         fcx, fcy, fcz = curves
@@ -1054,7 +1064,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
             direction = 1
         else:
             direction = -1
-        
+
         if (kf_next - frame_ori) < (frame_ori - kf_prev):
             kf_bead = kf_next
             side = "left"
@@ -1062,7 +1072,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
             kf_bead = kf_prev
             side = "right"
         d_frame = d.length * direction * 2 # *2 to make it more sensitive
-        
+
         angles = []
         for i, curve in enumerate(curves):
             for kf in curve.keyframe_points:
@@ -1086,7 +1096,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
                         if angle != 0:
                             angles.append(angle)
                     break
-        
+
         # update frame of active_timebead
         perc = (sum(angles) / len(angles)) / (math.pi / 2)
         perc = max(0.4, min(1, perc * 5))
@@ -1095,7 +1105,7 @@ active_timebead, keyframes_ori, handles_ori, edit_bones):
         else:
             bead_frame = kf_bead + perc * ((kf_next - kf_bead - 2) / 2)
         active_timebead = [objectname, bead_frame, frame_ori, action_ob, child]
-    
+
     return(active_keyframe, active_timebead, keyframes_ori)
 
 
@@ -1120,7 +1130,7 @@ keyframes_ori, handles_ori, edit_bones):
                     kf.handle_right[1] = handles_ori[objectname][frame]\
                         ["right"][i][1]
                     break
-    
+
     # revert change in 3d-location of active handle
     elif context.window_manager.motion_trail.mode == 'location' and \
     active_handle:
@@ -1134,7 +1144,7 @@ keyframes_ori, handles_ori, edit_bones):
                     kf.handle_right[1] = handles_ori[objectname][frame]\
                         ["right"][i][1]
                     break
-    
+
     # revert position of all keyframes and handles on timeline
     elif context.window_manager.motion_trail.mode == 'timing' and \
     active_timebead:
@@ -1151,7 +1161,7 @@ keyframes_ori, handles_ori, edit_bones):
                         kf.handle_right[0] = handles_ori[objectname]\
                             [frame_ori]["right"][i][0]
                         break
-    
+
     # revert position of active keyframe and its handles on the timeline
     elif context.window_manager.motion_trail.mode == 'timing' and \
     active_keyframe:
@@ -1167,7 +1177,7 @@ keyframes_ori, handles_ori, edit_bones):
                         ["right"][i][0]
                     break
         active_keyframe = [objectname, frame_ori, frame_ori, active_ob, child]
-    
+
     # revert position of handles on the timeline
     elif context.window_manager.motion_trail.mode == 'speed' and \
     active_timebead:
@@ -1192,7 +1202,7 @@ keyframes_ori, handles_ori, edit_bones):
                         ["right"][i][0]
                     break
         active_timebead = [objectname, frame_ori, frame_ori, active_ob, child]
-    
+
     return(active_keyframe, active_timebead)
 
 
@@ -1206,7 +1216,7 @@ def get_handle_type(active_keyframe, active_handle):
     else:
         # no active handle(s)
         return(False)
-    
+
     # properties used when changing handle type
     bpy.context.window_manager.motion_trail.handle_type_frame = frame
     bpy.context.window_manager.motion_trail.handle_type_side = side
@@ -1216,16 +1226,16 @@ def get_handle_type(active_keyframe, active_handle):
         bpy.context.window_manager.motion_trail.handle_type_child = child.name
     else:
         bpy.context.window_manager.motion_trail.handle_type_child = ""
-    
+
     curves = get_curves(action_ob, child=child)
     for c in curves:
         for kf in c.keyframe_points:
             if kf.co[0] == frame:
-                if side in ["left", "both"]:
+                if side in ("left", "both"):
                     return(kf.handle_left_type)
                 else:
                     return(kf.handle_right_type)
-    
+
     return("AUTO")
 
 
@@ -1237,7 +1247,7 @@ def insert_keyframe(self, context, frame):
         y = c.evaluate(frame)
         if c.keyframe_points:
             c.keyframe_points.insert(frame, y)
-    
+
     bpy.context.window_manager.motion_trail.force_update = True
     calc_callback(self, context)
 
@@ -1252,7 +1262,7 @@ def set_handle_type(self, context):
         return
     context.window_manager.motion_trail.handle_type_old = \
         context.window_manager.motion_trail.handle_type
-    
+
     frame = bpy.context.window_manager.motion_trail.handle_type_frame
     side = bpy.context.window_manager.motion_trail.handle_type_side
     action_ob = bpy.context.window_manager.motion_trail.handle_type_action_ob
@@ -1261,32 +1271,32 @@ def set_handle_type(self, context):
     if child:
         child = action_ob.pose.bones[child]
     new_type = context.window_manager.motion_trail.handle_type
-    
+
     curves = get_curves(action_ob, child=child)
     for c in curves:
         for kf in c.keyframe_points:
             if kf.co[0] == frame:
                 # align if necessary
-                if side in ["right", "both"] and new_type in \
-                ["AUTO", "AUTO_CLAMPED", "ALIGNED"]:
+                if side in ("right", "both") and new_type in (
+                    "AUTO", "AUTO_CLAMPED", "ALIGNED"):
                     # change right handle
                     normal = (kf.co - kf.handle_left).normalized()
                     size = (kf.handle_right[0] - kf.co[0]) / normal[0]
                     normal = normal*size + kf.co
                     kf.handle_right[1] = normal[1]
-                elif side == "left" and new_type in ["AUTO", "AUTO_CLAMPED",
-                "ALIGNED"]:
+                elif side == "left" and new_type in (
+                    "AUTO", "AUTO_CLAMPED", "ALIGNED"):
                     # change left handle
                     normal = (kf.co - kf.handle_right).normalized()
                     size = (kf.handle_left[0] - kf.co[0]) / normal[0]
                     normal = normal*size + kf.co
                     kf.handle_left[1] = normal[1]
                 # change type
-                if side in ["left", "both"]:
+                if side in ("left", "both"):
                     kf.handle_left_type = new_type
-                if side in ["right", "both"]:
+                if side in ("right", "both"):
                     kf.handle_right_type = new_type
-    
+
     context.window_manager.motion_trail.force_update = True
 
 
@@ -1294,33 +1304,44 @@ class MotionTrailOperator(bpy.types.Operator):
     """Edit motion trails in 3d-view"""
     bl_idname = "view3d.motion_trail"
     bl_label = "Motion Trail"
-    
-    _handle1 = None
-    _handle2 = None
-    
+
+    _handle_calc = None
+    _handle_draw = None
+
+    @staticmethod
+    def handle_add(self, context):
+        MotionTrailOperator._handle_calc = bpy.types.SpaceView3D.draw_handler_add(
+            calc_callback, (self, context), 'WINDOW', 'POST_VIEW')
+        MotionTrailOperator._handle_draw = bpy.types.SpaceView3D.draw_handler_add(
+            draw_callback, (self, context), 'WINDOW', 'POST_PIXEL')
+
+    @staticmethod
+    def handle_remove():
+        if MotionTrailOperator._handle_calc is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(MotionTrailOperator._handle_calc, 'WINDOW')
+        if MotionTrailOperator._handle_draw is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(MotionTrailOperator._handle_draw, 'WINDOW')
+        MotionTrailOperator._handle_calc = None
+        MotionTrailOperator._handle_draw = None
+
+
     def modal(self, context, event):
-        if context.window_manager.motion_trail.enabled == -1:
-            context.window_manager.motion_trail.enabled = 0
-            try:
-                context.region.callback_remove(self._handle1)
-            except:
-                pass
-            try:
-                context.region.callback_remove(self._handle2)
-            except:
-                pass
+
+        #XXX Required, or custom transform.translate will break!
+        #XXX If one disables and re-enables motion trail, modal op will still be running,
+        #XXX default translate op will unintentionally get called, followed by custom translate.
+        if not context.window_manager.motion_trail.enabled:
+            MotionTrailOperator.handle_remove()
             context.area.tag_redraw()
             return {'FINISHED'}
-        
-        if not context.area:
-            return {'PASS_THROUGH'}
-        if not context.region or event.type == 'NONE':
+
+        if not context.area or not context.region or event.type == 'NONE':
             context.area.tag_redraw()
             return {'PASS_THROUGH'}
-        
+
         select = context.user_preferences.inputs.select_mouse
-        if not context.active_object or not context.active_object.mode in \
-        ['OBJECT', 'POSE']:
+        if (not context.active_object or
+            context.active_object.mode not in ('OBJECT', 'POSE')):
             if self.drag:
                 self.drag = False
                 self.lock = True
@@ -1344,10 +1365,12 @@ class MotionTrailOperator(bpy.types.Operator):
             if not (0 < event.mouse_region_x < context.region.width) or \
             not (0 < event.mouse_region_y < context.region.height):
                 return {'PASS_THROUGH'}
-        
-        if event.type == self.transform_key and event.value == 'PRESS' and \
-        (self.active_keyframe or self.active_handle or self.active_timebead \
-        or self.active_frame):
+
+        if (event.type == self.transform_key and event.value == 'PRESS' and
+           (self.active_keyframe or
+            self.active_handle or
+            self.active_timebead or
+            self.active_frame)):
             # override default translate()
             if not self.drag:
                 # start drag
@@ -1402,7 +1425,7 @@ class MotionTrailOperator(bpy.types.Operator):
             context.window_manager.motion_trail.force_update = True
             context.window_manager.motion_trail.handle_type_enabled = True
             found = False
-            
+
             if context.window_manager.motion_trail.path_before == 0:
                 frame_min = context.scene.frame_start
             else:
@@ -1415,7 +1438,7 @@ class MotionTrailOperator(bpy.types.Operator):
                 frame_max = min(context.scene.frame_end,
                     context.scene.frame_current + \
                     context.window_manager.motion_trail.path_after)
-            
+
             for objectname, values in self.click.items():
                 if found:
                     break
@@ -1466,10 +1489,10 @@ class MotionTrailOperator(bpy.types.Operator):
         event.alt and not event.ctrl and not event.shift:
             if eval("bpy.ops."+self.left_action+".poll()"):
                 eval("bpy.ops."+self.left_action+"('INVOKE_DEFAULT')")
-        
+
         if context.area: # not available if other window-type is fullscreen
             context.area.tag_redraw()
-        
+
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
@@ -1505,10 +1528,9 @@ class MotionTrailOperator(bpy.types.Operator):
                     kmi.any and not kmi.ctrl and not kmi.shift:
                         kmis.append(kmi)
                         self.left_action = kmi.idname
-            
-            if context.window_manager.motion_trail.enabled == 0:
+
+            if not context.window_manager.motion_trail.enabled:
                 # enable
-                context.window_manager.motion_trail.enabled = 1
                 self.active_keyframe = False
                 self.active_handle = False
                 self.active_timebead = False
@@ -1522,26 +1544,31 @@ class MotionTrailOperator(bpy.types.Operator):
                 context.window_manager.motion_trail.handle_type_enabled = False
                 self.cached = {"path":{}, "keyframes":{},
                     "timebeads_timing":{}, "timebeads_speed":{}}
-                
+
                 for kmi in kmis:
                     kmi.active = False
 
-                self._handle1 = context.region.callback_add(calc_callback,
-                    (self, context), 'POST_VIEW')
-                self._handle2 = context.region.callback_add(draw_callback,
-                    (self, context), 'POST_PIXEL')
+                MotionTrailOperator.handle_add(self, context)
+                context.window_manager.motion_trail.enabled = True
+
                 if context.area:
                     context.area.tag_redraw()
 
                 context.window_manager.modal_handler_add(self)
+                return {'RUNNING_MODAL'}
+
             else:
                 # disable
-                context.window_manager.motion_trail.enabled = -1
                 for kmi in kmis:
                     kmi.active = True
-            
-            return {'RUNNING_MODAL'}
-        
+                MotionTrailOperator.handle_remove()
+                context.window_manager.motion_trail.enabled = False
+
+                if context.area:
+                    context.area.tag_redraw()
+
+                return {'FINISHED'}
+
         else:
             self.report({'WARNING'}, "View3D not found, cannot run operator")
             return {'CANCELLED'}
@@ -1552,35 +1579,39 @@ class MotionTrailPanel(bpy.types.Panel):
     bl_region_type = 'TOOLS'
     bl_label = "Motion Trail"
     bl_options = {'DEFAULT_CLOSED'}
+
     @classmethod
     def poll(cls, context):
-        if not context.active_object:
-            return(False)
-        return(context.active_object.mode in ['OBJECT', 'POSE'])
-    
+        if context.active_object is None:
+            return False
+        return context.active_object.mode in ('OBJECT', 'POSE')
+
     def draw(self, context):
         col = self.layout.column()
-        if context.window_manager.motion_trail.enabled != 1:
+        if not context.window_manager.motion_trail.enabled:
             col.operator("view3d.motion_trail", text="Enable motion trail")
         else:
             col.operator("view3d.motion_trail", text="Disable motion trail")
-        
+
         box = self.layout.box()
         box.prop(context.window_manager.motion_trail, "mode")
         #box.prop(context.window_manager.motion_trail, "calculate")
-        if context.window_manager.motion_trail.mode in ['timing']:
+        if context.window_manager.motion_trail.mode == 'timing':
             box.prop(context.window_manager.motion_trail, "timebeads")
-        
+
         box = self.layout.box()
         col = box.column()
         row = col.row()
+
         if context.window_manager.motion_trail.path_display:
             row.prop(context.window_manager.motion_trail, "path_display",
                 icon="DOWNARROW_HLT", text="", emboss=False)
         else:
             row.prop(context.window_manager.motion_trail, "path_display",
                 icon="RIGHTARROW", text="", emboss=False)
+
         row.label("Path options")
+
         if context.window_manager.motion_trail.path_display:
             col.prop(context.window_manager.motion_trail, "path_style",
                 text="Style")
@@ -1597,8 +1628,8 @@ class MotionTrailPanel(bpy.types.Panel):
             col = col.column(align=True)
             col.prop(context.window_manager.motion_trail, "keyframe_numbers")
             col.prop(context.window_manager.motion_trail, "frame_display")
-        
-        if context.window_manager.motion_trail.mode in ['location']:
+
+        if context.window_manager.motion_trail.mode == 'location':
             box = self.layout.box()
             col = box.column(align=True)
             col.prop(context.window_manager.motion_trail, "handle_display",
@@ -1615,73 +1646,88 @@ class MotionTrailProps(bpy.types.PropertyGroup):
         context.window_manager.motion_trail.force_update = True
         if context.area:
             context.area.tag_redraw()
-    
+
     # internal use
-    enabled = bpy.props.IntProperty(default=0)
+    enabled = bpy.props.BoolProperty(default=False)
+
     force_update = bpy.props.BoolProperty(name="internal use",
         description="Force calc_callback to fully execute",
         default=False)
+
     handle_type_enabled = bpy.props.BoolProperty(default=False)
     handle_type_frame = bpy.props.FloatProperty()
     handle_type_side = bpy.props.StringProperty()
     handle_type_action_ob = bpy.props.StringProperty()
     handle_type_child = bpy.props.StringProperty()
-    handle_type_old = bpy.props.EnumProperty(items=(("AUTO", "", ""), 
-        ("AUTO_CLAMPED", "", ""), ("VECTOR", "", ""), ("ALIGNED", "", ""), 
-        ("FREE", "", "")), default='AUTO',)
-    
+    handle_type_old = bpy.props.EnumProperty(items=(
+        ("AUTO", "", ""),
+        ("AUTO_CLAMPED", "", ""),
+        ("VECTOR", "", ""),
+        ("ALIGNED", "", ""),
+        ("FREE", "", "")),
+        default='AUTO')
+
     # visible in user interface
-    calculate = bpy.props.EnumProperty(name="Calculate",
-        items=(("fast", "Fast", "Recommended setting, change if the "\
-            "motion path is positioned incorrectly"),
-            ("full", "Full", "Takes parenting and modifiers into account, "\
-            "but can be very slow on complicated scenes")),
+    calculate = bpy.props.EnumProperty(name="Calculate", items=(
+        ("fast", "Fast", "Recommended setting, change if the "\
+         "motion path is positioned incorrectly"),
+        ("full", "Full", "Takes parenting and modifiers into account, "\
+         "but can be very slow on complicated scenes")),
         description="Calculation method for determining locations",
         default='full',
         update=internal_update)
+
     frame_display = bpy.props.BoolProperty(name="Frames",
         description="Display frames, \n test",
         default=True,
         update=internal_update)
+
     handle_display = bpy.props.BoolProperty(name="Display",
         description="Display handles",
         default=True,
         update=internal_update)
-    handle_type = bpy.props.EnumProperty(name="Type",
-        items=(("AUTO", "Automatic", ""),
-            ("AUTO_CLAMPED", "Auto Clamped", ""),
-            ("VECTOR", "Vector", ""),
-            ("ALIGNED", "Aligned", ""),
-            ("FREE", "Free", "")),
+
+    handle_type = bpy.props.EnumProperty(name="Type", items=(
+        ("AUTO", "Automatic", ""),
+        ("AUTO_CLAMPED", "Auto Clamped", ""),
+        ("VECTOR", "Vector", ""),
+        ("ALIGNED", "Aligned", ""),
+        ("FREE", "Free", "")),
         description="Set handle type for the selected handle",
         default='AUTO',
         update=set_handle_type)
+
     keyframe_numbers = bpy.props.BoolProperty(name="Keyframe numbers",
         description="Display keyframe numbers",
         default=False,
         update=internal_update)
-    mode = bpy.props.EnumProperty(name="Mode",
-        items=(("location", "Location", "Change path that is followed"),
-            ("speed", "Speed", "Change speed between keyframes"),
-            ("timing", "Timing", "Change position of keyframes on timeline")),
+
+    mode = bpy.props.EnumProperty(name="Mode", items=(
+        ("location", "Location", "Change path that is followed"),
+        ("speed", "Speed", "Change speed between keyframes"),
+        ("timing", "Timing", "Change position of keyframes on timeline")),
         description="Enable editing of certain properties in the 3d-view",
         default='location',
         update=internal_update)
+
     path_after = bpy.props.IntProperty(name="After",
         description="Number of frames to show after the current frame, "\
             "0 = display all",
         default=50,
         min=0,
         update=internal_update)
+
     path_before = bpy.props.IntProperty(name="Before",
         description="Number of frames to show before the current frame, "\
             "0 = display all",
         default=50,
         min=0,
         update=internal_update)
+
     path_display = bpy.props.BoolProperty(name="Path options",
         description="Display path options",
         default=True)
+
     path_resolution = bpy.props.IntProperty(name="Resolution",
         description="10 is smoothest, but could be "\
         "slow when adjusting keyframes, handles or timebeads",
@@ -1689,14 +1735,15 @@ class MotionTrailProps(bpy.types.PropertyGroup):
         min=1,
         max=10,
         update=internal_update)
-    path_style = bpy.props.EnumProperty(name="Path style",
-        items=(("acceleration", "Acceleration", "Gradient based on relative "\
-                "acceleration"),
-            ("simple", "Simple", "Black line"),
-            ("speed", "Speed", "Gradient based on relative speed")),
+
+    path_style = bpy.props.EnumProperty(name="Path style", items=(
+        ("acceleration", "Acceleration", "Gradient based on relative acceleration"),
+        ("simple", "Simple", "Black line"),
+        ("speed", "Speed", "Gradient based on relative speed")),
         description="Information conveyed by path color",
         default='simple',
         update=internal_update)
+
     path_transparency = bpy.props.IntProperty(name="Path transparency",
         description="Determines visibility of path",
         default=0,
@@ -1704,12 +1751,14 @@ class MotionTrailProps(bpy.types.PropertyGroup):
         max=100,
         subtype='PERCENTAGE',
         update=internal_update)
+
     path_width = bpy.props.IntProperty(name="Path width",
         description="Width in pixels",
         default=1,
         min=1,
         soft_max=5,
         update=internal_update)
+
     timebeads = bpy.props.IntProperty(name="Time beads",
         description="Number of time beads to display per segment",
         default=5,
@@ -1718,21 +1767,15 @@ class MotionTrailProps(bpy.types.PropertyGroup):
         update=internal_update)
 
 
-classes = [MotionTrailProps,
-    MotionTrailOperator,
-    MotionTrailPanel]
-
-
 def register():
-    for c in classes:
-        bpy.utils.register_class(c)
-    bpy.types.WindowManager.motion_trail = bpy.props.PointerProperty(\
+    bpy.utils.register_module(__name__)
+    bpy.types.WindowManager.motion_trail = bpy.props.PointerProperty(
         type=MotionTrailProps)
 
 
 def unregister():
-    for c in classes:
-        bpy.utils.unregister_class(c)
+    MotionTrailOperator.handle_remove()
+    bpy.utils.unregister_module(__name__)
     del bpy.types.WindowManager.motion_trail
 
 

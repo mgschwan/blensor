@@ -22,18 +22,18 @@
 # ***** END GPL LICENCE BLOCK *****
 
 bl_info = {
-	"name": "Select checkered",
-	"author": "Dolf Veenvliet",
-	"version": 1,
-	"blender": (2, 5, 6),
-	"api": 31847,
-	"location": "View3D > Select",
-	"description": "Select checkered",
-	"warning": "",
-	"wiki_url": "",
-	"tracker_url": "",
-	"category": "Mesh"}
-	
+    "name": "Select checkered",
+    "author": "Dolf Veenvliet",
+    "version": 1,
+    "blender": (2, 56, 0),
+    "api": 31847,
+    "location": "View3D > Select",
+    "description": "Select checkered",
+    "warning": "",
+    "wiki_url": "",
+    "tracker_url": "",
+    "category": "Mesh"}
+
 """
 Usage:
 

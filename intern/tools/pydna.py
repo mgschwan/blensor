@@ -145,7 +145,7 @@ def _api():
             return
 
         stack.append(struct_name)
-        
+
         struct_type_name_pairs = blend_sdna_structs_dict[struct_name]
         fields = []
         fields_orig = []
@@ -226,7 +226,6 @@ def _api():
         for struct_id, struct_type_name_pairs in blend_sdna_structs:
             struct_name = blend_sdna_types[struct_id]
             _create_dna_structs__recursive(ctypes_basic, ctypes_structs, blend_sdna_structs_dict, struct_name, [struct_name])
-
 
         # test fields
         error = 0

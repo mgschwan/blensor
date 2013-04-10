@@ -114,7 +114,7 @@ typedef struct Global {
 #define G_BACKBUFSEL    (1 <<  4)
 #define G_PICKSEL       (1 <<  5)
 
-/* #define G_FACESELECT	(1 <<  8) use (mesh->editflag & ME_EDIT_PAINT_MASK) */
+/* #define G_FACESELECT	(1 <<  8) use (mesh->editflag & ME_EDIT_PAINT_FACE_SEL) */
 
 #define G_SCRIPT_AUTOEXEC (1 << 13)
 #define G_SCRIPT_OVERRIDE_PREF (1 << 14) /* when this flag is set ignore the userprefs */
@@ -132,10 +132,12 @@ enum {
 	G_DEBUG_EVENTS =    (1 << 3), /* input/window/screen events */
 	G_DEBUG_HANDLERS =  (1 << 4), /* events handling */
 	G_DEBUG_WM =        (1 << 5), /* operator, undo */
-	G_DEBUG_JOBS =      (1 << 6)  /* jobs time profiling */
+	G_DEBUG_JOBS =      (1 << 6), /* jobs time profiling */
+	G_DEBUG_FREESTYLE = (1 << 7), /* freestyle messages */
 };
 
-#define G_DEBUG_ALL  (G_DEBUG | G_DEBUG_FFMPEG | G_DEBUG_PYTHON | G_DEBUG_EVENTS | G_DEBUG_WM | G_DEBUG_JOBS)
+#define G_DEBUG_ALL  (G_DEBUG | G_DEBUG_FFMPEG | G_DEBUG_PYTHON | G_DEBUG_EVENTS | G_DEBUG_WM | G_DEBUG_JOBS | \
+                      G_DEBUG_FREESTYLE)
 
 
 /* G.fileflags */
@@ -149,7 +151,7 @@ enum {
 /* #define G_FILE_SHOW_PROFILE   (1 << 6) */            /* deprecated */
 #define G_FILE_LOCK              (1 << 7)
 #define G_FILE_SIGN              (1 << 8)
-/* #define G_FILE_PUBLISH        (1 << 9) */            /* deprecated */
+#define G_FILE_USERPREFS         (1 << 9)
 #define G_FILE_NO_UI             (1 << 10)
 /* #define G_FILE_GAME_TO_IPO    (1 << 11) */           /* deprecated */
 #define G_FILE_GAME_MAT          (1 << 12)              /* deprecated */

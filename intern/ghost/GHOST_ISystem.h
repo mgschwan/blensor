@@ -201,7 +201,7 @@ public:
 	virtual GHOST_ITimerTask *installTimer(GHOST_TUns64 delay,
 	                                       GHOST_TUns64 interval,
 	                                       GHOST_TimerProcPtr timerProc,
-	                                       GHOST_TUserDataPtr userData = 0) = 0;
+	                                       GHOST_TUserDataPtr userData = NULL) = 0;
 
 	/**
 	 * Removes a timer.
@@ -227,6 +227,12 @@ public:
 	virtual void getMainDisplayDimensions(GHOST_TUns32& width, GHOST_TUns32& height) const = 0;
 
 	/**
+	 * Returns the combine dimensions of all monitors.
+	 * \return The dimension of the workspace.
+	 */
+	virtual void getAllDisplayDimensions(GHOST_TUns32& width, GHOST_TUns32& height) const = 0;
+
+	/**
 	 * Create a new window.
 	 * The new window is added to the list of windows managed.
 	 * Never explicitly delete the window, use disposeWindow() instead.
@@ -243,12 +249,13 @@ public:
 	 * \return  The new window (or 0 if creation failed).
 	 */
 	virtual GHOST_IWindow *createWindow(
-	    const STR_String& title,
-	    GHOST_TInt32 left, GHOST_TInt32 top, GHOST_TUns32 width, GHOST_TUns32 height,
-	    GHOST_TWindowState state, GHOST_TDrawingContextType type,
-	    const bool stereoVisual = false,
-	    const GHOST_TUns16 numOfAASamples = 0,
-	    const GHOST_TEmbedderWindowID parentWindow = 0) = 0;
+	        const STR_String& title,
+	        GHOST_TInt32 left, GHOST_TInt32 top, GHOST_TUns32 width, GHOST_TUns32 height,
+	        GHOST_TWindowState state, GHOST_TDrawingContextType type,
+	        const bool stereoVisual = false,
+	        const bool exclusive = false,
+	        const GHOST_TUns16 numOfAASamples = 0,
+	        const GHOST_TEmbedderWindowID parentWindow = 0) = 0;
 
 	/**
 	 * Dispose a window.
@@ -271,8 +278,9 @@ public:
 	 *                  This window is invalid after full screen has been ended.
 	 * \return  Indication of success.
 	 */
-	virtual GHOST_TSuccess beginFullScreen(const GHOST_DisplaySetting& setting, GHOST_IWindow **window,
-	                                       const bool stereoVisual, const GHOST_TUns16 numOfAASamples = 0) = 0;
+	virtual GHOST_TSuccess beginFullScreen(
+	        const GHOST_DisplaySetting& setting, GHOST_IWindow **window,
+	        const bool stereoVisual, const GHOST_TUns16 numOfAASamples = 0) = 0;
 
 	/**
 	 * Updates the resolution while in fullscreen mode.
@@ -281,7 +289,8 @@ public:
 	 *
 	 * \return  Indication of success.
 	 */
-	virtual GHOST_TSuccess updateFullScreen(const GHOST_DisplaySetting& setting, GHOST_IWindow **window) = 0;
+	virtual GHOST_TSuccess updateFullScreen(
+	        const GHOST_DisplaySetting& setting, GHOST_IWindow **window) = 0;
 
 	/**
 	 * Ends full screen mode.
@@ -294,6 +303,11 @@ public:
 	 * \return The current status.
 	 */
 	virtual bool getFullScreen(void) = 0;
+	
+	/**
+	 * Native pixel size support (MacBook 'retina').
+	 */
+	virtual bool useNativePixel(void) = 0;
 
 	/***************************************************************************************
 	 * Event management functionality

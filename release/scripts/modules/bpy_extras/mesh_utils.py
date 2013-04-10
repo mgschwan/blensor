@@ -152,10 +152,13 @@ def edge_face_count_dict(mesh):
        faces using each edge.
     :rtype: dict
     """
-    face_edge_keys = [face.edge_keys for face in mesh.tessfaces]
+
     face_edge_count = {}
-    for face_keys in face_edge_keys:
-        for key in face_keys:
+    loops = mesh.loops
+    edges = mesh.edges
+    for poly in mesh.polygons:
+        for i in poly.loop_indices:
+            key = edges[loops[i].edge_index].key
             try:
                 face_edge_count[key] += 1
             except:
@@ -247,7 +250,7 @@ def edge_loops_from_tessfaces(mesh, tessfaces=None, seams=()):
                         break
 
                 i = ed_adj.index(context_loop[-2])
-                context_loop.append(ed_adj[not  i])
+                context_loop.append(ed_adj[not i])
 
                 # Dont look at this again
                 del ed_adj[:]
@@ -325,10 +328,12 @@ def ngon_tessellate(from_data, indices, fix_loops=True):
     fgon to create from existing verts.
 
     from_data: either a mesh, or a list/tuple of vectors.
-    :arg indices: a list of indices to use this list is the ordered closed polyline
+    :arg indices: a list of indices to use this list
+       is the ordered closed polyline
        to fill, and can be a subset of the data given.
     :type indices: list
-    :arg fix_loops: If this is enabled polylines that use loops to make multiple
+    :arg fix_loops: If this is enabled polylines
+       that use loops to make multiple
        polylines are delt with correctly.
     :type fix_loops: bool
     """
@@ -530,12 +535,12 @@ def face_random_points(num_points, tessfaces):
         tris.append((verts[fv[0]].co,
                      verts[fv[1]].co,
                      verts[fv[2]].co,
-                    ))
+                     ))
         if len(fv) == 4:
             tris.append((verts[fv[0]].co,
                          verts[fv[3]].co,
                          verts[fv[2]].co,
-                        ))
+                         ))
         tri_faces.append(tris)
 
     # For each face, generate the required number of random points

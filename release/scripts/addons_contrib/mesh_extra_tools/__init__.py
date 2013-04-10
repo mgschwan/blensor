@@ -22,7 +22,7 @@ bl_info = {
     "name": "Extra Tools",
     "author": "various",
     "version": (0, 1),
-    "blender": (2, 6, 4),
+    "blender": (2, 64, 0),
     "location": "View3D > Toolbar and View3D > Specials (W-key)",
     "description": "Add extra mesh edit tools",
     "warning": "",

@@ -59,10 +59,6 @@ inline T SampleLinear(const Array3D<T> &image, float y, float x, int v = 0) {
   int x1, y1, x2, y2;
   float dx, dy;
 
-  // Take the upper left corner as integer pixel positions.
-  x -= 0.5;
-  y -= 0.5;
-
   LinearInitAxis(y, image.Height(), &y1, &y2, &dy);
   LinearInitAxis(x, image.Width(),  &x1, &x2, &dx);
 
@@ -71,8 +67,8 @@ inline T SampleLinear(const Array3D<T> &image, float y, float x, int v = 0) {
   const T im21 = image(y2, x1, v);
   const T im22 = image(y2, x2, v);
 
-  return T(     dy  * ( dx * im11 + (1.0 - dx) * im12 ) +
-           (1 - dy) * ( dx * im21 + (1.0 - dx) * im22 ));
+  return T(     dy  * (dx * im11 + (1.0 - dx) * im12) +
+           (1 - dy) * (dx * im21 + (1.0 - dx) * im22));
 }
 
 /// Linear interpolation, of all channels. The sample is assumed to have the
@@ -81,10 +77,6 @@ template<typename T>
 inline void SampleLinear(const Array3D<T> &image, float y, float x, T *sample) {
   int x1, y1, x2, y2;
   float dx, dy;
-
-  // Take the upper left corner as integer pixel positions.
-  x -= 0.5;
-  y -= 0.5;
 
   LinearInitAxis(y, image.Height(), &y1, &y2, &dy);
   LinearInitAxis(x, image.Width(),  &x1, &x2, &dx);
@@ -95,8 +87,8 @@ inline void SampleLinear(const Array3D<T> &image, float y, float x, T *sample) {
     const T im21 = image(y2, x1, i);
     const T im22 = image(y2, x2, i);
 
-    sample[i] = T(     dy  * ( dx * im11 + (1.0 - dx) * im12 ) +
-                  (1 - dy) * ( dx * im21 + (1.0 - dx) * im22 ));
+    sample[i] = T(     dy  * (dx * im11 + (1.0 - dx) * im12) +
+                  (1 - dy) * (dx * im21 + (1.0 - dx) * im22));
   }
 }
 

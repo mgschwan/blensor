@@ -21,8 +21,8 @@ bl_info = {
     "name": "Enhanced 3D Cursor",
     "description": "Cursor history and bookmarks; drag/snap cursor.",
     "author": "dairin0d",
-    "version": (2, 8, 7),
-    "blender": (2, 6, 3),
+    "version": (2, 8, 9),
+    "blender": (2, 65, 4),
     "location": "View3D > Action mouse; F10; Properties panel",
     "warning": "",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
@@ -250,8 +250,7 @@ class EnhancedSetCursor(bpy.types.Operator):
         
         # Don't interfere with these modes when only mouse is pressed
         if ('SCULPT' in context.mode) or ('PAINT' in context.mode):
-            if "MOUSE" in event.type:
-                return {'CANCELLED'}
+            if "MOUSE" in event.type:                return {'CANCELLED'}
         
         CursorDynamicSettings.active_transform_operator = self
         
@@ -420,7 +419,7 @@ class EnhancedSetCursor(bpy.types.Operator):
         
         if event.value == 'PRESS':
             if event.type in self.key_map["free_mouse"]:
-                if self.free_mouse and (not initial_run):
+                if self.free_mouse and not initial_run:
                     # confirm if pressed second time
                     return self.finalize(context)
                 else:
@@ -550,8 +549,8 @@ class EnhancedSetCursor(bpy.types.Operator):
                 tool_settings.snap_element = snap_element
         # end if
         
-        if initial_run or (('MOVE' not in event.type) and \
-                ('TIMER' not in event.type)):
+        if initial_run or event.type not in ('MOUSEMOVE',
+                'INBETWEEN_MOUSEMOVE', 'TIMER'):
             use_snap = (tool_settings.use_snap != event.ctrl)
             if use_snap:
                 snap_type = tool_settings.snap_element
@@ -2110,7 +2109,7 @@ class ViewUtility:
                 setattr(self, name, value)
 
 class View3DUtility:
-    lock_types = {"lock_cursor":False, "lock_object":None, "lock_bone":""}
+    lock_types = {"lock_cursor": False, "lock_object": None, "lock_bone": ""}
     
     # ====== INITIALIZATION / CLEANUP ====== #
     def __init__(self, region, space_data, region_data):
@@ -3856,7 +3855,7 @@ class BookmarkLibraryProp(bpy.types.PropertyGroup):
             sys_name = 'Scaled'
             pivot = 'ACTIVE'
         elif self.system == 'NORMAL':
-            if (not active_obj) or ('EDIT' not in active_obj.mode):
+            if not active_obj or active_obj.mode != 'EDIT':
                 if warn:
                     raise Exception("Active object must be in Edit mode")
                 return None
@@ -4465,6 +4464,31 @@ class CursorMonitor(bpy.types.Operator):
     
     storage = {}
     
+    _handle_view = None
+    _handle_px = None
+    _handle_header_px = None
+    
+    @staticmethod
+    def handle_add(self, context):
+        CursorMonitor._handle_view = bpy.types.SpaceView3D.draw_handler_add(
+            draw_callback_view, (self, context), 'WINDOW', 'POST_VIEW')
+        CursorMonitor._handle_px = bpy.types.SpaceView3D.draw_handler_add(
+            draw_callback_px, (self, context), 'WINDOW', 'POST_PIXEL')
+        CursorMonitor._handle_header_px = bpy.types.SpaceView3D.draw_handler_add(
+            draw_callback_header_px, (self, context), 'HEADER', 'POST_PIXEL')
+
+    @staticmethod
+    def handle_remove(context):
+        if CursorMonitor._handle_view is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(CursorMonitor._handle_view, 'WINDOW')
+        if CursorMonitor._handle_px is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(CursorMonitor._handle_px, 'WINDOW')
+        if CursorMonitor._handle_header_px is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(CursorMonitor._handle_header_px, 'HEADER')
+        CursorMonitor._handle_view = None
+        CursorMonitor._handle_px = None
+        CursorMonitor._handle_header_px = None
+    
     @classmethod
     def poll(cls, context):
         try:
@@ -4652,20 +4676,7 @@ class CursorMonitor(bpy.types.Operator):
         #self._timer = context.window_manager. \
         #    event_timer_add(0.1, context.window)
         
-        #'''
-        #self._draw_callback_view = context.region.callback_add( \
-        #    draw_callback_view, (self, context), 'POST_VIEW')
-        self._draw_callback_view = find_region(context.area).\
-            callback_add(draw_callback_view, \
-            (self, context), 'POST_VIEW')
-        self._draw_callback_px = find_region(context.area).\
-            callback_add(draw_callback_px, \
-            (self, context), 'POST_PIXEL')
-        
-        self._draw_header_px = find_region(context.area, 'HEADER').\
-            callback_add(draw_callback_header_px, \
-            (self, context), 'POST_PIXEL')
-        #'''
+        CursorMonitor.handle_add(self, context)
         
         # Here we cannot return 'PASS_THROUGH',
         # or Blender will crash!
@@ -4679,15 +4690,7 @@ class CursorMonitor(bpy.types.Operator):
         #type(self).is_running = False
         
         # Unregister callbacks...
-        #'''
-        #context.region.callback_remove(self._draw_callback_view)
-        find_region(context.area).callback_remove(self._draw_callback_view)
-        find_region(context.area).callback_remove(self._draw_callback_px)
-        
-        find_region(context.area, 'HEADER').\
-            callback_remove(self._draw_header_px)
-        #'''
-        
+        CursorMonitor.handle_remove(context)
         return {'CANCELLED'}
 
 
@@ -4882,12 +4885,6 @@ class TextCell(GfxCell):
         blf.position(self.font_id, xy[0], xy[1], 0)
         blf.draw(self.font_id, self.text)
 
-def find_region(area, region_type='WINDOW'):
-    # 'WINDOW', 'HEADER', 'CHANNELS', 'TEMPORARY',
-    # 'UI', 'TOOLS', 'TOOL_PROPS', 'PREVIEW'
-    for region in area.regions:
-        if region.type == region_type:
-            return region
 
 def draw_text(x, y, value, font_id=0, align=(0, 0), font_height=None):
     value = str(value)
@@ -5366,128 +5363,7 @@ def update_keymap(activate):
             kmi.active = not activate
     except KeyError:
         pass
-
-def register():
-    bpy.utils.register_class(AlignOrientationProperties)
-    bpy.utils.register_class(AlignOrientation)
-    bpy.utils.register_class(CopyOrientation)
-    bpy.types.WindowManager.align_orientation_properties = \
-        bpy.props.PointerProperty(type=AlignOrientationProperties)
-    bpy.types.VIEW3D_PT_transform_orientations.append(
-        transform_orientations_panel_extension)
     
-    bpy.utils.register_class(SetCursorDialog)
-    
-    bpy.utils.register_class(NewCursor3DBookmarkLibrary)
-    bpy.utils.register_class(DeleteCursor3DBookmarkLibrary)
-    
-    bpy.utils.register_class(NewCursor3DBookmark)
-    bpy.utils.register_class(DeleteCursor3DBookmark)
-    bpy.utils.register_class(OverwriteCursor3DBookmark)
-    bpy.utils.register_class(RecallCursor3DBookmark)
-    bpy.utils.register_class(SwapCursor3DBookmark)
-    bpy.utils.register_class(SnapSelectionToCursor3DBookmark)
-    bpy.utils.register_class(AddEmptyAtCursor3DBookmark)
-    
-    bpy.utils.register_class(TransformExtraOptionsProp)
-    bpy.utils.register_class(TransformExtraOptions)
-    
-    # View properties panel is already long. Appending something
-    # to it would make it too inconvenient
-    #bpy.types.VIEW3D_PT_view3d_properties.append(draw_cursor_tools)
-    bpy.utils.register_class(Cursor3DTools)
-    
-    bpy.utils.register_class(LocationProp)
-    bpy.utils.register_class(CursorHistoryProp)
-    
-    bpy.utils.register_class(BookmarkProp)
-    bpy.utils.register_class(BookmarkIDBlock)
-    
-    bpy.utils.register_class(BookmarkLibraryProp)
-    bpy.utils.register_class(BookmarkLibraryIDBlock)
-    
-    bpy.utils.register_class(Cursor3DToolsSettings)
-    
-    bpy.utils.register_class(CursorRuntimeSettings)
-    bpy.utils.register_class(CursorMonitor)
-    
-    bpy.utils.register_class(Cursor3DToolsSceneSettings)
-    
-    bpy.types.Screen.cursor_3d_tools_settings = \
-        bpy.props.PointerProperty(type=Cursor3DToolsSettings)
-    
-    bpy.types.WindowManager.cursor_3d_runtime_settings = \
-        bpy.props.PointerProperty(type=CursorRuntimeSettings)
-    
-    bpy.types.Scene.cursor_3d_tools_settings = \
-        bpy.props.PointerProperty(type=Cursor3DToolsSceneSettings)
-    
-    bpy.utils.register_class(EnhancedSetCursor)
-    
-    bpy.utils.register_class(DelayRegistrationOperator)
-    
-    update_keymap(True)
-
-def unregister():
-    # Manually set this to False on unregister
-    CursorMonitor.is_running = False
-    
-    update_keymap(False)
-    
-    bpy.utils.unregister_class(DelayRegistrationOperator)
-    
-    bpy.utils.unregister_class(EnhancedSetCursor)
-    
-    if hasattr(bpy.types.Scene, "cursor_3d_tools_settings"):
-        del bpy.types.Scene.cursor_3d_tools_settings
-    
-    if hasattr(bpy.types.WindowManager, "cursor_3d_runtime_settings"):
-        del bpy.types.WindowManager.cursor_3d_runtime_settings
-    
-    if hasattr(bpy.types.Screen, "cursor_3d_tools_settings"):
-        del bpy.types.Screen.cursor_3d_tools_settings
-    
-    bpy.utils.unregister_class(Cursor3DToolsSceneSettings)
-    
-    bpy.utils.unregister_class(CursorMonitor)
-    bpy.utils.unregister_class(CursorRuntimeSettings)
-    
-    bpy.utils.unregister_class(Cursor3DToolsSettings)
-    
-    bpy.utils.unregister_class(BookmarkLibraryIDBlock)
-    bpy.utils.unregister_class(BookmarkLibraryProp)
-    
-    bpy.utils.unregister_class(BookmarkIDBlock)
-    bpy.utils.unregister_class(BookmarkProp)
-    
-    bpy.utils.unregister_class(CursorHistoryProp)
-    bpy.utils.unregister_class(LocationProp)
-    
-    bpy.utils.unregister_class(Cursor3DTools)
-    #bpy.types.VIEW3D_PT_view3d_properties.remove(draw_cursor_tools)
-    
-    bpy.utils.unregister_class(TransformExtraOptions)
-    bpy.utils.unregister_class(TransformExtraOptionsProp)
-    
-    bpy.utils.unregister_class(NewCursor3DBookmarkLibrary)
-    bpy.utils.unregister_class(DeleteCursor3DBookmarkLibrary)
-    
-    bpy.utils.unregister_class(NewCursor3DBookmark)
-    bpy.utils.unregister_class(DeleteCursor3DBookmark)
-    bpy.utils.unregister_class(OverwriteCursor3DBookmark)
-    bpy.utils.unregister_class(RecallCursor3DBookmark)
-    bpy.utils.unregister_class(SwapCursor3DBookmark)
-    bpy.utils.unregister_class(SnapSelectionToCursor3DBookmark)
-    bpy.utils.unregister_class(AddEmptyAtCursor3DBookmark)
-    
-    bpy.utils.unregister_class(SetCursorDialog)
-    
-    bpy.types.VIEW3D_PT_transform_orientations.remove(
-        transform_orientations_panel_extension)
-    del bpy.types.WindowManager.align_orientation_properties
-    bpy.utils.unregister_class(CopyOrientation)
-    bpy.utils.unregister_class(AlignOrientation)
-    bpy.utils.unregister_class(AlignOrientationProperties)
 
 class DelayRegistrationOperator(bpy.types.Operator):
     bl_idname = "wm.enhanced_3d_cursor_registration"
@@ -5495,6 +5371,17 @@ class DelayRegistrationOperator(bpy.types.Operator):
     
     _timer = None
     
+    @staticmethod
+    def timer_add(context):
+        DelayRegistrationOperator._timer = \
+            context.window_manager.event_timer_add(0.1, context.window)
+    
+    @staticmethod
+    def timer_remove(context):
+        if DelayRegistrationOperator._timer is not None:
+            context.window_manager.event_timer_remove(DelayRegistrationOperator._timer)
+            DelayRegistrationOperator._timer = None
+            
     def modal(self, context, event):
         if (not self.keymap_updated) and \
             ((event.type == 'TIMER') or ("MOVE" in event.type)):
@@ -5542,16 +5429,71 @@ class DelayRegistrationOperator(bpy.types.Operator):
     def execute(self, context):
         self.keymap_updated = False
 
-        self._timer = context.window_manager.\
-            event_timer_add(0.1, context.window)
+        DelayRegistrationOperator.timer_add(context)
 
         context.window_manager.modal_handler_add(self)        
         return {'RUNNING_MODAL'}
     
     def cancel(self, context):
-        context.window_manager.event_timer_remove(self._timer)
+        DelayRegistrationOperator.timer_remove(context)
         
         return {'CANCELLED'}
+
+
+def register():
+    bpy.utils.register_module(__name__)
+
+    bpy.types.Scene.cursor_3d_tools_settings = \
+        bpy.props.PointerProperty(type=Cursor3DToolsSceneSettings)
+        
+    bpy.types.Screen.cursor_3d_tools_settings = \
+        bpy.props.PointerProperty(type=Cursor3DToolsSettings)
+    
+    bpy.types.WindowManager.align_orientation_properties = \
+        bpy.props.PointerProperty(type=AlignOrientationProperties)
+
+    bpy.types.WindowManager.cursor_3d_runtime_settings = \
+        bpy.props.PointerProperty(type=CursorRuntimeSettings)
+    
+    bpy.types.VIEW3D_PT_transform_orientations.append(
+        transform_orientations_panel_extension)
+   
+    # View properties panel is already long. Appending something
+    # to it would make it too inconvenient
+    #bpy.types.VIEW3D_PT_view3d_properties.append(draw_cursor_tools)
+    
+    update_keymap(True)
+
+
+def unregister():
+    # In case they are enabled/active
+    CursorMonitor.handle_remove(bpy.context)
+    DelayRegistrationOperator.timer_remove(bpy.context)
+    
+    # Manually set this to False on unregister
+    CursorMonitor.is_running = False
+    
+    update_keymap(False)
+    
+    bpy.utils.unregister_module(__name__)
+    
+    if hasattr(bpy.types.Scene, "cursor_3d_tools_settings"):
+        del bpy.types.Scene.cursor_3d_tools_settings
+    
+    if hasattr(bpy.types.Screen, "cursor_3d_tools_settings"):
+        del bpy.types.Screen.cursor_3d_tools_settings
+    
+    if hasattr(bpy.types.WindowManager, "align_orientation_properties"):
+        del bpy.types.WindowManager.align_orientation_properties
+
+    if hasattr(bpy.types.WindowManager, "cursor_3d_runtime_settings"):
+        del bpy.types.WindowManager.cursor_3d_runtime_settings
+    
+    bpy.types.VIEW3D_PT_transform_orientations.remove(
+        transform_orientations_panel_extension)
+        
+    #bpy.types.VIEW3D_PT_view3d_properties.remove(draw_cursor_tools)
+
 
 if __name__ == "__main__":
     # launched from the Blender text editor

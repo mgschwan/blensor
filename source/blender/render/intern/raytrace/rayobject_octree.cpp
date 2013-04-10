@@ -542,13 +542,13 @@ static void octree_fill_rayface(Octree *oc, RayFace *face)
 		oc2 = rts[1][c];
 		oc3 = rts[2][c];
 		if (!RE_rayface_isQuad(face)) {
-			ocmin[c] = MIN3(oc1, oc2, oc3);
-			ocmax[c] = MAX3(oc1, oc2, oc3);
+			ocmin[c] = min_iii(oc1, oc2, oc3);
+			ocmax[c] = max_iii(oc1, oc2, oc3);
 		}
 		else {
 			oc4 = rts[3][c];
-			ocmin[c] = MIN4(oc1, oc2, oc3, oc4);
-			ocmax[c] = MAX4(oc1, oc2, oc3, oc4);
+			ocmin[c] = min_iiii(oc1, oc2, oc3, oc4);
+			ocmax[c] = max_iiii(oc1, oc2, oc3, oc4);
 		}
 		if (ocmax[c] > oc->ocres - 1) ocmax[c] = oc->ocres - 1;
 		if (ocmin[c] < 0) ocmin[c] = 0;
@@ -667,10 +667,12 @@ static void RE_rayobject_octree_done(RayObject *tree)
 	oc->ocface = NULL;
 	MEM_freeN(oc->ro_nodes);
 	oc->ro_nodes = NULL;
-	
+
+#if 0
 	printf("%f %f - %f\n", oc->min[0], oc->max[0], oc->ocfacx);
 	printf("%f %f - %f\n", oc->min[1], oc->max[1], oc->ocfacy);
 	printf("%f %f - %f\n", oc->min[2], oc->max[2], oc->ocfacz);
+#endif
 }
 
 static void RE_rayobject_octree_bb(RayObject *tree, float *min, float *max)
@@ -993,7 +995,7 @@ static int RE_rayobject_octree_intersect(RayObject *tree, Isect *is)
 		}
 		
 		xo = ocx1; yo = ocy1; zo = ocz1;
-		dda_lambda = MIN3(lambda_x, lambda_y, lambda_z);
+		dda_lambda = min_fff(lambda_x, lambda_y, lambda_z);
 		
 		vec2[0] = ox1;
 		vec2[1] = oy1;
@@ -1015,7 +1017,7 @@ static int RE_rayobject_octree_intersect(RayObject *tree, Isect *is)
 				vec2[2] = oz1 - dda_lambda * doz;
 				calc_ocval_ray(&ocval, (float)xo, (float)yo, (float)zo, vec1, vec2);
 
-				//is->dist = (u1+dda_lambda*(u2-u1))*o_lambda;
+				//is->dist = (u1 + dda_lambda * (u2 - u1)) * o_lambda;
 				if (testnode(oc, is, no, ocval) )
 					found = 1;
 
@@ -1083,7 +1085,7 @@ static int RE_rayobject_octree_intersect(RayObject *tree, Isect *is)
 				
 			}
 
-			dda_lambda = MIN3(lambda_x, lambda_y, lambda_z);
+			dda_lambda = min_fff(lambda_x, lambda_y, lambda_z);
 			if (dda_lambda == lambda_o) break;
 			/* to make sure the last node is always checked */
 			if (lambda_o >= 1.0f) break;

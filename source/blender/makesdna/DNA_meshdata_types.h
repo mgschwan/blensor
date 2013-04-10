@@ -118,9 +118,14 @@ typedef struct MLoopUV {
 #define MLOOPUV_VERTSEL	2
 #define MLOOPUV_PINNED	4
 
-/* at the moment alpha is abused for vertex painting
- * and not used for transparency,
- * note that red and blue are _not_ swapped, as they are with #MCol */
+/**
+ * at the moment alpha is abused for vertex painting,
+ * otherwise it should _always_ be initialized to 255
+ * Mostly its not used for transparency...
+ * (except for blender-internal rendering, see [#34096]).
+ *
+ * \note red and blue are _not_ swapped, as they are with #MCol
+ */
 typedef struct MLoopCol {
 	char r, g, b, a;
 } MLoopCol;
@@ -167,7 +172,7 @@ typedef struct MIntProperty {
 	int		i;
 } MIntProperty;
 typedef struct MStringProperty {
-	char	s[256];
+	char	s[255], s_len;
 } MStringProperty;
 
 typedef struct OrigSpaceFace {
@@ -273,6 +278,22 @@ typedef struct MVertSkin {
 	/* MVertSkinFlag */
 	int flag;
 } MVertSkin;
+
+typedef struct FreestyleEdge {
+	char flag;
+	char pad[3];
+} FreestyleEdge;
+
+/* FreestyleEdge->flag */
+#define FREESTYLE_EDGE_MARK	1
+
+typedef struct FreestyleFace {
+	char flag;
+	char pad[3];
+} FreestyleFace;
+
+/* FreestyleFace->flag */
+#define FREESTYLE_FACE_MARK	1
 
 /* mvert->flag (1=SELECT) */
 #define ME_SPHERETEST		2

@@ -51,12 +51,13 @@ class DenseSparseMatrix : public SparseMatrix {
   // Build a matrix with the same content as the TripletSparseMatrix
   // m. This assumes that m does not have any repeated entries.
   explicit DenseSparseMatrix(const TripletSparseMatrix& m);
-  explicit DenseSparseMatrix(const Matrix& m);
+  explicit DenseSparseMatrix(const ColMajorMatrix& m);
 #ifndef CERES_NO_PROTOCOL_BUFFERS
   explicit DenseSparseMatrix(const SparseMatrixProto& proto);
 #endif
 
   DenseSparseMatrix(int num_rows, int num_cols);
+  DenseSparseMatrix(int num_rows, int num_cols, bool reserve_diagonal);
 
   virtual ~DenseSparseMatrix() {}
 
@@ -77,8 +78,8 @@ class DenseSparseMatrix : public SparseMatrix {
   virtual const double* values() const { return m_.data(); }
   virtual double* mutable_values() { return m_.data(); }
 
-  ConstAlignedMatrixRef matrix() const;
-  AlignedMatrixRef mutable_matrix();
+  ConstColMajorMatrixRef matrix() const;
+  ColMajorMatrixRef mutable_matrix();
 
   // Only one diagonal can be appended at a time. The diagonal is appended to
   // as a new set of rows, e.g.
@@ -105,7 +106,7 @@ class DenseSparseMatrix : public SparseMatrix {
   void RemoveDiagonal();
 
  private:
-  Matrix m_;
+  ColMajorMatrix m_;
   bool has_diagonal_appended_;
   bool has_diagonal_reserved_;
 };

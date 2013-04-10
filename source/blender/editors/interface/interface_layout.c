@@ -65,8 +65,6 @@
 #define RNA_NO_INDEX    -1
 #define RNA_ENUM_VALUE  -2
 
-#define EM_SEPR_X       6
-#define EM_SEPR_Y       6
 
 // #define USE_OP_RESET_BUT  // we may want to make this optional, disable for now.
 
@@ -142,11 +140,11 @@ struct uiLayout {
 	int x, y, w, h;
 	float scale[2];
 	short space;
-	char align;
-	char active;
-	char enabled;
-	char redalert;
-	char keepaspect;
+	bool align;
+	bool active;
+	bool enabled;
+	bool redalert;
+	bool keepaspect;
 	char alignment;
 };
 
@@ -188,13 +186,13 @@ static const char *ui_item_name_add_colon(const char *name, char namestr[UI_MAX_
 
 static int ui_item_fit(int item, int pos, int all, int available, int last, int alignment, int *offset)
 {
+	if (offset)
+		*offset = 0;
+
 	/* available == 0 is unlimited */
 	if (available == 0)
 		return item;
-	
-	if (offset)
-		*offset = 0;
-	
+
 	if (all > available) {
 		/* contents is bigger than available space */
 		if (last)
@@ -227,14 +225,16 @@ static int ui_layout_vary_direction(uiLayout *layout)
 /* estimated size of text + icon */
 static int ui_text_icon_width(uiLayout *layout, const char *name, int icon, int compact)
 {
+	float f5 = 0.25f * UI_UNIT_X;
+	float f10 = 0.5f * UI_UNIT_X;
 	int variable = ui_layout_vary_direction(layout) == UI_ITEM_VARY_X;
 
 	if (icon && !name[0])
 		return UI_UNIT_X;  /* icon only */
 	else if (icon)
-		return (variable) ? UI_GetStringWidth(name) + (compact ? 5 : 10) + UI_UNIT_X : 10 * UI_UNIT_X;  /* icon + text */
+		return (variable) ? UI_GetStringWidth(name) + (compact ? f5 : f10) + UI_UNIT_X : 10 * UI_UNIT_X;  /* icon + text */
 	else
-		return (variable) ? UI_GetStringWidth(name) + (compact ? 5 : 10) + UI_UNIT_X : 10 * UI_UNIT_X;  /* text only */
+		return (variable) ? UI_GetStringWidth(name) + (compact ? f5 : f10) + UI_UNIT_X : 10 * UI_UNIT_X;  /* text only */
 }
 
 static void ui_item_size(uiItem *item, int *r_w, int *r_h)
@@ -346,7 +346,9 @@ static void ui_layer_but_cb(bContext *C, void *arg_but, void *arg_index)
 }
 
 /* create buttons for an item with an RNA array */
-static void ui_item_array(uiLayout *layout, uiBlock *block, const char *name, int icon, PointerRNA *ptr, PropertyRNA *prop, int len, int x, int y, int w, int UNUSED(h), int expand, int slider, int toggle, int icon_only)
+static void ui_item_array(uiLayout *layout, uiBlock *block, const char *name, int icon,
+                          PointerRNA *ptr, PropertyRNA *prop, int len, int x, int y, int w, int UNUSED(h),
+                          int expand, int slider, int toggle, int icon_only)
 {
 	uiStyle *style = layout->root->style;
 	uiBut *but;
@@ -489,7 +491,14 @@ static void ui_item_enum_expand(uiLayout *layout, uiBlock *block, PointerRNA *pt
 
 	RNA_property_enum_items_gettexted(block->evil_C, ptr, prop, &item, &totitem, &free);
 
-	uiBlockSetCurLayout(block, ui_item_local_sublayout(layout, layout, 1));
+	/* we dont want nested rows, cols in menus */
+	if (layout->root->type != UI_LAYOUT_MENU) {
+		uiBlockSetCurLayout(block, ui_item_local_sublayout(layout, layout, 1));
+	}
+	else {
+		uiBlockSetCurLayout(block, layout);
+	}
+
 	for (a = 0; a < totitem; a++) {
 		if (!item[a].identifier[0])
 			continue;
@@ -615,6 +624,18 @@ void uiFileBrowseContextProperty(const bContext *C, PointerRNA *ptr, PropertyRNA
 
 /********************* Button Items *************************/
 
+/**
+ * Update a buttons tip with an enum's description if possible.
+ */
+static void ui_but_tip_from_enum_item(uiBut *but, EnumPropertyItem *item)
+{
+	if (but->tip == NULL || but->tip[0] == '\0') {
+		if (item->description && item->description[0]) {
+			but->tip = item->description;
+		}
+	}
+}
+
 /* disabled item */
 static void ui_item_disabled(uiLayout *layout, const char *name)
 {
@@ -718,8 +739,11 @@ static const char *ui_menu_enumpropname(uiLayout *layout, PointerRNA *ptr, Prope
 	int totitem, free;
 	const char *name;
 
-	RNA_property_enum_items_gettexted(layout->root->block->evil_C, ptr, prop, &item, &totitem, &free);
-	if (RNA_enum_name(item, retval, &name) == 0) {
+	RNA_property_enum_items(layout->root->block->evil_C, ptr, prop, &item, &totitem, &free);
+	if (RNA_enum_name(item, retval, &name)) {
+		name = CTX_IFACE_(RNA_property_translation_context(prop), name);
+	}
+	else {
 		name = "";
 	}
 
@@ -825,6 +849,7 @@ void uiItemsFullEnumO(uiLayout *layout, const char *opname, const char *propname
 				else {
 					uiItemEnumO_ptr__internal(column, ot, item[i].name, item[i].icon, prop, item[i].value);
 				}
+				ui_but_tip_from_enum_item(block->buttons.last, &item[i]);
 			}
 			else {
 				if (item[i].name) {
@@ -837,6 +862,8 @@ void uiItemsFullEnumO(uiLayout *layout, const char *opname, const char *propname
 					uiItemL(column, item[i].name, ICON_NONE);
 					bt = block->buttons.last;
 					bt->flag = UI_TEXT_LEFT;
+
+					ui_but_tip_from_enum_item(bt, &item[i]);
 				}
 				else {  /* XXX bug here, colums draw bottom item badly */
 					uiItemS(column);
@@ -904,10 +931,11 @@ void uiItemEnumO_string(uiLayout *layout, const char *name, int icon, const char
 	UI_OPERATOR_ERROR_RET(ot, opname, return );
 
 	WM_operator_properties_create_ptr(&ptr, ot);
-	
+
 	/* enum lookup */
 	if ((prop = RNA_struct_find_property(&ptr, propname))) {
-		RNA_property_enum_items_gettexted(layout->root->block->evil_C, &ptr, prop, &item, NULL, &free);
+		/* no need for translations here */
+		RNA_property_enum_items(layout->root->block->evil_C, &ptr, prop, &item, NULL, &free);
 		if (item == NULL || RNA_enum_value_from_id(item, value_str, &value) == 0) {
 			if (free) {
 				MEM_freeN(item);
@@ -924,9 +952,9 @@ void uiItemEnumO_string(uiLayout *layout, const char *name, int icon, const char
 		RNA_warning("%s.%s not found", RNA_struct_identifier(ptr.type), propname);
 		return;
 	}
-	
+
 	RNA_property_enum_set(&ptr, prop, value);
-	
+
 	/* same as uiItemEnumO */
 	if (!name)
 		name = ui_menu_enumpropname(layout, &ptr, prop, value);
@@ -1172,7 +1200,7 @@ void uiItemEnumR_string(uiLayout *layout, struct PointerRNA *ptr, const char *pr
 		return;
 	}
 
-	RNA_property_enum_items_gettexted(layout->root->block->evil_C, ptr, prop, &item, NULL, &free);
+	RNA_property_enum_items(layout->root->block->evil_C, ptr, prop, &item, NULL, &free);
 
 	if (!RNA_enum_value_from_id(item, value, &ivalue)) {
 		if (free) {
@@ -1185,7 +1213,9 @@ void uiItemEnumR_string(uiLayout *layout, struct PointerRNA *ptr, const char *pr
 
 	for (a = 0; item[a].identifier; a++) {
 		if (item[a].value == ivalue) {
-			uiItemFullR(layout, ptr, prop, RNA_ENUM_VALUE, ivalue, 0, name ? name : item[a].name, icon ? icon : item[a].icon);
+			const char *item_name = CTX_IFACE_(RNA_property_translation_context(prop), item[a].name);
+
+			uiItemFullR(layout, ptr, prop, RNA_ENUM_VALUE, ivalue, 0, item_name ? item_name : name, icon ? icon : item[a].icon);
 			break;
 		}
 	}
@@ -1224,6 +1254,7 @@ void uiItemsEnumR(uiLayout *layout, struct PointerRNA *ptr, const char *propname
 		for (i = 0; i < totitem; i++) {
 			if (item[i].identifier[0]) {
 				uiItemEnumR(column, item[i].name, ICON_NONE, ptr, propname, item[i].value);
+				ui_but_tip_from_enum_item(block->buttons.last, &item[i]);
 			}
 			else {
 				if (item[i].name) {
@@ -1236,6 +1267,8 @@ void uiItemsEnumR(uiLayout *layout, struct PointerRNA *ptr, const char *propname
 					uiItemL(column, item[i].name, ICON_NONE);
 					bt = block->buttons.last;
 					bt->flag = UI_TEXT_LEFT;
+
+					ui_but_tip_from_enum_item(bt, &item[i]);
 				}
 				else
 					uiItemS(column);
@@ -1300,7 +1333,7 @@ static void rna_search_cb(const struct bContext *C, void *arg_but, const char *s
 			BLI_strncpy(name_ui, id->name + 2, sizeof(name_ui));
 #endif
 			name = BLI_strdup(name_ui);
-			iconid = ui_id_icon_get((bContext *)C, id, 0);
+			iconid = ui_id_icon_get((bContext *)C, id, false);
 		}
 		else {
 			name = RNA_struct_name_get_alloc(&itemptr, NULL, 0, NULL); /* could use the string length here */
@@ -1326,7 +1359,7 @@ static void rna_search_cb(const struct bContext *C, void *arg_but, const char *s
 	
 	/* add search items from temporary list */
 	for (cis = items_list->first; cis; cis = cis->next) {
-		if (!uiSearchItemAdd(items, cis->name, SET_INT_IN_POINTER(cis->index), cis->iconid)) {
+		if (false == uiSearchItemAdd(items, cis->name, SET_INT_IN_POINTER(cis->index), cis->iconid)) {
 			break;
 		}
 	}
@@ -1378,7 +1411,11 @@ void ui_but_add_search(uiBut *but, PointerRNA *ptr, PropertyRNA *prop, PointerRN
 
 	/* turn button into search button */
 	if (searchprop) {
-		but->type = SEARCH_MENU;
+		if (RNA_property_flag(prop) & PROP_NEVER_UNLINK)
+			but->type = SEARCH_MENU;
+		else
+			but->type = SEARCH_MENU_UNLINK;
+
 		but->hardmax = MAX2(but->hardmax, 256.0f);
 		but->rnasearchpoin = *searchptr;
 		but->rnasearchprop = searchprop;
@@ -1448,6 +1485,7 @@ void uiItemPointerR(uiLayout *layout, struct PointerRNA *ptr, const char *propna
 	block = uiLayoutGetBlock(layout);
 
 	ui_item_rna_size(layout, name, icon, ptr, prop, 0, 0, &w, &h);
+	w += UI_UNIT_X; /* X icon needs more space */
 	but = ui_item_with_label(layout, block, name, icon, ptr, prop, 0, 0, 0, w, h, 0);
 
 	ui_but_add_search(but, ptr, prop, searchptr, searchprop);
@@ -1466,7 +1504,13 @@ static void ui_item_menutype_func(bContext *C, uiLayout *layout, void *arg_mt)
 		printf("%s: opening menu \"%s\"\n", __func__, mt->idname);
 	}
 
+	if (layout->context)
+		CTX_store_set(C, layout->context);
+
 	mt->draw(C, &menu);
+
+	if (layout->context)
+		CTX_store_set(C, NULL);
 }
 
 static void ui_item_menu(uiLayout *layout, const char *name, int icon, uiMenuCreateFunc func, void *arg, void *argN, const char *tip)
@@ -1489,7 +1533,7 @@ static void ui_item_menu(uiLayout *layout, const char *name, int icon, uiMenuCre
 	h = UI_UNIT_Y;
 
 	if (layout->root->type == UI_LAYOUT_HEADER) /* ugly .. */
-		w -= 10;
+		w -= UI_UNIT_Y / 2;
 
 	if (name[0] && icon)
 		but = uiDefIconTextMenuBut(block, func, arg, icon, name, 0, 0, w, h, tip);
@@ -1523,7 +1567,7 @@ void uiItemM(uiLayout *layout, bContext *UNUSED(C), const char *menuname, const 
 	}
 
 	if (!name) {
-		name = IFACE_(mt->label);
+		name = CTX_IFACE_(mt->translation_context, mt->label);
 	}
 
 	if (layout->root->type == UI_LAYOUT_MENU && !icon)
@@ -1554,6 +1598,14 @@ static uiBut *uiItemL_(uiLayout *layout, const char *name, int icon)
 		but = uiDefIconBut(block, LABEL, 0, icon, 0, 0, w, UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
 	else
 		but = uiDefBut(block, LABEL, 0, name, 0, 0, w, UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
+	
+	/* to compensate for string size padding in ui_text_icon_width,
+	 * make text aligned right if the layout is aligned right.
+	 */
+	if (uiLayoutGetAlignment(layout) == UI_LAYOUT_ALIGN_RIGHT) {
+		but->flag &= ~UI_TEXT_LEFT;	/* default, needs to be unset */
+		but->flag |= UI_TEXT_RIGHT;
+	}
 	
 	return but;
 }
@@ -1591,11 +1643,11 @@ void uiItemV(uiLayout *layout, const char *name, int icon, int argval)
 	w = ui_text_icon_width(layout, name, icon, 0);
 
 	if (icon && name[0])
-		uiDefIconTextButF(block, BUT, argval, icon, name, 0, 0, w, UI_UNIT_Y, retvalue, 0.0, 0.0, 0, 0, "");
+		uiDefIconTextButF(block, BUT, argval, icon, name, 0, 0, w, UI_UNIT_Y, retvalue, 0.0, 0.0, 0, -1, "");
 	else if (icon)
-		uiDefIconButF(block, BUT, argval, icon, 0, 0, w, UI_UNIT_Y, retvalue, 0.0, 0.0, 0, 0, "");
+		uiDefIconButF(block, BUT, argval, icon, 0, 0, w, UI_UNIT_Y, retvalue, 0.0, 0.0, 0, -1, "");
 	else
-		uiDefButF(block, BUT, argval, name, 0, 0, w, UI_UNIT_Y, retvalue, 0.0, 0.0, 0, 0, "");
+		uiDefButF(block, BUT, argval, name, 0, 0, w, UI_UNIT_Y, retvalue, 0.0, 0.0, 0, -1, "");
 }
 
 /* separator item */
@@ -1604,7 +1656,7 @@ void uiItemS(uiLayout *layout)
 	uiBlock *block = layout->root->block;
 
 	uiBlockSetCurLayout(block, layout);
-	uiDefBut(block, SEPR, 0, "", 0, 0, EM_SEPR_X, EM_SEPR_Y, NULL, 0.0, 0.0, 0, 0, "");
+	uiDefBut(block, SEPR, 0, "", 0, 0, 0.3f * UI_UNIT_X, 0.3f * UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
 }
 
 /* level items */
@@ -2215,10 +2267,11 @@ uiLayout *uiLayoutRow(uiLayout *layout, int align)
 	litem->item.type = ITEM_LAYOUT_ROW;
 	litem->root = layout->root;
 	litem->align = align;
-	litem->active = 1;
-	litem->enabled = 1;
+	litem->active = true;
+	litem->enabled = true;
 	litem->context = layout->context;
 	litem->space = (align) ? 0 : layout->root->style->buttonspacex;
+	litem->redalert = layout->redalert;
 	litem->w = layout->w;
 	BLI_addtail(&layout->items, litem);
 
@@ -2235,10 +2288,11 @@ uiLayout *uiLayoutColumn(uiLayout *layout, int align)
 	litem->item.type = ITEM_LAYOUT_COLUMN;
 	litem->root = layout->root;
 	litem->align = align;
-	litem->active = 1;
-	litem->enabled = 1;
+	litem->active = true;
+	litem->enabled = true;
 	litem->context = layout->context;
 	litem->space = (litem->align) ? 0 : layout->root->style->buttonspacey;
+	litem->redalert = layout->redalert;
 	litem->w = layout->w;
 	BLI_addtail(&layout->items, litem);
 
@@ -2255,10 +2309,11 @@ uiLayout *uiLayoutColumnFlow(uiLayout *layout, int number, int align)
 	flow->litem.item.type = ITEM_LAYOUT_COLUMN_FLOW;
 	flow->litem.root = layout->root;
 	flow->litem.align = align;
-	flow->litem.active = 1;
-	flow->litem.enabled = 1;
+	flow->litem.active = true;
+	flow->litem.enabled = true;
 	flow->litem.context = layout->context;
 	flow->litem.space = (flow->litem.align) ? 0 : layout->root->style->columnspace;
+	flow->litem.redalert = layout->redalert;
 	flow->litem.w = layout->w;
 	flow->number = number;
 	BLI_addtail(&layout->items, flow);
@@ -2279,6 +2334,7 @@ static uiLayoutItemBx *ui_layout_box(uiLayout *layout, int type)
 	box->litem.enabled = 1;
 	box->litem.context = layout->context;
 	box->litem.space = layout->root->style->columnspace;
+	box->litem.redalert = layout->redalert;
 	box->litem.w = layout->w;
 	BLI_addtail(&layout->items, box);
 
@@ -2294,10 +2350,13 @@ uiLayout *uiLayoutBox(uiLayout *layout)
 	return (uiLayout *)ui_layout_box(layout, ROUNDBOX);
 }
 
-uiLayout *uiLayoutListBox(uiLayout *layout, PointerRNA *ptr, PropertyRNA *prop, PointerRNA *actptr, PropertyRNA *actprop)
+uiLayout *uiLayoutListBox(uiLayout *layout, uiList *ui_list, PointerRNA *ptr, PropertyRNA *prop, PointerRNA *actptr,
+                          PropertyRNA *actprop)
 {
 	uiLayoutItemBx *box = ui_layout_box(layout, LISTBOX);
 	uiBut *but = box->roundbox;
+
+	but->custom_data = ui_list;
 
 	but->rnasearchpoin = *ptr;
 	but->rnasearchprop = prop;
@@ -2318,6 +2377,7 @@ uiLayout *uiLayoutAbsolute(uiLayout *layout, int align)
 	litem->active = 1;
 	litem->enabled = 1;
 	litem->context = layout->context;
+	litem->redalert = layout->redalert;
 	BLI_addtail(&layout->items, litem);
 
 	uiBlockSetCurLayout(layout->root->block, litem);
@@ -2342,9 +2402,10 @@ uiLayout *uiLayoutOverlap(uiLayout *layout)
 	litem = MEM_callocN(sizeof(uiLayout), "uiLayoutOverlap");
 	litem->item.type = ITEM_LAYOUT_OVERLAP;
 	litem->root = layout->root;
-	litem->active = 1;
-	litem->enabled = 1;
+	litem->active = true;
+	litem->enabled = true;
 	litem->context = layout->context;
+	litem->redalert = layout->redalert;
 	BLI_addtail(&layout->items, litem);
 
 	uiBlockSetCurLayout(layout->root->block, litem);
@@ -2360,10 +2421,11 @@ uiLayout *uiLayoutSplit(uiLayout *layout, float percentage, int align)
 	split->litem.item.type = ITEM_LAYOUT_SPLIT;
 	split->litem.root = layout->root;
 	split->litem.align = align;
-	split->litem.active = 1;
-	split->litem.enabled = 1;
+	split->litem.active = true;
+	split->litem.enabled = true;
 	split->litem.context = layout->context;
 	split->litem.space = layout->root->style->columnspace;
+	split->litem.redalert = layout->redalert;
 	split->litem.w = layout->w;
 	split->percentage = percentage;
 	BLI_addtail(&layout->items, split);
@@ -2373,27 +2435,27 @@ uiLayout *uiLayoutSplit(uiLayout *layout, float percentage, int align)
 	return &split->litem;
 }
 
-void uiLayoutSetActive(uiLayout *layout, int active)
+void uiLayoutSetActive(uiLayout *layout, bool active)
 {
 	layout->active = active;
 }
 
-void uiLayoutSetEnabled(uiLayout *layout, int enabled)
+void uiLayoutSetEnabled(uiLayout *layout, bool enabled)
 {
 	layout->enabled = enabled;
 }
 
-void uiLayoutSetRedAlert(uiLayout *layout, int redalert)
+void uiLayoutSetRedAlert(uiLayout *layout, bool redalert)
 {
 	layout->redalert = redalert;
 }
 
-void uiLayoutSetKeepAspect(uiLayout *layout, int keepaspect)
+void uiLayoutSetKeepAspect(uiLayout *layout, bool keepaspect)
 {
 	layout->keepaspect = keepaspect;
 }
 
-void uiLayoutSetAlignment(uiLayout *layout, int alignment)
+void uiLayoutSetAlignment(uiLayout *layout, char alignment)
 {
 	layout->alignment = alignment;
 }
@@ -2408,22 +2470,22 @@ void uiLayoutSetScaleY(uiLayout *layout, float scale)
 	layout->scale[1] = scale;
 }
 
-int uiLayoutGetActive(uiLayout *layout)
+bool uiLayoutGetActive(uiLayout *layout)
 {
 	return layout->active;
 }
 
-int uiLayoutGetEnabled(uiLayout *layout)
+bool uiLayoutGetEnabled(uiLayout *layout)
 {
 	return layout->enabled;
 }
 
-int uiLayoutGetRedAlert(uiLayout *layout)
+bool uiLayoutGetRedAlert(uiLayout *layout)
 {
 	return layout->redalert;
 }
 
-int uiLayoutGetKeepAspect(uiLayout *layout)
+bool uiLayoutGetKeepAspect(uiLayout *layout)
 {
 	return layout->keepaspect;
 }
@@ -2860,7 +2922,7 @@ static void ui_layout_operator_buts__reset_cb(bContext *UNUSED(C), void *op_pt, 
 
 /* this function does not initialize the layout, functions can be called on the layout before and after */
 void uiLayoutOperatorButs(const bContext *C, uiLayout *layout, wmOperator *op,
-                          int (*check_prop)(struct PointerRNA *, struct PropertyRNA *),
+                          bool (*check_prop)(struct PointerRNA *, struct PropertyRNA *),
                           const char label_align, const short flag)
 {
 	if (!op->properties) {
@@ -2875,7 +2937,7 @@ void uiLayoutOperatorButs(const bContext *C, uiLayout *layout, wmOperator *op,
 	/* poll() on this operator may still fail, at the moment there is no nice feedback when this happens
 	 * just fails silently */
 	if (!WM_operator_repeat_check(C, op)) {
-		uiBlockSetButLock(uiLayoutGetBlock(layout), TRUE, "Operator can't' redo");
+		uiBlockSetButLock(uiLayoutGetBlock(layout), true, "Operator can't' redo");
 
 		/* XXX, could give some nicer feedback or not show redo panel at all? */
 		uiItemL(layout, IFACE_("* Redo Unsupported *"), ICON_NONE);
@@ -2935,7 +2997,7 @@ void uiLayoutOperatorButs(const bContext *C, uiLayout *layout, wmOperator *op,
 
 		col = uiLayoutColumn(layout, FALSE);
 		block = uiLayoutGetBlock(col);
-		but = uiDefIconTextBut(block, BUT, 0, ICON_FILE_REFRESH, IFACE_("Reset"), 0, 0, 18, 20,
+		but = uiDefIconTextBut(block, BUT, 0, ICON_FILE_REFRESH, IFACE_("Reset"), 0, 0, UI_UNIT_X, UI_UNIT_Y,
 		                       NULL, 0.0, 0.0, 0.0, 0.0, TIP_("Reset operator defaults"));
 		uiButSetFunc(but, ui_layout_operator_buts__reset_cb, op, NULL);
 	}

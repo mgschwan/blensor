@@ -20,7 +20,7 @@ bl_info = {
     "name": "Add Objects Panel",
     "author": "Murat Egretli (Demohero)",
     "version": (1,2),
-    "blender": (2, 6, 1),
+    "blender": (2, 61, 0),
     "location": "View3D > Toolbar",
     "description": "add objects(mesh, curve etc.) from Toolbar",
     "warning": "",

@@ -46,6 +46,7 @@ struct bContext;
 struct bContextDataResult;
 struct bScreen;
 struct uiLayout;
+struct uiList;
 struct uiMenuItem;
 struct wmKeyConfig;
 struct wmNotifier;
@@ -74,6 +75,8 @@ typedef struct SpaceType {
 	
 	/* init is to cope with file load, screen (size) changes, check handlers */
 	void (*init)(struct wmWindowManager *, struct ScrArea *);
+	/* exit is called when the area is hidden or removed */
+	void (*exit)(struct wmWindowManager *, struct ScrArea *);
 	/* Listeners can react to bContext changes */
 	void (*listener)(struct ScrArea *, struct wmNotifier *);
 	
@@ -115,6 +118,8 @@ typedef struct ARegionType {
 	
 	/* add handlers, stuff you only do once or on area/region type/size changes */
 	void (*init)(struct wmWindowManager *, struct ARegion *);
+	/* exit is called when the region is hidden or removed */
+	void (*exit)(struct wmWindowManager *, struct ARegion *);
 	/* draw entirely, view changes should be handled here */
 	void (*draw)(const struct bContext *, struct ARegion *);
 	/* contextual changes should be handled here */
@@ -162,9 +167,10 @@ typedef struct ARegionType {
 typedef struct PanelType {
 	struct PanelType *next, *prev;
 	
-	char idname[BKE_ST_MAXNAME];            /* unique name */
-	char label[BKE_ST_MAXNAME];             /* for panel header */
-	char context[BKE_ST_MAXNAME];           /* for buttons window */
+	char idname[BKE_ST_MAXNAME];              /* unique name */
+	char label[BKE_ST_MAXNAME];               /* for panel header */
+	char translation_context[BKE_ST_MAXNAME];
+	char context[BKE_ST_MAXNAME];             /* for buttons window */
 	int space_type;
 	int region_type;
 
@@ -180,6 +186,23 @@ typedef struct PanelType {
 	/* RNA integration */
 	ExtensionRNA ext;
 } PanelType;
+
+/* uilist types */
+
+/* draw an item in the uiList */
+typedef void (*uiListDrawItemFunc)(struct uiList *, struct bContext *, struct uiLayout *, struct PointerRNA *,
+                                   struct PointerRNA *, int, struct PointerRNA *, const char *, int);
+
+typedef struct uiListType {
+	struct uiListType *next, *prev;
+
+	char idname[BKE_ST_MAXNAME];            /* unique name */
+
+	uiListDrawItemFunc draw_item;
+
+	/* RNA integration */
+	ExtensionRNA ext;
+} uiListType;
 
 /* header types */
 
@@ -209,7 +232,8 @@ typedef struct MenuType {
 
 	char idname[BKE_ST_MAXNAME];        /* unique name */
 	char label[BKE_ST_MAXNAME];         /* for button text */
-	char       *description;
+	char translation_context[BKE_ST_MAXNAME];
+	char *description;
 
 	/* verify if the menu should draw or not */
 	int (*poll)(const struct bContext *, struct MenuType *);
@@ -243,6 +267,7 @@ void            BKE_area_region_free(struct SpaceType *st, struct ARegion *ar);
 void            BKE_screen_area_free(struct ScrArea *sa);
 
 struct ARegion *BKE_area_find_region_type(struct ScrArea *sa, int type);
+struct ARegion *BKE_area_find_region_active_win(struct ScrArea *sa);
 struct ScrArea *BKE_screen_find_big_area(struct bScreen *sc, const int spacetype, const short min);
 
 void BKE_screen_view3d_sync(struct View3D *v3d, struct Scene *scene);

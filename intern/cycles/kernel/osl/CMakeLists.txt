@@ -16,13 +16,16 @@ set(SRC
 	background.cpp
 	bsdf_diffuse_ramp.cpp
 	bsdf_phong_ramp.cpp
+	bsdf_toon.cpp
 	emissive.cpp
+	osl_bssrdf.cpp
 	osl_closures.cpp
 	osl_services.cpp
 	osl_shader.cpp
 )
 
 set(HEADER_SRC
+	osl_bssrdf.h
 	osl_closures.h
 	osl_globals.h
 	osl_services.h

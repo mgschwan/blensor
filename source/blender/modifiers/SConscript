@@ -1,15 +1,54 @@
-#!/usr/bin/python
-Import ('env')
+#!/usr/bin/env python
+#
+# ***** BEGIN GPL LICENSE BLOCK *****
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#
+# The Original Code is Copyright (C) 2006, Blender Foundation
+# All rights reserved.
+#
+# The Original Code is: all of this file.
+#
+# Contributor(s): Nathan Letwory.
+#
+# ***** END GPL LICENSE BLOCK *****
+
+Import('env')
 
 sources = env.Glob('intern/*.c')
 
-incs = '. ./intern'
-incs += ' #/intern/guardedalloc #/intern/bsp/extern #/intern/elbeem/extern #/extern/glew/include #/intern/opennl/extern'
-incs += ' ../render/extern/include ../blenloader ../bmesh'
-incs += ' ../include ../blenlib ../blenfont ../makesdna ../makesrna ../blenkernel ../blenkernel/intern'
-incs += ' ../gpu'
-
-incs += ' ' + env['BF_ZLIB_INC']
+incs = [
+    '.',
+    './intern', 
+    '#/intern/guardedalloc',
+    '#/intern/bsp/extern',
+    '#/intern/elbeem/extern',
+    '#/extern/glew/include',
+    '#/intern/opennl/extern',
+    '../render/extern/include',
+    '../blenloader',
+    '../bmesh',
+    '../include',
+    '../blenlib',
+    '../blenfont',
+    '../makesdna',
+    '../makesrna',
+    '../blenkernel',
+    '../gpu',
+    env['BF_ZLIB_INC'],
+    ]
 
 defs = []
 
@@ -17,7 +56,7 @@ if env ['WITH_BF_BOOLEAN']:
     defs.append('WITH_MOD_BOOLEAN')
 
 if env['WITH_BF_REMESH']:
-    incs += ' #/intern/dualcon'
+    incs.append('#/intern/dualcon')
     defs.append('WITH_MOD_REMESH')
 
 if env['WITH_BF_FLUID']:
@@ -27,12 +66,12 @@ if env['WITH_BF_OCEANSIM']:
     defs.append('WITH_OCEANSIM')
 
 if env['WITH_BF_GAMEENGINE']:
-    incs += ' #/extern/recastnavigation'
+    incs.append('#/extern/recastnavigation')
     defs.append('WITH_GAMEENGINE')
 
 if env['WITH_BF_INTERNATIONAL']:
     defs.append('WITH_INTERNATIONAL')
 
-env.BlenderLib ( libname = 'bf_modifiers', sources = sources,
-                 includes = Split(incs), defines=defs,
-                 libtype=['core','player'], priority = [80, 40] )
+env.BlenderLib(libname='bf_modifiers', sources=sources,
+               includes=incs, defines=defs,
+               libtype=['core', 'player'], priority=[80, 40])

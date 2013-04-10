@@ -75,6 +75,7 @@
 
 #include "outliner_intern.h"
 
+
 /* ****************************************************** */
 
 /* ************ SELECTION OPERATIONS ********* */
@@ -190,8 +191,10 @@ static void unlink_texture_cb(bContext *UNUSED(C), Scene *UNUSED(scene), TreeEle
 		World *wrld = (World *)tsep->id;
 		mtex = wrld->mtex;
 	}
-	else return;
-	
+	else {
+		return;
+	}
+
 	for (a = 0; a < MAX_MTEX; a++) {
 		if (a == te->index && mtex[a]) {
 			if (mtex[a]->tex) {
@@ -264,6 +267,17 @@ static void object_select_cb(bContext *UNUSED(C), Scene *scene, TreeElement *te,
 	}
 }
 
+static void object_select_hierarchy_cb(bContext *C, Scene *UNUSED(scene), TreeElement *UNUSED(te),
+                             TreeStoreElem *UNUSED(tsep), TreeStoreElem *UNUSED(tselem))
+{
+	/* From where do i get the x,y coordinate of the mouse event ? */
+	wmWindow *win = CTX_wm_window(C);
+	int x = win->eventstate->mval[0];
+	int y = win->eventstate->mval[1];
+	outliner_item_do_activate(C, x, y, true, true);
+}
+
+
 static void object_deselect_cb(bContext *UNUSED(C), Scene *scene, TreeElement *te,
                                TreeStoreElem *UNUSED(tsep), TreeStoreElem *tselem)
 {
@@ -286,7 +300,7 @@ static void object_delete_cb(bContext *C, Scene *scene, TreeElement *te,
 	if (base) {
 		// check also library later
 		if (scene->obedit == base->object)
-			ED_object_exit_editmode(C, EM_FREEDATA | EM_FREEUNDO | EM_WAITCURSOR | EM_DO_UNDO);
+			ED_object_editmode_exit(C, EM_FREEDATA | EM_FREEUNDO | EM_WAITCURSOR | EM_DO_UNDO);
 		
 		ED_base_object_free_and_unlink(CTX_data_main(C), scene, base);
 		te->directdata = NULL;
@@ -300,7 +314,7 @@ static void id_local_cb(bContext *C, Scene *UNUSED(scene), TreeElement *UNUSED(t
 	if (tselem->id->lib && (tselem->id->flag & LIB_EXTERN)) {
 		/* if the ID type has no special local function,
 		 * just clear the lib */
-		if (id_make_local(tselem->id, FALSE) == FALSE) {
+		if (id_make_local(tselem->id, false) == false) {
 			Main *bmain = CTX_data_main(C);
 			id_clear_lib_data(bmain, tselem->id);
 		}
@@ -389,7 +403,7 @@ static void group_linkobs2scene_cb(bContext *UNUSED(C), Scene *scene, TreeElemen
 			/* link to scene */
 			base = MEM_callocN(sizeof(Base), "add_base");
 			BLI_addhead(&scene->base, base);
-			base->lay = (1 << 20) - 1; /*v3d->lay;*/ /* would be nice to use the 3d layer but the include's not here */
+			base->lay = gob->ob->lay;
 			gob->ob->flag |= SELECT;
 			base->flag = gob->ob->flag;
 			base->object = gob->ob;
@@ -526,9 +540,9 @@ static void sequence_cb(int event, TreeElement *te, TreeStoreElem *tselem, void 
 	Sequence *seq = (Sequence *)te->directdata;
 	if (event == 1) {
 		Scene *scene = (Scene *)scene_ptr;
-		Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
+		Editing *ed = BKE_sequencer_editing_get(scene, false);
 		if (BLI_findindex(ed->seqbasep, seq) != -1) {
-			ED_sequencer_select_sequence_single(scene, seq, TRUE);
+			ED_sequencer_select_sequence_single(scene, seq, true);
 		}
 	}
 
@@ -569,15 +583,29 @@ static void outliner_do_data_operation(SpaceOops *soops, int type, int event, Li
 
 /* **************************************** */
 
+enum {
+	OL_OP_ENDMARKER = 0,
+	OL_OP_SELECT,
+	OL_OP_DESELECT,
+	OL_OP_SELECT_HIERARCHY,
+	OL_OP_DELETE,
+	OL_OP_LOCALIZED,  /* disabled, see below */
+	OL_OP_TOGVIS,
+	OL_OP_TOGSEL,
+	OL_OP_TOGREN,
+	OL_OP_RENAME
+};
+
 static EnumPropertyItem prop_object_op_types[] = {
-	{1, "SELECT", 0, "Select", ""},
-	{2, "DESELECT", 0, "Deselect", ""},
-	{4, "DELETE", 0, "Delete", ""},
-	{6, "TOGVIS", 0, "Toggle Visible", ""},
-	{7, "TOGSEL", 0, "Toggle Selectable", ""},
-	{8, "TOGREN", 0, "Toggle Renderable", ""},
-	{9, "RENAME", 0, "Rename", ""},
-	{0, NULL, 0, NULL, NULL}
+	{OL_OP_SELECT, "SELECT", 0, "Select", ""},
+	{OL_OP_DESELECT, "DESELECT", 0, "Deselect", ""},
+	{OL_OP_SELECT_HIERARCHY, "SELECT_HIERARCHY", 0, "Select Hierarchy", ""},
+	{OL_OP_DELETE, "DELETE", 0, "Delete", ""},
+	{OL_OP_TOGVIS, "TOGVIS", 0, "Toggle Visible", ""},
+	{OL_OP_TOGSEL, "TOGSEL", 0, "Toggle Selectable", ""},
+	{OL_OP_TOGREN, "TOGREN", 0, "Toggle Renderable", ""},
+	{OL_OP_RENAME, "RENAME", 0, "Rename", ""},
+	{OL_OP_ENDMARKER, NULL, 0, NULL, NULL}
 };
 
 static int outliner_object_operation_exec(bContext *C, wmOperator *op)
@@ -594,7 +622,7 @@ static int outliner_object_operation_exec(bContext *C, wmOperator *op)
 	
 	event = RNA_enum_get(op->ptr, "type");
 
-	if (event == 1) {
+	if (event == OL_OP_SELECT) {
 		Scene *sce = scene;  // to be able to delete, scenes are set...
 		outliner_do_object_operation(C, scene, soops, &soops->tree, object_select_cb);
 		if (scene != sce) {
@@ -604,12 +632,21 @@ static int outliner_object_operation_exec(bContext *C, wmOperator *op)
 		str = "Select Objects";
 		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	}
-	else if (event == 2) {
+	else if (event == OL_OP_SELECT_HIERARCHY) {
+		Scene *sce = scene;  // to be able to delete, scenes are set...
+		outliner_do_object_operation(C, scene, soops, &soops->tree, object_select_hierarchy_cb);
+		if (scene != sce) {
+			ED_screen_set_scene(C, CTX_wm_screen(C), sce);
+		}	
+		str = "Select Object Hierarchy";
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
+	}
+	else if (event == OL_OP_DESELECT) {
 		outliner_do_object_operation(C, scene, soops, &soops->tree, object_deselect_cb);
 		str = "Deselect Objects";
 		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	}
-	else if (event == 4) {
+	else if (event == OL_OP_DELETE) {
 		outliner_do_object_operation(C, scene, soops, &soops->tree, object_delete_cb);
 
 		/* XXX: tree management normally happens from draw_outliner(), but when
@@ -619,30 +656,30 @@ static int outliner_object_operation_exec(bContext *C, wmOperator *op)
 		 *      cleanup tree here to prevent such cases. */
 		outliner_cleanup_tree(soops);
 
-		DAG_scene_sort(bmain, scene);
+		DAG_relations_tag_update(bmain);
 		str = "Delete Objects";
 		WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
 	}
-	else if (event == 5) {    /* disabled, see above enum (ton) */
+	else if (event == OL_OP_LOCALIZED) {    /* disabled, see above enum (ton) */
 		outliner_do_object_operation(C, scene, soops, &soops->tree, id_local_cb);
 		str = "Localized Objects";
 	}
-	else if (event == 6) {
+	else if (event == OL_OP_TOGVIS) {
 		outliner_do_object_operation(C, scene, soops, &soops->tree, object_toggle_visibility_cb);
 		str = "Toggle Visibility";
 		WM_event_add_notifier(C, NC_SCENE | ND_OB_VISIBLE, scene);
 	}
-	else if (event == 7) {
+	else if (event == OL_OP_TOGSEL) {
 		outliner_do_object_operation(C, scene, soops, &soops->tree, object_toggle_selectability_cb);
 		str = "Toggle Selectability";
 		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
 	}
-	else if (event == 8) {
+	else if (event == OL_OP_TOGREN) {
 		outliner_do_object_operation(C, scene, soops, &soops->tree, object_toggle_renderability_cb);
 		str = "Toggle Renderability";
 		WM_event_add_notifier(C, NC_SCENE | ND_OB_RENDER, scene);
 	}
-	else if (event == 9) {
+	else if (event == OL_OP_RENAME) {
 		outliner_do_object_operation(C, scene, soops, &soops->tree, item_rename_cb);
 		str = "Rename Object";
 	}
@@ -712,10 +749,8 @@ static int outliner_group_operation_exec(bContext *C, wmOperator *op)
 	
 
 	if (event == 3) { /* instance */
-		Main *bmain = CTX_data_main(C);
-
 		/* works without this except if you try render right after, see: 22027 */
-		DAG_scene_sort(bmain, scene);
+		DAG_relations_tag_update(CTX_data_main(C));
 	}
 	
 	ED_undo_push(C, prop_group_op_types[event].name);
@@ -764,7 +799,7 @@ static EnumPropertyItem prop_id_op_types[] = {
 	{OUTLINER_IDOP_LOCAL, "LOCAL", 0, "Make Local", ""},
 	{OUTLINER_IDOP_SINGLE, "SINGLE", 0, "Make Single User", ""},
 	{OUTLINER_IDOP_FAKE_ADD, "ADD_FAKE", 0, "Add Fake User",
-     "Ensure datablock gets saved even if it isn't in use (e.g. for motion and material libraries)"},
+	 "Ensure datablock gets saved even if it isn't in use (e.g. for motion and material libraries)"},
 	{OUTLINER_IDOP_FAKE_CLEAR, "CLEAR_FAKE", 0, "Clear Fake User", ""},
 	{OUTLINER_IDOP_RENAME, "RENAME", 0, "Rename", ""},
 	{OUTLINER_IDOP_SELECT_LINKED, "SELECT_LINKED", 0, "Select Linked", ""},
@@ -1110,14 +1145,8 @@ static int outliner_animdata_operation_exec(bContext *C, wmOperator *op)
 	
 	/* update dependencies */
 	if (updateDeps) {
-		Main *bmain = CTX_data_main(C);
-		Scene *scene = CTX_data_scene(C);
-		
 		/* rebuild depsgraph for the new deps */
-		DAG_scene_sort(bmain, scene);
-		
-		/* force an update of depsgraph */
-		DAG_ids_flush_update(bmain, 0);
+		DAG_relations_tag_update(CTX_data_main(C));
 	}
 	
 	return OPERATOR_FINISHED;
@@ -1237,7 +1266,7 @@ void OUTLINER_OT_data_operation(wmOperatorType *ot)
 
 
 static int do_outliner_operation_event(bContext *C, Scene *scene, ARegion *ar, SpaceOops *soops,
-                                       TreeElement *te, wmEvent *event, const float mval[2])
+                                       TreeElement *te, const wmEvent *event, const float mval[2])
 {
 	ReportList *reports = CTX_wm_reports(C); // XXX...
 	
@@ -1267,7 +1296,9 @@ static int do_outliner_operation_event(bContext *C, Scene *scene, ARegion *ar, S
 			WM_operator_name_call(C, "OUTLINER_OT_object_operation", WM_OP_INVOKE_REGION_WIN, NULL);
 		}
 		else if (idlevel) {
-			if (idlevel == -1 || datalevel) BKE_report(reports, RPT_WARNING, "Mixed selection");
+			if (idlevel == -1 || datalevel) {
+				BKE_report(reports, RPT_WARNING, "Mixed selection");
+			}
 			else {
 				if (idlevel == ID_GR)
 					WM_operator_name_call(C, "OUTLINER_OT_group_operation", WM_OP_INVOKE_REGION_WIN, NULL);
@@ -1276,7 +1307,9 @@ static int do_outliner_operation_event(bContext *C, Scene *scene, ARegion *ar, S
 			}
 		}
 		else if (datalevel) {
-			if (datalevel == -1) BKE_report(reports, RPT_WARNING, "Mixed selection");
+			if (datalevel == -1) {
+				BKE_report(reports, RPT_WARNING, "Mixed selection");
+			}
 			else {
 				if (datalevel == TSE_ANIM_DATA)
 					WM_operator_name_call(C, "OUTLINER_OT_animdata_operation", WM_OP_INVOKE_REGION_WIN, NULL);
@@ -1303,7 +1336,7 @@ static int do_outliner_operation_event(bContext *C, Scene *scene, ARegion *ar, S
 }
 
 
-static int outliner_operation(bContext *C, wmOperator *UNUSED(op), wmEvent *event)
+static int outliner_operation(bContext *C, wmOperator *UNUSED(op), const wmEvent *event)
 {
 	Scene *scene = CTX_data_scene(C);
 	ARegion *ar = CTX_wm_region(C);

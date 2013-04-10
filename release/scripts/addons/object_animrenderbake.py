@@ -20,17 +20,17 @@ bl_info = {
     "name": "Animated Render Baker",
     "author": "Janne Karhu (jahka)",
     "version": (1, 0),
-    "blender": (2, 5, 8),
+    "blender": (2, 65, 0),
     "location": "Properties > Render > Bake Panel",
     "description": "Renderbakes a series of frames",
     "category": "Object",
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/' \
-        'Scripts/Object/Animated_Render_Baker',
-    'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
-        'func=detail&aid=24836'}
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
+                "Scripts/Object/Animated_Render_Baker",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"
+                   "func=detail&aid=24836"}
 
 import bpy
-from bpy.props import *
+from bpy.props import IntProperty
 
 class OBJECT_OT_animrenderbake(bpy.types.Operator):
     bl_label = "Animated Render Bake"
@@ -38,15 +38,15 @@ class OBJECT_OT_animrenderbake(bpy.types.Operator):
     bl_idname = "object.anim_bake_image"
     bl_register = True
 
-    def framefile(self, orig, frame):
+    def framefile(self, filepath, frame):
         """
         Set frame number to file name image.png -> image0013.png
         """
-        dot = orig.rfind(".")
-        return orig[:dot] + ('%04d' % frame) + orig[dot:]
-    
+        import os
+        fn, ext = os.path.splitext(filepath)
+        return "%s%04d%s" % (fn, frame, ext)
+
     def invoke(self, context, event):
-        import bpy
         import shutil
         
         scene = context.scene
@@ -74,13 +74,18 @@ class OBJECT_OT_animrenderbake(bpy.types.Operator):
             self.report({'ERROR'}, "The baked object must be a mesh object")
             return {'CANCELLED'}
 
+        if context.active_object.mode == 'EDIT':
+            self.report({'ERROR'}, "Can't bake in edit-mode")
+            return {'CANCELLED'}
+
         img = None
 
-        #find the image that's used for rendering
+        # find the image that's used for rendering
+        # TODO: support multiple images per bake
         for uvtex in context.active_object.data.uv_textures:
             if uvtex.active_render == True:
                 for uvdata in uvtex.data:
-                    if uvdata.image != None:
+                    if uvdata.image is not None:
                         img = uvdata.image
                         break
 
@@ -92,13 +97,17 @@ class OBJECT_OT_animrenderbake(bpy.types.Operator):
             self.report({'ERROR'}, "Save the image that's used for baking before use")
             return {'CANCELLED'}
 
+        if img.packed_file is not None:
+            self.report({'ERROR'}, "Can't animation-bake packed file")
+            return {'CANCELLED'}
+
         # make sure we have an absolute path so that copying works for sure
-        absp = bpy.path.abspath(img.filepath, library=img.library)
+        img_filepath_abs = bpy.path.abspath(img.filepath, library=img.library)
 
-        print("Animated baking for frames " + str(start) + " - " + str(end))
+        print("Animated baking for frames (%d - %d)" % (start, end))
 
-        for cfra in range(start, end+1):
-            print("Baking frame " + str(cfra))
+        for cfra in range(start, end + 1):
+            print("Baking frame %d" % cfra)
 
             # update scene to new frame and bake to template image
             scene.frame_set(cfra)
@@ -106,95 +115,56 @@ class OBJECT_OT_animrenderbake(bpy.types.Operator):
             if 'CANCELLED' in ret:
                 return {'CANCELLED'}
 
-            #currently the api doesn't allow img.save_as(), so just save the template image as usual for every frame and copy to a file with frame specific filename
+            # Currently the api doesn't allow img.save_as()
+            # so just save the template image as usual for
+            # every frame and copy to a file with frame specific filename
             img.save()
-            shutil.copyfile(absp, self.framefile(absp, cfra))
+            img_filepath_new = self.framefile(img_filepath_abs, cfra)
+            shutil.copyfile(img_filepath_abs, img_filepath_new)
+            print("Saved %r" % img_filepath_new)
 
-            print("Saved " + self.framefile(absp, cfra))
         print("Baking done!")
 
         return{'FINISHED'}
 
-# modified copy of original bake panel draw function
-def draw_animrenderbake(self, context):
+
+def draw(self, context):
     layout = self.layout
 
-    rd = context.scene.render
+    scene = context.scene
 
     row = layout.row()
-    row.operator("object.bake_image", icon='RENDER_STILL')
-    
-    #----------- beginning of modifications ----------------
     row.operator("object.anim_bake_image", text="Animated Bake", icon="RENDER_ANIMATION")
-    row = layout.row(align=True)
-    row.prop(context.scene, "animrenderbake_start")
-    row.prop(context.scene, "animrenderbake_end")
-    #-------------- end of modifications ---------------------
+    rowsub = row.row(align=True)
+    rowsub.prop(scene, "animrenderbake_start")
+    rowsub.prop(scene, "animrenderbake_end")
 
-    layout.prop(rd, "bake_type")
-
-    multires_bake = False
-    if rd.bake_type in ['NORMALS', 'DISPLACEMENT']:
-        layout.prop(rd, 'use_bake_multires')
-        multires_bake = rd.use_bake_multires
-
-    if not multires_bake:
-        if rd.bake_type == 'NORMALS':
-            layout.prop(rd, "bake_normal_space")
-        elif rd.bake_type in {'DISPLACEMENT', 'AO'}:
-            layout.prop(rd, "use_bake_normalize")
-
-        # col.prop(rd, "bake_aa_mode")
-        # col.prop(rd, "use_bake_antialiasing")
-
-        layout.separator()
-
-        split = layout.split()
-
-        col = split.column()
-        col.prop(rd, "use_bake_clear")
-        col.prop(rd, "bake_margin")
-        col.prop(rd, "bake_quad_split", text="Split")
-
-        col = split.column()
-        col.prop(rd, "use_bake_selected_to_active")
-        sub = col.column()
-        sub.active = rd.use_bake_selected_to_active
-        sub.prop(rd, "bake_distance")
-        sub.prop(rd, "bake_bias")
-    else:
-        if rd.bake_type == 'DISPLACEMENT':
-            layout.prop(rd, "use_bake_lores_mesh")
-
-        layout.prop(rd, "use_bake_clear")
-        layout.prop(rd, "bake_margin")
 
 def register():
     bpy.utils.register_module(__name__)
 
     bpy.types.Scene.animrenderbake_start = IntProperty(
-        name="Start",
-        description="Start frame of the animated bake",
-        default=1)
+            name="Start",
+            description="Start frame of the animated bake",
+            default=1)
 
     bpy.types.Scene.animrenderbake_end = IntProperty(
-        name="End",
-        description="End frame of the animated bake",
-        default=250)
+            name="End",
+            description="End frame of the animated bake",
+            default=250)
 
-    # replace original panel draw function with modified one
-    panel = bpy.types.RENDER_PT_bake
-    panel.old_draw = panel.draw
-    panel.draw = draw_animrenderbake
+    bpy.types.RENDER_PT_bake.prepend(draw)
+
 
 def unregister():
     bpy.utils.unregister_module(__name__)
 
     # restore original panel draw function
-    bpy.types.RENDER_PT_bake.draw = bpy.types.RENDER_PT_bake.old_draw
-    del bpy.types.RENDER_PT_bake.old_draw
     del bpy.types.Scene.animrenderbake_start
     del bpy.types.Scene.animrenderbake_end
+
+    bpy.types.RENDER_PT_bake.remove(draw)
+
 
 if __name__ == "__main__":
     register()

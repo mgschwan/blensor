@@ -33,6 +33,7 @@ extern "C" {
 #endif
 
 #include "BLI_linklist.h"
+#include "BLI_path_util.h"
 #include "RNA_types.h"
 
 typedef enum BC_export_mesh_type {
@@ -40,13 +41,22 @@ typedef enum BC_export_mesh_type {
 	BC_MESH_TYPE_RENDER
 } BC_export_mesh_type;
 
+typedef enum BC_export_transformation_type {
+	BC_TRANSFORMATION_TYPE_MATRIX,
+	BC_TRANSFORMATION_TYPE_TRANSROTLOC,
+	BC_TRANSFORMATION_TYPE_BOTH
+} BC_export_transformation_type;
+
 struct bContext;
 struct Scene;
 
 /*
  * both return 1 on success, 0 on error
  */
-int collada_import(bContext *C, const char *filepath);
+int collada_import(bContext *C,
+                   const char *filepath,
+                   int import_units);
+
 int collada_export(Scene *sce,
                    const char *filepath,
                    int apply_modifiers,
@@ -55,15 +65,18 @@ int collada_export(Scene *sce,
                    int selected,
                    int include_children,
                    int include_armatures,
+                   int include_shapekeys,
                    int deform_bones_only,
 
-				   int active_uv_only,
-				   int include_uv_textures,
-				   int include_material_textures,
-				   int use_texture_copies,
+                   int active_uv_only,
+                   int include_uv_textures,
+                   int include_material_textures,
+                   int use_texture_copies,
 
+                   int triangulate,
                    int use_object_instantiation,
                    int sort_by_name,
+                   BC_export_transformation_type export_transformation_type,
                    int second_life);
 
 

@@ -43,22 +43,22 @@
 #include "DNA_object_types.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_bpath.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
 
-#include "BKE_animsys.h"
+#include "BLF_translation.h"
+
 #include "BKE_action.h"
 #include "BKE_anim.h"
+#include "BKE_animsys.h"
 #include "BKE_constraint.h"
-#include "BKE_global.h"
 #include "BKE_fcurve.h"
+#include "BKE_global.h"
+#include "BKE_idprop.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_object.h"
-
-#include "BKE_idprop.h"
 
 #include "BIK_api.h"
 
@@ -79,11 +79,11 @@
 
 /* ***************** Library data level operations on action ************** */
 
-bAction *add_empty_action(const char name[])
+bAction *add_empty_action(Main *bmain, const char name[])
 {
 	bAction *act;
 	
-	act = BKE_libblock_alloc(&G.main->action, ID_AC, name);
+	act = BKE_libblock_alloc(&bmain->action, ID_AC, name);
 	
 	return act;
 }	
@@ -297,11 +297,11 @@ bActionGroup *action_groups_add_new(bAction *act, const char name[])
 	
 	/* make it selected, with default name */
 	agrp->flag = AGRP_SELECTED;
-	BLI_strncpy(agrp->name, name[0] ? name : "Group", sizeof(agrp->name));
+	BLI_strncpy(agrp->name, name[0] ? name : DATA_("Group"), sizeof(agrp->name));
 	
 	/* add to action, and validate */
 	BLI_addtail(&act->groups, agrp);
-	BLI_uniquename(&act->groups, agrp, "Group", '.', offsetof(bActionGroup, name), sizeof(agrp->name));
+	BLI_uniquename(&act->groups, agrp, DATA_("Group"), '.', offsetof(bActionGroup, name), sizeof(agrp->name));
 	
 	/* return the new group */
 	return agrp;
@@ -544,7 +544,7 @@ void BKE_pose_copy_data(bPose **dst, bPose *src, int copycon)
 	for (pchan = outPose->chanbase.first; pchan; pchan = pchan->next) {
 		/* TODO: rename this argument... */
 		if (copycon) {
-			copy_constraints(&listb, &pchan->constraints, TRUE);  // copy_constraints NULLs listb
+			BKE_copy_constraints(&listb, &pchan->constraints, TRUE);  // BKE_copy_constraints NULLs listb
 			pchan->constraints = listb;
 			pchan->mpath = NULL; /* motion paths should not get copied yet... */
 		}
@@ -622,7 +622,7 @@ void BKE_pose_channel_free(bPoseChannel *pchan)
 		pchan->mpath = NULL;
 	}
 
-	free_constraints(&pchan->constraints);
+	BKE_free_constraints(&pchan->constraints);
 	
 	if (pchan->prop) {
 		IDP_FreeProperty(pchan->prop);
@@ -712,7 +712,7 @@ void BKE_pose_channel_copy_data(bPoseChannel *pchan, const bPoseChannel *pchan_f
 	pchan->iklinweight = pchan_from->iklinweight;
 
 	/* constraints */
-	copy_constraints(&pchan->constraints, &pchan_from->constraints, TRUE);
+	BKE_copy_constraints(&pchan->constraints, &pchan_from->constraints, TRUE);
 
 	/* id-properties */
 	if (pchan->prop) {
@@ -826,9 +826,9 @@ void BKE_pose_add_group(Object *ob)
 		return;
 	
 	grp = MEM_callocN(sizeof(bActionGroup), "PoseGroup");
-	BLI_strncpy(grp->name, "Group", sizeof(grp->name));
+	BLI_strncpy(grp->name, DATA_("Group"), sizeof(grp->name));
 	BLI_addtail(&pose->agroups, grp);
-	BLI_uniquename(&pose->agroups, grp, "Group", '.', offsetof(bActionGroup, name), sizeof(grp->name));
+	BLI_uniquename(&pose->agroups, grp, DATA_("Group"), '.', offsetof(bActionGroup, name), sizeof(grp->name));
 	
 	pose->active_group = BLI_countlist(&pose->agroups);
 }
@@ -1119,18 +1119,18 @@ void BKE_pose_rest(bPose *pose)
 }
 
 /* both poses should be in sync */
-void BKE_pose_copy_result(bPose *to, bPose *from)
+bool BKE_pose_copy_result(bPose *to, bPose *from)
 {
 	bPoseChannel *pchanto, *pchanfrom;
 	
 	if (to == NULL || from == NULL) {
-		printf("pose result copy error to:%p from:%p\n", (void *)to, (void *)from); /* debug temp */
-		return;
+		printf("Pose copy error, pose to:%p from:%p\n", (void *)to, (void *)from); /* debug temp */
+		return false;
 	}
 
 	if (to == from) {
 		printf("BKE_pose_copy_result source and target are the same\n");
-		return;
+		return false;
 	}
 
 
@@ -1154,6 +1154,7 @@ void BKE_pose_copy_result(bPose *to, bPose *from)
 			pchanto->protectflag = pchanfrom->protectflag;
 		}
 	}
+	return true;
 }
 
 /* For the calculation of the effects of an Action at the given frame on an object 

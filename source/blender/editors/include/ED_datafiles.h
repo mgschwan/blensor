@@ -36,8 +36,17 @@
 extern int datatoc_startup_blend_size;
 extern char datatoc_startup_blend[];
 
-extern int datatoc_blender_icons_png_size;
-extern char datatoc_blender_icons_png[];
+extern int datatoc_preview_blend_size;
+extern char datatoc_preview_blend[];
+
+extern int datatoc_preview_cycles_blend_size;
+extern char datatoc_preview_cycles_blend[];
+
+extern int datatoc_blender_icons16_png_size;
+extern char datatoc_blender_icons16_png[];
+
+extern int datatoc_blender_icons32_png_size;
+extern char datatoc_blender_icons32_png[];
 
 extern int datatoc_prvicons_png_size;
 extern char datatoc_prvicons_png[];
@@ -146,6 +155,81 @@ extern char datatoc_twist_png[];
 
 extern int datatoc_vertexdraw_png_size;
 extern char datatoc_vertexdraw_png[];
+
+/* Matcap files */
+
+extern int datatoc_mc01_jpg_size;
+extern char datatoc_mc01_jpg[];
+
+extern int datatoc_mc02_jpg_size;
+extern char datatoc_mc02_jpg[];
+
+extern int datatoc_mc03_jpg_size;
+extern char datatoc_mc03_jpg[];
+
+extern int datatoc_mc04_jpg_size;
+extern char datatoc_mc04_jpg[];
+
+extern int datatoc_mc05_jpg_size;
+extern char datatoc_mc05_jpg[];
+
+extern int datatoc_mc06_jpg_size;
+extern char datatoc_mc06_jpg[];
+
+extern int datatoc_mc07_jpg_size;
+extern char datatoc_mc07_jpg[];
+
+extern int datatoc_mc08_jpg_size;
+extern char datatoc_mc08_jpg[];
+
+extern int datatoc_mc09_jpg_size;
+extern char datatoc_mc09_jpg[];
+
+extern int datatoc_mc10_jpg_size;
+extern char datatoc_mc10_jpg[];
+
+extern int datatoc_mc11_jpg_size;
+extern char datatoc_mc11_jpg[];
+
+extern int datatoc_mc12_jpg_size;
+extern char datatoc_mc12_jpg[];
+
+extern int datatoc_mc13_jpg_size;
+extern char datatoc_mc13_jpg[];
+
+extern int datatoc_mc14_jpg_size;
+extern char datatoc_mc14_jpg[];
+
+extern int datatoc_mc15_jpg_size;
+extern char datatoc_mc15_jpg[];
+
+extern int datatoc_mc16_jpg_size;
+extern char datatoc_mc16_jpg[];
+
+extern int datatoc_mc17_jpg_size;
+extern char datatoc_mc17_jpg[];
+
+extern int datatoc_mc18_jpg_size;
+extern char datatoc_mc18_jpg[];
+
+extern int datatoc_mc19_jpg_size;
+extern char datatoc_mc19_jpg[];
+
+extern int datatoc_mc20_jpg_size;
+extern char datatoc_mc20_jpg[];
+
+extern int datatoc_mc21_jpg_size;
+extern char datatoc_mc21_jpg[];
+
+extern int datatoc_mc22_jpg_size;
+extern char datatoc_mc22_jpg[];
+
+extern int datatoc_mc23_jpg_size;
+extern char datatoc_mc23_jpg[];
+
+extern int datatoc_mc24_jpg_size;
+extern char datatoc_mc24_jpg[];
+
 
 
 #endif /* __ED_DATAFILES_H__ */

@@ -39,6 +39,8 @@
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_sequence_types.h"
 
 #include "BKE_colortools.h"
@@ -135,7 +137,7 @@ static void modifier_apply_threaded(ImBuf *ibuf, ImBuf *mask, modifier_apply_thr
 	init_data.apply_callback = apply_callback;
 
 	IMB_processor_apply_threaded(ibuf->y, sizeof(ModifierThread), &init_data,
-                                 modifier_init_handle, modifier_do_thread);
+	                             modifier_init_handle, modifier_do_thread);
 }
 
 /* **** Color Balance Modifier **** */
@@ -162,13 +164,13 @@ static void colorBalance_apply(SequenceModifierData *smd, ImBuf *ibuf, ImBuf *ma
 }
 
 static SequenceModifierTypeInfo seqModifier_ColorBalance = {
-	"Color Balance",                   /* name */
-	"ColorBalanceModifierData",        /* struct_name */
-	sizeof(ColorBalanceModifierData),  /* struct_size */
-	colorBalance_init_data,            /* init_data */
-	NULL,                              /* free_data */
-	NULL,                              /* copy_data */
-	colorBalance_apply                 /* apply */
+	CTX_N_(BLF_I18NCONTEXT_ID_SEQUENCE, "Color Balance"),  /* name */
+	"ColorBalanceModifierData",                            /* struct_name */
+	sizeof(ColorBalanceModifierData),                      /* struct_size */
+	colorBalance_init_data,                                /* init_data */
+	NULL,                                                  /* free_data */
+	NULL,                                                  /* copy_data */
+	colorBalance_apply                                     /* apply */
 };
 
 /* **** Curves Modifier **** */
@@ -226,24 +228,28 @@ static void curves_apply_threaded(int width, int height, unsigned char *rect, fl
 			}
 			if (rect) {
 				unsigned char *pixel = rect + pixel_index;
-				unsigned char result[3];
+				float result[3], tempc[4];
 
-				curvemapping_evaluate_premulRGB(curve_mapping, result, pixel);
+				straight_uchar_to_premul_float(tempc, pixel);
+
+				curvemapping_evaluate_premulRGBF(curve_mapping, result, tempc);
 
 				if (mask_rect) {
 					float t[3];
 
 					rgb_uchar_to_float(t, mask_rect + pixel_index);
 
-					pixel[0] = pixel[0] * (1.0f - t[0]) + result[0] * t[0];
-					pixel[1] = pixel[1] * (1.0f - t[1]) + result[1] * t[1];
-					pixel[2] = pixel[2] * (1.0f - t[2]) + result[2] * t[2];
+					tempc[0] = tempc[0] * (1.0f - t[0]) + result[0] * t[0];
+					tempc[1] = tempc[1] * (1.0f - t[1]) + result[1] * t[1];
+					tempc[2] = tempc[2] * (1.0f - t[2]) + result[2] * t[2];
 				}
 				else {
-					pixel[0] = result[0];
-					pixel[1] = result[1];
-					pixel[2] = result[2];
+					tempc[0] = result[0];
+					tempc[1] = result[1];
+					tempc[2] = result[2];
 				}
+
+				premul_float_to_straight_uchar(pixel, tempc);
 			}
 		}
 	}
@@ -267,13 +273,13 @@ static void curves_apply(struct SequenceModifierData *smd, ImBuf *ibuf, ImBuf *m
 }
 
 static SequenceModifierTypeInfo seqModifier_Curves = {
-	"Curves",                    /* name */
-	"CurvesModifierData",        /* struct_name */
-	sizeof(CurvesModifierData),  /* struct_size */
-	curves_init_data,            /* init_data */
-	curves_free_data,            /* free_data */
-	curves_copy_data,            /* copy_data */
-	curves_apply                 /* apply */
+	CTX_N_(BLF_I18NCONTEXT_ID_SEQUENCE, "Curves"),   /* name */
+	"CurvesModifierData",                            /* struct_name */
+	sizeof(CurvesModifierData),                      /* struct_size */
+	curves_init_data,                                /* init_data */
+	curves_free_data,                                /* free_data */
+	curves_copy_data,                                /* copy_data */
+	curves_apply                                     /* apply */
 };
 
 /* **** Hue Correct Modifier **** */
@@ -375,13 +381,13 @@ static void hue_correct_apply(struct SequenceModifierData *smd, ImBuf *ibuf, ImB
 }
 
 static SequenceModifierTypeInfo seqModifier_HueCorrect = {
-	"Hue Correct",                    /* name */
-	"HueCorrectModifierData",         /* struct_name */
-	sizeof(HueCorrectModifierData),   /* struct_size */
-	hue_correct_init_data,            /* init_data */
-	hue_correct_free_data,            /* free_data */
-	hue_correct_copy_data,            /* copy_data */
-	hue_correct_apply                 /* apply */
+	CTX_N_(BLF_I18NCONTEXT_ID_SEQUENCE, "Hue Correct"),    /* name */
+	"HueCorrectModifierData",                              /* struct_name */
+	sizeof(HueCorrectModifierData),                        /* struct_size */
+	hue_correct_init_data,                                 /* init_data */
+	hue_correct_free_data,                                 /* free_data */
+	hue_correct_copy_data,                                 /* copy_data */
+	hue_correct_apply                                      /* apply */
 };
 
 /* **** Bright/Contrast Modifier **** */
@@ -434,7 +440,7 @@ static void brightcontrast_apply_threaded(int width, int height, unsigned char *
 						unsigned char *m = mask_rect + pixel_index;
 						float t = (float) m[c] / 255.0f;
 
-						v = (float) pixel[c] * (1.0f - t) + v * t;
+						v = (float) pixel[c] / 255.0f * (1.0f - t) + v * t;
 					}
 
 					pixel[c] = FTOCHAR(v);
@@ -472,13 +478,13 @@ static void brightcontrast_apply(struct SequenceModifierData *smd, ImBuf *ibuf, 
 }
 
 static SequenceModifierTypeInfo seqModifier_BrightContrast = {
-	"Bright/Contrast",                   /* name */
-	"BrightContrastModifierData",        /* struct_name */
-	sizeof(BrightContrastModifierData),  /* struct_size */
-	NULL,                                /* init_data */
-	NULL,                                /* free_data */
-	NULL,                                /* copy_data */
-	brightcontrast_apply                 /* apply */
+	CTX_N_(BLF_I18NCONTEXT_ID_SEQUENCE, "Bright/Contrast"),   /* name */
+	"BrightContrastModifierData",                             /* struct_name */
+	sizeof(BrightContrastModifierData),                       /* struct_size */
+	NULL,                                                     /* init_data */
+	NULL,                                                     /* free_data */
+	NULL,                                                     /* copy_data */
+	brightcontrast_apply                                      /* apply */
 };
 
 /*********************** Modifier functions *************************/
@@ -568,7 +574,8 @@ void BKE_sequence_modifier_unique_name(Sequence *seq, SequenceModifierData *smd)
 {
 	SequenceModifierTypeInfo *smti = BKE_sequence_modifier_type_info_get(smd->type);
 
-	BLI_uniquename(&seq->modifiers, smd, smti->name, '.', offsetof(SequenceModifierData, name), sizeof(smd->name));
+	BLI_uniquename(&seq->modifiers, smd, CTX_DATA_(BLF_I18NCONTEXT_ID_SEQUENCE, smti->name), '.',
+	               offsetof(SequenceModifierData, name), sizeof(smd->name));
 }
 
 SequenceModifierData *BKE_sequence_modifier_find_by_name(Sequence *seq, char *name)

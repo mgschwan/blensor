@@ -30,9 +30,9 @@
 
 CEmptyValue::CEmptyValue()
 /*
-pre:
-effect: constructs a new CEmptyValue
-*/
+ * pre:
+ * effect: constructs a new CEmptyValue
+ */
 {
 	SetModified(false);
 }
@@ -41,21 +41,21 @@ effect: constructs a new CEmptyValue
 
 CEmptyValue::~CEmptyValue()
 /*
-pre:
-effect: deletes the object
-*/
+ * pre:
+ * effect: deletes the object
+ */
 {
 
 }
 
 
 
-CValue * CEmptyValue::Calc(VALUE_OPERATOR op, CValue * val)
+CValue *CEmptyValue::Calc(VALUE_OPERATOR op, CValue *val)
 /*
-pre:
-ret: a new object containing the result of applying operator op to this
-object and val
-*/
+ * pre:
+ * ret: a new object containing the result of applying operator op to this
+ * object and val
+ */
 {
 	return val->CalcFinal(VALUE_EMPTY_TYPE, op, this);
 	
@@ -63,12 +63,12 @@ object and val
 
 
 
-CValue * CEmptyValue::CalcFinal(VALUE_DATA_TYPE dtype, VALUE_OPERATOR op, CValue * val)
+CValue * CEmptyValue::CalcFinal(VALUE_DATA_TYPE dtype, VALUE_OPERATOR op, CValue *val)
 /*
-pre: the type of val is dtype
-ret: a new object containing the result of applying operator op to val and
-this object
-*/
+ * pre: the type of val is dtype
+ * ret: a new object containing the result of applying operator op to val and
+ * this object
+ */
 {
 	return val->AddRef();
 }

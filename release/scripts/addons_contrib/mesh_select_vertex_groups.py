@@ -17,18 +17,18 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {
-    'name': 'Select Vertex Groups',
-    'author': 'Martin Ellison',
-    'version': (1, 0),
-    'blender': (2, 5, 9),
-    'location': 'Toolbox',
-    'description': 'Finds all the vertex groups that chosen verts are in, & any verts that are not in any group',
-    'warning': 'Buggy', # used for warning icon and text in addons panel
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
-        "Scripts/Modeling/Select_Vertex_Groups",
-    'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
-        'func=detail&aid=22025',
-    'category': 'Mesh'}
+    "name": "Select Vertex Groups",
+    "author": "Martin Ellison",
+    "version": (1, 0),
+    "blender": (2, 59, 0),
+    "location": "Toolbox",
+    "description": "Finds all the vertex groups that chosen verts are in, & any verts that are not in any group",
+    "warning": "Buggy", # used for warning icon and text in addons panel
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
+                "Scripts/Modeling/Select_Vertex_Groups",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"
+                   "func=detail&aid=22025",
+    "category": "Mesh"}
 
 """
 This script finds all the vertex groups that chosen vertexes are in, and any vertexes that are not in any vertex group.

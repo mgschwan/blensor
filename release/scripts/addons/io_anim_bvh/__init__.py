@@ -21,7 +21,7 @@
 bl_info = {
     "name": "BioVision Motion Capture (BVH) format",
     "author": "Campbell Barton",
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     "location": "File > Import-Export",
     "description": "Import-Export BVH from armature objects",
     "warning": "",
@@ -79,6 +79,13 @@ class ImportBVH(bpy.types.Operator, ImportHelper):
             name="Start Frame",
             description="Starting frame for the animation",
             default=1,
+            )
+    use_fps_scale = BoolProperty(
+            name="Scale FPS",
+            description=("Scale the framerate from the BVH to "
+                         "the current scenes, otherwise each "
+                         "BVH frame maps directly to a Blender frame"),
+            default=False,
             )
     use_cyclic = BoolProperty(
             name="Loop",

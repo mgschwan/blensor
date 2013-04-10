@@ -83,7 +83,7 @@
 // not valid, skip rendering this frame.
 //#define NZC_GUARDED_OUTPUT
 #define DEFAULT_LOGIC_TIC_RATE 60.0
-#define DEFAULT_PHYSICS_TIC_RATE 60.0
+//#define DEFAULT_PHYSICS_TIC_RATE 60.0
 
 #ifdef FREE_WINDOWS /* XXX mingw64 (gcc 4.7.0) defines a macro for DrawText that translates to DrawTextA. Not good */
 #ifdef DrawText
@@ -184,7 +184,10 @@ KX_KetsjiEngine::KX_KetsjiEngine(KX_ISystem* system)
 
 	for (int i = tc_first; i < tc_numCategories; i++)
 		m_logger->AddCategory((KX_TimeCategory)i);
-		
+
+#ifdef WITH_PYTHON
+	m_pyprofiledict = PyDict_New();
+#endif
 }
 
 
@@ -197,6 +200,10 @@ KX_KetsjiEngine::~KX_KetsjiEngine()
 	delete m_logger;
 	if (m_usedome)
 		delete m_dome;
+
+#ifdef WITH_PYTHON
+	Py_CLEAR(m_pyprofiledict);
+#endif
 }
 
 
@@ -256,6 +263,12 @@ void KX_KetsjiEngine::SetPyNamespace(PyObject *pythondictionary)
 	MT_assert(pythondictionary);
 	m_pythondictionary = pythondictionary;
 }
+
+PyObject* KX_KetsjiEngine::GetPyProfileDict()
+{
+	Py_INCREF(m_pyprofiledict);
+	return m_pyprofiledict;
+}
 #endif
 
 
@@ -297,7 +310,7 @@ void KX_KetsjiEngine::RenderDome()
 		return;
 
 	KX_SceneList::iterator sceneit;
-	KX_Scene* scene;
+	KX_Scene* scene = NULL;
 
 	int n_renders=m_dome->GetNumberRenders();// usually 4 or 6
 	for (int i=0;i<n_renders;i++) {
@@ -592,6 +605,8 @@ bool KX_KetsjiEngine::NextFrame()
 
 		m_frameTime += framestep;
 		
+		m_sceneconverter->MergeAsyncLoads();
+
 		for (sceneit = m_scenes.begin();sceneit != m_scenes.end(); ++sceneit)
 		// for each scene, call the proceed functions
 		{
@@ -1165,7 +1180,7 @@ void KX_KetsjiEngine::RenderShadowBuffers(KX_Scene *scene)
 			m_rasterizer->SetDrawingMode(RAS_IRasterizer::KX_SHADOW);
 
 			/* binds framebuffer object, sets up camera .. */
-			light->BindShadowBuffer(m_rasterizer, cam, camtrans);
+			light->BindShadowBuffer(m_rasterizer, m_canvas, cam, camtrans);
 
 			/* update scene */
 			scene->CalculateVisibleMeshes(m_rasterizer, cam, light->GetShadowLayer());
@@ -1444,7 +1459,7 @@ void KX_KetsjiEngine::RenderDebugProperties()
 	int xcoord = 12;	// mmmm, these constants were taken from blender source
 	int ycoord = 17;	// to 'mimic' behavior
 	
-	int profile_indent = 64;
+	int profile_indent = 72;
 
 	float tottime = m_logger->GetAverage();
 	if (tottime < 1e-6f) {
@@ -1455,15 +1470,14 @@ void KX_KetsjiEngine::RenderDebugProperties()
 	RAS_Rect viewport;
 	m_canvas->SetViewPort(0, 0, int(m_canvas->GetWidth()), int(m_canvas->GetHeight()));
 	
-	if (m_show_framerate || m_show_profile)	{
+	if (m_show_framerate || m_show_profile) {
 		/* Title for profiling("Profile") */
-		debugtxt.Format("Profile");
 		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
-									debugtxt.Ptr(),
-									xcoord + const_xindent + title_xmargin, // Adds the constant x indent (0 for now) to the title x margin
-									ycoord,
-									m_canvas->GetWidth() /* RdV, TODO ?? */,
-									m_canvas->GetHeight() /* RdV, TODO ?? */);
+		                            "Profile",
+		                            xcoord + const_xindent + title_xmargin, // Adds the constant x indent (0 for now) to the title x margin
+		                            ycoord,
+		                            m_canvas->GetWidth() /* RdV, TODO ?? */,
+		                            m_canvas->GetHeight() /* RdV, TODO ?? */);
 
 		// Increase the indent by default increase
 		ycoord += const_ysize;
@@ -1473,64 +1487,69 @@ void KX_KetsjiEngine::RenderDebugProperties()
 
 	/* Framerate display */
 	if (m_show_framerate) {
-		debugtxt.Format("Frametime :");
-		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
-									debugtxt.Ptr(),
-									xcoord + const_xindent,
-									ycoord, 
-									m_canvas->GetWidth() /* RdV, TODO ?? */,
-									m_canvas->GetHeight() /* RdV, TODO ?? */);
+		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
+		                            "Frametime :",
+		                            xcoord + const_xindent,
+		                            ycoord,
+		                            m_canvas->GetWidth() /* RdV, TODO ?? */,
+		                            m_canvas->GetHeight() /* RdV, TODO ?? */);
 		
-		debugtxt.Format("%5.1fms (%5.1f fps)", tottime * 1000.f, 1.0/tottime);
-		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
-									debugtxt.Ptr(),
-									xcoord + const_xindent + profile_indent,
-									ycoord,
-									m_canvas->GetWidth() /* RdV, TODO ?? */,
-									m_canvas->GetHeight() /* RdV, TODO ?? */);
+		debugtxt.Format("%5.1fms (%.1ffps)", tottime * 1000.f, 1.0/tottime);
+		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
+		                            debugtxt.ReadPtr(),
+		                            xcoord + const_xindent + profile_indent,
+		                            ycoord,
+		                            m_canvas->GetWidth() /* RdV, TODO ?? */,
+		                            m_canvas->GetHeight() /* RdV, TODO ?? */);
 		// Increase the indent by default increase
 		ycoord += const_ysize;
 	}
 
 	/* Profile display */
-	if (m_show_profile)
-	{
-		for (int j = tc_first; j < tc_numCategories; j++)
-		{
-			debugtxt.Format(m_profileLabels[j]);
+	if (m_show_profile) {
+		for (int j = tc_first; j < tc_numCategories; j++) {
 			m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
-			                            debugtxt.Ptr(),
+			                            m_profileLabels[j],
 			                            xcoord + const_xindent,
-										ycoord,
+			                            ycoord,
 			                            m_canvas->GetWidth(),
 			                            m_canvas->GetHeight());
 
 			double time = m_logger->GetAverage((KX_TimeCategory)j);
 
-			debugtxt.Format("%5.2fms (%2d%%)", time*1000.f, (int)(time/tottime * 100.f));
+			debugtxt.Format("%5.2fms | %d%%", time*1000.f, (int)(time/tottime * 100.f));
 			m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
-			                            debugtxt.Ptr(),
+			                            debugtxt.ReadPtr(),
 			                            xcoord + const_xindent + profile_indent, ycoord,
 			                            m_canvas->GetWidth(),
 			                            m_canvas->GetHeight());
+
+			m_rendertools->RenderBox2D(xcoord + (int)(2.2 * profile_indent), ycoord, m_canvas->GetWidth(), m_canvas->GetHeight(), time/tottime);
 			ycoord += const_ysize;
+
+#ifdef WITH_PYTHON
+			PyObject *val = PyTuple_New(2);
+			PyTuple_SetItem(val, 0, PyFloat_FromDouble(time*1000.f));
+			PyTuple_SetItem(val, 1, PyFloat_FromDouble(time/tottime * 100.f));
+
+			PyDict_SetItemString(m_pyprofiledict, m_profileLabels[j], val);
+			Py_DECREF(val);
+#endif
 		}
 	}
 	// Add the ymargin for titles below the other section of debug info
 	ycoord += title_y_top_margin;
 
 	/* Property display*/
-	if (m_show_debug_properties && m_propertiesPresent)
-	{
+	if (m_show_debug_properties && m_propertiesPresent) {
 
 		/* Title for debugging("Debug properties") */
-		debugtxt.Format("Debug Properties");
-		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
-									debugtxt.Ptr(),
-									xcoord + const_xindent + title_xmargin, // Adds the constant x indent (0 for now) to the title x margin
-									ycoord, 
-									m_canvas->GetWidth() /* RdV, TODO ?? */, 
-									m_canvas->GetHeight() /* RdV, TODO ?? */);
+		m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
+		                            "Debug Properties",
+		                            xcoord + const_xindent + title_xmargin, // Adds the constant x indent (0 for now) to the title x margin
+		                            ycoord,
+		                            m_canvas->GetWidth() /* RdV, TODO ?? */,
+		                            m_canvas->GetHeight() /* RdV, TODO ?? */);
 
 		// Increase the indent by default increase
 		ycoord += const_ysize;
@@ -1538,20 +1557,18 @@ void KX_KetsjiEngine::RenderDebugProperties()
 		ycoord += title_y_bottom_margin;
 
 		KX_SceneList::iterator sceneit;
-		for (sceneit = m_scenes.begin();sceneit != m_scenes.end() ; sceneit++)
-		{
+		for (sceneit = m_scenes.begin();sceneit != m_scenes.end(); sceneit++) {
 			KX_Scene* scene = *sceneit;
 			/* the 'normal' debug props */
 			vector<SCA_DebugProp*>& debugproplist = scene->GetDebugProperties();
 			
 			for (vector<SCA_DebugProp*>::iterator it = debugproplist.begin();
-				 !(it==debugproplist.end());it++)
+			     !(it==debugproplist.end());it++)
 			{
-				CValue* propobj = (*it)->m_obj;
+				CValue *propobj = (*it)->m_obj;
 				STR_String objname = propobj->GetName();
 				STR_String propname = (*it)->m_name;
-				if (propname == "__state__")
-				{
+				if (propname == "__state__") {
 					// reserve name for object state
 					KX_GameObject* gameobj = static_cast<KX_GameObject*>(propobj);
 					unsigned int state = gameobj->GetState();
@@ -1569,27 +1586,25 @@ void KX_KetsjiEngine::RenderDebugProperties()
 							first = false;
 						}
 					}
-					m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
-													debugtxt.Ptr(),
-													xcoord + const_xindent,
-													ycoord,
-													m_canvas->GetWidth(),
-													m_canvas->GetHeight());
+					m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
+					                            debugtxt.ReadPtr(),
+					                            xcoord + const_xindent,
+					                            ycoord,
+					                            m_canvas->GetWidth(),
+					                            m_canvas->GetHeight());
 					ycoord += const_ysize;
 				}
-				else
-				{
-					CValue* propval = propobj->GetProperty(propname);
-					if (propval)
-					{
+				else {
+					CValue *propval = propobj->GetProperty(propname);
+					if (propval) {
 						STR_String text = propval->GetText();
 						debugtxt = objname + ": '" + propname + "' = " + text;
-						m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED, 
-													debugtxt.Ptr(),
-													xcoord + const_xindent,
-													ycoord,
-													m_canvas->GetWidth(),
-													m_canvas->GetHeight());
+						m_rendertools->RenderText2D(RAS_IRenderTools::RAS_TEXT_PADDED,
+						                            debugtxt.ReadPtr(),
+						                            xcoord + const_xindent,
+						                            ycoord,
+						                            m_canvas->GetWidth(),
+						                            m_canvas->GetHeight());
 						ycoord += const_ysize;
 					}
 				}
@@ -1625,19 +1640,14 @@ KX_Scene* KX_KetsjiEngine::FindScene(const STR_String& scenename)
 void KX_KetsjiEngine::ConvertAndAddScene(const STR_String& scenename,bool overlay)
 {
 	// only add scene when it doesn't exist!
-	if (FindScene(scenename))
-	{
-		STR_String tmpname = scenename;
-		printf("warning: scene %s already exists, not added!\n",tmpname.Ptr());
+	if (FindScene(scenename)) {
+		printf("warning: scene %s already exists, not added!\n",scenename.ReadPtr());
 	}
-	else
-	{
-		if (overlay)
-		{
+	else {
+		if (overlay) {
 			m_addingOverlayScenes.insert(scenename);
 		}
-		else
-		{
+		else {
 			m_addingBackgroundScenes.insert(scenename);
 		}
 	}
@@ -1686,7 +1696,7 @@ void KX_KetsjiEngine::RemoveScheduledScenes()
 	}
 }
 
-KX_Scene* KX_KetsjiEngine::CreateScene(Scene *scene)
+KX_Scene* KX_KetsjiEngine::CreateScene(Scene *scene, bool libloading)
 {
 	KX_Scene* tmpscene = new KX_Scene(m_keyboarddevice,
 									  m_mousedevice,
@@ -1697,7 +1707,8 @@ KX_Scene* KX_KetsjiEngine::CreateScene(Scene *scene)
 
 	m_sceneconverter->ConvertScene(tmpscene,
 							  m_rendertools,
-							  m_canvas);
+							  m_canvas,
+							  libloading);
 
 	return tmpscene;
 }

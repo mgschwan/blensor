@@ -53,6 +53,7 @@
 #include "BKE_action.h"
 #include "BKE_fcurve.h"
 #include "BKE_global.h"
+#include "BKE_main.h"
 #include "BKE_nla.h"
 #include "BKE_context.h"
 #include "BKE_report.h"
@@ -104,8 +105,10 @@ static int act_new_exec(bContext *C, wmOperator *UNUSED(op))
 			action = BKE_action_copy(oldact);
 		}
 		else {
+			Main *bmain = CTX_data_main(C);
+
 			/* just make a new (empty) action */
-			action = add_empty_action("Action");
+			action = add_empty_action(bmain, "Action");
 		}
 		
 		/* when creating new ID blocks, use is already 1 (fake user), 
@@ -739,7 +742,7 @@ static int actkeys_duplicate_exec(bContext *C, wmOperator *UNUSED(op))
 	return OPERATOR_FINISHED;
 }
 
-static int actkeys_duplicate_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int actkeys_duplicate_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	actkeys_duplicate_exec(C, op);
 	

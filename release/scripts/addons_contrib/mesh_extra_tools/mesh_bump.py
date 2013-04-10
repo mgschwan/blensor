@@ -22,19 +22,18 @@
 # ***** END GPL LICENCE BLOCK *****
 
 bl_info = {
-	"name": "Bump",
-	"author": "Dolf Veenvliet",
-	"version": 1,
-	"blender": (2, 5, 6),
-	"api": 31847,
-	"location": "View3D > Specials > Bump",
-	"description": "Extrude and translate/rotate/scale multiple times",
-	"warning": "",
-	"wiki_url": "",
-	"tracker_url": "",
-	"category": "Mesh"}
-	
-	
+    "name": "Bump",
+    "author": "Dolf Veenvliet",
+    "version": 1,
+    "blender": (2, 56, 0),
+    "api": 31847,
+    "location": "View3D > Specials > Bump",
+    "description": "Extrude and translate/rotate/scale multiple times",
+    "warning": "",
+    "wiki_url": "",
+    "tracker_url": "",
+    "category": "Mesh"}
+
 """
 Usage:
 

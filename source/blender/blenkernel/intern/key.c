@@ -40,6 +40,8 @@
 #include "BLI_math_vector.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_anim_types.h"
 #include "DNA_key_types.h"
 #include "DNA_lattice_types.h"
@@ -107,19 +109,6 @@ void BKE_key_free_nolib(Key *key)
 	}
 	
 }
-
-/* GS reads the memory pointed at in a specific ordering. There are,
- * however two definitions for it. I have jotted them down here, both,
- * but I think the first one is actually used. The thing is that
- * big-endian systems might read this the wrong way round. OTOH, we
- * constructed the IDs that are read out with this macro explicitly as
- * well. I expect we'll sort it out soon... */
-
-/* from blendef: */
-#define GS(a)   (*((short *)(a)))
-
-/* from misc_util: flip the bytes from x  */
-/*  #define GS(x) (((unsigned char *)(x))[0] << 8 | ((unsigned char *)(x))[1]) */
 
 Key *BKE_key_add(ID *id)    /* common function */
 {
@@ -259,7 +248,7 @@ void BKE_key_sort(Key *key)
 		/* find the right location and insert before */
 		for (kb2 = key->block.first; kb2; kb2 = kb2->next) {
 			if (kb2->pos > kb->pos) {
-				BLI_insertlink(&key->block, kb2->prev, kb);
+				BLI_insertlinkafter(&key->block, kb2->prev, kb);
 				break;
 			}
 		}
@@ -418,9 +407,13 @@ static int setkeys(float fac, ListBase *lb, KeyBlock *k[], float t[4], int cycl)
 				k1 = firstkey;
 				ofs += dpos;
 			}
-			else if (t[2] == t[3]) break;
+			else if (t[2] == t[3]) {
+				break;
+			}
 		}
-		else k1 = k1->next;
+		else {
+			k1 = k1->next;
+		}
 
 		t[0] = t[1];
 		k[0] = k[1];
@@ -608,7 +601,9 @@ static void cp_key(const int start, int end, const int tot, char *poin, Key *key
 				k1 += a * key->elemsize;
 			}
 		}
-		else k1 += start * key->elemsize;
+		else {
+			k1 += start * key->elemsize;
+		}
 	}
 	
 	if (mode == KEY_MODE_BEZTRIPLE) {
@@ -841,7 +836,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 		if (k[0]->totelem) {
 			k1d = k[0]->totelem / (float)tot;
 		}
-		else flagdo -= 1;
+		else {
+			flagdo -= 1;
+		}
 	}
 	if (tot != k[1]->totelem) {
 		k2tot = 0.0;
@@ -849,7 +846,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 		if (k[0]->totelem) {
 			k2d = k[1]->totelem / (float)tot;
 		}
-		else flagdo -= 2;
+		else {
+			flagdo -= 2;
+		}
 	}
 	if (tot != k[2]->totelem) {
 		k3tot = 0.0;
@@ -857,7 +856,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 		if (k[0]->totelem) {
 			k3d = k[2]->totelem / (float)tot;
 		}
-		else flagdo -= 4;
+		else {
+			flagdo -= 4;
+		}
 	}
 	if (tot != k[3]->totelem) {
 		k4tot = 0.0;
@@ -865,7 +866,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 		if (k[0]->totelem) {
 			k4d = k[3]->totelem / (float)tot;
 		}
-		else flagdo -= 8;
+		else {
+			flagdo -= 8;
+		}
 	}
 
 	/* this exception needed for slurphing */
@@ -882,7 +885,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 					k1 += a * key->elemsize;
 				}
 			}
-			else k1 += start * key->elemsize;
+			else {
+				k1 += start * key->elemsize;
+			}
 		}
 		if (flagdo & 2) {
 			if (flagflo & 2) {
@@ -893,7 +898,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 					k2 += a * key->elemsize;
 				}
 			}
-			else k2 += start * key->elemsize;
+			else {
+				k2 += start * key->elemsize;
+			}
 		}
 		if (flagdo & 4) {
 			if (flagflo & 4) {
@@ -904,7 +911,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 					k3 += a * key->elemsize;
 				}
 			}
-			else k3 += start * key->elemsize;
+			else {
+				k3 += start * key->elemsize;
+			}
 		}
 		if (flagdo & 8) {
 			if (flagflo & 8) {
@@ -915,7 +924,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 					k4 += a * key->elemsize;
 				}
 			}
-			else k4 += start * key->elemsize;
+			else {
+				k4 += start * key->elemsize;
+			}
 		}
 
 	}
@@ -981,7 +992,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 					k2 += elemsize;
 				}
 			}
-			else k2 += elemsize;
+			else {
+				k2 += elemsize;
+			}
 		}
 		if (flagdo & 4) {
 			if (flagflo & 4) {
@@ -991,7 +1004,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 					k3 += elemsize;
 				}
 			}
-			else k3 += elemsize;
+			else {
+				k3 += elemsize;
+			}
 		}
 		if (flagdo & 8) {
 			if (flagflo & 8) {
@@ -1001,7 +1016,9 @@ static void do_key(const int start, int end, const int tot, char *poin, Key *key
 					k4 += elemsize;
 				}
 			}
-			else k4 += elemsize;
+			else {
+				k4 += elemsize;
+			}
 		}
 		
 		if (mode == KEY_MODE_BEZTRIPLE) a += 2;
@@ -1078,7 +1095,7 @@ static void do_mesh_key(Scene *scene, Object *ob, Key *key, char *out, const int
 	if (key->slurph && key->type != KEY_RELATIVE) {
 		const float ctime_scaled = key->ctime / 100.0f;
 		float delta = (float)key->slurph / tot;
-		float cfra = (float)scene->r.cfra;
+		float cfra = BKE_scene_frame_get(scene);
 		int step, a;
 
 		if (tot > 100 && slurph_opt) {
@@ -1176,7 +1193,7 @@ static void do_curve_key(Scene *scene, Object *ob, Key *key, char *out, const in
 	if (key->slurph && key->type != KEY_RELATIVE) {
 		const float ctime_scaled = key->ctime / 100.0f;
 		float delta = (float)key->slurph / tot;
-		float cfra = (float)scene->r.cfra;
+		float cfra = BKE_scene_frame_get(scene);
 		Nurb *nu;
 		int i = 0, remain = 0;
 		int step, a;
@@ -1258,7 +1275,7 @@ static void do_latt_key(Scene *scene, Object *ob, Key *key, char *out, const int
 	if (key->slurph && key->type != KEY_RELATIVE) {
 		const float ctime_scaled = key->ctime / 100.0f;
 		float delta = (float)key->slurph / tot;
-		float cfra = (float)scene->r.cfra;
+		float cfra = BKE_scene_frame_get(scene);
 		int a;
 
 		for (a = 0; a < tot; a++, cfra += delta) {
@@ -1300,13 +1317,13 @@ static void do_latt_key(Scene *scene, Object *ob, Key *key, char *out, const int
 }
 
 /* returns key coordinates (+ tilt) when key applied, NULL otherwise */
-float *do_ob_key(Scene *scene, Object *ob)
+float *BKE_key_evaluate_object(Scene *scene, Object *ob, int *r_totelem)
 {
 	Key *key = BKE_key_from_object(ob);
 	KeyBlock *actkb = BKE_keyblock_from_object(ob);
 	char *out;
 	int tot = 0, size = 0;
-	
+
 	if (key == NULL || key->block.first == NULL)
 		return NULL;
 
@@ -1344,7 +1361,7 @@ float *do_ob_key(Scene *scene, Object *ob)
 		return NULL;
 	
 	/* allocate array */
-	out = MEM_callocN(size, "do_ob_key out");
+	out = MEM_callocN(size, "BKE_key_evaluate_object out");
 
 	/* prevent python from screwing this up? anyhoo, the from pointer could be dropped */
 	key->from = (ID *)ob->data;
@@ -1373,7 +1390,7 @@ float *do_ob_key(Scene *scene, Object *ob)
 	}
 	else {
 		/* do shapekey local drivers */
-		float ctime = (float)scene->r.cfra; // XXX this needs to be checked
+		float ctime = BKE_scene_frame_get(scene);
 
 		BKE_animsys_evaluate_animdata(scene, &key->id, key->adt, ctime, ADT_RECALC_DRIVERS);
 		
@@ -1383,6 +1400,9 @@ float *do_ob_key(Scene *scene, Object *ob)
 		else if (ob->type == OB_SURF) do_curve_key(scene, ob, key, out, tot);
 	}
 	
+	if (r_totelem) {
+		*r_totelem = tot;
+	}
 	return (float *)out;
 }
 
@@ -1423,11 +1443,13 @@ KeyBlock *BKE_keyblock_add(Key *key, const char *name)
 		BLI_strncpy(kb->name, name, sizeof(kb->name));
 	}
 	else {
-		if (tot == 1) BLI_strncpy(kb->name, "Basis", sizeof(kb->name));
-		else BLI_snprintf(kb->name, sizeof(kb->name), "Key %d", tot - 1);
+		if (tot == 1)
+			BLI_strncpy(kb->name, DATA_("Basis"), sizeof(kb->name));
+		else
+			BLI_snprintf(kb->name, sizeof(kb->name), DATA_("Key %d"), tot - 1);
 	}
 
-	BLI_uniquename(&key->block, kb, "Key", '.', offsetof(KeyBlock, name), sizeof(kb->name));
+	BLI_uniquename(&key->block, kb, DATA_("Key"), '.', offsetof(KeyBlock, name), sizeof(kb->name));
 
 	kb->uid = key->uidgen++;
 
@@ -1732,7 +1754,7 @@ void BKE_key_convert_to_mesh(KeyBlock *kb, Mesh *me)
 }
 
 /************************* vert coords ************************/
-float (*BKE_key_convert_to_vertcos(Object * ob, KeyBlock * kb))[3]
+float (*BKE_key_convert_to_vertcos(Object *ob, KeyBlock *kb))[3]
 {
 	float (*vertCos)[3], *co;
 	float *fp = kb->data;

@@ -138,15 +138,15 @@ BF_COLLADA_INC = '${BF_COLLADA}'
 BF_COLLADA_LIB = 'bf_collada'
 
 BF_OPENCOLLADA = LIBDIR + '/opencollada'
-BF_OPENCOLLADA_INC = '${BF_OPENCOLLADA}/include'
+BF_OPENCOLLADA_INC = '${BF_OPENCOLLADA}/include/opencollada'
 BF_OPENCOLLADA_LIB = 'OpenCOLLADAStreamWriter OpenCOLLADASaxFrameworkLoader OpenCOLLADAFramework OpenCOLLADABaseUtils GeneratedSaxParser UTF MathMLSolver pcre buffer ftoa xml'
-BF_OPENCOLLADA_LIBPATH = '${BF_OPENCOLLADA}/lib'
+BF_OPENCOLLADA_LIBPATH = '${BF_OPENCOLLADA}/lib/opencollada'
 
 #Cycles
 WITH_BF_CYCLES = True
 WITH_BF_CYCLES_CUDA_BINARIES = False
 BF_CYCLES_CUDA_NVCC = "" # Path to the NVIDIA CUDA compiler
-BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_13', 'sm_20', 'sm_21', 'sm_30']
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_20', 'sm_21', 'sm_30']
 
 WITH_BF_OIIO = True
 BF_OIIO = LIBDIR + '/openimageio'
@@ -173,6 +173,9 @@ BF_RAYOPTIMIZATION_SSE_FLAGS = ['-mmmx', '-msse', '-msse2']
 
 #May produce errors with unsupported MinGW-w64 builds
 WITH_BF_OPENMP = False
+
+#Freestyle
+WITH_BF_FREESTYLE = True
 
 ##
 CC = 'gcc'

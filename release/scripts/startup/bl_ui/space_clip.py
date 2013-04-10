@@ -19,7 +19,24 @@
 # <pep8-80 compliant>
 
 import bpy
-from bpy.types import Panel, Header, Menu
+from bpy.types import Panel, Header, Menu, UIList
+from bpy.app.translations import pgettext_iface as iface_
+
+
+class CLIP_UL_tracking_objects(UIList):
+    def draw_item(self, context, layout, data, item, icon,
+                  active_data, active_propname, index):
+        # assert(isinstance(item, bpy.types.MovieTrackingObject)
+        tobj = item
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            layout.label(text=tobj.name, translate=False,
+                         icon='CAMERA_DATA' if tobj.is_camera
+                         else 'OBJECT_DATA')
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.label(text="",
+                         icon='CAMERA_DATA' if tobj.is_camera
+                         else 'OBJECT_DATA')
 
 
 class CLIP_HT_header(Header):
@@ -315,14 +332,14 @@ class CLIP_PT_tools_solve(CLIP_PT_tracking_panel, Panel):
         col.prop(tracking_object, "keyframe_b")
 
         col = layout.column(align=True)
-        col.active = (tracking_object.is_camera and
-                      not settings.use_tripod_solver)
+        col.active = tracking_object.is_camera
         col.label(text="Refine:")
         col.prop(settings, "refine_intrinsics", text="")
 
         col = layout.column(align=True)
         col.active = not settings.use_tripod_solver
-        col.prop(settings, "use_fallback_reconstruction", text="Allow Fallback")
+        col.prop(settings, "use_fallback_reconstruction",
+                 text="Allow Fallback")
         sub = col.column()
         sub.active = settings.use_fallback_reconstruction
         sub.prop(settings, "reconstruction_success_threshold")
@@ -471,7 +488,7 @@ class CLIP_PT_objects(CLIP_PT_clip_view_panel, Panel):
         tracking = sc.clip.tracking
 
         row = layout.row()
-        row.template_list(tracking, "objects",
+        row.template_list("CLIP_UL_tracking_objects", "", tracking, "objects",
                           tracking, "active_object_index", rows=3)
 
         sub = row.column(align=True)
@@ -728,7 +745,8 @@ class CLIP_PT_stabilization(CLIP_PT_reconstruction_panel, Panel):
         layout.active = stab.use_2d_stabilization
 
         row = layout.row()
-        row.template_list(stab, "tracks", stab, "active_track_index", rows=3)
+        row.template_list("UI_UL_list", "stabilization_tracks", stab, "tracks",
+                          stab, "active_track_index", rows=3)
 
         sub = row.column(align=True)
 
@@ -861,12 +879,14 @@ class CLIP_PT_tools_clip(CLIP_PT_clip_view_panel, Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Clip"
+    bl_translation_context = bpy.app.translations.contexts.id_movieclip
 
     def draw(self, context):
         layout = self.layout
 
         layout.operator("clip.set_viewport_background")
         layout.operator("clip.setup_tracking_scene")
+        layout.operator("clip.prefetch")
 
 
 class CLIP_MT_view(Menu):
@@ -893,10 +913,11 @@ class CLIP_MT_view(Menu):
 
             ratios = ((1, 8), (1, 4), (1, 2), (1, 1), (2, 1), (4, 1), (8, 1))
 
+            text = iface_("Zoom %d:%d")
             for a, b in ratios:
-                text = "Zoom %d:%d" % (a, b)
                 layout.operator("clip.view_zoom_ratio",
-                                text=text).ratio = a / b
+                                text=text % (a, b),
+                                translate=False).ratio = a / b
         else:
             if sc.view == 'GRAPH':
                 layout.operator_context = 'INVOKE_REGION_PREVIEW'
@@ -914,6 +935,7 @@ class CLIP_MT_view(Menu):
 
 class CLIP_MT_clip(Menu):
     bl_label = "Clip"
+    bl_translation_context = bpy.app.translations.contexts.id_movieclip
 
     def draw(self, context):
         layout = self.layout
@@ -924,6 +946,7 @@ class CLIP_MT_clip(Menu):
         layout.operator("clip.open")
 
         if clip:
+            layout.operator("clip.prefetch")
             layout.operator("clip.reload")
             layout.menu("CLIP_MT_proxy")
 

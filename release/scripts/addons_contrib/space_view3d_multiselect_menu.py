@@ -23,18 +23,18 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {
-    'name': '3D View: Multiselect Menu',
-    'author': 'Sean Olson (liquidApe)',
-    'version': (1, 2),
-    'blender': (2, 6, 1),
-    'location': 'View3D > Mouse > Menu ',
-    'warning':'',
-    'description': 'Added options for multiselect to the ctrl-tab menu',
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/' \
-        'Scripts/3D_interaction/multiselect_Menu',
-    'tracker_url': 'https://projects.blender.org/tracker/index.php?'
-                   'func=detail&aid=22132',
-    'category': '3D View'}
+    "name": "3D View: Multiselect Menu",
+    "author": "Sean Olson (liquidApe)",
+    "version": (1, 2),
+    "blender": (2, 61, 0),
+    "location": "View3D > Mouse > Menu ",
+    "warning":"",
+    "description": "Added options for multiselect to the ctrl-tab menu",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
+                "Scripts/3D_interaction/multiselect_Menu",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"
+                   "func=detail&aid=22132",
+    "category": "3D View"}
 
 import bpy
 

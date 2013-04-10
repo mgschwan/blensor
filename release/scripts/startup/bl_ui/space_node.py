@@ -45,7 +45,7 @@ class NODE_HT_header(Header):
 
         layout.prop(snode, "tree_type", text="", expand=True)
 
-        if snode.tree_type == 'SHADER':
+        if snode.tree_type == 'ShaderNodeTree':
             if scene.render.use_shading_nodes:
                 layout.prop(snode, "shader_type", text="", expand=True)
 
@@ -65,7 +65,7 @@ class NODE_HT_header(Header):
                 if snode_id:
                     layout.prop(snode_id, "use_nodes")
 
-        elif snode.tree_type == 'TEXTURE':
+        elif snode.tree_type == 'TextureNodeTree':
             layout.prop(snode, "texture_type", text="", expand=True)
 
             if id_from:
@@ -76,7 +76,7 @@ class NODE_HT_header(Header):
             if snode_id:
                 layout.prop(snode_id, "use_nodes")
 
-        elif snode.tree_type == 'COMPOSITING':
+        elif snode.tree_type == 'CompositorNodeTree':
             layout.prop(snode_id, "use_nodes")
             layout.prop(snode_id.render, "use_free_unused_nodes", text="Free Unused")
             layout.prop(snode, "show_backdrop")
@@ -84,6 +84,13 @@ class NODE_HT_header(Header):
                 row = layout.row(align=True)
                 row.prop(snode, "backdrop_channels", text="", expand=True)
             layout.prop(snode, "use_auto_render")
+
+        else:
+            # Custom node tree is edited as independent ID block
+            layout.template_ID(snode, "node_tree", new="node.new_node_tree")
+
+        layout.prop(snode, "pin", text="")
+        layout.operator("node.tree_path_parent", text="", icon='FILE_PARENT')
 
         layout.separator()
 
@@ -144,9 +151,16 @@ class NODE_MT_select(Menu):
         layout.operator("node.select_all", text="Inverse").action = 'INVERT'
         layout.operator("node.select_linked_from")
         layout.operator("node.select_linked_to")
+
+        layout.separator()
+
         layout.operator("node.select_same_type")
-        layout.operator("node.select_same_type_next")
-        layout.operator("node.select_same_type_prev")
+        layout.operator("node.select_same_type_step").prev = True
+        layout.operator("node.select_same_type_step").prev = False
+
+        layout.separator()
+
+        layout.operator("node.find_node")
 
 
 class NODE_MT_node(Menu):
@@ -182,6 +196,7 @@ class NODE_MT_node(Menu):
         layout.operator("node.group_edit")
         layout.operator("node.group_ungroup")
         layout.operator("node.group_make")
+        layout.operator("node.group_insert")
 
         layout.separator()
 
@@ -208,7 +223,7 @@ class NODE_PT_properties(Panel):
     @classmethod
     def poll(cls, context):
         snode = context.space_data
-        return snode.tree_type == 'COMPOSITING'
+        return snode.tree_type == 'CompositorNodeTree'
 
     def draw_header(self, context):
         snode = context.space_data
@@ -237,7 +252,7 @@ class NODE_PT_quality(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         snode = context.space_data
-        return snode.tree_type == 'COMPOSITING' and snode.node_tree is not None
+        return snode.tree_type == 'CompositorNodeTree' and snode.node_tree is not None
 
     def draw(self, context):
         layout = self.layout
@@ -252,7 +267,9 @@ class NODE_PT_quality(bpy.types.Panel):
 
         col = layout.column()
         col.prop(tree, "use_opencl")
+        col.prop(tree, "use_groupnode_buffer")
         col.prop(tree, "two_pass")
+        col.prop(tree, "use_viewer_border")
         col.prop(snode, "show_highlight")
         col.prop(snode, "use_hidden_preview")
 
@@ -272,6 +289,29 @@ class NODE_MT_node_color_specials(Menu):
         layout = self.layout
 
         layout.operator("node.node_copy_color", icon='COPY_ID')
+
+
+class NODE_UL_interface_sockets(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        socket = item
+        color = socket.draw_color(context)
+
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            row = layout.row(align=True)
+
+            # inputs get icon on the left
+            if socket.in_out == 'IN':
+                row.template_node_socket(color)
+
+            row.label(text=socket.name, icon_value=icon)
+
+            # outputs get icon on the right
+            if socket.in_out == 'OUT':
+                row.template_node_socket(color)
+
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.template_node_socket(color)
 
 
 if __name__ == "__main__":  # only for live edit.

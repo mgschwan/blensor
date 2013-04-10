@@ -17,16 +17,16 @@
 #END GPL LICENCE BLOCK
 
 bl_info = {
-    'name': "Btrace",
-    'author': "liero, crazycourier, Atom, Meta-Androcto, MacKracken",
-    'version': (1, 1, ),
-    'blender': (2, 62),
-    'location': "View3D > Tools",
-    'description': "Tools for converting/animating objects/particles into curves",
-    'warning': "Still under development, bug reports appreciated",
-    'wiki_url': "",
-    'tracker_url': "http://projects.blender.org/tracker/?func=detail&atid=468&aid=29563&group_id=153",
-    'category': "Add Curve"
+    "name": "Btrace",
+    "author": "liero, crazycourier, Atom, Meta-Androcto, MacKracken",
+    "version": (1, 1, ),
+    "blender": (2, 62, 0),
+    "location": "View3D > Tools",
+    "description": "Tools for converting/animating objects/particles into curves",
+    "warning": "Still under development, bug reports appreciated",
+    "wiki_url": "",
+    "tracker_url": "http://projects.blender.org/tracker/?func=detail&atid=468&aid=29563&group_id=153",
+    "category": "Add Curve"
     }
 
 #### TO DO LIST ####

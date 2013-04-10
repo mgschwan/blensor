@@ -105,6 +105,33 @@ int BM_iter_as_array(BMesh *bm, const char itype, void *data, void **array, cons
 
 	return i;
 }
+/**
+ * \brief Operator Iterator as Array
+ *
+ * Sometimes its convenient to get the iterator as an array.
+ */
+int BMO_iter_as_array(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, const char restrictmask,
+                      void **array, const int len)
+{
+	int i = 0;
+
+	/* sanity check */
+	if (len > 0) {
+		BMOIter oiter;
+		void *ele;
+
+		for (ele = BMO_iter_new(&oiter, slot_args, slot_name, restrictmask); ele; ele = BMO_iter_step(&oiter)) {
+			array[i] = ele;
+			i++;
+			if (i == len) {
+				return len;
+			}
+		}
+	}
+
+	return i;
+}
+
 
 /**
  * \brief Iterator as Array
@@ -164,15 +191,13 @@ void *BM_iter_as_arrayN(BMesh *bm, const char itype, void *data, int *r_len,
  *
  * Counts how many flagged / unflagged items are found in this element.
  */
-int BM_iter_elem_count_flag(const char itype, void *data, const char hflag, const short value)
+int BM_iter_elem_count_flag(const char itype, void *data, const char hflag, const bool value)
 {
 	BMIter iter;
 	BMElem *ele;
 	int count = 0;
 
-	BLI_assert(ELEM(value, TRUE, FALSE));
-
-	for (ele = BM_iter_new(&iter, NULL, itype, data); ele; ele = BM_iter_step(&iter)) {
+	BM_ITER_ELEM (ele, &iter, data, itype) {
 		if (BM_elem_flag_test_bool(ele, hflag) == value) {
 			count++;
 		}
@@ -182,19 +207,41 @@ int BM_iter_elem_count_flag(const char itype, void *data, const char hflag, cons
 }
 
 /**
+ * \brief Elem Iter Tool Flag Count
+ *
+ * Counts how many flagged / unflagged items are found in this element.
+ */
+int BMO_iter_elem_count_flag(BMesh *bm, const char itype, void *data,
+                             const short oflag, const bool value)
+{
+	BMIter iter;
+	BMElemF *ele;
+	int count = 0;
+
+	/* loops have no header flags */
+	BLI_assert(bm_iter_itype_htype_map[itype] != BM_LOOP);
+
+	BM_ITER_ELEM (ele, &iter, data, itype) {
+		if (BMO_elem_flag_test_bool(bm, ele, oflag) == value) {
+			count++;
+		}
+	}
+	return count;
+}
+
+
+/**
  * \brief Mesh Iter Flag Count
  *
  * Counts how many flagged / unflagged items are found in this mesh.
  */
-int BM_iter_mesh_count_flag(const char itype, BMesh *bm, const char hflag, const short value)
+int BM_iter_mesh_count_flag(const char itype, BMesh *bm, const char hflag, const bool value)
 {
 	BMIter iter;
 	BMElem *ele;
 	int count = 0;
 
-	BLI_assert(ELEM(value, TRUE, FALSE));
-
-	for (ele = BM_iter_new(&iter, bm, itype, NULL); ele; ele = BM_iter_step(&iter)) {
+	BM_ITER_MESH (ele, &iter, bm, itype) {
 		if (BM_elem_flag_test_bool(ele, hflag) == value) {
 			count++;
 		}

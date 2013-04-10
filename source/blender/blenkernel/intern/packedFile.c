@@ -43,9 +43,10 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_image_types.h"
+#include "DNA_ID.h"
+#include "DNA_packedFile_types.h"
 #include "DNA_sound_types.h"
 #include "DNA_vfont_types.h"
-#include "DNA_packedFile_types.h"
 
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
@@ -226,16 +227,19 @@ PackedFile *newPackedFile(ReportList *reports, const char *filename, const char 
 	return (pf);
 }
 
+/* no libraries for now */
 void packAll(Main *bmain, ReportList *reports)
 {
 	Image *ima;
 	VFont *vfont;
 	bSound *sound;
+	int tot = 0;
 	
 	for (ima = bmain->image.first; ima; ima = ima->id.next) {
 		if (ima->packedfile == NULL && ima->id.lib == NULL) {
 			if (ima->source == IMA_SRC_FILE) {
 				ima->packedfile = newPackedFile(reports, ima->name, ID_BLEND_PATH(bmain, &ima->id));
+				tot ++;
 			}
 			else if (ELEM(ima->source, IMA_SRC_SEQUENCE, IMA_SRC_MOVIE)) {
 				BKE_reportf(reports, RPT_WARNING, "Image '%s' skipped, movies and image sequences not supported",
@@ -244,13 +248,26 @@ void packAll(Main *bmain, ReportList *reports)
 		}
 	}
 
-	for (vfont = bmain->vfont.first; vfont; vfont = vfont->id.next)
-		if (vfont->packedfile == NULL && vfont->id.lib == NULL && BKE_vfont_is_builtin(vfont) == FALSE)
+	for (vfont = bmain->vfont.first; vfont; vfont = vfont->id.next) {
+		if (vfont->packedfile == NULL && vfont->id.lib == NULL && BKE_vfont_is_builtin(vfont) == FALSE) {
 			vfont->packedfile = newPackedFile(reports, vfont->name, bmain->name);
+			tot ++;
+		}
+	}
 
-	for (sound = bmain->sound.first; sound; sound = sound->id.next)
-		if (sound->packedfile == NULL && sound->id.lib == NULL)
+	for (sound = bmain->sound.first; sound; sound = sound->id.next) {
+		if (sound->packedfile == NULL && sound->id.lib == NULL) {
 			sound->packedfile = newPackedFile(reports, sound->name, bmain->name);
+			tot++;
+		}
+	}
+	
+	if (tot == 0)
+		BKE_report(reports, RPT_INFO, "No new files have been packed");
+	else
+		BKE_reportf(reports, RPT_INFO, "Packed %d files", tot);
+
+
 }
 
 
@@ -314,6 +331,9 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 			BKE_reportf(reports, RPT_ERROR, "Error writing file '%s'", name);
 			ret_value = RET_ERROR;
 		}
+		else
+			BKE_reportf(reports, RPT_INFO, "Saved packed file to: %s", name);
+		
 		close(file);
 	}
 	else {
@@ -328,7 +348,7 @@ int writePackedFile(ReportList *reports, const char *filename, PackedFile *pf, i
 			}
 		}
 		else {
-			if (BLI_delete(tempname, 0, 0) != 0) {
+			if (BLI_delete(tempname, false, false) != 0) {
 				BKE_reportf(reports, RPT_ERROR, "Error deleting '%s' (ignored)", tempname);
 			}
 		}
@@ -437,6 +457,7 @@ char *unpackFile(ReportList *reports, const char *abs_name, const char *local_na
 			case PF_USE_ORIGINAL:
 				/* if file exists use it */
 				if (BLI_exists(abs_name)) {
+					BKE_reportf(reports, RPT_INFO, "Use existing file (instead of packed): %s", abs_name);
 					temp = abs_name;
 					break;
 				}
@@ -467,11 +488,8 @@ int unpackVFont(ReportList *reports, VFont *vfont, int how)
 	int ret_value = RET_ERROR;
 	
 	if (vfont != NULL) {
-		BLI_strncpy(localname, vfont->name, sizeof(localname));
-		BLI_splitdirstring(localname, fi);
-		
+		BLI_split_file_part(vfont->name, fi, sizeof(fi));
 		BLI_snprintf(localname, sizeof(localname), "//fonts/%s", fi);
-		
 		newname = unpackFile(reports, vfont->name, localname, vfont->packedfile, how);
 		if (newname != NULL) {
 			ret_value = RET_OK;
@@ -492,10 +510,8 @@ int unpackSound(Main *bmain, ReportList *reports, bSound *sound, int how)
 	int ret_value = RET_ERROR;
 
 	if (sound != NULL) {
-		BLI_strncpy(localname, sound->name, sizeof(localname));
-		BLI_splitdirstring(localname, fi);
+		BLI_split_file_part(sound->name, fi, sizeof(fi));
 		BLI_snprintf(localname, sizeof(localname), "//sounds/%s", fi);
-
 		newname = unpackFile(reports, sound->name, localname, sound->packedfile, how);
 		if (newname != NULL) {
 			BLI_strncpy(sound->name, newname, sizeof(sound->name));
@@ -520,10 +536,8 @@ int unpackImage(ReportList *reports, Image *ima, int how)
 	int ret_value = RET_ERROR;
 	
 	if (ima != NULL && ima->name[0]) {
-		BLI_strncpy(localname, ima->name, sizeof(localname));
-		BLI_splitdirstring(localname, fi);
+		BLI_split_file_part(ima->name, fi, sizeof(fi));
 		BLI_snprintf(localname, sizeof(localname), "//textures/%s", fi);
-
 		newname = unpackFile(reports, ima->name, localname, ima->packedfile, how);
 		if (newname != NULL) {
 			ret_value = RET_OK;
@@ -536,6 +550,51 @@ int unpackImage(ReportList *reports, Image *ima, int how)
 	}
 	
 	return(ret_value);
+}
+
+int unpackLibraries(Main *bmain, ReportList *reports)
+{
+	Library *lib;
+	char *newname;
+	int ret_value = RET_ERROR;
+	
+	for (lib = bmain->library.first; lib; lib = lib->id.next) {
+		if (lib->packedfile && lib->name[0]) {
+			
+			newname = unpackFile(reports, lib->filepath, lib->filepath, lib->packedfile, PF_WRITE_ORIGINAL);
+			if (newname != NULL) {
+				ret_value = RET_OK;
+				
+				printf("Unpacked .blend library: %s\n", newname);
+				
+				freePackedFile(lib->packedfile);
+				lib->packedfile = NULL;
+
+				MEM_freeN(newname);
+			}
+		}
+	}
+	
+	return(ret_value);
+}
+
+void packLibraries(Main *bmain, ReportList *reports)
+{
+	Library *lib;
+	
+	/* test for relativenss */
+	for (lib = bmain->library.first; lib; lib = lib->id.next)
+		if (!BLI_path_is_rel(lib->name))
+			break;
+	
+	if (lib) {
+		BKE_reportf(reports, RPT_ERROR, "Cannot pack absolute file: '%s'", lib->name);
+		return;
+	}
+	
+	for (lib = bmain->library.first; lib; lib = lib->id.next)
+		if (lib->packedfile == NULL)
+			lib->packedfile = newPackedFile(reports, lib->name, bmain->name);
 }
 
 void unpackAll(Main *bmain, ReportList *reports, int how)
@@ -557,3 +616,48 @@ void unpackAll(Main *bmain, ReportList *reports, int how)
 			unpackSound(bmain, reports, sound, how);
 }
 
+/* ID should be not NULL, return 1 if there's a packed file */
+bool BKE_pack_check(ID *id)
+{
+	if (GS(id->name) == ID_IM) {
+		Image *ima = (Image *)id;
+		return ima->packedfile != NULL;
+	}
+	if (GS(id->name) == ID_VF) {
+		VFont *vf = (VFont *)id;
+		return vf->packedfile != NULL;
+	}
+	if (GS(id->name) == ID_SO) {
+		bSound *snd = (bSound *)id;
+		return snd->packedfile != NULL;
+	}
+	if (GS(id->name) == ID_LI) {
+		Library *li = (Library *)id;
+		return li->packedfile != NULL;
+	}
+	return false;
+}
+
+/* ID should be not NULL */
+void BKE_unpack_id(Main *bmain, ID *id, ReportList *reports, int how)
+{
+	if (GS(id->name) == ID_IM) {
+		Image *ima = (Image *)id;
+		if (ima->packedfile)
+			unpackImage(reports, ima, how);
+	}
+	if (GS(id->name) == ID_VF) {
+		VFont *vf = (VFont *)id;
+		if (vf->packedfile)
+			unpackVFont(reports, vf, how);
+	}
+	if (GS(id->name) == ID_SO) {
+		bSound *snd = (bSound *)id;
+		if (snd->packedfile)
+			unpackSound(bmain, reports, snd, how);
+	}
+	if (GS(id->name) == ID_LI) {
+		Library *li = (Library *)id;
+		BKE_reportf(reports, RPT_ERROR, "Cannot unpack individual Library file, '%s'", li->name);
+	}
+}

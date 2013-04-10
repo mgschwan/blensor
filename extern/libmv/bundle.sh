@@ -124,30 +124,14 @@ cat > CMakeLists.txt << EOF
 
 set(INC
 	.
-	../colamd/Include
 	third_party/ceres/include
 )
 
 set(INC_SYS
 	../Eigen3
-	third_party/ssba
-	third_party/ldl/Include
 	\${PNG_INCLUDE_DIR}
 	\${ZLIB_INCLUDE_DIRS}
 )
-
-
-# XXX - FIXME
-# this is a momentary hack to find unwind.h in 10.6.sdk
-if(APPLE)
-	if(\${CMAKE_OSX_DEPLOYMENT_TARGET} STREQUAL "10.6")
-		list(APPEND INC_SYS
-			\${CMAKE_OSX_SYSROOT}/Developer/usr/llvm-gcc-4.2/lib/gcc/i686-apple-darwin10/4.2.1/include
-		)
-	endif()
-endif()
-# XXX - END
-
 
 set(SRC
 	libmv-capi.cpp
@@ -197,14 +181,6 @@ if(WIN32)
 			third_party/msinttypes
 		)
 	endif()
-
-	if(MSVC)
-		set(MSVC_OFLAGS O1 O2 Ox)
-		foreach(FLAG \${MSVC_OFLAGS})
-			string(REPLACE "\${FLAG}" "Od" CMAKE_CXX_FLAGS_RELEASE "\${CMAKE_CXX_FLAGS_RELEASE}")
-			string(REPLACE "\${FLAG}" "Od" CMAKE_C_FLAGS_RELWITHDEBINFO "\${CMAKE_C_FLAGS_RELWITHDEBINFO}")
-		endforeach()
-	endif()
 else()
 	list(APPEND SRC
 ${third_glog_sources}
@@ -218,7 +194,6 @@ ${third_glog_headers}
 endif()
 
 add_definitions(
-	-DV3DLIB_ENABLE_SUITESPARSE
 	-DGOOGLE_GLOG_DLL_DECL=
 )
 
@@ -241,11 +216,6 @@ Import('env')
 
 defs = []
 
-cflags_libmv = Split(env['CFLAGS'])
-ccflags_libmv = Split(env['CCFLAGS'])
-cxxflags_libmv = Split(env['CXXFLAGS'])
-
-defs.append('V3DLIB_ENABLE_SUITESPARSE')
 defs.append('GOOGLE_GLOG_DLL_DECL=')
 
 src = env.Glob("*.cpp")
@@ -262,30 +232,11 @@ if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc', '
 ${win_src}
     src += ['./third_party/glog/src/logging.cc', './third_party/glog/src/raw_logging.cc', './third_party/glog/src/utilities.cc', './third_party/glog/src/vlog_is_on.cc']
     src += ['./third_party/glog/src/windows/port.cc']
-
-    if env['OURPLATFORM'] in ('win32-vc', 'win64-vc'):
-        cflags_libmv.append('/Od')
-        ccflags_libmv.append('/Od')
-        cxxflags_libmv.append('/Od')
-
-        if not env['BF_DEBUG']:
-            defs.append('NDEBUG')
-    else:
-        if not env['BF_DEBUG']:
-            cflags_libmv += Split(env['REL_CFLAGS'])
-            ccflags_libmv += Split(env['REL_CCFLAGS'])
-            cxxflags_libmv += Split(env['REL_CXXFLAGS'])
 else:
     src += env.Glob("third_party/glog/src/*.cc")
     incs += ' ./third_party/glog/src'
-    if not env['BF_DEBUG']:
-        cflags_libmv += Split(env['REL_CFLAGS'])
-        ccflags_libmv += Split(env['REL_CCFLAGS'])
-        cxxflags_libmv += Split(env['REL_CXXFLAGS'])
 
-incs += ' ./third_party/ssba ./third_party/ldl/Include ../colamd/Include'
-
-env.BlenderLib ( libname = 'extern_libmv', sources=src, includes=Split(incs), defines=defs, libtype=['extern', 'player'], priority=[20,137], compileflags=cflags_libmv, cc_compileflags=ccflags_libmv, cxx_compileflags=cxxflags_libmv )
+env.BlenderLib ( libname = 'extern_libmv', sources=src, includes=Split(incs), defines=defs, libtype=['extern', 'player'], priority=[20,137] )
 
 SConscript(['third_party/SConscript'])
 EOF

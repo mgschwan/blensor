@@ -33,6 +33,7 @@
 
 static std::string messages_path;
 static std::string default_domain;
+static std::string locale_str;
 
 void bl_locale_init(const char *_messages_path, const char *_default_domain)
 {
@@ -52,47 +53,52 @@ void bl_locale_init(const char *_messages_path, const char *_default_domain)
 void bl_locale_set(const char *locale)
 {
 	boost::locale::generator gen;
+	std::locale _locale;
 	// Specify location of dictionaries.
 	gen.add_messages_path(messages_path);
 	gen.add_messages_domain(default_domain);
-	//gen.set_default_messages_domain(default_domain);	
+	//gen.set_default_messages_domain(default_domain);
 
-	if (locale && locale[0]) {
-		std::locale::global(gen(locale));
-	}
-	else {
-#if defined (__APPLE__)
-		// workaround to get osx system locale from user defaults
-		FILE* fp;
-		std::string locale_osx = "";
-		char result[16];
-		int result_len = 0;
-
-		fp = popen("defaults read .GlobalPreferences AppleLocale", "r");
-
-		if(fp) {
-			result_len = fread(result, 1, sizeof(result) - 1, fp);
-
-			if(result_len > 0) {
-				result[result_len-1] = '\0'; // \0 terminate and remove \n
-				locale_osx = std::string(result) + std::string(".UTF-8");
-			}
-
-			pclose(fp);
+	try {
+		if (locale && locale[0]) {
+			_locale = gen(locale);
+			std::locale::global(_locale);
 		}
-
-		if(locale_osx == "")
-			fprintf(stderr, "Locale set: failed to read AppleLocale read from defaults\n");
-
-		std::locale::global(gen(locale_osx.c_str()));
+		else {
+#ifdef __APPLE__
+			extern const char *user_locale; // pulled from Ghost_SystemCocoa
+			std::string locale_osx = user_locale + std::string(".UTF-8");
+			_locale = gen(locale_osx.c_str());
+			std::locale::global(_locale);
 #else
-		std::locale::global(gen(""));
+			_locale = gen("");
+			std::locale::global(_locale);
 #endif
+		}
+		// Note: boost always uses "C" LC_NUMERIC by default!
 	}
-	// Note: boost always uses "C" LC_NUMERIC by default!
+	catch(std::exception const &e) {
+		std::cout << "bl_locale_set(" << locale << "): " << e.what() << " \n";
+	}
+
+	/* Generate the locale string (useful to know which locale we are actually using in case of "default" one). */
+#define LOCALE_INFO std::use_facet<boost::locale::info>(_locale)
+
+	locale_str = LOCALE_INFO.language();
+	if (LOCALE_INFO.country() != "") {
+		locale_str += "_" + LOCALE_INFO.country();
+	}
+	if (LOCALE_INFO.variant() != "") {
+		locale_str += "@" + LOCALE_INFO.variant();
+	}
 }
 
-const char* bl_locale_pgettext(const char *msgctxt, const char *msgid)
+const char *bl_locale_get(void)
+{
+	return locale_str.c_str();
+}
+
+const char *bl_locale_pgettext(const char *msgctxt, const char *msgid)
 {
 	// Note: We cannot use short stuff like boost::locale::gettext, because those return
 	//       std::basic_string objects, which c_ptr()-returned char* is no more valid
@@ -107,8 +113,7 @@ const char* bl_locale_pgettext(const char *msgctxt, const char *msgid)
 		return msgid;
 	}
 	catch(std::exception const &e) {
-//		std::cout << "boost_locale_pgettext: " << e.what() << " \n";
+//		std::cout << "bl_locale_pgettext(" << msgctxt << ", " << msgid << "): " << e.what() << " \n";
 		return msgid;
 	}
 }
-

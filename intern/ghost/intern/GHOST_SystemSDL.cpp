@@ -27,6 +27,7 @@
 #include <assert.h>
 
 #include "GHOST_SystemSDL.h"
+#include "GHOST_WindowSDL.h"
 
 #include "GHOST_WindowManager.h"
 
@@ -66,14 +67,19 @@ GHOST_SystemSDL::createWindow(const STR_String& title,
                               GHOST_TUns32 height,
                               GHOST_TWindowState state,
                               GHOST_TDrawingContextType type,
-                              bool stereoVisual,
+                              const bool stereoVisual,
+                              const bool exclusive,
                               const GHOST_TUns16 numOfAASamples,
                               const GHOST_TEmbedderWindowID parentWindow
                               )
 {
 	GHOST_WindowSDL *window = NULL;
 
-	window = new GHOST_WindowSDL(this, title, left, top, width, height, state, parentWindow, type, stereoVisual, numOfAASamples);
+	window = new GHOST_WindowSDL(this, title,
+	                             left, top, width, height,
+	                             state, parentWindow, type,
+	                             stereoVisual, exclusive,
+	                             numOfAASamples);
 
 	if (window) {
 		if (GHOST_kWindowStateFullScreen == state) {
@@ -112,6 +118,20 @@ GHOST_SystemSDL::init() {
 	}
 
 	return GHOST_kFailure;
+}
+
+/**
+ * Returns the dimensions of the main display on this system.
+ * \return The dimension of the main display.
+ */
+void
+GHOST_SystemSDL::getAllDisplayDimensions(GHOST_TUns32& width,
+                                         GHOST_TUns32& height) const
+{
+	SDL_DisplayMode mode;
+	SDL_GetDesktopDisplayMode(0, &mode); /* note, always 0 display */
+	width = mode.w;
+	height = mode.h;
 }
 
 void

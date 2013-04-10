@@ -24,23 +24,24 @@
  *  \ingroup edtransform
  */
 
-
 #include "MEM_guardedalloc.h"
 
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-#include "RNA_access.h"
-#include "RNA_define.h"
-#include "RNA_enum_types.h"
-
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
 #include "BKE_armature.h"
 #include "BKE_report.h"
+
+#include "RNA_access.h"
+#include "RNA_define.h"
+#include "RNA_enum_types.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -73,6 +74,7 @@ static char OP_TILT[] = "TRANSFORM_OT_tilt";
 static char OP_TRACKBALL[] = "TRANSFORM_OT_trackball";
 static char OP_MIRROR[] = "TRANSFORM_OT_mirror";
 static char OP_EDGE_SLIDE[] = "TRANSFORM_OT_edge_slide";
+static char OP_VERT_SLIDE[] = "TRANSFORM_OT_vert_slide";
 static char OP_EDGE_CREASE[] = "TRANSFORM_OT_edge_crease";
 static char OP_EDGE_BWEIGHT[] = "TRANSFORM_OT_edge_bevelweight";
 static char OP_SEQ_SLIDE[] = "TRANSFORM_OT_seq_slide";
@@ -90,6 +92,7 @@ static void TRANSFORM_OT_tilt(struct wmOperatorType *ot);
 static void TRANSFORM_OT_trackball(struct wmOperatorType *ot);
 static void TRANSFORM_OT_mirror(struct wmOperatorType *ot);
 static void TRANSFORM_OT_edge_slide(struct wmOperatorType *ot);
+static void TRANSFORM_OT_vert_slide(struct wmOperatorType *ot);
 static void TRANSFORM_OT_edge_crease(struct wmOperatorType *ot);
 static void TRANSFORM_OT_edge_bevelweight(struct wmOperatorType *ot);
 static void TRANSFORM_OT_seq_slide(struct wmOperatorType *ot);
@@ -109,6 +112,7 @@ static TransformModeItem transform_modes[] =
 	{OP_TRACKBALL, TFM_TRACKBALL, TRANSFORM_OT_trackball},
 	{OP_MIRROR, TFM_MIRROR, TRANSFORM_OT_mirror},
 	{OP_EDGE_SLIDE, TFM_EDGE_SLIDE, TRANSFORM_OT_edge_slide},
+	{OP_VERT_SLIDE, TFM_VERT_SLIDE, TRANSFORM_OT_vert_slide},
 	{OP_EDGE_CREASE, TFM_CREASE, TRANSFORM_OT_edge_crease},
 	{OP_EDGE_BWEIGHT, TFM_BWEIGHT, TRANSFORM_OT_edge_bevelweight},
 	{OP_SEQ_SLIDE, TFM_SEQ_SLIDE, TRANSFORM_OT_seq_slide},
@@ -150,38 +154,6 @@ EnumPropertyItem transform_mode_types[] =
 	{0, NULL, 0, NULL, NULL}
 };
 
-static int snap_type_exec(bContext *C, wmOperator *op)
-{
-	ToolSettings *ts = CTX_data_tool_settings(C);
-
-	ts->snap_mode = RNA_enum_get(op->ptr, "type");
-
-	WM_event_add_notifier(C, NC_SCENE | ND_TOOLSETTINGS, NULL); /* header redraw */
-
-	return OPERATOR_FINISHED;
-}
-
-static void TRANSFORM_OT_snap_type(wmOperatorType *ot)
-{
-	/* identifiers */
-	ot->name = "Snap Type";
-	ot->description = "Set the snap element type";
-	ot->idname = "TRANSFORM_OT_snap_type";
-
-	/* api callbacks */
-	ot->invoke = WM_menu_invoke;
-	ot->exec = snap_type_exec;
-
-	ot->poll = ED_operator_areaactive;
-
-	/* flags */
-	ot->flag = OPTYPE_UNDO;
-
-	/* props */
-	ot->prop = RNA_def_enum(ot->srna, "type", snap_element_items, 0, "Type", "Set the snap element type");
-
-}
-
 static int select_orientation_exec(bContext *C, wmOperator *op)
 {
 	int orientation = RNA_enum_get(op->ptr, "orientation");
@@ -193,12 +165,12 @@ static int select_orientation_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int select_orientation_invoke(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(event))
+static int select_orientation_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
 	uiPopupMenu *pup;
 	uiLayout *layout;
 
-	pup = uiPupMenuBegin(C, "Orientation", ICON_NONE);
+	pup = uiPupMenuBegin(C, IFACE_("Orientation"), ICON_NONE);
 	layout = uiPupMenuLayout(pup);
 	uiItemsEnumO(layout, "TRANSFORM_OT_select_orientation", "orientation");
 	uiPupMenuEnd(C, pup);
@@ -240,7 +212,7 @@ static int delete_orientation_exec(bContext *C, wmOperator *UNUSED(op))
 	return OPERATOR_FINISHED;
 }
 
-static int delete_orientation_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int delete_orientation_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	return delete_orientation_exec(C, op);
 }
@@ -296,7 +268,7 @@ static int create_orientation_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int create_orientation_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int create_orientation_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	return create_orientation_exec(C, op);
 }
@@ -328,7 +300,7 @@ static void transformops_exit(bContext *C, wmOperator *op)
 	G.moving = 0;
 }
 
-static int transformops_data(bContext *C, wmOperator *op, wmEvent *event)
+static int transformops_data(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	int retval = 1;
 	if (op->customdata == NULL) {
@@ -362,7 +334,7 @@ static int transformops_data(bContext *C, wmOperator *op, wmEvent *event)
 	return retval; /* return 0 on error */
 }
 
-static int transform_modal(bContext *C, wmOperator *op, wmEvent *event)
+static int transform_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	int exit_code;
 
@@ -429,7 +401,7 @@ static int transform_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int transform_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int transform_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	if (!transformops_data(C, op, event)) {
 		G.moving = 0;
@@ -458,7 +430,6 @@ void Transform_Properties(struct wmOperatorType *ot, int flags)
 		/* Make this not hidden when there's a nice axis selection widget */
 		RNA_def_property_flag(prop, PROP_HIDDEN);
 		RNA_def_property_ui_text(prop, "Axis", "The axis around which the transformation occurs");
-
 	}
 
 	if (flags & P_CONSTRAINT) {
@@ -466,8 +437,6 @@ void Transform_Properties(struct wmOperatorType *ot, int flags)
 		prop = RNA_def_property(ot->srna, "constraint_orientation", PROP_ENUM, PROP_NONE);
 		RNA_def_property_ui_text(prop, "Orientation", "Transformation orientation");
 		RNA_def_enum_funcs(prop, rna_TransformOrientation_itemf);
-
-		
 	}
 
 	if (flags & P_MIRROR) {
@@ -477,7 +446,9 @@ void Transform_Properties(struct wmOperatorType *ot, int flags)
 
 	if (flags & P_PROPORTIONAL) {
 		RNA_def_enum(ot->srna, "proportional", proportional_editing_items, 0, "Proportional Editing", "");
-		RNA_def_enum(ot->srna, "proportional_edit_falloff", proportional_falloff_items, 0, "Proportional Editing Falloff", "Falloff type for proportional editing mode");
+		prop = RNA_def_enum(ot->srna, "proportional_edit_falloff", proportional_falloff_items, 0,
+		                    "Proportional Editing Falloff", "Falloff type for proportional editing mode");
+		RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
 		RNA_def_float(ot->srna, "proportional_size", 1, 0.00001f, FLT_MAX, "Proportional Size", "", 0.001, 100);
 	}
 
@@ -585,6 +556,8 @@ static void TRANSFORM_OT_skin_resize(struct wmOperatorType *ot)
 
 static void TRANSFORM_OT_trackball(struct wmOperatorType *ot)
 {
+	PropertyRNA *prop;
+
 	/* identifiers */
 	ot->name   = "Trackball";
 	ot->description = "Trackball style rotation of selected items";
@@ -598,7 +571,9 @@ static void TRANSFORM_OT_trackball(struct wmOperatorType *ot)
 	ot->cancel = transform_cancel;
 	ot->poll   = ED_operator_screenactive;
 
-	RNA_def_float_vector(ot->srna, "value", 2, VecOne, -FLT_MAX, FLT_MAX, "Angle", "", -FLT_MAX, FLT_MAX);
+	/* Maybe we could use float_vector_xyz here too? */
+	prop = RNA_def_float_vector(ot->srna, "value", 2, NULL, -FLT_MAX, FLT_MAX, "Angle", "", -FLT_MAX, FLT_MAX);
+	RNA_def_property_subtype(prop, PROP_ANGLE);
 
 	Transform_Properties(ot, P_PROPORTIONAL | P_MIRROR | P_SNAP);
 }
@@ -793,6 +768,26 @@ static void TRANSFORM_OT_edge_slide(struct wmOperatorType *ot)
 	Transform_Properties(ot, P_MIRROR | P_SNAP | P_CORRECT_UV);
 }
 
+static void TRANSFORM_OT_vert_slide(struct wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name   = "Vertex Slide";
+	ot->description = "Slide a vertex along a mesh";
+	ot->idname = OP_VERT_SLIDE;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
+
+	/* api callbacks */
+	ot->invoke = transform_invoke;
+	ot->exec   = transform_exec;
+	ot->modal  = transform_modal;
+	ot->cancel = transform_cancel;
+	ot->poll   = ED_operator_editmesh;
+
+	RNA_def_float_factor(ot->srna, "value", 0, -10.0f, 10.0f, "Factor", "", -1.0f, 1.0f);
+
+	Transform_Properties(ot, P_MIRROR | P_SNAP);
+}
+
 static void TRANSFORM_OT_edge_crease(struct wmOperatorType *ot)
 {
 	/* identifiers */
@@ -848,7 +843,7 @@ static void TRANSFORM_OT_seq_slide(struct wmOperatorType *ot)
 	ot->cancel = transform_cancel;
 	ot->poll   = ED_operator_sequencer_active;
 
-	RNA_def_float_vector(ot->srna, "value", 2, VecOne, -FLT_MAX, FLT_MAX, "Angle", "", -FLT_MAX, FLT_MAX);
+	RNA_def_float_vector_xyz(ot->srna, "value", 2, NULL, -FLT_MAX, FLT_MAX, "Vector", "", -FLT_MAX, FLT_MAX);
 
 	Transform_Properties(ot, P_SNAP);
 }
@@ -891,8 +886,6 @@ void transform_operatortypes(void)
 	WM_operatortype_append(TRANSFORM_OT_select_orientation);
 	WM_operatortype_append(TRANSFORM_OT_create_orientation);
 	WM_operatortype_append(TRANSFORM_OT_delete_orientation);
-
-	WM_operatortype_append(TRANSFORM_OT_snap_type);
 }
 
 void transform_keymap_for_space(wmKeyConfig *keyconf, wmKeyMap *keymap, int spaceid)
@@ -939,7 +932,9 @@ void transform_keymap_for_space(wmKeyConfig *keyconf, wmKeyMap *keymap, int spac
 			kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", TABKEY, KM_PRESS, KM_SHIFT, 0);
 			RNA_string_set(kmi->ptr, "data_path", "tool_settings.use_snap");
 
-			WM_keymap_add_item(keymap, "TRANSFORM_OT_snap_type", TABKEY, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
+			kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", TABKEY, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
+			RNA_string_set(kmi->ptr, "data_path", "tool_settings.snap_element");
+
 
 			kmi = WM_keymap_add_item(keymap, OP_TRANSLATION, TKEY, KM_PRESS, KM_SHIFT, 0);
 			RNA_boolean_set(kmi->ptr, "texture_space", TRUE);
@@ -1032,6 +1027,9 @@ void transform_keymap_for_space(wmKeyConfig *keyconf, wmKeyMap *keymap, int spac
 
 			kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", TABKEY, KM_PRESS, KM_SHIFT, 0);
 			RNA_string_set(kmi->ptr, "data_path", "tool_settings.use_snap");
+
+			kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", TABKEY, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
+			RNA_string_set(kmi->ptr, "data_path", "tool_settings.snap_uv_element");
 			break;
 		case SPACE_CLIP:
 			WM_keymap_add_item(keymap, OP_TRANSLATION, GKEY, KM_PRESS, 0, 0);

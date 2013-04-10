@@ -21,7 +21,7 @@ bl_info = {
     "description": "Its job is to easily add scifi details to a surface to create nice-looking space-ships or futuristic cities.",
     "author": "Evan J. Rosky (syrux), Chichiri, Jace Priester",
     "version": (0,2),
-    "blender": (2, 6, 4),
+    "blender": (2, 64, 0),
     "location": "Spacebar > Discombobulate",
     "warning": 'Beta',
     'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts',

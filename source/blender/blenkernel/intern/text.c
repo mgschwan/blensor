@@ -38,12 +38,12 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_path_util.h"
 #include "BLI_string.h"
 #include "BLI_string_cursor_utf8.h"
 #include "BLI_string_utf8.h"
 #include "BLI_listbase.h"
-#include "BLI_utildefines.h"
 #include "BLI_fileops.h"
 
 #include "DNA_constraint_types.h"
@@ -171,9 +171,8 @@ void BKE_text_free(Text *text)
 #endif
 }
 
-Text *BKE_text_add(const char *name) 
+Text *BKE_text_add(Main *bmain, const char *name) 
 {
-	Main *bmain = G.main;
 	Text *ta;
 	TextLine *tmp;
 	
@@ -363,9 +362,8 @@ int BKE_text_reload(Text *text)
 	return 1;
 }
 
-Text *BKE_text_load(const char *file, const char *relpath)
+Text *BKE_text_load(Main *bmain, const char *file, const char *relpath)
 {
-	Main *bmain = G.main;
 	FILE *fp;
 	int i, llen, len;
 	unsigned char *buffer;
@@ -521,6 +519,9 @@ void BKE_text_unlink(Main *bmain, Text *text)
 	bNodeTree *ntree;
 	bNode *node;
 	Material *mat;
+	Scene *sce;
+	SceneRenderLayer *srl;
+	FreestyleModuleConfig *module;
 	short update;
 
 	for (ob = bmain->object.first; ob; ob = ob->id.next) {
@@ -606,6 +607,16 @@ void BKE_text_unlink(Main *bmain, Text *text)
 						st->top = 0;
 					}
 				}
+			}
+		}
+	}
+
+	/* Freestyle */
+	for (sce = bmain->scene.first; sce; sce = sce->id.next) {
+		for (srl = sce->r.layers.first; srl; srl = srl->next) {
+			for (module = srl->freestyleConfig.modules.first; module; module = module->next) {
+				if (module->script == text)
+					module->script = NULL;
 			}
 		}
 	}
@@ -793,6 +804,29 @@ int txt_utf8_index_to_offset(const char *str, int index)
 	return offset;
 }
 
+int txt_utf8_offset_to_column(const char *str, int offset)
+{
+	int column = 0, pos = 0;
+	while (pos < offset) {
+		column += BLI_str_utf8_char_width_safe(str + pos);
+		pos += BLI_str_utf8_size_safe(str + pos);
+	}
+	return column;
+}
+
+int txt_utf8_column_to_offset(const char *str, int column)
+{
+	int offset = 0, pos = 0, col;
+	while (*(str + offset) && pos < column) {
+		col = BLI_str_utf8_char_width_safe(str + offset);
+		if (pos + col > column)
+			break;
+		offset += BLI_str_utf8_size_safe(str + offset);
+		pos += col;
+	}
+	return offset;
+}
+
 /* returns the real number of characters in string */
 /* not the same as BLI_strlen_utf8, which returns length for wide characters */
 static int txt_utf8_len(const char *src)
@@ -817,10 +851,9 @@ void txt_move_up(Text *text, short sel)
 	if (!*linep) return;
 
 	if ((*linep)->prev) {
-		int index = txt_utf8_offset_to_index((*linep)->line, *charp);
+		int column = txt_utf8_offset_to_column((*linep)->line, *charp);
 		*linep = (*linep)->prev;
-		if (index > txt_utf8_len((*linep)->line)) *charp = (*linep)->len;
-		else *charp = txt_utf8_index_to_offset((*linep)->line, index);
+		*charp = txt_utf8_column_to_offset((*linep)->line, column);
 		
 	}
 	else {
@@ -841,10 +874,9 @@ void txt_move_down(Text *text, short sel)
 	if (!*linep) return;
 
 	if ((*linep)->next) {
-		int index = txt_utf8_offset_to_index((*linep)->line, *charp);
+		int column = txt_utf8_offset_to_column((*linep)->line, *charp);
 		*linep = (*linep)->next;
-		if (index > txt_utf8_len((*linep)->line)) *charp = (*linep)->len;
-		else *charp = txt_utf8_index_to_offset((*linep)->line, index);
+		*charp = txt_utf8_column_to_offset((*linep)->line, column);
 	}
 	else {
 		txt_move_eol(text, sel);
@@ -932,13 +964,15 @@ void txt_move_right(Text *text, short sel)
 				tabsize++;
 			(*charp) = i;
 		}
-		else (*charp) += BLI_str_utf8_size((*linep)->line + *charp);
+		else {
+			(*charp) += BLI_str_utf8_size((*linep)->line + *charp);
+		}
 	}
 	
 	if (!sel) txt_pop_sel(text);
 }
 
-void txt_jump_left(Text *text, short sel)
+void txt_jump_left(Text *text, bool sel, bool use_init_step)
 {
 	TextLine **linep;
 	int *charp;
@@ -950,12 +984,12 @@ void txt_jump_left(Text *text, short sel)
 
 	BLI_str_cursor_step_utf8((*linep)->line, (*linep)->len,
 	                         charp, STRCUR_DIR_PREV,
-	                         STRCUR_JUMP_DELIM);
+	                         STRCUR_JUMP_DELIM, use_init_step);
 	
 	if (!sel) txt_pop_sel(text);
 }
 
-void txt_jump_right(Text *text, short sel)
+void txt_jump_right(Text *text, bool sel, bool use_init_step)
 {
 	TextLine **linep;
 	int *charp;
@@ -967,7 +1001,7 @@ void txt_jump_right(Text *text, short sel)
 	
 	BLI_str_cursor_step_utf8((*linep)->line, (*linep)->len,
 	                         charp, STRCUR_DIR_NEXT,
-	                         STRCUR_JUMP_DELIM);
+	                         STRCUR_JUMP_DELIM, use_init_step);
 	
 	if (!sel) txt_pop_sel(text);
 }
@@ -2404,7 +2438,7 @@ void txt_delete_char(Text *text)
 
 void txt_delete_word(Text *text)
 {
-	txt_jump_right(text, 1);
+	txt_jump_right(text, true, true);
 	txt_delete_sel(text);
 }
 
@@ -2453,7 +2487,7 @@ void txt_backspace_char(Text *text)
 
 void txt_backspace_word(Text *text)
 {
-	txt_jump_left(text, 1);
+	txt_jump_left(text, true, true);
 	txt_delete_sel(text);
 }
 
@@ -2562,6 +2596,7 @@ int txt_replace_char(Text *text, unsigned int add)
 	
 	memcpy(text->curl->line + text->curc, ch, add_size);
 	text->curc += add_size;
+	text->curl->len += add_size - del_size;
 	
 	txt_pop_sel(text);
 	txt_make_dirty(text);
@@ -2709,7 +2744,7 @@ void txt_comment(Text *text)
 	
 	if (!text) return;
 	if (!text->curl) return;
-	if (!text->sell) return;  // Need to change this need to check if only one line is selected to more then one
+	if (!text->sell) return;  // Need to change this need to check if only one line is selected to more than one
 
 	num = 0;
 	while (TRUE) {
@@ -2826,7 +2861,7 @@ void txt_move_lines(struct Text *text, const int direction)
 	}
 }
 
-int setcurr_tab_spaces(Text *text, int space)
+int txt_setcurr_tab_spaces(Text *text, int space)
 {
 	int i = 0;
 	int test = 0;
@@ -2930,9 +2965,46 @@ int text_check_identifier(const char ch)
 	return 0;
 }
 
+int text_check_identifier_nodigit(const char ch)
+{
+	if (ch <= '9') return 0;
+	if (ch < 'A') return 0;
+	if (ch <= 'Z' || ch == '_') return 1;
+	if (ch < 'a') return 0;
+	if (ch <= 'z') return 1;
+	return 0;
+}
+
+#ifndef WITH_PYTHON
+int text_check_identifier_unicode(const unsigned int ch)
+{
+	return (ch < 255 && text_check_identifier((char)ch));
+}
+
+int text_check_identifier_nodigit_unicode(const unsigned int ch)
+{
+	return (ch < 255 && text_check_identifier_nodigit((char)ch));
+}
+#endif  /* WITH_PYTHON */
+
 int text_check_whitespace(const char ch)
 {
 	if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
 		return 1;
 	return 0;
+}
+
+int text_find_identifier_start(const char *str, int i)
+{
+	if (UNLIKELY(i <= 0)) {
+		return 0;
+	}
+
+	while (i--) {
+		if (!text_check_identifier(str[i])) {
+			break;
+		}
+	}
+	i++;
+	return i;
 }

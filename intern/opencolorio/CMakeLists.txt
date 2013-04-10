@@ -44,14 +44,17 @@ set(SRC
 if(WITH_OPENCOLORIO)
 	add_definitions(
 		-DWITH_OCIO
+		-DGLEW_STATIC
 	)
 
 	list(APPEND INC_SYS
 		${OPENCOLORIO_INCLUDE_DIRS}
+		${GLEW_INCLUDE_PATH}
 	)
 
 	list(APPEND SRC
 		ocio_impl.cc
+		ocio_impl_glsl.cc
 	)
 
 	if(WIN32 AND NOT MINGW)

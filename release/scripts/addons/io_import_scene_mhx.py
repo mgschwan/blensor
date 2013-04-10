@@ -20,8 +20,8 @@
 # Product Home Page:   http://www.makehuman.org/
 # Code Home Page:      http://code.google.com/p/makehuman/
 # Authors:             Thomas Larsson
-# Script copyright (C) MakeHuman Team 2001-2011
-# Coding Standards:    See http://sites.google.com/site/makehumandocs/developers-guide
+# Script copyright (C) MakeHuman Team 2001-2013
+# Coding Standards: See http://www.makehuman.org/node/165
 
 """
 Abstract
@@ -39,8 +39,8 @@ Alternatively, run the script in the script editor (Alt-P), and access from the 
 bl_info = {
     'name': 'Import: MakeHuman (.mhx)',
     'author': 'Thomas Larsson',
-    'version': (1, 14, 1),
-    "blender": (2, 6, 4),
+    'version': (1, 15, 2),
+    "blender": (2, 65, 0),
     'location': "File > Import > MakeHuman (.mhx)",
     'description': 'Import files in the MakeHuman eXchange format (.mhx)',
     'warning': '',
@@ -50,7 +50,7 @@ bl_info = {
     'category': 'Import-Export'}
 
 MAJOR_VERSION = 1
-MINOR_VERSION = 14
+MINOR_VERSION = 15
 FROM_VERSION = 13
 SUB_VERSION = 1
 
@@ -69,7 +69,7 @@ from bpy.props import *
 MHX249 = False
 Blender24 = False
 Blender25 = True
-TexDir = "~/makehuman/exports"
+theDir = "~/makehuman/exports"
 
 #
 #
@@ -202,7 +202,7 @@ Plural = {
 
 def readMhxFile(filePath):
     global todo, nErrors, theScale, theArmature, defaultScale, One
-    global toggle, warnedVersion, theMessage, alpha7
+    global toggle, warnedVersion, theMessage, alpha7, theDir
 
     defaultScale = theScale
     One = 1.0/theScale
@@ -212,12 +212,14 @@ def readMhxFile(filePath):
     initLoadedData()
     theMessage = ""
 
+    theDir = os.path.dirname(filePath)
     fileName = os.path.expanduser(filePath)
-    (shortName, ext) = os.path.splitext(fileName)
+    _,ext = os.path.splitext(fileName)
     if ext.lower() != ".mhx":
-        print("Error: Not a mhx file: " + fileName)
+        print("Error: Not a mhx file: %s" % fileName.encode('utf-8', 'strict'))
         return
-    print( "Opening MHX file "+ fileName )
+    print( "Opening MHX file %s " % fileName.encode('utf-8', 'strict') )
+    print("Toggle %x" % toggle)
     time1 = time.clock()
 
     # ignore = False  # UNUSED
@@ -267,7 +269,7 @@ def readMhxFile(filePath):
                     tokens[-1][2] = sub
                 level -= 1
             except:
-                print( "Tokenizer error at or before line %d" % lineNo )
+                print( "Tokenizer error at or before line %d.\nThe mhx file has been corrupted.\nTry to export it again from MakeHuman." % lineNo )
                 print( line )
                 stack.pop()
         elif lineSplit[-1] == ';':
@@ -286,7 +288,7 @@ def readMhxFile(filePath):
     file.close()
 
     if level != 0:
-        MyError("Tokenizer out of kilter %d" % level)    
+        MyError("Tokenizer error (%d).\nThe mhx file has been corrupted.\nTry to export it again from MakeHuman." % level)    
     scn = clearScene()
     print( "Parsing" )
     parse(tokens)
@@ -296,7 +298,7 @@ def readMhxFile(filePath):
             print("Doing %s" % expr)
             exec(expr, glbals, lcals)
         except:
-            msg = "Failed: \n"+expr
+            msg = "Failed: %s\n" % expr
             print( msg )
             nErrors += 1
             #MyError(msg)
@@ -306,7 +308,6 @@ def readMhxFile(filePath):
     #bpy.ops.wm.properties_edit(data_path="object", property="MhxRig", value=theArmature["MhxRig"])
         
     time2 = time.clock()
-    print("toggle = %x" % toggle)
     msg = "File %s loaded in %g s" % (fileName, time2-time1)
     if nErrors:
         msg += " but there where %d errors. " % (nErrors)
@@ -370,8 +371,7 @@ ifResult = False
 def parse(tokens):
     global MHX249, ifResult, theScale, defaultScale, One
     
-    for (key, val, sub) in tokens:    
-        print("Parse %s" % key)
+    for (key, val, sub) in tokens: 
         data = None
         if key == 'MHX':
             checkMhxVersion(int(val[0]), int(val[1]))
@@ -454,7 +454,6 @@ def parse(tokens):
             if ob:
                 bpy.context.scene.objects.active = ob
                 mat = ob.data.materials[int(val[2])]
-                print("matanim", ob, mat)
                 parseAnimationData(mat, val, sub)
         elif key == 'ShapeKeys':
             try:
@@ -467,10 +466,6 @@ def parse(tokens):
         else:
             data = parseDefaultType(key, val, sub)                
 
-        if data and key != 'Mesh':
-            print( data )
-    return
-
 #
 #    parseDefaultType(typ, args, tokens):
 #
@@ -481,20 +476,15 @@ def parseDefaultType(typ, args, tokens):
     name = args[0]
     data = None
     expr = "bpy.data.%s.new('%s')" % (Plural[typ], name)
-    # print(expr)
     data = eval(expr)
-    # print("  ok", data)
 
     bpyType = typ.capitalize()
-    print(bpyType, name, data)
     loadedData[bpyType][name] = data
     if data is None:
         return None
 
     for (key, val, sub) in tokens:
-        #print("%s %s" % (key, val))
         defaultKey(key, val, sub, 'data', [], globals(), locals())
-    print("Done ", data)
     return data
     
 #
@@ -597,7 +587,6 @@ def channelFromDataPath(dataPath, index):
         expr = "ob.%s]" % (words[0])
         cwords = words[1].split('"')
         channel = cwords[1]
-    # print(expr, channel, index)
     return (expr, channel)
 
 def parseActionFCurve(act, ob, args, tokens):
@@ -647,7 +636,6 @@ def parseKeyFramePoint(pt, args, tokens):
 def parseAnimationData(rna, args, tokens):
     if not eval(args[1]):
         return
-    print("Parse Animation data")
     if rna.animation_data is None:    
         rna.animation_data_create()
     adata = rna.animation_data
@@ -656,7 +644,6 @@ def parseAnimationData(rna, args, tokens):
             fcu = parseAnimDataFCurve(adata, rna, val, sub)            
         else:
             defaultKey(key, val, sub, 'adata', [], globals(), locals())
-    print(adata)
     return adata
 
 def parseAnimDataFCurve(adata, rna, args, tokens):
@@ -692,7 +679,6 @@ def parseDriver(adata, dataPath, index, rna, args, tokens):
         expr = "rna." + words[0] + ']'
         pwords = words[1].split('"')
         prop = pwords[1]
-        #print("prop", expr, prop)
         bone = eval(expr)
         return None
     else:
@@ -703,12 +689,9 @@ def parseDriver(adata, dataPath, index, rna, args, tokens):
             expr += "." + words[n]
         expr += ".driver_add('%s', index)" % channel
     
-    #print("expr", rna, expr)
     fcu = eval(expr)
     drv = fcu.driver
-    #print("   Driver type", drv, args[0])
     drv.type = args[0]
-    #print("   ->", drv.type)
     for (key, val, sub) in tokens:
         if key == 'DriverVariable':
             var = parseDriverVariable(drv, rna, val, sub)
@@ -719,9 +702,7 @@ def parseDriver(adata, dataPath, index, rna, args, tokens):
 def parseDriverVariable(drv, rna, args, tokens):
     var = drv.variables.new()
     var.name = args[0]
-    #print("   Var type", var, args[1])
     var.type = args[1]
-    #print("   ->", var.type)
     nTarget = 0
     for (key, val, sub) in tokens:
         if key == 'Target':
@@ -752,7 +733,6 @@ def parseDriverTarget(var, nTarget, rna, args, tokens):
     dtype = args[1].capitalize()
     dtype = 'Object'
     targ.id = loadedData[dtype][name]
-    #print("    ->", targ.id)
     for (key, val, sub) in tokens:
         if key == 'data_path':
             words = val[0].split('"')
@@ -840,7 +820,7 @@ def parseTexture(args, tokens):
             tex.use_nodes = True
             parseNodeTree(tex.node_tree, val, sub)
         else:
-            defaultKey(key, val,  sub, "tex", ['use_nodes', 'use_textures', 'contrast'], globals(), locals())
+            defaultKey(key, val,  sub, "tex", ['use_nodes', 'use_textures', 'contrast', 'use_alpha'], globals(), locals())
 
     return tex
 
@@ -923,66 +903,25 @@ def parseSocket(socket, args, tokens):
 
 
 #
-#    doLoadImage(filepath):
 #    loadImage(filepath):
 #    parseImage(args, tokens):
 #
 
-def doLoadImage(filepath):        
-    path1 = os.path.expanduser(filepath)
-    file1 = os.path.realpath(path1)
-    if os.path.isfile(file1):
-        print( "Found file "+file1 )
+def loadImage(relFilepath):
+    filepath = os.path.normpath(os.path.join(theDir, relFilepath))
+    print( "Loading %s" % filepath.encode('utf-8','strict'))
+    if os.path.isfile(filepath):
+        #print( "Found file %s." % filepath.encode('utf-8','strict') )
         try:
-            img = bpy.data.images.load(file1)
+            img = bpy.data.images.load(filepath)
             return img
         except:
             print( "Cannot read image" )
             return None
     else:
-        print( "No file "+file1 )
+        print( "No such file: %s" % filepath.encode('utf-8','strict') )
         return None
 
-
-def loadImage(filepath):
-    global TexDir, warnedTextureDir, loadedData
-
-    texDir = os.path.expanduser(TexDir)
-    path1 = os.path.expanduser(filepath)
-    file1 = os.path.realpath(path1)
-    (path, filename) = os.path.split(file1)
-    (name, ext) = os.path.splitext(filename)
-    print( "Loading ", filepath, " = ", filename )
-
-    # img = doLoadImage(texDir+"/"+name+".png")
-    # if img:
-    #    return img
-
-    img = doLoadImage(texDir+"/"+filename)
-    if img:
-        return img
-
-    # img = doLoadImage(path+"/"+name+".png")
-    # if img:
-    #    return img
-
-    img = doLoadImage(path+"/"+filename)
-    if img:
-        return img
-
-    if warnedTextureDir:
-        return None
-    warnedTextureDir = True
-    return None
-    TexDir = Draw.PupStrInput("TexDir? ", path, 100)
-
-    texDir = os.path.expanduser(TexDir)
-    img =  doLoadImage(texDir+"/"+name+".png")
-    if img:
-        return img
-
-    img = doLoadImage(TexDir+"/"+filename)
-    return img
     
 def parseImage(args, tokens):
     global todo
@@ -998,7 +937,7 @@ def parseImage(args, tokens):
                 return None
             img.name = imgName
         else:
-            defaultKey(key, val,  sub, "img", ['depth', 'dirty', 'has_data', 'size', 'type'], globals(), locals())
+            defaultKey(key, val,  sub, "img", ['depth', 'dirty', 'has_data', 'size', 'type', 'use_premultiply'], globals(), locals())
     print ("Image %s" % img )
     loadedData['Image'][imgName] = img
     return img
@@ -1035,9 +974,7 @@ def parseObject(args, tokens):
         ob = None
 
     if ob is None:
-        print("Create", name, data, datName)
         ob = createObject(typ, name, data, datName)
-        print("created", ob)
         linkObject(ob, data)
 
     for (key, val, sub) in tokens:
@@ -1056,7 +993,6 @@ def parseObject(args, tokens):
             
     if bpy.context.object == ob:
         if ob.type == 'MESH':
-            print("Smooth shade", ob)
             bpy.ops.object.shade_smooth()
     else:
         print("Context", ob, bpy.context.object, bpy.context.scene.objects.active)
@@ -1074,7 +1010,6 @@ def linkObject(ob, data):
     #print("Data", data, ob.data)
     if data and ob.data is None:
         ob.data = data
-        print("Data linked", ob, ob.data)
     scn = bpy.context.scene
     scn.objects.link(ob)
     scn.objects.active = ob
@@ -1244,10 +1179,8 @@ def parseMesh (args, tokens):
         try:
             me.polygons
             BMeshAware = True
-            print("Using BMesh")
         except:
             BMeshAware = False
-            print("Not using BMesh")
         
     mats = []
     nuvlayers = 0
@@ -1281,7 +1214,6 @@ def parseMesh (args, tokens):
                 parseFaces2BMesh(sub, me)
             else:
                 parseFaces2NoBMesh(sub, me)
-    print(me)
     return me
 
 #
@@ -1504,6 +1436,7 @@ def doShape(name):
     else:
         return (toggle & T_Face)
 
+
 def parseShapeKeys(ob, me, args, tokens):
     for (key, val, sub) in tokens:
         if key == 'ShapeKey':
@@ -1521,8 +1454,6 @@ def parseShapeKeys(ob, me, args, tokens):
             prop = "Mhv" + name
             parseUnits(prop, ob, sub)            
     ob.active_shape_key_index = 0
-    print("Shapekeys parsed")
-    return
 
             
 def parseUnits(prop, ob, sub):
@@ -1551,6 +1482,7 @@ def parseShapeKey(ob, me, args, tokens):
     else:
         MyError("ShapeKey L/R %s" % lr)
     return
+
 
 def addShapeKey(ob, name, vgroup, tokens):
     skey = ob.shape_key_add(name=name, from_mix=False)
@@ -1641,13 +1573,6 @@ def parseBone(bone, amt, tokens, heads, tails):
         #    pass
         elif key == 'hide' and val[0] == 'True':
             name = bone.name
-            '''
-            #bpy.ops.object.mode_set(mode='OBJECT')
-            pbone = amt.bones[name]
-            pbone.hide = True
-            print("Hide", pbone, pbone.hide)
-            #bpy.ops.object.mode_set(mode='EDIT')            
-            '''
         else:
             defaultKey(key, val,  sub, "bone", [], globals(), locals())
     return bone
@@ -1675,9 +1600,7 @@ def parsePose (args, tokens):
             prop = val[1]
             value = eval(val[2])
             pb = pbones[bone]
-            print("Setting", pb, prop, val)
             pb[prop] = value
-            print("Prop set", pb[prop])
         else:
             defaultKey(key, val,  sub, "ob.pose", [], globals(), locals())
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -2058,7 +1981,7 @@ def correctRig(args):
         ob = loadedData['Object'][human]
     except:
         return
-    ob.MhxShapekeyDrivers = (toggle&T_Shapekeys and toggle&T_ShapeDrivers)
+    ob.MhxShapekeyDrivers = (toggle&T_Shapekeys != 0 and toggle&T_ShapeDrivers != 0)
     bpy.context.scene.objects.active = ob
     bpy.ops.object.mode_set(mode='POSE')
     amt = ob.data
@@ -2150,6 +2073,8 @@ theProperty = None
 
 def propNames(string):
     global alpha7
+    #string = string.encode('utf-8', 'strict')
+    
     # Alpha 7 compatibility
     if string[0:2] == "&_":
         string = "Mhf"+string[2:]
@@ -2160,15 +2085,16 @@ def propNames(string):
     elif string[0] == "*":
         string = "Mhs"+string[1:]
         alpha7 = True
-    elif string.startswith("Hide"):
+    elif len(string) > 4 and string[0:4] == "Hide":
         string = "Mhh"+string[4:]
         alpha7 = True
     
-    if string.startswith(("Mha", "Mhf", "Mhs", "Mhh", "Mhv", "Mhc")):
+    if string[0] == "_":
+        return None,None
+    elif (len(string) > 3 and
+          string[0:3] in ["Mha", "Mhf", "Mhs", "Mhh", "Mhv", "Mhc"]):
         name = string.replace("-","_")
         return name, '["%s"]' % name
-    elif string[0] == "_":
-        return None,None
     else:
         return string, '["%s"]' % string
         
@@ -2182,11 +2108,8 @@ def defProp(args, var, glbals, lcals):
         rest += ", " + args[4]
         
     if name:
-        expr = 'bpy.types.Object.%s = %sProperty(%s)' % (name, proptype, rest)
-        print(expr)
-        exec(expr)
-        expr = '%s.%s = %s' % (var, name, value)
-        print(expr)
+        #expr = 'bpy.types.Object.%s = %sProperty(%s)' % (name, proptype, rest)
+        expr = '%s["%s"] = %s' % (var, name, value)
         exec(expr, glbals, lcals)
         
 
@@ -2204,7 +2127,6 @@ def setProperty(args, var, glbals, lcals):
     if name:
         expr = '%s["%s"] = %s' % (var, name, value)
         exec(expr, glbals, lcals)
-        print(expr)
         
         if len(args) > 2:
             tip = 'description="%s"' % args[2].replace("_", " ")
@@ -2217,9 +2139,6 @@ def setProperty(args, var, glbals, lcals):
         else:
             proptype = "Int"
         theProperty = (name, tip, proptype)
-        #if proptype == "Int":
-        #    halt
-    return
 
 
 def defineProperty(args):
@@ -2233,12 +2152,7 @@ def defineProperty(args):
         else:
             tip = tip + "," + args[1].replace(":", "=").replace('"', " ")
     expr = "bpy.types.Object.%s = %sProperty(%s)" % (name, proptype, tip)
-    print(expr)
-    exec(expr)
-    if proptype == "Int":
-        halt
     theProperty = None
-    return
 
 
 def defaultKey(ext, args, tokens, var, exclude, glbals, lcals):
@@ -3027,7 +2941,7 @@ class ImportMhx(bpy.types.Operator, ImportHelper):
     scale = FloatProperty(name="Scale", description="Default meter, decimeter = 1.0", default = theScale)
     advanced = BoolProperty(name="Advanced settings", description="Use advanced import settings", default=False)
     for (prop, name, desc, flag) in MhxBoolProps:
-        expr = '%s = BoolProperty(name="%s", description="%s", default=toggleSettings&%s)' % (prop, name, desc, flag)
+        expr = '%s = BoolProperty(name="%s", description="%s", default=(toggleSettings&%s != 0))' % (prop, name, desc, flag)
         exec(expr)
     
     
@@ -3053,11 +2967,12 @@ class ImportMhx(bpy.types.Operator, ImportHelper):
         print("execute flags %x" % toggle)
         theScale = self.scale
 
+        #filepathname = self.filepath.encode('utf-8', 'strict')
         try:
             readMhxFile(self.filepath)
             bpy.ops.mhx.success('INVOKE_DEFAULT', message = self.filepath)
         except MhxError:
-            print("Error when loading MHX file:\n" + theMessage)
+            print("Error when loading MHX file %s:\n" % self.filepath + theMessage)
 
         if self.advanced:
             writeDefaults()
@@ -3070,7 +2985,7 @@ class ImportMhx(bpy.types.Operator, ImportHelper):
         readDefaults()
         self.scale = theScale
         for (prop, name, desc, flag) in MhxBoolProps:
-            expr = 'self.%s = toggle&%s' % (prop, flag)
+            expr = 'self.%s = (toggle&%s != 0)' % (prop, flag)
             exec(expr)
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
@@ -3731,7 +3646,7 @@ class VIEW3D_OT_MhxKeyExpressionsButton(bpy.types.Operator):
         props = getProps(rig, self.prefix)
         frame = context.scene.frame_current
         for prop in props:
-            rig.keyframe_insert(prop, frame=frame)
+            rig.keyframe_insert('["%s"]'%prop, frame=frame)
         updatePose(context)
         return{'FINISHED'}   
         
@@ -3758,7 +3673,7 @@ class VIEW3D_OT_MhxPinExpressionButton(bpy.types.Operator):
                 else:
                     rig[prop] = 0.0
                 if abs(rig[prop] - old) > 1e-3:
-                    rig.keyframe_insert(prop, frame=frame)
+                    rig.keyframe_insert('["%s"]'%prop, frame=frame)
         else:                    
             for prop in props:
                 if prop == expression:
@@ -3787,7 +3702,7 @@ def setMhmProps(rig, shapekeys, prefix, units, factor, auto, frame):
         else:
             rig[prop] = factor*value
             if auto:
-                rig.keyframe_insert(prop, frame=frame)    
+                rig.keyframe_insert('["%s"]'%prop, frame=frame)    
     
     
 def clearMhmProps(rig, shapekeys, prefix, auto, frame):
@@ -3801,7 +3716,7 @@ def clearMhmProps(rig, shapekeys, prefix, auto, frame):
         else:
             rig[prop] = 0.0
             if auto:
-                rig.keyframe_insert(prop, frame=frame)   
+                rig.keyframe_insert('["%s"]'%prop, frame=frame)   
 
 
 def getUnitsFromString(string):    
@@ -3889,7 +3804,7 @@ def drawShapePanel(self, context, prefix, name):
         return
         
     layout.operator("mhx.pose_reset_expressions", text="Reset %ss" % name).prefix=prefix
-    layout.operator("mhx.pose_key_expressions", text="Reset %ss" % name).prefix=prefix
+    layout.operator("mhx.pose_key_expressions", text="Key %ss" % name).prefix=prefix
     #layout.operator("mhx.update")
 
     layout.separator()
@@ -3901,7 +3816,7 @@ def drawShapePanel(self, context, prefix, name):
 
 
 class MhxExpressionUnitsPanel(bpy.types.Panel):
-    bl_label = "MHX Expression Units"
+    bl_label = "MHX Expression Tuning"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_options = {'DEFAULT_CLOSED'}
@@ -4013,8 +3928,11 @@ def fk2ikArm(context, suffix):
     rig = context.object
     auto = context.scene.tool_settings.use_keyframe_insert_auto
     print("Snap FK Arm%s" % suffix)
-    (uparmIk, loarmIk, elbow, elbowPt, wrist) = getSnapBones(rig, "ArmIK", suffix)
-    (uparmFk, loarmFk, elbowPtFk, handFk) = getSnapBones(rig, "ArmFK", suffix)
+    snapIk,cnsIk = getSnapBones(rig, "ArmIK", suffix)
+    (uparmIk, loarmIk, elbow, elbowPt, wrist) = snapIk
+    snapFk,cnsFk = getSnapBones(rig, "ArmFK", suffix)
+    (uparmFk, loarmFk, elbowPtFk, handFk) = snapFk
+    muteConstraints(cnsFk, True)
 
     matchPoseRotation(uparmFk, uparmFk, auto)
     matchPoseScale(uparmFk, uparmFk, auto)
@@ -4025,6 +3943,8 @@ def fk2ikArm(context, suffix):
     if rig["MhaHandFollowsWrist" + suffix]:
         matchPoseRotation(handFk, wrist, auto)
         matchPoseScale(handFk, wrist, auto)
+
+    muteConstraints(cnsFk, False)
     return
 
 
@@ -4033,8 +3953,11 @@ def ik2fkArm(context, suffix):
     scn = context.scene
     auto = scn.tool_settings.use_keyframe_insert_auto
     print("Snap IK Arm%s" % suffix)
-    (uparmIk, loarmIk, elbow, elbowPt, wrist) = getSnapBones(rig, "ArmIK", suffix)
-    (uparmFk, loarmFk, elbowPtFk, handFk) = getSnapBones(rig, "ArmFK", suffix)
+    snapIk,cnsIk = getSnapBones(rig, "ArmIK", suffix)
+    (uparmIk, loarmIk, elbow, elbowPt, wrist) = snapIk
+    snapFk,cnsFk = getSnapBones(rig, "ArmFK", suffix)
+    (uparmFk, loarmFk, elbowPtFk, handFk) = snapFk
+    muteConstraints(cnsIk, True)
 
     #rig["MhaElbowFollowsShoulder" + suffix] = False
     #rig["MhaElbowFollowsWrist" + suffix] = False
@@ -4044,6 +3967,7 @@ def ik2fkArm(context, suffix):
     matchPoseTranslation(elbow, elbowPtFk, auto)
     matchPoseTranslation(elbowPt, elbowPtFk, auto)
     setInverse(rig, elbowPt)
+    muteConstraints(cnsIk, False)
     return
 
 
@@ -4051,14 +3975,23 @@ def fk2ikLeg(context, suffix):
     rig = context.object
     auto = context.scene.tool_settings.use_keyframe_insert_auto
     print("Snap FK Leg%s" % suffix)
-    (uplegIk, lolegIk, kneePt, ankleIk, legIk, legFk, footIk, toeIk) = getSnapBones(rig, "LegIK", suffix)
-    (uplegFk, lolegFk, kneePtFk, footFk, toeFk) = getSnapBones(rig, "LegFK", suffix)
-
+    snapIk,cnsIk = getSnapBones(rig, "LegIK", suffix)
+    (uplegIk, lolegIk, kneePt, ankleIk, legIk, legFk, footIk, toeIk) = snapIk
+    snapFk,cnsFk = getSnapBones(rig, "LegFK", suffix)
+    (uplegFk, lolegFk, kneePtFk, footFk, toeFk) = snapFk
+    muteConstraints(cnsFk, True)
+    
+    if not rig["MhaLegIkToAnkle" + suffix]:
+        matchPoseRotation(footFk, footFk, auto)
+        matchPoseRotation(toeFk, toeFk, auto)
+    
     matchPoseRotation(uplegFk, uplegFk, auto)
     matchPoseScale(uplegFk, uplegFk, auto)
 
     matchPoseRotation(lolegFk, lolegFk, auto)
     matchPoseScale(lolegFk, lolegFk, auto)
+    
+    muteConstraints(cnsFk, False)
     return
 
 
@@ -4067,8 +4000,11 @@ def ik2fkLeg(context, suffix):
     scn = context.scene
     auto = scn.tool_settings.use_keyframe_insert_auto
     print("Snap IK Leg%s" % suffix)
-    (uplegIk, lolegIk, kneePt, ankleIk, legIk, legFk, footIk, toeIk) = getSnapBones(rig, "LegIK", suffix)
-    (uplegFk, lolegFk, kneePtFk, footFk, toeFk) = getSnapBones(rig, "LegFK", suffix)
+    snapIk,cnsIk = getSnapBones(rig, "LegIK", suffix)
+    (uplegIk, lolegIk, kneePt, ankleIk, legIk, legFk, footIk, toeIk) = snapIk
+    snapFk,cnsFk = getSnapBones(rig, "LegFK", suffix)
+    (uplegFk, lolegFk, kneePtFk, footFk, toeFk) = snapFk
+    muteConstraints(cnsIk, True)
 
     #rig["MhaKneeFollowsHip" + suffix] = False
     #rig["MhaKneeFollowsFoot" + suffix] = False
@@ -4085,8 +4021,11 @@ def ik2fkLeg(context, suffix):
     setInverse(rig, kneePt)
     if not legIkToAnkle:
         matchPoseTranslation(ankleIk, footFk, auto)
+
+    muteConstraints(cnsIk, False)
     return
-   
+
+
 #
 #   setInverse(rig, pb):
 #
@@ -4103,66 +4042,6 @@ def setInverse(rig, pb):
     bpy.ops.object.mode_set(mode='POSE')
     return
 
-
-"""           
-def clearInverse(rig, pb):
-    rig.data.bones.active = pb.bone
-    pb.bone.select = True
-    bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.mode_set(mode='POSE')
-    for cns in pb.constraints:
-        if cns.type == 'CHILD_OF':
-            bpy.ops.constraint.childof_clear_inverse(constraint=cns.name, owner='BONE')
-    bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.mode_set(mode='POSE')
-    return
-
-
-def fixAnkle(rig, suffix, scn):
-    layers = list(rig.data.layers)
-    try:
-        rig.data.layers = 32*[True]
-        setInverse(rig, rig.pose.bones["Ankle" + suffix])
-        scn.frame_current = scn.frame_current
-    finally:
-        rig.data.layers = layers
-    return
-
-
-def clearAnkle(rig, suffix, scn):
-    layers = list(rig.data.layers)
-    try:
-        rig.data.layers = 32*[True]
-        clearInverse(rig, rig.pose.bones["Ankle" + suffix])
-        scn.frame_current = scn.frame_current
-    finally:
-        rig.data.layers = layers
-    return
-
-
-class VIEW3D_OT_FixAnkleButton(bpy.types.Operator):
-    bl_idname = "mhx.fix_ankle"
-    bl_label = "Fix ankle"
-    bl_description = "Set inverse for ankle Child-of constraints"
-    bl_options = {'UNDO'}
-    suffix = StringProperty()
-
-    def execute(self, context):
-        fixAnkle(context.object, self.suffix, context.scene)
-        return{'FINISHED'}    
-
-
-class VIEW3D_OT_ClearAnkleButton(bpy.types.Operator):
-    bl_idname = "mhx.clear_ankle"
-    bl_label = "Clear ankle"
-    bl_description = "Clear inverse for ankle Child-of constraints"
-    bl_options = {'UNDO'}
-    suffix = StringProperty()
-
-    def execute(self, context):
-        clearAnkle(context.object, self.suffix, context.scene)
-        return{'FINISHED'}    
-"""        
 #
 #
 #
@@ -4178,10 +4057,19 @@ SnapBones = {
 def getSnapBones(rig, key, suffix):
     names = SnapBones[key]
     pbones = []
+    constraints = []
     for name in names:
         pb = rig.pose.bones[name+suffix]
         pbones.append(pb)
-    return tuple(pbones)
+        for cns in pb.constraints:
+            if cns.type == 'LIMIT_ROTATION' and not cns.mute:
+                constraints.append(cns)
+    return tuple(pbones),constraints
+
+
+def muteConstraints(constraints, value):
+    for cns in constraints:
+        cns.mute = value
 
 
 class VIEW3D_OT_MhxSnapFk2IkButton(bpy.types.Operator):
@@ -4193,6 +4081,8 @@ class VIEW3D_OT_MhxSnapFk2IkButton(bpy.types.Operator):
     def execute(self, context):
         bpy.ops.object.mode_set(mode='POSE')
         rig = context.object
+        if rig.MhxSnapExact:
+            rig["MhaRotationLimits"] = 0.0
         (prop, old) = setSnapProp(rig, self.data, 1.0, context, False)
         if prop[:6] == "MhaArm":
             fk2ikArm(context, prop[-2:])
@@ -4211,6 +4101,8 @@ class VIEW3D_OT_MhxSnapIk2FkButton(bpy.types.Operator):
     def execute(self, context):
         bpy.ops.object.mode_set(mode='POSE')
         rig = context.object
+        if rig.MhxSnapExact:
+            rig["MhaRotationLimits"] = 0.0
         (prop, old) = setSnapProp(rig, self.data, 0.0, context, True)
         if prop[:6] == "MhaArm":
             ik2fkArm(context, prop[-2:])
@@ -4313,6 +4205,16 @@ class MhxFKIKPanel(bpy.types.Panel):
         self.toggleButton(row, rig, "MhaLegIk_L", " 5", " 4")
         self.toggleButton(row, rig, "MhaLegIk_R", " 21", " 20")
         
+        layout.label("IK Influence")
+        row = layout.row()
+        row.label("Arm")
+        row.prop(rig, '["MhaArmIk_L"]', text="")
+        row.prop(rig, '["MhaArmIk_R"]', text="")
+        row = layout.row()
+        row.label("Leg")
+        row.prop(rig, '["MhaLegIk_L"]', text="")
+        row.prop(rig, '["MhaLegIk_R"]', text="")
+        
         try:
             ok = (rig["MhxVersion"] >= 12)
         except:
@@ -4320,6 +4222,13 @@ class MhxFKIKPanel(bpy.types.Panel):
         if not ok:
             layout.label("Snapping only works with MHX version 1.12 and later.")
             return
+        
+        layout.separator()
+        layout.label("Snapping")
+        row = layout.row()
+        row.label("Rotation Limits")
+        row.prop(rig, '["MhaRotationLimits"]', text="")
+        row.prop(rig, "MhxSnapExact", text="Exact Snapping")
         
         layout.label("Snap Arm bones")
         row = layout.row()
@@ -4340,16 +4249,7 @@ class MhxFKIKPanel(bpy.types.Panel):
         row.label("IK Leg")
         row.operator("mhx.snap_ik_fk", text="Snap L IK Leg").data = "MhaLegIk_L 4 5 12"
         row.operator("mhx.snap_ik_fk", text="Snap R IK Leg").data = "MhaLegIk_R 20 21 28"
-        """
-        row = layout.row()
-        row.label("Ankle")
-        row.operator("mhx.fix_ankle", text="Fix L Ankle").suffix = "_L"
-        row.operator("mhx.fix_ankle", text="Fix R Ankle").suffix = "_R"
-        row = layout.row()
-        row.label("")
-        row.operator("mhx.clear_ankle", text="Clear L Ankle").suffix = "_L"
-        row.operator("mhx.clear_ankle", text="Clear R Ankle").suffix = "_R"
-        """
+
 
     def toggleButton(self, row, rig, prop, fk, ik):
         if rig[prop] > 0.5:
@@ -4477,7 +4377,6 @@ class VIEW3D_OT_MhxUpdateTexturesButton(bpy.types.Operator):
                 for driver in mat.animation_data.drivers:
                     prop = mat.path_resolve(driver.data_path)
                     value = driver.evaluate(scn.frame_current)
-                    #print("Update %s[%d] = %s" % (driver.data_path, driver.array_index, value))
                     prop[driver.array_index] = value
         return{'FINISHED'}    
         
@@ -4690,6 +4589,7 @@ def register():
     bpy.types.Object.MhxMesh = BoolProperty(default=False)
     bpy.types.Object.MhxRig = StringProperty(default="")
     bpy.types.Object.MhxRigify = BoolProperty(default=False)
+    bpy.types.Object.MhxSnapExact = BoolProperty(default=False)
     bpy.types.Object.MhxShapekeyDrivers = BoolProperty(default=True)
     bpy.types.Object.MhxStrength = FloatProperty(
         name = "Expression strength",

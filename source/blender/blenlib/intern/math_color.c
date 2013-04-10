@@ -266,8 +266,8 @@ void rgb_to_hsv_v(const float rgb[3], float r_hsv[3])
 
 void rgb_to_hsl(float r, float g, float b, float *lh, float *ls, float *ll)
 {
-	float cmax = MAX3(r, g, b);
-	float cmin = MIN3(r, g, b);
+	const float cmax = max_fff(r, g, b);
+	const float cmin = min_fff(r, g, b);
 	float h, s, l = (cmax + cmin) / 2.0f;
 
 	if (cmax == cmin) {
@@ -457,7 +457,7 @@ float linearrgb_to_srgb(float c)
 		return 1.055f * powf(c, 1.0f / 2.4f) - 0.055f;
 }
 
-void minmax_rgb(short c[])
+void minmax_rgb(short c[3])
 {
 	if (c[0] > 255) c[0] = 255;
 	else if (c[0] < 0) c[0] = 0;

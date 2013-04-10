@@ -239,7 +239,7 @@ static void eyedropper_color_sample_accum(bContext *C, Eyedropper *eye, int mx, 
 }
 
 /* main modal status check */
-static int eyedropper_modal(bContext *C, wmOperator *op, wmEvent *event)
+static int eyedropper_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	Eyedropper *eye = (Eyedropper *)op->customdata;
 	
@@ -285,7 +285,7 @@ static int eyedropper_modal(bContext *C, wmOperator *op, wmEvent *event)
 }
 
 /* Modal Operator init */
-static int eyedropper_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int eyedropper_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	/* init */
 	if (eyedropper_init(C, op)) {
@@ -661,11 +661,12 @@ static int reports_to_text_poll(bContext *C)
 static int reports_to_text_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	ReportList *reports = CTX_wm_reports(C);
+	Main *bmain = CTX_data_main(C);
 	Text *txt;
 	char *str;
 	
 	/* create new text-block to write to */
-	txt = BKE_text_add("Recent Reports");
+	txt = BKE_text_add(bmain, "Recent Reports");
 	
 	/* convert entire list to a display string, and add this to the text-block
 	 *	- if commandline debug option enabled, show debug reports too
@@ -715,7 +716,7 @@ struct uiEditSourceButStore {
 /* should only ever be set while the edit source operator is running */
 static struct uiEditSourceStore *ui_editsource_info = NULL;
 
-int  UI_editsource_enable_check(void)
+bool UI_editsource_enable_check(void)
 {
 	return (ui_editsource_info != NULL);
 }
@@ -803,7 +804,7 @@ static int editsource_text_edit(bContext *C, wmOperator *op,
 	}
 
 	if (text == NULL) {
-		text = BKE_text_load(filepath, bmain->name);
+		text = BKE_text_load(bmain, filepath, bmain->name);
 	}
 
 	if (text == NULL) {
@@ -852,7 +853,7 @@ static int editsource_exec(bContext *C, wmOperator *op)
 		ED_region_do_draw(C, ar);
 
 		for (BLI_ghashIterator_init(&ghi, ui_editsource_info->hash);
-		     !BLI_ghashIterator_isDone(&ghi);
+		     BLI_ghashIterator_notDone(&ghi);
 		     BLI_ghashIterator_step(&ghi))
 		{
 			uiBut *but_key = BLI_ghashIterator_getKey(&ghi);
@@ -1088,4 +1089,3 @@ void UI_buttons_operatortypes(void)
 #endif
 	WM_operatortype_append(UI_OT_reloadtranslation);
 }
-

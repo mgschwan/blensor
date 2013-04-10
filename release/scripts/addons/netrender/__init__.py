@@ -22,7 +22,7 @@ bl_info = {
     "name": "Network Renderer",
     "author": "Martin Poirier",
     "version": (1, 8),
-    "blender": (2, 6, 0),
+    "blender": (2, 60, 0),
     "location": "Render > Engine > Network Render",
     "description": "Distributed rendering for Blender",
     "warning": "Stable but still work in progress",
@@ -71,11 +71,6 @@ init_data = True
 def register():
     import bpy
     bpy.utils.register_module(__name__)
-
-    scene = bpy.context.scene
-    if scene:
-        ui.init_data(scene.network_render)
-    
 
 def unregister():
     import bpy

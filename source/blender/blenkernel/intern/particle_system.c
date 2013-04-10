@@ -23,7 +23,8 @@
  * Contributor(s): Raul Fernandez Hernandez (Farsthary), Stephen Swhitehorn.
  *
  * Adaptive time step
- * Copyright 2011 AutoCRC
+ * Classical SPH
+ * Copyright 2011-2012 AutoCRC
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -521,9 +522,9 @@ static void distribute_grid(DerivedMesh *dm, ParticleSystem *psys)
 			vec[0]/=delta[0];
 			vec[1]/=delta[1];
 			vec[2]/=delta[2];
-			(pa	+ ((int)(vec[0] * (size[0] - 1)) * res +
-			       (int)(vec[1] * (size[1] - 1))) * res +
-			        (int)(vec[2] * (size[2] - 1)))->flag &= ~PARS_UNEXIST;
+			pa[((int)(vec[0] * (size[0] - 1))  * res +
+			    (int)(vec[1] * (size[1] - 1))) * res +
+			    (int)(vec[2] * (size[2] - 1))].flag &= ~PARS_UNEXIST;
 		}
 	}
 	else if (ELEM(from,PART_FROM_FACE,PART_FROM_VOLUME)) {
@@ -801,7 +802,7 @@ static void distribute_threads_exec(ParticleThread *thread, ParticleData *pa, Ch
 				if (mface->v4)
 					psys_uv_to_w(0.5f, 0.5f, mface->v4, pa->fuv);
 				else
-					psys_uv_to_w(0.33333f, 0.33333f, mface->v4, pa->fuv);
+					psys_uv_to_w(1.0f / 3.0f, 1.0f / 3.0f, mface->v4, pa->fuv);
 			}
 			else {
 				ctx->jitoff[i] = fmod(ctx->jitoff[i],(float)ctx->jitlevel);
@@ -1345,7 +1346,7 @@ static int distribute_threads_init_data(ParticleThread *threads, Scene *scene, D
 	ctx->jitoff= jitter_offset;
 	ctx->weight= element_weight;
 	ctx->maxweight= maxweight;
-	ctx->from= (children)? PART_FROM_CHILD: from;
+	ctx->from= (children) ? PART_FROM_CHILD : from;
 	ctx->cfrom= cfrom;
 	ctx->distr= distr;
 	ctx->dm= dm;
@@ -1889,7 +1890,6 @@ void reset_particle(ParticleSimulationData *sim, ParticleData *pa, float dtime, 
 		bpa->data.acc[0]=bpa->data.acc[1]=bpa->data.acc[2]=0.0f;
 	}
 
-
 	if (part->type == PART_HAIR) {
 		pa->lifetime = 100.0f;
 	}
@@ -2039,7 +2039,7 @@ static void set_keyed_keys(ParticleSimulationData *sim)
 
 		ksim.psys->flag |= keyed_flag;
 
-		pt = (pt->next && pt->next->flag & PTARGET_VALID)? pt->next : psys->targets.first;
+		pt = (pt->next && pt->next->flag & PTARGET_VALID) ? pt->next : psys->targets.first;
 	}
 
 	psys->flag |= PSYS_KEYED;
@@ -2390,33 +2390,37 @@ typedef struct SPHRangeData {
 	SPHNeighbor neighbors[SPH_NEIGHBORS];
 	int tot_neighbors;
 
-	float density, near_density;
-	float h;
+	float* data;
 
 	ParticleSystem *npsys;
 	ParticleData *pa;
 
+	float h;
+	float mass;
 	float massfac;
 	int use_size;
 } SPHRangeData;
 
-typedef struct SPHData {
-	ParticleSystem *psys[10];
-	ParticleData *pa;
-	float mass;
-	EdgeHash *eh;
-	float *gravity;
-	/* Average distance to neighbors (other particles in the support domain),
-	 * for calculating the Courant number (adaptive time step). */
-	int pass;
-	float element_size;
-	float flow[3];
+static void sph_evaluate_func(BVHTree *tree, ParticleSystem **psys, float co[3], SPHRangeData *pfr, float interaction_radius, BVHTree_RangeQuery callback)
+{
+	int i;
 
-	/* Integrator callbacks. This allows different SPH implementations. */
-	void (*force_cb) (void *sphdata_v, ParticleKey *state, float *force, float *impulse);
-	void (*density_cb) (void *rangedata_v, int index, float squared_dist);
-} SPHData;
+	pfr->tot_neighbors = 0;
 
+	for (i=0; i < 10 && psys[i]; i++) {
+		pfr->npsys    = psys[i];
+		pfr->massfac  = psys[i]->part->mass / pfr->mass;
+		pfr->use_size = psys[i]->part->flag & PART_SIZEMASS;
+
+		if (tree) {
+			BLI_bvhtree_range_query(tree, co, interaction_radius, callback, pfr);
+			break;
+		}
+		else {
+			BLI_bvhtree_range_query(psys[i]->bvhtree, co, interaction_radius, callback, pfr);
+		}
+	}
+}
 static void sph_density_accum_cb(void *userdata, int index, float squared_dist)
 {
 	SPHRangeData *pfr = (SPHRangeData *)userdata;
@@ -2446,8 +2450,8 @@ static void sph_density_accum_cb(void *userdata, int index, float squared_dist)
 	if (pfr->use_size)
 		q *= npa->size;
 
-	pfr->density += q*q;
-	pfr->near_density += q*q*q;
+	pfr->data[0] += q*q;
+	pfr->data[1] += q*q*q;
 }
 
 /*
@@ -2488,7 +2492,6 @@ static void sph_force_cb(void *sphdata_v, ParticleKey *state, float *force, floa
 	ParticleSpring *spring = NULL;
 	SPHRangeData pfr;
 	SPHNeighbor *pfn;
-	float mass = sphdata->mass;
 	float *gravity = sphdata->gravity;
 	EdgeHash *springhash = sphdata->eh;
 
@@ -2498,10 +2501,12 @@ static void sph_force_cb(void *sphdata_v, ParticleKey *state, float *force, floa
 	float visc = fluid->viscosity_omega;
 	float stiff_visc = fluid->viscosity_beta * (fluid->flag & SPH_FAC_VISCOSITY ? fluid->viscosity_omega : 1.f);
 
-	float inv_mass = 1.0f/mass;
+	float inv_mass = 1.0f / sphdata->mass;
 	float spring_constant = fluid->spring_k;
-	
-	float h = fluid->radius * (fluid->flag & SPH_FAC_RADIUS ? 4.f*pa->size : 1.f); /* 4.0 seems to be a pretty good value */
+
+	/* 4.0 seems to be a pretty good value */
+	float interaction_radius = fluid->radius * (fluid->flag & SPH_FAC_RADIUS ? 4.0f * pa->size : 1.0f);
+	float h = interaction_radius * sphdata->hfac;
 	float rest_density = fluid->rest_density * (fluid->flag & SPH_FAC_DENSITY ? 4.77f : 1.f); /* 4.77 is an experimentally determined density factor */
 	float rest_length = fluid->rest_length * (fluid->flag & SPH_FAC_REST_LENGTH ? 2.588f * pa->size : 1.f);
 
@@ -2512,24 +2517,24 @@ static void sph_force_cb(void *sphdata_v, ParticleKey *state, float *force, floa
 	float vec[3];
 	float vel[3];
 	float co[3];
+	float data[2];
+	float density, near_density;
 
 	int i, spring_index, index = pa - psys[0]->particles;
 
-	pfr.tot_neighbors = 0;
-	pfr.density = pfr.near_density = 0.f;
+	data[0] = data[1] = 0;
+	pfr.data = data;
 	pfr.h = h;
 	pfr.pa = pa;
+	pfr.mass = sphdata->mass;
 
-	for (i=0; i<10 && psys[i]; i++) {
-		pfr.npsys = psys[i];
-		pfr.massfac = psys[i]->part->mass*inv_mass;
-		pfr.use_size = psys[i]->part->flag & PART_SIZEMASS;
+	sph_evaluate_func( NULL, psys, state->co, &pfr, interaction_radius, sph_density_accum_cb);
 
-		BLI_bvhtree_range_query(psys[i]->bvhtree, state->co, h, sphdata->density_cb, &pfr);
-	}
+	density = data[0];
+	near_density = data[1];
 
-	pressure =  stiffness * (pfr.density - rest_density);
-	near_pressure = stiffness_near_fac * pfr.near_density;
+	pressure =  stiffness * (density - rest_density);
+	near_pressure = stiffness_near_fac * near_density;
 
 	pfn = pfr.neighbors;
 	for (i=0; i<pfr.tot_neighbors; i++, pfn++) {
@@ -2593,14 +2598,209 @@ static void sph_force_cb(void *sphdata_v, ParticleKey *state, float *force, floa
 	
 	/* Artificial buoyancy force in negative gravity direction  */
 	if (fluid->buoyancy > 0.f && gravity)
-		madd_v3_v3fl(force, gravity, fluid->buoyancy * (pfr.density-rest_density));
+		madd_v3_v3fl(force, gravity, fluid->buoyancy * (density-rest_density));
 
 	if (sphdata->pass == 0 && psys[0]->part->time_flag & PART_TIME_AUTOSF)
 		sph_particle_courant(sphdata, &pfr);
 	sphdata->pass++;
 }
 
-static void sph_solver_init(ParticleSimulationData *sim, SPHData *sphdata)
+/* powf is really slow for raising to integer powers. */
+MINLINE float pow2(float x)
+{
+	return x * x;
+}
+MINLINE float pow3(float x)
+{
+	return pow2(x) * x;
+}
+MINLINE float pow4(float x)
+{
+	return pow2(pow2(x));
+}
+MINLINE float pow7(float x)
+{
+	return pow2(pow3(x)) * x;
+}
+
+static void sphclassical_density_accum_cb(void *userdata, int index, float UNUSED(squared_dist))
+{
+	SPHRangeData *pfr = (SPHRangeData *)userdata;
+	ParticleData *npa = pfr->npsys->particles + index;
+	float q;
+	float qfac = 21.0f / (256.f * (float)M_PI);
+	float rij, rij_h;
+	float vec[3];
+
+	/* Exclude particles that are more than 2h away. Can't use squared_dist here
+	 * because it is not accurate enough. Use current state, i.e. the output of
+	 * basic_integrate() - z0r */
+	sub_v3_v3v3(vec, npa->state.co, pfr->pa->state.co);
+	rij = len_v3(vec);
+	rij_h = rij / pfr->h;
+	if (rij_h > 2.0f)
+		return;
+
+	/* Smoothing factor. Utilise the Wendland kernel. gnuplot:
+	 *     q1(x) = (2.0 - x)**4 * ( 1.0 + 2.0 * x)
+	 *     plot [0:2] q1(x) */
+	q  = qfac / pow3(pfr->h) * pow4(2.0f - rij_h) * ( 1.0f + 2.0f * rij_h);
+	q *= pfr->npsys->part->mass;
+
+	if (pfr->use_size)
+		q *= pfr->pa->size;
+
+	pfr->data[0] += q;
+	pfr->data[1] += q / npa->sphdensity;
+}
+
+static void sphclassical_neighbour_accum_cb(void *userdata, int index, float UNUSED(squared_dist))
+{
+	SPHRangeData *pfr = (SPHRangeData *)userdata;
+	ParticleData *npa = pfr->npsys->particles + index;
+	float rij, rij_h;
+	float vec[3];
+
+	if (pfr->tot_neighbors >= SPH_NEIGHBORS)
+		return;
+
+	/* Exclude particles that are more than 2h away. Can't use squared_dist here
+	 * because it is not accurate enough. Use current state, i.e. the output of
+	 * basic_integrate() - z0r */
+	sub_v3_v3v3(vec, npa->state.co, pfr->pa->state.co);
+	rij = len_v3(vec);
+	rij_h = rij / pfr->h;
+	if (rij_h > 2.0f)
+		return;
+
+	pfr->neighbors[pfr->tot_neighbors].index = index;
+	pfr->neighbors[pfr->tot_neighbors].psys = pfr->npsys;
+	pfr->tot_neighbors++;
+}
+static void sphclassical_force_cb(void *sphdata_v, ParticleKey *state, float *force, float *UNUSED(impulse))
+{
+	SPHData *sphdata = (SPHData *)sphdata_v;
+	ParticleSystem **psys = sphdata->psys;
+	ParticleData *pa = sphdata->pa;
+	SPHFluidSettings *fluid = psys[0]->part->fluid;
+	SPHRangeData pfr;
+	SPHNeighbor *pfn;
+	float *gravity = sphdata->gravity;
+
+	float dq, u, rij, dv[3];
+	float pressure, npressure;
+
+	float visc = fluid->viscosity_omega;
+
+	float interaction_radius;
+	float h, hinv;
+	/* 4.77 is an experimentally determined density factor */
+	float rest_density = fluid->rest_density * (fluid->flag & SPH_FAC_DENSITY ? 4.77f : 1.0f);
+
+	// Use speed of sound squared
+	float stiffness = pow2(fluid->stiffness_k);
+
+	ParticleData *npa;
+	float vec[3];
+	float co[3];
+	float pressureTerm;
+
+	int i;
+
+	float qfac2 = 42.0f / (256.0f * (float)M_PI);
+	float rij_h;
+
+	/* 4.0 here is to be consistent with previous formulation/interface */
+	interaction_radius = fluid->radius * (fluid->flag & SPH_FAC_RADIUS ? 4.0f * pa->size : 1.0f);
+	h = interaction_radius * sphdata->hfac;
+	hinv = 1.0f / h;
+
+	pfr.h = h;
+	pfr.pa = pa;
+
+	sph_evaluate_func(NULL, psys, state->co, &pfr, interaction_radius, sphclassical_neighbour_accum_cb);
+	pressure =  stiffness * (pow7(pa->sphdensity / rest_density) - 1.0f);
+
+	/* multiply by mass so that we return a force, not accel */
+	qfac2 *= sphdata->mass / pow3(pfr.h);
+
+	pfn = pfr.neighbors;
+	for (i = 0; i < pfr.tot_neighbors; i++, pfn++) {
+		npa = pfn->psys->particles + pfn->index;
+		if (npa == pa) {
+			/* we do not contribute to ourselves */
+			continue;
+		}
+
+		/* Find vector to neighbour. Exclude particles that are more than 2h
+		 * away. Can't use current state here because it may have changed on
+		 * another thread - so do own mini integration. Unlike basic_integrate,
+		 * SPH integration depends on neighbouring particles. - z0r */
+		madd_v3_v3v3fl(co, npa->prev_state.co, npa->prev_state.vel, state->time);
+		sub_v3_v3v3(vec, co, state->co);
+		rij = normalize_v3(vec);
+		rij_h = rij / pfr.h;
+		if (rij_h > 2.0f)
+			continue;
+
+		npressure = stiffness * (pow7(npa->sphdensity / rest_density) - 1.0f);
+
+		/* First derivative of smoothing factor. Utilise the Wendland kernel.
+		 * gnuplot:
+		 *     q2(x) = 2.0 * (2.0 - x)**4 - 4.0 * (2.0 - x)**3 * (1.0 + 2.0 * x)
+		 *     plot [0:2] q2(x)
+		 * Particles > 2h away are excluded above. */
+		dq = qfac2 * (2.0f * pow4(2.0f - rij_h) - 4.0f * pow3(2.0f - rij_h) * (1.0f + 2.0f * rij_h)  );
+
+		if (pfn->psys->part->flag & PART_SIZEMASS)
+			dq *= npa->size;
+
+		pressureTerm = pressure / pow2(pa->sphdensity) + npressure / pow2(npa->sphdensity);
+
+		/* Note that 'minus' is removed, because vec = vecBA, not vecAB.
+		 * This applies to the viscosity calculation below, too. */
+		madd_v3_v3fl(force, vec, pressureTerm * dq);
+
+		/* Viscosity */
+		if (visc > 0.0f) {
+			sub_v3_v3v3(dv, npa->prev_state.vel, pa->prev_state.vel);
+			u = dot_v3v3(vec, dv);
+			/* Apply parameters */
+			u *= -dq * hinv * visc / (0.5f * npa->sphdensity + 0.5f * pa->sphdensity);
+			madd_v3_v3fl(force, vec, u);
+		}
+	}
+
+	/* Artificial buoyancy force in negative gravity direction  */
+	if (fluid->buoyancy > 0.f && gravity)
+		madd_v3_v3fl(force, gravity, fluid->buoyancy * (pa->sphdensity - rest_density));
+
+	if (sphdata->pass == 0 && psys[0]->part->time_flag & PART_TIME_AUTOSF)
+		sph_particle_courant(sphdata, &pfr);
+	sphdata->pass++;
+}
+
+static void sphclassical_calc_dens(ParticleData *pa, float UNUSED(dfra), SPHData *sphdata)
+{
+	ParticleSystem **psys = sphdata->psys;
+	SPHFluidSettings *fluid = psys[0]->part->fluid;
+	/* 4.0 seems to be a pretty good value */
+	float interaction_radius  = fluid->radius * (fluid->flag & SPH_FAC_RADIUS ? 4.0f * psys[0]->part->size : 1.0f);
+	SPHRangeData pfr;
+	float data[2];
+
+	data[0] = 0;
+	data[1] = 0;
+	pfr.data = data;
+	pfr.h = interaction_radius * sphdata->hfac;
+	pfr.pa = pa;
+	pfr.mass = sphdata->mass;
+
+	sph_evaluate_func( NULL, psys, pa->state.co, &pfr, interaction_radius, sphclassical_density_accum_cb);
+	pa->sphdensity = MIN2(MAX2(data[0], fluid->rest_density * 0.9f), fluid->rest_density * 1.1f);
+}
+
+void psys_sph_init(ParticleSimulationData *sim, SPHData *sphdata)
 {
 	ParticleTarget *pt;
 	int i;
@@ -2621,16 +2821,46 @@ static void sph_solver_init(ParticleSimulationData *sim, SPHData *sphdata)
 	sphdata->pa = NULL;
 	sphdata->mass = 1.0f;
 
-	sphdata->force_cb = sph_force_cb;
-	sphdata->density_cb = sph_density_accum_cb;
+	if (sim->psys->part->fluid->solver == SPH_SOLVER_DDR) {
+		sphdata->force_cb = sph_force_cb;
+		sphdata->density_cb = sph_density_accum_cb;
+		sphdata->hfac = 1.0f;
+	}
+	else {
+		/* SPH_SOLVER_CLASSICAL */
+		sphdata->force_cb = sphclassical_force_cb;
+		sphdata->density_cb = sphclassical_density_accum_cb;
+		sphdata->hfac = 0.5f;
+	}
+
 }
 
-static void sph_solver_finalise(SPHData *sphdata)
+void psys_sph_finalise(SPHData *sphdata)
 {
 	if (sphdata->eh) {
 		BLI_edgehash_free(sphdata->eh, NULL);
 		sphdata->eh = NULL;
 	}
+}
+/* Sample the density field at a point in space. */
+void psys_sph_density(BVHTree *tree, SPHData *sphdata, float co[3], float vars[2])
+{
+	ParticleSystem **psys = sphdata->psys;
+	SPHFluidSettings *fluid = psys[0]->part->fluid;
+	/* 4.0 seems to be a pretty good value */
+	float interaction_radius  = fluid->radius * (fluid->flag & SPH_FAC_RADIUS ? 4.0f * psys[0]->part->size : 1.0f);
+	SPHRangeData pfr;
+	float density[2];
+
+	density[0] = density[1] = 0.0f;
+	pfr.data = density;
+	pfr.h = interaction_radius * sphdata->hfac;
+	pfr.mass = sphdata->mass;
+
+	sph_evaluate_func(tree, psys, co, &pfr, interaction_radius, sphdata->density_cb);
+
+	vars[0] = pfr.data[0];
+	vars[1] = pfr.data[1];
 }
 
 static void sph_integrate(ParticleSimulationData *sim, ParticleData *pa, float dfra, SPHData *sphdata)
@@ -2798,13 +3028,20 @@ static void basic_rotate(ParticleSettings *part, ParticleData *pa, float dfra, f
 	normalize_qt(pa->state.rot);
 }
 
-/************************************************/
-/*			Collisions							*/
-/************************************************/
+/************************************************
+ *			Collisions
+ *
+ * The algorithm is roughly:
+ *  1. Use a BVH tree to search for faces that a particle may collide with.
+ *  2. Use Newton's method to find the exact time at which the collision occurs.
+ *     http://en.wikipedia.org/wiki/Newton's_method
+ *
+ ************************************************/
 #define COLLISION_MAX_COLLISIONS	10
 #define COLLISION_MIN_RADIUS 0.001f
 #define COLLISION_MIN_DISTANCE 0.0001f
 #define COLLISION_ZERO 0.00001f
+#define COLLISION_INIT_STEP 0.00008f
 typedef float (*NRDistanceFunc)(float *p, float radius, ParticleCollisionElement *pce, float *nor);
 static float nr_signed_distance_to_plane(float *p, float radius, ParticleCollisionElement *pce, float *nor)
 {
@@ -2959,16 +3196,20 @@ static void collision_point_on_surface(float p[3], ParticleCollisionElement *pce
 /* find first root in range [0-1] starting from 0 */
 static float collision_newton_rhapson(ParticleCollision *col, float radius, ParticleCollisionElement *pce, NRDistanceFunc distance_func)
 {
-	float t0, t1, d0, d1, dd, n[3];
+	float t0, t1, dt_init, d0, d1, dd, n[3];
 	int iter;
 
 	pce->inv_nor = -1;
+
+	/* Initial step size should be small, but not too small or floating point
+	 * precision errors will appear. - z0r */
+	dt_init = COLLISION_INIT_STEP * col->inv_total_time;
 
 	/* start from the beginning */
 	t0 = 0.f;
 	collision_interpolate_element(pce, t0, col->f, col);
 	d0 = distance_func(col->co1, radius, pce, n);
-	t1 = 0.001f;
+	t1 = dt_init;
 	d1 = 0.f;
 
 	for (iter=0; iter<10; iter++) {//, itersum++) {
@@ -2978,11 +3219,6 @@ static float collision_newton_rhapson(ParticleCollision *col, float radius, Part
 
 		d1 = distance_func(pce->p, radius, pce, n);
 
-		/* no movement, so no collision */
-		if (d1 == d0) {
-			return -1.f;
-		}
-
 		/* particle already inside face, so report collision */
 		if (iter == 0 && d0 < 0.f && d0 > -radius) {
 			copy_v3_v3(pce->p, col->co1);
@@ -2990,7 +3226,24 @@ static float collision_newton_rhapson(ParticleCollision *col, float radius, Part
 			pce->inside = 1;
 			return 0.f;
 		}
-		
+
+		/* Zero gradient (no movement relative to element). Can't step from
+		 * here. */
+		if (d1 == d0) {
+			/* If first iteration, try from other end where the gradient may be
+			 * greater. Note: code duplicated below. */
+			if (iter == 0) {
+				t0 = 1.f;
+				collision_interpolate_element(pce, t0, col->f, col);
+				d0 = distance_func(col->co2, radius, pce, n);
+				t1 = 1.0f - dt_init;
+				d1 = 0.f;
+				continue;
+			}
+			else
+				return -1.f;
+		}
+
 		dd = (t1-t0)/(d1-d0);
 
 		t0 = t1;
@@ -2998,14 +3251,14 @@ static float collision_newton_rhapson(ParticleCollision *col, float radius, Part
 
 		t1 -= d1*dd;
 
-		/* particle movin away from plane could also mean a strangely rotating face, so check from end */
+		/* Particle moving away from plane could also mean a strangely rotating
+		 * face, so check from end. Note: code duplicated above. */
 		if (iter == 0 && t1 < 0.f) {
 			t0 = 1.f;
 			collision_interpolate_element(pce, t0, col->f, col);
 			d0 = distance_func(col->co2, radius, pce, n);
-			t1 = 0.999f;
+			t1 = 1.0f - dt_init;
 			d1 = 0.f;
-
 			continue;
 		}
 		else if (iter == 1 && (t1 < -COLLISION_ZERO || t1 > 1.f))
@@ -3453,6 +3706,7 @@ static void collision_check(ParticleSimulationData *sim, int p, float dfra, floa
 	memset(&col, 0, sizeof(ParticleCollision));
 
 	col.total_time = timestep * dfra;
+	col.inv_total_time = 1.0f/col.total_time;
 	col.inv_timestep = 1.0f/timestep;
 
 	col.cfra = cfra;
@@ -3781,18 +4035,19 @@ static void save_hair(ParticleSimulationData *sim, float UNUSED(cfra))
 
 /* Code for an adaptive time step based on the Courant-Friedrichs-Lewy
  * condition. */
-#define MIN_TIMESTEP 1.0f / 101.0f
+static const float MIN_TIMESTEP = 1.0f / 101.0f;
 /* Tolerance of 1.5 means the last subframe neither favors growing nor
  * shrinking (e.g if it were 1.3, the last subframe would tend to be too
  * small). */
-#define TIMESTEP_EXPANSION_TOLERANCE 1.5f
+static const float TIMESTEP_EXPANSION_FACTOR = 0.1f;
+static const float TIMESTEP_EXPANSION_TOLERANCE = 1.5f;
 
 /* Calculate the speed of the particle relative to the local scale of the
  * simulation. This should be called once per particle during a simulation
  * step, after the velocity has been updated. element_size defines the scale of
  * the simulation, and is typically the distance to neighboring particles. */
 static void update_courant_num(ParticleSimulationData *sim, ParticleData *pa,
-	float dtime, SPHData *sphdata)
+                               float dtime, SPHData *sphdata)
 {
 	float relative_vel[3];
 	float speed;
@@ -3802,14 +4057,31 @@ static void update_courant_num(ParticleSimulationData *sim, ParticleData *pa,
 	if (sim->courant_num < speed * dtime / sphdata->element_size)
 		sim->courant_num = speed * dtime / sphdata->element_size;
 }
+static float get_base_time_step(ParticleSettings *part)
+{
+	return 1.0f / (float) (part->subframes + 1);
+}
 /* Update time step size to suit current conditions. */
 static float update_timestep(ParticleSystem *psys, ParticleSimulationData *sim, float t_frac)
 {
+	float dt_target;
 	if (sim->courant_num == 0.0f)
-		psys->dt_frac = 1.0f;
+		dt_target = 1.0f;
 	else
-		psys->dt_frac *= (psys->part->courant_target / sim->courant_num);
-	CLAMP(psys->dt_frac, MIN_TIMESTEP, 1.0f);
+		dt_target = psys->dt_frac * (psys->part->courant_target / sim->courant_num);
+
+	/* Make sure the time step is reasonable. For some reason, the CLAMP macro
+	 * doesn't work here. The time step becomes too large. - z0r */
+	if (dt_target < MIN_TIMESTEP)
+		dt_target = MIN_TIMESTEP;
+	else if (dt_target > get_base_time_step(psys->part))
+		dt_target = get_base_time_step(psys->part);
+
+	/* Decrease time step instantly, but increase slowly. */
+	if (dt_target > psys->dt_frac)
+		psys->dt_frac = interpf(dt_target, psys->dt_frac, TIMESTEP_EXPANSION_FACTOR);
+	else
+		psys->dt_frac = dt_target;
 
 	/* Sync with frame end if it's close. */
 	if (t_frac == 1.0f)
@@ -3973,31 +4245,72 @@ static void dynamics_step(ParticleSimulationData *sim, float cfra)
 		case PART_PHYS_FLUID:
 		{
 			SPHData sphdata;
-			sph_solver_init(sim, &sphdata);
+			ParticleSettings *part = sim->psys->part;
+			psys_sph_init(sim, &sphdata);
 
-			#pragma omp parallel for firstprivate (sphdata) private (pa) schedule(dynamic,5)
-			LOOP_DYNAMIC_PARTICLES {
+			if (part->fluid->solver == SPH_SOLVER_DDR) {
+				/* Apply SPH forces using double-density relaxation algorithm
+				 * (Clavat et. al.) */
+				#pragma omp parallel for firstprivate (sphdata) private (pa) schedule(dynamic,5)
+				LOOP_DYNAMIC_PARTICLES {
+					/* do global forces & effectors */
+					basic_integrate(sim, p, pa->state.time, cfra);
+
+					/* actual fluids calculations */
+					sph_integrate(sim, pa, pa->state.time, &sphdata);
+
+					if (sim->colliders)
+						collision_check(sim, p, pa->state.time, cfra);
+
+					/* SPH particles are not physical particles, just interpolation
+					 * particles,  thus rotation has not a direct sense for them */
+					basic_rotate(part, pa, pa->state.time, timestep);
+
+					#pragma omp critical
+					if (part->time_flag & PART_TIME_AUTOSF)
+						update_courant_num(sim, pa, dtime, &sphdata);
+				}
+
+				sph_springs_modify(psys, timestep);
+
+			}
+			else {
+				/* SPH_SOLVER_CLASSICAL */
+				/* Apply SPH forces using classical algorithm (due to Gingold
+				 * and Monaghan). Note that, unlike double-density relaxation,
+				 * this algorthim is separated into distinct loops. */
+
+				#pragma omp parallel for firstprivate (sphdata) private (pa) schedule(dynamic,5)
+				LOOP_DYNAMIC_PARTICLES {
+					basic_integrate(sim, p, pa->state.time, cfra);
+				}
+
+				/* calculate summation density */
+				#pragma omp parallel for firstprivate (sphdata) private (pa) schedule(dynamic,5)
+				LOOP_DYNAMIC_PARTICLES {
+					sphclassical_calc_dens(pa, pa->state.time, &sphdata);
+				}
+
 				/* do global forces & effectors */
-				basic_integrate(sim, p, pa->state.time, cfra);
+				#pragma omp parallel for firstprivate (sphdata) private (pa) schedule(dynamic,5)
+				LOOP_DYNAMIC_PARTICLES {
+					/* actual fluids calculations */
+					sph_integrate(sim, pa, pa->state.time, &sphdata);
 
-				/* actual fluids calculations */
-				sph_integrate(sim, pa, pa->state.time, &sphdata);
-
-				if (sim->colliders)
-					collision_check(sim, p, pa->state.time, cfra);
+					if (sim->colliders)
+						collision_check(sim, p, pa->state.time, cfra);
 				
-				/* SPH particles are not physical particles, just interpolation
-				 * particles,  thus rotation has not a direct sense for them */
-				basic_rotate(part, pa, pa->state.time, timestep);  
+					/* SPH particles are not physical particles, just interpolation
+					 * particles,  thus rotation has not a direct sense for them */
+					basic_rotate(part, pa, pa->state.time, timestep);
 
-				#pragma omp critical
-				if (part->time_flag & PART_TIME_AUTOSF)
-					update_courant_num(sim, pa, dtime, &sphdata);
+					#pragma omp critical
+					if (part->time_flag & PART_TIME_AUTOSF)
+						update_courant_num(sim, pa, dtime, &sphdata);
+				}
 			}
 
-			sph_springs_modify(psys, timestep);
-
-			sph_solver_finalise(&sphdata);
+			psys_sph_finalise(&sphdata);
 			break;
 		}
 	}
@@ -4211,7 +4524,7 @@ static void system_step(ParticleSimulationData *sim, float cfra)
 	int startframe = 0, endframe = 100, oldtotpart = 0;
 
 	/* cache shouldn't be used for hair or "continue physics" */
-	if (part->type != PART_HAIR && BKE_ptcache_get_continue_physics() == 0) {
+	if (part->type != PART_HAIR) {
 		psys_clear_temp_pointcache(psys);
 
 		/* set suitable cache range automatically */
@@ -4309,14 +4622,14 @@ static void system_step(ParticleSimulationData *sim, float cfra)
 
 		if (!(part->time_flag & PART_TIME_AUTOSF)) {
 			/* Constant time step */
-			psys->dt_frac = 1.0f / (float) (part->subframes + 1);
+			psys->dt_frac = get_base_time_step(part);
 		}
 		else if ((int)cfra == startframe) {
-			/* Variable time step; use a very conservative value at the start.
-			 * If it doesn't need to be so small, it will quickly grow. */
-			psys->dt_frac = 1.0;
+			/* Variable time step; initialise to subframes */
+			psys->dt_frac = get_base_time_step(part);
 		}
 		else if (psys->dt_frac < MIN_TIMESTEP) {
+			/* Variable time step; subsequent frames */
 			psys->dt_frac = MIN_TIMESTEP;
 		}
 

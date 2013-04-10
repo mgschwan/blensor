@@ -128,7 +128,7 @@ MEM_CacheLimiterCClass::~MEM_CacheLimiterCClass()
 {
 	// should not happen, but don't leak memory in this case...
 	for (list_t::iterator it = cclass_list.begin(); it != cclass_list.end(); it++) {
-		(*it)->set_data(0);
+		(*it)->set_data(NULL);
 
 		delete *it;
 	}
@@ -201,4 +201,9 @@ void MEM_CacheLimiter_ItemPriority_Func_set(MEM_CacheLimiterC *This,
                                             MEM_CacheLimiter_ItemPriority_Func item_priority_func)
 {
 	cast(This)->get_cache()->set_item_priority_func(item_priority_func);
+}
+
+size_t MEM_CacheLimiter_get_memory_in_use(MEM_CacheLimiterC *This)
+{
+	return cast(This)->get_cache()->get_memory_in_use();
 }

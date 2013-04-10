@@ -29,7 +29,6 @@
  *  \ingroup shdnodes
  */
 
-
 #include "node_shader_util.h"
 
 /* **************** MATERIAL ******************** */
@@ -37,7 +36,7 @@
 static bNodeSocketTemplate sh_node_material_in[] = {
 	{	SOCK_RGBA, 1, N_("Color"),		0.0f, 0.0f, 0.0f, 1.0f},
 	{	SOCK_RGBA, 1, N_("Spec"),		0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 1, N_("Refl"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Refl"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	SOCK_VECTOR, 1, N_("Normal"),	0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, PROP_DIRECTION},
 	{	-1, 0, ""	}
 };
@@ -54,15 +53,15 @@ static bNodeSocketTemplate sh_node_material_out[] = {
 static bNodeSocketTemplate sh_node_material_ext_in[] = {
 	{	SOCK_RGBA, 1, N_("Color"),		0.0f, 0.0f, 0.0f, 1.0f},
 	{	SOCK_RGBA, 1, N_("Spec"),		0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 1, N_("Refl"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Refl"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	SOCK_VECTOR, 1, N_("Normal"),	0.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, PROP_DIRECTION},
 	{	SOCK_RGBA, 1, N_("Mirror"),		0.0f, 0.0f, 0.0f, 1.0f},
-	{	SOCK_FLOAT, 1, N_("Ambient"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Ambient"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	SOCK_FLOAT, 1, N_("Emit"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_UNSIGNED},
-	{	SOCK_FLOAT, 1, N_("SpecTra"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_FACTOR},
-	{	SOCK_FLOAT, 1, N_("Ray Mirror"),	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("SpecTra"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
+	{	SOCK_FLOAT, 1, N_("Ray Mirror"),	0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_NONE},
 	{	SOCK_FLOAT, 1, N_("Alpha"),		0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_UNSIGNED},
-	{	SOCK_FLOAT, 1, N_("Translucency"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{	SOCK_FLOAT, 1, N_("Translucency"),	0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{	-1, 0, ""	}
 };
 
@@ -76,7 +75,7 @@ static bNodeSocketTemplate sh_node_material_ext_out[] = {
 	{	-1, 0, ""	}
 };
 
-static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
+static void node_shader_exec_material(void *data, int UNUSED(thread), bNode *node, bNodeExecData *execdata, bNodeStack **in, bNodeStack **out)
 {
 	if (data && node->id) {
 		ShadeResult shrnode;
@@ -92,7 +91,7 @@ static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, 
 		 * we just want to know if a node input uses external data or the material setting.
 		 * this is an ugly hack, but so is this node as a whole.
 		 */
-		for (sock=node->inputs.first, i=0; sock; sock=sock->next, ++i)
+		for (sock = node->inputs.first, i=0; sock; sock = sock->next, ++i)
 			hasinput[i] = (sock->link != NULL);
 		
 		shi= shcd->shi;
@@ -145,7 +144,7 @@ static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, 
 		/* make alpha output give results even if transparency is only enabled on
 		 * the material linked in this not and not on the parent material */
 		mode = shi->mode;
-		if(shi->mat->mode & MA_TRANSP)
+		if (shi->mat->mode & MA_TRANSP)
 			shi->mode |= MA_TRANSP;
 
 		shi->nodes= 1; /* temp hack to prevent trashadow recursion */
@@ -170,7 +169,7 @@ static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, 
 		col[3] = shrnode.alpha;
 		
 		if (shi->do_preview)
-			nodeAddToPreview(node, col, shi->xs, shi->ys, shi->do_manage);
+			BKE_node_preview_set_pixel(execdata->preview, col, shi->xs, shi->ys, shi->do_manage);
 		
 		copy_v3_v3(out[MAT_OUT_COLOR]->vec, col);
 		out[MAT_OUT_ALPHA]->vec[0] = shrnode.alpha;
@@ -208,7 +207,7 @@ static void node_shader_exec_material(void *data, bNode *node, bNodeStack **in, 
 }
 
 
-static void node_shader_init_material(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
+static void node_shader_init_material(bNodeTree *UNUSED(ntree), bNode *node)
 {
 	node->custom1= SH_NODE_MAT_DIFF|SH_NODE_MAT_SPEC;
 }
@@ -224,7 +223,7 @@ static GPUNodeLink *gpu_get_input_link(GPUNodeStack *in)
 		return GPU_uniform(in->vec);
 }
 
-static int gpu_shader_material(GPUMaterial *mat, bNode *node, GPUNodeStack *in, GPUNodeStack *out)
+static int gpu_shader_material(GPUMaterial *mat, bNode *node, bNodeExecData *UNUSED(execdata), GPUNodeStack *in, GPUNodeStack *out)
 {
 	if (node->id) {
 		GPUShadeInput shi;
@@ -237,7 +236,7 @@ static int gpu_shader_material(GPUMaterial *mat, bNode *node, GPUNodeStack *in, 
 		 * the constant input stack values (e.g. in case material node is inside a group).
 		 * we just want to know if a node input uses external data or the material setting.
 		 */
-		for (sock=node->inputs.first, i=0; sock; sock=sock->next, ++i)
+		for (sock = node->inputs.first, i=0; sock; sock = sock->next, ++i)
 			hasinput[i] = (sock->link != NULL);
 
 		GPU_shadeinput_set(mat, (Material*)node->id, &shi);
@@ -308,33 +307,33 @@ static int gpu_shader_material(GPUMaterial *mat, bNode *node, GPUNodeStack *in, 
 	return 0;
 }
 
-void register_node_type_sh_material(bNodeTreeType *ttype)
+void register_node_type_sh_material(void)
 {
 	static bNodeType ntype;
 
-	node_type_base(ttype, &ntype, SH_NODE_MATERIAL, "Material", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
+	sh_node_type_base(&ntype, SH_NODE_MATERIAL, "Material", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
 	node_type_compatibility(&ntype, NODE_OLD_SHADING);
 	node_type_socket_templates(&ntype, sh_node_material_in, sh_node_material_out);
 	node_type_size(&ntype, 120, 80, 240);
 	node_type_init(&ntype, node_shader_init_material);
-	node_type_exec(&ntype, node_shader_exec_material);
+	node_type_exec(&ntype, NULL, NULL, node_shader_exec_material);
 	node_type_gpu(&ntype, gpu_shader_material);
 
-	nodeRegisterType(ttype, &ntype);
+	nodeRegisterType(&ntype);
 }
 
 
-void register_node_type_sh_material_ext(bNodeTreeType *ttype)
+void register_node_type_sh_material_ext(void)
 {
 	static bNodeType ntype;
 
-	node_type_base(ttype, &ntype, SH_NODE_MATERIAL_EXT, "Extended Material", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
+	sh_node_type_base(&ntype, SH_NODE_MATERIAL_EXT, "Extended Material", NODE_CLASS_INPUT, NODE_OPTIONS|NODE_PREVIEW);
 	node_type_compatibility(&ntype, NODE_OLD_SHADING);
 	node_type_socket_templates(&ntype, sh_node_material_ext_in, sh_node_material_ext_out);
 	node_type_size(&ntype, 120, 80, 240);
 	node_type_init(&ntype, node_shader_init_material);
-	node_type_exec(&ntype, node_shader_exec_material);
+	node_type_exec(&ntype, NULL, NULL, node_shader_exec_material);
 	node_type_gpu(&ntype, gpu_shader_material);
 
-	nodeRegisterType(ttype, &ntype);
+	nodeRegisterType(&ntype);
 }

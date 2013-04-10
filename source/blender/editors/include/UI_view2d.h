@@ -47,7 +47,7 @@
  *	    and settings for a View2D region, and that set of settings is used in more
  *	    than one specific place
  */
-enum {
+enum eView2D_CommonViewTypes {
 	/* custom view type (region has defined all necessary flags already) */
 	V2D_COMMONVIEW_CUSTOM = -1,
 	/* standard (only use this when setting up a new view, as a sensible base for most settings) */
@@ -60,7 +60,7 @@ enum {
 	V2D_COMMONVIEW_HEADER,
 	/* ui region containing panels */
 	V2D_COMMONVIEW_PANELS_UI
-} eView2D_CommonViewTypes;
+};
 
 /* ---- Defines for Scroller/Grid Arguments ----- */
 
@@ -68,7 +68,7 @@ enum {
 #define V2D_ARG_DUMMY       -1
 
 /* Grid units */
-enum {
+enum eView2D_Units {
 	/* for drawing time */
 	V2D_UNIT_SECONDS = 0,
 	V2D_UNIT_FRAMES,
@@ -79,16 +79,16 @@ enum {
 	V2D_UNIT_DEGREES,
 	V2D_UNIT_TIME,
 	V2D_UNIT_SECONDSSEQ
-} eView2D_Units;
+};
 
 /* clamping of grid values to whole numbers */
-enum {
+enum eView2D_Clamp {
 	V2D_GRID_NOCLAMP = 0,
 	V2D_GRID_CLAMP
-} eView2D_Clamp;
+};
 
 /* flags for grid-lines to draw */
-enum {
+enum eView2D_Gridlines {
 	V2D_HORIZONTAL_LINES        = (1 << 0),
 	V2D_VERTICAL_LINES          = (1 << 1),
 	V2D_HORIZONTAL_AXIS         = (1 << 2),
@@ -97,16 +97,16 @@ enum {
 	
 	V2D_GRIDLINES_MAJOR         = (V2D_VERTICAL_LINES | V2D_VERTICAL_AXIS | V2D_HORIZONTAL_LINES | V2D_HORIZONTAL_AXIS),
 	V2D_GRIDLINES_ALL           = (V2D_GRIDLINES_MAJOR | V2D_HORIZONTAL_FINELINES),
-} eView2D_Gridlines;
+};
 
 /* ------ Defines for Scrollers ----- */
 
 /* scroller area */
-#define V2D_SCROLL_HEIGHT   17
-#define V2D_SCROLL_WIDTH    17
+#define V2D_SCROLL_HEIGHT   (0.85f * U.widget_unit)
+#define V2D_SCROLL_WIDTH    (0.85f * U.widget_unit)
 
 /* scroller 'handles' hotspot radius for mouse */
-#define V2D_SCROLLER_HANDLE_SIZE    12
+#define V2D_SCROLLER_HANDLE_SIZE    (0.6f * U.widget_unit)
 
 /* ------ Define for UI_view2d_sync ----- */
 
@@ -132,6 +132,7 @@ struct View2DScrollers;
 
 struct wmKeyConfig;
 struct bScreen;
+struct Scene;
 struct ScrArea;
 struct ARegion;
 struct bContext;
@@ -147,7 +148,6 @@ typedef struct View2DScrollers View2DScrollers;
 void UI_view2d_region_reinit(struct View2D *v2d, short type, int winx, int winy);
 
 void UI_view2d_curRect_validate(struct View2D *v2d);
-void UI_view2d_curRect_validate_resize(struct View2D *v2d, int resize);
 void UI_view2d_curRect_reset(struct View2D *v2d);
 void UI_view2d_sync(struct bScreen *screen, struct ScrArea *sa, struct View2D *v2dcur, int flag);
 
@@ -167,7 +167,7 @@ View2DGrid *UI_view2d_grid_calc(struct Scene *scene, struct View2D *v2d,
                                 short xunits, short xclamp, short yunits, short yclamp, int winx, int winy);
 void UI_view2d_grid_draw(struct View2D *v2d, View2DGrid *grid, int flag);
 void UI_view2d_constant_grid_draw(struct View2D *v2d);
-void UI_view2d_multi_grid_draw(struct View2D *v2d, float step, int level_size, int totlevels);
+void UI_view2d_multi_grid_draw(struct View2D *v2d, int colorid, float step, int level_size, int totlevels);
 void UI_view2d_grid_size(View2DGrid *grid, float *r_dx, float *r_dy);
 void UI_view2d_grid_free(View2DGrid *grid);
 
@@ -198,6 +198,10 @@ struct View2D *UI_view2d_fromcontext(const struct bContext *C);
 struct View2D *UI_view2d_fromcontext_rwin(const struct bContext *C);
 
 void UI_view2d_getscale(struct View2D *v2d, float *x, float *y);
+void UI_view2d_getscale_inverse(struct View2D *v2d, float *x, float *y);
+
+void UI_view2d_getcenter(struct View2D *v2d, float *x, float *y);
+void UI_view2d_setcenter(struct View2D *v2d, float x, float y);
 
 short UI_view2d_mouse_in_scrollers(const struct bContext *C, struct View2D *v2d, int x, int y);
 

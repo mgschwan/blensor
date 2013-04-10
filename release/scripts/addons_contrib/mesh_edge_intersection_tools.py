@@ -22,7 +22,7 @@ bl_info = {
     "name": "Edge tools : tinyCAD VTX",
     "author": "zeffii",
     "version": (0, 5, 1),
-    "blender": (2, 5, 6),
+    "blender": (2, 56, 0),
     "category": "Mesh",
     "location": "View3D > EditMode > (w) Specials",
     "warning": "Still under development",

@@ -522,7 +522,7 @@ static APixstrand *addpsAstrand(ZSpan *zspan)
 
 static void do_strand_fillac(void *handle, int x, int y, float u, float v, float z)
 {
-	StrandPart *spart= (StrandPart*)handle;
+	StrandPart *spart= (StrandPart *)handle;
 	StrandShadeCache *cache= spart->cache;
 	StrandSegment *sseg= spart->segment;
 	APixstrand *apn, *apnew;
@@ -676,14 +676,14 @@ static void strand_render(Render *re, StrandSegment *sseg, float winmat[4][4], S
 	else {
 		float hoco1[4], hoco2[4];
 		int a, obi, index;
-  
+
 		obi= sseg->obi - re->objectinstance;
 		index= sseg->strand->index;
 
 		projectvert(p1->co, winmat, hoco1);
 		projectvert(p2->co, winmat, hoco2);
 
-  
+
 		for (a=0; a<totzspan; a++) {
 #if 0
 			/* render both strand and single pixel wire to counter aliasing */

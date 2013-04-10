@@ -26,7 +26,6 @@ __all__ = (
 
 
 import bpy
-import mathutils
 
 from bpy.props import BoolProperty, FloatVectorProperty
 
@@ -80,7 +79,7 @@ def add_object_align_init(context, operator):
             rotation = space_data.region_3d.view_matrix.to_3x3().inverted()
             rotation.resize_4x4()
         else:
-            rotation = mathutils.Matrix()
+            rotation = Matrix()
 
         # set the operator properties
         if operator:
@@ -124,9 +123,10 @@ def object_data_add(context, obdata, operator=None, use_active_layer=True):
             base.layers[scene.active_layer] = True
         else:
             base.layers = [True if i == scene.active_layer
-                else False for i in range(len(scene.layers))]
-    if v3d:
-        base.layers_from_view(context.space_data)
+                           else False for i in range(len(scene.layers))]
+    else:
+        if v3d:
+            base.layers_from_view(context.space_data)
 
     obj_new.matrix_world = add_object_align_init(context, operator)
 
@@ -191,7 +191,8 @@ class AddObjectHelper:
 
 def object_add_grid_scale(context):
     """
-    Return scale which should be applied on object data to align it to grid scale
+    Return scale which should be applied on object
+    data to align it to grid scale
     """
 
     space_data = context.space_data

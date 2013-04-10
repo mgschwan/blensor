@@ -34,6 +34,7 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_string.h"
 #include "BLI_path_util.h"
 #include "BLI_fileops.h"
@@ -154,7 +155,7 @@ static void escape_uri_string(const char *string, char *escaped_string, int len,
 			*q++ = *p;
 		}
 	}
-  
+
 	*q = '\0';
 }
 
@@ -284,8 +285,8 @@ ImBuf *IMB_thumb_create(const char *path, ThumbSize size, ThumbSource source, Im
 
 	/* exception, skip images over 100mb */
 	if (source == THB_SOURCE_IMAGE) {
-		const size_t size = BLI_file_size(path);
-		if (size != -1 && size > THUMB_SIZE_MAX) {
+		const size_t file_size = BLI_file_size(path);
+		if (file_size != -1 && file_size > THUMB_SIZE_MAX) {
 			// printf("file too big: %d, skipping %s\n", (int)size, path);
 			return NULL;
 		}
@@ -422,7 +423,7 @@ void IMB_thumb_delete(const char *path, ThumbSize size)
 			return;
 		}
 		if (BLI_exists(thumb)) {
-			BLI_delete(thumb, 0, 0);
+			BLI_delete(thumb, false, false);
 		}
 	}
 }
@@ -447,7 +448,7 @@ ImBuf *IMB_thumb_manage(const char *path, ThumbSize size, ThumbSource source)
 		if (BLI_exists(thumb)) {
 			/* clear out of date fail case */
 			if (BLI_file_older(thumb, path)) {
-				BLI_delete(thumb, 0, 0);
+				BLI_delete(thumb, false, false);
 			}
 			else {
 				return NULL;

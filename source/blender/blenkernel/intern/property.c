@@ -74,8 +74,10 @@ bProperty *BKE_bproperty_copy(bProperty *prop)
 	if (prop->poin && prop->poin != &prop->data) {
 		propn->poin = MEM_dupallocN(prop->poin);
 	}
-	else propn->poin = &propn->data;
-	
+	else {
+		propn->poin = &propn->data;
+	}
+
 	return propn;
 }
 
@@ -287,7 +289,7 @@ void BKE_bproperty_add(bProperty *prop, const char *str)
 }
 
 /* reads value of property, sets it in chars in str */
-void BKE_bproperty_set_valstr(bProperty *prop, char *str)
+void BKE_bproperty_set_valstr(bProperty *prop, char str[MAX_PROPSTRING])
 {
 //	extern int Gdfra;		/* sector.c */
 

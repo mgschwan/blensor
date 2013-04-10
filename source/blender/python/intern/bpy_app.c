@@ -34,13 +34,15 @@
 #include "bpy_app.h"
 
 #include "bpy_app_ffmpeg.h"
+#include "bpy_app_build_options.h"
+
+#include "bpy_app_translations.h"
 
 #include "bpy_app_handlers.h"
 #include "bpy_driver.h"
 
-#include "BLI_path_util.h"
 #include "BLI_utildefines.h"
-
+#include "BLI_path_util.h"
 
 #include "BKE_blender.h"
 #include "BKE_global.h"
@@ -83,8 +85,10 @@ static PyStructSequence_Field app_info_fields[] = {
 
 	/* submodules */
 	{(char *)"ffmpeg", (char *)"FFmpeg library information backend"},
+	{(char *)"build_options", (char *)"A set containing most important enabled optional build features"},
 	{(char *)"handlers", (char *)"Application handler callbacks"},
-	{NULL}
+	{(char *)"translations", (char *)"Application and addons internationalization API"},
+	{NULL},
 };
 
 static PyStructSequence_Desc app_info_desc = {
@@ -103,9 +107,10 @@ static PyObject *make_app_info(void)
 	if (app_info == NULL) {
 		return NULL;
 	}
-
+#if 0
 #define SetIntItem(flag) \
 	PyStructSequence_SET_ITEM(app_info, pos++, PyLong_FromLong(flag))
+#endif
 #define SetStrItem(str) \
 	PyStructSequence_SET_ITEM(app_info, pos++, PyUnicode_FromString(str))
 #define SetBytesItem(str) \
@@ -148,7 +153,9 @@ static PyObject *make_app_info(void)
 #endif
 
 	SetObjItem(BPY_app_ffmpeg_struct());
+	SetObjItem(BPY_app_build_options_struct());
 	SetObjItem(BPY_app_handlers_struct());
+	SetObjItem(BPY_app_translations_struct());
 
 #undef SetIntItem
 #undef SetStrItem
@@ -179,7 +186,7 @@ static int bpy_app_debug_set(PyObject *UNUSED(self), PyObject *value, void *clos
 	const int flag = GET_INT_FROM_POINTER(closure);
 	const int param = PyObject_IsTrue(value);
 
-	if (param < 0) {
+	if (param == -1) {
 		PyErr_SetString(PyExc_TypeError, "bpy.app.debug can only be True/False");
 		return -1;
 	}
@@ -238,12 +245,13 @@ static PyObject *bpy_app_driver_dict_get(PyObject *UNUSED(self), void *UNUSED(cl
 
 
 static PyGetSetDef bpy_app_getsets[] = {
-	{(char *)"debug",        bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG},
-	{(char *)"debug_ffmpeg", bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_FFMPEG},
-	{(char *)"debug_python", bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_PYTHON},
-	{(char *)"debug_events", bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_EVENTS},
-	{(char *)"debug_handlers", bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_HANDLERS},
-	{(char *)"debug_wm",     bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_WM},
+	{(char *)"debug",           bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG},
+	{(char *)"debug_ffmpeg",    bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_FFMPEG},
+	{(char *)"debug_freestyle", bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_FREESTYLE},
+	{(char *)"debug_python",    bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_PYTHON},
+	{(char *)"debug_events",    bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_EVENTS},
+	{(char *)"debug_handlers",  bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_HANDLERS},
+	{(char *)"debug_wm",        bpy_app_debug_get, bpy_app_debug_set, (char *)bpy_app_debug_doc, (void *)G_DEBUG_WM},
 
 	{(char *)"debug_value", bpy_app_debug_value_get, bpy_app_debug_value_set, (char *)bpy_app_debug_value_doc, NULL},
 	{(char *)"tempdir", bpy_app_tempdir_get, NULL, (char *)bpy_app_tempdir_doc, NULL},

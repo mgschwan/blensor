@@ -69,16 +69,16 @@
 # ^^ Maybe. . . . :P
 
 bl_info = {
-    'name': "EdgeTools",
-    'author': "Paul Marshall",
-    'version': (0, 8),
-    'blender': (2, 6, 4),
-    'location': "View3D > Toolbar and View3D > Specials (W-key)",
-    'warning': "",
-    'description': "CAD style edge manipulation tools",
-    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Modeling/EdgeTools",
-    'tracker_url': "https://blenderpython.svn.sourceforge.net/svnroot/blenderpython/scripts_library/scripts/addons_extern/mesh_edgetools.py",
-    'category': 'Mesh'}
+    "name": "EdgeTools",
+    "author": "Paul Marshall",
+    "version": (0, 8),
+    "blender": (2, 64, 0),
+    "location": "View3D > Toolbar and View3D > Specials (W-key)",
+    "warning": "",
+    "description": "CAD style edge manipulation tools",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Modeling/EdgeTools",
+    "tracker_url": "https://blenderpython.svn.sourceforge.net/svnroot/blenderpython/scripts_library/scripts/addons_extern/mesh_edgetools.py",
+    "category": "Mesh"}
 
 import bpy, bmesh, mathutils
 from math import acos, pi, radians, sqrt, tan
@@ -1943,12 +1943,7 @@ classes = [VIEW3D_MT_edit_mesh_edgetools,
 # registering and menu integration
 def register():
     global integrated
-    if int(bpy.app.build_revision[0:5]) < 44800:
-        print("Error in Edgetools:")
-        print("This version of Blender does not support the necessary BMesh API.")
-        print("Please download Blender 2.63 or newer.")
-        return {'ERROR'}
-        
+
     for c in classes:
         bpy.utils.register_class(c)
 

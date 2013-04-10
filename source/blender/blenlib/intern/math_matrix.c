@@ -333,15 +333,24 @@ void mul_m4_v3(float mat[4][4], float vec[3])
 	vec[2] = x * mat[0][2] + y * mat[1][2] + mat[2][2] * vec[2] + mat[3][2];
 }
 
-void mul_v3_m4v3(float in[3], float mat[4][4], const float vec[3])
+void mul_v3_m4v3(float r[3], float mat[4][4], const float vec[3])
 {
 	float x, y;
 
 	x = vec[0];
 	y = vec[1];
-	in[0] = x * mat[0][0] + y * mat[1][0] + mat[2][0] * vec[2] + mat[3][0];
-	in[1] = x * mat[0][1] + y * mat[1][1] + mat[2][1] * vec[2] + mat[3][1];
-	in[2] = x * mat[0][2] + y * mat[1][2] + mat[2][2] * vec[2] + mat[3][2];
+	r[0] = x * mat[0][0] + y * mat[1][0] + mat[2][0] * vec[2] + mat[3][0];
+	r[1] = x * mat[0][1] + y * mat[1][1] + mat[2][1] * vec[2] + mat[3][1];
+	r[2] = x * mat[0][2] + y * mat[1][2] + mat[2][2] * vec[2] + mat[3][2];
+}
+
+void mul_v2_m2v2(float r[2], float mat[2][2], const float vec[2])
+{
+	float x;
+
+	x = vec[0];
+	r[0] = mat[0][0] * x + mat[1][0] * vec[1];
+	r[1] = mat[0][1] * x + mat[1][1] * vec[1];
 }
 
 /* same as mul_m4_v3() but doesnt apply translation component */
@@ -358,7 +367,7 @@ void mul_mat3_m4_v3(float mat[4][4], float vec[3])
 
 void mul_project_m4_v3(float mat[4][4], float vec[3])
 {
-	const float w = vec[0] * mat[0][3] + vec[1] * mat[1][3] + vec[2] * mat[2][3] + mat[3][3];
+	const float w = mul_project_m4_v3_zfac(mat, vec);
 	mul_m4_v3(mat, vec);
 
 	vec[0] /= w;
@@ -366,7 +375,7 @@ void mul_project_m4_v3(float mat[4][4], float vec[3])
 	vec[2] /= w;
 }
 
-void mul_v4_m4v4(float r[4], float mat[4][4], float v[4])
+void mul_v4_m4v4(float r[4], float mat[4][4], const float v[4])
 {
 	float x, y, z;
 
@@ -404,11 +413,17 @@ void mul_m4_v4d(float mat[4][4], double r[4])
 	mul_v4d_m4v4d(r, mat, r);
 }
 
-void mul_v3_m3v3(float r[3], float M[3][3], float a[3])
+void mul_v3_m3v3(float r[3], float M[3][3], const float a[3])
 {
 	r[0] = M[0][0] * a[0] + M[1][0] * a[1] + M[2][0] * a[2];
 	r[1] = M[0][1] * a[0] + M[1][1] * a[1] + M[2][1] * a[2];
 	r[2] = M[0][2] * a[0] + M[1][2] * a[1] + M[2][2] * a[2];
+}
+
+void mul_v2_m3v3(float r[2], float M[3][3], const float a[3])
+{
+	r[0] = M[0][0] * a[0] + M[1][0] * a[1] + M[2][0] * a[2];
+	r[1] = M[0][1] * a[0] + M[1][1] * a[1] + M[2][1] * a[2];
 }
 
 void mul_m3_v3(float M[3][3], float r[3])
@@ -504,8 +519,7 @@ void sub_m4_m4m4(float m1[4][4], float m2[4][4], float m3[4][4])
 			m1[i][j] = m2[i][j] - m3[i][j];
 }
 
-/* why not make this a standard part of the API? */
-static float determinant_m3_local(float m[3][3])
+float determinant_m3_array(float m[3][3])
 {
 	return (m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
 	        m[1][0] * (m[0][1] * m[2][2] - m[0][2] * m[2][1]) +
@@ -534,7 +548,7 @@ int invert_m3_m3_ex(float m1[3][3], float m2[3][3], const float epsilon)
 	adjoint_m3_m3(m1, m2);
 
 	/* then determinant old matrix! */
-	det = determinant_m3_local(m2);
+	det = determinant_m3_array(m2);
 
 	success = (fabsf(det) > epsilon);
 
@@ -569,7 +583,7 @@ int invert_m3_m3(float m1[3][3], float m2[3][3])
 	adjoint_m3_m3(m1, m2);
 
 	/* then determinant old matrix! */
-	det = determinant_m3_local(m2);
+	det = determinant_m3_array(m2);
 
 	success = (det != 0.0f);
 
@@ -612,6 +626,8 @@ int invert_m4_m4(float inverse[4][4], float mat[4][4])
 	float tempmat[4][4];
 	float max;
 	int maxj;
+
+	BLI_assert(inverse != mat);
 
 	/* Set inverse to identity */
 	for (i = 0; i < 4; i++)
@@ -979,17 +995,11 @@ void normalize_m4(float mat[4][4])
 
 void normalize_m4_m4(float rmat[4][4], float mat[4][4])
 {
-	float len;
-
-	len = normalize_v3_v3(rmat[0], mat[0]);
-	if (len != 0.0f) rmat[0][3] = mat[0][3] / len;
-	len = normalize_v3_v3(rmat[1], mat[1]);
-	if (len != 0.0f) rmat[1][3] = mat[1][3] / len;
-	len = normalize_v3_v3(rmat[2], mat[2]);
-	if (len != 0.0f) rmat[2][3] = mat[2][3] / len;
+	copy_m4_m4(rmat, mat);
+	normalize_m4(rmat);
 }
 
-void adjoint_m2_m2(float m1[][2], float m[][2])
+void adjoint_m2_m2(float m1[2][2], float m[2][2])
 {
 	BLI_assert(m1 != m);
 	m1[0][0] =  m[1][1];
@@ -1211,6 +1221,33 @@ void mat4_to_loc_rot_size(float loc[3], float rot[3][3], float size[3], float wm
 	copy_v3_v3(loc, wmat[3]);
 }
 
+void mat4_to_loc_quat(float loc[3], float quat[4], float wmat[4][4])
+{
+	float mat3[3][3];
+	float mat3_n[3][3]; /* normalized mat3 */
+
+	copy_m3_m4(mat3, wmat);
+	normalize_m3_m3(mat3_n, mat3);
+
+	/* so scale doesn't interfere with rotation [#24291] */
+	/* note: this is a workaround for negative matrix not working for rotation conversion, FIXME */
+	if (is_negative_m3(mat3)) {
+		negate_v3(mat3_n[0]);
+		negate_v3(mat3_n[1]);
+		negate_v3(mat3_n[2]);
+	}
+
+	mat3_to_quat(quat, mat3_n);
+	copy_v3_v3(loc, wmat[3]);
+}
+
+void mat4_decompose(float loc[3], float quat[4], float size[3], float wmat[4][4])
+{
+	float rot[3][3];
+	mat4_to_loc_rot_size(loc, rot, size, wmat);
+	mat3_to_quat(quat, rot);
+}
+
 void scale_m3_fl(float m[3][3], float scale)
 {
 	m[0][0] = m[1][1] = m[2][2] = scale;
@@ -1244,8 +1281,8 @@ void rotate_m4(float mat[4][4], const char axis, const float angle)
 
 	assert(axis >= 'X' && axis <= 'Z');
 
-	cosine = (float)cos(angle);
-	sine = (float)sin(angle);
+	cosine = cosf(angle);
+	sine   = sinf(angle);
 	switch (axis) {
 		case 'X':
 			for (col = 0; col < 4; col++)
@@ -1274,6 +1311,13 @@ void rotate_m4(float mat[4][4], const char axis, const float angle)
 			}
 			break;
 	}
+}
+
+void rotate_m2(float mat[2][2], const float angle)
+{
+	mat[0][0] = mat[1][1] = cosf(angle);
+	mat[0][1] = sinf(angle);
+	mat[1][0] = -mat[0][1];
 }
 
 void blend_m3_m3m3(float out[3][3], float dst[3][3], float src[3][3], const float srcweight)
@@ -1901,3 +1945,16 @@ void pseudoinverse_m4_m4(float Ainv[4][4], float A[4][4], float epsilon)
 
 	mul_serie_m4(Ainv, U, Wm, V, NULL, NULL, NULL, NULL, NULL);
 }
+
+void pseudoinverse_m3_m3(float Ainv[3][3], float A[3][3], float epsilon)
+{
+	/* try regular inverse when possible, otherwise fall back to slow svd */
+	if (!invert_m3_m3(Ainv, A)) {
+		float tmp[4][4], tmpinv[4][4];
+
+		copy_m4_m3(tmp, A);
+		pseudoinverse_m4_m4(tmpinv, tmp, epsilon);
+		copy_m3_m4(Ainv, tmpinv);
+	}
+}
+

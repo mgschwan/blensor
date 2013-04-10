@@ -1237,7 +1237,7 @@ static void dfs_find_nearest_begin(BVHNearestData *data, BVHNode *node)
 
 #define DEFAULT_FIND_NEAREST_HEAP_SIZE 1024
 
-#define NodeDistance_priority(a, b) ( (a).dist < (b).dist)
+#define NodeDistance_priority(a, b) ((a).dist < (b).dist)
 
 static void NodeDistance_push_heap(NodeDistance *heap, int heap_size)
 PUSH_HEAP_BODY(NodeDistance, NodeDistance_priority, heap, heap_size)
@@ -1554,7 +1554,7 @@ int BLI_bvhtree_ray_cast(BVHTree *tree, const float co[3], const float dir[3], f
 float BLI_bvhtree_bb_raycast(const float bv[6], const float light_start[3], const float light_end[3], float pos[3])
 {
 	BVHRayCastData data;
-	float dist = 0.0;
+	float dist;
 
 	data.hit.dist = FLT_MAX;
 	

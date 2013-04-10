@@ -27,6 +27,10 @@
  *  \ingroup bke
  */
 
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
 
 #include "MEM_guardedalloc.h"
 
@@ -39,10 +43,6 @@
 #include "BKE_report.h"
 #include "BKE_global.h" /* G.background only */
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-
 static const char *report_type_str(int type)
 {
 	switch (type) {
@@ -52,6 +52,8 @@ static const char *report_type_str(int type)
 			return TIP_("Info");
 		case RPT_OPERATOR:
 			return TIP_("Operator");
+		case RPT_PROPERTY:
+			return TIP_("Property");
 		case RPT_WARNING:
 			return TIP_("Warning");
 		case RPT_ERROR:
@@ -300,3 +302,36 @@ int BKE_reports_contain(ReportList *reports, ReportType level)
 	return FALSE;
 }
 
+bool BKE_report_write_file_fp(FILE *fp, ReportList *reports, const char *header)
+{
+	Report *report;
+
+	if (header) {
+		fputs(header, fp);
+	}
+
+	for (report = reports->list.first; report; report = report->next) {
+		fprintf((FILE *)fp, "%s  # %s\n", report->message, report->typestr);
+	}
+
+	return true;
+}
+
+bool BKE_report_write_file(const char *filepath, ReportList *reports, const char *header)
+{
+	FILE *fp;
+
+	errno = 0;
+	fp = BLI_fopen(filepath, "wb");
+	if (fp == NULL) {
+		fprintf(stderr, "Unable to save '%s': %s\n",
+		        filepath, errno ? strerror(errno) : "Unknown error opening file");
+		return false;
+	}
+
+	BKE_report_write_file_fp(fp, reports, header);
+
+	fclose(fp);
+
+	return true;
+}

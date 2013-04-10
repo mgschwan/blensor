@@ -4,7 +4,7 @@ bl_info = {
     "description": "Import directX Model Format (.x)",
     "author": "Littleneo (Jerome Mahieux)",
     "version": (0, 18),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "api": 42615,
     "location": "File > Import > DirectX (.x)",
     "warning": "",
@@ -105,7 +105,7 @@ class ImportX(bpy.types.Operator, ImportHelper):
             )
     use_ngons = BoolProperty(
             name="NGons",
-            description="Import faces with more then 4 verts as fgons",
+            description="Import faces with more than 4 verts as fgons",
             default=True,
             )
     use_edges = BoolProperty(

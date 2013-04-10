@@ -93,7 +93,7 @@ void hsv_to_rgb(vec4 hsv, out vec4 outcol)
 float srgb_to_linearrgb(float c)
 {
 	if(c < 0.04045)
-		return (c < 0.0)? 0.0: c * (1.0/12.92);
+		return (c < 0.0) ? 0.0: c * (1.0 / 12.92);
 	else
 		return pow((c + 0.055)*(1.0/1.055), 2.4);
 }
@@ -101,7 +101,7 @@ float srgb_to_linearrgb(float c)
 float linearrgb_to_srgb(float c)
 {
 	if(c < 0.0031308)
-		return (c < 0.0)? 0.0: c * 12.92;
+		return (c < 0.0) ? 0.0: c * 12.92;
 	else
 		return 1.055 * pow(c, 1.0/2.4) - 0.055;
 }
@@ -233,7 +233,7 @@ void math_pow(float val1, float val2, out float outval)
 	else {
 		float val2_mod_1 = mod(abs(val2), 1.0);
 
-	 	if (val2_mod_1 > 0.999 || val2_mod_1 < 0.001)
+		if (val2_mod_1 > 0.999 || val2_mod_1 < 0.001)
 			outval = compatible_pow(val1, floor(val2 + 0.5));
 		else
 			outval = 0.0;
@@ -388,6 +388,17 @@ void set_rgb_zero(out vec3 outval)
 void set_rgba_zero(out vec4 outval)
 {
 	outval = vec4(0.0);
+}
+
+void brightness_contrast(vec4 col, float brightness, float contrast, out vec4 outcol)
+{
+	float a = 1.0 + contrast;
+	float b = brightness - contrast*0.5;
+
+	outcol.r = max(a*col.r + b, 0.0);
+	outcol.g = max(a*col.g + b, 0.0);
+	outcol.b = max(a*col.b + b, 0.0);
+	outcol.a = col.a;
 }
 
 void mix_blend(float fac, vec4 col1, vec4 col2, out vec4 outcol)
@@ -811,7 +822,7 @@ void mtex_rgb_mul(vec3 outcol, vec3 texcol, float fact, float facg, out vec3 inc
 	float facm;
 
 	fact *= facg;
-	facm = 1.0-facg;
+	facm = 1.0-fact;
 
 	incol = (facm + fact*texcol)*outcol;
 }
@@ -821,7 +832,7 @@ void mtex_rgb_screen(vec3 outcol, vec3 texcol, float fact, float facg, out vec3 
 	float facm;
 
 	fact *= facg;
-	facm = 1.0-facg;
+	facm = 1.0-fact;
 
 	incol = vec3(1.0) - (vec3(facm) + fact*(vec3(1.0) - texcol))*(vec3(1.0) - outcol);
 }
@@ -831,7 +842,7 @@ void mtex_rgb_overlay(vec3 outcol, vec3 texcol, float fact, float facg, out vec3
 	float facm;
 
 	fact *= facg;
-	facm = 1.0-facg;
+	facm = 1.0-fact;
 
 	if(outcol.r < 0.5)
 		incol.r = outcol.r*(facm + 2.0*fact*texcol.r);
@@ -888,11 +899,11 @@ void mtex_rgb_dark(vec3 outcol, vec3 texcol, float fact, float facg, out vec3 in
 	fact *= facg;
 	facm = 1.0-fact;
 
-	col = fact*texcol.r;
+	col= texcol.r + ((1.0 -texcol.r)*facm);
 	if(col < outcol.r) incol.r = col; else incol.r = outcol.r;
-	col = fact*texcol.g;
+	col= texcol.g + ((1.0 -texcol.g)*facm);
 	if(col < outcol.g) incol.g = col; else incol.g = outcol.g;
-	col = fact*texcol.b;
+	col= texcol.b + ((1.0 -texcol.b)*facm);
 	if(col < outcol.b) incol.b = col; else incol.b = outcol.b;
 }
 
@@ -901,7 +912,6 @@ void mtex_rgb_light(vec3 outcol, vec3 texcol, float fact, float facg, out vec3 i
 	float facm, col;
 
 	fact *= facg;
-	facm = 1.0-fact;
 
 	col = fact*texcol.r;
 	if(col > outcol.r) incol.r = col; else incol.r = outcol.r;
@@ -2064,6 +2074,11 @@ void node_bsdf_velvet(vec4 color, float sigma, vec3 N, out vec4 result)
 	node_bsdf_diffuse(color, 0.0, N, result);
 }
 
+void node_subsurface_scattering(vec4 color, float roughness, vec3 N, out vec4 result)
+{
+	node_bsdf_diffuse(color, 0.0, N, result);
+}
+
 /* emission */
 
 void node_emission(vec4 color, float strength, vec3 N, out vec4 result)
@@ -2088,7 +2103,7 @@ void node_add_shader(vec4 shader1, vec4 shader2, out vec4 shader)
 void node_fresnel(float ior, vec3 N, vec3 I, out float result)
 {
 	float eta = max(ior, 0.00001);
-	result = fresnel_dielectric(I, N, eta); //backfacing()? 1.0/eta: eta);
+	result = fresnel_dielectric(I, N, eta); //backfacing() ? 1.0/eta: eta);
 }
 
 /* geometry */
@@ -2257,3 +2272,18 @@ void node_output_material(vec4 surface, vec4 volume, float displacement, out vec
 	result = surface;
 }
 
+/* ********************** matcap style render ******************** */
+
+void material_preview_matcap(vec4 color, sampler2D ima, vec3 N, out vec4 result)
+{
+	vec2 tex;
+
+	if (N.z < 0.0) {
+		N.z = 0.0;
+		N = normalize(N);
+	}
+
+	tex.x = 0.5 + 0.49 * N.x;
+	tex.y = 0.5 + 0.49 * N.y;
+	result = texture2D(ima, tex);
+}

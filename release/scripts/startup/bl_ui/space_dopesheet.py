@@ -29,7 +29,6 @@ from bpy.types import Header, Menu
 def dopesheet_filter(layout, context, genericFiltersOnly=False):
     dopesheet = context.space_data.dopesheet
     is_nla = context.area.type == 'NLA_EDITOR'
-    is_drivers = (context.area.type == 'GRAPH_EDITOR' and context.space_data.mode == 'DRIVERS')
 
     row = layout.row(align=True)
     row.prop(dopesheet, "show_only_selected", text="")
@@ -37,8 +36,7 @@ def dopesheet_filter(layout, context, genericFiltersOnly=False):
 
     if is_nla:
         row.prop(dopesheet, "show_missing_nla", text="")
-
-    if is_drivers:
+    else:  # graph and dopesheet editors - F-Curves and drivers only
         row.prop(dopesheet, "show_only_errors", text="")
 
     if not genericFiltersOnly:
@@ -241,6 +239,10 @@ class DOPESHEET_MT_channel(Menu):
         layout.operator("anim.channels_delete")
 
         layout.separator()
+        layout.operator("anim.channels_group")
+        layout.operator("anim.channels_ungroup")
+
+        layout.separator()
         layout.operator_menu_enum("anim.channels_setting_toggle", "type")
         layout.operator_menu_enum("anim.channels_setting_enable", "type")
         layout.operator_menu_enum("anim.channels_setting_disable", "type")
@@ -275,8 +277,8 @@ class DOPESHEET_MT_key(Menu):
         layout.operator("action.keyframe_insert")
 
         layout.separator()
-        layout.operator("action.frame_jump")        
-        
+        layout.operator("action.frame_jump")
+
         layout.separator()
         layout.operator("action.duplicate_move")
         layout.operator("action.delete")

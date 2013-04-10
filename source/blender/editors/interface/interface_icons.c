@@ -47,8 +47,10 @@
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
+#include "BLI_fileops_types.h"
 
 #include "DNA_brush_types.h"
+#include "DNA_dynamicpaint_types.h"
 #include "DNA_object_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
@@ -74,21 +76,21 @@
 
 #include "interface_intern.h"
 
-
-#define ICON_IMAGE_W        600
-#define ICON_IMAGE_H        640
-
+#ifndef WITH_HEADLESS
 #define ICON_GRID_COLS      26
 #define ICON_GRID_ROWS      30
 
-#define ICON_GRID_MARGIN    5
-#define ICON_GRID_W         16
-#define ICON_GRID_H         16
+#define ICON_GRID_MARGIN    10
+#define ICON_GRID_W         32
+#define ICON_GRID_H         32
+#endif  /* WITH_HEADLESS */
 
 typedef struct IconImage {
 	int w;
 	int h;
-	unsigned int *rect; 
+	unsigned int *rect;
+	unsigned char *datatoc_rect;
+	int datatoc_size;
 } IconImage;
 
 typedef void (*VectorDrawFunc)(int x, int y, int w, int h, float alpha);
@@ -131,13 +133,13 @@ static IconTexture icongltex = {0, 0, 0, 0.0f, 0.0f};
 
 /* **************************************************** */
 
-static void def_internal_icon(ImBuf *bbuf, int icon_id, int xofs, int yofs, int size, int type)
+#ifndef WITH_HEADLESS
+
+static DrawInfo *def_internal_icon(ImBuf *bbuf, int icon_id, int xofs, int yofs, int size, int type)
 {
 	Icon *new_icon = NULL;
 	IconImage *iimg = NULL;
 	DrawInfo *di;
-	int y = 0;
-	int imgsize = 0;
 
 	new_icon = MEM_callocN(sizeof(Icon), "texicon");
 
@@ -154,17 +156,27 @@ static void def_internal_icon(ImBuf *bbuf, int icon_id, int xofs, int yofs, int 
 		di->data.texture.h = size;
 	}
 	else if (type == ICON_TYPE_BUFFER) {
-		iimg = MEM_mallocN(sizeof(IconImage), "icon_img");
-		iimg->rect = MEM_mallocN(size * size * sizeof(unsigned int), "icon_rect");
+		iimg = MEM_callocN(sizeof(IconImage), "icon_img");
 		iimg->w = size;
 		iimg->h = size;
 
-		/* Here we store the rect in the icon - same as before */
-		imgsize = bbuf->x;
-		for (y = 0; y < size; y++) {
-			memcpy(&iimg->rect[y * size], &bbuf->rect[(y + yofs) * imgsize + xofs], size * sizeof(int));
+		/* icon buffers can get initialized runtime now, via datatoc */
+		if (bbuf) {
+			int y, imgsize;
+			
+			iimg->rect = MEM_mallocN(size * size * sizeof(unsigned int), "icon_rect");
+			
+			/* Here we store the rect in the icon - same as before */
+			if (size == bbuf->x && size == bbuf->y && xofs == 0 && yofs == 0)
+				memcpy(iimg->rect, bbuf->rect, size * size * sizeof(int));
+			else {
+				/* this code assumes square images */
+				imgsize = bbuf->x;
+				for (y = 0; y < size; y++) {
+					memcpy(&iimg->rect[y * size], &bbuf->rect[(y + yofs) * imgsize + xofs], size * sizeof(int));
+				}
+			}
 		}
-
 		di->data.buffer.image = iimg;
 	}
 
@@ -172,6 +184,8 @@ static void def_internal_icon(ImBuf *bbuf, int icon_id, int xofs, int yofs, int 
 	new_icon->drawinfo = di;
 
 	BKE_icon_set(icon_id, new_icon);
+	
+	return di;
 }
 
 static void def_internal_vicon(int icon_id, VectorDrawFunc drawFunc)
@@ -459,21 +473,23 @@ static void vicon_move_down_draw(int x, int y, int w, int h, float UNUSED(alpha)
 }
 
 #ifndef WITH_HEADLESS
+
 static void init_brush_icons(void)
 {
 
-#define INIT_BRUSH_ICON(icon_id, name)                                        \
-	{                                                                         \
-		bbuf = IMB_ibImageFromMemory((unsigned char *)datatoc_ ##name## _png, \
-		                             datatoc_ ##name## _png_size,             \
-		                             IB_rect, NULL, "<brush icon>");          \
-		def_internal_icon(bbuf, icon_id, 0, 0, w, ICON_TYPE_BUFFER);          \
-		IMB_freeImBuf(bbuf);                                                  \
-	} (void)0
+#define INIT_BRUSH_ICON(icon_id, name)                                          \
+	{                                                                           \
+		unsigned char *rect = (unsigned char *)datatoc_ ##name## _png;			\
+		int size = datatoc_ ##name## _png_size;									\
+		DrawInfo *di;															\
+		\
+		di = def_internal_icon(NULL, icon_id, 0, 0, w, ICON_TYPE_BUFFER);		\
+		di->data.buffer.image->datatoc_rect = rect;								\
+		di->data.buffer.image->datatoc_size = size;								\
+	}
 	/* end INIT_BRUSH_ICON */
 
-	ImBuf *bbuf;
-	const int w = 96;
+	const int w = 96; /* warning, brush size hardcoded in C, but it gets scaled */
 
 	INIT_BRUSH_ICON(ICON_BRUSH_ADD, add);
 	INIT_BRUSH_ICON(ICON_BRUSH_BLOB, blob);
@@ -509,15 +525,79 @@ static void init_brush_icons(void)
 #undef INIT_BRUSH_ICON
 }
 
+static void icon_verify_datatoc(IconImage *iimg)
+{
+	/* if it has own rect, things are all OK */
+	if (iimg->rect)
+		return;
+	
+	if (iimg->datatoc_rect) {
+		ImBuf *bbuf = IMB_ibImageFromMemory(iimg->datatoc_rect,
+		                                    iimg->datatoc_size, IB_rect, NULL, "<matcap icon>");
+		/* w and h were set on initialize */
+		if (bbuf->x != iimg->h && bbuf->y != iimg->w)
+			IMB_scaleImBuf(bbuf, iimg->w, iimg->h);
+		
+		iimg->rect = bbuf->rect;
+		bbuf->rect = NULL;
+		IMB_freeImBuf(bbuf);
+	}
+}
+
+static void init_matcap_icons(void)
+{
+	/* dynamic allocation now, tucking datatoc pointers in DrawInfo */
+#define INIT_MATCAP_ICON(icon_id, name)                                       \
+	{                                                                         \
+		unsigned char *rect = (unsigned char *)datatoc_ ##name## _jpg;        \
+		int size = datatoc_ ##name## _jpg_size;                               \
+		DrawInfo *di;                                                         \
+		                                                                      \
+		di = def_internal_icon(NULL, icon_id, 0, 0, 96, ICON_TYPE_BUFFER);   \
+		di->data.buffer.image->datatoc_rect = rect;                           \
+		di->data.buffer.image->datatoc_size = size;                           \
+	} (void)0
+
+	INIT_MATCAP_ICON(ICON_MATCAP_01, mc01);
+	INIT_MATCAP_ICON(ICON_MATCAP_02, mc02);
+	INIT_MATCAP_ICON(ICON_MATCAP_03, mc03);
+	INIT_MATCAP_ICON(ICON_MATCAP_04, mc04);
+	INIT_MATCAP_ICON(ICON_MATCAP_05, mc05);
+	INIT_MATCAP_ICON(ICON_MATCAP_06, mc06);
+	INIT_MATCAP_ICON(ICON_MATCAP_07, mc07);
+	INIT_MATCAP_ICON(ICON_MATCAP_08, mc08);
+	INIT_MATCAP_ICON(ICON_MATCAP_09, mc09);
+	INIT_MATCAP_ICON(ICON_MATCAP_10, mc10);
+	INIT_MATCAP_ICON(ICON_MATCAP_11, mc11);
+	INIT_MATCAP_ICON(ICON_MATCAP_12, mc12);
+	INIT_MATCAP_ICON(ICON_MATCAP_13, mc13);
+	INIT_MATCAP_ICON(ICON_MATCAP_14, mc14);
+	INIT_MATCAP_ICON(ICON_MATCAP_15, mc15);
+	INIT_MATCAP_ICON(ICON_MATCAP_16, mc16);
+	INIT_MATCAP_ICON(ICON_MATCAP_17, mc17);
+	INIT_MATCAP_ICON(ICON_MATCAP_18, mc18);
+	INIT_MATCAP_ICON(ICON_MATCAP_19, mc19);
+	INIT_MATCAP_ICON(ICON_MATCAP_20, mc20);
+	INIT_MATCAP_ICON(ICON_MATCAP_21, mc21);
+	INIT_MATCAP_ICON(ICON_MATCAP_22, mc22);
+	INIT_MATCAP_ICON(ICON_MATCAP_23, mc23);
+	INIT_MATCAP_ICON(ICON_MATCAP_24, mc24);
+
+#undef INIT_MATCAP_ICON
+
+}
+
 static void init_internal_icons(void)
 {
-	bTheme *btheme = UI_GetTheme();
-	ImBuf *bbuf = NULL;
+//	bTheme *btheme = UI_GetTheme();
+	ImBuf *b16buf = NULL, *b32buf = NULL;
 	int x, y, icontype;
-	char iconfilestr[FILE_MAX];
-	
+
+#if 0 // temp disabled
 	if ((btheme != NULL) && btheme->tui.iconfile[0]) {
 		char *icondir = BLI_get_folder(BLENDER_DATAFILES, "icons");
+		char iconfilestr[FILE_MAX];
+		
 		if (icondir) {
 			BLI_join_dirfile(iconfilestr, sizeof(iconfilestr), icondir, btheme->tui.iconfile);
 			bbuf = IMB_loadiffname(iconfilestr, IB_rect, NULL); /* if the image is missing bbuf will just be NULL */
@@ -531,11 +611,20 @@ static void init_internal_icons(void)
 			printf("%s: 'icons' data path not found, continuing\n", __func__);
 		}
 	}
-	if (bbuf == NULL)
-		bbuf = IMB_ibImageFromMemory((unsigned char *)datatoc_blender_icons_png,
-		                             datatoc_blender_icons_png_size, IB_rect, NULL, "<blender icons>");
+#endif
+	if (b16buf == NULL)
+		b16buf = IMB_ibImageFromMemory((unsigned char *)datatoc_blender_icons16_png,
+		                             datatoc_blender_icons16_png_size, IB_rect, NULL, "<blender icons>");
+	if (b16buf)
+		IMB_premultiply_alpha(b16buf);
 
-	if (bbuf) {
+	if (b32buf == NULL)
+		b32buf = IMB_ibImageFromMemory((unsigned char *)datatoc_blender_icons32_png,
+		                             datatoc_blender_icons32_png_size, IB_rect, NULL, "<blender icons>");
+	if (b32buf)
+		IMB_premultiply_alpha(b32buf);
+	
+	if (b16buf && b32buf) {
 		/* free existing texture if any */
 		if (icongltex.id) {
 			glDeleteTextures(1, &icongltex.id);
@@ -547,17 +636,31 @@ static void init_internal_icons(void)
 			glGenTextures(1, &icongltex.id);
 
 			if (icongltex.id) {
-				icongltex.w = bbuf->x;
-				icongltex.h = bbuf->y;
-				icongltex.invw = 1.0f / bbuf->x;
-				icongltex.invh = 1.0f / bbuf->y;
+				int level = 2;
+				
+				icongltex.w = b32buf->x;
+				icongltex.h = b32buf->y;
+				icongltex.invw = 1.0f / b32buf->x;
+				icongltex.invh = 1.0f / b32buf->y;
 
 				glBindTexture(GL_TEXTURE_2D, icongltex.id);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bbuf->x, bbuf->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, bbuf->rect);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, b32buf->x, b32buf->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, b32buf->rect);
+				glTexImage2D(GL_TEXTURE_2D, 1, GL_RGBA, b16buf->x, b16buf->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, b16buf->rect);
+				
+				while (b16buf->x > 1) {
+					ImBuf *nbuf = IMB_onehalf(b16buf);
+					glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA, nbuf->x, nbuf->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nbuf->rect);
+					level++;
+					IMB_freeImBuf(b16buf);
+					b16buf = nbuf;
+				}
+				
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				
 				glBindTexture(GL_TEXTURE_2D, 0);
-
+				
 				if (glGetError() == GL_OUT_OF_MEMORY) {
 					glDeleteTextures(1, &icongltex.id);
 					icongltex.id = 0;
@@ -571,10 +674,10 @@ static void init_internal_icons(void)
 	else
 		icontype = ICON_TYPE_BUFFER;
 	
-	if (bbuf) {
+	if (b32buf) {
 		for (y = 0; y < ICON_GRID_ROWS; y++) {
 			for (x = 0; x < ICON_GRID_COLS; x++) {
-				def_internal_icon(bbuf, BIFICONID_FIRST + y * ICON_GRID_COLS + x,
+				def_internal_icon(b32buf, BIFICONID_FIRST + y * ICON_GRID_COLS + x,
 				                  x * (ICON_GRID_W + ICON_GRID_MARGIN) + ICON_GRID_MARGIN,
 				                  y * (ICON_GRID_H + ICON_GRID_MARGIN) + ICON_GRID_MARGIN, ICON_GRID_W,
 				                  icontype);
@@ -584,8 +687,8 @@ static void init_internal_icons(void)
 
 	def_internal_vicon(VICO_VIEW3D_VEC, vicon_view3d_draw);
 	def_internal_vicon(VICO_EDIT_VEC, vicon_edit_draw);
-	def_internal_vicon(VICO_EDITMODE_DEHLT, vicon_editmode_dehlt_draw);
-	def_internal_vicon(VICO_EDITMODE_HLT, vicon_editmode_hlt_draw);
+	def_internal_vicon(VICO_EDITMODE_VEC_DEHLT, vicon_editmode_dehlt_draw);
+	def_internal_vicon(VICO_EDITMODE_VEC_HLT, vicon_editmode_hlt_draw);
 	def_internal_vicon(VICO_DISCLOSURE_TRI_RIGHT_VEC, vicon_disclosure_tri_right_draw);
 	def_internal_vicon(VICO_DISCLOSURE_TRI_DOWN_VEC, vicon_disclosure_tri_down_draw);
 	def_internal_vicon(VICO_MOVE_UP_VEC, vicon_move_up_draw);
@@ -593,7 +696,9 @@ static void init_internal_icons(void)
 	def_internal_vicon(VICO_X_VEC, vicon_x_draw);
 	def_internal_vicon(VICO_SMALL_TRI_RIGHT_VEC, vicon_small_tri_right_draw);
 
-	IMB_freeImBuf(bbuf);
+	IMB_freeImBuf(b16buf);
+	IMB_freeImBuf(b32buf);
+	
 }
 #endif  /* WITH_HEADLESS */
 
@@ -601,10 +706,8 @@ static void init_iconfile_list(struct ListBase *list)
 {
 	IconFile *ifile;
 	struct direntry *dir;
-	int restoredir = 1; /* restore to current directory */
 	int totfile, i, index = 1;
 	const char *icondir;
-	char olddir[FILE_MAX];
 
 	list->first = list->last = NULL;
 	icondir = BLI_get_folder(BLENDER_DATAFILES, "icons");
@@ -612,12 +715,7 @@ static void init_iconfile_list(struct ListBase *list)
 	if (icondir == NULL)
 		return;
 	
-	/* since BLI_dir_contents changes the current working directory, restore it 
-	 * back to old value afterwards */
-	if (!BLI_current_working_dir(olddir, sizeof(olddir))) 
-		restoredir = 0;
 	totfile = BLI_dir_contents(icondir, &dir);
-	if (restoredir && !chdir(olddir)) {} /* fix warning about checking return value */
 
 	for (i = 0; i < totfile; i++) {
 		if ((dir[i].type & S_IFREG)) {
@@ -664,18 +762,8 @@ static void init_iconfile_list(struct ListBase *list)
 			}
 		}
 	}
-	
-	/* free temporary direntry structure that's been created by BLI_dir_contents() */
-	i = totfile - 1;
-	
-	for (; i >= 0; i--) {
-		MEM_freeN(dir[i].relname);
-		MEM_freeN(dir[i].path);
-		if (dir[i].string) {
-			MEM_freeN(dir[i].string);
-		}
-	}
-	free(dir);
+
+	BLI_free_filelist(dir, totfile);
 	dir = NULL;
 }
 
@@ -688,6 +776,8 @@ static void free_iconfile_list(struct ListBase *list)
 		BLI_freelinkN(list, ifile);
 	}
 }
+
+#endif  /* WITH_HEADLESS */
 
 int UI_iconfile_get_index(const char *filename)
 {
@@ -731,7 +821,8 @@ void UI_icons_free_drawinfo(void *drawinfo)
 	if (di) {
 		if (di->type == ICON_TYPE_BUFFER) {
 			if (di->data.buffer.image) {
-				MEM_freeN(di->data.buffer.image->rect);
+				if (di->data.buffer.image->rect)
+					MEM_freeN(di->data.buffer.image->rect);
 				MEM_freeN(di->data.buffer.image);
 			}
 		}
@@ -750,7 +841,7 @@ static DrawInfo *icon_create_drawinfo(void)
 	return di;
 }
 
-/* note!, returns unscaled by DPI, may need to multiply result by UI_DPI_ICON_FAC */
+/* note!, returns unscaled by DPI */
 int UI_icon_get_width(int icon_id)
 {
 	Icon *icon = NULL;
@@ -811,6 +902,7 @@ void UI_icons_init(int first_dyn_id)
 	BKE_icons_init(first_dyn_id);
 	init_internal_icons();
 	init_brush_icons();
+	init_matcap_icons();
 #endif
 }
 
@@ -858,6 +950,34 @@ static void icon_set_image(bContext *C, ID *id, PreviewImage *prv_img, enum eIco
 
 	ED_preview_icon_job(C, prv_img, id, prv_img->rect[size],
 	                    prv_img->w[size], prv_img->h[size]);
+}
+
+PreviewImage *UI_icon_to_preview(int icon_id)
+{
+	Icon *icon = BKE_icon_get(icon_id);
+	
+	if (icon) {
+		DrawInfo *di = (DrawInfo *)icon->drawinfo;
+		if (di && di->data.buffer.image) {
+			ImBuf *bbuf;
+			
+			bbuf = IMB_ibImageFromMemory(di->data.buffer.image->datatoc_rect, di->data.buffer.image->datatoc_size, IB_rect, NULL, "<matcap buffer>");
+			if (bbuf) {
+				PreviewImage *prv = BKE_previewimg_create();
+				
+				prv->rect[0] = bbuf->rect;
+
+				prv->w[0] = bbuf->x;
+				prv->h[0] = bbuf->y;
+				
+				bbuf->rect = NULL;
+				IMB_freeImBuf(bbuf);
+				
+				return prv;
+			}
+		}
+	}
+	return NULL;
 }
 
 static void icon_draw_rect(float x, float y, int w, int h, float UNUSED(aspect), int rw, int rh,
@@ -920,7 +1040,7 @@ static void icon_draw_texture(float x, float y, float w, float h, int ix, int iy
 	float x1, x2, y1, y2;
 
 	if (rgb) glColor4f(rgb[0], rgb[1], rgb[2], alpha);
-	else glColor4f(1.0f, 1.0f, 1.0f, alpha);
+	else     glColor4f(alpha, alpha, alpha, alpha);
 
 	x1 = ix * icongltex.invw;
 	x2 = (ix + ih) * icongltex.invw;
@@ -929,6 +1049,9 @@ static void icon_draw_texture(float x, float y, float w, float h, int ix, int iy
 
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, icongltex.id);
+
+	/* sharper downscaling, has no effect when scale matches with a mip level */
+	glTexEnvf(GL_TEXTURE_FILTER_CONTROL, GL_TEXTURE_LOD_BIAS, -0.5f);
 
 	glBegin(GL_QUADS);
 	glTexCoord2f(x1, y1);
@@ -944,6 +1067,8 @@ static void icon_draw_texture(float x, float y, float w, float h, int ix, int iy
 	glVertex2f(x, y + h);
 	glEnd();
 
+	glTexEnvf(GL_TEXTURE_FILTER_CONTROL, GL_TEXTURE_LOD_BIAS, 0.0f);
+
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
 }
@@ -958,6 +1083,8 @@ static int get_draw_size(enum eIconSizes size)
 	return 0;
 }
 
+
+
 static void icon_draw_size(float x, float y, int icon_id, float aspect, float alpha, const float rgb[3],
                            enum eIconSizes size, int draw_size, int UNUSED(nocreate), short is_preview)
 {
@@ -965,7 +1092,7 @@ static void icon_draw_size(float x, float y, int icon_id, float aspect, float al
 	Icon *icon = NULL;
 	DrawInfo *di = NULL;
 	IconImage *iimg;
-	float fdraw_size = is_preview ? draw_size : (draw_size * UI_DPI_ICON_FAC);
+	const float fdraw_size = (float)draw_size;
 	int w, h;
 	
 	icon = BKE_icon_get(icon_id);
@@ -993,19 +1120,26 @@ static void icon_draw_size(float x, float y, int icon_id, float aspect, float al
 	if (di->type == ICON_TYPE_VECTOR) {
 		/* vector icons use the uiBlock transformation, they are not drawn
 		 * with untransformed coordinates like the other icons */
-		di->data.vector.func((int)x, (int)y, ICON_DEFAULT_HEIGHT, ICON_DEFAULT_HEIGHT, 1.0f); 
+		di->data.vector.func((int)x, (int)y, w, h, 1.0f);
 	}
 	else if (di->type == ICON_TYPE_TEXTURE) {
+		/* texture image use premul alpha for correct scaling */
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		icon_draw_texture(x, y, (float)w, (float)h, di->data.texture.x, di->data.texture.y,
 		                  di->data.texture.w, di->data.texture.h, alpha, rgb);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 	else if (di->type == ICON_TYPE_BUFFER) {
 		/* it is a builtin icon */
 		iimg = di->data.buffer.image;
-
+#ifndef WITH_HEADLESS
+		icon_verify_datatoc(iimg);
+#endif
 		if (!iimg->rect) return;  /* something has gone wrong! */
 
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 		icon_draw_rect(x, y, w, h, aspect, iimg->w, iimg->h, iimg->rect, alpha, rgb, is_preview);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 	else if (di->type == ICON_TYPE_PREVIEW) {
 		PreviewImage *pi = BKE_previewimg_get((ID *)icon->obj);
@@ -1032,7 +1166,7 @@ static void ui_id_preview_image_render_size(bContext *C, ID *id, PreviewImage *p
 	}
 }
 
-static void ui_id_icon_render(bContext *C, ID *id, int big)
+static void ui_id_icon_render(bContext *C, ID *id, const bool big)
 {
 	PreviewImage *pi = BKE_previewimg_get(id);
 
@@ -1116,7 +1250,7 @@ static int ui_id_brush_get_icon(bContext *C, ID *id)
 	return id->icon_id;
 }
 
-int ui_id_icon_get(bContext *C, ID *id, int big)
+int ui_id_icon_get(bContext *C, ID *id, const bool big)
 {
 	int iconid = 0;
 	
@@ -1141,6 +1275,44 @@ int ui_id_icon_get(bContext *C, ID *id, int big)
 	return iconid;
 }
 
+int UI_rnaptr_icon_get(bContext *C, PointerRNA *ptr, int rnaicon, const bool big)
+{
+	ID *id = NULL;
+
+	if (!ptr->data)
+		return rnaicon;
+
+	/* try ID, material, texture or dynapaint slot */
+	if (RNA_struct_is_ID(ptr->type)) {
+		id = ptr->id.data;
+	}
+	else if (RNA_struct_is_a(ptr->type, &RNA_MaterialSlot)) {
+		id = RNA_pointer_get(ptr, "material").data;
+	}
+	else if (RNA_struct_is_a(ptr->type, &RNA_TextureSlot)) {
+		id = RNA_pointer_get(ptr, "texture").data;
+	}
+	else if (RNA_struct_is_a(ptr->type, &RNA_DynamicPaintSurface)) {
+		DynamicPaintSurface *surface = (DynamicPaintSurface *)ptr->data;
+
+		if (surface->format == MOD_DPAINT_SURFACE_F_PTEX)
+			return ICON_TEXTURE_SHADED;
+		else if (surface->format == MOD_DPAINT_SURFACE_F_VERTEX)
+			return ICON_OUTLINER_DATA_MESH;
+		else if (surface->format == MOD_DPAINT_SURFACE_F_IMAGESEQ)
+			return ICON_FILE_IMAGE;
+	}
+
+	/* get icon from ID */
+	if (id) {
+		int icon = ui_id_icon_get(C, id, big);
+
+		return icon ? icon : rnaicon;
+	}
+
+	return rnaicon;
+}
+
 static void icon_draw_at_size(float x, float y, int icon_id, float aspect, float alpha, enum eIconSizes size, int nocreate)
 {
 	int draw_size = get_draw_size(size);
@@ -1158,9 +1330,10 @@ void UI_icon_draw_aspect_color(float x, float y, int icon_id, float aspect, cons
 	icon_draw_size(x, y, icon_id, aspect, 1.0f, rgb, ICON_SIZE_ICON, draw_size, FALSE, FALSE);
 }
 
+/* draws icon with dpi scale factor */
 void UI_icon_draw(float x, float y, int icon_id)
 {
-	UI_icon_draw_aspect(x, y, icon_id, 1.0f, 1.0f);
+	UI_icon_draw_aspect(x, y, icon_id, 1.0f / UI_DPI_FAC, 1.0f);
 }
 
 void UI_icon_draw_size(float x, float y, int size, int icon_id, float alpha)

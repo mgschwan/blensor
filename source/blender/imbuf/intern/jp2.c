@@ -108,6 +108,13 @@ static void info_callback(const char *msg, void *client_data)
 		     i++, _rect += 4)                                                 \
 		{                                                                     \
 
+#   define PIXEL_LOOPER_BEGIN_CHANNELS(_rect, _channels)                      \
+	for (y = h - 1; y != (unsigned int)(-1); y--) {                           \
+		for (i = y * w, i_next = (y + 1) * w;                                 \
+		     i < i_next;                                                      \
+		     i++, _rect += _channels)                                         \
+		{                                                                     \
+
 #   define PIXEL_LOOPER_END \
 	} \
 	} (void)0 \
@@ -228,6 +235,10 @@ struct ImBuf *imb_jp2_decode(unsigned char *mem, size_t size, int flags, char co
 	}
 	
 	ibuf->ftype = JP2;
+	if (is_jp2)
+		ibuf->ftype |= JP2_JP2;
+	else
+		ibuf->ftype |= JP2_J2K;
 	
 	if (use_float) {
 		float *rect_float = ibuf->rect_float;
@@ -552,7 +563,7 @@ static float channel_colormanage_noop(float value)
 static opj_image_t *ibuftoimage(ImBuf *ibuf, opj_cparameters_t *parameters)
 {
 	unsigned char *rect_uchar;
-	float *rect_float;
+	float *rect_float, from_straight[4];
 	
 	unsigned int subsampling_dx = parameters->subsampling_dx;
 	unsigned int subsampling_dy = parameters->subsampling_dy;
@@ -659,70 +670,198 @@ static opj_image_t *ibuftoimage(ImBuf *ibuf, opj_cparameters_t *parameters)
 	}
 	
 	if (rect_float) {
+		int channels_in_float = ibuf->channels ? ibuf->channels : 4;
+
 		switch (prec) {
 			case 8: /* Convert blenders float color channels to 8, 12 or 16bit ints */
 				if (numcomps == 4) {
-					PIXEL_LOOPER_BEGIN(rect_float)
-					{
-						r[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[0]));
-						g[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[1]));
-						b[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[2]));
-						a[i] = DOWNSAMPLE_FLOAT_TO_8BIT(rect_float[3]);
+					if (channels_in_float == 4) {
+						PIXEL_LOOPER_BEGIN(rect_float)
+						{
+							premul_to_straight_v4_v4(from_straight, rect_float);
+							r[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(from_straight[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(from_straight[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(from_straight[2]));
+							a[i] = DOWNSAMPLE_FLOAT_TO_8BIT(from_straight[3]);
+						}
+						PIXEL_LOOPER_END;
 					}
-					PIXEL_LOOPER_END;
+					else if (channels_in_float == 3) {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 3)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[2]));
+							a[i] = 255;
+						}
+						PIXEL_LOOPER_END;
+					}
+					else {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 1)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = b[i] = r[i];
+							a[i] = 255;
+						}
+						PIXEL_LOOPER_END;
+					}
 				}
 				else {
-					PIXEL_LOOPER_BEGIN(rect_float)
-					{
-						r[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[0]));
-						g[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[1]));
-						b[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[2]));
+					if (channels_in_float == 4) {
+						PIXEL_LOOPER_BEGIN(rect_float)
+						{
+							premul_to_straight_v4_v4(from_straight, rect_float);
+							r[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(from_straight[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(from_straight[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(from_straight[2]));
+						}
+						PIXEL_LOOPER_END;
 					}
-					PIXEL_LOOPER_END;
+					else if (channels_in_float == 3) {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 3)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[2]));
+						}
+						PIXEL_LOOPER_END;
+					}
+					else {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 1)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_8BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = b[i] = r[i];
+						}
+						PIXEL_LOOPER_END;
+					}
 				}
 				break;
 			
 			case 12:
 				if (numcomps == 4) {
-					PIXEL_LOOPER_BEGIN(rect_float)
-					{
-						r[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[0]));
-						g[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[1]));
-						b[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[2]));
-						a[i] = DOWNSAMPLE_FLOAT_TO_12BIT(rect_float[3]);
+					if (channels_in_float == 4) {
+						PIXEL_LOOPER_BEGIN(rect_float)
+						{
+							premul_to_straight_v4_v4(from_straight, rect_float);
+							r[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(from_straight[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(from_straight[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(from_straight[2]));
+							a[i] = DOWNSAMPLE_FLOAT_TO_12BIT(from_straight[3]);
+						}
+						PIXEL_LOOPER_END;
 					}
-					PIXEL_LOOPER_END;
+					else if (channels_in_float == 3) {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 3)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[2]));
+							a[i] = 4095;
+						}
+						PIXEL_LOOPER_END;
+					}
+					else {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 1)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = b[i] = r[i];
+							a[i] = 4095;
+						}
+						PIXEL_LOOPER_END;
+					}
 				}
 				else {
-					PIXEL_LOOPER_BEGIN(rect_float)
-					{
-						r[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[0]));
-						g[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[1]));
-						b[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[2]));
+					if (channels_in_float == 4) {
+						PIXEL_LOOPER_BEGIN(rect_float)
+						{
+							premul_to_straight_v4_v4(from_straight, rect_float);
+							r[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(from_straight[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(from_straight[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(from_straight[2]));
+						}
+						PIXEL_LOOPER_END;
 					}
-					PIXEL_LOOPER_END;
+					else if (channels_in_float == 3) {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 3)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[2]));
+						}
+						PIXEL_LOOPER_END;
+					}
+					else {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 1)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_12BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = b[i] = r[i];
+						}
+						PIXEL_LOOPER_END;
+					}
 				}
 				break;
 
 			case 16:
 				if (numcomps == 4) {
-					PIXEL_LOOPER_BEGIN(rect_float)
-					{
-						r[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[0]));
-						g[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[1]));
-						b[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[2]));
-						a[i] = DOWNSAMPLE_FLOAT_TO_16BIT(rect_float[3]);
+					if (channels_in_float == 4) {
+						PIXEL_LOOPER_BEGIN(rect_float)
+						{
+							premul_to_straight_v4_v4(from_straight, rect_float);
+							r[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(from_straight[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(from_straight[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(from_straight[2]));
+							a[i] = DOWNSAMPLE_FLOAT_TO_16BIT(from_straight[3]);
+						}
+						PIXEL_LOOPER_END;
 					}
-					PIXEL_LOOPER_END;
+					else if (channels_in_float == 3) {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 3)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[2]));
+							a[i] = 65535;
+						}
+						PIXEL_LOOPER_END;
+					}
+					else {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 1)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = b[i] = r[i];
+							a[i] = 65535;
+						}
+						PIXEL_LOOPER_END;
+					}
 				}
 				else {
-					PIXEL_LOOPER_BEGIN(rect_float)
-					{
-						r[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[0]));
-						g[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[1]));
-						b[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[2]));
+					if (channels_in_float == 4) {
+						PIXEL_LOOPER_BEGIN(rect_float)
+						{
+							premul_to_straight_v4_v4(from_straight, rect_float);
+							r[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(from_straight[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(from_straight[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(from_straight[2]));
+						}
+						PIXEL_LOOPER_END;
 					}
-					PIXEL_LOOPER_END;
+					else if (channels_in_float == 3) {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 3)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[1]));
+							b[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[2]));
+						}
+						PIXEL_LOOPER_END;
+					}
+					else {
+						PIXEL_LOOPER_BEGIN_CHANNELS(rect_float, 1)
+						{
+							r[i] = DOWNSAMPLE_FLOAT_TO_16BIT(chanel_colormanage_cb(rect_float[0]));
+							g[i] = b[i] = r[i];
+						}
+						PIXEL_LOOPER_END;
+					}
 				}
 				break;
 		}
@@ -852,9 +991,15 @@ int imb_savejp2(struct ImBuf *ibuf, const char *name, int flags)
 		int codestream_length;
 		opj_cio_t *cio = NULL;
 		FILE *f = NULL;
+		opj_cinfo_t *cinfo = NULL;
 
 		/* get a JP2 compressor handle */
-		opj_cinfo_t *cinfo = opj_create_compress(CODEC_JP2);
+		if (ibuf->ftype & JP2_JP2)
+			cinfo = opj_create_compress(CODEC_JP2);
+		else if (ibuf->ftype & JP2_J2K)
+			cinfo = opj_create_compress(CODEC_J2K);
+		else
+			BLI_assert(!"Unsupported codec was specified in save settings");
 
 		/* catch events using our callbacks and give a local context */
 		opj_set_event_mgr((opj_common_ptr)cinfo, &event_mgr, stderr);

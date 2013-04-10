@@ -35,7 +35,7 @@ bl_info = {
     "name": "Blender-CoD - Add-On for Call of Duty modding (alpha 3)",
     "author": "CoDEmanX, Flybynyt",
     "version": (0, 3, 5),
-    "blender": (2, 62, 3),
+    "blender": (2, 62, 0),
     "location": "File > Import  |  File > Export",
     "description": "Export models to *.XMODEL_EXPORT and animations to *.XANIM_EXPORT",
     "warning": "Alpha version, please report any bugs!",

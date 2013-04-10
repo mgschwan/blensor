@@ -42,12 +42,15 @@
 #include "DNA_property_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_armature_types.h"
+#include "DNA_lamp_types.h"
 
 #include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_rand.h"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_group.h"
@@ -436,7 +439,7 @@ static int object_select_linked_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	else if (nr == OBJECT_SELECT_LINKED_OBDATA) {
-		if (ob->data == 0)
+		if (ob->data == NULL)
 			return OPERATOR_CANCELLED;
 
 		changed = object_select_all_by_obdata(C, ob->data);
@@ -525,6 +528,8 @@ static EnumPropertyItem prop_select_grouped_types[] = {
 	{10, "COLOR", 0, "Color", "Object Color"},
 	{11, "PROPERTIES", 0, "Properties", "Game Properties"},
 	{12, "KEYINGSET", 0, "Keying Set", "Objects included in active Keying Set"},
+	{13, "LAMP_TYPE", 0, "Lamp Type", "Matching lamp types"},
+	{14, "PASS_INDEX", 0, "Pass Index", "Matching object pass index"},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -581,7 +586,7 @@ static short select_grouped_group(bContext *C, Object *ob)  /* Select objects in
 	uiLayout *layout;
 
 	for (group = CTX_data_main(C)->group.first; group && group_count < GROUP_MENU_MAX; group = group->id.next) {
-		if (object_in_group(ob, group)) {
+		if (BKE_group_object_exists(group, ob)) {
 			ob_groups[group_count] = group;
 			group_count++;
 		}
@@ -593,7 +598,7 @@ static short select_grouped_group(bContext *C, Object *ob)  /* Select objects in
 		group = ob_groups[0];
 		CTX_DATA_BEGIN (C, Base *, base, visible_bases)
 		{
-			if (!(base->flag & SELECT) && object_in_group(base->object, group)) {
+			if (!(base->flag & SELECT) && BKE_group_object_exists(group, base->object)) {
 				ED_base_object_select(base, BA_SELECT);
 				changed = 1;
 			}
@@ -603,7 +608,7 @@ static short select_grouped_group(bContext *C, Object *ob)  /* Select objects in
 	}
 
 	/* build the menu. */
-	pup = uiPupMenuBegin(C, "Select Group", ICON_NONE);
+	pup = uiPupMenuBegin(C, IFACE_("Select Group"), ICON_NONE);
 	layout = uiPupMenuLayout(pup);
 
 	for (i = 0; i < group_count; i++) {
@@ -656,7 +661,39 @@ static short select_grouped_siblings(bContext *C, Object *ob)
 	CTX_DATA_END;
 	return changed;
 }
+static short select_similar_lamps(bContext *C, Object *ob)
+{
+	Lamp *la = ob->data;
 
+	short changed = 0;
+
+	CTX_DATA_BEGIN (C, Base *, base, selectable_bases)
+	{
+		if (base->object->type == OB_LAMP) {
+			Lamp *la_test = base->object->data;
+			if ((la->type == la_test->type) && !(base->flag & SELECT)) {
+				ED_base_object_select(base, BA_SELECT);
+				changed = 1;
+			}
+		}
+	}
+	CTX_DATA_END;
+	return changed;
+}
+static short select_similar_pass_index(bContext *C, Object *ob)
+{
+	char changed = 0;
+
+	CTX_DATA_BEGIN (C, Base *, base, selectable_bases)
+	{
+		if ((base->object->index == ob->index) && !(base->flag & SELECT)) {
+			ED_base_object_select(base, BA_SELECT);
+			changed = 1;
+		}
+	}
+	CTX_DATA_END;
+	return changed;
+}
 static short select_grouped_type(bContext *C, Object *ob)
 {
 	short changed = 0;
@@ -803,7 +840,12 @@ static int object_select_grouped_exec(bContext *C, wmOperator *op)
 		BKE_report(op->reports, RPT_ERROR, "No active object");
 		return OPERATOR_CANCELLED;
 	}
-	
+
+	if (nr == 13 && ob->type != OB_LAMP) {
+		BKE_report(op->reports, RPT_ERROR, "Active object must be a lamp");
+		return OPERATOR_CANCELLED;
+	}
+
 	if      (nr == 1) changed |= select_grouped_children(C, ob, 1);
 	else if (nr == 2) changed |= select_grouped_children(C, ob, 0);
 	else if (nr == 3) changed |= select_grouped_parent(C);
@@ -816,7 +858,9 @@ static int object_select_grouped_exec(bContext *C, wmOperator *op)
 	else if (nr == 10) changed |= select_grouped_color(C, ob);
 	else if (nr == 11) changed |= select_grouped_gameprops(C, ob);
 	else if (nr == 12) changed |= select_grouped_keyingset(C, ob);
-	
+	else if (nr == 13) changed |= select_similar_lamps(C, ob);
+	else if (nr == 14) changed |= select_similar_pass_index(C, ob);
+
 	if (changed) {
 		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
 		return OPERATOR_FINISHED;
@@ -850,13 +894,13 @@ void OBJECT_OT_select_grouped(wmOperatorType *ot)
 static int object_select_by_layer_exec(bContext *C, wmOperator *op)
 {
 	unsigned int layernum;
-	short extend, match;
+	bool extend, match;
 	
 	extend = RNA_boolean_get(op->ptr, "extend");
 	layernum = RNA_int_get(op->ptr, "layers");
 	match = RNA_enum_get(op->ptr, "match");
 	
-	if (extend == 0) {
+	if (extend == false) {
 		CTX_DATA_BEGIN (C, Base *, base, visible_bases)
 		{
 			ED_base_object_select(base, BA_DESELECT);
@@ -866,12 +910,12 @@ static int object_select_by_layer_exec(bContext *C, wmOperator *op)
 		
 	CTX_DATA_BEGIN (C, Base *, base, visible_bases)
 	{
-		int ok = 0;
+		bool ok = false;
 
-		if (match == 1) /* exact */
+		if (match == true) /* exact */
 			ok = (base->lay == (1 << (layernum - 1)));
 		else /* shared layers */
-			ok = (base->lay & (1 << (layernum - 1)));
+			ok = (base->lay & (1 << (layernum - 1))) != 0;
 
 		if (ok)
 			ED_base_object_select(base, BA_SELECT);
@@ -996,7 +1040,7 @@ static int object_select_same_group_exec(bContext *C, wmOperator *op)
 
 	CTX_DATA_BEGIN (C, Base *, base, visible_bases)
 	{
-		if (!(base->flag & SELECT) && object_in_group(base->object, group))
+		if (!(base->flag & SELECT) && BKE_group_object_exists(group, base->object))
 			ED_base_object_select(base, BA_SELECT);
 	}
 	CTX_DATA_END;
@@ -1028,7 +1072,7 @@ void OBJECT_OT_select_same_group(wmOperatorType *ot)
 static int object_select_mirror_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
-	short extend;
+	bool extend;
 	
 	extend = RNA_boolean_get(op->ptr, "extend");
 	
@@ -1049,7 +1093,7 @@ static int object_select_mirror_exec(bContext *C, wmOperator *op)
 			}
 		}
 		
-		if (extend == 0) ED_base_object_select(primbase, BA_DESELECT);
+		if (extend == false) ED_base_object_select(primbase, BA_DESELECT);
 		
 	}
 	CTX_DATA_END;
@@ -1084,11 +1128,11 @@ void OBJECT_OT_select_mirror(wmOperatorType *ot)
 static int object_select_random_exec(bContext *C, wmOperator *op)
 {	
 	float percent;
-	short extend;
+	bool extend;
 	
 	extend = RNA_boolean_get(op->ptr, "extend");
 	
-	if (extend == 0) {
+	if (extend == false) {
 		CTX_DATA_BEGIN (C, Base *, base, visible_bases)
 		{
 			ED_base_object_select(base, BA_DESELECT);

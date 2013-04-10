@@ -2,7 +2,7 @@ bl_info = {
     "name": "Texture Paint Layer Manager",
     "author": "Michael Wiliamson",
     "version": (1, 0),
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     "location": "Texture Paint > Properties > Texture Paint Layers Panels",
     "description": "Adds a layer manager for image based texture slots in paint and quick add layer tools",
     "warning": "",
@@ -154,12 +154,10 @@ class OBJECT_PT_Texture_paint_layers(bpy.types.Panel):
                 row = layout.row() 
                 row.label(' Add a Material first!', icon = 'ERROR')
             else:
-                row = layout.row()        
-                row.template_list(ob, "material_slots", ob, 
-                    "active_material_index", rows=2 )
-                
-        
-                
+                row = layout.row()
+                row.template_list("UI_UL_list", "texture_paint_layers", ob, "material_slots", ob,
+                                  "active_material_index", rows=2 )
+
                 #list Paintable textures
                 #TODO add filter for channel type
                 i = -1
@@ -570,7 +568,6 @@ def save_painted(ts):
                         else:
                             i.filepath = fp
                         i.name = name
-                        i.use_premultiply = True
                     except:
                         print("something wrong with", fp)
     #THAT'S THE GENERATED FILES saved, pathed and reloaded

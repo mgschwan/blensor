@@ -58,7 +58,6 @@
 
 #include "RAS_GLExtensionManager.h"
 #include "RAS_OpenGLRasterizer.h"
-#include "RAS_VAOpenGLRasterizer.h"
 #include "RAS_ListRasterizer.h"
 
 #include "NG_LoopBackNetworkDeviceInterface.h"
@@ -183,8 +182,8 @@ static int BL_KetsjiNextFrame(KX_KetsjiEngine *ketsjiengine, bContext *C, wmWind
 	return exitrequested;
 }
 
-struct BL_KetsjiNextFrameState {
-	struct KX_KetsjiEngine* ketsjiengine;
+static struct BL_KetsjiNextFrameState {
+	class KX_KetsjiEngine* ketsjiengine;
 	struct bContext *C;
 	struct wmWindow* win;
 	struct Scene* scene;
@@ -270,7 +269,7 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 #ifdef WITH_PYTHON
 		bool nodepwarnings = (SYS_GetCommandLineInt(syshandle, "ignore_deprecation_warnings", 0) != 0);
 #endif
-		bool novertexarrays = (SYS_GetCommandLineInt(syshandle, "novertexarrays", 0) != 0);
+		// bool novertexarrays = (SYS_GetCommandLineInt(syshandle, "novertexarrays", 0) != 0);
 		bool mouse_state = startscene->gm.flag & GAME_SHOW_MOUSE;
 		bool restrictAnimFPS = startscene->gm.flag & GAME_RESTRICT_ANIM_UPDATES;
 
@@ -287,16 +286,12 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 		RAS_IRenderTools* rendertools = new KX_BlenderRenderTools();
 		RAS_IRasterizer* rasterizer = NULL;
 		
-		if (displaylists) {
-			if (GLEW_VERSION_1_1 && !novertexarrays)
-				rasterizer = new RAS_ListRasterizer(canvas, true, true);
-			else
-				rasterizer = new RAS_ListRasterizer(canvas);
-		}
-		else if (GLEW_VERSION_1_1 && !novertexarrays)
-			rasterizer = new RAS_VAOpenGLRasterizer(canvas, false);
+		//Don't use displaylists with VBOs
+		//If auto starts using VBOs, make sure to check for that here
+		if (displaylists && startscene->gm.raster_storage != RAS_STORE_VBO)
+			rasterizer = new RAS_ListRasterizer(canvas, true, startscene->gm.raster_storage);
 		else
-			rasterizer = new RAS_OpenGLRasterizer(canvas);
+			rasterizer = new RAS_OpenGLRasterizer(canvas, startscene->gm.raster_storage);
 		
 		// create the inputdevices
 		KX_BlenderKeyboardDevice* keyboarddevice = new KX_BlenderKeyboardDevice();
@@ -443,7 +438,7 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 				ketsjiengine->SetCameraOverrideViewMatrix(MT_CmMatrix4x4(rv3d->viewmat));
 				if (rv3d->persp == RV3D_ORTHO)
 				{
-					ketsjiengine->SetCameraOverrideClipping(-v3d->far, v3d->far);
+					ketsjiengine->SetCameraOverrideClipping(v3d->near, v3d->far);
 				}
 				else
 				{
@@ -473,6 +468,8 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 				sceneconverter->SetMaterials(true);
 			if (useglslmat && (gs.matmode == GAME_MAT_GLSL))
 				sceneconverter->SetGLSLMaterials(true);
+			if (scene->gm.flag & GAME_NO_MATERIAL_CACHING)
+				sceneconverter->SetCacheMaterials(false);
 					
 			KX_Scene* startscene = new KX_Scene(keyboarddevice,
 				mousedevice,

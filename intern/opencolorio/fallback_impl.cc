@@ -331,7 +331,7 @@ void FallbackImpl::displayTransformRelease(OCIO_DisplayTransformRcPtr *)
 }
 
 OCIO_PackedImageDesc *FallbackImpl::createOCIO_PackedImageDesc(float *data, long width, long height, long numChannels,
-                                                     long chanStrideBytes, long xStrideBytes, long yStrideBytes)
+                                                               long chanStrideBytes, long xStrideBytes, long yStrideBytes)
 {
 	OCIO_PackedImageDescription *desc = (OCIO_PackedImageDescription*)MEM_callocN(sizeof(OCIO_PackedImageDescription), "OCIO_PackedImageDescription");
 
@@ -378,5 +378,18 @@ void FallbackImpl::matrixTransformRelease(OCIO_MatrixTransformRcPtr *)
 }
 
 void FallbackImpl::matrixTransformScale(float * , float * , const float *)
+{
+}
+
+bool FallbackImpl::setupGLSLDraw(struct OCIO_GLSLDrawState **state_r, OCIO_ConstProcessorRcPtr *processor, bool predivide)
+{
+	return false;
+}
+
+void FallbackImpl::finishGLSLDraw(OCIO_GLSLDrawState *state)
+{
+}
+
+void FallbackImpl::freeGLState(struct OCIO_GLSLDrawState *state_r)
 {
 }

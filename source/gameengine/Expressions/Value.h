@@ -222,7 +222,7 @@ public:
 
 	virtual CValue *ConvertPythonToValue(PyObject *pyobj, const char *error_prefix);
 	
-	static PyObject *pyattr_get_name(void * self, const KX_PYATTRIBUTE_DEF * attrdef);
+	static PyObject *pyattr_get_name(void *self, const KX_PYATTRIBUTE_DEF *attrdef);
 	
 	virtual PyObject *ConvertKeysToPython( void );
 #endif  /* WITH_PYTHON */
@@ -253,9 +253,9 @@ public:
 		// Increase global reference count, used to see at the end of the program
 		// if all CValue-derived classes have been dereferenced to 0
 		//debug(gRefCountValue++);
-	#ifdef _DEBUG
+#ifdef _DEBUG
 		//gRefCountValue++;
-	#endif
+#endif
 		m_refcount++; 
 		return this;
 	}
@@ -266,9 +266,9 @@ public:
 		// Decrease global reference count, used to see at the end of the program
 		// if all CValue-derived classes have been dereferenced to 0
 		//debug(gRefCountValue--);
-	#ifdef _DEBUG
+#ifdef _DEBUG
 		//gRefCountValue--;
-	#endif
+#endif
 		// Decrease local reference count, if it reaches 0 the object should be freed
 		if (--m_refcount > 0)
 		{

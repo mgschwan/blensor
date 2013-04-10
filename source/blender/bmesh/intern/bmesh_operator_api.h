@@ -83,7 +83,7 @@ struct GHashIterator;
 #define BMO_elem_flag_toggle(   bm, ele, oflag)      _bmo_elem_flag_toggle   (bm, (ele)->oflags, oflag)
 
 BLI_INLINE short _bmo_elem_flag_test(     BMesh *bm, BMFlagLayer *oflags, const short oflag);
-BLI_INLINE short _bmo_elem_flag_test_bool(BMesh *bm, BMFlagLayer *oflags, const short oflag);
+BLI_INLINE bool  _bmo_elem_flag_test_bool(BMesh *bm, BMFlagLayer *oflags, const short oflag);
 BLI_INLINE void  _bmo_elem_flag_enable(   BMesh *bm, BMFlagLayer *oflags, const short oflag);
 BLI_INLINE void  _bmo_elem_flag_disable(  BMesh *bm, BMFlagLayer *oflags, const short oflag);
 BLI_INLINE void  _bmo_elem_flag_set(      BMesh *bm, BMFlagLayer *oflags, const short oflag, int val);
@@ -244,19 +244,19 @@ void BMO_push(BMesh *bm, BMOperator *op);
 void BMO_pop(BMesh *bm);
 
 /*executes an operator*/
-int BMO_op_callf(BMesh *bm, const int flag, const char *fmt, ...);
+bool BMO_op_callf(BMesh *bm, const int flag, const char *fmt, ...);
 
 /* initializes, but doesn't execute an operator.  this is so you can
  * gain access to the outputs of the operator.  note that you have
  * to execute/finish (BMO_op_exec and BMO_op_finish) yourself. */
-int BMO_op_initf(BMesh *bm, BMOperator *op, const int flag, const char *fmt, ...);
+bool BMO_op_initf(BMesh *bm, BMOperator *op, const int flag, const char *fmt, ...);
 
 /* va_list version, used to implement the above two functions,
  * plus EDBM_op_callf in editmesh_utils.c. */
-int BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *fmt, va_list vlist);
+bool BMO_op_vinitf(BMesh *bm, BMOperator *op, const int flag, const char *fmt, va_list vlist);
 
 /* test whether a named slot exists */
-int BMO_slot_exists(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *identifier);
+bool BMO_slot_exists(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *identifier);
 
 /* get a pointer to a slot.  this may be removed layer on from the public API. */
 BMOpSlot *BMO_slot_get(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *identifier);
@@ -301,8 +301,8 @@ void  BMO_slot_float_set(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_
 float BMO_slot_float_get(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name);
 void  BMO_slot_int_set(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, const int i);
 int   BMO_slot_int_get(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name);
-void  BMO_slot_bool_set(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, const int i);
-int   BMO_slot_bool_get(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name);
+void  BMO_slot_bool_set(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, const bool i);
+bool  BMO_slot_bool_get(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name);
 void *BMO_slot_as_arrayN(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, int *len);
 
 
@@ -360,11 +360,11 @@ void BMO_slot_buffer_flag_disable(BMesh *bm,
 /* tool-flags all elements inside an element slot array with flag flag. */
 void BMO_slot_buffer_hflag_enable(BMesh *bm,
                                   BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name,
-                                  const char htype, const char hflag, const char do_flush);
+                                  const char htype, const char hflag, const bool do_flush);
 /* clears tool-flag flag from all elements inside a slot array. */
 void BMO_slot_buffer_hflag_disable(BMesh *bm,
                                    BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name,
-                                   const char htype, const char hflag, const char do_flush);
+                                   const char htype, const char hflag, const bool do_flush);
 
 /* puts every element of type 'type' (which is a bitmask) with header
  * flag 'flag', into a slot.  note: ignores hidden elements
@@ -390,10 +390,6 @@ int BMO_slot_map_count(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_na
 
 void BMO_slot_map_insert(BMOperator *op, BMOpSlot *slot,
                          const void *element, const void *data, const int len);
-
-/* Counts the number of edges with tool flag toolflag around
- */
-int BMO_vert_edge_flags_count(BMesh *bm, BMVert *v, const short oflag);
 
 /* flags all elements in a mapping.  note that the mapping must only have
  * bmesh elements in it.*/
@@ -435,7 +431,7 @@ void BMO_slot_buffer_from_all(BMesh *bm, BMOperator *op, BMOpSlot slot_args[BMO_
  *        //whether it's a float, pointer, whatever.
  *        //
  *        // so to get a pointer, for example, use:
- *        //  *((void**)BMO_iter_map_value(&oiter));
+ *        //  *((void **)BMO_iter_map_value(&oiter));
  *        //or something like that.
  *    }
  * \endcode
@@ -451,7 +447,7 @@ typedef struct BMOIter {
 	char restrictmask; /* bitwise '&' with BMHeader.htype */
 } BMOIter;
 
-void *BMO_slot_buffer_elem_first(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name);
+void *BMO_slot_buffer_get_first(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name);
 
 void *BMO_iter_new(BMOIter *iter,
                    BMOpSlot slot_args[BMO_OP_MAX_SLOTS],  const char *slot_name,
@@ -485,6 +481,8 @@ typedef struct BMOElemMapping {
 #define BMO_OP_SLOT_MAPPING_DATA(var) (void *)(((BMOElemMapping *)var) + 1)
 
 extern const int BMO_OPSLOT_TYPEINFO[BMO_OP_SLOT_TOTAL_TYPES];
+
+int BMO_opcode_from_opname(const char *opname);
 
 #ifdef __cplusplus
 }

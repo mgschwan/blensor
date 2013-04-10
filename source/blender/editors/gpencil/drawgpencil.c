@@ -27,7 +27,6 @@
  *  \ingroup edgpencil
  */
 
- 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -45,8 +44,10 @@
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_space_types.h"
+#include "DNA_userdef_types.h"
 #include "DNA_view3d_types.h"
 
+#include "BKE_blender.h"
 #include "BKE_context.h"
 #include "BKE_global.h"
 #include "BKE_gpencil.h"
@@ -498,9 +499,7 @@ static void gp_draw_strokes(bGPDframe *gpf, int offsx, int offsy, int winx, int 
 			continue;
 		
 		/* check which stroke-drawer to use */
-		if (gps->totpoints == 1)
-			gp_draw_stroke_point(gps->points, lthick, dflag, gps->flag, offsx, offsy, winx, winy);
-		else if (dflag & GP_DRAWDATA_ONLY3D) {
+		if (dflag & GP_DRAWDATA_ONLY3D) {
 			const int no_xray = (dflag & GP_DRAWDATA_NO_XRAY);
 			int mask_orig = 0;
 			
@@ -518,7 +517,12 @@ static void gp_draw_strokes(bGPDframe *gpf, int offsx, int offsy, int winx, int 
 #endif
 			}
 			
-			gp_draw_stroke_3d(gps->points, gps->totpoints, lthick, debug);
+			if (gps->totpoints == 1) {
+				gp_draw_stroke_point(gps->points, lthick, dflag, gps->flag, offsx, offsy, winx, winy);
+			}
+			else {
+				gp_draw_stroke_3d(gps->points, gps->totpoints, lthick, debug);
+			}
 			
 			if (no_xray) {
 				glDepthMask(mask_orig);
@@ -531,8 +535,14 @@ static void gp_draw_strokes(bGPDframe *gpf, int offsx, int offsy, int winx, int 
 #endif
 			}
 		}
-		else if (gps->totpoints > 1)
-			gp_draw_stroke(gps->points, gps->totpoints, lthick, dflag, gps->flag, debug, offsx, offsy, winx, winy);
+		else {
+			if (gps->totpoints == 1) {
+				gp_draw_stroke_point(gps->points, lthick, dflag, gps->flag, offsx, offsy, winx, winy);
+			}
+			else {
+				gp_draw_stroke(gps->points, gps->totpoints, lthick, dflag, gps->flag, debug, offsx, offsy, winx, winy);
+			}
+		}
 	}
 }
 
@@ -756,7 +766,7 @@ void draw_gpencil_view2d(const bContext *C, short onlyv2d)
 /* draw grease-pencil sketches to specified 3d-view assuming that matrices are already set correctly 
  * Note: this gets called twice - first time with only3d=1 to draw 3d-strokes,
  * second time with only3d=0 for screen-aligned strokes */
-void draw_gpencil_view3d(Scene *scene, View3D *v3d, ARegion *ar, short only3d)
+void draw_gpencil_view3d(Scene *scene, View3D *v3d, ARegion *ar, bool only3d)
 {
 	bGPdata *gpd;
 	int dflag = 0;

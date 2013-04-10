@@ -39,6 +39,8 @@
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "PIL_time.h"
 
 #include "BKE_gpencil.h"
@@ -136,7 +138,8 @@ enum {
 /* Runtime flags */
 enum {
 	GP_PAINTFLAG_FIRSTRUN       = (1 << 0),    /* operator just started */
-	GP_PAINTFLAG_STROKEADDED    = (1 << 1)
+	GP_PAINTFLAG_STROKEADDED    = (1 << 1),
+	GP_PAINTFLAG_V3D_ERASER_DEPTH = (1 << 2)
 };
 
 /* ------ */
@@ -208,7 +211,7 @@ static int gpencil_project_check(tGPsdata *p)
 static void gp_get_3d_reference(tGPsdata *p, float vec[3])
 {
 	View3D *v3d = p->sa->spacedata.first;
-	float *fp = give_cursor(p->scene, v3d);
+	const float *fp = give_cursor(p->scene, v3d);
 	
 	/* the reference point used depends on the owner... */
 #if 0 /* XXX: disabled for now, since we can't draw relative to the owner yet */
@@ -275,6 +278,7 @@ static void gp_stroke_convertcoords(tGPsdata *p, const int mval[2], float out[3]
 			int mval_prj[2];
 			float rvec[3], dvec[3];
 			float mval_f[2];
+			float zfac;
 			
 			/* Current method just converts each point in screen-coordinates to
 			 * 3D-coordinates using the 3D-cursor as reference. In general, this
@@ -286,12 +290,13 @@ static void gp_stroke_convertcoords(tGPsdata *p, const int mval[2], float out[3]
 			 */
 			
 			gp_get_3d_reference(p, rvec);
+			zfac = ED_view3d_calc_zfac(p->ar->regiondata, rvec, NULL);
 			
 			/* method taken from editview.c - mouse_cursor() */
 			/* TODO, use ED_view3d_project_float_global */
 			if (ED_view3d_project_int_global(p->ar, rvec, mval_prj, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) {
 				VECSUB2D(mval_f, mval_prj, mval);
-				ED_view3d_win_to_delta(p->ar, mval_f, dvec);
+				ED_view3d_win_to_delta(p->ar, mval_f, dvec, zfac);
 				sub_v3_v3v3(out, rvec, dvec);
 			}
 			else {
@@ -838,8 +843,41 @@ static short gp_stroke_eraser_splitdel(bGPDframe *gpf, bGPDstroke *gps, int i)
 	}
 }
 
+/* which which point is infront (result should only be used for comparison) */
+static float view3d_point_depth(const RegionView3D *rv3d, const float co[3])
+{
+	if (rv3d->is_persp) {
+		return ED_view3d_calc_zfac(rv3d, co, NULL);
+	}
+	else {
+		return -dot_v3v3(rv3d->viewinv[2], co);
+	}
+}
+
+static bool gp_stroke_eraser_is_occluded(tGPsdata *p,
+                                         const bGPDspoint *pt, const int x, const int y)
+{
+	if ((p->sa->spacetype == SPACE_VIEW3D) &&
+	    (p->flags & GP_PAINTFLAG_V3D_ERASER_DEPTH))
+	{
+		RegionView3D *rv3d = p->ar->regiondata;
+		const int mval[2] = {x, y};
+		float mval_3d[3];
+
+		if (ED_view3d_autodist_simple(p->ar, mval, mval_3d, 0, NULL)) {
+			const float depth_mval = view3d_point_depth(rv3d, mval_3d);
+			const float depth_pt   = view3d_point_depth(rv3d, &pt->x);
+
+			if (depth_pt > depth_mval) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 /* eraser tool - check if part of stroke occurs within last segment drawn by eraser */
-static short gp_stroke_eraser_strokeinside(const int mval[], const int UNUSED(mvalo[]),
+static short gp_stroke_eraser_strokeinside(const int mval[2], const int UNUSED(mvalo[2]),
                                            int rad, int x0, int y0, int x1, int y1)
 {
 	/* simple within-radius check for now */
@@ -889,7 +927,7 @@ static void gp_point_to_xy(ARegion *ar, View2D *v2d, rctf *subrect, bGPDstroke *
 /* eraser tool - evaluation per stroke */
 /* TODO: this could really do with some optimization (KD-Tree/BVH?) */
 static void gp_stroke_eraser_dostroke(tGPsdata *p,
-                                      const int mval[], const int mvalo[],
+                                      const int mval[2], const int mvalo[2],
                                       short rad, const rcti *rect, bGPDframe *gpf, bGPDstroke *gps)
 {
 	bGPDspoint *pt1, *pt2;
@@ -929,15 +967,20 @@ static void gp_stroke_eraser_dostroke(tGPsdata *p,
 			
 			/* check that point segment of the boundbox of the eraser stroke */
 			if (((!ELEM(V2D_IS_CLIPPED, x0, y0)) && BLI_rcti_isect_pt(rect, x0, y0)) ||
-			    ((!ELEM(V2D_IS_CLIPPED, x1, y1)) && BLI_rcti_isect_pt(rect, x1, y1))) {
+			    ((!ELEM(V2D_IS_CLIPPED, x1, y1)) && BLI_rcti_isect_pt(rect, x1, y1)))
+			{
 				/* check if point segment of stroke had anything to do with
 				 * eraser region  (either within stroke painted, or on its lines)
 				 *  - this assumes that linewidth is irrelevant
 				 */
 				if (gp_stroke_eraser_strokeinside(mval, mvalo, rad, x0, y0, x1, y1)) {
-					/* if function returns true, break this loop (as no more point to check) */
-					if (gp_stroke_eraser_splitdel(gpf, gps, i))
-						break;
+					if ((gp_stroke_eraser_is_occluded(p, pt1, x0, y0) == false) ||
+					    (gp_stroke_eraser_is_occluded(p, pt2, x1, y1) == false))
+					{
+						/* if function returns true, break this loop (as no more point to check) */
+						if (gp_stroke_eraser_splitdel(gpf, gps, i))
+							break;
+					}
 				}
 			}
 		}
@@ -956,7 +999,16 @@ static void gp_stroke_doeraser(tGPsdata *p)
 	rect.ymin = p->mval[1] - p->radius;
 	rect.xmax = p->mval[0] + p->radius;
 	rect.ymax = p->mval[1] + p->radius;
-	
+
+	if (p->sa->spacetype == SPACE_VIEW3D) {
+		if (p->flags & GP_PAINTFLAG_V3D_ERASER_DEPTH) {
+			View3D *v3d = p->sa->spacedata.first;
+
+			view3d_region_operator_needs_opengl(p->win, p->ar);
+			ED_view3d_autodist_init(p->scene, p->ar, v3d, 0);
+		}
+	}
+
 	/* loop over strokes, checking segments for intersections */
 	for (gps = gpf->strokes.first; gps; gps = gpn) {
 		gpn = gps->next;
@@ -1208,9 +1260,17 @@ static void gp_paint_initstroke(tGPsdata *p, short paintmode)
 	
 	/* set 'eraser' for this stroke if using eraser */
 	p->paintmode = paintmode;
-	if (p->paintmode == GP_PAINTMODE_ERASER)
+	if (p->paintmode == GP_PAINTMODE_ERASER) {
 		p->gpd->sbuffer_sflag |= GP_STROKE_ERASER;
-		
+
+		/* check if we should respect depth while erasing */
+		if (p->sa->spacetype == SPACE_VIEW3D) {
+			if (p->gpl->flag & GP_LAYER_NO_XRAY) {
+				p->flags |= GP_PAINTFLAG_V3D_ERASER_DEPTH;
+			}
+		}
+	}
+
 	/* set 'initial run' flag, which is only used to denote when a new stroke is starting */
 	p->flags |= GP_PAINTFLAG_FIRSTRUN;
 	
@@ -1234,13 +1294,6 @@ static void gp_paint_initstroke(tGPsdata *p, short paintmode)
 		switch (p->sa->spacetype) {
 			case SPACE_VIEW3D:
 			{
-				RegionView3D *rv3d = p->ar->regiondata;
-				float rvec[3];
-				
-				/* get reference point for 3d space placement */
-				gp_get_3d_reference(p, rvec);
-				initgrabz(rv3d, rvec[0], rvec[1], rvec[2]);
-				
 				p->gpd->sbuffer_sflag |= GP_STROKE_3DSPACE;
 			}
 			break;
@@ -1457,28 +1510,27 @@ static void gpencil_draw_status_indicators(tGPsdata *p)
 		case GP_STATUS_PAINTING:
 			/* only print this for paint-sessions, otherwise it gets annoying */
 			if (GPENCIL_SKETCH_SESSIONS_ON(p->scene))
-				ED_area_headerprint(p->sa, "Grease Pencil: Drawing/erasing stroke... Release to end stroke");
+				ED_area_headerprint(p->sa, IFACE_("Grease Pencil: Drawing/erasing stroke... Release to end stroke"));
 			break;
 		
 		case GP_STATUS_IDLING:
 			/* print status info */
 			switch (p->paintmode) {
 				case GP_PAINTMODE_ERASER:
-					ED_area_headerprint(p->sa,
-					                    "Grease Pencil Erase Session: Hold and drag LMB or RMB to erase |"
-					                    " ESC/Enter to end");
+					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Erase Session: Hold and drag LMB or RMB to erase |"
+					                                  " ESC/Enter to end"));
 					break;
 				case GP_PAINTMODE_DRAW_STRAIGHT:
-					ED_area_headerprint(p->sa, "Grease Pencil Line Session: Hold and drag LMB to draw | "
-					                    "ESC/Enter to end");
+					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Line Session: Hold and drag LMB to draw | "
+					                                  "ESC/Enter to end"));
 					break;
 				case GP_PAINTMODE_DRAW:
-					ED_area_headerprint(p->sa, "Grease Pencil Freehand Session: Hold and drag LMB to draw | "
-					                    "ESC/Enter to end");
+					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Freehand Session: Hold and drag LMB to draw | "
+					                                  "ESC/Enter to end"));
 					break;
 					
 				default: /* unhandled future cases */
-					ED_area_headerprint(p->sa, "Grease Pencil Session: ESC/Enter to end");
+					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Session: ESC/Enter to end"));
 					break;
 			}
 			break;
@@ -1549,7 +1601,7 @@ static void gpencil_draw_apply(wmOperator *op, tGPsdata *p)
 }
 
 /* handle draw event */
-static void gpencil_draw_apply_event(wmOperator *op, wmEvent *event)
+static void gpencil_draw_apply_event(wmOperator *op, const wmEvent *event)
 {
 	tGPsdata *p = op->customdata;
 	PointerRNA itemptr;
@@ -1564,8 +1616,8 @@ static void gpencil_draw_apply_event(wmOperator *op, wmEvent *event)
 	p->curtime = PIL_check_seconds_timer();
 	
 	/* handle pressure sensitivity (which is supplied by tablets) */
-	if (event->custom == EVT_DATA_TABLET) {
-		wmTabletData *wmtab = event->customdata;
+	if (event->tablet_data) {
+		wmTabletData *wmtab = event->tablet_data;
 		
 		tablet = (wmtab->Active != EVT_TABLET_NONE);
 		p->pressure = wmtab->Pressure;
@@ -1687,7 +1739,7 @@ static int gpencil_draw_exec(bContext *C, wmOperator *op)
 /* ------------------------------- */
 
 /* start of interactive drawing part of operator */
-static int gpencil_draw_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int gpencil_draw_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	tGPsdata *p = NULL;
 	wmWindow *win = CTX_wm_window(C);
@@ -1798,7 +1850,7 @@ static void gpencil_stroke_end(wmOperator *op)
 }
 
 /* events handling during interactive drawing part of operator */
-static int gpencil_draw_modal(bContext *C, wmOperator *op, wmEvent *event)
+static int gpencil_draw_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	tGPsdata *p = op->customdata;
 	int estate = OPERATOR_PASS_THROUGH; /* default exit state - pass through to support MMB view nav, etc. */
@@ -1913,12 +1965,12 @@ static int gpencil_draw_modal(bContext *C, wmOperator *op, wmEvent *event)
 			 */
 			/* printf("\t\tGP - resize eraser\n"); */
 			switch (event->type) {
-				case WHEELUPMOUSE: /* larger */
+				case WHEELDOWNMOUSE: /* larger */
 				case PADPLUSKEY:
 					p->radius += 5;
 					break;
 					
-				case WHEELDOWNMOUSE: /* smaller */
+				case WHEELUPMOUSE: /* smaller */
 				case PADMINUS:
 					p->radius -= 5;
 					

@@ -20,17 +20,17 @@
 
 
 bl_info = {
-    'name': 'Game Property Visualizer',
-    'author': 'Bartius Crouch/Vilem Novak',
-    'version': (2,5),
-    'blender': (2, 5, 3),
-    'location': 'View3D > Properties panel > Display tab',
-    'description': 'Display the game properties next to selected objects '\
-        'in the 3d-view',
-    'warning': 'Script is returning errors',
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/3D_interaction/Game_Property_Visualiser',
-    'tracker_url': 'http://projects.blender.org/tracker/?func=detail&aid=22607&group_id=153&atid=468',
-    'category': '3D View'}
+    "name": "Game Property Visualizer",
+    "author": "Bartius Crouch/Vilem Novak",
+    "version": (2, 6),
+    "blender": (2, 65, 4),
+    "location": "View3D > Properties panel > Display tab",
+    "description": "Display the game properties next to selected objects "
+                   "in the 3d-view",
+    "warning": "Script is returning errors",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/3D_interaction/Game_Property_Visualiser",
+    "tracker_url": "http://projects.blender.org/tracker/?func=detail&aid=22607&group_id=153&atid=468",
+    "category": "3D View"}
 
 """
 Displays game properties next to selected objects(under name)
@@ -50,47 +50,43 @@ def calc_callback(self, context):
     # polling
     if context.mode == 'EDIT_MESH':
         return
-    
+
     # get screen information
     mid_x = context.region.width/2.0
     mid_y = context.region.height/2.0
     width = context.region.width
     height = context.region.height
-    
+
     # get matrices
     view_mat = context.space_data.region_3d.perspective_matrix
 
     ob_mat = context.active_object.matrix_world
     total_mat = view_mat*ob_mat
-    
+
     # calculate location info
     texts = []
-    
+
     # uncomment 2 lines below, to enable live updating of the selection
     #ob=context.active_object
     for ob in context.selected_objects:
         locs = []
         ob_mat = ob.matrix_world
         total_mat = view_mat*ob_mat
- 
+
         for p in ob.game.properties:
             # d = {'data':p.name+':'+str(p.value)}
             # print (d)
-            locs.append([ mathutils.Vector([0,0,0]).resize_4d()])
-    
-    
+            locs.append(mathutils.Vector((0,0,0,1)))
+
         for loc in locs:
-    
-            vec = loc[0]*total_mat # order is important
+            vec = total_mat * loc # order is important
             # dehomogenise
             vec = mathutils.Vector((vec[0]/vec[3],vec[1]/vec[3],vec[2]/vec[3]))
             x = int(mid_x + vec[0]*width/2.0)
             y = int(mid_y + vec[1]*height/2.0)
             texts+=[x, y]
-        
 
     # store as ID property in mesh
-    #print (texts)
     context.scene['GamePropsVisualizer'] = texts
 
 
@@ -99,29 +95,33 @@ def draw_callback(self, context):
     # polling
     if context.mode == 'EDIT_MESH':
         return
+
+    """
     # retrieving ID property data
     try:
-        #print(context.scene['GamePropsVisualizer'])
         texts = context.scene['GamePropsVisualizer']
-        
     except:
         return
+
     if not texts:
         return
-    
+    """
+
+    texts = context.scene['GamePropsVisualizer']
+
     # draw
     i=0
 
     blf.size(0, 12, 72)
-   
-        
+
+
     bgl.glColor3f(1.0,1.0,1.0)
     for ob in bpy.context.selected_objects:
         for pi,p in enumerate(ob.game.properties):
             blf.position(0, texts[i], texts[i+1]-(pi+1)*14, 0)
             if p.type=='FLOAT':
                 t=p.name+':  '+ str('%g'% p.value)
-            else:    
+            else:
                 t=p.name+':  '+ str(p.value)
             blf.draw(0, t)
             i+=2
@@ -132,48 +132,42 @@ class GamePropertyVisualizer(bpy.types.Operator):
     bl_idname = "view3d.game_props_visualizer"
     bl_label = "Game Properties Visualizer"
     bl_description = "Toggle the visualization of game properties"
-    
+
+    _handle_calc = None
+    _handle_draw = None
+
+    @staticmethod
+    def handle_add(self, context):
+        GamePropertyVisualizer._handle_calc = bpy.types.SpaceView3D.draw_handler_add(
+            calc_callback, (self, context), 'WINDOW', 'POST_VIEW')
+        GamePropertyVisualizer._handle_draw = bpy.types.SpaceView3D.draw_handler_add(
+            draw_callback, (self, context), 'WINDOW', 'POST_PIXEL')
+
+    @staticmethod
+    def handle_remove():
+        if GamePropertyVisualizer._handle_calc is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(GamePropertyVisualizer._handle_calc, 'WINDOW')
+        if GamePropertyVisualizer._handle_draw is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(GamePropertyVisualizer._handle_draw, 'WINDOW')
+        GamePropertyVisualizer._handle_calc = None
+        GamePropertyVisualizer._handle_draw = None
+
     @classmethod
     def poll(cls, context):
-        return context.mode!='EDIT_MESH'
-    
-    def modal(self, context, event):
-        context.area.tag_redraw()
+        return context.mode != 'EDIT_MESH'
 
-        # removal of callbacks when operator is called again
-        #print(context.scene.display_game_properties)
-        if context.scene.display_game_properties == -1:
-           # print('deinit2')
-
-            context.scene.display_game_properties = 0
-            context.region.callback_remove(self.handle1)
-            context.region.callback_remove(self.handle2)
-            context.scene.display_game_properties = 0
-            
-            return {'FINISHED'}
-        
-        return {'PASS_THROUGH'}
-    
-    def invoke(self, context, event):
+    def execute(self, context):
         if context.area.type == 'VIEW_3D':
-            print(context.scene.display_game_properties)
-            if context.scene.display_game_properties == 0 or context.scene.display_game_properties == -1:
-                print('init')
-                # operator is called for the first time, start everything
-                context.scene.display_game_properties = 1
-                self.handle1 = context.region.callback_add(calc_callback,
-                    (self, context), 'POST_VIEW')
-                self.handle2 = context.region.callback_add(draw_callback,
-                    (self, context), 'POST_PIXEL')
-
-                context.window_manager.modal_handler_add(self)
-                return {'RUNNING_MODAL'}
+            if not context.scene.display_game_properties:
+                # operator is called and not running
+                GamePropertyVisualizer.handle_add(self, context)
+                context.scene.display_game_properties = True
             else:
                 # operator is called again, stop displaying
-                context.scene.display_game_properties = -1
-                #print(dir(self))
-                #
-                return {'RUNNING_MODAL'}
+                GamePropertyVisualizer.handle_remove()
+                context.scene.display_game_properties = False
+            context.area.tag_redraw()
+            return {'FINISHED'}
         else:
             self.report({'WARNING'}, "View3D not found, can't run operator")
             return {'CANCELLED'}
@@ -181,18 +175,26 @@ class GamePropertyVisualizer(bpy.types.Operator):
 
 # defining the panel
 def menu_func(self, context):
-    col = self.layout.column(align=True)
-    col.operator(GamePropertyVisualizer.bl_idname, text="Visualize game props")
-    self.layout.separator()
+    layout = self.layout
+    col = layout.column()
+    if not context.scene.display_game_properties:
+        text = "Visualize game props"
+    else:
+        text = "Hide game props"
+    col.operator(GamePropertyVisualizer.bl_idname, text=text)
+    layout.separator()
 
 
 def register():
-    bpy.types.Scene.display_game_properties = bpy.props.IntProperty(name='Visualize Game Poperties')
+    bpy.utils.register_class(GamePropertyVisualizer)
+    bpy.types.Scene.display_game_properties = bpy.props.BoolProperty(name='Visualize Game Poperties')
     bpy.types.VIEW3D_PT_view3d_display.prepend(menu_func)
 
 def unregister():
-    del bpy.types.Scene.display_game_properties
+    GamePropertyVisualizer.handle_remove()
+    bpy.utils.unregister_class(GamePropertyVisualizer)
     bpy.types.VIEW3D_PT_view3d_display.remove(menu_func)
+    del bpy.types.Scene.display_game_properties
 
 if __name__ == "__main__":
     register()

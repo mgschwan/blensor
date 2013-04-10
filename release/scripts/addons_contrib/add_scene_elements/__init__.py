@@ -21,7 +21,7 @@ bl_info = {
     "name": "Scene Elements",
     "author": "Meta Androcto, ",
     "version": (0, 2),
-    "blender": (2, 6, 4),
+    "blender": (2, 64, 0),
     "location": "View3D > Add > Scene Elements",
     "description": "Add Scenes & Lights, Objects.",
     "warning": "",

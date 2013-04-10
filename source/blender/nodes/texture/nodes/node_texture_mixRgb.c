@@ -35,7 +35,7 @@
 
 /* **************** MIX RGB ******************** */
 static bNodeSocketTemplate inputs[] = {
-	{ SOCK_FLOAT, 1, N_("Factor"), 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_FACTOR },
+	{ SOCK_FLOAT, 1, N_("Factor"), 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, PROP_NONE },
 	{ SOCK_RGBA,  1, N_("Color1"), 0.5f, 0.5f, 0.5f, 1.0f },
 	{ SOCK_RGBA, 1, N_("Color2"), 0.5f, 0.5f, 0.5f, 1.0f },
 	{ -1, 0, "" }
@@ -59,20 +59,20 @@ static void colorfn(float *out, TexParams *p, bNode *node, bNodeStack **in, shor
 	ramp_blend(node->custom1, out, fac, col2);
 }
 
-static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
+static void exec(void *data, int UNUSED(thread), bNode *node, bNodeExecData *execdata, bNodeStack **in, bNodeStack **out)
 {
-	tex_output(node, in, out[0], &colorfn, data);
+	tex_output(node, execdata, in, out[0], &colorfn, data);
 }
 
-void register_node_type_tex_mix_rgb(bNodeTreeType *ttype)
+void register_node_type_tex_mix_rgb(void)
 {
 	static bNodeType ntype;
 	
-	node_type_base(ttype, &ntype, TEX_NODE_MIX_RGB, "Mix", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
+	tex_node_type_base(&ntype, TEX_NODE_MIX_RGB, "Mix", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, inputs, outputs);
 	node_type_size(&ntype, 100, 60, 150);
 	node_type_label(&ntype, node_blend_label);
-	node_type_exec(&ntype, exec);
+	node_type_exec(&ntype, NULL, NULL, exec);
 	
-	nodeRegisterType(ttype, &ntype);
+	nodeRegisterType(&ntype);
 }

@@ -28,7 +28,7 @@ bl_info = {
     "name": "Insert Edge Ring",
     "author": "tstscr (tstscr@web.de)",
     "version": (1, 0),
-    "blender": (2, 6, 4),
+    "blender": (2, 64, 0),
     "location": "View3D > Edge Specials > Insert edge ring (Ctrl Alt R)",
     "description": "Insert an edge ring along the selected edge loop",
     "warning": "",

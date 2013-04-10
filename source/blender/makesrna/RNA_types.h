@@ -88,7 +88,8 @@ typedef enum PropertyUnit {
 	PROP_UNIT_ROTATION = (5 << 16),       /* radians */
 	PROP_UNIT_TIME = (6 << 16),           /* frame */
 	PROP_UNIT_VELOCITY = (7 << 16),       /* m/s */
-	PROP_UNIT_ACCELERATION = (8 << 16)    /* m/(s^2) */
+	PROP_UNIT_ACCELERATION = (8 << 16),   /* m/(s^2) */
+	PROP_UNIT_CAMERA = (9 << 16)       /* mm */
 } PropertyUnit;
 
 #define RNA_SUBTYPE_UNIT(subtype)       ((subtype) &  0x00FF0000)
@@ -110,10 +111,9 @@ typedef enum PropertySubType {
 	PROP_FILEPATH = 1,
 	PROP_DIRPATH = 2,
 	PROP_FILENAME = 3,
-	PROP_BYTESTRING = 4, /* a string which should be represented as bytes
-	                      * in python, still NULL terminated though. */
-	PROP_TRANSLATE = 5, /* a string which should be translated */
-	PROP_PASSWORD = 6,	/* a string which should not be displayed in UI */
+	PROP_BYTESTRING = 4, /* a string which should be represented as bytes in python, still NULL terminated though. */
+	/* 5 was used by "PROP_TRANSLATE" sub-type, which is now a flag. */
+	PROP_PASSWORD = 6, /* a string which should not be displayed in UI */
 
 	/* numbers */
 	PROP_UNSIGNED = 13,
@@ -121,7 +121,9 @@ typedef enum PropertySubType {
 	PROP_FACTOR = 15,
 	PROP_ANGLE = 16 | PROP_UNIT_ROTATION,
 	PROP_TIME = 17 | PROP_UNIT_TIME,
+	/* distance in 3d space, don't use for pixel distance for eg. */
 	PROP_DISTANCE = 18 | PROP_UNIT_LENGTH,
+	PROP_DISTANCE_CAMERA = 19 | PROP_UNIT_CAMERA,
 
 	/* number arrays */
 	PROP_COLOR = 20,
@@ -135,7 +137,7 @@ typedef enum PropertySubType {
 	PROP_AXISANGLE = 28,
 	PROP_XYZ = 29,
 	PROP_XYZ_LENGTH = 29 | PROP_UNIT_LENGTH,
-	PROP_COLOR_GAMMA = 30,
+	PROP_COLOR_GAMMA = 30, /* used for colors which would be color managed before display */
 	PROP_COORDS = 31, /* generic array, no units applied, only that x/y/z/w are used (python vec) */
 
 	/* booleans */
@@ -144,6 +146,7 @@ typedef enum PropertySubType {
 } PropertySubType;
 
 /* Make sure enums are updated with thses */
+/* HIGHEST FLAG IN USE: 1 << 28 */
 typedef enum PropertyFlag {
 	/* editable means the property is editable in the user
 	 * interface, properties are editable by default except
@@ -269,7 +272,27 @@ typedef struct EnumPropertyItem {
 	const char *description;
 } EnumPropertyItem;
 
-/* this is a copy of 'PropEnumItemFunc' defined in rna_internal_types.h */
+/* extended versions with PropertyRNA argument */
+typedef int (*BooleanPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop);
+typedef void (*BooleanPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, int value);
+typedef void (*BooleanArrayPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, int *values);
+typedef void (*BooleanArrayPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, const int *values);
+typedef int (*IntPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop);
+typedef void (*IntPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, int value);
+typedef void (*IntArrayPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, int *values);
+typedef void (*IntArrayPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, const int *values);
+typedef void (*IntPropertyRangeFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, int *min, int *max, int *softmin, int *softmax);
+typedef float (*FloatPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop);
+typedef void (*FloatPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, float value);
+typedef void (*FloatArrayPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, float *values);
+typedef void (*FloatArrayPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, const float *values);
+typedef void (*FloatPropertyRangeFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, float *min, float *max, float *softmin, float *softmax);
+typedef void (*StringPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, char *value);
+typedef int (*StringPropertyLengthFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop);
+typedef void (*StringPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, const char *value);
+typedef int (*EnumPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop);
+typedef void (*EnumPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, int value);
+/* same as PropEnumItemFunc */
 typedef EnumPropertyItem *(*EnumPropertyItemFunc)(struct bContext *C, PointerRNA *ptr, struct PropertyRNA *prop, int *free);
 
 typedef struct PropertyRNA PropertyRNA;
@@ -309,15 +332,16 @@ typedef struct ParameterDynAlloc {
 
 typedef enum FunctionFlag {
 	FUNC_NO_SELF = 1, /* for static functions */
-	FUNC_USE_MAIN = 2,
-	FUNC_USE_CONTEXT = 4,
-	FUNC_USE_REPORTS = 8,
+	FUNC_USE_SELF_TYPE = 2, /* for class methods, only used when FUNC_NO_SELF is set */
+	FUNC_USE_MAIN = 4,
+	FUNC_USE_CONTEXT = 8,
+	FUNC_USE_REPORTS = 16,
 	FUNC_USE_SELF_ID = 2048,
 	FUNC_ALLOW_WRITE = 4096,
 
 	/* registering */
-	FUNC_REGISTER = 16,
-	FUNC_REGISTER_OPTIONAL = 16 | 32,
+	FUNC_REGISTER = 32,
+	FUNC_REGISTER_OPTIONAL = 32 | 64,
 
 	/* internal flags */
 	FUNC_BUILTIN = 128,

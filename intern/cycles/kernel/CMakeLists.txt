@@ -12,7 +12,8 @@ set(INC_SYS
 
 set(SRC
 	kernel.cpp
-	kernel_optimized.cpp
+	kernel_sse2.cpp
+	kernel_sse3.cpp
 	kernel.cl
 	kernel.cu
 )
@@ -20,12 +21,12 @@ set(SRC
 set(SRC_HEADERS
 	kernel.h
 	kernel_accumulate.h
-	kernel_attribute.h
 	kernel_bvh.h
 	kernel_camera.h
 	kernel_compat_cpu.h
 	kernel_compat_cuda.h
 	kernel_compat_opencl.h
+	kernel_curve.h
 	kernel_differential.h
 	kernel_displace.h
 	kernel_emission.h
@@ -37,9 +38,11 @@ set(SRC_HEADERS
 	kernel_object.h
 	kernel_passes.h
 	kernel_path.h
+	kernel_primitive.h
 	kernel_projection.h
 	kernel_random.h
 	kernel_shader.h
+	kernel_subsurface.h
 	kernel_textures.h
 	kernel_triangle.h
 	kernel_types.h
@@ -55,16 +58,18 @@ set(SRC_CLOSURE_HEADERS
 	closure/bsdf_phong_ramp.h
 	closure/bsdf_reflection.h
 	closure/bsdf_refraction.h
+	closure/bsdf_toon.h
 	closure/bsdf_transparent.h
+	closure/bsdf_util.h
 	closure/bsdf_ward.h
 	closure/bsdf_westin.h
+	closure/bssrdf.h
 	closure/emissive.h
 	closure/volume.h
 )
 set(SRC_SVM_HEADERS
 	svm/svm.h
 	svm/svm_attribute.h
-	svm/svm_bsdf.h
 	svm/svm_camera.h
 	svm/svm_closure.h
 	svm/svm_convert.h
@@ -147,7 +152,8 @@ include_directories(SYSTEM ${INC_SYS})
 add_library(cycles_kernel ${SRC} ${SRC_HEADERS} ${SRC_CLOSURE_HEADERS} ${SRC_SVM_HEADERS})
 
 if(WITH_CYCLES_OPTIMIZED_KERNEL)
-	set_source_files_properties(kernel_optimized.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_OPTIMIZED_KERNEL_FLAGS}")
+	set_source_files_properties(kernel_sse2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE2_KERNEL_FLAGS}")
+	set_source_files_properties(kernel_sse3.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE3_KERNEL_FLAGS}")
 endif()
 
 if(WITH_CYCLES_CUDA)

@@ -22,7 +22,7 @@ bl_info = {
     "name": "Dynamic Spacebar Menu",
     "author": "JayDez, sim88, meta-androcto, sam",
     "version": (1, 7, 3),
-    "blender": (2, 6, 0),
+    "blender": (2, 60, 0),
     "location": "View3D > Spacebar Key",
     "description": "Context Sensitive Spacebar Menu",
     "warning": "",
@@ -509,7 +509,7 @@ class VIEW3D_MT_Space_Dynamic_Menu(bpy.types.Menu):
             layout.operator("object.mode_set", text="Enter Object Mode",
                             icon='OBJECT_DATA')
 
-        elif ob.mode == 'EDIT_ARMATURE':
+        elif ob.mode == 'EDIT':
             # Armature menu
 
             # Search Menu

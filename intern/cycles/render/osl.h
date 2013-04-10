@@ -21,6 +21,7 @@
 
 #include "util_set.h"
 #include "util_string.h"
+#include "util_thread.h"
 
 #include "shader.h"
 
@@ -36,7 +37,7 @@ class Device;
 class DeviceScene;
 class ImageManager;
 class OSLRenderServices;
-class OSLGlobals;
+struct OSLGlobals;
 class Scene;
 class ShaderGraph;
 class ShaderNode;
@@ -50,11 +51,13 @@ class ShaderOutput;
 
 struct OSLShaderInfo {
 	OSLShaderInfo()
-	: has_surface_emission(false), has_surface_transparent(false)
+	: has_surface_emission(false), has_surface_transparent(false),
+	  has_surface_bssrdf(false)
 	{}
 
 	bool has_surface_emission;
 	bool has_surface_transparent;
+	bool has_surface_bssrdf;
 };
 
 /* Shader Manage */
@@ -64,10 +67,12 @@ public:
 	OSLShaderManager();
 	~OSLShaderManager();
 
+	void reset(Scene *scene);
+
 	bool use_osl() { return true; }
 
 	void device_update(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
-	void device_free(Device *device, DeviceScene *dscene);
+	void device_free(Device *device, DeviceScene *dscene, Scene *scene);
 
 	/* osl compile and query */
 	static bool osl_compile(const string& inputfile, const string& outputfile);
@@ -88,6 +93,10 @@ protected:
 	OSLRenderServices *services;
 	OSL::ErrorHandler errhandler;
 	map<string, OSLShaderInfo> loaded_shaders;
+
+	static OSL::TextureSystem *ts_shared;
+	static thread_mutex ts_shared_mutex;
+	static int ts_shared_users;
 };
 
 #endif

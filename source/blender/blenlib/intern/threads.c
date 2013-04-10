@@ -29,14 +29,13 @@
  *  \ingroup bli
  */
 
-
+#include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 
 #include "MEM_guardedalloc.h"
 
-
-#include "BLI_blenlib.h"
+#include "BLI_listbase.h"
 #include "BLI_gsqueue.h"
 #include "BLI_threads.h"
 
@@ -429,12 +428,16 @@ void BLI_spin_unlock(SpinLock *spin)
 #endif
 }
 
+#ifndef __APPLE__
 void BLI_spin_end(SpinLock *spin)
 {
-#ifndef __APPLE__
 	pthread_spin_destroy(spin);
-#endif
 }
+#else
+void BLI_spin_end(SpinLock *UNUSED(spin))
+{
+}
+#endif
 
 /* Read/Write Mutex Lock */
 
@@ -729,6 +732,9 @@ void BLI_thread_queue_wait_finish(ThreadQueue *queue)
 
 void BLI_begin_threaded_malloc(void)
 {
+	/* Used for debug only */
+	/* BLI_assert(thread_levels >= 0); */
+
 	if (thread_levels == 0) {
 		MEM_set_lock_callback(BLI_lock_malloc_thread, BLI_unlock_malloc_thread);
 	}
@@ -737,6 +743,9 @@ void BLI_begin_threaded_malloc(void)
 
 void BLI_end_threaded_malloc(void)
 {
+	/* Used for debug only */
+	/* BLI_assert(thread_levels >= 0); */
+
 	thread_levels--;
 	if (thread_levels == 0)
 		MEM_set_lock_callback(NULL, NULL);

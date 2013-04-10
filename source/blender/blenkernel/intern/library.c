@@ -47,6 +47,7 @@
 #include "DNA_brush_types.h"
 #include "DNA_camera_types.h"
 #include "DNA_group_types.h"
+#include "DNA_gpencil_types.h"
 #include "DNA_ipo_types.h"
 #include "DNA_key_types.h"
 #include "DNA_lamp_types.h"
@@ -54,6 +55,8 @@
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meta_types.h"
+#include "DNA_movieclip_types.h"
+#include "DNA_mask_types.h"
 #include "DNA_nla_types.h"
 #include "DNA_node_types.h"
 #include "DNA_scene_types.h"
@@ -64,51 +67,52 @@
 #include "DNA_vfont_types.h"
 #include "DNA_windowmanager_types.h"
 #include "DNA_world_types.h"
-#include "DNA_gpencil_types.h"
-#include "DNA_movieclip_types.h"
-#include "DNA_mask_types.h"
 
 #include "BLI_blenlib.h"
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
-#include "BLI_bpath.h"
 
+#include "BLF_translation.h"
+
+#include "BKE_action.h"
 #include "BKE_animsys.h"
+#include "BKE_armature.h"
+#include "BKE_bpath.h"
+#include "BKE_brush.h"
 #include "BKE_camera.h"
 #include "BKE_context.h"
-#include "BKE_lamp.h"
-#include "BKE_library.h"
-#include "BKE_main.h"
-#include "BKE_global.h"
-#include "BKE_sound.h"
-#include "BKE_object.h"
-#include "BKE_screen.h"
-#include "BKE_mesh.h"
-#include "BKE_material.h"
 #include "BKE_curve.h"
-#include "BKE_mball.h"
-#include "BKE_text.h"
-#include "BKE_texture.h"
-#include "BKE_scene.h"
+#include "BKE_fcurve.h"
+#include "BKE_font.h"
+#include "BKE_global.h"
+#include "BKE_group.h"
+#include "BKE_gpencil.h"
+#include "BKE_idprop.h"
 #include "BKE_icons.h"
 #include "BKE_image.h"
 #include "BKE_ipo.h"
 #include "BKE_key.h"
-#include "BKE_world.h"
-#include "BKE_font.h"
-#include "BKE_group.h"
+#include "BKE_lamp.h"
 #include "BKE_lattice.h"
-#include "BKE_armature.h"
-#include "BKE_action.h"
-#include "BKE_node.h"
-#include "BKE_brush.h"
-#include "BKE_idprop.h"
-#include "BKE_particle.h"
-#include "BKE_gpencil.h"
-#include "BKE_fcurve.h"
-#include "BKE_speaker.h"
+#include "BKE_library.h"
+#include "BKE_linestyle.h"
+#include "BKE_mesh.h"
+#include "BKE_material.h"
+#include "BKE_main.h"
+#include "BKE_mball.h"
 #include "BKE_movieclip.h"
 #include "BKE_mask.h"
+#include "BKE_node.h"
+#include "BKE_object.h"
+#include "BKE_particle.h"
+#include "BKE_packedFile.h"
+#include "BKE_speaker.h"
+#include "BKE_sound.h"
+#include "BKE_screen.h"
+#include "BKE_scene.h"
+#include "BKE_text.h"
+#include "BKE_texture.h"
+#include "BKE_world.h"
 
 #include "RNA_access.h"
 
@@ -122,9 +126,6 @@
  * only use this definition, makes little and big endian systems
  * work fine, in conjunction with MAKE_ID */
 
-/* from blendef: */
-#define GS(a)  (*((short *)(a)))
-
 /* ************* general ************************ */
 
 
@@ -136,9 +137,9 @@ void BKE_id_lib_local_paths(Main *bmain, Library *lib, ID *id)
 {
 	char *bpath_user_data[2] = {bmain->name, lib->filepath};
 
-	BLI_bpath_traverse_id(bmain, id,
-	                      BLI_bpath_relocate_visitor,
-	                      BLI_BPATH_TRAVERSE_SKIP_MULTIFILE,
+	BKE_bpath_traverse_id(bmain, id,
+	                      BKE_bpath_relocate_visitor,
+	                      BKE_BPATH_TRAVERSE_SKIP_MULTIFILE,
 	                      bpath_user_data);
 }
 
@@ -148,6 +149,16 @@ void id_lib_extern(ID *id)
 		if (id->flag & LIB_INDIRECT) {
 			id->flag -= LIB_INDIRECT;
 			id->flag |= LIB_EXTERN;
+		}
+	}
+}
+
+/* ensure we have a real user */
+void id_us_ensure_real(ID *id)
+{
+	if (id) {
+		if (ID_REAL_USERS(id) <= 0) {
+			id->us = MAX2(id->us, 0) + 1;
 		}
 	}
 }
@@ -163,6 +174,7 @@ void id_us_plus(ID *id)
 	}
 }
 
+/* decrements the user count for *id. */
 void id_us_min(ID *id)
 {
 	if (id) {
@@ -178,102 +190,110 @@ void id_us_min(ID *id)
 	}
 }
 
-int id_make_local(ID *id, int test)
+/* calls the appropriate make_local method for the block, unless test. Returns true
+ * if the block can be made local. */
+bool id_make_local(ID *id, bool test)
 {
 	if (id->flag & LIB_INDIRECT)
-		return 0;
+		return false;
 
 	switch (GS(id->name)) {
 		case ID_SCE:
-			return 0; /* not implemented */
+			return false; /* not implemented */
 		case ID_LI:
-			return 0; /* can't be linked */
+			return false; /* can't be linked */
 		case ID_OB:
 			if (!test) BKE_object_make_local((Object *)id);
-			return 1;
+			return true;
 		case ID_ME:
 			if (!test) {
 				BKE_mesh_make_local((Mesh *)id);
 				BKE_key_make_local(((Mesh *)id)->key);
 			}
-			return 1;
+			return true;
 		case ID_CU:
 			if (!test) {
 				BKE_curve_make_local((Curve *)id);
 				BKE_key_make_local(((Curve *)id)->key);
 			}
-			return 1;
+			return true;
 		case ID_MB:
 			if (!test) BKE_mball_make_local((MetaBall *)id);
-			return 1;
+			return true;
 		case ID_MA:
 			if (!test) BKE_material_make_local((Material *)id);
-			return 1;
+			return true;
 		case ID_TE:
 			if (!test) BKE_texture_make_local((Tex *)id);
-			return 1;
+			return true;
 		case ID_IM:
 			if (!test) BKE_image_make_local((Image *)id);
-			return 1;
+			return true;
 		case ID_LT:
 			if (!test) {
 				BKE_lattice_make_local((Lattice *)id);
 				BKE_key_make_local(((Lattice *)id)->key);
 			}
-			return 1;
+			return true;
 		case ID_LA:
 			if (!test) BKE_lamp_make_local((Lamp *)id);
-			return 1;
+			return true;
 		case ID_CA:
 			if (!test) BKE_camera_make_local((Camera *)id);
-			return 1;
+			return true;
 		case ID_SPK:
 			if (!test) BKE_speaker_make_local((Speaker *)id);
-			return 1;
+			return true;
 		case ID_IP:
-			return 0; /* deprecated */
+			return false; /* deprecated */
 		case ID_KE:
 			if (!test) BKE_key_make_local((Key *)id);
-			return 1;
+			return true;
 		case ID_WO:
 			if (!test) BKE_world_make_local((World *)id);
-			return 1;
+			return true;
 		case ID_SCR:
-			return 0; /* can't be linked */
+			return false; /* can't be linked */
 		case ID_VF:
-			return 0; /* not implemented */
+			return false; /* not implemented */
 		case ID_TXT:
-			return 0; /* not implemented */
+			return false; /* not implemented */
 		case ID_SCRIPT:
-			return 0; /* deprecated */
+			return false; /* deprecated */
 		case ID_SO:
-			return 0; /* not implemented */
+			return false; /* not implemented */
 		case ID_GR:
-			return 0; /* not implemented */
+			return false; /* not implemented */
 		case ID_AR:
 			if (!test) BKE_armature_make_local((bArmature *)id);
-			return 1;
+			return true;
 		case ID_AC:
 			if (!test) BKE_action_make_local((bAction *)id);
-			return 1;
+			return true;
 		case ID_NT:
-			return 0; /* not implemented */
+			return false; /* not implemented */
 		case ID_BR:
 			if (!test) BKE_brush_make_local((Brush *)id);
-			return 1;
+			return true;
 		case ID_PA:
 			if (!test) BKE_particlesettings_make_local((ParticleSettings *)id);
-			return 1;
+			return true;
 		case ID_WM:
-			return 0; /* can't be linked */
+			return false; /* can't be linked */
 		case ID_GD:
+			return false; /* not implemented */
+		case ID_LS:
 			return 0; /* not implemented */
 	}
 
-	return 0;
+	return false;
 }
 
-int id_copy(ID *id, ID **newid, int test)
+/**
+ * Invokes the appropriate copy method for the block and returns the result in
+ * newid, unless test. Returns true iff the block can be copied.
+ */
+bool id_copy(ID *id, ID **newid, bool test)
 {
 	if (!test) *newid = NULL;
 
@@ -282,124 +302,127 @@ int id_copy(ID *id, ID **newid, int test)
 	 * - id.us of the new ID is set to 1 */
 	switch (GS(id->name)) {
 		case ID_SCE:
-			return 0; /* can't be copied from here */
+			return false;  /* can't be copied from here */
 		case ID_LI:
-			return 0; /* can't be copied from here */
+			return false;  /* can't be copied from here */
 		case ID_OB:
 			if (!test) *newid = (ID *)BKE_object_copy((Object *)id);
-			return 1;
+			return true;
 		case ID_ME:
 			if (!test) *newid = (ID *)BKE_mesh_copy((Mesh *)id);
-			return 1;
+			return true;
 		case ID_CU:
 			if (!test) *newid = (ID *)BKE_curve_copy((Curve *)id);
-			return 1;
+			return true;
 		case ID_MB:
 			if (!test) *newid = (ID *)BKE_mball_copy((MetaBall *)id);
-			return 1;
+			return true;
 		case ID_MA:
 			if (!test) *newid = (ID *)BKE_material_copy((Material *)id);
-			return 1;
+			return true;
 		case ID_TE:
 			if (!test) *newid = (ID *)BKE_texture_copy((Tex *)id);
-			return 1;
+			return true;
 		case ID_IM:
-			if (!test) *newid = (ID *)BKE_image_copy((Image *)id);
-			return 1;
+			if (!test) *newid = (ID *)BKE_image_copy(G.main, (Image *)id);
+			return true;
 		case ID_LT:
 			if (!test) *newid = (ID *)BKE_lattice_copy((Lattice *)id);
-			return 1;
+			return true;
 		case ID_LA:
 			if (!test) *newid = (ID *)BKE_lamp_copy((Lamp *)id);
-			return 1;
+			return true;
 		case ID_SPK:
 			if (!test) *newid = (ID *)BKE_speaker_copy((Speaker *)id);
-			return 1;
+			return true;
 		case ID_CA:
 			if (!test) *newid = (ID *)BKE_camera_copy((Camera *)id);
-			return 1;
+			return true;
 		case ID_IP:
-			return 0; /* deprecated */
+			return false;  /* deprecated */
 		case ID_KE:
 			if (!test) *newid = (ID *)BKE_key_copy((Key *)id);
-			return 1;
+			return true;
 		case ID_WO:
 			if (!test) *newid = (ID *)BKE_world_copy((World *)id);
-			return 1;
+			return true;
 		case ID_SCR:
-			return 0; /* can't be copied from here */
+			return false;  /* can't be copied from here */
 		case ID_VF:
-			return 0; /* not implemented */
+			return false;  /* not implemented */
 		case ID_TXT:
 			if (!test) *newid = (ID *)BKE_text_copy((Text *)id);
-			return 1;
+			return true;
 		case ID_SCRIPT:
-			return 0; /* deprecated */
+			return false;  /* deprecated */
 		case ID_SO:
-			return 0; /* not implemented */
+			return false;  /* not implemented */
 		case ID_GR:
 			if (!test) *newid = (ID *)BKE_group_copy((Group *)id);
-			return 1;
+			return true;
 		case ID_AR:
 			if (!test) *newid = (ID *)BKE_armature_copy((bArmature *)id);
-			return 1;
+			return true;
 		case ID_AC:
 			if (!test) *newid = (ID *)BKE_action_copy((bAction *)id);
-			return 1;
+			return true;
 		case ID_NT:
 			if (!test) *newid = (ID *)ntreeCopyTree((bNodeTree *)id);
-			return 1;
+			return true;
 		case ID_BR:
 			if (!test) *newid = (ID *)BKE_brush_copy((Brush *)id);
-			return 1;
+			return true;
 		case ID_PA:
 			if (!test) *newid = (ID *)BKE_particlesettings_copy((ParticleSettings *)id);
-			return 1;
+			return true;
 		case ID_WM:
-			return 0; /* can't be copied from here */
+			return false;  /* can't be copied from here */
 		case ID_GD:
-			return 0; /* not implemented */
+			return false;  /* not implemented */
 		case ID_MSK:
 			if (!test) *newid = (ID *)BKE_mask_copy((Mask *)id);
+			return true;
+		case ID_LS:
+			if (!test) *newid = (ID *)BKE_copy_linestyle((FreestyleLineStyle *)id);
 			return 1;
 	}
 	
-	return 0;
+	return false;
 }
 
-int id_unlink(ID *id, int test)
+bool id_unlink(ID *id, int test)
 {
 	Main *mainlib = G.main;
 	ListBase *lb;
 
 	switch (GS(id->name)) {
 		case ID_TXT:
-			if (test) return 1;
+			if (test) return true;
 			BKE_text_unlink(mainlib, (Text *)id);
 			break;
 		case ID_GR:
-			if (test) return 1;
+			if (test) return true;
 			BKE_group_unlink((Group *)id);
 			break;
 		case ID_OB:
-			if (test) return 1;
+			if (test) return true;
 			BKE_object_unlink((Object *)id);
 			break;
 	}
 
 	if (id->us == 0) {
-		if (test) return 1;
+		if (test) return true;
 
 		lb = which_libbase(mainlib, GS(id->name));
 		BKE_libblock_free(lb, id);
 
-		return 1;
+		return true;
 	}
 
-	return 0;
+	return false;
 }
 
-int id_single_user(bContext *C, ID *id, PointerRNA *ptr, PropertyRNA *prop)
+bool id_single_user(bContext *C, ID *id, PointerRNA *ptr, PropertyRNA *prop)
 {
 	ID *newid = NULL;
 	PointerRNA idptr;
@@ -407,7 +430,7 @@ int id_single_user(bContext *C, ID *id, PointerRNA *ptr, PropertyRNA *prop)
 	if (id) {
 		/* if property isn't editable, we're going to have an extra block hanging around until we save */
 		if (RNA_property_editable(ptr, prop)) {
-			if (id_copy(id, &newid, 0) && newid) {
+			if (id_copy(id, &newid, false) && newid) {
 				/* copy animation actions too */
 				BKE_copy_animdata_id_action(id);
 				/* us is 1 by convention, but RNA_property_pointer_set
@@ -419,12 +442,12 @@ int id_single_user(bContext *C, ID *id, PointerRNA *ptr, PropertyRNA *prop)
 				RNA_property_pointer_set(ptr, prop, idptr);
 				RNA_property_update(C, ptr, prop);
 				
-				return 1;
+				return true;
 			}
 		}
 	}
 	
-	return 0;
+	return false;
 }
 
 ListBase *which_libbase(Main *mainlib, short type)
@@ -492,6 +515,8 @@ ListBase *which_libbase(Main *mainlib, short type)
 			return &(mainlib->movieclip);
 		case ID_MSK:
 			return &(mainlib->mask);
+		case ID_LS:
+			return &(mainlib->linestyle);
 	}
 	return NULL;
 }
@@ -528,7 +553,13 @@ void recalc_all_library_objects(Main *main)
 			ob->recalc |= OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME;
 }
 
-/* note: MAX_LIBARRAY define should match this code */
+/**
+ * puts into array *lb pointers to all the ListBase structs in main,
+ * and returns the number of them as the function result. This is useful for
+ * generic traversal of all the blocks in a Main (by traversing all the
+ * lists in turn), without worrying about block types.
+ *
+ * \note MAX_LIBARRAY define should match this code */
 int set_listbasepointers(Main *main, ListBase **lb)
 {
 	int a = 0;
@@ -571,6 +602,7 @@ int set_listbasepointers(Main *main, ListBase **lb)
 	lb[a++] = &(main->world);
 	lb[a++] = &(main->screen);
 	lb[a++] = &(main->object);
+	lb[a++] = &(main->linestyle); /* referenced by scenes */
 	lb[a++] = &(main->scene);
 	lb[a++] = &(main->library);
 	lb[a++] = &(main->wm);
@@ -592,6 +624,10 @@ int set_listbasepointers(Main *main, ListBase **lb)
  *
  * **************************** */
 
+/**
+ * Allocates and returns memory of the right size for the specified block type,
+ * initialized to zero.
+ */
 static ID *alloc_libblock_notest(short type)
 {
 	ID *id = NULL;
@@ -690,11 +726,19 @@ static ID *alloc_libblock_notest(short type)
 		case ID_MSK:
 			id = MEM_callocN(sizeof(Mask), "Mask");
 			break;
+		case ID_LS:
+			id = MEM_callocN(sizeof(FreestyleLineStyle), "Freestyle Line Style");
+			break;
 	}
 	return id;
 }
 
-/* used everywhere in blenkernel and text.c */
+/**
+ * Allocates and returns a block of the specified type, with the specified name
+ * (adjusted as necessary to ensure uniqueness), and appended to the specified list.
+ * The user count is set to 1, all other content (apart from name and links) being
+ * initialized to zero.
+ */
 void *BKE_libblock_alloc(ListBase *lb, short type, const char *name)
 {
 	ID *id = NULL;
@@ -706,25 +750,25 @@ void *BKE_libblock_alloc(ListBase *lb, short type, const char *name)
 		id->icon_id = 0;
 		*( (short *)id->name) = type;
 		new_id(lb, id, name);
-		/* alphabetic insterion: is in new_id */
+		/* alphabetic insertion: is in new_id */
 	}
 	return id;
 }
 
 /* by spec, animdata is first item after ID */
 /* and, trust that BKE_animdata_from_id() will only find AnimData for valid ID-types */
-static void id_copy_animdata(ID *id, const short do_action)
+static void id_copy_animdata(ID *id, const bool do_action)
 {
 	AnimData *adt = BKE_animdata_from_id(id);
 	
 	if (adt) {
 		IdAdtTemplate *iat = (IdAdtTemplate *)id;
-		iat->adt = BKE_copy_animdata(iat->adt, do_action); /* could be set to FALSE, need to investigate */
+		iat->adt = BKE_copy_animdata(iat->adt, do_action); /* could be set to false, need to investigate */
 	}
 }
 
 /* material nodes use this since they are not treated as libdata */
-void BKE_libblock_copy_data(ID *id, const ID *id_from, const short do_action)
+void BKE_libblock_copy_data(ID *id, const ID *id_from, const bool do_action)
 {
 	if (id_from->properties)
 		id->properties = IDP_CopyProperty(id_from->properties);
@@ -734,13 +778,13 @@ void BKE_libblock_copy_data(ID *id, const ID *id_from, const short do_action)
 }
 
 /* used everywhere in blenkernel */
-void *BKE_libblock_copy(ID *id)
+void *BKE_libblock_copy_ex(Main *bmain, ID *id)
 {
 	ID *idn;
 	ListBase *lb;
 	size_t idn_len;
 
-	lb = which_libbase(G.main, GS(id->name));
+	lb = which_libbase(bmain, GS(id->name));
 	idn = BKE_libblock_alloc(lb, GS(id->name), id->name + 2);
 
 	assert(idn != NULL);
@@ -756,14 +800,20 @@ void *BKE_libblock_copy(ID *id)
 	id->newid = idn;
 	idn->flag |= LIB_NEW;
 
-	BKE_libblock_copy_data(idn, id, FALSE);
+	BKE_libblock_copy_data(idn, id, false);
 	
 	return idn;
 }
 
-static void BKE_library_free(Library *UNUSED(lib))
+void *BKE_libblock_copy(ID *id)
 {
-	/* no freeing needed for libraries yet */
+	return BKE_libblock_copy_ex(G.main, id);
+}
+
+static void BKE_library_free(Library *lib)
+{
+	if (lib->packedfile)
+		freePackedFile(lib->packedfile);
 }
 
 static void (*free_windowmanager_cb)(bContext *, wmWindowManager *) = NULL;
@@ -772,6 +822,14 @@ void set_free_windowmanager_cb(void (*func)(bContext *C, wmWindowManager *) )
 {
 	free_windowmanager_cb = func;
 }
+
+static void (*free_notifier_reference_cb)(const void *) = NULL;
+
+void set_free_notifier_reference_cb(void (*func)(const void *) )
+{
+	free_notifier_reference_cb = func;
+}
+
 
 static void animdata_dtar_clear_cb(ID *UNUSED(id), AnimData *adt, void *userdata)
 {
@@ -914,7 +972,14 @@ void BKE_libblock_free(ListBase *lb, void *idv)
 		case ID_MSK:
 			BKE_mask_free(bmain, (Mask *)id);
 			break;
+		case ID_LS:
+			BKE_free_linestyle((FreestyleLineStyle *)id);
+			break;
 	}
+
+	/* avoid notifying on removed data */
+	if (free_notifier_reference_cb)
+		free_notifier_reference_cb(id);
 
 	BLI_remlink(lb, id);
 
@@ -1012,6 +1077,7 @@ ID *BKE_libblock_find_name(const short type, const char *name)      /* type: "OB
 	return BLI_findstring(lb, name, offsetof(ID, name) + 2);
 }
 
+#if 0 /* UNUSED */
 static void get_flags_for_id(ID *id, char *buf) 
 {
 	int isfake = id->flag & LIB_FAKEUSER;
@@ -1092,7 +1158,6 @@ static void IDnames_to_dyn_pupstring(DynStr *pupds, ListBase *lb, ID *link, shor
 	}
 }
 
-
 /* used by headerbuttons.c buttons.c editobject.c editseq.c */
 /* if (nr == NULL) no MAX_IDPUP, this for non-header browsing */
 void IDnames_to_pupstring(const char **str, const char *title, const char *extraops, ListBase *lb, ID *link, short *nr)
@@ -1117,7 +1182,6 @@ void IDnames_to_pupstring(const char **str, const char *title, const char *extra
 }
 
 /* skips viewer images */
-#if 0 /* unused */
 void IMAnames_to_pupstring(const char **str, const char *title, const char *extraops, ListBase *lb, ID *link, short *nr)
 {
 	DynStr *pupds = BLI_dynstr_new();
@@ -1164,7 +1228,7 @@ void id_sort_by_name(ListBase *lb, ID *id)
 	
 }
 
-/*
+/**
  * Check to see if there is an ID with the same name as 'name'.
  * Returns the ID if so, if not, returns NULL
  */
@@ -1186,9 +1250,9 @@ static ID *is_dupid(ListBase *lb, ID *id, const char *name)
 	return idtest;
 }
 
-/* 
+/**
  * Check to see if an ID name is already used, and find a new one if so.
- * Return 1 if created a new name (returned in name).
+ * Return true if created a new name (returned in name).
  *
  * Normally the ID that's being check is already in the ListBase, so ID *id
  * points at the new entry.  The Python Library module needs to know what
@@ -1196,11 +1260,13 @@ static ID *is_dupid(ListBase *lb, ID *id, const char *name)
  * id is NULL
  */
 
-static int check_for_dupid(ListBase *lb, ID *id, char *name)
+static bool check_for_dupid(ListBase *lb, ID *id, char *name)
 {
 	ID *idtest;
 	int nr = 0, nrtest, a, left_len;
-	char in_use[64]; /* use as a boolean array, unrelated to name length */
+#define MAX_IN_USE 64
+	bool in_use[MAX_IN_USE];
+	/* to speed up finding unused numbers within [1 .. MAX_IN_USE - 1] */
 
 	char left[MAX_ID_NAME + 8], leftest[MAX_ID_NAME + 8];
 
@@ -1208,23 +1274,23 @@ static int check_for_dupid(ListBase *lb, ID *id, char *name)
 	/* if ( strlen(name) > MAX_ID_NAME-3 ) name[MAX_ID_NAME-3] = 0; */
 	/* removed since this is only ever called from one place - campbell */
 
-	while (1) {
+	while (true) {
 
 		/* phase 1: id already exists? */
 		idtest = is_dupid(lb, id, name);
 
 		/* if there is no double, done */
-		if (idtest == NULL) return 0;
+		if (idtest == NULL) return false;
 
 		/* we have a dup; need to make a new name */
-		/* quick check so we can reuse one of first 64 ids if vacant */
-		memset(in_use, 0, sizeof(in_use));
+		/* quick check so we can reuse one of first MAX_IN_USE - 1 ids if vacant */
+		memset(in_use, false, sizeof(in_use));
 
 		/* get name portion, number portion ("name.number") */
 		left_len = BLI_split_name_num(left, &nr, name, '.');
 
 		/* if new name will be too long, truncate it */
-		if (nr > 999 && left_len > (MAX_ID_NAME - 8)) {
+		if (nr > 999 && left_len > (MAX_ID_NAME - 8)) {  /* assumption: won't go beyond 9999 */
 			left[MAX_ID_NAME - 8] = 0;
 			left_len = MAX_ID_NAME - 8;
 		}
@@ -1241,35 +1307,50 @@ static int check_for_dupid(ListBase *lb, ID *id, char *name)
 			     (BLI_split_name_num(leftest, &nrtest, idtest->name + 2, '.') == left_len)
 			     )
 			{
-				if (nrtest < sizeof(in_use))
-					in_use[nrtest] = 1;  /* mark as used */
+				/* will get here at least once, otherwise is_dupid call above would have returned NULL */
+				if (nrtest < MAX_IN_USE)
+					in_use[nrtest] = true;  /* mark as used */
 				if (nr <= nrtest)
 					nr = nrtest + 1;    /* track largest unused */
 			}
 		}
+		/* At this point, nr will be at least 1. */
+		BLI_assert(nr >= 1);
 
 		/* decide which value of nr to use */
-		for (a = 0; a < sizeof(in_use); a++) {
-			if (a >= nr) break;  /* stop when we've check up to biggest */
-			if (in_use[a] == 0) { /* found an unused value */
+		for (a = 0; a < MAX_IN_USE; a++) {
+			if (a >= nr) break;  /* stop when we've checked up to biggest */  /* redundant check */
+			if (!in_use[a]) { /* found an unused value */
 				nr = a;
+				/* can only be zero if all potential duplicate names had
+				 * nonzero numeric suffixes, which means name itself has
+				 * nonzero numeric suffix (else no name conflict and wouldn't
+				 * have got here), which means name[left_len] is not a null */
 				break;
 			}
 		}
+		/* At this point, nr is either the lowest unused number within [0 .. MAX_IN_USE - 1],
+		 * or 1 greater than the largest used number if all those low ones are taken.
+		 * We can't be bothered to look for the lowest unused number beyond (MAX_IN_USE - 1). */
 
 		/* If the original name has no numeric suffix, 
 		 * rather than just chopping and adding numbers, 
 		 * shave off the end chars until we have a unique name.
 		 * Check the null terminators match as well so we don't get Cube.000 -> Cube.00 */
 		if (nr == 0 && name[left_len] == '\0') {
-			int len = left_len - 1;
+			int len;
+			/* FIXME: this code will never be executed, because either nr will be
+			 * at least 1, or name will not end at left_len! */
+			BLI_assert(0);
+
+			len = left_len - 1;
 			idtest = is_dupid(lb, id, name);
 			
 			while (idtest && len > 1) {
 				name[len--] = '\0';
 				idtest = is_dupid(lb, id, name);
 			}
-			if (idtest == NULL) return 1;
+			if (idtest == NULL) return true;
 			/* otherwise just continue and use a number suffix */
 		}
 		
@@ -1283,42 +1364,42 @@ static int check_for_dupid(ListBase *lb, ID *id, char *name)
 		/* this format specifier is from hell... */
 		BLI_snprintf(name, sizeof(id->name) - 2, "%s.%.3d", left, nr);
 
-		return 1;
+		return true;
 	}
+
+#undef MAX_IN_USE
 }
 
 /*
  * Only for local blocks: external en indirect blocks already have a
  * unique ID.
  *
- * return 1: created a new name
+ * return true: created a new name
  */
 
-int new_id(ListBase *lb, ID *id, const char *tname)
+bool new_id(ListBase *lb, ID *id, const char *tname)
 {
-	int result;
+	bool result;
 	char name[MAX_ID_NAME - 2];
 
 	/* if library, don't rename */
-	if (id->lib) return 0;
+	if (id->lib)
+		return false;
 
 	/* if no libdata given, look up based on ID */
-	if (lb == NULL) lb = which_libbase(G.main, GS(id->name));
+	if (lb == NULL)
+		lb = which_libbase(G.main, GS(id->name));
 
 	/* if no name given, use name of current ID
 	 * else make a copy (tname args can be const) */
 	if (tname == NULL)
 		tname = id->name + 2;
 
-	strncpy(name, tname, sizeof(name) - 1);
-
-	/* if result > MAX_ID_NAME-3, strncpy don't put the final '\0' to name.
-	 * easier to assign each time then to check if its needed */
-	name[sizeof(name) - 1] = 0;
+	BLI_strncpy(name, tname, sizeof(name));
 
 	if (name[0] == '\0') {
 		/* disallow empty names */
-		strcpy(name, ID_FALLBACK_NAME);
+		BLI_strncpy(name, DATA_(ID_FALLBACK_NAME), sizeof(name));
 	}
 	else {
 		/* disallow non utf8 chars,
@@ -1372,10 +1453,9 @@ void clear_id_newpoins(void)
 	}
 }
 
-#define LIBTAG(a)   if (a && a->id.lib) { a->id.flag &= ~LIB_INDIRECT; a->id.flag |= LIB_EXTERN; } (void)0
-
 static void lib_indirect_test_id(ID *id, Library *lib)
 {
+#define LIBTAG(a)   if (a && a->id.lib) { a->id.flag &= ~LIB_INDIRECT; a->id.flag |= LIB_EXTERN; } (void)0
 	
 	if (id->lib) {
 		/* datablocks that were indirectly related are now direct links
@@ -1415,6 +1495,8 @@ static void lib_indirect_test_id(ID *id, Library *lib)
 		me = ob->data;
 		LIBTAG(me);
 	}
+
+#undef LIBTAG
 }
 
 void tag_main_lb(ListBase *lb, const short tag)
@@ -1452,9 +1534,9 @@ void tag_main(struct Main *mainvar, const short tag)
 
 /* if lib!=NULL, only all from lib local
  * bmain is almost certainly G.main */
-void BKE_library_make_local(Main *bmain, Library *lib, int untagged_only)
+void BKE_library_make_local(Main *bmain, Library *lib, bool untagged_only)
 {
-	ListBase *lbarray[MAX_LIBARRAY], tempbase = {NULL, NULL};
+	ListBase *lbarray[MAX_LIBARRAY];
 	ID *id, *idn;
 	int a;
 
@@ -1472,7 +1554,7 @@ void BKE_library_make_local(Main *bmain, Library *lib, int untagged_only)
 			 * (very nasty to discover all your links are lost after appending)  
 			 * */
 			if (id->flag & (LIB_EXTERN | LIB_INDIRECT | LIB_NEW) &&
-			    (untagged_only == 0 || !(id->flag & LIB_PRE_EXISTING)))
+			    ((untagged_only == false) || !(id->flag & LIB_PRE_EXISTING)))
 			{
 				if (lib == NULL || id->lib == lib) {
 					if (id->lib) {
@@ -1489,16 +1571,8 @@ void BKE_library_make_local(Main *bmain, Library *lib, int untagged_only)
 			}
 			id = idn;
 		}
-		
-		/* patch2: make it aphabetically */
-		while ( (id = tempbase.first) ) {
-			BLI_remlink(&tempbase, id);
-			BLI_addtail(lbarray[a], id);
-			new_id(lbarray[a], id, NULL);
-		}
 	}
 
-	/* patch 3: make sure library data isn't indirect falsely... */
 	a = set_listbasepointers(bmain, lbarray);
 	while (a--) {
 		for (id = lbarray[a]->first; id; id = id->next)
@@ -1514,39 +1588,20 @@ void test_idbutton(char *name)
 	ID *idtest;
 	
 
-	lb = which_libbase(G.main, GS(name - 2) );
+	lb = which_libbase(G.main, GS(name) );
 	if (lb == NULL) return;
 	
 	/* search for id */
-	idtest = BLI_findstring(lb, name, offsetof(ID, name) + 2);
+	idtest = BLI_findstring(lb, name + 2, offsetof(ID, name) + 2);
 
-	if (idtest && (new_id(lb, idtest, name) == 0)) {
+	if (idtest && !new_id(lb, idtest, name + 2)) {
 		id_sort_by_name(lb, idtest);
 	}
 }
 
-void text_idbutton(struct ID *id, char *text)
-{
-	if (id) {
-		if (GS(id->name) == ID_SCE)
-			strcpy(text, "SCE: ");
-		else if (GS(id->name) == ID_SCR)
-			strcpy(text, "SCR: ");
-		else if (GS(id->name) == ID_MA && ((Material *)id)->use_nodes)
-			strcpy(text, "NT: ");
-		else {
-			text[0] = id->name[0];
-			text[1] = id->name[1];
-			text[2] = ':';
-			text[3] = ' ';
-			text[4] = 0;
-		}
-	}
-	else {
-		text[0] = '\0';
-	}
-}
-
+/**
+ * Sets the name of a block to name, suitably adjusted for uniqueness.
+ */
 void rename_id(ID *id, const char *name)
 {
 	ListBase *lb;
@@ -1557,7 +1612,11 @@ void rename_id(ID *id, const char *name)
 	new_id(lb, id, name);
 }
 
-void name_uiprefix_id(char *name, ID *id)
+/**
+ * Returns in name the name of the block, with a 3-character prefix prepended
+ * indicating whether it comes from a library, has a fake user, or no users.
+ */
+void name_uiprefix_id(char *name, const ID *id)
 {
 	name[0] = id->lib ? 'L' : ' ';
 	name[1] = id->flag & LIB_FAKEUSER ? 'F' : (id->us == 0) ? '0' : ' ';

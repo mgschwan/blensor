@@ -124,16 +124,21 @@ mark_as_advanced(WITH_PYTHON_SECURITY)  # some distributions see this as a secur
 
 option(WITH_PYTHON_SAFETY "Enable internal API error checking to track invalid data to prevent crash on access (at the expense of some effeciency, only enable for development)." OFF)
 option(WITH_PYTHON_MODULE "Enable building as a python module which runs without a user interface, like running regular blender in background mode (experimental, only enable for development)" OFF)
+if(APPLE)
+	option(WITH_PYTHON_FRAMEWORK "Enable building using the Python available in the framework (OSX only)" OFF)
+endif()
+
 option(WITH_BUILDINFO     "Include extra build details (only disable for development & faster builds)" ON)
 option(WITH_IK_ITASC      "Enable ITASC IK solver (only disable for development & for incompatible C++ compilers)" ON)
 option(WITH_IK_SOLVER     "Enable Legacy IK solver (only disable for development)" ON)
 option(WITH_FFTW3         "Enable FFTW3 support (Used for smoke and audio effects)" ON)
 option(WITH_BULLET        "Enable Bullet (Physics Engine)" ON)
+option(WITH_SYSTEM_BULLET "Use the systems bullet library (currently unsupported due to missing features in upstream!)" )
+mark_as_advanced(WITH_SYSTEM_BULLET)
 option(WITH_GAMEENGINE    "Enable Game Engine" ON)
 option(WITH_PLAYER        "Build Player" OFF)
 option(WITH_OPENCOLORIO   "Enable OpenColorIO color management" ON)
 option(WITH_COMPOSITOR    "Enable the tile based nodal compositor" ON)
-option(WITH_COMPOSITOR_LEGACY "Enable legacy compositor" OFF)
 
 # GHOST Windowing Library Options
 option(WITH_GHOST_DEBUG   "Enable debugging output for the GHOST library" OFF)
@@ -148,6 +153,9 @@ mark_as_advanced(WITH_HEADLESS)
 
 option(WITH_AUDASPACE    "Build with blenders audio library (only disable if you know what you're doing!)" ON)
 mark_as_advanced(WITH_AUDASPACE)
+
+option(WITH_BOOL_COMPAT "Continue defining \"TRUE\" and \"FALSE\" until these can be replaced with \"true\" and \"false\" from stdbool.h" ON)
+mark_as_advanced(WITH_BOOL_COMPAT)
 
 
 # (unix defaults to OpenMP On)
@@ -221,6 +229,9 @@ option(WITH_OPENCOLLADA		"Enable OpenCollada Support (http://www.opencollada.org
 option(WITH_SDL           "Enable SDL for sound and joystick support" ON)
 option(WITH_OPENAL        "Enable OpenAL Support (http://www.openal.org)" ON)
 option(WITH_JACK          "Enable Jack Support (http://www.jackaudio.org)" OFF)
+if(UNIX AND NOT APPLE)
+	option(WITH_JACK_DYNLOAD  "Enable runtime dynamic Jack libraries loading" OFF)
+endif()
 
 # Compression
 option(WITH_LZO           "Enable fast LZO compression (used for pointcache)" ON)
@@ -229,12 +240,19 @@ option(WITH_LZMA          "Enable best LZMA compression, (used for pointcache)" 
 # Camera/motion tracking
 option(WITH_LIBMV         "Enable libmv structure from motion library" ON)
 
+# Freestyle
+option(WITH_FREESTYLE     "Enable Freestyle (advanced edges rendering)" ON)
+
 # Misc
 option(WITH_INPUT_NDOF "Enable NDOF input devices (SpaceNavigator and friends)" ON)
 option(WITH_RAYOPTIMIZATION	"Enable use of SIMD (SSE) optimizations for the raytracer" ON)
 if(UNIX AND NOT APPLE)
 	option(WITH_INSTALL_PORTABLE "Install redistributeable runtime, otherwise install into CMAKE_INSTALL_PREFIX" ON)
 	option(WITH_STATIC_LIBS "Try to link with static libraries, as much as possible, to make blender more portable across distributions" OFF)
+	if(WITH_STATIC_LIBS)
+		option(WITH_BOOST_ICU "Boost uses ICU library (required for linking with static Boost built with libicu)." OFF)
+		mark_as_advanced(WITH_BOOST_ICU)
+	endif()
 endif()
 option(WITH_PYTHON_INSTALL       "Copy system python into the blender install folder" ON)
 option(WITH_PYTHON_INSTALL_NUMPY "Copy system numpy into the blender install folder"  ON)
@@ -246,7 +264,7 @@ option(WITH_CYCLES					"Enable cycles Render Engine" ON)
 option(WITH_CYCLES_TEST				"Build cycles test application" OFF)
 option(WITH_CYCLES_OSL				"Build Cycles with OSL support" OFF)
 option(WITH_CYCLES_CUDA_BINARIES	"Build cycles CUDA binaries" OFF)
-set(CYCLES_CUDA_BINARIES_ARCH sm_13 sm_20 sm_21 sm_30 CACHE STRING "CUDA architectures to build binaries for")
+set(CYCLES_CUDA_BINARIES_ARCH sm_20 sm_21 sm_30 CACHE STRING "CUDA architectures to build binaries for")
 mark_as_advanced(CYCLES_CUDA_BINARIES_ARCH)
 unset(PLATFORM_DEFAULT)
 
@@ -264,6 +282,12 @@ mark_as_advanced(WITH_CXX_GUARDEDALLOC)
 option(WITH_ASSERT_ABORT "Call abort() when raising an assertion through BLI_assert()" OFF)
 mark_as_advanced(WITH_ASSERT_ABORT)
 
+option(WITH_BOOST					"Enable features depending no boost" ON)
+
+if(CMAKE_COMPILER_IS_GNUCC)
+	option(WITH_GCC_MUDFLAP			"Enable mudflap" OFF)
+	mark_as_advanced(WITH_GCC_MUDFLAP)
+endif()
 
 if(APPLE)
 	cmake_minimum_required(VERSION 2.8.8)
@@ -276,9 +300,9 @@ if(APPLE)
 	endif()
 	
 	execute_process(COMMAND uname -r OUTPUT_VARIABLE MAC_SYS) # check for actual system-version
-	if (${MAC_SYS} MATCHES 12)
+	if(${MAC_SYS} MATCHES 12)
 		set(OSX_SYSTEM 10.8)
-	elseif (${MAC_SYS} MATCHES 11)
+	elseif(${MAC_SYS} MATCHES 11)
 		set(OSX_SYSTEM 10.7)
 	elseif(${MAC_SYS} MATCHES 10)
 		set(OSX_SYSTEM 10.6)
@@ -387,14 +411,33 @@ if(WITH_PYTHON_MODULE)
 	set(WITH_HEADLESS ON)
 endif()
 
+# enable boost for cycles, booleans, audaspace or i18n
+# otherwise if the user disabled
+if(NOT WITH_BOOST)
+	# Explicitly disabled. so disable all deps.
+	set(WITH_CYCLES         OFF)
+	set(WITH_MOD_BOOLEAN    OFF)
+	set(WITH_AUDASPACE      OFF)
+	set(WITH_INTERNATIONAL  OFF)
+
+	set(WITH_OPENAL         OFF)  # depends on AUDASPACE
+	set(WITH_GAMEENGINE     OFF)  # depends on AUDASPACE
+elseif(WITH_CYCLES OR WITH_MOD_BOOLEAN OR WITH_AUDASPACE OR WITH_INTERNATIONAL)
+	# Keep enabled
+else()
+	# Enabled but we don't need it
+	set(WITH_BOOST OFF)
+endif()
+
 # auto enable openimageio for cycles
 if(WITH_CYCLES)
 	set(WITH_OPENIMAGEIO ON)
 endif()
 
-# auto enable boost for cycles, booleans, audaspace or i18n
-if(WITH_CYCLES OR WITH_MOD_BOOLEAN OR WITH_AUDASPACE OR WITH_INTERNATIONAL)
-	set(WITH_BOOST ON)
+# auto enable openimageio linking dependencies
+if(WITH_OPENIMAGEIO)
+	set(WITH_IMAGE_OPENEXR ON)
+	set(WITH_IMAGE_TIFF ON)
 endif()
 
 # auto enable llvm for cycles_osl
@@ -423,6 +466,13 @@ endif()
 
 TEST_SSE_SUPPORT(COMPILER_SSE_FLAG COMPILER_SSE2_FLAG)
 
+TEST_STDBOOL_SUPPORT()
+if(HAVE_STDBOOL_H)
+	add_definitions(-DHAVE_STDBOOL_H)
+endif()
+if(WITH_BOOL_COMPAT)
+	add_definitions(-DWITH_BOOL_COMPAT)
+endif()
 
 #-----------------------------------------------------------------------------
 # Check for valid directories
@@ -498,7 +548,7 @@ set(PLATFORM_LINKFLAGS_DEBUG "")
 
 if(UNIX AND NOT APPLE)
 	macro(find_package_wrapper)
-		STRING(TOUPPER ${ARGV0} _NAME_UPPER)
+		string(TOUPPER ${ARGV0} _NAME_UPPER)
 		if(${WITH_STATIC_LIBS})
 			set(_cmake_find_library_suffixes_back ${CMAKE_FIND_LIBRARY_SUFFIXES})
 			set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -628,7 +678,7 @@ if(UNIX AND NOT APPLE)
 		endif()
 	endif()
 
-	if (WITH_INPUT_NDOF)
+	if(WITH_INPUT_NDOF)
 		find_package_wrapper(Spacenav)
 		if(NOT SPACENAV_FOUND)
 			set(WITH_INPUT_NDOF OFF)
@@ -644,21 +694,17 @@ if(UNIX AND NOT APPLE)
 	if(WITH_BOOST)
 		# uses in build instructions to override include and library variables
 		if(NOT BOOST_CUSTOM)
-			# XXX No more lib dir, is this multithread stuff still needed?
 			if(${WITH_STATIC_LIBS})
 				set(Boost_USE_STATIC_LIBS ON)
 			endif()
-			if(NOT BOOST_ROOT)
-				set(Boost_USE_MULTITHREADED OFF)
-			else()
-				set(Boost_USE_MULTITHREADED ON)
-			endif()
+			set(Boost_USE_MULTITHREADED ON)
 			set(__boost_packages filesystem regex system thread date_time)
-			if (WITH_INTERNATIONAL)
+			if(WITH_INTERNATIONAL)
 				list(APPEND __boost_packages locale)
 			endif()
-			find_package(Boost 1.34 COMPONENTS ${__boost_packages})
-			if(Boost_USE_STATIC_LIBS AND Boost_USE_ICU)
+			find_package(Boost 1.48 COMPONENTS ${__boost_packages})
+			unset(__boost_packages)
+			if(Boost_USE_STATIC_LIBS AND WITH_BOOST_ICU)
 				find_package(IcuLinux)
 			endif()
 			mark_as_advanced(Boost_DIR)  # why doesnt boost do this?
@@ -675,7 +721,7 @@ if(UNIX AND NOT APPLE)
 
 		set(OPENIMAGEIO_LIBRARIES ${OPENIMAGEIO_LIBRARIES} ${PNG_LIBRARIES} ${JPEG_LIBRARIES} ${ZLIB_LIBRARIES} ${BOOST_LIBRARIES})
 		set(OPENIMAGEIO_LIBPATH)  # TODO, remove and reference the absolute path everywhere
-		set(OPENIMAGEIO_DEFINITIONS)
+		set(OPENIMAGEIO_DEFINITIONS "")
 
 		if(WITH_IMAGE_TIFF)
 			list(APPEND OPENIMAGEIO_LIBRARIES "${TIFF_LIBRARY}")
@@ -792,7 +838,11 @@ if(UNIX AND NOT APPLE)
 		set(PLATFORM_LINKLIBS "${PLATFORM_LINKLIBS} ${X11_X11_LIB}")
 
 		if(WITH_X11_XINPUT)
-			set(PLATFORM_LINKLIBS "${PLATFORM_LINKLIBS} ${X11_Xinput_LIB}")
+			if(X11_Xinput_LIB)
+				set(PLATFORM_LINKLIBS "${PLATFORM_LINKLIBS} ${X11_Xinput_LIB}")
+			else()
+				set(WITH_X11_XINPUT OFF)
+			endif()
 		endif()
 
 		if(WITH_X11_XF86VMODE)
@@ -862,7 +912,7 @@ elseif(WIN32)
 
 	if(CMAKE_COMPILER_IS_GNUCC)
 		set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/mingw32)
-		INCLUDE (CheckCSourceCompiles) 
+		include(CheckCSourceCompiles)
 		# Setup 64bit and 64bit windows systems
 		CHECK_C_SOURCE_COMPILES("
 			#ifndef __MINGW64__
@@ -1020,28 +1070,28 @@ elseif(WIN32)
 			set(OPENCOLLADA ${LIBDIR}/opencollada)
 
 			set(OPENCOLLADA_INCLUDE_DIRS
-				${LIBDIR}/opencollada/include/COLLADAStreamWriter/include
-				${LIBDIR}/opencollada/include/COLLADABaseUtils/include
-				${LIBDIR}/opencollada/include/COLLADAFramework/include
-				${LIBDIR}/opencollada/include/COLLADASaxFrameworkLoader/include
-				${LIBDIR}/opencollada/include/GeneratedSaxParser/include
+				${OPENCOLLADA}/include/opencollada/COLLADAStreamWriter
+				${OPENCOLLADA}/include/opencollada/COLLADABaseUtils
+				${OPENCOLLADA}/include/opencollada/COLLADAFramework
+				${OPENCOLLADA}/include/opencollada/COLLADASaxFrameworkLoader
+				${OPENCOLLADA}/include/opencollada/GeneratedSaxParser
 			)
 			set_lib_path(OPENCOLLADA_LIBPATH "opencollada")
 
 			set(OPENCOLLADA_LIBRARIES
-				${OPENCOLLADA_LIBPATH}/lib/OpenCOLLADASaxFrameworkLoader.lib
-				${OPENCOLLADA_LIBPATH}/lib/OpenCOLLADAFramework.lib
-				${OPENCOLLADA_LIBPATH}/lib/OpenCOLLADABaseUtils.lib
-				${OPENCOLLADA_LIBPATH}/lib/OpenCOLLADAStreamWriter.lib
-				${OPENCOLLADA_LIBPATH}/lib/MathMLSolver.lib
-				${OPENCOLLADA_LIBPATH}/lib/GeneratedSaxParser.lib
-				${OPENCOLLADA_LIBPATH}/lib/xml2.lib
-				${OPENCOLLADA_LIBPATH}/lib/buffer.lib
-				${OPENCOLLADA_LIBPATH}/lib/ftoa.lib
-				${OPENCOLLADA_LIBPATH}/lib/UTF.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/OpenCOLLADASaxFrameworkLoader.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/OpenCOLLADAFramework.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/OpenCOLLADABaseUtils.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/OpenCOLLADAStreamWriter.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/MathMLSolver.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/GeneratedSaxParser.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/xml.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/buffer.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/ftoa.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/UTF.lib
 			)
 			set(PCRE_LIBRARIES
-				${OPENCOLLADA_LIBPATH}/lib/pcre.lib
+				${OPENCOLLADA_LIBPATH}/lib/opencollada/pcre.lib
 			)
 			
 			unset(OPENCOLLADA_LIBPATH)
@@ -1092,14 +1142,16 @@ elseif(WIN32)
 		if(WITH_PYTHON)
 			# normally cached but not since we include them with blender
 			if(MSVC10)
-				set(PYTHON_VERSION 3.2) # CACHE STRING)
+				set(PYTHON_VERSION 3.3) # CACHE STRING)
 			else()
 				set(PYTHON_VERSION 3.3) # CACHE STRING)
 			endif()
 
 			set_lib_path(PYTHON "python")
-			STRING(REPLACE "." "" _PYTHON_VERSION_NO_DOTS ${PYTHON_VERSION})
-			set(PYTHON_LIBRARY ${PYTHON}/lib/python${_PYTHON_VERSION_NO_DOTS}.lib) #CACHE FILEPATH
+			string(REPLACE "." "" _PYTHON_VERSION_NO_DOTS ${PYTHON_VERSION})
+			# Use shared libs for vc2008 and vc2010 until we actually have vc2010 libs
+			set(PYTHON_LIBRARY ${LIBDIR}/python/lib/python${_PYTHON_VERSION_NO_DOTS}.lib)
+			# set(PYTHON_LIBRARY ${PYTHON}/lib/python${_PYTHON_VERSION_NO_DOTS}.lib) #CACHE FILEPATH
 			unset(_PYTHON_VERSION_NO_DOTS)
 
 			#Shared includes for both vc2008 and vc2010
@@ -1129,11 +1181,16 @@ elseif(WIN32)
 				debug libboost_date_time-${BOOST_DEBUG_POSTFIX} debug libboost_filesystem-${BOOST_DEBUG_POSTFIX}
 				debug libboost_regex-${BOOST_DEBUG_POSTFIX}
 				debug libboost_system-${BOOST_DEBUG_POSTFIX} debug libboost_thread-${BOOST_DEBUG_POSTFIX})
+			if(WITH_CYCLES_OSL)
+				set(BOOST_LIBRARIES ${BOOST_LIBRARIES}
+					optimized libboost_wave-${BOOST_POSTFIX}
+					debug libboost_wave-${BOOST_DEBUG_POSTFIX})
+			endif()
 			if(WITH_INTERNATIONAL)
 				set(BOOST_LIBRARIES ${BOOST_LIBRARIES}
 					optimized libboost_locale-${BOOST_POSTFIX}
 					debug libboost_locale-${BOOST_DEBUG_POSTFIX})
-			endif(WITH_INTERNATIONAL)
+			endif()
 			set(BOOST_DEFINITIONS "-DBOOST_ALL_NO_LIB")
 		endif()
 			
@@ -1235,18 +1292,14 @@ elseif(WIN32)
 		if(WITH_OPENCOLLADA)
 			set(OPENCOLLADA ${LIBDIR}/opencollada)
 			set(OPENCOLLADA_INCLUDE_DIRS
-				${LIBDIR}/opencollada/include/COLLADAStreamWriter/include
-				${LIBDIR}/opencollada/include/COLLADABaseUtils/include
-				${LIBDIR}/opencollada/include/COLLADAFramework/include
-				${LIBDIR}/opencollada/include/COLLADASaxFrameworkLoader/include
-				${LIBDIR}/opencollada/include/GeneratedSaxParser/include
+				${OPENCOLLADA}/include/opencollada/COLLADAStreamWriter
+				${OPENCOLLADA}/include/opencollada/COLLADABaseUtils
+				${OPENCOLLADA}/include/opencollada/COLLADAFramework
+				${OPENCOLLADA}/include/opencollada/COLLADASaxFrameworkLoader
+				${OPENCOLLADA}/include/opencollada/GeneratedSaxParser
 			)
-			set(OPENCOLLADA_LIBPATH ${OPENCOLLADA}/lib ${OPENCOLLADA}/lib)
-			if(WITH_MINGW64)
-				set(OPENCOLLADA_LIBRARIES OpenCOLLADAStreamWriter OpenCOLLADASaxFrameworkLoader OpenCOLLADAFramework OpenCOLLADABaseUtils GeneratedSaxParser UTF MathMLSolver pcre buffer ftoa xml)
-			else()
-				set(OPENCOLLADA_LIBRARIES OpenCOLLADAStreamWriter OpenCOLLADASaxFrameworkLoader OpenCOLLADAFramework OpenCOLLADABaseUtils GeneratedSaxParser UTF MathMLSolver expat pcre buffer ftoa)
-			endif()
+			set(OPENCOLLADA_LIBPATH ${OPENCOLLADA}/lib/opencollada)
+			set(OPENCOLLADA_LIBRARIES OpenCOLLADAStreamWriter OpenCOLLADASaxFrameworkLoader OpenCOLLADAFramework OpenCOLLADABaseUtils GeneratedSaxParser UTF MathMLSolver buffer ftoa xml)
 			set(PCRE_LIBRARIES pcre)
 		endif()
 
@@ -1319,6 +1372,11 @@ elseif(WIN32)
 					optimized boost_locale-${BOOST_POSTFIX}
 					debug boost_locale-${BOOST_DEBUG_POSTFIX}) 
 			endif()
+			if(WITH_CYCLES_OSL)
+				set(BOOST_LIBRARIES ${BOOST_LIBRARIES}
+					optimized boost_wave-${BOOST_POSTFIX}
+					debug boost_wave-${BOOST_DEBUG_POSTFIX}) 
+			endif()
 			set(BOOST_LIBPATH ${BOOST}/lib)
 			set(BOOST_DEFINITIONS "-DBOOST_ALL_NO_LIB -DBOOST_THREAD_USE_LIB ")
 		endif()
@@ -1328,7 +1386,7 @@ elseif(WIN32)
 			set(OPENIMAGEIO_INCLUDE_DIRS ${OPENIMAGEIO}/include)
 			set(OPENIMAGEIO_LIBRARIES OpenImageIO)
 			set(OPENIMAGEIO_LIBPATH ${OPENIMAGEIO}/lib)
-			set(OPENIMAGEIO_DEFINITIONS)
+			set(OPENIMAGEIO_DEFINITIONS "")
 		endif()
 		
 		if(WITH_LLVM)
@@ -1354,8 +1412,8 @@ elseif(WIN32)
 				LLVMX86Disassembler LLVMX86Info
 				LLVMX86Utils LLVMipa
 				LLVMipo LLVMCore)
-				#imagehelp is needed by LLVM 3.1 on MinGW, check lib\Support\Windows\Signals.inc
-				set(PLATFORM_LINKLIBS "${PLATFORM_LINKLIBS} -limagehlp")
+			#imagehelp is needed by LLVM 3.1 on MinGW, check lib\Support\Windows\Signals.inc
+			set(PLATFORM_LINKLIBS "${PLATFORM_LINKLIBS} -limagehlp")
 			set(LLVM_STATIC YES)
 		endif()
 		
@@ -1420,11 +1478,10 @@ elseif(APPLE)
 	endif()
 
 	if(WITH_PYTHON)
-		if(NOT WITH_PYTHON_MODULE)
-			# we use precompiled libraries for py 3.3 and up by default
-
+		# we use precompiled libraries for py 3.3 and up by default
+		set(PYTHON_VERSION 3.3)
+		if(NOT WITH_PYTHON_MODULE AND NOT WITH_PYTHON_FRAMEWORK)
 			# normally cached but not since we include them with blender
-			set(PYTHON_VERSION 3.3)
 			set(PYTHON_INCLUDE_DIR "${LIBDIR}/python/include/python${PYTHON_VERSION}m")
 			# set(PYTHON_BINARY "${LIBDIR}/python/bin/python${PYTHON_VERSION}") # not used yet
 			set(PYTHON_LIBRARY python${PYTHON_VERSION}m)
@@ -1432,13 +1489,10 @@ elseif(APPLE)
 			# set(PYTHON_LINKFLAGS "-u _PyMac_Error")  # won't  build with this enabled
 		else()
 			# module must be compiled against Python framework
-
-			# normally cached but not since we include them with blender
-			set(PYTHON_VERSION 3.2)
 			set(PYTHON_INCLUDE_DIR "/Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/include/python${PYTHON_VERSION}m")
 			set(PYTHON_BINARY "/Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/bin/python${PYTHON_VERSION}")
 			#set(PYTHON_LIBRARY python${PYTHON_VERSION})
-			set(PYTHON_LIBPATH "/Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/lib/python${PYTHON_VERSION}/config-3.2m")
+			set(PYTHON_LIBPATH "/Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/lib/python${PYTHON_VERSION}/config-${PYTHON_VERSION}m")
 			#set(PYTHON_LINKFLAGS "-u _PyMac_Error -framework Python")  # won't  build with this enabled
 		endif()
 		
@@ -1521,7 +1575,8 @@ elseif(APPLE)
 			endif()
 
 			if(WITH_INPUT_NDOF)
-				set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -weak_framework 3DconnexionClient")
+				set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -F/Library/Frameworks -weak_framework 3DconnexionClient")
+				set(NDOF_INCLUDE_DIRS /Library/Frameworks/3DconnexionClient.framework/Headers )
 			endif()
 		endif()
 
@@ -1535,8 +1590,8 @@ elseif(APPLE)
 		set(WITH_INPUT_NDOF OFF)  # unsupported
 	endif()
 	
-	if(WITH_PYTHON_MODULE)
-		set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} /Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/python")# force cmake to link right framework
+	if(WITH_PYTHON_MODULE OR WITH_PYTHON_FRAMEWORK)
+		set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} /Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/Python")# force cmake to link right framework
 	endif()
 	
 	if(WITH_OPENCOLLADA)
@@ -1584,7 +1639,7 @@ elseif(APPLE)
 		set(TIFF_LIBPATH ${TIFF}/lib)
 	endif()
 
-	if (WITH_INPUT_NDOF)
+	if(WITH_INPUT_NDOF)
 		# linker needs "-weak_framework 3DconnexionClient"
 	endif()
 
@@ -1592,7 +1647,7 @@ elseif(APPLE)
 		set(BOOST ${LIBDIR}/boost)
 		set(BOOST_INCLUDE_DIR ${BOOST}/include)
 		set(BOOST_LIBRARIES boost_date_time-mt boost_filesystem-mt boost_regex-mt boost_system-mt boost_thread-mt boost_wave-mt)
-		if (WITH_INTERNATIONAL)
+		if(WITH_INTERNATIONAL)
 			list(APPEND BOOST_LIBRARIES boost_locale-mt)
 			set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -liconv") # boost_locale needs it !
 		endif()
@@ -1837,6 +1892,20 @@ else()
 	set(GLEW_INCLUDE_PATH "${CMAKE_SOURCE_DIR}/extern/glew/include")
 endif()
 
+
+#-----------------------------------------------------------------------------
+# Configure Bullet
+
+if(WITH_BULLET AND WITH_SYSTEM_BULLET)
+	find_package(Bullet)
+	if(NOT BULLET_FOUND)
+		set(WITH_BULLET OFF)
+	endif()
+else()
+	set(BULLET_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/extern/bullet2/src")
+	# set(BULLET_LIBRARIES "")
+endif()
+
 #-----------------------------------------------------------------------------
 # Configure Python.
 
@@ -1870,8 +1939,14 @@ if(CMAKE_COMPILER_IS_GNUCC)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_NO_DIV_BY_ZERO -Wno-div-by-zero)
 
 	# gcc 4.2 gives annoying warnings on every file with this
-	if (NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "4.3")
+	if(NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "4.3")
 		ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_UNINITIALIZED -Wuninitialized)
+	endif()
+
+	# versions before gcc4.6 give many BLI_math warnings
+	if(NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "4.6")
+		ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_REDUNDANT_DECLS       -Wredundant-decls)
+		ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_REDUNDANT_DECLS -Wredundant-decls)
 	endif()
 
 	# disable because it gives warnings for printf() & friends.
@@ -1890,7 +1965,7 @@ if(CMAKE_COMPILER_IS_GNUCC)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_DIV_BY_ZERO -Wno-div-by-zero)
 
 	# gcc 4.2 gives annoying warnings on every file with this
-	if (NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "4.3")
+	if(NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "4.3")
 		ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_UNINITIALIZED -Wuninitialized)
 	endif()
 
@@ -1912,20 +1987,31 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
 	# strange, clang complains these are not supported, but then yses them.
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ALL -Wall)
+	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_DECLARATION_AFTER_STATEMENT -Werror=declaration-after-statement)
+	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_IMPLICIT_FUNCTION_DECLARATION -Werror=implicit-function-declaration)
+	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_ERROR_RETURN_TYPE  -Werror=return-type)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_NO_AUTOLOGICAL_COMPARE -Wno-tautological-compare)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_NO_UNKNOWN_PRAGMAS -Wno-unknown-pragmas)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_NO_CHAR_SUBSCRIPTS -Wno-char-subscripts)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_STRICT_PROTOTYPES  -Wstrict-prototypes)
 	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_MISSING_PROTOTYPES -Wmissing-prototypes)
-	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_UNUSED_MACROS      -Wunused-macros)
+	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_UNUSED_PARAMETER -Wunused-parameter)
 
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_ALL -Wall)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_AUTOLOGICAL_COMPARE -Wno-tautological-compare)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_UNKNOWN_PRAGMAS     -Wno-unknown-pragmas)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_CHAR_SUBSCRIPTS     -Wno-char-subscripts)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_OVERLOADED_VIRTUAL  -Wno-overloaded-virtual)  # we get a lot of these, if its a problem a dev needs to look into it.
+	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_SIGN_COMPARE        -Wno-sign-compare)
 	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_INVALID_OFFSETOF    -Wno-invalid-offsetof)
-	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_UNUSED_MACROS          -Wunused-macros)
+
+	# gives too many unfixable warnings
+	# ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_UNUSED_MACROS      -Wunused-macros)
+	# ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_UNUSED_MACROS          -Wunused-macros)
+
+	# flags to undo strict flags
+	ADD_CHECK_C_COMPILER_FLAG(CC_REMOVE_STRICT_FLAGS C_WARN_NO_UNUSED_PARAMETER -Wno-unused-parameter)
+	ADD_CHECK_C_COMPILER_FLAG(CC_REMOVE_STRICT_FLAGS C_WARN_NO_UNUSED_MACROS    -Wno-unused-macros)
 
 elseif(CMAKE_C_COMPILER_ID MATCHES "Intel")
 
@@ -1963,7 +2049,7 @@ if(WITH_PYTHON)
 
 	if(WITH_PYTHON_INSTALL AND WITH_PYTHON_INSTALL_NUMPY)
 		# set but invalid
-        # -- disabled until we make numpy bundled with blender - campbell
+		# -- disabled until we make numpy bundled with blender - campbell
 		if((NOT ${PYTHON_NUMPY_PATH} STREQUAL "") AND (NOT ${PYTHON_NUMPY_PATH} MATCHES NOTFOUND))
 #			if(NOT EXISTS "${PYTHON_NUMPY_PATH}/numpy")
 #				message(WARNING "PYTHON_NUMPY_PATH is invalid, numpy not found in '${PYTHON_NUMPY_PATH}' "
@@ -2005,6 +2091,13 @@ if(WITH_PYTHON)
 			unset(_PY_VER_MAJOR)
 		endif()
 	endif()
+endif()
+
+if(WITH_GCC_MUDFLAP)
+	set(PLATFORM_CFLAGS "${PLATFORM_CFLAGS} -fmudflapth -funwind-tables")
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lpthread -lmudflapth -rdynamic")
+	ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS     C_WARN_NO_ERROR_MUDFLAP   -Wno-error=mudflap)
+	ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_NO_ERROR_MUDFLAP -Wno-error=mudflap)
 endif()
 
 # Include warnings first, so its possible to disable them with user defined flags
@@ -2117,6 +2210,7 @@ if(FIRST_RUN)
 	info_cfg_option(WITH_OPENAL)
 	info_cfg_option(WITH_SDL)
 	info_cfg_option(WITH_JACK)
+	info_cfg_option(WITH_JACK_DYNLOAD)
 	info_cfg_option(WITH_CODEC_AVI)
 	info_cfg_option(WITH_CODEC_FFMPEG)
 	info_cfg_option(WITH_CODEC_SNDFILE)
@@ -2130,12 +2224,18 @@ if(FIRST_RUN)
 	info_cfg_option(WITH_PYTHON_INSTALL_NUMPY)
 	info_cfg_option(WITH_PYTHON_MODULE)
 	info_cfg_option(WITH_PYTHON_SAFETY)
+	if(APPLE)
+		info_cfg_option(WITH_PYTHON_FRAMEWORK)
+	endif()
 
 	info_cfg_text("Modifiers:")
 	info_cfg_option(WITH_MOD_BOOLEAN)
 	info_cfg_option(WITH_MOD_REMESH)
 	info_cfg_option(WITH_MOD_FLUID)
 	info_cfg_option(WITH_MOD_OCEANSIM)
+
+	# debug
+	message(STATUS "HAVE_STDBOOL_H = ${HAVE_STDBOOL_H}")
 
 	info_cfg_text("")
 

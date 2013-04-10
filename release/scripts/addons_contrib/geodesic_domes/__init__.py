@@ -20,7 +20,7 @@ bl_info = {
     "name": "Geodesic Domes",
     "author": "PKHG , Meta Androcto, Kilon original for 2.49 from Andy Houston",
     "version": (0,2,3),
-    "blender": (2, 6, 1),
+    "blender": (2, 61, 0),
     "location": "View3D > UI > Geodesic...",
     "description": "Choice for objects",
     "warning": "not yet finished",

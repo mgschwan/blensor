@@ -38,14 +38,18 @@
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "BKE_context.h"
 #include "BKE_screen.h"
 
-#include "ED_screen.h"
-#include "ED_util.h"
+#include "RNA_access.h"
 
 #include "WM_types.h"
 #include "WM_api.h"
+
+#include "ED_screen.h"
+#include "ED_util.h"
 
 #include "UI_interface.h"
 #include "UI_resources.h"
@@ -197,16 +201,16 @@ static void clip_panel_operator_redo_header(const bContext *C, Panel *pa)
 	wmOperator *op = WM_operator_last_redo(C);
 
 	if (op)
-		BLI_strncpy(pa->drawname, op->type->name, sizeof(pa->drawname));
+		BLI_strncpy(pa->drawname, RNA_struct_ui_name(op->type->srna), sizeof(pa->drawname));
 	else
-		BLI_strncpy(pa->drawname, "Operator", sizeof(pa->drawname));
+		BLI_strncpy(pa->drawname, IFACE_("Operator"), sizeof(pa->drawname));
 }
 
 static void clip_panel_operator_redo_operator(const bContext *C, Panel *pa, wmOperator *op)
 {
 	if (op->type->flag & OPTYPE_MACRO) {
 		for (op = op->macro.first; op; op = op->next) {
-			uiItemL(pa->layout, op->type->name, ICON_NONE);
+			uiItemL(pa->layout, RNA_struct_ui_name(op->type->srna), ICON_NONE);
 			clip_panel_operator_redo_operator(C, pa, op);
 		}
 	}
@@ -219,23 +223,32 @@ static void clip_panel_operator_redo_operator(const bContext *C, Panel *pa, wmOp
 static void clip_panel_operator_redo(const bContext *C, Panel *pa)
 {
 	wmOperator *op = WM_operator_last_redo(C);
-	uiBlock *block;
+	ARegion *ar;
+	ARegion *ar1;
 
 	if (op == NULL)
 		return;
 
-	if (WM_operator_poll((bContext *)C, op->type) == 0)
-		return;
+	/* keep in sync with logic in ED_undo_operator_repeat() */
+	ar = CTX_wm_region(C);
+	ar1 = BKE_area_find_region_type(CTX_wm_area(C), RGN_TYPE_WINDOW);
+	if (ar1)
+		CTX_wm_region_set((bContext *)C, ar1);
 
-	block = uiLayoutGetBlock(pa->layout);
+	if (WM_operator_poll((bContext *)C, op->type)) {
+		uiBlock *block = uiLayoutGetBlock(pa->layout);
 
-	if (!WM_operator_check_ui_enabled(C, op->type->name))
-		uiLayoutSetEnabled(pa->layout, FALSE);
+		if (!WM_operator_check_ui_enabled(C, op->type->name))
+			uiLayoutSetEnabled(pa->layout, FALSE);
 
-	/* note, blockfunc is a default but->func, use Handle func to allow button callbacks too */
-	uiBlockSetHandleFunc(block, ED_undo_operator_repeat_cb_evt, op);
+		/* note, blockfunc is a default but->func, use Handle func to allow button callbacks too */
+		uiBlockSetHandleFunc(block, ED_undo_operator_repeat_cb_evt, op);
 
-	clip_panel_operator_redo_operator(C, pa, op);
+		clip_panel_operator_redo_operator(C, pa, op);
+	}
+
+	/* set region back */
+	CTX_wm_region_set((bContext *)C, ar);
 }
 
 void ED_clip_tool_props_register(ARegionType *art)
@@ -244,7 +257,8 @@ void ED_clip_tool_props_register(ARegionType *art)
 
 	pt = MEM_callocN(sizeof(PanelType), "spacetype clip panel last operator");
 	strcpy(pt->idname, "CLIP_PT_last_operator");
-	strcpy(pt->label, "Operator");
+	strcpy(pt->label, N_("Operator"));
+	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw_header = clip_panel_operator_redo_header;
 	pt->draw = clip_panel_operator_redo;
 	BLI_addtail(&art->paneltypes, pt);

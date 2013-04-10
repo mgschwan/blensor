@@ -43,9 +43,9 @@
 #include "BLI_bitmap.h"
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_pbvh.h"
 #include "BLI_utildefines.h"
 
+#include "BKE_pbvh.h"
 #include "BKE_ccg.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_mesh.h"
@@ -310,7 +310,7 @@ MultiresModifierData *find_multires_modifier_before(Scene *scene, ModifierData *
 /* used for applying scale on mdisps layer and syncing subdivide levels when joining objects
  * use_first - return first multires modifier if all multires'es are disabled
  */
-MultiresModifierData *get_multires_modifier(Scene *scene, Object *ob, int use_first)
+MultiresModifierData *get_multires_modifier(Scene *scene, Object *ob, bool use_first)
 {
 	ModifierData *md;
 	MultiresModifierData *mmd = NULL, *firstmmd = NULL;
@@ -379,7 +379,7 @@ void multires_force_update(Object *ob)
 			ob->derivedFinal = NULL;
 		}
 		if (ob->sculpt && ob->sculpt->pbvh) {
-			BLI_pbvh_free(ob->sculpt->pbvh);
+			BKE_pbvh_free(ob->sculpt->pbvh);
 			ob->sculpt->pbvh = NULL;
 		}
 	}
@@ -1407,7 +1407,7 @@ void multires_stitch_grids(Object *ob)
 		int totface;
 
 		if (ccgdm->pbvh) {
-			BLI_pbvh_get_grid_updates(ccgdm->pbvh, 0, (void ***)&faces, &totface);
+			BKE_pbvh_get_grid_updates(ccgdm->pbvh, 0, (void ***)&faces, &totface);
 
 			if (totface) {
 				ccgSubSurf_stitchFaces(ccgdm->ss, 0, faces, totface);
@@ -1559,7 +1559,7 @@ static void old_mdisps_convert(MFace *mface, MDisps *mdisp)
 				if (S == 1) { (*out)[1] = -(*out)[1]; }
 				else if (S == 2) { SWAP(float, (*out)[0], (*out)[1]); }
 				else if (S == 3) { (*out)[0] = -(*out)[0]; }
-				else if (S == 0) { SWAP(float, (*out)[0], (*out)[1]); (*out)[0] = -(*out)[0]; (*out)[1] = -(*out)[1]; };
+				else if (S == 0) { SWAP(float, (*out)[0], (*out)[1]); (*out)[0] = -(*out)[0]; (*out)[1] = -(*out)[1]; }
 			}
 		}
 	}

@@ -87,6 +87,7 @@ public:
 	    const GHOST_TEmbedderWindowID parentWindow,
 	    GHOST_TDrawingContextType type = GHOST_kDrawingContextTypeNone,
 	    const bool stereoVisual = false,
+	    const bool exclusive = false,
 	    const GHOST_TUns16 numOfAASamples = 0
 	    );
 
@@ -196,32 +197,9 @@ public:
 	getXWindow(
 	    );
 #ifdef WITH_X11_XINPUT
-	class XTablet
+	GHOST_TabletData *GetTabletData()
 	{
-public:
-		GHOST_TabletData CommonData;
-
-		XDevice *StylusDevice;
-		XDevice *EraserDevice;
-
-		XID StylusID, EraserID;
-
-		int MotionEvent;
-		int ProxInEvent;
-		int ProxOutEvent;
-
-		int PressureLevels;
-		int XtiltLevels, YtiltLevels;
-	};
-
-	XTablet& GetXTablet()
-	{
-		return m_xtablet;
-	}
-
-	const GHOST_TabletData *GetTabletData()
-	{
-		return &m_xtablet.CommonData;
+		return &m_tabletData;
 	}
 #else // WITH_X11_XINPUT
 	const GHOST_TabletData *GetTabletData()
@@ -252,6 +230,10 @@ public:
 	 */
 	bool m_post_init;
 	GHOST_TWindowState m_post_state;
+
+	GHOST_TSuccess beginFullScreen() const;
+
+	GHOST_TSuccess endFullScreen() const;
 
 protected:
 	/**
@@ -387,8 +369,7 @@ private:
 #endif
 
 #ifdef WITH_X11_XINPUT
-	/* Tablet devices */
-	XTablet m_xtablet;
+	GHOST_TabletData m_tabletData;
 #endif
 
 #if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)

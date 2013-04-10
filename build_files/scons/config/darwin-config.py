@@ -137,7 +137,7 @@ else:
     BF_PYTHON_INC = '${BF_PYTHON}${BF_PYTHON_VERSION}/include/python${BF_PYTHON_VERSION}m'
     BF_PYTHON_BINARY = '${BF_PYTHON}${BF_PYTHON_VERSION}/bin/python${BF_PYTHON_VERSION}'
     #BF_PYTHON_LIB = ''
-    BF_PYTHON_LIBPATH = '${BF_PYTHON}${BF_PYTHON_VERSION}/lib/python${BF_PYTHON_VERSION}/config-3.2m'
+    BF_PYTHON_LIBPATH = '${BF_PYTHON}${BF_PYTHON_VERSION}/lib/python${BF_PYTHON_VERSION}/config-${BF_PYTHON_VERSION}m'
 
 WITH_BF_OPENAL = True
 #different lib must be used  following version of gcc
@@ -165,7 +165,7 @@ BF_CXX_LIB_STATIC = '${BF_CXX}/lib/libstdc++.a'
 WITH_BF_JACK = True
 BF_JACK = '/Library/Frameworks/Jackmp.framework'
 BF_JACK_INC = '${BF_JACK}/headers'
-BF_JACK_LIB = 'jack'
+#BF_JACK_LIB = 'jack' # not used due framework
 BF_JACK_LIBPATH = '${BF_JACK}'
 
 WITH_BF_SNDFILE = True
@@ -315,7 +315,10 @@ BF_BOOST_LIBPATH = '${BF_BOOST}/lib'
 
 WITH_BF_CYCLES_CUDA_BINARIES = False
 BF_CYCLES_CUDA_NVCC = '/usr/local/cuda/bin/nvcc'
-BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_13', 'sm_20', 'sm_21']
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_20', 'sm_21', 'sm_30']
+
+#Freestyle
+WITH_BF_FREESTYLE = True
 
 #Ray trace optimization
 if MACOSX_ARCHITECTURE == 'x86_64' or MACOSX_ARCHITECTURE == 'i386':

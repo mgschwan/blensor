@@ -22,6 +22,8 @@
 
 /** \file blender/bmesh/operators/bmo_dupe.c
  *  \ingroup bmesh
+ *
+ * Duplicate, Split, Spint operators.
  */
 
 #include "MEM_guardedalloc.h"
@@ -124,7 +126,6 @@ static BMEdge *copy_edge(BMOperator *op,
  *
  * Copy an existing face from one bmesh to another.
  */
-
 static BMFace *copy_face(BMOperator *op,
                          BMOpSlot *slot_facemap_out,
                          BMesh *source_mesh,
@@ -183,7 +184,6 @@ static BMFace *copy_face(BMOperator *op,
  *
  * Internal Copy function.
  */
-
 static void bmo_mesh_copy(BMOperator *op, BMesh *bm_src, BMesh *bm_dst)
 {
 
@@ -213,13 +213,13 @@ static void bmo_mesh_copy(BMOperator *op, BMesh *bm_src, BMesh *bm_dst)
 		    !BMO_elem_flag_test(bm_src, v, DUPE_DONE))
 		{
 			BMIter iter;
-			int isolated = 1;
+			bool isolated = true;
 
 			v2 = copy_vertex(bm_src, v, bm_dst, vhash);
 
 			BM_ITER_ELEM (f, &iter, v, BM_FACES_OF_VERT) {
 				if (BMO_elem_flag_test(bm_src, f, DUPE_INPUT)) {
-					isolated = 0;
+					isolated = false;
 					break;
 				}
 			}
@@ -227,7 +227,7 @@ static void bmo_mesh_copy(BMOperator *op, BMesh *bm_src, BMesh *bm_dst)
 			if (isolated) {
 				BM_ITER_ELEM (e, &iter, v, BM_EDGES_OF_VERT) {
 					if (BMO_elem_flag_test(bm_src, e, DUPE_INPUT)) {
-						isolated = 0;
+						isolated = false;
 						break;
 					}
 				}
@@ -320,7 +320,6 @@ static void bmo_mesh_copy(BMOperator *op, BMesh *bm_src, BMesh *bm_dst)
  * BMOP_DUPE_ENEW: Buffer containing pointers to the new mesh edges
  * BMOP_DUPE_FNEW: Buffer containing pointers to the new mesh faces
  */
-
 void bmo_duplicate_exec(BMesh *bm, BMOperator *op)
 {
 	BMOperator *dupeop = op;
@@ -378,15 +377,14 @@ void BMO_dupe_from_flag(BMesh *bm, int htype, const char hflag)
  * BMOP_DUPE_EOUTPUT: Buffer containing pointers to the split mesh edges
  * BMOP_DUPE_FOUTPUT: Buffer containing pointers to the split mesh faces
  */
-
-#define SPLIT_INPUT 1
-
 void bmo_split_exec(BMesh *bm, BMOperator *op)
 {
+#define SPLIT_INPUT 1
+
 	BMOperator *splitop = op;
 	BMOperator dupeop;
 	BMOperator delop;
-	const short use_only_faces = BMO_slot_bool_get(op->slots_in, "use_only_faces");
+	const bool use_only_faces = BMO_slot_bool_get(op->slots_in, "use_only_faces");
 
 	/* initialize our sub-operator */
 	BMO_op_init(bm, &dupeop, op->flag, "duplicate");
@@ -455,6 +453,8 @@ void bmo_split_exec(BMesh *bm, BMOperator *op)
 	/* cleanup */
 	BMO_op_finish(bm, &delop);
 	BMO_op_finish(bm, &dupeop);
+
+#undef SPLIT_INPUT
 }
 
 
@@ -478,12 +478,11 @@ void bmo_delete_exec(BMesh *bm, BMOperator *op)
  * Extrude or duplicate geometry a number of times,
  * rotating and possibly translating after each step
  */
-
 void bmo_spin_exec(BMesh *bm, BMOperator *op)
 {
 	BMOperator dupop, extop;
 	float cent[3], dvec[3];
-	float axis[3] = {0.0f, 0.0f, 1.0f};
+	float axis[3];
 	float rmat[3][3];
 	float phi;
 	int steps, do_dupli, a, usedvec;

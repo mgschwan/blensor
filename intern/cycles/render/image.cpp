@@ -85,10 +85,24 @@ bool ImageManager::set_animation_frame_update(int frame)
 	return false;
 }
 
-bool ImageManager::is_float_image(const string& filename)
+bool ImageManager::is_float_image(const string& filename, void *builtin_data, bool& is_linear)
 {
-	ImageInput *in = ImageInput::create(filename);
 	bool is_float = false;
+	is_linear = false;
+
+	if(builtin_data) {
+		if(builtin_image_info_cb) {
+			int width, height, channels;
+			builtin_image_info_cb(filename, builtin_data, is_float, width, height, channels);
+		}
+
+		if(is_float)
+			is_linear = true;
+
+		return is_float;
+	}
+
+	ImageInput *in = ImageInput::create(filename);
 
 	if(in) {
 		ImageSpec spec;
@@ -96,13 +110,29 @@ bool ImageManager::is_float_image(const string& filename)
 		if(in->open(filename, spec)) {
 			/* check the main format, and channel formats;
 			 * if any take up more than one byte, we'll need a float texture slot */
-			if(spec.format.basesize() > 1)
+			if(spec.format.basesize() > 1) {
 				is_float = true;
+				is_linear = true;
+			}
 
 			for(size_t channel = 0; channel < spec.channelformats.size(); channel++) {
-				if(spec.channelformats[channel].basesize() > 1)
+				if(spec.channelformats[channel].basesize() > 1) {
 					is_float = true;
+					is_linear = true;
+				}
 			}
+
+			/* basic color space detection, not great but better than nothing
+			 * before we do OpenColorIO integration */
+			if(is_float) {
+				string colorspace = spec.get_string_attribute("oiio:ColorSpace");
+
+				is_linear = !(colorspace == "sRGB" ||
+				              colorspace == "GammaCorrected" ||
+							  strcmp(in->format_name(), "png") == 0);
+			}
+			else
+				is_linear = false;
 
 			in->close();
 		}
@@ -113,13 +143,13 @@ bool ImageManager::is_float_image(const string& filename)
 	return is_float;
 }
 
-int ImageManager::add_image(const string& filename, bool animated, bool& is_float)
+int ImageManager::add_image(const string& filename, void *builtin_data, bool animated, bool& is_float, bool& is_linear)
 {
 	Image *img;
 	size_t slot;
 
 	/* load image info and find out if we need a float texture */
-	is_float = (pack_images)? false: is_float_image(filename);
+	is_float = (pack_images)? false: is_float_image(filename, builtin_data, is_linear);
 
 	if(is_float) {
 		/* find existing image */
@@ -150,6 +180,7 @@ int ImageManager::add_image(const string& filename, bool animated, bool& is_floa
 		/* add new image */
 		img = new Image();
 		img->filename = filename;
+		img->builtin_data = builtin_data;
 		img->need_load = true;
 		img->animated = animated;
 		img->users = 1;
@@ -184,6 +215,7 @@ int ImageManager::add_image(const string& filename, bool animated, bool& is_floa
 		/* add new image */
 		img = new Image();
 		img->filename = filename;
+		img->builtin_data = builtin_data;
 		img->need_load = true;
 		img->animated = animated;
 		img->users = 1;
@@ -197,12 +229,12 @@ int ImageManager::add_image(const string& filename, bool animated, bool& is_floa
 	return slot;
 }
 
-void ImageManager::remove_image(const string& filename)
+void ImageManager::remove_image(const string& filename, void *builtin_data)
 {
 	size_t slot;
 
 	for(slot = 0; slot < images.size(); slot++) {
-		if(images[slot] && images[slot]->filename == filename) {
+		if(images[slot] && images[slot]->filename == filename && images[slot]->builtin_data == builtin_data) {
 			/* decrement user count */
 			images[slot]->users--;
 			assert(images[slot]->users >= 0);
@@ -220,7 +252,7 @@ void ImageManager::remove_image(const string& filename)
 	if(slot == images.size()) {
 		/* see if it's in a float texture slot */
 		for(slot = 0; slot < float_images.size(); slot++) {
-			if(float_images[slot] && float_images[slot]->filename == filename) {
+			if(float_images[slot] && float_images[slot]->filename == filename && float_images[slot]->builtin_data == builtin_data) {
 				/* decrement user count */
 				float_images[slot]->users--;
 				assert(float_images[slot]->users >= 0);
@@ -242,27 +274,43 @@ bool ImageManager::file_load_image(Image *img, device_vector<uchar4>& tex_img)
 	if(img->filename == "")
 		return false;
 
-	/* load image from file through OIIO */
-	ImageInput *in = ImageInput::create(img->filename);
+	ImageInput *in = NULL;
+	int width, height, components;
 
-	if(!in)
-		return false;
+	if(!img->builtin_data) {
+		/* load image from file through OIIO */
+		in = ImageInput::create(img->filename);
 
-	ImageSpec spec;
+		if(!in)
+			return false;
 
-	if(!in->open(img->filename, spec)) {
-		delete in;
-		return false;
+		ImageSpec spec;
+
+		if(!in->open(img->filename, spec)) {
+			delete in;
+			return false;
+		}
+
+		width = spec.width;
+		height = spec.height;
+		components = spec.nchannels;
+	}
+	else {
+		/* load image using builtin images callbacks */
+		if(!builtin_image_info_cb || !builtin_image_pixels_cb)
+			return false;
+
+		bool is_float;
+		builtin_image_info_cb(img->filename, img->builtin_data, is_float, width, height, components);
 	}
 
 	/* we only handle certain number of components */
-	int width = spec.width;
-	int height = spec.height;
-	int components = spec.nchannels;
-
 	if(!(components == 1 || components == 3 || components == 4)) {
-		in->close();
-		delete in;
+		if(in) {
+			in->close();
+			delete in;
+		}
+
 		return false;
 	}
 
@@ -270,14 +318,19 @@ bool ImageManager::file_load_image(Image *img, device_vector<uchar4>& tex_img)
 	uchar *pixels = (uchar*)tex_img.resize(width, height);
 	int scanlinesize = width*components*sizeof(uchar);
 
-	in->read_image(TypeDesc::UINT8,
-		(uchar*)pixels + (height-1)*scanlinesize,
-		AutoStride,
-		-scanlinesize,
-		AutoStride);
+	if(in) {
+		in->read_image(TypeDesc::UINT8,
+			(uchar*)pixels + (height-1)*scanlinesize,
+			AutoStride,
+			-scanlinesize,
+			AutoStride);
 
-	in->close();
-	delete in;
+		in->close();
+		delete in;
+	}
+	else {
+		builtin_image_pixels_cb(img->filename, img->builtin_data, pixels);
+	}
 
 	if(components == 3) {
 		for(int i = width*height-1; i >= 0; i--) {
@@ -304,27 +357,42 @@ bool ImageManager::file_load_float_image(Image *img, device_vector<float4>& tex_
 	if(img->filename == "")
 		return false;
 
-	/* load image from file through OIIO */
-	ImageInput *in = ImageInput::create(img->filename);
+	ImageInput *in = NULL;
+	int width, height, components;
 
-	if(!in)
-		return false;
+	if(!img->builtin_data) {
+		/* load image from file through OIIO */
+		in = ImageInput::create(img->filename);
 
-	ImageSpec spec;
+		if(!in)
+			return false;
 
-	if(!in->open(img->filename, spec)) {
-		delete in;
-		return false;
+		ImageSpec spec;
+
+		if(!in->open(img->filename, spec)) {
+			delete in;
+			return false;
+		}
+
+		/* we only handle certain number of components */
+		width = spec.width;
+		height = spec.height;
+		components = spec.nchannels;
+	}
+	else {
+		/* load image using builtin images callbacks */
+		if(!builtin_image_info_cb || !builtin_image_float_pixels_cb)
+			return false;
+
+		bool is_float;
+		builtin_image_info_cb(img->filename, img->builtin_data, is_float, width, height, components);
 	}
 
-	/* we only handle certain number of components */
-	int width = spec.width;
-	int height = spec.height;
-	int components = spec.nchannels;
-
 	if(!(components == 1 || components == 3 || components == 4)) {
-		in->close();
-		delete in;
+		if(in) {
+			in->close();
+			delete in;
+		}
 		return false;
 	}
 
@@ -332,14 +400,19 @@ bool ImageManager::file_load_float_image(Image *img, device_vector<float4>& tex_
 	float *pixels = (float*)tex_img.resize(width, height);
 	int scanlinesize = width*components*sizeof(float);
 
-	in->read_image(TypeDesc::FLOAT,
-		(uchar*)pixels + (height-1)*scanlinesize,
-		AutoStride,
-		-scanlinesize,
-		AutoStride);
+	if(in) {
+		in->read_image(TypeDesc::FLOAT,
+			(uchar*)pixels + (height-1)*scanlinesize,
+			AutoStride,
+			-scanlinesize,
+			AutoStride);
 
-	in->close();
-	delete in;
+		in->close();
+		delete in;
+	}
+	else {
+		builtin_image_float_pixels_cb(img->filename, img->builtin_data, pixels);
+	}
 
 	if(components == 3) {
 		for(int i = width*height-1; i >= 0; i--) {

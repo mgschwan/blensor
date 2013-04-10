@@ -28,6 +28,7 @@
 
 #include "DNA_scene_types.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_path_util.h"
 
 #include "RNA_define.h"
@@ -137,7 +138,7 @@ static void engine_update_script_node(RenderEngine *engine, struct bNodeTree *nt
 	FunctionRNA *func;
 
 	RNA_pointer_create(NULL, engine->type->ext.srna, engine, &ptr);
-	RNA_pointer_create((ID*)ntree, &RNA_Node, node, &nodeptr);
+	RNA_pointer_create((ID *)ntree, &RNA_Node, node, &nodeptr);
 	func = &rna_RenderEngine_update_script_node_func;
 
 	RNA_parameter_list_create(&list, &ptr, func);
@@ -196,7 +197,7 @@ static StructRNA *rna_RenderEngine_register(Main *bmain, ReportList *reports, vo
 	et = MEM_callocN(sizeof(RenderEngineType), "python render engine");
 	memcpy(et, &dummyet, sizeof(dummyet));
 
-	et->ext.srna = RNA_def_struct(&BLENDER_RNA, et->idname, "RenderEngine");
+	et->ext.srna = RNA_def_struct_ptr(&BLENDER_RNA, et->idname, &RNA_RenderEngine);
 	et->ext.data = data;
 	et->ext.call = call;
 	et->ext.free = free;
@@ -223,6 +224,20 @@ static StructRNA *rna_RenderEngine_refine(PointerRNA *ptr)
 {
 	RenderEngine *engine = (RenderEngine *)ptr->data;
 	return (engine->type && engine->type->ext.srna) ? engine->type->ext.srna : &RNA_RenderEngine;
+}
+
+static PointerRNA rna_RenderEngine_render_get(PointerRNA *ptr)
+{
+	RenderEngine *engine = (RenderEngine *)ptr->data;
+
+	if (engine->re) {
+		RenderData *r = RE_engine_get_render_data(engine->re);
+
+		return rna_pointer_inherit_refine(ptr, &RNA_RenderSettings, r);
+	}
+	else {
+		return rna_pointer_inherit_refine(ptr, &RNA_RenderSettings, NULL);
+	}
 }
 
 static void rna_RenderResult_layers_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
@@ -299,19 +314,19 @@ static void rna_def_render_engine(BlenderRNA *brna)
 	/* final render callbacks */
 	func = RNA_def_function(srna, "update", NULL);
 	RNA_def_function_ui_description(func, "Export scene data for render");
-	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
+	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL | FUNC_ALLOW_WRITE);
 	RNA_def_pointer(func, "data", "BlendData", "", "");
 	RNA_def_pointer(func, "scene", "Scene", "", "");
 
 	func = RNA_def_function(srna, "render", NULL);
 	RNA_def_function_ui_description(func, "Render scene into an image");
-	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
+	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL | FUNC_ALLOW_WRITE);
 	RNA_def_pointer(func, "scene", "Scene", "", "");
 
 	/* viewport render callbacks */
 	func = RNA_def_function(srna, "view_update", NULL);
 	RNA_def_function_ui_description(func, "Update on data changes for viewport render");
-	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL);
+	RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL | FUNC_ALLOW_WRITE);
 	RNA_def_pointer(func, "context", "Context", "", "");
 
 	func = RNA_def_function(srna, "view_draw", NULL);
@@ -406,13 +421,22 @@ static void rna_def_render_engine(BlenderRNA *brna)
 	RNA_def_property_int_sdna(prop, NULL, "resolution_y");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
+	/* Render Data */
+	prop = RNA_def_property(srna, "render", PROP_POINTER, PROP_NONE);
+	RNA_def_property_struct_type(prop, "RenderSettings");
+	RNA_def_property_pointer_funcs(prop, "rna_RenderEngine_render_get", NULL, NULL, NULL);
+	RNA_def_property_ui_text(prop, "Render Data", "");
+
+	prop = RNA_def_property(srna, "use_highlight_tiles", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RE_ENGINE_HIGHLIGHT_TILES);
+
 	/* registration */
 
 	prop = RNA_def_property(srna, "bl_idname", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "type->idname");
 	RNA_def_property_flag(prop, PROP_REGISTER | PROP_NEVER_CLAMP);
 
-	prop = RNA_def_property(srna, "bl_label", PROP_STRING, PROP_TRANSLATE);
+	prop = RNA_def_property(srna, "bl_label", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "type->name");
 	RNA_def_property_flag(prop, PROP_REGISTER);
 

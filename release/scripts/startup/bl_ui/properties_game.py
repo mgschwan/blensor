@@ -199,6 +199,7 @@ class PHYSICS_PT_game_physics(PhysicsButtonsPanel, Panel):
             col = split.column()
             col.prop(game, "collision_mask")
 
+
 class PHYSICS_PT_game_collision_bounds(PhysicsButtonsPanel, Panel):
     bl_label = "Collision Bounds"
     COMPAT_ENGINES = {'BLENDER_GAME'}
@@ -402,13 +403,18 @@ class RENDER_PT_game_system(RenderButtonsPanel, Panel):
         layout = self.layout
 
         gs = context.scene.game_settings
+        col = layout.column()
+        row = col.row()
+        col = row.column()
+        col.prop(gs, "use_frame_rate")
+        col.prop(gs, "restrict_animation_updates")
+        col.prop(gs, "use_material_caching")
+        col = row.column()
+        col.prop(gs, "use_display_lists")
+        col.active = gs.raster_storage != 'VERTEX_BUFFER_OBJECT'
 
         row = layout.row()
-        row.prop(gs, "use_frame_rate")
-        row.prop(gs, "restrict_animation_updates")
-
-        row = layout.row()
-        row.prop(gs, "use_display_lists")
+        row.prop(gs, "raster_storage")
 
         row = layout.row()
         row.label("Exit Key")
@@ -615,7 +621,9 @@ class WORLD_PT_game_physics(WorldButtonsPanel, Panel):
 
         layout.prop(gs, "physics_engine")
         if gs.physics_engine != 'NONE':
-            layout.prop(gs, "physics_gravity", text="Gravity")
+            col = layout.column()
+            col.prop(gs, "physics_gravity", text="Gravity")
+            col.prop(gs, "occlusion_culling_resolution", text="Culling Resolution")
 
             split = layout.split()
 
@@ -637,12 +645,6 @@ class WORLD_PT_game_physics(WorldButtonsPanel, Panel):
             sub.prop(gs, "deactivation_angular_threshold", text="Angular Threshold")
             sub = col.row()
             sub.prop(gs, "deactivation_time", text="Time")
-
-            col = layout.column()
-            col.prop(gs, "use_occlusion_culling", text="Occlusion Culling")
-            sub = col.column()
-            sub.active = gs.use_occlusion_culling
-            sub.prop(gs, "occlusion_culling_resolution", text="Resolution")
 
         else:
             split = layout.split()

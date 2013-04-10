@@ -47,6 +47,7 @@
 //#include "SCA_AlwaysEventManager.h"
 //#include "SCA_RandomEventManager.h"
 //#include "KX_RayEventManager.h"
+#include "SCA_2DFilterActuator.h"
 #include "KX_TouchEventManager.h"
 #include "SCA_KeyboardManager.h"
 #include "SCA_MouseManager.h"
@@ -87,7 +88,7 @@
 #include "BL_DeformableGameObject.h"
 #include "KX_ObstacleSimulation.h"
 
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 #include "KX_SoftBodyDeformer.h"
 #include "KX_ConvertPhysicsObject.h"
 #include "CcdPhysicsEnvironment.h"
@@ -227,7 +228,7 @@ KX_Scene::KX_Scene(class SCA_IInputDevice* keyboarddevice,
 	}
 	
 #ifdef WITH_PYTHON
-	m_attr_dict = PyDict_New(); /* new ref */
+	m_attr_dict = NULL;
 	m_draw_call_pre = NULL;
 	m_draw_call_post = NULL;
 #endif
@@ -287,9 +288,11 @@ KX_Scene::~KX_Scene()
 	}
 
 #ifdef WITH_PYTHON
-	PyDict_Clear(m_attr_dict);
-	/* Py_CLEAR: Py_DECREF's and NULL's */
-	Py_CLEAR(m_attr_dict);
+	if (m_attr_dict) {
+		PyDict_Clear(m_attr_dict);
+		/* Py_CLEAR: Py_DECREF's and NULL's */
+		Py_CLEAR(m_attr_dict);
+	}
 
 	/* these may be NULL but the macro checks */
 	Py_CLEAR(m_draw_call_pre);
@@ -1128,7 +1131,7 @@ void KX_Scene::ReplaceMesh(class CValue* obj,void* meshobj, bool use_gfx, bool u
 				blendobj->parent &&							// original object had armature (not sure this test is needed)
 				blendobj->parent->type == OB_ARMATURE &&
 				blendmesh->dvert!=NULL;						// mesh has vertex group
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 			bool bHasSoftBody = (!parentobj && (blendobj->gameflag & OB_SOFT_BODY));
 #endif
 			bool releaseParent = true;
@@ -1169,9 +1172,8 @@ void KX_Scene::ReplaceMesh(class CValue* obj,void* meshobj, bool use_gfx, bool u
 					);
 				}
 				newobj->SetDeformer(modifierDeformer);
-			} 
-			else 	if (bHasShapeKey)
-			{
+			}
+			else if (bHasShapeKey) {
 				BL_ShapeDeformer* shapeDeformer;
 				if (bHasArmature) 
 				{
@@ -1219,7 +1221,7 @@ void KX_Scene::ReplaceMesh(class CValue* obj,void* meshobj, bool use_gfx, bool u
 				);
 				newobj->SetDeformer(meshdeformer);
 			}
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 			else if (bHasSoftBody)
 			{
 				KX_SoftBodyDeformer *softdeformer = new KX_SoftBodyDeformer(mesh, newobj);
@@ -1236,7 +1238,7 @@ void KX_Scene::ReplaceMesh(class CValue* obj,void* meshobj, bool use_gfx, bool u
 	gameobj->AddMeshUser();
 	}
 
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 	if (use_phys) { /* update the new assigned mesh with the physics mesh */
 		KX_ReInstanceBulletShapeFromMesh(gameobj, NULL, use_gfx?NULL:mesh);
 	}
@@ -1466,7 +1468,7 @@ void KX_Scene::MarkVisible(RAS_IRasterizer* rasty, KX_GameObject* gameobj,KX_Cam
 	}
 }
 
-void KX_Scene::PhysicsCullingCallback(KX_ClientObjectInfo* objectInfo, void* cullingInfo)
+void KX_Scene::PhysicsCullingCallback(KX_ClientObjectInfo *objectInfo, void* cullingInfo)
 {
 	KX_GameObject* gameobj = objectInfo->m_gameobject;
 	if (!gameobj->GetVisible())
@@ -1487,7 +1489,7 @@ void KX_Scene::CalculateVisibleMeshes(RAS_IRasterizer* rasty,KX_Camera* cam, int
 	if (m_dbvt_culling) 
 	{
 		// test culling through Bullet
-		PHY__Vector4 planes[6];
+		MT_Vector4 planes[6];
 		// get the clip planes
 		MT_Vector4* cplanes = cam->GetNormalizedClipPlanes();
 		// and convert
@@ -1708,13 +1710,11 @@ void	KX_Scene::SetGravity(const MT_Vector3& gravity)
 
 MT_Vector3 KX_Scene::GetGravity()
 {
-	PHY__Vector3 gravity;
-	MT_Vector3 vec;
+	MT_Vector3 gravity;
 
 	GetPhysicsEnvironment()->getGravity(gravity);
-	vec = gravity.m_vec;
 
-	return vec;
+	return gravity;
 }
 
 void KX_Scene::SetSceneConverter(class KX_BlenderSceneConverter* sceneConverter)
@@ -1753,7 +1753,7 @@ short KX_Scene::GetAnimationFPS()
 	return m_blenderScene->r.frs_sec;
 }
 
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 #include "KX_BulletPhysicsController.h"
 #endif
 
@@ -1765,7 +1765,7 @@ static void MergeScene_LogicBrick(SCA_ILogicBrick* brick, KX_Scene *to)
 	brick->Replace_NetworkScene(to->GetNetworkScene());
 
 	/* near sensors have physics controllers */
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 	KX_TouchSensor *touch_sensor = dynamic_cast<class KX_TouchSensor *>(brick);
 	if (touch_sensor) {
 		touch_sensor->GetPhysicsController()->SetPhysicsEnvironment(to->GetPhysicsEnvironment());
@@ -1779,9 +1779,14 @@ static void MergeScene_LogicBrick(SCA_ILogicBrick* brick, KX_Scene *to)
 	if (sensor) {
 		sensor->Replace_EventManager(logicmgr);
 	}
+
+	SCA_2DFilterActuator *filter_actuator = dynamic_cast<class SCA_2DFilterActuator*>(brick);
+	if (filter_actuator) {
+		filter_actuator->SetScene(to);
+	}
 }
 
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 #include "CcdGraphicController.h" // XXX  ctrl->SetPhysicsEnvironment(to->GetPhysicsEnvironment());
 #include "CcdPhysicsEnvironment.h" // XXX  ctrl->SetPhysicsEnvironment(to->GetPhysicsEnvironment());
 #include "KX_BulletPhysicsController.h"
@@ -1850,7 +1855,7 @@ static void MergeScene_GameObject(KX_GameObject* gameobj, KX_Scene *to, KX_Scene
 			for (int i=0; i<children.size(); i++)
 					children[i]->SetSGClientInfo(to);
 		}
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 		SGControllerList::iterator contit;
 		SGControllerList& controllers = sg->GetSGControllerList();
 		for (contit = controllers.begin();contit!=controllers.end();++contit)
@@ -1859,7 +1864,7 @@ static void MergeScene_GameObject(KX_GameObject* gameobj, KX_Scene *to, KX_Scene
 			if (phys_ctrl)
 				phys_ctrl->SetPhysicsEnvironment(to->GetPhysicsEnvironment());
 		}
-#endif // USE_BULLET
+#endif // WITH_BULLET
 	}
 	/* If the object is a light, update it's scene */
 	if (gameobj->GetGameObjectType() == SCA_IObject::OBJ_LIGHT)
@@ -1878,7 +1883,7 @@ static void MergeScene_GameObject(KX_GameObject* gameobj, KX_Scene *to, KX_Scene
 
 bool KX_Scene::MergeScene(KX_Scene *other)
 {
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 	CcdPhysicsEnvironment *env=			dynamic_cast<CcdPhysicsEnvironment *>(this->GetPhysicsEnvironment());
 	CcdPhysicsEnvironment *env_other=	dynamic_cast<CcdPhysicsEnvironment *>(other->GetPhysicsEnvironment());
 
@@ -1888,7 +1893,7 @@ bool KX_Scene::MergeScene(KX_Scene *other)
 		printf("\tsource %d, terget %d\n", (int)(env!=NULL), (int)(env_other!=NULL));
 		return false;
 	}
-#endif // USE_BULLET
+#endif // WITH_BULLET
 
 	if (GetSceneConverter() != other->GetSceneConverter()) {
 		printf("KX_Scene::MergeScene: converters differ, aborting\n");
@@ -1931,7 +1936,7 @@ bool KX_Scene::MergeScene(KX_Scene *other)
 	GetLightList()->MergeList(other->GetLightList());
 	other->GetLightList()->ReleaseAndRemoveAll();
 
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 	if (env) /* bullet scene? - dummy scenes don't need touching */
 		env->MergeEnvironment(env_other);
 #endif
@@ -2059,9 +2064,12 @@ static PyObject *Map_GetItem(PyObject *self_v, PyObject *item)
 	PyObject *pyconvert;
 	
 	if (self == NULL) {
-		PyErr_SetString(PyExc_SystemError, "val = scene[key]: KX_Scene, "BGE_PROXY_ERROR_MSG);
+		PyErr_SetString(PyExc_SystemError, "val = scene[key]: KX_Scene, " BGE_PROXY_ERROR_MSG);
 		return NULL;
 	}
+
+	if (!self->m_attr_dict)
+		self->m_attr_dict = PyDict_New();
 	
 	if (self->m_attr_dict && (pyconvert=PyDict_GetItem(self->m_attr_dict, item))) {
 		
@@ -2086,10 +2094,13 @@ static int Map_SetItem(PyObject *self_v, PyObject *key, PyObject *val)
 		PyErr_Clear();
 	
 	if (self == NULL) {
-		PyErr_SetString(PyExc_SystemError, "scene[key] = value: KX_Scene, "BGE_PROXY_ERROR_MSG);
+		PyErr_SetString(PyExc_SystemError, "scene[key] = value: KX_Scene, " BGE_PROXY_ERROR_MSG);
 		return -1;
 	}
-	
+
+	if (!self->m_attr_dict)
+		self->m_attr_dict = PyDict_New();
+
 	if (val==NULL) { /* del ob["key"] */
 		int del= 0;
 		
@@ -2130,10 +2141,13 @@ static int Seq_Contains(PyObject *self_v, PyObject *value)
 	KX_Scene* self = static_cast<KX_Scene*>BGE_PROXY_REF(self_v);
 	
 	if (self == NULL) {
-		PyErr_SetString(PyExc_SystemError, "val in scene: KX_Scene, "BGE_PROXY_ERROR_MSG);
+		PyErr_SetString(PyExc_SystemError, "val in scene: KX_Scene, " BGE_PROXY_ERROR_MSG);
 		return -1;
 	}
-	
+
+	if (!self->m_attr_dict)
+		self->m_attr_dict = PyDict_New();
+
 	if (self->m_attr_dict && PyDict_GetItem(self->m_attr_dict, value))
 		return 1;
 	

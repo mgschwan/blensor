@@ -33,18 +33,26 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "DNA_userdef_types.h"
 #include "DNA_vec_types.h"
 
 #include "BLI_rect.h"
 #include "BLI_utildefines.h"
-
-#include "BKE_colortools.h"
-
 #include "BLI_math.h"
 #include "BLI_threads.h"
 
+#include "BKE_blender.h"
+#include "BKE_global.h"
+#include "BKE_colortools.h"
+#include "BKE_context.h"
+
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
+
+#include "GPU_extensions.h"
+
+#include "IMB_colormanagement.h"
+#include "IMB_imbuf_types.h"
 
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE                        0x812F
@@ -54,7 +62,7 @@
 /* ******************************************** */
 
 /* defined in BIF_gl.h */
-GLubyte stipple_halftone[128] = {
+const GLubyte stipple_halftone[128] = {
 	0xAA, 0xAA, 0xAA, 0xAA, 0x55, 0x55, 0x55, 0x55, 
 	0xAA, 0xAA, 0xAA, 0xAA, 0x55, 0x55, 0x55, 0x55, 
 	0xAA, 0xAA, 0xAA, 0xAA, 0x55, 0x55, 0x55, 0x55,
@@ -81,7 +89,7 @@ GLubyte stipple_halftone[128] = {
  *     00000000 */
 
 
-GLubyte stipple_quarttone[128] = { 
+const GLubyte stipple_quarttone[128] = {
 	136, 136, 136, 136, 0, 0, 0, 0, 34, 34, 34, 34, 0, 0, 0, 0,
 	136, 136, 136, 136, 0, 0, 0, 0, 34, 34, 34, 34, 0, 0, 0, 0,
 	136, 136, 136, 136, 0, 0, 0, 0, 34, 34, 34, 34, 0, 0, 0, 0,
@@ -92,7 +100,7 @@ GLubyte stipple_quarttone[128] = {
 	136, 136, 136, 136, 0, 0, 0, 0, 34, 34, 34, 34, 0, 0, 0, 0};
 
 
-GLubyte stipple_diag_stripes_pos[128] = {
+const GLubyte stipple_diag_stripes_pos[128] = {
 	0x00, 0xff, 0x00, 0xff, 0x01, 0xfe, 0x01, 0xfe,
 	0x03, 0xfc, 0x03, 0xfc, 0x07, 0xf8, 0x07, 0xf8,
 	0x0f, 0xf0, 0x0f, 0xf0, 0x1f, 0xe0, 0x1f, 0xe0,
@@ -111,7 +119,7 @@ GLubyte stipple_diag_stripes_pos[128] = {
 	0xc0, 0x3f, 0xc0, 0x3f, 0x80, 0x7f, 0x80, 0x7f};
 
 
-GLubyte stipple_diag_stripes_neg[128] = {
+const GLubyte stipple_diag_stripes_neg[128] = {
 	0xff, 0x00, 0xff, 0x00, 0xfe, 0x01, 0xfe, 0x01,
 	0xfc, 0x03, 0xfc, 0x03, 0xf8, 0x07, 0xf8, 0x07,
 	0xf0, 0x0f, 0xf0, 0x0f, 0xe0, 0x1f, 0xe0, 0x1f,
@@ -292,7 +300,10 @@ void setlinestyle(int nr)
 	else {
 		
 		glEnable(GL_LINE_STIPPLE);
-		glLineStipple(nr, 0xAAAA);
+		if (U.pixelsize > 1.0f)
+			glLineStipple(nr, 0xCCCC);
+		else
+			glLineStipple(nr, 0xAAAA);
 	}
 }
 
@@ -478,7 +489,7 @@ static int get_cached_work_texture(int *w_r, int *h_r)
 	return texid;
 }
 
-void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, void *rect, float scaleX, float scaleY)
+void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, int type, int zoomfilter, void *rect, float scaleX, float scaleY)
 {
 	unsigned char *uc_rect = (unsigned char *) rect;
 	float *f_rect = (float *)rect;
@@ -488,7 +499,8 @@ void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, 
 	int subpart_x, subpart_y, tex_w, tex_h;
 	int seamless, offset_x, offset_y, nsubparts_x, nsubparts_y;
 	int texid = get_cached_work_texture(&tex_w, &tex_h);
-	
+	int components;
+
 	/* Specify the color outside this function, and tex will modulate it.
 	 * This is useful for changing alpha without using glPixelTransferf()
 	 */
@@ -499,6 +511,7 @@ void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, 
 	/* don't want nasty border artifacts */
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, zoomfilter);
 
 #ifdef __APPLE__
 	/* workaround for os x 10.5/10.6 driver bug: http://lists.apple.com/archives/Mac-opengl/2008/Jul/msg00117.html */
@@ -513,6 +526,33 @@ void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, 
 	
 	nsubparts_x = (img_w + (offset_x - 1)) / (offset_x);
 	nsubparts_y = (img_h + (offset_y - 1)) / (offset_y);
+
+	if (format == GL_RGBA)
+		components = 4;
+	else if (format == GL_RGB)
+		components = 3;
+	else if (format == GL_LUMINANCE)
+		components = 1;
+	else {
+		BLI_assert(!"Incompatible format passed to glaDrawPixelsTexScaled");
+		return;
+	}
+
+	if (type == GL_FLOAT) {
+		/* need to set internal format to higher range float */
+
+		/* NOTE: this could fail on some drivers, like mesa,
+		 *       but currently this code is only used by color
+		 *       management stuff which already checks on whether
+		 *       it's possible to use GL_RGBA16F_ARB
+		 */
+
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F_ARB, tex_w, tex_h, 0, format, GL_FLOAT, NULL);
+	}
+	else {
+		/* switch to 8bit RGBA for byte buffer  */
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tex_w, tex_h, 0, format, GL_UNSIGNED_BYTE, NULL);
+	}
 
 	for (subpart_y = 0; subpart_y < nsubparts_y; subpart_y++) {
 		for (subpart_x = 0; subpart_x < nsubparts_x; subpart_x++) {
@@ -531,35 +571,35 @@ void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, 
 			if (subpart_w <= seamless || subpart_h <= seamless)
 				continue;
 			
-			if (format == GL_FLOAT) {
-				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, subpart_w, subpart_h, GL_RGBA, GL_FLOAT, &f_rect[subpart_y * offset_y * img_w * 4 + subpart_x * offset_x * 4]);
+			if (type == GL_FLOAT) {
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, subpart_w, subpart_h, format, GL_FLOAT, &f_rect[subpart_y * offset_y * img_w * components + subpart_x * offset_x * components]);
 				
 				/* add an extra border of pixels so linear looks ok at edges of full image. */
 				if (subpart_w < tex_w)
-					glTexSubImage2D(GL_TEXTURE_2D, 0, subpart_w, 0, 1, subpart_h, GL_RGBA, GL_FLOAT, &f_rect[subpart_y * offset_y * img_w * 4 + (subpart_x * offset_x + subpart_w - 1) * 4]);
+					glTexSubImage2D(GL_TEXTURE_2D, 0, subpart_w, 0, 1, subpart_h, format, GL_FLOAT, &f_rect[subpart_y * offset_y * img_w * components + (subpart_x * offset_x + subpart_w - 1) * components]);
 				if (subpart_h < tex_h)
-					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, subpart_h, subpart_w, 1, GL_RGBA, GL_FLOAT, &f_rect[(subpart_y * offset_y + subpart_h - 1) * img_w * 4 + subpart_x * offset_x * 4]);
+					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, subpart_h, subpart_w, 1, format, GL_FLOAT, &f_rect[(subpart_y * offset_y + subpart_h - 1) * img_w * components + subpart_x * offset_x * components]);
 				if (subpart_w < tex_w && subpart_h < tex_h)
-					glTexSubImage2D(GL_TEXTURE_2D, 0, subpart_w, subpart_h, 1, 1, GL_RGBA, GL_FLOAT, &f_rect[(subpart_y * offset_y + subpart_h - 1) * img_w * 4 + (subpart_x * offset_x + subpart_w - 1) * 4]);
+					glTexSubImage2D(GL_TEXTURE_2D, 0, subpart_w, subpart_h, 1, 1, format, GL_FLOAT, &f_rect[(subpart_y * offset_y + subpart_h - 1) * img_w * components + (subpart_x * offset_x + subpart_w - 1) * components]);
 			}
 			else {
-				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, subpart_w, subpart_h, GL_RGBA, GL_UNSIGNED_BYTE, &uc_rect[subpart_y * offset_y * img_w * 4 + subpart_x * offset_x * 4]);
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, subpart_w, subpart_h, format, GL_UNSIGNED_BYTE, &uc_rect[subpart_y * offset_y * img_w * components + subpart_x * offset_x * components]);
 				
 				if (subpart_w < tex_w)
-					glTexSubImage2D(GL_TEXTURE_2D, 0, subpart_w, 0, 1, subpart_h, GL_RGBA, GL_UNSIGNED_BYTE, &uc_rect[subpart_y * offset_y * img_w * 4 + (subpart_x * offset_x + subpart_w - 1) * 4]);
+					glTexSubImage2D(GL_TEXTURE_2D, 0, subpart_w, 0, 1, subpart_h, format, GL_UNSIGNED_BYTE, &uc_rect[subpart_y * offset_y * img_w * components + (subpart_x * offset_x + subpart_w - 1) * components]);
 				if (subpart_h < tex_h)
-					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, subpart_h, subpart_w, 1, GL_RGBA, GL_UNSIGNED_BYTE, &uc_rect[(subpart_y * offset_y + subpart_h - 1) * img_w * 4 + subpart_x * offset_x * 4]);
+					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, subpart_h, subpart_w, 1, format, GL_UNSIGNED_BYTE, &uc_rect[(subpart_y * offset_y + subpart_h - 1) * img_w * components + subpart_x * offset_x * components]);
 				if (subpart_w < tex_w && subpart_h < tex_h)
-					glTexSubImage2D(GL_TEXTURE_2D, 0, subpart_w, subpart_h, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &uc_rect[(subpart_y * offset_y + subpart_h - 1) * img_w * 4 + (subpart_x * offset_x + subpart_w - 1) * 4]);
+					glTexSubImage2D(GL_TEXTURE_2D, 0, subpart_w, subpart_h, 1, 1, format, GL_UNSIGNED_BYTE, &uc_rect[(subpart_y * offset_y + subpart_h - 1) * img_w * components + (subpart_x * offset_x + subpart_w - 1) * components]);
 			}
 
 			glEnable(GL_TEXTURE_2D);
 			glBegin(GL_QUADS);
 			glTexCoord2f((float)(0 + offset_left) / tex_w, (float)(0 + offset_bot) / tex_h);
-			glVertex2f(rast_x + (float)offset_left * xzoom, rast_y + (float)offset_bot * xzoom);
+			glVertex2f(rast_x + (float)offset_left * xzoom, rast_y + (float)offset_bot * yzoom);
 
 			glTexCoord2f((float)(subpart_w - offset_right) / tex_w, (float)(0 + offset_bot) / tex_h);
-			glVertex2f(rast_x + (float)(subpart_w - offset_right) * xzoom * scaleX, rast_y + (float)offset_bot * xzoom);
+			glVertex2f(rast_x + (float)(subpart_w - offset_right) * xzoom * scaleX, rast_y + (float)offset_bot * yzoom);
 
 			glTexCoord2f((float)(subpart_w - offset_right) / tex_w, (float)(subpart_h - offset_top) / tex_h);
 			glVertex2f(rast_x + (float)(subpart_w - offset_right) * xzoom * scaleX, rast_y + (float)(subpart_h - offset_top) * yzoom * scaleY);
@@ -581,9 +621,9 @@ void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, 
 #endif
 }
 
-void glaDrawPixelsTex(float x, float y, int img_w, int img_h, int format, void *rect)
+void glaDrawPixelsTex(float x, float y, int img_w, int img_h, int format, int type, int zoomfilter, void *rect)
 {
-	glaDrawPixelsTexScaled(x, y, img_w, img_h, format, rect, 1.0f, 1.0f);
+	glaDrawPixelsTexScaled(x, y, img_w, img_h, format, type, zoomfilter, rect, 1.0f, 1.0f);
 }
 
 void glaDrawPixelsSafe(float x, float y, int img_w, int img_h, int row_w, int format, int type, void *rect)
@@ -665,6 +705,22 @@ void glaDrawPixelsSafe(float x, float y, int img_w, int img_h, int row_w, int fo
 	}
 }
 
+/* uses either DrawPixelsSafe or DrawPixelsTex, based on user defined maximum */
+void glaDrawPixelsAuto(float x, float y, int img_w, int img_h, int format, int type, int zoomfilter, void *rect)
+{
+	if (U.image_gpubuffer_limit) {
+		/* Megapixels, use float math to prevent overflow */
+		float img_size = ((float)img_w * (float)img_h) / (1024.0f * 1024.0f);
+		
+		if (U.image_gpubuffer_limit > (int)img_size) {
+			glColor4f(1.0, 1.0, 1.0, 1.0);
+			glaDrawPixelsTex(x, y, img_w, img_h, format, type, zoomfilter, rect);
+			return;
+		}
+	}
+	glaDrawPixelsSafe(x, y, img_w, img_h, img_w, format, type, rect);
+}
+
 /* 2D Drawing Assistance */
 
 void glaDefine2DArea(rcti *screen_rect)
@@ -723,6 +779,18 @@ void gla2DSetMap(gla2DDrawInfo *di, rctf *rect)
 	di->wo_to_sc[1] = sc_h / wo_h;
 }
 
+/** Save the current OpenGL state and initialize OpenGL for 2D
+ * rendering. glaEnd2DDraw should be called on the returned structure
+ * to free it and to return OpenGL to its previous state. The
+ * scissor rectangle is set to match the viewport.
+ *
+ * See glaDefine2DArea for an explanation of why this function uses integers.
+ *
+ * \param screen_rect The screen rectangle to be used for 2D drawing.
+ * \param world_rect The world rectangle that the 2D area represented
+ * by \a screen_rect is supposed to represent. If NULL it is assumed the
+ * world has a 1 to 1 mapping to the screen.
+ */
 gla2DDrawInfo *glaBegin2DDraw(rcti *screen_rect, rctf *world_rect) 
 {
 	gla2DDrawInfo *di = MEM_mallocN(sizeof(*di), "gla2DDrawInfo");
@@ -758,17 +826,27 @@ gla2DDrawInfo *glaBegin2DDraw(rcti *screen_rect, rctf *world_rect)
 	return di;
 }
 
+/**
+ * Translate the (\a wo_x, \a wo_y) point from world coordinates into screen space.
+ */
 void gla2DDrawTranslatePt(gla2DDrawInfo *di, float wo_x, float wo_y, int *sc_x_r, int *sc_y_r)
 {
 	*sc_x_r = (wo_x - di->world_rect.xmin) * di->wo_to_sc[0];
 	*sc_y_r = (wo_y - di->world_rect.ymin) * di->wo_to_sc[1];
 }
+
+/**
+ * Translate the \a world point from world coordiantes into screen space.
+ */
 void gla2DDrawTranslatePtv(gla2DDrawInfo *di, float world[2], int screen_r[2])
 {
 	screen_r[0] = (world[0] - di->world_rect.xmin) * di->wo_to_sc[0];
 	screen_r[1] = (world[1] - di->world_rect.ymin) * di->wo_to_sc[1];
 }
 
+/**
+ * Restores the previous OpenGL state and free's the auxilary gla data.
+ */
 void glaEnd2DDraw(gla2DDrawInfo *di)
 {
 	glViewport(di->orig_vp[0], di->orig_vp[1], di->orig_vp[2], di->orig_vp[3]);
@@ -803,7 +881,9 @@ void bglBegin(int mode)
 			pointhack = floor(value[0] + 0.5f);
 			if (pointhack > 4) pointhack = 4;
 		}
-		else glBegin(mode);
+		else {
+			glBegin(mode);
+		}
 	}
 }
 
@@ -831,7 +911,9 @@ void bglVertex3fv(const float vec[3])
 				glRasterPos3fv(vec);
 				glBitmap(pointhack, pointhack, (float)pointhack / 2.0f, (float)pointhack / 2.0f, 0.0, 0.0, Squaredot);
 			}
-			else glVertex3fv(vec);
+			else {
+				glVertex3fv(vec);
+			}
 			break;
 	}
 }
@@ -844,7 +926,9 @@ void bglVertex3f(float x, float y, float z)
 				glRasterPos3f(x, y, z);
 				glBitmap(pointhack, pointhack, (float)pointhack / 2.0f, (float)pointhack / 2.0f, 0.0, 0.0, Squaredot);
 			}
-			else glVertex3f(x, y, z);
+			else {
+				glVertex3f(x, y, z);
+			}
 			break;
 	}
 }
@@ -857,7 +941,9 @@ void bglVertex2fv(const float vec[2])
 				glRasterPos2fv(vec);
 				glBitmap(pointhack, pointhack, (float)pointhack / 2, pointhack / 2, 0.0, 0.0, Squaredot);
 			}
-			else glVertex2fv(vec);
+			else {
+				glVertex2fv(vec);
+			}
 			break;
 	}
 }
@@ -945,3 +1031,184 @@ void bglFlush(void)
 #endif
 }
 #endif
+
+/* **** Color management helper functions for GLSL display/transform ***** */
+
+/* Draw given image buffer on a screen using GLSL for display transform */
+void glaDrawImBuf_glsl(ImBuf *ibuf, float x, float y, int zoomfilter,
+                       ColorManagedViewSettings *view_settings,
+                       ColorManagedDisplaySettings *display_settings)
+{
+	bool force_fallback = false;
+	bool need_fallback = true;
+
+	/* Early out */
+	if (ibuf->rect == NULL && ibuf->rect_float == NULL)
+		return;
+
+	/* Dithering is not supported on GLSL yet */
+	force_fallback = ibuf->dither != 0.0f;
+
+	/* Single channel images could not be transformed using GLSL yet */
+	force_fallback = ibuf->channels == 1;
+
+	/* This is actually lots of crap, but currently not sure about
+	 * more clear way to bypass partial buffer update crappyness
+	 * while rendering.
+	 *
+	 * The thing is -- render engines are only updating byte and
+	 * display buffers for active render result opened in image
+	 * editor. This works fine to show render progress without
+	 * switching render layers in image editor user, but this is
+	 * completely useless for GLSL display, where we need to have
+	 * original buffer which we could color manage.
+	 *
+	 * For the time of rendering, we'll stick back to slower CPU
+	 * display buffer update. GLSL could be used as soon as some
+	 * fixes (?) are done in render itself, so we'll always have
+	 * image buffer with relevant float buffer opened while
+	 * rendering.
+	 *
+	 * On the other hand, when using Cycles, stressing GPU with
+	 * GLSL could backfire on a performance.
+	 *                                         - sergey -
+	 */
+	if (G.is_rendering) {
+		/* Try to detect whether we're drawing render result,
+		 * other images could have both rect and rect_float
+		 * but they'll be synchronized
+		 */
+		if (ibuf->rect_float && ibuf->rect &&
+		    ((ibuf->mall & IB_rectfloat) == 0))
+		{
+			force_fallback = true;
+		}
+	}
+
+	/* Try to draw buffer using GLSL display transform */
+	if (force_fallback == false) {
+		int ok;
+
+		if (ibuf->rect_float) {
+			if (ibuf->float_colorspace) {
+				ok = IMB_colormanagement_setup_glsl_draw_from_space(view_settings, display_settings,
+				                                                    ibuf->float_colorspace, TRUE);
+			}
+			else {
+				ok = IMB_colormanagement_setup_glsl_draw(view_settings, display_settings, TRUE);
+			}
+		}
+		else {
+			ok = IMB_colormanagement_setup_glsl_draw_from_space(view_settings, display_settings,
+			                                                    ibuf->rect_colorspace, FALSE);
+		}
+
+		if (ok) {
+			glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+			glColor4f(1.0, 1.0, 1.0, 1.0);
+
+			if (ibuf->rect_float) {
+				int format = 0;
+
+				if (ibuf->channels == 3)
+					format = GL_RGB;
+				else if (ibuf->channels == 4)
+					format = GL_RGBA;
+				else
+					BLI_assert(!"Incompatible number of channels for GLSL display");
+
+				if (format != 0) {
+					glaDrawPixelsTex(x, y, ibuf->x, ibuf->y, format, GL_FLOAT,
+					                 zoomfilter, ibuf->rect_float);
+				}
+			}
+			else if (ibuf->rect) {
+				/* ibuf->rect is always RGBA */
+				glaDrawPixelsTex(x, y, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE,
+				                 zoomfilter, ibuf->rect);
+			}
+
+			IMB_colormanagement_finish_glsl_draw();
+
+			need_fallback = false;
+		}
+	}
+
+	/* In case GLSL failed or not usable, fallback to glaDrawPixelsAuto */
+	if (need_fallback) {
+		unsigned char *display_buffer;
+		void *cache_handle;
+
+		display_buffer = IMB_display_buffer_acquire(ibuf, view_settings, display_settings, &cache_handle);
+
+		if (display_buffer)
+			glaDrawPixelsAuto(x, y, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE,
+			                  zoomfilter, display_buffer);
+
+		IMB_display_buffer_release(cache_handle);
+	}
+}
+
+void glaDrawImBuf_glsl_ctx(const bContext *C, ImBuf *ibuf, float x, float y, int zoomfilter)
+{
+	ColorManagedViewSettings *view_settings;
+	ColorManagedDisplaySettings *display_settings;
+
+	IMB_colormanagement_display_settings_from_ctx(C, &view_settings, &display_settings);
+
+	glaDrawImBuf_glsl(ibuf, x, y, zoomfilter, view_settings, display_settings);
+}
+
+/* Transform buffer from role to scene linear space using GLSL OCIO conversion
+ *
+ * See IMB_colormanagement_setup_transform_from_role_glsl description for
+ * some more details
+ *
+ * NOTE: this only works for RGBA buffers!
+ */
+int glaBufferTransformFromRole_glsl(float *buffer, int width, int height, int role)
+{
+	GPUOffScreen *ofs;
+	char err_out[256];
+	rcti display_rect;
+
+	ofs = GPU_offscreen_create(width, height, err_out);
+
+	if (!ofs)
+		return FALSE;
+
+	GPU_offscreen_bind(ofs);
+
+	if (!IMB_colormanagement_setup_transform_from_role_glsl(role, TRUE)) {
+		GPU_offscreen_unbind(ofs);
+		GPU_offscreen_free(ofs);
+		return FALSE;
+	}
+
+	BLI_rcti_init(&display_rect, 0, width, 0, height);
+
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+
+	glaDefine2DArea(&display_rect);
+
+	glaDrawPixelsTex(0, 0, width, height, GL_RGBA, GL_FLOAT,
+	                 GL_NEAREST, buffer);
+
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
+	glPopMatrix();
+
+	GPU_offscreen_read_pixels(ofs, GL_FLOAT, buffer);
+
+	IMB_colormanagement_finish_glsl_transform();
+
+	/* unbind */
+	GPU_offscreen_unbind(ofs);
+	GPU_offscreen_free(ofs);
+
+	return TRUE;
+}

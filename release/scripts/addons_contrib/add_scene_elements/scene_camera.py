@@ -20,7 +20,7 @@ bl_info = {
     "name": "Scene Lighting Presets",
     "author": "meta-androcto",
     "version": (0,1),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "View3D > Tool Shelf > Scene Lighting Presets",
     "description": "Creates Scenes with Lighting presets",
     "warning": "",

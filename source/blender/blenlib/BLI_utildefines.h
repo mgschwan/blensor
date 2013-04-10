@@ -32,12 +32,45 @@
  *  \ingroup bli
  */
 
-#ifndef FALSE
-#  define FALSE 0
+#ifndef NDEBUG /* for BLI_assert */
+#include <stdio.h>
 #endif
 
-#ifndef TRUE
-#  define TRUE 1
+/* note: use of (int, TRUE / FALSE) is deprecated,
+ * use (bool, true / false) instead */
+#ifdef HAVE_STDBOOL_H
+# include <stdbool.h>
+#else
+# ifndef HAVE__BOOL
+#  ifdef __cplusplus
+typedef bool _BLI_Bool;
+#  else
+/* using char here may cause nasty tricky bugs, e.g.
+ *     bool is_bit_flag = RNA_property_flag(prop) & PROP_ENUM_FLAG;
+ * as PROP_ENUM_FLAG is farther than 8th bit, do_translate would be always false!
+ */
+#   define _BLI_Bool unsigned int
+#  endif
+# else
+#  define _BLI_Bool _Bool
+# endif
+# define bool _BLI_Bool
+# define false 0
+# define true 1
+# define __bool_true_false_are_defined 1
+#endif
+
+/* remove this when we're ready to remove TRUE/FALSE completely */
+#ifdef WITH_BOOL_COMPAT
+/* interim until all occurrences of these can be updated to stdbool */
+/* XXX Why not use the true/false velues here? */
+# ifndef FALSE
+#   define FALSE 0
+# endif
+
+# ifndef TRUE
+#   define TRUE 1
+# endif
 #endif
 
 /* useful for finding bad use of min/max */
@@ -134,7 +167,7 @@
 	(b) = (tval);                 \
 } (void)0
 
-
+/* ELEM#(a, ...): is the first arg equal any of the others */
 #define ELEM(a, b, c)           ((a) == (b) || (a) == (c))
 #define ELEM3(a, b, c, d)       (ELEM(a, b, c) || (a) == (d) )
 #define ELEM4(a, b, c, d, e)    (ELEM(a, b, c) || ELEM(a, d, e) )
@@ -262,9 +295,9 @@
 #define UNPACK3(a)  ((a)[0]), ((a)[1]), ((a)[2])
 #define UNPACK4(a)  ((a)[0]), ((a)[1]), ((a)[2]), ((a)[3])
 /* op may be '&' or '*' */
-#define UNPACK2OP(a, op)  op((a)[0]), op((a)[1])
-#define UNPACK3OP(a, op)  op((a)[0]), op((a)[1]), op((a)[2])
-#define UNPACK4OP(a, op)  op((a)[0]), op((a)[1]), op((a)[2]), op((a)[3])
+#define UNPACK2OP(op, a)  op((a)[0]), op((a)[1])
+#define UNPACK3OP(op, a)  op((a)[0]), op((a)[1]), op((a)[2])
+#define UNPACK4OP(op, a)  op((a)[0]), op((a)[1]), op((a)[2]), op((a)[3])
 
 /* array helpers */
 #define ARRAY_LAST_ITEM(arr_start, arr_dtype, elem_size, tot)                 \
@@ -292,6 +325,22 @@
 #define STRINGIFY_ARG(x) "" #x
 #define STRINGIFY_APPEND(a, b) "" a #b
 #define STRINGIFY(x) STRINGIFY_APPEND("", x)
+
+/* generic strcmp macros */
+#define STREQ(a, b) (strcmp(a, b) == 0)
+#define STRNEQ(a, b) (!STREQ(a, b))
+
+#define STRCASEEQ(a, b) (strcasecmp(a, b) == 0)
+#define STRCASENEQ(a, b) (!STRCASEEQ(a, b))
+
+#define STREQLEN(a, b, n) (strncmp(a, b, n) == 0)
+#define STRNEQLEN(a, b, n) (!STREQLEN(a, b, n))
+
+#define STRCASEEQLEN(a, b, n) (strncasecmp(a, b, n) == 0)
+#define STRCASENEQLEN(a, b, n) (!STRCASEEQLEN(a, b, n))
+
+#define STRPREFIX(a, b) (strncmp((a), (b), strlen(b)) == 0)
+
 
 /* useful for debugging */
 #define AT __FILE__ ":" STRINGIFY(__LINE__)
@@ -366,7 +415,8 @@
 #  define BLI_assert(a) (void)0
 #endif
 
-#if (defined(__GNUC__) && ((__GNUC__ * 100 + __GNUC_MINOR__) >= 406))  /* gcc4.6+ only */
+/* C++ can't use _Static_assert, expects static_assert() but c++0x only */
+#if (!defined(__cplusplus)) && (defined(__GNUC__) && ((__GNUC__ * 100 + __GNUC_MINOR__) >= 406))  /* gcc4.6+ only */
 #  define BLI_STATIC_ASSERT(a, msg) _Static_assert(a, msg);
 #else
    /* TODO msvc, clang */

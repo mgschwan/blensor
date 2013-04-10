@@ -470,7 +470,9 @@ const char *BPy_IDProperty_Map_ValidateAndCreate(PyObject *name_obj, IDProperty 
 		Py_XDECREF(keys);
 		Py_XDECREF(vals);
 	}
-	else return "invalid property value";
+	else {
+		return "invalid property value";
+	}
 
 	if (group->type == IDP_IDPARRAY) {
 		IDP_AppendArray(group, prop);
@@ -836,6 +838,11 @@ static PyObject *BPy_IDGroup_to_dict(BPy_IDProperty *self)
 	return BPy_IDGroup_MapDataToPy(self->prop);
 }
 
+static PyObject *BPy_IDGroup_clear(BPy_IDProperty *self)
+{
+	IDP_ClearProperty(self->prop);
+	Py_RETURN_NONE;
+}
 
 /* Matches python dict.get(key, [default]) */
 static PyObject *BPy_IDGroup_Get(BPy_IDProperty *self, PyObject *args)
@@ -875,6 +882,8 @@ static struct PyMethodDef BPy_IDGroup_methods[] = {
 	 "idprop.get(k[,d]) -> idprop[k] if k in idprop, else d.  d defaults to None"},
 	{"to_dict", (PyCFunction)BPy_IDGroup_to_dict, METH_NOARGS,
 	 "return a purely python version of the group"},
+	{"clear", (PyCFunction)BPy_IDGroup_clear, METH_NOARGS,
+	 "clear all members from this group"},
 	{NULL, NULL, 0, NULL}
 };
 
@@ -1447,6 +1456,8 @@ static PyObject *BPyInit_idprop_types(void)
 
 	submodule = PyModule_Create(&IDProp_types_module_def);
 
+	IDProp_Init_Types();
+
 #define MODULE_TYPE_ADD(s, t) \
 	PyModule_AddObject(s, t.tp_name, (PyObject *)&t); Py_INCREF((PyObject *)&t)
 
@@ -1490,7 +1501,7 @@ PyObject *BPyInit_idprop(void)
 
 	mod = PyModule_Create(&IDProp_module_def);
 
-	/* bmesh.types */
+	/* idprop.types */
 	PyModule_AddObject(mod, "types", (submodule = BPyInit_idprop_types()));
 	PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule);
 	Py_INCREF(submodule);

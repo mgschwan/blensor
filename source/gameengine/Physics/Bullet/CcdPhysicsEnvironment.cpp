@@ -97,9 +97,9 @@ public:
 
 	virtual void	AddWheel(
 		PHY_IMotionState*	motionState,
-		PHY__Vector3	connectionPoint,
-		PHY__Vector3	downDirection,
-		PHY__Vector3	axleDirection,
+		MT_Vector3	connectionPoint,
+		MT_Vector3	downDirection,
+		MT_Vector3	axleDirection,
 		float	suspensionRestLength,
 		float wheelRadius,
 		bool hasSteering
@@ -270,10 +270,10 @@ public:
 class CharacterWrapper : public PHY_ICharacter
 {
 private:
-	btKinematicCharacterController* m_controller;
+	BlenderBulletCharacterController* m_controller;
 
 public:
-	CharacterWrapper(btKinematicCharacterController* cont)
+	CharacterWrapper(BlenderBulletCharacterController* cont)
 		: m_controller(cont)
 	{}
 
@@ -294,6 +294,33 @@ public:
 	virtual void SetGravity(float gravity)
 	{
 		m_controller->setGravity(gravity);
+	}
+
+	virtual int GetMaxJumps()
+	{
+		return m_controller->getMaxJumps();
+	}
+
+	virtual void SetMaxJumps(int maxJumps)
+	{
+		m_controller->setMaxJumps(maxJumps);
+	}
+
+	virtual int GetJumpCount()
+	{
+		return m_controller->getJumpCount();
+	}
+
+	virtual void SetWalkDirection(const MT_Vector3& dir)
+	{
+		btVector3 vec = btVector3(dir[0], dir[1], dir[2]);
+		m_controller->setWalkDirection(vec);
+	}
+
+	virtual MT_Vector3 GetWalkDirection()
+	{
+		btVector3 vec = m_controller->getWalkDirection();
+		return MT_Vector3(vec[0], vec[1], vec[2]);
 	}
 };
 
@@ -920,7 +947,7 @@ void		CcdPhysicsEnvironment::setSolverType(int solverType)
 
 
 
-void		CcdPhysicsEnvironment::getGravity(PHY__Vector3& grav)
+void		CcdPhysicsEnvironment::getGravity(MT_Vector3& grav)
 {
 		const btVector3& gravity = m_dynamicsWorld->getGravity();
 		grav[0] = gravity.getX();
@@ -1179,7 +1206,7 @@ PHY_IPhysicsController* CcdPhysicsEnvironment::rayTest(PHY_IRayCastFilterCallbac
 					{
 						// soft body using different face numbering because of randomization
 						// hopefully we have stored the original face number in m_tag
-						btSoftBody* softBody = static_cast<btSoftBody*>(rayCallback.m_collisionObject);
+						const btSoftBody* softBody = static_cast<const btSoftBody*>(rayCallback.m_collisionObject);
 						if (softBody->m_faces[hitTriangleIndex].m_tag != 0)
 						{
 							rayCallback.m_hitTriangleIndex = (int)((uintptr_t)(softBody->m_faces[hitTriangleIndex].m_tag)-1);
@@ -1199,7 +1226,7 @@ PHY_IPhysicsController* CcdPhysicsEnvironment::rayTest(PHY_IRayCastFilterCallbac
 						if (shape->isSoftBody())
 						{
 							// soft body give points directly in world coordinate
-							btSoftBody* softBody = static_cast<btSoftBody*>(rayCallback.m_collisionObject);
+							const btSoftBody* softBody = static_cast<const btSoftBody*>(rayCallback.m_collisionObject);
 							v1 = softBody->m_faces[hitTriangleIndex].m_n[0]->m_x;
 							v2 = softBody->m_faces[hitTriangleIndex].m_n[1]->m_x;
 							v3 = softBody->m_faces[hitTriangleIndex].m_n[2]->m_x;
@@ -1247,7 +1274,7 @@ PHY_IPhysicsController* CcdPhysicsEnvironment::rayTest(PHY_IRayCastFilterCallbac
 						if (shape->isSoftBody()) 
 						{
 							// we can get the real normal directly from the body
-							btSoftBody* softBody = static_cast<btSoftBody*>(rayCallback.m_collisionObject);
+							const btSoftBody* softBody = static_cast<const btSoftBody*>(rayCallback.m_collisionObject);
 							rayCallback.m_hitNormalWorld = softBody->m_faces[hitTriangleIndex].m_normal;
 						} else
 						{
@@ -1549,7 +1576,7 @@ struct OcclusionBuffer
 				}
 			}
 		}
-		else if (width == 1)  {
+		else if (width == 1) {
 			// Degenerated in at least 2 vertical lines
 			// The algorithm below doesn't work when face has a single pixel width
 			// We cannot use general formulas because the plane is degenerated. 
@@ -1772,7 +1799,7 @@ struct	DbvtCullingCallback : btDbvt::ICollide
 		btBroadphaseProxy*	proxy=(btBroadphaseProxy*)leaf->data;
 		// the client object is a graphic controller
 		CcdGraphicController* ctrl = static_cast<CcdGraphicController*>(proxy->m_clientObject);
-		KX_ClientObjectInfo* info = (KX_ClientObjectInfo*)ctrl->getNewClientInfo();
+		KX_ClientObjectInfo *info = (KX_ClientObjectInfo*)ctrl->getNewClientInfo();
 		if (m_ocb)
 		{
 			// means we are doing occlusion culling. Check if this object is an occluders
@@ -1820,7 +1847,7 @@ struct	DbvtCullingCallback : btDbvt::ICollide
 };
 
 static OcclusionBuffer gOcb;
-bool CcdPhysicsEnvironment::cullingTest(PHY_CullingCallback callback, void* userData, PHY__Vector4 *planes, int nplanes, int occlusionRes, const int *viewport, double modelview[16], double projection[16])
+bool CcdPhysicsEnvironment::cullingTest(PHY_CullingCallback callback, void* userData, MT_Vector4 *planes, int nplanes, int occlusionRes, const int *viewport, double modelview[16], double projection[16])
 {
 	if (!m_cullingTree)
 		return false;
@@ -2184,8 +2211,8 @@ void	CcdPhysicsEnvironment::CallbackTriggers()
 			int numContacts = manifold->getNumContacts();
 			if (numContacts)
 			{
-				btRigidBody* rb0 = static_cast<btRigidBody*>(manifold->getBody0());
-				btRigidBody* rb1 = static_cast<btRigidBody*>(manifold->getBody1());
+				const btRigidBody* rb0 = static_cast<const btRigidBody*>(manifold->getBody0());
+				const btRigidBody* rb1 = static_cast<const btRigidBody*>(manifold->getBody1());
 				if (m_debugDrawer && (m_debugDrawer->getDebugMode() & btIDebugDraw::DBG_DrawContactPoints))
 				{
 					for (int j=0;j<numContacts;j++)
@@ -2196,8 +2223,8 @@ void	CcdPhysicsEnvironment::CallbackTriggers()
 							m_debugDrawer->drawContactPoint(cp.m_positionWorldOnB,cp.m_normalWorldOnB,cp.getDistance(),cp.getLifeTime(),color);
 					}
 				}
-				btRigidBody* obj0 = rb0;
-				btRigidBody* obj1 = rb1;
+				const btRigidBody* obj0 = rb0;
+				const btRigidBody* obj1 = rb1;
 
 				//m_internalOwner is set in 'addPhysicsController'
 				CcdPhysicsController* ctrl0 = static_cast<CcdPhysicsController*>(obj0->getUserPointer());
@@ -2320,7 +2347,7 @@ PHY_ICharacter* CcdPhysicsEnvironment::getCharacterController(KX_GameObject *ob)
 {
 	CcdPhysicsController* controller = (CcdPhysicsController*)ob->GetPhysicsController()->GetUserData();
 	if (controller->GetCharacterController())
-		return new CharacterWrapper(controller->GetCharacterController());
+		return new CharacterWrapper((BlenderBulletCharacterController*)controller->GetCharacterController());
 
 	return NULL;
 }
@@ -2331,7 +2358,7 @@ int numController = 0;
 
 
 
-PHY_IPhysicsController*	CcdPhysicsEnvironment::CreateSphereController(float radius,const PHY__Vector3& position)
+PHY_IPhysicsController*	CcdPhysicsEnvironment::CreateSphereController(float radius,const MT_Vector3& position)
 {
 	
 	CcdConstructionInfo	cinfo;

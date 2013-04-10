@@ -153,7 +153,6 @@ print("\\n\\ndone testing.\\n\\n")"""
     
     def WriteImport(self, filename, logname, outputDir, settings, isAnimated, cameraRig, lightingRig):
         """WriteImport(filename, logname, outputDir, settings, isAnimated, cameraRig, lightingRig) -> list_of_str
-                
         """
         outputFormat = ".png"
         

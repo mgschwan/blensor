@@ -45,7 +45,7 @@ typedef struct Transform {
  *
  * For the DecompMotionTransform we drop scale from pre/post. */
 
-typedef struct MotionTransform {
+typedef struct __may_alias MotionTransform {
 	Transform pre;
 	Transform mid;
 	Transform post;
@@ -454,6 +454,7 @@ __device_inline bool operator==(const MotionTransform& A, const MotionTransform&
 	return (A.pre == B.pre && A.post == B.post);
 }
 
+float4 transform_to_quat(const Transform& tfm);
 void transform_motion_decompose(DecompMotionTransform *decomp, const MotionTransform *motion, const Transform *mid);
 
 #endif

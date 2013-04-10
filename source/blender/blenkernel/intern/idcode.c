@@ -30,11 +30,12 @@
  *  \ingroup bke
  */
 
- 
 #include <stdlib.h>
 #include <string.h>
 
 #include "DNA_ID.h"
+
+#include "BLI_utildefines.h"
 
 #include "BKE_idcode.h"
 
@@ -62,6 +63,7 @@ static IDType idtypes[] = {
 	{ ID_KE,     "Key",              "shape_keys",      0                       },
 	{ ID_LA,     "Lamp",             "lamps",           IDTYPE_FLAGS_ISLINKABLE },
 	{ ID_LI,     "Library",          "libraries",       0                       },
+	{ ID_LS,     "FreestyleLineStyle", "linestyles",    IDTYPE_FLAGS_ISLINKABLE },
 	{ ID_LT,     "Lattice",          "lattices",        IDTYPE_FLAGS_ISLINKABLE },
 	{ ID_MA,     "Material",         "materials",       IDTYPE_FLAGS_ISLINKABLE },
 	{ ID_MB,     "Metaball",         "metaballs",       IDTYPE_FLAGS_ISLINKABLE },
@@ -88,9 +90,11 @@ static IDType *idtype_from_name(const char *str)
 {
 	int i = nidtypes;
 	
-	while (i--)
-		if (strcmp(str, idtypes[i].name) == 0)
+	while (i--) {
+		if (STREQ(str, idtypes[i].name)) {
 			return &idtypes[i];
+		}
+	}
 
 	return NULL;
 }
@@ -105,17 +109,36 @@ static IDType *idtype_from_code(int code)
 	return NULL;
 }
 
-int BKE_idcode_is_valid(int code) 
+/**
+ * Return if the ID code is a valid ID code.
+ *
+ * \param code The code to check.
+ * \return Boolean, 0 when invalid.
+ */
+bool BKE_idcode_is_valid(int code)
 {
-	return idtype_from_code(code) ? 1 : 0;
+	return idtype_from_code(code) ? true : false;
 }
 
-int BKE_idcode_is_linkable(int code)
+/**
+ * Return non-zero when an ID type is linkable.
+ *
+ * \param code The code to check.
+ * \return Boolean, 0 when non linkable.
+ */
+bool BKE_idcode_is_linkable(int code)
 {
 	IDType *idt = idtype_from_code(code);
-	return idt ? (idt->flags & IDTYPE_FLAGS_ISLINKABLE) : 0;
+	return idt ? ((idt->flags & IDTYPE_FLAGS_ISLINKABLE) != 0) : false;
 }
 
+/**
+ * Convert an idcode into a name.
+ *
+ * \param code The code to convert.
+ * \return A static string representing the name of
+ * the code.
+ */
 const char *BKE_idcode_to_name(int code) 
 {
 	IDType *idt = idtype_from_code(code);
@@ -123,6 +146,12 @@ const char *BKE_idcode_to_name(int code)
 	return idt ? idt->name : NULL;
 }
 
+/**
+ * Convert a name into an idcode (ie. ID_SCE)
+ *
+ * \param name The name to convert.
+ * \return The code for the name, or 0 if invalid.
+ */
 int BKE_idcode_from_name(const char *name) 
 {
 	IDType *idt = idtype_from_name(name);
@@ -130,6 +159,13 @@ int BKE_idcode_from_name(const char *name)
 	return idt ? idt->code : 0;
 }
 
+/**
+ * Convert an idcode into a name (plural).
+ *
+ * \param code The code to convert.
+ * \return A static string representing the name of
+ * the code.
+ */
 const char *BKE_idcode_to_name_plural(int code) 
 {
 	IDType *idt = idtype_from_code(code);
@@ -137,6 +173,12 @@ const char *BKE_idcode_to_name_plural(int code)
 	return idt ? idt->plural : NULL;
 }
 
+/**
+ * Return an ID code and steps the index forward 1.
+ *
+ * \param index start as 0.
+ * \return the code, 0 when all codes have been returned.
+ */
 int BKE_idcode_iter_step(int *index)
 {
 	return (*index < nidtypes) ? idtypes[(*index)++].code : 0;

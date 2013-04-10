@@ -35,7 +35,6 @@
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-#include "BLI_bpath.h"
 
 #include "BKE_animsys.h"
 #include "BKE_global.h"
@@ -43,11 +42,11 @@
 #include "BKE_main.h"
 #include "BKE_speaker.h"
 
-void *BKE_speaker_add(const char *name)
+void *BKE_speaker_add(Main *bmain, const char *name)
 {
 	Speaker *spk;
 
-	spk =  BKE_libblock_alloc(&G.main->speaker, ID_SPK, name);
+	spk =  BKE_libblock_alloc(&bmain->speaker, ID_SPK, name);
 
 	spk->attenuation = 1.0f;
 	spk->cone_angle_inner = 360.0f;

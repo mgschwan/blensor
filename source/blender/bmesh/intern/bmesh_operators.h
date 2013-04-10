@@ -60,7 +60,10 @@ enum {
 	SIMFACE_SIDES,
 	SIMFACE_PERIMETER,
 	SIMFACE_NORMAL,
-	SIMFACE_COPLANAR
+	SIMFACE_COPLANAR,
+#ifdef WITH_FREESTYLE
+	SIMFACE_FREESTYLE
+#endif
 };
 
 /* similar edge selection slot values */
@@ -72,7 +75,10 @@ enum {
 	SIMEDGE_CREASE,
 	SIMEDGE_BEVEL,
 	SIMEDGE_SEAM,
-	SIMEDGE_SHARP
+	SIMEDGE_SHARP,
+#ifdef WITH_FREESTYLE
+	SIMEDGE_FREESTYLE
+#endif
 };
 
 /* similar vertex selection slot values */
@@ -87,6 +93,13 @@ enum {
 enum {
 	VPATH_SELECT_EDGE_LENGTH = 0,
 	VPATH_SELECT_TOPOLOGICAL
+};
+
+/* Poke face center calculation */
+enum {
+	BMOP_POKE_MEAN_WEIGHTED = 0,
+	BMOP_POKE_MEAN,
+	BMOP_POKE_BOUNDS
 };
 
 extern const BMOpDefine *bmo_opdefines[];

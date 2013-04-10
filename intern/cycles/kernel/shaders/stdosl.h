@@ -161,7 +161,15 @@ vector cross (vector a, vector b) BUILTIN;
 float dot (vector a, vector b) BUILTIN;
 float length (vector v) BUILTIN;
 float distance (point a, point b) BUILTIN;
-float distance (point a, point b, point q) BUILTIN;
+float distance (point a, point b, point q)
+{
+    vector d = b - a;
+    float dd = dot(d, d);
+    if(dd == 0.0)
+        return distance(q, a);
+    float t = dot(q - a, d)/dd;
+    return distance(q, a + clamp(t, 0.0, 1.0)*d);
+}
 normal normalize (normal v) BUILTIN;
 vector normalize (vector v) BUILTIN;
 vector faceforward (vector N, vector I, vector Nref) BUILTIN;
@@ -305,7 +313,7 @@ color transformc (string to, color x)
         r = color (dot (vector(0.299,  0.587,  0.114), (vector)x),
                    dot (vector(0.596, -0.275, -0.321), (vector)x),
                    dot (vector(0.212, -0.523,  0.311), (vector)x));
-    else if (to == "xyz")
+    else if (to == "XYZ")
         r = color (dot (vector(0.412453, 0.357580, 0.180423), (vector)x),
                    dot (vector(0.212671, 0.715160, 0.072169), (vector)x),
                    dot (vector(0.019334, 0.119193, 0.950227), (vector)x));
@@ -367,7 +375,7 @@ color transformc (string from, string to, color x)
         r = color (dot (vector(1,  0.9557,  0.6199), (vector)x),
                    dot (vector(1, -0.2716, -0.6469), (vector)x),
                    dot (vector(1, -1.1082,  1.7051), (vector)x));
-    else if (from == "xyz")
+    else if (from == "XYZ")
         r = color (dot (vector( 3.240479, -1.537150, -0.498535), (vector)x),
                    dot (vector(-0.969256,  1.875991,  0.041556), (vector)x),
                    dot (vector( 0.055648, -0.204043,  1.057311), (vector)x));
@@ -410,6 +418,8 @@ int startswith (string s, string prefix) BUILTIN;
 int endswith (string s, string suffix) BUILTIN;
 string substr (string s, int start, int len) BUILTIN;
 string substr (string s, int start) { return substr (s, start, strlen(s)); }
+float strtof (string str) BUILTIN;
+int strtoi (string str) BUILTIN;
 
 // Define concat in terms of shorter concat
 string concat (string a, string b, string c) {
@@ -433,8 +443,10 @@ string concat (string a, string b, string c, string d, string e, string f) {
 
 closure color diffuse(normal N) BUILTIN;
 closure color oren_nayar(normal N, float sigma) BUILTIN;
-closure color phong_ramp(normal N, float exponent, color colors[8]) BUILTIN;
 closure color diffuse_ramp(normal N, color colors[8]) BUILTIN;
+closure color phong_ramp(normal N, float exponent, color colors[8]) BUILTIN;
+closure color diffuse_toon(normal N, float size, float smooth) BUILTIN;
+closure color specular_toon(normal N, float size, float smooth) BUILTIN;
 closure color translucent(normal N) BUILTIN;
 closure color reflection(normal N) BUILTIN;
 closure color refraction(normal N, float eta) BUILTIN;
@@ -449,6 +461,7 @@ closure color emission() BUILTIN;
 closure color background() BUILTIN;
 closure color holdout() BUILTIN;
 closure color ambient_occlusion() BUILTIN;
+closure color bssrdf_cubic(normal N, vector radius) BUILTIN;
 
 // Renderer state
 int raytype (string typename) BUILTIN;

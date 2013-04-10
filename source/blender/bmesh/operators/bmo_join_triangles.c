@@ -22,16 +22,21 @@
 
 /** \file blender/bmesh/operators/bmo_join_triangles.c
  *  \ingroup bmesh
+ *
+ * Convert triangle to quads.
+ *
+ * TODO
+ * - convert triangles to any sided faces, not just quads.
  */
 
 #include "MEM_guardedalloc.h"
 
 #include "DNA_meshdata_types.h"
 
-#include "BKE_customdata.h"
-
 #include "BLI_math.h"
 #include "BLI_array.h"
+
+#include "BKE_customdata.h"
 
 #include "bmesh.h"
 
@@ -105,7 +110,7 @@ static float measure_facepair(BMVert *v1, BMVert *v2,
 #define T2QUV_LIMIT 0.005f
 #define T2QCOL_LIMIT 3
 
-static int bm_edge_faces_cmp(BMesh *bm, BMEdge *e, const int do_uv, const int do_tf, const int do_vcol)
+static bool bm_edge_faces_cmp(BMesh *bm, BMEdge *e, const bool do_uv, const bool do_tf, const bool do_vcol)
 {
 	/* first get loops */
 	BMLoop *l[4];
@@ -138,7 +143,7 @@ static int bm_edge_faces_cmp(BMesh *bm, BMEdge *e, const int do_uv, const int do
 		if (luv[0] && (!compare_v2v2(luv[0]->uv, luv[2]->uv, T2QUV_LIMIT) ||
 		               !compare_v2v2(luv[1]->uv, luv[3]->uv, T2QUV_LIMIT)))
 		{
-			return FALSE;
+			return false;
 		}
 	}
 
@@ -149,7 +154,7 @@ static int bm_edge_faces_cmp(BMesh *bm, BMEdge *e, const int do_uv, const int do
 		};
 
 		if (tp[0] && (tp[0]->tpage != tp[1]->tpage)) {
-			return FALSE;
+			return false;
 		}
 	}
 
@@ -166,12 +171,12 @@ static int bm_edge_faces_cmp(BMesh *bm, BMEdge *e, const int do_uv, const int do
 			if (!compare_rgb_uchar((unsigned char *)&lcol[0]->r, (unsigned char *)&lcol[2]->r, T2QCOL_LIMIT) ||
 			    !compare_rgb_uchar((unsigned char *)&lcol[1]->r, (unsigned char *)&lcol[3]->r, T2QCOL_LIMIT))
 			{
-				return FALSE;
+				return false;
 			}
 		}
 	}
 
-	return TRUE;
+	return true;
 }
 
 typedef struct JoinEdge {
@@ -197,6 +202,13 @@ static int fplcmp(const void *v1, const void *v2)
 
 void bmo_join_triangles_exec(BMesh *bm, BMOperator *op)
 {
+	const bool do_sharp = BMO_slot_bool_get(op->slots_in, "cmp_sharp");
+	const bool do_uv    = BMO_slot_bool_get(op->slots_in, "cmp_uvs");
+	const bool do_tf    = do_uv;  /* texture face, make make its own option eventually */
+	const bool do_vcol  = BMO_slot_bool_get(op->slots_in, "cmp_vcols");
+	const bool do_mat   = BMO_slot_bool_get(op->slots_in, "cmp_materials");
+	const float limit   = BMO_slot_float_get(op->slots_in, "limit");
+
 	BMIter iter, liter;
 	BMOIter siter;
 	BMFace *f;
@@ -204,12 +216,6 @@ void bmo_join_triangles_exec(BMesh *bm, BMOperator *op)
 	BMEdge *e;
 	BLI_array_declare(jedges);
 	JoinEdge *jedges = NULL;
-	int do_sharp = BMO_slot_bool_get(op->slots_in, "cmp_sharp");
-	int do_uv    = BMO_slot_bool_get(op->slots_in, "cmp_uvs");
-	int do_tf    = do_uv;  /* texture face, make make its own option eventually */
-	int do_vcol  = BMO_slot_bool_get(op->slots_in, "cmp_vcols");
-	int do_mat   = BMO_slot_bool_get(op->slots_in, "cmp_materials");
-	float limit  = BMO_slot_float_get(op->slots_in, "limit");
 	int i, totedge;
 
 	/* flag all edges of all input face */
@@ -265,7 +271,7 @@ void bmo_join_triangles_exec(BMesh *bm, BMOperator *op)
 		if (do_mat && f1->mat_nr != f2->mat_nr)
 			continue;
 
-		if ((do_uv || do_tf || do_vcol) && (bm_edge_faces_cmp(bm, e, do_uv, do_tf, do_vcol) == FALSE))
+		if ((do_uv || do_tf || do_vcol) && (bm_edge_faces_cmp(bm, e, do_uv, do_tf, do_vcol) == false))
 			continue;
 
 		measure = measure_facepair(v1, v2, v3, v4, limit);
@@ -308,7 +314,7 @@ void bmo_join_triangles_exec(BMesh *bm, BMOperator *op)
 
 
 		BM_edge_face_pair(e, &f1, &f2); /* checked above */
-		BM_faces_join_pair(bm, f1, f2, e, TRUE);
+		BM_faces_join_pair(bm, f1, f2, e, true);
 	}
 
 	BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
@@ -342,7 +348,7 @@ void bmo_join_triangles_exec(BMesh *bm, BMOperator *op)
 				continue;
 			}
 
-			BM_faces_join_pair(bm, f1, f2, e, TRUE);
+			BM_faces_join_pair(bm, f1, f2, e, true);
 		}
 	}
 

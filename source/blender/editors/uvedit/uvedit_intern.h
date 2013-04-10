@@ -50,8 +50,7 @@ struct BMVert;
 int uvedit_face_visible_nolocal(struct Scene *scene, struct BMFace *efa);
 
 /* geometric utilities */
-float uv_poly_area(float uv[][2], int len);
-void  uv_poly_copy_aspect(float uv_orig [][2], float uv[][2], float aspx, float aspy, int len);
+void  uv_poly_copy_aspect(float uv_orig[][2], float uv[][2], float aspx, float aspy, int len);
 void  uv_poly_center(struct BMEditMesh *em, struct BMFace *f, float r_cent[2]);
 
 /* find nearest */
@@ -60,7 +59,7 @@ typedef struct NearestHit {
 	struct BMFace *efa;
 	struct MTexPoly *tf;
 	struct BMLoop *l, *nextl;
-	struct MLoopUV *luv, *nextluv;
+	struct MLoopUV *luv, *luv_next;
 	int lindex; //index of loop within face
 	int vert1, vert2; //index in mesh of edge vertices
 } NearestHit;
@@ -73,13 +72,14 @@ void uv_find_nearest_edge(struct Scene *scene, struct Image *ima, struct BMEditM
 /* utility tool functions */
 
 void uvedit_live_unwrap_update(struct SpaceImage *sima, struct Scene *scene, struct Object *obedit);
+void uvedit_get_aspect(struct Scene *scene, struct Object *ob, struct BMEditMesh *em, float *aspx, float *aspy);
 
 /* operators */
 
 void UV_OT_average_islands_scale(struct wmOperatorType *ot);
 void UV_OT_cube_project(struct wmOperatorType *ot);
 void UV_OT_cylinder_project(struct wmOperatorType *ot);
-void UV_OT_from_view(struct wmOperatorType *ot);
+void UV_OT_project_from_view(struct wmOperatorType *ot);
 void UV_OT_minimize_stretch(struct wmOperatorType *ot);
 void UV_OT_pack_islands(struct wmOperatorType *ot);
 void UV_OT_reset(struct wmOperatorType *ot);

@@ -83,8 +83,8 @@ void ED_undo_push(bContext *C, const char *str)
 	Object *obact = CTX_data_active_object(C);
 
 	if (G.debug & G_DEBUG)
-		printf("undo push %s\n", str);
-	
+		printf("%s: %s\n", __func__, str);
+
 	if (obedit) {
 		if (U.undosteps == 0) return;
 		
@@ -162,15 +162,18 @@ static int ed_undo_step(bContext *C, int step, const char *undoname)
 		}
 	}
 	else {
-		int do_glob_undo = FALSE;
-		
+		/* Note: we used to do a fall-through here where if the
+		 * mode-specific undo system had no more steps to undo (or
+		 * redo), the global undo would run.
+		 *
+		 * That was inconsistent with editmode, and also makes for
+		 * unecessarily tricky interaction with the other undo
+		 * systems. */
 		if (obact && obact->mode & OB_MODE_TEXTURE_PAINT) {
-			if (!ED_undo_paint_step(C, UNDO_PAINT_IMAGE, step, undoname))
-				do_glob_undo = TRUE;
+			ED_undo_paint_step(C, UNDO_PAINT_IMAGE, step, undoname);
 		}
 		else if (obact && obact->mode & OB_MODE_SCULPT) {
-			if (!ED_undo_paint_step(C, UNDO_PAINT_MESH, step, undoname))
-				do_glob_undo = TRUE;
+			ED_undo_paint_step(C, UNDO_PAINT_MESH, step, undoname);
 		}
 		else if (obact && obact->mode & OB_MODE_PARTICLE_EDIT) {
 			if (step == 1)
@@ -178,24 +181,22 @@ static int ed_undo_step(bContext *C, int step, const char *undoname)
 			else
 				PE_redo(CTX_data_scene(C));
 		}
-		else {
-			do_glob_undo = TRUE;
-		}
-		
-		if (do_glob_undo) {
-			if (U.uiflag & USER_GLOBALUNDO) {
-				// note python defines not valid here anymore.
-				//#ifdef WITH_PYTHON
-				// XXX		BPY_scripts_clear_pyobjects();
-				//#endif
-				if (undoname)
-					BKE_undo_name(C, undoname);
-				else
-					BKE_undo_step(C, step);
-				
-				WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, CTX_data_scene(C));
-			}
+		else if (U.uiflag & USER_GLOBALUNDO) {
+			// note python defines not valid here anymore.
+			//#ifdef WITH_PYTHON
+			// XXX		BPY_scripts_clear_pyobjects();
+			//#endif
 			
+			/* for global undo/redo we should just clear the editmode stack */
+			/* for example, texface stores image pointers */
+			undo_editmode_clear();
+			
+			if (undoname)
+				BKE_undo_name(C, undoname);
+			else
+				BKE_undo_step(C, step);
+				
+			WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, CTX_data_scene(C));
 		}
 	}
 	
@@ -343,8 +344,9 @@ int ED_undo_operator_repeat(bContext *C, struct wmOperator *op)
 		wmWindowManager *wm = CTX_wm_manager(C);
 		struct Scene *scene = CTX_data_scene(C);
 
+		/* keep in sync with logic in view3d_panel_operator_redo() */
 		ARegion *ar = CTX_wm_region(C);
-		ARegion *ar1 = BKE_area_find_region_type(CTX_wm_area(C), RGN_TYPE_WINDOW);
+		ARegion *ar1 = BKE_area_find_region_active_win(CTX_wm_area(C));
 
 		if (ar1)
 			CTX_wm_region_set(C, ar1);
@@ -478,7 +480,7 @@ static EnumPropertyItem *rna_undo_itemf(bContext *C, int undosys, int *totitem)
 }
 
 
-static int undo_history_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int undo_history_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	int undosys, totitem = 0;
 	

@@ -33,9 +33,12 @@
 #include "DNA_anim_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_userdef_types.h"
+
 #include "BLI_math.h"
 
 #include "BKE_context.h"
+#include "BKE_blender.h"
 #include "BKE_global.h"
 #include "BKE_nla.h"
 #include "BKE_object.h"
@@ -197,15 +200,15 @@ static void draw_cfra_number(Scene *scene, View2D *v2d, float cfra, short time)
 	
 	/* get starting coordinates for drawing */
 	x = cfra * xscale;
-	y = 18;
+	y = 0.9f * U.widget_unit;
 	
 	/* draw green box around/behind text */
 	UI_ThemeColorShade(TH_CFRAME, 0);
-	glRectf(x, y,  x + slen,  y + 15);
+	glRectf(x, y,  x + slen,  y + 0.75f * U.widget_unit);
 	
 	/* draw current frame number - black text */
 	UI_ThemeColor(TH_TEXT);
-	UI_DrawString(x - 5, y + 3, numstr);
+	UI_DrawString(x - 0.25f * U.widget_unit, y + 0.15f * U.widget_unit, numstr);
 	
 	/* restore view transform */
 	glScalef(xscale, 1.0, 1.0);
@@ -396,20 +399,23 @@ float ANIM_unit_mapping_get_factor(Scene *scene, ID *id, FCurve *fcu, short rest
 static short bezt_unit_mapping_apply(KeyframeEditData *ked, BezTriple *bezt)
 {
 	/* mapping factor is stored in f1, flags are stored in i1 */
-	short only_keys = (ked->i1 & ANIM_UNITCONV_ONLYKEYS);
-	short sel_vs = (ked->i1 & ANIM_UNITCONV_SELVERTS);
+	const bool only_keys = (ked->i1 & ANIM_UNITCONV_ONLYKEYS);
+	const bool sel_vs = (ked->i1 & ANIM_UNITCONV_SELVERTS);
+	const bool skip_knot = (ked->i1 & ANIM_UNITCONV_SKIPKNOTS);
 	float fac = ked->f1;
 	
 	/* adjust BezTriple handles only if allowed to */
-	if (only_keys == 0) {
-		if ((sel_vs == 0) || (bezt->f1 & SELECT))
+	if (only_keys == false) {
+		if ((sel_vs == false) || (bezt->f1 & SELECT))
 			bezt->vec[0][1] *= fac;
-		if ((sel_vs == 0) || (bezt->f3 & SELECT))
+		if ((sel_vs == false) || (bezt->f3 & SELECT))
 			bezt->vec[2][1] *= fac;
 	}
 	
-	if ((sel_vs == 0) || (bezt->f2 & SELECT))
-		bezt->vec[1][1] *= fac;
+	if (skip_knot == false) {
+		if ((sel_vs == false) || (bezt->f2 & SELECT))
+			bezt->vec[1][1] *= fac;
+	}
 	
 	return 0;
 }

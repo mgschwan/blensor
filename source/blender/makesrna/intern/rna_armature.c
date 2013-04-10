@@ -207,7 +207,7 @@ static char *rna_Bone_path(PointerRNA *ptr)
 	return BLI_sprintfN("bones[\"%s\"]", bone->name);
 }
 
-static IDProperty *rna_Bone_idprops(PointerRNA *ptr, int create)
+static IDProperty *rna_Bone_idprops(PointerRNA *ptr, bool create)
 {
 	Bone *bone = ptr->data;
 
@@ -219,7 +219,7 @@ static IDProperty *rna_Bone_idprops(PointerRNA *ptr, int create)
 	return bone->prop;
 }
 
-static IDProperty *rna_EditBone_idprops(PointerRNA *ptr, int create)
+static IDProperty *rna_EditBone_idprops(PointerRNA *ptr, bool create)
 {
 	EditBone *ebone = ptr->data;
 
@@ -527,6 +527,11 @@ static void rna_def_bone_common(StructRNA *srna, int editbone)
 	prop = RNA_def_property(srna, "use_local_location", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_ui_text(prop, "Local Location", "Bone location is set in local space");
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", BONE_NO_LOCAL_LOCATION);
+	RNA_def_property_update(prop, 0, "rna_Armature_update_data");
+	
+	prop = RNA_def_property(srna, "use_relative_parent", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Relative Parenting", "Object children will use relative transform, like deform");
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", BONE_RELATIVE_PARENTING);
 	RNA_def_property_update(prop, 0, "rna_Armature_update_data");
 	
 	prop = RNA_def_property(srna, "show_wire", PROP_BOOLEAN, PROP_NONE);

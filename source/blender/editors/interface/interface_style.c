@@ -143,7 +143,7 @@ static uiFont *uifont_to_blfont(int id)
 /* *************** draw ************************ */
 
 
-void uiStyleFontDrawExt(uiFontStyle *fs, rcti *rect, const char *str,
+void uiStyleFontDrawExt(uiFontStyle *fs, const rcti *rect, const char *str,
                         float *r_xofs, float *r_yofs)
 {
 	float height;
@@ -166,7 +166,7 @@ void uiStyleFontDrawExt(uiFontStyle *fs, rcti *rect, const char *str,
 	}
 	
 	/* clip is very strict, so we give it some space */
-	BLF_clipping(fs->uifont_id, rect->xmin - 1, rect->ymin - 4, rect->xmax + 1, rect->ymax + 4);
+	BLF_clipping(fs->uifont_id, rect->xmin - 2, rect->ymin - 4, rect->xmax + 1, rect->ymax + 4);
 	BLF_enable(fs->uifont_id, BLF_CLIPPING);
 	BLF_position(fs->uifont_id, rect->xmin + xofs, rect->ymin + yofs, 0.0f);
 
@@ -216,7 +216,7 @@ void uiStyleFontDrawRotated(uiFontStyle *fs, rcti *rect, const char *str)
 	/* rotate counter-clockwise for now (assumes left-to-right language)*/
 	xofs += height;
 	yofs = BLF_width(fs->uifont_id, str) + 5;
-	angle = 90.0f;
+	angle = (float)M_PI / 2.0f;
 
 	/* translate rect to vertical */
 	txtrect.xmin = rect->xmin - BLI_rcti_size_y(rect);
@@ -259,6 +259,32 @@ uiStyle *UI_GetStyle(void)
 	/* offset is two struct uiStyle pointers */
 	/* style = BLI_findstring(&U.uistyles, "Unifont Style", sizeof(style) * 2) */;
 	return (style != NULL) ? style : U.uistyles.first;
+}
+
+/* for drawing, scaled with DPI setting */
+uiStyle *UI_GetStyleDraw(void)
+{
+	uiStyle *style = UI_GetStyle();
+	static uiStyle _style;
+	
+	_style = *style;
+	
+	_style.paneltitle.shadx = (short)(UI_DPI_FAC * _style.paneltitle.shadx);
+	_style.paneltitle.shady = (short)(UI_DPI_FAC * _style.grouplabel.shady);
+	_style.grouplabel.shadx = (short)(UI_DPI_FAC * _style.grouplabel.shadx);
+	_style.grouplabel.shady = (short)(UI_DPI_FAC * _style.paneltitle.shady);
+	_style.widgetlabel.shadx = (short)(UI_DPI_FAC * _style.widgetlabel.shadx);
+	_style.widgetlabel.shady = (short)(UI_DPI_FAC * _style.widgetlabel.shady);
+	
+	_style.columnspace = (short)(UI_DPI_FAC * _style.columnspace);
+	_style.templatespace = (short)(UI_DPI_FAC * _style.templatespace);
+	_style.boxspace = (short)(UI_DPI_FAC * _style.boxspace);
+	_style.buttonspacex = (short)(UI_DPI_FAC * _style.buttonspacex);
+	_style.buttonspacey = (short)(UI_DPI_FAC * _style.buttonspacey);
+	_style.panelspace = (short)(UI_DPI_FAC * _style.panelspace);
+	_style.panelouter = (short)(UI_DPI_FAC * _style.panelouter);
+	
+	return &_style;
 }
 
 /* temporarily, does widget font */
@@ -304,6 +330,8 @@ void uiStyleInit(void)
 {
 	uiFont *font = U.uifonts.first;
 	uiStyle *style = U.uistyles.first;
+	int monofont_size = datatoc_bmonofont_ttf_size;
+	unsigned char *monofont_ttf = (unsigned char *)datatoc_bmonofont_ttf;
 	
 	/* recover from uninitialized dpi */
 	if (U.dpi == 0)
@@ -364,9 +392,9 @@ void uiStyleInit(void)
 			 * Yes, this build the glyph cache and create
 			 * the texture.
 			 */
-			BLF_size(font->blf_id, 11, U.dpi);
-			BLF_size(font->blf_id, 12, U.dpi);
-			BLF_size(font->blf_id, 14, U.dpi);
+			BLF_size(font->blf_id, 11 * U.pixelsize, U.dpi);
+			BLF_size(font->blf_id, 12 * U.pixelsize, U.dpi);
+			BLF_size(font->blf_id, 14 * U.pixelsize, U.dpi);
 		}
 	}
 	
@@ -374,23 +402,41 @@ void uiStyleInit(void)
 		ui_style_new(&U.uistyles, "Default Style", UIFONT_DEFAULT);
 	}
 	
+#ifdef WITH_INTERNATIONAL
+	/* use unicode font for text editor and interactive console */
+	if (U.transopts & USER_DOTRANSLATE) {
+		monofont_ttf = BLF_get_unifont_mono(&monofont_size);
+
+		if (!monofont_ttf) {
+			/* fall back if not found */
+			monofont_size = datatoc_bmonofont_ttf_size;
+			monofont_ttf = (unsigned char *)datatoc_bmonofont_ttf;
+		}
+	}
+
+	/* reload */
+	BLF_unload("monospace");
+	blf_mono_font = -1;
+	blf_mono_font_render = -1;
+#endif
+
 	/* XXX, this should be moved into a style, but for now best only load the monospaced font once. */
 	if (blf_mono_font == -1)
-		blf_mono_font = BLF_load_mem_unique("monospace", (unsigned char *)datatoc_bmonofont_ttf, datatoc_bmonofont_ttf_size);
+		blf_mono_font = BLF_load_mem_unique("monospace", monofont_ttf, monofont_size);
 
-	BLF_size(blf_mono_font, 12, 72);
+	BLF_size(blf_mono_font, 12 * U.pixelsize, 72);
 	
 	/* second for rendering else we get threading problems */
 	if (blf_mono_font_render == -1)
-		blf_mono_font_render = BLF_load_mem_unique("monospace", (unsigned char *)datatoc_bmonofont_ttf, datatoc_bmonofont_ttf_size);
+		blf_mono_font_render = BLF_load_mem_unique("monospace", monofont_ttf, monofont_size);
 
-	BLF_size(blf_mono_font_render, 12, 72);
+	BLF_size(blf_mono_font_render, 12 * U.pixelsize, 72 );
 }
 
 void uiStyleFontSet(uiFontStyle *fs)
 {
 	uiFont *font = uifont_to_blfont(fs->uifont_id);
 	
-	BLF_size(font->blf_id, fs->points, U.dpi);
+	BLF_size(font->blf_id, fs->points * U.pixelsize, U.dpi);
 }
 

@@ -20,7 +20,9 @@
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): none yet.
+ * Adaptive time step
+ * Classical SPH
+ * Copyright 2011-2012 AutoCRC
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -58,6 +60,7 @@ struct RNG;
 struct SurfaceModifierData;
 struct BVHTreeRay;
 struct BVHTreeRayHit; 
+struct EdgeHash;
 
 #define PARTICLE_P              ParticleData * pa; int p
 #define LOOP_PARTICLES  for (p = 0, pa = psys->particles; p < psys->totpart; p++, pa++)
@@ -84,6 +87,24 @@ typedef struct ParticleSimulationData {
 	 * this at the moment. Other solvers could, too. */
 	float courant_num;
 } ParticleSimulationData;
+
+typedef struct SPHData {
+	ParticleSystem *psys[10];
+	ParticleData *pa;
+	float mass;
+	struct EdgeHash *eh;
+	float *gravity;
+	float hfac;
+	/* Average distance to neighbours (other particles in the support domain),
+	 * for calculating the Courant number (adaptive time step). */
+	int pass;
+	float element_size;
+	float flow[3];
+
+	/* Integrator callbacks. This allows different SPH implementations. */
+	void (*force_cb) (void *sphdata_v, ParticleKey *state, float *force, float *impulse);
+	void (*density_cb) (void *rangedata_v, int index, float squared_dist);
+} SPHData;
 
 typedef struct ParticleTexture {
 	float ivel;                           /* used in reset */
@@ -199,7 +220,10 @@ typedef struct ParticleCollision {
 
 	ParticleCollisionElement pce;
 
-	float total_time, inv_timestep;
+	/* total_time is the amount of time in this subframe
+	 * inv_total_time is the opposite
+	 * inv_timestep is the inverse of the amount of time in this frame */
+	float total_time, inv_total_time, inv_timestep;
 
 	float radius;
 	float co1[3], co2[3];
@@ -231,7 +255,8 @@ struct ParticleSystem *psys_get_current(struct Object *ob);
 /* for rna */
 short psys_get_current_num(struct Object *ob);
 void psys_set_current_num(Object *ob, int index);
-struct Object *psys_find_object(struct Scene *scene, struct ParticleSystem *psys);
+/* UNUSED */
+// struct Object *psys_find_object(struct Scene *scene, struct ParticleSystem *psys);
 
 struct Object *psys_get_lattice(struct ParticleSimulationData *sim);
 
@@ -283,6 +308,10 @@ float psys_get_child_size(struct ParticleSystem *psys, struct ChildParticle *cpa
 void psys_get_particle_on_path(struct ParticleSimulationData *sim, int pa_num, struct ParticleKey *state, int vel);
 int psys_get_particle_state(struct ParticleSimulationData *sim, int p, struct ParticleKey *state, int always);
 
+void psys_sph_init(struct ParticleSimulationData *sim, struct SPHData *sphdata);
+void psys_sph_finalise(struct SPHData *sphdata);
+void psys_sph_density(struct BVHTree *tree, struct SPHData *data, float co[3], float vars[2]);
+
 /* for anim.c */
 void psys_get_dupli_texture(struct ParticleSystem *psys, struct ParticleSettings *part,
                             struct ParticleSystemModifierData *psmd, struct ParticleData *pa, struct ChildParticle *cpa,
@@ -293,7 +322,7 @@ void psys_get_dupli_path_transform(struct ParticleSimulationData *sim, struct Pa
 ParticleThread *psys_threads_create(struct ParticleSimulationData *sim);
 void psys_threads_free(ParticleThread *threads);
 
-void psys_make_billboard(ParticleBillboardData * bb, float xvec[3], float yvec[3], float zvec[3], float center[3]);
+void psys_make_billboard(ParticleBillboardData *bb, float xvec[3], float yvec[3], float zvec[3], float center[3]);
 void psys_apply_hair_lattice(struct Scene *scene, struct Object *ob, struct ParticleSystem *psys);
 
 /* particle_system.c */

@@ -2,7 +2,7 @@ bl_info = {
     "name": "Oscurart Chain and Rope Maker",
     "author": "Oscurart",
     "version": (1,1),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "Add > Mesh",
     "description": "Create chains and ropes along armatures/curves",
     "warning": "",

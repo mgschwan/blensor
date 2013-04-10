@@ -45,10 +45,10 @@
 #include "BKE_node.h"
 
 #include "ED_space_api.h"
+#include "ED_node.h"
 #include "ED_render.h"
 #include "ED_screen.h"
 #include "ED_node.h"
-
 #include "WM_api.h"
 #include "WM_types.h"
 
@@ -58,6 +58,168 @@
 #include "RNA_access.h"
 
 #include "node_intern.h"  /* own include */
+
+
+/* ******************** tree path ********************* */
+
+void ED_node_tree_start(SpaceNode *snode, bNodeTree *ntree, ID *id, ID *from)
+{
+	bNodeTreePath *path, *path_next;
+	for (path = snode->treepath.first; path; path = path_next) {
+		path_next = path->next;
+		MEM_freeN(path);
+	}
+	snode->treepath.first = snode->treepath.last = NULL;
+	
+	if (ntree) {
+		path = MEM_callocN(sizeof(bNodeTreePath), "node tree path");
+		path->nodetree = ntree;
+		path->parent_key = NODE_INSTANCE_KEY_BASE;
+		if (id)
+			BLI_strncpy(path->node_name, id->name + 2, sizeof(path->node_name));
+		BLI_addtail(&snode->treepath, path);
+	}
+	
+	/* update current tree */
+	snode->nodetree = snode->edittree = ntree;
+	snode->id = id;
+	snode->from = from;
+	
+	/* listener updates the View2D center from edittree */
+	WM_main_add_notifier(NC_SCENE | ND_NODES, NULL);
+}
+
+void ED_node_tree_push(SpaceNode *snode, bNodeTree *ntree, bNode *gnode)
+{
+	bNodeTreePath *path = MEM_callocN(sizeof(bNodeTreePath), "node tree path");
+	bNodeTreePath *prev_path = snode->treepath.last;
+	path->nodetree = ntree;
+	if (gnode) {
+		if (prev_path)
+			path->parent_key = BKE_node_instance_key(prev_path->parent_key, prev_path->nodetree, gnode);
+		else
+			path->parent_key = NODE_INSTANCE_KEY_BASE;
+		
+		BLI_strncpy(path->node_name, gnode->name, sizeof(path->node_name));
+	}
+	else
+		path->parent_key = NODE_INSTANCE_KEY_BASE;
+	
+	BLI_addtail(&snode->treepath, path);
+	
+	/* update current tree */
+	snode->edittree = ntree;
+	
+	/* listener updates the View2D center from edittree */
+	WM_main_add_notifier(NC_SCENE | ND_NODES, NULL);
+}
+
+void ED_node_tree_pop(SpaceNode *snode)
+{
+	bNodeTreePath *path = snode->treepath.last;
+	
+	/* don't remove root */
+	if (path == snode->treepath.first)
+		return;
+	
+	BLI_remlink(&snode->treepath, path);
+	MEM_freeN(path);
+	
+	/* update current tree */
+	path = snode->treepath.last;
+	snode->edittree = path->nodetree;
+	
+	/* listener updates the View2D center from edittree */
+	WM_main_add_notifier(NC_SCENE | ND_NODES, NULL);
+}
+
+int ED_node_tree_depth(SpaceNode *snode)
+{
+	return BLI_countlist(&snode->treepath);
+}
+
+bNodeTree *ED_node_tree_get(SpaceNode *snode, int level)
+{
+	bNodeTreePath *path;
+	int i;
+	for (path = snode->treepath.last, i = 0; path; path = path->prev, ++i) {
+		if (i == level)
+			return path->nodetree;
+	}
+	return NULL;
+}
+
+int ED_node_tree_path_length(SpaceNode *snode)
+{
+	bNodeTreePath *path;
+	int length = 0;
+	int i;
+	for (path = snode->treepath.first, i = 0; path; path = path->next, ++i) {
+		length += strlen(path->node_name);
+		if (i > 0)
+			length += 1;	/* for separator char */
+	}
+	return length;
+}
+
+void ED_node_tree_path_get(SpaceNode *snode, char *value)
+{
+	bNodeTreePath *path;
+	int i;
+	
+	value[0] = '\0';
+	for (path = snode->treepath.first, i = 0; path; path = path->next, ++i) {
+		if (i == 0) {
+			strcpy(value, path->node_name);
+			value += strlen(path->node_name);
+		}
+		else {
+			sprintf(value, "/%s", path->node_name);
+			value += strlen(path->node_name) + 1;
+		}
+	}
+}
+
+void ED_node_tree_path_get_fixedbuf(SpaceNode *snode, char *value, int max_length)
+{
+	bNodeTreePath *path;
+	int size, i;
+	
+	value[0] = '\0';
+	for (path = snode->treepath.first, i = 0; path; path = path->next, ++i) {
+		if (i == 0) {
+			BLI_strncpy(value, path->node_name, max_length);
+			size = strlen(path->node_name);
+		}
+		else {
+			BLI_snprintf(value, max_length, "/%s", path->node_name);
+			size = strlen(path->node_name) + 1;
+		}
+		max_length -= size;
+		if (max_length <= 0)
+			break;
+		value += size;
+	}
+}
+
+void snode_group_offset(SpaceNode *snode, float *x, float *y)
+{
+	bNodeTreePath *path = snode->treepath.last;
+	float cx, cy;
+	
+	if (path) {
+		cx = path->nodetree->view_center[0];
+		cy = path->nodetree->view_center[1];
+		
+		if (path->prev) {
+			*x = cx - path->prev->nodetree->view_center[0];
+			*y = cy - path->prev->nodetree->view_center[1];
+			return;
+		}
+	}
+	
+	*x = *y = 0.0f;
+}
 
 /* ******************** manage regions ********************* */
 
@@ -85,6 +247,30 @@ ARegion *node_has_buttons_region(ScrArea *sa)
 	return arnew;
 }
 
+ARegion *node_has_tools_region(ScrArea *sa)
+{
+	ARegion *ar, *arnew;
+	
+	ar = BKE_area_find_region_type(sa, RGN_TYPE_TOOLS);
+	if (ar) return ar;
+	
+	/* add subdiv level; after header */
+	ar = BKE_area_find_region_type(sa, RGN_TYPE_HEADER);
+	
+	/* is error! */
+	if (ar == NULL) return NULL;
+	
+	arnew = MEM_callocN(sizeof(ARegion), "node tools");
+	
+	BLI_insertlinkafter(&sa->regionbase, ar, arnew);
+	arnew->regiontype = RGN_TYPE_TOOLS;
+	arnew->alignment = RGN_ALIGN_LEFT;
+	
+	arnew->flag = RGN_FLAG_HIDDEN;
+	
+	return arnew;
+}
+
 /* ******************** default callbacks for node space ***************** */
 
 static SpaceLink *node_new(const bContext *UNUSED(C))
@@ -95,8 +281,16 @@ static SpaceLink *node_new(const bContext *UNUSED(C))
 	snode = MEM_callocN(sizeof(SpaceNode), "initnode");
 	snode->spacetype = SPACE_NODE;
 
+	snode->flag = SNODE_SHOW_GPENCIL | SNODE_USE_ALPHA;
+
 	/* backdrop */
 	snode->zoom = 1.0f;
+
+	/* select the first tree type for valid type */
+	NODE_TREE_TYPES_BEGIN(treetype)
+		strcpy(snode->tree_idname, treetype->idname);
+		break;
+	NODE_TREE_TYPES_END
 
 	/* header */
 	ar = MEM_callocN(sizeof(ARegion), "header for node");
@@ -118,15 +312,12 @@ static SpaceLink *node_new(const bContext *UNUSED(C))
 	BLI_addtail(&snode->regionbase, ar);
 	ar->regiontype = RGN_TYPE_WINDOW;
 
-	ar->v2d.tot.xmin =  -256.0f;
-	ar->v2d.tot.ymin =  -256.0f;
-	ar->v2d.tot.xmax = 768.0f;
-	ar->v2d.tot.ymax = 768.0f;
+	ar->v2d.tot.xmin =  -12.8f * U.widget_unit;
+	ar->v2d.tot.ymin =  -12.8f * U.widget_unit;
+	ar->v2d.tot.xmax = 38.4f * U.widget_unit;
+	ar->v2d.tot.ymax = 38.4f * U.widget_unit;
 
-	ar->v2d.cur.xmin =  -256.0f;
-	ar->v2d.cur.ymin =  -256.0f;
-	ar->v2d.cur.xmax = 768.0f;
-	ar->v2d.cur.ymax = 768.0f;
+	ar->v2d.cur =  ar->v2d.tot;
 
 	ar->v2d.min[0] = 1.0f;
 	ar->v2d.min[1] = 1.0f;
@@ -144,10 +335,15 @@ static SpaceLink *node_new(const bContext *UNUSED(C))
 	return (SpaceLink *)snode;
 }
 
-/* not spacelink itself */
-static void node_free(SpaceLink *UNUSED(sl))
+static void node_free(SpaceLink *sl)
 {
+	SpaceNode *snode = (SpaceNode *)sl;
+	bNodeTreePath *path, *path_next;
 
+	for (path = snode->treepath.first; path; path = path_next) {
+		path_next = path->next;
+		MEM_freeN(path);
+	}
 }
 
 
@@ -161,14 +357,21 @@ static void node_area_listener(ScrArea *sa, wmNotifier *wmn)
 {
 	/* note, ED_area_tag_refresh will re-execute compositor */
 	SpaceNode *snode = sa->spacedata.first;
-	int type = snode->treetype;
 	short shader_type = snode->shaderfrom;
 
 	/* preview renders */
 	switch (wmn->category) {
 		case NC_SCENE:
 			switch (wmn->data) {
-				case ND_NODES:
+				case ND_NODES: {
+					ARegion *ar = BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
+					/* shift view to node tree center */
+					if (ar && snode->edittree)
+						UI_view2d_setcenter(&ar->v2d, snode->edittree->view_center[0], snode->edittree->view_center[1]);
+					
+					ED_area_tag_refresh(sa);
+					break;
+				}
 				case ND_FRAME:
 					ED_area_tag_refresh(sa);
 					break;
@@ -176,7 +379,7 @@ static void node_area_listener(ScrArea *sa, wmNotifier *wmn)
 					ED_area_tag_redraw(sa);
 					break;
 				case ND_TRANSFORM_DONE:
-					if (type == NTREE_COMPOSIT) {
+					if (ED_node_is_compositor(snode)) {
 						if (snode->flag & SNODE_AUTO_RENDER) {
 							snode->recalc = 1;
 							ED_area_tag_refresh(sa);
@@ -188,7 +391,7 @@ static void node_area_listener(ScrArea *sa, wmNotifier *wmn)
 
 		/* future: add ID checks? */
 		case NC_MATERIAL:
-			if (type == NTREE_SHADER) {
+			if (ED_node_is_shader(snode)) {
 				if (wmn->data == ND_SHADING)
 					ED_area_tag_refresh(sa);
 				else if (wmn->data == ND_SHADING_DRAW)
@@ -201,18 +404,18 @@ static void node_area_listener(ScrArea *sa, wmNotifier *wmn)
 			}
 			break;
 		case NC_TEXTURE:
-			if (type == NTREE_SHADER || type == NTREE_TEXTURE) {
+			if (ED_node_is_shader(snode) || ED_node_is_texture(snode)) {
 				if (wmn->data == ND_NODES)
 					ED_area_tag_refresh(sa);
 			}
 			break;
 		case NC_WORLD:
-			if (type == NTREE_SHADER && shader_type == SNODE_SHADER_WORLD) {
+			if (ED_node_is_shader(snode) && shader_type == SNODE_SHADER_WORLD) {
 				ED_area_tag_refresh(sa);
 			}
 			break;
 		case NC_OBJECT:
-			if (type == NTREE_SHADER) {
+			if (ED_node_is_shader(snode)) {
 				if (wmn->data == ND_OB_SHADING)
 					ED_area_tag_refresh(sa);
 			}
@@ -238,7 +441,7 @@ static void node_area_listener(ScrArea *sa, wmNotifier *wmn)
 			break;
 		case NC_MASK:
 			if (wmn->action == NA_EDITED) {
-				if (type == NTREE_COMPOSIT) {
+				if (snode->nodetree && snode->nodetree->type == NTREE_COMPOSIT) {
 					ED_area_tag_refresh(sa);
 				}
 			}
@@ -246,7 +449,7 @@ static void node_area_listener(ScrArea *sa, wmNotifier *wmn)
 
 		case NC_IMAGE:
 			if (wmn->action == NA_EDITED) {
-				if (type == NTREE_COMPOSIT) {
+				if (ED_node_is_compositor(snode)) {
 					/* note that nodeUpdateID is already called by BKE_image_signal() on all
 					 * scenes so really this is just to know if the images is used in the compo else
 					 * painting on images could become very slow when the compositor is open. */
@@ -258,7 +461,7 @@ static void node_area_listener(ScrArea *sa, wmNotifier *wmn)
 
 		case NC_MOVIECLIP:
 			if (wmn->action == NA_EDITED) {
-				if (type == NTREE_COMPOSIT) {
+				if (ED_node_is_compositor(snode)) {
 					if (nodeUpdateID(snode->nodetree, wmn->reference))
 						ED_area_tag_refresh(sa);
 				}
@@ -271,11 +474,13 @@ static void node_area_refresh(const struct bContext *C, ScrArea *sa)
 {
 	/* default now: refresh node is starting preview */
 	SpaceNode *snode = sa->spacedata.first;
-
-	snode_set_context(snode, CTX_data_scene(C));
+	
+	ED_preview_kill_jobs(C);
+	
+	snode_set_context(C);
 
 	if (snode->nodetree) {
-		if (snode->treetype == NTREE_SHADER) {
+		if (snode->nodetree->type == NTREE_SHADER) {
 			if (GS(snode->id->name) == ID_MA) {
 				Material *ma = (Material *)snode->id;
 				if (ma->use_nodes)
@@ -292,7 +497,7 @@ static void node_area_refresh(const struct bContext *C, ScrArea *sa)
 					ED_preview_shader_job(C, sa, snode->id, NULL, NULL, 100, 100, PR_NODE_RENDER);
 			}
 		}
-		else if (snode->treetype == NTREE_COMPOSIT) {
+		else if (snode->nodetree->type == NTREE_COMPOSIT) {
 			Scene *scene = (Scene *)snode->id;
 			if (scene->use_nodes) {
 				/* recalc is set on 3d view changes for auto compo */
@@ -305,7 +510,7 @@ static void node_area_refresh(const struct bContext *C, ScrArea *sa)
 				}
 			}
 		}
-		else if (snode->treetype == NTREE_TEXTURE) {
+		else if (snode->nodetree->type == NTREE_TEXTURE) {
 			Tex *tex = (Tex *)snode->id;
 			if (tex->use_nodes) {
 				ED_preview_shader_job(C, sa, snode->id, NULL, NULL, 100, 100, PR_NODE_RENDER);
@@ -316,11 +521,14 @@ static void node_area_refresh(const struct bContext *C, ScrArea *sa)
 
 static SpaceLink *node_duplicate(SpaceLink *sl)
 {
-	SpaceNode *snoden = MEM_dupallocN(sl);
+	SpaceNode *snode = (SpaceNode *)sl;
+	SpaceNode *snoden = MEM_dupallocN(snode);
 
 	/* clear or remove stuff from old */
 	snoden->nodetree = NULL;
 	snoden->linkdrag.first = snoden->linkdrag.last = NULL;
+	
+	BLI_duplicatelist(&snoden->treepath, &snode->treepath);
 
 	return (SpaceLink *)snoden;
 }
@@ -338,6 +546,22 @@ static void node_buttons_area_init(wmWindowManager *wm, ARegion *ar)
 }
 
 static void node_buttons_area_draw(const bContext *C, ARegion *ar)
+{
+	ED_region_panels(C, ar, 1, NULL, -1);
+}
+
+/* add handlers, stuff you only do once or on area/region changes */
+static void node_toolbar_area_init(wmWindowManager *wm, ARegion *ar)
+{
+	wmKeyMap *keymap;
+
+	ED_region_panels_init(wm, ar);
+
+	keymap = WM_keymap_find(wm->defaultconf, "Node Generic", SPACE_NODE, 0);
+	WM_event_add_keymap_handler(&ar->handlers, keymap);
+}
+
+static void node_toolbar_area_draw(const bContext *C, ARegion *ar)
 {
 	ED_region_panels(C, ar, 1, NULL, -1);
 }
@@ -376,15 +600,13 @@ static void node_main_area_init(wmWindowManager *wm, ARegion *ar)
 
 static void node_main_area_draw(const bContext *C, ARegion *ar)
 {
-	View2D *v2d = &ar->v2d;
-
-	drawnodespace(C, ar, v2d);
+	drawnodespace(C, ar);
 }
 
 
 /* ************* dropboxes ************* */
 
-static int node_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event))
+static int node_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
 {
 	if (drag->type == WM_DRAG_ID) {
 		ID *id = (ID *)drag->poin;
@@ -430,11 +652,8 @@ static void node_header_area_init(wmWindowManager *UNUSED(wm), ARegion *ar)
 
 static void node_header_area_draw(const bContext *C, ARegion *ar)
 {
-	SpaceNode *snode = CTX_wm_space_node(C);
-	Scene *scene = CTX_data_scene(C);
-
 	/* find and set the context */
-	snode_set_context(snode, scene);
+	snode_set_context(C);
 
 	ED_region_header(C, ar);
 }
@@ -459,6 +678,7 @@ static void node_region_listener(ARegion *ar, wmNotifier *wmn)
 		case NC_SCENE:
 		case NC_MATERIAL:
 		case NC_TEXTURE:
+		case NC_WORLD:
 		case NC_NODE:
 			ED_region_tag_redraw(ar);
 			break;
@@ -504,6 +724,14 @@ static int node_context(const bContext *C, const char *member, bContextDataResul
 		if (snode->edittree) {
 			bNode *node = nodeGetActive(snode->edittree);
 			CTX_data_pointer_set(result, &snode->edittree->id, &RNA_Node, node);
+		}
+
+		CTX_data_type_set(result, CTX_DATA_TYPE_POINTER);
+		return 1;
+	}
+	else if (CTX_data_equals(member, "node_previews")) {
+		if (snode->nodetree) {
+			CTX_data_pointer_set(result, &snode->nodetree->id, &RNA_NodeInstanceHash, snode->nodetree->previews);
 		}
 
 		CTX_data_type_set(result, CTX_DATA_TYPE_POINTER);
@@ -569,6 +797,19 @@ void ED_spacetype_node(void)
 	BLI_addhead(&st->regiontypes, art);
 
 	node_buttons_register(art);
+
+	/* regions: toolbar */
+	art = MEM_callocN(sizeof(ARegionType), "spacetype view3d tools region");
+	art->regionid = RGN_TYPE_TOOLS;
+	art->prefsizex = 160; /* XXX */
+	art->prefsizey = 50; /* XXX */
+	art->keymapflag = ED_KEYMAP_UI | ED_KEYMAP_FRAMES;
+	art->listener = node_region_listener;
+	art->init = node_toolbar_area_init;
+	art->draw = node_toolbar_area_draw;
+	BLI_addhead(&st->regiontypes, art);
+	
+	node_toolbar_register(art);
 
 	BKE_spacetype_register(st);
 }

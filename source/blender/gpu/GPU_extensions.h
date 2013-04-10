@@ -32,13 +32,16 @@
 #ifndef __GPU_EXTENSIONS_H__
 #define __GPU_EXTENSIONS_H__
 
+#include "BLI_utildefines.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct Image;
 struct ImageUser;
-
+struct PreviewImage;
+	
 struct GPUTexture;
 typedef struct GPUTexture GPUTexture;
 
@@ -112,6 +115,8 @@ GPUTexture *GPU_texture_create_depth(int w, int h, char err_out[256]);
 GPUTexture *GPU_texture_create_vsm_shadow_map(int size, char err_out[256]);
 GPUTexture *GPU_texture_from_blender(struct Image *ima,
 	struct ImageUser *iuser, int isdata, double time, int mipmap);
+GPUTexture *GPU_texture_from_preview(struct PreviewImage *prv, int mipmap);
+
 void GPU_texture_free(GPUTexture *tex);
 
 void GPU_texture_ref(GPUTexture *tex);
@@ -152,22 +157,24 @@ void GPU_offscreen_free(GPUOffScreen *ofs);
 void GPU_offscreen_bind(GPUOffScreen *ofs);
 void GPU_offscreen_unbind(GPUOffScreen *ofs);
 void GPU_offscreen_read_pixels(GPUOffScreen *ofs, int type, void *pixels);
+int GPU_offscreen_width(GPUOffScreen *ofs);
+int GPU_offscreen_height(GPUOffScreen *ofs);
 
 /* GPU Shader
  * - only for fragment shaders now
  * - must call texture bind before setting a texture as uniform! */
 
-GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, const char *libcode); /*GPUShader *lib);*/
-/*GPUShader *GPU_shader_create_lib(const char *code);*/
+GPUShader *GPU_shader_create(const char *vertexcode, const char *fragcode, const char *libcode, const char *defines);
 void GPU_shader_free(GPUShader *shader);
 
 void GPU_shader_bind(GPUShader *shader);
-void GPU_shader_unbind(GPUShader *shader);
+void GPU_shader_unbind(void);
 
 int GPU_shader_get_uniform(GPUShader *shader, const char *name);
 void GPU_shader_uniform_vector(GPUShader *shader, int location, int length,
 	int arraysize, float *value);
 void GPU_shader_uniform_texture(GPUShader *shader, int location, GPUTexture *tex);
+void GPU_shader_uniform_int(GPUShader *shader, int location, int value);
 
 int GPU_shader_get_attribute(GPUShader *shader, const char *name);
 

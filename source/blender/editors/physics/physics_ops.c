@@ -27,9 +27,9 @@
  *  \ingroup edphys
  */
 
-
 #include <stdlib.h>
 
+#include "BLI_utildefines.h"
 
 #include "RNA_access.h"
 
@@ -38,8 +38,6 @@
 
 #include "ED_physics.h"
 #include "ED_object.h"
-
-#include "BLI_utildefines.h"
 
 #include "physics_intern.h" // own include
 
@@ -86,6 +84,22 @@ static void operatortypes_particle(void)
 	WM_operatortype_append(PARTICLE_OT_dupliob_remove);
 	WM_operatortype_append(PARTICLE_OT_dupliob_move_up);
 	WM_operatortype_append(PARTICLE_OT_dupliob_move_down);
+
+	WM_operatortype_append(RIGIDBODY_OT_object_add);
+	WM_operatortype_append(RIGIDBODY_OT_object_remove);
+
+	WM_operatortype_append(RIGIDBODY_OT_objects_add);
+	WM_operatortype_append(RIGIDBODY_OT_objects_remove);
+
+	WM_operatortype_append(RIGIDBODY_OT_shape_change);
+	WM_operatortype_append(RIGIDBODY_OT_mass_calculate);
+
+	WM_operatortype_append(RIGIDBODY_OT_constraint_add);
+	WM_operatortype_append(RIGIDBODY_OT_constraint_remove);
+
+	WM_operatortype_append(RIGIDBODY_OT_world_add);
+	WM_operatortype_append(RIGIDBODY_OT_world_remove);
+//	WM_operatortype_append(RIGIDBODY_OT_world_export);
 }
 
 static void keymap_particle(wmKeyConfig *keyconf)

@@ -38,6 +38,8 @@
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"        /* for rectcpy */
 
@@ -512,7 +514,7 @@ void make_envmaps(Render *re)
 	trace = (re->r.mode & R_RAYTRACE);
 	re->r.mode &= ~R_RAYTRACE;
 
-	re->i.infostr = "Creating Environment maps";
+	re->i.infostr = IFACE_("Creating Environment maps");
 	re->stats_draw(re->sdh, &re->i);
 	
 	/* 5 = hardcoded max recursion level */
@@ -668,7 +670,7 @@ static void set_dxtdyt(float r_dxt[3], float r_dyt[3], const float dxt[3], const
 
 /* ------------------------------------------------------------------------- */
 
-int envmaptex(Tex *tex, const float texvec[3], float dxt[3], float dyt[3], int osatex, TexResult *texres)
+int envmaptex(Tex *tex, const float texvec[3], float dxt[3], float dyt[3], int osatex, TexResult *texres, struct ImagePool *pool)
 {
 	extern Render R;                /* only in this call */
 	/* texvec should be the already reflected normal */
@@ -687,12 +689,12 @@ int envmaptex(Tex *tex, const float texvec[3], float dxt[3], float dyt[3], int o
 		env->ima = tex->ima;
 		if (env->ima && env->ima->ok) {
 			if (env->cube[1] == NULL) {
-				ImBuf *ibuf_ima = BKE_image_acquire_ibuf(env->ima, NULL, NULL);
+				ImBuf *ibuf_ima = BKE_image_pool_acquire_ibuf(env->ima, NULL, pool);
 				if (ibuf_ima)
 					envmap_split_ima(env, ibuf_ima);
 				else
 					env->ok = 0;
-				BKE_image_release_ibuf(env->ima, ibuf_ima, NULL);
+				BKE_image_pool_release_ibuf(env->ima, ibuf_ima, pool);
 			}
 		}
 	}
@@ -720,7 +722,7 @@ int envmaptex(Tex *tex, const float texvec[3], float dxt[3], float dyt[3], int o
 			mul_mat3_m4_v3(R.viewinv, dyt);
 		}
 		set_dxtdyt(dxts, dyts, dxt, dyt, face);
-		imagewraposa(tex, NULL, ibuf, sco, dxts, dyts, texres);
+		imagewraposa(tex, NULL, ibuf, sco, dxts, dyts, texres, pool);
 		
 		/* edges? */
 		
@@ -737,7 +739,7 @@ int envmaptex(Tex *tex, const float texvec[3], float dxt[3], float dyt[3], int o
 			if (face != face1) {
 				ibuf = env->cube[face1];
 				set_dxtdyt(dxts, dyts, dxt, dyt, face1);
-				imagewraposa(tex, NULL, ibuf, sco, dxts, dyts, &texr1);
+				imagewraposa(tex, NULL, ibuf, sco, dxts, dyts, &texr1, pool);
 			}
 			else texr1.tr = texr1.tg = texr1.tb = texr1.ta = 0.0;
 			
@@ -750,7 +752,7 @@ int envmaptex(Tex *tex, const float texvec[3], float dxt[3], float dyt[3], int o
 			if (face != face1) {
 				ibuf = env->cube[face1];
 				set_dxtdyt(dxts, dyts, dxt, dyt, face1);
-				imagewraposa(tex, NULL, ibuf, sco, dxts, dyts, &texr2);
+				imagewraposa(tex, NULL, ibuf, sco, dxts, dyts, &texr2, pool);
 			}
 			else texr2.tr = texr2.tg = texr2.tb = texr2.ta = 0.0;
 			
@@ -766,7 +768,7 @@ int envmaptex(Tex *tex, const float texvec[3], float dxt[3], float dyt[3], int o
 		}
 	}
 	else {
-		imagewrap(tex, NULL, ibuf, sco, texres);
+		imagewrap(tex, NULL, ibuf, sco, texres, pool);
 	}
 	
 	return 1;

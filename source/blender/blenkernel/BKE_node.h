@@ -32,7 +32,20 @@
  *  \ingroup bke
  */
 
+#include "BLI_ghash.h"
+#include "BLI_utildefines.h"
+
 #include "DNA_listBase.h"
+
+/* for FOREACH_NODETREE */
+#include "DNA_lamp_types.h"
+#include "DNA_material_types.h"
+#include "DNA_node_types.h"
+#include "DNA_scene_types.h"
+#include "DNA_texture_types.h"
+#include "DNA_world_types.h"
+
+#include "RNA_types.h"
 
 /* not very important, but the stack solver likes to know a maximum */
 #define MAX_SOCKET	64
@@ -43,11 +56,15 @@ struct bNodeLink;
 struct bNodeSocket;
 struct bNodeStack;
 struct bNodeTree;
+struct bNodeTreeType;
 struct bNodeTreeExec;
+struct bNodeExecContext;
+struct bNodeExecData;
 struct GPUMaterial;
 struct GPUNode;
 struct GPUNodeStack;
 struct ID;
+struct ImBuf;
 struct ImageFormatData;
 struct ListBase;
 struct Main;
@@ -64,6 +81,8 @@ struct ARegion;
 struct Object;
 struct ColorManagedViewSettings;
 struct ColorManagedDisplaySettings;
+struct bNodeInstanceHash;
+
 
 /* ************** NODE TYPE DEFINITIONS ***** */
 
@@ -71,9 +90,9 @@ struct ColorManagedDisplaySettings;
  * Can be used to quickly define a list of static sockets for a node,
  * which are added to each new node of that type. 
  *
- * \deprecated New nodes should add default sockets in the initialization
- * function instead. This struct is mostly kept for old nodes and should
- * be removed some time.
+ * \deprecated This struct is used by C nodes to define templates as simple
+ * static struct lists. These are converted to the new template collections
+ * in RNA types automatically.
  */
 typedef struct bNodeSocketTemplate {
 	int type, limit;
@@ -85,38 +104,39 @@ typedef struct bNodeSocketTemplate {
 	
 	/* after this line is used internal only */
 	struct bNodeSocket *sock;		/* used to hold verified socket */
+	char identifier[64];			/* generated from name */
 } bNodeSocketTemplate;
-
-typedef void (*NodeSocketButtonFunction)(const struct bContext *C, struct uiBlock *block, 
-                                         struct bNodeTree *ntree, struct bNode *node, struct bNodeSocket *sock,
-                                         const char *name, int x, int y, int width);
 
 /** Defines a socket type.
  * Defines the appearance and behavior of a socket in the UI.
  */
 typedef struct bNodeSocketType {
-	int type;
-	char ui_name[64];	/* MAX_NAME */
-	char ui_description[128];
-	int ui_icon;
-	char ui_color[4];
+	char idname[64];				/* identifier name */
 	
-	const char *value_structname;
-	int value_structsize;
+	void (*draw)(struct bContext *C, struct uiLayout *layout, struct PointerRNA *ptr, struct PointerRNA *node_ptr);
+	void (*draw_color)(struct bContext *C, struct PointerRNA *ptr, struct PointerRNA *node_ptr, float *r_color);
 	
-	NodeSocketButtonFunction buttonfunc;
+	void (*interface_draw)(struct bContext *C, struct uiLayout *layout, struct PointerRNA *ptr);
+	void (*interface_draw_color)(struct bContext *C, struct PointerRNA *ptr, float *r_color);
+	void (*interface_register_properties)(struct bNodeTree *ntree, struct bNodeSocket *stemp, struct StructRNA *data_srna);
+	void (*interface_init_socket)(struct bNodeTree *ntree, struct bNodeSocket *stemp, struct bNode *node, struct bNodeSocket *sock, const char *data_path);
+	void (*interface_verify_socket)(struct bNodeTree *ntree, struct bNodeSocket *stemp, struct bNode *node, struct bNodeSocket *sock, const char *data_path);
+	void (*interface_from_socket)(struct bNodeTree *ntree, struct bNodeSocket *stemp, struct bNode *node, struct bNodeSocket *sock);
+	
+	/* RNA integration */
+	ExtensionRNA ext_socket;
+	ExtensionRNA ext_interface;
+	
+	/* for standard socket types in C */
+	int type, subtype;
 } bNodeSocketType;
 
-/** Template for creating a node.
- * Stored required parameters to make a new node of a specific type.
- */
-typedef struct bNodeTemplate {
-	int type;
-	
-	struct Main *main;
-	struct Scene *scene;
-	struct bNodeTree *ngroup;	/* group tree */
-} bNodeTemplate;
+typedef void (*NodeSocketDrawFunction)(struct bContext *C, struct uiLayout *layout, struct PointerRNA *ptr, struct PointerRNA *node_ptr, int linked);
+
+typedef void *(*NodeInitExecFunction)(struct bNodeExecContext *context, struct bNode *node, bNodeInstanceKey key);
+typedef void (*NodeFreeExecFunction)(struct bNode *node, void *nodedata);
+typedef void (*NodeExecFunction)(void *data, int thread, struct bNode *, struct bNodeExecData *execdata, struct bNodeStack **in, struct bNodeStack **out);
+typedef int (*NodeGPUExecFunction)(struct GPUMaterial *mat, struct bNode *node, struct bNodeExecData *execdata, struct GPUNodeStack *in, struct GPUNodeStack *out);
 
 /** Defines a node type.
  * Initial attributes and constants for a node as well as callback functions
@@ -126,8 +146,13 @@ typedef struct bNodeType {
 	void *next, *prev;
 	short needs_free;		/* set for allocated types that need to be freed */
 	
+	char idname[64];				/* identifier name */
 	int type;
-	char name[64];	/* MAX_NAME */
+
+	char ui_name[64];	/* MAX_NAME */
+	char ui_description[256];
+	int ui_icon;
+	
 	float width, minwidth, maxwidth;
 	float height, minheight, maxheight;
 	short nclass, flag, compatibility;
@@ -138,7 +163,8 @@ typedef struct bNodeType {
 	char storagename[64];			/* struct name for DNA */
 	
 	/// Main draw function for the node.
-	void (*drawfunc)(const struct bContext *C, struct ARegion *ar, struct SpaceNode *snode, struct bNodeTree *ntree, struct bNode *node);
+	void (*drawfunc)(const struct bContext *C, struct ARegion *ar, struct SpaceNode *snode,
+	                 struct bNodeTree *ntree, struct bNode *node, bNodeInstanceKey key);
 	/// Updates the node geometry attributes according to internal state before actual drawing.
 	void (*drawupdatefunc)(const struct bContext *C, struct bNodeTree *ntree, struct bNode *node);
 	/// Draw the option buttons on the node.
@@ -149,8 +175,11 @@ typedef struct bNodeType {
 	void (*uibackdropfunc)(struct SpaceNode *snode, struct ImBuf *backdrop, struct bNode *node, int x, int y);
 
 	/// Draw a node socket. Default draws the input value button.
-	NodeSocketButtonFunction drawinputfunc;
-	NodeSocketButtonFunction drawoutputfunc;
+	/* XXX deprecated, only used for the OutputFile node,
+	 * should be removed at some point.
+	 */
+	NodeSocketDrawFunction drawinputfunc;
+	NodeSocketDrawFunction drawoutputfunc;
 
 	/// Optional custom label function for the node header.
 	const char *(*labelfunc)(struct bNode *);
@@ -167,45 +196,42 @@ typedef struct bNodeType {
 	void (*verifyfunc)(struct bNodeTree *ntree, struct bNode *node, struct ID *id);
 	
 	/// Initialize a new node instance of this type after creation.
-	void (*initfunc)(struct bNodeTree *ntree, struct bNode *node, struct bNodeTemplate *ntemp);
-	/// Free the custom storage data.
-	void (*freestoragefunc)(struct bNode *node);
-	/// Make a copy of the custom storage data.
-	void (*copystoragefunc)(struct bNode *node, struct bNode *target);
+	void (*initfunc)(struct bNodeTree *ntree, struct bNode *node);
+	/// Free the node instance.
+	void (*freefunc)(struct bNode *node);
+	/// Make a copy of the node instance.
+	void (*copyfunc)(struct bNodeTree *dest_ntree, struct bNode *dest_node, struct bNode *src_node);
 	
-	/// Create a template from an existing node.
-	struct bNodeTemplate (*templatefunc)(struct bNode *);
-	/** If a node can be made from the template in the given node tree.
-	 * \note Node groups can not be created inside their own node tree.
-	 */
-	int (*validfunc)(struct bNodeTree *ntree, struct bNodeTemplate *ntemp);
+	/* Registerable API callback versions, called in addition to C callbacks */
+	void (*initfunc_api)(const struct bContext *C, struct PointerRNA *ptr);
+	void (*freefunc_api)(struct PointerRNA *ptr);
+	void (*copyfunc_api)(struct PointerRNA *ptr, struct bNode *src_node);
 	
-	/// Initialize a node tree associated to this node type.
-	void (*inittreefunc)(struct bNodeTree *ntree);
-	/// Update a node tree associated to this node type.
-	void (*updatetreefunc)(struct bNodeTree *ntree);
-	
-	/* group edit callbacks for operators */
-	/* XXX this is going to be changed as required by the UI */
-	struct bNodeTree *(*group_edit_get)(struct bNode *node);
-	struct bNodeTree *(*group_edit_set)(struct bNode *node, int edit);
-	void (*group_edit_clear)(struct bNode *node);
+	/* can this node type be added to a node tree */
+	int (*poll)(struct bNodeType *ntype, struct bNodeTree *nodetree);
+	/* can this node be added to a node tree */
+	int (*poll_instance)(struct bNode *node, struct bNodeTree *nodetree);
 	
 	/* Update the internal links list, for muting and disconnect operators. */
 	void (*update_internal_links)(struct bNodeTree *, struct bNode *node);
 	
 	/* **** execution callbacks **** */
-	void *(*initexecfunc)(struct bNode *node);
-	void (*freeexecfunc)(struct bNode *node, void *nodedata);
-	void (*execfunc)(void *data, struct bNode *, struct bNodeStack **, struct bNodeStack **);
-	/* XXX this alternative exec function has been added to avoid changing all node types.
-	 * when a final generic version of execution code is defined, this will be changed anyway
-	 */
-	void (*newexecfunc)(void *data, int thread, struct bNode *, void *nodedata, struct bNodeStack **, struct bNodeStack **);
+	NodeInitExecFunction initexecfunc;
+	NodeFreeExecFunction freeexecfunc;
+	NodeExecFunction execfunc;
 	/* gpu */
-	int (*gpufunc)(struct GPUMaterial *mat, struct bNode *node, struct GPUNodeStack *in, struct GPUNodeStack *out);
-	/* extended gpu function */
-	int (*gpuextfunc)(struct GPUMaterial *mat, struct bNode *node, void *nodedata, struct GPUNodeStack *in, struct GPUNodeStack *out);
+	NodeGPUExecFunction gpufunc;
+	
+	/* Group type static info
+	 * 
+	 * XXX This data is needed by group operators. If these operators could be implemented completely in Python,
+	 * the static data could instead be stored in Python classes and would need no special treatment.
+	 * Due to the way group operators move nodes between data blocks this is currently not possible.
+	 */
+	char group_tree_idname[64];		/* tree type associated to the group node type */
+	
+	/* RNA integration */
+	ExtensionRNA ext;
 } bNodeType;
 
 /* node->exec, now in use for composites (#define for break is same as ready yes) */
@@ -244,6 +270,7 @@ typedef struct bNodeType {
 #define NODE_CLASS_TRANSFORM		30
 #define NODE_CLASS_COMBINE			31
 #define NODE_CLASS_SCRIPT			32
+#define NODE_CLASS_INTERFACE		33
 #define NODE_CLASS_SHADER 			40
 #define NODE_CLASS_LAYOUT			100
 
@@ -257,25 +284,34 @@ typedef struct bNodeType {
 #define NODE_RESIZE_RIGHT	4
 #define NODE_RESIZE_LEFT	8
 
-/* enum values for input/output */
-#define SOCK_IN		1
-#define SOCK_OUT	2
+typedef enum eNodeSizePreset {
+	NODE_SIZE_DEFAULT,
+	NODE_SIZE_SMALL,
+	NODE_SIZE_LARGE
+} eNodeSizePreset;
 
 struct bNodeTreeExec;
 
-typedef void (*bNodeTreeCallback)(void *calldata, struct ID *owner_id, struct bNodeTree *ntree);
 typedef void (*bNodeClassCallback)(void *calldata, int nclass, const char *name);
 typedef struct bNodeTreeType {
 	int type;						/* type identifier */
-	char idname[64];				/* id name for RNA identification */
-	
-	ListBase node_types;			/* type definitions */
+	char idname[64];				/* identifier name */
+
+	char ui_name[64];
+	char ui_description[256];
+	int ui_icon;
 	
 	/* callbacks */
 	void (*free_cache)(struct bNodeTree *ntree);
 	void (*free_node_cache)(struct bNodeTree *ntree, struct bNode *node);
-	void (*foreach_nodetree)(struct Main *main, void *calldata, bNodeTreeCallback func);		/* iteration over all node trees */
 	void (*foreach_nodeclass)(struct Scene *scene, void *calldata, bNodeClassCallback func);	/* iteration over all node classes */
+	/* Add menu for this node tree. */
+	void (*draw_add_menu)(const struct bContext *C, struct uiLayout *layout, struct bNodeTree *ntree);
+	/* Check visibility in the node editor */
+	int (*poll)(const struct bContext *C, struct bNodeTreeType *ntreetype);
+	/* Select a node tree from the context */
+	void (*get_from_context)(const struct bContext *C, struct bNodeTreeType *ntreetype,
+	                         struct bNodeTree **r_ntree, struct ID **r_id, struct ID **r_from);
 
 	/* calls allowing threaded composite */
 	void (*localize)(struct bNodeTree *localtree, struct bNodeTree *ntree);
@@ -284,23 +320,37 @@ typedef struct bNodeTreeType {
 
 	/* Tree update. Overrides nodetype->updatetreefunc! */
 	void (*update)(struct bNodeTree *ntree);
-	/* Node update. Overrides nodetype->updatefunc! */
-	void (*update_node)(struct bNodeTree *ntree, struct bNode *node);
 	
 	int (*validate_link)(struct bNodeTree *ntree, struct bNodeLink *link);
-
-	/* Default internal linking. */
-	void (*update_internal_links)(struct bNodeTree *, struct bNode *node);
+	
+	/* RNA integration */
+	ExtensionRNA ext;
 } bNodeTreeType;
+
 
 /* ************** GENERIC API, TREES *************** */
 
-struct bNodeTreeType *ntreeGetType(int type);
-struct bNodeType *ntreeGetNodeType(struct bNodeTree *ntree);
-struct bNodeSocketType *ntreeGetSocketType(int type);
+struct bNodeTreeType *ntreeTypeFind(const char *idname);
+void ntreeTypeAdd(struct bNodeTreeType *nt);
+void ntreeTypeFreeLink(struct bNodeTreeType *nt);
+bool ntreeIsRegistered(struct bNodeTree *ntree);
+struct GHashIterator *ntreeTypeGetIterator(void);
 
-struct bNodeTree *ntreeAddTree(const char *name, int type, int nodetype);
-void              ntreeInitTypes(struct bNodeTree *ntree);
+/* helper macros for iterating over tree types */
+#define NODE_TREE_TYPES_BEGIN(ntype) \
+{ \
+	GHashIterator *__node_tree_type_iter__ = ntreeTypeGetIterator(); \
+	for (; BLI_ghashIterator_notDone(__node_tree_type_iter__); BLI_ghashIterator_step(__node_tree_type_iter__)) { \
+		bNodeTreeType *ntype = BLI_ghashIterator_getValue(__node_tree_type_iter__);
+
+#define NODE_TREE_TYPES_END \
+	} \
+	BLI_ghashIterator_free(__node_tree_type_iter__); \
+}
+
+void ntreeSetTypes(const struct bContext *C, struct bNodeTree *ntree);
+
+struct bNodeTree *ntreeAddTree(struct Main *bmain, const char *name, const char *idname);
 
 /* copy/free funcs, need to manage ID users */
 void              ntreeFreeTree_ex(struct bNodeTree *ntree, const short do_id_user);
@@ -330,8 +380,6 @@ void              ntreeGetDependencyList(struct bNodeTree *ntree, struct bNode *
  * new tree types have a per-output socket flag to indicate the final output to use explicitly.
  */
 void            ntreeSetOutput(struct bNodeTree *ntree);
-void            ntreeInitPreview(struct bNodeTree *, int xsize, int ysize);
-void            ntreeClearPreview(struct bNodeTree *ntree);
 
 void            ntreeFreeCache(struct bNodeTree *ntree);
 
@@ -341,22 +389,77 @@ struct bNodeTree *ntreeLocalize(struct bNodeTree *ntree);
 void            ntreeLocalSync(struct bNodeTree *localtree, struct bNodeTree *ntree);
 void            ntreeLocalMerge(struct bNodeTree *localtree, struct bNodeTree *ntree);
 
+/* ************** NODE TREE INTERFACE *************** */
+
+struct bNodeSocket *ntreeFindSocketInterface(struct bNodeTree *ntree, int in_out, const char *identifier);
+struct bNodeSocket *ntreeAddSocketInterface(struct bNodeTree *ntree, int in_out, const char *idname, const char *name);
+struct bNodeSocket *ntreeInsertSocketInterface(struct bNodeTree *ntree, int in_out, const char *idname,
+                                               struct bNodeSocket *next_sock, const char *name);
+struct bNodeSocket *ntreeAddSocketInterfaceFromSocket(struct bNodeTree *ntree, struct bNode *from_node, struct bNodeSocket *from_sock);
+struct bNodeSocket *ntreeInsertSocketInterfaceFromSocket(struct bNodeTree *ntree, struct bNodeSocket *next_sock,
+                                                         struct bNode *from_node, struct bNodeSocket *from_sock);
+void            ntreeRemoveSocketInterface(struct bNodeTree *ntree, struct bNodeSocket *sock);
+
+struct StructRNA *ntreeInterfaceTypeGet(struct bNodeTree *ntree, int create);
+void ntreeInterfaceTypeFree(struct bNodeTree *ntree);
+void ntreeInterfaceTypeUpdate(struct bNodeTree *ntree);
+
 /* ************** GENERIC API, NODES *************** */
 
-struct bNodeSocket *nodeAddSocket(struct bNodeTree *ntree, struct bNode *node, int in_out, const char *name, int type);
-struct bNodeSocket *nodeInsertSocket(struct bNodeTree *ntree, struct bNode *node, int in_out, struct bNodeSocket *next_sock, const char *name, int type);
+struct bNodeType *nodeTypeFind(const char *idname);
+void			nodeRegisterType(struct bNodeType *ntype);
+void			nodeUnregisterType(struct bNodeType *ntype);
+bool			nodeIsRegistered(struct bNode *node);
+struct GHashIterator *nodeTypeGetIterator(void);
+
+/* helper macros for iterating over node types */
+#define NODE_TYPES_BEGIN(ntype) \
+{ \
+	GHashIterator *__node_type_iter__ = nodeTypeGetIterator(); \
+	for (; BLI_ghashIterator_notDone(__node_type_iter__); BLI_ghashIterator_step(__node_type_iter__)) { \
+		bNodeType *ntype = BLI_ghashIterator_getValue(__node_type_iter__);
+
+#define NODE_TYPES_END \
+	} \
+	BLI_ghashIterator_free(__node_type_iter__); \
+}
+
+struct bNodeSocketType *nodeSocketTypeFind(const char *idname);
+void			nodeRegisterSocketType(struct bNodeSocketType *stype);
+void			nodeUnregisterSocketType(struct bNodeSocketType *stype);
+bool			nodeSocketIsRegistered(struct bNodeSocket *sock);
+struct GHashIterator *nodeSocketTypeGetIterator(void);
+const char *	nodeStaticSocketType(int type, int subtype);
+const char *	nodeStaticSocketInterfaceType(int type, int subtype);
+
+/* helper macros for iterating over node types */
+#define NODE_SOCKET_TYPES_BEGIN(stype) \
+{ \
+	GHashIterator *__node_socket_type_iter__ = nodeSocketTypeGetIterator(); \
+	for (; BLI_ghashIterator_notDone(__node_socket_type_iter__); BLI_ghashIterator_step(__node_socket_type_iter__)) { \
+		bNodeSocketType *stype = BLI_ghashIterator_getValue(__node_socket_type_iter__);
+
+#define NODE_SOCKET_TYPES_END \
+	} \
+	BLI_ghashIterator_free(__node_socket_type_iter__); \
+}
+
+struct bNodeSocket *nodeFindSocket(struct bNode *node, int in_out, const char *identifier);
+struct bNodeSocket *nodeAddSocket(struct bNodeTree *ntree, struct bNode *node, int in_out, const char *idname,
+                                  const char *identifier, const char *name);
+struct bNodeSocket *nodeInsertSocket(struct bNodeTree *ntree, struct bNode *node, int in_out, const char *idname,
+                                     struct bNodeSocket *next_sock, const char *identifier, const char *name);
+struct bNodeSocket *nodeAddStaticSocket(struct bNodeTree *ntree, struct bNode *node, int in_out, int type, int subtype,
+                                        const char *identifier, const char *name);
+struct bNodeSocket *nodeInsertStaticSocket(struct bNodeTree *ntree, struct bNode *node, int in_out, int type, int subtype,
+                                           struct bNodeSocket *next_sock, const char *identifier, const char *name);
 void nodeRemoveSocket(struct bNodeTree *ntree, struct bNode *node, struct bNodeSocket *sock);
 void nodeRemoveAllSockets(struct bNodeTree *ntree, struct bNode *node);
 
-void            nodeAddToPreview(struct bNode *node, const float col[4], int x, int y, int do_manage);
-
-struct bNode	*nodeAddNode(struct bNodeTree *ntree, struct bNodeTemplate *ntemp);
+struct bNode	*nodeAddNode(const struct bContext *C, struct bNodeTree *ntree, const char *idname);
+struct bNode	*nodeAddStaticNode(const struct bContext *C, struct bNodeTree *ntree, int type);
 void            nodeUnlinkNode(struct bNodeTree *ntree, struct bNode *node);
 void            nodeUniqueName(struct bNodeTree *ntree, struct bNode *node);
-
-void            nodeRegisterType(struct bNodeTreeType *ttype, struct bNodeType *ntype);
-void            nodeMakeDynamicType(struct bNode *node);
-int             nodeDynamicUnlinkText(struct ID *txtid);
 
 void            nodeFreeNode(struct bNodeTree *ntree, struct bNode *node);
 struct bNode	*nodeCopyNode(struct bNodeTree *ntree, struct bNode *node);
@@ -364,6 +467,7 @@ struct bNode	*nodeCopyNode(struct bNodeTree *ntree, struct bNode *node);
 struct bNodeLink *nodeAddLink(struct bNodeTree *ntree, struct bNode *fromnode, struct bNodeSocket *fromsock, struct bNode *tonode, struct bNodeSocket *tosock);
 void            nodeRemLink(struct bNodeTree *ntree, struct bNodeLink *link);
 void            nodeRemSocketLinks(struct bNodeTree *ntree, struct bNodeSocket *sock);
+int             nodeLinkIsHidden(struct bNodeLink *link);
 void            nodeInternalRelink(struct bNodeTree *ntree, struct bNode *node);
 
 void            nodeToView(struct bNode *node, float x, float y, float *rx, float *ry);
@@ -373,15 +477,16 @@ void            nodeAttachNode(struct bNode *node, struct bNode *parent);
 void            nodeDetachNode(struct bNode *node);
 
 struct bNode   *nodeFindNodebyName(struct bNodeTree *ntree, const char *name);
-int             nodeFindNode(struct bNodeTree *ntree, struct bNodeSocket *sock, struct bNode **nodep, int *sockindex, int *in_out);
+int             nodeFindNode(struct bNodeTree *ntree, struct bNodeSocket *sock, struct bNode **nodep, int *sockindex);
 
 struct bNodeLink *nodeFindLink(struct bNodeTree *ntree, struct bNodeSocket *from, struct bNodeSocket *to);
 int             nodeCountSocketLinks(struct bNodeTree *ntree, struct bNodeSocket *sock);
 
+void			nodeSetSelected(struct bNode *node, int select);
 void            nodeSetActive(struct bNodeTree *ntree, struct bNode *node);
 struct bNode   *nodeGetActive(struct bNodeTree *ntree);
 struct bNode   *nodeGetActiveID(struct bNodeTree *ntree, short idtype);
-int             nodeSetActiveID(struct bNodeTree *ntree, short idtype, struct ID *id);
+bool            nodeSetActiveID(struct bNodeTree *ntree, short idtype, struct ID *id);
 void            nodeClearActive(struct bNodeTree *ntree);
 void            nodeClearActiveID(struct bNodeTree *ntree, short idtype);
 struct bNode   *nodeGetActiveTexture(struct bNodeTree *ntree);
@@ -389,11 +494,9 @@ struct bNode   *nodeGetActiveTexture(struct bNodeTree *ntree);
 void            nodeUpdate(struct bNodeTree *ntree, struct bNode *node);
 int             nodeUpdateID(struct bNodeTree *ntree, struct ID *id);
 void            nodeUpdateInternalLinks(struct bNodeTree *ntree, struct bNode *node);
-
-void            nodeFreePreview(struct bNode *node);
+void            nodeSynchronizeID(struct bNode *node, bool copy_to_id);
 
 int             nodeSocketIsHidden(struct bNodeSocket *sock);
-void            nodeSocketSetType(struct bNodeSocket *sock, int type);
 
 /* Node Clipboard */
 void                   BKE_node_clipboard_init(struct bNodeTree *ntree);
@@ -405,77 +508,162 @@ const struct ListBase *BKE_node_clipboard_get_nodes(void);
 const struct ListBase *BKE_node_clipboard_get_links(void);
 int                    BKE_node_clipboard_get_type(void);
 
+/* Node Instance Hash */
+typedef struct bNodeInstanceHash
+{
+	 GHash *ghash;	/* XXX should be made a direct member, GHash allocation needs to support it */
+} bNodeInstanceHash;
+
+typedef void (*bNodeInstanceValueFP)(void *value);
+
+extern const bNodeInstanceKey NODE_INSTANCE_KEY_BASE;
+
+bNodeInstanceKey       BKE_node_instance_key(bNodeInstanceKey parent_key, struct bNodeTree *ntree, struct bNode *node);
+
+bNodeInstanceHash     *BKE_node_instance_hash_new(const char *info);
+void                   BKE_node_instance_hash_free(bNodeInstanceHash *hash, bNodeInstanceValueFP valfreefp);
+void                   BKE_node_instance_hash_insert(bNodeInstanceHash *hash, bNodeInstanceKey key, void *value);
+void                  *BKE_node_instance_hash_lookup(bNodeInstanceHash *hash, bNodeInstanceKey key);
+int                    BKE_node_instance_hash_remove(bNodeInstanceHash *hash, bNodeInstanceKey key, bNodeInstanceValueFP valfreefp);
+void                   BKE_node_instance_hash_clear(bNodeInstanceHash *hash, bNodeInstanceValueFP valfreefp);
+void                  *BKE_node_instance_hash_pop(bNodeInstanceHash *hash, bNodeInstanceKey key);
+int                    BKE_node_instance_hash_haskey(bNodeInstanceHash *hash, bNodeInstanceKey key);
+int                    BKE_node_instance_hash_size(bNodeInstanceHash *hash);
+
+void                   BKE_node_instance_hash_clear_tags(bNodeInstanceHash *hash);
+void                   BKE_node_instance_hash_tag(bNodeInstanceHash *hash, void *value);
+int                    BKE_node_instance_hash_tag_key(bNodeInstanceHash *hash, bNodeInstanceKey key);
+void                   BKE_node_instance_hash_remove_untagged(bNodeInstanceHash *hash, bNodeInstanceValueFP valfreefp);
+
+typedef GHashIterator bNodeInstanceHashIterator;
+
+BLI_INLINE bNodeInstanceHashIterator *BKE_node_instance_hash_iterator_new(bNodeInstanceHash *hash) { return BLI_ghashIterator_new(hash->ghash); }
+BLI_INLINE void                       BKE_node_instance_hash_iterator_init(bNodeInstanceHashIterator *iter, bNodeInstanceHash *hash) { BLI_ghashIterator_init(iter, hash->ghash); }
+BLI_INLINE void                       BKE_node_instance_hash_iterator_free(bNodeInstanceHashIterator *iter) { BLI_ghashIterator_free(iter); }
+BLI_INLINE bNodeInstanceKey           BKE_node_instance_hash_iterator_get_key(bNodeInstanceHashIterator *iter) { return *(bNodeInstanceKey *)BLI_ghashIterator_getKey(iter); }
+BLI_INLINE void                      *BKE_node_instance_hash_iterator_get_value(bNodeInstanceHashIterator *iter) { return BLI_ghashIterator_getValue(iter); }
+BLI_INLINE void                       BKE_node_instance_hash_iterator_step(bNodeInstanceHashIterator *iter) { BLI_ghashIterator_step(iter); }
+BLI_INLINE bool                       BKE_node_instance_hash_iterator_not_done(bNodeInstanceHashIterator *iter) { return BLI_ghashIterator_notDone(iter); }
+
+#define NODE_INSTANCE_HASH_ITER(iter_, hash_) \
+	for (BKE_node_instance_hash_iterator_init(&iter_, hash_); \
+	     BKE_node_instance_hash_iterator_not_done(&iter_); \
+	     BKE_node_instance_hash_iterator_step(&iter_))
+
+
+/* Node Previews */
+
+int             BKE_node_preview_used(struct bNode *node);
+bNodePreview   *BKE_node_preview_verify(struct bNodeInstanceHash *previews, bNodeInstanceKey key, int xsize, int ysize, int create);
+bNodePreview   *BKE_node_preview_copy(struct bNodePreview *preview);
+void            BKE_node_preview_free(struct bNodePreview *preview);
+void            BKE_node_preview_init_tree(struct bNodeTree *ntree, int xsize, int ysize, int create_previews);
+void            BKE_node_preview_free_tree(struct bNodeTree *ntree);
+void            BKE_node_preview_remove_unused(struct bNodeTree *ntree);
+void            BKE_node_preview_clear(struct bNodePreview *preview);
+void            BKE_node_preview_clear_tree(struct bNodeTree *ntree);
+
+void            BKE_node_preview_sync_tree(struct bNodeTree *to_ntree, struct bNodeTree *from_ntree);
+void            BKE_node_preview_merge_tree(struct bNodeTree *to_ntree, struct bNodeTree *from_ntree, bool remove_old);
+
+void            BKE_node_preview_set_pixel(struct bNodePreview *preview, const float col[4], int x, int y, int do_manage);
+
+
 /* ************** NODE TYPE ACCESS *************** */
 
-struct bNodeTemplate nodeMakeTemplate(struct bNode *node);
-int             nodeValid(struct bNodeTree *ntree, struct bNodeTemplate *ntemp);
 const char     *nodeLabel(struct bNode *node);
-struct bNodeTree *nodeGroupEditGet(struct bNode *node);
-struct bNodeTree *nodeGroupEditSet(struct bNode *node, int edit);
-void            nodeGroupEditClear(struct bNode *node);
+
+int				nodeGroupPoll(struct bNodeTree *nodetree, struct bNodeTree *grouptree);
 
 /* Init a new node type struct with default values and callbacks */
-void            node_type_base(struct bNodeTreeType *ttype, struct bNodeType *ntype, int type,
-                               const char *name, short nclass, short flag);
+void            node_type_base(struct bNodeType *ntype, int type, const char *name, short nclass, short flag);
+void            node_type_base_custom(struct bNodeType *ntype, const char *idname, const char *name, short nclass, short flag);
 void            node_type_socket_templates(struct bNodeType *ntype, struct bNodeSocketTemplate *inputs, struct bNodeSocketTemplate *outputs);
 void            node_type_size(struct bNodeType *ntype, int width, int minwidth, int maxwidth);
-void            node_type_init(struct bNodeType *ntype, void (*initfunc)(struct bNodeTree *ntree, struct bNode *node, struct bNodeTemplate *ntemp));
-void            node_type_valid(struct bNodeType *ntype, int (*validfunc)(struct bNodeTree *ntree, struct bNodeTemplate *ntemp));
+void            node_type_size_preset(struct bNodeType *ntype, eNodeSizePreset size);
+void            node_type_init(struct bNodeType *ntype, void (*initfunc)(struct bNodeTree *ntree, struct bNode *node));
 void            node_type_storage(struct bNodeType *ntype,
                                   const char *storagename,
-                                  void (*freestoragefunc)(struct bNode *),
-                                  void (*copystoragefunc)(struct bNode *, struct bNode *));
+                                  void (*freefunc)(struct bNode *node),
+                                  void (*copyfunc)(struct bNodeTree *dest_ntree, struct bNode *dest_node, struct bNode *src_node));
 void            node_type_label(struct bNodeType *ntype, const char *(*labelfunc)(struct bNode *));
-void            node_type_template(struct bNodeType *ntype, struct bNodeTemplate (*templatefunc)(struct bNode *));
 void            node_type_update(struct bNodeType *ntype,
                                  void (*updatefunc)(struct bNodeTree *ntree, struct bNode *node),
                                  void (*verifyfunc)(struct bNodeTree *ntree, struct bNode *node, struct ID *id));
-void            node_type_tree(struct bNodeType *ntype,
-                               void (*inittreefunc)(struct bNodeTree *),
-                               void (*updatetreefunc)(struct bNodeTree *));
-void            node_type_group_edit(struct bNodeType *ntype,
-                                     struct bNodeTree *(*group_edit_get)(struct bNode *node),
-                                     struct bNodeTree *(*group_edit_set)(struct bNode *node, int edit),
-                                     void (*group_edit_clear)(struct bNode *node));
 
-void            node_type_exec(struct bNodeType *ntype, void (*execfunc)(void *data, struct bNode *, struct bNodeStack **,
-                                                                         struct bNodeStack **));
-void            node_type_exec_new(struct bNodeType *ntype,
-                                   void *(*initexecfunc)(struct bNode *node),
-                                   void (*freeexecfunc)(struct bNode *node, void *nodedata),
-                                   void (*newexecfunc)(void *data, int thread, struct bNode *, void *nodedata,
-                                                       struct bNodeStack **, struct bNodeStack **));
+void            node_type_exec(struct bNodeType *ntype, NodeInitExecFunction initexecfunc, NodeFreeExecFunction freeexecfunc, NodeExecFunction execfunc);
+void            node_type_gpu(struct bNodeType *ntype, NodeGPUExecFunction gpufunc);
 void            node_type_internal_links(struct bNodeType *ntype, void (*update_internal_links)(struct bNodeTree *, struct bNode *));
-void            node_type_gpu(struct bNodeType *ntype, int (*gpufunc)(struct GPUMaterial *mat, struct bNode *node,
-                                                                      struct GPUNodeStack *in, struct GPUNodeStack *out));
-void            node_type_gpu_ext(struct bNodeType *ntype, int (*gpuextfunc)(struct GPUMaterial *mat, struct bNode *node,
-                                                                             void *nodedata, struct GPUNodeStack *in,
-                                                                             struct GPUNodeStack *out));
 void            node_type_compatibility(struct bNodeType *ntype, short compatibility);
 
 /* ************** COMMON NODES *************** */
 
+#define NODE_UNDEFINED	-2		/* node type is not registered */
+#define NODE_CUSTOM		-1		/* for dynamically registered custom types */
 #define NODE_GROUP		2
-#define __NODE_FORLOOP	3	/* deprecated */
+#define __NODE_FORLOOP	3		/* deprecated */
 #define __NODE_WHILELOOP	4	/* deprecated */
 #define NODE_FRAME		5
 #define NODE_REROUTE	6
+#define NODE_GROUP_INPUT	7
+#define NODE_GROUP_OUTPUT	8
 
-/* look up a socket on a group node by the internal group socket */
-struct bNodeSocket *node_group_find_input(struct bNode *gnode, struct bNodeSocket *gsock);
-struct bNodeSocket *node_group_find_output(struct bNode *gnode, struct bNodeSocket *gsock);
+void BKE_node_tree_unlink_id(ID *id, struct bNodeTree *ntree);
 
-struct bNodeSocket *node_group_add_socket(struct bNodeTree *ngroup, const char *name, int type, int in_out);
-struct bNodeSocket *node_group_expose_socket(struct bNodeTree *ngroup, struct bNodeSocket *sock, int in_out);
-void node_group_expose_all_sockets(struct bNodeTree *ngroup);
-void node_group_remove_socket(struct bNodeTree *ngroup, struct bNodeSocket *gsock, int in_out);
-struct bNodeSocket *node_group_add_extern_socket(struct bNodeTree *ntree, ListBase *lb, int in_out, struct bNodeSocket *gsock);
+/* Utility macro for visiting every node tree in the library data, including local bNodeTree blocks in other IDs.
+ * This avoids the need for callback functions and allows executing code in a single inner code block.
+ *
+ * Variables:
+ *
+ *   nodetree:  The actual bNodeTree data block.
+ *              Check nodetree->idname or nodetree->typeinfo to use only specific types.
+ *
+ *   id:        The owner of the bNodeTree data block.
+ *              Same as nodetree if it's a linkable node tree from the library.
+ *
+ * Examples:
+ *
+ * FOREACH_NODETREE(bmain, nodetree) {
+ *     if (id == nodetree)
+ *         printf("This is a linkable node tree");
+ * } FOREACH_NODETREE_END
+ *
+ * FOREACH_NODETREE(bmain, nodetree) {
+ *     if (nodetree->idname == "ShaderNodeTree")
+ *         printf("This is a shader node tree);
+ *     if (GS(id) == ID_MA)
+ *         printf(" and it's owned by a material");
+ * } FOREACH_NODETREE_END
+ */
 
-/* in node_common.c */
-void register_node_type_frame(struct bNodeTreeType *ttype);
-void register_node_type_reroute(struct bNodeTreeType *ttype);
+/* should be an opaque type, only for internal use by BKE_node_tree_iter_*** */
+struct NodeTreeIterStore {
+	bNodeTree *ngroup;
+	Scene *scene;
+	Material *mat;
+	Tex *tex;
+	Lamp *lamp;
+	World *world;
+};
 
-void BKE_node_tree_unlink_id_cb(void *calldata, struct ID *owner_id, struct bNodeTree *ntree);
+void BKE_node_tree_iter_init(struct NodeTreeIterStore *ntreeiter, struct Main *bmain);
+bool BKE_node_tree_iter_step(struct NodeTreeIterStore *ntreeiter,
+                             struct bNodeTree **r_nodetree, struct ID **r_id);
+
+#define FOREACH_NODETREE(bmain, _nodetree, _id) \
+{ \
+	struct NodeTreeIterStore _nstore; \
+	bNodeTree *_nodetree; \
+	ID *_id; \
+	/* avoid compiler warning about unused variables */ \
+	BKE_node_tree_iter_init(&_nstore, bmain); \
+	while (BKE_node_tree_iter_step(&_nstore, &_nodetree, &_id) == true) { \
+		if (_nodetree) {
+
+#define FOREACH_NODETREE_END \
+		} \
+	} \
+}
 
 /* ************** SHADER NODES *************** */
 
@@ -557,6 +745,8 @@ struct ShadeResult;
 #define SH_NODE_BSDF_REFRACTION			173
 #define SH_NODE_TANGENT					174
 #define SH_NODE_NORMAL_MAP				175
+#define SH_NODE_HAIR_INFO				176
+#define SH_NODE_SUBSURFACE_SCATTERING	177
 
 /* custom defines options for Material node */
 #define SH_NODE_MAT_DIFF   1
@@ -574,11 +764,10 @@ struct ShadeResult;
 
 /* API */
 
-struct bNodeTreeExec *ntreeShaderBeginExecTree(struct bNodeTree *ntree, int use_tree_data);
-void            ntreeShaderEndExecTree(struct bNodeTreeExec *exec, int use_tree_data);
-void            ntreeShaderExecTree(struct bNodeTree *ntree, struct ShadeInput *shi, struct ShadeResult *shr);
+struct bNodeTreeExec *ntreeShaderBeginExecTree(struct bNodeTree *ntree);
+void            ntreeShaderEndExecTree(struct bNodeTreeExec *exec);
+bool            ntreeShaderExecTree(struct bNodeTree *ntree, struct ShadeInput *shi, struct ShadeResult *shr);
 void            ntreeShaderGetTexcoMode(struct bNodeTree *ntree, int osa, short *texco, int *mode);
-void            nodeShaderSynchronizeID(struct bNode *node, int copyto);
 
 /* switch material render loop */
 extern void (*node_shader_lamp_loop)(struct ShadeInput *, struct ShadeResult *);
@@ -736,8 +925,6 @@ void            ntreeGPUMaterialNodes(struct bNodeTree *ntree, struct GPUMateria
 
 /* API */
 struct CompBuf;
-struct bNodeTreeExec *ntreeCompositBeginExecTree(struct bNodeTree *ntree, int use_tree_data);
-void ntreeCompositEndExecTree(struct bNodeTreeExec *exec, int use_tree_data);
 void ntreeCompositExecTree(struct bNodeTree *ntree, struct RenderData *rd, int rendering, int do_previews,
                            const struct ColorManagedViewSettings *view_settings, const struct ColorManagedDisplaySettings *display_settings);
 void ntreeCompositTagRender(struct Scene *sce);
@@ -791,8 +978,8 @@ struct TexResult;
 int  ntreeTexTagAnimated(struct bNodeTree *ntree);
 void ntreeTexCheckCyclics(struct bNodeTree *ntree);
 
-struct bNodeTreeExec *ntreeTexBeginExecTree(struct bNodeTree *ntree, int use_tree_data);
-void ntreeTexEndExecTree(struct bNodeTreeExec *exec, int use_tree_data);
+struct bNodeTreeExec *ntreeTexBeginExecTree(struct bNodeTree *ntree);
+void ntreeTexEndExecTree(struct bNodeTreeExec *exec);
 int ntreeTexExecTree(struct bNodeTree *ntree, struct TexResult *target,
                      float coord[3], float dxt[3], float dyt[3], int osatex, const short thread,
                      struct Tex *tex, short which_output, int cfra, int preview, struct ShadeInput *shi, struct MTex *mtex);

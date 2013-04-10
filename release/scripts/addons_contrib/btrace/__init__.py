@@ -17,17 +17,17 @@
 #END GPL LICENCE BLOCK
 
 bl_info = {
-    'name': "Btrace",
-    'author': "liero, crazycourier, Atom, Meta-Androcto, MacKracken",
-    'version': (1, 1, ),
-    'blender': (2, 62),
-    'location': "View3D > Tools",
-    'description': "Tools for converting/animating objects/particles into curves",
-    'warning': "Still under development, bug reports appreciated",
-    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Curve/Btrace",
-    'tracker_url': "https://projects.blender.org/tracker/index.php?"\
+    "name": "Btrace",
+    "author": "liero, crazycourier, Atom, Meta-Androcto, MacKracken",
+    "version": (1, 1, ),
+    "blender": (2, 62, 0),
+    "location": "View3D > Tools",
+    "description": "Tools for converting/animating objects/particles into curves",
+    "warning": "Still under development, bug reports appreciated",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Curve/Btrace",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"\
         "func=detail&aid=29563",
-    'category': "Add Curve"
+    "category": "Add Curve"
     }
 
 import bpy

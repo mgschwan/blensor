@@ -53,7 +53,7 @@ public:
 	    const bool stereoVisual,
 	    const GHOST_TUns16 numOfAASamples
 	    ) :
-		GHOST_Window(width, height, state, type, stereoVisual, numOfAASamples),
+		GHOST_Window(width, height, state, type, stereoVisual, false, numOfAASamples),
 		m_system(system)
 	{
 		setTitle(title);
@@ -86,6 +86,8 @@ protected:
 	GHOST_TSuccess invalidate() { return GHOST_kSuccess; }
 	GHOST_TSuccess setOrder(GHOST_TWindowOrder order) { return GHOST_kSuccess; }
 
+	GHOST_TSuccess beginFullScreen() const { return GHOST_kSuccess; }
+	GHOST_TSuccess endFullScreen() const { return GHOST_kSuccess; }
 
 private:
 	GHOST_SystemNULL *m_system;

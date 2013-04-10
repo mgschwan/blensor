@@ -33,12 +33,14 @@
 #define __RE_ENGINE_H__
 
 #include "DNA_listBase.h"
+#include "DNA_scene_types.h"
 #include "RNA_types.h"
 
 struct bNode;
 struct bNodeTree;
 struct Object;
 struct Render;
+struct RenderData;
 struct RenderEngine;
 struct RenderEngineType;
 struct RenderLayer;
@@ -61,6 +63,8 @@ struct Scene;
 #define RE_ENGINE_DO_DRAW		4
 #define RE_ENGINE_DO_UPDATE		8
 #define RE_ENGINE_RENDERING		16
+#define RE_ENGINE_HIGHLIGHT_TILES	32
+#define RE_ENGINE_USED_FOR_VIEWPORT	64
 
 extern ListBase R_engines;
 
@@ -104,6 +108,7 @@ typedef struct RenderEngine {
 } RenderEngine;
 
 RenderEngine *RE_engine_create(RenderEngineType *type);
+RenderEngine *RE_engine_create_ex(RenderEngineType *type, bool use_for_viewport);
 void RE_engine_free(RenderEngine *engine);
 
 void RE_layer_load_from_file(struct RenderLayer *layer, struct ReportList *reports, const char *filename, int x, int y);
@@ -129,6 +134,9 @@ void RE_engines_init(void);
 void RE_engines_exit(void);
 
 RenderEngineType *RE_engines_find(const char *idname);
+
+void RE_engine_get_current_tiles(struct Render *re, int *total_tiles_r, rcti **tiles_r);
+struct RenderData *RE_engine_get_render_data(struct Render *re);
 
 #endif /* __RE_ENGINE_H__ */
 

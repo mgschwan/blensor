@@ -56,6 +56,7 @@ typedef struct Brush {
 	struct BrushClone clone;
 	struct CurveMapping *curve; /* falloff curve */
 	struct MTex mtex;
+	struct MTex mask_mtex;
 
 	struct Brush *toggle_brush;
 
@@ -71,6 +72,8 @@ typedef struct Brush {
 	int size;           /* brush diameter */
 	int flag;           /* general purpose flag */
 	float jitter;       /* jitter the position of the brush */
+	int jitter_absolute;	/* absolute jitter in pixels */
+	int pad;
 	int spacing;        /* spacing of paint operations */
 	int smooth_stroke_radius;   /* turning radius (in pixels) for smooth stroke */
 	float smooth_stroke_factor; /* higher values limit fast changes in the stroke direction */
@@ -102,6 +105,9 @@ typedef struct Brush {
 
 	float add_col[3];
 	float sub_col[3];
+
+	float stencil_pos[2];
+	float stencil_dimension[2];
 } Brush;
 
 /* Brush.flag */
@@ -112,7 +118,7 @@ typedef enum BrushFlags {
 	BRUSH_SIZE_PRESSURE = (1 << 3),
 	BRUSH_JITTER_PRESSURE = (1 << 4),
 	BRUSH_SPACING_PRESSURE = (1 << 5),
-	BRUSH_FIXED_TEX = (1 << 6),
+	// BRUSH_FIXED_TEX = (1 << 6), /* obsolete, use mtex->brush_map_mode = MTEX_MAP_MODE_TILED instead */
 	BRUSH_RAKE = (1 << 7),
 	BRUSH_ANCHORED = (1 << 8),
 	BRUSH_DIR_IN = (1 << 9),
@@ -137,7 +143,8 @@ typedef enum BrushFlags {
 
 	/* temporary flag which sets up automatically for correct brush
 	 * drawing when inverted modal operator is running */
-	BRUSH_INVERTED = (1 << 29)
+	BRUSH_INVERTED = (1 << 29),
+	BRUSH_ABSOLUTE_JITTER = (1 << 30)
 } BrushFlags;
 
 /* Brush.sculpt_tool */
@@ -156,10 +163,7 @@ typedef enum BrushSculptTool {
 	SCULPT_TOOL_THUMB = 12,
 	SCULPT_TOOL_SNAKE_HOOK = 13,
 	SCULPT_TOOL_ROTATE = 14,
-	
-	/* slot 15 is free for use */
-	/* SCULPT_TOOL_ = 15, */
-	
+	SCULPT_TOOL_SIMPLIFY = 15,
 	SCULPT_TOOL_CREASE = 16,
 	SCULPT_TOOL_BLOB = 17,
 	SCULPT_TOOL_CLAY_STRIPS = 18,
@@ -167,10 +171,12 @@ typedef enum BrushSculptTool {
 } BrushSculptTool;
 
 /* ImagePaintSettings.tool */
-#define PAINT_TOOL_DRAW     0
-#define PAINT_TOOL_SOFTEN   1
-#define PAINT_TOOL_SMEAR    2
-#define PAINT_TOOL_CLONE    3
+typedef enum BrushImagePaintTool {
+	PAINT_TOOL_DRAW = 0,
+	PAINT_TOOL_SOFTEN = 1,
+	PAINT_TOOL_SMEAR = 2,
+	PAINT_TOOL_CLONE = 3
+} BrushImagePaintTool;
 
 /* direction that the brush displaces along */
 enum {

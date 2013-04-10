@@ -22,7 +22,7 @@ bl_info = {
     "name": "Mangle Tools",
     "author": "Phil Cote",
     "version": (0, 2),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "View3D > Tools",
     "description": "Set of tools to mangle curves, meshes, and shape keys",
     "warning": "", # used for warning icon and text in addons panel

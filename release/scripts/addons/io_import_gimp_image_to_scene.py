@@ -20,7 +20,7 @@ bl_info = {
     "name": "Import GIMP Image to Scene (.xcf/.xjt)",
     "author": "Daniel Salazar (ZanQdo)",
     "version": (2, 0, 0),
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     "location": "File > Import > GIMP Image to Scene(.xcf/.xjt)",
     "description": "Imports GIMP multilayer image files as a series of multiple planes",
     "warning": "XCF import requires xcftools installed",
@@ -35,7 +35,7 @@ This script imports GIMP layered image files into 3D Scenes (.xcf, .xjt)
 """
 
 def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
-         LayerScale, OpacityMode, PremulAlpha, ShadelessMats,
+         LayerScale, OpacityMode, AlphaMode, ShadelessMats,
          SetCamera, SetupCompo, GroupUntagged, Ext):
     
     #-------------------------------------------------
@@ -238,7 +238,7 @@ def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
         Render.resolution_x = ResX
         Render.resolution_y = ResY
         Render.resolution_percentage = 100
-    if PremulAlpha: Render.alpha_mode = 'PREMUL'
+    Render.alpha_mode = 'TRANSPARENT'
     
     #-------------------------------------------------
     # 3D VIEW SETTINGS
@@ -289,7 +289,7 @@ def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
         # Object
         bpy.ops.mesh.primitive_plane_add(view_align=False,
                                          enter_editmode=False,
-                                         rotation=(0, 0, pi))
+                                         rotation=(0, 0, 0))
 
         bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
@@ -347,7 +347,7 @@ def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
             
             Img = bpy.data.images.new(NameShort, 128, 128)
             Img.source = 'FILE'
-            if PremulAlpha: Img.use_premultiply = True
+            Img.alpha_mode = AlphaMode
             Img.filepath = '%s%s%s' % (PathSaveRaw, Name, ExtSave)
             
             UVFace = Active.data.uv_textures[0].data[0]
@@ -387,12 +387,12 @@ def main(File, Path, LayerViewers, MixerViewers, LayerOffset,
                 Tex = bpy.data.textures.new(NameShort+'_A', 'IMAGE')
                 Tex.extension = 'CLIP'
                 Tex.use_preview_alpha = True
-                Tex.use_alpha = False
                 
                 Img = bpy.data.images.new(NameShort+'_A', 128, 128)
                 Img.source = 'FILE'
-                if PremulAlpha: Img.use_premultiply = True
+                Img.alpha_mode = AlphaMode
                 Img.filepath = '%s%s_A%s' % (PathSaveRaw, Name, ExtSave)
+                Img.use_alpha = False
                 
                 Tex.image = Img
                 
@@ -560,9 +560,12 @@ class GIMPImageToScene(bpy.types.Operator):
         description="Add Viewer nodes to each Mix node",
         default=True)
     
-    PremulAlpha = BoolProperty(name="Premuliply Alpha",
-        description="Set Image and Render settings to premultiplied alpha",
-        default=True)
+    AlphaMode = EnumProperty(name="Alpha Mode",
+        description="Representation of alpha information in the RGBA pixels",
+        items=(
+            ('STRAIGHT', 'Texture Alpha Factor', 'Transparent RGB and alpha pixels are unmodified'),
+            ('PREMUL', 'Material Alpha Value', 'Transparent RGB pixels are multiplied by the alpha channel')),
+        default='STRAIGHT')
 
     ShadelessMats = BoolProperty(name="Shadeless Material",
         description="Set Materials as Shadeless",
@@ -592,7 +595,7 @@ class GIMPImageToScene(bpy.types.Operator):
     LayerOffset = FloatProperty(name="Layer Separation",
         description="Distance between each 3D Layer in the Z axis",
         min=0,
-        default=0.01)
+        default=0.50)
     
     LayerScale = FloatProperty(name="Layer Scale",
         description="Scale pixel resolution by Blender units",
@@ -608,7 +611,7 @@ class GIMPImageToScene(bpy.types.Operator):
         box.prop(self, 'OpacityMode', icon='GHOST')
         if self.OpacityMode == 'COMPO' and self.SetupCompo == False:
             box.label('Tip: Enable Node Compositing', icon='INFO')
-        box.prop(self, 'PremulAlpha', icon='IMAGE_RGB_ALPHA')
+        box.prop(self, 'AlphaMode', icon='IMAGE_RGB_ALPHA')
         box.prop(self, 'ShadelessMats', icon='SOLID')
         box.prop(self, 'LayerOffset')
         box.prop(self, 'LayerScale')
@@ -630,7 +633,7 @@ class GIMPImageToScene(bpy.types.Operator):
         LayerViewers = self.LayerViewers
         MixerViewers = self.MixerViewers
         OpacityMode = self.OpacityMode
-        PremulAlpha = self.PremulAlpha
+        AlphaMode = self.AlphaMode
         ShadelessMats = self.ShadelessMats
         SetCamera = self.SetCamera
         SetupCompo = self.SetupCompo
@@ -645,7 +648,7 @@ class GIMPImageToScene(bpy.types.Operator):
         # Call Main Function
         if Ext:
             main(filename, directory, LayerViewers, MixerViewers, LayerOffset,
-                 LayerScale, OpacityMode, PremulAlpha, ShadelessMats,
+                 LayerScale, OpacityMode, AlphaMode, ShadelessMats,
                  SetCamera, SetupCompo, GroupUntagged, Ext)
         else:
             self.report({'ERROR'},"Selected file wasn't valid, try .xcf or .xjt")

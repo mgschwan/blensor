@@ -57,6 +57,9 @@ void MixHueOperation::executePixel(float output[4], float x, float y, PixelSampl
 		output[1] = valuem * (inputColor1[1]) + value * tmpg;
 		output[2] = valuem * (inputColor1[2]) + value * tmpb;
 	}
+	else {
+		copy_v3_v3(output, inputColor1);
+	}
 	output[3] = inputColor1[3];
 
 	clampIfNeeded(output);

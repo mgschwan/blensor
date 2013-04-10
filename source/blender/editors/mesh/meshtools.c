@@ -27,35 +27,24 @@
 
 /** \file blender/editors/mesh/meshtools.c
  *  \ingroup edmesh
+ *
+ * meshtools.c: no editmode (violated already :), mirror & join),
+ * tools operating on meshes
  */
-
-
-/*
- * meshtools.c: no editmode (violated already :), tools operating on meshes
- */
-
-#include <stddef.h>
-#include <stdlib.h>
-#include <math.h>
-#include <float.h>
 
 #include "MEM_guardedalloc.h"
 
 #include "DNA_mesh_types.h"
-#include "DNA_view3d_types.h"
 #include "DNA_key_types.h"
 #include "DNA_material_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_screen_types.h"
+#include "DNA_view3d_types.h"
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
-#include "BLI_utildefines.h"
-#include "BLI_ghash.h"
-#include "BLI_rand.h" /* for randome face sorting */
-#include "BLI_threads.h"
 
 
 #include "BKE_context.h"
@@ -71,18 +60,12 @@
 #include "BKE_tessmesh.h"
 #include "BKE_multires.h"
 
-#include "BLO_sys_types.h" // for intptr_t support
-
 #include "ED_mesh.h"
 #include "ED_object.h"
 #include "ED_view3d.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
-
-/* own include */
-#include "mesh_intern.h"
-#include "uvedit_intern.h"
 
 /* * ********************** no editmode!!! *********** */
 
@@ -165,7 +148,7 @@ int join_mesh_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	/* remove tessface to ensure we don't old references to invalid faces */
+	/* remove tessface to ensure we don't hold references to invalid faces */
 	BKE_mesh_tessface_clear(me);
 
 	/* new material indices and material array */
@@ -325,6 +308,10 @@ int join_mesh_exec(bContext *C, wmOperator *op)
 			me = base->object->data;
 			
 			if (me->totvert) {
+
+				/* merge customdata flag */
+				((Mesh *)ob->data)->cd_flag |= me->cd_flag;
+
 				/* standard data */
 				CustomData_merge(&me->vdata, &vdata, CD_MASK_MESH, CD_DEFAULT, totvert);
 				CustomData_copy_data(&me->vdata, &vdata, 0, vertofs, me->totvert);
@@ -442,8 +429,8 @@ int join_mesh_exec(bContext *C, wmOperator *op)
 
 					multiresModifier_prepare_join(scene, base->object, ob);
 
-					if ((mmd = get_multires_modifier(scene, base->object, TRUE))) {
-						ED_object_iter_other(bmain, base->object, TRUE,
+					if ((mmd = get_multires_modifier(scene, base->object, true))) {
+						ED_object_iter_other(bmain, base->object, true,
 						                     ED_object_multires_update_totlevels_cb,
 						                     &mmd->totlvl);
 					}
@@ -517,7 +504,10 @@ int join_mesh_exec(bContext *C, wmOperator *op)
 	me->pdata = pdata;
 
 	/* tessface data removed above, no need to update */
-	mesh_update_customdata_pointers(me, FALSE);
+	BKE_mesh_update_customdata_pointers(me, false);
+
+	/* update normals in case objects with non-uniform scale are joined */
+	ED_mesh_calc_normals(me);
 	
 	/* old material array */
 	for (a = 1; a <= ob->totcol; a++) {
@@ -572,11 +562,11 @@ int join_mesh_exec(bContext *C, wmOperator *op)
 	}
 
 
-	DAG_scene_sort(bmain, scene);   // removed objects, need to rebuild dag before editmode call
+	DAG_relations_tag_update(bmain);   // removed objects, need to rebuild dag
 
 #if 0
-	ED_object_enter_editmode(C, EM_WAITCURSOR);
-	ED_object_exit_editmode(C, EM_FREEDATA | EM_WAITCURSOR | EM_DO_UNDO);
+	ED_object_editmode_enter(C, EM_WAITCURSOR);
+	ED_object_editmode_exit(C, EM_FREEDATA | EM_WAITCURSOR | EM_DO_UNDO);
 #else
 	/* toggle editmode using lower level functions so this can be called from python */
 	EDBM_mesh_make(scene->toolsettings, scene, ob);
@@ -733,9 +723,9 @@ static void mesh_octree_add_nodes(MocNode **basetable, const float co[3], const 
 	float fx, fy, fz;
 	int vx, vy, vz;
 	
-	if ((finite(co[0]) == FALSE) ||
-	    (finite(co[1]) == FALSE) ||
-	    (finite(co[2]) == FALSE))
+	if ((finite(co[0]) == false) ||
+	    (finite(co[1]) == false) ||
+	    (finite(co[2]) == false))
 	{
 		return;
 	}
@@ -798,7 +788,9 @@ static intptr_t mesh_octree_find_index(MocNode **bt, MVert *mvert, const float c
 					return (*bt)->index[a];
 			}
 		}
-		else return -1;
+		else {
+			return -1;
+		}
 	}
 	if ( (*bt)->next)
 		return mesh_octree_find_index(&(*bt)->next, mvert, co);
@@ -917,7 +909,7 @@ int mesh_mirrtopo_table(Object *ob, char mode)
 		}
 	}
 	else if (mode == 's') { /* start table */
-		ED_mesh_mirrtopo_init(ob->data, ob->mode, &mesh_topo_store, FALSE);
+		ED_mesh_mirrtopo_init(ob->data, ob->mode, &mesh_topo_store, false);
 	}
 	else if (mode == 'e') { /* end table */
 		ED_mesh_mirrtopo_free(&mesh_topo_store);
@@ -964,9 +956,9 @@ static BMVert *editbmesh_get_x_mirror_vert_spatial(Object *ob, BMEditMesh *em, c
 	intptr_t poinval;
 	
 	/* ignore nan verts */
-	if ((finite(co[0]) == FALSE) ||
-	    (finite(co[1]) == FALSE) ||
-	    (finite(co[2]) == FALSE))
+	if ((finite(co[0]) == false) ||
+	    (finite(co[1]) == false) ||
+	    (finite(co[2]) == false))
 	{
 		return NULL;
 	}
@@ -1080,7 +1072,7 @@ static float *editmesh_get_mirror_uv(BMEditMesh *em, int axis, float *uv, float 
 static unsigned int mirror_facehash(const void *ptr)
 {
 	const MFace *mf = ptr;
-	int v0, v1;
+	unsigned int v0, v1;
 
 	if (mf->v4) {
 		v0 = MIN4(mf->v1, mf->v2, mf->v3, mf->v4);
@@ -1181,14 +1173,17 @@ int *mesh_get_x_mirror_faces(Object *ob, BMEditMesh *em)
  * Face selection in object mode,
  * currently only weight-paint and vertex-paint use this.
  *
- * \return boolean TRUE == Found
+ * \return boolean true == Found
  */
-int ED_mesh_pick_face(bContext *C, Mesh *me, const int mval[2], unsigned int *index, int size)
+bool ED_mesh_pick_face(bContext *C, Object *ob, const int mval[2], unsigned int *index, int size)
 {
 	ViewContext vc;
+	Mesh *me = ob->data;
+
+	BLI_assert(me && GS(me->id.name) == ID_ME);
 
 	if (!me || me->totpoly == 0)
-		return 0;
+		return false;
 
 	view3d_set_viewcontext(C, &vc);
 
@@ -1205,21 +1200,24 @@ int ED_mesh_pick_face(bContext *C, Mesh *me, const int mval[2], unsigned int *in
 	}
 
 	if ((*index) <= 0 || (*index) > (unsigned int)me->totpoly)
-		return 0;
+		return false;
 
 	(*index)--;
 
-	return 1;
+	return true;
 }
 /**
  * Use when the back buffer stores face index values. but we want a vert.
  * This gets the face then finds the closest vertex to mval.
  */
-int ED_mesh_pick_face_vert(bContext *C, Mesh *me, Object *ob, const int mval[2], unsigned int *index, int size)
+bool ED_mesh_pick_face_vert(bContext *C, Object *ob, const int mval[2], unsigned int *index, int size)
 {
 	unsigned int poly_index;
+	Mesh *me = ob->data;
 
-	if (ED_mesh_pick_face(C, me, mval, &poly_index, size)) {
+	BLI_assert(me && GS(me->id.name) == ID_ME);
+
+	if (ED_mesh_pick_face(C, ob, mval, &poly_index, size)) {
 		Scene *scene = CTX_data_scene(C);
 		struct ARegion *ar = CTX_wm_region(C);
 
@@ -1228,6 +1226,8 @@ int ED_mesh_pick_face_vert(bContext *C, Mesh *me, Object *ob, const int mval[2],
 		int v_idx_best = -1;
 
 		if (dm->getVertCo) {
+			RegionView3D *rv3d = ar->regiondata;
+
 			/* find the vert closest to 'mval' */
 			const float mval_f[2] = {(float)mval[0],
 			                         (float)mval[1]};
@@ -1235,14 +1235,15 @@ int ED_mesh_pick_face_vert(bContext *C, Mesh *me, Object *ob, const int mval[2],
 			int fidx;
 			float len_best = FLT_MAX;
 
+			ED_view3d_init_mats_rv3d(ob, rv3d);
+
 			fidx = mp->totloop - 1;
 			do {
 				float co[3], sco[2], len;
 				const int v_idx = me->mloop[mp->loopstart + fidx].v;
 				dm->getVertCo(dm, v_idx, co);
-				mul_m4_v3(ob->obmat, co);
-				if (ED_view3d_project_float_global(ar, co, sco, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) {
-					len = len_squared_v2v2(mval_f, sco);
+				if (ED_view3d_project_float_object(ar, co, sco, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) {
+					len = len_manhattan_v2v2(mval_f, sco);
 					if (len < len_best) {
 						len_best = len;
 						v_idx_best = v_idx;
@@ -1255,44 +1256,110 @@ int ED_mesh_pick_face_vert(bContext *C, Mesh *me, Object *ob, const int mval[2],
 
 		if (v_idx_best != -1) {
 			*index = v_idx_best;
-			return 1;
+			return true;
 		}
 	}
 
-	return 0;
+	return false;
 }
 
 /**
  * Vertex selection in object mode,
  * currently only weight paint uses this.
  *
- * \return boolean TRUE == Found
+ * \return boolean true == Found
  */
-int ED_mesh_pick_vert(bContext *C, Mesh *me, const int mval[2], unsigned int *index, int size)
+typedef struct VertPickData {
+	const MVert *mvert;
+	const float *mval_f;  /* [2] */
+	ARegion *ar;
+
+	/* runtime */
+	float len_best;
+	int v_idx_best;
+} VertPickData;
+
+static void ed_mesh_pick_vert__mapFunc(void *userData, int index, const float co[3],
+                                       const float UNUSED(no_f[3]), const short UNUSED(no_s[3]))
+{
+	VertPickData *data = userData;
+	if ((data->mvert[index].flag & ME_HIDE) == 0) {
+		float sco[2];
+
+		if (ED_view3d_project_float_object(data->ar, co, sco, V3D_PROJ_TEST_CLIP_DEFAULT) == V3D_PROJ_RET_OK) {
+			const float len = len_manhattan_v2v2(data->mval_f, sco);
+			if (len < data->len_best) {
+				data->len_best = len;
+				data->v_idx_best = index;
+			}
+		}
+	}
+}
+bool ED_mesh_pick_vert(bContext *C, Object *ob, const int mval[2], unsigned int *index, int size, bool use_zbuf)
 {
 	ViewContext vc;
+	Mesh *me = ob->data;
+
+	BLI_assert(me && GS(me->id.name) == ID_ME);
 
 	if (!me || me->totvert == 0)
-		return 0;
+		return false;
 
 	view3d_set_viewcontext(C, &vc);
 
-	if (size > 0) {
-		/* sample rect to increase chances of selecting, so that when clicking
-		 * on an face in the backbuf, we can still select a vert */
+	if (use_zbuf) {
+		if (size > 0) {
+			/* sample rect to increase chances of selecting, so that when clicking
+			 * on an face in the backbuf, we can still select a vert */
 
-		float dummy_dist;
-		*index = view3d_sample_backbuf_rect(&vc, mval, size, 1, me->totvert + 1, &dummy_dist, 0, NULL, NULL);
+			float dummy_dist;
+			*index = view3d_sample_backbuf_rect(&vc, mval, size, 1, me->totvert + 1, &dummy_dist, 0, NULL, NULL);
+		}
+		else {
+			/* sample only on the exact position */
+			*index = view3d_sample_backbuf(&vc, mval[0], mval[1]);
+		}
+
+		if ((*index) <= 0 || (*index) > (unsigned int)me->totvert)
+			return false;
+
+		(*index)--;
 	}
 	else {
-		/* sample only on the exact position */
-		*index = view3d_sample_backbuf(&vc, mval[0], mval[1]);
+		/* derived mesh to find deformed locations */
+		DerivedMesh *dm = mesh_get_derived_final(vc.scene, ob, CD_MASK_BAREMESH);
+		ARegion *ar = vc.ar;
+		RegionView3D *rv3d = ar->regiondata;
+
+		/* find the vert closest to 'mval' */
+		const float mval_f[2] = {(float)mval[0],
+		                         (float)mval[1]};
+
+		VertPickData data = {0};
+
+		ED_view3d_init_mats_rv3d(ob, rv3d);
+
+		if (dm == NULL) {
+			return false;
+		}
+
+		/* setup data */
+		data.mvert = me->mvert;
+		data.ar = ar;
+		data.mval_f = mval_f;
+		data.len_best = FLT_MAX;
+		data.v_idx_best = -1;
+
+		dm->foreachMappedVert(dm, ed_mesh_pick_vert__mapFunc, &data);
+
+		dm->release(dm);
+
+		if (data.v_idx_best == -1) {
+			return false;
+		}
+
+		*index = data.v_idx_best;
 	}
 
-	if ((*index) <= 0 || (*index) > (unsigned int)me->totvert)
-		return 0;
-
-	(*index)--;
-
-	return 1;
+	return true;
 }

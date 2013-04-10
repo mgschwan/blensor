@@ -20,18 +20,19 @@
 
 #include "background.h"
 #include "camera.h"
+#include "curves.h"
 #include "device.h"
 #include "film.h"
-#include "filter.h"
 #include "integrator.h"
 #include "light.h"
-#include "shader.h"
 #include "mesh.h"
 #include "object.h"
+#include "osl.h"
 #include "particles.h"
 #include "scene.h"
+#include "shader.h"
 #include "svm.h"
-#include "osl.h"
+#include "tables.h"
 
 #include "util_foreach.h"
 #include "util_progress.h"
@@ -45,7 +46,7 @@ Scene::Scene(const SceneParams& params_, const DeviceInfo& device_info_)
 	memset(&dscene.data, 0, sizeof(dscene.data));
 
 	camera = new Camera();
-	filter = new Filter();
+	lookup_tables = new LookupTables();
 	film = new Film();
 	background = new Background();
 	light_manager = new LightManager();
@@ -54,6 +55,7 @@ Scene::Scene(const SceneParams& params_, const DeviceInfo& device_info_)
 	integrator = new Integrator();
 	image_manager = new ImageManager();
 	particle_system_manager = new ParticleSystemManager();
+	curve_system_manager = new CurveSystemManager();
 
 	/* OSL only works on the CPU */
 	if(device_info_.type == DEVICE_CPU)
@@ -83,26 +85,34 @@ void Scene::free_memory(bool final)
 	foreach(ParticleSystem *p, particle_systems)
 		delete p;
 
+	shaders.clear();
+	meshes.clear();
+	objects.clear();
+	lights.clear();
+	particle_systems.clear();
+
 	if(device) {
 		camera->device_free(device, &dscene);
-		filter->device_free(device, &dscene);
-		film->device_free(device, &dscene);
+		film->device_free(device, &dscene, this);
 		background->device_free(device, &dscene);
 		integrator->device_free(device, &dscene);
 
 		object_manager->device_free(device, &dscene);
 		mesh_manager->device_free(device, &dscene);
-		shader_manager->device_free(device, &dscene);
+		shader_manager->device_free(device, &dscene, this);
 		light_manager->device_free(device, &dscene);
 
 		particle_system_manager->device_free(device, &dscene);
+		curve_system_manager->device_free(device, &dscene);
 
-		if(!params.persistent_images || final)
+		if(!params.persistent_data || final)
 			image_manager->device_free(device, &dscene);
+
+		lookup_tables->device_free(device, &dscene);
 	}
 
 	if(final) {
-		delete filter;
+		delete lookup_tables;
 		delete camera;
 		delete film;
 		delete background;
@@ -112,14 +122,8 @@ void Scene::free_memory(bool final)
 		delete shader_manager;
 		delete light_manager;
 		delete particle_system_manager;
+		delete curve_system_manager;
 		delete image_manager;
-	}
-	else {
-		shaders.clear();
-		meshes.clear();
-		objects.clear();
-		lights.clear();
-		particle_systems.clear();
 	}
 }
 
@@ -165,6 +169,11 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	if(progress.get_cancel()) return;
 
+	progress.set_status("Updating Hair Systems");
+	curve_system_manager->device_update(device, &dscene, this, progress);
+
+	if(progress.get_cancel()) return;
+
 	progress.set_status("Updating Meshes");
 	mesh_manager->device_update(device, &dscene, this, progress);
 
@@ -180,18 +189,18 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	if(progress.get_cancel()) return;
 
-	progress.set_status("Updating Filter");
-	filter->device_update(device, &dscene);
-
-	if(progress.get_cancel()) return;
-
 	progress.set_status("Updating Film");
-	film->device_update(device, &dscene);
+	film->device_update(device, &dscene, this);
 
 	if(progress.get_cancel()) return;
 
 	progress.set_status("Updating Integrator");
 	integrator->device_update(device, &dscene, this);
+
+	if(progress.get_cancel()) return;
+
+	progress.set_status("Updating Lookup Tables");
+	lookup_tables->device_update(device, &dscene);
 
 	if(progress.get_cancel()) return;
 
@@ -239,19 +248,20 @@ bool Scene::need_reset()
 		|| object_manager->need_update
 		|| mesh_manager->need_update
 		|| light_manager->need_update
-		|| filter->need_update
+		|| lookup_tables->need_update
 		|| integrator->need_update
 		|| shader_manager->need_update
-		|| particle_system_manager->need_update);
+		|| particle_system_manager->need_update
+		|| curve_system_manager->need_update);
 }
 
 void Scene::reset()
 {
+	shader_manager->reset(this);
 	shader_manager->add_default(this);
 
 	/* ensure all objects are updated */
 	camera->tag_update();
-	filter->tag_update(this);
 	film->tag_update(this);
 	background->tag_update(this);
 	integrator->tag_update(this);

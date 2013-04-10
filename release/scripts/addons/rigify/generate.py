@@ -24,14 +24,14 @@ import time
 import traceback
 import sys
 from rna_prop_ui import rna_idprop_ui_prop_get
-from rigify.utils import MetarigError, new_bone, get_rig_type
-from rigify.utils import ORG_PREFIX, MCH_PREFIX, DEF_PREFIX, WGT_PREFIX, ROOT_NAME, make_original_name
-from rigify.utils import RIG_DIR
-from rigify.utils import create_root_widget
-from rigify.utils import random_id
-from rigify.utils import copy_attributes
-from rigify.rig_ui_template import UI_SLIDERS, layers_ui, UI_REGISTER
-from rigify import rigs
+
+from .utils import MetarigError, new_bone, get_rig_type
+from .utils import ORG_PREFIX, MCH_PREFIX, DEF_PREFIX, WGT_PREFIX, ROOT_NAME, make_original_name
+from .utils import RIG_DIR
+from .utils import create_root_widget
+from .utils import random_id
+from .utils import copy_attributes
+from .rig_ui_template import UI_SLIDERS, layers_ui, UI_REGISTER
 
 RIG_MODULE = "rigs"
 ORG_LAYER = [n == 31 for n in range(0, 32)]  # Armature layer that original bones should be moved to.
@@ -157,17 +157,15 @@ def generate_rig(context, metarig):
 
         # rigify_type and rigify_parameters
         bone_gen.rigify_type = bone.rigify_type
-        if len(bone.rigify_parameters) > 0:
-            bone_gen.rigify_parameters.add()
-            for prop in dir(bone_gen.rigify_parameters[0]):
-                if (not prop.startswith("_")) \
-                and (not prop.startswith("bl_")) \
-                and (prop != "rna_type"):
-                    try:
-                        setattr(bone_gen.rigify_parameters[0], prop, \
-                                getattr(bone.rigify_parameters[0], prop))
-                    except AttributeError:
-                        print("FAILED TO COPY PARAMETER: " + str(prop))
+        for prop in dir(bone_gen.rigify_parameters):
+            if (not prop.startswith("_")) \
+            and (not prop.startswith("bl_")) \
+            and (prop != "rna_type"):
+                try:
+                    setattr(bone_gen.rigify_parameters, prop, \
+                            getattr(bone.rigify_parameters, prop))
+                except AttributeError:
+                    print("FAILED TO COPY PARAMETER: " + str(prop))
 
         # Custom properties
         for prop in bone.keys():
@@ -267,7 +265,6 @@ def generate_rig(context, metarig):
     try:
         # Collect/initialize all the rigs.
         rigs = []
-        deformation_rigs = []
         for bone in bones_sorted:
             bpy.ops.object.mode_set(mode='EDIT')
             rigs += get_bone_rigs(obj, bone)
@@ -308,6 +305,16 @@ def generate_rig(context, metarig):
             obj.data.edit_bones[bone].use_connect = False
             obj.data.edit_bones[bone].parent = obj.data.edit_bones[root_bone]
     bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Lock transforms on all non-control bones
+    r = re.compile("[A-Z][A-Z][A-Z]-")
+    for bone in bones:
+        if r.match(bone):
+            pb = obj.pose.bones[bone]
+            pb.lock_location = (True, True, True)
+            pb.lock_rotation = (True, True, True)
+            pb.lock_rotation_w = True
+            pb.lock_scale = (True, True, True)
 
     # Every bone that has a name starting with "DEF-" make deforming.  All the
     # others make non-deforming.
@@ -350,7 +357,7 @@ def generate_rig(context, metarig):
     # Assign shapes to bones
     # Object's with name WGT-<bone_name> get used as that bone's shape.
     for bone in bones:
-        wgt_name = (WGT_PREFIX + obj.data.bones[bone].name)[:21]  # Object names are limited to 21 characters... arg
+        wgt_name = (WGT_PREFIX + obj.data.bones[bone].name)[:63]  # Object names are limited to 63 characters... arg
         if wgt_name in context.scene.objects:
             # Weird temp thing because it won't let me index by object name
             for ob in context.scene.objects:
@@ -412,10 +419,7 @@ def get_bone_rigs(obj, bone_name, halt_on_missing=False):
         pass
     else:
         # Gather parameters
-        try:
-            params = obj.pose.bones[bone_name].rigify_parameters[0]
-        except (KeyError, IndexError):
-            params = None
+        params = obj.pose.bones[bone_name].rigify_parameters
 
         # Get the rig
         try:

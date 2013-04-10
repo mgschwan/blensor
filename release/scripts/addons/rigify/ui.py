@@ -18,13 +18,13 @@
 
 # <pep8 compliant>
 
-# test comment
-
 import bpy
 from bpy.props import StringProperty
-import rigify
-from rigify.utils import get_rig_type
-from rigify import generate
+
+from .utils import get_rig_type, MetarigError
+from .utils import write_metarig, write_widget
+from . import rig_lists
+from . import generate
 
 
 class DATA_PT_rigify_buttons(bpy.types.Panel):
@@ -59,7 +59,7 @@ class DATA_PT_rigify_buttons(bpy.types.Panel):
             for i in range(0, len(id_store.rigify_types)):
                 id_store.rigify_types.remove(0)
 
-            for r in rigify.rig_list:
+            for r in rig_lists.rig_list:
                 # collection = r.split('.')[0]  # UNUSED
                 if collection_name == "All":
                     a = id_store.rigify_types.add()
@@ -67,7 +67,7 @@ class DATA_PT_rigify_buttons(bpy.types.Panel):
                 elif r.startswith(collection_name + '.'):
                     a = id_store.rigify_types.add()
                     a.name = r
-                elif collection_name == "None" and len(r.split('.')) == 1:
+                elif (collection_name == "None") and ("." not in r):
                     a = id_store.rigify_types.add()
                     a.name = r
 
@@ -77,10 +77,10 @@ class DATA_PT_rigify_buttons(bpy.types.Panel):
 
             # Rig type list
             row = layout.row()
-            row.template_list(id_store, "rigify_types", id_store, 'rigify_active_type')
+            row.template_list("UI_UL_list", "rigify_types", id_store, "rigify_types", id_store, 'rigify_active_type')
 
-            op = layout.operator("armature.metarig_sample_add", text="Add sample")
-            op.metarig_type = id_store.rigify_types[id_store.rigify_active_type].name
+            props = layout.operator("armature.metarig_sample_add", text="Add sample")
+            props.metarig_type = id_store.rigify_types[id_store.rigify_active_type].name
 
 
 class DATA_PT_rigify_layer_names(bpy.types.Panel):
@@ -99,13 +99,21 @@ class DATA_PT_rigify_layer_names(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         obj = context.object
+        arm = obj.data
 
         # Ensure that the layers exist
-        for i in range(1 + len(obj.data.rigify_layers), 29):
-            obj.data.rigify_layers.add()
+        if 0:
+            for i in range(1 + len(arm.rigify_layers), 29):
+                arm.rigify_layers.add()
+        else:
+            # Can't add while drawing, just use button
+            if len(arm.rigify_layers) < 28:
+                layout.operator("pose.rigify_layer_init")
+                return
 
         # UI
-        for i in range(28):
+        for i, rigify_layer in enumerate(arm.rigify_layers):
+            # note: rigify_layer == arm.rigify_layers[i]
             if (i % 16) == 0:
                 col = layout.column()
                 if i == 0:
@@ -115,11 +123,11 @@ class DATA_PT_rigify_layer_names(bpy.types.Panel):
             if (i % 8) == 0:
                 col = layout.column(align=True)
             row = col.row()
-            row.prop(obj.data, "layers", index=i, text="", toggle=True)
+            row.prop(arm, "layers", index=i, text="", toggle=True)
             split = row.split(percentage=0.8)
-            split.prop(obj.data.rigify_layers[i], "name", text="Layer %d" % (i + 1))
-            split.prop(obj.data.rigify_layers[i], "row", text="")
-            #split.prop(obj.data.rigify_layers[i], "column", text="")
+            split.prop(rigify_layer, "name", text="Layer %d" % (i + 1))
+            split.prop(rigify_layer, "row", text="")
+            #split.prop(rigify_layer, "column", text="")
 
 
 class BONE_PT_rigify_buttons(bpy.types.Panel):
@@ -151,7 +159,7 @@ class BONE_PT_rigify_buttons(bpy.types.Panel):
         for i in range(0, len(id_store.rigify_types)):
             id_store.rigify_types.remove(0)
 
-        for r in rigify.rig_list:
+        for r in rig_lists.rig_list:
             # collection = r.split('.')[0]  # UNUSED
             if collection_name == "All":
                 a = id_store.rigify_types.add()
@@ -169,9 +177,6 @@ class BONE_PT_rigify_buttons(bpy.types.Panel):
 
         # Rig type parameters / Rig type non-exist alert
         if rig_name != "":
-            if len(bone.rigify_parameters) < 1:
-                bone.rigify_parameters.add()
-
             try:
                 rig = get_rig_type(rig_name)
                 rig.Rig
@@ -181,16 +186,34 @@ class BONE_PT_rigify_buttons(bpy.types.Panel):
                 box.label(text="ALERT: type \"%s\" does not exist!" % rig_name)
             else:
                 try:
-                    rig.Rig.parameters_ui
+                    rig.parameters_ui
                 except AttributeError:
-                    pass
+                    col = layout.column()
+                    col.label(text="No options")
                 else:
                     col = layout.column()
                     col.label(text="Options:")
                     box = layout.box()
+                    rig.parameters_ui(box, bone.rigify_parameters)
 
-                    rig.Rig.parameters_ui(box, C.active_object, bone.name)
 
+class VIEW3D_PT_tools_rigify_dev(bpy.types.Panel):
+    bl_label = "Rigify Dev Tools"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+
+    def draw(self, context):
+        obj = context.active_object
+        if obj != None:
+            if context.mode == 'EDIT_ARMATURE':
+                r = self.layout.row()
+                r.operator("armature.rigify_encode_metarig", text="Encode Metarig to Python")
+                r = self.layout.row()
+                r.operator("armature.rigify_encode_metarig_sample", text="Encode Sample to Python")
+
+            if context.mode == 'EDIT_MESH':
+                r = self.layout.row()
+                r.operator("mesh.rigify_encode_mesh_widget", text="Encode Mesh Widget to Python")
 
 #~ class INFO_MT_armature_metarig_add(bpy.types.Menu):
     #~ bl_idname = "INFO_MT_armature_metarig_add"
@@ -229,6 +252,21 @@ def rigify_report_exception(operator, exception):
     operator.report({'INFO'}, '\n'.join(message))
 
 
+class LayerInit(bpy.types.Operator):
+    """Initialize armature rigify layers"""
+
+    bl_idname = "pose.rigify_layer_init"
+    bl_label = "Add Rigify Layers"
+    bl_options = {'UNDO'}
+
+    def execute(self, context):
+        obj = context.object
+        arm = obj.data
+        for i in range(1 + len(arm.rigify_layers), 29):
+            arm.rigify_layers.add()
+        return {'FINISHED'}
+
+
 class Generate(bpy.types.Operator):
     """Generates a rig from the active metarig armature"""
 
@@ -244,7 +282,7 @@ class Generate(bpy.types.Operator):
         context.user_preferences.edit.use_global_undo = False
         try:
             generate.generate_rig(context, context.object)
-        except rigify.utils.MetarigError as rig_exception:
+        except MetarigError as rig_exception:
             rigify_report_exception(self, rig_exception)
         finally:
             context.user_preferences.edit.use_global_undo = use_global_undo
@@ -271,15 +309,97 @@ class Sample(bpy.types.Operator):
             use_global_undo = context.user_preferences.edit.use_global_undo
             context.user_preferences.edit.use_global_undo = False
             try:
-                rig = get_rig_type(self.metarig_type).Rig
+                rig = get_rig_type(self.metarig_type)
                 create_sample = rig.create_sample
             except (ImportError, AttributeError):
-                print("Rigify: rig type has no sample.")
+                raise Exception("rig type '" + self.metarig_type + "' has no sample.")
             else:
                 create_sample(context.active_object)
             finally:
                 context.user_preferences.edit.use_global_undo = use_global_undo
                 bpy.ops.object.mode_set(mode='EDIT')
+
+        return {'FINISHED'}
+
+
+class EncodeMetarig(bpy.types.Operator):
+    """ Creates Python code that will generate the selected metarig.
+    """
+    bl_idname = "armature.rigify_encode_metarig"
+    bl_label = "Rigify Encode Metarig"
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.mode == 'EDIT_ARMATURE'
+
+    def execute(self, context):
+        name = "metarig.py"
+
+        if name in bpy.data.texts:
+            text_block = bpy.data.texts[name]
+            text_block.clear()
+        else:
+            text_block = bpy.data.texts.new(name)
+
+        text = write_metarig(context.active_object, layers=True, func_name="create")
+        text_block.write(text)
+        bpy.ops.object.mode_set(mode='EDIT')
+
+        return {'FINISHED'}
+
+
+class EncodeMetarigSample(bpy.types.Operator):
+    """ Creates Python code that will generate the selected metarig
+        as a sample.
+    """
+    bl_idname = "armature.rigify_encode_metarig_sample"
+    bl_label = "Rigify Encode Metarig Sample"
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.mode == 'EDIT_ARMATURE'
+
+    def execute(self, context):
+        name = "metarig_sample.py"
+
+        if name in bpy.data.texts:
+            text_block = bpy.data.texts[name]
+            text_block.clear()
+        else:
+            text_block = bpy.data.texts.new(name)
+
+        text = write_metarig(context.active_object, layers=False, func_name="create_sample")
+        text_block.write(text)
+        bpy.ops.object.mode_set(mode='EDIT')
+
+        return {'FINISHED'}
+
+
+class EncodeWidget(bpy.types.Operator):
+    """ Creates Python code that will generate the selected metarig.
+    """
+    bl_idname = "mesh.rigify_encode_mesh_widget"
+    bl_label = "Rigify Encode Widget"
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        return context.mode == 'EDIT_MESH'
+
+    def execute(self, context):
+        name = "widget.py"
+
+        if name in bpy.data.texts:
+            text_block = bpy.data.texts[name]
+            text_block.clear()
+        else:
+            text_block = bpy.data.texts.new(name)
+
+        text = write_widget(context.active_object)
+        text_block.write(text)
+        bpy.ops.object.mode_set(mode='EDIT')
 
         return {'FINISHED'}
 
@@ -292,8 +412,13 @@ def register():
     bpy.utils.register_class(DATA_PT_rigify_layer_names)
     bpy.utils.register_class(DATA_PT_rigify_buttons)
     bpy.utils.register_class(BONE_PT_rigify_buttons)
+    bpy.utils.register_class(VIEW3D_PT_tools_rigify_dev)
+    bpy.utils.register_class(LayerInit)
     bpy.utils.register_class(Generate)
     bpy.utils.register_class(Sample)
+    bpy.utils.register_class(EncodeMetarig)
+    bpy.utils.register_class(EncodeMetarigSample)
+    bpy.utils.register_class(EncodeWidget)
 
     #space_info.INFO_MT_armature_add.append(ui.menu_func)
 
@@ -302,5 +427,10 @@ def unregister():
     bpy.utils.unregister_class(DATA_PT_rigify_layer_names)
     bpy.utils.unregister_class(DATA_PT_rigify_buttons)
     bpy.utils.unregister_class(BONE_PT_rigify_buttons)
+    bpy.utils.unregister_class(VIEW3D_PT_tools_rigify_dev)
+    bpy.utils.unregister_class(LayerInit)
     bpy.utils.unregister_class(Generate)
     bpy.utils.unregister_class(Sample)
+    bpy.utils.unregister_class(EncodeMetarig)
+    bpy.utils.unregister_class(EncodeMetarigSample)
+    bpy.utils.unregister_class(EncodeWidget)

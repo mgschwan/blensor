@@ -92,6 +92,8 @@ extern "C" {
 #include "SCA_PropertySensor.h"
 #include "SCA_RandomActuator.h"
 #include "SCA_KeyboardSensor.h" /* IsPrintable, ToCharacter */
+#include "SCA_JoystickManager.h" /* JOYINDEX_MAX */
+#include "SCA_PythonJoystick.h"
 #include "SCA_PythonKeyboard.h"
 #include "SCA_PythonMouse.h"
 #include "KX_ConstraintActuator.h"
@@ -134,6 +136,7 @@ extern "C" {
 
 /* for converting new scenes */
 #include "KX_BlenderSceneConverter.h"
+#include "KX_LibLoadStatus.h"
 #include "KX_MeshProxy.h" /* for creating a new library of mesh objects */
 extern "C" {
 	#include "BKE_idcode.h"
@@ -151,6 +154,7 @@ static char gp_GamePythonPathOrig[FILE_MAX] = ""; // not super happy about this,
 
 static SCA_PythonKeyboard* gp_PythonKeyboard = NULL;
 static SCA_PythonMouse* gp_PythonMouse = NULL;
+static SCA_PythonJoystick* gp_PythonJoysticks[JOYINDEX_MAX] = {NULL};
 #endif // WITH_PYTHON
 
 static KX_Scene*	gp_KetsjiScene = NULL;
@@ -194,7 +198,7 @@ static PyObject *gp_OrigPythonSysModules= NULL;
 
 /* Macro for building the keyboard translation */
 //#define KX_MACRO_addToDict(dict, name) PyDict_SetItemString(dict, #name, PyLong_FromLong(SCA_IInputDevice::KX_##name))
-#define KX_MACRO_addToDict(dict, name) PyDict_SetItemString(dict, #name, item=PyLong_FromLong(name)); Py_DECREF(item)
+//#define KX_MACRO_addToDict(dict, name) PyDict_SetItemString(dict, #name, item=PyLong_FromLong(name)); Py_DECREF(item)
 /* For the defines for types from logic bricks, we do stuff explicitly... */
 #define KX_MACRO_addTypesToDict(dict, name, name2) PyDict_SetItemString(dict, #name, item=PyLong_FromLong(name2)); Py_DECREF(item)
 
@@ -365,6 +369,15 @@ static PyObject *gPyLoadGlobalDict(PyObject *)
 	}
 
 	Py_RETURN_NONE;
+}
+
+static char gPyGetProfileInfo_doc[] =
+"getProfileInfo()\n"
+"returns a dictionary with profiling information";
+
+static PyObject *gPyGetProfileInfo(PyObject *)
+{
+	return gp_KetsjiEngine->GetPyProfileDict();
 }
 
 static char gPySendMessage_doc[] = 
@@ -667,14 +680,15 @@ static PyObject *gLibLoad(PyObject *, PyObject *args, PyObject *kwds)
 	Py_buffer py_buffer;
 	py_buffer.buf = NULL;
 	char *err_str= NULL;
+	KX_LibLoadStatus *status = NULL;
 
 	short options=0;
-	int load_actions=0, verbose=0, load_scripts=1;
+	int load_actions=0, verbose=0, load_scripts=1, async=0;
 
-	static const char *kwlist[] = {"path", "group", "buffer", "load_actions", "verbose", "load_scripts", NULL};
+	static const char *kwlist[] = {"path", "group", "buffer", "load_actions", "verbose", "load_scripts", "async", NULL};
 	
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "ss|y*iii:LibLoad", const_cast<char**>(kwlist),
-									&path, &group, &py_buffer, &load_actions, &verbose, &load_scripts))
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "ss|y*iiIi:LibLoad", const_cast<char**>(kwlist),
+									&path, &group, &py_buffer, &load_actions, &verbose, &load_scripts, &async))
 		return NULL;
 
 	/* setup options */
@@ -684,6 +698,8 @@ static PyObject *gLibLoad(PyObject *, PyObject *args, PyObject *kwds)
 		options |= KX_BlenderSceneConverter::LIB_LOAD_VERBOSE;
 	if (load_scripts != 0)
 		options |= KX_BlenderSceneConverter::LIB_LOAD_LOAD_SCRIPTS;
+	if (async != 0)
+		options |= KX_BlenderSceneConverter::LIB_LOAD_ASYNC;
 
 	if (!py_buffer.buf)
 	{
@@ -692,16 +708,16 @@ static PyObject *gLibLoad(PyObject *, PyObject *args, PyObject *kwds)
 		BLI_strncpy(abs_path, path, sizeof(abs_path));
 		BLI_path_abs(abs_path, gp_GamePythonPath);
 
-		if (kx_scene->GetSceneConverter()->LinkBlendFilePath(abs_path, group, kx_scene, &err_str, options)) {
-			Py_RETURN_TRUE;
+		if ((status=kx_scene->GetSceneConverter()->LinkBlendFilePath(abs_path, group, kx_scene, &err_str, options))) {
+			return status->GetProxy();
 		}
 	}
 	else
 	{
 
-		if (kx_scene->GetSceneConverter()->LinkBlendFileMemory(py_buffer.buf, py_buffer.len, path, group, kx_scene, &err_str, options))	{
+		if ((status=kx_scene->GetSceneConverter()->LinkBlendFileMemory(py_buffer.buf, py_buffer.len, path, group, kx_scene, &err_str, options)))	{
 			PyBuffer_Release(&py_buffer);
-			Py_RETURN_TRUE;
+			return status->GetProxy();
 		}
 
 		PyBuffer_Release(&py_buffer);
@@ -851,6 +867,7 @@ static struct PyMethodDef game_methods[] = {
 	{"PrintGLInfo", (PyCFunction)pyPrintExt, METH_NOARGS, (const char *)"Prints GL Extension Info"},
 	{"PrintMemInfo", (PyCFunction)pyPrintStats, METH_NOARGS, (const char *)"Print engine statistics"},
 	{"NextFrame", (PyCFunction)gPyNextFrame, METH_NOARGS, (const char *)"Render next frame (if Python has control)"},
+	{"getProfileInfo", (PyCFunction)gPyGetProfileInfo, METH_NOARGS, gPyGetProfileInfo_doc},
 	/* library functions */
 	{"LibLoad", (PyCFunction)gLibLoad, METH_VARARGS|METH_KEYWORDS, (const char *)""},
 	{"LibNew", (PyCFunction)gLibNew, METH_VARARGS, (const char *)""},
@@ -1420,6 +1437,22 @@ PyObject *initGameLogic(KX_KetsjiEngine *engine, KX_Scene* scene) // quick hack 
 	gp_PythonMouse = new SCA_PythonMouse(gp_KetsjiEngine->GetMouseDevice(), gp_Canvas);
 	PyDict_SetItemString(d, "mouse", gp_PythonMouse->NewProxy(true));
 
+	PyObject* joylist = PyList_New(JOYINDEX_MAX);
+	for (int i=0; i<JOYINDEX_MAX; ++i) {
+		SCA_Joystick* joy = SCA_Joystick::GetInstance(i);
+		if (joy && joy->Connected()) {
+			gp_PythonJoysticks[i] = new SCA_PythonJoystick(joy);
+			PyObject* tmp = gp_PythonJoysticks[i]->NewProxy(true);
+			Py_INCREF(tmp);
+			PyList_SET_ITEM(joylist, i, tmp);
+		} else 	{
+			joy->ReleaseInstance();
+			Py_INCREF(Py_None);
+			PyList_SET_ITEM(joylist, i, Py_None);
+		}
+	}
+	PyDict_SetItemString(d, "joysticks", joylist);
+
 	ErrorObject = PyUnicode_FromString("GameLogic.error");
 	PyDict_SetItemString(d, "error", ErrorObject);
 	Py_DECREF(ErrorObject);
@@ -1859,13 +1892,13 @@ static struct _inittab bge_internal_modules[] = {
 PyObject *initGamePlayerPythonScripting(const STR_String& progname, TPythonSecurityLevel level, Main *maggie, int argc, char** argv)
 {
 	/* Yet another gotcha in the py api
-	 * Cant run PySys_SetArgv more then once because this adds the
+	 * Cant run PySys_SetArgv more than once because this adds the
 	 * binary dir to the sys.path each time.
 	 * Id have thought python being totally restarted would make this ok but
 	 * somehow it remembers the sys.path - Campbell
 	 */
 	static bool first_time = true;
-	char *py_path_bundle   = BLI_get_folder(BLENDER_SYSTEM_PYTHON, NULL);
+	const char * const py_path_bundle   = BLI_get_folder(BLENDER_SYSTEM_PYTHON, NULL);
 
 #if 0 // TODO - py3
 	STR_String pname = progname;
@@ -1898,19 +1931,22 @@ PyObject *initGamePlayerPythonScripting(const STR_String& progname, TPythonSecur
 		PySys_SetObject("argv", py_argv);
 		Py_DECREF(py_argv);
 	}
+	
+	/* Initialize thread support (also acquires lock) */
+	PyEval_InitThreads();
 
 	bpy_import_init(PyEval_GetBuiltins());
 
 	/* mathutils types are used by the BGE even if we don't import them */
 	{
-		PyObject *mod= PyImport_ImportModuleLevel((char *)"mathutils", NULL, NULL, NULL, 0);
+		PyObject *mod = PyImport_ImportModuleLevel("mathutils", NULL, NULL, NULL, 0);
 		Py_DECREF(mod);
 	}
 
 #ifdef WITH_AUDASPACE
 	/* accessing a SoundActuator's sound results in a crash if aud is not initialized... */
 	{
-		PyObject *mod= PyImport_ImportModuleLevel((char *)"aud", NULL, NULL, NULL, 0);
+		PyObject *mod = PyImport_ImportModuleLevel("aud", NULL, NULL, NULL, 0);
 		Py_DECREF(mod);
 	}
 #endif
@@ -1937,6 +1973,13 @@ void exitGamePlayerPythonScripting()
 	delete gp_PythonMouse;
 	gp_PythonMouse = NULL;
 
+	for (int i=0; i<JOYINDEX_MAX; ++i) {
+		if (gp_PythonJoysticks[i]) {
+			delete gp_PythonJoysticks[i];
+			gp_PythonJoysticks[i] = NULL;
+		}
+	}
+
 	/* since python restarts we cant let the python backup of the sys.path hang around in a global pointer */
 	restorePySysObjects(); /* get back the original sys.path and clear the backup */
 	
@@ -1960,7 +2003,7 @@ PyObject *initGamePythonScripting(const STR_String& progname, TPythonSecurityLev
 #ifdef WITH_AUDASPACE
 	/* accessing a SoundActuator's sound results in a crash if aud is not initialized... */
 	{
-		PyObject *mod= PyImport_ImportModuleLevel((char *)"aud", NULL, NULL, NULL, 0);
+		PyObject *mod= PyImport_ImportModuleLevel("aud", NULL, NULL, NULL, 0);
 		Py_DECREF(mod);
 	}
 #endif
@@ -1984,6 +2027,13 @@ void exitGamePythonScripting()
 
 	delete gp_PythonMouse;
 	gp_PythonMouse = NULL;
+
+	for (int i=0; i<JOYINDEX_MAX; ++i) {
+		if (gp_PythonJoysticks[i]) {
+			delete gp_PythonJoysticks[i];
+			gp_PythonJoysticks[i] = NULL;
+		}
+	}
 
 	restorePySysObjects(); /* get back the original sys.path and clear the backup */
 	bpy_import_main_set(NULL);

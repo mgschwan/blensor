@@ -1,48 +1,61 @@
-# ***** BEGIN GPL LICENSE BLOCK *****
+# ##### BEGIN GPL LICENSE BLOCK #####
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+#    This program is free software; you can redistribute it and/or
+#    modify it under the terms of the GNU General Public License
+#    as published by the Free Software Foundation; either version 2
+#    of the License, or (at your option) any later version.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software Foundation,
-# Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#    You should have received a copy of the GNU General Public License
+#    along with this program; if not, write to the Free Software Foundation,
+#    Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
-# ***** END GPL LICENCE BLOCK *****
+# ##### END GPL LICENSE BLOCK #####
 
-# ----------------------------------------------------------------------------#    
+#    <pep8-80 compliant>
 
-"""
-todo:
+#---------------------------------------------#
+#    todo
+#---------------------------------------------#
+'''
 - add file selection for single and multiple files
+- option to enable/disable fake users
+'''
 
-changelog:
+#---------------------------------------------#
+#    changelog
+#---------------------------------------------#
+'''  
+    "version": (1,2,0)
+        - added missing texture types
+        - new way to filter file types
+        - option for fake user flag
+        
+    "version": (1,1,5)
+        - changed addon category to Import-Export
+    
     "version": (1,1,4),
         filename will be used as texture name (still limited by stringlength)
 
-
     "version": (1,1,3),
-    fixed operator and registration
-    added tracker and wiki url\
+        fixed operator and registration
+        added tracker and wiki url\
     
-version": (1,1,2)
-    replaced image.new() with image.load()
-    changed addon category
-    removed some unused/old code    
-    
-version":1.11:
-    added type arg to texture.new() [L48]
-    cleared default filename
-""" 
+    version": (1,1,2)
+        replaced image.new() with image.load()
+        changed addon category
+        removed some unused/old code    
+        
+    version":1.11:
+        added type arg to texture.new() [L48]
+        cleared default filename
+'''
 
-# ----------------------------------------------------------------------------#    
-
+#---------------------------------------------#
 import bpy
 import os
 from bpy.props import *
@@ -50,59 +63,72 @@ from bpy.props import *
 #addon description
 bl_info = {
     "name": "import BrushSet",
-    "author": "Daniel Grauer",
-    "version": (1, 1, 5),
-    "blender": (2, 5, 6),
+    "author": "Daniel Grauer (kromar)",
+    "version": (1, 2, 0),
+    "blender": (2, 6, 4),
     "category": "Import-Export",
     "location": "File > Import > BrushSet",
     "description": "imports all image files from a folder",
     "warning": '', # used for warning icon and text in addons panel
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Import-Export/BrushSet",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.5/Py/Scripts/Import-Export/BrushSet",
     "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=25702&group_id=153&atid=467",
     }
 
-print(" ")
-print("*------------------------------------------------------------------------------*")
-print("*                          initializing BrushSet import                        *")
-print("*------------------------------------------------------------------------------*")
-print(" ")
+#---------------------------------------------#
 
-#extension filter (alternative use mimetypes)
-ext_list = ['jpg',
-            'bmp',
-            'iris',
-            'png',
-            'jpeg',
-            'targa',
-            'tga'];
+#    extension filter (alternative use mimetypes)
+ext_list = ['.bmp',
+            '.png',
+            '.jpg',
+            '.jp2',
+            '.rgb',
+            '.dds',
+            '.hdr',
+            '.exr',
+            '.dpx',
+            '.cin',
+            '.tga',
+            '.tif'];
+
+#---------------------------------------------#
+
+fakeUser = False
 
 def LoadBrushSet(filepath, filename):
     for file in os.listdir(filepath):
         path = (filepath + file)
+
         #get folder name
         (f1, f2) = os.path.split(filepath)
         (f3, foldername) = os.path.split(f1)
-        
-        texturename = foldername         # file        "texture"    foldername
-        
-        #filter ext_list
-        if file.split('.')[-1].lower() in ext_list: 
-            #create new texture
-            texture = bpy.data.textures.new(texturename, 'IMAGE')    #watch it, string limit 21 ?!
 
-            #create new image
-            image = bpy.data.images.load(path)
-            image.source = "FILE"
-            image.filepath = path
-            bpy.data.textures[texture.name].image = image
+        #    filter files by extensions (filter images)
+        for i in ext_list:
+            if file.endswith(i):
+                print("file: ", file)
+                #    create new texture
+                texture = bpy.data.textures.new(file, 'IMAGE')
+                texture.use_fake_user = fakeUser
+                print("texture: ", texture)
+
+                #    now we need to load the image into data
+                image = bpy.data.images.load(path)
+                image.use_fake_user = fakeUser
+                #    image.source = 'FILE' #default is FILE so can remove this
+                #    image.filepath = path
+                print("image: ", image, " ", path)
+                print("texturename: ", texture.name)
+
+                #    and assign the image to the texture
+                bpy.data.textures[texture.name].image = image
+
             
-            print("imported: " + file)
     print("Brush Set imported!")  
 
-# ----------------------------------------------------------------------------#    
+#---------------------------------------------#
 
 class BrushSetImporter(bpy.types.Operator):
-    """Load Brush Set"""
+    '''Load Brush Set'''
     bl_idname = "import_image.brushset"
     bl_label = "Import BrushSet"
 
@@ -118,15 +144,37 @@ class BrushSetImporter(bpy.types.Operator):
         wm.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
-# ----------------------------------------------------------------------------#    
+#---------------------------------------------#
 
 def menu_func(self, context):
     #clear the default name for import
-    default_name = "" 
+    import_name = ""
 
-    self.layout.operator(BrushSetImporter.bl_idname, text="Brush Set").filename = default_name
+    self.layout.operator(BrushSetImporter.bl_idname, text = "Brush Set").filename = import_name
 
-# ----------------------------------------------------------------------------#    
+
+#---------------------------------------------#
+#    GUI
+#---------------------------------------------#
+
+'''
+class Brush_set_UI(bpy.types.Panel):
+
+    bl_space_type ='USER_PREFERENCES'
+    bl_label = 'Brush_Path'
+    bl_region_type = 'WINDOW'
+    bl_options = {'HIDE_HEADER'}
+   
+    def draw(self, context):
+        
+        scn = context.scene 
+        layout = self.layout
+        column = layout.column(align=True)
+        column.label(text='Brush Directory:')
+        column.prop(scn,'filepath')  
+'''
+
+#---------------------------------------------#
 
 def register():    
     bpy.utils.register_module(__name__)
@@ -138,7 +186,3 @@ def unregister():
 
 if __name__ == "__main__":
     register()
-
-print(" ")
-print("*------------------------------------------------------------------------------*")
-print(" ")

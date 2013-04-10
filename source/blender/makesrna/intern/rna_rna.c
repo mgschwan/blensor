@@ -24,13 +24,15 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
 
 #include "DNA_ID.h"
 
+#include "BLI_utildefines.h"
+
 #include "RNA_access.h"
 #include "RNA_define.h"
+#include "RNA_enum_types.h"
 
 #include "rna_internal.h"
 
@@ -45,6 +47,9 @@ EnumPropertyItem property_type_items[] = {
 	{0, NULL, 0, NULL, NULL}
 };
 
+/* XXX Keep in sync with bpy_props.c's property_subtype_xxx_items ???
+ *     Currently it is not...
+ */
 EnumPropertyItem property_subtype_items[] = {
 	{PROP_NONE, "NONE", 0, "None", ""},
 
@@ -52,7 +57,7 @@ EnumPropertyItem property_subtype_items[] = {
 	{PROP_FILEPATH, "FILEPATH", 0, "File Path", ""},
 	{PROP_DIRPATH, "DIRPATH", 0, "Directory Path", ""},
 	{PROP_FILENAME, "FILENAME", 0, "File Name", ""},
-	{PROP_TRANSLATE, "TRANSLATE", 0, "Translate", ""},
+	{PROP_PASSWORD, "PASSWORD", 0, "Password", "A string that is displayed hidden ('********')"},
 
 	/* numbers */
 	{PROP_UNSIGNED, "UNSIGNED", 0, "Unsigned", ""},
@@ -61,6 +66,7 @@ EnumPropertyItem property_subtype_items[] = {
 	{PROP_ANGLE, "ANGLE", 0, "Angle", ""},
 	{PROP_TIME, "TIME", 0, "Time", ""},
 	{PROP_DISTANCE, "DISTANCE", 0, "Distance", ""},
+	{PROP_DISTANCE_CAMERA, "DISTANCE_CAMERA", 0, "Camera Distance", ""},
 
 	/* number arrays */
 	{PROP_COLOR, "COLOR", 0, "Color", ""},
@@ -92,6 +98,7 @@ EnumPropertyItem property_unit_items[] = {
 	{PROP_UNIT_TIME, "TIME", 0, "Time", ""},
 	{PROP_UNIT_VELOCITY, "VELOCITY", 0, "Velocity", ""},
 	{PROP_UNIT_ACCELERATION, "ACCELERATION", 0, "Acceleration", ""},
+	{PROP_UNIT_CAMERA, "CAMERA", 0, "Camera", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -134,12 +141,12 @@ static int rna_Struct_name_length(PointerRNA *ptr)
 
 static void rna_Struct_translation_context_get(PointerRNA *ptr, char *value)
 {
-	strcpy(value, ((StructRNA *)ptr->data)->translation_context ? ((StructRNA *)ptr->data)->translation_context : "");
+	strcpy(value, ((StructRNA *)ptr->data)->translation_context);
 }
 
 static int rna_Struct_translation_context_length(PointerRNA *ptr)
 {
-	return ((StructRNA *)ptr->data)->translation_context ? strlen(((StructRNA *)ptr->data)->translation_context) : 0;
+	return strlen(((StructRNA *)ptr->data)->translation_context);
 }
 
 static PointerRNA rna_Struct_base_get(PointerRNA *ptr)
@@ -484,14 +491,14 @@ static void rna_Property_translation_context_get(PointerRNA *ptr, char *value)
 {
 	PropertyRNA *prop = (PropertyRNA *)ptr->data;
 	rna_idproperty_check(&prop, ptr);
-	strcpy(value, prop->translation_context ? prop->translation_context : "");
+	strcpy(value, prop->translation_context);
 }
 
 static int rna_Property_translation_context_length(PointerRNA *ptr)
 {
 	PropertyRNA *prop = (PropertyRNA *)ptr->data;
 	rna_idproperty_check(&prop, ptr);
-	return prop->translation_context ? strlen(prop->translation_context) : 0;
+	return strlen(prop->translation_context);
 }
 
 static int rna_Property_type_get(PointerRNA *ptr)
@@ -520,6 +527,13 @@ static int rna_Property_unit_get(PointerRNA *ptr)
 	PropertyRNA *prop = (PropertyRNA *)ptr->data;
 	rna_idproperty_check(&prop, ptr);
 	return RNA_SUBTYPE_UNIT(prop->subtype);
+}
+
+static int rna_Property_icon_get(PointerRNA *ptr)
+{
+	PropertyRNA *prop = (PropertyRNA *)ptr->data;
+	rna_idproperty_check(&prop, ptr);
+	return prop->icon;
 }
 
 static int rna_Property_readonly_get(PointerRNA *ptr)
@@ -880,6 +894,11 @@ static int rna_EnumPropertyItem_value_get(PointerRNA *ptr)
 	return ((EnumPropertyItem *)ptr->data)->value;
 }
 
+static int rna_EnumPropertyItem_icon_get(PointerRNA *ptr)
+{
+	return ((EnumPropertyItem *)ptr->data)->icon;
+}
+
 static PointerRNA rna_PointerProperty_fixed_type_get(PointerRNA *ptr)
 {
 	PropertyRNA *prop = (PropertyRNA *)ptr->data;
@@ -930,13 +949,19 @@ static int rna_Function_registered_get(PointerRNA *ptr)
 static int rna_Function_registered_optional_get(PointerRNA *ptr)
 {
 	FunctionRNA *func = (FunctionRNA *)ptr->data;
-	return func->flag & FUNC_REGISTER_OPTIONAL;
+	return func->flag & (FUNC_REGISTER_OPTIONAL & ~FUNC_REGISTER);
 }
 
 static int rna_Function_no_self_get(PointerRNA *ptr)
 {
 	FunctionRNA *func = (FunctionRNA *)ptr->data;
 	return !(func->flag & FUNC_NO_SELF);
+}
+
+static int rna_Function_use_self_type_get(PointerRNA *ptr)
+{
+	FunctionRNA *func = (FunctionRNA *)ptr->data;
+	return (func->flag & FUNC_USE_SELF_TYPE);
 }
 
 /* Blender RNA */
@@ -1125,6 +1150,12 @@ static void rna_def_property(BlenderRNA *brna)
 	RNA_def_property_enum_funcs(prop, "rna_Property_unit_get", NULL, NULL);
 	RNA_def_property_ui_text(prop, "Unit", "Type of units for this property");
 
+	prop = RNA_def_property(srna, "icon", PROP_ENUM, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_enum_items(prop, icon_items);
+	RNA_def_property_enum_funcs(prop, "rna_Property_icon_get", NULL, NULL);
+	RNA_def_property_ui_text(prop, "Icon", "Icon of the item");
+
 	prop = RNA_def_property(srna, "is_readonly", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_boolean_funcs(prop, "rna_Property_readonly_get", NULL);
@@ -1230,7 +1261,13 @@ static void rna_def_function(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_boolean_funcs(prop, "rna_Function_no_self_get", NULL);
 	RNA_def_property_ui_text(prop, "No Self",
-	                         "Function does not pass its self as an argument (becomes a class method in python)");
+	                         "Function does not pass its self as an argument (becomes a static method in python)");
+	
+	prop = RNA_def_property(srna, "use_self_type", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_boolean_funcs(prop, "rna_Function_use_self_type_get", NULL);
+	RNA_def_property_ui_text(prop, "Use Self Type",
+	                         "Function passes its self type as an argument (becomes a class method in python if use_self is false)");
 }
 
 static void rna_def_number_property(StructRNA *srna, PropertyType type)
@@ -1396,6 +1433,12 @@ static void rna_def_enum_property(BlenderRNA *brna, StructRNA *srna)
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_int_funcs(prop, "rna_EnumPropertyItem_value_get", NULL, NULL);
 	RNA_def_property_ui_text(prop, "Value", "Value of the item");
+
+	prop = RNA_def_property(srna, "icon", PROP_ENUM, PROP_NONE);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_enum_items(prop, icon_items);
+	RNA_def_property_enum_funcs(prop, "rna_EnumPropertyItem_icon_get", NULL, NULL);
+	RNA_def_property_ui_text(prop, "Icon", "Icon of the item");
 }
 
 static void rna_def_pointer_property(StructRNA *srna, PropertyType type)

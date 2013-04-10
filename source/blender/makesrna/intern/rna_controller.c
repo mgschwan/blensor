@@ -24,15 +24,20 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
 
-#include "WM_types.h"
+#include "DNA_object_types.h"
+#include "DNA_controller_types.h"
+
+#include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
+
 #include "RNA_define.h"
 
 #include "rna_internal.h"
-#include "DNA_object_types.h"
-#include "DNA_controller_types.h"
+
+#include "WM_types.h"
 
 EnumPropertyItem controller_type_items[] = {
 	{CONT_LOGIC_AND, "LOGIC_AND", 0, "And", "Logic And"},
@@ -85,7 +90,8 @@ static void rna_Constroller_name_set(PointerRNA *ptr, const char *value)
 
 	if (ptr->id.data) {
 		Object *ob = (Object *)ptr->id.data;
-		BLI_uniquename(&ob->controllers, cont, "Controller", '.', offsetof(bController, name), sizeof(cont->name));
+		BLI_uniquename(&ob->controllers, cont, DATA_("Controller"), '.', offsetof(bController, name),
+		               sizeof(cont->name));
 	}
 }
 

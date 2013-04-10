@@ -1,6 +1,6 @@
 BF_BUILDDIR = '../blender-build/linux-glibc211-x86_64'
 BF_INSTALLDIR = '../blender-install/linux-glibc211-x86_64'
-BF_NUMJOBS = 2
+BF_NUMJOBS = 4
 
 # Python configuration
 BF_PYTHON_VERSION = '3.3'
@@ -104,8 +104,7 @@ BF_BOOST_LIBPATH = '${BF_BOOST}/lib'
 
 # JACK
 WITH_BF_JACK = True
-WITH_BF_STATICJACK = True
-BF_JACK_LIB_STATIC = '${BF_ZLIB}/lib/libjack.a'
+WITH_BF_JACK_DYNLOAD = True
 
 # Motion Tracking
 WITH_BF_LIBMV = False

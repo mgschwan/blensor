@@ -19,16 +19,14 @@
 bl_info = {
     "name": "Import Images as Planes",
     "author": "Florian Meyer (tstscr), mont29, matali",
-    "version": (1, 7),
-    "blender": (2, 6, 5),
+    "version": (1, 8),
+    "blender": (2, 66, 4),
     "location": "File > Import > Images as Planes or Add > Mesh > Images as Planes",
-    "description": "Imports images and creates planes with the appropriate "
-                   "aspect ratio. The images are mapped to the planes.",
+    "description": "Imports images and creates planes with the appropriate aspect ratio. "
+                   "The images are mapped to the planes.",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
-                "Scripts/Add_Mesh/Planes_from_Images",
-    "tracker_url": "https://projects.blender.org/tracker/index.php?"
-                   "func=detail&aid=21751",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Add_Mesh/Planes_from_Images",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?func=detail&aid=21751",
     "category": "Import-Export"}
 
 import bpy
@@ -51,11 +49,11 @@ from bpy_extras.image_utils import load_image
 # -----------------------------------------------------------------------------
 # Global Vars
 
+DEFAULT_EXT = "*"
+
 EXT_FILTER = getattr(collections, "OrderedDict", dict)((
-    ("*", ((), "All image formats",
-           "Import all know image (or movie) formats.")),
-    ("jpeg", (("jpeg", "jpg", "jpe"), "JPEG ({})",
-              "Joint Photographic Experts Group")),
+    (DEFAULT_EXT, ((), "All image formats", "Import all know image (or movie) formats.")),
+    ("jpeg", (("jpeg", "jpg", "jpe"), "JPEG ({})", "Joint Photographic Experts Group")),
     ("png", (("png", ), "PNG ({})", "Portable Network Graphics")),
     ("tga", (("tga", "tpic"), "Truevision TGA ({})", "")),
     ("tiff", (("tiff", "tif"), "TIFF ({})", "Tagged Image File Format")),
@@ -69,33 +67,27 @@ EXT_FILTER = getattr(collections, "OrderedDict", dict)((
     ("mov", (("mov", "qt"), "QuickTime ({})", "")),
     ("mp4", (("mp4", ), "MPEG-4 ({})", "MPEG-4 Part 14")),
     ("ogg", (("ogg", "ogv"), "OGG Theora ({})", "")),
-    ))
+))
 
 # XXX Hack to avoid allowing videos with Cycles, crashes currently!
-VID_EXT_FILTER = {e for ext_k, ext_v in EXT_FILTER.items()
-                    if ext_k in {"avi", "mov", "mp4", "ogg"}
-                      for e in ext_v[0]}
+VID_EXT_FILTER = {e for ext_k, ext_v in EXT_FILTER.items() if ext_k in {"avi", "mov", "mp4", "ogg"} for e in ext_v[0]}
 
 CYCLES_SHADERS = (
     ('BSDF_DIFFUSE', "Diffuse", "Diffuse Shader"),
     ('EMISSION', "Emission", "Emission Shader"),
-    ('BSDF_DIFFUSE_BSDF_TRANSPARENT', "Diffuse & Transparent",
-     "Diffuse and Transparent Mix"),
-    ('EMISSION_BSDF_TRANSPARENT', "Emission & Transparent",
-     "Emission and Transparent Mix")
+    ('BSDF_DIFFUSE_BSDF_TRANSPARENT', "Diffuse & Transparent", "Diffuse and Transparent Mix"),
+    ('EMISSION_BSDF_TRANSPARENT', "Emission & Transparent", "Emission and Transparent Mix")
 )
 
 # -----------------------------------------------------------------------------
 # Misc utils.
 def gen_ext_filter_ui_items():
-    return ((k,
-             name.format(", ".join("." + e for e in exts)) if "{}" in name else name,
-             desc)
-            for k, (exts, name, desc) in EXT_FILTER.items())
+    return tuple((k, name.format(", ".join("." + e for e in exts)) if "{}" in name else name, desc)
+                 for k, (exts, name, desc) in EXT_FILTER.items())
 
 
 def is_image_fn(fn, ext_key):
-    if ext_key == "*":
+    if ext_key == DEFAULT_EXT:
         return True  # Using Blender's image/movie filter.
     ext = os.path.splitext(fn)[1].lstrip(".").lower()
     return ext in EXT_FILTER[ext_key][0]
@@ -162,20 +154,16 @@ def clean_node_tree(node_tree):
 # Operator
 
 class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
-    """Create mesh plane(s) from image files """ \
-    """with the appropiate aspect ratio"""
-
+    """Create mesh plane(s) from image files with the appropiate aspect ratio"""
     bl_idname = "import_image.to_plane"
     bl_label = "Import Images as Planes"
     bl_options = {'REGISTER', 'UNDO'}
 
     # -----------
     # File props.
-    files = CollectionProperty(type=bpy.types.OperatorFileListElement,
-                               options={'HIDDEN', 'SKIP_SAVE'})
+    files = CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
 
-    directory = StringProperty(maxlen=1024, subtype='FILE_PATH',
-                               options={'HIDDEN', 'SKIP_SAVE'})
+    directory = StringProperty(maxlen=1024, subtype='FILE_PATH', options={'HIDDEN', 'SKIP_SAVE'})
 
     # Show only images/videos, and directories!
     filter_image = BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
@@ -185,17 +173,14 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
 
     # --------
     # Options.
-    align = BoolProperty(name="Align Planes", default=True,
-                         description="Create Planes in a row")
+    align = BoolProperty(name="Align Planes", default=True, description="Create Planes in a row")
 
-    align_offset = FloatProperty(name="Offset", min=0, soft_min=0, default=0.1,
-                                 description="Space between Planes")
+    align_offset = FloatProperty(name="Offset", min=0, soft_min=0, default=0.1, description="Space between Planes")
 
-    # Callback which will update File window's filter options accordingly
-    # to extension setting.
+    # Callback which will update File window's filter options accordingly to extension setting.
     def update_extensions(self, context):
         is_cycles = context.scene.render.engine == 'CYCLES'
-        if self.extension == "*":
+        if self.extension == DEFAULT_EXT:
             self.filter_image = True
             # XXX Hack to avoid allowing videos with Cycles, crashes currently!
             self.filter_movie = True and not is_cycles
@@ -205,17 +190,14 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
             self.filter_movie = False
             if is_cycles:
                 # XXX Hack to avoid allowing videos with Cycles!
-                flt = ";".join(("*." + e for e in EXT_FILTER[self.extension][0]
-                                if e not in VID_EXT_FILTER))
+                flt = ";".join(("*." + e for e in EXT_FILTER[self.extension][0] if e not in VID_EXT_FILTER))
             else:
-                flt = ";".join(("*." + e
-                                for e in EXT_FILTER[self.extension][0]))
+                flt = ";".join(("*." + e for e in EXT_FILTER[self.extension][0]))
             self.filter_glob = flt
         # And now update space (file select window), if possible.
         space = bpy.context.space_data
         # XXX Can't use direct op comparison, these are not the same objects!
-        if (space.type != 'FILE_BROWSER' or
-            space.operator.bl_rna.identifier != self.bl_rna.identifier):
+        if (space.type != 'FILE_BROWSER' or space.operator.bl_rna.identifier != self.bl_rna.identifier):
             return
         space.params.use_filter_image = self.filter_image
         space.params.use_filter_movie = self.filter_movie
@@ -223,8 +205,7 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
         # XXX Seems to be necessary, else not all changes above take effect...
         bpy.ops.file.refresh()
     extension = EnumProperty(name="Extension", items=gen_ext_filter_ui_items(),
-                             description="Only import files of this type",
-                             update=update_extensions)
+                             description="Only import files of this type", update=update_extensions)
 
     # -------------------
     # Plane size options.
@@ -245,53 +226,41 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
     # -------------------------
     # Blender material options.
     t = bpy.types.Material.bl_rna.properties["use_shadeless"]
-    use_shadeless = BoolProperty(name=t.name, default=False,
-                                 description=t.description)
+    use_shadeless = BoolProperty(name=t.name, default=False, description=t.description)
 
-    use_transparency = BoolProperty(name="Use Alpha", default=False,
-                                    description="Use alphachannel for "
-                                                "transparency")
+    use_transparency = BoolProperty(name="Use Alpha", default=False, description="Use alphachannel for transparency")
 
     t = bpy.types.Material.bl_rna.properties["transparency_method"]
-    items = ((it.identifier, it.name, it.description) for it in t.enum_items)
-    transparency_method = EnumProperty(name="Transp. Method",
-                                       description=t.description,
-                                       items=items)
+    items = tuple((it.identifier, it.name, it.description) for it in t.enum_items)
+    transparency_method = EnumProperty(name="Transp. Method", description=t.description, items=items)
 
     t = bpy.types.Material.bl_rna.properties["use_transparent_shadows"]
-    use_transparent_shadows = BoolProperty(name=t.name, default=False,
-                                           description=t.description)
+    use_transparent_shadows = BoolProperty(name=t.name, default=False, description=t.description)
 
     #-------------------------
     # Cycles material options.
-    shader = EnumProperty(name="Shader", items=CYCLES_SHADERS,
-                          description="Node shader to use")
+    shader = EnumProperty(name="Shader", items=CYCLES_SHADERS, description="Node shader to use")
 
     overwrite_node_tree = BoolProperty(name="Overwrite Material", default=True,
-                                       description="Overwrite existing "
-                                       "Material with new nodetree (based "
-                                       "on material name)")
+                                       description="Overwrite existing Material with new nodetree "
+                                                   "(based on material name)")
 
     # --------------
     # Image Options.
-    t = bpy.types.Image.bl_rna.properties["use_premultiply"]
-    use_premultiply = BoolProperty(name=t.name, default=False,
-                                   description=t.description)
+    t = bpy.types.Image.bl_rna.properties["alpha_mode"]
+    alpha_mode_items = tuple((e.identifier, e.name, e.description) for e in t.enum_items)
+    alpha_mode = EnumProperty(name=t.name, items=alpha_mode_items, default=t.default, description=t.description)
 
     t = bpy.types.IMAGE_OT_match_movie_length.bl_rna
-    match_len = BoolProperty(name=t.name, default=True,
-                             description=t.description)
+    match_len = BoolProperty(name=t.name, default=True, description=t.description)
 
     t = bpy.types.Image.bl_rna.properties["use_fields"]
-    use_fields = BoolProperty(name=t.name, default=False,
-                              description=t.description)
+    use_fields = BoolProperty(name=t.name, default=False, description=t.description)
 
     t = bpy.types.ImageUser.bl_rna.properties["use_auto_refresh"]
-    use_auto_refresh = BoolProperty(name=t.name, default=True,
-                                    description=t.description)
+    use_auto_refresh = BoolProperty(name=t.name, default=True, description=t.description)
 
-    relative = BoolProperty(name="Relative", default=True,
-                            description="Apply relative paths")
+    relative = BoolProperty(name="Relative", default=True, description="Apply relative paths")
 
     def draw(self, context):
         engine = context.scene.render.engine
@@ -317,7 +286,7 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
             box.label("Material Settings: (Blender)", icon='MATERIAL')
             box.prop(self, "use_shadeless")
             box.prop(self, "use_transparency")
-            box.prop(self, "use_premultiply")
+            box.prop(self, "alpha_mode")
             row = box.row()
             row.prop(self, "transparency_method", expand=True)
             box.prop(self, "use_transparent_shadows")
@@ -345,9 +314,7 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
         if not bpy.data.is_saved:
             self.relative = False
 
-        # the add utils don't work in this case
-        # because many objects are added
-        # disable relevant things beforehand
+        # the add utils don't work in this case because many objects are added disable relevant things beforehand
         editmode = context.user_preferences.edit.use_enter_edit_mode
         context.user_preferences.edit.use_enter_edit_mode = False
         if (context.active_object and
@@ -372,14 +339,12 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
                 self.set_image_options(img)
                 textures.append(self.create_image_textures(context, img))
 
-            materials = (self.create_material_for_texture(tex)
-                         for tex in textures)
+            materials = (self.create_material_for_texture(tex) for tex in textures)
 
         elif engine == 'CYCLES':
             materials = (self.create_cycles_material(img) for img in images)
 
-        planes = tuple(self.create_image_plane(context, mat)
-                       for mat in materials)
+        planes = tuple(self.create_image_plane(context, mat) for mat in materials)
 
         context.scene.update()
         if self.align:
@@ -410,7 +375,7 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
             fact = 1 / self.factor / context.scene.unit_settings.scale_length * 0.0254 / 2
             x = px * fact
             y = py * fact
-        else:  # self.size_mode == 'DPBU'
+        else:  # elif self.size_mode == 'DPBU'
             fact = 1 / self.factor / 2
             x = px * fact
             y = py * fact
@@ -448,8 +413,7 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
             offset += (plane.dimensions.x / 2.0)
 
     def generate_paths(self):
-        return (fn.name for fn in self.files
-                if is_image_fn(fn.name, self.extension)), self.directory
+        return (fn.name for fn in self.files if is_image_fn(fn.name, self.extension)), self.directory
 
     # Internal
     def create_image_textures(self, context, image):
@@ -490,14 +454,14 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
         return material
 
     def set_image_options(self, image):
-        image.use_premultiply = self.use_premultiply
+        image.alpha_mode = self.alpha_mode
         image.use_fields = self.use_fields
 
         if self.relative:
             image.filepath = bpy.path.relpath(image.filepath)
 
     def set_texture_options(self, context, texture):
-        texture.use_alpha = self.use_transparency
+        texture.image.use_alpha = self.use_transparency
         texture.image_user.use_auto_refresh = self.use_auto_refresh
         if self.match_len:
             ctx = context.copy()
@@ -535,17 +499,17 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
         out_node = clean_node_tree(node_tree)
 
         if self.shader == 'BSDF_DIFFUSE':
-            bsdf_diffuse = node_tree.nodes.new('BSDF_DIFFUSE')
-            tex_image = node_tree.nodes.new('TEX_IMAGE')
+            bsdf_diffuse = node_tree.nodes.new('ShaderNodeBsdfDiffuse')
+            tex_image = node_tree.nodes.new('ShaderNodeTexImage')
             tex_image.image = image
             tex_image.show_texture = True
             node_tree.links.new(out_node.inputs[0], bsdf_diffuse.outputs[0])
             node_tree.links.new(bsdf_diffuse.inputs[0], tex_image.outputs[0])
 
         elif self.shader == 'EMISSION':
-            emission = node_tree.nodes.new('EMISSION')
-            lightpath = node_tree.nodes.new('LIGHT_PATH')
-            tex_image = node_tree.nodes.new('TEX_IMAGE')
+            emission = node_tree.nodes.new('ShaderNodeEmission')
+            lightpath = node_tree.nodes.new('ShaderNodeLightPath')
+            tex_image = node_tree.nodes.new('ShaderNodeTexImage')
             tex_image.image = image
             tex_image.show_texture = True
             node_tree.links.new(out_node.inputs[0], emission.outputs[0])
@@ -553,10 +517,10 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
             node_tree.links.new(emission.inputs[1], lightpath.outputs[0])
 
         elif self.shader == 'BSDF_DIFFUSE_BSDF_TRANSPARENT':
-            bsdf_diffuse = node_tree.nodes.new('BSDF_DIFFUSE')
-            bsdf_transparent = node_tree.nodes.new('BSDF_TRANSPARENT')
-            mix_shader = node_tree.nodes.new('MIX_SHADER')
-            tex_image = node_tree.nodes.new('TEX_IMAGE')
+            bsdf_diffuse = node_tree.nodes.new('ShaderNodeBsdfDiffuse')
+            bsdf_transparent = node_tree.nodes.new('ShaderNodeBsdfTransparent')
+            mix_shader = node_tree.nodes.new('ShaderNodeMixShader')
+            tex_image = node_tree.nodes.new('ShaderNodeTexImage')
             tex_image.image = image
             tex_image.show_texture = True
             node_tree.links.new(out_node.inputs[0], mix_shader.outputs[0])
@@ -566,11 +530,11 @@ class IMPORT_OT_image_to_plane(Operator, AddObjectHelper):
             node_tree.links.new(bsdf_diffuse.inputs[0], tex_image.outputs[0])
 
         elif self.shader == 'EMISSION_BSDF_TRANSPARENT':
-            emission = node_tree.nodes.new('EMISSION')
-            lightpath = node_tree.nodes.new('LIGHT_PATH')
-            bsdf_transparent = node_tree.nodes.new('BSDF_TRANSPARENT')
-            mix_shader = node_tree.nodes.new('MIX_SHADER')
-            tex_image = node_tree.nodes.new('TEX_IMAGE')
+            emission = node_tree.nodes.new('ShaderNodeEmission')
+            lightpath = node_tree.nodes.new('ShaderNodeLightPath')
+            bsdf_transparent = node_tree.nodes.new('ShaderNodeBsdfTransparent')
+            mix_shader = node_tree.nodes.new('ShaderNodeMixShader')
+            tex_image = node_tree.nodes.new('ShaderNodeTexImage')
             tex_image.image = image
             tex_image.show_texture = True
             node_tree.links.new(out_node.inputs[0], mix_shader.outputs[0])

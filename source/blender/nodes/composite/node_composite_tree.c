@@ -44,6 +44,7 @@
 
 #include "BKE_animsys.h"
 #include "BKE_colortools.h"
+#include "BKE_context.h"
 #include "BKE_fcurve.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
@@ -51,7 +52,6 @@
 #include "BKE_tracking.h"
 
 #include "node_common.h"
-#include "node_exec.h"
 #include "node_util.h"
 
 #include "PIL_time.h"
@@ -65,14 +65,17 @@
 	#include "COM_compositor.h"
 #endif
 
-static void foreach_nodetree(Main *main, void *calldata, bNodeTreeCallback func)
+static void composite_get_from_context(const bContext *C, bNodeTreeType *UNUSED(treetype), bNodeTree **r_ntree, ID **r_id, ID **r_from)
 {
-	Scene *sce;
-	for (sce= main->scene.first; sce; sce= sce->id.next) {
-		if (sce->nodetree) {
-			func(calldata, &sce->id, sce->nodetree);
-		}
-	}
+	Scene *scene = CTX_data_scene(C);
+	
+	*r_from = NULL;
+	*r_id = &scene->id;
+	*r_ntree = scene->nodetree;
+	
+	/* update output sockets based on available layers */
+	ntreeCompositForceHidden(scene->nodetree, scene);
+	
 }
 
 static void foreach_nodeclass(Scene *UNUSED(scene), void *calldata, bNodeClassCallback func)
@@ -86,6 +89,7 @@ static void foreach_nodeclass(Scene *UNUSED(scene), void *calldata, bNodeClassCa
 	func(calldata, NODE_CLASS_MATTE, N_("Matte"));
 	func(calldata, NODE_CLASS_DISTORT, N_("Distort"));
 	func(calldata, NODE_CLASS_GROUP, N_("Group"));
+	func(calldata, NODE_CLASS_INTERFACE, N_("Interface"));
 	func(calldata, NODE_CLASS_LAYOUT, N_("Layout"));
 }
 
@@ -95,9 +99,6 @@ static void free_node_cache(bNodeTree *UNUSED(ntree), bNode *node)
 	
 	for (sock= node->outputs.first; sock; sock= sock->next) {
 		if (sock->cache) {
-#ifdef WITH_COMPOSITOR_LEGACY
-			free_compbuf(sock->cache);
-#endif
 			sock->cache= NULL;
 		}
 	}
@@ -106,24 +107,8 @@ static void free_node_cache(bNodeTree *UNUSED(ntree), bNode *node)
 static void free_cache(bNodeTree *ntree)
 {
 	bNode *node;
-	for (node= ntree->nodes.first; node; node= node->next)
+	for (node = ntree->nodes.first; node; node = node->next)
 		free_node_cache(ntree, node);
-}
-
-static void update_node(bNodeTree *ntree, bNode *node)
-{
-	bNodeSocket *sock;
-
-	for (sock= node->outputs.first; sock; sock= sock->next) {
-		if (sock->cache) {
-			//free_compbuf(sock->cache);
-			//sock->cache= NULL;
-		}
-	}
-	node->need_exec= 1;
-	/* individual node update call */
-	if (node->typeinfo->updatefunc)
-		node->typeinfo->updatefunc(ntree, node);
 }
 
 /* local tree then owns all compbufs */
@@ -132,7 +117,7 @@ static void localize(bNodeTree *localtree, bNodeTree *ntree)
 	bNode *node, *node_next;
 	bNodeSocket *sock;
 	
-	for (node= ntree->nodes.first; node; node= node->next) {
+	for (node = ntree->nodes.first; node; node = node->next) {
 		/* ensure new user input gets handled ok */
 		node->need_exec= 0;
 		node->new_node->original = node;
@@ -149,28 +134,15 @@ static void localize(bNodeTree *localtree, bNodeTree *ntree)
 			}
 		}
 		
-		/* copy over the preview buffers to update graduatly */
-		if (node->preview) {
-			bNodePreview *preview = MEM_callocN(sizeof(bNodePreview), "Preview");
-			preview->pad = node->preview->pad;
-			preview->xsize = node->preview->xsize;
-			preview->ysize = node->preview->ysize;
-			preview->rect = MEM_dupallocN(node->preview->rect);
-			node->new_node->preview = preview;
-		}
-		
 		for (sock= node->outputs.first; sock; sock= sock->next) {
 			sock->new_sock->cache= sock->cache;
-#ifdef WITH_COMPOSITOR_LEGACY
-			compbuf_set_node(sock->new_sock->cache, node->new_node);
-#endif
 			sock->cache= NULL;
 			sock->new_sock->new_sock= sock;
 		}
 	}
 	
 	/* replace muted nodes and reroute nodes by internal links */
-	for (node= localtree->nodes.first; node; node= node_next) {
+	for (node = localtree->nodes.first; node; node = node_next) {
 		node_next = node->next;
 		
 		if (node->flag & NODE_MUTED || node->type == NODE_REROUTE) {
@@ -192,22 +164,7 @@ static void localize(bNodeTree *localtree, bNodeTree *ntree)
 
 static void local_sync(bNodeTree *localtree, bNodeTree *ntree)
 {
-	bNode *lnode;
-	
-	/* move over the compbufs and previews */
-	for (lnode= localtree->nodes.first; lnode; lnode= lnode->next) {
-		if ( (lnode->exec & NODE_READY) && !(lnode->exec & NODE_SKIPPED) ) {
-			if (ntreeNodeExists(ntree, lnode->new_node)) {
-				
-				if (lnode->preview && lnode->preview->rect) {
-					nodeFreePreview(lnode->new_node);
-					lnode->new_node->preview= lnode->preview;
-					lnode->preview= NULL;
-				}
-				
-			}
-		}
-	}
+	BKE_node_preview_sync_tree(ntree, localtree);
 }
 
 static void local_merge(bNodeTree *localtree, bNodeTree *ntree)
@@ -216,6 +173,8 @@ static void local_merge(bNodeTree *localtree, bNodeTree *ntree)
 	bNodeSocket *lsock;
 	
 	/* move over the compbufs and previews */
+	BKE_node_preview_merge_tree(ntree, localtree, true);
+	
 	for (lnode= localtree->nodes.first; lnode; lnode= lnode->next) {
 		if (ntreeNodeExists(ntree, lnode->new_node)) {
 			if (ELEM(lnode->type, CMP_NODE_VIEWER, CMP_NODE_SPLITVIEWER)) {
@@ -239,9 +198,6 @@ static void local_merge(bNodeTree *localtree, bNodeTree *ntree)
 			for (lsock= lnode->outputs.first; lsock; lsock= lsock->next) {
 				if (ntreeOutputExists(lnode->new_node, lsock->new_sock)) {
 					lsock->new_sock->cache= lsock->cache;
-#ifdef WITH_COMPOSITOR_LEGACY
-					compbuf_set_node(lsock->new_sock->cache, lnode->new_node);
-#endif
 					lsock->cache= NULL;
 					lsock->new_sock= NULL;
 				}
@@ -255,442 +211,38 @@ static void update(bNodeTree *ntree)
 	ntreeSetOutput(ntree);
 	
 	ntree_update_reroute_nodes(ntree);
+	
+	if (ntree->update & NTREE_UPDATE_NODES) {
+		/* clean up preview cache, in case nodes have been removed */
+		BKE_node_preview_remove_unused(ntree);
+	}
 }
 
-bNodeTreeType ntreeType_Composite = {
-	/* type */				NTREE_COMPOSIT,
-	/* idname */			"NTCompositing Nodetree",
-	
-	/* node_types */		{ NULL, NULL },
-	
-	/* free_cache */		free_cache,
-	/* free_node_cache */	free_node_cache,
-	/* foreach_nodetree */	foreach_nodetree,
-	/* foreach_nodeclass */	foreach_nodeclass,
-	/* localize */			localize,
-	/* local_sync */		local_sync,
-	/* local_merge */		local_merge,
-	/* update */			update,
-	/* update_node */		update_node,
-	/* validate_link */		NULL,
-	/* update_internal_links */	node_update_internal_links_default
-};
+bNodeTreeType *ntreeType_Composite;
 
-
-/* XXX Group nodes must set use_tree_data to false, since their trees can be shared by multiple nodes.
- * If use_tree_data is true, the ntree->execdata pointer is checked to avoid multiple execution of top-level trees.
- */
-struct bNodeTreeExec *ntreeCompositBeginExecTree(bNodeTree *ntree, int use_tree_data)
+void register_node_tree_type_cmp(void)
 {
-	bNodeTreeExec *exec;
-	bNode *node;
-	bNodeSocket *sock;
+	bNodeTreeType *tt = ntreeType_Composite = MEM_callocN(sizeof(bNodeTreeType), "compositor node tree type");
 	
-	if (use_tree_data) {
-		/* XXX hack: prevent exec data from being generated twice.
-		 * this should be handled by the renderer!
-		 */
-		if (ntree->execdata)
-			return ntree->execdata;
-	}
+	tt->type = NTREE_COMPOSIT;
+	strcpy(tt->idname, "CompositorNodeTree");
+	strcpy(tt->ui_name, "Compositing");
+	tt->ui_icon = 0;	/* defined in drawnode.c */
+	strcpy(tt->ui_description, "");
 	
-	/* ensures only a single output node is enabled */
-	ntreeSetOutput(ntree);
+	tt->free_cache = free_cache;
+	tt->free_node_cache = free_node_cache;
+	tt->foreach_nodeclass = foreach_nodeclass;
+	tt->localize = localize;
+	tt->local_sync = local_sync;
+	tt->local_merge = local_merge;
+	tt->update = update;
+	tt->get_from_context = composite_get_from_context;
 	
-	exec = ntree_exec_begin(ntree);
+	tt->ext.srna = &RNA_CompositorNodeTree;
 	
-	for (node= exec->nodetree->nodes.first; node; node= node->next) {
-		/* initialize needed for groups */
-		node->exec= 0;
-		
-		for (sock= node->outputs.first; sock; sock= sock->next) {
-			bNodeStack *ns= node_get_socket_stack(exec->stack, sock);
-			if (ns && sock->cache) {
-				ns->data= sock->cache;
-				sock->cache= NULL;
-			}
-		}
-		/* cannot initialize them while using in threads */
-		if (ELEM4(node->type, CMP_NODE_TIME, CMP_NODE_CURVE_VEC, CMP_NODE_CURVE_RGB, CMP_NODE_HUECORRECT)) {
-			curvemapping_initialize(node->storage);
-			if (node->type==CMP_NODE_CURVE_RGB)
-				curvemapping_premultiply(node->storage, 0);
-		}
-	}
-	
-	if (use_tree_data) {
-		/* XXX this should not be necessary, but is still used for cmp/sha/tex nodes,
-		 * which only store the ntree pointer. Should be fixed at some point!
-		 */
-		ntree->execdata = exec;
-	}
-	
-	return exec;
+	ntreeTypeAdd(tt);
 }
-
-/* XXX Group nodes must set use_tree_data to false, since their trees can be shared by multiple nodes.
- * If use_tree_data is true, the ntree->execdata pointer is checked to avoid multiple execution of top-level trees.
- */
-void ntreeCompositEndExecTree(bNodeTreeExec *exec, int use_tree_data)
-{
-	if (exec) {
-		bNodeTree *ntree= exec->nodetree;
-		bNode *node;
-		bNodeStack *ns;
-		
-		for (node= exec->nodetree->nodes.first; node; node= node->next) {
-			bNodeSocket *sock;
-			
-			for (sock= node->outputs.first; sock; sock= sock->next) {
-				ns = node_get_socket_stack(exec->stack, sock);
-				if (ns && ns->data) {
-					sock->cache= ns->data;
-					ns->data= NULL;
-				}
-			}
-			if (node->type==CMP_NODE_CURVE_RGB)
-				curvemapping_premultiply(node->storage, 1);
-			
-			node->need_exec= 0;
-		}
-	
-		ntree_exec_end(exec);
-		
-		if (use_tree_data) {
-			/* XXX clear nodetree backpointer to exec data, same problem as noted in ntreeBeginExecTree */
-			ntree->execdata = NULL;
-		}
-	}
-}
-
-#ifdef WITH_COMPOSITOR
-#ifdef WITH_COMPOSITOR_LEGACY
-
-/* ***************************** threaded version for execute composite nodes ************* */
-/* these are nodes without input, only giving values */
-/* or nodes with only value inputs */
-static int node_only_value(bNode *node)
-{
-	bNodeSocket *sock;
-	
-	if (ELEM3(node->type, CMP_NODE_TIME, CMP_NODE_VALUE, CMP_NODE_RGB))
-		return 1;
-	
-	/* doing this for all node types goes wrong. memory free errors */
-	if (node->inputs.first && node->type==CMP_NODE_MAP_VALUE) {
-		int retval= 1;
-		for (sock= node->inputs.first; sock; sock= sock->next) {
-			if (sock->link)
-				retval &= node_only_value(sock->link->fromnode);
-		}
-		return retval;
-	}
-	return 0;
-}
-
-/* not changing info, for thread callback */
-typedef struct ThreadData {
-	bNodeStack *stack;
-	RenderData *rd;
-} ThreadData;
-
-static void *exec_composite_node(void *nodeexec_v)
-{
-	bNodeStack *nsin[MAX_SOCKET];	/* arbitrary... watch this */
-	bNodeStack *nsout[MAX_SOCKET];	/* arbitrary... watch this */
-	bNodeExec *nodeexec= nodeexec_v;
-	bNode *node= nodeexec->node;
-	ThreadData *thd= (ThreadData *)node->threaddata;
-	
-	node_get_stack(node, thd->stack, nsin, nsout);
-	
-	if (node->typeinfo->execfunc)
-		node->typeinfo->execfunc(thd->rd, node, nsin, nsout);
-	else if (node->typeinfo->newexecfunc)
-		node->typeinfo->newexecfunc(thd->rd, 0, node, nodeexec->data, nsin, nsout);
-	
-	node->exec |= NODE_READY;
-	return NULL;
-}
-
-/* return total of executable nodes, for timecursor */
-static int setExecutableNodes(bNodeTreeExec *exec, ThreadData *thd)
-{
-	bNodeTree *ntree = exec->nodetree;
-	bNodeStack *nsin[MAX_SOCKET];	/* arbitrary... watch this */
-	bNodeStack *nsout[MAX_SOCKET];	/* arbitrary... watch this */
-	bNodeExec *nodeexec;
-	bNode *node;
-	bNodeSocket *sock;
-	int n, totnode= 0, group_edit= 0;
-	
-	/* if we are in group edit, viewer nodes get skipped when group has viewer */
-	for (node= ntree->nodes.first; node; node= node->next)
-		if (node->type==NODE_GROUP && (node->flag & NODE_GROUP_EDIT))
-			if (ntreeHasType((bNodeTree *)node->id, CMP_NODE_VIEWER))
-				group_edit= 1;
-	
-	/* NB: using the exec data list here to have valid dependency sort */
-	for (n=0, nodeexec=exec->nodeexec; n < exec->totnodes; ++n, ++nodeexec) {
-		int a;
-		node = nodeexec->node;
-		
-		node_get_stack(node, exec->stack, nsin, nsout);
-		
-		/* test the outputs */
-		/* skip value-only nodes (should be in type!) */
-		if (!node_only_value(node)) {
-			for (a=0, sock= node->outputs.first; sock; sock= sock->next, a++) {
-				if (nsout[a]->data==NULL && nsout[a]->hasoutput) {
-					node->need_exec= 1;
-					break;
-				}
-			}
-		}
-		
-		/* test the inputs */
-		for (a=0, sock= node->inputs.first; sock; sock= sock->next, a++) {
-			/* skip viewer nodes in bg render or group edit */
-			if ( ELEM(node->type, CMP_NODE_VIEWER, CMP_NODE_SPLITVIEWER) && (G.background || group_edit))
-				node->need_exec= 0;
-			/* is sock in use? */
-			else if (sock->link) {
-				bNodeLink *link= sock->link;
-				
-				/* this is the test for a cyclic case */
-				if (link->fromnode==NULL || link->tonode==NULL);
-				else if (link->fromnode->level >= link->tonode->level && link->tonode->level!=0xFFF) {
-					if (link->fromnode->need_exec) {
-						node->need_exec= 1;
-						break;
-					}
-				}
-				else {
-					node->need_exec= 0;
-					printf("Node %s skipped, cyclic dependency\n", node->name);
-				}
-			}
-		}
-		
-		if (node->need_exec) {
-			
-			/* free output buffers */
-			for (a=0, sock= node->outputs.first; sock; sock= sock->next, a++) {
-				if (nsout[a]->data) {
-					free_compbuf(nsout[a]->data);
-					nsout[a]->data= NULL;
-				}
-			}
-			totnode++;
-			/* printf("node needs exec %s\n", node->name); */
-			
-			/* tag for getExecutableNode() */
-			node->exec= 0;
-		}
-		else {
-			/* tag for getExecutableNode() */
-			node->exec= NODE_READY|NODE_FINISHED|NODE_SKIPPED;
-			
-		}
-	}
-	
-	/* last step: set the stack values for only-value nodes */
-	/* just does all now, compared to a full buffer exec this is nothing */
-	if (totnode) {
-		for (n=0, nodeexec=exec->nodeexec; n < exec->totnodes; ++n, ++nodeexec) {
-			node = nodeexec->node;
-			if (node->need_exec==0 && node_only_value(node)) {
-				if (node->typeinfo->execfunc) {
-					node_get_stack(node, exec->stack, nsin, nsout);
-					node->typeinfo->execfunc(thd->rd, node, nsin, nsout);
-				}
-			}
-		}
-	}
-	
-	return totnode;
-}
-
-/* while executing tree, free buffers from nodes that are not needed anymore */
-static void freeExecutableNode(bNodeTreeExec *exec)
-{
-	/* node outputs can be freed when:
-	 * - not a render result or image node
-	 * - when node outputs go to nodes all being set NODE_FINISHED
-	 */
-	bNodeTree *ntree = exec->nodetree;
-	bNodeExec *nodeexec;
-	bNode *node;
-	bNodeSocket *sock;
-	int n;
-	
-	/* set exec flag for finished nodes that might need freed */
-	for (node= ntree->nodes.first; node; node= node->next) {
-		if (node->type!=CMP_NODE_R_LAYERS)
-			if (node->exec & NODE_FINISHED)
-				node->exec |= NODE_FREEBUFS;
-	}
-	/* clear this flag for input links that are not done yet.
-	 * Using the exec data for valid dependency sort.
-	 */
-	for (n=0, nodeexec=exec->nodeexec; n < exec->totnodes; ++n, ++nodeexec) {
-		node = nodeexec->node;
-		if ((node->exec & NODE_FINISHED)==0) {
-			for (sock= node->inputs.first; sock; sock= sock->next)
-				if (sock->link)
-					sock->link->fromnode->exec &= ~NODE_FREEBUFS;
-		}
-	}
-	/* now we can free buffers */
-	for (node= ntree->nodes.first; node; node= node->next) {
-		if (node->exec & NODE_FREEBUFS) {
-			for (sock= node->outputs.first; sock; sock= sock->next) {
-				bNodeStack *ns= node_get_socket_stack(exec->stack, sock);
-				if (ns && ns->data) {
-					free_compbuf(ns->data);
-					ns->data= NULL;
-					// printf("freed buf node %s\n", node->name);
-				}
-			}
-		}
-	}
-}
-
-static bNodeExec *getExecutableNode(bNodeTreeExec *exec)
-{
-	bNodeExec *nodeexec;
-	bNodeSocket *sock;
-	int n;
-	
-	for (n=0, nodeexec=exec->nodeexec; n < exec->totnodes; ++n, ++nodeexec) {
-		if (nodeexec->node->exec==0) {
-			/* input sockets should be ready */
-			for (sock= nodeexec->node->inputs.first; sock; sock= sock->next) {
-				if (sock->link && sock->link->fromnode)
-					if ((sock->link->fromnode->exec & NODE_READY)==0)
-						break;
-			}
-			if (sock==NULL)
-				return nodeexec;
-		}
-	}
-	return NULL;
-}
-
-/* check if texture nodes need exec or end */
-static  void ntree_composite_texnode(bNodeTree *ntree, int init)
-{
-	bNode *node;
-	
-	for (node= ntree->nodes.first; node; node= node->next) {
-		if (node->type==CMP_NODE_TEXTURE && node->id) {
-			Tex *tex= (Tex *)node->id;
-			if (tex->nodetree && tex->use_nodes) {
-				/* has internal flag to detect it only does it once */
-				if (init) {
-					if (!tex->nodetree->execdata)
-						tex->nodetree->execdata = ntreeTexBeginExecTree(tex->nodetree, 1); 
-				}
-				else
-					ntreeTexEndExecTree(tex->nodetree->execdata, 1);
-					tex->nodetree->execdata = NULL;
-			}
-		}
-	}
-
-}
-
-/* optimized tree execute test for compositing */
-static void ntreeCompositExecTreeOld(bNodeTree *ntree, RenderData *rd, int do_preview)
-{
-	bNodeExec *nodeexec;
-	bNode *node;
-	ListBase threads;
-	ThreadData thdata;
-	int totnode, curnode, rendering = TRUE, n;
-	bNodeTreeExec *exec = ntree->execdata;
-
-	if (do_preview)
-		ntreeInitPreview(ntree, 0, 0);
-	
-	if (!ntree->execdata) {
-		/* XXX this is the top-level tree, so we use the ntree->execdata pointer. */
-		exec = ntreeCompositBeginExecTree(ntree, 1);
-	}
-	ntree_composite_texnode(ntree, 1);
-	
-	/* prevent unlucky accidents */
-	if (G.background)
-		rd->scemode &= ~R_COMP_CROP;
-	
-	/* setup callerdata for thread callback */
-	thdata.rd= rd;
-	thdata.stack= exec->stack;
-	
-	/* fixed seed, for example noise texture */
-	BLI_srandom(rd->cfra);
-
-	/* sets need_exec tags in nodes */
-	curnode = totnode= setExecutableNodes(exec, &thdata);
-
-	BLI_init_threads(&threads, exec_composite_node, rd->threads);
-	
-	while (rendering) {
-		
-		if (BLI_available_threads(&threads)) {
-			nodeexec= getExecutableNode(exec);
-			if (nodeexec) {
-				node = nodeexec->node;
-				if (ntree->progress && totnode)
-					ntree->progress(ntree->prh, (1.0f - curnode/(float)totnode));
-				if (ntree->stats_draw) {
-					char str[128];
-					BLI_snprintf(str, sizeof(str), "Compositing %d %s", curnode, node->name);
-					ntree->stats_draw(ntree->sdh, str);
-				}
-				curnode--;
-				
-				node->threaddata = &thdata;
-				node->exec= NODE_PROCESSING;
-				BLI_insert_thread(&threads, nodeexec);
-			}
-			else
-				PIL_sleep_ms(50);
-		}
-		else
-			PIL_sleep_ms(50);
-		
-		rendering= 0;
-		/* test for ESC */
-		if (ntree->test_break && ntree->test_break(ntree->tbh)) {
-			for (node= ntree->nodes.first; node; node= node->next)
-				node->exec |= NODE_READY;
-		}
-		
-		/* check for ready ones, and if we need to continue */
-		for (n=0, nodeexec=exec->nodeexec; n < exec->totnodes; ++n, ++nodeexec) {
-			node = nodeexec->node;
-			if (node->exec & NODE_READY) {
-				if ((node->exec & NODE_FINISHED)==0) {
-					BLI_remove_thread(&threads, nodeexec); /* this waits for running thread to finish btw */
-					node->exec |= NODE_FINISHED;
-					
-					/* freeing unused buffers */
-					if (rd->scemode & R_COMP_FREE)
-						freeExecutableNode(exec);
-				}
-			}
-			else rendering= 1;
-		}
-	}
-	
-	BLI_end_threads(&threads);
-	
-	/* XXX top-level tree uses the ntree->execdata pointer */
-	ntreeCompositEndExecTree(exec, 1);
-}
-#endif  /* WITH_COMPOSITOR_LEGACY */
-#endif  /* WITH_COMPOSITOR */
 
 void *COM_linker_hack = NULL;
 
@@ -699,16 +251,7 @@ void ntreeCompositExecTree(bNodeTree *ntree, RenderData *rd, int rendering, int 
                            const ColorManagedDisplaySettings *display_settings)
 {
 #ifdef WITH_COMPOSITOR
-#ifdef WITH_COMPOSITOR_LEGACY
-	if (G.debug_value == 200)
-	{
-		ntreeCompositExecTreeOld(ntree, rd, do_preview);
-	}
-	else
-#endif
-	{
-		COM_execute(rd, ntree, rendering, view_settings, display_settings);
-	}
+	COM_execute(rd, ntree, rendering, view_settings, display_settings);
 #else
 	(void)ntree, (void)rd, (void)rendering, (void)do_preview;
 	(void)view_settings, (void)display_settings;
@@ -827,7 +370,8 @@ static int node_animation_properties(bNodeTree *ntree, bNode *node)
 	lb = RNA_struct_type_properties(ptr.type);
 
 	for (link = lb->first; link; link = link->next) {
-		int driven, len = 1, index;
+		int len = 1, index;
+		bool driven;
 		prop = (PropertyRNA *)link;
 
 		if (RNA_property_array_check(prop))
@@ -843,7 +387,8 @@ static int node_animation_properties(bNodeTree *ntree, bNode *node)
 
 	/* now check node sockets */
 	for (sock = node->inputs.first; sock; sock = sock->next) {
-		int driven, len = 1, index;
+		int len = 1, index;
+		bool driven;
 
 		RNA_pointer_create((ID *)ntree, &RNA_NodeSocket, sock, &ptr);
 		prop = RNA_struct_find_property(&ptr, "default_value");

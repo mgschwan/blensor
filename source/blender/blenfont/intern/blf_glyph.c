@@ -83,7 +83,7 @@ GlyphCacheBLF *blf_glyph_cache_new(FontBLF *font)
 	memset(gc->glyph_ascii_table, 0, sizeof(gc->glyph_ascii_table));
 	memset(gc->bucket, 0, sizeof(gc->bucket));
 
-	gc->textures = (GLuint *)malloc(sizeof(GLuint) * 256);
+	gc->textures = (GLuint *)MEM_mallocN(sizeof(GLuint) * 256, __func__);
 	gc->ntex = 256;
 	gc->cur_tex = -1;
 	gc->x_offs = 0;
@@ -150,7 +150,7 @@ void blf_glyph_cache_free(GlyphCacheBLF *gc)
 
 	if (gc->cur_tex + 1 > 0)
 		glDeleteTextures(gc->cur_tex + 1, gc->textures);
-	free((void *)gc->textures);
+	MEM_freeN((void *)gc->textures);
 	MEM_freeN(gc);
 }
 
@@ -178,8 +178,7 @@ static void blf_glyph_cache_texture(FontBLF *font, GlyphCacheBLF *gc)
 		gc->p2_height = font->max_tex_size;
 
 	tot_mem = gc->p2_width * gc->p2_height;
-	buf = (unsigned char *)malloc(tot_mem);
-	memset((void *)buf, 0, tot_mem);
+	buf = (unsigned char *)MEM_callocN(tot_mem, __func__);
 
 	glGenTextures(1, &gc->textures[gc->cur_tex]);
 	glBindTexture(GL_TEXTURE_2D, (font->tex_bind_state = gc->textures[gc->cur_tex]));
@@ -189,7 +188,7 @@ static void blf_glyph_cache_texture(FontBLF *font, GlyphCacheBLF *gc)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, gc->p2_width, gc->p2_height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, buf);
-	free((void *)buf);
+	MEM_freeN((void *)buf);
 }
 
 GlyphBLF *blf_glyph_search(GlyphCacheBLF *gc, unsigned int c)
@@ -214,6 +213,7 @@ GlyphBLF *blf_glyph_add(FontBLF *font, unsigned int index, unsigned int c)
 	FT_Error err;
 	FT_Bitmap bitmap, tempbitmap;
 	int sharp = (U.text_render & USER_TEXT_DISABLE_AA);
+	int flags = FT_LOAD_TARGET_NORMAL | FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP;
 	FT_BBox bbox;
 	unsigned int key;
 
@@ -221,10 +221,13 @@ GlyphBLF *blf_glyph_add(FontBLF *font, unsigned int index, unsigned int c)
 	if (g)
 		return g;
 
+	if (font->flags & BLF_HINTING)
+		flags &= ~FT_LOAD_NO_HINTING;
+	
 	if (sharp)
 		err = FT_Load_Glyph(font->face, (FT_UInt)index, FT_LOAD_TARGET_MONO);
 	else
-		err = FT_Load_Glyph(font->face, (FT_UInt)index, FT_LOAD_TARGET_NORMAL | FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP);  /* Sure about NO_* flags? */
+		err = FT_Load_Glyph(font->face, (FT_UInt)index, flags);  
 	if (err)
 		return NULL;
 
@@ -383,7 +386,7 @@ int blf_glyph_render(FontBLF *font, GlyphBLF *g, float x, float y)
 		if (gc->cur_tex == -1) {
 			blf_glyph_cache_texture(font, gc);
 			gc->x_offs = gc->pad;
-			gc->y_offs = gc->pad;
+			gc->y_offs = 0;
 		}
 
 		if (gc->x_offs > (gc->p2_width - gc->max_glyph_width)) {
@@ -391,7 +394,7 @@ int blf_glyph_render(FontBLF *font, GlyphBLF *g, float x, float y)
 			gc->y_offs += gc->max_glyph_height;
 
 			if (gc->y_offs > (gc->p2_height - gc->max_glyph_height)) {
-				gc->y_offs = gc->pad;
+				gc->y_offs = 0;
 				blf_glyph_cache_texture(font, gc);
 			}
 		}
@@ -399,6 +402,19 @@ int blf_glyph_render(FontBLF *font, GlyphBLF *g, float x, float y)
 		g->tex = gc->textures[gc->cur_tex];
 		g->xoff = gc->x_offs;
 		g->yoff = gc->y_offs;
+
+		/* prevent glTexSubImage2D from failing if the character
+		 * asks for pixels out of bounds, this tends only to happen
+		 * with very small sizes (5px high or less) */
+		if (UNLIKELY((g->xoff + g->width)  > gc->p2_width)) {
+			g->width  -= (g->xoff + g->width)  - gc->p2_width;
+			BLI_assert(g->width > 0);
+		}
+		if (UNLIKELY((g->yoff + g->height) > gc->p2_height)) {
+			g->height -= (g->yoff + g->height) - gc->p2_height;
+			BLI_assert(g->height > 0);
+		}
+
 
 		glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
 		glPixelStorei(GL_UNPACK_LSB_FIRST, GL_FALSE);

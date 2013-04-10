@@ -34,6 +34,8 @@
 struct ARegionType;
 struct bContext;
 
+void ED_spacetypes_init(void);
+
 /* the pluginnable API for export to editors */
 
 /* calls for registering default spaces */
@@ -72,6 +74,8 @@ void *ED_region_draw_cb_activate(struct ARegionType *,
 void ED_region_draw_cb_draw(const struct bContext *, struct ARegion *, int);
 void ED_region_draw_cb_exit(struct ARegionType *, void *);
 void *ED_region_draw_cb_customdata(void *handle);
+/* generic callbacks */
+/* ed_util.c */
+void ED_region_draw_mouse_line_cb(const struct bContext *C, struct ARegion *ar, void *arg_info);
 
 #endif /* __ED_SPACE_API_H__ */
-

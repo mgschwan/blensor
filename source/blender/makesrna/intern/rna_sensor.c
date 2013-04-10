@@ -24,18 +24,21 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
+
+#include "DNA_constraint_types.h"
+#include "DNA_object_types.h"
+#include "DNA_sensor_types.h"
+
+#include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
 
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
 #include "RNA_access.h"
 
 #include "rna_internal.h"
-
-#include "DNA_constraint_types.h"
-#include "DNA_object_types.h"
-#include "DNA_sensor_types.h"
 
 #include "WM_types.h"
 
@@ -112,7 +115,7 @@ static void rna_Sensor_name_set(PointerRNA *ptr, const char *value)
 
 	if (ptr->id.data) {
 		Object *ob = (Object *)ptr->id.data;
-		BLI_uniquename(&ob->sensors, sens, "Sensor", '.', offsetof(bSensor, name), sizeof(sens->name));
+		BLI_uniquename(&ob->sensors, sens, DATA_("Sensor"), '.', offsetof(bSensor, name), sizeof(sens->name));
 	}
 }
 
@@ -457,6 +460,7 @@ static void rna_def_keyboard_sensor(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, event_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_Sensor_keyboard_key_set", NULL);
 	RNA_def_property_ui_text(prop, "Key",  "");
+	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_WINDOWMANAGER);
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 	
 	prop = RNA_def_property(srna, "modifier_key_1", PROP_ENUM, PROP_NONE);

@@ -21,11 +21,11 @@
 bl_info = {
     "name": "Render Time Estimation",
     "author": "Jason van Gumster (Fweeb)",
-    "version": (0, 5, 1),
-    "blender": (2, 62, 1),
+    "version": (0, 5, 2),
+    "blender": (2, 65, 4),
     "location": "UV/Image Editor > Properties > Image",
     "description": "Estimates the time to complete rendering on animations",
-    "warning": "Does not work on OpenGL renders",
+    "warning": "Does not work on OpenGL renders.",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Render/Render_Time_Estimation",
     "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=30452&group_id=153&atid=467",
     "category": "Render"}
@@ -92,10 +92,22 @@ def draw_callback_px(self, context):
     blf.enable(font_id, blf.SHADOW)
     blf.shadow(font_id, 5, 0.0, 0.0, 0.0, 1.0)
 
-    blf.draw(font_id, "Total render time " + str(timedelta(seconds = timer["total"])))
+    # Shorten / cut off milliseconds
+    time_total = str(timedelta(seconds = timer["total"]))
+    pos = time_total.rfind(".")
+    if pos != -1:
+        time_total = time_total[0:pos+3]
+
+    time_estimated = str(timedelta(seconds = (timer["average"] * (scene.frame_end - scene.frame_current))))
+    pos = time_estimated.rfind(".")
+    if pos != -1:
+        time_estimated = time_estimated[0:pos]
+
+
+    blf.draw(font_id, "Total render time " + time_total)
     if timer["is_rendering"] and scene.frame_current != scene.frame_start:
         blf.position(font_id, 15, 12, 0)
-        blf.draw(font_id, "Estimated completion: " + str(timedelta(seconds = (timer["average"] * (scene.frame_end - scene.frame_current)))))
+        blf.draw(font_id, "Estimated completion: " + time_estimated)
 
     # restore defaults
     blf.disable(font_id, blf.SHADOW)
@@ -105,13 +117,26 @@ class RenderTimeHUD(bpy.types.Operator):
     bl_label = "Display Render Times"
     last_activity = 'NONE'
 
+    _handle = None
+
+    @staticmethod
+    def handle_add(self, context):
+        RenderTimeHUD._handle = bpy.types.SpaceImageEditor.draw_handler_add(
+            draw_callback_px, (self, context), 'WINDOW', 'POST_PIXEL')
+
+    @staticmethod
+    def handle_remove():
+        if RenderTimeHUD._handle is not None:
+            bpy.types.SpaceImageEditor.draw_handler_remove(RenderTimeHUD._handle, 'WINDOW')
+        RenderTimeHUD._handle = None
+
     def modal(self, context, event):
         if context.area:
             context.area.tag_redraw()
 
         #if event.type in {'ESC'}:
         if timer["hud"] == False:
-            context.region.callback_remove(self._handle)
+            RenderTimeHUD.handle_remove()
             return {'CANCELLED'}
 
         return {'PASS_THROUGH'}
@@ -120,7 +145,7 @@ class RenderTimeHUD(bpy.types.Operator):
         if context.area.type == 'IMAGE_EDITOR':
             if timer["hud"] == False:
                 # Add the region OpenGL drawing callback
-                self._handle = context.region.callback_add(draw_callback_px, (self, context), 'POST_PIXEL')
+                RenderTimeHUD.handle_add(self, context)
                 timer["hud"] = True
 
                 context.window_manager.modal_handler_add(self)
@@ -133,10 +158,9 @@ class RenderTimeHUD(bpy.types.Operator):
             return {'CANCELLED'}
 
 def display_hud(self, context):
-    scene = context.scene
     layout = self.layout
-    layout.operator("view2d.rendertime_hud")
-
+    text = RenderTimeHUD.bl_label if RenderTimeHUD._handle is None else "Hide Render Times"
+    layout.operator("view2d.rendertime_hud", text=text)
 
 # Registration
 
@@ -156,6 +180,8 @@ def register():
     #kmi.active = True
 
 def unregister():
+    RenderTimeHUD.handle_remove()
+
     #kc = bpy.context.window_manager.keyconfigs.addon
     #km = kc.keymaps["View 2D"]
     #km.keymap_items.remove(km.keymap_items["view2d.rendertime_hud"])

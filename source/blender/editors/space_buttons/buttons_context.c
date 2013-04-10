@@ -36,6 +36,8 @@
 #include "BLI_listbase.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_armature_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
@@ -538,6 +540,7 @@ static int buttons_context_path(const bContext *C, ButsContextPath *path, int ma
 	switch (mainb) {
 		case BCONTEXT_SCENE:
 		case BCONTEXT_RENDER:
+		case BCONTEXT_RENDER_LAYER:
 			found = buttons_context_path_scene(path);
 			break;
 		case BCONTEXT_WORLD:
@@ -1028,7 +1031,8 @@ void buttons_context_draw(const bContext *C, uiLayout *layout)
 
 	block = uiLayoutGetBlock(row);
 	uiBlockSetEmboss(block, UI_EMBOSSN);
-	but = uiDefIconButBitC(block, ICONTOG, SB_PIN_CONTEXT, 0, ICON_UNPINNED, 0, 0, UI_UNIT_X, UI_UNIT_Y, &sbuts->flag, 0, 0, 0, 0, "Follow context or keep fixed datablock displayed");
+	but = uiDefIconButBitC(block, ICONTOG, SB_PIN_CONTEXT, 0, ICON_UNPINNED, 0, 0, UI_UNIT_X, UI_UNIT_Y, &sbuts->flag,
+	                       0, 0, 0, 0, IFACE_("Follow context or keep fixed datablock displayed"));
 	uiButClearFlag(but, UI_BUT_UNDO); /* skip undo on screen buttons */
 	uiButSetFunc(but, pin_cb, NULL, NULL);
 
@@ -1043,7 +1047,7 @@ void buttons_context_draw(const bContext *C, uiLayout *layout)
 			name = RNA_struct_name_get_alloc(ptr, namebuf, sizeof(namebuf), NULL);
 
 			if (name) {
-				if (!ELEM(sbuts->mainb, BCONTEXT_RENDER, BCONTEXT_SCENE) && ptr->type == &RNA_Scene)
+				if (!ELEM3(sbuts->mainb, BCONTEXT_RENDER, BCONTEXT_SCENE, BCONTEXT_RENDER_LAYER) && ptr->type == &RNA_Scene)
 					uiItemLDrag(row, ptr, "", icon);  /* save some space */
 				else
 					uiItemLDrag(row, ptr, name, icon);
@@ -1068,7 +1072,8 @@ void buttons_context_register(ARegionType *art)
 
 	pt = MEM_callocN(sizeof(PanelType), "spacetype buttons panel context");
 	strcpy(pt->idname, "BUTTONS_PT_context");
-	strcpy(pt->label, "Context");
+	strcpy(pt->label, N_("Context"));  /* XXX C panels are not available through RNA (bpy.types)! */
+	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = buttons_panel_context;
 	pt->flag = PNL_NO_HEADER;
 	BLI_addtail(&art->paneltypes, pt);

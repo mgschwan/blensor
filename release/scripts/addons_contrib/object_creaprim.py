@@ -45,7 +45,7 @@ bl_info = {
     "name": "CreaPrim",
     "author": "Gert De Roost",
     "version": (0, 3, 9),
-    "blender": (2, 6, 4),
+    "blender": (2, 64, 0),
     "location": "View3D > Object Tools",
     "description": "Create primitive addon",
     "warning": "",
@@ -223,7 +223,7 @@ def do_creaprim(self, mesh, objname, addondir):
 	strlist.append("\"name\": \"" + objname + "\", \n")
 	strlist.append("\"author\": \"Gert De Roost\",\n")
 	strlist.append("\"version\": (1, 0, 0),\n")
-	strlist.append("\"blender\": (2, 6, 3),\n")
+	strlist.append("\"blender\": (2, 65, 0),\n")
 	strlist.append("\"location\": \"Add > Mesh\",\n")
 	strlist.append("\"description\": \"Create " + objname + " primitive.\",\n")
 	strlist.append("\"warning\": \"\",\n")
@@ -360,7 +360,7 @@ def makeinit(txtlist, namelist, groupname, addondir):
 	strlist.append("\"name\": \"" + groupname + "\", \n")
 	strlist.append("\"author\": \"Gert De Roost\",\n")
 	strlist.append("\"version\": (1, 0, 0),\n")
-	strlist.append("\"blender\": (2, 6, 3),\n")
+	strlist.append("\"blender\": (2, 65, 0),\n")
 	strlist.append("\"location\": \"Add > Mesh\",\n")
 	strlist.append("\"description\": \"Create " + groupname + " primitive group.\",\n")
 	strlist.append("\"warning\": \"\",\n")

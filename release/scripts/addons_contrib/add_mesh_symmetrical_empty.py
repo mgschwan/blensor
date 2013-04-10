@@ -20,7 +20,7 @@ bl_info = {
     "name": "Add Symmetrical Empty",
     "author": "Pablo Vazquez",			
     "version": (1,0,2),
-    "blender": (2, 6, 4),
+    "blender": (2, 64, 0),
     "location": "View3D > Add > Mesh > Symmetrical Empty",
     "description": "Add an empty mesh with a Mirror Modifier for quick symmetrical modeling",
     "warning": "",

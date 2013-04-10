@@ -35,10 +35,12 @@
 
 #include "DNA_userdef_types.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_fileops.h"
 #include "BLI_path_util.h"
 #include "BLI_string.h"
-#include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -60,7 +62,7 @@
 
 /********************** toolbox operator *********************/
 
-static int toolbox_invoke(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(event))
+static int toolbox_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
 	bScreen *sc = CTX_wm_screen(C);
 	SpaceButs *sbuts = CTX_wm_space_buts(C);
@@ -70,7 +72,7 @@ static int toolbox_invoke(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(e
 
 	RNA_pointer_create(&sc->id, &RNA_SpaceProperties, sbuts, &ptr);
 
-	pup = uiPupMenuBegin(C, "Align", ICON_NONE);
+	pup = uiPupMenuBegin(C, IFACE_("Align"), ICON_NONE);
 	layout = uiPupMenuLayout(pup);
 	uiItemsEnumR(layout, &ptr, "align");
 	uiPupMenuEnd(C, pup);
@@ -111,19 +113,29 @@ static int file_browse_exec(bContext *C, wmOperator *op)
 
 	/* add slash for directories, important for some properties */
 	if (RNA_property_subtype(fbo->prop) == PROP_DIRPATH) {
-		char name[FILE_MAX];
-		
+		int is_relative = RNA_boolean_get(op->ptr, "relative_path");
 		id = fbo->ptr.id.data;
 
 		BLI_strncpy(path, str, FILE_MAX);
 		BLI_path_abs(path, id ? ID_BLEND_PATH(G.main, id) : G.main->name);
 		
 		if (BLI_is_dir(path)) {
-			str = MEM_reallocN(str, strlen(str) + 2);
-			BLI_add_slash(str);
+			/* do this first so '//' isnt converted to '//\' on windows */
+			BLI_add_slash(path);
+			if (is_relative) {
+				BLI_strncpy(path, str, FILE_MAX);
+				BLI_path_rel(path, G.main->name);
+				str = MEM_reallocN(str, strlen(path) + 2);
+				BLI_strncpy(str, path, FILE_MAX);
+			}
+			else {
+				str = MEM_reallocN(str, strlen(str) + 2);
+			}
 		}
-		else
-			BLI_splitdirstring(str, name);
+		else {
+			char * const lslash = (char *)BLI_last_slash(str);
+			if (lslash) lslash[1] = '\0';
+		}
 	}
 
 	RNA_property_string_set(&fbo->ptr, fbo->prop, str);
@@ -154,7 +166,7 @@ static int file_browse_cancel(bContext *UNUSED(C), wmOperator *op)
 	return OPERATOR_CANCELLED;
 }
 
-static int file_browse_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int file_browse_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	PointerRNA ptr;
 	PropertyRNA *prop;
@@ -179,7 +191,7 @@ static int file_browse_invoke(bContext *C, wmOperator *op, wmEvent *event)
 		PointerRNA props_ptr;
 
 		if (event->alt) {
-			char *lslash = BLI_last_slash(str);
+			char *lslash = (char *)BLI_last_slash(str);
 			if (lslash)
 				*lslash = '\0';
 		}

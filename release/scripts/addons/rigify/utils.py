@@ -20,12 +20,15 @@
 
 import bpy
 import imp
+import importlib
+import math
 import random
 import time
-from mathutils import Vector
+from mathutils import Vector, Matrix
 from rna_prop_ui import rna_idprop_ui_prop_get
 
 RIG_DIR = "rigs"  # Name of the directory where rig types are kept
+METARIG_DIR = "metarigs"  # Name of the directory where metarigs are kept
 
 ORG_PREFIX = "ORG-"  # Prefix of original bones.
 MCH_PREFIX = "MCH-"  # Prefix of mechanism bones.
@@ -225,7 +228,7 @@ def put_bone(obj, bone_name, pos):
     """ Places a bone at the given position.
     """
     if bone_name not in obj.data.bones:
-        raise MetarigError("put_bone(): bone '%s' not found, cannot copy it" % bone_name)
+        raise MetarigError("put_bone(): bone '%s' not found, cannot move it" % bone_name)
 
     if obj == bpy.context.active_object and bpy.context.mode == 'EDIT_ARMATURE':
         bone = obj.data.edit_bones[bone_name]
@@ -234,6 +237,68 @@ def put_bone(obj, bone_name, pos):
         bone.translate(delta)
     else:
         raise MetarigError("Cannot 'put' bones outside of edit mode")
+
+
+def make_nonscaling_child(obj, bone_name, location, child_name_postfix=""):
+    """ Takes the named bone and creates a non-scaling child of it at
+        the given location.  The returned bone (returned by name) is not
+        a true child, but behaves like one sans inheriting scaling.
+
+        It is intended as an intermediate construction to prevent rig types
+        from scaling with their parents.  The named bone is assumed to be
+        an ORG bone.
+    """
+    if bone_name not in obj.data.bones:
+        raise MetarigError("make_nonscaling_child(): bone '%s' not found, cannot copy it" % bone_name)
+
+    if obj == bpy.context.active_object and bpy.context.mode == 'EDIT_ARMATURE':
+        # Create desired names for bones
+        name1 = make_mechanism_name(strip_org(insert_before_lr(bone_name, child_name_postfix + "_ns_ch")))
+        name2 = make_mechanism_name(strip_org(insert_before_lr(bone_name, child_name_postfix + "_ns_intr")))
+
+        # Create bones
+        child = copy_bone(obj, bone_name, name1)
+        intermediate_parent = copy_bone(obj, bone_name, name2)
+
+        # Get edit bones
+        eb = obj.data.edit_bones
+        child_e = eb[child]
+        intrpar_e = eb[intermediate_parent]
+
+        # Parenting
+        child_e.use_connect = False
+        child_e.parent = None
+
+        intrpar_e.use_connect = False
+        intrpar_e.parent = eb[bone_name]
+
+        # Positioning
+        child_e.length *= 0.5
+        intrpar_e.length *= 0.25
+
+        put_bone(obj, child, location)
+        put_bone(obj, intermediate_parent, location)
+
+        # Object mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        pb = obj.pose.bones
+
+        # Add constraints
+        con = pb[child].constraints.new('COPY_LOCATION')
+        con.name = "parent_loc"
+        con.target = obj
+        con.subtarget = intermediate_parent
+
+        con = pb[child].constraints.new('COPY_ROTATION')
+        con.name = "parent_loc"
+        con.target = obj
+        con.subtarget = intermediate_parent
+
+        bpy.ops.object.mode_set(mode='EDIT')
+
+        return child
+    else:
+        raise MetarigError("Cannot make nonscaling child outside of edit mode")
 
 
 #=============================================
@@ -260,20 +325,37 @@ def obj_to_bone(obj, rig, bone_name):
     obj.scale = (bone.length * scl_avg), (bone.length * scl_avg), (bone.length * scl_avg)
 
 
-def create_widget(rig, bone_name):
+def create_widget(rig, bone_name, bone_transform_name=None):
     """ Creates an empty widget object for a bone, and returns the object.
     """
+    if bone_transform_name == None:
+        bone_transform_name = bone_name
+
     obj_name = WGT_PREFIX + bone_name
     scene = bpy.context.scene
-    # Check if it already exists
+
+    # Check if it already exists in the scene
     if obj_name in scene.objects:
+        # Move object to bone position, in case it changed
+        obj = scene.objects[obj_name]
+        obj_to_bone(obj, rig, bone_transform_name)
+
         return None
     else:
+        # Delete object if it exists in blend data but not scene data.
+        # This is necessary so we can then create the object without
+        # name conflicts.
+        if obj_name in bpy.data.objects:
+            bpy.data.objects[obj_name].user_clear()
+            bpy.data.objects.remove(bpy.data.objects[obj_name])
+
+        # Create mesh object
         mesh = bpy.data.meshes.new(obj_name)
         obj = bpy.data.objects.new(obj_name, mesh)
         scene.objects.link(obj)
 
-        obj_to_bone(obj, rig, bone_name)
+        # Move object to bone position and set layers
+        obj_to_bone(obj, rig, bone_transform_name)
         obj.layers = WGT_LAYERS
 
         return obj
@@ -281,22 +363,22 @@ def create_widget(rig, bone_name):
 
 # Common Widgets
 
-def create_line_widget(rig, bone_name):
+def create_line_widget(rig, bone_name, bone_transform_name=None):
     """ Creates a basic line widget, a line that spans the length of the bone.
     """
-    obj = create_widget(rig, bone_name)
+    obj = create_widget(rig, bone_name, bone_transform_name)
     if obj != None:
         mesh = obj.data
         mesh.from_pydata([(0, 0, 0), (0, 1, 0)], [(0, 1)], [])
         mesh.update()
 
 
-def create_circle_widget(rig, bone_name, radius=1.0, head_tail=0.0, with_line=False):
+def create_circle_widget(rig, bone_name, radius=1.0, head_tail=0.0, with_line=False, bone_transform_name=None):
     """ Creates a basic circle widget, a circle around the y-axis.
         radius: the radius of the circle
         head_tail: where along the length of the bone the circle is (0.0=head, 1.0=tail)
     """
-    obj = create_widget(rig, bone_name)
+    obj = create_widget(rig, bone_name, bone_transform_name)
     if obj != None:
         v = [(0.7071068286895752, 2.980232238769531e-07, -0.7071065306663513), (0.8314696550369263, 2.980232238769531e-07, -0.5555699467658997), (0.9238795042037964, 2.682209014892578e-07, -0.3826831877231598), (0.9807852506637573, 2.5331974029541016e-07, -0.19509011507034302), (1.0, 2.365559055306221e-07, 1.6105803979371558e-07), (0.9807853698730469, 2.2351741790771484e-07, 0.19509044289588928), (0.9238796234130859, 2.086162567138672e-07, 0.38268351554870605), (0.8314696550369263, 1.7881393432617188e-07, 0.5555704236030579), (0.7071068286895752, 1.7881393432617188e-07, 0.7071070075035095), (0.5555702447891235, 1.7881393432617188e-07, 0.8314698934555054), (0.38268327713012695, 1.7881393432617188e-07, 0.923879861831665), (0.19509008526802063, 1.7881393432617188e-07, 0.9807855486869812), (-3.2584136988589307e-07, 1.1920928955078125e-07, 1.000000238418579), (-0.19509072601795197, 1.7881393432617188e-07, 0.9807854294776917), (-0.3826838731765747, 1.7881393432617188e-07, 0.9238795638084412), (-0.5555707216262817, 1.7881393432617188e-07, 0.8314695358276367), (-0.7071071863174438, 1.7881393432617188e-07, 0.7071065902709961), (-0.8314700126647949, 1.7881393432617188e-07, 0.5555698871612549), (-0.923879861831665, 2.086162567138672e-07, 0.3826829195022583), (-0.9807853698730469, 2.2351741790771484e-07, 0.1950896978378296), (-1.0, 2.365559907957504e-07, -7.290432222362142e-07), (-0.9807850122451782, 2.5331974029541016e-07, -0.195091113448143), (-0.9238790273666382, 2.682209014892578e-07, -0.38268423080444336), (-0.831468939781189, 2.980232238769531e-07, -0.5555710196495056), (-0.7071058750152588, 2.980232238769531e-07, -0.707107424736023), (-0.555569052696228, 2.980232238769531e-07, -0.8314701318740845), (-0.38268208503723145, 2.980232238769531e-07, -0.923879861831665), (-0.19508881866931915, 2.980232238769531e-07, -0.9807853102684021), (1.6053570561780361e-06, 2.980232238769531e-07, -0.9999997615814209), (0.19509197771549225, 2.980232238769531e-07, -0.9807847142219543), (0.3826850652694702, 2.980232238769531e-07, -0.9238786101341248), (0.5555717945098877, 2.980232238769531e-07, -0.8314683437347412)]
         verts = [(a[0] * radius, head_tail, a[2] * radius) for a in v]
@@ -312,10 +394,23 @@ def create_circle_widget(rig, bone_name, radius=1.0, head_tail=0.0, with_line=Fa
         return None
 
 
-def create_sphere_widget(rig, bone_name):
+def create_cube_widget(rig, bone_name, radius=0.5, bone_transform_name=None):
+    """ Creates a basic cube widget.
+    """
+    obj = create_widget(rig, bone_name, bone_transform_name)
+    if obj != None:
+        r = radius
+        verts = [(r, r, r), (r, -r, r), (-r, -r, r), (-r, r, r), (r, r, -r), (r, -r, -r), (-r, -r, -r), (-r, r, -r)]
+        edges = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)]
+        mesh = obj.data
+        mesh.from_pydata(verts, edges, [])
+        mesh.update()
+
+
+def create_sphere_widget(rig, bone_name, bone_transform_name=None):
     """ Creates a basic sphere widget, three pependicular overlapping circles.
     """
-    obj = create_widget(rig, bone_name)
+    obj = create_widget(rig, bone_name, bone_transform_name)
     if obj != None:
         verts = [(0.3535533845424652, 0.3535533845424652, 0.0), (0.4619397521018982, 0.19134171307086945, 0.0), (0.5, -2.1855694143368964e-08, 0.0), (0.4619397521018982, -0.19134175777435303, 0.0), (0.3535533845424652, -0.3535533845424652, 0.0), (0.19134174287319183, -0.4619397521018982, 0.0), (7.549790126404332e-08, -0.5, 0.0), (-0.1913416087627411, -0.46193981170654297, 0.0), (-0.35355329513549805, -0.35355350375175476, 0.0), (-0.4619397521018982, -0.19134178757667542, 0.0), (-0.5, 5.962440319251527e-09, 0.0), (-0.4619397222995758, 0.1913418024778366, 0.0), (-0.35355326533317566, 0.35355350375175476, 0.0), (-0.19134148955345154, 0.46193987131118774, 0.0), (3.2584136988589307e-07, 0.5, 0.0), (0.1913420855998993, 0.46193960309028625, 0.0), (7.450580596923828e-08, 0.46193960309028625, 0.19134199619293213), (5.9254205098113744e-08, 0.5, 2.323586443253589e-07), (4.470348358154297e-08, 0.46193987131118774, -0.1913415789604187), (2.9802322387695312e-08, 0.35355350375175476, -0.3535533547401428), (2.9802322387695312e-08, 0.19134178757667542, -0.46193981170654297), (5.960464477539063e-08, -1.1151834122813398e-08, -0.5000000596046448), (5.960464477539063e-08, -0.1913418024778366, -0.46193984150886536), (5.960464477539063e-08, -0.35355350375175476, -0.3535533845424652), (7.450580596923828e-08, -0.46193981170654297, -0.19134166836738586), (9.348272556053416e-08, -0.5, 1.624372103492533e-08), (1.043081283569336e-07, -0.4619397521018982, 0.19134168326854706), (1.1920928955078125e-07, -0.3535533845424652, 0.35355329513549805), (1.1920928955078125e-07, -0.19134174287319183, 0.46193966269493103), (1.1920928955078125e-07, -4.7414250303745575e-09, 0.49999991059303284), (1.1920928955078125e-07, 0.19134172797203064, 0.46193966269493103), (8.940696716308594e-08, 0.3535533845424652, 0.35355329513549805), (0.3535534739494324, 0.0, 0.35355329513549805), (0.1913418173789978, -2.9802322387695312e-08, 0.46193966269493103), (8.303572940349113e-08, -5.005858838558197e-08, 0.49999991059303284), (-0.19134165346622467, -5.960464477539063e-08, 0.46193966269493103), (-0.35355329513549805, -8.940696716308594e-08, 0.35355329513549805), (-0.46193963289260864, -5.960464477539063e-08, 0.19134168326854706), (-0.49999991059303284, -5.960464477539063e-08, 1.624372103492533e-08), (-0.4619397521018982, -2.9802322387695312e-08, -0.19134166836738586), (-0.3535534143447876, -2.9802322387695312e-08, -0.3535533845424652), (-0.19134171307086945, 0.0, -0.46193984150886536), (7.662531942287387e-08, 9.546055501630235e-09, -0.5000000596046448), (0.19134187698364258, 5.960464477539063e-08, -0.46193981170654297), (0.3535535931587219, 5.960464477539063e-08, -0.3535533547401428), (0.4619399905204773, 5.960464477539063e-08, -0.1913415789604187), (0.5000000596046448, 5.960464477539063e-08, 2.323586443253589e-07), (0.4619396924972534, 2.9802322387695312e-08, 0.19134199619293213)]
         edges = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8), (8, 9), (9, 10), (10, 11), (11, 12), (12, 13), (13, 14), (14, 15), (0, 15), (16, 31), (16, 17), (17, 18), (18, 19), (19, 20), (20, 21), (21, 22), (22, 23), (23, 24), (24, 25), (25, 26), (26, 27), (27, 28), (28, 29), (29, 30), (30, 31), (32, 33), (33, 34), (34, 35), (35, 36), (36, 37), (37, 38), (38, 39), (39, 40), (40, 41), (41, 42), (42, 43), (43, 44), (44, 45), (45, 46), (46, 47), (32, 47)]
@@ -324,11 +419,11 @@ def create_sphere_widget(rig, bone_name):
         mesh.update()
 
 
-def create_limb_widget(rig, bone_name):
+def create_limb_widget(rig, bone_name, bone_transform_name=None):
     """ Creates a basic limb widget, a line that spans the length of the
         bone, with a circle around the center.
     """
-    obj = create_widget(rig, bone_name)
+    obj = create_widget(rig, bone_name, bone_transform_name)
     if obj != None:
         verts = [(-1.1920928955078125e-07, 1.7881393432617188e-07, 0.0), (3.5762786865234375e-07, 1.0000004768371582, 0.0), (0.1767769455909729, 0.5000001192092896, 0.17677664756774902), (0.20786768198013306, 0.5000001192092896, 0.1388925313949585), (0.23097014427185059, 0.5000001192092896, 0.09567084908485413), (0.24519658088684082, 0.5000001192092896, 0.048772573471069336), (0.2500002384185791, 0.5000001192092896, -2.545945676502015e-09), (0.24519658088684082, 0.5000001192092896, -0.048772573471069336), (0.23097014427185059, 0.5000001192092896, -0.09567084908485413), (0.20786768198013306, 0.5000001192092896, -0.13889259099960327), (0.1767769455909729, 0.5000001192092896, -0.1767767071723938), (0.13889282941818237, 0.5000001192092896, -0.20786744356155396), (0.09567105770111084, 0.5000001192092896, -0.23096990585327148), (0.04877278208732605, 0.5000001192092896, -0.24519634246826172), (1.7279069197684294e-07, 0.5000000596046448, -0.25), (-0.0487724244594574, 0.5000001192092896, -0.24519634246826172), (-0.09567070007324219, 0.5000001192092896, -0.2309698462486267), (-0.13889241218566895, 0.5000001192092896, -0.20786738395690918), (-0.17677652835845947, 0.5000001192092896, -0.17677664756774902), (-0.20786726474761963, 0.5000001192092896, -0.13889244198799133), (-0.23096972703933716, 0.5000001192092896, -0.09567070007324219), (-0.24519610404968262, 0.5000001192092896, -0.04877239465713501), (-0.2499997615814209, 0.5000001192092896, 2.1997936983098043e-07), (-0.24519598484039307, 0.5000001192092896, 0.04877282679080963), (-0.23096948862075806, 0.5000001192092896, 0.09567108750343323), (-0.20786696672439575, 0.5000001192092896, 0.1388927698135376), (-0.1767762303352356, 0.5000001192092896, 0.17677688598632812), (-0.13889199495315552, 0.5000001192092896, 0.2078675627708435), (-0.09567028284072876, 0.5000001192092896, 0.23097002506256104), (-0.048771947622299194, 0.5000001192092896, 0.24519634246826172), (6.555903269145347e-07, 0.5000001192092896, 0.25), (0.04877324402332306, 0.5000001192092896, 0.24519622325897217), (0.09567153453826904, 0.5000001192092896, 0.23096966743469238), (0.13889318704605103, 0.5000001192092896, 0.20786714553833008)]
         edges = [(0, 1), (2, 3), (4, 3), (5, 4), (5, 6), (6, 7), (8, 7), (8, 9), (10, 9), (10, 11), (11, 12), (13, 12), (14, 13), (14, 15), (16, 15), (16, 17), (17, 18), (19, 18), (19, 20), (21, 20), (21, 22), (22, 23), (24, 23), (25, 24), (25, 26), (27, 26), (27, 28), (29, 28), (29, 30), (30, 31), (32, 31), (32, 33), (2, 33)]
@@ -337,10 +432,10 @@ def create_limb_widget(rig, bone_name):
         mesh.update()
 
 
-def create_bone_widget(rig, bone_name):
+def create_bone_widget(rig, bone_name, bone_transform_name=None):
     """ Creates a basic bone widget, a simple obolisk-esk shape.
     """
-    obj = create_widget(rig, bone_name)
+    obj = create_widget(rig, bone_name, bone_transform_name)
     if obj != None:
         verts = [(0.04, 1.0, -0.04), (0.1, 0.0, -0.1), (-0.1, 0.0, -0.1), (-0.04, 1.0, -0.04), (0.04, 1.0, 0.04), (0.1, 0.0, 0.1), (-0.1, 0.0, 0.1), (-0.04, 1.0, 0.04)]
         edges = [(1, 2), (0, 1), (0, 3), (2, 3), (4, 5), (5, 6), (6, 7), (4, 7), (1, 5), (0, 4), (2, 6), (3, 7)]
@@ -349,10 +444,10 @@ def create_bone_widget(rig, bone_name):
         mesh.update()
 
 
-def create_compass_widget(rig, bone_name):
+def create_compass_widget(rig, bone_name, bone_transform_name=None):
     """ Creates a compass-shaped widget.
     """
-    obj = create_widget(rig, bone_name)
+    obj = create_widget(rig, bone_name, bone_transform_name)
     if obj != None:
         verts = [(0.0, 1.2000000476837158, 0.0), (0.19509032368659973, 0.9807852506637573, 0.0), (0.3826834559440613, 0.9238795042037964, 0.0), (0.5555702447891235, 0.8314695954322815, 0.0), (0.7071067690849304, 0.7071067690849304, 0.0), (0.8314696550369263, 0.5555701851844788, 0.0), (0.9238795042037964, 0.3826834261417389, 0.0), (0.9807852506637573, 0.19509035348892212, 0.0), (1.2000000476837158, 7.549790126404332e-08, 0.0), (0.9807853102684021, -0.19509020447731018, 0.0), (0.9238795638084412, -0.38268327713012695, 0.0), (0.8314696550369263, -0.5555701851844788, 0.0), (0.7071067690849304, -0.7071067690849304, 0.0), (0.5555701851844788, -0.8314696550369263, 0.0), (0.38268327713012695, -0.9238796234130859, 0.0), (0.19509008526802063, -0.9807853102684021, 0.0), (-3.2584136988589307e-07, -1.2999999523162842, 0.0), (-0.19509072601795197, -0.9807851910591125, 0.0), (-0.3826838731765747, -0.9238793253898621, 0.0), (-0.5555707216262817, -0.8314692974090576, 0.0), (-0.7071072459220886, -0.707106351852417, 0.0), (-0.8314700126647949, -0.5555696487426758, 0.0), (-0.923879861831665, -0.3826826810836792, 0.0), (-0.9807854294776917, -0.1950894594192505, 0.0), (-1.2000000476837158, 9.655991561885457e-07, 0.0), (-0.980785071849823, 0.1950913518667221, 0.0), (-0.923879086971283, 0.38268446922302246, 0.0), (-0.831468939781189, 0.5555712580680847, 0.0), (-0.7071058750152588, 0.707107663154602, 0.0), (-0.5555691123008728, 0.8314703702926636, 0.0), (-0.38268208503723145, 0.9238801002502441, 0.0), (-0.19508881866931915, 0.9807855486869812, 0.0)]
         edges = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8), (8, 9), (9, 10), (10, 11), (11, 12), (12, 13), (13, 14), (14, 15), (15, 16), (16, 17), (17, 18), (18, 19), (19, 20), (20, 21), (21, 22), (22, 23), (23, 24), (24, 25), (25, 26), (26, 27), (27, 28), (28, 29), (29, 30), (30, 31), (0, 31)]
@@ -361,16 +456,142 @@ def create_compass_widget(rig, bone_name):
         mesh.update()
 
 
-def create_root_widget(rig, bone_name):
+def create_root_widget(rig, bone_name, bone_transform_name=None):
     """ Creates a widget for the root bone.
     """
-    obj = create_widget(rig, bone_name)
+    obj = create_widget(rig, bone_name, bone_transform_name)
     if obj != None:
         verts = [(0.7071067690849304, 0.7071067690849304, 0.0), (0.7071067690849304, -0.7071067690849304, 0.0), (-0.7071067690849304, 0.7071067690849304, 0.0), (-0.7071067690849304, -0.7071067690849304, 0.0), (0.8314696550369263, 0.5555701851844788, 0.0), (0.8314696550369263, -0.5555701851844788, 0.0), (-0.8314696550369263, 0.5555701851844788, 0.0), (-0.8314696550369263, -0.5555701851844788, 0.0), (0.9238795042037964, 0.3826834261417389, 0.0), (0.9238795042037964, -0.3826834261417389, 0.0), (-0.9238795042037964, 0.3826834261417389, 0.0), (-0.9238795042037964, -0.3826834261417389, 0.0), (0.9807852506637573, 0.19509035348892212, 0.0), (0.9807852506637573, -0.19509035348892212, 0.0), (-0.9807852506637573, 0.19509035348892212, 0.0), (-0.9807852506637573, -0.19509035348892212, 0.0), (0.19509197771549225, 0.9807849526405334, 0.0), (0.19509197771549225, -0.9807849526405334, 0.0), (-0.19509197771549225, 0.9807849526405334, 0.0), (-0.19509197771549225, -0.9807849526405334, 0.0), (0.3826850652694702, 0.9238788485527039, 0.0), (0.3826850652694702, -0.9238788485527039, 0.0), (-0.3826850652694702, 0.9238788485527039, 0.0), (-0.3826850652694702, -0.9238788485527039, 0.0), (0.5555717945098877, 0.8314685821533203, 0.0), (0.5555717945098877, -0.8314685821533203, 0.0), (-0.5555717945098877, 0.8314685821533203, 0.0), (-0.5555717945098877, -0.8314685821533203, 0.0), (0.19509197771549225, 1.2807848453521729, 0.0), (0.19509197771549225, -1.2807848453521729, 0.0), (-0.19509197771549225, 1.2807848453521729, 0.0), (-0.19509197771549225, -1.2807848453521729, 0.0), (1.280785322189331, 0.19509035348892212, 0.0), (1.280785322189331, -0.19509035348892212, 0.0), (-1.280785322189331, 0.19509035348892212, 0.0), (-1.280785322189331, -0.19509035348892212, 0.0), (0.3950919806957245, 1.2807848453521729, 0.0), (0.3950919806957245, -1.2807848453521729, 0.0), (-0.3950919806957245, 1.2807848453521729, 0.0), (-0.3950919806957245, -1.2807848453521729, 0.0), (1.280785322189331, 0.39509034156799316, 0.0), (1.280785322189331, -0.39509034156799316, 0.0), (-1.280785322189331, 0.39509034156799316, 0.0), (-1.280785322189331, -0.39509034156799316, 0.0), (0.0, 1.5807849168777466, 0.0), (0.0, -1.5807849168777466, 0.0), (1.5807852745056152, 0.0, 0.0), (-1.5807852745056152, 0.0, 0.0)]
         edges = [(0, 4), (1, 5), (2, 6), (3, 7), (4, 8), (5, 9), (6, 10), (7, 11), (8, 12), (9, 13), (10, 14), (11, 15), (16, 20), (17, 21), (18, 22), (19, 23), (20, 24), (21, 25), (22, 26), (23, 27), (0, 24), (1, 25), (2, 26), (3, 27), (16, 28), (17, 29), (18, 30), (19, 31), (12, 32), (13, 33), (14, 34), (15, 35), (28, 36), (29, 37), (30, 38), (31, 39), (32, 40), (33, 41), (34, 42), (35, 43), (36, 44), (37, 45), (38, 44), (39, 45), (40, 46), (41, 46), (42, 47), (43, 47)]
         mesh = obj.data
         mesh.from_pydata(verts, edges, [])
         mesh.update()
+
+
+#=============================================
+# Math
+#=============================================
+
+def angle_on_plane(plane, vec1, vec2):
+    """ Return the angle between two vectors projected onto a plane.
+    """
+    plane.normalize()
+    vec1 = vec1 - (plane * (vec1.dot(plane)))
+    vec2 = vec2 - (plane * (vec2.dot(plane)))
+    vec1.normalize()
+    vec2.normalize()
+
+    # Determine the angle
+    angle = math.acos(max(-1.0, min(1.0, vec1.dot(vec2))))
+
+    if angle < 0.00001:  # close enough to zero that sign doesn't matter
+        return angle
+
+    # Determine the sign of the angle
+    vec3 = vec2.cross(vec1)
+    vec3.normalize()
+    sign = vec3.dot(plane)
+    if sign >= 0:
+        sign = 1
+    else:
+        sign = -1
+
+    return angle * sign
+
+
+def align_bone_roll(obj, bone1, bone2):
+    """ Aligns the roll of two bones.
+    """
+    bone1_e = obj.data.edit_bones[bone1]
+    bone2_e = obj.data.edit_bones[bone2]
+
+    bone1_e.roll = 0.0
+
+    # Get the directions the bones are pointing in, as vectors
+    y1 = bone1_e.y_axis
+    x1 = bone1_e.x_axis
+    y2 = bone2_e.y_axis
+    x2 = bone2_e.x_axis
+
+    # Get the shortest axis to rotate bone1 on to point in the same direction as bone2
+    axis = y1.cross(y2)
+    axis.normalize()
+
+    # Angle to rotate on that shortest axis
+    angle = y1.angle(y2)
+
+    # Create rotation matrix to make bone1 point in the same direction as bone2
+    rot_mat = Matrix.Rotation(angle, 3, axis)
+
+    # Roll factor
+    x3 = rot_mat * x1
+    dot = x2 * x3
+    if dot > 1.0:
+        dot = 1.0
+    elif dot < -1.0:
+        dot = -1.0
+    roll = math.acos(dot)
+
+    # Set the roll
+    bone1_e.roll = roll
+
+    # Check if we rolled in the right direction
+    x3 = rot_mat * bone1_e.x_axis
+    check = x2 * x3
+
+    # If not, reverse
+    if check < 0.9999:
+        bone1_e.roll = -roll
+
+
+def align_bone_x_axis(obj, bone, vec):
+    """ Rolls the bone to align its x-axis as closely as possible to
+        the given vector.
+        Must be in edit mode.
+    """
+    bone_e = obj.data.edit_bones[bone]
+
+    vec = vec.cross(bone_e.y_axis)
+    vec.normalize()
+
+    dot = max(-1.0, min(1.0, bone_e.z_axis.dot(vec)))
+    angle = math.acos(dot)
+
+    bone_e.roll += angle
+
+    dot1 = bone_e.z_axis.dot(vec)
+
+    bone_e.roll -= angle * 2
+
+    dot2 = bone_e.z_axis.dot(vec)
+
+    if dot1 > dot2:
+        bone_e.roll += angle * 2
+
+
+def align_bone_z_axis(obj, bone, vec):
+    """ Rolls the bone to align its z-axis as closely as possible to
+        the given vector.
+        Must be in edit mode.
+    """
+    bone_e = obj.data.edit_bones[bone]
+
+    vec = bone_e.y_axis.cross(vec)
+    vec.normalize()
+
+    dot = max(-1.0, min(1.0, bone_e.x_axis.dot(vec)))
+    angle = math.acos(dot)
+
+    bone_e.roll += angle
+
+    dot1 = bone_e.x_axis.dot(vec)
+
+    bone_e.roll -= angle * 2
+
+    dot2 = bone_e.x_axis.dot(vec)
+
+    if dot1 > dot2:
+        bone_e.roll += angle * 2
 
 
 #=============================================
@@ -395,8 +616,17 @@ def copy_attributes(a, b):
 def get_rig_type(rig_type):
     """ Fetches a rig module by name, and returns it.
     """
-    #print("%s.%s.%s" % (__package__,RIG_DIR,rig_type))
-    submod = __import__(name="%s.%s.%s" % (MODULE_NAME, RIG_DIR, rig_type), fromlist=[rig_type])
+    name = ".%s.%s" % (RIG_DIR, rig_type)
+    submod = importlib.import_module(name, package=MODULE_NAME)
+    imp.reload(submod)
+    return submod
+
+
+def get_metarig_module(metarig_name):
+    """ Fetches a rig module by name, and returns it.
+    """
+    name = ".%s.%s" % (METARIG_DIR, metarig_name)
+    submod = importlib.import_module(name, package=MODULE_NAME)
     imp.reload(submod)
     return submod
 
@@ -461,12 +691,14 @@ def get_layers(layers):
             return [x in layers for x in range(0, 32)]
 
 
-def write_metarig(obj, layers=False, func_name="create_sample"):
+def write_metarig(obj, layers=False, func_name="create"):
     """
     Write a metarig as a python script, this rig is to have all info needed for
     generating the real rig with rigify.
     """
     code = []
+
+    code.append("import bpy\n")
 
     code.append("def %s(obj):" % func_name)
     code.append("    # generated by rigify.utils.write_metarig")
@@ -475,6 +707,18 @@ def write_metarig(obj, layers=False, func_name="create_sample"):
     code.append("    arm = obj.data")
 
     arm = obj.data
+
+    # Rigify layer layout info
+    if layers and len(arm.rigify_layers) > 0:
+        code.append("\n    for i in range(" + str(len(arm.rigify_layers)) + "):")
+        code.append("        arm.rigify_layers.add()\n")
+
+        for i in range(len(arm.rigify_layers)):
+            name = arm.rigify_layers[i].name
+            row = arm.rigify_layers[i].row
+            code.append('    arm.rigify_layers[' + str(i) + '].name = "' + name + '"')
+            code.append('    arm.rigify_layers[' + str(i) + '].row = ' + str(row))
+
     # write parents first
     bones = [(len(bone.parent_recursive), bone.name) for bone in arm.edit_bones]
     bones.sort(key=lambda item: item[0])
@@ -500,7 +744,6 @@ def write_metarig(obj, layers=False, func_name="create_sample"):
     # Rig type and other pose properties
     for bone_name in bones:
         pbone = obj.pose.bones[bone_name]
-        pbone_written = False
 
         code.append("    pbone = obj.pose.bones[bones[%r]]" % bone_name)
         code.append("    pbone.rigify_type = %r" % pbone.rigify_type)
@@ -512,16 +755,16 @@ def write_metarig(obj, layers=False, func_name="create_sample"):
         if layers:
             code.append("    pbone.bone.layers = %s" % str(list(pbone.bone.layers)))
         # Rig type parameters
-        if len(pbone.rigify_parameters) > 0:
-            code.append("    pbone.rigify_parameters.add()")
-            for param_name in pbone.rigify_parameters[0].keys():
-                param = getattr(pbone.rigify_parameters[0], param_name)
-                if str(type(param)) == "<class 'bpy_prop_array'>":
-                    param = list(param)
-                code.append("    try:")
-                code.append("        pbone.rigify_parameters[0].%s = %s" % (param_name, str(param)))
-                code.append("    except AttributeError:")
-                code.append("        pass")
+        for param_name in pbone.rigify_parameters.keys():
+            param = getattr(pbone.rigify_parameters, param_name)
+            if str(type(param)) == "<class 'bpy_prop_array'>":
+                param = list(param)
+            if type(param) == str:
+                param = '"' + param + '"'
+            code.append("    try:")
+            code.append("        pbone.rigify_parameters.%s = %s" % (param_name, str(param)))
+            code.append("    except AttributeError:")
+            code.append("        pass")
 
     code.append("\n    bpy.ops.object.mode_set(mode='EDIT')")
     code.append("    for bone in arm.edit_bones:")
@@ -536,7 +779,68 @@ def write_metarig(obj, layers=False, func_name="create_sample"):
     code.append("        bone.select_tail = True")
     code.append("        arm.edit_bones.active = bone")
 
+    # Set appropriate layers visible
+    if layers:
+        # Find what layers have bones on them
+        active_layers = []
+        for bone_name in bones:
+            bone = obj.data.bones[bone_name]
+            for i in range(len(bone.layers)):
+                if bone.layers[i]:
+                    if i not in active_layers:
+                        active_layers.append(i)
+        active_layers.sort()
+
+        code.append("\n    arm.layers = [(x in " + str(active_layers) + ") for x in range(" + str(len(arm.layers)) + ")]")
+
+    code.append('\nif __name__ == "__main__":')
+    code.append("    " + func_name + "(bpy.context.active_object)")
+
     return "\n".join(code)
+
+
+def write_widget(obj):
+    """ Write a mesh object as a python script for widget use.
+    """
+    script = ""
+    script += "def create_thing_widget(rig, bone_name, size=1.0, bone_transform_name=None):\n"
+    script += "    obj = create_widget(rig, bone_name, bone_transform_name)\n"
+    script += "    if obj != None:\n"
+
+    # Vertices
+    if len(obj.data.vertices) > 0:
+        script += "        verts = ["
+        for v in obj.data.vertices:
+            script += "(" + str(v.co[0]) + "*size, " + str(v.co[1]) + "*size, " + str(v.co[2]) + "*size), "
+        script += "]\n"
+
+    # Edges
+    if len(obj.data.edges) > 0:
+        script += "        edges = ["
+        for e in obj.data.edges:
+            script += "(" + str(e.vertices[0]) + ", " + str(e.vertices[1]) + "), "
+        script += "]\n"
+
+    # Faces
+    if len(obj.data.polygons) > 0:
+        script += "        faces = ["
+        for f in obj.data.polygons:
+            script += "("
+            for v in f.vertices:
+                script += str(v) + ", "
+            script += "), "
+        script += "]\n"
+
+    # Build mesh
+    script += "\n        mesh = obj.data\n"
+    script += "        mesh.from_pydata(verts, edges, faces)\n"
+    script += "        mesh.update()\n"
+    script += "        mesh.update()\n"
+    script += "        return obj\n"
+    script += "    else:\n"
+    script += "        return None\n"
+
+    return script
 
 
 def random_id(length=8):

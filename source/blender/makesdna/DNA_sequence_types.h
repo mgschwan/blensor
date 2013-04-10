@@ -28,6 +28,14 @@
  *  \ingroup DNA
  *  \since mar-2001
  *  \author nzc
+ *
+ * Structs for use by the 'Sequencer' (Video Editor)
+ *
+ * Note on terminology
+ * - #Sequence: video/effect/audio data you can select and manipulate in the sequencer.
+ * - #Sequence.machine: Strange name for the channel.
+ * - #Strip: The data referenced by the #Sequence
+ * - Meta Strip (SEQ_TYPE_META): Support for nesting Sequences.
  */
 
 #ifndef __DNA_SEQUENCE_TYPES_H__
@@ -172,7 +180,10 @@ typedef struct Sequence {
 	float blend_opacity;
 
 	/* is sfra needed anymore? - it looks like its only used in one place */
-	int sfra, pad;  /* starting frame according to the timeline of the scene. */
+	int sfra;  /* starting frame according to the timeline of the scene. */
+
+	char alpha_mode;
+	char pad[3];
 
 	/* modifiers */
 	ListBase modifiers;
@@ -303,7 +314,7 @@ typedef struct SequencerScopes {
 
 /* SpeedControlVars->flags */
 #define SEQ_SPEED_INTEGRATE      1
-#define SEQ_SPEED_BLEND          2
+/* #define SEQ_SPEED_BLEND          2 */ /* DEPRECATED */
 #define SEQ_SPEED_COMPRESS_IPO_Y 4
 
 /* ***************** SEQUENCE ****************** */
@@ -315,7 +326,7 @@ typedef struct SequencerScopes {
 #define SEQ_OVERLAP                 (1 << 3)
 #define SEQ_FILTERY                 (1 << 4)
 #define SEQ_MUTE                    (1 << 5)
-#define SEQ_MAKE_PREMUL             (1 << 6)
+#define SEQ_MAKE_PREMUL             (1 << 6) /* deprecated, used for compatibility code only */
 #define SEQ_REVERSE_FRAMES          (1 << 7)
 #define SEQ_IPO_FRAME_LOCKED        (1 << 8)
 #define SEQ_EFFECT_NOT_LOADED       (1 << 9)
@@ -365,6 +376,12 @@ typedef struct SequencerScopes {
 #define SEQ_PROXY_TC_INTERP_REC_DATE_FREE_RUN   4
 #define SEQ_PROXY_TC_RECORD_RUN_NO_GAPS         8
 #define SEQ_PROXY_TC_ALL                        15
+
+/* seq->alpha_mode */
+enum {
+	SEQ_ALPHA_STRAIGHT = 0,
+	SEQ_ALPHA_PREMUL   = 1
+};
 
 /* seq->type WATCH IT: SEQ_TYPE_EFFECT BIT is used to determine if this is an effect strip!!! */
 enum {
@@ -432,4 +449,4 @@ enum {
 	SEQUENCE_MASK_INPUT_ID      = 1
 };
 
-#endif
+#endif  /* __DNA_SEQUENCE_TYPES_H__ */

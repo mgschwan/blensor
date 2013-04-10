@@ -33,6 +33,8 @@
  */
 
 struct bContext;
+struct BMesh;
+struct BMFace;
 struct Brush;
 struct MDisps;
 struct MeshElemMap;
@@ -45,11 +47,23 @@ struct Paint;
 struct PBVH;
 struct Scene;
 struct StrokeCache;
+struct ImagePool;
+struct UnifiedPaintSettings;
 
 extern const char PAINT_CURSOR_SCULPT[3];
 extern const char PAINT_CURSOR_VERTEX_PAINT[3];
 extern const char PAINT_CURSOR_WEIGHT_PAINT[3];
 extern const char PAINT_CURSOR_TEXTURE_PAINT[3];
+
+typedef enum PaintMode {
+	PAINT_SCULPT = 0,
+	PAINT_VERTEX = 1,
+	PAINT_WEIGHT = 2,
+	PAINT_TEXTURE_PROJECTIVE = 3,
+	PAINT_TEXTURE_2D = 4,
+	PAINT_SCULPT_UV = 5,
+	PAINT_INVALID = 6
+} PaintMode;
 
 void BKE_paint_init(struct Paint *p, const char col[3]);
 void BKE_paint_free(struct Paint *p);
@@ -58,6 +72,7 @@ void BKE_paint_copy(struct Paint *src, struct Paint *tar);
 /* TODO, give these BKE_ prefix too */
 struct Paint *paint_get_active(struct Scene *sce);
 struct Paint *paint_get_active_from_context(const struct bContext *C);
+PaintMode paintmode_get_active_from_context(const struct bContext *C);
 struct Brush *paint_brush(struct Paint *paint);
 void paint_brush_set(struct Paint *paint, struct Brush *br);
 
@@ -71,11 +86,12 @@ int paint_vertsel_test(struct Object *ob);
 int paint_is_face_hidden(const struct MFace *f, const struct MVert *mvert);
 int paint_is_grid_face_hidden(const unsigned int *grid_hidden,
                               int gridsize, int x, int y);
+int paint_is_bmesh_face_hidden(struct BMFace *f);
 
 /* paint masks */
 float paint_grid_paint_mask(const struct GridPaintMask *gpm, unsigned level,
                             unsigned x, unsigned y);
-
+void paint_calculate_rake_rotation(struct UnifiedPaintSettings *ups, const float mouse_pos[2]);
 /* Session data (mode-specific) */
 
 typedef struct SculptSession {
@@ -92,6 +108,12 @@ typedef struct SculptSession {
 	/* Mesh connectivity */
 	const struct MeshElemMap *pmap;
 
+	/* BMesh for dynamic topology sculpting */
+	struct BMesh *bm;
+	int bm_smooth_shading;
+	/* Undo/redo log for dynamic topology sculpting */
+	struct BMLog *bm_log;
+
 	/* PBVH acceleration structure */
 	struct PBVH *pbvh;
 	int show_diffuse_color;
@@ -107,6 +129,7 @@ typedef struct SculptSession {
 	
 	/* Used to cache the render of the active texture */
 	unsigned int texcache_side, *texcache, texcache_actual;
+	struct ImagePool *tex_pool;
 
 	/* Layer brush persistence between strokes */
 	float (*layer_co)[3]; /* Copy of the mesh vertices' locations */
@@ -121,5 +144,6 @@ typedef struct SculptSession {
 
 void free_sculptsession(struct Object *ob);
 void free_sculptsession_deformMats(struct SculptSession *ss);
+void sculptsession_bm_to_me(struct Object *ob, int reorder);
 
 #endif

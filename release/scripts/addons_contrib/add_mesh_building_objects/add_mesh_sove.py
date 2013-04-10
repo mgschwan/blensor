@@ -2,7 +2,7 @@
     "name": "Sove",
     "author": "SayPRODUCTIONS",
     "version": (1, 0),
-    "blender": (2, 5, 9),
+    "blender": (2, 59, 0),
     "api": 33333,
     "location": "View3D > Add > Mesh > Say3D",
     "description": "Sove Framema",

@@ -37,14 +37,14 @@
 #endif
 
 /**
-	PHY_IMotionState is the Interface to explicitly synchronize the world transformation.
-	Default implementations for mayor graphics libraries like OpenGL and DirectX can be provided.
-*/
+ * PHY_IMotionState is the Interface to explicitly synchronize the world transformation.
+ * Default implementations for mayor graphics libraries like OpenGL and DirectX can be provided.
+ */
 class	PHY_IMotionState
 
 {
 	public:
-		virtual ~PHY_IMotionState();
+		virtual ~PHY_IMotionState(){};
 
 		virtual void	getWorldPosition(float& posX,float& posY,float& posZ)=0;
 		virtual void	getWorldScaling(float& scaleX,float& scaleY,float& scaleZ)=0;

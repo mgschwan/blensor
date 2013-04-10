@@ -32,6 +32,7 @@
 
 #include "KX_BlenderCanvas.h"
 #include "DNA_screen_types.h"
+#include "DNA_windowmanager_types.h"
 #include <stdio.h>
 #include <assert.h>
 
@@ -154,11 +155,11 @@ SetViewPort(
 	int x1, int y1,
 	int x2, int y2
 ) {
-	/*	x1 and y1 are the min pixel coordinate (e.g. 0)
-		x2 and y2 are the max pixel coordinate
-		the width,height is calculated including both pixels
-		therefore: max - min + 1
-	*/
+	/* x1 and y1 are the min pixel coordinate (e.g. 0)
+	 * x2 and y2 are the max pixel coordinate
+	 * the width,height is calculated including both pixels
+	 * therefore: max - min + 1
+	 */
 	int vp_width = (x2 - x1) + 1;
 	int vp_height = (y2 - y1) + 1;
 	int minx = m_frame_rect.GetLeft();
@@ -176,6 +177,18 @@ SetViewPort(
 
 	glViewport(minx + x1, miny + y1, vp_width, vp_height);
 	glScissor(minx + x1, miny + y1, vp_width, vp_height);
+}
+
+	void
+KX_BlenderCanvas::
+UpdateViewPort(
+	int x1, int y1,
+	int x2, int y2
+) {
+	m_viewport[0] = x1;
+	m_viewport[1] = y1;
+	m_viewport[2] = x2;
+	m_viewport[3] = y2;
 }
 
 	const int*
@@ -236,7 +249,7 @@ void KX_BlenderCanvas::SetMousePosition(int x,int y)
 
 
 
-void KX_BlenderCanvas::MakeScreenShot(const char* filename)
+void KX_BlenderCanvas::MakeScreenShot(const char *filename)
 {
 	ScrArea area_dummy= {0};
 	area_dummy.totrct.xmin = m_frame_rect.GetLeft();
@@ -244,5 +257,5 @@ void KX_BlenderCanvas::MakeScreenShot(const char* filename)
 	area_dummy.totrct.ymin = m_frame_rect.GetBottom();
 	area_dummy.totrct.ymax = m_frame_rect.GetTop();
 
-	BL_MakeScreenShot(&area_dummy, filename);
+	BL_MakeScreenShot(m_win->screen, &area_dummy, filename);
 }

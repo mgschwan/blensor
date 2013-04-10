@@ -38,6 +38,7 @@
 #endif // WIN32
 
 #include "GHOST_Window.h"
+#include "GHOST_SizerWin32.h"
 #include "GHOST_TaskbarWin32.h"
 
 #define _WIN32_WINNT 0x501 // require Windows XP or newer
@@ -58,6 +59,7 @@ typedef UINT (API * GHOST_WIN32_WTInfo)(UINT, UINT, LPVOID);
 typedef HCTX (API * GHOST_WIN32_WTOpen)(HWND, LPLOGCONTEXTA, BOOL);
 typedef BOOL (API * GHOST_WIN32_WTClose)(HCTX);
 typedef BOOL (API * GHOST_WIN32_WTPacket)(HCTX, UINT, LPVOID);
+typedef BOOL (API * GHOST_WIN32_WTOverlap)(HCTX, BOOL);
 
 /**
  * GHOST window on M$ Windows OSs.
@@ -273,6 +275,13 @@ public:
 
 	void processWin32TabletInitEvent();
 	void processWin32TabletEvent(WPARAM wParam, LPARAM lParam);
+	void bringTabletContextToFront();
+
+	GHOST_TSuccess beginFullScreen() const {return GHOST_kFailure;}
+
+	GHOST_TSuccess endFullScreen() const {return GHOST_kFailure;}
+
+	GHOST_SizerWin32 m_wsh;
 
 protected:
 	GHOST_TSuccess initMultisample(PIXELFORMATDESCRIPTOR pfd);

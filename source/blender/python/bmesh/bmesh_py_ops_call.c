@@ -48,11 +48,13 @@
 static int bpy_bm_op_as_py_error(BMesh *bm)
 {
 	if (BMO_error_occurred(bm)) {
+		/* note: we could have multiple errors */
 		const char *errmsg;
 		if (BMO_error_get(bm, &errmsg, NULL)) {
 			PyErr_Format(PyExc_RuntimeError,
 			             "bmesh operator: %.200s",
 			             errmsg);
+			BMO_error_clear(bm);
 			return -1;
 		}
 	}
@@ -214,7 +216,7 @@ static int bpy_slot_from_py(BMesh *bm, BMOperator *bmop, BMOpSlot *slot, PyObjec
 				return -1;
 			}
 			else if (((size = ((MatrixObject *)value)->num_col) != ((MatrixObject *)value)->num_row) ||
-			         (ELEM(size, 3, 4) == FALSE))
+			         (ELEM(size, 3, 4) == false))
 			{
 				PyErr_Format(PyExc_TypeError,
 				             "%.200s: keyword \"%.200s\" expected a 3x3 or 4x4 matrix Matrix",
@@ -319,7 +321,7 @@ static int bpy_slot_from_py(BMesh *bm, BMOperator *bmop, BMOpSlot *slot, PyObjec
 
 					elem_array = BPy_BMElem_PySeq_As_Array(&bm, value, 0, PY_SSIZE_T_MAX,
 					                                       &elem_array_len, (slot->slot_subtype.elem & BM_ALL_NOLOOP),
-					                                       TRUE, TRUE, slot_name);
+					                                       true, true, slot_name);
 
 					/* error is set above */
 					if (elem_array == NULL) {
@@ -523,7 +525,7 @@ static int bpy_slot_from_py(BMesh *bm, BMOperator *bmop, BMOpSlot *slot, PyObjec
  *
  * \note Don't throw any exceptions and should always return a valid (PyObject *).
  */
-static PyObject* bpy_slot_to_py(BMesh *bm, BMOpSlot *slot)
+static PyObject *bpy_slot_to_py(BMesh *bm, BMOpSlot *slot)
 {
 	PyObject *item = NULL;
 
@@ -692,6 +694,9 @@ PyObject *BPy_BMO_call(BPy_BMeshOpFunc *self, PyObject *args, PyObject *kw)
 	{
 		BPY_BM_CHECK_OBJ(py_bm);
 		bm = py_bm->bm;
+
+		/* could complain about entering with exceptions... */
+		BMO_error_clear(bm);
 	}
 	else {
 		PyErr_SetString(PyExc_TypeError,
@@ -722,7 +727,7 @@ PyObject *BPy_BMO_call(BPy_BMeshOpFunc *self, PyObject *args, PyObject *kw)
 				return NULL;
 			}
 
-			 slot = BMO_slot_get(bmop.slots_in, slot_name);
+			slot = BMO_slot_get(bmop.slots_in, slot_name);
 
 			/* now assign the value */
 			if (bpy_slot_from_py(bm, &bmop, slot, value,

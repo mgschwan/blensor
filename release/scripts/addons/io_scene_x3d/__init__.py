@@ -21,7 +21,7 @@
 bl_info = {
     "name": "Web3D X3D/VRML2 format",
     "author": "Campbell Barton, Bart",
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     "location": "File > Import-Export",
     "description": "Import-Export X3D, Import VRML2",
     "warning": "",
@@ -109,7 +109,7 @@ class ExportX3D(bpy.types.Operator, ExportHelper):
             description="Export selected objects only",
             default=False,
             )
-    use_apply_modifiers = BoolProperty(
+    use_mesh_modifiers = BoolProperty(
             name="Apply Modifiers",
             description="Use transformed mesh data from each object",
             default=True,
@@ -157,7 +157,6 @@ class ExportX3D(bpy.types.Operator, ExportHelper):
                ),
         default='Z',
         )
-
     axis_up = EnumProperty(
             name="Up",
             items=(('X', "X Up", ""),

@@ -30,17 +30,12 @@
 
 
 #include <string.h>
-#include <stdio.h>
 
 #include "DNA_text_types.h"
-#include "DNA_object_types.h"
 
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_math.h"
-#include "BLI_rand.h"
-#include "BLI_utildefines.h"
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
@@ -61,7 +56,8 @@
 #include "RNA_access.h"
 
 
-#include "text_intern.h"    // own include
+#include "text_format.h"
+#include "text_intern.h"  /* own include */
 
 /* ******************** default callbacks for text space ***************** */
 
@@ -224,15 +220,25 @@ static void text_operatortypes(void)
 	WM_operatortype_append(TEXT_OT_replace);
 	WM_operatortype_append(TEXT_OT_replace_set_selected);
 
+	WM_operatortype_append(TEXT_OT_start_find);
+	
 	WM_operatortype_append(TEXT_OT_to_3d_object);
 
 	WM_operatortype_append(TEXT_OT_resolve_conflict);
+
+	WM_operatortype_append(TEXT_OT_autocomplete);
 }
 
 static void text_keymap(struct wmKeyConfig *keyconf)
 {
 	wmKeyMap *keymap;
 	wmKeyMapItem *kmi;
+	
+	keymap = WM_keymap_find(keyconf, "Text Generic", SPACE_TEXT, 0);
+	WM_keymap_add_item(keymap, "TEXT_OT_start_find", FKEY, KM_PRESS, KM_CTRL, 0);
+#ifdef __APPLE__
+	WM_keymap_add_item(keymap, "TEXT_OT_start_find", FKEY, KM_PRESS, KM_OSKEY, 0);
+#endif
 	
 	keymap = WM_keymap_find(keyconf, "Text", SPACE_TEXT, 0);
 	
@@ -258,7 +264,6 @@ static void text_keymap(struct wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "TEXT_OT_cut", XKEY, KM_PRESS, KM_OSKEY, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_copy", CKEY, KM_PRESS, KM_OSKEY, 0); 
 	WM_keymap_add_item(keymap, "TEXT_OT_paste", VKEY, KM_PRESS, KM_OSKEY, 0);
-	WM_keymap_add_item(keymap, "TEXT_OT_properties", FKEY, KM_PRESS, KM_OSKEY, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_find_set_selected", EKEY, KM_PRESS, KM_OSKEY, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_find", GKEY, KM_PRESS, KM_OSKEY, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_select_all", AKEY, KM_PRESS, KM_OSKEY, 0);
@@ -280,7 +285,7 @@ static void text_keymap(struct wmKeyConfig *keyconf)
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_cycle_int", PADMINUS, KM_PRESS, KM_CTRL, 0);
 	RNA_string_set(kmi->ptr, "data_path", "space_data.font_size");
 	RNA_boolean_set(kmi->ptr, "reverse", TRUE);
-	
+
 	WM_keymap_add_item(keymap, "TEXT_OT_new", NKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_open", OKEY, KM_PRESS, KM_ALT, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_reload", RKEY, KM_PRESS, KM_ALT, 0);
@@ -307,7 +312,6 @@ static void text_keymap(struct wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "TEXT_OT_jump", JKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_find", GKEY, KM_PRESS, KM_CTRL, 0);
 	
-	WM_keymap_add_item(keymap, "TEXT_OT_properties", FKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_replace", HKEY, KM_PRESS, KM_CTRL, 0);
 
 	kmi = WM_keymap_add_item(keymap, "TEXT_OT_to_3d_object", MKEY, KM_PRESS, KM_ALT, 0);
@@ -379,6 +383,8 @@ static void text_keymap(struct wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "TEXT_OT_line_break", PADENTER, KM_PRESS, 0, 0);
 
 	WM_keymap_add_menu(keymap, "TEXT_MT_toolbox", RIGHTMOUSE, KM_PRESS, KM_ANY, 0);
+
+	WM_keymap_add_item(keymap, "TEXT_OT_autocomplete", SPACEKEY, KM_PRESS, KM_CTRL, 0);
 	
 	WM_keymap_add_item(keymap, "TEXT_OT_line_number", KM_TEXTINPUT, KM_ANY, KM_ANY, 0);
 	WM_keymap_add_item(keymap, "TEXT_OT_insert", KM_TEXTINPUT, KM_ANY, KM_ANY, 0); // last!
@@ -413,6 +419,8 @@ static void text_main_area_init(wmWindowManager *wm, ARegion *ar)
 	UI_view2d_region_reinit(&ar->v2d, V2D_COMMONVIEW_STANDARD, ar->winx, ar->winy);
 	
 	/* own keymap */
+	keymap = WM_keymap_find(wm->defaultconf, "Text Generic", SPACE_TEXT, 0);
+	WM_event_add_keymap_handler_bb(&ar->handlers, keymap, &ar->v2d.mask, &ar->winrct);
 	keymap = WM_keymap_find(wm->defaultconf, "Text", SPACE_TEXT, 0);
 	WM_event_add_keymap_handler_bb(&ar->handlers, keymap, &ar->v2d.mask, &ar->winrct);
 	
@@ -452,7 +460,7 @@ static void text_cursor(wmWindow *win, ScrArea *UNUSED(sa), ARegion *UNUSED(ar))
 
 /* ************* dropboxes ************* */
 
-static int text_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event))
+static int text_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
 {
 	if (drag->type == WM_DRAG_PATH)
 		if (ELEM(drag->icon, ICON_FILE_SCRIPT, ICON_FILE_BLANK))    /* rule might not work? */
@@ -496,12 +504,32 @@ static void text_header_area_draw(const bContext *C, ARegion *ar)
 /* add handlers, stuff you only do once or on area/region changes */
 static void text_properties_area_init(wmWindowManager *wm, ARegion *ar)
 {
+	wmKeyMap *keymap;
+
+	ar->v2d.scroll = V2D_SCROLL_RIGHT | V2D_SCROLL_VERTICAL_HIDE;
 	ED_region_panels_init(wm, ar);
+
+	/* own keymaps */
+	keymap = WM_keymap_find(wm->defaultconf, "Text Generic", SPACE_TEXT, 0);
+	WM_event_add_keymap_handler_bb(&ar->handlers, keymap, &ar->v2d.mask, &ar->winrct);
+
 }
 
 static void text_properties_area_draw(const bContext *C, ARegion *ar)
 {
+	SpaceText *st = CTX_wm_space_text(C);
+	
 	ED_region_panels(C, ar, 1, NULL, -1);
+	
+	/* this flag trick is make sure buttons have been added already */
+	if (st->flags & ST_FIND_ACTIVATE) {
+		if (UI_textbutton_activate_event(C, ar, st, "find_text")) {
+			/* if the panel was already open we need to do another redraw */
+			ScrArea *sa = CTX_wm_area(C);
+			WM_event_add_notifier(C, NC_SPACE | ND_SPACE_TEXT, sa);
+		}
+		st->flags &= ~ST_FIND_ACTIVATE;
+	}
 }
 
 /********************* registration ********************/
@@ -556,5 +584,10 @@ void ED_spacetype_text(void)
 	BLI_addhead(&st->regiontypes, art);
 
 	BKE_spacetype_register(st);
+
+	/* register formatters */
+	ED_text_format_register_py();
+	ED_text_format_register_osl();
+	ED_text_format_register_lua();
 }
 

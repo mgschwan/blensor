@@ -39,6 +39,8 @@
 #include "KX_ISceneConverter.h"
 #include "KX_IpoConvert.h"
 
+#include <map>
+
 using namespace std;
 
 class KX_WorldInfo;
@@ -50,6 +52,7 @@ class BL_InterpolatorList;
 class BL_Material;
 struct Main;
 struct Scene;
+struct ThreadInfo;
 
 class KX_BlenderSceneConverter : public KX_ISceneConverter
 {
@@ -58,6 +61,17 @@ class KX_BlenderSceneConverter : public KX_ISceneConverter
 	vector<pair<KX_Scene*,RAS_IPolyMaterial*> > m_polymaterials;
 	vector<pair<KX_Scene*,RAS_MeshObject*> > m_meshobjects;
 	vector<pair<KX_Scene*,BL_Material *> >	m_materials;
+
+	vector<class KX_LibLoadStatus*> m_mergequeue;
+	ThreadInfo	*m_threadinfo;
+
+	// Cached material conversions
+	map<struct Material*, BL_Material*> m_mat_cache;
+	map<struct Material*, RAS_IPolyMaterial*> m_polymat_cache;
+
+	// Saved KX_LibLoadStatus objects
+	map<char *, class KX_LibLoadStatus*> m_status_map;
+
 	// Should also have a list of collision shapes. 
 	// For the time being this is held in KX_Scene::m_shapes
 
@@ -77,6 +91,7 @@ class KX_BlenderSceneConverter : public KX_ISceneConverter
 	bool					m_alwaysUseExpandFraming;
 	bool					m_usemat;
 	bool					m_useglslmat;
+	bool					m_use_mat_cache;
 
 public:
 	KX_BlenderSceneConverter(
@@ -93,7 +108,8 @@ public:
 	virtual void	ConvertScene(
 						class KX_Scene* destinationscene,
 						class RAS_IRenderTools* rendertools,
-						class RAS_ICanvas* canvas
+						class RAS_ICanvas* canvas,
+						bool libloading=false
 					);
 	virtual void RemoveScene(class KX_Scene *scene);
 
@@ -110,8 +126,12 @@ public:
 	RAS_MeshObject *FindGameMesh(struct Mesh *for_blendermesh/*, unsigned int onlayer*/);
 
 	void RegisterPolyMaterial(RAS_IPolyMaterial *polymat);
+	void CachePolyMaterial(struct Material *mat, RAS_IPolyMaterial *polymat);
+	RAS_IPolyMaterial *FindCachedPolyMaterial(struct Material *mat);
 
 	void RegisterBlenderMaterial(BL_Material *mat);
+	void CacheBlenderMaterial(struct Material *mat, BL_Material *blmat);
+	BL_Material *FindCachedBlenderMaterial(struct Material *mat);
 	
 	void RegisterInterpolatorList(BL_InterpolatorList *actList, struct bAction *for_act);
 	BL_InterpolatorList *FindInterpolatorList(struct bAction *for_act);
@@ -141,19 +161,26 @@ public:
 	virtual void SetGLSLMaterials(bool val);
 	virtual bool GetGLSLMaterials();
 
+	// cache materials during conversion
+	virtual void SetCacheMaterials(bool val);
+	virtual bool GetCacheMaterials();
+
 	struct Scene* GetBlenderSceneForName(const STR_String& name);
 
 //	struct Main* GetMain() { return m_maggie; }
 	struct Main*		  GetMainDynamicPath(const char *path);
 	vector<struct Main*> &GetMainDynamic();
 	
-	bool LinkBlendFileMemory(void *data, int length, const char *path, char *group, KX_Scene *scene_merge, char **err_str, short options);
-	bool LinkBlendFilePath(const char *path, char *group, KX_Scene *scene_merge, char **err_str, short options);
-	bool LinkBlendFile(struct BlendHandle *bpy_openlib, const char *path, char *group, KX_Scene *scene_merge, char **err_str, short options);
+	class KX_LibLoadStatus *LinkBlendFileMemory(void *data, int length, const char *path, char *group, KX_Scene *scene_merge, char **err_str, short options);
+	class KX_LibLoadStatus *LinkBlendFilePath(const char *path, char *group, KX_Scene *scene_merge, char **err_str, short options);
+	class KX_LibLoadStatus *LinkBlendFile(struct BlendHandle *bpy_openlib, const char *path, char *group, KX_Scene *scene_merge, char **err_str, short options);
 	bool MergeScene(KX_Scene *to, KX_Scene *from);
 	RAS_MeshObject *ConvertMeshSpecial(KX_Scene* kx_scene, Main *maggie, const char *name);
 	bool FreeBlendFile(struct Main *maggie);
 	bool FreeBlendFile(const char *path);
+
+	virtual void MergeAsyncLoads();
+	void AddScenesToMergeQueue(class KX_LibLoadStatus *status);
  
 	void PrintStats() {
 		printf("BGE STATS!\n");
@@ -183,6 +210,7 @@ public:
 		LIB_LOAD_LOAD_ACTIONS = 1,
 		LIB_LOAD_VERBOSE = 2,
 		LIB_LOAD_LOAD_SCRIPTS = 4,
+		LIB_LOAD_ASYNC = 8,
 	};
 
 

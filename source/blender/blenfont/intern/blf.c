@@ -43,6 +43,8 @@
 #include "DNA_listBase.h"
 #include "DNA_vec_types.h"
 
+#include "BLI_math.h"
+
 #include "BIF_gl.h"
 #include "BLF_api.h"
 
@@ -85,6 +87,11 @@ int BLF_init(int points, int dpi)
 	global_font_points = points;
 	global_font_dpi = dpi;
 	return blf_font_init();
+}
+
+void BLF_default_dpi(int dpi)
+{
+	global_font_dpi = dpi;
 }
 
 void BLF_exit(void)
@@ -511,8 +518,8 @@ static void blf_draw__start(FontBLF *font, GLint *mode, GLint *param)
 	if (font->flags & BLF_ASPECT)
 		glScalef(font->aspect[0], font->aspect[1], font->aspect[2]);
 
-	if (font->flags & BLF_ROTATION)
-		glRotatef(font->angle, 0.0f, 0.0f, 1.0f);
+	if (font->flags & BLF_ROTATION)  /* radians -> degrees */
+		glRotatef(font->angle * (float)(180.0 / M_PI), 0.0f, 0.0f, 1.0f);
 
 	if (font->shadow || font->blur)
 		glGetFloatv(GL_CURRENT_COLOR, font->orig_col);
@@ -569,6 +576,21 @@ void BLF_draw_ascii(int fontid, const char *str, size_t len)
 	}
 }
 
+int BLF_draw_mono(int fontid, const char *str, size_t len, int cwidth)
+{
+	FontBLF *font = blf_get(fontid);
+	GLint mode, param;
+	int columns = 0;
+
+	if (font && font->glyph_cache) {
+		blf_draw__start(font, &mode, &param);
+		columns = blf_font_draw_mono(font, str, len, cwidth);
+		blf_draw__end(mode, param);
+	}
+
+	return columns;
+}
+
 void BLF_boundbox(int fontid, const char *str, rctf *box)
 {
 	FontBLF *font = blf_get(fontid);
@@ -597,6 +619,7 @@ void BLF_width_and_height_default(const char *str, float *width, float *height)
 		return;
 	}
 
+	BLF_size(global_font_default, global_font_points, global_font_dpi);
 	BLF_width_and_height(global_font_default, str, width, height);
 }
 

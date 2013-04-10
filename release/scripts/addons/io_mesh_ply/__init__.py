@@ -21,7 +21,7 @@
 bl_info = {
     "name": "Stanford PLY format",
     "author": "Bruce Merry, Campbell Barton",
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     "location": "File > Import-Export",
     "description": "Import-Export PLY mesh data withs UV's and vertex colors",
     "warning": "",
@@ -89,7 +89,7 @@ class ExportPLY(bpy.types.Operator, ExportHelper):
     filename_ext = ".ply"
     filter_glob = StringProperty(default="*.ply", options={'HIDDEN'})
 
-    use_modifiers = BoolProperty(
+    use_mesh_modifiers = BoolProperty(
             name="Apply Modifiers",
             description="Apply Modifiers to the exported mesh",
             default=True,
@@ -127,7 +127,7 @@ class ExportPLY(bpy.types.Operator, ExportHelper):
         layout = self.layout
 
         row = layout.row()
-        row.prop(self, "use_modifiers")
+        row.prop(self, "use_mesh_modifiers")
         row.prop(self, "use_normals")
         row = layout.row()
         row.prop(self, "use_uv_coords")

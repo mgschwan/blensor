@@ -42,7 +42,6 @@
 #include "BLI_math.h"
 #include "BLI_kdopbvh.h"
 #include "BLI_utildefines.h"
-#include "BLI_bpath.h"
 
 #include "DNA_key_types.h"
 #include "DNA_object_types.h"
@@ -149,7 +148,7 @@ void default_color_mapping(ColorMapping *colormap)
 {
 	memset(colormap, 0, sizeof(ColorMapping));
 
-	init_colorband(&colormap->coba, 1);
+	init_colorband(&colormap->coba, true);
 
 	colormap->bright = 1.0;
 	colormap->contrast = 1.0;
@@ -164,7 +163,7 @@ void default_color_mapping(ColorMapping *colormap)
 
 /* ****************** COLORBAND ******************* */
 
-void init_colorband(ColorBand *coba, int rangetype)
+void init_colorband(ColorBand *coba, bool rangetype)
 {
 	int a;
 	
@@ -206,7 +205,7 @@ void init_colorband(ColorBand *coba, int rangetype)
 	
 }
 
-ColorBand *add_colorband(int rangetype)
+ColorBand *add_colorband(bool rangetype)
 {
 	ColorBand *coba;
 	
@@ -257,7 +256,9 @@ int do_colorband(const ColorBand *coba, float in, float out[4])
 				left.pos = 0.0f;
 				cbd2 = &left;
 			}
-			else cbd2 = cbd1 - 1;
+			else {
+				cbd2 = cbd1 - 1;
+			}
 			
 			if (in >= cbd1->pos && coba->ipotype < 2) {
 				out[0] = cbd1->r;
@@ -541,9 +542,8 @@ void tex_set_type(Tex *tex, int type)
 
 /* ------------------------------------------------------------------------- */
 
-Tex *add_texture(const char *name)
+Tex *add_texture(Main *bmain, const char *name)
 {
-	Main *bmain = G.main;
 	Tex *tex;
 
 	tex = BKE_libblock_alloc(&bmain->tex, ID_TE, name);
@@ -616,6 +616,7 @@ void default_mtex(MTex *mtex)
 	mtex->gravityfac = 1.0f;
 	mtex->fieldfac = 1.0f;
 	mtex->normapspace = MTEX_NSPACE_TANGENT;
+	mtex->brush_map_mode = MTEX_MAP_MODE_TILED;
 }
 
 
@@ -694,7 +695,7 @@ Tex *BKE_texture_copy(Tex *tex)
 
 	if (tex->nodetree) {
 		if (tex->nodetree->execdata) {
-			ntreeTexEndExecTree(tex->nodetree->execdata, 1);
+			ntreeTexEndExecTree(tex->nodetree->execdata);
 		}
 		texn->nodetree = ntreeCopyTree(tex->nodetree);
 	}
@@ -803,6 +804,10 @@ void BKE_texture_make_local(Tex *tex)
 			if (br->id.lib) is_lib = TRUE;
 			else is_local = TRUE;
 		}
+		if (br->mask_mtex.tex == tex) {
+			if (br->id.lib) is_lib = TRUE;
+			else is_local = TRUE;
+		}
 		br = br->id.next;
 	}
 	pa = bmain->particle.first;
@@ -876,6 +881,13 @@ void BKE_texture_make_local(Tex *tex)
 					tex->id.us--;
 				}
 			}
+			if (br->mask_mtex.tex == tex) {
+				if (br->id.lib == NULL) {
+					br->mask_mtex.tex = tex_new;
+					tex_new->id.us++;
+					tex->id.us--;
+				}
+			}
 			br = br->id.next;
 		}
 		pa = bmain->particle.first;
@@ -912,15 +924,18 @@ void autotexname(Tex *tex)
 		else if (tex->type == TEX_IMAGE) {
 			ima = tex->ima;
 			if (ima) {
-				BLI_strncpy(di, ima->name, sizeof(di));
-				BLI_splitdirstring(di, fi);
+				BLI_split_file_part(ima->name, fi, sizeof(fi));
 				strcpy(di, "I.");
 				strcat(di, fi);
 				new_id(&bmain->tex, (ID *)tex, di);
 			}
-			else new_id(&bmain->tex, (ID *)tex, texstr[tex->type]);
+			else {
+				new_id(&bmain->tex, (ID *)tex, texstr[tex->type]);
+			}
 		}
-		else new_id(&bmain->tex, (ID *)tex, texstr[tex->type]);
+		else {
+			new_id(&bmain->tex, (ID *)tex, texstr[tex->type]);
+		}
 	}
 }
 #endif
@@ -1281,7 +1296,7 @@ PointDensity *BKE_add_pointdensity(void)
 	pd->noise_depth = 1;
 	pd->noise_fac = 1.0f;
 	pd->noise_influence = TEX_PD_NOISE_STATIC;
-	pd->coba = add_colorband(1);
+	pd->coba = add_colorband(true);
 	pd->speed_scale = 1.0f;
 	pd->totpoints = 0;
 	pd->object = NULL;

@@ -215,8 +215,8 @@ class VIEW3D_PT_cursor_history(bpy.types.Panel):
         col = row.column()
         col.prop(CursorAccess.findSpace(), "cursor_location")
 
-  
-                
+
+
 
 class VIEW3D_PT_cursor_history_init(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
@@ -225,29 +225,36 @@ class VIEW3D_PT_cursor_history_init(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     initDone = False
+    _handle = None
+
+    @staticmethod
+    def handle_add(self, context):
+        VIEW3D_PT_cursor_history_init._handle = bpy.types.SpaceView3D.draw_handler_add(
+            cursor_history_draw, (self, context), 'WINDOW', 'POST_PIXEL')
+
+    @staticmethod
+    def handle_remove():
+        if VIEW3D_PT_cursor_history_init._handle is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(VIEW3D_PT_cursor_history_init._handle, 'WINDOW')
+        VIEW3D_PT_cursor_history_init._handle = None
 
     @classmethod
     def poll(cls, context):
         if VIEW3D_PT_cursor_history_init.initDone:
-            return 0
+            return False
+
         print ("Cursor History draw-callback registration...")
         sce = context.scene
         if context.area.type == 'VIEW_3D':
-            for reg in context.area.regions:
-                if reg.type == 'WINDOW':
-                    # Register callback for SL-draw
-                    reg.callback_add(
-                        cursor_history_draw,
-                        (cls,context),
-                        'POST_PIXEL')
-                    VIEW3D_PT_cursor_history_init.initDone = True
-                    print ("Cursor History draw-callback registered")
-                    # Unregister to prevent double registration...
-                    # Started to fail after v2.57
-                    # bpy.types.unregister(VIEW3D_PT_cursor_history_init)
+            VIEW3D_PT_cursor_history_init.handle_add(cls, context)
+            VIEW3D_PT_cursor_history_init.initDone = True
+            print ("Cursor History draw-callback registered")
+            # Unregister to prevent double registration...
+            # Started to fail after v2.57
+            # bpy.types.unregister(VIEW3D_PT_cursor_history_init)
         else:
             print("View3D not found, cannot run operator")
-        return 0
+        return False
 
     def draw_header(self, context):
         pass

@@ -25,9 +25,87 @@ from bpy.props import (BoolProperty,
                        IntProperty,
                        PointerProperty)
 
-import math
+# enums
 
-from . import enums
+enum_devices = (
+    ('CPU', "CPU", "Use CPU for rendering"),
+    ('GPU', "GPU Compute", "Use GPU compute device for rendering, configured in user preferences"))
+
+enum_feature_set = (
+    ('SUPPORTED', "Supported", "Only use finished and supported features"),
+    ('EXPERIMENTAL', "Experimental", "Use experimental and incomplete features that might be broken or change in the future"),
+    )
+
+enum_displacement_methods = (
+    ('BUMP', "Bump", "Bump mapping to simulate the appearance of displacement"),
+    ('TRUE', "True", "Use true displacement only, requires fine subdivision"),
+    ('BOTH', "Both", "Combination of displacement and bump mapping"),
+    )
+
+enum_bvh_types = (
+    ('DYNAMIC_BVH', "Dynamic BVH", "Objects can be individually updated, at the cost of slower render time"),
+    ('STATIC_BVH', "Static BVH", "Any object modification requires a complete BVH rebuild, but renders faster"),
+    )
+
+enum_filter_types = (
+    ('BOX', "Box", "Box filter"),
+    ('GAUSSIAN', "Gaussian", "Gaussian filter"),
+    )
+
+enum_aperture_types = (
+    ('RADIUS', "Radius", "Directly change the size of the aperture"),
+    ('FSTOP', "F/stop", "Change the size of the aperture by f/stops"),
+    )
+
+enum_panorama_types = (
+    ('EQUIRECTANGULAR', "Equirectangular", "Render the scene with a spherical camera, also known as Lat Long panorama"),
+    ('FISHEYE_EQUIDISTANT', "Fisheye Equidistant", "Ideal for fulldomes, ignore the sensor dimensions"),
+    ('FISHEYE_EQUISOLID', "Fisheye Equisolid",
+                          "Similar to most fisheye modern lens, takes sensor dimensions into consideration"),
+    )
+
+enum_curve_presets = (
+    ('CUSTOM', "Custom", "Set general parameters"),
+    ('FAST_PLANES', "Fast Planes", "Use camera facing triangles (fast but memory intensive)"),
+    ('TANGENT_SHADING', "Tangent Normal", "Use planar line segments and tangent normals"),
+    ('TRUE_NORMAL', "True Normal", "Use true normals with line segments(good for thin strands)"),
+    ('ACCURATE_PRESET', "Accurate", "Use best line segment settings (suitable for glass materials)"),
+    ('SMOOTH_CURVES', "Smooth Curves", "Use smooth cardinal curves (slowest)"),
+    )
+
+enum_curve_primitives = (
+    ('TRIANGLES', "Triangles", "Create triangle geometry around strands"),
+    ('LINE_SEGMENTS', "Line Segments", "Use line segment primitives"),
+    ('CURVE_SEGMENTS', "Curve Segments", "Use segmented cardinal curve primitives"),
+    ('CURVE_RIBBONS', "Curve Ribbons", "Use smooth cardinal curve ribbon primitives"),
+    )
+
+enum_triangle_curves = (
+    ('CAMERA_TRIANGLES', "Planes", "Create individual triangles forming planes that face camera"),
+    ('RIBBON_TRIANGLES', "Ribbons", "Create individual triangles forming ribbon"),
+    ('TESSELLATED_TRIANGLES', "Tessellated", "Create mesh surrounding each strand"),
+    )
+
+enum_line_curves = (
+    ('ACCURATE', "Accurate", "Always take into consideration strand width for intersections"),
+    ('QT_CORRECTED', "Corrected", "Ignore width for initial intersection and correct later"),
+    ('ENDCORRECTED', "Correct found", "Ignore width for all intersections and only correct closest"),
+    ('QT_UNCORRECTED', "Uncorrected", "Calculate intersections without considering width"),
+    )
+
+enum_curves_interpolation = (
+    ('LINEAR', "Linear interpolation", "Use Linear interpolation between segments"),
+    ('CARDINAL', "Cardinal interpolation", "Use cardinal interpolation between segments"),
+    ('BSPLINE', "B-spline interpolation", "Use b-spline interpolation between segments"),
+    )
+
+enum_tile_order = (
+    ('CENTER', "Center", "Render from center to the edges"),
+    ('RIGHT_TO_LEFT', "Right to Left", "Render from right to left"),
+    ('LEFT_TO_RIGHT', "Left to Right", "Render from left to right"),
+    ('TOP_TO_BOTTOM', "Top to Bottom", "Render from top to bottom"),
+    ('BOTTOM_TO_TOP', "Bottom to Top", "Render from bottom to top"),
+    )
 
 
 class CyclesRenderSettings(bpy.types.PropertyGroup):
@@ -41,20 +119,18 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
         cls.device = EnumProperty(
                 name="Device",
                 description="Device to use for rendering",
-                items=enums.devices,
+                items=enum_devices,
                 default='CPU',
                 )
         cls.feature_set = EnumProperty(
                 name="Feature Set",
                 description="Feature set to use for rendering",
-                items=enums.feature_set,
+                items=enum_feature_set,
                 default='SUPPORTED',
                 )
-        cls.shading_system = EnumProperty(
-                name="Shading System",
-                description="Shading system to use for rendering",
-                items=enums.shading_systems,
-                default='GPU_COMPATIBLE',
+        cls.shading_system = BoolProperty(
+                name="Open Shading Language",
+                description="Use Open Shading Language (CPU rendering only)",
                 )
 
         cls.progressive = BoolProperty(
@@ -125,6 +201,13 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
         cls.mesh_light_samples = IntProperty(
                 name="Mesh Light Samples",
                 description="Number of mesh emission light samples to render for each AA sample",
+                min=1, max=10000,
+                default=1,
+                )
+
+        cls.subsurface_samples = IntProperty(
+                name="Subsurface Samples",
+                description="Number of subsurface scattering samples to render for each AA sample",
                 min=1, max=10000,
                 default=1,
                 )
@@ -205,14 +288,14 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 )
         cls.film_transparent = BoolProperty(
                 name="Transparent",
-                description="World background is transparent",
+                description="World background is transparent with premultiplied alpha",
                 default=False,
                 )
 
         cls.filter_type = EnumProperty(
                 name="Filter Type",
                 description="Pixel filter type",
-                items=enums.filter_types,
+                items=enum_filter_types,
                 default='GAUSSIAN',
                 )
         cls.filter_width = FloatProperty(
@@ -275,7 +358,7 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
         cls.debug_bvh_type = EnumProperty(
                 name="Viewport BVH Type",
                 description="Choose between faster updates, or faster render",
-                items=enums.bvh_types,
+                items=enum_bvh_types,
                 default='DYNAMIC_BVH',
                 )
         cls.debug_use_spatial_splits = BoolProperty(
@@ -287,6 +370,12 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
                 name="Cache BVH",
                 description="Cache last built BVH to disk for faster re-render if no geometry changed",
                 default=False,
+                )
+        cls.tile_order = EnumProperty(
+                name="Tile Order",
+                description="Tile order for rendering",
+                items=enum_tile_order,
+                default='CENTER',
                 )
         cls.use_progressive_refine = BoolProperty(
                 name="Progressive Refine",
@@ -305,6 +394,8 @@ class CyclesRenderSettings(bpy.types.PropertyGroup):
 class CyclesCameraSettings(bpy.types.PropertyGroup):
     @classmethod
     def register(cls):
+        import math
+
         bpy.types.Camera.cycles = PointerProperty(
                 name="Cycles Camera Settings",
                 description="Cycles camera settings",
@@ -314,7 +405,7 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
         cls.aperture_type = EnumProperty(
                 name="Aperture Type",
                 description="Use F/stop number or aperture radius",
-                items=enums.aperture_types,
+                items=enum_aperture_types,
                 default='RADIUS',
                 )
         cls.aperture_fstop = FloatProperty(
@@ -332,6 +423,7 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
                 default=0.0,
                 step=1,
                 precision=4,
+                subtype='DISTANCE',
                 )
         cls.aperture_blades = IntProperty(
                 name="Aperture Blades",
@@ -349,7 +441,7 @@ class CyclesCameraSettings(bpy.types.PropertyGroup):
         cls.panorama_type = EnumProperty(
                 name="Panorama Type",
                 description="Distortion to use for the calculation",
-                items=enums.panorama_types,
+                items=enum_panorama_types,
                 default='FISHEYE_EQUISOLID',
                 )
         cls.fisheye_fov = FloatProperty(
@@ -380,8 +472,8 @@ class CyclesMaterialSettings(bpy.types.PropertyGroup):
                 type=cls,
                 )
         cls.sample_as_light = BoolProperty(
-                name="Sample as Lamp",
-                description="Use direct light sampling for this material, "
+                name="Multiple Importance Sample",
+                description="Use multiple importance sampling for this material, "
                             "disabling may reduce overall noise for large "
                             "objects that emit little light compared to other light sources",
                 default=True,
@@ -417,6 +509,12 @@ class CyclesLampSettings(bpy.types.PropertyGroup):
                 min=1, max=10000,
                 default=1,
                 )
+        cls.use_multiple_importance_sampling = BoolProperty(
+                name="Multiple Importance Sample",
+                description="Use multiple importance sampling for the lamp, "
+                            "reduces noise for area lamps and sharp glossy materials",
+                default=False,
+                )
 
     @classmethod
     def unregister(cls):
@@ -432,8 +530,8 @@ class CyclesWorldSettings(bpy.types.PropertyGroup):
                 type=cls,
                 )
         cls.sample_as_light = BoolProperty(
-                name="Sample as Lamp",
-                description="Use direct light sampling for the environment, "
+                name="Multiple Importance Sample",
+                description="Use multiple importance sampling for the environment, "
                             "enabling for non-solid colors is recommended",
                 default=False,
                 )
@@ -518,7 +616,7 @@ class CyclesMeshSettings(bpy.types.PropertyGroup):
         cls.displacement_method = EnumProperty(
                 name="Displacement Method",
                 description="Method to use for the displacement",
-                items=enums.displacement_methods,
+                items=enum_displacement_methods,
                 default='BUMP',
                 )
         cls.use_subdivision = BoolProperty(
@@ -540,6 +638,162 @@ class CyclesMeshSettings(bpy.types.PropertyGroup):
         del bpy.types.MetaBall.cycles
 
 
+class CyclesCurveRenderSettings(bpy.types.PropertyGroup):
+    @classmethod
+    def register(cls):
+        bpy.types.Scene.cycles_curves = PointerProperty(
+                name="Cycles Hair Rendering Settings",
+                description="Cycles hair rendering settings",
+                type=cls,
+                )
+        cls.preset = EnumProperty(
+                name="Mode",
+                description="Hair rendering mode",
+                items=enum_curve_presets,
+                default='TRUE_NORMAL',
+                )
+        cls.primitive = EnumProperty(
+                name="Primitive",
+                description="Type of primitive used for hair rendering",
+                items=enum_curve_primitives,
+                default='LINE_SEGMENTS',
+                )
+        cls.triangle_method = EnumProperty(
+                name="Mesh Geometry",
+                description="Method for creating triangle geometry",
+                items=enum_triangle_curves,
+                default='CAMERA_TRIANGLES',
+                )
+        cls.line_method = EnumProperty(
+                name="Intersection Method",
+                description="Method for line segment intersection",
+                items=enum_line_curves,
+                default='ACCURATE',
+                )
+        cls.interpolation = EnumProperty(
+                name="Interpolation",
+                description="Interpolation method",
+                items=enum_curves_interpolation,
+                default='BSPLINE',
+                )
+        cls.use_backfacing = BoolProperty(
+                name="Check back-faces",
+                description="Test back-faces of strands",
+                default=False,
+                )
+        cls.use_encasing = BoolProperty(
+                name="Exclude encasing",
+                description="Ignore strands encasing a ray's initial location",
+                default=True,
+                )
+        cls.use_tangent_normal_geometry = BoolProperty(
+                name="Tangent normal geometry",
+                description="Use the tangent normal for actual normal",
+                default=False,
+                )
+        cls.use_tangent_normal = BoolProperty(
+                name="Tangent normal default",
+                description="Use the tangent normal for all normals",
+                default=False,
+                )
+        cls.use_tangent_normal_correction = BoolProperty(
+                name="Strand slope correction",
+                description="Correct the tangent normal for the strand's slope",
+                default=False,
+                )
+        cls.use_parents = BoolProperty(
+                name="Use parent strands",
+                description="Use parents with children",
+                default=False,
+                )
+        cls.use_smooth = BoolProperty(
+                name="Smooth Strands",
+                description="Use vertex normals",
+                default=True,
+                )
+        cls.use_joined = BoolProperty(
+                name="Join",
+                description="Fill gaps between segments (requires more memory)",
+                default=False,
+                )
+        cls.use_curves = BoolProperty(
+                name="Use Cycles Hair Rendering",
+                description="Activate Cycles hair rendering for particle system",
+                default=True,
+                )
+        cls.segments = IntProperty(
+                name="Segments",
+                description="Number of segments between path keys (note that this combines with the 'draw step' value)",
+                min=1, max=64,
+                default=1,
+                )
+        cls.resolution = IntProperty(
+                name="Resolution",
+                description="Resolution of generated mesh",
+                min=3, max=64,
+                default=3,
+                )
+        cls.normalmix = FloatProperty(
+                name="Normal mix",
+                description="Scale factor for tangent normal removal (zero gives ray normal)",
+                min=0, max=2.0,
+                default=1,
+                )
+        cls.encasing_ratio = FloatProperty(
+                name="Encasing ratio",
+                description="Scale factor for encasing strand width",
+                min=0, max=100.0,
+                default=1.01,
+                )
+        cls.subdivisions = IntProperty(
+                name="Subdivisions",
+                description="Number of subdivisions used in Cardinal curve intersection (power of 2)",
+                min=0, max=24,
+                default=3,
+                )
+
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Scene.cycles_curves
+
+
+class CyclesCurveSettings(bpy.types.PropertyGroup):
+    @classmethod
+    def register(cls):
+        bpy.types.ParticleSettings.cycles = PointerProperty(
+                name="Cycles Hair Settings",
+                description="Cycles hair settings",
+                type=cls,
+                )
+        cls.root_width = FloatProperty(
+                name="Root Size Multiplier",
+                description="Multiplier of particle size for the strand's width at root",
+                min=0.0, max=1000.0,
+                default=1.0,
+                )
+        cls.tip_width = FloatProperty(
+                name="Tip Size Multiplier",
+                description="Multiplier of particle size for the strand's width at tip",
+                min=0.0, max=1000.0,
+                default=0.0,
+                )
+        cls.shape = FloatProperty(
+                name="Strand Shape",
+                description="Strand shape parameter",
+                min=-1.0, max=1.0,
+                default=0.0,
+                )
+        cls.use_closetip = BoolProperty(
+                name="Close tip",
+                description="Set tip radius to zero",
+                default=True,
+                )
+
+    @classmethod
+    def unregister(cls):
+        del bpy.types.ParticleSettings.cycles
+
+
 def register():
     bpy.utils.register_class(CyclesRenderSettings)
     bpy.utils.register_class(CyclesCameraSettings)
@@ -548,6 +802,8 @@ def register():
     bpy.utils.register_class(CyclesWorldSettings)
     bpy.utils.register_class(CyclesVisibilitySettings)
     bpy.utils.register_class(CyclesMeshSettings)
+    bpy.utils.register_class(CyclesCurveRenderSettings)
+    bpy.utils.register_class(CyclesCurveSettings)
 
 
 def unregister():
@@ -558,3 +814,5 @@ def unregister():
     bpy.utils.unregister_class(CyclesWorldSettings)
     bpy.utils.unregister_class(CyclesMeshSettings)
     bpy.utils.unregister_class(CyclesVisibilitySettings)
+    bpy.utils.unregister_class(CyclesCurveRenderSettings)
+    bpy.utils.unregister_class(CyclesCurveSettings)

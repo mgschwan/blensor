@@ -1,4 +1,5 @@
 /*
+
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -128,8 +129,19 @@ int RE_engine_is_external(Render *re)
 
 RenderEngine *RE_engine_create(RenderEngineType *type)
 {
+	return RE_engine_create_ex(type, FALSE);
+}
+
+RenderEngine *RE_engine_create_ex(RenderEngineType *type, bool use_for_viewport)
+{
 	RenderEngine *engine = MEM_callocN(sizeof(RenderEngine), "RenderEngine");
 	engine->type = type;
+
+	if (use_for_viewport) {
+		engine->flag |= RE_ENGINE_USED_FOR_VIEWPORT;
+
+		BLI_begin_threaded_malloc();
+	}
 
 	return engine;
 }
@@ -142,6 +154,10 @@ void RE_engine_free(RenderEngine *engine)
 	}
 #endif
 
+	if (engine->flag & RE_ENGINE_USED_FOR_VIEWPORT) {
+		BLI_end_threaded_malloc();
+	}
+
 	if (engine->text)
 		MEM_freeN(engine->text);
 
@@ -149,6 +165,23 @@ void RE_engine_free(RenderEngine *engine)
 }
 
 /* Render Results */
+
+static RenderPart *get_part_from_result(Render *re, RenderResult *result)
+{
+	RenderPart *pa;
+
+	for (pa = re->parts.first; pa; pa = pa->next) {
+		if (result->tilerect.xmin == pa->disprect.xmin - re->disprect.xmin &&
+		    result->tilerect.ymin == pa->disprect.ymin - re->disprect.ymin &&
+		    result->tilerect.xmax == pa->disprect.xmax - re->disprect.xmin &&
+		    result->tilerect.ymax == pa->disprect.ymax - re->disprect.ymin)
+		{
+			return pa;
+		}
+	}
+
+	return NULL;
+}
 
 RenderResult *RE_engine_begin_result(RenderEngine *engine, int x, int y, int w, int h, const char *layername)
 {
@@ -179,12 +212,19 @@ RenderResult *RE_engine_begin_result(RenderEngine *engine, int x, int y, int w, 
 
 	/* can be NULL if we CLAMP the width or height to 0 */
 	if (result) {
+		RenderPart *pa;
+
 		BLI_addtail(&engine->fullresult, result);
 
 		result->tilerect.xmin += re->disprect.xmin;
 		result->tilerect.xmax += re->disprect.xmin;
 		result->tilerect.ymin += re->disprect.ymin;
 		result->tilerect.ymax += re->disprect.ymin;
+
+		pa = get_part_from_result(re, result);
+
+		if (pa)
+			pa->status = PART_STATUS_IN_PROGRESS;
 	}
 
 	return result;
@@ -203,7 +243,6 @@ void RE_engine_update_result(RenderEngine *engine, RenderResult *result)
 void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel)
 {
 	Render *re = engine->re;
-	RenderPart *pa;
 
 	if (!result) {
 		return;
@@ -212,15 +251,10 @@ void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel
 	/* merge. on break, don't merge in result for preview renders, looks nicer */
 	if (!cancel) {
 		/* for exr tile render, detect tiles that are done */
-		for (pa = re->parts.first; pa; pa = pa->next) {
-			if (result->tilerect.xmin == pa->disprect.xmin &&
-			    result->tilerect.ymin == pa->disprect.ymin &&
-			    result->tilerect.xmax == pa->disprect.xmax &&
-			    result->tilerect.ymax == pa->disprect.ymax)
-			{
-				pa->ready = 1;
-			}
-		}
+		RenderPart *pa = get_part_from_result(re, result);
+
+		if (pa)
+			pa->status = PART_STATUS_READY;
 
 		if (re->result->do_exr_tile)
 			render_result_exr_file_merge(re->result, result);
@@ -310,6 +344,52 @@ void RE_engine_report(RenderEngine *engine, int type, const char *msg)
 		BKE_report(engine->reports, type, msg);
 }
 
+void RE_engine_get_current_tiles(Render *re, int *total_tiles_r, rcti **tiles_r)
+{
+	RenderPart *pa;
+	int total_tiles = 0;
+	rcti *tiles = NULL;
+	int allocation_size = 0, allocation_step = BLENDER_MAX_THREADS;
+
+	if (re->engine && (re->engine->flag & RE_ENGINE_HIGHLIGHT_TILES) == 0) {
+		*total_tiles_r = 0;
+		*tiles_r = NULL;
+		return;
+	}
+
+	for (pa = re->parts.first; pa; pa = pa->next) {
+		if (pa->status == PART_STATUS_IN_PROGRESS) {
+			if (total_tiles >= allocation_size) {
+				if (tiles == NULL)
+					tiles = MEM_mallocN(allocation_step * sizeof(rcti), "current engine tiles");
+				else
+					tiles = MEM_reallocN(tiles, (total_tiles + allocation_step) * sizeof(rcti));
+
+				allocation_size += allocation_step;
+			}
+
+			tiles[total_tiles] = pa->disprect;
+
+			if (pa->crop) {
+				tiles[total_tiles].xmin += pa->crop;
+				tiles[total_tiles].ymin += pa->crop;
+				tiles[total_tiles].xmax -= pa->crop;
+				tiles[total_tiles].ymax -= pa->crop;
+			}
+
+			total_tiles++;
+		}
+	}
+
+	*total_tiles_r = total_tiles;
+	*tiles_r = tiles;
+}
+
+RenderData *RE_engine_get_render_data(Render *re)
+{
+	return &re->r;
+}
+
 /* Render */
 
 int RE_engine_render(Render *re, int do_all)
@@ -354,9 +434,7 @@ int RE_engine_render(Render *re, int do_all)
 
 	if (!engine) {
 		engine = RE_engine_create(type);
-
-		if (persistent_data)
-			re->engine = engine;
+		re->engine = engine;
 	}
 
 	engine->flag |= RE_ENGINE_RENDERING;

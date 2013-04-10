@@ -68,4 +68,15 @@ if(WITH_HEADLESS)
 	add_definitions(-DWITH_HEADLESS)
 endif()
 
+if(WITH_FREESTYLE)
+	list(APPEND INC
+		../../freestyle
+	)
+	add_definitions(-DWITH_FREESTYLE)
+endif()
+
+if(WITH_INTERNATIONAL)
+	add_definitions(-DWITH_INTERNATIONAL)
+endif()
+
 blender_add_lib(bf_editor_render "${SRC}" "${INC}" "${INC_SYS}")

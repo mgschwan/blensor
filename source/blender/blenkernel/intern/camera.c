@@ -50,11 +50,11 @@
 
 /****************************** Camera Datablock *****************************/
 
-void *BKE_camera_add(const char *name)
+void *BKE_camera_add(Main *bmain, const char *name)
 {
 	Camera *cam;
 	
-	cam =  BKE_libblock_alloc(&G.main->camera, ID_CA, name);
+	cam =  BKE_libblock_alloc(&bmain->camera, ID_CA, name);
 
 	cam->lens = 35.0f;
 	cam->sensor_x = DEFAULT_SENSOR_WIDTH;
@@ -237,6 +237,9 @@ void BKE_camera_params_from_object(CameraParams *params, Object *ob)
 		params->clipsta = la->clipsta;
 		params->clipend = la->clipend;
 	}
+	else {
+		params->lens = 35.0f;
+	}
 }
 
 void BKE_camera_params_from_view3d(CameraParams *params, View3D *v3d, RegionView3D *rv3d)
@@ -368,7 +371,7 @@ void BKE_camera_params_compute_matrix(CameraParams *params)
 
 /***************************** Camera View Frame *****************************/
 
-void BKE_camera_view_frame_ex(Scene *scene, Camera *camera, float drawsize, const short do_clip, const float scale[3],
+void BKE_camera_view_frame_ex(Scene *scene, Camera *camera, float drawsize, const bool do_clip, const float scale[3],
                               float r_asp[2], float r_shift[2], float *r_drawsize, float r_vec[4][3])
 {
 	float facx, facy;

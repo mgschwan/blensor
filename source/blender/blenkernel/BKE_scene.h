@@ -47,7 +47,7 @@ struct RenderData;
 struct SceneRenderLayer;
 struct Scene;
 struct Text;
-struct Text;
+struct Main;
 
 #define SCE_COPY_NEW        0
 #define SCE_COPY_EMPTY      1
@@ -67,11 +67,12 @@ void free_avicodecdata(struct AviCodecData *acd);
 void free_qtcodecdata(struct QuicktimeCodecData *acd);
 
 void BKE_scene_free(struct Scene *sce);
-struct Scene *BKE_scene_add(const char *name);
+struct Scene *BKE_scene_add(struct Main *bmain, const char *name);
 
 /* base functions */
 struct Base *BKE_scene_base_find(struct Scene *scene, struct Object *ob);
 struct Base *BKE_scene_base_add(struct Scene *sce, struct Object *ob);
+void         BKE_scene_base_unlink(struct Scene *sce, struct Base *base);
 void         BKE_scene_base_deselect_all(struct Scene *sce);
 void         BKE_scene_base_select(struct Scene *sce, struct Base *selbase);
 int          BKE_scene_base_iter_next(struct Scene **scene, int val, struct Base **base, struct Object **ob);
@@ -115,6 +116,7 @@ int BKE_scene_use_new_shading_nodes(struct Scene *scene);
 
 void BKE_scene_disable_color_management(struct Scene *scene);
 int BKE_scene_check_color_management_enabled(const struct Scene *scene);
+int BKE_scene_check_rigidbody_active(const struct Scene *scene);
 
 #ifdef __cplusplus
 }

@@ -47,10 +47,10 @@ def get_version():
 
         if (ver_base is not None) and (ver_char is not None) and (ver_cycle is not None):
             # eg '2.56a-beta'
-            if ver_cycle:
+            if ver_cycle != "release":
                 ver_display = "%s%s-%s" % (ver_base, ver_char, ver_cycle)
             else:
-                ver_display = "%s%s" % (ver_base, ver_char)  # assume release
+                ver_display = "%s%s" % (ver_base, ver_char)
 
             return ver_base, ver_display, ver_cycle
 
@@ -96,10 +96,10 @@ def print_arguments(args, bc):
 
 def validate_arguments(args, bc):
     opts_list = [
-            'WITH_BF_PYTHON', 'WITH_BF_PYTHON_SAFETY', 'BF_PYTHON', 'BF_PYTHON_VERSION', 'BF_PYTHON_INC', 'BF_PYTHON_BINARY', 'BF_PYTHON_LIB', 'BF_PYTHON_LIBPATH', 'WITH_BF_STATICPYTHON', 'WITH_OSX_STATICPYTHON', 'BF_PYTHON_LIB_STATIC', 'BF_PYTHON_DLL', 'BF_PYTHON_ABI_FLAGS', 
+            'WITH_BF_FREESTYLE', 'WITH_BF_PYTHON', 'WITH_BF_PYTHON_SAFETY', 'BF_PYTHON', 'BF_PYTHON_VERSION', 'BF_PYTHON_INC', 'BF_PYTHON_BINARY', 'BF_PYTHON_LIB', 'BF_PYTHON_LIBPATH', 'WITH_BF_STATICPYTHON', 'WITH_OSX_STATICPYTHON', 'BF_PYTHON_LIB_STATIC', 'BF_PYTHON_DLL', 'BF_PYTHON_ABI_FLAGS',
             'WITH_BF_OPENAL', 'BF_OPENAL', 'BF_OPENAL_INC', 'BF_OPENAL_LIB', 'BF_OPENAL_LIBPATH', 'WITH_BF_STATICOPENAL', 'BF_OPENAL_LIB_STATIC',
             'WITH_BF_SDL', 'BF_SDL', 'BF_SDL_INC', 'BF_SDL_LIB', 'BF_SDL_LIBPATH',
-            'WITH_BF_JACK', 'BF_JACK', 'BF_JACK_INC', 'BF_JACK_LIB', 'BF_JACK_LIBPATH', 'WITH_BF_STATICJACK', 'BF_JACK_LIB_STATIC',
+            'WITH_BF_JACK', 'BF_JACK', 'BF_JACK_INC', 'BF_JACK_LIB', 'BF_JACK_LIBPATH', 'WITH_BF_JACK_DYNLOAD',
             'WITH_BF_SNDFILE', 'BF_SNDFILE', 'BF_SNDFILE_INC', 'BF_SNDFILE_LIB', 'BF_SNDFILE_LIBPATH', 'WITH_BF_STATICSNDFILE', 'BF_SNDFILE_LIB_STATIC',
             'BF_PTHREADS', 'BF_PTHREADS_INC', 'BF_PTHREADS_LIB', 'BF_PTHREADS_LIBPATH',
             'WITH_BF_OPENEXR', 'BF_OPENEXR', 'BF_OPENEXR_INC', 'BF_OPENEXR_LIB', 'BF_OPENEXR_LIBPATH', 'WITH_BF_STATICOPENEXR', 'BF_OPENEXR_LIB_STATIC',
@@ -108,7 +108,7 @@ def validate_arguments(args, bc):
             'WITH_BF_STATICFFMPEG', 'BF_FFMPEG_LIB_STATIC',
             'WITH_BF_OGG', 'BF_OGG', 'BF_OGG_LIB',
             'WITH_BF_FRAMESERVER',
-            'WITH_BF_COMPOSITOR', 'WITH_BF_COMPOSITOR_LEGACY',
+            'WITH_BF_COMPOSITOR',
             'WITH_BF_JPEG', 'BF_JPEG', 'BF_JPEG_INC', 'BF_JPEG_LIB', 'BF_JPEG_LIBPATH', 'WITH_BF_STATICJPEG', 'BF_JPEG_LIB_STATIC',
             'WITH_BF_OPENJPEG', 'BF_OPENJPEG', 'BF_OPENJPEG_INC', 'BF_OPENJPEG_LIB', 'BF_OPENJPEG_LIBPATH',
             'WITH_BF_REDCODE', 'BF_REDCODE', 'BF_REDCODE_INC', 'BF_REDCODE_LIB', 'BF_REDCODE_LIBPATH',
@@ -215,7 +215,8 @@ def print_targets(targs, bc):
 def validate_targets(targs, bc):
     valid_list = ['.', 'blender', 'blenderstatic', 'blenderplayer', 'webplugin',
             'blendernogame', 'blenderstaticnogame', 'blenderlite', 'release',
-            'everything', 'clean', 'install-bin', 'install', 'nsis','buildslave']
+            'everything', 'clean', 'install-bin', 'install', 'nsis','buildslave',
+            'cudakernels']
     oklist = []
     for t in targs:
         if t in valid_list:
@@ -287,12 +288,11 @@ def read_opts(env, cfg, args):
         ('BF_SDL_LIBPATH', 'SDL library path', ''),
 
         (BoolVariable('WITH_BF_JACK', 'Enable jack support if true', True)),
-        (BoolVariable('WITH_BF_STATICJACK', 'Staticly link to jack', False)),
         ('BF_JACK', 'jack base path', ''),
         ('BF_JACK_INC', 'jack include path', ''),
         ('BF_JACK_LIB', 'jack library', ''),
         ('BF_JACK_LIBPATH', 'jack library path', ''),
-        ('BF_JACK_LIB_STATIC', 'jack static library', ''),
+        (BoolVariable('WITH_BF_JACK_DYNLOAD', 'Enable runtime dynamic Jack libraries loading (works only on Linux)', False)),
 
         (BoolVariable('WITH_BF_SNDFILE', 'Enable sndfile support if true', True)),
         ('BF_SNDFILE', 'sndfile base path', ''),
@@ -391,6 +391,8 @@ def read_opts(env, cfg, args):
         ('BF_ICONV_LIB', 'iconv library', ''),
         ('BF_ICONV_LIBPATH', 'iconv library path', ''),
         
+        (BoolVariable('WITH_BF_FREESTYLE', 'Compile with freestyle', True)),
+
         (BoolVariable('WITH_BF_GAMEENGINE', 'Build with gameengine' , False)),
 
         (BoolVariable('WITH_BF_BULLET', 'Use Bullet if true', True)),
@@ -598,7 +600,6 @@ def read_opts(env, cfg, args):
         ('BF_BOOST_LIB_STATIC', 'Boost static library', ''),
 
         (BoolVariable('WITH_GHOST_XDND', 'Build with drag-n-drop support on Linux platforms using XDND protocol', True)),
-        (BoolVariable('WITH_BF_COMPOSITOR_LEGACY', 'Enable the legacy compositor', False)),
 
         (BoolVariable('WITH_BF_CYCLES_OSL', 'Build with OSL sypport in Cycles', False)),
         (BoolVariable('WITH_BF_STATICOSL', 'Staticly link to OSL', False)),
@@ -825,6 +826,18 @@ def NSIS_Installer(target=None, source=None, env=None):
         print
         print data.strip().split("\n")[-1]
     return rv
+
+def cudakernels_print(target, source, env):
+    return "Running cudakernels target"
+
+def cudakernels(target=None, source=None, env=None):
+    """
+    Builder for cuda kernels compilation. Used by release build environment only
+    """
+
+    # Currently nothing to do, everything is handled by a dependency resolver
+
+    pass
 
 def check_environ():
     problematic_envvars = ""

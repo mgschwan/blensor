@@ -110,14 +110,17 @@ PyDoc_STRVAR(bpy_bm_update_edit_mesh_doc,
 "   :arg destructive: Use when grometry has been added or removed.\n"
 "   :type destructive: boolean\n"
 );
-static PyObject *bpy_bm_update_edit_mesh(PyObject *UNUSED(self), PyObject *args)
+static PyObject *bpy_bm_update_edit_mesh(PyObject *UNUSED(self), PyObject *args, PyObject *kw)
 {
+	static const char *kwlist[] = {"mesh", "tessface", "destructive", NULL};
 	PyObject *py_me;
 	Mesh *me;
-	int do_tessface = TRUE;
-	int is_destructive = TRUE;
+	int do_tessface = true;
+	int is_destructive = true;
 
-	if (!PyArg_ParseTuple(args, "O|ii:update_edit_mesh", &py_me, &do_tessface, &is_destructive)) {
+	if (!PyArg_ParseTupleAndKeywords(args, kw, "O|ii:update_edit_mesh", (char **)kwlist,
+	                                 &py_me, &do_tessface, &is_destructive))
+	{
 		return NULL;
 	}
 
@@ -134,14 +137,8 @@ static PyObject *bpy_bm_update_edit_mesh(PyObject *UNUSED(self), PyObject *args)
 	}
 
 	{
-		/* XXX, not great - infact this function could just not use the context at all
-		 * postpone that change until after release: BMESH_TODO - campbell */
-		extern struct bContext *BPy_GetContext(void);
-		extern void EDBM_update_generic(struct bContext *C, BMEditMesh *em,
-		                                const short do_tessface, const short is_destructive);
-
-		struct bContext *C = BPy_GetContext();
-		EDBM_update_generic(C, me->edit_btmesh, do_tessface, is_destructive);
+		extern void EDBM_update_generic(BMEditMesh *em, const bool do_tessface, const bool is_destructive);
+		EDBM_update_generic(me->edit_btmesh, do_tessface, is_destructive);
 	}
 
 	Py_RETURN_NONE;
@@ -150,7 +147,7 @@ static PyObject *bpy_bm_update_edit_mesh(PyObject *UNUSED(self), PyObject *args)
 static struct PyMethodDef BPy_BM_methods[] = {
 	{"new",            (PyCFunction)bpy_bm_new,            METH_NOARGS,  bpy_bm_new_doc},
 	{"from_edit_mesh", (PyCFunction)bpy_bm_from_edit_mesh, METH_O,       bpy_bm_from_edit_mesh_doc},
-	{"update_edit_mesh", (PyCFunction)bpy_bm_update_edit_mesh, METH_VARARGS, bpy_bm_update_edit_mesh_doc},
+	{"update_edit_mesh", (PyCFunction)bpy_bm_update_edit_mesh, METH_VARARGS | METH_KEYWORDS, bpy_bm_update_edit_mesh_doc},
 	{NULL, NULL, 0, NULL}
 };
 

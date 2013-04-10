@@ -52,7 +52,8 @@
 #include "BKE_depsgraph.h"
 #include "BKE_key.h"
 #include "BKE_lattice.h"
-#include "BKE_mesh.h"
+#include "BKE_deform.h"
+#include "BKE_report.h"
 
 #include "ED_lattice.h"
 #include "ED_object.h"
@@ -77,7 +78,7 @@ void free_editLatt(Object *ob)
 		if (editlt->def)
 			MEM_freeN(editlt->def);
 		if (editlt->dvert)
-			free_dverts(editlt->dvert, editlt->pntsu * editlt->pntsv * editlt->pntsw);
+			BKE_defvert_array_free(editlt->dvert, editlt->pntsu * editlt->pntsv * editlt->pntsw);
 
 		MEM_freeN(editlt);
 		MEM_freeN(lt->editlatt);
@@ -104,7 +105,7 @@ void make_editLatt(Object *obedit)
 	if (lt->dvert) {
 		int tot = lt->pntsu * lt->pntsv * lt->pntsw;
 		lt->editlatt->latt->dvert = MEM_mallocN(sizeof(MDeformVert) * tot, "Lattice MDeformVert");
-		copy_dverts(lt->editlatt->latt->dvert, lt->dvert, tot);
+		BKE_defvert_array_copy(lt->editlatt->latt->dvert, lt->dvert, tot);
 	}
 
 	if (lt->key) lt->editlatt->shapenr = obedit->shapenr;
@@ -156,7 +157,7 @@ void load_editLatt(Object *obedit)
 	}
 
 	if (lt->dvert) {
-		free_dverts(lt->dvert, lt->pntsu * lt->pntsv * lt->pntsw);
+		BKE_defvert_array_free(lt->dvert, lt->pntsu * lt->pntsv * lt->pntsw);
 		lt->dvert = NULL;
 	}
 
@@ -164,7 +165,7 @@ void load_editLatt(Object *obedit)
 		tot = lt->pntsu * lt->pntsv * lt->pntsw;
 
 		lt->dvert = MEM_mallocN(sizeof(MDeformVert) * tot, "Lattice MDeformVert");
-		copy_dverts(lt->dvert, editlt->dvert, tot);
+		BKE_defvert_array_copy(lt->dvert, editlt->dvert, tot);
 	}
 }
 
@@ -253,6 +254,58 @@ void LATTICE_OT_select_all(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	WM_operator_properties_select_all(ot);
+}
+
+/************************** Select Ungrouped Verts Operator *************************/
+
+static int lattice_select_ungrouped_exec(bContext *C, wmOperator *op)
+{
+	Object *obedit = CTX_data_edit_object(C);
+	Lattice *lt = ((Lattice *)obedit->data)->editlatt->latt;
+	MDeformVert *dv;
+	BPoint *bp;
+	int a, tot;
+
+	if (obedit->defbase.first == NULL || lt->dvert == NULL) {
+		BKE_report(op->reports, RPT_ERROR, "No weights/vertex groups on object");
+		return OPERATOR_CANCELLED;
+	}
+
+	if (!RNA_boolean_get(op->ptr, "extend")) {
+		ED_setflagsLatt(obedit, 0);
+	}
+
+	dv = lt->dvert;
+	tot = lt->pntsu * lt->pntsv * lt->pntsw;
+
+	for (a = 0, bp = lt->def; a < tot; a++, bp++, dv++) {
+		if (bp->hide == 0) {
+			if (dv->dw == NULL) {
+				bp->f1 |= SELECT;
+			}
+		}
+	}
+
+	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit->data);
+
+	return OPERATOR_FINISHED;
+}
+
+void LATTICE_OT_select_ungrouped(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Select Ungrouped";
+	ot->idname = "LATTICE_OT_select_ungrouped";
+	ot->description = "Select vertices without a group";
+
+	/* api callbacks */
+	ot->exec = lattice_select_ungrouped_exec;
+	ot->poll = ED_operator_editlattice;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend the selection");
 }
 
 /************************** Make Regular Operator *************************/
@@ -585,7 +638,7 @@ static BPoint *findnearestLattvert(ViewContext *vc, const int mval[2], int sel)
 	return data.bp;
 }
 
-int mouse_lattice(bContext *C, const int mval[2], int extend, int deselect, int toggle)
+bool mouse_lattice(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
 {
 	ViewContext vc;
 	BPoint *bp = NULL;
@@ -610,10 +663,10 @@ int mouse_lattice(bContext *C, const int mval[2], int extend, int deselect, int 
 
 		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, vc.obedit->data);
 
-		return 1;
+		return true;
 	}
 
-	return 0;
+	return false;
 }
 
 /******************************** Undo *************************/

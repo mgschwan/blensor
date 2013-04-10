@@ -52,6 +52,7 @@
 #include "DNA_material_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
+#include "DNA_rigidbody_types.h"
 
 #include "BKE_animsys.h"
 #include "BKE_action.h"
@@ -142,7 +143,7 @@ bAction *verify_adt_action(ID *id, short add)
 	if ((adt->action == NULL) && (add)) {
 		char actname[sizeof(id->name) - 2];
 		BLI_snprintf(actname, sizeof(actname), "%sAction", id->name + 2);
-		adt->action = add_empty_action(actname);
+		adt->action = add_empty_action(G.main, actname);
 	}
 		
 	/* return the action */
@@ -236,7 +237,7 @@ int insert_bezt_fcurve(FCurve *fcu, BezTriple *bezt, short flag)
 	
 	/* are there already keyframes? */
 	if (fcu->bezt) {
-		short replace = -1;
+		bool replace;
 		i = binarysearch_bezt_index(fcu->bezt, bezt->vec[1][0], fcu->totvert, &replace);
 		
 		/* replace an existing keyframe? */
@@ -540,8 +541,8 @@ static float setting_get_rna_value(PointerRNA *ptr, PropertyRNA *prop, int index
 enum {
 	VISUALKEY_NONE = 0,
 	VISUALKEY_LOC,
-	VISUALKEY_ROT
-	/* VISUALKEY_SCA */ /* TODO - looks like support can be added now */
+	VISUALKEY_ROT,
+	VISUALKEY_SCA,
 };
 
 /* This helper function determines if visual-keyframing should be used when  
@@ -550,17 +551,18 @@ enum {
  * blocktypes, when using "standard" keying but 'Visual Keying' option in Auto-Keying 
  * settings is on.
  */
-static short visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
+static bool visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 {
 	bConstraint *con = NULL;
 	short searchtype = VISUALKEY_NONE;
-	short has_parent = FALSE;
+	bool has_rigidbody = false;
+	bool has_parent = false;
 	const char *identifier = NULL;
 	
 	/* validate data */
 	if (ELEM3(NULL, ptr, ptr->data, prop))
 		return 0;
-		
+	
 	/* get first constraint and determine type of keyframe constraints to check for 
 	 *  - constraints can be on either Objects or PoseChannels, so we only check if the
 	 *    ptr->type is RNA_Object or RNA_PoseBone, which are the RNA wrapping-info for
@@ -569,10 +571,14 @@ static short visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 	if (ptr->type == &RNA_Object) {
 		/* Object */
 		Object *ob = (Object *)ptr->data;
+		RigidBodyOb *rbo = ob->rigidbody_object;
 		
 		con = ob->constraints.first;
 		identifier = RNA_property_identifier(prop);
 		has_parent = (ob->parent != NULL);
+		
+		/* active rigidbody objects only, as only those are affected by sim */
+		has_rigidbody = ((rbo) && (rbo->type == RBO_TYPE_ACTIVE));
 	}
 	else if (ptr->type == &RNA_PoseBone) {
 		/* Pose Channel */
@@ -584,13 +590,13 @@ static short visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 	}
 	
 	/* check if any data to search using */
-	if (ELEM(NULL, con, identifier) && (has_parent == FALSE))
-		return 0;
-		
+	if (ELEM(NULL, con, identifier) && (has_parent == false) && (has_rigidbody == false))
+		return false;
+	
 	/* location or rotation identifiers only... */
 	if (identifier == NULL) {
 		printf("%s failed: NULL identifier\n", __func__);
-		return 0;
+		return false;
 	}
 	else if (strstr(identifier, "location")) {
 		searchtype = VISUALKEY_LOC;
@@ -598,17 +604,20 @@ static short visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 	else if (strstr(identifier, "rotation")) {
 		searchtype = VISUALKEY_ROT;
 	}
+	else if (strstr(identifier, "scale")) {
+		searchtype = VISUALKEY_SCA;
+	}
 	else {
 		printf("%s failed: identifier - '%s'\n", __func__, identifier);
-		return 0;
+		return false;
 	}
 	
 	
 	/* only search if a searchtype and initial constraint are available */
 	if (searchtype) {
-		/* parent is always matching */
-		if (has_parent)
-			return 1;
+		/* parent or rigidbody are always matching */
+		if (has_parent || has_rigidbody)
+			return true;
 		
 		/* constraints */
 		for (; con; con = con->next) {
@@ -620,42 +629,48 @@ static short visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 			switch (con->type) {
 				/* multi-transform constraints */
 				case CONSTRAINT_TYPE_CHILDOF:
-					return 1;
+					return true;
 				case CONSTRAINT_TYPE_TRANSFORM:
 				case CONSTRAINT_TYPE_TRANSLIKE:
-					return 1;
+					return true;
 				case CONSTRAINT_TYPE_FOLLOWPATH:
-					return 1;
+					return true;
 				case CONSTRAINT_TYPE_KINEMATIC:
-					return 1;
-					
+					return true;
+				
 				/* single-transform constraits  */
 				case CONSTRAINT_TYPE_TRACKTO:
-					if (searchtype == VISUALKEY_ROT) return 1;
+					if (searchtype == VISUALKEY_ROT) return true;
 					break;
 				case CONSTRAINT_TYPE_DAMPTRACK:
-					if (searchtype == VISUALKEY_ROT) return 1;
+					if (searchtype == VISUALKEY_ROT) return true;
 					break;
 				case CONSTRAINT_TYPE_ROTLIMIT:
-					if (searchtype == VISUALKEY_ROT) return 1;
+					if (searchtype == VISUALKEY_ROT) return true;
 					break;
 				case CONSTRAINT_TYPE_LOCLIMIT:
-					if (searchtype == VISUALKEY_LOC) return 1;
+					if (searchtype == VISUALKEY_LOC) return true;
 					break;
-				case CONSTRAINT_TYPE_ROTLIKE:
-					if (searchtype == VISUALKEY_ROT) return 1;
+				case CONSTRAINT_TYPE_SIZELIMIT:
+					if (searchtype == VISUALKEY_SCA) return true;
 					break;
 				case CONSTRAINT_TYPE_DISTLIMIT:
-					if (searchtype == VISUALKEY_LOC) return 1;
+					if (searchtype == VISUALKEY_LOC) return true;
+					break;
+				case CONSTRAINT_TYPE_ROTLIKE:
+					if (searchtype == VISUALKEY_ROT) return true;
 					break;
 				case CONSTRAINT_TYPE_LOCLIKE:
-					if (searchtype == VISUALKEY_LOC) return 1;
+					if (searchtype == VISUALKEY_LOC) return true;
+					break;
+				case CONSTRAINT_TYPE_SIZELIKE:
+					if (searchtype == VISUALKEY_SCA) return true;
 					break;
 				case CONSTRAINT_TYPE_LOCKTRACK:
-					if (searchtype == VISUALKEY_ROT) return 1;
+					if (searchtype == VISUALKEY_ROT) return true;
 					break;
 				case CONSTRAINT_TYPE_MINMAX:
-					if (searchtype == VISUALKEY_LOC) return 1;
+					if (searchtype == VISUALKEY_LOC) return true;
 					break;
 				
 				default:
@@ -664,8 +679,8 @@ static short visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 		}
 	}
 	
-	/* when some condition is met, this function returns, so here it can be 0 */
-	return 0;
+	/* when some condition is met, this function returns, so that means we've got nothing */
+	return false;
 }
 
 /* This helper function extracts the value to use for visual-keyframing 
@@ -675,50 +690,30 @@ static short visualkey_can_use(PointerRNA *ptr, PropertyRNA *prop)
 static float visualkey_get_value(PointerRNA *ptr, PropertyRNA *prop, int array_index)
 {
 	const char *identifier = RNA_property_identifier(prop);
+	float tmat[4][4];
+	int rotmode;
 	
 	/* handle for Objects or PoseChannels only 
+	 *  - only Location, Rotation or Scale keyframes are supported curently
 	 *  - constraints can be on either Objects or PoseChannels, so we only check if the
-	 *	  ptr->type is RNA_Object or RNA_PoseBone, which are the RNA wrapping-info for
+	 *    ptr->type is RNA_Object or RNA_PoseBone, which are the RNA wrapping-info for
 	 *        those structs, allowing us to identify the owner of the data
-	 *	- assume that array_index will be sane
+	 *  - assume that array_index will be sane
 	 */
 	if (ptr->type == &RNA_Object) {
 		Object *ob = (Object *)ptr->data;
 		
-		/* only Location or Rotation keyframes are supported now */
+		/* Loc code is specific... */
 		if (strstr(identifier, "location")) {
 			return ob->obmat[3][array_index];
 		}
-		else if (strstr(identifier, "rotation_euler")) {
-			float eul[3];
-			
-			mat4_to_eulO(eul, ob->rotmode, ob->obmat);
-			return eul[array_index];
-		}
-		else if (strstr(identifier, "rotation_quaternion")) {
-			float trimat[3][3], quat[4];
-			
-			copy_m3_m4(trimat, ob->obmat);
-			mat3_to_quat_is_ok(quat, trimat);
-			
-			return quat[array_index];
-		}
-		else if (strstr(identifier, "rotation_axis_angle")) {
-			float axis[3], angle;
-			
-			mat4_to_axis_angle(axis, &angle, ob->obmat);
-			
-			/* w = 0, x,y,z = 1,2,3 */
-			if (array_index == 0)
-				return angle;
-			else
-				return axis[array_index - 1];
-		}
+		
+		copy_m4_m4(tmat, ob->obmat);
+		rotmode = ob->rotmode;
 	}
 	else if (ptr->type == &RNA_PoseBone) {
 		Object *ob = (Object *)ptr->id.data; /* we assume that this is always set, and is an object */
 		bPoseChannel *pchan = (bPoseChannel *)ptr->data;
-		float tmat[4][4];
 		
 		/* Although it is not strictly required for this particular space conversion, 
 		 * arg1 must not be null, as there is a null check for the other conversions to
@@ -726,41 +721,52 @@ static float visualkey_get_value(PointerRNA *ptr, PropertyRNA *prop, int array_i
 		 * will be what owns the pose-channel that is getting this anyway.
 		 */
 		copy_m4_m4(tmat, pchan->pose_mat);
-		constraint_mat_convertspace(ob, pchan, tmat, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_LOCAL);
+		BKE_constraint_mat_convertspace(ob, pchan, tmat, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_LOCAL);
+		rotmode = pchan->rotmode;
 		
-		/* Loc, Rot/Quat keyframes are supported... */
+		/* Loc code is specific... */
 		if (strstr(identifier, "location")) {
 			/* only use for non-connected bones */
-			if ((pchan->bone->parent) && !(pchan->bone->flag & BONE_CONNECTED))
-				return tmat[3][array_index];
-			else if (pchan->bone->parent == NULL)
+			if ((pchan->bone->parent == NULL) || !(pchan->bone->flag & BONE_CONNECTED))
 				return tmat[3][array_index];
 		}
-		else if (strstr(identifier, "rotation_euler")) {
-			float eul[3];
-			
-			mat4_to_eulO(eul, pchan->rotmode, tmat);
-			return eul[array_index];
-		}
-		else if (strstr(identifier, "rotation_quaternion")) {
-			float trimat[3][3], quat[4];
-			
-			copy_m3_m4(trimat, tmat);
-			mat3_to_quat_is_ok(quat, trimat);
-			
-			return quat[array_index];
-		}
-		else if (strstr(identifier, "rotation_axis_angle")) {
-			float axis[3], angle;
-			
-			mat4_to_axis_angle(axis, &angle, tmat);
-			
-			/* w = 0, x,y,z = 1,2,3 */
-			if (array_index == 0)
-				return angle;
-			else
-				return axis[array_index - 1];
-		}
+	}
+	else {
+		return setting_get_rna_value(ptr, prop, array_index);
+	}
+	
+	/* Rot/Scale code are common! */
+	if (strstr(identifier, "rotation_euler")) {
+		float eul[3];
+		
+		mat4_to_eulO(eul, rotmode, tmat);
+		return eul[array_index];
+	}
+	else if (strstr(identifier, "rotation_quaternion")) {
+		float mat3[3][3], quat[4];
+		
+		copy_m3_m4(mat3, tmat);
+		mat3_to_quat_is_ok(quat, mat3);
+		
+		return quat[array_index];
+	}
+	else if (strstr(identifier, "rotation_axis_angle")) {
+		float axis[3], angle;
+		
+		mat4_to_axis_angle(axis, &angle, tmat);
+		
+		/* w = 0, x,y,z = 1,2,3 */
+		if (array_index == 0)
+			return angle;
+		else
+			return axis[array_index - 1];
+	}
+	else if (strstr(identifier, "scale")) {
+		float scale[3];
+		
+		mat4_to_size(scale, tmat);
+		
+		return scale[array_index];
 	}
 	
 	/* as the function hasn't returned yet, read value from system in the default way */
@@ -1049,7 +1055,7 @@ short delete_keyframe(ReportList *reports, ID *id, bAction *act, const char grou
 	/* will only loop once unless the array index was -1 */
 	for (; array_index < array_index_max; array_index++) {
 		FCurve *fcu = verify_fcurve(act, group, &ptr, rna_path, array_index, 0);
-		short found = -1;
+		bool found;
 		int i;
 		
 		/* check if F-Curve exists and/or whether it can be edited */
@@ -1208,7 +1214,6 @@ static int modify_key_op_poll(bContext *C)
 
 static int insert_key_exec(bContext *C, wmOperator *op)
 {
-	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	KeyingSet *ks = NULL;
 	int type = RNA_enum_get(op->ptr, "type");
@@ -1254,9 +1259,6 @@ static int insert_key_exec(bContext *C, wmOperator *op)
 	else
 		BKE_report(op->reports, RPT_WARNING, "Keying set failed to insert any keyframes");
 	
-	/* send updates */
-	DAG_ids_flush_update(bmain, 0);
-	
 	return OPERATOR_FINISHED;
 }
 
@@ -1295,7 +1297,7 @@ void ANIM_OT_keyframe_insert(wmOperatorType *ot)
  * then calls the menu if necessary before 
  */
 
-static int insert_key_menu_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int insert_key_menu_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	Scene *scene = CTX_data_scene(C);
 	
@@ -1305,7 +1307,7 @@ static int insert_key_menu_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(e
 		uiLayout *layout;
 		
 		/* call the menu, which will call this operator again, hence the canceled */
-		pup = uiPupMenuBegin(C, op->type->name, ICON_NONE);
+		pup = uiPupMenuBegin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
 		layout = uiPupMenuLayout(pup);
 		uiItemsEnumO(layout, "ANIM_OT_keyframe_insert_menu", "type");
 		uiPupMenuEnd(C, pup);
@@ -1364,7 +1366,6 @@ void ANIM_OT_keyframe_insert_menu(wmOperatorType *ot)
 
 static int delete_key_exec(bContext *C, wmOperator *op)
 {
-	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	KeyingSet *ks = NULL;
 	int type = RNA_enum_get(op->ptr, "type");
@@ -1410,9 +1411,6 @@ static int delete_key_exec(bContext *C, wmOperator *op)
 	else
 		BKE_report(op->reports, RPT_WARNING, "Keying set failed to remove any keyframes");
 	
-	/* send updates */
-	DAG_ids_flush_update(bmain, 0);
-	
 	return OPERATOR_FINISHED;
 }
 
@@ -1452,8 +1450,6 @@ void ANIM_OT_keyframe_delete(wmOperatorType *ot)
  
 static int clear_anim_v3d_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	Main *bmain = CTX_data_main(C);
-	
 	CTX_DATA_BEGIN (C, Object *, ob, selected_objects)
 	{
 		/* just those in active action... */
@@ -1498,12 +1494,11 @@ static int clear_anim_v3d_exec(bContext *C, wmOperator *UNUSED(op))
 		}
 		
 		/* update... */
-		ob->recalc |= OB_RECALC_OB;
+		DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 	}
 	CTX_DATA_END;
 	
 	/* send updates */
-	DAG_ids_flush_update(bmain, 0);
 	WM_event_add_notifier(C, NC_OBJECT | ND_KEYS, NULL);
 	
 	return OPERATOR_FINISHED;
@@ -1529,7 +1524,6 @@ void ANIM_OT_keyframe_clear_v3d(wmOperatorType *ot)
 
 static int delete_key_v3d_exec(bContext *C, wmOperator *op)
 {
-	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	float cfra = (float)CFRA;
 	
@@ -1556,12 +1550,11 @@ static int delete_key_v3d_exec(bContext *C, wmOperator *op)
 		
 		/* report success (or failure) */
 		BKE_reportf(op->reports, RPT_INFO, "Object '%s' successfully had %d keyframes removed", id->name + 2, success);
-		ob->recalc |= OB_RECALC_OB;
+		DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 	}
 	CTX_DATA_END;
 	
 	/* send updates */
-	DAG_ids_flush_update(bmain, 0);
 	WM_event_add_notifier(C, NC_OBJECT | ND_KEYS, NULL);
 	
 	return OPERATOR_FINISHED;
@@ -1589,7 +1582,6 @@ void ANIM_OT_keyframe_delete_v3d(wmOperatorType *ot)
 
 static int insert_key_button_exec(bContext *C, wmOperator *op)
 {
-	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	PointerRNA ptr = {{NULL}};
 	PropertyRNA *prop = NULL;
@@ -1631,24 +1623,26 @@ static int insert_key_button_exec(bContext *C, wmOperator *op)
 			success += insert_keyframe_direct(op->reports, ptr, prop, fcu, cfra, 0);
 		}
 		else {
-			if (G.debug & G_DEBUG)
-				printf("Button Insert-Key: no path to property\n");
-			BKE_report(op->reports, RPT_WARNING, "Failed to resolve path to property, try using a keying set instead");
+			BKE_report(op->reports, RPT_WARNING, 
+			           "Failed to resolve path to property, try manually specifying this using a Keying Set instead");
 		}
 	}
-	else if (G.debug & G_DEBUG) {
-		printf("ptr.data = %p, prop = %p,", (void *)ptr.data, (void *)prop);
-		if (prop)
-			printf("animatable = %d\n", RNA_property_animateable(&ptr, prop));
-		else
-			printf("animatable = NULL\n");
+	else {
+		if (prop && !RNA_property_animateable(&ptr, prop)) {
+			BKE_reportf(op->reports, RPT_WARNING, 
+			           "\"%s\" property cannot be animated",
+			           RNA_property_identifier(prop));
+		}
+		else {
+			BKE_reportf(op->reports, RPT_WARNING,
+			            "Button doesn't appear to have any property information attached (ptr.data = %p, prop = %p)",
+			            (void *)ptr.data, (void *)prop);
+		}
 	}
 	
 	if (success) {
 		/* send updates */
 		uiContextAnimUpdate(C);
-		
-		DAG_ids_flush_update(bmain, 0);
 		
 		/* send notifiers that keyframes have been changed */
 		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
@@ -1679,7 +1673,6 @@ void ANIM_OT_keyframe_insert_button(wmOperatorType *ot)
 
 static int delete_key_button_exec(bContext *C, wmOperator *op)
 {
-	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	PointerRNA ptr = {{NULL}};
 	PropertyRNA *prop = NULL;
@@ -1721,8 +1714,6 @@ static int delete_key_button_exec(bContext *C, wmOperator *op)
 		/* send updates */
 		uiContextAnimUpdate(C);
 		
-		DAG_ids_flush_update(bmain, 0);
-		
 		/* send notifiers that keyframes have been changed */
 		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
 	}
@@ -1753,7 +1744,6 @@ void ANIM_OT_keyframe_delete_button(wmOperatorType *ot)
 
 static int clear_key_button_exec(bContext *C, wmOperator *op)
 {
-	Main *bmain = CTX_data_main(C);
 	PointerRNA ptr = {{NULL}};
 	PropertyRNA *prop = NULL;
 	char *path;
@@ -1792,8 +1782,6 @@ static int clear_key_button_exec(bContext *C, wmOperator *op)
 	if (success) {
 		/* send updates */
 		uiContextAnimUpdate(C);
-		
-		DAG_ids_flush_update(bmain, 0);
 		
 		/* send notifiers that keyframes have been changed */
 		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
@@ -1857,7 +1845,7 @@ short fcurve_frame_has_keyframe(FCurve *fcu, float frame, short filter)
 	
 	/* we either include all regardless of muting, or only non-muted  */
 	if ((filter & ANIMFILTER_KEYS_MUTED) || (fcu->flag & FCURVE_MUTED) == 0) {
-		short replace = -1;
+		bool replace;
 		int i = binarysearch_bezt_index(fcu->bezt, frame, fcu->totvert, &replace);
 		
 		/* binarysearch_bezt_index will set replace to be 0 or 1

@@ -28,7 +28,6 @@ set(INC
 	.
 	intern
 	../blenkernel
-	../blenkernel/intern
 	../blenlib
 	../blenfont
 	../blenloader
@@ -64,9 +63,13 @@ set(SRC
 	intern/MOD_fluidsim.c
 	intern/MOD_fluidsim_util.c
 	intern/MOD_hook.c
-	intern/MOD_lattice.c
 	intern/MOD_laplaciansmooth.c
+	intern/MOD_lattice.c
 	intern/MOD_mask.c
+	intern/MOD_meshcache.c
+	intern/MOD_meshcache_mdd.c
+	intern/MOD_meshcache_pc2.c
+	intern/MOD_meshcache_util.c
 	intern/MOD_meshdeform.c
 	intern/MOD_mirror.c
 	intern/MOD_multires.c
@@ -86,7 +89,9 @@ set(SRC
 	intern/MOD_solidify.c
 	intern/MOD_subsurf.c
 	intern/MOD_surface.c
+	intern/MOD_triangulate.c
 	intern/MOD_util.c
+	intern/MOD_uvwarp.c
 	intern/MOD_uvproject.c
 	intern/MOD_warp.c
 	intern/MOD_wave.c
@@ -94,11 +99,11 @@ set(SRC
 	intern/MOD_weightvgedit.c
 	intern/MOD_weightvgmix.c
 	intern/MOD_weightvgproximity.c
-	intern/MOD_triangulate.c
 
 	MOD_modifiertypes.h
 	intern/MOD_boolean_util.h
 	intern/MOD_fluidsim_util.h
+	intern/MOD_meshcache_util.h
 	intern/MOD_util.h
 	intern/MOD_weightvg_util.h
 )

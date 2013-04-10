@@ -386,6 +386,31 @@ static void select_editcurve_hook(Object *obedit, HookModifierData *hmd)
 	}
 }
 
+static void object_hook_from_context(bContext *C, PointerRNA *ptr, const int num,
+                                     Object **r_ob, HookModifierData **r_hmd)
+{
+	Object *ob;
+	HookModifierData *hmd;
+
+	if (ptr->data) {  /* if modifier context is available, use that */
+		ob = ptr->id.data;
+		hmd = ptr->data;
+	}
+	else {  /* use the provided property */
+		ob = CTX_data_edit_object(C);
+		hmd = (HookModifierData *)BLI_findlink(&ob->modifiers, num);
+	}
+
+	if (ob && hmd && (hmd->modifier.type == eModifierType_Hook)) {
+		*r_ob = ob;
+		*r_hmd = hmd;
+	}
+	else {
+		*r_ob = NULL;
+		*r_hmd = NULL;
+	}
+}
+
 static void object_hook_select(Object *ob, HookModifierData *hmd) 
 {
 	if (hmd->indexar == NULL)
@@ -491,7 +516,7 @@ static int add_hook_object(Main *bmain, Scene *scene, Object *obedit, Object *ob
 	mul_serie_m4(hmd->parentinv, ob->imat, obedit->obmat, NULL,
 	             NULL, NULL, NULL, NULL, NULL);
 	
-	DAG_scene_sort(bmain, scene);
+	DAG_relations_tag_update(bmain);
 
 	return TRUE;
 }
@@ -533,7 +558,7 @@ static int object_add_hook_selob_exec(bContext *C, wmOperator *op)
 	}
 }
 
-void OBJECT_OT_hook_add_selobj(wmOperatorType *ot)
+void OBJECT_OT_hook_add_selob(wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Hook to Selected Object";
@@ -567,7 +592,7 @@ static int object_add_hook_newob_exec(bContext *C, wmOperator *op)
 	}
 }
 
-void OBJECT_OT_hook_add_newobj(wmOperatorType *ot)
+void OBJECT_OT_hook_add_newob(wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Hook to New Object";
@@ -663,16 +688,9 @@ static int object_hook_reset_exec(bContext *C, wmOperator *op)
 	int num = RNA_enum_get(op->ptr, "modifier");
 	Object *ob = NULL;
 	HookModifierData *hmd = NULL;
-	
-	if (ptr.data) {     /* if modifier context is available, use that */
-		ob = ptr.id.data;
-		hmd = ptr.data;
-	}
-	else {          /* use the provided property */
-		ob = CTX_data_edit_object(C);
-		hmd = (HookModifierData *)BLI_findlink(&ob->modifiers, num);
-	}
-	if (!ob || !hmd) {
+
+	object_hook_from_context(C, &ptr, num, &ob, &hmd);
+	if (hmd == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Could not find hook modifier");
 		return OPERATOR_CANCELLED;
 	}
@@ -732,15 +750,8 @@ static int object_hook_recenter_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	float bmat[3][3], imat[3][3];
 	
-	if (ptr.data) {  /* if modifier context is available, use that */
-		ob = ptr.id.data;
-		hmd = ptr.data;
-	}
-	else {  /* use the provided property */
-		ob = CTX_data_edit_object(C);
-		hmd = (HookModifierData *)BLI_findlink(&ob->modifiers, num);
-	}
-	if (!ob || !hmd) {
+	object_hook_from_context(C, &ptr, num, &ob, &hmd);
+	if (hmd == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Could not find hook modifier");
 		return OPERATOR_CANCELLED;
 	}
@@ -790,15 +801,8 @@ static int object_hook_assign_exec(bContext *C, wmOperator *op)
 	char name[MAX_NAME];
 	int *indexar, tot;
 	
-	if (ptr.data) {     /* if modifier context is available, use that */
-		ob = ptr.id.data;
-		hmd = ptr.data;
-	}
-	else {          /* use the provided property */
-		ob = CTX_data_edit_object(C);
-		hmd = (HookModifierData *)BLI_findlink(&ob->modifiers, num);
-	}
-	if (!ob || !hmd) {
+	object_hook_from_context(C, &ptr, num, &ob, &hmd);
+	if (hmd == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Could not find hook modifier");
 		return OPERATOR_CANCELLED;
 	}
@@ -852,15 +856,8 @@ static int object_hook_select_exec(bContext *C, wmOperator *op)
 	Object *ob = NULL;
 	HookModifierData *hmd = NULL;
 	
-	if (ptr.data) {     /* if modifier context is available, use that */
-		ob = ptr.id.data;
-		hmd = ptr.data;
-	}
-	else {          /* use the provided property */
-		ob = CTX_data_edit_object(C);
-		hmd = (HookModifierData *)BLI_findlink(&ob->modifiers, num);
-	}
-	if (!ob || !hmd) {
+	object_hook_from_context(C, &ptr, num, &ob, &hmd);
+	if (hmd == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Could not find hook modifier");
 		return OPERATOR_CANCELLED;
 	}

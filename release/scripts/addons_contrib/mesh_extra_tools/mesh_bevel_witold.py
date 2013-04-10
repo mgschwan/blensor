@@ -23,7 +23,7 @@ bl_info = {
     "name": "Bevel witold",
     "author": "Witold Jaworski",
     "version": (1, 2, 0),
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     "api": 36147,
     "location": "View3D >Specials (W-key)",
     "category": "Mesh",

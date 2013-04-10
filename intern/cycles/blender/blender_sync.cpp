@@ -19,7 +19,6 @@
 #include "background.h"
 #include "camera.h"
 #include "film.h"
-#include "../render/filter.h"
 #include "graph.h"
 #include "integrator.h"
 #include "light.h"
@@ -28,6 +27,7 @@
 #include "object.h"
 #include "scene.h"
 #include "shader.h"
+#include "curves.h"
 
 #include "device.h"
 
@@ -41,7 +41,7 @@ CCL_NAMESPACE_BEGIN
 
 /* Constructor */
 
-BlenderSync::BlenderSync(BL::RenderEngine b_engine_, BL::BlendData b_data_, BL::Scene b_scene_, Scene *scene_, bool preview_, Progress &progress_)
+BlenderSync::BlenderSync(BL::RenderEngine b_engine_, BL::BlendData b_data_, BL::Scene b_scene_, Scene *scene_, bool preview_, Progress &progress_, bool is_cpu_)
 : b_engine(b_engine_),
   b_data(b_data_), b_scene(b_scene_),
   shader_map(&scene_->shaders),
@@ -56,6 +56,7 @@ BlenderSync::BlenderSync(BL::RenderEngine b_engine_, BL::BlendData b_data_, BL::
 {
 	scene = scene_;
 	preview = preview_;
+	is_cpu = is_cpu_;
 }
 
 BlenderSync::~BlenderSync()
@@ -141,6 +142,7 @@ void BlenderSync::sync_data(BL::SpaceView3D b_v3d, BL::Object b_override, const 
 	sync_integrator();
 	sync_film();
 	sync_shaders();
+	sync_curve_settings();
 	sync_objects(b_v3d);
 	sync_motion(b_v3d, b_override);
 }
@@ -194,6 +196,7 @@ void BlenderSync::sync_integrator()
 	integrator->transmission_samples = get_int(cscene, "transmission_samples");
 	integrator->ao_samples = get_int(cscene, "ao_samples");
 	integrator->mesh_light_samples = get_int(cscene, "mesh_light_samples");
+	integrator->subsurface_samples = get_int(cscene, "subsurface_samples");
 	integrator->progressive = get_boolean(cscene, "progressive");
 
 	if(integrator->modified(previntegrator))
@@ -210,18 +213,11 @@ void BlenderSync::sync_film()
 	Film prevfilm = *film;
 
 	film->exposure = get_float(cscene, "film_exposure");
+	film->filter_type = (FilterType)RNA_enum_get(&cscene, "filter_type");
+	film->filter_width = (film->filter_type == FILTER_BOX)? 1.0f: get_float(cscene, "filter_width");
 
 	if(film->modified(prevfilm))
 		film->tag_update(scene);
-
-	Filter *filter = scene->filter;
-	Filter prevfilter = *filter;
-
-	filter->filter_type = (FilterType)RNA_enum_get(&cscene, "filter_type");
-	filter->filter_width = (filter->filter_type == FILTER_BOX)? 1.0f: get_float(cscene, "filter_width");
-
-	if(filter->modified(prevfilter))
-		filter->tag_update(scene);
 }
 
 /* Render Layer */
@@ -289,7 +285,7 @@ SceneParams BlenderSync::get_scene_params(BL::Scene b_scene, bool background)
 	BL::RenderSettings r = b_scene.render();
 	SceneParams params;
 	PointerRNA cscene = RNA_pointer_get(&b_scene.ptr, "cycles");
-	int shadingsystem = RNA_enum_get(&cscene, "shading_system");
+	int shadingsystem = RNA_boolean_get(&cscene, "shading_system");
 
 	if(shadingsystem == 0)
 		params.shadingsystem = SceneParams::SVM;
@@ -304,7 +300,10 @@ SceneParams BlenderSync::get_scene_params(BL::Scene b_scene, bool background)
 	params.use_bvh_spatial_split = RNA_boolean_get(&cscene, "debug_use_spatial_splits");
 	params.use_bvh_cache = (background)? RNA_boolean_get(&cscene, "use_cache"): false;
 
-	params.persistent_images = (background)? r.use_persistent_data(): false;
+	if(background && params.shadingsystem != SceneParams::OSL)
+		params.persistent_data = r.use_persistent_data();
+	else
+		params.persistent_data = false;
 
 	return params;
 }
@@ -331,7 +330,13 @@ SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine, BL::Use
 	/* device default CPU */
 	params.device = devices[0];
 
-	if(RNA_enum_get(&cscene, "device") != 0) {
+	if(RNA_enum_get(&cscene, "device") == 2) {
+		/* find network device */
+		foreach(DeviceInfo& info, devices)
+			if(info.type == DEVICE_NETWORK)
+				params.device = info;
+	}
+	else if(RNA_enum_get(&cscene, "device") == 1) {
 		/* find GPU device with given id */
 		PointerRNA systemptr = b_userpref.system().ptr;
 		PropertyRNA *deviceprop = RNA_struct_find_property(&systemptr, "compute_device");
@@ -350,22 +355,22 @@ SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine, BL::Use
 	params.background = background;
 
 	/* samples */
-	if(get_boolean(cscene, "progressive")) {
+	if(get_boolean(cscene, "progressive") == 0 && params.device.type == DEVICE_CPU){
 		if(background) {
-			params.samples = get_int(cscene, "samples");
+			params.samples = get_int(cscene, "aa_samples");
 		}
 		else {
-			params.samples = get_int(cscene, "preview_samples");
+			params.samples = get_int(cscene, "preview_aa_samples");
 			if(params.samples == 0)
 				params.samples = INT_MAX;
 		}
 	}
 	else {
 		if(background) {
-			params.samples = get_int(cscene, "aa_samples");
+			params.samples = get_int(cscene, "samples");
 		}
 		else {
-			params.samples = get_int(cscene, "preview_aa_samples");
+			params.samples = get_int(cscene, "preview_samples");
 			if(params.samples == 0)
 				params.samples = INT_MAX;
 		}
@@ -387,6 +392,8 @@ SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine, BL::Use
 
 		params.tile_size = make_int2(tile_x, tile_y);
 	}
+	
+	params.tile_order = RNA_enum_get(&cscene, "tile_order");
 
 	params.start_resolution = get_int(cscene, "preview_start_resolution");
 
@@ -414,7 +421,7 @@ SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine, BL::Use
 		params.progressive = true;
 
 	/* shading system - scene level needs full refresh */
-	int shadingsystem = RNA_enum_get(&cscene, "shading_system");
+	int shadingsystem = RNA_boolean_get(&cscene, "shading_system");
 
 	if(shadingsystem == 0)
 		params.shadingsystem = SessionParams::SVM;

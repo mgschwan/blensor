@@ -141,7 +141,7 @@ void OutputSingleLayerOperation::deinitExecution()
 		IMB_colormanagement_imbuf_for_write(ibuf, TRUE, FALSE, m_viewSettings, m_displaySettings,
 		                                    this->m_format);
 
-		BKE_makepicstring(filename, this->m_path, bmain->name, this->m_rd->cfra, this->m_format->imtype,
+		BKE_makepicstring(filename, this->m_path, bmain->name, this->m_rd->cfra, this->m_format,
 		                  (this->m_rd->scemode & R_EXTENSION), true);
 		
 		if (0 == BKE_imbuf_write(ibuf, filename, this->m_format))
@@ -166,7 +166,7 @@ OutputOpenExrLayer::OutputOpenExrLayer(const char *name_, DataType datatype_)
 }
 
 OutputOpenExrMultiLayerOperation::OutputOpenExrMultiLayerOperation(
-    const RenderData *rd, const bNodeTree *tree, const char *path, char exr_codec)
+        const RenderData *rd, const bNodeTree *tree, const char *path, char exr_codec)
 {
 	this->m_rd = rd;
 	this->m_tree = tree;
@@ -205,7 +205,7 @@ void OutputOpenExrMultiLayerOperation::deinitExecution()
 		char filename[FILE_MAX];
 		void *exrhandle = IMB_exr_get_handle();
 		
-		BKE_makepicstring(filename, this->m_path, bmain->name, this->m_rd->cfra, R_IMF_IMTYPE_MULTILAYER,
+		BKE_makepicstring_from_type(filename, this->m_path, bmain->name, this->m_rd->cfra, R_IMF_IMTYPE_MULTILAYER,
 		                  (this->m_rd->scemode & R_EXTENSION), true);
 		BLI_make_existing_file(filename);
 		

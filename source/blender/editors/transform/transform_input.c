@@ -164,7 +164,7 @@ static void InputVerticalAbsolute(TransInfo *t, MouseInput *mi, const int mval[2
 	output[0] = dot_v3v3(t->viewinv[1], vec) * 2.0f;
 }
 
-void setCustomPoints(TransInfo *UNUSED(t), MouseInput *mi, int start[2], int end[2])
+void setCustomPoints(TransInfo *UNUSED(t), MouseInput *mi, const int start[2], const int end[2])
 {
 	int *data;
 
@@ -180,7 +180,7 @@ void setCustomPoints(TransInfo *UNUSED(t), MouseInput *mi, int start[2], int end
 	data[3] = end[1];
 }
 
-static void InputCustomRatio(TransInfo *UNUSED(t), MouseInput *mi, const int mval[2], float output[3])
+static void InputCustomRatioFlip(TransInfo *UNUSED(t), MouseInput *mi, const int mval[2], float output[3])
 {
 	double length;
 	double distance;
@@ -213,6 +213,12 @@ static void InputCustomRatio(TransInfo *UNUSED(t), MouseInput *mi, const int mva
 	}
 }
 
+static void InputCustomRatio(TransInfo *t, MouseInput *mi, const int mval[2], float output[3])
+{
+	InputCustomRatioFlip(t, mi, mval, output);
+	output[0] = -output[0];
+}
+
 static void InputAngle(TransInfo *UNUSED(t), MouseInput *mi, const int mval[2], float output[3])
 {
 	double dx2 = mval[0] - mi->center[0];
@@ -232,7 +238,7 @@ static void InputAngle(TransInfo *UNUSED(t), MouseInput *mi, const int mval[2], 
 	double deler = (((dx1 * dx1 + dy1 * dy1) +
 	                 (dx2 * dx2 + dy2 * dy2) -
 	                 (dx3 * dx3 + dy3 * dy3)) / (2.0 * ((A * B) ? (A * B) : 1.0)));
-	/* ((A*B)?(A*B):1.0) this takes care of potential divide by zero errors */
+	/* ((A * B) ? (A * B) : 1.0) this takes care of potential divide by zero errors */
 
 	float dphi;
 
@@ -275,7 +281,7 @@ static void InputAngle(TransInfo *UNUSED(t), MouseInput *mi, const int mval[2], 
 	output[0] = *angle;
 }
 
-void initMouseInput(TransInfo *UNUSED(t), MouseInput *mi, int center[2], int mval[2])
+void initMouseInput(TransInfo *UNUSED(t), MouseInput *mi, const int center[2], const int mval[2])
 {
 	mi->factor = 0;
 	mi->precision = 0;
@@ -301,15 +307,8 @@ static void calcSpringFactor(MouseInput *mi)
 
 void initMouseInputMode(TransInfo *t, MouseInput *mi, MouseInputMode mode)
 {
-	/* may have been allocated previously */
-	/* TODO, holding R-key can cause mem leak, but this causes [#28903]
-	 * disable for now. */
-#if 0
-	if (mi->data) {
-		MEM_freeN(mi->data);
-		mi->data = NULL;
-	}
-#endif
+	/* incase we allocate a new value */
+	void *mi_data_prev = mi->data;
 
 	switch (mode) {
 		case INPUT_VECTOR:
@@ -358,17 +357,27 @@ void initMouseInputMode(TransInfo *t, MouseInput *mi, MouseInputMode mode)
 			mi->apply = InputCustomRatio;
 			t->helpline = HLP_NONE;
 			break;
+		case INPUT_CUSTOM_RATIO_FLIP:
+			mi->apply = InputCustomRatioFlip;
+			t->helpline = HLP_NONE;
+			break;
 		case INPUT_NONE:
 		default:
 			mi->apply = NULL;
 			break;
 	}
 
+	/* if we've allocated new data, free the old data
+	 * less hassle then checking before every alloc above */
+	if (mi_data_prev && (mi_data_prev != mi->data)) {
+		MEM_freeN(mi_data_prev);
+	}
+
 	/* bootstrap mouse input with initial values */
 	applyMouseInput(t, mi, mi->imval, t->values);
 }
 
-void setInputPostFct(MouseInput *mi, void (*post)(struct TransInfo *, float[3]))
+void setInputPostFct(MouseInput *mi, void (*post)(struct TransInfo *t, float values[3]))
 {
 	mi->post = post;
 }
@@ -384,7 +393,7 @@ void applyMouseInput(TransInfo *t, MouseInput *mi, const int mval[2], float outp
 	}
 }
 
-int handleMouseInput(TransInfo *t, MouseInput *mi, wmEvent *event)
+int handleMouseInput(TransInfo *t, MouseInput *mi, const wmEvent *event)
 {
 	int redraw = TREDRAW_NOTHING;
 
@@ -397,12 +406,13 @@ int handleMouseInput(TransInfo *t, MouseInput *mi, wmEvent *event)
 				 * store the mouse position where the normal movement ended */
 				copy_v2_v2_int(mi->precision_mval, event->mval);
 				mi->precision = 1;
+				redraw = TREDRAW_HARD;
 			}
-			else {
+			else if (event->val == KM_RELEASE) {
 				t->modifiers &= ~MOD_PRECISION;
 				mi->precision = 0;
+				redraw = TREDRAW_HARD;
 			}
-			redraw = TREDRAW_HARD;
 			break;
 	}
 

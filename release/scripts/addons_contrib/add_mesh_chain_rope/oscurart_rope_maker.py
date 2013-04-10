@@ -20,7 +20,7 @@ bl_info = {
     "name": "Oscurart Rope Maker",
     "author": "Oscurart",
     "version": (1,1),
-    "blender": (2, 5, 6),
+    "blender": (2, 56, 0),
     "api": 3800,
     "location": "Add > Curve > Oscurart Rope",
     "description": "Create ropes",

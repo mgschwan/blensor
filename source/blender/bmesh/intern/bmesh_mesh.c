@@ -245,10 +245,8 @@ void BM_mesh_free(BMesh *bm)
 	BM_mesh_data_free(bm);
 
 	if (bm->py_handle) {
-		/* keep this out of 'BM_mesh_data_free' because we wan't python
+		/* keep this out of 'BM_mesh_data_free' because we want python
 		 * to be able to clear the mesh and maintain access. */
-		extern void bpy_bm_generic_invalidate(void *self);
-
 		bpy_bm_generic_invalidate(bm->py_handle);
 		bm->py_handle = NULL;
 	}
@@ -261,7 +259,7 @@ void BM_mesh_free(BMesh *bm)
  *
  * Updates the normals of a mesh.
  */
-void BM_mesh_normals_update(BMesh *bm, const short skip_hidden)
+void BM_mesh_normals_update(BMesh *bm, const bool skip_hidden)
 {
 	BMVert *v;
 	BMFace *f;
@@ -362,8 +360,8 @@ static void UNUSED_FUNCTION(bm_mdisps_space_set)(Object *ob, BMesh *bm, int from
 {
 	/* switch multires data out of tangent space */
 	if (CustomData_has_layer(&bm->ldata, CD_MDISPS)) {
-		BMEditMesh *em = BMEdit_Create(bm, FALSE);
-		DerivedMesh *dm = CDDM_from_editbmesh(em, TRUE, FALSE);
+		BMEditMesh *em = BMEdit_Create(bm, false);
+		DerivedMesh *dm = CDDM_from_editbmesh(em, true, false);
 		MDisps *mdisps;
 		BMFace *f;
 		BMIter iter;
@@ -455,15 +453,12 @@ void bmesh_edit_end(BMesh *bm, int UNUSED(flag))
 #endif
 
 	/* compute normals, clear temp flags and flush selections */
-	BM_mesh_normals_update(bm, TRUE);
+	BM_mesh_normals_update(bm, true);
 	BM_mesh_select_mode_flush(bm);
 }
 
 void BM_mesh_elem_index_ensure(BMesh *bm, const char hflag)
 {
-	BMIter iter;
-	BMElem *ele;
-
 #ifdef DEBUG
 	BM_ELEM_INDEX_VALIDATE(bm, "Should Never Fail!", __func__);
 #endif
@@ -474,6 +469,9 @@ void BM_mesh_elem_index_ensure(BMesh *bm, const char hflag)
 		{
 			if (hflag & BM_VERT) {
 				if (bm->elem_index_dirty & BM_VERT) {
+					BMIter iter;
+					BMElem *ele;
+
 					int index;
 					BM_ITER_MESH_INDEX (ele, &iter, bm, BM_VERTS_OF_MESH, index) {
 						BM_elem_index_set(ele, index); /* set_ok */
@@ -490,6 +488,9 @@ void BM_mesh_elem_index_ensure(BMesh *bm, const char hflag)
 		{
 			if (hflag & BM_EDGE) {
 				if (bm->elem_index_dirty & BM_EDGE) {
+					BMIter iter;
+					BMElem *ele;
+
 					int index;
 					BM_ITER_MESH_INDEX (ele, &iter, bm, BM_EDGES_OF_MESH, index) {
 						BM_elem_index_set(ele, index); /* set_ok */
@@ -506,6 +507,9 @@ void BM_mesh_elem_index_ensure(BMesh *bm, const char hflag)
 		{
 			if (hflag & BM_FACE) {
 				if (bm->elem_index_dirty & BM_FACE) {
+					BMIter iter;
+					BMElem *ele;
+
 					int index;
 					BM_ITER_MESH_INDEX (ele, &iter, bm, BM_FACES_OF_MESH, index) {
 						BM_elem_index_set(ele, index); /* set_ok */
@@ -547,12 +551,12 @@ void BM_mesh_elem_index_validate(BMesh *bm, const char *location, const char *fu
 	BMIter iter;
 	BMElem *ele;
 	int i;
-	int is_any_error = 0;
+	bool is_any_error = 0;
 
 	for (i = 0; i < 3; i++) {
-		const int is_dirty = (flag_types[i] & bm->elem_index_dirty);
+		const bool is_dirty = (flag_types[i] & bm->elem_index_dirty);
 		int index = 0;
-		int is_error = FALSE;
+		bool is_error = false;
 		int err_val = 0;
 		int err_idx = 0;
 
@@ -561,7 +565,7 @@ void BM_mesh_elem_index_validate(BMesh *bm, const char *location, const char *fu
 				if (BM_elem_index_get(ele) != index) {
 					err_val = BM_elem_index_get(ele);
 					err_idx = index;
-					is_error = TRUE;
+					is_error = true;
 				}
 			}
 
@@ -569,13 +573,13 @@ void BM_mesh_elem_index_validate(BMesh *bm, const char *location, const char *fu
 			index++;
 		}
 
-		if ((is_error == TRUE) && (is_dirty == FALSE)) {
-			is_any_error = TRUE;
+		if ((is_error == true) && (is_dirty == false)) {
+			is_any_error = true;
 			fprintf(stderr,
 			        "Invalid Index: at %s, %s, %s[%d] invalid index %d, '%s', '%s'\n",
 			        location, func, type_names[i], err_idx, err_val, msg_a, msg_b);
 		}
-		else if ((is_error == FALSE) && (is_dirty == TRUE)) {
+		else if ((is_error == false) && (is_dirty == true)) {
 
 #if 0       /* mostly annoying */
 
@@ -752,7 +756,7 @@ void BM_mesh_remap(BMesh *bm, int *vert_idx, int *edge_idx, int *face_idx)
 		BM_ITER_MESH (ed, &iter, bm, BM_EDGES_OF_MESH) {
 			if (vptr_map) {
 /*				printf("Edge v1: %p -> %p\n", ed->v1, BLI_ghash_lookup(vptr_map, (const void *)ed->v1));*/
-/*				printf("Edge v2: %p -> %p\n", ed->v2, BLI_ghash_lookup(vptr_map, (const void* )ed->v2));*/
+/*				printf("Edge v2: %p -> %p\n", ed->v2, BLI_ghash_lookup(vptr_map, (const void *)ed->v2));*/
 				ed->v1 = BLI_ghash_lookup(vptr_map, (const void *)ed->v1);
 				ed->v2 = BLI_ghash_lookup(vptr_map, (const void *)ed->v2);
 			}

@@ -69,8 +69,13 @@
 #include <stdio.h> /* for fprintf only */
 #include <cstdlib> /* for exit */
 
-static GHOST_TKey
-convertXKey(KeySym key);
+/* for debugging - so we can breakpoint X11 errors */
+// #define USE_X11_ERROR_HANDLERS
+
+/* see [#34039] Fix Alt key glitch on Unity desktop */
+#define USE_UNITY_WORKAROUND
+
+static GHOST_TKey convertXKey(KeySym key);
 
 /* these are for copy and select copy */
 static char *txt_cut_buffer = NULL;
@@ -91,6 +96,11 @@ GHOST_SystemX11(
 		abort(); /* was return before, but this would just mean it will crash later */
 	}
 
+#ifdef USE_X11_ERROR_HANDLERS
+	(void) XSetErrorHandler(GHOST_X11_ApplicationErrorHandler);
+	(void) XSetIOErrorHandler(GHOST_X11_ApplicationIOErrorHandler);
+#endif
+
 #if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)
 	/* note -- don't open connection to XIM server here, because the locale
 	 * has to be set before opening the connection but setlocale() has not
@@ -99,32 +109,37 @@ GHOST_SystemX11(
 	m_xim = NULL;
 #endif
 
-	m_delete_window_atom 
-	    = XInternAtom(m_display, "WM_DELETE_WINDOW", True);
+#define GHOST_INTERN_ATOM_IF_EXISTS(atom) { m_atom.atom = XInternAtom(m_display, #atom , True);  } (void)0
+#define GHOST_INTERN_ATOM(atom)           { m_atom.atom = XInternAtom(m_display, #atom , False); } (void)0
 
-	m_wm_protocols = XInternAtom(m_display, "WM_PROTOCOLS", False);
-	m_wm_take_focus = XInternAtom(m_display, "WM_TAKE_FOCUS", False);
-	m_wm_state = XInternAtom(m_display, "WM_STATE", False);
-	m_wm_change_state = XInternAtom(m_display, "WM_CHANGE_STATE", False);
-	m_net_state = XInternAtom(m_display, "_NET_WM_STATE", False);
-	m_net_max_horz = XInternAtom(m_display,
-	                             "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-	m_net_max_vert = XInternAtom(m_display,
-	                             "_NET_WM_STATE_MAXIMIZED_VERT", False);
-	m_net_fullscreen = XInternAtom(m_display,
-	                               "_NET_WM_STATE_FULLSCREEN", False);
-	m_motif = XInternAtom(m_display, "_MOTIF_WM_HINTS", False);
-	m_targets = XInternAtom(m_display, "TARGETS", False);
-	m_string = XInternAtom(m_display, "STRING", False);
-	m_compound_text = XInternAtom(m_display, "COMPOUND_TEXT", False);
-	m_text = XInternAtom(m_display, "TEXT", False);
-	m_clipboard = XInternAtom(m_display, "CLIPBOARD", False);
-	m_primary = XInternAtom(m_display, "PRIMARY", False);
-	m_xclip_out = XInternAtom(m_display, "XCLIP_OUT", False);
-	m_incr = XInternAtom(m_display, "INCR", False);
-	m_utf8_string = XInternAtom(m_display, "UTF8_STRING", False);
+	GHOST_INTERN_ATOM_IF_EXISTS(WM_DELETE_WINDOW);
+	GHOST_INTERN_ATOM(WM_PROTOCOLS);
+	GHOST_INTERN_ATOM(WM_TAKE_FOCUS);
+	GHOST_INTERN_ATOM(WM_STATE);
+	GHOST_INTERN_ATOM(WM_CHANGE_STATE);
+	GHOST_INTERN_ATOM(_NET_WM_STATE);
+	GHOST_INTERN_ATOM(_NET_WM_STATE_MAXIMIZED_HORZ);
+	GHOST_INTERN_ATOM(_NET_WM_STATE_MAXIMIZED_VERT);
+
+	GHOST_INTERN_ATOM(_NET_WM_STATE_FULLSCREEN);
+	GHOST_INTERN_ATOM(_MOTIF_WM_HINTS);
+	GHOST_INTERN_ATOM(TARGETS);
+	GHOST_INTERN_ATOM(STRING);
+	GHOST_INTERN_ATOM(COMPOUND_TEXT);
+	GHOST_INTERN_ATOM(TEXT);
+	GHOST_INTERN_ATOM(CLIPBOARD);
+	GHOST_INTERN_ATOM(PRIMARY);
+	GHOST_INTERN_ATOM(XCLIP_OUT);
+	GHOST_INTERN_ATOM(INCR);
+	GHOST_INTERN_ATOM(UTF8_STRING);
+#ifdef WITH_X11_XINPUT
+	m_atom.TABLET = XInternAtom(m_display, XI_TABLET, False);
+#endif
+
+#undef GHOST_INTERN_ATOM_IF_EXISTS
+#undef GHOST_INTERN_ATOM
+
 	m_last_warp = 0;
-
 
 	/* compute the initial time */
 	timeval tv;
@@ -132,7 +147,7 @@ GHOST_SystemX11(
 		GHOST_ASSERT(false, "Could not instantiate timer!");
 	}
 	
-	/* Taking care not to overflow the tv.tv_sec*1000 */
+	/* Taking care not to overflow the tv.tv_sec * 1000 */
 	m_start_time = GHOST_TUns64(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
 	
 	
@@ -146,6 +161,12 @@ GHOST_SystemX11(
 		XkbSetDetectableAutoRepeat(m_display, true, NULL);
 	}
 	
+#ifdef WITH_X11_XINPUT
+	/* initialize incase X11 fails to load */
+	memset(&m_xtablet, 0, sizeof(m_xtablet));
+
+	initXInputDevices();
+#endif
 }
 
 GHOST_SystemX11::
@@ -156,6 +177,15 @@ GHOST_SystemX11::
 		XCloseIM(m_xim);
 	}
 #endif
+
+#ifdef WITH_X11_XINPUT
+	/* close tablet devices */
+	if (m_xtablet.StylusDevice)
+		XCloseDevice(m_display, m_xtablet.StylusDevice);
+	
+	if (m_xtablet.EraserDevice)
+		XCloseDevice(m_display, m_xtablet.EraserDevice);
+#endif /* WITH_X11_XINPUT */
 
 	XCloseDisplay(m_display);
 }
@@ -190,7 +220,7 @@ getMilliSeconds() const
 		GHOST_ASSERT(false, "Could not compute time!");
 	}
 
-	/* Taking care not to overflow the tv.tv_sec*1000 */
+	/* Taking care not to overflow the tv.tv_sec * 1000 */
 	return GHOST_TUns64(tv.tv_sec) * 1000 + tv.tv_usec / 1000 - m_start_time;
 }
 	
@@ -212,6 +242,25 @@ getMainDisplayDimensions(
 		GHOST_TUns32& height) const
 {
 	if (m_display) {
+		/* note, for this to work as documented,
+		 * we would need to use Xinerama check r54370 for code that did thia,
+		 * we've since removed since its not worth the extra dep - campbell */
+		getAllDisplayDimensions(width, height);
+	}
+}
+
+
+/**
+ * Returns the dimensions of the main display on this system.
+ * \return The dimension of the main display.
+ */
+void
+GHOST_SystemX11::
+getAllDisplayDimensions(
+		GHOST_TUns32& width,
+		GHOST_TUns32& height) const
+{
+	if (m_display) {
 		width  = DisplayWidth(m_display, DefaultScreen(m_display));
 		height = DisplayHeight(m_display, DefaultScreen(m_display));
 	}
@@ -229,6 +278,8 @@ getMainDisplayDimensions(
  * \param	state	The state of the window when opened.
  * \param	type	The type of drawing context installed in this window.
  * \param	stereoVisual	Stereo visual for quad buffered stereo.
+ * \param	exclusive	Use to show the window ontop and ignore others
+ *						(used fullscreen).
  * \param	numOfAASamples	Number of samples used for AA (zero if no AA)
  * \param	parentWindow    Parent (embedder) window
  * \return	The new window (or 0 if creation failed).
@@ -243,7 +294,8 @@ createWindow(
 		GHOST_TUns32 height,
 		GHOST_TWindowState state,
 		GHOST_TDrawingContextType type,
-		bool stereoVisual,
+		const bool stereoVisual,
+		const bool exclusive,
 		const GHOST_TUns16 numOfAASamples,
 		const GHOST_TEmbedderWindowID parentWindow)
 {
@@ -256,7 +308,9 @@ createWindow(
 
 	window = new GHOST_WindowX11(this, m_display, title,
 	                             left, top, width, height,
-	                             state, parentWindow, type, stereoVisual, numOfAASamples);
+	                             state, parentWindow, type,
+	                             stereoVisual, exclusive,
+	                             numOfAASamples);
 
 	if (window) {
 		/* Both are now handle in GHOST_WindowX11.cpp
@@ -474,6 +528,54 @@ processEvents(
 
 			processEvent(&xevent);
 			anyProcessed = true;
+
+
+#ifdef USE_UNITY_WORKAROUND
+			/* note: processEvent() can't include this code because
+			 * KeymapNotify event have no valid window information. */
+
+			/* the X server generates KeymapNotify event immediately after
+			 * every EnterNotify and FocusIn event.  we handle this event
+			 * to correct modifier states. */
+			if (xevent.type == FocusIn) {
+				/* use previous event's window, because KeymapNotify event
+				 * has no window information. */
+				GHOST_WindowX11 *window = findGhostWindow(xevent.xany.window);
+				if (window && XPending(m_display) >= 2) {
+					XNextEvent(m_display, &xevent);
+
+					if (xevent.type == KeymapNotify) {
+						XEvent xev_next;
+
+						/* check if KeyPress or KeyRelease event was generated
+						 * in order to confirm the window is active. */
+						XPeekEvent(m_display, &xev_next);
+
+						if (xev_next.type == KeyPress || xev_next.type == KeyRelease) {
+							/* XK_Hyper_L/R currently unused */
+							const static KeySym modifiers[8] = {XK_Shift_L, XK_Shift_R,
+							                                    XK_Control_L, XK_Control_R,
+							                                    XK_Alt_L, XK_Alt_R,
+							                                    XK_Super_L, XK_Super_R};
+
+							for (int i = 0; i < (sizeof(modifiers) / sizeof(*modifiers)); i++) {
+								KeyCode kc = XKeysymToKeycode(m_display, modifiers[i]);
+								if (((xevent.xkeymap.key_vector[kc >> 3] >> (kc & 7)) & 1) != 0) {
+									pushEvent(new GHOST_EventKey(
+									              getMilliSeconds(),
+									              GHOST_kEventKeyDown,
+									              window,
+									              convertXKey(modifiers[i]),
+									              '\0',
+									              NULL));
+								}
+							}
+						}
+					}
+				}
+			}
+#endif  /* USE_UNITY_WORKAROUND */
+
 		}
 		
 		if (generateWindowExposeEvents()) {
@@ -494,12 +596,52 @@ processEvents(
 
 #ifdef WITH_X11_XINPUT
 /* set currently using tablet mode (stylus or eraser) depending on device ID */
-static void setTabletMode(GHOST_WindowX11 *window, XID deviceid)
+static void setTabletMode(GHOST_SystemX11 *system, GHOST_WindowX11 *window, XID deviceid)
 {
-	if (deviceid == window->GetXTablet().StylusID)
-		window->GetXTablet().CommonData.Active = GHOST_kTabletModeStylus;
-	else if (deviceid == window->GetXTablet().EraserID)
-		window->GetXTablet().CommonData.Active = GHOST_kTabletModeEraser;
+	if (deviceid == system->GetXTablet().StylusID)
+		window->GetTabletData()->Active = GHOST_kTabletModeStylus;
+	else if (deviceid == system->GetXTablet().EraserID)
+		window->GetTabletData()->Active = GHOST_kTabletModeEraser;
+}
+#endif /* WITH_X11_XINPUT */
+
+#ifdef WITH_X11_XINPUT
+static bool checkTabletProximity(Display *display, XDevice *device)
+{
+	/* we could have true/false/not-found return value, but for now false is OK */
+
+	/* see: state.c from xinput, to get more data out of the device */
+	XDeviceState *state;
+
+	if (device == NULL) {
+		return false;
+	}
+
+	state = XQueryDeviceState(display, device);
+
+	if (state) {
+		XInputClass *cls = state->data;
+		// printf("%d class%s :\n", state->num_classes,
+		//       (state->num_classes > 1) ? "es" : "");
+		for (int loop = 0; loop < state->num_classes; loop++) {
+			switch (cls->c_class) {
+				case ValuatorClass:
+					XValuatorState *val_state = (XValuatorState *)cls;
+					// printf("ValuatorClass Mode=%s Proximity=%s\n",
+					//        val_state->mode & 1 ? "Absolute" : "Relative",
+					//        val_state->mode & 2 ? "Out" : "In");
+
+					if ((val_state->mode & 2) == 0) {
+						XFreeDeviceState(state);
+						return true;
+					}
+					break;
+			}
+			cls = (XInputClass *) ((char *)cls + cls->length);
+		}
+		XFreeDeviceState(state);
+	}
+	return false;
 }
 #endif /* WITH_X11_XINPUT */
 
@@ -512,7 +654,23 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 	if (!window) {
 		return;
 	}
-	
+
+#ifdef WITH_X11_XINPUT
+	/* Proximity-Out Events are not reliable, if the tablet is active - check on each event
+	 * this adds a little overhead but only while the tablet is in use.
+	 * in the futire we could have a ghost call window->CheckTabletProximity()
+	 * but for now enough parts of the code are checking 'Active'
+	 * - campbell */
+	if (window->GetTabletData()->Active != GHOST_kTabletModeNone) {
+		if (checkTabletProximity(xe->xany.display, m_xtablet.StylusDevice) == false &&
+		    checkTabletProximity(xe->xany.display, m_xtablet.EraserDevice) == false)
+		{
+			// printf("proximity disable\n");
+			window->GetTabletData()->Active = GHOST_kTabletModeNone;
+		}
+	}
+#endif /* WITH_X11_XINPUT */
+
 	switch (xe->type) {
 		case Expose:
 		{
@@ -537,7 +695,7 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 			XMotionEvent &xme = xe->xmotion;
 
 #ifdef WITH_X11_XINPUT
-			bool is_tablet = window->GetXTablet().CommonData.Active != GHOST_kTabletModeNone;
+			bool is_tablet = window->GetTabletData()->Active != GHOST_kTabletModeNone;
 #else
 			bool is_tablet = false;
 #endif
@@ -811,7 +969,7 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 		{
 			XClientMessageEvent & xcme = xe->xclient;
 
-			if (((Atom)xcme.data.l[0]) == m_delete_window_atom) {
+			if (((Atom)xcme.data.l[0]) == m_atom.WM_DELETE_WINDOW) {
 				g_event = new 
 				          GHOST_Event(
 				    getMilliSeconds(),
@@ -819,7 +977,7 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 				    window
 				    );
 			}
-			else if (((Atom)xcme.data.l[0]) == m_wm_take_focus) {
+			else if (((Atom)xcme.data.l[0]) == m_atom.WM_TAKE_FOCUS) {
 				XWindowAttributes attr;
 				Window fwin;
 				int revert_to;
@@ -983,31 +1141,31 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 		
 		default: {
 #ifdef WITH_X11_XINPUT
-			if (xe->type == window->GetXTablet().MotionEvent) {
+			if (xe->type == m_xtablet.MotionEvent) {
 				XDeviceMotionEvent *data = (XDeviceMotionEvent *)xe;
 
 				/* stroke might begin without leading ProxyIn event,
 				 * this happens when window is opened when stylus is already hovering
 				 * around tablet surface */
-				setTabletMode(window, data->deviceid);
+				setTabletMode(this, window, data->deviceid);
 
-				window->GetXTablet().CommonData.Pressure =
-				        data->axis_data[2] / ((float)window->GetXTablet().PressureLevels);
+				window->GetTabletData()->Pressure =
+				        data->axis_data[2] / ((float)m_xtablet.PressureLevels);
 
 				/* the (short) cast and the &0xffff is bizarre and unexplained anywhere,
 				 * but I got garbage data without it. Found it in the xidump.c source --matt */
-				window->GetXTablet().CommonData.Xtilt =
-				        (short)(data->axis_data[3] & 0xffff) / ((float)window->GetXTablet().XtiltLevels);
-				window->GetXTablet().CommonData.Ytilt =
-				        (short)(data->axis_data[4] & 0xffff) / ((float)window->GetXTablet().YtiltLevels);
+				window->GetTabletData()->Xtilt =
+				        (short)(data->axis_data[3] & 0xffff) / ((float)m_xtablet.XtiltLevels);
+				window->GetTabletData()->Ytilt =
+				        (short)(data->axis_data[4] & 0xffff) / ((float)m_xtablet.YtiltLevels);
 			}
-			else if (xe->type == window->GetXTablet().ProxInEvent) {
+			else if (xe->type == m_xtablet.ProxInEvent) {
 				XProximityNotifyEvent *data = (XProximityNotifyEvent *)xe;
 
-				setTabletMode(window, data->deviceid);
+				setTabletMode(this, window, data->deviceid);
 			}
-			else if (xe->type == window->GetXTablet().ProxOutEvent) {
-				window->GetXTablet().CommonData.Active = GHOST_kTabletModeNone;
+			else if (xe->type == m_xtablet.ProxOutEvent) {
+				window->GetTabletData()->Active = GHOST_kTabletModeNone;
 			}
 #endif // WITH_X11_XINPUT
 			break;
@@ -1372,7 +1530,7 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 			}
 
 			/* Send a selection request */
-			XConvertSelection(m_display, sel, target, m_xclip_out, win, CurrentTime);
+			XConvertSelection(m_display, sel, target, m_atom.XCLIP_OUT, win, CurrentTime);
 			*context = XCLIB_XCOUT_SENTCONVSEL;
 			return;
 
@@ -1380,28 +1538,28 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 			if (evt.type != SelectionNotify)
 				return;
 
-			if (target == m_utf8_string && evt.xselection.property == None) {
+			if (target == m_atom.UTF8_STRING && evt.xselection.property == None) {
 				*context = XCLIB_XCOUT_FALLBACK_UTF8;
 				return;
 			}
-			else if (target == m_compound_text && evt.xselection.property == None) {
+			else if (target == m_atom.COMPOUND_TEXT && evt.xselection.property == None) {
 				*context = XCLIB_XCOUT_FALLBACK_COMP;
 				return;
 			}
-			else if (target == m_text && evt.xselection.property == None) {
+			else if (target == m_atom.TEXT && evt.xselection.property == None) {
 				*context = XCLIB_XCOUT_FALLBACK_TEXT;
 				return;
 			}
 
 			/* find the size and format of the data in property */
-			XGetWindowProperty(m_display, win, m_xclip_out, 0, 0, False,
+			XGetWindowProperty(m_display, win, m_atom.XCLIP_OUT, 0, 0, False,
 			                   AnyPropertyType, &pty_type, &pty_format,
 			                   &pty_items, &pty_size, &buffer);
 			XFree(buffer);
 
-			if (pty_type == m_incr) {
+			if (pty_type == m_atom.INCR) {
 				/* start INCR mechanism by deleting property */
-				XDeleteProperty(m_display, win, m_xclip_out);
+				XDeleteProperty(m_display, win, m_atom.XCLIP_OUT);
 				XFlush(m_display);
 				*context = XCLIB_XCOUT_INCR;
 				return;
@@ -1416,12 +1574,12 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 			}
 
 			// not using INCR mechanism, just read the property
-			XGetWindowProperty(m_display, win, m_xclip_out, 0, (long) pty_size,
+			XGetWindowProperty(m_display, win, m_atom.XCLIP_OUT, 0, (long) pty_size,
 			                   False, AnyPropertyType, &pty_type,
 			                   &pty_format, &pty_items, &pty_size, &buffer);
 
 			/* finished with property, delete it */
-			XDeleteProperty(m_display, win, m_xclip_out);
+			XDeleteProperty(m_display, win, m_atom.XCLIP_OUT);
 
 			/* copy the buffer to the pointer for returned data */
 			ltxt = (unsigned char *) malloc(pty_items);
@@ -1454,7 +1612,7 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 				return;
 
 			/* check size and format of the property */
-			XGetWindowProperty(m_display, win, m_xclip_out, 0, 0, False,
+			XGetWindowProperty(m_display, win, m_atom.XCLIP_OUT, 0, 0, False,
 			                   AnyPropertyType, &pty_type, &pty_format,
 			                   &pty_items, &pty_size, &buffer);
 
@@ -1463,14 +1621,14 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 				 * to tell the other X client that we have read
 				 * it and to send the next property */
 				XFree(buffer);
-				XDeleteProperty(m_display, win, m_xclip_out);
+				XDeleteProperty(m_display, win, m_atom.XCLIP_OUT);
 				return;
 			}
 
 			if (pty_size == 0) {
 				/* no more data, exit from loop */
 				XFree(buffer);
-				XDeleteProperty(m_display, win, m_xclip_out);
+				XDeleteProperty(m_display, win, m_atom.XCLIP_OUT);
 				*context = XCLIB_XCOUT_NONE;
 
 				/* this means that an INCR transfer is now
@@ -1482,7 +1640,7 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 
 			/* if we have come this far, the property contains
 			 * text, we know the size. */
-			XGetWindowProperty(m_display, win, m_xclip_out, 0, (long) pty_size,
+			XGetWindowProperty(m_display, win, m_atom.XCLIP_OUT, 0, (long) pty_size,
 			                   False, AnyPropertyType, &pty_type, &pty_format,
 			                   &pty_items, &pty_size, &buffer);
 
@@ -1503,7 +1661,7 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 			XFree(buffer);
 
 			/* delete property to get the next item */
-			XDeleteProperty(m_display, win, m_xclip_out);
+			XDeleteProperty(m_display, win, m_atom.XCLIP_OUT);
 			XFlush(m_display);
 			return;
 	}
@@ -1513,7 +1671,7 @@ void GHOST_SystemX11::getClipboard_xcout(XEvent evt,
 GHOST_TUns8 *GHOST_SystemX11::getClipboard(bool selection) const
 {
 	Atom sseln;
-	Atom target = m_utf8_string;
+	Atom target = m_atom.UTF8_STRING;
 	Window owner;
 
 	/* from xclip.c doOut() v0.11 */
@@ -1523,9 +1681,9 @@ GHOST_TUns8 *GHOST_SystemX11::getClipboard(bool selection) const
 	unsigned int context = XCLIB_XCOUT_NONE;
 
 	if (selection == True)
-		sseln = m_primary;
+		sseln = m_atom.PRIMARY;
 	else
-		sseln = m_clipboard;
+		sseln = m_atom.CLIPBOARD;
 
 	vector<GHOST_IWindow *> & win_vec = m_windowManager->getWindows();
 	vector<GHOST_IWindow *>::iterator win_it = win_vec.begin();
@@ -1535,7 +1693,7 @@ GHOST_TUns8 *GHOST_SystemX11::getClipboard(bool selection) const
 	/* check if we are the owner. */
 	owner = XGetSelectionOwner(m_display, sseln);
 	if (owner == win) {
-		if (sseln == m_clipboard) {
+		if (sseln == m_atom.CLIPBOARD) {
 			sel_buf = (unsigned char *)malloc(strlen(txt_cut_buffer) + 1);
 			strcpy((char *)sel_buf, txt_cut_buffer);
 			return sel_buf;
@@ -1560,19 +1718,19 @@ GHOST_TUns8 *GHOST_SystemX11::getClipboard(bool selection) const
 		/* fallback is needed. set XA_STRING to target and restart the loop. */
 		if (context == XCLIB_XCOUT_FALLBACK) {
 			context = XCLIB_XCOUT_NONE;
-			target = m_string;
+			target = m_atom.STRING;
 			continue;
 		}
 		else if (context == XCLIB_XCOUT_FALLBACK_UTF8) {
 			/* utf8 fail, move to compouned text. */
 			context = XCLIB_XCOUT_NONE;
-			target = m_compound_text;
+			target = m_atom.COMPOUND_TEXT;
 			continue;
 		}
 		else if (context == XCLIB_XCOUT_FALLBACK_COMP) {
 			/* compouned text faile, move to text. */
 			context = XCLIB_XCOUT_NONE;
-			target = m_text;
+			target = m_atom.TEXT;
 			continue;
 		}
 
@@ -1589,7 +1747,7 @@ GHOST_TUns8 *GHOST_SystemX11::getClipboard(bool selection) const
 		memcpy((char *)tmp_data, (char *)sel_buf, sel_len);
 		tmp_data[sel_len] = '\0';
 		
-		if (sseln == m_string)
+		if (sseln == m_atom.STRING)
 			XFree(sel_buf);
 		else
 			free(sel_buf);
@@ -1610,8 +1768,8 @@ void GHOST_SystemX11::putClipboard(GHOST_TInt8 *buffer, bool selection) const
 
 	if (buffer) {
 		if (selection == False) {
-			XSetSelectionOwner(m_display, m_clipboard, m_window, CurrentTime);
-			owner = XGetSelectionOwner(m_display, m_clipboard);
+			XSetSelectionOwner(m_display, m_atom.CLIPBOARD, m_window, CurrentTime);
+			owner = XGetSelectionOwner(m_display, m_atom.CLIPBOARD);
 			if (txt_cut_buffer)
 				free((void *)txt_cut_buffer);
 
@@ -1619,8 +1777,8 @@ void GHOST_SystemX11::putClipboard(GHOST_TInt8 *buffer, bool selection) const
 			strcpy(txt_cut_buffer, buffer);
 		}
 		else {
-			XSetSelectionOwner(m_display, m_primary, m_window, CurrentTime);
-			owner = XGetSelectionOwner(m_display, m_primary);
+			XSetSelectionOwner(m_display, m_atom.PRIMARY, m_window, CurrentTime);
+			owner = XGetSelectionOwner(m_display, m_atom.PRIMARY);
 			if (txt_select_buffer)
 				free((void *)txt_select_buffer);
 
@@ -1648,3 +1806,208 @@ GHOST_TSuccess GHOST_SystemX11::pushDragDropEvent(GHOST_TEventType eventType,
 	                         );
 }
 #endif
+
+#ifdef WITH_X11_XINPUT
+/* 
+ * Dummy function to get around IO Handler exiting if device invalid
+ * Basically it will not crash blender now if you have a X device that
+ * is configured but not plugged in.
+ */
+int GHOST_X11_ApplicationErrorHandler(Display *display, XErrorEvent *theEvent)
+{
+	fprintf(stderr, "Ignoring Xlib error: error code %d request code %d\n",
+	        theEvent->error_code, theEvent->request_code);
+
+	/* No exit! - but keep lint happy */
+	return 0;
+}
+
+int GHOST_X11_ApplicationIOErrorHandler(Display *display)
+{
+	fprintf(stderr, "Ignoring Xlib error: error IO\n");
+
+	/* No exit! - but keep lint happy */
+	return 0;
+}
+
+/* These C functions are copied from Wine 1.1.13's wintab.c */
+#define BOOL int
+#define TRUE 1
+#define FALSE 0
+
+static bool match_token(const char *haystack, const char *needle)
+{
+	const char *p, *q;
+	for (p = haystack; *p; )
+	{
+		while (*p && isspace(*p))
+			p++;
+		if (!*p)
+			break;
+
+		for (q = needle; *q && *p && tolower(*p) == tolower(*q); q++)
+			p++;
+		if (!*q && (isspace(*p) || !*p))
+			return TRUE;
+
+		while (*p && !isspace(*p))
+			p++;
+	}
+	return FALSE;
+}
+
+
+/* Determining if an X device is a Tablet style device is an imperfect science.
+ * We rely on common conventions around device names as well as the type reported
+ * by Wacom tablets.  This code will likely need to be expanded for alternate tablet types
+ *
+ * Wintab refers to any device that interacts with the tablet as a cursor,
+ * (stylus, eraser, tablet mouse, airbrush, etc)
+ * this is not to be confused with wacom x11 configuration "cursor" device.
+ * Wacoms x11 config "cursor" refers to its device slot (which we mirror with
+ * our gSysCursors) for puck like devices (tablet mice essentially).
+ */
+#if 0 // unused
+static BOOL is_tablet_cursor(const char *name, const char *type)
+{
+	int i;
+	static const char *tablet_cursor_whitelist[] = {
+		"wacom",
+		"wizardpen",
+		"acecad",
+		"tablet",
+		"cursor",
+		"stylus",
+		"eraser",
+		"pad",
+		NULL
+	};
+
+	for (i = 0; tablet_cursor_whitelist[i] != NULL; i++) {
+		if (name && match_token(name, tablet_cursor_whitelist[i]))
+			return TRUE;
+		if (type && match_token(type, tablet_cursor_whitelist[i]))
+			return TRUE;
+	}
+	return FALSE;
+}
+#endif
+static BOOL is_stylus(const char *name, const char *type)
+{
+	int i;
+	static const char *tablet_stylus_whitelist[] = {
+		"stylus",
+		"wizardpen",
+		"acecad",
+		NULL
+	};
+
+	for (i = 0; tablet_stylus_whitelist[i] != NULL; i++) {
+		if (name && match_token(name, tablet_stylus_whitelist[i]))
+			return TRUE;
+		if (type && match_token(type, tablet_stylus_whitelist[i]))
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+static BOOL is_eraser(const char *name, const char *type)
+{
+	if (name && match_token(name, "eraser"))
+		return TRUE;
+	if (type && match_token(type, "eraser"))
+		return TRUE;
+	return FALSE;
+}
+#undef BOOL
+#undef TRUE
+#undef FALSE
+/* end code copied from wine */
+
+void GHOST_SystemX11::initXInputDevices()
+{
+	static XErrorHandler   old_handler = (XErrorHandler) 0;
+	static XIOErrorHandler old_handler_io = (XIOErrorHandler) 0;
+
+	XExtensionVersion *version = XGetExtensionVersion(m_display, INAME);
+
+	if (version && (version != (XExtensionVersion *)NoSuchExtension)) {
+		if (version->present) {
+			int device_count;
+			XDeviceInfo *device_info = XListInputDevices(m_display, &device_count);
+			m_xtablet.StylusDevice = NULL;
+			m_xtablet.EraserDevice = NULL;
+
+			/* Install our error handler to override Xlib's termination behavior */
+			old_handler = XSetErrorHandler(GHOST_X11_ApplicationErrorHandler);
+			old_handler_io = XSetIOErrorHandler(GHOST_X11_ApplicationIOErrorHandler);
+
+			for (int i = 0; i < device_count; ++i) {
+				char *device_type = device_info[i].type ? XGetAtomName(m_display, device_info[i].type) : NULL;
+				
+//				printf("Tablet type:'%s', name:'%s', index:%d\n", device_type, device_info[i].name, i);
+
+
+				if ((m_xtablet.StylusDevice == NULL) &&
+				    (is_stylus(device_info[i].name, device_type) || (device_info[i].type == m_atom.TABLET)))
+				{
+//					printf("\tfound stylus\n");
+					m_xtablet.StylusID = device_info[i].id;
+					m_xtablet.StylusDevice = XOpenDevice(m_display, m_xtablet.StylusID);
+
+					if (m_xtablet.StylusDevice != NULL) {
+						/* Find how many pressure levels tablet has */
+						XAnyClassPtr ici = device_info[i].inputclassinfo;
+						for (int j = 0; j < m_xtablet.StylusDevice->num_classes; ++j) {
+							if (ici->c_class == ValuatorClass) {
+//								printf("\t\tfound ValuatorClass\n");
+								XValuatorInfo *xvi = (XValuatorInfo *)ici;
+								m_xtablet.PressureLevels = xvi->axes[2].max_value;
+
+								if (xvi->num_axes > 3) {
+									/* this is assuming that the tablet has the same tilt resolution in both
+									 * positive and negative directions. It would be rather weird if it didn't.. */
+									m_xtablet.XtiltLevels = xvi->axes[3].max_value;
+									m_xtablet.YtiltLevels = xvi->axes[4].max_value;
+								}
+								else {
+									m_xtablet.XtiltLevels = 0;
+									m_xtablet.YtiltLevels = 0;
+								}
+
+								break;
+							}
+						
+							ici = (XAnyClassPtr)(((char *)ici) + ici->length);
+						}
+					}
+					else {
+						m_xtablet.StylusID = 0;
+					}
+				}
+				else if ((m_xtablet.EraserDevice == NULL) &&
+				         (is_eraser(device_info[i].name, device_type)))
+				{
+//					printf("\tfound eraser\n");
+					m_xtablet.EraserID = device_info[i].id;
+					m_xtablet.EraserDevice = XOpenDevice(m_display, m_xtablet.EraserID);
+					if (m_xtablet.EraserDevice == NULL) m_xtablet.EraserID = 0;
+				}
+
+				if (device_type) {
+					XFree((void *)device_type);
+				}
+			}
+
+			/* Restore handler */
+			(void) XSetErrorHandler(old_handler);
+			(void) XSetIOErrorHandler(old_handler_io);
+
+			XFreeDeviceList(device_info);
+		}
+		XFree(version);
+	}
+}
+
+#endif /* WITH_X11_XINPUT */

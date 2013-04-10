@@ -58,7 +58,7 @@ extern "C"{
 	#include "BKE_DerivedMesh.h"
 }
 
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 #include "BulletSoftBody/btSoftBody.h"
 
 #include "CcdPhysicsEnvironment.h"
@@ -68,8 +68,8 @@ extern "C"{
 #include "KX_BulletPhysicsController.h"
 #include "btBulletDynamicsCommon.h"
 
-							#ifdef WIN32
-#if _MSC_VER >= 1310
+#ifdef WIN32
+#if defined(_MSC_VER) && (_MSC_VER >= 1310)
 //only use SIMD Hull code under Win32
 //#define TEST_HULL 1
 #ifdef TEST_HULL
@@ -574,4 +574,4 @@ bool KX_ReInstanceBulletShapeFromMesh(KX_GameObject *gameobj, KX_GameObject *fro
 	spc->ReplaceControllerShape(bm);
 	return true;
 }
-#endif // USE_BULLET
+#endif // WITH_BULLET

@@ -108,7 +108,7 @@ public:
 	bool destroy_if_possible() {
 		if (can_destroy()) {
 			delete data;
-			data = 0;
+			data = NULL;
 			unmanage();
 			return true;
 		}
@@ -161,6 +161,13 @@ public:
 		delete handle;
 	}
 
+	size_t get_memory_in_use() {
+		if (getDataSize)
+			return total_size();
+		else
+			return MEM_get_memory_in_use();
+	}
+
 	void enforce_limits() {
 		size_t max = MEM_CacheLimiter_get_maximum();
 		size_t mem_in_use, cur_size;
@@ -169,12 +176,7 @@ public:
 			return;
 		}
 
-		if (getDataSize) {
-			mem_in_use = total_size();
-		}
-		else {
-			mem_in_use = MEM_get_memory_in_use();
-		}
+		mem_in_use = get_memory_in_use();
 
 		if (mem_in_use <= max) {
 			return;

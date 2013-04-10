@@ -23,7 +23,7 @@ bl_info = {
     "name": "Extrude Along Curve",
     "author": "Andrew Hale (TrumanBlending)",
     "version": (0, 1),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "",
     "description": "Extrude a face along a Bezier Curve",
     "warning": "",

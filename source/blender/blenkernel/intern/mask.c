@@ -40,6 +40,8 @@
 #include "BLI_listbase.h"
 #include "BLI_math.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_mask_types.h"
 #include "DNA_node_types.h"
 #include "DNA_screen_types.h"
@@ -56,6 +58,8 @@
 #include "BKE_tracking.h"
 #include "BKE_movieclip.h"
 #include "BKE_image.h"
+
+#include "NOD_composite.h"
 
 static MaskSplinePoint *mask_spline_point_next(MaskSpline *spline, MaskSplinePoint *points_array, MaskSplinePoint *point)
 {
@@ -185,7 +189,8 @@ void BKE_mask_layer_remove(Mask *mask, MaskLayer *masklay)
 
 void BKE_mask_layer_unique_name(Mask *mask, MaskLayer *masklay)
 {
-	BLI_uniquename(&mask->masklayers, masklay, "MaskLayer", '.', offsetof(MaskLayer, name), sizeof(masklay->name));
+	BLI_uniquename(&mask->masklayers, masklay, DATA_("MaskLayer"), '.', offsetof(MaskLayer, name),
+	               sizeof(masklay->name));
 }
 
 MaskLayer *BKE_mask_layer_copy(MaskLayer *masklay)
@@ -698,18 +703,18 @@ void BKE_mask_point_select_set_handle(MaskSplinePoint *point, const short do_sel
 }
 
 /* only mask block itself */
-static Mask *mask_alloc(const char *name)
+static Mask *mask_alloc(Main *bmain, const char *name)
 {
 	Mask *mask;
 
-	mask = BKE_libblock_alloc(&G.main->mask, ID_MSK, name);
+	mask = BKE_libblock_alloc(&bmain->mask, ID_MSK, name);
 
 	mask->id.flag |= LIB_FAKEUSER;
 
 	return mask;
 }
 
-Mask *BKE_mask_new(const char *name)
+Mask *BKE_mask_new(Main *bmain, const char *name)
 {
 	Mask *mask;
 	char mask_name[MAX_ID_NAME - 2];
@@ -719,7 +724,7 @@ Mask *BKE_mask_new(const char *name)
 	else
 		strcpy(mask_name, "Mask");
 
-	mask = mask_alloc(mask_name);
+	mask = mask_alloc(bmain, mask_name);
 
 	/* arbitrary defaults */
 	mask->sfra = 1;
@@ -923,6 +928,8 @@ void BKE_mask_free(Main *bmain, Mask *mask)
 	SpaceLink *sl;
 	Scene *scene;
 
+	BKE_sequencer_clear_mask_in_clipboard(mask);
+
 	for (scr = bmain->screen.first; scr; scr = scr->id.next) {
 		for (area = scr->areabase.first; area; area = area->next) {
 			for (sl = area->spacedata.first; sl; sl = sl->next) {
@@ -964,10 +971,9 @@ void BKE_mask_free(Main *bmain, Mask *mask)
 		}
 	}
 
-	{
-		bNodeTreeType *treetype = ntreeGetType(NTREE_COMPOSIT);
-		treetype->foreach_nodetree(bmain, (void *)mask, &BKE_node_tree_unlink_id_cb);
-	}
+	FOREACH_NODETREE(bmain, ntree, id) {
+		BKE_node_tree_unlink_id((ID *)mask, ntree);
+	} FOREACH_NODETREE_END
 
 	/* free mask data */
 	BKE_mask_layer_free_list(&mask->masklayers);

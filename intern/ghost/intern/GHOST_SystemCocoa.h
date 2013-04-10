@@ -89,6 +89,11 @@ public:
 	 */
 	virtual void getMainDisplayDimensions(GHOST_TUns32& width, GHOST_TUns32& height) const;
 	
+	/** Returns the combine dimensions of all monitors.
+	 * \return The dimension of the workspace.
+	 */
+	virtual void getAllDisplayDimensions(GHOST_TUns32& width, GHOST_TUns32& height) const;
+
 	/**
 	 * Create a new window.
 	 * The new window is added to the list of windows managed.
@@ -114,6 +119,7 @@ public:
 	    GHOST_TWindowState state,
 	    GHOST_TDrawingContextType type,
 	    const bool stereoVisual = false,
+		const bool exclusive = false,
 	    const GHOST_TUns16 numOfAASamples = 0,
 	    const GHOST_TEmbedderWindowID parentWindow = 0
 	    );
@@ -296,8 +302,6 @@ protected:
 	/** Multitouch trackpad availability */
 	bool m_hasMultiTouchTrackpad;
 	
-	/** Multitouch gesture in progress, useful to distinguish trackpad from mouse scroll events */
-	bool m_isGestureInProgress;
 };
 
 #endif // __GHOST_SYSTEMCOCOA_H__

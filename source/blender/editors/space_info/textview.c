@@ -31,13 +31,18 @@
 #include <limits.h>
 #include <assert.h>
 
+#include "MEM_guardedalloc.h"
+
 #include "BLF_api.h"
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
+#include "BLI_string_utf8.h"
 
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
+
+#include "BKE_text.h"
 
 #include "ED_datafiles.h"
 
@@ -45,7 +50,8 @@
 
 static void console_font_begin(TextViewContext *sc)
 {
-	BLF_size(blf_mono_font, sc->lheight - 2, 72);
+	/* 0.875 is based on: 16 pixels lines get 14 pixel text */
+	BLF_size(blf_mono_font, 0.875 * sc->lheight, 72);
 }
 
 typedef struct ConsoleDrawContext {
@@ -61,57 +67,95 @@ typedef struct ConsoleDrawContext {
 	int draw;
 } ConsoleDrawContext;
 
-static void console_draw_sel(int sel[2], int xy[2], int str_len_draw, int cwidth, int lheight)
+BLI_INLINE void console_step_sel(ConsoleDrawContext *cdc, const int step)
+{
+	cdc->sel[0] += step;
+	cdc->sel[1] += step;
+}
+
+static void console_draw_sel(const char *str, const int sel[2], const int xy[2], const int str_len_draw,
+                             int cwidth, int lheight, const unsigned char bg_sel[4])
 {
 	if (sel[0] <= str_len_draw && sel[1] >= 0) {
-		int sta = max_ii(sel[0], 0);
-		int end = min_ii(sel[1], str_len_draw);
+		const int sta = txt_utf8_offset_to_column(str, max_ii(sel[0], 0));
+		const int end = txt_utf8_offset_to_column(str, min_ii(sel[1], str_len_draw));
 
-		glEnable(GL_POLYGON_STIPPLE);
-		glPolygonStipple(stipple_halftone);
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glColor4ub(255, 255, 255, 96);
+		glColor4ubv(bg_sel);
 
 		glRecti(xy[0] + (cwidth * sta), xy[1] - 2 + lheight, xy[0] + (cwidth * end), xy[1] - 2);
 
-		glDisable(GL_POLYGON_STIPPLE);
 		glDisable(GL_BLEND);
 	}
 }
 
+/* warning: allocated memory for 'offsets' must be freed by caller */
+static int console_wrap_offsets(const char *str, int len, int width, int *lines, int **offsets)
+{
+	int i, end;  /* column */
+	int j;       /* mem */
+
+	*lines = 1;
+
+	*offsets = MEM_callocN(sizeof(**offsets) * (len * BLI_UTF8_WIDTH_MAX / MAX2(1, width - (BLI_UTF8_WIDTH_MAX - 1)) + 1),
+	                       "console_wrap_offsets");
+	(*offsets)[0] = 0;
+
+	for (i = 0, end = width, j = 0; j < len && str[j]; j += BLI_str_utf8_size_safe(str + j)) {
+		int columns = BLI_str_utf8_char_width_safe(str + j);
+
+		if (i + columns > end) {
+			(*offsets)[*lines] = j;
+			(*lines)++;
+
+			end = i + width;
+		}
+		i += columns;
+	}
+	return j; /* return actual length */
+}
 
 /* return 0 if the last line is off the screen
  * should be able to use this for any string type */
 
-static int console_draw_string(ConsoleDrawContext *cdc, const char *str, int str_len, unsigned char *fg, unsigned char *bg)
+static int console_draw_string(ConsoleDrawContext *cdc, const char *str, int str_len,
+                               const unsigned char fg[3], const unsigned char bg[3], const unsigned char bg_sel[4])
 {
-#define STEP_SEL(value) cdc->sel[0] += (value); cdc->sel[1] += (value)
 	int rct_ofs = cdc->lheight / 4;
-	int tot_lines = (str_len / cdc->console_width) + 1; /* total number of lines for wrapping */
-	int y_next = (str_len > cdc->console_width) ? cdc->xy[1] + cdc->lheight * tot_lines : cdc->xy[1] + cdc->lheight;
+	int tot_lines;            /* total number of lines for wrapping */
+	int *offsets;             /* offsets of line beginnings for wrapping */
+	int y_next;
 	const int mono = blf_mono_font;
+
+	str_len = console_wrap_offsets(str, str_len, cdc->console_width, &tot_lines, &offsets);
+	y_next = cdc->xy[1] + cdc->lheight * tot_lines;
 
 	/* just advance the height */
 	if (cdc->draw == 0) {
-		if (cdc->pos_pick && (cdc->mval[1] != INT_MAX)) {
-			if (cdc->xy[1] <= cdc->mval[1]) {
-				if ((y_next >= cdc->mval[1])) {
-					int ofs = (int)floor(((float)cdc->mval[0] / (float)cdc->cwidth));
+		if (cdc->pos_pick && cdc->mval[1] != INT_MAX && cdc->xy[1] <= cdc->mval[1]) {
+			if (y_next >= cdc->mval[1]) {
+				int ofs = 0;
 
-					/* wrap */
-					if (str_len > cdc->console_width)
-						ofs += (cdc->console_width * ((int)((((float)(y_next - cdc->mval[1]) / (float)(y_next - cdc->xy[1])) * tot_lines))));
-	
-					CLAMP(ofs, 0, str_len);
-					*cdc->pos_pick += str_len - ofs;
+				/* wrap */
+				if (tot_lines > 1) {
+					int iofs = (int)((float)(y_next - cdc->mval[1]) / cdc->lheight);
+					ofs += offsets[MIN2(iofs, tot_lines - 1)];
 				}
-				else
-					*cdc->pos_pick += str_len + 1;
+
+				/* last part */
+				ofs += txt_utf8_column_to_offset(str + ofs,
+				                                 (int)floor((float)cdc->mval[0] / cdc->cwidth));
+
+				CLAMP(ofs, 0, str_len);
+				*cdc->pos_pick += str_len - ofs;
 			}
+			else
+				*cdc->pos_pick += str_len + 1;
 		}
 
 		cdc->xy[1] = y_next;
+		MEM_freeN(offsets);
 		return 1;
 	}
 	else if (y_next - cdc->lheight < cdc->ymin) {
@@ -120,15 +164,18 @@ static int console_draw_string(ConsoleDrawContext *cdc, const char *str, int str
 
 		/* adjust selection even if not drawing */
 		if (cdc->sel[0] != cdc->sel[1]) {
-			STEP_SEL(-(str_len + 1));
+			console_step_sel(cdc, -(str_len + 1));
 		}
 
+		MEM_freeN(offsets);
 		return 1;
 	}
 
 	if (tot_lines > 1) { /* wrap? */
-		const int initial_offset = ((tot_lines - 1) * cdc->console_width);
-		const char *line_stride = str + initial_offset;  /* advance to the last line and draw it first */
+		const int initial_offset = offsets[tot_lines - 1];
+		size_t len = str_len - initial_offset;
+		const char *s = str + initial_offset;
+		int i;
 		
 		int sel_orig[2];
 		copy_v2_v2_int(sel_orig, cdc->sel);
@@ -146,40 +193,42 @@ static int console_draw_string(ConsoleDrawContext *cdc, const char *str, int str
 
 		/* last part needs no clipping */
 		BLF_position(mono, cdc->xy[0], cdc->xy[1], 0);
-		BLF_draw(mono, line_stride, str_len - initial_offset);
+		BLF_draw_mono(mono, s, len, cdc->cwidth);
 
 		if (cdc->sel[0] != cdc->sel[1]) {
-			STEP_SEL(-initial_offset);
+			console_step_sel(cdc, -initial_offset);
 			// glColor4ub(255, 0, 0, 96); // debug
-			console_draw_sel(cdc->sel, cdc->xy, str_len % cdc->console_width, cdc->cwidth, cdc->lheight);
-			STEP_SEL(cdc->console_width);
+			console_draw_sel(s, cdc->sel, cdc->xy, len, cdc->cwidth, cdc->lheight, bg_sel);
 			glColor3ubv(fg);
 		}
 
 		cdc->xy[1] += cdc->lheight;
 
-		line_stride -= cdc->console_width;
-		
-		for (; line_stride >= str; line_stride -= cdc->console_width) {
+		for (i = tot_lines - 1; i > 0; i--) {
+			len = offsets[i] - offsets[i - 1];
+			s = str + offsets[i - 1];
+
 			BLF_position(mono, cdc->xy[0], cdc->xy[1], 0);
-			BLF_draw(mono, line_stride, cdc->console_width);
+			BLF_draw_mono(mono, s, len, cdc->cwidth);
 			
 			if (cdc->sel[0] != cdc->sel[1]) {
+				console_step_sel(cdc, len);
 				// glColor4ub(0, 255, 0, 96); // debug
-				console_draw_sel(cdc->sel, cdc->xy, cdc->console_width, cdc->cwidth, cdc->lheight);
-				STEP_SEL(cdc->console_width);
+				console_draw_sel(s, cdc->sel, cdc->xy, len, cdc->cwidth, cdc->lheight, bg_sel);
 				glColor3ubv(fg);
 			}
 
 			cdc->xy[1] += cdc->lheight;
 			
 			/* check if were out of view bounds */
-			if (cdc->xy[1] > cdc->ymax)
+			if (cdc->xy[1] > cdc->ymax) {
+				MEM_freeN(offsets);
 				return 0;
+			}
 		}
 
 		copy_v2_v2_int(cdc->sel, sel_orig);
-		STEP_SEL(-(str_len + 1));
+		console_step_sel(cdc, -(str_len + 1));
 	}
 	else { /* simple, no wrap */
 
@@ -191,7 +240,7 @@ static int console_draw_string(ConsoleDrawContext *cdc, const char *str, int str
 		glColor3ubv(fg);
 
 		BLF_position(mono, cdc->xy[0], cdc->xy[1], 0);
-		BLF_draw(mono, str, str_len);
+		BLF_draw_mono(mono, str, str_len, cdc->cwidth);
 		
 		if (cdc->sel[0] != cdc->sel[1]) {
 			int isel[2];
@@ -200,24 +249,25 @@ static int console_draw_string(ConsoleDrawContext *cdc, const char *str, int str
 			isel[1] = str_len - cdc->sel[0];
 
 			// glColor4ub(255, 255, 0, 96); // debug
-			console_draw_sel(isel, cdc->xy, str_len, cdc->cwidth, cdc->lheight);
-			STEP_SEL(-(str_len + 1));
+			console_draw_sel(str, isel, cdc->xy, str_len, cdc->cwidth, cdc->lheight, bg_sel);
+			console_step_sel(cdc, -(str_len + 1));
 		}
 
 		cdc->xy[1] += cdc->lheight;
 
-		if (cdc->xy[1] > cdc->ymax)
+		if (cdc->xy[1] > cdc->ymax) {
+			MEM_freeN(offsets);
 			return 0;
+		}
 	}
 
+	MEM_freeN(offsets);
 	return 1;
-#undef STEP_SEL
 }
 
 #define CONSOLE_DRAW_MARGIN 4
-#define CONSOLE_DRAW_SCROLL 16
 
-int textview_draw(TextViewContext *tvc, int draw, int mval[2], void **mouse_pick, int *pos_pick)
+int textview_draw(TextViewContext *tvc, const int draw, int mval[2], void **mouse_pick, int *pos_pick)
 {
 	ConsoleDrawContext cdc = {0};
 
@@ -241,9 +291,10 @@ int textview_draw(TextViewContext *tvc, int draw, int mval[2], void **mouse_pick
 	cdc.cwidth = (int)BLF_fixed_width(mono);
 	assert(cdc.cwidth > 0);
 	cdc.lheight = tvc->lheight;
-	cdc.console_width = (tvc->winx - (CONSOLE_DRAW_SCROLL + CONSOLE_DRAW_MARGIN * 2) ) / cdc.cwidth;
+	/* note, scroll bar must be already subtracted () */
+	cdc.console_width = (tvc->winx - (CONSOLE_DRAW_MARGIN * 2) ) / cdc.cwidth;
 	CLAMP(cdc.console_width, 1, INT_MAX); /* avoid divide by zero on small windows */
-	cdc.winx = tvc->winx - (CONSOLE_DRAW_MARGIN + CONSOLE_DRAW_SCROLL);
+	cdc.winx = tvc->winx - CONSOLE_DRAW_MARGIN;
 	cdc.ymin = tvc->ymin;
 	cdc.ymax = tvc->ymax;
 	cdc.xy = xy;
@@ -263,6 +314,11 @@ int textview_draw(TextViewContext *tvc, int draw, int mval[2], void **mouse_pick
 	}
 
 	if (tvc->begin(tvc)) {
+		unsigned char bg_sel[4] = {0};
+
+		if (draw && tvc->const_colors) {
+			tvc->const_colors(tvc, bg_sel);
+		}
 
 		do {
 			const char *ext_line;
@@ -276,7 +332,11 @@ int textview_draw(TextViewContext *tvc, int draw, int mval[2], void **mouse_pick
 
 			tvc->line_get(tvc, &ext_line, &ext_len);
 
-			if (!console_draw_string(&cdc, ext_line, ext_len, (color_flag & TVC_LINE_FG) ? fg : NULL, (color_flag & TVC_LINE_BG) ? bg : NULL)) {
+			if (!console_draw_string(&cdc, ext_line, ext_len,
+			                         (color_flag & TVC_LINE_FG) ? fg : NULL,
+			                         (color_flag & TVC_LINE_BG) ? bg : NULL,
+			                         bg_sel))
+			{
 				/* when drawing, if we pass v2d->cur.ymax, then quit */
 				if (draw) {
 					break; /* past the y limits */

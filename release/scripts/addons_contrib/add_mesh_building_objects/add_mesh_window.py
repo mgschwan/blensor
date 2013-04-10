@@ -2,7 +2,7 @@ bl_info = {
     "name": "Window Generator 2",
     "author": "SayPRODUCTIONS",
     "version": (2, 0),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "api": 33333,
     "location": "View3D > Add > Mesh > Say3D",
     "description": "Window Generator 2",

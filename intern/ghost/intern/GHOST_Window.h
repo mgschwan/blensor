@@ -80,6 +80,8 @@ public:
 	 * \param state				The state the window is initially opened with.
 	 * \param type				The type of drawing context installed in this window.
 	 * \param stereoVisual		Stereo visual for quad buffered stereo.
+	 * \param exclusive			Use to show the window ontop and ignore others
+	 *							(used fullscreen).
 	 * \param numOfAASamples	Number of samples used for AA (zero if no AA)
 	 */
 	GHOST_Window(
@@ -88,6 +90,7 @@ public:
 	    GHOST_TWindowState state,
 	    GHOST_TDrawingContextType type = GHOST_kDrawingContextTypeNone,
 	    const bool stereoVisual = false,
+	    const bool exclusive = false,
 	    const GHOST_TUns16 numOfAASamples = 0);
 
 	/**
@@ -257,6 +260,13 @@ public:
 	{
 		m_userData = userData;
 	}
+	
+	virtual float getNativePixelSize(void)
+	{
+		if (m_nativePixelSize > 0.0f)
+			return m_nativePixelSize;
+		return 1.0f;
+	}
 
 protected:
 	/**
@@ -351,6 +361,9 @@ protected:
 	GHOST_TUns32 m_fullScreenWidth;
 	/** Full-screen height */
 	GHOST_TUns32 m_fullScreenHeight;
+	
+	/* OSX only, retina screens */
+	float m_nativePixelSize;
 };
 
 

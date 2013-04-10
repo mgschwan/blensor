@@ -64,9 +64,9 @@
 #include <io.h>
 #endif
 
+#include "BLI_utildefines.h"
 #include "BLI_string.h"
 #include "BLI_path_util.h"
-#include "BLI_utildefines.h"
 #include "BLI_math_base.h"
 
 #include "MEM_guardedalloc.h"
@@ -486,7 +486,7 @@ static int startffmpeg(struct anim *anim)
 		return -1;
 	}
 
-	if (av_find_stream_info(pFormatCtx) < 0) {
+	if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
 		av_close_input_file(pFormatCtx);
 		return -1;
 	}
@@ -523,7 +523,7 @@ static int startffmpeg(struct anim *anim)
 
 	pCodecCtx->workaround_bugs = 1;
 
-	if (avcodec_open(pCodecCtx, pCodec) < 0) {
+	if (avcodec_open2(pCodecCtx, pCodec, NULL) < 0) {
 		av_close_input_file(pFormatCtx);
 		return -1;
 	}
@@ -822,10 +822,10 @@ static int ffmpeg_decode_video_frame(struct anim *anim)
 	
 	if (rval == AVERROR_EOF) {
 		/* this sets size and data fields to zero,
-		   which is necessary to decode the remaining data
-		   in the decoder engine after EOF. It also prevents a memory
-		   leak, since av_read_frame spills out a full size packet even
-		   on EOF... (and: it's save to call on NULL packets) */
+		 * which is necessary to decode the remaining data
+		 * in the decoder engine after EOF. It also prevents a memory
+		 * leak, since av_read_frame spills out a full size packet even
+		 * on EOF... (and: it's save to call on NULL packets) */
 
 		av_free_packet(&anim->next_packet);
 
@@ -946,7 +946,8 @@ static int ffmpeg_seek_by_byte(AVFormatContext *pFormatCtx)
 }
 
 static ImBuf *ffmpeg_fetchibuf(struct anim *anim, int position,
-                               IMB_Timecode_Type tc) {
+                               IMB_Timecode_Type tc)
+{
 	int64_t pts_to_search = 0;
 	double frame_rate;
 	double pts_time_base;
@@ -1303,7 +1304,8 @@ struct ImBuf *IMB_anim_previewframe(struct anim *anim)
 
 struct ImBuf *IMB_anim_absolute(struct anim *anim, int position,
                                 IMB_Timecode_Type tc,
-                                IMB_Proxy_Size preview_size) {
+                                IMB_Proxy_Size preview_size)
+{
 	struct ImBuf *ibuf = NULL;
 	char head[256], tail[256];
 	unsigned short digits;

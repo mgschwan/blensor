@@ -3,7 +3,7 @@ bl_info = {
     "name": "Add 3 Point Lighting Setup",
     "author": "Erich Toven" meta-androcto
     "version": (1, 1),
-    "blender": (2, 5, 6),
+    "blender": (2, 56, 0),
     "api": 34765,
     "location": "View3D > Add",
     "description": "Adds a new 3 point lighting setup",

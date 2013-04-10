@@ -82,12 +82,25 @@ url_manual_prefix = url_manual_prefix \
 
 url_manual_mapping = (
 
+    # *** User Prefs ***
+    ("bpy.types.UserPreferences.*",                "Preferences"),
+    ("bpy.types.UserPreferencesView.*",            "Preferences/Interface"),
+    ("bpy.types.UserPreferencesEdit.*",            "Preferences/Editing"),
+    ("bpy.types.UserPreferencesInput.*",           "Preferences/Input"),
+    ("bpy.ops.wm.addon_*",                         "Preferences/Addons"),
+    ("bpy.types.Theme.*",                          "Preferences/Themes"),
+    ("bpy.types.UserPreferencesFilePaths.*",       "Preferences/File"),
+    ("bpy.types.UserPreferencesSystem.*",          "Preferences/System"),
+    ("bpy.types.UserSolidLight.*",                 "Preferences/System"),
+
     # *** Modifiers ***
     # --- Intro ---
     ("bpy.types.Modifier.show_*", "Modifiers/The_Stack"),
     ("bpy.types.Modifier.*", "Modifiers"),  # catchall for various generic options
     # --- Modify Modifiers ---
+    ("bpy.types.MeshCacheModifier.*",              "Modifiers/Modify/Mesh_Cache"),
     ("bpy.types.UVProjectModifier.*",              "Modifiers/Modify/UV_Project"),
+    ("bpy.types.UVWarpModifier.*",                 "Modifiers/Modify/UV_Warp"),
     ("bpy.types.VertexWeightMixModifier.*",        "Modifiers/Modify/Vertex_Weight"),
     ("bpy.types.VertexWeightEditModifier.*",       "Modifiers/Modify/Vertex_Weight"),
     ("bpy.types.VertexWeightProximityModifier.*",  "Modifiers/Modify/Vertex_Weight"),
@@ -112,6 +125,7 @@ url_manual_mapping = (
     ("bpy.types.DisplaceModifier.*",      "Modifiers/Deform/Displace"),
     ("bpy.types.DynamicPaintModifier.*",  "Physics/Dynamic_Paint"),
     ("bpy.types.HookModifier.*",          "Modifiers/Deform/Hooks"),
+    ("bpy.types.LaplacianSmoothModifier.*", "Modifiers/Deform/Laplacian_Smooth"),
     ("bpy.types.LatticeModifier.*",       "Modifiers/Deform/Lattice"),
     ("bpy.types.MeshDeformModifier.*",    "Modifiers/Deform/Mesh_Deform"),
     ("bpy.types.RemeshModifier.*",        "Modifiers/Deform/"),
@@ -169,6 +183,7 @@ url_manual_mapping = (
 
     ("bpy.types.ImageFormatSettings.*",  "Render/Output#File_Type"),
     ("bpy.types.RenderSettings.filepath",  "Render/Output#File_Locations"),
+    ("bpy.types.RenderSettings.display_mode",  "Render/Display#Displaying_Renders"),
     ("bpy.types.RenderSettings.*",       "Render"),  # catchall, TODO - refine
 
     # *** ID Subclasses ***
@@ -185,7 +200,18 @@ url_manual_mapping = (
     #("bpy.types.Mask.*", ""), # TODO - manual has no place for this! XXX
     # *** Materials (blender internal) ***
     ("bpy.types.Material.diffuse*", "Materials/Properties/Diffuse_Shaders"),
+    ("bpy.types.Material.specular*", "Materials/Properties/Specular_Shaders"),
+    ("bpy.types.Material.ambient*", "Materials/Properties/Ambient_Light_Effect"),
+    ("bpy.types.Material.preview_render_type", "Materials/Preview"),
     ("bpy.types.Material.*", "Materials"),  # catchall, until the section is filled in
+
+    ("bpy.types.MaterialSlot.link", "Materials/Options#Material_naming_and_linking"),
+    ("bpy.types.MaterialVolume.*", "Materials/Properties/Volume"),
+    ("bpy.types.MaterialHalo.*", "Materials/Halos"),
+    ("bpy.types.MaterialStrand.*", "Materials/Properties/Strands"),
+    ("bpy.types.MaterialSubsurfaceScattering.*", "Materials/Properties/Subsurface_Scattering"),
+    ("bpy.types.MaterialRaytraceMirror.*", "Materials/Properties/Raytraced_Reflections"),
+    ("bpy.types.MaterialRaytraceTransparency.*", "Materials/Properties/Raytraced_Transparency#Raytraced_Transparency"),
     # ... todo, many more options
     ("bpy.types.MovieClip.*", "Motion_Tracking#Movie_Clip_Editor"),
     #("bpy.types.NodeTree.*", ""),  # dont document
@@ -270,6 +296,7 @@ url_manual_mapping = (
     ("bpy.ops.logic.*",  "Game_Engine/Logic"),
     ("bpy.ops.marker.*",  "Animation/Markers"),
     # ("bpy.ops.mask.*",  ""),  # TODO
+    ("bpy.ops.material.new",  "Materials/Assigning_a_material#Creating_a_new_Material"),
     ("bpy.ops.material.*",  "Materials"),
     ("bpy.ops.mball.*",  "Modeling/Metas"),
     ("bpy.ops.mesh.*",  "Modeling/Meshes"),

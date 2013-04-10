@@ -23,18 +23,17 @@
 
 
 bl_info = {
-    'name': "Carnegie Mellon University Mocap Library Browser",
-    'author': "Daniel Monteiro Basso <daniel@basso.inf.br>",
-    'version': (2012, 6, 1, 1),
-    'blender': (2, 6, 3),
-    'location': "View3D > Tools",
-    'description': "Assistant for using CMU Motion Capture data",
-    'warning': '',
-    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
+    "name": "Carnegie Mellon University Mocap Library Browser",
+    "author": "Daniel Monteiro Basso <daniel@basso.inf.br>",
+    "version": (2013, 1, 26, 1),
+    "blender": (2, 65, 9),
+    "location": "View3D > Tools",
+    "description": "Assistant for using CMU Motion Capture data",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
                 "Scripts/3D_interaction/CMU_Mocap_Library_Browser",
-    'tracker_url': "http://projects.blender.org/tracker/index.php?"\
+    "tracker_url": "http://projects.blender.org/tracker/index.php?"\
                    "func=detail&aid=29086",
-    'category': '3D View'}
+    "category": "3D View"}
 
 
 import os
@@ -45,21 +44,25 @@ import math
 from . import library
 
 
-def initialize_subjects():
+def initialize_subjects(context):
     """
-        Initializes the main object and the subjects (actors) list
+        Initializes the main object and the subject (actor) list
     """
-    while bpy.data.scenes[0].cmu_mocap_lib.subject_list:
-        bpy.data.scenes[0].cmu_mocap_lib.subject_list.remove(0)
+    cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
+    if hasattr(cml, 'initialized'):
+        return
+    cml.initialized = True
+    while cml.subject_list:
+        cml.subject_list.remove(0)
     for k, v in library.subjects.items():
-        n = bpy.data.scenes[0].cmu_mocap_lib.subject_list.add()
+        n = cml.subject_list.add()
         n.name = "{:d} - {}".format(k, v['desc'])
         n.idx = k
 
 
 def update_motions(self, context):
     """
-        Updates the motions list after a subject is selected
+        Updates the motion list after a subject is selected
     """
     sidx = -1
     if self.subject_active != -1:
@@ -79,7 +82,9 @@ class ListItem(bpy.types.PropertyGroup):
     idx = bpy.props.IntProperty()
 
 
-class CMUMocapLib(bpy.types.PropertyGroup):
+class CMUMocapLib(bpy.types.AddonPreferences):
+    bl_idname = 'cmu_mocap_browser'
+
     local_storage = bpy.props.StringProperty(
         name="Local Storage",
         subtype='DIR_PATH',
@@ -110,6 +115,15 @@ class CMUMocapLib(bpy.types.PropertyGroup):
                           description="Scale the marker cloud by this value",
                           default=1., min=0.0001, max=1000000.0,
                           soft_min=0.001, soft_max=100.0)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("wm.url_open",
+            text="Carnegie Mellon University Mocap Library",
+            icon='URL').url = 'http://mocap.cs.cmu.edu/'
+        layout.prop(self, "local_storage")
+        layout.prop(self, "follow_structure")
+        layout.prop(self, "automatically_import")
 
 
 def draw_callback(self, context):
@@ -184,13 +198,14 @@ class CMUMocapDownloadImport(bpy.types.Operator):
 
     def cancel(self, context):
         context.window_manager.event_timer_remove(self.timer)
-        context.region.callback_remove(self.handle)
+        bpy.types.SpaceView3D.draw_handler_remove(self.handle, 'WINDOW')
+        cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
         if os.path.exists(self.local_file):
-            self.import_or_open()
+            self.import_or_open(cml)
         return {'CANCELLED'}
 
     def execute(self, context):
-        cml = bpy.data.scenes[0].cmu_mocap_lib
+        cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
         if not os.path.exists(self.local_file):
             try:
                 os.makedirs(os.path.split(self.local_file)[0])
@@ -206,18 +221,17 @@ class CMUMocapDownloadImport(bpy.types.Operator):
                 ['b', 'Kb', 'Mb', 'Gb', 'Tb', 'Eb', 'Pb'][m])  # :-p
             self.fout = open(self.local_file, 'wb')
             self.recv = 0
-            self.handle = context.region.\
-                callback_add(draw_callback, (self, context), 'POST_PIXEL')
+            self.handle = bpy.types.SpaceView3D.draw_handler_add(
+                draw_callback, (self, context), 'WINDOW', 'POST_PIXEL')
             self.timer = context.window_manager.\
                 event_timer_add(0.001, context.window)
             context.window_manager.modal_handler_add(self)
             return {'RUNNING_MODAL'}
         else:
-            self.import_or_open()
+            self.import_or_open(cml)
         return {'FINISHED'}
 
-    def import_or_open(self):
-        cml = bpy.data.scenes[0].cmu_mocap_lib
+    def import_or_open(self, cml):
         if cml.automatically_import or self.do_import:
             if self.local_file.endswith("mpg"):
                 bpy.ops.wm.path_open(filepath=self.local_file)
@@ -258,27 +272,6 @@ class CMUMocapDownloadImport(bpy.types.Operator):
                         "please enable the C3D Importer addon.")
 
 
-
-class CMUMocapConfig(bpy.types.Panel):
-    bl_idname = "object.cmu_mocap_config"
-    bl_label = "CMU Mocap Browser Configuration"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        if not bpy:
-            return
-        cml = bpy.data.scenes[0].cmu_mocap_lib
-        layout = self.layout
-        layout.operator("wm.url_open",
-            text="Carnegie Mellon University Mocap Library",
-            icon='URL').url = 'http://mocap.cs.cmu.edu/'
-        layout.prop(cml, "local_storage")
-        layout.prop(cml, "follow_structure")
-        layout.prop(cml, "automatically_import")
-
-
 class CMUMocapSubjectBrowser(bpy.types.Panel):
     bl_idname = "object.cmu_mocap_subject_browser"
     bl_label = "CMU Mocap Subject Browser"
@@ -287,12 +280,11 @@ class CMUMocapSubjectBrowser(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
-        if not bpy:
-            return
+        initialize_subjects(context)
         layout = self.layout
-        cml = bpy.data.scenes[0].cmu_mocap_lib
-        # spare space... layout.label("Subjects")
-        layout.template_list(cml, "subject_list", cml, "subject_active")
+        cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
+        layout.template_list("UI_UL_list", "SB", cml, "subject_list", 
+            cml, "subject_active")
         layout.prop(cml, "subject_import_name")
         if cml.subject_active != -1:
             sidx = cml.subject_list[cml.subject_active].idx
@@ -326,12 +318,10 @@ class CMUMocapMotionBrowser(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
-        if not bpy:
-            return
         layout = self.layout
-        cml = bpy.data.scenes[0].cmu_mocap_lib
-        # spare space... layout.label("Motions for selected subject")
-        layout.template_list(cml, "motion_list", cml, "motion_active")
+        cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
+        layout.template_list("UI_UL_list", "MB", cml, "motion_list",
+            cml, "motion_active")
         if cml.motion_active == -1:
             return
         sidx = cml.subject_list[cml.subject_active].idx
@@ -339,8 +329,6 @@ class CMUMocapMotionBrowser(bpy.types.Panel):
         motion = library.subjects[sidx]['motions'][midx]
         fps = motion['fps']
         ifps = fps // cml.frame_skip
-        # layout.label("Original capture frame rate: {0:d} fps.".format(fps))
-        # layout.label("Importing frame rate: {0:d} fps.".format(ifps))
         row = layout.row()
         row.column().label("Original: {0:d} fps.".format(fps))
         row.column().label("Importing: {0:d} fps.".format(ifps))
@@ -376,8 +364,6 @@ class CMUMocapMotionBrowser(bpy.types.Panel):
 
 def register():
     bpy.utils.register_module(__name__)
-    bpy.types.Scene.cmu_mocap_lib = bpy.props.PointerProperty(type=CMUMocapLib)
-    initialize_subjects()
 
 
 def unregister():

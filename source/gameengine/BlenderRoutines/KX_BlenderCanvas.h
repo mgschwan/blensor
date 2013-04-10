@@ -58,8 +58,9 @@ struct wmWindow;
 class KX_BlenderCanvas : public RAS_ICanvas
 {
 private:
-	/** Rect that defines the area used for rendering,
-	    relative to the context */
+	/**
+	 * Rect that defines the area used for rendering,
+	 * relative to the context */
 	RAS_Rect m_displayarea;
 	int m_viewport[4];
 
@@ -151,6 +152,13 @@ public:
 		int x1, int y1,
 		int x2, int y2
 	);
+
+		void
+	UpdateViewPort(
+		int x1, int y1,
+		int x2, int y2
+	);
+
 		const int*
 	GetViewPort();
 

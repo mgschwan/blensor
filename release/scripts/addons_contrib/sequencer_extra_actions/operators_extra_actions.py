@@ -22,11 +22,12 @@ align strip to the left (shift-s + -lenght)
 
 '''
 
-import random, math
-
-
 import bpy
-import os.path
+
+import random
+import math
+import os, sys
+
 from bpy.props import IntProperty
 from bpy.props import FloatProperty
 from bpy.props import EnumProperty
@@ -34,30 +35,31 @@ from bpy.props import BoolProperty
 from bpy.props import StringProperty
 
 from . import functions
-from . import functions
 from . import exiftool
 
 
 # Initialization
-def initSceneProperties(scn):
+
+
+def initSceneProperties(context, scn):
     try:
-        if bpy.context.scene.scene_initialized == True:
+        if context.scene.scene_initialized == True:
             return False
     except AttributeError:
         pass
 
     bpy.types.Scene.default_slide_offset = IntProperty(
-    name='Offset',
-    description='Number of frames to slide',
-    min=-250, max=250,
-    default=0)
+        name='Offset',
+        description='Number of frames to slide',
+        min=-250, max=250,
+        default=0)
     scn.default_slide_offset = 0
 
     bpy.types.Scene.default_fade_duration = IntProperty(
-    name='Duration',
-    description='Number of frames to fade',
-    min=1, max=250,
-    default=scn.render.fps)
+        name='Duration',
+        description='Number of frames to fade',
+        min=1, max=250,
+        default=scn.render.fps)
     scn.default_fade_duration = scn.render.fps
 
     bpy.types.Scene.default_fade_amount = FloatProperty(
@@ -123,7 +125,31 @@ def initSceneProperties(scn):
         description='default build_100',
         default=False)
     scn.default_build_100 = False
-
+    
+    bpy.types.Scene.default_recursive = BoolProperty(
+        name='Recursive',
+        description='Load in recursive folders',
+        default=False)
+    scn.default_recursive = False
+   
+    bpy.types.Scene.default_recursive_proxies = BoolProperty(
+        name='Recursive proxies',
+        description='Load in recursive folders + proxies',
+        default=False)
+    scn.default_recursive_proxies = False
+    
+    bpy.types.Scene.default_recursive_select_by_extension = BoolProperty(
+        name='Recursive ext',
+        description='Load only clips with selected extension',
+        default=False)
+    scn.default_recursive_select_by_extension = False
+    
+    bpy.types.Scene.default_ext = EnumProperty(
+        items=functions.movieextdict,
+        name="ext enum",
+        default="3")
+    scn.default_ext = "3"
+    
     bpy.types.Scene.scene_initialized = BoolProperty(
         name='Init',
         default=False)
@@ -131,7 +157,7 @@ def initSceneProperties(scn):
 
     return True
 
-
+   
 # TRIM TIMELINE
 class Sequencer_Extra_TrimTimeline(bpy.types.Operator):
     bl_label = 'Trim to Timeline Content'
@@ -226,8 +252,12 @@ class Sequencer_Extra_SlideStrip(bpy.types.Operator):
         default='INPUT',
         options={'HIDDEN'})
     bl_options = {'REGISTER', 'UNDO'}
-
-    initSceneProperties(bpy.context.scene)
+    
+    slide_offset = IntProperty(
+        name='Offset',
+        description='Number of frames to slide',
+        min=-250, max=250,
+        default=0)
 
     @classmethod
     def poll(self, context):
@@ -237,8 +267,6 @@ class Sequencer_Extra_SlideStrip(bpy.types.Operator):
             return strip.type in ('MOVIE', 'IMAGE', 'META', 'SCENE')
         else:
             return False
-
-    slide_offset = bpy.types.Scene.default_slide_offset
 
     def execute(self, context):
         strip = functions.act_strip(context)
@@ -272,6 +300,7 @@ class Sequencer_Extra_SlideStrip(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene
+        initSceneProperties(context,scn)
         self.slide_offset = scn.default_slide_offset
         if self.mode == 'INPUT':
             return context.window_manager.invoke_props_dialog(self)
@@ -424,7 +453,7 @@ class Sequencer_Extra_RippleDelete(bpy.types.Operator):
         if meta_level > 0:
             seq = seq.meta_stack[meta_level - 1]
         #strip = functions.act_strip(context)
-        for strip in context.selected_editable_sequences:       
+        for strip in context.selected_editable_sequences:
             cut_frame = strip.frame_final_start
             next_edit = 300000
             bpy.ops.sequencer.select_all(action='DESELECT')
@@ -757,6 +786,34 @@ class Sequencer_Extra_SelectCurrentFrame(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# SELECT STRIPS ON SAME CHANNEL
+class Sequencer_Extra_SelectSameChannel(bpy.types.Operator):
+    bl_label = 'Select Strips on the Same Channel'
+    bl_idname = 'sequencerextra.selectsamechannel'
+    bl_description = 'Select strips on the same channel as active one'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(self, context):
+        strip = functions.act_strip(context)
+        scn = context.scene
+        if scn and scn.sequence_editor and scn.sequence_editor.active_strip:
+            return True
+        else:
+            return False
+
+    def execute(self, context):
+        scn = context.scene
+        seq = scn.sequence_editor
+        meta_level = len(seq.meta_stack)
+        if meta_level > 0:
+            seq = seq.meta_stack[meta_level - 1]
+        bpy.ops.sequencer.select_active_side(side="LEFT")
+        bpy.ops.sequencer.select_active_side(side="RIGHT")
+
+        return {'FINISHED'}
+
+
 # OPEN IMAGE WITH EXTERNAL EDITOR
 class Sequencer_Extra_EditExternally(bpy.types.Operator):
     bl_label = 'Open with External Editor'
@@ -776,7 +833,7 @@ class Sequencer_Extra_EditExternally(bpy.types.Operator):
         strip = functions.act_strip(context)
         scn = context.scene
         base_dir = bpy.path.abspath(strip.directory)
-        strip_elem = strip.getStripElem(scn.frame_current)
+        strip_elem = strip.strip_elem_from_frame(scn.frame_current)
         path = base_dir + strip_elem.filename
 
         try:
@@ -826,7 +883,7 @@ class Sequencer_Extra_Edit(bpy.types.Operator):
 
         elif strip.type == 'IMAGE':
             base_dir = bpy.path.abspath(strip.directory)
-            strip_elem = strip.getStripElem(scn.frame_current)
+            strip_elem = strip.strip_elem_from_frame(scn.frame_current)
             elem_name = strip_elem.filename
             path = base_dir + elem_name
 
@@ -879,7 +936,7 @@ class Sequencer_Extra_CopyProperties(bpy.types.Operator):
     ('deinterlace', 'Filter - De-Interlace', ''),
     ('flip', 'Filter - Flip', ''),
     ('float', 'Filter - Convert Float', ''),
-    ('premultiply', 'Filter - Premultiply', ''),
+    ('alpha_mode', 'Filter - Alpha Mode', ''),
     ('reverse', 'Filter - Backwards', ''),
     # SOUND
     ('pan', 'Sound - Pan', ''),
@@ -971,8 +1028,8 @@ class Sequencer_Extra_CopyProperties(bpy.types.Operator):
                         i.use_flip_y = strip.use_flip_y
                     elif self.prop == 'float':
                         i.use_float = strip.use_float
-                    elif self.prop == 'premultiply':
-                        i.use_premultiply = strip.use_premultiply
+                    elif self.prop == 'alpha_mode':
+                        i.alpha_mode = strip.alpha_mode
                     elif self.prop == 'reverse':
                         i.use_reverse_frames = strip.use_reverse_frames
                     elif self.prop == 'pan':
@@ -1038,8 +1095,18 @@ class Sequencer_Extra_FadeInOut(bpy.types.Operator):
             default='IN',
             )
     bl_options = {'REGISTER', 'UNDO'}
-
-    initSceneProperties(bpy.context.scene)
+    
+    fade_duration = IntProperty(
+        name='Duration',
+        description='Number of frames to fade',
+        min=1, max=250,
+        default=25)
+    fade_amount = FloatProperty(
+        name='Amount',
+        description='Maximum value of fade',
+        min=0.0,
+        max=100.0,
+        default=1.0)
 
     @classmethod
     def poll(cls, context):
@@ -1048,9 +1115,6 @@ class Sequencer_Extra_FadeInOut(bpy.types.Operator):
             return True
         else:
             return False
-
-    fade_duration = bpy.types.Scene.default_fade_duration
-    fade_amount = bpy.types.Scene.default_fade_amount
 
     def execute(self, context):
         seq = context.scene.sequence_editor
@@ -1124,9 +1188,54 @@ class Sequencer_Extra_FadeInOut(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene
+        initSceneProperties(context, scn)
         self.fade_duration = scn.default_fade_duration
         self.fade_amount = scn.default_fade_amount
         return context.window_manager.invoke_props_dialog(self)
+
+
+# EXTEND TO FILL
+class Sequencer_Extra_ExtendToFill(bpy.types.Operator):
+    bl_idname = 'sequencerextra.extendtofill'
+    bl_label = 'Extend to Fill'
+    bl_description = 'Extend active strip forward to fill adjacent space'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        scn = context.scene
+        if scn and scn.sequence_editor and scn.sequence_editor.active_strip:
+            return True
+        else:
+            return False
+
+    def execute(self, context):
+        scn = context.scene
+        seq = scn.sequence_editor
+        meta_level = len(seq.meta_stack)
+        if meta_level > 0:
+            seq = seq.meta_stack[meta_level - 1]
+        strip = functions.act_strip(context)
+        chn = strip.channel
+        stf = strip.frame_final_end
+        enf = 300000
+
+        for i in seq.sequences:
+            ffs = i.frame_final_start
+            if (i.channel == chn and ffs > stf):
+                if ffs < enf:
+                    enf = ffs
+        if enf == 300000 and stf < scn.frame_end:
+            enf = scn.frame_end
+
+        if enf == 300000 or enf == stf:
+            self.report({'ERROR_INVALID_INPUT'}, 'Unable to extend')
+            return {'CANCELLED'}
+        else:
+            strip.frame_final_end = enf
+
+        bpy.ops.sequencer.reload()
+        return {'FINISHED'}
 
 
 # DISTRIBUTE
@@ -1143,11 +1252,6 @@ class Sequencer_Extra_Distribute(bpy.types.Operator):
             return scn.sequence_editor.sequences
         else:
             return False
-
-    initSceneProperties(bpy.context.scene)
-
-    distribute_offset = bpy.types.Scene.default_distribute_offset
-    distribute_reverse = bpy.types.Scene.default_distribute_reverse
 
     def execute(self, context):
         scn = context.scene
@@ -1183,6 +1287,7 @@ class Sequencer_Extra_Distribute(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene
+        initSceneProperties(context, scn)
         self.distribute_offset = scn.default_distribute_offset
         self.distribute_reverse = scn.default_distribute_reverse
         return context.window_manager.invoke_props_dialog(self)
@@ -1350,22 +1455,37 @@ class Sequencer_Extra_PlaceFromFileBrowserProxy(bpy.types.Operator):
     bl_idname = 'sequencerextra.placefromfilebrowserproxy'
     bl_description = 'Place or insert active file from File Browser, '\
     'and add proxy file with according suffix and extension'
-    insert = BoolProperty(
-    name='Insert',
-    default=False)
-
-    proxy_suffix = bpy.types.Scene.default_proxy_suffix
-    proxy_extension = bpy.types.Scene.default_proxy_extension
-    proxy_path = bpy.types.Scene.default_proxy_path
-    build_25 = bpy.types.Scene.default_build_25
-    build_50 = bpy.types.Scene.default_build_50
-    build_75 = bpy.types.Scene.default_build_75
-    build_100 = bpy.types.Scene.default_build_100
+    insert = BoolProperty(name='Insert', default=False)
+    build_25 = BoolProperty(name='default_build_25',
+        description='default build_25',
+        default=True)
+    build_50 = BoolProperty(name='default_build_50',
+        description='default build_50',
+        default=True)
+    build_75 = BoolProperty(name='default_build_75',
+        description='default build_75',
+        default=True)
+    build_100 = BoolProperty(name='default_build_100',
+        description='default build_100',
+        default=True)
+    proxy_suffix = StringProperty(
+        name='default proxy suffix',
+        description='default proxy filename suffix',
+        default="-25")
+    proxy_extension = StringProperty(
+        name='default proxy extension',
+        description='default proxy extension',
+        default=".mkv")
+    proxy_path = StringProperty(
+        name='default proxy path',
+        description='default proxy path',
+        default="")
 
     bl_options = {'REGISTER', 'UNDO'}
 
     def invoke(self, context, event):
         scn = context.scene
+        initSceneProperties(context, scn)
         self.build_25 = scn.default_build_25
         self.build_50 = scn.default_build_50
         self.build_75 = scn.default_build_75
@@ -1467,9 +1587,9 @@ class Sequencer_Extra_CreateMovieclip(bpy.types.Operator):
     bl_description = 'Create a Movieclip strip from a MOVIE or IMAGE strip'
 
     """
-    When a movie or image strip is selected, this operator creates a movieclip 
-    or find the correspondent movieclip that already exists for this footage, 
-    and add a VSE clip strip with same cuts the original strip has. 
+    When a movie or image strip is selected, this operator creates a movieclip
+    or find the correspondent movieclip that already exists for this footage,
+    and add a VSE clip strip with same cuts the original strip has.
     It can convert movie strips and image sequences, both with hard cuts or
     soft cuts.
     """
@@ -1486,7 +1606,6 @@ class Sequencer_Extra_CreateMovieclip(bpy.types.Operator):
     def execute(self, context):
         strip = functions.act_strip(context)
         scn = context.scene
-        
 
         if strip.type == 'MOVIE':
             #print("movie", strip.frame_start)
@@ -1502,7 +1621,7 @@ class Sequencer_Extra_CreateMovieclip(bpy.types.Operator):
                 try:
                     data = bpy.data.movieclips.load(filepath=path)
                     newstrip = bpy.ops.sequencer.movieclip_strip_add(\
-                        replace_sel = True, overlap=False, clip=data.name)
+                        replace_sel=True, overlap=False, clip=data.name)
                     newstrip = functions.act_strip(context)
                     newstrip.frame_start = strip.frame_start\
                         - strip.animation_offset_start
@@ -1513,21 +1632,23 @@ class Sequencer_Extra_CreateMovieclip(bpy.types.Operator):
                 except:
                     self.report({'ERROR_INVALID_INPUT'}, 'Error loading file')
                     return {'CANCELLED'}
-                
+
             else:
                 try:
                     newstrip = bpy.ops.sequencer.movieclip_strip_add(\
-                        replace_sel = True, overlap=False, clip=data.name)
+                        replace_sel=True, overlap=False, clip=data.name)
                     newstrip = functions.act_strip(context)
                     newstrip.frame_start = strip.frame_start\
                         - strip.animation_offset_start
-                    #i need to declare the strip this way in order to get triminout() working
-                    clip = bpy.context.scene.sequence_editor.sequences[newstrip.name]
-                    # i cannot change this movie clip atributes via scripts... 
+                    # i need to declare the strip this way in order
+                    # to get triminout() working
+                    clip = bpy.context.scene.sequence_editor.sequences[\
+                        newstrip.name]
+                    # i cannot change these movie clip attributes via scripts
                     # but it works in the python console...
                     #clip.animation_offset_start = strip.animation.offset_start
                     #clip.animation_offset_end = strip.animation.offset_end
-                    #clip.frame_final_duration = strip.frame_final_duration 
+                    #clip.frame_final_duration = strip.frame_final_duration
                     tin = strip.frame_offset_start + strip.frame_start
                     tout = tin + strip.frame_final_duration
                     #print(newstrip.frame_start, strip.frame_start, tin, tout)
@@ -1535,16 +1656,17 @@ class Sequencer_Extra_CreateMovieclip(bpy.types.Operator):
                 except:
                     self.report({'ERROR_INVALID_INPUT'}, 'Error loading file')
                     return {'CANCELLED'}
-                 
+
         elif strip.type == 'IMAGE':
             #print("image")
             base_dir = bpy.path.abspath(strip.directory)
-            scn.frame_current = strip.frame_start - strip.animation_offset_start
-            # searching for the first frame of the sequencer. This is mandatory 
-            # for hard cutted sequence strips to be correctly converted, 
+            scn.frame_current = strip.frame_start -\
+                strip.animation_offset_start
+            # searching for the first frame of the sequencer. This is mandatory
+            # for hard cutted sequence strips to be correctly converted,
             # avoiding to create a new movie clip if not needed
             filename = sorted(os.listdir(base_dir))[0]
-            path = os.path.join(base_dir,filename)
+            path = os.path.join(base_dir, filename)
             #print(path)
             data_exists = False
             for i in bpy.data.movieclips:
@@ -1557,89 +1679,260 @@ class Sequencer_Extra_CreateMovieclip(bpy.types.Operator):
                 try:
                     data = bpy.data.movieclips.load(filepath=path)
                     newstrip = bpy.ops.sequencer.movieclip_strip_add(\
-                        replace_sel = True, overlap=False, clip=data.name)
+                        replace_sel=True, overlap=False,\
+                        clip=data.name)
                     newstrip = functions.act_strip(context)
                     newstrip.frame_start = strip.frame_start\
                         - strip.animation_offset_start
-                    
-                    clip = bpy.context.scene.sequence_editor.sequences[newstrip.name]
+                    clip = bpy.context.scene.sequence_editor.sequences[\
+                    newstrip.name]
                     tin = strip.frame_offset_start + strip.frame_start
                     tout = tin + strip.frame_final_duration
                     #print(newstrip.frame_start, strip.frame_start, tin, tout)
                     functions.triminout(clip, tin, tout)
                 except:
-                    self.report({'ERROR_INVALID_INPUT'}, 'Error loading filetin')
+                    self.report({'ERROR_INVALID_INPUT'}, 'Error loading file')
                     return {'CANCELLED'}
-                
+
             else:
                 try:
                     newstrip = bpy.ops.sequencer.movieclip_strip_add(\
-                        replace_sel = True, overlap=False, clip=data.name)
+                        replace_sel=True, overlap=False, clip=data.name)
                     newstrip = functions.act_strip(context)
                     newstrip.frame_start = strip.frame_start\
                         - strip.animation_offset_start
-                    # need to declare the strip this way in order to get triminout() working
-                    clip = bpy.context.scene.sequence_editor.sequences[newstrip.name]
-                    # cannot change this atributes via scripts... 
+                    # need to declare the strip this way in order
+                    # to get triminout() working
+                    clip = bpy.context.scene.sequence_editor.sequences[\
+                    newstrip.name]
+                    # cannot change this atributes via scripts...
                     # but it works in the python console...
                     #clip.animation_offset_start = strip.animation.offset_start
                     #clip.animation_offset_end = strip.animation.offset_end
-                    #clip.frame_final_duration = strip.frame_final_duration 
+                    #clip.frame_final_duration = strip.frame_final_duration
                     tin = strip.frame_offset_start + strip.frame_start
                     tout = tin + strip.frame_final_duration
                     #print(newstrip.frame_start, strip.frame_start, tin, tout)
                     functions.triminout(clip, tin, tout)
                 except:
-                    self.report({'ERROR_INVALID_INPUT'}, 'Error loading filete')
+                    self.report({'ERROR_INVALID_INPUT'}, 'Error loading file')
                     return {'CANCELLED'}
 
-        # to show the new clip in a movie clip editor, if available.
+        # show the new clip in a movie clip editor, if available.
         if strip.type == 'MOVIE' or 'IMAGE':
             for a in context.window.screen.areas:
                 if a.type == 'CLIP_EDITOR':
                     a.spaces[0].clip = data
-        
 
         return {'FINISHED'}
+        
+        
+# RECURSIVE LOADER
+
+class Sequencer_Extra_RecursiveLoader(bpy.types.Operator):
+    bl_idname = "sequencerextra.recursiveload"
+    bl_label = "recursive load"
+    bl_options = {'REGISTER', 'UNDO'}
     
+    recursive = BoolProperty(
+        name='recursive',
+        description='Load in recursive folders',
+        default=False)
+        
+    recursive_select_by_extension = BoolProperty(
+        name='select by extension',
+        description='Load only clips with selected extension',
+        default=False)
+        
+    ext = EnumProperty(
+        items=functions.movieextdict,
+        name="extension",
+        default="3")
+        
+    recursive_proxies = BoolProperty(
+        name='use proxies',
+        description='Load in recursive folders',
+        default=False)
+    build_25 = BoolProperty(name='default_build_25',
+        description='build_25',
+        default=True)
+    build_50 = BoolProperty(name='default_build_50',
+        description='build_50',
+        default=False)
+    build_75 = BoolProperty(name='default_build_75',
+        description='build_75',
+        default=False)
+    build_100 = BoolProperty(name='default_build_100',
+        description='build_100',
+        default=False)
+    proxy_suffix = StringProperty(
+        name='proxy suffix',
+        description='proxy filename suffix',
+        default="-25")
+    proxy_extension = StringProperty(
+        name='proxy extension',
+        description='proxy extension',
+        default=".mkv")
+    proxy_path = StringProperty(
+        name='proxy path',
+        description='proxy path',
+        default="")
     
+       
+    
+    @classmethod
+    def poll(self, context):
+        scn = context.scene
+        if scn and scn.sequence_editor:
+            return (scn.sequence_editor)
+        else:
+            return False
+        
+    def invoke(self, context, event):
+        scn = context.scene
+        try:
+            self.build_25 = scn.default_build_25
+            self.build_50 = scn.default_build_50
+            self.build_75 = scn.default_build_75
+            self.build_100 = scn.default_build_100
+            self.proxy_suffix = scn.default_proxy_suffix
+            self.proxy_extension = scn.default_proxy_extension
+            self.proxy_path = scn.default_proxy_path
+            self.recursive = scn.default_recursive
+            self.recursive_select_by_extension = scn.default_recursive_select_by_extension
+            self.recursive_proxies = scn.default_recursive_proxies
+            self.ext = scn.default_ext 
+        except AttributeError:
+            initSceneProperties(context, scn)
+            self.build_25 = scn.default_build_25
+            self.build_50 = scn.default_build_50
+            self.build_75 = scn.default_build_75
+            self.build_100 = scn.default_build_100
+            self.proxy_suffix = scn.default_proxy_suffix
+            self.proxy_extension = scn.default_proxy_extension
+            self.proxy_path = scn.default_proxy_path
+            self.recursive = scn.default_recursive
+            self.recursive_select_by_extension = scn.default_recursive_select_by_extension
+            self.recursive_proxies = scn.default_recursive_proxies
+            self.ext = scn.default_ext 
+                
+        return context.window_manager.invoke_props_dialog(self)  
+        
+    def loader(self, context, filelist):
+        scn = context.scene
+        if filelist:
+            for i in filelist:
+                functions.setpathinbrowser(i[0], i[1])
+                try:
+                    if self.recursive_proxies:
+                        bpy.ops.sequencerextra.placefromfilebrowserproxy(
+                            proxy_suffix=self.proxy_suffix,
+                            proxy_extension=self.proxy_extension,
+                            proxy_path=self.proxy_path,
+                            build_25=self.build_25,
+                            build_50=self.build_50,
+                            build_75=self.build_75,
+                            build_100=self.build_100)
+                    else:
+                        bpy.ops.sequencerextra.placefromfilebrowser()
+                except:
+                    print("Error loading file (recursive loader error): ", i[1])
+                    functions.add_marker(context, i[1])
+                    self.report({'ERROR_INVALID_INPUT'}, 'Error loading file ')
+                    pass
+
+
+    def execute(self, context):
+        scn = context.scene
+        #initSceneProperties(context, scn)
+        if self.recursive == True:
+            #recursive
+            #print(functions.sortlist(functions.recursive(\
+            #context, self.recursive_select_by_extension, self.ext)))
+            self.loader(context, functions.sortlist(\
+            functions.recursive(context, self.recursive_select_by_extension,\
+            self.ext)))
+        else:
+            #non recursive
+            #print(functions.sortlist(functions.onefolder(\
+            #context, self.recursive_select_by_extension, self.ext)))
+            self.loader(context, functions.sortlist(functions.onefolder(\
+            context, self.recursive_select_by_extension, self.ext)))
+        try:   
+            scn.default_build_25 = self.build_25
+            scn.default_build_50 = self.build_50
+            scn.default_build_75 = self.build_75
+            scn.default_build_100 = self.build_100 
+            scn.default_proxy_suffix = self.proxy_suffix 
+            scn.default_proxy_extension = self.proxy_extension 
+            scn.default_proxy_path = self.proxy_path 
+            scn.default_recursive = self.recursive 
+            scn.default_recursive_select_by_extension = self.recursive_select_by_extension 
+            scn.default_recursive_proxies = self.recursive_proxies
+            scn.default_ext = self.ext 
+        except AttributeError:
+            initSceneProperties(context, scn)
+            self.build_25 = scn.default_build_25
+            self.build_50 = scn.default_build_50
+            self.build_75 = scn.default_build_75
+            self.build_100 = scn.default_build_100
+            self.proxy_suffix = scn.default_proxy_suffix
+            self.proxy_extension = scn.default_proxy_extension
+            self.proxy_path = scn.default_proxy_path
+            self.recursive = scn.default_recursive
+            self.recursive_select_by_extension = scn.default_recursive_select_by_extension
+            self.recursive_proxies = scn.default_recursive_proxies
+            self.ext = scn.default_ext
+            
+        return {'FINISHED'}
+
+
 # READ EXIF DATA
 class Sequencer_Extra_ReadExifData(bpy.types.Operator):
     # load exifdata from strip to scene['metadata'] property
     bl_label = 'Read EXIF Data'
     bl_idname = 'sequencerextra.read_exif'
-    bl_description = 'load exifdata from strip to metadata property in scene'
+    bl_description = 'Load exifdata from strip to metadata property in scene'
     bl_options = {'REGISTER', 'UNDO'}
-    
 
-    
+    @classmethod
+    def poll(self, context):
+        strip = functions.act_strip(context)
+        scn = context.scene
+        if scn and scn.sequence_editor and scn.sequence_editor.active_strip:
+            return (strip.type == 'IMAGE' or 'MOVIE')
+        else:
+            return False
+
     def execute(self, context):
-        
+        try:
+            exiftool.ExifTool().start()
+        except:
+            self.report({'ERROR_INVALID_INPUT'},
+            'exiftool not found in PATH')
+            return {'CANCELLED'}
+
         def getexifdata(strip):
-            
             def getlist(lista):
                 for root, dirs, files in os.walk(path):
                     for f in files:
-                        if "."+f.rpartition(".")[2].lower() in functions.imb_ext_image:
+                        if "." + f.rpartition(".")[2].lower() \
+                            in functions.imb_ext_image:
                             lista.append(f)
                         #if "."+f.rpartition(".")[2] in imb_ext_movie:
                         #    lista.append(f)
                 strip.elements
-                
                 lista.sort()
                 return lista
-            
+
             def getexifvalues(lista):
-                metadata=[]
+                metadata = []
                 with exiftool.ExifTool() as et:
                     try:
                         metadata = et.get_metadata_batch(lista)
                     except UnicodeDecodeError as Err:
                         print(Err)
                 return metadata
-            
-            #print("----------------------------")
-            
             if strip.type == "IMAGE":
                 path = bpy.path.abspath(strip.directory)
             if strip.type == "MOVIE":
@@ -1647,16 +1940,13 @@ class Sequencer_Extra_ReadExifData(bpy.types.Operator):
             os.chdir(path)
             #get a list of files
             lista = []
-            
             for i in strip.elements:
                 lista.append(i.filename)
-            
             return getexifvalues(lista)
-        
-        
+
         sce = bpy.context.scene
-        frame=sce.frame_current
-        text= bpy.context.active_object
+        frame = sce.frame_current
+        text = bpy.context.active_object
         strip = context.scene.sequence_editor.active_strip
         sce['metadata'] = getexifdata(strip)
         return {'FINISHED'}

@@ -40,15 +40,19 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_bpath.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
+#include "BKE_bpath.h"
 #include "BKE_context.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
+#include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_packedFile.h"
 #include "BKE_report.h"
+#include "BKE_screen.h"
 
 
 #include "WM_api.h"
@@ -66,24 +70,79 @@
 
 #include "info_intern.h"
 
+/********************* pack blend file libararies operator *********************/
+
+static int pack_libraries_exec(bContext *C, wmOperator *op)
+{
+	Main *bmain = CTX_data_main(C);
+
+	packLibraries(bmain, op->reports);
+
+	return OPERATOR_FINISHED;
+}
+
+void FILE_OT_pack_libraries(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Pack Blender Libraries";
+	ot->idname = "FILE_OT_pack_libraries";
+	ot->description = "Pack all used Blender library files into the current .blend";
+	
+	/* api callbacks */
+	ot->exec = pack_libraries_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static int unpack_libraries_exec(bContext *C, wmOperator *op)
+{
+	Main *bmain = CTX_data_main(C);
+	
+	unpackLibraries(bmain, op->reports);
+	
+	return OPERATOR_FINISHED;
+}
+
+static int unpack_libraries_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+{
+	return WM_operator_confirm_message(C, op, "Unpack Blender Libraries - creates directories, all new paths should work");
+}
+
+void FILE_OT_unpack_libraries(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Unpack Blender Libraries";
+	ot->idname = "FILE_OT_unpack_libraries";
+	ot->description = "Unpack all used Blender library files from this .blend file";
+	
+	/* api callbacks */
+	ot->invoke = unpack_libraries_invoke;
+	ot->exec = unpack_libraries_exec;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+
 /********************* pack all operator *********************/
 
 static int pack_all_exec(bContext *C, wmOperator *op)
 {
 	Main *bmain = CTX_data_main(C);
-
+	
 	packAll(bmain, op->reports);
 	G.fileflags |= G_AUTOPACK;
-
+	
 	return OPERATOR_FINISHED;
 }
 
-static int pack_all_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int pack_all_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	Main *bmain = CTX_data_main(C);
 	Image *ima;
 	ImBuf *ibuf;
-
+	
 	// first check for dirty images
 	for (ima = bmain->image.first; ima; ima = ima->id.next) {
 		if (ima->ibufs.first) { /* XXX FIX */
@@ -93,16 +152,16 @@ static int pack_all_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
 				BKE_image_release_ibuf(ima, ibuf, NULL);
 				break;
 			}
-
+			
 			BKE_image_release_ibuf(ima, ibuf, NULL);
 		}
 	}
-
+	
 	if (ima) {
 		uiPupMenuOkee(C, "FILE_OT_pack_all", "Some images are painted on. These changes will be lost. Continue?");
 		return OPERATOR_CANCELLED;
 	}
-
+	
 	return pack_all_exec(C, op);
 }
 
@@ -116,10 +175,11 @@ void FILE_OT_pack_all(wmOperatorType *ot)
 	/* api callbacks */
 	ot->exec = pack_all_exec;
 	ot->invoke = pack_all_invoke;
-
+	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
+
 
 /********************* unpack all operator *********************/
 
@@ -143,7 +203,7 @@ static int unpack_all_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int unpack_all_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int unpack_all_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	Main *bmain = CTX_data_main(C);
 	uiPopupMenu *pup;
@@ -160,9 +220,9 @@ static int unpack_all_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event)
 	}
 
 	if (count == 1)
-		strcpy(title, "Unpack 1 file");
+		strcpy(title, IFACE_("Unpack 1 File"));
 	else
-		BLI_snprintf(title, sizeof(title), "Unpack %d files", count);
+		BLI_snprintf(title, sizeof(title), IFACE_("Unpack %d Files"), count);
 	
 	pup = uiPupMenuBegin(C, title, ICON_NONE);
 	layout = uiPupMenuLayout(pup);
@@ -193,6 +253,78 @@ void FILE_OT_unpack_all(wmOperatorType *ot)
 	RNA_def_enum(ot->srna, "method", unpack_all_method_items, PF_USE_LOCAL, "Method", "How to unpack");
 }
 
+/********************* unpack single item operator *********************/
+
+static const EnumPropertyItem unpack_item_method_items[] = {
+	{PF_USE_LOCAL, "USE_LOCAL", 0, "Use file from current directory (create when necessary)", ""},
+	{PF_WRITE_LOCAL, "WRITE_LOCAL", 0, "Write file to current directory (overwrite existing file)", ""},
+	{PF_USE_ORIGINAL, "USE_ORIGINAL", 0, "Use file in original location (create when necessary)", ""},
+	{PF_WRITE_ORIGINAL, "WRITE_ORIGINAL", 0, "Write file to original location (overwrite existing file)", ""},
+	/* {PF_ASK, "ASK", 0, "Ask for each file", ""}, */
+	{0, NULL, 0, NULL, NULL}};
+
+
+static int unpack_item_exec(bContext *C, wmOperator *op)
+{
+	Main *bmain = CTX_data_main(C);
+	ID *id;
+	char idname[MAX_ID_NAME - 2];
+	int type = RNA_int_get(op->ptr, "id_type");
+	int method = RNA_enum_get(op->ptr, "method");
+
+	RNA_string_get(op->ptr, "id_name", idname);
+	id = BKE_libblock_find_name(type, idname);
+
+	if (id == NULL) {
+		BKE_report(op->reports, RPT_WARNING, "No packed file");
+		return OPERATOR_CANCELLED;
+	}
+	
+	if (method != PF_KEEP)
+		BKE_unpack_id(bmain, id, op->reports, method);  /* XXX PF_ASK can't work here */
+	
+	G.fileflags &= ~G_AUTOPACK;
+	
+	return OPERATOR_FINISHED;
+}
+
+static int unpack_item_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+{
+	uiPopupMenu *pup;
+	uiLayout *layout;
+	
+	pup = uiPupMenuBegin(C, IFACE_("Unpack"), ICON_NONE);
+	layout = uiPupMenuLayout(pup);
+	
+	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
+	uiItemsFullEnumO(layout, op->type->idname, "method", op->ptr->data, WM_OP_EXEC_REGION_WIN, 0);
+	
+	uiPupMenuEnd(C, pup);
+	
+	return OPERATOR_CANCELLED;
+}
+
+void FILE_OT_unpack_item(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Unpack Item";
+	ot->idname = "FILE_OT_unpack_item";
+	ot->description = "Unpack this file to an external file";
+	
+	/* api callbacks */
+	ot->exec = unpack_item_exec;
+	ot->invoke = unpack_item_invoke;
+	
+	/* flags */
+	ot->flag = OPTYPE_UNDO;
+	
+	/* properties */
+	RNA_def_enum(ot->srna, "method", unpack_item_method_items, PF_USE_LOCAL, "Method", "How to unpack");
+	RNA_def_string(ot->srna, "id_name", "", BKE_ST_MAXNAME, "ID name", "Name of ID block to unpack");
+	RNA_def_int(ot->srna, "id_type", ID_IM, 0, INT_MAX, "ID Type", "Identifier type of ID block", 0, INT_MAX);
+}
+
+
 /********************* make paths relative operator *********************/
 
 static int make_paths_relative_exec(bContext *C, wmOperator *op)
@@ -204,7 +336,7 @@ static int make_paths_relative_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	BLI_bpath_relative_convert(bmain, bmain->name, op->reports);
+	BKE_bpath_relative_convert(bmain, bmain->name, op->reports);
 
 	/* redraw everything so any changed paths register */
 	WM_main_add_notifier(NC_WINDOW, NULL);
@@ -237,7 +369,7 @@ static int make_paths_absolute_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	BLI_bpath_absolute_convert(bmain, bmain->name, op->reports);
+	BKE_bpath_absolute_convert(bmain, bmain->name, op->reports);
 
 	/* redraw everything so any changed paths register */
 	WM_main_add_notifier(NC_WINDOW, NULL);
@@ -266,7 +398,7 @@ static int report_missing_files_exec(bContext *C, wmOperator *op)
 	Main *bmain = CTX_data_main(C);
 
 	/* run the missing file check */
-	BLI_bpath_missing_files_check(bmain, op->reports);
+	BKE_bpath_missing_files_check(bmain, op->reports);
 	
 	return OPERATOR_FINISHED;
 }
@@ -291,13 +423,13 @@ static int find_missing_files_exec(bContext *C, wmOperator *op)
 {
 	Main *bmain = CTX_data_main(C);
 	const char *searchpath = RNA_string_get_alloc(op->ptr, "filepath", NULL, 0);
-	BLI_bpath_missing_files_find(bmain, searchpath, op->reports);
+	BKE_bpath_missing_files_find(bmain, searchpath, op->reports);
 	MEM_freeN((void *)searchpath);
 
 	return OPERATOR_FINISHED;
 }
 
-static int find_missing_files_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int find_missing_files_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	/* XXX file open button text "Find Missing Files" */
 	WM_event_add_fileselect(C, op); 
@@ -337,7 +469,7 @@ void FILE_OT_find_missing_files(wmOperatorType *ot)
 #define ERROR_TIMEOUT       10.0f
 #define ERROR_COLOR_TIMEOUT 6.0f
 #define COLLAPSE_TIMEOUT    0.25f
-static int update_reports_display_invoke(bContext *C, wmOperator *UNUSED(op), wmEvent *event)
+static int update_reports_display_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *event)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	ReportList *reports = CTX_wm_reports(C);

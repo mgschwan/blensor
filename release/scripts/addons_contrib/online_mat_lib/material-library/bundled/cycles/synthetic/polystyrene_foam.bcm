@@ -11,7 +11,7 @@
 		<node type="BSDF_GLOSSY" distribution="BECKMANN" color="rgba(0.85499, 0.87512, 0.89999, 1.0)" roughness="0.77999" loc="-90, 47" />
 		<node type="RGB" custom_color="rgb(0.89999, 0.89999, 0.89999)" label="Color" color="rgba(0.85500, 0.87512, 0.89999, 1.0)" loc="-935, 174" />
 		<node type="TEX_NOISE" scale="20.0" detail="0.0" distortion="0.0" loc="-714, 73" />
-		<node type="VALUE" custom_color="rgb(1.0, 0.10000, 0.10000)" label="Scale" value="20.0" loc="-899, -71" />
+		<node type="VALUE" custom_color="rgb(1.0, 0.10000, 0.10000)" label="Scale" value="200.0" loc="-899, -71" />
 		<node type="MIX_RGB" blend_type="MULTIPLY" use_clamp="False" fac="0.20000" color1="rgba(0.5, 0.5, 0.5, 1.0)" color2="rgba(0.85000, 0.85000, 0.85000, 1.0)" loc="-497, 283" />
 		<node type="MATH" hide="True" operation="DIVIDE" use_clamp="False" value1="-16.0" value2="0.03999" loc="81, -76" />
 		<node type="VALTORGB" interpolation="LINEAR" fac="0.5" stops="2" stop1="0.00909|rgba(1.0, 1.0, 1.0, 1.0)" stop2="0.24545|rgba(1.0, 1.0, 1.0, 0.60000)" loc="88, -132" />

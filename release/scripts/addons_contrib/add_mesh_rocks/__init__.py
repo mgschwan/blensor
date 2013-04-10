@@ -36,7 +36,7 @@ bl_info = {
     "name": "Rock Generator",
     "author": "Paul Marshall (brikbot)",
     "version": (1, 3),
-    "blender": (2, 6, 1),
+    "blender": (2, 61, 0),
     "location": "View3D > Add > Rock Generator",
     "description": "Adds a mesh rock to the Add Mesh menu",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6"\

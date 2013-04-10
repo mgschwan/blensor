@@ -27,6 +27,7 @@
 /* bvh */
 KERNEL_TEX(float4, texture_float4, __bvh_nodes)
 KERNEL_TEX(float4, texture_float4, __tri_woop)
+KERNEL_TEX(uint, texture_uint, __prim_segment)
 KERNEL_TEX(uint, texture_uint, __prim_visibility)
 KERNEL_TEX(uint, texture_uint, __prim_index)
 KERNEL_TEX(uint, texture_uint, __prim_object)
@@ -34,12 +35,17 @@ KERNEL_TEX(uint, texture_uint, __object_node)
 
 /* objects */
 KERNEL_TEX(float4, texture_float4, __objects)
+KERNEL_TEX(float4, texture_float4, __objects_vector)
 
 /* triangles */
 KERNEL_TEX(float4, texture_float4, __tri_normal)
 KERNEL_TEX(float4, texture_float4, __tri_vnormal)
 KERNEL_TEX(float4, texture_float4, __tri_vindex)
 KERNEL_TEX(float4, texture_float4, __tri_verts)
+
+/* curves */
+KERNEL_TEX(float4, texture_float4, __curves)
+KERNEL_TEX(float4, texture_float4, __curve_keys)
 
 /* attributes */
 KERNEL_TEX(uint4, texture_uint4, __attributes_map)
@@ -60,8 +66,8 @@ KERNEL_TEX(uint4, texture_uint4, __svm_nodes)
 KERNEL_TEX(uint, texture_uint, __shader_flag)
 KERNEL_TEX(uint, texture_uint, __object_flag)
 
-/* camera/film */
-KERNEL_TEX(float, texture_float, __filter_table)
+/* lookup tables */
+KERNEL_TEX(float, texture_float, __lookup_table)
 
 /* sobol */
 KERNEL_TEX(uint, texture_uint, __sobol_directions)

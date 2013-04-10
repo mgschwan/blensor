@@ -155,6 +155,7 @@ typedef enum eAnim_ChannelType {
 	ANIMTYPE_DSMESH,
 	ANIMTYPE_DSTEX,
 	ANIMTYPE_DSLAT,
+	ANIMTYPE_DSLINESTYLE,
 	ANIMTYPE_DSSPK,
 	
 	ANIMTYPE_SHAPEKEY,
@@ -236,6 +237,7 @@ typedef enum eAnimFilter_Flags {
 #define EXPANDED_SCEC(sce) (CHECK_TYPE_INLINE(sce, Scene), ((sce->flag & SCE_DS_COLLAPSED) == 0))
 /* 'Sub-Scene' channels (flags stored in Data block) */
 #define FILTER_WOR_SCED(wo) (CHECK_TYPE_INLINE(wo, World), (wo->flag & WO_DS_EXPAND))
+#define FILTER_LS_SCED(linestyle) ((linestyle->flag & LS_DS_EXPAND))
 /* 'Object' channels */
 #define SEL_OBJC(base)          (CHECK_TYPE_INLINE(base, Base), ((base->flag & SELECT)))
 #define EXPANDED_OBJC(ob)       (CHECK_TYPE_INLINE(ob, Object), ((ob->nlaflag & OB_ADS_COLLAPSED) == 0))
@@ -292,42 +294,45 @@ typedef enum eAnimFilter_Flags {
 #define SEL_MASKLAY(masklay) (masklay->flag & SELECT)
 
 
-
 /* NLA only */
 #define SEL_NLT(nlt) (nlt->flag & NLATRACK_SELECTED)
 #define EDITABLE_NLT(nlt) ((nlt->flag & NLATRACK_PROTECTED) == 0)
 
+
+/* AnimData - NLA mostly... */
+#define SEL_ANIMDATA(adt) (adt->flag & ADT_UI_SELECTED)
+
 /* -------------- Channel Defines -------------- */
 
 /* channel heights */
-#define ACHANNEL_FIRST          -16
-#define ACHANNEL_HEIGHT         16
-#define ACHANNEL_HEIGHT_HALF    8
-#define ACHANNEL_SKIP           2
+#define ACHANNEL_FIRST          (-0.8f * U.widget_unit)
+#define ACHANNEL_HEIGHT         (0.8f * U.widget_unit)
+#define ACHANNEL_HEIGHT_HALF    (0.4f * U.widget_unit)
+#define ACHANNEL_SKIP           (0.1f * U.widget_unit)
 #define ACHANNEL_STEP           (ACHANNEL_HEIGHT + ACHANNEL_SKIP)
 
 /* channel widths */
-#define ACHANNEL_NAMEWIDTH      200
+#define ACHANNEL_NAMEWIDTH      (10 * U.widget_unit)
 
 /* channel toggle-buttons */
-#define ACHANNEL_BUTTON_WIDTH   16
+#define ACHANNEL_BUTTON_WIDTH   (0.8f * U.widget_unit)
 
 
 /* -------------- NLA Channel Defines -------------- */
 
 /* NLA channel heights */
 // XXX: NLACHANNEL_FIRST isn't used?
-#define NLACHANNEL_FIRST                -16
-#define NLACHANNEL_HEIGHT(snla)         ((snla && (snla->flag & SNLA_NOSTRIPCURVES)) ? 16 : 24)
-#define NLACHANNEL_HEIGHT_HALF(snla)    ((snla && (snla->flag & SNLA_NOSTRIPCURVES)) ?  8 : 12)
-#define NLACHANNEL_SKIP                 2
+#define NLACHANNEL_FIRST                (-0.8f * U.widget_unit)
+#define NLACHANNEL_HEIGHT(snla)         ((snla && (snla->flag & SNLA_NOSTRIPCURVES)) ? (0.8f * U.widget_unit) : (1.2f * U.widget_unit))
+#define NLACHANNEL_HEIGHT_HALF(snla)    ((snla && (snla->flag & SNLA_NOSTRIPCURVES)) ? (0.4f * U.widget_unit) : (0.6f * U.widget_unit))
+#define NLACHANNEL_SKIP                 (0.1f * U.widget_unit)
 #define NLACHANNEL_STEP(snla)           (NLACHANNEL_HEIGHT(snla) + NLACHANNEL_SKIP)
 
 /* channel widths */
-#define NLACHANNEL_NAMEWIDTH        200
+#define NLACHANNEL_NAMEWIDTH			(10 * U.widget_unit)
 
 /* channel toggle-buttons */
-#define NLACHANNEL_BUTTON_WIDTH 16
+#define NLACHANNEL_BUTTON_WIDTH			(0.8f * U.widget_unit)
 
 /* ---------------- API  -------------------- */
 
@@ -404,7 +409,7 @@ typedef struct bAnimChannelType {
 	 * with type being  sizeof(ptr_data) which should be fine for runtime use...
 	 *	- assume that setting has been checked to be valid for current context
 	 */
-	void *(*setting_ptr)(bAnimListElem * ale, int setting, short *type);
+	void *(*setting_ptr)(bAnimListElem *ale, int setting, short *type);
 } bAnimChannelType;
 
 /* ------------------------ Drawing API -------------------------- */
@@ -469,7 +474,7 @@ void ANIM_timecode_string_from_frame(char *str, struct Scene *scene, int power, 
 /* ---------- Current Frame Drawing ---------------- */
 
 /* flags for Current Frame Drawing */
-enum {
+enum eAnimEditDraw_CurrentFrame {
 	/* plain time indicator with no special indicators */
 	DRAWCFRA_PLAIN          = 0,
 	/* draw box indicating current frame number */
@@ -478,7 +483,7 @@ enum {
 	DRAWCFRA_UNIT_SECONDS   = (1 << 1),
 	/* draw indicator extra wide (for timeline) */
 	DRAWCFRA_WIDE           = (1 << 2)
-} eAnimEditDraw_CurrentFrame; 
+};
 
 /* main call to draw current-frame indicator in an Animation Editor */
 void ANIM_draw_cfra(const struct bContext *C, struct View2D *v2d, short flag);
@@ -552,7 +557,8 @@ typedef enum eAnimUnitConv_Flags {
 	/* only touch selected BezTriples */
 	ANIM_UNITCONV_ONLYSEL   = (1 << 2),
 	/* only touch selected vertices */
-	ANIM_UNITCONV_SELVERTS  = (1 << 3)
+	ANIM_UNITCONV_SELVERTS  = (1 << 3),
+	ANIM_UNITCONV_SKIPKNOTS  = (1 << 4),
 } eAnimUnitConv_Flags;
 
 /* Get unit conversion factor for given ID + F-Curve */

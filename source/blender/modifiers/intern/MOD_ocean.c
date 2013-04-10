@@ -1,4 +1,4 @@
-/**
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -23,6 +23,10 @@
  * Contributor(s): Matt Ebb
  *
  * ***** END GPL LICENSE BLOCK *****
+ */
+
+/** \file blender/modifiers/intern/MOD_ocean.c
+ *  \ingroup modifiers
  */
 
 #include "MEM_guardedalloc.h"
@@ -139,10 +143,10 @@ static void initData(ModifierData *md)
 	omd->ocean = BKE_add_ocean();
 	init_ocean_modifier(omd);
 	simulate_ocean_modifier(omd);
-#else  // WITH_OCEANSIM
+#else  /* WITH_OCEANSIM */
 	   /* unused */
 	(void)md;
-#endif // WITH_OCEANSIM
+#endif /* WITH_OCEANSIM */
 }
 
 static void freeData(ModifierData *md)
@@ -153,10 +157,10 @@ static void freeData(ModifierData *md)
 	BKE_free_ocean(omd->ocean);
 	if (omd->oceancache)
 		BKE_free_ocean_cache(omd->oceancache);
-#else // WITH_OCEANSIM
+#else /* WITH_OCEANSIM */
 	/* unused */
 	(void)md;
-#endif // WITH_OCEANSIM
+#endif /* WITH_OCEANSIM */
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -165,6 +169,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	OceanModifierData *omd = (OceanModifierData *) md;
 	OceanModifierData *tomd = (OceanModifierData *) target;
 
+	tomd->geometry_mode = omd->geometry_mode;
 	tomd->resolution = omd->resolution;
 	tomd->spatial_size = omd->spatial_size;
 
@@ -187,7 +192,6 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	tomd->refresh = 0;
 
-
 	tomd->size = omd->size;
 	tomd->repeat_x = omd->repeat_x;
 	tomd->repeat_y = omd->repeat_y;
@@ -201,11 +205,11 @@ static void copyData(ModifierData *md, ModifierData *target)
 	tomd->ocean = BKE_add_ocean();
 	init_ocean_modifier(tomd);
 	simulate_ocean_modifier(tomd);
-#else // WITH_OCEANSIM
+#else /* WITH_OCEANSIM */
 	/* unused */
 	(void)md;
 	(void)target;
-#endif // WITH_OCEANSIM
+#endif /* WITH_OCEANSIM */
 }
 
 #ifdef WITH_OCEANSIM
@@ -219,14 +223,14 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
 
 	return dataMask;
 }
-#else // WITH_OCEANSIM
+#else /* WITH_OCEANSIM */
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
 {
 	/* unused */
 	(void)md;
 	return 0;
 }
-#endif // WITH_OCEANSIM
+#endif /* WITH_OCEANSIM */
 
 #if 0
 static void dm_get_bounds(DerivedMesh *dm, float *sx, float *sy, float *ox, float *oy)
@@ -302,11 +306,7 @@ static DerivedMesh *generate_ocean_geometry(OceanModifierData *omd)
 	mpolys = CDDM_get_polys(result);
 	mloops = CDDM_get_loops(result);
 
-#if 0 // trunk
-	origindex = result->getFaceDataArray(result, CD_ORIGINDEX);
-#else // bmesh
 	origindex = CustomData_get_layer(&result->polyData, CD_ORIGINDEX);
-#endif
 
 	/* create vertices */
 	#pragma omp parallel for private(x, y) if (rx > OMP_MIN_RES)
@@ -443,7 +443,7 @@ static DerivedMesh *doOcean(ModifierData *md, Object *ob,
 
 	cfra = md->scene->r.cfra;
 	CLAMP(cfra, omd->bakestart, omd->bakeend);
-	cfra -= omd->bakestart; // shift to 0 based
+	cfra -= omd->bakestart; /* shift to 0 based */
 
 	num_verts = dm->getNumVerts(dm);
 	num_faces = dm->getNumPolys(dm);
@@ -490,7 +490,8 @@ static DerivedMesh *doOcean(ModifierData *md, Object *ob,
 
 						mlcol = &mloopcols[mp->loopstart + j];
 						mlcol->r = mlcol->g = mlcol->b = (char)(foam * 255);
-						/* mc->a = 255; */ /* no need to set */
+						/* This needs to be set (render engine uses) */
+						mlcol->a = 255;
 					} while (j--);
 				}
 			}
@@ -500,7 +501,7 @@ static DerivedMesh *doOcean(ModifierData *md, Object *ob,
 
 	/* displace the geometry */
 
-	//#pragma omp parallel for private(i, ocr) if (omd->resolution > OMP_MIN_RES)
+	/* #pragma omp parallel for private(i, ocr) if (omd->resolution > OMP_MIN_RES) */
 	for (i = 0, mv = mverts; i < num_verts; i++, mv++) {
 		const float u = OCEAN_CO(size_co_inv, mv->co[0]);
 		const float v = OCEAN_CO(size_co_inv, mv->co[1]);
@@ -522,7 +523,7 @@ static DerivedMesh *doOcean(ModifierData *md, Object *ob,
 
 	return dm;
 }
-#else  // WITH_OCEANSIM
+#else  /* WITH_OCEANSIM */
 static DerivedMesh *doOcean(ModifierData *md, Object *UNUSED(ob),
                             DerivedMesh *derivedData,
                             int UNUSED(useRenderParams))
@@ -531,7 +532,7 @@ static DerivedMesh *doOcean(ModifierData *md, Object *UNUSED(ob),
 	(void)md;
 	return derivedData;
 }
-#endif // WITH_OCEANSIM
+#endif /* WITH_OCEANSIM */
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,

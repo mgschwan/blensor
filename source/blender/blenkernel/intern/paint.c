@@ -40,12 +40,16 @@
 
 #include "BLI_bitmap.h"
 #include "BLI_utildefines.h"
+#include "BLI_math_vector.h"
 
 #include "BKE_brush.h"
 #include "BKE_context.h"
+#include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_paint.h"
 #include "BKE_subsurf.h"
+
+#include "bmesh.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -134,6 +138,55 @@ Paint *paint_get_active_from_context(const bContext *C)
 	return NULL;
 }
 
+PaintMode paintmode_get_active_from_context(const bContext *C)
+{
+	Scene *sce = CTX_data_scene(C);
+	SpaceImage *sima;
+
+	if (sce) {
+		ToolSettings *ts = sce->toolsettings;
+		Object *obact = NULL;
+
+		if (sce->basact && sce->basact->object)
+			obact = sce->basact->object;
+
+		if ((sima = CTX_wm_space_image(C)) != NULL) {
+			if (obact && obact->mode == OB_MODE_EDIT) {
+				if (sima->mode == SI_MODE_PAINT)
+					return PAINT_TEXTURE_2D;
+				else if (ts->use_uv_sculpt)
+					return PAINT_SCULPT_UV;
+			}
+			else {
+				return PAINT_TEXTURE_2D;
+			}
+		}
+		else if (obact) {
+			switch (obact->mode) {
+				case OB_MODE_SCULPT:
+					return PAINT_SCULPT;
+				case OB_MODE_VERTEX_PAINT:
+					return PAINT_VERTEX;
+				case OB_MODE_WEIGHT_PAINT:
+					return PAINT_WEIGHT;
+				case OB_MODE_TEXTURE_PAINT:
+					return PAINT_TEXTURE_PROJECTIVE;
+				case OB_MODE_EDIT:
+					if (ts->use_uv_sculpt)
+						return PAINT_SCULPT_UV;
+					else
+						return PAINT_TEXTURE_2D;
+			}
+		}
+		else {
+			/* default to image paint */
+			return PAINT_TEXTURE_2D;
+		}
+	}
+
+	return PAINT_INVALID;
+}
+
 Brush *paint_brush(Paint *p)
 {
 	return p ? p->brush : NULL;
@@ -154,7 +207,7 @@ int paint_facesel_test(Object *ob)
 	return ( (ob != NULL) &&
 	         (ob->type == OB_MESH) &&
 	         (ob->data != NULL) &&
-	         (((Mesh *)ob->data)->editflag & ME_EDIT_PAINT_MASK) &&
+	         (((Mesh *)ob->data)->editflag & ME_EDIT_PAINT_FACE_SEL) &&
 	         (ob->mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT | OB_MODE_TEXTURE_PAINT))
 	         );
 }
@@ -165,7 +218,7 @@ int paint_vertsel_test(Object *ob)
 	return ( (ob != NULL) &&
 	         (ob->type == OB_MESH) &&
 	         (ob->data != NULL) &&
-	         (((Mesh *)ob->data)->editflag & ME_EDIT_VERT_SEL) &&
+	         (((Mesh *)ob->data)->editflag & ME_EDIT_PAINT_VERT_SEL) &&
 	         (ob->mode & OB_MODE_WEIGHT_PAINT)
 	         );
 }
@@ -177,7 +230,7 @@ void BKE_paint_init(Paint *p, const char col[3])
 	/* If there's no brush, create one */
 	brush = paint_brush(p);
 	if (brush == NULL)
-		brush = BKE_brush_add("Brush");
+		brush = BKE_brush_add(G.main, "Brush");
 	paint_brush_set(p, brush);
 
 	memcpy(p->paint_cursor_col, col, 3);
@@ -212,7 +265,7 @@ int paint_is_face_hidden(const MFace *f, const MVert *mvert)
 }
 
 /* returns non-zero if any of the corners of the grid
- * face whose inner corner is at (x,y) are hidden,
+ * face whose inner corner is at (x, y) are hidden,
  * zero otherwise */
 int paint_is_grid_face_hidden(const unsigned int *grid_hidden,
                               int gridsize, int x, int y)
@@ -224,6 +277,22 @@ int paint_is_grid_face_hidden(const unsigned int *grid_hidden,
 	        BLI_BITMAP_GET(grid_hidden, (y + 1) * gridsize + x));
 }
 
+/* Return TRUE if all vertices in the face are visible, FALSE otherwise */
+int paint_is_bmesh_face_hidden(BMFace *f)
+{
+	BMLoop *l_iter;
+	BMLoop *l_first;
+
+	l_iter = l_first = BM_FACE_FIRST_LOOP(f);
+	do {
+		if (BM_elem_flag_test(l_iter->v, BM_ELEM_HIDDEN)) {
+			return true;
+		}
+	} while ((l_iter = l_iter->next) != l_first);
+
+	return false;
+}
+
 float paint_grid_paint_mask(const GridPaintMask *gpm, unsigned level,
                             unsigned x, unsigned y)
 {
@@ -231,4 +300,23 @@ float paint_grid_paint_mask(const GridPaintMask *gpm, unsigned level,
 	int gridsize = ccg_gridsize(gpm->level);
 	
 	return gpm->data[(y * factor) * gridsize + (x * factor)];
+}
+
+/* threshhold to move before updating the brush rotation */
+#define RAKE_THRESHHOLD 20
+
+void paint_calculate_rake_rotation(UnifiedPaintSettings *ups, const float mouse_pos[2])
+{
+	const float u = 0.5f;
+	const float r = RAKE_THRESHHOLD;
+
+	float dpos[2];
+	sub_v2_v2v2(dpos, ups->last_rake, mouse_pos);
+
+	if (len_squared_v2(dpos) >= r * r) {
+		ups->brush_rotation = atan2(dpos[0], dpos[1]);
+
+		interp_v2_v2v2(ups->last_rake, ups->last_rake,
+		               mouse_pos, u);
+	}
 }

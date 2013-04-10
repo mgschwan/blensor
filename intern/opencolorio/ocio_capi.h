@@ -32,6 +32,8 @@
 extern "C" {
 #endif
 
+struct OCIO_GLSLDrawState;
+
 #define OCIO_DECLARE_HANDLE(name) typedef struct name##__ { int unused; } *name
 
 #define OCIO_ROLE_SCENE_LINEAR       "scene_linear"
@@ -105,9 +107,9 @@ void OCIO_displayTransformSetLinearCC(OCIO_DisplayTransformRcPtr *dt, OCIO_Const
 void OCIO_displayTransformRelease(OCIO_DisplayTransformRcPtr *dt);
 
 OCIO_PackedImageDesc *OCIO_createOCIO_PackedImageDesc(float *data, long width, long height, long numChannels,
-                                            long chanStrideBytes, long xStrideBytes, long yStrideBytes);
+                                                      long chanStrideBytes, long xStrideBytes, long yStrideBytes);
 
-void OCIO_OCIO_PackedImageDescRelease(OCIO_PackedImageDesc *p);
+void OCIO_PackedImageDescRelease(OCIO_PackedImageDesc *p);
 
 OCIO_ExponentTransformRcPtr *OCIO_createExponentTransform(void);
 void OCIO_exponentTransformSetValue(OCIO_ExponentTransformRcPtr *et, const float *exponent);
@@ -118,6 +120,10 @@ void OCIO_matrixTransformSetValue(OCIO_MatrixTransformRcPtr *et, const float *m4
 void OCIO_matrixTransformRelease(OCIO_MatrixTransformRcPtr *mt);
 
 void OCIO_matrixTransformScale(float * m44, float * offset4, const float * scale4);
+
+int OCIO_setupGLSLDraw(struct OCIO_GLSLDrawState **state_r, OCIO_ConstProcessorRcPtr *processor, int predivide);
+void OCIO_finishGLSLDraw(struct OCIO_GLSLDrawState *state);
+void OCIO_freeOGLState(struct OCIO_GLSLDrawState *state);
 
 #ifdef __cplusplus
 }

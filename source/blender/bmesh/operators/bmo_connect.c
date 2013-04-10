@@ -22,6 +22,8 @@
 
 /** \file blender/bmesh/operators/bmo_connect.c
  *  \ingroup bmesh
+ *
+ * Connect verts across faces (splits faces) and bridge tool.
  */
 
 #include "MEM_guardedalloc.h"
@@ -44,10 +46,10 @@
 void bmo_connect_verts_exec(BMesh *bm, BMOperator *op)
 {
 	BMIter iter, liter;
-	BMFace *f, *nf;
+	BMFace *f, *f_new;
 	BMLoop *(*loops_split)[2] = NULL;
 	BLI_array_declare(loops_split);
-	BMLoop *l, *nl, *lastl = NULL;
+	BMLoop *l, *l_new;
 	BMVert *(*verts_pair)[2] = NULL;
 	BLI_array_declare(verts_pair);
 	int i;
@@ -56,7 +58,8 @@ void bmo_connect_verts_exec(BMesh *bm, BMOperator *op)
 
 	/* BMESH_TODO, loop over vert faces:
 	 * faster then looping over all faces, then searching each for flagged verts*/
-	for (f = BM_iter_new(&iter, bm, BM_FACES_OF_MESH, NULL); f; f = BM_iter_step(&iter)) {
+	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
+		BMLoop *l_last;
 		BLI_array_empty(loops_split);
 		BLI_array_empty(verts_pair);
 		
@@ -64,22 +67,21 @@ void bmo_connect_verts_exec(BMesh *bm, BMOperator *op)
 			continue;
 		}
 
-		l = BM_iter_new(&liter, bm, BM_LOOPS_OF_FACE, f);
-		lastl = NULL;
-		for ( ; l; l = BM_iter_step(&liter)) {
+		l_last = NULL;
+		BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
 			if (BMO_elem_flag_test(bm, l->v, VERT_INPUT)) {
-				if (!lastl) {
-					lastl = l;
+				if (!l_last) {
+					l_last = l;
 					continue;
 				}
 
-				if (lastl != l->prev && lastl != l->next) {
+				if (l_last != l->prev && l_last != l->next) {
 					BLI_array_grow_one(loops_split);
-					loops_split[BLI_array_count(loops_split) - 1][0] = lastl;
+					loops_split[BLI_array_count(loops_split) - 1][0] = l_last;
 					loops_split[BLI_array_count(loops_split) - 1][1] = l;
 
 				}
-				lastl = l;
+				l_last = l;
 			}
 		}
 
@@ -106,16 +108,16 @@ void bmo_connect_verts_exec(BMesh *bm, BMOperator *op)
 		}
 
 		for (i = 0; i < BLI_array_count(verts_pair); i++) {
-			nf = BM_face_split(bm, f, verts_pair[i][0], verts_pair[i][1], &nl, NULL, FALSE);
-			f = nf;
+			f_new = BM_face_split(bm, f, verts_pair[i][0], verts_pair[i][1], &l_new, NULL, false);
+			f = f_new;
 			
-			if (!nl || !nf) {
+			if (!l_new || !f_new) {
 				BMO_error_raise(bm, op, BMERR_CONNECTVERT_FAILED, NULL);
 				BLI_array_free(loops_split);
 				return;
 			}
-			BMO_elem_flag_enable(bm, nf, FACE_NEW);
-			BMO_elem_flag_enable(bm, nl->e, EDGE_OUT);
+			BMO_elem_flag_enable(bm, f_new, FACE_NEW);
+			BMO_elem_flag_enable(bm, l_new->e, EDGE_OUT);
 		}
 	}
 
@@ -160,19 +162,19 @@ static int clamp_index(const int x, const int len)
  * isn't there should be... */
 #define ARRAY_SWAP(elemtype, arr1, arr2)                                      \
 	{                                                                         \
-		int i;                                                                \
+		int i_;                                                               \
 		elemtype *arr_tmp = NULL;                                             \
 		BLI_array_declare(arr_tmp);                                           \
-		for (i = 0; i < BLI_array_count(arr1); i++) {                         \
-			BLI_array_append(arr_tmp, arr1[i]);                               \
+		for (i_ = 0; i_ < BLI_array_count(arr1); i_++) {                      \
+			BLI_array_append(arr_tmp, arr1[i_]);                              \
 		}                                                                     \
 		BLI_array_empty(arr1);                                                \
-		for (i = 0; i < BLI_array_count(arr2); i++) {                         \
-			BLI_array_append(arr1, arr2[i]);                                  \
+		for (i_ = 0; i_ < BLI_array_count(arr2); i_++) {                      \
+			BLI_array_append(arr1, arr2[i_]);                                 \
 		}                                                                     \
 		BLI_array_empty(arr2);                                                \
-		for (i = 0; i < BLI_array_count(arr_tmp); i++) {                      \
-			BLI_array_append(arr2, arr_tmp[i]);                               \
+		for (i_ = 0; i_ < BLI_array_count(arr_tmp); i_++) {                   \
+			BLI_array_append(arr2, arr_tmp[i_]);                              \
 		}                                                                     \
 		BLI_array_free(arr_tmp);                                              \
 	} (void)0
@@ -221,15 +223,15 @@ void bmo_bridge_loops_exec(BMesh *bm, BMOperator *op)
 	int c = 0, cl1 = 0, cl2 = 0;
 
 	/* merge-bridge support */
-	const int   use_merge    = BMO_slot_bool_get(op->slots_in,  "use_merge");
+	const bool  use_merge    = BMO_slot_bool_get(op->slots_in,  "use_merge");
 	const float merge_factor = BMO_slot_float_get(op->slots_in, "merge_factor");
 
 	BMO_slot_buffer_flag_enable(bm, op->slots_in, "edges", BM_EDGE, EDGE_MARK);
 
 	BMO_ITER (e, &siter, op->slots_in, "edges", BM_EDGE) {
 		if (!BMO_elem_flag_test(bm, e, EDGE_DONE)) {
-			BMVert *v, *ov;
-			/* BMEdge *e2, *e3, *oe = e; */ /* UNUSED */
+			BMVert *v, *v_old;
+			/* BMEdge *e2, *e3, *e_old = e; */ /* UNUSED */
 			BMEdge *e2, *e3;
 			
 			if (c > 2) {
@@ -265,7 +267,7 @@ void bmo_bridge_loops_exec(BMesh *bm, BMOperator *op)
 				e2 = e;
 
 			e = e2;
-			ov = v;
+			v_old = v;
 			do {
 				if (c == 0) {
 					BLI_array_append(ee1, e2);
@@ -301,7 +303,7 @@ void bmo_bridge_loops_exec(BMesh *bm, BMOperator *op)
 			}
 			
 			/* test for connected loops, and set cl1 or cl2 if so */
-			if (v == ov) {
+			if (v == v_old) {
 				if (c == 0) {
 					cl1 = 1;
 				}
@@ -358,6 +360,17 @@ void bmo_bridge_loops_exec(BMesh *bm, BMOperator *op)
 			v3 = get_outer_vert(bm, ee2[0]);
 			/* Last point of loop 2 */
 			v4 = get_outer_vert(bm, ee2[clamp_index(-1, BLI_array_count(ee2))]);
+
+			/* ugh, happens when bridging single edges, user could just make a face
+			 * but better support it for sake of completeness */
+			if (v1 == v2) {
+				BLI_assert(BLI_array_count(ee1) == 1);
+				v2 = (vv1[0] == v2) ? vv1[1] : vv1[0];
+			}
+			if (v3 == v4) {
+				BLI_assert(BLI_array_count(ee2) == 1);
+				v4 = (vv2[0] == v4) ? vv2[1] : vv2[0];
+			}
 
 			/* If v1 is a better match for v4 than v3, AND v2 is a better match
 			 * for v3 than v4, the loops are in opposite directions, so reverse
@@ -508,7 +521,7 @@ void bmo_bridge_loops_exec(BMesh *bm, BMOperator *op)
 				                            vv2[i2],
 				                            vv2[i2next],
 				                            vv1[i1next],
-				                            f_example, TRUE);
+				                            f_example, true);
 				if (UNLIKELY((f == NULL) || (f->len != 4))) {
 					fprintf(stderr, "%s: in bridge! (bmesh internal error)\n", __func__);
 				}

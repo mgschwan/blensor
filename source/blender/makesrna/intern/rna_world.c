@@ -42,6 +42,7 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_main.h"
 #include "BKE_texture.h"
@@ -121,14 +122,14 @@ static void rna_World_stars_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Po
 	WM_main_add_notifier(NC_WORLD | ND_WORLD_STARS, wo);
 }
 
-static void rna_World_use_nodes_update(Main *bmain, Scene *scene, PointerRNA *ptr)
+static void rna_World_use_nodes_update(bContext *C, PointerRNA *ptr)
 {
 	World *wrld = (World *)ptr->data;
 
 	if (wrld->use_nodes && wrld->nodetree == NULL)
-		ED_node_shader_default(scene, &wrld->id);
+		ED_node_shader_default(C, &wrld->id);
 	
-	rna_World_update(bmain, scene, ptr);
+	rna_World_update(CTX_data_main(C), CTX_data_scene(C), ptr);
 }
 
 #else
@@ -494,18 +495,6 @@ void RNA_def_world(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
-#if 0
-	static EnumPropertyItem physics_engine_items[] = {
-		{WOPHY_NONE, "NONE", 0, "None", ""},
-		/*{WOPHY_ENJI, "ENJI", 0, "Enji", ""}, */
-		/*{WOPHY_SUMO, "SUMO", 0, "Sumo (Deprecated)", ""}, */
-		/*{WOPHY_DYNAMO, "DYNAMO", 0, "Dynamo", ""}, */
-		/*{WOPHY_ODE, "ODE", 0, "ODE", ""}, */
-		{WOPHY_BULLET, "BULLET", 0, "Bullet", ""},
-		{0, NULL, 0, NULL, NULL}
-	};
-#endif
-
 	srna = RNA_def_struct(brna, "World", "ID");
 	RNA_def_struct_ui_text(srna, "World",
 	                       "World datablock describing the environment and ambient lighting of a scene");
@@ -529,7 +518,7 @@ void RNA_def_world(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "zenr");
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_ui_text(prop, "Zenith Color", "Color at the zenith");
-	RNA_def_property_update(prop, 0, "rna_World_update");
+	RNA_def_property_update(prop, NC_WORLD | ND_WORLD_DRAW, "rna_World_update");
 
 	prop = RNA_def_property(srna, "ambient_color", PROP_FLOAT, PROP_COLOR);
 	RNA_def_property_float_sdna(prop, NULL, "ambr");
@@ -554,17 +543,17 @@ void RNA_def_world(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_sky_blend", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "skytype", WO_SKYBLEND);
 	RNA_def_property_ui_text(prop, "Blend Sky", "Render background with natural progression from horizon to zenith");
-	RNA_def_property_update(prop, 0, "rna_World_update");
+	RNA_def_property_update(prop, NC_WORLD | ND_WORLD_DRAW, "rna_World_update");
 
 	prop = RNA_def_property(srna, "use_sky_paper", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "skytype", WO_SKYPAPER);
 	RNA_def_property_ui_text(prop, "Paper Sky", "Flatten blend or texture coordinates");
-	RNA_def_property_update(prop, 0, "rna_World_update");
+	RNA_def_property_update(prop, NC_WORLD | ND_WORLD_DRAW, "rna_World_update");
 
 	prop = RNA_def_property(srna, "use_sky_real", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "skytype", WO_SKYREAL);
 	RNA_def_property_ui_text(prop, "Real Sky", "Render background with a real horizon, relative to the camera angle");
-	RNA_def_property_update(prop, 0, "rna_World_update");
+	RNA_def_property_update(prop, NC_WORLD | ND_WORLD_DRAW, "rna_World_update");
 
 	/* nested structs */
 	prop = RNA_def_property(srna, "light_settings", PROP_POINTER, PROP_NONE);
@@ -593,6 +582,7 @@ void RNA_def_world(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_nodes", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_nodes", 1);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
 	RNA_def_property_ui_text(prop, "Use Nodes", "Use shader nodes to render the world");
 	RNA_def_property_update(prop, 0, "rna_World_use_nodes_update");
 

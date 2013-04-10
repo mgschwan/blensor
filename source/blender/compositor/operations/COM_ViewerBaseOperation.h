@@ -25,6 +25,7 @@
 #include "COM_NodeOperation.h"
 #include "DNA_image_types.h"
 #include "BLI_rect.h"
+#include "BKE_global.h"
 
 class ViewerBaseOperation : public NodeOperation {
 protected:
@@ -39,12 +40,13 @@ protected:
 	OrderOfChunks m_chunkOrder;
 	bool m_doDepthBuffer;
 	ImBuf *m_ibuf;
+	bool m_ignoreAlpha;
 
 	const ColorManagedViewSettings *m_viewSettings;
 	const ColorManagedDisplaySettings *m_displaySettings;
 
 public:
-	bool isOutputOperation(bool rendering) const { return isActiveViewerOutput(); }
+	bool isOutputOperation(bool rendering) const { if (G.background) return false; return isActiveViewerOutput(); }
 	void initExecution();
 	void deinitExecution();
 	void setImage(Image *image) { this->m_image = image; }
@@ -59,6 +61,7 @@ public:
 	OrderOfChunks getChunkOrder() { return this->m_chunkOrder; }
 	const CompositorPriority getRenderPriority() const;
 	bool isViewerOperation() { return true; }
+	void setIgnoreAlpha(bool value) { this->m_ignoreAlpha = value; }
 
 	void setViewSettings(const ColorManagedViewSettings *viewSettings) { this->m_viewSettings = viewSettings; }
 	void setDisplaySettings(const ColorManagedDisplaySettings *displaySettings) { this->m_displaySettings = displaySettings; }

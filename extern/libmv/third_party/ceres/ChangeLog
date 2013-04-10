@@ -1,524 +1,621 @@
-commit 552f9f85bba89f00ca307bc18fbda1dff23bd0e4
+commit c290df85a40a8dd117b5eccc515bf22b0d9b1945
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Fri Aug 31 07:27:22 2012 -0700
+Date:   Sun Apr 7 09:17:47 2013 -0700
 
-    Various minor bug fixes to the solver logic.
+    Typo fix.
     
-    1. CostFunction returning false is handled better.
-    If only the cost is being evaluated, it is possible to
-    use the false value as an infinite value signal/outside
-    a region of validity. This allows a weak form of constraint
-    handling. Useful for example in handling infinities.
+    (Thanks to Pieree Moulon for reporting this)
     
-    2. Changed the way how the slop around zero when model_cost
-    is larger than the current cost. Relative instead of absolute
-    tolerances are used. The same logic is propagated how the
-    corresponding clamping of the model_cost is done.
-    
-    3. Fixed a minor indexing bug in nist.cc.
-    
-    4. Some minor logging fixes to nist.cc to make it more
-    compatible with the rest of ceres.
-    
-    Together these changes, take the successful solve count from
-    41/54 to 46/54 and eliminate all NUMERICAL_FAILURE problems.
-    
-    Change-Id: If94170ea4731af5b243805c0200963dd31aa94a7
+    Change-Id: I536724ab4b7e9c97768d5197aa86b41f37a04d38
 
-commit 0b776b5cc9634d3b88d623905b96006f7647ce3e
+commit dc3a27fa60ba7c6b152660afd5abe1c8b608dec3
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Thu Aug 30 15:26:17 2012 -0700
+Date:   Sat Apr 6 19:32:47 2013 -0700
 
-    Update docs.
+    Fix MatrixVectorMultiply and incorrect DCHECKS.
     
-    Change-Id: I69d50bcd37aed3bea2190ca614f023e83172901b
+    (Thanks to Serget Sharybin for reporting this)
+    
+    Change-Id: I6bbc41667308fc2932871cf25ad07b431f70801f
 
-commit 2d7176ad7c8fb7238ca8abd6de73415d95877494
+commit 585607171f20d591033dfea43b6dd22fea755a6c
 Author: Petter Strandmark <petter.strandmark@gmail.com>
-Date:   Thu Aug 30 19:51:24 2012 -0700
+Date:   Sun Apr 7 01:24:13 2013 +0200
 
-    max_consecutive_nonmonotonic_steps should be int
+    <iterator> needed for back_insert_iterator
     
-    Found via Visual Studio warning.
+    Adding this header was required to make Ceres compile with VS2010.
     
-    Change-Id: Id2cd7de562dfc8cd35df5d5f5220dd2d7350eb2c
+    Change-Id: I000c860da4fd385d625e70695564225bdfd433c7
 
-commit 1a89bcc94e88933f89b20427a45bc40cdd23c056
+commit 520d35ef22dbcb05e344451c03ae64304e524a06
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Thu Aug 30 15:26:17 2012 -0700
+Date:   Thu Apr 4 08:16:02 2013 -0700
 
-    Better reporting on the NIST problems.
+    Further BLAS improvements.
     
-    Change-Id: I7cf774ec3242c0612dbe52fc233c3fc6cff3f031
+    1. Switch to Eigen's implementation when all dimensions are fixed.
+    2. Use lazyProduct for eigen matrix-vector product. This brings
+       eigen's performance on iterative_schur closer to what it used
+       to be before the last commit. There is however still an
+       improvement to be had by using the naive implementation when
+       the matrix and vector have dynamic dimensions.
+    
+    BENCHMARK
+                                          HEAD                                       CHANGE
+    
+    problem-16-22106-pre.txt
+    gcc-eigen       sparse_schur         0.859    gcc-eigen       sparse_schur        0.853
+    clang-eigen     sparse_schur         0.848    clang-eigen     sparse_schur        0.850
+    gcc-blas        sparse_schur         0.956    gcc-blas        sparse_schur        0.865
+    clang-blas      sparse_schur         0.954    clang-blas      sparse_schur        0.858
+    gcc-eigen       iterative_schur      4.656    gcc-eigen       iterative_schur     3.271
+    clang-eigen     iterative_schur      4.664    clang-eigen     iterative_schur     3.307
+    gcc-blas        iterative_schur      2.598    gcc-blas        iterative_schur     2.620
+    clang-blas      iterative_schur      2.554    clang-blas      iterative_schur     2.567
+    
+    problem-49-7776-pre.txt
+    gcc-eigen       sparse_schur         0.477    gcc-eigen       sparse_schur        0.472
+    clang-eigen     sparse_schur         0.475    clang-eigen     sparse_schur        0.479
+    gcc-blas        sparse_schur         0.521    gcc-blas        sparse_schur        0.469
+    clang-blas      sparse_schur         0.508    clang-blas      sparse_schur        0.471
+    gcc-eigen       iterative_schur      3.172    gcc-eigen       iterative_schur     2.088
+    clang-eigen     iterative_schur      3.161    clang-eigen     iterative_schur     2.079
+    gcc-blas        iterative_schur      1.701    gcc-blas        iterative_schur     1.720
+    clang-blas      iterative_schur      1.708    clang-blas      iterative_schur     1.694
+    
+    problem-245-198739-pre.txt
+    gcc-eigen       sparse_schur        28.092    gcc-eigen       sparse_schur       28.233
+    clang-eigen     sparse_schur        28.148    clang-eigen     sparse_schur       28.400
+    gcc-blas        sparse_schur        30.919    gcc-blas        sparse_schur       28.110
+    clang-blas      sparse_schur        31.001    clang-blas      sparse_schur       28.407
+    gcc-eigen       iterative_schur     63.095    gcc-eigen       iterative_schur    43.694
+    clang-eigen     iterative_schur     63.412    clang-eigen     iterative_schur    43.473
+    gcc-blas        iterative_schur     33.353    gcc-blas        iterative_schur    33.321
+    clang-blas      iterative_schur     33.276    clang-blas      iterative_schur    33.278
+    
+    problem-257-65132-pre.txt
+    gcc-eigen       sparse_schur         3.687    gcc-eigen       sparse_schur        3.629
+    clang-eigen     sparse_schur         3.669    clang-eigen     sparse_schur        3.652
+    gcc-blas        sparse_schur         3.947    gcc-blas        sparse_schur        3.673
+    clang-blas      sparse_schur         3.952    clang-blas      sparse_schur        3.678
+    gcc-eigen       iterative_schur    121.512    gcc-eigen       iterative_schur    76.833
+    clang-eigen     iterative_schur    123.547    clang-eigen     iterative_schur    78.763
+    gcc-blas        iterative_schur     68.334    gcc-blas        iterative_schur    68.612
+    clang-blas      iterative_schur     67.793    clang-blas      iterative_schur    68.266
+    
+    Notes:
+    
+    1. Naive BLAS was a bit worse than eigen on fixed sized matrices. We did not see this
+       before because of the different inlining thresholds. Fixing this boosted eigen's
+       performance. Also the disparity between gcc and clang has gone away.
+    
+    2. SPARSE_SCHUR performance remains the same, since it is only testing static sized
+       matrices.
+    
+    3. ITERATIVE_SCHUR performance goes up substantially due to the lazyProduct change,
+       but even there, since most of the products are dynamic sized, the naive implementation
+       wins handily.
+    
+    Change-Id: Idc17f35b9c68aaebb1b2e131adf3af8374a85a4c
 
-commit ea11704857a1e4a735e096896e4d775d83981499
+commit 25ac54807eedf16fd6c34efc390901ee549a7d14
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Wed Aug 29 18:18:48 2012 -0700
+Date:   Wed Apr 3 18:51:27 2013 -0700
 
-    Basic harness for testing NIST problems.
+    Speed up Jets.
     
-    Change-Id: I5baaa24dbf0506ceedf4a9be4ed17c84974d71a1
+    Change-Id: I101bac1b1a1cf72ca49ffcf843b73c0ef5a6dfcb
 
-commit 98bf14d2b95386c2c4a6c29154637943dae4c36c
+commit 3d6eceb45cf27024865908f0c10a5c2b0f8719cf
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Thu Aug 30 10:26:44 2012 -0700
+Date:   Tue Apr 2 21:45:48 2013 -0700
 
-    Miscellaneous fixes.
+    Replace more instances of Eigen GEMV with Ceres BLAS.
     
-    Change-Id: I521e11f2d20bf24960bbc6b5dab4ec8bb1503d23
+    With this ITERATIVE_SCHUR with JACOBI preconditioner went down from
+    280 seconds to 150 seconds on problem-744-543562-pre.txt.
+    
+    Change-Id: I4f319c1108421e8d59f58654a4c0576ad65df609
 
-commit 1e3cbd9a4442cdd8fda43a7fb452f19dac8c74af
-Author: Petter Strandmark <strandmark@google.com>
-Date:   Wed Aug 29 09:39:56 2012 -0700
-
-    Caching the symbolic Cholesky factorization when using CXSparse
-    
-    Average factorization times for bundle adjustment test problem:
-    SuiteSparse: 0.2794 s.
-    CXSparse: 0.4039 s.
-    CXSparse cached: 0.2399 s.
-    
-    CXSparse will still be slower, though, because it has to compute
-    the transpose and J^T * J.
-    
-    Change-Id: If9cdaa3dd520bee84b56e5fd4953b56a93db6bde
-
-commit 8b64140878ccd1e183d3715c38942a81fdecefde
+commit 296fa9b1279ee1900c8ae32d70e97cd10fc0b46b
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Wed Aug 29 05:41:22 2012 -0700
+Date:   Tue Apr 2 09:44:15 2013 -0700
 
-    Documentation update
+    Replace Eigen block operations with small GEMM and GEMV loops.
     
-    Change-Id: I271a0422e7f6f42bcfd1dc6b5dc10c7a18f6a179
+    1. Add Matrix-Matrix and Matrix-Vector multiply functions.
+    2. Replace Eigen usage in SchurEliminator with these custom
+       matrix operations.
+    3. Save on some memory allocations in ChunkOuterProduct.
+    4. Replace LDLT with LLT.
+    
+    As a result on problem-16-22106-pre.txt, the linear solver time
+    goes down from 1.2s to 0.64s.
+    
+    Change-Id: I2daa667960e0a1e8834489965a30be31f37fd87f
 
-commit a5353acd85a9fd19370b3d74035d87b0f0bac230
+commit 222ca20e8facf706582fe696b7f41247391eac12
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Mon Apr 1 09:11:07 2013 -0700
+
+    SuiteSparse cleanup.
+    
+    1. Silence CHOLMOD's indefiniteness warnings.
+    2. Add a comment about how the error handling in suitesparse.cc
+       needs to be improved.
+    3. Move the analysis logging into suitesparse.cc and out of the
+       three callsites.
+    
+    Change-Id: Idd396b8ea4bf59fc1ffc7f9fcbbc7b38ed71643c
+
+commit b7ba93459b7f584eedb1a9f42f3d06bccabd33dc
 Author: Petter Strandmark <petter.strandmark@gmail.com>
-Date:   Tue Aug 28 18:16:41 2012 -0700
+Date:   Tue Feb 19 12:52:58 2013 +0100
 
-    Adding gflags include to test_util.cc
+    Enable larger tuple sizes for Visual Studio 2012.
     
-    test_util seems to need gflags.
+    Visual Studio 2012 does not have variadic templates and implements
+    tuples differently. By default, only sizes up to 5 are supported,
+    which conflicts with Gtest.
     
-    Change-Id: I0c4757960f8ac69ad599c138aea58e3c88a4ea28
+    Change-Id: Ieb8d59e4329863cbfa2729d8a76db0714c08d259
 
-commit 87ca1b2ba28ec512752bbcf5fc994ce1434eb765
-Author: Petter Strandmark <petter.strandmark@gmail.com>
-Date:   Tue Aug 28 18:05:20 2012 -0700
-
-    Changing random.h to use cstdlib for Windows compability.
-    
-    As discussed with Sameer today.
-    
-    Change-Id: If3d0284830c6591c71cc77b8400cafb45c0da61f
-
-commit aeb00a07323808a0a1816e733ad18a87d5109ea3
-Author: Petter Strandmark <strandmark@google.com>
-Date:   Mon Aug 27 22:22:57 2012 -0700
-
-    Removing gomp for Visual Studio
-    
-    Linking currently fails in Visual Studio due to a missing library
-    "gomp.lib". This is not needed in Visual Studio. OpenMP works
-    without it.
-    
-    Change-Id: I39e204a8dd4f1b7425df7d4b222d86a8bb961432
-
-commit 6f362464ba99b800494d2f15c27768a342ddaa68
-Author: Markus Moll <markus.moll@esat.kuleuven.be>
-Date:   Tue Aug 28 01:03:38 2012 +0200
-
-    Add some tests for DoglegStrategy.
-    
-    Not necessarily a complete set.
-    
-    Change-Id: I14eb3a38c6fe976c8212f3934655411b6d1e0aa4
-
-commit 122cf836a6dc9726489ce2fbecc6143bddc1caaf
+commit 564a83fcc690ac8383bf52a782c45757ae7fa2ad
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Fri Aug 24 16:28:27 2012 -0700
+Date:   Tue Mar 26 11:11:43 2013 -0700
 
-    Documentation update.
+    Lint cleanup from William Rucklidge.
     
-    Change-Id: I0a3c5ae4bc981a8f5bdd5a8905f923dc5f09a024
+    Change-Id: I8d4a0aa3e264775d20e99a6b5265f3023de92560
 
-commit 69081719f73da8de2935774a42d237837a91952a
+commit cbe64827becbbaab5b435a71bf00353b4ddd026b
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Mon Mar 25 17:39:53 2013 -0700
+
+    Update documentation
+    
+    Change-Id: Iea3c4b5409e593b1fb070a491ba8a479db32ca58
+
+commit 802639c89603c9541e624766349d1989a1f641c0
+Author: Pablo Speciale <pablo.speciale@gmail.com>
+Date:   Mon Mar 25 20:53:45 2013 -0700
+
+    ceresproblem label was incorrect
+    
+    Change-Id: I3e210375adba4fa50ff3c25398b20a65d241cb35
+
+commit 6bcb8d9c304a3b218f8788018dfdfe368bb7d60c
+Author: Pablo Speciale <pablo.speciale@gmail.com>
+Date:   Mon Mar 25 16:40:26 2013 -0700
+
+    Compiling against static or shared library
+    
+    Change-Id: I3fb35e9a49f90b8894f59dde49c90a7c2dd74b0a
+
+commit 619cfe692020c078275b68eac2167232fafdfffb
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Mon Mar 25 14:03:41 2013 -0700
+
+    Update version history
+    
+    Change-Id: I1d036efad1507efd19d8581f147b38170b1f0543
+
+commit 6ae34757850a5fa8213e0d1a540d9d75d6840a08
+Author: Pablo Speciale <pablo.speciale@gmail.com>
+Date:   Sun Mar 24 22:30:52 2013 -0700
+
+    Added documentation regarding the use of Ceres with cmake (once installed)
+    Commets about the flag ``BUILD_DOCUMENTATION=ON``
+    
+    Change-Id: I8814927e60af190c8043bfc36e77fe76bfe6f562
+
+commit f46de9e697eb5b8756084615e29ded48600a4d39
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Mar 21 15:31:35 2013 +0600
+
+    Silent no previous declaration warning for FindParameterBlockOrDie
+    
+    Use anonymous namespace for this. Also move some surrounding static
+    function to this anonymous namespace.
+    
+    Change-Id: Ie235eb7936976563a9db115ec13c59e6e6869b96
+
+commit 16636efeffacdd69d075a60ea8a94d98fd81c6fd
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Mar 21 15:12:01 2013 +0600
+
+    Compilation fix for msvc2010
+    
+    Usage of back_inserter requires <iterator> header when using msvc2010
+    
+    Change-Id: I92ee1649795ce0468ce337fc414eb0ca6e90c51e
+
+commit ac0d416991274ed67fe85371f09b07f706a6db9a
+Author: Pablo Speciale <pablo.speciale@gmail.com>
+Date:   Wed Mar 20 18:32:14 2013 -0700
+
+    google-glog link wasn't working, 'http://' twice
+    
+    Change-Id: I9cd96d3609f9b1ba31cd480fef1702972be86741
+
+commit 55b6c966c4f697cb5d11982201733aa3bce7a5a7
+Author: Pablo Speciale <pablo.speciale@gmail.com>
+Date:   Wed Mar 20 17:44:04 2013 -0700
+
+    * Fixed the location of the Ceres doc (once installed with 'make install')
+    * Doing 'make ceres_docs' can be used to create the documentation (if the BUILD_DOCUMENTATION=ON)
+    * Included the copyright boilerplate for FindSphinx.cmake
+    
+    Change-Id: Iea21eba9e68384b4fe72c85fa88c76b0ba8a7a1d
+
+commit a986912555b304a47dd0c2a02892046fde15d091
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Wed Mar 20 11:50:34 2013 -0700
+
+    Update version history
+    
+    Change-Id: I238279719219a26d0d1bb32e0610f41007d3dcef
+
+commit 16dbf11626c52c013f1dca6375f993a554e31d51
+Author: Pablo Speciale <pablo.speciale@gmail.com>
+Date:   Mon Mar 11 14:44:02 2013 -0700
+
+    Added CeresConfig.cmake based on this example:
+        https://projects.kde.org/projects/kde/kdeexamples/repository/revisions/master/show/buildsystem/HowToInstallALibrary
+    
+    Change-Id: I130cac5d43d9fbbf359abc04d3691e25c4e2bb63
+
+commit 015d57f173fab7ea040ee01474101e208ff72be6
+Author: Pablo Speciale <pablo.speciale@gmail.com>
+Date:   Tue Mar 19 14:05:14 2013 -0700
+
+    Avoiding the Warning: "deprecated conversion from string constant to char*"
+    
+    Change-Id: Ifa47f9b0724f79c5c695828628c89818ddefd844
+
+commit c51b11c1046366035e7da95e4d8a78100ef3f153
+Author: Pablo Speciale <pablo.speciale@gmail.com>
+Date:   Tue Mar 12 00:56:56 2013 -0700
+
+    Sphinx and CMake, based on this example:
+       http://ericscottbarr.com/blog/2012/03/sphinx-and-cmake-beautiful-documentation-for-c-projects/
+    
+    The 'docs/CMakeLists.txt' file was deleted in this commit: 0abfb8f46f534b05413bb4d64b960d6fd0a9befb
+    
+    Thanks to Arnaud Gelas, he has passed some links:
+       https://github.com/InsightSoftwareConsortium/ITKExamples/blob/master/CMake/FindSphinx.cmake
+       https://github.com/InsightSoftwareConsortium/ITKExamples/blob/master/CMakeLists.txt#L120-L154
+    
+    Change-Id: Ic65e7f8ec5280d1e71a897a144417a21761c5553
+
+commit 793a339335d8d52279efb49bcd704d196646efb5
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Wed Mar 13 12:14:00 2013 -0700
+
+    Make Android.mk play better with the external consraints
+    
+    Change-Id: Ia0a1037d97c032a4ba1a9acbf4e04c192d12ee61
+
+commit 700d50d8074f0273b305fe6d9f795f1dcb988048
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Tue Mar 12 16:12:42 2013 -0700
+
+    Lint cleanup from William Rucklidge
+    
+    Change-Id: Iacbf77246109f687708696eee7fb6144d23e7ec5
+
+commit 8140f0fc979f5728f37cfb68362f31e7e37b46bb
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Tue Mar 12 09:45:08 2013 -0700
+
+    Modularize the build.
+    
+    1. Add -DLINE_SEARCH_MINIMIZER to CMake to make the line search
+       minimizer optional.
+    2. Better handling of -DSUITESPARSE/-DCXSPARSE in top level cmake
+       file.
+    3. Disable code which will never be used if SuiteSparse and/or
+       CXSparse is not available.
+    4. Update build docs.
+    5. Update jni/Android.mk
+    6. Minor lint cleanup from William Rucklidge.
+    
+    Change-Id: If60460a858000df82faed7a6bb056dd2bfdde562
+
+commit c59c1e44727c62d43523b672c1c132865cd25784
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Mon Mar 11 17:28:38 2013 -0700
+
+    Propagate ifdefs correctly to improve build efficiency.
+    
+    With -DRESTRICT_SCHUR_SPECIALIZATIONS, now the various
+    specializations are empty, decreasing build time and
+    reducing the size of the static library.
+    
+    Change-Id: I8ec431279741a9a83516a4167c54a364c4608143
+
+commit 32874b861fc54b33aa4272e8c81bb001aa1e1e60
+Author: Yuliy Schwartzburg <syx818@gmail.com>
+Date:   Fri Mar 8 11:30:44 2013 +0100
+
+    Fix CMake "LIB_SUFFIX" for non-linux installations
+    
+    Change-Id: Ieb8a2825a4378b388149e7934ecc7b96ba5a29fa
+
+commit 58b8c68f29c2c15edbc5f77102796df661020312
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Sat Mar 9 17:17:43 2013 -0800
+
+    Clean up rotation.h
+    
+    Change-Id: I3370c9883728cda068c9650a2c2a50641fd8299c
+
+commit 020d8e1e48f341f3b990ac449998d36aaca2771f
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Wed Mar 6 16:19:26 2013 -0800
+
+    Better error reporting in the modeling API.
+    
+    More informative error when user passes an
+    unknown parameter block to Problem methods.
+    
+    Change-Id: I517360e4b0b55814904ca3e664877d76ad3f59e8
+
+commit 5e7ce8a950cf5794c63817827ce66a3a4e66e7b6
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Wed Mar 6 11:38:41 2013 -0800
+
+    Fix Problem::Evaluate documentation
+    
+    Change-Id: I8c70a24743cff2d9cface99ef0f5d34c78f769c6
+
+commit 0a4f5f8f7428148f21183e743d091d2079406604
+Author: Taylor Braun-Jones <taylor@braun-jones.org>
+Date:   Wed Mar 6 00:00:32 2013 -0500
+
+    Fix operator() signature in several sections of the documentation
+    
+    Change-Id: I73f9d150a738f7b136fbc1f98fc60b0f306bd7f9
+
+commit 2c648dbc43025927301684fc82d95ccf6b6c21bc
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Tue Mar 5 15:20:15 2013 -0800
+
+    Make examples independent of ceres internals.
+    
+    Change-Id: I6b6913e067a86fea713646218c8da1439d349d74
+
+commit e7148795c3f2ce1f6625a7c81545707a6cbde3eb
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Mon Mar 4 10:17:30 2013 -0800
+
+    Fix a memory leak in CXSparse::SolveCholesky.
+    
+    Thanks to Alexander Mordvintsev for reporting this.
+    
+    Change-Id: I5c6be4d3d28f062e83a1ad41cb8089c19362a005
+
+commit 480f9b8551c02c429bc027197f3d868c5cc522c9
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Sun Mar 3 20:15:22 2013 -0800
+
+    Add gerrit instructions to the docs.
+    
+    Change-Id: Ic98f20273f3ccbaeb8b4ca00c4ce0042a0d262f8
+
+commit 7c60b5c2c6170f0f81a29dbaa2ca7d8031db843b
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Sun Mar 3 18:28:02 2013 -0800
+
+    version history update
+    
+    Change-Id: Ia92caeb0f6659667ce1e56eefd0e3c87b3f6e538
+
+commit a363a7b69c7b97e17ad671ba1aee30f201eafdd1
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Sun Mar 3 18:06:00 2013 -0800
+
+    Multithread DENSE_SCHUR
+    
+    Replace the global lock in BlockRandomAccessDenseMatrix
+    with a per cell lock.
+    
+    Change-Id: Iddbe38616157b6e0d3770eede3335a056c3ba18c
+
+commit 31730ef55df802d1e251edab3bac3c0cdcb30647
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Thu Feb 28 11:20:28 2013 -0800
+
+    DenseSparseMatrix is now column-major.
+    
+    1. Introduce new typdefs in eigen.h to allow for column
+       major matrices.
+    
+    2. Clean up old unused typedefs, and the aligned typedefs
+       since they do not actually add any real performance.
+    
+    3. Made eigen.h conform to the google style guide by removing
+       the using directives. They were polluting the ceres namespace.
+    
+    4. Made the template specialization generator work again.
+    
+    Change-Id: Ic2268c784534b737ebd6e1a043e2a327adaeca37
+
+commit f8e43f7f2724c5413015e1f113ce860ee8b30428
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Wed Feb 27 08:55:20 2013 -0800
+
+    version history update
+    
+    Change-Id: Ibd412a9e5beac3b3ac3e15b26fb11aa061956095
+
+commit fef82b3a7af1e44f18f5343601fb19a4dd6f89ad
+Author: Alex Stewart <alexs.mac@gmail.com>
+Date:   Wed Feb 27 10:44:12 2013 +0000
+
+    Bugfix - commenting-out unused member which results in build error on OS X with latest Xcode.
+    
+    - Build error due to -Werror,-Wunused-private-field clang args.
+    - Raised with gtest group (as it also occurs with latest gtest:master but for a different
+      variable) with patch, but they don't want to fix for compatibility with legacy compilers/OS
+      see here: https://groups.google.com/forum/?fromgroups=#!topic/googletestframework/S1KLl2jkzws
+    
+    Change-Id: I99984bcd9d07f6eb0e3fac58e27ddf0ac9e54265
+
+commit 0bc3540b66cf9de4d4a317c6a760849aa66d414e
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Wed Feb 27 08:46:48 2013 -0800
+
+    Version history update
+    
+    Change-Id: I6f79dd87e45bedf4bcf821e7b44f8b9553c39a7b
+
+commit b59ac43b9d1122da3d00882efa7c5d6833c06ea7
+Author: Alex Stewart <alexs.mac@gmail.com>
+Date:   Wed Feb 27 09:10:19 2013 +0000
+
+    Issue 83 fix: use correct pthread linker flags with clang.
+    
+    1. -lpthreads was previously added to the CMAKE_CXX_FLAGS which are
+    not passed to the linker thus linking would fail.
+    2. Clang would emit a warning about -lpthreads being added to a
+    build instruction with -c (compile only).
+    
+    This patch fixes both of these issues by adding -lpthreads to the
+    linker flags (and removes them from the CXX flags).
+    
+    Change-Id: I5e54de3ab7eced177aa31f311926893598af5b56
+
+commit 6fb1024ed5b197da261f71d1bb02716661da2fff
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Tue Feb 26 22:20:18 2013 -0800
+
+    Fix a small bug in evaluator.h
+    
+    Change-Id: I2c4b8637e0ac8645721109f8b6bb2396ce8bb37b
+
+commit 039ff07dd1a02e6c9cff335551f05bfe8269224b
+Author: Sameer Agarwal <sameeragarwal@google.com>
+Date:   Tue Feb 26 09:15:39 2013 -0800
+
+    Evaluate ResidualBlocks without LossFunction if needed.
+    
+    1. Add the ability to evaluate the problem without loss function.
+    2. Remove static Evaluator::Evaluate
+    3. Refactor the common code from problem_test.cc and
+       evaluator_test.cc into evaluator_test_utils.cc
+    
+    Change-Id: I1aa841580afe91d288fbb65288b0ffdd1e43e827
+
+commit c3fd3b960e489348d5b2c8b8f0167760e52ecbd9
+Author: Taylor Braun-Jones <taylor@braun-jones.org>
+Date:   Tue Feb 26 00:30:35 2013 -0500
+
+    Only use cmake28 macro for RHEL6
+    
+    This makes it possible to use the same spec to build on Fedora. It drops any
+    chance of building on RHEL5, but I doubt that was possible anyway.
+    
+    Change-Id: Ia956eb6416504e520962ec2f617e03b40ca18203
+
+commit b73148b9f38fe41032e696436566b78043a368db
+Author: Taylor Braun-Jones <taylor@braun-jones.org>
+Date:   Mon Feb 25 02:34:00 2013 -0500
+
+    Remove -Wno-return-type-c-linkage option when using gcc
+    
+    Only use this option when compiling with CLang which supports it.
+    
+    Change-Id: I8555c16e82d61302f6a43672d0d63e5d4800c6b6
+
+commit ba9442160dabf612a1dc51baf098937459b4b5ca
 Author: Keir Mierle <mierle@gmail.com>
-Date:   Mon Aug 27 13:28:56 2012 -0700
+Date:   Mon Feb 25 12:46:44 2013 -0800
 
-    Remove unnecessary overload for hash<>
+    Add the number of effective parameters to the final report.
     
-    The overload for pointers in hash tables was applied in normal
-    usage of schur_ordering.cc. However, the tests did not include the
-    overload since they only included collections_port.h. As a result,
-    the routines in schur_ordering.cc were using a different hash
-    function than that inside the tests.
+    Here is an example report, obtained by running:
     
-    The fix is to remove the specialization. If this breaks one of the
-    compiler configurations, we will find a workaround at that time.
+      bin/Debug/bundle_adjuster \
+      --input=../ceres-solver/data/problem-16-22106-pre.txt \
+      --linear_solver=iterative_schur \
+      --num_iterations=1 \
+      --alsologtostderr \
+      --use_local_parameterization \
+      --use_quaternions
     
-    Change-Id: Idbf60415d5e2aec0c865b514ad0c577d21b91405
+    Note that effective parameters is less than parameters by 16, which is the
+    number of cameras. In this case the local parameterization has a 3 dimensional
+    tangent space for the 4-dimensional quaternions.
+    
+    Ceres Solver Report
+    -------------------
+                                         Original                  Reduced
+    Parameter blocks                        22138                    22138
+    Parameters                              66478                    66478
+    Effective parameters                    66462                    66462
+    Residual blocks                         83718                    83718
+    Residual                               167436                   167436
+    
+    Minimizer                        TRUST_REGION
+    Trust Region Strategy     LEVENBERG_MARQUARDT
+    
+                                            Given                     Used
+    Linear solver                 ITERATIVE_SCHUR          ITERATIVE_SCHUR
+    Preconditioner                         JACOBI                   JACOBI
+    Threads:                                    1                        1
+    Linear solver threads                       1                        1
+    Linear solver ordering              AUTOMATIC                22106, 32
+    
+    Cost:
+    Initial                          4.185660e+06
+    Final                            7.221647e+04
+    Change                           4.113443e+06
+    
+    Number of iterations:
+    Successful                                  1
+    Unsuccessful                                0
+    Total                                       1
+    
+    Time (in seconds):
+    Preprocessor                            0.697
+    
+      Residual Evaluations                  0.063
+      Jacobian Evaluations                 27.608
+      Linear Solver                        13.360
+    Minimizer                              43.973
+    
+    Postprocessor                           0.004
+    Total                                  44.756
+    
+    Termination:                   NO_CONVERGENCE
+    
+    Change-Id: I6b6b8ac24f71bd187e67d95651290917642be74f
 
-commit 1762420b6ed76b1c4d30b913b2cac1927b666534
+commit 36dc14ddf2fd53238c2ce21f172aa1989b31c0fd
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Wed Aug 22 10:01:31 2012 -0700
+Date:   Mon Feb 25 10:33:10 2013 -0800
 
-    Update changelog.
+    Fix a clang warning
     
-    Change-Id: Idf5af69d5a9dbe35f58e30a8afcbfcd29bb7ebfe
+    Change-Id: I5ef32c6329f1f75efb30b16519b8de146a8339fa
 
-commit 976ab7aca908309b8282cb40bc080ca859136854
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Thu Aug 23 18:21:36 2012 -0700
-
-    Remove Google-era vestigial unit test.
-    
-    Change-Id: Ia7a295a5c759a17c1675a3055d287d3e40e9e0fe
-
-commit 6ad6257de0e2152ac5e77dc003758de45187d6ea
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Wed Aug 22 11:10:31 2012 -0700
-
-    Add a workaround for an Android NDK compiler bug.
-    
-    On certain NDK build configurations, one of the innermost
-    parts of the Schur eliminator would get compiled
-    incorrectly. The compiler changed a -= to a +=.
-    
-    The normal Ceres unit tests caught the problem; however,
-    since it is not possible to build the tests with the NDK
-    (only with the standalone toolchain) this was difficult to
-    track down. Finding the issue involved pasting the schur
-    eliminator unit test inside of solver_impl.cc and other such
-    hacks.
-    
-    Change-Id: Ie91bb545d74fe39f0c8cbd1a6eb69ee4d8b25fb2
-
-commit aecb2dc92b4aa7f3bf77a1ac918e62953602392b
+commit 931c309b2734329ec6e5f0b88ce4a0b488ac47e5
 Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Wed Aug 22 10:08:17 2012 -0700
+Date:   Mon Feb 25 09:46:21 2013 -0800
 
-    Fix relative path bug in bibtex call.
+    Cleanup based on comments by William Rucklidge
     
-    Change-Id: I0d31786564320a6831259bcdf4c75a6b665c43ad
+    Change-Id: If269ba8e388965a8ea32260fd6f17a133a19ab9b
 
-commit 1e2892009e591804df6286caebd5c960e7e3b099
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Tue Aug 21 18:00:54 2012 -0700
+commit df36218c953e05d665df2cc96a6d7625e2307d97
+Author: Taylor Braun-Jones <taylor@braun-jones.org>
+Date:   Fri Feb 15 18:28:11 2013 -0500
 
-    Update Summary::FullReport to report dogleg type.
+    Add support for the CMake "LIB_SUFFIX" convention
     
-    Change-Id: I0b4be8d7486c1c4b36b299693b3fe8b0d3426537
-
-commit 295ade1122a86b83e1ea605d5ca394f315874717
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Wed Aug 22 06:51:22 2012 -0700
-
-    Fix Eigen3 Row/Column Major storage issue.
+    Allows `make install` to work correctly on e.g. 64-bit systems where the
+    native libraries are installed to /usr/lib64
     
-    Eigen3 does not allow column vectors to be stored in row-major
-    format. NumericDiffCostFunction by default stores its Jacobian
-    matrices in row-major format. This works fine if the residual
-    contains more than one variable. But if the residual block
-    depends on one variable and has more than one residuals, the
-    resulting Jacobian matrix is a column matrix in row-major format
-    resulting in a compile time error.
-    
-    The fix is to check the template parameters and switch to column-major
-    storage as needed.
-    
-    Thanks to Lena Gieseke for reporting this.
-    
-    Change-Id: Icc51c5b38e1f3609e0e1ecb3c4e4a02aecd72c3b
-
-commit 9ad27e8e9fb1bbd2054e2f6ae37623e01428f1c0
-Author: Arnaud Gelas <arnaudgelas@gmail.com>
-Date:   Tue Aug 21 09:56:30 2012 +0200
-
-    Add one uninstall target to remove all installed files
-    
-    Change-Id: Ifcf89a6c27b25f28403d95a50e29c093a525298f
-
-commit 0c3a748ee49e04fe334f8f5a433649d18003d550
-Author: Markus Moll <markus.moll@esat.kuleuven.be>
-Date:   Tue Aug 21 14:44:59 2012 +0200
-
-    Allow equal lower and upper bound for diagonal scaling.
-    
-    This way, setting the lower and upper bound both to 1.0, one can disable
-    the automatic trust region scaling.
-    
-    Change-Id: Ifa317a6911b813a89c1cf7fdfde25af603705319
-
-commit 3d644b76adefac6475b91dc53c3ae5e01c4f4d66
-Author: Arnaud Gelas <arnaudgelas@gmail.com>
-Date:   Thu Aug 16 17:33:21 2012 +0200
-
-    Install headers, libraries and pdf
-    
-    Headers are installed in ${CMAKE_INSTALL_PREFIX}/include/ceres
-    Libraries are installed in ${CMAKE_INSTALL_PREFIX}/lib
-    pdf is installed in ${CMAKE_INSTALL_PREFIX}/share/ceres/docs
-    
-    Change-Id: Ic175f2c2f5fa86820a1e8c64c2ed171f4a302a68
-
-commit d2fb5adea4d8c2aeb43c4289c6976798a54d3cf1
-Author: Arnaud Gelas <arnaudgelas@gmail.com>
-Date:   Fri Aug 17 10:11:02 2012 +0200
-
-    Configure gerrit hook at CMake time
-    
-    If the source directory is a clone, at CMake time the commit-msg hook gets
-    downloaded and installed in the right location.
-    
-    Change-Id: I5fee17d050ca22d8b92a49fdcc2a1cd6659f209b
-
-commit 73166098fc4b1072adc30321c666188a3909c43c
-Author: Arnaud Gelas <arnaudgelas@gmail.com>
-Date:   Mon Aug 20 15:40:41 2012 +0200
-
-    Add one CMake option to build the examples.
-    
-    Currently the examples are always built. For external projects, it is useful
-    not to compile the examples.
-    
-    Change-Id: I41d3bde19c7e742818e60f78222d39c43992ca8b
-
-commit 86d4f1ba41ef14eb1b6b61a7936af83387b35eb2
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Mon Aug 20 11:52:04 2012 -0700
-
-    Add missing return statement.
-    
-    Change-Id: I5eaf718318e27040e3c97e32ee46cf0a11176a37
-
-commit 51eb229da34187a4e8ce73ed9cc0e731998bb2be
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Mon Aug 20 11:46:12 2012 -0700
-
-    Add Program::ToString() to aid debugging.
-    
-    Change-Id: I0ab37ed2fe0947ca87a152919d4e7dc9b56dedc6
-
-commit bcc7100635e2047dc2b77df19a4ded8a6ab4d4b9
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Mon Aug 20 11:45:04 2012 -0700
-
-    Ignore minted.sty.
-    
-    Change-Id: I2467a6f801812b9007b51bf14b00757f026e4322
-
-commit 9705a736dd3d6fbead0d8a6ff77102c69bbcdc08
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Mon Aug 20 11:24:05 2012 -0700
-
-    Add ParameterBlock::ToString() to aid debugging.
-    
-    Change-Id: Id3f5cb27b855c536dd65a986f345bd8eb2799dfa
-
-commit 0c714a70e6123ceb68e5cfcd3cfbee0d09deb1db
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Mon Aug 20 11:18:16 2012 -0700
-
-    Fix blanks before private in loss_function.h
-    
-    Change-Id: I068bed6431bc7c9b7958af391655df61499000b2
-
-commit 51cf7cbe3bac45c6807c2703a2fc3175d76a1b47
-Author: Markus Moll <markus.moll@esat.kuleuven.be>
-Date:   Mon Aug 20 20:10:20 2012 +0200
-
-    Add the two-dimensional subspace search to DoglegStrategy
-    
-    Change-Id: I5163744c100cdf07dd93343d0734ffe0e80364f3
-
-commit ad1f7b772e559a911ac3a3b078b0aee1836fe785
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Mon Aug 20 11:10:34 2012 -0700
-
-    Add ArcTanLoss, TolerantLoss and ComposedLossFunction.
-    
-    Based on work by James Roseborough.
-    
-    Change-Id: Idc4e0b099028f67702bfc7fe3e43dbd96b6f9256
-
-commit 05292bf8fc5208b86b4a13544615b584f6efa936
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Mon Aug 20 07:40:45 2012 -0700
-
-    Add a TrustRegionStrategy::Summary object.
-    
-    Change-Id: I7caee35a3408ee4a0ec16ba407410d822929340d
-
-commit b12b906c4d21c3949f0dce62c4c0d083c8edecf1
-Author: Arnaud Gelas <arnaudgelas@gmail.com>
-Date:   Wed Aug 15 16:27:38 2012 +0200
-
-    Add one option to generate the PDF from CMake at build time
-    
-    Make sure pygmentize is installed
-    
-    Change-Id: I068ba45c33a8e96acc906a464b12d10d58b3e231
-
-commit b9f15a59361c609ffc4a328aea9be3d265b5da81
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Sat Aug 18 13:06:19 2012 -0700
-
-    Add a dense Cholesky factorization based linear solver.
-    
-    For problems with a small number of variables, but a large
-    number of residuals, it is sometimes beneficial to use the
-    Cholesky factorization on the normal equations, instead of
-    the dense QR factorization of the Jacobian, even though it
-    is numerically the better thing to do.
-    
-    Change-Id: I3506b006195754018deec964e6e190b7e8c9ac8f
-
-commit b3fa009435acf476cd373052e62988f6437970b1
-Author: Arnaud Gelas <arnaudgelas@gmail.com>
-Date:   Fri Aug 17 10:31:41 2012 +0200
-
-    Set CMAKE_*_OUTPUT_DIRECTORY
-    
-    Gather
-     * all executables in ${CMAKE_BINARY_DIR}/bin
-     * all libraries (static and dynamic) in ${CMAKE_BINARY_DIR}/lib
-    
-    Change-Id: Ibc2fa1adfb6f0aea65d66d570259b79546bf3b07
-
-commit 1b8a4d5d11671ed83cf6077e363dd95333f08ef8
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Fri Aug 17 16:49:11 2012 -0700
-
-    Fix a minor bug in detect_structure logging.
-    
-    Change-Id: I117f7745e4c67595b3ff9244cde82b5b5b34ee4b
-
-commit 31c1e784ab2cb9294c6e05414cf06aae2b3766de
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Fri Aug 17 16:16:32 2012 -0700
-
-    Minor cleanups.
-    
-    Change-Id: Ida4866997deeaa1bc2cebd6b69313a05ac82e457
-
-commit e83f7879a8b21c6976e116958caf35bcdcf41cb0
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Fri Aug 17 15:34:42 2012 -0700
-
-    Fix SuiteSparse3 UFConfig.h detection really.
-    
-    Change-Id: Id187102e755b7d778dff4363f22f9a4697ed12dd
-
-commit 96f25dc57658d296ee6b6633818b4f1e51d7d587
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Fri Aug 17 15:34:42 2012 -0700
-
-    Fix SuiteSparse3 UFConfig.h detection.
-    
-    Change-Id: Ia59aefdb0ad7f713f76ed79692f2db4fa2821e5b
-
-commit c497bd6cd9aa944f518aa491d3bc645851ff9594
-Author: Markus Moll <markus.moll@esat.kuleuven.be>
-Date:   Fri Aug 17 14:40:13 2012 +0200
-
-    Add UFconfig and/or SuiteSparse_config test to CMakeLists.txt
-    
-    SuiteSparse 4 requires linking to libsuitesparseconfig.a.
-    Both SuiteSparse 3 and SuiteSparse 4 require an additional header
-    (either UFconfig.h or SuiteSparse_config.h) that is not found if it is
-    in a separate path. Therefore, add explicit checks.
-    
-    Change-Id: I699902b5db4f1b7f17134b5a54f9aa681445e294
-
-commit 383c04f4236d92801c7c674892814362dedf7ad6
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Fri Aug 17 10:14:04 2012 -0700
-
-    Fix QuaternionToAngleAxis to ensure rotations are between -pi and pi.
-    
-    Thanks to Guoxuan Zhang for reporting this.
-    
-    Change-Id: I2831ca3a04d5dc6467849c290461adbe23faaea3
-
-commit dd2b17d7dd9750801ba4720bdece2062e59b7ae3
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Thu Aug 16 19:34:57 2012 -0700
-
-    CERES_DONT_HAVE_PROTOCOL_BUFFERS -> CERES_NO_PROTOCOL_BUFFERS.
-    
-    Change-Id: I6c9f50e4c006faf4e75a8f417455db18357f3187
-
-commit 8b4cb7aa2c74a0da62c638b2023566aa242af995
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Thu Aug 16 19:26:55 2012 -0700
-
-    Fix sparse linear algebra library logging in Summary::FullReport.
-    
-    Change-Id: Id2c902dc86c00954fde7749c7b4a67dd94215a31
-
-commit 47d26bcd3b38b5ff53b34768c33b499d47b26bd0
-Author: Markus Moll <markus.moll@esat.kuleuven.be>
-Date:   Thu Aug 16 00:23:38 2012 +0200
-
-    Do not implicitly negate the step in the TrustRegionMinimizer.
-    
-    In the TrustRegionMinimizer, the step is currently implicitly negated.
-    This is done so that the linearized residual is |r - J*step|^2, which
-    corresponds to J*step = r, so neither J nor r have to be modified.
-    However, it leads to the rather unintuitive situation that the strategy
-    returns a step in positive gradient direction, which you would expect to
-    increase the function value. One way is to rename the "step" parameter in
-    the strategy to "negative_step" and document it.
-    This patch instead moves the negation inside the strategy, just around
-    the linear solver call, so that it is done in a local context and easier
-    to document.
-    
-    Change-Id: Idb258149a01f61c64e22128ea221c5a30cd89c89
-
-commit 51da590c8457e6664f76fe9813425a0c71351497
-Author: Markus Moll <markus.moll@esat.kuleuven.be>
-Date:   Fri Aug 17 12:56:09 2012 +0200
-
-    Remove tmp file
-    
-    Change-Id: I07496fafae7b0c5c12cc26ae336e0db3b5592735
-
-commit 7006a1f2b1701b8d89b8d1525fc0101943802221
-Author: Sameer Agarwal <sameeragarwal@google.com>
-Date:   Thu Aug 16 18:04:22 2012 -0700
-
-    Correct example code in Powell's function example.
-    
-    Thanks to Petter Strandmark for pointing this out.
-    
-    Change-Id: I967632235dccdb481396e94904bb911c9a1efe1e
-
-commit 57a44b27bc6fc95b4e70fdc25c25c9925a2072a0
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Thu Aug 16 17:04:50 2012 -0700
-
-    Remove unnecessary flags in NDK build.
-    
-    Change-Id: Ib5b4d0b7f2d898671252734978c789b8171d96a8
-
-commit f21bee247251a8b2e836c215a84c4668c31d75cd
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Thu Aug 16 16:27:10 2012 -0700
-
-    Fix for fpclassify.h NDK porting work.
-    
-    Change-Id: I69df1b4caf2941ed96a53e35e43ec54073f84f59
-
-commit 8ceb02cb75b66602de44a35e413225386cb21c27
-Author: Keir Mierle <mierle@gmail.com>
-Date:   Thu Aug 16 14:23:47 2012 -0700
-
-    Add Android NDK build files.
-    
-    This adds a Android.mk build that builds a Ceres static library
-    suitable for embetting in larger Android applications. This is
-    useful when needing to build Ceres without GPL'd components, since
-    the standalone toolchain (needed for the CMake Android build) does
-    not work with STLPort.
-    
-    Change-Id: I8d857237f6f82658741017d161b2e31d9a20e5a7
+    Change-Id: I71b4fae7b459c003cb5fac981278c668f2e29779

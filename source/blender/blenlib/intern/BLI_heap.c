@@ -33,9 +33,10 @@
 #include <string.h>
 
 #include "MEM_guardedalloc.h"
+
+#include "BLI_utildefines.h"
 #include "BLI_memarena.h"
 #include "BLI_heap.h"
-#include "BLI_utildefines.h"
 
 /***/
 
@@ -167,7 +168,7 @@ HeapNode *BLI_heap_insert(Heap *heap, float value, void *ptr)
 		heap->freenodes = (HeapNode *)(((HeapNode *)heap->freenodes)->ptr);
 	}
 	else {
-		node = (HeapNode *)BLI_memarena_alloc(heap->arena, sizeof *node);
+		node = (HeapNode *)BLI_memarena_alloc(heap->arena, sizeof(*node));
 	}
 
 	node->value = value;
@@ -183,7 +184,7 @@ HeapNode *BLI_heap_insert(Heap *heap, float value, void *ptr)
 	return node;
 }
 
-int BLI_heap_is_empty(Heap *heap)
+bool BLI_heap_is_empty(Heap *heap)
 {
 	return (heap->size == 0);
 }

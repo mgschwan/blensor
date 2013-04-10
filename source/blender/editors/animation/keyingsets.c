@@ -289,7 +289,6 @@ void ANIM_OT_keying_set_path_remove(wmOperatorType *ot)
 
 static int add_keyingset_button_exec(bContext *C, wmOperator *op)
 {
-	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	KeyingSet *ks = NULL;
 	PropertyRNA *prop = NULL;
@@ -360,7 +359,6 @@ static int add_keyingset_button_exec(bContext *C, wmOperator *op)
 	
 	if (success) {
 		/* send updates */
-		DAG_ids_flush_update(bmain, 0);
 		WM_event_add_notifier(C, NC_SCENE | ND_KEYINGSET, NULL);
 		
 		/* show notification/report header, so that users notice that something changed */
@@ -392,7 +390,6 @@ void ANIM_OT_keyingset_button_add(wmOperatorType *ot)
 
 static int remove_keyingset_button_exec(bContext *C, wmOperator *op)
 {
-	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	KeyingSet *ks = NULL;
 	PropertyRNA *prop = NULL;
@@ -442,7 +439,6 @@ static int remove_keyingset_button_exec(bContext *C, wmOperator *op)
 	
 	if (success) {
 		/* send updates */
-		DAG_ids_flush_update(bmain, 0);
 		WM_event_add_notifier(C, NC_SCENE | ND_KEYINGSET, NULL);
 		
 		/* show warning */
@@ -472,7 +468,7 @@ void ANIM_OT_keyingset_button_remove(wmOperatorType *ot)
 /* Change Active KeyingSet Operator ------------------------ */
 /* This operator checks if a menu should be shown for choosing the KeyingSet to make the active one */
 
-static int keyingset_active_menu_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int keyingset_active_menu_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	uiPopupMenu *pup;
 	uiLayout *layout;
@@ -883,7 +879,7 @@ short ANIM_validate_keyingset(bContext *C, ListBase *dsources, KeyingSet *ks)
 		if (ksi == NULL)
 			return MODIFYKEY_MISSING_TYPEINFO;
 		/* TODO: check for missing callbacks! */
-
+		
 		/* check if it can be used in the current context */
 		if (ksi->poll(ksi, C)) {
 			/* if a list of data sources are provided, run a special iterator over them,
@@ -1006,7 +1002,8 @@ int ANIM_apply_keyingset(bContext *C, ListBase *dsources, bAction *act, KeyingSe
 			{
 				Object *ob = (Object *)ksp->id;
 				
-				ob->recalc |= OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME; // XXX: only object transforms only?
+				// XXX: only object transforms?
+				DAG_id_tag_update(&ob->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
 			}
 			break;
 		}

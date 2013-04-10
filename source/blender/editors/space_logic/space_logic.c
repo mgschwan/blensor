@@ -148,7 +148,7 @@ static SpaceLink *logic_new(const bContext *C)
 /* not spacelink itself */
 static void logic_free(SpaceLink *UNUSED(sl))
 {	
-//	Spacelogic *slogic= (SpaceLogic*) sl;
+//	Spacelogic *slogic= (SpaceLogic *) sl;
 	
 //	if (slogic->gpd)
 // XXX		BKE_gpencil_free(slogic->gpd);
@@ -183,7 +183,7 @@ static void logic_keymap(struct wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "LOGIC_OT_links_cut", LEFTMOUSE, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_menu(keymap, "LOGIC_MT_logicbricks_add", AKEY, KM_PRESS, KM_SHIFT, 0);
 	
-	WM_keymap_add_item(keymap, "VIEW2D_OT_reset", HOMEKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "LOGIC_OT_view_all", HOMEKEY, KM_PRESS, 0, 0);
 
 }
 

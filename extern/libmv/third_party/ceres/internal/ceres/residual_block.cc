@@ -49,18 +49,21 @@ namespace internal {
 
 ResidualBlock::ResidualBlock(const CostFunction* cost_function,
                              const LossFunction* loss_function,
-                             const vector<ParameterBlock*>& parameter_blocks)
+                             const vector<ParameterBlock*>& parameter_blocks,
+                             int index)
     : cost_function_(cost_function),
       loss_function_(loss_function),
       parameter_blocks_(
           new ParameterBlock* [
-              cost_function->parameter_block_sizes().size()]) {
+              cost_function->parameter_block_sizes().size()]),
+      index_(index) {
   std::copy(parameter_blocks.begin(),
             parameter_blocks.end(),
             parameter_blocks_.get());
 }
 
-bool ResidualBlock::Evaluate(double* cost,
+bool ResidualBlock::Evaluate(const bool apply_loss_function,
+                             double* cost,
                              double* residuals,
                              double** jacobians,
                              double* scratch) const {
@@ -152,7 +155,7 @@ bool ResidualBlock::Evaluate(double* cost,
     }
   }
 
-  if (loss_function_ == NULL) {
+  if (loss_function_ == NULL || !apply_loss_function) {
     *cost = 0.5 * squared_norm;
     return true;
   }

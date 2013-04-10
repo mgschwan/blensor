@@ -22,17 +22,17 @@
 # ***** END GPL LICENCE BLOCK *****
 '''
 bl_info = {
-	"name": "Select innermost",
-	"author": "Dolf Veenvliet",
-	"version": (0,3),
-	"blender": (2, 5, 7),
-	"api": 35851,
-	"location": "Select > Innermost",
-	"description": "Select the innermost faces",
-	"warning": "",
-	"wiki_url": "",
-	"tracker_url": "",
-	"category": "Mesh"}
+    "name": "Select innermost",
+    "author": "Dolf Veenvliet",
+    "version": (0,3),
+    "blender": (2, 57, 0),
+    "api": 35851,
+    "location": "Select > Innermost",
+    "description": "Select the innermost faces",
+    "warning": "",
+    "wiki_url": "",
+    "tracker_url": "",
+    "category": "Mesh"}
 
 """
 Usage:

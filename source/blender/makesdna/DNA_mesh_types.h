@@ -116,10 +116,14 @@ typedef struct Mesh {
 	float size[3];
 	float rot[3];
 
-	short texflag, drawflag;
+	int drawflag;
+	short texflag, pad2[3];
 	short smoothresh, flag;
 
-	short subdiv  DNA_DEPRECATED, subdivr  DNA_DEPRECATED;
+	/* customdata flag, for bevel-weight and crease, which are now optional */
+	char cd_flag, pad;
+
+	char subdiv  DNA_DEPRECATED, subdivr  DNA_DEPRECATED;
 	char subsurftype  DNA_DEPRECATED; /* only kept for backwards compat, not used anymore */
 	char editflag;
 
@@ -147,15 +151,15 @@ typedef struct TFace {
 #define ME_EDIT_MIRROR_Y (1 << 1) // unused so far
 #define ME_EDIT_MIRROR_Z (1 << 2) // unused so far
 
-#define ME_EDIT_PAINT_MASK (1 << 3)
+#define ME_EDIT_PAINT_FACE_SEL (1 << 3)
 #define ME_EDIT_MIRROR_TOPO (1 << 4)
-#define ME_EDIT_VERT_SEL (1 << 5)
+#define ME_EDIT_PAINT_VERT_SEL (1 << 5)
 
 /* we cant have both flags enabled at once,
  * flags defined in DNA_scene_types.h */
 #define ME_EDIT_PAINT_SEL_MODE(_me)  (                                        \
-	(_me->editflag & ME_EDIT_PAINT_MASK) ? SCE_SELECT_FACE :                  \
-		(_me->editflag & ME_EDIT_VERT_SEL) ? SCE_SELECT_VERTEX :              \
+	(_me->editflag & ME_EDIT_PAINT_FACE_SEL) ? SCE_SELECT_FACE :              \
+		(_me->editflag & ME_EDIT_PAINT_VERT_SEL) ? SCE_SELECT_VERTEX :        \
 			0                                                                 \
 	)
 
@@ -170,6 +174,12 @@ typedef struct TFace {
 #define ME_SUBSURF		128
 #define ME_OPT_EDGES	256
 #define ME_DS_EXPAND	512
+#define ME_SCULPT_DYNAMIC_TOPOLOGY 1024
+
+/* me->cd_flag */
+#define ME_CDFLAG_VERT_BWEIGHT (1 << 0)
+#define ME_CDFLAG_EDGE_BWEIGHT (1 << 1)
+#define ME_CDFLAG_EDGE_CREASE  (1 << 2)
 
 /* me->drawflag, short */
 #define ME_DRAWEDGES	(1 << 0)
@@ -177,7 +187,7 @@ typedef struct TFace {
 #define ME_DRAWNORMALS	(1 << 2)
 #define ME_DRAW_VNORMALS (1 << 3)
 
-#define ME_ALLEDGES		(1 << 4)
+// #define ME_ALLEDGES		(1 << 4)
 #define ME_HIDDENEDGES  (1 << 5)
 
 #define ME_DRAWCREASES	(1 << 6)
@@ -188,9 +198,13 @@ typedef struct TFace {
 #define ME_DRAWEXTRA_EDGELEN  (1 << 10)
 #define ME_DRAWEXTRA_FACEAREA (1 << 11)
 #define ME_DRAWEXTRA_FACEANG  (1 << 12)
+#define ME_DRAWEXTRA_EDGEANG  (1 << 13)
 
 /* debug only option */
-#define ME_DRAWEXTRA_INDICES (1 << 13)
+#define ME_DRAWEXTRA_INDICES (1 << 14)
+
+#define ME_DRAW_FREESTYLE_EDGE (1 << 15)
+#define ME_DRAW_FREESTYLE_FACE (1 << 16)
 
 /* Subsurf Type */
 #define ME_CC_SUBSURF 		0

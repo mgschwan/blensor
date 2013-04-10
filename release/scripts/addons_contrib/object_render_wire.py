@@ -23,7 +23,7 @@ bl_info = {
     "author": "Community",
     "description": " WireRender & WireSoild modes",
     "version": (2, 3),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "Object > Render Wireframe",
     "warning": '',
     'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts',

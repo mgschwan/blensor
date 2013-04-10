@@ -35,16 +35,16 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BKE_context.h"
-#include "BKE_movieclip.h"
-#include "BKE_tracking.h"
-
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 #include "BLI_string.h"
 #include "BLI_listbase.h"
 #include "BLI_math.h"
 #include "BLI_rect.h"
+
+#include "BKE_context.h"
+#include "BKE_movieclip.h"
+#include "BKE_tracking.h"
 
 #include "ED_screen.h"
 #include "ED_clip.h"
@@ -145,6 +145,31 @@ static void draw_keyframe_shape(float x, float y, float xscale, float yscale, sh
 	glPopMatrix();
 }
 
+static void clip_draw_dopesheet_background(ARegion *ar, MovieClip *clip)
+{
+	View2D *v2d = &ar->v2d;
+	MovieTracking *tracking = &clip->tracking;
+	MovieTrackingDopesheet *dopesheet = &tracking->dopesheet;
+	MovieTrackingDopesheetCoverageSegment *coverage_segment;
+
+	for (coverage_segment = dopesheet->coverage_segments.first;
+	     coverage_segment;
+	     coverage_segment = coverage_segment->next)
+	{
+		if (coverage_segment->coverage < TRACKING_COVERAGE_OK) {
+			int start_frame = BKE_movieclip_remap_clip_to_scene_frame(clip, coverage_segment->start_frame);
+			int end_frame = BKE_movieclip_remap_clip_to_scene_frame(clip, coverage_segment->end_frame);
+
+			if (coverage_segment->coverage == TRACKING_COVERAGE_BAD)
+				glColor4f(1.0f, 0.0f, 0.0f, 0.07f);
+			else
+				glColor4f(1.0f, 1.0f, 0.0f, 0.07f);
+
+			glRectf(start_frame, v2d->cur.ymin, end_frame, v2d->cur.ymax);
+		}
+	}
+}
+
 void clip_draw_dopesheet_main(SpaceClip *sc, ARegion *ar, Scene *scene)
 {
 	MovieClip *clip = ED_space_clip_get_clip(sc);
@@ -159,7 +184,7 @@ void clip_draw_dopesheet_main(SpaceClip *sc, ARegion *ar, Scene *scene)
 		MovieTrackingDopesheetChannel *channel;
 		float y, xscale, yscale;
 		float strip[4], selected_strip[4];
-		float height = (dopesheet->tot_channel * CHANNEL_STEP) + (CHANNEL_HEIGHT * 2);
+		float height = (dopesheet->tot_channel * CHANNEL_STEP) + (CHANNEL_HEIGHT);
 
 		/* don't use totrect set, as the width stays the same
 		 * (NOTE: this is ok here, the configuration is pretty straightforward)
@@ -178,6 +203,8 @@ void clip_draw_dopesheet_main(SpaceClip *sc, ARegion *ar, Scene *scene)
 		selected_strip[3] = 1.0f;
 
 		glEnable(GL_BLEND);
+
+		clip_draw_dopesheet_background(ar, clip);
 
 		for (channel = dopesheet->channels.first; channel; channel = channel->next) {
 			float yminc = (float) (y - CHANNEL_HEIGHT_HALF);
@@ -272,7 +299,7 @@ void clip_draw_dopesheet_channels(const bContext *C, ARegion *ar)
 
 	tracking = &clip->tracking;
 	dopesheet = &tracking->dopesheet;
-	height = (dopesheet->tot_channel * CHANNEL_STEP) + (CHANNEL_HEIGHT * 2);
+	height = (dopesheet->tot_channel * CHANNEL_STEP) + (CHANNEL_HEIGHT);
 
 	if (height > BLI_rcti_size_y(&v2d->mask)) {
 		/* don't use totrect set, as the width stays the same

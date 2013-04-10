@@ -12,7 +12,7 @@
  #
  #  You should have received a copy of the GNU General Public License
  #  along with this program; if not, see <http://www.gnu.org/licenses/>
- #  and write to the Free Software Foundation, Inc., 51 Franklin Street, 
+ #  and write to the Free Software Foundation, Inc., 51 Franklin Street,
  #  Fifth Floor, Boston, MA  02110-1301, USA..
  #
  #  The Original Code is Copyright (C) 2012 Blender Foundation ###
@@ -33,10 +33,10 @@ import bpy
 bl_info = {
   "name": "Selection Set",
   "author": "Dan Eicher",
-  "version": (0, 1, 0),
-  "blender": (2, 6, 3),
-  "location": "Properties -> Object Data -> Selection Sets",
-  "description": "Selection Sets to select groups of bones",
+  "version": (0, 1, 1),
+  "blender": (2, 65, 4),
+  "location": "Properties > Object data (Armature) > Selection Sets",
+  "description": "Selection Sets to select groups of posebones",
   "warning": "Proxy armatures need to export sets and run generated script on re-opening file",
   "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Animation/SelectionSets",
   "tracker_url": "http://projects.blender.org/tracker/index.php?func=detail&aid=31492",
@@ -286,7 +286,7 @@ class DATA_PT_bone_sets(bpy.types.Panel):
 
         row = layout.row()
 
-        row.template_list(arm, "selection_sets", arm, "active_selection_set",
+        row.template_list("UI_UL_list", "armature_selection_sets", arm, "selection_sets", arm, "active_selection_set",
                           rows=(5 if len(arm.selection_sets) else 2))
 
         col = row.column(align=True)

@@ -18,17 +18,17 @@
 # ***** END GPL LICENCE BLOCK *****
 
 bl_info = {
-	"name": "Intellisense for Text Editor",
-	"author": "Mackraken",
-	"version": (0, 2),
-	"blender": (2, 6, 0),
-	"api": 41851,
-	"location": "Ctrl + Space at Text Editor",
-	"description": "Adds intellense to the Text Editor",
-	"warning": "Only works with 2.57 intellisense",
-	"wiki_url": "",
-	"tracker_url": "",
-	"category": "Development"}
+    "name": "Intellisense for Text Editor",
+    "author": "Mackraken",
+    "version": (0, 2),
+    "blender": (2, 60, 0),
+    "api": 41851,
+    "location": "Ctrl + Space at Text Editor",
+    "description": "Adds intellense to the Text Editor",
+    "warning": "Only works with 2.57 intellisense",
+    "wiki_url": "",
+    "tracker_url": "",
+    "category": "Development"}
 
 import bpy
 

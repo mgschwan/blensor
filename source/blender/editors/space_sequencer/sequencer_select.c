@@ -162,7 +162,7 @@ void select_surround_from_last(Scene *scene)
 }
 #endif
 
-void ED_sequencer_select_sequence_single(Scene * scene, Sequence * seq, int deselect_all)
+void ED_sequencer_select_sequence_single(Scene *scene, Sequence *seq, bool deselect_all)
 {
 	Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
 	
@@ -315,15 +315,15 @@ void SEQUENCER_OT_select_inverse(struct wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
-static int sequencer_select_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int sequencer_select_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	View2D *v2d = UI_view2d_fromcontext(C);
 	Scene *scene = CTX_data_scene(C);
 	Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
-	short extend = RNA_boolean_get(op->ptr, "extend");
-	short linked_handle = RNA_boolean_get(op->ptr, "linked_handle");
-	short left_right = RNA_boolean_get(op->ptr, "left_right");
-	short linked_time = RNA_boolean_get(op->ptr, "linked_time");
+	const bool extend = RNA_boolean_get(op->ptr, "extend");
+	const bool linked_handle = RNA_boolean_get(op->ptr, "linked_handle");
+	const bool linked_time = RNA_boolean_get(op->ptr, "linked_time");
+	bool left_right = RNA_boolean_get(op->ptr, "left_right");
 	
 	Sequence *seq, *neighbor, *act_orig;
 	int hand, sel_side;
@@ -552,8 +552,6 @@ void SEQUENCER_OT_select(wmOperatorType *ot)
 }
 
 
-
-
 /* run recursively to select linked */
 static int select_more_less_seq__internal(Scene *scene, int sel, int linked)
 {
@@ -670,12 +668,12 @@ void SEQUENCER_OT_select_less(wmOperatorType *ot)
 
 
 /* select pick linked operator (uses the mouse) */
-static int sequencer_select_linked_pick_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int sequencer_select_linked_pick_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	Scene *scene = CTX_data_scene(C);
 	View2D *v2d = UI_view2d_fromcontext(C);
 	
-	short extend = RNA_boolean_get(op->ptr, "extend");
+	bool extend = RNA_boolean_get(op->ptr, "extend");
 	
 	Sequence *mouse_seq;
 	int selected, hand;
@@ -704,7 +702,7 @@ static int sequencer_select_linked_pick_invoke(bContext *C, wmOperator *op, wmEv
 void SEQUENCER_OT_select_linked_pick(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name = "Select pick linked";
+	ot->name = "Select Pick Linked";
 	ot->idname = "SEQUENCER_OT_select_linked_pick";
 	ot->description = "Select a chain of linked strips nearest to the mouse pointer";
 	
@@ -739,7 +737,7 @@ static int sequencer_select_linked_exec(bContext *C, wmOperator *UNUSED(op))
 void SEQUENCER_OT_select_linked(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name = "Select linked";
+	ot->name = "Select Linked";
 	ot->idname = "SEQUENCER_OT_select_linked";
 	ot->description = "Select all strips adjacent to the current selection";
 	

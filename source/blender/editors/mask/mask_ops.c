@@ -36,6 +36,7 @@
 
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
+#include "BKE_main.h"
 #include "BKE_mask.h"
 
 #include "DNA_scene_types.h"
@@ -261,9 +262,10 @@ int ED_mask_feather_find_nearest(const bContext *C, Mask *mask, float normal_co[
 Mask *ED_mask_new(bContext *C, const char *name)
 {
 	ScrArea *sa = CTX_wm_area(C);
+	Main *bmain = CTX_data_main(C);
 	Mask *mask;
 
-	mask = BKE_mask_new(name);
+	mask = BKE_mask_new(bmain, name);
 
 	if (sa && sa->spacedata.first) {
 		switch (sa->spacetype) {
@@ -436,7 +438,7 @@ static int slide_point_check_initial_feather(MaskSpline *spline)
 	return TRUE;
 }
 
-static void *slide_point_customdata(bContext *C, wmOperator *op, wmEvent *event)
+static void *slide_point_customdata(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = CTX_wm_region(C);
@@ -523,7 +525,7 @@ static void *slide_point_customdata(bContext *C, wmOperator *op, wmEvent *event)
 	return customdata;
 }
 
-static int slide_point_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int slide_point_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	SlidePointData *slidedata = slide_point_customdata(C, op, event);
 
@@ -632,7 +634,7 @@ static void free_slide_point_data(SlidePointData *data)
 	MEM_freeN(data);
 }
 
-static int slide_point_modal(bContext *C, wmOperator *op, wmEvent *event)
+static int slide_point_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	SlidePointData *data = (SlidePointData *)op->customdata;
 	BezTriple *bezt = &data->point->bezt;

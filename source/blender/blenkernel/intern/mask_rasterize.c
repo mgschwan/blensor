@@ -213,7 +213,7 @@ MaskRasterHandle *BKE_maskrasterize_handle_new(void)
 {
 	MaskRasterHandle *mr_handle;
 
-	mr_handle = MEM_callocN(sizeof(MaskRasterHandle), STRINGIFY(MaskRasterHandle));
+	mr_handle = MEM_callocN(sizeof(MaskRasterHandle), "MaskRasterHandle");
 
 	return mr_handle;
 }
@@ -569,7 +569,7 @@ void BKE_maskrasterize_handle_init(MaskRasterHandle *mr_handle, struct Mask *mas
 	unsigned int masklay_index;
 
 	mr_handle->layers_tot = BLI_countlist(&mask->masklayers);
-	mr_handle->layers = MEM_mallocN(sizeof(MaskRasterLayer) * mr_handle->layers_tot, STRINGIFY(MaskRasterLayer));
+	mr_handle->layers = MEM_mallocN(sizeof(MaskRasterLayer) * mr_handle->layers_tot, "MaskRasterLayer");
 	BLI_rctf_init_minmax(&mr_handle->bounds);
 
 	for (masklay = mask->masklayers.first, masklay_index = 0; masklay; masklay = masklay->next, masklay_index++) {
@@ -933,7 +933,7 @@ void BKE_maskrasterize_handle_init(MaskRasterHandle *mr_handle, struct Mask *mas
 			}
 
 			/* main scan-fill */
-			sf_tri_tot = BLI_scanfill_calc_ex(&sf_ctx, 0, zvec);
+			sf_tri_tot = BLI_scanfill_calc_ex(&sf_ctx, BLI_SCANFILL_CALC_HOLES, zvec);
 
 			face_array = MEM_mallocN(sizeof(*face_array) * (sf_tri_tot + tot_feather_quads), "maskrast_face_index");
 			face_index = 0;

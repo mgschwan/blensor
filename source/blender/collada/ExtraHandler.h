@@ -31,6 +31,7 @@
 
 #include "COLLADASaxFWLIExtraDataCallbackHandler.h"
 #include "COLLADASaxFWLFilePartLoader.h"
+#include "COLLADASWInstanceController.h"
 
 #include "DocumentImporter.h"
 #include "AnimationImporter.h"
@@ -60,7 +61,8 @@ public:
 	bool parseElement ( 
 		const char* profileName, 
 		const unsigned long& elementHash, 
-		const COLLADAFW::UniqueId& uniqueId );
+		const COLLADAFW::UniqueId& uniqueId,
+		COLLADAFW::Object* object);
 private:
 	/** Disable default copy constructor. */
 	ExtraHandler(const ExtraHandler& pre);

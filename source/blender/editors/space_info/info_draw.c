@@ -56,6 +56,8 @@
 #include "ED_types.h"
 
 #include "UI_resources.h"
+#include "UI_interface.h"
+#include "UI_view2d.h"
 
 #include "info_intern.h"
 #include "../space_info/textview.h"
@@ -139,7 +141,7 @@ static int report_textview_begin(TextViewContext *tvc)
 	// SpaceConsole *sc = (SpaceConsole *)tvc->arg1;
 	ReportList *reports = (ReportList *)tvc->arg2;
 
-	tvc->lheight = 14; //sc->lheight;
+	tvc->lheight = 14 * UI_DPI_FAC; //sc->lheight;
 	tvc->sel_start = 0;
 	tvc->sel_end = 0;
 
@@ -249,7 +251,8 @@ static int report_textview_line_color(struct TextViewContext *tvc, unsigned char
 
 #undef USE_INFO_NEWLINE
 
-static int info_textview_main__internal(struct SpaceInfo *sinfo, ARegion *ar, ReportList *reports, int draw, int mval[2], void **mouse_pick, int *pos_pick)
+static int info_textview_main__internal(struct SpaceInfo *sinfo, ARegion *ar, ReportList *reports,
+                                        int draw, int mval[2], void **mouse_pick, int *pos_pick)
 {
 	int ret = 0;
 	
@@ -262,6 +265,7 @@ static int info_textview_main__internal(struct SpaceInfo *sinfo, ARegion *ar, Re
 	tvc.step = report_textview_step;
 	tvc.line_get = report_textview_line_get;
 	tvc.line_color = report_textview_line_color;
+	tvc.const_colors = NULL;
 
 	tvc.arg1 = sinfo;
 	tvc.arg2 = reports;
@@ -269,10 +273,10 @@ static int info_textview_main__internal(struct SpaceInfo *sinfo, ARegion *ar, Re
 	/* view */
 	tvc.sel_start = 0;
 	tvc.sel_end = 0;
-	tvc.lheight = 14; //sc->lheight;
+	tvc.lheight = 14 * UI_DPI_FAC; //sc->lheight;
 	tvc.ymin = v2d->cur.ymin;
 	tvc.ymax = v2d->cur.ymax;
-	tvc.winx = ar->winx;
+	tvc.winx = ar->winx - V2D_SCROLL_WIDTH;
 
 	ret = textview_draw(&tvc, draw, mval, mouse_pick, pos_pick);
 	

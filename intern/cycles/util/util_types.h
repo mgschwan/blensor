@@ -39,12 +39,14 @@
 #if defined(_WIN32) && !defined(FREE_WINDOWS)
 #define __device_inline static __forceinline
 #define __align(...) __declspec(align(__VA_ARGS__))
+#define __may_alias
 #else
 #define __device_inline static inline __attribute__((always_inline))
 #ifndef FREE_WINDOWS64
 #define __forceinline inline __attribute__((always_inline))
 #endif
 #define __align(...) __attribute__((aligned(__VA_ARGS__)))
+#define __may_alias __attribute__((__may_alias__))
 #endif
 
 #endif
@@ -445,24 +447,6 @@ __device_inline int4 make_int4(const float3& f)
 }
 
 #endif
-
-typedef enum AttributeStandard {
-	ATTR_STD_NONE = 0,
-	ATTR_STD_VERTEX_NORMAL,
-	ATTR_STD_FACE_NORMAL,
-	ATTR_STD_UV,
-	ATTR_STD_UV_TANGENT,
-	ATTR_STD_UV_TANGENT_SIGN,
-	ATTR_STD_GENERATED,
-	ATTR_STD_POSITION_UNDEFORMED,
-	ATTR_STD_POSITION_UNDISPLACED,
-	ATTR_STD_MOTION_PRE,
-	ATTR_STD_MOTION_POST,
-	ATTR_STD_PARTICLE,
-	ATTR_STD_NUM,
-
-	ATTR_STD_NOT_FOUND = ~0
-} AttributeStandard;
 
 CCL_NAMESPACE_END
 

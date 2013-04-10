@@ -127,7 +127,7 @@ static float get_fluid_size_m(Scene *scene, Object *domainob, FluidsimSettings *
 		float longest_axis;
 		
 		BKE_object_dimensions_get(domainob, dim);
-		longest_axis = MAX3(dim[0], dim[1], dim[2]);
+		longest_axis = max_fff(dim[0], dim[1], dim[2]);
 		
 		return longest_axis * scene->unit.scale_length;
 	}
@@ -142,7 +142,7 @@ static int fluid_is_animated_mesh(FluidsimSettings *fss)
 
 #if 0
 /* helper function */
-void fluidsimGetGeometryObjFilename(Object *ob, char *dst) { //, char *srcname)
+void fluidsimGetGeometryObjFilename(Object *ob, char *dst)  //, char *srcname)
 {
 	//BLI_snprintf(dst, FILE_MAXFILE, "%s_cfgdata_%s.bobj.gz", srcname, ob->id.name);
 	BLI_snprintf(dst, FILE_MAXFILE, "fluidcfgdata_%s.bobj.gz", ob->id.name);
@@ -237,7 +237,7 @@ static void init_time(FluidsimSettings *domainSettings, FluidAnimChannels *chann
 {
 	int i;
 	
-	channels->timeAtFrame = MEM_callocN((channels->length+1)*sizeof(float), "timeAtFrame channel");
+	channels->timeAtFrame = MEM_callocN((channels->length + 1) * sizeof(float), "timeAtFrame channel");
 	
 	channels->timeAtFrame[0] = channels->timeAtFrame[1] = domainSettings->animStart; // start at index 1
 	
@@ -267,7 +267,7 @@ static void set_vertex_channel(float *channel, float time, struct Scene *scene, 
 	FluidsimModifierData *fluidmd = (FluidsimModifierData *)modifiers_findByType(ob, eModifierType_Fluidsim);
 	float *verts;
 	int *tris=NULL, numVerts=0, numTris=0;
-	int modifierIndex = modifiers_indexInObject(ob, (ModifierData *)fluidmd);
+	int modifierIndex = BLI_findindex(&ob->modifiers, fluidmd);
 	int framesize = (3*fobj->numVerts) + 1;
 	int j;
 	
@@ -388,7 +388,7 @@ static void fluid_init_all_channels(bContext *C, Object *UNUSED(fsDomain), Fluid
 			
 			if (fluid_is_animated_mesh(fluidmd->fss)) {
 				float *verts=NULL;
-				int *tris=NULL, modifierIndex = modifiers_indexInObject(ob, (ModifierData *)fluidmd);
+				int *tris=NULL, modifierIndex = BLI_findindex(&ob->modifiers, (ModifierData *)fluidmd);
 
 				initElbeemMesh(scene, ob, &fobj->numVerts, &verts, &fobj->numTris, &tris, 0, modifierIndex);
 				fobj->VertexCache = MEM_callocN(length *((fobj->numVerts*CHANNEL_VEC)+1) * sizeof(float), "fluidobject VertexCache");
@@ -491,7 +491,7 @@ static void export_fluid_objects(ListBase *fobjects, Scene *scene, int length)
 	for (fobj=fobjects->first; fobj; fobj=fobj->next) {
 		Object *ob = fobj->object;
 		FluidsimModifierData *fluidmd = (FluidsimModifierData *)modifiers_findByType(ob, eModifierType_Fluidsim);
-		int modifierIndex = modifiers_indexInObject(ob, (ModifierData *)fluidmd);
+		int modifierIndex = BLI_findindex(&ob->modifiers, fluidmd);
 		
 		float *verts=NULL;
 		int *tris=NULL;
@@ -528,7 +528,7 @@ static void export_fluid_objects(ListBase *fobjects, Scene *scene, int length)
 		
 		if ( ELEM(fsmesh.type, OB_FLUIDSIM_FLUID, OB_FLUIDSIM_INFLOW)) {
 			fsmesh.channelInitialVel = fobj->InitialVelocity;
-			fsmesh.localInivelCoords = ((fluidmd->fss->typeFlags & OB_FSINFLOW_LOCALCOORD)?1:0);
+			fsmesh.localInivelCoords = ((fluidmd->fss->typeFlags & OB_FSINFLOW_LOCALCOORD) ? 1 : 0);
 		}
 		
 		if (fluidmd->fss->typeFlags & OB_FSBND_NOSLIP)
@@ -631,7 +631,7 @@ static int fluid_validate_scene(ReportList *reports, Scene *scene, Object *fsDom
 	}
 	
 	if (channelObjCount >= 255) {
-		BKE_report(reports, RPT_ERROR, "Cannot bake with more then 256 objects");
+		BKE_report(reports, RPT_ERROR, "Cannot bake with more than 256 objects");
 		return 0;
 	}
 	
@@ -679,18 +679,15 @@ static int fluid_init_filepaths(Object *fsDomain, char *targetDir, char *targetF
 	if (fileCfg) {
 		dirExist = 1; fclose(fileCfg); 
 		// remove cfg dummy from  directory test
-		BLI_delete(targetFile, 0, 0);
+		BLI_delete(targetFile, false, false);
 	}
 	
 	if (targetDir[0] == '\0' || (!dirExist)) {
-		char blendDir[FILE_MAX];
 		char blendFile[FILE_MAX];
 		
 		// invalid dir, reset to current/previous
-		BLI_strncpy(blendDir, G.main->name, FILE_MAX);
-		BLI_splitdirstring(blendDir, blendFile);
+		BLI_split_file_part(G.main->name, blendFile, sizeof(blendFile));
 		BLI_replace_extension(blendFile, FILE_MAX, ""); /* strip .blend */
-
 		BLI_snprintf(newSurfdataPath, FILE_MAX, "//fluidsimdata/%s_%s_", blendFile, fsDomain->id.name);
 		
 		BLI_snprintf(debugStrBuffer, 256, "fluidsimBake::error - warning resetting output dir to '%s'\n", newSurfdataPath);
@@ -852,9 +849,9 @@ static void fluidsim_delete_until_lastframe(FluidsimSettings *fss, const char *r
 		curFrame++;
 
 		if ((exists = BLI_exists(targetFile))) {
-			BLI_delete(targetFile, 0, 0);
-			BLI_delete(targetFileVel, 0, 0);
-			BLI_delete(previewFile, 0, 0);
+			BLI_delete(targetFile, false, false);
+			BLI_delete(targetFileVel, false, false);
+			BLI_delete(previewFile, false, false);
 		}
 	} while (exists);
 
@@ -1130,7 +1127,7 @@ static int fluidsimBake(bContext *UNUSED(C), ReportList *UNUSED(reports), Object
 
 /***************************** Operators ******************************/
 
-static int fluid_bake_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int fluid_bake_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	/* only one bake job at a time */
 	if (WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_SIM_FLUID))

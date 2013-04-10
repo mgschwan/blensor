@@ -52,7 +52,6 @@
 #include "BLI_math.h"		
 #include "BLI_listbase.h"		
 #include "BLI_utildefines.h"
-#include "BLI_bpath.h"
 #include "BLI_string.h"
 
 #include "BKE_animsys.h"
@@ -154,6 +153,7 @@ void init_material(Material *ma)
 	ma->tx_limit = 0.0;
 	ma->tx_falloff = 1.0;
 	ma->shad_alpha = 1.0f;
+	ma->vcol_alpha = 0;
 	
 	ma->gloss_mir = ma->gloss_tra = 1.0;
 	ma->samp_gloss_mir = ma->samp_gloss_tra = 18;
@@ -207,11 +207,11 @@ void init_material(Material *ma)
 	ma->preview = NULL;
 }
 
-Material *BKE_material_add(const char *name)
+Material *BKE_material_add(Main *bmain, const char *name)
 {
 	Material *ma;
 
-	ma = BKE_libblock_alloc(&G.main->mat, ID_MA, name);
+	ma = BKE_libblock_alloc(&bmain->mat, ID_MA, name);
 	
 	init_material(ma);
 	
@@ -629,11 +629,14 @@ Material *give_current_material(Object *ob, short act)
 	if (totcolp == NULL || ob->totcol == 0) return NULL;
 	
 	if (act < 0) {
-		printf("no!\n");
+		printf("Negative material index!\n");
 	}
 	
-	if (act > ob->totcol) act = ob->totcol;
-	else if (act <= 0) act = 1;
+	/* return NULL for invalid 'act', can happen for mesh face indices */
+	if (act > ob->totcol)
+		return NULL;
+	else if (act <= 0)
+		return NULL;
 
 	if (ob->matbits && ob->matbits[act - 1]) {    /* in object */
 		ma = ob->mat[act - 1];
@@ -678,19 +681,6 @@ Material *give_node_material(Material *ma)
 
 	return NULL;
 }
-
-/* GS reads the memory pointed at in a specific ordering. There are,
- * however two definitions for it. I have jotted them down here, both,
- * but I think the first one is actually used. The thing is that
- * big-endian systems might read this the wrong way round. OTOH, we
- * constructed the IDs that are read out with this macro explicitly as
- * well. I expect we'll sort it out soon... */
-
-/* from blendef: */
-#define GS(a)   (*((short *)(a)))
-
-/* from misc_util: flip the bytes from x  */
-/*  #define GS(x) (((unsigned char *)(x))[0] << 8 | ((unsigned char *)(x))[1]) */
 
 void resize_object_material(Object *ob, const short totcol)
 {
@@ -1023,7 +1013,7 @@ void init_render_material(Material *mat, int r_mode, float *amb)
 		init_render_nodetree(mat->nodetree, mat, r_mode, amb);
 		
 		if (!mat->nodetree->execdata)
-			mat->nodetree->execdata = ntreeShaderBeginExecTree(mat->nodetree, 1);
+			mat->nodetree->execdata = ntreeShaderBeginExecTree(mat->nodetree);
 	}
 }
 
@@ -1057,7 +1047,7 @@ void end_render_material(Material *mat)
 {
 	if (mat && mat->nodetree && mat->use_nodes) {
 		if (mat->nodetree->execdata)
-			ntreeShaderEndExecTree(mat->nodetree->execdata, 1);
+			ntreeShaderEndExecTree(mat->nodetree->execdata);
 	}
 }
 
@@ -1235,6 +1225,11 @@ int object_remove_material_slot(Object *ob)
 
 	if (*matarar == NULL) return FALSE;
 
+	/* can happen on face selection in editmode */
+	if (ob->actcol > ob->totcol) {
+		ob->actcol = ob->totcol;
+	}
+	
 	/* we delete the actcol */
 	mao = (*matarar)[ob->actcol - 1];
 	if (mao) mao->id.us--;
@@ -1784,7 +1779,7 @@ static short convert_tfacenomaterial(Main *main, Mesh *me, MTFace *tf, int flag)
 	}
 	/* create a new material */
 	else {
-		ma = BKE_material_add(idname + 2);
+		ma = BKE_material_add(main, idname + 2);
 
 		if (ma) {
 			printf("TexFace Convert: Material \"%s\" created.\n", idname + 2);
@@ -1800,7 +1795,9 @@ static short convert_tfacenomaterial(Main *main, Mesh *me, MTFace *tf, int flag)
 			ma->game.flag = -flag;
 			id_us_min((ID *)ma);
 		}
-		else printf("Error: Unable to create Material \"%s\" for Mesh \"%s\".", idname + 2, me->id.name + 2);
+		else {
+			printf("Error: Unable to create Material \"%s\" for Mesh \"%s\".", idname + 2, me->id.name + 2);
+		}
 	}
 
 	/* set as converted, no need to go bad to this face */
@@ -1856,7 +1853,7 @@ static void convert_tfacematerial(Main *main, Material *ma)
 				mat_new = BKE_material_copy(ma);
 				if (mat_new) {
 					/* rename the material*/
-					strcpy(mat_new->id.name, idname);
+					BLI_strncpy(mat_new->id.name, idname, sizeof(mat_new->id.name));
 					id_us_min((ID *)mat_new);
 
 					mat_nr = mesh_addmaterial(me, mat_new);

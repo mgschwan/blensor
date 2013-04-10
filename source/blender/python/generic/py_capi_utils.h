@@ -33,11 +33,14 @@ void			PyC_LineSpit(void);
 void			PyC_StackSpit(void);
 PyObject *		PyC_ExceptionBuffer(void);
 PyObject *		PyC_Object_GetAttrStringArgs(PyObject *o, Py_ssize_t n, ...);
+PyObject *		PyC_FrozenSetFromStrings(const char **strings);
 PyObject *		PyC_Err_Format_Prefix(PyObject *exception_type_prefix, const char *format, ...);
 void			PyC_FileAndNum(const char **filename, int *lineno);
 void			PyC_FileAndNum_Safe(const char **filename, int *lineno); /* checks python is running */
 int				PyC_AsArray(void *array, PyObject *value, const Py_ssize_t length,
-                            const PyTypeObject *type, const short is_double, const char *error_prefix);
+                            const PyTypeObject *type, const bool is_double, const char *error_prefix);
+PyObject *      PyC_FromArray(const void *array, int length, const PyTypeObject *type,
+                              const bool is_double, const char *error_prefix);
 
 /* follow http://www.python.org/dev/peps/pep-0383/ */
 PyObject *      PyC_UnicodeFromByte(const char *str);
@@ -53,7 +56,7 @@ void PyC_MainModule_Restore(PyObject *main_mod);
 
 void PyC_SetHomePath(const char *py_path_bundle);
 
-#define PYC_INTERPRETER_ACTIVE (((PyThreadState*)_Py_atomic_load_relaxed(&_PyThreadState_Current)) != NULL)
+#define PYC_INTERPRETER_ACTIVE (((PyThreadState *)_Py_atomic_load_relaxed(&_PyThreadState_Current)) != NULL)
 
 void *PyC_RNA_AsPointer(PyObject *value, const char *type_name);
 

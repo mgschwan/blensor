@@ -42,6 +42,11 @@ extern "C" {
 
 /************************************* Init ***********************************/
 
+#ifdef BLI_MATH_GCC_WARN_PRAGMA
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wredundant-decls"
+#endif
+
 MINLINE void zero_v2(float r[2]);
 MINLINE void zero_v3(float r[3]);
 MINLINE void zero_v4(float r[4]);
@@ -87,6 +92,7 @@ MINLINE void add_v3_fl(float r[3], float f);
 MINLINE void add_v4_fl(float r[4], float f);
 MINLINE void add_v2_v2(float r[2], const float a[2]);
 MINLINE void add_v2_v2v2(float r[2], const float a[2], const float b[2]);
+MINLINE void add_v2_v2v2_int(int r[2], const int a[2], const int b[2]);
 MINLINE void add_v3_v3(float r[3], const float a[3]);
 MINLINE void add_v3_v3v3(float r[3], const float a[3], const float b[3]);
 MINLINE void add_v4_v4(float r[4], const float a[4]);
@@ -94,6 +100,7 @@ MINLINE void add_v4_v4v4(float r[4], const float a[4], const float b[4]);
 
 MINLINE void sub_v2_v2(float r[2], const float a[2]);
 MINLINE void sub_v2_v2v2(float r[2], const float a[2], const float b[2]);
+MINLINE void sub_v2_v2v2_int(int r[2], const int a[2], const int b[2]);
 MINLINE void sub_v3_v3(float r[3], const float a[3]);
 MINLINE void sub_v3_v3v3(float r[3], const float a[3], const float b[3]);
 MINLINE void sub_v4_v4(float r[4], const float a[4]);
@@ -108,6 +115,7 @@ MINLINE void mul_v3_v3(float r[3], const float a[3]);
 MINLINE void mul_v3_v3v3(float r[3], const float a[3], const float b[3]);
 MINLINE void mul_v4_fl(float r[4], float f);
 MINLINE void mul_v4_v4fl(float r[3], const float a[3], float f);
+MINLINE float mul_project_m4_v3_zfac(float mat[4][4], const float co[3]);
 
 MINLINE void madd_v3_v3fl(float r[3], const float a[3], float f);
 MINLINE void madd_v3_v3v3(float r[3], const float a[3], const float b[3]);
@@ -171,6 +179,10 @@ void mid_v3_v3v3(float r[3], const float a[3], const float b[3]);
 void mid_v2_v2v2(float r[2], const float a[2], const float b[2]);
 void mid_v3_v3v3v3(float v[3], const float v1[3], const float v2[3], const float v3[3]);
 
+void flip_v4_v4v4(float v[4], const float v1[4], const float v2[4]);
+void flip_v3_v3v3(float v[3], const float v1[3], const float v2[3]);
+void flip_v2_v2v2(float v[2], const float v1[2], const float v2[2]);
+
 /********************************* Comparison ********************************/
 
 MINLINE int is_zero_v3(const float a[3]);
@@ -232,6 +244,8 @@ void minmax_v2v2_v2(float min[2], float max[2], const float vec[2]);
 void dist_ensure_v3_v3fl(float v1[3], const float v2[3], const float dist);
 void dist_ensure_v2_v2fl(float v1[2], const float v2[2], const float dist);
 
+void axis_sort_v3(const float axis_values[3], int r_axis_order[3]);
+
 /***************************** Array Functions *******************************/
 /* attempted to follow fixed length vertex functions. names could be improved*/
 double dot_vn_vn(const float *array_src_a, const float *array_src_b, const int size);
@@ -251,9 +265,14 @@ void sub_vn_vn(float *array_tar, const float *array_src, const int size);
 void sub_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_src_b, const int size);
 void msub_vn_vn(float *array_tar, const float *array_src, const float f, const int size);
 void msub_vn_vnvn(float *array_tar, const float *array_src_a, const float *array_src_b, const float f, const int size);
+void interp_vn_vn(float *array_tar, const float *array_src, const float t, const int size);
 void fill_vn_i(int *array_tar, const int size, const int val);
 void fill_vn_ushort(unsigned short *array_tar, const int size, const unsigned short val);
 void fill_vn_fl(float *array_tar, const int size, const float val);
+
+#ifdef BLI_MATH_GCC_WARN_PRAGMA
+#  pragma GCC diagnostic pop
+#endif
 
 #ifdef __cplusplus
 }

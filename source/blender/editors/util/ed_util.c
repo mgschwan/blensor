@@ -37,10 +37,16 @@
 
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
+#include "DNA_screen_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_packedFile_types.h"
 
 #include "BLI_blenlib.h"
+
+#include "BIF_gl.h"
+#include "BIF_glutil.h"
+
+#include "BLF_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -52,6 +58,7 @@
 #include "ED_mesh.h"
 #include "ED_object.h"
 #include "ED_sculpt.h"
+#include "ED_space_api.h"
 #include "ED_util.h"
 
 #include "UI_interface.h"
@@ -155,17 +162,6 @@ void apply_keyb_grid(int shift, int ctrl, float *val, float fac1, float fac2, fl
 	}
 }
 
-#if 0 /* UNUSED */
-int GetButStringLength(const char *str) 
-{
-	int rt;
-	
-	rt = UI_GetStringWidth(str);
-	
-	return rt + 15;
-}
-#endif
-
 void unpack_menu(bContext *C, const char *opname, const char *id_name, const char *abs_name, const char *folder, struct PackedFile *pf)
 {
 	PointerRNA props_ptr;
@@ -174,10 +170,10 @@ void unpack_menu(bContext *C, const char *opname, const char *id_name, const cha
 	char line[FILE_MAX + 100];
 	wmOperatorType *ot = WM_operatortype_find(opname, 1);
 
-	pup = uiPupMenuBegin(C, "Unpack file", ICON_NONE);
+	pup = uiPupMenuBegin(C, IFACE_("Unpack File"), ICON_NONE);
 	layout = uiPupMenuLayout(pup);
 
-	strcpy(line, "Remove Pack");
+	strcpy(line, IFACE_("Remove Pack"));
 	props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 	RNA_enum_set(&props_ptr, "method", PF_REMOVE);
 	RNA_string_set(&props_ptr, "id", id_name);
@@ -185,20 +181,19 @@ void unpack_menu(bContext *C, const char *opname, const char *id_name, const cha
 	if (G.relbase_valid) {
 		char local_name[FILE_MAXDIR + FILE_MAX], fi[FILE_MAX];
 
-		BLI_strncpy(local_name, abs_name, sizeof(local_name));
-		BLI_splitdirstring(local_name, fi);
+		BLI_split_file_part(abs_name, fi, sizeof(fi));
 		BLI_snprintf(local_name, sizeof(local_name), "//%s/%s", folder, fi);
 		if (strcmp(abs_name, local_name) != 0) {
 			switch (checkPackedFile(local_name, pf)) {
 				case PF_NOFILE:
-					BLI_snprintf(line, sizeof(line), "Create %s", local_name);
+					BLI_snprintf(line, sizeof(line), IFACE_("Create %s"), local_name);
 					props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 					RNA_enum_set(&props_ptr, "method", PF_WRITE_LOCAL);
 					RNA_string_set(&props_ptr, "id", id_name);
 
 					break;
 				case PF_EQUAL:
-					BLI_snprintf(line, sizeof(line), "Use %s (identical)", local_name);
+					BLI_snprintf(line, sizeof(line), IFACE_("Use %s (identical)"), local_name);
 					//uiItemEnumO_ptr(layout, ot, line, 0, "method", PF_USE_LOCAL);
 					props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 					RNA_enum_set(&props_ptr, "method", PF_USE_LOCAL);
@@ -206,13 +201,13 @@ void unpack_menu(bContext *C, const char *opname, const char *id_name, const cha
 
 					break;
 				case PF_DIFFERS:
-					BLI_snprintf(line, sizeof(line), "Use %s (differs)", local_name);
+					BLI_snprintf(line, sizeof(line), IFACE_("Use %s (differs)"), local_name);
 					//uiItemEnumO_ptr(layout, ot, line, 0, "method", PF_USE_LOCAL);
 					props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 					RNA_enum_set(&props_ptr, "method", PF_USE_LOCAL);
 					RNA_string_set(&props_ptr, "id", id_name);
 
-					BLI_snprintf(line, sizeof(line), "Overwrite %s", local_name);
+					BLI_snprintf(line, sizeof(line), IFACE_("Overwrite %s"), local_name);
 					//uiItemEnumO_ptr(layout, ot, line, 0, "method", PF_WRITE_LOCAL);
 					props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 					RNA_enum_set(&props_ptr, "method", PF_WRITE_LOCAL);
@@ -224,27 +219,27 @@ void unpack_menu(bContext *C, const char *opname, const char *id_name, const cha
 
 	switch (checkPackedFile(abs_name, pf)) {
 		case PF_NOFILE:
-			BLI_snprintf(line, sizeof(line), "Create %s", abs_name);
+			BLI_snprintf(line, sizeof(line), IFACE_("Create %s"), abs_name);
 			//uiItemEnumO_ptr(layout, ot, line, 0, "method", PF_WRITE_ORIGINAL);
 			props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 			RNA_enum_set(&props_ptr, "method", PF_WRITE_ORIGINAL);
 			RNA_string_set(&props_ptr, "id", id_name);
 			break;
 		case PF_EQUAL:
-			BLI_snprintf(line, sizeof(line), "Use %s (identical)", abs_name);
+			BLI_snprintf(line, sizeof(line), IFACE_("Use %s (identical)"), abs_name);
 			//uiItemEnumO_ptr(layout, ot, line, 0, "method", PF_USE_ORIGINAL);
 			props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 			RNA_enum_set(&props_ptr, "method", PF_USE_ORIGINAL);
 			RNA_string_set(&props_ptr, "id", id_name);
 			break;
 		case PF_DIFFERS:
-			BLI_snprintf(line, sizeof(line), "Use %s (differs)", abs_name);
+			BLI_snprintf(line, sizeof(line), IFACE_("Use %s (differs)"), abs_name);
 			//uiItemEnumO_ptr(layout, ot, line, 0, "method", PF_USE_ORIGINAL);
 			props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 			RNA_enum_set(&props_ptr, "method", PF_USE_ORIGINAL);
 			RNA_string_set(&props_ptr, "id", id_name);
 
-			BLI_snprintf(line, sizeof(line), "Overwrite %s", abs_name);
+			BLI_snprintf(line, sizeof(line), IFACE_("Overwrite %s"), abs_name);
 			//uiItemEnumO_ptr(layout, ot, line, 0, "method", PF_WRITE_ORIGINAL);
 			props_ptr = uiItemFullO_ptr(layout, ot, line, ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 			RNA_enum_set(&props_ptr, "method", PF_WRITE_ORIGINAL);
@@ -253,4 +248,25 @@ void unpack_menu(bContext *C, const char *opname, const char *id_name, const cha
 	}
 
 	uiPupMenuEnd(C, pup);
+}
+
+/* ********************* generic callbacks for drawcall api *********************** */
+
+/**
+ * Callback that draws a line between the mouse and a position given as the initial argument.
+ */
+void ED_region_draw_mouse_line_cb(const bContext *C, ARegion *ar, void *arg_info)
+{
+	wmWindow *win = CTX_wm_window(C);
+	const int *mval_src = (int *)arg_info;
+	const int mval_dst[2] = {win->eventstate->x - ar->winrct.xmin,
+	                         win->eventstate->y - ar->winrct.ymin};
+
+	UI_ThemeColor(TH_WIRE);
+	setlinestyle(3);
+	glBegin(GL_LINE_STRIP);
+	glVertex2iv(mval_dst);
+	glVertex2iv(mval_src);
+	glEnd();
+	setlinestyle(0);
 }

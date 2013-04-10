@@ -19,19 +19,19 @@
 # <pep8 compliant>
 
 bl_info = {
-    'name': "Screencast Keys",
-    'author': 'Paulo Gomes, Bart Crouch, John E. Herrenyo, Gaia Clary, Pablo Vazquez',
-    'version': (1, 7),
-    'blender': (2, 6, 4),
-    'location': '3D View > Properties Panel > Screencast Keys',
-    'warning': '',
-    'description': 'Display keys pressed in the 3D View, '\
-        'useful for screencasts.',
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/'
-                'Py/Scripts/3D_interaction/Screencast_Key_Status_Tool',
-    'tracker_url': 'http://projects.blender.org/tracker/index.php?'
-                   'func=detail&aid=21612',
-    'category': '3D View'}
+    "name": "Screencast Keys",
+    "author": "Paulo Gomes, Bart Crouch, John E. Herrenyo, Gaia Clary, Pablo Vazquez",
+    "version": (1, 7),
+    "blender": (2, 66, 0),
+    "location": "3D View > Properties Panel > Screencast Keys",
+    "warning": "",
+    "description": "Display keys pressed in the 3D View, "
+                   "useful for screencasts.",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/"
+                "Py/Scripts/3D_interaction/Screencast_Key_Status_Tool",
+    "tracker_url": "http://projects.blender.org/tracker/index.php?"
+                   "func=detail&aid=21612",
+    "category": "3D View"}
 
 import bgl
 import blf
@@ -515,6 +515,19 @@ class ScreencastKeysStatus(bpy.types.Operator):
     _handle = None
     _timer = None
 
+    @staticmethod
+    def handle_add(self, context):
+        ScreencastKeysStatus._handle = bpy.types.SpaceView3D.draw_handler_add(draw_callback_px, (self, context), 'WINDOW', 'POST_PIXEL')
+        ScreencastKeysStatus._timer = context.window_manager.event_timer_add(0.075, context.window)
+
+    @staticmethod
+    def handle_remove(context):
+        if ScreencastKeysStatus._handle is not None:
+            context.window_manager.event_timer_remove(ScreencastKeysStatus._timer)
+            bpy.types.SpaceView3D.draw_handler_remove(ScreencastKeysStatus._handle, 'WINDOW')
+        ScreencastKeysStatus._handle = None
+        ScreencastKeysStatus._timer = None
+
     def modal(self, context, event):
         if context.area:
             context.area.tag_redraw()
@@ -528,7 +541,8 @@ class ScreencastKeysStatus(bpy.types.Operator):
         mouse_keys = ['MOUSEMOVE','MIDDLEMOUSE','LEFTMOUSE',
          'RIGHTMOUSE', 'WHEELDOWNMOUSE','WHEELUPMOUSE']
         ignore_keys = ['LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_ALT',
-         'RIGHT_ALT', 'LEFT_CTRL', 'RIGHT_CTRL', 'TIMER']
+         'RIGHT_ALT', 'LEFT_CTRL', 'RIGHT_CTRL', 'TIMER',
+         'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE']
         if scene.screencast_keys_mouse != 'text':
             ignore_keys.extend(mouse_keys)
 
@@ -580,16 +594,14 @@ class ScreencastKeysStatus(bpy.types.Operator):
 
         if not context.window_manager.screencast_keys_keys:
             # stop script
-            context.window_manager.event_timer_remove(self._timer)
-            context.region.callback_remove(self._handle)
+            ScreencastKeysStatus.handle_remove(context)
             return {'CANCELLED'}
 
         return {'PASS_THROUGH'}
 
     def cancel(self, context):
         if context.window_manager.screencast_keys_keys:
-            context.window_manager.event_timer_remove(self._timer)
-            context.region.callback_remove(self._handle)
+            ScreencastKeysStatus.handle_remove(context)
             context.window_manager.screencast_keys_keys = False
         return {'CANCELLED'}
 
@@ -603,10 +615,7 @@ class ScreencastKeysStatus(bpy.types.Operator):
                 self.mouse = []
                 self.mouse_time = []
                 ScreencastKeysStatus.overall_time = []
-                self._handle = context.region.callback_add(draw_callback_px,
-                    (self, context), 'POST_PIXEL')
-                self._timer = context.window_manager.event_timer_add(0.075,
-                    context.window)
+                ScreencastKeysStatus.handle_add(self, context)
                 ScreencastKeysStatus.overall_time.insert(0, time.time())
                 context.window_manager.modal_handler_add(self)
                 return {'RUNNING_MODAL'}
@@ -741,23 +750,30 @@ def init_properties():
 
 # removal of properties when script is disabled
 def clear_properties():
-    props = ["screencast_keys_keys", "screencast_keys_mouse",
-     "screencast_keys_font_size", "screencast_keys_mouse_size",
-     "screencast_keys_mouse_position", "screencast_keys_fade_time",
-     "screencast_keys_pos_x", "screencast_keys_pos_y",
-     "screencast_keys_box_draw", "screencast_keys_text_color",
-     "screencast_keys_box_color", "screencast_keys_box_hide",
-     "screencast_keys_box_width", "screencast_keys_show_operator",
-     "screencast_keys_timer_show", "screencast_keys_timer_color",
-     "screencast_keys_timer_size" ]
+    props = (
+        "screencast_keys_keys",
+        "screencast_keys_mouse",
+        "screencast_keys_font_size",
+        "screencast_keys_mouse_size",
+        "screencast_keys_mouse_position",
+        "screencast_keys_fade_time",
+        "screencast_keys_pos_x",
+        "screencast_keys_pos_y",
+        "screencast_keys_box_draw",
+        "screencast_keys_text_color",
+        "screencast_keys_box_color",
+        "screencast_keys_box_hide",
+        "screencast_keys_box_width",
+        "screencast_keys_show_operator",
+        "screencast_keys_timer_show",
+        "screencast_keys_timer_color",
+        "screencast_keys_timer_size",
+    )
+
+    wm = bpy.context.window_manager
     for p in props:
-        if bpy.context.window_manager.get(p) != None:
-            del bpy.context.window_manager[p]
-        try:
-            x = getattr(bpy.types.WindowManager, p)
-            del x
-        except:
-            pass
+        if p in wm:
+            del wm[p]
 
 
 # defining the panel
@@ -840,28 +856,34 @@ classes = (ScreencastKeysStatus,
            OBJECT_PT_keys_status)
 
 
+# store keymaps here to access after registration
+addon_keymaps = []
+
+
 def register():
     init_properties()
     for c in classes:
         bpy.utils.register_class(c)
 
-    kc = bpy.context.window_manager.keyconfigs.addon
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon
     if kc:
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
         kmi = km.keymap_items.new('view3d.screencast_keys', 'C', 'PRESS', shift=True, alt=True)
+        addon_keymaps.append((km, kmi))
 
 
 def unregister():
+    # incase its enabled
+    ScreencastKeysStatus.handle_remove(bpy.context)
+
     for c in classes:
         bpy.utils.unregister_class(c)
 
-    kc = bpy.context.window_manager.keyconfigs.addon
-    if kc:
-        km = kc.keymaps['3D View']
-        for item in km.keymap_items:
-            if item.idname == 'view3d.screencast_keys':
-                km.keymap_items.remove(item)
-                break
+    # handle the keymap
+    for km, kmi in addon_keymaps:
+        km.keymap_items.remove(kmi)
+    addon_keymaps.clear()
 
     clear_properties()
 

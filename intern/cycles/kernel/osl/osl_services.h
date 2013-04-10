@@ -106,13 +106,6 @@ public:
 	static bool get_object_standard_attribute(KernelGlobals *kg, ShaderData *sd, ustring name,
 			TypeDesc type, bool derivatives, void *val);
 
-	struct TraceData {
-		Ray ray;
-		Intersection isect;
-		ShaderData sd;
-		bool setup;
-	};
-
 	static ustring u_distance;
 	static ustring u_index;
 	static ustring u_camera;
@@ -137,6 +130,9 @@ public:
 	static ustring u_geom_trianglevertices;
 	static ustring u_geom_polyvertices;
 	static ustring u_geom_name;
+	static ustring u_is_curve;
+	static ustring u_curve_thickness;
+	static ustring u_curve_tangent_normal;
 	static ustring u_path_ray_length;
 	static ustring u_trace;
 	static ustring u_hit;

@@ -32,8 +32,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BKE_cloth.h"
-
 #include "DNA_cloth_types.h"
 #include "DNA_group_types.h"
 #include "DNA_mesh_types.h"
@@ -52,14 +50,15 @@
 #include "BLI_rand.h"
 
 #include "BKE_DerivedMesh.h"
+#include "BKE_cloth.h"
 #include "BKE_global.h"
-#include "BKE_scene.h"
 #include "BKE_mesh.h"
-#include "BKE_object.h"
 #include "BKE_modifier.h"
+#include "BKE_object.h"
+#include "BKE_scene.h"
 
 #include "BKE_DerivedMesh.h"
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 #include "Bullet-C-Api.h"
 #endif
 #include "BLI_kdopbvh.h"
@@ -116,7 +115,7 @@ BVHTree *bvhtree_build_from_mvert ( MFace *mfaces, unsigned int numfaces, MVert 
 	return tree;
 }
 
-void bvhtree_update_from_mvert(BVHTree * bvhtree, MFace *faces, int numfaces, MVert *x, MVert *xnew, int UNUSED(numverts), int moving )
+void bvhtree_update_from_mvert(BVHTree *bvhtree, MFace *faces, int numfaces, MVert *x, MVert *xnew, int UNUSED(numverts), int moving )
 {
 	int i;
 	MFace *mfaces = faces;
@@ -385,7 +384,7 @@ static CollPair* cloth_collision(ModifierData *md1, ModifierData *md2,
 	CollisionModifierData *collmd = (CollisionModifierData *) md2;
 	/* Cloth *cloth = clmd->clothObject; */ /* UNUSED */
 	MFace *face1=NULL, *face2 = NULL;
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 	ClothVertex *verts1 = clmd->clothObject->verts;
 #endif
 	double distance = 0;
@@ -458,7 +457,7 @@ static CollPair* cloth_collision(ModifierData *md1, ModifierData *md2,
 			}
 		}
 		
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 		// calc distance + normal
 		distance = plNearestPoints (
 			verts1[collpair->ap1].txold, verts1[collpair->ap2].txold, verts1[collpair->ap3].txold, collmd->current_x[collpair->bp1].co, collmd->current_x[collpair->bp2].co, collmd->current_x[collpair->bp3].co, collpair->pa, collpair->pb, collpair->vector );
@@ -528,7 +527,7 @@ static void add_collision_object(Object ***objs, unsigned int *numobj, unsigned 
 		/* extend array */
 		if (*numobj >= *maxobj) {
 			*maxobj *= 2;
-			*objs= MEM_reallocN(*objs, sizeof(Object*)*(*maxobj));
+			*objs= MEM_reallocN(*objs, sizeof(Object *)*(*maxobj));
 		}
 		
 		(*objs)[*numobj] = ob;
@@ -654,7 +653,7 @@ static void cloth_bvh_objcollisions_nearcheck ( ClothModifierData * clmd, Collis
 {
 	int i;
 	
-	*collisions = (CollPair *) MEM_mallocN(sizeof(CollPair) * numresult * 64, "collision array" ); //*4 since cloth_collision_static can return more than 1 collision
+	*collisions = (CollPair *) MEM_mallocN(sizeof(CollPair) * numresult * 64, "collision array" ); // * 4 since cloth_collision_static can return more than 1 collision
 	*collisions_index = *collisions;
 
 	for ( i = 0; i < numresult; i++ ) {
@@ -706,7 +705,7 @@ static int cloth_bvh_objcollisions_resolve ( ClothModifierData * clmd, Collision
 }
 
 // cloth - object collisions
-int cloth_bvh_objcollision(Object *ob, ClothModifierData * clmd, float step, float dt )
+int cloth_bvh_objcollision(Object *ob, ClothModifierData *clmd, float step, float dt )
 {
 	Cloth *cloth= clmd->clothObject;
 	BVHTree *cloth_bvh= cloth->bvhtree;
@@ -740,7 +739,7 @@ int cloth_bvh_objcollision(Object *ob, ClothModifierData * clmd, float step, flo
 	/* move object to position (step) in time */
 	for (i = 0; i < numcollobj; i++) {
 		Object *collob= collobjs[i];
-		CollisionModifierData *collmd = (CollisionModifierData*)modifiers_findByType(collob, eModifierType_Collision);
+		CollisionModifierData *collmd = (CollisionModifierData *)modifiers_findByType(collob, eModifierType_Collision);
 
 		if (!collmd->bvhtree)
 			continue;
@@ -760,7 +759,7 @@ int cloth_bvh_objcollision(Object *ob, ClothModifierData * clmd, float step, flo
 		// check all collision objects
 		for (i = 0; i < numcollobj; i++) {
 			Object *collob= collobjs[i];
-			CollisionModifierData *collmd = (CollisionModifierData*)modifiers_findByType(collob, eModifierType_Collision);
+			CollisionModifierData *collmd = (CollisionModifierData *)modifiers_findByType(collob, eModifierType_Collision);
 			BVHTreeOverlap *overlap = NULL;
 			unsigned int result = 0;
 			

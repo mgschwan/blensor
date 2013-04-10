@@ -20,21 +20,17 @@
 
 
 bl_info = {
-    'name': '3d View: Manipulator Menu',
-    'author': 'MichaelW',
-    'version': (1, 2 ,1),
-    'blender': (2, 6, 1),
-    'location': 'View3D > Ctrl Space ',
-    'description': 'Menu to change the manipulator type and/or disable it',
-    'wiki_url': 'http://wiki.blender.org/index.php/Extensions:2.6/Py/'\
-        'Scripts/3D_interaction/Manipulator_Menu',
-    'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
-        'func=detail&aid=22092',
-    'category': '3D View'}
-
-
-
-
+    "name": "3d View: Manipulator Menu",
+    "author": "MichaelW",
+    "version": (1, 2 ,1),
+    "blender": (2, 61, 0),
+    "location": "View3D > Ctrl Space ",
+    "description": "Menu to change the manipulator type and/or disable it",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
+                "Scripts/3D_interaction/Manipulator_Menu",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"
+                   "func=detail&aid=22092",
+    "category": "3D View"}
 
 
 import bpy

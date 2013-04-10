@@ -36,7 +36,7 @@
 /* **************** Dilate/Erode ******************** */
 
 static bNodeSocketTemplate cmp_node_dilateerode_in[] = {
-	{   SOCK_FLOAT, 1, N_("Mask"),      0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_FACTOR},
+	{   SOCK_FLOAT, 1, N_("Mask"),      0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, PROP_NONE},
 	{   -1, 0, ""   }
 };
 static bNodeSocketTemplate cmp_node_dilateerode_out[] = {
@@ -44,132 +44,21 @@ static bNodeSocketTemplate cmp_node_dilateerode_out[] = {
 	{   -1, 0, ""   }
 };
 
-#ifdef WITH_COMPOSITOR_LEGACY
-
-static void morpho_dilate(CompBuf *cbuf)
-{
-	int x, y;
-	float *p, *rectf = cbuf->rect;
-	
-	for (y = 0; y < cbuf->y; y++) {
-		for (x = 0; x < cbuf->x - 1; x++) {
-			p = rectf + cbuf->x * y + x;
-			*p = max_ff(*p, *(p + 1));
-		}
-	}
-
-	for (y = 0; y < cbuf->y; y++) {
-		for (x = cbuf->x - 1; x >= 1; x--) {
-			p = rectf + cbuf->x * y + x;
-			*p = max_ff(*p, *(p - 1));
-		}
-	}
-
-	for (x = 0; x < cbuf->x; x++) {
-		for (y = 0; y < cbuf->y - 1; y++) {
-			p = rectf + cbuf->x * y + x;
-			*p = max_ff(*p, *(p + cbuf->x));
-		}
-	}
-
-	for (x = 0; x < cbuf->x; x++) {
-		for (y = cbuf->y - 1; y >= 1; y--) {
-			p = rectf + cbuf->x * y + x;
-			*p = max_ff(*p, *(p - cbuf->x));
-		}
-	}
-}
-
-static void morpho_erode(CompBuf *cbuf)
-{
-	int x, y;
-	float *p, *rectf = cbuf->rect;
-	
-	for (y = 0; y < cbuf->y; y++) {
-		for (x = 0; x < cbuf->x - 1; x++) {
-			p = rectf + cbuf->x * y + x;
-			*p = min_ff(*p, *(p + 1));
-		}
-	}
-
-	for (y = 0; y < cbuf->y; y++) {
-		for (x = cbuf->x - 1; x >= 1; x--) {
-			p = rectf + cbuf->x * y + x;
-			*p = min_ff(*p, *(p - 1));
-		}
-	}
-
-	for (x = 0; x < cbuf->x; x++) {
-		for (y = 0; y < cbuf->y - 1; y++) {
-			p = rectf + cbuf->x * y + x;
-			*p = min_ff(*p, *(p + cbuf->x));
-		}
-	}
-
-	for (x = 0; x < cbuf->x; x++) {
-		for (y = cbuf->y - 1; y >= 1; y--) {
-			p = rectf + cbuf->x * y + x;
-			*p = min_ff(*p, *(p - cbuf->x));
-		}
-	}
-	
-}
-
-static void node_composit_exec_dilateerode(void *UNUSED(data), bNode *node, bNodeStack **in, bNodeStack **out)
-{
-	/* stack order in: mask */
-	/* stack order out: mask */
-	if (out[0]->hasoutput == 0)
-		return;
-	
-	/* input no image? then only color operation */
-	if (in[0]->data == NULL) {
-		zero_v4(out[0]->vec);
-	}
-	else {
-		/* make output size of input image */
-		CompBuf *cbuf = typecheck_compbuf(in[0]->data, CB_VAL);
-		CompBuf *stackbuf = dupalloc_compbuf(cbuf);
-		short i;
-		
-		if (node->custom2 > 0) { // positive, dilate
-			for (i = 0; i < node->custom2; i++)
-				morpho_dilate(stackbuf);
-		}
-		else if (node->custom2 < 0) { // negative, erode
-			for (i = 0; i > node->custom2; i--)
-				morpho_erode(stackbuf);
-		}
-		
-		if (cbuf != in[0]->data)
-			free_compbuf(cbuf);
-		
-		out[0]->data = stackbuf;
-	}
-}
-
-#endif  /* WITH_COMPOSITOR_LEGACY */
-
-static void node_composit_init_dilateerode(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
+static void node_composit_init_dilateerode(bNodeTree *UNUSED(ntree), bNode *node)
 {
 	NodeDilateErode *data = MEM_callocN(sizeof(NodeDilateErode), "NodeDilateErode");
 	data->falloff = PROP_SMOOTH;
 	node->storage = data;
 }
 
-void register_node_type_cmp_dilateerode(bNodeTreeType *ttype)
+void register_node_type_cmp_dilateerode(void)
 {
 	static bNodeType ntype;
 	
-	node_type_base(ttype, &ntype, CMP_NODE_DILATEERODE, "Dilate/Erode", NODE_CLASS_OP_FILTER, NODE_OPTIONS);
+	cmp_node_type_base(&ntype, CMP_NODE_DILATEERODE, "Dilate/Erode", NODE_CLASS_OP_FILTER, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_dilateerode_in, cmp_node_dilateerode_out);
-	node_type_size(&ntype, 130, 100, 320);
 	node_type_init(&ntype, node_composit_init_dilateerode);
-#ifdef WITH_COMPOSITOR_LEGACY
-	node_type_exec(&ntype, node_composit_exec_dilateerode);
-#endif
-	
 	node_type_storage(&ntype, "NodeDilateErode", node_free_standard_storage, node_copy_standard_storage);
 
-	nodeRegisterType(ttype, &ntype);
+	nodeRegisterType(&ntype);
 }

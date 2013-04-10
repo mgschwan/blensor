@@ -19,6 +19,7 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Panel
+from bpy.app.translations import pgettext_iface as iface_
 
 
 class ModifierButtonsPanel():
@@ -123,20 +124,17 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split.prop(md, "width")
         split.prop(md, "use_only_vertices")
 
-        # -- new modifier only, this may be reverted in favor of 2.62 mod.
-        '''
-        split = layout.split()
-        split.prop(md, "use_even_offset")
-        split.prop(md, "use_distance_offset")
-        '''
-        # -- end
+        layout.prop(md, "segments")
 
         layout.label(text="Limit Method:")
         layout.row().prop(md, "limit_method", expand=True)
         if md.limit_method == 'ANGLE':
             layout.prop(md, "angle_limit")
-        elif md.limit_method == 'WEIGHT':
-            layout.row().prop(md, "edge_weight_method", expand=True)
+        elif md.limit_method == 'VGROUP':
+            layout.label(text="Vertex Group:")
+            layout.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        # elif md.limit_method == 'WEIGHT':
+        #    layout.row().prop(md, "edge_weight_method", expand=True)
 
     def BOOLEAN(self, layout, ob, md):
         split = layout.split()
@@ -161,6 +159,44 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         sub = col.column()
         sub.active = md.use_random_order
         sub.prop(md, "seed")
+
+    def MESH_CACHE(self, layout, ob, md):
+        layout.prop(md, "cache_format")
+        layout.prop(md, "filepath")
+
+        layout.label(text="Evaluation:")
+        layout.prop(md, "factor", slider=True)
+        layout.prop(md, "deform_mode")
+        layout.prop(md, "interpolation")
+
+        layout.label(text="Time Mapping:")
+
+        row = layout.row()
+        row.prop(md, "time_mode", expand=True)
+        row = layout.row()
+        row.prop(md, "play_mode", expand=True)
+        if md.play_mode == 'SCENE':
+            layout.prop(md, "frame_start")
+            layout.prop(md, "frame_scale")
+        else:
+            time_mode = md.time_mode
+            if time_mode == 'FRAME':
+                layout.prop(md, "eval_frame")
+            elif time_mode == 'TIME':
+                layout.prop(md, "eval_time")
+            elif time_mode == 'FACTOR':
+                layout.prop(md, "eval_factor")
+
+        layout.label(text="Axis Mapping:")
+        split = layout.split(percentage=0.5, align=True)
+        split.alert = (md.forward_axis[-1] == md.up_axis[-1])
+        split.label("Forward/Up Axis:")
+        split.prop(md, "forward_axis", text="")
+        split.prop(md, "up_axis", text="")
+        split = layout.split(percentage=0.5)
+        split.label(text="Flip Axis:")
+        row = split.row()
+        row.prop(md, "flip_axis")
 
     def CAST(self, layout, ob, md):
         split = layout.split(percentage=0.25)
@@ -227,7 +263,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             layout.prop(md, "angle_limit")
             layout.prop(md, "use_dissolve_boundaries")
 
-        layout.label(text="Face Count" + ": %d" % md.face_count)
+        layout.label(text=iface_("Face Count: %d") % md.face_count, translate=False)
 
     def DISPLACE(self, layout, ob, md):
         has_texture = (md.texture is not None)
@@ -333,23 +369,24 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
     def LAPLACIANSMOOTH(self, layout, ob, md):
         layout.prop(md, "iterations")
-        
+
         split = layout.split(percentage=0.25)
-        
+
         col = split.column()
         col.label(text="Axis:")
         col.prop(md, "use_x")
         col.prop(md, "use_y")
         col.prop(md, "use_z")
-        
+
         col = split.column()
         col.label(text="Lambda:")
         col.prop(md, "lambda_factor", text="Factor")
         col.prop(md, "lambda_border", text="Border")
-        
+
         col.separator()
         col.prop(md, "use_volume_preserve")
-        
+        col.prop(md, "use_normalized")
+
         layout.label(text="Vertex Group:")
         layout.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
 
@@ -472,7 +509,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             row.label()
 
     def OCEAN(self, layout, ob, md):
-        if not md.is_build_enabled:
+        if not bpy.app.build_options.mod_oceansim:
             layout.label("Built without OceanSim modifier")
             return
 
@@ -489,11 +526,13 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         col = split.column()
         col.prop(md, "time")
-        col.prop(md, "resolution")
+        col.prop(md, "depth")
+        col.prop(md, "random_seed")
 
         col = split.column()
+        col.prop(md, "resolution")
+        col.prop(md, "size")
         col.prop(md, "spatial_size")
-        col.prop(md, "depth")
 
         layout.label("Waves:")
 
@@ -534,7 +573,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         if md.is_cached:
             layout.operator("object.ocean_bake", text="Free Bake").free = True
         else:
-            layout.operator("object.ocean_bake")
+            layout.operator("object.ocean_bake").free = False
 
         split = layout.split()
         split.enabled = not md.is_cached
@@ -547,7 +586,14 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.label(text="Cache path:")
         col.prop(md, "filepath", text="")
 
-        #col.prop(md, "bake_foam_fade")
+        split = layout.split()
+        split.enabled = not md.is_cached
+
+        col = split.column()
+        col.active = md.use_foam
+        col.prop(md, "bake_foam_fade")
+
+        col = split.column()
 
     def PARTICLE_INSTANCE(self, layout, ob, md):
         layout.prop(md, "object")
@@ -669,7 +715,10 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         col = split.column()
         col.label(text="Deform:")
-        col.prop(md, "factor")
+        if md.deform_method in {'TAPER', 'STRETCH'}:
+            col.prop(md, "factor")
+        else:
+            col.prop(md, "angle")
         col.prop(md, "limits", slider=True)
         if md.deform_method in {'TAPER', 'STRETCH', 'TWIST'}:
             col.prop(md, "lock_x")
@@ -701,6 +750,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         col = split.column()
         col.prop(md, "thickness")
+        col.prop(md, "thickness_clamp")
         col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
 
         col.label(text="Crease:")
@@ -712,6 +762,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col = split.column()
 
         col.prop(md, "offset")
+        col.prop(md, "use_flip_normals")
         sub = col.column()
         sub.active = bool(md.vertex_group)
         sub.prop(md, "invert_vertex_group", text="Invert")
@@ -727,7 +778,6 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row = row.row()
         row.active = md.use_rim
         row.prop(md, "material_offset_rim", text="Rim")
-        sub.prop(md, "use_flip_normals")
 
     def SUBSURF(self, layout, ob, md):
         layout.row().prop(md, "subdivision_type", expand=True)
@@ -1031,6 +1081,48 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
     def TRIANGULATE(self, layout, ob, md):
         layout.prop(md, "use_beauty")
+
+    def UV_WARP(self, layout, ob, md):
+        split = layout.split()
+        col = split.column()
+        col.prop(md, "center")
+
+        col = split.column()
+        col.label(text="UV Axis:")
+        col.prop(md, "axis_u", text="")
+        col.prop(md, "axis_v", text="")
+
+        split = layout.split()
+        col = split.column()
+        col.label(text="From:")
+        col.prop(md, "object_from", text="")
+
+        col = split.column()
+        col.label(text="To:")
+        col.prop(md, "object_to", text="")
+
+        split = layout.split()
+        col = split.column()
+        obj = md.object_from
+        if obj and obj.type == 'ARMATURE':
+            col.label(text="Bone:")
+            col.prop_search(md, "bone_from", obj.data, "bones", text="")
+
+        col = split.column()
+        obj = md.object_to
+        if obj and obj.type == 'ARMATURE':
+            col.label(text="Bone:")
+            col.prop_search(md, "bone_to", obj.data, "bones", text="")
+
+        split = layout.split()
+
+        col = split.column()
+        col.label(text="Vertex Group:")
+        col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+
+        col = split.column()
+        col.label(text="UV Map:")
+        col.prop_search(md, "uv_layer", ob.data, "uv_textures", text="")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

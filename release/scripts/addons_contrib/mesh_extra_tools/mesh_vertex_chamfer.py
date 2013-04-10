@@ -22,7 +22,7 @@ bl_info = {
     "name": "Vertex Chamfer",
     "author": "Andrew Hale (TrumanBlending)",
     "version": (0, 1),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "Spacebar Menu",
     "description": "Chamfer vertex",
     "wiki_url": "",

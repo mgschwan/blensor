@@ -27,21 +27,22 @@
 
 #include <stdlib.h>
 
-#include "RNA_define.h"
-#include "RNA_access.h"
-#include "RNA_enum_types.h"
-
-#include "rna_internal.h"
 #include "DNA_constraint_types.h"
 #include "DNA_object_types.h"
 #include "DNA_actuator_types.h"
 #include "DNA_scene_types.h" /* for MAXFRAME */
 
-#include "WM_types.h"
-
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
+
+#include "RNA_define.h"
+#include "RNA_access.h"
+#include "RNA_enum_types.h"
+
+#include "rna_internal.h"
+
+#include "WM_types.h"
 
 /* Always keep in alphabetical order */
 EnumPropertyItem actuator_type_items[] = {
@@ -121,7 +122,7 @@ static void rna_Actuator_name_set(PointerRNA *ptr, const char *value)
 
 	if (ptr->id.data) {
 		Object *ob = (Object *)ptr->id.data;
-		BLI_uniquename(&ob->actuators, act, "Actuator", '.', offsetof(bActuator, name), sizeof(act->name));
+		BLI_uniquename(&ob->actuators, act, DATA_("Actuator"), '.', offsetof(bActuator, name), sizeof(act->name));
 	}
 }
 
@@ -388,6 +389,12 @@ static void rna_ObjectActuator_type_set(struct PointerRNA *ptr, int value)
 				oa->forcerot[0] = 30.0f;
 				oa->forcerot[1] = 0.5f;
 				oa->forcerot[2] = 0.0f;
+				break;
+
+			case ACT_OBJECT_CHARACTER:
+				memset(oa, 0, sizeof(bObjectActuator));
+				oa->flag = ACT_DLOC_LOCAL | ACT_DROT_LOCAL;
+				oa->type = ACT_OBJECT_CHARACTER;
 				break;
 		}
 	}
@@ -701,6 +708,7 @@ static void rna_def_object_actuator(BlenderRNA *brna)
 	static EnumPropertyItem prop_type_items[] = {
 		{ACT_OBJECT_NORMAL, "OBJECT_NORMAL", 0, "Simple Motion", ""},
 		{ACT_OBJECT_SERVO, "OBJECT_SERVO", 0, "Servo Control", ""},
+		{ACT_OBJECT_CHARACTER, "OBJECT_CHARACTER", 0, "Character Motion", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -867,6 +875,11 @@ static void rna_def_object_actuator(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Add", "Toggles between ADD and SET linV");
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 
+	prop = RNA_def_property(srna, "use_add_character_location", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", ACT_ADD_CHAR_LOC);
+	RNA_def_property_ui_text(prop, "Add", "Toggle between ADD and SET character location");
+	RNA_def_property_update(prop, NC_LOGIC, NULL);
+
 	prop = RNA_def_property(srna, "use_servo_limit_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", ACT_SERVO_LIMIT_X);
 	RNA_def_property_ui_text(prop, "X", "Set limit to force along the X axis");
@@ -880,6 +893,11 @@ static void rna_def_object_actuator(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_servo_limit_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", ACT_SERVO_LIMIT_Z);
 	RNA_def_property_ui_text(prop, "Z", "Set limit to force along the Z axis");
+	RNA_def_property_update(prop, NC_LOGIC, NULL);
+
+	prop = RNA_def_property(srna, "use_character_jump", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", ACT_CHAR_JUMP);
+	RNA_def_property_ui_text(prop, "Jump", "Make the character jump using the settings in the physics properties");
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 }
 
@@ -2057,7 +2075,7 @@ static void rna_def_steering_actuator(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "show_visualization", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", ACT_STEERING_ENABLEVISUALIZATION);
-	RNA_def_property_ui_text(prop, "Visualize", "Enable debug visualization");
+	RNA_def_property_ui_text(prop, "Visualize", "Enable debug visualization for 'Path following'");
 	RNA_def_property_update(prop, NC_LOGIC, NULL);
 
 	prop = RNA_def_property(srna, "update_period", PROP_INT, PROP_NONE);
