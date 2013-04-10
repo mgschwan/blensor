@@ -33,6 +33,15 @@ def name_compat(name):
         return name.replace(' ', '_')
 
 
+def mesh_triangulate(me):
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.triangulate(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+
+
 def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
     from mathutils import Color
 
@@ -115,7 +124,7 @@ def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
             image_map = {}
             # backwards so topmost are highest priority
             for mtex in reversed(mat.texture_slots):
-                if mtex and mtex.texture.type == 'IMAGE':
+                if mtex and mtex.texture and mtex.texture.type == 'IMAGE':
                     image = mtex.texture.image
                     if image:
                         # texface overrides others
@@ -350,7 +359,7 @@ def write_file(filepath, objects, scene,
             # END NURBS
 
             try:
-                me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW')
+                me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW', calc_tessface=False)
             except RuntimeError:
                 me = None
 
@@ -359,17 +368,22 @@ def write_file(filepath, objects, scene,
 
             me.transform(EXPORT_GLOBAL_MATRIX * ob_mat)
 
+            if EXPORT_TRI:
+                # _must_ do this first since it re-allocs arrays
+                mesh_triangulate(me)
+
             if EXPORT_UV:
                 faceuv = len(me.uv_textures) > 0
                 if faceuv:
-                    uv_layer = me.tessface_uv_textures.active.data[:]
+                    uv_texture = me.uv_textures.active.data[:]
+                    uv_layer = me.uv_layers.active.data[:]
             else:
                 faceuv = False
 
             me_verts = me.vertices[:]
 
             # Make our own list so it can be sorted to reduce context switching
-            face_index_pairs = [(face, index) for index, face in enumerate(me.tessfaces)]
+            face_index_pairs = [(face, index) for index, face in enumerate(me.polygons)]
             # faces = [ f for f in me.tessfaces ]
 
             if EXPORT_EDGES:
@@ -400,7 +414,7 @@ def write_file(filepath, objects, scene,
             if EXPORT_KEEP_VERT_ORDER:
                 pass
             elif faceuv:
-                face_index_pairs.sort(key=lambda a: (a[0].material_index, hash(uv_layer[a[1]].image), a[0].use_smooth))
+                face_index_pairs.sort(key=lambda a: (a[0].material_index, hash(uv_texture[a[1]].image), a[0].use_smooth))
             elif len(materials) > 1:
                 face_index_pairs.sort(key=lambda a: (a[0].material_index, a[0].use_smooth))
             else:
@@ -433,22 +447,25 @@ def write_file(filepath, objects, scene,
                 # in case removing some of these dont get defined.
                 uv = uvkey = uv_dict = f_index = uv_index = None
 
-                uv_face_mapping = [[0, 0, 0, 0] for i in range(len(face_index_pairs))]  # a bit of a waste for tri's :/
+                uv_face_mapping = [None] * len(face_index_pairs)
 
                 uv_dict = {}  # could use a set() here
-                uv_layer = me.tessface_uv_textures.active.data
                 for f, f_index in face_index_pairs:
-                    for uv_index, uv in enumerate(uv_layer[f_index].uv):
+                    uv_ls = uv_face_mapping[f_index] = []
+                    for uv_index, l_index in enumerate(f.loop_indices):
+                        uv = uv_layer[l_index].uv
+
                         uvkey = veckey2d(uv)
                         try:
-                            uv_face_mapping[f_index][uv_index] = uv_dict[uvkey]
+                            uv_k = uv_dict[uvkey]
                         except:
-                            uv_face_mapping[f_index][uv_index] = uv_dict[uvkey] = len(uv_dict)
+                            uv_k = uv_dict[uvkey] = len(uv_dict)
                             fw('vt %.6f %.6f\n' % uv[:])
+                        uv_ls.append(uv_k)
 
                 uv_unique_count = len(uv_dict)
 
-                del uv, uvkey, uv_dict, f_index, uv_index
+                del uv, uvkey, uv_dict, f_index, uv_index, uv_ls, uv_k
                 # Only need uv_unique_count and uv_face_mapping
 
             # NORMAL, Smooth/Non smoothed.
@@ -489,7 +506,7 @@ def write_file(filepath, objects, scene,
                 f_mat = min(f.material_index, len(materials) - 1)
 
                 if faceuv:
-                    tface = uv_layer[f_index]
+                    tface = uv_texture[f_index]
                     f_image = tface.image
 
                 # MAKE KEY
@@ -559,61 +576,53 @@ def write_file(filepath, objects, scene,
                         fw('s off\n')
                         contextSmooth = f_smooth
 
-                f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
+                f_v = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
 
-                if not EXPORT_TRI or len(f_v_orig) == 3:
-                    f_v_iter = (f_v_orig, )
-                else:
-                    f_v_iter = (f_v_orig[0], f_v_orig[1], f_v_orig[2]), (f_v_orig[0], f_v_orig[2], f_v_orig[3])
-
-                # support for triangulation
-                for f_v in f_v_iter:
-                    fw('f')
-
-                    if faceuv:
-                        if EXPORT_NORMALS:
-                            if f_smooth:  # Smoothed, use vertex normals
-                                for vi, v in f_v:
-                                    fw(" %d/%d/%d" %
-                                               (v.index + totverts,
-                                                totuvco + uv_face_mapping[f_index][vi],
-                                                globalNormals[veckey3d(v.normal)],
-                                                ))  # vert, uv, normal
-
-                            else:  # No smoothing, face normals
-                                no = globalNormals[veckey3d(f.normal)]
-                                for vi, v in f_v:
-                                    fw(" %d/%d/%d" %
-                                               (v.index + totverts,
-                                                totuvco + uv_face_mapping[f_index][vi],
-                                                no,
-                                                ))  # vert, uv, normal
-                        else:  # No Normals
+                fw('f')
+                if faceuv:
+                    if EXPORT_NORMALS:
+                        if f_smooth:  # Smoothed, use vertex normals
                             for vi, v in f_v:
-                                fw(" %d/%d" % (
+                                fw(" %d/%d/%d" %
+                                           (v.index + totverts,
+                                            totuvco + uv_face_mapping[f_index][vi],
+                                            globalNormals[veckey3d(v.normal)],
+                                            ))  # vert, uv, normal
+
+                        else:  # No smoothing, face normals
+                            no = globalNormals[veckey3d(f.normal)]
+                            for vi, v in f_v:
+                                fw(" %d/%d/%d" %
+                                           (v.index + totverts,
+                                            totuvco + uv_face_mapping[f_index][vi],
+                                            no,
+                                            ))  # vert, uv, normal
+                    else:  # No Normals
+                        for vi, v in f_v:
+                            fw(" %d/%d" % (
+                                       v.index + totverts,
+                                       totuvco + uv_face_mapping[f_index][vi],
+                                       ))  # vert, uv
+
+                    face_vert_index += len(f_v)
+
+                else:  # No UV's
+                    if EXPORT_NORMALS:
+                        if f_smooth:  # Smoothed, use vertex normals
+                            for vi, v in f_v:
+                                fw(" %d//%d" % (
                                            v.index + totverts,
-                                           totuvco + uv_face_mapping[f_index][vi],
-                                           ))  # vert, uv
-
-                        face_vert_index += len(f_v)
-
-                    else:  # No UV's
-                        if EXPORT_NORMALS:
-                            if f_smooth:  # Smoothed, use vertex normals
-                                for vi, v in f_v:
-                                    fw(" %d//%d" % (
-                                               v.index + totverts,
-                                               globalNormals[veckey3d(v.normal)],
-                                               ))
-                            else:  # No smoothing, face normals
-                                no = globalNormals[veckey3d(f.normal)]
-                                for vi, v in f_v:
-                                    fw(" %d//%d" % (v.index + totverts, no))
-                        else:  # No Normals
+                                           globalNormals[veckey3d(v.normal)],
+                                           ))
+                        else:  # No smoothing, face normals
+                            no = globalNormals[veckey3d(f.normal)]
                             for vi, v in f_v:
-                                fw(" %d" % (v.index + totverts))
+                                fw(" %d//%d" % (v.index + totverts, no))
+                    else:  # No Normals
+                        for vi, v in f_v:
+                            fw(" %d" % (v.index + totverts))
 
-                    fw('\n')
+                fw('\n')
 
             # Write edges.
             if EXPORT_EDGES:
@@ -732,7 +741,7 @@ def save(operator, context, filepath="",
          use_normals=False,
          use_uvs=True,
          use_materials=True,
-         use_apply_modifiers=True,
+         use_mesh_modifiers=True,
          use_blen_objects=True,
          group_by_object=False,
          group_by_material=False,
@@ -751,7 +760,7 @@ def save(operator, context, filepath="",
            EXPORT_NORMALS=use_normals,
            EXPORT_UV=use_uvs,
            EXPORT_MTL=use_materials,
-           EXPORT_APPLY_MODIFIERS=use_apply_modifiers,
+           EXPORT_APPLY_MODIFIERS=use_mesh_modifiers,
            EXPORT_BLEN_OBS=use_blen_objects,
            EXPORT_GROUP_BY_OB=group_by_object,
            EXPORT_GROUP_BY_MAT=group_by_material,

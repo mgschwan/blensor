@@ -54,7 +54,7 @@ typedef struct FileData {
 	int (*read)(struct FileData *filedata, void *buffer, unsigned int size);
 
 	// variables needed for reading from memory / stream
-	char *buffer;
+	const char *buffer;
 	// variables needed for reading from memfile (undo)
 	struct MemFile *memfile;
 
@@ -68,6 +68,9 @@ typedef struct FileData {
 	// variables needed for reading from stream
 	char headerdone;
 	int inbuffer;
+	
+	// gzip stream for memory decompression
+	z_stream strm;
 	
 	// general reading variables
 	struct SDNA *filesdna;
@@ -83,6 +86,7 @@ typedef struct FileData {
 	struct OldNewMap *libmap;
 	struct OldNewMap *imamap;
 	struct OldNewMap *movieclipmap;
+	struct OldNewMap *packedmap;
 	
 	struct BHeadSort *bheadmap;
 	int tot_bheadmap;
@@ -119,7 +123,7 @@ void blo_split_main(ListBase *mainlist, struct Main *main);
 BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath);
 
 FileData *blo_openblenderfile(const char *filepath, struct ReportList *reports);
-FileData *blo_openblendermemory(void *buffer, int buffersize, struct ReportList *reports);
+FileData *blo_openblendermemory(const void *buffer, int buffersize, struct ReportList *reports);
 FileData *blo_openblendermemfile(struct MemFile *memfile, struct ReportList *reports);
 
 void blo_clear_proxy_pointers_from_lib(Main *oldmain);
@@ -127,6 +131,8 @@ void blo_make_image_pointer_map(FileData *fd, Main *oldmain);
 void blo_end_image_pointer_map(FileData *fd, Main *oldmain);
 void blo_make_movieclip_pointer_map(FileData *fd, Main *oldmain);
 void blo_end_movieclip_pointer_map(FileData *fd, Main *oldmain);
+void blo_make_packed_pointer_map(FileData *fd, Main *oldmain);
+void blo_end_packed_pointer_map(FileData *fd, Main *oldmain);
 void blo_add_library_pointer_map(ListBase *mainlist, FileData *fd);
 
 void blo_freefiledata(FileData *fd);
@@ -146,7 +152,6 @@ void *blo_do_versions_newlibadr_us(struct FileData *fd, void *lib, void *adr);
 struct PartEff *blo_do_version_give_parteff_245(struct Object *ob);
 void blo_do_version_old_trackto_to_constraints(struct Object *ob);
 void blo_do_versions_view3d_split_250(struct View3D *v3d, struct ListBase *regions);
-void blo_do_versions_nodetree_default_value(struct bNodeTree *ntree);
 
 void blo_do_versions_pre250(struct FileData *fd, struct Library *lib, struct Main *main);
 void blo_do_versions_250(struct FileData *fd, struct Library *lib, struct Main *main);

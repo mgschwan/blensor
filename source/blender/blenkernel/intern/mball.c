@@ -50,8 +50,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-#include "BLI_bpath.h"
-
 
 #include "BKE_global.h"
 #include "BKE_main.h"
@@ -198,11 +196,11 @@ void BKE_mball_free(MetaBall *mb)
 	if (mb->disp.first) BKE_displist_free(&mb->disp);
 }
 
-MetaBall *BKE_mball_add(const char *name)
+MetaBall *BKE_mball_add(Main *bmain, const char *name)
 {
 	MetaBall *mb;
 	
-	mb = BKE_libblock_alloc(&G.main->mball, ID_MB, name);
+	mb = BKE_libblock_alloc(&bmain->mball, ID_MB, name);
 	
 	mb->size[0] = mb->size[1] = mb->size[2] = 1.0;
 	mb->texflag = MB_AUTOSPACE;
@@ -441,18 +439,15 @@ float *BKE_mball_make_orco(Object *ob, ListBase *dispbase)
  * It test last character of Object ID name. If last character
  * is digit it return 0, else it return 1.
  */
-int BKE_mball_is_basis(Object *ob)
+bool BKE_mball_is_basis(Object *ob)
 {
-	int len;
-	
 	/* just a quick test */
-	len = strlen(ob->id.name);
-	if (isdigit(ob->id.name[len - 1]) ) return 0;
-	return 1;
+	const int len = strlen(ob->id.name);
+	return (!isdigit(ob->id.name[len - 1]));
 }
 
 /* return nonzero if ob1 is a basis mball for ob */
-int BKE_mball_is_basis_for(Object *ob1, Object *ob2)
+bool BKE_mball_is_basis_for(Object *ob1, Object *ob2)
 {
 	int basis1nr, basis2nr;
 	char basis1name[MAX_ID_NAME], basis2name[MAX_ID_NAME];
@@ -460,8 +455,12 @@ int BKE_mball_is_basis_for(Object *ob1, Object *ob2)
 	BLI_split_name_num(basis1name, &basis1nr, ob1->id.name + 2, '.');
 	BLI_split_name_num(basis2name, &basis2nr, ob2->id.name + 2, '.');
 
-	if (!strcmp(basis1name, basis2name)) return BKE_mball_is_basis(ob1);
-	else return 0;
+	if (!strcmp(basis1name, basis2name)) {
+		return BKE_mball_is_basis(ob1);
+	}
+	else {
+		return false;
+	}
 }
 
 /* \brief copy some properties from object to other metaball object with same base name
@@ -1427,7 +1426,8 @@ static void converge(const float p1[3], const float p2[3], float v1, float v2,
 		while (1) {
 			if (i++ == RES) return;
 			p[0] = 0.5f * (pos[0] + neg[0]);
-			if ((function(p[0], p[1], p[2])) > 0.0f) pos[0] = p[0]; else neg[0] = p[0];
+			if ((function(p[0], p[1], p[2])) > 0.0f) pos[0] = p[0];
+			else                                     neg[0] = p[0];
 		}
 	}
 
@@ -1437,7 +1437,8 @@ static void converge(const float p1[3], const float p2[3], float v1, float v2,
 		while (1) {
 			if (i++ == RES) return;
 			p[1] = 0.5f * (pos[1] + neg[1]);
-			if ((function(p[0], p[1], p[2])) > 0.0f) pos[1] = p[1]; else neg[1] = p[1];
+			if ((function(p[0], p[1], p[2])) > 0.0f) pos[1] = p[1];
+			else                                     neg[1] = p[1];
 		}
 	}
 
@@ -1447,7 +1448,8 @@ static void converge(const float p1[3], const float p2[3], float v1, float v2,
 		while (1) {
 			if (i++ == RES) return;
 			p[2] = 0.5f * (pos[2] + neg[2]);
-			if ((function(p[0], p[1], p[2])) > 0.0f) pos[2] = p[2]; else neg[2] = p[2];
+			if ((function(p[0], p[1], p[2])) > 0.0f) pos[2] = p[2];
+			else                                     neg[2] = p[2];
 		}
 	}
 
@@ -1502,7 +1504,7 @@ static void add_cube(PROCESS *mbproc, int i, int j, int k, int count)
 static void find_first_points(PROCESS *mbproc, MetaBall *mb, int a)
 {
 	MetaElem *ml;
-	float f = 0.0f;
+	float f;
 
 	ml = G_mb.mainb[a];
 	f = 1.0f - (mb->thresh / ml->s);
@@ -1516,7 +1518,7 @@ static void find_first_points(PROCESS *mbproc, MetaBall *mb, int a)
 		float in_v /*, out_v*/;
 		float workp[3];
 		float dvec[3];
-		float tmp_v, workp_v, max_len, len, nx, ny, nz, MAXN;
+		float tmp_v, workp_v, max_len, nx, ny, nz, max_dim;
 
 		calc_mballco(ml, in);
 		in_v = mbproc->function(in[0], in[1], in[2]);
@@ -1575,17 +1577,17 @@ static void find_first_points(PROCESS *mbproc, MetaBall *mb, int a)
 					ny = abs((out[1] - in[1]) / mbproc->size);
 					nz = abs((out[2] - in[2]) / mbproc->size);
 					
-					MAXN = MAX3(nx, ny, nz);
-					if (MAXN != 0.0f) {
-						dvec[0] = (out[0] - in[0]) / MAXN;
-						dvec[1] = (out[1] - in[1]) / MAXN;
-						dvec[2] = (out[2] - in[2]) / MAXN;
+					max_dim = max_fff(nx, ny, nz);
+					if (max_dim != 0.0f) {
+						float len = 0.0f;
 
-						len = 0.0;
+						dvec[0] = (out[0] - in[0]) / max_dim;
+						dvec[1] = (out[1] - in[1]) / max_dim;
+						dvec[2] = (out[2] - in[2]) / max_dim;
+
 						while (len <= max_len) {
-							workp[0] += dvec[0];
-							workp[1] += dvec[1];
-							workp[2] += dvec[2];
+							add_v3_v3(workp, dvec);
+
 							/* compute value of implicite function */
 							tmp_v = mbproc->function(workp[0], workp[1], workp[2]);
 							/* add cube to the stack, when value of implicite function crosses zero value */
@@ -1654,6 +1656,14 @@ static void polygonize(PROCESS *mbproc, MetaBall *mb)
 		testface(c.i, c.j, c.k - 1, &c, 0, LBN, LTN, RBN, RTN, mbproc);
 		testface(c.i, c.j, c.k + 1, &c, 0, LBF, LTF, RBF, RTF, mbproc);
 	}
+}
+
+/* could move to math api */
+BLI_INLINE void copy_v3_fl3(float v[3], float x, float y, float z)
+{
+	v[0] = x;
+	v[1] = y;
+	v[2] = z;
 }
 
 static float init_meta(Scene *scene, Object *ob)    /* return totsize */
@@ -1732,6 +1742,7 @@ static float init_meta(Scene *scene, Object *ob)    /* return totsize */
 						float temp1[4][4], temp2[4][4], temp3[4][4];
 						float (*mat)[4] = NULL, (*imat)[4] = NULL;
 						float max_x, max_y, max_z, min_x, min_y, min_z;
+						float expx, expy, expz;
 
 						max_x = max_y = max_z = -3.4e38;
 						min_x = min_y = min_z =  3.4e38;
@@ -1772,39 +1783,27 @@ static float init_meta(Scene *scene, Object *ob)    /* return totsize */
 						G_mb.mainb[a]->mat = (float *) mat;
 						G_mb.mainb[a]->imat = (float *) imat;
 
+						if (!MB_TYPE_SIZE_SQUARED(ml->type)) {
+							expx = ml->expx;
+							expy = ml->expy;
+							expz = ml->expz;
+						}
+						else {
+							expx = ml->expx * ml->expx;
+							expy = ml->expy * ml->expy;
+							expz = ml->expz * ml->expz;
+						}
+
 						/* untransformed Bounding Box of MetaElem */
-						/* 0 */
-						G_mb.mainb[a]->bb->vec[0][0] = -ml->expx;
-						G_mb.mainb[a]->bb->vec[0][1] = -ml->expy;
-						G_mb.mainb[a]->bb->vec[0][2] = -ml->expz;
-						/* 1 */
-						G_mb.mainb[a]->bb->vec[1][0] =  ml->expx;
-						G_mb.mainb[a]->bb->vec[1][1] = -ml->expy;
-						G_mb.mainb[a]->bb->vec[1][2] = -ml->expz;
-						/* 2 */
-						G_mb.mainb[a]->bb->vec[2][0] =  ml->expx;
-						G_mb.mainb[a]->bb->vec[2][1] =  ml->expy;
-						G_mb.mainb[a]->bb->vec[2][2] = -ml->expz;
-						/* 3 */
-						G_mb.mainb[a]->bb->vec[3][0] = -ml->expx;
-						G_mb.mainb[a]->bb->vec[3][1] =  ml->expy;
-						G_mb.mainb[a]->bb->vec[3][2] = -ml->expz;
-						/* 4 */
-						G_mb.mainb[a]->bb->vec[4][0] = -ml->expx;
-						G_mb.mainb[a]->bb->vec[4][1] = -ml->expy;
-						G_mb.mainb[a]->bb->vec[4][2] =  ml->expz;
-						/* 5 */
-						G_mb.mainb[a]->bb->vec[5][0] =  ml->expx;
-						G_mb.mainb[a]->bb->vec[5][1] = -ml->expy;
-						G_mb.mainb[a]->bb->vec[5][2] =  ml->expz;
-						/* 6 */
-						G_mb.mainb[a]->bb->vec[6][0] =  ml->expx;
-						G_mb.mainb[a]->bb->vec[6][1] =  ml->expy;
-						G_mb.mainb[a]->bb->vec[6][2] =  ml->expz;
-						/* 7 */
-						G_mb.mainb[a]->bb->vec[7][0] = -ml->expx;
-						G_mb.mainb[a]->bb->vec[7][1] =  ml->expy;
-						G_mb.mainb[a]->bb->vec[7][2] =  ml->expz;
+						/* TODO, its possible the elem type has been changed and the exp* values can use a fallback */
+						copy_v3_fl3(G_mb.mainb[a]->bb->vec[0], -expx, -expy, -expz);  /* 0 */
+						copy_v3_fl3(G_mb.mainb[a]->bb->vec[1], +expx, -expy, -expz);  /* 1 */
+						copy_v3_fl3(G_mb.mainb[a]->bb->vec[2], +expx, +expy, -expz);  /* 2 */
+						copy_v3_fl3(G_mb.mainb[a]->bb->vec[3], -expx, +expy, -expz);  /* 3 */
+						copy_v3_fl3(G_mb.mainb[a]->bb->vec[4], -expx, -expy, +expz);  /* 4 */
+						copy_v3_fl3(G_mb.mainb[a]->bb->vec[5], +expx, -expy, +expz);  /* 5 */
+						copy_v3_fl3(G_mb.mainb[a]->bb->vec[6], +expx, +expy, +expz);  /* 6 */
+						copy_v3_fl3(G_mb.mainb[a]->bb->vec[7], -expx, +expy, +expz);  /* 7 */
 
 						/* transformation of Metalem bb */
 						for (i = 0; i < 8; i++)
@@ -2181,7 +2180,7 @@ static void free_metaball_octal_node(octal_node *node)
 	MEM_freeN(node);
 }
 
-/* If scene include more then one MetaElem, then octree is used */
+/* If scene include more than one MetaElem, then octree is used */
 static void init_metaball_octal_tree(int depth)
 {
 	struct octal_node *node;
@@ -2270,7 +2269,7 @@ void BKE_mball_polygonize(Scene *scene, Object *ob, ListBase *dispbase)
 		G_mb.metaball_tree = NULL;
 	}
 
-	/* if scene includes more then one MetaElem, then octal tree optimization is used */
+	/* if scene includes more than one MetaElem, then octal tree optimization is used */
 	if ((G_mb.totelem >    1) && (G_mb.totelem <=   64)) init_metaball_octal_tree(1);
 	if ((G_mb.totelem >   64) && (G_mb.totelem <=  128)) init_metaball_octal_tree(2);
 	if ((G_mb.totelem >  128) && (G_mb.totelem <=  512)) init_metaball_octal_tree(3);
@@ -2298,7 +2297,9 @@ void BKE_mball_polygonize(Scene *scene, Object *ob, ListBase *dispbase)
 	}
 
 	/* width is size per polygonize cube */
-	if (G.is_rendering) width = mb->rendersize;
+	if (G.is_rendering) {
+		width = mb->rendersize;
+	}
 	else {
 		width = mb->wiresize;
 		if (G.moving && mb->flag == MB_UPDATE_HALFRES) width *= 2;

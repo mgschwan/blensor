@@ -42,8 +42,21 @@ namespace internal {
 DenseSparseMatrix::DenseSparseMatrix(int num_rows, int num_cols)
     : has_diagonal_appended_(false),
       has_diagonal_reserved_(false) {
-  // Allocate enough space for the diagonal.
   m_.resize(num_rows, num_cols);
+  m_.setZero();
+}
+
+DenseSparseMatrix::DenseSparseMatrix(int num_rows,
+                                     int num_cols,
+                                     bool reserve_diagonal)
+    : has_diagonal_appended_(false),
+      has_diagonal_reserved_(reserve_diagonal) {
+  if (reserve_diagonal) {
+    // Allocate enough space for the diagonal.
+    m_.resize(num_rows +  num_cols, num_cols);
+  } else {
+    m_.resize(num_rows, num_cols);
+  }
   m_.setZero();
 }
 
@@ -61,7 +74,7 @@ DenseSparseMatrix::DenseSparseMatrix(const TripletSparseMatrix& m)
   }
 }
 
-DenseSparseMatrix::DenseSparseMatrix(const Matrix& m)
+DenseSparseMatrix::DenseSparseMatrix(const ColMajorMatrix& m)
     : m_(m),
       has_diagonal_appended_(false),
       has_diagonal_reserved_(false) {
@@ -105,7 +118,7 @@ void DenseSparseMatrix::ScaleColumns(const double* scale) {
 }
 
 void DenseSparseMatrix::ToDenseMatrix(Matrix* dense_matrix) const {
-  *dense_matrix = m_;
+  *dense_matrix = m_.block(0, 0, num_rows(), num_cols());
 }
 
 #ifndef CERES_NO_PROTOCOL_BUFFERS
@@ -127,7 +140,7 @@ void DenseSparseMatrix::ToProto(SparseMatrixProto* outer_proto) const {
 void DenseSparseMatrix::AppendDiagonal(double *d) {
   CHECK(!has_diagonal_appended_);
   if (!has_diagonal_reserved_) {
-    Matrix tmp = m_;
+    ColMajorMatrix tmp = m_;
     m_.resize(m_.rows() + m_.cols(), m_.cols());
     m_.setZero();
     m_.block(0, 0, tmp.rows(), tmp.cols()) = tmp;
@@ -163,21 +176,26 @@ int DenseSparseMatrix::num_nonzeros() const {
   return m_.rows() * m_.cols();
 }
 
-ConstAlignedMatrixRef DenseSparseMatrix::matrix() const {
-  if (has_diagonal_reserved_ && !has_diagonal_appended_) {
-    return ConstAlignedMatrixRef(
-        m_.data(), m_.rows() - m_.cols(), m_.cols());
-  }
-  return ConstAlignedMatrixRef(m_.data(), m_.rows(), m_.cols());
+ConstColMajorMatrixRef DenseSparseMatrix::matrix() const {
+  return ConstColMajorMatrixRef(
+      m_.data(),
+      ((has_diagonal_reserved_ && !has_diagonal_appended_)
+       ? m_.rows() - m_.cols()
+       : m_.rows()),
+      m_.cols(),
+      Eigen::Stride<Eigen::Dynamic, 1>(m_.rows(), 1));
 }
 
-AlignedMatrixRef DenseSparseMatrix::mutable_matrix() {
-  if (has_diagonal_reserved_ && !has_diagonal_appended_) {
-    return AlignedMatrixRef(
-        m_.data(), m_.rows() - m_.cols(), m_.cols());
-  }
-  return AlignedMatrixRef(m_.data(), m_.rows(), m_.cols());
+ColMajorMatrixRef DenseSparseMatrix::mutable_matrix() {
+  return ColMajorMatrixRef(
+      m_.data(),
+      ((has_diagonal_reserved_ && !has_diagonal_appended_)
+       ? m_.rows() - m_.cols()
+       : m_.rows()),
+      m_.cols(),
+      Eigen::Stride<Eigen::Dynamic, 1>(m_.rows(), 1));
 }
+
 
 void DenseSparseMatrix::ToTextFile(FILE* file) const {
   CHECK_NOTNULL(file);

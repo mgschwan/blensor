@@ -123,6 +123,7 @@ extern bool bc_has_object_type(LinkNode *export_set, short obtype);
 #include "ArmatureExporter.h"
 #include "AnimationExporter.h"
 #include "CameraExporter.h"
+#include "ControllerExporter.h"
 #include "EffectExporter.h"
 #include "GeometryExporter.h"
 #include "ImageExporter.h"
@@ -265,16 +266,32 @@ void DocumentExporter::exportCurrentScene(Scene *sce)
 
 	// <library_animations>
 	AnimationExporter ae(&sw, this->export_settings);
-	ae.exportAnimations(sce);
+	bool has_animations = ae.exportAnimations(sce);
 
 	// <library_controllers>
 	ArmatureExporter arm_exporter(&sw, this->export_settings);
-	if (bc_has_object_type(export_set, OB_ARMATURE)) {
-		arm_exporter.export_controllers(sce);
+	ControllerExporter controller_exporter(&sw , this->export_settings);
+	if (bc_has_object_type(export_set, OB_ARMATURE) || this->export_settings->include_shapekeys) 
+	{
+		controller_exporter.export_controllers(sce);
 	}
 
 	// <library_visual_scenes>
+
 	SceneExporter se(&sw, &arm_exporter, this->export_settings);
+
+	if (has_animations && this->export_settings->export_transformation_type == BC_TRANSFORMATION_TYPE_MATRIX) {
+		// channels adressing <matrix> objects is not (yet) supported
+		// So we force usage of <location>, <translation> and <scale>
+		fprintf(stdout, 
+			"For animated Ojects we must use decomposed <matrix> elements,\n" \
+			"Forcing usage of TransLocRot transformation type.");
+		se.setExportTransformationType(BC_TRANSFORMATION_TYPE_TRANSROTLOC);
+	}
+	else {
+		se.setExportTransformationType(this->export_settings->export_transformation_type);
+	}
+
 	se.exportScene(sce);
 	
 	// <scene>

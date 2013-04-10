@@ -27,6 +27,7 @@ set(SRC_OSL
 	node_glass_bsdf.osl
 	node_glossy_bsdf.osl
 	node_gradient_texture.osl
+	node_hair_info.osl
 	node_holdout.osl
 	node_hsv.osl
 	node_image_texture.osl
@@ -54,6 +55,7 @@ set(SRC_OSL
 	node_separate_rgb.osl
 	node_set_normal.osl
 	node_sky_texture.osl
+	node_subsurface_scattering.osl
 	node_tangent.osl
 	node_texture_coordinate.osl
 	node_translucent_bsdf.osl

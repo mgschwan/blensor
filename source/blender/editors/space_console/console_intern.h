@@ -37,7 +37,7 @@ struct bContext;
 /* console_draw.c */
 void console_textview_main(struct SpaceConsole *sc, struct ARegion *ar);
 int console_textview_height(struct SpaceConsole *sc, struct ARegion *ar); /* needed to calculate the scrollbar */
-int console_char_pick(struct SpaceConsole *sc, struct ARegion *ar, int mval[2]);
+int console_char_pick(struct SpaceConsole *sc, struct ARegion *ar, const int mval[2]);
 
 void console_scrollback_prompt_begin(struct SpaceConsole *sc, ConsoleLine *cl_dummy);
 void console_scrollback_prompt_end(struct SpaceConsole *sc, ConsoleLine *cl_dummy);
@@ -45,8 +45,8 @@ void console_scrollback_prompt_end(struct SpaceConsole *sc, ConsoleLine *cl_dumm
 /* console_ops.c */
 void console_history_free(SpaceConsole *sc, ConsoleLine *cl);
 void console_scrollback_free(SpaceConsole *sc, ConsoleLine *cl);
-ConsoleLine *console_history_add_str(struct SpaceConsole *sc, char *str, int own);
-ConsoleLine *console_scrollback_add_str(struct SpaceConsole *sc, char *str, int own);
+ConsoleLine *console_history_add_str(struct SpaceConsole *sc, char *str, bool own);
+ConsoleLine *console_scrollback_add_str(struct SpaceConsole *sc, char *str, bool own);
 
 ConsoleLine *console_history_verify(const struct bContext *C);
 

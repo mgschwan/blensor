@@ -33,6 +33,7 @@
 
 #include "png.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_fileops.h"
 
 #include "BLI_math.h"
@@ -59,6 +60,11 @@ typedef struct PNGReadStruct {
 static void ReadData(png_structp png_ptr, png_bytep data, png_size_t length);
 static void WriteData(png_structp png_ptr, png_bytep data, png_size_t length);
 static void Flush(png_structp png_ptr);
+
+BLI_INLINE unsigned short UPSAMPLE_8_TO_16(const unsigned char _val)
+{
+	return (_val << 8) + _val;
+}
 
 int imb_is_a_png(unsigned char *mem)
 {
@@ -102,6 +108,17 @@ static void ReadData(png_structp png_ptr, png_bytep data, png_size_t length)
 	longjmp(png_jmpbuf(png_ptr), 1);
 }
 
+static float channel_colormanage_noop(float value)
+{
+	return value;
+}
+
+/* wrap to avoid macro calling functions multiple times */
+BLI_INLINE unsigned short ftoshort(float val)
+{
+	return FTOUSHORT(val);
+}
+
 int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 {
 	png_structp png_ptr;
@@ -109,14 +126,31 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 
 	unsigned char *pixels = NULL;
 	unsigned char *from, *to;
+	unsigned short *pixels16 = NULL, *to16;
+	float *from_float, from_straight[4];
 	png_bytepp row_pointers = NULL;
 	int i, bytesperpixel, color_type = PNG_COLOR_TYPE_GRAY;
 	FILE *fp = NULL;
+
+	bool is_16bit  = (ibuf->ftype & PNG_16BIT);
+	bool has_float = (ibuf->rect_float != NULL);
+	int channels_in_float = ibuf->channels ? ibuf->channels : 4;
+
+	float (*chanel_colormanage_cb)(float);
 
 	/* use the jpeg quality setting for compression */
 	int compression;
 	compression = (int)(((float)(ibuf->ftype & 0xff) / 11.1111f));
 	compression = compression < 0 ? 0 : (compression > 9 ? 9 : compression);
+
+	if (ibuf->float_colorspace) {
+		/* float buffer was managed already, no need in color space conversion */
+		chanel_colormanage_cb = channel_colormanage_noop;
+	}
+	else {
+		/* standard linear-to-srgb conversion if float buffer wasn't managed */
+		chanel_colormanage_cb = linearrgb_to_srgb;
+	}
 
 	/* for prints */
 	if (flags & IB_mem)
@@ -124,7 +158,7 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 
 	bytesperpixel = (ibuf->planes + 7) >> 3;
 	if ((bytesperpixel > 4) || (bytesperpixel == 2)) {
-		printf("imb_savepng: Cunsupported bytes per pixel: %d for file: '%s'\n", bytesperpixel, name);
+		printf("imb_savepng: Unsupported bytes per pixel: %d for file: '%s'\n", bytesperpixel, name);
 		return (0);
 	}
 
@@ -150,8 +184,12 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 
 	/* copy image data */
 
-	pixels = MEM_mallocN(ibuf->x * ibuf->y * bytesperpixel * sizeof(unsigned char), "pixels");
-	if (pixels == NULL) {
+	if (is_16bit)
+		pixels16 = MEM_mallocN(ibuf->x * ibuf->y * bytesperpixel * sizeof(unsigned short), "png 16bit pixels");
+	else
+		pixels = MEM_mallocN(ibuf->x * ibuf->y * bytesperpixel * sizeof(unsigned char), "png 8bit pixels");
+
+	if (pixels == NULL && pixels16 == NULL) {
 		png_destroy_write_struct(&png_ptr, &info_ptr);
 		printf("imb_savepng: Cannot allocate pixels array of %dx%d, %d bytes per pixel for file: '%s'\n", ibuf->x, ibuf->y, bytesperpixel, name);
 		return 0;
@@ -159,32 +197,152 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 
 	from = (unsigned char *) ibuf->rect;
 	to = pixels;
+	from_float = ibuf->rect_float;
+	to16 = pixels16;
 
 	switch (bytesperpixel) {
 		case 4:
 			color_type = PNG_COLOR_TYPE_RGBA;
-			for (i = ibuf->x * ibuf->y; i > 0; i--) {
-				to[0] = from[0];
-				to[1] = from[1];
-				to[2] = from[2];
-				to[3] = from[3];
-				to += 4; from += 4;
+			if (is_16bit) {
+				if (has_float) {
+					if (channels_in_float == 4) {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							premul_to_straight_v4_v4(from_straight, from_float);
+							to16[0] = ftoshort(chanel_colormanage_cb(from_straight[0]));
+							to16[1] = ftoshort(chanel_colormanage_cb(from_straight[1]));
+							to16[2] = ftoshort(chanel_colormanage_cb(from_straight[2]));
+							to16[3] = ftoshort(chanel_colormanage_cb(from_straight[3]));
+							to16 += 4; from_float += 4;
+						}
+					}
+					else if (channels_in_float == 3) {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							to16[0] = ftoshort(chanel_colormanage_cb(from_float[0]));
+							to16[1] = ftoshort(chanel_colormanage_cb(from_float[1]));
+							to16[2] = ftoshort(chanel_colormanage_cb(from_float[2]));
+							to16[3] = 65535;
+							to16 += 4; from_float += 3;
+						}
+					}
+					else {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							to16[0] = ftoshort(chanel_colormanage_cb(from_float[0]));
+							to16[2] = to16[1] = to16[0];
+							to16[3] = 65535;
+							to16 += 4; from_float++;
+						}
+					}
+				}
+				else {
+					for (i = ibuf->x * ibuf->y; i > 0; i--) {
+						to16[0] = UPSAMPLE_8_TO_16(from[0]);
+						to16[1] = UPSAMPLE_8_TO_16(from[1]);
+						to16[2] = UPSAMPLE_8_TO_16(from[2]);
+						to16[3] = UPSAMPLE_8_TO_16(from[3]);
+						to16 += 4; from += 4;
+					}
+				}
+			}
+			else {
+				for (i = ibuf->x * ibuf->y; i > 0; i--) {
+					to[0] = from[0];
+					to[1] = from[1];
+					to[2] = from[2];
+					to[3] = from[3];
+					to += 4; from += 4;
+				}
 			}
 			break;
 		case 3:
 			color_type = PNG_COLOR_TYPE_RGB;
-			for (i = ibuf->x * ibuf->y; i > 0; i--) {
-				to[0] = from[0];
-				to[1] = from[1];
-				to[2] = from[2];
-				to += 3; from += 4;
+			if (is_16bit) {
+				if (has_float) {
+					if (channels_in_float == 4) {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							premul_to_straight_v4_v4(from_straight, from_float);
+							to16[0] = ftoshort(chanel_colormanage_cb(from_straight[0]));
+							to16[1] = ftoshort(chanel_colormanage_cb(from_straight[1]));
+							to16[2] = ftoshort(chanel_colormanage_cb(from_straight[2]));
+							to16 += 3; from_float += 4;
+						}
+					}
+					else if (channels_in_float == 3) {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							to16[0] = ftoshort(chanel_colormanage_cb(from_float[0]));
+							to16[1] = ftoshort(chanel_colormanage_cb(from_float[1]));
+							to16[2] = ftoshort(chanel_colormanage_cb(from_float[2]));
+							to16 += 3; from_float += 3;
+						}
+					}
+					else {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							to16[0] = ftoshort(chanel_colormanage_cb(from_float[0]));
+							to16[2] = to16[1] = to16[0];
+							to16 += 3; from_float++;
+						}
+					}
+				}
+				else {
+					for (i = ibuf->x * ibuf->y; i > 0; i--) {
+						to16[0] = UPSAMPLE_8_TO_16(from[0]);
+						to16[1] = UPSAMPLE_8_TO_16(from[1]);
+						to16[2] = UPSAMPLE_8_TO_16(from[2]);
+						to16 += 3; from += 4;
+					}
+				}
+			}
+			else {
+				for (i = ibuf->x * ibuf->y; i > 0; i--) {
+					to[0] = from[0];
+					to[1] = from[1];
+					to[2] = from[2];
+					to += 3; from += 4;
+				}
 			}
 			break;
 		case 1:
 			color_type = PNG_COLOR_TYPE_GRAY;
-			for (i = ibuf->x * ibuf->y; i > 0; i--) {
-				to[0] = from[0];
-				to++; from += 4;
+			if (is_16bit) {
+				if (has_float) {
+					float rgb[3];
+					if (channels_in_float == 4) {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							premul_to_straight_v4_v4(from_straight, from_float);
+							rgb[0] = chanel_colormanage_cb(from_straight[0]);
+							rgb[1] = chanel_colormanage_cb(from_straight[1]);
+							rgb[2] = chanel_colormanage_cb(from_straight[2]);
+							to16[0] = ftoshort(rgb_to_bw(rgb));
+							to16++; from_float += 4;
+						}
+					}
+					else if (channels_in_float == 3) {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							rgb[0] = chanel_colormanage_cb(from_float[0]);
+							rgb[1] = chanel_colormanage_cb(from_float[1]);
+							rgb[2] = chanel_colormanage_cb(from_float[2]);
+							to16[0] = ftoshort(rgb_to_bw(rgb));
+							to16++; from_float += 3;
+						}
+					}
+					else {
+						for (i = ibuf->x * ibuf->y; i > 0; i--) {
+							to16[0] = ftoshort(chanel_colormanage_cb(from_float[0]));
+							to16++; from_float++;
+						}
+					}
+				}
+				else {
+					for (i = ibuf->x * ibuf->y; i > 0; i--) {
+						to16[0] = UPSAMPLE_8_TO_16(from[0]);
+						to16++; from += 4;
+					}
+				}
+			}
+			else {
+				for (i = ibuf->x * ibuf->y; i > 0; i--) {
+					to[0] = from[0];
+					to++; from += 4;
+				}
 			}
 			break;
 	}
@@ -203,7 +361,10 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 		fp = BLI_fopen(name, "wb");
 		if (!fp) {
 			png_destroy_write_struct(&png_ptr, &info_ptr);
-			MEM_freeN(pixels);
+			if (pixels)
+				MEM_freeN(pixels);
+			if (pixels16)
+				MEM_freeN(pixels16);
 			printf("imb_savepng: Cannot open file for writing: '%s'\n", name);
 			return 0;
 		}
@@ -227,7 +388,7 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 	             info_ptr,
 	             ibuf->x,
 	             ibuf->y,
-	             8,
+	             is_16bit ? 16 : 8,
 	             color_type,
 	             PNG_INTERLACE_NONE,
 	             PNG_COMPRESSION_TYPE_DEFAULT,
@@ -268,12 +429,19 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 	/* write the file header information */
 	png_write_info(png_ptr, info_ptr);
 
+#ifdef __LITTLE_ENDIAN__
+	png_set_swap(png_ptr);
+#endif
+
 	/* allocate memory for an array of row-pointers */
 	row_pointers = (png_bytepp) MEM_mallocN(ibuf->y * sizeof(png_bytep), "row_pointers");
 	if (row_pointers == NULL) {
 		printf("imb_savepng: Cannot allocate row-pointers array for file '%s'\n", name);
 		png_destroy_write_struct(&png_ptr, &info_ptr);
-		MEM_freeN(pixels);
+		if (pixels)
+			MEM_freeN(pixels);
+		if (pixels16)
+			MEM_freeN(pixels16);
 		if (fp) {
 			fclose(fp);
 		}
@@ -281,9 +449,17 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 	}
 
 	/* set the individual row-pointers to point at the correct offsets */
-	for (i = 0; i < ibuf->y; i++) {
-		row_pointers[ibuf->y - 1 - i] = (png_bytep)
-		                                ((unsigned char *)pixels + (i * ibuf->x) * bytesperpixel * sizeof(unsigned char));
+	if (is_16bit) {
+		for (i = 0; i < ibuf->y; i++) {
+			row_pointers[ibuf->y - 1 - i] = (png_bytep)
+			                                ((unsigned short *)pixels16 + (i * ibuf->x) * bytesperpixel);
+		}
+	}
+	else {
+		for (i = 0; i < ibuf->y; i++) {
+			row_pointers[ibuf->y - 1 - i] = (png_bytep)
+			                                ((unsigned char *)pixels + (i * ibuf->x) * bytesperpixel * sizeof(unsigned char));
+		}
 	}
 
 	/* write out the entire image data in one call */
@@ -293,7 +469,10 @@ int imb_savepng(struct ImBuf *ibuf, const char *name, int flags)
 	png_write_end(png_ptr, info_ptr);
 
 	/* clean up */
-	MEM_freeN(pixels);
+	if (pixels)
+		MEM_freeN(pixels);
+	if (pixels16)
+		MEM_freeN(pixels16);
 	MEM_freeN(row_pointers);
 	png_destroy_write_struct(&png_ptr, &info_ptr);
 
@@ -394,6 +573,8 @@ ImBuf *imb_loadpng(unsigned char *mem, size_t size, int flags, char colorspace[I
 
 	if (ibuf) {
 		ibuf->ftype = PNG;
+		if (bit_depth == 16)
+			ibuf->ftype |= PNG_16BIT;
 
 		if (png_get_valid(png_ptr, info_ptr, PNG_INFO_pHYs)) {
 			int unit_type;

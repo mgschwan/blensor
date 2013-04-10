@@ -36,8 +36,8 @@
 #include "RAS_Rect.h"
 
 #ifdef WIN32
-	#pragma warning (disable:4786) // suppress stl-MSVC debug info warning
-	#include <windows.h>
+#  pragma warning (disable:4786) // suppress stl-MSVC debug info warning
+#  include <windows.h>
 #endif  /* WIN32 */
 
 #include "GL/glew.h"
@@ -155,6 +155,7 @@ public:
 	);
 	
 	void SetViewPort(int x1, int y1, int x2, int y2);
+	void UpdateViewPort(int x1, int y1, int x2, int y2);
 	const int *GetViewPort();
 
 	void ClearColor(float r, float g, float b, float a);

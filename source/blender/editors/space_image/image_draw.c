@@ -75,13 +75,15 @@
 #include "WM_types.h"
 
 #include "RE_pipeline.h"
+#include "RE_engine.h"
 
 #include "image_intern.h"
 
-static void draw_render_info(Scene *scene, Image *ima, ARegion *ar)
+static void draw_render_info(Scene *scene, Image *ima, ARegion *ar, float zoomx, float zoomy)
 {
 	RenderResult *rr;
-	
+	Render *re = RE_GetRender(scene->id.name);
+
 	rr = BKE_image_acquire_renderresult(scene, ima);
 
 	if (rr && rr->text) {
@@ -89,11 +91,78 @@ static void draw_render_info(Scene *scene, Image *ima, ARegion *ar)
 	}
 
 	BKE_image_release_renderresult(scene, ima);
+
+	if (re) {
+		int total_tiles;
+		rcti *tiles;
+
+		RE_engine_get_current_tiles(re, &total_tiles, &tiles);
+
+		if (total_tiles) {
+			int i, x, y;
+			rcti *tile;
+
+			/* find window pixel coordinates of origin */
+			UI_view2d_to_region_no_clip(&ar->v2d, 0.0f, 0.0f, &x, &y);
+
+			glPushMatrix();
+			glTranslatef(x, y, 0.0f);
+			glScalef(zoomx, zoomy, 1.0f);
+
+			if (scene->r.mode & R_BORDER) {
+				glTranslatef((int)(-scene->r.border.xmin * scene->r.xsch * scene->r.size / 100.0f),
+				             (int)(-scene->r.border.ymin * scene->r.ysch * scene->r.size / 100.0f),
+				             0.0f);
+			}
+
+			UI_ThemeColor(TH_FACE_SELECT);
+
+			for (i = 0, tile = tiles; i < total_tiles; i++, tile++) {
+				float delta_x = 4.0f * UI_DPI_FAC / zoomx;
+				float delta_y = 4.0f * UI_DPI_FAC / zoomy;
+
+				delta_x = min_ff(delta_x, tile->xmax - tile->xmin);
+				delta_y = min_ff(delta_y, tile->ymax - tile->ymin);
+
+				/* left bottom corner */
+				glBegin(GL_LINE_STRIP);
+				glVertex2f(tile->xmin, tile->ymin + delta_y);
+				glVertex2f(tile->xmin, tile->ymin);
+				glVertex2f(tile->xmin + delta_x, tile->ymin);
+				glEnd();
+
+				/* left top corner */
+				glBegin(GL_LINE_STRIP);
+				glVertex2f(tile->xmin, tile->ymax - delta_y);
+				glVertex2f(tile->xmin, tile->ymax);
+				glVertex2f(tile->xmin + delta_x, tile->ymax);
+				glEnd();
+
+				/* right bottom corner */
+				glBegin(GL_LINE_STRIP);
+				glVertex2f(tile->xmax - delta_x, tile->ymin);
+				glVertex2f(tile->xmax, tile->ymin);
+				glVertex2f(tile->xmax, tile->ymin + delta_y);
+				glEnd();
+
+				/* right top corner */
+				glBegin(GL_LINE_STRIP);
+				glVertex2f(tile->xmax - delta_x, tile->ymax);
+				glVertex2f(tile->xmax, tile->ymax);
+				glVertex2f(tile->xmax, tile->ymax - delta_y);
+				glEnd();
+			}
+
+			MEM_freeN(tiles);
+
+			glPopMatrix();
+		}
+	}
 }
 
 /* used by node view too */
 void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_default_view, int channels, int x, int y,
-                        const unsigned char cp[4], const float fp[4], int *zp, float *zpf)
+                        const unsigned char cp[4], const float fp[4], const float linearcol[4], int *zp, float *zpf)
 {
 	char str[256];
 	float dx = 6;
@@ -116,29 +185,28 @@ void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_def
 
 	/* noisy, high contrast make impossible to read if lower alpha is used. */
 	glColor4ub(0, 0, 0, 190);
-	glRecti(0.0, 0.0, BLI_rcti_size_x(&ar->winrct) + 1, 20);
+	glRecti(0.0, 0.0, BLI_rcti_size_x(&ar->winrct) + 1, UI_UNIT_Y);
 	glDisable(GL_BLEND);
 
-	BLF_size(blf_mono_font, 11, 72);
+	BLF_size(blf_mono_font, 11 * U.pixelsize, U.dpi);
 
 	glColor3ub(255, 255, 255);
 	BLI_snprintf(str, sizeof(str), "X:%-4d  Y:%-4d |", x, y);
-	// UI_DrawString(6, 6, str); // works ok but fixed width is nicer.
-	BLF_position(blf_mono_font, dx, 6, 0);
+	BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_Y, 0);
 	BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 	dx += BLF_width(blf_mono_font, str);
 
 	if (zp) {
 		glColor3ub(255, 255, 255);
 		BLI_snprintf(str, sizeof(str), " Z:%-.4f |", 0.5f + 0.5f * (((float)*zp) / (float)0x7fffffff));
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 	}
 	if (zpf) {
 		glColor3ub(255, 255, 255);
 		BLI_snprintf(str, sizeof(str), " Z:%-.3f |", *zpf);
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 	}
@@ -146,34 +214,34 @@ void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_def
 	if (channels >= 3) {
 		glColor3ubv(red);
 		if (fp)
-			BLI_snprintf(str, sizeof(str), "  R:%-.4f", fp[0]);
+			BLI_snprintf(str, sizeof(str), "  R:%-.5f", fp[0]);
 		else if (cp)
 			BLI_snprintf(str, sizeof(str), "  R:%-3d", cp[0]);
 		else
 			BLI_snprintf(str, sizeof(str), "  R:-");
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 		
 		glColor3ubv(green);
 		if (fp)
-			BLI_snprintf(str, sizeof(str), "  G:%-.4f", fp[1]);
+			BLI_snprintf(str, sizeof(str), "  G:%-.5f", fp[1]);
 		else if (cp)
 			BLI_snprintf(str, sizeof(str), "  G:%-3d", cp[1]);
 		else
 			BLI_snprintf(str, sizeof(str), "  G:-");
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 		
 		glColor3ubv(blue);
 		if (fp)
-			BLI_snprintf(str, sizeof(str), "  B:%-.4f", fp[2]);
+			BLI_snprintf(str, sizeof(str), "  B:%-.5f", fp[2]);
 		else if (cp)
 			BLI_snprintf(str, sizeof(str), "  B:%-3d", cp[2]);
 		else
 			BLI_snprintf(str, sizeof(str), "  B:-");
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 		
@@ -185,21 +253,29 @@ void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_def
 				BLI_snprintf(str, sizeof(str), "  A:%-3d", cp[3]);
 			else
 				BLI_snprintf(str, sizeof(str), "- ");
-			BLF_position(blf_mono_font, dx, 6, 0);
+			BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 			BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 			dx += BLF_width(blf_mono_font, str);
 		}
 
-		if (color_manage && channels == 4) {
-			float pixel[4];
+		if (color_manage) {
+			float rgba[4];
+
+			copy_v3_v3(rgba, linearcol);
+			if (channels == 3)
+				rgba[3] = 1.0f;
+			else
+				rgba[3] = linearcol[3];
+
+			(void)color_manage;
 
 			if (use_default_view)
-				IMB_colormanagement_pixel_to_display_space_v4(pixel, fp,  NULL, &scene->display_settings);
+				IMB_colormanagement_pixel_to_display_space_v4(rgba, rgba,  NULL, &scene->display_settings);
 			else
-				IMB_colormanagement_pixel_to_display_space_v4(pixel, fp,  &scene->view_settings, &scene->display_settings);
+				IMB_colormanagement_pixel_to_display_space_v4(rgba, rgba,  &scene->view_settings, &scene->display_settings);
 
-			BLI_snprintf(str, sizeof(str), "  |  CM  R:%-.4f  G:%-.4f  B:%-.4f", pixel[0], pixel[1], pixel[2]);
-			BLF_position(blf_mono_font, dx, 6, 0);
+			BLI_snprintf(str, sizeof(str), "  |  CM  R:%-.4f  G:%-.4f  B:%-.4f", rgba[0], rgba[1], rgba[2]);
+			BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 			BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 			dx += BLF_width(blf_mono_font, str);
 		}
@@ -219,26 +295,11 @@ void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_def
 		col[3] = 1.0f;
 	}
 	else if (channels == 3) {
-		if (fp) {
-			copy_v3_v3(col, fp);
-		}
-		else if (cp) {
-			rgb_uchar_to_float(col, cp);
-		}
-		else {
-			zero_v3(col);
-		}
+		copy_v3_v3(col, linearcol);
 		col[3] = 1.0f;
 	}
 	else if (channels == 4) {
-		if (fp)
-			copy_v4_v4(col, fp);
-		else if (cp) {
-			rgba_uchar_to_float(col, cp);
-		}
-		else {
-			zero_v4(col);
-		}
+		copy_v4_v4(col, linearcol);
 	}
 	else {
 		BLI_assert(0);
@@ -257,24 +318,24 @@ void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_def
 
 	glDisable(GL_BLEND);
 	glColor3fv(finalcol);
-	dx += 5;
+	dx += 0.25f * UI_UNIT_X;
 	glBegin(GL_QUADS);
-	glVertex2f(dx, 3);
-	glVertex2f(dx, 17);
-	glVertex2f(dx + 30, 17);
-	glVertex2f(dx + 30, 3);
+	glVertex2f(dx, 0.15f * UI_UNIT_Y);
+	glVertex2f(dx, 0.85f * UI_UNIT_Y);
+	glVertex2f(dx + 1.5f * UI_UNIT_X, 0.85 * UI_UNIT_Y);
+	glVertex2f(dx + 1.5f * UI_UNIT_X, 0.15f * UI_UNIT_Y);
 	glEnd();
 
 	/* draw outline */
 	glColor3ub(128, 128, 128);
 	glBegin(GL_LINE_LOOP);
-	glVertex2f(dx, 3);
-	glVertex2f(dx, 17);
-	glVertex2f(dx + 30, 17);
-	glVertex2f(dx + 30, 3);
+	glVertex2f(dx, 0.15f * UI_UNIT_Y);
+	glVertex2f(dx, 0.85f * UI_UNIT_Y);
+	glVertex2f(dx + 1.5f * UI_UNIT_X, 0.85f * UI_UNIT_Y);
+	glVertex2f(dx + 1.5f * UI_UNIT_X, 0.15f * UI_UNIT_Y);
 	glEnd();
 
-	dx += 35;
+	dx += 1.75f * UI_UNIT_X;
 
 	glColor3ub(255, 255, 255);
 	if (channels == 1) {
@@ -288,12 +349,12 @@ void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_def
 		}
 		
 		BLI_snprintf(str, sizeof(str), "V:%-.4f", val);
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 
 		BLI_snprintf(str, sizeof(str), "   L:%-.4f", lum);
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 	}
@@ -308,22 +369,22 @@ void ED_image_draw_info(Scene *scene, ARegion *ar, int color_manage, int use_def
 		}
 
 		BLI_snprintf(str, sizeof(str), "H:%-.4f", hue);
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 
 		BLI_snprintf(str, sizeof(str), "  S:%-.4f", sat);
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 
 		BLI_snprintf(str, sizeof(str), "  V:%-.4f", val);
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 
 		BLI_snprintf(str, sizeof(str), "   L:%-.4f", lum);
-		BLF_position(blf_mono_font, dx, 6, 0);
+		BLF_position(blf_mono_font, dx, 0.3f * UI_UNIT_X, 0);
 		BLF_draw_ascii(blf_mono_font, str, sizeof(str));
 		dx += BLF_width(blf_mono_font, str);
 	}
@@ -356,11 +417,11 @@ static void sima_draw_alpha_pixelsf(float x1, float y1, int rectx, int recty, fl
 	MEM_freeN(trectf);
 	/* ogl trick below is slower... (on ATI 9600) */
 //	glColorMask(1, 0, 0, 0);
-//	glaDrawPixelsSafe(x1, y1, rectx, recty, rectx, GL_RGBA, GL_FLOAT, rectf+3);
+//	glaDrawPixelsSafe(x1, y1, rectx, recty, rectx, GL_RGBA, GL_FLOAT, rectf + 3);
 //	glColorMask(0, 1, 0, 0);
-//	glaDrawPixelsSafe(x1, y1, rectx, recty, rectx, GL_RGBA, GL_FLOAT, rectf+2);
+//	glaDrawPixelsSafe(x1, y1, rectx, recty, rectx, GL_RGBA, GL_FLOAT, rectf + 2);
 //	glColorMask(0, 0, 1, 0);
-//	glaDrawPixelsSafe(x1, y1, rectx, recty, rectx, GL_RGBA, GL_FLOAT, rectf+1);
+//	glaDrawPixelsSafe(x1, y1, rectx, recty, rectx, GL_RGBA, GL_FLOAT, rectf + 1);
 //	glColorMask(1, 1, 1, 1);
 }
 
@@ -423,6 +484,8 @@ static void draw_image_buffer(const bContext *C, SpaceImage *sima, ARegion *ar, 
 	/* set zoom */
 	glPixelZoom(zoomx, zoomy);
 
+	glaDefine2DArea(&ar->winrct);
+	
 	/* find window pixel coordinates of origin */
 	UI_view2d_to_region_no_clip(&ar->v2d, fx, fy, &x, &y);
 
@@ -442,26 +505,14 @@ static void draw_image_buffer(const bContext *C, SpaceImage *sima, ARegion *ar, 
 			sima_draw_zbuffloat_pixels(scene, x, y, ibuf->x, ibuf->y, ibuf->rect_float);
 	}
 	else {
-		unsigned char *display_buffer;
-		void *cache_handle;
-
 		if (sima->flag & SI_USE_ALPHA) {
-			fdrawcheckerboard(x, y, x + ibuf->x * zoomx, y + ibuf->y * zoomy);
-
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			fdrawcheckerboard(x, y, x + ibuf->x * zoomx, y + ibuf->y * zoomy);
 		}
 
-		display_buffer = IMB_display_buffer_acquire_ctx(C, ibuf, &cache_handle);
-
-		if (display_buffer)
-			glaDrawPixelsSafe(x, y, ibuf->x, ibuf->y, ibuf->x, GL_RGBA, GL_UNSIGNED_BYTE, display_buffer);
-#if 0
-		else
-			glaDrawPixelsSafe(x, y, ibuf->x, ibuf->y, ibuf->x, GL_RGBA, GL_FLOAT, ibuf->rect_float);
-#endif
-
-		IMB_display_buffer_release(cache_handle);
+		glaDrawImBuf_glsl_ctx(C, ibuf, x, y, GL_NEAREST);
 
 		if (sima->flag & SI_USE_ALPHA)
 			glDisable(GL_BLEND);
@@ -518,8 +569,8 @@ static void draw_image_buffer_tiled(SpaceImage *sima, ARegion *ar, Scene *scene,
 		sima->curtile = ima->xrep * ima->yrep - 1;
 	
 	/* retrieve part of image buffer */
-	dx = ibuf->x / ima->xrep;
-	dy = ibuf->y / ima->yrep;
+	dx = max_ii(ibuf->x / ima->xrep, 1);
+	dy = max_ii(ibuf->y / ima->yrep, 1);
 	sx = (sima->curtile % ima->xrep) * dx;
 	sy = (sima->curtile / ima->xrep) * dy;
 	rect = get_part_from_buffer((unsigned int *)display_buffer, ibuf->x, sx, sy, sx + dx, sy + dy);
@@ -762,7 +813,7 @@ void draw_image_main(const bContext *C, ARegion *ar)
 	show_render = (show_viewer && ima->type == IMA_TYPE_R_RESULT);
 
 	if (show_viewer) {
-		/* use locked draw for drawing viewer image buffer since the conpositor
+		/* use locked draw for drawing viewer image buffer since the compositor
 		 * is running in separated thread and compositor could free this buffers.
 		 * other images are not modifying in such a way so they does not require
 		 * lock (sergey)
@@ -785,7 +836,6 @@ void draw_image_main(const bContext *C, ARegion *ar)
 	/* paint helpers */
 	if (sima->mode == SI_MODE_PAINT)
 		draw_image_paint_helpers(C, ar, scene, zoomx, zoomy);
-
 
 	/* XXX integrate this code */
 #if 0
@@ -812,5 +862,5 @@ void draw_image_main(const bContext *C, ARegion *ar)
 
 	/* render info */
 	if (ima && show_render)
-		draw_render_info(scene, ima, ar);
+		draw_render_info(scene, ima, ar, zoomx, zoomy);
 }

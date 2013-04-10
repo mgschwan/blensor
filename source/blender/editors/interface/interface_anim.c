@@ -55,15 +55,19 @@
 
 #include "interface_intern.h"
 
-static FCurve *ui_but_get_fcurve(uiBut *but, bAction **action, int *driven)
+static FCurve *ui_but_get_fcurve(uiBut *but, bAction **action, bool *r_driven)
 {
-	return rna_get_fcurve(&but->rnapoin, but->rnaprop, but->rnaindex, action, driven);
+	/* for entire array buttons we check the first component, it's not perfect
+	 * but works well enough in typical cases */
+	int rnaindex = (but->rnaindex == -1) ? 0 : but->rnaindex;
+
+	return rna_get_fcurve(&but->rnapoin, but->rnaprop, rnaindex, action, r_driven);
 }
 
 void ui_but_anim_flag(uiBut *but, float cfra)
 {
 	FCurve *fcu;
-	int driven;
+	bool driven;
 
 	but->flag &= ~(UI_BUT_ANIMATED | UI_BUT_ANIMATED_KEY | UI_BUT_DRIVEN);
 
@@ -86,7 +90,7 @@ int ui_but_anim_expression_get(uiBut *but, char *str, size_t maxlen)
 {
 	FCurve *fcu;
 	ChannelDriver *driver;
-	int driven;
+	bool driven;
 
 	fcu = ui_but_get_fcurve(but, NULL, &driven);
 
@@ -106,7 +110,7 @@ int ui_but_anim_expression_set(uiBut *but, const char *str)
 {
 	FCurve *fcu;
 	ChannelDriver *driver;
-	int driven;
+	bool driven;
 
 	fcu = ui_but_get_fcurve(but, NULL, &driven);
 
@@ -131,13 +135,21 @@ int ui_but_anim_expression_create(uiBut *but, const char *str)
 	ID *id;
 	FCurve *fcu;
 	char *path;
-	short ok = 0;
+	bool ok = false;
 	
 	/* button must have RNA-pointer to a numeric-capable property */
 	if (ELEM(NULL, but->rnapoin.data, but->rnaprop)) {
 		if (G.debug & G_DEBUG)
 			printf("ERROR: create expression failed - button has no RNA info attached\n");
 		return 0;
+	}
+	
+	if (RNA_property_array_length(&but->rnapoin, but->rnaprop) != 0) {
+		if (but->rnaindex == -1) {
+			if (G.debug & G_DEBUG)
+				printf("ERROR: create expression failed - can't create expression for entire array\n");
+			return 0;
+		}
 	}
 	
 	/* make sure we have animdata for this */
@@ -168,6 +180,7 @@ int ui_but_anim_expression_create(uiBut *but, const char *str)
 			/* updates */
 			driver->flag |= DRIVER_FLAG_RECOMPILE;
 			WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME, NULL);
+			ok = true;
 		}
 	}
 	
@@ -181,7 +194,7 @@ void ui_but_anim_autokey(bContext *C, uiBut *but, Scene *scene, float cfra)
 	ID *id;
 	bAction *action;
 	FCurve *fcu;
-	int driven;
+	bool driven;
 
 	fcu = ui_but_get_fcurve(but, &action, &driven);
 

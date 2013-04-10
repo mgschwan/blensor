@@ -37,6 +37,7 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_utildefines.h"
 #include "BLI_string.h"
 #include "BLI_fileops.h"
 
@@ -120,10 +121,12 @@ static void jpeg_error(j_common_ptr cinfo)
  * INPUT HANDLER FROM MEMORY
  *---------------------------------------------------------- */
 
+#if 0
 typedef struct {
 	unsigned char  *buffer;
 	int             filled;
 } buffer_struct;
+#endif
 
 typedef struct {
 	struct jpeg_source_mgr pub; /* public fields */
@@ -234,7 +237,7 @@ static void memory_source(j_decompress_ptr cinfo, unsigned char *buffer, size_t 
  * If must suspend, take the specified action (typically "return FALSE").
  */
 #define INPUT_BYTE(cinfo, V, action)  \
-	MAKESTMT(MAKE_BYTE_AVAIL(cinfo,action); \
+	MAKESTMT(MAKE_BYTE_AVAIL(cinfo, action); \
 	         bytes_in_buffer--; \
 	         V = GETJOCTET(*next_input_byte++); )
 
@@ -242,7 +245,7 @@ static void memory_source(j_decompress_ptr cinfo, unsigned char *buffer, size_t 
  * V should be declared unsigned int or perhaps INT32.
  */
 #define INPUT_2BYTES(cinfo, V, action)  \
-	MAKESTMT(MAKE_BYTE_AVAIL(cinfo,action); \
+	MAKESTMT(MAKE_BYTE_AVAIL(cinfo, action); \
 	      bytes_in_buffer--; \
 	      V = ((unsigned int) GETJOCTET(*next_input_byte++)) << 8; \
 	      MAKE_BYTE_AVAIL(cinfo, action); \

@@ -1055,7 +1055,7 @@ void FLUID_3D::project()
 			for (x = 1; x < _xRes - 1; x++, index++)
 			{
 				float vMask[3] = {1.0f, 1.0f, 1.0f}, vObst[3] = {0, 0, 0};
-				float vR = 0.0f, vL = 0.0f, vT = 0.0f, vB = 0.0f, vD = 0.0f, vU = 0.0f;
+				// float vR = 0.0f, vL = 0.0f, vT = 0.0f, vB = 0.0f, vD = 0.0f, vU = 0.0f;  // UNUSED
 
 				float pC = _pressure[index]; // center
 				float pR = _pressure[index + 1]; // right
@@ -1654,7 +1654,7 @@ void FLUID_3D::processBurn(float *fuel, float *smoke, float *react, float *flame
 		fuel[index] -= burning_rate * dt;
 		if (fuel[index] < 0.0f) fuel[index] = 0.0f;
 		/* process reaction coordinate */
-		if (orig_fuel) {
+		if (orig_fuel > FLT_EPSILON) {
 			react[index] *= fuel[index]/orig_fuel;
 			react_coord = react[index];
 		}
@@ -1681,7 +1681,7 @@ void FLUID_3D::processBurn(float *fuel, float *smoke, float *react, float *flame
 			heat[index] = (1.0f-flame[index])*ignition_point + flame[index]*temp_max;
 
 		/* mix new color */
-		if (r && smoke_emit) {
+		if (r && smoke_emit > FLT_EPSILON) {
 			float smoke_factor = smoke[index]/(orig_smoke+smoke_emit);
 			r[index] = (r[index] + _flame_smoke_color[0] * smoke_emit) * smoke_factor;
 			g[index] = (g[index] + _flame_smoke_color[1] * smoke_emit) * smoke_factor;

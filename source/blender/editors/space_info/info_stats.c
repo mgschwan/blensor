@@ -38,7 +38,11 @@
 #include "DNA_meta_types.h"
 #include "DNA_scene_types.h"
 
+#include "BLI_math.h"
+#include "BLI_string.h"
 #include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
 
 #include "BKE_anim.h"
 #include "BKE_blender.h"
@@ -47,6 +51,7 @@
 #include "BKE_DerivedMesh.h"
 #include "BKE_key.h"
 #include "BKE_mesh.h"
+#include "BKE_paint.h"
 #include "BKE_particle.h"
 #include "BKE_tessmesh.h"
 
@@ -54,6 +59,7 @@
 #include "ED_armature.h"
 #include "ED_mesh.h"
 
+#define MAX_INFO_LEN 512
 
 typedef struct SceneStats {
 	int totvert, totvertsel;
@@ -62,9 +68,9 @@ typedef struct SceneStats {
 	int totbone, totbonesel;
 	int totobj,  totobjsel;
 	int totlamp, totlampsel; 
-	int tottri, totmesh, totcurve;
+	int tottri, totmesh;
 
-	char infostr[512];
+	char infostr[MAX_INFO_LEN];
 } SceneStats;
 
 static void stats_object(Object *ob, int sel, int totob, SceneStats *stats)
@@ -74,7 +80,7 @@ static void stats_object(Object *ob, int sel, int totob, SceneStats *stats)
 		{
 			/* we assume derivedmesh is already built, this strictly does stats now. */
 			DerivedMesh *dm = ob->derivedFinal;
-			int totvert, totedge, totface;
+			int totvert, totedge, totface, totloop;
 
 			stats->totmesh += totob;
 
@@ -82,10 +88,12 @@ static void stats_object(Object *ob, int sel, int totob, SceneStats *stats)
 				totvert = dm->getNumVerts(dm);
 				totedge = dm->getNumEdges(dm);
 				totface = dm->getNumPolys(dm);
+				totloop = dm->getNumLoops(dm);
 
 				stats->totvert += totvert * totob;
 				stats->totedge += totedge * totob;
 				stats->totface += totface * totob;
+				stats->tottri  += poly_to_tri_count(totface, totloop) * totob;
 
 				if (sel) {
 					stats->totvertsel += totvert;
@@ -103,40 +111,23 @@ static void stats_object(Object *ob, int sel, int totob, SceneStats *stats)
 		case OB_SURF:
 		case OB_CURVE:
 		case OB_FONT:
-		{
-			int tot = 0, totf = 0;
-
-			stats->totcurve += totob;
-
-			if (ob->disp.first)
-				BKE_displist_count(&ob->disp, &tot, &totf);
-
-			tot *= totob;
-			totf *= totob;
-
-			stats->totvert += tot;
-			stats->totface += totf;
-
-			if (sel) {
-				stats->totvertsel += tot;
-				stats->totfacesel += totf;
-			}
-			break;
-		}
 		case OB_MBALL:
 		{
-			int tot = 0, totf = 0;
+			int totv = 0, totf = 0, tottri = 0;
 
-			BKE_displist_count(&ob->disp, &tot, &totf);
+			if (ob->disp.first)
+				BKE_displist_count(&ob->disp, &totv, &totf, &tottri);
 
-			tot *= totob;
-			totf *= totob;
+			totv   *= totob;
+			totf   *= totob;
+			tottri *= totob;
 
-			stats->totvert += tot;
+			stats->totvert += totv;
 			stats->totface += totf;
+			stats->tottri  += tottri;
 
 			if (sel) {
-				stats->totvertsel += tot;
+				stats->totvertsel += totv;
 				stats->totfacesel += totf;
 			}
 			break;
@@ -179,8 +170,11 @@ static void stats_object_edit(Object *obedit, SceneStats *stats)
 			if (ebo->flag & BONE_SELECTED) stats->totbonesel++;
 
 			/* if this is a connected child and it's parent is being moved, remove our root */
-			if ((ebo->flag & BONE_CONNECTED) && (ebo->flag & BONE_ROOTSEL) && ebo->parent && (ebo->parent->flag & BONE_TIPSEL))
+			if ((ebo->flag & BONE_CONNECTED) && (ebo->flag & BONE_ROOTSEL) &&
+			    ebo->parent && (ebo->parent->flag & BONE_TIPSEL))
+			{
 				stats->totvertsel--;
+			}
 
 			stats->totvert += 2;
 		}
@@ -260,6 +254,12 @@ static void stats_object_pose(Object *ob, SceneStats *stats)
 	}
 }
 
+static void stats_object_sculpt_dynamic_topology(Object *ob, SceneStats *stats)
+{
+	stats->totvert = ob->sculpt->bm->totvert;
+	stats->tottri = ob->sculpt->bm->totface;
+}
+
 static void stats_dupli_object(Base *base, Object *ob, SceneStats *stats)
 {
 	if (base->flag & SELECT) stats->totobjsel++;
@@ -319,6 +319,12 @@ static void stats_dupli_object(Base *base, Object *ob, SceneStats *stats)
 	}
 }
 
+static int stats_is_object_dynamic_topology_sculpt(Object *ob)
+{
+	return (ob && (ob->mode & OB_MODE_SCULPT) &&
+	        ob->sculpt && ob->sculpt->bm);
+}
+
 /* Statistics displayed in info header. Called regularly on scene changes. */
 static void stats_update(Scene *scene)
 {
@@ -333,6 +339,10 @@ static void stats_update(Scene *scene)
 	else if (ob && (ob->mode & OB_MODE_POSE)) {
 		/* Pose Mode */
 		stats_object_pose(ob, &stats);
+	}
+	else if (stats_is_object_dynamic_topology_sculpt(ob)) {
+		/* Dynamic-topology sculpt mode */
+		stats_object_sculpt_dynamic_topology(ob, &stats);
 	}
 	else {
 		/* Objects */
@@ -349,53 +359,69 @@ static void stats_update(Scene *scene)
 
 static void stats_string(Scene *scene)
 {
+#define MAX_INFO_MEM_LEN  64
 	SceneStats *stats = scene->stats;
 	Object *ob = (scene->basact) ? scene->basact->object : NULL;
 	uintptr_t mem_in_use, mmap_in_use;
-	char memstr[64];
+	char memstr[MAX_INFO_MEM_LEN];
 	char *s;
+	size_t ofs = 0;
 
 	mem_in_use = MEM_get_memory_in_use();
 	mmap_in_use = MEM_get_mapped_memory_in_use();
 
 	/* get memory statistics */
-	s = memstr + sprintf(memstr, " | Mem:%.2fM", (double)((mem_in_use - mmap_in_use) >> 10) / 1024.0);
+	s = memstr;
+	ofs += BLI_snprintf(s + ofs, MAX_INFO_MEM_LEN - ofs, IFACE_(" | Mem:%.2fM"),
+	                    (double)((mem_in_use - mmap_in_use) >> 10) / 1024.0);
 	if (mmap_in_use)
-		sprintf(s, " (%.2fM)", (double)((mmap_in_use) >> 10) / 1024.0);
+		BLI_snprintf(s + ofs, MAX_INFO_MEM_LEN - ofs, IFACE_(" (%.2fM)"), (double)((mmap_in_use) >> 10) / 1024.0);
 
 	s = stats->infostr;
-	
-	s += sprintf(s, "%s | ", versionstr);
+	ofs = 0;
+
+	ofs += BLI_snprintf(s + ofs, MAX_INFO_LEN - ofs, "%s | ", versionstr);
 
 	if (scene->obedit) {
 		if (BKE_keyblock_from_object(scene->obedit))
-			s += sprintf(s, "(Key) ");
+			ofs += BLI_strncpy_rlen(s + ofs, IFACE_("(Key) "), MAX_INFO_LEN - ofs);
 
 		if (scene->obedit->type == OB_MESH) {
-			s += sprintf(s, "Verts:%d/%d | Edges:%d/%d | Faces:%d/%d | Tris:%d",
-		             stats->totvertsel, stats->totvert, stats->totedgesel, stats->totedge, stats->totfacesel, stats->totface, stats->tottri);
+			ofs += BLI_snprintf(s + ofs, MAX_INFO_LEN - ofs,
+			                    IFACE_("Verts:%d/%d | Edges:%d/%d | Faces:%d/%d | Tris:%d"),
+		                        stats->totvertsel, stats->totvert, stats->totedgesel, stats->totedge,
+		                        stats->totfacesel, stats->totface, stats->tottri);
 		}
 		else if (scene->obedit->type == OB_ARMATURE) {
-			s += sprintf(s, "Verts:%d/%d | Bones:%d/%d", stats->totvertsel, stats->totvert, stats->totbonesel, stats->totbone);
+			ofs += BLI_snprintf(s + ofs, MAX_INFO_LEN - ofs, IFACE_("Verts:%d/%d | Bones:%d/%d"), stats->totvertsel,
+			                    stats->totvert, stats->totbonesel, stats->totbone);
 		}
 		else {
-			s += sprintf(s, "Verts:%d/%d", stats->totvertsel, stats->totvert);
+			ofs += BLI_snprintf(s + ofs, MAX_INFO_LEN - ofs, IFACE_("Verts:%d/%d"), stats->totvertsel, stats->totvert);
 		}
 
-		strcat(s, memstr);
+		ofs += BLI_strncpy_rlen(s + ofs, memstr, MAX_INFO_LEN - ofs);
 	}
 	else if (ob && (ob->mode & OB_MODE_POSE)) {
-		s += sprintf(s, "Bones:%d/%d %s",
-		             stats->totbonesel, stats->totbone, memstr);
+		ofs += BLI_snprintf(s + ofs, MAX_INFO_LEN - ofs, IFACE_("Bones:%d/%d %s"),
+		                    stats->totbonesel, stats->totbone, memstr);
+	}
+	else if (stats_is_object_dynamic_topology_sculpt(ob)) {
+		ofs += BLI_snprintf(s + ofs, MAX_INFO_LEN - ofs, IFACE_("Verts:%d | Tris:%d"), stats->totvert, stats->tottri);
 	}
 	else {
-		s += sprintf(s, "Verts:%d | Faces:%d | Objects:%d/%d | Lamps:%d/%d%s",
-		             stats->totvert, stats->totface, stats->totobjsel, stats->totobj, stats->totlampsel, stats->totlamp, memstr);
+		ofs += BLI_snprintf(s + ofs, MAX_INFO_LEN - ofs,
+		                    IFACE_("Verts:%d | Faces:%d | Tris:%d | Objects:%d/%d | Lamps:%d/%d%s"), stats->totvert,
+		                    stats->totface, stats->tottri, stats->totobjsel, stats->totobj, stats->totlampsel,
+		                    stats->totlamp, memstr);
 	}
 
 	if (ob)
-		sprintf(s, " | %s", ob->id.name + 2);
+		BLI_snprintf(s + ofs, MAX_INFO_LEN - ofs, " | %s", ob->id.name + 2);
+#undef MAX_INFO_MEM_LEN
 }
+
+#undef MAX_INFO_LEN
 
 void ED_info_stats_clear(Scene *scene)
 {
@@ -413,4 +439,3 @@ const char *ED_info_stats_string(Scene *scene)
 
 	return scene->stats->infostr;
 }
-

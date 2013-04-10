@@ -1,556 +1,701 @@
-commit b813dbe3f46bbbc7e73ac791d4665622e4fc7ba5
+commit e3b2bccba6145290738a6677c14f7369ec7a38cd
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Wed May 9 19:01:10 2012 +0600
+Date:   Thu Apr 4 02:59:58 2013 +0600
 
-    Modal solver: Detect rigid transformation between initial frame and current
-    instead of detecting it between two neighbour frames.
-    
-    This prevents accumulation of error and seems to be working better in footages i've tested.
+    Suppress strict compiler warnings in glags/glog libraries
 
-commit 9254621c76daaf239ec1f535e197ca792eea97b6
+commit 5fca459adcf0a3419fa9cd8d983dc2c952d02647
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Wed May 9 18:57:00 2012 +0600
+Date:   Thu Apr 4 01:20:18 2013 +0600
 
-    Backport changes made by Keir in Blender:
+    Lint cleanup, mostly white space and line width.
     
-    - Enhance logging in libmv's trackers.
-    - Cleanups in brute_region_tracker.cc.
+    Also moved own includes to the top of files.
+    
+    Should be no functional changes :)
 
-commit d9c56b9d3c63f886d83129ca0ebed1e76d9c93d7
+commit 9a9dd458a622928b91dbd3c79900577923283838
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Apr 27 16:20:41 2012 +0600
+Date:   Fri Mar 29 00:20:29 2013 +0600
 
-    Fixes for MinGW64 support by Caleb Joseph with slight modifications by Antony Riakiotakis
+    Fix for TransformTracks in uncalibrated pipeline
     
-    - Functions snprintf and sincos shouldn't be redefined for MinGW64
-    - Type  pid_t shouldn't be re-defined for MinGW64
+    Transformation matrix was completely ignored by
+    TransformTracks() and final marker coordinate
+    exactly matched it's source coordinates.
+    
+    Seems to be just a typo in vector usage: need to
+    use "b" (which is transformed one) instead of "a"
+    when converting projective coordinate to 2D space.
 
-commit e1902b6938676011607ac99986b8b140bdbf090e
+commit d35766cc9901609e32f4d80faba715695bea3c40
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Apr 27 16:04:19 2012 +0600
+Date:   Fri Mar 29 00:19:11 2013 +0600
 
-    Fixes for Qt calibration tool
+    Revert part of e2eb58c4230f94ef0c72fb4005e5434088d52e80
     
-    - Passing directory with images via command line argument now isn't
-      required -- it there's no such directory specified  standard open
-      dialog might be used for this (before application used to abort
-      due to accessing to non-existing list element).
-    - Conversion of source images to grayscale now happens correct.
-      It was needed to build grayscale palette for 8bit indexed buffer.
+    That commit included one change which shall have been
+    go as separate commit with more detailed description.
 
-commit 05f1a0a78ad8ff6646d1e8da97e6f7575b891536
+commit e8d71b4e96fd78eb60773b6557d66da672e65753
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Sat Apr 14 17:21:29 2012 +0600
+Date:   Wed Mar 27 20:37:05 2013 +0600
 
-    Make QtTracker compilable again porting it to recent API change and code cleanup:
+    Silenced more warnings
     
-    - It was using SAD tracker with own API, now it's using standard RegionTracker API
-      which should make it easier to switch between different trackers.
-    - Restored LaplaceFilter from old SAD module which convolves images with the
-      discrete laplacian operator.
+    - Added includes of own header to fast implementation files.
+    
+    - Camera intrinsics wouldn't complain about unknown pragma when
+      building without OpenMP support.
+    
+    TODO: Make it a CMake option to build libmv with OpenMP support.
+    	  Currently multi-threaded intrinsics only available when
+          using custom CMake rules for bundled libmv version
+          (as it's done in Blender).
 
-commit a44312a7beb2963b8e3bf8015c516d2eff40cc3d
+commit ad442812654f270dc088394410fda1b81b8dc450
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Thu Apr 12 13:56:02 2012 +0600
+Date:   Wed Mar 27 20:18:51 2013 +0600
 
-    Added solver for modal camera motion, currently supports only tripod solving
+    Multithreaded camera intrinsics
     
-    This solver is intended to deal with such camera motions as tripod and panning,
-    where it's impossible to reconstruct exact position of markers in 3d view.
+    Implemented multithreaded buffer (un)distortion
+    for camera intrinsics using OpenMP.
     
-    It projects markers onto sphere and uses rigid registration of rotation to
-    find rotation angles which makes bundles from previous and current frame be
-    as closest as it's possible.
+    By default, (un)distortion is single-threaded,
+    but it is possible to as CameraIntrinsics to
+    use more threads by calling SetThreads method.
 
-commit fa3842e472e3b9c789e47bf6d8f592aa40a84f16
+commit c88b4881096174a16a9f9e6fc2c9dcad3e255b25
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Thu Apr 12 12:32:48 2012 +0600
+Date:   Wed Mar 27 18:45:09 2013 +0600
 
-    implementation of some basic algorithms for point cloud orientation:
+    Movie functions implementation from panography header
+    into own CC implementation file.
     
-    - Implementation of rigid registration algorithm which searches transformation
-      form one point cloud to another assuming that points in this clouds are
-      already paired (points with the same index in different clouds belongs to
-      the same pair) which minimizes average distance between points in pairs.
+    Before this all panography functions were declared as
+    static, which is not so much useful from re-useability
+    point of view.
+
+commit 2d2faf9104bc035722cff6775e1b8e7c93143aba
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Mar 27 18:37:36 2013 +0600
+
+    Build shared Ceres library only if BUILD_SHARED_LIBS is enabled
+
+commit daa3ddd3260ccaf2bf9c72eadb89213d91e549ec
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Mar 27 18:21:52 2013 +0600
+
+    Update Ceres to upstream version 1.5.0
+
+commit cf5dc678878345ea3f221ce50cb2b9e539c2ab38
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Mar 27 15:06:24 2013 +0600
+
+    Code cleanup: removed more deprecated FFmpeg API usage
     
-      Algorithm uses Levenberg-Marquardt solver to find such transformation.
+    This time in qt-tracker application.
+
+commit e2eb58c4230f94ef0c72fb4005e5434088d52e80
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Mar 26 17:19:51 2013 +0600
+
+    Code cleanup: silent unused variables warnings
+
+commit af89bb24667e39b7e655173ea807fdcfbeef4422
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Mar 26 16:54:14 2013 +0600
+
+    Code cleanup: no need to declare empty body for ProgressUpdateCallback:invoke
     
-      Supports registration of rotation-scale-transform (which is probably most
-      common usage) and rotation only (which might be useful for basic modal
-      tripod solver).
+    Make force this method to be overridden by derivative classes.
+    Also removed currently unneeded callbacks.cc.
+
+commit 0441d4ee06fad0219256a5704f931eec916a3868
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Mar 26 16:37:27 2013 +0600
+
+    Code cleanup: silent type narrowing in qt-tracker
+
+commit cd4b61c976448d0fdedefb3ed4b21d70e078f94b
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Mar 26 16:26:39 2013 +0600
+
+    Changes to unit testing
     
-    - Implementation of Iterative-Point-Clouds algorithm which searches
-      transformation from one arbitrary point cloud to another  making
-      points as closest to each other as possible.
+    - Move ceres test binaries to ${LIBMV_TESTS_OUTPUT_DIR}/ceres,
+      so they don't mess with libmv's application binaries and
+      tests.
     
-      This algorithm doesn't require points be initially paired, but for
-      good result clouds should have rough initial orientation. If they're
-      arbitrary oriented from the very beginning, algorithm might fail
-      producing good resold.
+    - Removed ceres_ prefix from ceres unit tests, only use this
+      prefix for targets (targets need to be unique name).
     
-      Iteration is based on building pairs of closest to each other points
-      and registering rigid transformation between them which incrementally
-      constructs final result.
+    - Added unit tests data for ceres, otherwise system_test fails.
     
-    TODO: building pairs might be speedup a lot using data structures like
-          AABB trees, K-D trees or so.
+    - Restored "test" makefile target.
 
-commit 9618d9a1d48bb3c28da605d9027f57a74f462785
+commit cf704ada08acc8b26167e7bfb3e1e88fd278de23
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Wed Apr 11 14:17:14 2012 +0600
+Date:   Tue Mar 26 15:01:15 2013 +0600
 
-    Added configuration file for glog to compile smooth on Hurd platform.
+    Code cleanup: use rw-rw-r-- mode for source files
+
+commit 64b31e3e43acb52aaf6f591b9d1c2449bf6ef3bd
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Mar 26 14:57:46 2013 +0600
+
+    Code cleanup: don't use deprecated FFmpeg API functions
+
+commit 2a3676499548ad5dba5a5c5eadf3bb71e640b612
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Mar 5 17:40:52 2013 +0600
+
+    Switch from DENSE_NORMAL_CHOLESKY to DENSE_QR
     
-    Patch by Pino Toscano <pino@debian.org>, thanks!
+    DENSE_QR is better behaved numerically and after recent
+    changes from Sameer there's no big difference in speed.
 
-commit 63b2bd20237c8599fa73ce42556e4fb99b9f7cca
+commit bcb920df02133da5b7e55fbc74edb9222004eecc
 Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Thu Mar 22 17:03:34 2012 +0600
+Date:   Tue Mar 5 17:15:43 2013 +0600
 
-    Trackers refactoring:
-    - Deduplicate pattern sampling used in esm and lmicklt trackers
-      and move SamplePattern to image/sample.h
-    - Move computation of Pearson product-moment correlation into
-      own function in new file image/correlation.h so all trackers
-      can use it to check final correlation.
-    - Remove SAD tracker. It's almost the same as brute tracker,
-      with only two differences:
-      1. It does brute search of affine transformation which in some cases
-         helps to track rotating features
-      2. It didn't use common tracker api which probably gave some speed
-         advantage, but lead to a real headache to use it together with
-         other trackers leading to duplicated code in 3d-party software.
-
-commit 9fe49c32e990f28c83f2bbb1d18057aed8879af7
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Mon Mar 12 09:36:15 2012 +0600
-
-    Code cleanup: convert line endings to Unix style (native on my platform) so it
-    wouldn't confuse other versioning systems used for project where libmv is bundled to,
+    Update Ceres to 1.5RC3
     
-    Also change mode to +x for glog's windows-related script.
+    It brings optimization of DENSE_QR and DENSE_SCHUR solvers.
 
-commit fe74ae2b53769389b0ed9d7e604c8e60be81077d
-Author: Sergey I. Sharybin <g.ulairi@gmail.com>
-Date:   Sun Mar 11 20:34:15 2012 +0600
+commit 473996468a4e67e7c860169181a4ff31ce9b8c80
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Mar 1 17:44:54 2013 +0600
 
-    Replace "third_party/glog/src/glog/logging.h" with <glog/logging.h>
+    Fixed incorrect order of arguments passing
+    to EXPECT_EQ in keyframe selection tests.
+
+commit d38ebb74693fdf5b8f0fecf62a3d8c9c53b0b84a
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Mar 1 17:40:38 2013 +0600
+
+    Modal (aka tripod) solver rework
     
-    It was needed because of how build systems is setup in Blender but think
-    this will be helpful change for other applications too because it makes
-    it's easier to move libraries around and even use libraries installed
-    on the operation system.
-
-commit 37fc726701479f2d321d6af878fa93f3176278d5
-Author: Sergey I. Sharybin <g.ulairi@gmail.com>
-Date:   Sun Mar 11 19:27:41 2012 +0600
-
-    Upgrade gflags and glog libraries - stage 2 (final)
+    Several major things are done in this commit:
     
-    Changes to upstream code which are needed to make libmv compile smooth on all platforms
+    - First of all, logic of modal solver was changed.
+      We do not rely on only minimizer to take care of
+      guessing rotation for frame, but we're using
+      analytical rotation computation for point clouds
+      to obtain initial rotation.
     
-    * Replace <gflags/gflags.h> with "third_party/gflags/gflags/gflags.h" which is easier
-      to setup things in libmv and also helps with setting up building libmv into
-      external applications.
-    * Replace "glog/logging.h" and  "glog/logging.h" with <glog/logging.h> and  <glog/logging.h>
-      which is needed on Windows platform because otherwise files like logging.cc will be using
-      relative path which points to headers used by linux instead of headers need to be used
-      on Windows.
-    * Replace _asm int 3 with __debugbreak(). Such assembler code is obsolete and doesn't work
-      with 64bit versions of MSVC compilers.
-    * Do not use stacktrace for MinGW and FreeBSD because it leads into issues accessing
-      some specific data on this platforms.
-    * Define HAVE_LIB_GFLAGS for Windows builds.
-    * Do not define __declspec(dllimport) for MinGW platforms.
-    * Setup proper includes and datatypes for int32, uint32, int64 and uint64 for MinGW
-    * Do not define va_copy for MinGW platforms (it's already defined there).
-    * Patch localtime_r to be working fine with MinGW, disable strerror_r for MinGW because
-      of lack of needed functions.
-
-commit 8ed07abfa49d1e0511752021c972e0715e5a1383
-Author: Sergey I. Sharybin <g.ulairi@gmail.com>
-Date:   Sun Mar 11 19:06:33 2012 +0600
-
-    Upgrade gflags and glog libraries - stage 1
+      Then this rotation is being refined using Ceres
+      minimizer and now instead of minimizing average
+      distance between points of point of two clouds,
+      minimization of reprojection error of point
+      cloud onto frame happens.
     
-    This commit copies sources from latest original release of gflags and glog
-    over currently bundled versions of this libraries without any modifications.
+      This gives quite a bit of precision improvement.
     
-    This revision can't b compiled, all needed changes to make new libraries working
-    fine will be done with next commit to make it clear which changes were necessary
-    for easier bundling further newer version and extract patches and put them to
-    gflags/glog upstream repo.
+    - Second bigger improvement here is using bundle
+      adjustment for a result of first step when we're
+      only estimating rotation between neighbor images
+      and reprojecting markers.
     
-    Such upgrade of libraries is needed to make it able to compile libmv
-    with clang compilers. Currently used versions:
+      This averages error across the image sequence
+      avoiding error accumulation. Also, this will
+      tweak bundles themselves a bit for better match.
     
-    - gflags is version 2.0
-    - glog is version 0.3.2
-
-commit 75b9af405964ff2c7d3f0a44500e27e63b37c91b
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 23:29:11 2012 +0600
-
-    _USE_MATH_DEFINES is needed to define constants like M_E when building with msvc
-    Occasionally was removed, but now added comment about this so hopefully it
-    wouldn't removed again.
-
-commit f85b1232a9b929f69443b5eed6e7a39908cd6551
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 21:34:40 2012 +0600
-
-    Picky edit: corrected mode for ssba readme file.
-
-commit f8c2b223f01551fd81a85f6d5221646165147035
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 21:32:05 2012 +0600
-
-    Picky edits: corrected EOL
-
-commit 3f2a4205ec5adadcdfa306b161c705c868a7be93
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 21:30:07 2012 +0600
-
-    Fixed incorrect access to ucontext on linux. Caused by incorrect merge conflict resolve.
-
-commit d360a21a5aa125cf9e83dd26b302508688ff7007
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 20:54:13 2012 +0600
-
-    More Windows -> Unix EOL conversions
-
-commit 18aeda58bec9556140ba617724e31ada6f5b67c0
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 20:15:42 2012 +0600
-
-    Looks like this debug output was removed accidentally.
-
-commit 189dc0cacdee3c1eab68c43263ecb038ed244c09
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 20:11:56 2012 +0600
-
-    Made V3D verbose again by default
-
-commit 8b3422d3eec5e450d76243886bf07fb0a3e83a81
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 20:08:01 2012 +0600
-
-    SAD tracker now can deal with pattern size any size,
-    Very quick implementation came from Blender before Hybrid tracker was added.
-    Better to be replaced with brute tracker.
-
-commit d547c9cfe37d5d3397d33c8b0e58471e1e1c1634
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 20:03:52 2012 +0600
-
-    Just convert end of lines to unix style.
-
-commit eb73ddbaec5b9e1ad30331bbf858a6ebc266c4aa
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 20:02:20 2012 +0600
-
-    Made some function static. Resolves possible linking issues when building with MinGW.
-
-commit 2930681fafd86e4f4a958054b1db8bfff29623d1
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 19:59:45 2012 +0600
-
-    Missed this in commit with improvements in camera intrinsics.
-
-commit 8d31bc767019b05c5bf8c9f309f9545b3428afa1
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 19:57:51 2012 +0600
-
-    Another step of syncing codebase with Blender.
-    Mainly fixes for freebsd/osx compilation and aligned memory allocation.
-
-commit 3214a2df5bfd98021f25d0f1a626a86318bb245f
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 19:48:02 2012 +0600
-
-    Support compilation on FreeBSD platform
-
-commit 0e5abe96f543687ccfb3a923ec639cb8f45d54f8
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 19:44:18 2012 +0600
-
-    Implementation of basic system for progress reporting into callee stuff
+    - And last bigger improvement here is support of
+      camera intrinsics refirenment.
     
-    Implemented by using simple callbacks classes which are getting invoked from
-    places where lots of calculation happens, so applications which are using
-    libmv may display nice progress bar.
+    This allowed to significantly improve solution
+    for real-life footage and results after such
+    refining are much more usable than it were before.
+    
+    Thanks to Keir for the help and code review!
 
-commit c5e18fe35464618055e0e9761be8d22fae56db49
+commit 5d6c2e7a27bdd1a1b23bf289d70a9b8f62514c9a
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Mar 1 17:37:35 2013 +0600
+
+    Increase verbosity level for reprojected markers info
+    
+    This information is useful, but in cases when you, say,
+    working on a bundler it's annoying to scroll all the
+    information up.
+
+commit ac252bb1250b3028b9c94736b644e7ab4e7b14b8
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Mar 1 17:36:19 2013 +0600
+
+    Move radial distortion code to own templated function
+    
+    This shall not lead to any functional changes, just
+    avoids radial distortion code duplicated in camera
+    intrinsics and bundling code.
+    
+    For fancier bundle adjustment support of  different
+    distortion models this is not actually enough and
+    would need to make some bigger changes, but this
+    changes makes code a bit easier to maintain already.
+
+commit c253b794612dd529e1d3a9bd7a7c41c32c9a9abb
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Mar 1 17:33:27 2013 +0600
+
+    Use threaded cost function, jacobian and linear solver
+    computation, so bundling is as fast as it could be with
+    current parameter block structure.
+
+commit 931fe37a10212b91b525d4f6eb753990a338b471
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Mar 1 17:29:21 2013 +0600
+
+    Fixed comment for euclidean bundling,
+    which is now supports raidal bundling independently
+    from other intrinsics.
+
+commit 217d8e6edc3de1a853fb84275d2d2dd898e7529c
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Feb 26 18:19:01 2013 +0600
+
+    Allow K1,K2 refirement combination
+    
+    It is now possible to refine only radial distortion
+    with new Ceres based bundler and this new combination
+    is already used in Blender.
+
+commit d8850addc944d400f7a9c358396c437d9e4acc70
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Feb 26 18:17:09 2013 +0600
+
+    Switch euclidean intersection code to use Ceres
+    
+    Would not expect any significant changes in solver
+    behavior, but it could be more accurate in some cases.
+    
+    Switching projective intersection to ceres is marked
+    as a TODO for now.
+
+commit 6990b7946ec96b3cb2dcfc8a1beaaba9538b0802
 Author: Keir Mierle <mierle@gmail.com>
-Date:   Fri Feb 17 19:25:45 2012 +0600
+Date:   Mon Feb 25 20:00:48 2013 +0000
 
-    Add support for detecting tracking failure in the ESM tracker component of
-    libmv. Since both KLT and Hybrid rely on ESM underneath, KLT and Hybrid now
-    have a minimum correlation setting to match. With this fix, track failures
-    should get detected quicker, with the issue that sometimes the tracker will
-    give up too easily. That is fixable by reducing the required correlation (in
-    the track properties).
+    Switch motion tracker bundle adjustment to Ceres.
+    
+    Patch originally written by me, then finished by Sergey. Big
+    thanks to Sergey for troopering through and fixing the many issues
+    with my original (not compilable) patch.
+    
+    The Ceres implementation uses 2 parameter blocks for each camera
+    (1 for rotation and 1 for translation), 1 parameter block for
+    common intrinsics (focal length etc) and 1 parameter block for
+    each track (e.g. bundle or 3D point).
+    
+    We turn on some fancy optimizer options to get better performance,
+    in particular:
+    
+      options.preconditioner_type = ceres::SCHUR_JACOBI;
+      options.linear_solver_type = ceres::ITERATIVE_SCHUR;
+      options.use_inner_iterations = true;
+      options.use_nonmonotonic_steps = true;
+      options.max_num_iterations = 100;
+    
+    Special thanks to Sameer Agarwal of Ceres fame for splitting out
+    the SCHUR_JACOBI preconditioner so that it didn't depend on
+    CHOLMOD.  Previously we could not use that preconditioner in
+    Blender because CHOLMOD is too large of a dependency for Blender.
+    
+    BundleIntrinsicsLogMessage:
+    - Moved bunch of if(foo) LG << "bar" into this function, to make
+      EuclideanBundleCommonIntrinsics a little bit easier to follow.
+    
+    EuclideanBundle:
+    - Fix RMSE logging.
 
-commit ea0fed736ecdcc8c020227aeef8ef4cd3be5e63d
+commit 1696342954614b54133780d74d6ee0fbcbe224f0
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Feb 26 18:10:33 2013 +0600
+
+    Upgrade ceres to latest upstream version
+    
+    This is needed because of some features of new Ceres
+    for further development.
+
+commit 575336f794841ada90aacd783285014081b8318c
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Mon Jan 7 15:58:40 2013 +0600
+
+    Fixed for keyframe selection
+    
+    - Calculate residuals for GRIC in pixel space rather than
+      in normalized space.
+    
+      This seems to be how it's intended to be used.
+    
+      Algebraic H and F will still use normalized coordinates which
+      are more stable, after this matrices are converted to pixel
+      space and Ceres refinement happens in pixel space.
+    
+    - Standard deviation calculation was wrong in GRIC. It shouldn't
+      be deviation of residuals, but as per Torr it should be deviation
+      of measurement error, which is constant (in our case 0.1)
+    
+      Not sure if using squared cost function is correct for GRIC,
+      but cost function is indeed squared and in most papers cost
+      function is used for GRIC. After some further tests we could
+      switch GRIC residuals to non-squared distance.
+    
+    - Bring back rho part of GRIC, in unit tests it doesn't make
+      sense whether it's enabled or not, lets see how it'll behave
+      in real-life footage.
+    
+    - Added one more unit test based on elevator scene and manual
+      keyframe selection.
+
+commit 24117f3c3fc5531beb6497d79bb6f1780a998081
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Sun Jan 6 19:07:06 2013 +0600
+
+    Added test for keyframe selection based on manual selection
+    
+    Additional changes:
+    
+    - Reduce minimal correspondence to match real-world manually
+      tracked footage
+    
+    - Returned back squares to SymmetricEpipolarDistance and
+      SymmetricGeometricDistance -- this is actually a cost
+      functions, not distances and they shall be squared.
+
+commit 770eb0293b881c4c419c587a6cdb062c47ab6e44
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Dec 21 00:43:30 2012 +0600
+
+    Improvements for keyframe selection
+    
+    - Changed main keyframe selection cycle, so in cases there're no
+      more next keyframes for current keyframe could be found in the
+      image sequence, current keyframe would be moved forward and
+      search continues.
+    
+      This helps in cases when there's poor motion in the beginning
+      of the sequence, then markers becomes occluded. There could be
+      good keyframes in the middle of the shot still.
+    
+    - Extended keyframe_selection_test with real world cases.
+    
+    - Moved correspondences constraint to the top, so no H/F estimation
+      happens if there's bad correspondence. Makes algorithm go a bit
+      faster.
+    
+    Strangely, but using non-squared distances makes neighbor frames
+    test fail, using squared distances makes this tests pass.
+    
+    However, using non-squared distances seems to be working better
+    in real tests i've been doing. So this requires more investigation/
+
+commit 7415c62fbda36c5bd1c291bc94d535a66da896d0
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 20 18:46:09 2012 +0600
+
+    Cosmetic change to correspondences reports in keyframe selection
+
+commit ceaf80c987ec0338e7e83965bc808411453eb755
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 20 18:08:03 2012 +0600
+
+    Various fixes:
+    
+    - That was a typo in symmetric geometric cost functor, which
+      computed inverse distance in a wrong way.
+    
+    - Fixed compilation of unit tests
+    
+    - Added simple test for keyframe selection. Currently only
+      covers case that neighbor frames with only translation
+      (homography should be better than fundamental) are not
+      considered a keyframes.
+    
+      Still need to be investigated why it only works if tracks
+      are in pixel space and why doesn't work in normalized space.
+
+commit cfabdfe48df2add3d1f30cf4370efd0b31990ab0
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 20 05:46:53 2012 +0600
+
+    Assorted fixes for keyframe selection:
+    
+    - Biggest error was in cost functors used for F and H refirement,
+      they were just wrong.
+    
+    - Use natural logarithms, since it's actually makes sense from
+      math papers point of view and error is somewhere else.
+    
+    - Disabled rho for GRIC, for now use non-clamped error for tests.
+    
+    - Made SymmetricEpipolarDistance returning non-squared distance
+      Keyframe selection is currently the only used of this function
+      and it seems using non-squared distance makes much more sense.
+    
+      Also would think to append suffix "Squared" to functions which
+      returns squared distances.
+    
+    - Removed templated version of SymmetricEpipolarDistance, since
+      it's not needed actually.
+    
+    This is actually even worse working than previous implementation,
+    but commit it needed for further review.
+
+commit 35d8c57626ad74818f155e6e5960c663ea84e032
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 20 03:00:40 2012 +0600
+
+    Euclidean resection cost function didn't use correct constructor
+    
+    It was storing a reference to initial rotation passed by value,
+    leading to pointer being pointing to a stack variable, leading to
+    wrong memory access in residuals computing.
+    
+    Apparently was visible in optimized builds only with inline
+    substitution allowed.
+
+commit 0798d3162bb49cee7e1c423ceccbca1326ad5650
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 20 02:50:52 2012 +0600
+
+    Automatic keyframe selection based on Pollefeys's criteria
+    
+    This commit implements automatic keyframe selection algorithm
+    based on Pollefeys's criteria (F-GRIC is smaller than H-GRIC
+    and correspondence ratio is more then 90%).
+    
+    It is implemented as a part of simple pipeline and returns
+    vector of keyframe images for a given Tracks structure.
+    
+    For simple pipeline reconstruction two best keyframes are
+    expected to be selected from all detected candidates.
+    Criteria for this selection could be reprojection error of
+    solution from two candidate keyfames.
+    
+    Unfortunately, it's not fully workable yet, hopefully would
+    be fixed soon.
+
+commit e943985552f0598ae122252876f305d72c25c2f9
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 6 17:47:11 2012 +0600
+
+    Camera Tracking: allow fallback to reprojection resection
+    by user demand
+    
+    This fixes some "regressions" introduced in previous commit
+    which lead to much worse solution in some cases. Now it's
+    possible to bring old behavior back.
+    
+    Perhaps it's more like temporal solution for time being smarter
+    solution is found. But finding such a solution isn't so fast,
+    so let's bring manual control over reprojection usage.
+    
+    But anyway, imo it's now nice to have a structure which could
+    be used to pass different settings to the solver.
+
+commit 5a23d01dd531d1e0798298d17ba42a3397effb82
 Author: Keir Mierle <mierle@gmail.com>
-Date:   Fri Feb 17 19:23:50 2012 +0600
+Date:   Thu Sep 20 18:55:44 2012 +0000
 
-    Add a new hybrid region tracker for motion tracking to libmv, and
-    add it as an option (under "Hybrid") in the tracking settings. The
-    region tracker is a combination of brute force tracking for coarse
-    alignment, then refinement with the ESM/KLT algorithm already in
-    libmv that gives excellent subpixel precision (typically 1/50'th
-    of a pixel)
+    Make Euclidean resection "always" succeed.
     
-    This also adds a new "brute force" region tracker which does a
-    brute force search through every pixel position in the destination
-    for the pattern in the first frame. It leverages SSE if available,
-    similar to the SAD tracker, to do this quickly. Currently it does
-    some unnecessary conversions to/from floating point that will get
-    fixed later.
+    The Euclidean resection code had a magical constant, 1e-3, used to
+    compare the results of solving an equation. This failure detection
+    was well-intended, trying to prevent poor solutions from getting
+    made without notifying the caller. Unfortunately in practice, this
+    threshold is too conservative. Furthermore, it is not clear the
+    threshold should exist at all; the purpose of the Euclidean
+    resection is to come up with the best solution it can; other
+    methods (e.g. reprojection error) should be used to compare
+    whether the method succeeded.
     
-    The hybrid tracker glues the two trackers (brute & ESM) together
-    to get an overall better tracker. The algorithm is simple:
+    This commit changes the Euclidean EPnP code to always succeed,
+    causing the previous fallback to projective resection to never
+    run. In most cases, this will result in better reconstructions.
     
-    1. Track from frame 1 to frame 2 with the brute force tracker.
-        This tries every possible pixel position for the pattern from
-        frame 1 in frame 2. The position with the smallest
-        sum-of-absolute-differences is chosen. By definition, this
-        position is only accurate up to 1 pixel or so.
-    2. Using the result from 1, initialize a track with ESM. This does
-        a least-squares fit with subpixel precision.
-    3. If the ESM shift was more than 2 pixels, report failure.
-    4. If the ESM track shifted less than 2 pixels, then the track is
-        good and we're done. The rationale here is that if the
-        refinement stage shifts more than 1 pixel, then the brute force
-        result likely found some random position that's not a good fit.
+    This should, in most cases, fix the dreaded "flipping" problem.
 
-commit a07fff8431621c01d81ae52595d8dd91a295a776
+commit 57dad861d2a7f9d058c6d8edde1a2d51d7225a51
 Author: Keir Mierle <mierle@gmail.com>
-Date:   Fri Feb 17 19:19:58 2012 +0600
+Date:   Thu Sep 20 02:27:34 2012 +0000
 
-    Assorted camera tracker improvements
-    
-    - Add support for refining the camera's intrinsic parameters
-      during a solve. Currently, refining supports only the following
-      combinations of intrinsic parameters:
-    
-        f
-        f, cx, cy
-        f, cx, cy, k1, k2
-        f, k1
-        f, k1, k2
-    
-      This is not the same as autocalibration, since the user must
-      still make a reasonable initial guess about the focal length and
-      other parameters, whereas true autocalibration would eliminate
-      the need for the user specify intrinsic parameters at all.
-    
-      However, the solver works well with only rough guesses for the
-      focal length, so perhaps full autocalibation is not that
-      important.
-    
-      Adding support for the last two combinations, (f, k1) and (f,
-      k1, k2) required changes to the library libmv depends on for
-      bundle adjustment, SSBA. These changes should get ported
-      upstream not just to libmv but to SSBA as well.
-    
-    - Improved the region of convergence for bundle adjustment by
-      increasing the number of Levenberg-Marquardt iterations from 50
-      to 500. This way, the solver is able to crawl out of the bad
-      local minima it gets stuck in when changing from, for example,
-      bundling k1 and k2 to just k1 and resetting k2 to 0.
-    
-    - Add several new region tracker implementations. A region tracker
-      is a libmv concept, which refers to tracking a template image
-      pattern through frames. The impact to end users is that tracking
-      should "just work better". I am reserving a more detailed
-      writeup, and maybe a paper, for later.
-    
-    - Other libmv tweaks, such as detecting that a tracker is headed
-      outside of the image bounds.
-    
-    This includes several changes made directly to the libmv extern
-    code rather expecting to get those changes through normal libmv
-    channels, because I, the libmv BDFL, decided it was faster to work
-    on libmv directly in Blender, then later reverse-port the libmv
-    changes from Blender back into libmv trunk. The interesting part
-    is that I added a full Levenberg-Marquardt loop to the region
-    tracking code, which should lead to a more stable solutions. I
-    also added a hacky implementation of "Efficient Second-Order
-    Minimization" for tracking, which works nicely. A more detailed
-    quantitative evaluation will follow.
+    Fix variable naming in the planar tracker.
 
-commit 0bf66c009d5022eacfc473d247884a73ffeefa8f
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 19:13:49 2012 +0600
-
-    Rest of compilation fix with FAST library.
-
-commit 71b578ca2ba34c528363c514cd1fcc85791d01f3
+commit e9392fd3b46f5668662935696e7d9afac3390ca4
 Author: Keir Mierle <mierle@gmail.com>
-Date:   Fri Feb 17 19:00:28 2012 +0600
+Date:   Thu Sep 20 02:10:33 2012 +0000
 
-    Improve the KLT tracking behaviour and UI
+    Add smarter tolerance checking in the planar tracker.
     
-    - Remove the overly-conservative use of libmv's re-track tracker. The re-track
-      tracker would take a normal tracker such as TRKLT or KLT or pyramid KLT, and
-      track from frame 1 to 2, then back from the position found in 2 back to 1.
-      Then, when the reverse-track doesn't match the original track with high
-      precision, the track is considered "failed". This is a good approach for
-      fully automatic reconstruction, but is too conservative for supervised
-      tracking.
+    The planar tracker uses Ceres for the refinement stage. During
+    refinement, Ceres iteratively updates the parameters with the
+    latest best guess. If the change in the parameters falls below a
+    threshold, Ceres will abort successfully ("converged").
     
-      The retrack-tracker will return when fully automatic tracking is added.
+    For the case of pure translation tracking, the parameters are
+    exactly the two pixel shifts (dx, dy), and measuring the change in
+    these parameters gives a meaningful termination criterion.
+    However, for all the other parameterizations like affine, where
+    the parameterization involves affine parameters that have no
+    physical interpretation, Ceres is left with no way to terminate
+    the solver early. With the existing code, often many iterations
+    are run long after Ceres has found a solution sufficiently
+    accurate for all tracking needs. No one needs tracking with
+    a quadrillionth of a pixel accuracy; that time is wasted.
     
-    - Always solve for (dx, dy) in the TRKLT loop even if the linear system is
-      ill-conditioned. The client (Blender in this case) can still use the solved
-      position, even though it is less reliable.
-
-commit 7d8a8762f2bc2e36f95b0b6f4fb4ca996f9f0db7
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 18:46:24 2012 +0600
-
-    Changes in camera intrinsics distortion/undistortion:
+    This patch extends the existing iteration callback that is passed
+    in to Ceres to check if the pattern has fallen out of the search
+    window, to also check if the optimizer has made a tiny step. In
+    particular, if the maximum shift of any patch corner between two
+    successful optimizer steps is less than a threshold (currently
+    0.005 pixels), the track is declared successful and tracking
+    is terminated.
     
-    - Distortion/undistortion of scaled images wasn't happening right,
-      because camera intrinsics are calibrated on an original frame which
-      has got some particular resolution and trying to apply this model on
-      an image with another resolution gives totally wrong result.
-      This is needed to be able to do post-prccessing of render, running
-      distortion on a scene which might be rendered with higher resolution
-      than footage itself and then be scaled down.
-    - Fixed incorrect calculation/applying of precomputed grid when
-      distortion is high high enough and produces pixel offset higher
-      than 127 pixels. This might be still not very distorted image,
-      but if it's a 4K footage "normal" camera will easily give such
-      a distortion.
-    - Added support of overscan distortion/undistortion.
+    This leads to dramatic speed increases in some cases, with little
+    to no loss in track quality. This is especially apparent when
+    tracking patches with affine or perspective motion models. For
+    example, on some tracking cases I tried, the iterations Ceres took
+    went from 50 to 3.
 
-commit ed080785d63bb8e3a13dde51a2dc94fe59b059bb
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 18:38:51 2012 +0600
-
-    Fast headers now can be included from C++ sources.
-    Was needed to make it working fine when bundling in Blender but might also
-    be needed to bundle into another applications.
-
-commit 5f5a7aa46a2d87b96c8098dfc8682f4d01b5cd40
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 18:36:16 2012 +0600
-
-    Bring back FAST detector which seems to be working much nicer than Morravec.
-    Both of them are available in API.
-
-commit 2cab13c18216fb684b270cec077f7300262584af
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 18:27:36 2012 +0600
-
-    Revert "Make CameraIntrinsics (and thus Qt tracker) compilable without linking libmv."
-    
-    This reverts commit 81613ee0cc94b315f333c9632b18b95d426aad05.
-    
-    That commit made inverting intrinsics totally unworkable, so reverted this and
-    made needed tweaks to qt-tracker project file to make it compilable (was needed
-    to make it linking together with glog).
-    
-    Conflicts:
-    
-    	src/ui/tracker/tracker.cc
-    	src/ui/tracker/tracker.pro
-
-commit ec46cae041401b17afb4fe4d9c9343d10797090f
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 17:59:55 2012 +0600
-
-    Fix compilation error using official MinGW
-
-commit 6fbc370e922c47cfa35381662b6c439f4891ed74
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 17:38:20 2012 +0600
-
-    Fix compilation error with MSVC 2010 which is more picky for "missed" STL headers
-
-commit be9e6b63691d83b551a085f0766878bd84220767
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 17:36:18 2012 +0600
-
-    Fix compilation with MSVC where snprintf function is declared as unsafe and _snprintf should be used instead.
-    
-    Better to switch to own implementation will ensure string is correctly NULL-terminated.
-
-commit 1847d9e414ed763cd80668775d7d9f79575fc8ca
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 17:34:45 2012 +0600
-
-    Fix compilation error on OSX caused by incorrect access to ucontext
-
-commit 90579b6ffad07672172a1c240499615b30b25549
-Merge: b9aac30 531c79b
-Author: Sergey Sharybin <sergey.vfx@gmail.com>
-Date:   Fri Feb 17 18:32:52 2012 +0600
-
-    Merge remote-tracking branch 'Matthias-Fauconneau/master' into devel
-    
-    Conflicts:
-    	src/libmv/tracking/CMakeLists.txt
-
-commit b9aac30a9ca6bc8362c09a0e191040964f7c6de2
-Merge: 198894e 6969e1a
+commit 36729c19bf90cb767e9adb96ba7dd48a5ace2be1
 Author: Keir Mierle <mierle@gmail.com>
-Date:   Sat Nov 5 17:38:30 2011 -0700
+Date:   Wed Sep 19 22:25:02 2012 +0000
 
-    Merge pull request #3 from nathanwiegand/master
+    Detect too-small planar tracking patches.
     
-    Just a few tiny cleanups
+    The planar tracker did not detect very skinny patches which have
+    effectively zero area and are untrackable. This adds detection and
+    rejection of patterns with zero area. This fixes a crash found by
+    during Mango production.
 
-commit 6969e1a9534291a982749baa5a3672c97bfa506d
-Author: Nathan Wiegand <nathanwiegand@gmail.com>
-Date:   Sat Nov 5 14:26:54 2011 -0700
+commit 5cf2bae255a5a0f2e36ea0516670782cb88b589d
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 6 17:33:53 2012 +0600
 
-    I've added cleaned up a few style issues here an there. Also, I've updated the CMakeLists.txt file so that it can build the image_io library. Note, it's only been tested on OSX 10.6
+    Real fix for previous commit from Keir. He's comment;
+    
+    Cleanup for when trackers fall out of the search window.
+    
+    Sergey originally left a TODO() here, but his fix is the correct
+    one. I removed the TODO and fixed some comment issues.
 
-commit 4763f851299050140757bfaa069107a0cf639e56
-Author: Nathan Wiegand <nathanwiegand@gmail.com>
-Date:   Fri Nov 4 23:59:08 2011 -0700
+commit a11533918720e5b43dc1e95895db0eb36c8c06aa
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 6 17:31:16 2012 +0600
 
-    Removed a superfulous comment
+    Fix crash when tracking in planar motion model (and maybe some other)
+    
+    It was an Abort() caused by check for solver result not equal to USER_ABORT.
+    
+    In some cases solver returns USER_ABORT due to BoundaryCheckingCallback
+    detects coordinates does not belong to image.
+    
+    Somehow this callback wasn't called in previous version of Ceres and
+    in the same case marker was jumping. Now when the callback is called
+    it seems we could simply return failure of tracking without aborting
+    Blender.
+    
+    Probably this is in fact some issue somewhere else, would double
+    check with Keir about this.
 
-commit a44577c0162e273681e4a9a3cc5f5b37d4315b67
-Author: Nathan Wiegand <nathanwiegand@gmail.com>
-Date:   Fri Nov 4 23:55:52 2011 -0700
+commit 4be2306bcc664b259aaf7068b9f32ab60124a509
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 6 17:29:39 2012 +0600
 
-    Removed a duplicate entry for an author.
+    Resolved some compilation warnings (missed prototypes)
+    
+    In some cases it was missed include of header file, in some other
+    cases symbol could be static.
 
-commit 198894e4c4f51c2c1784ad7c02eb45d2d1ada9bc
-Merge: c4c67db 6e797d6
+commit bef729ba5c12683d13584d2a728b8b6506b7ca90
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 6 17:27:17 2012 +0600
+
+    Code cleanup: silence some -Wnarrowing warnings from C++11
+
+commit add1415d896818367087c784a3013dd8f1bb2095
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Dec 6 17:25:18 2012 +0600
+
+    Changes to SamplePlanarPatch to support mask input and
+    added output for pattern center.
+
+commit daa354c0735b954b0cd7725626e9a3d67416d46b
 Author: Keir Mierle <mierle@gmail.com>
-Date:   Fri Nov 4 21:47:05 2011 -0700
+Date:   Sat Jun 9 19:22:39 2012 +0000
 
-    Merge pull request #2 from nathanwiegand/master
+    Change libmv's bilinear sampling to assume the same
+    pixel conventions as Blender. This fixes the preview
+    widget in Blender, and should make tracking slightly
+    more accurate.
+
+commit 99b6222873fbfbe248316316956720376a58f438
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Sat Jun 9 18:58:51 2012 +0000
+
+    Add new warp regularization scheme for planar tracking.
     
-    CMake changes for OSX
+    This adds a new term to the tracking cost function that
+    restricts how much the optimizer can warp the patch (as
+    opposed to merely adjusting the translation). This should
+    reduce the "jumpiness" that is sometimes seen when doing
+    non-"Loc" tracks.
+    
+    It is disabled in this commit; a subsequent commit will add
+    controls to the tracking dialog for this.
 
-commit 6e797d678c4c19f6a9e21657d66183f412cc995b
-Author: Nathan Wiegand <nathanwiegand@gmail.com>
-Date:   Fri Nov 4 21:43:28 2011 -0700
+commit a1c5a70badd11cba0470700bad2eac2b2bd30c86
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Sat Jun 9 06:55:21 2012 +0000
 
-    Uncomment the GUI part of the CMake file
+    Planar tracker polish.
+    
+    - Fixes the correlation checking code that was broken in the
+      previous commit. The bug was a transpose error.
+    - Fixes a memory leak of the warp functor, found by Sameer.
+    - Various cleanups done at Sameer's suggestion.
+    
+    Thanks to Sameer Agarwal for a code review.
 
-commit 33ef88a33860345d8906f3c9dd22d8dbce3df53e
-Author: Nathan Wiegand <nathanwiegand@gmail.com>
-Date:   Fri Nov 4 21:31:22 2011 -0700
+commit 2cb784caa854a77cdd43620ab133f26b87ed0d83
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Fri Jun 8 17:42:17 2012 +0000
 
-    Fixed build error on OSX by adding 'glog' to the dependencies in the tracker CMake
-
-commit 531c79bf95fddaaa70707d1abcd4fdafda16bbf0
-Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
-Date:   Sat Aug 20 00:00:42 2011 +0200
-
-    Display warped pattern in marker preview.
-
-commit bb5c27e671b6f8eb56ddf490f0795d59bede591b
-Author: Matthias Fauconneau <matthias.fauconneau@gmail.com>
-Date:   Fri Aug 19 18:37:48 2011 +0200
-
-    Fix CMake build.
+    Make planar tracking much faster.
+    
+    - This makes planar tracking around 2-3x or more faster than
+      before, by rearranging how the sampling is done.
+      Previously, the source patch was sampled repeatedly on
+      every optimizer iteration; this was done for
+      implementation speed, but was wasteful in computation.
+    
+    - This also contains some additions to Ceres to help
+      deailing with mixed numeric / automatic differentation. In
+      particular, there is now a "Chain::Rule" operator that
+      facilitates calling a function that takes Jet arguments,
+      yet does numeric derivatives internally. This is used to
+      mix the numeric differentation of the images with the warp
+      parameters, passed as jets by Ceres to the warp functor.
+    
+      There is also a new "JetOps" object for doing operations
+      on types which may or may not be jets, such as scaling
+      the derivative part only, or extracting the scalar part
+      of a jet.
+    
+      This patche is aimed at Ceres upstream.
+    
+    - A new function for sampling a patch is now part of the
+      track_region.h API; this will get used to make the preview
+      widget properly show what is getting tracked. Currently
+      the preview widget does not handle perspective tracks.
+    
+    Known issues:
+    
+      This patch introduces a bug such that the "Minimum
+      Correlation" flag does not work; if it is enabled, tracking
+      aborts immediately. The workaround for now is to disable the
+      correlation checking, and examine your tracks carefully. A
+      fix will get added shortly.

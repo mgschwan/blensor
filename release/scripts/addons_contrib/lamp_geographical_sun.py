@@ -1,4 +1,4 @@
-# -*- coding: utf8 -*-
+# -*- coding: utf-8 -*-
 #
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
@@ -42,7 +42,7 @@ bl_info = {
     "name": "Geographical Sun",
     "author": "Doug Hammond (dougal2)",
     "version": (0, 0, 1),
-    "blender": (2, 5, 6),
+    "blender": (2, 56, 0),
     "category": "Object",
     "location": "Lamp data > Geographical Sun",
     "warning": "",

@@ -160,7 +160,7 @@ static int sound_open_exec(bContext *UNUSED(C), wmOperator *op)
 
 #endif
 
-static int sound_open_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int sound_open_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	if (RNA_struct_property_is_set(op->ptr, "filepath"))
 		return sound_open_exec(C, op);
@@ -221,7 +221,7 @@ static int sound_update_animation_flags_exec(bContext *C, wmOperator *UNUSED(op)
 	Sequence *seq;
 	Scene *scene = CTX_data_scene(C);
 	struct FCurve *fcu;
-	char driven;
+	bool driven;
 
 	SEQ_BEGIN(scene->ed, seq)
 	{
@@ -264,7 +264,7 @@ static void SOUND_OT_update_animation_flags(wmOperatorType *ot)
 	 */
 
 	/* identifiers */
-	ot->name = "Update animation";
+	ot->name = "Update Animation";
 	ot->description = "Update animation flags";
 	ot->idname = "SOUND_OT_update_animation_flags";
 
@@ -300,7 +300,7 @@ static int sound_bake_animation_exec(bContext *C, wmOperator *UNUSED(op))
 static void SOUND_OT_bake_animation(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name = "Update animation cache";
+	ot->name = "Update Animation Cache";
 	ot->description = "Update the audio animation cache";
 	ot->idname = "SOUND_OT_bake_animation";
 
@@ -439,7 +439,7 @@ static int sound_mixdown_check(bContext *UNUSED(C), wmOperator *op)
 
 #endif // WITH_AUDASPACE
 
-static int sound_mixdown_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int sound_mixdown_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	if (RNA_struct_property_is_set(op->ptr, "filepath"))
 		return sound_mixdown_exec(C, op);
@@ -449,7 +449,7 @@ static int sound_mixdown_invoke(bContext *C, wmOperator *op, wmEvent *event)
 
 #ifdef WITH_AUDASPACE
 
-static int sound_mixdown_draw_check_prop(PointerRNA *UNUSED(ptr), PropertyRNA *prop)
+static bool sound_mixdown_draw_check_prop(PointerRNA *UNUSED(ptr), PropertyRNA *prop)
 {
 	const char *prop_id = RNA_property_identifier(prop);
 	return !(strcmp(prop_id, "filepath") == 0 ||
@@ -747,7 +747,7 @@ static int sound_unpack_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int sound_unpack_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int sound_unpack_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	Editing *ed = CTX_data_scene(C)->ed;
 	bSound *sound;

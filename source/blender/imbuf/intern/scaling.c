@@ -33,6 +33,8 @@
 
 
 #include "BLI_utildefines.h"
+#include "BLI_math_color.h"
+#include "BLI_math_interp.h"
 #include "MEM_guardedalloc.h"
 
 #include "imbuf.h"
@@ -291,6 +293,37 @@ struct ImBuf *IMB_double_y(struct ImBuf *ibuf1)
 	return (ibuf2);
 }
 
+/* pretty much specific functions which converts uchar <-> ushort but assumes
+ * ushort range of 255*255 which is more convenient here
+ */
+MINLINE void straight_uchar_to_premul_ushort(unsigned short result[4], const unsigned char color[4])
+{
+	unsigned short alpha = color[3];
+
+	result[0] = color[0] * alpha;
+	result[1] = color[1] * alpha;
+	result[2] = color[2] * alpha;
+	result[3] = alpha * 255;
+}
+
+MINLINE void premul_ushort_to_straight_uchar(unsigned char *result, const unsigned short color[4])
+{
+	if (color[3] <= 255) {
+		result[0] = color[0] / 255;
+		result[1] = color[1] / 255;
+		result[2] = color[2] / 255;
+		result[3] = color[3] / 255;
+	}
+	else {
+		unsigned short alpha = color[3] / 255;
+
+		result[0] = color[0] / alpha;
+		result[1] = color[1] / alpha;
+		result[2] = color[2] / alpha;
+		result[3] = alpha;
+	}
+}
+
 /* result in ibuf2, scaling should be done correctly */
 void imb_onehalf_no_alloc(struct ImBuf *ibuf2, struct ImBuf *ibuf1)
 {
@@ -303,23 +336,33 @@ void imb_onehalf_no_alloc(struct ImBuf *ibuf2, struct ImBuf *ibuf1)
 	}
 
 	if (do_rect) {
-		char *p1, *p2, *dest;
+		unsigned char *cp1, *cp2, *dest;
 		
-		p1 = (char *) ibuf1->rect;
-		dest = (char *) ibuf2->rect;
+		cp1 = (unsigned char *) ibuf1->rect;
+		dest = (unsigned char *) ibuf2->rect;
 		for (y = ibuf2->y; y > 0; y--) {
-			p2 = p1 + (ibuf1->x << 2);
+			cp2 = cp1 + (ibuf1->x << 2);
 			for (x = ibuf2->x; x > 0; x--) {
-				dest[0] = (p1[0] + p2[0] + p1[4] + p2[4]) >> 2;
-				dest[1] = (p1[1] + p2[1] + p1[5] + p2[5]) >> 2;
-				dest[2] = (p1[2] + p2[2] + p1[6] + p2[6]) >> 2;
-				dest[3] = (p1[3] + p2[3] + p1[7] + p2[7]) >> 2;
-				p1 += 8; 
-				p2 += 8; 
+				unsigned short p1i[8], p2i[8], desti[4];
+
+				straight_uchar_to_premul_ushort(p1i, cp1);
+				straight_uchar_to_premul_ushort(p2i, cp2);
+				straight_uchar_to_premul_ushort(p1i + 4, cp1 + 4);
+				straight_uchar_to_premul_ushort(p2i + 4, cp2 + 4);
+
+				desti[0] = ((unsigned int) p1i[0] + p2i[0] + p1i[4] + p2i[4]) >> 2;
+				desti[1] = ((unsigned int) p1i[1] + p2i[1] + p1i[5] + p2i[5]) >> 2;
+				desti[2] = ((unsigned int) p1i[2] + p2i[2] + p1i[6] + p2i[6]) >> 2;
+				desti[3] = ((unsigned int) p1i[3] + p2i[3] + p1i[7] + p2i[7]) >> 2;
+
+				premul_ushort_to_straight_uchar(dest, desti);
+
+				cp1 += 8;
+				cp2 += 8;
 				dest += 4;
 			}
-			p1 = p2;
-			if (ibuf1->x & 1) p1 += 4;
+			cp1 = cp2;
+			if (ibuf1->x & 1) cp1 += 4;
 		}
 	}
 	
@@ -1562,3 +1605,113 @@ struct ImBuf *IMB_scalefastImBuf(struct ImBuf *ibuf, unsigned int newx, unsigned
 	return(ibuf);
 }
 
+/* ******** threaded scaling ******** */
+
+typedef struct ScaleTreadInitData {
+	ImBuf *ibuf;
+
+	unsigned int newx;
+	unsigned int newy;
+
+	unsigned char *byte_buffer;
+	float *float_buffer;
+} ScaleTreadInitData;
+
+typedef struct ScaleThreadData {
+	ImBuf *ibuf;
+
+	unsigned int newx;
+	unsigned int newy;
+
+	int start_line;
+	int tot_line;
+
+	unsigned char *byte_buffer;
+	float *float_buffer;
+} ScaleThreadData;
+
+static void scale_thread_init(void *data_v, int start_line, int tot_line, void *init_data_v)
+{
+	ScaleThreadData *data = (ScaleThreadData *) data_v;
+	ScaleTreadInitData *init_data = (ScaleTreadInitData *) init_data_v;
+
+	data->ibuf = init_data->ibuf;
+
+	data->newx = init_data->newx;
+	data->newy = init_data->newy;
+
+	data->start_line = start_line;
+	data->tot_line = tot_line;
+
+	data->byte_buffer = init_data->byte_buffer;
+	data->float_buffer = init_data->float_buffer;
+}
+
+static void *do_scale_thread(void *data_v)
+{
+	ScaleThreadData *data = (ScaleThreadData *) data_v;
+	ImBuf *ibuf = data->ibuf;
+	int i;
+	float factor_x = (float) ibuf->x / data->newx;
+	float factor_y = (float) ibuf->y / data->newy;
+
+	for (i = 0; i < data->tot_line; i++) {
+		int y = data->start_line + i;
+		int x;
+
+		for (x = 0; x < data->newx; x++) {
+			float u = (float) x * factor_x;
+			float v = (float) y * factor_y;
+			int offset = y * data->newx + x;
+
+			if (data->byte_buffer) {
+				unsigned char *pixel = data->byte_buffer + 4 * offset;
+				BLI_bilinear_interpolation_char((unsigned char *) ibuf->rect, pixel, ibuf->x, ibuf->y, 4, u, v);
+			}
+
+			if (data->float_buffer) {
+				float *pixel = data->float_buffer + ibuf->channels * offset;
+				BLI_bilinear_interpolation_fl(ibuf->rect_float, pixel, ibuf->x, ibuf->y, ibuf->channels, u, v);
+			}
+		}
+	}
+
+	return NULL;
+}
+
+void IMB_scaleImBuf_threaded(ImBuf *ibuf, unsigned int newx, unsigned int newy)
+{
+	ScaleTreadInitData init_data = {NULL};
+
+	/* prepare initialization data */
+	init_data.ibuf = ibuf;
+
+	init_data.newx = newx;
+	init_data.newy = newy;
+
+	if (ibuf->rect)
+		init_data.byte_buffer = MEM_mallocN(4 * newx * newy * sizeof(char), "threaded scale byte buffer");
+
+	if (ibuf->rect_float)
+		init_data.float_buffer = MEM_mallocN(ibuf->channels * newx * newy * sizeof(float), "threaded scale float buffer");
+
+	/* actual scaling threads */
+	IMB_processor_apply_threaded(newy, sizeof(ScaleThreadData), &init_data,
+	                             scale_thread_init, do_scale_thread);
+
+	/* alter image buffer */
+	ibuf->x = newx;
+	ibuf->y = newy;
+
+	if (ibuf->rect) {
+		imb_freerectImBuf(ibuf);
+		ibuf->mall |= IB_rect;
+		ibuf->rect = (unsigned int *) init_data.byte_buffer;
+	}
+
+	if (ibuf->rect_float) {
+		imb_freerectfloatImBuf(ibuf);
+		ibuf->mall |= IB_rectfloat;
+		ibuf->rect_float = init_data.float_buffer;
+	}
+}

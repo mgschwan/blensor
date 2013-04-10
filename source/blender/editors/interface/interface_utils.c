@@ -78,7 +78,7 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
 
 			if (arraylen && index == -1) {
 				if (ELEM(RNA_property_subtype(prop), PROP_COLOR, PROP_COLOR_GAMMA))
-					but = uiDefButR_prop(block, COLOR, 0, name, x1, y1, x2, y2, ptr, prop, 0, 0, 0, -1, -1, NULL);
+					but = uiDefButR_prop(block, COLOR, 0, name, x1, y1, x2, y2, ptr, prop, -1, 0, 0, -1, -1, NULL);
 			}
 			else if (RNA_property_subtype(prop) == PROP_PERCENTAGE || RNA_property_subtype(prop) == PROP_FACTOR)
 				but = uiDefButR_prop(block, NUMSLI, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
@@ -137,7 +137,7 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
  * in cases where PROP_HIDDEN flag can't be used for a property.
  */
 int uiDefAutoButsRNA(uiLayout *layout, PointerRNA *ptr,
-                     int (*check_prop)(PointerRNA *, PropertyRNA *),
+                     bool (*check_prop)(PointerRNA *, PropertyRNA *),
                      const char label_align)
 {
 	uiLayout *split, *col;

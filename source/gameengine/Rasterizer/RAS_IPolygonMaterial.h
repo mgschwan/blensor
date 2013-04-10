@@ -177,14 +177,14 @@ public:
 	virtual void		Replace_IScene(SCA_IScene *val) {} /* overridden by KX_BlenderMaterial */
 
 	/**
-	* \return the equivalent drawing mode for the material settings (equivalent to old TexFace tface->mode).
-	*/
+	 * \return the equivalent drawing mode for the material settings (equivalent to old TexFace tface->mode).
+	 */
 	int					ConvertFaceMode(struct GameSettings *game, bool image) const;
 
 	/*
 	 * PreCalculate texture gen
 	 */
-	virtual void OnConstruction(int layer) {}
+	virtual void OnConstruction() {}
 
 
 #ifdef WITH_CXX_GUARDEDALLOC

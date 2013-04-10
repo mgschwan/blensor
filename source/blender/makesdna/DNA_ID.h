@@ -42,7 +42,9 @@ extern "C" {
 struct Library;
 struct FileData;
 struct ID;
-
+struct PackedFile;
+struct GPUTexture;
+	
 typedef struct IDPropertyData {
 	void *pointer;
 	ListBase group;
@@ -102,7 +104,7 @@ typedef struct IDProperty {
 /* 2 characters for ID code and 64 for actual name */
 #define MAX_ID_NAME	66
 
-/* There's a nasty circular dependency here.... void* to the rescue! I
+/* There's a nasty circular dependency here.... 'void *' to the rescue! I
  * really wonder why this is needed. */
 typedef struct ID {
 	void *next, *prev;
@@ -136,6 +138,8 @@ typedef struct Library {
 							 * setting 'name' directly and it will be kept in
 							 * sync - campbell */
 	struct Library *parent;	/* set for indirectly linked libs, used in the outliner and while reading */
+	
+	struct PackedFile *packedfile;
 } Library;
 
 enum eIconSizes {
@@ -151,6 +155,7 @@ typedef struct PreviewImage {
 	short changed[2];
 	short changed_timestamp[2];
 	unsigned int *rect[2];
+	struct GPUTexture *gputexture[2];
 } PreviewImage;
 
 /**
@@ -207,6 +212,7 @@ typedef struct PreviewImage {
 #define ID_WM		MAKE_ID2('W', 'M') /* WindowManager */
 #define ID_MC		MAKE_ID2('M', 'C') /* MovieClip */
 #define ID_MSK		MAKE_ID2('M', 'S') /* Mask */
+#define ID_LS		MAKE_ID2('L', 'S') /* FreestyleLineStyle */
 
 	/* NOTE! Fake IDs, needed for g.sipo->blocktype or outliner */
 #define ID_SEQ		MAKE_ID2('S', 'Q')
@@ -219,7 +225,7 @@ typedef struct PreviewImage {
 			/* fluidsim Ipo */
 #define ID_FLUIDSIM	MAKE_ID2('F', 'S')
 
-#define ID_REAL_USERS(id) (((ID *)id)->us - ((((ID *)id)->flag & LIB_FAKEUSER) ? 1:0))
+#define ID_REAL_USERS(id) (((ID *)id)->us - ((((ID *)id)->flag & LIB_FAKEUSER) ? 1 : 0))
 
 #define ID_CHECK_UNDO(id) ((GS((id)->name) != ID_SCR) && (GS((id)->name) != ID_WM))
 
@@ -228,7 +234,8 @@ typedef struct PreviewImage {
 #ifdef GS
 #  undef GS
 #endif
-#define GS(a)	(*((short *)(a)))
+// #define GS(a)	(*((short *)(a)))
+#define GS(a)	(CHECK_TYPE_INLINE(a, const char), (*((short *)(a))))
 
 #define ID_NEW(a)		if (      (a) && (a)->id.newid ) (a) = (void *)(a)->id.newid
 #define ID_NEW_US(a)	if (      (a)->id.newid)       { (a) = (void *)(a)->id.newid;       (a)->id.us++; }

@@ -20,7 +20,7 @@ bl_info = {
     "name": "LRO Lola & MGS Mola img Importer",
     "author": "Valter Battioli (ValterVB)",
     "version": (1, 1, 8),
-    "blender": (2, 5, 8),
+    "blender": (2, 58, 0),
     "location": "3D window > Tool Shelf",
     "description": "Import DTM from LRO Lola and MGS Mola",
     "warning": "May consume a lot of memory",

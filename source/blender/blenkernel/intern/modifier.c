@@ -95,7 +95,7 @@ ModifierData *modifier_new(int type)
 	ModifierData *md = MEM_callocN(mti->structSize, mti->structName);
 	
 	/* note, this name must be made unique later */
-	BLI_strncpy(md->name, mti->name, sizeof(md->name));
+	BLI_strncpy(md->name, DATA_(mti->name), sizeof(md->name));
 
 	md->type = type;
 	md->mode = eModifierMode_Realtime | eModifierMode_Render | eModifierMode_Expanded;
@@ -122,8 +122,8 @@ void modifier_unique_name(ListBase *modifiers, ModifierData *md)
 {
 	if (modifiers && md) {
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
-		
-		BLI_uniquename(modifiers, md, mti->name, '.', offsetof(ModifierData, name), sizeof(md->name));
+
+		BLI_uniquename(modifiers, md, DATA_(mti->name), '.', offsetof(ModifierData, name), sizeof(md->name));
 	}
 }
 
@@ -424,7 +424,9 @@ ModifierData *modifiers_getLastPreview(struct Scene *scene, ModifierData *md, in
 	return tmp_md;
 }
 
-/* NOTE: these aren't used anymore */
+/* NOTE: This is to support old files from before Blender supported modifiers,
+ * in some cases versioning code updates these so for new files this will
+ * return an empty list. */
 ModifierData *modifiers_getVirtualModifierList(Object *ob)
 {
 	/* Kinda hacky, but should be fine since we are never
@@ -619,16 +621,6 @@ int modifiers_isPreview(Object *ob)
 	}
 
 	return FALSE;
-}
-
-int modifiers_indexInObject(Object *ob, ModifierData *md_seek)
-{
-	int i = 0;
-	ModifierData *md;
-	
-	for (md = ob->modifiers.first; (md && md_seek != md); md = md->next, i++) ;
-	if (!md) return -1;  /* modifier isn't in the object */
-	return i;
 }
 
 void modifier_freeTemporaryData(ModifierData *md)

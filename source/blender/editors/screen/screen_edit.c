@@ -194,7 +194,9 @@ void removenotused_scrverts(bScreen *sc)
 			BLI_remlink(&sc->vertbase, sv);
 			MEM_freeN(sv);
 		}
-		else sv->flag = 0;
+		else {
+			sv->flag = 0;
+		}
 		sv = svn;
 	}
 }
@@ -250,7 +252,9 @@ void removenotused_scredges(bScreen *sc)
 			BLI_remlink(&sc->edgebase, se);
 			MEM_freeN(se);
 		}
-		else se->flag = 0;
+		else {
+			se->flag = 0;
+		}
 		se = sen;
 	}
 }
@@ -263,6 +267,9 @@ int scredge_is_horizontal(ScrEdge *se)
 ScrEdge *screen_find_active_scredge(bScreen *sc, int mx, int my)
 {
 	ScrEdge *se;
+	int safety = U.widget_unit / 10;
+	
+	if (safety < 2) safety = 2;
 	
 	for (se = sc->edgebase.first; se; se = se->next) {
 		if (scredge_is_horizontal(se)) {
@@ -270,7 +277,7 @@ ScrEdge *screen_find_active_scredge(bScreen *sc, int mx, int my)
 			min = MIN2(se->v1->vec.x, se->v2->vec.x);
 			max = MAX2(se->v1->vec.x, se->v2->vec.x);
 			
-			if (abs(my - se->v1->vec.y) <= 2 && mx >= min && mx <= max)
+			if (abs(my - se->v1->vec.y) <= safety && mx >= min && mx <= max)
 				return se;
 		}
 		else {
@@ -278,7 +285,7 @@ ScrEdge *screen_find_active_scredge(bScreen *sc, int mx, int my)
 			min = MIN2(se->v1->vec.y, se->v2->vec.y);
 			max = MAX2(se->v1->vec.y, se->v2->vec.y);
 			
-			if (abs(mx - se->v1->vec.x) <= 2 && my >= min && my <= max)
+			if (abs(mx - se->v1->vec.x) <= safety && my >= min && my <= max)
 				return se;
 		}
 	}
@@ -428,9 +435,9 @@ bScreen *ED_screen_add(wmWindow *win, Scene *scene, const char *name)
 	sc->winid = win->winid;
 
 	sv1 = screen_addvert(sc, 0, 0);
-	sv2 = screen_addvert(sc, 0, win->sizey - 1);
-	sv3 = screen_addvert(sc, win->sizex - 1, win->sizey - 1);
-	sv4 = screen_addvert(sc, win->sizex - 1, 0);
+	sv2 = screen_addvert(sc, 0, WM_window_pixels_y(win) - 1);
+	sv3 = screen_addvert(sc, WM_window_pixels_x(win) - 1, WM_window_pixels_y(win) - 1);
+	sv4 = screen_addvert(sc, WM_window_pixels_x(win) - 1, 0);
 	
 	screen_addedge(sc, sv1, sv2);
 	screen_addedge(sc, sv2, sv3);
@@ -628,7 +635,7 @@ static void screen_test_scale(bScreen *sc, int winsizex, int winsizey)
 	float facx, facy, tempf, min[2], max[2];
 	
 	/* calculate size */
-	min[0] = min[1] = 10000.0f;
+	min[0] = min[1] = 20000.0f;
 	max[0] = max[1] = 0.0f;
 	
 	for (sv = sc->vertbase.first; sv; sv = sv->next) {
@@ -676,7 +683,7 @@ static void screen_test_scale(bScreen *sc, int winsizex, int winsizey)
 	
 	/* make each window at least ED_area_headersize() high */
 	for (sa = sc->areabase.first; sa; sa = sa->next) {
-		int headery = ED_area_headersize() + 1;
+		int headery = ED_area_headersize() + U.pixelsize;
 		
 		if (sa->v1->vec.y + headery > sa->v2->vec.y) {
 			/* lower edge */
@@ -907,18 +914,18 @@ static void drawscredge_area(ScrArea *sa, int sizex, int sizey, int center)
 	short y1 = sa->v1->vec.y;
 	short x2 = sa->v3->vec.x;
 	short y2 = sa->v3->vec.y;
-	short a, rt;
-	
-	rt = 0; // CLAMPIS(G.debug_value, 0, 16);
 	
 	if (center == 0) {
-		cpack(0x505050);
-		for (a = -rt; a <= rt; a++)
-			if (a != 0)
-				drawscredge_area_draw(sizex, sizey, x1, y1, x2, y2, a);
+		if (U.pixelsize > 1.0f) {
+		
+			glColor3ub(0x50, 0x50, 0x50);
+			glLineWidth(1.5f * U.pixelsize);
+			drawscredge_area_draw(sizex, sizey, x1, y1, x2, y2, 0);
+			glLineWidth(1.0f);
+		}
 	}
 	else {
-		cpack(0x0);
+		glColor3ub(0, 0, 0);
 		drawscredge_area_draw(sizex, sizey, x1, y1, x2, y2, 0);
 	}
 }
@@ -1002,10 +1009,10 @@ void ED_screen_draw(wmWindow *win)
 		if (sa->flag & AREA_FLAG_DRAWJOINFROM) sa1 = sa;
 		if (sa->flag & AREA_FLAG_DRAWJOINTO) sa2 = sa;
 		if (sa->flag & (AREA_FLAG_DRAWSPLIT_H | AREA_FLAG_DRAWSPLIT_V)) sa3 = sa;
-		drawscredge_area(sa, win->sizex, win->sizey, 0);
+		drawscredge_area(sa, WM_window_pixels_x(win), WM_window_pixels_y(win), 0);
 	}
 	for (sa = win->screen->areabase.first; sa; sa = sa->next)
-		drawscredge_area(sa, win->sizex, win->sizey, 1);
+		drawscredge_area(sa, WM_window_pixels_x(win), WM_window_pixels_y(win), 1);
 	
 	/* blended join arrow */
 	if (sa1 && sa2) {
@@ -1078,19 +1085,19 @@ void ED_screen_refresh(wmWindowManager *wm, wmWindow *win)
 		rcti winrct;
 	
 		winrct.xmin = 0;
-		winrct.xmax = win->sizex - 1;
+		winrct.xmax = WM_window_pixels_x(win) - 1;
 		winrct.ymin = 0;
-		winrct.ymax = win->sizey - 1;
+		winrct.ymax = WM_window_pixels_y(win) - 1;
 		
-		screen_test_scale(win->screen, win->sizex, win->sizey);
+		/* header size depends on DPI, let's verify */
+		screen_refresh_headersizes();
+		
+		screen_test_scale(win->screen, WM_window_pixels_x(win), WM_window_pixels_y(win));
 		
 		if (win->screen->mainwin == 0)
 			win->screen->mainwin = wm_subwindow_open(win, &winrct);
 		else
 			wm_subwindow_position(win, win->screen->mainwin, &winrct);
-		
-		/* header size depends on DPI, let's verify */
-		screen_refresh_headersizes();
 		
 		for (sa = win->screen->areabase.first; sa; sa = sa->next) {
 			/* set spacetype and region callbacks, calls init() */
@@ -1130,7 +1137,11 @@ void ED_screens_initialize(wmWindowManager *wm)
 
 void ED_region_exit(bContext *C, ARegion *ar)
 {
+	wmWindowManager *wm = CTX_wm_manager(C);
 	ARegion *prevar = CTX_wm_region(C);
+
+	if (ar->type && ar->type->exit)
+		ar->type->exit(wm, ar);
 
 	CTX_wm_region_set(C, ar);
 	WM_event_remove_handlers(C, &ar->handlers);
@@ -1142,23 +1153,20 @@ void ED_region_exit(bContext *C, ARegion *ar)
 		MEM_freeN(ar->headerstr);
 	ar->headerstr = NULL;
 	
+	if (ar->regiontimer)
+		WM_event_remove_timer(CTX_wm_manager(C), CTX_wm_window(C), ar->regiontimer);
+
 	CTX_wm_region_set(C, prevar);
 }
 
 void ED_area_exit(bContext *C, ScrArea *sa)
 {
+	wmWindowManager *wm = CTX_wm_manager(C);
 	ScrArea *prevsa = CTX_wm_area(C);
 	ARegion *ar;
 
-	if (sa->spacetype == SPACE_FILE) {
-		SpaceLink *sl = sa->spacedata.first;
-		if (sl && sl->spacetype == SPACE_FILE) {
-			ED_fileselect_exit(C, (SpaceFile *)sl);
-		}
-	}
-	else if (sa->spacetype == SPACE_VIEW3D) {
-		ED_render_engine_area_exit(sa);
-	}
+	if (sa->type && sa->type->exit)
+		sa->type->exit(wm, sa);
 
 	CTX_wm_area_set(C, sa);
 	for (ar = sa->regionbase.first; ar; ar = ar->next)
@@ -1262,9 +1270,12 @@ void ED_screen_set_subwinactive(bContext *C, wmEvent *event)
 						break;
 		}
 		if (sa) {
+			/* make overlap active when mouse over */
 			for (ar = sa->regionbase.first; ar; ar = ar->next) {
-				if (BLI_rcti_isect_pt_v(&ar->winrct, &event->x))
+				if (BLI_rcti_isect_pt_v(&ar->winrct, &event->x)) {
 					scr->subwinactive = ar->swinid;
+					break;
+				}
 			}
 		}
 		else
@@ -1293,6 +1304,7 @@ void ED_screen_set_subwinactive(bContext *C, wmEvent *event)
 			screen_cursor_set(win, event);
 		}
 		else {
+			/* notifier invokes freeing the buttons... causing a bit too much redraws */
 			if (oldswin != scr->subwinactive) {
 				region_cursor_set(win, scr->subwinactive, TRUE);
 				WM_event_add_notifier(C, NC_SCREEN | ND_SUBWINACTIVE, scr);
@@ -1327,13 +1339,14 @@ int ED_screen_area_active(const bContext *C)
 /* Do NOT call in area/region queues! */
 void ED_screen_set(bContext *C, bScreen *sc)
 {
+	Main *bmain = CTX_data_main(C);
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmWindow *win = CTX_wm_window(C);
 	bScreen *oldscreen = CTX_wm_screen(C);
 	ID *id;
 	
 	/* validate screen, it's called with notifier reference */
-	for (id = CTX_data_main(C)->screen.first; id; id = id->next)
+	for (id = bmain->screen.first; id; id = id->next)
 		if (sc == (bScreen *)id)
 			break;
 	if (id == NULL)
@@ -1345,7 +1358,7 @@ void ED_screen_set(bContext *C, bScreen *sc)
 	
 	if (sc->full) {             /* find associated full */
 		bScreen *sc1;
-		for (sc1 = CTX_data_main(C)->screen.first; sc1; sc1 = sc1->id.next) {
+		for (sc1 = bmain->screen.first; sc1; sc1 = sc1->id.next) {
 			ScrArea *sa = sc1->areabase.first;
 			if (sa->full == sc) {
 				sc = sc1;
@@ -1445,7 +1458,7 @@ void ED_screen_set_scene(bContext *C, bScreen *screen, Scene *scene)
 		return;
 	
 	if (ed_screen_used(CTX_wm_manager(C), screen))
-		ED_object_exit_editmode(C, EM_FREEDATA | EM_DO_UNDO);
+		ED_object_editmode_exit(C, EM_FREEDATA | EM_DO_UNDO);
 
 	for (sc = CTX_data_main(C)->screen.first; sc; sc = sc->id.next) {
 		if ((U.flag & USER_SCENEGLOBAL) || sc == screen) {

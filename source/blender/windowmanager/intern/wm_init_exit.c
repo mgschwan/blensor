@@ -33,7 +33,7 @@
 #include <string.h>
 
 #ifdef WIN32
-#  include <Windows.h>
+#  include <windows.h>
 #endif
 
 #include "MEM_guardedalloc.h"
@@ -47,7 +47,9 @@
 #include "DNA_userdef_types.h"
 #include "DNA_windowmanager_types.h"
 
+#include "BLI_callbacks.h"
 #include "BLI_listbase.h"
+#include "BLI_path_util.h"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 
@@ -65,6 +67,7 @@
 #include "BKE_node.h"
 #include "BKE_report.h"
 
+#include "BKE_addon.h"
 #include "BKE_packedFile.h"
 #include "BKE_sequencer.h" /* free seq clipboard */
 #include "BKE_material.h" /* clear_matcopybuf */
@@ -123,20 +126,26 @@ static void wm_free_reports(bContext *C)
 	BKE_reports_clear(CTX_wm_reports(C));
 }
 
-int wm_start_with_console = 0; /* used in creator.c */
+bool wm_start_with_console = false; /* used in creator.c */
 
 /* only called once, for startup */
 void WM_init(bContext *C, int argc, const char **argv)
 {
+	
 	if (!G.background) {
 		wm_ghost_init(C);   /* note: it assigns C to ghost! */
 		wm_init_cursor_data();
 	}
 	GHOST_CreateSystemPaths();
+
+	BKE_addon_pref_type_init();
+
 	wm_operatortype_init();
 	WM_menutype_init();
+	WM_uilisttype_init();
 
 	set_free_windowmanager_cb(wm_close_and_free);   /* library.c */
+	set_free_notifier_reference_cb(WM_main_remove_notifier_reference);   /* library.c */
 	set_blender_test_break_cb(wm_window_testbreak); /* blender.c */
 	DAG_editors_update_cb(ED_render_id_flush_update, ED_render_scene_update); /* depsgraph.c */
 	
@@ -149,8 +158,8 @@ void WM_init(bContext *C, int argc, const char **argv)
 	BLF_lang_init();
 
 	/* get the default database, plus a wm */
-	WM_homefile_read(C, NULL, G.factory_startup);
-
+	wm_homefile_read(C, NULL, G.factory_startup);
+	
 	BLF_lang_set(NULL);
 
 	/* note: there is a bug where python needs initializing before loading the
@@ -158,7 +167,7 @@ void WM_init(bContext *C, int argc, const char **argv)
 	 * initializing space types and other internal data.
 	 *
 	 * However cant redo this at the moment. Solution is to load python
-	 * before WM_homefile_read() or make py-drivers check if python is running.
+	 * before wm_homefile_read() or make py-drivers check if python is running.
 	 * Will try fix when the crash can be repeated. - campbell. */
 
 #ifdef WITH_PYTHON
@@ -191,11 +200,11 @@ void WM_init(bContext *C, int argc, const char **argv)
 	clear_matcopybuf();
 	ED_render_clear_mtex_copybuf();
 
-	//	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+	// glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		
 	ED_preview_init_dbase();
 	
-	WM_read_history();
+	wm_read_history();
 
 	/* allow a path of "", this is what happens when making a new file */
 #if 0
@@ -211,6 +220,19 @@ void WM_init(bContext *C, int argc, const char **argv)
 		COM_linker_hack = COM_execute;
 	}
 #endif
+	
+	/* load last session, uses regular file reading so it has to be in end (after init py etc) */
+	if (U.uiflag2 & USER_KEEP_SESSION) {
+		wm_recover_last_session(C, NULL);
+	}
+	else {
+		/* normally 'wm_homefile_read' will do this,
+		 * however python is not initialized when called from this function.
+		 *
+		 * unlikey any handlers are set but its possible,
+		 * note that recovering the last session does its own callbacks. */
+		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_LOAD_POST);
+	}
 }
 
 void WM_init_splash(bContext *C)
@@ -227,7 +249,7 @@ void WM_init_splash(bContext *C)
 	}
 }
 
-int WM_init_game(bContext *C)
+bool WM_init_game(bContext *C)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmWindow *win;
@@ -297,7 +319,7 @@ int WM_init_game(bContext *C)
 
 		sound_exit();
 
-		return 1;
+		return true;
 	}
 	else {
 		ReportTimerInfo *rti;
@@ -312,8 +334,9 @@ int WM_init_game(bContext *C)
 
 		rti = MEM_callocN(sizeof(ReportTimerInfo), "ReportTimerInfo");
 		wm->reports.reporttimer->customdata = rti;
+
+		return false;
 	}
-	return 0;
 }
 
 /* free strings of open recent files */
@@ -372,6 +395,18 @@ void WM_exit_ext(bContext *C, const short do_python)
 	if (C && wm) {
 		wmWindow *win;
 
+		if (!G.background) {
+			if ((U.uiflag2 & USER_KEEP_SESSION) || BKE_undo_valid(NULL)) {
+				/* save the undo state as quit.blend */
+				char filename[FILE_MAX];
+				
+				BLI_make_file_string("/", filename, BLI_temporary_dir(), BLENDER_QUIT_FILE);
+
+				if (BKE_undo_save_file(filename))
+					printf("Saved session recovery to '%s'\n", filename);
+			}
+		}
+		
 		WM_jobs_kill_all(wm);
 
 		for (win = wm->windows.first; win; win = win->next) {
@@ -382,9 +417,12 @@ void WM_exit_ext(bContext *C, const short do_python)
 			ED_screen_exit(C, win, win->screen);
 		}
 	}
+
+	BKE_addon_pref_type_free();
 	wm_operatortype_free();
 	wm_dropbox_free();
 	WM_menutype_free();
+	WM_uilisttype_free();
 	
 	/* all non-screen and non-space stuff editors did, like editmode */
 	if (C)
@@ -423,6 +461,7 @@ void WM_exit_ext(bContext *C, const short do_python)
 
 #ifdef WITH_INTERNATIONAL
 	BLF_free_unifont();
+	BLF_free_unifont_mono();
 	BLF_lang_free();
 #endif
 	
@@ -454,9 +493,6 @@ void WM_exit_ext(bContext *C, const short do_python)
 	GPU_free_unused_buffers();
 	GPU_extensions_exit();
 
-	if (!G.background) {
-		BKE_undo_save_quit();  /* saves quit.blend if global undo is on */
-	}
 	BKE_reset_undo(); 
 	
 	ED_file_exit(); /* for fsmenu */

@@ -78,7 +78,7 @@ static void colorfn(float *out, TexParams *p, bNode *node, bNodeStack **in, shor
 		
 		texres.nor = nor;
 		textype = multitex_nodes(nodetex, co, dxt, dyt, p->osatex,
-			&texres, thread, 0, p->shi, p->mtex);
+			&texres, thread, 0, p->shi, p->mtex, NULL);
 		
 		if (textype & TEX_RGB) {
 			copy_v4_v4(out, &texres.tr);
@@ -90,19 +90,19 @@ static void colorfn(float *out, TexParams *p, bNode *node, bNodeStack **in, shor
 	}
 }
 
-static void exec(void *data, bNode *node, bNodeStack **in, bNodeStack **out)
+static void exec(void *data, int UNUSED(thread), bNode *node, bNodeExecData *execdata, bNodeStack **in, bNodeStack **out)
 {
-	tex_output(node, in, out[0], &colorfn, data);
+	tex_output(node, execdata, in, out[0], &colorfn, data);
 }
 
-void register_node_type_tex_texture(bNodeTreeType *ttype)
+void register_node_type_tex_texture(void)
 {
 	static bNodeType ntype;
 	
-	node_type_base(ttype, &ntype, TEX_NODE_TEXTURE, "Texture", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
+	tex_node_type_base(&ntype, TEX_NODE_TEXTURE, "Texture", NODE_CLASS_INPUT, NODE_PREVIEW|NODE_OPTIONS);
 	node_type_socket_templates(&ntype, inputs, outputs);
 	node_type_size(&ntype, 120, 80, 240);
-	node_type_exec(&ntype, exec);
+	node_type_exec(&ntype, NULL, NULL, exec);
 	
-	nodeRegisterType(ttype, &ntype);
+	nodeRegisterType(&ntype);
 }

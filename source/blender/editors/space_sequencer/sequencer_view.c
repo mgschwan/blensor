@@ -31,6 +31,7 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_math.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_scene_types.h"
@@ -66,6 +67,7 @@ typedef struct ImageSampleInfo {
 
 	unsigned char col[4];
 	float colf[4];
+	float linearcol[4];
 
 	unsigned char *colp;
 	float *colfp;
@@ -81,11 +83,12 @@ static void sample_draw(const bContext *C, ARegion *ar, void *arg_info)
 
 	if (info->draw) {
 		ED_image_draw_info(scene, ar, info->color_manage, FALSE, info->channels,
-		                   info->x, info->y, info->colp, info->colfp, NULL, NULL);
+		                   info->x, info->y, info->colp, info->colfp,
+		                   info->linearcol, NULL, NULL);
 	}
 }
 
-static void sample_apply(bContext *C, wmOperator *op, wmEvent *event)
+static void sample_apply(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
@@ -134,7 +137,10 @@ static void sample_apply(bContext *C, wmOperator *op, wmEvent *event)
 			info->colf[3] = (float)cp[3] / 255.0f;
 			info->colfp = info->colf;
 
-			info->color_manage = FALSE;
+			copy_v4_v4(info->linearcol, info->colf);
+			IMB_colormanagement_colorspace_to_scene_linear_v4(info->linearcol, false, ibuf->rect_colorspace);
+
+			info->color_manage = TRUE;
 		}
 		if (ibuf->rect_float) {
 			fp = (ibuf->rect_float + (ibuf->channels) * (y * ibuf->x + x));
@@ -168,7 +174,7 @@ static void sample_exit(bContext *C, wmOperator *op)
 	MEM_freeN(info);
 }
 
-static int sample_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int sample_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	ARegion *ar = CTX_wm_region(C);
 	SpaceSeq *sseq = CTX_wm_space_seq(C);
@@ -189,7 +195,7 @@ static int sample_invoke(bContext *C, wmOperator *op, wmEvent *event)
 	return OPERATOR_RUNNING_MODAL;
 }
 
-static int sample_modal(bContext *C, wmOperator *op, wmEvent *event)
+static int sample_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	switch (event->type) {
 		case LEFTMOUSE:

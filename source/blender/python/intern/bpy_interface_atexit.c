@@ -31,12 +31,12 @@
 
 #include <Python.h>
 
+#include "BLI_utildefines.h"
+
 #include "bpy_util.h"
 #include "bpy.h"  /* own include */
 
 #include "WM_api.h"
-
-#include "BLI_utildefines.h"
 
 static PyObject *bpy_atexit(PyObject *UNUSED(self), PyObject *UNUSED(args), PyObject *UNUSED(kw))
 {
@@ -57,7 +57,7 @@ static void atexit_func_call(const char *func_name, PyObject *atexit_func_arg)
 	 * this is intended, but if its problematic it could be changed
 	 * - campbell */
 
-	PyObject *atexit_mod = PyImport_ImportModuleLevel((char *)"atexit", NULL, NULL, NULL, 0);
+	PyObject *atexit_mod = PyImport_ImportModuleLevel("atexit", NULL, NULL, NULL, 0);
 	PyObject *atexit_func = PyObject_GetAttrString(atexit_mod, func_name);
 	PyObject *args = PyTuple_New(1);
 	PyObject *ret;

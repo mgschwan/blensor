@@ -87,6 +87,8 @@ block_size = 4096
 
 # This code has been adapted from Lib/os.py in the Python source tree
 # (sha1 265e36e277f3)
+
+
 def _fscodec():
     encoding = sys.getfilesystemencoding()
     errors = "strict"
@@ -101,8 +103,8 @@ def _fscodec():
     def fsencode(filename):
         """
         Encode filename to the filesystem encoding with 'surrogateescape' error
-        handler, return bytes unchanged. On Windows, use 'strict' error handler if
-        the file system encoding is 'mbcs' (which is the default encoding).
+        handler, return bytes unchanged. On Windows, use 'strict' error handler
+        if the file system encoding is 'mbcs' (which is the default encoding).
         """
         if isinstance(filename, bytes):
             return filename
@@ -113,6 +115,7 @@ def _fscodec():
 
 fsencode = _fscodec()
 del _fscodec
+
 
 class ExifTool(object):
     """Run the `exiftool` command-line tool and communicate to it.

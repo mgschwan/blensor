@@ -20,7 +20,7 @@ bl_info = {
     "name": "Face info / select by type",
     "author": "CoDEmanX",
     "version": (0, 0, 3),
-    "blender": (2, 6, 2),
+    "blender": (2, 62, 0),
     "location": "Properties > Object data > Face info / select",
     "description": "Displays triangle, quad and ngon count of the active object. Allows to select faces by these types.",
     "warning": "",

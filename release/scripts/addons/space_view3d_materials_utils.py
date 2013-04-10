@@ -26,7 +26,7 @@ bl_info = {
     "name": "Material Utils",
     "author": "michaelw",
     "version": (1, 4),
-    "blender": (2, 6, 2),
+    "blender": (2, 62, 0),
     "location": "View3D > Q key",
     "description": "Menu of material tools (assign, select..)  in the 3D View",
     "warning": "Buggy, Broken in Cycles mode",
@@ -34,7 +34,7 @@ bl_info = {
                 "Scripts/3D interaction/Materials Utils",
     "tracker_url": "https://projects.blender.org/tracker/index.php?"
                    "func=detail&aid=22140",
-    "category": "3D View"}
+    "category": "Material"}
 
 """
 This script has several functions and operators... grouped for convenience

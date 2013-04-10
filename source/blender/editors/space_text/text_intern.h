@@ -54,12 +54,11 @@ void text_scroll_to_cursor(struct SpaceText *st, struct ScrArea *sa);
 void text_update_cursor_moved(struct bContext *C);
 
 	/* TXT_OFFSET used to be 35 when the scrollbar was on the left... */
-#define TXT_OFFSET 15
-#define TXT_SCROLL_WIDTH 20
-#define TXT_SCROLL_SPACE 2
-#define TXT_LINE_SPACING 4 /* space between lines */
-
-#define TEXTXLOC		(st->cwidth * st->linenrs_tot)
+#define TXT_OFFSET			((int)(0.75f * U.widget_unit))
+#define TXT_SCROLL_WIDTH	U.widget_unit
+#define TXT_SCROLL_SPACE	((int)(0.1f * U.widget_unit))
+#define TXT_LINE_SPACING	((int)(0.2f * U.widget_unit)) /* space between lines */
+#define TEXTXLOC			(st->cwidth * st->linenrs_tot)
 
 #define SUGG_LIST_SIZE	7
 #define SUGG_LIST_WIDTH	20
@@ -68,18 +67,6 @@ void text_update_cursor_moved(struct bContext *C);
 
 #define TOOL_SUGG_LIST	0x01
 #define TOOL_DOCUMENT	0x02
-
-typedef struct FlattenString {
-	char fixedbuf[256];
-	int fixedaccum[256];
-
-	char *buf;
-	int *accum;
-	int pos, len;
-} FlattenString;
-
-int flatten_string(struct SpaceText *st, FlattenString *fs, const char *in);
-void flatten_string_free(FlattenString *fs);
 
 int wrap_width(struct SpaceText *st, struct ARegion *ar);
 void wrap_offset(struct SpaceText *st, struct ARegion *ar, struct TextLine *linein, int cursin, int *offl, int *offc);
@@ -147,14 +134,23 @@ void TEXT_OT_line_number(struct wmOperatorType *ot);
 
 void TEXT_OT_properties(struct wmOperatorType *ot);
 
+/* find = find indicated text */
 void TEXT_OT_find(struct wmOperatorType *ot);
 void TEXT_OT_find_set_selected(struct wmOperatorType *ot);
 void TEXT_OT_replace(struct wmOperatorType *ot);
 void TEXT_OT_replace_set_selected(struct wmOperatorType *ot);
 
+/* text_find = open properties, activate search button */
+void TEXT_OT_start_find(struct wmOperatorType *ot);
+
 void TEXT_OT_to_3d_object(struct wmOperatorType *ot);
 
 void TEXT_OT_resolve_conflict(struct wmOperatorType *ot);
+
+int text_space_edit_poll(struct bContext *C);
+
+/* text_autocomplete.c */
+void TEXT_OT_autocomplete(struct wmOperatorType *ot);
 
 /* space_text.c */
 extern const char *text_context_dir[]; /* doc access */

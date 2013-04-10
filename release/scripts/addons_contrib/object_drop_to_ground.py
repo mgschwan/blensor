@@ -19,7 +19,7 @@ bl_info = {
     'name': 'Drop to Ground',
     'author': 'Unnikrishnan(kodemax), Florian Meyer(testscreenings)',
     'version': (1,2),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     'location': '3D View -> Tool Shelf -> Object Tools Panel (at the bottom)',
     'description': 'Drop selected objects on active object',
     'warning': '',
@@ -51,7 +51,7 @@ def transform_ground_to_world(sc, ground):
 
 def get_lowest_world_co_from_mesh(ob, mat_parent=None):
     bme = bmesh.new()
-    bme.from_object(ob)
+    bme.from_mesh(ob.data)
     mat_to_world = ob.matrix_world.copy()
     if mat_parent:
         mat_to_world = mat_parent * mat_to_world

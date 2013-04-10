@@ -154,7 +154,7 @@ void KX_BlenderRenderTools::SetClientObject(RAS_IRasterizer *rasty, void* obj)
 	}
 }
 
-bool KX_BlenderRenderTools::RayHit(KX_ClientObjectInfo* client, KX_RayCast* result, void * const data)
+bool KX_BlenderRenderTools::RayHit(KX_ClientObjectInfo *client, KX_RayCast *result, void * const data)
 {
 	double* const oglmatrix = (double* const) data;
 	MT_Point3 resultpoint(result->m_hitPoint);
@@ -280,6 +280,16 @@ void KX_BlenderRenderTools::applyTransform(RAS_IRasterizer* rasty,double* oglmat
 		}
 	}
 }
+
+void KX_BlenderRenderTools::RenderBox2D(int xco,
+			int yco,
+			int width,
+			int height,
+			float percentage)
+{
+	BL_draw_gamedebug_box(xco, yco, width, height, percentage);
+}
+
 void KX_BlenderRenderTools::RenderText3D(int fontid,
 										 const char* text,
 										 int size,

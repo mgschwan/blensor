@@ -21,7 +21,7 @@ bl_info = {
     "description": "Creates various types of beams.",
     "author": "revolt_randy",
     "version": (0, 1, 3),
-    "blender": (2, 6, 0),
+    "blender": (2, 60, 0),
     "location": "View3D > Add > Mesh",
     "warning": "Currently under development.", 
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Add_Mesh/BeamBuilder",

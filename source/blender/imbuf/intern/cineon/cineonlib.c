@@ -50,7 +50,8 @@
 
 static int verbose = 0;
 
-void cineonSetVerbose(int verbosity) {
+void cineonSetVerbose(int verbosity)
+{
 	verbose = verbosity;
 }
 
@@ -74,7 +75,7 @@ static void fillCineonMainHeader(LogImageFile *cineon, CineonMainHeader *header,
 	strcpy(header->fileHeader.version, "v4.5");
 	strncpy(header->fileHeader.file_name, filename, 99);
 	header->fileHeader.file_name[99] = 0;
-	fileClock = time(0);
+	fileClock = time(NULL);
 	fileTime = localtime(&fileClock);
 	strftime(header->fileHeader.creation_date, 12, "%Y:%m:%d", fileTime);
 	strftime(header->fileHeader.creation_time, 12, "%H:%M:%S%Z", fileTime);
@@ -141,28 +142,28 @@ LogImageFile *cineonOpen(const unsigned char *byteStuff, int fromMemory, size_t 
 	int i;
 	unsigned int dataOffset;
 
-	if (cineon == 0) {
+	if (cineon == NULL) {
 		if (verbose) printf("Cineon: Failed to malloc cineon file structure.\n");
-		return 0;
+		return NULL;
 	}
 
 	/* zero the header */
 	memset(&header, 0, sizeof(CineonMainHeader));
 
 	/* for close routine */
-	cineon->file = 0;
+	cineon->file = NULL;
 
 	if (fromMemory == 0) {
 		/* byteStuff is then the filename */
 		cineon->file = BLI_fopen(filename, "rb");
-		if (cineon->file == 0) {
+		if (cineon->file == NULL) {
 			if (verbose) printf("Cineon: Failed to open file \"%s\".\n", filename);
 			logImageClose(cineon);
-			return 0;
+			return NULL;
 		}
 		/* not used in this case */
-		cineon->memBuffer = 0;
-		cineon->memCursor = 0;
+		cineon->memBuffer = NULL;
+		cineon->memCursor = NULL;
 		cineon->memBufferSize = 0;
 	}
 	else {
@@ -174,7 +175,7 @@ LogImageFile *cineonOpen(const unsigned char *byteStuff, int fromMemory, size_t 
 	if (logimage_fread(&header, sizeof(header), 1, cineon) == 0) {
 		if (verbose) printf("Cineon: Not enough data for header in \"%s\".\n", byteStuff);
 		logImageClose(cineon);
-		return 0;
+		return NULL;
 	}
 
 	/* endianness determination */
@@ -190,11 +191,18 @@ LogImageFile *cineonOpen(const unsigned char *byteStuff, int fromMemory, size_t 
 		if (verbose) printf("Cineon: Bad magic number %lu in \"%s\".\n",
 			                (unsigned long)header.fileHeader.magic_num, byteStuff);
 		logImageClose(cineon);
-		return 0;
+		return NULL;
 	}
 
 	cineon->width = swap_uint(header.imageHeader.element[0].pixels_per_line, cineon->isMSB);
 	cineon->height = swap_uint(header.imageHeader.element[0].lines_per_image, cineon->isMSB);
+
+	if (cineon->width == 0 || cineon->height == 0) {
+		if (verbose) printf("Cineon: Wrong image dimension: %dx%d\n", cineon->width, cineon->height);
+		logImageClose(cineon);
+		return NULL;
+	}
+
 	cineon->depth = header.imageHeader.elements_per_image;
 	cineon->srcFormat = format_Cineon;
 
@@ -204,7 +212,8 @@ LogImageFile *cineonOpen(const unsigned char *byteStuff, int fromMemory, size_t 
 		cineon->numElements = header.imageHeader.elements_per_image;
 	else {
 		if (verbose) printf("Cineon: Data interleave not supported: %d\n", header.imageHeader.interleave);
-		return 0;
+		logImageClose(cineon);
+		return NULL;
 	}
 
 	if (cineon->depth == 1) {
@@ -234,7 +243,8 @@ LogImageFile *cineonOpen(const unsigned char *byteStuff, int fromMemory, size_t 
 	}
 	else {
 		if (verbose) printf("Cineon: Cineon image depth unsupported: %d\n", cineon->depth);
-		return 0;
+		logImageClose(cineon);
+		return NULL;
 	}
 
 	dataOffset = swap_uint(header.fileHeader.offset, cineon->isMSB);
@@ -263,7 +273,8 @@ LogImageFile *cineonOpen(const unsigned char *byteStuff, int fromMemory, size_t 
 			default:
 				/* Not supported */
 				if (verbose) printf("Cineon: packing unsupported: %d\n", header.imageHeader.packing);
-				return 0;
+				logImageClose(cineon);
+				return NULL;
 		}
 
 		if (cineon->element[i].refLowData == CINEON_UNDEFINED_U32 || isnan(cineon->element[i].refLowData))
@@ -318,20 +329,20 @@ LogImageFile *cineonOpen(const unsigned char *byteStuff, int fromMemory, size_t 
 LogImageFile *cineonCreate(const char *filename, int width, int height, int bitsPerSample, const char *creator)
 {
 	CineonMainHeader header;
-	const char *shortFilename = 0;
+	const char *shortFilename = NULL;
 	/* unsigned char pad[6044]; */
 
 	LogImageFile *cineon = (LogImageFile *)MEM_mallocN(sizeof(LogImageFile), __func__);
-	if (cineon == 0) {
+	if (cineon == NULL) {
 		if (verbose) printf("cineon: Failed to malloc cineon file structure.\n");
-		return 0;
+		return NULL;
 	}
 
 	/* Only 10 bits Cineon are supported */
 	if (bitsPerSample != 10) {
 		if (verbose) printf("cineon: Only 10 bits Cineon are supported.\n");
 		logImageClose(cineon);
-		return 0;
+		return NULL;
 	}
 
 	cineon->width = width;
@@ -355,16 +366,16 @@ LogImageFile *cineonCreate(const char *filename, int width, int height, int bits
 	cineon->gamma = 1.7f;
 
 	shortFilename = strrchr(filename, '/');
-	if (shortFilename == 0)
+	if (shortFilename == NULL)
 		shortFilename = filename;
 	else
 		shortFilename++;
 
 	cineon->file = BLI_fopen(filename, "wb");
-	if (cineon->file == 0) {
+	if (cineon->file == NULL) {
 		if (verbose) printf("cineon: Couldn't open file %s\n", filename);
 		logImageClose(cineon);
-		return 0;
+		return NULL;
 	}
 
 	fillCineonMainHeader(cineon, &header, shortFilename, creator);
@@ -372,7 +383,7 @@ LogImageFile *cineonCreate(const char *filename, int width, int height, int bits
 	if (fwrite(&header, sizeof(header), 1, cineon->file) == 0) {
 		if (verbose) printf("cineon: Couldn't write image header\n");
 		logImageClose(cineon);
-		return 0;
+		return NULL;
 	}
 
 	return cineon;

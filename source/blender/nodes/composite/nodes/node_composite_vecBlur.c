@@ -45,49 +45,7 @@ static bNodeSocketTemplate cmp_node_vecblur_out[] = {
 	{   -1, 0, ""   }
 };
 
-#ifdef WITH_COMPOSITOR_LEGACY
-
-static void node_composit_exec_vecblur(void *UNUSED(data), bNode *node, bNodeStack **in, bNodeStack **out)
-{
-	NodeBlurData *nbd = node->storage;
-	CompBuf *new, *img = in[0]->data, *vecbuf = in[2]->data, *zbuf = in[1]->data;
-	
-	if (img == NULL || vecbuf == NULL || zbuf == NULL || out[0]->hasoutput == 0)
-		return;
-	if (vecbuf->x != img->x || vecbuf->y != img->y) {
-		printf("ERROR: cannot do different sized vecbuf yet\n");
-		return;
-	}
-	if (vecbuf->type != CB_VEC4) {
-		printf("ERROR: input should be vecbuf\n");
-		return;
-	}
-	if (zbuf->type != CB_VAL) {
-		printf("ERROR: input should be zbuf\n");
-		return;
-	}
-	if (zbuf->x != img->x || zbuf->y != img->y) {
-		printf("ERROR: cannot do different sized zbuf yet\n");
-		return;
-	}
-	
-	/* allow the input image to be of another type */
-	img = typecheck_compbuf(in[0]->data, CB_RGBA);
-
-	new = dupalloc_compbuf(img);
-	
-	/* call special zbuffer version */
-	RE_zbuf_accumulate_vecblur(nbd, img->x, img->y, new->rect, img->rect, vecbuf->rect, zbuf->rect);
-	
-	out[0]->data = new;
-	
-	if (img != in[0]->data)
-		free_compbuf(img);
-}
-
-#endif  /* WITH_COMPOSITOR_LEGACY */
-
-static void node_composit_init_vecblur(bNodeTree *UNUSED(ntree), bNode *node, bNodeTemplate *UNUSED(ntemp))
+static void node_composit_init_vecblur(bNodeTree *UNUSED(ntree), bNode *node)
 {
 	NodeBlurData *nbd = MEM_callocN(sizeof(NodeBlurData), "node blur data");
 	node->storage = nbd;
@@ -96,18 +54,14 @@ static void node_composit_init_vecblur(bNodeTree *UNUSED(ntree), bNode *node, bN
 }
 
 /* custom1: itterations, custom2: maxspeed (0 = nolimit) */
-void register_node_type_cmp_vecblur(bNodeTreeType *ttype)
+void register_node_type_cmp_vecblur(void)
 {
 	static bNodeType ntype;
 
-	node_type_base(ttype, &ntype, CMP_NODE_VECBLUR, "Vector Blur", NODE_CLASS_OP_FILTER, NODE_OPTIONS);
+	cmp_node_type_base(&ntype, CMP_NODE_VECBLUR, "Vector Blur", NODE_CLASS_OP_FILTER, NODE_OPTIONS);
 	node_type_socket_templates(&ntype, cmp_node_vecblur_in, cmp_node_vecblur_out);
-	node_type_size(&ntype, 120, 80, 200);
 	node_type_init(&ntype, node_composit_init_vecblur);
 	node_type_storage(&ntype, "NodeBlurData", node_free_standard_storage, node_copy_standard_storage);
-#ifdef WITH_COMPOSITOR_LEGACY
-	node_type_exec(&ntype, node_composit_exec_vecblur);
-#endif
 
-	nodeRegisterType(ttype, &ntype);
+	nodeRegisterType(&ntype);
 }

@@ -58,7 +58,7 @@
 
 
 /* context checked on having screen, window and area */
-wmGesture *WM_gesture_new(bContext *C, wmEvent *event, int type)
+wmGesture *WM_gesture_new(bContext *C, const wmEvent *event, int type)
 {
 	wmGesture *gesture = MEM_callocN(sizeof(wmGesture), "new gesture");
 	wmWindow *window = CTX_wm_window(C);
@@ -113,6 +113,9 @@ void WM_gesture_end(bContext *C, wmGesture *gesture)
 		win->tweak = NULL;
 	BLI_remlink(&win->gesture, gesture);
 	MEM_freeN(gesture->customdata);
+	if (gesture->userdata) {
+		MEM_freeN(gesture->userdata);
+	}
 	MEM_freeN(gesture);
 }
 
@@ -255,7 +258,7 @@ static void draw_filled_lasso(wmGesture *gt)
 	if (sf_vert_first) {
 		const float zvec[3] = {0.0f, 0.0f, 1.0f};
 		BLI_scanfill_edge_add(&sf_ctx, sf_vert_first, sf_vert);
-		BLI_scanfill_calc_ex(&sf_ctx, BLI_SCANFILL_CALC_REMOVE_DOUBLES, zvec);
+		BLI_scanfill_calc_ex(&sf_ctx, BLI_SCANFILL_CALC_REMOVE_DOUBLES | BLI_SCANFILL_CALC_HOLES, zvec);
 	
 		glEnable(GL_BLEND);
 		glColor4f(1.0, 1.0, 1.0, 0.05);
@@ -306,17 +309,19 @@ static void wm_gesture_draw_lasso(wmGesture *gt)
 static void wm_gesture_draw_cross(wmWindow *win, wmGesture *gt)
 {
 	rcti *rect = (rcti *)gt->customdata;
-	
+	int winsizex = WM_window_pixels_x(win);
+	int winsizey = WM_window_pixels_y(win);
+
 	glEnable(GL_LINE_STIPPLE);
 	glColor3ub(96, 96, 96);
 	glLineStipple(1, 0xCCCC);
-	sdrawline(rect->xmin - win->sizex, rect->ymin, rect->xmin + win->sizex, rect->ymin);
-	sdrawline(rect->xmin, rect->ymin - win->sizey, rect->xmin, rect->ymin + win->sizey);
+	sdrawline(rect->xmin - winsizex, rect->ymin, rect->xmin + winsizex, rect->ymin);
+	sdrawline(rect->xmin, rect->ymin - winsizey, rect->xmin, rect->ymin + winsizey);
 	
 	glColor3ub(255, 255, 255);
 	glLineStipple(1, 0x3333);
-	sdrawline(rect->xmin - win->sizex, rect->ymin, rect->xmin + win->sizex, rect->ymin);
-	sdrawline(rect->xmin, rect->ymin - win->sizey, rect->xmin, rect->ymin + win->sizey);
+	sdrawline(rect->xmin - winsizex, rect->ymin, rect->xmin + winsizex, rect->ymin);
+	sdrawline(rect->xmin, rect->ymin - winsizey, rect->xmin, rect->ymin + winsizey);
 	glDisable(GL_LINE_STIPPLE);
 }
 

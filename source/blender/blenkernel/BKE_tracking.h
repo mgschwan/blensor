@@ -46,6 +46,7 @@ struct MovieDistortion;
 struct Camera;
 struct Object;
 struct Scene;
+struct rcti;
 
 /* **** Common functions **** */
 
@@ -143,6 +144,7 @@ void BKE_tracking_camera_get_reconstructed_interpolate(struct MovieTracking *tra
 struct MovieDistortion *BKE_tracking_distortion_new(void);
 void BKE_tracking_distortion_update(struct MovieDistortion *distortion, struct MovieTracking *tracking,
                                     int calibration_width, int calibration_height);
+void BKE_tracking_distortion_set_threads(struct MovieDistortion *distortion, int threads);
 struct MovieDistortion *BKE_tracking_distortion_copy(struct MovieDistortion *distortion);
 struct ImBuf *BKE_tracking_distortion_exec(struct MovieDistortion *distortion, struct MovieTracking *tracking,
                                            struct ImBuf *ibuf, int width, int height, float overscan, int undistort);
@@ -156,10 +158,12 @@ struct ImBuf *BKE_tracking_undistort_frame(struct MovieTracking *tracking, struc
 struct ImBuf *BKE_tracking_distort_frame(struct MovieTracking *tracking, struct ImBuf *ibuf,
                                          int calibration_width, int calibration_height, float overscan);
 
+void BKE_tracking_max_undistortion_delta_across_bound(struct MovieTracking *tracking, struct rcti *rect, float delta[2]);
+
 /* **** Image sampling **** */
 struct ImBuf *BKE_tracking_sample_pattern(int frame_width, int frame_height,
                                           struct ImBuf *struct_ibuf, struct MovieTrackingTrack *track,
-                                          struct MovieTrackingMarker *marker, int use_mask,
+                                          struct MovieTrackingMarker *marker, int from_anchor, int use_mask,
                                           int num_samples_x, int num_samples_y, float pos[2]);
 struct ImBuf *BKE_tracking_get_pattern_imbuf(struct ImBuf *ibuf, struct MovieTrackingTrack *track,
                                              struct MovieTrackingMarker *marker, int anchored, int disable_channels);

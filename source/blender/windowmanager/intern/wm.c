@@ -149,11 +149,92 @@ void WM_operator_stack_clear(wmWindowManager *wm)
 	WM_main_add_notifier(NC_WM | ND_HISTORY, NULL);
 }
 
-/* ****************************************** */
+/**
+ * This function is needed in the case when an addon id disabled
+ * while a modal operator it defined is running.
+ */
+void WM_operator_handlers_clear(wmWindowManager *wm, wmOperatorType *ot)
+{
+	wmWindow *win;
+	for (win = wm->windows.first; win; win = win->next) {
+		ListBase *lb[2] = {&win->handlers, &win->modalhandlers};
+		wmEventHandler *handler;
+		int i;
+
+		for (i = 0; i < 2; i++) {
+			for (handler = lb[i]->first; handler; handler = handler->next) {
+				if (handler->op && handler->op->type == ot) {
+					/* don't run op->cancel because it needs the context,
+					 * assume whoever unregisters the operator will cleanup */
+					handler->flag |= WM_HANDLER_DO_FREE;
+					WM_operator_free(handler->op);
+					handler->op = NULL;
+				}
+			}
+		}
+	}
+}
+
+/* ************ uiListType handling ************** */
+
+static GHash *uilisttypes_hash = NULL;
+
+uiListType *WM_uilisttype_find(const char *idname, bool quiet)
+{
+	uiListType *ult;
+
+	if (idname[0]) {
+		ult = BLI_ghash_lookup(uilisttypes_hash, idname);
+		if (ult) {
+			return ult;
+		}
+	}
+
+	if (!quiet) {
+		printf("search for unknown uilisttype %s\n", idname);
+	}
+
+	return NULL;
+}
+
+int WM_uilisttype_add(uiListType *ult)
+{
+	BLI_ghash_insert(uilisttypes_hash, (void *)ult->idname, ult);
+	return 1;
+}
+
+void WM_uilisttype_freelink(uiListType *ult)
+{
+	BLI_ghash_remove(uilisttypes_hash, ult->idname, NULL, (GHashValFreeFP)MEM_freeN);
+}
+
+/* called on initialize WM_init() */
+void WM_uilisttype_init(void)
+{
+	uilisttypes_hash = BLI_ghash_str_new("uilisttypes_hash gh");
+}
+
+void WM_uilisttype_free(void)
+{
+	GHashIterator *iter = BLI_ghashIterator_new(uilisttypes_hash);
+
+	for (; BLI_ghashIterator_notDone(iter); BLI_ghashIterator_step(iter)) {
+		uiListType *ult = BLI_ghashIterator_getValue(iter);
+		if (ult->ext.free) {
+			ult->ext.free(ult->ext.data);
+		}
+	}
+	BLI_ghashIterator_free(iter);
+
+	BLI_ghash_free(uilisttypes_hash, NULL, (GHashValFreeFP)MEM_freeN);
+	uilisttypes_hash = NULL;
+}
+
+/* ************ MenuType handling ************** */
 
 static GHash *menutypes_hash = NULL;
 
-MenuType *WM_menutype_find(const char *idname, int quiet)
+MenuType *WM_menutype_find(const char *idname, bool quiet)
 {
 	MenuType *mt;
 
@@ -190,7 +271,7 @@ void WM_menutype_free(void)
 {
 	GHashIterator *iter = BLI_ghashIterator_new(menutypes_hash);
 
-	for (; !BLI_ghashIterator_isDone(iter); BLI_ghashIterator_step(iter)) {
+	for (; BLI_ghashIterator_notDone(iter); BLI_ghashIterator_step(iter)) {
 		MenuType *mt = BLI_ghashIterator_getValue(iter);
 		if (mt->ext.free) {
 			mt->ext.free(mt->ext.data);

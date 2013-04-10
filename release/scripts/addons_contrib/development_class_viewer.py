@@ -17,15 +17,15 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {
-    'name': "Class Viewer",
-    'author': "Mackraken", "batFinger"
-    'version': (0, 1, 2),
-    'blender': (2, 5, 8),
-    'location': "Text Editor > Toolbar, Text Editor > Right Click",
-    'warning': "",
-    'description': "List text's classes and definitions",
-    'wiki_url': "https://sites.google.com/site/aleonserra/home/scripts/class-viewer",
-    'category': "Development"}
+    "name": "Class Viewer",
+    "author": "Mackraken", "batFinger"
+    "version": (0, 1, 2),
+    "blender": (2, 58, 0),
+    "location": "Text Editor > Toolbar, Text Editor > Right Click",
+    "warning": "",
+    "description": "List classes and definitions of a text block",
+    "wiki_url": "https://sites.google.com/site/aleonserra/home/scripts/class-viewer",
+    "category": "Development"}
 
 import bpy
 

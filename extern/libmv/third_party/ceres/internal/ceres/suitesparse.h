@@ -39,9 +39,9 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
-#include "cholmod.h"
 #include "ceres/internal/port.h"
+#include "cholmod.h"
+#include "glog/logging.h"
 
 namespace ceres {
 namespace internal {
@@ -56,8 +56,8 @@ class TripletSparseMatrix;
 // for all cholmod function calls.
 class SuiteSparse {
  public:
-  SuiteSparse()  { cholmod_start(&cc_);  }
-  ~SuiteSparse() { cholmod_finish(&cc_); }
+  SuiteSparse();
+  ~SuiteSparse();
 
   // Functions for building cholmod_sparse objects from sparse
   // matrices stored in triplet form. The matrix A is not

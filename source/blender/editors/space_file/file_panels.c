@@ -28,12 +28,11 @@
  *  \ingroup spfile
  */
 
+#include "BLI_blenlib.h"
+#include "BLI_utildefines.h"
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
-
-#include "BLI_blenlib.h"
-#include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
 
@@ -190,12 +189,12 @@ static void file_panel_operator_header(const bContext *C, Panel *pa)
 	BLI_strncpy(pa->drawname, RNA_struct_ui_name(op->type->srna), sizeof(pa->drawname));
 }
 
-static int file_panel_check_prop(PointerRNA *UNUSED(ptr), PropertyRNA *prop)
+static bool file_panel_check_prop(PointerRNA *UNUSED(ptr), PropertyRNA *prop)
 {
 	const char *prop_id = RNA_property_identifier(prop);
-	return !(strcmp(prop_id, "filepath") == 0 ||
-	         strcmp(prop_id, "directory") == 0 ||
-	         strcmp(prop_id, "filename") == 0
+	return !(STREQ(prop_id, "filepath") ||
+	         STREQ(prop_id, "directory") ||
+	         STREQ(prop_id, "filename")
 	         );
 }
 
@@ -219,30 +218,35 @@ void file_panels_register(ARegionType *art)
 	pt = MEM_callocN(sizeof(PanelType), "spacetype file system directories");
 	strcpy(pt->idname, "FILE_PT_system");
 	strcpy(pt->label, N_("System"));
+	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = file_panel_system;
 	BLI_addtail(&art->paneltypes, pt);
 
 	pt = MEM_callocN(sizeof(PanelType), "spacetype file system bookmarks");
 	strcpy(pt->idname, "FILE_PT_system_bookmarks");
 	strcpy(pt->label, N_("System Bookmarks"));
+	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = file_panel_system_bookmarks;
 	BLI_addtail(&art->paneltypes, pt);
 
 	pt = MEM_callocN(sizeof(PanelType), "spacetype file bookmarks");
 	strcpy(pt->idname, "FILE_PT_bookmarks");
 	strcpy(pt->label, N_("Bookmarks"));
+	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = file_panel_bookmarks;
 	BLI_addtail(&art->paneltypes, pt);
 
 	pt = MEM_callocN(sizeof(PanelType), "spacetype file recent directories");
 	strcpy(pt->idname, "FILE_PT_recent");
 	strcpy(pt->label, N_("Recent"));
+	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = file_panel_recent;
 	BLI_addtail(&art->paneltypes, pt);
 
 	pt = MEM_callocN(sizeof(PanelType), "spacetype file operator properties");
 	strcpy(pt->idname, "FILE_PT_operator");
 	strcpy(pt->label, N_("Operator"));
+	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->poll = file_panel_operator_poll;
 	pt->draw_header = file_panel_operator_header;
 	pt->draw = file_panel_operator;

@@ -103,6 +103,7 @@ typedef struct TreeElement {
 #define TSE_NLA_TRACK       33
 #define TSE_KEYMAP          34
 #define TSE_KEYMAP_ITEM     35
+#define TSE_ID_BASE			36
 
 /* button events */
 #define OL_NAMEBUTTON       1
@@ -115,8 +116,8 @@ typedef struct TreeElement {
 /* size constants */
 #define OL_Y_OFFSET 2
 
-#define OL_TOG_RESTRICT_VIEWX   (UI_UNIT_X * 3)
-#define OL_TOG_RESTRICT_SELECTX (UI_UNIT_X * 2)
+#define OL_TOG_RESTRICT_VIEWX   (UI_UNIT_X * 3.0f)
+#define OL_TOG_RESTRICT_SELECTX (UI_UNIT_X * 2.0f)
 #define OL_TOG_RESTRICT_RENDERX UI_UNIT_X
 
 #define OL_TOGW OL_TOG_RESTRICT_VIEWX
@@ -164,8 +165,9 @@ void draw_outliner(const struct bContext *C);
 void restrictbutton_gr_restrict_flag(void *poin, void *poin2, int flag);
 
 /* outliner_select.c -------------------------------------------- */
-int tree_element_type_active(struct bContext *C, struct Scene *scene, struct SpaceOops *soops, TreeElement *te, TreeStoreElem *tselem, int set);
+int tree_element_type_active(struct bContext *C, struct Scene *scene, struct SpaceOops *soops, TreeElement *te, TreeStoreElem *tselem, int set, bool recursive);
 int tree_element_active(struct bContext *C, struct Scene *scene, SpaceOops *soops, TreeElement *te, int set);
+int outliner_item_do_activate(struct bContext *C, int x, int y, bool extend, bool recursive);
 
 /* outliner_edit.c ---------------------------------------------- */
 
@@ -188,9 +190,7 @@ void group_toggle_renderability_cb(struct bContext *C, struct Scene *scene, Tree
 
 void item_rename_cb(struct bContext *C, struct Scene *scene, TreeElement *te, struct TreeStoreElem *tsep, struct TreeStoreElem *tselem);
 
-TreeElement *outliner_dropzone_parent(struct bContext *C, struct wmEvent *event, struct TreeElement *te, float *fmval);
-int outliner_dropzone_parent_clear(struct bContext *C, struct wmEvent *event, struct TreeElement *te, float *fmval);
-TreeElement *outliner_dropzone_scene(struct bContext *C, struct wmEvent *event, struct TreeElement *te, float *fmval);
+TreeElement *outliner_dropzone_find(const struct SpaceOops *soops, const float fmval[2], const int children);
 /* ...................................................... */
 
 void OUTLINER_OT_item_activate(struct wmOperatorType *ot);

@@ -19,21 +19,19 @@
 # <pep8-80 compliant>
 import bpy
 from bpy.types import Operator
-import mathutils
 
 from bpy.props import (FloatProperty,
                        IntProperty,
                        BoolProperty,
                        )
+from bpy.app.translations import pgettext_data as data_
 
 from bpy_extras import object_utils
 
 
 def add_torus(major_rad, minor_rad, major_seg, minor_seg):
     from math import cos, sin, pi
-
-    Vector = mathutils.Vector
-    Quaternion = mathutils.Quaternion
+    from mathutils import Vector, Quaternion
 
     PI_2 = pi * 2.0
     z_axis = 0.0, 0.0, 1.0
@@ -145,7 +143,7 @@ class AddTorus(Operator, object_utils.AddObjectHelper):
                                      self.major_segments,
                                      self.minor_segments)
 
-        mesh = bpy.data.meshes.new("Torus")
+        mesh = bpy.data.meshes.new(data_("Torus"))
 
         mesh.vertices.add(len(verts_loc) // 3)
 

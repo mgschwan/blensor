@@ -200,18 +200,18 @@ static float sb_time_scale(Object *ob)
 	SoftBody *sb= ob->soft;	/* is supposed to be there */
 	if (sb) {
 		return(sb->physics_speed);
-		/*hrms .. this could be IPO as well :)
-		 estimated range [0.001 sluggish slug - 100.0 very fast (i hope ODE solver can handle that)]
-		 1 approx = a unit 1 pendulum at g = 9.8 [earth conditions]  has period 65 frames
-		 theory would give a 50 frames period .. so there must be something inaccurate .. looking for that (BM)
+		/* hrms .. this could be IPO as well :)
+		 * estimated range [0.001 sluggish slug - 100.0 very fast (i hope ODE solver can handle that)]
+		 * 1 approx = a unit 1 pendulum at g = 9.8 [earth conditions]  has period 65 frames
+		 * theory would give a 50 frames period .. so there must be something inaccurate .. looking for that (BM)
 		 */
 	}
 	return (1.0f);
 	/*
-	this would be frames/sec independent timing assuming 25 fps is default
-	but does not work very well with NLA
-		return (25.0f/scene->r.frs_sec)
-	*/
+	 * this would be frames/sec independent timing assuming 25 fps is default
+	 * but does not work very well with NLA
+	 * return (25.0f/scene->r.frs_sec)
+	 */
 }
 /*--- frame based timing ---*/
 
@@ -1034,7 +1034,7 @@ static int sb_detect_aabb_collisionCached(float UNUSED(force[3]), unsigned int U
 
 	hash  = vertexowner->soft->scratch->colliderhash;
 	ihash =	BLI_ghashIterator_new(hash);
-	while (!BLI_ghashIterator_isDone(ihash) ) {
+	while (BLI_ghashIterator_notDone(ihash) ) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1097,12 +1097,12 @@ static int sb_detect_face_pointCached(float face_v1[3], float face_v2[3], float 
 	float facedist, outerfacethickness, tune = 10.f;
 	int a, deflected=0;
 
-	aabbmin[0] = MIN3(face_v1[0], face_v2[0], face_v3[0]);
-	aabbmin[1] = MIN3(face_v1[1], face_v2[1], face_v3[1]);
-	aabbmin[2] = MIN3(face_v1[2], face_v2[2], face_v3[2]);
-	aabbmax[0] = MAX3(face_v1[0], face_v2[0], face_v3[0]);
-	aabbmax[1] = MAX3(face_v1[1], face_v2[1], face_v3[1]);
-	aabbmax[2] = MAX3(face_v1[2], face_v2[2], face_v3[2]);
+	aabbmin[0] = min_fff(face_v1[0], face_v2[0], face_v3[0]);
+	aabbmin[1] = min_fff(face_v1[1], face_v2[1], face_v3[1]);
+	aabbmin[2] = min_fff(face_v1[2], face_v2[2], face_v3[2]);
+	aabbmax[0] = max_fff(face_v1[0], face_v2[0], face_v3[0]);
+	aabbmax[1] = max_fff(face_v1[1], face_v2[1], face_v3[1]);
+	aabbmax[2] = max_fff(face_v1[2], face_v2[2], face_v3[2]);
 
 	/* calculate face normal once again SIGH */
 	sub_v3_v3v3(edge1, face_v1, face_v2);
@@ -1113,7 +1113,7 @@ static int sb_detect_face_pointCached(float face_v1[3], float face_v2[3], float 
 
 	hash  = vertexowner->soft->scratch->colliderhash;
 	ihash =	BLI_ghashIterator_new(hash);
-	while (!BLI_ghashIterator_isDone(ihash) ) {
+	while (BLI_ghashIterator_notDone(ihash) ) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1196,16 +1196,16 @@ static int sb_detect_face_collisionCached(float face_v1[3], float face_v2[3], fl
 	float t, tune = 10.0f;
 	int a, deflected=0;
 
-	aabbmin[0] = MIN3(face_v1[0], face_v2[0], face_v3[0]);
-	aabbmin[1] = MIN3(face_v1[1], face_v2[1], face_v3[1]);
-	aabbmin[2] = MIN3(face_v1[2], face_v2[2], face_v3[2]);
-	aabbmax[0] = MAX3(face_v1[0], face_v2[0], face_v3[0]);
-	aabbmax[1] = MAX3(face_v1[1], face_v2[1], face_v3[1]);
-	aabbmax[2] = MAX3(face_v1[2], face_v2[2], face_v3[2]);
+	aabbmin[0] = min_fff(face_v1[0], face_v2[0], face_v3[0]);
+	aabbmin[1] = min_fff(face_v1[1], face_v2[1], face_v3[1]);
+	aabbmin[2] = min_fff(face_v1[2], face_v2[2], face_v3[2]);
+	aabbmax[0] = max_fff(face_v1[0], face_v2[0], face_v3[0]);
+	aabbmax[1] = max_fff(face_v1[1], face_v2[1], face_v3[1]);
+	aabbmax[2] = max_fff(face_v1[2], face_v2[2], face_v3[2]);
 
 	hash  = vertexowner->soft->scratch->colliderhash;
 	ihash =	BLI_ghashIterator_new(hash);
-	while (!BLI_ghashIterator_isDone(ihash) ) {
+	while (BLI_ghashIterator_notDone(ihash) ) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1305,7 +1305,7 @@ static int sb_detect_face_collisionCached(float face_v1[3], float face_v2[3], fl
 						normalize_v3(d_nvect);
 						if (
 							/* isect_line_tri_v3(nv1, nv3, face_v1, face_v2, face_v3, &t, NULL) ||
-							 we did that edge already */
+							 * we did that edge already */
 							isect_line_tri_v3(nv3, nv4, face_v1, face_v2, face_v3, &t, NULL) ||
 							isect_line_tri_v3(nv4, nv1, face_v1, face_v2, face_v3, &t, NULL) ) {
 							Vec3PlusStVec(force, -0.5f, d_nvect);
@@ -1433,7 +1433,7 @@ static int sb_detect_edge_collisionCached(float edge_v1[3], float edge_v2[3], fl
 
 	hash  = vertexowner->soft->scratch->colliderhash;
 	ihash =	BLI_ghashIterator_new(hash);
-	while (!BLI_ghashIterator_isDone(ihash) ) {
+	while (BLI_ghashIterator_notDone(ihash) ) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1763,7 +1763,7 @@ static int sb_detect_vertex_collisionCached(float opco[3], float facenormal[3], 
 	outerforceaccu[0]=outerforceaccu[1]=outerforceaccu[2]=0.0f;
 	innerforceaccu[0]=innerforceaccu[1]=innerforceaccu[2]=0.0f;
 /* go */
-	while (!BLI_ghashIterator_isDone(ihash) ) {
+	while (BLI_ghashIterator_notDone(ihash) ) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1957,7 +1957,7 @@ static int sb_detect_vertex_collisionCached(float opco[3], float facenormal[3], 
 							}
 
 							closest_to_line_segment_v3(ve, opco, nv2, nv3);
-							 sub_v3_v3v3(ve, opco, ve);
+							sub_v3_v3v3(ve, opco, ve);
 							dist = normalize_v3(ve);
 							if ((dist < outerfacethickness)&&(dist < mindistedge )) {
 								copy_v3_v3(coledge, ve);
@@ -1966,7 +1966,7 @@ static int sb_detect_vertex_collisionCached(float opco[3], float facenormal[3], 
 							}
 
 							closest_to_line_segment_v3(ve, opco, nv3, nv1);
-							 sub_v3_v3v3(ve, opco, ve);
+							sub_v3_v3v3(ve, opco, ve);
 							dist = normalize_v3(ve);
 							if ((dist < outerfacethickness)&&(dist < mindistedge )) {
 								copy_v3_v3(coledge, ve);
@@ -4106,18 +4106,6 @@ void sbObjectStep(Scene *scene, Object *ob, float cfra, float (*vertexCos)[3], i
 
 		softbody_update_positions(ob, sb, vertexCos, numVerts);
 		softbody_reset(ob, sb, vertexCos, numVerts);
-	}
-
-	/* continue physics special case */
-	if (BKE_ptcache_get_continue_physics()) {
-		BKE_ptcache_invalidate(cache);
-		/* do simulation */
-		dtime = timescale;
-		softbody_update_positions(ob, sb, vertexCos, numVerts);
-		softbody_step(scene, ob, sb, dtime);
-		softbody_to_object(ob, vertexCos, numVerts, 0);
-		sb->last_frame = framenr;
-		return;
 	}
 
 	/* still no points? go away */

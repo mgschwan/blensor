@@ -17,16 +17,16 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {
-    'name': "Surround Projection Tools",
-    'author': "Cole Ingraham",
-    'location': "View3D > Tool Shelf > Surround Projection panel",
-    'description': "Setup cameras and create rendering scenes for n-screen surround projection.",
-    'wiki_url': "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/3D_interaction/Surround_Projection_Tools",
-    'tracker_url': 'https://projects.blender.org/tracker/index.php?'\
-                   'func=detail&aid=29266',
-    'version': (0,1,2),
-    'blender': (2, 6, 0),
-    'category': '3D View'
+    "name": "Surround Projection Tools",
+    "author": "Cole Ingraham",
+    "location": "View3D > Tool Shelf > Surround Projection panel",
+    "description": "Setup cameras and create rendering scenes for n-screen surround projection.",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/3D_interaction/Surround_Projection_Tools",
+    "tracker_url": "https://projects.blender.org/tracker/index.php?"
+                   "func=detail&aid=29266",
+    "version": (0, 1, 2),
+    "blender": (2, 60, 0),
+    "category": "3D View"
 }
 
 import bpy

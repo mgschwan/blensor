@@ -80,6 +80,7 @@ public:
 	BL::RenderEngine b_engine;
 	BL::UserPreferences b_userpref;
 	BL::BlendData b_data;
+	BL::RenderSettings b_render;
 	BL::Scene b_scene;
 	BL::SpaceView3D b_v3d;
 	BL::RegionView3D b_rv3d;
@@ -93,6 +94,11 @@ public:
 protected:
 	void do_write_update_render_result(BL::RenderResult b_rr, BL::RenderLayer b_rlay, RenderTile& rtile, bool do_update_only);
 	void do_write_update_render_tile(RenderTile& rtile, bool do_update_only);
+
+	int builtin_image_frame(const string &builtin_name);
+	void builtin_image_info(const string &builtin_name, void *builtin_data, bool &is_float, int &width, int &height, int &channels);
+	bool builtin_image_pixels(const string &builtin_name, void *builtin_data, unsigned char *pixels);
+	bool builtin_image_float_pixels(const string &builtin_name, void *builtin_data, float *pixels);
 };
 
 CCL_NAMESPACE_END

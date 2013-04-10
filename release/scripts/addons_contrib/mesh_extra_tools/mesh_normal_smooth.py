@@ -25,7 +25,7 @@ bl_info = {
     "name": "Normal Smooth",
     "author": "Dolf Veenvliet",
     "version": (7,),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "View3D > Specials > Normal Smooth ",
     "description": "Smooth the vertex position based on the normals",
     "warning": "",

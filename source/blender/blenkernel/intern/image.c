@@ -68,7 +68,6 @@
 #include "BLI_blenlib.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
-#include "BLI_bpath.h"
 
 #include "BKE_bmfont.h"
 #include "BKE_colortools.h"
@@ -243,11 +242,11 @@ void BKE_image_free(Image *ima)
 }
 
 /* only image block itself */
-static Image *image_alloc(const char *name, short source, short type)
+static Image *image_alloc(Main *bmain, const char *name, short source, short type)
 {
 	Image *ima;
 
-	ima = BKE_libblock_alloc(&G.main->image, ID_IM, name);
+	ima = BKE_libblock_alloc(&bmain->image, ID_IM, name);
 	if (ima) {
 		ima->ok = IMA_OK;
 
@@ -313,10 +312,6 @@ static void image_assign_ibuf(Image *ima, ImBuf *ibuf, int index, int frame)
 				break;
 
 		ibuf->index = index;
-		if (ima->flag & IMA_CM_PREDIVIDE)
-			ibuf->flags |= IB_cm_predivide;
-		else
-			ibuf->flags &= ~IB_cm_predivide;
 
 		/* this function accepts (link == NULL) */
 		BLI_insertlinkbefore(&ima->ibufs, link, ibuf);
@@ -328,9 +323,9 @@ static void image_assign_ibuf(Image *ima, ImBuf *ibuf, int index, int frame)
 }
 
 /* empty image block, of similar type and filename */
-Image *BKE_image_copy(Image *ima)
+Image *BKE_image_copy(Main *bmain, Image *ima)
 {
-	Image *nima = image_alloc(ima->id.name + 2, ima->source, ima->type);
+	Image *nima = image_alloc(bmain, ima->id.name + 2, ima->source, ima->type);
 
 	BLI_strncpy(nima->name, ima->name, sizeof(ima->name));
 
@@ -347,6 +342,9 @@ Image *BKE_image_copy(Image *ima)
 	nima->aspy = ima->aspy;
 
 	BKE_color_managed_colorspace_settings_copy(&nima->colorspace_settings, &ima->colorspace_settings);
+
+	if (ima->packedfile)
+		nima->packedfile = dupPackedFile(ima->packedfile);
 
 	return nima;
 }
@@ -438,7 +436,7 @@ void BKE_image_make_local(struct Image *ima)
 		extern_local_image(ima);
 	}
 	else if (is_local && is_lib) {
-		Image *ima_new = BKE_image_copy(ima);
+		Image *ima_new = BKE_image_copy(bmain, ima);
 
 		ima_new->id.us = 0;
 
@@ -553,7 +551,41 @@ int BKE_image_scale(Image *image, int width, int height)
 	return (ibuf != NULL);
 }
 
-Image *BKE_image_load(const char *filepath)
+static void image_init_color_management(Image *ima)
+{
+	ImBuf *ibuf;
+	char name[FILE_MAX];
+
+	BKE_image_user_file_path(NULL, ima, name);
+
+	/* will set input color space to image format default's */
+	ibuf = IMB_loadiffname(name, IB_test | IB_alphamode_detect, ima->colorspace_settings.name);
+
+	if (ibuf) {
+		if (ibuf->flags & IB_alphamode_premul)
+			ima->alpha_mode = IMA_ALPHA_PREMUL;
+		else
+			ima->alpha_mode = IMA_ALPHA_STRAIGHT;
+
+		IMB_freeImBuf(ibuf);
+	}
+}
+
+void BKE_image_alpha_mode_from_extension(Image *image)
+{
+	if (BLI_testextensie(image->name, ".exr") ||
+	    BLI_testextensie(image->name, ".cin") ||
+	    BLI_testextensie(image->name, ".dpx") ||
+	    BLI_testextensie(image->name, ".hdr"))
+	{
+		image->alpha_mode = IMA_ALPHA_PREMUL;
+	}
+	else {
+		image->alpha_mode = IMA_ALPHA_STRAIGHT;
+	}
+}
+
+Image *BKE_image_load(Main *bmain, const char *filepath)
 {
 	Image *ima;
 	int file, len;
@@ -561,7 +593,7 @@ Image *BKE_image_load(const char *filepath)
 	char str[FILE_MAX];
 
 	BLI_strncpy(str, filepath, sizeof(str));
-	BLI_path_abs(str, G.main->name);
+	BLI_path_abs(str, bmain->name);
 
 	/* exists? */
 	file = BLI_open(str, O_BINARY | O_RDONLY, 0);
@@ -574,11 +606,13 @@ Image *BKE_image_load(const char *filepath)
 	while (len > 0 && filepath[len - 1] != '/' && filepath[len - 1] != '\\') len--;
 	libname = filepath + len;
 
-	ima = image_alloc(libname, IMA_SRC_FILE, IMA_TYPE_IMAGE);
+	ima = image_alloc(bmain, libname, IMA_SRC_FILE, IMA_TYPE_IMAGE);
 	BLI_strncpy(ima->name, filepath, sizeof(ima->name));
 
 	if (BLI_testextensie_array(filepath, imb_ext_movie))
 		ima->source = IMA_SRC_MOVIE;
+
+	image_init_color_management(ima);
 
 	return ima;
 }
@@ -614,7 +648,7 @@ Image *BKE_image_load_exists(const char *filepath)
 		}
 	}
 
-	return BKE_image_load(filepath);
+	return BKE_image_load(G.main, filepath);
 }
 
 static ImBuf *add_ibuf_size(unsigned int width, unsigned int height, const char *name, int depth, int floatbuf, short gen_type,
@@ -667,17 +701,17 @@ static ImBuf *add_ibuf_size(unsigned int width, unsigned int height, const char 
 		/* both byte and float buffers are filling in sRGB space, need to linearize float buffer after BKE_image_buf_fill* functions */
 
 		IMB_buffer_float_from_float(rect_float, rect_float, ibuf->channels, IB_PROFILE_LINEAR_RGB, IB_PROFILE_SRGB,
-		                            ibuf->flags & IB_cm_predivide, ibuf->x, ibuf->y, ibuf->x, ibuf->x);
+		                            TRUE, ibuf->x, ibuf->y, ibuf->x, ibuf->x);
 	}
 
 	return ibuf;
 }
 
 /* adds new image block, creates ImBuf and initializes color */
-Image *BKE_image_add_generated(unsigned int width, unsigned int height, const char *name, int depth, int floatbuf, short gen_type, float color[4])
+Image *BKE_image_add_generated(Main *bmain, unsigned int width, unsigned int height, const char *name, int depth, int floatbuf, short gen_type, float color[4])
 {
 	/* on save, type is changed to FILE in editsima.c */
-	Image *ima = image_alloc(name, IMA_SRC_GENERATED, IMA_TYPE_UV_TEST);
+	Image *ima = image_alloc(bmain, name, IMA_SRC_GENERATED, IMA_TYPE_UV_TEST);
 
 	if (ima) {
 		ImBuf *ibuf;
@@ -703,7 +737,7 @@ Image *BKE_image_add_from_imbuf(ImBuf *ibuf)
 	/* on save, type is changed to FILE in editsima.c */
 	Image *ima;
 
-	ima = image_alloc(BLI_path_basename(ibuf->name), IMA_SRC_FILE, IMA_TYPE_IMAGE);
+	ima = image_alloc(G.main, BLI_path_basename(ibuf->name), IMA_SRC_FILE, IMA_TYPE_IMAGE);
 
 	if (ima) {
 		BLI_strncpy(ima->name, ibuf->name, FILE_MAX);
@@ -887,7 +921,7 @@ void BKE_image_free_all_textures(void)
 				image_free_buffers(ima);
 		}
 	}
-	/* printf("freed total %d MB\n", totsize/(1024*1024)); */
+	/* printf("freed total %d MB\n", totsize / (1024 * 1024)); */
 }
 
 /* except_frame is weak, only works for seqs without offset... */
@@ -938,7 +972,7 @@ int BKE_imtype_to_ftype(const char imtype)
 		return RADHDR;
 #endif
 	else if (imtype == R_IMF_IMTYPE_PNG)
-		return PNG;
+		return PNG | 90;
 #ifdef WITH_DDS
 	else if (imtype == R_IMF_IMTYPE_DDS)
 		return DDS;
@@ -1008,7 +1042,7 @@ char BKE_ftype_to_imtype(const int ftype)
 }
 
 
-int BKE_imtype_is_movie(const char imtype)
+bool BKE_imtype_is_movie(const char imtype)
 {
 	switch (imtype) {
 		case R_IMF_IMTYPE_AVIRAW:
@@ -1019,9 +1053,9 @@ int BKE_imtype_is_movie(const char imtype)
 		case R_IMF_IMTYPE_THEORA:
 		case R_IMF_IMTYPE_XVID:
 		case R_IMF_IMTYPE_FRAMESERVER:
-			return 1;
+			return true;
 	}
-	return 0;
+	return false;
 }
 
 int BKE_imtype_supports_zbuf(const char imtype)
@@ -1120,6 +1154,8 @@ char BKE_imtype_valid_depths(const char imtype)
 			return R_IMF_CHAN_DEPTH_10;
 		case R_IMF_IMTYPE_JP2:
 			return R_IMF_CHAN_DEPTH_8 | R_IMF_CHAN_DEPTH_12 | R_IMF_CHAN_DEPTH_16;
+		case R_IMF_IMTYPE_PNG:
+			return R_IMF_CHAN_DEPTH_8 | R_IMF_CHAN_DEPTH_16;
 		/* most formats are 8bit only */
 		default:
 			return R_IMF_CHAN_DEPTH_8;
@@ -1166,9 +1202,10 @@ char BKE_imtype_from_arg(const char *imtype_arg)
 	else return R_IMF_IMTYPE_INVALID;
 }
 
-int BKE_add_image_extension(char *string, const char imtype)
+static int do_add_image_extension(char *string, const char imtype, const ImageFormatData *im_format)
 {
 	const char *extension = NULL;
+	(void)im_format;  /* may be unused, depends on build options */
 
 	if (imtype == R_IMF_IMTYPE_IRIS) {
 		if (!BLI_testextensie(string, ".rgb"))
@@ -1233,8 +1270,22 @@ int BKE_add_image_extension(char *string, const char imtype)
 	}
 #ifdef WITH_OPENJPEG
 	else if (imtype == R_IMF_IMTYPE_JP2) {
-		if (!BLI_testextensie(string, ".jp2"))
-			extension = ".jp2";
+		if (im_format) {
+			if (im_format->jp2_codec == R_IMF_JP2_CODEC_JP2) {
+				if (!BLI_testextensie(string, ".jp2"))
+					extension = ".jp2";
+			}
+			else if (im_format->jp2_codec == R_IMF_JP2_CODEC_J2K) {
+				if (!BLI_testextensie(string, ".j2c"))
+					extension = ".j2c";
+			}
+			else
+				BLI_assert(!"Unsupported jp2 codec was specified in im_format->jp2_codec");
+		}
+		else {
+			if (!BLI_testextensie(string, ".jp2"))
+				extension = ".jp2";
+		}
 	}
 #endif
 	else { //   R_IMF_IMTYPE_AVIRAW, R_IMF_IMTYPE_AVIJPEG, R_IMF_IMTYPE_JPEG90, R_IMF_IMTYPE_QUICKTIME etc
@@ -1260,11 +1311,22 @@ int BKE_add_image_extension(char *string, const char imtype)
 	}
 }
 
+int BKE_add_image_extension(char *string, const ImageFormatData *im_format)
+{
+	return do_add_image_extension(string, im_format->imtype, im_format);
+}
+
+int BKE_add_image_extension_from_type(char *string, const char imtype)
+{
+	return do_add_image_extension(string, imtype, NULL);
+}
+
 void BKE_imformat_defaults(ImageFormatData *im_format)
 {
 	memset(im_format, 0, sizeof(*im_format));
 	im_format->planes = R_IMF_PLANES_RGB;
 	im_format->imtype = R_IMF_IMTYPE_PNG;
+	im_format->depth = R_IMF_CHAN_DEPTH_8;
 	im_format->quality = 90;
 	im_format->compress = 90;
 
@@ -1289,8 +1351,12 @@ void BKE_imbuf_to_image_format(struct ImageFormatData *im_format, const ImBuf *i
 		im_format->imtype = R_IMF_IMTYPE_RADHDR;
 #endif
 
-	else if (ftype == PNG)
+	else if (ftype == PNG) {
 		im_format->imtype = R_IMF_IMTYPE_PNG;
+
+		if (custom_flags & PNG_16BIT)
+			im_format->depth = R_IMF_CHAN_DEPTH_16;
+	}
 
 #ifdef WITH_DDS
 	else if (ftype == DDS)
@@ -1352,6 +1418,13 @@ void BKE_imbuf_to_image_format(struct ImageFormatData *im_format, const ImBuf *i
 			if (ftype & JP2_CINE_48FPS)
 				im_format->jp2_flag |= R_IMF_JP2_FLAG_CINE_48;
 		}
+
+		if (ftype & JP2_JP2)
+			im_format->jp2_codec = R_IMF_JP2_CODEC_JP2;
+		else if (ftype & JP2_J2K)
+			im_format->jp2_codec = R_IMF_JP2_CODEC_J2K;
+		else
+			BLI_assert(!"Unsupported jp2 codec was specified in file type");
 	}
 #endif
 
@@ -1494,7 +1567,9 @@ static void stampdata(Scene *scene, Object *camera, StampData *stamp_data, int d
 		if (camera && camera->type == OB_CAMERA) {
 			BLI_snprintf(text, sizeof(text), "%.2f", ((Camera *)camera->data)->lens);
 		}
-		else BLI_strncpy(text, "<none>", sizeof(text));
+		else {
+			BLI_strncpy(text, "<none>", sizeof(text));
+		}
 
 		BLI_snprintf(stamp_data->cameralens, sizeof(stamp_data->cameralens), do_prefix ? "Lens %s" : "%s", text);
 	}
@@ -1526,7 +1601,7 @@ static void stampdata(Scene *scene, Object *camera, StampData *stamp_data, int d
 		RenderStats *stats = re ? RE_GetStats(re) : NULL;
 
 		if (stats && (scene->r.stamp & R_STAMP_RENDERTIME)) {
-			BLI_timestr(stats->lastframetime, text);
+			BLI_timestr(stats->lastframetime, text, sizeof(text));
 
 			BLI_snprintf(stamp_data->rendertime, sizeof(stamp_data->rendertime), do_prefix ? "RenderTime %s" : "%s", text);
 		}
@@ -1744,7 +1819,7 @@ void BKE_stamp_buf(Scene *scene, Object *camera, unsigned char *rect, float *rec
 	}
 
 	/* cleanup the buffer. */
-	BLF_buffer(mono, NULL, NULL, 0, 0, 0, FALSE);
+	BLF_buffer(mono, NULL, NULL, 0, 0, 0, NULL);
 
 #undef BUFF_MARGIN_X
 #undef BUFF_MARGIN_Y
@@ -1816,8 +1891,12 @@ int BKE_imbuf_write(ImBuf *ibuf, const char *name, ImageFormatData *imf)
 	else if (ELEM5(imtype, R_IMF_IMTYPE_PNG, R_IMF_IMTYPE_FFMPEG, R_IMF_IMTYPE_H264, R_IMF_IMTYPE_THEORA, R_IMF_IMTYPE_XVID)) {
 		ibuf->ftype = PNG;
 
-		if (imtype == R_IMF_IMTYPE_PNG)
+		if (imtype == R_IMF_IMTYPE_PNG) {
+			if (imf->depth == R_IMF_CHAN_DEPTH_16)
+				ibuf->ftype |= PNG_16BIT;
+
 			ibuf->ftype |= compress;
+		}
 
 	}
 #ifdef WITH_DDS
@@ -1867,7 +1946,7 @@ int BKE_imbuf_write(ImBuf *ibuf, const char *name, ImageFormatData *imf)
 	else if (imtype == R_IMF_IMTYPE_DPX) {
 		ibuf->ftype = DPX;
 		if (imf->cineon_flag & R_IMF_CINEON_FLAG_LOG) {
-		  ibuf->ftype |= CINEON_LOG;
+			ibuf->ftype |= CINEON_LOG;
 		}
 		if (imf->depth == R_IMF_CHAN_DEPTH_16) {
 			ibuf->ftype |= CINEON_16BIT;
@@ -1907,6 +1986,13 @@ int BKE_imbuf_write(ImBuf *ibuf, const char *name, ImageFormatData *imf)
 			if (imf->jp2_flag & R_IMF_JP2_FLAG_CINE_48)
 				ibuf->ftype |= JP2_CINE_48FPS;
 		}
+
+		if (imf->jp2_codec == R_IMF_JP2_CODEC_JP2)
+			ibuf->ftype |= JP2_JP2;
+		else if (imf->jp2_codec == R_IMF_JP2_CODEC_J2K)
+			ibuf->ftype |= JP2_J2K;
+		else
+			BLI_assert(!"Unsupported jp2 codec was specified in im_format->jp2_codec");
 	}
 #endif
 	else {
@@ -1957,7 +2043,8 @@ int BKE_imbuf_write_stamp(Scene *scene, struct Object *camera, ImBuf *ibuf, cons
 }
 
 
-void BKE_makepicstring(char *string, const char *base, const char *relbase, int frame, const char imtype, const short use_ext, const short use_frames)
+static void do_makepicstring(char *string, const char *base, const char *relbase, int frame, const char imtype,
+                             const ImageFormatData *im_format, const short use_ext, const short use_frames)
 {
 	if (string == NULL) return;
 	BLI_strncpy(string, base, FILE_MAX - 10);   /* weak assumption */
@@ -1967,8 +2054,17 @@ void BKE_makepicstring(char *string, const char *base, const char *relbase, int 
 		BLI_path_frame(string, frame, 4);
 
 	if (use_ext)
-		BKE_add_image_extension(string, imtype);
+		do_add_image_extension(string, imtype, im_format);
+}
 
+void BKE_makepicstring(char *string, const char *base, const char *relbase, int frame, const ImageFormatData *im_format, const short use_ext, const short use_frames)
+{
+	do_makepicstring(string, base, relbase, frame, im_format->imtype, im_format, use_ext, use_frames);
+}
+
+void BKE_makepicstring_from_type(char *string, const char *base, const char *relbase, int frame, const char imtype, const short use_ext, const short use_frames)
+{
+	do_makepicstring(string, base, relbase, frame, imtype, NULL, use_ext, use_frames);
 }
 
 /* used by sequencer too */
@@ -2027,7 +2123,7 @@ Image *BKE_image_verify_viewer(int type, const char *name)
 				break;
 
 	if (ima == NULL)
-		ima = image_alloc(name, IMA_SRC_VIEWER, type);
+		ima = image_alloc(G.main, name, IMA_SRC_VIEWER, type);
 
 	/* happens on reload, imagewindow cannot be image user when hidden*/
 	if (ima->id.us == 0)
@@ -2075,7 +2171,7 @@ void BKE_image_walk_all_users(const Main *mainp, void *customdata,
 				}
 				else if (sa->spacetype == SPACE_NODE) {
 					SpaceNode *snode = sa->spacedata.first;
-					if ((snode->treetype == NTREE_COMPOSIT) && (snode->nodetree)) {
+					if (snode->nodetree && snode->nodetree->type == NTREE_COMPOSIT) {
 						bNode *node;
 						for (node = snode->nodetree->nodes.first; node; node = node->next) {
 							if (node->id && node->type == CMP_NODE_IMAGE) {
@@ -2128,9 +2224,20 @@ void BKE_image_signal(Image *ima, ImageUser *iuser, int signal)
 				}
 			}
 
+#if 0
 			/* force reload on first use, but not for multilayer, that makes nodes and buttons in ui drawing fail */
 			if (ima->type != IMA_TYPE_MULTILAYER)
 				image_free_buffers(ima);
+#else
+			/* image buffers for non-sequence multilayer will share buffers with RenderResult,
+			 * however sequence multilayer will own buffers. Such logic makes switching from
+			 * single multilayer file to sequence completely instable
+			 * since changes in nodes seems this workaround isn't needed anymore, all sockets
+			 * are nicely detecting anyway, but freeing buffers always here makes multilayer
+			 * sequences behave stable
+			 */
+			image_free_buffers(ima);
+#endif
 
 			ima->ok = 1;
 			if (iuser)
@@ -2285,7 +2392,7 @@ void BKE_image_backup_render(Scene *scene, Image *ima)
 static void image_create_multilayer(Image *ima, ImBuf *ibuf, int framenr)
 {
 	const char *colorspace = ima->colorspace_settings.name;
-	int predivide = ima->flag & IMA_CM_PREDIVIDE;
+	int predivide = ima->alpha_mode == IMA_ALPHA_PREMUL;
 
 	ima->rr = RE_MultilayerConvert(ibuf->userdata, colorspace, predivide, ibuf->x, ibuf->y);
 
@@ -2317,6 +2424,18 @@ static void image_initialize_after_load(Image *ima, ImBuf *ibuf)
 
 }
 
+static int imbuf_alpha_flags_for_image(Image *ima)
+{
+	int flag = 0;
+
+	if (ima->flag & IMA_IGNORE_ALPHA)
+		flag |= IB_ignore_alpha;
+	else if (ima->alpha_mode == IMA_ALPHA_PREMUL)
+		flag |= IB_alphamode_premul;
+
+	return flag;
+}
+
 static ImBuf *image_load_sequence_file(Image *ima, ImageUser *iuser, int frame)
 {
 	struct ImBuf *ibuf;
@@ -2331,8 +2450,7 @@ static ImBuf *image_load_sequence_file(Image *ima, ImageUser *iuser, int frame)
 	BKE_image_user_file_path(iuser, ima, name);
 
 	flag = IB_rect | IB_multilayer;
-	if (ima->flag & IMA_DO_PREMUL)
-		flag |= IB_premul;
+	flag |= imbuf_alpha_flags_for_image(ima);
 
 	/* read ibuf */
 	ibuf = IMB_loadiffname(name, flag, ima->colorspace_settings.name);
@@ -2491,15 +2609,14 @@ static ImBuf *image_load_image_file(Image *ima, ImageUser *iuser, int cfra)
 	/* is there a PackedFile with this image ? */
 	if (ima->packedfile) {
 		flag = IB_rect | IB_multilayer;
-		if (ima->flag & IMA_DO_PREMUL) flag |= IB_premul;
+		flag |= imbuf_alpha_flags_for_image(ima);
 
 		ibuf = IMB_ibImageFromMemory((unsigned char *)ima->packedfile->data, ima->packedfile->size, flag,
 		                             ima->colorspace_settings.name, "<packed data>");
 	}
 	else {
 		flag = IB_rect | IB_multilayer | IB_metadata;
-		if (ima->flag & IMA_DO_PREMUL)
-			flag |= IB_premul;
+		flag |= imbuf_alpha_flags_for_image(ima);
 
 		/* get the right string */
 		BKE_image_user_frame_calc(iuser, cfra, 0);
@@ -2636,6 +2753,14 @@ static ImBuf *image_get_render_result(Image *ima, ImageUser *iuser, void **lock_
 	if (rres.have_combined && layer == 0) {
 		/* pass */
 	}
+	else if (rect && layer == 0) {
+		/* rect32 is set when there's a Sequence pass, this pass seems
+		 * to have layer=0 (this is from image_buttons.c)
+		 * in this case we ignore float buffer, because it could have
+		 * hung from previous pass which was float
+		 */
+		rectf = NULL;
+	}
 	else if (rres.layers.first) {
 		RenderLayer *rl = BLI_findlink(&rres.layers, layer - (rres.have_combined ? 1 : 0));
 		if (rl) {
@@ -2719,18 +2844,31 @@ static ImBuf *image_get_render_result(Image *ima, ImageUser *iuser, void **lock_
 
 	ibuf->dither = dither;
 
-	if (iuser->scene->r.color_mgt_flag & R_COLOR_MANAGEMENT_PREDIVIDE) {
-		ibuf->flags |= IB_cm_predivide;
-		ima->flag |= IMA_CM_PREDIVIDE;
-	}
-	else {
-		ibuf->flags &= ~IB_cm_predivide;
-		ima->flag &= ~IMA_CM_PREDIVIDE;
-	}
-
 	ima->ok = IMA_OK_LOADED;
 
 	return ibuf;
+}
+
+static void image_get_fame_and_index(Image *ima, ImageUser *iuser, int *frame_r, int *index_r)
+{
+	int frame = 0, index = 0;
+
+	/* see if we already have an appropriate ibuf, with image source and type */
+	if (ima->source == IMA_SRC_MOVIE) {
+		frame = iuser ? iuser->framenr : ima->lastframe;
+	}
+	else if (ima->source == IMA_SRC_SEQUENCE) {
+		if (ima->type == IMA_TYPE_IMAGE) {
+			frame = iuser ? iuser->framenr : ima->lastframe;
+		}
+		else if (ima->type == IMA_TYPE_MULTILAYER) {
+			frame = iuser ? iuser->framenr : ima->lastframe;
+			index = iuser ? iuser->multi_index : IMA_NO_INDEX;
+		}
+	}
+
+	*frame_r = frame;
+	*index_r = index;
 }
 
 static ImBuf *image_get_ibuf_threadsafe(Image *ima, ImageUser *iuser, int *frame_r, int *index_r)
@@ -2788,6 +2926,21 @@ static ImBuf *image_get_ibuf_threadsafe(Image *ima, ImageUser *iuser, int *frame
 	return ibuf;
 }
 
+BLI_INLINE int image_quick_test(Image *ima, ImageUser *iuser)
+{
+	if (ima == NULL)
+		return FALSE;
+
+	if (iuser) {
+		if (iuser->ok == 0)
+			return FALSE;
+	}
+	else if (ima->ok == 0)
+		return FALSE;
+
+	return TRUE;
+}
+
 /* Checks optional ImageUser and verifies/creates ImBuf.
  *
  * not thread-safe, so callee should worry about thread locks
@@ -2802,14 +2955,7 @@ static ImBuf *image_acquire_ibuf(Image *ima, ImageUser *iuser, void **lock_r)
 		*lock_r = NULL;
 
 	/* quick reject tests */
-	if (ima == NULL)
-		return NULL;
-
-	if (iuser) {
-		if (iuser->ok == 0)
-			return NULL;
-	}
-	else if (ima->ok == 0)
+	if (!image_quick_test(ima, iuser))
 		return NULL;
 
 	ibuf = image_get_ibuf_threadsafe(ima, iuser, &frame, &index);
@@ -2865,7 +3011,7 @@ static ImBuf *image_acquire_ibuf(Image *ima, ImageUser *iuser, void **lock_r)
 					*lock_r = ima;
 
 					/* XXX anim play for viewer nodes not yet supported */
-					frame = 0; // XXX iuser?iuser->framenr:0;
+					frame = 0; // XXX iuser ? iuser->framenr : 0;
 					ibuf = image_get_ibuf(ima, 0, frame);
 
 					if (!ibuf) {
@@ -2933,14 +3079,7 @@ int BKE_image_has_ibuf(Image *ima, ImageUser *iuser)
 	ImBuf *ibuf;
 
 	/* quick reject tests */
-	if (ima == NULL)
-		return FALSE;
-
-	if (iuser) {
-		if (iuser->ok == 0)
-			return FALSE;
-	}
-	else if (ima->ok == 0)
+	if (!image_quick_test(ima, iuser))
 		return FALSE;
 
 	ibuf = image_get_ibuf_threadsafe(ima, iuser, NULL, NULL);
@@ -2957,6 +3096,122 @@ int BKE_image_has_ibuf(Image *ima, ImageUser *iuser)
 	}
 
 	return ibuf != NULL;
+}
+
+/* ******** Pool for image buffers ********  */
+
+typedef struct ImagePoolEntry {
+	struct ImagePoolEntry *next, *prev;
+	Image *image;
+	ImBuf *ibuf;
+	int index;
+	int frame;
+} ImagePoolEntry;
+
+typedef struct ImagePool {
+	ListBase image_buffers;
+} ImagePool;
+
+ImagePool *BKE_image_pool_new(void)
+{
+	ImagePool *pool = MEM_callocN(sizeof(ImagePool), "Image Pool");
+
+	return pool;
+}
+
+void BKE_image_pool_free(ImagePool *pool)
+{
+	ImagePoolEntry *entry, *next_entry;
+
+	/* use single lock to dereference all the image buffers */
+	BLI_spin_lock(&image_spin);
+
+	for (entry = pool->image_buffers.first; entry; entry = next_entry) {
+		next_entry = entry->next;
+
+		if (entry->ibuf)
+			IMB_freeImBuf(entry->ibuf);
+
+		MEM_freeN(entry);
+	}
+
+	BLI_spin_unlock(&image_spin);
+
+	MEM_freeN(pool);
+}
+
+BLI_INLINE ImBuf *image_pool_find_entry(ImagePool *pool, Image *image, int frame, int index, int *found)
+{
+	ImagePoolEntry *entry;
+
+	*found = FALSE;
+
+	for (entry = pool->image_buffers.first; entry; entry = entry->next) {
+		if (entry->image == image && entry->frame == frame && entry->index == index) {
+			*found = TRUE;
+			return entry->ibuf;
+		}
+	}
+
+	return NULL;
+}
+
+ImBuf *BKE_image_pool_acquire_ibuf(Image *ima, ImageUser *iuser, ImagePool *pool)
+{
+	ImBuf *ibuf;
+	int index, frame, found;
+
+	if (!image_quick_test(ima, iuser))
+		return NULL;
+
+	if (pool == NULL) {
+		/* pool could be NULL, in this case use general acquire function */
+		return BKE_image_acquire_ibuf(ima, iuser, NULL);
+	}
+
+	image_get_fame_and_index(ima, iuser, &frame, &index);
+
+	ibuf = image_pool_find_entry(pool, ima, frame, index, &found);
+	if (found)
+		return ibuf;
+
+	BLI_spin_lock(&image_spin);
+
+	ibuf = image_pool_find_entry(pool, ima, frame, index, &found);
+
+	/* will also create entry even in cases image buffer failed to load,
+	 * prevents trying to load the same buggy file multiple times
+	 */
+	if (!found) {
+		ImagePoolEntry *entry;
+
+		ibuf = image_acquire_ibuf(ima, iuser, NULL);
+
+		if (ibuf)
+			IMB_refImBuf(ibuf);
+
+		entry = MEM_callocN(sizeof(ImagePoolEntry), "Image Pool Entry");
+		entry->image = ima;
+		entry->frame = frame;
+		entry->index = index;
+		entry->ibuf = ibuf;
+
+		BLI_addtail(&pool->image_buffers, entry);
+	}
+
+	BLI_spin_unlock(&image_spin);
+
+	return ibuf;
+}
+
+void BKE_image_pool_release_ibuf(Image *ima, ImBuf *ibuf, ImagePool *pool)
+{
+	/* if pool wasn't actually used, use general release stuff,
+	 * for pools image buffers will be dereferenced on pool free
+	 */
+	if (pool == NULL) {
+		BKE_image_release_ibuf(ima, ibuf, NULL);
+	}
 }
 
 int BKE_image_user_frame_get(const ImageUser *iuser, int cfra, int fieldnr, short *r_is_in_range)
@@ -3120,4 +3375,70 @@ void BKE_image_get_aspect(Image *image, float *aspx, float *aspy)
 		*aspy = image->aspy / image->aspx;
 	else
 		*aspy = 1.0f;
+}
+
+unsigned char *BKE_image_get_pixels_for_frame(struct Image *image, int frame)
+{
+	ImageUser iuser = {NULL};
+	void *lock;
+	ImBuf *ibuf;
+	unsigned char *pixels = NULL;
+
+	iuser.framenr = frame;
+	iuser.ok = TRUE;
+
+	ibuf = BKE_image_acquire_ibuf(image, &iuser, &lock);
+
+	if (ibuf) {
+		pixels = (unsigned char *) ibuf->rect;
+
+		if (pixels)
+			pixels = MEM_dupallocN(pixels);
+
+		BKE_image_release_ibuf(image, ibuf, lock);
+	}
+
+	if (!pixels)
+		return NULL;
+
+	return pixels;
+}
+
+float *BKE_image_get_float_pixels_for_frame(struct Image *image, int frame)
+{
+	ImageUser iuser = {NULL};
+	void *lock;
+	ImBuf *ibuf;
+	float *pixels = NULL;
+
+	iuser.framenr = frame;
+	iuser.ok = TRUE;
+
+	ibuf = BKE_image_acquire_ibuf(image, &iuser, &lock);
+
+	if (ibuf) {
+		pixels = ibuf->rect_float;
+
+		if (pixels)
+			pixels = MEM_dupallocN(pixels);
+
+		BKE_image_release_ibuf(image, ibuf, lock);
+	}
+
+	if (!pixels)
+		return NULL;
+
+	return pixels;
+}
+
+int BKE_image_sequence_guess_offset(Image *image)
+{
+	unsigned short numlen;
+	char head[FILE_MAX], tail[FILE_MAX];
+	char num[FILE_MAX] = {0};
+
+	BLI_stringdec(image->name, head, tail, &numlen);
+	BLI_strncpy(num, image->name + strlen(head), numlen + 1);
+
+	return atoi(num);
 }

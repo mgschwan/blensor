@@ -39,7 +39,8 @@ The first is the result of running this:
    svn log https://svn.blender.org/svnroot/bf-blender/trunk/blender -v --xml
 
 The csv file must be saved from the tracker, be sure to select all patches
-not just open ones.
+not just open ones. Go to the patch tracker URL and add append &func=downloadcsv
+to the URL.
 
 
 Running this script will create a file called 'credits.html',
@@ -125,7 +126,7 @@ contrib_companies = [
     "<b>Unity Technologies</b> - FBX Exporter",
     "<b>BioSkill GmbH</b> - H3D compatibility for X3D Exporter, "
     "OBJ Nurbs Import/Export",
-    "<b>AutoCRC</b> - Improvements to fluid particles",
+    "<b>AutoCRC</b> - Improvements to fluid particles, vertex color baking",
 ]
 
 # ignore commits containing these messages
@@ -162,6 +163,7 @@ author_name_mapping = {
     "bjornmose": "Jens Ole Wund",
     "blendix": "Brecht Van Lommel",
     "briggs": "Geoffrey Bantle",
+    "broadstu": "Stuart Broadfoot",
     "broken": "Matt Ebb",
     "campbellbarton": "Campbell Barton",
     "cessen": "Nathan Vegdahl",
@@ -218,6 +220,7 @@ author_name_mapping = {
     "kwk": "Konrad Kleine",
     "larstiq": "Wouter van Heyst",
     "letterrip": "Tom Musgrove",
+    "lfrisken": "Luke Frisken",
     "lmg": "M.G. Kishalmi",
     "lockal": "Sv. Lockal",
     "loczar": "Francis Laurence",  # not 100% sure on this.
@@ -275,13 +278,13 @@ author_name_mapping = {
     "zaghaghi": "Hamed Zaghaghi",
     "zanqdo": "Daniel Salazar",
     "zuster": "Daniel Dunbar",
-    
+
     # TODO, find remaining names
     "nlin": "",
 
     # added for 'author_overrides'
     "farny": "Mike Farnsworth",
-    
+
     # --------------------
     # Extension Developers
     "aurel": "Aurel Wildfellner",
@@ -289,6 +292,7 @@ author_name_mapping = {
     "bartekskorupa": "Bartek Skorupa",
     "bassamk": "Bassam Kurdali",
     "benjycook": "Benjy Cook",
+    "beta-tester": "Alexander Nussbaumer",
     "blendphys": "Clemens Barth",
     "codemanx": "Sebastian Nell",
     "conz": "Constantin Rahn",
@@ -360,6 +364,7 @@ author_overrides_bfb = {
 author_overrides_ext = {
     "vencax": (30897, ),
     }
+
 
 def build_patch_name_map(filepath):
     """ Uses the CSV from the patch tracker to build a
@@ -489,7 +494,7 @@ def main_credits(min_rev_bfb=0, min_rev_ext=0):
     import argparse
 
     usage_text = (
-    "Run Script: %s [options]" % os.path.basename(__file__))
+            "Run Script: %s [options]" % os.path.basename(__file__))
 
     parser = argparse.ArgumentParser(description=usage_text)
     parser.add_argument("-s", "--svn_log_bfb", dest="svn_log_bfb",
@@ -525,7 +530,7 @@ def main_credits(min_rev_bfb=0, min_rev_ext=0):
             for author, revisions in author_overrides.items()
             for revision in revisions}
 
-        for commit in commits:            
+        for commit in commits:
             if not is_credit_commit_valid(commit):
                 continue
 
@@ -537,7 +542,7 @@ def main_credits(min_rev_bfb=0, min_rev_ext=0):
                                                       commit.author)
                 credit = credits.get(author)
                 if credit is None:
-                    
+
                     if commit.author not in alert_users:
                         print("warning: '%s' is not in "
                               "'author_name_mapping' !" % commit.author)
@@ -565,14 +570,13 @@ def main_credits(min_rev_bfb=0, min_rev_ext=0):
 
             credit.commits.append(commit)
 
-
     for (commits, author_overrides) in (
              (parse_commits(svn_log_bfb, min_rev=min_rev_bfb),
               author_overrides_bfb),
 
              (parse_commits(svn_log_ext, min_rev=min_rev_ext),
               author_overrides_ext)):
-        
+
         commit_to_credit(commits, author_overrides)
     del commits, author_overrides
 
@@ -584,8 +588,7 @@ def main_credits(min_rev_bfb=0, min_rev_ext=0):
         filename = "credits.html"
     else:
         filename = "credits_release.html"
-    
-    
+
     file = open(filename, 'w', encoding="utf-8")
 
     file.write("<h3>Individual Contributors</h3>\n\n")
@@ -639,7 +642,6 @@ def main_credits(min_rev_bfb=0, min_rev_ext=0):
 
     file.write("\n\n")
 
-
     # -------------------------------------------------------------------------
     # Companies, hard coded
     if is_main_credits:
@@ -661,7 +663,7 @@ def main_credits(min_rev_bfb=0, min_rev_ext=0):
 
 def main():
     main_credits()
-    main_credits(min_rev_bfb=51024, min_rev_ext=3808)
+    main_credits(min_rev_bfb=52851, min_rev_ext=4072)
 
 if __name__ == "__main__":
     main()

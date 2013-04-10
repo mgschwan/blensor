@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software Foundation,
-# Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 # The Original Code is Copyright (C) 2006, Blender Foundation
 # All rights reserved.
@@ -269,11 +269,17 @@ if 'blenderlite' in B.targets:
     target_env_defs['WITH_BF_PYTHON'] = False
     target_env_defs['WITH_BF_3DMOUSE'] = False
     target_env_defs['WITH_BF_LIBMV'] = False
+    target_env_defs['WITH_BF_FREESTYLE'] = False
 
     # Merge blenderlite, let command line to override
     for k,v in target_env_defs.iteritems():
         if k not in B.arguments:
             env[k] = v
+
+if 'cudakernels' in B.targets:
+    env['WITH_BF_CYCLES'] = True
+    env['WITH_BF_CYCLES_CUDA_BINARIES'] = True
+    env['WITH_BF_PYTHON'] = False
 
 # Extended OSX_SDK and 3D_CONNEXION_CLIENT_LIBRARY and JAckOSX detection for OSX
 if env['OURPLATFORM']=='darwin':
@@ -294,7 +300,8 @@ if env['OURPLATFORM']=='darwin':
             print "3D_CONNEXION_CLIENT_LIBRARY not found, disabling WITH_BF_3DMOUSE" # avoid build errors !
             env['WITH_BF_3DMOUSE'] = 0
         else:
-            env.Append(LINKFLAGS=['-Xlinker','-weak_framework','-Xlinker','3DconnexionClient'])
+            env.Append(LINKFLAGS=['-F/Library/Frameworks','-Xlinker','-weak_framework','-Xlinker','3DconnexionClient'])
+            env['BF_3DMOUSE_INC'] = '/Library/Frameworks/3DconnexionClient.framework/Headers'
 
     # for now, Mac builders must download and install the JackOSX framework 
     # necessary header file lives here when installed:
@@ -304,7 +311,7 @@ if env['OURPLATFORM']=='darwin':
             print "JackOSX install not found, disabling WITH_BF_JACK" # avoid build errors !
             env['WITH_BF_JACK'] = 0
         else:
-            env.Append(LINKFLAGS=['-Xlinker','-weak_framework','-Xlinker','Jackmp'])
+            env.Append(LINKFLAGS=['-L/Library/Frameworks','-Xlinker','-weak_framework','-Xlinker','Jackmp'])
 
     if env['WITH_BF_CYCLES_OSL'] == 1:	
         OSX_OSL_LIBPATH = Dir(env.subst(env['BF_OSL_LIBPATH'])).abspath
@@ -372,9 +379,13 @@ if btools.ENDIAN == "big":
 else:
     env['CPPFLAGS'].append('-D__LITTLE_ENDIAN__')
 
-# TODO, make optional
+# TODO, make optional (as with CMake)
 env['CPPFLAGS'].append('-DWITH_AUDASPACE')
 env['CPPFLAGS'].append('-DWITH_AVI')
+env['CPPFLAGS'].append('-DWITH_BOOL_COMPAT')
+
+if env['OURPLATFORM'] not in ('win32-vc', 'win64-vc'):
+    env['CPPFLAGS'].append('-DHAVE_STDBOOL_H')
 
 # lastly we check for root_build_dir ( we should not do before, otherwise we might do wrong builddir
 B.root_build_dir = env['BF_BUILDDIR']
@@ -441,11 +452,12 @@ if env['WITH_BF_PYTHON']:
             found_pyconfig_h = True
 
     if not (found_python_h and found_pyconfig_h):
-        print("\nMissing: Python.h and/or pyconfig.h in\"" + env.subst('${BF_PYTHON_INC}') + "\",\n"
-              "  Set 'BF_PYTHON_INC' to point "
-              "to valid python include path(s).\n Containing "
-              "Python.h and pyconfig.h for python version \"" + env.subst('${BF_PYTHON_VERSION}') + "\"")
+        print("""\nMissing: Python.h and/or pyconfig.h in "%s"
+         Set 'BF_PYTHON_INC' to point to valid include path(s),
+         containing Python.h and pyconfig.h for Python version "%s".
 
+         Example: python scons/scons.py BF_PYTHON_INC=../Python/include
+              """ % (env.subst('${BF_PYTHON_INC}'), env.subst('${BF_PYTHON_VERSION}')))
         Exit()
 
 
@@ -509,61 +521,91 @@ def data_to_c_simple(FILE_FROM):
 	data_to_c(FILE_FROM, FILE_TO, VAR_NAME)
 	
 
-data_to_c("source/blender/compositor/operations/COM_OpenCLKernels.cl",
-          B.root_build_dir + "data_headers/COM_OpenCLKernels.cl.h",
-          "datatoc_COM_OpenCLKernels_cl")
+if B.targets != ['cudakernels']:
+    data_to_c("source/blender/compositor/operations/COM_OpenCLKernels.cl",
+              B.root_build_dir + "data_headers/COM_OpenCLKernels.cl.h",
+              "datatoc_COM_OpenCLKernels_cl")
 
-data_to_c_simple("release/datafiles/startup.blend")
-data_to_c_simple("release/datafiles/preview.blend")
+    data_to_c_simple("release/datafiles/startup.blend")
+    data_to_c_simple("release/datafiles/preview.blend")
+    data_to_c_simple("release/datafiles/preview_cycles.blend")
 
-# --- glsl ---
-data_to_c_simple("source/blender/gpu/shaders/gpu_shader_material.glsl")
-data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vertex.glsl")
-data_to_c_simple("source/blender/gpu/shaders/gpu_shader_sep_gaussian_blur_frag.glsl")
-data_to_c_simple("source/blender/gpu/shaders/gpu_shader_sep_gaussian_blur_vert.glsl")
-data_to_c_simple("source/blender/gpu/shaders/gpu_shader_material.glsl")
-data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vsm_store_frag.glsl")
-data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vsm_store_vert.glsl")
+    # --- glsl ---
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_simple_frag.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_simple_vert.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_material.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_material.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_sep_gaussian_blur_frag.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_sep_gaussian_blur_vert.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vertex.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vsm_store_frag.glsl")
+    data_to_c_simple("source/blender/gpu/shaders/gpu_shader_vsm_store_vert.glsl")
 
-# --- blender ---
-data_to_c_simple("release/datafiles/bfont.pfb")
-data_to_c_simple("release/datafiles/bfont.ttf")
-data_to_c_simple("release/datafiles/bmonofont.ttf")
+    # --- blender ---
+    data_to_c_simple("release/datafiles/bfont.pfb")
+    data_to_c_simple("release/datafiles/bfont.ttf")
+    data_to_c_simple("release/datafiles/bmonofont.ttf")
 
-data_to_c_simple("release/datafiles/splash.png")
-data_to_c_simple("release/datafiles/blender_icons.png")
-data_to_c_simple("release/datafiles/prvicons.png")
+    data_to_c_simple("release/datafiles/splash.png")
+    data_to_c_simple("release/datafiles/blender_icons16.png")
+    data_to_c_simple("release/datafiles/blender_icons32.png")
+    data_to_c_simple("release/datafiles/prvicons.png")
 
-data_to_c_simple("release/datafiles/brushicons/add.png")
-data_to_c_simple("release/datafiles/brushicons/blob.png")
-data_to_c_simple("release/datafiles/brushicons/blur.png")
-data_to_c_simple("release/datafiles/brushicons/clay.png")
-data_to_c_simple("release/datafiles/brushicons/claystrips.png")
-data_to_c_simple("release/datafiles/brushicons/clone.png")
-data_to_c_simple("release/datafiles/brushicons/crease.png")
-data_to_c_simple("release/datafiles/brushicons/darken.png")
-data_to_c_simple("release/datafiles/brushicons/draw.png")
-data_to_c_simple("release/datafiles/brushicons/fill.png")
-data_to_c_simple("release/datafiles/brushicons/flatten.png")
-data_to_c_simple("release/datafiles/brushicons/grab.png")
-data_to_c_simple("release/datafiles/brushicons/inflate.png")
-data_to_c_simple("release/datafiles/brushicons/layer.png")
-data_to_c_simple("release/datafiles/brushicons/lighten.png")
-data_to_c_simple("release/datafiles/brushicons/mask.png")
-data_to_c_simple("release/datafiles/brushicons/mix.png")
-data_to_c_simple("release/datafiles/brushicons/multiply.png")
-data_to_c_simple("release/datafiles/brushicons/nudge.png")
-data_to_c_simple("release/datafiles/brushicons/pinch.png")
-data_to_c_simple("release/datafiles/brushicons/scrape.png")
-data_to_c_simple("release/datafiles/brushicons/smear.png")
-data_to_c_simple("release/datafiles/brushicons/smooth.png")
-data_to_c_simple("release/datafiles/brushicons/snake_hook.png")
-data_to_c_simple("release/datafiles/brushicons/soften.png")
-data_to_c_simple("release/datafiles/brushicons/subtract.png")
-data_to_c_simple("release/datafiles/brushicons/texdraw.png")
-data_to_c_simple("release/datafiles/brushicons/thumb.png")
-data_to_c_simple("release/datafiles/brushicons/twist.png")
-data_to_c_simple("release/datafiles/brushicons/vertexdraw.png")
+    data_to_c_simple("release/datafiles/brushicons/add.png")
+    data_to_c_simple("release/datafiles/brushicons/blob.png")
+    data_to_c_simple("release/datafiles/brushicons/blur.png")
+    data_to_c_simple("release/datafiles/brushicons/clay.png")
+    data_to_c_simple("release/datafiles/brushicons/claystrips.png")
+    data_to_c_simple("release/datafiles/brushicons/clone.png")
+    data_to_c_simple("release/datafiles/brushicons/crease.png")
+    data_to_c_simple("release/datafiles/brushicons/darken.png")
+    data_to_c_simple("release/datafiles/brushicons/draw.png")
+    data_to_c_simple("release/datafiles/brushicons/fill.png")
+    data_to_c_simple("release/datafiles/brushicons/flatten.png")
+    data_to_c_simple("release/datafiles/brushicons/grab.png")
+    data_to_c_simple("release/datafiles/brushicons/inflate.png")
+    data_to_c_simple("release/datafiles/brushicons/layer.png")
+    data_to_c_simple("release/datafiles/brushicons/lighten.png")
+    data_to_c_simple("release/datafiles/brushicons/mask.png")
+    data_to_c_simple("release/datafiles/brushicons/mix.png")
+    data_to_c_simple("release/datafiles/brushicons/multiply.png")
+    data_to_c_simple("release/datafiles/brushicons/nudge.png")
+    data_to_c_simple("release/datafiles/brushicons/pinch.png")
+    data_to_c_simple("release/datafiles/brushicons/scrape.png")
+    data_to_c_simple("release/datafiles/brushicons/smear.png")
+    data_to_c_simple("release/datafiles/brushicons/smooth.png")
+    data_to_c_simple("release/datafiles/brushicons/snake_hook.png")
+    data_to_c_simple("release/datafiles/brushicons/soften.png")
+    data_to_c_simple("release/datafiles/brushicons/subtract.png")
+    data_to_c_simple("release/datafiles/brushicons/texdraw.png")
+    data_to_c_simple("release/datafiles/brushicons/thumb.png")
+    data_to_c_simple("release/datafiles/brushicons/twist.png")
+    data_to_c_simple("release/datafiles/brushicons/vertexdraw.png")
+
+    data_to_c_simple("release/datafiles/matcaps/mc01.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc02.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc03.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc04.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc05.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc06.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc07.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc08.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc09.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc10.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc11.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc12.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc13.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc14.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc15.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc16.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc17.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc18.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc19.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc20.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc21.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc22.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc23.jpg")
+    data_to_c_simple("release/datafiles/matcaps/mc24.jpg")
 
 ##### END DATAFILES ##########
 
@@ -647,6 +689,7 @@ datafileslist = []
 datafilestargetlist = []
 dottargetlist = []
 scriptinstall = []
+cubininstall = []
 
 if env['OURPLATFORM']!='darwin':
     dotblenderinstall = []
@@ -672,6 +715,10 @@ if env['OURPLATFORM']!='darwin':
                 # only for testing builds
                 if VERSION_RELEASE_CYCLE == "release" and "addons_contrib" in dn:
                     dn.remove('addons_contrib')
+
+                # do not install freestyle if disabled
+                if not env['WITH_BF_FREESTYLE'] and "freestyle" in dn:
+                    dn.remove("freestyle")
 
                 dir = os.path.join(env['BF_INSTALLDIR'], VERSION)
                 dir += os.sep + os.path.basename(scriptpath) + dp[len(scriptpath):]
@@ -736,29 +783,30 @@ if env['OURPLATFORM']!='darwin':
             source=['intern/cycles/doc/license/'+s for s in source]
             scriptinstall.append(env.Install(dir=dir,source=source))
 
-            # cuda binaries
-            if env['WITH_BF_CYCLES_CUDA_BINARIES']:
-                dir=os.path.join(env['BF_INSTALLDIR'], VERSION, 'scripts', 'addons','cycles', 'lib')
-                for arch in env['BF_CYCLES_CUDA_BINARIES_ARCH']:
-                    kernel_build_dir = os.path.join(B.root_build_dir, 'intern/cycles/kernel')
-                    cubin_file = os.path.join(kernel_build_dir, "kernel_%s.cubin" % arch)
-                    scriptinstall.append(env.Install(dir=dir,source=cubin_file))
+    if env['WITH_BF_CYCLES']:
+        # cuda binaries
+        if env['WITH_BF_CYCLES_CUDA_BINARIES']:
+            dir=os.path.join(env['BF_INSTALLDIR'], VERSION, 'scripts', 'addons','cycles', 'lib')
+            for arch in env['BF_CYCLES_CUDA_BINARIES_ARCH']:
+                kernel_build_dir = os.path.join(B.root_build_dir, 'intern/cycles/kernel')
+                cubin_file = os.path.join(kernel_build_dir, "kernel_%s.cubin" % arch)
+                cubininstall.append(env.Install(dir=dir,source=cubin_file))
 
-            # osl shaders
-            if env['WITH_BF_CYCLES_OSL']:
-                dir=os.path.join(env['BF_INSTALLDIR'], VERSION, 'scripts', 'addons','cycles', 'shader')
+        # osl shaders
+        if env['WITH_BF_CYCLES_OSL']:
+            dir=os.path.join(env['BF_INSTALLDIR'], VERSION, 'scripts', 'addons','cycles', 'shader')
 
-                osl_source_dir = Dir('./intern/cycles/kernel/shaders').srcnode().path
-                oso_build_dir = os.path.join(B.root_build_dir, 'intern/cycles/kernel/shaders')
+            osl_source_dir = Dir('./intern/cycles/kernel/shaders').srcnode().path
+            oso_build_dir = os.path.join(B.root_build_dir, 'intern/cycles/kernel/shaders')
 
-                headers='node_color.h node_fresnel.h node_texture.h oslutil.h stdosl.h'.split()
-                source=['intern/cycles/kernel/shaders/'+s for s in headers]
-                scriptinstall.append(env.Install(dir=dir,source=source))
+            headers='node_color.h node_fresnel.h node_texture.h oslutil.h stdosl.h'.split()
+            source=['intern/cycles/kernel/shaders/'+s for s in headers]
+            scriptinstall.append(env.Install(dir=dir,source=source))
 
-                for f in os.listdir(osl_source_dir):
-                    if f.endswith('.osl'):
-                        oso_file = os.path.join(oso_build_dir, f.replace('.osl', '.oso'))
-                        scriptinstall.append(env.Install(dir=dir,source=oso_file))
+            for f in os.listdir(osl_source_dir):
+                if f.endswith('.osl'):
+                    oso_file = os.path.join(oso_build_dir, f.replace('.osl', '.oso'))
+                    scriptinstall.append(env.Install(dir=dir,source=oso_file))
 
     if env['WITH_BF_OCIO']:
         colormanagement = os.path.join('release', 'datafiles', 'colormanagement')
@@ -827,6 +875,8 @@ if env['OURPLATFORM']=='linux':
         td, tf = os.path.split(targetdir)
         iconinstall.append(env.Install(dir=td, source=srcfile))
 
+    scriptinstall.append(env.Install(dir=env['BF_INSTALLDIR'], source='release/bin/blender-thumbnailer.py'))
+
 # dlls for linuxcross
 # TODO - add more libs, for now this lets blenderlite run
 if env['OURPLATFORM']=='linuxcross':
@@ -853,9 +903,9 @@ textinstall = env.Install(dir=env['BF_INSTALLDIR'], source=textlist)
 if  env['OURPLATFORM']=='darwin':
         allinstall = [blenderinstall, textinstall]
 elif env['OURPLATFORM']=='linux':
-        allinstall = [blenderinstall, dotblenderinstall, scriptinstall, textinstall, iconinstall]
+        allinstall = [blenderinstall, dotblenderinstall, scriptinstall, textinstall, iconinstall, cubininstall]
 else:
-        allinstall = [blenderinstall, dotblenderinstall, scriptinstall, textinstall]
+        allinstall = [blenderinstall, dotblenderinstall, scriptinstall, textinstall, cubininstall]
 
 if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'win64-vc', 'linuxcross'):
     dllsources = []
@@ -984,6 +1034,20 @@ buildslave_cmd = env.Command('buildslave_exec', None, buildslave_action)
 buildslave_alias = env.Alias('buildslave', buildslave_cmd)
 
 Depends(buildslave_cmd, allinstall)
+
+cudakernels_action = env.Action(btools.cudakernels, btools.cudakernels_print)
+cudakernels_cmd = env.Command('cudakernels_exec', None, cudakernels_action)
+cudakernels_alias = env.Alias('cudakernels', cudakernels_cmd)
+
+cudakernel_dir = os.path.join(os.path.abspath(os.path.normpath(B.root_build_dir)), 'intern/cycles/kernel')
+cuda_kernels = []
+
+for x in env['BF_CYCLES_CUDA_BINARIES_ARCH']:
+    cubin = os.path.join(cudakernel_dir, 'kernel_' + x + '.cubin')
+    cuda_kernels.append(cubin)
+
+Depends(cudakernels_cmd, cuda_kernels)
+Depends(cudakernels_cmd, cubininstall)
 
 Default(B.program_list)
 

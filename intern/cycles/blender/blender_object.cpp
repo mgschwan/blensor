@@ -127,8 +127,8 @@ void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSI
 		case BL::Lamp::type_AREA: {
 			BL::AreaLamp b_area_lamp(b_lamp);
 			light->size = 1.0f;
-			light->axisu = make_float3(tfm.x.x, tfm.y.x, tfm.z.x);
-			light->axisv = make_float3(tfm.x.y, tfm.y.y, tfm.z.y);
+			light->axisu = transform_get_column(&tfm, 0);
+			light->axisv = transform_get_column(&tfm, 1);
 			light->sizeu = b_area_lamp.size();
 			if(b_area_lamp.shape() == BL::AreaLamp::shape_RECTANGLE)
 				light->sizev = b_area_lamp.size_y();
@@ -140,8 +140,8 @@ void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSI
 	}
 
 	/* location and (inverted!) direction */
-	light->co = make_float3(tfm.x.w, tfm.y.w, tfm.z.w);
-	light->dir = -make_float3(tfm.x.z, tfm.y.z, tfm.z.z);
+	light->co = transform_get_column(&tfm, 3);
+	light->dir = -transform_get_column(&tfm, 2);
 
 	/* shader */
 	vector<uint> used_shaders;
@@ -156,6 +156,7 @@ void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSI
 	/* shadow */
 	PointerRNA clamp = RNA_pointer_get(&b_lamp.ptr, "cycles");
 	light->cast_shadow = get_boolean(clamp, "cast_shadow");
+	light->use_mis = get_boolean(clamp, "use_multiple_importance_sampling");
 	light->samples = get_int(clamp, "samples");
 
 	/* tag */
@@ -196,7 +197,7 @@ void BlenderSync::sync_background_light()
 
 /* Object */
 
-Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::DupliObject b_dupli_ob, Transform& tfm, uint layer_flag, int motion)
+Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::DupliObject b_dupli_ob, Transform& tfm, uint layer_flag, int motion, bool hide_tris)
 {
 	BL::Object b_ob = (b_dupli_ob ? b_dupli_ob.object() : b_parent);
 	
@@ -247,7 +248,7 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 	bool use_holdout = (layer_flag & render_layer.holdout_layer) != 0;
 	
 	/* mesh sync */
-	object->mesh = sync_mesh(b_ob, object_updated);
+	object->mesh = sync_mesh(b_ob, object_updated, hide_tris);
 
 	/* sspecial case not tracked by object update flags */
 	if(use_holdout != object->use_holdout) {
@@ -310,11 +311,46 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 	return object;
 }
 
-static bool object_dupli_hide_original(BL::Object::dupli_type_enum dupli_type)
+static bool object_render_hide_original(BL::Object::dupli_type_enum dupli_type)
 {
 	return (dupli_type == BL::Object::dupli_type_VERTS ||
 	        dupli_type == BL::Object::dupli_type_FACES ||
 	        dupli_type == BL::Object::dupli_type_FRAMES);
+}
+
+static bool object_render_hide(BL::Object b_ob, bool top_level, bool parent_hide, bool& hide_triangles)
+{
+	/* check if we should render or hide particle emitter */
+	BL::Object::particle_systems_iterator b_psys;
+
+	bool hair_present = false;
+	bool show_emitter = false;
+	bool hide = false;
+
+	for(b_ob.particle_systems.begin(b_psys); b_psys != b_ob.particle_systems.end(); ++b_psys) {
+		if((b_psys->settings().render_type() == BL::ParticleSettings::render_type_PATH) &&
+		   (b_psys->settings().type()==BL::ParticleSettings::type_HAIR))
+			hair_present = true;
+
+		if(b_psys->settings().use_render_emitter()) {
+			hide = false;
+			show_emitter = true;
+		}
+	}
+
+	/* duplicators hidden by default, except dupliframes which duplicate self */
+	if(b_ob.is_duplicator())
+		if(top_level || b_ob.dupli_type() != BL::Object::dupli_type_FRAMES)
+			hide = true;
+
+	/* hide original object for duplis */
+	BL::Object parent = b_ob.parent();
+	if(parent && object_render_hide_original(parent.dupli_type()))
+		if(parent_hide)
+			hide = true;
+
+	hide_triangles = (hair_present && !show_emitter);
+	return hide && !show_emitter;
 }
 
 /* Object Loop */
@@ -352,9 +388,6 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 				progress.set_sync_status("Synchronizing object", (*b_ob).name());
 
 				if(b_ob->is_duplicator()) {
-					/* duplicators hidden by default */
-					hide = true;
-
 					/* dupli objects */
 					b_ob->dupli_list_create(b_scene, 2);
 
@@ -364,33 +397,16 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 						Transform tfm = get_transform(b_dup->matrix());
 						BL::Object b_dup_ob = b_dup->object();
 						bool dup_hide = (b_v3d)? b_dup_ob.hide(): b_dup_ob.hide_render();
-						bool emitter_hide = false;
+						bool in_dupli_group = (b_dup->type() == BL::DupliObject::type_GROUP);
+						bool hide_tris;
 
-						if(b_dup_ob.is_duplicator()) {
-							/* duplicators hidden by default, except dupliframes which duplicate self */
-							if(b_dup_ob.dupli_type() != BL::Object::dupli_type_FRAMES)
-								emitter_hide = true;
-							
-							/* check if we should render or hide particle emitter */
-							BL::Object::particle_systems_iterator b_psys;
-							for(b_dup_ob.particle_systems.begin(b_psys); b_psys != b_dup_ob.particle_systems.end(); ++b_psys)
-								if(b_psys->settings().use_render_emitter())
-									emitter_hide = false;
-						}
-
-						/* hide original object for duplis */
-						BL::Object parent = b_dup_ob.parent();
-						if(parent && object_dupli_hide_original(parent.dupli_type()))
-							if(b_dup->type() == BL::DupliObject::type_GROUP)
-								dup_hide = true;
-
-						if(!(b_dup->hide() || dup_hide || emitter_hide)) {
+						if(!(b_dup->hide() || dup_hide || object_render_hide(b_dup_ob, false, in_dupli_group, hide_tris))) {
 							/* the persistent_id allows us to match dupli objects
 							 * between frames and updates */
 							BL::Array<int, OBJECT_PERSISTENT_ID_SIZE> persistent_id = b_dup->persistent_id();
 
 							/* sync object and mesh or light data */
-							Object *object = sync_object(*b_ob, persistent_id.data, *b_dup, tfm, ob_layer, motion);
+							Object *object = sync_object(*b_ob, persistent_id.data, *b_dup, tfm, ob_layer, motion, hide_tris);
 
 							/* sync possible particle data, note particle_id
 							 * starts counting at 1, first is dummy particle */
@@ -409,22 +425,13 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, int motion)
 					b_ob->dupli_list_clear();
 				}
 
-				/* check if we should render or hide particle emitter */
-				BL::Object::particle_systems_iterator b_psys;
+				/* test if object needs to be hidden */
+				bool hide_tris;
 
-				for(b_ob->particle_systems.begin(b_psys); b_psys != b_ob->particle_systems.end(); ++b_psys)
-					if(b_psys->settings().use_render_emitter())
-						hide = false;
-
-				/* hide original object for duplis */
-				BL::Object parent = b_ob->parent();
-				if(parent && object_dupli_hide_original(parent.dupli_type()))
-					hide = true;
-
-				if(!hide) {
+				if(!object_render_hide(*b_ob, true, true, hide_tris)) {
 					/* object itself */
 					Transform tfm = get_transform(b_ob->matrix_world());
-					sync_object(*b_ob, NULL, PointerRNA_NULL, tfm, ob_layer, motion);
+					sync_object(*b_ob, NULL, PointerRNA_NULL, tfm, ob_layer, motion, hide_tris);
 				}
 			}
 

@@ -60,6 +60,7 @@
 #include "DNA_image_types.h"
 #include "DNA_view3d_types.h"
 #include "DNA_material_types.h"
+#include "DNA_space_types.h"
 #include "DNA_windowmanager_types.h"
 
 #include "BKE_global.h"
@@ -68,6 +69,7 @@
 #include "BKE_image.h"
 
 #include "BLI_path_util.h"
+#include "BLI_string.h"
 
 extern "C" {
 #include "IMB_imbuf_types.h"
@@ -121,8 +123,52 @@ static void DisableForText()
 	}
 }
 
+void BL_draw_gamedebug_box(int xco, int yco, int width, int height, float percentage)
+{
+	/* This is a rather important line :( The gl-mode hasn't been left
+	 * behind quite as neatly as we'd have wanted to. I don't know
+	 * what cause it, though :/ .*/
+	glDisable(GL_DEPTH_TEST);
+	
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	
+	glOrtho(0, width, 0, height, -100, 100);
+	
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+	
+	yco = height - yco;
+	int barsize = 50;
+
+	/* draw in black first*/
+	glColor3ub(0, 0, 0);
+	glBegin(GL_QUADS);
+	glVertex2f(xco + 1 + 1 + barsize * percentage, yco - 1 + 10);
+	glVertex2f(xco + 1, yco - 1 + 10);
+	glVertex2f(xco + 1, yco - 1);
+	glVertex2f(xco + 1 + 1 + barsize * percentage, yco - 1);
+	glEnd();
+	
+	glColor3ub(255, 255, 255);
+	glBegin(GL_QUADS);
+	glVertex2f(xco + 1 + barsize * percentage, yco + 10);
+	glVertex2f(xco, yco + 10);
+	glVertex2f(xco, yco);
+	glVertex2f(xco + 1 + barsize * percentage, yco);
+	glEnd();
+	
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
+	glPopMatrix();
+	glEnable(GL_DEPTH_TEST);
+}
+
 /* Print 3D text */
-void BL_print_game_line(int fontid, const char* text, int size, int dpi, float* color, double* mat, float aspect)
+void BL_print_game_line(int fontid, const char *text, int size, int dpi, float *color, double *mat, float aspect)
 {
 	/* gl prepping */
 	DisableForText();
@@ -146,7 +192,7 @@ void BL_print_game_line(int fontid, const char* text, int size, int dpi, float* 
 	BLF_disable(fontid, BLF_MATRIX|BLF_ASPECT);
 }
 
-void BL_print_gamedebug_line(const char* text, int xco, int yco, int width, int height)
+void BL_print_gamedebug_line(const char *text, int xco, int yco, int width, int height)
 {
 	/* gl prepping */
 	DisableForText();
@@ -164,7 +210,9 @@ void BL_print_gamedebug_line(const char* text, int xco, int yco, int width, int 
 
 	/* the actual drawing */
 	glColor3ub(255, 255, 255);
-	BLF_draw_default((float)xco, (float)(height-yco), 0.0f, (char *)text, 65535); /* XXX, use real len */
+	BLF_size(blf_mono_font, 11, 72);
+	BLF_position(blf_mono_font, (float)xco, (float)(height-yco), 0.0f);
+	BLF_draw(blf_mono_font, (char *)text, 65535); /* XXX, use real len */
 
 	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
@@ -173,7 +221,7 @@ void BL_print_gamedebug_line(const char* text, int xco, int yco, int width, int 
 	glEnable(GL_DEPTH_TEST);
 }
 
-void BL_print_gamedebug_line_padded(const char* text, int xco, int yco, int width, int height)
+void BL_print_gamedebug_line_padded(const char *text, int xco, int yco, int width, int height)
 {
 	/* This is a rather important line :( The gl-mode hasn't been left
 	 * behind quite as neatly as we'd have wanted to. I don't know
@@ -193,9 +241,13 @@ void BL_print_gamedebug_line_padded(const char* text, int xco, int yco, int widt
 
 	/* draw in black first*/
 	glColor3ub(0, 0, 0);
-	BLF_draw_default((float)(xco+2), (float)(height-yco-2), 0.0f, text, 65535); /* XXX, use real len */
+	BLF_size(blf_mono_font, 11, 72);
+	BLF_position(blf_mono_font, (float)xco+1, (float)(height-yco-1), 0.0f);
+	BLF_draw(blf_mono_font, (char *)text, 65535);/* XXX, use real len */
+	
 	glColor3ub(255, 255, 255);
-	BLF_draw_default((float)xco, (float)(height-yco), 0.0f, text, 65535); /* XXX, use real len */
+	BLF_position(blf_mono_font, (float)xco, (float)(height-yco), 0.0f);
+	BLF_draw(blf_mono_font, (char *)text, 65535);
 
 	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
@@ -220,8 +272,6 @@ void BL_NormalMouse(wmWindow *win)
 {
 	WM_cursor_set(win, CURSOR_STD);
 }
-#define MAX_FILE_LENGTH 512
-
 /* get shot from frontbuffer sort of a copy from screendump.c */
 static unsigned int *screenshot(ScrArea *curarea, int *dumpsx, int *dumpsy)
 {
@@ -246,27 +296,36 @@ static unsigned int *screenshot(ScrArea *curarea, int *dumpsx, int *dumpsy)
 }
 
 /* based on screendump.c::screenshot_exec */
-void BL_MakeScreenShot(ScrArea *curarea, const char* filename)
+void BL_MakeScreenShot(bScreen *screen, ScrArea *curarea, const char *filename)
 {
-	char path[MAX_FILE_LENGTH];
-	strcpy(path,filename);
-
 	unsigned int *dumprect;
 	int dumpsx, dumpsy;
 	
-	dumprect= screenshot(curarea, &dumpsx, &dumpsy);
+	dumprect = screenshot(curarea, &dumpsx, &dumpsy);
+
 	if (dumprect) {
-		ImBuf *ibuf;
+		/* initialize image file format data */
+		Scene *scene = (screen)? screen->scene: NULL;
+		ImageFormatData im_format;
+
+		if (scene)
+			im_format = scene->r.im_format;
+		else
+			BKE_imformat_defaults(&im_format);
+
+		/* create file path */
+		char path[FILE_MAX];
+		BLI_strncpy(path, filename, sizeof(path));
 		BLI_path_abs(path, G.main->name);
-		/* BKE_add_image_extension() checks for if extension was already set */
-		BKE_add_image_extension(path, R_IMF_IMTYPE_PNG); /* scene->r.im_format.imtype */
-		ibuf= IMB_allocImBuf(dumpsx, dumpsy, 24, 0);
-		ibuf->rect= dumprect;
-		ibuf->ftype= PNG;
+		BKE_add_image_extension_from_type(path, im_format.imtype);
 
-		IMB_saveiff(ibuf, path, IB_rect);
+		/* create and save imbuf */
+		ImBuf *ibuf = IMB_allocImBuf(dumpsx, dumpsy, 24, 0);
+		ibuf->rect = dumprect;
 
-		ibuf->rect= NULL;
+		BKE_imbuf_write_as(ibuf, path, &im_format, false);
+
+		ibuf->rect = NULL;
 		IMB_freeImBuf(ibuf);
 		MEM_freeN(dumprect);
 	}

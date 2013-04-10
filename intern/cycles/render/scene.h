@@ -25,7 +25,6 @@
 
 #include "kernel_types.h"
 
-#include "util_attribute.h"
 #include "util_param.h"
 #include "util_string.h"
 #include "util_thread.h"
@@ -40,16 +39,17 @@ class Camera;
 class Device;
 class DeviceInfo;
 class Film;
-class Filter;
 class Integrator;
 class Light;
 class LightManager;
+class LookupTables;
 class Mesh;
 class MeshManager;
 class Object;
 class ObjectManager;
 class ParticleSystemManager;
 class ParticleSystem;
+class CurveSystemManager;
 class Shader;
 class ShaderManager;
 class Progress;
@@ -62,6 +62,7 @@ public:
 	device_vector<float4> bvh_nodes;
 	device_vector<uint> object_node;
 	device_vector<float4> tri_woop;
+	device_vector<uint> prim_segment;
 	device_vector<uint> prim_visibility;
 	device_vector<uint> prim_index;
 	device_vector<uint> prim_object;
@@ -72,8 +73,12 @@ public:
 	device_vector<float4> tri_vindex;
 	device_vector<float4> tri_verts;
 
+	device_vector<float4> curves;
+	device_vector<float4> curve_keys;
+
 	/* objects */
 	device_vector<float4> objects;
+	device_vector<float4> objects_vector;
 
 	/* attributes */
 	device_vector<uint4> attributes_map;
@@ -94,8 +99,8 @@ public:
 	device_vector<uint> shader_flag;
 	device_vector<uint> object_flag;
 
-	/* filter */
-	device_vector<float> filter_table;
+	/* lookup tables */
+	device_vector<float> lookup_table;
 
 	/* integrator */
 	device_vector<uint> sobol_directions;
@@ -120,7 +125,7 @@ public:
 	bool use_bvh_cache;
 	bool use_bvh_spatial_split;
 	bool use_qbvh;
-	bool persistent_images;
+	bool persistent_data;
 
 	SceneParams()
 	{
@@ -141,7 +146,7 @@ public:
 		&& use_bvh_cache == params.use_bvh_cache
 		&& use_bvh_spatial_split == params.use_bvh_spatial_split
 		&& use_qbvh == params.use_qbvh
-		&& persistent_images == params.persistent_images); }
+		&& persistent_data == params.persistent_data); }
 };
 
 /* Scene */
@@ -150,7 +155,7 @@ class Scene {
 public:
 	/* data */
 	Camera *camera;
-	Filter *filter;
+	LookupTables *lookup_tables;
 	Film *film;
 	Background *background;
 	Integrator *integrator;
@@ -169,6 +174,7 @@ public:
 	MeshManager *mesh_manager;
 	ObjectManager *object_manager;
 	ParticleSystemManager *particle_system_manager;
+	CurveSystemManager *curve_system_manager;
 
 	/* default shaders */
 	int default_surface;

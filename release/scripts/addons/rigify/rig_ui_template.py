@@ -21,9 +21,43 @@
 UI_SLIDERS = '''
 import bpy
 from mathutils import Matrix, Vector
-from math import acos
+from math import acos, pi
 
 rig_id = "%s"
+
+
+############################
+## Math utility functions ##
+############################
+
+def perpendicular_vector(v):
+    """ Returns a vector that is perpendicular to the one given.
+        The returned vector is _not_ guaranteed to be normalized.
+    """
+    # Create a vector that is not aligned with v.
+    # It doesn't matter what vector.  Just any vector
+    # that's guaranteed to not be pointing in the same
+    # direction.
+    if abs(v[0]) < abs(v[1]):
+        tv = Vector((1,0,0))
+    else:
+        tv = Vector((0,1,0))
+
+    # Use cross prouct to generate a vector perpendicular to
+    # both tv and (more importantly) v.
+    return v.cross(tv)
+
+
+def rotation_difference(mat1, mat2):
+    """ Returns the shortest-path rotational difference between two
+        matrices.
+    """
+    q1 = mat1.to_quaternion()
+    q2 = mat2.to_quaternion()
+    angle = acos(min(1,max(-1,q1.dot(q2)))) * 2
+    if angle > pi:
+        angle = -angle + (2*pi)
+    return angle
 
 
 #########################################
@@ -162,20 +196,8 @@ def match_pole_target(ik_first, ik_last, pole, match_bone, length):
     # tip of ik_last
     ikv = b - a
 
-    # Create a vector that is not aligned with ikv.
-    # It doesn't matter what vector.  Just any vector
-    # that's guaranteed to not be pointing in the same
-    # direction.  In this case, we create a unit vector
-    # on the axis of the smallest component of ikv.
-    if abs(ikv[0]) < abs(ikv[1]) and abs(ikv[0]) < abs(ikv[2]):
-        v = Vector((1,0,0))
-    elif abs(ikv[1]) < abs(ikv[2]):
-        v = Vector((0,1,0))
-    else:
-        v = Vector((0,0,1))
-
     # Get a vector perpendicular to ikv
-    pv = v.cross(ikv).normalized() * length
+    pv = perpendicular_vector(ikv).normalized() * length
 
     def set_pole(pvi):
         """ Set pole target's position based on a vector
@@ -194,24 +216,20 @@ def match_pole_target(ik_first, ik_last, pole, match_bone, length):
     set_pole(pv)
 
     # Get the rotation difference between ik_first and match_bone
-    q1 = ik_first.matrix.to_quaternion()
-    q2 = match_bone.matrix.to_quaternion()
-    angle = acos(min(1,max(-1,q1.dot(q2)))) * 2
+    angle = rotation_difference(ik_first.matrix, match_bone.matrix)
 
-    # Compensate for the rotation difference
-    if angle > 0.0001:
-        pv = Matrix.Rotation(angle, 4, ikv).to_quaternion() * pv
-        set_pole(pv)
+    # Try compensating for the rotation difference in both directions
+    pv1 = Matrix.Rotation(angle, 4, ikv) * pv
+    set_pole(pv1)
+    ang1 = rotation_difference(ik_first.matrix, match_bone.matrix)
 
-        # Get rotation difference again, to see if we
-        # compensated in the right direction
-        q1 = ik_first.matrix.to_quaternion()
-        q2 = match_bone.matrix.to_quaternion()
-        angle2 = acos(min(1,max(-1,q1.dot(q2)))) * 2
-        if angle2 > 0.0001:
-            # Compensate in the other direction
-            pv = Matrix.Rotation((angle*(-2)), 4, ikv).to_quaternion() * pv
-            set_pole(pv)
+    pv2 = Matrix.Rotation(-angle, 4, ikv) * pv
+    set_pole(pv2)
+    ang2 = rotation_difference(ik_first.matrix, match_bone.matrix)
+
+    # Do the one with the smaller angle
+    if ang1 < ang2:
+        set_pole(pv1)
 
 
 def fk2ik_arm(obj, fk, ik):
@@ -226,6 +244,13 @@ def fk2ik_arm(obj, fk, ik):
     uarmi = obj.pose.bones[ik[0]]
     farmi = obj.pose.bones[ik[1]]
     handi = obj.pose.bones[ik[2]]
+
+    # Stretch
+    if handi['auto_stretch'] == 0.0:
+        uarm['stretch_length'] = handi['stretch_length']
+    else:
+        diff = (uarmi.vector.length + farmi.vector.length) / (uarm.vector.length + farm.vector.length)
+        uarm['stretch_length'] *= diff
 
     # Upper arm position
     match_pose_rotation(uarm, uarmi)
@@ -254,6 +279,9 @@ def ik2fk_arm(obj, fk, ik):
     handi = obj.pose.bones[ik[2]]
     pole  = obj.pose.bones[ik[3]]
 
+    # Stretch
+    handi['stretch_length'] = uarm['stretch_length']
+
     # Hand position
     match_pose_translation(handi, hand)
     match_pose_rotation(handi, hand)
@@ -275,7 +303,15 @@ def fk2ik_leg(obj, fk, ik):
     mfoot  = obj.pose.bones[fk[3]]
     thighi = obj.pose.bones[ik[0]]
     shini  = obj.pose.bones[ik[1]]
-    mfooti = obj.pose.bones[ik[2]]
+    footi  = obj.pose.bones[ik[2]]
+    mfooti = obj.pose.bones[ik[3]]
+
+    # Stretch
+    if footi['auto_stretch'] == 0.0:
+        thigh['stretch_length'] = footi['stretch_length']
+    else:
+        diff = (thighi.vector.length + shini.vector.length) / (thigh.vector.length + shin.vector.length)
+        thigh['stretch_length'] *= diff
 
     # Thigh position
     match_pose_rotation(thigh, thighi)
@@ -309,6 +345,9 @@ def ik2fk_leg(obj, fk, ik):
     footroll = obj.pose.bones[ik[3]]
     pole     = obj.pose.bones[ik[4]]
     mfooti   = obj.pose.bones[ik[5]]
+
+    # Stretch
+    footi['stretch_length'] = thigh['stretch_length']
 
     # Clear footroll
     set_pose_rotation(footroll, Matrix())
@@ -403,6 +442,7 @@ class Rigify_Leg_FK2IK(bpy.types.Operator):
 
     thigh_ik = bpy.props.StringProperty(name="Thigh IK Name")
     shin_ik  = bpy.props.StringProperty(name="Shin IK Name")
+    foot_ik  = bpy.props.StringProperty(name="Foot IK Name")
     mfoot_ik = bpy.props.StringProperty(name="MFoot IK Name")
 
     @classmethod
@@ -413,7 +453,7 @@ class Rigify_Leg_FK2IK(bpy.types.Operator):
         use_global_undo = context.user_preferences.edit.use_global_undo
         context.user_preferences.edit.use_global_undo = False
         try:
-            fk2ik_leg(context.active_object, fk=[self.thigh_fk, self.shin_fk, self.foot_fk, self.mfoot_fk], ik=[self.thigh_ik, self.shin_ik, self.mfoot_ik])
+            fk2ik_leg(context.active_object, fk=[self.thigh_fk, self.shin_fk, self.foot_fk, self.mfoot_fk], ik=[self.thigh_ik, self.shin_ik, self.foot_ik, self.mfoot_ik])
         finally:
             context.user_preferences.edit.use_global_undo = use_global_undo
         return {'FINISHED'}

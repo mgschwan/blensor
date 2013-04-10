@@ -42,7 +42,6 @@ typedef unsigned __int64 uint_ptr;
 typedef unsigned long uint_ptr;
 #endif
 
-#define KX_INERTIA_INFINITE 10000
 #include "RAS_IPolygonMaterial.h"
 #include "KX_BlenderMaterial.h"
 #include "KX_GameObject.h"
@@ -188,7 +187,7 @@ KX_GameObject::~KX_GameObject()
 #endif // WITH_PYTHON
 }
 
-KX_GameObject* KX_GameObject::GetClientObject(KX_ClientObjectInfo* info)
+KX_GameObject* KX_GameObject::GetClientObject(KX_ClientObjectInfo *info)
 {
 	if (!info)
 		return NULL;
@@ -1401,6 +1400,14 @@ CListValue* KX_GameObject::GetChildrenRecursive()
 	return list;
 }
 
+KX_Scene* KX_GameObject::GetScene()
+{
+	SG_Node* node = this->GetSGNode();
+	KX_Scene* scene = static_cast<KX_Scene*>(node->GetSGClientInfo());
+
+	return scene;
+}
+
 /* ---------------------------------------------------------------------
  * Some stuff taken from the header
  * --------------------------------------------------------------------- */
@@ -1565,7 +1572,7 @@ static int mathutils_kxgameob_vector_set_index(BaseMathObject *bmo, int subtype,
 	return mathutils_kxgameob_vector_set(bmo, subtype);
 }
 
-Mathutils_Callback mathutils_kxgameob_vector_cb = {
+static Mathutils_Callback mathutils_kxgameob_vector_cb = {
 	mathutils_kxgameob_generic_check,
 	mathutils_kxgameob_vector_get,
 	mathutils_kxgameob_vector_set,
@@ -1621,7 +1628,7 @@ static int mathutils_kxgameob_matrix_set(BaseMathObject *bmo, int subtype)
 	return 0;
 }
 
-Mathutils_Callback mathutils_kxgameob_matrix_cb = {
+static Mathutils_Callback mathutils_kxgameob_matrix_cb = {
 	mathutils_kxgameob_generic_check,
 	mathutils_kxgameob_matrix_get,
 	mathutils_kxgameob_matrix_set,
@@ -1755,8 +1762,7 @@ PyObject *KX_GameObject::PyReplaceMesh(PyObject *args)
 
 PyObject *KX_GameObject::PyEndObject()
 {
-	SG_Node* node = this->GetSGNode();
-	KX_Scene* scene = static_cast<KX_Scene*>(node->GetSGClientInfo());
+	KX_Scene* scene = GetScene();
 	
 	scene->DelayedRemoveObject(this);
 	
@@ -1778,7 +1784,7 @@ PyObject *KX_GameObject::PyReinstancePhysicsMesh(PyObject *args)
 		) {
 		return NULL;
 	}
-#ifdef USE_BULLET
+#ifdef WITH_BULLET
 	/* gameobj and mesh can be NULL */
 	if (KX_ReInstanceBulletShapeFromMesh(this, gameobj, mesh))
 		Py_RETURN_TRUE;
@@ -1794,7 +1800,7 @@ static PyObject *Map_GetItem(PyObject *self_v, PyObject *item)
 	PyObject *pyconvert;
 	
 	if (self == NULL) {
-		PyErr_SetString(PyExc_SystemError, "val = gameOb[key]: KX_GameObject, "BGE_PROXY_ERROR_MSG);
+		PyErr_SetString(PyExc_SystemError, "val = gameOb[key]: KX_GameObject, " BGE_PROXY_ERROR_MSG);
 		return NULL;
 	}
 	
@@ -1828,7 +1834,7 @@ static int Map_SetItem(PyObject *self_v, PyObject *key, PyObject *val)
 		PyErr_Clear();
 	
 	if (self == NULL) {
-		PyErr_SetString(PyExc_SystemError, "gameOb[key] = value: KX_GameObject, "BGE_PROXY_ERROR_MSG);
+		PyErr_SetString(PyExc_SystemError, "gameOb[key] = value: KX_GameObject, " BGE_PROXY_ERROR_MSG);
 		return -1;
 	}
 	
@@ -1913,7 +1919,7 @@ static int Seq_Contains(PyObject *self_v, PyObject *value)
 	KX_GameObject* self = static_cast<KX_GameObject*>BGE_PROXY_REF(self_v);
 	
 	if (self == NULL) {
-		PyErr_SetString(PyExc_SystemError, "val in gameOb: KX_GameObject, "BGE_PROXY_ERROR_MSG);
+		PyErr_SetString(PyExc_SystemError, "val in gameOb: KX_GameObject, " BGE_PROXY_ERROR_MSG);
 		return -1;
 	}
 	
@@ -2004,8 +2010,7 @@ PyObject *KX_GameObject::pyattr_get_group_members(void *self_v, const KX_PYATTRI
 PyObject* KX_GameObject::pyattr_get_scene(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
 	KX_GameObject *self = static_cast<KX_GameObject*>(self_v);
-	SG_Node *node = self->GetSGNode();
-	KX_Scene *scene = static_cast<KX_Scene *>(node->GetSGClientInfo());
+	KX_Scene *scene = self->GetScene();
 	if (scene) {
 		return scene->GetProxy();
 	}
@@ -2737,11 +2742,11 @@ PyObject *KX_GameObject::PyGetReactionForce()
 	// only can get the velocity if we have a physics object connected to us...
 	
 	// XXX - Currently not working with bullet intergration, see KX_BulletPhysicsController.cpp's getReactionForce
-	/*
+#if 0
 	if (GetPhysicsController())
 		return PyObjectFrom(GetPhysicsController()->getReactionForce());
 	return PyObjectFrom(dummy_point);
-	*/
+#endif
 	
 	return Py_BuildValue("fff", 0.0, 0.0, 0.0);
 	
@@ -2982,7 +2987,7 @@ KX_PYMETHODDEF_DOC_O(KX_GameObject, getVectTo,
 	return returnValue;
 }
 
-bool KX_GameObject::RayHit(KX_ClientObjectInfo* client, KX_RayCast* result, void * const data)
+bool KX_GameObject::RayHit(KX_ClientObjectInfo *client, KX_RayCast *result, void * const data)
 {
 	KX_GameObject* hitKXObj = client->m_gameobject;
 	
@@ -3001,7 +3006,7 @@ bool KX_GameObject::RayHit(KX_ClientObjectInfo* client, KX_RayCast* result, void
 /* this function is used to pre-filter the object before casting the ray on them.
  * This is useful for "X-Ray" option when we want to see "through" unwanted object.
  */
-bool KX_GameObject::NeedRayCast(KX_ClientObjectInfo* client)
+bool KX_GameObject::NeedRayCast(KX_ClientObjectInfo *client)
 {
 	KX_GameObject* hitKXObj = client->m_gameobject;
 	
@@ -3057,7 +3062,7 @@ KX_PYMETHODDEF_DOC(KX_GameObject, rayCastTo,
 	if (dist != 0.0f)
 		toPoint = fromPoint + dist * (toPoint-fromPoint).safe_normalized();
 	
-	PHY_IPhysicsEnvironment* pe = KX_GetActiveScene()->GetPhysicsEnvironment();
+	PHY_IPhysicsEnvironment* pe = GetScene()->GetPhysicsEnvironment();
 	KX_IPhysicsController *spc = GetPhysicsController();
 	KX_GameObject *parent = GetParent();
 	if (!spc && parent)
@@ -3203,7 +3208,7 @@ KX_PYMETHODDEF_DOC(KX_GameObject, rayCast,
 		return none_tuple_3();
 	}
 	
-	PHY_IPhysicsEnvironment* pe = KX_GetActiveScene()->GetPhysicsEnvironment();
+	PHY_IPhysicsEnvironment* pe = GetScene()->GetPhysicsEnvironment();
 	KX_IPhysicsController *spc = GetPhysicsController();
 	KX_GameObject *parent = GetParent();
 	if (!spc && parent)

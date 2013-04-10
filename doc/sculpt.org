@@ -1,0 +1,199 @@
+* Dynamic-Topology Sculpting
+** Undo System
+   Dynamic-topology sculpting is lightly integrated with the existing
+   sculpt undo stack. There are three new undo/redo operations:
+   entering dynamic-topology mode, exiting dynamic-topology mode, and
+   BMLog operations.
+
+*** BMLog
+	BMLog is an undo/redo record tied to BMesh. The source is in
+	bmesh/intern/bmesh_log.c. The BMLog keeps track of the creation
+	and deletion of vertices and faces (which are limited to triangles
+	for now) as well as vertex movement.
+
+*** Entering dynamic-topology mode
+	
+
+*** Exiting dynamic-topology mode
+	When exiting dynamic-topology mode, it is important to write out
+	vertices and faces in a consistent order. This is needed because
+	regular sculpt undo only records vertex locations, with the
+	assumption that the order of vertices and faces (and the PBVH node
+	that owns them) remains static.
+
+	To accomplish this, the BMesh elements are reordered by their
+	unique IDs when exiting dynamic-topology mode.
+
+	A slightly different approach is needed when exiting
+	dynamic-topology mode via undo. Again, the mesh needs to have a
+	consistent ordering so as to match any regular sculpt undo
+	nodes. A simple re-ordering isn't enough though because
+	dynamic-topology mode splits all faces into triangles. The
+	simplest solution here is to directly store a full copy of the
+	mesh's vertex and face arrays. When undoing out of
+	dynamic-topology mode, the arrays are directly copied to the mesh
+	rather than doing any conversion from the BMesh.
+
+*** Test Scenarios
+	There are quite a few cases that the undo system has to handle. In
+	the interest of not breaking things when making future changes and
+	fixes, here are some manual testing steps to try. The expected
+	results are not described as they should be fairly obvious
+	(undo/redo results match original, no unfree'd memory, no graphics
+	glitches, etc.)
+
+	Note: when a bug is found in the undo system, this list should be
+	updated with a new test case with steps to reproduce the failure.
+
+**** Test 0
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Undo
+   - Redo
+   - Undo
+   - Redo
+   - Quit Blender
+
+**** Test 1
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Paint a single brush stroke
+   - Disable dynamic topology
+   - Undo
+   - Undo
+   - Undo
+   - Redo
+   - Redo
+   - Redo
+   - Quit Blender
+
+**** Test 2
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Paint a single brush stroke
+   - Enter editmode
+   - Quit Blender
+
+**** Test 3
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Paint a single brush stroke
+   - Disable dynamic topology
+   - Enter editmode
+   - Select all and move the mesh
+   - Enter sculpt mode
+   - Undo
+   - Redo
+   - XXX: this currently gives unexpected results. After undoing, a
+     redo doesn't get you back to the mesh as it was after moving in
+     editmode. It does not, however, crash or leak memory.
+	 
+**** Test 4
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Disable dynamic topology
+   - Undo
+   - Paint a single brush stroke
+   - Quit Blender	 
+	 
+**** Test 5
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Paint a single brush stroke
+   - Disable dynamic topology
+   - Undo
+   - Paint a single brush stroke
+   - Quit Blender
+
+**** Test 6
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Paint a single brush stroke
+   - Undo (undoes paint stroke)
+   - Undo (disables dynamic topology)
+   - Undo (used to do global undo, currently disabled though)
+   - Redo
+   - Redo
+   - Redo
+   - Quit Blender
+
+**** Test 7
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Paint a single brush stroke
+   - Disable dynamic topology
+   - Paint a single brush stroke
+   - Undo
+   - Undo
+   - Undo
+   - Undo
+   - Redo
+   - Redo
+   - Redo
+   - Redo
+   - Quit Blender
+
+**** Test 8
+   - Subdivide default cube
+   - Enter sculpt mode
+   - Paint a single brush stroke
+   - Enable dynamic topology
+   - Undo
+   - Undo
+   - Redo
+   - Redo
+   - Quit Blender
+
+**** Test 9
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Disable dynamic topology
+   - Undo
+   - Symmetrize
+   - Paint a single brush stroke
+   - Quit Blender
+
+**** Test 10
+   - Enter edit mode on default cube
+   - Exit edit mode and enter sculpt mode
+   - Enable dynamic topology
+   - Disable dynamic topology
+   - Undo
+   - Undo
+   - Enter edit mode
+   - Quit Blender
+
+**** Test 11
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Switch to mask brush (MKEY)
+   - Paint a single brush stroke
+   - Disable dynamic topology
+   - Undo
+   - Undo
+   - Undo
+   - Redo
+   - Redo
+   - Redo
+   - Quit Blender
+
+**** Test 13
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Paint a single brush stroke
+   - Hide part of the mesh (HKEY)
+   - Disable dynamic topology
+   - Undo
+   - Undo
+   - Undo
+   - Redo
+   - Redo
+   - Redo
+   - Quit Blender
+
+**** Test 14
+   - Enter sculpt mode on default cube
+   - Enable dynamic topology
+   - Paint a single brush stroke
+   - Save the file
+   - Undo

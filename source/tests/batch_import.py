@@ -112,7 +112,7 @@ def batch_import(operator="",
     for i, f in enumerate(files):
         print("    %s(filepath=%r) # %d of %d" % (operator, f, i + start, len(files)))
 
-        # hack so loading the new file doesnt undo our loaded addons
+        # hack so loading the new file doesn't undo our loaded addons
         addon_utils.reset_all = lambda: None  # XXX, hack
 
         bpy.ops.wm.read_factory_settings()
@@ -134,8 +134,7 @@ def batch_import(operator="",
             print("\tSaving: %r" % fout_blend)
 
             fout_dir = os.path.dirname(fout_blend)
-            if not os.path.exists(fout_dir):
-                os.makedirs(fout_dir)
+            os.makedirs(fout_dir, exist_ok=True)
 
             bpy.ops.wm.save_as_mainfile(filepath=fout_blend)
 

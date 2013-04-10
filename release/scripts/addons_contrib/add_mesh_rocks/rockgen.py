@@ -986,16 +986,19 @@ def generateObject(context, muX, sigmaX, scaleX, upperSkewX, muY, sigmaY,
              (x[6],-y[6],z[6]),(x[7],y[7],z[7])]
         faces = [[0,1,3,2],[0,1,5,4],[0,4,6,2],[7,5,4,6],[7,3,2,6],[7,5,1,3]]
 
-    name = "Rock." + str(base + shift).zfill(3)
+##    name = "Rock." + str(base + shift).zfill(3)
+    name = "rock"
 
     # Make object:
     obj = createMeshObject(context, verts, [], faces, name)
 
     if scaleDisplace:
-        bpy.data.objects[name].scale = Vector((averageX, averageY, averageZ))
-
+##        bpy.data.objects[name].scale = Vector((averageX, averageY, averageZ))
+        obj.object.scale = Vector((averageX, averageY, averageZ))
+    
     # For a slight speed bump / Readability:
-    mesh = bpy.data.meshes[name]
+##    mesh = bpy.data.meshes[name]
+    mesh = obj.object.data
 
     # Apply creasing:
     if shape == 0:
@@ -1057,7 +1060,8 @@ def generateObject(context, muX, sigmaX, scaleX, upperSkewX, muY, sigmaY,
             else:
                 mesh.edges[i].crease = gauss(0.125, 0.025)
 
-    return name
+    return obj.object
+##    return name
 
 
 # Artifically skews a normal (gaussian) distribution.  This will not create
@@ -1244,11 +1248,12 @@ def generateRocks(context, scaleX, skewX, scaleY, skewY, scaleZ, skewZ,
         #   *** todo completed 4/19/2011 ***
         #   *** Code is notably slower at high rock counts ***
 
-        name = generateObject(context, muX, sigmaX, scaleX, upperSkewX, muY,
+        rock = generateObject(context, muX, sigmaX, scaleX, upperSkewX, muY,
+##        name = generateObject(context, muX, sigmaX, scaleX, upperSkewX, muY,
                                sigmaY, scaleY, upperSkewY, muZ, sigmaZ, scaleZ,
                                upperSkewZ, i, lastRock, scaleDisplace, scale_fac)
 
-        rock = bpy.data.objects[name]
+##        rock = bpy.data.objects[name]
 
         # todo Map what the two new textures will be:
         # This is not working.  It works on paper so . . . ???
@@ -1328,7 +1333,8 @@ def generateRocks(context, scaleX, skewX, scaleY, skewY, scaleZ, skewZ,
         rock.modifiers[5].strength = gauss(rough, (1 / 3) * rough)
 
         # Set mesh to be smooth and fix the normals:
-        utils.smooth(bpy.data.meshes[name])
+        utils.smooth(rock.data)
+##        utils.smooth(bpy.data.meshes[name])
         bpy.ops.object.editmode_toggle()
         bpy.ops.mesh.normals_make_consistent()
         bpy.ops.object.editmode_toggle()

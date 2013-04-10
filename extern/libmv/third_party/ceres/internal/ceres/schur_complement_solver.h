@@ -33,6 +33,7 @@
 
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "ceres/block_random_access_matrix.h"
 #include "ceres/block_sparse_matrix.h"
@@ -97,13 +98,14 @@ class BlockSparseMatrixBase;
 // The two solvers can be instantiated by calling
 // LinearSolver::CreateLinearSolver with LinearSolver::Options::type
 // set to DENSE_SCHUR and SPARSE_SCHUR
-// respectively. LinearSolver::Options::num_eliminate_blocks should be
+// respectively. LinearSolver::Options::elimination_groups[0] should be
 // at least 1.
 class SchurComplementSolver : public BlockSparseMatrixBaseSolver {
  public:
   explicit SchurComplementSolver(const LinearSolver::Options& options)
       : options_(options) {
-    CHECK_GT(options.num_eliminate_blocks, 0);
+    CHECK_GT(options.elimination_groups.size(), 1);
+    CHECK_GT(options.elimination_groups[0], 0);
   }
 
   // LinearSolver methods
@@ -149,7 +151,7 @@ class DenseSchurComplementSolver : public SchurComplementSolver {
   CERES_DISALLOW_COPY_AND_ASSIGN(DenseSchurComplementSolver);
 };
 
-
+#if !defined(CERES_NO_SUITESPARSE) || !defined(CERES_NO_CXSPARE)
 // Sparse Cholesky factorization based solver.
 class SparseSchurComplementSolver : public SchurComplementSolver {
  public:
@@ -180,6 +182,7 @@ class SparseSchurComplementSolver : public SchurComplementSolver {
   CERES_DISALLOW_COPY_AND_ASSIGN(SparseSchurComplementSolver);
 };
 
+#endif  // !defined(CERES_NO_SUITESPARSE) || !defined(CERES_NO_CXSPARE)
 }  // namespace internal
 }  // namespace ceres
 

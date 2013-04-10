@@ -23,7 +23,7 @@ bl_info = {
     "description": "Copy UV coordinates from the active joined mesh",
     "author": "Sergey Sharybin",
     "version": (0, 1),
-    "blender": (2, 63, 14),
+    "blender": (2, 63, 0),
     "location": "Object mode 'Make Links' menu",
     "wiki_url": "",
     "tracker_url": "",

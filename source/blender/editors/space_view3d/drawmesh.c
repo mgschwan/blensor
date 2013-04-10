@@ -236,31 +236,32 @@ static struct TextureDrawState {
 	Object *ob;
 	int is_lit, is_tex;
 	int color_profile;
+	bool use_backface_culling;
 	unsigned char obcol[4];
-} Gtexdraw = {NULL, 0, 0, 0, {0, 0, 0, 0}};
+} Gtexdraw = {NULL, 0, 0, 0, false, {0, 0, 0, 0}};
 
-static int set_draw_settings_cached(int clearcache, MTFace *texface, Material *ma, struct TextureDrawState gtexdraw)
+static bool set_draw_settings_cached(int clearcache, MTFace *texface, Material *ma, struct TextureDrawState gtexdraw)
 {
 	static Material *c_ma;
 	static int c_textured;
 	static MTFace c_texface;
 	static int c_backculled;
-	static int c_badtex;
+	static bool c_badtex;
 	static int c_lit;
 	static int c_has_texface;
 
 	Object *litob = NULL;  /* to get mode to turn off mipmap in painting mode */
-	int backculled = GEMAT_BACKCULL;
+	int backculled = GEMAT_BACKCULL || gtexdraw.use_backface_culling;
 	int alphablend = 0;
 	int textured = 0;
 	int lit = 0;
 	int has_texface = texface != NULL;
-	int need_set_tpage = FALSE;
+	bool need_set_tpage = false;
 
 	if (clearcache) {
 		c_textured = c_lit = c_backculled = -1;
 		memset(&c_texface, 0, sizeof(MTFace));
-		c_badtex = 0;
+		c_badtex = false;
 		c_has_texface = -1;
 	}
 	else {
@@ -274,7 +275,7 @@ static int set_draw_settings_cached(int clearcache, MTFace *texface, Material *m
 	if (ma) {
 		alphablend = ma->game.alpha_blend;
 		if (ma->mode & MA_SHLESS) lit = 0;
-		backculled = ma->game.flag & GEMAT_BACKCULL;
+		backculled = (ma->game.flag & GEMAT_BACKCULL) || gtexdraw.use_backface_culling;
 	}
 
 	if (texface) {
@@ -306,7 +307,7 @@ static int set_draw_settings_cached(int clearcache, MTFace *texface, Material *m
 		}
 		else {
 			GPU_set_tpage(NULL, 0, 0);
-			c_badtex = 0;
+			c_badtex = false;
 		}
 		c_textured = textured;
 		c_has_texface = has_texface;
@@ -344,7 +345,7 @@ static int set_draw_settings_cached(int clearcache, MTFace *texface, Material *m
 static void draw_textured_begin(Scene *scene, View3D *v3d, RegionView3D *rv3d, Object *ob)
 {
 	unsigned char obcol[4];
-	int is_tex, solidtex;
+	bool is_tex, solidtex;
 	Mesh *me = ob->data;
 
 	/* XXX scene->obedit warning */
@@ -352,40 +353,35 @@ static void draw_textured_begin(Scene *scene, View3D *v3d, RegionView3D *rv3d, O
 	/* texture draw is abused for mask selection mode, do this so wire draw
 	 * with face selection in weight paint is not lit. */
 	if ((v3d->drawtype <= OB_WIRE) && (ob->mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT))) {
-		solidtex = FALSE;
+		solidtex = false;
 		Gtexdraw.is_lit = 0;
 	}
 	else if (v3d->drawtype == OB_SOLID || ((ob->mode & OB_MODE_EDIT) && v3d->drawtype != OB_TEXTURE)) {
 		/* draw with default lights in solid draw mode and edit mode */
-		solidtex = TRUE;
+		solidtex = true;
 		Gtexdraw.is_lit = -1;
 	}
 	else {
 		/* draw with lights in the scene otherwise */
-		solidtex = FALSE;
+		solidtex = false;
 		Gtexdraw.is_lit = GPU_scene_object_lights(scene, ob, v3d->lay, rv3d->viewmat, !rv3d->is_persp);
 	}
 	
 	rgba_float_to_uchar(obcol, ob->col);
 
-	if (solidtex || v3d->drawtype == OB_TEXTURE) is_tex = 1;
-	else is_tex = 0;
+	if (solidtex || v3d->drawtype == OB_TEXTURE) is_tex = true;
+	else is_tex = false;
 
 	Gtexdraw.ob = ob;
 	Gtexdraw.is_tex = is_tex;
 
 	Gtexdraw.color_profile = BKE_scene_check_color_management_enabled(scene);
+	Gtexdraw.use_backface_culling = (v3d->flag2 & V3D_BACKFACE_CULLING) != 0;
 
 	memcpy(Gtexdraw.obcol, obcol, sizeof(obcol));
 	set_draw_settings_cached(1, NULL, NULL, Gtexdraw);
 	glShadeModel(GL_SMOOTH);
-	if (v3d->flag2 & V3D_BACKFACE_CULLING) {
-		glEnable(GL_CULL_FACE);
-		glCullFace(GL_BACK);
-	}
-	else {
-		glDisable(GL_CULL_FACE);
-	}
+	glCullFace(GL_BACK);
 	glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, (me->flag & ME_TWOSIDED) ? GL_TRUE : GL_FALSE);
 }
 
@@ -396,6 +392,7 @@ static void draw_textured_end(void)
 
 	glShadeModel(GL_FLAT);
 	glDisable(GL_CULL_FACE);
+	glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_FALSE);
 
 	/* XXX, bad patch - GPU_default_lights() calls
 	 * glLightfv(GL_POSITION, ...) which
@@ -415,14 +412,14 @@ static void draw_textured_end(void)
 static DMDrawOption draw_tface__set_draw_legacy(MTFace *tface, int has_mcol, int matnr)
 {
 	Material *ma = give_current_material(Gtexdraw.ob, matnr + 1);
-	int validtexture = 0;
+	bool invalidtexture = false;
 
 	if (ma && (ma->game.flag & GEMAT_INVISIBLE))
 		return DM_DRAW_OPTION_SKIP;
 
-	validtexture = set_draw_settings_cached(0, tface, ma, Gtexdraw);
+	invalidtexture = set_draw_settings_cached(0, tface, ma, Gtexdraw);
 
-	if (tface && validtexture) {
+	if (tface && invalidtexture) {
 		glColor3ub(0xFF, 0x00, 0xFF);
 		return DM_DRAW_OPTION_NO_MCOL; /* Don't set color */
 	}
@@ -431,7 +428,9 @@ static DMDrawOption draw_tface__set_draw_legacy(MTFace *tface, int has_mcol, int
 		return DM_DRAW_OPTION_NO_MCOL; /* Don't set color */
 	}
 	else if (!has_mcol) {
-		if (tface) glColor3f(1.0, 1.0, 1.0);
+		if (tface) {
+			glColor3f(1.0, 1.0, 1.0);
+		}
 		else {
 			if (ma) {
 				float col[3];
@@ -440,7 +439,9 @@ static DMDrawOption draw_tface__set_draw_legacy(MTFace *tface, int has_mcol, int
 				
 				glColor3fv(col);
 			}
-			else glColor3f(1.0, 1.0, 1.0);
+			else {
+				glColor3f(1.0, 1.0, 1.0);
+			}
 		}
 		return DM_DRAW_OPTION_NO_MCOL; /* Don't set color */
 	}
@@ -457,25 +458,17 @@ static DMDrawOption draw_mcol__set_draw_legacy(MTFace *UNUSED(tface), int has_mc
 		return DM_DRAW_OPTION_NO_MCOL;
 }
 
-static DMDrawOption draw_tface__set_draw(MTFace *tface, int has_mcol, int matnr)
+static DMDrawOption draw_tface__set_draw(MTFace *tface, int UNUSED(has_mcol), int matnr)
 {
 	Material *ma = give_current_material(Gtexdraw.ob, matnr + 1);
 
 	if (ma && (ma->game.flag & GEMAT_INVISIBLE)) return 0;
 
-	if (tface && set_draw_settings_cached(0, tface, ma, Gtexdraw)) {
-		return DM_DRAW_OPTION_NO_MCOL; /* Don't set color */
-	}
-	else if (tface && (tface->mode & TF_OBCOL)) {
-		return DM_DRAW_OPTION_NO_MCOL; /* Don't set color */
-	}
-	else if (!has_mcol) {
-		/* XXX: this return value looks wrong (and doesn't match comment) */
-		return DM_DRAW_OPTION_NORMAL; /* Don't set color */
-	}
-	else {
-		return DM_DRAW_OPTION_NORMAL; /* Set color from mcol */
-	}
+	if (tface)
+		set_draw_settings_cached(0, tface, ma, Gtexdraw);
+
+	/* always use color from mcol, as set in update_tface_color_layer */
+	return DM_DRAW_OPTION_NORMAL;
 }
 
 static void update_tface_color_layer(DerivedMesh *dm)
@@ -517,11 +510,11 @@ static void update_tface_color_layer(DerivedMesh *dm)
 				finalCol[i * 4 + j].r = 255;
 			}
 		}
-		else if (tface && (tface->mode & TF_OBCOL)) {
+		else if (ma && (ma->shade_flag & MA_OBCOLOR)) {
 			for (j = 0; j < 4; j++) {
-				finalCol[i * 4 + j].b = FTOCHAR(Gtexdraw.obcol[0]);
-				finalCol[i * 4 + j].g = FTOCHAR(Gtexdraw.obcol[1]);
-				finalCol[i * 4 + j].r = FTOCHAR(Gtexdraw.obcol[2]);
+				finalCol[i * 4 + j].b = Gtexdraw.obcol[0];
+				finalCol[i * 4 + j].g = Gtexdraw.obcol[1];
+				finalCol[i * 4 + j].r = Gtexdraw.obcol[2];
 			}
 		}
 		else if (!mcol) {
@@ -874,7 +867,7 @@ static void tex_mat_set_texture_cb(void *userData, int mat_nr, void *attribs)
 	if (ED_object_get_active_image(data->ob, mat_nr, &ima, &iuser, &node)) {
 		/* get openl texture */
 		int mipmap = 1;
-		int bindcode = (ima) ? GPU_verify_image(ima, iuser, 0, 0, mipmap, FALSE) : 0;
+		int bindcode = (ima) ? GPU_verify_image(ima, iuser, 0, 0, mipmap, false) : 0;
 		float zero[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
 		if (bindcode) {
@@ -947,7 +940,8 @@ static int tex_mat_set_face_editmesh_cb(void *userData, int index)
 void draw_mesh_textured(Scene *scene, View3D *v3d, RegionView3D *rv3d,
                         Object *ob, DerivedMesh *dm, const int draw_flags)
 {
-	if ((!BKE_scene_use_new_shading_nodes(scene)) || (draw_flags & DRAW_MODIFIERS_PREVIEW)) {
+	/* if not cycles, or preview-modifiers, or drawing matcaps */
+	if ((!BKE_scene_use_new_shading_nodes(scene)) || (draw_flags & DRAW_MODIFIERS_PREVIEW) || (v3d->flag2 & V3D_SHOW_SOLID_MATCAP)) {
 		draw_mesh_textured_old(scene, v3d, rv3d, ob, dm, draw_flags);
 		return;
 	}
@@ -1026,10 +1020,10 @@ void draw_mesh_paint(View3D *v3d, RegionView3D *rv3d,
 {
 	DMSetDrawOptions facemask = NULL;
 	Mesh *me = ob->data;
-	const short do_light = (v3d->drawtype >= OB_SOLID);
+	const bool do_light = (v3d->drawtype >= OB_SOLID);
 
 	/* hide faces in face select mode */
-	if (draw_flags & DRAW_FACE_SELECT)
+	if (me->editflag & (ME_EDIT_PAINT_VERT_SEL | ME_EDIT_PAINT_FACE_SEL))
 		facemask = wpaint__setSolidDrawOptions_facemask;
 
 	if (ob->mode & OB_MODE_WEIGHT_PAINT) {
@@ -1076,13 +1070,19 @@ void draw_mesh_paint(View3D *v3d, RegionView3D *rv3d,
 	if (draw_flags & DRAW_FACE_SELECT) {
 		draw_mesh_face_select(rv3d, me, dm);
 	}
-	else if ((do_light == FALSE) || (ob->dtx & OB_DRAWWIRE)) {
+	else if ((do_light == false) || (ob->dtx & OB_DRAWWIRE)) {
+		const int use_depth = (v3d->flag & V3D_ZBUF_SELECT) || !(ob->mode & OB_MODE_WEIGHT_PAINT);
 
 		/* weight paint in solid mode, special case. focus on making the weights clear
 		 * rather than the shading, this is also forced in wire view */
 
-		bglPolygonOffset(rv3d->dist, 1.0);
-		glDepthMask(0);  /* disable write in zbuffer, selected edge wires show better */
+		if (use_depth) {
+			bglPolygonOffset(rv3d->dist, 1.0);
+			glDepthMask(0);  /* disable write in zbuffer, selected edge wires show better */
+		}
+		else {
+			glDisable(GL_DEPTH_TEST);
+		}
 
 		glEnable(GL_BLEND);
 		glColor4ub(255, 255, 255, 96);
@@ -1091,8 +1091,14 @@ void draw_mesh_paint(View3D *v3d, RegionView3D *rv3d,
 
 		dm->drawEdges(dm, 1, 1);
 
-		bglPolygonOffset(rv3d->dist, 0.0);
-		glDepthMask(1);
+		if (use_depth) {
+			bglPolygonOffset(rv3d->dist, 0.0);
+			glDepthMask(1);
+		}
+		else {
+			glEnable(GL_DEPTH_TEST);
+		}
+
 		glDisable(GL_LINE_STIPPLE);
 		glDisable(GL_BLEND);
 	}

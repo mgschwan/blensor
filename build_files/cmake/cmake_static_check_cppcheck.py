@@ -41,9 +41,9 @@ CHECKER_ARGS = [
     # not sure why this is needed, but it is.
     "-I" + os.path.join(project_source_info.SOURCE_DIR, "extern", "glew", "include"),
     "--suppress=*:%s/extern/glew/include/GL/glew.h:241" % project_source_info.SOURCE_DIR,
-    # "--max-configs=1",  # speeds up execution
+    "--max-configs=1",  # speeds up execution
     #  "--check-config", # when includes are missing
-    #  "--enable=all",  # if you want sixty hundred pedantic suggestions
+    "--enable=all",  # if you want sixty hundred pedantic suggestions
     ]
 
 if USE_QUIET:
@@ -56,7 +56,7 @@ def main():
     check_commands = []
     for c, inc_dirs, defs in source_info:
         cmd = ([CHECKER_BIN] +
-                CHECKER_ARGS +
+               CHECKER_ARGS +
                [c] +
                [("-I%s" % i) for i in inc_dirs] +
                [("-D%s" % d) for d in defs]

@@ -38,6 +38,8 @@
 #include "BLI_path_util.h"
 #include "BLI_string.h"
 
+#include "BLF_translation.h"
+
 #include "BKE_action.h"
 #include "BKE_armature.h"
 #include "BKE_fcurve.h"
@@ -217,7 +219,8 @@ void AnimationImporter::add_fcurves_to_object(Object *ob, std::vector<FCurve *>&
 					BLI_strncpy(grp->name, bone_name, sizeof(grp->name));
 					
 					BLI_addtail(&act->groups, grp);
-					BLI_uniquename(&act->groups, grp, "Group", '.', offsetof(bActionGroup, name), 64);
+					BLI_uniquename(&act->groups, grp, CTX_DATA_(BLF_I18NCONTEXT_ID_ACTION, "Group"), '.',
+					               offsetof(bActionGroup, name), 64);
 				}
 				
 				/* add F-Curve to group */
@@ -937,10 +940,9 @@ void AnimationImporter::translate_Animations(COLLADAFW::Node *node,
 					if (is_matrix) {
 						apply_matrix_curves(ob, animcurves, root, node,  transform);
 					}
-					else {
+					else {				
 
 						if (is_joint) {
-
 							add_bone_animation_sampled(ob, animcurves, root, node, transform);
 						}
 						else {
@@ -1194,7 +1196,7 @@ void AnimationImporter::add_bone_animation_sampled(Object *ob, std::vector<FCurv
 		calc_joint_parent_mat_rest(par, NULL, root, node);
 		mult_m4_m4m4(temp, par, matfra);
 
-		// evaluate_joint_world_transform_at_frame(temp, NULL,, node, fra);
+		// evaluate_joint_world_transform_at_frame(temp, NULL, node, fra);
 
 		// calc special matrix
 		mul_serie_m4(mat, irest, temp, irest_dae, rest, NULL, NULL, NULL, NULL);
@@ -1529,7 +1531,7 @@ Object *AnimationImporter::translate_animation_OLD(COLLADAFW::Node *node,
 			calc_joint_parent_mat_rest(par, NULL, root, node);
 			mult_m4_m4m4(temp, par, matfra);
 
-			// evaluate_joint_world_transform_at_frame(temp, NULL,, node, fra);
+			// evaluate_joint_world_transform_at_frame(temp, NULL, node, fra);
 
 			// calc special matrix
 			mul_serie_m4(mat, irest, temp, irest_dae, rest, NULL, NULL, NULL, NULL);
@@ -1676,8 +1678,6 @@ void AnimationImporter::evaluate_transform_at_frame(float mat[4][4], COLLADAFW::
 				default:
 					fprintf(stderr, "unsupported transformation type %d\n", type);
 			}
-			// dae_matrix_to_mat4(tm, m);
-			
 		}
 
 		float temp[4][4];
@@ -1891,7 +1891,7 @@ Object *AnimationImporter::get_joint_object(COLLADAFW::Node *root, COLLADAFW::No
 		job->lay = BKE_scene_base_find(scene, job)->lay = 2;
 
 		mul_v3_fl(job->size, 0.5f);
-		job->recalc |= OB_RECALC_OB;
+		DAG_id_tag_update(&job->id, OB_RECALC_OB);
 
 		verify_adt_action((ID *)&job->id, 1);
 
@@ -1912,14 +1912,14 @@ Object *AnimationImporter::get_joint_object(COLLADAFW::Node *root, COLLADAFW::No
 		if (par_job) {
 			job->parent = par_job;
 
-			par_job->recalc |= OB_RECALC_OB;
+			DAG_id_tag_update(&par_job->id, OB_RECALC_OB);
 			job->parsubstr[0] = 0;
 		}
 
 		BKE_object_where_is_calc(scene, job);
 
 		// after parenting and layer change
-		DAG_scene_sort(CTX_data_main(C), scene);
+		DAG_relations_tag_update(CTX_data_main(C));
 
 		joint_objects[node->getUniqueId()] = job;
 	}
@@ -1971,14 +1971,15 @@ void AnimationImporter::add_bone_fcurve(Object *ob, COLLADAFW::Node *node, FCurv
 	if (grp == NULL) {
 		/* Add a new group, and make it active */
 		grp = (bActionGroup *)MEM_callocN(sizeof(bActionGroup), "bActionGroup");
-					
+
 		grp->flag = AGRP_SELECTED;
 		BLI_strncpy(grp->name, bone_name, sizeof(grp->name));
-					
+
 		BLI_addtail(&act->groups, grp);
-		BLI_uniquename(&act->groups, grp, "Group", '.', offsetof(bActionGroup, name), 64);
+		BLI_uniquename(&act->groups, grp, CTX_DATA_(BLF_I18NCONTEXT_ID_ACTION, "Group"), '.',
+		               offsetof(bActionGroup, name), 64);
 	}
-				
+
 	/* add F-Curve to group */
 	action_groups_add_channel(act, grp, fcu);
 }

@@ -82,7 +82,8 @@ typedef struct bScreen {
 typedef struct ScrVert {
 	struct ScrVert *next, *prev, *newv;
 	vec2s vec;
-	int flag;
+	/* first one used internally, second one for tools */
+	short flag, editflag;
 } ScrVert;
 
 typedef struct ScrEdge {
@@ -109,11 +110,25 @@ typedef struct Panel {		/* the part from uiBlock that needs saved in file */
 	int sortorder;			/* panels are aligned according to increasing sortorder */
 	struct Panel *paneltab;		/* this panel is tabbed in *paneltab */
 	void *activedata;			/* runtime for panel manipulation */
-
-	int list_scroll, list_size;
-	int list_last_len, list_grip_size;
-	char list_search[64];
 } Panel;
+
+typedef struct uiList {				/* some list UI data need to be saved in file */
+	struct uiList *next, *prev;
+
+	struct uiListType *type;		/* runtime */
+	void *padp;
+
+	char list_id[64];				/* defined as UI_MAX_NAME_STR */
+
+	int layout_type;				/* How items are layedout in the list */
+	int padi;
+
+	int list_scroll;
+	int list_size;
+	int list_last_len;
+	int list_grip_size;
+/*	char list_search[64]; */
+} uiList;
 
 typedef struct ScrArea {
 	struct ScrArea *next, *prev;
@@ -127,9 +142,11 @@ typedef struct ScrArea {
 	short winx, winy;				/* size */
 	
 	short headertype;				/* OLD! 0=no header, 1= down, 2= up */
-	short pad;
 	short do_refresh;				/* private, for spacetype refresh callback */
-	short cursor, flag;
+	short flag;
+	short region_active_win;		/* index of last used region of 'RGN_TYPE_WINDOW'
+									 * runtuime variable, updated by executing operators */
+	short pad;
 	
 	struct SpaceType *type;		/* callbacks for this space type */
 	
@@ -159,13 +176,17 @@ typedef struct ARegion {
 	short do_draw;				/* private, cached notifier events */
 	short do_draw_overlay;		/* private, cached notifier events */
 	short swap;					/* private, indicator to survive swap-exchange */
-	short pad[3];
+	short overlap;				/* private, set for indicate drawing overlapped */
+	short pad[2];
 	
 	struct ARegionType *type;	/* callbacks for this region type */
 	
 	ListBase uiblocks;			/* uiBlock */
 	ListBase panels;			/* Panel */
+	ListBase ui_lists;			/* uiList */
 	ListBase handlers;			/* wmEventHandler */
+	
+	struct wmTimer *regiontimer; /* blend in/out */
 	
 	char *headerstr;			/* use this string to draw info */
 	void *regiondata;			/* XXX 2.50, need spacedata equivalent? */
@@ -212,6 +233,13 @@ typedef struct ARegion {
 #define PNL_DEFAULT_CLOSED		1
 #define PNL_NO_HEADER			2
 
+/* uilist layout_type */
+enum {
+	UILST_LAYOUT_DEFAULT          = 0,
+	UILST_LAYOUT_COMPACT          = 1,
+	UILST_LAYOUT_GRID             = 2,
+};
+
 /* regiontype, first two are the default set */
 /* Do NOT change order, append on end. Types are hardcoded needed */
 enum {
@@ -235,10 +263,6 @@ enum {
 #define RGN_ALIGN_VSPLIT	6
 #define RGN_ALIGN_FLOAT		7
 #define RGN_ALIGN_QSPLIT	8
-#define RGN_OVERLAP_TOP		9
-#define RGN_OVERLAP_BOTTOM	10
-#define RGN_OVERLAP_LEFT	11
-#define RGN_OVERLAP_RIGHT	12
 
 #define RGN_SPLIT_PREV		32
 

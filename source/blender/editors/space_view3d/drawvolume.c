@@ -38,6 +38,7 @@
 #include "DNA_screen_types.h"
 #include "DNA_smoke_types.h"
 #include "DNA_view3d_types.h"
+#include "DNA_property_types.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_blenlib.h"
@@ -73,60 +74,17 @@
 
 #include "ED_mesh.h"
 
-
 #include "BLF_api.h"
-
 
 #include "view3d_intern.h"  // own include
 
-
-#ifdef _WIN32
-#include <time.h>
-#include <stdio.h>
-#include <conio.h>
-#include <windows.h>
-
-static LARGE_INTEGER liFrequency;
-static LARGE_INTEGER liStartTime;
-static LARGE_INTEGER liCurrentTime;
-
-static void tstart(void)
-{
-	QueryPerformanceFrequency(&liFrequency);
-	QueryPerformanceCounter(&liStartTime);
-}
-static void tend(void)
-{
-	QueryPerformanceCounter(&liCurrentTime);
-}
-static double tval(void)
-{
-	return ((double)( (liCurrentTime.QuadPart - liStartTime.QuadPart) * (double)1000.0 / (double)liFrequency.QuadPart));
-}
-#else
-#include <sys/time.h>
-static struct timeval _tstart, _tend;
-static struct timezone tz;
-static void tstart(void)
-{
-	gettimeofday(&_tstart, &tz);
-}
-static void tend(void)
-{
-	gettimeofday(&_tend, &tz);
-}
-  #if 0
-static double tval()
-{
-	double t1, t2;
-	t1 = ( double ) _tstart.tv_sec * 1000 + ( double ) _tstart.tv_usec / (1000);
-	t2 = ( double ) _tend.tv_sec * 1000 + ( double ) _tend.tv_usec / (1000);
-	return t2 - t1;
-}
-  #endif
-#endif
-
 struct GPUTexture;
+
+// #define DEBUG_DRAW_TIME
+
+#ifdef DEBUG_DRAW_TIME
+#  include "PIL_time.h"
+#endif
 
 static int intersect_edges(float *points, float a, float b, float c, float d, float edges[12][2][3])
 {
@@ -147,7 +105,7 @@ static int intersect_edges(float *points, float a, float b, float c, float d, fl
 	return numpoints;
 }
 
-static int convex(const float p0[3], const float up[3], const float a[3], const float b[3])
+static bool convex(const float p0[3], const float up[3], const float a[3], const float b[3])
 {
 	/* Vec3 va = a-p0, vb = b-p0; */
 	float va[3], vb[3], tmp[3];
@@ -274,7 +232,10 @@ void draw_smoke_volume(SmokeDomainSettings *sds, Object *ob,
 		return;
 	}
 
-	tstart();
+#ifdef DEBUG_DRAW_TIME
+	TIMEIT_START(draw);
+#endif
+
 	/* generate flame spectrum texture */
 	#define SPEC_WIDTH 256
 	#define FIRE_THRESH 7
@@ -448,8 +409,8 @@ void draw_smoke_volume(SmokeDomainSettings *sds, Object *ob,
 	 * inserting previously found vertex into the plane equation */
 
 	/* d0 = (viewnormal[0]*cv[i][0] + viewnormal[1]*cv[i][1] + viewnormal[2]*cv[i][2]); */ /* UNUSED */
-	ds = (ABS(viewnormal[0]) * size[0] + ABS(viewnormal[1]) * size[1] + ABS(viewnormal[2]) * size[2]);
-	dd = MAX3(sds->global_size[0], sds->global_size[1], sds->global_size[2]) / 128.f;
+	ds = (fabsf(viewnormal[0]) * size[0] + fabsf(viewnormal[1]) * size[1] + fabsf(viewnormal[2]) * size[2]);
+	dd = max_fff(sds->global_size[0], sds->global_size[1], sds->global_size[2]) / 128.f;
 	n = 0;
 	good_index = i;
 
@@ -521,8 +482,10 @@ void draw_smoke_volume(SmokeDomainSettings *sds, Object *ob,
 		n++;
 	}
 
-	tend();
-	// printf ( "Draw Time: %f\n",(float) tval() );
+#ifdef DEBUG_DRAW_TIME
+	printf("Draw Time: %f\n", (float)TIMEIT_VALUE(draw));
+	TIMEIT_END(draw);
+#endif
 
 	if (tex_shadow)
 		GPU_texture_unbind(tex_shadow);
@@ -569,7 +532,7 @@ void draw_smoke_velocity(SmokeDomainSettings *domain, Object *ob)
 
 	float min[3];
 	float *cell_size = domain->cell_size;
-	float step_size = ((float)MAX3(base_res[0], base_res[1], base_res[2])) / 16.f;
+	float step_size = ((float)max_iii(base_res[0], base_res[1], base_res[2])) / 16.f;
 	float vf = domain->scale / 16.f * 2.f; /* velocity factor */
 
 	glLineWidth(1.0f);
@@ -623,7 +586,7 @@ void draw_smoke_heat(SmokeDomainSettings *domain, Object *ob)
 
 	float min[3];
 	float *cell_size = domain->cell_size;
-	float step_size = ((float)MAX3(base_res[0], base_res[1], base_res[2])) / 16.f;
+	float step_size = ((float)max_iii(base_res[0], base_res[1], base_res[2])) / 16.f;
 	float vf = domain->scale / 16.f * 2.f; /* velocity factor */
 
 	/* set first position so that it doesn't jump when domain moves */

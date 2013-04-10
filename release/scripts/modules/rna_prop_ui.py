@@ -92,6 +92,9 @@ def draw(layout, context, context_member, property_type, use_edit=True):
     if not rna_item:
         return
 
+    if rna_item.id_data.library is not None:
+        use_edit = False
+
     assert(isinstance(rna_item, property_type))
 
     items = rna_item.items()
@@ -132,11 +135,11 @@ def draw(layout, context, context_member, property_type, use_edit=True):
         else:
             row = box.row()
 
-        row.label(text=key)
+        row.label(text=key, translate=False)
 
         # explicit exception for arrays
         if to_dict or to_list:
-            row.label(text=val_draw)
+            row.label(text=val_draw, translate=False)
         else:
             if key in rna_properties:
                 row.prop(rna_item, key, text="")
@@ -145,7 +148,7 @@ def draw(layout, context, context_member, property_type, use_edit=True):
 
         if use_edit:
             row = split.row(align=True)
-            props = row.operator("wm.properties_edit", text="edit")
+            props = row.operator("wm.properties_edit", text="Edit")
             assign_props(props, val_draw, key)
 
             props = row.operator("wm.properties_remove", text="", icon='ZOOMOUT')

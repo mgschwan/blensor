@@ -43,6 +43,7 @@ set(SRC_DNA_INC
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_dynamicpaint_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_effect_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_fileglobal_types.h
+	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_freestyle_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_genfile.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_gpencil_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_group_types.h
@@ -51,6 +52,7 @@ set(SRC_DNA_INC
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_key_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_lamp_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_lattice_types.h
+	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_linestyle_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_listBase.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_material_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_mesh_types.h
@@ -66,6 +68,7 @@ set(SRC_DNA_INC
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_packedFile_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_particle_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_property_types.h
+	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_rigidbody_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_scene_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_screen_types.h
 	${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_sdna_types.h
@@ -107,7 +110,6 @@ add_subdirectory(makesdna)
 add_subdirectory(makesrna)
 
 if(WITH_COMPOSITOR)
-	add_subdirectory(opencl)  # later on this may be used more generally
 	add_subdirectory(compositor)
 endif()
 
@@ -138,3 +140,8 @@ endif()
 if(WITH_OPENCOLLADA)
 	add_subdirectory(collada)
 endif()
+
+if(WITH_FREESTYLE)
+	add_subdirectory(freestyle)
+endif()
+

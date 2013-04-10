@@ -52,17 +52,17 @@
 
 ExceptionID SceneInvalid, CameraInvalid, ObserverInvalid;
 ExceptionID MirrorInvalid, MirrorSizeInvalid, MirrorNormalInvalid, MirrorHorizontal, MirrorTooSmall;
-ExpDesc SceneInvalidDesc (SceneInvalid, "Scene object is invalid");
-ExpDesc CameraInvalidDesc (CameraInvalid, "Camera object is invalid");
-ExpDesc ObserverInvalidDesc (ObserverInvalid, "Observer object is invalid");
-ExpDesc MirrorInvalidDesc (MirrorInvalid, "Mirror object is invalid");
-ExpDesc MirrorSizeInvalidDesc (MirrorSizeInvalid, "Mirror has no vertex or no size");
-ExpDesc MirrorNormalInvalidDesc (MirrorNormalInvalid, "Cannot determine mirror plane");
-ExpDesc MirrorHorizontalDesc (MirrorHorizontal, "Mirror is horizontal in local space");
-ExpDesc MirrorTooSmallDesc (MirrorTooSmall, "Mirror is too small");
+ExpDesc SceneInvalidDesc(SceneInvalid, "Scene object is invalid");
+ExpDesc CameraInvalidDesc(CameraInvalid, "Camera object is invalid");
+ExpDesc ObserverInvalidDesc(ObserverInvalid, "Observer object is invalid");
+ExpDesc MirrorInvalidDesc(MirrorInvalid, "Mirror object is invalid");
+ExpDesc MirrorSizeInvalidDesc(MirrorSizeInvalid, "Mirror has no vertex or no size");
+ExpDesc MirrorNormalInvalidDesc(MirrorNormalInvalid, "Cannot determine mirror plane");
+ExpDesc MirrorHorizontalDesc(MirrorHorizontal, "Mirror is horizontal in local space");
+ExpDesc MirrorTooSmallDesc(MirrorTooSmall, "Mirror is too small");
 
 // constructor
-ImageRender::ImageRender (KX_Scene * scene, KX_Camera * camera) : 
+ImageRender::ImageRender (KX_Scene *scene, KX_Camera * camera) :
     ImageViewport(),
     m_render(true),
     m_scene(scene),
@@ -288,18 +288,18 @@ inline ImageRender * getImageRender (PyImage *self)
 // python methods
 
 // Blender Scene type
-BlendType<KX_Scene> sceneType ("KX_Scene");
+static BlendType<KX_Scene> sceneType ("KX_Scene");
 // Blender Camera type
-BlendType<KX_Camera> cameraType ("KX_Camera");
+static BlendType<KX_Camera> cameraType ("KX_Camera");
 
 
 // object initialization
-static int ImageRender_init (PyObject *pySelf, PyObject *args, PyObject *kwds)
+static int ImageRender_init(PyObject *pySelf, PyObject *args, PyObject *kwds)
 {
 	// parameters - scene object
 	PyObject *scene;
 	// camera object
-	PyObject * camera;
+	PyObject *camera;
 	// parameter keywords
 	static const char *kwlist[] = {"sceneObj", "cameraObj", NULL};
 	// get parameters
@@ -347,7 +347,7 @@ static PyObject *getBackground (PyImage *self, void *closure)
 }
 
 // set color
-static int setBackground (PyImage *self, PyObject *value, void *closure)
+static int setBackground(PyImage *self, PyObject *value, void *closure)
 {
 	// check validity of parameter
 	if (value == NULL || !PySequence_Check(value) || PySequence_Size(value) != 4
@@ -398,8 +398,7 @@ static PyGetSetDef imageRenderGetSets[] =
 
 
 // define python type
-PyTypeObject ImageRenderType =
-{ 
+PyTypeObject ImageRenderType = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	"VideoTexture.ImageRender",   /*tp_name*/
 	sizeof(PyImage),          /*tp_basicsize*/
@@ -441,7 +440,7 @@ PyTypeObject ImageRenderType =
 };
 
 // object initialization
-static int ImageMirror_init (PyObject *pySelf, PyObject *args, PyObject *kwds)
+static int ImageMirror_init(PyObject *pySelf, PyObject *args, PyObject *kwds)
 {
 	// parameters - scene object
 	PyObject *scene;
@@ -523,7 +522,7 @@ static PyObject *getClip (PyImage *self, void *closure)
 }
 
 // set clip
-static int setClip (PyImage *self, PyObject *value, void *closure)
+static int setClip(PyImage *self, PyObject *value, void *closure)
 {
 	// check validity of parameter
 	double clip;
@@ -562,7 +561,7 @@ static PyGetSetDef imageMirrorGetSets[] =
 
 
 // constructor
-ImageRender::ImageRender (KX_Scene * scene, KX_GameObject * observer, KX_GameObject * mirror, RAS_IPolyMaterial * mat) :
+ImageRender::ImageRender (KX_Scene *scene, KX_GameObject *observer, KX_GameObject *mirror, RAS_IPolyMaterial *mat) :
     ImageViewport(),
     m_render(false),
     m_scene(scene),
@@ -733,8 +732,7 @@ ImageRender::ImageRender (KX_Scene * scene, KX_GameObject * observer, KX_GameObj
 
 
 // define python type
-PyTypeObject ImageMirrorType =
-{ 
+PyTypeObject ImageMirrorType = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	"VideoTexture.ImageMirror",   /*tp_name*/
 	sizeof(PyImage),          /*tp_basicsize*/

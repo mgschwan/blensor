@@ -21,17 +21,17 @@
 
 # ------ ------
 bl_info = {
-	'name': 'FilletPlus',
-	'author': 'Gert De Roost - original by zmj100',
-	'version': (0, 4, 2),
-	'blender': (2, 6, 1),
-	'api': 43085,
-	'location': 'View3D > Tool Shelf',
-	'description': '',
-	'warning': '',
-	'wiki_url': '',
-	'tracker_url': '',
-	'category': 'Mesh' }
+    "name": "FilletPlus",
+    "author": "Gert De Roost - original by zmj100",
+    "version": (0, 4, 2),
+    "blender": (2, 61, 0),
+    "api": 43085,
+    "location": "View3D > Tool Shelf",
+    "description": "",
+    "warning": "",
+    "wiki_url": "",
+    "tracker_url": "",
+    "category": "Mesh"}
 
 # ------ ------
 import bpy

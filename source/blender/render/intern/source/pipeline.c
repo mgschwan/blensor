@@ -48,6 +48,18 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_math.h"
+#include "BLI_rect.h"
+#include "BLI_listbase.h"
+#include "BLI_string.h"
+#include "BLI_path_util.h"
+#include "BLI_fileops.h"
+#include "BLI_threads.h"
+#include "BLI_rand.h"
+#include "BLI_callbacks.h"
+
+#include "BLF_translation.h"
+
 #include "BKE_animsys.h"  /* <------ should this be here?, needed for sequencer update */
 #include "BKE_camera.h"
 #include "BKE_global.h"
@@ -62,16 +74,6 @@
 #include "BKE_property.h"
 #include "BKE_idprop.h"
 
-#include "BLI_math.h"
-#include "BLI_rect.h"
-#include "BLI_listbase.h"
-#include "BLI_string.h"
-#include "BLI_path_util.h"
-#include "BLI_fileops.h"
-#include "BLI_threads.h"
-#include "BLI_rand.h"
-#include "BLI_callbacks.h"
-
 #include "PIL_time.h"
 #include "IMB_colormanagement.h"
 #include "IMB_imbuf.h"
@@ -85,8 +87,10 @@
 #include "RE_pipeline.h"
 #include "RE_shader_ext.h"
 
-
-
+#ifdef WITH_FREESTYLE
+#  include "BKE_library.h"
+#  include "FRS_freestyle.h"
+#endif
 
 /* internal */
 #include "render_result.h"
@@ -175,22 +179,23 @@ static void stats_background(void *UNUSED(arg), RenderStats *rs)
 	mmap_used_memory = (mmap_in_use) / (1024.0 * 1024.0);
 	megs_peak_memory = (peak_memory) / (1024.0 * 1024.0);
 
-	fprintf(stdout, "Fra:%d Mem:%.2fM (%.2fM, peak %.2fM) ", rs->cfra,
+	fprintf(stdout, IFACE_("Fra:%d Mem:%.2fM (%.2fM, Peak %.2fM) "), rs->cfra,
 	        megs_used_memory, mmap_used_memory, megs_peak_memory);
 
 	if (rs->curfield)
-		fprintf(stdout, "Field %d ", rs->curfield);
+		fprintf(stdout, IFACE_("Field %d "), rs->curfield);
 	if (rs->curblur)
-		fprintf(stdout, "Blur %d ", rs->curblur);
+		fprintf(stdout, IFACE_("Blur %d "), rs->curblur);
 
 	if (rs->infostr) {
 		fprintf(stdout, "| %s", rs->infostr);
 	}
 	else {
 		if (rs->tothalo)
-			fprintf(stdout, "Sce: %s Ve:%d Fa:%d Ha:%d La:%d", rs->scene_name, rs->totvert, rs->totface, rs->tothalo, rs->totlamp);
+			fprintf(stdout, IFACE_("Sce: %s Ve:%d Fa:%d Ha:%d La:%d"),
+			        rs->scene_name, rs->totvert, rs->totface, rs->tothalo, rs->totlamp);
 		else
-			fprintf(stdout, "Sce: %s Ve:%d Fa:%d La:%d", rs->scene_name, rs->totvert, rs->totface, rs->totlamp);
+			fprintf(stdout, IFACE_("Sce: %s Ve:%d Fa:%d La:%d"), rs->scene_name, rs->totvert, rs->totface, rs->totlamp);
 	}
 
 	BLI_callback_exec(G.main, NULL, BLI_CB_EVT_RENDER_STATS);
@@ -356,7 +361,7 @@ void RE_ResultGet32(Render *re, unsigned int *rect)
 	RenderResult rres;
 	
 	RE_AcquireResultImage(re, &rres);
-	render_result_rect_get_pixels(&rres, &re->r, rect, re->rectx, re->recty, &re->scene->view_settings, &re->scene->display_settings);
+	render_result_rect_get_pixels(&rres, rect, re->rectx, re->recty, &re->scene->view_settings, &re->scene->display_settings);
 	RE_ReleaseResultImage(re);
 }
 
@@ -473,13 +478,43 @@ void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *
 	
 	re->i.starttime = PIL_check_seconds_timer();
 	re->r = *rd;     /* hardcopy */
-	
+
+	if (source) {
+		/* reuse border flags from source renderer */
+		re->r.mode &= ~(R_BORDER | R_CROP);
+		re->r.mode |= source->r.mode & (R_BORDER | R_CROP);
+
+		/* dimensions shall be shared between all renderers */
+		re->r.xsch = source->r.xsch;
+		re->r.ysch = source->r.ysch;
+		re->r.size = source->r.size;
+	}
+
 	re->winx = winx;
 	re->winy = winy;
-	if (disprect) {
+	if (source && (source->r.mode & R_BORDER)) {
+		/* eeh, doesn't seem original bordered disprect is storing anywhere
+		 * after insertion on black happening in do_render_fields_blur_3d(),
+		 * so for now simply re-calculate disprect using border from source
+		 * renderer (sergey)
+		 */
+
+		re->disprect.xmin = source->r.border.xmin * winx;
+		re->disprect.xmax = source->r.border.xmax * winx;
+
+		re->disprect.ymin = source->r.border.ymin * winy;
+		re->disprect.ymax = source->r.border.ymax * winy;
+
+		re->rectx = BLI_rcti_size_x(&re->disprect);
+		re->recty = BLI_rcti_size_y(&re->disprect);
+
+		/* copy border itself, since it could be used by external engines */
+		re->r.border = source->r.border;
+	}
+	else if (disprect) {
 		re->disprect = *disprect;
-		re->rectx = BLI_rcti_size_x(disprect);
-		re->recty = BLI_rcti_size_y(disprect);
+		re->rectx = BLI_rcti_size_x(&re->disprect);
+		re->recty = BLI_rcti_size_y(&re->disprect);
 	}
 	else {
 		re->disprect.xmin = re->disprect.ymin = 0;
@@ -489,7 +524,7 @@ void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *
 		re->recty = winy;
 	}
 	
-	if (re->rectx < 2 || re->recty < 2 || (BKE_imtype_is_movie(rd->im_format.imtype) &&
+	if (re->rectx < 1 || re->recty < 1 || (BKE_imtype_is_movie(rd->im_format.imtype) &&
 	                                       (re->rectx < 16 || re->recty < 16) ))
 	{
 		BKE_report(re->reports, RPT_ERROR, "Image too small");
@@ -675,7 +710,9 @@ static int render_display_draw_enabled(Render *re)
 static void *do_part_thread(void *pa_v)
 {
 	RenderPart *pa = pa_v;
-	
+
+	pa->status = PART_STATUS_IN_PROGRESS;
+
 	/* need to return nicely all parts on esc */
 	if (R.test_break(R.tbh) == 0) {
 		
@@ -691,6 +728,10 @@ static void *do_part_thread(void *pa_v)
 		else
 			zbufshade_tile(pa);
 		
+		/* we do actually write pixels, but don't allocate/deallocate anything,
+		 * so it is safe with other threads reading at the same time */
+		BLI_rw_mutex_lock(&R.resultmutex, THREAD_LOCK_READ);
+		
 		/* merge too on break! */
 		if (R.result->do_exr_tile) {
 			render_result_exr_file_merge(R.result, pa->result);
@@ -704,9 +745,11 @@ static void *do_part_thread(void *pa_v)
 				render_result_merge(R.result, pa->result);
 			}
 		}
+		
+		BLI_rw_mutex_unlock(&R.resultmutex);
 	}
 	
-	pa->ready = 1;
+	pa->status = PART_STATUS_READY;
 	
 	return NULL;
 }
@@ -737,24 +780,33 @@ float panorama_pixel_rot(Render *re)
 	return phi;
 }
 
-/* call when all parts stopped rendering, to find the next Y slice */
-/* if slice found, it rotates the dbase */
-static RenderPart *find_next_pano_slice(Render *re, int *minx, rctf *viewplane)
+/* for panorama, we render per Y slice, and update
+ * camera parameters when we go the next slice */
+static bool find_next_pano_slice(Render *re, int *slice, int *minx, rctf *viewplane)
 {
 	RenderPart *pa, *best = NULL;
+	bool found = false;
 	
 	*minx = re->winx;
 	
+	if (!(re->r.mode & R_PANORAMA)) {
+		/* for regular render, just one 'slice' */
+		found = (*slice == 0);
+		(*slice)++;
+		return found;
+	}
+
 	/* most left part of the non-rendering parts */
 	for (pa = re->parts.first; pa; pa = pa->next) {
-		if (pa->ready == 0 && pa->nr == 0) {
+		if (pa->status == PART_STATUS_NONE && pa->nr == 0) {
 			if (pa->disprect.xmin < *minx) {
+				found = true;
 				best = pa;
 				*minx = pa->disprect.xmin;
 			}
 		}
 	}
-			
+	
 	if (best) {
 		float phi = panorama_pixel_rot(re);
 
@@ -772,7 +824,10 @@ static RenderPart *find_next_pano_slice(Render *re, int *minx, rctf *viewplane)
 		R.panosi = sin(R.panodxp * phi);
 		R.panoco = cos(R.panodxp * phi);
 	}
-	return best;
+	
+	(*slice)++;
+	
+	return found;
 }
 
 static RenderPart *find_next_part(Render *re, int minx)
@@ -785,7 +840,7 @@ static RenderPart *find_next_part(Render *re, int minx)
 	
 	/* find center of rendered parts, image center counts for 1 too */
 	for (pa = re->parts.first; pa; pa = pa->next) {
-		if (pa->ready) {
+		if (pa->status == PART_STATUS_READY) {
 			centx += BLI_rcti_cent_x(&pa->disprect);
 			centy += BLI_rcti_cent_y(&pa->disprect);
 			tot++;
@@ -796,7 +851,7 @@ static RenderPart *find_next_part(Render *re, int minx)
 	
 	/* closest of the non-rendering parts */
 	for (pa = re->parts.first; pa; pa = pa->next) {
-		if (pa->ready == 0 && pa->nr == 0) {
+		if (pa->status == PART_STATUS_NONE && pa->nr == 0) {
 			long long int distx = centx - BLI_rcti_cent_x(&pa->disprect);
 			long long int disty = centy - BLI_rcti_cent_y(&pa->disprect);
 			distx = (long long int)sqrt(distx * distx + disty * disty);
@@ -821,39 +876,66 @@ static void print_part_stats(Render *re, RenderPart *pa)
 {
 	char str[64];
 	
-	BLI_snprintf(str, sizeof(str), "%s, Part %d-%d", re->scene->id.name + 2, pa->nr, re->i.totpart);
+	BLI_snprintf(str, sizeof(str), IFACE_("%s, Part %d-%d"), re->scene->id.name + 2, pa->nr, re->i.totpart);
 	re->i.infostr = str;
 	re->stats_draw(re->sdh, &re->i);
 	re->i.infostr = NULL;
 }
 
+typedef struct RenderThread {
+	ThreadQueue *workqueue;
+	ThreadQueue *donequeue;
+	
+	int number;
+} RenderThread;
+
+static void *do_render_thread(void *thread_v)
+{
+	RenderThread *thread = thread_v;
+	RenderPart *pa;
+	
+	while ((pa = BLI_thread_queue_pop(thread->workqueue))) {
+		pa->thread = thread->number;
+		do_part_thread(pa);
+		BLI_thread_queue_push(thread->donequeue, pa);
+		
+		if (R.test_break(R.tbh))
+			break;
+	}
+	
+	return NULL;
+}
+
 static void threaded_tile_processor(Render *re)
 {
+	RenderThread thread[BLENDER_MAX_THREADS];
+	ThreadQueue *workqueue, *donequeue;
 	ListBase threads;
-	RenderPart *pa, *nextpa;
+	RenderPart *pa;
 	rctf viewplane = re->viewplane;
-	int rendering = 1, counter = 1, drawtimer = 0, hasdrawn, minx = 0;
+	double lastdraw, elapsed, redrawtime = 1.0f;
+	int totpart = 0, minx = 0, slice = 0, a, wait;
 	
 	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
 
 	/* first step; free the entire render result, make new, and/or prepare exr buffer saving */
 	if (re->result == NULL || !(re->r.scemode & R_PREVIEWBUTS)) {
 		render_result_free(re->result);
-	
+
 		if (re->sss_points && render_display_draw_enabled(re))
 			re->result = render_result_new(re, &re->disprect, 0, RR_USE_MEM, RR_ALL_LAYERS);
 		else if (re->r.scemode & R_FULL_SAMPLE)
 			re->result = render_result_new_full_sample(re, &re->fullresult, &re->disprect, 0, RR_USE_EXR);
 		else
 			re->result = render_result_new(re, &re->disprect, 0,
-			                               (re->r.scemode & R_EXR_TILE_FILE) ? RR_USE_EXR : RR_USE_MEM, RR_ALL_LAYERS);
+				(re->r.scemode & R_EXR_TILE_FILE) ? RR_USE_EXR : RR_USE_MEM, RR_ALL_LAYERS);
 	}
 
 	BLI_rw_mutex_unlock(&re->resultmutex);
 	
 	if (re->result == NULL)
 		return;
-	
+
 	/* warning; no return here without closing exr file */
 	
 	RE_parts_init(re, TRUE);
@@ -861,53 +943,46 @@ static void threaded_tile_processor(Render *re)
 	if (re->result->do_exr_tile)
 		render_result_exr_file_begin(re);
 	
-	BLI_init_threads(&threads, do_part_thread, re->r.threads);
-	
 	/* assuming no new data gets added to dbase... */
 	R = *re;
 	
 	/* set threadsafe break */
 	R.test_break = thread_break;
 	
-	/* timer loop demands to sleep when no parts are left, so we enter loop with a part */
-	if (re->r.mode & R_PANORAMA)
-		nextpa = find_next_pano_slice(re, &minx, &viewplane);
-	else
-		nextpa = find_next_part(re, 0);
+	/* create and fill work queue */
+	workqueue = BLI_thread_queue_init();
+	donequeue = BLI_thread_queue_init();
 	
-	while (rendering) {
-		
-		if (re->test_break(re->tbh))
-			PIL_sleep_ms(50);
-		else if (nextpa && BLI_available_threads(&threads)) {
-			drawtimer = 0;
-			nextpa->nr = counter++;  /* for nicest part, and for stats */
-			nextpa->thread = BLI_available_thread_index(&threads);   /* sample index */
-			BLI_insert_thread(&threads, nextpa);
-
-			nextpa = find_next_part(re, minx);
-		}
-		else if (re->r.mode & R_PANORAMA) {
-			if (nextpa == NULL && BLI_available_threads(&threads) == re->r.threads)
-				nextpa = find_next_pano_slice(re, &minx, &viewplane);
-			else {
-				PIL_sleep_ms(50);
-				drawtimer++;
-			}
-		}
-		else {
-			PIL_sleep_ms(50);
-			drawtimer++;
+	/* for panorama we loop over slices */
+	while (find_next_pano_slice(re, &slice, &minx, &viewplane)) {
+		/* gather parts into queue */
+		while ((pa = find_next_part(re, minx))) {
+			pa->nr = totpart + 1; /* for nicest part, and for stats */
+			totpart++;
+			BLI_thread_queue_push(workqueue, pa);
 		}
 		
-		/* check for ready ones to display, and if we need to continue */
-		rendering = 0;
-		hasdrawn = 0;
-		for (pa = re->parts.first; pa; pa = pa->next) {
-			if (pa->ready) {
-				
-				BLI_remove_thread(&threads, pa);
-				
+		BLI_thread_queue_nowait(workqueue);
+		
+		/* start all threads */
+		BLI_init_threads(&threads, do_render_thread, re->r.threads);
+		
+		for (a = 0; a < re->r.threads; a++) {
+			thread[a].workqueue = workqueue;
+			thread[a].donequeue = donequeue;
+			thread[a].number = a;
+			BLI_insert_thread(&threads, &thread[a]);
+		}
+		
+		/* wait for results to come back */
+		lastdraw = PIL_check_seconds_timer();
+		
+		while (1) {
+			elapsed = PIL_check_seconds_timer() - lastdraw;
+			wait = (redrawtime - elapsed)*1000;
+			
+			/* handle finished part */
+			if ((pa=BLI_thread_queue_pop_timeout(donequeue, wait))) {
 				if (pa->result) {
 					if (render_display_draw_enabled(re))
 						re->display_draw(re->ddh, pa->result, NULL);
@@ -917,26 +992,52 @@ static void threaded_tile_processor(Render *re)
 					pa->result = NULL;
 					re->i.partsdone++;
 					re->progress(re->prh, re->i.partsdone / (float)re->i.totpart);
-					hasdrawn = 1;
 				}
+				
+				totpart--;
 			}
-			else {
-				rendering = 1;
-				if (pa->nr && pa->result && drawtimer > 20) {
-					if (render_display_draw_enabled(re))
-						re->display_draw(re->ddh, pa->result, &pa->result->renrect);
-					hasdrawn = 1;
-				}
+			
+			/* check for render cancel */
+			if ((g_break=re->test_break(re->tbh)))
+				break;
+			
+			/* or done with parts */
+			if (totpart == 0)
+				break;
+			
+			/* redraw in progress parts */
+			elapsed = PIL_check_seconds_timer() - lastdraw;
+			if (elapsed > redrawtime) {
+				if (render_display_draw_enabled(re))
+					for (pa = re->parts.first; pa; pa = pa->next)
+						if ((pa->status == PART_STATUS_IN_PROGRESS) && pa->nr && pa->result)
+							re->display_draw(re->ddh, pa->result, &pa->result->renrect);
+				
+				lastdraw = PIL_check_seconds_timer();
 			}
 		}
-		if (hasdrawn)
-			drawtimer = 0;
-
-		/* on break, wait for all slots to get freed */
-		if ( (g_break = re->test_break(re->tbh)) && BLI_available_threads(&threads) == re->r.threads)
-			rendering = 0;
 		
+		BLI_end_threads(&threads);
+		
+		if ((g_break=re->test_break(re->tbh)))
+			break;
 	}
+
+	if (g_break) {
+		/* review the done queue and handle all the render parts,
+		 * so no unfreed render result are lurking around
+		 */
+		BLI_thread_queue_nowait(donequeue);
+		while ((pa = BLI_thread_queue_pop(donequeue))) {
+			if (pa->result) {
+				render_result_free_list(&pa->fullresult, pa->result);
+				pa->result = NULL;
+			}
+		}
+	}
+
+	BLI_thread_queue_free(donequeue);
+	BLI_thread_queue_free(workqueue);
 	
 	if (re->result->do_exr_tile) {
 		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
@@ -947,7 +1048,6 @@ static void threaded_tile_processor(Render *re)
 	/* unset threadsafety */
 	g_break = 0;
 	
-	BLI_end_threads(&threads);
 	RE_parts_free(re);
 	re->viewplane = viewplane; /* restore viewplane, modified by pano render */
 }
@@ -959,7 +1059,6 @@ void RE_TileProcessor(Render *re)
 }
 
 /* ************  This part uses API, for rendering Blender scenes ********** */
-
 
 //How many fields are returned from the cast rays function
 #define BLENSOR_INTERSECTION_RETURNS 15
@@ -1433,8 +1532,15 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
 
 static int external_render_3d(Render *re, int do_all);
 
+#ifdef WITH_FREESTYLE
+static void add_freestyle(Render *re);
+#endif
+
 static void do_render_3d(Render *re)
 {
+	float cfra;
+	int cfra_backup;
+
 	/* try external */
 	if (RE_engine_render(re, 0))
 		return;
@@ -1442,9 +1548,13 @@ static void do_render_3d(Render *re)
 	/* internal */
 	RE_parts_clamp(re);
 	
-//	re->cfra= cfra;	/* <- unused! */
-	re->scene->r.subframe = re->mblur_offs + re->field_offs;
-	
+	/* add motion blur and fields offset to frames */
+	cfra_backup = re->scene->r.cfra;
+
+	cfra = re->scene->r.cfra + re->mblur_offs + re->field_offs;
+	re->scene->r.cfra = floorf(cfra);
+	re->scene->r.subframe = cfra - floorf(cfra);
+
 	/* lock drawing in UI during data phase */
 	if (re->draw_lock)
 		re->draw_lock(re->dlh, 1);
@@ -1466,9 +1576,17 @@ static void do_render_3d(Render *re)
 		if (!re->test_break(re->tbh))
 			add_halo_flare(re);
 	
+#ifdef WITH_FREESTYLE
+	/* Freestyle  */
+	if (re->r.mode & R_EDGE_FRS)
+		if (!re->test_break(re->tbh))
+			add_freestyle(re);
+#endif
+		
 	/* free all render verts etc */
 	RE_Database_Free(re);
 	
+	re->scene->r.cfra = cfra_backup;
 	re->scene->r.subframe = 0.f;
 }
 
@@ -1577,7 +1695,7 @@ static void do_render_blur_3d(Render *re)
 		
 		blurfac = 1.0f / (float)(re->r.mblur_samples - blur);
 		
-		merge_renderresult_blur(rres, re->result, blurfac, re->r.alphamode & R_ALPHAKEY);
+		merge_renderresult_blur(rres, re->result, blurfac, FALSE);
 		if (re->test_break(re->tbh)) break;
 	}
 	
@@ -1722,7 +1840,7 @@ static void do_render_fields_blur_3d(Render *re)
 	Object *camera = RE_GetCamera(re);
 	/* also check for camera here */
 	if (camera == NULL) {
-		printf("ERROR: Cannot render, no camera\n");
+		BKE_report(re->reports, RPT_ERROR, "Cannot render, no camera");
 		G.is_break = TRUE;
 		return;
 	}
@@ -1805,6 +1923,7 @@ static void render_scene(Render *re, Scene *sce, int cfra)
 	resc->main = re->main;
 	resc->scene = sce;
 	resc->lay = sce->lay;
+	resc->scene_color_manage = BKE_scene_check_color_management_enabled(sce);
 	
 	/* ensure scene has depsgraph, base flags etc OK */
 	BKE_scene_set_background(re->main, sce);
@@ -1838,6 +1957,19 @@ static int composite_needs_render(Scene *sce, int this_scene)
 	return 0;
 }
 
+static bool rlayer_node_uses_alpha(bNodeTree *ntree, bNode *node)
+{
+	bNodeSocket *sock;
+
+	for (sock = node->outputs.first; sock; sock = sock->next) {
+		/* Weak! but how to make it better? */
+		if (STREQ(sock->name, "Alpha") && nodeCountSocketLinks(ntree, sock) > 0)
+			return true;
+	}
+
+	return false;
+}
+
 static void tag_scenes_for_render(Render *re)
 {
 	bNode *node;
@@ -1855,6 +1987,21 @@ static void tag_scenes_for_render(Render *re)
 	for (node = re->scene->nodetree->nodes.first; node; node = node->next) {
 		if (node->type == CMP_NODE_R_LAYERS) {
 			if (node->id) {
+				if (!MAIN_VERSION_ATLEAST(re->main, 265, 5)) {
+					if (rlayer_node_uses_alpha(re->scene->nodetree, node)) {
+						Scene *scene = (Scene *)node->id;
+
+						if (scene->r.alphamode != R_ALPHAPREMUL) {
+							BKE_reportf(re->reports, RPT_WARNING, "Setting scene %s alpha mode to Premul", scene->id.name + 2);
+
+							/* also print, so feedback is immediate */
+							printf("2.66 versioning fix: setting scene %s alpha mode to Premul\n", scene->id.name + 2);
+
+							scene->r.alphamode = R_ALPHAPREMUL;
+						}
+					}
+				}
+
 				if (node->id != (ID *)re->scene)
 					node->id->flag |= LIB_DOIT;
 			}
@@ -1904,6 +2051,74 @@ static void render_composit_stats(void *UNUSED(arg), char *str)
 	R.i.infostr = NULL;
 }
 
+#ifdef WITH_FREESTYLE
+/* invokes Freestyle stroke rendering */
+static void add_freestyle(Render *re)
+{
+	SceneRenderLayer *srl, *actsrl;
+	LinkData *link;
+
+	actsrl = BLI_findlink(&re->r.layers, re->r.actlay);
+
+	FRS_init_stroke_rendering(re);
+
+	for (srl= (SceneRenderLayer *)re->r.layers.first; srl; srl= srl->next) {
+
+		link = (LinkData *)MEM_callocN(sizeof(LinkData), "LinkData to Freestyle render");
+		BLI_addtail(&re->freestyle_renders, link);
+
+		if ((re->r.scemode & R_SINGLE_LAYER) && srl != actsrl)
+			continue;
+		if (FRS_is_freestyle_enabled(srl)) {
+			link->data = (void *)FRS_do_stroke_rendering(re, srl);
+		}
+	}
+
+	FRS_finish_stroke_rendering(re);
+}
+
+/* merges the results of Freestyle stroke rendering into a given render result */
+static void composite_freestyle_renders(Render *re, int sample)
+{
+	Render *freestyle_render;
+	SceneRenderLayer *srl, *actsrl;
+	LinkData *link;
+
+	actsrl = BLI_findlink(&re->r.layers, re->r.actlay);
+
+	link = (LinkData *)re->freestyle_renders.first;
+	for (srl= (SceneRenderLayer *)re->r.layers.first; srl; srl= srl->next) {
+		if ((re->r.scemode & R_SINGLE_LAYER) && srl != actsrl)
+			continue;
+		if (FRS_is_freestyle_enabled(srl)) {
+			freestyle_render = (Render *)link->data;
+			render_result_exr_file_read(freestyle_render, sample);
+			FRS_composite_result(re, srl, freestyle_render);
+			RE_FreeRenderResult(freestyle_render->result);
+			freestyle_render->result = NULL;
+		}
+		link = link->next;
+	}
+}
+
+/* releases temporary scenes and renders for Freestyle stroke rendering */
+static void free_all_freestyle_renders(Scene *scene)
+{
+	Render *re1, *freestyle_render;
+	LinkData *link;
+
+	for (re1= RenderGlobal.renderlist.first; re1; re1= re1->next) {
+		for (link = (LinkData *)re1->freestyle_renders.first; link; link = link->next) {
+			if (link->data) {
+				freestyle_render = (Render *)link->data;
+				BKE_scene_unlink(G.main, freestyle_render->scene, scene);
+				RE_FreeRender(freestyle_render);
+			}
+		}
+		BLI_freelistN( &re1->freestyle_renders );
+	}
+}
+#endif
 
 /* reads all buffers, calls optional composite, merges in first result->rectf */
 static void do_merge_fullsample(Render *re, bNodeTree *ntree)
@@ -1945,6 +2160,10 @@ static void do_merge_fullsample(Render *re, bNodeTree *ntree)
 					if (sample) {
 						BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
 						render_result_exr_file_read(re1, sample);
+#ifdef WITH_FREESTYLE
+						if( re1->r.mode & R_EDGE_FRS)
+							composite_freestyle_renders(re1, sample);
+#endif
 						BLI_rw_mutex_unlock(&re->resultmutex);
 					}
 					ntreeCompositTagRender(re1->scene); /* ensure node gets exec to put buffers on stack */
@@ -2147,6 +2366,10 @@ static void do_render_composite_fields_blur_3d(Render *re)
 			do_merge_fullsample(re, NULL);
 	}
 
+#ifdef WITH_FREESTYLE
+	free_all_freestyle_renders(re->scene);
+#endif
+
 	/* weak... the display callback wants an active renderlayer pointer... */
 	re->result->renlay = render_get_active_layer(re, re->result);
 	re->display_draw(re->ddh, re->result, NULL);
@@ -2282,7 +2505,12 @@ static void do_render_all_options(Render *re)
 		re->display_draw(re->ddh, re->result, NULL);
 	}
 	else {
+		re->pool = BKE_image_pool_new();
+
 		do_render_composite_fields_blur_3d(re);
+
+		BKE_image_pool_free(re->pool);
+		re->pool = NULL;
 	}
 	
 	re->i.lastframetime = PIL_check_seconds_timer() - re->i.starttime;
@@ -2398,7 +2626,7 @@ int RE_is_rendering_allowed(Scene *scene, Object *camera_override, ReportList *r
 		
 		render_result_exr_file_path(scene, "", 0, str);
 		
-		if (BLI_file_is_writable(str) == 0) {
+		if (!BLI_file_is_writable(str)) {
 			BKE_report(reports, RPT_ERROR, "Cannot save render buffers, check the temp default path");
 			return 0;
 		}
@@ -2649,7 +2877,7 @@ void RE_BlenderFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 			}
 			else {
 				char name[FILE_MAX];
-				BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra, scene->r.im_format.imtype, scene->r.scemode & R_EXTENSION, FALSE);
+				BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra, &scene->r.im_format, scene->r.scemode & R_EXTENSION, FALSE);
 
 				/* reports only used for Movie */
 				do_write_image_or_movie(re, bmain, scene, NULL, name);
@@ -2665,11 +2893,23 @@ void RE_BlenderFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 	G.is_rendering = FALSE;
 }
 
+#ifdef WITH_FREESTYLE
+void RE_RenderFreestyleStrokes(Render *re, Main *bmain, Scene *scene)
+{
+	re->result_ok= 0;
+	if (render_initialize_from_main(re, bmain, scene, NULL, NULL, scene->lay, 0, 0)) {
+		do_render_fields_blur_3d(re);
+	}
+	re->result_ok = 1;
+}
+#endif
+
 static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovieHandle *mh, const char *name_override)
 {
 	char name[FILE_MAX];
 	RenderResult rres;
 	Object *camera = RE_GetCamera(re);
+	double render_time;
 	int ok = 1;
 	
 	RE_AcquireResultImage(re, &rres);
@@ -2708,7 +2948,7 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 		if (name_override)
 			BLI_strncpy(name, name_override, sizeof(name));
 		else
-			BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra, scene->r.im_format.imtype, scene->r.scemode & R_EXTENSION, TRUE);
+			BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra, &scene->r.im_format, scene->r.scemode & R_EXTENSION, TRUE);
 		
 		if (re->r.im_format.imtype == R_IMF_IMTYPE_MULTILAYER) {
 			if (re->result) {
@@ -2736,7 +2976,7 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 
 				if (BLI_testextensie(name, ".exr"))
 					name[strlen(name) - 4] = 0;
-				BKE_add_image_extension(name, R_IMF_IMTYPE_JPEG90);
+				BKE_add_image_extension(name, &imf);
 				ibuf->planes = 24;
 
 				IMB_colormanagement_imbuf_for_write(ibuf, TRUE, FALSE, &scene->view_settings,
@@ -2753,11 +2993,17 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 	
 	RE_ReleaseResultImage(re);
 
-	BLI_timestr(re->i.lastframetime, name);
+	render_time = re->i.lastframetime;
+	re->i.lastframetime = PIL_check_seconds_timer() - re->i.starttime;
+	
+	BLI_timestr(re->i.lastframetime, name, sizeof(name));
 	printf(" Time: %s", name);
-
+	
 	BLI_callback_exec(G.main, NULL, BLI_CB_EVT_RENDER_STATS);
 
+	BLI_timestr(re->i.lastframetime - render_time, name, sizeof(name));
+	printf(" (Saving: %s)\n", name);
+	
 	fputc('\n', stdout);
 	fflush(stdout); /* needed for renderd !! (not anymore... (ton)) */
 
@@ -2841,7 +3087,7 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 			/* Touch/NoOverwrite options are only valid for image's */
 			if (BKE_imtype_is_movie(scene->r.im_format.imtype) == 0) {
 				if (scene->r.mode & (R_NO_OVERWRITE | R_TOUCH))
-					BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra, scene->r.im_format.imtype, scene->r.scemode & R_EXTENSION, TRUE);
+					BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra, &scene->r.im_format, scene->r.scemode & R_EXTENSION, TRUE);
 
 				if (scene->r.mode & R_NO_OVERWRITE && BLI_exists(name)) {
 					printf("skipping existing frame \"%s\"\n", name);
@@ -2875,7 +3121,7 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 				/* remove touched file */
 				if (BKE_imtype_is_movie(scene->r.im_format.imtype) == 0) {
 					if (scene->r.mode & R_TOUCH && BLI_exists(name) && BLI_file_size(name) == 0) {
-						BLI_delete(name, 0, 0);
+						BLI_delete(name, false, false);
 					}
 				}
 				
@@ -2915,6 +3161,8 @@ void RE_PreviewRender(Render *re, Main *bmain, Scene *sce)
 
 	RE_InitState(re, NULL, &sce->r, NULL, winx, winy, NULL);
 
+	re->pool = BKE_image_pool_new();
+
 	re->main = bmain;
 	re->scene = sce;
 	re->scene_color_manage = BKE_scene_check_color_management_enabled(sce);
@@ -2924,6 +3172,9 @@ void RE_PreviewRender(Render *re, Main *bmain, Scene *sce)
 	RE_SetCamera(re, camera);
 
 	do_render_3d(re);
+
+	BKE_image_pool_free(re->pool);
+	re->pool = NULL;
 }
 
 /* note; repeated win/disprect calc... solve that nicer, also in compo */

@@ -254,7 +254,7 @@ static int duplicate_metaelems_exec(bContext *C, wmOperator *UNUSED(op))
 	return OPERATOR_FINISHED;
 }
 
-static int duplicate_metaelems_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int duplicate_metaelems_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	int retv = duplicate_metaelems_exec(C, op);
 	
@@ -411,7 +411,7 @@ void MBALL_OT_reveal_metaelems(wmOperatorType *ot)
 
 /* Select MetaElement with mouse click (user can select radius circle or
  * stiffness circle) */
-int mouse_mball(bContext *C, const int mval[2], int extend, int deselect, int toggle)
+bool mouse_mball(bContext *C, const int mval[2], bool extend, bool deselect, bool toggle)
 {
 	static MetaElem *startelem = NULL;
 	Object *obedit = CTX_data_edit_object(C);
@@ -487,11 +487,11 @@ int mouse_mball(bContext *C, const int mval[2], int extend, int deselect, int to
 			
 			WM_event_add_notifier(C, NC_GEOM | ND_SELECT, mb);
 
-			return 1;
+			return true;
 		}
 	}
 
-	return 0;
+	return false;
 }
 
 
@@ -586,3 +586,27 @@ void undo_push_mball(bContext *C, const char *name)
 	undo_editmode_push(C, name, get_data, free_undoMball, undoMball_to_editMball, editMball_to_undoMball, NULL);
 }
 
+/* matrix is 4x4 */
+void ED_mball_transform(MetaBall *mb, float *mat)
+{
+	MetaElem *me;
+	float quat[4];
+	const float scale = mat4_to_scale((float (*)[4])mat);
+	const float scale_sqrt = sqrtf(scale);
+
+	mat4_to_quat(quat, (float (*)[4])mat);
+
+	for (me = mb->elems.first; me; me = me->next) {
+		mul_m4_v3((float (*)[4])mat, &me->x);
+		mul_qt_qtqt(me->quat, quat, me->quat);
+		me->rad *= scale;
+		/* hrmf, probably elems shouldn't be
+		 * treating scale differently - campbell */
+		if (!MB_TYPE_SIZE_SQUARED(me->type)) {
+			mul_v3_fl(&me->expx, scale);
+		}
+		else {
+			mul_v3_fl(&me->expx, scale_sqrt);
+		}
+	}
+}

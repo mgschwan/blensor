@@ -22,6 +22,8 @@
 
 /** \file blender/bmesh/operators/bmo_removedoubles.c
  *  \ingroup bmesh
+ *
+ * Welding and merging functionality.
  */
 
 #include "MEM_guardedalloc.h"
@@ -32,16 +34,15 @@
 #include "BKE_customdata.h"
 
 #include "bmesh.h"
-#include "intern/bmesh_private.h"
+#include "intern/bmesh_operators_private.h"
 
-#include "intern/bmesh_operators_private.h" /* own include */
 
 static void remdoubles_splitface(BMFace *f, BMesh *bm, BMOperator *op, BMOpSlot *slot_targetmap)
 {
 	BMIter liter;
 	BMLoop *l;
-	BMVert *v2, *doub;
-	int split = FALSE;
+	BMVert *v2, *v_double;
+	bool split = false;
 
 	BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
 		v2 = BMO_slot_map_elem_get(slot_targetmap, l->v);
@@ -51,15 +52,15 @@ static void remdoubles_splitface(BMFace *f, BMesh *bm, BMOperator *op, BMOpSlot 
 		    (v2 != l->prev->v) &&
 		    (v2 != l->next->v))
 		{
-			doub = l->v;
-			split = TRUE;
+			v_double = l->v;
+			split = true;
 			break;
 		}
 	}
 
-	if (split && doub != v2) {
-		BMLoop *nl;
-		BMFace *f2 = BM_face_split(bm, f, doub, v2, &nl, NULL, FALSE);
+	if (split && v_double != v2) {
+		BMLoop *l_new;
+		BMFace *f2 = BM_face_split(bm, f, v_double, v2, &l_new, NULL, false);
 
 		remdoubles_splitface(f, bm, op, slot_targetmap);
 		remdoubles_splitface(f2, bm, op, slot_targetmap);
@@ -87,12 +88,12 @@ int remdoubles_face_overlaps(BMesh *bm, BMVert **varr,
 			amount = BM_verts_in_face(bm, f, varr, len);
 			if (amount >= len) {
 				if (overlapface) *overlapface = f;
-				return TRUE;
+				return true;
 			}
 			f = BM_iter_step(&vertfaces);
 		}
 	}
-	return FALSE;
+	return false;
 }
 #endif
 
@@ -100,11 +101,11 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 {
 	BMIter iter, liter;
 	BMVert *v, *v2;
-	BMEdge *e, *e2, **edges = NULL;
+	BMEdge *e, *e_new, **edges = NULL;
 	BLI_array_declare(edges);
-	BMLoop *l, *l2, **loops = NULL;
+	BMLoop *l, *l_new, **loops = NULL;
 	BLI_array_declare(loops);
-	BMFace *f, *f2;
+	BMFace *f, *f_new;
 	int a, b;
 	BMOpSlot *slot_targetmap = BMO_slot_get(op->slots_in, "targetmap");
 
@@ -181,10 +182,10 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 				v2 = BMO_slot_map_elem_get(slot_targetmap, v2);
 			}
 			
-			e2 = v != v2 ? BM_edge_exists(v, v2) : NULL;
-			if (e2) {
+			e_new = v != v2 ? BM_edge_exists(v, v2) : NULL;
+			if (e_new) {
 				for (b = 0; b < a; b++) {
-					if (edges[b] == e2) {
+					if (edges[b] == e_new) {
 						break;
 					}
 				}
@@ -195,7 +196,7 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 				BLI_array_grow_one(edges);
 				BLI_array_grow_one(loops);
 
-				edges[a] = e2;
+				edges[a] = e_new;
 				loops[a] = l;
 
 				a++;
@@ -214,14 +215,14 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 			v2 = BMO_slot_map_elem_get(slot_targetmap, v2);
 		}
 		
-		f2 = BM_face_create_ngon(bm, v, v2, edges, a, BM_CREATE_NO_DOUBLE);
-		if (f2 && (f2 != f)) {
-			BM_elem_attrs_copy(bm, bm, f, f2);
+		f_new = BM_face_create_ngon(bm, v, v2, edges, a, BM_CREATE_NO_DOUBLE);
+		if (f_new && (f_new != f)) {
+			BM_elem_attrs_copy(bm, bm, f, f_new);
 
 			a = 0;
-			BM_ITER_ELEM (l, &liter, f2, BM_LOOPS_OF_FACE) {
-				l2 = loops[a];
-				BM_elem_attrs_copy(bm, bm, l2, l);
+			BM_ITER_ELEM (l, &liter, f_new, BM_LOOPS_OF_FACE) {
+				l_new = loops[a];
+				BM_elem_attrs_copy(bm, bm, l_new, l);
 
 				a++;
 			}
@@ -394,11 +395,10 @@ void bmo_collapse_exec(BMesh *bm, BMOperator *op)
 		if (!BMO_elem_flag_test(bm, e, EDGE_MARK))
 			continue;
 
-		e = BMW_begin(&walker, e->v1);
 		BLI_array_empty(edges);
 
 		INIT_MINMAX(min, max);
-		for (tot = 0; e; tot++, e = BMW_step(&walker)) {
+		for (e = BMW_begin(&walker, e->v1), tot = 0; e; e = BMW_step(&walker), tot++) {
 			BLI_array_grow_one(edges);
 			edges[tot] = e;
 
@@ -454,11 +454,9 @@ static void bmo_collapsecon_do_layer(BMesh *bm, BMOperator *op, int layer)
 			if (BMO_elem_flag_test(bm, l->e, EDGE_MARK)) {
 				/* walk */
 				BLI_array_empty(blocks);
-				tot = 0;
-				l2 = BMW_begin(&walker, l);
 
 				CustomData_data_initminmax(type, &min, &max);
-				for (tot = 0; l2; tot++, l2 = BMW_step(&walker)) {
+				for (l2 = BMW_begin(&walker, l), tot = 0; l2; l2 = BMW_step(&walker), tot++) {
 					BLI_array_grow_one(blocks);
 					blocks[tot] = CustomData_bmesh_get_layer_n(&bm->ldata, l2->head.data, layer);
 					CustomData_data_dominmax(type, blocks[tot], &min, &max);

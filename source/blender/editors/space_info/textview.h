@@ -46,6 +46,7 @@ typedef struct TextViewContext {
 	int (*step)(struct TextViewContext *tvc);
 	int (*line_get)(struct TextViewContext *tvc, const char **, int *);
 	int (*line_color)(struct TextViewContext *tvc, unsigned char fg[3], unsigned char bg[3]);
+	void (*const_colors)(struct TextViewContext *tvc, unsigned char bg_sel[4]);  /* constant theme colors */
 	void *iter;
 	int iter_index;
 	int iter_char;		/* char intex, used for multi-line report display */
@@ -54,7 +55,7 @@ typedef struct TextViewContext {
 
 } TextViewContext;
 
-int textview_draw(struct TextViewContext *tvc, int draw, int mval[2], void **mouse_pick, int *pos_pick);
+int textview_draw(struct TextViewContext *tvc, const int draw, int mval[2], void **mouse_pick, int *pos_pick);
 
 #define TVC_LINE_FG	(1<<0)
 #define TVC_LINE_BG	(1<<1)

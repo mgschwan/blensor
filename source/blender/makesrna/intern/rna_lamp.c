@@ -24,24 +24,25 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
+
+#include "BLI_math_base.h"
+
+#include "BLF_translation.h"
 
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
-
 #include "rna_internal.h"
 
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
 #include "DNA_texture_types.h"
 
-#include "BLI_math_base.h"
-
 #ifdef RNA_RUNTIME
 
 #include "MEM_guardedalloc.h"
 
+#include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_main.h"
 #include "BKE_texture.h"
@@ -54,7 +55,7 @@ static void rna_Lamp_buffer_size_set(PointerRNA *ptr, int value)
 {
 	Lamp *la = (Lamp *)ptr->data;
 
-	CLAMP(value, 512, 10240);
+	CLAMP(value, 128, 10240);
 	la->bufsize = value;
 	la->bufsize &= (~15); /* round to multiple of 16 */
 }
@@ -169,14 +170,14 @@ static void rna_Lamp_spot_size_set(PointerRNA *ptr, float value)
 	la->spotsize = RAD2DEGF(value);
 }
 
-static void rna_Lamp_use_nodes_update(Main *blain, Scene *scene, PointerRNA *ptr)
+static void rna_Lamp_use_nodes_update(bContext *C, PointerRNA *ptr)
 {
 	Lamp *la = (Lamp *)ptr->data;
 
 	if (la->use_nodes && la->nodetree == NULL)
-		ED_node_shader_default(scene, &la->id);
+		ED_node_shader_default(C, &la->id);
 	
-	rna_Lamp_update(blain, scene, ptr);
+	rna_Lamp_update(CTX_data_main(C), CTX_data_scene(C), ptr);
 }
 
 #else
@@ -364,6 +365,7 @@ static void rna_def_lamp(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_items(prop, lamp_type_items);
 	RNA_def_property_ui_text(prop, "Type", "Type of Lamp");
+	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_LAMP);
 	RNA_def_property_update(prop, 0, "rna_Lamp_draw_update");
 
 	prop = RNA_def_property(srna, "distance", PROP_FLOAT, PROP_DISTANCE);
@@ -413,6 +415,7 @@ static void rna_def_lamp(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_nodes", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_nodes", 1);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
 	RNA_def_property_ui_text(prop, "Use Nodes", "Use shader nodes to render the lamp");
 	RNA_def_property_update(prop, 0, "rna_Lamp_use_nodes_update");
 	
@@ -540,7 +543,7 @@ static void rna_def_lamp_shadow(StructRNA *srna, int spot, int area)
 
 	prop = RNA_def_property(srna, "shadow_buffer_size", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "bufsize");
-	RNA_def_property_range(prop, 512, 10240);
+	RNA_def_property_range(prop, 128, 10240);
 	RNA_def_property_ui_text(prop, "Shadow Buffer Size",
 	                         "Resolution of the shadow buffer, higher values give crisper shadows "
 	                         "but use more memory");

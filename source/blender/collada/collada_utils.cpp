@@ -49,12 +49,14 @@ extern "C" {
 #include "BKE_customdata.h"
 #include "BKE_depsgraph.h"
 #include "BKE_object.h"
+#include "BKE_global.h"
 #include "BKE_mesh.h"
 #include "BKE_scene.h"
 #include "BKE_DerivedMesh.h"
 
 #include "WM_api.h" // XXX hrm, see if we can do without this
 #include "WM_types.h"
+#include "bmesh.h"
 }
 
 float bc_get_float_value(const COLLADAFW::FloatOrDoubleArray& array, unsigned int index)
@@ -84,7 +86,6 @@ int bc_test_parent_loop(Object *par, Object *ob)
 int bc_set_parent(Object *ob, Object *par, bContext *C, bool is_parent_space)
 {
 	Object workob;
-	Main *bmain = CTX_data_main(C);
 	Scene *sce = CTX_data_scene(C);
 	
 	if (!par || bc_test_parent_loop(par, ob))
@@ -112,48 +113,63 @@ int bc_set_parent(Object *ob, Object *par, bContext *C, bool is_parent_space)
 	BKE_object_workob_calc_parent(sce, ob, &workob);
 	invert_m4_m4(ob->parentinv, workob.obmat);
 
-	ob->recalc |= OB_RECALC_OB | OB_RECALC_DATA;
-	par->recalc |= OB_RECALC_OB;
+	DAG_id_tag_update(&ob->id, OB_RECALC_OB | OB_RECALC_DATA);
+	DAG_id_tag_update(&par->id, OB_RECALC_OB);
 
-	DAG_scene_sort(bmain, sce);
-	DAG_ids_flush_update(bmain, 0);
+	/** done once after import */
+#if 0
+	DAG_relations_tag_update(bmain);
 	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+#endif
 
 	return true;
 }
 
 Object *bc_add_object(Scene *scene, int type, const char *name)
 {
-	Object *ob = BKE_object_add_only_object(type, name);
+	Object *ob = BKE_object_add_only_object(G.main, type, name);
 
 	ob->data = BKE_object_obdata_add_from_type(type);
 	ob->lay = scene->lay;
-	ob->recalc |= OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME;
+	DAG_id_tag_update(&ob->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
 
 	BKE_scene_base_select(scene, BKE_scene_base_add(scene, ob));
 
 	return ob;
 }
 
-Mesh *bc_to_mesh_apply_modifiers(Scene *scene, Object *ob, BC_export_mesh_type export_mesh_type)
+Mesh *bc_get_mesh_copy(Scene *scene, Object *ob, BC_export_mesh_type export_mesh_type, bool apply_modifiers, bool triangulate)
 {
 	Mesh *tmpmesh;
 	CustomDataMask mask = CD_MASK_MESH;
 	DerivedMesh *dm = NULL;
-	switch (export_mesh_type) {
-		case BC_MESH_TYPE_VIEW: {
-			dm = mesh_create_derived_view(scene, ob, mask);
-			break;
-		}
-		case BC_MESH_TYPE_RENDER: {
-			dm = mesh_create_derived_render(scene, ob, mask);
-			break;
+	if (apply_modifiers) {
+		switch (export_mesh_type) {
+			case BC_MESH_TYPE_VIEW: {
+				dm = mesh_create_derived_view(scene, ob, mask);
+				break;
+			}
+			case BC_MESH_TYPE_RENDER: {
+				dm = mesh_create_derived_render(scene, ob, mask);
+				break;
+			}
 		}
 	}
+	else {
+		dm = mesh_create_derived((Mesh *)ob->data, ob, NULL);
+	}
 
-	tmpmesh = BKE_mesh_add("ColladaMesh"); // name is not important here
+	tmpmesh = BKE_mesh_add(G.main, "ColladaMesh"); // name is not important here
 	DM_to_mesh(dm, tmpmesh, ob);
 	dm->release(dm);
+
+	if (triangulate) {
+		bc_triangulate_mesh(tmpmesh);
+	}
+
+	// XXX Not sure if we need that for ngon_export as well.
+	BKE_mesh_tessface_ensure(tmpmesh);
+
 	return tmpmesh;
 }
 
@@ -281,4 +297,99 @@ int bc_get_active_UVLayer(Object *ob)
 {
 	Mesh *me = (Mesh *)ob->data;
 	return CustomData_get_active_layer_index(&me->fdata, CD_MTFACE);
+}
+
+std::string bc_url_encode(std::string data)
+{
+	/* XXX We probably do not need to do a full encoding.
+	 * But in case that is necessary,then it can be added here.
+	 */
+	return bc_replace_string(data,"#", "%23");
+}
+
+std::string bc_replace_string(std::string data, const std::string& pattern,
+                              const std::string& replacement)
+{
+	size_t pos = 0;
+	while((pos = data.find(pattern, pos)) != std::string::npos) {
+		data.replace(pos, pattern.length(), replacement);
+		pos += replacement.length();
+	}
+	return data;
+}
+
+/**
+ * Calculate a rescale factor such that the imported scene's scale
+ * is preserved. I.e. 1 meter in the import will also be
+ * 1 meter in the current scene.
+ * XXX : I am not sure if it is correct to map 1 Blender Unit
+ * to 1 Meter for unit type NONE. But it looks reasonable to me.
+ */
+void bc_match_scale(std::vector<Object *> *objects_done, 
+                    Scene &sce,
+                    UnitConverter &bc_unit)
+{
+	Object *ob = NULL;
+
+	PointerRNA scene_ptr, unit_settings;
+	PropertyRNA *system_ptr, *scale_ptr;
+	RNA_id_pointer_create(&sce.id, &scene_ptr);
+
+	unit_settings = RNA_pointer_get(&scene_ptr, "unit_settings");
+	system_ptr = RNA_struct_find_property(&unit_settings, "system");
+	scale_ptr = RNA_struct_find_property(&unit_settings, "scale_length");
+
+	int   type  = RNA_property_enum_get(&unit_settings, system_ptr);
+
+	float bl_scale;
+	
+	switch (type) {
+		case USER_UNIT_NONE:
+			bl_scale = 1.0; // map 1 Blender unit to 1 Meter
+			break;
+
+		case USER_UNIT_METRIC:
+			bl_scale = RNA_property_float_get(&unit_settings, scale_ptr);
+			break;
+
+		default :
+			bl_scale = RNA_property_float_get(&unit_settings, scale_ptr);
+			// it looks like the conversion to Imperial is done implicitly.
+			// So nothing to do here.
+			break;
+	}
+	
+	float scale_conv = bc_unit.getLinearMeter() / bl_scale;
+
+	float rescale[3];
+	rescale[0] = rescale[1] = rescale[2] = scale_conv;
+
+	float size_mat4[4][4];
+
+	float axis_mat4[4][4];
+	unit_m4(axis_mat4);
+
+	size_to_mat4(size_mat4, rescale);
+
+	for (std::vector<Object *>::iterator it = objects_done->begin();
+			it != objects_done->end();
+			++it) 
+	{
+		ob = *it;
+		mult_m4_m4m4(ob->obmat, size_mat4, ob->obmat);
+		mult_m4_m4m4(ob->obmat, bc_unit.get_rotation(), ob->obmat);
+		BKE_object_apply_mat4(ob, ob->obmat, 0, 0);
+	}
+
+}
+
+void bc_triangulate_mesh(Mesh *me) {
+	bool use_beauty = false;
+	bool tag_only   = false;
+	 
+	BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default);
+	BM_mesh_bm_from_me(bm, me, FALSE, 0);
+	BM_mesh_triangulate(bm, use_beauty, tag_only, NULL, NULL);
+	BM_mesh_bm_to_me(bm, me, FALSE);
+	BM_mesh_free(bm);
 }

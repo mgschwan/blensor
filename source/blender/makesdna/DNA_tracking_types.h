@@ -30,6 +30,8 @@
  *  \ingroup DNA
  *  \since may-2011
  *  \author Sergey Sharybin
+ *
+ * Structs used for camera tracking and the movie-clip editor.
  */
 
 #ifndef __DNA_TRACKING_TYPES_H__
@@ -248,13 +250,28 @@ typedef struct MovieTrackingDopesheetChannel {
 	int max_segment, total_frames;  /* longest segment length and total number of tracked frames */
 } MovieTrackingDopesheetChannel;
 
+typedef struct MovieTrackingDopesheetCoverageSegment {
+	struct MovieTrackingDopesheetCoverageSegment *next, *prev;
+
+	int coverage;
+	int start_frame;
+	int end_frame;
+
+	int pad;
+} MovieTrackingDopesheetCoverageSegment;
+
 typedef struct MovieTrackingDopesheet {
 	int ok;                     /* flag if dopesheet information is still relevant */
 
 	short sort_method;          /* method to be used to sort tracks */
 	short flag;                 /* dopesheet building flag such as inverted order of sort */
 
-	/* runtime stuff */
+	/* ** runtime stuff ** */
+
+	/* summary */
+	ListBase coverage_segments;
+
+	/* detailed */
 	ListBase channels;
 	int tot_channel;
 
@@ -409,4 +426,11 @@ enum {
 	TRACKING_DOPE_SHOW_HIDDEN   = (1 << 2)
 };
 
-#endif
+/* MovieTrackingDopesheetCoverageSegment->trackness */
+enum {
+	TRACKING_COVERAGE_BAD        = 0,
+	TRACKING_COVERAGE_ACCEPTABLE = 1,
+	TRACKING_COVERAGE_OK         = 2
+};
+
+#endif  /* __DNA_TRACKING_TYPES_H__ */

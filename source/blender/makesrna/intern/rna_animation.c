@@ -26,12 +26,6 @@
 
 #include <stdlib.h>
 
-#include "RNA_access.h"
-#include "RNA_define.h"
-#include "RNA_enum_types.h"
-
-#include "rna_internal.h"
-
 #include "DNA_anim_types.h"
 #include "DNA_action_types.h"
 #include "DNA_scene_types.h"
@@ -40,15 +34,35 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "ED_keyframing.h"
+#include "RNA_access.h"
+#include "RNA_define.h"
+#include "RNA_enum_types.h"
+
+#include "rna_internal.h"
 
 #include "WM_types.h"
+
+#include "ED_keyframing.h"
 
 /* exported for use in API */
 EnumPropertyItem keyingset_path_grouping_items[] = {
 	{KSP_GROUP_NAMED, "NAMED", 0, "Named Group", ""},
 	{KSP_GROUP_NONE, "NONE", 0, "None", ""},
 	{KSP_GROUP_KSNAME, "KEYINGSET", 0, "Keying Set Name", ""},
+	{0, NULL, 0, NULL, NULL}
+};
+
+/* It would be cool to get rid of this 'INSERTKEY_' prefix in 'py strings' values, but it would break existing
+ * exported keyingset... :/
+ */
+EnumPropertyItem keying_flag_items[] = {
+	{INSERTKEY_NEEDED, "INSERTKEY_NEEDED", 0, "Only Needed",
+	                   "Only insert keyframes where they're needed in the relevant F-Curves"},
+	{INSERTKEY_MATRIX, "INSERTKEY_VISUAL", 0, "Visual Keying",
+	                   "Insert keyframes based on 'visual transforms'"},
+	{INSERTKEY_XYZ2RGB, "INSERTKEY_XYZ_TO_RGB", 0, "XYZ=RGB Colors",
+	                    "Color for newly added transformation F-Curves (Location, Rotation, Scale) "
+	                    "and also Color is based on the transform axis"},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -184,6 +198,8 @@ static void rna_KeyingSetInfo_unregister(Main *bmain, StructRNA *type)
 	RNA_struct_free_extension(type, &ksi->ext);
 	RNA_struct_free(&BLENDER_RNA, type);
 	
+	WM_main_add_notifier(NC_WINDOW, NULL);
+
 	/* unlink Blender-side data */
 	ANIM_keyingset_info_unregister(bmain, ksi);
 }
@@ -220,7 +236,7 @@ static StructRNA *rna_KeyingSetInfo_register(Main *bmain, ReportList *reports, v
 	memcpy(ksi, &dummyksi, sizeof(KeyingSetInfo));
 	
 	/* set RNA-extensions info */
-	ksi->ext.srna = RNA_def_struct(&BLENDER_RNA, ksi->idname, "KeyingSetInfo");
+	ksi->ext.srna = RNA_def_struct_ptr(&BLENDER_RNA, ksi->idname, &RNA_KeyingSetInfo);
 	ksi->ext.data = data;
 	ksi->ext.call = call;
 	ksi->ext.free = free;
@@ -235,6 +251,8 @@ static StructRNA *rna_KeyingSetInfo_register(Main *bmain, ReportList *reports, v
 	/* add and register with other info as needed */
 	ANIM_keyingset_info_register(ksi);
 	
+	WM_main_add_notifier(NC_WINDOW, NULL);
+
 	/* return the struct-rna added */
 	return ksi->ext.srna;
 }
@@ -518,17 +536,6 @@ static void rna_def_common_keying_flags(StructRNA *srna, short UNUSED(reg))
 {
 	PropertyRNA *prop;
 
-	static EnumPropertyItem keying_flag_items[] = {
-		{INSERTKEY_NEEDED, "INSERTKEY_NEEDED", 0, "Only Needed",
-		                   "Only insert keyframes where they're needed in the relevant F-Curves"},
-		{INSERTKEY_MATRIX, "INSERTKEY_VISUAL", 0, "Visual Keying",
-		                   "Insert keyframes based on 'visual transforms'"},
-		{INSERTKEY_XYZ2RGB, "INSERTKEY_XYZ_TO_RGB", 0, "XYZ=RGB Colors",
-		                    "Color for newly added transformation F-Curves (Location, Rotation, Scale) "
-		                    "and also Color is based on the transform axis"},
-		{0, NULL, 0, NULL, NULL}
-	};
-
 	prop = RNA_def_property(srna, "bl_options", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "keyingflag");
 	RNA_def_property_enum_items(prop, keying_flag_items);
@@ -574,7 +581,7 @@ static void rna_def_keyingset_info(BlenderRNA *brna)
 	RNA_def_struct_name_property(srna, prop);
 	RNA_def_property_flag(prop, PROP_REGISTER);
 	
-	prop = RNA_def_property(srna, "bl_description", PROP_STRING, PROP_TRANSLATE);
+	prop = RNA_def_property(srna, "bl_description", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "description");
 	RNA_def_property_string_maxlength(prop, RNA_DYN_DESCR_MAX); /* else it uses the pointer size! */
 	RNA_def_property_flag(prop, PROP_REGISTER_OPTIONAL);
@@ -774,7 +781,7 @@ static void rna_def_keyingset(BlenderRNA *brna)
 	RNA_def_struct_name_property(srna, prop);
 	RNA_def_property_update(prop, NC_SCENE | ND_KEYINGSET | NA_RENAME, NULL);
 	
-	prop = RNA_def_property(srna, "bl_description", PROP_STRING, PROP_TRANSLATE);
+	prop = RNA_def_property(srna, "bl_description", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "description");
 	RNA_def_property_string_maxlength(prop, RNA_DYN_DESCR_MAX); /* else it uses the pointer size! */
 	RNA_def_property_flag(prop, PROP_REGISTER_OPTIONAL);
@@ -888,6 +895,7 @@ static void rna_def_animdata(BlenderRNA *brna)
 	
 	srna = RNA_def_struct(brna, "AnimData", NULL);
 	RNA_def_struct_ui_text(srna, "Animation Data", "Animation data for datablock");
+	RNA_def_struct_ui_icon(srna, ICON_ANIM_DATA);
 	
 	/* NLA */
 	prop = RNA_def_property(srna, "nla_tracks", PROP_COLLECTION, PROP_NONE);

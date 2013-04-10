@@ -1,4 +1,5 @@
-#!/usr/bin/python
+#!/usr/bin/env python
+#
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -31,12 +32,33 @@ defs = []
 
 # TODO sanitize inc path building
 # relative paths to include dirs, space-separated, string
-if  env['OURPLATFORM']=='darwin':
-    incs = '../blenlib ../blenkernel ../windowmanager ../blenloader ../makesdna ../makesrna ../editors/include ../imbuf ../../../intern/guardedalloc [OPENCOLLADA]/COLLADAStreamWriter [OPENCOLLADA]/COLLADABaseUtils [OPENCOLLADA]/COLLADAFramework [OPENCOLLADA]/COLLADASaxFrameworkLoader [OPENCOLLADA]/GeneratedSaxParser '.replace('[OPENCOLLADA]', env['BF_OPENCOLLADA_INC'])
-else:
-    incs = '../blenlib ../blenkernel ../windowmanager ../makesdna ../blenloader ../makesrna ../editors/include ../imbuf ../../../intern/guardedalloc [OPENCOLLADA]/COLLADAStreamWriter/include [OPENCOLLADA]/COLLADABaseUtils/include [OPENCOLLADA]/COLLADAFramework/include [OPENCOLLADA]/COLLADASaxFrameworkLoader/include [OPENCOLLADA]/GeneratedSaxParser/include '.replace('[OPENCOLLADA]', env['BF_OPENCOLLADA_INC'])
+incs = [
+    '../ikplugin',
+    '#/intern/iksolver/extern',
+    '../blenlib',
+    '../blenfont',
+    '../blenkernel',
+    '../windowmanager',
+    '../blenloader',
+    '../makesdna',
+    '../makesrna',
+    '../editors/include',
+    '../imbuf',
+    '../bmesh',
+    '#/intern/guardedalloc',
+]
+incs += [
+    env['BF_OPENCOLLADA_INC'] + '/COLLADAStreamWriter',
+    env['BF_OPENCOLLADA_INC'] + '/COLLADABaseUtils',
+    env['BF_OPENCOLLADA_INC'] + '/COLLADAFramework',
+    env['BF_OPENCOLLADA_INC'] + '/COLLADASaxFrameworkLoader',
+    env['BF_OPENCOLLADA_INC'] + '/GeneratedSaxParser',
+]
 
 if env['BF_BUILDINFO']:
     defs.append('WITH_BUILDINFO')
 
-env.BlenderLib ('bf_collada', sources, Split(incs), defs, libtype='core', priority=200 )
+if env['WITH_BF_INTERNATIONAL']:
+    defs.append('WITH_INTERNATIONAL')
+
+env.BlenderLib ('bf_collada', sources, incs, defs, libtype='core', priority=200 )

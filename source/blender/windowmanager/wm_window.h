@@ -40,6 +40,7 @@ void		wm_ghost_init			(bContext *C);
 void		wm_ghost_exit(void);
 
 void wm_get_screensize(int *width_r, int *height_r);
+void wm_get_screensize_all(int *width_r, int *height_r);
 
 wmWindow	*wm_window_new			(bContext *C);
 void		wm_window_free			(bContext *C, wmWindowManager *wm, wmWindow *win);
@@ -55,8 +56,6 @@ void		wm_window_make_drawable(bContext *C, wmWindow *win);
 void		wm_window_raise			(wmWindow *win);
 void		wm_window_lower			(wmWindow *win);
 void		wm_window_set_size		(wmWindow *win, int width, int height);
-void		wm_window_get_size		(wmWindow *win, int *width_r, int *height_r);
-void		wm_window_get_size_ghost(wmWindow *win, int *width_r, int *height_r);
 void		wm_window_get_position	(wmWindow *win, int *posx_r, int *posy_r);
 void		wm_window_swap_buffers	(wmWindow *win);
 
@@ -69,6 +68,13 @@ void		wm_window_testbreak		(void);
 /* *************** window operators ************** */
 int			wm_window_duplicate_exec(bContext *C, struct wmOperator *op);
 int			wm_window_fullscreen_toggle_exec(bContext *C, struct wmOperator *op);
+
+/* Initial (unmaximized) size to start with for
+ * systems that can't find it for themselves (X11).
+ * Clamped by real desktop limits */
+#define WM_WIN_INIT_SIZE_X 1800
+#define WM_WIN_INIT_SIZE_Y 1000
+#define WM_WIN_INIT_PAD 40
 
 #endif /* __WM_WINDOW_H__ */
 

@@ -42,6 +42,7 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_colortools.h"
+#include "BKE_node.h"
 #include "BKE_texture.h"
 #include "BKE_tracking.h"
 
@@ -97,7 +98,9 @@ void uiDrawBox(int mode, float minx, float miny, float maxx, float maxy, float r
 		}
 		glVertex2f(maxx, miny + rad);
 	}
-	else glVertex2f(maxx, miny);
+	else {
+		glVertex2f(maxx, miny);
+	}
 	
 	/* corner right-top */
 	if (roundboxtype & UI_CNR_TOP_RIGHT) {
@@ -107,7 +110,9 @@ void uiDrawBox(int mode, float minx, float miny, float maxx, float maxy, float r
 		}
 		glVertex2f(maxx - rad, maxy);
 	}
-	else glVertex2f(maxx, maxy);
+	else {
+		glVertex2f(maxx, maxy);
+	}
 	
 	/* corner left-top */
 	if (roundboxtype & UI_CNR_TOP_LEFT) {
@@ -117,7 +122,9 @@ void uiDrawBox(int mode, float minx, float miny, float maxx, float maxy, float r
 		}
 		glVertex2f(minx, maxy - rad);
 	}
-	else glVertex2f(minx, maxy);
+	else {
+		glVertex2f(minx, maxy);
+	}
 	
 	/* corner left-bottom */
 	if (roundboxtype & UI_CNR_BOTTOM_LEFT) {
@@ -127,7 +134,9 @@ void uiDrawBox(int mode, float minx, float miny, float maxx, float maxy, float r
 		}
 		glVertex2f(minx + rad, miny);
 	}
-	else glVertex2f(minx, miny);
+	else {
+		glVertex2f(minx, miny);
+	}
 	
 	glEnd();
 }
@@ -373,7 +382,7 @@ void uiRoundRect(float minx, float miny, float maxx, float maxy, float rad)
 	glEnable(GL_BLEND);
 
 	uiDrawBox(GL_LINE_LOOP, minx, miny, maxx, maxy, rad);
-   
+
 	glDisable(GL_BLEND);
 	glDisable(GL_LINE_SMOOTH);
 }
@@ -381,42 +390,7 @@ void uiRoundRect(float minx, float miny, float maxx, float maxy, float rad)
 /* (old, used in outliner) plain antialiased filled box */
 void uiRoundBox(float minx, float miny, float maxx, float maxy, float rad)
 {
-	float color[4];
-	
-	if (roundboxtype & UI_RB_ALPHA) {
-		glGetFloatv(GL_CURRENT_COLOR, color);
-		color[3] = 0.5;
-		glColor4fv(color);
-		glEnable(GL_BLEND);
-	}
-	
-	ui_draw_anti_roundbox(GL_POLYGON, minx, miny, maxx, maxy, rad);
-}
-
-
-/* ************** generic embossed rect, for window sliders etc ************* */
-
-
-/* text_draw.c uses this */
-void uiEmboss(float x1, float y1, float x2, float y2, int sel)
-{
-	
-	/* below */
-	if (sel) glColor3ub(200, 200, 200);
-	else glColor3ub(50, 50, 50);
-	fdrawline(x1, y1, x2, y1);
-
-	/* right */
-	fdrawline(x2, y1, x2, y2);
-	
-	/* top */
-	if (sel) glColor3ub(50, 50, 50);
-	else glColor3ub(200, 200, 200);
-	fdrawline(x1, y2, x2, y2);
-
-	/* left */
-	fdrawline(x1, y1, x1, y2);
-	
+	ui_draw_anti_roundbox(GL_POLYGON, minx, miny, maxx, maxy, rad, roundboxtype & UI_RB_ALPHA);
 }
 
 /* ************** SPECIAL BUTTON DRAWING FUNCTIONS ************* */
@@ -429,17 +403,18 @@ void ui_draw_but_IMAGE(ARegion *UNUSED(ar), uiBut *but, uiWidgetColors *UNUSED(w
 #else
 	ImBuf *ibuf = (ImBuf *)but->poin;
 	//GLint scissor[4];
-	//int w, h;
+	int w, h;
 
 	if (!ibuf) return;
+	
+	w = BLI_rcti_size_x(rect);
+	h = BLI_rcti_size_y(rect);
 	
 	/* scissor doesn't seem to be doing the right thing...? */
 #if 0
 	//glColor4f(1.0, 0.f, 0.f, 1.f);
 	//fdrawbox(rect->xmin, rect->ymin, rect->xmax, rect->ymax)
 
-	w = BLI_rcti_size_x(rect);
-	h = BLI_rcti_size_y(rect);
 	/* prevent drawing outside widget area */
 	glGetIntegerv(GL_SCISSOR_BOX, scissor);
 	glScissor(ar->winrct.xmin + rect->xmin, ar->winrct.ymin + rect->ymin, w, h);
@@ -448,8 +423,14 @@ void ui_draw_but_IMAGE(ARegion *UNUSED(ar), uiBut *but, uiWidgetColors *UNUSED(w
 	glEnable(GL_BLEND);
 	glColor4f(0.0, 0.0, 0.0, 0.0);
 	
-	glaDrawPixelsSafe((float)rect->xmin, (float)rect->ymin, ibuf->x, ibuf->y, ibuf->x, GL_RGBA, GL_UNSIGNED_BYTE, ibuf->rect);
-	//glaDrawPixelsTex((float)rect->xmin, (float)rect->ymin, ibuf->x, ibuf->y, GL_UNSIGNED_BYTE, ibuf->rect);
+	if (w != ibuf->x || h != ibuf->y) {
+		float facx = (float)w / (float)ibuf->x;
+		float facy = (float)h / (float)ibuf->y;
+		glPixelZoom(facx, facy);
+	}
+	glaDrawPixelsAuto((float)rect->xmin, (float)rect->ymin, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, ibuf->rect);
+	
+	glPixelZoom(1.0f, 1.0f);
 	
 	glDisable(GL_BLEND);
 	
@@ -1277,24 +1258,25 @@ void ui_draw_but_NORMAL(uiBut *but, uiWidgetColors *wcol, rcti *rect)
 		size = BLI_rcti_size_y(rect) / 200.f;
 	
 	glScalef(size, size, size);
-	
+
 	if (displist == 0) {
-		GLUquadricObj   *qobj;
-		
+		GLUquadricObj *qobj;
+
 		displist = glGenLists(1);
-		glNewList(displist, GL_COMPILE_AND_EXECUTE);
+		glNewList(displist, GL_COMPILE);
 		
 		qobj = gluNewQuadric();
-		gluQuadricDrawStyle(qobj, GLU_FILL); 
+		gluQuadricDrawStyle(qobj, GLU_FILL);
 		glShadeModel(GL_SMOOTH);
 		gluSphere(qobj, 100.0, 32, 24);
 		glShadeModel(GL_FLAT);
-		gluDeleteQuadric(qobj);  
+		gluDeleteQuadric(qobj);
 		
 		glEndList();
 	}
-	else glCallList(displist);
-	
+
+	glCallList(displist);
+
 	/* restore */
 	glDisable(GL_LIGHTING);
 	glDisable(GL_CULL_FACE);
@@ -1594,7 +1576,7 @@ void ui_draw_but_TRACKPREVIEW(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wc
 
 		tmpibuf = BKE_tracking_sample_pattern(scopes->frame_width, scopes->frame_height,
 		                                            scopes->track_search, scopes->track,
-		                                            &scopes->undist_marker, scopes->use_track_mask,
+		                                            &scopes->undist_marker, TRUE, scopes->use_track_mask,
 		                                            width, height, scopes->track_pos);
 
 		if (tmpibuf) {
@@ -1675,6 +1657,71 @@ void ui_draw_but_TRACKPREVIEW(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wc
 	draw_scope_end(&rect, scissor);
 
 	glDisable(GL_BLEND);
+}
+
+void ui_draw_but_NODESOCKET(ARegion *ar, uiBut *but, uiWidgetColors *UNUSED(wcol), rcti *recti)
+{
+	static const float size = 5.0f;
+	
+	/* 16 values of sin function */
+	static float si[16] = {
+	    0.00000000f, 0.39435585f, 0.72479278f, 0.93775213f,
+	    0.99871650f, 0.89780453f, 0.65137248f, 0.29936312f,
+	    -0.10116832f, -0.48530196f, -0.79077573f, -0.96807711f,
+	    -0.98846832f, -0.84864425f, -0.57126821f, -0.20129852f
+	};
+	/* 16 values of cos function */
+	static float co[16] = {
+	    1.00000000f, 0.91895781f, 0.68896691f, 0.34730525f,
+	    -0.05064916f, -0.44039415f, -0.75875812f, -0.95413925f,
+	    -0.99486932f, -0.87434661f, -0.61210598f, -0.25065253f,
+	    0.15142777f, 0.52896401f, 0.82076344f, 0.97952994f,
+	};
+	
+	unsigned char *col = but->col;
+	int a;
+	GLint scissor[4];
+	rcti scissor_new;
+	float x, y;
+	
+	x = 0.5f * (recti->xmin + recti->xmax);
+	y = 0.5f * (recti->ymin + recti->ymax);
+	
+	/* need scissor test, can draw outside of boundary */
+	glGetIntegerv(GL_VIEWPORT, scissor);
+	scissor_new.xmin = ar->winrct.xmin + recti->xmin;
+	scissor_new.ymin = ar->winrct.ymin + recti->ymin;
+	scissor_new.xmax = ar->winrct.xmin + recti->xmax;
+	scissor_new.ymax = ar->winrct.ymin + recti->ymax;
+	BLI_rcti_isect(&scissor_new, &ar->winrct, &scissor_new);
+	glScissor(scissor_new.xmin,
+	          scissor_new.ymin,
+	          BLI_rcti_size_x(&scissor_new),
+	          BLI_rcti_size_y(&scissor_new));
+	
+	glColor4ubv(col);
+	
+	glEnable(GL_BLEND);
+	glBegin(GL_POLYGON);
+	for (a = 0; a < 16; a++)
+		glVertex2f(x + size * si[a], y + size * co[a]);
+	glEnd();
+	glDisable(GL_BLEND);
+	
+	glColor4ub(0, 0, 0, 150);
+	
+	glEnable(GL_BLEND);
+	glEnable(GL_LINE_SMOOTH);
+	glBegin(GL_LINE_LOOP);
+	for (a = 0; a < 16; a++)
+		glVertex2f(x + size * si[a], y + size * co[a]);
+	glEnd();
+	glDisable(GL_LINE_SMOOTH);
+	glDisable(GL_BLEND);
+	glLineWidth(1.0f);
+	
+	/* restore scissortest */
+	glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
 }
 
 /* ****************************************************** */

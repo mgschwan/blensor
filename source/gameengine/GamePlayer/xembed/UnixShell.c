@@ -310,7 +310,7 @@ NPP_NewStream(
 		return NPERR_INVALID_INSTANCE_ERROR;
 
 	printf("Loading main file %s (%s)\n", stream->url, type);
-	if ( strcmp(type,"text/html") == 0 ) /* original HTML file */
+	if (strcmp(type, "text/html") == 0) /* original HTML file */
 		return NPERR_NO_ERROR;
 	
 	This->stream_total = stream->end;
@@ -541,7 +541,7 @@ static void
 log_entry(char* msg)
 {
 #ifdef NZC_GENERATE_LOG 
-	FILE* fp = fopen("/tmp/plugin_log","a");
+	FILE* fp = fopen("/tmp/plugin_log", "a");
 	if (!fp) return;
 	fprintf(fp, "--> Unixshell:: %s\n",
 		msg); 

@@ -114,6 +114,7 @@ void ED_operatortypes_object(void)
 	WM_operatortype_append(OBJECT_OT_text_add);
 	WM_operatortype_append(OBJECT_OT_armature_add);
 	WM_operatortype_append(OBJECT_OT_empty_add);
+	WM_operatortype_append(OBJECT_OT_drop_named_image);
 	WM_operatortype_append(OBJECT_OT_lamp_add);
 	WM_operatortype_append(OBJECT_OT_camera_add);
 	WM_operatortype_append(OBJECT_OT_speaker_add);
@@ -210,6 +211,7 @@ void ED_operatortypes_object(void)
 	WM_operatortype_append(OBJECT_OT_shape_key_move);
 
 	WM_operatortype_append(LATTICE_OT_select_all);
+	WM_operatortype_append(LATTICE_OT_select_ungrouped);
 	WM_operatortype_append(LATTICE_OT_make_regular);
 	WM_operatortype_append(LATTICE_OT_flip);
 
@@ -217,8 +219,8 @@ void ED_operatortypes_object(void)
 	WM_operatortype_append(OBJECT_OT_group_link);
 	WM_operatortype_append(OBJECT_OT_group_remove);
 
-	WM_operatortype_append(OBJECT_OT_hook_add_selobj);
-	WM_operatortype_append(OBJECT_OT_hook_add_newobj);
+	WM_operatortype_append(OBJECT_OT_hook_add_selob);
+	WM_operatortype_append(OBJECT_OT_hook_add_newob);
 	WM_operatortype_append(OBJECT_OT_hook_remove);
 	WM_operatortype_append(OBJECT_OT_hook_select);
 	WM_operatortype_append(OBJECT_OT_hook_assign);
@@ -252,15 +254,6 @@ void ED_operatormacros_object(void)
 		RNA_enum_set(otmacro->ptr, "proportional", PROP_EDIT_OFF);
 	}
 	
-	/* XXX */
-	ot = WM_operatortype_append_macro("OBJECT_OT_add_named_cursor", "Add Named At Cursor",
-	                                  "Add named object at cursor", OPTYPE_UNDO | OPTYPE_REGISTER);
-	if (ot) {
-		RNA_def_string(ot->srna, "name", "Cube", MAX_ID_NAME - 2, "Name", "Object name to add");
-
-		WM_operatortype_macro_define(ot, "VIEW3D_OT_cursor3d");
-		WM_operatortype_macro_define(ot, "OBJECT_OT_add_named");
-	}
 }
 
 static int object_mode_poll(bContext *C)
@@ -372,7 +365,7 @@ void ED_keymap_object(wmKeyConfig *keyconf)
 	kmi = WM_keymap_add_item(keymap, "OBJECT_OT_delete", XKEY, KM_PRESS, KM_SHIFT, 0);
 	RNA_boolean_set(kmi->ptr, "use_global", TRUE);
 
-	WM_keymap_add_item(keymap, "OBJECT_OT_delete", DELKEY, KM_PRESS, 0, 0);
+	kmi = WM_keymap_add_item(keymap, "OBJECT_OT_delete", DELKEY, KM_PRESS, 0, 0);
 	RNA_boolean_set(kmi->ptr, "use_global", FALSE);
 	kmi = WM_keymap_add_item(keymap, "OBJECT_OT_delete", DELKEY, KM_PRESS, KM_SHIFT, 0);
 	RNA_boolean_set(kmi->ptr, "use_global", TRUE);
@@ -403,6 +396,12 @@ void ED_keymap_object(wmKeyConfig *keyconf)
 	WM_keymap_verify_item(keymap, "GROUP_OT_objects_remove_all", GKEY, KM_PRESS, KM_SHIFT | KM_CTRL | KM_ALT, 0);
 	WM_keymap_verify_item(keymap, "GROUP_OT_objects_add_active", GKEY, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
 	WM_keymap_verify_item(keymap, "GROUP_OT_objects_remove_active", GKEY, KM_PRESS, KM_SHIFT | KM_ALT, 0);
+	
+	kmi = WM_keymap_add_item(keymap, "RIGIDBODY_OT_objects_add", RKEY, KM_PRESS, KM_CTRL, 0);
+	RNA_enum_set(kmi->ptr, "type", 0); /* active */
+	kmi = WM_keymap_add_item(keymap, "RIGIDBODY_OT_objects_add", RKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
+	RNA_enum_set(kmi->ptr, "type", 1); /* passive */
+	WM_keymap_add_item(keymap, "RIGIDBODY_OT_objects_remove", RKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
 
 	WM_keymap_add_menu(keymap, "VIEW3D_MT_object_specials", WKEY, KM_PRESS, 0, 0);
 

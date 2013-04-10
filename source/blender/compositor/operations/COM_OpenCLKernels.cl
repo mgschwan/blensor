@@ -66,7 +66,8 @@ __kernel void bokehBlurKernel(__read_only image2d_t boundingBox, __read_only ima
 		}
 		color /= multiplyer;
 		
-	} else {
+	}
+	else {
 		int2 imageCoordinates = realCoordinate - offsetInput;
 		color = read_imagef(inputImage, SAMPLER_NEAREST, imageCoordinates);
 	}
@@ -111,7 +112,7 @@ __kernel void defocusKernel(__read_only image2d_t inputImage, __read_only image2
 					float dx = nx - realCoordinate.s0;
 					if (dx != 0 || dy != 0) {
 						inputCoordinate.s0 = nx - offsetInput.s0;
-						size = read_imagef(inputSize, SAMPLER_NEAREST, inputCoordinate).s0 * scalar;
+						size = min(read_imagef(inputSize, SAMPLER_NEAREST, inputCoordinate).s0 * scalar, size_center);
 						if (size > threshold) {
 							if (size >= fabs(dx) && size >= fabs(dy)) {
 								float2 uv = {256.0f + dx * 255.0f / size,

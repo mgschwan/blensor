@@ -40,14 +40,29 @@
 #  include <xmmintrin.h>
 #endif
 
+/* crash handler */
 #ifdef WIN32
-#  include <Windows.h>
+#  include <process.h> /* getpid */
+#else
+#  include <unistd.h> /* getpid */
+#endif
+
+#ifdef WIN32
+#  include <windows.h>
 #  include "utfconv.h"
+#endif
+
+/* for backtrace */
+#if defined(__linux__) || defined(__APPLE__)
+#  include <execinfo.h>
+#elif defined(_MSV_VER)
+#  include <DbgHelp.h>
 #endif
 
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <errno.h>
 
 /* This little block needed for linking to Blender... */
 
@@ -69,10 +84,12 @@
 #include "BLI_blenlib.h"
 
 #include "BKE_blender.h"
+#include "BKE_brush.h"
 #include "BKE_context.h"
 #include "BKE_depsgraph.h" /* for DAG_on_visible_update */
 #include "BKE_font.h"
 #include "BKE_global.h"
+#include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_packedFile.h"
@@ -101,6 +118,10 @@
 #include "GPU_extensions.h"
 
 #include "BLI_scanfill.h" /* for BLI_setErrorCallBack, TODO, move elsewhere */
+
+#ifdef WITH_FREESTYLE
+#  include "FRS_freestyle.h"
+#endif
 
 #ifdef WITH_BUILDINFO_HEADER
 #  define BUILD_DATE
@@ -143,21 +164,27 @@ extern char build_system[];
 #endif
 
 /*	Local Function prototypes */
-#ifndef WITH_PYTHON_MODULE
+#ifdef WITH_PYTHON_MODULE
+int  main_python_enter(int argc, const char **argv);
+void main_python_exit(void);
+#else
 static int print_help(int argc, const char **argv, void *data);
 static int print_version(int argc, const char **argv, void *data);
 #endif
 
 /* for the callbacks: */
 
-#define BLEND_VERSION_STRING_FMT                                              \
-    "Blender %d.%02d (sub %d)\n",                                             \
-    BLENDER_VERSION / 100, BLENDER_VERSION % 100, BLENDER_SUBVERSION          \
+#define BLEND_VERSION_FMT         "Blender %d.%02d (sub %d)"
+#define BLEND_VERSION_ARG         BLENDER_VERSION / 100, BLENDER_VERSION % 100, BLENDER_SUBVERSION
+/* pass directly to printf */
+#define BLEND_VERSION_STRING_FMT  BLEND_VERSION_FMT "\n", BLEND_VERSION_ARG
 
 /* Initialize callbacks for the modules that need them */
 static void setCallbacks(void); 
 
 #ifndef WITH_PYTHON_MODULE
+
+static bool use_crash_handler = true;
 
 /* set breakpoints here when running in debug mode, useful to catch floating point errors */
 #if defined(__linux__) || defined(_WIN32) || defined(OSX_SSE_FPE)
@@ -168,6 +195,7 @@ static void fpe_handler(int UNUSED(sig))
 #endif
 
 /* handling ctrl-c event in console */
+#if !(defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS))
 static void blender_esc(int sig)
 {
 	static int count = 0;
@@ -183,6 +211,7 @@ static void blender_esc(int sig)
 		count++;
 	}
 }
+#endif
 
 static int print_version(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(data))
 {
@@ -246,6 +275,7 @@ static int print_help(int UNUSED(argc), const char **UNUSED(argv), void *data)
 	printf("Misc Options:\n");
 	BLI_argsPrintArgDoc(ba, "--debug");
 	BLI_argsPrintArgDoc(ba, "--debug-fpe");
+	BLI_argsPrintArgDoc(ba, "--disable-crash-handler");
 
 #ifdef WITH_FFMPEG
 	BLI_argsPrintArgDoc(ba, "--debug-ffmpeg");
@@ -280,6 +310,7 @@ static int print_help(int UNUSED(argc), const char **UNUSED(argv), void *data)
 	printf("\n");
 
 	BLI_argsPrintArgDoc(ba, "--python");
+	BLI_argsPrintArgDoc(ba, "--python-text");
 	BLI_argsPrintArgDoc(ba, "--python-console");
 	BLI_argsPrintArgDoc(ba, "--addons");
 
@@ -347,6 +378,12 @@ static int disable_python(int UNUSED(argc), const char **UNUSED(argv), void *UNU
 {
 	G.f &= ~G_SCRIPT_AUTOEXEC;
 	G.f |= G_SCRIPT_OVERRIDE_PREF;
+	return 0;
+}
+
+static int disable_crash_handler(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(data))
+{
+	use_crash_handler = false;
 	return 0;
 }
 
@@ -423,6 +460,148 @@ static int set_fpe(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(dat
 	return 0;
 }
 
+#if defined(__linux__) || defined(__APPLE__)
+
+/* Unix */
+static void blender_crash_handler_backtrace(FILE *fp)
+{
+#define SIZE 100
+	void *buffer[SIZE];
+	int nptrs;
+	char **strings;
+	int i;
+
+	fputs("\n# backtrace\n", fp);
+
+	/* include a backtrace for good measure */
+	nptrs = backtrace(buffer, SIZE);
+	strings = backtrace_symbols(buffer, nptrs);
+	for (i = 0; i < nptrs; i++) {
+		fputs(strings[i], fp);
+		fputc('\n', fp);
+	}
+
+	free(strings);
+#undef SIZE
+}
+
+#elif defined(_MSV_VER)
+
+static void blender_crash_handler_backtrace(FILE *fp)
+{
+	(void)fp;
+
+#if 0
+#define MAXSYMBOL 256
+	unsigned short	i;
+	void *stack[SIZE];
+	unsigned short nframes;
+	SYMBOL_INFO	*symbolinfo;
+	HANDLE process;
+
+	process = GetCurrentProcess();
+
+	SymInitialize(process, NULL, TRUE);
+
+	nframes = CaptureStackBackTrace(0, SIZE, stack, NULL);
+	symbolinfo = MEM_callocN(sizeof(SYMBOL_INFO) + MAXSYMBOL * sizeof( char ), "crash Symbol table");
+	symbolinfo->MaxNameLen = MAXSYMBOL - 1;
+	symbolinfo->SizeOfStruct = sizeof(SYMBOL_INFO);
+
+	for (i = 0; i < nframes; i++) {
+		SymFromAddr(process, ( DWORD64 )( stack[ i ] ), 0, symbolinfo);
+
+		fprintf(fp, "%u: %s - 0x%0X\n", nframes - i - 1, symbolinfo->Name, symbolinfo->Address);
+	}
+
+	MEM_freeN(symbolinfo);
+#endif
+}
+
+#else  /* non msvc/osx/linux */
+
+static void blender_crash_handler_backtrace(FILE *fp)
+{
+	(void)fp;
+}
+
+#endif
+
+static void blender_crash_handler(int signum)
+{
+
+#if 0
+	{
+		char fname[FILE_MAX];
+
+		if (!G.main->name[0]) {
+			BLI_make_file_string("/", fname, BLI_temporary_dir(), "crash.blend");
+		}
+		else {
+			BLI_strncpy(fname, G.main->name, sizeof(fname));
+			BLI_replace_extension(fname, sizeof(fname), ".crash.blend");
+		}
+
+		printf("Writing: %s\n", fname);
+		fflush(stdout);
+
+		BKE_undo_save_file(fname);
+	}
+#endif
+
+	FILE *fp;
+	char header[512];
+	wmWindowManager *wm = G.main->wm.first;
+
+	char fname[FILE_MAX];
+
+	if (!G.main->name[0]) {
+		BLI_join_dirfile(fname, sizeof(fname), BLI_temporary_dir(), "blender.crash.txt");
+	}
+	else {
+		BLI_join_dirfile(fname, sizeof(fname), BLI_temporary_dir(), BLI_path_basename(G.main->name));
+		BLI_replace_extension(fname, sizeof(fname), ".crash.txt");
+	}
+
+	printf("Writing: %s\n", fname);
+	fflush(stdout);
+
+	BLI_snprintf(header, sizeof(header), "# " BLEND_VERSION_FMT ", Revision: %s\n", BLEND_VERSION_ARG,
+#ifdef BUILD_DATE
+	             build_rev
+#else
+	             "Unknown"
+#endif
+	             );
+
+	/* open the crash log */
+	errno = 0;
+	fp = BLI_fopen(fname, "wb");
+	if (fp == NULL) {
+		fprintf(stderr, "Unable to save '%s': %s\n",
+		        fname, errno ? strerror(errno) : "Unknown error opening file");
+	}
+	else {
+		if (wm) {
+			BKE_report_write_file_fp(fp, &wm->reports, header);
+		}
+
+		blender_crash_handler_backtrace(fp);
+
+		fclose(fp);
+	}
+
+
+	/* really crash */
+	signal(signum, SIG_DFL);
+#ifndef WIN32
+	kill(getpid(), signum);
+#else
+	TerminateProcess(GetCurrentProcess(), signum);
+#endif
+}
+
+
 static int set_factory_startup(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(data))
 {
 	G.factory_startup = 1;
@@ -481,6 +660,12 @@ static int prefsize(int argc, const char **argv, void *UNUSED(data))
 	return 4;
 }
 
+static int native_pixels(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(data))
+{
+	WM_init_native_pixels(false);
+	return 0;
+}
+
 static int with_borders(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(data))
 {
 	WM_init_state_normal_set();
@@ -493,10 +678,10 @@ static int without_borders(int UNUSED(argc), const char **UNUSED(argv), void *UN
 	return 0;
 }
 
-extern int wm_start_with_console; /* wm_init_exit.c */
+extern bool wm_start_with_console; /* wm_init_exit.c */
 static int start_with_console(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(data))
 {
-	wm_start_with_console = 1;
+	wm_start_with_console = true;
 	return 0;
 }
 
@@ -747,7 +932,7 @@ static int set_ge_parameters(int argc, const char **argv, void *data)
 			}
 
 
-		} /* if (*(argv[a+1]) == '=') */
+		} /* if (*(argv[a + 1]) == '=') */
 	}
 
 	return a;
@@ -913,11 +1098,11 @@ static int set_skip_frame(int argc, const char **argv, void *data)
 			_cmd;                                                             \
 		}                                                                     \
 		CTX_data_scene_set(C, prevscene);                                     \
-	}                                                                         \
+	} (void)0                                                                 \
 
 #endif /* WITH_PYTHON */
 
-static int run_python(int argc, const char **argv, void *data)
+static int run_python_file(int argc, const char **argv, void *data)
 {
 #ifdef WITH_PYTHON
 	bContext *C = data;
@@ -929,12 +1114,42 @@ static int run_python(int argc, const char **argv, void *data)
 		BLI_strncpy(filename, argv[1], sizeof(filename));
 		BLI_path_cwd(filename);
 
-		BPY_CTX_SETUP(BPY_filepath_exec(C, filename, NULL))
+		BPY_CTX_SETUP(BPY_filepath_exec(C, filename, NULL));
 
 		return 1;
 	}
 	else {
-		printf("\nError: you must specify a Python script after '-P / --python'.\n");
+		printf("\nError: you must specify a filepath after '%s'.\n", argv[0]);
+		return 0;
+	}
+#else
+	(void)argc; (void)argv; (void)data; /* unused */
+	printf("This blender was built without python support\n");
+	return 0;
+#endif /* WITH_PYTHON */
+}
+
+static int run_python_text(int argc, const char **argv, void *data)
+{
+#ifdef WITH_PYTHON
+	bContext *C = data;
+
+	/* workaround for scripts not getting a bpy.context.scene, causes internal errors elsewhere */
+	if (argc > 1) {
+		/* Make the path absolute because its needed for relative linked blends to be found */
+		struct Text *text = (struct Text *)BKE_libblock_find_name(ID_TXT, argv[1]);
+
+		if (text) {
+			BPY_CTX_SETUP(BPY_text_exec(C, text, NULL, false));
+			return 1;
+		}
+		else {
+			printf("\nError: text block not found %s.\n", argv[1]);
+			return 1;
+		}
+	}
+	else {
+		printf("\nError: you must specify a text block after '%s'.\n", argv[0]);
 		return 0;
 	}
 #else
@@ -949,7 +1164,7 @@ static int run_python_console(int UNUSED(argc), const char **argv, void *data)
 #ifdef WITH_PYTHON
 	bContext *C = data;
 
-	BPY_CTX_SETUP(BPY_string_exec(C, "__import__('code').interact()"))
+	BPY_CTX_SETUP(BPY_string_exec(C, "__import__('code').interact()"));
 
 	return 0;
 #else
@@ -1116,6 +1331,8 @@ static void setupArguments(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 	BLI_argsAdd(ba, 1, "-y", "--enable-autoexec", "\n\tEnable automatic python script execution" PY_ENABLE_AUTO, enable_python, NULL);
 	BLI_argsAdd(ba, 1, "-Y", "--disable-autoexec", "\n\tDisable automatic python script execution (pydrivers & startup scripts)" PY_DISABLE_AUTO, disable_python, NULL);
 
+	BLI_argsAdd(ba, 1, NULL, "--disable-crash-handler", "\n\tDisable the crash handler", disable_crash_handler, NULL);
+
 #undef PY_ENABLE_AUTO
 #undef PY_DISABLE_AUTO
 	
@@ -1128,6 +1345,11 @@ static void setupArguments(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 #ifdef WITH_FFMPEG
 	BLI_argsAdd(ba, 1, NULL, "--debug-ffmpeg", "\n\tEnable debug messages from FFmpeg library", debug_mode_generic, (void *)G_DEBUG_FFMPEG);
 #endif
+
+#ifdef WITH_FREESTYLE
+	BLI_argsAdd(ba, 1, NULL, "--debug-freestyle", "\n\tEnable debug/profiling messages from Freestyle rendering", debug_mode_generic, (void *)G_DEBUG_FREESTYLE);
+#endif
+
 	BLI_argsAdd(ba, 1, NULL, "--debug-python", "\n\tEnable debug messages for python", debug_mode_generic, (void *)G_DEBUG_PYTHON);
 	BLI_argsAdd(ba, 1, NULL, "--debug-events", "\n\tEnable debug messages for the event system", debug_mode_generic, (void *)G_DEBUG_EVENTS);
 	BLI_argsAdd(ba, 1, NULL, "--debug-handlers", "\n\tEnable debug messages for event handling", debug_mode_generic, (void *)G_DEBUG_HANDLERS);
@@ -1156,9 +1378,10 @@ static void setupArguments(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 	BLI_argsAdd(ba, 2, "-p", "--window-geometry", "<sx> <sy> <w> <h>\n\tOpen with lower left corner at <sx>, <sy> and width and height as <w>, <h>", prefsize, NULL);
 	BLI_argsAdd(ba, 2, "-w", "--window-border", "\n\tForce opening with borders (default)", with_borders, NULL);
 	BLI_argsAdd(ba, 2, "-W", "--window-borderless", "\n\tForce opening without borders", without_borders, NULL);
-	BLI_argsAdd(ba, 2, "-con", "--start-console", "\n\tStart with the console window open (ignored if -b is set)", start_with_console, NULL);
+	BLI_argsAdd(ba, 2, "-con", "--start-console", "\n\tStart with the console window open (ignored if -b is set), (Windows only)", start_with_console, NULL);
 	BLI_argsAdd(ba, 2, "-R", NULL, "\n\tRegister .blend extension, then exit (Windows only)", register_extension, NULL);
 	BLI_argsAdd(ba, 2, "-r", NULL, "\n\tSilently register .blend extension, then exit (Windows only)", register_extension, ba);
+	BLI_argsAdd(ba, 2, NULL, "--no-native-pixels", "\n\tDo not use native pixel size, for high resolution displays (MacBook 'Retina')", native_pixels, ba);
 
 	/* third pass: disabling things and forcing settings */
 	BLI_argsAddCase(ba, 3, "-nojoystick", 1, NULL, 0, "\n\tDisable joystick support", no_joystick, syshandle);
@@ -1174,7 +1397,8 @@ static void setupArguments(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 	BLI_argsAdd(ba, 4, "-s", "--frame-start", "<frame>\n\tSet start to frame <frame> (use before the -a argument)", set_start_frame, C);
 	BLI_argsAdd(ba, 4, "-e", "--frame-end", "<frame>\n\tSet end to frame <frame> (use before the -a argument)", set_end_frame, C);
 	BLI_argsAdd(ba, 4, "-j", "--frame-jump", "<frames>\n\tSet number of frames to step forward after each rendered frame", set_skip_frame, C);
-	BLI_argsAdd(ba, 4, "-P", "--python", "<filename>\n\tRun the given Python script (filename or Blender Text)", run_python, C);
+	BLI_argsAdd(ba, 4, "-P", "--python", "<filename>\n\tRun the given Python script file", run_python_file, C);
+	BLI_argsAdd(ba, 4, NULL, "--python-text", "<name>\n\tRun the given Python script text block", run_python_text, C);
 	BLI_argsAdd(ba, 4, NULL, "--python-console", "\n\tRun blender with an interactive console", run_python_console, C);
 	BLI_argsAdd(ba, 4, NULL, "--addons", "\n\tComma separated list of addons (no spaces)", set_addons, C);
 
@@ -1274,6 +1498,8 @@ int main(int argc, const char **argv)
 	IMB_init();
 	BKE_images_init();
 
+	BKE_brush_system_init();
+
 #ifdef WITH_FFMPEG
 	IMB_ffmpeg_init();
 #endif
@@ -1292,8 +1518,15 @@ int main(int argc, const char **argv)
 	setupArguments(C, ba, &syshandle);
 
 	BLI_argsParse(ba, 1, NULL, NULL);
-#endif
 
+	if (use_crash_handler) {
+		/* after parsing args */
+		signal(SIGSEGV, blender_crash_handler);
+	}
+#else
+	G.factory_startup = true;  /* using preferences or user startup makes no sense for py-as-module */
+	(void)syshandle;
+#endif
 
 	/* after level 1 args, this is so playanim skips RNA init */
 	RNA_init();
@@ -1304,10 +1537,12 @@ int main(int argc, const char **argv)
 
 
 #if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)
-	G.background = 1; /* python module mode ALWAYS runs in background mode (for now) */
+	G.background = true; /* python module mode ALWAYS runs in background mode (for now) */
 #else
 	/* for all platforms, even windos has it! */
-	if (G.background) signal(SIGINT, blender_esc);  /* ctrl c out bg render */
+	if (G.background) {
+		signal(SIGINT, blender_esc);  /* ctrl c out bg render */
+	}
 #endif
 
 	/* background render uses this font too */
@@ -1360,6 +1595,12 @@ int main(int argc, const char **argv)
 	CTX_py_init_set(C, 1);
 	WM_keymap_init(C);
 
+#ifdef WITH_FREESTYLE
+	/* initialize Freestyle */
+	FRS_initialize();
+	FRS_set_context(C);
+#endif
+
 	/* OK we are ready for it */
 #ifndef WITH_PYTHON_MODULE
 	BLI_argsParse(ba, 4, load_file, C);
@@ -1398,7 +1639,7 @@ int main(int argc, const char **argv)
 	WM_main(C);
 
 	return 0;
-} /* end of int main(argc,argv)	*/
+} /* end of int main(argc, argv)	*/
 
 #ifdef WITH_PYTHON_MODULE
 void main_python_exit(void)

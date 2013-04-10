@@ -25,7 +25,7 @@ bl_info = {
     "description": "Hide objects within library dupligroups",
     "author": "Campbell Barton",
     "version": (1, 0),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     'location': 'Search: RayCast View Operator',
     "wiki_url": "",
     "tracker_url":"",

@@ -95,6 +95,7 @@ endif()
 		bf_rna
 		bf_bmesh
 		bf_blenkernel
+		bf_intern_rigidbody
 		bf_blenloader
 		ge_blen_routines
 		bf_editor_datafiles
@@ -102,7 +103,6 @@ endif()
 		ge_logic_ketsji 
 		ge_phys_bullet 
 		ge_phys_dummy
-		ge_phys_common 
 		ge_logic 
 		ge_rasterizer 
 		ge_oglrasterizer 
@@ -150,6 +150,8 @@ endif()
 		bf_intern_raskter
 		bf_intern_opencolorio
 		bf_intern_opennl
+		extern_rangetree
+		extern_wcwidth
 	)
 
 	if(WITH_MOD_CLOTH_ELTOPO)

@@ -20,7 +20,7 @@ bl_info = {
     "name": "PasteAll",
     "author": "Dalai Felinto (dfelinto)",
     "version": (0,7),
-    "blender": (2, 6, 0),
+    "blender": (2, 60, 0),
     "location": "Text editor > Properties panel",
     "description": "Send your selection or text to www.pasteall.org",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\

@@ -27,6 +27,10 @@
 
 /** \file DNA_action_types.h
  *  \ingroup DNA
+ *
+ * Define actions data-block for the animation system.
+ * A collection of animation curves and drivers to be assigned to data-blocks
+ * or sequenced in the non-linear-editor (NLA).
  */
 
 #ifndef __DNA_ACTION_TYPES_H__
@@ -556,6 +560,7 @@ typedef enum eDopeSheet_FilterFlag {
 	ADS_FILTER_NONTREE          = (1 << 19),
 	ADS_FILTER_NOTEX            = (1 << 20),
 	ADS_FILTER_NOSPK            = (1 << 21),
+	ADS_FILTER_NOLINESTYLE      = (1 << 22),
 
 	/* NLA-specific filters */
 	ADS_FILTER_NLA_NOACT        = (1 << 25),  /* if the AnimData block has no NLA data, don't include to just show Action-line */
@@ -689,4 +694,4 @@ typedef enum ACHAN_FLAG {
 	ACHAN_MOVED     = (1 << 31)
 } ACHAN_FLAG; 
 
-#endif
+#endif  /* __DNA_ACTION_TYPES_H__ */

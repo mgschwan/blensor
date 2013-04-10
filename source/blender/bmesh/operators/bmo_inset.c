@@ -22,17 +22,220 @@
 
 /** \file blender/bmesh/operators/bmo_inset.c
  *  \ingroup bmesh
+ *
+ * Inset face regions.
+ * Inset individual faces.
+ *
  */
 
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
+#include "BLI_array.h"
+#include "BLI_memarena.h"
+#include "BKE_customdata.h"
 
 #include "bmesh.h"
 
 #include "intern/bmesh_operators_private.h" /* own include */
 
 #define ELE_NEW		1
+
+
+
+/* -------------------------------------------------------------------- */
+/* Inset Individual */
+
+
+/* Holds Per-Face Inset Edge Data */
+typedef struct EdgeInsetInfo {
+	float no[3];
+	BMEdge *e_old;
+	BMEdge *e_new;
+} EdgeInsetInfo;
+
+/**
+ * Individual Face Inset.
+ * Find all tagged faces (f), duplicate edges around faces, inset verts of
+ * created edges, create new faces between old and new edges, fill face
+ * between connected new edges, kill old face (f).
+ */
+void bmo_inset_individual_exec(BMesh *bm, BMOperator *op)
+{
+	BMEdge **f_edges = NULL;
+	BMVert **f_verts = NULL;
+	BMFace *f;
+
+	BMOIter oiter;
+	EdgeInsetInfo *eiinfo_arr = NULL;
+
+	BLI_array_declare(eiinfo_arr);
+	BLI_array_declare(f_edges);
+	BLI_array_declare(f_verts);
+
+	const float thickness = BMO_slot_float_get(op->slots_in, "thickness");
+	const float depth = BMO_slot_float_get(op->slots_in, "depth");
+	const bool use_even_offset = BMO_slot_bool_get(op->slots_in, "use_even_offset");
+	const bool use_interpolate = BMO_slot_bool_get(op->slots_in, "use_interpolate");
+
+	/* Only tag faces in slot */
+	BM_mesh_elem_hflag_disable_all(bm, BM_FACE, BM_ELEM_TAG, false);
+
+	BMO_slot_buffer_hflag_enable(bm, op->slots_in, "faces", BM_FACE, BM_ELEM_TAG, false);
+
+	BMO_ITER(f, &oiter, op->slots_in, "faces", BM_FACE) {
+		BMFace *f_new_inner;
+		BMLoop *l_iter, *l_first;
+		BMLoop *l_iter_inner = NULL;
+		int i;
+
+		BLI_array_empty(f_verts);
+		BLI_array_empty(f_edges);
+		BLI_array_empty(eiinfo_arr);
+		BLI_array_grow_items(f_verts, f->len);
+		BLI_array_grow_items(f_edges, f->len);
+		BLI_array_grow_items(eiinfo_arr, f->len);
+
+		/* create verts */
+		i = 0;
+		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
+		do {
+			f_verts[i] = BM_vert_create(bm, l_iter->v->co, l_iter->v, 0);
+			i++;
+		} while ((l_iter = l_iter->next) != l_first);
+
+		/* make edges */
+		i = 0;
+		l_iter = l_first;
+		do {
+			f_edges[i] = BM_edge_create(bm, f_verts[i], f_verts[(i + 1) % f->len], l_iter->e, 0);
+
+			eiinfo_arr[i].e_new = f_edges[i];
+			eiinfo_arr[i].e_old = l_iter->e;
+			BM_edge_calc_face_tangent(l_iter->e, l_iter, eiinfo_arr[i].no);
+
+			/* Tagging (old elements) required when iterating over edges
+			 * connected to verts for translation vector calculation */
+			BM_elem_flag_enable(l_iter->e, BM_ELEM_TAG);
+			BM_elem_index_set(l_iter->e, i);  /* set_dirty! */
+			i++;
+		} while ((l_iter = l_iter->next) != l_first);
+		/* done with edges */
+
+		bm->elem_index_dirty |= BM_EDGE;
+
+		/* Calculate translation vector for new  */
+		l_iter = l_first;
+		do {
+			EdgeInsetInfo *ei_prev = &eiinfo_arr[BM_elem_index_get(l_iter->prev->e)];
+			EdgeInsetInfo *ei_next = &eiinfo_arr[BM_elem_index_get(l_iter->e)];
+			float tvec[3];
+			float v_new_co[3];
+			int index = 0;
+
+			add_v3_v3v3(tvec, ei_prev->no, ei_next->no);
+			normalize_v3(tvec);
+
+			/* l->e is traversed in order */
+			index = BM_elem_index_get(l_iter->e);
+
+			copy_v3_v3(v_new_co, eiinfo_arr[index].e_new->v1->co);
+
+			if (use_even_offset) {
+				mul_v3_fl(tvec, shell_angle_to_dist(angle_normalized_v3v3(ei_prev->no,  ei_next->no) / 2.0f));
+			}
+
+			/* Modify vertices and their normals */
+			madd_v3_v3fl(v_new_co, tvec, thickness);
+
+			/* Set normal, add depth and write new vertex position*/
+			copy_v3_v3(eiinfo_arr[index].e_new->v1->no, f->no);
+
+			madd_v3_v3fl(v_new_co, f->no, depth);
+
+			copy_v3_v3(eiinfo_arr[index].e_new->v1->co, v_new_co);
+		} while ((l_iter = l_iter->next) != l_first);
+
+
+		/* Create New Inset Faces */
+		f_new_inner = BM_face_create(bm, f_verts, f_edges, f->len, 0);
+		BLI_assert(f_new_inner != NULL);  /* no reason it should fail */
+
+
+		// Don't tag, gives more useful inner/outer select option
+		// BMO_elem_flag_enable(bm, f_new_inner, ELE_NEW);
+
+
+		/* Copy Face Data */
+		/* interpolate loop data or just stretch */
+		if (use_interpolate) {
+			BM_face_interp_from_face(bm, f_new_inner, f);
+		}
+		else {
+			BM_elem_attrs_copy(bm, bm, f, f_new_inner);
+		}
+
+		l_iter_inner = BM_FACE_FIRST_LOOP(f_new_inner);
+		l_iter = l_first;
+		do {
+			BMFace *f_new_outer;
+
+			BMLoop *l_a;
+			BMLoop *l_b;
+
+			if (use_interpolate == false) {
+				BM_elem_attrs_copy(bm, bm, l_iter, l_iter_inner);
+			}
+
+			f_new_outer = BM_face_create_quad_tri(bm,
+			                                      l_iter->v,
+			                                      l_iter->next->v,
+			                                      l_iter_inner->next->v,
+			                                      l_iter_inner->v,
+			                                      f, false);
+
+			BLI_assert(f_new_outer != NULL);  /* no reason it should fail */
+
+			BM_elem_attrs_copy(bm, bm, f, f_new_outer);
+			BMO_elem_flag_enable(bm, f_new_outer, ELE_NEW);
+			BM_elem_flag_enable(f_new_outer, BM_ELEM_TAG);
+
+			/* Copy Loop Data */
+			l_a = BM_FACE_FIRST_LOOP(f_new_outer);
+			l_b = l_a->next;
+
+			/* first pair */
+			BM_elem_attrs_copy(bm, bm, l_iter, l_a);
+			BM_elem_attrs_copy(bm, bm,  l_iter->next, l_b);
+
+
+			/* Move to the last two loops in new face */
+			l_a = l_b->next;
+			l_b = l_a->next;
+
+			/* This loop should always have >1 radials
+			 * (associated edge connects new and old face) */
+			BM_elem_attrs_copy(bm, bm, l_iter_inner, l_b);
+			BM_elem_attrs_copy(bm, bm, use_interpolate ? l_iter_inner->next : l_iter->next, l_a);
+
+		} while ((l_iter_inner = l_iter_inner->next),
+		         (l_iter = l_iter->next) != l_first);
+
+		BM_face_kill(bm, f);
+	}
+
+	/* we could flag new edges/verts too, is it useful? */
+	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "faces.out", BM_FACE, ELE_NEW);
+
+	BLI_array_free(f_verts);
+	BLI_array_free(f_edges);
+	BLI_array_free(eiinfo_arr);
+}
+
+
+
+/* -------------------------------------------------------------------- */
+/* Inset Region */
 
 typedef struct SplitEdgeInfo {
 	float   no[3];
@@ -41,6 +244,59 @@ typedef struct SplitEdgeInfo {
 	BMEdge *e_new;
 	BMLoop *l;
 } SplitEdgeInfo;
+
+
+/**
+ * Interpolation, this is more complex for regions since we're not creating new faces
+ * and throwing away old ones, so instead, store face data needed for interpolation.
+ *
+ * \note This uses CustomData functions in quite a low-level way which should be
+ * avoided, but in this case its hard to do without storing a duplicate mesh. */
+
+/* just enough of a face to store interpolation data we can use once the inset is done */
+typedef struct InterpFace {
+	BMFace *f;
+	void **blocks;
+	float (*cos_2d)[2];
+	float axis_mat[3][3];
+} InterpFace;
+
+/* basically a clone of #BM_vert_interp_from_face */
+static void bm_interp_face_store(InterpFace *iface, BMesh *bm, BMFace *f, MemArena *interp_arena)
+{
+	BMLoop *l_iter, *l_first;
+	void **blocks      = iface->blocks = BLI_memarena_alloc(interp_arena, sizeof(*iface->blocks) * f->len);
+	float (*cos_2d)[2] = iface->cos_2d = BLI_memarena_alloc(interp_arena, sizeof(*iface->cos_2d) * f->len);
+	void *axis_mat     = iface->axis_mat;
+	int i;
+
+	axis_dominant_v3_to_m3(axis_mat, f->no);
+
+	iface->f = f;
+
+	i = 0;
+	l_iter = l_first = BM_FACE_FIRST_LOOP(f);
+	do {
+		mul_v2_m3v3(cos_2d[i], axis_mat, l_iter->v->co);
+		blocks[i] = NULL;
+		CustomData_bmesh_copy_data(&bm->ldata, &bm->ldata, l_iter->head.data, &blocks[i]);
+		/* if we were not modifying the loops later we would do... */
+		// blocks[i] = l_iter->head.data;
+
+		/* use later for index lookups */
+		BM_elem_index_set(l_iter, i); /* set_ok */
+	} while (i++, (l_iter = l_iter->next) != l_first);
+}
+static void bm_interp_face_free(InterpFace *iface, BMesh *bm)
+{
+	void **blocks = iface->blocks;
+	int i;
+
+	for (i = 0; i < iface->f->len; i++) {
+		CustomData_bmesh_free_block(&bm->ldata, &blocks[i]);
+	}
+}
+
 
 /**
  * return the tag loop where there is...
@@ -60,7 +316,7 @@ static BMLoop *bm_edge_is_mixed_face_tag(BMLoop *l)
 		l_iter = l;
 		do {
 			if (BM_elem_flag_test(l_iter->f, BM_ELEM_TAG)) {
-				/* more then one tagged face - bail out early! */
+				/* more than one tagged face - bail out early! */
 				if (tot_tag == 1) {
 					return NULL;
 				}
@@ -90,15 +346,16 @@ static BMLoop *bm_edge_is_mixed_face_tag(BMLoop *l)
  * - inset the new edges into their faces.
  */
 
-void bmo_inset_exec(BMesh *bm, BMOperator *op)
+void bmo_inset_region_exec(BMesh *bm, BMOperator *op)
 {
-	const int use_outset          = BMO_slot_bool_get(op->slots_in, "use_outset");
-	const int use_boundary        = BMO_slot_bool_get(op->slots_in, "use_boundary") && (use_outset == FALSE);
-	const int use_even_offset     = BMO_slot_bool_get(op->slots_in, "use_even_offset");
-	const int use_even_boundry    = use_even_offset; /* could make own option */
-	const int use_relative_offset = BMO_slot_bool_get(op->slots_in, "use_relative_offset");
-	const float thickness         = BMO_slot_float_get(op->slots_in, "thickness");
-	const float depth             = BMO_slot_float_get(op->slots_in, "depth");
+	const bool use_outset          = BMO_slot_bool_get(op->slots_in, "use_outset");
+	const bool use_boundary        = BMO_slot_bool_get(op->slots_in, "use_boundary") && (use_outset == false);
+	const bool use_even_offset     = BMO_slot_bool_get(op->slots_in, "use_even_offset");
+	const bool use_even_boundry    = use_even_offset; /* could make own option */
+	const bool use_relative_offset = BMO_slot_bool_get(op->slots_in, "use_relative_offset");
+	const bool use_interpolate     = BMO_slot_bool_get(op->slots_in, "use_interpolate");
+	const float thickness          = BMO_slot_float_get(op->slots_in, "thickness");
+	const float depth              = BMO_slot_float_get(op->slots_in, "depth");
 
 	int edge_info_len = 0;
 
@@ -106,18 +363,31 @@ void bmo_inset_exec(BMesh *bm, BMOperator *op)
 	SplitEdgeInfo *edge_info;
 	SplitEdgeInfo *es;
 
+	/* Interpolation Vars */
+	/* an array alligned with faces but only fill items which are used. */
+	InterpFace **iface_array = NULL;
+	int          iface_array_len;
+	MemArena *interp_arena = NULL;
+
 	BMVert *v;
 	BMEdge *e;
 	BMFace *f;
 	int i, j, k;
 
-	if (use_outset == FALSE) {
-		BM_mesh_elem_hflag_disable_all(bm, BM_FACE, BM_ELEM_TAG, FALSE);
-		BMO_slot_buffer_hflag_enable(bm, op->slots_in, "faces", BM_FACE, BM_ELEM_TAG, FALSE);
+	if (use_interpolate) {
+		interp_arena = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, __func__);
+		/* warning, we could be more clever here and not over alloc */
+		iface_array = MEM_callocN(sizeof(*iface_array) * bm->totface, __func__);
+		iface_array_len = bm->totface;
+	}
+
+	if (use_outset == false) {
+		BM_mesh_elem_hflag_disable_all(bm, BM_FACE, BM_ELEM_TAG, false);
+		BMO_slot_buffer_hflag_enable(bm, op->slots_in, "faces", BM_FACE, BM_ELEM_TAG, false);
 	}
 	else {
-		BM_mesh_elem_hflag_enable_all(bm, BM_FACE, BM_ELEM_TAG, FALSE);
-		BMO_slot_buffer_hflag_disable(bm, op->slots_in, "faces", BM_FACE, BM_ELEM_TAG, FALSE);
+		BM_mesh_elem_hflag_enable_all(bm, BM_FACE, BM_ELEM_TAG, false);
+		BMO_slot_buffer_hflag_disable(bm, op->slots_in, "faces", BM_FACE, BM_ELEM_TAG, false);
 	}
 
 	/* first count all inset edges we will split */
@@ -191,8 +461,21 @@ void bmo_inset_exec(BMesh *bm, BMOperator *op)
 		/* important to tag again here */
 		BM_elem_flag_enable(es->e_new->v1, BM_ELEM_TAG);
 		BM_elem_flag_enable(es->e_new->v2, BM_ELEM_TAG);
-	}
 
+
+		/* initialize interpolation vars */
+		/* this could go in its own loop,
+		 * only use the 'es->l->f' so we don't store loops for faces which have no mixed selection */
+		if (use_interpolate) {
+			const int j = BM_elem_index_get((f = es->l->f));
+			if (iface_array[j] == NULL) {
+				InterpFace *iface = BLI_memarena_alloc(interp_arena, sizeof(*iface));
+				bm_interp_face_store(iface, bm, f, interp_arena);
+				iface_array[j] = iface;
+			}
+		}
+		/* done interpolation */
+	}
 
 	/* show edge normals for debugging */
 #if 0
@@ -411,11 +694,11 @@ void bmo_inset_exec(BMesh *bm, BMOperator *op)
 
 					/* this saves expensive/slow glue check for common cases */
 					if (r_vout_len > 2) {
-						int ok = TRUE;
+						bool ok = true;
 						/* last step, NULL this vertex if has a tagged face */
 						BM_ITER_ELEM (f, &iter, v_split, BM_FACES_OF_VERT) {
 							if (BM_elem_flag_test(f, BM_ELEM_TAG)) {
-								ok = FALSE;
+								ok = false;
 								break;
 							}
 						}
@@ -433,6 +716,16 @@ void bmo_inset_exec(BMesh *bm, BMOperator *op)
 
 				}
 				MEM_freeN(vout);
+			}
+		}
+	}
+
+	if (use_interpolate) {
+		for (i = 0; i < iface_array_len; i++) {
+			if (iface_array[i]) {
+				InterpFace *iface = iface_array[i];
+				BM_face_interp_from_face_ex(bm, iface->f, iface->f,
+				                            iface->blocks, iface->cos_2d, iface->axis_mat);
 			}
 		}
 	}
@@ -471,7 +764,7 @@ void bmo_inset_exec(BMesh *bm, BMOperator *op)
 #endif
 		/* no need to check doubles, we KNOW there won't be any */
 		/* yes - reverse face is correct in this case */
-		f = BM_face_create_quad_tri_v(bm, varr, j, es->l->f, FALSE);
+		f = BM_face_create_quad_tri_v(bm, varr, j, es->l->f, false);
 		BMO_elem_flag_enable(bm, f, ELE_NEW);
 
 		/* copy for loop data, otherwise UV's and vcols are no good.
@@ -501,20 +794,32 @@ void bmo_inset_exec(BMesh *bm, BMOperator *op)
 			/* step around to the opposite side of the quad - warning, this may have no other edges! */
 			l_a = l_a->next->next;
 			l_b = l_a->next;
-			if (!BM_edge_is_boundary(l_a->e)) {
-				/* same as above */
-				l_a_other = BM_edge_other_loop(l_a->e, l_a);
-				l_b_other = BM_edge_other_loop(l_a->e, l_b);
-				BM_elem_attrs_copy(bm, bm, l_a_other, l_a);
-				BM_elem_attrs_copy(bm, bm, l_b_other, l_b);
+
+			/* swap a<->b intentionally */
+			if (use_interpolate) {
+				InterpFace *iface = iface_array[BM_elem_index_get(es->l->f)];
+				const int i_a = BM_elem_index_get(l_a_other);
+				const int i_b = BM_elem_index_get(l_b_other);
+				CustomData_bmesh_copy_data(&bm->ldata, &bm->ldata, iface->blocks[i_a], &l_b->head.data);
+				CustomData_bmesh_copy_data(&bm->ldata, &bm->ldata, iface->blocks[i_b], &l_a->head.data);
 			}
-			else {  /* boundary edges have no useful data to copy from, use opposite side of face */
-				/* swap a<->b intentionally */
+			else {
 				BM_elem_attrs_copy(bm, bm, l_a_other, l_b);
 				BM_elem_attrs_copy(bm, bm, l_b_other, l_a);
 			}
 		}
+	}
 #endif
+
+	if (use_interpolate) {
+		for (i = 0; i < iface_array_len; i++) {
+			if (iface_array[i]) {
+				bm_interp_face_free(iface_array[i], bm);
+			}
+		}
+
+		BLI_memarena_free(interp_arena);
+		MEM_freeN(iface_array);
 	}
 
 	/* we could flag new edges/verts too, is it useful? */
@@ -548,7 +853,7 @@ void bmo_inset_exec(BMesh *bm, BMOperator *op)
 		/* done correcting edge verts normals */
 
 		/* untag verts */
-		BM_mesh_elem_hflag_disable_all(bm, BM_VERT, BM_ELEM_TAG, FALSE);
+		BM_mesh_elem_hflag_disable_all(bm, BM_VERT, BM_ELEM_TAG, false);
 
 		/* tag face verts */
 		BMO_ITER (f, &oiter, op->slots_in, "faces", BM_FACE) {

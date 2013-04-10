@@ -33,20 +33,25 @@ ViewerNode::ViewerNode(bNode *editorNode) : Node(editorNode)
 
 void ViewerNode::convertToOperations(ExecutionSystem *graph, CompositorContext *context)
 {
+	bNode *editorNode = this->getbNode();
+	bool is_active = ((editorNode->flag & NODE_DO_OUTPUT_RECALC) &&
+	                  (editorNode->flag & NODE_DO_OUTPUT) && this->isInActiveGroup()) ||
+	                 context->isRendering();
+
 	InputSocket *imageSocket = this->getInputSocket(0);
 	InputSocket *alphaSocket = this->getInputSocket(1);
 	InputSocket *depthSocket = this->getInputSocket(2);
 	Image *image = (Image *)this->getbNode()->id;
 	ImageUser *imageUser = (ImageUser *) this->getbNode()->storage;
-	bNode *editorNode = this->getbNode();
 	ViewerOperation *viewerOperation = new ViewerOperation();
 	viewerOperation->setbNodeTree(context->getbNodeTree());
 	viewerOperation->setImage(image);
 	viewerOperation->setImageUser(imageUser);
-	viewerOperation->setActive((editorNode->flag & NODE_DO_OUTPUT) && this->isInActiveGroup());
+	viewerOperation->setActive(is_active);
 	viewerOperation->setChunkOrder((OrderOfChunks)editorNode->custom1);
 	viewerOperation->setCenterX(editorNode->custom3);
 	viewerOperation->setCenterY(editorNode->custom4);
+	viewerOperation->setIgnoreAlpha(editorNode->custom2 & CMP_NODE_OUTPUT_IGNORE_ALPHA);
 
 	viewerOperation->setViewSettings(context->getViewSettings());
 	viewerOperation->setDisplaySettings(context->getDisplaySettings());
@@ -62,5 +67,6 @@ void ViewerNode::convertToOperations(ExecutionSystem *graph, CompositorContext *
 	alphaSocket->relinkConnections(viewerOperation->getInputSocket(1));
 	depthSocket->relinkConnections(viewerOperation->getInputSocket(2));
 	graph->addOperation(viewerOperation);
+
 	addPreviewOperation(graph, context, viewerOperation->getInputSocket(0));
 }

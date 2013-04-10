@@ -32,6 +32,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "DNA_material_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
@@ -42,16 +43,20 @@
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
-#include "BKE_object.h"
 #include "BKE_context.h"
+#include "BKE_icons.h"
+#include "BKE_object.h"
 #include "BKE_screen.h"
 
+#include "ED_render.h"
 #include "ED_space_api.h"
 #include "ED_screen.h"
 #include "ED_object.h"
 
-#include "BIF_gl.h"
+#include "GPU_extensions.h"
+#include "GPU_material.h"
 
+#include "BIF_gl.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -117,7 +122,7 @@ ARegion *view3d_has_tools_region(ScrArea *sa)
 		
 		BLI_insertlinkafter(&sa->regionbase, arhead, artool);
 		artool->regiontype = RGN_TYPE_TOOLS;
-		artool->alignment = RGN_ALIGN_LEFT; //RGN_OVERLAP_LEFT;
+		artool->alignment = RGN_ALIGN_LEFT;
 		artool->flag = RGN_FLAG_HIDDEN;
 	}
 
@@ -143,7 +148,7 @@ RegionView3D *ED_view3d_context_rv3d(bContext *C)
 	if (rv3d == NULL) {
 		ScrArea *sa = CTX_wm_area(C);
 		if (sa && sa->spacetype == SPACE_VIEW3D) {
-			ARegion *ar = BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
+			ARegion *ar = BKE_area_find_region_active_win(sa);
 			if (ar) {
 				rv3d = ar->regiondata;
 			}
@@ -154,12 +159,12 @@ RegionView3D *ED_view3d_context_rv3d(bContext *C)
 
 /* ideally would return an rv3d but in some cases the region is needed too
  * so return that, the caller can then access the ar->regiondata */
-int ED_view3d_context_user_region(bContext *C, View3D **v3d_r, ARegion **ar_r)
+bool ED_view3d_context_user_region(bContext *C, View3D **r_v3d, ARegion **r_ar)
 {
 	ScrArea *sa = CTX_wm_area(C);
 
-	*v3d_r = NULL;
-	*ar_r = NULL;
+	*r_v3d = NULL;
+	*r_ar = NULL;
 
 	if (sa && sa->spacetype == SPACE_VIEW3D) {
 		ARegion *ar = CTX_wm_region(C);
@@ -168,9 +173,9 @@ int ED_view3d_context_user_region(bContext *C, View3D **v3d_r, ARegion **ar_r)
 		if (ar) {
 			RegionView3D *rv3d = ar->regiondata;
 			if (rv3d && rv3d->viewlock == 0) {
-				*v3d_r = v3d;
-				*ar_r = ar;
-				return 1;
+				*r_v3d = v3d;
+				*r_ar = ar;
+				return true;
 			}
 			else {
 				ARegion *ar_unlock_user = NULL;
@@ -191,21 +196,21 @@ int ED_view3d_context_user_region(bContext *C, View3D **v3d_r, ARegion **ar_r)
 
 				/* camera/perspective view get priority when the active region is locked */
 				if (ar_unlock_user) {
-					*v3d_r = v3d;
-					*ar_r = ar_unlock_user;
-					return 1;
+					*r_v3d = v3d;
+					*r_ar = ar_unlock_user;
+					return true;
 				}
 
 				if (ar_unlock) {
-					*v3d_r = v3d;
-					*ar_r = ar_unlock;
-					return 1;
+					*r_v3d = v3d;
+					*r_ar = ar_unlock;
+					return true;
 				}
 			}
 		}
 	}
 
-	return 0;
+	return false;
 }
 
 /* Most of the time this isn't needed since you could assume the view matrix was
@@ -261,14 +266,11 @@ static SpaceLink *view3d_new(const bContext *C)
 	v3d->gridlines = 16;
 	v3d->gridsubdiv = 10;
 	v3d->drawtype = OB_SOLID;
+
+	v3d->gridflag = V3D_SHOW_X | V3D_SHOW_Y | V3D_SHOW_FLOOR;
 	
-	v3d->gridflag |= V3D_SHOW_X;
-	v3d->gridflag |= V3D_SHOW_Y;
-	v3d->gridflag |= V3D_SHOW_FLOOR;
-	v3d->gridflag &= ~V3D_SHOW_Z;
-	
-	v3d->flag |= V3D_SELECT_OUTLINE;
-	v3d->flag2 |= V3D_SHOW_RECONSTRUCTION;
+	v3d->flag = V3D_SELECT_OUTLINE;
+	v3d->flag2 = V3D_SHOW_RECONSTRUCTION | V3D_SHOW_GPENCIL;
 	
 	v3d->lens = 35.0f;
 	v3d->near = 0.01f;
@@ -338,11 +340,19 @@ static void view3d_free(SpaceLink *sl)
 	if (vd->localvd) MEM_freeN(vd->localvd);
 	
 	if (vd->properties_storage) MEM_freeN(vd->properties_storage);
+	
+	/* matcap material, its preview rect gets freed via icons */
+	if (vd->defmaterial) {
+		if (vd->defmaterial->gpumaterial.first)
+			GPU_material_free(vd->defmaterial);
+		BKE_previewimg_free(&vd->defmaterial->preview);
+		MEM_freeN(vd->defmaterial);
+	}
 }
 
 
 /* spacetype; init callback */
-static void view3d_init(struct wmWindowManager *UNUSED(wm), ScrArea *UNUSED(sa))
+static void view3d_init(wmWindowManager *UNUSED(wm), ScrArea *UNUSED(sa))
 {
 
 }
@@ -368,6 +378,8 @@ static SpaceLink *view3d_duplicate(SpaceLink *sl)
 	
 	/* copy or clear inside new stuff */
 
+	v3dn->defmaterial = NULL;
+	
 	BLI_duplicatelist(&v3dn->bgpicbase, &v3do->bgpicbase);
 
 	v3dn->properties_storage = NULL;
@@ -459,7 +471,22 @@ static void view3d_main_area_init(wmWindowManager *wm, ARegion *ar)
 	
 }
 
-static int view3d_ob_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event))
+static void view3d_main_area_exit(wmWindowManager *UNUSED(wm), ARegion *ar)
+{
+	RegionView3D *rv3d = ar->regiondata;
+
+	if (rv3d->render_engine) {
+		RE_engine_free(rv3d->render_engine);
+		rv3d->render_engine = NULL;
+	}
+
+	if (rv3d->gpuoffscreen) {
+		GPU_offscreen_free(rv3d->gpuoffscreen);
+		rv3d->gpuoffscreen = NULL;
+	}
+}
+
+static int view3d_ob_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
 {
 	if (drag->type == WM_DRAG_ID) {
 		ID *id = (ID *)drag->poin;
@@ -469,7 +496,17 @@ static int view3d_ob_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSE
 	return 0;
 }
 
-static int view3d_mat_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event))
+static int view3d_group_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
+{
+	if (drag->type == WM_DRAG_ID) {
+		ID *id = (ID *)drag->poin;
+		if (GS(id->name) == ID_GR)
+			return 1;
+	}
+	return 0;
+}
+
+static int view3d_mat_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
 {
 	if (drag->type == WM_DRAG_ID) {
 		ID *id = (ID *)drag->poin;
@@ -479,7 +516,7 @@ static int view3d_mat_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUS
 	return 0;
 }
 
-static int view3d_ima_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event))
+static int view3d_ima_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
 {
 	if (drag->type == WM_DRAG_ID) {
 		ID *id = (ID *)drag->poin;
@@ -493,34 +530,50 @@ static int view3d_ima_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUS
 	return 0;
 }
 
-
-static int view3d_ima_bg_drop_poll(bContext *C, wmDrag *drag, wmEvent *event)
+static int view3d_ima_bg_drop_poll(bContext *C, wmDrag *drag, const wmEvent *event)
 {
-	if (ED_view3d_give_base_under_cursor(C, event->mval) ) {
-		return 0;
-	}
-	return view3d_ima_drop_poll(C, drag, event);
-}
+	if (event->ctrl)
+		return false;
 
-static int view3d_ima_ob_drop_poll(bContext *C, wmDrag *drag, wmEvent *event)
-{
-	if (ED_view3d_give_base_under_cursor(C, event->mval) ) {
+	if (!ED_view3d_give_base_under_cursor(C, event->mval)) {
 		return view3d_ima_drop_poll(C, drag, event);
 	}
+	return 0;
+}
+
+static int view3d_ima_empty_drop_poll(bContext *C, wmDrag *drag, const wmEvent *event)
+{
+	Base *base = ED_view3d_give_base_under_cursor(C, event->mval);
+
+	/* either holding and ctrl and no object, or dropping to empty */
+	if ((event->ctrl && !base) || (base && base->object->type == OB_EMPTY))
+		return view3d_ima_drop_poll(C, drag, event);
+
+	return 0;
+}
+
+static int view3d_ima_mesh_drop_poll(bContext *C, wmDrag *drag, const wmEvent *event)
+{
+	Base *base = ED_view3d_give_base_under_cursor(C, event->mval);
+
+	if (base && base->object->type == OB_MESH)
+		return view3d_ima_drop_poll(C, drag, event);
 	return 0;
 }
 
 static void view3d_ob_drop_copy(wmDrag *drag, wmDropBox *drop)
 {
 	ID *id = (ID *)drag->poin;
-	PointerRNA ptr;
 
-	/* need to put name in sub-operator in macro */
-	ptr = RNA_pointer_get(drop->ptr, "OBJECT_OT_add_named");
-	if (ptr.data)
-		RNA_string_set(&ptr, "name", id->name + 2);
-	else
-		RNA_string_set(drop->ptr, "name", id->name + 2);
+	RNA_string_set(drop->ptr, "name", id->name + 2);
+}
+
+static void view3d_group_drop_copy(wmDrag *drag, wmDropBox *drop)
+{
+	ID *id = (ID *)drag->poin;
+	
+	drop->opcontext = WM_OP_EXEC_DEFAULT;
+	RNA_string_set(drop->ptr, "name", id->name + 2);
 }
 
 static void view3d_id_drop_copy(wmDrag *drag, wmDropBox *drop)
@@ -546,10 +599,12 @@ static void view3d_dropboxes(void)
 {
 	ListBase *lb = WM_dropboxmap_find("View3D", SPACE_VIEW3D, RGN_TYPE_WINDOW);
 	
-	WM_dropbox_add(lb, "OBJECT_OT_add_named_cursor", view3d_ob_drop_poll, view3d_ob_drop_copy);
+	WM_dropbox_add(lb, "OBJECT_OT_add_named", view3d_ob_drop_poll, view3d_ob_drop_copy);
 	WM_dropbox_add(lb, "OBJECT_OT_drop_named_material", view3d_mat_drop_poll, view3d_id_drop_copy);
-	WM_dropbox_add(lb, "MESH_OT_drop_named_image", view3d_ima_ob_drop_poll, view3d_id_path_drop_copy);
+	WM_dropbox_add(lb, "MESH_OT_drop_named_image", view3d_ima_mesh_drop_poll, view3d_id_path_drop_copy);
+	WM_dropbox_add(lb, "OBJECT_OT_drop_named_image", view3d_ima_empty_drop_poll, view3d_id_path_drop_copy);
 	WM_dropbox_add(lb, "VIEW3D_OT_background_image_add", view3d_ima_bg_drop_poll, view3d_id_path_drop_copy);
+	WM_dropbox_add(lb, "OBJECT_OT_group_instance_add", view3d_group_drop_poll, view3d_group_drop_copy);
 }
 
 
@@ -574,6 +629,13 @@ static void view3d_main_area_free(ARegion *ar)
 			if (rv3d->depths->depths) MEM_freeN(rv3d->depths->depths);
 			MEM_freeN(rv3d->depths);
 		}
+		if (rv3d->sms) {
+			MEM_freeN(rv3d->sms);
+		}
+		if (rv3d->gpuoffscreen) {
+			GPU_offscreen_free(rv3d->gpuoffscreen);
+		}
+
 		MEM_freeN(rv3d);
 		ar->regiondata = NULL;
 	}
@@ -592,6 +654,7 @@ static void *view3d_main_area_duplicate(void *poin)
 			new->clipbb = MEM_dupallocN(rv3d->clipbb);
 		
 		new->depths = NULL;
+		new->gpuoffscreen = NULL;
 		new->ri = NULL;
 		new->render_engine = NULL;
 		new->gpd = NULL;
@@ -635,8 +698,7 @@ static void view3d_recalc_used_layers(ARegion *ar, wmNotifier *wmn, Scene *scene
 
 static void view3d_main_area_listener(ARegion *ar, wmNotifier *wmn)
 {
-	bScreen *sc;
-
+	
 	/* context changes */
 	switch (wmn->category) {
 		case NC_ANIMATION:
@@ -659,7 +721,8 @@ static void view3d_main_area_listener(ARegion *ar, wmNotifier *wmn)
 		case NC_SCENE:
 			switch (wmn->data) {
 				case ND_LAYER_CONTENT:
-					view3d_recalc_used_layers(ar, wmn, wmn->reference);
+					if (wmn->reference)
+						view3d_recalc_used_layers(ar, wmn, wmn->reference);
 					ED_region_tag_redraw(ar);
 					break;
 				case ND_FRAME:
@@ -787,8 +850,10 @@ static void view3d_main_area_listener(ARegion *ar, wmNotifier *wmn)
 				case ND_SCREENSET:
 					/* screen was changed, need to update used layers due to NC_SCENE|ND_LAYER_CONTENT */
 					/* updates used layers only for View3D in active screen */
-					sc = wmn->reference;
-					view3d_recalc_used_layers(ar, wmn, sc->scene);
+					if (wmn->reference) {
+						bScreen *sc = wmn->reference;
+						view3d_recalc_used_layers(ar, wmn, sc->scene);
+					}
 					ED_region_tag_redraw(ar);
 					break;
 			}
@@ -1173,6 +1238,7 @@ void ED_spacetype_view3d(void)
 	art->keymapflag = ED_KEYMAP_GPENCIL;
 	art->draw = view3d_main_area_draw;
 	art->init = view3d_main_area_init;
+	art->exit = view3d_main_area_exit;
 	art->free = view3d_main_area_free;
 	art->duplicate = view3d_main_area_duplicate;
 	art->listener = view3d_main_area_listener;

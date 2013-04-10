@@ -501,8 +501,8 @@ public:
 	void SetUserCollisionGroup(short filter);
 	void SetUserCollisionMask(short mask);
 	/**
-	* Extra broadphase check for user controllable collisions
-	*/
+	 * Extra broadphase check for user controllable collisions
+	 */
 	bool CheckCollision(KX_GameObject *other);
 
 	/**
@@ -922,6 +922,8 @@ public:
 	
 	CListValue* GetChildren();
 	CListValue* GetChildrenRecursive();
+
+	KX_Scene*	GetScene();
 
 #ifdef WITH_PYTHON
 	/**

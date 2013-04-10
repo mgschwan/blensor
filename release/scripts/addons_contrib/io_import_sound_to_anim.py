@@ -22,7 +22,7 @@ bl_info = {
     "name": "Import: Sound to Animation",
     "author": "Vlassius",
     "version": (0, 70),
-    "blender": (2, 64, 9),
+    "blender": (2, 64, 0),
     "api": 52100,
     "location": "Select a object -> go to the Object tab ->  Import Movement From Wav File",
     "description": "Extract movement from sound file. See the Object Panel at the end.",

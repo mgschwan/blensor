@@ -33,21 +33,45 @@ imb_ext_image = [
     ".rgba", ".tif", ".tiff", ".tx", ".jp2", ".hdr", ".dds",
     ".dpx", ".cin", ".exr", ".rw2",
     # IMG QT
-    ".gif", ".psd", ".pct", ".pict", ".pntg", ".qtif"]  
+    ".gif", ".psd", ".pct", ".pict", ".pntg", ".qtif"]
 
 
 imb_ext_movie = [
     ".avi", ".flc", ".mov", ".movie", ".mp4", ".m4v", ".m2v",
     ".m2t", ".m2ts", ".mts", ".mv", ".avs", ".wmv", ".ogv",
     ".dv", ".mpeg", ".mpg", ".mpg2", ".vob", ".mkv", ".flv",
-    ".divx", ".xvid", ".mxf",
-    ]    
-  
+    ".divx", ".xvid", ".mxf"]
+    
+movieextdict = [("1", ".avi", ""),
+            ("2", ".flc", ""),
+            ("3", ".mov", ""),
+            ("4", ".movie", ""),
+            ("5", ".mp4", ""),
+            ("6", ".m4v", ""),
+            ("7", ".m2v", ""),
+            ("8", ".m2t", ""),
+            ("9", ".m2ts", ""),
+            ("10", ".mts", ""),
+            ("11", ".mv", ""),
+            ("12", ".avs", ""),
+            ("13", ".wmv", ""),
+            ("14", ".ogv", ""),
+            ("15", ".dv", ""),
+            ("16", ".mpeg", ""),
+            ("17", ".mpg", ""),
+            ("18", ".mpg2", ""),
+            ("19", ".vob", ""),
+            ("20", ".mkv", ""),
+            ("21", ".flv", ""),
+            ("22", ".divx", ""),
+            ("23", ".xvid", ""),
+            ("24", ".mxf", "")]
+
 
 # Functions
 
-def add_marker(text):
-    scene = bpy.context.scene
+def add_marker(context, text):
+    scene = context.scene
     markers = scene.timeline_markers
     mark = markers.new(name=text)
     mark.frame = scene.frame_current
@@ -71,10 +95,9 @@ def detect_strip_type(filepath):
 
     imb_ext_movie = [
     ".avi", ".flc", ".mov", ".movie", ".mp4", ".m4v", ".m2v",
-    ".m2t", ".m2ts", ".mts", ".mv", ".avs", ".wmv", ".ogv",
+    ".m2t", ".m2ts", ".mts", ".mv", ".avs", ".wmv", ".ogv", ".ogg",
     ".dv", ".mpeg", ".mpg", ".mpg2", ".vob", ".mkv", ".flv",
-    ".divx", ".xvid", ".mxf",
-    ]
+    ".divx", ".xvid", ".mxf"]
 
     imb_ext_audio = [
     ".wav", ".ogg", ".oga", ".mp3", ".mp2", ".ac3", ".aac",
@@ -126,12 +149,12 @@ def getfilepathfrombrowser():
         params
     except UnboundLocalError:
         #print("no browser")
-        self.report({'ERROR_INVALID_INPUT'}, 'No visible File Browser')
+        #self.report({'ERROR_INVALID_INPUT'}, 'No visible File Browser')
         return {'CANCELLED'}
 
     if params.filename == '':
         #print("no file selected")
-        self.report({'ERROR_INVALID_INPUT'}, 'No file selected')
+        #self.report({'ERROR_INVALID_INPUT'}, 'No file selected')
         return {'CANCELLED'}
     path = params.directory
     filename = params.filename
@@ -165,28 +188,102 @@ def sortlist(filelist):
     '''
     filelist_sorted = sorted(filelist, key=operator.itemgetter(1))
     return filelist_sorted
+    
+# recursive load functions 
+
+def onefolder(context, recursive_select_by_extension, ext):
+    '''
+    returns a list of MOVIE type files from folder selected in file browser
+    '''
+    filelist = []
+    path, filename = getfilepathfrombrowser()
+    
+    for i in movieextdict: 
+        if i[0] == ext:
+            extension = i[1].rpartition(".")[2]
+            break
+
+    scn = context.scene
+
+    if detect_strip_type(path + filename) == 'MOVIE':
+        if recursive_select_by_extension == True:
+            #filtering by extension...
+            for file in os.listdir(path):
+                if file.rpartition(".")[2].lower() == extension:
+                    filelist.append((path, file))
+        else:
+            #looking for all known extensions
+            for file in os.listdir(path):
+                for i in movieextdict:
+                    if file.rpartition(".")[2].lower() == i[1].rpartition(".")[2]:
+                        filelist.append((path, file))
+    return (filelist)
+
+def recursive(context, recursive_select_by_extension, ext):
+    '''
+    returns a list of MOVIE type files recursively from file browser
+    '''
+    filelist = []
+    path = getpathfrombrowser()
+    
+    for i in movieextdict:
+        if i[0] == ext:
+            extension = i[1].rpartition(".")[2]
+            break
+    
+    scn = context.scene        
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            if recursive_select_by_extension == True:
+                #filtering by extension...
+                if file.rpartition(".")[2].lower() == extension:
+                    filelist.append((root, file))
+            else:
+                #looking for all known extensions
+                for i in movieextdict:
+                    if file.rpartition(".")[2].lower() == i[1].rpartition(".")[2]:
+                        filelist.append((root, file))
+    return filelist   
 
 
-#------------ jump to cut functions...
 
-
-def triminout(strip,sin,sout):
-    start = strip.frame_start+strip.frame_offset_start 
-    end = start+strip.frame_final_duration
+# jump to cut functions
+def triminout(strip, sin, sout):
+    start = strip.frame_start + strip.frame_offset_start
+    end = start + strip.frame_final_duration
     if end > sin:
         if start < sin:
-            strip.select_right_handle = False            
+            strip.select_right_handle = False
             strip.select_left_handle = True
             bpy.ops.sequencer.snap(frame=sin)
             strip.select_left_handle = False
     if start < sout:
         if end > sout:
-            strip.select_left_handle = False            
+            strip.select_left_handle = False
             strip.select_right_handle = True
             bpy.ops.sequencer.snap(frame=sout)
-            strip.select_right_handle = False    
+            strip.select_right_handle = False
     return {'FINISHED'}
 
 
+#------------ random edit functions...
 
-
+def randompartition(lst,n,rand):
+    division = len(lst) / float(n)
+    lista = []
+    for i in range(n):	lista.append(division)
+    var=0
+    for i in range(n-1):
+        lista[i]+= random.randint(-int(rand*division),int(rand*division))
+        var+=lista[i]
+    if lista[n-1] != len(lst)-var:
+        lista[n-1] = len(lst)-var
+    random.shuffle(lista)
+    division = len(lst) / float(n)
+    count = 0
+    newlist=[]
+    for i in range(n):
+        print(lst[count : int(lista[i]-1)+count])
+        newlist.append([lst[count : int(lista[i]-1)+count]])
+        count += int(lista[i]) 
+    return newlist

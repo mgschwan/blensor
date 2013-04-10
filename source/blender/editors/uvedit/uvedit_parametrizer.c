@@ -60,12 +60,14 @@
 			{ /*printf("Assertion %s:%d\n", __FILE__, __LINE__); abort();*/ } (void)0
 	#define param_warning(message) \
 		{ /*printf("Warning %s:%d: %s\n", __FILE__, __LINE__, message);*/ } (void)0
+#if 0
 	#define param_test_equals_ptr(str, a, b) \
 		if (a != b) \
 			{ /*printf("Equals %s => %p != %p\n", str, a, b);*/ } (void)0
 	#define param_test_equals_int(str, a, b) \
 		if (a != b) \
 			{ /*printf("Equals %s => %d != %d\n", str, a, b);*/ } (void)0
+#endif
 #endif
 typedef enum PBool {
 	P_TRUE = 1,
@@ -707,7 +709,7 @@ static void p_face_restore_uvs(PFace *f)
 
 static PVert *p_vert_add(PHandle *handle, PHashKey key, const float co[3], PEdge *e)
 {
-	PVert *v = (PVert *)BLI_memarena_alloc(handle->arena, sizeof *v);
+	PVert *v = (PVert *)BLI_memarena_alloc(handle->arena, sizeof(*v));
 	copy_v3_v3(v->co, co);
 	v->u.key = key;
 	v->edge = e;
@@ -730,7 +732,7 @@ static PVert *p_vert_lookup(PHandle *handle, PHashKey key, const float co[3], PE
 
 static PVert *p_vert_copy(PChart *chart, PVert *v)
 {
-	PVert *nv = (PVert *)BLI_memarena_alloc(chart->handle->arena, sizeof *nv);
+	PVert *nv = (PVert *)BLI_memarena_alloc(chart->handle->arena, sizeof(*nv));
 
 	copy_v3_v3(nv->co, v->co);
 	nv->uv[0] = v->uv[0];
@@ -784,7 +786,7 @@ static int p_face_exists(ParamHandle *phandle, ParamKey *pvkeys, int i1, int i2,
 
 static PChart *p_chart_new(PHandle *handle)
 {
-	PChart *chart = (PChart *)MEM_callocN(sizeof *chart, "PChart");
+	PChart *chart = (PChart *)MEM_callocN(sizeof(*chart), "PChart");
 	chart->handle = handle;
 
 	return chart;
@@ -902,7 +904,7 @@ static PBool p_edge_connect_pair(PHandle *handle, PEdge *e, PEdge ***stack, PBoo
 
 static int p_connect_pairs(PHandle *handle, PBool impl)
 {
-	PEdge **stackbase = MEM_mallocN(sizeof *stackbase * phash_size(handle->hash_faces), "Pstackbase");
+	PEdge **stackbase = MEM_mallocN(sizeof(*stackbase) * phash_size(handle->hash_faces), "Pstackbase");
 	PEdge **stack = stackbase;
 	PFace *f, *first;
 	PEdge *e, *e1, *e2;
@@ -997,7 +999,7 @@ static void p_split_vert(PChart *chart, PEdge *e)
 
 static PChart **p_split_charts(PHandle *handle, PChart *chart, int ncharts)
 {
-	PChart **charts = MEM_mallocN(sizeof *charts * ncharts, "PCharts"), *nchart;
+	PChart **charts = MEM_mallocN(sizeof(*charts) * ncharts, "PCharts"), *nchart;
 	PFace *f, *nextf;
 	int i;
 
@@ -1039,12 +1041,12 @@ static PFace *p_face_add(PHandle *handle)
 	PEdge *e1, *e2, *e3;
 
 	/* allocate */
-	f = (PFace *)BLI_memarena_alloc(handle->arena, sizeof *f);
+	f = (PFace *)BLI_memarena_alloc(handle->arena, sizeof(*f));
 	f->flag = 0;  /* init ! */
 
-	e1 = (PEdge *)BLI_memarena_alloc(handle->arena, sizeof *e1);
-	e2 = (PEdge *)BLI_memarena_alloc(handle->arena, sizeof *e2);
-	e3 = (PEdge *)BLI_memarena_alloc(handle->arena, sizeof *e3);
+	e1 = (PEdge *)BLI_memarena_alloc(handle->arena, sizeof(*e1));
+	e2 = (PEdge *)BLI_memarena_alloc(handle->arena, sizeof(*e2));
+	e3 = (PEdge *)BLI_memarena_alloc(handle->arena, sizeof(*e3));
 
 	/* set up edges */
 	f->edge = e1;
@@ -1057,7 +1059,7 @@ static PFace *p_face_add(PHandle *handle)
 	e1->pair = NULL;
 	e2->pair = NULL;
 	e3->pair = NULL;
-   
+
 	e1->flag = 0;
 	e2->flag = 0;
 	e3->flag = 0;
@@ -3047,6 +3049,8 @@ static PBool p_chart_lscm_solve(PHandle *handle, PChart *chart)
 	PVert *v, *pin1 = chart->u.lscm.pin1, *pin2 = chart->u.lscm.pin2;
 	PFace *f;
 	float *alpha = chart->u.lscm.abf_alpha;
+	float area_pinned_up, area_pinned_down;
+	bool flip_faces;
 	int row;
 
 	nlMakeCurrent(chart->u.lscm.context);
@@ -3085,6 +3089,26 @@ static PBool p_chart_lscm_solve(PHandle *handle, PChart *chart)
 		}
 	}
 
+	/* detect up direction based on pinned vertices */
+	area_pinned_up = 0.0f;
+	area_pinned_down = 0.0f;
+
+	for (f = chart->faces; f; f = f->nextlink) {
+		PEdge *e1 = f->edge, *e2 = e1->next, *e3 = e2->next;
+		PVert *v1 = e1->vert, *v2 = e2->vert, *v3 = e3->vert;
+
+		if ((v1->flag & PVERT_PIN) && (v2->flag & PVERT_PIN) && (v3->flag & PVERT_PIN)) {
+			float area = p_face_uv_area_signed(f);
+
+			if (area > 0.0f)
+				area_pinned_up += area;
+			else
+				area_pinned_down -= area;
+		}
+	}
+
+	flip_faces = (area_pinned_down > area_pinned_up);
+
 	/* construct matrix */
 
 	nlBegin(NL_MATRIX);
@@ -3105,11 +3129,17 @@ static PBool p_chart_lscm_solve(PHandle *handle, PChart *chart)
 		else
 			p_face_angles(f, &a1, &a2, &a3);
 
+		if (flip_faces) {
+			SWAP(float, a2, a3);
+			SWAP(PEdge *, e2, e3);
+			SWAP(PVert *, v2, v3);
+		}
+
 		sina1 = sin(a1);
 		sina2 = sin(a2);
 		sina3 = sin(a3);
 
-		sinmax = MAX3(sina1, sina2, sina3);
+		sinmax = max_fff(sina1, sina2, sina3);
 
 		/* shift vertices to find most stable order */
 		if (sina3 != sinmax) {
@@ -3644,7 +3674,7 @@ static PBool p_triangle_inside(SmoothTriangle *t, float co[2])
 
 static SmoothNode *p_node_new(MemArena *arena, SmoothTriangle **tri, int ntri, float *bmin, float *bmax, int depth)
 {
-	SmoothNode *node = BLI_memarena_alloc(arena, sizeof *node);
+	SmoothNode *node = BLI_memarena_alloc(arena, sizeof(*node));
 	int axis, i, t1size = 0, t2size = 0;
 	float split, /* mi, */ /* UNUSED */ mx;
 	SmoothTriangle **t1, **t2, *t;
@@ -4084,7 +4114,7 @@ static void p_smooth(PChart *chart)
 
 ParamHandle *param_construct_begin(void)
 {
-	PHandle *handle = MEM_callocN(sizeof *handle, "PHandle");
+	PHandle *handle = MEM_callocN(sizeof(*handle), "PHandle");
 	handle->construction_chart = p_chart_new(handle);
 	handle->state = PHANDLE_STATE_ALLOCATED;
 	handle->arena = BLI_memarena_new((1 << 16), "param construct arena");

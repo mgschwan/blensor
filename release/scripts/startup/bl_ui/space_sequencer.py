@@ -19,6 +19,7 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Header, Menu, Panel
+from bpy.app.translations import pgettext_iface as iface_
 
 
 def act_strip(context):
@@ -88,6 +89,7 @@ class SEQUENCER_HT_header(Header):
                 layout.separator()
                 layout.operator("sequencer.refresh_all")
 
+            layout.prop(st, "preview_channels", expand=True, text="")
             layout.prop(st, "display_channel", text="Channel")
 
             ed = context.scene.sequence_editor
@@ -282,6 +284,9 @@ class SEQUENCER_MT_strip(Menu):
 
         layout.operator("transform.transform", text="Grab/Move").mode = 'TRANSLATION'
         layout.operator("transform.transform", text="Grab/Extend from frame").mode = 'TIME_EXTEND'
+        layout.operator("sequencer.gap_remove")
+        layout.operator("sequencer.gap_insert")
+
         #  uiItemO(layout, NULL, 0, "sequencer.strip_snap"); // TODO - add this operator
         layout.separator()
 
@@ -422,23 +427,25 @@ class SEQUENCER_PT_edit(SequencerButtonsPanel, Panel):
 
         col = layout.column(align=True)
         row = col.row()
-        row.label(text="Final Length" + ": %s" % bpy.utils.smpte_from_frame(strip.frame_final_duration))
+        row.label(text=iface_("Final Length: %s") % bpy.utils.smpte_from_frame(strip.frame_final_duration),
+                  translate=False)
         row = col.row()
         row.active = (frame_current >= strip.frame_start and frame_current <= strip.frame_start + strip.frame_duration)
-        row.label(text="Playhead" + ": %d" % (frame_current - strip.frame_start))
+        row.label(text=iface_("Playhead: %d") % (frame_current - strip.frame_start), translate=False)
 
-        col.label(text="Frame Offset" + " %d:%d" % (strip.frame_offset_start, strip.frame_offset_end))
-        col.label(text="Frame Still" + " %d:%d" % (strip.frame_still_start, strip.frame_still_end))
+        col.label(text=iface_("Frame Offset %d:%d") % (strip.frame_offset_start, strip.frame_offset_end),
+                  translate=False)
+        col.label(text=iface_("Frame Still %d:%d") % (strip.frame_still_start, strip.frame_still_end), translate=False)
 
         elem = False
 
         if strip.type == 'IMAGE':
-            elem = strip.getStripElem(frame_current)
+            elem = strip.strip_elem_from_frame(frame_current)
         elif strip.type == 'MOVIE':
             elem = strip.elements[0]
 
         if elem and elem.orig_width > 0 and elem.orig_height > 0:
-            col.label(text="Original Dimension" + ": %dx%d" % (elem.orig_width, elem.orig_height))
+            col.label(text=iface_("Original Dimension: %dx%d") % (elem.orig_width, elem.orig_height), translate=False)
         else:
             col.label(text="Original Dimension: None")
 
@@ -506,9 +513,6 @@ class SEQUENCER_PT_effect(SequencerButtonsPanel, Panel):
                 else:
                     layout.prop(strip, "speed_factor", text="Frame number")
                     layout.prop(strip, "scale_to_length")
-
-            #doesn't work currently
-            #layout.prop(strip, "use_frame_blend")
 
         elif strip.type == 'TRANSFORM':
             layout = self.layout
@@ -595,13 +599,14 @@ class SEQUENCER_PT_input(SequencerButtonsPanel, Panel):
 
             # Current element for the filename
 
-            elem = strip.getStripElem(context.scene.frame_current)
+            elem = strip.strip_elem_from_frame(context.scene.frame_current)
             if elem:
                 split = layout.split(percentage=0.2)
                 split.label(text="File:")
                 split.prop(elem, "filename", text="")  # strip.elements[0] could be a fallback
 
             layout.prop(strip.colorspace_settings, "name")
+            layout.prop(strip, "alpha_mode")
 
             layout.operator("sequencer.change_path")
 
@@ -714,7 +719,7 @@ class SEQUENCER_PT_scene(SequencerButtonsPanel, Panel):
         if scene:
             sta = scene.frame_start
             end = scene.frame_end
-            layout.label(text="Original frame range" + ": %d-%d (%d)" % (sta, end, end - sta + 1))
+            layout.label(text=iface_("Original frame range: %d-%d (%d)") % (sta, end, end - sta + 1), translate=False)
 
 
 class SEQUENCER_PT_mask(SequencerButtonsPanel, Panel):
@@ -743,7 +748,7 @@ class SEQUENCER_PT_mask(SequencerButtonsPanel, Panel):
         if mask:
             sta = mask.frame_start
             end = mask.frame_end
-            layout.label(text="Original frame range" + ": %d-%d (%d)" % (sta, end, end - sta + 1))
+            layout.label(text=iface_("Original frame range: %d-%d (%d)") % (sta, end, end - sta + 1), translate=False)
 
 
 class SEQUENCER_PT_filter(SequencerButtonsPanel, Panel):
@@ -797,7 +802,6 @@ class SEQUENCER_PT_filter(SequencerButtonsPanel, Panel):
         col.label(text="Colors:")
         col.prop(strip, "color_saturation", text="Saturation")
         col.prop(strip, "color_multiply", text="Multiply")
-        col.prop(strip, "use_premultiply")
         col.prop(strip, "use_float")
 
 
@@ -866,6 +870,10 @@ class SEQUENCER_PT_preview(SequencerButtonsPanel_Output, Panel):
         col = layout.column()
         #col.active = render.use_sequencer_gl_preview
         col.prop(render, "sequencer_gl_preview", text="")
+
+        row = col.row()
+        row.active = render.sequencer_gl_preview == 'SOLID'
+        row.prop(render, "use_sequencer_gl_textured_solid")
 
 
 class SEQUENCER_PT_view(SequencerButtonsPanel_Output, Panel):

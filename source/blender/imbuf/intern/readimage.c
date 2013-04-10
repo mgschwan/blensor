@@ -43,11 +43,10 @@
 #endif
 
 #include <stdlib.h>
+#include "BLI_utildefines.h"
 #include "BLI_string.h"
 #include "BLI_path_util.h"
 #include "BLI_fileops.h"
-
-#include "BLI_utildefines.h"
 
 #include "imbuf.h"
 #include "IMB_imbuf_types.h"
@@ -75,6 +74,8 @@ ImBuf *IMB_ibImageFromMemory(unsigned char *mem, size_t size, int flags, char co
 		if (type->load) {
 			ibuf = type->load(mem, size, flags, effective_colorspace);
 			if (ibuf) {
+				int alpha_flags;
+
 				if (colorspace) {
 					if (ibuf->rect) {
 						/* byte buffer is never internally converted to some standard space,
@@ -86,14 +87,36 @@ ImBuf *IMB_ibImageFromMemory(unsigned char *mem, size_t size, int flags, char co
 					BLI_strncpy(colorspace, effective_colorspace, IM_MAX_SPACE);
 				}
 
+				if (flags & IB_alphamode_detect)
+					alpha_flags = ibuf->flags & IB_alphamode_premul;
+				else
+					alpha_flags = flags & IB_alphamode_premul;
+
+				if (flags & IB_ignore_alpha) {
+					IMB_rectfill_alpha(ibuf, 1.0f);
+				}
+				else {
+					if (alpha_flags & IB_alphamode_premul) {
+						if (ibuf->rect) {
+							IMB_unpremultiply_alpha(ibuf);
+						}
+						else {
+							/* pass, floats are expected to be premul */
+						}
+					}
+					else {
+						if (ibuf->rect_float) {
+							IMB_premultiply_alpha(ibuf);
+						}
+						else {
+							/* pass, bytes are expected to be straight */
+						}
+					}
+				}
+
 				/* OCIO_TODO: in some cases it's faster to do threaded conversion,
 				 *            but how to distinguish such cases */
 				colormanage_imbuf_make_linear(ibuf, effective_colorspace);
-
-				if (flags & IB_premul) {
-					IMB_premultiply_alpha(ibuf);
-					ibuf->flags |= IB_premul;
-				}
 
 				return ibuf;
 			}
@@ -230,4 +253,3 @@ void imb_loadtile(ImBuf *ibuf, int tx, int ty, unsigned int *rect)
 
 	close(file);
 }
-

@@ -42,6 +42,8 @@
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_anim_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
@@ -86,6 +88,7 @@ short id_type_can_have_animdata(ID *id)
 		case ID_PA:
 		case ID_MA: case ID_TE: case ID_NT:
 		case ID_LA: case ID_CA: case ID_WO:
+		case ID_LS:
 		case ID_SPK:
 		case ID_SCE:
 		case ID_MC:
@@ -242,7 +245,7 @@ void BKE_free_animdata(ID *id)
 /* Freeing -------------------------------------------- */
 
 /* Make a copy of the given AnimData - to be used when copying datablocks */
-AnimData *BKE_copy_animdata(AnimData *adt, const short do_action)
+AnimData *BKE_copy_animdata(AnimData *adt, const bool do_action)
 {
 	AnimData *dadt;
 	
@@ -274,7 +277,7 @@ AnimData *BKE_copy_animdata(AnimData *adt, const short do_action)
 	return dadt;
 }
 
-int BKE_copy_animdata_id(ID *id_to, ID *id_from, const short do_action)
+int BKE_copy_animdata_id(ID *id_to, ID *id_from, const bool do_action)
 {
 	AnimData *adt;
 
@@ -499,15 +502,15 @@ void BKE_animdata_separate_by_basepath(ID *srcID, ID *dstID, ListBase *basepaths
 	if (srcAdt->action) {
 		/* set up an action if necessary, and name it in a similar way so that it can be easily found again */
 		if (dstAdt->action == NULL) {
-			dstAdt->action = add_empty_action(srcAdt->action->id.name + 2);
+			dstAdt->action = add_empty_action(G.main, srcAdt->action->id.name + 2);
 		}
 		else if (dstAdt->action == srcAdt->action) {
 			printf("Argh! Source and Destination share animation! ('%s' and '%s' both use '%s') Making new empty action\n",
 			       srcID->name, dstID->name, srcAdt->action->id.name);
-
+			
 			/* TODO: review this... */
 			id_us_min(&dstAdt->action->id);
-			dstAdt->action = add_empty_action(dstAdt->action->id.name + 2);
+			dstAdt->action = add_empty_action(G.main, dstAdt->action->id.name + 2);
 		}
 			
 		/* loop over base paths, trying to fix for each one... */
@@ -533,9 +536,9 @@ void BKE_animdata_separate_by_basepath(ID *srcID, ID *dstID, ListBase *basepaths
 					/* just need to change lists */
 					BLI_remlink(&srcAdt->drivers, fcu);
 					BLI_addtail(&dstAdt->drivers, fcu);
-
+					
 					/* TODO: add depsgraph flushing calls? */
-
+					
 					/* can stop now, as moved already */
 					break;
 				}
@@ -827,6 +830,9 @@ void BKE_animdata_main_cb(Main *mainptr, ID_AnimData_Edit_Callback func, void *u
 
 	/* scenes */
 	ANIMDATA_NODETREE_IDS_CB(mainptr->scene.first, Scene);
+
+	/* line styles */
+	ANIMDATA_IDS_CB(mainptr->linestyle.first);
 }
 
 /* Fix all RNA-Paths throughout the database (directly access the Global.main version)
@@ -912,6 +918,9 @@ void BKE_all_animdata_fix_paths_rename(ID *ref_id, const char *prefix, const cha
 	/* worlds */
 	RENAMEFIX_ANIM_NODETREE_IDS(mainptr->world.first, World);
 	
+	/* linestyles */
+	RENAMEFIX_ANIM_IDS(mainptr->linestyle.first);
+	
 	/* scenes */
 	RENAMEFIX_ANIM_NODETREE_IDS(mainptr->scene.first, Scene);
 }
@@ -973,8 +982,8 @@ KeyingSet *BKE_keyingset_add(ListBase *list, const char idname[], const char nam
 	/* allocate new KeyingSet */
 	ks = MEM_callocN(sizeof(KeyingSet), "KeyingSet");
 
-	BLI_strncpy(ks->idname, (idname) ? idname : (name) ? name     : "KeyingSet",  sizeof(ks->idname));
-	BLI_strncpy(ks->name,   (name) ? name     : (idname) ? idname : "Keying Set", sizeof(ks->name));
+	BLI_strncpy(ks->idname, (idname) ? idname : (name) ? name     : DATA_("KeyingSet"),  sizeof(ks->idname));
+	BLI_strncpy(ks->name,   (name) ? name     : (idname) ? idname : DATA_("Keying Set"), sizeof(ks->name));
 
 	ks->flag = flag;
 	ks->keyingflag = keyingflag;
@@ -983,10 +992,10 @@ KeyingSet *BKE_keyingset_add(ListBase *list, const char idname[], const char nam
 	BLI_addtail(list, ks);
 	
 	/* Make sure KeyingSet has a unique idname */
-	BLI_uniquename(list, ks, "KeyingSet", '.', offsetof(KeyingSet, idname), sizeof(ks->idname));
+	BLI_uniquename(list, ks, DATA_("KeyingSet"), '.', offsetof(KeyingSet, idname), sizeof(ks->idname));
 	
 	/* Make sure KeyingSet has a unique label (this helps with identification) */
-	BLI_uniquename(list, ks, "Keying Set", '.', offsetof(KeyingSet, name), sizeof(ks->name));
+	BLI_uniquename(list, ks, DATA_("Keying Set"), '.', offsetof(KeyingSet, name), sizeof(ks->name));
 	
 	/* return new KeyingSet for further editing */
 	return ks;
@@ -2397,6 +2406,9 @@ void BKE_animsys_evaluate_all_animation(Main *main, Scene *scene, float ctime)
 	/* movie clips */
 	EVAL_ANIM_IDS(main->movieclip.first, ADT_RECALC_ANIM);
 
+	/* linestyles */
+	EVAL_ANIM_IDS(main->linestyle.first, ADT_RECALC_ANIM);
+	
 	/* objects */
 	/* ADT_RECALC_ANIM doesn't need to be supplied here, since object AnimData gets
 	 * this tagged by Depsgraph on framechange. This optimization means that objects

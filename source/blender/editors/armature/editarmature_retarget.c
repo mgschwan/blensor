@@ -25,12 +25,6 @@
  *  \ingroup edarmature
  */
 
-#include <ctype.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h> 
-#include <float.h>
-
 #include "MEM_guardedalloc.h"
 
 #include "PIL_time.h"
@@ -42,11 +36,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_utildefines.h"
-#include "BLI_ghash.h"
-#include "BLI_graph.h"
-#include "BLI_rand.h"
-#include "BLI_threads.h"
 
 #include "BKE_constraint.h"
 #include "BKE_armature.h"
@@ -56,8 +45,6 @@
 #include "ED_util.h"
 
 #include "BIF_retarget.h"
-
-#include "reeb.h" /* FIX ME */
 
 #include "armature_intern.h"
 
@@ -422,11 +409,11 @@ static void renameTemplateBone(char *name, char *template_name, ListBase *editbo
 	for (i = 0, j = 0; i < (MAXBONENAME - 1) && j < (MAXBONENAME - 1) && template_name[i] != '\0'; i++) {
 		if (template_name[i] == '&') {
 			if (template_name[i + 1] == 'S' || template_name[i + 1] == 's') {
-				j += sprintf(name + j, "%s", side_string);
+				j += BLI_strncpy_rlen(name + j, side_string, MAXBONENAME);
 				i++;
 			}
 			else if (template_name[i + 1] == 'N' || template_name[i + 1] == 'n') {
-				j += sprintf(name + j, "%s", num_string);
+				j += BLI_strncpy_rlen(name + j, num_string, MAXBONENAME);
 				i++;
 			}
 			else {
@@ -725,7 +712,7 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 		/* DO SOME MAGIC HERE */
 		for (pchan = rg->ob->pose->chanbase.first; pchan; pchan = pchan->next) {
 			for (con = pchan->constraints.first; con; con = con->next) {
-				bConstraintTypeInfo *cti = constraint_get_typeinfo(con);
+				bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
 				ListBase targets = {NULL, NULL};
 				bConstraintTarget *ct;
 				
@@ -850,7 +837,7 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 				/* DO SOME MAGIC HERE */
 				for (pchan = rg->ob->pose->chanbase.first; pchan; pchan = pchan->next) {
 					for (con = pchan->constraints.first; con; con = con->next) {
-						bConstraintTypeInfo *cti = constraint_get_typeinfo(con);
+						bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
 						ListBase targets = {NULL, NULL};
 						bConstraintTarget *ct;
 						
@@ -909,7 +896,7 @@ static void RIG_reconnectControlBones(RigGraph *rg)
 			/* look on deform bones first */
 			BLI_ghashIterator_init(&ghi, rg->bones_map);
 			
-			for (; !BLI_ghashIterator_isDone(&ghi); BLI_ghashIterator_step(&ghi)) {
+			for (; BLI_ghashIterator_notDone(&ghi); BLI_ghashIterator_step(&ghi)) {
 				EditBone *bone = (EditBone *)BLI_ghashIterator_getValue(&ghi);
 				
 				/* don't link with parent */
@@ -1830,7 +1817,9 @@ static float calcCostLengthDistance(BArcIterator *iter, float **vec_cache, RigEd
 }
 #endif
 
-static float calcCostAngleLengthDistance(BArcIterator *iter, float **UNUSED(vec_cache), RigEdge *edge, float *vec0, float *vec1, float *vec2, int i1, int i2, float angle_weight, float length_weight, float distance_weight)
+static float calcCostAngleLengthDistance(BArcIterator *iter, float **UNUSED(vec_cache), RigEdge *edge,
+                                         float *vec0, float *vec1, float *vec2, int i1, int i2,
+                                         float angle_weight, float length_weight, float distance_weight)
 {
 	float vec_second[3], vec_first[3];
 	float length2;
@@ -1878,7 +1867,9 @@ static void copyMemoPositions(int *positions, MemoNode *table, int nb_positions,
 	}
 }
 
-static MemoNode *solveJoints(MemoNode *table, BArcIterator *iter, float **vec_cache, int nb_joints, int nb_positions, int previous, int current, RigEdge *edge, int joints_left, float angle_weight, float length_weight, float distance_weight)
+static MemoNode *solveJoints(MemoNode *table, BArcIterator *iter, float **vec_cache,
+                             int nb_joints, int nb_positions, int previous, int current, RigEdge *edge,
+                             int joints_left, float angle_weight, float length_weight, float distance_weight)
 {
 	MemoNode *node;
 	int index = indexMemoNode(nb_positions, previous, current, joints_left);

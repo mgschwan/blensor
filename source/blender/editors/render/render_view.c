@@ -35,6 +35,7 @@
 #include "BLI_utildefines.h"
 
 #include "DNA_scene_types.h"
+#include "DNA_userdef_types.h"
 
 #include "BKE_blender.h"
 #include "BKE_context.h"
@@ -151,9 +152,10 @@ void render_view_open(bContext *C, int mx, int my)
 		if (sizex < 320) sizex = 320;
 		if (sizey < 256) sizey = 256;
 
-		/* XXX some magic to calculate postition */
-		rect.xmin = mx + win->posx - sizex / 2;
-		rect.ymin = my + win->posy - sizey / 2;
+		/* some magic to calculate postition */
+		/* pixelsize: mouse coords are in U.pixelsize units :/ */
+		rect.xmin = (mx / U.pixelsize) + win->posx - sizex / 2;
+		rect.ymin = (my / U.pixelsize) + win->posy - sizey / 2;
 		rect.xmax = rect.xmin + sizex;
 		rect.ymax = rect.ymin + sizey;
 
@@ -273,7 +275,7 @@ void RENDER_OT_view_cancel(struct wmOperatorType *ot)
 
 /************************* show render viewer *****************/
 
-static int render_view_show_invoke(bContext *C, wmOperator *UNUSED(op), wmEvent *event)
+static int render_view_show_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *event)
 {
 	wmWindow *wincur = CTX_wm_window(C);
 	
@@ -287,7 +289,10 @@ static int render_view_show_invoke(bContext *C, wmOperator *UNUSED(op), wmEvent 
 		
 		/* is there another window showing result? */
 		for (win = CTX_wm_manager(C)->windows.first; win; win = win->next) {
-			if (win->screen->temp || (win == winshow && winshow != wincur)) {
+			bScreen *sc = win->screen;
+			if ((sc->temp && ((ScrArea *)sc->areabase.first)->spacetype == SPACE_IMAGE) ||
+			    (win == winshow && winshow != wincur))
+			{
 				wm_window_raise(win);
 				return OPERATOR_FINISHED;
 			}

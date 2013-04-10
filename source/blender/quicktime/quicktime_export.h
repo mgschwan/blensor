@@ -65,14 +65,14 @@ void filepath_qt(char *string, struct RenderData *rd);
 void quicktime_verify_image_type(struct RenderData *rd, struct ImageFormatData *imf); //used by RNA for defaults values init, if needed
 /*Video codec type*/
 int quicktime_get_num_videocodecs(void);
-QuicktimeCodecTypeDesc* quicktime_get_videocodecType_desc(int indexValue);
+QuicktimeCodecTypeDesc *quicktime_get_videocodecType_desc(int indexValue);
 int quicktime_rnatmpvalue_from_videocodectype(int codecType);
 int quicktime_videocodecType_from_rnatmpvalue(int rnatmpvalue);
 
 #ifdef USE_QTKIT
 /*Audio codec type*/
 int quicktime_get_num_audiocodecs(void);
-QuicktimeCodecTypeDesc* quicktime_get_audiocodecType_desc(int indexValue);
+QuicktimeCodecTypeDesc *quicktime_get_audiocodecType_desc(int indexValue);
 int quicktime_rnatmpvalue_from_audiocodectype(int codecType);
 int quicktime_audiocodecType_from_rnatmpvalue(int rnatmpvalue);
 #endif
@@ -87,7 +87,7 @@ void makeqtstring(struct RenderData *rd, char *string);		//for playanim.c
 
 
 
-#if (defined(USE_QTKIT) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5 && __LP64__)
+#if (defined(USE_QTKIT) && MAC_OS_X_VERSION_MIN_REQUIRED >= 1050 && __LP64__)
 //Include the quicktime codec types constants that are missing in QTKitDefines.h
 enum {
 	kRawCodecType						= 'raw ',

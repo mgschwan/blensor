@@ -200,7 +200,9 @@ static void make_dmats(bPoseChannel *pchan)
 		invert_m4_m4(iR_parmat, pchan->parent->pose_mat);
 		mult_m4_m4m4(pchan->chan_mat, iR_parmat,  pchan->pose_mat); // delta mat
 	}
-	else copy_m4_m4(pchan->chan_mat, pchan->pose_mat);
+	else {
+		copy_m4_m4(pchan->chan_mat, pchan->pose_mat);
+	}
 }
 
 /* applies IK matrix to pchan, IK is done separated */
@@ -372,7 +374,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 		/* 1.0=ctime, we pass on object for auto-ik (owner-type here is object, even though
 		 * strictly speaking, it is a posechannel)
 		 */
-		get_constraint_target_matrix(scene, target->con, 0, CONSTRAINT_OBTYPE_OBJECT, ob, rootmat, 1.0);
+		BKE_get_constraint_target_matrix(scene, target->con, 0, CONSTRAINT_OBTYPE_OBJECT, ob, rootmat, 1.0);
 
 		/* and set and transform goal */
 		mult_m4_m4m4(goal, goalinv, rootmat);
@@ -383,7 +385,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 
 		/* same for pole vector target */
 		if (data->poletar) {
-			get_constraint_target_matrix(scene, target->con, 1, CONSTRAINT_OBTYPE_OBJECT, ob, rootmat, 1.0);
+			BKE_get_constraint_target_matrix(scene, target->con, 1, CONSTRAINT_OBTYPE_OBJECT, ob, rootmat, 1.0);
 
 			if (data->flag & CONSTRAINT_IK_SETANGLE) {
 				/* don't solve IK when we are setting the pole angle */

@@ -19,6 +19,7 @@
 # <pep8-80 compliant>
 import bpy
 from bpy.types import Header, Menu, Panel
+from bpy.app.translations import pgettext_iface as iface_
 
 
 class TEXT_HT_header(Header):
@@ -66,16 +67,17 @@ class TEXT_HT_header(Header):
                 row.operator("text.run_script")
 
                 row = layout.row()
+                row.active = text.name.endswith(".py")
                 row.prop(text, "use_module")
 
             row = layout.row()
             if text.filepath:
                 if text.is_dirty:
-                    row.label(text="File" + ": *%r " %
-                              text.filepath + "(unsaved)")
+                    row.label(text=iface_("File: *%r (unsaved)") %
+                              text.filepath, translate=False)
                 else:
-                    row.label(text="File" + ": %r" %
-                              text.filepath)
+                    row.label(text=iface_("File: %r") %
+                              text.filepath, translate=False)
             else:
                 row.label(text="Text: External"
                           if text.library
@@ -151,7 +153,7 @@ class TEXT_MT_view(Menu):
         layout = self.layout
 
         layout.operator("text.properties", icon='MENU_PANEL')
-        
+
         layout.separator()
 
         layout.operator("text.move",
@@ -193,14 +195,33 @@ class TEXT_MT_text(Menu):
             layout.operator("text.run_script")
 
 
+class TEXT_MT_templates_py(Menu):
+    bl_label = "Python"
+
+    def draw(self, context):
+        self.path_menu(bpy.utils.script_paths("templates_py"),
+                       "text.open",
+                       {"internal": True},
+                       )
+
+
+class TEXT_MT_templates_osl(Menu):
+    bl_label = "Open Shading Language"
+
+    def draw(self, context):
+        self.path_menu(bpy.utils.script_paths("templates_osl"),
+                       "text.open",
+                       {"internal": True},
+                       )
+
+
 class TEXT_MT_templates(Menu):
     bl_label = "Templates"
 
     def draw(self, context):
-        self.path_menu(bpy.utils.script_paths("templates"),
-                       "text.open",
-                       {"internal": True},
-                       )
+        layout = self.layout
+        layout.menu("TEXT_MT_templates_py")
+        layout.menu("TEXT_MT_templates_osl")
 
 
 class TEXT_MT_edit_select(Menu):
@@ -281,6 +302,7 @@ class TEXT_MT_edit(Menu):
 
         layout.operator("text.jump")
         layout.operator("text.properties", text="Find...")
+        layout.operator("text.autocomplete")
 
         layout.separator()
 

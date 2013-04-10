@@ -28,7 +28,6 @@
  *  \ingroup spview3d
  */
 
-
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,8 +35,6 @@
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
 #include "DNA_mesh_types.h"
-
-#include "RNA_access.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -57,17 +54,18 @@
 #include "BKE_screen.h"
 #include "BKE_tessmesh.h"
 
+#include "RNA_access.h"
+#include "RNA_define.h"
+#include "RNA_enum_types.h"
+
+#include "WM_api.h"
+#include "WM_types.h"
+
 #include "ED_mesh.h"
 #include "ED_util.h"
 #include "ED_screen.h"
 #include "ED_transform.h"
 #include "ED_types.h"
-
-#include "WM_api.h"
-#include "WM_types.h"
-
-#include "RNA_define.h"
-#include "RNA_enum_types.h"
 
 #include "UI_interface.h"
 #include "UI_resources.h"
@@ -149,7 +147,7 @@ static int view3d_layers_exec(bContext *C, wmOperator *op)
 	ScrArea *sa = CTX_wm_area(C);
 	View3D *v3d = sa->spacedata.first;
 	int nr = RNA_int_get(op->ptr, "nr");
-	int toggle = RNA_boolean_get(op->ptr, "toggle");
+	const bool toggle = RNA_boolean_get(op->ptr, "toggle");
 	
 	if (nr < 0)
 		return OPERATOR_CANCELLED;
@@ -200,7 +198,7 @@ static int view3d_layers_exec(bContext *C, wmOperator *op)
 	
 	if (v3d->scenelock) handle_view3d_lock(C);
 	
-	DAG_on_visible_update(CTX_data_main(C), FALSE);
+	DAG_on_visible_update(CTX_data_main(C), false);
 
 	ED_area_tag_redraw(sa);
 	
@@ -209,7 +207,7 @@ static int view3d_layers_exec(bContext *C, wmOperator *op)
 
 /* applies shift and alt, lazy coding or ok? :) */
 /* the local per-keymap-entry keymap will solve it */
-static int view3d_layers_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int view3d_layers_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	if (event->ctrl || event->oskey)
 		return OPERATOR_PASS_THROUGH;
@@ -217,10 +215,10 @@ static int view3d_layers_invoke(bContext *C, wmOperator *op, wmEvent *event)
 	if (event->shift)
 		RNA_boolean_set(op->ptr, "extend", TRUE);
 	else
-		RNA_boolean_set(op->ptr, "extend", FALSE);
+		RNA_boolean_set(op->ptr, "extend", false);
 	
 	if (event->alt) {
-		int nr = RNA_int_get(op->ptr, "nr") + 10;
+		const int nr = RNA_int_get(op->ptr, "nr") + 10;
 		RNA_int_set(op->ptr, "nr", nr);
 	}
 	view3d_layers_exec(C, op);
@@ -400,13 +398,13 @@ void uiTemplateEditModeSelection(uiLayout *layout, struct bContext *C)
 		block = uiLayoutGetBlock(row);
 		uiDefIconButBitS(block, TOG, SCE_SELECT_VERTEX, B_SEL_VERT, ICON_VERTEXSEL,
 		                 0, 0, UI_UNIT_X, UI_UNIT_Y, &em->selectmode, 1.0, 0.0, 0, 0,
-		                 "Vertex select - Shift-Click for multiple modes");
+		                 TIP_("Vertex select - Shift-Click for multiple modes"));
 		uiDefIconButBitS(block, TOG, SCE_SELECT_EDGE, B_SEL_EDGE, ICON_EDGESEL,
 		                 0, 0, UI_UNIT_X, UI_UNIT_Y, &em->selectmode, 1.0, 0.0, 0, 0,
-		                 "Edge select - Shift-Click for multiple modes, Ctrl-Click expands selection");
+		                 TIP_("Edge select - Shift-Click for multiple modes, Ctrl-Click expands selection"));
 		uiDefIconButBitS(block, TOG, SCE_SELECT_FACE, B_SEL_FACE, ICON_FACESEL,
 		                 0, 0, UI_UNIT_X, UI_UNIT_Y, &em->selectmode, 1.0, 0.0, 0, 0,
-		                 "Face select - Shift-Click for multiple modes, Ctrl-Click expands selection");
+		                 TIP_("Face select - Shift-Click for multiple modes, Ctrl-Click expands selection"));
 	}
 }
 
@@ -453,6 +451,13 @@ void uiTemplateHeader3D(uiLayout *layout, struct bContext *C)
 	uiItemR(layout, &v3dptr, "viewport_shade", UI_ITEM_R_ICON_ONLY, "", ICON_NONE);
 
 	if (obedit == NULL && is_paint) {
+
+		if (ob->mode & OB_MODE_WEIGHT_PAINT) {
+			/* Only for Weight Paint. makes no sense in other paint modes. */
+			row = uiLayoutRow(layout, TRUE);
+			uiItemR(row, &v3dptr, "pivot_point", UI_ITEM_R_ICON_ONLY, "", ICON_NONE);
+		}
+
 		/* Manipulators aren't used in paint modes */
 		if (!ELEM(ob->mode, OB_MODE_SCULPT, OB_MODE_PARTICLE_EDIT)) {
 			/* masks aren't used for sculpt and particle painting */
@@ -476,7 +481,9 @@ void uiTemplateHeader3D(uiLayout *layout, struct bContext *C)
 		uiItemR(row, &v3dptr, "pivot_point", UI_ITEM_R_ICON_ONLY, "", ICON_NONE);
 
 		/* pose/object only however we want to allow in weight paint mode too
-		 * so don't be totally strict and just check not-editmode for now */
+		 * so don't be totally strict and just check not-editmode for now 
+		 * XXX We never get here when we are in Weight Paint mode
+		 */
 		if (obedit == NULL) {
 			uiItemR(row, &v3dptr, "use_pivot_point_align", UI_ITEM_R_ICON_ONLY, "", ICON_NONE);
 		}
@@ -487,11 +494,17 @@ void uiTemplateHeader3D(uiLayout *layout, struct bContext *C)
 		block = uiLayoutGetBlock(row);
 		
 		if (v3d->twflag & V3D_USE_MANIPULATOR) {
-			but = uiDefIconButBitC(block, TOG, V3D_MANIP_TRANSLATE, B_MAN_TRANS, ICON_MAN_TRANS, 0, 0, UI_UNIT_X, UI_UNIT_Y, &v3d->twtype, 1.0, 0.0, 0, 0, TIP_("Translate manipulator - Shift-Click for multiple modes"));
+			but = uiDefIconButBitC(block, TOG, V3D_MANIP_TRANSLATE, B_MAN_TRANS, ICON_MAN_TRANS,
+			                       0, 0, UI_UNIT_X, UI_UNIT_Y, &v3d->twtype, 1.0, 0.0, 0, 0,
+			                       TIP_("Translate manipulator - Shift-Click for multiple modes"));
 			uiButClearFlag(but, UI_BUT_UNDO); /* skip undo on screen buttons */
-			but = uiDefIconButBitC(block, TOG, V3D_MANIP_ROTATE, B_MAN_ROT, ICON_MAN_ROT, 0, 0, UI_UNIT_X, UI_UNIT_Y, &v3d->twtype, 1.0, 0.0, 0, 0, TIP_("Rotate manipulator - Shift-Click for multiple modes"));
+			but = uiDefIconButBitC(block, TOG, V3D_MANIP_ROTATE, B_MAN_ROT, ICON_MAN_ROT,
+			                       0, 0, UI_UNIT_X, UI_UNIT_Y, &v3d->twtype, 1.0, 0.0, 0, 0,
+			                       TIP_("Rotate manipulator - Shift-Click for multiple modes"));
 			uiButClearFlag(but, UI_BUT_UNDO); /* skip undo on screen buttons */
-			but = uiDefIconButBitC(block, TOG, V3D_MANIP_SCALE, B_MAN_SCALE, ICON_MAN_SCALE, 0, 0, UI_UNIT_X, UI_UNIT_Y, &v3d->twtype, 1.0, 0.0, 0, 0, TIP_("Scale manipulator - Shift-Click for multiple modes"));
+			but = uiDefIconButBitC(block, TOG, V3D_MANIP_SCALE, B_MAN_SCALE, ICON_MAN_SCALE,
+			                       0, 0, UI_UNIT_X, UI_UNIT_Y, &v3d->twtype, 1.0, 0.0, 0, 0,
+			                       TIP_("Scale manipulator - Shift-Click for multiple modes"));
 			uiButClearFlag(but, UI_BUT_UNDO); /* skip undo on screen buttons */
 		}
 			
@@ -500,7 +513,8 @@ void uiTemplateHeader3D(uiLayout *layout, struct bContext *C)
 		}
 			
 		str_menu = BIF_menustringTransformOrientation(C, "Orientation");
-		but = uiDefButC(block, MENU, B_MAN_MODE, str_menu, 0, 0, 70 * dpi_fac, UI_UNIT_Y, &v3d->twmode, 0, 0, 0, 0, TIP_("Transform Orientation"));
+		but = uiDefButC(block, MENU, B_MAN_MODE, str_menu, 0, 0, 70 * dpi_fac, UI_UNIT_Y, &v3d->twmode, 0, 0, 0, 0,
+		                TIP_("Transform Orientation"));
 		uiButClearFlag(but, UI_BUT_UNDO); /* skip undo on screen buttons */
 		MEM_freeN((void *)str_menu);
 	}

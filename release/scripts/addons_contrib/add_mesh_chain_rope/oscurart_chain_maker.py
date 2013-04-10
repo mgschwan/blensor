@@ -20,7 +20,7 @@ bl_info = {
     "name": "Oscurart Chain Maker",
     "author": "Oscurart",
     "version": (1,1),
-    "blender": (2, 5, 6),
+    "blender": (2, 56, 0),
     "api": 3800,
     "location": "Add > Mesh > Oscurart Chain",
     "description": "Create chain links from armatures.",

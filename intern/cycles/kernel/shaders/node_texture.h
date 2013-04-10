@@ -18,24 +18,22 @@
 
 float voronoi_distance(string distance_metric, vector d, float e)
 {
-	float result = 0.0;
-
 	if (distance_metric == "Distance Squared")
-		result = dot(d, d);
+		return dot(d, d);
 	if (distance_metric == "Actual Distance")
-		result = length(d);
+		return length(d);
 	if (distance_metric == "Manhattan")
-		result = fabs(d[0]) + fabs(d[1]) + fabs(d[2]);
+		return fabs(d[0]) + fabs(d[1]) + fabs(d[2]);
 	if (distance_metric == "Chebychev")
-		result = max(fabs(d[0]), max(fabs(d[1]), fabs(d[2])));
+		return max(fabs(d[0]), max(fabs(d[1]), fabs(d[2])));
 	if (distance_metric == "Minkovsky 1/2")
-		result = sqrt(fabs(d[0])) + sqrt(fabs(d[1])) + sqrt(fabs(d[1]));
+		return sqrt(fabs(d[0])) + sqrt(fabs(d[1])) + sqrt(fabs(d[1]));
 	if (distance_metric == "Minkovsky 4")
-		result = sqrt(sqrt(dot(d * d, d * d)));
+		return sqrt(sqrt(dot(d * d, d * d)));
 	if (distance_metric == "Minkovsky")
-		result = pow(pow(fabs(d[0]), e) + pow(fabs(d[1]), e) + pow(fabs(d[2]), e), 1.0 / e);
+		return pow(pow(fabs(d[0]), e) + pow(fabs(d[1]), e) + pow(fabs(d[2]), e), 1.0 / e);
 	
-	return result;
+	return 0.0;
 }
 
 /* Voronoi / Worley like */
@@ -151,28 +149,45 @@ float voronoi_CrS(point p) { return 2.0 * voronoi_Cr(p) - 1.0; }
 
 /* Noise Bases */
 
+float safe_noise(point p, int type)
+{
+	float f = 0.0;
+	
+	/* Perlin noise in range -1..1 */
+	if (type == 0)
+		f = noise("perlin", p);
+	
+	/* Perlin noise in range 0..1 */
+	else
+		f = noise(p);
+
+	/* can happen for big coordinates, things even out to 0.5 then anyway */
+	if(!isfinite(f))
+		return 0.5;
+	
+	return f;
+}
+
 float noise_basis(point p, string basis)
 {
-	float result = 0.0;
-
 	if (basis == "Perlin")
-		result = noise(p); /* returns perlin noise in range 0..1 */
+		return safe_noise(p, 1);
 	if (basis == "Voronoi F1")
-		result = voronoi_F1S(p);
+		return voronoi_F1S(p);
 	if (basis == "Voronoi F2")
-		result = voronoi_F2S(p);
+		return voronoi_F2S(p);
 	if (basis == "Voronoi F3")
-		result = voronoi_F3S(p);
+		return voronoi_F3S(p);
 	if (basis == "Voronoi F4")
-		result = voronoi_F4S(p);
+		return voronoi_F4S(p);
 	if (basis == "Voronoi F2-F1")
-		result = voronoi_F1F2S(p);
+		return voronoi_F1F2S(p);
 	if (basis == "Voronoi Crackle")
-		result = voronoi_CrS(p);
+		return voronoi_CrS(p);
 	if (basis == "Cell Noise")
-		result = cellnoise(p);
+		return cellnoise(p);
 	
-	return result;
+	return 0.0;
 }
 
 /* Soft/Hard Noise */
@@ -187,27 +202,25 @@ float noise_basis_hard(point p, string basis, int hard)
 
 float noise_wave(string wave, float a)
 {
-	float result = 0.0;
-
 	if (wave == "Sine") {
-		result = 0.5 + 0.5 * sin(a);
+		return 0.5 + 0.5 * sin(a);
 	}
-	else if (wave == "Saw") {
+	if (wave == "Saw") {
 		float b = 2 * M_PI;
 		int n = (int)(a / b);
 		a -= n * b;
 		if (a < 0) a += b;
 
-		result = a / b;
+		return a / b;
 	}
-	else if (wave == "Tri") {
+	if (wave == "Tri") {
 		float b = 2 * M_PI;
 		float rmax = 1.0;
 
-		result = rmax - 2.0 * fabs(floor((a * (1.0 / b)) + 0.5) - (a * (1.0 / b)));
+		return rmax - 2.0 * fabs(floor((a * (1.0 / b)) + 0.5) - (a * (1.0 / b)));
 	}
 
-	return result;
+	return 0.0;
 }
 
 /* Turbulence */

@@ -28,6 +28,7 @@
 #define __EXPORTSETTINGS_H__
 
 #include "collada.h"
+#include "collada.h"
 
 struct ExportSettings {
 public:
@@ -37,6 +38,7 @@ public:
 	bool selected;
 	bool include_children;
 	bool include_armatures;
+	bool include_shapekeys;
 	bool deform_bones_only;
 
 	bool active_uv_only;
@@ -44,8 +46,10 @@ public:
 	bool include_material_textures;
 	bool use_texture_copies;
 
+	bool triangulate;
 	bool use_object_instantiation;
 	bool sort_by_name;
+	BC_export_transformation_type export_transformation_type;
 	bool second_life;
 
 	char *filepath;

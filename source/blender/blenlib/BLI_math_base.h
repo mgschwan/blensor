@@ -80,6 +80,9 @@
 #define MAXFLOAT  ((float)3.40282347e+38)
 #endif
 
+/* do not redefine functions from C99 or POSIX.1-2001 */
+#if !(defined(_ISOC99_SOURCE) || (defined(_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200112L))
+
 #ifndef sqrtf
 #define sqrtf(a) ((float)sqrt(a))
 #endif
@@ -129,6 +132,8 @@
 #define hypotf(a, b) ((float)hypot(a, b))
 #endif
 
+#endif  /* C99 or POSIX.1-2001 */
+
 #ifdef WIN32
 #  ifndef FREE_WINDOWS
 #    define isnan(n) _isnan(n)
@@ -174,6 +179,11 @@
 #include "intern/math_base_inline.c"
 #endif
 
+#ifdef BLI_MATH_GCC_WARN_PRAGMA
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wredundant-decls"
+#endif
+
 /******************************* Float ******************************/
 
 MINLINE float sqrt3f(float f);
@@ -212,5 +222,30 @@ extern double round(double x);
 
 double double_round(double x, int ndigits);
 
-#endif /* __BLI_MATH_BASE_H__ */
+#ifdef BLI_MATH_GCC_WARN_PRAGMA
+#  pragma GCC diagnostic pop
+#endif
 
+/* asserts, some math functions expect normalized inputs
+ * check the vector is unit length, or zero length (which can't be helped in some cases).
+ */
+#ifdef DEBUG
+/* note: 0.0001 is too small becaues normals may be converted from short's: see [#34322] */
+#  define BLI_ASSERT_UNIT_EPSILON 0.0002f
+#  define BLI_ASSERT_UNIT_V3(v)  {                                            \
+	const float _test_unit = len_squared_v3(v);                               \
+	BLI_assert((fabsf(_test_unit - 1.0f) < BLI_ASSERT_UNIT_EPSILON) ||        \
+	           (fabsf(_test_unit)        < BLI_ASSERT_UNIT_EPSILON));         \
+} (void)0
+
+#  define BLI_ASSERT_UNIT_V2(v)  {                                            \
+	const float _test_unit = len_squared_v2(v);                               \
+	BLI_assert((fabsf(_test_unit - 1.0f) < BLI_ASSERT_UNIT_EPSILON) ||        \
+	           (fabsf(_test_unit)        < BLI_ASSERT_UNIT_EPSILON));         \
+} (void)0
+#else
+#  define BLI_ASSERT_UNIT_V2(v) (void)0
+#  define BLI_ASSERT_UNIT_V3(v) (void)0
+#endif
+
+#endif /* __BLI_MATH_BASE_H__ */

@@ -17,10 +17,10 @@ set(SRC
 	attribute.cpp
 	background.cpp
 	buffers.cpp
+	bssrdf.cpp
 	camera.cpp
 	film.cpp
 	# film_response.cpp (code unused)
-	filter.cpp
 	graph.cpp
 	image.cpp
 	integrator.cpp
@@ -31,11 +31,13 @@ set(SRC
 	object.cpp
 	osl.cpp
 	particles.cpp
+	curves.cpp
 	scene.cpp
 	session.cpp
 	shader.cpp
 	sobol.cpp
 	svm.cpp
+	tables.cpp
 	tile.cpp
 )
 
@@ -43,10 +45,10 @@ set(SRC_HEADERS
 	attribute.h
 	background.h
 	buffers.h
+	bssrdf.h
 	camera.h
 	film.h
 	# film_response.h (code unused)
-	filter.h
 	graph.h
 	image.h
 	integrator.h
@@ -56,11 +58,13 @@ set(SRC_HEADERS
 	object.h
 	osl.h
 	particles.h
+	curves.h
 	scene.h
 	session.h
 	shader.h
 	sobol.h
 	svm.h
+	tables.h
 	tile.h
 )
 

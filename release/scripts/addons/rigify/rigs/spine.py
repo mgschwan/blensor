@@ -20,19 +20,20 @@
 
 """ TODO:
     - Add parameters for bone transform alphas.
+    - Add IK spine controls
 """
 
 from math import floor
 
 import bpy
 from mathutils import Vector
-from rigify.utils import MetarigError
-from rigify.utils import copy_bone, new_bone, flip_bone, put_bone
-from rigify.utils import connected_children_names
-from rigify.utils import strip_org, make_mechanism_name, make_deformer_name
-from rigify.utils import obj_to_bone, create_circle_widget, create_compass_widget
 from rna_prop_ui import rna_idprop_ui_prop_get
 
+from ..utils import MetarigError
+from ..utils import copy_bone, new_bone, flip_bone, put_bone
+from ..utils import connected_children_names
+from ..utils import strip_org, make_mechanism_name, make_deformer_name
+from ..utils import create_circle_widget, create_cube_widget
 
 script = """
 main = "%s"
@@ -73,6 +74,7 @@ class Rig:
         self.control_indices.sort()
 
         self.pivot_rest = self.params.rest_pivot_slide
+        # Clamp pivot_rest to within the middle bones of the spine
         self.pivot_rest = max(self.pivot_rest, 1.0 / len(self.org_bones))
         self.pivot_rest = min(self.pivot_rest, 1.0 - (1.0 / len(self.org_bones)))
 
@@ -148,21 +150,11 @@ class Rig:
         # Create main control bone
         main_control = new_bone(self.obj, self.params.spine_main_control_name)
 
-        # Create main control WGT bones
-        main_wgt1 = new_bone(self.obj, make_mechanism_name(self.params.spine_main_control_name + ".01"))
-        main_wgt2 = new_bone(self.obj, make_mechanism_name(self.params.spine_main_control_name + ".02"))
-
         eb = self.obj.data.edit_bones
 
         # Parent the main control
         eb[main_control].use_connect = False
         eb[main_control].parent = eb[self.org_bones[0]].parent
-
-        # Parent the main WGTs
-        eb[main_wgt1].use_connect = False
-        eb[main_wgt1].parent = eb[main_control]
-        eb[main_wgt2].use_connect = False
-        eb[main_wgt2].parent = eb[main_wgt1]
 
         # Parent the controls and sub-controls
         for name, subname in zip(controls, subcontrols):
@@ -181,14 +173,7 @@ class Rig:
         put_bone(self.obj, main_control, pivot_rest_pos)
         eb[main_control].length = sum([eb[b].length for b in self.org_bones]) / 2
 
-        # Position the main WGTs
-        eb[main_wgt1].tail = (0.0, 0.0, sum([eb[b].length for b in self.org_bones]) / 4)
-        eb[main_wgt2].length = sum([eb[b].length for b in self.org_bones]) / 4
-        put_bone(self.obj, main_wgt1, pivot_rest_pos)
-        put_bone(self.obj, main_wgt2, pivot_rest_pos)
-
         # Position the controls and sub-controls
-        pos = eb[controls[0]].head.copy()
         for name, subname in zip(controls, subcontrols):
             put_bone(self.obj, name, pivot_rest_pos)
             put_bone(self.obj, subname, pivot_rest_pos)
@@ -379,11 +364,6 @@ class Rig:
         con.target = self.obj
         con.subtarget = rev_bones[0]
 
-        con = pb[main_wgt1].constraints.new('COPY_ROTATION')
-        con.name = "copy_rotation"
-        con.target = self.obj
-        con.subtarget = rev_bones[0]
-
         # Slide constraints
         i = 1
         tot = len(rev_bones)
@@ -406,26 +386,6 @@ class Rig:
             mod = fcurve.modifiers[0]
             mod.poly_order = 1
             mod.coefficients[0] = 1 - i
-            mod.coefficients[1] = tot
-
-            # Main WGT
-            con = pb[main_wgt1].constraints.new('COPY_ROTATION')
-            con.name = "slide." + str(i)
-            con.target = self.obj
-            con.subtarget = rb
-
-            # Driver
-            fcurve = con.driver_add("influence")
-            driver = fcurve.driver
-            var = driver.variables.new()
-            driver.type = 'AVERAGE'
-            var.name = "slide"
-            var.targets[0].id_type = 'OBJECT'
-            var.targets[0].id = self.obj
-            var.targets[0].data_path = main_control_p.path_from_id() + '["pivot_slide"]'
-            mod = fcurve.modifiers[0]
-            mod.poly_order = 1
-            mod.coefficients[0] = 1.5 - i
             mod.coefficients[1] = tot
 
             i += 1
@@ -482,31 +442,23 @@ class Rig:
 
         # Control appearance
         # Main
-        pb[main_control].custom_shape_transform = pb[main_wgt2]
-        w = create_compass_widget(self.obj, main_control)
-        if w != None:
-            obj_to_bone(w, self.obj, main_wgt2)
+        create_cube_widget(self.obj, main_control)
 
         # Spines
         for name, i in zip(controls[1:-1], self.control_indices[1:-1]):
             pb[name].custom_shape_transform = pb[self.org_bones[i]]
             # Create control widgets
-            w = create_circle_widget(self.obj, name, radius=1.0, head_tail=0.5, with_line=True)
-            if w != None:
-                obj_to_bone(w, self.obj, self.org_bones[i])
+            create_circle_widget(self.obj, name, radius=1.0, head_tail=0.5, with_line=True, bone_transform_name=self.org_bones[i])
+
         # Hips
         pb[controls[0]].custom_shape_transform = pb[self.org_bones[0]]
         # Create control widgets
-        w = create_circle_widget(self.obj, controls[0], radius=1.0, head_tail=0.5, with_line=True)
-        if w != None:
-            obj_to_bone(w, self.obj, self.org_bones[0])
+        create_circle_widget(self.obj, controls[0], radius=1.0, head_tail=0.5, with_line=True, bone_transform_name=self.org_bones[0])
 
         # Ribs
         pb[controls[-1]].custom_shape_transform = pb[self.org_bones[-1]]
         # Create control widgets
-        w = create_circle_widget(self.obj, controls[-1], radius=1.0, head_tail=0.5, with_line=True)
-        if w != None:
-            obj_to_bone(w, self.obj, self.org_bones[-1])
+        create_circle_widget(self.obj, controls[-1], radius=1.0, head_tail=0.5, with_line=True, bone_transform_name=self.org_bones[-1])
 
         # Layers
         pb[main_control].bone.layers = pb[self.org_bones[0]].bone.layers
@@ -525,94 +477,91 @@ class Rig:
         controls_string = ", ".join(["'" + x + "'" for x in controls[1:]])
         return [script % (controls[0], controls_string)]
 
-    @classmethod
-    def add_parameters(self, group):
-        """ Add the parameters of this rig type to the
-            RigifyParameters PropertyGroup
-        """
-        group.spine_main_control_name = bpy.props.StringProperty(name="Main control name", default="torso", description="Name that the main control bone should be given")
-        group.rest_pivot_slide = bpy.props.FloatProperty(name="Rest Pivot Slide", default=0.0, min=0.0, max=1.0, soft_min=0.0, soft_max=1.0, description="The pivot slide value in the rest pose")
-        group.chain_bone_controls = bpy.props.StringProperty(name="Control bone list", default="", description="Define which bones have controls")
 
-    @classmethod
-    def parameters_ui(self, layout, obj, bone):
-        """ Create the ui for the rig parameters.
-        """
-        params = obj.pose.bones[bone].rigify_parameters[0]
+def add_parameters(params):
+    """ Add the parameters of this rig type to the
+        RigifyParameters PropertyGroup
+    """
+    params.spine_main_control_name = bpy.props.StringProperty(name="Main control name", default="torso", description="Name that the main control bone should be given")
+    params.rest_pivot_slide = bpy.props.FloatProperty(name="Rest Pivot Slide", default=0.0, min=0.0, max=1.0, soft_min=0.0, soft_max=1.0, description="The pivot slide value in the rest pose")
+    params.chain_bone_controls = bpy.props.StringProperty(name="Control bone list", default="", description="Define which bones have controls")
 
-        r = layout.row()
-        r.prop(params, "spine_main_control_name")
 
-        r = layout.row()
-        r.prop(params, "rest_pivot_slide", slider=True)
+def parameters_ui(layout, params):
+    """ Create the ui for the rig parameters.
+    """
+    r = layout.row()
+    r.prop(params, "spine_main_control_name")
 
-        r = layout.row()
-        r.prop(params, "chain_bone_controls")
+    r = layout.row()
+    r.prop(params, "rest_pivot_slide", slider=True)
 
-    @classmethod
-    def create_sample(self, obj):
-        # generated by rigify.utils.write_metarig
-        bpy.ops.object.mode_set(mode='EDIT')
-        arm = obj.data
+    r = layout.row()
+    r.prop(params, "chain_bone_controls")
 
-        bones = {}
 
-        bone = arm.edit_bones.new('hips')
-        bone.head[:] = 0.0000, 0.0000, 0.0000
-        bone.tail[:] = -0.0000, -0.0590, 0.2804
-        bone.roll = -0.0000
-        bone.use_connect = False
-        bones['hips'] = bone.name
-        bone = arm.edit_bones.new('spine')
-        bone.head[:] = -0.0000, -0.0590, 0.2804
-        bone.tail[:] = 0.0000, 0.0291, 0.5324
-        bone.roll = 0.0000
-        bone.use_connect = True
-        bone.parent = arm.edit_bones[bones['hips']]
-        bones['spine'] = bone.name
-        bone = arm.edit_bones.new('ribs')
-        bone.head[:] = 0.0000, 0.0291, 0.5324
-        bone.tail[:] = -0.0000, 0.0000, 1.0000
-        bone.roll = -0.0000
-        bone.use_connect = True
-        bone.parent = arm.edit_bones[bones['spine']]
-        bones['ribs'] = bone.name
+def create_sample(obj):
+    # generated by rigify.utils.write_metarig
+    bpy.ops.object.mode_set(mode='EDIT')
+    arm = obj.data
 
-        bpy.ops.object.mode_set(mode='OBJECT')
-        pbone = obj.pose.bones[bones['hips']]
-        pbone.rigify_type = 'spine'
-        pbone.lock_location = (False, False, False)
-        pbone.lock_rotation = (False, False, False)
-        pbone.lock_rotation_w = False
-        pbone.lock_scale = (False, False, False)
-        pbone.rotation_mode = 'QUATERNION'
-        pbone = obj.pose.bones[bones['spine']]
-        pbone.rigify_type = ''
-        pbone.lock_location = (False, False, False)
-        pbone.lock_rotation = (False, False, False)
-        pbone.lock_rotation_w = False
-        pbone.lock_scale = (False, False, False)
-        pbone.rotation_mode = 'QUATERNION'
-        pbone = obj.pose.bones[bones['ribs']]
-        pbone.rigify_type = ''
-        pbone.lock_location = (False, False, False)
-        pbone.lock_rotation = (False, False, False)
-        pbone.lock_rotation_w = False
-        pbone.lock_scale = (False, False, False)
-        pbone.rotation_mode = 'QUATERNION'
-        pbone = obj.pose.bones[bones['hips']]
-        pbone['rigify_type'] = 'spine'
-        pbone.rigify_parameters.add()
-        pbone.rigify_parameters[0].chain_bone_controls = "1, 2, 3"
+    bones = {}
 
-        bpy.ops.object.mode_set(mode='EDIT')
-        for bone in arm.edit_bones:
-            bone.select = False
-            bone.select_head = False
-            bone.select_tail = False
-        for b in bones:
-            bone = arm.edit_bones[bones[b]]
-            bone.select = True
-            bone.select_head = True
-            bone.select_tail = True
-            arm.edit_bones.active = bone
+    bone = arm.edit_bones.new('hips')
+    bone.head[:] = 0.0000, 0.0000, 0.0000
+    bone.tail[:] = -0.0000, -0.0590, 0.2804
+    bone.roll = -0.0000
+    bone.use_connect = False
+    bones['hips'] = bone.name
+    bone = arm.edit_bones.new('spine')
+    bone.head[:] = -0.0000, -0.0590, 0.2804
+    bone.tail[:] = 0.0000, 0.0291, 0.5324
+    bone.roll = 0.0000
+    bone.use_connect = True
+    bone.parent = arm.edit_bones[bones['hips']]
+    bones['spine'] = bone.name
+    bone = arm.edit_bones.new('ribs')
+    bone.head[:] = 0.0000, 0.0291, 0.5324
+    bone.tail[:] = -0.0000, 0.0000, 1.0000
+    bone.roll = -0.0000
+    bone.use_connect = True
+    bone.parent = arm.edit_bones[bones['spine']]
+    bones['ribs'] = bone.name
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    pbone = obj.pose.bones[bones['hips']]
+    pbone.rigify_type = 'spine'
+    pbone.lock_location = (False, False, False)
+    pbone.lock_rotation = (False, False, False)
+    pbone.lock_rotation_w = False
+    pbone.lock_scale = (False, False, False)
+    pbone.rotation_mode = 'QUATERNION'
+    pbone = obj.pose.bones[bones['spine']]
+    pbone.rigify_type = ''
+    pbone.lock_location = (False, False, False)
+    pbone.lock_rotation = (False, False, False)
+    pbone.lock_rotation_w = False
+    pbone.lock_scale = (False, False, False)
+    pbone.rotation_mode = 'QUATERNION'
+    pbone = obj.pose.bones[bones['ribs']]
+    pbone.rigify_type = ''
+    pbone.lock_location = (False, False, False)
+    pbone.lock_rotation = (False, False, False)
+    pbone.lock_rotation_w = False
+    pbone.lock_scale = (False, False, False)
+    pbone.rotation_mode = 'QUATERNION'
+    pbone = obj.pose.bones[bones['hips']]
+    pbone['rigify_type'] = 'spine'
+    pbone.rigify_parameters.chain_bone_controls = "1, 2, 3"
+
+    bpy.ops.object.mode_set(mode='EDIT')
+    for bone in arm.edit_bones:
+        bone.select = False
+        bone.select_head = False
+        bone.select_tail = False
+    for b in bones:
+        bone = arm.edit_bones[bones[b]]
+        bone.select = True
+        bone.select_head = True
+        bone.select_tail = True
+        arm.edit_bones.active = bone

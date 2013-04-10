@@ -43,12 +43,12 @@ if builder.find('scons') != -1:
     os.chdir('../blender')
     scons_options = ['BF_QUICK=slnt', 'BUILDBOT_BRANCH=' + branch, 'buildslave', 'BF_FANCY=False']
 
-    if builder.find('linux') != -1:
-        buildbot_dir = os.path.dirname(os.path.realpath(__file__))
-        config_dir = os.path.join(buildbot_dir, 'config')
-        build_dir = os.path.join('..', 'build', builder)
-        install_dir = os.path.join('..', 'install', builder)
+    buildbot_dir = os.path.dirname(os.path.realpath(__file__))
+    config_dir = os.path.join(buildbot_dir, 'config')
+    build_dir = os.path.join('..', 'build', builder)
+    install_dir = os.path.join('..', 'install', builder)
 
+    if builder.find('linux') != -1:
         scons_options += ['WITH_BF_NOBLENDER=True', 'WITH_BF_PLAYER=False',
                           'BF_BUILDDIR=' + build_dir,
                           'BF_INSTALLDIR=' + install_dir,
@@ -57,17 +57,13 @@ if builder.find('scons') != -1:
         config = None
         bits = None
 
-        if builder.endswith('linux_glibc27_x86_64_scons'):
-            config = 'user-config-glibc27-x86_64.py'
-            bits = 64
-        elif builder.endswith('linux_glibc27_i386_scons'):
-            config = 'user-config-glibc27-i686.py'
-            bits = 32
         if builder.endswith('linux_glibc211_x86_64_scons'):
             config = 'user-config-glibc211-x86_64.py'
+            chroot_name = 'buildbot_squeeze_x86_64'
             bits = 64
         elif builder.endswith('linux_glibc211_i386_scons'):
             config = 'user-config-glibc211-i686.py'
+            chroot_name = 'buildbot_squeeze_i686'
             bits = 32
 
         if config is not None:
@@ -76,7 +72,7 @@ if builder.find('scons') != -1:
 
         blender = os.path.join(install_dir, 'blender')
         blenderplayer = os.path.join(install_dir, 'blenderplayer')
-        subprocess.call(['strip', '--strip-all', blender, blenderplayer])
+        subprocess.call(['schroot', '-c', chroot_name, '--', 'strip', '--strip-all', blender, blenderplayer])
 
         extra = '/' + os.path.join('home', 'sources', 'release-builder', 'extra')
         mesalibs = os.path.join(extra, 'mesalibs' + str(bits) + '.tar.bz2')
@@ -86,7 +82,7 @@ if builder.find('scons') != -1:
         os.system('cp %s %s' % (software_gl, install_dir))
         os.system('chmod 755 %s' % (os.path.join(install_dir, 'blender-softwaregl')))
 
-        retcode = subprocess.call(['python', 'scons/scons.py'] + scons_options)
+        retcode = subprocess.call(['schroot', '-c', chroot_name, '--', 'python', 'scons/scons.py'] + scons_options)
 
         sys.exit(retcode)
     else:
@@ -96,11 +92,21 @@ if builder.find('scons') != -1:
             if builder.find('win64') != -1:
                 bitness = '64'
 
+            scons_options.append('BF_INSTALLDIR=' + install_dir)
+            scons_options.append('BF_BUILDDIR=' + build_dir)
             scons_options.append('BF_BITNESS=' + bitness)
             scons_options.append('WITH_BF_CYCLES_CUDA_BINARIES=True')
             scons_options.append('BF_CYCLES_CUDA_NVCC=nvcc.exe')
             if builder.find('mingw') != -1:
                 scons_options.append('BF_TOOLSET=mingw')
+
+        elif builder.find('mac') != -1:
+            if builder.find('x86_64') != -1:
+                config = 'user-config-mac-x86_64.py'
+            else:
+                config = 'user-config-mac-i386.py'
+
+            scons_options.append('BF_CONFIG=' + os.path.join(config_dir, config))
 
         retcode = subprocess.call(['python', 'scons/scons.py'] + scons_options)
         sys.exit(retcode)

@@ -27,8 +27,8 @@
  *  \ingroup bke
  */
 
-
 #include <string.h>
+#include <stdlib.h>
 #include <stddef.h>
 
 #include "MEM_guardedalloc.h"
@@ -40,19 +40,21 @@
 #include "DNA_windowmanager_types.h"
 #include "DNA_object_types.h"
 
-#include "RNA_access.h"
-
 #include "BLI_listbase.h"
 #include "BLI_string.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "BKE_context.h"
 #include "BKE_main.h"
 #include "BKE_screen.h"
 
+#include "RNA_access.h"
+
 #ifdef WITH_PYTHON
-#include "BPY_extern.h"
+#  include "BPY_extern.h"
 #endif
 
 /* struct */
@@ -327,10 +329,13 @@ static void *ctx_data_pointer_get(const bContext *C, const char *member)
 {
 	bContextDataResult result;
 
-	if (C && ctx_data_get((bContext *)C, member, &result) == 1)
+	if (C && ctx_data_get((bContext *)C, member, &result) == 1) {
+		BLI_assert(result.type == CTX_DATA_TYPE_POINTER);
 		return result.ptr.data;
-
-	return NULL;
+	}
+	else {
+		return NULL;
+	}
 }
 
 static int ctx_data_pointer_verify(const bContext *C, const char *member, void **pointer)
@@ -343,6 +348,7 @@ static int ctx_data_pointer_verify(const bContext *C, const char *member, void *
 		return 1;
 	}
 	else if (ctx_data_get((bContext *)C, member, &result) == 1) {
+		BLI_assert(result.type == CTX_DATA_TYPE_POINTER);
 		*pointer = result.ptr.data;
 		return 1;
 	}
@@ -357,6 +363,7 @@ static int ctx_data_collection_get(const bContext *C, const char *member, ListBa
 	bContextDataResult result;
 
 	if (ctx_data_get((bContext *)C, member, &result) == 1) {
+		BLI_assert(result.type == CTX_DATA_TYPE_COLLECTION);
 		*list = result.list;
 		return 1;
 	}
@@ -371,10 +378,13 @@ PointerRNA CTX_data_pointer_get(const bContext *C, const char *member)
 {
 	bContextDataResult result;
 
-	if (ctx_data_get((bContext *)C, member, &result) == 1)
+	if (ctx_data_get((bContext *)C, member, &result) == 1) {
+		BLI_assert(result.type == CTX_DATA_TYPE_POINTER);
 		return result.ptr;
-	else
+	}
+	else {
 		return PointerRNA_NULL;
+	}
 }
 
 PointerRNA CTX_data_pointer_get_type(const bContext *C, const char *member, StructRNA *type)
@@ -399,6 +409,7 @@ ListBase CTX_data_collection_get(const bContext *C, const char *member)
 	bContextDataResult result;
 
 	if (ctx_data_get((bContext *)C, member, &result) == 1) {
+		BLI_assert(result.type == CTX_DATA_TYPE_COLLECTION);
 		return result.list;
 	}
 	else {
@@ -427,11 +438,11 @@ int CTX_data_get(const bContext *C, const char *member, PointerRNA *r_ptr, ListB
 	return ret;
 }
 
-static void data_dir_add(ListBase *lb, const char *member)
+static void data_dir_add(ListBase *lb, const char *member, const short use_all)
 {
 	LinkData *link;
 	
-	if (strcmp(member, "scene") == 0) /* exception */
+	if ((use_all == FALSE) && strcmp(member, "scene") == 0) /* exception */
 		return;
 
 	if (BLI_findstring(lb, member, offsetof(LinkData, data)))
@@ -442,7 +453,13 @@ static void data_dir_add(ListBase *lb, const char *member)
 	BLI_addtail(lb, link);
 }
 
-ListBase CTX_data_dir_get(const bContext *C)
+/**
+ * \param C Context
+ * \param use_store Use 'C->wm.store'
+ * \param use_rna Use Include the properties from 'RNA_Context'
+ * \param use_all Don't skip values (currently only "scene")
+ */
+ListBase CTX_data_dir_get_ex(const bContext *C, const short use_store, const short use_rna, const short use_all)
 {
 	bContextDataResult result;
 	ListBase lb;
@@ -453,11 +470,33 @@ ListBase CTX_data_dir_get(const bContext *C)
 
 	memset(&lb, 0, sizeof(lb));
 
-	if (C->wm.store) {
+	if (use_rna) {
+		char name[256], *nameptr;
+		int namelen;
+
+		PropertyRNA *iterprop;
+		PointerRNA ctx_ptr;
+		RNA_pointer_create(NULL, &RNA_Context, (void *)C, &ctx_ptr);
+
+		iterprop = RNA_struct_iterator_property(ctx_ptr.type);
+
+		RNA_PROP_BEGIN (&ctx_ptr, itemptr, iterprop)
+		{
+			nameptr = RNA_struct_name_get_alloc(&itemptr, name, sizeof(name), &namelen);
+			data_dir_add(&lb, name, use_all);
+			if (nameptr) {
+				if (name != nameptr) {
+					MEM_freeN(nameptr);
+				}
+			}
+		}
+		RNA_PROP_END;
+	}
+	if (use_store && C->wm.store) {
 		bContextStoreEntry *entry;
 
 		for (entry = C->wm.store->entries.first; entry; entry = entry->next)
-			data_dir_add(&lb, entry->name);
+			data_dir_add(&lb, entry->name, use_all);
 	}
 	if ((ar = CTX_wm_region(C)) && ar->type && ar->type->context) {
 		memset(&result, 0, sizeof(result));
@@ -465,7 +504,7 @@ ListBase CTX_data_dir_get(const bContext *C)
 
 		if (result.dir)
 			for (a = 0; result.dir[a]; a++)
-				data_dir_add(&lb, result.dir[a]);
+				data_dir_add(&lb, result.dir[a], use_all);
 	}
 	if ((sa = CTX_wm_area(C)) && sa->type && sa->type->context) {
 		memset(&result, 0, sizeof(result));
@@ -473,7 +512,7 @@ ListBase CTX_data_dir_get(const bContext *C)
 
 		if (result.dir)
 			for (a = 0; result.dir[a]; a++)
-				data_dir_add(&lb, result.dir[a]);
+				data_dir_add(&lb, result.dir[a], use_all);
 	}
 	if ((sc = CTX_wm_screen(C)) && sc->context) {
 		bContextDataCallback cb = sc->context;
@@ -482,10 +521,15 @@ ListBase CTX_data_dir_get(const bContext *C)
 
 		if (result.dir)
 			for (a = 0; result.dir[a]; a++)
-				data_dir_add(&lb, result.dir[a]);
+				data_dir_add(&lb, result.dir[a], use_all);
 	}
 
 	return lb;
+}
+
+ListBase CTX_data_dir_get(const bContext *C)
+{
+	return CTX_data_dir_get_ex(C, TRUE, FALSE, FALSE);
 }
 
 int CTX_data_equals(const char *member, const char *str)
@@ -808,7 +852,7 @@ void CTX_wm_operator_poll_msg_set(bContext *C, const char *msg)
 
 const char *CTX_wm_operator_poll_msg_get(bContext *C)
 {
-	return C->wm.operator_poll_msg;
+	return IFACE_(C->wm.operator_poll_msg);
 }
 
 /* data context */

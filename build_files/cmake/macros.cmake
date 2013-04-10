@@ -143,7 +143,9 @@ macro(blender_source_group
 
 	foreach(_SRC ${sources})
 		get_filename_component(_SRC_EXT ${_SRC} EXT)
-		if((${_SRC_EXT} MATCHES ".h") OR (${_SRC_EXT} MATCHES ".hpp"))
+		if((${_SRC_EXT} MATCHES ".h") OR
+		   (${_SRC_EXT} MATCHES ".hpp") OR
+		   (${_SRC_EXT} MATCHES ".hh"))
 			source_group("Header Files" FILES ${_SRC})
 		else()
 			source_group("Source Files" FILES ${_SRC})
@@ -226,7 +228,7 @@ macro(SETUP_LIBDIRS)
 	if(WITH_OPENAL)
 		link_directories(${OPENAL_LIBPATH})
 	endif()
-	if(WITH_JACK)
+	if(WITH_JACK AND NOT WITH_JACK_DYNLOAD)
 		link_directories(${JACK_LIBPATH})
 	endif()
 	if(WITH_CODEC_SNDFILE)
@@ -282,14 +284,16 @@ macro(setup_liblinks
 	if(WITH_SYSTEM_GLEW)
 		target_link_libraries(${target} ${GLEW_LIBRARY})
 	endif()
-
+	if(WITH_BULLET AND WITH_SYSTEM_BULLET)
+		target_link_libraries(${target} ${BULLET_LIBRARIES})
+	endif()
 	if(WITH_OPENAL)
 		target_link_libraries(${target} ${OPENAL_LIBRARY})
 	endif()
 	if(WITH_FFTW3)
 		target_link_libraries(${target} ${FFTW3_LIBRARIES})
 	endif()
-	if(WITH_JACK)
+	if(WITH_JACK AND NOT WITH_JACK_DYNLOAD)
 		target_link_libraries(${target} ${JACK_LIBRARIES})
 	endif()
 	if(WITH_CODEC_SNDFILE)
@@ -441,6 +445,15 @@ macro(TEST_SSE_SUPPORT
 	unset(CMAKE_REQUIRED_FLAGS)
 endmacro()
 
+macro(TEST_STDBOOL_SUPPORT)
+	# This program will compile correctly if and only if
+	# this C compiler supports C99 stdbool.
+	check_c_source_runs("
+		#include <stdbool.h>
+		int main(void) { return (int)false; }"
+	HAVE_STDBOOL_H)
+endmacro()
+
 # when we have warnings as errors applied globally this
 # needs to be removed for some external libs which we dont maintain.
 
@@ -476,8 +489,10 @@ macro(remove_strict_flags)
 		remove_cc_flag("-Wmissing-prototypes")
 		remove_cc_flag("-Wunused-parameter")
 		remove_cc_flag("-Wwrite-strings")
+		remove_cc_flag("-Wredundant-decls")
 		remove_cc_flag("-Wundef")
 		remove_cc_flag("-Wshadow")
+		remove_cc_flag("-Wold-style-definition")
 		remove_cc_flag("-Werror=[^ ]+")
 		remove_cc_flag("-Werror")
 
@@ -488,7 +503,11 @@ macro(remove_strict_flags)
 	if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 		remove_cc_flag("-Wunused-parameter")
 		remove_cc_flag("-Wunused-variable")
+		remove_cc_flag("-Werror=[^ ]+")
 		remove_cc_flag("-Werror")
+
+		# negate flags implied by '-Wall'
+		add_cc_flag("${CC_REMOVE_STRICT_FLAGS}")
 	endif()
 
 	if(MSVC)

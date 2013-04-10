@@ -38,26 +38,30 @@ def create_and_link_mesh(name, faces, points):
 
     obj = bpy.data.objects.new(name, mesh)
     scene.objects.link(obj)
+    scene.objects.active = obj
     obj.select = True
 
 
-def faces_from_mesh(ob, apply_modifier=False, triangulate=True):
+def faces_from_mesh(ob, use_mesh_modifiers=False, triangulate=True):
     """
     From an object, return a generator over a list of faces.
 
     Each faces is a list of his vertexes. Each vertex is a tuple of
     his coordinate.
 
-    apply_modifier
+    use_mesh_modifiers
         Apply the preview modifier to the returned liste
 
     triangulate
         Split the quad into two triangles
     """
 
+    # get the editmode data
+    ob.update_from_editmode()
+
     # get the modifiers
     try:
-        mesh = ob.to_mesh(bpy.context.scene, apply_modifier, "PREVIEW")
+        mesh = ob.to_mesh(bpy.context.scene, use_mesh_modifiers, "PREVIEW")
     except RuntimeError:
         raise StopIteration
 

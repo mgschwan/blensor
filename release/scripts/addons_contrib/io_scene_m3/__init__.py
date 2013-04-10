@@ -22,7 +22,7 @@ bl_info = {
     'name': 'Import Blizzard M3 format (.m3)',
     'author': 'Cory Perry',
     'version': (0, 2, 1),
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     'location': 'File > Import > Blizzard M3 (.m3)',
     'description': 'Imports the Blizzard M3 format (.m3)',
     'warning': 'Broken',

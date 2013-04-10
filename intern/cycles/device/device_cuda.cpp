@@ -109,11 +109,11 @@ public:
 		}
 	}
 
-#ifdef NDEBUG
+/*#ifdef NDEBUG
 #define cuda_abort()
 #else
 #define cuda_abort() abort()
-#endif
+#endif*/
 
 #define cuda_assert(stmt) \
 	{ \
@@ -124,23 +124,25 @@ public:
 			if(error_msg == "") \
 				error_msg = message; \
 			fprintf(stderr, "%s\n", message.c_str()); \
-			cuda_abort(); \
+			/*cuda_abort();*/ \
 		} \
 	}
 
-	bool cuda_error(CUresult result)
+	bool cuda_error_(CUresult result, const string& stmt)
 	{
 		if(result == CUDA_SUCCESS)
 			return false;
 
-		string message = string_printf("CUDA error: %s", cuda_error_string(result));
+		string message = string_printf("CUDA error at %s: %s", stmt.c_str(), cuda_error_string(result));
 		if(error_msg == "")
 			error_msg = message;
 		fprintf(stderr, "%s\n", message.c_str());
 		return true;
 	}
 
-	void cuda_error(const string& message)
+#define cuda_error(stmt) cuda_error_(stmt, #stmt)
+
+	void cuda_error_message(const string& message)
 	{
 		if(error_msg == "")
 			error_msg = message;
@@ -187,7 +189,7 @@ public:
 			}
 		}
 
-		if(cuda_error(result))
+		if(cuda_error_(result, "cuCtxCreate"))
 			return;
 
 		cuda_pop_context();
@@ -207,8 +209,8 @@ public:
 			int major, minor;
 			cuDeviceComputeCapability(&major, &minor, cuDevId);
 
-			if(major <= 1 && minor <= 2) {
-				cuda_error(string_printf("CUDA device supported only with compute capability 1.3 or up, found %d.%d.", major, minor));
+			if(major < 2) {
+				cuda_error_message(string_printf("CUDA device supported only with compute capability 2.0 or up, found %d.%d.", major, minor));
 				return false;
 			}
 		}
@@ -238,18 +240,21 @@ public:
 		if(path_exists(cubin))
 			return cubin;
 
-#if defined(WITH_CUDA_BINARIES) && defined(_WIN32)
-		if(major <= 1 && minor <= 2)
-			cuda_error(string_printf("CUDA device supported only compute capability 1.3 or up, found %d.%d.", major, minor));
-		else
-			cuda_error(string_printf("CUDA binary kernel for this graphics card compute capability (%d.%d) not found.", major, minor));
-		return "";
-#else
+#ifdef _WIN32
+		if(cuHavePrecompiledKernels()) {
+			if(major < 2)
+				cuda_error_message(string_printf("CUDA device requires compute capability 2.0 or up, found %d.%d. Your GPU is not supported.", major, minor));
+			else
+				cuda_error_message(string_printf("CUDA binary kernel for this graphics card compute capability (%d.%d) not found.", major, minor));
+			return "";
+		}
+#endif
+
 		/* if not, find CUDA compiler */
 		string nvcc = cuCompilerPath();
 
 		if(nvcc == "") {
-			cuda_error("CUDA nvcc compiler not found. Install CUDA toolkit in default location.");
+			cuda_error_message("CUDA nvcc compiler not found. Install CUDA toolkit in default location.");
 			return "";
 		}
 
@@ -269,20 +274,19 @@ public:
 			nvcc.c_str(), major, minor, machine, kernel.c_str(), cubin.c_str(), maxreg, include.c_str());
 
 		if(system(command.c_str()) == -1) {
-			cuda_error("Failed to execute compilation command, see console for details.");
+			cuda_error_message("Failed to execute compilation command, see console for details.");
 			return "";
 		}
 
 		/* verify if compilation succeeded */
 		if(!path_exists(cubin)) {
-			cuda_error("CUDA kernel compilation failed, see console for details.");
+			cuda_error_message("CUDA kernel compilation failed, see console for details.");
 			return "";
 		}
 
 		printf("Kernel compilation finished in %.2lfs.\n", time_dt() - starttime);
 
 		return cubin;
-#endif
 	}
 
 	bool load_kernels(bool experimental)
@@ -290,7 +294,8 @@ public:
 		/* check if cuda init succeeded */
 		if(cuContext == 0)
 			return false;
-
+		
+		/* check if GPU is supported with current feature set */
 		if(!support_device(experimental))
 			return false;
 
@@ -304,8 +309,8 @@ public:
 		cuda_push_context();
 
 		CUresult result = cuModuleLoad(&cuModule, cubin.c_str());
-		if(cuda_error(result))
-			cuda_error(string_printf("Failed loading CUDA kernel %s.", cubin.c_str()));
+		if(cuda_error_(result, "cuModuleLoad"))
+			cuda_error_message(string_printf("Failed loading CUDA kernel %s.", cubin.c_str()));
 
 		cuda_pop_context();
 
@@ -326,7 +331,8 @@ public:
 	void mem_copy_to(device_memory& mem)
 	{
 		cuda_push_context();
-		cuda_assert(cuMemcpyHtoD(cuda_device_ptr(mem.device_pointer), (void*)mem.data_pointer, mem.memory_size()))
+		if(mem.device_pointer)
+			cuda_assert(cuMemcpyHtoD(cuda_device_ptr(mem.device_pointer), (void*)mem.data_pointer, mem.memory_size()))
 		cuda_pop_context();
 	}
 
@@ -336,8 +342,13 @@ public:
 		size_t size = elem*w*h;
 
 		cuda_push_context();
-		cuda_assert(cuMemcpyDtoH((uchar*)mem.data_pointer + offset,
-			(CUdeviceptr)((uchar*)mem.device_pointer + offset), size))
+		if(mem.device_pointer) {
+			cuda_assert(cuMemcpyDtoH((uchar*)mem.data_pointer + offset,
+				(CUdeviceptr)((uchar*)mem.device_pointer + offset), size))
+		}
+		else {
+			memset((char*)mem.data_pointer + offset, 0, size);
+		}
 		cuda_pop_context();
 	}
 
@@ -346,7 +357,8 @@ public:
 		memset((void*)mem.data_pointer, 0, mem.memory_size());
 
 		cuda_push_context();
-		cuda_assert(cuMemsetD8(cuda_device_ptr(mem.device_pointer), 0, mem.memory_size()))
+		if(mem.device_pointer)
+			cuda_assert(cuMemsetD8(cuda_device_ptr(mem.device_pointer), 0, mem.memory_size()))
 		cuda_pop_context();
 	}
 
@@ -390,13 +402,18 @@ public:
 			default: assert(0); return;
 		}
 
-		CUtexref texref;
+		CUtexref texref = NULL;
 
 		cuda_push_context();
 		cuda_assert(cuModuleGetTexRef(&texref, cuModule, name))
 
+		if(!texref) {
+			cuda_pop_context();
+			return;
+		}
+
 		if(interpolation) {
-			CUarray handle;
+			CUarray handle = NULL;
 			CUDA_ARRAY_DESCRIPTOR desc;
 
 			desc.Width = mem.data_width;
@@ -405,6 +422,11 @@ public:
 			desc.NumChannels = mem.data_elements;
 
 			cuda_assert(cuArrayCreate(&handle, &desc))
+
+			if(!handle) {
+				cuda_pop_context();
+				return;
+			}
 
 			if(mem.data_height > 1) {
 				CUDA_MEMCPY2D param;
@@ -481,6 +503,9 @@ public:
 
 	void path_trace(RenderTile& rtile, int sample)
 	{
+		if(have_error())
+			return;
+
 		cuda_push_context();
 
 		CUfunction cuPathTrace;
@@ -546,6 +571,9 @@ public:
 
 	void tonemap(DeviceTask& task, device_ptr buffer, device_ptr rgba)
 	{
+		if(have_error())
+			return;
+
 		cuda_push_context();
 
 		CUfunction cuFilmConvert;
@@ -615,6 +643,9 @@ public:
 
 	void shader(DeviceTask& task)
 	{
+		if(have_error())
+			return;
+
 		cuda_push_context();
 
 		CUfunction cuDisplace;
@@ -709,7 +740,7 @@ public:
 			
 			CUresult result = cuGraphicsGLRegisterBuffer(&pmem.cuPBOresource, pmem.cuPBO, CU_GRAPHICS_MAP_RESOURCE_FLAGS_NONE);
 
-			if(!cuda_error(result)) {
+			if(result == CUDA_SUCCESS) {
 				cuda_pop_context();
 
 				mem.device_pointer = pmem.cuTexId;

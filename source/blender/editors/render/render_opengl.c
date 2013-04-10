@@ -43,6 +43,7 @@
 
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
+#include "DNA_world_types.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -68,6 +69,8 @@
 #include "RNA_access.h"
 #include "RNA_define.h"
 
+#include "BIF_gl.h"
+#include "BIF_glutil.h"
 
 #include "GPU_extensions.h"
 
@@ -192,7 +195,7 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 		}
 
 		if ((scene->r.mode & R_OSA) == 0) {
-			ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, winmat, TRUE, FALSE);
+			ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, winmat, TRUE);
 			GPU_offscreen_read_pixels(oglrender->ofs, GL_FLOAT, rr->rectf);
 		}
 		else {
@@ -206,7 +209,7 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 			BLI_jitter_init(jit_ofs[0], scene->r.osa);
 
 			/* first sample buffer, also initializes 'rv3d->persmat' */
-			ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, winmat, TRUE, FALSE);
+			ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, winmat, TRUE);
 			GPU_offscreen_read_pixels(oglrender->ofs, GL_FLOAT, accum_buffer);
 
 			/* skip the first sample */
@@ -216,7 +219,7 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 				                    (jit_ofs[j][0] * 2.0f) / sizex,
 				                    (jit_ofs[j][1] * 2.0f) / sizey);
 
-				ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, winmat_jitter, TRUE, FALSE);
+				ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, winmat_jitter, TRUE);
 				GPU_offscreen_read_pixels(oglrender->ofs, GL_FLOAT, accum_tmp);
 				add_vn_vn(accum_buffer, accum_tmp, sizex * sizey * sizeof(float));
 			}
@@ -232,7 +235,8 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 	else {
 		/* shouldnt suddenly give errors mid-render but possible */
 		char err_out[256] = "unknown";
-		ImBuf *ibuf_view = ED_view3d_draw_offscreen_imbuf_simple(scene, scene->camera, oglrender->sizex, oglrender->sizey, IB_rectfloat, OB_SOLID, TRUE, FALSE, err_out);
+		ImBuf *ibuf_view = ED_view3d_draw_offscreen_imbuf_simple(scene, scene->camera, oglrender->sizex, oglrender->sizey,
+		                                                         IB_rectfloat, OB_SOLID, FALSE, TRUE, R_ALPHAPREMUL, err_out);
 		camera = scene->camera;
 
 		if (ibuf_view) {
@@ -243,7 +247,13 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 			fprintf(stderr, "%s: failed to get buffer, %s\n", __func__, err_out);
 		}
 	}
-	
+
+	if (scene->r.alphamode == R_ADDSKY) {
+		float sky_color[3];
+		ED_view3d_offscreen_sky_color_get(scene, sky_color);
+		IMB_alpha_under_color_float(rr->rectf, sizex, sizey, sky_color);
+	}
+
 	/* note on color management:
 	 *
 	 * OpenGL renders into sRGB colors, but render buffers are expected to be
@@ -253,11 +263,14 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 	 */
 
 	if (!oglrender->is_sequencer) {
-		/* sequencer has got tricker ocnversion happened above */
-
-		IMB_buffer_float_from_float(rr->rectf, rr->rectf,
-		                            4, IB_PROFILE_LINEAR_RGB, IB_PROFILE_SRGB, FALSE,
-		                            oglrender->sizex, oglrender->sizey, oglrender->sizex, oglrender->sizex);
+		/* sequencer has got trickier conversion happened above
+		 * also assume opengl's space matches byte buffer color space
+		 */
+		if (!glaBufferTransformFromRole_glsl(rr->rectf, oglrender->sizex, oglrender->sizey, COLOR_ROLE_DEFAULT_BYTE)) {
+			IMB_buffer_float_from_float(rr->rectf, rr->rectf,
+			                            4, IB_PROFILE_LINEAR_RGB, IB_PROFILE_SRGB, TRUE,
+			                            oglrender->sizex, oglrender->sizey, oglrender->sizex, oglrender->sizex);
+		}
 	}
 
 	/* rr->rectf is now filled with image data */
@@ -281,7 +294,7 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 				IMB_color_to_bw(ibuf);
 			}
 
-			BKE_makepicstring(name, scene->r.pic, oglrender->bmain->name, scene->r.cfra, scene->r.im_format.imtype, scene->r.scemode & R_EXTENSION, FALSE);
+			BKE_makepicstring(name, scene->r.pic, oglrender->bmain->name, scene->r.cfra, &scene->r.im_format, scene->r.scemode & R_EXTENSION, FALSE);
 			ok = BKE_imbuf_write_as(ibuf, name, &scene->r.im_format, TRUE); /* no need to stamp here */
 			if (ok) printf("OpenGL Render written to '%s'\n", name);
 			else printf("OpenGL Render failed to write '%s'\n", name);
@@ -505,7 +518,7 @@ static int screen_opengl_render_anim_step(bContext *C, wmOperator *op)
 	is_movie = BKE_imtype_is_movie(scene->r.im_format.imtype);
 
 	if (!is_movie) {
-		BKE_makepicstring(name, scene->r.pic, oglrender->bmain->name, scene->r.cfra, scene->r.im_format.imtype, scene->r.scemode & R_EXTENSION, TRUE);
+		BKE_makepicstring(name, scene->r.pic, oglrender->bmain->name, scene->r.cfra, &scene->r.im_format, scene->r.scemode & R_EXTENSION, TRUE);
 
 		if ((scene->r.mode & R_NO_OVERWRITE) && BLI_exists(name)) {
 			printf("skipping existing frame \"%s\"\n", name);
@@ -630,7 +643,7 @@ static int screen_opengl_render_anim_step(bContext *C, wmOperator *op)
 }
 
 
-static int screen_opengl_render_modal(bContext *C, wmOperator *op, wmEvent *event)
+static int screen_opengl_render_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	OGLRender *oglrender = op->customdata;
 	int anim = RNA_boolean_get(op->ptr, "animation");
@@ -669,7 +682,7 @@ static int screen_opengl_render_modal(bContext *C, wmOperator *op, wmEvent *even
 	return OPERATOR_RUNNING_MODAL;
 }
 
-static int screen_opengl_render_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int screen_opengl_render_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	OGLRender *oglrender;
 	int anim = RNA_boolean_get(op->ptr, "animation");

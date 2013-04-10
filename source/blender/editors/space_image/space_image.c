@@ -38,6 +38,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
+#include "BLI_threads.h"
 
 #include "BKE_colortools.h"
 #include "BKE_context.h"
@@ -151,6 +152,7 @@ static SpaceLink *image_new(const bContext *UNUSED(C))
 	simage->spacetype = SPACE_IMAGE;
 	simage->zoom = 1.0f;
 	simage->lock = TRUE;
+	simage->flag = SI_SHOW_GPENCIL | SI_USE_ALPHA;
 
 	simage->iuser.ok = TRUE;
 	simage->iuser.fie_ima = 2;
@@ -251,8 +253,6 @@ static void image_operatortypes(void)
 	WM_operatortype_append(IMAGE_OT_sample_line);
 	WM_operatortype_append(IMAGE_OT_curves_point_set);
 
-	WM_operatortype_append(IMAGE_OT_record_composite);
-
 	WM_operatortype_append(IMAGE_OT_properties);
 	WM_operatortype_append(IMAGE_OT_scopes);
 }
@@ -291,10 +291,16 @@ static void image_keymap(struct wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_out", PADMINUS, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom", MIDDLEMOUSE, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom", MOUSEZOOM, 0, 0, 0);
+	WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom", MOUSEPAN, 0, KM_CTRL, 0);
 
+	/* ctrl now works as well, shift + numpad works as arrow keys on Windows */
+	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD8, KM_PRESS, KM_CTRL, 0)->ptr, "ratio", 8.0f);
+	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD4, KM_PRESS, KM_CTRL, 0)->ptr, "ratio", 4.0f);
+	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD2, KM_PRESS, KM_CTRL, 0)->ptr, "ratio", 2.0f);
 	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD8, KM_PRESS, KM_SHIFT, 0)->ptr, "ratio", 8.0f);
 	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD4, KM_PRESS, KM_SHIFT, 0)->ptr, "ratio", 4.0f);
 	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD2, KM_PRESS, KM_SHIFT, 0)->ptr, "ratio", 2.0f);
+
 	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD1, KM_PRESS, 0, 0)->ptr, "ratio", 1.0f);
 	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD2, KM_PRESS, 0, 0)->ptr, "ratio", 0.5f);
 	RNA_float_set(WM_keymap_add_item(keymap, "IMAGE_OT_view_zoom_ratio", PAD4, KM_PRESS, 0, 0)->ptr, "ratio", 0.25f);
@@ -331,7 +337,7 @@ static void image_keymap(struct wmKeyConfig *keyconf)
 }
 
 /* dropboxes */
-static int image_drop_poll(bContext *UNUSED(C), wmDrag *drag, wmEvent *UNUSED(event))
+static int image_drop_poll(bContext *UNUSED(C), wmDrag *drag, const wmEvent *UNUSED(event))
 {
 	if (drag->type == WM_DRAG_PATH)
 		if (ELEM3(drag->icon, 0, ICON_FILE_IMAGE, ICON_FILE_BLANK)) /* rule might not work? */
@@ -429,6 +435,11 @@ static void image_listener(ScrArea *sa, wmNotifier *wmn)
 	
 	/* context changes */
 	switch (wmn->category) {
+		case NC_WINDOW:
+			/* notifier comes from editing color space */
+			image_scopes_tag_refresh(sa);
+			ED_area_tag_redraw(sa);
+			break;
 		case NC_SCENE:
 			switch (wmn->data) {
 				case ND_FRAME:
@@ -669,22 +680,41 @@ static void image_main_area_draw(const bContext *C, ARegion *ar)
 
 	ED_region_draw_cb_draw(C, ar, REGION_DRAW_POST_VIEW);
 
-	/* Grease Pencil too (in addition to UV's) */
-	draw_image_grease_pencil((bContext *)C, 1); 
+	if (sima->flag & SI_SHOW_GPENCIL) {
+		/* Grease Pencil too (in addition to UV's) */
+		draw_image_grease_pencil((bContext *)C, TRUE);
+	}
 
 	/* sample line */
 	draw_image_sample_line(sima);
 
 	UI_view2d_view_restore(C);
 
-	/* draw Grease Pencil - screen space only */
-	draw_image_grease_pencil((bContext *)C, 0);
+	if (sima->flag & SI_SHOW_GPENCIL) {
+		/* draw Grease Pencil - screen space only */
+		draw_image_grease_pencil((bContext *)C, FALSE);
+	}
 
 	if (mask) {
-		int width, height;
+		Image *image = ED_space_image(sima);
+		int width, height, show_viewer;
 		float aspx, aspy;
+
+		show_viewer = (image && image->source == IMA_SRC_VIEWER);
+
+		if (show_viewer) {
+			/* ED_space_image_get* will acquire image buffer which requires
+			 * lock here by the same reason why lock is needed in draw_image_main
+			 */
+			BLI_lock_thread(LOCK_DRAW_IMAGE);
+		}
+
 		ED_space_image_get_size(sima, &width, &height);
 		ED_space_image_get_aspect(sima, &aspx, &aspy);
+
+		if (show_viewer)
+			BLI_unlock_thread(LOCK_DRAW_IMAGE);
+
 		ED_mask_draw_region(mask, ar,
 		                    sima->mask_info.draw_flag, sima->mask_info.draw_type,
 		                    width, height,
@@ -723,6 +753,7 @@ static void image_buttons_area_init(wmWindowManager *wm, ARegion *ar)
 {
 	wmKeyMap *keymap;
 
+	ar->v2d.scroll = V2D_SCROLL_RIGHT | V2D_SCROLL_VERTICAL_HIDE;
 	ED_region_panels_init(wm, ar);
 	
 	keymap = WM_keymap_find(wm->defaultconf, "Image Generic", SPACE_IMAGE, 0);
@@ -762,6 +793,7 @@ static void image_scope_area_init(wmWindowManager *wm, ARegion *ar)
 {
 	wmKeyMap *keymap;
 	
+	ar->v2d.scroll = V2D_SCROLL_RIGHT | V2D_SCROLL_VERTICAL_HIDE;
 	ED_region_panels_init(wm, ar);
 	
 	keymap = WM_keymap_find(wm->defaultconf, "Image Generic", SPACE_IMAGE, 0);
@@ -774,11 +806,15 @@ static void image_scope_area_draw(const bContext *C, ARegion *ar)
 	Scene *scene = CTX_data_scene(C);
 	void *lock;
 	ImBuf *ibuf = ED_space_image_acquire_buffer(sima, &lock);
+	
 	if (ibuf) {
 		if (!sima->scopes.ok) {
 			BKE_histogram_update_sample_line(&sima->sample_line_hist, ibuf, &scene->view_settings, &scene->display_settings);
 		}
-		scopes_update(&sima->scopes, ibuf, &scene->view_settings, &scene->display_settings);
+		if (sima->image->flag & IMA_VIEW_AS_RENDER)
+			scopes_update(&sima->scopes, ibuf, &scene->view_settings, &scene->display_settings);
+		else
+			scopes_update(&sima->scopes, ibuf, NULL, &scene->display_settings);
 	}
 	ED_space_image_release_buffer(sima, ibuf, lock);
 	

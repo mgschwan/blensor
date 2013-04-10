@@ -115,7 +115,7 @@ RAS_MeshObject::RAS_MeshObject(Mesh* mesh)
 		int count=0;
 		// initialize weight cache for shape objects
 		// count how many keys in this mesh
-		for (kb= (KeyBlock*)m_mesh->key->block.first; kb; kb= (KeyBlock*)kb->next)
+		for (kb= (KeyBlock *)m_mesh->key->block.first; kb; kb= (KeyBlock *)kb->next)
 			count++;
 		m_cacheWeightIndex.resize(count,-1);
 	}
@@ -129,7 +129,7 @@ RAS_MeshObject::~RAS_MeshObject()
 	{
 		KeyBlock *kb;
 		// remove the weight cache to avoid memory leak 
-		for (kb= (KeyBlock*)m_mesh->key->block.first; kb; kb= (KeyBlock*)kb->next) {
+		for (kb = (KeyBlock *)m_mesh->key->block.first; kb; kb = (KeyBlock *)kb->next) {
 			if (kb->weights) 
 				MEM_freeN(kb->weights);
 			kb->weights= NULL;
@@ -324,15 +324,14 @@ void RAS_MeshObject::SetVertexColor(RAS_IPolyMaterial* mat,MT_Vector4 rgba)
 
 void RAS_MeshObject::AddVertex(RAS_Polygon *poly, int i,
 								const MT_Point3& xyz,
-								const MT_Point2& uv,
-								const MT_Point2& uv2,
+								const MT_Point2 uvs[RAS_TexVert::MAX_UNIT],
 								const MT_Vector4& tangent,
 								const unsigned int rgba,
 								const MT_Vector3& normal,
 								bool flat,
 								int origindex)
 {
-	RAS_TexVert texvert(xyz, uv, uv2, tangent, rgba, normal, flat, origindex);
+	RAS_TexVert texvert(xyz, uvs, tangent, rgba, normal, flat, origindex);
 	RAS_MeshMaterial *mmat;
 	RAS_DisplayArray *darray;
 	RAS_MeshSlot *slot;

@@ -25,7 +25,7 @@ bl_info = {
     "name": "MExtrude Plus",
     "author": "liero",
     "version": (1, 2, 8),
-    "blender": (2, 6, 2),
+    "blender": (2, 62, 0),
     "location": "View3D > Tool Shelf",
     "description": "Repeat extrusions from faces to create organic shapes",
     "warning": "",

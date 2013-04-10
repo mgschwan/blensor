@@ -34,265 +34,90 @@
 #include <string.h>
 #include <time.h>
 
+#include "BLI_utildefines.h"
+
 #include "RNA_define.h"
 
-#include "DNA_object_types.h"
+#include "DNA_constraint_types.h"
 #include "DNA_modifier_types.h"
+#include "DNA_object_types.h"
 
 #include "rna_internal.h"  /* own include */
 
+static EnumPropertyItem space_items[] = {
+	{CONSTRAINT_SPACE_WORLD,    "WORLD", 0, "World Space",
+	                            "The most gobal space in Blender"},
+	{CONSTRAINT_SPACE_POSE,     "POSE", 0, "Pose Space",
+	                            "The pose space of a bone (its armature's object space)"},
+	{CONSTRAINT_SPACE_PARLOCAL, "LOCAL_WITH_PARENT", 0, "Local With Parent",
+	                            "The local space of a bone's parent bone"},
+	{CONSTRAINT_SPACE_LOCAL,    "LOCAL", 0, "Local Space",
+	                            "The local space of an object/bone"},
+	{0, NULL, 0, NULL, NULL}
+};
+
 #ifdef RNA_RUNTIME
+
 #include "BLI_math.h"
 
-#include "BKE_main.h"
-#include "BKE_global.h"
-#include "BKE_context.h"
-#include "BKE_report.h"
-#include "BKE_object.h"
-#include "BKE_mesh.h"
-#include "BKE_DerivedMesh.h"
-#include "BKE_bvhutils.h"
-
-#include "BKE_customdata.h"
 #include "BKE_anim.h"
+#include "BKE_bvhutils.h"
+#include "BKE_cdderivedmesh.h"
+#include "BKE_constraint.h"
+#include "BKE_context.h"
+#include "BKE_customdata.h"
 #include "BKE_depsgraph.h"
-#include "BKE_displist.h"
 #include "BKE_font.h"
+#include "BKE_global.h"
+#include "BKE_main.h"
+#include "BKE_mesh.h"
 #include "BKE_mball.h"
 #include "BKE_modifier.h"
-#include "BKE_cdderivedmesh.h"
+#include "BKE_object.h"
+#include "BKE_report.h"
 
-#include "DNA_mesh_types.h"
-#include "DNA_scene_types.h"
-#include "DNA_meshdata_types.h"
+#include "ED_object.h"
+
 #include "DNA_curve_types.h"
-#include "DNA_modifier_types.h"
-#include "DNA_constraint_types.h"
+#include "DNA_mesh_types.h"
+#include "DNA_meshdata_types.h"
+#include "DNA_scene_types.h"
 #include "DNA_view3d_types.h"
 
 #include "MEM_guardedalloc.h"
 
-/* copied from Mesh_getFromObject and adapted to RNA interface */
-/* settings: 0 - preview, 1 - render */
-static Mesh *rna_Object_to_mesh(Object *ob, ReportList *reports, Scene *sce, int apply_modifiers, int settings)
+/* Convert a given matrix from a space to another (using the object and/or a bone as reference). */
+static void rna_Scene_mat_convert_space(Object *ob, ReportList *reports, bPoseChannel *pchan,
+                                        float *mat, float *mat_ret, int from, int to)
 {
-	Mesh *tmpmesh;
-	Curve *tmpcu = NULL, *copycu;
-	Object *tmpobj = NULL;
-	int render = settings == eModifierMode_Render, i;
-	int cage = !apply_modifiers;
+	copy_m4_m4((float (*)[4])mat_ret, (float (*)[4])mat);
 
-	/* perform the mesh extraction based on type */
-	switch (ob->type) {
-		case OB_FONT:
-		case OB_CURVE:
-		case OB_SURF:
-		{
-			ListBase dispbase = {NULL, NULL};
-			DerivedMesh *derivedFinal = NULL;
-			int uv_from_orco;
-
-			int (*orco_index)[4] = NULL;
-			float (*orco)[3] = NULL;
-
-			/* copies object and modifiers (but not the data) */
-			tmpobj = BKE_object_copy_with_caches(ob);
-			tmpcu = (Curve *)tmpobj->data;
-			tmpcu->id.us--;
-
-			/* if getting the original caged mesh, delete object modifiers */
-			if (cage)
-				BKE_object_free_modifiers(tmpobj);
-
-			/* copies the data */
-			copycu = tmpobj->data = BKE_curve_copy((Curve *) ob->data);
-
-			/* temporarily set edit so we get updates from edit mode, but
-			 * also because for text datablocks copying it while in edit
-			 * mode gives invalid data structures */
-			copycu->editfont = tmpcu->editfont;
-			copycu->editnurb = tmpcu->editnurb;
-
-			/* get updated display list, and convert to a mesh */
-			BKE_displist_make_curveTypes_forRender(sce, tmpobj, &dispbase, &derivedFinal, FALSE);
-
-			copycu->editfont = NULL;
-			copycu->editnurb = NULL;
-
-			tmpobj->derivedFinal = derivedFinal;
-
-			uv_from_orco = (tmpcu->flag & CU_UV_ORCO) != 0;
-
-			if (uv_from_orco) {
-				/* before curve conversion */
-				orco = (float (*)[3])BKE_curve_make_orco(sce, tmpobj);
-			}
-
-			/* convert object type to mesh */
-			BKE_mesh_from_nurbs_displist(tmpobj, &dispbase, uv_from_orco ? (int **)&orco_index : NULL);
-
-			tmpmesh = tmpobj->data;
-
-			if (uv_from_orco && orco && orco_index) {
-				const char *uvname = "Orco";
-				/* add UV's */
-				MTexPoly *mtpoly  = CustomData_add_layer_named(&tmpmesh->pdata, CD_MTEXPOLY, CD_DEFAULT, NULL, tmpmesh->totpoly, uvname);
-				MLoopUV *mloopuvs = CustomData_add_layer_named(&tmpmesh->ldata, CD_MLOOPUV,  CD_DEFAULT, NULL, tmpmesh->totloop, uvname);
-
-				BKE_mesh_nurbs_to_mdata_orco(tmpmesh->mpoly, tmpmesh->totpoly,
-				                             tmpmesh->mloop, mloopuvs,
-				                             orco, orco_index);
-
-				(void)mtpoly;
-			}
-
-			if (orco_index) {
-				MEM_freeN(orco_index);
-			}
-			if (orco) {
-				MEM_freeN(orco);
-			}
-
-			BKE_displist_free(&dispbase);
-
-			/* BKE_mesh_from_nurbs changes the type to a mesh, check it worked */
-			if (tmpobj->type != OB_MESH) {
-				BKE_libblock_free_us(&(G.main->object), tmpobj);
-				BKE_report(reports, RPT_ERROR, "Cannot convert curve to mesh (does the curve have any segments?)");
-				return NULL;
-			}
-
-			BKE_libblock_free_us(&G.main->object, tmpobj);
-			break;
+	/* Error in case of invalid from/to values when pchan is NULL */
+	if (pchan == NULL) {
+		if (ELEM(from, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_PARLOCAL)) {
+			const char *identifier = NULL;
+			RNA_enum_identifier(space_items, from, &identifier);
+			BKE_reportf(reports, RPT_ERROR, "'from_space' '%s' is invalid when no pose bone is given!", identifier);
+			return;
 		}
-
-		case OB_MBALL:
-		{
-			/* metaballs don't have modifiers, so just convert to mesh */
-			Object *basis_ob = BKE_mball_basis_find(sce, ob);
-			/* todo, re-generatre for render-res */
-			/* metaball_polygonize(scene, ob) */
-
-			if (ob != basis_ob)
-				return NULL;  /* only do basis metaball */
-			
-			tmpmesh = BKE_mesh_add("Mesh");
-			/* BKE_mesh_add gives us a user count we don't need */
-			tmpmesh->id.us--;
-
-			if (render) {
-				ListBase disp = {NULL, NULL};
-				BKE_displist_make_mball_forRender(sce, ob, &disp);
-				BKE_mesh_from_metaball(&disp, tmpmesh);
-				BKE_displist_free(&disp);
-			}
-			else
-				BKE_mesh_from_metaball(&ob->disp, tmpmesh);
-
-			break;
-
+		if (ELEM(to, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_PARLOCAL)) {
+			const char *identifier = NULL;
+			RNA_enum_identifier(space_items, to, &identifier);
+			BKE_reportf(reports, RPT_ERROR, "'to_space' '%s' is invalid when no pose bone is given!", identifier);
+			return;
 		}
-		case OB_MESH:
-			/* copies object and modifiers (but not the data) */
-			if (cage) {
-				/* copies the data */
-				tmpmesh = BKE_mesh_copy(ob->data);
-				/* if not getting the original caged mesh, get final derived mesh */
-			}
-			else {
-				/* Make a dummy mesh, saves copying */
-				DerivedMesh *dm;
-				/* CustomDataMask mask = CD_MASK_BAREMESH|CD_MASK_MTFACE|CD_MASK_MCOL; */
-				CustomDataMask mask = CD_MASK_MESH; /* this seems more suitable, exporter,
-			                                         * for example, needs CD_MASK_MDEFORMVERT */
-
-				/* Write the display mesh into the dummy mesh */
-				if (render)
-					dm = mesh_create_derived_render(sce, ob, mask);
-				else
-					dm = mesh_create_derived_view(sce, ob, mask);
-		
-				tmpmesh = BKE_mesh_add("Mesh");
-				DM_to_mesh(dm, tmpmesh, ob);
-				dm->release(dm);
-			}
-
-			/* BKE_mesh_add/copy gives us a user count we don't need */
-			tmpmesh->id.us--;
-
-			break;
-		default:
-			BKE_report(reports, RPT_ERROR, "Object does not have geometry data");
-			return NULL;
 	}
 
-	/* Copy materials to new mesh */
-	switch (ob->type) {
-		case OB_SURF:
-		case OB_FONT:
-		case OB_CURVE:
-			tmpmesh->totcol = tmpcu->totcol;
+	BKE_constraint_mat_convertspace(ob, pchan, (float (*)[4])mat_ret, from, to);
+}
 
-			/* free old material list (if it exists) and adjust user counts */
-			if (tmpcu->mat) {
-				for (i = tmpcu->totcol; i-- > 0; ) {
-					/* are we an object material or data based? */
-
-					tmpmesh->mat[i] = ob->matbits[i] ? ob->mat[i] : tmpcu->mat[i];
-
-					if (tmpmesh->mat[i]) {
-						tmpmesh->mat[i]->id.us++;
-					}
-				}
-			}
-			break;
-
-#if 0
-		/* Crashes when assigning the new material, not sure why */
-		case OB_MBALL:
-			tmpmb = (MetaBall *)ob->data;
-			tmpmesh->totcol = tmpmb->totcol;
-
-			/* free old material list (if it exists) and adjust user counts */
-			if (tmpmb->mat) {
-				for (i = tmpmb->totcol; i-- > 0; ) {
-					tmpmesh->mat[i] = tmpmb->mat[i]; /* CRASH HERE ??? */
-					if (tmpmesh->mat[i]) {
-						tmpmb->mat[i]->id.us++;
-					}
-				}
-			}
-			break;
-#endif
-
-		case OB_MESH:
-			if (!cage) {
-				Mesh *origmesh = ob->data;
-				tmpmesh->flag = origmesh->flag;
-				tmpmesh->mat = MEM_dupallocN(origmesh->mat);
-				tmpmesh->totcol = origmesh->totcol;
-				tmpmesh->smoothresh = origmesh->smoothresh;
-				if (origmesh->mat) {
-					for (i = origmesh->totcol; i-- > 0; ) {
-						/* are we an object material or data based? */
-						tmpmesh->mat[i] = ob->matbits[i] ? ob->mat[i] : origmesh->mat[i];
-
-						if (tmpmesh->mat[i]) {
-							tmpmesh->mat[i]->id.us++;
-						}
-					}
-				}
-			}
-			break;
-	} /* end copy materials */
-
-	/* cycles and exporters rely on this still */
-	BKE_mesh_tessface_ensure(tmpmesh);
-
-	/* make sure materials get updated in objects */
-	test_object_materials(&tmpmesh->id);
-
-	return tmpmesh;
+/* copied from Mesh_getFromObject and adapted to RNA interface */
+/* settings: 0 - preview, 1 - render */
+static Mesh *rna_Object_to_mesh(
+        Object *ob, ReportList *reports, Scene *sce,
+        int apply_modifiers, int settings, int calc_tessface)
+{
+	return rna_Main_meshes_new_from_object(G.main, reports, sce, ob, apply_modifiers, settings, calc_tessface);
 }
 
 /* mostly a copy from convertblender.c */
@@ -570,7 +395,14 @@ void rna_Object_dm_info(struct Object *ob, int type, char *result)
 }
 #endif /* NDEBUG */
 
-#else
+static int rna_Object_update_from_editmode(Object *ob)
+{
+	if (ob->mode & OB_MODE_EDIT) {
+		return ED_object_editmode_load(ob);
+	}
+	return false;
+}
+#else /* RNA_RUNTIME */
 
 void RNA_api_object(StructRNA *srna)
 {
@@ -583,6 +415,8 @@ void RNA_api_object(StructRNA *srna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static int rna_matrix_dimsize_4x4[] = {4, 4};
+
 #ifndef NDEBUG
 	static EnumPropertyItem mesh_dm_info_items[] = {
 		{0, "SOURCE", 0, "Source", "Source mesh"},
@@ -591,6 +425,25 @@ void RNA_api_object(StructRNA *srna)
 		{0, NULL, 0, NULL, NULL}
 	};
 #endif
+
+	/* Matrix space conversion */
+	func = RNA_def_function(srna, "convert_space", "rna_Scene_mat_convert_space");
+	RNA_def_function_ui_description(func, "Convert (transform) the given matrix from one space to another");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+	parm = RNA_def_pointer(func, "pose_bone", "PoseBone", "",
+	                       "Bone to use to define spaces (may be None, in which case only the two 'WORLD' and "
+	                       "'LOCAL' spaces are usable)");
+	parm = RNA_def_property(func, "matrix", PROP_FLOAT, PROP_MATRIX);
+	RNA_def_property_multi_array(parm, 2, rna_matrix_dimsize_4x4);
+	RNA_def_property_ui_text(parm, "", "The matrix to transform");
+	parm = RNA_def_property(func, "matrix_return", PROP_FLOAT, PROP_MATRIX);
+	RNA_def_property_multi_array(parm, 2, rna_matrix_dimsize_4x4);
+	RNA_def_property_ui_text(parm, "", "The transformed matrix");
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_enum(func, "from_space", space_items, CONSTRAINT_SPACE_WORLD, "",
+	                    "The space in which 'matrix' is currently");
+	parm = RNA_def_enum(func, "to_space", space_items, CONSTRAINT_SPACE_WORLD, "",
+	                    "The space to which you want to transform 'matrix'");
 
 	/* mesh */
 	func = RNA_def_function(srna, "to_mesh", "rna_Object_to_mesh");
@@ -602,6 +455,7 @@ void RNA_api_object(StructRNA *srna)
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_enum(func, "settings", mesh_type_items, 0, "", "Modifier settings to apply");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_boolean(func, "calc_tessface", true, "Calculate Tessellation", "Calculate tessellation faces");
 	parm = RNA_def_pointer(func, "mesh", "Mesh", "",
 	                       "Mesh created from object, remove it if it is only used for export");
 	RNA_def_function_return(func, parm);
@@ -722,6 +576,11 @@ void RNA_api_object(StructRNA *srna)
 	RNA_def_property_flag(parm, PROP_THICK_WRAP); /* needed for string return value */
 	RNA_def_function_output(func, parm);
 #endif /* NDEBUG */
+
+	func = RNA_def_function(srna, "update_from_editmode", "rna_Object_update_from_editmode");
+	RNA_def_function_ui_description(func, "Load the objects edit-mode data intp the object data");
+	parm = RNA_def_boolean(func, "result", 0, "", "Success");
+	RNA_def_function_return(func, parm);
 }
 
 
@@ -737,5 +596,4 @@ void RNA_api_object_base(StructRNA *srna)
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 }
 
-#endif
-
+#endif /* RNA_RUNTIME */

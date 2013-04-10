@@ -28,7 +28,7 @@ bl_info = {
     "name": "Cycles Auto Material Texures Node Editor",
     "author": "Silvio Falcinelli",
     "version": (0,5),
-    "blender": (2, 6, 2),
+    "blender": (2, 62, 0),
     "api": 44136,
     "location": "Properties > Material > Automatic Node Editor ",
     "description": "automatic cycles texture map",

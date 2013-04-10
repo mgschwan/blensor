@@ -56,10 +56,14 @@
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "RNA_access.h"
 
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
+
+#include "BIK_api.h"
 
 #include "BKE_animsys.h"
 #include "BKE_action.h"
@@ -127,6 +131,7 @@ void getViewVector(TransInfo *t, float coord[3], float vec[3])
 }
 
 /* ************************** GENERICS **************************** */
+
 
 static void clipMirrorModifier(TransInfo *t, Object *ob)
 {
@@ -375,6 +380,8 @@ static void recalcData_graphedit(TransInfo *t)
 	
 	bAnimListElem *ale;
 	int dosort = 0;
+
+	const bool use_local_center = checkUseLocalCenter_GraphEdit(t);
 	
 	
 	/* initialize relevant anim-context 'context' data from TransInfo data */
@@ -403,9 +410,10 @@ static void recalcData_graphedit(TransInfo *t)
 		/* ignore unselected fcurves */
 		if (!fcu_test_selected(fcu))
 			continue;
-		
-		// fixme: only do this for selected verts...
-		ANIM_unit_mapping_apply_fcurve(ac.scene, ale->id, ale->key_data, ANIM_UNITCONV_ONLYSEL | ANIM_UNITCONV_SELVERTS | ANIM_UNITCONV_RESTORE);
+
+		ANIM_unit_mapping_apply_fcurve(ac.scene, ale->id, ale->key_data,
+		                               ANIM_UNITCONV_ONLYSEL | ANIM_UNITCONV_SELVERTS | ANIM_UNITCONV_RESTORE |
+		                               (use_local_center ? ANIM_UNITCONV_SKIPKNOTS : 0));
 		
 		
 		/* watch it: if the time is wrong: do not correct handles yet */
@@ -548,9 +556,16 @@ static void recalcData_nla(TransInfo *t)
 				break;
 		}
 		
-		/* use RNA to write the values... */
-		// TODO: do we need to write in 2 passes to make sure that no truncation goes on?
+		/* Use RNA to write the values to ensure that constraints on these are obeyed
+		 * (e.g. for transition strips, the values are taken from the neighbours)
+		 * 
+		 * NOTE: we write these twice to avoid truncation errors which can arise when
+		 * moving the strips a large distance using numeric input [#33852] 
+		 */
 		RNA_pointer_create(NULL, &RNA_NlaStrip, strip, &strip_ptr);
+		
+		RNA_float_set(&strip_ptr, "frame_start", tdn->h1[0]);
+		RNA_float_set(&strip_ptr, "frame_end", tdn->h2[0]);
 		
 		RNA_float_set(&strip_ptr, "frame_start", tdn->h1[0]);
 		RNA_float_set(&strip_ptr, "frame_end", tdn->h2[0]);
@@ -796,6 +811,7 @@ static void recalcData_view3d(TransInfo *t)
 					if (td->extra) {
 						float vec[3], up_axis[3];
 						float qrot[4];
+						float roll;
 						
 						ebo = td->extra;
 						copy_v3_v3(up_axis, td->axismtx[2]);
@@ -810,7 +826,9 @@ static void recalcData_view3d(TransInfo *t)
 							mul_m3_v3(t->mat, up_axis);
 						}
 						
-						ebo->roll = ED_rollBoneToVector(ebo, up_axis, FALSE);
+						/* roll has a tendency to flip in certain orientations - [#34283], [#33974] */
+						roll = ED_rollBoneToVector(ebo, up_axis, false);
+						ebo->roll = angle_compat_rad(roll, ebo->roll);
 					}
 				}
 			}
@@ -847,6 +865,8 @@ static void recalcData_view3d(TransInfo *t)
 		/* old optimize trick... this enforces to bypass the depgraph */
 		if (!(arm->flag & ARM_DELAYDEFORM)) {
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);  /* sets recalc flags */
+			/* transformation of pose may affect IK tree, make sure it is rebuilt */
+			BIK_clear_data(ob->pose);
 		}
 		else
 			BKE_pose_where_is(t->scene, ob);
@@ -942,10 +962,6 @@ void recalcData(TransInfo *t)
 	else if (t->spacetype == SPACE_CLIP) {
 		recalcData_spaceclip(t);
 	}
-
-	if (t->options & CTX_MASK) {
-
-	}
 }
 
 void drawLine(TransInfo *t, const float center[3], const float dir[3], char axis, short options)
@@ -992,7 +1008,7 @@ void resetTransRestrictions(TransInfo *t)
 }
 
 /* the *op can be NULL */
-int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
+int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *event)
 {
 	Scene *sce = CTX_data_scene(C);
 	ToolSettings *ts = CTX_data_tool_settings(C);
@@ -1140,7 +1156,7 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, wmEvent *event)
 			t->options |= CTX_MASK;
 		}
 		else {
-			BLI_assert(0);
+			/* image not in uv edit, nor in mask mode, can happen for some tools */
 		}
 	}
 	else if (t->spacetype == SPACE_NODE) {
@@ -1445,7 +1461,7 @@ void calculateCenter2D(TransInfo *t)
 
 void calculateCenterCursor(TransInfo *t)
 {
-	float *cursor;
+	const float *cursor;
 	
 	cursor = give_cursor(t->scene, t->view);
 	copy_v3_v3(t->center, cursor);
@@ -1529,13 +1545,6 @@ void calculateCenterMedian(TransInfo *t)
 				total++;
 			}
 		}
-		else {
-			/*
-			 * All the selected elements are at the head of the array
-			 * which means we can stop when it finds unselected data
-			 */
-			break;
-		}
 	}
 	if (i)
 		mul_v3_fl(partial, 1.0f / total);
@@ -1554,13 +1563,6 @@ void calculateCenterBound(TransInfo *t)
 			if (t->data[i].flag & TD_SELECTED) {
 				if (!(t->data[i].flag & TD_NOCENTER))
 					minmax_v3v3_v3(min, max, t->data[i].center);
-			}
-			else {
-				/*
-				 * All the selected elements are at the head of the array
-				 * which means we can stop when it finds unselected data
-				 */
-				break;
 			}
 		}
 		else {
@@ -1663,7 +1665,7 @@ void calculateCenter(TransInfo *t)
 				
 				projectIntView(t, axis, t->center2d);
 				
-				/* rotate only needs correct 2d center, grab needs initgrabz() value */
+				/* rotate only needs correct 2d center, grab needs ED_view3d_calc_zfac() value */
 				if (t->mode == TFM_TRANSLATION) {
 					copy_v3_v3(t->center, axis);
 					copy_v3_v3(t->con.center, t->center);
@@ -1673,18 +1675,16 @@ void calculateCenter(TransInfo *t)
 	}
 	
 	if (t->spacetype == SPACE_VIEW3D) {
-		/* initgrabz() defines a factor for perspective depth correction, used in window_to_3d_delta() */
+		/* ED_view3d_calc_zfac() defines a factor for perspective depth correction, used in ED_view3d_win_to_delta() */
+		float vec[3];
 		if (t->flag & (T_EDIT | T_POSE)) {
 			Object *ob = t->obedit ? t->obedit : t->poseobj;
-			float vec[3];
-			
-			copy_v3_v3(vec, t->center);
-			mul_m4_v3(ob->obmat, vec);
-			initgrabz(t->ar->regiondata, vec[0], vec[1], vec[2]);
+			mul_v3_m4v3(vec, ob->obmat, t->center);
 		}
 		else {
-			initgrabz(t->ar->regiondata, t->center[0], t->center[1], t->center[2]);
+			copy_v3_v3(vec, t->center);
 		}
+		t->zfac = ED_view3d_calc_zfac(t->ar->regiondata, vec, NULL);
 	}
 }
 
@@ -1764,25 +1764,25 @@ void calculatePropRatio(TransInfo *t)
 		}
 		switch (t->prop_mode) {
 			case PROP_SHARP:
-				strcpy(t->proptext, "(Sharp)");
+				strcpy(t->proptext, IFACE_("(Sharp)"));
 				break;
 			case PROP_SMOOTH:
-				strcpy(t->proptext, "(Smooth)");
+				strcpy(t->proptext, IFACE_("(Smooth)"));
 				break;
 			case PROP_ROOT:
-				strcpy(t->proptext, "(Root)");
+				strcpy(t->proptext, IFACE_("(Root)"));
 				break;
 			case PROP_LIN:
-				strcpy(t->proptext, "(Linear)");
+				strcpy(t->proptext, IFACE_("(Linear)"));
 				break;
 			case PROP_CONST:
-				strcpy(t->proptext, "(Constant)");
+				strcpy(t->proptext, IFACE_("(Constant)"));
 				break;
 			case PROP_SPHERE:
-				strcpy(t->proptext, "(Sphere)");
+				strcpy(t->proptext, IFACE_("(Sphere)"));
 				break;
 			case PROP_RANDOM:
-				strcpy(t->proptext, "(Random)");
+				strcpy(t->proptext, IFACE_("(Random)"));
 				break;
 			default:
 				t->proptext[0] = '\0';

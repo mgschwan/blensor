@@ -18,7 +18,7 @@
 
 # <pep8 compliant>
 import bpy
-from bpy.types import Menu, Panel
+from bpy.types import Menu, Panel, UIList
 from rna_prop_ui import PropertyPanel
 
 
@@ -34,7 +34,8 @@ class MESH_MT_vertex_group_specials(Menu):
         layout.operator("object.vertex_group_copy_to_linked", icon='LINK_AREA')
         layout.operator("object.vertex_group_copy_to_selected", icon='LINK_AREA')
         layout.operator("object.vertex_group_mirror", icon='ARROW_LEFTRIGHT')
-        layout.operator("object.vertex_group_remove", icon='X', text="Delete All").all = True
+        layout.operator("object.vertex_group_remove", icon='X', text="Delete All Vertex Groups").all = True
+        layout.operator("object.vertex_group_remove_from", icon='X', text="Remove Selected from All Vertex Groups").all = True
         layout.separator()
         layout.operator("object.vertex_group_lock", icon='LOCKED', text="Lock All").action = 'LOCK'
         layout.operator("object.vertex_group_lock", icon='UNLOCKED', text="UnLock All").action = 'UNLOCK'
@@ -52,6 +53,53 @@ class MESH_MT_shape_key_specials(Menu):
         layout.operator("object.join_shapes", icon='COPY_ID')  # icon is not ideal
         layout.operator("object.shape_key_mirror", icon='ARROW_LEFTRIGHT')
         layout.operator("object.shape_key_add", icon='ZOOMIN', text="New Shape From Mix").from_mix = True
+
+
+class MESH_UL_vgroups(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        # assert(isinstance(item, bpy.types.VertexGroup)
+        vgroup = item
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            layout.label(text=vgroup.name, translate=False, icon_value=icon)
+            icon = 'LOCKED' if vgroup.lock_weight else 'UNLOCKED'
+            layout.prop(vgroup, "lock_weight", text="", icon=icon, emboss=False)
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.label(text="", icon_value=icon)
+
+
+class MESH_UL_shape_keys(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        # assert(isinstance(item, bpy.types.ShapeKey)
+        obj = active_data
+        key = data
+        key_block = item
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            split = layout.split(0.66, False)
+            split.label(text=item.name, translate=False, icon_value=icon)
+            row = split.row(True)
+            if key_block.mute or (obj.mode == 'EDIT' and not (obj.use_shape_key_edit_mode and obj.type == 'MESH')):
+                row.active = False
+            if not item.relative_key or index > 0:
+                row.prop(key_block, "value", text="", emboss=False)
+            else:
+                row.label(text="")
+            row.prop(key_block, "mute", text="", emboss=False)
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.label(text="", icon_value=icon)
+
+
+class MESH_UL_uvmaps_vcols(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        # assert(isinstance(item, (bpy.types.MeshTexturePolyLayer, bpy.types.MeshLoopColorLayer))
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            layout.label(text=item.name, translate=False, icon_value=icon)
+            icon = 'RESTRICT_RENDER_OFF' if item.active_render else 'RESTRICT_RENDER_ON'
+            layout.prop(item, "active_render", text="", icon=icon, emboss=False)
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.label(text="", icon_value=icon)
 
 
 class MeshButtonsPanel():
@@ -144,7 +192,7 @@ class DATA_PT_vertex_groups(MeshButtonsPanel, Panel):
             rows = 5
 
         row = layout.row()
-        row.template_list(ob, "vertex_groups", ob.vertex_groups, "active_index", rows=rows)
+        row.template_list("MESH_UL_vgroups", "", ob, "vertex_groups", ob.vertex_groups, "active_index", rows=rows)
 
         col = row.column(align=True)
         col.operator("object.vertex_group_add", icon='ZOOMIN', text="")
@@ -202,7 +250,7 @@ class DATA_PT_shape_keys(MeshButtonsPanel, Panel):
         rows = 2
         if kb:
             rows = 5
-        row.template_list(key, "key_blocks", ob, "active_shape_key_index", rows=rows)
+        row.template_list("MESH_UL_shape_keys", "", key, "key_blocks", ob, "active_shape_key_index", rows=rows)
 
         col = row.column()
 
@@ -282,7 +330,7 @@ class DATA_PT_uv_texture(MeshButtonsPanel, Panel):
         row = layout.row()
         col = row.column()
 
-        col.template_list(me, "uv_textures", me.uv_textures, "active_index", rows=2)
+        col.template_list("MESH_UL_uvmaps_vcols", "uvmaps", me, "uv_textures", me.uv_textures, "active_index", rows=2)
 
         col = row.column(align=True)
         col.operator("mesh.uv_texture_add", icon='ZOOMIN', text="")
@@ -305,7 +353,7 @@ class DATA_PT_vertex_colors(MeshButtonsPanel, Panel):
         row = layout.row()
         col = row.column()
 
-        col.template_list(me, "vertex_colors", me.vertex_colors, "active_index", rows=2)
+        col.template_list("MESH_UL_uvmaps_vcols", "vcols", me, "vertex_colors", me.vertex_colors, "active_index", rows=2)
 
         col = row.column(align=True)
         col.operator("mesh.vertex_color_add", icon='ZOOMIN', text="")
@@ -324,16 +372,19 @@ class DATA_PT_customdata(MeshButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        # me = context.mesh
+        obj = context.object
+        me = context.mesh
         col = layout.column()
-        # sticky has no UI access since 2.49 - we may remove
-        '''
-        row = col.row(align=True)
-        row.operator("mesh.customdata_create_sticky")
-        row.operator("mesh.customdata_clear_sticky", icon='X')
-        '''
+
         col.operator("mesh.customdata_clear_mask", icon='X')
         col.operator("mesh.customdata_clear_skin", icon='X')
+
+        col = layout.column()
+
+        col.enabled = (obj.mode != 'EDIT')
+        col.prop(me, "use_customdata_vertex_bevel")
+        col.prop(me, "use_customdata_edge_bevel")
+        col.prop(me, "use_customdata_edge_crease")
 
 
 class DATA_PT_custom_props_mesh(MeshButtonsPanel, PropertyPanel, Panel):

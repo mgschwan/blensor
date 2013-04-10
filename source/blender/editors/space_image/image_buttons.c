@@ -73,51 +73,55 @@
 
 /* proto */
 
-static void image_info(Scene *scene, ImageUser *iuser, Image *ima, ImBuf *ibuf, char *str)
+static void image_info(Scene *scene, ImageUser *iuser, Image *ima, ImBuf *ibuf, char *str, size_t len)
 {
-	int ofs = 0;
+	size_t ofs = 0;
 
 	str[0] = 0;
-	
-	if (ima == NULL) return;
+	if (ima == NULL)
+		return;
 
 	if (ibuf == NULL) {
-		ofs += sprintf(str, "%s", IFACE_("Can't Load Image"));
+		ofs += BLI_strncpy_rlen(str + ofs, IFACE_("Can't Load Image"), len - ofs);
 	}
 	else {
 		if (ima->source == IMA_SRC_MOVIE) {
-			ofs += sprintf(str, "%s", IFACE_("Movie"));
+			ofs += BLI_strncpy_rlen(str + ofs, IFACE_("Movie"), len - ofs);
 			if (ima->anim)
-				ofs += sprintf(str + ofs, IFACE_("%d frs"), IMB_anim_get_duration(ima->anim, IMB_TC_RECORD_RUN));
+				ofs += BLI_snprintf(str + ofs, len - ofs, IFACE_(" %d frs"),
+				                    IMB_anim_get_duration(ima->anim, IMB_TC_RECORD_RUN));
 		}
-		else
-			ofs += sprintf(str, "%s", IFACE_("Image"));
+		else {
+			ofs += BLI_strncpy_rlen(str, IFACE_("Image"), len - ofs);
+		}
 
-		ofs += sprintf(str + ofs, ": %s %d x %d,", IFACE_("size"), ibuf->x, ibuf->y);
+		ofs += BLI_snprintf(str + ofs, len - ofs, IFACE_(": size %d x %d,"), ibuf->x, ibuf->y);
 
 		if (ibuf->rect_float) {
 			if (ibuf->channels != 4) {
-				ofs += sprintf(str + ofs, "%d %s", ibuf->channels, IFACE_("float channel(s)"));
+				ofs += BLI_snprintf(str + ofs, len - ofs, IFACE_("%d float channel(s)"), ibuf->channels);
 			}
 			else if (ibuf->planes == R_IMF_PLANES_RGBA)
-				ofs += sprintf(str + ofs, "%s", IFACE_(" RGBA float"));
+				ofs += BLI_strncpy_rlen(str + ofs, IFACE_(" RGBA float"), len - ofs);
 			else
-				ofs += sprintf(str + ofs, "%s", IFACE_(" RGB float"));
+				ofs += BLI_strncpy_rlen(str + ofs, IFACE_(" RGB float"), len - ofs);
 		}
 		else {
 			if (ibuf->planes == R_IMF_PLANES_RGBA)
-				ofs += sprintf(str + ofs, "%s", IFACE_(" RGBA byte"));
+				ofs += BLI_strncpy_rlen(str + ofs, IFACE_(" RGBA byte"), len - ofs);
 			else
-				ofs += sprintf(str + ofs, "%s", IFACE_(" RGB byte"));
+				ofs += BLI_strncpy_rlen(str + ofs, IFACE_(" RGB byte"), len - ofs);
 		}
 		if (ibuf->zbuf || ibuf->zbuf_float)
-			ofs += sprintf(str + ofs, "%s", IFACE_(" + Z"));
+			ofs += BLI_strncpy_rlen(str + ofs, IFACE_(" + Z"), len - ofs);
 
 		if (ima->source == IMA_SRC_SEQUENCE) {
-			char *file = BLI_last_slash(ibuf->name);
-			if (file == NULL) file = ibuf->name;
-			else file++;
-			ofs += sprintf(str + ofs, ", %s", file);
+			const char *file = BLI_last_slash(ibuf->name);
+			if (file == NULL)
+				file = ibuf->name;
+			else
+				file++;
+			ofs += BLI_snprintf(str + ofs, len - ofs, ", %s", file);
 		}
 	}
 
@@ -125,10 +129,8 @@ static void image_info(Scene *scene, ImageUser *iuser, Image *ima, ImBuf *ibuf, 
 	if (ima->source == IMA_SRC_SEQUENCE) {
 		/* don't use iuser->framenr directly because it may not be updated if auto-refresh is off */
 		const int framenr = BKE_image_user_frame_get(iuser, CFRA, 0, NULL);
-		ofs += sprintf(str + ofs, IFACE_(", Frame: %d"), framenr);
+		ofs += BLI_snprintf(str + ofs, len - ofs, IFACE_(", Frame: %d"), framenr);
 	}
-
-	(void)ofs;
 }
 
 /* gets active viewer user */
@@ -219,7 +221,7 @@ static void preview_cb(ScrArea *sa, struct uiBlock *block)
 	BLI_rcti_translate(disprect, -curarea->winrct.xmin, -curarea->winrct.ymin);
 	
 	calc_image_view(sima, 'p');
-//	printf("winrct %d %d %d %d\n", disprect->xmin, disprect->ymin,disprect->xmax, disprect->ymax);
+//	printf("winrct %d %d %d %d\n", disprect->xmin, disprect->ymin, disprect->xmax, disprect->ymax);
 	/* map to image space coordinates */
 	mval[0] = disprect->xmin; mval[1] = disprect->ymin;
 	areamouseco_to_ipoco(v2d, mval, &dispf.xmin, &dispf.ymin);
@@ -236,7 +238,7 @@ static void preview_cb(ScrArea *sa, struct uiBlock *block)
 	CLAMP(disprect->xmax, 0, winx);
 	CLAMP(disprect->ymin, 0, winy);
 	CLAMP(disprect->ymax, 0, winy);
-//	printf("drawrct %d %d %d %d\n", disprect->xmin, disprect->ymin,disprect->xmax, disprect->ymax);
+//	printf("drawrct %d %d %d %d\n", disprect->xmin, disprect->ymin, disprect->xmax, disprect->ymax);
 
 }
 
@@ -498,17 +500,17 @@ static void uiblock_layer_pass_arrow_buttons(uiLayout *layout, RenderResult *rr,
 	}
 
 	/* decrease, increase arrows */
-	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_LEFT,   0, 0, 17, 20, NULL, 0, 0, 0, 0, TIP_("Previous Layer"));
+	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_LEFT,   0, 0, 0.85f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Previous Layer"));
 	uiButSetFunc(but, image_multi_declay_cb, rr, iuser);
-	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_RIGHT,  0, 0, 18, 20, NULL, 0, 0, 0, 0, TIP_("Next Layer"));
+	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_RIGHT,  0, 0, 0.90f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Next Layer"));
 	uiButSetFunc(but, image_multi_inclay_cb, rr, iuser);
 
 	uiblock_layer_pass_buttons(row, rr, iuser, 230 * dpi_fac, render_slot);
 
 	/* decrease, increase arrows */
-	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_LEFT,   0, 0, 17, 20, NULL, 0, 0, 0, 0, TIP_("Previous Pass"));
+	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_LEFT,   0, 0, 0.85f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Previous Pass"));
 	uiButSetFunc(but, image_multi_decpass_cb, rr, iuser);
-	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_RIGHT,  0, 0, 18, 20, NULL, 0, 0, 0, 0, TIP_("Next Pass"));
+	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_RIGHT,  0, 0, 0.90f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Next Pass"));
 	uiButSetFunc(but, image_multi_incpass_cb, rr, iuser);
 
 	uiBlockEndAlign(block);
@@ -539,16 +541,17 @@ static void rna_update_cb(bContext *C, void *arg_cb, void *UNUSED(arg))
 
 void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char *propname, PointerRNA *userptr, int compact)
 {
+#define MAX_INFO_LEN  128
+
 	PropertyRNA *prop;
 	PointerRNA imaptr;
 	RNAUpdateCb *cb;
 	Image *ima;
 	ImageUser *iuser;
-	ImBuf *ibuf;
 	Scene *scene = CTX_data_scene(C);
 	uiLayout *row, *split, *col;
 	uiBlock *block;
-	char str[128];
+	char str[MAX_INFO_LEN];
 
 	void *lock;
 
@@ -591,8 +594,8 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 		uiBlockSetNFunc(block, rna_update_cb, MEM_dupallocN(cb), NULL);
 
 		if (ima->source == IMA_SRC_VIEWER) {
-			ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
-			image_info(scene, iuser, ima, ibuf, str);
+			ImBuf *ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
+			image_info(scene, iuser, ima, ibuf, str, MAX_INFO_LEN);
 			BKE_image_release_ibuf(ima, ibuf, lock);
 
 			uiItemL(layout, ima->id.name + 2, ICON_NONE);
@@ -661,8 +664,8 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 			}
 			else if (ima->source != IMA_SRC_GENERATED) {
 				if (compact == 0) {
-					ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
-					image_info(scene, iuser, ima, ibuf, str);
+					ImBuf *ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
+					image_info(scene, iuser, ima, ibuf, str, MAX_INFO_LEN);
 					BKE_image_release_ibuf(ima, ibuf, lock);
 					uiItemL(layout, str, ICON_NONE);
 				}
@@ -674,6 +677,24 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 
 			if (ima->source != IMA_SRC_GENERATED) {
 				if (compact == 0) { /* background image view doesnt need these */
+					ImBuf *ibuf = BKE_image_acquire_ibuf(ima, iuser, NULL);
+					int has_alpha = TRUE;
+
+					if (ibuf) {
+						int imtype = BKE_ftype_to_imtype(ibuf->ftype);
+						char valid_channels = BKE_imtype_valid_channels(imtype);
+
+						has_alpha = valid_channels & IMA_CHAN_FLAG_ALPHA;
+
+						BKE_image_release_ibuf(ima, ibuf, NULL);
+					}
+
+					if (has_alpha) {
+						col = uiLayoutColumn(layout, FALSE);
+						uiItemR(col, &imaptr, "use_alpha", 0, NULL, ICON_NONE);
+						uiItemR(col, &imaptr, "alpha_mode", 0, "Alpha", ICON_NONE);
+					}
+
 					uiItemS(layout);
 
 					split = uiLayoutSplit(layout, 0.0f, FALSE);
@@ -694,10 +715,6 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 					row = uiLayoutRow(col, FALSE);
 					uiLayoutSetActive(row, RNA_boolean_get(&imaptr, "use_fields"));
 					uiItemR(row, &imaptr, "field_order", UI_ITEM_R_EXPAND, NULL, ICON_NONE);
-					
-					row = uiLayoutRow(layout, FALSE);
-					uiItemR(row, &imaptr, "use_premultiply", 0, NULL, ICON_NONE);
-					uiItemR(row, &imaptr, "use_color_unpremultiply", 0, NULL, ICON_NONE);
 				}
 			}
 
@@ -736,6 +753,8 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 	}
 
 	MEM_freeN(cb);
+
+#undef MAX_INFO_LEN
 }
 
 void uiTemplateImageSettings(uiLayout *layout, PointerRNA *imfptr, int color_management)
@@ -770,6 +789,8 @@ void uiTemplateImageSettings(uiLayout *layout, PointerRNA *imfptr, int color_man
 	           R_IMF_CHAN_DEPTH_32)) == 0)
 	{
 		row = uiLayoutRow(col, FALSE);
+
+		uiItemL(row, IFACE_("Color Depth:"), ICON_NONE);
 		uiItemR(row, imfptr, "color_depth", UI_ITEM_R_EXPAND, NULL, ICON_NONE);
 	}
 
@@ -796,6 +817,8 @@ void uiTemplateImageSettings(uiLayout *layout, PointerRNA *imfptr, int color_man
 	}
 
 	if (imf->imtype == R_IMF_IMTYPE_JP2) {
+		uiItemR(col, imfptr, "jpeg2k_codec", 0, NULL, ICON_NONE);
+
 		row = uiLayoutRow(col, FALSE);
 		uiItemR(row, imfptr, "use_jpeg2k_cinema_preset", 0, NULL, ICON_NONE);
 		uiItemR(row, imfptr, "use_jpeg2k_cinema_48", 0, NULL, ICON_NONE);
@@ -857,7 +880,9 @@ void image_buttons_register(ARegionType *art)
 
 	pt = MEM_callocN(sizeof(PanelType), "spacetype image panel gpencil");
 	strcpy(pt->idname, "IMAGE_PT_gpencil");
-	strcpy(pt->label, "Grease Pencil");
+	strcpy(pt->label, N_("Grease Pencil"));
+	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	pt->draw_header = gpencil_panel_standard_header;
 	pt->draw = gpencil_panel_standard;
 	BLI_addtail(&art->paneltypes, pt);
 }

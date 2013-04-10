@@ -37,7 +37,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_bpath.h"
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
@@ -75,11 +74,11 @@
 
 /* **************** Generic Functions, data level *************** */
 
-bArmature *BKE_armature_add(const char *name)
+bArmature *BKE_armature_add(Main *bmain, const char *name)
 {
 	bArmature *arm;
 
-	arm = BKE_libblock_alloc(&G.main->armature, ID_AR, name);
+	arm = BKE_libblock_alloc(&bmain->armature, ID_AR, name);
 	arm->deformflag = ARM_DEF_VGROUP | ARM_DEF_ENVELOPE;
 	arm->flag = ARM_COL_CUSTOM; /* custom bone-group colors */
 	arm->layer = 1;
@@ -1597,7 +1596,7 @@ static void pose_proxy_synchronize(Object *ob, Object *from, int layer_protected
 		}
 		else if (pchan->bone->layer & layer_protected) {
 			ListBase proxylocal_constraints = {NULL, NULL};
-			bPoseChannel pchanw = {NULL};
+			bPoseChannel pchanw;
 			
 			/* copy posechannel to temp, but restore important pointers */
 			pchanw = *pchanp;
@@ -1621,15 +1620,16 @@ static void pose_proxy_synchronize(Object *ob, Object *from, int layer_protected
 			 *     2. copy proxy-pchan's constraints on-to new
 			 *     3. add extracted local constraints back on top
 			 *
-			 * Note for copy_constraints: when copying constraints, disable 'do_extern' otherwise
-			 *                            we get the libs direct linked in this blend. */
-			extract_proxylocal_constraints(&proxylocal_constraints, &pchan->constraints);
-			copy_constraints(&pchanw.constraints, &pchanp->constraints, FALSE);
+			 * Note for BKE_copy_constraints: when copying constraints, disable 'do_extern' otherwise
+			 *                                we get the libs direct linked in this blend.
+			 */
+			BKE_extract_proxylocal_constraints(&proxylocal_constraints, &pchan->constraints);
+			BKE_copy_constraints(&pchanw.constraints, &pchanp->constraints, FALSE);
 			BLI_movelisttolist(&pchanw.constraints, &proxylocal_constraints);
 			
 			/* constraints - set target ob pointer to own object */
 			for (con = pchanw.constraints.first; con; con = con->next) {
-				bConstraintTypeInfo *cti = constraint_get_typeinfo(con);
+				bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
 				ListBase targets = {NULL, NULL};
 				bConstraintTarget *ct;
 				
@@ -1655,7 +1655,8 @@ static void pose_proxy_synchronize(Object *ob, Object *from, int layer_protected
 		else {
 			/* always copy custom shape */
 			pchan->custom = pchanp->custom;
-			pchan->custom_tx = pchanp->custom_tx;
+			if (pchanp->custom_tx)
+				pchan->custom_tx = BKE_pose_channel_find_name(pose, pchanp->custom_tx->name);
 
 			/* ID-Property Syncing */
 			{
@@ -2258,7 +2259,7 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 {
 	bActionModifier *amod;
 	bActionStrip *strip, *strip2;
-	float scene_cfra = (float)scene->r.cfra;
+	float scene_cfra = BKE_scene_frame_get(scene);
 	int do_modif;
 
 	for (strip = armob->nlastrips.first; strip; strip = strip->next) {
@@ -2427,15 +2428,15 @@ void BKE_pose_where_is_bone(Scene *scene, Object *ob, bPoseChannel *pchan, float
 			/* prepare PoseChannel for Constraint solving
 			 * - makes a copy of matrix, and creates temporary struct to use
 			 */
-			cob = constraints_make_evalob(scene, ob, pchan, CONSTRAINT_OBTYPE_BONE);
+			cob = BKE_constraints_make_evalob(scene, ob, pchan, CONSTRAINT_OBTYPE_BONE);
 
 			/* Solve PoseChannel's Constraints */
-			solve_constraints(&pchan->constraints, cob, ctime); /* ctime doesnt alter objects */
+			BKE_solve_constraints(&pchan->constraints, cob, ctime); /* ctime doesnt alter objects */
 
 			/* cleanup after Constraint Solving
 			 * - applies matrix back to pchan, and frees temporary struct used
 			 */
-			constraints_clear_evalob(cob);
+			BKE_constraints_clear_evalob(cob);
 
 			/* prevent constraints breaking a chain */
 			if (pchan->bone->flag & BONE_CONNECTED) {

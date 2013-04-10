@@ -22,7 +22,7 @@ bl_info = {
     "name": "Film Response Curves",
     "author": "Brecht Van Lommel",
     "version": (0, 1),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "Node Editor > Panels > Film Response",
     "description": "Apply film response preset to RGB Curves node",
     "warning": "",

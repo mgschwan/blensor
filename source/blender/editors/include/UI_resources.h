@@ -64,10 +64,11 @@ enum {
 	TH_HEADER_TEXT,
 	TH_HEADER_TEXT_HI,
 	
-	/* float panels */
-	TH_PANEL,
-	TH_PANEL_TEXT,
-	TH_PANEL_TEXT_HI,
+	/* panels */
+	TH_PANEL_HEADER,
+	TH_PANEL_BACK,
+	TH_PANEL_SHOW_HEADER,
+	TH_PANEL_SHOW_BACK,
 	
 	TH_BUTBACK,
 	TH_BUTBACK_TEXT,
@@ -86,6 +87,7 @@ enum {
 	TH_TRANSFORM,
 	TH_VERTEX,
 	TH_VERTEX_SELECT,
+	TH_VERTEX_UNREFERENCED,
 	TH_VERTEX_SIZE,
 	TH_OUTLINE_WIDTH,
 	TH_EDGE,
@@ -121,9 +123,12 @@ enum {
 
 	TH_SYNTAX_B,
 	TH_SYNTAX_V,
+	TH_SYNTAX_R,
 	TH_SYNTAX_C,
 	TH_SYNTAX_L,
+	TH_SYNTAX_D,
 	TH_SYNTAX_N,
+	TH_SYNTAX_S,
 	
 	TH_BONE_SOLID,
 	TH_BONE_POSE,
@@ -139,16 +144,20 @@ enum {
 	
 	TH_NODE,
 	TH_NODE_IN_OUT,
+	TH_NODE_INTERFACE,
 	TH_NODE_OPERATOR,
 	TH_NODE_CONVERTOR,
 	TH_NODE_GROUP,
 	TH_NODE_FRAME,
+	TH_NODE_MATTE,
+	TH_NODE_DISTORT,
 	
 	TH_CONSOLE_OUTPUT,
 	TH_CONSOLE_INPUT,
 	TH_CONSOLE_INFO,
 	TH_CONSOLE_ERROR,
 	TH_CONSOLE_CURSOR,
+	TH_CONSOLE_SELECT,
 	
 	TH_SEQ_MOVIE,
 	TH_SEQ_MOVIECLIP,
@@ -176,6 +185,7 @@ enum {
 	TH_EDGE_CREASE,
 
 	TH_DRAWEXTRA_EDGELEN,
+	TH_DRAWEXTRA_EDGEANG,
 	TH_DRAWEXTRA_FACEAREA,
 	TH_DRAWEXTRA_FACEANG,
 
@@ -199,6 +209,9 @@ enum {
 	TH_STITCH_PREVIEW_UNSTITCHABLE,
 	TH_STITCH_PREVIEW_ACTIVE,
 
+	TH_FREESTYLE_EDGE_MARK,
+	TH_FREESTYLE_FACE_MARK,
+
 	TH_MATCH,           /* highlight color for search matches */
 	TH_SELECT_HIGHLIGHT, /* highlight color for selected outliner item */
 
@@ -219,7 +232,11 @@ enum {
 	
 	TH_AXIS_X,		/* X/Y/Z Axis */
 	TH_AXIS_Y,
-	TH_AXIS_Z
+	TH_AXIS_Z,
+
+	TH_LOW_GRAD,
+	TH_HIGH_GRAD,
+	TH_SHOW_BACK_GRAD
 };
 /* XXX WARNING: previous is saved in file, so do not change order! */
 
@@ -286,9 +303,12 @@ void    UI_SetTheme(int spacetype, int regionid);
 // get current theme
 struct bTheme *UI_GetTheme(void);
 
+// return shadow width outside menus and popups */
+int UI_ThemeMenuShadowWidth(void);
+
 /* only for buttons in theme editor! */
 const unsigned char *UI_ThemeGetColorPtr(struct bTheme *btheme, int spacetype, int colorid);
 
 void UI_make_axis_color(const unsigned char *src_col, unsigned char *dst_col, const char axis);
 
-#endif /*  UI_ICONS_H */
+#endif  /* __UI_RESOURCES_H__ */

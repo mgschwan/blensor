@@ -691,7 +691,8 @@ bool LbmFsgrSolver::initializeSolverMemory()
 		calculateMemreqEstimate( mSizex, mSizey, mSizez, 
 				mMaxRefine, mFarFieldSize, &memEstFromFunc, &memEstFine, &memreqStr );
 		
-		double memLimit;
+		bool noLimit = false;
+		double memLimit = 0.;
 		string memLimStr("-");
 		if(sizeof(void*)==4) {
 			// 32bit system, limit to 2GB
@@ -699,8 +700,9 @@ bool LbmFsgrSolver::initializeSolverMemory()
 			memLimStr = string("2GB");
 		} else {
 			// 64bit, just take 16GB as limit for now...
-			memLimit = 16.0* 1024.0*1024.0*1024.0;
-			memLimStr = string("16GB");
+			// memLimit = 16.0* 1024.0*1024.0*1024.0;
+			// memLimStr = string("16GB");
+			noLimit = true;
 		}
 
 		// restrict max. chunk of 1 mem block to 1GB for windos
@@ -724,7 +726,7 @@ bool LbmFsgrSolver::initializeSolverMemory()
 			memBlockAllocProblem = true;
 		}
 
-		if(memEstFromFunc>memLimit || memBlockAllocProblem) {
+		if(!noLimit && (memEstFromFunc>memLimit || memBlockAllocProblem)) {
 			sizeReduction *= 0.9;
 			mSizex = (int)(orgSx * sizeReduction);
 			mSizey = (int)(orgSy * sizeReduction);
@@ -817,16 +819,16 @@ bool LbmFsgrSolver::initializeSolverMemory()
 	mLevel[ mMaxRefine ].nodeSize = ((mvGeoEnd[0]-mvGeoStart[0]) / (LbmFloat)(mSizex));
 	mLevel[ mMaxRefine ].simCellSize = mpParam->getCellSize();
 	mLevel[ mMaxRefine ].lcellfactor = 1.0;
-	LONGINT rcellSize = ((mLevel[mMaxRefine].lSizex*mLevel[mMaxRefine].lSizey*mLevel[mMaxRefine].lSizez) *dTotalNum);
+	LONGINT rcellSize = (LONGINT)((LONGINT)((LONGINT)mLevel[mMaxRefine].lSizex*(LONGINT)mLevel[mMaxRefine].lSizey*(LONGINT)mLevel[mMaxRefine].lSizez) * (LONGINT)dTotalNum);
 
 #if COMPRESSGRIDS==0
 	mLevel[ mMaxRefine ].mprsCells[0] = new LbmFloat[ rcellSize +4 ];
 	mLevel[ mMaxRefine ].mprsCells[1] = new LbmFloat[ rcellSize +4 ];
 	ownMemCheck += 2 * sizeof(LbmFloat) * (rcellSize+4);
 #else // COMPRESSGRIDS==0
-	LONGINT compressOffset = (mLevel[mMaxRefine].lSizex*mLevel[mMaxRefine].lSizey*dTotalNum*2);
-	// D int tmp = ( (rcellSize +compressOffset +4)/(1024*1024) )*4;
-	// D printf("Debug MEMMMM excee: %d\n", tmp);
+	LONGINT compressOffset = (LONGINT)((LONGINT)mLevel[mMaxRefine].lSizex * (LONGINT)mLevel[mMaxRefine].lSizey * (LONGINT)dTotalNum * 2);
+	// LONGINT tmp = ( (rcellSize +compressOffset +4)/(1024*1024) )*sizeof(LbmFloat);
+	// printf("Debug MEMMMM excee: %I64d, %I64d, %I64d, %d, %d\n", tmp, compressOffset, rcellSize, mLevel[mMaxRefine].lSizex, mLevel[mMaxRefine].lSizey );
 	mLevel[ mMaxRefine ].mprsCells[1] = new LbmFloat[ rcellSize +compressOffset +4 ];
 	mLevel[ mMaxRefine ].mprsCells[0] = mLevel[ mMaxRefine ].mprsCells[1]+compressOffset;
 	ownMemCheck += sizeof(LbmFloat) * (rcellSize +compressOffset +4);

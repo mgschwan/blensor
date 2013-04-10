@@ -97,7 +97,7 @@ def is_cmake(filename):
 
 def is_c_header(filename):
     ext = splitext(filename)[1]
-    return (ext in (".h", ".hpp", ".hxx"))
+    return (ext in {".h", ".hpp", ".hxx", ".hh"})
 
 
 def is_py(filename):
@@ -141,7 +141,7 @@ def cmake_advanced_info():
         if sys.platform == "win32":
             cmd = 'cmake "%s" -G"Eclipse CDT4 - MinGW Makefiles"' % CMAKE_DIR
         else:
-            if make_exe_basename.startswith("make"):
+            if make_exe_basename.startswith(("make", "gmake")):
                 cmd = 'cmake "%s" -G"Eclipse CDT4 - Unix Makefiles"' % CMAKE_DIR
             elif make_exe_basename.startswith("ninja"):
                 cmd = 'cmake "%s" -G"Eclipse CDT4 - Ninja"' % CMAKE_DIR
@@ -149,14 +149,19 @@ def cmake_advanced_info():
                 raise Exception("Unknown make program %r" % make_exe)
 
         os.system(cmd)
+        return join(CMAKE_DIR, ".cproject")
 
     includes = []
     defines = []
 
-    create_eclipse_project()
+    project_path = create_eclipse_project()
+
+    if not exists(project_path):
+        print("Generating Eclipse Prokect File Failed: %r not found" % project_path)
+        return None, None
 
     from xml.dom.minidom import parse
-    tree = parse(join(CMAKE_DIR, ".cproject"))
+    tree = parse(project_path)
 
     # to check on nicer xml
     # f = open(".cproject_pretty", 'w')

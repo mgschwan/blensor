@@ -1,4 +1,30 @@
-#!/usr/bin/python
+#!/usr/bin/env python
+#
+# ***** BEGIN GPL LICENSE BLOCK *****
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#
+# The Original Code is Copyright (C) 2006, Blender Foundation
+# All rights reserved.
+#
+# The Original Code is: all of this file.
+#
+# Contributor(s): Nathan Letwory.
+#
+# ***** END GPL LICENSE BLOCK *****
+
 import sys
 import os
 
@@ -12,6 +38,8 @@ root_build_dir=normpath(env['BF_BUILDDIR'])
 
 source_files = env.Glob('*.c')
 source_files.remove('rna_access.c')
+if not env['WITH_BF_FREESTYLE']:
+    source_files.remove('rna_linestyle.c')
 
 generated_files = source_files[:]
 generated_files.remove('rna_define.c')
@@ -39,7 +67,11 @@ incs += ' #/intern/smoke/extern'
 
 if env['WITH_BF_SMOKE']:
     defs.append('WITH_SMOKE')
-    
+
+if env['WITH_BF_BULLET']:
+    defs.append('WITH_BULLET')
+    incs += ' #/intern/rigidbody'
+
 if env['WITH_BF_OPENEXR']:
     defs.append('WITH_OPENEXR')
 
@@ -105,6 +137,10 @@ if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc', '
 
 if env['WITH_BF_INTERNATIONAL']:
     defs.append('WITH_INTERNATIONAL')
+
+if env['WITH_BF_FREESTYLE']:
+    # TO BE REMOVED when the trunk merger is done
+    defs.append('WITH_FREESTYLE')
 
 if not env['BF_DEBUG']:
     defs.append('NDEBUG')

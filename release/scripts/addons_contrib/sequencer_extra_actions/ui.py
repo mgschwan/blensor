@@ -35,41 +35,10 @@ class SEQUENCER_EXTRA_MT_input(bpy.types.Menu):
         text='Create Movieclip strip', icon='PLUGIN')
 
 
-
-class AddRecursiveLoadPanel(bpy.types.Panel):
-    bl_label = "Recursive Load"
-    bl_space_type = "SEQUENCE_EDITOR"
-    bl_region_type = "UI"
-    
-    @staticmethod
-    def has_sequencer(context):
-        return (context.space_data.view_type in {'SEQUENCER', 'SEQUENCER_PREVIEW'})
-
-    @classmethod
-    def poll(cls, context):
-        return cls.has_sequencer(context)
-
-    def draw_header(self, context):
-        layout = self.layout
-        layout.label(text="", icon="NLA")
-
-    def draw(self, context):
-
-        scn = bpy.context.scene
-        self.layout.prop(scn, "default_recursive_ext", text="Same extension")
-        if scn.default_recursive_ext:
-            split = self.layout.split()
-            col = split.column()
-            col.prop(scn, "default_ext", text="extension: ")
-
-        self.layout.prop(scn, "default_recursive", text="Recursive Folders")
-        split = self.layout.split(percentage=0.3)
-
-        split.label(text="")
-        split.prop(scn, "default_recursive_proxies", text="Proxies")
-
-        self.layout.operator("sequencerextra.recursiveload",
-            text="Import from Browser")
+def sequencer_add_menu_func(self, context):
+    self.layout.operator('sequencerextra.recursiveload', 
+    text='recursive load from browser', icon='PLUGIN')
+    self.layout.separator()
 
 
 def sequencer_select_menu_func(self, context):
@@ -83,9 +52,13 @@ def sequencer_select_menu_func(self, context):
     self.layout.operator('sequencerextra.selectcurrentframe',
     text='On Current Frame', icon='PLUGIN').mode = 'ON'
     self.layout.separator()
+    self.layout.operator('sequencerextra.selectsamechannel',
+    text='Same Channel', icon='PLUGIN')
 
 
 def sequencer_strip_menu_func(self, context):
+    self.layout.operator('sequencerextra.extendtofill',
+    text='Extend to Fill', icon='PLUGIN')
     self.layout.operator('sequencerextra.distribute',
     text='Distribute', icon='PLUGIN')
     self.layout.operator_menu_enum('sequencerextra.fadeinout',
@@ -159,15 +132,17 @@ def clip_clip_menu_func(self, context):
     text='Open from File Browser', icon='PLUGIN')
     self.layout.separator()
 
+
 class ExifInfoPanel(bpy.types.Panel):
     """Creates a Panel in the Object properties window"""
     bl_label = "EXIF Info Panel"
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'UI'
-    
+
     @staticmethod
     def has_sequencer(context):
-        return (context.space_data.view_type in {'SEQUENCER', 'SEQUENCER_PREVIEW'})
+        return (context.space_data.view_type\
+        in {'SEQUENCER', 'SEQUENCER_PREVIEW'})
 
     @classmethod
     def poll(cls, context):
@@ -183,31 +158,31 @@ class ExifInfoPanel(bpy.types.Panel):
         row = layout.row()
         row.operator("sequencerextra.read_exif")
         row = layout.row()
-        row.label(text="Exif Data!", icon='RENDER_REGION')
+        row.label(text="Exif Data", icon='RENDER_REGION')
         row = layout.row()
-        
+
         try:
             strip = context.scene.sequence_editor.active_strip
-        
-            f=strip.frame_start
-            frame=sce.frame_current
+
+            f = strip.frame_start
+            frame = sce.frame_current
             try:
                 if len(sce['metadata']) == 1:
                     for d in sce['metadata'][0]:
                         split = layout.split(percentage=0.5)
                         col = split.column()
                         row = col.row()
-                        col.label(text=d) 
+                        col.label(text=d)
                         col = split.column()
                         col.label(str(sce['metadata'][0][d]))
-                else:    
-                    for d in sce['metadata'][frame-f]:
+                else:
+                    for d in sce['metadata'][frame - f]:
                         split = layout.split(percentage=0.5)
                         col = split.column()
                         row = col.row()
-                        col.label(text=d) 
+                        col.label(text=d)
                         col = split.column()
-                        col.label(str(sce['metadata'][frame-f][d]))
+                        col.label(str(sce['metadata'][frame - f][d]))
             except KeyError:
                 pass
         except AttributeError:

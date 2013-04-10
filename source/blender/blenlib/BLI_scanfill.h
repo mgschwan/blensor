@@ -72,7 +72,8 @@ typedef struct ScanFillVert {
 	float xy[2]; /* 2D copy of vertex location (using dominant axis) */
 	unsigned int keyindex; /* original index #, for restoring  key information */
 	short poly_nr;
-	unsigned char f, h;
+	unsigned char edge_tot;  /* number of edges using this vertex */
+	unsigned char f;
 } ScanFillVert;
 
 typedef struct ScanFillEdge {
@@ -101,6 +102,10 @@ enum {
 	 * Assumes ordered edges, otherwise we risk an eternal loop
 	 * removing double verts. - campbell */
 	BLI_SCANFILL_CALC_REMOVE_DOUBLES   = (1 << 1),
+
+	/* note: This flag removes checks for overlapping polygons.
+	 * when this flag is set, we'll never get back more faces then (totvert - 2) */
+	BLI_SCANFILL_CALC_HOLES            = (1 << 2)
 };
 
 int BLI_scanfill_begin(ScanFillContext *sf_ctx);

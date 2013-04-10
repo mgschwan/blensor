@@ -23,7 +23,7 @@ bl_info = {
     "name": "Grease Pencil Retopology",
     "author": "Campbell Barton, Bart Crouch",
     "version": (1, 0, 0),
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     "location": "View3D > Properties > Grease Pencil",
     "warning": "",
     "description": "Use Grease Pencil to retopologise a mesh.",

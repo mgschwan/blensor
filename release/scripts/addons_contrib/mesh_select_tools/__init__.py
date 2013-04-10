@@ -22,7 +22,7 @@ bl_info = {
     "name": "Select Tools",
     "author": "Multiple Authors",
     "version": (0, 3),
-    "blender": (2, 6, 4),
+    "blender": (2, 64, 0),
     "location": "Editmode select menu",
     "description": "Adds More vert/face/edge select modes.",
     "warning": "",

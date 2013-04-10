@@ -47,6 +47,8 @@
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "BKE_global.h"
 #include "BKE_node.h"
 
@@ -81,7 +83,7 @@ extern struct Render R;
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 static int test_break(void *data)
 {
-	Render *re = (Render*)data;
+	Render *re = (Render *)data;
 	return re->test_break(re->tbh);
 }
 
@@ -94,7 +96,7 @@ static void RE_rayobject_config_control(RayObject *r, Render *re)
 	}
 }
 
-static RayObject*  RE_rayobject_create(Render *re, int type, int size)
+RayObject *RE_rayobject_create(int type, int size, int octree_resolution)
 {
 	RayObject * res = NULL;
 
@@ -117,7 +119,7 @@ static RayObject*  RE_rayobject_create(Render *re, int type, int size)
 	
 		
 	if (type == R_RAYSTRUCTURE_OCTREE) //TODO dynamic ocres
-		res = RE_rayobject_octree_create(re->r.ocres, size);
+		res = RE_rayobject_octree_create(octree_resolution, size);
 	else if (type == R_RAYSTRUCTURE_BLIBVH)
 		res = RE_rayobject_blibvh_create(size);
 	else if (type == R_RAYSTRUCTURE_VBVH)
@@ -129,10 +131,18 @@ static RayObject*  RE_rayobject_create(Render *re, int type, int size)
 	else
 		res = RE_rayobject_vbvh_create(size);	//Fallback
 	
+	return res;
+}
+
+static RayObject* rayobject_create(Render *re, int type, int size)
+{
+	RayObject * res = NULL;
+
+	res = RE_rayobject_create(type, size, re->r.ocres);
 	
 	if (res)
 		RE_rayobject_config_control(res, re);
-	
+
 	return res;
 }
 
@@ -240,11 +250,11 @@ RayObject* makeraytree_object(Render *re, ObjectInstanceRen *obi)
 			return NULL;
 
 		//Create Ray cast accelaration structure
-		raytree = RE_rayobject_create( re,  re->r.raytrace_structure, faces );
+		raytree = rayobject_create( re,  re->r.raytrace_structure, faces );
 		if (  (re->r.raytrace_options & R_RAYTRACE_USE_LOCAL_COORDS) )
-			vlakprimitive = obr->rayprimitives = (VlakPrimitive*)MEM_callocN(faces*sizeof(VlakPrimitive), "ObjectRen primitives");
+			vlakprimitive = obr->rayprimitives = (VlakPrimitive *)MEM_callocN(faces * sizeof(VlakPrimitive), "ObjectRen primitives");
 		else
-			face = obr->rayfaces = (RayFace*)MEM_callocN(faces*sizeof(RayFace), "ObjectRen faces");
+			face = obr->rayfaces = (RayFace *)MEM_callocN(faces * sizeof(RayFace), "ObjectRen faces");
 
 		obr->rayobi = obi;
 		
@@ -334,13 +344,13 @@ static void makeraytree_single(Render *re)
 	}
 	
 	//Create raytree
-	raytree = re->raytree = RE_rayobject_create( re, re->r.raytrace_structure, faces+special );
+	raytree = re->raytree = rayobject_create( re, re->r.raytrace_structure, faces+special );
 
 	if ( (re->r.raytrace_options & R_RAYTRACE_USE_LOCAL_COORDS) ) {
-		vlakprimitive = re->rayprimitives = (VlakPrimitive*)MEM_callocN(faces*sizeof(VlakPrimitive), "Raytrace vlak-primitives");
+		vlakprimitive = re->rayprimitives = (VlakPrimitive *)MEM_callocN(faces * sizeof(VlakPrimitive), "Raytrace vlak-primitives");
 	}
 	else {
-		face = re->rayfaces	= (RayFace*)MEM_callocN(faces*sizeof(RayFace), "Render ray faces");
+		face = re->rayfaces	= (RayFace *)MEM_callocN(faces * sizeof(RayFace), "Render ray faces");
 	}
 	
 	for (obi=re->instancetable.first; obi; obi=obi->next)
@@ -392,7 +402,7 @@ static void makeraytree_single(Render *re)
 	}
 	
 	if (!test_break(re)) {
-		re->i.infostr= "Raytree.. building";
+		re->i.infostr = IFACE_("Raytree.. building");
 		re->stats_draw(re->sdh, &re->i);
 
 		RE_rayobject_done(raytree);
@@ -404,7 +414,7 @@ void makeraytree(Render *re)
 	float min[3], max[3], sub[3];
 	int i;
 	
-	re->i.infostr= "Raytree.. preparing";
+	re->i.infostr = IFACE_("Raytree.. preparing");
 	re->stats_draw(re->sdh, &re->i);
 
 	/* disable options not yet supported by octree,
@@ -417,7 +427,7 @@ void makeraytree(Render *re)
 	if (test_break(re)) {
 		freeraytree(re);
 
-		re->i.infostr= "Raytree building canceled";
+		re->i.infostr = IFACE_("Raytree building canceled");
 		re->stats_draw(re->sdh, &re->i);
 	}
 	else {
@@ -425,16 +435,20 @@ void makeraytree(Render *re)
 		 * This is ONLY needed to kept a bogus behavior of SUN and HEMI lights */
 		INIT_MINMAX(min, max);
 		RE_rayobject_merge_bb(re->raytree, min, max);
+		if (min[0] > max[0]) {  /* empty raytree */
+			zero_v3(min);
+			zero_v3(max);
+		}
 		for (i=0; i<3; i++) {
+			/* TODO: explain why add top both min and max??? */
 			min[i] += 0.01f;
 			max[i] += 0.01f;
 			sub[i] = max[i]-min[i];
 		}
 
-		re->maxdist = dot_v3v3(sub, sub);
-		if (re->maxdist > 0.0f) re->maxdist= sqrt(re->maxdist);
+		re->maxdist = len_v3(sub);
 
-		re->i.infostr= "Raytree finished";
+		re->i.infostr = IFACE_("Raytree finished");
 		re->stats_draw(re->sdh, &re->i);
 	}
 
@@ -488,8 +502,8 @@ static void shade_ray_set_derivative(ShadeInput *shi)
 
 void shade_ray(Isect *is, ShadeInput *shi, ShadeResult *shr)
 {
-	ObjectInstanceRen *obi= (ObjectInstanceRen*)is->hit.ob;
-	VlakRen *vlr= (VlakRen*)is->hit.face;
+	ObjectInstanceRen *obi = (ObjectInstanceRen *)is->hit.ob;
+	VlakRen *vlr = (VlakRen *)is->hit.face;
 	
 	/* set up view vector */
 	copy_v3_v3(shi->view, is->dir);

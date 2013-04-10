@@ -259,12 +259,35 @@ static void borderselect_action(bAnimContext *ac, rcti rect, short mode, short s
 		    !((ymax < rectf.ymin) || (ymin > rectf.ymax)))
 		{
 			/* loop over data selecting */
-			if (ale->type == ANIMTYPE_GPLAYER)
-				ED_gplayer_frames_select_border(ale->data, rectf.xmin, rectf.xmax, selectmode);
-			else if (ale->type == ANIMTYPE_MASKLAYER)
-				ED_masklayer_frames_select_border(ale->data, rectf.xmin, rectf.xmax, selectmode);
-			else
-				ANIM_animchannel_keyframes_loop(&ked, ac->ads, ale, ok_cb, select_cb, NULL);
+			switch (ale->type) {
+				case ANIMTYPE_GPDATABLOCK:
+				{
+					bGPdata *gpd = ale->data;
+					bGPDlayer *gpl;
+					for (gpl = gpd->layers.first; gpl; gpl = gpl->next) {
+						ED_gplayer_frames_select_border(gpl, rectf.xmin, rectf.xmax, selectmode);
+					}
+					break;
+				}
+				case ANIMTYPE_GPLAYER:
+					ED_gplayer_frames_select_border(ale->data, rectf.xmin, rectf.xmax, selectmode);
+					break;
+				case ANIMTYPE_MASKDATABLOCK:
+				{
+					Mask *mask = ale->data;
+					MaskLayer *masklay;
+					for (masklay = mask->masklayers.first; masklay; masklay = masklay->next) {
+						ED_masklayer_frames_select_border(masklay, rectf.xmin, rectf.xmax, selectmode);
+					}
+					break;
+				}
+				case ANIMTYPE_MASKLAYER:
+					ED_masklayer_frames_select_border(ale->data, rectf.xmin, rectf.xmax, selectmode);
+					break;
+				default:
+					ANIM_animchannel_keyframes_loop(&ked, ac->ads, ale, ok_cb, select_cb, NULL);
+					break;
+			}
 		}
 		
 		/* set minimum extent to be the maximum of the next channel */
@@ -849,7 +872,7 @@ static int actkeys_select_leftright_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int actkeys_select_leftright_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int actkeys_select_leftright_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	bAnimContext ac;
 	short leftright = RNA_enum_get(op->ptr, "mode");
@@ -944,6 +967,7 @@ static void actkeys_mselect_single(bAnimContext *ac, bAnimListElem *ale, short s
 				else if (ale->type == ANIMTYPE_MASKLAYER)
 					ED_mask_select_frame(ale->data, selx, select_mode);
 			}
+			BLI_freelistN(&anim_data);
 		}
 		else {
 			ANIM_animchannel_keyframes_loop(&ked, ac->ads, ale, ok_cb, select_cb, NULL);
@@ -1199,7 +1223,7 @@ static void mouse_action_keys(bAnimContext *ac, const int mval[2], short select_
 }
 
 /* handle clicking */
-static int actkeys_clickselect_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int actkeys_clickselect_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	bAnimContext ac;
 	/* ARegion *ar; */ /* UNUSED */
@@ -1240,16 +1264,17 @@ void ACTION_OT_clickselect(wmOperatorType *ot)
 	ot->idname = "ACTION_OT_clickselect";
 	ot->description = "Select keyframes by clicking on them";
 	
-	/* api callbacks - absolutely no exec() this yet... */
+	/* callbacks */
 	ot->invoke = actkeys_clickselect_invoke;
 	ot->poll = ED_operator_action_active;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_UNDO;
 	
 	/* properties */
 	prop = RNA_def_boolean(ot->srna, "extend", 0, "Extend Select", ""); // SHIFTKEY
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	
 	prop = RNA_def_boolean(ot->srna, "column", 0, "Column Select", ""); // ALTKEY
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }

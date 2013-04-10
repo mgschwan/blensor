@@ -24,7 +24,6 @@ subject to the following restrictions:
 #include "btBulletDynamicsCommon.h"
 #include "BulletCollision/CollisionDispatch/btGhostObject.h"
 #include "BulletCollision/CollisionShapes/btScaledBvhTriangleMeshShape.h"
-
 #include "BulletCollision/CollisionShapes/btTriangleIndexVertexArray.h"
 
 #include "PHY_IMotionState.h"
@@ -33,10 +32,9 @@ subject to the following restrictions:
 #include "KX_GameObject.h"
 
 #include "BulletSoftBody/btSoftBody.h"
-#include "BulletSoftBody//btSoftBodyInternals.h"
+#include "BulletSoftBody/btSoftBodyInternals.h"
 #include "BulletSoftBody/btSoftBodyHelpers.h"
 #include "LinearMath/btConvexHull.h"
-#include "BulletCollision/Gimpact/btGImpactShape.h"
 #include "BulletCollision/Gimpact/btGImpactShape.h"
 
 
@@ -67,6 +65,58 @@ float gAngularSleepingTreshold;
 
 
 btVector3 startVel(0,0,0);//-10000);
+
+BlenderBulletCharacterController::BlenderBulletCharacterController(btMotionState *motionState, btPairCachingGhostObject *ghost, btConvexShape* shape, float stepHeight)
+	: btKinematicCharacterController(ghost,shape,stepHeight,2),
+		m_motionState(motionState),
+		m_jumps(0),
+		m_maxJumps(1)
+{
+}
+
+void BlenderBulletCharacterController::updateAction(btCollisionWorld *collisionWorld, btScalar dt)
+{
+	if (onGround())
+		m_jumps = 0;
+
+	btKinematicCharacterController::updateAction(collisionWorld,dt);
+	m_motionState->setWorldTransform(getGhostObject()->getWorldTransform());
+}
+
+int BlenderBulletCharacterController::getMaxJumps() const
+{
+	return m_maxJumps;
+}
+
+void BlenderBulletCharacterController::setMaxJumps(int maxJumps)
+{
+	m_maxJumps = maxJumps;
+}
+
+int BlenderBulletCharacterController::getJumpCount() const
+{
+	return m_jumps;
+}
+
+bool BlenderBulletCharacterController::canJump() const
+{
+	return onGround() || m_jumps < m_maxJumps;
+}
+
+void BlenderBulletCharacterController::jump()
+{
+	if (!canJump())
+		return;
+		
+	m_verticalVelocity = m_jumpSpeed;
+	m_wasJumping = true;
+	m_jumps++;
+}
+
+const btVector3& BlenderBulletCharacterController::getWalkDirection()
+{
+	return m_walkDirection;
+}
 
 CcdPhysicsController::CcdPhysicsController (const CcdConstructionInfo& ci)
 :m_cci(ci)
@@ -152,25 +202,6 @@ public:
 		m_blenderMotionState->calculateWorldTransformations();
 	}
 
-};
-
-class BlenderBulletCharacterController : public btKinematicCharacterController
-{
-private:
-	btMotionState* m_motionState;
-
-public:
-	BlenderBulletCharacterController(btMotionState *motionState, btPairCachingGhostObject *ghost, btConvexShape* shape, float stepHeight)
-		: btKinematicCharacterController(ghost,shape,stepHeight,2),
-		  m_motionState(motionState)
-	{
-	}
-
-	virtual void updateAction(btCollisionWorld *collisionWorld, btScalar dt)
-	{
-		btKinematicCharacterController::updateAction(collisionWorld,dt);
-		m_motionState->setWorldTransform(getGhostObject()->getWorldTransform());
-	}
 };
 
 btRigidBody* CcdPhysicsController::GetRigidBody()
@@ -463,9 +494,6 @@ bool CcdPhysicsController::CreateCharacterController()
 
 	m_characterController = new BlenderBulletCharacterController(m_bulletMotionState,(btPairCachingGhostObject*)m_object,(btConvexShape*)m_collisionShape,m_cci.m_stepHeight);
 
-	PHY__Vector3 gravity;
-	m_cci.m_physicsEnv->getGravity(gravity);
-	m_characterController->setGravity(-gravity.m_vec[2]); // need positive gravity
 	m_characterController->setJumpSpeed(m_cci.m_jumpSpeed);
 	m_characterController->setFallSpeed(m_cci.m_fallSpeed);
 
@@ -645,9 +673,9 @@ CcdPhysicsController::~CcdPhysicsController()
 }
 
 
-		/**
-			SynchronizeMotionStates ynchronizes dynas, kinematic and deformable entities (and do 'late binding')
-		*/
+/**
+ * SynchronizeMotionStates ynchronizes dynas, kinematic and deformable entities (and do 'late binding')
+ */
 bool		CcdPhysicsController::SynchronizeMotionStates(float time)
 {
 	//sync non-static to motionstate, and static from motionstate (todo: add kinematic etc.)
@@ -730,8 +758,8 @@ bool		CcdPhysicsController::SynchronizeMotionStates(float time)
 }
 
 		/**
-			WriteMotionStateToDynamics synchronizes dynas, kinematic and deformable entities (and do 'late binding')
-		*/
+		 * WriteMotionStateToDynamics synchronizes dynas, kinematic and deformable entities (and do 'late binding')
+		 */
 		
 void		CcdPhysicsController::WriteMotionStateToDynamics(bool nondynaonly)
 {
@@ -901,18 +929,25 @@ void		CcdPhysicsController::RelativeTranslate(float dlocX,float dlocY,float dloc
 		if (local)
 			dloc = xform.getBasis()*dloc;
 
-		if (m_characterController)
-		{
-			m_characterController->setWalkDirection(dloc/GetPhysicsEnvironment()->getNumTimeSubSteps());
-		}
-		else
-		{
-
-			xform.setOrigin(xform.getOrigin() + dloc);
-			SetCenterOfMassTransform(xform);
-		}
+		xform.setOrigin(xform.getOrigin() + dloc);
+		SetCenterOfMassTransform(xform);
 	}
 
+}
+
+void		CcdPhysicsController::SetWalkDirection(float dirX,float dirY,float dirZ,bool local)
+{
+
+	if (m_object && m_characterController)
+	{
+		btVector3 dir(dirX,dirY,dirZ);
+		btTransform xform = m_object->getWorldTransform();
+
+		if (local)
+			dir = xform.getBasis()*dir;
+
+		m_characterController->setWalkDirection(dir/GetPhysicsEnvironment()->getNumTimeSubSteps());
+	}
 }
 
 void		CcdPhysicsController::RelativeRotate(const float rotval[9],bool local)
@@ -1055,7 +1090,7 @@ void		CcdPhysicsController::resolveCombinedVelocities(float linvelX,float linvel
 {
 }
 
-void 		CcdPhysicsController::getPosition(PHY__Vector3&	pos) const
+void 		CcdPhysicsController::getPosition(MT_Vector3&	pos) const
 {
 	const btTransform& xform = m_object->getWorldTransform();
 	pos[0] = xform.getOrigin().x();
@@ -1242,6 +1277,13 @@ void		CcdPhysicsController::applyImpulse(float attachX,float attachY,float attac
 	}
 
 }
+
+void		CcdPhysicsController::Jump()
+{
+	if (m_object && m_characterController)
+		m_characterController->jump();
+}
+
 void		CcdPhysicsController::SetActive(bool active)
 {
 }
@@ -1298,6 +1340,24 @@ void		CcdPhysicsController::GetVelocity(const float posX,const float posY,const 
 		linvZ = 0.f;
 	}
 }
+
+void		CcdPhysicsController::GetWalkDirection(float& dirX,float& dirY,float& dirZ)
+{
+	if (m_object && m_characterController)
+	{
+		const btVector3 dir = m_characterController->getWalkDirection();
+		dirX = dir.x();
+		dirY = dir.y();
+		dirZ = dir.z();
+	}
+	else
+	{
+		dirX = 0.f;
+		dirY = 0.f;
+		dirZ = 0.f;
+	}
+}
+
 void		CcdPhysicsController::getReactionForce(float& forceX,float& forceY,float& forceZ)
 {
 }
@@ -2169,8 +2229,9 @@ btCollisionShape* CcdShapeConstructionInfo::CreateBulletShape(btScalar margin, b
 				);
 				btGImpactMeshShape* gimpactShape =  new btGImpactMeshShape(indexVertexArrays);
 				gimpactShape->setMargin(margin);
-				collisionShape = gimpactShape;
 				gimpactShape->updateBound();
+				collisionShape = gimpactShape;
+				
 
 		} else
 		{

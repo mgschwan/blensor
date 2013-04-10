@@ -27,7 +27,7 @@ bl_info = {
     "name": "Keyboard Layout (svg)",
     "author": "Jbakker",
     "version": (0, 1),
-    "blender": (2, 6, 0),
+    "blender": (2, 60, 0),
     "location": "",
     "description": "Save the hotkeys as a .svg file (search: Keyboard)",
     "warning": "may not work in recent svn",

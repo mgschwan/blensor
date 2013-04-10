@@ -1006,7 +1006,7 @@ static void draw_sensor_actuator(uiLayout *layout, PointerRNA *ptr)
 
 static void draw_sensor_armature(uiLayout *layout, PointerRNA *ptr)
 {
-	bSensor *sens = (bSensor*)ptr->data;
+	bSensor *sens = (bSensor *)ptr->data;
 	bArmatureSensor *as = (bArmatureSensor *) sens->data;
 	Object *ob = (Object *)ptr->id.data;
 	PointerRNA pose_ptr, pchan_ptr;
@@ -1116,7 +1116,7 @@ static void draw_sensor_keyboard(uiLayout *layout, PointerRNA *ptr)
 	uiLayout *row, *col;
 
 	row = uiLayoutRow(layout, FALSE);
-	uiItemL(row, IFACE_("Key:"), ICON_NONE);
+	uiItemL(row, CTX_IFACE_(BLF_I18NCONTEXT_ID_WINDOWMANAGER, "Key:"), ICON_NONE);
 	col = uiLayoutColumn(row, FALSE);
 	uiLayoutSetActive(col, RNA_boolean_get(ptr, "use_all_keys") == FALSE);
 	uiItemR(col, ptr, "key", UI_ITEM_R_EVENT, "", ICON_NONE);
@@ -1476,7 +1476,7 @@ static void draw_actuator_action(uiLayout *layout, PointerRNA *ptr)
 
 static void draw_actuator_armature(uiLayout *layout, PointerRNA *ptr)
 {
-	bActuator *act = (bActuator*)ptr->data;
+	bActuator *act = (bActuator *)ptr->data;
 	bArmatureActuator *aa = (bArmatureActuator *) act->data;
 	Object *ob = (Object *)ptr->id.data;
 	bConstraint *constraint = NULL;
@@ -1860,6 +1860,25 @@ static void draw_actuator_motion(uiLayout *layout, PointerRNA *ptr)
 			uiItemR(col, ptr, "integral_coefficient", UI_ITEM_R_SLIDER, NULL, ICON_NONE);
 			uiItemR(col, ptr, "derivate_coefficient", UI_ITEM_R_SLIDER, NULL, ICON_NONE);
 			break;
+		case ACT_OBJECT_CHARACTER:
+			split = uiLayoutSplit(layout, 0.9, FALSE);
+			row = uiLayoutRow(split, FALSE);
+			uiItemR(row, ptr, "offset_location", 0, NULL, ICON_NONE);
+			row = uiLayoutRow(split, TRUE);
+			uiItemR(row, ptr, "use_local_location", UI_ITEM_R_TOGGLE, NULL, ICON_NONE);
+			uiItemR(row, ptr, "use_add_character_location", UI_ITEM_R_TOGGLE, NULL, ICON_NONE);
+
+			split = uiLayoutSplit(layout, 0.9, FALSE);
+			row = uiLayoutRow(split, FALSE);
+			uiItemR(row, ptr, "offset_rotation", 0, NULL, ICON_NONE);
+			uiItemR(split, ptr, "use_local_rotation", UI_ITEM_R_TOGGLE, NULL, ICON_NONE);
+
+			split = uiLayoutSplit(layout, 0.9, FALSE);
+			row = uiLayoutRow(split, FALSE);
+			split = uiLayoutSplit(row, 0.7, FALSE);
+			uiItemL(split, "", ICON_NONE); /*Just use this for some spacing */
+			uiItemR(split, ptr, "use_character_jump", UI_ITEM_R_TOGGLE, NULL, ICON_NONE);
+			break;
 	}
 }
 
@@ -2136,7 +2155,11 @@ static void draw_actuator_steering(uiLayout *layout, PointerRNA *ptr)
 		uiItemR(row, ptr, "update_period", 0, NULL, ICON_NONE);
 		row = uiLayoutRow(layout, FALSE);
 	}
+	row = uiLayoutRow(layout, FALSE);
 	uiItemR(row, ptr, "show_visualization", 0, NULL, ICON_NONE);
+	if (RNA_enum_get(ptr, "mode") != ACT_STEERING_PATHFOLLOWING) {
+		uiLayoutSetActive(row, FALSE);
+	}
 }
 
 static void draw_brick_actuator(uiLayout *layout, PointerRNA *ptr, bContext *C)
@@ -2226,6 +2249,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 	BLI_snprintf(uiblockstr, sizeof(uiblockstr), "buttonswin %p", (void *)ar);
 	block= uiBeginBlock(C, ar, uiblockstr, UI_EMBOSS);
 	uiBlockSetHandleFunc(block, do_logic_buts, NULL);
+	uiBoundsBlock(block, U.widget_unit/2);
 	
 	/* loop over all objects and set visible/linked flags for the logic bricks */
 	for (a=0; a<count; a++) {
@@ -2270,11 +2294,11 @@ void logic_buttons(bContext *C, ARegion *ar)
 	
 	/* ****************** Controllers ****************** */
 	
-	xco= 420; yco= -10; width= 300;
+	xco= 21 * U.widget_unit; yco= - U.widget_unit / 2; width= 15 * U.widget_unit;
 	layout= uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, UI_GetStyle());
 	row = uiLayoutRow(layout, TRUE);
 	
-	uiDefBlockBut(block, controller_menu, NULL, IFACE_("Controllers"), xco-10, yco, 300, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
+	uiDefBlockBut(block, controller_menu, NULL, IFACE_("Controllers"), xco - U.widget_unit / 2, yco, width, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
 	
 	uiItemR(row, &logic_ptr, "show_controllers_selected_objects", 0, IFACE_("Sel"), ICON_NONE);
 	uiItemR(row, &logic_ptr, "show_controllers_active_object", 0, IFACE_("Act"), ICON_NONE);
@@ -2301,7 +2325,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 		uiItemR(split, &settings_ptr, "show_state_panel", UI_ITEM_R_NO_BG, "", ICON_DISCLOSURE_TRI_RIGHT);
 
 		row = uiLayoutRow(split, TRUE);
-		uiDefButBitS(block, TOG, OB_SHOWCONT, B_REDR, ob->id.name+2, (short)(xco-10), yco, (short)(width-30), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide controllers"));
+		uiDefButBitS(block, TOG, OB_SHOWCONT, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide controllers"));
 
 		RNA_pointer_create((ID *)ob, &RNA_Object, ob, &object_ptr);
 		uiLayoutSetContextPointer(row, "object", &object_ptr);
@@ -2377,11 +2401,11 @@ void logic_buttons(bContext *C, ARegion *ar)
 	
 	/* ****************** Sensors ****************** */
 	
-	xco= 10; yco= -10; width= 340;
+	xco= U.widget_unit / 2; yco= -U.widget_unit / 2; width= 17 * U.widget_unit;
 	layout= uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, UI_GetStyle());
 	row = uiLayoutRow(layout, TRUE);
 	
-	uiDefBlockBut(block, sensor_menu, NULL, IFACE_("Sensors"), xco-10, yco, 300, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
+	uiDefBlockBut(block, sensor_menu, NULL, IFACE_("Sensors"), xco - U.widget_unit / 2, yco, 15 * U.widget_unit, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
 	
 	uiItemR(row, &logic_ptr, "show_sensors_selected_objects", 0, IFACE_("Sel"), ICON_NONE);
 	uiItemR(row, &logic_ptr, "show_sensors_active_object", 0, IFACE_("Act"), ICON_NONE);
@@ -2398,7 +2422,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 		if ((ob->scavisflag & OB_VIS_SENS) == 0) continue;
 
 		row = uiLayoutRow(layout, TRUE);
-		uiDefButBitS(block, TOG, OB_SHOWSENS, B_REDR, ob->id.name+2, (short)(xco-10), yco, (short)(width-30), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide sensors"));
+		uiDefButBitS(block, TOG, OB_SHOWSENS, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide sensors"));
 
 		RNA_pointer_create((ID *)ob, &RNA_Object, ob, &object_ptr);
 		uiLayoutSetContextPointer(row, "object", &object_ptr);
@@ -2446,11 +2470,11 @@ void logic_buttons(bContext *C, ARegion *ar)
 	
 	/* ****************** Actuators ****************** */
 	
-	xco= 800; yco= -10; width= 340;
+	xco= 40 * U.widget_unit; yco= -U.widget_unit / 2; width= 17 * U.widget_unit;
 	layout= uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, UI_GetStyle());
 	row = uiLayoutRow(layout, TRUE);
 	
-	uiDefBlockBut(block, actuator_menu, NULL, IFACE_("Actuators"), xco-10, yco, 300, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
+	uiDefBlockBut(block, actuator_menu, NULL, IFACE_("Actuators"), xco - U.widget_unit / 2, yco, 15 * U.widget_unit, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
 	
 	uiItemR(row, &logic_ptr, "show_actuators_selected_objects", 0, IFACE_("Sel"), ICON_NONE);
 	uiItemR(row, &logic_ptr, "show_actuators_active_object", 0, IFACE_("Act"), ICON_NONE);
@@ -2469,7 +2493,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 		}
 
 		row = uiLayoutRow(layout, TRUE);
-		uiDefButBitS(block, TOG, OB_SHOWACT, B_REDR, ob->id.name+2, (short)(xco-10), yco, (short)(width-30), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide actuators"));
+		uiDefButBitS(block, TOG, OB_SHOWACT, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide actuators"));
 
 		RNA_pointer_create((ID *)ob, &RNA_Object, ob, &object_ptr);
 		uiLayoutSetContextPointer(row, "object", &object_ptr);
@@ -2516,7 +2540,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 	uiBlockLayoutResolve(block, NULL, &yco);	/* stores final height in yco */
 	height = MIN2(height, yco);
 
-	UI_view2d_totRect_set(&ar->v2d, 1150, height);
+	UI_view2d_totRect_set(&ar->v2d, 57.5f * U.widget_unit, height - U.widget_unit);
 	
 	/* set the view */
 	UI_view2d_view_ortho(&ar->v2d);

@@ -35,6 +35,8 @@
 #ifndef CERES_INTERNAL_VISIBILITY_H_
 #define CERES_INTERNAL_VISIBILITY_H_
 
+#ifndef CERES_NO_SUITESPARSE
+
 #include <set>
 #include <vector>
 #include "ceres/graph.h"
@@ -42,7 +44,7 @@
 namespace ceres {
 namespace internal {
 
-class CompressedRowBlockStructure;
+struct CompressedRowBlockStructure;
 
 // Given a compressed row block structure, computes the set of
 // e_blocks "visible" to each f_block. If an e_block co-occurs with an
@@ -74,4 +76,5 @@ Graph<int>* CreateSchurComplementGraph(const vector<set<int> >& visibility);
 }  // namespace internal
 }  // namespace ceres
 
+#endif  // CERES_NO_SUITESPARSE
 #endif  // CERES_INTERNAL_VISIBILITY_H_

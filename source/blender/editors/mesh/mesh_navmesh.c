@@ -26,31 +26,22 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#include <math.h>
-
 #include "MEM_guardedalloc.h"
 
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
 #include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
-#include "DNA_modifier_types.h"
-#include "DNA_ID.h"
 
 #include "BLI_listbase.h"
-#include "BLI_utildefines.h"
 #include "BLI_math_vector.h"
 #include "BLI_linklist.h"
 
 #include "BKE_library.h"
 #include "BKE_depsgraph.h"
 #include "BKE_context.h"
-#include "BKE_main.h"
 #include "BKE_mesh.h"
-#include "BKE_modifier.h"
 #include "BKE_scene.h"
 #include "BKE_DerivedMesh.h"
-#include "BKE_cdderivedmesh.h"
 #include "BKE_report.h"
 #include "BKE_tessmesh.h"
 
@@ -58,15 +49,16 @@
 #include "ED_mesh.h"
 #include "ED_screen.h"
 
-#include "RNA_access.h"
-
 #include "WM_api.h"
 #include "WM_types.h"
 
-#include "mesh_intern.h"
 #include "recast-capi.h"
 
-static void createVertsTrisData(bContext *C, LinkNode *obs, int *nverts_r, float **verts_r, int *ntris_r, int **tris_r)
+#include "mesh_intern.h"  /* own include */
+
+
+static void createVertsTrisData(bContext *C, LinkNode *obs,
+                                int *nverts_r, float **verts_r, int *ntris_r, int **tris_r, unsigned int *r_lay)
 {
 	MVert *mvert;
 	int nfaces = 0, *tri, i, curnverts, basenverts, curnfaces;
@@ -101,6 +93,8 @@ static void createVertsTrisData(bContext *C, LinkNode *obs, int *nverts_r, float
 			if (mf->v4)
 				ntris += 1;
 		}
+
+		*r_lay |= ob->lay;
 	}
 
 	/* create data */
@@ -167,8 +161,9 @@ static void createVertsTrisData(bContext *C, LinkNode *obs, int *nverts_r, float
 	*tris_r = tris;
 }
 
-static int buildNavMesh(const RecastData *recastParams, int nverts, float *verts, int ntris, int *tris,
-                        struct recast_polyMesh **pmesh, struct recast_polyMeshDetail **dmesh)
+static bool buildNavMesh(const RecastData *recastParams, int nverts, float *verts, int ntris, int *tris,
+                         struct recast_polyMesh **pmesh, struct recast_polyMeshDetail **dmesh,
+                         ReportList *reports)
 {
 	float bmin[3], bmax[3];
 	struct recast_heightfield *solid;
@@ -195,14 +190,20 @@ static int buildNavMesh(const RecastData *recastParams, int nverts, float *verts
 	/* Set the area where the navigation will be build. */
 	recast_calcGridSize(bmin, bmax, recastParams->cellsize, &width, &height);
 
+	/* zero dimensions cause zero alloc later on [#33758] */
+	if (width <= 0 || height <= 0) {
+		BKE_report(reports, RPT_ERROR, "Object has a width or height of zero");
+		return false;
+	}
+
 	/* ** Step 2: Rasterize input polygon soup ** */
 	/* Allocate voxel heightfield where we rasterize our input data to */
 	solid = recast_newHeightfield();
 
 	if (!recast_createHeightfield(solid, width, height, bmin, bmax, recastParams->cellsize, recastParams->cellheight)) {
 		recast_destroyHeightfield(solid);
-
-		return 0;
+		BKE_report(reports, RPT_ERROR, "Failed to create height field");
+		return false;
 	}
 
 	/* Allocate array that can hold triangle flags */
@@ -225,7 +226,8 @@ static int buildNavMesh(const RecastData *recastParams, int nverts, float *verts
 		recast_destroyHeightfield(solid);
 		recast_destroyCompactHeightfield(chf);
 
-		return 0;
+		BKE_report(reports, RPT_ERROR, "Failed to create compact height field");
+		return false;
 	}
 
 	recast_destroyHeightfield(solid);
@@ -234,21 +236,24 @@ static int buildNavMesh(const RecastData *recastParams, int nverts, float *verts
 	if (!recast_erodeWalkableArea(walkableRadius, chf)) {
 		recast_destroyCompactHeightfield(chf);
 
-		return 0;
+		BKE_report(reports, RPT_ERROR, "Failed to erode walkable area");
+		return false;
 	}
 
 	/* Prepare for region partitioning, by calculating distance field along the walkable surface */
 	if (!recast_buildDistanceField(chf)) {
 		recast_destroyCompactHeightfield(chf);
 
-		return 0;
+		BKE_report(reports, RPT_ERROR, "Failed to build distance field");
+		return false;
 	}
 
 	/* Partition the walkable surface into simple regions without holes */
 	if (!recast_buildRegions(chf, 0, minRegionArea, mergeRegionArea)) {
 		recast_destroyCompactHeightfield(chf);
 
-		return 0;
+		BKE_report(reports, RPT_ERROR, "Failed to build regions");
+		return false;
 	}
 
 	/* ** Step 5: Trace and simplify region contours ** */
@@ -259,7 +264,8 @@ static int buildNavMesh(const RecastData *recastParams, int nverts, float *verts
 		recast_destroyCompactHeightfield(chf);
 		recast_destroyContourSet(cset);
 
-		return 0;
+		BKE_report(reports, RPT_ERROR, "Failed to build contours");
+		return false;
 	}
 
 	/* ** Step 6: Build polygons mesh from contours ** */
@@ -269,7 +275,8 @@ static int buildNavMesh(const RecastData *recastParams, int nverts, float *verts
 		recast_destroyContourSet(cset);
 		recast_destroyPolyMesh(*pmesh);
 
-		return 0;
+		BKE_report(reports, RPT_ERROR, "Failed to build poly mesh");
+		return false;
 	}
 
 
@@ -282,16 +289,18 @@ static int buildNavMesh(const RecastData *recastParams, int nverts, float *verts
 		recast_destroyPolyMesh(*pmesh);
 		recast_destroyPolyMeshDetail(*dmesh);
 
-		return 0;
+		BKE_report(reports, RPT_ERROR, "Failed to build poly mesh detail");
+		return false;
 	}
 
 	recast_destroyCompactHeightfield(chf);
 	recast_destroyContourSet(cset);
 
-	return 1;
+	return true;
 }
 
-static Object *createRepresentation(bContext *C, struct recast_polyMesh *pmesh, struct recast_polyMeshDetail *dmesh, Base *base)
+static Object *createRepresentation(bContext *C, struct recast_polyMesh *pmesh, struct recast_polyMeshDetail *dmesh,
+                                  Base *base, unsigned int lay)
 {
 	float co[3], rot[3];
 	BMEditMesh *em;
@@ -312,7 +321,7 @@ static Object *createRepresentation(bContext *C, struct recast_polyMesh *pmesh, 
 
 	if (createob) {
 		/* create new object */
-		obedit = ED_object_add_type(C, OB_MESH, co, rot, FALSE, 1);
+		obedit = ED_object_add_type(C, OB_MESH, co, rot, false, lay);
 	}
 	else {
 		obedit = base->object;
@@ -322,7 +331,7 @@ static Object *createRepresentation(bContext *C, struct recast_polyMesh *pmesh, 
 		copy_v3_v3(obedit->rot, rot);
 	}
 
-	ED_object_enter_editmode(C, EM_DO_UNDO | EM_IGNORE_LAYER);
+	ED_object_editmode_enter(C, EM_DO_UNDO | EM_IGNORE_LAYER);
 	em = BMEdit_FromObject(obedit);
 
 	if (!createob) {
@@ -393,7 +402,7 @@ static Object *createRepresentation(bContext *C, struct recast_polyMesh *pmesh, 
 			                                  EDBM_vert_at_index(em, face[0]),
 			                                  EDBM_vert_at_index(em, face[2]),
 			                                  EDBM_vert_at_index(em, face[1]), NULL,
-			                                  NULL, FALSE);
+			                                  NULL, false);
 
 			/* set navigation polygon idx to the custom layer */
 			polygonIdx = (int *)CustomData_bmesh_get(&em->bm->pdata, newFace->head.data, CD_RECAST);
@@ -408,7 +417,7 @@ static Object *createRepresentation(bContext *C, struct recast_polyMesh *pmesh, 
 	WM_event_add_notifier(C, NC_GEOM | ND_DATA, obedit->data);
 
 
-	ED_object_exit_editmode(C, EM_FREEDATA); 
+	ED_object_editmode_exit(C, EM_FREEDATA); 
 	WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, obedit);
 
 	if (createob) {
@@ -447,20 +456,23 @@ static int navmesh_create_exec(bContext *C, wmOperator *op)
 	if (obs) {
 		struct recast_polyMesh *pmesh = NULL;
 		struct recast_polyMeshDetail *dmesh = NULL;
+		bool ok;
+		unsigned int lay = 0;
 
 		int nverts = 0, ntris = 0;
 		int *tris = 0;
 		float *verts = NULL;
 
-		createVertsTrisData(C, obs, &nverts, &verts, &ntris, &tris);
+		createVertsTrisData(C, obs, &nverts, &verts, &ntris, &tris, &lay);
 		BLI_linklist_free(obs, NULL);
-		buildNavMesh(&scene->gm.recastData, nverts, verts, ntris, tris, &pmesh, &dmesh);
-		createRepresentation(C, pmesh, dmesh, navmeshBase);
+		if ((ok = buildNavMesh(&scene->gm.recastData, nverts, verts, ntris, tris, &pmesh, &dmesh, op->reports))) {
+			createRepresentation(C, pmesh, dmesh, navmeshBase, lay);
+		}
 
 		MEM_freeN(verts);
 		MEM_freeN(tris);
 
-		return OPERATOR_FINISHED;
+		return ok ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
 	}
 	else {
 		BKE_report(op->reports, RPT_ERROR, "No mesh objects found");
@@ -472,7 +484,7 @@ static int navmesh_create_exec(bContext *C, wmOperator *op)
 void MESH_OT_navmesh_make(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name = "Create navigation mesh";
+	ot->name = "Create Navigation Mesh";
 	ot->description = "Create navigation mesh for selected objects";
 	ot->idname = "MESH_OT_navmesh_make";
 
@@ -489,7 +501,7 @@ static int navmesh_face_copy_exec(bContext *C, wmOperator *op)
 	BMEditMesh *em = BMEdit_FromObject(obedit);
 
 	/* do work here */
-	BMFace *efa_act = BM_active_face_get(em->bm, FALSE, FALSE);
+	BMFace *efa_act = BM_active_face_get(em->bm, false, false);
 
 	if (efa_act) {
 		if (CustomData_has_layer(&em->bm->pdata, CD_RECAST)) {
@@ -622,16 +634,16 @@ static int navmesh_obmode_data_poll(bContext *C)
 		Mesh *me = ob->data;
 		return CustomData_has_layer(&me->pdata, CD_RECAST);
 	}
-	return FALSE;
+	return false;
 }
 
 static int navmesh_obmode_poll(bContext *C)
 {
 	Object *ob = ED_object_active_context(C);
 	if (ob && (ob->mode == OB_MODE_OBJECT) && (ob->type == OB_MESH)) {
-		return TRUE;
+		return true;
 	}
-	return FALSE;
+	return false;
 }
 
 static int navmesh_reset_exec(bContext *C, wmOperator *UNUSED(op))

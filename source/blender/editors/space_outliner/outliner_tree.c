@@ -64,10 +64,14 @@
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 
+#include "BLF_translation.h"
+
 #include "BKE_fcurve.h"
 #include "BKE_main.h"
+#include "BKE_library.h"
 #include "BKE_modifier.h"
 #include "BKE_sequencer.h"
+#include "BKE_idcode.h"
 
 #include "ED_armature.h"
 #include "ED_screen.h"
@@ -320,7 +324,7 @@ static void outliner_add_passes(SpaceOops *soops, TreeElement *tenla, ID *id, Sc
 	 * in order to not overflow short tselem->nr */
 	
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_COMBINED));
-	te->name = "Combined";
+	te->name = IFACE_("Combined");
 	te->directdata = &srl->passflag;
 	
 	/* save cpu cycles, but we add the first to invoke an open/close triangle */
@@ -329,71 +333,71 @@ static void outliner_add_passes(SpaceOops *soops, TreeElement *tenla, ID *id, Sc
 		return;
 	
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_Z));
-	te->name = "Z";
+	te->name = IFACE_("Z");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_VECTOR));
-	te->name = "Vector";
+	te->name = IFACE_("Vector");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_NORMAL));
-	te->name = "Normal";
+	te->name = IFACE_("Normal");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_UV));
-	te->name = "UV";
+	te->name = IFACE_("UV");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_MIST));
-	te->name = "Mist";
+	te->name = IFACE_("Mist");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_INDEXOB));
-	te->name = "Index Object";
+	te->name = IFACE_("Index Object");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_INDEXMA));
-	te->name = "Index Material";
+	te->name = IFACE_("Index Material");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_RGBA));
-	te->name = "Color";
+	te->name = IFACE_("Color");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_DIFFUSE));
-	te->name = "Diffuse";
+	te->name = IFACE_("Diffuse");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_SPEC));
-	te->name = "Specular";
+	te->name = IFACE_("Specular");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_SHADOW));
-	te->name = "Shadow";
+	te->name = IFACE_("Shadow");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_AO));
-	te->name = "AO";
+	te->name = IFACE_("AO");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_REFLECT));
-	te->name = "Reflection";
+	te->name = IFACE_("Reflection");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_REFRACT));
-	te->name = "Refraction";
+	te->name = IFACE_("Refraction");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_INDIRECT));
-	te->name = "Indirect";
+	te->name = IFACE_("Indirect");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_ENVIRONMENT));
-	te->name = "Environment";
+	te->name = IFACE_("Environment");
 	te->directdata = &srl->passflag;
 
 	te = outliner_add_element(soops, &tenla->subtree, id, tenla, TSE_R_PASS, LOG2I(SCE_PASS_EMIT));
-	te->name = "Emit";
+	te->name = IFACE_("Emit");
 	te->directdata = &srl->passflag;
 }
 
@@ -405,7 +409,7 @@ static void outliner_add_scene_contents(SpaceOops *soops, ListBase *lb, Scene *s
 	TreeElement *tenla = outliner_add_element(soops, lb, sce, te, TSE_R_LAYER_BASE, 0);
 	int a;
 	
-	tenla->name = "RenderLayers";
+	tenla->name = IFACE_("RenderLayers");
 	for (a = 0, srl = sce->r.layers.first; srl; srl = srl->next, a++) {
 		TreeElement *tenlay = outliner_add_element(soops, &tenla->subtree, sce, te, TSE_R_LAYER, a);
 		tenlay->name = srl->name;
@@ -447,7 +451,7 @@ static void outliner_add_object_contents(SpaceOops *soops, TreeElement *te, Tree
 		TreeElement *ten;
 		TreeElement *tenla = outliner_add_element(soops, &te->subtree, ob, te, TSE_POSE_BASE, 0);
 		
-		tenla->name = "Pose";
+		tenla->name = IFACE_("Pose");
 		
 		/* channels undefined in editmode, but we want the 'tenla' pose icon itself */
 		if ((arm->edbo == NULL) && (ob->mode & OB_MODE_POSE)) {
@@ -466,7 +470,7 @@ static void outliner_add_object_contents(SpaceOops *soops, TreeElement *te, Tree
 					TreeElement *tenla1 = outliner_add_element(soops, &ten->subtree, ob, ten, TSE_CONSTRAINT_BASE, 0);
 					//char *str;
 					
-					tenla1->name = "Constraints";
+					tenla1->name = IFACE_("Constraints");
 					for (con = pchan->constraints.first; con; con = con->next, const_index++) {
 						ten1 = outliner_add_element(soops, &tenla1->subtree, ob, tenla1, TSE_CONSTRAINT, const_index);
 #if 0 /* disabled as it needs to be reworked for recoded constraints system */
@@ -506,7 +510,7 @@ static void outliner_add_object_contents(SpaceOops *soops, TreeElement *te, Tree
 			TreeElement *tenla = outliner_add_element(soops, &te->subtree, ob, te, TSE_POSEGRP_BASE, 0);
 			int a = 0;
 			
-			tenla->name = "Bone Groups";
+			tenla->name = IFACE_("Bone Groups");
 			for (agrp = ob->pose->agroups.first; agrp; agrp = agrp->next, a++) {
 				ten = outliner_add_element(soops, &tenla->subtree, ob, tenla, TSE_POSEGRP, a);
 				ten->name = agrp->name;
@@ -525,7 +529,7 @@ static void outliner_add_object_contents(SpaceOops *soops, TreeElement *te, Tree
 		TreeElement *tenla = outliner_add_element(soops, &te->subtree, ob, te, TSE_CONSTRAINT_BASE, 0);
 		//char *str;
 		
-		tenla->name = "Constraints";
+		tenla->name = IFACE_("Constraints");
 		for (con = ob->constraints.first, a = 0; con; con = con->next, a++) {
 			ten = outliner_add_element(soops, &tenla->subtree, ob, tenla, TSE_CONSTRAINT, a);
 #if 0 /* disabled due to constraints system targets recode... code here needs review */
@@ -545,7 +549,7 @@ static void outliner_add_object_contents(SpaceOops *soops, TreeElement *te, Tree
 		TreeElement *temod = outliner_add_element(soops, &te->subtree, ob, te, TSE_MODIFIER_BASE, 0);
 		int index;
 		
-		temod->name = "Modifiers";
+		temod->name = IFACE_("Modifiers");
 		for (index = 0, md = ob->modifiers.first; md; index++, md = md->next) {
 			TreeElement *te = outliner_add_element(soops, &temod->subtree, ob, temod, TSE_MODIFIER, index);
 			te->name = md->name;
@@ -580,7 +584,7 @@ static void outliner_add_object_contents(SpaceOops *soops, TreeElement *te, Tree
 		TreeElement *ten;
 		TreeElement *tenla = outliner_add_element(soops, &te->subtree, ob, te, TSE_DEFGROUP_BASE, 0);
 		
-		tenla->name = "Vertex Groups";
+		tenla->name = IFACE_("Vertex Groups");
 		for (defgroup = ob->defbase.first, a = 0; defgroup; defgroup = defgroup->next, a++) {
 			ten = outliner_add_element(soops, &tenla->subtree, ob, tenla, TSE_DEFGROUP, a);
 			ten->name = defgroup->name;
@@ -592,6 +596,7 @@ static void outliner_add_object_contents(SpaceOops *soops, TreeElement *te, Tree
 	if (ob->dup_group)
 		outliner_add_element(soops, &te->subtree, ob->dup_group, te, 0, 0);
 }
+
 
 // can be inlined if necessary
 static void outliner_add_id_contents(SpaceOops *soops, TreeElement *te, TreeStoreElem *tselem, ID *id)
@@ -785,6 +790,7 @@ static void outliner_add_id_contents(SpaceOops *soops, TreeElement *te, TreeStor
 }
 
 // TODO: this function needs to be split up! It's getting a bit too large...
+// Note: "ID" is not always a real ID
 static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *idv, 
                                          TreeElement *parent, short type, short index)
 {
@@ -798,7 +804,13 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 		if (!id) id = ((PointerRNA *)idv)->data;
 	}
 
-	if (id == NULL) return NULL;
+	/* One exception */
+	if (type == TSE_ID_BASE) {
+		/* pass */
+	}
+	else if (id == NULL) {
+		return NULL;
+	}
 
 	te = MEM_callocN(sizeof(TreeElement), "tree elem");
 	/* add to the visual tree */
@@ -822,21 +834,31 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 	else if (type == TSE_ANIM_DATA) {
 		/* pass */
 	}
+	else if (type == TSE_ID_BASE) {
+		/* pass */
+	}
 	else {
-		te->name = id->name + 2; // default, can be overridden by Library or non-ID data
+		/* do here too, for blend file viewer, own ID_LI then shows file name */
+		if (GS(id->name) == ID_LI)
+			te->name = ((Library *)id)->name;
+		else
+			te->name = id->name + 2; // default, can be overridden by Library or non-ID data
 		te->idcode = GS(id->name);
 	}
 	
 	if (type == 0) {
+		TreeStoreElem *tsepar = parent ? TREESTORE(parent) : NULL;
+		
 		/* ID datablock */
-		outliner_add_id_contents(soops, te, tselem, id);
+		if (tsepar == NULL || tsepar->type != TSE_ID_BASE)
+			outliner_add_id_contents(soops, te, tselem, id);
 	}
 	else if (type == TSE_ANIM_DATA) {
 		IdAdtTemplate *iat = (IdAdtTemplate *)idv;
 		AnimData *adt = (AnimData *)iat->adt;
 		
 		/* this element's info */
-		te->name = "Animation";
+		te->name = IFACE_("Animation");
 		te->directdata = adt;
 		
 		/* Action */
@@ -848,7 +870,7 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 			ID *lastadded = NULL;
 			FCurve *fcu;
 			
-			ted->name = "Drivers";
+			ted->name = IFACE_("Drivers");
 		
 			for (fcu = adt->drivers.first; fcu; fcu = fcu->next) {
 				if (fcu->driver && fcu->driver->variables.first) {
@@ -877,7 +899,7 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 			NlaTrack *nlt;
 			int a = 0;
 			
-			tenla->name = "NLA Tracks";
+			tenla->name = IFACE_("NLA Tracks");
 			
 			for (nlt = adt->nla_tracks.first; nlt; nlt = nlt->next) {
 				TreeElement *tenlt = outliner_add_element(soops, &tenla->subtree, nlt, tenla, TSE_NLA_TRACK, a);
@@ -931,7 +953,7 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 		if (strip->dir)
 			te->name = strip->dir;
 		else
-			te->name = "Strip None";
+			te->name = IFACE_("Strip None");
 		te->directdata = strip;
 	}
 	else if (type == TSE_SEQUENCE_DUP) {
@@ -950,7 +972,7 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 		/* we do lazy build, for speed and to avoid infinite recusion */
 
 		if (ptr->data == NULL) {
-			te->name = "(empty)";
+			te->name = IFACE_("(empty)");
 		}
 		else if (type == TSE_RNA_STRUCT) {
 			/* struct */
@@ -1076,7 +1098,7 @@ static TreeElement *outliner_add_element(SpaceOops *soops, ListBase *lb, void *i
 						ten->directdata = kmi;
 						
 						if (kmi->propvalue) {
-							ten->name = "Modal map, not yet";
+							ten->name = IFACE_("Modal map, not yet");
 						}
 						else {
 							WM_operator_py_idname(opname, ot->idname);
@@ -1194,8 +1216,8 @@ typedef struct tTreeSort {
 	short idcode;
 } tTreeSort;
 
-/* alphabetical comparator */
-static int treesort_alpha(const void *v1, const void *v2)
+/* alphabetical comparator, tryping to put objects first */
+static int treesort_alpha_ob(const void *v1, const void *v2)
 {
 	const tTreeSort *x1 = v1, *x2 = v2;
 	int comp;
@@ -1216,6 +1238,20 @@ static int treesort_alpha(const void *v1, const void *v2)
 	return 0;
 }
 
+/* alphabetical comparator */
+static int treesort_alpha(const void *v1, const void *v2)
+{
+	const tTreeSort *x1 = v1, *x2 = v2;
+	int comp;
+	
+	comp = strcmp(x1->name, x2->name);
+	
+	if (comp > 0) return 1;
+	else if (comp < 0) return -1;
+	return 0;
+}
+
+
 /* this is nice option for later? doesnt look too useful... */
 #if 0
 static int treesort_obtype_alpha(const void *v1, const void *v2)
@@ -1223,19 +1259,23 @@ static int treesort_obtype_alpha(const void *v1, const void *v2)
 	const tTreeSort *x1 = v1, *x2 = v2;
 	
 	/* first put objects last (hierarchy) */
-	if (x1->idcode == ID_OB && x2->idcode != ID_OB) return 1;
-	else if (x2->idcode == ID_OB && x1->idcode != ID_OB) return -1;
+	if (x1->idcode == ID_OB && x2->idcode != ID_OB) {
+		return 1;
+	}
+	else if (x2->idcode == ID_OB && x1->idcode != ID_OB) {
+		return -1;
+	}
 	else {
 		/* 2nd we check ob type */
 		if (x1->idcode == ID_OB && x2->idcode == ID_OB) {
-			if (((Object *)x1->id)->type > ((Object *)x2->id)->type) return 1;
+			if      (((Object *)x1->id)->type > ((Object *)x2->id)->type) return  1;
 			else if (((Object *)x1->id)->type > ((Object *)x2->id)->type) return -1;
 			else return 0;
 		}
 		else {
 			int comp = strcmp(x1->name, x2->name);
 			
-			if (comp > 0) return 1;
+			if      (comp > 0) return  1;
 			else if (comp < 0) return -1;
 			return 0;
 		}
@@ -1254,8 +1294,8 @@ static void outliner_sort(SpaceOops *soops, ListBase *lb)
 	if (te == NULL) return;
 	tselem = TREESTORE(te);
 	
-	/* sorting rules; only object lists or deformgroups */
-	if ((tselem->type == TSE_DEFGROUP) || (tselem->type == 0 && te->idcode == ID_OB)) {
+	/* sorting rules; only object lists, ID lists, or deformgroups */
+	if ( ELEM(tselem->type, TSE_DEFGROUP, TSE_ID_BASE) || (tselem->type == 0 && te->idcode == ID_OB)) {
 		
 		/* count first */
 		for (te = lb->first; te; te = te->next) totelem++;
@@ -1270,15 +1310,27 @@ static void outliner_sort(SpaceOops *soops, ListBase *lb)
 				tp->te = te;
 				tp->name = te->name;
 				tp->idcode = te->idcode;
-				if (tselem->type && tselem->type != TSE_DEFGROUP) tp->idcode = 0;  // don't sort this
+				
+				if (tselem->type && tselem->type != TSE_DEFGROUP)
+					tp->idcode = 0;  // don't sort this
+				if (tselem->type == TSE_ID_BASE)
+					tp->idcode = 1; // do sort this
+				
 				tp->id = tselem->id;
 			}
-			/* keep beginning of list */
-			for (tp = tear, skip = 0; skip < totelem; skip++, tp++)
-				if (tp->idcode) break;
 			
-			if (skip < totelem)
-				qsort(tear + skip, totelem - skip, sizeof(tTreeSort), treesort_alpha);
+			/* just sort alphabetically */
+			if (tear->idcode == 1) {
+				qsort(tear, totelem, sizeof(tTreeSort), treesort_alpha);
+			}
+			else {
+				/* keep beginning of list */
+				for (tp = tear, skip = 0; skip < totelem; skip++, tp++)
+					if (tp->idcode) break;
+				
+				if (skip < totelem)
+					qsort(tear + skip, totelem - skip, sizeof(tTreeSort), treesort_alpha_ob);
+			}
 			
 			lb->first = lb->last = NULL;
 			tp = tear;
@@ -1384,6 +1436,42 @@ static int outliner_filter_tree(SpaceOops *soops, ListBase *lb)
 	return (lb->first != NULL);
 }
 
+static void outliner_add_library_contents(Main *mainvar, SpaceOops *soops, TreeElement *te, Library *lib)
+{
+	TreeElement *ten;
+	ListBase *lbarray[MAX_LIBARRAY];
+	int a, tot;
+	
+	tot = set_listbasepointers(mainvar, lbarray);
+	for (a = 0; a < tot; a++) {
+		if (lbarray[a]->first) {
+			ID *id = lbarray[a]->first;
+			
+			/* check if there's data in current lib */
+			for (; id; id = id->next)
+				if (id->lib == lib)
+					break;
+			
+			if (id) {
+				
+				ten = outliner_add_element(soops, &te->subtree, (void *)lbarray[a], NULL, TSE_ID_BASE, 0);
+				ten->directdata = lbarray[a];
+				
+				ten->name = (char *)BKE_idcode_to_name_plural(GS(id->name));
+				if (ten->name == NULL)
+					ten->name = "UNKNOWN";
+				
+				for (id = lbarray[a]->first; id; id = id->next) {
+					if (id->lib == lib)
+						outliner_add_element(soops, &ten->subtree, id, ten, 0, 0);
+				}
+			}
+		}
+	}
+	
+}
+
+
 /* ======================================================= */
 /* Main Tree Building API */
 
@@ -1418,17 +1506,31 @@ void outliner_build_tree(Main *mainvar, Scene *scene, SpaceOops *soops)
 	if (soops->outlinevis == SO_LIBRARIES) {
 		Library *lib;
 		
+		/* current file first - mainvar provides tselem with unique pointer - not used */
+		ten = outliner_add_element(soops, &soops->tree, mainvar, NULL, TSE_ID_BASE, 0);
+		ten->name = IFACE_("Current File");
+
+		tselem = TREESTORE(ten);
+		if (!tselem->used)
+			tselem->flag &= ~TSE_CLOSED;
+		
+		outliner_add_library_contents(mainvar, soops, ten, NULL);
+		
 		for (lib = mainvar->library.first; lib; lib = lib->id.next) {
 			ten = outliner_add_element(soops, &soops->tree, lib, NULL, 0, 0);
 			lib->id.newid = (ID *)ten;
+			
+			outliner_add_library_contents(mainvar, soops, ten, lib);
+
 		}
 		/* make hierarchy */
 		ten = soops->tree.first;
+		ten = ten->next;  /* first one is main */
 		while (ten) {
 			TreeElement *nten = ten->next, *par;
 			tselem = TREESTORE(ten);
 			lib = (Library *)tselem->id;
-			if (lib->parent) {
+			if (lib && lib->parent) {
 				BLI_remlink(&soops->tree, ten);
 				par = (TreeElement *)lib->parent->id.newid;
 				BLI_addtail(&par->subtree, ten);

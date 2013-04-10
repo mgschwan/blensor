@@ -20,7 +20,7 @@ bl_info = {
     "name": "Make Thread Mesh",
     "author": "Oscurart",
     "version": (1,0),
-    "blender": (2, 5, 9),
+    "blender": (2, 59, 0),
     "api": 4000,
     "location": "Add > Mesh > Thread",
     "description": "Make a thread.",

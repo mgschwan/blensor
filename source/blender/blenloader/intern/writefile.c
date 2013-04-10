@@ -74,6 +74,7 @@
 
 #include <math.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -88,6 +89,8 @@
 #  include <process.h> // for getpid
 #  include "BLI_winstuff.h"
 #endif
+
+#include "BLI_utildefines.h"
 
 /* allow writefile to use deprecated functionality (for forward compatibility code) */
 #define DNA_DEPRECATED_ALLOW
@@ -108,6 +111,7 @@
 #include "DNA_key_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_lamp_types.h"
+#include "DNA_linestyle_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
@@ -118,6 +122,7 @@
 #include "DNA_packedFile_types.h"
 #include "DNA_particle_types.h"
 #include "DNA_property_types.h"
+#include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_sdna_types.h"
 #include "DNA_sequence_types.h"
@@ -139,7 +144,7 @@
 #include "BLI_bitmap.h"
 #include "BLI_blenlib.h"
 #include "BLI_linklist.h"
-#include "BLI_bpath.h"
+#include "BKE_bpath.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
@@ -148,6 +153,7 @@
 #include "BKE_curve.h"
 #include "BKE_constraint.h"
 #include "BKE_global.h" // for G
+#include "BKE_idprop.h"
 #include "BKE_library.h" // for  set_listbasepointers
 #include "BKE_main.h"
 #include "BKE_node.h"
@@ -158,6 +164,13 @@
 #include "BKE_fcurve.h"
 #include "BKE_pointcache.h"
 #include "BKE_mesh.h"
+
+#ifdef USE_NODE_COMPAT_CUSTOMNODES
+#include "NOD_common.h"
+#include "NOD_socket.h"	/* for sock->default_value data */
+#endif
+
+#include "RNA_access.h"
 
 #include "BLO_writefile.h"
 #include "BLO_readfile.h"
@@ -197,7 +210,7 @@ static WriteData *writedata_new(int file)
 
 	if (wd == NULL) return NULL;
 
-	wd->sdna = DNA_sdna_from_data(DNAstr, DNAlen, 0);
+	wd->sdna = DNA_sdna_from_data(DNAstr, DNAlen, false);
 
 	wd->file= file;
 
@@ -377,6 +390,17 @@ static void writedata(WriteData *wd, int filecode, int len, const void *adr)  /*
 	if (len) mywrite(wd, adr, len);
 }
 
+/* use this to force writing of lists in same order as reading (using link_list) */
+static void writelist(WriteData *wd, int filecode, const char *structname, ListBase *lb)
+{
+	Link *link = lb->first;
+	
+	while (link) {
+		writestruct(wd, filecode, structname, 1, link);
+		link = link->next;
+	}
+}
+
 /* *************** writing some direct data structs used in more code parts **************** */
 /*These functions are used by blender's .blend system for file saving/loading.*/
 void IDP_WriteProperty_OnlyData(IDProperty *prop, void *wd);
@@ -456,6 +480,9 @@ static void write_fmodifiers(WriteData *wd, ListBase *fmodifiers)
 {
 	FModifier *fcm;
 	
+	/* Write all modifiers first (for faster reloading) */
+	writelist(wd, DATA, "FModifier", fmodifiers);
+	
 	/* Modifiers */
 	for (fcm= fmodifiers->first; fcm; fcm= fcm->next) {
 		FModifierTypeInfo *fmi= fmodifier_get_typeinfo(fcm);
@@ -496,9 +523,6 @@ static void write_fmodifiers(WriteData *wd, ListBase *fmodifiers)
 					break;
 			}
 		}
-		
-		/* Write the modifier */
-		writestruct(wd, DATA, "FModifier", 1, fcm);
 	}
 }
 
@@ -506,10 +530,8 @@ static void write_fcurves(WriteData *wd, ListBase *fcurves)
 {
 	FCurve *fcu;
 	
+	writelist(wd, DATA, "FCurve", fcurves);
 	for (fcu=fcurves->first; fcu; fcu=fcu->next) {
-		/* F-Curve */
-		writestruct(wd, DATA, "FCurve", 1, fcu);
-		
 		/* curve data */
 		if (fcu->bezt)
 			writestruct(wd, DATA, "BezTriple", fcu->totvert, fcu->bezt);
@@ -527,9 +549,8 @@ static void write_fcurves(WriteData *wd, ListBase *fcurves)
 			writestruct(wd, DATA, "ChannelDriver", 1, driver);
 			
 			/* variables */
-			for (dvar= driver->variables.first; dvar; dvar= dvar->next) {
-				writestruct(wd, DATA, "DriverVar", 1, dvar);
-				
+			writelist(wd, DATA, "DriverVar", &driver->variables);
+			for (dvar= driver->variables.first; dvar; dvar= dvar->next) {				
 				DRIVER_TARGETS_USED_LOOPER(dvar)
 				{
 					if (dtar->rna_path)
@@ -595,10 +616,8 @@ static void write_nlastrips(WriteData *wd, ListBase *strips)
 {
 	NlaStrip *strip;
 	
+	writelist(wd, DATA, "NlaStrip", strips);
 	for (strip= strips->first; strip; strip= strip->next) {
-		/* write the strip first */
-		writestruct(wd, DATA, "NlaStrip", 1, strip);
-		
 		/* write the strip's F-Curves and modifiers */
 		write_fcurves(wd, &strip->fcurves);
 		write_fmodifiers(wd, &strip->modifiers);
@@ -661,46 +680,57 @@ static void write_curvemapping(WriteData *wd, CurveMapping *cumap)
 	write_curvemapping_curves(wd, cumap);
 }
 
-static void write_node_socket(WriteData *wd, bNodeSocket *sock)
+static void write_node_socket(WriteData *wd, bNodeTree *UNUSED(ntree), bNode *node, bNodeSocket *sock)
 {
-	bNodeSocketType *stype= ntreeGetSocketType(sock->type);
-
+#ifdef USE_NODE_COMPAT_CUSTOMNODES
 	/* forward compatibility code, so older blenders still open */
 	sock->stack_type = 1;
 	
-	if (sock->default_value) {
-		bNodeSocketValueFloat *valfloat;
-		bNodeSocketValueVector *valvector;
-		bNodeSocketValueRGBA *valrgba;
-		
-		switch (sock->type) {
-		case SOCK_FLOAT:
-			valfloat = sock->default_value;
-			sock->ns.vec[0] = valfloat->value;
-			sock->ns.min = valfloat->min;
-			sock->ns.max = valfloat->max;
-			break;
-		case SOCK_VECTOR:
-			valvector = sock->default_value;
-			copy_v3_v3(sock->ns.vec, valvector->value);
-			sock->ns.min = valvector->min;
-			sock->ns.max = valvector->max;
-			break;
-		case SOCK_RGBA:
-			valrgba = sock->default_value;
-			copy_v4_v4(sock->ns.vec, valrgba->value);
-			sock->ns.min = 0.0f;
-			sock->ns.max = 1.0f;
-			break;
+	if (node->type == NODE_GROUP) {
+		bNodeTree *ngroup = (bNodeTree *)node->id;
+		if (ngroup) {
+			/* for node groups: look up the deprecated groupsock pointer */
+			sock->groupsock = ntreeFindSocketInterface(ngroup, sock->in_out, sock->identifier);
+			BLI_assert(sock->groupsock != NULL);
+			
+			/* node group sockets now use the generic identifier string to verify group nodes,
+			 * old blender uses the own_index.
+			 */
+			sock->own_index = sock->groupsock->own_index;
 		}
 	}
+#endif
 
 	/* actual socket writing */
 	writestruct(wd, DATA, "bNodeSocket", 1, sock);
-	if (sock->default_value)
-		writestruct(wd, DATA, stype->value_structname, 1, sock->default_value);
-}
 
+	if (sock->prop)
+		IDP_WriteProperty(sock->prop, wd);
+	
+	if (sock->default_value)
+		writedata(wd, DATA, MEM_allocN_len(sock->default_value), sock->default_value);
+}
+static void write_node_socket_interface(WriteData *wd, bNodeTree *UNUSED(ntree), bNodeSocket *sock)
+{
+#ifdef USE_NODE_COMPAT_CUSTOMNODES
+	/* forward compatibility code, so older blenders still open */
+	sock->stack_type = 1;
+	
+	/* Reconstruct the deprecated default_value structs in socket interface DNA. */
+	if (sock->default_value == NULL && sock->typeinfo) {
+		node_socket_init_default_value(sock);
+	}
+#endif
+
+	/* actual socket writing */
+	writestruct(wd, DATA, "bNodeSocket", 1, sock);
+
+	if (sock->prop)
+		IDP_WriteProperty(sock->prop, wd);
+	
+	if (sock->default_value)
+		writedata(wd, DATA, MEM_allocN_len(sock->default_value), sock->default_value);
+}
 /* this is only direct data, tree itself should have been written */
 static void write_nodetree(WriteData *wd, bNodeTree *ntree)
 {
@@ -712,18 +742,19 @@ static void write_nodetree(WriteData *wd, bNodeTree *ntree)
 	
 	if (ntree->adt) write_animdata(wd, ntree->adt);
 	
-	for (node= ntree->nodes.first; node; node= node->next)
+	for (node = ntree->nodes.first; node; node = node->next) {
 		writestruct(wd, DATA, "bNode", 1, node);
 
-	for (node= ntree->nodes.first; node; node= node->next) {
+		if (node->prop)
+			IDP_WriteProperty(node->prop, wd);
+
 		for (sock= node->inputs.first; sock; sock= sock->next)
-			write_node_socket(wd, sock);
+			write_node_socket(wd, ntree, node, sock);
 		for (sock= node->outputs.first; sock; sock= sock->next)
-			write_node_socket(wd, sock);
+			write_node_socket(wd, ntree, node, sock);
 		
 		for (link = node->internal_links.first; link; link = link->next)
 			writestruct(wd, DATA, "bNodeLink", 1, link);
-		
 		if (node->storage) {
 			/* could be handlerized at some point, now only 1 exception still */
 			if (ntree->type==NTREE_SHADER && (node->type==SH_NODE_CURVE_VEC || node->type==SH_NODE_CURVE_RGB))
@@ -732,10 +763,6 @@ static void write_nodetree(WriteData *wd, bNodeTree *ntree)
 				NodeShaderScript *nss = (NodeShaderScript *)node->storage;
 				if (nss->bytecode)
 					writedata(wd, DATA, strlen(nss->bytecode)+1, nss->bytecode);
-				/* Write ID Properties -- and copy this comment EXACTLY for easy finding
-				 * of library blocks that implement this.*/
-				if (nss->prop)
-					IDP_WriteProperty(nss->prop, wd);
 				writestruct(wd, DATA, node->typeinfo->storagename, 1, node->storage);
 			}
 			else if (ntree->type==NTREE_COMPOSIT && ELEM4(node->type, CMP_NODE_TIME, CMP_NODE_CURVE_VEC, CMP_NODE_CURVE_RGB, CMP_NODE_HUECORRECT))
@@ -751,12 +778,12 @@ static void write_nodetree(WriteData *wd, bNodeTree *ntree)
 		
 		if (node->type==CMP_NODE_OUTPUT_FILE) {
 			/* inputs have own storage data */
-			for (sock=node->inputs.first; sock; sock=sock->next)
+			for (sock = node->inputs.first; sock; sock = sock->next)
 				writestruct(wd, DATA, "NodeImageMultiFileSocket", 1, sock->storage);
 		}
 		if (node->type==CMP_NODE_IMAGE) {
 			/* write extra socket info */
-			for (sock=node->outputs.first; sock; sock=sock->next)
+			for (sock = node->outputs.first; sock; sock = sock->next)
 				writestruct(wd, DATA, "NodeImageLayer", 1, sock->storage);
 		}
 	}
@@ -764,11 +791,10 @@ static void write_nodetree(WriteData *wd, bNodeTree *ntree)
 	for (link= ntree->links.first; link; link= link->next)
 		writestruct(wd, DATA, "bNodeLink", 1, link);
 	
-	/* external sockets */
-	for (sock= ntree->inputs.first; sock; sock= sock->next)
-		write_node_socket(wd, sock);
-	for (sock= ntree->outputs.first; sock; sock= sock->next)
-		write_node_socket(wd, sock);
+	for (sock = ntree->inputs.first; sock; sock = sock->next)
+		write_node_socket_interface(wd, ntree, sock);
+	for (sock = ntree->outputs.first; sock; sock = sock->next)
+		write_node_socket_interface(wd, ntree, sock);
 }
 
 static void current_screen_compat(Main *mainvar, bScreen **screen)
@@ -778,9 +804,9 @@ static void current_screen_compat(Main *mainvar, bScreen **screen)
 
 	/* find a global current screen in the first open window, to have
 	 * a reasonable default for reading in older versions */
-	wm= mainvar->wm.first;
-	window= (wm)? wm->windows.first: NULL;
-	*screen= (window)? window->screen: NULL;
+	wm = mainvar->wm.first;
+	window = (wm) ? wm->windows.first : NULL;
+	*screen = (window) ? window->screen : NULL;
 }
 
 typedef struct RenderInfo {
@@ -795,14 +821,15 @@ typedef struct RenderInfo {
 static void write_renderinfo(WriteData *wd, Main *mainvar)
 {
 	bScreen *curscreen;
-	Scene *sce;
+	Scene *sce, *curscene = NULL;
 	RenderInfo data;
 
 	/* XXX in future, handle multiple windows with multiple screens? */
 	current_screen_compat(mainvar, &curscreen);
-
+	if (curscreen) curscene = curscreen->scene;
+	
 	for (sce= mainvar->scene.first; sce; sce= sce->id.next) {
-		if (sce->id.lib == NULL && (sce == curscreen->scene || (sce->r.scemode & R_BG_RENDER))) {
+		if (sce->id.lib == NULL && (sce == curscene || (sce->r.scemode & R_BG_RENDER))) {
 			data.sfra = sce->r.sfra;
 			data.efra = sce->r.efra;
 			memset(data.scene_name, 0, sizeof(data.scene_name));
@@ -850,8 +877,12 @@ static void write_userdef(WriteData *wd)
 			write_keymapitem(wd, kmi);
 	}
 
-	for (bext= U.addons.first; bext; bext=bext->next)
+	for (bext= U.addons.first; bext; bext=bext->next) {
 		writestruct(wd, DATA, "bAddon", 1, bext);
+		if (bext->prop) {
+			IDP_WriteProperty(bext->prop, wd);
+		}
+	}
 	
 	for (style= U.uistyles.first; style; style= style->next) {
 		writestruct(wd, DATA, "uiStyle", 1, style);
@@ -1228,7 +1259,7 @@ static void write_constraints(WriteData *wd, ListBase *conlist)
 	bConstraint *con;
 
 	for (con=conlist->first; con; con=con->next) {
-		bConstraintTypeInfo *cti= constraint_get_typeinfo(con);
+		bConstraintTypeInfo *cti= BKE_constraint_get_typeinfo(con);
 		
 		/* Write the specific data */
 		if (cti && con->data) {
@@ -1416,8 +1447,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			int size = mmd->dyngridsize;
 
 			writestruct(wd, DATA, "MDefInfluence", mmd->totinfluence, mmd->bindinfluences);
-			writedata(wd, DATA, sizeof(int)*(mmd->totvert+1), mmd->bindoffsets);
-			writedata(wd, DATA, sizeof(float)*3*mmd->totcagevert,
+			writedata(wd, DATA, sizeof(int) * (mmd->totvert + 1), mmd->bindoffsets);
+			writedata(wd, DATA, sizeof(float) * 3 * mmd->totcagevert,
 				mmd->bindcagecos);
 			writestruct(wd, DATA, "MDefCell", size*size*size, mmd->dyngrid);
 			writestruct(wd, DATA, "MDefInfluence", mmd->totinfluence, mmd->dyninfluences);
@@ -1483,6 +1514,14 @@ static void write_objects(WriteData *wd, ListBase *idbase)
 			}
 			writestruct(wd, DATA, "BulletSoftBody", 1, ob->bsoft);
 			
+			if (ob->rigidbody_object) {
+				// TODO: if any extra data is added to handle duplis, will need separate function then
+				writestruct(wd, DATA, "RigidBodyOb", 1, ob->rigidbody_object);
+			}
+			if (ob->rigidbody_constraint) {
+				writestruct(wd, DATA, "RigidBodyCon", 1, ob->rigidbody_constraint);
+			}
+
 			write_particlesystems(wd, &ob->particlesystem);
 			write_modifiers(wd, &ob->modifiers);
 		}
@@ -1674,7 +1713,7 @@ static void write_mdisps(WriteData *wd, int count, MDisps *mdlist, int external)
 			MDisps *md = &mdlist[i];
 			if (md->disps) {
 				if (!external)
-					writedata(wd, DATA, sizeof(float)*3*md->totdisp, md->disps);
+					writedata(wd, DATA, sizeof(float) * 3 * md->totdisp, md->disps);
 			}
 			
 			if (md->hidden)
@@ -1768,7 +1807,7 @@ static void write_meshs(WriteData *wd, ListBase *idbase)
 			if (!save_for_old_blender) {
 
 #ifdef USE_BMESH_SAVE_WITHOUT_MFACE
-				Mesh backup_mesh = {{0}};
+				Mesh backup_mesh = {{NULL}};
 				/* cache only - don't write */
 				backup_mesh.mface = mesh->mface;
 				mesh->mface = NULL;
@@ -1811,7 +1850,7 @@ static void write_meshs(WriteData *wd, ListBase *idbase)
 
 #ifdef USE_BMESH_SAVE_AS_COMPAT
 
-				Mesh backup_mesh = {{0}};
+				Mesh backup_mesh = {{NULL}};
 
 				/* backup */
 				backup_mesh.mpoly = mesh->mpoly;
@@ -1847,7 +1886,7 @@ static void write_meshs(WriteData *wd, ListBase *idbase)
 				mesh->totface = BKE_mesh_mpoly_to_mface(&mesh->fdata, &backup_mesh.ldata, &backup_mesh.pdata,
 				                                        mesh->totface, backup_mesh.totloop, backup_mesh.totpoly);
 
-				mesh_update_customdata_pointers(mesh, FALSE);
+				BKE_mesh_update_customdata_pointers(mesh, false);
 
 				writestruct(wd, ID_ME, "Mesh", 1, mesh);
 
@@ -1884,7 +1923,7 @@ static void write_meshs(WriteData *wd, ListBase *idbase)
 				mesh->totpoly = backup_mesh.totpoly;
 				mesh->totloop = backup_mesh.totloop;
 				/* -- */
-				mesh_update_customdata_pointers(mesh, FALSE);
+				BKE_mesh_update_customdata_pointers(mesh, false);
 				/* --*/
 				mesh->edit_btmesh = backup_mesh.edit_btmesh; /* keep this after updating custom pointers */
 				/* restore */
@@ -2160,6 +2199,8 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 	TransformOrientation *ts;
 	SceneRenderLayer *srl;
 	ToolSettings *tos;
+	FreestyleModuleConfig *fmc;
+	FreestyleLineSet *fls;
 	
 	sce= scebase->first;
 	while (sce) {
@@ -2283,8 +2324,15 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 		for (ts = sce->transform_spaces.first; ts; ts = ts->next)
 			writestruct(wd, DATA, "TransformOrientation", 1, ts);
 		
-		for (srl= sce->r.layers.first; srl; srl= srl->next)
+		for (srl = sce->r.layers.first; srl; srl = srl->next) {
 			writestruct(wd, DATA, "SceneRenderLayer", 1, srl);
+			for (fmc = srl->freestyleConfig.modules.first; fmc; fmc = fmc->next) {
+				writestruct(wd, DATA, "FreestyleModuleConfig", 1, fmc);
+			}
+			for (fls = srl->freestyleConfig.linesets.first; fls; fls = fls->next) {
+				writestruct(wd, DATA, "FreestyleLineSet", 1, fls);
+			}
+		}
 		
 		if (sce->nodetree) {
 			writestruct(wd, DATA, "bNodeTree", 1, sce->nodetree);
@@ -2292,7 +2340,14 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 		}
 
 		write_view_settings(wd, &sce->view_settings);
-
+		
+		/* writing RigidBodyWorld data to the blend file */
+		if (sce->rigidbody_world) {
+			writestruct(wd, DATA, "RigidBodyWorld", 1, sce->rigidbody_world);
+			writestruct(wd, DATA, "EffectorWeights", 1, sce->rigidbody_world->effector_weights);
+			write_pointcaches(wd, &(sce->rigidbody_world->ptcaches));
+		}
+		
 		sce= sce->id.next;
 	}
 	/* flush helps the compression for undo-save */
@@ -2312,16 +2367,16 @@ static void write_gpencils(WriteData *wd, ListBase *lb)
 			writestruct(wd, ID_GD, "bGPdata", 1, gpd);
 			
 			/* write grease-pencil layers to file */
+			writelist(wd, DATA, "bGPDlayer", &gpd->layers);
 			for (gpl= gpd->layers.first; gpl; gpl= gpl->next) {
-				writestruct(wd, DATA, "bGPDlayer", 1, gpl);
 				
 				/* write this layer's frames to file */
+				writelist(wd, DATA, "bGPDframe", &gpl->frames);
 				for (gpf= gpl->frames.first; gpf; gpf= gpf->next) {
-					writestruct(wd, DATA, "bGPDframe", 1, gpf);
 					
 					/* write strokes */
+					writelist(wd, DATA, "bGPDstroke", &gpf->strokes);
 					for (gps= gpf->strokes.first; gps; gps= gps->next) {
-						writestruct(wd, DATA, "bGPDstroke", 1, gps);
 						writestruct(wd, DATA, "bGPDspoint", gps->totpoints, gps->points);
 					}
 				}
@@ -2395,6 +2450,7 @@ static void write_screens(WriteData *wd, ListBase *scrbase)
 		for (sa= sc->areabase.first; sa; sa= sa->next) {
 			SpaceLink *sl;
 			Panel *pa;
+			uiList *ui_list;
 			ARegion *ar;
 			
 			writestruct(wd, DATA, "ScrArea", 1, sa);
@@ -2404,6 +2460,9 @@ static void write_screens(WriteData *wd, ListBase *scrbase)
 				
 				for (pa= ar->panels.first; pa; pa= pa->next)
 					writestruct(wd, DATA, "Panel", 1, pa);
+				
+				for (ui_list = ar->ui_lists.first; ui_list; ui_list = ui_list->next)
+					writestruct(wd, DATA, "uiList", 1, ui_list);
 			}
 			
 			sl= sa->spacedata.first;
@@ -2485,7 +2544,12 @@ static void write_screens(WriteData *wd, ListBase *scrbase)
 					writestruct(wd, DATA, "SpaceTime", 1, sl);
 				}
 				else if (sl->spacetype==SPACE_NODE) {
-					writestruct(wd, DATA, "SpaceNode", 1, sl);
+					SpaceNode *snode = (SpaceNode *)sl;
+					bNodeTreePath *path;
+					writestruct(wd, DATA, "SpaceNode", 1, snode);
+					
+					for (path=snode->treepath.first; path; path=path->next)
+						writestruct(wd, DATA, "bNodeTreePath", 1, path);
 				}
 				else if (sl->spacetype==SPACE_LOGIC) {
 					writestruct(wd, DATA, "SpaceLogic", 1, sl);
@@ -2515,6 +2579,9 @@ static void write_screens(WriteData *wd, ListBase *scrbase)
 
 		sc= sc->id.next;
 	}
+	
+	/* flush helps the compression for undo-save */
+	mywrite(wd, MYWRITE_FLUSH, 0);
 }
 
 static void write_libraries(WriteData *wd, Main *main)
@@ -2528,20 +2595,35 @@ static void write_libraries(WriteData *wd, Main *main)
 		a=tot= set_listbasepointers(main, lbarray);
 
 		/* test: is lib being used */
-		foundone = FALSE;
-		while (tot--) {
-			for (id= lbarray[tot]->first; id; id= id->next) {
-				if (id->us>0 && (id->flag & LIB_EXTERN)) {
-					foundone = TRUE;
-					break;
+		if (main->curlib && main->curlib->packedfile)
+			foundone = TRUE;
+		else {
+			foundone = FALSE;
+			while (tot--) {
+				for (id= lbarray[tot]->first; id; id= id->next) {
+					if (id->us>0 && (id->flag & LIB_EXTERN)) {
+						foundone = TRUE;
+						break;
+					}
 				}
+				if (foundone) break;
 			}
-			if (foundone) break;
 		}
-
+		
+		/* to be able to restore quit.blend and temp saves, the packed blend has to be in undo buffers... */
+		/* XXX needs rethink, just like save UI in undo files now - would be nice to append things only for the]
+		 * quit.blend and temp saves */
 		if (foundone) {
 			writestruct(wd, ID_LI, "Library", 1, main->curlib);
 
+			if (main->curlib->packedfile) {
+				PackedFile *pf = main->curlib->packedfile;
+				writestruct(wd, DATA, "PackedFile", 1, pf);
+				writedata(wd, DATA, pf->size, pf->data);
+				if (wd->current == NULL)
+					printf("write packed .blend: %s\n", main->curlib->name);
+			}
+			
 			while (a--) {
 				for (id= lbarray[a]->first; id; id= id->next) {
 					if (id->us>0 && (id->flag & LIB_EXTERN)) {
@@ -2719,6 +2801,73 @@ static void write_nodetrees(WriteData *wd, ListBase *idbase)
 	}
 }
 
+#ifdef USE_NODE_COMPAT_CUSTOMNODES
+static void customnodes_add_deprecated_data(Main *mainvar)
+{
+	FOREACH_NODETREE(mainvar, ntree, id) {
+		bNodeLink *link, *last_link = ntree->links.last;
+		
+		/* only do this for node groups */
+		if (id != &ntree->id)
+			continue;
+		
+		/* Forward compatibility for group nodes: add links to node tree interface sockets.
+		 * These links are invalid by new rules (missing node pointer)!
+		 * They will be removed again in customnodes_free_deprecated_data,
+		 * cannot do this directly lest bNodeLink pointer mapping becomes ambiguous.
+		 * When loading files with such links in a new Blender version
+		 * they will be removed as well.
+		 */
+		for (link = ntree->links.first; link; link = link->next) {
+			bNode *fromnode = link->fromnode, *tonode = link->tonode;
+			bNodeSocket *fromsock = link->fromsock, *tosock = link->tosock;
+			
+			/* check both sides of the link, to handle direct input-to-output links */
+			if (fromnode->type == NODE_GROUP_INPUT) {
+				fromnode = NULL;
+				fromsock = ntreeFindSocketInterface(ntree, SOCK_IN, fromsock->identifier);
+			}
+			/* only the active output node defines links */
+			if (tonode->type == NODE_GROUP_OUTPUT && (tonode->flag & NODE_DO_OUTPUT)) {
+				tonode = NULL;
+				tosock = ntreeFindSocketInterface(ntree, SOCK_OUT, tosock->identifier);
+			}
+			
+			if (!fromnode || !tonode) {
+				/* Note: not using nodeAddLink here, it asserts existing node pointers */
+				bNodeLink *tlink = MEM_callocN(sizeof(bNodeLink), "group node link");
+				tlink->fromnode = fromnode;
+				tlink->fromsock = fromsock;
+				tlink->tonode = tonode;
+				tlink->tosock= tosock;
+				tosock->link = tlink;
+				tlink->flag |= NODE_LINK_VALID;
+				BLI_addtail(&ntree->links, tlink);
+			}
+			
+			/* don't check newly created compatibility links */
+			if (link == last_link)
+				break;
+		}
+	}
+	FOREACH_NODETREE_END
+}
+
+static void customnodes_free_deprecated_data(Main *mainvar)
+{
+	FOREACH_NODETREE(mainvar, ntree, id) {
+		bNodeLink *link, *next_link;
+		
+		for (link = ntree->links.first; link; link = next_link) {
+			next_link = link->next;
+			if (link->fromnode == NULL || link->tonode == NULL)
+				nodeRemLink(ntree, link);
+		}
+	}
+	FOREACH_NODETREE_END
+}
+#endif
+
 static void write_brushes(WriteData *wd, ListBase *idbase)
 {
 	Brush *brush;
@@ -2729,6 +2878,7 @@ static void write_brushes(WriteData *wd, ListBase *idbase)
 			if (brush->id.properties) IDP_WriteProperty(brush->id.properties, wd);
 			
 			writestruct(wd, DATA, "MTex", 1, &brush->mtex);
+			writestruct(wd, DATA, "MTex", 1, &brush->mask_mtex);
 			
 			if (brush->curve)
 				write_curvemapping(wd, brush->curve);
@@ -2860,6 +3010,207 @@ static void write_masks(WriteData *wd, ListBase *idbase)
 	mywrite(wd, MYWRITE_FLUSH, 0);
 }
 
+static void write_linestyle_color_modifiers(WriteData *wd, ListBase *modifiers)
+{
+	LineStyleModifier *m;
+	const char *struct_name;
+
+	for (m = modifiers->first; m; m = m->next) {
+		switch (m->type) {
+		case LS_MODIFIER_ALONG_STROKE:
+			struct_name = "LineStyleColorModifier_AlongStroke";
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_CAMERA:
+			struct_name = "LineStyleColorModifier_DistanceFromCamera";
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_OBJECT:
+			struct_name = "LineStyleColorModifier_DistanceFromObject";
+			break;
+		case LS_MODIFIER_MATERIAL:
+			struct_name = "LineStyleColorModifier_Material";
+			break;
+		default:
+			struct_name = "LineStyleColorModifier"; /* this should not happen */
+		}
+		writestruct(wd, DATA, struct_name, 1, m);
+	}
+	for (m = modifiers->first; m; m = m->next) {
+		switch (m->type) {
+		case LS_MODIFIER_ALONG_STROKE:
+			writestruct(wd, DATA, "ColorBand", 1, ((LineStyleColorModifier_AlongStroke *)m)->color_ramp);
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_CAMERA:
+			writestruct(wd, DATA, "ColorBand", 1, ((LineStyleColorModifier_DistanceFromCamera *)m)->color_ramp);
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_OBJECT:
+			writestruct(wd, DATA, "ColorBand", 1, ((LineStyleColorModifier_DistanceFromObject *)m)->color_ramp);
+			break;
+		case LS_MODIFIER_MATERIAL:
+			writestruct(wd, DATA, "ColorBand", 1, ((LineStyleColorModifier_Material *)m)->color_ramp);
+			break;
+		}
+	}
+}
+
+static void write_linestyle_alpha_modifiers(WriteData *wd, ListBase *modifiers)
+{
+	LineStyleModifier *m;
+	const char *struct_name;
+
+	for (m = modifiers->first; m; m = m->next) {
+		switch (m->type) {
+		case LS_MODIFIER_ALONG_STROKE:
+			struct_name = "LineStyleAlphaModifier_AlongStroke";
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_CAMERA:
+			struct_name = "LineStyleAlphaModifier_DistanceFromCamera";
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_OBJECT:
+			struct_name = "LineStyleAlphaModifier_DistanceFromObject";
+			break;
+		case LS_MODIFIER_MATERIAL:
+			struct_name = "LineStyleAlphaModifier_Material";
+			break;
+		default:
+			struct_name = "LineStyleAlphaModifier"; /* this should not happen */
+		}
+		writestruct(wd, DATA, struct_name, 1, m);
+	}
+	for (m = modifiers->first; m; m = m->next) {
+		switch (m->type) {
+		case LS_MODIFIER_ALONG_STROKE:
+			write_curvemapping(wd, ((LineStyleAlphaModifier_AlongStroke *)m)->curve);
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_CAMERA:
+			write_curvemapping(wd, ((LineStyleAlphaModifier_DistanceFromCamera *)m)->curve);
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_OBJECT:
+			write_curvemapping(wd, ((LineStyleAlphaModifier_DistanceFromObject *)m)->curve);
+			break;
+		case LS_MODIFIER_MATERIAL:
+			write_curvemapping(wd, ((LineStyleAlphaModifier_Material *)m)->curve);
+			break;
+		}
+	}
+}
+
+static void write_linestyle_thickness_modifiers(WriteData *wd, ListBase *modifiers)
+{
+	LineStyleModifier *m;
+	const char *struct_name;
+
+	for (m = modifiers->first; m; m = m->next) {
+		switch (m->type) {
+		case LS_MODIFIER_ALONG_STROKE:
+			struct_name = "LineStyleThicknessModifier_AlongStroke";
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_CAMERA:
+			struct_name = "LineStyleThicknessModifier_DistanceFromCamera";
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_OBJECT:
+			struct_name = "LineStyleThicknessModifier_DistanceFromObject";
+			break;
+		case LS_MODIFIER_MATERIAL:
+			struct_name = "LineStyleThicknessModifier_Material";
+			break;
+		case LS_MODIFIER_CALLIGRAPHY:
+			struct_name = "LineStyleThicknessModifier_Calligraphy";
+			break;
+		default:
+			struct_name = "LineStyleThicknessModifier"; /* this should not happen */
+		}
+		writestruct(wd, DATA, struct_name, 1, m);
+	}
+	for (m = modifiers->first; m; m = m->next) {
+		switch (m->type) {
+		case LS_MODIFIER_ALONG_STROKE:
+			write_curvemapping(wd, ((LineStyleThicknessModifier_AlongStroke *)m)->curve);
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_CAMERA:
+			write_curvemapping(wd, ((LineStyleThicknessModifier_DistanceFromCamera *)m)->curve);
+			break;
+		case LS_MODIFIER_DISTANCE_FROM_OBJECT:
+			write_curvemapping(wd, ((LineStyleThicknessModifier_DistanceFromObject *)m)->curve);
+			break;
+		case LS_MODIFIER_MATERIAL:
+			write_curvemapping(wd, ((LineStyleThicknessModifier_Material *)m)->curve);
+			break;
+		}
+	}
+}
+
+static void write_linestyle_geometry_modifiers(WriteData *wd, ListBase *modifiers)
+{
+	LineStyleModifier *m;
+	const char *struct_name;
+
+	for (m = modifiers->first; m; m = m->next) {
+		switch (m->type) {
+		case LS_MODIFIER_SAMPLING:
+			struct_name = "LineStyleGeometryModifier_Sampling";
+			break;
+		case LS_MODIFIER_BEZIER_CURVE:
+			struct_name = "LineStyleGeometryModifier_BezierCurve";
+			break;
+		case LS_MODIFIER_SINUS_DISPLACEMENT:
+			struct_name = "LineStyleGeometryModifier_SinusDisplacement";
+			break;
+		case LS_MODIFIER_SPATIAL_NOISE:
+			struct_name = "LineStyleGeometryModifier_SpatialNoise";
+			break;
+		case LS_MODIFIER_PERLIN_NOISE_1D:
+			struct_name = "LineStyleGeometryModifier_PerlinNoise1D";
+			break;
+		case LS_MODIFIER_PERLIN_NOISE_2D:
+			struct_name = "LineStyleGeometryModifier_PerlinNoise2D";
+			break;
+		case LS_MODIFIER_BACKBONE_STRETCHER:
+			struct_name = "LineStyleGeometryModifier_BackboneStretcher";
+			break;
+		case LS_MODIFIER_TIP_REMOVER:
+			struct_name = "LineStyleGeometryModifier_TipRemover";
+			break;
+		case LS_MODIFIER_POLYGONIZATION:
+			struct_name = "LineStyleGeometryModifier_Polygonalization";
+			break;
+		case LS_MODIFIER_GUIDING_LINES:
+			struct_name = "LineStyleGeometryModifier_GuidingLines";
+			break;
+		case LS_MODIFIER_BLUEPRINT:
+			struct_name = "LineStyleGeometryModifier_Blueprint";
+			break;
+		case LS_MODIFIER_2D_OFFSET:
+			struct_name = "LineStyleGeometryModifier_2DOffset";
+			break;
+		case LS_MODIFIER_2D_TRANSFORM:
+			struct_name = "LineStyleGeometryModifier_2DTransform";
+			break;
+		default:
+			struct_name = "LineStyleGeometryModifier"; /* this should not happen */
+		}
+		writestruct(wd, DATA, struct_name, 1, m);
+	}
+}
+
+static void write_linestyles(WriteData *wd, ListBase *idbase)
+{
+	FreestyleLineStyle *linestyle;
+
+	for (linestyle = idbase->first; linestyle; linestyle = linestyle->id.next) {
+		if (linestyle->id.us>0 || wd->current) {
+			writestruct(wd, ID_LS, "FreestyleLineStyle", 1, linestyle);
+			if (linestyle->id.properties)
+				IDP_WriteProperty(linestyle->id.properties, wd);
+			if (linestyle->adt)
+				write_animdata(wd, linestyle->adt);
+			write_linestyle_color_modifiers(wd, &linestyle->color_modifiers);
+			write_linestyle_alpha_modifiers(wd, &linestyle->alpha_modifiers);
+			write_linestyle_thickness_modifiers(wd, &linestyle->thickness_modifiers);
+			write_linestyle_geometry_modifiers(wd, &linestyle->geometry_modifiers);
+		}
+	}
+}
+
 /* context is usually defined by WM, two cases where no WM is available:
  * - for forward compatibility, curscreen has to be saved
  * - for undofile, curscene needs to be saved */
@@ -2877,7 +3228,7 @@ static void write_global(WriteData *wd, int fileflags, Main *mainvar)
 
 	/* XXX still remap G */
 	fg.curscreen= screen;
-	fg.curscene= screen->scene;
+	fg.curscene= screen ? screen->scene : NULL;
 	fg.displaymode= G.displaymode;
 	fg.winpos= G.winpos;
 
@@ -2886,7 +3237,6 @@ static void write_global(WriteData *wd, int fileflags, Main *mainvar)
 
 	fg.globalf= G.f;
 	BLI_strncpy(fg.filename, mainvar->name, sizeof(fg.filename));
-
 	sprintf(subvstr, "%4d", BLENDER_SUBVERSION);
 	memcpy(fg.subvstr, subvstr, 4);
 	
@@ -2931,18 +3281,27 @@ static int write_file_handle(Main *mainvar, int handle, MemFile *compare, MemFil
 	wd->use_mesh_compat = (write_flags & G_FILE_MESH_COMPAT) != 0;
 #endif
 
-	sprintf(buf, "BLENDER%c%c%.3d", (sizeof(void*)==8)?'-':'_', (ENDIAN_ORDER==B_ENDIAN)?'V':'v', BLENDER_VERSION);
+#ifdef USE_NODE_COMPAT_CUSTOMNODES
+	/* don't write compatibility data on undo */
+	if (!current) {
+		/* deprecated forward compat data is freed again below */
+		customnodes_add_deprecated_data(mainvar);
+	}
+#endif
+
+	sprintf(buf, "BLENDER%c%c%.3d",
+	        (sizeof(void *) == 8)      ? '-' : '_',
+	        (ENDIAN_ORDER == B_ENDIAN) ? 'V' : 'v',
+	        BLENDER_VERSION);
+
 	mywrite(wd, buf, 12);
 
 	write_renderinfo(wd, mainvar);
 	write_thumb(wd, thumb);
 	write_global(wd, write_flags, mainvar);
 
-	/* no UI save in undo */
-	if (current==NULL) {
-		write_windowmanagers(wd, &mainvar->wm);
-		write_screens  (wd, &mainvar->screen);
-	}
+	write_windowmanagers(wd, &mainvar->wm);
+	write_screens  (wd, &mainvar->screen);
 	write_movieclips (wd, &mainvar->movieclip);
 	write_masks    (wd, &mainvar->mask);
 	write_scenes   (wd, &mainvar->scene);
@@ -2970,6 +3329,7 @@ static int write_file_handle(Main *mainvar, int handle, MemFile *compare, MemFil
 	write_brushes  (wd, &mainvar->brush);
 	write_scripts  (wd, &mainvar->script);
 	write_gpencils (wd, &mainvar->gpencil);
+	write_linestyles(wd, &mainvar->linestyle);
 	write_libraries(wd,  mainvar->next);
 
 	if (write_user_block) {
@@ -2978,6 +3338,17 @@ static int write_file_handle(Main *mainvar, int handle, MemFile *compare, MemFil
 							
 	/* dna as last, because (to be implemented) test for which structs are written */
 	writedata(wd, DNA1, wd->sdna->datalen, wd->sdna->data);
+
+#ifdef USE_NODE_COMPAT_CUSTOMNODES
+	/* compatibility data not created on undo */
+	if (!current) {
+		/* Ugly, forward compatibility code generates deprecated data during writing,
+		 * this has to be freed again. Can not be done directly after writing, otherwise
+		 * the data pointers could be reused and not be mapped correctly.
+		 */
+		customnodes_free_deprecated_data(mainvar);
+	}
+#endif
 
 	/* end of file */
 	memset(&bhead, 0, sizeof(BHead));
@@ -3027,13 +3398,12 @@ static int do_history(const char *name, ReportList *reports)
 /* return: success (1) */
 int BLO_write_file(Main *mainvar, const char *filepath, int write_flags, ReportList *reports, const int *thumb)
 {
-	char userfilename[FILE_MAX];
 	char tempname[FILE_MAX+1];
 	int file, err, write_user_block;
 
 	/* path backup/restore */
 	void     *path_list_backup = NULL;
-	const int path_list_flag = (BLI_BPATH_TRAVERSE_SKIP_LIBRARY | BLI_BPATH_TRAVERSE_SKIP_MULTIFILE);
+	const int path_list_flag = (BKE_BPATH_TRAVERSE_SKIP_LIBRARY | BKE_BPATH_TRAVERSE_SKIP_MULTIFILE);
 
 	/* open temporary file, so we preserve the original in case we crash */
 	BLI_snprintf(tempname, sizeof(tempname), "%s@", filepath);
@@ -3046,7 +3416,7 @@ int BLO_write_file(Main *mainvar, const char *filepath, int write_flags, ReportL
 
 	/* check if we need to backup and restore paths */
 	if (UNLIKELY((write_flags & G_FILE_RELATIVE_REMAP) && (G_FILE_SAVE_COPY & write_flags))) {
-		path_list_backup = BLI_bpath_list_backup(mainvar, path_list_flag);
+		path_list_backup = BKE_bpath_list_backup(mainvar, path_list_flag);
 	}
 
 	/* remapping of relative paths to new file location */
@@ -3069,24 +3439,23 @@ int BLO_write_file(Main *mainvar, const char *filepath, int write_flags, ReportL
 				 * we should not have any relative paths, but if there
 				 * is somehow, an invalid or empty G.main->name it will
 				 * print an error, don't try make the absolute in this case. */
-				BLI_bpath_absolute_convert(mainvar, G.main->name, NULL);
+				BKE_bpath_absolute_convert(mainvar, G.main->name, NULL);
 			}
 		}
 	}
 
-	BLI_make_file_string(G.main->name, userfilename, BLI_get_folder_create(BLENDER_USER_CONFIG, NULL), BLENDER_STARTUP_FILE);
-	write_user_block= (BLI_path_cmp(filepath, userfilename) == 0);
+	write_user_block= write_flags & G_FILE_USERPREFS;
 
 	if (write_flags & G_FILE_RELATIVE_REMAP)
-		BLI_bpath_relative_convert(mainvar, filepath, NULL); /* note, making relative to something OTHER then G.main->name */
+		BKE_bpath_relative_convert(mainvar, filepath, NULL); /* note, making relative to something OTHER then G.main->name */
 
 	/* actual file writing */
 	err= write_file_handle(mainvar, file, NULL, NULL, write_user_block, write_flags, thumb);
 	close(file);
 
 	if (UNLIKELY(path_list_backup)) {
-		BLI_bpath_list_restore(mainvar, path_list_flag, path_list_backup);
-		BLI_bpath_list_free(path_list_backup);
+		BKE_bpath_list_restore(mainvar, path_list_flag, path_list_backup);
+		BKE_bpath_list_free(path_list_backup);
 	}
 
 	if (err) {
@@ -3122,7 +3491,7 @@ int BLO_write_file(Main *mainvar, const char *filepath, int write_flags, ReportL
 				return 0;
 			}
 
-			BLI_delete(tempname, 0, 0);
+			BLI_delete(tempname, false, false);
 		}
 		else if (-1==ret) {
 			BKE_report(reports, RPT_ERROR, "Failed opening .gz file");
@@ -3151,3 +3520,4 @@ int BLO_write_file_mem(Main *mainvar, MemFile *compare, MemFile *current, int wr
 	if (err==0) return 1;
 	return 0;
 }
+

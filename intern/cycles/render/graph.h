@@ -43,6 +43,8 @@ class OSLCompiler;
  * Data type for inputs and outputs */
 
 enum ShaderSocketType {
+	SHADER_SOCKET_UNDEFINED,
+	
 	SHADER_SOCKET_FLOAT,
 	SHADER_SOCKET_INT,
 	SHADER_SOCKET_COLOR,
@@ -185,6 +187,7 @@ public:
 
 	virtual bool has_surface_emission() { return false; }
 	virtual bool has_surface_transparent() { return false; }
+	virtual bool has_surface_bssrdf() { return false; }
 
 	vector<ShaderInput*> inputs;
 	vector<ShaderOutput*> outputs;

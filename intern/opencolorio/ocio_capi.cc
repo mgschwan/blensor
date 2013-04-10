@@ -238,12 +238,12 @@ void OCIO_displayTransformRelease(OCIO_DisplayTransformRcPtr *dt)
 }
 
 OCIO_PackedImageDesc *OCIO_createOCIO_PackedImageDesc(float *data, long width, long height, long numChannels,
-                                            long chanStrideBytes, long xStrideBytes, long yStrideBytes)
+                                                      long chanStrideBytes, long xStrideBytes, long yStrideBytes)
 {
 	return impl->createOCIO_PackedImageDesc(data, width, height, numChannels, chanStrideBytes, xStrideBytes, yStrideBytes);
 }
 
-void OCIO_OCIO_PackedImageDescRelease(OCIO_PackedImageDesc* id)
+void OCIO_PackedImageDescRelease(OCIO_PackedImageDesc* id)
 {
 	impl->OCIO_PackedImageDescRelease(id);
 }
@@ -281,4 +281,19 @@ void OCIO_matrixTransformRelease(OCIO_MatrixTransformRcPtr *mt)
 void OCIO_matrixTransformScale(float * m44, float * offset4, const float *scale4f)
 {
 	impl->matrixTransformScale(m44, offset4, scale4f);
+}
+
+int OCIO_setupGLSLDraw(struct OCIO_GLSLDrawState **state_r, OCIO_ConstProcessorRcPtr *processor, int predivide)
+{
+	return (int) impl->setupGLSLDraw(state_r, processor, (bool) predivide);
+}
+
+void OCIO_finishGLSLDraw(struct OCIO_GLSLDrawState *state)
+{
+	impl->finishGLSLDraw(state);
+}
+
+void OCIO_freeOGLState(struct OCIO_GLSLDrawState *state)
+{
+	impl->freeGLState(state);
 }

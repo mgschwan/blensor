@@ -109,7 +109,7 @@ void KX_PolygonMaterial::Initialize(
 		m_mcol = *mcol;
 	}
 	else {
-		m_mcol = 0;
+		memset(&m_mcol, 0, sizeof(m_mcol));
 	}
 
 	m_material = ma;
@@ -154,7 +154,7 @@ bool KX_PolygonMaterial::Activate(RAS_IRasterizer* rasty, TCachingInfo& cachingI
 		{
 			PyErr_Print();
 			PyErr_Clear();
-			PySys_SetObject( (char *)"last_traceback", NULL);
+			PySys_SetObject("last_traceback", NULL);
 		}
 	}
 	else

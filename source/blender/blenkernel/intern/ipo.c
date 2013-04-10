@@ -65,6 +65,7 @@
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
 
 #include "BKE_ipo.h"
 #include "BKE_animsys.h"
@@ -1117,7 +1118,8 @@ static void fcurve_add_to_list(ListBase *groups, ListBase *list, FCurve *fcu, ch
 			BLI_strncpy(agrp->name, grpname, sizeof(agrp->name));
 
 			BLI_addtail(&tmp_act.groups, agrp);
-			BLI_uniquename(&tmp_act.groups, agrp, "Group", '.', offsetof(bActionGroup, name), sizeof(agrp->name));
+			BLI_uniquename(&tmp_act.groups, agrp, DATA_("Group"), '.', offsetof(bActionGroup, name),
+			               sizeof(agrp->name));
 		}
 		
 		/* add F-Curve to group */
@@ -1548,7 +1550,7 @@ static void ipo_to_animdata(ID *id, Ipo *ipo, char actname[], char constname[], 
 			
 			BLI_snprintf(nameBuf, sizeof(nameBuf), "CDA:%s", ipo->id.name + 2);
 			
-			adt->action = add_empty_action(nameBuf);
+			adt->action = add_empty_action(G.main, nameBuf);
 			if (G.debug & G_DEBUG) printf("\t\tadded new action - '%s'\n", nameBuf);
 		}
 		
@@ -2093,7 +2095,7 @@ void do_versions_ipos_to_animato(Main *main)
 			bAction *new_act;
 			
 			/* add a new action for this, and convert all data into that action */
-			new_act = add_empty_action(id->name + 2);
+			new_act = add_empty_action(main, id->name + 2);
 			ipo_to_animato(NULL, ipo, NULL, NULL, NULL, NULL, &new_act->curves, &drivers);
 			new_act->idroot = ipo->blocktype;
 		}

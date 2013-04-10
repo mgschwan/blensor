@@ -113,6 +113,37 @@ static void outliner_open_reveal(SpaceOops *soops, ListBase *lb, TreeElement *te
 }
 #endif
 
+static TreeElement *outliner_dropzone_element(const SpaceOops *soops, TreeElement *te, const float fmval[2], const int children)
+{
+	if ((fmval[1] > te->ys) && (fmval[1] < (te->ys + UI_UNIT_Y))) {
+		/* name and first icon */
+		if ((fmval[0] > te->xs + UI_UNIT_X) && (fmval[0] < te->xend))
+			return te;
+	}
+	/* Not it.  Let's look at its children. */
+	if (children && (TREESTORE(te)->flag & TSE_CLOSED) == 0 && (te->subtree.first)) {
+		for (te = te->subtree.first; te; te = te->next) {
+			TreeElement *te_valid = outliner_dropzone_element(soops, te, fmval, children);
+			if (te_valid)
+				return te_valid;
+		}
+	}
+	return NULL;
+}
+
+/* Used for drag and drop parenting */
+TreeElement *outliner_dropzone_find(const SpaceOops *soops, const float fmval[2], const int children)
+{
+	TreeElement *te;
+
+	for (te = soops->tree.first; te; te = te->next) {
+		TreeElement *te_valid = outliner_dropzone_element(soops, te, fmval, children);
+		if (te_valid)
+			return te_valid;
+	}
+	return NULL;
+}
+
 /* ************************************************************** */
 /* Click Activated */
 
@@ -146,7 +177,7 @@ static int do_outliner_item_openclose(bContext *C, SpaceOops *soops, TreeElement
 }
 
 /* event can enterkey, then it opens/closes */
-static int outliner_item_openclose(bContext *C, wmOperator *op, wmEvent *event)
+static int outliner_item_openclose(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	ARegion *ar = CTX_wm_region(C);
 	SpaceOops *soops = CTX_wm_space_outliner(C);
@@ -183,8 +214,8 @@ void OUTLINER_OT_item_openclose(wmOperatorType *ot)
 
 static void do_item_rename(ARegion *ar, TreeElement *te, TreeStoreElem *tselem, ReportList *reports)
 {
-	/* can't rename rna datablocks entries */
-	if (ELEM3(tselem->type, TSE_RNA_STRUCT, TSE_RNA_PROPERTY, TSE_RNA_ARRAY_ELEM)) {
+	/* can't rename rna datablocks entries or listbases */
+	if (ELEM4(tselem->type, TSE_RNA_STRUCT, TSE_RNA_PROPERTY, TSE_RNA_ARRAY_ELEM, TSE_ID_BASE)) {
 		/* do nothing */;
 	}
 	else if (ELEM10(tselem->type, TSE_ANIM_DATA, TSE_NLA, TSE_DEFGROUP_BASE, TSE_CONSTRAINT_BASE, TSE_MODIFIER_BASE,
@@ -222,12 +253,12 @@ static int do_outliner_item_rename(bContext *C, ARegion *ar, SpaceOops *soops, T
 	if (mval[1] > te->ys && mval[1] < te->ys + UI_UNIT_Y) {
 		TreeStoreElem *tselem = TREESTORE(te);
 		
-		/* name and first icon */
-		if (mval[0] > te->xs + UI_UNIT_X && mval[0] < te->xend) {
-			
+		/* click on name */
+		if (mval[0] > te->xs + UI_UNIT_X * 2 && mval[0] < te->xend) {
 			do_item_rename(ar, te, tselem, reports);
+			return 1;
 		}
-		return 1;
+		return 0;
 	}
 	
 	for (te = te->subtree.first; te; te = te->next) {
@@ -236,20 +267,24 @@ static int do_outliner_item_rename(bContext *C, ARegion *ar, SpaceOops *soops, T
 	return 0;
 }
 
-static int outliner_item_rename(bContext *C, wmOperator *UNUSED(op), wmEvent *event)
+static int outliner_item_rename(bContext *C, wmOperator *UNUSED(op), const wmEvent *event)
 {
 	ARegion *ar = CTX_wm_region(C);
 	SpaceOops *soops = CTX_wm_space_outliner(C);
 	TreeElement *te;
 	float fmval[2];
+	bool change = false;
 	
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], fmval, fmval + 1);
 	
 	for (te = soops->tree.first; te; te = te->next) {
-		if (do_outliner_item_rename(C, ar, soops, te, fmval)) break;
+		if (do_outliner_item_rename(C, ar, soops, te, fmval)) {
+			change = true;
+			break;
+		}
 	}
 	
-	return OPERATOR_FINISHED;
+	return change ? OPERATOR_FINISHED : OPERATOR_PASS_THROUGH;
 }
 
 
@@ -890,9 +925,13 @@ static void tree_element_show_hierarchy(Scene *scene, SpaceOops *soops, ListBase
 				else tselem->flag |= TSE_CLOSED;
 			}
 		}
-		else tselem->flag |= TSE_CLOSED;
-		
-		if (TSELEM_OPEN(tselem, soops)) tree_element_show_hierarchy(scene, soops, &te->subtree);
+		else {
+			tselem->flag |= TSE_CLOSED;
+		}
+
+		if (TSELEM_OPEN(tselem, soops)) {
+			tree_element_show_hierarchy(scene, soops, &te->subtree);
+		}
 	}
 }
 
@@ -1309,8 +1348,8 @@ static void do_outliner_keyingset_editop(SpaceOops *soops, KeyingSet *ks, ListBa
 						 * for now, we don't supply one, and just let this use the KeyingSet name */
 						BKE_keyingset_add_path(ks, id, NULL, path, array_index, flag, groupmode);
 						ks->active_path = BLI_countlist(&ks->paths);
+						break;
 					}
-					break;
 					case KEYINGSET_EDITMODE_REMOVE:
 					{
 						/* find the relevant path, then remove it from the KeyingSet */
@@ -1322,8 +1361,8 @@ static void do_outliner_keyingset_editop(SpaceOops *soops, KeyingSet *ks, ListBa
 
 							ks->active_path = 0;
 						}
+						break;
 					}
-					break;
 				}
 				
 				/* free path, since it had to be generated */
@@ -1432,45 +1471,14 @@ static int parent_drop_exec(bContext *C, wmOperator *op)
 
 	ED_object_parent_set(op->reports, bmain, scene, ob, par, partype, FALSE, FALSE);
 
-	DAG_scene_sort(bmain, scene);
-	DAG_ids_flush_update(bmain, 0);
+	DAG_relations_tag_update(bmain);
 	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 
 	return OPERATOR_FINISHED;
 }
 
-/* Used for drag and drop parenting */
-TreeElement *outliner_dropzone_parent(bContext *C, wmEvent *event, TreeElement *te, float *fmval)
-{
-	SpaceOops *soops = CTX_wm_space_outliner(C);
-	TreeStoreElem *tselem = TREESTORE(te);
-
-	if ((fmval[1] > te->ys) && (fmval[1] < (te->ys + UI_UNIT_Y))) {
-		/* name and first icon */
-		if ((fmval[0] > te->xs + UI_UNIT_X) && (fmval[0] < te->xend)) {
-			/* always makes active object */
-			if (te->idcode == ID_OB && tselem->type == 0) {
-				return te;
-			}
-			else {
-				return NULL;
-			}
-		}
-	}
-
-	/* Not it.  Let's look at its children. */
-	if ((tselem->flag & TSE_CLOSED) == 0 && (te->subtree.first)) {
-		for (te = te->subtree.first; te; te = te->next) {
-			TreeElement *te_valid;
-			te_valid = outliner_dropzone_parent(C, event, te, fmval);
-			if (te_valid) return te_valid;
-		}
-	}
-	return NULL;
-}
-
-static int parent_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int parent_drop_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	Object *par = NULL;
 	Object *ob = NULL;
@@ -1479,7 +1487,6 @@ static int parent_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = NULL;
 	TreeElement *te = NULL;
-	TreeElement *te_found = NULL;
 	char childname[MAX_ID_NAME];
 	char parname[MAX_ID_NAME];
 	int partype = 0;
@@ -1488,13 +1495,10 @@ static int parent_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &fmval[0], &fmval[1]);
 
 	/* Find object hovered over */
-	for (te = soops->tree.first; te; te = te->next) {
-		te_found = outliner_dropzone_parent(C, event, te, fmval);
-		if (te_found) break;
-	}
+	te = outliner_dropzone_find(soops, fmval, 1);
 
-	if (te_found) {
-		RNA_string_set(op->ptr, "parent", te_found->name);
+	if (te) {
+		RNA_string_set(op->ptr, "parent", te->name);
 		/* Identify parent and child */
 		RNA_string_get(op->ptr, "child", childname);
 		ob = (Object *)BKE_libblock_find_name(ID_OB, childname);
@@ -1509,7 +1513,7 @@ static int parent_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
 			return OPERATOR_CANCELLED;
 		}
 		
-		scene = (Scene *)outliner_search_back(soops, te_found, ID_SCE);
+		scene = (Scene *)outliner_search_back(soops, te, ID_SCE);
 
 		if (scene == NULL) {
 			/* currently outlier organized in a way, that if there's no parent scene
@@ -1522,8 +1526,7 @@ static int parent_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
 
 		if ((par->type != OB_ARMATURE) && (par->type != OB_CURVE) && (par->type != OB_LATTICE)) {
 			if (ED_object_parent_set(op->reports, bmain, scene, ob, par, partype, FALSE, FALSE)) {
-				DAG_scene_sort(bmain, scene);
-				DAG_ids_flush_update(bmain, 0);
+				DAG_relations_tag_update(bmain);
 				WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 				WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 			}
@@ -1637,7 +1640,7 @@ void OUTLINER_OT_parent_drop(wmOperatorType *ot)
 	ot->poll = ED_operator_outliner_active;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	RNA_def_string(ot->srna, "child", "Object", MAX_ID_NAME, "Child", "Child Object");
@@ -1645,45 +1648,7 @@ void OUTLINER_OT_parent_drop(wmOperatorType *ot)
 	RNA_def_enum(ot->srna, "type", prop_make_parent_types, 0, "Type", "");
 }
 
-int outliner_dropzone_parent_clear(bContext *C, wmEvent *event, TreeElement *te, float *fmval)
-{
-	SpaceOops *soops = CTX_wm_space_outliner(C);
-	TreeStoreElem *tselem = TREESTORE(te);
-
-	/* Check for row */
-	if ((fmval[1] > te->ys) && (fmval[1] < (te->ys + UI_UNIT_Y))) {
-		/* Ignore drop on scene tree elements */
-		if ((fmval[0] > te->xs + UI_UNIT_X) && (fmval[0] < te->xend)) {
-			if ((te->idcode == ID_SCE) && 
-			    !ELEM3(tselem->type, TSE_R_LAYER_BASE, TSE_R_LAYER, TSE_R_PASS))
-			{
-				return 0;
-			}
-			// Other codes to ignore?
-		}
-		
-		/* Left or right of: (+), first icon, and name */
-		if ((fmval[0] < (te->xs + UI_UNIT_X)) || (fmval[0] > te->xend)) {
-			return 1;
-		}
-		else if (te->idcode != ID_OB || ELEM(tselem->type, TSE_MODIFIER_BASE, TSE_CONSTRAINT_BASE)) {
-			return 1;
-		}
-		
-		return 0;       // ID_OB, but mouse in undefined dropzone.
-	}
-
-	/* Not this row.  Let's look at its children. */
-	if ((tselem->flag & TSE_CLOSED) == 0 && (te->subtree.first)) {
-		for (te = te->subtree.first; te; te = te->next) {
-			if (outliner_dropzone_parent_clear(C, event, te, fmval)) 
-				return 1;
-		}
-	}
-	return 0;
-}
-
-static int parent_clear_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(event))
+static int parent_clear_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = NULL;
@@ -1706,8 +1671,7 @@ static int parent_clear_invoke(bContext *C, wmOperator *op, wmEvent *UNUSED(even
 
 	ED_object_parent_clear(ob, RNA_enum_get(op->ptr, "type"));
 
-	DAG_scene_sort(bmain, scene);
-	DAG_ids_flush_update(bmain, 0);
+	DAG_relations_tag_update(bmain);
 	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 	return OPERATOR_FINISHED;
@@ -1726,30 +1690,14 @@ void OUTLINER_OT_parent_clear(wmOperatorType *ot)
 	ot->poll = ED_operator_outliner_active;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	RNA_def_string(ot->srna, "dragged_obj", "Object", MAX_ID_NAME, "Child", "Child Object");
 	RNA_def_enum(ot->srna, "type", prop_clear_parent_types, 0, "Type", "");
 }
 
-TreeElement *outliner_dropzone_scene(bContext *C, wmEvent *UNUSED(event), TreeElement *te, float *fmval)
-{
-	SpaceOops *soops = CTX_wm_space_outliner(C);
-	TreeStoreElem *tselem = TREESTORE(te);
-
-	if ((fmval[1] > te->ys) && (fmval[1] < (te->ys + UI_UNIT_Y))) {
-		/* name and first icon */
-		if ((fmval[0] > te->xs + UI_UNIT_X) && (fmval[0] < te->xend)) {
-			if (te->idcode == ID_SCE && tselem->type == 0) {
-				return te;
-			}
-		}
-	}
-	return NULL;
-}
-
-static int scene_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int scene_drop_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	Scene *scene = NULL;
 	Object *ob = NULL;
@@ -1757,24 +1705,19 @@ static int scene_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
 	ARegion *ar = CTX_wm_region(C);
 	Main *bmain = CTX_data_main(C);
 	TreeElement *te = NULL;
-	TreeElement *te_found = NULL;
 	char obname[MAX_ID_NAME];
 	float fmval[2];
 
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &fmval[0], &fmval[1]);
 
 	/* Find object hovered over */
-	for (te = soops->tree.first; te; te = te->next) {
-		te_found = outliner_dropzone_scene(C, event, te, fmval);
-		if (te_found)
-			break;
-	}
+	te = outliner_dropzone_find(soops, fmval, 0);
 
-	if (te_found) {
+	if (te) {
 		Base *base;
 
-		RNA_string_set(op->ptr, "scene", te_found->name);
-		scene = (Scene *)BKE_libblock_find_name(ID_SCE, te_found->name);
+		RNA_string_set(op->ptr, "scene", te->name);
+		scene = (Scene *)BKE_libblock_find_name(ID_SCE, te->name);
 
 		RNA_string_get(op->ptr, "object", obname);
 		ob = (Object *)BKE_libblock_find_name(ID_OB, obname);
@@ -1795,8 +1738,7 @@ static int scene_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
 			ED_base_object_select(base, BA_SELECT);
 		}
 
-		DAG_scene_sort(bmain, scene);
-		DAG_ids_flush_update(bmain, 0);
+		DAG_relations_tag_update(bmain);
 
 		WM_main_add_notifier(NC_SCENE | ND_OB_SELECT, scene);
 
@@ -1819,37 +1761,31 @@ void OUTLINER_OT_scene_drop(wmOperatorType *ot)
 	ot->poll = ED_operator_outliner_active;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	RNA_def_string(ot->srna, "object", "Object", MAX_ID_NAME, "Object", "Target Object");
 	RNA_def_string(ot->srna, "scene", "Scene", MAX_ID_NAME, "Scene", "Target Scene");
 }
 
-static int material_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
+static int material_drop_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
-	Main *bmain = CTX_data_main(C);
 	Material *ma = NULL;
 	Object *ob = NULL;
 	SpaceOops *soops = CTX_wm_space_outliner(C);
 	ARegion *ar = CTX_wm_region(C);
 	TreeElement *te = NULL;
-	TreeElement *te_found = NULL;
 	char mat_name[MAX_ID_NAME - 2];
 	float fmval[2];
 
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &fmval[0], &fmval[1]);
 
 	/* Find object hovered over */
-	for (te = soops->tree.first; te; te = te->next) {
-		te_found = outliner_dropzone_parent(C, event, te, fmval);
-		if (te_found)
-			break;
-	}
+	te = outliner_dropzone_find(soops, fmval, 1);
 
-	if (te_found) {
-		RNA_string_set(op->ptr, "object", te_found->name);
-		ob = (Object *)BKE_libblock_find_name(ID_OB, te_found->name);
+	if (te) {
+		RNA_string_set(op->ptr, "object", te->name);
+		ob = (Object *)BKE_libblock_find_name(ID_OB, te->name);
 
 		RNA_string_get(op->ptr, "material", mat_name);
 		ma = (Material *)BKE_libblock_find_name(ID_MA, mat_name);
@@ -1860,7 +1796,6 @@ static int material_drop_invoke(bContext *C, wmOperator *op, wmEvent *event)
 
 		assign_material(ob, ma, ob->totcol + 1, BKE_MAT_ASSIGN_USERPREF);
 
-		DAG_ids_flush_update(bmain, 0);
 		WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, CTX_wm_view3d(C));
 		WM_event_add_notifier(C, NC_MATERIAL | ND_SHADING_LINKS, ma);
 
@@ -1883,7 +1818,7 @@ void OUTLINER_OT_material_drop(wmOperatorType *ot)
 	ot->poll = ED_operator_outliner_active;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	RNA_def_string(ot->srna, "object", "Object", MAX_ID_NAME, "Object", "Target Object");

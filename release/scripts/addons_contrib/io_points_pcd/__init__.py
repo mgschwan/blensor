@@ -20,7 +20,7 @@ bl_info = {
     "name": "PCD",
     "author": "Aurel Wildfellner",
     "version": (0, 1),
-    "blender": (2, 5, 7),
+    "blender": (2, 57, 0),
     "location": "File > Import-Export > Point Cloud Data",
     "description": "Imports and Exports PCD (Point Cloud Data) files. PCD files are the default format used by  pcl (Point Cloud Library).",
     "warning": "",

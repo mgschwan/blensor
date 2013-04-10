@@ -18,12 +18,13 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 
+#include "libmv/simple_pipeline/tracks.h"
+
 #include <algorithm>
 #include <vector>
 #include <iterator>
 
 #include "libmv/numeric/numeric.h"
-#include "libmv/simple_pipeline/tracks.h"
 
 namespace libmv {
 
@@ -72,7 +73,18 @@ vector<Marker> Tracks::MarkersForTrack(int track) const {
   return markers;
 }
 
-vector<Marker> Tracks::MarkersForTracksInBothImages(int image1, int image2) const {
+vector<Marker> Tracks::MarkersInBothImages(int image1, int image2) const {
+  vector<Marker> markers;
+  for (int i = 0; i < markers_.size(); ++i) {
+    int image = markers_[i].image;
+    if (image == image1 || image == image2)
+      markers.push_back(markers_[i]);
+  }
+  return markers;
+}
+
+vector<Marker> Tracks::MarkersForTracksInBothImages(int image1,
+                                                    int image2) const {
   std::vector<int> image1_tracks;
   std::vector<int> image2_tracks;
 
@@ -96,7 +108,7 @@ vector<Marker> Tracks::MarkersForTracksInBothImages(int image1, int image2) cons
   vector<Marker> markers;
   for (int i = 0; i < markers_.size(); ++i) {
     if ((markers_[i].image == image1 || markers_[i].image == image2) &&
-        std::binary_search(intersection.begin(),intersection.end(),
+        std::binary_search(intersection.begin(), intersection.end(),
                            markers_[i].track)) {
       markers.push_back(markers_[i]);
     }
@@ -154,6 +166,22 @@ int Tracks::MaxTrack() const {
 
 int Tracks::NumMarkers() const {
   return markers_.size();
+}
+
+void CoordinatesForMarkersInImage(const vector<Marker> &markers,
+                                  int image,
+                                  Mat *coordinates) {
+  vector<Vec2> coords;
+  for (int i = 0; i < markers.size(); ++i) {
+    const Marker &marker = markers[i];
+    if (markers[i].image == image) {
+      coords.push_back(Vec2(marker.x, marker.y));
+    }
+  }
+  coordinates->resize(2, coords.size());
+  for (int i = 0; i < coords.size(); i++) {
+    coordinates->col(i) = coords[i];
+  }
 }
 
 }  // namespace libmv

@@ -139,6 +139,7 @@ set(SRC
 	src/BulletDynamics/ConstraintSolver/btSolve2LinearConstraint.cpp
 	src/BulletDynamics/ConstraintSolver/btTypedConstraint.cpp
 	src/BulletDynamics/ConstraintSolver/btUniversalConstraint.cpp
+	src/BulletDynamics/ConstraintSolver/btGearConstraint.cpp
 	src/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.cpp
 	src/BulletDynamics/Dynamics/btRigidBody.cpp
 	src/BulletDynamics/Dynamics/btSimpleDynamicsWorld.cpp
@@ -162,6 +163,8 @@ set(SRC
 	src/LinearMath/btGeometryUtil.cpp
 	src/LinearMath/btQuickprof.cpp
 	src/LinearMath/btSerializer.cpp
+	src/LinearMath/btVector3.cpp
+	src/LinearMath/btPolarDecomposition.cpp
 	
 	
 	src/BulletCollision/BroadphaseCollision/btAxisSweep3.h
@@ -183,6 +186,7 @@ set(SRC
 	src/BulletCollision/CollisionDispatch/btCollisionConfiguration.h
 	src/BulletCollision/CollisionDispatch/btCollisionCreateFunc.h
 	src/BulletCollision/CollisionDispatch/btCollisionDispatcher.h
+	src/BulletCollision/CollisionDispatch/btCollisionObjectWrapper.h
 	src/BulletCollision/CollisionDispatch/btCollisionObject.h
 	src/BulletCollision/CollisionDispatch/btCollisionWorld.h
 	src/BulletCollision/CollisionDispatch/btCompoundCollisionAlgorithm.h
@@ -242,14 +246,15 @@ set(SRC
 	src/BulletCollision/CollisionShapes/btUniformScalingShape.h
 	src/BulletCollision/Gimpact/btBoxCollision.h
 	src/BulletCollision/Gimpact/btClipPolygon.h
+	src/BulletCollision/Gimpact/btCompoundFromGimpact.h
 	src/BulletCollision/Gimpact/btContactProcessing.h
-	src/BulletCollision/Gimpact/btGenericPoolAllocator.h
-	src/BulletCollision/Gimpact/btGeometryOperations.h
 	src/BulletCollision/Gimpact/btGImpactBvh.h
 	src/BulletCollision/Gimpact/btGImpactCollisionAlgorithm.h
 	src/BulletCollision/Gimpact/btGImpactMassUtil.h
 	src/BulletCollision/Gimpact/btGImpactQuantizedBvh.h
 	src/BulletCollision/Gimpact/btGImpactShape.h
+	src/BulletCollision/Gimpact/btGenericPoolAllocator.h
+	src/BulletCollision/Gimpact/btGeometryOperations.h
 	src/BulletCollision/Gimpact/btQuantization.h
 	src/BulletCollision/Gimpact/btTriangleShapeEx.h
 	src/BulletCollision/Gimpact/gim_array.h
@@ -302,6 +307,7 @@ set(SRC
 	src/BulletDynamics/ConstraintSolver/btSolverConstraint.h
 	src/BulletDynamics/ConstraintSolver/btTypedConstraint.h
 	src/BulletDynamics/ConstraintSolver/btUniversalConstraint.h
+	src/BulletDynamics/ConstraintSolver/btGearConstraint.h
 	src/BulletDynamics/Dynamics/btActionInterface.h
 	src/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h
 	src/BulletDynamics/Dynamics/btDynamicsWorld.h
@@ -352,6 +358,7 @@ set(SRC
 	src/LinearMath/btTransform.h
 	src/LinearMath/btTransformUtil.h
 	src/LinearMath/btVector3.h
+	src/LinearMath/btPolarDecomposition.h
 	
 	
 	src/btBulletCollisionCommon.h

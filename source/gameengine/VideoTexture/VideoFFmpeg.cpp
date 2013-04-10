@@ -174,7 +174,7 @@ int VideoFFmpeg::openStream(const char *filename, AVInputFormat *inputFormat, AV
 	if (avformat_open_input(&formatCtx, filename, inputFormat, formatParams)!=0)
 		return -1;
 
-	if (av_find_stream_info(formatCtx)<0) 
+	if (avformat_find_stream_info(formatCtx, NULL) < 0)
 	{
 		av_close_input_file(formatCtx);
 		return -1;
@@ -209,7 +209,7 @@ int VideoFFmpeg::openStream(const char *filename, AVInputFormat *inputFormat, AV
 		return -1;
 	}
 	codecCtx->workaround_bugs = 1;
-	if (avcodec_open(codecCtx, codec)<0) 
+	if (avcodec_open2(codecCtx, codec, NULL) < 0)
 	{
 		av_close_input_file(formatCtx);
 		return -1;
@@ -504,7 +504,7 @@ void VideoFFmpeg::stopCache()
 	}
 }
 
-void VideoFFmpeg::releaseFrame(AVFrame* frame)
+void VideoFFmpeg::releaseFrame(AVFrame *frame)
 {
 	if (frame == m_frameRGB)
 	{
@@ -521,7 +521,7 @@ void VideoFFmpeg::releaseFrame(AVFrame* frame)
 }
 
 // open video file
-void VideoFFmpeg::openFile (char * filename)
+void VideoFFmpeg::openFile (char *filename)
 {
 	if (openStream(filename, NULL, NULL) != 0)
 		return;
@@ -578,7 +578,7 @@ void VideoFFmpeg::openFile (char * filename)
 
 
 // open video capture device
-void VideoFFmpeg::openCam (char * file, short camIdx)
+void VideoFFmpeg::openCam (char *file, short camIdx)
 {
 	// open camera source
 	AVInputFormat		*inputFormat;
@@ -1022,7 +1022,7 @@ AVFrame *VideoFFmpeg::grabFrame(long position)
 				AVFrame * input = m_frame;
 
 				/* This means the data wasnt read properly, 
-				this check stops crashing */
+				 * this check stops crashing */
 				if (   input->data[0]==0 && input->data[1]==0 
 					&& input->data[2]==0 && input->data[3]==0)
 				{
@@ -1085,7 +1085,7 @@ inline VideoFFmpeg * getVideoFFmpeg (PyImage *self)
 
 
 // object initialization
-static int VideoFFmpeg_init (PyObject *pySelf, PyObject *args, PyObject *kwds)
+static int VideoFFmpeg_init(PyObject *pySelf, PyObject *args, PyObject *kwds)
 {
 	PyImage *self = reinterpret_cast<PyImage*>(pySelf);
 	// parameters - video source
@@ -1243,7 +1243,7 @@ PyTypeObject VideoFFmpegType =
 };
 
 // object initialization
-static int ImageFFmpeg_init (PyObject *pySelf, PyObject *args, PyObject *kwds)
+static int ImageFFmpeg_init(PyObject *pySelf, PyObject *args, PyObject *kwds)
 {
 	PyImage *self = reinterpret_cast<PyImage*>(pySelf);
 	// parameters - video source

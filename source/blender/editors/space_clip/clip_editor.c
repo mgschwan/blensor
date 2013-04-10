@@ -30,33 +30,44 @@
  */
 
 #include <stddef.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <fcntl.h>
+
+#ifndef WIN32
+#  include <unistd.h>
+#else
+#  include <io.h>
+#endif
 
 #include "MEM_guardedalloc.h"
-
-#include "BKE_main.h"
-#include "BKE_mask.h"
-#include "BKE_movieclip.h"
-#include "BKE_context.h"
-#include "BKE_tracking.h"
 
 #include "DNA_mask_types.h"
 #include "DNA_object_types.h"	/* SELECT */
 
 #include "BLI_utildefines.h"
+#include "BLI_fileops.h"
 #include "BLI_math.h"
 #include "BLI_string.h"
 #include "BLI_rect.h"
+#include "BLI_threads.h"
+
+#include "BKE_global.h"
+#include "BKE_main.h"
+#include "BKE_mask.h"
+#include "BKE_movieclip.h"
+#include "BKE_context.h"
+#include "BKE_tracking.h"
+#include "BKE_library.h"
 
 #include "GPU_extensions.h"
 
+#include "IMB_colormanagement.h"
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 
 #include "ED_screen.h"
 #include "ED_clip.h"
-
-#include "BIF_gl.h"
-#include "BIF_glutil.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -81,7 +92,7 @@ int ED_space_clip_view_clip_poll(bContext *C)
 {
 	SpaceClip *sc = CTX_wm_space_clip(C);
 
-	if (sc && sc->clip) {
+	if (sc) {
 		return sc->view == SC_VIEW_CLIP;
 	}
 
@@ -517,6 +528,7 @@ MovieClip *ED_space_clip_get_clip(SpaceClip *sc)
 void ED_space_clip_set_clip(bContext *C, bScreen *screen, SpaceClip *sc, MovieClip *clip)
 {
 	MovieClip *old_clip;
+	bool old_clip_visible = false;
 
 	if (!screen && C)
 		screen = CTX_wm_screen(C);
@@ -524,8 +536,7 @@ void ED_space_clip_set_clip(bContext *C, bScreen *screen, SpaceClip *sc, MovieCl
 	old_clip = sc->clip;
 	sc->clip = clip;
 
-	if (sc->clip && sc->clip->id.us == 0)
-		sc->clip->id.us = 1;
+	id_us_ensure_real((ID *)sc->clip);
 
 	if (screen && sc->view == SC_VIEW_CLIP) {
 		ScrArea *area;
@@ -536,14 +547,25 @@ void ED_space_clip_set_clip(bContext *C, bScreen *screen, SpaceClip *sc, MovieCl
 				if (sl->spacetype == SPACE_CLIP) {
 					SpaceClip *cur_sc = (SpaceClip *) sl;
 
-					if (cur_sc != sc && cur_sc->view != SC_VIEW_CLIP) {
-						if (cur_sc->clip == old_clip || cur_sc->clip == NULL) {
-							cur_sc->clip = clip;
+					if (cur_sc != sc) {
+						if (cur_sc->view == SC_VIEW_CLIP) {
+							if (cur_sc->clip == old_clip)
+								old_clip_visible = true;
+						}
+						else {
+							if (cur_sc->clip == old_clip || cur_sc->clip == NULL) {
+								cur_sc->clip = clip;
+							}
 						}
 					}
 				}
 			}
 		}
+	}
+
+	/* If clip is no longer visible on screen, free memory used by it's cache */
+	if (old_clip && old_clip != clip && !old_clip_visible) {
+		BKE_movieclip_clear_cache(old_clip);
 	}
 
 	if (C)
@@ -561,166 +583,436 @@ void ED_space_clip_set_mask(bContext *C, SpaceClip *sc, Mask *mask)
 {
 	sc->mask_info.mask = mask;
 
-	if (sc->mask_info.mask && sc->mask_info.mask->id.us == 0) {
-		sc->mask_info.mask->id.us = 1;
-	}
+	id_us_ensure_real((ID *)sc->mask_info.mask);
 
 	if (C) {
 		WM_event_add_notifier(C, NC_MASK | NA_SELECTED, mask);
 	}
 }
 
-/* OpenGL draw context */
+/* ******** pre-fetching functions ******** */
 
-typedef struct SpaceClipDrawContext {
-	int support_checked, buffers_supported;
+typedef struct PrefetchJob {
+	MovieClip *clip;
+	int start_frame, current_frame, end_frame;
+	short render_size, render_flag;
+} PrefetchJob;
 
-	GLuint texture;			/* OGL texture ID */
-	short texture_allocated;	/* flag if texture was allocated by glGenTextures */
-	struct ImBuf *texture_ibuf;	/* image buffer for which texture was created */
-	const unsigned char *display_buffer; /* display buffer for which texture was created */
-	int image_width, image_height;	/* image width and height for which texture was created */
-	unsigned last_texture;		/* ID of previously used texture, so it'll be restored after clip drawing */
-
-	/* fields to check if cache is still valid */
-	int framenr, start_frame, frame_offset;
+typedef struct PrefetchQueue {
+	int initial_frame, current_frame, start_frame, end_frame;
 	short render_size, render_flag;
 
-	char colorspace[64];
-} SpaceClipDrawContext;
+	short direction;
 
-int ED_space_clip_texture_buffer_supported(SpaceClip *sc)
+	SpinLock spin;
+
+	short *stop;
+	short *do_update;
+	float *progress;
+} PrefetchQueue;
+
+typedef struct PrefetchThread {
+	MovieClip *clip;
+	PrefetchQueue *queue;
+} PrefetchThread;
+
+/* check whether pre-fetching is allowed */
+static bool check_prefetch_break(void)
 {
-	SpaceClipDrawContext *context = sc->draw_context;
-
-	if (!context) {
-		context = MEM_callocN(sizeof(SpaceClipDrawContext), "SpaceClipDrawContext");
-		sc->draw_context = context;
-	}
-
-	if (!context->support_checked) {
-		context->support_checked = TRUE;
-		if (GPU_type_matches(GPU_DEVICE_INTEL, GPU_OS_ANY, GPU_DRIVER_ANY)) {
-			context->buffers_supported = FALSE;
-		}
-		else {
-			context->buffers_supported = GPU_non_power_of_two_support();
-		}
-	}
-
-	return context->buffers_supported;
+	return G.is_break;
 }
 
-int ED_space_clip_load_movieclip_buffer(SpaceClip *sc, ImBuf *ibuf, const unsigned char *display_buffer)
+/* read file for specified frame number to the memory */
+static unsigned char *prefetch_read_file_to_memory(MovieClip *clip, int current_frame, short render_size,
+                                                   short render_flag, size_t *size_r)
 {
-	SpaceClipDrawContext *context = sc->draw_context;
-	MovieClip *clip = ED_space_clip_get_clip(sc);
-	int need_rebind = 0;
+	MovieClipUser user = {0};
+	char name[FILE_MAX];
+	size_t size;
+	int file;
+	unsigned char *mem;
 
-	context->last_texture = glaGetOneInteger(GL_TEXTURE_2D);
+	user.framenr = current_frame;
+	user.render_size = render_size;
+	user.render_flag = render_flag;
 
-	/* image texture need to be rebinded if displaying another image buffer
-	 * assuming displaying happens of footage frames only on which painting doesn't heppen.
-	 * so not changed image buffer pointer means unchanged image content */
-	need_rebind |= context->texture_ibuf != ibuf;
-	need_rebind |= context->display_buffer != display_buffer;
-	need_rebind |= context->framenr != sc->user.framenr;
-	need_rebind |= context->render_size != sc->user.render_size;
-	need_rebind |= context->render_flag != sc->user.render_flag;
-	need_rebind |= context->start_frame != clip->start_frame;
-	need_rebind |= context->frame_offset != clip->frame_offset;
+	BKE_movieclip_filename_for_frame(clip, &user, name);
 
-	if (!need_rebind) {
-		/* OCIO_TODO: not entirely nice, but currently it seems to be easiest way
-		 *            to deal with changing input color space settings
-		 *            pointer-based check could fail due to new buffers could be
-		 *            be allocated on on old memory
-		 */
-		need_rebind = strcmp(context->colorspace, clip->colorspace_settings.name) != 0;
+	file = open(name, O_BINARY | O_RDONLY, 0);
+	if (file < 0) {
+		return NULL;
 	}
 
-	if (need_rebind) {
-		int width = ibuf->x, height = ibuf->y;
-		int need_recreate = 0;
+	size = BLI_file_descriptor_size(file);
+	if (size < 1) {
+		close(file);
+		return NULL;
+	}
 
-		if (width > GL_MAX_TEXTURE_SIZE || height > GL_MAX_TEXTURE_SIZE)
-			return 0;
+	mem = MEM_mallocN(size, "movieclip prefetch memory file");
 
-		/* if image resolution changed (e.g. switched to proxy display) texture need to be recreated */
-		need_recreate = context->image_width != ibuf->x || context->image_height != ibuf->y;
+	if (read(file, mem, size) != size) {
+		close(file);
+		MEM_freeN(mem);
+		return NULL;
+	}
 
-		if (context->texture_ibuf && need_recreate) {
-			glDeleteTextures(1, &context->texture);
-			context->texture_allocated = 0;
+	*size_r = size;
+
+	close(file);
+
+	return mem;
+}
+
+/* find first uncached frame within prefetching frame range */
+static int prefetch_find_uncached_frame(MovieClip *clip, int from_frame, int end_frame,
+                                        short render_size, short render_flag, short direction)
+{
+	int current_frame;
+	MovieClipUser user = {0};
+
+	user.render_size = render_size;
+	user.render_flag = render_flag;
+
+	if (direction > 0) {
+		for (current_frame = from_frame; current_frame <= end_frame; current_frame++) {
+			user.framenr = current_frame;
+
+			if (!BKE_movieclip_has_cached_frame(clip, &user))
+				break;
 		}
-
-		if (need_recreate || !context->texture_allocated) {
-			/* texture doesn't exist yet or need to be re-allocated because of changed dimensions */
-			int filter = GL_LINEAR;
-
-			/* non-scaled proxy shouldn;t use diltering */
-			if ((clip->flag & MCLIP_USE_PROXY) == 0 ||
-			    ELEM(sc->user.render_size, MCLIP_PROXY_RENDER_SIZE_FULL, MCLIP_PROXY_RENDER_SIZE_100))
-			{
-				filter = GL_NEAREST;
-			}
-
-			glGenTextures(1, &context->texture);
-			glBindTexture(GL_TEXTURE_2D, context->texture);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-		}
-		else {
-			/* if texture doesn't need to be reallocated itself, just bind it so
-			 * loading of image will happen to a proper texture */
-			glBindTexture(GL_TEXTURE_2D, context->texture);
-		}
-
-		if (display_buffer)
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, display_buffer);
-
-		/* store settings */
-		context->texture_allocated = 1;
-		context->display_buffer = display_buffer;
-		context->texture_ibuf = ibuf;
-		context->image_width = ibuf->x;
-		context->image_height = ibuf->y;
-		context->framenr = sc->user.framenr;
-		context->render_size = sc->user.render_size;
-		context->render_flag = sc->user.render_flag;
-		context->start_frame = clip->start_frame;
-		context->frame_offset = clip->frame_offset;
-
-		BLI_strncpy(context->colorspace, clip->colorspace_settings.name, sizeof(context->colorspace));
 	}
 	else {
-		/* displaying exactly the same image which was loaded t oa texture,
-		 * just bint texture in this case */
-		glBindTexture(GL_TEXTURE_2D, context->texture);
+		for (current_frame = from_frame; current_frame >= end_frame; current_frame--) {
+			user.framenr = current_frame;
+
+			if (!BKE_movieclip_has_cached_frame(clip, &user))
+				break;
+		}
 	}
 
-	glEnable(GL_TEXTURE_2D);
-
-	return TRUE;
+	return current_frame;
 }
 
-void ED_space_clip_unload_movieclip_buffer(SpaceClip *sc)
+/* get memory buffer for first uncached frame within prefetch frame range */
+static unsigned char *prefetch_thread_next_frame(PrefetchQueue *queue, MovieClip *clip,
+                                                 size_t *size_r, int *current_frame_r)
 {
-	SpaceClipDrawContext *context = sc->draw_context;
+	unsigned char *mem = NULL;
 
-	glBindTexture(GL_TEXTURE_2D, context->last_texture);
-	glDisable(GL_TEXTURE_2D);
-}
+	BLI_spin_lock(&queue->spin);
+	if (!*queue->stop && !check_prefetch_break() &&
+	    IN_RANGE_INCL(queue->current_frame, queue->start_frame, queue->end_frame))
+	{
+		int current_frame;
 
-void ED_space_clip_free_texture_buffer(SpaceClip *sc)
-{
-	SpaceClipDrawContext *context = sc->draw_context;
+		if (queue->direction > 0) {
+			current_frame = prefetch_find_uncached_frame(clip, queue->current_frame + 1, queue->end_frame,
+			                                             queue->render_size, queue->render_flag, 1);
+		}
+		else {
+			current_frame = prefetch_find_uncached_frame(clip, queue->current_frame - 1, queue->start_frame,
+			                                             queue->render_size, queue->render_flag, -1);
+		}
 
-	if (context) {
-		glDeleteTextures(1, &context->texture);
+		if (IN_RANGE_INCL(current_frame, queue->start_frame, queue->end_frame)) {
+			int frames_processed;
 
-		MEM_freeN(context);
+			mem = prefetch_read_file_to_memory(clip, current_frame, queue->render_size,
+			                                   queue->render_flag, size_r);
+
+			*current_frame_r = current_frame;
+
+			queue->current_frame = current_frame;
+
+			if (queue->direction > 0) {
+				frames_processed = queue->current_frame - queue->initial_frame;
+			}
+			else {
+				frames_processed = (queue->end_frame - queue->initial_frame) +
+				                   (queue->initial_frame - queue->current_frame);
+			}
+
+			*queue->do_update = 1;
+			*queue->progress = (float)frames_processed / (queue->end_frame - queue->start_frame);
+
+			/* switch direction if read frames from current up to scene end frames */
+			if (current_frame == queue->end_frame) {
+				queue->current_frame = queue->initial_frame;
+				queue->direction = -1;
+			}
+		}
 	}
+	BLI_spin_unlock(&queue->spin);
+
+	return mem;
+}
+
+static void *do_prefetch_thread(void *data_v)
+{
+	PrefetchThread *data = (PrefetchThread *) data_v;
+	unsigned char *mem;
+	size_t size;
+	int current_frame;
+
+	while ((mem = prefetch_thread_next_frame(data->queue, data->clip, &size, &current_frame))) {
+		ImBuf *ibuf;
+		MovieClipUser user = {0};
+		int flag = IB_rect | IB_alphamode_detect;
+		int result;
+
+		user.framenr = current_frame;
+		user.render_size = data->queue->render_size;
+		user.render_flag = data->queue->render_flag;
+
+		ibuf = IMB_ibImageFromMemory(mem, size, flag, NULL, "prefetch frame");
+
+		result = BKE_movieclip_put_frame_if_possible(data->clip, &user, ibuf);
+
+		IMB_freeImBuf(ibuf);
+
+		MEM_freeN(mem);
+
+		if (!result) {
+			/* no more space in the cache, stop reading frames */
+			*data->queue->stop = 1;
+			break;
+		}
+	}
+
+	return NULL;
+}
+
+static void start_prefetch_threads(MovieClip *clip, int start_frame, int current_frame, int end_frame,
+                                   short render_size, short render_flag, short *stop, short *do_update,
+                                   float *progress)
+{
+	ListBase threads;
+	PrefetchQueue queue;
+	PrefetchThread *handles;
+	int tot_thread = BLI_system_thread_count();
+	int i;
+
+	/* reserve one thread for the interface */
+	if (tot_thread > 1)
+		tot_thread--;
+
+	/* initialize queue */
+	BLI_spin_init(&queue.spin);
+
+	queue.current_frame = current_frame;
+	queue.initial_frame = current_frame;
+	queue.start_frame = start_frame;
+	queue.end_frame = end_frame;
+	queue.render_size = render_size;
+	queue.render_flag = render_flag;
+	queue.direction = 1;
+
+	queue.stop = stop;
+	queue.do_update = do_update;
+	queue.progress = progress;
+
+	/* fill in thread handles */
+	handles = MEM_callocN(sizeof(PrefetchThread) * tot_thread, "prefetch threaded handles");
+
+	if (tot_thread > 1)
+		BLI_init_threads(&threads, do_prefetch_thread, tot_thread);
+
+	for (i = 0; i < tot_thread; i++) {
+		PrefetchThread *handle = &handles[i];
+
+		handle->clip = clip;
+		handle->queue = &queue;
+
+		if (tot_thread > 1)
+			BLI_insert_thread(&threads, handle);
+	}
+
+	/* run the threads */
+	if (tot_thread > 1)
+		BLI_end_threads(&threads);
+	else
+		do_prefetch_thread(handles);
+
+	MEM_freeN(handles);
+}
+
+static bool prefetch_movie_frame(MovieClip *clip, int frame, short render_size,
+                                 short render_flag, short *stop)
+{
+	MovieClipUser user = {0};
+	ImBuf *ibuf;
+
+	if (check_prefetch_break() || *stop)
+		return false;
+
+	user.framenr = frame;
+	user.render_size = render_size;
+	user.render_flag = render_flag;
+
+	if (!BKE_movieclip_has_cached_frame(clip, &user)) {
+		ibuf = BKE_movieclip_anim_ibuf_for_frame(clip, &user);
+
+		if (ibuf) {
+			int result;
+
+			result = BKE_movieclip_put_frame_if_possible(clip, &user, ibuf);
+
+			if (!result) {
+				/* no more space in the cache, we could stop prefetching here */
+				*stop = 1;
+			}
+
+			IMB_freeImBuf(ibuf);
+		}
+		else {
+			/* error reading frame, fair enough stop attempting further reading */
+			*stop = 1;
+		}
+	}
+
+	return true;
+}
+
+static void do_prefetch_movie(MovieClip *clip, int start_frame, int current_frame, int end_frame,
+                              short render_size, short render_flag, short *stop, short *do_update,
+                              float *progress)
+{
+	int frame;
+	int frames_processed = 0;
+
+	/* read frames starting from current frame up to scene end frame */
+	for (frame = current_frame; frame <= end_frame; frame++) {
+		if (!prefetch_movie_frame(clip, frame, render_size, render_flag, stop))
+			return;
+
+		frames_processed++;
+
+		*do_update = 1;
+		*progress = (float) frames_processed / (end_frame - start_frame);
+	}
+
+	/* read frames starting from current frame up to scene start frame */
+	for (frame = current_frame; frame >= start_frame; frame--) {
+		if (!prefetch_movie_frame(clip, frame, render_size, render_flag, stop))
+			return;
+
+		frames_processed++;
+
+		*do_update = 1;
+		*progress = (float) frames_processed / (end_frame - start_frame);
+	}
+}
+
+static void prefetch_startjob(void *pjv, short *stop, short *do_update, float *progress)
+{
+	PrefetchJob *pj = pjv;
+
+	if (pj->clip->source == MCLIP_SRC_SEQUENCE) {
+		/* read sequence files in multiple threads */
+		start_prefetch_threads(pj->clip, pj->start_frame, pj->current_frame, pj->end_frame,
+		                       pj->render_size, pj->render_flag,
+		                       stop, do_update, progress);
+	}
+	else if (pj->clip->source == MCLIP_SRC_MOVIE) {
+		/* read movie in a single thread */
+		do_prefetch_movie(pj->clip, pj->start_frame, pj->current_frame, pj->end_frame,
+		                  pj->render_size, pj->render_flag,
+		                  stop, do_update, progress);
+	}
+	else {
+		BLI_assert(!"Unknown movie clip source when prefetching frames");
+	}
+}
+
+static void prefetch_freejob(void *pjv)
+{
+	PrefetchJob *pj = pjv;
+
+	MEM_freeN(pj);
+}
+
+static int prefetch_get_start_frame(const bContext *C)
+{
+	Scene *scene = CTX_data_scene(C);
+
+	return SFRA;
+}
+
+static int prefetch_get_final_frame(const bContext *C)
+{
+	Scene *scene = CTX_data_scene(C);
+	SpaceClip *sc = CTX_wm_space_clip(C);
+	MovieClip *clip = ED_space_clip_get_clip(sc);
+	int end_frame;
+
+	/* check whether all the frames from prefetch range are cached */
+	end_frame = EFRA;
+
+	if (clip->len)
+		end_frame = min_ii(end_frame, clip->len);
+
+	return end_frame;
+}
+
+/* returns true if early out is possible */
+static bool prefetch_check_early_out(const bContext *C)
+{
+	SpaceClip *sc = CTX_wm_space_clip(C);
+	MovieClip *clip = ED_space_clip_get_clip(sc);
+	int first_uncached_frame, end_frame;
+	int clip_len;
+
+	clip_len = BKE_movieclip_get_duration(clip);
+
+	/* check whether all the frames from prefetch range are cached */
+	end_frame = prefetch_get_final_frame(C);
+
+	first_uncached_frame =
+		prefetch_find_uncached_frame(clip, sc->user.framenr, end_frame,
+		                             sc->user.render_size, sc->user.render_flag, 1);
+
+	if (first_uncached_frame > end_frame || first_uncached_frame == clip_len) {
+		int start_frame = prefetch_get_start_frame(C);
+
+		first_uncached_frame =
+			prefetch_find_uncached_frame(clip, sc->user.framenr, start_frame,
+			                             sc->user.render_size, sc->user.render_flag, -1);
+
+		if (first_uncached_frame < start_frame)
+			return true;
+	}
+
+	return false;
+}
+
+void clip_start_prefetch_job(const bContext *C)
+{
+	wmJob *wm_job;
+	PrefetchJob *pj;
+	SpaceClip *sc = CTX_wm_space_clip(C);
+
+	if (prefetch_check_early_out(C))
+		return;
+
+	wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), CTX_wm_area(C), "Prefetching",
+	                     WM_JOB_PROGRESS, WM_JOB_TYPE_CLIP_PREFETCH);
+
+	/* create new job */
+	pj = MEM_callocN(sizeof(PrefetchJob), "prefetch job");
+	pj->clip = ED_space_clip_get_clip(sc);
+	pj->start_frame = prefetch_get_start_frame(C);
+	pj->current_frame = sc->user.framenr;
+	pj->end_frame = prefetch_get_final_frame(C);
+	pj->render_size = sc->user.render_size;
+	pj->render_flag = sc->user.render_flag;
+
+	WM_jobs_customdata_set(wm_job, pj, prefetch_freejob);
+	WM_jobs_timer(wm_job, 0.2, NC_MOVIECLIP | ND_DISPLAY, 0);
+	WM_jobs_callbacks(wm_job, prefetch_startjob, NULL, NULL, NULL);
+
+	G.is_break = FALSE;
+
+	/* and finally start the job */
+	WM_jobs_start(CTX_wm_manager(C), wm_job);
 }

@@ -22,7 +22,7 @@ bl_info = {
     "name": "Open Street Map (.osm)",
     "author": "Michael Anthrax Schlachter, ideasman42, littleneo",
     "version": (0, 2),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "File > Import",
     "description": "Load Open Street Map File",
     "wiki_url": "",

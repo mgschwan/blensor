@@ -225,7 +225,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		/* angle */
 
-#if 0   // cant incluide this, not predictable enough, though quite fun,.
+#if 0   /* cant incluide this, not predictable enough, though quite fun. */
 		if (ltmd->flag & MOD_SCREW_OBJECT_ANGLE) {
 			float mtx3_tx[3][3];
 			copy_m3_m4(mtx3_tx, mtx_tx);
@@ -274,7 +274,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	step_tot = ((step_tot + 1) * ltmd->iter) - (ltmd->iter - 1);
 
 	/* will the screw be closed?
-	 * Note! smaller then FLT_EPSILON*100 gives problems with float precision so its never closed. */
+	 * Note! smaller then FLT_EPSILON * 100 gives problems with float precision so its never closed. */
 	if (fabsf(screw_ofs) <= (FLT_EPSILON * 100.0f) &&
 	    fabsf(fabsf(angle) - ((float)M_PI * 2.0f)) <= (FLT_EPSILON * 100.0f))
 	{
@@ -314,11 +314,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		CustomData_add_layer(&result->polyData, CD_ORIGINDEX, CD_CALLOC, NULL, maxPolys);
 	}
 
-#if 0 // trunk
-	origindex = result->getPolyDataArray(result, CD_ORIGINDEX);
-#else // bmesh
 	origindex = CustomData_get_layer(&result->polyData, CD_ORIGINDEX);
-#endif
 
 	DM_copy_vert_data(dm, result, 0, 0, totvert); /* copy first otherwise this overwrites our own vertex normals */
 	
@@ -353,7 +349,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		 * The new array for vert_connect must be at least sizeof(ScrewVertConnect) * totvert
 		 * and the size of our resulting meshes array is sizeof(MVert) * totvert * 3
 		 * so its safe to use the second 2 thrids of MVert the array for vert_connect,
-		 * just make sure ScrewVertConnect struct is no more then twice as big as MVert,
+		 * just make sure ScrewVertConnect struct is no more than twice as big as MVert,
 		 * at the moment there is no chance of that being a problem,
 		 * unless MVert becomes half its current size.
 		 *

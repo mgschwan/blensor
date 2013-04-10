@@ -58,6 +58,7 @@
 #include "BLI_linklist.h"
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
+#include "BLI_fileops_types.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -95,7 +96,7 @@ FileSelectParams *ED_fileselect_get_params(struct SpaceFile *sfile)
 }
 
 /**
- * \note RNA_struct_property_is_set_ex is used here because we wan't
+ * \note RNA_struct_property_is_set_ex is used here because we want
  *       the previously used settings to be used here rather then overriding them */
 short ED_fileselect_set_params(SpaceFile *sfile)
 {
@@ -244,8 +245,10 @@ short ED_fileselect_set_params(SpaceFile *sfile)
 		params->display = FILE_SHORTDISPLAY;
 		params->filter = 0;
 		params->filter_glob[0] = '\0';
-		params->sort = FILE_SORT_ALPHA;
 	}
+
+	/* operator has no setting for this */
+	params->sort = FILE_SORT_ALPHA;
 
 
 	/* initialize the list with previous folders */
@@ -498,12 +501,12 @@ void ED_fileselect_init_layout(struct SpaceFile *sfile, ARegion *ar)
 	layout->textheight = textheight;
 
 	if (params->display == FILE_IMGDISPLAY) {
-		layout->prv_w = 96;
-		layout->prv_h = 96;
-		layout->tile_border_x = 6;
-		layout->tile_border_y = 6;
-		layout->prv_border_x = 6;
-		layout->prv_border_y = 6;
+		layout->prv_w = 4.8f * UI_UNIT_X;
+		layout->prv_h = 4.8f * UI_UNIT_Y;
+		layout->tile_border_x = 0.3f * UI_UNIT_X;
+		layout->tile_border_y = 0.3f * UI_UNIT_X;
+		layout->prv_border_x = 0.3f * UI_UNIT_X;
+		layout->prv_border_y = 0.3f * UI_UNIT_Y;
 		layout->tile_w = layout->prv_w + 2 * layout->prv_border_x;
 		layout->tile_h = layout->prv_h + 2 * layout->prv_border_y + textheight;
 		layout->width = (int)(BLI_rctf_size_x(&v2d->cur) - 2 * layout->tile_border_x);
@@ -518,10 +521,13 @@ void ED_fileselect_init_layout(struct SpaceFile *sfile, ARegion *ar)
 		layout->flag = FILE_LAYOUT_VER;
 	}
 	else {
+		int column_space = 0.6f * UI_UNIT_X;
+		int column_icon_space = 0.2f * UI_UNIT_X;
+
 		layout->prv_w = 0;
 		layout->prv_h = 0;
-		layout->tile_border_x = 8;
-		layout->tile_border_y = 2;
+		layout->tile_border_x = 0.4f * UI_UNIT_X;
+		layout->tile_border_y = 0.1f * UI_UNIT_Y;
 		layout->prv_border_x = 0;
 		layout->prv_border_y = 0;
 		layout->tile_h = textheight * 3 / 2;
@@ -531,22 +537,22 @@ void ED_fileselect_init_layout(struct SpaceFile *sfile, ARegion *ar)
 		column_widths(sfile->files, layout);
 
 		if (params->display == FILE_SHORTDISPLAY) {
-			maxlen = ICON_DEFAULT_WIDTH_SCALE + 4 +
-			         (int)layout->column_widths[COLUMN_NAME] + 12 +
-			         (int)layout->column_widths[COLUMN_SIZE] + 12;
+			maxlen = ICON_DEFAULT_WIDTH_SCALE + column_icon_space +
+			         (int)layout->column_widths[COLUMN_NAME] + column_space +
+			         (int)layout->column_widths[COLUMN_SIZE] + column_space;
 		}
 		else {
-			maxlen = ICON_DEFAULT_WIDTH_SCALE + 4 +
-			         (int)layout->column_widths[COLUMN_NAME] + 12 +
+			maxlen = ICON_DEFAULT_WIDTH_SCALE + column_icon_space +
+			         (int)layout->column_widths[COLUMN_NAME] + column_space +
 #ifndef WIN32
-			         (int)layout->column_widths[COLUMN_MODE1] + 12 +
-			         (int)layout->column_widths[COLUMN_MODE2] + 12 +
-			         (int)layout->column_widths[COLUMN_MODE3] + 12 +
-			         (int)layout->column_widths[COLUMN_OWNER] + 12 +
+			         (int)layout->column_widths[COLUMN_MODE1] + column_space +
+			         (int)layout->column_widths[COLUMN_MODE2] + column_space +
+			         (int)layout->column_widths[COLUMN_MODE3] + column_space +
+			         (int)layout->column_widths[COLUMN_OWNER] + column_space +
 #endif
-			         (int)layout->column_widths[COLUMN_DATE] + 12 +
-			         (int)layout->column_widths[COLUMN_TIME] + 12 +
-			         (int)layout->column_widths[COLUMN_SIZE] + 12;
+			         (int)layout->column_widths[COLUMN_DATE] + column_space +
+			         (int)layout->column_widths[COLUMN_TIME] + column_space +
+			         (int)layout->column_widths[COLUMN_SIZE] + column_space;
 
 		}
 		layout->tile_w = maxlen;
@@ -572,13 +578,14 @@ FileLayout *ED_fileselect_get_layout(struct SpaceFile *sfile, ARegion *ar)
 
 void file_change_dir(bContext *C, int checkdir)
 {
+	wmWindowManager *wm = CTX_wm_manager(C);
 	SpaceFile *sfile = CTX_wm_space_file(C);
 
 	if (sfile->params) {
 
-		ED_fileselect_clear(C, sfile);
+		ED_fileselect_clear(wm, sfile);
 
-		if (checkdir && BLI_is_dir(sfile->params->dir) == 0) {
+		if (checkdir && !BLI_is_dir(sfile->params->dir)) {
 			BLI_strncpy(sfile->params->dir, filelist_dir(sfile->files), sizeof(sfile->params->dir));
 			/* could return but just refresh the current dir */
 		}
@@ -685,24 +692,24 @@ void autocomplete_file(struct bContext *C, char *str, void *UNUSED(arg_v))
 	}
 }
 
-void ED_fileselect_clear(struct bContext *C, struct SpaceFile *sfile)
+void ED_fileselect_clear(struct wmWindowManager *wm, struct SpaceFile *sfile)
 {
 	/* only NULL in rare cases - [#29734] */
 	if (sfile->files) {
-		thumbnails_stop(sfile->files, C);
+		thumbnails_stop(wm, sfile->files);
 		filelist_freelib(sfile->files);
 		filelist_free(sfile->files);
 	}
 
 	sfile->params->active_file = -1;
-	WM_event_add_notifier(C, NC_SPACE | ND_SPACE_FILE_LIST, NULL);
+	WM_main_add_notifier(NC_SPACE | ND_SPACE_FILE_LIST, NULL);
 }
 
-void ED_fileselect_exit(struct bContext *C, struct SpaceFile *sfile)
+void ED_fileselect_exit(struct wmWindowManager *wm, struct SpaceFile *sfile)
 {
 	if (!sfile) return;
 	if (sfile->op) {
-		WM_event_fileselect_event(C, sfile->op, EVT_FILESELECT_EXTERNAL_CANCEL);
+		WM_event_fileselect_event(wm, sfile->op, EVT_FILESELECT_EXTERNAL_CANCEL);
 		sfile->op = NULL;
 	}
 
@@ -710,7 +717,7 @@ void ED_fileselect_exit(struct bContext *C, struct SpaceFile *sfile)
 	folderlist_free(sfile->folders_next);
 	
 	if (sfile->files) {
-		ED_fileselect_clear(C, sfile);
+		ED_fileselect_clear(wm, sfile);
 		MEM_freeN(sfile->files);
 		sfile->files = NULL;
 	}

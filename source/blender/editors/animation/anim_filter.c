@@ -55,6 +55,7 @@
 #include "DNA_camera_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_lattice_types.h"
+#include "DNA_linestyle_types.h"
 #include "DNA_key_types.h"
 #include "DNA_mask_types.h"
 #include "DNA_material_types.h"
@@ -290,7 +291,7 @@ static short nlaedit_get_context(bAnimContext *ac, SpaceNla *snla)
 short ANIM_animdata_context_getdata(bAnimContext *ac)
 {
 	SpaceLink *sl = ac->sl;
-	short ok = 0;
+	short ok = FALSE;
 	
 	/* context depends on editor we are currently in */
 	if (sl) {
@@ -319,10 +320,7 @@ short ANIM_animdata_context_getdata(bAnimContext *ac)
 	}
 	
 	/* check if there's any valid data */
-	if (ok && ac->data)
-		return 1;
-	else
-		return 0;
+	return (ok && ac->data);
 }
 
 /* Obtain current anim-data context from Blender Context info 
@@ -354,6 +352,7 @@ short ANIM_animdata_get_context(const bContext *C, bAnimContext *ac)
 	ac->regiontype = (ar) ? ar->regiontype : 0;
 	
 	/* get data context info */
+	// XXX: if the below fails, try to grab this info from context instead... (to allow for scripting)
 	return ANIM_animdata_context_getdata(ac);
 }
 
@@ -448,7 +447,7 @@ short ANIM_animdata_get_context(const bContext *C, bAnimContext *ac)
 					if (ANIMDATA_HAS_NLA(id)) { \
 						nlaOk \
 					} \
-					else if (!(ads->filterflag & ADS_FILTER_NLA_NOACT) && ANIMDATA_HAS_KEYS(id)) { \
+					else if (!(ads->filterflag & ADS_FILTER_NLA_NOACT) || ANIMDATA_HAS_KEYS(id)) { \
 						nlaOk \
 					} \
 				} \
@@ -736,6 +735,19 @@ static bAnimListElem *make_new_animlistelem(void *data, short datatype, ID *owne
 				ale->adt = BKE_animdata_from_id(data);
 			}
 			break;
+			case ANIMTYPE_DSLINESTYLE:
+			{
+				FreestyleLineStyle *linestyle = (FreestyleLineStyle *)data;
+				AnimData *adt = linestyle->adt;
+				
+				ale->flag = FILTER_LS_SCED(linestyle); 
+				
+				ale->key_data = (adt) ? adt->action : NULL;
+				ale->datatype = ALE_ACT;
+				
+				ale->adt = BKE_animdata_from_id(data);
+			}
+			break;
 			case ANIMTYPE_DSPART:
 			{
 				ParticleSettings *part = (ParticleSettings *)ale->data;
@@ -913,14 +925,14 @@ static short skip_fcurve_selected_data(bDopeSheet *ads, FCurve *fcu, ID *owner_i
 			Editing *ed = BKE_sequencer_editing_get(scene, FALSE);
 			Sequence *seq = NULL;
 			char *seq_name;
-
+			
 			if (ed) {
 				/* get strip name, and check if this strip is selected */
 				seq_name = BLI_str_quoted_substrN(fcu->rna_path, "sequences_all[");
 				seq = BKE_sequence_get_by_name(ed->seqbasep, seq_name, FALSE);
 				if (seq_name) MEM_freeN(seq_name);
 			}
-
+			
 			/* can only add this F-Curve if it is selected */
 			if (ads->filterflag & ADS_FILTER_ONLYSEL) {
 				if ((seq == NULL) || (seq->flag & SELECT) == 0)
@@ -985,22 +997,39 @@ static short skip_fcurve_with_name(bDopeSheet *ads, FCurve *fcu, ID *owner_id)
 /* Check if F-Curve has errors and/or is disabled 
  * > returns: (bool) True if F-Curve has errors/is disabled
  */
-static short fcurve_has_errors(FCurve *fcu)
+static bool fcurve_has_errors(FCurve *fcu)
 {
 	/* F-Curve disabled - path eval error */
 	if (fcu->flag & FCURVE_DISABLED) {
-		return 1;
+		return true;
 	}
 	
 	/* driver? */
 	if (fcu->driver) {
-		/* for now, just check if the entire thing got disabled... */
-		if (fcu->driver->flag & DRIVER_FLAG_INVALID)
-			return 1;
+		ChannelDriver *driver = fcu->driver;
+		DriverVar *dvar;
+		
+		/* error flag on driver usually means that there is an error
+		 * BUT this may not hold with PyDrivers as this flag gets cleared
+		 *     if no critical errors prevent the driver from working...
+		 */
+		if (driver->flag & DRIVER_FLAG_INVALID)
+			return true;
+			
+		/* check variables for other things that need linting... */
+		// TODO: maybe it would be more efficient just to have a quick flag for this?
+		for (dvar = driver->variables.first; dvar; dvar = dvar->next) {
+			DRIVER_TARGETS_USED_LOOPER(dvar)
+			{
+				if (dtar->flag & DTAR_FLAG_INVALID)
+					return true;
+			}
+			DRIVER_TARGETS_LOOPER_END
+		}
 	}
 	
 	/* no errors found */
-	return 0;
+	return false;
 }
 
 /* find the next F-Curve that is usable for inclusion */
@@ -1044,7 +1073,7 @@ static FCurve *animfilter_fcurve_next(bDopeSheet *ads, FCurve *first, bActionGro
 						/* error-based filtering... */
 						if ((ads) && (ads->filterflag & ADS_FILTER_ONLY_ERRORS)) {
 							/* skip if no errors... */
-							if (fcurve_has_errors(fcu) == 0)
+							if (fcurve_has_errors(fcu) == false)
 								continue;
 						}
 						
@@ -1281,7 +1310,9 @@ static size_t animfilter_block_data(bAnimContext *ac, ListBase *anim_data, bDope
 		ANIMDATA_FILTER_CASES(iat,
 			{ /* AnimData */
 				/* specifically filter animdata block */
-				ANIMCHANNEL_NEW_CHANNEL(adt, ANIMTYPE_ANIMDATA, id);
+				if (ANIMCHANNEL_SELOK(SEL_ANIMDATA(adt)) ) {
+					ANIMCHANNEL_NEW_CHANNEL(adt, ANIMTYPE_ANIMDATA, id);
+				}
 			},
 			{ /* NLA */
 				items += animfilter_nla(ac, anim_data, ads, adt, filter_mode, id);
@@ -1331,7 +1362,9 @@ static size_t animdata_filter_shapekey(bAnimContext *ac, ListBase *anim_data, Ke
 		// TODO: somehow manage to pass dopesheet info down here too?
 		if (key->adt) {
 			if (filter_mode & ANIMFILTER_ANIMDATA) {
-				ANIMCHANNEL_NEW_CHANNEL(key->adt, ANIMTYPE_ANIMDATA, key);
+				if (ANIMCHANNEL_SELOK(SEL_ANIMDATA(key->adt)) ) {
+					ANIMCHANNEL_NEW_CHANNEL(key->adt, ANIMTYPE_ANIMDATA, key);
+				}
 			}
 			else if (key->adt->action) {
 				items = animfilter_action(ac, anim_data, NULL, key->adt->action, filter_mode, (ID *)key);
@@ -1507,6 +1540,54 @@ static size_t animdata_filter_ds_nodetree(bAnimContext *ac, ListBase *anim_data,
 		BLI_movelisttolist(anim_data, &tmp_data);
 		BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
 		items += tmp_items;
+	}
+	
+	/* return the number of items added to the list */
+	return items;
+}
+
+static size_t animdata_filter_ds_linestyle (bAnimContext *ac, ListBase *anim_data, bDopeSheet *ads, Scene *sce, int filter_mode)
+{
+	SceneRenderLayer *srl;
+	size_t items = 0;
+
+	for (srl = sce->r.layers.first; srl; srl = srl->next) {
+		FreestyleLineSet *lineset;
+
+		/* skip render layers without Freestyle enabled */
+		if (!(srl->layflag & SCE_LAY_FRS))
+			continue;
+
+		/* loop over linesets defined in the render layer */
+		for (lineset = srl->freestyleConfig.linesets.first; lineset; lineset = lineset->next) {
+			FreestyleLineStyle *linestyle = lineset->linestyle;
+			ListBase tmp_data = {NULL, NULL};
+			size_t tmp_items = 0;
+
+			/* add scene-level animation channels */
+			BEGIN_ANIMFILTER_SUBCHANNELS(FILTER_LS_SCED(linestyle))
+			{
+				/* animation data filtering */
+				tmp_items += animfilter_block_data(ac, &tmp_data, ads, (ID *)linestyle, filter_mode);
+			}
+			END_ANIMFILTER_SUBCHANNELS;
+
+			/* did we find anything? */
+			if (tmp_items) {
+				/* include anim-expand widget first */
+				if (filter_mode & ANIMFILTER_LIST_CHANNELS) {
+					/* check if filtering by active status */
+					if (ANIMCHANNEL_ACTIVEOK(linestyle)) {
+						ANIMCHANNEL_NEW_CHANNEL(linestyle, ANIMTYPE_DSLINESTYLE, sce);
+					}
+				}
+				
+				/* now add the list of collected channels */
+				BLI_movelisttolist(anim_data, &tmp_data);
+				BLI_assert((tmp_data.first == tmp_data.last) && (tmp_data.first == NULL));
+				items += tmp_items;
+			}
+		}
 	}
 	
 	/* return the number of items added to the list */
@@ -2146,7 +2227,12 @@ static size_t animdata_filter_dopesheet_scene(bAnimContext *ac, ListBase *anim_d
 		if ((ntree) && !(ads->filterflag & ADS_FILTER_NONTREE)) {
 			tmp_items += animdata_filter_ds_nodetree(ac, &tmp_data, ads, (ID *)sce, ntree, filter_mode);
 		}
-
+		
+		/* line styles */
+		if ((ads->filterflag & ADS_FILTER_NOLINESTYLE) == 0) {
+			tmp_items += animdata_filter_ds_linestyle(ac, &tmp_data, ads, sce, filter_mode);
+		}
+		
 		/* TODO: one day, when sequencer becomes its own datatype, perhaps it should be included here */
 	}
 	END_ANIMFILTER_SUBCHANNELS;
@@ -2240,7 +2326,7 @@ static size_t animdata_filter_dopesheet(bAnimContext *ac, ListBase *anim_data, b
 			 *	- used to ease the process of doing multiple-character choreographies
 			 */
 			if (ads->filterflag & ADS_FILTER_ONLYOBGROUP) {
-				if (object_in_group(ob, ads->filter_grp) == 0)
+				if (BKE_group_object_exists(ads->filter_grp, ob) == 0)
 					continue;
 			}
 				
@@ -2316,6 +2402,10 @@ static size_t animdata_filter_animchan(bAnimContext *ac, ListBase *anim_data, bD
 		
 		case ANIMTYPE_OBJECT:
 			items += animdata_filter_dopesheet_ob(ac, anim_data, ads, channel->data, filter_mode);
+			break;
+			
+		case ANIMTYPE_ANIMDATA:
+			items += animfilter_block_data(ac, anim_data, ads, channel->id, filter_mode);
 			break;
 			
 		default:

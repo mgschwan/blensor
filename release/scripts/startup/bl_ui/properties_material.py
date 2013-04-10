@@ -18,8 +18,9 @@
 
 # <pep8 compliant>
 import bpy
-from bpy.types import Menu, Panel
+from bpy.types import Menu, Panel, UIList
 from rna_prop_ui import PropertyPanel
+from bpy.app.translations import pgettext_iface as iface_
 
 
 def active_node_mat(mat):
@@ -69,6 +70,25 @@ class MATERIAL_MT_specials(Menu):
         layout.operator("material.paste", icon='PASTEDOWN')
 
 
+class MATERIAL_UL_matslots(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        # assert(isinstance(item, bpy.types.MaterialSlot)
+        ob = data
+        slot = item
+        ma = slot.material
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            layout.label(text=ma.name if ma else "", translate=False, icon_value=icon)
+            if ma and not context.scene.render.use_shading_nodes:
+                manode = ma.active_node_material
+                if manode:
+                    layout.label(text=iface_("Node %s") % manode.name, translate=False, icon_value=layout.icon(manode))
+                elif ma.use_nodes:
+                    layout.label(text="Node <none>")
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.label(text="", icon_value=icon)
+
+
 class MaterialButtonsPanel():
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -104,7 +124,7 @@ class MATERIAL_PT_context_material(MaterialButtonsPanel, Panel):
         if ob:
             row = layout.row()
 
-            row.template_list(ob, "material_slots", ob, "active_material_index", rows=2)
+            row.template_list("MATERIAL_UL_matslots", "", ob, "material_slots", ob, "active_material_index", rows=2)
 
             col = row.column(align=True)
             col.operator("object.material_slot_add", icon='ZOOMIN', text="")
@@ -544,7 +564,7 @@ class MATERIAL_PT_halo(MaterialButtonsPanel, Panel):
             row.prop(halo, toggle, text="")
             sub = row.column()
             sub.active = getattr(halo, toggle)
-            sub.prop(halo, number, text=name)
+            sub.prop(halo, number, text=name, translate=False)
             if not color == "":
                 sub.prop(mat, color, text="")
 
@@ -571,9 +591,9 @@ class MATERIAL_PT_halo(MaterialButtonsPanel, Panel):
         col.prop(halo, "use_soft")
 
         col = split.column()
-        number_but(col, "use_ring", "ring_count", "Rings", "mirror_color")
-        number_but(col, "use_lines", "line_count", "Lines", "specular_color")
-        number_but(col, "use_star", "star_tip_count", "Star tips", "")
+        number_but(col, "use_ring", "ring_count", iface_("Rings"), "mirror_color")
+        number_but(col, "use_lines", "line_count", iface_("Lines"), "specular_color")
+        number_but(col, "use_star", "star_tip_count", iface_("Star Tips"), "")
 
 
 class MATERIAL_PT_flare(MaterialButtonsPanel, Panel):

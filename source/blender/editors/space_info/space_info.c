@@ -178,7 +178,11 @@ static void info_main_area_draw(const bContext *C, ARegion *ar)
 static void info_operatortypes(void)
 {
 	WM_operatortype_append(FILE_OT_pack_all);
+	WM_operatortype_append(FILE_OT_pack_libraries);
 	WM_operatortype_append(FILE_OT_unpack_all);
+	WM_operatortype_append(FILE_OT_unpack_item);
+	WM_operatortype_append(FILE_OT_unpack_libraries);
+	
 	WM_operatortype_append(FILE_OT_make_paths_relative);
 	WM_operatortype_append(FILE_OT_make_paths_absolute);
 	WM_operatortype_append(FILE_OT_report_missing_files);
@@ -272,7 +276,7 @@ static void info_header_listener(ARegion *ar, wmNotifier *wmn)
 static void recent_files_menu_draw(const bContext *UNUSED(C), Menu *menu)
 {
 	struct RecentFile *recent;
-	char file [FILE_MAX];
+	char file[FILE_MAX];
 	uiLayout *layout = menu->layout;
 	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_REGION_WIN);
 	if (G.recent_files.first) {
@@ -296,6 +300,7 @@ static void recent_files_menu_register(void)
 	mt = MEM_callocN(sizeof(MenuType), "spacetype info menu recent files");
 	strcpy(mt->idname, "INFO_MT_file_open_recent");
 	strcpy(mt->label, N_("Open Recent..."));
+	strcpy(mt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	mt->draw = recent_files_menu_draw;
 	WM_menutype_add(mt);
 }

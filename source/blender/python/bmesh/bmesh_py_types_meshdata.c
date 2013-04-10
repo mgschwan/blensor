@@ -97,7 +97,7 @@ static PyGetSetDef bpy_bmtexpoly_getseters[] = {
 	{NULL, NULL, NULL, NULL, NULL} /* Sentinel */
 };
 
-PyTypeObject BPy_BMTexPoly_Type = {{{0}}}; /* bm.loops.layers.uv.active */
+static PyTypeObject BPy_BMTexPoly_Type = {{{0}}}; /* bm.loops.layers.uv.active */
 
 static void bm_init_types_bmtexpoly(void)
 {
@@ -187,10 +187,10 @@ static int bpy_bmloopuv_flag_set(BPy_BMLoopUV *self, PyObject *value, void *flag
 	const int flag = GET_INT_FROM_POINTER(flag_p);
 
 	switch (PyLong_AsLong(value)) {
-		case TRUE:
+		case true:
 			self->data->flag |= flag;
 			return 0;
-		case FALSE:
+		case false:
 			self->data->flag &= ~flag;
 			return 0;
 		default:

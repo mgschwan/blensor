@@ -37,7 +37,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_bpath.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
@@ -89,7 +88,7 @@ void BKE_lattice_resize(Lattice *lt, int uNew, int vNew, int wNew, Object *ltOb)
 	
 	/* vertex weight groups are just freed all for now */
 	if (lt->dvert) {
-		free_dverts(lt->dvert, lt->pntsu * lt->pntsv * lt->pntsw);
+		BKE_defvert_array_free(lt->dvert, lt->pntsu * lt->pntsv * lt->pntsw);
 		lt->dvert = NULL;
 	}
 	
@@ -181,11 +180,11 @@ void BKE_lattice_resize(Lattice *lt, int uNew, int vNew, int wNew, Object *ltOb)
 	MEM_freeN(vertexCos);
 }
 
-Lattice *BKE_lattice_add(const char *name)
+Lattice *BKE_lattice_add(Main *bmain, const char *name)
 {
 	Lattice *lt;
 	
-	lt = BKE_libblock_alloc(&G.main->latt, ID_LT, name);
+	lt = BKE_libblock_alloc(&bmain->latt, ID_LT, name);
 	
 	lt->flag = LT_GRID;
 	
@@ -210,7 +209,7 @@ Lattice *BKE_lattice_copy(Lattice *lt)
 	if (lt->dvert) {
 		int tot = lt->pntsu * lt->pntsv * lt->pntsw;
 		ltn->dvert = MEM_mallocN(sizeof(MDeformVert) * tot, "Lattice MDeformVert");
-		copy_dverts(ltn->dvert, lt->dvert, tot);
+		BKE_defvert_array_copy(ltn->dvert, lt->dvert, tot);
 	}
 
 	ltn->editlatt = NULL;
@@ -221,12 +220,12 @@ Lattice *BKE_lattice_copy(Lattice *lt)
 void BKE_lattice_free(Lattice *lt)
 {
 	if (lt->def) MEM_freeN(lt->def);
-	if (lt->dvert) free_dverts(lt->dvert, lt->pntsu * lt->pntsv * lt->pntsw);
+	if (lt->dvert) BKE_defvert_array_free(lt->dvert, lt->pntsu * lt->pntsv * lt->pntsw);
 	if (lt->editlatt) {
 		Lattice *editlt = lt->editlatt->latt;
 
 		if (editlt->def) MEM_freeN(editlt->def);
-		if (editlt->dvert) free_dverts(editlt->dvert, lt->pntsu * lt->pntsv * lt->pntsw);
+		if (editlt->dvert) BKE_defvert_array_free(editlt->dvert, lt->pntsu * lt->pntsv * lt->pntsw);
 
 		MEM_freeN(editlt);
 		MEM_freeN(lt->editlatt);
@@ -405,9 +404,11 @@ void calc_latt_deform(Object *ob, float co[3], float weight)
 		if (w != 0.0f) {
 			if (ww > 0) {
 				if (ww < lt->pntsw) idx_w = ww * lt->pntsu * lt->pntsv;
-				else idx_w = (lt->pntsw - 1) * lt->pntsu * lt->pntsv;
+				else                idx_w = (lt->pntsw - 1) * lt->pntsu * lt->pntsv;
 			}
-			else idx_w = 0;
+			else {
+				idx_w = 0;
+			}
 
 			for (vv = vi - 1; vv <= vi + 2; vv++) {
 				v = w * tv[vv - vi + 1];
@@ -415,9 +416,11 @@ void calc_latt_deform(Object *ob, float co[3], float weight)
 				if (v != 0.0f) {
 					if (vv > 0) {
 						if (vv < lt->pntsv) idx_v = idx_w + vv * lt->pntsu;
-						else idx_v = idx_w + (lt->pntsv - 1) * lt->pntsu;
+						else                idx_v = idx_w + (lt->pntsv - 1) * lt->pntsu;
 					}
-					else idx_v = idx_w;
+					else {
+						idx_v = idx_w;
+					}
 
 					for (uu = ui - 1; uu <= ui + 2; uu++) {
 						u = weight * v * tu[uu - ui + 1];
@@ -425,9 +428,11 @@ void calc_latt_deform(Object *ob, float co[3], float weight)
 						if (u != 0.0f) {
 							if (uu > 0) {
 								if (uu < lt->pntsu) idx_u = idx_v + uu;
-								else idx_u = idx_v + (lt->pntsu - 1);
+								else                idx_u = idx_v + (lt->pntsu - 1);
 							}
-							else idx_u = idx_v;
+							else {
+								idx_u = idx_v;
+							}
 
 							madd_v3_v3fl(co, &lt->latticedata[idx_u * 3], u);
 
@@ -493,7 +498,9 @@ static int where_on_path_deform(Object *ob, float ctime, float vec[4], float dir
 	if (cycl == 0) {
 		ctime1 = CLAMPIS(ctime, 0.0f, 1.0f);
 	}
-	else ctime1 = ctime;
+	else {
+		ctime1 = ctime;
+	}
 	
 	/* vec needs 4 items */
 	if (where_on_path(ob, ctime1, vec, dir, quat, radius, NULL)) {
@@ -913,7 +920,7 @@ void outside_lattice(Lattice *lt)
 						bp->vec[1] += (1.0f - fac1) * bp1->vec[1] + fac1 * bp2->vec[1];
 						bp->vec[2] += (1.0f - fac1) * bp1->vec[2] + fac1 * bp2->vec[2];
 						
-						mul_v3_fl(bp->vec, 0.3333333f);
+						mul_v3_fl(bp->vec, 1.0f / 3.0f);
 						
 					}
 				}
@@ -1004,3 +1011,66 @@ struct MDeformVert *BKE_lattice_deform_verts_get(struct Object *oblatt)
 	if (lt->editlatt) lt = lt->editlatt->latt;
 	return lt->dvert;
 }
+
+void BKE_lattice_center_median(struct Lattice *lt, float cent[3])
+{
+	int i, numVerts;
+
+	if (lt->editlatt) lt = lt->editlatt->latt;
+	numVerts = lt->pntsu * lt->pntsv * lt->pntsw;
+
+	zero_v3(cent);
+
+	for (i = 0; i < numVerts; i++)
+		add_v3_v3(cent, lt->def[i].vec);
+
+	mul_v3_fl(cent, 1.0f / (float)numVerts);
+}
+
+void BKE_lattice_minmax(struct Lattice *lt, float min[3], float max[3])
+{
+	int i, numVerts;
+
+	if (lt->editlatt) lt = lt->editlatt->latt;
+	numVerts = lt->pntsu * lt->pntsv * lt->pntsw;
+
+	for (i = 0; i < numVerts; i++)
+		minmax_v3v3_v3(min, max, lt->def[i].vec);
+}
+
+void BKE_lattice_center_bounds(struct Lattice *lt, float cent[3])
+{
+	float min[3], max[3];
+
+	INIT_MINMAX(min, max);
+
+	BKE_lattice_minmax(lt, min, max);
+	mid_v3_v3v3(cent, min, max);
+}
+
+void BKE_lattice_translate(Lattice *lt, float offset[3], int do_keys)
+{
+	int i, numVerts;
+
+	numVerts = lt->pntsu * lt->pntsv * lt->pntsw;
+
+	if (lt->def)
+		for (i = 0; i < numVerts; i++)
+			add_v3_v3(lt->def[i].vec, offset);
+
+	if (lt->editlatt)
+		for (i = 0; i < numVerts; i++)
+			add_v3_v3(lt->editlatt->latt->def[i].vec, offset);
+
+	if (do_keys && lt->key) {
+		KeyBlock *kb;
+
+		for (kb = lt->key->block.first; kb; kb = kb->next) {
+			float *fp = kb->data;
+			for (i = kb->totelem; i--; fp += 3) {
+				add_v3_v3(fp, offset);
+			}
+		}
+	}
+}
+

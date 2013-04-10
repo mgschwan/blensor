@@ -24,6 +24,8 @@
 #include "AnimationExporter.h"
 #include "MaterialExporter.h"
 
+Global G;
+
 template<class Functor>
 void forEachObjectInExportSet(Scene *sce, Functor &f, LinkNode *export_set)
 {
@@ -34,9 +36,10 @@ void forEachObjectInExportSet(Scene *sce, Functor &f, LinkNode *export_set)
 	}
 }
 
-void AnimationExporter::exportAnimations(Scene *sce)
+bool AnimationExporter::exportAnimations(Scene *sce)
 {
-	if (hasAnimations(sce)) {
+	bool has_animations = hasAnimations(sce);
+	if (has_animations) {
 		this->scene = sce;
 
 		openLibrary();
@@ -45,6 +48,7 @@ void AnimationExporter::exportAnimations(Scene *sce)
 
 		closeLibrary();
 	}
+	return has_animations;
 }
 
 // called for each exported object
@@ -83,6 +87,11 @@ void AnimationExporter::operator()(Object *ob)
 
 	}
 
+	export_object_constraint_animation(ob);
+
+	//This needs to be handled by extra profiles, so postponed for now
+	//export_morph_animation(ob);
+		
 	//Export Lamp parameter animations
 	if ( (ob->type == OB_LAMP) && ((Lamp *)ob->data)->adt && ((Lamp *)ob->data)->adt->action) {
 		fcu = (FCurve *)(((Lamp *)ob->data)->adt->action->curves.first);
@@ -134,7 +143,69 @@ void AnimationExporter::operator()(Object *ob)
 				fcu = fcu->next;
 			}
 		}
+	}
 
+
+}
+
+void AnimationExporter::export_object_constraint_animation(Object *ob)
+{
+	std::vector<float> fra;
+	//Takes frames of target animations
+	make_anim_frames_from_targets(ob, fra);
+
+	if (fra.size())
+		dae_baked_object_animation(fra, ob);
+}
+
+void AnimationExporter::export_morph_animation(Object *ob)
+{ 
+	FCurve *fcu;
+	char *transformName;
+	Key *key = BKE_key_from_object(ob);
+	if (!key) return;
+
+	if (key->adt && key->adt->action) {
+		fcu = (FCurve *)key->adt->action->curves.first;
+		
+		while (fcu) {
+			transformName = extract_transform_name(fcu->rna_path);
+
+			dae_animation(ob, fcu, transformName, true);
+			
+			fcu = fcu->next;
+		}
+	}
+
+}
+
+void AnimationExporter::make_anim_frames_from_targets(Object *ob, std::vector<float> &frames )
+{
+	ListBase *conlist = get_active_constraints(ob);
+	if (conlist == NULL) return;
+	bConstraint *con;
+	for (con = (bConstraint *)conlist->first; con; con = con->next) {
+		ListBase targets = {NULL, NULL};
+		
+		bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+		
+		if (!validateConstraints(con)) continue;
+
+		if (cti && cti->get_constraint_targets) {
+			bConstraintTarget *ct;
+			Object *obtar;
+			/* get targets 
+			 *  - constraints should use ct->matrix, not directly accessing values
+			 *	- ct->matrix members have not yet been calculated here! 
+			 */
+			cti->get_constraint_targets(con, &targets);
+			if (cti) {
+				for (ct = (bConstraintTarget *)targets.first; ct; ct = ct->next) {
+					obtar = ct->tar;
+					find_frames(obtar, frames);
+				}
+			}
+		}
 	}
 }
 
@@ -188,6 +259,12 @@ std::string AnimationExporter::getObjectBoneName(Object *ob, const FCurve *fcu)
 		return id_name(ob);
 }
 
+std::string AnimationExporter::getAnimationPathId(const FCurve *fcu)
+{
+	std::string rna_path = std::string(fcu->rna_path);
+	return translate_id(rna_path);
+}
+
 //convert f-curves to animation curves and write
 void AnimationExporter::dae_animation(Object *ob, FCurve *fcu, char *transformName, bool is_param, Material *ma)
 {
@@ -205,8 +282,8 @@ void AnimationExporter::dae_animation(Object *ob, FCurve *fcu, char *transformNa
 
 	//axis names for colors
 	else if (!strcmp(transformName, "color") ||
-			 !strcmp(transformName, "specular_color") ||
-			 !strcmp(transformName, "diffuse_color") ||
+	         !strcmp(transformName, "specular_color") ||
+	         !strcmp(transformName, "diffuse_color") ||
 	         !strcmp(transformName, "alpha"))
 	{
 		const char *axis_names[] = {"R", "G", "B"};
@@ -216,9 +293,9 @@ void AnimationExporter::dae_animation(Object *ob, FCurve *fcu, char *transformNa
 
 	//axis names for transforms
 	else if (!strcmp(transformName, "location") ||
-			 !strcmp(transformName, "scale") ||
+	         !strcmp(transformName, "scale") ||
 	         !strcmp(transformName, "rotation_euler") ||
-			 !strcmp(transformName, "rotation_quaternion"))
+	         !strcmp(transformName, "rotation_quaternion"))
 	{
 		const char *axis_names[] = {"X", "Y", "Z"};
 		if (fcu->array_index < 3)
@@ -234,16 +311,27 @@ void AnimationExporter::dae_animation(Object *ob, FCurve *fcu, char *transformNa
 	//Create anim Id
 	if (ob->type == OB_ARMATURE) {
 		ob_name =  getObjectBoneName(ob, fcu);
-		BLI_snprintf(anim_id, sizeof(anim_id), "%s_%s.%s", (char *)translate_id(ob_name).c_str(),
-		             transformName, axis_name);
+		BLI_snprintf(
+				anim_id,
+				sizeof(anim_id),
+				"%s_%s.%s",
+				(char *)translate_id(ob_name).c_str(),
+				(char *)translate_id(transformName).c_str(),
+				axis_name);
 	}
 	else {
 		if (ma)
 			ob_name = id_name(ob) + "_material";
 		else
 			ob_name = id_name(ob);
-		BLI_snprintf(anim_id, sizeof(anim_id), "%s_%s_%s", (char *)translate_id(ob_name).c_str(),
-		             fcu->rna_path, axis_name);
+
+		BLI_snprintf(
+				anim_id,
+				sizeof(anim_id),
+				"%s_%s_%s",
+				(char *)translate_id(ob_name).c_str(),
+				(char *)getAnimationPathId(fcu).c_str(),
+				axis_name);
 	}
 
 	openAnimation(anim_id, COLLADABU::Utils::EMPTY_STRING);
@@ -320,6 +408,9 @@ void AnimationExporter::dae_animation(Object *ob, FCurve *fcu, char *transformNa
 		if (ma)
 			target = translate_id(id_name(ma)) + "-effect" +
 			         "/common/" /*profile common is only supported */ + get_transform_sid(fcu->rna_path, -1, axis_name, true);
+		//if shape key animation, this is the main problem, how to define the channel targets.
+		/*target = get_morph_id(ob) +
+				 "/value" +*/ 
 	}
 	addChannel(COLLADABU::URI(empty, sampler_id), target);
 
@@ -367,7 +458,10 @@ void AnimationExporter::sample_and_write_bone_animation_matrix(Object *ob_arm, B
 	std::vector<float> fra;
 	//char prefix[256];
 
-	FCurve *fcu = (FCurve *)ob_arm->adt->action->curves.first;
+	//Check if there is a fcurve in the armature for the bone in param
+	//when baking this check is not needed, solve every bone for every frame.
+	/*FCurve *fcu = (FCurve *)ob_arm->adt->action->curves.first;
+
 	while (fcu) {
 		std::string bone_name = getObjectBoneName(ob_arm, fcu);
 		int val = BLI_strcasecmp((char *)bone_name.c_str(), bone->name);
@@ -375,11 +469,13 @@ void AnimationExporter::sample_and_write_bone_animation_matrix(Object *ob_arm, B
 		fcu = fcu->next;
 	}
 
-	if (!(fcu)) return; 
+	if (!(fcu)) return;*/ 
+
 	bPoseChannel *pchan = BKE_pose_channel_find_name(ob_arm->pose, bone->name);
 	if (!pchan)
 		return;
 
+	//every inserted keyframe of bones.	
 	find_frames(ob_arm, fra);
 
 	if (flag & ARM_RESTPOS) {
@@ -415,7 +511,8 @@ void AnimationExporter::dae_baked_animation(std::vector<float> &fra, Object *ob_
 
 	// create output source
 	std::string output_id;
-	output_id = create_4x4_source(fra, ob_arm, bone,  anim_id);
+
+	output_id = create_4x4_source(fra, ob_arm, bone, anim_id);
 
 	// create interpolations source
 	std::string interpolation_id = fake_interpolation_source(fra.size(), anim_id, "");
@@ -434,6 +531,48 @@ void AnimationExporter::dae_baked_animation(std::vector<float> &fra, Object *ob_
 	addSampler(sampler);
 
 	std::string target = translate_id(bone_name) + "/transform";
+	addChannel(COLLADABU::URI(empty, sampler_id), target);
+
+	closeAnimation();
+}
+
+void AnimationExporter::dae_baked_object_animation(std::vector<float> &fra, Object *ob)
+{
+	std::string ob_name = id_name(ob);
+	char anim_id[200];
+
+	if (!fra.size())
+		return;
+
+	BLI_snprintf(anim_id, sizeof(anim_id), "%s_%s", (char *)translate_id(ob_name).c_str(),
+	             "object_matrix");
+
+	openAnimation(anim_id, COLLADABU::Utils::EMPTY_STRING);
+
+	// create input source
+	std::string input_id = create_source_from_vector(COLLADASW::InputSemantic::INPUT, fra, false, anim_id, "");
+
+	// create output source
+	std::string output_id;
+	output_id = create_4x4_source( fra, ob, NULL, anim_id);
+
+	// create interpolations source
+	std::string interpolation_id = fake_interpolation_source(fra.size(), anim_id, "");
+
+	std::string sampler_id = std::string(anim_id) + SAMPLER_ID_SUFFIX;
+	COLLADASW::LibraryAnimations::Sampler sampler(sw, sampler_id);
+	std::string empty;
+	sampler.addInput(COLLADASW::InputSemantic::INPUT, COLLADABU::URI(empty, input_id));
+	sampler.addInput(COLLADASW::InputSemantic::OUTPUT, COLLADABU::URI(empty, output_id));
+
+	// TODO create in/out tangents source
+
+	// this input is required
+	sampler.addInput(COLLADASW::InputSemantic::INTERPOLATION, COLLADABU::URI(empty, interpolation_id));
+
+	addSampler(sampler);
+
+	std::string target = translate_id(ob_name) + "/transform";
 	addChannel(COLLADABU::URI(empty, sampler_id), target);
 
 	closeAnimation();
@@ -610,7 +749,6 @@ void AnimationExporter::get_source_values(BezTriple *bezt, COLLADASW::InputSeman
 				values[1] = bezt->vec[2][1];
 			}
 			break;
-			break;
 		default:
 			*length = 0;
 			break;
@@ -762,7 +900,8 @@ std::string AnimationExporter::create_source_from_vector(COLLADASW::InputSemanti
 	return source_id;
 }
 
-std::string AnimationExporter::create_4x4_source(std::vector<float> &frames, Object *ob_arm, Bone *bone, const std::string& anim_id)
+
+std::string AnimationExporter::create_4x4_source(std::vector<float> &frames, Object *ob, Bone *bone, const std::string &anim_id)
 {
 	COLLADASW::InputSemantic::Semantics semantic = COLLADASW::InputSemantic::OUTPUT;
 	std::string source_id = anim_id + get_semantic_suffix(semantic);
@@ -780,71 +919,90 @@ std::string AnimationExporter::create_4x4_source(std::vector<float> &frames, Obj
 
 	bPoseChannel *parchan = NULL;
 	bPoseChannel *pchan = NULL;
-	bPose *pose = ob_arm->pose;
 
-	pchan = BKE_pose_channel_find_name(pose, bone->name);
+	if (ob->type == OB_ARMATURE ) {
+		bPose *pose = ob->pose;
+		pchan = BKE_pose_channel_find_name(pose, bone->name);
+		if (!pchan)
+			return "";
 
-	if (!pchan)
-		return "";
+		parchan = pchan->parent;
 
-	parchan = pchan->parent;
-
-	enable_fcurves(ob_arm->adt->action, bone->name);
-
+		enable_fcurves(ob->adt->action, bone->name);
+	}
+	
 	std::vector<float>::iterator it;
 	int j = 0;
 	for (it = frames.begin(); it != frames.end(); it++) {
 		float mat[4][4], ipar[4][4];
 
 		float ctime = BKE_scene_frame_get_from_ctime(scene, *it);
-
-		BKE_animsys_evaluate_animdata(scene, &ob_arm->id, ob_arm->adt, ctime, ADT_RECALC_ANIM);
-		BKE_pose_where_is_bone(scene, ob_arm, pchan, ctime, 1);
-
-		// compute bone local mat
-		if (bone->parent) {
-			invert_m4_m4(ipar, parchan->pose_mat);
-			mult_m4_m4m4(mat, ipar, pchan->pose_mat);
-		}
-		else
-			copy_m4_m4(mat, pchan->pose_mat);
-		UnitConverter converter;
-
+		CFRA = BKE_scene_frame_get_from_ctime(scene, *it);
+		//BKE_scene_update_for_newframe(G.main,scene,scene->lay);
+		BKE_animsys_evaluate_animdata(scene, &ob->id, ob->adt, ctime, ADT_RECALC_ALL);
+				
+		if (bone) {
+			if (pchan->flag & POSE_CHAIN) {
+				enable_fcurves(ob->adt->action, NULL);
+				BKE_animsys_evaluate_animdata(scene, &ob->id, ob->adt, ctime, ADT_RECALC_ALL);
+				BKE_pose_where_is(scene, ob);
+			}
+			else {
+				BKE_pose_where_is_bone(scene, ob, pchan, ctime, 1);
+			}
+			
+			// compute bone local mat
+			if (bone->parent) {
+				invert_m4_m4(ipar, parchan->pose_mat);
+				mult_m4_m4m4(mat, ipar, pchan->pose_mat);
+			}
+			else
+				copy_m4_m4(mat, pchan->pose_mat);
+			
 		// SECOND_LIFE_COMPATIBILITY
 		// AFAIK animation to second life is via BVH, but no
 		// reason to not have the collada-animation be correct
-		if (export_settings->second_life) {
-			float temp[4][4];
-			copy_m4_m4(temp, bone->arm_mat);
-			temp[3][0] = temp[3][1] = temp[3][2] = 0.0f;
-			invert_m4(temp);
-
-			mult_m4_m4m4(mat, mat, temp);
-
-			if (bone->parent) {
-				copy_m4_m4(temp, bone->parent->arm_mat);
+			if (export_settings->second_life) {
+				float temp[4][4];
+				copy_m4_m4(temp, bone->arm_mat);
 				temp[3][0] = temp[3][1] = temp[3][2] = 0.0f;
+				invert_m4(temp);
 
-				mult_m4_m4m4(mat, temp, mat);
+				mult_m4_m4m4(mat, mat, temp);
+
+				if (bone->parent) {
+					copy_m4_m4(temp, bone->parent->arm_mat);
+					temp[3][0] = temp[3][1] = temp[3][2] = 0.0f;
+
+					mult_m4_m4m4(mat, temp, mat);
+				}
 			}
+
 		}
+		else {
+			calc_ob_mat_at_time(ob, ctime, mat);
+		}
+		
+		UnitConverter converter;
 
-		float outmat[4][4];
-		converter.mat4_to_dae(outmat, mat);
-
+		double outmat[4][4];
+		converter.mat4_to_dae_double(outmat, mat);
 
 		source.appendValues(outmat);
 
-
 		j++;
+
+		BIK_release_tree(scene, ob, ctime);
 	}
 
-	enable_fcurves(ob_arm->adt->action, NULL);
+	enable_fcurves(ob->adt->action, NULL);
 
 	source.finish();
 
 	return source_id;
 }
+
+
 // only used for sources with OUTPUT semantic ( locations and scale)
 std::string AnimationExporter::create_xyz_source(float *v, int tot, const std::string& anim_id)
 {
@@ -1184,6 +1342,12 @@ bool AnimationExporter::hasAnimations(Scene *sce)
 			}
 		}
 
+		//check shape key animation
+		if (!fcu) {
+			Key *key = BKE_key_from_object(ob);
+			if (key && key->adt && key->adt->action)
+				fcu = (FCurve *)key->adt->action->curves.first;
+		}
 		if (fcu)
 			return true;
 	}
@@ -1351,3 +1515,43 @@ void AnimationExporter::sample_animation(float *v, std::vector<float> &frames, i
 
 	enable_fcurves(ob_arm->adt->action, NULL);
 }
+
+bool AnimationExporter::validateConstraints(bConstraint *con)
+{
+	bool valid = true;
+	bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+	/* these we can skip completely (invalid constraints...) */
+	if (cti == NULL) valid = false;
+	if (con->flag & (CONSTRAINT_DISABLE | CONSTRAINT_OFF)) valid = false;
+	/* these constraints can't be evaluated anyway */
+	if (cti->evaluate_constraint == NULL) valid = false;
+	/* influence == 0 should be ignored */
+	if (con->enforce == 0.0f) valid = false;
+
+	return valid;
+}
+
+void AnimationExporter::calc_ob_mat_at_time(Object *ob, float ctime , float mat[][4])
+{
+	ListBase *conlist = get_active_constraints(ob);
+	bConstraint *con;
+	for (con = (bConstraint *)conlist->first; con; con = con->next) {
+		ListBase targets = {NULL, NULL};
+		
+		bConstraintTypeInfo *cti = BKE_constraint_get_typeinfo(con);
+		
+		if (cti && cti->get_constraint_targets) {
+			bConstraintTarget *ct;
+			Object *obtar;
+			cti->get_constraint_targets(con, &targets);
+			for (ct = (bConstraintTarget *)targets.first; ct; ct = ct->next) {
+				obtar = ct->tar;
+				BKE_animsys_evaluate_animdata(scene, &obtar->id, obtar->adt, ctime, ADT_RECALC_ANIM);
+				BKE_object_where_is_calc_time(scene, obtar, ctime);
+			}
+		}
+	}
+	BKE_object_where_is_calc_time(scene, ob, ctime);
+	copy_m4_m4(mat, ob->obmat);
+}
+

@@ -53,7 +53,7 @@ static void bm_loop_attrs_copy(BMesh *source_mesh, BMesh *target_mesh,
  * \brief Make Quad/Triangle
  *
  * Creates a new quad or triangle from a list of 3 or 4 vertices.
- * If \a nodouble is TRUE, then a check is done to see if a face
+ * If \a no_double is true, then a check is done to see if a face
  * with these vertices already exists and returns it instead.
  *
  * If a pointer to an example face is provided, it's custom data
@@ -65,16 +65,16 @@ static void bm_loop_attrs_copy(BMesh *source_mesh, BMesh *target_mesh,
 
 BMFace *BM_face_create_quad_tri(BMesh *bm,
                                 BMVert *v1, BMVert *v2, BMVert *v3, BMVert *v4,
-                                const BMFace *example, const int nodouble)
+                                const BMFace *example, const bool no_double)
 {
 	BMVert *vtar[4] = {v1, v2, v3, v4};
-	return BM_face_create_quad_tri_v(bm, vtar, v4 ? 4 : 3, example, nodouble);
+	return BM_face_create_quad_tri_v(bm, vtar, v4 ? 4 : 3, example, no_double);
 }
 
-BMFace *BM_face_create_quad_tri_v(BMesh *bm, BMVert **verts, int len, const BMFace *example, const int nodouble)
+BMFace *BM_face_create_quad_tri_v(BMesh *bm, BMVert **verts, int len, const BMFace *example, const bool no_double)
 {
 	BMFace *f = NULL;
-	int is_overlap = FALSE;
+	bool is_overlap = false;
 
 	/* sanity check - debug mode only */
 	if (len == 3) {
@@ -97,7 +97,7 @@ BMFace *BM_face_create_quad_tri_v(BMesh *bm, BMVert **verts, int len, const BMFa
 	}
 
 
-	if (nodouble) {
+	if (no_double) {
 		/* check if face exists or overlaps */
 		is_overlap = BM_face_exists(verts, len, &f);
 	}
@@ -171,17 +171,18 @@ void BM_face_copy_shared(BMesh *bm, BMFace *f)
  * #BM_face_create should be considered over this function as it
  * avoids some unnecessary work.
  */
-BMFace *BM_face_create_ngon(BMesh *bm, BMVert *v1, BMVert *v2, BMEdge **edges, int len, const int create_flag)
+BMFace *BM_face_create_ngon(BMesh *bm, BMVert *v1, BMVert *v2, BMEdge **edges, const int len, const int create_flag)
 {
-	BMEdge **edges2 = BLI_array_alloca_and_count(edges2, len);
-	BMVert **verts = BLI_array_alloca_and_count(verts, len + 1);
-	int e2_index = 0;
-	int v_index = 0;
+	BMEdge **edges_sort = BLI_array_alloca(edges_sort, len);
+	BMVert **verts_sort = BLI_array_alloca(verts_sort, len + 1);
+	int esort_index = 0;
+	int vsort_index = 0;
 
 	BMFace *f = NULL;
 	BMEdge *e;
 	BMVert *v, *ev1, *ev2;
-	int i, /* j, */ v1found, reverse;
+	int i;
+	bool is_v1_found, is_reverse;
 
 
 	/* this code is hideous, yeek.  I'll have to think about ways of
@@ -189,10 +190,7 @@ BMFace *BM_face_create_ngon(BMesh *bm, BMVert *v1, BMVert *v2, BMEdge **edges, i
 	 *  _and_ the old bmesh_mf functions, so its kindof smashed together
 	 * - joeedh */
 
-	if (!len || !v1 || !v2 || !edges || !bm) {
-		BLI_assert(0);
-		return NULL;
-	}
+	BLI_assert(len && v1 && v2 && edges && bm);
 
 	/* put edges in correct order */
 	for (i = 0; i < len; i++) {
@@ -209,16 +207,21 @@ BMFace *BM_face_create_ngon(BMesh *bm, BMVert *v1, BMVert *v2, BMEdge **edges, i
 		SWAP(BMVert *, ev1, ev2);
 	}
 
-	verts[v_index++] = ev1;
+	verts_sort[vsort_index++] = ev1;
 	v = ev2;
 	e = edges[0];
 	do {
 		BMEdge *e2 = e;
 
-		verts[v_index++] = v;
-		edges2[e2_index++] = e;
+		/* vertex array is (len + 1) */
+		if (UNLIKELY(vsort_index > len)) {
+			goto err; /* vertex in loop twice */
+		}
 
-		/* we only flag the verts to check if they are in the face more then once */
+		verts_sort[vsort_index++] = v;
+		edges_sort[esort_index++] = e;
+
+		/* we only flag the verts to check if they are in the face more than once */
 		BM_ELEM_API_FLAG_ENABLE(v, _FLAG_MV);
 
 		do {
@@ -229,66 +232,67 @@ BMFace *BM_face_create_ngon(BMesh *bm, BMVert *v1, BMVert *v2, BMEdge **edges, i
 			}
 		} while (e2 != e);
 
-		if (e2 == e)
+		if (UNLIKELY(e2 == e)) {
 			goto err; /* the edges do not form a closed loop */
+		}
 
 		e = e2;
 	} while (e != edges[0]);
 
-	if (BLI_array_count(edges2) != len) {
+	if (UNLIKELY(esort_index != len)) {
 		goto err; /* we didn't use all edges in forming the boundary loop */
 	}
 
 	/* ok, edges are in correct order, now ensure they are going
 	 * in the correct direction */
-	v1found = reverse = FALSE;
+	is_v1_found = is_reverse = false;
 	for (i = 0; i < len; i++) {
-		if (BM_vert_in_edge(edges2[i], v1)) {
+		if (BM_vert_in_edge(edges_sort[i], v1)) {
 			/* see if v1 and v2 are in the same edge */
-			if (BM_vert_in_edge(edges2[i], v2)) {
+			if (BM_vert_in_edge(edges_sort[i], v2)) {
 				/* if v1 is shared by the *next* edge, then the winding
 				 * is incorrect */
-				if (BM_vert_in_edge(edges2[(i + 1) % len], v1)) {
-					reverse = TRUE;
+				if (BM_vert_in_edge(edges_sort[(i + 1) % len], v1)) {
+					is_reverse = true;
 					break;
 				}
 			}
 
-			v1found = TRUE;
+			is_v1_found = true;
 		}
 
-		if ((v1found == FALSE) && BM_vert_in_edge(edges2[i], v2)) {
-			reverse = TRUE;
+		if ((is_v1_found == false) && BM_vert_in_edge(edges_sort[i], v2)) {
+			is_reverse = true;
 			break;
 		}
 	}
 
-	if (reverse) {
+	if (is_reverse) {
 		for (i = 0; i < len / 2; i++) {
-			v = verts[i];
-			verts[i] = verts[len - i - 1];
-			verts[len - i - 1] = v;
+			v = verts_sort[i];
+			verts_sort[i] = verts_sort[len - i - 1];
+			verts_sort[len - i - 1] = v;
 		}
 	}
 
 	for (i = 0; i < len; i++) {
-		edges2[i] = BM_edge_exists(verts[i], verts[(i + 1) % len]);
-		if (!edges2[i]) {
+		edges_sort[i] = BM_edge_exists(verts_sort[i], verts_sort[(i + 1) % len]);
+		if (UNLIKELY(edges_sort[i] == NULL)) {
 			goto err;
 		}
 
-		/* check if vert is in face more then once. if the flag is disabled. we've already visited */
-		if (!BM_ELEM_API_FLAG_TEST(verts[i], _FLAG_MV)) {
+		/* check if vert is in face more than once. if the flag is disabled. we've already visited */
+		if (UNLIKELY(!BM_ELEM_API_FLAG_TEST(verts_sort[i], _FLAG_MV))) {
 			goto err;
 		}
-		BM_ELEM_API_FLAG_DISABLE(verts[i], _FLAG_MV);
+		BM_ELEM_API_FLAG_DISABLE(verts_sort[i], _FLAG_MV);
 	}
 
-	f = BM_face_create(bm, verts, edges2, len, create_flag);
+	f = BM_face_create(bm, verts_sort, edges_sort, len, create_flag);
 
 	/* clean up flags */
 	for (i = 0; i < len; i++) {
-		BM_ELEM_API_FLAG_DISABLE(edges2[i], _FLAG_MF);
+		BM_ELEM_API_FLAG_DISABLE(edges_sort[i], _FLAG_MF);
 	}
 
 	return f;
@@ -296,14 +300,79 @@ BMFace *BM_face_create_ngon(BMesh *bm, BMVert *v1, BMVert *v2, BMEdge **edges, i
 err:
 	for (i = 0; i < len; i++) {
 		BM_ELEM_API_FLAG_DISABLE(edges[i], _FLAG_MF);
-		/* vert count may != len */
-		if (i < BLI_array_count(verts)) {
-			BM_ELEM_API_FLAG_DISABLE(verts[i], _FLAG_MV);
-		}
+	}
+	for (i = 0; i < vsort_index; i++) {
+		BM_ELEM_API_FLAG_DISABLE(verts_sort[i], _FLAG_MV);
 	}
 
 	return NULL;
 }
+
+/**
+ * Create an ngon from an array of sorted verts
+ *
+ * Special features this has over other functions.
+ * - Optionally calculate winding based on surrounding edges.
+ * - Optionally create edges between vertices.
+ * - Uses verts so no need to find edges (handy when you only have verts)
+ */
+BMFace *BM_face_create_ngon_verts(BMesh *bm, BMVert **vert_arr, const int len, const int create_flag,
+                                  const bool calc_winding, const bool create_edges)
+{
+	BMEdge **edge_arr = BLI_array_alloca(edge_arr, len);
+	unsigned int winding[2] = {0, 0};
+	int i, i_prev = len - 1;
+
+	BLI_assert(len > 2);
+
+	for (i = 0; i < len; i++) {
+		if (create_edges) {
+			edge_arr[i] = BM_edge_create(bm, vert_arr[i_prev], vert_arr[i], NULL, BM_CREATE_NO_DOUBLE);
+		}
+		else {
+			edge_arr[i] = BM_edge_exists(vert_arr[i_prev], vert_arr[i]);
+			if (edge_arr[i] == NULL) {
+				return NULL;
+			}
+		}
+
+		if (calc_winding) {
+			/* the edge may exist already and be attached to a face
+			 * in this case we can find the best winding to use for the new face */
+			if (edge_arr[i]->l) {
+				BMVert *test_v1, *test_v2;
+				/* we want to use the reverse winding to the existing order */
+				BM_edge_ordered_verts(edge_arr[i], &test_v2, &test_v1);
+				winding[(vert_arr[i_prev] == test_v2)]++;
+			}
+		}
+
+		i_prev = i;
+	}
+
+	/* --- */
+
+	if (calc_winding) {
+		if (winding[0] < winding[1]) {
+			winding[0] = 1;
+			winding[1] = 0;
+		}
+		else {
+			winding[0] = 0;
+			winding[1] = 1;
+		}
+	}
+	else {
+		winding[0] = 0;
+		winding[1] = 1;
+	}
+
+	/* --- */
+
+	/* create the face */
+	return BM_face_create_ngon(bm, vert_arr[winding[0]], vert_arr[winding[1]], edge_arr, len, create_flag);
+}
+
 
 typedef struct AngleIndexPair {
 	float angle;
@@ -334,11 +403,11 @@ static int angle_index_pair_cmp(const void *e1, const void *e2)
  *
  * \note Since this is a vcloud there is no direction.
  */
-BMFace *BM_face_create_ngon_vcloud(BMesh *bm, BMVert **vert_arr, int totv, const int create_flag)
+BMFace *BM_face_create_ngon_vcloud(BMesh *bm, BMVert **vert_arr, int len, const int create_flag)
 {
 	BMFace *f;
 
-	float totv_inv = 1.0f / (float)totv;
+	float totv_inv = 1.0f / (float)len;
 	int i = 0;
 
 	float cent[3], nor[3];
@@ -355,21 +424,17 @@ BMFace *BM_face_create_ngon_vcloud(BMesh *bm, BMVert **vert_arr, int totv, const
 	AngleIndexPair *vang;
 
 	BMVert **vert_arr_map;
-	BMEdge **edge_arr;
-	int i_prev;
-
-	unsigned int winding[2] = {0, 0};
 
 	/* get the center point and collect vector array since we loop over these a lot */
 	zero_v3(cent);
-	for (i = 0; i < totv; i++) {
+	for (i = 0; i < len; i++) {
 		madd_v3_v3fl(cent, vert_arr[i]->co, totv_inv);
 	}
 
 
 	/* find the far point from cent */
 	far_best = 0.0f;
-	for (i = 0; i < totv; i++) {
+	for (i = 0; i < len; i++) {
 		far_dist = len_squared_v3v3(vert_arr[i]->co, cent);
 		if (far_dist > far_best || far == NULL) {
 			far = vert_arr[i]->co;
@@ -384,7 +449,7 @@ BMFace *BM_face_create_ngon_vcloud(BMesh *bm, BMVert **vert_arr, int totv, const
 
 	/* find a point 90deg about to compare with */
 	far_cross_best = 0.0f;
-	for (i = 0; i < totv; i++) {
+	for (i = 0; i < len; i++) {
 
 		if (far == vert_arr[i]->co) {
 			continue;
@@ -419,9 +484,9 @@ BMFace *BM_face_create_ngon_vcloud(BMesh *bm, BMVert **vert_arr, int totv, const
 	/* --- */
 
 	/* now calculate every points angle around the normal (signed) */
-	vang = MEM_mallocN(sizeof(AngleIndexPair) * totv, __func__);
+	vang = MEM_mallocN(sizeof(AngleIndexPair) * len, __func__);
 
-	for (i = 0; i < totv; i++) {
+	for (i = 0; i < len; i++) {
 		float co[3];
 		float proj_vec[3];
 		float angle;
@@ -445,53 +510,20 @@ BMFace *BM_face_create_ngon_vcloud(BMesh *bm, BMVert **vert_arr, int totv, const
 	}
 
 	/* sort by angle and magic! - we have our ngon */
-	qsort(vang, totv, sizeof(AngleIndexPair), angle_index_pair_cmp);
+	qsort(vang, len, sizeof(AngleIndexPair), angle_index_pair_cmp);
 
 	/* --- */
 
 	/* create edges and find the winding (if faces are attached to any existing edges) */
-	vert_arr_map = MEM_mallocN(sizeof(BMVert **) * totv, __func__);
-	edge_arr = MEM_mallocN(sizeof(BMEdge **) * totv, __func__);
+	vert_arr_map = MEM_mallocN(sizeof(BMVert **) * len, __func__);
 
-	for (i = 0; i < totv; i++) {
+	for (i = 0; i < len; i++) {
 		vert_arr_map[i] = vert_arr[vang[i].index];
 	}
 	MEM_freeN(vang);
 
-	i_prev = totv - 1;
-	for (i = 0; i < totv; i++) {
-		edge_arr[i] = BM_edge_create(bm, vert_arr_map[i_prev], vert_arr_map[i], NULL, BM_CREATE_NO_DOUBLE);
+	f = BM_face_create_ngon_verts(bm, vert_arr_map, len, create_flag, true, true);
 
-		/* the edge may exist already and be attached to a face
-		 * in this case we can find the best winding to use for the new face */
-		if (edge_arr[i]->l) {
-			BMVert *test_v1, *test_v2;
-			/* we want to use the reverse winding to the existing order */
-			BM_edge_ordered_verts(edge_arr[i], &test_v2, &test_v1);
-			winding[(vert_arr_map[i_prev] == test_v2)]++;
-
-		}
-
-		i_prev = i;
-	}
-
-	/* --- */
-
-	if (winding[0] < winding[1]) {
-		winding[0] = 1;
-		winding[1] = 0;
-	}
-	else {
-		winding[0] = 0;
-		winding[1] = 1;
-	}
-
-	/* --- */
-
-	/* create the face */
-	f = BM_face_create_ngon(bm, vert_arr_map[winding[0]], vert_arr_map[winding[1]], edge_arr, totv, create_flag);
-
-	MEM_freeN(edge_arr);
 	MEM_freeN(vert_arr_map);
 
 	return f;
@@ -790,7 +822,7 @@ void BM_elem_attrs_copy(BMesh *source_mesh, BMesh *target_mesh, const void *sour
 
 	/* First we copy select */
 	if (BM_elem_flag_test((BMElem *)sheader, BM_ELEM_SELECT)) {
-		BM_elem_select_set(target_mesh, (BMElem *)target, TRUE);
+		BM_elem_select_set(target_mesh, (BMElem *)target, true);
 	}
 	
 	/* Now we copy flags */
@@ -817,6 +849,8 @@ void BM_elem_attrs_copy(BMesh *source_mesh, BMesh *target_mesh, const void *sour
 
 BMesh *BM_mesh_copy(BMesh *bm_old)
 {
+#define USE_FAST_FACE_COPY
+
 	BMesh *bm_new;
 	BMVert *v, *v2, **vtable = NULL;
 	BMEdge *e, *e2, **edges = NULL, **etable = NULL;
@@ -824,6 +858,10 @@ BMesh *BM_mesh_copy(BMesh *bm_old)
 	BLI_array_declare(edges);
 	BMLoop *l, /* *l2, */ **loops = NULL;
 	BLI_array_declare(loops);
+#ifdef USE_FAST_FACE_COPY
+	BMVert **verts = NULL;
+	BLI_array_declare(verts);
+#endif
 	BMFace *f, *f2, **ftable = NULL;
 	BMEditSelection *ese;
 	BMIter iter, liter;
@@ -891,12 +929,24 @@ BMesh *BM_mesh_copy(BMesh *bm_old)
 		BLI_array_grow_items(loops, f->len);
 		BLI_array_grow_items(edges, f->len);
 
+#ifdef USE_FAST_FACE_COPY
+		BLI_array_empty(verts);
+		BLI_array_grow_items(verts, f->len);
+#endif
+
 		l = BM_iter_new(&liter, bm_old, BM_LOOPS_OF_FACE, f);
 		for (j = 0; j < f->len; j++, l = BM_iter_step(&liter)) {
 			loops[j] = l;
 			edges[j] = etable[BM_elem_index_get(l->e)];
+
+#ifdef USE_FAST_FACE_COPY
+			verts[j] = vtable[BM_elem_index_get(l->v)];
+#endif
 		}
 
+#ifdef USE_FAST_FACE_COPY
+		f2 = BM_face_create(bm_new, verts, edges, f->len, BM_CREATE_SKIP_CD);
+#else
 		v = vtable[BM_elem_index_get(loops[0]->v)];
 		v2 = vtable[BM_elem_index_get(loops[1]->v)];
 
@@ -906,6 +956,8 @@ BMesh *BM_mesh_copy(BMesh *bm_old)
 		}
 
 		f2 = BM_face_create_ngon(bm_new, v, v2, edges, f->len, BM_CREATE_SKIP_CD);
+#endif
+
 		if (UNLIKELY(f2 == NULL)) {
 			continue;
 		}
@@ -961,9 +1013,12 @@ BMesh *BM_mesh_copy(BMesh *bm_old)
 	MEM_freeN(vtable);
 	MEM_freeN(ftable);
 
+#ifdef USE_FAST_FACE_COPY
+	BLI_array_free(verts);
+#endif
+
 	BLI_array_free(loops);
 	BLI_array_free(edges);
-
 	return bm_new;
 }
 

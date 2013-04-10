@@ -152,6 +152,7 @@ class TIME_MT_cache(Menu):
         col.prop(st, "cache_cloth")
         col.prop(st, "cache_smoke")
         col.prop(st, "cache_dynamicpaint")
+        col.prop(st, "cache_rigidbody")
 
 
 class TIME_MT_frame(Menu):
@@ -213,7 +214,7 @@ def marker_menu_generic(layout):
     layout.operator("marker.add", "Add Marker")
     layout.operator("marker.duplicate", text="Duplicate Marker")
 
-    if(len(bpy.data.scenes) > 10):
+    if len(bpy.data.scenes) > 10:
         layout.operator_context = 'INVOKE_DEFAULT'
         layout.operator("marker.make_links_scene", text="Duplicate Marker to Scene...", icon='OUTLINER_OB_EMPTY')
     else:

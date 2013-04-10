@@ -44,7 +44,6 @@ set(INC
 )
 
 set(INC_SYS
-	../../../../extern/bullet2/src
 	${GLEW_INCLUDE_PATH}
 	${PYTHON_INCLUDE_DIRS}
 )
@@ -60,7 +59,10 @@ set(SRC
 )
 
 if(WITH_BULLET)
-	add_definitions(-DUSE_BULLET)
+	list(APPEND INC
+		${BULLET_INCLUDE_DIRS}
+	)
+	add_definitions(-DWITH_BULLET)
 endif()
 
 blender_add_lib(ge_phys_bullet "${SRC}" "${INC}" "${INC_SYS}")

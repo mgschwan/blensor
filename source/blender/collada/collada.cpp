@@ -31,6 +31,7 @@
 #include "DocumentExporter.h"
 #include "DocumentImporter.h"
 #include "ExportSettings.h"
+#include "ImportSettings.h"
 
 extern "C"
 {
@@ -39,12 +40,19 @@ extern "C"
 
 /* make dummy file */
 #include "BLI_fileops.h"
-#include "BLI_path_util.h"
 #include "BLI_linklist.h"
 
-int collada_import(bContext *C, const char *filepath)
+int collada_import(bContext *C,
+				   const char *filepath,
+				   int import_units)
 {
-	DocumentImporter imp(C, filepath);
+
+	ImportSettings import_settings;
+	import_settings.filepath = (char *)filepath;
+
+	import_settings.import_units =  import_units != 0;
+
+	DocumentImporter imp(C, &import_settings);
 	if (imp.import()) return 1;
 
 	return 0;
@@ -59,6 +67,7 @@ int collada_export(Scene *sce,
                    int selected,
                    int include_children,
                    int include_armatures,
+				   int include_shapekeys,
                    int deform_bones_only,
 
 				   int active_uv_only,
@@ -66,8 +75,10 @@ int collada_export(Scene *sce,
 				   int include_material_textures,
 				   int use_texture_copies,
 
+                   int triangulate,
                    int use_object_instantiation,
                    int sort_by_name,
+				   BC_export_transformation_type export_transformation_type,
                    int second_life)
 {
 	ExportSettings export_settings;
@@ -75,7 +86,7 @@ int collada_export(Scene *sce,
 	/* annoying, collada crashes if file cant be created! [#27162] */
 	if (!BLI_exists(filepath)) {
 		BLI_make_existing_file(filepath);     /* makes the dir if its not there */
-		if (BLI_file_touch(filepath) == 0) {
+		if (!BLI_file_touch(filepath)) {
 			fprintf(stdout, "Collada export: Can not create: %s\n", filepath);
 			return 0;
 		}
@@ -89,6 +100,7 @@ int collada_export(Scene *sce,
 	export_settings.selected                 = selected          != 0;
 	export_settings.include_children         = include_children  != 0;
 	export_settings.include_armatures        = include_armatures != 0;
+	export_settings.include_shapekeys        = include_shapekeys != 0;
 	export_settings.deform_bones_only        = deform_bones_only != 0;
 
 	export_settings.active_uv_only           = active_uv_only != 0;
@@ -96,9 +108,11 @@ int collada_export(Scene *sce,
 	export_settings.include_material_textures= include_material_textures != 0;
 	export_settings.use_texture_copies       = use_texture_copies != 0;
 
-	export_settings.use_object_instantiation = use_object_instantiation != 0;
-	export_settings.sort_by_name             = sort_by_name != 0;
-	export_settings.second_life              = second_life != 0;
+	export_settings.triangulate                = triangulate != 0;
+	export_settings.use_object_instantiation   = use_object_instantiation != 0;
+	export_settings.sort_by_name               = sort_by_name != 0;
+	export_settings.export_transformation_type = export_transformation_type;
+	export_settings.second_life                = second_life != 0;
 
 
 	int includeFilter = OB_REL_NONE;

@@ -29,7 +29,7 @@
 #include "node_shader_util.h"
 
 /* **************** Gamma Tools  ******************** */
-  
+
 static bNodeSocketTemplate sh_node_gamma_in[] = {
 	{	SOCK_RGBA, 1, N_("Color"),			1.0f, 1.0f, 1.0f, 1.0f},
 	{	SOCK_FLOAT, 1, N_("Gamma"),			1.0f, 0.0f, 0.0f, 0.0f, 0.001f, 10.0f, PROP_UNSIGNED},
@@ -41,18 +41,16 @@ static bNodeSocketTemplate sh_node_gamma_out[] = {
 	{	-1, 0, ""	}
 };
 
-void register_node_type_sh_gamma(bNodeTreeType *ttype)
+void register_node_type_sh_gamma(void)
 {
 	static bNodeType ntype;
 	
-	node_type_base(ttype, &ntype, SH_NODE_GAMMA, "Gamma", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
+	sh_node_type_base(&ntype, SH_NODE_GAMMA, "Gamma", NODE_CLASS_OP_COLOR, NODE_OPTIONS);
 	node_type_compatibility(&ntype, NODE_NEW_SHADING);
 	node_type_socket_templates(&ntype, sh_node_gamma_in, sh_node_gamma_out);
 	node_type_size(&ntype, 140, 100, 320);
 	node_type_init(&ntype, NULL);
 	node_type_storage(&ntype, "", NULL, NULL);
-	node_type_exec(&ntype, NULL);
-	node_type_gpu(&ntype, NULL);
 	
-	nodeRegisterType(ttype, &ntype);
+	nodeRegisterType(&ntype);
 }

@@ -23,25 +23,25 @@
   TODO:
 
       IDEAS:
-	  Add/Subtract
-	  
+      Add/Subtract
+
       LATER:
 
       ISSUES:
           Bugs:
           Mites:
-	      CTRL-Z forces memory to world origin (0,0,0)... why??
-		  Happens only if undo reaches 'default world state'
-		  How to Reproduce:
-		      1. File->New
-		      2. Move 3D-cursor
-		      3. Set memory
-		      4. Move cube
-		      5. CTRL-Z
+          CTRL-Z forces memory to world origin (0,0,0)... why??
+          Happens only if undo reaches 'default world state'
+          How to Reproduce:
+              1. File->New
+              2. Move 3D-cursor
+              3. Set memory
+              4. Move cube
+              5. CTRL-Z
 
       QUESTIONS:
-  
-  
+
+
 """
 
 
@@ -203,29 +203,36 @@ class VIEW3D_PT_cursor_memory_init(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     initDone = False
+    _handle = None
+
+    @staticmethod
+    def handle_add(self, context):
+        VIEW3D_PT_cursor_memory_init._handle = bpy.types.SpaceView3D.draw_handler_add(
+            cursor_memory_draw, (self, context), 'WINDOW', 'POST_PIXEL')
+
+    @staticmethod
+    def handle_remove():
+        if VIEW3D_PT_cursor_memory_init._handle is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(VIEW3D_PT_cursor_memory_init._handle, 'WINDOW')
+        VIEW3D_PT_cursor_memory_init._handle = None
 
     @classmethod
     def poll(cls, context):
         if VIEW3D_PT_cursor_memory_init.initDone:
-            return 0
+            return False
+
         print ("Cursor Memory draw-callback registration...")
         sce = context.scene
         if context.area.type == 'VIEW_3D':
-            for reg in context.area.regions:
-                if reg.type == 'WINDOW':
-                    # Register callback for SL-draw
-                    reg.callback_add(
-                        cursor_memory_draw,
-                        (cls,context),
-                        'POST_PIXEL')
-                    VIEW3D_PT_cursor_memory_init.initDone = True
-                    print ("Cursor Memory draw-callback registered")
-                    # Unregister to prevent double registration...
-                    # Started to fail after v2.57
-                    # bpy.types.unregister(VIEW3D_PT_cursor_memory_init)
+            VIEW3D_PT_cursor_memory_init.handle_add(cls, context)
+            VIEW3D_PT_cursor_memory_init.initDone = True
+            print ("Cursor Memory draw-callback registered")
+            # Unregister to prevent double registration...
+            # Started to fail after v2.57
+            # bpy.types.unregister(VIEW3D_PT_cursor_memory_init)
         else:
             print("View3D not found, cannot run operator")
-        return 0
+        return False
 
     def draw_header(self, context):
         pass
@@ -303,5 +310,5 @@ def cursor_memory_draw(cls,context):
         bgl.glVertex2f(location[0], location[1]+ offset)
         bgl.glVertex2f(location[0], location[1]+offset2)
         bgl.glEnd()
-        
-       
+
+

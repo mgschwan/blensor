@@ -19,6 +19,7 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Panel, Menu
+from bpy.app.translations import pgettext_iface as iface_
 
 
 class FLUID_MT_presets(Menu):
@@ -50,7 +51,7 @@ class PHYSICS_PT_fluid(PhysicButtonsPanel, Panel):
         fluid = md.settings
 
         col = layout.column()
-        if fluid is None:
+        if not bpy.app.build_options.mod_fluid:
             col.label("Built without fluids")
             return
 
@@ -64,7 +65,8 @@ class PHYSICS_PT_fluid(PhysicButtonsPanel, Panel):
 
         if fluid.type == 'DOMAIN':
             # odd formatting here so translation script can extract string
-            layout.operator("fluid.bake", text="Bake (Req. Memory:" + " %s)" % fluid.memory_estimate, icon='MOD_FLUIDSIM')
+            layout.operator("fluid.bake", text=iface_("Bake (Req. Memory: %s)") % fluid.memory_estimate,
+                            translate=False, icon='MOD_FLUIDSIM')
             split = layout.split()
 
             col = split.column()
@@ -90,8 +92,9 @@ class PHYSICS_PT_fluid(PhysicButtonsPanel, Panel):
 
             col = split.column()
             col.label()
-            col.prop(fluid, "use_speed_vectors")
-            col.prop(fluid, "use_reverse_frames")
+            sub = col.column(align=True)
+            sub.prop(fluid, "use_speed_vectors")
+            sub.prop(fluid, "use_reverse_frames")
             col.prop(fluid, "frame_offset", text="Offset")
 
             layout.prop(fluid, "filepath", text="")
@@ -293,9 +296,9 @@ class PHYSICS_PT_domain_particles(PhysicButtonsPanel, Panel):
 
         fluid = context.fluid.settings
 
-        col = layout.column(align=True)
-        col.prop(fluid, "tracer_particles")
-        col.prop(fluid, "generate_particles")
+        row = layout.row()
+        row.prop(fluid, "tracer_particles", text="Tracer")
+        row.prop(fluid, "generate_particles", text="Generate")
 
 if __name__ == "__main__":  # only for live edit.
     bpy.utils.register_module(__name__)

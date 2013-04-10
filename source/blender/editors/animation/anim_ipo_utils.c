@@ -42,6 +42,8 @@
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_anim_types.h"
 
 #include "RNA_access.h"
@@ -63,9 +65,9 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 		return icon;
 	else if (ELEM3(NULL, id, fcu, fcu->rna_path)) {
 		if (fcu == NULL)
-			strcpy(name, "<invalid>");
+			strcpy(name, IFACE_("<invalid>"));
 		else if (fcu->rna_path == NULL)
-			strcpy(name, "<no path>");
+			strcpy(name, IFACE_("<no path>"));
 		else /* id == NULL */
 			BLI_snprintf(name, 256, "%s[%d]", fcu->rna_path, fcu->array_index);
 	}
@@ -143,7 +145,7 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 				/* no array index */
 				arrayname = "";
 			}
-
+			
 			/* putting this all together into the buffer */
 			/* XXX we need to check for invalid names...
 			 * XXX the name length limit needs to be passed in or as some define */
@@ -151,7 +153,7 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 				BLI_snprintf(name, 256, "%s%s (%s)", arrayname, propname, structname);
 			else
 				BLI_snprintf(name, 256, "%s%s", arrayname, propname);
-
+			
 			/* free temp name if nameprop is set */
 			if (free_structname)
 				MEM_freeN((void *)structname);
@@ -170,11 +172,11 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 		else {
 			/* invalid path */
 			BLI_snprintf(name, 256, "\"%s[%d]\"", fcu->rna_path, fcu->array_index);
-
+			
 			/* icon for this should be the icon for the base ID */
 			/* TODO: or should we just use the error icon? */
 			icon = RNA_struct_ui_icon(id_ptr.type);
-
+			
 			/* tag F-Curve as disabled - as not usable path */
 			fcu->flag |= FCURVE_DISABLED;
 		}

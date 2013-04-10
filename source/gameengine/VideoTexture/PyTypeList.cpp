@@ -58,7 +58,7 @@ bool PyTypeList::in (PyTypeObject *type)
 }
 
 /// add type to list
-void PyTypeList::add (PyTypeObject *type, const char * name)
+void PyTypeList::add (PyTypeObject *type, const char *name)
 {
 	// if list doesn't exist, create it
 	if (m_list.get() == NULL) 
@@ -92,6 +92,6 @@ void PyTypeList::reg(PyObject *module)
 			// increase ref count
 			Py_INCREF((*it)->getType());
 			// add type to module
-			PyModule_AddObject(module, (char*)(*it)->getName(), (PyObject *)(*it)->getType());
+			PyModule_AddObject(module, (*it)->getName(), (PyObject *)(*it)->getType());
 		}
 }

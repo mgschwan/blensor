@@ -62,6 +62,7 @@ struct RayFace;
 struct RenderEngine;
 struct ReportList;
 struct Main;
+struct ImagePool;
 
 #define TABLEINITSIZE 1024
 
@@ -104,12 +105,18 @@ typedef struct RenderPart {
 
 	rcti disprect;					/* part coordinates within total picture */
 	int rectx, recty;				/* the size */
-	short crop, ready;				/* crop is amount of pixels we crop, for filter */
+	short crop, status;				/* crop is amount of pixels we crop, for filter */
 	short sample, nr;				/* sample can be used by zbuffers, nr is partnr */
 	short thread;					/* thread id */
 	
 	char *clipflag;					/* clipflags for part zbuffering */
 } RenderPart;
+
+enum {
+	PART_STATUS_NONE        = 0,
+	PART_STATUS_IN_PROGRESS = 1,
+	PART_STATUS_READY       = 2
+};
 
 /* controls state of render, everything that's read-only during render stage */
 struct Render
@@ -198,7 +205,6 @@ struct Render
 	ListBase strandsurface;
 	
 	/* use this instead of R.r.cfra */
-	float cfra;
 	float mblur_offs, field_offs;
 	
 	/* render database */
@@ -229,6 +235,10 @@ struct Render
 	ListBase volumes;
 	ListBase volume_precache_parts;
 
+#ifdef WITH_FREESTYLE
+	ListBase freestyle_renders;
+#endif
+
 	/* arena for allocating data for use during render, for
 	 * example dynamic TFaces to go in the VlakRen structure.
 	 */
@@ -255,6 +265,8 @@ struct Render
 	RenderStats i;
 
 	struct ReportList *reports;
+
+	struct ImagePool *pool;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -368,6 +380,7 @@ struct halosort {
 /* ------------------------------------------------------------------------- */
 struct Material;
 struct MTFace;
+struct ImagePool;
 
 typedef struct RadFace {
 	float unshot[3], totrad[3];
@@ -381,6 +394,10 @@ typedef struct VlakRen {
 	struct Material *mat;
 	char puno;
 	char flag, ec;
+#ifdef WITH_FREESTYLE
+	char freestyle_edge_mark;
+	char freestyle_face_mark;
+#endif
 	int index;
 } VlakRen;
 
@@ -397,6 +414,7 @@ typedef struct HaloRen {
 	int pixels;
 	unsigned int lay;
 	struct Material *mat;
+	struct ImagePool *pool;
 } HaloRen;
 
 /* ------------------------------------------------------------------------- */
@@ -611,6 +629,15 @@ typedef struct LampRen {
 /* vertex normals are tangent or view-corrected vector, for hair strands */
 #define R_TANGENT		64		
 #define R_TRACEBLE		128
+
+/* vlakren->freestyle_edge_mark */
+#ifdef WITH_FREESTYLE
+#  define R_EDGE_V1V2		1
+#  define R_EDGE_V2V3		2
+#  define R_EDGE_V3V4		4
+#  define R_EDGE_V3V1		4
+#  define R_EDGE_V4V1		8
+#endif
 
 /* strandbuffer->flag */
 #define R_STRAND_BSPLINE	1

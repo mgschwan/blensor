@@ -51,9 +51,10 @@ struct Library;
 typedef struct Main {
 	struct Main *next, *prev;
 	char name[1024]; /* 1024 = FILE_MAX */
-	short versionfile, subversionfile;
+	short versionfile, subversionfile;  /* see BLENDER_VERSION, BLENDER_SUBVERSION */
 	short minversionfile, minsubversionfile;
-	int revision;   /* svn revision of binary that saved file */
+	int revision;		/* svn revision of binary that saved file */
+	short recovered;	/* indicate the main->name (file) is the recovered one */
 	
 	struct Library *curlib;
 	ListBase scene;
@@ -87,14 +88,20 @@ typedef struct Main {
 	ListBase gpencil;
 	ListBase movieclip;
 	ListBase mask;
+	ListBase linestyle;
 
 	char id_tag_update[256];
 } Main;
 
+#define MAIN_VERSION_ATLEAST(main, ver, subver) \
+	((main)->versionfile > (ver) || (main->versionfile == (ver) && (main)->subversionfile >= (subver)))
 
+#define MAIN_VERSION_OLDER(main, ver, subver) \
+	((main)->versionfile < (ver) || (main->versionfile == (ver) && (main)->subversionfile < (subver)))
+
+	
 #ifdef __cplusplus
 }
 #endif
 
-#endif
-
+#endif  /* __BKE_MAIN_H__ */

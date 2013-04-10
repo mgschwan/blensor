@@ -70,26 +70,39 @@ class UnifiedPaintPanel():
 
 
 # Used in both the View3D toolbar and texture properties
-def sculpt_brush_texture_settings(layout, brush):
+def brush_texture_settings(layout, brush, sculpt):
     tex_slot = brush.texture_slot
 
     layout.label(text="Brush Mapping:")
 
     # map_mode
-    layout.row().prop(tex_slot, "map_mode", text="")
-    layout.separator()
+    if sculpt:
+        layout.row().prop(tex_slot, "map_mode", text="")
+        layout.separator()
+    else:
+        layout.row().prop(tex_slot, "tex_paint_map_mode", text="")
+        layout.separator()
+
+    if tex_slot.map_mode == 'STENCIL':
+        layout.operator("brush.stencil_fit_image_aspect")
 
     # angle and texture_angle_source
     col = layout.column()
-    col.active = brush.sculpt_capabilities.has_texture_angle_source
+    col.active = brush.brush_capabilities.has_texture_angle_source
     col.label(text="Angle:")
-    if brush.sculpt_capabilities.has_random_texture_angle:
-        col.prop(brush, "texture_angle_source_random", text="")
+    if brush.brush_capabilities.has_random_texture_angle:
+        if sculpt:
+            if brush.sculpt_capabilities.has_random_texture_angle:
+                col.prop(brush, "texture_angle_source_random", text="")
+            else:
+                col.prop(brush, "texture_angle_source_no_random", text="")
+
+        else:
+            col.prop(brush, "texture_angle_source_random", text="")
     else:
         col.prop(brush, "texture_angle_source_no_random", text="")
-
     col = layout.column()
-    col.active = brush.sculpt_capabilities.has_texture_angle
+    col.active = brush.brush_capabilities.has_texture_angle
     col.prop(tex_slot, "angle", text="")
 
     # scale and offset
@@ -97,7 +110,23 @@ def sculpt_brush_texture_settings(layout, brush):
     split.prop(tex_slot, "offset")
     split.prop(tex_slot, "scale")
 
-    # texture_sample_bias
-    col = layout.column(align=True)
-    col.label(text="Sample Bias:")
-    col.prop(brush, "texture_sample_bias", slider=True, text="")
+    if sculpt:
+        # texture_sample_bias
+        col = layout.column(align=True)
+        col.label(text="Sample Bias:")
+        col.prop(brush, "texture_sample_bias", slider=True, text="")
+
+
+def brush_mask_texture_settings(layout, brush):
+    mask_tex_slot = brush.mask_texture_slot
+
+    if brush.mask_texture:
+        layout.label(text="Mask Mapping:")
+        col = layout.column()
+        col.active = brush.brush_capabilities.has_texture_angle
+        col.prop(mask_tex_slot, "angle", text="")
+
+        # scale and offset
+        split = layout.split()
+        split.prop(mask_tex_slot, "offset")
+        split.prop(mask_tex_slot, "scale")

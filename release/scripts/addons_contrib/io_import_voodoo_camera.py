@@ -20,7 +20,7 @@ bl_info = {
     "name": "Import Voodoo camera",
     "author": "Fazekas Laszlo",
     "version": (0, 8),
-    "blender": (2, 6, 3),
+    "blender": (2, 63, 0),
     "location": "File > Import > Voodoo camera",
     "description": "Imports a Blender (2.4x or 2.5x) Python script from the Voodoo (version 1.1 or 1.2) camera tracker software.",
     "warning": "",

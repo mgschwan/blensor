@@ -24,13 +24,7 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
-
-#include "RNA_access.h"
-#include "RNA_define.h"
-
-#include "rna_internal.h"
 
 #include "DNA_ID.h"
 #include "DNA_scene_types.h"
@@ -38,6 +32,15 @@
 #include "DNA_key_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_mesh_types.h"
+
+#include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
+
+#include "RNA_access.h"
+#include "RNA_define.h"
+
+#include "rna_internal.h"
 
 #ifdef RNA_RUNTIME
 
@@ -80,7 +83,8 @@ static void rna_ShapeKey_name_set(PointerRNA *ptr, const char *value)
 	/* make sure the name is truly unique */
 	if (ptr->id.data) {
 		Key *key = rna_ShapeKey_find_key(ptr->id.data);
-		BLI_uniquename(&key->block, kb, "Key", '.', offsetof(KeyBlock, name), sizeof(kb->name));
+		BLI_uniquename(&key->block, kb, CTX_DATA_(BLF_I18NCONTEXT_ID_SHAPEKEY, "Key"), '.',
+		               offsetof(KeyBlock, name), sizeof(kb->name));
 	}
 	
 	/* fix all the animation data which may link to this */

@@ -30,6 +30,7 @@ CCL_NAMESPACE_BEGIN
  * matrixMulDynlinkJIT in the CUDA SDK. */
 
 bool cuLibraryInit();
+bool cuHavePrecompiledKernels();
 string cuCompilerPath();
 
 CCL_NAMESPACE_END
@@ -38,7 +39,7 @@ CCL_NAMESPACE_END
 
 #define CUDA_VERSION 3020
 
-#if defined(__x86_64) || defined(AMD64) || defined(_M_AMD64)
+#if defined(__x86_64) || defined(AMD64) || defined(_M_AMD64) || defined(__LP64__)
 typedef unsigned long long CUdeviceptr;
 #else
 typedef unsigned int CUdeviceptr;
@@ -205,7 +206,8 @@ typedef enum CUjit_target_enum
 	CU_TARGET_COMPUTE_13,
 	CU_TARGET_COMPUTE_20,
 	CU_TARGET_COMPUTE_21,
-	CU_TARGET_COMPUTE_30
+	CU_TARGET_COMPUTE_30,
+	CU_TARGET_COMPUTE_35
 } CUjit_target;
 
 typedef enum CUjit_fallback_enum

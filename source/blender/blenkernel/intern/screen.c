@@ -167,6 +167,7 @@ ARegion *BKE_area_region_copy(SpaceType *st, ARegion *ar)
 	newar->prev = newar->next = NULL;
 	newar->handlers.first = newar->handlers.last = NULL;
 	newar->uiblocks.first = newar->uiblocks.last = NULL;
+	newar->ui_lists.first = newar->ui_lists.last = NULL;
 	newar->swinid = 0;
 	
 	/* use optional regiondata callback */
@@ -279,6 +280,7 @@ void BKE_area_region_free(SpaceType *st, ARegion *ar)
 	}
 
 	BLI_freelistN(&ar->panels);
+	BLI_freelistN(&ar->ui_lists);
 }
 
 /* not area itself */
@@ -349,6 +351,20 @@ ARegion *BKE_area_find_region_type(ScrArea *sa, int type)
 			if (ar->regiontype == type)
 				return ar;
 		}
+	}
+	return NULL;
+}
+
+ARegion *BKE_area_find_region_active_win(ScrArea *sa)
+{
+	if (sa) {
+		ARegion *ar = BLI_findlink(&sa->regionbase, sa->region_active_win);
+		if (ar && (ar->regiontype == RGN_TYPE_WINDOW)) {
+			return ar;
+		}
+
+		/* fallback to any */
+		return BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
 	}
 	return NULL;
 }

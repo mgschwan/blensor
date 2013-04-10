@@ -188,7 +188,7 @@ enum {
 #define WM_UI_HANDLER_CONTINUE	0
 #define WM_UI_HANDLER_BREAK		1
 
-typedef int (*wmUIHandlerFunc)(struct bContext *C, struct wmEvent *event, void *userdata);
+typedef int (*wmUIHandlerFunc)(struct bContext *C, const struct wmEvent *event, void *userdata);
 typedef void (*wmUIHandlerRemoveFunc)(struct bContext *C, void *userdata);
 
 /* ************** Notifiers ****************** */
@@ -239,6 +239,7 @@ typedef struct wmNotifier {
 #define NC_MOVIECLIP			(20<<24)
 #define NC_MASK				(21<<24)
 #define NC_GPENCIL			(22<<24)
+#define NC_LINESTYLE			(23<<24)
 
 /* data type, 256 entries is enough, it can overlap */
 #define NOTE_DATA			0x00FF0000
@@ -407,6 +408,9 @@ typedef struct wmGesture {
 	/* customdata for circle is recti, (xmin, ymin) is center, xmax radius */
 	/* customdata for lasso is short array */
 	/* customdata for straight line is a recti: (xmin,ymin) is start, (xmax, ymax) is end */
+
+	/* free pointer to use for operator allocs (if set, its freed on exit)*/
+	void *userdata;
 } wmGesture;
 
 /* ************** wmEvent ************************ */
@@ -442,7 +446,10 @@ typedef struct wmEvent {
 	
 	/* keymap item, set by handler (weak?) */
 	const char *keymap_idname;
-	
+
+	/* tablet info, only use when the tablet is active */
+	struct wmTabletData *tablet_data;
+
 	/* custom data */
 	short custom;		/* custom data type, stylus, 6dof, see wm_event_types.h */
 	short customdatafree;
@@ -506,6 +513,7 @@ typedef struct wmTimer {
 typedef struct wmOperatorType {
 	const char *name;		/* text for ui, undo */
 	const char *idname;		/* unique identifier */
+	const char *translation_context;
 	const char *description;	/* tooltips and python docs */
 
 	/* this callback executes the operator without any interactive input,
@@ -528,13 +536,13 @@ typedef struct wmOperatorType {
 	 * any further events are handled in modal. if the operation is
 	 * canceled due to some external reason, cancel is called
 	 * - see defines below for return values */
-	int (*invoke)(struct bContext *, struct wmOperator *, struct wmEvent *)
+	int (*invoke)(struct bContext *, struct wmOperator *, const struct wmEvent *)
 #ifdef __GNUC__
 	__attribute__((warn_unused_result))
 #endif
 	;
 	int (*cancel)(struct bContext *, struct wmOperator *);
-	int (*modal)(struct bContext *, struct wmOperator *, struct wmEvent *)
+	int (*modal)(struct bContext *, struct wmOperator *, const struct wmEvent *)
 #ifdef __GNUC__
 	__attribute__((warn_unused_result))
 #endif
@@ -639,7 +647,7 @@ typedef struct wmDropBox {
 	struct wmDropBox *next, *prev;
 	
 	/* test if the dropbox is active, then can print optype name */
-	int (*poll)(struct bContext *, struct wmDrag *, wmEvent *);
+	int (*poll)(struct bContext *, struct wmDrag *, const wmEvent *);
 
 	/* before exec, this copies drag info to wmDrop properties */
 	void (*copy)(struct wmDrag *, struct wmDropBox *);

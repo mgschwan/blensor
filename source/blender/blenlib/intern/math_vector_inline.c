@@ -271,6 +271,12 @@ MINLINE void add_v2_v2v2(float r[2], const float a[2], const float b[2])
 	r[1] = a[1] + b[1];
 }
 
+MINLINE void add_v2_v2v2_int(int r[2], const int a[2], const int b[2])
+{
+	r[0] = a[0] + b[0];
+	r[1] = a[1] + b[1];
+}
+
 MINLINE void add_v3_v3(float r[3], const float a[3])
 {
 	r[0] += a[0];
@@ -308,6 +314,12 @@ MINLINE void sub_v2_v2(float r[2], const float a[2])
 }
 
 MINLINE void sub_v2_v2v2(float r[2], const float a[2], const float b[2])
+{
+	r[0] = a[0] - b[0];
+	r[1] = a[1] - b[1];
+}
+
+MINLINE void sub_v2_v2v2_int(int r[2], const int a[2], const int b[2])
 {
 	r[0] = a[0] - b[0];
 	r[1] = a[1] - b[1];
@@ -398,6 +410,15 @@ MINLINE void mul_v4_v4fl(float r[4], const float a[4], float f)
 	r[3] = a[3] * f;
 }
 
+/* note: could add a matrix inline */
+MINLINE float mul_project_m4_v3_zfac(float mat[4][4], const float co[3])
+{
+	return (mat[0][3] * co[0]) +
+	       (mat[1][3] * co[1]) +
+	       (mat[2][3] * co[2]) + mat[3][3];
+}
+
+
 MINLINE void madd_v2_v2fl(float r[2], const float a[2], float f)
 {
 	r[0] += a[0] * f;
@@ -461,7 +482,7 @@ MINLINE void mul_v3_v3v3(float r[3], const float v1[3], const float v2[3])
 	r[2] = v1[2] * v2[2];
 }
 
-MINLINE void negate_v2(float r[3])
+MINLINE void negate_v2(float r[2])
 {
 	r[0] = -r[0];
 	r[1] = -r[1];
@@ -528,6 +549,7 @@ MINLINE float cross_v2v2(const float a[2], const float b[2])
 
 MINLINE void cross_v3_v3v3(float r[3], const float a[3], const float b[3])
 {
+	BLI_assert(r != a && r != b);
 	r[0] = a[1] * b[2] - a[2] * b[1];
 	r[1] = a[2] * b[0] - a[0] * b[2];
 	r[2] = a[0] * b[1] - a[1] * b[0];
@@ -662,7 +684,7 @@ MINLINE float normalize_v3_v3(float r[3], const float a[3])
 	float d = dot_v3v3(a, a);
 
 	/* a larger value causes normalize errors in a
-	 * scaled down models with camera xtreme close */
+	 * scaled down models with camera extreme close */
 	if (d > 1.0e-35f) {
 		d = sqrtf(d);
 		mul_v3_v3fl(r, a, 1.0f / d);
@@ -680,7 +702,7 @@ MINLINE double normalize_v3_d(double n[3])
 	double d = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
 
 	/* a larger value causes normalize errors in a
-	 * scaled down models with camera xtreme close */
+	 * scaled down models with camera extreme close */
 	if (d > 1.0e-35) {
 		double mul;
 

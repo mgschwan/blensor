@@ -74,16 +74,16 @@ void BLO_blendhandle_print_sizes(BlendHandle *, void *);
 
 /* Access routines used by filesel. */
 	 
-BlendHandle *BLO_blendhandle_from_file(char *file, ReportList *reports)
+BlendHandle *BLO_blendhandle_from_file(const char *filepath, ReportList *reports)
 {
 	BlendHandle *bh;
 
-	bh = (BlendHandle *)blo_openblenderfile(file, reports);
+	bh = (BlendHandle *)blo_openblenderfile(filepath, reports);
 
 	return bh;
 }
 
-BlendHandle *BLO_blendhandle_from_memory(void *mem, int memsize)
+BlendHandle *BLO_blendhandle_from_memory(const void *mem, int memsize)
 {
 	BlendHandle *bh;
 
@@ -271,7 +271,7 @@ BlendFileData *BLO_read_from_file(const char *filepath, ReportList *reports)
 	return bfd;
 }
 
-BlendFileData *BLO_read_from_memory(void *mem, int memsize, ReportList *reports)
+BlendFileData *BLO_read_from_memory(const void *mem, int memsize, ReportList *reports)
 {
 	BlendFileData *bfd = NULL;
 	FileData *fd;
@@ -311,6 +311,8 @@ BlendFileData *BLO_read_from_memfile(Main *oldmain, const char *filename, MemFil
 		/* makes lookup of existing video clips in old main */
 		blo_make_movieclip_pointer_map(fd, oldmain);
 		
+		/* removed packed data from this trick - it's internal data that needs saves */
+		
 		bfd = blo_read_file_internal(fd, filename);
 		
 		/* ensures relinked images are not freed */
@@ -318,7 +320,7 @@ BlendFileData *BLO_read_from_memfile(Main *oldmain, const char *filename, MemFil
 		
 		/* ensures relinked movie clips are not freed */
 		blo_end_movieclip_pointer_map(fd, oldmain);
-		
+				
 		/* move libraries from old main to new main */
 		if (bfd && mainlist.first != mainlist.last) {
 			

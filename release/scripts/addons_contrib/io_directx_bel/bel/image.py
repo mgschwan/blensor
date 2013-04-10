@@ -12,7 +12,7 @@ def dprint(str,l=2) :
 
 # create or retrieve a bdata image
 # given its path 
-def new(path, name=False, relative = True, premul = True) :
+def new(path, name=False, relative = True) :
     path = fs.clean(path)
     # check file
     if fs.isfile(path) == False :
@@ -41,7 +41,6 @@ def new(path, name=False, relative = True, premul = True) :
     # finally :
     img = bpy.data.images.load(filepath=path)
     img.name = name
-    img.use_premultiply = premul
     return img
 
 
@@ -159,10 +158,6 @@ def applyShader(mat,config) :
     tex.use_alpha = alpha
     tex.use_preview_alpha = alpha
 
-    # IMAGE
-    if type(img) != type(None) :
-        img.use_premultiply = True
-
 def BSshader(nodes,pointer) :
     tkm = bpy.context.scene.tkm
     typ, nodename = pointer.split(' ')
@@ -235,7 +230,6 @@ def BSshader(nodes,pointer) :
                 return mat
             img = bpy.data.images.load(filepath=imgpath+ext)
             img.name = imgname
-            img.use_premultiply = True
         else : img = bpy.data.images[imgname]
         
         '''

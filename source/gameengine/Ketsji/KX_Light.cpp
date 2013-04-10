@@ -236,7 +236,7 @@ int KX_LightObject::GetShadowLayer()
 		return 0;
 }
 
-void KX_LightObject::BindShadowBuffer(RAS_IRasterizer *ras, KX_Camera *cam, MT_Transform& camtrans)
+void KX_LightObject::BindShadowBuffer(RAS_IRasterizer *ras, RAS_ICanvas *canvas, KX_Camera *cam, MT_Transform& camtrans)
 {
 	GPULamp *lamp;
 	float viewmat[4][4], winmat[4][4];
@@ -245,6 +245,12 @@ void KX_LightObject::BindShadowBuffer(RAS_IRasterizer *ras, KX_Camera *cam, MT_T
 	/* bind framebuffer */
 	lamp = GetGPULamp();
 	GPU_lamp_shadow_buffer_bind(lamp, viewmat, &winsize, winmat);
+
+	if (GPU_lamp_shadow_buffer_type(lamp) == LA_SHADMAP_VARIANCE)
+		ras->SetUsingOverrideShader(true);
+
+	/* GPU_lamp_shadow_buffer_bind() changes the viewport, so update the canvas */
+	canvas->UpdateViewPort(0, 0, winsize, winsize);
 
 	/* setup camera transformation */
 	MT_Matrix4x4 modelviewmat((float*)viewmat);
@@ -273,6 +279,9 @@ void KX_LightObject::UnbindShadowBuffer(RAS_IRasterizer *ras)
 {
 	GPULamp *lamp = GetGPULamp();
 	GPU_lamp_shadow_buffer_unbind(lamp);
+
+	if (GPU_lamp_shadow_buffer_type(lamp) == LA_SHADMAP_VARIANCE)
+		ras->SetUsingOverrideShader(false);
 }
 
 struct Image *KX_LightObject::GetTextureImage(short texslot)

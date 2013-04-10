@@ -24,9 +24,12 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
 #include <limits.h>
+
+#include "DNA_cloth_types.h"
+#include "DNA_object_types.h"
+#include "DNA_scene_types.h"
 
 #include "RNA_define.h"
 
@@ -34,10 +37,6 @@
 
 #include "BKE_cloth.h"
 #include "BKE_modifier.h"
-
-#include "DNA_cloth_types.h"
-#include "DNA_object_types.h"
-#include "DNA_scene_types.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -403,8 +402,8 @@ static void rna_def_cloth_sim_settings(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "pre_roll", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "preroll");
-	RNA_def_property_range(prop, 0, 200);
-	RNA_def_property_ui_text(prop, "Pre Roll", "Simulation starts on this frame");
+	RNA_def_property_range(prop, 0, MAXFRAME);
+	RNA_def_property_ui_text(prop, "Pre Roll", "Start simulation a number of frames earlier to let the cloth settle in");
 	RNA_def_property_update(prop, 0, "rna_cloth_reset");
 
 	prop = RNA_def_property(srna, "rest_shape_key", PROP_POINTER, PROP_NONE);

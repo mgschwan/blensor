@@ -30,7 +30,7 @@
 
 class IOCIOImpl {
 public:
-	virtual ~IOCIOImpl() {};
+	virtual ~IOCIOImpl() {}
 
 	virtual OCIO_ConstConfigRcPtr *getCurrentConfig(void) = 0;
 	virtual void setCurrentConfig(const OCIO_ConstConfigRcPtr *config) = 0;
@@ -95,11 +95,15 @@ public:
 	virtual void matrixTransformRelease(OCIO_MatrixTransformRcPtr *mt) = 0;
 
 	virtual void matrixTransformScale(float * m44, float * offset4, const float * scale4) = 0;
+
+	virtual bool setupGLSLDraw(struct OCIO_GLSLDrawState **state_r, OCIO_ConstProcessorRcPtr *processor, bool predivide) = 0;
+	virtual void finishGLSLDraw(struct OCIO_GLSLDrawState *state) = 0;
+	virtual void freeGLState(struct OCIO_GLSLDrawState *state_r) = 0;
 };
 
 class FallbackImpl : public IOCIOImpl {
 public:
-	FallbackImpl() {};
+	FallbackImpl() {}
 
 	OCIO_ConstConfigRcPtr *getCurrentConfig(void);
 	void setCurrentConfig(const OCIO_ConstConfigRcPtr *config);
@@ -164,6 +168,10 @@ public:
 	void matrixTransformRelease(OCIO_MatrixTransformRcPtr *mt);
 
 	void matrixTransformScale(float * m44, float * offset4, const float * scale4);
+
+	bool setupGLSLDraw(struct OCIO_GLSLDrawState **state_r, OCIO_ConstProcessorRcPtr *processor, bool predivide);
+	void finishGLSLDraw(struct OCIO_GLSLDrawState *state);
+	void freeGLState(struct OCIO_GLSLDrawState *state_r);
 };
 
 #ifdef WITH_OCIO
@@ -234,6 +242,10 @@ public:
 	void matrixTransformRelease(OCIO_MatrixTransformRcPtr *mt);
 
 	void matrixTransformScale(float * m44, float * offset4, const float * scale4);
+
+	bool setupGLSLDraw(struct OCIO_GLSLDrawState **state_r, OCIO_ConstProcessorRcPtr *processor, bool predivide);
+	void finishGLSLDraw(struct OCIO_GLSLDrawState *state);
+	void freeGLState(struct OCIO_GLSLDrawState *state_r);
 };
 #endif
 

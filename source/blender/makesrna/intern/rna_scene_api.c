@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "BLI_utildefines.h"
 #include "BLI_path_util.h"
 
 #include "RNA_define.h"
@@ -55,8 +56,10 @@
 
 static void rna_Scene_frame_set(Scene *scene, int frame, float subframe)
 {
-	scene->r.cfra = frame;
-	scene->r.subframe = subframe;
+	float cfra = (float)frame + subframe;
+
+	scene->r.cfra = floorf(cfra);
+	scene->r.subframe = cfra - floorf(cfra);
 	
 	CLAMP(scene->r.cfra, MINAFRAME, MAXFRAME);
 	BKE_scene_update_for_newframe(G.main, scene, (1 << 20) - 1);
@@ -84,7 +87,7 @@ static void rna_SceneRender_get_frame_path(RenderData *rd, int frame, char *name
 	if (BKE_imtype_is_movie(rd->im_format.imtype))
 		BKE_movie_filepath_get(name, rd);
 	else
-		BKE_makepicstring(name, rd->pic, G.main->name, (frame == INT_MIN) ? rd->cfra : frame, rd->im_format.imtype,
+		BKE_makepicstring(name, rd->pic, G.main->name, (frame == INT_MIN) ? rd->cfra : frame, &rd->im_format,
 		                  rd->scemode & R_EXTENSION, TRUE);
 }
 
@@ -101,6 +104,7 @@ static void rna_Scene_collada_export(
         int selected,
         int include_children,
         int include_armatures,
+        int include_shapekeys,
         int deform_bones_only,
 
         int active_uv_only,
@@ -108,14 +112,16 @@ static void rna_Scene_collada_export(
         int include_material_textures,
         int use_texture_copies,
 
+        int use_ngons,
         int use_object_instantiation,
         int sort_by_name,
+        int export_transformation_type,
         int second_life)
 {
 	collada_export(scene, filepath, apply_modifiers, export_mesh_type, selected,
-	               include_children, include_armatures, deform_bones_only,
+	               include_children, include_armatures, include_shapekeys, deform_bones_only,
 	               active_uv_only, include_uv_textures, include_material_textures,
-	               use_texture_copies, use_object_instantiation, sort_by_name, second_life);
+	               use_texture_copies, use_ngons, use_object_instantiation, sort_by_name, export_transformation_type, second_life);
 }
 
 #endif
@@ -149,6 +155,7 @@ void RNA_api_scene(StructRNA *srna)
 	parm = RNA_def_boolean(func, "selected", 0, "Selection Only", "Export only selected elements");
 	parm = RNA_def_boolean(func, "include_children", 0, "Include Children", "Export all children of selected objects (even if not selected)");
 	parm = RNA_def_boolean(func, "include_armatures", 0, "Include Armatures", "Export related armatures (even if not selected)");
+	parm = RNA_def_boolean(func, "include_shapekeys", 0, "Include Shape Keys", "Export all Shape Keys from Mesh Objects");
 	parm = RNA_def_boolean(func, "deform_bones_only", 0, "Deform Bones only", "Only export deforming bones with armatures");
 
 	parm = RNA_def_boolean(func, "active_uv_only", 0, "Active UV Layer only", "Export only the active UV Layer");
@@ -156,9 +163,14 @@ void RNA_api_scene(StructRNA *srna)
 	parm = RNA_def_boolean(func, "include_material_textures", 0, "Include Material Textures", "Export textures assigned to the object Materials");
 	parm = RNA_def_boolean(func, "use_texture_copies", 0, "copy", "Copy textures to same folder where the .dae file is exported");
 
+	parm = RNA_def_boolean(func, "use_ngons", 1, "Use NGons", "Keep NGons in Export");
 	parm = RNA_def_boolean(func, "use_object_instantiation", 1, "Use Object Instances", "Instantiate multiple Objects from same Data");
 	parm = RNA_def_boolean(func, "sort_by_name", 0, "Sort by Object name", "Sort exported data by Object name");
 	parm = RNA_def_boolean(func, "second_life", 0, "Export for Second Life", "Compatibility mode for Second Life");
+
+	parm = RNA_def_int(func, "export_transformation_type", 0, INT_MIN, INT_MAX,
+	            "Transformation", "Transformation type for translation, scale and rotation", INT_MIN, INT_MAX);
+
 	RNA_def_function_ui_description(func, "Export to collada file");
 #endif
 }

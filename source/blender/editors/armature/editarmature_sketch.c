@@ -22,29 +22,22 @@
  *  \ingroup edarmature
  */
 
-#include <string.h>
-#include <math.h>
-#include <float.h>
-
 #include "MEM_guardedalloc.h"
 
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_armature_types.h"
 
-#include "RNA_define.h"
-#include "RNA_access.h"
-
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_utildefines.h"
-#include "BLI_graph.h"
-#include "BLI_ghash.h"
 
 #include "BLF_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_sketch.h"
+
+#include "RNA_define.h"
+#include "RNA_access.h"
 
 #include "ED_view3d.h"
 #include "ED_screen.h"
@@ -59,8 +52,6 @@
 
 #include "WM_api.h"
 #include "WM_types.h"
-
-#include "reeb.h"
 
 typedef int (*GestureDetectFct)(bContext *, SK_Gesture *, SK_Sketch *);
 typedef void (*GestureApplyFct)(bContext *, SK_Gesture *, SK_Sketch *);
@@ -179,20 +170,20 @@ const char *BIF_listTemplates(const bContext *UNUSED(C))
 	GHashIterator ghi;
 	const char *menu_header = IFACE_("Template %t|None %x0|");
 	char *p;
+	const size_t template_size = (BLI_ghash_size(TEMPLATES_HASH) * 32 + 30);
 
 	if (TEMPLATES_MENU != NULL) {
 		MEM_freeN(TEMPLATES_MENU);
 	}
 
-	TEMPLATES_MENU = MEM_callocN(sizeof(char) * (BLI_ghash_size(TEMPLATES_HASH) * 32 + 30), "skeleton template menu");
+	TEMPLATES_MENU = MEM_callocN(sizeof(char) * template_size, "skeleton template menu");
 
 	p = TEMPLATES_MENU;
-
-	p += sprintf(TEMPLATES_MENU, "%s", menu_header);
+	p += BLI_strncpy_rlen(p, menu_header, template_size);
 
 	BLI_ghashIterator_init(&ghi, TEMPLATES_HASH);
 
-	while (!BLI_ghashIterator_isDone(&ghi)) {
+	while (BLI_ghashIterator_notDone(&ghi)) {
 		Object *ob = BLI_ghashIterator_getValue(&ghi);
 		int key = GET_INT_FROM_POINTER(BLI_ghashIterator_getKey(&ghi));
 
@@ -212,7 +203,7 @@ int   BIF_currentTemplate(const bContext *C)
 		GHashIterator ghi;
 		BLI_ghashIterator_init(&ghi, TEMPLATES_HASH);
 
-		while (!BLI_ghashIterator_isDone(&ghi)) {
+		while (BLI_ghashIterator_notDone(&ghi)) {
 			Object *ob = BLI_ghashIterator_getValue(&ghi);
 			int key = GET_INT_FROM_POINTER(BLI_ghashIterator_getKey(&ghi));
 
@@ -635,7 +626,7 @@ static void sk_drawStrokeSubdivision(ToolSettings *toolsettings, SK_Stroke *stk)
 	}
 }
 
-static SK_Point *sk_snapPointStroke(bContext *C, SK_Stroke *stk, int mval[2], int *dist, int *index, int all_pts)
+static SK_Point *sk_snapPointStroke(bContext *C, SK_Stroke *stk, int mval[2], float *r_dist_px, int *index, int all_pts)
 {
 	ARegion *ar = CTX_wm_region(C);
 	SK_Point *pt = NULL;
@@ -650,8 +641,8 @@ static SK_Point *sk_snapPointStroke(bContext *C, SK_Stroke *stk, int mval[2], in
 
 				pdist = ABS(pval[0] - mval[0]) + ABS(pval[1] - mval[1]);
 
-				if (pdist < *dist) {
-					*dist = pdist;
+				if (pdist < *r_dist_px) {
+					*r_dist_px = pdist;
 					pt = stk->points + i;
 
 					if (index != NULL) {
@@ -738,13 +729,13 @@ static void sk_updateOverdraw(bContext *C, SK_Sketch *sketch, SK_Stroke *stk, SK
 	if (sketch->over.target == NULL) {
 		SK_Stroke *target;
 		int closest_index = -1;
-		int dist = SNAP_MIN_DISTANCE * 2;
+		float dist_px = SNAP_MIN_DISTANCE * 2;
 
 		for (target = sketch->strokes.first; target; target = target->next) {
 			if (target != stk) {
 				int index;
 
-				SK_Point *spt = sk_snapPointStroke(C, target, dd->mval, &dist, &index, 1);
+				SK_Point *spt = sk_snapPointStroke(C, target, dd->mval, &dist_px, &index, 1);
 
 				if (spt != NULL) {
 					sketch->over.target = target;
@@ -773,10 +764,10 @@ static void sk_updateOverdraw(bContext *C, SK_Sketch *sketch, SK_Stroke *stk, SK
 	}
 	else if (sketch->over.target != NULL) {
 		SK_Point *closest_pt = NULL;
-		int dist = SNAP_MIN_DISTANCE * 2;
+		float dist_px = SNAP_MIN_DISTANCE * 2;
 		int index;
 
-		closest_pt = sk_snapPointStroke(C, sketch->over.target, dd->mval, &dist, &index, 1);
+		closest_pt = sk_snapPointStroke(C, sketch->over.target, dd->mval, &dist_px, &index, 1);
 
 		if (closest_pt != NULL) {
 			if (sk_lastStrokePoint(stk)->type == PT_EXACT) {
@@ -931,17 +922,18 @@ static void sk_projectDrawPoint(bContext *C, float vec[3], SK_Stroke *stk, SK_Dr
 	float fp[3] = {0, 0, 0};
 	float dvec[3];
 	float mval_f[2];
+	float zfac;
 
 	if (last != NULL) {
 		copy_v3_v3(fp, last->p);
 	}
 
-	initgrabz(ar->regiondata, fp[0], fp[1], fp[2]);
+	zfac = ED_view3d_calc_zfac(ar->regiondata, fp, NULL);
 
 	/* method taken from editview.c - mouse_cursor() */
 	if (ED_view3d_project_short_global(ar, fp, cval, V3D_PROJ_TEST_NOP) == V3D_PROJ_RET_OK) {
 		VECSUB2D(mval_f, cval, dd->mval);
-		ED_view3d_win_to_delta(ar, mval_f, dvec);
+		ED_view3d_win_to_delta(ar, mval_f, dvec, zfac);
 		sub_v3_v3v3(vec, fp, dvec);
 	}
 	else {
@@ -1072,17 +1064,17 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 		float no[3];
 		float mval[2];
 		int found = 0;
-		int dist = SNAP_MIN_DISTANCE; // Use a user defined value here
+		float dist_px = SNAP_MIN_DISTANCE; // Use a user defined value here
 
 		/* snap to strokes */
 		// if (ts->snap_mode == SCE_SNAP_MODE_VERTEX) /* snap all the time to strokes */
 		for (snap_stk = sketch->strokes.first; snap_stk; snap_stk = snap_stk->next) {
 			SK_Point *spt = NULL;
 			if (snap_stk == stk) {
-				spt = sk_snapPointStroke(C, snap_stk, dd->mval, &dist, NULL, 0);
+				spt = sk_snapPointStroke(C, snap_stk, dd->mval, &dist_px, NULL, 0);
 			}
 			else {
-				spt = sk_snapPointStroke(C, snap_stk, dd->mval, &dist, NULL, 1);
+				spt = sk_snapPointStroke(C, snap_stk, dd->mval, &dist_px, NULL, 1);
 			}
 
 			if (spt != NULL) {
@@ -1095,7 +1087,7 @@ static int sk_getStrokeSnapPoint(bContext *C, SK_Point *pt, SK_Sketch *sketch, S
 		mval[1] = dd->mval[1];
 
 		/* try to snap to closer object */
-		found = snapObjectsContext(C, mval, &dist, vec, no, SNAP_NOT_SELECTED);
+		found = snapObjectsContext(C, mval, &dist_px, vec, no, SNAP_NOT_SELECTED);
 		if (found == 1) {
 			pt->type = dd->type;
 			pt->mode = PT_SNAP;
@@ -2240,7 +2232,7 @@ void BDR_drawSketch(const bContext *C)
 	}
 }
 
-static int sketch_delete(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(event))
+static int sketch_delete(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
 	SK_Sketch *sketch = contextSketch(C, 0);
 	if (sketch) {
@@ -2337,7 +2329,7 @@ SK_Sketch *viewcontextSketch(ViewContext *vc, int create)
 	return sketch;
 }
 
-static int sketch_convert(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(event))
+static int sketch_convert(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
 	SK_Sketch *sketch = contextSketch(C, 0);
 	if (sketch != NULL) {
@@ -2347,7 +2339,7 @@ static int sketch_convert(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(e
 	return OPERATOR_FINISHED;
 }
 
-static int sketch_cancel(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(event))
+static int sketch_cancel(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
 	SK_Sketch *sketch = contextSketch(C, 0);
 	if (sketch != NULL) {
@@ -2358,7 +2350,7 @@ static int sketch_cancel(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(ev
 	return OPERATOR_PASS_THROUGH;
 }
 
-static int sketch_finish(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(event))
+static int sketch_finish(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
 	SK_Sketch *sketch = contextSketch(C, 0);
 	if (sketch != NULL) {
@@ -2370,7 +2362,7 @@ static int sketch_finish(bContext *C, wmOperator *UNUSED(op), wmEvent *UNUSED(ev
 	return OPERATOR_PASS_THROUGH;
 }
 
-static int sketch_select(bContext *C, wmOperator *UNUSED(op), wmEvent *event)
+static int sketch_select(bContext *C, wmOperator *UNUSED(op), const wmEvent *event)
 {
 	SK_Sketch *sketch = contextSketch(C, 0);
 	if (sketch) {
@@ -2390,7 +2382,7 @@ static int sketch_draw_stroke_cancel(bContext *C, wmOperator *op)
 	return OPERATOR_CANCELLED;
 }
 
-static int sketch_draw_stroke(bContext *C, wmOperator *op, wmEvent *event)
+static int sketch_draw_stroke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	short snap = RNA_boolean_get(op->ptr, "snap");
 	SK_DrawData *dd;
@@ -2416,7 +2408,7 @@ static int sketch_draw_gesture_cancel(bContext *C, wmOperator *op)
 	return OPERATOR_CANCELLED;
 }
 
-static int sketch_draw_gesture(bContext *C, wmOperator *op, wmEvent *event)
+static int sketch_draw_gesture(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	short snap = RNA_boolean_get(op->ptr, "snap");
 	SK_DrawData *dd;
@@ -2434,7 +2426,7 @@ static int sketch_draw_gesture(bContext *C, wmOperator *op, wmEvent *event)
 	return OPERATOR_RUNNING_MODAL;
 }
 
-static int sketch_draw_modal(bContext *C, wmOperator *op, wmEvent *event, short gesture, SK_Stroke *stk)
+static int sketch_draw_modal(bContext *C, wmOperator *op, const wmEvent *event, short gesture, SK_Stroke *stk)
 {
 	short snap = RNA_boolean_get(op->ptr, "snap");
 	SK_DrawData *dd = op->customdata;
@@ -2492,19 +2484,19 @@ static int sketch_draw_modal(bContext *C, wmOperator *op, wmEvent *event, short 
 	return retval;
 }
 
-static int sketch_draw_stroke_modal(bContext *C, wmOperator *op, wmEvent *event)
+static int sketch_draw_stroke_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	SK_Sketch *sketch = contextSketch(C, 1); /* create just to be sure */
 	return sketch_draw_modal(C, op, event, 0, sketch->active_stroke);
 }
 
-static int sketch_draw_gesture_modal(bContext *C, wmOperator *op, wmEvent *event)
+static int sketch_draw_gesture_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	SK_Sketch *sketch = contextSketch(C, 1); /* create just to be sure */
 	return sketch_draw_modal(C, op, event, 1, sketch->gesture);
 }
 
-static int sketch_draw_preview(bContext *C, wmOperator *op, wmEvent *event)
+static int sketch_draw_preview(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	short snap = RNA_boolean_get(op->ptr, "snap");
 	SK_Sketch *sketch = contextSketch(C, 0);

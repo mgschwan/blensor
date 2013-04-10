@@ -24,14 +24,7 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
-
-#include "RNA_access.h"
-#include "RNA_define.h"
-#include "RNA_enum_types.h"
-
-#include "rna_internal.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_action_types.h"
@@ -39,7 +32,15 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_utildefines.h"
+
 #include "BKE_action.h"
+
+#include "RNA_access.h"
+#include "RNA_define.h"
+#include "RNA_enum_types.h"
+
+#include "rna_internal.h"
 
 #include "WM_types.h"
 
@@ -157,7 +158,7 @@ static TimeMarker *rna_Action_pose_markers_new(bAction *act, const char name[])
 static void rna_Action_pose_markers_remove(bAction *act, ReportList *reports, PointerRNA *marker_ptr)
 {
 	TimeMarker *marker = marker_ptr->data;
-	if (BLI_remlink_safe(&act->markers, marker) == FALSE) {
+	if (!BLI_remlink_safe(&act->markers, marker)) {
 		BKE_reportf(reports, RPT_ERROR, "Timeline marker '%s' not found in action '%s'", marker->name, act->id.name + 2);
 		return;
 	}
@@ -393,6 +394,12 @@ static void rna_def_dopesheet(BlenderRNA *brna)
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "filterflag", ADS_FILTER_NOLAM);
 	RNA_def_property_ui_text(prop, "Display Lamp", "Include visualization of lamp related animation data");
 	RNA_def_property_ui_icon(prop, ICON_LAMP_DATA, 0);
+	RNA_def_property_update(prop, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
+	
+	prop = RNA_def_property(srna, "show_linestyles", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "filterflag", ADS_FILTER_NOLINESTYLE);
+	RNA_def_property_ui_text(prop, "Display Line Style", "Include visualization of Line Style related Animation data");
+	RNA_def_property_ui_icon(prop, ICON_BRUSH_DATA, 0); /* FIXME */
 	RNA_def_property_update(prop, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
 	
 	prop = RNA_def_property(srna, "show_textures", PROP_BOOLEAN, PROP_NONE);

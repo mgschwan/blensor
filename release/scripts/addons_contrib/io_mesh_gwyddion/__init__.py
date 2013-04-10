@@ -36,8 +36,8 @@ bl_info = {
     "name": "Atomic Blender - Gwyddion",
     "description": "Loading Gwyddion Atomic Force Microscopy images",
     "author": "Clemens Barth",
-    "version": (0,1),
-    "blender": (2,6),
+    "version": (0, 1),
+    "blender": (2, 60, 0),
     "location": "File -> Import -> Gwyddion (.gwy)",
     "warning": "",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"

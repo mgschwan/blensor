@@ -483,7 +483,7 @@ void clothModifier_do(ClothModifierData *clmd, Scene *scene, Object *ob, Derived
 	clmd->sim_parms->dt = clmd->sim_parms->timescale / clmd->sim_parms->stepsPerFrame;
 
 	/* handle continuous simulation with the play button */
-	if (BKE_ptcache_get_continue_physics() || ((clmd->sim_parms->preroll > 0) && (framenr > startframe - clmd->sim_parms->preroll) && (framenr < startframe))) {
+	if ((clmd->sim_parms->preroll > 0) && (framenr > startframe - clmd->sim_parms->preroll) && (framenr < startframe)) {
 		BKE_ptcache_invalidate(cache);
 
 		/* do simulation */
@@ -783,14 +783,12 @@ static void cloth_apply_vgroup ( ClothModifierData *clmd, DerivedMesh *dm )
 
 						/* goalfac= 1.0f; */ /* UNUSED */
 						
-						/*
 						// Kicking goal factor to simplify things...who uses that anyway?
 						// ABS ( clmd->sim_parms->maxgoal - clmd->sim_parms->mingoal );
-						*/
 						
 						verts->goal  = powf(verts->goal, 4.0f);
 						if ( verts->goal >= SOFTGOALSNAP )
-							 verts->flags |= CLOTH_VERT_FLAG_PINNED;
+							verts->flags |= CLOTH_VERT_FLAG_PINNED;
 					}
 					
 					if (clmd->sim_parms->flags & CLOTH_SIMSETTINGS_FLAG_SCALING ) {
@@ -1153,7 +1151,7 @@ static int cloth_build_springs ( ClothModifierData *clmd, DerivedMesh *dm )
 		if ( !mface[i].v4 )
 			continue;
 
-		spring = ( ClothSpring *) MEM_callocN ( sizeof ( ClothSpring ), "cloth spring" );
+		spring = (ClothSpring *)MEM_callocN(sizeof(ClothSpring), "cloth spring");
 		
 		if (!spring) {
 			cloth_free_errorsprings(cloth, edgehash, edgelist);

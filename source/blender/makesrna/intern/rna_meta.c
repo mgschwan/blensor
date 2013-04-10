@@ -24,17 +24,18 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
+
+#include "DNA_mesh_types.h"
+#include "DNA_meta_types.h"
+
+#include "BLI_utildefines.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
 
 #include "rna_internal.h"
-
-#include "DNA_mesh_types.h"
-#include "DNA_meta_types.h"
 
 #ifdef RNA_RUNTIME
 
@@ -351,6 +352,8 @@ static void rna_def_metaball(BlenderRNA *brna)
 	
 	/* anim */
 	rna_def_animdata_common(srna);
+
+	RNA_api_meta(srna);
 }
 
 void RNA_def_meta(BlenderRNA *brna)

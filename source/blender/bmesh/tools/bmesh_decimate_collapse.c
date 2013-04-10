@@ -134,7 +134,7 @@ static void bm_decim_calc_target_co(BMEdge *e, float optimize_co[3],
 	}
 }
 
-static int bm_edge_collapse_is_degenerate_flip(BMEdge *e, const float optimize_co[3])
+static bool bm_edge_collapse_is_degenerate_flip(BMEdge *e, const float optimize_co[3])
 {
 	BMIter liter;
 	BMLoop *l;
@@ -172,16 +172,16 @@ static int bm_edge_collapse_is_degenerate_flip(BMEdge *e, const float optimize_c
 #endif
 
 				/* use a small value rather then zero so we don't flip a face in multiple steps
-				 * (first making it zero area, then flipping again)*/
+				 * (first making it zero area, then flipping again) */
 				if (dot_v3v3(cross_exist, cross_optim) <= FLT_EPSILON) {
 					//printf("no flip\n");
-					return TRUE;
+					return true;
 				}
 			}
 		}
 	}
 
-	return FALSE;
+	return false;
 }
 
 static void bm_decim_build_edge_cost_single(BMEdge *e,
@@ -291,15 +291,15 @@ static void bm_decim_build_edge_cost(BMesh *bm,
  * collapsing edges so even has some advantage over decimating quads
  * directly.
  *
- * \return TRUE if any faces were triangulated.
+ * \return true if any faces were triangulated.
  */
 
-static int bm_decim_triangulate_begin(BMesh *bm)
+static bool bm_decim_triangulate_begin(BMesh *bm)
 {
 	BMIter iter;
 	BMFace *f;
-	// int has_quad;  // could optimize this a little
-	int has_cut = FALSE;
+	// bool has_quad;  // could optimize this a little
+	bool has_cut = false;
 
 	BLI_assert((bm->elem_index_dirty & BM_VERT) == 0);
 
@@ -345,7 +345,7 @@ static int bm_decim_triangulate_begin(BMesh *bm)
 			}
 
 #ifdef USE_SAFETY_CHECKS
-			if (BM_edge_exists(l_a->v, l_b->v) == FALSE)
+			if (BM_edge_exists(l_a->v, l_b->v) == false)
 #endif
 			{
 				BMFace *f_new;
@@ -355,7 +355,7 @@ static int bm_decim_triangulate_begin(BMesh *bm)
 				 * - if there is a quad that has a free standing edge joining it along
 				 * where we want to split the face, there isnt a good way we can handle this.
 				 * currently that edge will get removed when joining the tris back into a quad. */
-				f_new = BM_face_split(bm, f, l_a->v, l_b->v, &l_new, NULL, FALSE);
+				f_new = BM_face_split(bm, f, l_a->v, l_b->v, &l_new, NULL, false);
 
 				if (f_new) {
 					/* the value of this doesn't matter, only that the 2 loops match and have unique values */
@@ -370,7 +370,7 @@ static int bm_decim_triangulate_begin(BMesh *bm)
 					BM_face_normal_update(f);
 					BM_face_normal_update(f_new);
 
-					has_cut = TRUE;
+					has_cut = true;
 				}
 			}
 		}
@@ -410,15 +410,15 @@ static void bm_decim_triangulate_end(BMesh *bm)
 								BM_vert_in_edge(e, l_b->next->v) ? l_b->prev->v : l_b->next->v,
 							};
 
-							BLI_assert(ELEM3(vquad[0], vquad[1], vquad[2], vquad[3]) == FALSE);
-							BLI_assert(ELEM3(vquad[1], vquad[0], vquad[2], vquad[3]) == FALSE);
-							BLI_assert(ELEM3(vquad[2], vquad[1], vquad[0], vquad[3]) == FALSE);
-							BLI_assert(ELEM3(vquad[3], vquad[1], vquad[2], vquad[0]) == FALSE);
+							BLI_assert(ELEM3(vquad[0], vquad[1], vquad[2], vquad[3]) == false);
+							BLI_assert(ELEM3(vquad[1], vquad[0], vquad[2], vquad[3]) == false);
+							BLI_assert(ELEM3(vquad[2], vquad[1], vquad[0], vquad[3]) == false);
+							BLI_assert(ELEM3(vquad[3], vquad[1], vquad[2], vquad[0]) == false);
 
 							if (is_quad_convex_v3(vquad[0]->co, vquad[1]->co, vquad[2]->co, vquad[3]->co)) {
 								/* highly unlikely to fail, but prevents possible double-ups */
 								BMFace *f[2] = {l_a->f, l_b->f};
-								BM_faces_join(bm, f, 2, TRUE);
+								BM_faces_join(bm, f, 2, true);
 							}
 						}
 					}
@@ -441,9 +441,11 @@ static void bm_decim_triangulate_end(BMesh *bm)
 static void bm_edge_collapse_loop_customdata(BMesh *bm, BMLoop *l, BMVert *v_clear, BMVert *v_other,
                                              const float customdata_fac)
 {
+	/* disable seam check - the seam check would have to be done per layer, its not really that important */
+//#define USE_SEAM
 	/* these don't need to be updated, since they will get removed when the edge collapses */
 	BMLoop *l_clear, *l_other;
-	const int is_manifold = BM_edge_is_manifold(l->e);
+	const bool is_manifold = BM_edge_is_manifold(l->e);
 	int side;
 
 	/* l defines the vert to collapse into  */
@@ -464,7 +466,9 @@ static void bm_edge_collapse_loop_customdata(BMesh *bm, BMLoop *l, BMVert *v_cle
 
 	/* now we have both corners of the face 'l->f' */
 	for (side = 0; side < 2; side++) {
-		int is_seam = FALSE;
+#ifdef USE_SEAM
+		bool is_seam = false;
+#endif
 		void *src[2];
 		BMFace *f_exit = is_manifold ? l->radial_next->f : NULL;
 		BMEdge *e_prev = l->e;
@@ -501,34 +505,40 @@ static void bm_edge_collapse_loop_customdata(BMesh *bm, BMLoop *l, BMVert *v_cle
 				break;
 			}
 
+#ifdef USE_SEAM
 			/* break out unless we find a match */
-			is_seam = TRUE;
+			is_seam = true;
+#endif
 
 			/* ok. we have a loop. now be smart with it! */
 			for (i = 0; i < bm->ldata.totlayer; i++) {
 				if (CustomData_layer_has_math(&bm->ldata, i)) {
 					const int offset = bm->ldata.layers[i].offset;
 					const int type = bm->ldata.layers[i].type;
-					void *cd_src, *cd_iter;
-
-					/* todo, make nicer macros for this */
-					cd_src = (char *)src[0] + offset;
-					// cd_dst = (char *)src[1] + offset;  // UNUSED
-					cd_iter  = (char *)l_iter->head.data  + offset;
+					void *cd_src[2] = {(char *)src[0] + offset,
+					                   (char *)src[1] + offset};
+					void *cd_iter = (char *)l_iter->head.data + offset;
 
 					/* detect seams */
-					if (CustomData_data_equals(type, cd_src, cd_iter)) {
-						CustomData_bmesh_interp(&bm->ldata, src, w, NULL, 2, l_iter->head.data);
-						is_seam = FALSE;
+					if (CustomData_data_equals(type, cd_src[0], cd_iter)) {
+						CustomData_bmesh_interp_n(&bm->ldata, cd_src, w, NULL, 2, l_iter->head.data, i);
+#ifdef USE_SEAM
+						is_seam = false;
+#endif
 					}
 				}
 			}
 
+#ifdef USE_SEAM
 			if (is_seam) {
 				break;
 			}
+#endif
 		}
 	}
+
+//#undef USE_SEAM
+
 }
 #endif  /* USE_CUSTOMDATA */
 
@@ -588,7 +598,7 @@ BLI_INLINE int bm_edge_is_manifold_or_boundary(BMLoop *l)
 #endif
 }
 
-static int bm_edge_collapse_is_degenerate_topology(BMEdge *e_first)
+static bool bm_edge_collapse_is_degenerate_topology(BMEdge *e_first)
 {
 	/* simply check that there is no overlap between faces and edges of each vert,
 	 * (excluding the 2 faces attached to 'e' and 'e' its self) */
@@ -599,7 +609,7 @@ static int bm_edge_collapse_is_degenerate_topology(BMEdge *e_first)
 	e_iter = e_first;
 	do {
 		if (!bm_edge_is_manifold_or_boundary(e_iter->l)) {
-			return TRUE;
+			return true;
 		}
 		bm_edge_tag_disable(e_iter);
 	} while ((e_iter = bmesh_disk_edge_next(e_iter, e_first->v1)) != e_first);
@@ -607,7 +617,7 @@ static int bm_edge_collapse_is_degenerate_topology(BMEdge *e_first)
 	e_iter = e_first;
 	do {
 		if (!bm_edge_is_manifold_or_boundary(e_iter->l)) {
-			return TRUE;
+			return true;
 		}
 		bm_edge_tag_disable(e_iter);
 	} while ((e_iter = bmesh_disk_edge_next(e_iter, e_first->v2)) != e_first);
@@ -663,11 +673,11 @@ static int bm_edge_collapse_is_degenerate_topology(BMEdge *e_first)
 	e_iter = e_first;
 	do {
 		if (bm_edge_tag_test(e_iter)) {
-			return TRUE;
+			return true;
 		}
 	} while ((e_iter = bmesh_disk_edge_next(e_iter, e_first->v2)) != e_first);
 
-	return FALSE;
+	return false;
 }
 
 /**
@@ -680,13 +690,13 @@ static int bm_edge_collapse_is_degenerate_topology(BMEdge *e_first)
  * \param e_clear_other let caller know what edges we remove besides \a e_clear
  * \param customdata_flag merge factor, scales from 0 - 1 ('v_clear' -> 'v_other')
  */
-static int bm_edge_collapse(BMesh *bm, BMEdge *e_clear, BMVert *v_clear, int r_e_clear_other[2],
+static bool bm_edge_collapse(BMesh *bm, BMEdge *e_clear, BMVert *v_clear, int r_e_clear_other[2],
 #ifdef USE_CUSTOMDATA
-                            const CD_UseFlag customdata_flag,
-                            const float customdata_fac
+                             const CD_UseFlag customdata_flag,
+                             const float customdata_fac
 #else
-                            const CD_UseFlag UNUSED(customdata_flag),
-                            const float UNUSED(customdata_fac)
+                             const CD_UseFlag UNUSED(customdata_flag),
+                             const float UNUSED(customdata_fac)
 #endif
                             )
 {
@@ -698,11 +708,11 @@ static int bm_edge_collapse(BMesh *bm, BMEdge *e_clear, BMVert *v_clear, int r_e
 	if (BM_edge_is_manifold(e_clear)) {
 		BMLoop *l_a, *l_b;
 		BMEdge *e_a_other[2], *e_b_other[2];
-		int ok;
+		bool ok;
 
 		ok = BM_edge_loop_pair(e_clear, &l_a, &l_b);
 
-		BLI_assert(ok == TRUE);
+		BLI_assert(ok == true);
 		BLI_assert(l_a->f->len == 3);
 		BLI_assert(l_b->f->len == 3);
 
@@ -739,7 +749,7 @@ static int bm_edge_collapse(BMesh *bm, BMEdge *e_clear, BMVert *v_clear, int r_e
 		if (ELEM(e_a_other[0], e_b_other[0], e_b_other[1]) ||
 		    ELEM(e_a_other[1], e_b_other[0], e_b_other[1]))
 		{
-			return FALSE;
+			return false;
 		}
 
 		r_e_clear_other[0] = BM_elem_index_get(e_a_other[0]);
@@ -772,7 +782,7 @@ static int bm_edge_collapse(BMesh *bm, BMEdge *e_clear, BMVert *v_clear, int r_e
 
 		// BM_mesh_validate(bm);
 
-		return TRUE;
+		return true;
 	}
 	else if (BM_edge_is_boundary(e_clear)) {
 		/* same as above but only one triangle */
@@ -819,10 +829,10 @@ static int bm_edge_collapse(BMesh *bm, BMEdge *e_clear, BMVert *v_clear, int r_e
 
 		// BM_mesh_validate(bm);
 
-		return TRUE;
+		return true;
 	}
 	else {
-		return FALSE;
+		return false;
 	}
 }
 
@@ -859,7 +869,7 @@ static void bm_decim_edge_collapse(BMesh *bm, BMEdge *e,
 	}
 
 	/* use for customdata merging */
-	if (LIKELY(compare_v3v3(e->v1->co, e->v2->co, FLT_EPSILON) == FALSE)) {
+	if (LIKELY(compare_v3v3(e->v1->co, e->v2->co, FLT_EPSILON) == false)) {
 		customdata_fac = line_point_factor_v3(optimize_co, e->v1->co, e->v2->co);
 #if 0
 		/* simple test for stupid collapse */
@@ -936,7 +946,7 @@ static void bm_decim_edge_collapse(BMesh *bm, BMEdge *e,
 					else
 						e_outer = l->prev->e;
 
-					BLI_assert(BM_vert_in_edge(e_outer, l->v) == FALSE);
+					BLI_assert(BM_vert_in_edge(e_outer, l->v) == false);
 
 					bm_decim_build_edge_cost_single(e_outer, vquadrics, vweights, eheap, eheap_table);
 				}
@@ -962,14 +972,14 @@ static void bm_decim_edge_collapse(BMesh *bm, BMEdge *e,
  * \param vweights Optional array of vertex  aligned weights [0 - 1],
  *        a vertex group is the usual source for this.
  */
-void BM_mesh_decimate_collapse(BMesh *bm, const float factor, float *vweights, const int do_triangulate)
+void BM_mesh_decimate_collapse(BMesh *bm, const float factor, float *vweights, const bool do_triangulate)
 {
 	Heap *eheap;             /* edge heap */
 	HeapNode **eheap_table;  /* edge index aligned table pointing to the eheap */
 	Quadric *vquadrics;      /* vert index aligned quadrics */
 	int tot_edge_orig;
 	int face_tot_target;
-	int use_triangulate;
+	bool use_triangulate;
 
 	CD_UseFlag customdata_flag = 0;
 
@@ -983,7 +993,7 @@ void BM_mesh_decimate_collapse(BMesh *bm, const float factor, float *vweights, c
 	vquadrics = MEM_callocN(sizeof(Quadric) * bm->totvert, __func__);
 	/* since some edges may be degenerate, we might be over allocing a little here */
 	eheap = BLI_heap_new_ex(bm->totedge);
-	eheap_table = MEM_callocN(sizeof(HeapNode *) * bm->totedge, __func__);
+	eheap_table = MEM_mallocN(sizeof(HeapNode *) * bm->totedge, __func__);
 	tot_edge_orig = bm->totedge;
 
 
@@ -1005,7 +1015,7 @@ void BM_mesh_decimate_collapse(BMesh *bm, const float factor, float *vweights, c
 
 	/* iterative edge collapse and maintain the eheap */
 	while ((bm->totface > face_tot_target) &&
-	       (BLI_heap_is_empty(eheap) == FALSE) &&
+	       (BLI_heap_is_empty(eheap) == false) &&
 	       (BLI_heap_node_value(BLI_heap_top(eheap)) != COST_INVALID))
 	{
 		// const float value = BLI_heap_node_value(BLI_heap_top(eheap));
@@ -1023,7 +1033,7 @@ void BM_mesh_decimate_collapse(BMesh *bm, const float factor, float *vweights, c
 
 
 #ifdef USE_TRIANGULATE
-	if (do_triangulate == FALSE) {
+	if (do_triangulate == false) {
 		/* its possible we only had triangles, skip this step in that case */
 		if (LIKELY(use_triangulate)) {
 			/* temp convert quads to triangles */

@@ -55,7 +55,8 @@
 #include "BLI_rand.h"
 #include "BLI_threads.h"
 #include "BLI_linklist.h"
-#include "BLI_bpath.h"
+
+#include "BLF_translation.h"
 
 #include "BKE_anim.h"
 #include "BKE_animsys.h"
@@ -313,7 +314,7 @@ void psys_check_group_weights(ParticleSettings *part)
 		/* first remove all weights that don't have an object in the group */
 		dw = part->dupliweights.first;
 		while (dw) {
-			if (!object_in_group(dw->ob, part->dup_group)) {
+			if (!BKE_group_object_exists(part->dup_group, dw->ob)) {
 				tdw = dw->next;
 				BLI_freelinkN(&part->dupliweights, dw);
 				dw = tdw;
@@ -685,8 +686,6 @@ void psys_render_set(Object *ob, ParticleSystem *psys, float viewmat[4][4], floa
 	ParticleRenderData *data;
 	ParticleSystemModifierData *psmd = psys_get_modifier(ob, psys);
 
-	if (G.is_rendering == FALSE)
-		return;
 	if (psys->renderdata)
 		return;
 
@@ -2385,7 +2384,7 @@ void psys_find_parents(ParticleSimulationData *sim)
 	int from = PART_FROM_FACE;
 	totparent = (int)(totchild * part->parents * 0.3f);
 
-	if (G.is_rendering && part->child_nbr && part->ren_child_nbr)
+	if ((sim->psys->renderdata || G.is_rendering) && part->child_nbr && part->ren_child_nbr)
 		totparent *= (float)part->child_nbr / (float)part->ren_child_nbr;
 
 	tree = BLI_kdtree_new(totparent);
@@ -2462,7 +2461,7 @@ static int psys_threads_init_path(ParticleThread *threads, Scene *scene, float c
 	if (totchild && part->childtype == PART_CHILD_FACES) {
 		totparent = (int)(totchild * part->parents * 0.3f);
 		
-		if (G.is_rendering && part->child_nbr && part->ren_child_nbr)
+		if ((psys->renderdata || G.is_rendering) && part->child_nbr && part->ren_child_nbr)
 			totparent *= (float)part->child_nbr / (float)part->ren_child_nbr;
 
 		/* part->parents could still be 0 so we can't test with totparent */
@@ -3491,17 +3490,19 @@ ModifierData *object_add_particle_system(Scene *scene, Object *ob, const char *n
 	psys->pointcache = BKE_ptcache_add(&psys->ptcaches);
 	BLI_addtail(&ob->particlesystem, psys);
 
-	psys->part = psys_new_settings("ParticleSettings", NULL);
+	psys->part = psys_new_settings(DATA_("ParticleSettings"), NULL);
 
 	if (BLI_countlist(&ob->particlesystem) > 1)
-		BLI_snprintf(psys->name, sizeof(psys->name), "ParticleSystem %i", BLI_countlist(&ob->particlesystem));
+		BLI_snprintf(psys->name, sizeof(psys->name), DATA_("ParticleSystem %i"), BLI_countlist(&ob->particlesystem));
 	else
-		strcpy(psys->name, "ParticleSystem");
+		strcpy(psys->name, DATA_("ParticleSystem"));
 
 	md = modifier_new(eModifierType_ParticleSystem);
 
-	if (name) BLI_strncpy_utf8(md->name, name, sizeof(md->name));
-	else BLI_snprintf(md->name, sizeof(md->name), "ParticleSystem %i", BLI_countlist(&ob->particlesystem));
+	if (name)
+		BLI_strncpy_utf8(md->name, name, sizeof(md->name));
+	else
+		BLI_snprintf(md->name, sizeof(md->name), DATA_("ParticleSystem %i"), BLI_countlist(&ob->particlesystem));
 	modifier_unique_name(&ob->modifiers, md);
 
 	psmd = (ParticleSystemModifierData *) md;
@@ -3512,12 +3513,12 @@ ModifierData *object_add_particle_system(Scene *scene, Object *ob, const char *n
 	psys->flag = PSYS_ENABLED | PSYS_CURRENT;
 	psys->cfra = BKE_scene_frame_get_from_ctime(scene, CFRA + 1);
 
-	DAG_scene_sort(G.main, scene);
+	DAG_relations_tag_update(G.main);
 	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 
 	return md;
 }
-void object_remove_particle_system(Scene *scene, Object *ob)
+void object_remove_particle_system(Scene *UNUSED(scene), Object *ob)
 {
 	ParticleSystem *psys = psys_get_current(ob);
 	ParticleSystemModifierData *psmd;
@@ -3555,7 +3556,7 @@ void object_remove_particle_system(Scene *scene, Object *ob)
 	else
 		ob->mode &= ~OB_MODE_PARTICLE_EDIT;
 
-	DAG_scene_sort(G.main, scene);
+	DAG_relations_tag_update(G.main);
 	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 }
 static void default_particle_settings(ParticleSettings *part)
@@ -3850,7 +3851,7 @@ static void get_cpa_texture(DerivedMesh *dm, ParticleSystem *psys, ParticleSetti
 					break;
 			}
 
-			externtex(mtex, texvec, &value, rgba, rgba + 1, rgba + 2, rgba + 3, 0);
+			externtex(mtex, texvec, &value, rgba, rgba + 1, rgba + 2, rgba + 3, 0, NULL);
 
 			if ((event & mtex->mapto) & PAMAP_ROUGH)
 				ptex->rough1 = ptex->rough2 = ptex->roughe = texture_value_blend(def, ptex->rough1, value, mtex->roughfac, blend);
@@ -3921,7 +3922,7 @@ void psys_get_texture(ParticleSimulationData *sim, ParticleData *pa, ParticleTex
 					break;
 			}
 
-			externtex(mtex, texvec, &value, rgba, rgba + 1, rgba + 2, rgba + 3, 0);
+			externtex(mtex, texvec, &value, rgba, rgba + 1, rgba + 2, rgba + 3, 0, NULL);
 
 			if ((event & mtex->mapto) & PAMAP_TIME) {
 				/* the first time has to set the base value for time regardless of blend mode */

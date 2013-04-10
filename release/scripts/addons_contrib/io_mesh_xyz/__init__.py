@@ -38,8 +38,8 @@ bl_info = {
     "name": "Atomic Blender - XYZ",
     "description": "Import/export of atoms described in .xyz files",
     "author": "Clemens Barth",
-    "version": (1,0),
-    "blender": (2,6),
+    "version": (1, 0),
+    "blender": (2, 60, 0),
     "location": "File -> Import -> XYZ (.xyz)",
     "warning": "",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/"

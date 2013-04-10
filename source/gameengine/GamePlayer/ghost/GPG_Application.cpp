@@ -76,7 +76,6 @@ extern "C"
 #include "SCA_IActuator.h"
 #include "RAS_MeshObject.h"
 #include "RAS_OpenGLRasterizer.h"
-#include "RAS_VAOpenGLRasterizer.h"
 #include "RAS_ListRasterizer.h"
 #include "RAS_GLExtensionManager.h"
 #include "KX_PythonInit.h"
@@ -309,20 +308,21 @@ bool GPG_Application::startScreenSaverFullScreen(
 
 #endif
 
-bool GPG_Application::startWindow(STR_String& title,
-	int windowLeft,
-	int windowTop,
-	int windowWidth,
-	int windowHeight,
-	const bool stereoVisual,
-	const int stereoMode,
-	const GHOST_TUns16 samples)
+bool GPG_Application::startWindow(
+        STR_String& title,
+        int windowLeft,
+        int windowTop,
+        int windowWidth,
+        int windowHeight,
+        const bool stereoVisual,
+        const int stereoMode,
+        const GHOST_TUns16 samples)
 {
 	bool success;
 	// Create the main window
 	//STR_String title ("Blender Player - GHOST");
 	m_mainWindow = fSystem->createWindow(title, windowLeft, windowTop, windowWidth, windowHeight, GHOST_kWindowStateNormal,
-		GHOST_kDrawingContextTypeOpenGL, stereoVisual, samples);
+	                                     GHOST_kDrawingContextTypeOpenGL, stereoVisual, false, samples);
 	if (!m_mainWindow) {
 		printf("error: could not create main window\n");
 		exit(-1);
@@ -341,16 +341,18 @@ bool GPG_Application::startWindow(STR_String& title,
 	return success;
 }
 
-bool GPG_Application::startEmbeddedWindow(STR_String& title,
-	const GHOST_TEmbedderWindowID parentWindow, 
-	const bool stereoVisual, 
-	const int stereoMode,
-	const GHOST_TUns16 samples) {
+bool GPG_Application::startEmbeddedWindow(
+        STR_String& title,
+        const GHOST_TEmbedderWindowID parentWindow,
+        const bool stereoVisual,
+        const int stereoMode,
+        const GHOST_TUns16 samples)
+{
 	GHOST_TWindowState state = GHOST_kWindowStateNormal;
 	if (parentWindow != 0)
 		state = GHOST_kWindowStateEmbedded;
 	m_mainWindow = fSystem->createWindow(title, 0, 0, 0, 0, state,
-		GHOST_kDrawingContextTypeOpenGL, stereoVisual, samples, parentWindow);
+	                                     GHOST_kDrawingContextTypeOpenGL, stereoVisual, false, samples, parentWindow);
 
 	if (!m_mainWindow) {
 		printf("error: could not create main window\n");
@@ -367,13 +369,13 @@ bool GPG_Application::startEmbeddedWindow(STR_String& title,
 
 
 bool GPG_Application::startFullScreen(
-		int width,
-		int height,
-		int bpp,int frequency,
-		const bool stereoVisual,
-		const int stereoMode,
-		const GHOST_TUns16 samples,
-		bool useDesktop)
+        int width,
+        int height,
+        int bpp,int frequency,
+        const bool stereoVisual,
+        const int stereoMode,
+        const GHOST_TUns16 samples,
+        bool useDesktop)
 {
 	bool success;
 	GHOST_TUns32 sysWidth=0, sysHeight=0;
@@ -387,6 +389,7 @@ bool GPG_Application::startFullScreen(
 
 	fSystem->beginFullScreen(setting, &m_mainWindow, stereoVisual, samples);
 	m_mainWindow->setCursorVisibility(false);
+	/* note that X11 ignores this (it uses a window internally for fullscreen) */
 	m_mainWindow->setState(GHOST_kWindowStateFullScreen);
 
 	success = initEngine(m_mainWindow, stereoMode);
@@ -582,16 +585,12 @@ bool GPG_Application::initEngine(GHOST_IWindow* window, const int stereoMode)
 		if (!m_rendertools)
 			goto initFailed;
 		
-		if (useLists) {
-			if (GLEW_VERSION_1_1)
-				m_rasterizer = new RAS_ListRasterizer(m_canvas, true);
-			else
-				m_rasterizer = new RAS_ListRasterizer(m_canvas);
-		}
-		else if (GLEW_VERSION_1_1)
-			m_rasterizer = new RAS_VAOpenGLRasterizer(m_canvas);
+		//Don't use displaylists with VBOs
+		//If auto starts using VBOs, make sure to check for that here
+		if (useLists && gm->raster_storage != RAS_STORE_VBO)
+			m_rasterizer = new RAS_ListRasterizer(m_canvas, false, gm->raster_storage);
 		else
-			m_rasterizer = new RAS_OpenGLRasterizer(m_canvas);
+			m_rasterizer = new RAS_OpenGLRasterizer(m_canvas, gm->raster_storage);
 
 		/* Stereo parameters - Eye Separation from the UI - stereomode from the command-line/UI */
 		m_rasterizer->SetStereoMode((RAS_IRasterizer::StereoMode) stereoMode);
@@ -708,6 +707,8 @@ bool GPG_Application::startEngine(void)
 			m_sceneconverter->SetMaterials(true);
 		if (m_blenderglslmat && (m_globalSettings->matmode == GAME_MAT_GLSL))
 			m_sceneconverter->SetGLSLMaterials(true);
+		if (m_startScene->gm.flag & GAME_NO_MATERIAL_CACHING)
+			m_sceneconverter->SetCacheMaterials(false);
 
 		KX_Scene* startscene = new KX_Scene(m_keyboard,
 			m_mouse,

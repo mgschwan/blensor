@@ -24,18 +24,21 @@
  *  \ingroup RNA
  */
 
-
 #include <stdlib.h>
-
-#include "RNA_access.h"
-#include "RNA_define.h"
-
-#include "rna_internal.h"
 
 #include "DNA_gpencil_types.h"
 #include "DNA_scene_types.h"
 
 #include "MEM_guardedalloc.h"
+
+#include "BLI_utildefines.h"
+
+#include "BLF_translation.h"
+
+#include "RNA_access.h"
+#include "RNA_define.h"
+
+#include "rna_internal.h"
 
 #include "WM_types.h"
 
@@ -109,7 +112,7 @@ static void rna_GPencilLayer_info_set(PointerRNA *ptr, const char *value)
 	/* copy the new name into the name slot */
 	BLI_strncpy_utf8(gpl->info, value, sizeof(gpl->info));
 
-	BLI_uniquename(&gpd->layers, gpl, "GP_Layer", '.', offsetof(bGPDlayer, info), sizeof(gpl->info));
+	BLI_uniquename(&gpd->layers, gpl, DATA_("GP_Layer"), '.', offsetof(bGPDlayer, info), sizeof(gpl->info));
 }
 
 static void rna_GPencil_stroke_point_add(bGPDstroke *stroke, int count)
@@ -118,7 +121,7 @@ static void rna_GPencil_stroke_point_add(bGPDstroke *stroke, int count)
 		if (stroke->points == NULL)
 			stroke->points = MEM_callocN(sizeof(bGPDspoint) * count, "gp_stroke_points");
 		else
-			stroke->points = MEM_reallocN(stroke->points, sizeof(bGPDspoint) * (stroke->totpoints + count));
+			stroke->points = MEM_recallocN(stroke->points, sizeof(bGPDspoint) * (stroke->totpoints + count));
 
 		stroke->totpoints += count;
 	}
@@ -547,7 +550,9 @@ static void rna_def_gpencil_layer(BlenderRNA *brna)
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", GP_LAYER_NO_XRAY);
 	RNA_def_property_ui_text(prop, "X Ray", "Make the layer draw in front of objects");
 	RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_GPencil_update");
-
+	
+	
+	/* Layers API */
 	func = RNA_def_function(srna, "clear", "rna_GPencil_layer_clear");
 	RNA_def_function_ui_description(func, "Remove all the grease pencil layer data");
 }

@@ -23,8 +23,9 @@
 #include "COM_TextureOperation.h"
 
 #include "BLI_listbase.h"
+#include "BKE_image.h"
 
-TextureBaseOperation::TextureBaseOperation() : NodeOperation()
+TextureBaseOperation::TextureBaseOperation() : SingleThreadedNodeOperation()
 {
 	this->addInputSocket(COM_DT_VECTOR); //offset
 	this->addInputSocket(COM_DT_VECTOR); //size
@@ -46,11 +47,16 @@ void TextureBaseOperation::initExecution()
 {
 	this->m_inputOffset = getInputSocketReader(0);
 	this->m_inputSize = getInputSocketReader(1);
+	this->m_pool = BKE_image_pool_new();
+	SingleThreadedNodeOperation::initExecution();
 }
 void TextureBaseOperation::deinitExecution()
 {
 	this->m_inputSize = NULL;
 	this->m_inputOffset = NULL;
+	BKE_image_pool_free(this->m_pool);
+	this->m_pool = NULL;
+	SingleThreadedNodeOperation::deinitExecution();
 }
 
 void TextureBaseOperation::determineResolution(unsigned int resolution[2], unsigned int preferredResolution[2])
@@ -85,8 +91,8 @@ void TextureBaseOperation::executePixel(float output[4], float x, float y, Pixel
 	int retval;
 	const float cx = this->getWidth() / 2;
 	const float cy = this->getHeight() / 2;
-	const float u = (cx - x) / this->getWidth() * 2;
-	const float v = (cy - y) / this->getHeight() * 2;
+	const float u = (x - cx) / this->getWidth() * 2;
+	const float v = (y - cy) / this->getHeight() * 2;
 
 	this->m_inputSize->read(textureSize, x, y, sampler);
 	this->m_inputOffset->read(textureOffset, x, y, sampler);
@@ -95,7 +101,7 @@ void TextureBaseOperation::executePixel(float output[4], float x, float y, Pixel
 	vec[1] = textureSize[1] * (v + textureOffset[1]);
 	vec[2] = textureSize[2] * textureOffset[2];
 
-	retval = multitex_ext(this->m_texture, vec, NULL, NULL, 0, &texres);
+	retval = multitex_ext(this->m_texture, vec, NULL, NULL, 0, &texres, m_pool);
 
 	if (texres.talpha)
 		output[3] = texres.ta;
@@ -110,4 +116,27 @@ void TextureBaseOperation::executePixel(float output[4], float x, float y, Pixel
 	else {
 		output[0] = output[1] = output[2] = output[3];
 	}
+}
+
+MemoryBuffer *TextureBaseOperation::createMemoryBuffer(rcti *rect2)
+{
+	int height = getHeight();
+	int width = getWidth();
+
+	rcti rect;
+	rect.xmin = 0;
+	rect.ymin = 0;
+	rect.xmax = width;
+	rect.ymax = height;
+	MemoryBuffer *result = new MemoryBuffer(NULL, &rect);
+
+	float *data = result->getBuffer();
+
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++, data += 4) {
+			this->executePixel(data, x, y, COM_PS_NEAREST);
+		}
+	}
+
+	return result;
 }

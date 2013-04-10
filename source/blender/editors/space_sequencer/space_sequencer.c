@@ -120,6 +120,8 @@ static SpaceLink *sequencer_new(const bContext *C)
 	sseq->chanshown = 0;
 	sseq->view = SEQ_VIEW_SEQUENCE;
 	sseq->mainb = SEQ_DRAW_IMG_IMBUF;
+	sseq->flag = SEQ_SHOW_GPENCIL | SEQ_USE_ALPHA;
+
 	/* header */
 	ar = MEM_callocN(sizeof(ARegion), "header for sequencer");
 	
@@ -328,6 +330,7 @@ static void sequencer_listener(ScrArea *sa, wmNotifier *wmn)
 					break;
 			}
 			break;
+		case NC_WINDOW:
 		case NC_SPACE:
 			if (wmn->data == ND_SPACE_SEQUENCER)
 				sequencer_scopes_tag_refresh(sa);
@@ -371,7 +374,7 @@ static void sequencer_main_area_draw(const bContext *C, ARegion *ar)
 
 /* ************* dropboxes ************* */
 
-static int image_drop_poll(bContext *C, wmDrag *drag, wmEvent *event)
+static int image_drop_poll(bContext *C, wmDrag *drag, const wmEvent *event)
 {
 	ARegion *ar = CTX_wm_region(C);
 	Scene *scene = CTX_data_scene(C);
@@ -385,7 +388,7 @@ static int image_drop_poll(bContext *C, wmDrag *drag, wmEvent *event)
 	return 0;
 }
 
-static int movie_drop_poll(bContext *C, wmDrag *drag, wmEvent *event)
+static int movie_drop_poll(bContext *C, wmDrag *drag, const wmEvent *event)
 {
 	ARegion *ar = CTX_wm_region(C);
 	Scene *scene = CTX_data_scene(C);
@@ -398,7 +401,7 @@ static int movie_drop_poll(bContext *C, wmDrag *drag, wmEvent *event)
 	return 0;
 }
 
-static int sound_drop_poll(bContext *C, wmDrag *drag, wmEvent *event)
+static int sound_drop_poll(bContext *C, wmDrag *drag, const wmEvent *event)
 {
 	ARegion *ar = CTX_wm_region(C);
 	Scene *scene = CTX_data_scene(C);
