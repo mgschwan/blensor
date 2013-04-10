@@ -56,7 +56,8 @@ INVALID_DISPARITY = 99999999.9
 
 parameters = {"max_dist":6.0,"min_dist": 0.7, "noise_mu":0.0,"noise_sigma":0.0,  
               "xres": 640, "yres": 480, "flength": 4.73, "reflectivity_distance":0.0,
-              "reflectivity_limit":0.01,"reflectivity_slope":0.16, "noise_scale": 0.25, "noise_smooth":1.5}
+              "reflectivity_limit":0.01,"reflectivity_slope":0.16, "noise_scale": 0.25, "noise_smooth":1.5,
+              "inlier_distance": 0.05 }
 
 def addProperties(cType):
     global parameters
@@ -76,6 +77,7 @@ def addProperties(cType):
 
     cType.kinect_noise_smooth = bpy.props.FloatProperty( name = "Global Noise Smoothness", default = parameters["noise_smooth"], min = 1.0, max = 100.0, description = "Smoothness of the global noise (higher values are smoother" )
     cType.kinect_noise_scale = bpy.props.FloatProperty( name = "Global Noise Scale", default = parameters["noise_scale"], min = 0.0, max = 10.0, description = "Strength of the global noise" )
+    cType.kinect_inlier_distance = bpy.props.FloatProperty( name = "Inlier Distance", default = parameters["inlier_distance"], min = 0.0, max = 10.0, description = "Which points are considered valid for the 9x9 window" )
 
 
 """ Calculates the Image coordinates on the sensor for a given ray
@@ -167,7 +169,7 @@ def scan_advanced(scanner_object, evd_file=None,
     res_x = scanner_object.kinect_xres 
     res_y = scanner_object.kinect_yres
     flength = scanner_object.kinect_flength
-    
+    WINDOW_INLIER_DISTANCE = scanner_object.kinect_inlier_distance
 
 
     if res_x < 1 or res_y < 1:

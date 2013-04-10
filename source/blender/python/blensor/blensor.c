@@ -105,6 +105,10 @@ static PyObject *M_Blensor_scan(PyObject *UNUSED(self), PyObject *args)
   if (!PyArg_ParseTuple(args, "O!", &PyList_Type, &A))
     return 0;
     
+  /* TODO: Look at the pyop_call function from bpy_operators.c to understand
+   * how to get the bContext needed for rendering
+   */
+    
   elements = PyList_Size(A);
 
   result = PyList_New(elements);

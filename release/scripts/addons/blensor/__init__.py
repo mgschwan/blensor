@@ -124,6 +124,8 @@ def kinect_layout(obj, layout):
             row = layout.row()
             row.prop(obj, "kinect_min_dist")
             row = layout.row()
+            row.prop(obj, "kinect_inlier_distance")
+            row = layout.row()
             col = row.column()
             col.prop(obj, "kinect_noise_mu")
             col = row.column()
