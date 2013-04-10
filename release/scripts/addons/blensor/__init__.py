@@ -206,7 +206,10 @@ def generic_layout(obj, layout):
 
 
             
-def dispatch_scan(obj, filename=None, output_labels=True):
+def dispatch_scan(obj, filename=None, output_labels=True): 
+            """Save the current frame number to restore it after the scan"""
+            frame_current = bpy.context.scene.frame_current
+
             blensor.evd.output_labels = output_labels
             if obj.local_coordinates:
               world_transformation = Matrix()
@@ -273,6 +276,8 @@ def dispatch_scan(obj, filename=None, output_labels=True):
             else:
                 print ("Scanner not supported ... yet")
 
+            """Restore the frame number"""
+            bpy.context.scene.frame_current = frame_current
 
 
 def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0/24.0, output_labels=True):
