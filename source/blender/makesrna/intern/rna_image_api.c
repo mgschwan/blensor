@@ -64,8 +64,16 @@
 
 #include "MEM_guardedalloc.h"
 
+#ifdef WITH_CYCLES
+#error ##################################################
+#error #---------------IMPORTANT NOTICE-----------------#
+#error #-----BLENSOR IS NOT COMPATIBLE WITH CYCLES------#
+#error #--DISABLE CYCLES IN YOUR BUILD CONFIGURATION----#
+#error ##################################################
+#endif
+
 /* Return the floating point zbuffer */
-static void rna_Image_zbuf(Image *image, bContext *C, ReportList *reports, int *outbuffer_len, float **outbuffer, Scene *scene)
+static void rna_Image_zbuf_blensor(Image *image, bContext *C, ReportList *reports, int *outbuffer_len, float **outbuffer, Scene *scene)
 {
 
 	ImBuf *ibuf;
@@ -382,7 +390,7 @@ void RNA_api_image(StructRNA *srna)
 	func = RNA_def_function(srna, "gl_free", "rna_Image_gl_free");
 	RNA_def_function_ui_description(func, "Free the image from OpenGL graphics memory");
 
-	func= RNA_def_function(srna, "zbuf", "rna_Image_zbuf");
+	func= RNA_def_function(srna, "zbuf", "rna_Image_zbuf_blensor");
 	RNA_def_function_ui_description(func, "Access the image zbuffer");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT|FUNC_USE_REPORTS);
     parm= RNA_def_float_array(func, "outbuffer", 1, NULL, -FLT_MAX, FLT_MAX, "outbuffer", "Target Buffer.", 0.0f, 0.0f); 	 
