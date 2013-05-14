@@ -363,6 +363,7 @@ class QuickSmoke(Operator):
 
         tex = bpy.data.textures.new("Smoke Density", 'VOXEL_DATA')
         tex.voxel_data.domain_object = obj
+        tex.voxel_data.interpolation = 'TRICUBIC_BSPLINE'
 
         tex_slot = mat.texture_slots.add()
         tex_slot.texture = tex
@@ -375,6 +376,7 @@ class QuickSmoke(Operator):
         tex = bpy.data.textures.new("Flame", 'VOXEL_DATA')
         tex.voxel_data.domain_object = obj
         tex.voxel_data.smoke_data_type = 'SMOKEFLAME'
+        tex.voxel_data.interpolation = 'TRICUBIC_BSPLINE'
         tex.use_color_ramp = True
 
         tex_slot = mat.texture_slots.add()
@@ -435,8 +437,8 @@ class QuickFluid(Operator):
         fake_context = context.copy()
         mesh_objects = [obj for obj in context.selected_objects
                         if (obj.type == 'MESH' and not 0.0 in obj.dimensions)]
-        min_co = Vector((100000, 100000, 100000))
-        max_co = Vector((-100000, -100000, -100000))
+        min_co = Vector((100000.0, 100000.0, 100000.0))
+        max_co = -min_co
 
         if not mesh_objects:
             self.report({'ERROR'}, "Select at least one mesh object")

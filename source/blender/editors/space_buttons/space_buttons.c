@@ -36,7 +36,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -343,6 +342,7 @@ static void buttons_area_listener(ScrArea *sa, wmNotifier *wmn)
 			break;
 		case NC_BRUSH:
 			buttons_area_redraw(sa, BCONTEXT_TEXTURE);
+			sbuts->preview = 1;
 			break;
 		case NC_TEXTURE:
 		case NC_IMAGE:

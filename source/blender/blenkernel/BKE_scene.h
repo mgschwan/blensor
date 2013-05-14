@@ -84,6 +84,7 @@ void BKE_scene_set_background(struct Main *bmain, struct Scene *sce);
 struct Scene *BKE_scene_set_name(struct Main *bmain, const char *name);
 
 struct Scene *BKE_scene_copy(struct Scene *sce, int type);
+void BKE_scene_groups_relink(struct Scene *sce);
 void BKE_scene_unlink(struct Main *bmain, struct Scene *sce, struct Scene *newsce);
 
 struct Object *BKE_scene_camera_find(struct Scene *sc);
@@ -117,6 +118,9 @@ int BKE_scene_use_new_shading_nodes(struct Scene *scene);
 void BKE_scene_disable_color_management(struct Scene *scene);
 int BKE_scene_check_color_management_enabled(const struct Scene *scene);
 int BKE_scene_check_rigidbody_active(const struct Scene *scene);
+
+int BKE_scene_num_threads(const struct Scene *scene);
+int BKE_render_num_threads(const struct RenderData *r);
 
 #ifdef __cplusplus
 }

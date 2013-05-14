@@ -93,7 +93,7 @@ bNode *node_add_node(const bContext *C, const char *idname, int type, float locx
 	node->locx = locx;
 	node->locy = locy + 60.0f;
 	
-	ntreeUpdateTree(snode->edittree);
+	ntreeUpdateTree(bmain, snode->edittree);
 	ED_node_set_active(bmain, snode->edittree, node);
 	
 	if (snode->nodetree->type == NTREE_COMPOSIT) {
@@ -149,7 +149,7 @@ typedef struct bNodeSocketLink {
 	float point[2];
 } bNodeSocketLink;
 
-static bNodeSocketLink *add_reroute_insert_socket_link(ListBase *lb, bNodeSocket *sock, bNodeLink *link, float point[2])
+static bNodeSocketLink *add_reroute_insert_socket_link(ListBase *lb, bNodeSocket *sock, bNodeLink *link, const float point[2])
 {
 	bNodeSocketLink *socklink, *prev;
 	
@@ -285,7 +285,7 @@ static int add_reroute_exec(bContext *C, wmOperator *op)
 		BLI_freelistN(&input_links);
 		
 		/* always last */
-		ntreeUpdateTree(ntree);
+		ntreeUpdateTree(CTX_data_main(C), ntree);
 		snode_notify(C, snode);
 		snode_dag_update(C, snode);
 		
@@ -445,6 +445,8 @@ static int new_node_tree_exec(bContext *C, wmOperator *op)
 	}
 	else if (snode)
 		idname = snode->tree_idname;
+	else
+		return OPERATOR_CANCELLED;
 	
 	if (RNA_struct_property_is_set(op->ptr, "name")) {
 		RNA_string_get(op->ptr, "name", treename);
@@ -464,12 +466,13 @@ static int new_node_tree_exec(bContext *C, wmOperator *op)
 	uiIDContextProperty(C, &ptr, &prop);
 
 	if (prop) {
-		RNA_id_pointer_create(&ntree->id, &idptr);
-		RNA_property_pointer_set(&ptr, prop, idptr);
 		/* RNA_property_pointer_set increases the user count,
 		 * fixed here as the editor is the initial user.
 		 */
-		ntree->id.us++;
+		ntree->id.us--;
+
+		RNA_id_pointer_create(&ntree->id, &idptr);
+		RNA_property_pointer_set(&ptr, prop, idptr);
 		RNA_property_update(C, &ptr, prop);
 	}
 	else if (snode) {

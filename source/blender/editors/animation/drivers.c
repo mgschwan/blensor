@@ -145,7 +145,7 @@ short ANIM_add_driver(ReportList *reports, ID *id, const char rna_path[], int ar
 	
 	/* validate pointer first - exit if failure */
 	RNA_id_pointer_create(id, &id_ptr);
-	if ((RNA_path_resolve(&id_ptr, rna_path, &ptr, &prop) == 0) || (prop == NULL)) {
+	if (RNA_path_resolve_property(&id_ptr, rna_path, &ptr, &prop) == false) {
 		BKE_reportf(reports, RPT_ERROR, 
 		            "Could not add driver, as RNA path is invalid for the given ID (ID = %s, path = %s)",
 		            id->name, rna_path);
@@ -308,7 +308,7 @@ short ANIM_copy_driver(ReportList *reports, ID *id, const char rna_path[], int a
 	
 	/* validate pointer first - exit if failure */
 	RNA_id_pointer_create(id, &id_ptr);
-	if ((RNA_path_resolve(&id_ptr, rna_path, &ptr, &prop) == 0) || (prop == NULL)) {
+	if (RNA_path_resolve_property(&id_ptr, rna_path, &ptr, &prop) == false) {
 		BKE_reportf(reports, RPT_ERROR,
 		            "Could not find driver to copy, as RNA path is invalid for the given ID (ID = %s, path = %s)",
 		            id->name, rna_path);
@@ -355,7 +355,7 @@ short ANIM_paste_driver(ReportList *reports, ID *id, const char rna_path[], int 
 	
 	/* validate pointer first - exit if failure */
 	RNA_id_pointer_create(id, &id_ptr);
-	if ((RNA_path_resolve(&id_ptr, rna_path, &ptr, &prop) == 0) || (prop == NULL)) {
+	if (RNA_path_resolve_property(&id_ptr, rna_path, &ptr, &prop) == false) {
 		BKE_reportf(reports, RPT_ERROR,
 		            "Could not paste driver, as RNA path is invalid for the given ID (ID = %s, path = %s)",
 		            id->name, rna_path);
@@ -434,11 +434,17 @@ static char *get_driver_path_hack(bContext *C, PointerRNA *ptr, PropertyRNA *pro
 					
 					/* assumes: texture will only be shown if it is active material's active texture it's ok */
 					if ((ID *)tex == id) {
+						char name_esc_ma[(sizeof(ma->id.name) - 2) * 2];
+						char name_esc_tex[(sizeof(tex->id.name) - 2) * 2];
+
+						BLI_strescape(name_esc_ma, ma->id.name + 2, sizeof(name_esc_ma));
+						BLI_strescape(name_esc_tex, tex->id.name + 2, sizeof(name_esc_tex));
+
 						/* create new path */
 						// TODO: use RNA path functions to construct step by step instead?
 						// FIXME: maybe this isn't even needed anymore...
 						path = BLI_sprintfN("material_slots[\"%s\"].material.texture_slots[\"%s\"].texture.%s", 
-						                    ma->id.name + 2, tex->id.name + 2, basepath);
+						                    name_esc_ma, name_esc_tex, basepath);
 							
 						/* free old one */
 						MEM_freeN(basepath);
@@ -507,7 +513,7 @@ void ANIM_OT_driver_button_add(wmOperatorType *ot)
 	//op->poll = ??? // TODO: need to have some animatable property to do this
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	RNA_def_boolean(ot->srna, "all", 1, "All", "Create drivers for all elements of the array");
@@ -557,7 +563,7 @@ void ANIM_OT_driver_button_remove(wmOperatorType *ot)
 	//op->poll = ??? // TODO: need to have some driver to be able to do this...
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
 	RNA_def_boolean(ot->srna, "all", 1, "All", "Delete drivers for all elements of the array");
@@ -604,7 +610,7 @@ void ANIM_OT_copy_driver_button(wmOperatorType *ot)
 	//op->poll = ??? // TODO: need to have some driver to be able to do this...
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 /* Paste Driver Button Operator ------------------------ */
@@ -648,7 +654,7 @@ void ANIM_OT_paste_driver_button(wmOperatorType *ot)
 	//op->poll = ??? // TODO: need to have some driver to be able to do this...
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
 /* ************************************************** */

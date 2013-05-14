@@ -69,7 +69,7 @@ EnumPropertyItem space_type_items[] = {
 	{SPACE_INFO, "INFO", 0, "Info", ""},
 	{SPACE_SEQ, "SEQUENCE_EDITOR", 0, "Sequence Editor", ""},
 	{SPACE_TEXT, "TEXT_EDITOR", 0, "Text Editor", ""},
-	{SPACE_ACTION, "DOPESHEET_EDITOR", 0, "DopeSheet Editor", ""},
+	{SPACE_ACTION, "DOPESHEET_EDITOR", 0, "Dope Sheet Editor", ""},
 	{SPACE_NLA, "NLA_EDITOR", 0, "NLA Editor", ""},
 	{SPACE_TIME, "TIMELINE", 0, "Timeline", ""},
 	{SPACE_NODE, "NODE_EDITOR", 0, "Node Editor", ""},
@@ -1098,17 +1098,9 @@ void rna_SpaceNodeEditor_path_start(SpaceNode *snode, bContext *C, PointerRNA *n
 	ED_node_tree_update(C);
 }
 
-void rna_SpaceNodeEditor_path_push(SpaceNode *snode, bContext *C, ReportList *reports, PointerRNA *node)
+void rna_SpaceNodeEditor_path_push(SpaceNode *snode, bContext *C, PointerRNA *node_tree, PointerRNA *node)
 {
-	PointerRNA tree_ptr;
-	
-	tree_ptr = RNA_pointer_get(node, "node_tree");
-	if (!tree_ptr.data) {
-		BKE_reportf(reports, RPT_WARNING, "Missing node group tree in node %s", ((bNode *)node->data)->name);
-		return;
-	}
-	
-	ED_node_tree_push(snode, (bNodeTree *)tree_ptr.data, (bNode *)node->data);
+	ED_node_tree_push(snode, node_tree->data, node->data);
 	ED_node_tree_update(C);
 }
 
@@ -1589,7 +1581,7 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 	const int matrix_dimsize[] = {4, 4};
-		
+
 	static EnumPropertyItem pivot_items[] = {
 		{V3D_CENTER, "BOUNDING_BOX_CENTER", ICON_ROTATE, "Bounding Box Center",
 		             "Pivot around bounding box center of selected object(s)"},
@@ -1599,6 +1591,16 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 		{V3D_CENTROID, "MEDIAN_POINT", ICON_ROTATECENTER, "Median Point",
 		               "Pivot around the median point of selected objects"},
 		{V3D_ACTIVE, "ACTIVE_ELEMENT", ICON_ROTACTIVE, "Active Element", "Pivot around active object"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem manipulators_items[] = {
+		{V3D_MANIP_TRANSLATE, "TRANSLATE", ICON_MAN_TRANS, "Manipulator Translate",
+		                      "Use the manipulator for movement transformations"},
+		{V3D_MANIP_ROTATE, "ROTATE", ICON_MAN_ROT, "Manipulator Rotate",
+		                   "Use the manipulator for rotation transformations"},
+		{V3D_MANIP_SCALE, "SCALE", ICON_MAN_SCALE, "Manipulator Scale",
+		                  "Use the manipulator for scale transformations"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -1665,7 +1667,7 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag2", V3D_RENDER_BORDER);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_ui_text(prop, "Render Border",
-	                         "Use a user-defined border region within the frame size for rendered viewport");
+	                         "Use a region within the frame size for rendered viewport (when not viewing through the camera)");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
 
 	prop = RNA_def_property(srna, "render_border_min_x", PROP_FLOAT, PROP_NONE);
@@ -1874,23 +1876,12 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Manipulator", "Use a 3D manipulator widget for controlling transforms");
 	RNA_def_property_ui_icon(prop, ICON_MANIPUL, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
-	
-	prop = RNA_def_property(srna, "use_manipulator_translate", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "twtype", V3D_MANIP_TRANSLATE);
-	RNA_def_property_ui_text(prop, "Manipulator Translate", "Use the manipulator for movement transformations");
-	RNA_def_property_ui_icon(prop, ICON_MAN_TRANS, 0);
-	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
-	
-	prop = RNA_def_property(srna, "use_manipulator_rotate", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "twtype", V3D_MANIP_ROTATE);
-	RNA_def_property_ui_text(prop, "Manipulator Rotate", "Use the manipulator for rotation transformations");
-	RNA_def_property_ui_icon(prop, ICON_MAN_ROT, 0);
-	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
-	
-	prop = RNA_def_property(srna, "use_manipulator_scale", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "twtype", V3D_MANIP_SCALE);
-	RNA_def_property_ui_text(prop, "Manipulator Scale", "Use the manipulator for scale transformations");
-	RNA_def_property_ui_icon(prop, ICON_MAN_SCALE, 0);
+
+	prop = RNA_def_property(srna, "transform_manipulators", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "twtype");
+	RNA_def_property_enum_items(prop, manipulators_items);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_ui_text(prop, "Transform Manipulators", "Transformation manipulators");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
 	
 	prop = RNA_def_property(srna, "transform_orientation", PROP_ENUM, PROP_NONE);
@@ -2549,9 +2540,9 @@ static void rna_def_space_dopesheet(BlenderRNA *brna)
 	
 	/* XXX: action-editor is currently for object-level only actions, so show that using object-icon hint */
 	static EnumPropertyItem mode_items[] = {
-		{SACTCONT_DOPESHEET, "DOPESHEET", ICON_OOPS, "DopeSheet", "Edit all keyframes in scene"},
+		{SACTCONT_DOPESHEET, "DOPESHEET", ICON_OOPS, "Dope Sheet", "Edit all keyframes in scene"},
 		{SACTCONT_ACTION, "ACTION", ICON_OBJECT_DATA, "Action Editor", "Edit keyframes in active object's Object-level action"},
-		{SACTCONT_SHAPEKEY, "SHAPEKEY", ICON_SHAPEKEY_DATA, "ShapeKey Editor", "Edit keyframes in active object's Shape Keys action"},
+		{SACTCONT_SHAPEKEY, "SHAPEKEY", ICON_SHAPEKEY_DATA, "Shape Key Editor", "Edit keyframes in active object's Shape Keys action"},
 		{SACTCONT_GPENCIL, "GPENCIL", ICON_GREASEPENCIL, "Grease Pencil", "Edit timings for all Grease Pencil sketches in file"},
 		{SACTCONT_MASK, "MASK", ICON_MOD_MASK, "Mask", "Edit timings for Mask Editor splines"},
 		{0, NULL, 0, NULL, NULL}
@@ -2560,7 +2551,7 @@ static void rna_def_space_dopesheet(BlenderRNA *brna)
 	
 	srna = RNA_def_struct(brna, "SpaceDopeSheetEditor", "Space");
 	RNA_def_struct_sdna(srna, "SpaceAction");
-	RNA_def_struct_ui_text(srna, "Space DopeSheet Editor", "DopeSheet space data");
+	RNA_def_struct_ui_text(srna, "Space Dope Sheet Editor", "Dope Sheet space data");
 
 	/* data */
 	prop = RNA_def_property(srna, "action", PROP_POINTER, PROP_NONE);
@@ -2627,7 +2618,7 @@ static void rna_def_space_dopesheet(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "dopesheet", PROP_POINTER, PROP_NONE);
 	RNA_def_property_struct_type(prop, "DopeSheet");
 	RNA_def_property_pointer_sdna(prop, NULL, "ads");
-	RNA_def_property_ui_text(prop, "DopeSheet", "Settings for filtering animation data");
+	RNA_def_property_ui_text(prop, "Dope Sheet", "Settings for filtering animation data");
 
 	/* autosnap */
 	prop = RNA_def_property(srna, "auto_snap", PROP_ENUM, PROP_NONE);
@@ -2751,7 +2742,7 @@ static void rna_def_space_graph(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "dopesheet", PROP_POINTER, PROP_NONE);
 	RNA_def_property_struct_type(prop, "DopeSheet");
 	RNA_def_property_pointer_sdna(prop, NULL, "ads");
-	RNA_def_property_ui_text(prop, "DopeSheet", "Settings for filtering animation data");
+	RNA_def_property_ui_text(prop, "Dope Sheet", "Settings for filtering animation data");
 
 	/* autosnap */
 	prop = RNA_def_property(srna, "auto_snap", PROP_ENUM, PROP_NONE);
@@ -2806,7 +2797,7 @@ static void rna_def_space_nla(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "dopesheet", PROP_POINTER, PROP_NONE);
 	RNA_def_property_struct_type(prop, "DopeSheet");
 	RNA_def_property_pointer_sdna(prop, NULL, "ads");
-	RNA_def_property_ui_text(prop, "DopeSheet", "Settings for filtering animation data");
+	RNA_def_property_ui_text(prop, "Dope Sheet", "Settings for filtering animation data");
 
 	/* autosnap */
 	prop = RNA_def_property(srna, "auto_snap", PROP_ENUM, PROP_NONE);
@@ -3209,9 +3200,11 @@ static void rna_def_space_node_path_api(BlenderRNA *brna, PropertyRNA *cprop)
 
 	func = RNA_def_function(srna, "push", "rna_SpaceNodeEditor_path_push");
 	RNA_def_function_ui_description(func, "Append a node group tree to the path");
-	RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
-	parm = RNA_def_pointer(func, "node", "NodeGroup", "Node", "Group node");
+	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+	parm = RNA_def_pointer(func, "node_tree", "NodeTree", "Node Tree", "Node tree to append to the node editor path");
 	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_RNAPTR);
+	parm = RNA_def_pointer(func, "node", "Node", "Node", "Group node linking to this node tree");
+	RNA_def_property_flag(parm, PROP_RNAPTR);
 
 	func = RNA_def_function(srna, "pop", "rna_SpaceNodeEditor_path_pop");
 	RNA_def_function_ui_description(func, "Remove the last node tree from the path");

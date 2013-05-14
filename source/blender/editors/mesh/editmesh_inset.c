@@ -35,7 +35,7 @@
 
 #include "BKE_context.h"
 #include "BKE_global.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "RNA_define.h"
 #include "RNA_access.h"
@@ -111,7 +111,7 @@ static bool edbm_inset_init(bContext *C, wmOperator *op, const bool is_modal)
 {
 	InsetData *opdata;
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 	if (em->bm->totvertsel == 0) {
 		return false;
@@ -208,8 +208,10 @@ static bool edbm_inset_calc(wmOperator *op)
 
 	if (use_individual) {
 		EDBM_op_init(em, &bmop, op,
-		             "inset_individual faces=%hf thickness=%f depth=%f use_even_offset=%b use_interpolate=%b",
-		             BM_ELEM_SELECT, thickness, depth, use_even_offset, use_interpolate);
+		             "inset_individual faces=%hf use_even_offset=%b  use_relative_offset=%b"
+		             "use_interpolate=%b thickness=%f depth=%f",
+		             BM_ELEM_SELECT, use_even_offset, use_relative_offset, use_interpolate,
+		             thickness, depth);
 	}
 	else {
 		EDBM_op_init(em, &bmop, op,

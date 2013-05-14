@@ -44,7 +44,7 @@ Camera::Camera()
 	panorama_type = PANORAMA_EQUIRECTANGULAR;
 	fisheye_fov = M_PI_F;
 	fisheye_lens = 10.5f;
-	fov = M_PI_F/4.0f;
+	fov = M_PI_4_F;
 
 	sensorwidth = 0.036;
 	sensorheight = 0.024;
@@ -236,6 +236,7 @@ void Camera::device_update(Device *device, DeviceScene *dscene, Scene *scene)
 	/* render size */
 	kcam->width = width;
 	kcam->height = height;
+	kcam->resolution = resolution;
 
 	/* store differentials */
 	kcam->dx = float3_to_float4(dx);

@@ -42,7 +42,8 @@
 #include "BKE_key.h"
 #include "BKE_mesh.h"
 #include "BKE_report.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
+#include "BKE_editmesh_bvh.h"
 
 #include "BKE_object.h"  /* XXX. only for EDBM_mesh_ensure_valid_dm_hack() which will be removed */
 
@@ -52,6 +53,7 @@
 #include "ED_mesh.h"
 #include "ED_screen.h"
 #include "ED_util.h"
+#include "ED_view3d.h"
 
 #include "mesh_intern.h"  /* own include */
 
@@ -78,7 +80,7 @@ void EDBM_redo_state_restore(BMBackup backup, BMEditMesh *em, int recalctess)
 	tmpbm = NULL;
 
 	if (recalctess)
-		BMEdit_RecalcTessellation(em);
+		BKE_editmesh_tessface_calc(em);
 }
 
 void EDBM_redo_state_free(BMBackup *backup, BMEditMesh *em, int recalctess)
@@ -96,7 +98,7 @@ void EDBM_redo_state_free(BMBackup *backup, BMEditMesh *em, int recalctess)
 	backup->bmcopy = NULL;
 
 	if (recalctess && em)
-		BMEdit_RecalcTessellation(em);
+		BKE_editmesh_tessface_calc(em);
 }
 
 /* hack to workaround multiple operators being called within the same event loop without an update
@@ -113,7 +115,7 @@ void EDBM_mesh_ensure_valid_dm_hack(Scene *scene, BMEditMesh *em)
 
 void EDBM_mesh_normals_update(BMEditMesh *em)
 {
-	BM_mesh_normals_update(em->bm, true);
+	BM_mesh_normals_update(em->bm);
 }
 
 void EDBM_mesh_clear(BMEditMesh *em)
@@ -182,7 +184,7 @@ bool EDBM_op_init(BMEditMesh *em, BMOperator *bmop, wmOperator *op, const char *
 	}
 	
 	if (!em->emcopy)
-		em->emcopy = BMEdit_Copy(em);
+		em->emcopy = BKE_editmesh_copy(em);
 	em->emcopyusers++;
 
 	va_end(list);
@@ -215,7 +217,7 @@ bool EDBM_op_finish(BMEditMesh *em, BMOperator *bmop, wmOperator *op, const bool
 		/* when copying, tessellation isn't to for faster copying,
 		 * but means we need to re-tessellate here */
 		if (em->looptris == NULL) {
-			BMEdit_RecalcTessellation(em);
+			BKE_editmesh_tessface_calc(em);
 		}
 
 		return false;
@@ -227,7 +229,7 @@ bool EDBM_op_finish(BMEditMesh *em, BMOperator *bmop, wmOperator *op, const bool
 		}
 
 		if (em->emcopyusers <= 0) {
-			BMEdit_Free(em->emcopy);
+			BKE_editmesh_free(em->emcopy);
 			MEM_freeN(em->emcopy);
 			em->emcopy = NULL;
 		}
@@ -251,7 +253,7 @@ bool EDBM_op_callf(BMEditMesh *em, wmOperator *op, const char *fmt, ...)
 	}
 
 	if (!em->emcopy)
-		em->emcopy = BMEdit_Copy(em);
+		em->emcopy = BKE_editmesh_copy(em);
 	em->emcopyusers++;
 
 	BMO_op_exec(bm, &bmop);
@@ -277,7 +279,7 @@ bool EDBM_op_call_and_selectf(BMEditMesh *em, wmOperator *op, const char *select
 	}
 
 	if (!em->emcopy)
-		em->emcopy = BMEdit_Copy(em);
+		em->emcopy = BKE_editmesh_copy(em);
 	em->emcopyusers++;
 
 	BMO_op_exec(bm, &bmop);
@@ -307,7 +309,7 @@ bool EDBM_op_call_silentf(BMEditMesh *em, const char *fmt, ...)
 	}
 
 	if (!em->emcopy)
-		em->emcopy = BMEdit_Copy(em);
+		em->emcopy = BKE_editmesh_copy(em);
 	em->emcopyusers++;
 
 	BMO_op_exec(bm, &bmop);
@@ -320,7 +322,7 @@ void EDBM_selectmode_to_scene(bContext *C)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 	if (!em)
 		return;
@@ -351,9 +353,9 @@ void EDBM_mesh_make(ToolSettings *ts, Scene *UNUSED(scene), Object *ob)
 	/* currently executing operators re-tessellates, so we can avoid doing here
 	 * but at some point it may need to be added back. */
 #if 0
-	me->edit_btmesh = BMEdit_Create(bm, true);
+	me->edit_btmesh = BKE_editmesh_create(bm, true);
 #else
-	me->edit_btmesh = BMEdit_Create(bm, false);
+	me->edit_btmesh = BKE_editmesh_create(bm, false);
 #endif
 
 	me->edit_btmesh->selectmode = me->edit_btmesh->bm->selectmode = ts->selectmode;
@@ -375,7 +377,7 @@ void EDBM_mesh_load(Object *ob)
 }
 
 /**
- * Should only be called on the active editmesh, otherwise call #BMEdit_Free
+ * Should only be called on the active editmesh, otherwise call #BKE_editmesh_free
  */
 void EDBM_mesh_free(BMEditMesh *em)
 {
@@ -385,7 +387,7 @@ void EDBM_mesh_free(BMEditMesh *em)
 	mesh_octree_table(NULL, NULL, NULL, 'e');
 	mesh_mirrtopo_table(NULL, 'e');
 
-	BMEdit_Free(em);
+	BKE_editmesh_free(em);
 }
 
 
@@ -637,18 +639,23 @@ static void undoMesh_to_editbtMesh(void *umv, void *em_v, void *UNUSED(obdata))
 	UndoMesh *um = umv;
 	BMesh *bm;
 
+	const BMAllocTemplate allocsize = {um->me.totvert,
+	                                   um->me.totedge,
+	                                   um->me.totloop,
+	                                   um->me.totpoly};
+
 	ob->shapenr = em->bm->shapenr = um->shapenr;
 
 	EDBM_mesh_free(em);
 
-	bm = BM_mesh_create(&bm_mesh_allocsize_default);
+	bm = BM_mesh_create(&allocsize);
 
 	BM_mesh_bm_from_me(bm, &um->me, false, ob->shapenr);
 
 	/* face normals need recalculation since we are not calling through an operator */
-	BM_mesh_normals_update(bm, true);
+	BM_mesh_normals_update(bm);
 
-	em_tmp = BMEdit_Create(bm, true);
+	em_tmp = BKE_editmesh_create(bm, true);
 	*em = *em_tmp;
 	
 	em->selectmode = um->selectmode;
@@ -677,7 +684,7 @@ void undo_push_mesh(bContext *C, const char *name)
 	 * this is an easy way to ensure its OK
 	 * though we could investigate the matter further. */
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	em->ob = obedit;
 
 	undo_editmode_push(C, name, getEditMesh, free_undo, undoMesh_to_editbtMesh, editbtMesh_to_undoMesh, NULL);
@@ -1164,7 +1171,7 @@ void EDBM_verts_mirror_cache_begin(BMEditMesh *em, const bool use_select)
 		ED_mesh_mirrtopo_init(me, -1, &mesh_topo_store, true);
 	}
 	else {
-		tree = BMBVH_NewBVH(em, 0, NULL, NULL);
+		tree = BKE_bmbvh_new(em, 0, NULL, false);
 	}
 
 	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
@@ -1182,7 +1189,7 @@ void EDBM_verts_mirror_cache_begin(BMEditMesh *em, const bool use_select)
 			}
 			else {
 				float co[3] = {-v->co[0], v->co[1], v->co[2]};
-				mirr = BMBVH_FindClosestVert(tree, co, BM_SEARCH_MAXDIST_MIRR);
+				mirr = BKE_bmbvh_find_vert_closest(tree, co, BM_SEARCH_MAXDIST_MIRR);
 			}
 
 			if (mirr && mirr != v) {
@@ -1202,7 +1209,7 @@ void EDBM_verts_mirror_cache_begin(BMEditMesh *em, const bool use_select)
 		ED_mesh_mirrtopo_free(&mesh_topo_store);
 	}
 	else {
-		BMBVH_FreeBVH(tree);
+		BKE_bmbvh_free(tree);
 	}
 
 	em->mirror_cdlayer = li;
@@ -1356,7 +1363,7 @@ void EDBM_update_generic(BMEditMesh *em, const bool do_tessface, const bool is_d
 	WM_main_add_notifier(NC_GEOM | ND_DATA, ob->data);
 
 	if (do_tessface) {
-		BMEdit_RecalcTessellation(em);
+		BKE_editmesh_tessface_calc(em);
 	}
 
 	if (is_destructive) {
@@ -1375,4 +1382,91 @@ int EDBM_view3d_poll(bContext *C)
 		return 1;
 
 	return 0;
+}
+
+
+
+/* -------------------------------------------------------------------- */
+/* BMBVH functions */
+// XXX
+#if 0 //BMESH_TODO: not implemented yet
+int BMBVH_VertVisible(BMBVHTree *tree, BMEdge *e, RegionView3D *r3d)
+{
+
+}
+#endif
+
+static BMFace *edge_ray_cast(struct BMBVHTree *tree, const float co[3], const float dir[3], float *r_hitout, BMEdge *e)
+{
+	BMFace *f = BKE_bmbvh_ray_cast(tree, co, dir, NULL, r_hitout, NULL);
+
+	if (f && BM_edge_in_face(f, e))
+		return NULL;
+
+	return f;
+}
+
+static void scale_point(float c1[3], const float p[3], const float s)
+{
+	sub_v3_v3(c1, p);
+	mul_v3_fl(c1, s);
+	add_v3_v3(c1, p);
+}
+
+bool BMBVH_EdgeVisible(struct BMBVHTree *tree, BMEdge *e, ARegion *ar, View3D *v3d, Object *obedit)
+{
+	BMFace *f;
+	float co1[3], co2[3], co3[3], dir1[3], dir2[3], dir3[3];
+	float origin[3], invmat[4][4];
+	float epsilon = 0.01f;
+	float end[3];
+	const float mval_f[2] = {ar->winx / 2.0f,
+	                         ar->winy / 2.0f};
+
+	ED_view3d_win_to_segment(ar, v3d, mval_f, origin, end, false);
+
+	invert_m4_m4(invmat, obedit->obmat);
+	mul_m4_v3(invmat, origin);
+
+	copy_v3_v3(co1, e->v1->co);
+	mid_v3_v3v3(co2, e->v1->co, e->v2->co);
+	copy_v3_v3(co3, e->v2->co);
+
+	scale_point(co1, co2, 0.99);
+	scale_point(co3, co2, 0.99);
+
+	/* ok, idea is to generate rays going from the camera origin to the
+	 * three points on the edge (v1, mid, v2)*/
+	sub_v3_v3v3(dir1, origin, co1);
+	sub_v3_v3v3(dir2, origin, co2);
+	sub_v3_v3v3(dir3, origin, co3);
+
+	normalize_v3(dir1);
+	normalize_v3(dir2);
+	normalize_v3(dir3);
+
+	mul_v3_fl(dir1, epsilon);
+	mul_v3_fl(dir2, epsilon);
+	mul_v3_fl(dir3, epsilon);
+
+	/* offset coordinates slightly along view vectors, to avoid
+	 * hitting the faces that own the edge.*/
+	add_v3_v3v3(co1, co1, dir1);
+	add_v3_v3v3(co2, co2, dir2);
+	add_v3_v3v3(co3, co3, dir3);
+
+	normalize_v3(dir1);
+	normalize_v3(dir2);
+	normalize_v3(dir3);
+
+	/* do three samplings: left, middle, right */
+	f = edge_ray_cast(tree, co1, dir1, NULL, e);
+	if (f && !edge_ray_cast(tree, co2, dir2, NULL, e))
+		return true;
+	else if (f && !edge_ray_cast(tree, co3, dir3, NULL, e))
+		return true;
+	else if (!f)
+		return true;
+
+	return false;
 }

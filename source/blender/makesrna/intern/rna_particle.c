@@ -922,32 +922,6 @@ static void rna_ParticleSystem_active_particle_target_index_set(struct PointerRN
 			pt->flag &= ~PTARGET_CURRENT;
 	}
 }
-static int rna_ParticleTarget_name_length(PointerRNA *ptr)
-{
-	ParticleTarget *pt = ptr->data;
-
-	if (pt->flag & PTARGET_VALID) {
-		ParticleSystem *psys = NULL;
-
-		if (pt->ob)
-			psys = BLI_findlink(&pt->ob->particlesystem, pt->psys - 1);
-		else {
-			Object *ob = (Object *) ptr->id.data;
-			psys = BLI_findlink(&ob->particlesystem, pt->psys - 1);
-		}
-		
-		if (psys) {
-			if (pt->ob)
-				return strlen(pt->ob->id.name + 2) + 2 + strlen(psys->name);
-			else
-				return strlen(psys->name);
-		}
-		else
-			return 15;
-	}
-	else
-		return 15;
-}
 
 static void rna_ParticleTarget_name_get(PointerRNA *ptr, char *str)
 {
@@ -974,6 +948,15 @@ static void rna_ParticleTarget_name_get(PointerRNA *ptr, char *str)
 	}
 	else
 		strcpy(str, "Invalid target!");
+}
+
+static int rna_ParticleTarget_name_length(PointerRNA *ptr)
+{
+	char tstr[MAX_ID_NAME + MAX_ID_NAME + 64];
+
+	rna_ParticleTarget_name_get(ptr, tstr);
+
+	return strlen(tstr);
 }
 
 static int particle_id_check(PointerRNA *ptr)
@@ -1062,15 +1045,6 @@ static void rna_ParticleDupliWeight_active_index_set(struct PointerRNA *ptr, int
 	}
 }
 
-static void rna_ParticleDupliWeight_name_get(PointerRNA *ptr, char *str);
-
-static int rna_ParticleDupliWeight_name_length(PointerRNA *ptr)
-{
-	char tstr[32];
-	rna_ParticleDupliWeight_name_get(ptr, tstr);
-	return strlen(tstr);
-}
-
 static void rna_ParticleDupliWeight_name_get(PointerRNA *ptr, char *str)
 {
 	ParticleDupliWeight *dw = ptr->data;
@@ -1079,6 +1053,15 @@ static void rna_ParticleDupliWeight_name_get(PointerRNA *ptr, char *str)
 		sprintf(str, "%s: %i", dw->ob->id.name + 2, dw->count);
 	else
 		strcpy(str, "No object");
+}
+
+static int rna_ParticleDupliWeight_name_length(PointerRNA *ptr)
+{
+	char tstr[MAX_ID_NAME + 64];
+
+	rna_ParticleDupliWeight_name_get(ptr, tstr);
+
+	return strlen(tstr);
 }
 
 static EnumPropertyItem *rna_Particle_from_itemf(bContext *UNUSED(C), PointerRNA *UNUSED(ptr),
@@ -1196,7 +1179,10 @@ static void psys_vg_name_set__internal(PointerRNA *ptr, const char *value, int i
 static char *rna_ParticleSystem_path(PointerRNA *ptr)
 {
 	ParticleSystem *psys = (ParticleSystem *)ptr->data;
-	return BLI_sprintfN("particle_systems[\"%s\"]", psys->name);
+	char name_esc[sizeof(psys->name) * 2];
+
+	BLI_strescape(name_esc, psys->name, sizeof(name_esc));
+	return BLI_sprintfN("particle_systems[\"%s\"]", name_esc);
 }
 
 static void rna_ParticleSettings_mtex_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
@@ -1623,7 +1609,7 @@ static void rna_def_fluid_settings(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Factor Repulsion", "Repulsion is a factor of stiffness");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
-	prop = RNA_def_property(srna, "factor_density", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "use_factor_density", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", SPH_FAC_DENSITY);
 	RNA_def_property_ui_text(prop, "Factor Density",
 	                         "Density is calculated as a factor of default density (depends on particle size)");
@@ -2499,7 +2485,7 @@ static void rna_def_particle_settings(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Timestep", "The simulation timestep per frame (seconds per frame)");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");
 
-	prop = RNA_def_property(srna, "adaptive_subframes", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "use_adaptive_subframes", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "time_flag", PART_TIME_AUTOSF);
 	RNA_def_property_ui_text(prop, "Automatic Subframes", "Automatically set the number of subframes");
 	RNA_def_property_update(prop, 0, "rna_Particle_reset");

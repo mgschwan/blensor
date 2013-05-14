@@ -200,29 +200,6 @@ static void node_select_keymap(wmKeyMap *keymap, int extend)
 	}
 }
 
-/* register group operators for a specific group node type */
-static void node_group_operators(wmKeyMap *keymap, const char *node_type)
-{
-	wmKeyMapItem *kmi;
-	
-	kmi = WM_keymap_add_item(keymap, "NODE_OT_group_make", GKEY, KM_PRESS, KM_CTRL, 0);
-	RNA_string_set(kmi->ptr, "node_type", node_type);
-	
-	kmi = WM_keymap_add_item(keymap, "NODE_OT_group_ungroup", GKEY, KM_PRESS, KM_ALT, 0);
-	RNA_string_set(kmi->ptr, "node_type", node_type);
-	
-	kmi = WM_keymap_add_item(keymap, "NODE_OT_group_separate", PKEY, KM_PRESS, 0, 0);
-	RNA_string_set(kmi->ptr, "node_type", node_type);
-	
-	kmi = WM_keymap_add_item(keymap, "NODE_OT_group_edit", TABKEY, KM_PRESS, 0, 0);
-	RNA_string_set(kmi->ptr, "node_type", node_type);
-	RNA_boolean_set(kmi->ptr, "exit", FALSE);
-	
-	kmi = WM_keymap_add_item(keymap, "NODE_OT_group_edit", TABKEY, KM_PRESS, KM_SHIFT, 0);
-	RNA_string_set(kmi->ptr, "node_type", node_type);
-	RNA_boolean_set(kmi->ptr, "exit", TRUE);
-}
-
 void node_keymap(struct wmKeyConfig *keyconf)
 {
 	wmKeyMap *keymap;
@@ -256,17 +233,10 @@ void node_keymap(struct wmKeyConfig *keyconf)
 
 	/* each of these falls through if not handled... */
 	kmi = WM_keymap_add_item(keymap, "NODE_OT_link", LEFTMOUSE, KM_PRESS, 0, 0);
-		RNA_boolean_set(kmi->ptr, "detach", FALSE);
-		RNA_boolean_set(kmi->ptr, "expose", FALSE);
+	RNA_boolean_set(kmi->ptr, "detach", FALSE);
 	kmi = WM_keymap_add_item(keymap, "NODE_OT_link", LEFTMOUSE, KM_PRESS, KM_CTRL, 0);
 	RNA_boolean_set(kmi->ptr, "detach", TRUE);
-		RNA_boolean_set(kmi->ptr, "expose", FALSE);
-	kmi = WM_keymap_add_item(keymap, "NODE_OT_link", LEFTMOUSE, KM_PRESS, KM_SHIFT, 0);
-		RNA_boolean_set(kmi->ptr, "detach", FALSE);
-		RNA_boolean_set(kmi->ptr, "expose", TRUE);
-	kmi = WM_keymap_add_item(keymap, "NODE_OT_link", LEFTMOUSE, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
-		RNA_boolean_set(kmi->ptr, "detach", TRUE);
-		RNA_boolean_set(kmi->ptr, "expose", TRUE);
+	
 	WM_keymap_add_item(keymap, "NODE_OT_resize", LEFTMOUSE, KM_PRESS, 0, 0);
 	
 	WM_keymap_add_item(keymap, "NODE_OT_add_reroute", LEFTMOUSE, KM_PRESS, KM_SHIFT, 0);
@@ -327,9 +297,14 @@ void node_keymap(struct wmKeyConfig *keyconf)
 	
 	WM_keymap_add_item(keymap, "NODE_OT_find_node", FKEY, KM_PRESS, KM_CTRL, 0);
 	
-	node_group_operators(keymap, "ShaderNodeGroup");
-	node_group_operators(keymap, "CompositorNodeGroup");
-	node_group_operators(keymap, "TextureNodeGroup");
+	/* node group operators */
+	WM_keymap_add_item(keymap, "NODE_OT_group_make", GKEY, KM_PRESS, KM_CTRL, 0);
+	WM_keymap_add_item(keymap, "NODE_OT_group_ungroup", GKEY, KM_PRESS, KM_ALT, 0);
+	WM_keymap_add_item(keymap, "NODE_OT_group_separate", PKEY, KM_PRESS, 0, 0);
+	kmi = WM_keymap_add_item(keymap, "NODE_OT_group_edit", TABKEY, KM_PRESS, 0, 0);
+	RNA_boolean_set(kmi->ptr, "exit", FALSE);
+	kmi = WM_keymap_add_item(keymap, "NODE_OT_group_edit", TABKEY, KM_PRESS, KM_SHIFT, 0);
+	RNA_boolean_set(kmi->ptr, "exit", TRUE);
 
 	WM_keymap_add_item(keymap, "NODE_OT_read_renderlayers", RKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "NODE_OT_read_fullsamplelayers", RKEY, KM_PRESS, KM_SHIFT, 0);
@@ -337,7 +312,10 @@ void node_keymap(struct wmKeyConfig *keyconf)
 	
 	WM_keymap_add_item(keymap, "NODE_OT_clipboard_copy", CKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "NODE_OT_clipboard_paste", VKEY, KM_PRESS, KM_CTRL, 0);
-	
+#ifdef __APPLE__
+	WM_keymap_add_item(keymap, "NODE_OT_clipboard_copy", CKEY, KM_PRESS, KM_OSKEY, 0);
+	WM_keymap_add_item(keymap, "NODE_OT_clipboard_paste", VKEY, KM_PRESS, KM_OSKEY, 0);
+#endif
 	WM_keymap_add_item(keymap, "NODE_OT_viewer_border", BKEY, KM_PRESS, KM_CTRL, 0);
 
 	transform_keymap_for_space(keyconf, keymap, SPACE_NODE);

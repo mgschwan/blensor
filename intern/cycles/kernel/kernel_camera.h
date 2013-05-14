@@ -76,8 +76,7 @@ __device void camera_sample_perspective(KernelGlobals *kg, float raster_x, float
 	/* ray differential */
 	float3 Ddiff = transform_direction(&cameratoworld, Pcamera);
 
-	ray->dP.dx = make_float3(0.0f, 0.0f, 0.0f);
-	ray->dP.dy = make_float3(0.0f, 0.0f, 0.0f);
+	ray->dP = differential3_zero();
 
 	ray->dD.dx = normalize(Ddiff + float4_to_float3(kernel_data.cam.dx)) - normalize(Ddiff);
 	ray->dD.dy = normalize(Ddiff + float4_to_float3(kernel_data.cam.dy)) - normalize(Ddiff);
@@ -110,8 +109,7 @@ __device void camera_sample_orthographic(KernelGlobals *kg, float raster_x, floa
 		float2 lensuv = camera_sample_aperture(kg, lens_u, lens_v)*aperturesize;
 
 		/* compute point on plane of focus */
-		float ft = kernel_data.cam.focaldistance/ray->D.z;
-		float3 Pfocus = ray->D*ft;
+		float3 Pfocus = ray->D * kernel_data.cam.focaldistance;
 
 		/* update ray for effect of lens */
 		float3 lensuvw = make_float3(lensuv.x, lensuv.y, 0.0f);
@@ -138,8 +136,7 @@ __device void camera_sample_orthographic(KernelGlobals *kg, float raster_x, floa
 	ray->dP.dx = float4_to_float3(kernel_data.cam.dx);
 	ray->dP.dy = float4_to_float3(kernel_data.cam.dy);
 
-	ray->dD.dx = make_float3(0.0f, 0.0f, 0.0f);
-	ray->dD.dy = make_float3(0.0f, 0.0f, 0.0f);
+	ray->dD = differential3_zero();
 #endif
 
 #ifdef __CAMERA_CLIPPING__
@@ -209,8 +206,7 @@ __device void camera_sample_panorama(KernelGlobals *kg, float raster_x, float ra
 
 #ifdef __RAY_DIFFERENTIALS__
 	/* ray differential */
-	ray->dP.dx = make_float3(0.0f, 0.0f, 0.0f);
-	ray->dP.dy = make_float3(0.0f, 0.0f, 0.0f);
+	ray->dP = differential3_zero();
 
 	Pcamera = transform_perspective(&rastertocamera, make_float3(raster_x + 1.0f, raster_y, 0.0f));
 	ray->dD.dx = normalize(transform_direction(&cameratoworld, panorama_to_direction(kg, Pcamera.x, Pcamera.y))) - ray->D;

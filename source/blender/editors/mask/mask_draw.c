@@ -123,7 +123,7 @@ static void draw_spline_parents(MaskLayer *UNUSED(masklay), MaskSpline *spline)
 }
 #endif
 
-static void mask_point_undistort_pos(SpaceClip *sc, float r_co[2], float co[2])
+static void mask_point_undistort_pos(SpaceClip *sc, float r_co[2], const float co[2])
 {
 	BKE_mask_coord_to_movieclip(sc->clip, &sc->user, r_co, co);
 	ED_clip_point_undistorted_pos(sc, r_co, r_co);
@@ -417,10 +417,10 @@ static void draw_spline_curve(const bContext *C, MaskLayer *masklay, MaskSpline 
 	const short is_smooth = (draw_flag & MASK_DRAWFLAG_SMOOTH);
 	const short is_fill = (spline->flag & MASK_SPLINE_NOFILL) == 0;
 
-	int tot_diff_point;
+	unsigned int tot_diff_point;
 	float (*diff_points)[2];
 
-	int tot_feather_point;
+	unsigned int tot_feather_point;
 	float (*feather_points)[2];
 
 	diff_points = BKE_mask_spline_differentiate_with_resolution_ex(spline, &tot_diff_point, resol);
@@ -541,7 +541,7 @@ void ED_mask_draw_region(Mask *mask, ARegion *ar,
                          const char draw_flag, const char draw_type,
                          const int width_i, const int height_i,  /* convert directly into aspect corrected vars */
                          const float aspx, const float aspy,
-                         const short do_scale_applied, const short do_post_draw,
+                         const short do_scale_applied, const short do_draw_cb,
                          float stabmat[4][4], /* optional - only used by clip */
                          const bContext *C    /* optional - only used when do_post_draw is set or called from clip editor */
                          )
@@ -601,10 +601,14 @@ void ED_mask_draw_region(Mask *mask, ARegion *ar,
 		glMultMatrixf(stabmat);
 	}
 
+	if (do_draw_cb) {
+		ED_region_draw_cb_draw(C, ar, REGION_DRAW_PRE_VIEW);
+	}
+
 	/* draw! */
 	draw_masklays(C, mask, draw_flag, draw_type, width, height);
 
-	if (do_post_draw) {
+	if (do_draw_cb) {
 		ED_region_draw_cb_draw(C, ar, REGION_DRAW_POST_VIEW);
 	}
 

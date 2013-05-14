@@ -47,11 +47,25 @@
 static void (*BLI_localErrorCallBack)(const char *) = NULL;
 static int (*BLI_localInterruptCallBack)(void) = NULL;
 
+/**
+ * Set a function taking a (char *) as argument to flag errors. If the
+ * callback is not set, the error is discarded.
+ * \param f The function to use as callback
+ * \attention used in creator.c
+ */
 void BLI_setErrorCallBack(void (*f)(const char *))
 {
 	BLI_localErrorCallBack = f;
 }
 
+/**
+ * Set a function to be able to interrupt the execution of processing
+ * in this module. If the function returns true, the execution will
+ * terminate gracefully. If the callback is not set, interruption is
+ * not possible.
+ * \param f The function to use as callback
+ * \attention used in creator.c
+ */
 void BLI_setInterruptCallBack(int (*f)(void))
 {
 	BLI_localInterruptCallBack = f;
@@ -442,13 +456,13 @@ static void testvertexnearedge(ScanFillContext *sf_ctx)
 
 			for (eed = sf_ctx->filledgebase.first; eed; eed = eed->next) {
 				if (eve != eed->v1 && eve != eed->v2 && eve->poly_nr == eed->poly_nr) {
-					if (compare_v3v3(eve->co, eed->v1->co, SF_EPSILON)) {
+					if (compare_v2v2(eve->xy, eed->v1->xy, SF_EPSILON)) {
 						ed1->v2 = eed->v1;
 						eed->v1->edge_tot++;
 						eve->edge_tot = 0;
 						break;
 					}
-					else if (compare_v3v3(eve->co, eed->v2->co, SF_EPSILON)) {
+					else if (compare_v2v2(eve->xy, eed->v2->xy, SF_EPSILON)) {
 						ed1->v2 = eed->v2;
 						eed->v2->edge_tot++;
 						eve->edge_tot = 0;
@@ -718,11 +732,11 @@ static int scanfill(ScanFillContext *sf_ctx, PolyFill *pf, const int flag)
 										
 										/* prevent angle calc for the simple cases only 1 vertex is found */
 										if (firsttime == false) {
-											best_angle = angle_v2v2v2(v2->co, v1->co, best_sc->vert->co);
+											best_angle = angle_v2v2v2(v2->xy, v1->xy, best_sc->vert->xy);
 											firsttime = true;
 										}
 
-										angle = angle_v2v2v2(v2->co, v1->co, sc1->vert->co);
+										angle = angle_v2v2v2(v2->xy, v1->xy, sc1->vert->xy);
 										if (angle < best_angle) {
 											best_sc = sc1;
 											best_angle = angle;
@@ -826,11 +840,9 @@ static int scanfill(ScanFillContext *sf_ctx, PolyFill *pf, const int flag)
 }
 
 
-int BLI_scanfill_begin(ScanFillContext *sf_ctx)
+void BLI_scanfill_begin(ScanFillContext *sf_ctx)
 {
 	memset(sf_ctx, 0, sizeof(*sf_ctx));
-
-	return 1;
 }
 
 int BLI_scanfill_calc(ScanFillContext *sf_ctx, const int flag)
@@ -855,7 +867,7 @@ int BLI_scanfill_calc_ex(ScanFillContext *sf_ctx, const int flag, const float no
 	float *min_xy_p, *max_xy_p;
 	short a, c, poly = 0, ok = 0, toggle = 0;
 	int totfaces = 0; /* total faces added */
-	int co_x, co_y;
+	float mat_2d[3][3];
 
 	/* reset variables */
 	eve = sf_ctx->fillvertbase.first;
@@ -948,7 +960,7 @@ int BLI_scanfill_calc_ex(ScanFillContext *sf_ctx, const int flag, const float no
 			return 0;
 		}
 
-		axis_dominant_v3(&co_x, &co_y, n);
+		axis_dominant_v3_to_m3(mat_2d, n);
 	}
 
 
@@ -956,8 +968,7 @@ int BLI_scanfill_calc_ex(ScanFillContext *sf_ctx, const int flag, const float no
 	if (flag & BLI_SCANFILL_CALC_HOLES) {
 		eve = sf_ctx->fillvertbase.first;
 		while (eve) {
-			eve->xy[0] = eve->co[co_x];
-			eve->xy[1] = eve->co[co_y];
+			mul_v2_m3v3(eve->xy, mat_2d, eve->co);
 
 			/* get first vertex with no poly number */
 			if (eve->poly_nr == 0) {
@@ -1004,8 +1015,7 @@ int BLI_scanfill_calc_ex(ScanFillContext *sf_ctx, const int flag, const float no
 
 		eve = sf_ctx->fillvertbase.first;
 		while (eve) {
-			eve->xy[0] = eve->co[co_x];
-			eve->xy[1] = eve->co[co_y];
+			mul_v2_m3v3(eve->xy, mat_2d, eve->co);
 			eve->poly_nr = poly;
 			eve = eve->next;
 		}

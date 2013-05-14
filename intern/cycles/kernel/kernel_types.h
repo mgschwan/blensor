@@ -51,7 +51,6 @@ CCL_NAMESPACE_BEGIN
 #define __KERNEL_SHADING__
 #define __KERNEL_ADV_SHADING__
 #define __NON_PROGRESSIVE__
-#define __HAIR__
 #ifdef WITH_OSL
 #define __OSL__
 #endif
@@ -73,12 +72,8 @@ CCL_NAMESPACE_BEGIN
 #endif
 
 #ifdef __KERNEL_OPENCL_APPLE__
-//#define __SVM__
-//#define __EMISSION__
-//#define __IMAGE_TEXTURES__
-//#define __HOLDOUT__
-//#define __PROCEDURAL_TEXTURES__
-//#define __EXTRA_NODES__
+#define __KERNEL_SHADING__
+//#define __KERNEL_ADV_SHADING__
 #endif
 
 #ifdef __KERNEL_OPENCL_AMD__
@@ -125,6 +120,7 @@ CCL_NAMESPACE_BEGIN
 #define __ANISOTROPIC__
 #define __CAMERA_MOTION__
 #define __OBJECT_MOTION__
+#define __HAIR__
 #endif
 //#define __SOBOL_FULL_SCREEN__
 
@@ -183,6 +179,9 @@ enum PathRayFlag {
 	PATH_RAY_MIS_SKIP = 512,
 
 	PATH_RAY_ALL = (1|2|4|8|16|32|64|128|256|512),
+
+	/* visibility flag to define curve segments*/
+	PATH_RAY_CURVE = 1024,
 
 	/* this gives collisions with localview bits
 	 * see: CYCLES_LOCAL_LAYER_HACK(), grr - Campbell */
@@ -466,6 +465,8 @@ enum ShaderDataFlag {
 	SD_TRANSFORM_APPLIED = 32768 		/* vertices have transform applied */
 };
 
+struct KernelGlobals;
+
 typedef struct ShaderData {
 	/* position */
 	float3 P;
@@ -486,6 +487,9 @@ typedef struct ShaderData {
 #ifdef __HAIR__
 	/* for curves, segment number in curve, ~0 for triangles */
 	int segment;
+	/* variables for minimum hair width using transparency bsdf */
+	/*float curve_transparency; */
+	/*float curve_radius; */
 #endif
 	/* parametric coordinates
 	 * - barycentric weights for triangles */
@@ -529,6 +533,10 @@ typedef struct ShaderData {
 #else
 	/* Closure data, with a single sampled closure for low memory usage */
 	ShaderClosure closure;
+#endif
+
+#ifdef __OSL__
+	struct KernelGlobals *osl_globals;
 #endif
 } ShaderData;
 
@@ -575,6 +583,10 @@ typedef struct KernelCamera {
 
 	/* render size */
 	float width, height;
+	int resolution;
+	int pad1;
+	int pad2;
+	int pad3;
 
 	/* more matrices */
 	Transform screentoworld;
@@ -703,7 +715,10 @@ typedef struct KernelBVH {
 	int root;
 	int attributes_map_stride;
 	int have_motion;
-	int pad2;
+	int have_curves;
+	int have_instancing;
+
+	int pad1, pad2, pad3;
 } KernelBVH;
 
 typedef enum CurveFlag {
@@ -727,6 +742,12 @@ typedef struct KernelCurves {
 	float encasing_ratio;
 	int curveflags;
 	int subdivisions;
+
+	float minimum_width;
+	float maximum_width;
+	float curve_epsilon;
+	int pad1;
+
 } KernelCurves;
 
 typedef struct KernelBSSRDF {

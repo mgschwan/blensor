@@ -242,6 +242,10 @@ class VIEW3D_PT_tools_meshedit_options(View3DPanel, Panel):
         col.label("Double Threshold:")
         col.prop(tool_settings, "double_threshold", text="")
 
+        if mesh.show_weight:
+            col.label("Show Zero Weights:")
+            col.row().prop(tool_settings, "vertex_group_user", expand=True)
+
 # ********** default tools for editmode_curve ****************
 
 
@@ -660,17 +664,33 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
                 for md in ob.modifiers:
                     if md.type == 'MULTIRES':
                         do_persistent = False
+                        break
 
                 if do_persistent:
                     col.prop(brush, "use_persistent")
                     col.operator("sculpt.set_persistent_base")
 
+            col = layout.column(align=True)
+            col.label(text="Overlay:")
+
+            row = col.row()
+            if brush.use_cursor_overlay:
+                row.prop(brush, "use_cursor_overlay", toggle=True, text="", icon='RESTRICT_VIEW_OFF')
+            else:
+                row.prop(brush, "use_cursor_overlay", toggle=True, text="", icon='RESTRICT_VIEW_ON')
+        
+            sub = row.row()
+            sub.prop(brush, "cursor_overlay_alpha", text="Alpha")
+            sub.prop(brush, "use_cursor_overlay_override", toggle=True, text="", icon='BRUSH_DATA')
+
         # Texture Paint Mode #
 
         elif context.image_paint_object and brush:
             col = layout.column()
-            col.template_color_picker(brush, "color", value_slider=True)
-            col.prop(brush, "color", text="")
+
+            if brush.image_tool == 'DRAW' and brush.blend not in ('ERASE_ALPHA', 'ADD_ALPHA'):
+                col.template_color_picker(brush, "color", value_slider=True)
+                col.prop(brush, "color", text="")
 
             row = col.row(align=True)
             self.prop_unified_size(row, context, brush, "size", slider=True, text="Radius")
@@ -687,6 +707,20 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
             col = layout.column()
             col.active = (brush.blend not in {'ERASE_ALPHA', 'ADD_ALPHA'})
             col.prop(brush, "use_alpha")
+
+            col = layout.column(align=True)
+            col.label(text="Overlay:")
+
+            row = col.row()            
+            if brush.use_cursor_overlay:
+                row.prop(brush, "use_cursor_overlay", toggle=True, text="", icon='RESTRICT_VIEW_OFF')
+            else:
+                row.prop(brush, "use_cursor_overlay", toggle=True, text="", icon='RESTRICT_VIEW_ON')
+        
+            sub = row.row()
+            sub.prop(brush, "cursor_overlay_alpha", text="Alpha")
+            sub.prop(brush, "use_cursor_overlay_override", toggle=True, text="", icon='BRUSH_DATA')
+
 
         # Weight Paint Mode #
         elif context.weight_paint_object and brush:
@@ -731,6 +765,19 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
 
             col.prop(brush, "vertex_tool", text="Blend")
 
+            col = layout.column(align=True)
+            col.label(text="Overlay:")
+
+            row = col.row()
+            if brush.use_cursor_overlay:
+                row.prop(brush, "use_cursor_overlay", toggle=True, text="", icon='RESTRICT_VIEW_OFF')
+            else:
+                row.prop(brush, "use_cursor_overlay", toggle=True, text="", icon='RESTRICT_VIEW_ON')
+        
+            sub = row.row()
+            sub.prop(brush, "cursor_overlay_alpha", text="Alpha")
+            sub.prop(brush, "use_cursor_overlay_override", toggle=True, text="", icon='BRUSH_DATA')
+
 
 class VIEW3D_PT_tools_brush_texture(Panel, View3DPaintPanel):
     bl_label = "Texture"
@@ -762,13 +809,14 @@ class VIEW3D_PT_tools_brush_texture(Panel, View3DPaintPanel):
 
         row = col.row()
         if tex_slot.map_mode != 'STENCIL':
-            if brush.use_texture_overlay:
-                row.prop(brush, "use_texture_overlay", toggle=True, text="", icon='RESTRICT_VIEW_OFF')
+            if brush.use_primary_overlay:
+                row.prop(brush, "use_primary_overlay", toggle=True, text="", icon='RESTRICT_VIEW_OFF')
             else:
-                row.prop(brush, "use_texture_overlay", toggle=True, text="", icon='RESTRICT_VIEW_ON')
+                row.prop(brush, "use_primary_overlay", toggle=True, text="", icon='RESTRICT_VIEW_ON')
         
         sub = row.row()
         sub.prop(brush, "texture_overlay_alpha", text="Alpha")
+        sub.prop(brush, "use_primary_overlay_override", toggle=True, text="", icon='BRUSH_DATA')
 
 
 class VIEW3D_PT_tools_mask_texture(View3DPanel, Panel):
@@ -779,7 +827,7 @@ class VIEW3D_PT_tools_mask_texture(View3DPanel, Panel):
     @classmethod
     def poll(cls, context):
         brush = context.tool_settings.image_paint.brush
-        return (context.image_paint_object and brush and brush.image_tool != 'SOFTEN')
+        return (context.image_paint_object and brush)
 
     def draw(self, context):
         layout = self.layout
@@ -792,6 +840,21 @@ class VIEW3D_PT_tools_mask_texture(View3DPanel, Panel):
         col.template_ID_preview(brush, "mask_texture", new="texture.new", rows=3, cols=8)
 
         brush_mask_texture_settings(col, brush)
+ 
+        col = layout.column(align=True)
+        col.active = brush.brush_capabilities.has_overlay
+        col.label(text="Overlay:")
+
+        row = col.row()
+        if tex_slot_alpha.map_mode != 'STENCIL':
+            if brush.use_secondary_overlay:
+                row.prop(brush, "use_secondary_overlay", toggle=True, text="", icon='RESTRICT_VIEW_OFF')
+            else:
+                row.prop(brush, "use_secondary_overlay", toggle=True, text="", icon='RESTRICT_VIEW_ON')
+        
+        sub = row.row()
+        sub.prop(brush, "mask_overlay_alpha", text="Alpha")
+        sub.prop(brush, "use_secondary_overlay_override", toggle=True, text="", icon='BRUSH_DATA')
 
 
 class VIEW3D_PT_tools_brush_stroke(Panel, View3DPaintPanel):
@@ -962,7 +1025,6 @@ class VIEW3D_PT_sculpt_options(Panel, View3DPaintPanel):
 
         layout.prop(sculpt, "use_threaded", text="Threaded Sculpt")
         layout.prop(sculpt, "show_low_resolution")
-        layout.prop(sculpt, "show_brush")
         layout.prop(sculpt, "use_deform_only")
         layout.prop(sculpt, "show_diffuse_color")
 
@@ -1018,15 +1080,21 @@ class VIEW3D_PT_tools_brush_appearance(Panel, View3DPaintPanel):
             return
 
         col = layout.column()
+        col.prop(settings, "show_brush");
+
+        col = col.column()
+        col.active = settings.show_brush
 
         if context.sculpt_object and context.tool_settings.sculpt:
             if brush.sculpt_capabilities.has_secondary_color:
-                col.prop(brush, "cursor_color_add", text="Add Color")
-                col.prop(brush, "cursor_color_subtract", text="Subtract Color")
+                col.row().prop(brush, "cursor_color_add", text="Add")
+                col.row().prop(brush, "cursor_color_subtract", text="Subtract")
             else:
-                col.prop(brush, "cursor_color_add", text="Color")
+                col.prop(brush, "cursor_color_add", text="")
         else:
-            col.prop(brush, "cursor_color_add", text="Color")
+            col.prop(brush, "cursor_color_add", text="")
+
+        layout.separator()
 
         col = layout.column(align=True)
         col.prop(brush, "use_custom_icon")
@@ -1086,20 +1154,11 @@ class VIEW3D_PT_tools_weightpaint_options(Panel, View3DPaintPanel):
         col.prop(wpaint, "input_samples")
 
         col.label("Show Zero Weights:")
-        rowsub = col.row()
-        rowsub.active = (not tool_settings.use_multipaint)
-        rowsub.prop(tool_settings, "vertex_group_user", expand=True)
+        sub = col.row()
+        sub.active = (not tool_settings.use_multipaint)
+        sub.prop(tool_settings, "vertex_group_user", expand=True)
 
         self.unified_paint_settings(col, context)
-
-# Commented out because the Apply button isn't an operator yet, making these settings useless
-#~         col.label(text="Gamma:")
-#~         col.prop(wpaint, "gamma", text="")
-#~         col.label(text="Multiply:")
-#~         col.prop(wpaint, "mul", text="")
-
-# Also missing now:
-# Soft, Vertex-Group, X-Mirror and "Clear" Operator.
 
 # ********** default tools for vertex-paint ****************
 

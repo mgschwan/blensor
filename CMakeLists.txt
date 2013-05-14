@@ -270,6 +270,8 @@ unset(PLATFORM_DEFAULT)
 
 # LLVM
 option(WITH_LLVM					"Use LLVM" OFF)
+option(LLVM_STATIC					"Link with LLVM static libraries" ON)
+mark_as_advanced(LLVM_STATIC)
 
 # disable for now, but plan to support on all platforms eventually
 option(WITH_MEM_JEMALLOC   "Enable malloc replacement (http://www.canonware.com/jemalloc)" OFF)
@@ -278,6 +280,9 @@ mark_as_advanced(WITH_MEM_JEMALLOC)
 # Debug
 option(WITH_CXX_GUARDEDALLOC "Enable GuardedAlloc for C++ memory allocation tracking (only enable for development)" OFF)
 mark_as_advanced(WITH_CXX_GUARDEDALLOC)
+
+option(WITH_GUARDEDALLOC "Enable GuardedAlloc (DISABLE AT OWN RISK!)" ON)
+mark_as_advanced(WITH_GUARDEDALLOC)
 
 option(WITH_ASSERT_ABORT "Call abort() when raising an assertion through BLI_assert()" OFF)
 mark_as_advanced(WITH_ASSERT_ABORT)
@@ -415,13 +420,21 @@ endif()
 # otherwise if the user disabled
 if(NOT WITH_BOOST)
 	# Explicitly disabled. so disable all deps.
-	set(WITH_CYCLES         OFF)
-	set(WITH_MOD_BOOLEAN    OFF)
-	set(WITH_AUDASPACE      OFF)
-	set(WITH_INTERNATIONAL  OFF)
+	macro(set_and_warn
+		_setting _val)
+		if(${${_setting}})
+			message(STATUS "'WITH_BOOST' is disabled: forceing 'set(${_setting} ${_val})'")
+		endif()
+		set(${_setting} ${_val})
+	endmacro()
 
-	set(WITH_OPENAL         OFF)  # depends on AUDASPACE
-	set(WITH_GAMEENGINE     OFF)  # depends on AUDASPACE
+	set_and_warn(WITH_CYCLES         OFF)
+	set_and_warn(WITH_MOD_BOOLEAN    OFF)
+	set_and_warn(WITH_AUDASPACE      OFF)
+	set_and_warn(WITH_INTERNATIONAL  OFF)
+
+	set_and_warn(WITH_OPENAL         OFF)  # depends on AUDASPACE
+	set_and_warn(WITH_GAMEENGINE     OFF)  # depends on AUDASPACE
 elseif(WITH_CYCLES OR WITH_MOD_BOOLEAN OR WITH_AUDASPACE OR WITH_INTERNATIONAL)
 	# Keep enabled
 else()
@@ -755,7 +768,7 @@ if(UNIX AND NOT APPLE)
 		if(NOT LLVM_VERSION)
 			set(LLVM_VERSION "3.0")
 		endif()
-		set(LLVM_STATIC YES)
+
 		if(LLVM_DIRECTORY)
 			FIND_PROGRAM(LLVM_CONFIG llvm-config-${LLVM_VERSION} HINTS ${LLVM_DIRECTORY}/bin NO_CMAKE_PATH)
 			if(NOT LLVM_CONFIG)
@@ -776,9 +789,17 @@ if(UNIX AND NOT APPLE)
 		execute_process(COMMAND ${LLVM_CONFIG} --libdir
 		                OUTPUT_VARIABLE LLVM_LIB_DIR
 		                OUTPUT_STRIP_TRAILING_WHITESPACE)
-		find_library(LLVM_LIBRARY
-		             NAMES LLVMAnalysis # first of a whole bunch of libs to get
-		             PATHS ${LLVM_LIB_DIR})
+
+		if(LLVM_STATIC)
+			find_library(LLVM_LIBRARY
+			             NAMES LLVMAnalysis # first of a whole bunch of libs to get
+			             PATHS ${LLVM_LIB_DIR})
+		else()
+			find_library(LLVM_LIBRARY
+			             NAMES LLVM-${LLVM_VERSION}
+			             PATHS ${LLVM_LIB_DIR})
+		endif()
+
 		message(STATUS "LLVM version  = ${LLVM_VERSION}")
 		message(STATUS "LLVM dir      = ${LLVM_DIRECTORY}")
 		message(STATUS "LLVM lib dir  = ${LLVM_LIB_DIR}")
@@ -1205,7 +1226,6 @@ elseif(WIN32)
 		if(WITH_LLVM)
 			set(LLVM_DIRECTORY ${LIBDIR}/llvm CACHE PATH	"Path to the LLVM installation")
 			file(GLOB LLVM_LIBRARY ${LLVM_DIRECTORY}/lib/*.lib)
-			set(LLVM_STATIC YES)
 		endif()
 	
 		if(WITH_OPENCOLORIO)
@@ -1237,10 +1257,6 @@ elseif(WIN32)
 		set(PLATFORM_CFLAGS "-pipe -funsigned-char -fno-strict-aliasing")
 
 		if(WITH_MINGW64)
-			#We need to take care though not to have these on debug builds because they may play funky with gdb
-			if(CMAKE_BUILD_TYPE MATCHES "Release")
-				set(PLATFORM_CFLAGS "${PLATFORM_CFLAGS} -mmmx -ftree-vectorize")
-			endif()
 			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")
 			set(PLATFORM_LINKLIBS "${PLATFORM_LINKLIBS} -lpthread")
 			
@@ -1414,7 +1430,6 @@ elseif(WIN32)
 				LLVMipo LLVMCore)
 			#imagehelp is needed by LLVM 3.1 on MinGW, check lib\Support\Windows\Signals.inc
 			set(PLATFORM_LINKLIBS "${PLATFORM_LINKLIBS} -limagehlp")
-			set(LLVM_STATIC YES)
 		endif()
 		
 		if(WITH_OPENCOLORIO)
@@ -1674,7 +1689,6 @@ elseif(APPLE)
 	if(WITH_LLVM)
 		set(LLVM_DIRECTORY ${LIBDIR}/llvm CACHE PATH	"Path to the LLVM installation")
 		set(LLVM_VERSION "3.1" CACHE STRING	"Version of LLVM to use")
-		set(LLVM_STATIC YES)
 		if(EXISTS "${LLVM_DIRECTORY}/bin/llvm-config")
 			set(LLVM_CONFIG "${LLVM_DIRECTORY}/bin/llvm-config")
 		else()

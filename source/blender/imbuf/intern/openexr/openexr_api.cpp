@@ -304,8 +304,8 @@ static void openexr_header_metadata(Header *header, struct ImBuf *ibuf)
 	for (info = ibuf->metadata; info; info = info->next)
 		header->insert(info->key, StringAttribute(info->value));
 
-	if (ibuf->ppm[0] > 0.0f)
-		addXDensity(*header, ibuf->ppm[0] / 39.3700787f); /* 1 meter = 39.3700787 inches */
+	if (ibuf->ppm[0] > 0.0)
+		addXDensity(*header, ibuf->ppm[0] / 39.3700787); /* 1 meter = 39.3700787 inches */
 }
 
 static int imb_save_openexr_half(struct ImBuf *ibuf, const char *name, int flags)
@@ -393,7 +393,6 @@ static int imb_save_openexr_half(struct ImBuf *ibuf, const char *name, int flags
 	catch (const std::exception &exc)
 	{
 		printf("OpenEXR-save: ERROR: %s\n", exc.what());
-		if (ibuf) IMB_freeImBuf(ibuf);
 
 		return (0);
 	}
@@ -454,7 +453,6 @@ static int imb_save_openexr_float(struct ImBuf *ibuf, const char *name, int flag
 	catch (const std::exception &exc)
 	{
 		printf("OpenEXR-save: ERROR: %s\n", exc.what());
-		if (ibuf) IMB_freeImBuf(ibuf);
 
 		return (0);
 	}
@@ -1169,7 +1167,7 @@ struct ImBuf *imb_load_openexr(unsigned char *mem, size_t size, int flags, char 
 
 			if (hasXDensity(file->header())) {
 				ibuf->ppm[0] = xDensity(file->header()) * 39.3700787f;
-				ibuf->ppm[1] = ibuf->ppm[0] * file->header().pixelAspectRatio();
+				ibuf->ppm[1] = ibuf->ppm[0] * (double)file->header().pixelAspectRatio();
 			}
 
 			ibuf->ftype = OPENEXR;

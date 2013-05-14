@@ -31,27 +31,26 @@
  *  \ingroup bli
  */
 
-
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #ifndef WIN32
-#include <dirent.h>
+#  include <dirent.h>
 #endif
 
 #include <time.h>
 #include <sys/stat.h>
 
 #if defined(__sun__) || defined(__sun) || defined(__NetBSD__)
-#include <sys/statvfs.h> /* Other modern unix os's should probably use this also */
+#  include <sys/statvfs.h> /* Other modern unix os's should probably use this also */
 #elif !defined(__FreeBSD__) && !defined(linux) && (defined(__sparc) || defined(__sparc__))
-#include <sys/statfs.h>
+#  include <sys/statfs.h>
 #endif
 
-#if defined(__FreeBSD__) || defined(__OpenBSD__)
-#include <sys/param.h>
-#include <sys/mount.h>
+#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#  include <sys/param.h>
+#  include <sys/mount.h>
 #endif
 
 #if defined(linux) || defined(__CYGWIN32__) || defined(__hpux) || defined(__GNU__) || defined(__GLIBC__)
@@ -59,9 +58,9 @@
 #endif
 
 #ifdef __APPLE__
-/* For statfs */
-#include <sys/param.h>
-#include <sys/mount.h>
+   /* For statfs */
+#  include <sys/param.h>
+#  include <sys/mount.h>
 #endif /* __APPLE__ */
 
 
@@ -311,16 +310,14 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
  */
 static void bli_adddirstrings(struct BuildDirCtx *dir_ctx)
 {
-	char datum[100];
-//	char buf[512];  // UNUSED
-	char size[250];
 	const char *types[8] = {"---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"};
 	/* symbolic display, indexed by mode field value */
-	int num, mode;
+	int num;
 #ifdef WIN32
 	__int64 st_size;
 #else
 	off_t st_size;
+	int mode;
 #endif
 	
 	struct direntry *file;
@@ -328,8 +325,10 @@ static void bli_adddirstrings(struct BuildDirCtx *dir_ctx)
 	time_t zero = 0;
 	
 	for (num = 0, file = dir_ctx->files; num < dir_ctx->nrfiles; num++, file++) {
+
+
+		/* Mode */
 #ifdef WIN32
-		mode = 0;
 		BLI_strncpy(file->mode1, types[0], sizeof(file->mode1));
 		BLI_strncpy(file->mode2, types[0], sizeof(file->mode2));
 		BLI_strncpy(file->mode3, types[0], sizeof(file->mode3));
@@ -355,6 +354,8 @@ static void bli_adddirstrings(struct BuildDirCtx *dir_ctx)
 		}
 #endif
 
+
+		/* User */
 #ifdef WIN32
 		strcpy(file->owner, "user");
 #else
@@ -370,12 +371,16 @@ static void bli_adddirstrings(struct BuildDirCtx *dir_ctx)
 		}
 #endif
 
+
+		/* Time */
 		tm = localtime(&file->s.st_mtime);
 		// prevent impossible dates in windows
 		if (tm == NULL) tm = localtime(&zero);
 		strftime(file->time, sizeof(file->time), "%H:%M", tm);
 		strftime(file->date, sizeof(file->date), "%d-%b-%y", tm);
 
+
+		/* Size */
 		/*
 		 * Seems st_size is signed 32-bit value in *nix and Windows.  This
 		 * will buy us some time until files get bigger than 4GB or until
@@ -398,32 +403,6 @@ static void bli_adddirstrings(struct BuildDirCtx *dir_ctx)
 		else {
 			BLI_snprintf(file->size, sizeof(file->size), "%d B", (int)st_size);
 		}
-
-		strftime(datum, 32, "%d-%b-%y %H:%M", tm); /* XXX, is this used? - campbell */
-
-		if (st_size < 1000) {
-			BLI_snprintf(size, sizeof(size), "%10d",
-			             (int) st_size);
-		}
-		else if (st_size < 1000 * 1000) {
-			BLI_snprintf(size, sizeof(size), "%6d %03d",
-			             (int) (st_size / 1000), (int) (st_size % 1000));
-		}
-		else if (st_size < 100 * 1000 * 1000) {
-			BLI_snprintf(size, sizeof(size), "%2d %03d %03d",
-			             (int) (st_size / (1000 * 1000)), (int) ((st_size / 1000) % 1000), (int) (st_size % 1000));
-		}
-		else {
-			/* XXX, whats going on here?. 2x calls - campbell */
-			BLI_snprintf(size, sizeof(size), "> %4.1f M", (double) (st_size / (1024.0 * 1024.0)));
-			BLI_snprintf(size, sizeof(size), "%10d", (int) st_size);
-		}
-
-#if 0
-		BLI_snprintf(buf, sizeof(buf), "%s %s %s %7s %s %s %10s %s",
-		             file->mode1, file->mode2, file->mode3, file->owner,
-		             file->date, file->time, size, file->relname);
-#endif
 	}
 }
 
@@ -512,13 +491,24 @@ int BLI_exists(const char *name)
 	 * don't mess with the argument name directly here - elubie */
 	wchar_t *tmp_16 = alloc_utf16_from_8(name, 0);
 	int len, res;
+	unsigned int old_error_mode;
+
 	len = wcslen(tmp_16);
-	if (len > 3 && (tmp_16[len - 1] == L'\\' || tmp_16[len - 1] == L'/') ) tmp_16[len - 1] = '\0';
+	if (len > 3 && (tmp_16[len - 1] == L'\\' || tmp_16[len - 1] == L'/') )
+		tmp_16[len - 1] = '\0';
+
+	/* change error mode so user does not get a "no disk in drive" popup
+	 * when looking for a file on an empty CD/DVD drive */
+	old_error_mode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+
 #ifndef __MINGW32__
 	res = _wstat(tmp_16, &st);
 #else
 	res = _wstati64(tmp_16, &st);
 #endif
+
+	SetErrorMode(old_error_mode);
+
 	free(tmp_16);
 	if (res == -1) return(0);
 #else
@@ -534,7 +524,14 @@ int BLI_stat(const char *path, struct stat *buffer)
 {
 	int r;
 	UTF16_ENCODE(path);
+
+	/* workaround error in MinGW64 headers, normally, a wstat should work */
+	#ifndef __MINGW64__
 	r = _wstat(path_16, buffer);
+	#else
+	r = _wstati64(path_16, buffer);
+	#endif
+
 	UTF16_UN_ENCODE(path);
 	return r;
 }
@@ -623,13 +620,23 @@ void BLI_file_free_lines(LinkNode *lines)
 bool BLI_file_older(const char *file1, const char *file2)
 {
 #ifdef WIN32
+#ifndef __MINGW32__
 	struct _stat st1, st2;
+#else
+	struct _stati64 st1, st2;
+#endif
 
 	UTF16_ENCODE(file1);
 	UTF16_ENCODE(file2);
 	
+#ifndef __MINGW32__
 	if (_wstat(file1_16, &st1)) return false;
 	if (_wstat(file2_16, &st2)) return false;
+#else
+	if (_wstati64(file1_16, &st1)) return false;
+	if (_wstati64(file2_16, &st2)) return false;
+#endif
+
 
 	UTF16_UN_ENCODE(file2);
 	UTF16_UN_ENCODE(file1);

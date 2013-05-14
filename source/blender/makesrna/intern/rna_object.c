@@ -42,7 +42,7 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_paint.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_group.h" /* needed for BKE_group_object_exists() */
 
 #include "RNA_access.h"
@@ -58,14 +58,14 @@
 #include "WM_types.h"
 
 EnumPropertyItem object_mode_items[] = {
-	{OB_MODE_OBJECT, "OBJECT", ICON_OBJECT_DATAMODE, "Object", ""},
-	{OB_MODE_EDIT, "EDIT", ICON_EDITMODE_HLT, "Edit", ""},
-	{OB_MODE_SCULPT, "SCULPT", ICON_SCULPTMODE_HLT, "Sculpt", ""},
+	{OB_MODE_OBJECT, "OBJECT", ICON_OBJECT_DATAMODE, "Object Mode", ""},
+	{OB_MODE_EDIT, "EDIT", ICON_EDITMODE_HLT, "Edit Mode", ""},
+	{OB_MODE_SCULPT, "SCULPT", ICON_SCULPTMODE_HLT, "Sculpt Mode", ""},
 	{OB_MODE_VERTEX_PAINT, "VERTEX_PAINT", ICON_VPAINT_HLT, "Vertex Paint", ""},
 	{OB_MODE_WEIGHT_PAINT, "WEIGHT_PAINT", ICON_WPAINT_HLT, "Weight Paint", ""},
 	{OB_MODE_TEXTURE_PAINT, "TEXTURE_PAINT", ICON_TPAINT_HLT, "Texture Paint", ""},
 	{OB_MODE_PARTICLE_EDIT, "PARTICLE_EDIT", ICON_PARTICLEMODE, "Particle Edit", ""},
-	{OB_MODE_POSE, "POSE", ICON_POSE_HLT, "Pose", ""},
+	{OB_MODE_POSE, "POSE", ICON_POSE_HLT, "Pose Mode", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -181,6 +181,7 @@ EnumPropertyItem object_axis_items[] = {
 #include "BKE_curve.h"
 #include "BKE_depsgraph.h"
 #include "BKE_effect.h"
+#include "BKE_global.h"
 #include "BKE_key.h"
 #include "BKE_object.h"
 #include "BKE_material.h"
@@ -275,7 +276,7 @@ static void rna_Object_active_shape_update(Main *bmain, Scene *scene, PointerRNA
 				EDBM_mesh_load(ob);
 				EDBM_mesh_make(scene->toolsettings, scene, ob);
 				EDBM_mesh_normals_update(((Mesh *)ob->data)->edit_btmesh);
-				BMEdit_RecalcTessellation(((Mesh *)ob->data)->edit_btmesh);
+				BKE_editmesh_tessface_calc(((Mesh *)ob->data)->edit_btmesh);
 				break;
 			case OB_CURVE:
 			case OB_SURF:
@@ -396,7 +397,7 @@ static void rna_Object_data_set(PointerRNA *ptr, PointerRNA value)
 		}
 
 		ob->data = id;
-		test_object_materials(id);
+		test_object_materials(G.main, id);
 
 		if (GS(id->name) == ID_CU)
 			BKE_curve_type_test(ob);
@@ -2478,11 +2479,11 @@ static void rna_def_object(BlenderRNA *brna)
 	RNA_def_property_update(prop, NC_OBJECT | ND_TRANSFORM, "rna_Object_internal_update");
 	
 	/* depsgraph hack */
-	prop = RNA_def_property(srna, "extra_recalc_object", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "use_extra_recalc_object", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "depsflag", OB_DEPS_EXTRA_OB_RECALC);
 	RNA_def_property_ui_text(prop, "Extra Object Update", "Refresh this object again on frame changes, dependency graph hack");
 	
-	prop = RNA_def_property(srna, "extra_recalc_data", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "use_extra_recalc_data", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "depsflag", OB_DEPS_EXTRA_DATA_RECALC);
 	RNA_def_property_ui_text(prop, "Extra Data Update", "Refresh this object's data again on frame changes, dependency graph hack");
 	

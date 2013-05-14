@@ -21,7 +21,7 @@ bl_info = {
     "name": "Enhanced 3D Cursor",
     "description": "Cursor history and bookmarks; drag/snap cursor.",
     "author": "dairin0d",
-    "version": (2, 8, 9),
+    "version": (2, 9, 0),
     "blender": (2, 65, 4),
     "location": "View3D > Action mouse; F10; Properties panel",
     "warning": "",
@@ -250,7 +250,8 @@ class EnhancedSetCursor(bpy.types.Operator):
         
         # Don't interfere with these modes when only mouse is pressed
         if ('SCULPT' in context.mode) or ('PAINT' in context.mode):
-            if "MOUSE" in event.type:                return {'CANCELLED'}
+            if "MOUSE" in event.type:
+                return {'CANCELLED'}
         
         CursorDynamicSettings.active_transform_operator = self
         
@@ -697,6 +698,8 @@ class EnhancedSetCursor(bpy.types.Operator):
         self.prev_delta_xy = delta_xy
     
     def transform_move(self, particle):
+        global set_cursor_location__reset_stick
+        
         src_matrix = particle.get_matrix()
         initial_matrix = particle.get_initial_matrix()
         
@@ -707,7 +710,9 @@ class EnhancedSetCursor(bpy.types.Operator):
             self.modify_surface_orientation,
             self.use_object_centers)
         
+        set_cursor_location__reset_stick = False
         particle.set_matrix(matrix)
+        set_cursor_location__reset_stick = True
     
     def rotate_matrix(self, matrix):
         sys_matrix = self.csu.get_matrix()
@@ -1230,7 +1235,7 @@ class EnhancedSetCursor(bpy.types.Operator):
                 text = axes_text[i]
                 coord_cells.append(TextCell(text, color))
         except Exception as e:
-            print(e)
+            print(repr(e))
         
         mode_cells = []
         
@@ -1261,7 +1266,7 @@ class EnhancedSetCursor(bpy.types.Operator):
                 color = tet.syntax_special
             mode_cells.append(TextCell(text, color))
         except Exception as e:
-            print(e)
+            print(repr(e))
         
         hdr_w, hdr_h = header_size
         
@@ -1379,7 +1384,7 @@ class EnhancedSetCursor(bpy.types.Operator):
             bgl.glEnd()
             
         except Exception as e:
-            print(e)
+            print(repr(e))
         
         return
     
@@ -2668,7 +2673,26 @@ class Snap3DUtility(SnapUtilityBase):
                 lb, la = sec
             
             # Does ray actually intersect something?
-            lp, ln, face_id = obj.ray_cast(la, lb)
+            try:
+                lp, ln, face_id = obj.ray_cast(la, lb)
+            except Exception as e:
+                # Somewhy this seems to happen when snapping cursor
+                # in Local View mode at least since r55223:
+                # <<Object "\U0010ffff" has no mesh data to be used
+                # for raycasting>> despite obj.data.polygons
+                # being non-empty.
+                try:
+                    # Work-around: in Local View at least the object
+                    # in focus permits raycasting (modifiers are
+                    # applied in 'PREVIEW' mode)
+                    lp, ln, face_id = orig_obj.ray_cast(la, lb)
+                except Exception as e:
+                    # However, in Edit mode in Local View we have
+                    # no luck -- during the edit mode, mesh is
+                    # inaccessible (thus no mesh data for raycasting).
+                    #print(repr(e))
+                    face_id = -1
+            
             if face_id == -1:
                 continue
             
@@ -2753,7 +2777,11 @@ class Snap3DUtility(SnapUtilityBase):
         
         _ln = ln.copy()
         
-        face = obj.data.tessfaces[face_id]
+        try:
+            face = obj.data.tessfaces[face_id]
+        except IndexError:
+            obj.data.update(calc_tessface=True)
+            face = obj.data.tessfaces[face_id]
         L = None
         t1 = None
         
@@ -3398,7 +3426,7 @@ class TransformExtraOptionsProp(bpy.types.PropertyGroup):
         description="Normal interpolation mode for snapping", 
         default='SMOOTH')
     snap_only_to_solid = bpy.props.BoolProperty(
-        name="Snap only to soild", 
+        name="Snap only to solid", 
         description="Ignore wireframe/non-solid objects during snapping", 
         default=False)
     snap_element_screen_size = bpy.props.IntProperty(
@@ -4502,14 +4530,14 @@ class CursorMonitor(bpy.types.Operator):
             return (not CursorMonitor.is_running) or \
                 (runtime_settings.current_monitor_id == 0)
         except Exception as e:
-            print("Cursor monitor exeption in poll:\n" + str(e))
+            print("Cursor monitor exeption in poll:\n" + repr(e))
             return False
     
     def modal(self, context, event):
         try:
             return self._modal(context, event)
         except Exception as e:
-            print("Cursor monitor exeption in modal:\n" + str(e))
+            print("Cursor monitor exeption in modal:\n" + repr(e))
             # Remove callbacks at any cost
             self.cancel(context)
             #raise
@@ -5207,10 +5235,14 @@ def draw_callback_px(self, context):
 
 # ===== UTILITY FUNCTIONS ===== #
 
+cursor_stick_pos_cache = None
 def update_stick_to_obj(context):
+    global cursor_stick_pos_cache
+    
     settings = find_settings()
     
     if not settings.stick_to_obj:
+        cursor_stick_pos_cache = None
         return
     
     scene = context.scene
@@ -5218,14 +5250,20 @@ def update_stick_to_obj(context):
     settings_scene = scene.cursor_3d_tools_settings
     
     name = settings_scene.stick_obj_name
+    if (not name) or (name not in scene.objects):
+        cursor_stick_pos_cache = None
+        return
     
-    try:
-        obj = scene.objects[name]
-        pos = settings_scene.stick_obj_pos
-        pos = obj.matrix_world * pos
+    obj = scene.objects[name]
+    pos = settings_scene.stick_obj_pos
+    pos = obj.matrix_world * pos
+    
+    if pos != cursor_stick_pos_cache:
+        cursor_stick_pos_cache = pos
+        
+        # THIS IS AN EXPENSIVE OPERATION!
+        # (eats 50% of my CPU if called each frame)
         context.space_data.cursor_location = pos
-    except Exception as e:
-        pass
 
 def get_cursor_location(v3d=None, scene=None):
     if v3d:
@@ -5235,6 +5273,7 @@ def get_cursor_location(v3d=None, scene=None):
     
     return pos.copy()
 
+set_cursor_location__reset_stick = True
 def set_cursor_location(pos, v3d=None, scene=None):
     pos = pos.to_3d().copy()
     
@@ -5247,7 +5286,8 @@ def set_cursor_location(pos, v3d=None, scene=None):
     elif scene:
         scene.cursor_location = pos
     
-    set_stick_obj(scene, None)
+    if set_cursor_location__reset_stick:
+        set_stick_obj(scene, None)
 
 def set_stick_obj(scene, name=None, pos=None):
     settings_scene = scene.cursor_3d_tools_settings
@@ -5500,5 +5540,5 @@ if __name__ == "__main__":
     try:
         register()
     except Exception as e:
-        print(e)
+        print(repr(e))
         raise

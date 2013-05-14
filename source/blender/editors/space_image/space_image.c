@@ -46,7 +46,7 @@
 #include "BKE_global.h"
 #include "BKE_scene.h"
 #include "BKE_screen.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_sequencer.h"
 #include "BKE_node.h"
 
@@ -398,16 +398,7 @@ static void image_refresh(const bContext *C, ScrArea *sa)
 		int selected = !(scene->toolsettings->uv_flag & UV_SYNC_SELECTION); /* only selected active face? */
 
 		if (BKE_scene_use_new_shading_nodes(scene)) {
-			/* new shading system, get image from material */
-			BMFace *efa = BM_active_face_get(em->bm, sloppy, selected);
-
-			if (efa) {
-				Image *node_ima;
-				ED_object_get_active_image(obedit, efa->mat_nr + 1, &node_ima, NULL, NULL);
-
-				if (node_ima)
-					sima->image = node_ima;
-			}
+			/* new shading system does not alter image */
 		}
 		else {
 			/* old shading system, we set texface */
@@ -667,6 +658,9 @@ static void image_main_area_draw(const bContext *C, ARegion *ar)
 
 	/* and uvs in 0.0-1.0 space */
 	UI_view2d_view_ortho(v2d);
+
+	ED_region_draw_cb_draw(C, ar, REGION_DRAW_PRE_VIEW);
+
 	draw_uvedit_main(sima, ar, scene, obedit, obact);
 
 	/* check for mask (delay draw) */

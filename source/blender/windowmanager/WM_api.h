@@ -63,6 +63,7 @@ struct wmDropBox;
 struct wmDrag;
 struct ImBuf;
 struct ImageFormatData;
+struct ARegion;
 
 typedef struct wmJob wmJob;
 
@@ -113,6 +114,7 @@ bool		WM_is_draw_triple(struct wmWindow *win);
 			/* files */
 void		WM_file_read(struct bContext *C, const char *filepath, struct ReportList *reports);
 void		WM_autosave_init(struct wmWindowManager *wm);
+void		WM_recover_last_session(struct bContext *C, struct ReportList *reports);
 
 			/* mouse cursors */
 void		WM_cursor_set		(struct wmWindow *win, int curs);
@@ -129,6 +131,7 @@ void		*WM_paint_cursor_activate(struct wmWindowManager *wm,
                                       void *customdata);
 
 void		WM_paint_cursor_end(struct wmWindowManager *wm, void *handle);
+void		WM_paint_cursor_tag_redraw(struct wmWindow *win, struct ARegion *ar);
 
 void		WM_cursor_warp		(struct wmWindow *win, int x, int y);
 float		WM_cursor_pressure	(const struct wmWindow *win);
@@ -202,10 +205,11 @@ int			WM_operator_confirm_message(struct bContext *C, struct wmOperator *op, con
 
 		/* operator api */
 void		WM_operator_free		(struct wmOperator *op);
+void		WM_operator_type_set(struct wmOperator *op, struct wmOperatorType *ot);
 void		WM_operator_stack_clear(struct wmWindowManager *wm);
 void		WM_operator_handlers_clear(wmWindowManager *wm, struct wmOperatorType *ot);
 
-struct wmOperatorType *WM_operatortype_find(const char *idnamem, bool quiet);
+struct wmOperatorType *WM_operatortype_find(const char *idname, bool quiet);
 struct GHashIterator  *WM_operatortype_iter(void);
 void		WM_operatortype_append(void (*opfunc)(struct wmOperatorType *));
 void		WM_operatortype_append_ptr(void (*opfunc)(struct wmOperatorType *, void *), void *userdata);

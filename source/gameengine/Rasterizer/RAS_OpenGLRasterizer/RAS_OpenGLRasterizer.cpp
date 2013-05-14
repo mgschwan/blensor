@@ -328,13 +328,13 @@ bool RAS_OpenGLRasterizer::BeginFrame(int drawingmode, double time)
 	// Blender camera routine destroys the settings
 	if (m_drawingmode < KX_SOLID)
 	{
-		glDisable (GL_CULL_FACE);
-		glDisable (GL_DEPTH_TEST);
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_DEPTH_TEST);
 	}
 	else
 	{
 		glEnable(GL_DEPTH_TEST);
-		glEnable (GL_CULL_FACE);
+		glEnable(GL_CULL_FACE);
 	}
 
 	glDisable(GL_BLEND);
@@ -1062,6 +1062,35 @@ void RAS_OpenGLRasterizer::SetAnisotropicFiltering(short level)
 short RAS_OpenGLRasterizer::GetAnisotropicFiltering()
 {
 	return (short)GPU_get_anisotropic();
+}
+
+void RAS_OpenGLRasterizer::SetMipmapping(MipmapOption val)
+{
+	if (val == RAS_IRasterizer::RAS_MIPMAP_LINEAR)
+	{
+		GPU_set_linear_mipmap(1);
+		GPU_set_mipmap(1);
+	}
+	else if (val == RAS_IRasterizer::RAS_MIPMAP_NEAREST)
+	{
+		GPU_set_linear_mipmap(0);
+		GPU_set_mipmap(1);
+	}
+	else
+	{
+		GPU_set_linear_mipmap(0);
+		GPU_set_mipmap(0);
+	}
+}
+
+RAS_IRasterizer::MipmapOption RAS_OpenGLRasterizer::GetMipmapping()
+{
+	if (GPU_get_linear_mipmap())
+		return RAS_IRasterizer::RAS_MIPMAP_LINEAR;
+	else if (GPU_get_mipmap())
+		return RAS_IRasterizer::RAS_MIPMAP_NEAREST;
+	else
+		return RAS_IRasterizer::RAS_MIPMAP_NONE;
 }
 
 void RAS_OpenGLRasterizer::SetUsingOverrideShader(bool val)

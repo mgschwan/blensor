@@ -997,19 +997,24 @@ static void view2d_map_cur_using_mask(View2D *v2d, rctf *curmasked)
 	*curmasked = v2d->cur;
 	
 	if (view2d_scroll_mapped(v2d->scroll)) {
-		float dx = BLI_rctf_size_x(&v2d->cur) / ((float)(BLI_rcti_size_x(&v2d->mask) + 1));
-		float dy = BLI_rctf_size_y(&v2d->cur) / ((float)(BLI_rcti_size_y(&v2d->mask) + 1));
+		float sizex = BLI_rcti_size_x(&v2d->mask);
+		float sizey = BLI_rcti_size_y(&v2d->mask);
 		
-		if (v2d->mask.xmin != 0)
-			curmasked->xmin -= dx * (float)v2d->mask.xmin;
-		if (v2d->mask.xmax + 1 != v2d->winx)
-			curmasked->xmax += dx * (float)(v2d->winx - v2d->mask.xmax - 1);
-		
-		if (v2d->mask.ymin != 0)
-			curmasked->ymin -= dy * (float)v2d->mask.ymin;
-		if (v2d->mask.ymax + 1 != v2d->winy)
-			curmasked->ymax += dy * (float)(v2d->winy - v2d->mask.ymax - 1);
-		
+		/* prevent tiny or narrow regions to get invalid coordinates - mask can get negative even... */
+		if (sizex > 0.0f && sizey > 0.0f) {
+			float dx = BLI_rctf_size_x(&v2d->cur) / (sizex + 1);
+			float dy = BLI_rctf_size_y(&v2d->cur) / (sizey + 1);
+			
+			if (v2d->mask.xmin != 0)
+				curmasked->xmin -= dx * (float)v2d->mask.xmin;
+			if (v2d->mask.xmax + 1 != v2d->winx)
+				curmasked->xmax += dx * (float)(v2d->winx - v2d->mask.xmax - 1);
+			
+			if (v2d->mask.ymin != 0)
+				curmasked->ymin -= dy * (float)v2d->mask.ymin;
+			if (v2d->mask.ymax + 1 != v2d->winy)
+				curmasked->ymax += dy * (float)(v2d->winy - v2d->mask.ymax - 1);
+		}
 	}
 }
 
@@ -1017,15 +1022,19 @@ static void view2d_map_cur_using_mask(View2D *v2d, rctf *curmasked)
 void UI_view2d_view_ortho(View2D *v2d)
 {
 	rctf curmasked;
-	float xofs, yofs;
+	int sizex = BLI_rcti_size_x(&v2d->mask);
+	int sizey = BLI_rcti_size_y(&v2d->mask);
+	float xofs = 0.0f, yofs = 0.0f;
 	
 	/* pixel offsets (-GLA_PIXEL_OFS) are needed to get 1:1 correspondence with pixels for smooth UI drawing,
 	 * but only applied where requested
 	 */
 	/* XXX brecht: instead of zero at least use a tiny offset, otherwise
 	 * pixel rounding is effectively random due to float inaccuracy */
-	xofs = 0.001f * BLI_rctf_size_x(&v2d->cur) / BLI_rcti_size_x(&v2d->mask);
-	yofs = 0.001f * BLI_rctf_size_y(&v2d->cur) / BLI_rcti_size_y(&v2d->mask);
+	if (sizex > 0)
+		xofs = 0.001f * BLI_rctf_size_x(&v2d->cur) / BLI_rcti_size_x(&v2d->mask);
+	if (sizey > 0)
+		yofs = 0.001f * BLI_rctf_size_y(&v2d->cur) / BLI_rcti_size_y(&v2d->mask);
 	
 	/* apply mask-based adjustments to cur rect (due to scrollers), to eliminate scaling artifacts */
 	view2d_map_cur_using_mask(v2d, &curmasked);

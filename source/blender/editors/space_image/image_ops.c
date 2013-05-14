@@ -87,7 +87,7 @@
 
 /******************** view navigation utilities *********************/
 
-static void sima_zoom_set(SpaceImage *sima, ARegion *ar, float zoom, float location[2])
+static void sima_zoom_set(SpaceImage *sima, ARegion *ar, float zoom, const float location[2])
 {
 	float oldzoom = sima->zoom;
 	int width, height;
@@ -123,7 +123,7 @@ static void sima_zoom_set(SpaceImage *sima, ARegion *ar, float zoom, float locat
 	}
 }
 
-static void sima_zoom_set_factor(SpaceImage *sima, ARegion *ar, float zoomfac, float location[2])
+static void sima_zoom_set_factor(SpaceImage *sima, ARegion *ar, float zoomfac, const float location[2])
 {
 	sima_zoom_set(sima, ar, sima->zoom * zoomfac, location);
 }
@@ -1091,7 +1091,7 @@ void IMAGE_OT_match_movie_length(wmOperatorType *ot)
 	ot->exec = image_match_len_exec;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER /* | OPTYPE_UNDO */; /* Don't think we need undo for that. */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_INTERNAL/* | OPTYPE_UNDO */; /* Don't think we need undo for that. */
 }
 
 /******************** replace image operator ********************/
@@ -1218,14 +1218,17 @@ static int save_image_options_init(SaveImageOptions *simopts, SpaceImage *sima, 
 			simopts->im_format = scene->r.im_format;
 			is_depth_set = TRUE;
 		}
-		else if (ima->source == IMA_SRC_GENERATED) {
-			simopts->im_format.imtype = R_IMF_IMTYPE_PNG;
-		}
 		else {
-			BKE_imbuf_to_image_format(&simopts->im_format, ibuf);
+			if (ima->source == IMA_SRC_GENERATED) {
+				simopts->im_format.imtype = R_IMF_IMTYPE_PNG;
+			}
+			else {
+				BKE_imbuf_to_image_format(&simopts->im_format, ibuf);
+				simopts->im_format.quality = ibuf->ftype & 0xff;
+			}
+			simopts->im_format.quality = ibuf->ftype & 0xff;
 		}
 		//simopts->subimtype = scene->r.subimtype; /* XXX - this is lame, we need to make these available too! */
-		simopts->im_format.quality = ibuf->ftype & 0xff;
 
 		BLI_strncpy(simopts->filepath, ibuf->name, sizeof(simopts->filepath));
 

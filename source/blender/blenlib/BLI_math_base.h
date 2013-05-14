@@ -213,6 +213,8 @@ MINLINE int is_power_of_2_i(int n);
 MINLINE int power_of_2_max_i(int n);
 MINLINE int power_of_2_min_i(int n);
 
+MINLINE int divide_round_i(int a, int b);
+
 MINLINE float shell_angle_to_dist(const float angle);
 
 #if (defined(WIN32) || defined(WIN64)) && !defined(FREE_WINDOWS)
@@ -243,9 +245,19 @@ double double_round(double x, int ndigits);
 	BLI_assert((fabsf(_test_unit - 1.0f) < BLI_ASSERT_UNIT_EPSILON) ||        \
 	           (fabsf(_test_unit)        < BLI_ASSERT_UNIT_EPSILON));         \
 } (void)0
+
+#  define BLI_ASSERT_ZERO_M3(m)  {                                            \
+	BLI_assert(dot_vn_vn((const float *)m, (const float *)m, 9) != 0.0);     \
+} (void)0
+
+#  define BLI_ASSERT_ZERO_M4(m)  {                                            \
+	BLI_assert(dot_vn_vn((const float *)m, (const float *)m, 16) != 0.0);     \
+} (void)0
 #else
-#  define BLI_ASSERT_UNIT_V2(v) (void)0
-#  define BLI_ASSERT_UNIT_V3(v) (void)0
+#  define BLI_ASSERT_UNIT_V2(v) (void)(v)
+#  define BLI_ASSERT_UNIT_V3(v) (void)(v)
+#  define BLI_ASSERT_ZERO_M3(m) (void)(m)
+#  define BLI_ASSERT_ZERO_M4(m) (void)(m)
 #endif
 
 #endif /* __BLI_MATH_BASE_H__ */

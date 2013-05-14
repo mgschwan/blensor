@@ -66,6 +66,16 @@ class Print3DSettings(PropertyGroup):
                    ('OBJ', "OBJ", "")),
             default='STL',
             )
+    use_export_texture = BoolProperty(
+            name="Copy Textures",
+            description="Copy textures on export to the output path",
+            default=False,
+            )
+    use_apply_scale = BoolProperty(
+            name="Apply Scale",
+            description="Apply scene scale setting on export",
+            default=False,
+            )
     export_path = StringProperty(
             name="Export Directory",
             description="Path to directory where the files are created",
@@ -126,6 +136,9 @@ classes = (
     operators.Print3DCleanThin,
 
     operators.Print3DSelectReport,
+
+    operators.Print3DScaleToVolume,
+    operators.Print3DScaleToBounds,
 
     operators.Print3DExport,
 

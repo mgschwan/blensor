@@ -107,8 +107,8 @@ typedef struct PaintStroke {
 /*** Cursor ***/
 static void paint_draw_smooth_stroke(bContext *C, int x, int y, void *customdata) 
 {
-	Paint *paint = paint_get_active_from_context(C);
-	Brush *brush = paint_brush(paint);
+	Paint *paint = BKE_paint_get_active_from_context(C);
+	Brush *brush = BKE_paint_brush(paint);
 	PaintStroke *stroke = customdata;
 
 	if (stroke && brush && (brush->flag & BRUSH_SMOOTH_STROKE)) {
@@ -160,6 +160,7 @@ static void paint_brush_update(bContext *C, Brush *brush, PaintMode mode,
 	if (paint_supports_dynamic_size(brush, mode) || !stroke->brush_init) {
 		copy_v2_v2(stroke->initial_mouse, mouse);
 		copy_v2_v2(ups->tex_mouse, mouse);
+		copy_v2_v2(ups->mask_tex_mouse, mouse);
 		stroke->cached_pressure = pressure;
 	}
 
@@ -186,10 +187,21 @@ static void paint_brush_update(bContext *C, Brush *brush, PaintMode mode,
 		}
 
 		if (brush->mtex.brush_map_mode == MTEX_MAP_MODE_RANDOM)
-			BKE_brush_randomize_texture_coordinates(ups);
-		else
+			BKE_brush_randomize_texture_coordinates(ups, false);
+		else {
 			copy_v2_v2(ups->tex_mouse, mouse);
+		}
 	}
+
+	/* take care of mask texture, if any */
+	if (brush->mask_mtex.tex) {
+		if (brush->mask_mtex.brush_map_mode == MTEX_MAP_MODE_RANDOM)
+			BKE_brush_randomize_texture_coordinates(ups, true);
+		else {
+			copy_v2_v2(ups->mask_tex_mouse, mouse);
+		}
+	}
+
 
 	if (brush->flag & BRUSH_ANCHORED) {
 		bool hit = false;
@@ -243,9 +255,11 @@ static void paint_brush_update(bContext *C, Brush *brush, PaintMode mode,
 static void paint_brush_stroke_add_step(bContext *C, wmOperator *op, const wmEvent *event, const float mouse_in[2])
 {
 	Scene *scene = CTX_data_scene(C);
-	Paint *paint = paint_get_active_from_context(C);
-	PaintMode mode = paintmode_get_active_from_context(C);
-	Brush *brush = paint_brush(paint);
+	wmWindow *window = CTX_wm_window(C);
+	ARegion *ar = CTX_wm_region(C);
+	Paint *paint = BKE_paint_get_active_from_context(C);
+	PaintMode mode = BKE_paintmode_get_active_from_context(C);
+	Brush *brush = BKE_paint_brush(paint);
 	PaintStroke *stroke = op->customdata;
 	float mouse_out[2];
 	PointerRNA itemptr;
@@ -312,6 +326,10 @@ static void paint_brush_stroke_add_step(bContext *C, wmOperator *op, const wmEve
 	RNA_float_set(&itemptr, "pressure", pressure);
 
 	stroke->update_step(C, stroke, &itemptr);
+
+	/* always redraw region if brush is shown */
+	if (ar && (paint->flags & PAINT_SHOW_BRUSH))
+		WM_paint_cursor_tag_redraw(window, ar);
 }
 
 /* Returns zero if no sculpt changes should be made, non-zero otherwise */
@@ -344,7 +362,7 @@ static int paint_smooth_stroke(PaintStroke *stroke, float output[2],
 static int paint_space_stroke(bContext *C, wmOperator *op, const wmEvent *event, const float final_mouse[2])
 {
 	PaintStroke *stroke = op->customdata;
-	PaintMode mode = paintmode_get_active_from_context(C);
+	PaintMode mode = BKE_paintmode_get_active_from_context(C);
 
 	int cnt = 0;
 
@@ -411,7 +429,7 @@ PaintStroke *paint_stroke_new(bContext *C,
 {
 	PaintStroke *stroke = MEM_callocN(sizeof(PaintStroke), "PaintStroke");
 
-	stroke->brush = paint_brush(paint_get_active_from_context(C));
+	Brush *br = stroke->brush = BKE_paint_brush(BKE_paint_get_active_from_context(C));
 	view3d_set_viewcontext(C, &stroke->vc);
 	if (stroke->vc.v3d)
 		view3d_get_transformation(stroke->vc.ar, stroke->vc.rv3d, stroke->vc.obact, &stroke->mats);
@@ -422,11 +440,14 @@ PaintStroke *paint_stroke_new(bContext *C,
 	stroke->done = done;
 	stroke->event_type = event_type; /* for modal, return event */
 	
+	BKE_paint_set_overlay_override(br->overlay_flags);
+
 	return stroke;
 }
 
 void paint_stroke_data_free(struct wmOperator *op)
 {
+	BKE_paint_set_overlay_override(0);
 	MEM_freeN(op->customdata);
 	op->customdata = NULL;
 }
@@ -457,6 +478,15 @@ bool paint_space_stroke_enabled(Brush *br, PaintMode mode)
 	return (br->flag & BRUSH_SPACE) && paint_supports_dynamic_size(br, mode);
 }
 
+static bool sculpt_is_grab_tool(Brush *br)
+{
+	return ELEM4(br->sculpt_tool,
+	             SCULPT_TOOL_GRAB,
+	             SCULPT_TOOL_THUMB,
+	             SCULPT_TOOL_ROTATE,
+	             SCULPT_TOOL_SNAKE_HOOK);
+}
+
 /* return true if the brush size can change during paint (normally used for pressure) */
 bool paint_supports_dynamic_size(Brush *br, PaintMode mode)
 {
@@ -465,14 +495,8 @@ bool paint_supports_dynamic_size(Brush *br, PaintMode mode)
 
 	switch (mode) {
 		case PAINT_SCULPT:
-			if (ELEM4(br->sculpt_tool,
-			          SCULPT_TOOL_GRAB,
-			          SCULPT_TOOL_THUMB,
-			          SCULPT_TOOL_ROTATE,
-			          SCULPT_TOOL_SNAKE_HOOK))
-			{
+			if (sculpt_is_grab_tool(br))
 				return false;
-			}
 		default:
 			;
 	}
@@ -490,14 +514,8 @@ bool paint_supports_smooth_stroke(Brush *br, PaintMode mode)
 
 	switch (mode) {
 		case PAINT_SCULPT:
-			if (ELEM4(br->sculpt_tool,
-			          SCULPT_TOOL_GRAB,
-			          SCULPT_TOOL_THUMB,
-			          SCULPT_TOOL_ROTATE,
-			          SCULPT_TOOL_SNAKE_HOOK))
-			{
+			if (sculpt_is_grab_tool(br))
 				return false;
-			}
 		default:
 			;
 	}
@@ -512,7 +530,7 @@ bool paint_supports_dynamic_tex_coords(Brush *br, PaintMode mode)
 
 	switch (mode) {
 		case PAINT_SCULPT:
-			if (ELEM4(br->sculpt_tool, SCULPT_TOOL_GRAB, SCULPT_TOOL_THUMB, SCULPT_TOOL_ROTATE, SCULPT_TOOL_SNAKE_HOOK))
+			if (sculpt_is_grab_tool(br))
 				return false;
 		default:
 			;
@@ -586,8 +604,8 @@ static void paint_stroke_sample_average(const PaintStroke *stroke,
 
 int paint_stroke_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
-	Paint *p = paint_get_active_from_context(C);
-	PaintMode mode = paintmode_get_active_from_context(C);
+	Paint *p = BKE_paint_get_active_from_context(C);
+	PaintMode mode = BKE_paintmode_get_active_from_context(C);
 	PaintStroke *stroke = op->customdata;
 	PaintSample sample_average;
 	float mouse[2];
@@ -716,12 +734,12 @@ void paint_stroke_set_mode_data(PaintStroke *stroke, void *mode_data)
 
 int paint_poll(bContext *C)
 {
-	Paint *p = paint_get_active_from_context(C);
+	Paint *p = BKE_paint_get_active_from_context(C);
 	Object *ob = CTX_data_active_object(C);
 	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = CTX_wm_region(C);
 
-	return p && ob && paint_brush(p) &&
+	return p && ob && BKE_paint_brush(p) &&
 	       (sa && sa->spacetype == SPACE_VIEW3D) &&
 	       (ar && ar->regiontype == RGN_TYPE_WINDOW);
 }

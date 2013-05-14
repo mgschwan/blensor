@@ -1213,7 +1213,7 @@ static void display_buffer_init_handle(void *handle_v, int start_line, int tot_l
 	handle->float_colorspace = init_data->float_colorspace;
 }
 
-static void *display_buffer_apply_get_linear_buffer(DisplayBufferThread *handle)
+static float *display_buffer_apply_get_linear_buffer(DisplayBufferThread *handle, bool *is_straight_alpha)
 {
 	float *linear_buffer = NULL;
 
@@ -1248,7 +1248,6 @@ static void *display_buffer_apply_get_linear_buffer(DisplayBufferThread *handle)
 			}
 			else if (channels == 4) {
 				rgba_uchar_to_float(fp, cp);
-				straight_to_premul_v4(fp);
 			}
 			else {
 				BLI_assert(!"Buffers of 3 or 4 channels are only supported here");
@@ -1258,8 +1257,10 @@ static void *display_buffer_apply_get_linear_buffer(DisplayBufferThread *handle)
 		if (!is_data && !is_data_display) {
 			/* convert float buffer to scene linear space */
 			IMB_colormanagement_transform(linear_buffer, width, height, channels,
-			                              from_colorspace, to_colorspace, TRUE);
+			                              from_colorspace, to_colorspace, FALSE);
 		}
+
+		*is_straight_alpha = true;
 	}
 	else if (handle->float_colorspace) {
 		/* currently float is non-linear only in sequencer, which is working
@@ -1273,8 +1274,12 @@ static void *display_buffer_apply_get_linear_buffer(DisplayBufferThread *handle)
 
 		memcpy(linear_buffer, handle->buffer, buffer_size * sizeof(float));
 
-		IMB_colormanagement_transform(linear_buffer, width, height, channels,
-		                              from_colorspace, to_colorspace, TRUE);
+		if (!is_data && !is_data_display) {
+			IMB_colormanagement_transform(linear_buffer, width, height, channels,
+			                              from_colorspace, to_colorspace, TRUE);
+		}
+
+		*is_straight_alpha = false;
 	}
 	else {
 		/* some processors would want to modify float original buffer
@@ -1287,6 +1292,8 @@ static void *display_buffer_apply_get_linear_buffer(DisplayBufferThread *handle)
 		 */
 
 		memcpy(linear_buffer, handle->buffer, buffer_size * sizeof(float));
+
+		*is_straight_alpha = false;
 	}
 
 	return linear_buffer;
@@ -1316,7 +1323,9 @@ static void *do_display_buffer_apply_thread(void *handle_v)
 		}
 	}
 	else {
-		float *linear_buffer = display_buffer_apply_get_linear_buffer(handle);
+		bool is_straight_alpha;
+		float *linear_buffer = display_buffer_apply_get_linear_buffer(handle, &is_straight_alpha);
+		bool predivide = is_straight_alpha == false;
 
 		if (is_data) {
 			/* special case for data buffers - no color space conversions,
@@ -1325,7 +1334,8 @@ static void *do_display_buffer_apply_thread(void *handle_v)
 		}
 		else {
 			/* apply processor */
-			IMB_colormanagement_processor_apply(cm_processor, linear_buffer, width, height, channels, TRUE);
+			IMB_colormanagement_processor_apply(cm_processor, linear_buffer, width, height, channels,
+			                                    predivide);
 		}
 
 		/* copy result to output buffers */
@@ -1333,11 +1343,24 @@ static void *do_display_buffer_apply_thread(void *handle_v)
 			/* do conversion */
 			IMB_buffer_byte_from_float(display_buffer_byte, linear_buffer,
 			                           channels, dither, IB_PROFILE_SRGB, IB_PROFILE_SRGB,
-			                           TRUE, width, height, width, width);
+			                           predivide, width, height, width, width);
 		}
 
-		if (display_buffer)
+		if (display_buffer) {
 			memcpy(display_buffer, linear_buffer, width * height * channels * sizeof(float));
+
+			if (is_straight_alpha && channels == 4) {
+				int i;
+				float *fp;
+
+				for (i = 0, fp = display_buffer;
+				     i < width * height;
+				     i++, fp += channels)
+				{
+					straight_to_premul_v4(fp);
+				}
+			}
+		}
 
 		MEM_freeN(linear_buffer);
 	}
@@ -1838,6 +1861,30 @@ ImBuf *IMB_colormanagement_imbuf_for_write(ImBuf *ibuf, int save_as_render, int 
 	}
 
 	return colormanaged_ibuf;
+}
+
+void IMB_colormanagement_buffer_make_display_space(float *buffer, unsigned char *display_buffer,
+                                                   int width, int height, int channels, float dither,
+                                                   const ColorManagedViewSettings *view_settings,
+                                                   const ColorManagedDisplaySettings *display_settings)
+{
+	ColormanageProcessor *cm_processor;
+	size_t float_buffer_size = width * height * channels * sizeof(float);
+	float *display_buffer_float = MEM_mallocN(float_buffer_size, "byte_buffer_make_display_space");
+
+	memcpy(display_buffer_float, buffer, float_buffer_size);
+
+	cm_processor = IMB_colormanagement_display_processor_new(view_settings, display_settings);
+
+	processor_transform_apply_threaded(display_buffer_float, width, height, channels,
+	                                   cm_processor, TRUE);
+
+	IMB_buffer_byte_from_float(display_buffer, display_buffer_float,
+	                           channels, dither, IB_PROFILE_SRGB, IB_PROFILE_SRGB,
+	                           TRUE, width, height, width, width);
+
+	MEM_freeN(display_buffer_float);
+	IMB_colormanagement_processor_free(cm_processor);
 }
 
 static void imbuf_verify_float(ImBuf *ibuf)

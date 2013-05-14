@@ -21,13 +21,13 @@
 bl_info = {
     "name": "Manage UI translations",
     "author": "Bastien Montagne",
-    "version": (1, 0, 1),
-    "blender": (2, 66, 5),
+    "version": (1, 1, 1),
+    "blender": (2, 66, 6),
     "location": "Main \"File\" menu, text editor, any UI control",
     "description": "Allow to manage UI translations directly from Blender (update main po files, "
                    "update scripts' translations, etc.)",
     "warning": "Still in development, not all features are fully implemented yet!",
-    "wiki_url": "http://wiki.blender.org/index.php/Dev:Doc/How_to/Translate_Blender/Addon",
+    "wiki_url": "http://wiki.blender.org/index.php/Dev:Doc/How_to/Translate_Blender",
     "tracker_url": "http://projects.blender.org/tracker/?atid=498&group_id=9&func=browse",
     "support": 'OFFICIAL',
     "category": "System"}
@@ -39,12 +39,15 @@ if "bpy" in locals():
     imp.reload(edit_translation)
     imp.reload(update_svn)
     imp.reload(update_addon)
+    imp.reload(update_ui)
 else:
     import bpy
-    from . import settings
-    from . import edit_translation
-    from . import update_svn
-    from . import update_addon
+    from . import (settings,
+                   edit_translation,
+                   update_svn,
+                   update_addon,
+                   update_ui,
+                  )
 
 
 import os
@@ -53,7 +56,7 @@ import os
 def register():
     bpy.utils.register_module(__name__)
     bpy.types.WindowManager.i18n_update_svn_settings = \
-                    bpy.props.PointerProperty(type=update_svn.I18nUpdateTranslationSettings)
+                    bpy.props.PointerProperty(type=update_ui.I18nUpdateTranslationSettings)
 
     # Init addon's preferences (unfortunately, as we are using an external storage for the properties,
     # the load/save user preferences process has no effect on them :( ).

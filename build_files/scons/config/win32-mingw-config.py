@@ -142,11 +142,14 @@ BF_COLLADA_LIB = 'bf_collada'
 
 BF_OPENCOLLADA = LIBDIR + '/opencollada'
 BF_OPENCOLLADA_INC = '${BF_OPENCOLLADA}/include/opencollada'
-BF_OPENCOLLADA_LIB = 'OpenCOLLADAStreamWriter OpenCOLLADASaxFrameworkLoader OpenCOLLADAFramework OpenCOLLADABaseUtils GeneratedSaxParser UTF MathMLSolver expat pcre buffer ftoa'
+BF_OPENCOLLADA_LIB = 'OpenCOLLADAStreamWriter OpenCOLLADASaxFrameworkLoader OpenCOLLADAFramework OpenCOLLADABaseUtils GeneratedSaxParser UTF MathMLSolver pcre buffer ftoa xml'
 BF_OPENCOLLADA_LIBPATH = '${BF_OPENCOLLADA}/lib/opencollada'
 
 #Cycles
-WITH_BF_CYCLES = True 
+WITH_BF_CYCLES = True
+WITH_BF_CYCLES_CUDA_BINARIES = False
+BF_CYCLES_CUDA_NVCC = "" # Path to the NVIDIA CUDA compiler
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_20', 'sm_21', 'sm_30']
 
 WITH_BF_OIIO = True
 BF_OIIO = LIBDIR + '/openimageio'
@@ -170,6 +173,8 @@ BF_BOOST_LIBPATH = '${BF_BOOST}/lib'
 #Ray trace optimization
 WITH_BF_RAYOPTIMIZATION = True
 BF_RAYOPTIMIZATION_SSE_FLAGS = ['-msse']
+
+WITH_BF_OPENMP = True
 
 #CUDA
 WITH_BF_CYCLES_CUDA_BINARIES = False

@@ -313,8 +313,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			{
 				float ran = 0.0f;
 				if (pimd->random_position != 0.0f) {
-					BLI_srandom(psys->seed + p);
-					ran = pimd->random_position * BLI_frand();
+					ran = pimd->random_position * BLI_hash_frand(psys->seed + p);
 				}
 
 				if (pimd->flag & eParticleInstanceFlag_KeepShape) {
@@ -396,13 +395,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 	return result;
 }
-static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
-                                    struct BMEditMesh *UNUSED(editData),
-                                    DerivedMesh *derivedData)
-{
-	return applyModifier(md, ob, derivedData, MOD_APPLY_USECACHE);
-}
-
 ModifierTypeInfo modifierType_ParticleInstance = {
 	/* name */              "ParticleInstance",
 	/* structName */        "ParticleInstanceModifierData",
@@ -419,7 +411,7 @@ ModifierTypeInfo modifierType_ParticleInstance = {
 	/* deformVertsEM */     NULL,
 	/* deformMatricesEM */  NULL,
 	/* applyModifier */     applyModifier,
-	/* applyModifierEM */   applyModifierEM,
+	/* applyModifierEM */   NULL,
 	/* initData */          initData,
 	/* requiredDataMask */  NULL,
 	/* freeData */          NULL,

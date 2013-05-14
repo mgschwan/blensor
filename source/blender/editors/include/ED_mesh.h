@@ -62,6 +62,7 @@ struct BMEditSelection;
 struct BMesh;
 struct BMVert;
 struct BMLoop;
+struct BMBVHTree;
 struct MLoopCol;
 struct BMEdge;
 struct BMFace;
@@ -71,6 +72,7 @@ struct ToolSettings;
 struct Material;
 struct Object;
 struct rcti;
+struct MeshStatVis;
 
 
 /* editmesh_utils.c */
@@ -135,6 +137,8 @@ struct UvVertMap *EDBM_uv_vert_map_create(struct BMEditMesh *em, bool use_select
 void EDBM_flag_enable_all(struct BMEditMesh *em, const char hflag);
 void EDBM_flag_disable_all(struct BMEditMesh *em, const char hflag);
 
+bool BMBVH_EdgeVisible(struct BMBVHTree *tree, struct BMEdge *e,
+                       struct ARegion *ar, struct View3D *v3d, struct Object *obedit);
 
 /* editmesh_select.c */
 void EDBM_select_mirrored(struct Object *obedit, struct BMEditMesh *em, bool extend);
@@ -172,6 +176,11 @@ void EDBM_select_toggle_all(struct BMEditMesh *em);
 void EDBM_select_swap(struct BMEditMesh *em); /* exported for UV */
 bool EDBM_select_interior_faces(struct BMEditMesh *em);
 void em_setup_viewcontext(struct bContext *C, struct ViewContext *vc);  /* rename? */
+
+/* editmesh_statvis.c */
+void EDBM_statvis_calc(struct BMEditMesh *em, struct MeshStatVis *statvis,
+                       unsigned char (*r_face_colors)[4]);
+
 
 extern unsigned int bm_vertoffs, bm_solidoffs, bm_wireoffs;
 
@@ -298,8 +307,6 @@ bool ED_mesh_pick_face_vert(struct bContext *C, struct Object *ob, const int mva
 
 #define ED_MESH_PICK_DEFAULT_VERT_SIZE 50
 #define ED_MESH_PICK_DEFAULT_FACE_SIZE 3
-
-#include "../mesh/editmesh_bvh.h"
 
 #ifdef __cplusplus
 }

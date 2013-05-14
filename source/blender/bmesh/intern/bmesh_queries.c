@@ -63,23 +63,24 @@ bool BM_vert_in_edge(const BMEdge *e, const BMVert *v)
  *                      in the face to check.
  *                      The faces loop direction is ignored.
  * </pre>
+ *
+ * \note caller must ensure \a e is used in \a f
  */
 BMLoop *BM_face_other_edge_loop(BMFace *f, BMEdge *e, BMVert *v)
 {
-	BMLoop *l_iter;
-	BMLoop *l_first;
+	BMLoop *l = BM_face_edge_share_loop(f, e);
+	BLI_assert(l != NULL);
+	return BM_loop_other_edge_loop(l, v);
+}
 
-	/* we could loop around the face too, but turns out this uses a lot
-	 * more iterations (approx double with quads, many more with 5+ ngons) */
-	l_iter = l_first = e->l;
-
-	do {
-		if (l_iter->e == e && l_iter->f == f) {
-			break;
-		}
-	} while ((l_iter = l_iter->radial_next) != l_first);
-	
-	return l_iter->v == v ? l_iter->prev : l_iter->next;
+/**
+ * See #BM_face_other_edge_loop This is the same functionality
+ * to be used when the edges loop is already known.
+ */
+BMLoop *BM_loop_other_edge_loop(BMLoop *l, BMVert *v)
+{
+	BLI_assert(BM_vert_in_edge(l->e, v));
+	return l->v == v ? l->prev : l->next;
 }
 
 /**
@@ -820,6 +821,25 @@ int BM_edge_is_boundary(BMEdge *e)
 }
 #endif
 
+bool BM_vert_is_boundary(BMVert *v)
+{
+	if (v->e) {
+		BMEdge *e_first, *e_iter;
+
+		e_first = e_iter = v->e;
+		do {
+			if (BM_edge_is_boundary(e_iter)) {
+				return true;
+			}
+		} while ((e_iter = bmesh_disk_edge_next(e_iter, v)) != e_first);
+
+		return false;
+	}
+	else {
+		return false;
+	}
+}
+
 /**
  * Returns the number of faces that are adjacent to both f1 and f2,
  * \note Could be sped up a bit by not using iterators and by tagging
@@ -958,6 +978,7 @@ bool BM_edge_share_vert_check(BMEdge *e1, BMEdge *e2)
  */
 BMVert *BM_edge_share_vert(BMEdge *e1, BMEdge *e2)
 {
+	BLI_assert(e1 != e2);
 	if (BM_vert_in_edge(e2, e1->v1)) {
 		return e1->v1;
 	}
@@ -1718,7 +1739,7 @@ static void bm_mesh_calc_volume_face(BMFace *f, float *r_vol)
 		*r_vol += (1.0f / 6.0f) * dot_v3v3(p1, cross);
 	}
 }
-float BM_mesh_calc_volume(BMesh *bm)
+float BM_mesh_calc_volume(BMesh *bm, bool is_signed)
 {
 	/* warning, calls own tessellation function, may be slow */
 	float vol = 0.0f;
@@ -1729,5 +1750,9 @@ float BM_mesh_calc_volume(BMesh *bm)
 		bm_mesh_calc_volume_face(f, &vol);
 	}
 
-	return fabsf(vol);
+	if (is_signed == false) {
+		vol = fabsf(vol);
+	}
+
+	return vol;
 }

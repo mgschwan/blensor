@@ -47,7 +47,7 @@
 #include "BKE_armature.h"
 #include "BKE_curve.h"
 #include "BKE_context.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_report.h"
 
 #include "BLF_translation.h"
@@ -100,31 +100,32 @@ static void uniqueOrientationName(ListBase *lb, char *name)
 	                  sizeof(((TransformOrientation *)NULL)->name));
 }
 
-void BIF_createTransformOrientation(bContext *C, ReportList *reports, char *name, int use, int overwrite)
+static TransformOrientation *createViewSpace(bContext *C, ReportList *UNUSED(reports), char *name, int overwrite)
 {
-	Object *obedit = CTX_data_edit_object(C);
-	Object *ob = CTX_data_active_object(C);
-	TransformOrientation *ts = NULL;
-	
-	if (obedit) {
-		if (obedit->type == OB_MESH)
-			ts = createMeshSpace(C, reports, name, overwrite);
-		else if (obedit->type == OB_ARMATURE)
-			ts = createBoneSpace(C, reports, name, overwrite);
+	RegionView3D *rv3d = CTX_wm_region_view3d(C);
+	float mat[3][3];
+
+	if (!rv3d)
+		return NULL;
+
+	copy_m3_m4(mat, rv3d->viewinv);
+	normalize_m3(mat);
+
+	if (!name[0]) {
+		View3D *v3d = CTX_wm_view3d(C);
+		if (rv3d->persp == RV3D_CAMOB && v3d->camera) {
+			/* If an object is used as camera, then this space is the same as object space! */
+			strncpy(name, v3d->camera->id.name + 2, MAX_NAME);
+		}
+		else {
+			strcpy(name, "Custom View");
+		}
 	}
-	else if (ob && (ob->mode & OB_MODE_POSE)) {
-		ts = createBoneSpace(C, reports, name, overwrite);
-	}
-	else {
-		ts = createObjectSpace(C, reports, name, overwrite);
-	}
-	
-	if (use && ts != NULL) {
-		BIF_selectTransformOrientation(C, ts);
-	}
+
+	return addMatrixSpace(C, mat, name, overwrite);
 }
 
-TransformOrientation *createObjectSpace(bContext *C, ReportList *UNUSED(reports), char *name, int overwrite)
+static TransformOrientation *createObjectSpace(bContext *C, ReportList *UNUSED(reports), char *name, int overwrite)
 {
 	Base *base = CTX_data_active_base(C);
 	Object *ob;
@@ -133,9 +134,8 @@ TransformOrientation *createObjectSpace(bContext *C, ReportList *UNUSED(reports)
 	if (base == NULL)
 		return NULL;
 
-
 	ob = base->object;
-	
+
 	copy_m3_m4(mat, ob->obmat);
 	normalize_m3(mat);
 
@@ -147,7 +147,7 @@ TransformOrientation *createObjectSpace(bContext *C, ReportList *UNUSED(reports)
 	return addMatrixSpace(C, mat, name, overwrite);
 }
 
-TransformOrientation *createBoneSpace(bContext *C, ReportList *reports, char *name, int overwrite)
+static TransformOrientation *createBoneSpace(bContext *C, ReportList *reports, char *name, int overwrite)
 {
 	float mat[3][3];
 	float normal[3], plane[3];
@@ -166,7 +166,7 @@ TransformOrientation *createBoneSpace(bContext *C, ReportList *reports, char *na
 	return addMatrixSpace(C, mat, name, overwrite);
 }
 
-TransformOrientation *createMeshSpace(bContext *C, ReportList *reports, char *name, int overwrite)
+static TransformOrientation *createMeshSpace(bContext *C, ReportList *reports, char *name, int overwrite)
 {
 	float mat[3][3];
 	float normal[3], plane[3];
@@ -258,6 +258,36 @@ bool createSpaceNormalTangent(float mat[3][3], float normal[3], float tangent[3]
 	normalize_m3(mat);
 	
 	return true;
+}
+
+/* name must be a MAX_NAME length string! */
+void BIF_createTransformOrientation(bContext *C, ReportList *reports, char *name, int use_view, int use, int overwrite)
+{
+	TransformOrientation *ts = NULL;
+
+	if (use_view) {
+		ts = createViewSpace(C, reports, name, overwrite);
+	}
+	else {
+		Object *obedit = CTX_data_edit_object(C);
+		Object *ob = CTX_data_active_object(C);
+		if (obedit) {
+			if (obedit->type == OB_MESH)
+				ts = createMeshSpace(C, reports, name, overwrite);
+			else if (obedit->type == OB_ARMATURE)
+				ts = createBoneSpace(C, reports, name, overwrite);
+		}
+		else if (ob && (ob->mode & OB_MODE_POSE)) {
+			ts = createBoneSpace(C, reports, name, overwrite);
+		}
+		else {
+			ts = createObjectSpace(C, reports, name, overwrite);
+		}
+	}
+
+	if (use && ts != NULL) {
+		BIF_selectTransformOrientation(C, ts);
+	}
 }
 
 TransformOrientation *addMatrixSpace(bContext *C, float mat[3][3], char name[], int overwrite)
@@ -357,75 +387,6 @@ void BIF_selectTransformOrientationValue(bContext *C, int orientation)
 	View3D *v3d = CTX_wm_view3d(C);
 	if (v3d) /* currently using generic poll */
 		v3d->twmode = orientation;
-}
-
-EnumPropertyItem *BIF_enumTransformOrientation(bContext *C)
-{
-	Scene *scene;
-	ListBase *transform_spaces;
-	TransformOrientation *ts = NULL;
-
-	EnumPropertyItem global = {V3D_MANIP_GLOBAL, "GLOBAL", 0, "Global", ""};
-	EnumPropertyItem normal = {V3D_MANIP_NORMAL, "NORMAL", 0, "Normal", ""};
-	EnumPropertyItem local = {V3D_MANIP_LOCAL, "LOCAL", 0, "Local", ""};
-	EnumPropertyItem view = {V3D_MANIP_VIEW, "VIEW", 0, "View", ""};
-	EnumPropertyItem tmp = {0, "", 0, "", ""};
-	EnumPropertyItem *item = NULL;
-	int i = V3D_MANIP_CUSTOM, totitem = 0;
-
-	RNA_enum_item_add(&item, &totitem, &global);
-	RNA_enum_item_add(&item, &totitem, &normal);
-	RNA_enum_item_add(&item, &totitem, &local);
-	RNA_enum_item_add(&item, &totitem, &view);
-
-	if (C) {
-		scene = CTX_data_scene(C);
-
-		if (scene) {
-			transform_spaces = &scene->transform_spaces;
-			ts = transform_spaces->first;
-		}
-	}
-		
-	if (ts)
-		RNA_enum_item_add_separator(&item, &totitem);
-
-	for (; ts; ts = ts->next) {
-		tmp.identifier = "CUSTOM";
-		tmp.name = ts->name;
-		tmp.value = i++;
-		RNA_enum_item_add(&item, &totitem, &tmp);
-	}
-
-	RNA_enum_item_end(&item, &totitem);
-
-	return item;
-}
-
-const char *BIF_menustringTransformOrientation(const bContext *C, const char *title)
-{
-	const char *menu = IFACE_("%t|Global %x0|Local %x1|Gimbal %x4|Normal %x2|View %x3");
-	ListBase *transform_spaces = &CTX_data_scene(C)->transform_spaces;
-	TransformOrientation *ts;
-	int i = V3D_MANIP_CUSTOM;
-	char *str_menu, *p;
-	const int elem_size = MAX_NAME + 4;
-	size_t str_menu_size;
-
-	title = IFACE_(title);
-
-	str_menu_size = strlen(menu) + strlen(title) + 1 + (elem_size * BIF_countTransformOrientation(C));
-	str_menu = MEM_callocN(str_menu_size, "UserTransSpace from matrix");
-
-	p = str_menu;
-	p += BLI_strncpy_rlen(p, title, str_menu_size);
-	p += BLI_strncpy_rlen(p, menu, str_menu_size - (p - str_menu));
-	
-	for (ts = transform_spaces->first; ts; ts = ts->next) {
-		p += sprintf(p, "|%s %%x%d", ts->name, i++);
-	}
-	
-	return str_menu;
 }
 
 int BIF_countTransformOrientation(const bContext *C)
@@ -570,7 +531,7 @@ int getTransformOrientation(const bContext *C, float normal[3], float plane[3], 
 		ob = obedit;
 
 		if (ob->type == OB_MESH) {
-			BMEditMesh *em = BMEdit_FromObject(ob);
+			BMEditMesh *em = BKE_editmesh_from_object(ob);
 			BMVert *eve;
 			BMEditSelection ese;
 			float vec[3] = {0, 0, 0};

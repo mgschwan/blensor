@@ -38,9 +38,10 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_utildefines.h"
+#include "BLI_array.h"
 #include "BLI_blenlib.h"
 #include "BLI_dynstr.h"
-#include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
 
@@ -550,7 +551,7 @@ void BKE_animdata_separate_by_basepath(ID *srcID, ID *dstID, ListBase *basepaths
 /* Path Validation -------------------------------------------- */
 
 /* Check if a given RNA Path is valid, by tracing it from the given ID, and seeing if we can resolve it */
-static short check_rna_path_is_valid(ID *owner_id, const char *path)
+static bool check_rna_path_is_valid(ID *owner_id, const char *path)
 {
 	PointerRNA id_ptr, ptr;
 	PropertyRNA *prop = NULL;
@@ -559,7 +560,7 @@ static short check_rna_path_is_valid(ID *owner_id, const char *path)
 	RNA_id_pointer_create(owner_id, &id_ptr);
 	
 	/* try to resolve */
-	return RNA_path_resolve(&id_ptr, path, &ptr, &prop); 
+	return RNA_path_resolve_property(&id_ptr, path, &ptr, &prop); 
 }
 
 /* Check if some given RNA Path needs fixing - free the given path and set a new one as appropriate 
@@ -725,8 +726,15 @@ void BKE_animdata_fix_paths_rename(ID *owner_id, AnimData *adt, ID *ref_id, cons
 	
 	if ((oldName != NULL) && (newName != NULL)) {
 		/* pad the names with [" "] so that only exact matches are made */
-		oldN = BLI_sprintfN("[\"%s\"]", oldName);
-		newN = BLI_sprintfN("[\"%s\"]", newName);
+		const size_t name_old_len = strlen(oldName);
+		const size_t name_new_len = strlen(newName);
+		char *name_old_esc = BLI_array_alloca(name_old_esc, (name_old_len * 2) + 1);
+		char *name_new_esc = BLI_array_alloca(name_new_esc, (name_new_len * 2) + 1);
+
+		BLI_strescape(name_old_esc, oldName, (name_old_len * 2) + 1);
+		BLI_strescape(name_new_esc, newName, (name_new_len * 2) + 1);
+		oldN = BLI_sprintfN("[\"%s\"]", name_old_esc);
+		newN = BLI_sprintfN("[\"%s\"]", name_new_esc);
 	}
 	else {
 		oldN = BLI_sprintfN("[%d]", oldSubscript);
@@ -745,7 +753,7 @@ void BKE_animdata_fix_paths_rename(ID *owner_id, AnimData *adt, ID *ref_id, cons
 	/* NLA Data - Animation Data for Strips */
 	for (nlt = adt->nla_tracks.first; nlt; nlt = nlt->next)
 		nlastrips_path_rename_fix(owner_id, prefix, oldName, newName, oldN, newN, &nlt->strips, verify_paths);
-		
+
 	/* free the temp names */
 	MEM_freeN(oldN);
 	MEM_freeN(newN);
@@ -1164,7 +1172,7 @@ static short animsys_write_rna_setting(PointerRNA *ptr, char *path, int array_in
 	//printf("%p %s %i %f\n", ptr, path, array_index, value);
 	
 	/* get property to write to */
-	if (RNA_path_resolve(ptr, path, &new_ptr, &prop)) {
+	if (RNA_path_resolve_property(ptr, path, &new_ptr, &prop)) {
 		/* set value - only for animatable numerical values */
 		if (RNA_property_animateable(&new_ptr, prop)) {
 			int array_len = RNA_property_array_length(&new_ptr, prop);
@@ -1650,7 +1658,7 @@ static NlaEvalChannel *nlaevalchan_verify(PointerRNA *ptr, ListBase *channels, N
 	/* free_path = */ /* UNUSED */ animsys_remap_path(strip->remap, fcu->rna_path, &path);
 	
 	/* a valid property must be available, and it must be animatable */
-	if (RNA_path_resolve(ptr, path, &new_ptr, &prop) == 0) {
+	if (RNA_path_resolve_property(ptr, path, &new_ptr, &prop) == false) {
 		if (G.debug & G_DEBUG) printf("NLA Strip Eval: Cannot resolve path\n");
 		return NULL;
 	}

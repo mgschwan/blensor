@@ -196,17 +196,21 @@ static bool is_power_of_2_resolution(int w, int h)
 
 static bool is_over_resolution_limit(int w, int h)
 {
-	if (U.glreslimit != 0)
-		return (w > U.glreslimit || h > U.glreslimit);
+	int reslimit = (U.glreslimit != 0)?
+		min_ii(U.glreslimit, GPU_max_texture_size()) :
+		GPU_max_texture_size();
 
-	return false;
+	return (w > reslimit || h > reslimit);
 }
 
 static int smaller_power_of_2_limit(int num)
 {
+	int reslimit = (U.glreslimit != 0)?
+		min_ii(U.glreslimit, GPU_max_texture_size()) :
+		GPU_max_texture_size();
 	/* take texture clamping into account */
-	if (U.glreslimit != 0 && num > U.glreslimit)
-		return U.glreslimit;
+	if (num > reslimit)
+		return reslimit;
 
 	return power_of_2_min_i(num);
 }
@@ -281,6 +285,11 @@ void GPU_set_linear_mipmap(int linear)
 int GPU_get_mipmap(void)
 {
 	return GTS.domipmap && !GTS.texpaint;
+}
+
+int GPU_get_linear_mipmap(void)
+{
+	return GTS.linearmipmap;
 }
 
 static GLenum gpu_get_mipmap_filter(int mag)

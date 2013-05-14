@@ -55,7 +55,7 @@
 #include "BKE_lattice.h"
 #include "BKE_main.h"
 #include "BKE_object.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_scene.h"
 #include "BKE_tracking.h"
@@ -100,8 +100,8 @@ static void special_transvert_update(Object *obedit)
 		DAG_id_tag_update(obedit->data, 0);
 		
 		if (obedit->type == OB_MESH) {
-			BMEditMesh *em = BMEdit_FromObject(obedit);
-			BM_mesh_normals_update(em->bm, true);  /* does face centers too */
+			BMEditMesh *em = BKE_editmesh_from_object(obedit);
+			BM_mesh_normals_update(em->bm);
 		}
 		else if (ELEM(obedit->type, OB_CURVE, OB_SURF)) {
 			Curve *cu = obedit->data;
@@ -251,7 +251,7 @@ static void make_trans_verts(Object *obedit, float min[3], float max[3], int mod
 	zero_v3(centroid);
 	
 	if (obedit->type == OB_MESH) {
-		BMEditMesh *em = BMEdit_FromObject(obedit);
+		BMEditMesh *em = BKE_editmesh_from_object(obedit);
 		BMesh *bm = em->bm;
 		BMIter iter;
 		void *userdata[2] = {em, NULL};
@@ -1005,7 +1005,7 @@ static int snap_curs_to_active(bContext *C, wmOperator *UNUSED(op))
 
 	if (obedit) {
 		if (obedit->type == OB_MESH) {
-			BMEditMesh *em = BMEdit_FromObject(obedit);
+			BMEditMesh *em = BKE_editmesh_from_object(obedit);
 			/* check active */
 			BMEditSelection ese;
 			

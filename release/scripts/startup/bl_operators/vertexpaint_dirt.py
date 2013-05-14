@@ -21,6 +21,7 @@
 
 # <pep8 compliant>
 
+# Contributor(s): Keith "Wahooney" Boshoff, Campbell Barton
 
 def applyVertexDirt(me, blur_iterations, blur_strength, clamp_dirt, clamp_clean, dirt_only):
     from mathutils import Vector
@@ -122,7 +123,7 @@ def applyVertexDirt(me, blur_iterations, blur_strength, clamp_dirt, clamp_clean,
 
                 if dirt_only:
                     tone = min(tone, 0.5)
-                    tone *= 2
+                    tone *= 2.0
 
                 col[0] = tone * col[0]
                 col[1] = tone * col[1]

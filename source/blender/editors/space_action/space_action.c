@@ -39,7 +39,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -185,6 +184,8 @@ static void action_main_area_draw(const bContext *C, ARegion *ar)
 	UI_view2d_grid_draw(v2d, grid, V2D_GRIDLINES_ALL);
 	UI_view2d_grid_free(grid);
 	
+	ED_region_draw_cb_draw(C, ar, REGION_DRAW_PRE_VIEW);
+
 	/* data */
 	if (ANIM_animdata_get_context(C, &ac)) {
 		draw_channel_strips(&ac, saction, ar);
@@ -204,6 +205,10 @@ static void action_main_area_draw(const bContext *C, ARegion *ar)
 	/* preview range */
 	UI_view2d_view_ortho(v2d);
 	ANIM_draw_previewrange(C, v2d);
+
+	/* callback */
+	UI_view2d_view_ortho(v2d);
+	ED_region_draw_cb_draw(C, ar, REGION_DRAW_POST_VIEW);
 	
 	/* reset view matrix */
 	UI_view2d_view_restore(C);

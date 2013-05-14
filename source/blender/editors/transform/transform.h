@@ -40,7 +40,7 @@
 #include "DNA_listBase.h"
 
 #include "BLI_smallhash.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 /* ************************** Types ***************************** */
 
@@ -185,16 +185,14 @@ struct LinkNode;
 struct GHash;
 
 typedef struct TransDataEdgeSlideVert {
-	struct BMVert vup, vdown;
-	struct BMVert origvert;
-
-	struct BMVert *up, *down;
+	struct BMVert *v_a, *v_b;
 	struct BMVert *v;
+	float v_co_orig[3];
 
 	float edge_len;
 
 	/* add origvert.co to get the original locations */
-	float upvec[3], downvec[3];
+	float dir_a[3], dir_b[3];
 
 	int loop_nr;
 } TransDataEdgeSlideVert;
@@ -206,7 +204,7 @@ typedef struct EdgeSlideData {
 	struct SmallHash vhash;
 	struct SmallHash origfaces;
 
-	int start[2], end[2];
+	int mval_start[2], mval_end[2];
 	struct BMEditMesh *em;
 
 	/* flag that is set when origfaces is initialized */
@@ -355,7 +353,8 @@ typedef struct TransInfo {
 	struct wmKeyMap *keymap;  /* so we can do lookups for header text */
 	int         mval[2];        /* current mouse position               */
 	float       zfac;           /* use for 3d view */
-	struct Object   *obedit;
+	struct Object *obedit;
+	float          obedit_mat[3][3]; /* normalized editmode matrix (T_EDIT only) */
 	void		*draw_handle_apply;
 	void		*draw_handle_view;
 	void		*draw_handle_pixel;
@@ -623,6 +622,7 @@ void drawConstraint(TransInfo *t);
 
 void getConstraintMatrix(TransInfo *t);
 void setConstraint(TransInfo *t, float space[3][3], int mode, const char text[]);
+void setAxisMatrixConstraint(TransInfo *t, int mode, const char text[]);
 void setLocalConstraint(TransInfo *t, int mode, const char text[]);
 void setUserConstraint(TransInfo *t, short orientation, int mode, const char text[]);
 
@@ -697,7 +697,8 @@ void setInputPostFct(MouseInput *mi, void	(*post)(struct TransInfo *t, float val
 /*********************** Generics ********************************/
 
 int initTransInfo(struct bContext *C, TransInfo *t, struct wmOperator *op, const struct wmEvent *event);
-void postTrans (struct bContext *C, TransInfo *t);
+void postTrans(struct bContext *C, TransInfo *t);
+void resetTransModal(TransInfo *t);
 void resetTransRestrictions(TransInfo *t);
 
 void drawLine(TransInfo *t, const float center[3], const float dir[3], char axis, short options);
@@ -724,10 +725,6 @@ void getViewVector(TransInfo *t, float coord[3], float vec[3]);
 
 void initTransformOrientation(struct bContext *C, TransInfo *t);
 
-struct TransformOrientation *createObjectSpace(struct bContext *C, struct ReportList *reports, char *name, int overwrite);
-struct TransformOrientation *createMeshSpace(struct bContext *C, struct ReportList *reports, char *name, int overwrite);
-struct TransformOrientation *createBoneSpace(struct bContext *C, struct ReportList *reports, char *name, int overwrite);
-
 /* Those two fill in mat and return non-zero on success */
 bool createSpaceNormal(float mat[3][3], const float normal[3]);
 bool createSpaceNormalTangent(float mat[3][3], float normal[3], float tangent[3]);
@@ -752,5 +749,6 @@ void freeVertSlideVerts(TransInfo *t);
 
 /* TODO. transform_queries.c */
 bool checkUseLocalCenter_GraphEdit(TransInfo *t);
+bool checkUseAxisMatrix(TransInfo *t);
 
 #endif

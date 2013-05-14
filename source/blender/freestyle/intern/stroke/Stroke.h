@@ -39,6 +39,10 @@
 #include "../system/FreestyleConfig.h"
 #include "../system/StringUtils.h"
 
+#ifdef WITH_CXX_GUARDEDALLOC
+#include "MEM_guardedalloc.h"
+#endif
+
 namespace Freestyle {
 
 //
@@ -297,6 +301,11 @@ private:
 	realMap *_userAttributesReal;
 	Vec2fMap *_userAttributesVec2f;
 	Vec3fMap *_userAttributesVec3f;
+
+#ifdef WITH_CXX_GUARDEDALLOC
+public:
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:StrokeAttribute")
+#endif
 };
 
 
@@ -520,7 +529,7 @@ private:
 	float _Length; // The stroke length
 	viewedge_container _ViewEdges;
 	float _sampling;
-	StrokeRenderer *_renderer; // mark implementation OpenGL renderer
+	// StrokeRenderer *_renderer; // mark implementation OpenGL renderer
 	MediumType _mediumType;
 	unsigned int _textureId;
 	bool _tips;

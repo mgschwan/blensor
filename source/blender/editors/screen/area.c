@@ -38,7 +38,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -454,6 +453,15 @@ void ED_region_do_draw(bContext *C, ARegion *ar)
 	ED_region_pixelspace(ar);
 
 	ED_region_draw_cb_draw(C, ar, REGION_DRAW_POST_PIXEL);
+
+	/* for debugging unneeded area redraws and partial redraw */
+#if 0
+	glEnable(GL_BLEND);
+	glColor4f(drand48(), drand48(), drand48(), 0.1f);
+	glRectf(ar->drawrct.xmin - ar->winrct.xmin, ar->drawrct.ymin - ar->winrct.ymin,
+	        ar->drawrct.xmax - ar->winrct.xmin, ar->drawrct.ymax - ar->winrct.ymin);
+	glDisable(GL_BLEND);
+#endif
 
 	ar->do_draw = FALSE;
 	memset(&ar->drawrct, 0, sizeof(ar->drawrct));
@@ -1512,7 +1520,7 @@ static const char *editortype_pup(void)
 
 	    "|Timeline %x15"
 	    "|Graph Editor %x2"
-	    "|DopeSheet %x12"
+	    "|Dope Sheet %x12"
 	    "|NLA Editor %x13"
 
 	    "|%l"
@@ -1856,11 +1864,12 @@ int ED_area_headersize(void)
 	return (int)(1.3f * UI_UNIT_Y);
 }
 
-void ED_region_info_draw(ARegion *ar, const char *text, int block, float alpha)
+void ED_region_info_draw(ARegion *ar, const char *text, int block, float fill_color[4])
 {
 	const int header_height = UI_UNIT_Y;
 	uiStyle *style = UI_GetStyleDraw();
 	int fontid = style->widget.uifont_id;
+	GLint scissor[4];
 	rcti rect;
 
 	/* background box */
@@ -1873,9 +1882,14 @@ void ED_region_info_draw(ARegion *ar, const char *text, int block, float alpha)
 
 	rect.ymax = BLI_rcti_size_y(&ar->winrct);
 
+	/* setup scissor */
+	glGetIntegerv(GL_SCISSOR_BOX, scissor);
+	glScissor(ar->winrct.xmin + rect.xmin, ar->winrct.ymin + rect.ymin,
+	          BLI_rcti_size_x(&rect) + 1, BLI_rcti_size_y(&rect) + 1);
+
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glColor4f(0.0f, 0.0f, 0.0f, alpha);
+	glColor4fv(fill_color);
 	glRecti(rect.xmin, rect.ymin, rect.xmax + 1, rect.ymax + 1);
 	glDisable(GL_BLEND);
 
@@ -1888,6 +1902,9 @@ void ED_region_info_draw(ARegion *ar, const char *text, int block, float alpha)
 	BLF_draw(fontid, text, BLF_DRAW_STR_DUMMY_MAX);
 
 	BLF_disable(fontid, BLF_CLIPPING);
+
+	/* restore scissor as it was before */
+	glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
 }
 
 void ED_region_grid_draw(ARegion *ar, float zoomx, float zoomy)

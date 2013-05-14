@@ -70,7 +70,7 @@
 #include "BKE_ocean.h"
 #include "BKE_particle.h"
 #include "BKE_softbody.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -304,9 +304,6 @@ static int object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 
 		*sort_depsgraph = 1;
 	}
-	else if (md->type == eModifierType_Smoke) {
-		ob->dt = OB_TEXTURE;
-	}
 	else if (md->type == eModifierType_Multires) {
 		/* Delete MDisps layer if not used by another multires modifier */
 		if (object_modifier_safe_to_delete(bmain, ob, md, eModifierType_Multires))
@@ -464,7 +461,7 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	if (totvert == 0) return 0;
 
 	/* add new mesh */
-	obn = BKE_object_add(scene, OB_MESH);
+	obn = BKE_object_add(bmain, scene, OB_MESH);
 	me = obn->data;
 	
 	me->totvert = totvert;
@@ -619,7 +616,7 @@ static int modifier_apply_obdata(ReportList *reports, Scene *scene, Object *ob, 
 				return 0;
 			}
 
-			DM_to_mesh(dm, me, ob);
+			DM_to_mesh(dm, me, ob, CD_MASK_MESH);
 
 			dm->release(dm);
 
@@ -1518,7 +1515,7 @@ static void skin_root_clear(BMesh *bm, BMVert *bm_vert, GHash *visited)
 static int skin_root_mark_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *ob = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMEditMesh *em = BKE_editmesh_from_object(ob);
 	BMesh *bm = em->bm;
 	BMVert *bm_vert;
 	BMIter bm_iter;
@@ -1574,7 +1571,7 @@ typedef enum {
 static int skin_loose_mark_clear_exec(bContext *C, wmOperator *op)
 {
 	Object *ob = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMEditMesh *em = BKE_editmesh_from_object(ob);
 	BMesh *bm = em->bm;
 	BMVert *bm_vert;
 	BMIter bm_iter;
@@ -1632,7 +1629,7 @@ void OBJECT_OT_skin_loose_mark_clear(wmOperatorType *ot)
 static int skin_radii_equalize_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *ob = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMEditMesh *em = BKE_editmesh_from_object(ob);
 	BMesh *bm = em->bm;
 	BMVert *bm_vert;
 	BMIter bm_iter;
@@ -1721,8 +1718,7 @@ static void skin_armature_bone_create(Object *skin_ob,
 	}
 }
 
-static Object *modifier_skin_armature_create(struct Scene *scene,
-                                             Object *skin_ob)
+static Object *modifier_skin_armature_create(Main *bmain, Scene *scene, Object *skin_ob)
 {
 	BLI_bitmap edges_visited;
 	DerivedMesh *deform_dm;
@@ -1745,7 +1741,7 @@ static Object *modifier_skin_armature_create(struct Scene *scene,
 	                     NULL,
 	                     me->totvert);
 	
-	arm_ob = BKE_object_add(scene, OB_ARMATURE);
+	arm_ob = BKE_object_add(bmain, scene, OB_ARMATURE);
 	BKE_object_transform_copy(arm_ob, skin_ob);
 	arm = arm_ob->data;
 	arm->layer = 1;
@@ -1815,7 +1811,7 @@ static int skin_armature_create_exec(bContext *C, wmOperator *op)
 	}
 
 	/* create new armature */
-	arm_ob = modifier_skin_armature_create(scene, ob);
+	arm_ob = modifier_skin_armature_create(bmain, scene, ob);
 
 	/* add a modifier to connect the new armature to the mesh */
 	arm_md = (ArmatureModifierData *)modifier_new(eModifierType_Armature);

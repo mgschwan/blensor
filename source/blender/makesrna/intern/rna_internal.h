@@ -232,6 +232,7 @@ int rna_object_shapekey_index_set(struct ID *id, PointerRNA value, int current);
 void rna_Object_internal_update_data(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
 void rna_Mesh_update_draw(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
 void rna_TextureSlot_update(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
+void rna_TextureSlot_brush_update(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
 
 /* basic poll functions for object types */
 int rna_Armature_object_poll(struct PointerRNA *ptr, struct PointerRNA value);
@@ -404,7 +405,7 @@ int rna_parameter_size_alloc(struct PropertyRNA *parm);
 
 struct Mesh *rna_Main_meshes_new_from_object(
         struct Main *bmain, struct ReportList *reports, struct Scene *sce,
-        struct Object *ob, int apply_modifiers, int settings, int calc_tessface);
+        struct Object *ob, int apply_modifiers, int settings, int calc_tessface, int calc_undeformed);
 
 /* XXX, these should not need to be defined here~! */
 struct MTex *rna_mtex_texture_slots_add(struct ID *self, struct bContext *C, struct ReportList *reports);

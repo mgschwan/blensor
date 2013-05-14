@@ -80,8 +80,8 @@
 typedef struct uiWidgetTrias {
 	unsigned int tot;
 	
-	float vec[32][2];
-	unsigned int (*index)[3];
+	float vec[16][2];
+	const unsigned int (*index)[3];
 	
 } uiWidgetTrias;
 
@@ -126,60 +126,60 @@ typedef struct uiWidgetType {
 
 /* *********************** draw data ************************** */
 
-static float cornervec[WIDGET_CURVE_RESOLU][2] = {
+static const float cornervec[WIDGET_CURVE_RESOLU][2] = {
 	{0.0, 0.0}, {0.195, 0.02}, {0.383, 0.067},
 	{0.55, 0.169}, {0.707, 0.293}, {0.831, 0.45},
 	{0.924, 0.617}, {0.98, 0.805}, {1.0, 1.0}
 };
 
 #define WIDGET_AA_JITTER 8
-static float jit[WIDGET_AA_JITTER][2] = {
+static const float jit[WIDGET_AA_JITTER][2] = {
 	{ 0.468813, -0.481430}, {-0.155755, -0.352820},
 	{ 0.219306, -0.238501}, {-0.393286, -0.110949},
 	{-0.024699,  0.013908}, { 0.343805,  0.147431},
 	{-0.272855,  0.269918}, { 0.095909,  0.388710}
 };
 
-static float num_tria_vert[3][2] = {
+static const float num_tria_vert[3][2] = {
 	{-0.352077, 0.532607}, {-0.352077, -0.549313}, {0.330000, -0.008353}
 };
 
-static unsigned int num_tria_face[1][3] = {
+static const unsigned int num_tria_face[1][3] = {
 	{0, 1, 2}
 };
 
-static float scroll_circle_vert[16][2] = {
+static const float scroll_circle_vert[16][2] = {
 	{0.382684, 0.923879}, {0.000001, 1.000000}, {-0.382683, 0.923880}, {-0.707107, 0.707107},
 	{-0.923879, 0.382684}, {-1.000000, 0.000000}, {-0.923880, -0.382684}, {-0.707107, -0.707107},
 	{-0.382683, -0.923880}, {0.000000, -1.000000}, {0.382684, -0.923880}, {0.707107, -0.707107},
 	{0.923880, -0.382684}, {1.000000, -0.000000}, {0.923880, 0.382683}, {0.707107, 0.707107}
 };
 
-static unsigned int scroll_circle_face[14][3] = {
+static const unsigned int scroll_circle_face[14][3] = {
 	{0, 1, 2}, {2, 0, 3}, {3, 0, 15}, {3, 15, 4}, {4, 15, 14}, {4, 14, 5}, {5, 14, 13}, {5, 13, 6},
 	{6, 13, 12}, {6, 12, 7}, {7, 12, 11}, {7, 11, 8}, {8, 11, 10}, {8, 10, 9}
 };
 
 
-static float menu_tria_vert[6][2] = {
+static const float menu_tria_vert[6][2] = {
 	{-0.33, 0.16}, {0.33, 0.16}, {0, 0.82},
 	{0, -0.82}, {-0.33, -0.16}, {0.33, -0.16}
 };
 
 
 
-static unsigned int menu_tria_face[2][3] = {{2, 0, 1}, {3, 5, 4}};
+static const unsigned int menu_tria_face[2][3] = {{2, 0, 1}, {3, 5, 4}};
 
-static float check_tria_vert[6][2] = {
+static const float check_tria_vert[6][2] = {
 	{-0.578579, 0.253369},  {-0.392773, 0.412794},  {-0.004241, -0.328551},
 	{-0.003001, 0.034320},  {1.055313, 0.864744},   {0.866408, 1.026895}
 };
 
-static unsigned int check_tria_face[4][3] = {
+static const unsigned int check_tria_face[4][3] = {
 	{3, 2, 4}, {3, 4, 5}, {1, 0, 3}, {0, 2, 3}
 };
 
-GLubyte checker_stipple_sml[32 * 32 / 8] =
+GLubyte const checker_stipple_sml[32 * 32 / 8] =
 {
 	255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0,
 	255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0,
@@ -969,7 +969,13 @@ static void ui_text_clip_left(uiFontStyle *fstyle, uiBut *but, const rcti *rect)
 {
 	int border = (but->flag & UI_BUT_ALIGN_RIGHT) ? 8 : 10;
 	int okwidth = BLI_rcti_size_x(rect) - border;
-	if (but->flag & UI_HAS_ICON) okwidth -= UI_DPI_ICON_SIZE;
+
+	if (but->flag & UI_HAS_ICON)
+		okwidth -= UI_DPI_ICON_SIZE;
+	if (but->type == SEARCH_MENU_UNLINK && !but->editstr)
+		okwidth -= BLI_rcti_size_y(rect);
+
+	okwidth = max_ii(okwidth, 0);
 
 	/* need to set this first */
 	uiStyleFontSet(fstyle);
@@ -997,7 +1003,7 @@ static void ui_text_clip_left(uiFontStyle *fstyle, uiBut *but, const rcti *rect)
 static void ui_text_clip_cursor(uiFontStyle *fstyle, uiBut *but, const rcti *rect)
 {
 	int border = (but->flag & UI_BUT_ALIGN_RIGHT) ? 8 : 10;
-	int okwidth = BLI_rcti_size_x(rect) - border;
+	int okwidth = max_ii(BLI_rcti_size_x(rect) - border, 0);
 	if (but->flag & UI_HAS_ICON) okwidth -= UI_DPI_ICON_SIZE;
 
 	BLI_assert(but->editstr && but->pos >= 0);
@@ -1061,7 +1067,7 @@ static void ui_text_clip_cursor(uiFontStyle *fstyle, uiBut *but, const rcti *rec
 static void ui_text_clip_right_label(uiFontStyle *fstyle, uiBut *but, const rcti *rect)
 {
 	int border = (but->flag & UI_BUT_ALIGN_RIGHT) ? 8 : 10;
-	int okwidth = BLI_rcti_size_x(rect) - border;
+	int okwidth = max_ii(BLI_rcti_size_x(rect) - border, 0);
 	char *cpoin = NULL;
 	int drawstr_len = strlen(but->drawstr);
 	char *cpend = but->drawstr + drawstr_len;
@@ -1265,7 +1271,7 @@ static void widget_draw_text(uiFontStyle *fstyle, uiWidgetColors *wcol, uiBut *b
 	/* part text right aligned */
 	if (cpoin) {
 		fstyle->align = UI_STYLE_TEXT_RIGHT;
-		rect->xmax -= ui_but_draw_menu_icon(but) ? UI_DPI_ICON_SIZE : 5;
+		rect->xmax -= ui_but_draw_menu_icon(but) ? UI_DPI_ICON_SIZE : 0.25f * U.widget_unit;
 		uiStyleFontDraw(fstyle, rect, cpoin + 1);
 		*cpoin = '|';
 	}
@@ -1347,7 +1353,7 @@ static void widget_draw_text_icon(uiFontStyle *fstyle, uiWidgetColors *wcol, uiB
 		}
 		
 		/* unlink icon for this button type */
-		if (but->type == SEARCH_MENU_UNLINK && but->drawstr[0]) {
+		if (but->type == SEARCH_MENU_UNLINK && !but->editstr && but->drawstr[0]) {
 			rcti temp = *rect;
 
 			temp.xmin = temp.xmax - (BLI_rcti_size_y(rect) * 1.08f);
@@ -1762,9 +1768,9 @@ static void widget_state_label(uiWidgetType *wt, int state)
 	widget_state(wt, state);
 
 	if (state & UI_SELECT)
-		UI_GetThemeColor4ubv(TH_TEXT_HI, (unsigned char *)wt->wcol.text);
+		UI_GetThemeColor3ubv(TH_TEXT_HI, (unsigned char *)wt->wcol.text);
 	else
-		UI_GetThemeColor4ubv(TH_TEXT, (unsigned char *)wt->wcol.text);
+		UI_GetThemeColor3ubv(TH_TEXT, (unsigned char *)wt->wcol.text);
 	
 }
 
@@ -1941,19 +1947,38 @@ void ui_hsvcircle_vals_from_pos(float *val_rad, float *val_dist, const rcti *rec
 	*val_rad = atan2f(m_delta[0], m_delta[1]) / (2.0f * (float)M_PI) + 0.5f;
 }
 
+/* cursor in hsv circle, in float units -1 to 1, to map on radius */
+void ui_hsvcircle_pos_from_vals(uiBut *but, const rcti *rect, float *hsv, float *xpos, float *ypos)
+{
+	/* duplication of code... well, simple is better now */
+	const float centx = BLI_rcti_cent_x_fl(rect);
+	const float centy = BLI_rcti_cent_y_fl(rect);
+	float radius = (float)min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect)) / 2.0f;
+	float ang, radius_t;
+	
+	ang = 2.0f * (float)M_PI * hsv[0] + 0.5f * (float)M_PI;
+	
+	if (but->flag & UI_BUT_COLOR_CUBIC)
+		radius_t = (1.0f - powf(1.0f - hsv[1], 3.0f));
+	else
+		radius_t = hsv[1];
+	
+	radius = CLAMPIS(radius_t, 0.0f, 1.0f) * radius;
+	*xpos = centx + cosf(-ang) * radius;
+	*ypos = centy + sinf(-ang) * radius;
+}
+
 static void ui_draw_but_HSVCIRCLE(uiBut *but, uiWidgetColors *wcol, const rcti *rect)
 {
 	const int tot = 64;
 	const float radstep = 2.0f * (float)M_PI / (float)tot;
-
 	const float centx = BLI_rcti_cent_x_fl(rect);
 	const float centy = BLI_rcti_cent_y_fl(rect);
 	float radius = (float)min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect)) / 2.0f;
 
 	/* gouraud triangle fan */
 	const float *hsv_ptr = ui_block_hsv_get(but->block);
-	float ang = 0.0f;
-	float cursor_radius;
+	float xpos, ypos, ang = 0.0f;
 	float rgb[3], hsvo[3], hsv[3], col[3], colcent[3];
 	int a;
 	int color_profile = but->block->color_profile;
@@ -2017,15 +2042,9 @@ static void ui_draw_but_HSVCIRCLE(uiBut *but, uiWidgetColors *wcol, const rcti *
 	glPopMatrix();
 
 	/* cursor */
-	ang = 2.0f * (float)M_PI * hsvo[0] + 0.5f * (float)M_PI;
+	ui_hsvcircle_pos_from_vals(but, rect, hsvo, &xpos, &ypos);
 
-	if (but->flag & UI_BUT_COLOR_CUBIC)
-		cursor_radius = (1.0f - powf(1.0f - hsvo[1], 3.0f));
-	else
-		cursor_radius = hsvo[1];
-
-	radius = CLAMPIS(cursor_radius, 0.0f, 1.0f) * radius;
-	ui_hsv_cursor(centx + cosf(-ang) * radius, centy + sinf(-ang) * radius);
+	ui_hsv_cursor(xpos, ypos);
 }
 
 /* ************ custom buttons, old stuff ************** */
@@ -2168,7 +2187,35 @@ void ui_draw_gradient(const rcti *rect, const float hsv[3], const int type, cons
 	
 }
 
+void ui_hsvcube_pos_from_vals(uiBut *but, const rcti *rect, float *hsv, float *xp, float *yp)
+{
+	float x, y;
+	
+	switch ((int)but->a1) {
+		case UI_GRAD_SV:
+			x = hsv[2]; y = hsv[1]; break;
+		case UI_GRAD_HV:
+			x = hsv[0]; y = hsv[2]; break;
+		case UI_GRAD_HS:
+			x = hsv[0]; y = hsv[1]; break;
+		case UI_GRAD_H:
+			x = hsv[0]; y = 0.5; break;
+		case UI_GRAD_S:
+			x = hsv[1]; y = 0.5; break;
+		case UI_GRAD_V:
+			x = hsv[2]; y = 0.5; break;
+		case UI_GRAD_V_ALT:
+			x = 0.5f;
+			/* exception only for value strip - use the range set in but->min/max */
+			y = (hsv[2] - but->softmin ) / (but->softmax - but->softmin);
+			break;
+	}
+	
+	/* cursor */
+	*xp = rect->xmin + x * BLI_rcti_size_x(rect);
+	*yp = rect->ymin + y * BLI_rcti_size_y(rect);
 
+}
 
 static void ui_draw_but_HSVCUBE(uiBut *but, const rcti *rect)
 {
@@ -2191,25 +2238,8 @@ static void ui_draw_but_HSVCUBE(uiBut *but, const rcti *rect)
 	rgb_to_hsv_compat_v(rgb, hsv_n);
 	
 	ui_draw_gradient(rect, hsv_n, but->a1, 1.0f);
-	
-	switch ((int)but->a1) {
-		case UI_GRAD_SV:
-			x = hsv_n[2]; y = hsv_n[1]; break;
-		case UI_GRAD_HV:
-			x = hsv_n[0]; y = hsv_n[2]; break;
-		case UI_GRAD_HS:
-			x = hsv_n[0]; y = hsv_n[1]; break;
-		case UI_GRAD_H:
-			x = hsv_n[0]; y = 0.5; break;
-		case UI_GRAD_S:
-			x = hsv_n[1]; y = 0.5; break;
-		case UI_GRAD_V:
-			x = hsv_n[2]; y = 0.5; break;
-	}
-	
-	/* cursor */
-	x = rect->xmin + x * BLI_rcti_size_x(rect);
-	y = rect->ymin + y * BLI_rcti_size_y(rect);
+
+	ui_hsvcube_pos_from_vals(but, rect, hsv_n, &x, &y);
 	CLAMP(x, rect->xmin + 3.0f, rect->xmax - 3.0f);
 	CLAMP(y, rect->ymin + 3.0f, rect->ymax - 3.0f);
 	

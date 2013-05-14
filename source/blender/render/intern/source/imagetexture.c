@@ -224,7 +224,7 @@ int imagewrap(Tex *tex, Image *ima, ImBuf *ibuf, const float texvec[3], TexResul
 	}
 
 	/* keep this before interpolation [#29761] */
-	if ((tex->imaflag & TEX_USEALPHA) && tex->ima && (tex->ima->flag & IMA_IGNORE_ALPHA) == 0) {
+	if ((tex->imaflag & TEX_USEALPHA) && (ima->flag & IMA_IGNORE_ALPHA) == 0) {
 		if ((tex->imaflag & TEX_CALCALPHA) == 0) {
 			texres->talpha = TRUE;
 		}
@@ -307,8 +307,9 @@ int imagewrap(Tex *tex, Image *ima, ImBuf *ibuf, const float texvec[3], TexResul
 		texres->ta = 1.0f - texres->ta;
 	}
 
-	/* de-premul, this is being premulled in shade_input_do_shade() */
-	if (texres->ta!=1.0f && texres->ta>1e-4f) {
+	/* de-premul, this is being premulled in shade_input_do_shade()
+	 * do not de-premul for generated alpha, it is already in straight */
+	if (texres->ta!=1.0f && texres->ta>1e-4f && !(tex->imaflag & TEX_CALCALPHA)) {
 		fx= 1.0f/texres->ta;
 		texres->tr*= fx;
 		texres->tg*= fx;
@@ -1108,9 +1109,12 @@ static int imagewraposa_aniso(Tex *tex, Image *ima, ImBuf *ibuf, const float tex
 	/* mipmap test */
 	image_mipmap_test(tex, ibuf);
 	
-	if ((tex->imaflag & TEX_USEALPHA) && tex->ima && (tex->ima->flag & IMA_IGNORE_ALPHA) == 0) {
-		if ((tex->imaflag & TEX_CALCALPHA) == 0)
-			texres->talpha = 1;
+	if (ima) {
+		if ((tex->imaflag & TEX_USEALPHA) && (ima->flag & IMA_IGNORE_ALPHA) == 0) {
+			if ((tex->imaflag & TEX_CALCALPHA) == 0) {
+				texres->talpha = 1;
+			}
+		}
 	}
 	texr.talpha = texres->talpha;
 
@@ -1465,7 +1469,8 @@ static int imagewraposa_aniso(Tex *tex, Image *ima, ImBuf *ibuf, const float tex
 
 	/* brecht: tried to fix this, see "TXF alpha" comments */
 
-	if (texres->ta != 1.f && (texres->ta > 1e-4f)) {
+	/* do not de-premul for generated alpha, it is already in straight */
+	if (texres->ta!=1.0f && texres->ta>1e-4f && !(tex->imaflag & TEX_CALCALPHA)) {
 		fx = 1.f/texres->ta;
 		texres->tr *= fx;
 		texres->tg *= fx;
@@ -1524,7 +1529,7 @@ int imagewraposa(Tex *tex, Image *ima, ImBuf *ibuf, const float texvec[3], const
 	/* mipmap test */
 	image_mipmap_test(tex, ibuf);
 
-	if ((tex->imaflag & TEX_USEALPHA) && tex->ima && (tex->ima->flag & IMA_IGNORE_ALPHA) == 0) {
+	if ((tex->imaflag & TEX_USEALPHA) && (ima->flag & IMA_IGNORE_ALPHA) == 0) {
 		if ((tex->imaflag & TEX_CALCALPHA) == 0) {
 			texres->talpha = TRUE;
 		}
@@ -1872,7 +1877,8 @@ int imagewraposa(Tex *tex, Image *ima, ImBuf *ibuf, const float texvec[3], const
 	}
 
 	/* de-premul, this is being premulled in shade_input_do_shade() */
-	if (texres->ta != 1.0f && texres->ta > 1e-4f) {
+	/* do not de-premul for generated alpha, it is already in straight */
+	if (texres->ta!=1.0f && texres->ta>1e-4f && !(tex->imaflag & TEX_CALCALPHA)) {
 		mul_v3_fl(&texres->tr, 1.0f / texres->ta);
 	}
 

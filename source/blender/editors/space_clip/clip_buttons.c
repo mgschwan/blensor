@@ -41,7 +41,9 @@
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 #include "BLI_listbase.h"
+#include "BLI_path_util.h"
 #include "BLI_rect.h"
+#include "BLI_string.h"
 
 #include "BLF_translation.h"
 
@@ -61,6 +63,9 @@
 
 #include "WM_api.h"
 #include "WM_types.h"
+
+#include "IMB_imbuf_types.h"
+#include "IMB_imbuf.h"
 
 #include "clip_intern.h"  /* own include */
 
@@ -481,4 +486,97 @@ void uiTemplateMarker(uiLayout *layout, PointerRNA *ptr, const char *propname, P
 
 		uiBlockEndAlign(block);
 	}
+}
+
+/********************* Footage Information Template ************************/
+
+void uiTemplateMovieclipInformation(uiLayout *layout, PointerRNA *ptr, const char *propname, PointerRNA *userptr)
+{
+	PropertyRNA *prop;
+	PointerRNA clipptr;
+	MovieClip *clip;
+	MovieClipUser *user;
+	uiLayout *col;
+	char str[1024];
+	int width, height, framenr;
+	ImBuf *ibuf;
+	size_t ofs = 0;
+
+	if (!ptr->data)
+		return;
+
+	prop = RNA_struct_find_property(ptr, propname);
+	if (!prop) {
+		printf("%s: property not found: %s.%s\n",
+		       __func__, RNA_struct_identifier(ptr->type), propname);
+		return;
+	}
+
+	if (RNA_property_type(prop) != PROP_POINTER) {
+		printf("%s: expected pointer property for %s.%s\n",
+		       __func__, RNA_struct_identifier(ptr->type), propname);
+		return;
+	}
+
+	clipptr = RNA_property_pointer_get(ptr, prop);
+	clip = (MovieClip *)clipptr.data;
+	user = userptr->data;
+
+	col = uiLayoutColumn(layout, FALSE);
+
+	ibuf = BKE_movieclip_get_ibuf_flag(clip, user, clip->flag, MOVIECLIP_CACHE_SKIP);
+
+	/* Display frame dimensions, channels number and byffer type. */
+	BKE_movieclip_get_size(clip, user, &width, &height);
+	ofs += BLI_snprintf(str + ofs, sizeof(str) - ofs, IFACE_("Size %d x %d"), width, height);
+
+	if (ibuf) {
+		if (ibuf->rect_float) {
+			if (ibuf->channels != 4)
+				ofs += BLI_snprintf(str + ofs, sizeof(str) - ofs, IFACE_(", %d float channel(s)"), ibuf->channels);
+			else if (ibuf->planes == R_IMF_PLANES_RGBA)
+				ofs += BLI_strncpy_rlen(str + ofs, IFACE_(", RGBA float"), sizeof(str) - ofs);
+			else
+				ofs += BLI_strncpy_rlen(str + ofs, IFACE_(", RGB float"), sizeof(str) - ofs);
+		}
+		else {
+			if (ibuf->planes == R_IMF_PLANES_RGBA)
+				ofs += BLI_strncpy_rlen(str + ofs, IFACE_(", RGBA byte"), sizeof(str) - ofs);
+			else
+				ofs += BLI_strncpy_rlen(str + ofs, IFACE_(", RGB byte"), sizeof(str) - ofs);
+		}
+	}
+	else {
+		ofs += BLI_strncpy_rlen(str + ofs, IFACE_(", failed to load"), sizeof(str) - ofs);
+	}
+
+	uiItemL(col, str, ICON_NONE);
+
+	/* Display current frame number. */
+	framenr = BKE_movieclip_remap_scene_to_clip_frame(clip, user->framenr) ;
+	if (framenr <= clip->len)
+		BLI_snprintf(str, sizeof(str), IFACE_("Frame: %d / %d"), framenr, clip->len);
+	else
+		BLI_snprintf(str, sizeof(str), IFACE_("Frame: - / %d"), clip->len);
+	uiItemL(col, str, ICON_NONE);
+
+	/* Display current file name if it's a sequence clip. */
+	if (clip->source == MCLIP_SRC_SEQUENCE) {
+		char filepath[FILE_MAX];
+		const char *file;
+
+		if (framenr <= clip->len) {
+			BKE_movieclip_filename_for_frame(clip, user, filepath);
+			file = BLI_last_slash(filepath);
+		}
+		else {
+			file = "-";
+		}
+
+		BLI_snprintf(str, sizeof(str), IFACE_("File: %s"), file);
+
+		uiItemL(col, str, ICON_NONE);
+	}
+
+	IMB_freeImBuf(ibuf);
 }

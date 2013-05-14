@@ -40,7 +40,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -243,6 +242,21 @@ void ED_view3d_init_mats_rv3d_gl(struct Object *ob, struct RegionView3D *rv3d)
 	 * override the dupli-matrix */
 	glMultMatrixf(ob->obmat);
 }
+
+#ifdef DEBUG
+/* ensure we correctly initialize */
+void ED_view3d_clear_mats_rv3d(struct RegionView3D *rv3d)
+{
+	zero_m4(rv3d->viewmatob);
+	zero_m4(rv3d->persmatob);
+}
+
+void ED_view3d_check_mats_rv3d(struct RegionView3D *rv3d)
+{
+	BLI_ASSERT_ZERO_M4(rv3d->viewmatob);
+	BLI_ASSERT_ZERO_M4(rv3d->persmatob);
+}
+#endif
 
 /* ******************** default callbacks for view3d space ***************** */
 

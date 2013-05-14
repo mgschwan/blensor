@@ -50,7 +50,6 @@
 #include "BLI_math.h"
 #include "BLI_lasso.h"
 #include "BLI_rect.h"
-#include "BLI_rand.h"
 #include "BLI_linklist.h"
 #include "BLI_listbase.h"
 #include "BLI_string.h"
@@ -68,7 +67,7 @@
 #include "BKE_movieclip.h"
 #include "BKE_object.h"
 #include "BKE_paint.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_tracking.h"
 #include "BKE_utildefines.h"
 
@@ -482,7 +481,7 @@ static void do_lasso_select_mesh(ViewContext *vc, const int mcords[][2], short m
 	int bbsel;
 	
 	/* set editmesh */
-	vc->em = BMEdit_FromObject(vc->obedit);
+	vc->em = BKE_editmesh_from_object(vc->obedit);
 
 	BLI_lasso_boundbox(&rect, mcords, moves);
 
@@ -1593,23 +1592,8 @@ static void view3d_userdata_boxselect_init(BoxSelectUserData *r_data,
 
 bool edge_inside_circle(const float cent[2], float radius, const float screen_co_a[2], const float screen_co_b[2])
 {
-	int radius_squared = radius * radius;
-
-	/* check points in circle itself */
-	if (len_squared_v2v2(cent, screen_co_a) <= radius_squared) {
-		return true;
-	}
-	if (len_squared_v2v2(cent, screen_co_b) <= radius_squared) {
-		return true;
-	}
-	else {
-		/* pointdistline */
-		if (dist_squared_to_line_segment_v2(cent, screen_co_a, screen_co_b) < (float)radius_squared) {
-			return true;
-		}
-	}
-
-	return false;
+	const float radius_squared = radius * radius;
+	return (dist_squared_to_line_segment_v2(cent, screen_co_a, screen_co_b) < radius_squared);
 }
 
 static void do_paintvert_box_select__doSelectVert(void *userData, MVert *mv, const float screen_co[2], int UNUSED(index))
@@ -2077,7 +2061,7 @@ static int view3d_borderselect_exec(bContext *C, wmOperator *op)
 	if (vc.obedit) {
 		switch (vc.obedit->type) {
 			case OB_MESH:
-				vc.em = BMEdit_FromObject(vc.obedit);
+				vc.em = BKE_editmesh_from_object(vc.obedit);
 				ret = do_mesh_box_select(&vc, &rect, select, extend);
 //			if (EM_texFaceCheck())
 				if (ret & OPERATOR_FINISHED) {
@@ -2195,7 +2179,7 @@ static bool mouse_weight_paint_vertex_select(bContext *C, const int mval[2], boo
 /* ****** Mouse Select ****** */
 
 
-static int view3d_select_invoke(bContext *C, wmOperator *op, const wmEvent *event)
+static int view3d_select_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	Object *obact = CTX_data_active_object(C);
@@ -2206,6 +2190,9 @@ static int view3d_select_invoke(bContext *C, wmOperator *op, const wmEvent *even
 	bool enumerate = RNA_boolean_get(op->ptr, "enumerate");
 	bool object = RNA_boolean_get(op->ptr, "object");
 	bool retval = false;
+	int location[2];
+
+	RNA_int_get_array(op->ptr, "location", location);
 
 	view3d_operator_needs_opengl(C);
 
@@ -2221,27 +2208,27 @@ static int view3d_select_invoke(bContext *C, wmOperator *op, const wmEvent *even
 
 	if (obedit && object == false) {
 		if (obedit->type == OB_MESH)
-			retval = EDBM_select_pick(C, event->mval, extend, deselect, toggle);
+			retval = EDBM_select_pick(C, location, extend, deselect, toggle);
 		else if (obedit->type == OB_ARMATURE)
-			retval = mouse_armature(C, event->mval, extend, deselect, toggle);
+			retval = mouse_armature(C, location, extend, deselect, toggle);
 		else if (obedit->type == OB_LATTICE)
-			retval = mouse_lattice(C, event->mval, extend, deselect, toggle);
+			retval = mouse_lattice(C, location, extend, deselect, toggle);
 		else if (ELEM(obedit->type, OB_CURVE, OB_SURF))
-			retval = mouse_nurb(C, event->mval, extend, deselect, toggle);
+			retval = mouse_nurb(C, location, extend, deselect, toggle);
 		else if (obedit->type == OB_MBALL)
-			retval = mouse_mball(C, event->mval, extend, deselect, toggle);
+			retval = mouse_mball(C, location, extend, deselect, toggle);
 			
 	}
 	else if (obact && obact->mode & OB_MODE_SCULPT)
 		return OPERATOR_CANCELLED;
 	else if (obact && obact->mode & OB_MODE_PARTICLE_EDIT)
-		return PE_mouse_particles(C, event->mval, extend, deselect, toggle);
+		return PE_mouse_particles(C, location, extend, deselect, toggle);
 	else if (obact && paint_facesel_test(obact))
-		retval = paintface_mouse_select(C, obact, event->mval, extend, deselect, toggle);
+		retval = paintface_mouse_select(C, obact, location, extend, deselect, toggle);
 	else if (paint_vertsel_test(obact))
-		retval = mouse_weight_paint_vertex_select(C, event->mval, extend, deselect, toggle, obact);
+		retval = mouse_weight_paint_vertex_select(C, location, extend, deselect, toggle, obact);
 	else
-		retval = mouse_select(C, event->mval, extend, deselect, toggle, center, enumerate);
+		retval = mouse_select(C, location, extend, deselect, toggle, center, enumerate);
 
 	/* passthrough allows tweaks
 	 * FINISHED to signal one operator worked
@@ -2252,8 +2239,17 @@ static int view3d_select_invoke(bContext *C, wmOperator *op, const wmEvent *even
 		return OPERATOR_PASS_THROUGH;  /* nothing selected, just passthrough */
 }
 
+static int view3d_select_invoke(bContext *C, wmOperator *op, const wmEvent *event)
+{
+	RNA_int_set_array(op->ptr, "location", event->mval);
+
+	return view3d_select_exec(C, op);
+}
+
 void VIEW3D_OT_select(wmOperatorType *ot)
 {
+	PropertyRNA *prop;
+
 	/* identifiers */
 	ot->name = "Activate/Select";
 	ot->description = "Activate/select item(s)";
@@ -2261,6 +2257,7 @@ void VIEW3D_OT_select(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->invoke = view3d_select_invoke;
+	ot->exec = view3d_select_exec;
 	ot->poll = ED_operator_view3d_active;
 	
 	/* flags */
@@ -2272,6 +2269,9 @@ void VIEW3D_OT_select(wmOperatorType *ot)
 	RNA_def_boolean(ot->srna, "center", 0, "Center", "Use the object center when selecting, in editmode used to extend object selection");
 	RNA_def_boolean(ot->srna, "enumerate", 0, "Enumerate", "List objects under the mouse (object mode only)");
 	RNA_def_boolean(ot->srna, "object", 0, "Object", "Use object selection (editmode only)");
+
+	prop = RNA_def_int_vector(ot->srna, "location", 2, NULL, INT_MIN, INT_MAX, "Location", "Mouse location", INT_MIN, INT_MAX);
+	RNA_def_property_flag(prop, PROP_HIDDEN);
 }
 
 
@@ -2317,7 +2317,7 @@ static void mesh_circle_doSelectEdge(void *userData, BMEdge *eed, const float sc
 {
 	CircleSelectUserData *data = userData;
 
-	if (edge_inside_circle(data->mval_fl, (int)data->radius, screen_co_a, screen_co_b)) {
+	if (edge_inside_circle(data->mval_fl, data->radius, screen_co_a, screen_co_b)) {
 		BM_edge_select_set(data->vc->em->bm, eed, data->select);
 	}
 }
@@ -2339,7 +2339,7 @@ static void mesh_circle_select(ViewContext *vc, int select, const int mval[2], f
 	bbsel = EDBM_backbuf_circle_init(vc, mval[0], mval[1], (short)(rad + 1.0f));
 	ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d); /* for foreach's screen/vert projection */
 
-	vc->em = BMEdit_FromObject(vc->obedit);
+	vc->em = BKE_editmesh_from_object(vc->obedit);
 
 	view3d_userdata_circleselect_init(&data, vc, select, mval, rad);
 

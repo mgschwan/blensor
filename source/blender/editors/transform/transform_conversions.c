@@ -88,7 +88,7 @@
 #include "BKE_rigidbody.h"
 #include "BKE_scene.h"
 #include "BKE_sequencer.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_tracking.h"
 #include "BKE_mask.h"
 
@@ -286,7 +286,7 @@ static void createTransTexspace(TransInfo *t)
 
 static void createTransEdge(TransInfo *t)
 {
-	BMEditMesh *em = BMEdit_FromObject(t->obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(t->obedit);
 	TransData *td = NULL;
 	BMEdge *eed;
 	BMIter iter;
@@ -1968,7 +1968,7 @@ static void createTransEditVerts(TransInfo *t)
 	ToolSettings *ts = t->scene->toolsettings;
 	TransData *tob = NULL;
 	TransDataExtension *tx = NULL;
-	BMEditMesh *em = BMEdit_FromObject(t->obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(t->obedit);
 	BMesh *bm = em->bm;
 	BMVert *eve;
 	BMIter iter;
@@ -2408,15 +2408,17 @@ static void createTransUVs(bContext *C, TransInfo *t)
 	TransData2D *td2d = NULL;
 	MTexPoly *tf;
 	MLoopUV *luv;
-	BMEditMesh *em = BMEdit_FromObject(t->obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(t->obedit);
 	BMFace *efa;
 	BMLoop *l;
 	BMIter iter, liter;
-	UvElementMap *elementmap;
-	char *island_enabled;
+	UvElementMap *elementmap = NULL;
+	char *island_enabled = NULL;
 	int count = 0, countsel = 0, count_rejected = 0;
 	int propmode = t->flag & T_PROP_EDIT;
 	int propconnected = t->flag & T_PROP_CONNECTED;
+
+	const int cd_loop_uv_offset = CustomData_get_offset(&em->bm->ldata, CD_MLOOPUV);
 
 	if (!ED_space_image_show_uvedit(sima, t->obedit)) return;
 
@@ -2424,10 +2426,10 @@ static void createTransUVs(bContext *C, TransInfo *t)
 	if (propconnected) {
 		/* create element map with island information */
 		if (ts->uv_flag & UV_SYNC_SELECTION) {
-			elementmap = EDBM_uv_element_map_create (em, FALSE, TRUE);
+			elementmap = EDBM_uv_element_map_create(em, false, true);
 		}
 		else {
-			elementmap = EDBM_uv_element_map_create (em, TRUE, TRUE);
+			elementmap = EDBM_uv_element_map_create(em, true, true);
 		}
 		island_enabled = MEM_callocN(sizeof(*island_enabled) * elementmap->totalIslands, "TransIslandData(UV Editing)");
 	}
@@ -2442,7 +2444,7 @@ static void createTransUVs(bContext *C, TransInfo *t)
 
 		BM_elem_flag_enable(efa, BM_ELEM_TAG);
 		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-			if (uvedit_uv_select_test(em, scene, l)) {
+			if (uvedit_uv_select_test(scene, l, cd_loop_uv_offset)) {
 				countsel++;
 
 				if (propconnected) {
@@ -2478,7 +2480,7 @@ static void createTransUVs(bContext *C, TransInfo *t)
 			continue;
 
 		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-			if (!propmode && !uvedit_uv_select_test(em, scene, l))
+			if (!propmode && !uvedit_uv_select_test(scene, l, cd_loop_uv_offset))
 				continue;
 
 			if (propconnected) {
@@ -2489,8 +2491,8 @@ static void createTransUVs(bContext *C, TransInfo *t)
 				}
 			}
 			
-			luv = CustomData_bmesh_get(&em->bm->ldata, l->head.data, CD_MLOOPUV);
-			UVsToTransData(sima, td++, td2d++, luv->uv, uvedit_uv_select_test(em, scene, l));
+			luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+			UVsToTransData(sima, td++, td2d++, luv->uv, uvedit_uv_select_test(scene, l, cd_loop_uv_offset));
 		}
 	}
 
@@ -5472,7 +5474,7 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 	}
 	else if (t->obedit) {
 		if (t->obedit->type == OB_MESH) {
-			BMEditMesh *em = BMEdit_FromObject(t->obedit);
+			BMEditMesh *em = BKE_editmesh_from_object(t->obedit);
 			/* table needs to be created for each edit command, since vertices can move etc */
 			mesh_octree_table(t->obedit, em, NULL, 'e');
 		}
@@ -5535,7 +5537,7 @@ void special_aftertrans_update(bContext *C, TransInfo *t)
 	else { /* Objects */
 		int i, recalcObPaths = 0;
 
-		BLI_assert(t->flag & T_OBJECT);
+		BLI_assert(t->flag & (T_OBJECT | T_TEXTURE));
 
 		for (i = 0; i < t->total; i++) {
 			TransData *td = t->data + i;

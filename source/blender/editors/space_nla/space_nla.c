@@ -39,7 +39,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -206,6 +205,9 @@ static void nla_channel_area_init(wmWindowManager *wm, ARegion *ar)
 {
 	wmKeyMap *keymap;
 	
+	/* ensure the 2d view sync works - main region has bottom scroller */
+	ar->v2d.scroll = V2D_SCROLL_BOTTOM;
+	
 	UI_view2d_region_reinit(&ar->v2d, V2D_COMMONVIEW_LIST, ar->winx, ar->winy);
 	
 	/* own keymap */
@@ -284,6 +286,8 @@ static void nla_main_area_draw(const bContext *C, ARegion *ar)
 	UI_view2d_grid_draw(v2d, grid, V2D_GRIDLINES_ALL);
 	UI_view2d_grid_free(grid);
 	
+	ED_region_draw_cb_draw(C, ar, REGION_DRAW_PRE_VIEW);
+
 	/* data */
 	if (ANIM_animdata_get_context(C, &ac)) {
 		/* strips and backdrops */
@@ -308,6 +312,10 @@ static void nla_main_area_draw(const bContext *C, ARegion *ar)
 	UI_view2d_view_ortho(v2d);
 	ANIM_draw_previewrange(C, v2d);
 	
+	/* callback */
+	UI_view2d_view_ortho(v2d);
+	ED_region_draw_cb_draw(C, ar, REGION_DRAW_POST_VIEW);
+
 	/* reset view matrix */
 	UI_view2d_view_restore(C);
 	

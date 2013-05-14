@@ -365,7 +365,12 @@ static void ui_tooltip_region_draw_cb(const bContext *UNUSED(C), ARegion *ar)
 
 	float background_color[3];
 	float tone_bg;
-	int i;
+	int i, multisample_enabled;
+
+	/* disable AA, makes widgets too blurry */
+	multisample_enabled = glIsEnabled(GL_MULTISAMPLE_ARB);
+	if (multisample_enabled)
+		glDisable(GL_MULTISAMPLE_ARB);
 
 	/* draw background */
 	ui_draw_tooltip_background(UI_GetStyle(), NULL, &bbox);
@@ -402,6 +407,9 @@ static void ui_tooltip_region_draw_cb(const bContext *UNUSED(C), ARegion *ar)
 		bbox.ymin -= data->lineh + data->spaceh;
 		bbox.ymax -= data->lineh + data->spaceh;
 	}
+
+	if (multisample_enabled)
+		glEnable(GL_MULTISAMPLE_ARB);
 }
 
 static void ui_tooltip_region_free_cb(ARegion *ar)
@@ -447,7 +455,14 @@ ARegion *ui_tooltip_create(bContext *C, ARegion *butregion, uiBut *but)
 
 	/* Tip */
 	if (but_tip.strinfo) {
-		BLI_strncpy(data->lines[data->totline], but_tip.strinfo, sizeof(data->lines[0]));
+		/* Expanded Bit-flag enums have a specific way to select multiple... */
+		if ((but->type & ROW) && but->rnaprop && RNA_property_flag(but->rnaprop) & PROP_ENUM_FLAG) {
+			BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]),
+			             "%s %s", but_tip.strinfo, IFACE_("(Shift-click to select multiple)"));
+		}
+		else {
+			BLI_strncpy(data->lines[data->totline], but_tip.strinfo, sizeof(data->lines[0]));
+		}
 		data->color_id[data->totline] = UI_TIP_LC_MAIN;
 		data->totline++;
 	}
@@ -801,6 +816,17 @@ int uiSearchBoxWidth(void)
 	return 9 * UI_UNIT_X;
 }
 
+int uiSearchItemFindIndex(uiSearchItems *items, const char *name)
+{
+	int i;
+	for (i = 0; i < items->totitem; i++) {
+		if (STREQ(name, items->names[i])) {
+			return i;
+		}
+	}
+	return -1;
+}
+
 /* ar is the search box itself */
 static void ui_searchbox_select(bContext *C, ARegion *ar, uiBut *but, int step)
 {
@@ -866,6 +892,12 @@ static void ui_searchbox_butrect(rcti *rect, uiSearchboxData *data, int itemnr)
 	
 }
 
+int ui_searchbox_find_index(ARegion *ar, const char *name)
+{
+	uiSearchboxData *data = ar->regiondata;
+	return uiSearchItemFindIndex(&data->items, name);
+}
+
 /* x and y in screencoords */
 bool ui_searchbox_inside(ARegion *ar, int x, int y)
 {
@@ -875,7 +907,7 @@ bool ui_searchbox_inside(ARegion *ar, int x, int y)
 }
 
 /* string validated to be of correct length (but->hardmax) */
-void ui_searchbox_apply(uiBut *but, ARegion *ar)
+bool ui_searchbox_apply(uiBut *but, ARegion *ar)
 {
 	uiSearchboxData *data = ar->regiondata;
 
@@ -890,6 +922,11 @@ void ui_searchbox_apply(uiBut *but, ARegion *ar)
 		if (cpoin) cpoin[0] = '|';
 		
 		but->func_arg2 = data->items.pointers[data->active - 1];
+
+		return true;
+	}
+	else {
+		return false;
 	}
 }
 
@@ -1287,14 +1324,13 @@ void ui_but_search_test(uiBut *but)
 	but->search_func(but->block->evil_C, but->search_arg, but->drawstr, items);
 	
 	/* only redalert when we are sure of it, this can miss cases when >10 matches */
-	if (items->totitem == 0)
+	if (items->totitem == 0) {
 		uiButSetFlag(but, UI_BUT_REDALERT);
+	}
 	else if (items->more == 0) {
-		for (x1 = 0; x1 < items->totitem; x1++)
-			if (strcmp(but->drawstr, items->names[x1]) == 0)
-				break;
-		if (x1 == items->totitem)
+		if (uiSearchItemFindIndex(items, but->drawstr) == -1) {
 			uiButSetFlag(but, UI_BUT_REDALERT);
+		}
 	}
 	
 	for (x1 = 0; x1 < items->maxitem; x1++) {
@@ -1532,6 +1568,7 @@ static void ui_block_region_draw(const bContext *C, ARegion *ar)
 static void ui_popup_block_clip(wmWindow *window, uiBlock *block)
 {
 	uiBut *bt;
+	float xofs = 0.0f;
 	int width = UI_SCREEN_MARGIN;
 	int winx, winy;
 
@@ -1542,10 +1579,18 @@ static void ui_popup_block_clip(wmWindow *window, uiBlock *block)
 	winx = WM_window_pixels_x(window);
 	winy = WM_window_pixels_y(window);
 	
-	if (block->rect.xmin < width)
-		block->rect.xmin = width;
-	if (block->rect.xmax > winx - width)
-		block->rect.xmax = winx - width;
+	/* shift menus to right if outside of view */
+	if (block->rect.xmin < width) {
+		xofs = (width - block->rect.xmin);
+		block->rect.xmin += xofs;
+		block->rect.xmax += xofs;
+	}
+	/* or shift to left if outside of view */
+	if (block->rect.xmax > winx - width) {
+		xofs = winx - width - block->rect.xmax;
+		block->rect.xmin += xofs;
+		block->rect.xmax += xofs;
+	}
 	
 	if (block->rect.ymin < width)
 		block->rect.ymin = width;
@@ -1554,10 +1599,8 @@ static void ui_popup_block_clip(wmWindow *window, uiBlock *block)
 	
 	/* ensure menu items draw inside left/right boundary */
 	for (bt = block->buttons.first; bt; bt = bt->next) {
-		if (bt->rect.xmin < block->rect.xmin)
-			bt->rect.xmin = block->rect.xmin;
-		if (bt->rect.xmax > block->rect.xmax)
-			bt->rect.xmax = block->rect.xmax;
+		bt->rect.xmin += xofs;
+		bt->rect.xmax += xofs;
 	}
 
 }
@@ -2175,7 +2218,7 @@ static void uiBlockPicker(uiBlock *block, float rgba[4], PointerRNA *ptr, Proper
 	uiBlockEndAlign(block);
 
 	if (rgba[3] != FLT_MAX) {
-		bt = uiDefButR_prop(block, NUMSLI, 0, IFACE_("A "),  0, yco -= UI_UNIT_Y, butwidth, UI_UNIT_Y, ptr, prop, 3, 0.0, 0.0, 0, 0, TIP_("Alpha"));
+		bt = uiDefButR_prop(block, NUMSLI, 0, IFACE_("A "),  0, yco -= UI_UNIT_Y, butwidth, UI_UNIT_Y, ptr, prop, 3, 0.0, 0.0, 0, 3, TIP_("Alpha"));
 		uiButSetFunc(bt, do_picker_rna_cb, bt, NULL);
 	}
 	else {
@@ -2323,7 +2366,8 @@ struct uiPopupMenu {
 	uiLayout *layout;
 	uiBut *but;
 
-	int mx, my, popup, slideout;
+	int mx, my;
+	bool popup, slideout;
 	int startx, starty, maxrow;
 
 	uiMenuCreateFunc menu_func;
@@ -2440,7 +2484,7 @@ uiPopupBlockHandle *ui_popup_menu_create(bContext *C, ARegion *butregion, uiBut 
 	pup->block = uiBeginBlock(C, NULL, __func__, UI_EMBOSSP);
 	pup->block->flag |= UI_BLOCK_NUMSELECT;  /* default menus to numselect */
 	pup->layout = uiBlockLayout(pup->block, UI_LAYOUT_VERTICAL, UI_LAYOUT_MENU, 0, 0, 200, 0, style);
-	pup->slideout = (but && (but->block->flag & UI_BLOCK_LOOP));
+	pup->slideout = but ? ui_block_is_menu(but->block) : false;
 	pup->but = but;
 	uiLayoutSetOperatorContext(pup->layout, WM_OP_INVOKE_REGION_WIN);
 
@@ -2448,7 +2492,7 @@ uiPopupBlockHandle *ui_popup_menu_create(bContext *C, ARegion *butregion, uiBut 
 		/* no button to start from, means we are a popup */
 		pup->mx = window->eventstate->x;
 		pup->my = window->eventstate->y;
-		pup->popup = 1;
+		pup->popup = true;
 		pup->block->flag |= UI_BLOCK_NO_FLIP;
 	}
 	/* some enums reversing is strange, currently we have no good way to

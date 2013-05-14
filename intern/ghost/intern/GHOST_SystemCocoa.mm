@@ -931,60 +931,29 @@ bool GHOST_SystemCocoa::processEvents(bool waitForEvent)
 			
 			anyProcessed = true;
 			
-			switch ([event type]) {
-				case NSKeyDown:
-				case NSKeyUp:
-				case NSFlagsChanged:
-					handleKeyEvent(event);
-					
-					/* Support system-wide keyboard shortcuts, like Exposé, ...) =>included in always NSApp sendEvent */
-					/*		if (([event modifierFlags] & NSCommandKeyMask) || [event type] == NSFlagsChanged) {
-					 [NSApp sendEvent:event];
-					 }*/
-					break;
-					
-				case NSLeftMouseDown:
-				case NSLeftMouseUp:
-				case NSRightMouseDown:
-				case NSRightMouseUp:
-				case NSMouseMoved:
-				case NSLeftMouseDragged:
-				case NSRightMouseDragged:
-				case NSScrollWheel:
-				case NSOtherMouseDown:
-				case NSOtherMouseUp:
-				case NSOtherMouseDragged:
-				case NSEventTypeMagnify:
-				case NSEventTypeRotate:
-				case NSEventTypeBeginGesture:
-				case NSEventTypeEndGesture:
-					handleMouseEvent(event);
-					break;
-					
-				case NSTabletPoint:
-				case NSTabletProximity:
-					handleTabletEvent(event,[event type]);
-					break;
-					
-					/* Trackpad features, fired only from OS X 10.5.2
-					 case NSEventTypeGesture:
-					 case NSEventTypeSwipe:
-					 break; */
-					
-					/*Unused events
-					 NSMouseEntered       = 8,
-					 NSMouseExited        = 9,
-					 NSAppKitDefined      = 13,
-					 NSSystemDefined      = 14,
-					 NSApplicationDefined = 15,
-					 NSPeriodic           = 16,
-					 NSCursorUpdate       = 17,*/
-					
-				default:
-					break;
+			// Send event to NSApp to ensure Mac wide events are handled,
+			// this will send events to CocoaWindow which will call back
+			// to handleKeyEvent, handleMouseEvent and handleTabletEvent
+
+			// There is on special exception for ctrl+(shift)+tab. We do not
+			// get keyDown events delivered to the view because they are
+			// special hotkeys to switch between views, so override directly
+
+			if ([event type] == NSKeyDown &&
+			   [event keyCode] == kVK_Tab &&
+			   ([event modifierFlags] & NSControlKeyMask)) {
+				handleKeyEvent(event);
 			}
-			//Resend event to NSApp to ensure Mac wide events are handled
-			[NSApp sendEvent:event];
+			else {
+				// For some reason NSApp is swallowing the key up events when command
+				// key is pressed, even if there seems to be no apparent reason to do
+				// so, as a workaround we always handle these up events.
+				if ([event type] == NSKeyUp && ([event modifierFlags] & NSCommandKeyMask))
+					handleKeyEvent(event);
+
+				[NSApp sendEvent:event];
+			}
+
 			[pool drain];
 		} while (event != nil);
 #if 0

@@ -36,7 +36,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -129,6 +128,9 @@ static void info_main_area_init(wmWindowManager *wm, ARegion *ar)
 {
 	wmKeyMap *keymap;
 
+	/* force it on init, for old files, until it becomes config */
+	ar->v2d.scroll = (V2D_SCROLL_RIGHT);
+	
 	UI_view2d_region_reinit(&ar->v2d, V2D_COMMONVIEW_CUSTOM, ar->winx, ar->winy);
 
 	/* own keymap */

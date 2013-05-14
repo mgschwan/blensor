@@ -38,7 +38,7 @@ class RENDERLAYER_UL_renderlayers(UIList):
         # assert(isinstance(item, bpy.types.SceneRenderLayer)
         layer = item
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            layout.label(layer.name, icon_value=icon)
+            layout.label(layer.name, icon_value=icon, translate=False)
             layout.prop(layer, "use", text="", index=index)
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
@@ -72,7 +72,6 @@ class RENDERLAYER_PT_layers(RenderLayerButtonsPanel, Panel):
 
 class RENDERLAYER_PT_layer_options(RenderLayerButtonsPanel, Panel):
     bl_label = "Layer"
-    bl_options = {'DEFAULT_CLOSED'}
     COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw(self, context):
@@ -122,7 +121,7 @@ class RENDERLAYER_PT_layer_options(RenderLayerButtonsPanel, Panel):
 
 
 class RENDERLAYER_PT_layer_passes(RenderLayerButtonsPanel, Panel):
-    bl_label = "Render Passes"
+    bl_label = "Passes"
     bl_options = {'DEFAULT_CLOSED'}
     COMPAT_ENGINES = {'BLENDER_RENDER'}
 

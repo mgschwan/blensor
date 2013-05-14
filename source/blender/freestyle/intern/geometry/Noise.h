@@ -32,6 +32,10 @@
 
 #include "../system/FreestyleConfig.h"
 
+#ifdef WITH_CXX_GUARDEDALLOC
+#include "MEM_guardedalloc.h"
+#endif
+
 using namespace std;
 
 namespace Freestyle {
@@ -73,7 +77,13 @@ private:
 	float g3[_NOISE_B + _NOISE_B + 2][3];
 	float g2[_NOISE_B + _NOISE_B + 2][2];
 	float g1[_NOISE_B + _NOISE_B + 2];
-	int start;
+	/* UNUSED */
+	// int start;
+
+#ifdef WITH_CXX_GUARDEDALLOC
+public:
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:Noise")
+#endif
 };
 
 } /* namespace Freestyle */

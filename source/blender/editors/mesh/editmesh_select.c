@@ -42,7 +42,7 @@
 #include "BKE_displist.h"
 #include "BKE_report.h"
 #include "BKE_paint.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
@@ -69,6 +69,9 @@
 #include "UI_resources.h"
 
 #include "mesh_intern.h"  /* own include */
+
+/* use bmesh operator flags for a few operators */
+#define BMO_ELE_TAG 1
 
 /* ****************************** MIRROR **************** */
 
@@ -111,7 +114,7 @@ void EDBM_automerge(Scene *scene, Object *obedit, bool update)
 	    (obedit && obedit->type == OB_MESH))
 	{
 		int ok;
-		BMEditMesh *em = BMEdit_FromObject(obedit);
+		BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 		if (!em) {
 			return;
@@ -141,6 +144,7 @@ static void draw_triangulated(const int mcords[][2], const short tot)
 	DispList *dl;
 	float *fp;
 	int a;
+	const float z_up[3] = {0.0f, 0.0f, 1.0f};
 	
 	/* make displist */
 	dl = MEM_callocN(sizeof(DispList), "poly disp");
@@ -156,7 +160,7 @@ static void draw_triangulated(const int mcords[][2], const short tot)
 	}
 	
 	/* do the fill */
-	BKE_displist_fill(&lb, &lb, 0);
+	BKE_displist_fill(&lb, &lb, z_up, false);
 
 	/* do the draw */
 	dl = lb.first;  /* filldisplist adds in head of list */
@@ -583,6 +587,8 @@ BMFace *EDBM_face_find_nearest(ViewContext *vc, float *r_dist)
 			data.dist = FLT_MAX;
 			data.toFace = efa;
 
+			ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d);
+
 			mesh_foreachScreenFace(vc, findnearestface__getDistance, &data, V3D_PROJ_TEST_CLIP_DEFAULT);
 
 			if ((vc->em->selectmode == SCE_SELECT_FACE) || (data.dist < *r_dist)) {  /* only faces, no dist check */
@@ -609,14 +615,13 @@ BMFace *EDBM_face_find_nearest(ViewContext *vc, float *r_dist)
 		data.dist = *r_dist;
 		data.closest = NULL;
 		data.closestIndex = 0;
-		ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d);
 
 		data.pass = 0;
+		ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d);
 		mesh_foreachScreenFace(vc, findnearestface__doClosest, &data, V3D_PROJ_TEST_CLIP_DEFAULT);
 
 		if (data.dist > 3.0f) {
 			data.pass = 1;
-			ED_view3d_init_mats_rv3d(vc->obedit, vc->rv3d);
 			mesh_foreachScreenFace(vc, findnearestface__doClosest, &data, V3D_PROJ_TEST_CLIP_DEFAULT);
 		}
 
@@ -711,7 +716,7 @@ static EnumPropertyItem prop_similar_types[] = {
 static int similar_face_select_exec(bContext *C, wmOperator *op)
 {
 	Object *ob = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMEditMesh *em = BKE_editmesh_from_object(ob);
 	BMOperator bmop;
 
 	/* get the type from RNA */
@@ -751,7 +756,7 @@ static int similar_face_select_exec(bContext *C, wmOperator *op)
 static int similar_edge_select_exec(bContext *C, wmOperator *op)
 {
 	Object *ob = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMEditMesh *em = BKE_editmesh_from_object(ob);
 	BMOperator bmop;
 
 	/* get the type from RNA */
@@ -795,7 +800,7 @@ static int similar_edge_select_exec(bContext *C, wmOperator *op)
 static int similar_vert_select_exec(bContext *C, wmOperator *op)
 {
 	Object *ob = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMEditMesh *em = BKE_editmesh_from_object(ob);
 	BMOperator bmop;
 	/* get the type from RNA */
 	const int type = RNA_enum_get(op->ptr, "type");
@@ -860,7 +865,7 @@ static EnumPropertyItem *select_similar_type_itemf(bContext *C, PointerRNA *UNUS
 	if (obedit && obedit->type == OB_MESH) {
 		EnumPropertyItem *item = NULL;
 		int a, totitem = 0;
-		BMEditMesh *em = BMEdit_FromObject(obedit);
+		BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 		if (em->selectmode & SCE_SELECT_VERTEX) {
 			for (a = SIMVERT_NORMAL; a < SIMEDGE_LENGTH; a++) {
@@ -1016,7 +1021,7 @@ static void walker_select(BMEditMesh *em, int walkercode, void *start, const boo
 static int edbm_loop_multiselect_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMEdge *eed;
 	BMEdge **edarray;
 	int edindex;
@@ -1266,7 +1271,7 @@ void MESH_OT_edgering_select(wmOperatorType *ot)
 static int edbm_select_all_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	const int action = RNA_enum_get(op->ptr, "action");
 
 	switch (action) {
@@ -1310,7 +1315,7 @@ void MESH_OT_select_all(wmOperatorType *ot)
 static int edbm_faces_select_interior_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 	if (EDBM_select_interior_faces(em)) {
 		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit);
@@ -1870,7 +1875,7 @@ static int edbm_shortest_path_select_poll(bContext *C)
 {
 	if (ED_operator_editmesh_region_view3d(C)) {
 		Object *obedit = CTX_data_edit_object(C);
-		BMEditMesh *em = BMEdit_FromObject(obedit);
+		BMEditMesh *em = BKE_editmesh_from_object(obedit);
 		return (em->selectmode & (SCE_SELECT_EDGE | SCE_SELECT_FACE)) != 0;
 	}
 	return 0;
@@ -2173,7 +2178,7 @@ bool EDBM_selectmode_toggle(bContext *C, const short selectmode_new,
 	bool ret = false;
 
 	if (obedit && obedit->type == OB_MESH) {
-		em = BMEdit_FromObject(obedit);
+		em = BKE_editmesh_from_object(obedit);
 	}
 
 	if (em == NULL) {
@@ -2383,7 +2388,7 @@ static void linked_limit_default(bContext *C, wmOperator *op)
 {
 	if (!RNA_struct_property_is_set(op->ptr, "limit")) {
 		Object *obedit = CTX_data_edit_object(C);
-		BMEditMesh *em = BMEdit_FromObject(obedit);
+		BMEditMesh *em = BKE_editmesh_from_object(obedit);
 		if (em->selectmode == SCE_SELECT_FACE)
 			RNA_boolean_set(op->ptr, "limit", true);
 		else
@@ -2394,7 +2399,7 @@ static void linked_limit_default(bContext *C, wmOperator *op)
 static int edbm_select_linked_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMesh *bm = em->bm;
 	BMIter iter;
 	BMVert *v;
@@ -2419,13 +2424,12 @@ static int edbm_select_linked_exec(bContext *C, wmOperator *op)
 			/* grr, shouldn't need to alloc BMO flags here */
 			BM_mesh_elem_toolflags_ensure(bm);
 			BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
-				/* BMESH_TODO, don't use 'BM_ELEM_SELECT' here, its a HFLAG only! */
-				BMO_elem_flag_set(bm, e, BM_ELEM_SELECT, !BM_elem_flag_test(e, BM_ELEM_SEAM));
+				BMO_elem_flag_set(bm, e, BMO_ELE_TAG, !BM_elem_flag_test(e, BM_ELEM_SEAM));
 			}
 		}
 
 		BMW_init(&walker, bm, BMW_ISLAND,
-		         BMW_MASK_NOP, limit ? BM_ELEM_SELECT : BMW_MASK_NOP, BMW_MASK_NOP,
+		         BMW_MASK_NOP, limit ? BMO_ELE_TAG : BMW_MASK_NOP, BMW_MASK_NOP,
 		         BMW_FLAG_TEST_HIDDEN,
 		         BMW_NIL_LAY);
 
@@ -2543,14 +2547,13 @@ static int edbm_select_linked_pick_invoke(bContext *C, wmOperator *op, const wmE
 			BM_mesh_elem_toolflags_ensure(bm);
 			/* hflag no-seam --> bmo-tag */
 			BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
-				/* BMESH_TODO, don't use 'BM_ELEM_SELECT' here, its a HFLAG only! */
-				BMO_elem_flag_set(bm, e, BM_ELEM_SELECT, !BM_elem_flag_test(e, BM_ELEM_SEAM));
+				BMO_elem_flag_set(bm, e, BMO_ELE_TAG, !BM_elem_flag_test(e, BM_ELEM_SEAM));
 			}
 		}
 
 		/* walk */
 		BMW_init(&walker, bm, BMW_ISLAND,
-		         BMW_MASK_NOP, limit ? BM_ELEM_SELECT : BMW_MASK_NOP, BMW_MASK_NOP,
+		         BMW_MASK_NOP, limit ? BMO_ELE_TAG : BMW_MASK_NOP, BMW_MASK_NOP,
 		         BMW_FLAG_TEST_HIDDEN,
 		         BMW_NIL_LAY);
 
@@ -2584,6 +2587,7 @@ static int edbm_select_linked_pick_invoke(bContext *C, wmOperator *op, const wmE
 	}
 
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit);
+
 	return OPERATOR_FINISHED;
 }
 
@@ -2609,7 +2613,7 @@ void MESH_OT_select_linked_pick(wmOperatorType *ot)
 static int edbm_select_face_by_sides_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMFace *efa;
 	BMIter iter;
 	const int numverts = RNA_int_get(op->ptr, "number");
@@ -2681,26 +2685,49 @@ void MESH_OT_select_face_by_sides(wmOperatorType *ot)
 }
 
 
-static int edbm_select_loose_verts_exec(bContext *C, wmOperator *op)
+static int edbm_select_loose_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
-	BMVert *eve;
-	BMEdge *eed;
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
+	BMesh *bm = em->bm;
 	BMIter iter;
 
 	if (!RNA_boolean_get(op->ptr, "extend"))
 		EDBM_flag_disable_all(em, BM_ELEM_SELECT);
 
-	BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
-		if (!eve->e) {
-			BM_vert_select_set(em->bm, eve, true);
+	if (em->selectmode & SCE_SELECT_VERTEX) {
+		BMVert *eve;
+		BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
+			if (!eve->e) {
+				BM_vert_select_set(bm, eve, true);
+			}
 		}
 	}
 
-	BM_ITER_MESH (eed, &iter, em->bm, BM_EDGES_OF_MESH) {
-		if (!eed->l) {
-			BM_edge_select_set(em->bm, eed, true);
+	if (em->selectmode & SCE_SELECT_EDGE) {
+		BMEdge *eed;
+		BM_ITER_MESH (eed, &iter, bm, BM_EDGES_OF_MESH) {
+			if (BM_edge_is_wire(eed)) {
+				BM_edge_select_set(bm, eed, true);
+			}
+		}
+	}
+
+	if (em->selectmode & SCE_SELECT_FACE) {
+		BMFace *efa;
+		BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
+			BMIter liter;
+			BMLoop *l;
+			bool is_loose = true;
+			BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+				if (!BM_edge_is_boundary(l->e)) {
+					is_loose = false;
+					break;
+				}
+			}
+			if (is_loose) {
+				BM_face_select_set(bm, efa, true);
+			}
 		}
 	}
 
@@ -2710,15 +2737,15 @@ static int edbm_select_loose_verts_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-void MESH_OT_select_loose_verts(wmOperatorType *ot)
+void MESH_OT_select_loose(wmOperatorType *ot)
 {
 	/* identifiers */
-	ot->name = "Select Loose Vertices/Edges";
-	ot->description = "Select vertices with no edges nor faces, and edges with no faces";
-	ot->idname = "MESH_OT_select_loose_verts";
+	ot->name = "Select Loose Geometry";
+	ot->description = "Select loose geometry based on the selection mode";
+	ot->idname = "MESH_OT_select_loose";
 
 	/* api callbacks */
-	ot->exec = edbm_select_loose_verts_exec;
+	ot->exec = edbm_select_loose_exec;
 	ot->poll = ED_operator_editmesh;
 
 	/* flags */
@@ -2732,7 +2759,7 @@ void MESH_OT_select_loose_verts(wmOperatorType *ot)
 static int edbm_select_mirror_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	bool extend = RNA_boolean_get(op->ptr, "extend");
 
 	if (em->bm->totvert && em->bm->totvertsel) {
@@ -2767,7 +2794,7 @@ void MESH_OT_select_mirror(wmOperatorType *ot)
 static int edbm_select_more_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 	EDBM_select_more(em);
 
@@ -2793,7 +2820,7 @@ void MESH_OT_select_more(wmOperatorType *ot)
 static int edbm_select_less_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 	EDBM_select_less(em);
 
@@ -2840,19 +2867,19 @@ static void walker_deselect_nth(BMEditMesh *em, int nth, int offset, BMHeader *h
 			itertype = BM_VERTS_OF_MESH;
 			walktype = BMW_CONNECTED_VERTEX;
 			flushtype = SCE_SELECT_VERTEX;
-			mask_vert = BM_ELEM_SELECT;
+			mask_vert = BMO_ELE_TAG;
 			break;
 		case BM_EDGE:
 			itertype = BM_EDGES_OF_MESH;
 			walktype = BMW_SHELL;
 			flushtype = SCE_SELECT_EDGE;
-			mask_edge = BM_ELEM_SELECT;
+			mask_edge = BMO_ELE_TAG;
 			break;
 		case BM_FACE:
 			itertype = BM_FACES_OF_MESH;
 			walktype = BMW_ISLAND;
 			flushtype = SCE_SELECT_FACE;
-			mask_face = BM_ELEM_SELECT;
+			mask_face = BMO_ELE_TAG;
 			break;
 	}
 
@@ -2864,8 +2891,7 @@ static void walker_deselect_nth(BMEditMesh *em, int nth, int offset, BMHeader *h
 	BMO_push(bm, NULL);
 	BM_ITER_MESH (ele, &iter, bm, itertype) {
 		if (BM_elem_flag_test(ele, BM_ELEM_SELECT)) {
-			/* BMESH_TODO, don't use 'BM_ELEM_SELECT' here, its a HFLAG only! */
-			BMO_elem_flag_enable(bm, (BMElemF *)ele, BM_ELEM_SELECT);
+			BMO_elem_flag_enable(bm, (BMElemF *)ele, BMO_ELE_TAG);
 		}
 	}
 
@@ -2979,7 +3005,7 @@ static bool edbm_deselect_nth(BMEditMesh *em, int nth, int offset)
 static int edbm_select_nth_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	const int nth = RNA_int_get(op->ptr, "nth");
 	int offset = RNA_int_get(op->ptr, "offset");
 
@@ -3020,7 +3046,7 @@ void em_setup_viewcontext(bContext *C, ViewContext *vc)
 	view3d_set_viewcontext(C, vc);
 	
 	if (vc->obedit) {
-		vc->em = BMEdit_FromObject(vc->obedit);
+		vc->em = BKE_editmesh_from_object(vc->obedit);
 	}
 }
 
@@ -3032,7 +3058,7 @@ static int edbm_select_sharp_edges_exec(bContext *C, wmOperator *op)
 	 * small enough, select the edge
 	 */
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMIter iter;
 	BMEdge *e;
 	BMLoop *l1, *l2;
@@ -3081,7 +3107,7 @@ void MESH_OT_edges_select_sharp(wmOperatorType *ot)
 static int edbm_select_linked_flat_faces_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMIter iter, liter, liter2;
 	BMFace *f, **stack = NULL;
 	BLI_array_declare(stack);
@@ -3164,7 +3190,7 @@ void MESH_OT_faces_select_linked_flat(wmOperatorType *ot)
 static int edbm_select_non_manifold_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMVert *v;
 	BMEdge *e;
 	BMIter iter;
@@ -3195,6 +3221,8 @@ static int edbm_select_non_manifold_exec(bContext *C, wmOperator *op)
 
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit->data);
 
+	EDBM_selectmode_flush(em);
+
 	return OPERATOR_FINISHED;
 }
 
@@ -3219,15 +3247,13 @@ void MESH_OT_select_non_manifold(wmOperatorType *ot)
 static int edbm_select_random_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMVert *eve;
 	BMEdge *eed;
 	BMFace *efa;
 	BMIter iter;
 	const float randfac =  RNA_float_get(op->ptr, "percent") / 100.0f;
 
-	BLI_srand(BLI_rand()); /* random seed */
-	
 	if (!RNA_boolean_get(op->ptr, "extend"))
 		EDBM_flag_disable_all(em, BM_ELEM_SELECT);
 
@@ -3281,22 +3307,31 @@ void MESH_OT_select_random(wmOperatorType *ot)
 	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend the selection");
 }
 
+static int edbm_select_ungrouped_poll(bContext *C)
+{
+	if (ED_operator_editmesh(C)) {
+		Object *obedit = CTX_data_edit_object(C);
+		BMEditMesh *em = BKE_editmesh_from_object(obedit);
+
+		if ((em->selectmode & SCE_SELECT_VERTEX) == 0) {
+			CTX_wm_operator_poll_msg_set(C, "Must be in vertex selection mode");
+		}
+		else if (obedit->defbase.first == NULL) {
+			CTX_wm_operator_poll_msg_set(C, "No weights/vertex groups on object");
+		}
+		else {
+			return true;
+		}
+	}
+	return false;
+}
+
 static int edbm_select_ungrouped_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMVert *eve;
 	BMIter iter;
-
-	if ((em->selectmode & SCE_SELECT_VERTEX) == 0) {
-		BKE_report(op->reports, RPT_ERROR, "Does not work out of vertex selection mode");
-		return OPERATOR_CANCELLED;
-	}
-
-	if (obedit->defbase.first == NULL) {
-		BKE_report(op->reports, RPT_ERROR, "No weights/vertex groups on object");
-		return OPERATOR_CANCELLED;
-	}
 
 	if (!RNA_boolean_get(op->ptr, "extend")) {
 		EDBM_flag_disable_all(em, BM_ELEM_SELECT);
@@ -3306,12 +3341,13 @@ static int edbm_select_ungrouped_exec(bContext *C, wmOperator *op)
 		if (!BM_elem_flag_test(eve, BM_ELEM_HIDDEN)) {
 			MDeformVert *dv = CustomData_bmesh_get(&em->bm->vdata, eve->head.data, CD_MDEFORMVERT);
 			/* no dv or dv set with no weight */
-			if (dv == NULL || (dv && dv->dw == NULL)) {
+			if (ELEM(NULL, dv, dv->dw)) {
 				BM_vert_select_set(em->bm, eve, true);
 			}
 		}
 	}
 
+	EDBM_selectmode_flush(em);
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit->data);
 
 	return OPERATOR_FINISHED;
@@ -3326,7 +3362,7 @@ void MESH_OT_select_ungrouped(wmOperatorType *ot)
 
 	/* api callbacks */
 	ot->exec = edbm_select_ungrouped_exec;
-	ot->poll = ED_operator_editmesh;
+	ot->poll = edbm_select_ungrouped_poll;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -3339,7 +3375,7 @@ void MESH_OT_select_ungrouped(wmOperatorType *ot)
 static int edbm_select_axis_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMEditSelection *ese = em->bm->selected.last;
 	const int axis = RNA_enum_get(op->ptr, "axis");
 	const int mode = RNA_enum_get(op->ptr, "mode"); /* -1 == aligned, 0 == neg, 1 == pos */
@@ -3422,7 +3458,7 @@ void MESH_OT_select_axis(wmOperatorType *ot)
 static int edbm_select_next_loop_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMFace *f;
 	BMVert *v;
 	BMIter iter;
@@ -3472,7 +3508,7 @@ void MESH_OT_select_next_loop(wmOperatorType *ot)
 static int edbm_region_to_loop_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMFace *f;
 	BMEdge *e;
 	BMIter iter;
@@ -3673,7 +3709,7 @@ static int loop_find_regions(BMEditMesh *em, int selbigger)
 static int edbm_loop_to_region_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMIter iter;
 	BMFace *f;
 	const bool select_bigger = RNA_boolean_get(op->ptr, "select_bigger");
@@ -3734,7 +3770,7 @@ typedef struct PathEdge {
 static int edbm_select_vertex_path_exec(bContext *C, wmOperator *op)
 {
 	Object *ob = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(ob);
+	BMEditMesh *em = BKE_editmesh_from_object(ob);
 	BMOperator bmop;
 	BMIter iter;
 	BMVert *eve = NULL, *svert = NULL, *evert = NULL;

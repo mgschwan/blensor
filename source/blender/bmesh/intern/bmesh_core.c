@@ -30,6 +30,7 @@
 #include "BLI_math_vector.h"
 #include "BLI_listbase.h"
 #include "BLI_array.h"
+#include "BLI_smallhash.h"
 
 #include "BLF_translation.h"
 
@@ -495,7 +496,10 @@ int bmesh_elem_check(void *element, const char htype)
 
 			if (len != f->len)
 				err |= (1 << 23);
+			break;
 		}
+		default:
+			BLI_assert(0);
 	}
 
 	BMESH_ASSERT(err == 0);
@@ -1887,45 +1891,56 @@ bool BM_vert_splice(BMesh *bm, BMVert *v, BMVert *v_target)
  */
 bool bmesh_vert_separate(BMesh *bm, BMVert *v, BMVert ***r_vout, int *r_vout_len)
 {
-	BMEdge **stack = NULL;
-	BLI_array_staticdeclare(stack, BM_DEFAULT_ITER_STACK_SIZE);
+	const int v_edgetot = BM_vert_face_count(v);
+	BMEdge **stack = BLI_array_alloca(stack, v_edgetot);
+	STACK_DECLARE(stack);
+
+	SmallHash visithash;
 	BMVert **verts = NULL;
-	GHash *visithash;
 	BMIter eiter, liter;
 	BMLoop *l;
 	BMEdge *e;
 	int i, maxindex;
 	BMLoop *l_new;
 
-	visithash = BLI_ghash_ptr_new(__func__);
+	BLI_smallhash_init(&visithash);
+
+	STACK_INIT(stack);
 
 	maxindex = 0;
 	BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
-		if (BLI_ghash_haskey(visithash, e)) {
+		if (BLI_smallhash_haskey(&visithash, (uintptr_t)e)) {
 			continue;
 		}
 
-		/* Prime the stack with this unvisited edge */
-		BLI_array_append(stack, e);
-
 		/* Considering only edges and faces incident on vertex v, walk
 		 * the edges & faces and assign an index to each connected set */
-		while ((e = BLI_array_pop(stack))) {
-			BLI_ghash_insert(visithash, e, SET_INT_IN_POINTER(maxindex));
+		do {
+			BLI_smallhash_insert(&visithash, (uintptr_t)e, SET_INT_IN_POINTER(maxindex));
 
-			BM_ITER_ELEM (l, &liter, e, BM_LOOPS_OF_EDGE) {
-				l_new = (l->v == v) ? l->prev : l->next;
-				if (!BLI_ghash_haskey(visithash, l_new->e)) {
-					BLI_array_append(stack, l_new->e);
-				}
+			if (e->l) {
+				BMLoop *l_iter, *l_first;
+				l_iter = l_first = e->l;
+				do {
+					l_new = (l_iter->v == v) ? l_iter->prev : l_iter->next;
+					if (!BLI_smallhash_haskey(&visithash, (uintptr_t)l_new->e)) {
+						STACK_PUSH(stack, l_new->e);
+					}
+				} while ((l_iter = l_iter->radial_next) != l_first);
 			}
-		}
+		} while ((e = STACK_POP(stack)));
 
 		maxindex++;
 	}
 
 	/* Make enough verts to split v for each group */
-	verts = MEM_callocN(sizeof(BMVert *) * maxindex, __func__);
+	if (r_vout != NULL) {
+		verts = MEM_callocN(sizeof(BMVert *) * maxindex, __func__);
+	}
+	else {
+		verts = BLI_array_alloca(verts, maxindex);
+	}
+
 	verts[0] = v;
 	for (i = 1; i < maxindex; i++) {
 		verts[i] = BM_vert_create(bm, v->co, v, 0);
@@ -1958,23 +1973,23 @@ bool bmesh_vert_separate(BMesh *bm, BMVert *v, BMVert ***r_vout, int *r_vout_len
 	 * by modifying data it loops over [#30632], this re-uses the 'stack' variable which is a bit
 	 * bad practice but save alloc'ing a new array - note, the comment above is useful, keep it
 	 * if you are tidying up code - campbell */
-	BLI_array_empty(stack);
+	STACK_INIT(stack);
 	BM_ITER_ELEM (l, &liter, v, BM_LOOPS_OF_VERT) {
 		if (l->v == v) {
-			BLI_array_append(stack, (BMEdge *)l);
+			STACK_PUSH(stack, (BMEdge *)l);
 		}
 	}
-	while ((l = (BMLoop *)(BLI_array_pop(stack)))) {
-		if ((i = GET_INT_FROM_POINTER(BLI_ghash_lookup(visithash, l->e)))) {
+	while ((l = (BMLoop *)(STACK_POP(stack)))) {
+		if ((i = GET_INT_FROM_POINTER(BLI_smallhash_lookup(&visithash, (uintptr_t)l->e)))) {
 			l->v = verts[i];
 		}
 	}
 #endif
 
-	BLI_array_free(stack);
+	STACK_FREE(stack);
 
 	BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
-		i = GET_INT_FROM_POINTER(BLI_ghash_lookup(visithash, e));
+		i = GET_INT_FROM_POINTER(BLI_smallhash_lookup(&visithash, (uintptr_t)e));
 		if (i == 0) {
 			continue;
 		}
@@ -1985,7 +2000,7 @@ bool bmesh_vert_separate(BMesh *bm, BMVert *v, BMVert ***r_vout, int *r_vout_len
 		bmesh_disk_edge_append(e, verts[i]);
 	}
 
-	BLI_ghash_free(visithash, NULL, NULL);
+	BLI_smallhash_release(&visithash);
 
 	for (i = 0; i < maxindex; i++) {
 		BM_CHECK_ELEMENT(verts[i]);
@@ -1997,9 +2012,6 @@ bool bmesh_vert_separate(BMesh *bm, BMVert *v, BMVert ***r_vout, int *r_vout_len
 
 	if (r_vout != NULL) {
 		*r_vout = verts;
-	}
-	else {
-		MEM_freeN(verts);
 	}
 
 	return true;

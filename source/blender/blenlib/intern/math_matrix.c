@@ -344,6 +344,15 @@ void mul_v3_m4v3(float r[3], float mat[4][4], const float vec[3])
 	r[2] = x * mat[0][2] + y * mat[1][2] + mat[2][2] * vec[2] + mat[3][2];
 }
 
+void mul_v2_m4v3(float r[2], float mat[4][4], const float vec[3])
+{
+	float x;
+
+	x = vec[0];
+	r[0] = x * mat[0][0] + vec[1] * mat[1][0] + mat[2][0] * vec[2] + mat[3][0];
+	r[1] = x * mat[0][1] + vec[1] * mat[1][1] + mat[2][1] * vec[2] + mat[3][1];
+}
+
 void mul_v2_m2v2(float r[2], float mat[2][2], const float vec[2])
 {
 	float x;
@@ -373,6 +382,15 @@ void mul_project_m4_v3(float mat[4][4], float vec[3])
 	vec[0] /= w;
 	vec[1] /= w;
 	vec[2] /= w;
+}
+
+void mul_v2_project_m4_v3(float r[2], float mat[4][4], const float vec[3])
+{
+	const float w = mul_project_m4_v3_zfac(mat, vec);
+	mul_v2_m4v3(r, mat, vec);
+
+	r[0] /= w;
+	r[1] /= w;
 }
 
 void mul_v4_m4v4(float r[4], float mat[4][4], const float v[4])
@@ -444,6 +462,18 @@ void mul_transposed_m3_v3(float mat[3][3], float vec[3])
 	vec[1] = x * mat[1][0] + y * mat[1][1] + mat[1][2] * vec[2];
 	vec[2] = x * mat[2][0] + y * mat[2][1] + mat[2][2] * vec[2];
 }
+
+void mul_transposed_mat3_m4_v3(float mat[4][4], float vec[3])
+{
+	float x, y;
+
+	x = vec[0];
+	y = vec[1];
+	vec[0] = x * mat[0][0] + y * mat[0][1] + mat[0][2] * vec[2];
+	vec[1] = x * mat[1][0] + y * mat[1][1] + mat[1][2] * vec[2];
+	vec[2] = x * mat[2][0] + y * mat[2][1] + mat[2][2] * vec[2];
+}
+
 
 void mul_m3_fl(float m[3][3], float f)
 {
@@ -720,6 +750,16 @@ void transpose_m4(float mat[4][4])
 	t = mat[2][3];
 	mat[2][3] = mat[3][2];
 	mat[3][2] = t;
+}
+
+int compare_m4m4(float mat1[4][4], float mat2[4][4], float limit)
+{
+	if (compare_v4v4(mat1[0], mat2[0], limit))
+		if (compare_v4v4(mat1[1], mat2[1], limit))
+			if (compare_v4v4(mat1[2], mat2[2], limit))
+				if (compare_v4v4(mat1[3], mat2[3], limit))
+					return 1;
+	return 0;
 }
 
 void orthogonalize_m3(float mat[3][3], int axis)
@@ -1003,8 +1043,8 @@ void adjoint_m2_m2(float m1[2][2], float m[2][2])
 {
 	BLI_assert(m1 != m);
 	m1[0][0] =  m[1][1];
-	m1[0][1] = -m[1][0];
-	m1[1][0] = -m[0][1];
+	m1[0][1] = -m[0][1];
+	m1[1][0] = -m[1][0];
 	m1[1][1] =  m[0][0];
 }
 

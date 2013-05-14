@@ -79,6 +79,7 @@ typedef struct GPUShaders {
 } GPUShaders;
 
 static struct GPUGlobal {
+	GLint maxtexsize;
 	GLint maxtextures;
 	GLuint currentfb;
 	int glslsupport;
@@ -107,6 +108,11 @@ void GPU_extensions_disable(void)
 	GG.extdisabled = 1;
 }
 
+int GPU_max_texture_size(void)
+{
+	return GG.maxtexsize;
+}
+
 void GPU_extensions_init(void)
 {
 	GLint r, g, b;
@@ -123,6 +129,8 @@ void GPU_extensions_init(void)
 
 	if (GLEW_ARB_multitexture)
 		glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS_ARB, &GG.maxtextures);
+
+	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &GG.maxtexsize);
 
 	GG.glslsupport = 1;
 	if (!GLEW_ARB_multitexture) GG.glslsupport = 0;
@@ -892,8 +900,7 @@ void GPU_framebuffer_texture_detach(GPUFrameBuffer *fb, GPUTexture *tex)
 void GPU_framebuffer_texture_bind(GPUFrameBuffer *UNUSED(fb), GPUTexture *tex, int w, int h)
 {
 	/* push attributes */
-	glPushAttrib(GL_ENABLE_BIT);
-	glPushAttrib(GL_VIEWPORT_BIT);
+	glPushAttrib(GL_ENABLE_BIT | GL_VIEWPORT_BIT);
 	glDisable(GL_SCISSOR_TEST);
 
 	/* bind framebuffer */
@@ -918,7 +925,6 @@ void GPU_framebuffer_texture_unbind(GPUFrameBuffer *UNUSED(fb), GPUTexture *UNUS
 	glPopMatrix();
 
 	/* restore attributes */
-	glPopAttrib();
 	glPopAttrib();
 	glEnable(GL_SCISSOR_TEST);
 }
@@ -1139,7 +1145,7 @@ static void shader_print_errors(const char *task, char *log, const char *code)
 static const char *gpu_shader_standard_extensions(void)
 {
 	/* need this extensions for high quality bump mapping */
-	if(GPU_bicubic_bump_support()) {
+	if (GPU_bicubic_bump_support()) {
 		return "#version 130\n"
 		       "#extension GL_ARB_texture_query_lod: enable\n"
 		       "#define BUMP_BICUBIC\n";
@@ -1151,7 +1157,7 @@ static const char *gpu_shader_standard_extensions(void)
 static const char *gpu_shader_standard_defines(void)
 {
 	/* some useful defines to detect GPU type */
-	if(GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_ANY, GPU_DRIVER_ANY))
+	if (GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_ANY, GPU_DRIVER_ANY))
 		return "#define GPU_ATI\n";
 	else if(GPU_type_matches(GPU_DEVICE_NVIDIA, GPU_OS_ANY, GPU_DRIVER_ANY))
 		return "#define GPU_NVIDIA\n";

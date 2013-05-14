@@ -60,7 +60,7 @@
 #include "BKE_report.h"
 #include "BKE_scene.h"
 #include "BKE_screen.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_sound.h"
 #include "BKE_mask.h"
 
@@ -333,7 +333,7 @@ int ED_operator_editmesh(bContext *C)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	if (obedit && obedit->type == OB_MESH)
-		return NULL != BMEdit_FromObject(obedit);
+		return NULL != BKE_editmesh_from_object(obedit);
 	return 0;
 }
 
@@ -434,7 +434,7 @@ int ED_operator_uvmap(bContext *C)
 	BMEditMesh *em = NULL;
 	
 	if (obedit && obedit->type == OB_MESH) {
-		em = BMEdit_FromObject(obedit);
+		em = BKE_editmesh_from_object(obedit);
 	}
 	
 	if (em && (em->bm->totface)) {
@@ -906,6 +906,9 @@ static int area_dupli_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	/* adds window to WM */
 	rect = sa->totrct;
 	BLI_rcti_translate(&rect, win->posx, win->posy);
+	rect.xmax = rect.xmin + BLI_rcti_size_x(&rect) / U.pixelsize;
+	rect.ymax = rect.ymin + BLI_rcti_size_y(&rect) / U.pixelsize;
+
 	newwin = WM_window_open(C, &rect);
 	
 	/* allocs new screen and adds to newly created window, using window size */
@@ -2704,6 +2707,22 @@ static void view3d_localview_update_rv3d(struct RegionView3D *rv3d)
 	}
 }
 
+static void region_quadview_init_rv3d(ScrArea *sa, ARegion *ar,
+                                      const char viewlock, const char view, const char persp)
+{
+	RegionView3D *rv3d = ar->regiondata;
+
+	rv3d->viewlock = viewlock;
+	rv3d->view = view;
+	rv3d->persp = persp;
+
+	ED_view3d_lock(rv3d);
+	view3d_localview_update_rv3d(rv3d);
+	if ((viewlock & RV3D_BOXCLIP) && (persp == RV3D_ORTHO)) {
+		ED_view3d_quadview_update(sa, ar, true);
+	}
+}
+
 /* insert a region in the area region list */
 static int region_quadview_exec(bContext *C, wmOperator *op)
 {
@@ -2721,6 +2740,7 @@ static int region_quadview_exec(bContext *C, wmOperator *op)
 		
 		if (sa->spacetype == SPACE_VIEW3D) {
 			RegionView3D *rv3d = ar->regiondata;
+			rv3d->viewlock_quad = rv3d->viewlock | RV3D_VIEWLOCK_INIT;
 			rv3d->viewlock = 0;
 			rv3d->rflag &= ~RV3D_CLIPPING;
 		}
@@ -2761,38 +2781,16 @@ static int region_quadview_exec(bContext *C, wmOperator *op)
 			 *
 			 * We could avoid manipulating rv3d->localvd here if exiting
 			 * localview with a 4-split would assign these view locks */
-			RegionView3D *rv3d;
+			RegionView3D *rv3d = ar->regiondata;
+			const char viewlock = (rv3d->viewlock_quad & RV3D_VIEWLOCK_INIT) ?
+			                      (rv3d->viewlock_quad & ~RV3D_VIEWLOCK_INIT) : RV3D_LOCKED;
 
-			rv3d = ar->regiondata;
-			rv3d->viewlock = RV3D_LOCKED; rv3d->view = RV3D_VIEW_FRONT; rv3d->persp = RV3D_ORTHO;
-			ED_view3d_lock(rv3d);
-			view3d_localview_update_rv3d(rv3d);
-			
-			ar = ar->next;
-			rv3d = ar->regiondata;
-			rv3d->viewlock = RV3D_LOCKED; rv3d->view = RV3D_VIEW_TOP; rv3d->persp = RV3D_ORTHO;
-			ED_view3d_lock(rv3d);
-			view3d_localview_update_rv3d(rv3d);
-			
-			ar = ar->next;
-			rv3d = ar->regiondata;
-			rv3d->viewlock = RV3D_LOCKED; rv3d->view = RV3D_VIEW_RIGHT; rv3d->persp = RV3D_ORTHO;
-			ED_view3d_lock(rv3d);
-			view3d_localview_update_rv3d(rv3d);
-			
-			ar = ar->next;
-			rv3d = ar->regiondata;
+			region_quadview_init_rv3d(sa, ar,              viewlock, RV3D_VIEW_FRONT, RV3D_ORTHO);
+			region_quadview_init_rv3d(sa, (ar = ar->next), viewlock, RV3D_VIEW_TOP,   RV3D_ORTHO);
+			region_quadview_init_rv3d(sa, (ar = ar->next), viewlock, RV3D_VIEW_RIGHT, RV3D_ORTHO);
+			if (v3d->camera) region_quadview_init_rv3d(sa, (ar = ar->next), 0, RV3D_VIEW_CAMERA,     RV3D_CAMOB);
+			else             region_quadview_init_rv3d(sa, (ar = ar->next), 0, RV3D_VIEW_PERSPORTHO, RV3D_PERSP);
 
-			/* check if we have a camera */
-			if (v3d->camera) {
-				rv3d->view = RV3D_VIEW_CAMERA; rv3d->persp = RV3D_CAMOB;
-			}
-			else {
-				rv3d->view = RV3D_VIEW_PERSPORTHO; rv3d->persp = RV3D_PERSP;
-			}
-
-			ED_view3d_lock(rv3d);
-			view3d_localview_update_rv3d(rv3d);
 		}
 		ED_area_tag_redraw(sa);
 		WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, NULL);
@@ -3534,10 +3532,10 @@ static int scene_new_exec(bContext *C, wmOperator *op)
 
 		/* these can't be handled in blenkernel curently, so do them here */
 		if (type == SCE_COPY_LINK_DATA) {
-			ED_object_single_users(bmain, newscene, 0);
+			ED_object_single_users(bmain, newscene, false, true);
 		}
 		else if (type == SCE_COPY_FULL) {
-			ED_object_single_users(bmain, newscene, 1);
+			ED_object_single_users(bmain, newscene, true, true);
 		}
 	}
 	

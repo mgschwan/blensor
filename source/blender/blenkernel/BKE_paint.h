@@ -36,6 +36,7 @@ struct bContext;
 struct BMesh;
 struct BMFace;
 struct Brush;
+struct CurveMapping;
 struct MDisps;
 struct MeshElemMap;
 struct GridPaintMask;
@@ -47,8 +48,11 @@ struct Paint;
 struct PBVH;
 struct Scene;
 struct StrokeCache;
+struct Tex;
 struct ImagePool;
 struct UnifiedPaintSettings;
+
+enum OverlayFlags;
 
 extern const char PAINT_CURSOR_SCULPT[3];
 extern const char PAINT_CURSOR_VERTEX_PAINT[3];
@@ -65,16 +69,36 @@ typedef enum PaintMode {
 	PAINT_INVALID = 6
 } PaintMode;
 
+/* overlay invalidation */
+typedef enum OverlayControlFlags {
+	PAINT_INVALID_OVERLAY_TEXTURE_PRIMARY = 1,
+	PAINT_INVALID_OVERLAY_TEXTURE_SECONDARY = (1 << 2),
+	PAINT_INVALID_OVERLAY_CURVE = (1 << 3),
+	PAINT_OVERLAY_OVERRIDE_CURSOR = (1 << 4),
+	PAINT_OVERLAY_OVERRIDE_PRIMARY = (1 << 5),
+	PAINT_OVERLAY_OVERRIDE_SECONDARY = (1 << 6)
+} OverlayControlFlags;
+
+#define PAINT_OVERRIDE_MASK (PAINT_OVERLAY_OVERRIDE_SECONDARY | \
+						     PAINT_OVERLAY_OVERRIDE_PRIMARY | \
+						     PAINT_OVERLAY_OVERRIDE_CURSOR)
+
+void BKE_paint_invalidate_overlay_tex(struct Scene *scene, const struct Tex *tex);
+void BKE_paint_invalidate_cursor_overlay(struct Scene *scene, struct CurveMapping *curve);
+void BKE_paint_invalidate_overlay_all(void);
+OverlayControlFlags BKE_paint_get_overlay_flags(void);
+void BKE_paint_reset_overlay_invalid(OverlayControlFlags flag);
+void BKE_paint_set_overlay_override(enum OverlayFlags flag);
+
 void BKE_paint_init(struct Paint *p, const char col[3]);
 void BKE_paint_free(struct Paint *p);
 void BKE_paint_copy(struct Paint *src, struct Paint *tar);
 
-/* TODO, give these BKE_ prefix too */
-struct Paint *paint_get_active(struct Scene *sce);
-struct Paint *paint_get_active_from_context(const struct bContext *C);
-PaintMode paintmode_get_active_from_context(const struct bContext *C);
-struct Brush *paint_brush(struct Paint *paint);
-void paint_brush_set(struct Paint *paint, struct Brush *br);
+struct Paint *BKE_paint_get_active(struct Scene *sce);
+struct Paint *BKE_paint_get_active_from_context(const struct bContext *C);
+PaintMode BKE_paintmode_get_active_from_context(const struct bContext *C);
+struct Brush *BKE_paint_brush(struct Paint *paint);
+void BKE_paint_brush_set(struct Paint *paint, struct Brush *br);
 
 /* testing face select mode
  * Texture paint could be removed since selected faces are not used
@@ -140,6 +164,9 @@ typedef struct SculptSession {
 	/* last paint/sculpt stroke location */
 	int last_stroke_valid;
 	float last_stroke[3];
+
+	float average_stroke_accum[3];
+	int average_stroke_counter;
 } SculptSession;
 
 void free_sculptsession(struct Object *ob);

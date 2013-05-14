@@ -2267,7 +2267,7 @@ static size_t animdata_filter_dopesheet(bAnimContext *ac, ListBase *anim_data, b
 	
 	/* check that we do indeed have a scene */
 	if ((ads->source == NULL) || (GS(ads->source->name) != ID_SCE)) {
-		printf("DopeSheet Error: Not scene!\n");
+		printf("Dope Sheet Error: No scene!\n");
 		if (G.debug & G_DEBUG)
 			printf("\tPointer = %p, Name = '%s'\n", (void *)ads->source, (ads->source) ? ads->source->name : NULL);
 		return 0;

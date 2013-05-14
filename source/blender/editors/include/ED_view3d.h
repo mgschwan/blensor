@@ -196,16 +196,15 @@ eV3DProjStatus ED_view3d_project_float_global(const struct ARegion *ar, const fl
 eV3DProjStatus ED_view3d_project_float_object(const struct ARegion *ar, const float co[3], float r_co[2], const eV3DProjTest flag);
 
 float ED_view3d_calc_zfac(const struct RegionView3D *rv3d, const float co[3], bool *r_flip);
-void ED_view3d_win_to_ray(const struct ARegion *ar, struct View3D *v3d, const float mval[2], float ray_start[3], float ray_normal[3]);
+bool ED_view3d_win_to_ray(const struct ARegion *ar, struct View3D *v3d, const float mval[2],
+                          float ray_start[3], float ray_normal[3], const bool do_clip);
 void ED_view3d_global_to_vector(const struct RegionView3D *rv3d, const float coord[3], float vec[3]);
 void ED_view3d_win_to_3d(const struct ARegion *ar, const float depth_pt[3], const float mval[2], float out[3]);
 void ED_view3d_win_to_3d_int(const struct ARegion *ar, const float depth_pt[3], const int mval[2], float out[3]);
 void ED_view3d_win_to_delta(const struct ARegion *ar, const float mval[2], float out[3], const float zfac);
 void ED_view3d_win_to_vector(const struct ARegion *ar, const float mval[2], float out[3]);
-void ED_view3d_win_to_segment(const struct ARegion *ar, struct View3D *v3d, const float mval[2],
-                              float ray_start[3], float ray_end[3]);
-bool ED_view3d_win_to_segment_clip(const struct ARegion *ar, struct View3D *v3d, const float mval[2],
-                                   float ray_start[3], float ray_end[3]);
+bool ED_view3d_win_to_segment(const struct ARegion *ar, struct View3D *v3d, const float mval[2],
+                              float r_ray_start[3], float r_ray_end[3], const bool do_clip);
 void ED_view3d_ob_project_mat_get(const struct RegionView3D *v3d, struct Object *ob, float pmat[4][4]);
 void ED_view3d_unproject(struct bglMats *mats, float out[3], const float x, const float y, const float z);
 
@@ -223,6 +222,8 @@ void ED_view3d_calc_camera_border(struct Scene *scene, struct ARegion *ar,
 void ED_view3d_calc_camera_border_size(struct Scene *scene, struct ARegion *ar,
                                        struct View3D *v3d, struct RegionView3D *rv3d,
                                        float r_size[2]);
+bool ED_view3d_calc_render_border(struct Scene *scene, struct View3D *v3d,
+                                  struct ARegion *ar, struct rcti *rect);
 
 void ED_view3d_clipping_calc(struct BoundBox *bb, float planes[4][4], struct bglMats *mats, const struct rcti *rect);
 void ED_view3d_clipping_local(struct RegionView3D *rv3d, float mat[4][4]);
@@ -275,13 +276,19 @@ int ED_operator_rv3d_user_region_poll(struct bContext *C);
 
 void ED_view3d_init_mats_rv3d(struct Object *ob, struct RegionView3D *rv3d);
 void ED_view3d_init_mats_rv3d_gl(struct Object *ob, struct RegionView3D *rv3d);
-
+#ifdef DEBUG
+void ED_view3d_clear_mats_rv3d(struct RegionView3D *rv3d);
+void ED_view3d_check_mats_rv3d(struct RegionView3D *rv3d);
+#else
+#  define ED_view3d_clear_mats_rv3d(rv3d) (void)(rv3d)
+#  define ED_view3d_check_mats_rv3d(rv3d) (void)(rv3d)
+#endif
 int ED_view3d_scene_layer_set(int lay, const int *values, int *active);
 
 bool ED_view3d_context_activate(struct bContext *C);
 void ED_view3d_draw_offscreen_init(struct Scene *scene, struct View3D *v3d);
 void ED_view3d_draw_offscreen(struct Scene *scene, struct View3D *v3d, struct ARegion *ar,
-                              int winx, int winy, float viewmat[4][4], float winmat[4][4], bool do_bgpic);
+                              int winx, int winy, float viewmat[4][4], float winmat[4][4], bool do_bgpic, bool do_sky);
 
 struct ImBuf *ED_view3d_draw_offscreen_imbuf(struct Scene *scene, struct View3D *v3d, struct ARegion *ar, int sizex, int sizey, unsigned int flag,
                                              bool draw_background, int alpha_mode, char err_out[256]);
@@ -296,7 +303,8 @@ bool ED_view3d_lock(struct RegionView3D *rv3d);
 
 uint64_t ED_view3d_datamask(struct Scene *scene, struct View3D *v3d);
 uint64_t ED_view3d_screen_datamask(struct bScreen *screen);
-uint64_t ED_view3d_object_datamask(struct Scene *scene);
+
+bool ED_view3d_offset_lock_check(struct View3D *v3d, struct RegionView3D *rv3d);
 
 /* camera lock functions */
 bool ED_view3d_camera_lock_check(struct View3D *v3d, struct RegionView3D *rv3d);

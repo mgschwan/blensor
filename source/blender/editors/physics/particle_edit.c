@@ -3254,12 +3254,13 @@ static int brush_add(PEData *data, short number)
 	short size= pset->brush[PE_BRUSH_ADD].size;
 	short size2= size*size;
 	DerivedMesh *dm=0;
+	RNG *rng;
 	invert_m4_m4(imat, ob->obmat);
 
 	if (psys->flag & PSYS_GLOBAL_HAIR)
 		return 0;
 
-	BLI_srandom(psys->seed+data->mval[0]+data->mval[1]);
+	rng = BLI_rng_new_srandom(psys->seed+data->mval[0]+data->mval[1]);
 
 	sim.scene= scene;
 	sim.ob= ob;
@@ -3281,8 +3282,8 @@ static int brush_add(PEData *data, short number)
 
 			/* rejection sampling to get points in circle */
 			while (dmx*dmx + dmy*dmy > size2) {
-				dmx= (2.0f*BLI_frand() - 1.0f)*size;
-				dmy= (2.0f*BLI_frand() - 1.0f)*size;
+				dmx= (2.0f*BLI_rng_get_float(rng) - 1.0f)*size;
+				dmy= (2.0f*BLI_rng_get_float(rng) - 1.0f)*size;
 			}
 		}
 		else {
@@ -3292,7 +3293,7 @@ static int brush_add(PEData *data, short number)
 
 		mco[0] = data->mval[0] + dmx;
 		mco[1] = data->mval[1] + dmy;
-		ED_view3d_win_to_segment_clip(data->vc.ar, data->vc.v3d, mco, co1, co2);
+		ED_view3d_win_to_segment(data->vc.ar, data->vc.v3d, mco, co1, co2, true);
 
 		mul_m4_v3(imat, co1);
 		mul_m4_v3(imat, co2);
@@ -3457,6 +3458,8 @@ static int brush_add(PEData *data, short number)
 	
 	if (!psmd->dm->deformedOnly)
 		dm->release(dm);
+	
+	BLI_rng_free(rng);
 	
 	return n;
 }

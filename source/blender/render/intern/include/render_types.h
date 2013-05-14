@@ -44,6 +44,8 @@
 
 #include "BLI_threads.h"
 
+#include "BKE_main.h"
+
 #include "RE_pipeline.h"
 #include "RE_shader_ext.h"	/* TexResult, ShadeResult, ShadeInput */
 #include "sunsky.h"
@@ -166,6 +168,7 @@ struct Render
 	float grvec[3];			/* for world */
 	float imat[3][3];		/* copy of viewinv */
 	float viewmat[4][4], viewinv[4][4];
+	float viewmat_orig[4][4];	/* for incremental render */
 	float winmat[4][4];
 	
 	/* clippping */
@@ -236,6 +239,7 @@ struct Render
 	ListBase volume_precache_parts;
 
 #ifdef WITH_FREESTYLE
+	struct Main freestyle_bmain;
 	ListBase freestyle_renders;
 #endif
 
@@ -341,7 +345,8 @@ typedef struct ObjectInstanceRen {
 	Object *ob, *par;
 	int index, psysindex, lay;
 
-	float mat[4][4], nmat[3][3]; /* nmat is inverse mat tranposed */
+	float mat[4][4], imat[4][4];
+	float nmat[3][3]; /* nmat is inverse mat tranposed */
 	short flag;
 
 	float dupliorco[3], dupliuv[2];

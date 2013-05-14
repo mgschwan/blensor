@@ -142,15 +142,19 @@ static void dm_calc_normal(DerivedMesh *dm, float (*temp_nors)[3])
 			if (edge_ref->f2 != -1) {
 				/* We have 2 faces using this edge, calculate the edges normal
 				 * using the angle between the 2 faces as a weighting */
+#if 0
 				add_v3_v3v3(edge_normal, face_nors[edge_ref->f1], face_nors[edge_ref->f2]);
 				normalize_v3(edge_normal);
+
 				mul_v3_fl(edge_normal, angle_normalized_v3v3(face_nors[edge_ref->f1], face_nors[edge_ref->f2]));
+#else
+				mid_v3_v3v3_angle_weighted(edge_normal, face_nors[edge_ref->f1], face_nors[edge_ref->f2]);
+#endif
 			}
 			else {
 				/* only one face attached to that edge */
-				/* an edge without another attached- the weight on this is
-				 * undefined, M_PI/2 is 90d in radians and that seems good enough */
-				mul_v3_v3fl(edge_normal, face_nors[edge_ref->f1], M_PI / 2);
+				/* an edge without another attached- the weight on this is undefined */
+				copy_v3_v3(edge_normal, face_nors[edge_ref->f1]);
 			}
 			add_v3_v3(temp_nors[ed_v1], edge_normal);
 			add_v3_v3(temp_nors[ed_v2], edge_normal);
@@ -182,6 +186,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	SolidifyModifierData *tsmd = (SolidifyModifierData *) target;
 	tsmd->offset = smd->offset;
 	tsmd->offset_fac = smd->offset_fac;
+	tsmd->offset_fac_vg = smd->offset_fac_vg;
+	tsmd->offset_clamp = smd->offset_clamp;
 	tsmd->crease_inner = smd->crease_inner;
 	tsmd->crease_outer = smd->crease_outer;
 	tsmd->crease_rim = smd->crease_rim;
@@ -302,10 +308,11 @@ static DerivedMesh *applyModifier(
 
 			ml = orig_mloop + mp->loopstart;
 
-			for (j = 0, ml_v1 = ml->v, ml_v2 = ml[mp->totloop - 1].v;
+			for (j = 0, ml_v2 = ml[mp->totloop - 1].v;
 			     j < mp->totloop;
-			     j++, ml++, ml_v2 = ml_v1, ml_v1 = ml->v)
+			     j++, ml++, ml_v2 = ml_v1)
 			{
+				ml_v1 = ml->v;
 				/* add edge user */
 				eidx = GET_INT_FROM_POINTER(BLI_edgehash_lookup(edgehash, ml_v1, ml_v2));
 				if (edge_users[eidx] == INVALID_UNUSED) {
@@ -517,7 +524,7 @@ static DerivedMesh *applyModifier(
 		}
 
 		for (i = 0, mp = mpoly; i < numFaces; i++, mp++) {
-			/* #BKE_mesh_poly_calc_angles logic is inlined here */
+			/* #BKE_mesh_calc_poly_angles logic is inlined here */
 			float nor_prev[3];
 			float nor_next[3];
 
@@ -824,14 +831,6 @@ static DerivedMesh *applyModifier(
 
 #undef SOLIDIFY_SIDE_NORMALS
 
-static DerivedMesh *applyModifierEM(ModifierData *md,
-                                    Object *ob,
-                                    struct BMEditMesh *UNUSED(editData),
-                                    DerivedMesh *derivedData)
-{
-	return applyModifier(md, ob, derivedData, MOD_APPLY_USECACHE);
-}
-
 
 ModifierTypeInfo modifierType_Solidify = {
 	/* name */              "Solidify",
@@ -851,7 +850,7 @@ ModifierTypeInfo modifierType_Solidify = {
 	/* deformVertsEM */     NULL,
 	/* deformMatricesEM */  NULL,
 	/* applyModifier */     applyModifier,
-	/* applyModifierEM */   applyModifierEM,
+	/* applyModifierEM */   NULL,
 	/* initData */          initData,
 	/* requiredDataMask */  requiredDataMask,
 	/* freeData */          NULL,

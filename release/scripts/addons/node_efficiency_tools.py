@@ -19,7 +19,7 @@
 bl_info = {
     'name': "Nodes Efficiency Tools",
     'author': "Bartek Skorupa",
-    'version': (2, 24),
+    'version': (2, 28),
     'blender': (2, 6, 6),
     'location': "Node Editor Properties Panel (Ctrl-SPACE)",
     'description': "Nodes Efficiency Tools",
@@ -32,6 +32,7 @@ bl_info = {
 import bpy
 from bpy.types import Operator, Panel, Menu
 from bpy.props import FloatProperty, EnumProperty, BoolProperty
+from mathutils import Vector
 
 #################
 # rl_outputs:
@@ -294,8 +295,14 @@ class MergeNodes(Operator, NodeToolBase):
                 count_adds = i + 1
                 count_after = len(nodes)
                 index = count_after - 1
+                first_selected = nodes[nodes_list[0][0]]
+                # "last" node has been added as first, so its index is count_before.
+                last_add = nodes[count_before]
+                # add links from last_add to all links 'to_socket' of out links of first selected.
+                for fs_link in first_selected.outputs[0].links:
+                    links.new(last_add.outputs[0], fs_link.to_socket)
                 # add link from "first" selected and "first" add node
-                links.new(nodes[nodes_list[0][0]].outputs[0], nodes[count_after - 1].inputs[first])
+                links.new(first_selected.outputs[0], nodes[count_after - 1].inputs[first])
                 # add links between added ADD nodes and between selected and ADD nodes
                 for i in range(count_adds):
                     if i < count_adds - 1:
@@ -304,7 +311,7 @@ class MergeNodes(Operator, NodeToolBase):
                         links.new(nodes[index].inputs[second], nodes[nodes_list[i + 1][0]].outputs[0])
                     index -= 1
                 # set "last" of added nodes as active
-                nodes.active = nodes[count_before]
+                nodes.active = last_add
                 for i, x, y in nodes_list:
                     nodes[i].select = False
 
@@ -801,6 +808,7 @@ class NodesSwap(Operator, NodeToolBase):
                         for new_i, new_input in enumerate(new_node.inputs):
                             if old_input.name == new_input.name:
                                 replace.append((old_i, new_i))
+                                new_input.default_value = old_input.default_value
                                 break
                 elif option == 'ShaderNodeAddShader':
                     if node.type == 'ADD_SHADER':
@@ -1015,7 +1023,7 @@ class AlignNodes(Operator, NodeToolBase):
             max_y_w = selected_sorted_y[count - 1][3]  # width of node with max loc.y
             max_y_h = selected_sorted_y[count - 1][4]  # height of node with max loc.y
 
-            if self.option == 'AXIS_X':
+            if self.option == 'AXIS_Y':  # Horizontally. Equivelent of s -> x -> 0 with even spacing.
                 loc_x = min_x
                 #loc_y = (max_x_loc_y + min_x_loc_y) / 2.0
                 loc_y = (max_y - max_y_h / 2.0 + min_y - min_y_h / 2.0) / 2.0
@@ -1084,6 +1092,66 @@ class SelectParentChildren(Operator, NodeToolBase):
         return {'FINISHED'}
 
 
+class DetachOutputs(Operator, NodeToolBase):
+    bl_idname = "node.detach_outputs"
+    bl_label = "Detach Outputs"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        nodes, links = get_nodes_links(context)
+        selected = context.selected_nodes
+        bpy.ops.node.duplicate_move_keep_inputs()
+        new_nodes = context.selected_nodes
+        bpy.ops.node.select_all(action="DESELECT")
+        for node in selected:
+            node.select = True
+        bpy.ops.node.delete_reconnect()
+        for new_node in new_nodes:
+            new_node.location.y += 100.0
+            new_node.select = True
+
+        return {'FINISHED'}
+
+class LinkToOutputNode(Operator, NodeToolBase):
+    bl_idname = "node.link_to_output_node"
+    bl_label = "Link to Output Node"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_node
+    
+    def execute(self, context):
+        nodes, links = get_nodes_links(context)
+        active = nodes.active
+        output_node = None
+        for node in nodes:
+            if (node.type == 'OUTPUT_MATERIAL' or\
+                    node.type == 'OUTPUT_WORLD' or\
+                    node.type == 'OUTPUT_LAMP' or\
+                    node.type == 'COMPOSITE'):
+                output_node = node
+                break
+        if not output_node:
+            bpy.ops.node.select_all(action="DESELECT")
+            type = context.space_data.tree_type
+            if type == 'ShaderNodeTree':
+                output_node = nodes.new('ShaderNodeOutputMaterial')
+            elif type == 'CompositorNodeTree':
+                output_node = nodes.new('CompositorNodeComposite')
+            output_node.location = active.location + Vector((300.0, 0.0))
+            nodes.active = output_node
+        if (output_node and active.outputs):
+            output_index = 0
+            for i, output in enumerate(active.outputs):
+                if output.type == output_node.inputs[0].type:
+                    output_index = i
+                    break
+            links.new(active.outputs[output_index], output_node.inputs[0])
+
+        return {'FINISHED'}
+
+
 #############################################################
 #  P A N E L S
 #############################################################
@@ -1106,9 +1174,11 @@ class EfficiencyToolsPanel(Panel, NodeToolBase):
         box.menu(NodeAlignMenu.bl_idname, text="Align Nodes (Shift =)")
         box.menu(CopyToSelectedMenu.bl_idname, text="Copy to Selected (Shift-C)")
         box.operator(NodesClearLabel.bl_idname).option = True
+        box.operator(DetachOutputs.bl_idname)
         box.menu(AddReroutesMenu.bl_idname, text="Add Reroutes ( / )")
         box.menu(NodesSwapMenu.bl_idname, text="Swap Nodes (Shift-S)")
         box.menu(LinkActiveToSelectedMenu.bl_idname, text="Link Active To Selected ( \\ )")
+        box.operator(LinkToOutputNode.bl_idname)
 
 
 #############################################################
@@ -1129,9 +1199,11 @@ class EfficiencyToolsMenu(Menu, NodeToolBase):
         layout.menu(NodeAlignMenu.bl_idname, text="Align Nodes")
         layout.menu(CopyToSelectedMenu.bl_idname, text="Copy to Selected")
         layout.operator(NodesClearLabel.bl_idname).option = True
+        layout.operator(DetachOutputs.bl_idname)
         layout.menu(AddReroutesMenu.bl_idname, text="Add Reroutes")
         layout.menu(NodesSwapMenu.bl_idname, text="Swap Nodes")
         layout.menu(LinkActiveToSelectedMenu.bl_idname, text="Link Active To Selected")
+        layout.operator(LinkToOutputNode.bl_idname)
 
 
 class MergeNodesMenu(Menu, NodeToolBase):
@@ -1503,6 +1575,10 @@ kmi_defs = (
     (ChangeMixFactor.bl_idname, 'ONE', True, True, True, (('option', 1.0),)),
     # CLEAR LABEL (Alt L)
     (NodesClearLabel.bl_idname, 'L', False, False, True, (('option', False),)),
+    # DETACH OUTPUTS (Alt Shift D)
+    (DetachOutputs.bl_idname, 'D', False, True, True, None),
+    # LINK TO OUTPUT NODE (O)
+    (LinkToOutputNode.bl_idname, 'O', False, False, False, None),
     # SELECT PARENT/CHILDREN
     # Select Children
     (SelectParentChildren.bl_idname, 'RIGHT_BRACKET', False, False, False, (('option', 'CHILD'),)),

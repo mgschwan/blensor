@@ -49,7 +49,6 @@
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_action.h"
@@ -60,7 +59,7 @@
 #include "BKE_main.h"
 #include "BKE_mesh.h"
 #include "BKE_screen.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_deform.h"
 #include "BKE_object.h"
 

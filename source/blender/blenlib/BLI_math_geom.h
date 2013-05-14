@@ -61,6 +61,8 @@ float area_quad_v3(const float a[3], const float b[3], const float c[3], const f
 float area_poly_v3(int nr, float verts[][3], const float normal[3]);
 float area_poly_v2(int nr, float verts[][2]);
 
+float volume_tetrahedron_v3(const float v1[3], const float v2[3], const float v3[3], const float v4[3]);
+
 int is_quad_convex_v3(const float v1[3], const float v2[3], const float v3[3], const float v4[3]);
 int is_quad_convex_v2(const float v1[2], const float v2[2], const float v3[2], const float v4[2]);
 
@@ -168,7 +170,8 @@ int isect_sweeping_sphere_tri_v3(const float p1[3], const float p2[3], const flo
 int isect_axial_line_tri_v3(const int axis, const float co1[3], const float co2[3],
                             const float v0[3], const float v1[3], const float v2[3], float *r_lambda);
 
-int clip_line_plane(float p1[3], float p2[3], const float plane[4]);
+bool clip_segment_v3_plane(float p1[3], float p2[3], const float plane[4]);
+bool clip_segment_v3_plane_n(float p1[3], float p2[3], float plane_array[][4], const int plane_tot);
 
 void plot_line_v2v2i(const int p1[2], const int p2[2], bool (*callback)(int, int, void *), void *userData);
 
@@ -234,8 +237,8 @@ void accumulate_vertex_normals(float n1[3], float n2[3], float n3[3],
                                float n4[3], const float f_no[3], const float co1[3], const float co2[3],
                                const float co3[3], const float co4[3]);
 
-void accumulate_vertex_normals_poly(float **vertnos, float polyno[3],
-                                    float **vertcos, float vdiffs[][3], int nverts);
+void accumulate_vertex_normals_poly(float **vertnos, const float polyno[3],
+                                    const float **vertcos, float vdiffs[][3], const int nverts);
 
 /********************************* Tangents **********************************/
 

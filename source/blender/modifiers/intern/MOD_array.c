@@ -346,9 +346,9 @@ static DerivedMesh *arrayModifier_doArray(ArrayModifierData *amd,
 	BMOpSlot *slot_targetmap = NULL;  /* for weldop */
 
 	/* need to avoid infinite recursion here */
-	if (amd->start_cap && amd->start_cap != ob)
+	if (amd->start_cap && amd->start_cap != ob && amd->start_cap->type == OB_MESH)
 		start_cap = mesh_get_derived_final(scene, amd->start_cap, CD_MASK_MESH);
-	if (amd->end_cap && amd->end_cap != ob)
+	if (amd->end_cap && amd->end_cap != ob && amd->end_cap->type == OB_MESH)
 		end_cap = mesh_get_derived_final(scene, amd->end_cap, CD_MASK_MESH);
 
 	unit_m4(offset);
@@ -597,13 +597,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	return result;
 }
 
-static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
-                                    struct BMEditMesh *UNUSED(editData),
-                                    DerivedMesh *dm)
-{
-	return applyModifier(md, ob, dm, MOD_APPLY_USECACHE);
-}
-
 
 ModifierTypeInfo modifierType_Array = {
 	/* name */              "Array",
@@ -622,7 +615,7 @@ ModifierTypeInfo modifierType_Array = {
 	/* deformVertsEM */     NULL,
 	/* deformMatricesEM */  NULL,
 	/* applyModifier */     applyModifier,
-	/* applyModifierEM */   applyModifierEM,
+	/* applyModifierEM */   NULL,
 	/* initData */          initData,
 	/* requiredDataMask */  NULL,
 	/* freeData */          NULL,

@@ -555,21 +555,21 @@ class Operator(StructRNA, metaclass=OrderedMeta):
     def __getattribute__(self, attr):
         properties = StructRNA.path_resolve(self, "properties")
         bl_rna = getattr(properties, "bl_rna", None)
-        if bl_rna and attr in bl_rna.properties:
+        if (bl_rna is not None) and (attr in bl_rna.properties):
             return getattr(properties, attr)
         return super().__getattribute__(attr)
 
     def __setattr__(self, attr, value):
         properties = StructRNA.path_resolve(self, "properties")
         bl_rna = getattr(properties, "bl_rna", None)
-        if bl_rna and attr in bl_rna.properties:
+        if (bl_rna is not None) and (attr in bl_rna.properties):
             return setattr(properties, attr, value)
         return super().__setattr__(attr, value)
 
     def __delattr__(self, attr):
         properties = StructRNA.path_resolve(self, "properties")
         bl_rna = getattr(properties, "bl_rna", None)
-        if bl_rna and attr in bl_rna.properties:
+        if (bl_rna is not None) and (attr in bl_rna.properties):
             return delattr(properties, attr)
         return super().__delattr__(attr)
 
@@ -752,105 +752,16 @@ class NodeTree(bpy_types.ID, metaclass=RNAMetaPropGroup):
     __slots__ = ()
 
 
-class NodeSocketTemplate():
-    type = 'UNDEFINED'
-
-    # Default implementation:
-    # Create a single property using the socket template's 'value_property' attribute
-    # value_property should be created in the __init__ function
-    #
-    # If necessary this function can be overloaded in subclasses, e.g. to create multiple value properties
-    def define_node_properties(self, node_type, prefix):
-        if hasattr(self, "value_property"):
-            setattr(node_type, prefix+"value", self.value_property)
-
-    def init_socket(self, socket):
-        socket.type = self.type
-        if hasattr(self, "value_property"):
-            socket.value_property = self.value_property[1]['attr']
-
-
-def gen_valid_identifier(seq):
-    # get an iterator
-    itr = iter(seq)
-    # pull characters until we get a legal one for first in identifer
-    for ch in itr:
-        if ch == '_' or ch.isalpha():
-            yield ch
-            break
-    # pull remaining characters and yield legal ones for identifier
-    for ch in itr:
-        if ch == '_' or ch.isalpha() or ch.isdigit():
-            yield ch
-
-
-def sanitize_identifier(name):
-    return ''.join(gen_valid_identifier(name))
-
-
-def unique_identifier(name, identifier_list):
-    # First some basic sanitation, to make a usable identifier string from the name
-    base = sanitize_identifier(name)
-    # Now make a unique identifier by appending an unused index
-    identifier = base
-    index = 0
-    while identifier in identifier_list:
-        index += 1
-        identifier = base + str(index)
-    return identifier
-
-
-class RNAMetaNode(RNAMetaPropGroup):
-    def __new__(cls, name, bases, classdict, **args):
-        # Wrapper for node.init, to add sockets from templates
-
-        def create_sockets(self):
-            inputs = getattr(self, 'input_templates', None)
-            if inputs:
-                for temp in inputs:
-                    socket = self.inputs.new(type=temp.bl_socket_idname, name=temp.name, identifier=temp.identifier)
-                    temp.init_socket(socket)
-            outputs = getattr(self, 'output_templates', None)
-            if outputs:
-                for temp in outputs:
-                    socket = self.outputs.new(type=temp.bl_socket_idname, name=temp.name, identifier=temp.identifier)
-                    temp.init_socket(socket)
-
-        init_base = classdict.get('init', None)
-        if init_base:
-            def init_node(self, context):
-                create_sockets(self)
-                init_base(self, context)
-        else:
-            def init_node(self, context):
-                create_sockets(self)
-
-        classdict['init'] = init_node
-
-        # Create the regular class
-        result = RNAMetaPropGroup.__new__(cls, name, bases, classdict)
-
-        # Add properties from socket templates
-        inputs = classdict.get('input_templates', None)
-        if inputs:
-            for i, temp in enumerate(inputs):
-                temp.identifier = unique_identifier(temp.name, [t.identifier for t in inputs[0:i]])
-                temp.define_node_properties(result, "input_"+temp.identifier+"_")
-        outputs = classdict.get('output_templates', None)
-        if outputs:
-            for i, temp in enumerate(outputs):
-                temp.identifier = unique_identifier(temp.name, [t.identifier for t in outputs[0:i]])
-                temp.define_node_properties(result, "output_"+temp.identifier+"_")
-
-        return result
-
-
-class Node(StructRNA, metaclass=RNAMetaNode):
+class Node(StructRNA, metaclass=RNAMetaPropGroup):
     __slots__ = ()
 
     @classmethod
     def poll(cls, ntree):
         return True
+
+
+class NodeInternal(Node):
+    __slots__ = ()
 
 
 class NodeSocket(StructRNA, metaclass=RNAMetaPropGroup):
@@ -869,7 +780,7 @@ class NodeSocketInterface(StructRNA, metaclass=RNAMetaPropGroup):
 
 
 # These are intermediate subclasses, need a bpy type too
-class CompositorNode(Node):
+class CompositorNode(NodeInternal):
     __slots__ = ()
 
     @classmethod
@@ -880,7 +791,7 @@ class CompositorNode(Node):
         self.tag_need_exec()
 
 
-class ShaderNode(Node):
+class ShaderNode(NodeInternal):
     __slots__ = ()
 
     @classmethod
@@ -888,7 +799,7 @@ class ShaderNode(Node):
         return ntree.bl_idname == 'ShaderNodeTree'
 
 
-class TextureNode(Node):
+class TextureNode(NodeInternal):
     __slots__ = ()
 
     @classmethod

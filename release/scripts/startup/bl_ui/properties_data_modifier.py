@@ -119,12 +119,12 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "end_cap")
 
     def BEVEL(self, layout, ob, md):
-        split = layout.split()
-
-        split.prop(md, "width")
-        split.prop(md, "use_only_vertices")
-
+        layout.prop(md, "width")
         layout.prop(md, "segments")
+
+        split = layout.split()
+        split.prop(md, "use_only_vertices")
+        split.prop(md, "use_clamp_overlap")
 
         layout.label(text="Limit Method:")
         layout.row().prop(md, "limit_method", expand=True)
@@ -936,9 +936,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             layout.prop(md, "sharpness")
 
         layout.prop(md, "use_smooth_shade")
-        layout.prop(md, "remove_disconnected_pieces")
+        layout.prop(md, "use_remove_disconnected")
         row = layout.row()
-        row.active = md.remove_disconnected_pieces
+        row.active = md.use_remove_disconnected
         row.prop(md, "threshold")
 
     @staticmethod
@@ -1043,7 +1043,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         layout.row().prop(md, "proximity_mode", expand=True)
         if md.proximity_mode == 'GEOMETRY':
-            layout.row().prop(md, "proximity_geometry", expand=True)
+            layout.row().prop(md, "proximity_geometry")
 
         row = layout.row()
         row.prop(md, "min_dist")

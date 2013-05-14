@@ -22,27 +22,22 @@ def DefSplitShapes(self,ACTIVESHAPE,LAYOUTCOMPAT):
                 SHAPE.name=SHAPE.name[:8]
  
     if ACTIVESHAPE:  
-        print(INDEX)
         ACTOBJ.active_shape_key_index=INDEX          
         AS=ACTOBJ.active_shape_key
         AS.value=1
-        bpy.ops.object.shape_key_add(from_mix=True)
-        ACTOBJ.data.shape_keys.key_blocks[-1].name=AS.name[:8]+"_L"
-        ACTOBJ.data.shape_keys.key_blocks[-1].vertex_group="_L"
-        bpy.ops.object.shape_key_add(from_mix=True)
-        ACTOBJ.data.shape_keys.key_blocks[-1].name=AS.name[:8]+"_R"
-        ACTOBJ.data.shape_keys.key_blocks[-1].vertex_group="_R"
+        SHAPE = ACTOBJ.shape_key_add(name=AS.name[:8]+"_L"  ,from_mix=True)
+        SHAPE.vertex_group="_L"
+        SHAPE2 = ACTOBJ.shape_key_add(name=AS.name[:8]+"_R", from_mix=True)
+        SHAPE2.vertex_group="_R"
         bpy.ops.object.shape_key_clear()
            
     else:     
         for SHAPE in ACTOBJ.data.shape_keys.key_blocks[1:]:
             SHAPE.value=1
-            bpy.ops.object.shape_key_add(from_mix=True)
-            ACTOBJ.data.shape_keys.key_blocks[-1].name=SHAPE.name[:8]+"_L"
-            ACTOBJ.data.shape_keys.key_blocks[-1].vertex_group="_L"
-            bpy.ops.object.shape_key_add(from_mix=True)
-            ACTOBJ.data.shape_keys.key_blocks[-1].name=SHAPE.name[:8]+"_R"
-            ACTOBJ.data.shape_keys.key_blocks[-1].vertex_group="_R"
+            SHAPE1 = ACTOBJ.shape_key_add(name=SHAPE.name[:8]+"_L", from_mix=True)            
+            SHAPE1.vertex_group="_L"
+            SHAPE2 = ACTOBJ.shape_key_add(name=SHAPE.name[:8]+"_R"  ,from_mix=True)
+            SHAPE2.vertex_group="_R"
             bpy.ops.object.shape_key_clear()
         ACTOBJ.active_shape_key_index=INDEX 
 

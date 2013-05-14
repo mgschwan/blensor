@@ -255,7 +255,11 @@ static void rna_Modifier_name_set(PointerRNA *ptr, const char *value)
 
 static char *rna_Modifier_path(PointerRNA *ptr)
 {
-	return BLI_sprintfN("modifiers[\"%s\"]", ((ModifierData *)ptr->data)->name);
+	ModifierData *md = ptr->data;
+	char name_esc[sizeof(md->name) * 2];
+
+	BLI_strescape(name_esc, md->name, sizeof(name_esc));
+	return BLI_sprintfN("modifiers[\"%s\"]", name_esc);
 }
 
 static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
@@ -290,7 +294,6 @@ static void rna_Smoke_set_type(Main *bmain, Scene *scene, PointerRNA *ptr)
 		case MOD_SMOKE_TYPE_COLL:
 		case 0:
 		default:
-			ob->dt = OB_TEXTURE;
 			break;
 	}
 	
@@ -789,14 +792,17 @@ static void rna_def_modifier_subsurf(BlenderRNA *brna)
 
 	rna_def_property_subdivision_common(srna, "subdivType");
 
+	/* see CCGSUBSURF_LEVEL_MAX for max limit */
 	prop = RNA_def_property(srna, "levels", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_int_sdna(prop, NULL, "levels");
+	RNA_def_property_range(prop, 0, 11);
 	RNA_def_property_ui_range(prop, 0, 6, 1, -1);
 	RNA_def_property_ui_text(prop, "Levels", "Number of subdivisions to perform");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "render_levels", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_int_sdna(prop, NULL, "renderLevels");
+	RNA_def_property_range(prop, 0, 11);
 	RNA_def_property_ui_range(prop, 0, 6, 1, -1);
 	RNA_def_property_ui_text(prop, "Render Levels", "Number of subdivisions to perform when rendering");
 
@@ -2360,6 +2366,11 @@ static void rna_def_modifier_bevel(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Vertex Group", "Vertex group name");
 	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_BevelModifier_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_clamp_overlap", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "flags", BME_BEVEL_OVERLAP_OK);
+	RNA_def_property_ui_text(prop, "Clamp Overlap", "Clamp the width to avoid overlap");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 #endif
 
 }
@@ -3249,7 +3260,7 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 	                         "edges closer to the input");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "remove_disconnected_pieces", PROP_BOOLEAN, PROP_NONE);
+	prop = RNA_def_property(srna, "use_remove_disconnected", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_REMESH_FLOOD_FILL);
 	RNA_def_property_ui_text(prop, "Remove Disconnected Pieces", "");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
