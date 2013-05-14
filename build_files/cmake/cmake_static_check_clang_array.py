@@ -49,6 +49,10 @@ def main():
 
     check_commands = []
     for c, inc_dirs, defs in source_info:
+
+        #~if "source/blender" not in c:
+        #~    continue
+
         cmd = ([CHECKER_BIN] +
                CHECKER_ARGS +
                [c] +
@@ -66,7 +70,7 @@ def main():
             percent_str = "[" + ("%.2f]" % percent).rjust(7) + " %:"
 
             sys.stdout.flush()
-            sys.stdout.write("%s " % percent_str)
+            sys.stdout.write("%s %s\n" % (percent_str, c))
 
         return subprocess.Popen(cmd)
 

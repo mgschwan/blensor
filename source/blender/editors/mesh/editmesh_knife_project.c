@@ -39,7 +39,7 @@
 #include "BKE_context.h"
 #include "BKE_curve.h"
 #include "BKE_cdderivedmesh.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_report.h"
 
 #include "MEM_guardedalloc.h"
@@ -89,7 +89,7 @@ static LinkNode *knifeproject_poly_from_object(ARegion *ar, Scene *scene, Object
 					float (*mval)[2] = MEM_mallocN(sizeof(*mval) * (nu->pntsu + is_cyclic), __func__);
 
 					for (bp = nu->bp, a = 0; a < nu->pntsu; a++, bp++) {
-						ED_view3d_project_float_v3_m4(ar, bp->vec, mval[a], projmat);
+						ED_view3d_project_float_v2_m4(ar, bp->vec, mval[a], projmat);
 					}
 					if (is_cyclic) {
 						copy_v2_v2(mval[a], mval[0]);
@@ -116,7 +116,7 @@ static int knifeproject_exec(bContext *C, wmOperator *op)
 	ARegion *ar = CTX_wm_region(C);
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 	LinkNode *polys = NULL;
 

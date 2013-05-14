@@ -749,19 +749,12 @@ void eulO_to_axis_angle(float axis[3], float *angle, const float eul[3], const s
 	quat_to_axis_angle(axis, angle, q);
 }
 
-/* axis angle to 3x3 matrix - safer version (normalization of axis performed)
- *
- * note: we may want a normalized and non normalized version of this function.
- */
-void axis_angle_to_mat3(float mat[3][3], const float axis[3], const float angle)
+/* axis angle to 3x3 matrix - note: requires that axis is normalized */
+void axis_angle_normalized_to_mat3(float mat[3][3], const float nor[3], const float angle)
 {
-	float nor[3], nsi[3], co, si, ico;
+	float nsi[3], co, si, ico;
 
-	/* normalize the axis first (to remove unwanted scaling) */
-	if (normalize_v3_v3(nor, axis) == 0.0f) {
-		unit_m3(mat);
-		return;
-	}
+	BLI_ASSERT_UNIT_V3(nor);
 
 	/* now convert this to a 3x3 matrix */
 	co = cosf(angle);
@@ -781,6 +774,21 @@ void axis_angle_to_mat3(float mat[3][3], const float axis[3], const float angle)
 	mat[2][0] = ((nor[0] * nor[2]) * ico) + nsi[1];
 	mat[2][1] = ((nor[1] * nor[2]) * ico) - nsi[0];
 	mat[2][2] = ((nor[2] * nor[2]) * ico) + co;
+}
+
+
+/* axis angle to 3x3 matrix - safer version (normalization of axis performed) */
+void axis_angle_to_mat3(float mat[3][3], const float axis[3], const float angle)
+{
+	float nor[3];
+
+	/* normalize the axis first (to remove unwanted scaling) */
+	if (normalize_v3_v3(nor, axis) == 0.0f) {
+		unit_m3(mat);
+		return;
+	}
+
+	axis_angle_normalized_to_mat3(mat, nor, angle);
 }
 
 /* axis angle to 4x4 matrix - safer version (normalization of axis performed) */

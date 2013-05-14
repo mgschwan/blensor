@@ -54,7 +54,8 @@ typedef struct GHash {
 
 	Entry **buckets;
 	struct BLI_mempool *entrypool;
-	int nbuckets, nentries, cursize;
+	unsigned int nbuckets;
+	unsigned int nentries, cursize;
 } GHash;
 
 typedef struct GHashIterator {
@@ -131,11 +132,11 @@ void            BLI_ghashIterator_step(GHashIterator *ghi);
  * \param ghi The iterator.
  * \return True if done, False otherwise.
  */
-bool            BLI_ghashIterator_notDone(GHashIterator *ghi);
+bool            BLI_ghashIterator_done(GHashIterator *ghi);
 
 #define GHASH_ITER(gh_iter_, ghash_)                                          \
 	for (BLI_ghashIterator_init(&gh_iter_, ghash_);                           \
-	     BLI_ghashIterator_notDone(&gh_iter_);                                \
+	     BLI_ghashIterator_done(&gh_iter_) == false;                          \
 	     BLI_ghashIterator_step(&gh_iter_))
 
 /* *** */

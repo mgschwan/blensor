@@ -44,6 +44,7 @@
 #include "DNA_material_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_particle_types.h"
+#include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_speaker_types.h"
 #include "DNA_world_types.h"
@@ -85,7 +86,7 @@
 #include "BKE_scene.h"
 #include "BKE_speaker.h"
 #include "BKE_texture.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -140,11 +141,11 @@ static int vertex_parent_set_exec(bContext *C, wmOperator *op)
 		em = me->edit_btmesh;
 
 		EDBM_mesh_normals_update(em);
-		BMEdit_RecalcTessellation(em);
+		BKE_editmesh_tessface_calc(em);
 
 		/* derivedMesh might be needed for solving parenting,
 		 * so re-create it here */
-		makeDerivedMesh(scene, obedit, em, CD_MASK_BAREMESH, 0);
+		makeDerivedMesh(scene, obedit, em, CD_MASK_BAREMESH | CD_MASK_ORIGINDEX, 0);
 
 		BM_ITER_MESH (eve, &iter, em->bm, BM_VERTS_OF_MESH) {
 			if (BM_elem_flag_test(eve, BM_ELEM_SELECT)) {
@@ -344,7 +345,7 @@ static int make_proxy_exec(bContext *C, wmOperator *op)
 		char name[MAX_ID_NAME + 4];
 		
 		/* Add new object for the proxy */
-		newob = BKE_object_add(scene, OB_EMPTY);
+		newob = BKE_object_add(bmain, scene, OB_EMPTY);
 
 		BLI_snprintf(name, sizeof(name), "%s_proxy", ((ID *)(gob ? gob : ob))->name + 2);
 
@@ -736,9 +737,7 @@ int ED_object_parent_set(ReportList *reports, Main *bmain, Scene *scene, Object 
 				BKE_get_constraint_target_matrix(scene, con, 0, CONSTRAINT_OBTYPE_OBJECT, NULL, cmat, scene->r.cfra);
 				sub_v3_v3v3(vec, ob->obmat[3], cmat[3]);
 				
-				ob->loc[0] = vec[0];
-				ob->loc[1] = vec[1];
-				ob->loc[2] = vec[2];
+				copy_v3_v3(ob->loc, vec);
 			}
 			else if (pararm && ob->type == OB_MESH && par->type == OB_ARMATURE) {
 				if (partype == PAR_ARMATURE_NAME)
@@ -1461,7 +1460,7 @@ static int make_links_data_exec(bContext *C, wmOperator *op)
 						ob_dst->data = id;
 
 						/* if amount of material indices changed: */
-						test_object_materials(ob_dst->data);
+						test_object_materials(bmain, ob_dst->data);
 
 						DAG_id_tag_update(&ob_dst->id, OB_RECALC_DATA);
 						break;
@@ -1603,21 +1602,23 @@ void OBJECT_OT_make_links_data(wmOperatorType *ot)
 
 /**************************** Make Single User ********************************/
 
-static void single_object_users(Scene *scene, View3D *v3d, int flag)	
+static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, int flag, bool copy_groups)
 {
 	Base *base;
 	Object *ob, *obn;
+	Group *group, *groupn;
+	GroupObject *go;
 	
 	clear_sca_new_poins();  /* sensor/contr/act */
+
+	/* newid may still have some trash from Outliner tree building,
+	 * so clear that first to avoid errors [#26002] */
+	for (ob = bmain->object.first; ob; ob = ob->id.next)
+		ob->id.newid = NULL;
 
 	/* duplicate (must set newid) */
 	for (base = FIRSTBASE; base; base = base->next) {
 		ob = base->object;
-		
-		/* newid may still have some trash from Outliner tree building,
-		 * so clear that first to avoid errors [#26002]
-		 */
-		ob->id.newid = NULL;
 		
 		if ((base->flag & flag) == flag) {
 			if (ob->id.lib == NULL && ob->id.us > 1) {
@@ -1628,11 +1629,37 @@ static void single_object_users(Scene *scene, View3D *v3d, int flag)
 			}
 		}
 	}
+
+	/* duplicate groups that consist entirely of duplicated objects */
+	for (group = bmain->group.first; group; group = group->id.next) {
+		group->id.newid = NULL;
+
+		if (copy_groups && group->gobject.first) {
+			bool all_duplicated = true;
+
+			for (go = group->gobject.first; go; go = go->next) {
+				if (!(go->ob && (go->ob->id.newid))) {
+					all_duplicated = false;
+					break;
+				}
+			}
+
+			if (all_duplicated) {
+				groupn = BKE_group_copy(group);
+
+				for (go = groupn->gobject.first; go; go = go->next)
+					go->ob = (Object *)go->ob->id.newid;
+			}
+		}
+	}
+
+	/* group pointers in scene */
+	BKE_scene_groups_relink(scene);
 	
 	ID_NEW(scene->camera);
 	if (v3d) ID_NEW(v3d->camera);
 	
-	/* object pointers */
+	/* object and group pointers */
 	for (base = FIRSTBASE; base; base = base->next) {
 		BKE_object_relink(base->object);
 	}
@@ -1642,16 +1669,17 @@ static void single_object_users(Scene *scene, View3D *v3d, int flag)
 
 /* not an especially efficient function, only added so the single user
  * button can be functional.*/
-void ED_object_single_user(Scene *scene, Object *ob)
+void ED_object_single_user(Main *bmain, Scene *scene, Object *ob)
 {
 	Base *base;
+	bool copy_groups = false;
 
 	for (base = FIRSTBASE; base; base = base->next) {
 		if (base->object == ob) base->flag |=  OB_DONE;
 		else base->flag &= ~OB_DONE;
 	}
 
-	single_object_users(scene, NULL, OB_DONE);
+	single_object_users(bmain, scene, NULL, OB_DONE, copy_groups);
 }
 
 static void new_id_matar(Material **matar, int totcol)
@@ -1909,9 +1937,9 @@ static void single_mat_users_expand(Main *bmain)
 }
 
 /* used for copying scenes */
-void ED_object_single_users(Main *bmain, Scene *scene, int full)
+void ED_object_single_users(Main *bmain, Scene *scene, bool full, bool copy_groups)
 {
-	single_object_users(scene, NULL, 0);
+	single_object_users(bmain, scene, NULL, 0, copy_groups);
 
 	if (full) {
 		single_obdata_users(bmain, scene, 0);
@@ -2080,9 +2108,10 @@ static int make_single_user_exec(bContext *C, wmOperator *op)
 	Scene *scene = CTX_data_scene(C);
 	View3D *v3d = CTX_wm_view3d(C); /* ok if this is NULL */
 	int flag = RNA_enum_get(op->ptr, "type"); /* 0==ALL, SELECTED==selected objecs */
+	bool copy_groups = false;
 
 	if (RNA_boolean_get(op->ptr, "object"))
-		single_object_users(scene, v3d, flag);
+		single_object_users(bmain, scene, v3d, flag, copy_groups);
 
 	if (RNA_boolean_get(op->ptr, "obdata"))
 		single_obdata_users(bmain, scene, flag);

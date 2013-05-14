@@ -266,8 +266,6 @@ typedef bool _BLI_Bool;
 		*(v1 + 2) = *(v2 + 2) - *(v3 + 2) * (fac);                            \
 } (void)0
 
-#define INPR(v1, v2) ( (v1)[0] * (v2)[0] + (v1)[1] * (v2)[1] + (v1)[2] * (v2)[2])
-
 /* some misc stuff.... */
 #define CLAMP(a, b, c)  {           \
 	if ((a) < (b)) (a) = (b);       \
@@ -275,13 +273,6 @@ typedef bool _BLI_Bool;
 } (void)0
 
 #define CLAMPIS(a, b, c) ((a) < (b) ? (b) : (a) > (c) ? (c) : (a))
-#define CLAMPTEST(a, b, c)                                                    \
-	if ((b) < (c)) {                                                          \
-		CLAMP(a, b, c);                                                       \
-	}                                                                         \
-	else {                                                                    \
-		CLAMP(a, c, b);                                                       \
-	} (void)0
 
 #define IS_EQ(a, b) ((fabs((double)(a) - (b)) >= (double) FLT_EPSILON) ? 0 : 1)
 #define IS_EQF(a, b) ((fabsf((float)(a) - (b)) >= (float) FLT_EPSILON) ? 0 : 1)
@@ -299,14 +290,21 @@ typedef bool _BLI_Bool;
 #define UNPACK3OP(op, a)  op((a)[0]), op((a)[1]), op((a)[2])
 #define UNPACK4OP(op, a)  op((a)[0]), op((a)[1]), op((a)[2]), op((a)[3])
 
+/* simple stack */
+#define STACK_DECLARE(stack)   unsigned int _##stack##_index
+#define STACK_INIT(stack)      ((void)stack, (void)((_##stack##_index) = 0))
+#define STACK_SIZE(stack)      ((void)stack, (void)(_##stack##_index))
+#define STACK_PUSH(stack, val)  (void)((stack)[(_##stack##_index)++] = val)
+#define STACK_POP(stack)       ((_##stack##_index) ? ((stack)[--(_##stack##_index)]) : NULL)
+#define STACK_FREE(stack)      ((void)stack)
+
 /* array helpers */
-#define ARRAY_LAST_ITEM(arr_start, arr_dtype, elem_size, tot)                 \
+#define ARRAY_LAST_ITEM(arr_start, arr_dtype, elem_size, tot) \
 	(arr_dtype *)((char *)arr_start + (elem_size * (tot - 1)))
 
-#define ARRAY_HAS_ITEM(item, arr_start, arr_dtype, elem_size, tot) (          \
-		(item >= arr_start) &&                                                \
-		(item <= ARRAY_LAST_ITEM(arr_start, arr_dtype, elem_size, tot))       \
-	)
+#define ARRAY_HAS_ITEM(arr_item, arr_start, tot) \
+	((unsigned int)((arr_item) - (arr_start)) < (unsigned int)(tot))
+
 
 /* Warning-free macros for storing ints in pointers. Use these _only_
  * for storing an int in a pointer, not a pointer in an int (64bit)! */
@@ -326,18 +324,12 @@ typedef bool _BLI_Bool;
 #define STRINGIFY_APPEND(a, b) "" a #b
 #define STRINGIFY(x) STRINGIFY_APPEND("", x)
 
+
 /* generic strcmp macros */
 #define STREQ(a, b) (strcmp(a, b) == 0)
-#define STRNEQ(a, b) (!STREQ(a, b))
-
 #define STRCASEEQ(a, b) (strcasecmp(a, b) == 0)
-#define STRCASENEQ(a, b) (!STRCASEEQ(a, b))
-
 #define STREQLEN(a, b, n) (strncmp(a, b, n) == 0)
-#define STRNEQLEN(a, b, n) (!STREQLEN(a, b, n))
-
 #define STRCASEEQLEN(a, b, n) (strncasecmp(a, b, n) == 0)
-#define STRCASENEQLEN(a, b, n) (!STRCASEEQLEN(a, b, n))
 
 #define STRPREFIX(a, b) (strncmp((a), (b), strlen(b)) == 0)
 

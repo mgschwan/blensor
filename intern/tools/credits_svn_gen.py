@@ -199,6 +199,7 @@ author_name_mapping = {
     "ianwill": "Willian Padovani Germano",
     "imbusy": "Lukas Steiblys",
     "intrr": "Alexander Ewering",
+    "irie": "Irie Shinsuke",
     "jaguarandi": "Andre Susano Pinto",
     "jandro": "Alejandro Conty Estevez",
     "jason_hays22": "Jason Hays",
@@ -216,6 +217,7 @@ author_name_mapping = {
     "keir": "Keir Mierle",
     "kester": "Kester Maddock",
     "khughes": "Ken Hughes",
+    "kjym3": "Tamito Kajiyama",
     "kupoman": "Daniel Stokes",
     "kwk": "Konrad Kleine",
     "larstiq": "Wouter van Heyst",
@@ -663,7 +665,7 @@ def main_credits(min_rev_bfb=0, min_rev_ext=0):
 
 def main():
     main_credits()
-    main_credits(min_rev_bfb=52851, min_rev_ext=4072)
+    main_credits(min_rev_bfb=54697, min_rev_ext=4315)
 
 if __name__ == "__main__":
     main()

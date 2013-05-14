@@ -36,6 +36,7 @@
 struct ID;
 struct BoundBox;
 struct DispList;
+struct EdgeHash;
 struct ListBase;
 struct BMEditMesh;
 struct BMesh;
@@ -100,6 +101,9 @@ void BKE_mesh_calc_poly_center(struct MPoly *mpoly, struct MLoop *loopstart,
 
 float BKE_mesh_calc_poly_area(struct MPoly *mpoly, struct MLoop *loopstart,
                               struct MVert *mvarray, const float polynormal[3]);
+
+void BKE_mesh_calc_poly_angles(struct MPoly *mpoly, struct MLoop *loopstart,
+                               struct MVert *mvarray, float angles[]);
 
 void BKE_mesh_calc_relative_deform(
         const struct MPoly *mpoly, const int totpoly,
@@ -340,8 +344,7 @@ void BKE_mesh_loops_to_mface_corners(struct CustomData *fdata, struct CustomData
                                      const int polyindex, const int mf_len,
                                      const int numTex, const int numCol, const int hasPCol, const int hasOrigSpace);
 
-void BKE_mesh_poly_calc_angles(struct MVert *mvert, struct MLoop *mloop,
-                               struct MPoly *mp, float angles[]);
+void BKE_mesh_poly_edgehash_insert(struct EdgeHash *ehash, const struct MPoly *mp, const struct MLoop *mloop);
 
 void BKE_mesh_do_versions_cd_flag_init(struct Mesh *mesh);
 

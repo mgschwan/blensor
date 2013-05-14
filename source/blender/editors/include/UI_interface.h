@@ -149,7 +149,7 @@ typedef struct uiLayout uiLayout;
 #define UI_TEXT_RIGHT       1024
 #define UI_BUT_NODE_LINK    2048
 #define UI_BUT_NODE_ACTIVE  4096
-#define UI_FLAG_UNUSED      8192
+#define UI_BUT_DRAG_LOCK    8192
 
 /* button align flag, for drawing groups together */
 #define UI_BUT_ALIGN        (UI_BUT_ALIGN_TOP | UI_BUT_ALIGN_LEFT | UI_BUT_ALIGN_RIGHT | UI_BUT_ALIGN_DOWN)
@@ -217,7 +217,7 @@ typedef enum {
 	TOGR          = (8 << 9),
 	TOGN          = (9 << 9),
 	LABEL         = (10 << 9),
-	MENU          = (11 << 9),
+	MENU          = (11 << 9),  /* Dropdown list, actually! */
 	ICONROW       = (12 << 9),
 	ICONTOG       = (13 << 9),
 	NUMSLI        = (14 << 9),
@@ -233,7 +233,7 @@ typedef enum {
 	KEYEVT        = (24 << 9),
 	ICONTEXTROW   = (25 << 9),
 	HSVCUBE       = (26 << 9),
-	PULLDOWN      = (27 << 9),
+	PULLDOWN      = (27 << 9),  /* Menu, actually! */
 	ROUNDBOX      = (28 << 9),
 	CHARTAB       = (29 << 9),
 	BUT_COLORBAND = (30 << 9),
@@ -605,6 +605,9 @@ uiBut *uiDefKeyevtButS(uiBlock *block, int retval, const char *str, int x, int y
 uiBut *uiDefHotKeyevtButS(uiBlock *block, int retval, const char *str, int x, int y, short width, short height, short *keypoin, short *modkeypoin, const char *tip);
 
 uiBut *uiDefSearchBut(uiBlock *block, void *arg, int retval, int icon, int maxlen, int x, int y, short width, short height, float a1, float a2, const char *tip);
+uiBut *uiDefSearchButO_ptr(uiBlock *block, struct wmOperatorType *ot, IDProperty *properties,
+                           void *arg, int retval, int icon, int maxlen, int x, int y,
+                           short width, short height, float a1, float a2, const char *tip);
 
 uiBut *uiDefAutoButR(uiBlock *block, struct PointerRNA *ptr, struct PropertyRNA *prop, int index, const char *name, int icon, int x1, int y1, int x2, int y2);
 int uiDefAutoButsRNA(uiLayout *layout, struct PointerRNA *ptr, bool (*check_prop)(struct PointerRNA *, struct PropertyRNA *), const char label_align);
@@ -626,15 +629,17 @@ void    uiButSetSearchFunc(uiBut *but,        uiButSearchFunc sfunc, void *arg1,
 /* height in pixels, it's using hardcoded values still */
 int     uiSearchBoxHeight(void);
 int     uiSearchBoxWidth(void);
+/* check if a string is in an existing search box */
+int     uiSearchItemFindIndex(uiSearchItems *items, const char *name);
 
 void    uiBlockSetHandleFunc(uiBlock *block,    uiBlockHandleFunc func, void *arg);
 void    uiBlockSetButmFunc(uiBlock *block,    uiMenuHandleFunc func, void *arg);
 void    uiBlockSetFunc(uiBlock *block,    uiButHandleFunc func, void *arg1, void *arg2);
-void    uiBlockSetNFunc(uiBlock *block,    uiButHandleFunc func, void *argN, void *arg2);
+void    uiBlockSetNFunc(uiBlock *block,    uiButHandleNFunc funcN, void *argN, void *arg2);
 
 void    uiButSetRenameFunc(uiBut *but,        uiButHandleRenameFunc func, void *arg1);
 void    uiButSetFunc(uiBut *but,        uiButHandleFunc func, void *arg1, void *arg2);
-void    uiButSetNFunc(uiBut *but,        uiButHandleNFunc func, void *argN, void *arg2);
+void    uiButSetNFunc(uiBut *but,        uiButHandleNFunc funcN, void *argN, void *arg2);
 
 void    uiButSetCompleteFunc(uiBut *but,        uiButCompleteFunc func, void *arg);
 
@@ -852,6 +857,7 @@ void uiTemplateTextureShow(uiLayout *layout, struct bContext *C, struct PointerR
 void uiTemplateMovieClip(struct uiLayout *layout, struct bContext *C, struct PointerRNA *ptr, const char *propname, int compact);
 void uiTemplateTrack(struct uiLayout *layout, struct PointerRNA *ptr, const char *propname);
 void uiTemplateMarker(struct uiLayout *layout, struct PointerRNA *ptr, const char *propname, PointerRNA *userptr, PointerRNA *trackptr, int cmpact);
+void uiTemplateMovieclipInformation(struct uiLayout *layout, struct PointerRNA *ptr, const char *propname, struct PointerRNA *userptr);
 
 void uiTemplateColorspaceSettings(struct uiLayout *layout, struct PointerRNA *ptr, const char *propname);
 void uiTemplateColormanagedViewSettings(struct uiLayout *layout, struct bContext *C, struct PointerRNA *ptr, const char *propname);
@@ -886,7 +892,7 @@ void uiItemV(uiLayout *layout, const char *name, int icon, int argval); /* value
 void uiItemS(uiLayout *layout); /* separator */
 
 void uiItemMenuF(uiLayout *layout, const char *name, int icon, uiMenuCreateFunc func, void *arg);
-void uiItemMenuEnumO(uiLayout *layout, const char *opname, const char *propname, const char *name, int icon);
+void uiItemMenuEnumO(uiLayout *layout, struct bContext *C, const char *opname, const char *propname, const char *name, int icon);
 void uiItemMenuEnumR(uiLayout *layout, struct PointerRNA *ptr, const char *propname, const char *name, int icon);
 
 /* UI Operators */

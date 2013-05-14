@@ -753,7 +753,7 @@ void texture_wood_sin(vec3 vec, out float value, out vec4 color, out vec3 normal
 void texture_image(vec3 vec, sampler2D ima, out float value, out vec4 color, out vec3 normal)
 {
 	color = texture2D(ima, (vec.xy + vec2(1.0, 1.0))*0.5);
-	value = 1.0;
+	value = color.a;
 
 	normal.x = 2.0*(color.r - 0.5);
 	normal.y = 2.0*(0.5 - color.g);
@@ -2260,7 +2260,7 @@ void node_object_info(out vec3 location, out float object_index, out float mater
 	random = 0.0;
 }
 
-void node_bump(float strength, float height, vec3 N, out vec3 result)
+void node_bump(float strength, float dist, float height, vec3 N, out vec3 result)
 {
 	result = N;
 }

@@ -44,6 +44,7 @@ set(INC
 	../../../intern/opennl/extern
 	../../../intern/raskter
 	../../../intern/smoke/extern
+	../../../extern/libmv
 
 	# XXX - BAD LEVEL CALL WM_api.h
 	../windowmanager
@@ -84,6 +85,8 @@ set(SRC
 	intern/displist.c
 	intern/dynamicpaint.c
 	intern/editderivedmesh.c
+	intern/editmesh.c
+	intern/editmesh_bvh.c
 	intern/effect.c
 	intern/fcurve.c
 	intern/fluidsim.c
@@ -236,7 +239,8 @@ set(SRC
 	BKE_speaker.h
 	BKE_subsurf.h
 	BKE_suggestions.h
-	BKE_tessmesh.h
+	BKE_editmesh.h
+	BKE_editmesh_bvh.h
 	BKE_text.h
 	BKE_texture.h
 	BKE_tracking.h
@@ -409,9 +413,6 @@ if(WITH_GAMEENGINE)
 endif()
 
 if(WITH_LIBMV)
-	list(APPEND INC
-		../../../extern/libmv
-	)
 	add_definitions(-DWITH_LIBMV)
 endif()
 

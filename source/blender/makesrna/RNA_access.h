@@ -857,6 +857,7 @@ PointerRNA RNA_property_pointer_get_default(PointerRNA *ptr, PropertyRNA *prop);
 
 void RNA_property_collection_begin(PointerRNA *ptr, PropertyRNA *prop, CollectionPropertyIterator *iter);
 void RNA_property_collection_next(CollectionPropertyIterator *iter);
+void RNA_property_collection_skip(CollectionPropertyIterator *iter, int num);
 void RNA_property_collection_end(CollectionPropertyIterator *iter);
 int RNA_property_collection_length(PointerRNA *ptr, PropertyRNA *prop);
 int RNA_property_collection_lookup_index(PointerRNA *ptr, PropertyRNA *prop, PointerRNA *t_ptr);
@@ -898,10 +899,18 @@ char *RNA_path_append(const char *path, PointerRNA *ptr, PropertyRNA *prop,
                       int intkey, const char *strkey);
 char *RNA_path_back(const char *path);
 
-int RNA_path_resolve(PointerRNA *ptr, const char *path,
+/* path_resolve() variants only ensure that a valid pointer (and optionally property) exist */
+bool RNA_path_resolve(PointerRNA *ptr, const char *path,
                      PointerRNA *r_ptr, PropertyRNA **r_prop);
 
-int RNA_path_resolve_full(PointerRNA *ptr, const char *path,
+bool RNA_path_resolve_full(PointerRNA *ptr, const char *path,
+                          PointerRNA *r_ptr, PropertyRNA **r_prop, int *index);
+						  
+/* path_resolve_property() variants ensure that pointer + property both exist */
+bool RNA_path_resolve_property(PointerRNA *ptr, const char *path,
+                     PointerRNA *r_ptr, PropertyRNA **r_prop);
+
+bool RNA_path_resolve_property_full(PointerRNA *ptr, const char *path,
                           PointerRNA *r_ptr, PropertyRNA **r_prop, int *index);
 
 char *RNA_path_from_ID_to_struct(PointerRNA *ptr);
@@ -1018,6 +1027,7 @@ void RNA_property_unset(PointerRNA *ptr, PropertyRNA *prop);
 bool RNA_struct_property_is_set_ex(PointerRNA *ptr, const char *identifier, bool use_ghost);
 bool RNA_struct_property_is_set(PointerRNA *ptr, const char *identifier);
 bool RNA_property_is_idprop(PropertyRNA *prop);
+bool RNA_property_is_unlink(PropertyRNA *prop);
 void RNA_struct_property_unset(PointerRNA *ptr, const char *identifier);
 
 /* python compatible string representation of this property, (must be freed!) */

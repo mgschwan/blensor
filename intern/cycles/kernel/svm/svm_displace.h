@@ -24,15 +24,18 @@ __device void svm_node_set_bump(KernelGlobals *kg, ShaderData *sd, float *stack,
 {
 #ifdef __RAY_DIFFERENTIALS__
 	/* get normal input */
-	float3 normal_in = stack_valid(node.y)? stack_load_float3(stack, node.y): sd->N;
+	uint normal_offset, distance_offset, invert;
+	decode_node_uchar4(node.y, &normal_offset, &distance_offset, &invert, NULL);
+
+	float3 normal_in = stack_valid(normal_offset)? stack_load_float3(stack, normal_offset): sd->N;
 
 	/* get surface tangents from normal */
 	float3 Rx = cross(sd->dP.dy, normal_in);
 	float3 Ry = cross(normal_in, sd->dP.dx);
 
 	/* get bump values */
-	uint c_offset, x_offset, y_offset, intensity_offset;
-	decode_node_uchar4(node.z, &c_offset, &x_offset, &y_offset, &intensity_offset);
+	uint c_offset, x_offset, y_offset, strength_offset;
+	decode_node_uchar4(node.z, &c_offset, &x_offset, &y_offset, &strength_offset);
 
 	float h_c = stack_load_float(stack, c_offset);
 	float h_x = stack_load_float(stack, x_offset);
@@ -41,14 +44,21 @@ __device void svm_node_set_bump(KernelGlobals *kg, ShaderData *sd, float *stack,
 	/* compute surface gradient and determinant */
 	float det = dot(sd->dP.dx, Rx);
 	float3 surfgrad = (h_x - h_c)*Rx + (h_y - h_c)*Ry;
-	float intensity = stack_load_float(stack, intensity_offset);
 
-	surfgrad *= intensity;
 	float absdet = fabsf(det);
 
+	float strength = stack_load_float(stack, strength_offset);
+	float distance = stack_load_float(stack, distance_offset);
+
+	if(invert)
+		distance *= -1.0f;
+
+	strength = max(strength, 0.0f);
+
 	/* compute and output perturbed normal */
-	float3 outN = normalize(absdet*normal_in - signf(det)*surfgrad);
-	stack_store_float3(stack, node.w, outN);
+	float3 normal_out = normalize(absdet*normal_in - distance*signf(det)*surfgrad);
+	normal_out = normalize(strength*normal_out + (1.0f - strength)*normal_in);
+	stack_store_float3(stack, node.w, normal_out);
 #endif
 }
 

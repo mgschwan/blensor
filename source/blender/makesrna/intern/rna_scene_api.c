@@ -52,7 +52,7 @@
 #include "BKE_scene.h"
 #include "BKE_writeavi.h"
 
-
+#include "ED_transform.h"
 
 static void rna_Scene_frame_set(Scene *scene, int frame, float subframe)
 {
@@ -89,6 +89,33 @@ static void rna_SceneRender_get_frame_path(RenderData *rd, int frame, char *name
 	else
 		BKE_makepicstring(name, rd->pic, G.main->name, (frame == INT_MIN) ? rd->cfra : frame, &rd->im_format,
 		                  rd->scemode & R_EXTENSION, TRUE);
+}
+
+static void rna_Scene_ray_cast(Scene *scene, float ray_start[3], float ray_end[3],
+                               int *r_success, Object **r_ob, float r_obmat[16],
+                               float r_location[3], float r_normal[3])
+{
+	float dummy_dist_px = 0;
+	float ray_nor[3];
+	float ray_dist;
+
+	sub_v3_v3v3(ray_nor, ray_end, ray_start);
+	ray_dist = normalize_v3(ray_nor);
+
+	if (snapObjectsRayEx(scene, NULL, NULL, NULL, NULL, SCE_SNAP_MODE_FACE,
+	                     r_ob, (float(*)[4])r_obmat,
+	                     ray_start, ray_nor, &ray_dist,
+	                     NULL, &dummy_dist_px, r_location, r_normal, SNAP_ALL))
+	{
+		*r_success = true;
+	}
+	else {
+		unit_m4((float(*)[4])r_obmat);
+		zero_v3(r_location);
+		zero_v3(r_normal);
+
+		*r_success = false;
+	}
 }
 
 #ifdef WITH_COLLADA
@@ -142,6 +169,32 @@ void RNA_api_scene(StructRNA *srna)
 	func = RNA_def_function(srna, "update", "rna_Scene_update_tagged");
 	RNA_def_function_ui_description(func,
 	                                "Update data tagged to be updated from previous access to data or operators");
+
+	/* Ray Cast */
+	func = RNA_def_function(srna, "ray_cast", "rna_Scene_ray_cast");
+	RNA_def_function_ui_description(func, "Cast a ray onto in object space");
+
+	/* ray start and end */
+	parm = RNA_def_float_vector(func, "start", 3, NULL, -FLT_MAX, FLT_MAX, "", "", -1e4, 1e4);
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_float_vector(func, "end", 3, NULL, -FLT_MAX, FLT_MAX, "", "", -1e4, 1e4);
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+
+	/* return location and normal */
+	parm = RNA_def_boolean(func, "result", 0, "", "");
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_pointer(func, "object", "Object", "", "Ray cast object");
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_float_matrix(func, "matrix", 4, 4, NULL, 0.0f, 0.0f, "", "Matrix", 0.0f, 0.0f);
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_float_vector(func, "location", 3, NULL, -FLT_MAX, FLT_MAX, "Location",
+	                            "The hit location of this ray cast", -1e4, 1e4);
+	RNA_def_property_flag(parm, PROP_THICK_WRAP);
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_float_vector(func, "normal", 3, NULL, -FLT_MAX, FLT_MAX, "Normal",
+	                            "The face normal at the ray cast hit location", -1e4, 1e4);
+	RNA_def_property_flag(parm, PROP_THICK_WRAP);
+	RNA_def_function_output(func, parm);
 
 #ifdef WITH_COLLADA
 	/* don't remove this, as COLLADA exporting cannot be done through operators in render() callback. */

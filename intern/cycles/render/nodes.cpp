@@ -249,6 +249,7 @@ void ImageTextureNode::compile(OSLCompiler& compiler)
 		compiler.parameter("color_space", "sRGB");
 	compiler.parameter("projection", projection);
 	compiler.parameter("projection_blend", projection_blend);
+	compiler.parameter("is_float", is_float);
 	compiler.add(this, "node_image_texture");
 }
 
@@ -368,6 +369,7 @@ void EnvironmentTextureNode::compile(OSLCompiler& compiler)
 		compiler.parameter("color_space", "Linear");
 	else
 		compiler.parameter("color_space", "sRGB");
+	compiler.parameter("is_float", is_float);
 	compiler.add(this, "node_environment_texture");
 }
 
@@ -2281,6 +2283,8 @@ HairInfoNode::HairInfoNode()
 	add_output("Intercept", SHADER_SOCKET_FLOAT);
 	add_output("Thickness", SHADER_SOCKET_FLOAT);
 	add_output("Tangent Normal", SHADER_SOCKET_NORMAL);
+	/*output for minimum hair width transparency - deactivated*/
+	/*add_output("Fade", SHADER_SOCKET_FLOAT);*/
 }
 
 void HairInfoNode::attributes(AttributeRequestSet *attributes)
@@ -2321,6 +2325,12 @@ void HairInfoNode::compile(SVMCompiler& compiler)
 		compiler.stack_assign(out);
 		compiler.add_node(NODE_HAIR_INFO, NODE_INFO_CURVE_TANGENT_NORMAL, out->stack_offset);
 	}
+
+	/*out = output("Fade");
+	if(!out->links.empty()) {
+		compiler.stack_assign(out);
+		compiler.add_node(NODE_HAIR_INFO, NODE_INFO_CURVE_FADE, out->stack_offset);
+	}*/
 
 }
 
@@ -3037,6 +3047,8 @@ void VectorMathNode::compile(OSLCompiler& compiler)
 BumpNode::BumpNode()
 : ShaderNode("bump")
 {
+	invert = false;
+
 	/* this input is used by the user, but after graph transform it is no longer
 	 * used and moved to sampler center/x/y instead */
 	add_input("Height", SHADER_SOCKET_FLOAT);
@@ -3044,8 +3056,9 @@ BumpNode::BumpNode()
 	add_input("SampleCenter", SHADER_SOCKET_FLOAT);
 	add_input("SampleX", SHADER_SOCKET_FLOAT);
 	add_input("SampleY", SHADER_SOCKET_FLOAT);
-	add_input("NormalIn", SHADER_SOCKET_NORMAL, ShaderInput::NORMAL);
-	add_input("Strength", SHADER_SOCKET_FLOAT, 0.1f);
+	add_input("Normal", SHADER_SOCKET_NORMAL, ShaderInput::NORMAL);
+	add_input("Strength", SHADER_SOCKET_FLOAT, 1.0f);
+	add_input("Distance", SHADER_SOCKET_FLOAT, 0.1f);
 
 	add_output("Normal", SHADER_SOCKET_NORMAL);
 }
@@ -3055,14 +3068,16 @@ void BumpNode::compile(SVMCompiler& compiler)
 	ShaderInput *center_in = input("SampleCenter");
 	ShaderInput *dx_in = input("SampleX");
 	ShaderInput *dy_in = input("SampleY");
-	ShaderInput *normal_in = input("NormalIn");
-	ShaderInput *intensity_in = input("Strength");
+	ShaderInput *normal_in = input("Normal");
+	ShaderInput *strength_in = input("Strength");
+	ShaderInput *distance_in = input("Distance");
 	ShaderOutput *normal_out = output("Normal");
 
 	compiler.stack_assign(center_in);
 	compiler.stack_assign(dx_in);
 	compiler.stack_assign(dy_in);
-	compiler.stack_assign(intensity_in);
+	compiler.stack_assign(strength_in);
+	compiler.stack_assign(distance_in);
 	compiler.stack_assign(normal_out);
 
 	if(normal_in->link)
@@ -3070,14 +3085,15 @@ void BumpNode::compile(SVMCompiler& compiler)
 	
 	/* pack all parameters in the node */
 	compiler.add_node(NODE_SET_BUMP,
-		normal_in->stack_offset,
+		compiler.encode_uchar4(normal_in->stack_offset, distance_in->stack_offset, invert),
 		compiler.encode_uchar4(center_in->stack_offset, dx_in->stack_offset,
-			dy_in->stack_offset, intensity_in->stack_offset),
+			dy_in->stack_offset, strength_in->stack_offset),
 		normal_out->stack_offset);
 }
 
 void BumpNode::compile(OSLCompiler& compiler)
 {
+	compiler.parameter("invert", invert);
 	compiler.add(this, "node_bump");
 }
 
@@ -3165,6 +3181,8 @@ RGBRampNode::RGBRampNode()
 	add_input("Fac", SHADER_SOCKET_FLOAT);
 	add_output("Color", SHADER_SOCKET_COLOR);
 	add_output("Alpha", SHADER_SOCKET_FLOAT);
+
+	interpolate = true;
 }
 
 void RGBRampNode::compile(SVMCompiler& compiler)
@@ -3179,7 +3197,12 @@ void RGBRampNode::compile(SVMCompiler& compiler)
 	if(!alpha_out->links.empty())
 		compiler.stack_assign(alpha_out);
 
-	compiler.add_node(NODE_RGB_RAMP, fac_in->stack_offset, color_out->stack_offset, alpha_out->stack_offset);
+	compiler.add_node(NODE_RGB_RAMP,
+		compiler.encode_uchar4(
+			fac_in->stack_offset,
+			color_out->stack_offset,
+			alpha_out->stack_offset),
+		interpolate);
 	compiler.add_array(ramp, RAMP_TABLE_SIZE);
 }
 
@@ -3199,6 +3222,7 @@ void RGBRampNode::compile(OSLCompiler& compiler)
 
 	compiler.parameter_color_array("ramp_color", ramp_color, RAMP_TABLE_SIZE);
 	compiler.parameter_array("ramp_alpha", ramp_alpha, RAMP_TABLE_SIZE);
+	compiler.parameter("ramp_interpolate", interpolate);
 	
 	compiler.add(this, "node_rgb_ramp");
 }

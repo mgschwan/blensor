@@ -168,7 +168,10 @@ static void rna_Mask_layer_active_index_range(PointerRNA *ptr, int *min, int *ma
 
 static char *rna_MaskLayer_path(PointerRNA *ptr)
 {
-	return BLI_sprintfN("layers[\"%s\"]", ((MaskLayer *)ptr->data)->name);
+	MaskLayer *masklay = (MaskLayer *)ptr->data;
+	char name_esc[sizeof(masklay->name) * 2];
+	BLI_strescape(name_esc, masklay->name, sizeof(name_esc));
+	return BLI_sprintfN("layers[\"%s\"]", name_esc);
 }
 
 static PointerRNA rna_Mask_layer_active_get(PointerRNA *ptr)
@@ -591,6 +594,11 @@ static void rna_def_maskSpline(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", MASK_SPLINE_NOINTERSECT);
 	RNA_def_property_ui_text(prop, "Self Intersection Check", "Prevent feather from self-intersections");
 	RNA_def_property_update(prop, NC_MASK | NA_EDITED, "rna_Mask_update_data");
+
+	prop = RNA_def_property(srna, "points", PROP_COLLECTION, PROP_NONE);
+	RNA_def_property_struct_type(prop, "MaskSplinePoint");
+	RNA_def_property_collection_sdna(prop, NULL, "points", "tot_point");
+	RNA_def_property_ui_text(prop, "Points", "Collection of points");
 }
 
 static void rna_def_mask_layer(BlenderRNA *brna)
@@ -655,7 +663,7 @@ static void rna_def_mask_layer(BlenderRNA *brna)
 	/* select (for dopesheet)*/
 	prop = RNA_def_property(srna, "select", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", MASK_LAYERFLAG_SELECT);
-	RNA_def_property_ui_text(prop, "Select", "Layer is selected for editing in the DopeSheet");
+	RNA_def_property_ui_text(prop, "Select", "Layer is selected for editing in the Dope Sheet");
 //	RNA_def_property_update(prop, NC_SCREEN | ND_MASK, NULL);
 
 	/* render settings */

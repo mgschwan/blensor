@@ -38,7 +38,23 @@
 
 #include "BKE_DerivedMesh.h"
 #include "BKE_bmesh.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
+
+/* Static function for alloc */
+static BMFace *bm_face_create_from_mpoly(MPoly *mp, MLoop *ml,
+                                         BMesh *bm, BMVert **vtable, BMEdge **etable)
+{
+	BMVert **verts = BLI_array_alloca(verts, mp->totloop);
+	BMEdge **edges = BLI_array_alloca(edges, mp->totloop);
+	int j;
+
+	for (j = 0; j < mp->totloop; j++, ml++) {
+		verts[j] = vtable[ml->v];
+		edges[j] = etable[ml->e];
+	}
+
+	return BM_face_create(bm, verts, edges, mp->totloop, BM_CREATE_SKIP_CD);
+}
 
 /**
  * The main function for copying DerivedMesh data into BMesh.
@@ -50,15 +66,12 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm)
 	MVert *mv, *mvert;
 	MEdge *me, *medge;
 	MPoly /* *mpoly, */ /* UNUSED */ *mp;
-	MLoop *mloop, *ml;
-	BMVert *v, **vtable, **verts = NULL;
-	BMEdge *e, **etable, **edges = NULL;
+	MLoop *mloop;
+	BMVert *v, **vtable;
+	BMEdge *e, **etable;
 	float (*face_normals)[3];
 	BMFace *f;
-	BMIter liter;
-	BLI_array_declare(verts);
-	BLI_array_declare(edges);
-	int i, j, k, totvert, totedge /* , totface */ /* UNUSED */ ;
+	int i, j, totvert, totedge /* , totface */ /* UNUSED */ ;
 	bool is_init = (bm->totvert == 0) && (bm->totedge == 0) && (bm->totface == 0);
 	bool is_cddm = (dm->type == DM_TYPE_CDDM);  /* duplicate the arrays for non cddm */
 	char has_orig_hflag = 0;
@@ -146,22 +159,11 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm)
 	mloop = dm->getLoopArray(dm);
 	face_normals = CustomData_get_layer(&dm->polyData, CD_NORMAL);  /* can be NULL */
 	for (i = 0; i < dm->numPolyData; i++, mp++) {
-		BMLoop *l;
+		BMLoop *l_iter;
+		BMLoop *l_first;
 
-		BLI_array_empty(verts);
-		BLI_array_empty(edges);
-
-		BLI_array_grow_items(verts, mp->totloop);
-		BLI_array_grow_items(edges, mp->totloop);
-
-		ml = mloop + mp->loopstart;
-		for (j = 0; j < mp->totloop; j++, ml++) {
-
-			verts[j] = vtable[ml->v];
-			edges[j] = etable[ml->e];
-		}
-
-		f = BM_face_create(bm, verts, edges, mp->totloop, BM_CREATE_SKIP_CD);
+		f = bm_face_create_from_mpoly(mp, mloop + mp->loopstart,
+		                              bm, vtable, etable);
 
 		if (UNLIKELY(f == NULL)) {
 			continue;
@@ -171,11 +173,12 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm)
 		BM_elem_index_set(f, bm->totface - 1); /* set_inline */
 		f->mat_nr = mp->mat_nr;
 
-		l = BM_iter_new(&liter, bm, BM_LOOPS_OF_FACE, f);
-
-		for (k = mp->loopstart; l; l = BM_iter_step(&liter), k++) {
-			CustomData_to_bmesh_block(&dm->loopData, &bm->ldata, k, &l->head.data, true);
-		}
+		j = mp->loopstart;
+		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
+		do {
+			/* Save index of correspsonding MLoop */
+			CustomData_to_bmesh_block(&dm->loopData, &bm->ldata, j++, &l_iter->head.data, true);
+		} while ((l_iter = l_iter->next) != l_first);
 
 		CustomData_to_bmesh_block(&dm->polyData, &bm->pdata, i, &f->head.data, true);
 
@@ -195,9 +198,6 @@ void DM_to_bmesh_ex(DerivedMesh *dm, BMesh *bm)
 
 	MEM_freeN(vtable);
 	MEM_freeN(etable);
-
-	BLI_array_free(verts);
-	BLI_array_free(edges);
 }
 
 /* converts a cddm to a BMEditMesh.  if existing is non-NULL, the
@@ -217,11 +217,11 @@ BMEditMesh *DM_to_editbmesh(DerivedMesh *dm, BMEditMesh *existing, int do_tessel
 	DM_to_bmesh_ex(dm, bm);
 
 	if (!em) {
-		em = BMEdit_Create(bm, do_tessellate);
+		em = BKE_editmesh_create(bm, do_tessellate);
 	}
 	else {
 		if (do_tessellate) {
-			BMEdit_RecalcTessellation(em);
+			BKE_editmesh_tessface_calc(em);
 		}
 	}
 

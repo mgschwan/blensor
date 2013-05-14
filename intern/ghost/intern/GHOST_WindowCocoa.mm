@@ -44,6 +44,13 @@
 #include "GHOST_SystemCocoa.h"
 #include "GHOST_Debug.h"
 
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 1070
+/* Lion style fullscreen support when building with the 10.6 SDK */
+enum {
+	NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7,
+	NSFullScreenWindowMask = 1 << 14
+};
+#endif
 
 #pragma mark Cocoa window delegate object
 /* live resize ugly patch
@@ -276,6 +283,8 @@ extern "C" {
 // The trick to prevent Cocoa from complaining (beeping)
 - (void)keyDown:(NSEvent *)event
 {
+	systemCocoa->handleKeyEvent(event);
+
 	/* Start or continue composing? */
 	if ([[event characters] length] == 0  ||
 	    [[event charactersIgnoringModifiers] length] == 0 ||
@@ -290,36 +299,104 @@ extern "C" {
 		[self interpretKeyEvents:events]; // calls insertText
 		[events removeObject:event];
 		[events release];
-
 		return;
 	}
 }
 
-#if MAC_OS_X_VERSION_MIN_REQUIRED <= 1040
-//Cmd+key are handled differently before 10.5
-- (BOOL)performKeyEquivalent:(NSEvent *)theEvent
+- (void)keyUp:(NSEvent *)event
 {
-	NSString *chars = [theEvent charactersIgnoringModifiers];
-	
-	if ([chars length] <1) 
-		return NO;
-	
-	//Let cocoa handle menu shortcuts
-	switch ([chars characterAtIndex:0]) {
-		case 'q':
-		case 'w':
-		case 'h':
-		case 'm':
-		case '<':
-		case '>':
-		case '~':
-		case '`':
-			return NO;
-		default:
-			return YES;
-	}
+	systemCocoa->handleKeyEvent(event);
 }
-#endif
+
+- (void)flagsChanged:(NSEvent *)event
+{
+	systemCocoa->handleKeyEvent(event);
+}
+
+- (void)mouseDown:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)mouseUp:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)rightMouseDown:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)rightMouseUp:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)mouseMoved:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)mouseDragged:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)rightMouseDragged:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)scrollWheel:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)otherMouseDown:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)otherMouseUp:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)otherMouseDragged:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)magnifyWithEvent:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)rotateWithEvent:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)beginGestureWithEvent:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)endGestureWithEvent:(NSEvent *)event
+{
+	systemCocoa->handleMouseEvent(event);
+}
+
+- (void)tabletPoint:(NSEvent *)event
+{
+	systemCocoa->handleTabletEvent(event,[event type]);
+}
+
+- (void)tabletProximity:(NSEvent *)event
+{
+	systemCocoa->handleTabletEvent(event,[event type]);
+}
 
 - (BOOL)isOpaque
 {
@@ -851,6 +928,16 @@ GHOST_TWindowState GHOST_WindowCocoa::getState() const
 	GHOST_ASSERT(getValid(), "GHOST_WindowCocoa::getState(): window invalid");
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 	GHOST_TWindowState state;
+
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+	NSUInteger masks = [m_window styleMask];
+
+	if (masks & NSFullScreenWindowMask) {
+		// Lion style fullscreen
+		state = GHOST_kWindowStateFullScreen;
+	}
+	else
+#endif
 	if (m_fullScreen) {
 		state = GHOST_kWindowStateFullScreen;
 	} 
@@ -959,14 +1046,25 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 			[m_window zoom:nil];
 			break;
 		
-		case GHOST_kWindowStateFullScreen:
+		case GHOST_kWindowStateFullScreen: {
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+			NSUInteger masks = [m_window styleMask];
+
+			if (!m_fullScreen && !(masks & NSFullScreenWindowMask)) {
+#else
 			if (!m_fullScreen) {
+#endif
 				NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 			
 				/* This status change needs to be done before Cocoa call to enter fullscreen mode
 				 * to give window delegate hint not to forward its deactivation to ghost wm that
 				 * doesn't know view/window difference. */
 				m_fullScreen = true;
+
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+				/* Disable toggle for Lion style fullscreen */
+				[m_window setCollectionBehavior:NSWindowCollectionBehaviorDefault];
+#endif
 
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
 				//10.6 provides Cocoa functions to autoshow menu bar, and to change a window style
@@ -1017,11 +1115,26 @@ GHOST_TSuccess GHOST_WindowCocoa::setState(GHOST_TWindowState state)
 				[pool drain];
 				}
 			break;
+		}
 		case GHOST_kWindowStateNormal:
 		default:
 			NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+			NSUInteger masks = [m_window styleMask];
+
+			if (masks & NSFullScreenWindowMask) {
+				// Lion style fullscreen
+				[m_window toggleFullScreen:nil];
+			}
+			else
+#endif
 			if (m_fullScreen) {
 				m_fullScreen = false;
+
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+				/* Enable toggle for into Lion style fullscreen */
+				[m_window setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary];
+#endif
 
 				//Exit fullscreen
 #if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060

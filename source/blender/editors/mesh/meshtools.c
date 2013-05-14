@@ -57,7 +57,7 @@
 #include "BKE_mesh.h"
 #include "BKE_material.h"
 #include "BKE_report.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_multires.h"
 
 #include "ED_mesh.h"
@@ -537,7 +537,7 @@ int join_mesh_exec(bContext *C, wmOperator *op)
 	if (matmap) MEM_freeN(matmap);
 	
 	/* other mesh users */
-	test_object_materials((ID *)me);
+	test_object_materials(bmain, (ID *)me);
 	
 	/* free temp copy of destination shapekeys (if applicable) */
 	if (nkey) {
@@ -1047,7 +1047,7 @@ static float *editmesh_get_mirror_uv(BMEditMesh *em, int axis, float *uv, float 
 		BMFace *efa;
 		
 		BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
-			uv_poly_center(em, efa, cent);
+			uv_poly_center(efa, cent, cd_loop_uv_offset);
 			
 			if ( (fabsf(cent[0] - cent_vec[0]) < 0.001f) && (fabsf(cent[1] - cent_vec[1]) < 0.001f) ) {
 				BMIter liter;

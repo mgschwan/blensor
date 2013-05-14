@@ -55,10 +55,9 @@ def DefOscRestoreOverrides(self):
     # RESTAURO MATERIALES  DE OVERRIDES    
     for OBJ in LISTMAT:            
         if OBJ.type == "MESH" or OBJ.type == "META" or OBJ.type == "CURVE":
-            SLOTIND = 0
-            for SLOT in LISTMAT[OBJ]:
+            for SLOTIND, SLOT in enumerate(LISTMAT[OBJ]):
                 OBJ.material_slots[SLOTIND].material = SLOT  
-                SLOTIND += 1    
+ 
 
     
 ## HAND OPERATOR    
@@ -180,8 +179,8 @@ class OscOverridesGUI(bpy.types.Panel):
         colrow.operator("render.overrides_add_slot", icon = "ZOOMIN") 
         colrow.operator("render.overrides_remove_slot", icon = "ZOOMOUT")         
         col.operator("render.overrides_transfer", icon = "SHORTDISPLAY") 
-        i = 0
-        for m in bpy.context.scene.ovlist:
+
+        for i, m in enumerate(bpy.context.scene.ovlist):
             colrow = col.row(align=1)
             colrow.prop_search(m, "grooverride", bpy.data, "groups", text= "")  
             colrow.prop_search(m, "matoverride", bpy.data, "materials", text= "")
@@ -193,7 +192,7 @@ class OscOverridesGUI(bpy.types.Panel):
                 p.index = i
             pb = colrow.operator("ovlist.kill", text="", icon="X")            
             pb.index = i
-            i+=1
+
  
 class OscOverridesUp (bpy.types.Operator): 
     bl_idname = 'ovlist.move_up'

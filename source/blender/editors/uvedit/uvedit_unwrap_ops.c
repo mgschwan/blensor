@@ -48,7 +48,6 @@
 #include "BLI_edgehash.h"
 #include "BLI_uvproject.h"
 #include "BLI_utildefines.h"
-#include "BLI_rand.h"
 #include "BLI_string.h"
 
 #include "BKE_cdderivedmesh.h"
@@ -61,7 +60,7 @@
 #include "BKE_mesh.h"
 #include "BKE_report.h"
 #include "BKE_scene.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "BLI_math.h"
 #include "BLI_edgehash.h"
@@ -105,10 +104,10 @@ static void modifier_unwrap_state(Object *obedit, Scene *scene, short *use_subsu
 	*use_subsurf = subsurf;
 }
 
-static int ED_uvedit_ensure_uvs(bContext *C, Scene *scene, Object *obedit)
+static bool ED_uvedit_ensure_uvs(bContext *C, Scene *scene, Object *obedit)
 {
 	Main *bmain = CTX_data_main(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMFace *efa;
 	BMIter iter;
 	Image *ima;
@@ -116,6 +115,7 @@ static int ED_uvedit_ensure_uvs(bContext *C, Scene *scene, Object *obedit)
 	ScrArea *sa;
 	SpaceLink *slink;
 	SpaceImage *sima;
+	int cd_loop_uv_offset;
 
 	if (ED_uvedit_test(obedit))
 		return 1;
@@ -125,6 +125,8 @@ static int ED_uvedit_ensure_uvs(bContext *C, Scene *scene, Object *obedit)
 
 	if (!ED_uvedit_test(obedit))
 		return 0;
+
+	cd_loop_uv_offset = CustomData_get_offset(&em->bm->ldata, CD_MLOOPUV);
 
 	ima = CTX_data_edit_image(C);
 
@@ -153,7 +155,7 @@ static int ED_uvedit_ensure_uvs(bContext *C, Scene *scene, Object *obedit)
 	
 	/* select new UV's */
 	BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
-		uvedit_face_select_enable(scene, em, efa, FALSE);
+		uvedit_face_select_enable(scene, em, efa, false, cd_loop_uv_offset);
 	}
 
 	return 1;
@@ -166,8 +168,9 @@ static bool uvedit_have_selection(Scene *scene, BMEditMesh *em, bool implicit)
 	BMFace *efa;
 	BMLoop *l;
 	BMIter iter, liter;
+	const int cd_loop_uv_offset  = CustomData_get_offset(&em->bm->ldata, CD_MLOOPUV);
 	
-	if (!CustomData_has_layer(&em->bm->ldata, CD_MLOOPUV)) {
+	if (cd_loop_uv_offset == -1) {
 		return (em->bm->totfacesel != 0);
 	}
 
@@ -182,7 +185,7 @@ static bool uvedit_have_selection(Scene *scene, BMEditMesh *em, bool implicit)
 			continue;
 	
 		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-			if (uvedit_uv_select_test(em, scene, l))
+			if (uvedit_uv_select_test(scene, l, cd_loop_uv_offset))
 				break;
 		}
 		
@@ -221,12 +224,42 @@ void uvedit_get_aspect(Scene *scene, Object *ob, BMEditMesh *em, float *aspx, fl
 	}
 }
 
-static ParamHandle *construct_param_handle(Scene *scene, Object *ob, BMEditMesh *em, 
+static void construct_param_handle_face_add(ParamHandle *handle, Scene *scene,
+                                            BMFace *efa, const int cd_loop_uv_offset)
+{
+	ParamKey key;
+	ParamKey *vkeys = BLI_array_alloca(vkeys, efa->len);
+	ParamBool *pin = BLI_array_alloca(pin, efa->len);
+	ParamBool *select = BLI_array_alloca(select, efa->len);
+	float **co = BLI_array_alloca(co, efa->len);
+	float **uv = BLI_array_alloca(uv, efa->len);
+	int i;
+
+	BMIter liter;
+	BMLoop *l;
+
+	key = (ParamKey)efa;
+
+	/* let parametrizer split the ngon, it can make better decisions
+	 * about which split is best for unwrapping than scanfill */
+	BM_ITER_ELEM_INDEX (l, &liter, efa, BM_LOOPS_OF_FACE, i) {
+		MLoopUV *luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+
+		vkeys[i] = (ParamKey)BM_elem_index_get(l->v);
+		co[i] = l->v->co;
+		uv[i] = luv->uv;
+		pin[i] = (luv->flag & MLOOPUV_PINNED) != 0;
+		select[i] = uvedit_uv_select_test(scene, l, cd_loop_uv_offset);
+	}
+
+	param_face_add(handle, key, i, vkeys, co, uv, pin, select, efa->no);
+}
+
+static ParamHandle *construct_param_handle(Scene *scene, Object *ob, BMEditMesh *em,
                                            short implicit, short fill, short sel,
                                            short correct_aspect)
 {
 	BMesh *bm = em->bm;
-	ScanFillContext sf_ctx;
 	ParamHandle *handle;
 	BMFace *efa;
 	BMLoop *l;
@@ -249,105 +282,28 @@ static ParamHandle *construct_param_handle(Scene *scene, Object *ob, BMEditMesh 
 	
 	/* we need the vert indices */
 	BM_mesh_elem_index_ensure(em->bm, BM_VERT);
-
-	BLI_srand(0);
 	
 	BM_ITER_MESH (efa, &iter, em->bm, BM_FACES_OF_MESH) {
-		ScanFillVert *sf_vert = NULL, *sf_vert_last, *sf_vert_first;
-		ScanFillFace *sf_tri;
-		ParamKey key, vkeys[4];
-		ParamBool pin[4], select[4];
-		BMLoop *ls[3];
-		float *co[4];
-		float *uv[4];
-		int lsel;
 
-		if ((BM_elem_flag_test(efa, BM_ELEM_HIDDEN)) || (sel && BM_elem_flag_test(efa, BM_ELEM_SELECT) == 0))
+		if ((BM_elem_flag_test(efa, BM_ELEM_HIDDEN)) || (sel && BM_elem_flag_test(efa, BM_ELEM_SELECT) == 0)) {
 			continue;
-
-		lsel = 0;
-
-		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-			if (uvedit_uv_select_test(em, scene, l)) {
-				lsel = 1;
-				break;
-			}
 		}
 
-		if (implicit && !lsel)
-			continue;
+		if (implicit) {
+			bool is_loopsel = false;
 
-		key = (ParamKey)efa;
-
-		// tf = CustomData_bmesh_get(&em->bm->pdata, efa->head.data, CD_MTEXPOLY);  // UNUSED
-
-		if (efa->len == 3 || efa->len == 4) {
-			int i;
-			/* for quads let parametrize split, it can make better decisions
-			 * about which split is best for unwrapping than scanfill */
-			i = 0;
 			BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-				MLoopUV *luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-				vkeys[i] = (ParamKey)BM_elem_index_get(l->v);
-				co[i] = l->v->co;
-				uv[i] = luv->uv;
-				pin[i] = (luv->flag & MLOOPUV_PINNED) != 0;
-				select[i] = uvedit_uv_select_test(em, scene, l) != 0;
-
-				i++;
+				if (uvedit_uv_select_test(scene, l, cd_loop_uv_offset)) {
+					is_loopsel = true;
+					break;
+				}
 			}
-
-			param_face_add(handle, key, i, vkeys, co, uv, pin, select);
+			if (is_loopsel == false) {
+				continue;
+			}
 		}
-		else {
-			/* ngon - scanfill time! */
-			BLI_scanfill_begin(&sf_ctx);
-			
-			sf_vert_first = sf_vert_last = NULL;
-			BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-				int i;
-				
-				sf_vert = BLI_scanfill_vert_add(&sf_ctx, l->v->co);
-				
-				/* add small random offset */
-				for (i = 0; i < 3; i++) {
-					sf_vert->co[i] += (BLI_frand() - 0.5f) * FLT_EPSILON * 50;
-				}
-				
-				sf_vert->tmp.p = l;
 
-				if (sf_vert_last) {
-					BLI_scanfill_edge_add(&sf_ctx, sf_vert_last, sf_vert);
-				}
-
-				sf_vert_last = sf_vert;
-				if (!sf_vert_first)
-					sf_vert_first = sf_vert;
-			}
-
-			BLI_scanfill_edge_add(&sf_ctx, sf_vert_first, sf_vert);
-
-			BLI_scanfill_calc_ex(&sf_ctx, 0, efa->no);
-			for (sf_tri = sf_ctx.fillfacebase.first; sf_tri; sf_tri = sf_tri->next) {
-				int i;
-				ls[0] = sf_tri->v1->tmp.p;
-				ls[1] = sf_tri->v2->tmp.p;
-				ls[2] = sf_tri->v3->tmp.p;
-
-				for (i = 0; i < 3; i++) {
-					MLoopUV *luv = BM_ELEM_CD_GET_VOID_P(ls[i], cd_loop_uv_offset);
-					vkeys[i] = (ParamKey)BM_elem_index_get(ls[i]->v);
-					co[i] = ls[i]->v->co;
-					uv[i] = luv->uv;
-					pin[i] = (luv->flag & MLOOPUV_PINNED) != 0;
-					select[i] = uvedit_uv_select_test(em, scene, ls[i]) != 0;
-				}
-
-				param_face_add(handle, key, 3, vkeys, co, uv, pin, select);
-			}
-
-			BLI_scanfill_end(&sf_ctx);
-		}
+		construct_param_handle_face_add(handle, scene, efa, cd_loop_uv_offset);
 	}
 
 	if (!implicit) {
@@ -368,7 +324,7 @@ static ParamHandle *construct_param_handle(Scene *scene, Object *ob, BMEditMesh 
 
 
 static void texface_from_original_index(BMFace *efa, int index, float **uv, ParamBool *pin, ParamBool *select,
-                                        Scene *scene, BMEditMesh *em, const int cd_loop_uv_offset)
+                                        Scene *scene, const int cd_loop_uv_offset)
 {
 	BMLoop *l;
 	BMIter liter;
@@ -386,7 +342,7 @@ static void texface_from_original_index(BMFace *efa, int index, float **uv, Para
 			luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 			*uv = luv->uv;
 			*pin = (luv->flag & MLOOPUV_PINNED) ? 1 : 0;
-			*select = (uvedit_uv_select_test(em, scene, l) != 0);
+			*select = uvedit_uv_select_test(scene, l, cd_loop_uv_offset);
 			break;
 		}
 	}
@@ -513,12 +469,12 @@ static ParamHandle *construct_param_handle_subsurfed(Scene *scene, Object *ob, B
 		
 		/* This is where all the magic is done. If the vertex exists in the, we pass the original uv pointer to the solver, thus
 		 * flushing the solution to the edit mesh. */
-		texface_from_original_index(origFace, origVertIndices[face->v1], &uv[0], &pin[0], &select[0], scene, em, cd_loop_uv_offset);
-		texface_from_original_index(origFace, origVertIndices[face->v2], &uv[1], &pin[1], &select[1], scene, em, cd_loop_uv_offset);
-		texface_from_original_index(origFace, origVertIndices[face->v3], &uv[2], &pin[2], &select[2], scene, em, cd_loop_uv_offset);
-		texface_from_original_index(origFace, origVertIndices[face->v4], &uv[3], &pin[3], &select[3], scene, em, cd_loop_uv_offset);
+		texface_from_original_index(origFace, origVertIndices[face->v1], &uv[0], &pin[0], &select[0], scene, cd_loop_uv_offset);
+		texface_from_original_index(origFace, origVertIndices[face->v2], &uv[1], &pin[1], &select[1], scene, cd_loop_uv_offset);
+		texface_from_original_index(origFace, origVertIndices[face->v3], &uv[2], &pin[2], &select[2], scene, cd_loop_uv_offset);
+		texface_from_original_index(origFace, origVertIndices[face->v4], &uv[3], &pin[3], &select[3], scene, cd_loop_uv_offset);
 
-		param_face_add(handle, key, 4, vkeys, co, uv, pin, select);
+		param_face_add(handle, key, 4, vkeys, co, uv, pin, select, NULL);
 	}
 
 	/* these are calculated from original mesh too */
@@ -558,7 +514,7 @@ static bool minimize_stretch_init(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	MinStretch *ms;
 	int fill_holes = RNA_boolean_get(op->ptr, "fill_holes");
 	bool implicit = true;
@@ -759,7 +715,7 @@ static int pack_islands_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	ParamHandle *handle;
 	bool implicit = true;
 
@@ -806,7 +762,7 @@ static int average_islands_scale_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	ParamHandle *handle;
 	bool implicit = true;
 
@@ -845,7 +801,7 @@ static ParamHandle *liveHandle = NULL;
 
 void ED_uvedit_live_unwrap_begin(Scene *scene, Object *obedit)
 {
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	short abf = scene->toolsettings->unwrapper == 0;
 	short fillholes = scene->toolsettings->uvcalc_flag & UVCALC_FILLHOLES;
 	short use_subsurf;
@@ -885,7 +841,7 @@ void ED_uvedit_live_unwrap_end(short cancel)
 
 void ED_uvedit_live_unwrap(Scene *scene, Object *obedit)
 {
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 	if (scene->toolsettings->edge_mode_live_unwrap &&
 	    CustomData_has_layer(&em->bm->ldata, CD_MLOOPUV))
@@ -998,7 +954,7 @@ static void uv_map_transform(bContext *C, wmOperator *op, float center[3], float
 	/* context checks are messy here, making it work in both 3d view and uv editor */
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	View3D *v3d = CTX_wm_view3d(C);
 	RegionView3D *rv3d = CTX_wm_region_view3d(C);
 	/* common operator properties */
@@ -1176,7 +1132,7 @@ static void uv_map_clip_correct(Scene *scene, Object *ob, BMEditMesh *em, wmOper
 /* assumes UV Map is checked, doesn't run update funcs */
 void ED_unwrap_lscm(Scene *scene, Object *obedit, const short sel)
 {
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	ParamHandle *handle;
 
 	const short fill_holes = scene->toolsettings->uvcalc_flag & UVCALC_FILLHOLES;
@@ -1206,7 +1162,7 @@ static int unwrap_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	int method = RNA_enum_get(op->ptr, "method");
 	int fill_holes = RNA_boolean_get(op->ptr, "fill_holes");
 	int correct_aspect = RNA_boolean_get(op->ptr, "correct_aspect");
@@ -1295,16 +1251,45 @@ void UV_OT_unwrap(wmOperatorType *ot)
 	RNA_def_float_factor(ot->srna, "margin", 0.001f, 0.0f, 1.0f, "Margin", "Space between islands", 0.0f, 1.0f);
 }
 
+/* NOTE: could be generic function */
+static Camera *view3d_camera_get(View3D *v3d, RegionView3D *rv3d)
+{
+	/* establish the camera object, so we can default to view mapping if anything is wrong with it */
+	if ((rv3d->persp == RV3D_CAMOB) && (v3d->camera) && (v3d->camera->type == OB_CAMERA)) {
+		return v3d->camera->data;
+	}
+	else {
+		return NULL;
+	}
+}
+
 /**************** Project From View operator **************/
+static int uv_from_view_exec(bContext *C, wmOperator *op);
+
+static int uv_from_view_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+{
+	View3D *v3d = CTX_wm_view3d(C);
+	RegionView3D *rv3d = CTX_wm_region_view3d(C);
+	Camera *camera = view3d_camera_get(v3d, rv3d);
+	PropertyRNA *prop;
+
+	prop = RNA_struct_find_property(op->ptr, "camera_bounds");
+	if (!RNA_property_is_set(op->ptr, prop)) RNA_property_boolean_set(op->ptr, prop, (camera != NULL));
+	prop = RNA_struct_find_property(op->ptr, "correct_aspect");
+	if (!RNA_property_is_set(op->ptr, prop)) RNA_property_boolean_set(op->ptr, prop, (camera == NULL));
+
+	return uv_from_view_exec(C, op);
+}
+
 static int uv_from_view_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	Camera *camera = NULL;
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	ARegion *ar = CTX_wm_region(C);
 	View3D *v3d = CTX_wm_view3d(C);
 	RegionView3D *rv3d = CTX_wm_region_view3d(C);
+	Camera *camera = view3d_camera_get(v3d, rv3d);
 	BMFace *efa;
 	BMLoop *l;
 	BMIter iter, liter;
@@ -1319,11 +1304,6 @@ static int uv_from_view_exec(bContext *C, wmOperator *op)
 	}
 
 	cd_loop_uv_offset = CustomData_get_offset(&em->bm->ldata, CD_MLOOPUV);
-
-	/* establish the camera object, so we can default to view mapping if anything is wrong with it */
-	if ((rv3d->persp == RV3D_CAMOB) && (v3d->camera) && (v3d->camera->type == OB_CAMERA)) {
-		camera = v3d->camera->data;
-	}
 
 	if (RNA_boolean_get(op->ptr, "orthographic")) {
 		uv_map_rotation_matrix(rotmat, rv3d, obedit, 90.0f, 0.0f, 1.0f);
@@ -1403,6 +1383,7 @@ void UV_OT_project_from_view(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* api callbacks */
+	ot->invoke = uv_from_view_invoke;
 	ot->exec = uv_from_view_exec;
 	ot->poll = uv_from_view_poll;
 
@@ -1498,7 +1479,7 @@ static int sphere_project_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMFace *efa;
 	BMLoop *l;
 	BMIter iter, liter;
@@ -1577,7 +1558,7 @@ static int cylinder_project_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMFace *efa;
 	BMLoop *l;
 	BMIter iter, liter;
@@ -1642,7 +1623,7 @@ static int cube_project_exec(bContext *C, wmOperator *op)
 {
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMFace *efa;
 	BMLoop *l;
 	BMIter iter, liter;

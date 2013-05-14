@@ -50,7 +50,7 @@
 #include "BKE_global.h"
 #include "BKE_mesh.h"
 #include "BKE_paint.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_curve.h"
 
 #include "DNA_mesh_types.h"
@@ -68,6 +68,8 @@
 #include <string.h>
 #include <limits.h>
 #include <math.h>
+
+extern GLubyte stipple_quarttone[128]; /* glutil.c, bad level data */
 
 typedef struct {
 	DerivedMesh dm;
@@ -907,6 +909,11 @@ static void cdDM_drawMappedFaces(DerivedMesh *dm,
 			if (draw_option != DM_DRAW_OPTION_SKIP) {
 				unsigned char *cp = NULL;
 
+				if (draw_option == DM_DRAW_OPTION_STIPPLE) {
+					glEnable(GL_POLYGON_STIPPLE);
+					glPolygonStipple(stipple_quarttone);
+				}
+
 				if (useColors && mcol)
 					cp = (unsigned char *)&mcol[i * 4];
 
@@ -959,6 +966,9 @@ static void cdDM_drawMappedFaces(DerivedMesh *dm,
 				}
 
 				glEnd();
+
+				if (draw_option == DM_DRAW_OPTION_STIPPLE)
+					glDisable(GL_POLYGON_STIPPLE);
 			}
 			
 			if (nors) nors += 3;
@@ -1003,13 +1013,18 @@ static void cdDM_drawMappedFaces(DerivedMesh *dm,
 						draw_option = setMaterial(mface->mat_nr + 1, NULL);
 					else if (setDrawOptions != NULL)
 						draw_option = setDrawOptions(userData, orig);
+
+					if (draw_option == DM_DRAW_OPTION_STIPPLE) {
+						glEnable(GL_POLYGON_STIPPLE);
+						glPolygonStipple(stipple_quarttone);
+					}
 	
 					/* Goal is to draw as long of a contiguous triangle
 					 * array as possible, so draw when we hit either an
 					 * invisible triangle or at the end of the array */
 
 					/* flush buffer if current triangle isn't drawable or it's last triangle... */
-					flush = (draw_option == DM_DRAW_OPTION_SKIP) || (i == tottri - 1);
+					flush = (ELEM(draw_option, DM_DRAW_OPTION_SKIP, DM_DRAW_OPTION_STIPPLE)) || (i == tottri - 1);
 
 					/* ... or when material setting is dissferent  */
 					flush |= mf[actualFace].mat_nr != mf[next_actualFace].mat_nr;
@@ -1027,6 +1042,9 @@ static void cdDM_drawMappedFaces(DerivedMesh *dm,
 							glDrawArrays(GL_TRIANGLES, first, count);
 
 						prevstart = i + 1;
+
+						if (draw_option == DM_DRAW_OPTION_STIPPLE)
+							glDisable(GL_POLYGON_STIPPLE);
 					}
 				}
 			}
@@ -1836,8 +1854,6 @@ DerivedMesh *CDDM_from_curve_displist(Object *ob, ListBase *dispbase)
 	MEM_freeN(alledge);
 	MEM_freeN(allloop);
 	MEM_freeN(allpoly);
-
-	CDDM_calc_edges(dm);
 
 	return dm;
 }

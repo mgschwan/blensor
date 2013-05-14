@@ -82,15 +82,21 @@ static void mikk_get_texture_coordinate(const SMikkTSpaceContext *context, float
 	MikkUserData *userdata = (MikkUserData*)context->m_pUserData;
 	BL::MeshTextureFace tf = userdata->layer.data[face_num];
 	float3 tfuv;
-
-	if(vert_num == 0)
-		tfuv = get_float3(tf.uv1());
-	else if(vert_num == 1)
-		tfuv = get_float3(tf.uv2());
-	else if(vert_num == 2)
-		tfuv = get_float3(tf.uv3());
-	else
-		tfuv = get_float3(tf.uv4());
+	
+	switch (vert_num) {
+		case 0:
+			tfuv = get_float3(tf.uv1());
+			break;
+		case 1:
+			tfuv = get_float3(tf.uv2());
+			break;
+		case 2:
+			tfuv = get_float3(tf.uv3());
+			break;
+		default:
+			tfuv = get_float3(tf.uv4());
+			break;
+	}
 	
 	uv[0] = tfuv.x;
 	uv[1] = tfuv.y;
@@ -100,9 +106,16 @@ static void mikk_get_normal(const SMikkTSpaceContext *context, float N[3], const
 {
 	MikkUserData *userdata = (MikkUserData*)context->m_pUserData;
 	BL::MeshTessFace f = userdata->mesh.tessfaces[face_num];
-	int4 vi = get_int4(f.vertices_raw());
-	BL::MeshVertex v = userdata->mesh.vertices[vi[vert_num]];
-	float3 vN = get_float3(v.normal());
+	float3 vN;
+
+	if(f.use_smooth()) {
+		int4 vi = get_int4(f.vertices_raw());
+		BL::MeshVertex v = userdata->mesh.vertices[vi[vert_num]];
+		vN = get_float3(v.normal());
+	}
+	else {
+		vN = get_float3(f.normal());
+	}
 
 	N[0] = vN.x;
 	N[1] = vN.y;
@@ -336,7 +349,7 @@ static void create_mesh(Scene *scene, Mesh *mesh, BL::Mesh b_mesh, const vector<
 		size_t i = 0;
 
 		for(b_mesh.vertices.begin(v); v != b_mesh.vertices.end(); ++v)
-			generated[i++] = get_float3(v->co())*size - loc;
+			generated[i++] = get_float3(v->undeformed_co())*size - loc;
 	}
 }
 
@@ -435,31 +448,36 @@ Mesh *BlenderSync::sync_mesh(BL::Object b_ob, bool object_updated, bool hide_tri
 	mesh_synced.insert(mesh);
 
 	/* create derived mesh */
-	BL::Mesh b_mesh = object_to_mesh(b_data, b_ob, b_scene, true, !preview);
+	bool need_undeformed = mesh->need_attribute(scene, ATTR_STD_GENERATED);
 	PointerRNA cmesh = RNA_pointer_get(&b_ob_data.ptr, "cycles");
 
 	vector<Mesh::Triangle> oldtriangle = mesh->triangles;
 	
-	/* compares curve_keys rather than strands in order to handle quick hair adjustsments in dynamic BVH - other methods could probably do this better*/
+	/* compares curve_keys rather than strands in order to handle quick hair
+	 * adjustsments in dynamic BVH - other methods could probably do this better*/
 	vector<Mesh::CurveKey> oldcurve_keys = mesh->curve_keys;
 
 	mesh->clear();
 	mesh->used_shaders = used_shaders;
 	mesh->name = ustring(b_ob_data.name().c_str());
 
-	if(b_mesh) {
-		if(!(hide_tris && experimental && is_cpu)) {
-			if(cmesh.data && experimental && RNA_boolean_get(&cmesh, "use_subdivision"))
-				create_subd_mesh(mesh, b_mesh, &cmesh, used_shaders);
-			else
-				create_mesh(scene, mesh, b_mesh, used_shaders);
+	if(render_layer.use_surfaces || render_layer.use_hair) {
+		BL::Mesh b_mesh = object_to_mesh(b_data, b_ob, b_scene, true, !preview, need_undeformed);
+
+		if(b_mesh) {
+			if(render_layer.use_surfaces && !(hide_tris && experimental)) {
+				if(cmesh.data && experimental && RNA_boolean_get(&cmesh, "use_subdivision"))
+					create_subd_mesh(mesh, b_mesh, &cmesh, used_shaders);
+				else
+					create_mesh(scene, mesh, b_mesh, used_shaders);
+			}
+
+			if(render_layer.use_hair && experimental)
+				sync_curves(mesh, b_mesh, b_ob, object_updated);
+
+			/* free derived mesh */
+			b_data.meshes.remove(b_mesh);
 		}
-
-		if(experimental && is_cpu)
-			sync_curves(mesh, b_mesh, b_ob, object_updated);
-
-		/* free derived mesh */
-		b_data.meshes.remove(b_mesh);
 	}
 
 	/* displacement method */
@@ -507,7 +525,7 @@ void BlenderSync::sync_mesh_motion(BL::Object b_ob, Mesh *mesh, int motion)
 		return;
 
 	/* get derived mesh */
-	BL::Mesh b_mesh = object_to_mesh(b_data, b_ob, b_scene, true, !preview);
+	BL::Mesh b_mesh = object_to_mesh(b_data, b_ob, b_scene, true, !preview, false);
 
 	if(b_mesh) {
 		BL::Mesh::vertices_iterator v;

@@ -252,7 +252,8 @@ static int create_orientation_exec(bContext *C, wmOperator *op)
 	char name[MAX_NAME];
 	int use = RNA_boolean_get(op->ptr, "use");
 	int overwrite = RNA_boolean_get(op->ptr, "overwrite");
-	
+	int use_view = RNA_boolean_get(op->ptr, "use_view");
+
 	RNA_string_get(op->ptr, "name", name);
 
 	if (use && !CTX_wm_view3d(C)) {
@@ -260,17 +261,12 @@ static int create_orientation_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	BIF_createTransformOrientation(C, op->reports, name, use, overwrite);
+	BIF_createTransformOrientation(C, op->reports, name, use_view, use, overwrite);
 
 	WM_event_add_notifier(C, NC_SPACE | ND_SPACE_VIEW3D, CTX_wm_view3d(C));
 	WM_event_add_notifier(C, NC_SCENE | NA_EDITED, CTX_data_scene(C));
 	
 	return OPERATOR_FINISHED;
-}
-
-static int create_orientation_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
-{
-	return create_orientation_exec(C, op);
 }
 
 static void TRANSFORM_OT_create_orientation(struct wmOperatorType *ot)
@@ -282,14 +278,15 @@ static void TRANSFORM_OT_create_orientation(struct wmOperatorType *ot)
 	ot->flag   = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* api callbacks */
-	ot->invoke = create_orientation_invoke;
 	ot->exec   = create_orientation_exec;
 	ot->poll   = ED_operator_areaactive;
-	ot->flag   = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	RNA_def_string(ot->srna, "name", "", MAX_NAME, "Name", "Text to insert at the cursor position");
-	RNA_def_boolean(ot->srna, "use", 0, "Use after creation", "Select orientation after its creation");
-	RNA_def_boolean(ot->srna, "overwrite", 0, "Overwrite previous", "Overwrite previously created orientation with same name");
+	RNA_def_string(ot->srna, "name", "", MAX_NAME, "Name", "Name of the new custom orientation");
+	RNA_def_boolean(ot->srna, "use_view", FALSE, "Use View",
+	                "Use the current view instead of the active object to create the new orientation");
+	RNA_def_boolean(ot->srna, "use", FALSE, "Use after creation", "Select orientation after its creation");
+	RNA_def_boolean(ot->srna, "overwrite", FALSE, "Overwrite previous",
+	                "Overwrite previously created orientation with same name");
 }
 
 static void transformops_exit(bContext *C, wmOperator *op)
@@ -339,6 +336,7 @@ static int transform_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	int exit_code;
 
 	TransInfo *t = op->customdata;
+	const enum TfmMode mode_prev = t->mode;
 
 #if 0
 	// stable 2D mouse coords map to different 3D coords while the 3D mouse is active
@@ -361,6 +359,28 @@ static int transform_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	if ((exit_code & OPERATOR_RUNNING_MODAL) == 0) {
 		transformops_exit(C, op);
 		exit_code &= ~OPERATOR_PASS_THROUGH; /* preventively remove passthrough */
+	}
+	else {
+		if (mode_prev != t->mode) {
+			/* WARNING: this is not normal to switch operator types
+			 * normally it would not be supported but transform happens
+			 * to share callbacks between differernt operators. */
+			wmOperatorType *ot_new = NULL;
+			TransformModeItem *item = transform_modes;
+			while (item->idname) {
+				if (item->mode == t->mode) {
+					ot_new = WM_operatortype_find(item->idname, false);
+					break;
+				}
+				item++;
+			}
+
+			BLI_assert(ot_new != NULL);
+			if (ot_new) {
+				WM_operator_type_set(op, ot_new);
+			}
+			/* end suspicious code */
+		}
 	}
 
 	return exit_code;
@@ -528,7 +548,7 @@ static int skin_resize_poll(bContext *C)
 {
 	struct Object *obedit = CTX_data_edit_object(C);
 	if (obedit && obedit->type == OB_MESH) {
-		BMEditMesh *em = BMEdit_FromObject(obedit);
+		BMEditMesh *em = BKE_editmesh_from_object(obedit);
 		return (em && CustomData_has_layer(&em->bm->vdata, CD_MVERT_SKIN));
 	}
 	return 0;

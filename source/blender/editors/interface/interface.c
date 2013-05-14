@@ -94,6 +94,13 @@
 
 static void ui_free_but(const bContext *C, uiBut *but);
 
+bool ui_block_is_menu(const uiBlock *block)
+{
+	return (((block->flag & UI_BLOCK_LOOP) != 0) &&
+	        /* non-menu popups use keep-open, so check this is off */
+	        ((block->flag & UI_BLOCK_KEEP_OPEN) == 0));
+}
+
 /* ************* window matrix ************** */
 
 void ui_block_to_window_fl(const ARegion *ar, uiBlock *block, float *x, float *y)
@@ -728,7 +735,7 @@ void uiButExecute(const bContext *C, uiBut *but)
 
 /* use to check if we need to disable undo, but don't make any changes
  * returns FALSE if undo needs to be disabled. */
-static int ui_but_is_rna_undo(uiBut *but)
+static int ui_is_but_rna_undo(uiBut *but)
 {
 	if (but->rnapoin.id.data) {
 		/* avoid undo push for buttons who's ID are screen or wm level
@@ -871,7 +878,7 @@ static void ui_menu_block_set_keymaps(const bContext *C, uiBlock *block)
 		if (but->optype) {
 			IDProperty *prop = (but->opptr) ? but->opptr->data : NULL;
 
-			if (WM_key_event_operator_string(C, but->optype->idname, but->opcontext, prop, TRUE,
+			if (WM_key_event_operator_string(C, but->optype->idname, but->opcontext, prop, true,
 			                                 buf, sizeof(buf)))
 			{
 				ui_but_add_shortcut(but, buf, FALSE);
@@ -888,7 +895,7 @@ static void ui_menu_block_set_keymaps(const bContext *C, uiBlock *block)
 
 			IDP_AssignString(prop_menu_name, mt->idname, sizeof(mt->idname));
 
-			if (WM_key_event_operator_string(C, "WM_OT_call_menu", WM_OP_INVOKE_REGION_WIN, prop_menu, FALSE,
+			if (WM_key_event_operator_string(C, "WM_OT_call_menu", WM_OP_INVOKE_REGION_WIN, prop_menu, true,
 			                                 buf, sizeof(buf)))
 			{
 				ui_but_add_shortcut(but, buf, FALSE);
@@ -2873,15 +2880,15 @@ static uiBut *ui_def_but_rna(uiBlock *block, int type, int retval, const char *s
 			freestr = 1;
 		}
 		else if (ELEM(type, ROW, LISTROW) && proptype == PROP_ENUM) {
-			EnumPropertyItem *item;
-			int i, totitem, free;
+			EnumPropertyItem *item, *item_array = NULL;
+			int free;
 
 			/* get untranslated, then translate the single string we need */
-			RNA_property_enum_items(block->evil_C, ptr, prop, &item, &totitem, &free);
-			for (i = 0; i < totitem; i++) {
-				if (item[i].identifier[0] && item[i].value == (int)max) {
-					str = CTX_IFACE_(RNA_property_translation_context(prop), item[i].name);
-					icon = item[i].icon;
+			RNA_property_enum_items(block->evil_C, ptr, prop, &item_array, NULL, &free);
+			for (item = item_array; item->identifier; item++) {
+				if (item->identifier[0] && item->value == (int)max) {
+					str = CTX_IFACE_(RNA_property_translation_context(prop), item->name);
+					icon = item->icon;
 					break;
 				}
 			}
@@ -2890,7 +2897,7 @@ static uiBut *ui_def_but_rna(uiBlock *block, int type, int retval, const char *s
 				str = RNA_property_ui_name(prop);
 			}
 			if (free) {
-				MEM_freeN(item);
+				MEM_freeN(item_array);
 			}
 		}
 		else {
@@ -2962,7 +2969,7 @@ static uiBut *ui_def_but_rna(uiBlock *block, int type, int retval, const char *s
 		ui_def_but_rna__disable(but);
 	}
 
-	if (but->flag & UI_BUT_UNDO && (ui_but_is_rna_undo(but) == FALSE)) {
+	if (but->flag & UI_BUT_UNDO && (ui_is_but_rna_undo(but) == FALSE)) {
 		but->flag &= ~UI_BUT_UNDO;
 	}
 
@@ -3013,7 +3020,7 @@ static uiBut *ui_def_but_operator_ptr(uiBlock *block, int type, wmOperatorType *
 	but = ui_def_but(block, type, -1, str, x, y, width, height, NULL, 0, 0, 0, 0, tip);
 	but->optype = ot;
 	but->opcontext = opcontext;
-	but->flag &= ~UI_BUT_UNDO; /* no need for ui_but_is_undo(), we never need undo here */
+	but->flag &= ~UI_BUT_UNDO; /* no need for ui_is_but_rna_undo(), we never need undo here */
 
 	if (!ot) {
 		but->flag |= UI_BUT_DISABLED;
@@ -3052,7 +3059,7 @@ static uiBut *ui_def_but_operator_text(uiBlock *block, int type, const char *opn
 	but = ui_def_but(block, type, -1, str, x, y, width, height, poin, min, max, a1, a2, tip);
 	but->optype = ot;
 	but->opcontext = opcontext;
-	but->flag &= ~UI_BUT_UNDO; /* no need for ui_but_is_undo(), we never need undo here */
+	but->flag &= ~UI_BUT_UNDO; /* no need for ui_is_but_rna_undo(), we never need undo here */
 
 	if (!ot) {
 		but->flag |= UI_BUT_DISABLED;
@@ -3617,13 +3624,13 @@ void uiBlockSetFunc(uiBlock *block, uiButHandleFunc func, void *arg1, void *arg2
 	block->func_arg2 = arg2;
 }
 
-void uiBlockSetNFunc(uiBlock *block, uiButHandleFunc func, void *argN, void *arg2)
+void uiBlockSetNFunc(uiBlock *block, uiButHandleNFunc funcN, void *argN, void *arg2)
 {
 	if (block->func_argN) {
 		MEM_freeN(block->func_argN);
 	}
 
-	block->funcN = func;
+	block->funcN = funcN;
 	block->func_argN = argN;
 	block->func_arg2 = arg2;
 }
@@ -3832,6 +3839,82 @@ void uiButSetSearchFunc(uiBut *but, uiButSearchFunc sfunc, void *arg, uiButHandl
 	}
 }
 
+/* Callbacks for operator search button. */
+static void operator_enum_search_cb(const struct bContext *C, void *but, const char *str, uiSearchItems *items)
+{
+	wmOperatorType *ot = ((uiBut *)but)->optype;
+	PropertyRNA *prop = ot->prop;
+
+	if (prop == NULL) {
+		printf("%s: %s has no enum property set\n",
+		       __func__, ot->idname);
+	}
+	else if (RNA_property_type(prop) != PROP_ENUM) {
+		printf("%s: %s \"%s\" is not an enum property\n",
+		       __func__, ot->idname, RNA_property_identifier(prop));
+	}
+	else {
+		PointerRNA *ptr = uiButGetOperatorPtrRNA(but);  /* Will create it if needed! */
+		EnumPropertyItem *item, *item_array;
+		int do_free;
+
+		RNA_property_enum_items((bContext *)C, ptr, prop, &item_array, NULL, &do_free);
+
+		for (item = item_array; item->identifier; item++) {
+			/* note: need to give the index rather than the identifier because the enum can be freed */
+			if (BLI_strcasestr(item->name, str)) {
+				if (false == uiSearchItemAdd(items, item->name, SET_INT_IN_POINTER(item->value), 0))
+					break;
+			}
+		}
+
+		if (do_free)
+			MEM_freeN(item_array);
+	}
+}
+
+static void operator_enum_call_cb(struct bContext *UNUSED(C), void *but, void *arg2)
+{
+	wmOperatorType *ot = ((uiBut *)but)->optype;
+	PointerRNA *opptr = uiButGetOperatorPtrRNA(but);  /* Will create it if needed! */
+
+	if (ot) {
+		if (ot->prop) {
+			RNA_property_enum_set(opptr, ot->prop, GET_INT_FROM_POINTER(arg2));
+			/* We do not call op from here, will be called by button code.
+			 * ui_apply_but_funcs_after() (in interface_handlers.c) called this func before checking operators,
+			 * because one of its parameters is the button itself!
+			 */
+		}
+		else {
+			printf("%s: op->prop for '%s' is NULL\n", __func__, ot->idname);
+		}
+	}
+}
+
+/* Same parameters as for uiDefSearchBut, with additional operator type and properties, used by callback
+ * to call again the right op with the right options (properties values). */
+uiBut *uiDefSearchButO_ptr(uiBlock *block, wmOperatorType *ot, IDProperty *properties,
+                           void *arg, int retval, int icon, int maxlen, int x, int y,
+                           short width, short height, float a1, float a2, const char *tip)
+{
+	uiBut *but;
+
+	but = uiDefSearchBut(block, arg, retval, icon, maxlen, x, y, width, height, a1, a2, tip);
+	uiButSetSearchFunc(but, operator_enum_search_cb, but, operator_enum_call_cb, NULL);
+
+	but->optype = ot;
+	but->opcontext = WM_OP_EXEC_DEFAULT;
+
+	if (properties) {
+		PointerRNA *ptr = uiButGetOperatorPtrRNA(but);
+		/* Copy idproperties. */
+		ptr->data = IDP_CopyProperty(properties);
+	}
+
+	return but;
+}
+
 /* push a new event onto event queue to activate the given button 
  * (usually a text-field) upon entering a popup
  */
@@ -4010,7 +4093,7 @@ void uiButGetStrInfo(bContext *C, uiBut *but, ...)
 				IDProperty *prop = (but->opptr) ? but->opptr->data : NULL;
 				char buf[512];
 
-				if (WM_key_event_operator_string(C, but->optype->idname, but->opcontext, prop, TRUE,
+				if (WM_key_event_operator_string(C, but->optype->idname, but->opcontext, prop, true,
 				                                 buf, sizeof(buf)))
 				{
 					tmp = BLI_strdup(buf);

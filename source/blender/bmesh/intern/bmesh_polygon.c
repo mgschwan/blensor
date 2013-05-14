@@ -26,13 +26,6 @@
  * This file contains code for dealing
  * with polygons (normal/area calculation,
  * tessellation, etc)
- *
- * BMESH_TODO:
- *  - Add in Tessellator frontend that creates
- *    BMTriangles from copied faces
- *
- *  - Add in Function that checks for and flags
- *    degenerate faces.
  */
 
 #include "DNA_listBase.h"
@@ -539,11 +532,6 @@ void BM_face_normal_update(BMFace *f)
 			const float *co3 = (l->next)->v->co;
 
 			normal_tri_v3(f->no, co1, co2, co3);
-			break;
-		}
-		case 0:
-		{
-			zero_v3(f->no);
 			break;
 		}
 		default:

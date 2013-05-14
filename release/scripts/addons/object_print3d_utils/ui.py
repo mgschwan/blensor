@@ -71,9 +71,9 @@ class Print3DToolBar:
 
         row = layout.row()
         row.label("Statistics:")
-        col = layout.column(align=True)
-        col.operator("mesh.print3d_info_volume", text="Volume")
-        col.operator("mesh.print3d_info_area", text="Area")
+        rowsub = layout.row(align=True)
+        rowsub.operator("mesh.print3d_info_volume", text="Volume")
+        rowsub.operator("mesh.print3d_info_area", text="Area")
 
         row = layout.row()
         row.label("Checks:")
@@ -108,13 +108,23 @@ class Print3DToolBar:
         # XXX TODO
         # col.operator("mesh.print3d_clean_thin", text="Wall Thickness")
 
+        row = layout.row()
+        row.label("Scale To:")
+        rowsub = layout.row(align=True)
+        rowsub.operator("mesh.print3d_scale_to_volume", text="Volume")
+        rowsub.operator("mesh.print3d_scale_to_bounds", text="Bounds")
+
         col = layout.column()
-        col.label("Export Directory:")
-        col.prop(print_3d, "export_path", text="")
+        rowsub = col.row(align=True)
+        rowsub.label("Export Path:")
+        rowsub.prop(print_3d, "use_apply_scale", text="", icon='MAN_SCALE')
+        rowsub.prop(print_3d, "use_export_texture", text="", icon='FILE_IMAGE')
+        rowsub = col.row()
+        rowsub.prop(print_3d, "export_path", text="")
 
         rowsub = col.row(align=True)
         rowsub.prop(print_3d, "export_format", text="")
-        rowsub.operator("mesh.print3d_export", text="", icon='EXPORT')
+        rowsub.operator("mesh.print3d_export", text="Export", icon='EXPORT')
 
         Print3DToolBar.draw_report(layout, context)
 

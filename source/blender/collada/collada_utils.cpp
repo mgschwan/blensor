@@ -129,7 +129,7 @@ Object *bc_add_object(Scene *scene, int type, const char *name)
 {
 	Object *ob = BKE_object_add_only_object(G.main, type, name);
 
-	ob->data = BKE_object_obdata_add_from_type(type);
+	ob->data = BKE_object_obdata_add_from_type(G.main, type);
 	ob->lay = scene->lay;
 	DAG_id_tag_update(&ob->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
 
@@ -160,7 +160,7 @@ Mesh *bc_get_mesh_copy(Scene *scene, Object *ob, BC_export_mesh_type export_mesh
 	}
 
 	tmpmesh = BKE_mesh_add(G.main, "ColladaMesh"); // name is not important here
-	DM_to_mesh(dm, tmpmesh, ob);
+	DM_to_mesh(dm, tmpmesh, ob, CD_MASK_MESH);
 	dm->release(dm);
 
 	if (triangulate) {

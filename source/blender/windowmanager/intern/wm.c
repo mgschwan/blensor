@@ -108,6 +108,22 @@ void WM_operator_free(wmOperator *op)
 	MEM_freeN(op);
 }
 
+/**
+ * Use with extreme care!,
+ * properties, customdata etc - must be compatible.
+ *
+ * \param op  Operator to assign the type to.
+ * \param ot  OperatorType to assign.
+ */
+void WM_operator_type_set(wmOperator *op, wmOperatorType *ot)
+{
+	/* not supported for Python */
+	BLI_assert(op->py_instance == NULL);
+
+	op->type = ot;
+	op->ptr->type = ot->srna;
+}
+
 static void wm_reports_free(wmWindowManager *wm)
 {
 	BKE_reports_clear(&wm->reports);
@@ -218,7 +234,7 @@ void WM_uilisttype_free(void)
 {
 	GHashIterator *iter = BLI_ghashIterator_new(uilisttypes_hash);
 
-	for (; BLI_ghashIterator_notDone(iter); BLI_ghashIterator_step(iter)) {
+	for (; !BLI_ghashIterator_done(iter); BLI_ghashIterator_step(iter)) {
 		uiListType *ult = BLI_ghashIterator_getValue(iter);
 		if (ult->ext.free) {
 			ult->ext.free(ult->ext.data);
@@ -271,7 +287,7 @@ void WM_menutype_free(void)
 {
 	GHashIterator *iter = BLI_ghashIterator_new(menutypes_hash);
 
-	for (; BLI_ghashIterator_notDone(iter); BLI_ghashIterator_step(iter)) {
+	for (; !BLI_ghashIterator_done(iter); BLI_ghashIterator_step(iter)) {
 		MenuType *mt = BLI_ghashIterator_getValue(iter);
 		if (mt->ext.free) {
 			mt->ext.free(mt->ext.data);
@@ -384,7 +400,7 @@ void wm_add_default(bContext *C)
 	
 	wm->winactive = win;
 	wm->file_saved = 1;
-	wm_window_make_drawable(C, win); 
+	wm_window_make_drawable(wm, win); 
 }
 
 

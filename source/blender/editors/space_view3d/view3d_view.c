@@ -199,7 +199,8 @@ void view3d_smooth_view(bContext *C, View3D *v3d, ARegion *ar, Object *oldcamera
 		sms.to_camera = true; /* restore view3d values in end */
 	}
 	
-	if (C && U.smooth_viewtx) {
+	/* skip smooth viewing for render engine draw */
+	if (C && U.smooth_viewtx && v3d->drawtype != OB_RENDER) {
 		bool changed = false; /* zero means no difference */
 		
 		if (oldcamera != camera)
@@ -605,9 +606,7 @@ void ED_view3d_clipping_calc(BoundBox *bb, float planes[4][4], bglMats *mats, co
 		if (flip_sign)
 			negate_v3(planes[val]);
 
-		planes[val][3] = -planes[val][0] * bb->vec[val][0] -
-		                  planes[val][1] * bb->vec[val][1] -
-		                  planes[val][2] * bb->vec[val][2];
+		planes[val][3] = -dot_v3v3(planes[val], bb->vec[val]);
 	}
 }
 

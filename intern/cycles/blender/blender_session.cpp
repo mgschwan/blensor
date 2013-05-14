@@ -50,7 +50,8 @@ BlenderSession::BlenderSession(BL::RenderEngine b_engine_, BL::UserPreferences b
 	height = (int)(b_render.resolution_y()*b_render.resolution_percentage()/100);
 
 	background = true;
-	last_redraw_time = 0.0f;
+	last_redraw_time = 0.0;
+	start_resize_time = 0.0;
 
 	create_session();
 }
@@ -66,7 +67,8 @@ BlenderSession::BlenderSession(BL::RenderEngine b_engine_, BL::UserPreferences b
 	width = width_;
 	height = height_;
 	background = false;
-	last_redraw_time = 0.0f;
+	last_redraw_time = 0.0;
+	start_resize_time = 0.0;
 
 	create_session();
 	session->start();
@@ -85,6 +87,7 @@ void BlenderSession::create_session()
 	/* reset status/progress */
 	last_status = "";
 	last_progress = -1.0f;
+	start_resize_time = 0.0;
 
 	/* create scene */
 	scene = new Scene(scene_params, session_params.device);
@@ -163,6 +166,9 @@ void BlenderSession::reset_session(BL::BlendData b_data_, BL::Scene b_scene_)
 	session->reset(buffer_params, session_params.samples);
 
 	b_engine.use_highlight_tiles(session_params.progressive_refine == false);
+
+	/* reset time */
+	start_resize_time = 0.0;
 }
 
 void BlenderSession::free_session()
@@ -362,9 +368,14 @@ void BlenderSession::render()
 		/* update scene */
 		sync->sync_data(b_v3d, b_engine.camera_override(), b_rlay_name.c_str());
 
-		/* update session */
+		/* update number of samples per layer */
 		int samples = sync->get_layer_samples();
-		session->reset(buffer_params, (samples == 0)? session_params.samples: samples);
+		bool bound_samples = sync->get_layer_bound_samples();
+
+		if(samples != 0 && (!bound_samples || (samples < session_params.samples)))
+			session->reset(buffer_params, samples);
+		else
+			session->reset(buffer_params, session_params.samples);
 
 		/* render */
 		session->start();
@@ -482,15 +493,40 @@ void BlenderSession::synchronize()
 	if(scene->need_reset()) {
 		BufferParams buffer_params = BlenderSync::get_buffer_params(b_render, b_scene, b_v3d, b_rv3d, scene->camera, width, height);
 		session->reset(buffer_params, session_params.samples);
+
+		/* reset time */
+		start_resize_time = 0.0;
 	}
 }
 
 bool BlenderSession::draw(int w, int h)
 {
+	/* pause in redraw in case update is not being called due to final render */
+	session->set_pause(BlenderSync::get_session_pause(b_scene, background));
+
 	/* before drawing, we verify camera and viewport size changes, because
 	 * we do not get update callbacks for those, we must detect them here */
 	if(session->ready_to_reset()) {
 		bool reset = false;
+
+		/* if dimensions changed, reset */
+		if(width != w || height != h) {
+			if(start_resize_time == 0.0) {
+				/* don't react immediately to resizes to avoid flickery resizing
+				 * of the viewport, and some window managers changing the window
+				 * size temporarily on unminimize */
+				start_resize_time = time_dt();
+				tag_redraw();
+			}
+			else if(time_dt() - start_resize_time < 0.2f) {
+				tag_redraw();
+			}
+			else {
+				width = w;
+				height = h;
+				reset = true;
+			}
+		}
 
 		/* try to acquire mutex. if we can't, come back later */
 		if(!session->scene->mutex.try_lock()) {
@@ -499,7 +535,7 @@ bool BlenderSession::draw(int w, int h)
 		else {
 			/* update camera from 3d view */
 
-			sync->sync_view(b_v3d, b_rv3d, w, h);
+			sync->sync_view(b_v3d, b_rv3d, width, height);
 
 			if(scene->camera->need_update)
 				reset = true;
@@ -507,19 +543,14 @@ bool BlenderSession::draw(int w, int h)
 			session->scene->mutex.unlock();
 		}
 
-		/* if dimensions changed, reset */
-		if(width != w || height != h) {
-			width = w;
-			height = h;
-			reset = true;
-		}
-
 		/* reset if requested */
 		if(reset) {
 			SessionParams session_params = BlenderSync::get_session_params(b_engine, b_userpref, b_scene, background);
-			BufferParams buffer_params = BlenderSync::get_buffer_params(b_render, b_scene, b_v3d, b_rv3d, scene->camera, w, h);
+			BufferParams buffer_params = BlenderSync::get_buffer_params(b_render, b_scene, b_v3d, b_rv3d, scene->camera, width, height);
 
 			session->reset(buffer_params, session_params.samples);
+
+			start_resize_time = 0.0;
 		}
 	}
 	else {
@@ -691,6 +722,14 @@ bool BlenderSession::builtin_image_pixels(const string &builtin_name, void *buil
 						cp[3] = 255;
 				}
 			}
+		}
+
+		/* premultiply, byte images are always straight for blender */
+		unsigned char *cp = pixels;
+		for(int i = 0; i < width * height; i++, cp += channels) {
+			cp[0] = (cp[0] * cp[3]) >> 8;
+			cp[1] = (cp[1] * cp[3]) >> 8;
+			cp[2] = (cp[2] * cp[3]) >> 8;
 		}
 
 		return true;

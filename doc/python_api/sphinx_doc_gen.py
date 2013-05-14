@@ -70,6 +70,14 @@ except:
 
 import rna_info     # blender module
 
+
+def rna_info_BuildRNAInfo_cache():
+    if rna_info_BuildRNAInfo_cache.ret is None:
+        rna_info_BuildRNAInfo_cache.ret = rna_info.BuildRNAInfo()
+    return rna_info_BuildRNAInfo_cache.ret
+rna_info_BuildRNAInfo_cache.ret = None
+# --- end rna_info cache
+
 # import rpdb2; rpdb2.start_embedded_debugger('test')
 import os
 import sys
@@ -250,6 +258,7 @@ else:
         "bmesh.utils",
         "bpy.app",
         "bpy.app.handlers",
+        "bpy.app.translations",
         "bpy.context",
         "bpy.data",
         "bpy.ops",  # supports filtering
@@ -300,6 +309,12 @@ try:
 except ImportError:
     BPY_LOGGER.debug("Warning: Built without 'aud' module, docs incomplete...")
     EXCLUDE_MODULES = list(EXCLUDE_MODULES) + ["aud"]
+
+try:
+    __import__("freestyle")
+except ImportError:
+    BPY_LOGGER.debug("Warning: Built without 'freestyle' module, docs incomplete...")
+    EXCLUDE_MODULES = list(EXCLUDE_MODULES) + ["freestyle"]
 
 # examples
 EXAMPLES_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "examples"))
@@ -857,7 +872,7 @@ def pymodule2sphinx(basepath, module_name, module, title):
             classes.append((attribute, value))
         elif issubclass(value_type, types.ModuleType):
             submodules.append((attribute, value))
-        elif value_type in (bool, int, float, str, tuple):
+        elif issubclass(value_type, (bool, int, float, str, tuple)):
             # constant, not much fun we can do here except to list it.
             # TODO, figure out some way to document these!
             fw(".. data:: %s\n\n" % attribute)
@@ -985,6 +1000,7 @@ context_type_map = {
     "texture": ("Texture", False),
     "texture_slot": ("MaterialTextureSlot", False),
     "texture_user": ("ID", False),
+    "texture_user_property": ("Property", False),
     "vertex_paint_object": ("Object", False),
     "visible_bases": ("ObjectBase", True),
     "visible_bones": ("EditBone", True),
@@ -1007,6 +1023,47 @@ def pycontext2sphinx(basepath):
     fw("The context members available depend on the area of blender which is currently being accessed.\n")
     fw("\n")
     fw("Note that all context values are readonly, but may be modified through the data api or by running operators\n\n")
+
+    def write_contex_cls():
+
+        fw(title_string("Global Context", "-"))
+        fw("These properties are avilable in any contexts.\n\n")
+
+        # very silly. could make these global and only access once.
+        # structs, funcs, ops, props = rna_info.BuildRNAInfo()
+        structs, funcs, ops, props = rna_info_BuildRNAInfo_cache()
+        struct = structs[("", "Context")]
+        struct_blacklist = RNA_BLACKLIST.get(struct.identifier, ())
+        del structs, funcs, ops, props
+
+        sorted_struct_properties = struct.properties[:]
+        sorted_struct_properties.sort(key=lambda prop: prop.identifier)
+
+        # First write RNA
+        for prop in sorted_struct_properties:
+            # support blacklisting props
+            if prop.identifier in struct_blacklist:
+                continue
+
+            type_descr = prop.get_type_description(class_fmt=":class:`bpy.types.%s`", collection_id=_BPY_PROP_COLLECTION_ID)
+            fw(".. data:: %s\n\n" % prop.identifier)
+            if prop.description:
+                fw("   %s\n\n" % prop.description)
+
+            # special exception, cant use genric code here for enums
+            if prop.type == "enum":
+                enum_text = pyrna_enum2sphinx(prop)
+                if enum_text:
+                    write_indented_lines("   ", fw, enum_text)
+                    fw("\n")
+                del enum_text
+            # end enum exception
+
+            fw("   :type: %s\n\n" % type_descr)
+
+    write_contex_cls()
+    del write_contex_cls
+    # end
 
     # nasty, get strings directly from blender because there is no other way to get it
     import ctypes
@@ -1078,7 +1135,9 @@ def pyrna_enum2sphinx(prop, use_empty_descriptions=False):
 def pyrna2sphinx(basepath):
     """ bpy.types and bpy.ops
     """
-    structs, funcs, ops, props = rna_info.BuildRNAInfo()
+    # structs, funcs, ops, props = rna_info.BuildRNAInfo()
+    structs, funcs, ops, props = rna_info_BuildRNAInfo_cache()
+
     if FILTER_BPY_TYPES is not None:
         structs = {k: v for k, v in structs.items() if k[1] in FILTER_BPY_TYPES}
 
@@ -1538,6 +1597,7 @@ def write_rst_contents(basepath):
         "bpy.path",
         "bpy.app",
         "bpy.app.handlers",
+        "bpy.app.translations",
 
         # C modules
         "bpy.props",
@@ -1687,23 +1747,24 @@ def write_rst_importable_modules(basepath):
     '''
     importable_modules = {
         # python_modules
-        "bpy.path"          : "Path Utilities",
-        "bpy.utils"         : "Utilities",
-        "bpy_extras"        : "Extra Utilities",
+        "bpy.path"             : "Path Utilities",
+        "bpy.utils"            : "Utilities",
+        "bpy_extras"           : "Extra Utilities",
 
         # C_modules
-        "aud"               : "Audio System",
-        "blf"               : "Font Drawing",
-        "bmesh"             : "BMesh Module",
-        "bmesh.types"       : "BMesh Types",
-        "bmesh.utils"       : "BMesh Utilities",
-        "bpy.app"           : "Application Data",
-        "bpy.app.handlers"  : "Application Handlers",
-        "bpy.props"         : "Property Definitions",
-        "mathutils"         : "Math Types & Utilities",
-        "mathutils.geometry": "Geometry Utilities",
-        "mathutils.noise"   : "Noise Utilities",
-        "freestyle"         : "Freestyle Data Types & Operators",
+        "aud"                  : "Audio System",
+        "blf"                  : "Font Drawing",
+        "bmesh"                : "BMesh Module",
+        "bmesh.types"          : "BMesh Types",
+        "bmesh.utils"          : "BMesh Utilities",
+        "bpy.app"              : "Application Data",
+        "bpy.app.handlers"     : "Application Handlers",
+        "bpy.app.translations" : "Application Translations",
+        "bpy.props"            : "Property Definitions",
+        "mathutils"            : "Math Types & Utilities",
+        "mathutils.geometry"   : "Geometry Utilities",
+        "mathutils.noise"      : "Noise Utilities",
+        "freestyle"            : "Freestyle Data Types & Operators",
     }
     for mod_name, mod_descr in importable_modules.items():
         if mod_name not in EXCLUDE_MODULES:
@@ -1745,6 +1806,9 @@ def copy_handwritten_rsts(basepath):
         bge_types_dir = os.path.join(RST_DIR, "bge_types")
 
         for i in os.listdir(bge_types_dir):
+            if i.startswith("."):
+                # Avoid things like .svn dir...
+                continue
             shutil.copy2(os.path.join(bge_types_dir, i), basepath)
 
     # changelog

@@ -38,7 +38,7 @@
 
 #include "BKE_context.h"
 #include "BKE_report.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "RNA_define.h"
 #include "RNA_access.h"
@@ -538,7 +538,7 @@ static int edbm_rip_invoke__vert(bContext *C, wmOperator *op, const wmEvent *eve
 	Object *obedit = CTX_data_edit_object(C);
 	ARegion *ar = CTX_wm_region(C);
 	RegionView3D *rv3d = CTX_wm_region_view3d(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMesh *bm = em->bm;
 	BMIter iter, liter;
 	BMLoop *l;
@@ -770,11 +770,11 @@ static int edbm_rip_invoke__vert(bContext *C, wmOperator *op, const wmEvent *eve
 	else {
 		if (BM_edge_is_manifold(e2)) {
 			l = e2->l;
-			e = BM_face_other_edge_loop(l->f, e2, v)->e;
+			e = BM_loop_other_edge_loop(l, v)->e;
 			BM_elem_flag_enable(e, BM_ELEM_TAG);
 
 			l = e2->l->radial_next;
-			e = BM_face_other_edge_loop(l->f, e2, v)->e;
+			e = BM_loop_other_edge_loop(l, v)->e;
 			BM_elem_flag_enable(e, BM_ELEM_TAG);
 		}
 		else {
@@ -860,7 +860,7 @@ static int edbm_rip_invoke__edge(bContext *C, wmOperator *op, const wmEvent *eve
 	Object *obedit = CTX_data_edit_object(C);
 	ARegion *ar = CTX_wm_region(C);
 	RegionView3D *rv3d = CTX_wm_region_view3d(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMesh *bm = em->bm;
 	BMIter iter, eiter;
 	BMLoop *l;
@@ -920,14 +920,14 @@ static int edbm_rip_invoke__edge(bContext *C, wmOperator *op, const wmEvent *eve
 				l = (edbm_rip_edge_side_measure(e2, l_a, ar, projectMat, fmval) <
 				     edbm_rip_edge_side_measure(e2, l_b, ar, projectMat, fmval)) ? l_a : l_b;
 
-				l = BM_face_other_edge_loop(l->f, e2, v);
+				l = BM_loop_other_edge_loop(l, v);
 				/* important edge is manifold else we can be attempting to split off a fan that don't budge,
 				 * not crashing but adds duplicate edge. */
 				if (BM_edge_is_manifold(l->e)) {
 					l = l->radial_next;
 
 					if (totedge_manifold != 3)
-						l = BM_face_other_edge_loop(l->f, l->e, v);
+						l = BM_loop_other_edge_loop(l, v);
 
 					if (l) {
 						BLI_assert(!BM_elem_flag_test(l->e, BM_ELEM_TAG));
@@ -984,7 +984,7 @@ static int edbm_rip_invoke__edge(bContext *C, wmOperator *op, const wmEvent *eve
 static int edbm_rip_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMesh *bm = em->bm;
 	BMIter iter;
 	BMEdge *e;

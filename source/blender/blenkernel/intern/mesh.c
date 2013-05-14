@@ -67,7 +67,7 @@
 #include "BKE_curve.h"
 /* -- */
 #include "BKE_object.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BLI_edgehash.h"
 
 #include "bmesh.h"
@@ -118,8 +118,9 @@ static const char *cmpcode_to_str(int code)
 
 /* thresh is threshold for comparing vertices, uvs, vertex colors,
  * weights, etc.*/
-static int customdata_compare(CustomData *c1, CustomData *c2, Mesh *m1, Mesh *m2, float thresh)
+static int customdata_compare(CustomData *c1, CustomData *c2, Mesh *m1, Mesh *m2, const float thresh)
 {
+	const float thresh_sq = thresh * thresh;
 	CustomDataLayer *l1, *l2;
 	int i, i1 = 0, i2 = 0, tot, j;
 	
@@ -225,7 +226,7 @@ static int customdata_compare(CustomData *c1, CustomData *c2, Mesh *m1, Mesh *m2
 			int ltot = m1->totloop;
 		
 			for (j = 0; j < ltot; j++, lp1++, lp2++) {
-				if (len_v2v2(lp1->uv, lp2->uv) > thresh)
+				if (len_squared_v2v2(lp1->uv, lp2->uv) > thresh_sq)
 					return MESHCMP_LOOPUVMISMATCH;
 			}
 		}
@@ -351,7 +352,7 @@ static void mesh_ensure_tessellation_customdata(Mesh *me)
 static void mesh_update_linked_customdata(Mesh *me, const bool do_ensure_tess_cd)
 {
 	if (me->edit_btmesh)
-		BMEdit_UpdateLinkedCustomData(me->edit_btmesh);
+		BKE_editmesh_update_linked_customdata(me->edit_btmesh);
 
 	if (do_ensure_tess_cd) {
 		mesh_ensure_tessellation_customdata(me);
@@ -841,7 +842,7 @@ void BKE_mesh_assign_object(Object *ob, Mesh *me)
 		id_us_plus((ID *)me);
 	}
 	
-	test_object_materials((ID *)me);
+	test_object_materials(G.main, (ID *)me);
 
 	test_object_modifiers(ob);
 }
@@ -1202,6 +1203,80 @@ void BKE_mesh_from_metaball(ListBase *lb, Mesh *me)
 	}
 }
 
+/**
+ * Specialized function to use when we _know_ existing edges don't overlap with poly edges.
+ */
+static void make_edges_mdata_extend(MEdge **r_alledge, int *r_totedge,
+                                    const MPoly *mpoly, MLoop *mloop,
+                                    const int totpoly)
+{
+	int totedge = *r_totedge;
+	int totedge_new;
+	EdgeHash *eh;
+	const MPoly *mp;
+	int i;
+
+	eh = BLI_edgehash_new();
+
+	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+		BKE_mesh_poly_edgehash_insert(eh, mp, mloop + mp->loopstart);
+	}
+
+	totedge_new = BLI_edgehash_size(eh);
+
+#ifdef DEBUG
+	/* ensure that theres no overlap! */
+	if (totedge_new) {
+		MEdge *medge = *r_alledge;
+		for (i = 0; i < totedge; i++, medge++) {
+			BLI_assert(BLI_edgehash_haskey(eh, medge->v1, medge->v2) == false);
+		}
+	}
+#endif
+
+	if (totedge_new) {
+		EdgeHashIterator *ehi;
+		MEdge *medge;
+		unsigned int e_index = totedge;
+
+		*r_alledge = medge = (*r_alledge ? MEM_reallocN(*r_alledge, sizeof(MEdge) * (totedge + totedge_new)) :
+		                                   MEM_callocN(sizeof(MEdge) * totedge_new, __func__));
+		medge += totedge;
+
+		totedge += totedge_new;
+
+		/* --- */
+		for (ehi = BLI_edgehashIterator_new(eh);
+		     BLI_edgehashIterator_isDone(ehi) == FALSE;
+		     BLI_edgehashIterator_step(ehi), ++medge, e_index++)
+		{
+			BLI_edgehashIterator_getKey(ehi, &medge->v1, &medge->v2);
+			BLI_edgehashIterator_setValue(ehi, SET_UINT_IN_POINTER(e_index));
+
+			medge->crease = medge->bweight = 0;
+			medge->flag = ME_EDGEDRAW | ME_EDGERENDER;
+		}
+		BLI_edgehashIterator_free(ehi);
+
+		*r_totedge = totedge;
+
+
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+			MLoop *l = &mloop[mp->loopstart];
+			MLoop *l_prev = (l + (mp->totloop - 1));
+			int j;
+			for (j = 0; j < mp->totloop; j++, l++) {
+				/* lookup hashed edge index */
+				l_prev->e = GET_UINT_FROM_POINTER(BLI_edgehash_lookup(eh, l_prev->v, l->v));
+				l_prev = l;
+			}
+		}
+	}
+
+	BLI_edgehash_free(eh, NULL);
+}
+
+
 /* Initialize mverts, medges and, faces for converting nurbs to mesh and derived mesh */
 /* return non-zero on error */
 int BKE_mesh_nurbs_to_mdata(Object *ob, MVert **allvert, int *totvert,
@@ -1227,8 +1302,8 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
                                      MLoopUV **alluv,
                                      int *_totloop, int *_totpoly)
 {
+	Curve *cu = ob->data;
 	DispList *dl;
-	Curve *cu;
 	MVert *mvert;
 	MPoly *mpoly;
 	MLoop *mloop;
@@ -1237,12 +1312,8 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
 	float *data;
 	int a, b, ofs, vertcount, startvert, totvert = 0, totedge = 0, totloop = 0, totvlak = 0;
 	int p1, p2, p3, p4, *index;
-	int conv_polys = 0;
-
-	cu = ob->data;
-
-	conv_polys |= cu->flag & CU_3D;      /* 2d polys are filled with DL_INDEX3 displists */
-	conv_polys |= ob->type == OB_SURF;   /* surf polys are never filled */
+	const bool conv_polys = ((cu->flag & CU_3D) ||    /* 2d polys are filled with DL_INDEX3 displists */
+	                         (ob->type == OB_SURF));  /* surf polys are never filled */
 
 	/* count */
 	dl = dispbase->first;
@@ -1461,16 +1532,15 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
 		dl = dl->next;
 	}
 	
+	if (totvlak) {
+		make_edges_mdata_extend(alledge, &totedge,
+		                        *allpoly, *allloop, totvlak);
+	}
+
 	*_totpoly = totvlak;
 	*_totloop = totloop;
 	*_totedge = totedge;
 	*_totvert = totvert;
-
-	/* not uded for bmesh */
-#if 0
-	make_edges_mdata(*allvert, *allface, *allloop, *allpoly, totvert, totvlak, *_totloop, *_totpoly, 0, alledge, _totedge);
-	mfaces_strip_loose(*allface, _totface);
-#endif
 
 	return 0;
 }
@@ -1522,12 +1592,10 @@ void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, const bool use
 		}
 
 		BKE_mesh_calc_normals(me->mvert, me->totvert, me->mloop, me->mpoly, me->totloop, me->totpoly, NULL);
-
-		BKE_mesh_calc_edges(me, true, false);
 	}
 	else {
 		me = BKE_mesh_add(G.main, "Mesh");
-		DM_to_mesh(dm, me, ob);
+		DM_to_mesh(dm, me, ob, CD_MASK_MESH);
 	}
 
 	me->totcol = cu->totcol;
@@ -1873,51 +1941,74 @@ void BKE_mesh_calc_normals_mapping_ex(MVert *mverts, int numVerts,
 	
 }
 
+static void mesh_calc_normals_poly_accum(MPoly *mp, MLoop *ml,
+                                         MVert *mvert, float polyno[3], float (*tnorms)[3])
+{
+	const int nverts = mp->totloop;
+	float (*edgevecbuf)[3] = BLI_array_alloca(edgevecbuf, nverts);
+	int i;
+
+	/* Polygon Normal and edge-vector */
+	/* inline version of #BKE_mesh_calc_poly_normal, also does edge-vectors */
+	{
+		float const *v_prev = mvert[ml[nverts - 1].v].co;
+		float const *v_curr;
+		int i_prev = nverts - 1;
+
+		zero_v3(polyno);
+		/* Newell's Method */
+		for (i = 0; i < nverts; i++) {
+			v_curr = mvert[ml[i].v].co;
+			add_newell_cross_v3_v3v3(polyno, v_prev, v_curr);
+
+			/* Unrelated to normalize, calcualte edge-vector */
+			sub_v3_v3v3(edgevecbuf[i_prev], v_prev, v_curr);
+			i_prev = i;
+
+			v_prev = v_curr;
+		}
+		if (UNLIKELY(normalize_v3(polyno) == 0.0f)) {
+			polyno[2] = 1.0f; /* other axis set to 0.0 */
+		}
+	}
+
+	/* accumulate angle weighted face normal */
+	/* inline version of #accumulate_vertex_normals_poly */
+	{
+		const float *prev_edge = edgevecbuf[nverts - 1];
+
+		for (i = 0; i < nverts; i++) {
+			const float *cur_edge = edgevecbuf[i];
+			unsigned int vindex = ml[i].v;
+
+			/* calculate angle between the two poly edges incident on
+			 * this vertex */
+			const float fac = saacos(-dot_v3v3(cur_edge, prev_edge));
+
+			/* accumulate */
+			madd_v3_v3fl(tnorms[vindex], polyno, fac);
+			prev_edge = cur_edge;
+		}
+	}
+
+}
+
 void BKE_mesh_calc_normals(MVert *mverts, int numVerts, MLoop *mloop, MPoly *mpolys,
                            int UNUSED(numLoops), int numPolys, float (*polyNors_r)[3])
 {
 	float (*pnors)[3] = polyNors_r;
-
-	float (*tnorms)[3], (*edgevecbuf)[3] = NULL;
-	float **vertcos = NULL, **vertnos = NULL;
-	BLI_array_declare(vertcos);
-	BLI_array_declare(vertnos);
-	BLI_array_declare(edgevecbuf);
-
-	int i, j;
+	float (*tnorms)[3];
+	float tpnor[3];  /* temp poly normal */
+	int i;
 	MPoly *mp;
-	MLoop *ml;
-
-	if (!pnors) pnors = MEM_callocN(sizeof(float) * 3 * numPolys, "poly_nors mesh.c");
 
 	/* first go through and calculate normals for all the polys */
-	tnorms = MEM_callocN(sizeof(float) * 3 * numVerts, "tnorms mesh.c");
+	tnorms = MEM_callocN(sizeof(*tnorms) * numVerts, __func__);
 
 	mp = mpolys;
 	for (i = 0; i < numPolys; i++, mp++) {
-		BKE_mesh_calc_poly_normal(mp, mloop + mp->loopstart, mverts, pnors[i]);
-		ml = mloop + mp->loopstart;
-
-		BLI_array_empty(vertcos);
-		BLI_array_empty(vertnos);
-		BLI_array_grow_items(vertcos, mp->totloop);
-		BLI_array_grow_items(vertnos, mp->totloop);
-
-		for (j = 0; j < mp->totloop; j++) {
-			int vindex = ml[j].v;
-			vertcos[j] = mverts[vindex].co;
-			vertnos[j] = tnorms[vindex];
-		}
-
-		BLI_array_empty(edgevecbuf);
-		BLI_array_grow_items(edgevecbuf, mp->totloop);
-
-		accumulate_vertex_normals_poly(vertnos, pnors[i], vertcos, edgevecbuf, mp->totloop);
+		mesh_calc_normals_poly_accum(mp, mloop + mp->loopstart, mverts, pnors ? pnors[i] : tpnor, tnorms);
 	}
-
-	BLI_array_free(vertcos);
-	BLI_array_free(vertnos);
-	BLI_array_free(edgevecbuf);
 
 	/* following Mesh convention; we use vertex coordinate itself for normal in this case */
 	for (i = 0; i < numVerts; i++) {
@@ -1932,8 +2023,6 @@ void BKE_mesh_calc_normals(MVert *mverts, int numVerts, MLoop *mloop, MPoly *mpo
 	}
 
 	MEM_freeN(tnorms);
-
-	if (pnors != polyNors_r) MEM_freeN(pnors);
 }
 
 void BKE_mesh_calc_normals_tessface(MVert *mverts, int numVerts, MFace *mfaces, int numFaces, float (*faceNors_r)[3])
@@ -3394,20 +3483,21 @@ void BKE_mesh_tessface_clear(Mesh *mesh)
 }
 
 #if 0 /* slow version of the function below */
-void BKE_mesh_poly_calc_angles(MVert *mvert, MLoop *mloop,
-                                 MPoly *mp, float angles[])
+void BKE_mesh_calc_poly_angles(MPoly *mpoly, MLoop *loopstart,
+                               MVert *mvarray, float angles[])
 {
 	MLoop *ml;
+	MLoop *mloop = &loopstart[-mpoly->loopstart];
 
 	int j;
-	for (j = 0, ml = mloop + mp->loopstart; j < mp->totloop; j++, ml++) {
-		MLoop *ml_prev = ME_POLY_LOOP_PREV(mloop, mp, j);
-		MLoop *ml_next = ME_POLY_LOOP_NEXT(mloop, mp, j);
+	for (j = 0, ml = loopstart; j < mpoly->totloop; j++, ml++) {
+		MLoop *ml_prev = ME_POLY_LOOP_PREV(mloop, mpoly, j);
+		MLoop *ml_next = ME_POLY_LOOP_NEXT(mloop, mpoly, j);
 
 		float e1[3], e2[3];
 
-		sub_v3_v3v3(e1, mvert[ml_next->v].co, mvert[ml->v].co);
-		sub_v3_v3v3(e2, mvert[ml_prev->v].co, mvert[ml->v].co);
+		sub_v3_v3v3(e1, mvarray[ml_next->v].co, mvarray[ml->v].co);
+		sub_v3_v3v3(e2, mvarray[ml_prev->v].co, mvarray[ml->v].co);
 
 		angles[j] = (float)M_PI - angle_v3v3(e1, e2);
 	}
@@ -3415,21 +3505,20 @@ void BKE_mesh_poly_calc_angles(MVert *mvert, MLoop *mloop,
 
 #else /* equivalent the function above but avoid multiple subtractions + normalize */
 
-void BKE_mesh_poly_calc_angles(MVert *mvert, MLoop *mloop,
-                                 MPoly *mp, float angles[])
+void BKE_mesh_calc_poly_angles(MPoly *mpoly, MLoop *loopstart,
+                               MVert *mvarray, float angles[])
 {
-	MLoop *ml = mloop + mp->loopstart;
 	float nor_prev[3];
 	float nor_next[3];
 
-	int i_this = mp->totloop - 1;
+	int i_this = mpoly->totloop - 1;
 	int i_next = 0;
 
-	sub_v3_v3v3(nor_prev, mvert[ml[i_this - 1].v].co, mvert[ml[i_this].v].co);
+	sub_v3_v3v3(nor_prev, mvarray[loopstart[i_this - 1].v].co, mvarray[loopstart[i_this].v].co);
 	normalize_v3(nor_prev);
 
-	while (i_next < mp->totloop) {
-		sub_v3_v3v3(nor_next, mvert[ml[i_this].v].co, mvert[ml[i_next].v].co);
+	while (i_next < mpoly->totloop) {
+		sub_v3_v3v3(nor_next, mvarray[loopstart[i_this].v].co, mvarray[loopstart[i_next].v].co);
 		normalize_v3(nor_next);
 		angles[i_this] = angle_normalized_v3v3(nor_prev, nor_next);
 
@@ -3441,6 +3530,23 @@ void BKE_mesh_poly_calc_angles(MVert *mvert, MLoop *mloop,
 }
 #endif
 
+void BKE_mesh_poly_edgehash_insert(EdgeHash *ehash, const MPoly *mp, const MLoop *mloop)
+{
+	const MLoop *ml, *ml_next;
+	int i = mp->totloop;
+
+	ml_next = mloop;       /* first loop */
+	ml = &ml_next[i - 1];  /* last loop */
+
+	while (i-- != 0) {
+		if (!BLI_edgehash_haskey(ehash, ml->v, ml_next->v)) {
+			BLI_edgehash_insert(ehash, ml->v, ml_next->v, NULL);
+		}
+
+		ml = ml_next;
+		ml_next++;
+	}
+}
 
 void BKE_mesh_do_versions_cd_flag_init(Mesh *mesh)
 {

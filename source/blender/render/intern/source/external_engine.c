@@ -115,7 +115,7 @@ RenderEngineType *RE_engines_find(const char *idname)
 	type = BLI_findstring(&R_engines, idname, offsetof(RenderEngineType, idname));
 	if (!type)
 		type = &internal_render_type;
-
+	
 	return type;
 }
 

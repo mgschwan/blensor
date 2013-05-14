@@ -180,6 +180,7 @@ void BKE_tracking_context_free(struct MovieTrackingContext *context);
 void BKE_tracking_context_sync(struct MovieTrackingContext *context);
 void BKE_tracking_context_sync_user(const struct MovieTrackingContext *context, struct MovieClipUser *user);
 int BKE_tracking_context_step(struct MovieTrackingContext *context);
+void BKE_tracking_refine_marker(struct MovieClip *clip, struct MovieTrackingTrack *track, struct MovieTrackingMarker *marker, int backwards);
 
 /* **** Camera solving **** */
 int BKE_tracking_reconstruction_check(struct MovieTracking *tracking, struct MovieTrackingObject *object,
@@ -193,6 +194,8 @@ void BKE_tracking_reconstruction_context_free(struct MovieReconstructContext *co
 void BKE_tracking_reconstruction_solve(struct MovieReconstructContext *context, short *stop, short *do_update,
                                        float *progress, char *stats_message, int message_size);
 int BKE_tracking_reconstruction_finish(struct MovieReconstructContext *context, struct MovieTracking *tracking);
+
+void BKE_tracking_reconstruction_scale(struct MovieTracking *tracking, float scale[3]);
 
 /* **** Feature detection **** */
 void BKE_tracking_detect_fast(struct MovieTracking *tracking, struct ListBase *tracksbase, struct ImBuf *imbuf,

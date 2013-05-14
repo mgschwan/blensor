@@ -49,6 +49,7 @@ def clean_float(text):
 # ---------
 # Mesh Info
 
+
 class Print3DInfoVolume(Operator):
     """Report the volume of the active mesh"""
     bl_idname = "mesh.print3d_info_volume"
@@ -61,14 +62,18 @@ class Print3DInfoVolume(Operator):
         obj = context.active_object
 
         bm = mesh_helpers.bmesh_copy_from_object(obj, apply_modifiers=True)
-        volume = mesh_helpers.bmesh_calc_volume(bm)
+        volume = bm.calc_volume()
         bm.free()
 
         info = []
-        info.append(("Volume: %s³" % clean_float("%.4f" % volume),
+        info.append(("Volume: %s³" % clean_float("%.8f" % volume),
                     None))
-        info.append(("%s cm³" % clean_float("%.4f" % ((volume * (scale * scale * scale)) / (0.01 * 0.01 * 0.01) )),
-                    None))
+        if unit.system == 'IMPERIAL':
+            info.append(("%s \"³" % clean_float("%.4f" % ((volume * (scale * scale * scale)) / (0.0254 * 0.0254 * 0.0254))),
+                        None))
+        else:
+            info.append(("%s cm³" % clean_float("%.4f" % ((volume * (scale * scale * scale)) / (0.01 * 0.01 * 0.01))),
+                        None))
 
         report.update(*info)
         return {'FINISHED'}
@@ -90,10 +95,14 @@ class Print3DInfoArea(Operator):
         bm.free()
 
         info = []
-        info.append(("Area: %s²" % clean_float("%.4f" % area),
+        info.append(("Area: %s²" % clean_float("%.8f" % area),
                     None))
-        info.append(("%s cm²" % clean_float("%.4f" % ((area * (scale * scale)) / (0.01 * 0.01))),
-                    None))
+        if unit.system == 'IMPERIAL':
+            info.append(("%s \"²" % clean_float("%.4f" % ((area * (scale * scale)) / (0.0254 * 0.0254))),
+                        None))
+        else:
+            info.append(("%s cm²" % clean_float("%.4f" % ((area * (scale * scale)) / (0.01 * 0.01))),
+                        None))
         report.update(*info)
         return {'FINISHED'}
 
@@ -137,7 +146,6 @@ class Print3DCheckSolid(Operator):
 
     def execute(self, context):
         return execute_check(self, context)
-
 
 
 class Print3DCheckIntersections(Operator):
@@ -235,7 +243,6 @@ class Print3DCheckThick(Operator):
 
         info.append(("Thin Faces: %d" % len(faces_error),
                     (bmesh.types.BMFace, faces_error)))
-
 
     def execute(self, context):
         return execute_check(self, context)
@@ -461,7 +468,6 @@ class Print3DSelectReport(Operator):
         bmesh.types.BMFace: "faces",
         }
 
-
     def execute(self, context):
         obj = context.edit_object
         info = report.info()
@@ -486,6 +492,107 @@ class Print3DSelectReport(Operator):
         #~ bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {'FINISHED'}
+
+
+# -----------
+# Scale to...
+
+def _scale(scale, report=None, report_suffix=""):
+    if scale != 1.0:
+        bpy.ops.transform.resize(value=(scale,) * 3,
+                                 mirror=False, proportional='DISABLED',
+                                 snap=False,
+                                 texture_space=False)
+    if report is not None:
+        report({'INFO'}, "Scaled by %s%s" % (clean_float("%.6f" % scale), report_suffix))
+
+
+class Print3DScaleToVolume(Operator):
+    """Scale edit-mesh or selected-objects to a set volume"""
+    bl_idname = "mesh.print3d_scale_to_volume"
+    bl_label = "Scale to Volume"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    volume_init = FloatProperty(
+            options={'HIDDEN'},
+            )
+    volume = FloatProperty(
+            name="Volume",
+            unit='VOLUME',
+            min=0.0, max=100000.0,
+            )
+
+    def execute(self, context):
+        import math
+        scale = math.pow(self.volume, 1 / 3) / math.pow(self.volume_init, 1 / 3)
+        self.report({'INFO'}, "Scaled by %s" % clean_float("%.6f" % scale))
+        _scale(scale, self.report)
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+
+        def calc_volume(obj):
+            bm = mesh_helpers.bmesh_copy_from_object(obj, apply_modifiers=True)
+            volume = bm.calc_volume(signed=True)
+            bm.free()
+            return volume
+
+        if context.mode == 'EDIT_MESH':
+            volume = calc_volume(context.edit_object)
+        else:
+            volume = sum(calc_volume(obj) for obj in context.selected_editable_objects
+                         if obj.type == 'MESH')
+
+        self.volume_init = self.volume = abs(volume)
+
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+
+
+class Print3DScaleToBounds(Operator):
+    """Scale edit-mesh or selected-objects to fit within a maximum length"""
+    bl_idname = "mesh.print3d_scale_to_bounds"
+    bl_label = "Scale to Bounds"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    length_init = FloatProperty(
+            options={'HIDDEN'},
+            )
+    axis_init = IntProperty(
+            options={'HIDDEN'},
+            )
+    length = FloatProperty(
+            name="Length Limit",
+            unit='LENGTH',
+            min=0.0, max=100000.0,
+            )
+
+    def execute(self, context):
+        scale = self.length / self.length_init
+        _scale(scale,
+               report=self.report,
+               report_suffix=", Clamping %s-Axis" % "XYZ"[self.axis_init])
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        from mathutils import Vector
+
+        def calc_length(vecs):
+            return max(((max(v[i] for v in vecs) - min(v[i] for v in vecs)), i) for i in range(3))
+
+        if context.mode == 'EDIT_MESH':
+            length, axis = calc_length([Vector(v) * obj.matrix_world
+                                        for v in context.edit_object.bound_box])
+        else:
+            length, axis = calc_length([Vector(v) * obj.matrix_world
+                                        for obj in context.selected_editable_objects
+                                        if obj.type == 'MESH' for v in obj.bound_box])
+
+        self.length_init = self.length = length
+        self.axis_init = axis
+
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
 
 
 # ------

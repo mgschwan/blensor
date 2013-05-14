@@ -27,12 +27,18 @@ class SCENE_OT_freestyle_fill_range_by_selection(bpy.types.Operator):
     """(either a user-specified object or the active camera)"""
     bl_idname = "scene.freestyle_fill_range_by_selection"
     bl_label = "Fill Range by Selection"
+    bl_options = {'INTERNAL'}
 
     type = EnumProperty(name="Type", description="Type of the modifier to work on",
                         items=(("COLOR", "Color", "Color modifier type"),
                                ("ALPHA", "Alpha", "Alpha modifier type"),
                                ("THICKNESS", "Thickness", "Thickness modifier type")))
     name = StringProperty(name="Name", description="Name of the modifier to work on")
+
+    @classmethod
+    def poll(cls, context):
+        rl = context.scene.render.layers.active
+        return rl and rl.freestyle_settings.linesets.active
 
     def execute(self, context):
         rl = context.scene.render.layers.active

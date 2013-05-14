@@ -42,7 +42,6 @@
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -296,7 +295,7 @@ static void graph_panel_key_properties(const bContext *C, Panel *pa)
 		
 		/* get property that F-Curve affects, for some unit-conversion magic */
 		RNA_id_pointer_create(ale->id, &id_ptr);
-		if (RNA_path_resolve(&id_ptr, fcu->rna_path, &fcu_prop_ptr, &fcu_prop) && fcu_prop) {
+		if (RNA_path_resolve_property(&id_ptr, fcu->rna_path, &fcu_prop_ptr, &fcu_prop)) {
 			/* determine the unit for this property */
 			unit = RNA_SUBTYPE_UNIT(RNA_property_subtype(fcu_prop));
 		}

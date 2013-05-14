@@ -39,7 +39,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BLF_translation.h"
@@ -673,7 +672,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 
 			col = uiLayoutColumn(layout, FALSE);
 			uiTemplateColorspaceSettings(col, &imaptr, "colorspace_settings");
-			uiItemR(col, &imaptr, "view_as_render", 0, NULL, ICON_NONE);
+			uiItemR(col, &imaptr, "use_view_as_render", 0, NULL, ICON_NONE);
 
 			if (ima->source != IMA_SRC_GENERATED) {
 				if (compact == 0) { /* background image view doesnt need these */

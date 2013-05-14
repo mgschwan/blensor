@@ -708,17 +708,13 @@ void glaDrawPixelsSafe(float x, float y, int img_w, int img_h, int row_w, int fo
 /* uses either DrawPixelsSafe or DrawPixelsTex, based on user defined maximum */
 void glaDrawPixelsAuto(float x, float y, int img_w, int img_h, int format, int type, int zoomfilter, void *rect)
 {
-	if (U.image_gpubuffer_limit) {
-		/* Megapixels, use float math to prevent overflow */
-		float img_size = ((float)img_w * (float)img_h) / (1024.0f * 1024.0f);
-		
-		if (U.image_gpubuffer_limit > (int)img_size) {
-			glColor4f(1.0, 1.0, 1.0, 1.0);
-			glaDrawPixelsTex(x, y, img_w, img_h, format, type, zoomfilter, rect);
-			return;
-		}
+	if (U.image_draw_method != IMAGE_DRAW_METHOD_DRAWPIXELS) {
+		glColor4f(1.0, 1.0, 1.0, 1.0);
+		glaDrawPixelsTex(x, y, img_w, img_h, format, type, zoomfilter, rect);
 	}
-	glaDrawPixelsSafe(x, y, img_w, img_h, img_w, format, type, rect);
+	else {
+		glaDrawPixelsSafe(x, y, img_w, img_h, img_w, format, type, rect);
+	}
 }
 
 /* 2D Drawing Assistance */
@@ -1047,10 +1043,13 @@ void glaDrawImBuf_glsl(ImBuf *ibuf, float x, float y, int zoomfilter,
 		return;
 
 	/* Dithering is not supported on GLSL yet */
-	force_fallback = ibuf->dither != 0.0f;
+	force_fallback |= ibuf->dither != 0.0f;
 
 	/* Single channel images could not be transformed using GLSL yet */
-	force_fallback = ibuf->channels == 1;
+	force_fallback |= ibuf->channels == 1;
+
+	/* If user decided not to use GLSL, fallback to glaDrawPixelsAuto */
+	force_fallback |= (U.image_draw_method != IMAGE_DRAW_METHOD_GLSL);
 
 	/* This is actually lots of crap, but currently not sure about
 	 * more clear way to bypass partial buffer update crappyness

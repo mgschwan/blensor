@@ -85,6 +85,12 @@ class CyclesRender_PT_sampling(CyclesButtonsPanel, Panel):
             sub.prop(cscene, "mesh_light_samples", text="Mesh Light")
             sub.prop(cscene, "subsurface_samples", text="Subsurface")
 
+        for rl in scene.render.layers:
+            if rl.samples > 0:
+                layout.separator()
+                layout.row().prop(cscene, "use_layer_samples")
+                break
+
 
 class CyclesRender_PT_light_paths(CyclesButtonsPanel, Panel):
     bl_label = "Light Paths"
@@ -294,10 +300,13 @@ class CyclesRender_PT_layer_options(CyclesButtonsPanel, Panel):
         col = split.column()
         col.label(text="Material:")
         col.prop(rl, "material_override", text="")
+        col.separator()
+        col.prop(rl, "samples")
 
         col = split.column()
-        col.prop(rl, "samples")
         col.prop(rl, "use_sky", "Use Environment")
+        col.prop(rl, "use_solid", "Use Surfaces")
+        col.prop(rl, "use_strand", "Use Hair")
 
 
 class CyclesRender_PT_layer_passes(CyclesButtonsPanel, Panel):
@@ -890,8 +899,9 @@ class CyclesTexture_PT_context(CyclesButtonsPanel, Panel):
 
             if pin_id:
                 col.template_ID(space, "pin_id")
-            elif user:
-                col.template_ID(user, "texture", new="texture.new")
+            else:
+                propname = context.texture_user_property.identifier
+                col.template_ID(user, propname, new="texture.new")
 
             if tex:
                 split = layout.split(percentage=0.2)
@@ -1025,8 +1035,7 @@ class CyclesRender_PT_CurveRendering(CyclesButtonsPanel, Panel):
         scene = context.scene
         cscene = scene.cycles
         psys = context.particle_system
-        device_type = context.user_preferences.system.compute_device_type
-        experimental = ((cscene.feature_set == 'EXPERIMENTAL') and (cscene.device == 'CPU' or device_type == 'NONE'))
+        experimental = (cscene.feature_set == 'EXPERIMENTAL')
         return CyclesButtonsPanel.poll(context) and experimental and psys
 
     def draw_header(self, context):
@@ -1079,6 +1088,10 @@ class CyclesRender_PT_CurveRendering(CyclesButtonsPanel, Panel):
 
             row = layout.row()
             row.prop(ccscene, "use_parents", text="Include parents")
+        
+        row = layout.row()
+        row.prop(ccscene, "minimum_width", text="Min Pixels")
+        row.prop(ccscene, "maximum_width", text="Max Ext.")
 
 
 class CyclesParticle_PT_CurveSettings(CyclesButtonsPanel, Panel):
@@ -1091,8 +1104,7 @@ class CyclesParticle_PT_CurveSettings(CyclesButtonsPanel, Panel):
         cscene = scene.cycles
         ccscene = scene.cycles_curves
         use_curves = ccscene.use_curves and context.particle_system
-        device_type = context.user_preferences.system.compute_device_type
-        experimental = cscene.feature_set == 'EXPERIMENTAL' and (cscene.device == 'CPU' or device_type == 'NONE')
+        experimental = cscene.feature_set == 'EXPERIMENTAL'
         return CyclesButtonsPanel.poll(context) and experimental and use_curves
 
     def draw(self, context):
@@ -1103,12 +1115,15 @@ class CyclesParticle_PT_CurveSettings(CyclesButtonsPanel, Panel):
 
         row = layout.row()
         row.prop(cpsys, "shape", text="Shape")
-        row.prop(cpsys, "use_closetip", text="Close tip")
 
-        layout.label(text="Width multiplier:")
+        layout.label(text="Thickness:")
         row = layout.row()
         row.prop(cpsys, "root_width", text="Root")
         row.prop(cpsys, "tip_width", text="Tip")
+        
+        row = layout.row()
+        row.prop(cpsys, "radius_scale", text="Scaling")
+        row.prop(cpsys, "use_closetip", text="Close tip")
 
 
 class CyclesScene_PT_simplify(CyclesButtonsPanel, Panel):

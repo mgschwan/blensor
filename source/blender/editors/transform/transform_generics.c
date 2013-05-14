@@ -77,7 +77,7 @@
 #include "BKE_nla.h"
 #include "BKE_context.h"
 #include "BKE_sequencer.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_tracking.h"
 #include "BKE_mask.h"
 
@@ -742,7 +742,7 @@ static void recalcData_view3d(TransInfo *t)
 			if (la->editlatt->latt->flag & LT_OUTSIDE) outside_lattice(la->editlatt->latt);
 		}
 		else if (t->obedit->type == OB_MESH) {
-			BMEditMesh *em = BMEdit_FromObject(t->obedit);
+			BMEditMesh *em = BKE_editmesh_from_object(t->obedit);
 			/* mirror modifier clipping? */
 			if (t->state != TRANS_CANCEL) {
 				/* apply clipping after so we never project past the clip plane [#25423] */
@@ -755,7 +755,7 @@ static void recalcData_view3d(TransInfo *t)
 			DAG_id_tag_update(t->obedit->data, 0);  /* sets recalc flags */
 			
 			EDBM_mesh_normals_update(em);
-			BMEdit_RecalcTessellation(em);
+			BKE_editmesh_tessface_calc(em);
 		}
 		else if (t->obedit->type == OB_ARMATURE) { /* no recalc flag, does pose */
 			bArmature *arm = t->obedit->data;
@@ -1002,6 +1002,19 @@ void drawLine(TransInfo *t, const float center[3], const float dir[3], char axis
 	}
 }
 
+/**
+ * Free data before switching to another mode.
+ */
+void resetTransModal(TransInfo *t)
+{
+	if (t->mode == TFM_EDGE_SLIDE) {
+		freeEdgeSlideVerts(t);
+	}
+	else if (t->mode == TFM_VERT_SLIDE) {
+		freeVertSlideVerts(t);
+	}
+}
+
 void resetTransRestrictions(TransInfo *t)
 {
 	t->flag &= ~T_ALL_RESTRICTIONS;
@@ -1027,7 +1040,12 @@ int initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *even
 	t->ar = ar;
 	t->obedit = obedit;
 	t->settings = ts;
-	
+
+	if (obedit) {
+		copy_m3_m4(t->obedit_mat, obedit->obmat);
+		normalize_m3(t->obedit_mat);
+	}
+
 	t->data = NULL;
 	t->ext = NULL;
 	
@@ -1605,7 +1623,7 @@ void calculateCenter(TransInfo *t)
 			if (t->obedit) {
 				if (t->obedit && t->obedit->type == OB_MESH) {
 					BMEditSelection ese;
-					BMEditMesh *em = BMEdit_FromObject(t->obedit);
+					BMEditMesh *em = BKE_editmesh_from_object(t->obedit);
 
 					if (BM_select_history_active_get(em->bm, &ese)) {
 						BM_editselection_center(&ese, t->center);
@@ -1754,7 +1772,6 @@ void calculatePropRatio(TransInfo *t)
 						td->factor = (float)sqrt(2 * dist - dist * dist);
 						break;
 					case PROP_RANDOM:
-						BLI_srand(BLI_rand()); /* random seed */
 						td->factor = BLI_frand() * dist;
 						break;
 					default:

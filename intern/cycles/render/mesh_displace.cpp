@@ -28,7 +28,7 @@
 
 CCL_NAMESPACE_BEGIN
 
-bool MeshManager::displace(Device *device, Scene *scene, Mesh *mesh, Progress& progress)
+bool MeshManager::displace(Device *device, DeviceScene *dscene, Scene *scene, Mesh *mesh, Progress& progress)
 {
 	/* verify if we have a displacement shader */
 	bool has_displacement = false;
@@ -79,18 +79,20 @@ bool MeshManager::displace(Device *device, Scene *scene, Mesh *mesh, Progress& p
 			int object = ~object_index;
 			int prim = mesh->tri_offset + i;
 			float u, v;
-
-			if(j == 0) {
-				u = 1.0f;
-				v = 0.0f;
-			}
-			else if(j == 1) {
-				u = 0.0f;
-				v = 1.0f;
-			}
-			else {
-				u = 0.0f;
-				v = 0.0f;
+			
+			switch (j) {
+				case 0:
+					u = 1.0f;
+					v = 0.0f;
+					break;
+				case 1:
+					u = 0.0f;
+					v = 1.0f;
+					break;
+				default:
+					u = 0.0f;
+					v = 0.0f;
+					break;
 			}
 
 			/* back */
@@ -105,6 +107,9 @@ bool MeshManager::displace(Device *device, Scene *scene, Mesh *mesh, Progress& p
 	/* run device task */
 	device_vector<float4> d_output;
 	d_output.resize(d_input_size);
+
+	/* needs to be up to data for attribute access */
+	device->const_copy_to("__data", &dscene->data, sizeof(dscene->data));
 
 	device->mem_alloc(d_input, MEM_READ_ONLY);
 	device->mem_copy_to(d_input);

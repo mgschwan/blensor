@@ -676,7 +676,7 @@ static GHash *dupli_keyIndexHash(GHash *keyindex)
 	gh = BLI_ghash_ptr_new("dupli_keyIndex gh");
 
 	for (hashIter = BLI_ghashIterator_new(keyindex);
-	     BLI_ghashIterator_notDone(hashIter);
+	     BLI_ghashIterator_done(hashIter) == false;
 	     BLI_ghashIterator_step(hashIter))
 	{
 		void *cv = BLI_ghashIterator_getKey(hashIter);
@@ -1028,7 +1028,8 @@ static int curve_is_animated(Curve *cu)
 	return ad && (ad->action || ad->drivers.first);
 }
 
-static void fcurve_path_rename(AnimData *adt, char *orig_rna_path, char *rna_path, ListBase *orig_curves, ListBase *curves)
+static void fcurve_path_rename(AnimData *adt, const char *orig_rna_path, char *rna_path,
+                               ListBase *orig_curves, ListBase *curves)
 {
 	FCurve *fcu, *nfcu, *nextfcu;
 	int len = strlen(orig_rna_path);
@@ -5401,8 +5402,6 @@ static void selectrandom_curve(ListBase *editnurb, float randfac)
 	BPoint *bp;
 	int a;
 	
-	BLI_srand(BLI_rand()); /* random seed */
-	
 	for (nu = editnurb->first; nu; nu = nu->next) {
 		if (nu->type == CU_BEZIER) {
 			bezt = nu->bezt;
@@ -6543,13 +6542,13 @@ static int curvesurf_prim_add(bContext *C, wmOperator *op, int type, int isSurf)
 	Object *obedit = CTX_data_edit_object(C);
 	ListBase *editnurb;
 	Nurb *nu;
-	int newob = 0;
-	int enter_editmode, is_aligned;
+	bool newob = false;
+	bool enter_editmode, is_view_aligned;
 	unsigned int layer;
 	float loc[3], rot[3];
 	float mat[4][4];
 
-	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, &is_aligned))
+	if (!ED_object_add_generic_get_opts(C, op, loc, rot, &enter_editmode, &layer, &is_view_aligned))
 		return OPERATOR_CANCELLED;
 
 	if (!isSurf) { /* adding curve */
@@ -6557,7 +6556,7 @@ static int curvesurf_prim_add(bContext *C, wmOperator *op, int type, int isSurf)
 			Curve *cu;
 
 			obedit = ED_object_add_type(C, OB_CURVE, loc, rot, TRUE, layer);
-			newob = 1;
+			newob = true;
 
 			cu = (Curve *)obedit->data;
 			cu->flag |= CU_DEFORM_FILL;
@@ -6572,7 +6571,7 @@ static int curvesurf_prim_add(bContext *C, wmOperator *op, int type, int isSurf)
 	else { /* adding surface */
 		if (obedit == NULL || obedit->type != OB_SURF) {
 			obedit = ED_object_add_type(C, OB_SURF, loc, rot, TRUE, layer);
-			newob = 1;
+			newob = true;
 		}
 		else {
 			DAG_id_tag_update(&obedit->id, OB_RECALC_DATA);

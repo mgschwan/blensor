@@ -47,14 +47,6 @@
 #include <shlobj.h>
 #include <tlhelp32.h>
 
-// win64 doesn't define GWL_USERDATA
-#ifdef WIN32
-#  ifndef GWL_USERDATA
-#    define GWL_USERDATA GWLP_USERDATA
-#    define GWL_WNDPROC GWLP_WNDPROC
-#  endif
-#endif
-
 #include "utfconv.h"
 
 #include "GHOST_DisplayManagerWin32.h"
@@ -607,7 +599,17 @@ GHOST_TKey GHOST_SystemWin32::convertKey(GHOST_IWindow *window, short vKey, shor
 			case VK_GR_LESS:        key = GHOST_kKeyGrLess;         break;
 
 			case VK_SHIFT:
-				key = (scanCode == 0x36) ? GHOST_kKeyRightShift : GHOST_kKeyLeftShift;
+					/* Check single shift presses */
+					if (scanCode == 0x36) {
+						key = GHOST_kKeyRightShift;
+					} else if (scanCode == 0x2a) {
+						key = GHOST_kKeyLeftShift;
+					} else {
+						/* Must be a combination SHIFT (Left or Right) + a Key 
+						 * Ignore this as the next message will contain
+						 * the desired "Key" */
+						key = GHOST_kKeyUnknown;
+					}
 				break;
 			case VK_CONTROL:
 				key = (extend) ? GHOST_kKeyRightControl : GHOST_kKeyLeftControl;
@@ -894,7 +896,7 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 	GHOST_ASSERT(system, "GHOST_SystemWin32::s_wndProc(): system not initialized");
 
 	if (hwnd) {
-		GHOST_WindowWin32 *window = (GHOST_WindowWin32 *)::GetWindowLong(hwnd, GWL_USERDATA);
+		GHOST_WindowWin32 *window = (GHOST_WindowWin32 *)::GetWindowLongPtr(hwnd, GWLP_USERDATA);
 		if (window) {
 			switch (msg) {
 				// we need to check if new key layout has AltGr
@@ -982,13 +984,14 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					if (wParam == SC_KEYMENU) 
 					{
 						eventHandled = true;
-					} else
-					if((wParam&0xfff0)==SC_SIZE)
+					}// else
+						/* XXX Disable for now due to area resizing issue. bug# 34990 */
+					/*if((wParam&0xfff0)==SC_SIZE)
 					{
 						window->registerMouseClickEvent(0);
 						window->m_wsh.startSizing(wParam);
 						eventHandled = true;
-					}
+					}*/
 					break;
 				////////////////////////////////////////////////////////////////////////
 				// Tablet events, processed

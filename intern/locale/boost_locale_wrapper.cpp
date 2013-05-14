@@ -62,34 +62,35 @@ void bl_locale_set(const char *locale)
 	try {
 		if (locale && locale[0]) {
 			_locale = gen(locale);
-			std::locale::global(_locale);
 		}
 		else {
 #ifdef __APPLE__
 			extern const char *user_locale; // pulled from Ghost_SystemCocoa
 			std::string locale_osx = user_locale + std::string(".UTF-8");
 			_locale = gen(locale_osx.c_str());
-			std::locale::global(_locale);
 #else
 			_locale = gen("");
-			std::locale::global(_locale);
 #endif
 		}
+		std::locale::global(_locale);
 		// Note: boost always uses "C" LC_NUMERIC by default!
+
+		// Generate the locale string (useful to know which locale we are actually using in case of "default" one).
+#define LOCALE_INFO std::use_facet<boost::locale::info>(_locale)
+
+		locale_str = LOCALE_INFO.language();
+		if (LOCALE_INFO.country() != "") {
+			locale_str += "_" + LOCALE_INFO.country();
+		}
+		if (LOCALE_INFO.variant() != "") {
+			locale_str += "@" + LOCALE_INFO.variant();
+		}
+
+#undef LOCALE_INFO
+
 	}
 	catch(std::exception const &e) {
 		std::cout << "bl_locale_set(" << locale << "): " << e.what() << " \n";
-	}
-
-	/* Generate the locale string (useful to know which locale we are actually using in case of "default" one). */
-#define LOCALE_INFO std::use_facet<boost::locale::info>(_locale)
-
-	locale_str = LOCALE_INFO.language();
-	if (LOCALE_INFO.country() != "") {
-		locale_str += "_" + LOCALE_INFO.country();
-	}
-	if (LOCALE_INFO.variant() != "") {
-		locale_str += "@" + LOCALE_INFO.variant();
 	}
 }
 

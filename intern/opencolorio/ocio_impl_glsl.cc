@@ -51,8 +51,7 @@ using namespace OCIO_NAMESPACE;
 
 #include "ocio_impl.h"
 
-static const int LUT3D_EDGE_SIZE = 32;
-
+static const int LUT3D_EDGE_SIZE = 64;
 
 /* **** OpenGL drawing routines using GLSL for color space transform ***** */
 
@@ -79,6 +78,10 @@ typedef struct OCIO_GLSLDrawState {
 } OCIO_GLSLDrawState;
 
 /* Hardcoded to do alpha predivide before color space conversion */
+/* NOTE: This is true we only do de-premul here and NO premul
+ *       and the reason is simple -- opengl is always configured
+ *       for straight alpha at this moment
+ */
 static const char *g_fragShaderText = ""
 "\n"
 "uniform sampler2D tex1;\n"
@@ -88,22 +91,13 @@ static const char *g_fragShaderText = ""
 "void main()\n"
 "{\n"
 "    vec4 col = texture2D(tex1, gl_TexCoord[0].st);\n"
-"    if (predivide == false || col[3] == 1.0f || col[3] == 0.0f) {\n"
-"      gl_FragColor = OCIODisplay(col, tex2);\n"
-"    } else {\n"
-"      float alpha = col[3];\n"
-"      float inv_alpha = 1.0f / alpha;\n"
-"\n"
-"      col[0] *= inv_alpha;\n"
-"      col[1] *= inv_alpha;\n"
-"      col[2] *= inv_alpha;\n"
-"\n"
-"      gl_FragColor = OCIODisplay(col, tex2);\n"
-"\n"
-"      col[0] *= alpha;\n"
-"      col[1] *= alpha;\n"
-"      col[2] *= alpha;\n"
+"    if (predivide && col[3] > 0.0 && col[3] < 1.0) {\n"
+"        float inv_alpha = 1.0 / col[3];\n"
+"        col[0] *= inv_alpha;\n"
+"        col[1] *= inv_alpha;\n"
+"        col[2] *= inv_alpha;\n"
 "    }\n"
+"    gl_FragColor = OCIODisplay(col, tex2);\n"
 "\n"
 "}\n";
 
@@ -121,6 +115,7 @@ static GLuint compileShaderText(GLenum shaderType, const char *text)
 		GLchar log[1000];
 		GLsizei len;
 		glGetShaderInfoLog(shader, 1000, &len, log);
+		fprintf(stderr, "Shader compile error:\n%s\n", log);
 		return 0;
 	}
 

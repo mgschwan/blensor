@@ -441,6 +441,7 @@ static void clip_operatortypes(void)
 	WM_operatortype_append(CLIP_OT_mode_set);
 	WM_operatortype_append(CLIP_OT_view_ndof);
 	WM_operatortype_append(CLIP_OT_prefetch);
+	WM_operatortype_append(CLIP_OT_set_scene_frames);
 
 	/* ** clip_toolbar.c ** */
 	WM_operatortype_append(CLIP_OT_tools);
@@ -470,6 +471,7 @@ static void clip_operatortypes(void)
 
 	/* track */
 	WM_operatortype_append(CLIP_OT_track_markers);
+	WM_operatortype_append(CLIP_OT_refine_markers);
 
 	/* solving */
 	WM_operatortype_append(CLIP_OT_solve_camera);
@@ -488,6 +490,7 @@ static void clip_operatortypes(void)
 	WM_operatortype_append(CLIP_OT_set_axis);
 	WM_operatortype_append(CLIP_OT_set_scale);
 	WM_operatortype_append(CLIP_OT_set_solution_scale);
+	WM_operatortype_append(CLIP_OT_apply_solution_scale);
 
 	/* detect */
 	WM_operatortype_append(CLIP_OT_detect_features);
@@ -1362,7 +1365,12 @@ static void clip_header_area_listener(ARegion *ar, wmNotifier *wmn)
 /* add handlers, stuff you only do once or on area/region changes */
 static void clip_tools_area_init(wmWindowManager *wm, ARegion *ar)
 {
+	wmKeyMap *keymap;
+
 	ED_region_panels_init(wm, ar);
+
+	keymap = WM_keymap_find(wm->defaultconf, "Clip", SPACE_CLIP, 0);
+	WM_event_add_keymap_handler(&ar->handlers, keymap);
 }
 
 static void clip_tools_area_draw(const bContext *C, ARegion *ar)

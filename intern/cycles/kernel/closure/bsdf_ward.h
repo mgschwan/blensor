@@ -39,14 +39,8 @@ CCL_NAMESPACE_BEGIN
 
 __device int bsdf_ward_setup(ShaderClosure *sc)
 {
-	float ax = sc->data0;
-	float ay = sc->data1;
-
-	float m_ax = clamp(ax, 1e-4f, 1.0f);
-	float m_ay = clamp(ay, 1e-4f, 1.0f);
-
-	sc->data0 = m_ax;
-	sc->data1 = m_ay;
+	sc->data0 = clamp(sc->data0, 1e-4f, 1.0f); /* m_ax */
+	sc->data1 = clamp(sc->data1, 1e-4f, 1.0f); /* m_ay */
 
 	sc->type = CLOSURE_BSDF_WARD_ID;
 	return SD_BSDF|SD_BSDF_HAS_EVAL|SD_BSDF_GLOSSY;
@@ -54,8 +48,8 @@ __device int bsdf_ward_setup(ShaderClosure *sc)
 
 __device void bsdf_ward_blur(ShaderClosure *sc, float roughness)
 {
-	sc->data0 = fmaxf(roughness, sc->data0);
-	sc->data1 = fmaxf(roughness, sc->data1);
+	sc->data0 = fmaxf(roughness, sc->data0); /* m_ax */
+	sc->data1 = fmaxf(roughness, sc->data1); /* m_ay */
 }
 
 __device float3 bsdf_ward_eval_reflect(const ShaderClosure *sc, const float3 I, const float3 omega_in, float *pdf)
@@ -81,11 +75,11 @@ __device float3 bsdf_ward_eval_reflect(const ShaderClosure *sc, const float3 I, 
 		float doty = dot(H, Y) / m_ay;
 		float dotn = dot(H, N);
 		float exp_arg = (dotx * dotx + doty * doty) / (dotn * dotn);
-		float denom = (4 * M_PI_F * m_ax * m_ay * sqrtf(cosNO * cosNI));
+		float denom = (M_4PI_F * m_ax * m_ay * sqrtf(cosNO * cosNI));
 		float exp_val = expf(-exp_arg);
 		float out = cosNI * exp_val / denom;
 		float oh = dot(H, I);
-		denom = 4 * M_PI_F * m_ax * m_ay * oh * dotn * dotn * dotn;
+		denom = M_4PI_F * m_ax * m_ay * oh * dotn * dotn * dotn;
 		*pdf = exp_val / denom;
 		return make_float3 (out, out, out);
 	}
@@ -140,7 +134,7 @@ __device int bsdf_ward_sample(const ShaderClosure *sc, float3 Ng, float3 I, floa
 		else {
 			float val = 1 - 4 * (1 - randu);
 			float tanPhi = alphaRatio * tanf(M_PI_2_F * val);
-			// phi = 2 * M_PI_F - phi;
+			// phi = M_2PI_F - phi;
 			cosPhi = 1 / sqrtf(1 + tanPhi * tanPhi);
 			sinPhi = -tanPhi * cosPhi;
 		}
@@ -173,10 +167,10 @@ __device int bsdf_ward_sample(const ShaderClosure *sc, float3 Ng, float3 I, floa
 
 				// eq. 9
 				float exp_arg = (dotx * dotx + doty * doty) / (dotn * dotn);
-				float denom = 4 * M_PI_F * m_ax * m_ay * oh * dotn * dotn * dotn;
+				float denom = M_4PI_F * m_ax * m_ay * oh * dotn * dotn * dotn;
 				*pdf = expf(-exp_arg) / denom;
 				// compiler will reuse expressions already computed
-				denom = (4 * M_PI_F * m_ax * m_ay * sqrtf(cosNO * cosNI));
+				denom = (M_4PI_F * m_ax * m_ay * sqrtf(cosNO * cosNI));
 				float power = cosNI * expf(-exp_arg) / denom;
 				*eval = make_float3(power, power, power);
 #ifdef __RAY_DIFFERENTIALS__

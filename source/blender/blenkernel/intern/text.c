@@ -780,6 +780,16 @@ static void txt_curs_sel(Text *text, TextLine ***linep, int **charp)
 	*linep = &text->sell; *charp = &text->selc;
 }
 
+bool txt_cursor_is_line_start(Text *text)
+{
+	return (text->selc == 0);
+}
+
+bool txt_cursor_is_line_end(Text *text)
+{
+	return (text->selc == text->sell->len);
+}
+
 /*****************************/
 /* Cursor movement functions */
 /*****************************/
@@ -1137,9 +1147,6 @@ static void txt_pop_last(Text *text)
 	
 	txt_pop_sel(text);
 }
-
-/* never used: CVS 1.19 */
-/*  static void txt_pop_selr (Text *text) */
 
 void txt_pop_sel(Text *text)
 {

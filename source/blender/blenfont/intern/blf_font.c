@@ -58,6 +58,9 @@
 #include "blf_internal_types.h"
 #include "blf_internal.h"
 
+#ifdef __GNUC__
+#  pragma GCC diagnostic error "-Wsign-conversion"
+#endif
 
 /* freetype2 handle ONLY for this file!. */
 static FT_Library ft_lib;
@@ -72,12 +75,12 @@ void blf_font_exit(void)
 	FT_Done_FreeType(ft_lib);
 }
 
-void blf_font_size(FontBLF *font, int size, int dpi)
+void blf_font_size(FontBLF *font, unsigned int size, unsigned int dpi)
 {
 	GlyphCacheBLF *gc;
 	FT_Error err;
 
-	err = FT_Set_Char_Size(font->face, 0, (size * 64), dpi, dpi);
+	err = FT_Set_Char_Size(font->face, 0, (FT_F26Dot6)(size * 64), dpi, dpi);
 	if (err) {
 		/* FIXME: here we can go through the fixed size and choice a close one */
 		printf("The current font don't support the size, %d and dpi, %d\n", size, dpi);

@@ -55,7 +55,6 @@ public:
 		int first_key;
 		int num_keys;
 		uint shader;
-		uint pad;
 
 		int num_segments() { return num_keys - 1; }
 	};
@@ -141,7 +140,7 @@ public:
 	MeshManager();
 	~MeshManager();
 
-	bool displace(Device *device, Scene *scene, Mesh *mesh, Progress& progress);
+	bool displace(Device *device, DeviceScene *dscene, Scene *scene, Mesh *mesh, Progress& progress);
 
 	/* attributes */
 	void update_osl_attributes(Device *device, Scene *scene, vector<AttributeRequestSet>& mesh_attributes);

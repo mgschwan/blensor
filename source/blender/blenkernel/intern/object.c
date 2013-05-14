@@ -94,7 +94,7 @@
 #include "BKE_library.h"
 #include "BKE_linestyle.h"
 #include "BKE_mesh.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_mball.h"
 #include "BKE_modifier.h"
 #include "BKE_node.h"
@@ -845,19 +845,19 @@ bool BKE_object_exists_check(Object *obtest)
 
 /* *************************************************** */
 
-void *BKE_object_obdata_add_from_type(int type)
+void *BKE_object_obdata_add_from_type(Main *bmain, int type)
 {
 	switch (type) {
-		case OB_MESH:      return BKE_mesh_add(G.main, "Mesh");
-		case OB_CURVE:     return BKE_curve_add(G.main, "Curve", OB_CURVE);
-		case OB_SURF:      return BKE_curve_add(G.main, "Surf", OB_SURF);
-		case OB_FONT:      return BKE_curve_add(G.main, "Text", OB_FONT);
-		case OB_MBALL:     return BKE_mball_add(G.main, "Meta");
-		case OB_CAMERA:    return BKE_camera_add(G.main, "Camera");
-		case OB_LAMP:      return BKE_lamp_add(G.main, "Lamp");
-		case OB_LATTICE:   return BKE_lattice_add(G.main, "Lattice");
-		case OB_ARMATURE:  return BKE_armature_add(G.main, "Armature");
-		case OB_SPEAKER:   return BKE_speaker_add(G.main, "Speaker");
+		case OB_MESH:      return BKE_mesh_add(bmain, "Mesh");
+		case OB_CURVE:     return BKE_curve_add(bmain, "Curve", OB_CURVE);
+		case OB_SURF:      return BKE_curve_add(bmain, "Surf", OB_SURF);
+		case OB_FONT:      return BKE_curve_add(bmain, "Text", OB_FONT);
+		case OB_MBALL:     return BKE_mball_add(bmain, "Meta");
+		case OB_CAMERA:    return BKE_camera_add(bmain, "Camera");
+		case OB_LAMP:      return BKE_lamp_add(bmain, "Lamp");
+		case OB_LATTICE:   return BKE_lattice_add(bmain, "Lattice");
+		case OB_ARMATURE:  return BKE_armature_add(bmain, "Armature");
+		case OB_SPEAKER:   return BKE_speaker_add(bmain, "Speaker");
 		case OB_EMPTY:     return NULL;
 		default:
 			printf("BKE_object_obdata_add_from_type: Internal error, bad type: %d\n", type);
@@ -947,7 +947,7 @@ Object *BKE_object_add_only_object(Main *bmain, int type, const char *name)
 	ob->anisotropicFriction[1] = 1.0f;
 	ob->anisotropicFriction[2] = 1.0f;
 	ob->gameflag = OB_PROP | OB_COLLISION;
-	ob->margin = 0.0;
+	ob->margin = 0.04f;
 	ob->init_state = 1;
 	ob->state = 1;
 	/* ob->pad3 == Contact Processing Threshold */
@@ -972,16 +972,16 @@ Object *BKE_object_add_only_object(Main *bmain, int type, const char *name)
 
 /* general add: to scene, with layer from area and default name */
 /* creates minimum required data, but without vertices etc. */
-Object *BKE_object_add(struct Scene *scene, int type)
+Object *BKE_object_add(Main *bmain, Scene *scene, int type)
 {
 	Object *ob;
 	Base *base;
 	char name[MAX_ID_NAME];
 
 	BLI_strncpy(name, get_obdata_defname(type), sizeof(name));
-	ob = BKE_object_add_only_object(G.main, type, name);
+	ob = BKE_object_add_only_object(bmain, type, name);
 
-	ob->data = BKE_object_obdata_add_from_type(type);
+	ob->data = BKE_object_obdata_add_from_type(bmain, type);
 
 	ob->lay = scene->lay;
 	
@@ -2716,7 +2716,7 @@ void BKE_object_handle_update_ex(Scene *scene, Object *ob,
 				case OB_MESH:
 				{
 #if 0               // XXX, comment for 2.56a release, background wont set 'scene->customdata_mask'
-					BMEditMesh *em = (ob == scene->obedit) ? BMEdit_FromObject(ob) : NULL;
+					BMEditMesh *em = (ob == scene->obedit) ? BKE_editmesh_from_object(ob) : NULL;
 					BLI_assert((scene->customdata_mask & CD_MASK_BAREMESH) == CD_MASK_BAREMESH);
 					if (em) {
 						makeDerivedMesh(scene, ob, em,  scene->customdata_mask, 0); /* was CD_MASK_BAREMESH */
@@ -2726,8 +2726,8 @@ void BKE_object_handle_update_ex(Scene *scene, Object *ob,
 					}
 
 #else               /* ensure CD_MASK_BAREMESH for now */
-					BMEditMesh *em = (ob == scene->obedit) ? BMEdit_FromObject(ob) : NULL;
-					uint64_t data_mask = scene->customdata_mask | ob->customdata_mask | CD_MASK_BAREMESH;
+					BMEditMesh *em = (ob == scene->obedit) ? BKE_editmesh_from_object(ob) : NULL;
+					uint64_t data_mask = scene->customdata_mask | CD_MASK_BAREMESH;
 					if (em) {
 						makeDerivedMesh(scene, ob, em,  data_mask, 0); /* was CD_MASK_BAREMESH */
 					}

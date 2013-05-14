@@ -67,6 +67,10 @@ class PHYSICS_PT_fluid(PhysicButtonsPanel, Panel):
             # odd formatting here so translation script can extract string
             layout.operator("fluid.bake", text=iface_("Bake (Req. Memory: %s)") % fluid.memory_estimate,
                             translate=False, icon='MOD_FLUIDSIM')
+            
+            if bpy.app.build_options.openmp:
+                layout.prop(fluid, "threads", text="Simulation Threads")
+            
             split = layout.split()
 
             col = split.column()
@@ -273,7 +277,7 @@ class PHYSICS_PT_domain_boundary(PhysicButtonsPanel, Panel):
         col.prop(fluid, "slip_type", text="")
         if fluid.slip_type == 'PARTIALSLIP':
             col.prop(fluid, "partial_slip_factor", slider=True, text="Amount")
-        col.prop(fluid, "surface_noobs")
+        col.prop(fluid, "use_surface_noobs")
 
         col = split.column()
         col.label(text="Surface:")

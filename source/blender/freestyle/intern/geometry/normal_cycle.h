@@ -43,6 +43,10 @@
 
 #include "../system/FreestyleConfig.h"
 
+#ifdef WITH_CXX_GUARDEDALLOC
+#include "MEM_guardedalloc.h"
+#endif
+
 namespace Freestyle {
 
 using namespace Geometry;
@@ -117,11 +121,17 @@ public:
 	}
 
 private:
-	real center_[3];
+	/* UNUSED */
+	// real center_[3];
 	Vec3r axis_[3];
 	real eigen_value_[3];
 	real M_[6];
 	int i_[3];
+
+#ifdef WITH_CXX_GUARDEDALLOC
+public:
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:OGF:NormalCycle")
+#endif
 };
 
 inline void NormalCycle::accumulate_dihedral_angle(const Vec3r& edge, const double beta, double neigh_area)

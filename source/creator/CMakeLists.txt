@@ -423,11 +423,15 @@ if(UNIX AND NOT APPLE)
 			# on some platforms (like openSUSE) Python is linked
 			# to be used from lib64 folder.
 			# determine this from Python's libraries path
-			if(${PYTHON_LIBPATH} MATCHES "lib64$")
+			#
+			# ugh, its possible 'lib64' is just a symlink to 'lib' which causes incorrect use of 'lib64'
+			get_filename_component(_pypath_real ${PYTHON_LIBPATH} REALPATH)
+			if(${_pypath_real} MATCHES "lib64$")
 				set(_target_LIB "lib64")
 			else()
 				set(_target_LIB "lib")
 			endif()
+			unset(_pypath_real)
 
 			# Copy the systems python into the install directory
 			# Scons copy in tools/Blender.py
@@ -929,6 +933,7 @@ endif()
 		bf_intern_opencolorio
 		extern_rangetree
 		extern_wcwidth
+		extern_libmv
 	)
 
 	if(WITH_COMPOSITOR)
@@ -938,7 +943,6 @@ endif()
 	endif()
 
 	if(WITH_LIBMV)
-		list(APPEND BLENDER_SORTED_LIBS extern_libmv)
 		list(APPEND BLENDER_SORTED_LIBS extern_ceres)
 	endif()
 

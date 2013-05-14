@@ -53,7 +53,7 @@
 #include "BKE_mesh.h"
 #include "BKE_paint.h"
 #include "BKE_particle.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "ED_info.h"
 #include "ED_armature.h"
@@ -138,7 +138,7 @@ static void stats_object(Object *ob, int sel, int totob, SceneStats *stats)
 static void stats_object_edit(Object *obedit, SceneStats *stats)
 {
 	if (obedit->type == OB_MESH) {
-		BMEditMesh *em = BMEdit_FromObject(obedit);
+		BMEditMesh *em = BKE_editmesh_from_object(obedit);
 
 		stats->totvert = em->bm->totvert;
 		stats->totvertsel = em->bm->totvertsel;

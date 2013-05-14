@@ -141,10 +141,7 @@ extern void shade_ray(struct Isect *is, struct ShadeInput *shi, struct ShadeResu
 /* here we store all renders */
 static struct {
 	ListBase renderlist;
-
-	/* commandline thread override */
-	int threads;
-} RenderGlobal = {{NULL, NULL}, -1}; 
+} RenderGlobal = {{NULL, NULL}}; 
 
 /* hardcopy of current render, used while rendering for speed */
 Render R;
@@ -345,6 +342,9 @@ void RE_AcquireResultImage(Render *re, RenderResult *rr)
 
 			rr->have_combined = (re->result->rectf != NULL);
 			rr->layers = re->result->layers;
+			
+			rr->xof = re->disprect.xmin;
+			rr->yof = re->disprect.ymin;
 		}
 	}
 }
@@ -363,6 +363,13 @@ void RE_ResultGet32(Render *re, unsigned int *rect)
 	RE_AcquireResultImage(re, &rres);
 	render_result_rect_get_pixels(&rres, rect, re->rectx, re->recty, &re->scene->view_settings, &re->scene->display_settings);
 	RE_ReleaseResultImage(re);
+}
+
+/* caller is responsible for allocating rect in correct size! */
+/* Only for acquired results, for lock */
+void RE_AcquiredResultGet32(Render *re, RenderResult *result, unsigned int *rect)
+{
+	render_result_rect_get_pixels(result, rect, re->rectx, re->recty, &re->scene->view_settings, &re->scene->display_settings);
 }
 
 RenderStats *RE_GetStats(Render *re)
@@ -419,7 +426,10 @@ void RE_FreeRender(Render *re)
 
 	BLI_rw_mutex_end(&re->resultmutex);
 	
-	free_renderdata_tables(re);
+	/* main dbase can already be invalid now, some database-free code checks it */
+	re->main = NULL;
+	
+	RE_Database_Free(re);	/* view render can still have full database */
 	free_sample_tables(re);
 	
 	render_result_free(re->result);
@@ -474,6 +484,8 @@ void RE_FreePersistentData(void)
 /* disprect is optional, if NULL it assumes full window render */
 void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *srl, int winx, int winy, rcti *disprect)
 {
+	bool had_freestyle = (re->r.mode & R_EDGE_FRS);
+
 	re->ok = TRUE;   /* maybe flag */
 	
 	re->i.starttime = PIL_check_seconds_timer();
@@ -581,12 +593,21 @@ void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *
 	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
 
 	if (re->r.scemode & R_PREVIEWBUTS) {
-		if (re->result && re->result->rectx == re->rectx && re->result->recty == re->recty) {
-			/* pass */
-		}
-		else {
+		if (had_freestyle || (re->r.mode & R_EDGE_FRS)) {
+			/* freestyle manipulates render layers so always have to free */
 			render_result_free(re->result);
 			re->result = NULL;
+		}
+		else if (re->result) {
+			if (re->result->rectx == re->rectx && re->result->recty == re->recty) {
+				/* keep render result, this avoids flickering black tiles
+				 * when the preview changes */
+			}
+			else {
+				/* free because resolution changed */
+				render_result_free(re->result);
+				re->result = NULL;
+			}
 		}
 	}
 	else {
@@ -597,6 +618,9 @@ void RE_InitState(Render *re, Render *source, RenderData *rd, SceneRenderLayer *
 		re->result->rectx = re->rectx;
 		re->result->recty = re->recty;
 	}
+	
+	/* ensure renderdatabase can use part settings correct */
+	RE_parts_clamp(re);
 
 	BLI_rw_mutex_unlock(&re->resultmutex);
 	
@@ -642,6 +666,22 @@ void RE_SetView(Render *re, float mat[4][4])
 	/* re->ok flag? */
 	copy_m4_m4(re->viewmat, mat);
 	invert_m4_m4(re->viewinv, re->viewmat);
+}
+
+void RE_GetViewPlane(Render *re, rctf *viewplane, rcti *disprect)
+{
+	*viewplane = re->viewplane;
+	
+	/* make disprect zero when no border render, is needed to detect changes in 3d view render */
+	if (re->r.mode & R_BORDER)
+		*disprect = re->disprect;
+	else
+		BLI_rcti_init(disprect, 0, 0, 0, 0);
+}
+
+void RE_GetView(Render *re, float mat[4][4])
+{
+	copy_m4_m4(mat, re->viewmat);
 }
 
 /* image and movie output has to move to either imbuf or kernel */
@@ -1052,10 +1092,33 @@ static void threaded_tile_processor(Render *re)
 	re->viewplane = viewplane; /* restore viewplane, modified by pano render */
 }
 
+#ifdef WITH_FREESTYLE
+static void add_freestyle(Render *re);
+static void free_all_freestyle_renders(void);
+#endif
+
 /* currently only called by preview renders and envmap */
 void RE_TileProcessor(Render *re)
 {
 	threaded_tile_processor(re);
+	
+	re->i.lastframetime = PIL_check_seconds_timer() - re->i.starttime;
+	re->stats_draw(re->sdh, &re->i);
+
+#ifdef WITH_FREESTYLE
+	/* Freestyle */
+	if (re->r.mode & R_EDGE_FRS) {
+		if (!re->test_break(re->tbh)) {
+			add_freestyle(re);
+	
+			free_all_freestyle_renders();
+			
+			re->i.lastframetime = PIL_check_seconds_timer() - re->i.starttime;
+			re->stats_draw(re->sdh, &re->i);
+		}
+	}
+#endif
+
 }
 
 /* ************  This part uses API, for rendering Blender scenes ********** */
@@ -1570,17 +1633,17 @@ static void do_render_3d(Render *re)
 	
 	threaded_tile_processor(re);
 	
-	/* do left-over 3d post effects (flares) */
-	if (re->flag & R_HALO)
-		if (!re->test_break(re->tbh))
-			add_halo_flare(re);
-	
 #ifdef WITH_FREESTYLE
-	/* Freestyle  */
+	/* Freestyle */
 	if (re->r.mode & R_EDGE_FRS)
 		if (!re->test_break(re->tbh))
 			add_freestyle(re);
 #endif
+	
+	/* do left-over 3d post effects (flares) */
+	if (re->flag & R_HALO)
+		if (!re->test_break(re->tbh))
+			add_halo_flare(re);
 		
 	/* free all render verts etc */
 	RE_Database_Free(re);
@@ -1977,6 +2040,11 @@ static void tag_scenes_for_render(Render *re)
 	for (sce = re->main->scene.first; sce; sce = sce->id.next)
 		sce->id.flag &= ~LIB_DOIT;
 	
+#ifdef WITH_FREESTYLE
+	for (sce = re->freestyle_bmain.scene.first; sce; sce = sce->id.next)
+		sce->id.flag &= ~LIB_DOIT;
+#endif
+
 	if (RE_GetCamera(re) && composite_needs_render(re->scene, 1))
 		re->scene->id.flag |= LIB_DOIT;
 	
@@ -2101,20 +2169,22 @@ static void composite_freestyle_renders(Render *re, int sample)
 }
 
 /* releases temporary scenes and renders for Freestyle stroke rendering */
-static void free_all_freestyle_renders(Scene *scene)
+static void free_all_freestyle_renders(void)
 {
 	Render *re1, *freestyle_render;
+	Scene *freestyle_scene;
 	LinkData *link;
 
 	for (re1= RenderGlobal.renderlist.first; re1; re1= re1->next) {
 		for (link = (LinkData *)re1->freestyle_renders.first; link; link = link->next) {
 			if (link->data) {
 				freestyle_render = (Render *)link->data;
-				BKE_scene_unlink(G.main, freestyle_render->scene, scene);
+				freestyle_scene = freestyle_render->scene;
 				RE_FreeRender(freestyle_render);
+				BKE_scene_unlink(&re1->freestyle_bmain, freestyle_scene, NULL);
 			}
 		}
-		BLI_freelistN( &re1->freestyle_renders );
+		BLI_freelistN(&re1->freestyle_renders);
 	}
 }
 #endif
@@ -2160,7 +2230,7 @@ static void do_merge_fullsample(Render *re, bNodeTree *ntree)
 						BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
 						render_result_exr_file_read(re1, sample);
 #ifdef WITH_FREESTYLE
-						if( re1->r.mode & R_EDGE_FRS)
+						if (re1->r.mode & R_EDGE_FRS)
 							composite_freestyle_renders(re1, sample);
 #endif
 						BLI_rw_mutex_unlock(&re->resultmutex);
@@ -2175,7 +2245,7 @@ static void do_merge_fullsample(Render *re, bNodeTree *ntree)
 			ntreeCompositTagRender(re->scene);
 			ntreeCompositTagAnimated(ntree);
 			
-			ntreeCompositExecTree(ntree, &re->r, 1, G.background == 0, &re->scene->view_settings, &re->scene->display_settings);
+			ntreeCompositExecTree(ntree, &re->r, TRUE, G.background == 0, &re->scene->view_settings, &re->scene->display_settings);
 		}
 		
 		/* ensure we get either composited result or the active layer */
@@ -2352,7 +2422,7 @@ static void do_render_composite_fields_blur_3d(Render *re)
 				if (re->r.scemode & R_FULL_SAMPLE)
 					do_merge_fullsample(re, ntree);
 				else {
-					ntreeCompositExecTree(ntree, &re->r, 1, G.background == 0, &re->scene->view_settings, &re->scene->display_settings);
+					ntreeCompositExecTree(ntree, &re->r, TRUE, G.background == 0, &re->scene->view_settings, &re->scene->display_settings);
 				}
 				
 				ntree->stats_draw = NULL;
@@ -2366,7 +2436,7 @@ static void do_render_composite_fields_blur_3d(Render *re)
 	}
 
 #ifdef WITH_FREESTYLE
-	free_all_freestyle_renders(re->scene);
+	free_all_freestyle_renders();
 #endif
 
 	/* weak... the display callback wants an active renderlayer pointer... */
@@ -2587,7 +2657,7 @@ static int node_tree_has_composite_output(bNodeTree *ntree)
 	bNode *node;
 
 	for (node = ntree->nodes.first; node; node = node->next) {
-		if (node->type == CMP_NODE_COMPOSITE) {
+		if (ELEM(node->type, CMP_NODE_COMPOSITE, CMP_NODE_OUTPUT_FILE)) {
 			return TRUE;
 		}
 		else if (node->type == NODE_GROUP) {
@@ -2922,7 +2992,7 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 		if (ibuf->rect == NULL) {
 			ibuf->rect = MEM_mapallocN(sizeof(int) * rres.rectx * rres.recty, "temp 32 bits rect");
 			ibuf->mall |= IB_rect;
-			RE_ResultGet32(re, ibuf->rect);
+			RE_AcquiredResultGet32(re, &rres, ibuf->rect);
 			do_free = TRUE;
 		}
 
@@ -3221,27 +3291,9 @@ int RE_ReadRenderResult(Scene *scene, Scene *scenode)
 	return success;
 }
 
-void RE_set_max_threads(int threads)
-{
-	if (threads == 0) {
-		RenderGlobal.threads = BLI_system_thread_count();
-	}
-	else if (threads >= 1 && threads <= BLENDER_MAX_THREADS) {
-		RenderGlobal.threads = threads;
-	}
-	else {
-		printf("Error, threads has to be in range 0-%d\n", BLENDER_MAX_THREADS);
-	}
-}
-
 void RE_init_threadcount(Render *re) 
 {
-	if (RenderGlobal.threads >= 1) { /* only set as an arg in background mode */
-		re->r.threads = MIN2(RenderGlobal.threads, BLENDER_MAX_THREADS);
-	}
-	else if ((re->r.mode & R_FIXED_THREADS) == 0 || RenderGlobal.threads == 0) { /* Automatic threads */
-		re->r.threads = BLI_system_thread_count();
-	}
+	re->r.threads = BKE_render_num_threads(&re->r);
 }
 
 /* loads in image into a result, size must match

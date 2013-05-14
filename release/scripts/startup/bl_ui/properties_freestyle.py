@@ -60,7 +60,9 @@ class RENDER_PT_freestyle(RenderFreestyleButtonsPanel, Panel):
         row.active = (rd.line_thickness_mode == 'ABSOLUTE')
         row.prop(rd, "line_thickness")
 
-        layout.label(text="Line style settings are found in the Render Layers context")
+        row = layout.row()
+        row.label(text="Line style settings are found in the Render Layers context")
+        row.operator("wm.properties_context_change", text="", icon='BUTS').context = 'RENDER_LAYER'
 
 
 # Render layer properties
@@ -340,10 +342,10 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
 
             elif modifier.type == 'MATERIAL':
                 row = box.row()
-                row.prop(modifier, "material_attr", text="")
+                row.prop(modifier, "material_attribute", text="")
                 sub = row.column()
                 sub.prop(modifier, "use_ramp")
-                if modifier.material_attr in {'DIFF', 'SPEC'}:
+                if modifier.material_attribute in {'DIFF', 'SPEC'}:
                     sub.active = True
                     show_ramp = modifier.use_ramp
                 else:
@@ -378,7 +380,7 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
                 prop.name = modifier.name
 
             elif modifier.type == 'MATERIAL':
-                box.prop(modifier, "material_attr", text="")
+                box.prop(modifier, "material_attribute", text="")
                 self.draw_modifier_curve_common(box, modifier, False, False)
 
     def draw_thickness_modifier(self, context, modifier):
@@ -407,14 +409,14 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
                 prop.name = modifier.name
 
             elif modifier.type == 'MATERIAL':
-                box.prop(modifier, "material_attr", text="")
+                box.prop(modifier, "material_attribute", text="")
                 self.draw_modifier_curve_common(box, modifier, False, True)
 
             elif modifier.type == 'CALLIGRAPHY':
                 box.prop(modifier, "orientation")
                 row = box.row(align=True)
-                row.prop(modifier, "min_thickness")
-                row.prop(modifier, "max_thickness")
+                row.prop(modifier, "thickness_min")
+                row.prop(modifier, "thickness_max")
 
     def draw_geometry_modifier(self, context, modifier):
         layout = self.layout
@@ -446,7 +448,7 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
                 col.prop(modifier, "octaves")
                 col = split.column()
                 col.prop(modifier, "smooth")
-                col.prop(modifier, "pure_random")
+                col.prop(modifier, "use_pure_random")
 
             elif modifier.type == 'PERLIN_NOISE_1D':
                 split = box.split()
@@ -538,7 +540,7 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
             col.prop(linestyle, "use_chaining", text="Enable Chaining")
             sub = col.row()
             sub.active = linestyle.use_chaining
-            sub.prop(linestyle, "same_object")
+            sub.prop(linestyle, "use_same_object")
             # Second column
             col = split.column()
             col.active = linestyle.use_chaining
@@ -552,15 +554,15 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
             # First column
             col = split.column()
             row = col.row(align=True)
-            row.prop(linestyle, "use_min_angle", text="")
+            row.prop(linestyle, "use_angle_min", text="")
             sub = row.row()
-            sub.active = linestyle.use_min_angle
-            sub.prop(linestyle, "min_angle")
+            sub.active = linestyle.use_angle_min
+            sub.prop(linestyle, "angle_min")
             row = col.row(align=True)
-            row.prop(linestyle, "use_max_angle", text="")
+            row.prop(linestyle, "use_angle_max", text="")
             sub = row.row()
-            sub.active = linestyle.use_max_angle
-            sub.prop(linestyle, "max_angle")
+            sub.active = linestyle.use_angle_max
+            sub.prop(linestyle, "angle_max")
             # Second column
             col = split.column()
             row = col.row(align=True)
@@ -588,17 +590,17 @@ class RENDERLAYER_PT_freestyle_linestyle(RenderLayerFreestyleEditorButtonsPanel,
             # First column
             col = split.column()
             row = col.row(align=True)
-            row.prop(linestyle, "use_min_length", text="")
+            row.prop(linestyle, "use_length_min", text="")
             sub = row.row()
-            sub.active = linestyle.use_min_length
-            sub.prop(linestyle, "min_length")
+            sub.active = linestyle.use_length_min
+            sub.prop(linestyle, "length_min")
             # Second column
             col = split.column()
             row = col.row(align=True)
-            row.prop(linestyle, "use_max_length", text="")
+            row.prop(linestyle, "use_length_max", text="")
             sub = row.row()
-            sub.active = linestyle.use_max_length
-            sub.prop(linestyle, "max_length")
+            sub.active = linestyle.use_length_max
+            sub.prop(linestyle, "length_max")
 
             ## Caps
             layout.label(text="Caps:")

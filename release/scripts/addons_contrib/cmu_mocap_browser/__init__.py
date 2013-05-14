@@ -25,15 +25,15 @@
 bl_info = {
     "name": "Carnegie Mellon University Mocap Library Browser",
     "author": "Daniel Monteiro Basso <daniel@basso.inf.br>",
-    "version": (2013, 1, 26, 1),
-    "blender": (2, 65, 9),
+    "version": (2013, 5, 9),
+    "blender": (2, 66, 6),
     "location": "View3D > Tools",
     "description": "Assistant for using CMU Motion Capture data",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"\
                 "Scripts/3D_interaction/CMU_Mocap_Library_Browser",
     "tracker_url": "http://projects.blender.org/tracker/index.php?"\
                    "func=detail&aid=29086",
-    "category": "3D View"}
+    "category": "Animation"}
 
 
 import os
@@ -42,234 +42,9 @@ import bgl
 import blf
 import math
 from . import library
-
-
-def initialize_subjects(context):
-    """
-        Initializes the main object and the subject (actor) list
-    """
-    cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
-    if hasattr(cml, 'initialized'):
-        return
-    cml.initialized = True
-    while cml.subject_list:
-        cml.subject_list.remove(0)
-    for k, v in library.subjects.items():
-        n = cml.subject_list.add()
-        n.name = "{:d} - {}".format(k, v['desc'])
-        n.idx = k
-
-
-def update_motions(self, context):
-    """
-        Updates the motion list after a subject is selected
-    """
-    sidx = -1
-    if self.subject_active != -1:
-        sidx = self.subject_list[self.subject_active].idx
-    while self.motion_list:
-        self.motion_list.remove(0)
-    if sidx != -1:
-        for k, v in library.subjects[sidx]["motions"].items():
-            n = self.motion_list.add()
-            n.name = "{:d} - {}".format(k, v["desc"])
-            n.idx = k
-        self.motion_active = -1
-
-
-class ListItem(bpy.types.PropertyGroup):
-    name = bpy.props.StringProperty()
-    idx = bpy.props.IntProperty()
-
-
-class CMUMocapLib(bpy.types.AddonPreferences):
-    bl_idname = 'cmu_mocap_browser'
-
-    local_storage = bpy.props.StringProperty(
-        name="Local Storage",
-        subtype='DIR_PATH',
-        description="Location to store downloaded resources",
-        default="~/cmu_mocap_lib")
-    follow_structure = bpy.props.BoolProperty(
-        name="Follow Library Folder Structure",
-        description="Store resources in subfolders of the local storage",
-        default=True)
-    automatically_import = bpy.props.BoolProperty(
-        name="Automatically Import after Download",
-        description="Import the resource after the download is finished",
-        default=True)
-    subject_list = bpy.props.CollectionProperty(
-        name="subjects", type=ListItem)
-    subject_active = bpy.props.IntProperty(
-        name="subject_idx", default=-1, update=update_motions)
-    subject_import_name = bpy.props.StringProperty(
-        name="Armature Name",
-        description="Identifier of the imported subject's armature",
-        default="Skeleton")
-    motion_list = bpy.props.CollectionProperty(name="motions", type=ListItem)
-    motion_active = bpy.props.IntProperty(name="motion_idx", default=-1)
-    frame_skip = bpy.props.IntProperty(name="Fps Divisor", default=4,
-    # usually the sample rate is 120, so the default 4 gives you 30fps
-                          description="Frame supersampling factor", min=1)
-    cloud_scale = bpy.props.FloatProperty(name="Marker Cloud Scale",
-                          description="Scale the marker cloud by this value",
-                          default=1., min=0.0001, max=1000000.0,
-                          soft_min=0.001, soft_max=100.0)
-
-    def draw(self, context):
-        layout = self.layout
-        layout.operator("wm.url_open",
-            text="Carnegie Mellon University Mocap Library",
-            icon='URL').url = 'http://mocap.cs.cmu.edu/'
-        layout.prop(self, "local_storage")
-        layout.prop(self, "follow_structure")
-        layout.prop(self, "automatically_import")
-
-
-def draw_callback(self, context):
-    mid = int(360 * self.recv / self.fsize)
-    cx = 200
-    cy = 30
-    blf.position(0, 230, 23, 0)
-    blf.size(0, 20, 72)
-    blf.draw(0, "{0:2d}% of {1}".format(
-        100 * self.recv // self.fsize, self.hfsize))
-
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glColor4f(.7, .7, .7, 0.8)
-    bgl.glBegin(bgl.GL_TRIANGLE_FAN)
-    bgl.glVertex2i(cx, cy)
-    for i in range(mid):
-        x = cx + 20 * math.sin(math.radians(float(i)))
-        y = cy + 20 * math.cos(math.radians(float(i)))
-        bgl.glVertex2f(x, y)
-    bgl.glEnd()
-
-    bgl.glColor4f(.0, .0, .0, 0.6)
-    bgl.glBegin(bgl.GL_TRIANGLE_FAN)
-    bgl.glVertex2i(cx, cy)
-    for i in range(mid, 360):
-        x = cx + 20 * math.sin(math.radians(float(i)))
-        y = cy + 20 * math.cos(math.radians(float(i)))
-        bgl.glVertex2f(x, y)
-    bgl.glEnd()
-
-    bgl.glDisable(bgl.GL_BLEND)
-    bgl.glColor4f(0.0, 0.0, 0.0, 1.0)
-
-
-class CMUMocapDownloadImport(bpy.types.Operator):
-    bl_idname = "mocap.download_import"
-    bl_label = "Download and Import a file"
-
-    remote_file = bpy.props.StringProperty(
-        name="Remote File",
-        description="Location from where to download the file data")
-    local_file = bpy.props.StringProperty(
-        name="Local File",
-        description="Destination where to save the file data")
-    do_import = bpy.props.BoolProperty(
-        name="Manual Import",
-        description="Import the resource non-automatically",
-        default=False)
-
-    timer = None
-    fout = None
-    src = None
-    fsize = 0
-    recv = 0
-    cloud_scale = 1
-
-    def modal(self, context, event):
-        context.area.tag_redraw()
-        if event.type == 'ESC':
-            self.fout.close()
-            os.unlink(self.local_file)
-            return self.cancel(context)
-        if event.type == 'TIMER':
-            to_read = min(self.fsize - self.recv, 100 * 2 ** 10)
-            data = self.src.read(to_read)
-            self.fout.write(data)
-            self.recv += to_read
-            if self.fsize == self.recv:
-                self.fout.close()
-                return self.cancel(context)
-        return {'PASS_THROUGH'}
-
-    def cancel(self, context):
-        context.window_manager.event_timer_remove(self.timer)
-        bpy.types.SpaceView3D.draw_handler_remove(self.handle, 'WINDOW')
-        cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
-        if os.path.exists(self.local_file):
-            self.import_or_open(cml)
-        return {'CANCELLED'}
-
-    def execute(self, context):
-        cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
-        if not os.path.exists(self.local_file):
-            try:
-                os.makedirs(os.path.split(self.local_file)[0])
-            except:
-                pass
-            from urllib.request import urlopen
-            self.src = urlopen(self.remote_file)
-            info = self.src.info()
-            self.fsize = int(info["Content-Length"])
-            m = int(math.log10(self.fsize) // 3)
-            self.hfsize = "{:.1f}{}".format(
-                self.fsize * math.pow(10, -m * 3),
-                ['b', 'Kb', 'Mb', 'Gb', 'Tb', 'Eb', 'Pb'][m])  # :-p
-            self.fout = open(self.local_file, 'wb')
-            self.recv = 0
-            self.handle = bpy.types.SpaceView3D.draw_handler_add(
-                draw_callback, (self, context), 'WINDOW', 'POST_PIXEL')
-            self.timer = context.window_manager.\
-                event_timer_add(0.001, context.window)
-            context.window_manager.modal_handler_add(self)
-            return {'RUNNING_MODAL'}
-        else:
-            self.import_or_open(cml)
-        return {'FINISHED'}
-
-    def import_or_open(self, cml):
-        if cml.automatically_import or self.do_import:
-            if self.local_file.endswith("mpg"):
-                bpy.ops.wm.path_open(filepath=self.local_file)
-            elif self.local_file.endswith("asf"):
-                try:
-                    bpy.ops.import_anim.asf(
-                        filepath=self.local_file,
-                        from_inches=True,
-                        use_rot_x=True, use_rot_z=True,
-                        armature_name=cml.subject_import_name)
-                except AttributeError:
-                    self.report({'ERROR'}, "To use this feature "
-                        "please enable the Acclaim ASF/AMC Importer addon.")
-            elif self.local_file.endswith("amc"):
-                ob = bpy.context.active_object
-                if not ob or ob.type != 'ARMATURE' or \
-                    'source_file_path' not in ob:
-                    self.report({'ERROR'}, "Please select a CMU Armature.")
-                    return
-                try:
-                    bpy.ops.import_anim.amc(
-                        filepath=self.local_file,
-                        frame_skip=cml.frame_skip)
-                except AttributeError:
-                    self.report({'ERROR'}, "To use this feature please "
-                        "enable the Acclaim ASF/AMC Importer addon.")
-            elif self.local_file.endswith("c3d"):
-                try:
-                    bpy.ops.import_anim.c3d(
-                        filepath=self.local_file,
-                        from_inches=False,
-                        auto_scale=True,
-                        scale=cml.cloud_scale,
-                        show_names=False,
-                        frame_skip=cml.frame_skip)
-                except AttributeError:
-                    self.report({'ERROR'}, "To use this feature "
-                        "please enable the C3D Importer addon.")
+from . import download
+from . import makehuman
+from .data import initialize_subjects, update_motions
 
 
 class CMUMocapSubjectBrowser(bpy.types.Panel):
@@ -360,6 +135,22 @@ class CMUMocapMotionBrowser(bpy.types.Panel):
             props.local_file = local_fname
             props.do_import = do_import
             row.active = ext in motion['files']
+
+
+class CMUMocapToMakeHuman(bpy.types.Panel):
+    bl_idname = "object.cmu_mocap_makehuman"
+    bl_label = "CMU Mocap to MakeHuman"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        cml = context.user_preferences.addons['cmu_mocap_browser'].preferences
+        layout.prop_search(cml, "floor", context.scene, "objects")
+        layout.prop(cml, "feet_angle")
+        layout.operator("object.cmu_align", text='Align armatures')
+        layout.operator("object.cmu_transfer", text='Transfer animation')
 
 
 def register():

@@ -71,7 +71,7 @@
 #include "BKE_unit.h"
 #include "BKE_tracking.h"
 
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
@@ -256,12 +256,8 @@ static bool check_alpha_pass(Base *base)
 }
 
 /***/
-static unsigned int colortab[24] = {
-	0x0,      0xFF88FF, 0xFFBBFF,
-	0x403000, 0xFFFF88, 0xFFFFBB,
-	0x104040, 0x66CCCC, 0x77CCCC,
-	0x104010, 0x55BB55, 0x66FF66,
-	0xFFFFFF
+static const unsigned int colortab[] = {
+	0x0, 0x403000, 0xFFFF88
 };
 
 
@@ -1486,11 +1482,19 @@ static void draw_viewport_object_reconstruction(Scene *scene, Base *base, View3D
 	unsigned char col_unsel[4], col_sel[4];
 	int tracknr = *global_track_index;
 	ListBase *tracksbase = BKE_tracking_object_get_tracks(tracking, tracking_object);
+	float camera_size[3];
 
 	UI_GetThemeColor4ubv(TH_TEXT, col_unsel);
 	UI_GetThemeColor4ubv(TH_SELECT, col_sel);
 
 	BKE_tracking_get_camera_object_matrix(scene, base->object, mat);
+
+	/* we're compensating camera size for bundles size,
+	 * to make it so bundles are always displayed with the same size
+	 */
+	copy_v3_v3(camera_size, base->object->size);
+	if ((tracking_object->flag & TRACKING_OBJECT_CAMERA) == 0)
+		mul_v3_fl(camera_size, tracking_object->scale);
 
 	glPushMatrix();
 
@@ -1526,7 +1530,9 @@ static void draw_viewport_object_reconstruction(Scene *scene, Base *base, View3D
 
 		glPushMatrix();
 		glTranslatef(track->bundle_pos[0], track->bundle_pos[1], track->bundle_pos[2]);
-		glScalef(v3d->bundle_size / 0.05f, v3d->bundle_size / 0.05f, v3d->bundle_size / 0.05f);
+		glScalef(v3d->bundle_size / 0.05f / camera_size[0],
+		         v3d->bundle_size / 0.05f / camera_size[1],
+		         v3d->bundle_size / 0.05f / camera_size[2]);
 
 		if (v3d->drawtype == OB_WIRE) {
 			glDisable(GL_LIGHTING);
@@ -3262,6 +3268,9 @@ static void draw_mesh_fancy(Scene *scene, ARegion *ar, View3D *v3d, RegionView3D
 			GPU_disable_material();
 
 			glFrontFace(GL_CCW);
+
+			if (draw_flags & DRAW_FACE_SELECT)
+				draw_mesh_face_select(rv3d, me, dm);
 		}
 		else {
 			draw_mesh_textured(scene, v3d, rv3d, ob, dm, draw_flags);
@@ -3332,7 +3341,7 @@ static void draw_mesh_fancy(Scene *scene, ARegion *ar, View3D *v3d, RegionView3D
 			glEnable(GL_LIGHTING);
 			glFrontFace((ob->transflag & OB_NEG_SCALE) ? GL_CW : GL_CCW);
 
-			if (ob->sculpt && (p = paint_get_active(scene))) {
+			if (ob->sculpt && (p = BKE_paint_get_active(scene))) {
 				float planes[4][4];
 				float (*fpl)[4] = NULL;
 				int fast = (p->flags & PAINT_FAST_NAVIGATE) && (rv3d->rflag & RV3D_NAVIGATING);
@@ -3960,7 +3969,7 @@ static void draw_particle_arrays(int draw_as, int totpoint, int ob_dt, int selec
 	}
 }
 static void draw_particle(ParticleKey *state, int draw_as, short draw, float pixsize,
-                          float imat[4][4], float *draw_line, ParticleBillboardData *bb, ParticleDrawData *pdd)
+                          float imat[4][4], const float draw_line[2], ParticleBillboardData *bb, ParticleDrawData *pdd)
 {
 	float vec[3], vec2[3];
 	float *vd = NULL;
@@ -4108,6 +4117,42 @@ static void draw_particle(ParticleKey *state, int draw_as, short draw, float pix
 			break;
 		}
 	}
+}
+static void draw_particle_data(ParticleSystem *psys, RegionView3D *rv3d,
+                               ParticleKey *state, int draw_as,
+                               float imat[4][4], ParticleBillboardData *bb, ParticleDrawData *pdd,
+                               const float ct, const float pa_size, const float r_tilt, const float pixsize_scale)
+{
+	ParticleSettings *part = psys->part;
+	float pixsize;
+
+	if (psys->parent)
+		mul_m4_v3(psys->parent->obmat, state->co);
+
+	/* create actiual particle data */
+	if (draw_as == PART_DRAW_BB) {
+		bb->offset[0] = part->bb_offset[0];
+		bb->offset[1] = part->bb_offset[1];
+		bb->size[0] = part->bb_size[0] * pa_size;
+		if (part->bb_align == PART_BB_VEL) {
+			float pa_vel = len_v3(state->vel);
+			float head = part->bb_vel_head * pa_vel;
+			float tail = part->bb_vel_tail * pa_vel;
+			bb->size[1] = part->bb_size[1] * pa_size + head + tail;
+			/* use offset to adjust the particle center. this is relative to size, so need to divide! */
+			if (bb->size[1] > 0.0f)
+				bb->offset[1] += (head - tail) / bb->size[1];
+		}
+		else {
+			bb->size[1] = part->bb_size[1] * pa_size;
+		}
+		bb->tilt = part->bb_tilt * (1.0f - part->bb_rand_tilt * r_tilt);
+		bb->time = ct;
+	}
+
+	pixsize = ED_view3d_pixel_size(rv3d, state->co) * pixsize_scale;
+
+	draw_particle(state, draw_as, part->draw, pixsize, imat, part->draw_line, bb, pdd);
 }
 /* unified drawing of all new particle systems draw types except dupli ob & group	*/
 /* mostly tries to use vertex arrays for speed										*/
@@ -4431,7 +4476,6 @@ static void draw_new_particle_system(Scene *scene, View3D *v3d, RegionView3D *rv
 
 					ct += dt;
 					for (i = 0; i < trail_count; i++, ct += dt) {
-						float pixsize;
 
 						if (part->draw & PART_ABS_PATH_TIME) {
 							if (ct < pa_birthtime || ct > pa_dietime)
@@ -4443,32 +4487,9 @@ static void draw_new_particle_system(Scene *scene, View3D *v3d, RegionView3D *rv
 						state.time = (part->draw & PART_ABS_PATH_TIME) ? -ct : -(pa_birthtime + ct * (pa_dietime - pa_birthtime));
 						psys_get_particle_on_path(&sim, a, &state, need_v);
 
-						if (psys->parent)
-							mul_m4_v3(psys->parent->obmat, state.co);
-
-						/* create actiual particle data */
-						if (draw_as == PART_DRAW_BB) {
-							bb.offset[0] = part->bb_offset[0];
-							bb.offset[1] = part->bb_offset[1];
-							bb.size[0] = part->bb_size[0] * pa_size;
-							if (part->bb_align == PART_BB_VEL) {
-								float pa_vel = len_v3(state.vel);
-								float head = part->bb_vel_head * pa_vel;
-								float tail = part->bb_vel_tail * pa_vel;
-								bb.size[1] = part->bb_size[1] * pa_size + head + tail;
-								/* use offset to adjust the particle center. this is relative to size, so need to divide! */
-								if (bb.size[1] > 0.0f)
-									bb.offset[1] += (head - tail) / bb.size[1];
-							}
-							else
-								bb.size[1] = part->bb_size[1] * pa_size;
-							bb.tilt = part->bb_tilt * (1.0f - part->bb_rand_tilt * r_tilt);
-							bb.time = ct;
-						}
-
-						pixsize = ED_view3d_pixel_size(rv3d, state.co) * pixsize_scale;
-
-						draw_particle(&state, draw_as, part->draw, pixsize, imat, part->draw_line, &bb, psys->pdd);
+						draw_particle_data(psys, rv3d,
+						                   &state, draw_as, imat, &bb, psys->pdd,
+						                   ct, pa_size, r_tilt, pixsize_scale);
 
 						totpoint++;
 						drawn = 1;
@@ -4477,34 +4498,10 @@ static void draw_new_particle_system(Scene *scene, View3D *v3d, RegionView3D *rv
 				else {
 					state.time = cfra;
 					if (psys_get_particle_state(&sim, a, &state, 0)) {
-						float pixsize;
 
-						if (psys->parent)
-							mul_m4_v3(psys->parent->obmat, state.co);
-
-						/* create actiual particle data */
-						if (draw_as == PART_DRAW_BB) {
-							bb.offset[0] = part->bb_offset[0];
-							bb.offset[1] = part->bb_offset[1];
-							bb.size[0] = part->bb_size[0] * pa_size;
-							if (part->bb_align == PART_BB_VEL) {
-								float pa_vel = len_v3(state.vel);
-								float head = part->bb_vel_head * pa_vel;
-								float tail = part->bb_vel_tail * pa_vel;
-								bb.size[1] = part->bb_size[1] * pa_size + head + tail;
-								/* use offset to adjust the particle center. this is relative to size, so need to divide! */
-								if (bb.size[1] > 0.0f)
-									bb.offset[1] += (head - tail) / bb.size[1];
-							}
-							else
-								bb.size[1] = part->bb_size[1] * pa_size;
-							bb.tilt = part->bb_tilt * (1.0f - part->bb_rand_tilt * r_tilt);
-							bb.time = pa_time;
-						}
-
-						pixsize = ED_view3d_pixel_size(rv3d, state.co) * pixsize_scale;
-
-						draw_particle(&state, draw_as, part->draw, pixsize, imat, part->draw_line, &bb, pdd);
+						draw_particle_data(psys, rv3d,
+						                   &state, draw_as, imat, &bb, psys->pdd,
+						                   pa_time, pa_size, r_tilt, pixsize_scale);
 
 						totpoint++;
 						drawn = 1;
@@ -6301,8 +6298,7 @@ static void draw_rigid_body_pivot(bRigidBodyJointConstraint *data, const short d
 	setlinestyle(0);
 }
 
-static void draw_object_wire_color(Scene *scene, Base *base, unsigned char r_ob_wire_col[4],
-                                   const int warning_recursive)
+static void draw_object_wire_color(Scene *scene, Base *base, unsigned char r_ob_wire_col[4])
 {
 	Object *ob = base->object;
 	int colindex = 0;
@@ -6323,15 +6319,7 @@ static void draw_object_wire_color(Scene *scene, Base *base, unsigned char r_ob_
 	else {
 		/* Sets the 'colindex' */
 		if (ob->id.lib) {
-			colindex = (base->flag & (SELECT + BA_WAS_SEL)) ? 4 : 3;
-		}
-		else if (warning_recursive == 1) {
-			if (base->flag & (SELECT + BA_WAS_SEL)) {
-				colindex = (scene->basact == base) ? 8 : 7;
-			}
-			else {
-				colindex = 6;
-			}
+			colindex = (base->flag & (SELECT + BA_WAS_SEL)) ? 2 : 1;
 		}
 		/* Sets the 'theme_id' or fallback to wire */
 		else {
@@ -6410,7 +6398,6 @@ static void draw_object_matcap_check(Scene *scene, View3D *v3d, Object *ob)
  */
 void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short dflag)
 {
-	static int warning_recursive = 0;
 	ModifierData *md = NULL;
 	Object *ob = base->object;
 	Curve *cu;
@@ -6489,7 +6476,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 
 		ED_view3d_project_base(ar, base);
 
-		draw_object_wire_color(scene, base, _ob_wire_col, warning_recursive);
+		draw_object_wire_color(scene, base, _ob_wire_col);
 		ob_wire_col = _ob_wire_col;
 
 		glColor3ubv(ob_wire_col);
@@ -6773,10 +6760,8 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 	}
 
 	/* code for new particle system */
-	if ((warning_recursive == 0) &&
-	    (ob->particlesystem.first) &&
-	    (ob != scene->obedit)
-	    )
+	if ((ob->particlesystem.first) &&
+	    (ob != scene->obedit))
 	{
 		ParticleSystem *psys;
 
@@ -6807,8 +6792,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 	}
 
 	/* draw edit particles last so that they can draw over child particles */
-	if ((warning_recursive == 0) &&
-	    (dflag & DRAW_PICKING) == 0 &&
+	if ((dflag & DRAW_PICKING) == 0 &&
 	    (!scene->obedit))
 	{
 
@@ -6947,9 +6931,8 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 			}
 		}
 
-		if (ob->gameflag & OB_BOUNDS) {
+		if ((ob->gameflag & OB_BOUNDS) && (ob->mode == OB_MODE_OBJECT)) {
 			if (ob->boundtype != ob->collision_boundtype || (dtx & OB_DRAWBOUNDOX) == 0) {
-
 				setlinestyle(2);
 				draw_bounding_volume(scene, ob, ob->collision_boundtype);
 				setlinestyle(0);
@@ -6966,6 +6949,10 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 				draw_bounding_volume(scene, ob, ob->boundtype);
 			}
 			if (dtx & OB_TEXSPACE) {
+				if ((dflag & DRAW_CONSTCOLOR) == 0) {
+					/* prevent random colors being used */
+					glColor3ubv(ob_wire_col);
+				}
 				drawtexspace(ob);
 			}
 			if (dtx & OB_DRAWNAME) {
@@ -6985,7 +6972,9 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 		}
 	}
 
-	if (dt <= OB_SOLID && (v3d->flag2 & V3D_RENDER_OVERRIDE) == 0) {
+	if ((dt <= OB_SOLID) &&
+	    ((v3d->flag2 & V3D_RENDER_OVERRIDE) == 0))
+	{
 		if (((ob->gameflag & OB_DYNAMIC) &&
 		     !ELEM(ob->collision_boundtype, OB_BOUND_TRIANGLE_MESH, OB_BOUND_CONVEX_HULL)) ||
 
@@ -6995,6 +6984,11 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 			float imat[4][4], vec[3] = {0.0f, 0.0f, 0.0f};
 
 			invert_m4_m4(imat, rv3d->viewmatob);
+
+			if ((dflag & DRAW_CONSTCOLOR) == 0) {
+				/* prevent random colors being used */
+				glColor3ubv(ob_wire_col);
+			}
 
 			setlinestyle(2);
 			drawcircball(GL_LINE_LOOP, vec, ob->inertia, imat);
@@ -7014,10 +7008,10 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 		glDisable(GL_DEPTH_TEST);
 	}
 
-	if ((warning_recursive) ||
-	    (base->flag & OB_FROMDUPLI) ||
+	if ((base->flag & OB_FROMDUPLI) ||
 	    (v3d->flag2 & V3D_RENDER_OVERRIDE))
 	{
+		ED_view3d_clear_mats_rv3d(rv3d);
 		return;
 	}
 
@@ -7055,11 +7049,12 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 	/* not for sets, duplicators or picking */
 	if (dflag == 0 && (v3d->flag & V3D_HIDE_HELPLINES) == 0 && (v3d->flag2 & V3D_RENDER_OVERRIDE) == 0) {
 		ListBase *list;
-		RigidBodyCon *rbc = ob ? ob->rigidbody_constraint : NULL;
+		RigidBodyCon *rbc = ob->rigidbody_constraint;
 		
 		/* draw hook center and offset line */
-		if (ob != scene->obedit) draw_hooks(ob);
-		
+		if (ob != scene->obedit)
+			draw_hooks(ob);
+
 		/* help lines and so */
 		if (ob != scene->obedit && ob->parent && (ob->parent->lay & v3d->lay)) {
 			setlinestyle(3);
@@ -7160,6 +7155,8 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 	}
 
 	free_old_images();
+
+	ED_view3d_clear_mats_rv3d(rv3d);
 }
 
 /* ***************** BACKBUF SEL (BBS) ********* */

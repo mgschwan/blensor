@@ -123,8 +123,42 @@ def locale_match(loc1, loc2):
 
 
 def find_best_isocode_matches(uid, iso_codes):
+    """
+    Return an ordered tuple of elements in iso_codes that can match the given uid, from most similar to lesser ones.
+    """
     tmp = ((e, locale_match(e, uid)) for e in iso_codes)
     return tuple(e[0] for e in sorted((e for e in tmp if e[1] is not ... and e[1] >= 0), key=lambda e: e[1]))
+
+
+def get_po_files_from_dir(root_dir, langs=set()):
+    """
+    Yield tuples (uid, po_path) of translations for each po file found in the given dir, which should be either
+    a dir containing po files using language uid's as names (e.g. fr.po, es_ES.po, etc.), or
+    a dir containing dirs which names are language uids, and containing po files of the same names.
+    """
+    found_uids = set()
+    for p in os.listdir(root_dir):
+        uid = None
+        po_file = os.path.join(root_dir, p)
+        print(p)
+        if p.endswith(".po") and os.path.isfile(po_file):
+            uid = p[:-3]
+            if langs and uid not in langs:
+                continue
+        elif os.path.isdir(p):
+            uid = p
+            if langs and uid not in langs:
+                continue
+            po_file = os.path.join(root_dir, p, p + ".po")
+            if not os.path.isfile(po_file):
+                continue
+        else:
+            continue
+        if uid in found_uids:
+            printf("WARNING! {} id has been found more than once! only first one has been loaded!".format(uid))
+            continue
+        found_uids.add(uid)
+        yield uid, po_file
 
 
 def enable_addons(addons={}, support={}, disable=False, check_only=False):
@@ -429,7 +463,8 @@ class I18nMessages:
                     tmp[real_key] = msg
             done_keys.add(key)
             if '%' in msgid and msgstr and len(_format(msgid)) != len(_format(msgstr)):
-                ret.append("Error! msg's format entities are not matched in msgid and msgstr ({})".format(real_key))
+                if not msg.is_fuzzy:
+                    ret.append("Error! msg's format entities are not matched in msgid and msgstr ({})".format(real_key))
                 if fix:
                     msg.msgstr = ""
         for k in rem:
@@ -454,9 +489,27 @@ class I18nMessages:
         for k, t in zip(keys, trans):
             self.msgs[k].msgstr = t
 
-    def merge(self, replace=False, *args):
-        # TODO
-        pass
+    def merge(self, msgs, replace=False):
+        """
+        Merge translations from msgs into self, following those rules:
+            * If a msg is in self and not in msgs, keep self untouched.
+            * If a msg is in msgs and not in self, skip it.
+            * Else (msg both in self and msgs):
+                * If self is not translated and msgs is translated or fuzzy, replace by msgs.
+                * If self is fuzzy, and msgs is translated, replace by msgs.
+                * If self is fuzzy, and msgs is fuzzy, and replace is True, replace by msgs.
+                * If self is translated, and msgs is translated, and replace is True, replace by msgs.
+                * Else, skip it!
+        """
+        for k, m in msgs.msgs.items():
+            if k not in self.msgs:
+                continue
+            sm = self.msgs[k]
+            if (sm.is_commented or m.is_commented or not m.msgstr):
+                continue
+            if (not sm.msgstr or replace or (sm.is_fuzzy and (not m.is_fuzzy or replace))):
+                sm.msgstr = m.msgstr
+                sm.is_fuzzy = m.is_fuzzy
 
     def update(self, ref, use_similar=None, keep_old_commented=True):
         """
@@ -1073,7 +1126,7 @@ class I18n:
         if os.stat(path).st_size > maxsize:
             # Security, else we could read arbitrary huge files!
             print("WARNING: skipping file {}, too huge!".format(path))
-            return None, None, None
+            return None, None, None, False
         txt = ""
         with open(path) as f:
             txt = f.read()
@@ -1095,23 +1148,22 @@ class I18n:
             in_txt, txt, out_txt = None, txt[:_out], txt[_out:]
         else:
             in_txt, txt, out_txt = None, txt, None
-        if "translations_tuple" not in txt:
-            return None, None, None
-        return in_txt, txt, out_txt
+        return in_txt, txt, out_txt, (True if "translations_tuple" in txt else False)
 
     @staticmethod
     def _dst(self, path, uid, kind):
-        if kind == 'PO':
-            if uid == self.settings.PARSER_TEMPLATE_ID:
-                if not path.endswith(".pot"):
-                    return os.path.join(os.path.dirname(path), "blender.pot")
-            if not path.endswith(".po"):
-                return os.path.join(os.path.dirname(path), uid + ".po")
-        elif kind == 'PY':
-            if not path.endswith(".py"):
-                if self.src.get(self.settings.PARSER_PY_ID):
-                    return self.src[self.settings.PARSER_PY_ID]
-                return os.path.join(os.path.dirname(path), "translations.py")
+        if isinstance(path, str):
+            if kind == 'PO':
+                if uid == self.settings.PARSER_TEMPLATE_ID:
+                    if not path.endswith(".pot"):
+                        return os.path.join(os.path.dirname(path), "blender.pot")
+                if not path.endswith(".po"):
+                    return os.path.join(os.path.dirname(path), uid + ".po")
+            elif kind == 'PY':
+                if not path.endswith(".py"):
+                    if self.src.get(self.settings.PARSER_PY_ID):
+                        return self.src[self.settings.PARSER_PY_ID]
+                    return os.path.join(os.path.dirname(path), "translations.py")
         return path
 
     def __init__(self, kind=None, src=None, langs=set(), settings=settings):
@@ -1217,12 +1269,12 @@ class I18n:
                     if not fname.endswith(".py"):
                         continue
                     path = os.path.join(root, fname)
-                    _1, txt, _2 = clss._parser_check_file(path)
-                    if txt is not None:
+                    _1, txt, _2, has_trans = clss._parser_check_file(path)
+                    if has_trans:
                         txts.append((path, txt))
         elif src.endswith(".py") and os.path.isfile(src):
-            _1, txt, _2 = clss._parser_check_file(src)
-            if txt is not None:
+            _1, txt, _2, has_trans = clss._parser_check_file(src)
+            if has_trans:
                 txts.append((src, txt))
         for path, txt in txts:
             tuple_id = "translations_tuple"
@@ -1249,25 +1301,7 @@ class I18n:
                                                                         pot_file, pot_file, settings=self.settings)
             self.src_po[self.settings.PARSER_TEMPLATE_ID] = pot_file
 
-        for p in os.listdir(root_dir):
-            uid = po_file = None
-            if p.endswith(".po") and os.path.isfile(p):
-                uid = p[:-3]
-                if langs and uid not in langs:
-                    continue
-                po_file = os.path.join(root_dir, p)
-            elif os.path.isdir(p):
-                uid = p
-                if langs and uid not in langs:
-                    continue
-                po_file = os.path.join(root_dir, p, p + ".po")
-                if not os.path.isfile(po_file):
-                    continue
-            else:
-                continue
-            if uid in self.trans:
-                printf("WARNING! {} id has been found more than once! only first one has been loaded!".format(uid))
-                continue
+        for uid, po_file in get_po_files_from_dir(root_dir, langs):
             self.trans[uid] = I18nMessages(uid, 'PO', po_file, po_file, settings=self.settings)
             self.src_po[uid] = po_file
 
@@ -1280,7 +1314,8 @@ class I18n:
         default_context = self.settings.DEFAULT_CONTEXT
         self.src[self.settings.PARSER_PY_ID], msgs = self.check_py_module_has_translations(src, self.settings)
         if msgs is None:
-            return
+            self.src[self.settings.PARSER_PY_ID] = src
+            msgs = ()
         for key, (sources, gen_comments), *translations in msgs:
             if self.settings.PARSER_TEMPLATE_ID not in self.trans:
                 self.trans[self.settings.PARSER_TEMPLATE_ID] = I18nMessages(self.settings.PARSER_TEMPLATE_ID,
@@ -1342,8 +1377,8 @@ class I18n:
             _lensrc = len(self.settings.PO_COMMENT_PREFIX_SOURCE)
             _lencsrc = len(self.settings.PO_COMMENT_PREFIX_SOURCE_CUSTOM)
             ret = [
-                "# NOTE: You can safely move around this auto-generated block (with the begin/end markers!), and "
-                "edit the translations by hand.",
+                "# NOTE: You can safely move around this auto-generated block (with the begin/end markers!),",
+                "#       and edit the translations by hand.",
                 "#       Just carefully respect the format of the tuple!",
                 "",
                 "# Tuple of tuples "
@@ -1351,9 +1386,10 @@ class I18n:
                 "translations_tuple = (",
             ]
             # First gather all keys (msgctxt, msgid) - theoretically, all translations should share the same, but...
-            keys = set()
+            # Note: using an ordered dict if possible (stupid sets cannot be ordered :/ ).
+            keys = I18nMessages._new_messages()
             for trans in self.trans.values():
-                keys |= set(trans.msgs.keys())
+                keys.update(trans.msgs)
             # Get the ref translation (ideally, PARSER_TEMPLATE_ID one, else the first one that pops up!
             # Ref translation will be used to generate sources "comments"
             ref = self.trans.get(self.settings.PARSER_TEMPLATE_ID) or self.trans[list(self.trans.keys())[0]]
@@ -1361,12 +1397,13 @@ class I18n:
             translations = self.trans.keys() - {self.settings.PARSER_TEMPLATE_ID, self.settings.PARSER_PY_ID}
             if langs:
                 translations &= langs
-            translations = [('"' + lng + '"', " " * (len(lng) + 4), self.trans[lng]) for lng in sorted(translations)]
-            for key in keys:
+            translations = [('"' + lng + '"', " " * (len(lng) + 6), self.trans[lng]) for lng in sorted(translations)]
+            print(k for k in keys.keys())
+            for key in keys.keys():
                 if ref.msgs[key].is_commented:
                     continue
                 # Key (context + msgid).
-                msgctxt, msgid = key
+                msgctxt, msgid = ref.msgs[key].msgctxt, ref.msgs[key].msgid
                 if not msgctxt:
                     msgctxt = default_context
                 ret.append(tab + "(({}, \"{}\"),".format('"' + msgctxt + '"' if msgctxt else "None", msgid))
@@ -1384,15 +1421,15 @@ class I18n:
                     ret.append(tab + " ((), ()),")
                 else:
                     if len(sources) > 1:
-                        ret.append(tab + " ((\"" + sources[0] + "\",")
-                        ret += [tab + "   \"" + s + "\"," for s in sources[1:-1]]
-                        ret.append(tab + "   \"" + sources[-1] + "\"),")
+                        ret.append(tab + ' (("' + sources[0] + '",')
+                        ret += [tab + '   "' + s + '",' for s in sources[1:-1]]
+                        ret.append(tab + '   "' + sources[-1] + '"),')
                     else:
                         ret.append(tab + " ((" + ('"' + sources[0] + '",' if sources else "") + "),")
                     if len(gen_comments) > 1:
-                        ret.append(tab + "  (\"" + gen_comments[0] + "\",")
-                        ret += [tab + "   \"" + s + "\"," for s in gen_comments[1:-1]]
-                        ret.append(tab + "   \"" + gen_comments[-1] + "\")),")
+                        ret.append(tab + '  ("' + gen_comments[0] + '",')
+                        ret += [tab + '   "' + s + '",' for s in gen_comments[1:-1]]
+                        ret.append(tab + '   "' + gen_comments[-1] + '")),')
                     else:
                         ret.append(tab + "  (" + ('"' + gen_comments[0] + '",' if gen_comments else "") + ")),")
                 # All languages
@@ -1400,7 +1437,7 @@ class I18n:
                     if trans.msgs[key].is_commented:
                         continue
                     # Language code and translation.
-                    ret.append(tab + " (" + lngstr + ", \"" + trans.msgs[key].msgstr + "\",")
+                    ret.append(tab + " (" + lngstr + ', "' + trans.msgs[key].msgstr + '",')
                     # User comments and fuzzy.
                     comments = []
                     for comment in trans.msgs[key].comment_lines:
@@ -1408,11 +1445,12 @@ class I18n:
                             comments.append(comment[_lencomm:])
                     ret.append(tab + lngsp + "(" + ("True" if trans.msgs[key].is_fuzzy else "False") + ",")
                     if len(comments) > 1:
-                        ret.append(tab + lngsp + " (\"" + comments[0] + "\",")
-                        ret += [tab + lngsp + "  \"" + s + "\"," for s in comments[1:-1]]
-                        ret.append(tab + lngsp + "  \"" + comments[-1] + "\")),")
+                        ret.append(tab + lngsp + ' ("' + comments[0] + '",')
+                        ret += [tab + lngsp + '  "' + s + '",' for s in comments[1:-1]]
+                        ret.append(tab + lngsp + '  "' + comments[-1] + '"))),')
                     else:
-                        ret[-1] = ret[-1] + " " + ('"' + comments[0] + '",' if comments else "") + ")),"
+                        ret[-1] = ret[-1] + " (" + (('"' + comments[0] + '",') if comments else "") + "))),"
+                    
                 ret.append(tab + "),")
             ret += [
                 ")",
@@ -1435,11 +1473,13 @@ class I18n:
             if not os.path.isfile(dst):
                 print("WARNING: trying to write as python code into {}, which is not a file! Aborting.".format(dst))
                 return
-            prev, txt, nxt = self._parser_check_file(dst)
+            prev, txt, nxt, has_trans = self._parser_check_file(dst)
             if prev is None and nxt is None:
                 print("WARNING: Looks like given python file {} has no auto-generated translations yet, will be added "
                       "at the end of the file, you can move that section later if needed...".format(dst))
-                txt = [txt] + _gen_py(self, langs)
+                txt = ([txt, "", self.settings.PARSER_PY_MARKER_BEGIN] +
+                       _gen_py(self, langs) +
+                       ["", self.settings.PARSER_PY_MARKER_END])
             else:
                 # We completely replace the text found between start and end markers...
                 txt = _gen_py(self, langs)
@@ -1473,7 +1513,7 @@ class I18n:
                 self.settings.PARSER_PY_MARKER_END,
             ]
         with open(dst, 'w') as f:
-            f.write(prev + "\n".join(txt) + (nxt or ""))
+            f.write((prev or "") + "\n".join(txt) + (nxt or ""))
         self.unescape()
 
     parsers = {

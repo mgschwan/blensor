@@ -711,7 +711,21 @@ int WM_operator_repeat(bContext *C, wmOperator *op)
  * checks if WM_operator_repeat() can run at all, not that it WILL run at any time. */
 int WM_operator_repeat_check(const bContext *UNUSED(C), wmOperator *op)
 {
-	return op->type->exec != NULL;
+	if (op->type->exec != NULL) {
+		return true;
+	}
+	else if (op->opm) {
+		/* for macros, check all have exec() we can call */
+		wmOperator *opm;
+		for (opm = op->opm->type->macro.first; opm; opm = opm->next) {
+			if (opm->type->exec == NULL) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	return false;
 }
 
 static wmOperator *wm_operator_create(wmWindowManager *wm, wmOperatorType *ot,
@@ -1370,9 +1384,10 @@ static int wm_eventmatch(wmEvent *winevent, wmKeyMapItem *kmi)
 	if (kmi->oskey != KM_ANY)
 		if (winevent->oskey != kmi->oskey && !(winevent->oskey & kmi->oskey)) return 0;
 	
+	/* only keymap entry with keymodifier is checked, means all keys without modifier get handled too. */
+	/* that is currently needed to make overlapping events work (when you press A - G fast or so). */
 	if (kmi->keymodifier)
 		if (winevent->keymodifier != kmi->keymodifier) return 0;
-		
 	
 	return 1;
 }
@@ -1987,8 +2002,7 @@ static void wm_paintcursor_tag(bContext *C, wmPaintCursor *pc, ARegion *ar)
 		for (; pc; pc = pc->next) {
 			if (pc->poll == NULL || pc->poll(C)) {
 				wmWindow *win = CTX_wm_window(C);
-				win->screen->do_draw_paintcursor = TRUE;
-				wm_tag_redraw_overlay(win, ar);
+				WM_paint_cursor_tag_redraw(win, ar);
 			}
 		}
 	}
@@ -2129,7 +2143,7 @@ void wm_event_do_handlers(bContext *C)
 			CTX_wm_region_set(C, region_event_inside(C, &event->x));
 			
 			/* MVC demands to not draw in event handlers... but we need to leave it for ogl selecting etc */
-			wm_window_make_drawable(C, win);
+			wm_window_make_drawable(wm, win);
 			
 			wm_region_mouse_co(C, event);
 

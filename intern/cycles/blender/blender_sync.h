@@ -59,6 +59,7 @@ public:
 	void sync_camera(BL::RenderSettings b_render, BL::Object b_override, int width, int height);
 	void sync_view(BL::SpaceView3D b_v3d, BL::RegionView3D b_rv3d, int width, int height);
 	int get_layer_samples() { return render_layer.samples; }
+	int get_layer_bound_samples() { return render_layer.bound_samples; }
 
 	/* get parameters */
 	static SceneParams get_scene_params(BL::Scene b_scene, bool background);
@@ -123,8 +124,10 @@ private:
 		  holdout_layer(0), exclude_layer(0),
 		  material_override(PointerRNA_NULL),
 		  use_background(true),
+		  use_surfaces(true),
+		  use_hair(true),
 		  use_viewport_visibility(false),
-		  samples(0)
+		  samples(0), bound_samples(false)
 		{}
 
 		string name;
@@ -134,9 +137,12 @@ private:
 		uint exclude_layer;
 		BL::Material material_override;
 		bool use_background;
+		bool use_surfaces;
+		bool use_hair;
 		bool use_viewport_visibility;
 		bool use_localview;
 		int samples;
+		bool bound_samples;
 	} render_layer;
 
 	Progress &progress;

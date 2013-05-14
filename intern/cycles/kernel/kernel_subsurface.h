@@ -203,14 +203,13 @@ __device void subsurface_scatter_step(KernelGlobals *kg, ShaderData *sd, int sta
 		ray.P = p1;
 		ray.D = normalize_len(p2 - p1, &ray.t);
 		ray.dP = sd->dP;
-		ray.dD.dx = make_float3(0.0f, 0.0f, 0.0f);
-		ray.dD.dy = make_float3(0.0f, 0.0f, 0.0f);
+		ray.dD = differential3_zero();
 		ray.time = sd->time;
 
 		/* intersect with the same object. if multiple intersections are
 		 * found it will randomly pick one of them */
 		Intersection isect;
-		if(scene_intersect_subsurface(kg, &ray, &isect, sd->object, u6) == 0)
+		if(!scene_intersect_subsurface(kg, &ray, &isect, sd->object, u6))
 			continue;
 
 		/* setup new shading point */

@@ -37,6 +37,10 @@ extern "C" {
 #include "BLI_math.h"
 }
 
+#ifdef WITH_CXX_GUARDEDALLOC
+#include "MEM_guardedalloc.h"
+#endif
+
 namespace Freestyle {
 
 class LIB_IMAGE_EXPORT GaussianFilter
@@ -109,6 +113,11 @@ public:
 
 protected:
 	void computeMask();
+
+#ifdef WITH_CXX_GUARDEDALLOC
+public:
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:GaussianFilter")
+#endif
 };
 
 /*
@@ -124,10 +133,6 @@ protected:
   #############################################
   
 */
-
-#ifdef __MACH__
-# define sqrtf(x) (sqrt(x))
-#endif
 
 template<class Map>
 float GaussianFilter::getSmoothedPixel(Map *map, int x, int y)

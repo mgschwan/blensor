@@ -321,12 +321,7 @@ static DerivedMesh *uvprojectModifier_do(UVProjectModifierData *umd,
 					do {
 						unsigned int lidx = mp->loopstart + fidx;
 						unsigned int vidx = mloop[lidx].v;
-						float tco[3];
-
-						copy_v3_v3(tco, coords[vidx]);
-						mul_project_m4_v3(best_projector->projmat, tco);
-						copy_v2_v2(mloop_uv[lidx].uv, tco);
-
+						mul_v2_project_m4_v3(mloop_uv[lidx].uv, best_projector->projmat, coords[vidx]);
 					} while (fidx--);
 				}
 			}
@@ -366,13 +361,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	return result;
 }
 
-static DerivedMesh *applyModifierEM(ModifierData *md, Object *ob,
-                                    struct BMEditMesh *UNUSED(editData),
-                                    DerivedMesh *derivedData)
-{
-	return applyModifier(md, ob, derivedData, MOD_APPLY_USECACHE);
-}
-
 
 ModifierTypeInfo modifierType_UVProject = {
 	/* name */              "UVProject",
@@ -390,7 +378,7 @@ ModifierTypeInfo modifierType_UVProject = {
 	/* deformVertsEM */     NULL,
 	/* deformMatricesEM */  NULL,
 	/* applyModifier */     applyModifier,
-	/* applyModifierEM */   applyModifierEM,
+	/* applyModifierEM */   NULL,
 	/* initData */          initData,
 	/* requiredDataMask */  requiredDataMask,
 	/* freeData */          NULL,

@@ -50,7 +50,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_mesh.h"
 #include "BKE_customdata.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 
 #include "ED_screen.h"
 #include "ED_image.h"
@@ -152,7 +152,7 @@ static Brush *uv_sculpt_brush(bContext *C)
 
 	if (!settings->uvsculpt)
 		return NULL;
-	return paint_brush(&settings->uvsculpt->paint);
+	return BKE_paint_brush(&settings->uvsculpt->paint);
 }
 
 
@@ -168,7 +168,7 @@ static int uv_sculpt_brush_poll(bContext *C)
 	if (!uv_sculpt_brush(C) || !obedit || obedit->type != OB_MESH)
 		return 0;
 
-	em = BMEdit_FromObject(obedit);
+	em = BKE_editmesh_from_object(obedit);
 	ret = EDBM_mtexpoly_check(em);
 
 	if (ret && sima) {
@@ -226,7 +226,7 @@ static void HC_relaxation_iteration_uv(BMEditMesh *em, UvSculptData *sculptdata,
 	float diff[2];
 	int i;
 	float radius_root = sqrt(radius);
-	Brush *brush = paint_brush(sculptdata->uvsculpt);
+	Brush *brush = BKE_paint_brush(sculptdata->uvsculpt);
 
 	tmp_uvdata = (Temp_UVData *)MEM_callocN(sculptdata->totalUniqueUvs * sizeof(Temp_UVData), "Temporal data");
 
@@ -298,7 +298,7 @@ static void laplacian_relaxation_iteration_uv(BMEditMesh *em, UvSculptData *scul
 	float diff[2];
 	int i;
 	float radius_root = sqrt(radius);
-	Brush *brush = paint_brush(sculptdata->uvsculpt);
+	Brush *brush = BKE_paint_brush(sculptdata->uvsculpt);
 
 	tmp_uvdata = (Temp_UVData *)MEM_callocN(sculptdata->totalUniqueUvs * sizeof(Temp_UVData), "Temporal data");
 
@@ -362,7 +362,7 @@ static void uv_sculpt_stroke_apply(bContext *C, wmOperator *op, const wmEvent *e
 	float co[2], radius, radius_root;
 	Scene *scene = CTX_data_scene(C);
 	ARegion *ar = CTX_wm_region(C);
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	unsigned int tool;
 	UvSculptData *sculptdata = (UvSculptData *)op->customdata;
 	SpaceImage *sima;
@@ -370,7 +370,7 @@ static void uv_sculpt_stroke_apply(bContext *C, wmOperator *op, const wmEvent *e
 	int width, height;
 	float aspectRatio;
 	float alpha, zoomx, zoomy;
-	Brush *brush = paint_brush(sculptdata->uvsculpt);
+	Brush *brush = BKE_paint_brush(sculptdata->uvsculpt);
 	ToolSettings *toolsettings = CTX_data_tool_settings(C);
 	tool = sculptdata->tool;
 	invert = sculptdata->invert ? -1 : 1;
@@ -533,7 +533,7 @@ static UvSculptData *uv_sculpt_stroke_init(bContext *C, wmOperator *op, const wm
 	Object *obedit = CTX_data_edit_object(C);
 	ToolSettings *ts = scene->toolsettings;
 	UvSculptData *data = MEM_callocN(sizeof(*data), "UV Smooth Brush Data");
-	BMEditMesh *em = BMEdit_FromObject(obedit);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	BMesh *bm = em->bm;
 
 	op->customdata = data;
@@ -712,7 +712,7 @@ static UvSculptData *uv_sculpt_stroke_init(bContext *C, wmOperator *op, const wm
 			return NULL;
 		}
 		/* fill the edges with data */
-		for (i = 0; BLI_ghashIterator_notDone(ghi); BLI_ghashIterator_step(ghi)) {
+		for (i = 0; !BLI_ghashIterator_done(ghi); BLI_ghashIterator_step(ghi)) {
 			data->uvedges[i++] = *((UvEdge *)BLI_ghashIterator_getKey(ghi));
 		}
 		data->totalUvEdges = BLI_ghash_size(edgeHash);
@@ -740,7 +740,7 @@ static UvSculptData *uv_sculpt_stroke_init(bContext *C, wmOperator *op, const wm
 			int width, height;
 			float aspectRatio;
 			float alpha, zoomx, zoomy;
-			Brush *brush = paint_brush(sculptdata->uvsculpt);
+			Brush *brush = BKE_paint_brush(sculptdata->uvsculpt);
 
 			alpha = BKE_brush_alpha_get(scene, brush);
 

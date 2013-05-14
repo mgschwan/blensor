@@ -97,17 +97,6 @@ __device_inline float3 transform_direction_transposed(const Transform *t, const 
 	return make_float3(dot(x, a), dot(y, a), dot(z, a));
 }
 
-#ifndef __KERNEL_GPU__
-
-__device_inline void print_transform(const char *label, const Transform& t)
-{
-	print_float4(label, t.x);
-	print_float4(label, t.y);
-	print_float4(label, t.z);
-	print_float4(label, t.w);
-	printf("\n");
-}
-
 __device_inline Transform transform_transpose(const Transform a)
 {
 	Transform t;
@@ -116,19 +105,6 @@ __device_inline Transform transform_transpose(const Transform a)
 	t.y.x = a.x.y; t.y.y = a.y.y; t.y.z = a.z.y; t.y.w = a.w.y;
 	t.z.x = a.x.z; t.z.y = a.y.z; t.z.z = a.z.z; t.z.w = a.w.z;
 	t.w.x = a.x.w; t.w.y = a.y.w; t.w.z = a.z.w; t.w.w = a.w.w;
-
-	return t;
-}
-
-__device_inline Transform operator*(const Transform a, const Transform b)
-{
-	Transform c = transform_transpose(b);
-	Transform t;
-
-	t.x = make_float4(dot(a.x, c.x), dot(a.x, c.y), dot(a.x, c.z), dot(a.x, c.w));
-	t.y = make_float4(dot(a.y, c.x), dot(a.y, c.y), dot(a.y, c.z), dot(a.y, c.w));
-	t.z = make_float4(dot(a.z, c.x), dot(a.z, c.y), dot(a.z, c.z), dot(a.z, c.w));
-	t.w = make_float4(dot(a.w, c.x), dot(a.w, c.y), dot(a.w, c.z), dot(a.w, c.w));
 
 	return t;
 }
@@ -146,6 +122,30 @@ __device_inline Transform make_transform(float a, float b, float c, float d,
 	t.w.x = m; t.w.y = n; t.w.z = o; t.w.w = p;
 
 	return t;
+}
+
+#ifndef __KERNEL_GPU__
+
+__device_inline Transform operator*(const Transform a, const Transform b)
+{
+	Transform c = transform_transpose(b);
+	Transform t;
+
+	t.x = make_float4(dot(a.x, c.x), dot(a.x, c.y), dot(a.x, c.z), dot(a.x, c.w));
+	t.y = make_float4(dot(a.y, c.x), dot(a.y, c.y), dot(a.y, c.z), dot(a.y, c.w));
+	t.z = make_float4(dot(a.z, c.x), dot(a.z, c.y), dot(a.z, c.z), dot(a.z, c.w));
+	t.w = make_float4(dot(a.w, c.x), dot(a.w, c.y), dot(a.w, c.z), dot(a.w, c.w));
+
+	return t;
+}
+
+__device_inline void print_transform(const char *label, const Transform& t)
+{
+	print_float4(label, t.x);
+	print_float4(label, t.y);
+	print_float4(label, t.z);
+	print_float4(label, t.w);
+	printf("\n");
 }
 
 __device_inline Transform transform_translate(float3 t)

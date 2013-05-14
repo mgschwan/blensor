@@ -44,7 +44,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_camera.h"
@@ -85,6 +84,27 @@
 
 /* for ndof prints */
 // #define DEBUG_NDOF_MOTION
+
+static void view3d_offset_lock_report(ReportList *reports)
+{
+	BKE_report(reports, RPT_WARNING, "View offset is locked");
+}
+
+bool ED_view3d_offset_lock_check(struct View3D *v3d, struct RegionView3D *rv3d)
+{
+	return (rv3d->persp != RV3D_CAMOB) && (v3d->ob_centre_cursor || v3d->ob_centre);
+}
+
+#define VIEW3D_OP_OFS_LOCK_TEST(C, op) \
+	{ \
+		View3D *v3d_tmp = CTX_wm_view3d(C); \
+		RegionView3D *rv3d_tmp = CTX_wm_region_view3d(C); \
+		if (ED_view3d_offset_lock_check(v3d_tmp, rv3d_tmp)) { \
+			view3d_offset_lock_report((op)->reports); \
+			return OPERATOR_CANCELLED; \
+		} \
+	} (void)0
+
 
 /* ********************** view3d_edit: view manipulations ********************* */
 
@@ -441,11 +461,18 @@ static void viewops_data_create(bContext *C, wmOperator *op, const wmEvent *even
 		Object *ob = OBACT;
 
 		if (ob && (ob->mode & OB_MODE_ALL_PAINT) && (BKE_object_pose_armature_get(ob) == NULL)) {
-			/* transformation is disabled for painting modes, which will make it
-			 * so previous offset is used. This is annoying when you open file
-			 * saved with active object in painting mode
+			/* in case of sculpting use last average stroke position as a rotation
+			 * center, in other cases it's not clear what rotation center shall be
+			 * so just rotate around object origin
 			 */
-			copy_v3_v3(lastofs, ob->obmat[3]);
+			if (ob->mode & OB_MODE_SCULPT) {
+				float stroke[3];
+				ED_sculpt_get_average_stroke(ob, stroke);
+				copy_v3_v3(lastofs, stroke);
+			}
+			else {
+				copy_v3_v3(lastofs, ob->obmat[3]);
+			}
 		}
 		else {
 			/* If there's no selection, lastofs is unmodified and last value since static */
@@ -523,7 +550,7 @@ static void viewops_data_create(bContext *C, wmOperator *op, const wmEvent *even
 static void viewops_data_free(bContext *C, wmOperator *op)
 {
 	ARegion *ar;
-	Paint *p = paint_get_active_from_context(C);
+	Paint *p = BKE_paint_get_active_from_context(C);
 
 	if (op->customdata) {
 		ViewOpsData *vod = op->customdata;
@@ -1279,7 +1306,7 @@ void VIEW3D_OT_ndof_orbit_zoom(struct wmOperatorType *ot)
 /* -- "pan" navigation
  * -- zoom or dolly?
  */
-static int ndof_pan_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *event)
+static int ndof_pan_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	if (event->type != NDOF_MOTION)
 		return OPERATOR_CANCELLED;
@@ -1287,6 +1314,8 @@ static int ndof_pan_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *e
 		View3D *v3d = CTX_wm_view3d(C);
 		RegionView3D *rv3d = CTX_wm_region_view3d(C);
 		wmNDOFMotionData *ndof = (wmNDOFMotionData *) event->customdata;
+
+		VIEW3D_OP_OFS_LOCK_TEST(C, op);
 
 		ED_view3d_camera_lock_init(v3d, rv3d);
 
@@ -1578,6 +1607,8 @@ static int viewmove_modal(bContext *C, wmOperator *op, const wmEvent *event)
 static int viewmove_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	ViewOpsData *vod;
+
+	VIEW3D_OP_OFS_LOCK_TEST(C, op);
 
 	/* makes op->customdata */
 	viewops_data_create(C, op, event);
@@ -2156,6 +2187,8 @@ static int viewdolly_exec(bContext *C, wmOperator *op)
 static int viewdolly_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	ViewOpsData *vod;
+
+	VIEW3D_OP_OFS_LOCK_TEST(C, op);
 
 	/* makes op->customdata */
 	viewops_data_create(C, op, event);
@@ -3475,6 +3508,8 @@ static int viewpan_exec(bContext *C, wmOperator *op)
 	float zfac;
 	int pandir;
 
+	VIEW3D_OP_OFS_LOCK_TEST(C, op);
+
 	pandir = RNA_enum_get(op->ptr, "type");
 
 	ED_view3d_camera_lock_init(v3d, rv3d);
@@ -3667,18 +3702,13 @@ void VIEW3D_OT_background_image_remove(wmOperatorType *ot)
 
 /* ********************* set clipping operator ****************** */
 
-static void calc_clipping_plane(float clip[6][4], BoundBox *clipbb)
+static void calc_clipping_plane(float clip[6][4], const BoundBox *clipbb)
 {
 	int val;
 
 	for (val = 0; val < 4; val++) {
-
 		normal_tri_v3(clip[val], clipbb->vec[val], clipbb->vec[val == 3 ? 0 : val + 1], clipbb->vec[val + 4]);
-
-		/* TODO - this is just '-dot_v3v3(clip[val], clipbb->vec[val])' isnt it? - sould replace */
-		clip[val][3] = -clip[val][0] * clipbb->vec[val][0] -
-		                clip[val][1] * clipbb->vec[val][1] -
-		                clip[val][2] * clipbb->vec[val][2];
+		clip[val][3] = -dot_v3v3(clip[val], clipbb->vec[val]);
 	}
 }
 
@@ -3969,7 +3999,7 @@ static float view_autodist_depth_margin(ARegion *ar, const int mval[2], int marg
 bool ED_view3d_autodist(Scene *scene, ARegion *ar, View3D *v3d, const int mval[2], float mouse_worldloc[3], bool alphaoverride)
 {
 	bglMats mats; /* ZBuffer depth vars */
-	float depth_close = FLT_MAX;
+	float depth_close;
 	double cent[2],  p[3];
 
 	/* Get Z Depths, needed for perspective, nice for ortho */

@@ -93,7 +93,6 @@ endif()
 		bf_intern_string 
 		bf_intern_ghost
 		bf_rna
-		bf_bmesh
 		bf_blenkernel
 		bf_intern_rigidbody
 		bf_blenloader
@@ -128,7 +127,6 @@ endif()
 		bf_python_mathutils
 		bf_python_bmesh
 		bf_python_blensor
-		bf_blenlib 
 		bf_intern_utfconv
 		bf_imbuf_cineon
 		bf_imbuf_openexr 
@@ -141,6 +139,8 @@ endif()
 		bf_intern_audaspace
 		blenkernel_blc
 		bf_bmesh
+		bf_blenlib
+		bf_intern_utfconv
 		extern_binreloc
 		extern_minilzo
 		bf_intern_ghost # duplicate for linking
@@ -152,6 +152,7 @@ endif()
 		bf_intern_opennl
 		extern_rangetree
 		extern_wcwidth
+		extern_libmv
 	)
 
 	if(WITH_MOD_CLOTH_ELTOPO)
@@ -167,7 +168,6 @@ endif()
 	endif()
 
 	if(WITH_LIBMV)
-		list(APPEND BLENDER_SORTED_LIBS extern_libmv)
 		list(APPEND BLENDER_SORTED_LIBS extern_ceres)
 	endif()
 

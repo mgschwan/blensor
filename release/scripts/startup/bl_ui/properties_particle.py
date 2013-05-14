@@ -496,8 +496,8 @@ class PARTICLE_PT_physics(ParticleButtonsPanel, Panel):
             supports_courant = part.physics_type == 'FLUID'
             subsub = sub.row()
             subsub.enabled = supports_courant
-            subsub.prop(part, "adaptive_subframes", text="")
-            if supports_courant and part.adaptive_subframes:
+            subsub.prop(part, "use_adaptive_subframes", text="")
+            if supports_courant and part.use_adaptive_subframes:
                 col.prop(part, "courant_target", text="Threshold")
 
             row = layout.row()
@@ -536,8 +536,8 @@ class PARTICLE_PT_physics(ParticleButtonsPanel, Panel):
                 sub.prop(fluid, "factor_radius", text="")
 
                 sub = col.row()
-                sub.prop(fluid, "rest_density", slider=fluid.factor_density)
-                sub.prop(fluid, "factor_density", text="")
+                sub.prop(fluid, "rest_density", slider=fluid.use_factor_density)
+                sub.prop(fluid, "use_factor_density", text="")
 
                 if fluid.solver == 'CLASSICAL':
                     # With the classical solver, it is possible to calculate the

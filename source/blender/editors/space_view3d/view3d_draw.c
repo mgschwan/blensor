@@ -46,7 +46,6 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_rand.h"
 #include "BLI_utildefines.h"
 #include "BLI_endian_switch.h"
 
@@ -191,7 +190,7 @@ static void view3d_draw_clipping(RegionView3D *rv3d)
 void ED_view3d_clipping_set(RegionView3D *rv3d)
 {
 	double plane[4];
-	const unsigned int tot = (rv3d->viewlock) ? 4 : 6;
+	const unsigned int tot = (rv3d->viewlock & RV3D_BOXCLIP) ? 4 : 6;
 	unsigned int a;
 
 	for (a = 0; a < tot; a++) {
@@ -853,7 +852,7 @@ static void draw_viewport_name(ARegion *ar, View3D *v3d, rcti *rect)
 	const char *name = view3d_get_name(v3d, rv3d);
 	/* XXX 24 may be a bit small for unicode languages (Chinese in utf-8...) */
 #ifdef WITH_INTERNATIONAL
-	char tmpstr[32];
+	char tmpstr[64];
 #else
 	char tmpstr[24];
 #endif
@@ -863,14 +862,12 @@ static void draw_viewport_name(ARegion *ar, View3D *v3d, rcti *rect)
 		name = tmpstr;
 	}
 
-	if (name) {
-		UI_ThemeColor(TH_TEXT_HI);
+	UI_ThemeColor(TH_TEXT_HI);
 #ifdef WITH_INTERNATIONAL
-		BLF_draw_default(U.widget_unit + rect->xmin,  rect->ymax - U.widget_unit, 0.0f, name, sizeof(tmpstr));
+	BLF_draw_default(U.widget_unit + rect->xmin,  rect->ymax - U.widget_unit, 0.0f, name, sizeof(tmpstr));
 #else
-		BLF_draw_default_ascii(U.widget_unit + rect->xmin,  rect->ymax - U.widget_unit, 0.0f, name, sizeof(tmpstr));
+	BLF_draw_default_ascii(U.widget_unit + rect->xmin,  rect->ymax - U.widget_unit, 0.0f, name, sizeof(tmpstr));
 #endif
-	}
 }
 
 /* draw info beside axes in bottom left-corner: 
@@ -2463,7 +2460,7 @@ static void gpu_update_lamps_shadows(Scene *scene, View3D *v3d)
 		invert_m4_m4(rv3d.persinv, rv3d.viewinv);
 
 		/* no need to call ED_view3d_draw_offscreen_init since shadow buffers were already updated */
-		ED_view3d_draw_offscreen(scene, v3d, &ar, winsize, winsize, viewmat, winmat, false);
+		ED_view3d_draw_offscreen(scene, v3d, &ar, winsize, winsize, viewmat, winmat, false, false);
 		GPU_lamp_shadow_buffer_unbind(shadow->lamp);
 		
 		v3d->drawtype = drawtype;
@@ -2498,33 +2495,6 @@ CustomDataMask ED_view3d_datamask(Scene *scene, View3D *v3d)
 	return mask;
 }
 
-CustomDataMask ED_view3d_object_datamask(Scene *scene)
-{
-	Object *ob = scene->basact ? scene->basact->object : NULL;
-	CustomDataMask mask = 0;
-
-	if (ob) {
-		/* check if we need tfaces & mcols due to face select or texture paint */
-		if (paint_facesel_test(ob) || (ob->mode & OB_MODE_TEXTURE_PAINT)) {
-			mask |= CD_MASK_MTFACE | CD_MASK_MCOL;
-		}
-
-		/* check if we need mcols due to vertex paint or weightpaint */
-		if (ob->mode & OB_MODE_VERTEX_PAINT) {
-			mask |= CD_MASK_MCOL;
-		}
-
-		if (ob->mode & OB_MODE_WEIGHT_PAINT) {
-			mask |= CD_MASK_PREVIEW_MCOL;
-		}
-
-		if (ob->mode & OB_MODE_EDIT)
-			mask |= CD_MASK_MVERT_SKIN;
-	}
-
-	return mask;
-}
-
 /* goes over all modes and view3d settings */
 CustomDataMask ED_view3d_screen_datamask(bScreen *screen)
 {
@@ -2538,8 +2508,6 @@ CustomDataMask ED_view3d_screen_datamask(bScreen *screen)
 			mask |= ED_view3d_datamask(scene, (View3D *)sa->spacedata.first);
 		}
 	}
-
-	mask |= ED_view3d_object_datamask(scene);
 
 	return mask;
 }
@@ -2611,7 +2579,7 @@ void ED_view3d_draw_offscreen_init(Scene *scene, View3D *v3d)
  * stuff like shadow buffers
  */
 void ED_view3d_draw_offscreen(Scene *scene, View3D *v3d, ARegion *ar, int winx, int winy,
-                              float viewmat[4][4], float winmat[4][4], bool do_bgpic)
+                              float viewmat[4][4], float winmat[4][4], bool do_bgpic, bool do_sky)
 {
 	RegionView3D *rv3d = ar->regiondata;
 	Base *base;
@@ -2642,7 +2610,16 @@ void ED_view3d_draw_offscreen(Scene *scene, View3D *v3d, ARegion *ar, int winx, 
 	 * warning! can be slow so only free animated images - campbell */
 	GPU_free_images_anim();
 
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	/* clear opengl buffers */
+	if (do_sky) {
+		float sky_color[3];
+
+		ED_view3d_offscreen_sky_color_get(scene, sky_color);
+		glClearColor(sky_color[0], sky_color[1], sky_color[2], 1.0f);
+	}
+	else {
+		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	}
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -2753,18 +2730,6 @@ void ED_view3d_offscreen_sky_color_get(Scene *scene, float sky_color[3])
 		UI_GetThemeColor3fv(TH_BACK, sky_color);
 }
 
-static void offscreen_imbuf_add_sky(ImBuf *ibuf, Scene *scene)
-{
-	float sky_color[3];
-
-	ED_view3d_offscreen_sky_color_get(scene, sky_color);
-
-	if (ibuf->rect_float)
-		IMB_alpha_under_color_float(ibuf->rect_float, ibuf->x, ibuf->y, sky_color);
-	else
-		IMB_alpha_under_color_byte((unsigned char *) ibuf->rect, ibuf->x, ibuf->y, sky_color);
-}
-
 /* utility func for ED_view3d_draw_offscreen */
 ImBuf *ED_view3d_draw_offscreen_imbuf(Scene *scene, View3D *v3d, ARegion *ar, int sizex, int sizey, unsigned int flag,
                                       bool draw_background, int alpha_mode, char err_out[256])
@@ -2772,14 +2737,17 @@ ImBuf *ED_view3d_draw_offscreen_imbuf(Scene *scene, View3D *v3d, ARegion *ar, in
 	RegionView3D *rv3d = ar->regiondata;
 	ImBuf *ibuf;
 	GPUOffScreen *ofs;
+	bool draw_sky = (alpha_mode == R_ADDSKY);
 	
 	/* state changes make normal drawing go weird otherwise */
 	glPushAttrib(GL_LIGHTING_BIT);
 
 	/* bind */
 	ofs = GPU_offscreen_create(sizex, sizey, err_out);
-	if (ofs == NULL)
+	if (ofs == NULL) {
+		glPopAttrib();
 		return NULL;
+	}
 
 	ED_view3d_draw_offscreen_init(scene, v3d);
 
@@ -2794,10 +2762,10 @@ ImBuf *ED_view3d_draw_offscreen_imbuf(Scene *scene, View3D *v3d, ARegion *ar, in
 		BKE_camera_params_compute_viewplane(&params, sizex, sizey, scene->r.xasp, scene->r.yasp);
 		BKE_camera_params_compute_matrix(&params);
 
-		ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, params.winmat, draw_background);
+		ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, params.winmat, draw_background, draw_sky);
 	}
 	else {
-		ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, NULL, draw_background);
+		ED_view3d_draw_offscreen(scene, v3d, ar, sizex, sizey, NULL, NULL, draw_background, draw_sky);
 	}
 
 	/* read in pixels & stamp */
@@ -2807,9 +2775,6 @@ ImBuf *ED_view3d_draw_offscreen_imbuf(Scene *scene, View3D *v3d, ARegion *ar, in
 		GPU_offscreen_read_pixels(ofs, GL_FLOAT, ibuf->rect_float);
 	else if (ibuf->rect)
 		GPU_offscreen_read_pixels(ofs, GL_UNSIGNED_BYTE, ibuf->rect);
-
-	if (alpha_mode == R_ADDSKY)
-		offscreen_imbuf_add_sky(ibuf, scene);
 
 	/* unbind */
 	GPU_offscreen_unbind(ofs);
@@ -2931,15 +2896,57 @@ static void draw_viewport_fps(Scene *scene, rcti *rect)
 
 static void view3d_main_area_draw_objects(const bContext *C, ARegion *ar, const char **grid_unit);
 
-static bool view3d_main_area_do_render_draw(const bContext *C)
+static bool view3d_main_area_do_render_draw(Scene *scene)
 {
-	Scene *scene = CTX_data_scene(C);
 	RenderEngineType *type = RE_engines_find(scene->r.engine);
 
 	return (type && type->view_update && type->view_draw);
 }
 
-static bool view3d_main_area_draw_engine(const bContext *C, ARegion *ar, const bool draw_border)
+bool ED_view3d_calc_render_border(Scene *scene, View3D *v3d, ARegion *ar, rcti *rect)
+{
+	RegionView3D *rv3d = ar->regiondata;
+	rctf viewborder;
+	bool use_border;
+
+	/* test if there is a 3d view rendering */
+	if (v3d->drawtype != OB_RENDER || !view3d_main_area_do_render_draw(scene))
+		return false;
+
+	/* test if there is a border render */
+	if (rv3d->persp == RV3D_CAMOB)
+		use_border = (scene->r.mode & R_BORDER) != 0;
+	else
+		use_border = (v3d->flag2 & V3D_RENDER_BORDER) != 0;
+	
+	if (!use_border)
+		return false;
+
+	/* compute border */
+	if (rv3d->persp == RV3D_CAMOB) {
+		ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, &viewborder, false);
+
+		rect->xmin = viewborder.xmin + scene->r.border.xmin * BLI_rctf_size_x(&viewborder);
+		rect->ymin = viewborder.ymin + scene->r.border.ymin * BLI_rctf_size_y(&viewborder);
+		rect->xmax = viewborder.xmin + scene->r.border.xmax * BLI_rctf_size_x(&viewborder);
+		rect->ymax = viewborder.ymin + scene->r.border.ymax * BLI_rctf_size_y(&viewborder);
+	}
+	else {
+		rect->xmin = v3d->render_border.xmin * ar->winx;
+		rect->xmax = v3d->render_border.xmax * ar->winx;
+		rect->ymin = v3d->render_border.ymin * ar->winy;
+		rect->ymax = v3d->render_border.ymax * ar->winy;
+	}
+
+	rect->xmin = CLAMPIS(ar->winrct.xmin + rect->xmin, ar->winrct.xmin, ar->winrct.xmax);
+	rect->ymin = CLAMPIS(ar->winrct.ymin + rect->ymin, ar->winrct.ymin, ar->winrct.ymax);
+	rect->xmax = CLAMPIS(ar->winrct.xmin + rect->xmax, ar->winrct.xmin, ar->winrct.xmax);
+	rect->ymax = CLAMPIS(ar->winrct.ymin + rect->ymax, ar->winrct.ymin, ar->winrct.ymax);
+
+	return true;
+}
+
+static bool view3d_main_area_draw_engine(const bContext *C, ARegion *ar, bool clip_border, rcti *border_rect)
 {
 	Scene *scene = CTX_data_scene(C);
 	View3D *v3d = CTX_wm_view3d(C);
@@ -2972,39 +2979,12 @@ static bool view3d_main_area_draw_engine(const bContext *C, ARegion *ar, const b
 	/* background draw */
 	ED_region_pixelspace(ar);
 
-	if (draw_border) {
+	if (clip_border) {
 		/* for border draw, we only need to clear a subset of the 3d view */
-		rctf viewborder;
-		rcti cliprct;
-
-		if (rv3d->persp == RV3D_CAMOB) {
-			ED_view3d_calc_camera_border(scene, ar, v3d, rv3d, &viewborder, false);
-
-			cliprct.xmin = viewborder.xmin + scene->r.border.xmin * BLI_rctf_size_x(&viewborder);
-			cliprct.ymin = viewborder.ymin + scene->r.border.ymin * BLI_rctf_size_y(&viewborder);
-			cliprct.xmax = viewborder.xmin + scene->r.border.xmax * BLI_rctf_size_x(&viewborder);
-			cliprct.ymax = viewborder.ymin + scene->r.border.ymax * BLI_rctf_size_y(&viewborder);
-		}
-		else {
-			cliprct.xmin = v3d->render_border.xmin * ar->winx;
-			cliprct.xmax = v3d->render_border.xmax * ar->winx;
-			cliprct.ymin = v3d->render_border.ymin * ar->winy;
-			cliprct.ymax = v3d->render_border.ymax * ar->winy;
-		}
-
-		cliprct.xmin += ar->winrct.xmin;
-		cliprct.xmax += ar->winrct.xmin;
-		cliprct.ymin += ar->winrct.ymin;
-		cliprct.ymax += ar->winrct.ymin;
-
-		cliprct.xmin = CLAMPIS(cliprct.xmin, ar->winrct.xmin, ar->winrct.xmax);
-		cliprct.ymin = CLAMPIS(cliprct.ymin, ar->winrct.ymin, ar->winrct.ymax);
-		cliprct.xmax = CLAMPIS(cliprct.xmax, ar->winrct.xmin, ar->winrct.xmax);
-		cliprct.ymax = CLAMPIS(cliprct.ymax, ar->winrct.ymin, ar->winrct.ymax);
-
-		if (cliprct.xmax > cliprct.xmin && cliprct.ymax > cliprct.ymin) {
+		if (border_rect->xmax > border_rect->xmin && border_rect->ymax > border_rect->ymin) {
 			glGetIntegerv(GL_SCISSOR_BOX, scissor);
-			glScissor(cliprct.xmin, cliprct.ymin, BLI_rcti_size_x(&cliprct), BLI_rcti_size_y(&cliprct));
+			glScissor(border_rect->xmin, border_rect->ymin,
+			          BLI_rcti_size_x(border_rect), BLI_rcti_size_y(border_rect));
 		}
 		else {
 			return false;
@@ -3026,7 +3006,7 @@ static bool view3d_main_area_draw_engine(const bContext *C, ARegion *ar, const b
 	if (v3d->flag & V3D_DISPBGPICS)
 		view3d_draw_bgpic(scene, ar, v3d, true, true);
 
-	if (draw_border) {
+	if (clip_border) {
 		/* restore scissor as it was before */
 		glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
 	}
@@ -3034,12 +3014,31 @@ static bool view3d_main_area_draw_engine(const bContext *C, ARegion *ar, const b
 	return true;
 }
 
-static void view3d_main_area_draw_engine_info(RegionView3D *rv3d, ARegion *ar)
+static void view3d_main_area_draw_engine_info(View3D *v3d, RegionView3D *rv3d, ARegion *ar, bool render_border)
 {
+	float fill_color[4] = {0.0f, 0.0f, 0.0f, 0.25f};
+
 	if (!rv3d->render_engine || !rv3d->render_engine->text)
 		return;
+	
+	if (render_border) {
+		/* draw darkened background color. no alpha because border render does
+		 * partial redraw and will not redraw the area behind this info bar */
+		float alpha = 1.0f - fill_color[3];
+	
+		if (rv3d->persp == RV3D_CAMOB && v3d->camera && v3d->camera->type == OB_CAMERA) {
+			Camera *ca = v3d->camera->data;
 
-	ED_region_info_draw(ar, rv3d->render_engine->text, 1, 0.25);
+			if (ca && (ca->flag & CAM_SHOWPASSEPARTOUT))
+				alpha *= (1.0f - ca->passepartalpha);
+		}
+
+		UI_GetThemeColor3fv(TH_HIGH_GRAD, fill_color);
+		mul_v3_fl(fill_color, alpha);
+		fill_color[3] = 1.0f;
+	}
+
+	ED_region_info_draw(ar, rv3d->render_engine->text, 1, fill_color);
 }
 
 /*
@@ -3389,7 +3388,7 @@ static void view3d_main_area_draw_objects(const bContext *C, ARegion *ar, const 
 
 }
 
-static void view3d_main_area_draw_info(const bContext *C, ARegion *ar, const char *grid_unit)
+static void view3d_main_area_draw_info(const bContext *C, ARegion *ar, const char *grid_unit, bool render_border)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	Scene *scene = CTX_data_scene(C);
@@ -3436,7 +3435,7 @@ static void view3d_main_area_draw_info(const bContext *C, ARegion *ar, const cha
 	}
 
 	if (rv3d->render_engine) {
-		view3d_main_area_draw_engine_info(rv3d, ar);
+		view3d_main_area_draw_engine_info(v3d, rv3d, ar, render_border);
 		return;
 	}
 
@@ -3467,17 +3466,17 @@ void view3d_main_area_draw(const bContext *C, ARegion *ar)
 {
 	Scene *scene = CTX_data_scene(C);
 	View3D *v3d = CTX_wm_view3d(C);
-	RegionView3D *rv3d = CTX_wm_region_view3d(C);
 	const char *grid_unit = NULL;
-	bool draw_border = false;
+	rcti border_rect;
+	bool render_border, clip_border;
 
-	if (rv3d->persp == RV3D_CAMOB)
-		draw_border = (scene->r.mode & R_BORDER) != 0;
-	else
-		draw_border = (v3d->flag2 & V3D_RENDER_BORDER) != 0;
+	/* if we only redraw render border area, skip opengl draw and also
+	 * don't do scissor because it's already set */
+	render_border = ED_view3d_calc_render_border(scene, v3d, ar, &border_rect);
+	clip_border = (render_border && !BLI_rcti_compare(&ar->drawrct, &border_rect));
 
 	/* draw viewport using opengl */
-	if (v3d->drawtype != OB_RENDER || !view3d_main_area_do_render_draw(C) || draw_border) {
+	if (v3d->drawtype != OB_RENDER || !view3d_main_area_do_render_draw(scene) || clip_border) {
 		view3d_main_area_draw_objects(C, ar, &grid_unit);
 #ifdef DEBUG_DRAW
 		bl_debug_draw();
@@ -3487,9 +3486,9 @@ void view3d_main_area_draw(const bContext *C, ARegion *ar)
 
 	/* draw viewport using external renderer */
 	if (v3d->drawtype == OB_RENDER)
-		view3d_main_area_draw_engine(C, ar, draw_border);
+		view3d_main_area_draw_engine(C, ar, clip_border, &border_rect);
 	
-	view3d_main_area_draw_info(C, ar, grid_unit);
+	view3d_main_area_draw_info(C, ar, grid_unit, render_border);
 
 	v3d->flag |= V3D_INVALID_BACKBUF;
 }

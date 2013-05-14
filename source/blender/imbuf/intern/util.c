@@ -271,6 +271,9 @@ void IMB_ffmpeg_init(void)
 
 	ffmpeg_last_error[0] = '\0';
 
+	if (G.debug & G_DEBUG_FFMPEG)
+		av_log_set_level(AV_LOG_DEBUG);
+
 	/* set own callback which could store last error to report to UI */
 	av_log_set_callback(ffmpeg_log_callback);
 }
@@ -294,6 +297,7 @@ static int isffmpeg(const char *filename)
 	    BLI_testextensie(filename, ".dds") ||
 	    BLI_testextensie(filename, ".tga") ||
 	    BLI_testextensie(filename, ".bmp") ||
+	    BLI_testextensie(filename, ".tif") ||
 	    BLI_testextensie(filename, ".exr") ||
 	    BLI_testextensie(filename, ".cin") ||
 	    BLI_testextensie(filename, ".wav"))

@@ -24,14 +24,42 @@ import bpy
 import os
 
 
+def image_copy_guess(filepath, objects):
+    # 'filepath' is the path we are writing to.
+    import shutil
+    from bpy_extras import object_utils
+    image = None
+    for obj in objects:
+        image = object_utils.object_image_guess(obj)
+        if image is not None:
+            break
+
+    if image is not None:
+        imagepath = bpy.path.abspath(image.filepath, library=image.library)
+        if os.path.exists(imagepath):
+            filepath_noext = os.path.splitext(filepath)[0]
+            ext = os.path.splitext(imagepath)[1]
+
+            imagepath_dst = filepath_noext + ext
+            print("copying texture: %r -> %r" % (imagepath, imagepath_dst))
+            try:
+                shutil.copy(imagepath, imagepath_dst)
+            except:
+                import traceback
+                traceback.print_exc()
+
+
 def write_mesh(context, info, report_cb):
     scene = context.scene
+    unit = scene.unit_settings
     print_3d = scene.print_3d
 
     obj_base = scene.object_bases.active
     obj = obj_base.object
 
     export_format = print_3d.export_format
+    global_scale = unit.scale_length if (unit.system != 'NONE' and print_3d.use_apply_scale) else 1.0
+    path_mode = 'COPY' if print_3d.use_export_texture else 'AUTO'
 
     context_override = context.copy()
 
@@ -94,6 +122,7 @@ def write_mesh(context, info, report_cb):
                 filepath=filepath,
                 ascii=False,
                 use_mesh_modifiers=True,
+                global_scale=global_scale,
                 )
     elif export_format == 'PLY':
         addon_ensure("io_mesh_ply")
@@ -102,6 +131,7 @@ def write_mesh(context, info, report_cb):
                 context_override,
                 filepath=filepath,
                 use_mesh_modifiers=True,
+                global_scale=global_scale,
                 )
     elif export_format == 'X3D':
         addon_ensure("io_scene_x3d")
@@ -111,6 +141,8 @@ def write_mesh(context, info, report_cb):
                 filepath=filepath,
                 use_mesh_modifiers=True,
                 use_selection=True,
+                path_mode=path_mode,
+                global_scale=global_scale,
                 )
     elif export_format == 'WRL':
         addon_ensure("io_scene_vrml2")
@@ -120,6 +152,8 @@ def write_mesh(context, info, report_cb):
                 filepath=filepath,
                 use_mesh_modifiers=True,
                 use_selection=True,
+                path_mode=path_mode,
+                global_scale=global_scale,
                 )
     elif export_format == 'OBJ':
         addon_ensure("io_scene_obj")
@@ -129,9 +163,16 @@ def write_mesh(context, info, report_cb):
                 filepath=filepath,
                 use_mesh_modifiers=True,
                 use_selection=True,
+                path_mode=path_mode,
+                global_scale=global_scale,
                 )
     else:
         assert(0)
+
+    # for formats that don't support images
+    if export_format in {'STL', 'PLY'}:
+        if path_mode == 'COPY':
+            image_copy_guess(filepath, context_override["selected_objects"])
 
     if obj_base_tmp is not None:
         obj = obj_base_tmp.object

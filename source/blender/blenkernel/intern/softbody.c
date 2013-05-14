@@ -79,6 +79,7 @@ variables on the UI for now
 #include "BKE_pointcache.h"
 #include "BKE_deform.h"
 #include "BKE_mesh.h"
+#include "BKE_scene.h"
 
 #include  "PIL_time.h"
 // #include  "ONL_opennl.h" remove linking to ONL for now
@@ -1034,7 +1035,7 @@ static int sb_detect_aabb_collisionCached(float UNUSED(force[3]), unsigned int U
 
 	hash  = vertexowner->soft->scratch->colliderhash;
 	ihash =	BLI_ghashIterator_new(hash);
-	while (BLI_ghashIterator_notDone(ihash) ) {
+	while (!BLI_ghashIterator_done(ihash)) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1113,7 +1114,7 @@ static int sb_detect_face_pointCached(float face_v1[3], float face_v2[3], float 
 
 	hash  = vertexowner->soft->scratch->colliderhash;
 	ihash =	BLI_ghashIterator_new(hash);
-	while (BLI_ghashIterator_notDone(ihash) ) {
+	while (!BLI_ghashIterator_done(ihash)) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1205,7 +1206,7 @@ static int sb_detect_face_collisionCached(float face_v1[3], float face_v2[3], fl
 
 	hash  = vertexowner->soft->scratch->colliderhash;
 	ihash =	BLI_ghashIterator_new(hash);
-	while (BLI_ghashIterator_notDone(ihash) ) {
+	while (!BLI_ghashIterator_done(ihash)) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1433,7 +1434,7 @@ static int sb_detect_edge_collisionCached(float edge_v1[3], float edge_v2[3], fl
 
 	hash  = vertexowner->soft->scratch->colliderhash;
 	ihash =	BLI_ghashIterator_new(hash);
-	while (BLI_ghashIterator_notDone(ihash) ) {
+	while (!BLI_ghashIterator_done(ihash)) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -1664,10 +1665,7 @@ static void sb_sfesf_threads_run(Scene *scene, struct Object *ob, float timenow,
 	do_effector= pdInitEffectors(scene, ob, NULL, ob->soft->effector_weights);
 
 	/* figure the number of threads while preventing pretty pointless threading overhead */
-	if (scene->r.mode & R_FIXED_THREADS)
-		totthread= scene->r.threads;
-	else
-		totthread= BLI_system_thread_count();
+	totthread= BKE_scene_num_threads(scene);
 	/* what if we got zillions of CPUs running but less to spread*/
 	while ((totsprings/totthread < lowsprings) && (totthread > 1)) {
 		totthread--;
@@ -1763,7 +1761,7 @@ static int sb_detect_vertex_collisionCached(float opco[3], float facenormal[3], 
 	outerforceaccu[0]=outerforceaccu[1]=outerforceaccu[2]=0.0f;
 	innerforceaccu[0]=innerforceaccu[1]=innerforceaccu[2]=0.0f;
 /* go */
-	while (BLI_ghashIterator_notDone(ihash) ) {
+	while (!BLI_ghashIterator_done(ihash)) {
 
 		ccd_Mesh *ccdm = BLI_ghashIterator_getValue	(ihash);
 		ob             = BLI_ghashIterator_getKey	(ihash);
@@ -2395,10 +2393,7 @@ static void sb_cf_threads_run(Scene *scene, Object *ob, float forcetime, float t
 	int lowpoints =100; /* wild guess .. may increase with better thread management 'above' or even be UI option sb->spawn_cf_threads_nopts */
 
 	/* figure the number of threads while preventing pretty pointless threading overhead */
-	if (scene->r.mode & R_FIXED_THREADS)
-		totthread= scene->r.threads;
-	else
-		totthread= BLI_system_thread_count();
+	totthread= BKE_scene_num_threads(scene);
 	/* what if we got zillions of CPUs running but less to spread*/
 	while ((totpoint/totthread < lowpoints) && (totthread > 1)) {
 		totthread--;
@@ -3316,7 +3311,7 @@ static void mesh_to_softbody(Scene *scene, Object *ob)
 		 */
 
 		if (sb->namedVG_Mass[0]) {
-			int defgrp_index = defgroup_name_index (ob, sb->namedVG_Mass);
+			int defgrp_index = defgroup_name_index(ob, sb->namedVG_Mass);
 			/* printf("VGN  %s %d\n", sb->namedVG_Mass, defgrp_index); */
 			if (defgrp_index != -1) {
 				get_scalar_from_vertexgroup(ob, a, defgrp_index, &bp->mass);
@@ -3329,7 +3324,7 @@ static void mesh_to_softbody(Scene *scene, Object *ob)
 		bp->springweight = 1.0f;
 
 		if (sb->namedVG_Spring_K[0]) {
-			int defgrp_index = defgroup_name_index (ob, sb->namedVG_Spring_K);
+			int defgrp_index = defgroup_name_index(ob, sb->namedVG_Spring_K);
 			//printf("VGN  %s %d\n", sb->namedVG_Spring_K, defgrp_index);
 			if (defgrp_index  != -1) {
 				get_scalar_from_vertexgroup(ob, a, defgrp_index , &bp->springweight);

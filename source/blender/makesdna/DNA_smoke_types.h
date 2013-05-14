@@ -37,7 +37,7 @@
 #define MOD_SMOKE_DISSOLVE (1<<2) /* let smoke dissolve */
 #define MOD_SMOKE_DISSOLVE_LOG (1<<3) /* using 1/x for dissolve */
 
-#define MOD_SMOKE_HIGH_SMOOTH (1<<5) /* smoothens high res emission*/
+#define MOD_SMOKE_HIGH_SMOOTH (1<<5) /* -- Deprecated -- */
 #define MOD_SMOKE_FILE_LOAD (1<<6) /* flag for file load */
 #define MOD_SMOKE_ADAPTIVE_DOMAIN (1<<7)
 
@@ -62,6 +62,11 @@
 #define SM_COLL_RIGID		1
 #define SM_COLL_ANIMATED	2
 
+/* high resolution sampling types */
+#define SM_HRES_NEAREST		0
+#define SM_HRES_LINEAR		1
+#define SM_HRES_FULLSAMPLE	2
+
 /* smoke data fileds (active_fields) */
 #define SM_ACTIVE_HEAT		(1<<0)
 #define SM_ACTIVE_FIRE		(1<<1)
@@ -71,6 +76,7 @@
 typedef struct SmokeDomainSettings {
 	struct SmokeModifierData *smd; /* for fast RNA access */
 	struct FLUID_3D *fluid;
+	void *fluid_mutex;
 	struct Group *fluid_group;
 	struct Group *eff_group; // UNUSED
 	struct Group *coll_group; // collision objects group
@@ -131,7 +137,7 @@ typedef struct SmokeDomainSettings {
 	float vorticity;
 	int active_fields;
 	float active_color[3]; /* monitor color situation of simulation */
-	int pad;
+	int highres_sampling;
 
 	/* flame parameters */
 	float burning_rate, flame_smoke, flame_vorticity;

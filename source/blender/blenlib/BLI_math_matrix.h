@@ -88,16 +88,19 @@ void mul_serie_m4(float R[4][4],
 
 void mul_m4_v3(float M[4][4], float r[3]);
 void mul_v3_m4v3(float r[3], float M[4][4], const float v[3]);
+void mul_v2_m4v3(float r[2], float M[4][4], const float v[3]);
 void mul_v2_m2v2(float r[2], float M[2][2], const float v[2]);
 void mul_mat3_m4_v3(float M[4][4], float r[3]);
 void mul_m4_v4(float M[4][4], float r[4]);
 void mul_v4_m4v4(float r[4], float M[4][4], const float v[4]);
 void mul_project_m4_v3(float M[4][4], float vec[3]);
+void mul_v2_project_m4_v3(float r[2], float M[4][4], const float vec[3]);
 
 void mul_m3_v3(float M[3][3], float r[3]);
 void mul_v3_m3v3(float r[3], float M[3][3], const float a[3]);
 void mul_v2_m3v3(float r[2], float M[3][3], const float a[3]);
 void mul_transposed_m3_v3(float M[3][3], float r[3]);
+void mul_transposed_mat3_m4_v3(float M[4][4], float r[3]);
 void mul_m3_v3_double(float M[3][3], double r[3]);
 
 void mul_m3_fl(float R[3][3], float f);
@@ -121,6 +124,8 @@ void mul_v4d_m4v4d(double r[4], float M[4][4], double v[4]);
 
 void transpose_m3(float R[3][3]);
 void transpose_m4(float R[4][4]);
+
+int compare_m4m4(float mat1[4][4], float mat2[4][4], float limit);
 
 void normalize_m3(float R[3][3]);
 void normalize_m3_m3(float R[3][3], float A[3][3]);

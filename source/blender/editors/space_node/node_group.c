@@ -69,67 +69,43 @@
 #include "NOD_common.h"
 #include "NOD_socket.h"
 
-/* define common group node operator properties */
-static void node_group_operator_properties(wmOperatorType *ot)
+static int node_group_operator_poll(bContext *C)
 {
-	/* NB: not using an enum here, because that it would have to use an item callback and thus require
-	 * copying of identifier strings anyway. node_type is not a user option, just a way of allowing
-	 * node group operators to work on different types of group nodes.
-	 */
-	RNA_def_string(ot->srna, "node_type", "", 0, "Node Type", "Group node type the operator works on");
+	if (ED_operator_node_active(C)) {
+		SpaceNode *snode = CTX_wm_space_node(C);
+		
+		/* Group operators only defined for standard node tree types.
+		 * Disabled otherwise to allow pynodes define their own operators
+		 * with same keymap.
+		 */
+		if (STREQ(snode->tree_idname, "ShaderNodeTree") ||
+		    STREQ(snode->tree_idname, "CompositorNodeTree") ||
+		    STREQ(snode->tree_idname, "TextureNodeTree"))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
-/* Internal poll functions so group node operators can work with different group node types.
- * This checks the operator node type property and looks up the respective types.
- * If this function returns FALSE the operator should return PASS_THROUGH to allow other variants.
- */
-static int node_group_operator_check_type(bContext *C, wmOperator *op, char **r_node_idname, char **r_ntree_idname)
+static const char *group_ntree_idname(bContext *C)
 {
 	SpaceNode *snode = CTX_wm_space_node(C);
-	bNodeTree *ntree = snode->edittree;
-	PropertyRNA *ntype_prop = RNA_struct_find_property(op->ptr, "node_type");
-	char *node_idname, *ntree_idname;
-	bNodeType *ntype;
-	bNodeTreeType *ntreetype;
+	return snode->tree_idname;
+}
+
+static const char *group_node_idname(bContext *C)
+{
+	SpaceNode *snode = CTX_wm_space_node(C);
 	
-	if (!RNA_property_is_set(op->ptr, ntype_prop)) {
-		BKE_report(op->reports, RPT_ERROR, "Group node type not set");
-		return FALSE;
-	}
+	if (STREQ(snode->tree_idname, "ShaderNodeTree"))
+		return "ShaderNodeGroup";
+	else if (STREQ(snode->tree_idname, "CompositorNodeTree"))
+		return "CompositorNodeGroup";
+	else if (STREQ(snode->tree_idname, "TextureNodeTree"))
+		return "TextureNodeGroup";
 	
-	node_idname = RNA_property_string_get_alloc(op->ptr, ntype_prop, NULL, 0, NULL);
-	ntype = nodeTypeFind(node_idname);
-	if (!ntype) {
-		BKE_reportf(op->reports, RPT_ERROR, "Group node type %s undefined", node_idname);
-		MEM_freeN(node_idname);
-		return FALSE;
-	}
-	
-	if (!ntype->poll(ntype, ntree)) {
-		MEM_freeN(node_idname);
-		return FALSE;
-	}
-	
-	ntree_idname = BLI_strdup(ntype->group_tree_idname);
-	ntreetype = ntreeTypeFind(ntree_idname);
-	if (!ntreetype) {
-		BKE_reportf(op->reports, RPT_ERROR, "Group node tree type %s undefined", ntree_idname);
-		MEM_freeN(node_idname);
-		MEM_freeN(ntree_idname);
-		return FALSE;
-	}
-	
-	if (r_node_idname)
-		*r_node_idname = node_idname;
-	else
-		MEM_freeN(node_idname);
-	
-	if (r_ntree_idname)
-		*r_ntree_idname = ntree_idname;
-	else
-		MEM_freeN(ntree_idname);
-	
-	return TRUE;
+	return "";
 }
 
 static bNode *node_group_get_active(bContext *C, const char *node_idname)
@@ -148,17 +124,13 @@ static bNode *node_group_get_active(bContext *C, const char *node_idname)
 static int node_group_edit_exec(bContext *C, wmOperator *op)
 {
 	SpaceNode *snode = CTX_wm_space_node(C);
-	char *node_idname;
+	const char *node_idname = group_node_idname(C);
 	bNode *gnode;
 	int exit = RNA_boolean_get(op->ptr, "exit");
 	
 	ED_preview_kill_jobs(C);
 	
-	if (!node_group_operator_check_type(C, op, &node_idname, NULL))
-		return OPERATOR_PASS_THROUGH;
-	
 	gnode = node_group_get_active(C, node_idname);
-	MEM_freeN(node_idname);
 	
 	if (gnode && !exit) {
 		bNodeTree *ngroup = (bNodeTree *)gnode->id;
@@ -180,14 +152,10 @@ static int node_group_edit_exec(bContext *C, wmOperator *op)
 
 static int node_group_edit_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-	char *node_idname;
+	const char *node_idname = group_node_idname(C);
 	bNode *gnode;
 	
-	if (!node_group_operator_check_type(C, op, &node_idname, NULL))
-		return OPERATOR_PASS_THROUGH;
-	
 	gnode = node_group_get_active(C, node_idname);
-	MEM_freeN(node_idname);
 	
 	if (gnode && gnode->id && gnode->id->lib) {
 		WM_operator_confirm_message(C, op, "Make group local?");
@@ -207,12 +175,11 @@ void NODE_OT_group_edit(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = node_group_edit_invoke;
 	ot->exec = node_group_edit_exec;
-	ot->poll = ED_operator_node_active;
+	ot->poll = node_group_operator_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
-	node_group_operator_properties(ot);
 	RNA_def_boolean(ot->srna, "exit", FALSE, "Exit", "");
 }
 
@@ -338,8 +305,8 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 			/* if group output is not externally linked,
 			 * convert the constant input value to ensure somewhat consistent behavior */
 			if (num_external_links == 0) {
-				bNodeSocket *sock = node_group_find_input_socket(gnode, identifier);
-				BLI_assert(sock);
+				/* XXX TODO bNodeSocket *sock = node_group_find_input_socket(gnode, identifier);
+				BLI_assert(sock);*/
 				
 				/* XXX TODO nodeSocketCopy(ntree, link->tosock->new_sock, link->tonode->new_node, ntree, sock, gnode);*/
 			}
@@ -366,8 +333,8 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 			/* if group output is not internally linked,
 			 * convert the constant output value to ensure somewhat consistent behavior */
 			if (num_internal_links == 0) {
-				bNodeSocket *sock = node_group_find_output_socket(gnode, identifier);
-				BLI_assert(sock);
+				/* XXX TODO bNodeSocket *sock = node_group_find_output_socket(gnode, identifier);
+				BLI_assert(sock);*/
 				
 				/* XXX TODO nodeSocketCopy(ntree, link->tosock, link->tonode, ntree, sock, gnode); */
 			}
@@ -386,21 +353,17 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 static int node_group_ungroup_exec(bContext *C, wmOperator *op)
 {
 	SpaceNode *snode = CTX_wm_space_node(C);
-	char *node_idname;
+	const char *node_idname = group_node_idname(C);
 	bNode *gnode;
 
 	ED_preview_kill_jobs(C);
 
-	if (!node_group_operator_check_type(C, op, &node_idname, NULL))
-		return OPERATOR_PASS_THROUGH;
-	
 	gnode = node_group_get_active(C, node_idname);
-	MEM_freeN(node_idname);
 	if (!gnode)
 		return OPERATOR_CANCELLED;
 	
 	if (gnode->id && node_group_ungroup(snode->edittree, gnode)) {
-		ntreeUpdateTree(snode->nodetree);
+		ntreeUpdateTree(CTX_data_main(C), snode->nodetree);
 	}
 	else {
 		BKE_report(op->reports, RPT_WARNING, "Cannot ungroup");
@@ -422,12 +385,10 @@ void NODE_OT_group_ungroup(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->exec = node_group_ungroup_exec;
-	ot->poll = ED_operator_node_active;
+	ot->poll = node_group_operator_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
-	
-	node_group_operator_properties(ot);
 }
 
 /* ******************** Separate operator ********************** */
@@ -595,7 +556,7 @@ static int node_group_separate_exec(bContext *C, wmOperator *op)
 	/* switch to parent tree */
 	ED_node_tree_pop(snode);
 	
-	ntreeUpdateTree(snode->nodetree);
+	ntreeUpdateTree(CTX_data_main(C), snode->nodetree);
 	
 	snode_notify(C, snode);
 	snode_dag_update(C, snode);
@@ -603,22 +564,18 @@ static int node_group_separate_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
-static int node_group_separate_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+static int node_group_separate_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
-	if (!node_group_operator_check_type(C, op, NULL, NULL))
-		return OPERATOR_PASS_THROUGH;
-	else {
-		uiPopupMenu *pup = uiPupMenuBegin(C, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Separate"), ICON_NONE);
-		uiLayout *layout = uiPupMenuLayout(pup);
-		
-		uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
-		uiItemEnumO(layout, "NODE_OT_group_separate", NULL, 0, "type", NODE_GS_COPY);
-		uiItemEnumO(layout, "NODE_OT_group_separate", NULL, 0, "type", NODE_GS_MOVE);
-		
-		uiPupMenuEnd(C, pup);
-		
-		return OPERATOR_CANCELLED;
-	}
+	uiPopupMenu *pup = uiPupMenuBegin(C, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Separate"), ICON_NONE);
+	uiLayout *layout = uiPupMenuLayout(pup);
+	
+	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
+	uiItemEnumO(layout, "NODE_OT_group_separate", NULL, 0, "type", NODE_GS_COPY);
+	uiItemEnumO(layout, "NODE_OT_group_separate", NULL, 0, "type", NODE_GS_MOVE);
+	
+	uiPupMenuEnd(C, pup);
+	
+	return OPERATOR_CANCELLED;
 }
 
 void NODE_OT_group_separate(wmOperatorType *ot)
@@ -631,12 +588,11 @@ void NODE_OT_group_separate(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = node_group_separate_invoke;
 	ot->exec = node_group_separate_exec;
-	ot->poll = ED_operator_node_active;
+	ot->poll = node_group_operator_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
-	node_group_operator_properties(ot);
 	RNA_def_enum(ot->srna, "type", node_group_separate_types, NODE_GS_COPY, "Type", "");
 }
 
@@ -957,24 +913,18 @@ static int node_group_make_exec(bContext *C, wmOperator *op)
 {
 	SpaceNode *snode = CTX_wm_space_node(C);
 	bNodeTree *ntree = snode->edittree;
-	char *node_idname, *ntree_idname;
+	const char *ntree_idname = group_ntree_idname(C);
+	const char *node_idname = group_node_idname(C);
 	bNodeTree *ngroup;
 	bNode *gnode;
+	Main *bmain = CTX_data_main(C);
 	
 	ED_preview_kill_jobs(C);
 	
-	if (!node_group_operator_check_type(C, op, &node_idname, &ntree_idname))
-		return OPERATOR_PASS_THROUGH;
-	
-	if (!node_group_make_test_selected(ntree, NULL, ntree_idname, op->reports)) {
-		MEM_freeN(node_idname);
-		MEM_freeN(ntree_idname);
+	if (!node_group_make_test_selected(ntree, NULL, ntree_idname, op->reports))
 		return OPERATOR_CANCELLED;
-	}
 	
 	gnode = node_group_make_from_selected(C, ntree, node_idname, ntree_idname);
-	MEM_freeN(node_idname);
-	MEM_freeN(ntree_idname);
 	
 	if (gnode) {
 		ngroup = (bNodeTree *)gnode->id;
@@ -982,11 +932,11 @@ static int node_group_make_exec(bContext *C, wmOperator *op)
 		nodeSetActive(ntree, gnode);
 		if (ngroup) {
 			ED_node_tree_push(snode, ngroup, gnode);
-			ntreeUpdateTree(ngroup);
+			ntreeUpdateTree(bmain, ngroup);
 		}
 	}
 	
-	ntreeUpdateTree(ntree);
+	ntreeUpdateTree(bmain, ntree);
 
 	snode_notify(C, snode);
 	snode_dag_update(C, snode);
@@ -1003,12 +953,10 @@ void NODE_OT_group_make(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->exec = node_group_make_exec;
-	ot->poll = ED_operator_node_active;
+	ot->poll = node_group_operator_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
-	
-	node_group_operator_properties(ot);
 }
 
 /* ****************** Group Insert operator ******************* */
@@ -1018,16 +966,13 @@ static int node_group_insert_exec(bContext *C, wmOperator *op)
 	SpaceNode *snode = CTX_wm_space_node(C);
 	bNodeTree *ntree = snode->edittree;
 	bNodeTree *ngroup;
-	char *node_idname;
+	const char *node_idname = group_node_idname(C);
 	bNode *gnode;
+	Main *bmain = CTX_data_main(C);
 	
 	ED_preview_kill_jobs(C);
 	
-	if (!node_group_operator_check_type(C, op, &node_idname, NULL))
-		return OPERATOR_PASS_THROUGH;
-	
 	gnode = node_group_get_active(C, node_idname);
-	MEM_freeN(node_idname);
 	
 	if (!gnode || !gnode->id)
 		return OPERATOR_CANCELLED;
@@ -1040,9 +985,9 @@ static int node_group_insert_exec(bContext *C, wmOperator *op)
 	
 	nodeSetActive(ntree, gnode);
 	ED_node_tree_push(snode, ngroup, gnode);
-	ntreeUpdateTree(ngroup);
+	ntreeUpdateTree(bmain, ngroup);
 	
-	ntreeUpdateTree(ntree);
+	ntreeUpdateTree(bmain, ntree);
 	
 	snode_notify(C, snode);
 	snode_dag_update(C, snode);
@@ -1059,10 +1004,8 @@ void NODE_OT_group_insert(wmOperatorType *ot)
 	
 	/* api callbacks */
 	ot->exec = node_group_insert_exec;
-	ot->poll = ED_operator_node_active;
+	ot->poll = node_group_operator_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
-	
-	node_group_operator_properties(ot);
 }

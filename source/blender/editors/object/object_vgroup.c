@@ -60,7 +60,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_mesh.h"
-#include "BKE_tessmesh.h"
+#include "BKE_editmesh.h"
 #include "BKE_report.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_object_deform.h"
@@ -109,7 +109,7 @@ static Lattice *vgroup_edit_lattice(Object *ob)
 bool ED_vgroup_object_is_edit_mode(Object *ob)
 {
 	if (ob->type == OB_MESH)
-		return (BMEdit_FromObject(ob) != NULL);
+		return (BKE_editmesh_from_object(ob) != NULL);
 	else if (ob->type == OB_LATTICE)
 		return (((Lattice *)ob->data)->editlatt != NULL);
 
@@ -1662,7 +1662,7 @@ static void vgroup_blend(Object *ob, const float fac)
 	if (BLI_findlink(&ob->defbase, def_nr)) {
 		const float ifac = 1.0f - fac;
 
-		BMEditMesh *em = BMEdit_FromObject(ob);
+		BMEditMesh *em = BKE_editmesh_from_object(ob);
 		BMesh *bm = em ? em->bm : NULL;
 		Mesh  *me = em ? NULL   : ob->data;
 
@@ -2446,7 +2446,7 @@ static void vgroup_delete_edit_mode(Object *ob, bDeformGroup *dg)
 static bool vgroup_object_in_edit_mode(Object *ob)
 {
 	if (ob->type == OB_MESH)
-		return (BMEdit_FromObject(ob) != NULL);
+		return (BKE_editmesh_from_object(ob) != NULL);
 	else if (ob->type == OB_LATTICE)
 		return (((Lattice *)ob->data)->editlatt != NULL);
 	
@@ -3479,7 +3479,7 @@ static char *vgroup_init_remap(Object *ob)
 	return name_array;
 }
 
-static int vgroup_do_remap(Object *ob, char *name_array, wmOperator *op)
+static int vgroup_do_remap(Object *ob, const char *name_array, wmOperator *op)
 {
 	MDeformVert *dvert = NULL;
 	bDeformGroup *def;
@@ -3489,7 +3489,7 @@ static int vgroup_do_remap(Object *ob, char *name_array, wmOperator *op)
 	int *sort_map_update = MEM_mallocN(sizeof(int) * (defbase_tot + 1), "sort vgroups");
 	int *sort_map = sort_map_update + 1;
 
-	char *name;
+	const char *name;
 	int i;
 
 	name = name_array;
@@ -3502,7 +3502,7 @@ static int vgroup_do_remap(Object *ob, char *name_array, wmOperator *op)
 
 	if (ob->mode == OB_MODE_EDIT) {
 		if (ob->type == OB_MESH) {
-			BMEditMesh *em = BMEdit_FromObject(ob);
+			BMEditMesh *em = BKE_editmesh_from_object(ob);
 			BMIter iter;
 			BMVert *eve;
 

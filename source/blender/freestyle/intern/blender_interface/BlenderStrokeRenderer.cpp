@@ -30,11 +30,7 @@
 
 #include "BKE_global.h"
 
-// XXX Are those "ifdef __cplusplus" useful here?
-#ifdef __cplusplus
 extern "C" {
-#endif
-
 #include "MEM_guardedalloc.h"
 
 #include "DNA_camera_types.h"
@@ -55,15 +51,14 @@ extern "C" {
 #include "BKE_scene.h"
 
 #include "RE_pipeline.h"
-
-#ifdef __cplusplus
 }
-#endif
 
 namespace Freestyle {
 
 BlenderStrokeRenderer::BlenderStrokeRenderer(Render *re, int render_count) : StrokeRenderer()
 {
+	freestyle_bmain = &re->freestyle_bmain;
+
 	// TEMPORARY - need a  texture manager
 	_textureManager = new BlenderTextureManager;
 	_textureManager->load();
@@ -72,12 +67,11 @@ BlenderStrokeRenderer::BlenderStrokeRenderer(Render *re, int render_count) : Str
 	_width = re->winx;
 	_height = re->winy;
 
-	//Scene.New("FreestyleStrokes")
 	old_scene = re->scene;
 
 	char name[22];
 	BLI_snprintf(name, sizeof(name), "FRS%d_%s", render_count, re->scene->id.name + 2);
-	freestyle_scene = BKE_scene_add(G.main, name);
+	freestyle_scene = BKE_scene_add(freestyle_bmain, name);
 	freestyle_scene->r.cfra = old_scene->r.cfra;
 	freestyle_scene->r.mode = old_scene->r.mode &
 	                          ~(R_EDGE_FRS | R_SHADOW | R_SSS | R_PANORAMA | R_ENVMAP | R_MBLUR | R_BORDER);
@@ -120,10 +114,10 @@ BlenderStrokeRenderer::BlenderStrokeRenderer(Render *re, int render_count) : Str
 	SceneRenderLayer *srl = (SceneRenderLayer *)freestyle_scene->r.layers.first;
 	srl->layflag = SCE_LAY_SOLID | SCE_LAY_ZTRA;
 
-	BKE_scene_set_background(G.main, freestyle_scene);
+	BKE_scene_set_background(freestyle_bmain, freestyle_scene);
 
 	// Camera
-	Object *object_camera = BKE_object_add(freestyle_scene, OB_CAMERA);
+	Object *object_camera = BKE_object_add(freestyle_bmain, freestyle_scene, OB_CAMERA);
 
 	Camera *camera = (Camera *)object_camera->data;
 	camera->type = CAM_ORTHO;
@@ -134,9 +128,6 @@ BlenderStrokeRenderer::BlenderStrokeRenderer(Render *re, int render_count) : Str
 	_z_delta = 0.00001f;
 	_z = camera->clipsta + _z_delta;
 
-	// test
-	//_z = 999.90f; _z_delta = 0.01f;
-
 	object_camera->loc[0] = re->disprect.xmin + 0.5f * re->rectx;
 	object_camera->loc[1] = re->disprect.ymin + 0.5f * re->recty;
 	object_camera->loc[2] = 1.0f;
@@ -144,7 +135,7 @@ BlenderStrokeRenderer::BlenderStrokeRenderer(Render *re, int render_count) : Str
 	freestyle_scene->camera = object_camera;
 
 	// Material
-	material = BKE_material_add(G.main, "stroke_material");
+	material = BKE_material_add(freestyle_bmain, "stroke_material");
 	material->mode |= MA_VERTEXCOLP;
 	material->mode |= MA_TRANSP;
 	material->mode |= MA_SHLESS;
@@ -178,12 +169,12 @@ BlenderStrokeRenderer::~BlenderStrokeRenderer()
 #endif
 		switch (ob->type) {
 		case OB_MESH:
-			BKE_libblock_free(&G.main->object, ob);
-			BKE_libblock_free(&G.main->mesh, data);
+			BKE_libblock_free(&freestyle_bmain->object, ob);
+			BKE_libblock_free(&freestyle_bmain->mesh, data);
 			break;
 		case OB_CAMERA:
-			BKE_libblock_free(&G.main->object, ob);
-			BKE_libblock_free(&G.main->camera, data);
+			BKE_libblock_free(&freestyle_bmain->object, ob);
+			BKE_libblock_free(&freestyle_bmain->camera, data);
 			freestyle_scene->camera = NULL;
 			break;
 		default:
@@ -193,9 +184,7 @@ BlenderStrokeRenderer::~BlenderStrokeRenderer()
 	BLI_freelistN(&freestyle_scene->base);
 
 	// release material
-	BKE_libblock_free(&G.main->mat, material);
-
-	BKE_scene_set_background(G.main, old_scene);
+	BKE_libblock_free(&freestyle_bmain->mat, material);
 }
 
 float BlenderStrokeRenderer::get_stroke_vertex_z(void) const
@@ -279,26 +268,15 @@ void BlenderStrokeRenderer::RenderStrokeRepBasic(StrokeRep *iStrokeRep) const
 
 		//me = Mesh.New()
 #if 0
-		Object *object_mesh = BKE_object_add(freestyle_scene, OB_MESH);
+		Object *object_mesh = BKE_object_add(freestyle_bmain, freestyle_scene, OB_MESH);
 #else
 		Object *object_mesh = NewMesh();
 #endif
 		Mesh *mesh = (Mesh *)object_mesh->data;
-#if 0
-		MEM_freeN(mesh->bb);
-		mesh->bb = NULL;
-		mesh->id.us = 0;
-#endif
-#if 1
-		//me.materials = [mat]
 		mesh->mat = (Material **)MEM_mallocN(1 * sizeof(Material *), "MaterialList");
 		mesh->mat[0] = material;
 		mesh->totcol = 1;
-		test_object_materials((ID *)mesh);
-#else
-		assign_material(object_mesh, material, object_mesh->totcol + 1);
-		object_mesh->actcol = object_mesh->totcol;
-#endif
+		test_object_materials(freestyle_bmain, (ID *)mesh);
 
 		// vertices allocation
 		mesh->totvert = visible_faces + visible_segments * 2;
@@ -478,10 +456,12 @@ Object *BlenderStrokeRenderer::NewMesh() const
 	char name[MAX_ID_NAME];
 	unsigned int mesh_id = get_stroke_mesh_id();
 
-	BLI_snprintf(name, MAX_ID_NAME, "0%08xOB", mesh_id);
-	ob = BKE_object_add_only_object(G.main, OB_MESH, name);
-	BLI_snprintf(name, MAX_ID_NAME, "0%08xME", mesh_id);
-	ob->data = BKE_mesh_add(G.main, name);
+	/* XXX this is for later review, for now we start names with 27 (DEL) 
+	   to allow ignoring them in DAG_ids_check_recalc() */
+	BLI_snprintf(name, MAX_ID_NAME, "%c0%08xOB", 27, mesh_id);
+	ob = BKE_object_add_only_object(freestyle_bmain, OB_MESH, name);
+	BLI_snprintf(name, MAX_ID_NAME, "%c0%08xME", 27, mesh_id);
+	ob->data = BKE_mesh_add(freestyle_bmain, name);
 	ob->lay = 1;
 
 	base = BKE_scene_base_add(freestyle_scene, ob);
@@ -491,7 +471,7 @@ Object *BlenderStrokeRenderer::NewMesh() const
 #else
 	(void)base;
 #endif
-	ob->recalc |= OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME;
+	ob->recalc = OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME;
 
 	return ob;
 }
@@ -509,7 +489,8 @@ Render *BlenderStrokeRenderer::RenderScene(Render *re)
 
 	Render *freestyle_render = RE_NewRender(freestyle_scene->id.name);
 
-	RE_RenderFreestyleStrokes(freestyle_render, G.main, freestyle_scene);
+	RE_RenderFreestyleStrokes(freestyle_render, freestyle_bmain, freestyle_scene);
+
 	return freestyle_render;
 }
 

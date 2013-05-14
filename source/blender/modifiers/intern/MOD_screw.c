@@ -697,7 +697,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		step_angle = (angle / (step_tot - (!close))) * step;
 
 		if (ltmd->ob_axis) {
-			axis_angle_to_mat3(mat3, axis_vec, step_angle);
+			axis_angle_normalized_to_mat3(mat3, axis_vec, step_angle);
 			copy_m4_m3(mat, mat3);
 		}
 		else {
@@ -931,16 +931,6 @@ static void foreachObjectLink(
 	walk(userData, ob, &ltmd->ob_axis);
 }
 
-/* This dosnt work with material*/
-static DerivedMesh *applyModifierEM(
-        ModifierData *md,
-        Object *ob,
-        struct BMEditMesh *UNUSED(editData),
-        DerivedMesh *derivedData)
-{
-	return applyModifier(md, ob, derivedData, MOD_APPLY_USECACHE);
-}
-
 static int dependsOnTime(ModifierData *UNUSED(md))
 {
 	return 0;
@@ -964,7 +954,7 @@ ModifierTypeInfo modifierType_Screw = {
 	/* deformVertsEM */     NULL,
 	/* deformMatricesEM */  NULL,
 	/* applyModifier */     applyModifier,
-	/* applyModifierEM */   applyModifierEM,
+	/* applyModifierEM */   NULL,
 	/* initData */          initData,
 	/* requiredDataMask */  NULL,
 	/* freeData */          NULL,

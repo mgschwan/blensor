@@ -115,6 +115,7 @@ static pthread_mutex_t _movieclip_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t _colormanage_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t mainid;
 static int thread_levels = 0;  /* threads can be invoked inside threads */
+static int num_threads_override = 0;
 
 /* just a max for security reasons */
 #define RE_MAX_THREAD BLENDER_MAX_THREADS
@@ -322,6 +323,9 @@ int BLI_system_thread_count(void)
 	t = (int)sysconf(_SC_NPROCESSORS_ONLN);
 #   endif
 #endif
+
+	if (num_threads_override > 0)
+		return num_threads_override;
 	
 	if (t > RE_MAX_THREAD)
 		return RE_MAX_THREAD;
@@ -329,6 +333,16 @@ int BLI_system_thread_count(void)
 		return 1;
 	
 	return t;
+}
+
+void BLI_system_num_threads_override_set(int num)
+{
+	num_threads_override = num;
+}
+
+int BLI_system_num_threads_override_get(void)
+{
+	return num_threads_override;
 }
 
 /* Global Mutex Locks */
@@ -399,6 +413,19 @@ void BLI_mutex_end(ThreadMutex *mutex)
 	pthread_mutex_destroy(mutex);
 }
 
+ThreadMutex *BLI_mutex_alloc(void)
+{
+	ThreadMutex *mutex = MEM_callocN(sizeof(ThreadMutex), "ThreadMutex");
+	BLI_mutex_init(mutex);
+	return mutex;
+}
+
+void BLI_mutex_free(ThreadMutex *mutex)
+{
+	BLI_mutex_end(mutex);
+	MEM_freeN(mutex);
+}
+
 /* Spin Locks */
 
 void BLI_spin_init(SpinLock *spin)
@@ -462,6 +489,19 @@ void BLI_rw_mutex_unlock(ThreadRWMutex *mutex)
 void BLI_rw_mutex_end(ThreadRWMutex *mutex)
 {
 	pthread_rwlock_destroy(mutex);
+}
+
+ThreadRWMutex *BLI_rw_mutex_alloc(void)
+{
+	ThreadRWMutex *mutex = MEM_callocN(sizeof(ThreadRWMutex), "ThreadRWMutex");
+	BLI_rw_mutex_init(mutex);
+	return mutex;
+}
+
+void BLI_rw_mutex_free(ThreadRWMutex *mutex)
+{
+	BLI_rw_mutex_end(mutex);
+	MEM_freeN(mutex);
 }
 
 /* ************************************************ */

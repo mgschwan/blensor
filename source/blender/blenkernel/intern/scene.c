@@ -56,6 +56,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_callbacks.h"
 #include "BLI_string.h"
+#include "BLI_threads.h"
 
 #include "BLF_translation.h"
 
@@ -176,7 +177,9 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 		scen->obedit = NULL;
 		scen->stats = NULL;
 		scen->fps_info = NULL;
-		scen->rigidbody_world = NULL; /* RB_TODO figure out a way of copying the rigid body world */
+
+		if (sce->rigidbody_world)
+			scen->rigidbody_world = BKE_rigidbody_world_copy(sce->rigidbody_world);
 
 		BLI_duplicatelist(&(scen->markers), &(sce->markers));
 		BLI_duplicatelist(&(scen->transform_spaces), &(sce->transform_spaces));
@@ -293,6 +296,12 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 	}
 
 	return scen;
+}
+
+void BKE_scene_groups_relink(Scene *sce)
+{
+	if (sce->rigidbody_world)
+		BKE_rigidbody_world_groups_relink(sce->rigidbody_world);
 }
 
 /* do not free scene itself */
@@ -519,6 +528,17 @@ Scene *BKE_scene_add(Main *bmain, const char *name)
 	sce->toolsettings->skgen_subdivisions[0] = SKGEN_SUB_CORRELATION;
 	sce->toolsettings->skgen_subdivisions[1] = SKGEN_SUB_LENGTH;
 	sce->toolsettings->skgen_subdivisions[2] = SKGEN_SUB_ANGLE;
+
+	sce->toolsettings->statvis.overhang_axis = OB_NEGZ;
+	sce->toolsettings->statvis.overhang_min = 0;
+	sce->toolsettings->statvis.overhang_max = DEG2RADF(45.0f);
+	sce->toolsettings->statvis.thickness_max = 0.1f;
+	sce->toolsettings->statvis.thickness_samples = 1;
+	sce->toolsettings->statvis.distort_min = DEG2RADF(5.0f);
+	sce->toolsettings->statvis.distort_max = DEG2RADF(45.0f);
+
+	sce->toolsettings->statvis.sharp_min = DEG2RADF(90.0f);
+	sce->toolsettings->statvis.sharp_max = DEG2RADF(180.0f);
 
 	sce->toolsettings->proportional_size = 1.0f;
 
@@ -1450,3 +1470,28 @@ int BKE_scene_check_rigidbody_active(const Scene *scene)
 {
 	return scene && scene->rigidbody_world && scene->rigidbody_world->group && !(scene->rigidbody_world->flag & RBW_FLAG_MUTED);
 }
+
+int BKE_render_num_threads(const RenderData *rd)
+{
+	int threads;
+
+	/* override set from command line? */
+	threads = BLI_system_num_threads_override_get();
+
+	if (threads > 0)
+		return threads;
+
+	/* fixed number of threads specified in scene? */
+	if (rd->mode & R_FIXED_THREADS)
+		threads = rd->threads;
+	else
+		threads = BLI_system_thread_count();
+	
+	return max_ii(threads, 1);
+}
+
+int BKE_scene_num_threads(const Scene *scene)
+{
+	return BKE_render_num_threads(&scene->r);
+}
+

@@ -84,7 +84,13 @@ static char *rna_NlaStrip_path(PointerRNA *ptr)
 			for (nls = nlt->strips.first; nls; nls = nls->next) {
 				if (nls == strip) {
 					/* XXX but if we animate like this, the control will never work... */
-					return BLI_sprintfN("animation_data.nla_tracks[\"%s\"].strips[\"%s\"]", nlt->name, strip->name);
+					char name_esc_nlt[sizeof(nlt->name) * 2];
+					char name_esc_strip[sizeof(strip->name) * 2];
+
+					BLI_strescape(name_esc_nlt, nlt->name, sizeof(name_esc_nlt));
+					BLI_strescape(name_esc_strip, strip->name, sizeof(name_esc_strip));
+					return BLI_sprintfN("animation_data.nla_tracks[\"%s\"].strips[\"%s\"]",
+					                    name_esc_nlt, name_esc_strip);
 				}
 			}
 		}
@@ -511,13 +517,13 @@ static void rna_def_nlastrip(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "action_frame_start", PROP_FLOAT, PROP_TIME);
 	RNA_def_property_float_sdna(prop, NULL, "actstart");
 	RNA_def_property_float_funcs(prop, NULL, "rna_NlaStrip_action_start_frame_set", NULL);
-	RNA_def_property_ui_text(prop, "Action Start Frame", "");
+	RNA_def_property_ui_text(prop, "Action Start Frame", "First frame from action to use");
 	RNA_def_property_update(prop, NC_ANIMATION | ND_NLA, NULL); /* this will do? */
 	
 	prop = RNA_def_property(srna, "action_frame_end", PROP_FLOAT, PROP_TIME);
 	RNA_def_property_float_sdna(prop, NULL, "actend");
 	RNA_def_property_float_funcs(prop, NULL, "rna_NlaStrip_action_end_frame_set", NULL);
-	RNA_def_property_ui_text(prop, "Action End Frame", "");
+	RNA_def_property_ui_text(prop, "Action End Frame", "Last frame from action to use");
 	RNA_def_property_update(prop, NC_ANIMATION | ND_NLA, NULL); /* this will do? */
 	
 	/* Action Reuse */
@@ -610,8 +616,12 @@ static void rna_def_nlastrip(BlenderRNA *brna)
 	                         "automatically determined)");
 	RNA_def_property_update(prop, NC_ANIMATION | ND_NLA, NULL); /* this will do? */
 	
-	/* TODO:  */
-	/* - sync length */
+	prop = RNA_def_property(srna, "use_sync_length", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", NLASTRIP_FLAG_SYNC_LENGTH);
+	RNA_def_property_ui_text(prop, "Sync Action Length",
+	                         "Update range of frames referenced from action "
+	                         "after tweaking strip and its keyframes");
+	RNA_def_property_update(prop, NC_ANIMATION | ND_NLA, NULL); /* this will do? */
 }
 
 static void rna_api_nlatrack_strips(BlenderRNA *brna, PropertyRNA *cprop)

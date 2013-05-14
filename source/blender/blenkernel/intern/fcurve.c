@@ -1040,7 +1040,7 @@ static float dtar_get_prop_val(ChannelDriver *driver, DriverTarget *dtar)
 	RNA_id_pointer_create(id, &id_ptr);
 	
 	/* get property to read from, and get value as appropriate */
-	if (RNA_path_resolve_full(&id_ptr, dtar->rna_path, &ptr, &prop, &index)) {
+	if (RNA_path_resolve_property_full(&id_ptr, dtar->rna_path, &ptr, &prop, &index)) {
 		if (RNA_property_array_check(prop)) {
 			/* array */
 			if ((index >= 0) && (index < RNA_property_array_length(&ptr, prop))) {
@@ -1248,7 +1248,7 @@ static float dvar_eval_locDiff(ChannelDriver *driver, DriverVar *dvar)
 		float tmp_loc[3];
 		
 		/* after the checks above, the targets should be valid here... */
-		BLI_assert((ob != NULL) && (GS(ob->id.name) != ID_OB));
+		BLI_assert((ob != NULL) && (GS(ob->id.name) == ID_OB));
 		
 		/* try to get posechannel */
 		pchan = BKE_pose_channel_find_name(ob->pose, dtar->pchan_name);
