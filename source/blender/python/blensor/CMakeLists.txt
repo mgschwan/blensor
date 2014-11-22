@@ -14,10 +14,42 @@
 # along with this program; if not, write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
+# Contributor(s): Campbell Barton
+#
 # ***** END GPL LICENSE BLOCK *****
 
-add_subdirectory(intern)
-add_subdirectory(generic)
-add_subdirectory(mathutils)
-add_subdirectory(bmesh)
-add_subdirectory(blensor)
+set(INC 
+	.
+  ../../render/extern/include
+  ../../render/intern/include
+  ../../blenfont
+  ../../blenkernel
+  ../../blenlib
+  ../../blenloader
+  ../../editors/include
+  ../../editors/render
+  ../../imbuf
+  ../../gpu
+  ../../python/intern
+  ../../makesdna
+  ../../makesrna
+  ../../makesrna/intern
+  ../../windowmanager
+  ../../../../intern/guardedalloc
+  ../../../../intern/mikktspace
+  ../../../../intern/smoke/extern
+)
+
+set(INC_SYS
+	${PYTHON_INCLUDE_DIRS}
+)
+
+set(SRC
+	blensor.c
+	blensor.h
+	blensor_native_code.c
+	blensor_native_code.h
+)
+
+
+blender_add_lib(bf_python_blensor "${SRC}" "${INC}" "${INC_SYS}")

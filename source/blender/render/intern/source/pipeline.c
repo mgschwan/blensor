@@ -3319,3 +3319,11 @@ bool RE_WriteEnvmapResult(struct ReportList *reports, Scene *scene, EnvMap *env,
 	}
 }
 
+
+/* Needed to export the static render_initialize_from_main_function */
+int blensor_initialize_from_main(Render *re, RenderData *rd, Main *bmain, Scene *scene, SceneRenderLayer *srl,
+                                       Object *camera_override, unsigned int lay_override, int anim, int anim_init)
+{
+  return render_initialize_from_main(re, rd, bmain, scene, srl,
+                       camera_override, lay_override, anim, anim_init);
+}
