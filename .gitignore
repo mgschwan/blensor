@@ -1,7 +1,34 @@
-.svn
-*.pyc
-user-config.py
+# generic files to ignore
+.*
+
+# python temp paths
+__pycache__/
+*.py[cod]
+
+# editors
 *~
-blensor_tools/bin
-pcd_combiner
-pcd_filter
+*.swp
+*.swo
+*#
+
+# QtCreator
+CMakeLists.txt.user
+
+# ms-windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# commonly used paths in blender
+/blender.bin
+/user-config.py
+
+# local patches
+/*.patch
+/*.diff
+
+# in-source doc-gen
+/doc/doxygen/html/
+/doc/python_api/sphinx-in-tmp/
+/doc/python_api/sphinx-in/
+/doc/python_api/sphinx-out/

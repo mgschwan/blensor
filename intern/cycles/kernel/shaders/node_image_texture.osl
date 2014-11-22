@@ -1,0 +1,140 @@
+/*
+ * Copyright 2011-2013 Blender Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License
+ */
+
+#include "stdosl.h"
+#include "node_color.h"
+
+color image_texture_lookup(string filename, string color_space, float u, float v, output float Alpha, int use_alpha, int is_float, string interpolation)
+{
+	color rgb = (color)texture(filename, u, 1.0 - v, "wrap", "periodic", "interp", interpolation, "alpha", Alpha);
+
+	if (use_alpha) {
+		rgb = color_unpremultiply(rgb, Alpha);
+	
+		if (!is_float)
+			rgb = min(rgb, 1.0);
+	}
+
+	if (color_space == "sRGB") {
+		rgb = color_srgb_to_scene_linear(rgb);
+	}
+
+	return rgb;
+}
+
+shader node_image_texture(
+	int use_mapping = 0,
+	matrix mapping = matrix(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+	point Vector = P,
+	string filename = "",
+	string color_space = "sRGB",
+	string projection = "Flat",
+	string interpolation = "smartcubic",
+	float projection_blend = 0.0,
+	int is_float = 1,
+	int use_alpha = 1,
+	output color Color = 0.0,
+	output float Alpha = 1.0)
+{
+	point p = Vector;
+
+	if (use_mapping)
+		p = transform(mapping, p);
+	
+	if (projection == "Flat") {
+		Color = image_texture_lookup(filename, color_space, p[0], p[1], Alpha, use_alpha, is_float, interpolation);
+	}
+	else if (projection == "Box") {
+		/* object space normal */
+		vector Nob = transform("world", "object", N);
+
+		/* project from direction vector to barycentric coordinates in triangles */
+		Nob = vector(fabs(Nob[0]), fabs(Nob[1]), fabs(Nob[2]));
+		Nob /= (Nob[0] + Nob[1] + Nob[2]);
+
+		/* basic idea is to think of this as a triangle, each corner representing
+		 * one of the 3 faces of the cube. in the corners we have single textures,
+		 * in between we blend between two textures, and in the middle we a blend
+		 * between three textures.
+		 *
+		 * the Nxyz values are the barycentric coordinates in an equilateral
+		 * triangle, which in case of blending, in the middle has a smaller
+		 * equilateral triangle where 3 textures blend. this divides things into
+		 * 7 zones, with an if () test for each zone */
+
+		vector weight = vector(0.0, 0.0, 0.0);
+		float blend = projection_blend;
+		float limit = 0.5 * (1.0 + blend);
+
+		/* first test for corners with single texture */
+		if (Nob[0] > limit * (Nob[0] + Nob[1]) && Nob[0] > limit * (Nob[0] + Nob[2])) {
+			weight[0] = 1.0;
+		}
+		else if (Nob[1] > limit * (Nob[0] + Nob[1]) && Nob[1] > limit * (Nob[1] + Nob[2])) {
+			weight[1] = 1.0;
+		}
+		else if (Nob[2] > limit * (Nob[0] + Nob[2]) && Nob[2] > limit * (Nob[1] + Nob[2])) {
+			weight[2] = 1.0;
+		}
+		else if (blend > 0.0) {
+			/* in case of blending, test for mixes between two textures */
+			if (Nob[2] < (1.0 - limit) * (Nob[1] + Nob[0])) {
+				weight[0] = Nob[0] / (Nob[0] + Nob[1]);
+				weight[0] = clamp((weight[0] - 0.5 * (1.0 - blend)) / blend, 0.0, 1.0);
+				weight[1] = 1.0 - weight[0];
+			}
+			else if (Nob[0] < (1.0 - limit) * (Nob[1] + Nob[2])) {
+				weight[1] = Nob[1] / (Nob[1] + Nob[2]);
+				weight[1] = clamp((weight[1] - 0.5 * (1.0 - blend)) / blend, 0.0, 1.0);
+				weight[2] = 1.0 - weight[1];
+			}
+			else if (Nob[1] < (1.0 - limit) * (Nob[0] + Nob[2])) {
+				weight[0] = Nob[0] / (Nob[0] + Nob[2]);
+				weight[0] = clamp((weight[0] - 0.5 * (1.0 - blend)) / blend, 0.0, 1.0);
+				weight[2] = 1.0 - weight[0];
+			}
+			else {
+				/* last case, we have a mix between three */
+				weight[0] = ((2.0 - limit) * Nob[0] + (limit - 1.0)) / (2.0 * limit - 1.0);
+				weight[1] = ((2.0 - limit) * Nob[1] + (limit - 1.0)) / (2.0 * limit - 1.0);
+				weight[2] = ((2.0 - limit) * Nob[2] + (limit - 1.0)) / (2.0 * limit - 1.0);
+			}
+		}
+		else {
+			/* Desperate mode, no valid choice anyway, fallback to one side.*/
+			weight[0] = 1.0;
+		}
+
+		Color = color(0.0, 0.0, 0.0);
+		Alpha = 0.0;
+
+		float tmp_alpha;
+
+		if (weight[0] > 0.0) {
+			Color += weight[0] * image_texture_lookup(filename, color_space, p[1], p[2], tmp_alpha, use_alpha, is_float, interpolation);
+			Alpha += weight[0] * tmp_alpha;
+		}
+		if (weight[1] > 0.0) {
+			Color += weight[1] * image_texture_lookup(filename, color_space, p[0], p[2], tmp_alpha, use_alpha, is_float, interpolation);
+			Alpha += weight[1] * tmp_alpha;
+		}
+		if (weight[2] > 0.0) {
+			Color += weight[2] * image_texture_lookup(filename, color_space, p[1], p[0], tmp_alpha, use_alpha, is_float, interpolation);
+			Alpha += weight[2] * tmp_alpha;
+		}
+	}
+}
+

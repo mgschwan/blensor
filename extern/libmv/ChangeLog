@@ -1,0 +1,679 @@
+commit 0b7d83dc9627447dc7df64d7e3a468aefe9ddc13
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Apr 23 19:14:55 2014 +0600
+
+    Fix compilation on OSX after previous commit
+    
+    EXPECT_EQ wasn't defined in the scope.
+
+commit d14049e00dabf8fdf49056779f0a3718fbb39e8f
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Apr 23 15:08:16 2014 +0600
+
+    Move aligned malloc implementation into own file
+    
+    It was rather stupid having it in brute region tracker,
+    now it is in own file in base library (which was also
+    added in this commit, before this it consist of header
+    files only).
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    Differential Revision: https://developer.blender.org/D479
+
+commit 0ddf3851bfcb8de43660b119a25a77a25674200d
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Mon Apr 21 14:14:03 2014 +0600
+
+    Optimization of PearsonProductMomentCorrelation
+    
+    Pass the arrays by reference rather than by value,
+    should give some percent of speedup.
+    
+    Also don't pass the dimensions to the function but
+    get them from the images themselves.
+    
+    Hopefully this will give some %% of tracker speedup.
+
+commit f68fdbe5896a6c5bd8b500caeec61b876c5e44c6
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Mon Apr 21 14:10:43 2014 +0600
+
+    Fix wrong assert in ResizeImage()
+    
+    The assert didn't make any sense because ComputeBoundingBox()
+    is intended to return bounding box in the following way:
+    (xmin, xmax, ymin, ymax).
+
+commit 1d386b6775a71c499e9b8e4a288c0785c4937677
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Apr 17 18:42:43 2014 +0600
+
+    Add unit tests for buffer (un)distortion
+    
+    Currently only uses identity camera intrinsics just to
+    see whether lookup grids are properly allocated.
+    
+    Should prevent accidents like that one happened recently
+    with crashing Blender after Libmv re-integration.
+
+commit e1fe41b6604771ba769a9b15eb2f489fbf7af251
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Apr 17 17:52:23 2014 +0600
+
+    Fix offset array not being properly allocated
+    
+    We really do need unit test for buffer (un)distortion,
+    didn't notice this bug for until new Libmv has been
+    integrated into Blender.
+
+commit ee21415a353396df67ef21e82adaffab2a8d2a0a
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Apr 17 16:26:12 2014 +0600
+
+    Support multiple distortion models, including a new division model
+    
+    This commit makes it so CameraIntrinsics is no longer hardcoded
+    to use the traditional polynomial radial distortion model. Currently
+    the distortion code has generic logic which is shared between
+    different distortion models, but had no other models until now.
+    
+    This moves everything specific to the polynomial radial distortion
+    to a subclass PolynomialDistortionCameraIntrinsics(), and adds a
+    new division distortion model suitable for cameras such as the
+    GoPro which have much stronger distortion due to their fisheye lens.
+    
+    This also cleans up the internal API of CameraIntrinsics to make
+    it easier to understand and reduces old C-style code.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    CC: jta
+    
+    Differential Revision: https://developer.blender.org/D335
+
+commit 313252083f6dfa69a93c287bed81dec616503c1b
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Apr 15 18:23:38 2014 +0600
+
+    Fix failure of the image transform linear test
+    
+    Mainly was caused by the flakyness of image rotation in cases
+    when image has even size. The test was expecting the transform
+    code to rotate the image around pixel corner, which isn't a
+    common behavior in image processing applications. Rotation
+    is usually done around the pixel center.
+    
+    So now made it so RotateImage() rotates the image around the
+    pixel center which gives 100% proper result for odd sized images
+    (i.e. center pixel stays untouched).
+    
+    Also made the tests to use odd image sizes which are more
+    predictable by the humans. We can use even sized images in the
+    tests as well but their result wouldn't be so much spectacular.
+    
+    Another issue with the tests was caused by RescaleImageTranslation
+    test which did expect things which are not happening in the
+    function.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    Differential Revision: https://developer.blender.org/D463
+
+commit 80d6945bf5f996b97cd41df0e422afce5e10e7f9
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Mon Apr 14 00:01:32 2014 +0600
+
+    Unit tests for feature detector
+    
+    Currently covers only simplest cases with synthetic images.
+    Also at this point mainly Harris detector is being testes,
+    other detectors behaves a bit unexpected on synthetic images
+    and this is to be investigated further.
+    
+    Tests will be extended further later.
+    
+    Additional change:
+    
+    - Added constructor to Feature structure
+    - Added operator << for feature for easier debug dumps.
+    
+    TODO: Some tests are not giving the result which i was expected
+    to. This is to be investigated further by finding the reference
+    detector implementation. For until then keeping that tests
+    commented out.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    Differential Revision: https://developer.blender.org/D316
+
+commit 397c3d3ed46eb4967eb285c8369cc125bea4b132
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Apr 4 16:17:57 2014 +0600
+
+    Compilation error fix
+    
+    Not totally sure why this is needed, but multiview indeed
+    uses V3D library still, so it needs to be linked against it.
+    
+    Patc by Martijn Berger, thanks!
+
+commit 1c36279239cbffe152493106eb04e55df7ebd649
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Apr 4 14:03:43 2014 +0600
+
+    Upgrade Eigen to 3.2.1 version
+    
+    To main reasons for this:
+    - Probably this would solve strict compiler warnings
+    - It brings new stuff like sparse LU decomposition which
+      might be useful in the future.
+
+commit de698f442934f475478463445f78a00ea632e823
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Apr 3 15:08:26 2014 +0600
+
+    Fix compilation error when using make from the sources root
+    
+    - Don't force flann to be static. It's a general rule on linux
+      to have dynamic libraries for all the bits instead of having
+      statically-linked dynamic libraries.
+    
+    - Some weirdo stuff was happening around OpenExif, it was only
+      built on Apple, so don't link targets against this lib on
+      other platforms.
+    
+    - Some libraries were missing for qt-tracker.
+
+commit 901b146f28825d3e05f4157ca2a34ae00261b91a
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Mar 26 17:44:09 2014 +0600
+
+    Fix bad memory write in BA code when having zero-weighted tracks
+    
+    Issue was really stupid and caused by the wrong vector initialization.
+
+commit d14a372dfe09c7339f267c4904a541fbe2efec43
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Mar 21 16:02:41 2014 +0600
+
+    Attempt to fix compilation error with msvc2013
+
+commit 933531580b4dc4b65601d785cedc16506d615d7b
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Mar 20 23:07:34 2014 +0600
+
+    Compilation fixes for MinGW
+    
+    Many thanks to Antony Riakiotakis for the patch!
+
+commit f1aefcbf58fe04ea2967434f39f703bb486777c8
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Feb 27 16:21:19 2014 +0600
+
+    Implement separate BA step for tracks which have constant zero weight
+    
+    This is needed to minimize their reprojection error over the footage.
+    Without this extra step positions of such tracks were calculated by
+    algebraic intersection code only, which doesn't give best precision.
+
+commit bcf7f9470b2ea33cf89a31a72037ec03be631637
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Feb 27 14:16:42 2014 +0600
+
+    Avoid zero-sized problem when doing euclidean intersection
+    
+    Zero-sized problem might occur when intersecting track with
+    constant zero weight. For such tracks we'll just use result
+    of algebraic intersection.
+    
+    TODO: We probably need to have a separate BA step to adjust
+    positions of tracks with constant zero weight.
+
+commit f884bb20a93189b8210639f3de939c64177d66b3
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Feb 26 18:00:40 2014 +0600
+
+    Ignore zero weighted markers in keyframe selection
+    
+    It doesn't make sense to use zero-weighted tracks as a correspondences
+    in keyframe selection.
+    
+    Such tracks are not guaranteed to be tracked accurately because their
+    purpose is to add reference points in 3D space without affecting the
+    solution.
+
+commit 74db5175cdbcabe673b82eef59c88fb7f342c43f
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Feb 26 13:23:02 2014 +0600
+
+    Tweaks to make bundling into Blender warning-less
+    
+    Mainly issue i caused by conflicts in include directories,
+    so glog used to include config.h from gflags. It might be
+    fixed by splitting gflags/glog from Libmv in Blender build
+    system but that's not something fun to work on. Fixed by
+    making include directories  bit more explicit.
+    
+    Also solved no-previous-prototype warnings.
+
+commit bc4bc66af0115069562b79e837ccf4fd95c8f97e
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 21 14:55:13 2014 +0600
+
+    Raise epsilon used for model solver test
+    
+    It was too much small leading to false failure triggering
+    caused simply by precision issues.
+
+commit bf750590a6af4af3622c01fd1004c44da60484a7
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Feb 18 23:35:52 2014 +0600
+
+    Made it possible to link against Ceres installed on the system
+    
+    Main purpose of this is to get away from bundled Ceres library
+    which is not so trivial to re-bundle and takes some to do this
+    (not talking about CMake options conflicts and pollution).
+    
+    Enabled by setting WITH_SYSTEM_CERES=ON. Default paths to search
+    Ceres library:
+    
+    - /usr/local
+    - /sw
+    - /opt/local
+    - /opt/csw
+    - /opt/lib/ceres
+    
+    You might also specify Ceres root directory using CERES_ROOT_DIR
+    variable (both CMake and environment variables are supported).
+    
+    If your Ceres is build statically, you're to control all additional
+    libraries needed to link against using CMAKE_EXE_LINKER_FLAGS.
+
+commit c9156fbf80c86853806844b754b1e48f45c5ec11
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Feb 18 19:38:22 2014 +0600
+
+    Remove .orig file which was added by accident
+
+commit 62597e3cf0f266a2fefec415c89759e502793e06
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Jan 2 16:02:08 2014 +0600
+
+    Upgrade glog to latest svn r139
+    
+    The intention of this upgrade is to get rid of custom patches
+    we've been having to support compilation on different platforms
+    and compilers.
+
+commit 2452d5d42b390c7ab853e6fe60e58bdd7a01a004
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Feb 18 18:46:08 2014 +0600
+
+    Tweak Ceres CMake to detect uninstall target properly on Windows
+
+commit 98a281d58ce2301f3dd239a97a448e53f48d0258
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Feb 14 00:36:44 2014 +0600
+
+    Fix order of third party libs compilation and options used by them
+    
+    WITH_FAST_DETECTOR was defined too late and third_party folder
+    didn't see this option.
+
+commit 4962bccd643ec0f2aed3035170d5f20e8f6efc85
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Feb 13 23:55:03 2014 +0600
+
+    Disable Ceres unit tests and examples by default
+    
+    Actually we're to switch to external Ceres rather than
+    bundled one, would make life much easier actually.
+
+commit b1381540305d69c702eb2f051bd543fb5c1c3e2c
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Feb 6 18:01:58 2014 +0600
+
+    Made FAST detector optional
+    
+    This way it's possible to bundle Libmv sources subset
+    to applications which doesn't need FAST detector.
+    
+    Mainly this is done for Blender integration.
+
+commit da4607f010bca0b3532cd4444afbb10bc774fc32
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 18:32:39 2014 +0600
+
+    Implemented scoped_array and use it in detector
+    
+    scoped_array is pretty much the same as scoped_ptr
+    with the only difference that it'll free memory using
+    delete[] operator.
+    
+    It also gives some additional API functions to access
+    array elements.
+    
+    Currently it only used to manage images denoted as byte
+    arrays in detector.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    Differential Revision: https://developer.blender.org/D266
+
+commit cd7eb3eff2e69ce5e08570ead83ae6d35ee48857
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 17:23:47 2014 +0600
+
+    Improvements to weighted tracks behavior
+    
+    First thing changed by this commit is making it so
+    Euclidean intersection takes track weight into account
+    when solving minimization problem. This behaves the
+    same exact way as it is for BA step.
+    
+    Second thing is related on how average reprojection error
+    is being calculated. It didn't take track weight into
+    account which could confuse users. Now average reprojection
+    error will give the same result as intersection/BA uses
+    during minimization which gives much more predictable
+    behavior.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    CC: sebastian_k
+    
+    Differential Revision: https://developer.blender.org/D265
+
+commit 6559b36dc14369175bfa0830323146acd3426483
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 16:39:14 2014 +0600
+
+    Fixes for keyframe selection
+    
+    Using tracks with constant zero weight used to crash
+    keyframe selection since it was trying to use missing
+    parameter blocks for Jacobian evaluation,
+    
+    Also fixed possible issues with wrong camera block being
+    marked as variable. This could technically happen when
+    having zero weighted tracks. Made it so all camera blocks
+    are marked as variable for now.
+
+commit 557d531b061aa69d114e89cbb325c5175389afec
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 16:10:33 2014 +0600
+
+    Style cleanup: wrong indentation of wrapped line
+
+commit ca15262cf07a873268173965ee1fb84f9729b744
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Jan 28 15:21:36 2014 +0600
+
+    Rework detector API and implement Harris detector
+    
+    Switch the detector API to a single function which accepts
+    a float image and detector options. This makes usage of
+    feature detection more unified across different algorithms.
+    
+    Options structure is pretty much straightforward and contains
+    detector to be used and all the detector-specific settings.
+    
+    Also implemented Harris feature detection algorithm which
+    is not as fast as FAST one but is expected to detect more
+    robust feature points.
+    
+    Reviewers: keir
+    
+    Reviewed By: keir
+    
+    Differential Revision: https://developer.blender.org/D258
+
+commit 6458915f64fceba108c5279b7320ca8c76e8a742
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Fri Jan 24 19:14:18 2014 +0600
+
+    Add arcanist configuration file
+
+commit 0a69fadadc5aacbd339f839ac5bd12c3571278b1
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Jan 9 15:50:11 2014 +0600
+
+    Fix compilation error on NetBSD
+    
+    - NetBSD doesn't provide sincos(3) in libm, so don't try to use it
+    - Use posix_memalign on NetBSD
+    
+    Original patch is by Jeorg Sonnenberger to Blender patch tracker, thanks!
+
+commit b0df3e291e6c85f791658be04334efafc41989f5
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Jan 2 15:12:18 2014 +0600
+
+    Fix build configuration warnings
+    
+    Those warnings were mainly caused by installation
+    configuration of Ceres. Made some tweaks to make
+    CMake happy for now.
+    
+    But for sure bigger cleanup here is needed.
+
+commit b68de6acd20f3ffab92e0cd450198a700cd109ab
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Thu Jan 2 15:04:05 2014 +0600
+
+    Code and style cleanup
+    
+    Mainly fixed some style warnings reported by cpplint.
+    
+    Also changed how camera (un)distortion happens internally
+    by replacing number of channels as a template argument
+    with number as channels passing as function argument.
+    Makes code easier to follow by eliminating loads checks
+    how much channels are used and which argument to pass to
+    the template.
+
+commit b9e467e7c077b58199c4110f6967b7c18d1e7bf7
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Dec 31 20:34:39 2013 +0600
+
+    Update Ceres to the latest upstream
+    
+    This brings up much easier termination type usage,
+    which for us means we might use:
+    
+      ceres::Summary::IsSolutionUsable()
+    
+    instead of doing manual funky enum values check.
+
+commit 3aeb2367e50b52ca2b9d59d4f0f0b4bbfd6a05e8
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Dec 31 20:43:24 2013 +0600
+
+    Update gtest to latest version 1.7.0
+    
+    Also reshuffled CMakeLists in order to avoid
+    conflicts happening between gflags bundled to
+    Ceres and third_party.
+
+commit 30aaa9cd0b4a4eb0948a17824e7e7622d8ebcb41
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Dec 31 20:10:06 2013 +0600
+
+    Changes for VC2013
+    
+    Solves compilation error when using msvc2013
+    
+    Original patch is by Alexandr Kuznetsov to blender.git
+
+commit b204c0d25065a2b149de256929ff37d8f00f45bb
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Tue Dec 31 20:05:58 2013 +0600
+
+    Eagerly attempt to refine a track before doing a brute search
+    
+    Before the refinement phase of tracking, a brute force SAD search
+    is run across the search area. This works well but is slow;
+    especially if the guess for the track's location is accurate.
+    
+    This patch runs a refinement phase before running a brute force
+    search, hoping that the guessed position (in x2, y2) is close to
+    the best answer. If it is, then no brute search is done. If it is
+    not, then a normal brute force search followed by refinement is
+    done.
+    
+    In some cases this may produce worse tracks than before; the
+    regressions will need investigation. The predictive motion model
+    (to be implemented) will reduce the probability of that happening.
+
+commit 5361513f0328ff94b53125d29129561bb03132e8
+Author: Keir Mierle <mierle@gmail.com>
+Date:   Tue Dec 31 20:04:46 2013 +0600
+
+    Fix bug where libmv tracking incorrectly succeeds on failure
+    
+    Before this patch, if Ceres returned USER_SUCCESS indicating that
+    Ceres was only changing the tracked quad slightly between
+    iterations (indicating convergence), no final correlation check
+    was done. This leads to incorrectly returning that the tracking
+    was successful, when it actually failed.
+
+commit ba9e63eed09e33a48bbcb081058f45ac16f8738e
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Dec 31 20:00:46 2013 +0600
+
+    Implementation of weighted tracks
+    
+    Added a weight field to Track structure which means
+    how much affect this track will have on the final
+    reconstruction.
+    
+    Currently it affects on BA step only which in most
+    cases will work just fine. However, it worth looking
+    into weight support for intersection/resection.
+
+commit 4600df8b685ca8c4daa22d6c3b0125fd42c3bc67
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Dec 31 19:30:14 2013 +0600
+
+    Code cleanup: move function prototype to header file
+
+commit 0ce5b6efde774b3f042acf9e42c95674548f1c01
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Dec 31 19:26:48 2013 +0600
+
+    Get rid of Allow Fallback option for euclidean resection
+    
+    It was rather confusing from the user usage point of view
+    and didn't get so much improvement after new bundle adjuster
+    was added.
+    
+    In the future we might want to switch resection to PPnP algorithm,
+    which could also might be a nice alternative to fallback option.
+
+commit 5d063426f4809000c27f38ed798e4224bbd09a6d
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Dec 31 19:24:05 2013 +0600
+
+    Use explicit declaration of int types sign
+    
+    Mainly needs to make blender happy with this custom
+    header which used to run into conflict with other int
+    types headers.
+    
+    Wouldn't harm being more explicit here anyway.
+
+commit c5be59dee94f94de369006c544080282cfb245cc
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Tue Dec 31 14:50:00 2013 +0600
+
+    Implement refinement of estimated homography/fundamental matrices
+    
+    It was only possible to perform algebraic estimation, which didn't
+    give so much accurate results.
+    
+    Implemented a way to perform algebraic estimation followed with
+    refinement step using Ceres minimizer.
+    
+    The code was actually mostly already there since keyframe selection
+    patch. Made such estimation a generic function in multiview/ and
+    hanged API for estimation in order to pass all additional options via
+    an options structure (the same way as it's done fr Ceres).
+    
+    Most of the options are straight-forward to understand,but some
+    deserves more description here:
+    
+    * expected_average_symmetric_distance is used as an early output check
+      and as soon as average symmetric error goes below this threshold
+      refining finishes.
+    
+      This distance is measured in the same units as input points are.
+    
+      It is arguable whether we need callback for this or not, but seems
+      Ceres doesn't have some kind of absolute threshold for function value
+      and function_tolerance behaves different from logic behind expected
+      symmetric error.
+    
+    * There' an option to normalize correspondences before estimating the
+      homography in order to increase estimation stability. See
+    
+        R. Hartley and A. Zisserman. Multiple View Geometry in Computer
+        Vision. Cambridge University Press, second edition, 2003.
+    
+        https://www.cs.ubc.ca/grads/resources/thesis/May09/Dubrofsky_Elan.pdf
+
+commit 1cdad972c4a9005e78891524cbd6d65600ca7e99
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Sep 25 16:12:29 2013 +0600
+
+    Code cleanup: Minor function capitalization fix
+    
+    Original patch by Joseph Mansfield to the Blender repository.
+
+commit 434316d084e8a41fd452f03610d7244d664948dc
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Sep 25 16:07:43 2013 +0600
+
+    Code cleanup: spelling correction
+    
+    Original patch by Joseph Mansfield to the Blender repository.
+
+commit 5cfe8465ac70407c0959c53bcd5206657a1322a2
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Sep 25 16:02:48 2013 +0600
+
+    Fix for uninitialized covariance matrix
+    
+    Lead to unpredictable tracking termination criteria.
+
+commit fd86b77d413489649a989f075b061714ed9a72fc
+Author: Sergey Sharybin <sergey.vfx@gmail.com>
+Date:   Wed Sep 25 16:01:19 2013 +0600
+
+    Add Procrustes PNP ("PPnP") resection algorithm to libmv
+    
+    This adds a new Euclidean resection method, used to create the
+    initial reconstruction in the motion tracker, to libmv. The method
+    is based on the Procrustes PNP algorithm (aka "PPnP"). Currently
+    the algorithm is not connected with the motion tracker, but it
+    will be eventually since it supports initialization.
+    
+    Having an initial guess when doing resection is important for
+    ambiguous cases where potentially the user could offer extra
+    guidance to the solver, in the form of "this point is in front of
+    that point".
+    
+    Original patch by Keir Mierle made to Blender repository.
