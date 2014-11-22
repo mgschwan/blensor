@@ -1,2 +1,0 @@
-If your pcl installation is in a non standard directory set the PKG_CONFIG_PATH environment variable to the
-pkgconfig path of your installation before running make
