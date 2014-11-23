@@ -51,7 +51,7 @@ def tuples_to_list(tuples):
     return l
 
 
-parameters = {"max_dist":20,"noise_mu":0.0,"noise_sigma":0.004, "backfolding":False, "xres": 176, "yres": 144}
+parameters = {"max_dist":20,"noise_mu":0.0,"noise_sigma":0.004, "backfolding":False, "xres": 176, "yres": 144, "lens_angle_w": 43.6, "lens_angle_h": 34.6, "flength": 10.0}
 
 def addProperties(cType):
     global parameters
@@ -61,27 +61,30 @@ def addProperties(cType):
     cType.tof_backfolding = bpy.props.BoolProperty( name = "Backfolding", default = parameters["backfolding"], description = "Should backfolding be simulated" )
     cType.tof_xres = bpy.props.IntProperty( name = "X resolution", default = parameters["xres"], description = "Horizontal resolution" )
     cType.tof_yres = bpy.props.IntProperty( name = "Y resolution", default = parameters["yres"], description = "Vertical resolution" )
-
+    cType.tof_lens_angle_w = bpy.props.FloatProperty( name = "Horizontal FOV", default = parameters["lens_angle_w"], description = "Horizontal opening angle" )
+    cType.tof_lens_angle_h = bpy.props.FloatProperty( name = "Vertical FOV", default = parameters["lens_angle_h"], description = "Vertical opening angle" )
+    cType.tof_focal_length = bpy.props.FloatProperty( name = "Focal length", default = parameters["flength"], description = "Focal length" )
 
 
 
 def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False, 
                   add_noisy_blender_mesh = False, tof_res_x = 176, tof_res_y = 144, 
-                  lens_angle_w=43.6, lens_angle_h=34.6, flength = 10,  evd_last_scan=True, 
+                  lens_angle_w=43.6, lens_angle_h=34.6, flength = 10.0,  evd_last_scan=True, 
                   noise_mu=0.0, noise_sigma=0.004, timestamp = 0.0, backfolding=False,
                   world_transformation=Matrix()):
 
     start_time = time.time()
 
 
-    sensor_width = 2 * math.tan(deg2rad(lens_angle_w/2.0)) * flength
-    sensor_height = 2 * math.tan(deg2rad(lens_angle_h/2.0)) * flength
+    #10.0mm is currently the distance between the focal point and the sensor
+    sensor_width = 2 * math.tan(deg2rad(lens_angle_w/2.0)) * 10.0
+    sensor_height = 2 * math.tan(deg2rad(lens_angle_h/2.0)) * 10.0
 
     if tof_res_x == 0 or tof_res_y == 0:
         raise ValueError("Resolution must be > 0")
 
     pixel_width = sensor_width / float(tof_res_x)
-    pixel_height = sensor_width / float(tof_res_y)
+    pixel_height = sensor_height / float(tof_res_y)
 
 
     bpy.context.scene.render.resolution_percentage
@@ -180,7 +183,7 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144,world_transformation=Matrix()):
+def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144, lens_angle_w=43.6, lens_angle_h=34.6, flength = 10.0, world_transformation=Matrix()):
 
 
 
@@ -199,7 +202,9 @@ def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.
                     max_distance=max_distance,
                     timestamp = float(i) * frame_time,
                     noise_mu = noise_mu, noise_sigma=noise_sigma, backfolding=backfolding,
-                    tof_res_x = tof_res_x, tof_res_y = tof_res_y,world_transformation=world_transformation)
+                    tof_res_x = tof_res_x, tof_res_y = tof_res_y,
+                    lens_angle_w = lens_angle_w, lens_angle_h = lens_angle_h, flength = flength, 
+                    world_transformation=world_transformation)
 
             if not ok:
                 break

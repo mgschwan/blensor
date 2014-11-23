@@ -104,7 +104,15 @@ def tof_layout(obj, layout):
             col = row.column()
             col.prop(obj, "tof_yres")
             row = layout.row()
-            row.prop(obj, "tof_max_dist")
+            col = row.column()
+            col.prop(obj, "tof_lens_angle_w")
+            col = row.column()
+            col.prop(obj, "tof_lens_angle_h")
+            row = layout.row()
+            col = row.column()
+            col.prop(obj, "tof_max_dist")
+            col = row.column()
+            col.prop(obj, "tof_focal_length")
             row = layout.row()
             col = row.column()
             col.prop(obj, "tof_noise_mu")
@@ -266,6 +274,7 @@ def dispatch_scan(obj, filename=None, output_labels=True):
                   add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
                   evd_file=filename, noise_mu=obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,
                   backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres, 
+                  lens_angle_w = obj.tof_lens_angle_w, lens_angle_h = obj.tof_lens_angle_h, flength = obj.tof_focal_length, 
                   tof_res_y = obj.tof_yres,world_transformation=world_transformation)
 
             elif obj.scan_type == "kinect":
@@ -329,7 +338,9 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                   frame_start = frame, frame_end=frame+1, filename=filename, 
                   last_frame=last_frame,frame_time = time_per_frame,
                   backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres,
-                  tof_res_y = obj.tof_yres, world_transformation=world_transformation,
+                  tof_res_y = obj.tof_yres, 
+                  lens_angle_w = obj.tof_lens_angle_w, lens_angle_h = obj.tof_lens_angle_h, flength = obj.tof_focal_length, 
+                  world_transformation=world_transformation,
                   add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
 
             elif obj.scan_type == "kinect":
