@@ -1,13 +1,12 @@
 # Author: Michael Gschwandtner
 # Contact: blensor@zero997.com
 import sys
+import traceback
+from mathutils import Matrix
+from math import pi
+import types
 import bpy
 
-"""#TODO@mgschwan : remove this hack if numpy works out of the box"""
-sys.path.append(sys.prefix+"/lib/python%d.%d"%(sys.version_info.major, sys.version_info.minor)+"/site-packages")
-
-
-import traceback
 import blensor.blendodyne
 import blensor.depthmap
 import blensor.tof
@@ -18,14 +17,25 @@ import blensor.kinect
 import blensor.exportmotion
 import blensor.mesh_utils
 import blensor.noise
-from mathutils import Matrix
-from math import pi
+
+
+"""If the blensor module is reloaded, reload all submodules as well
+   This will reload all modules at the initial import as well but 
+   that should not be a problem
+"""
+import imp
+locals_copy = dict(locals())
+for var in locals_copy:
+    tmp = locals_copy[var]
+    if isinstance(tmp, types.ModuleType) and tmp.__package__ == "blensor":
+      print ("Reloading: %s"%(var))
+      imp.reload(tmp)
 
 
 
 """A package for simulating various types of range scanners inside blender"""
 
-__version__ = '1.0.15'
+__version__ = '1.0.16'
 
 __all__ = [
     'blendodyne',
@@ -49,7 +59,7 @@ bl_info = {
     "name": "Sensor Simulation",
     "description": "Simulates various types of range scanners",
     "author": "Michael Gschwandtner",
-    "version": (1,0),
+    "version": (1,0,16),
     "blender": (2, 5, 6),
     "api": 31236,
     "location": "View3D > Properties > Camera",
