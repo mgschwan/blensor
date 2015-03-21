@@ -34,6 +34,7 @@
 #include "BKE_key.h"
 #include "BKE_movieclip.h"
 #include "BKE_node.h"
+#include "BKE_screen.h"
 
 #include "DNA_action_types.h"
 #include "DNA_key_types.h"
@@ -55,6 +56,8 @@
 
 #include "RE_engine.h"
 #include "RE_pipeline.h"
+
+#include "ED_fileselect.h"
 
 #include "RNA_enum_types.h"
 
@@ -204,6 +207,7 @@ static EnumPropertyItem buttons_texture_context_items[] = {
 #include "BKE_icons.h"
 
 #include "ED_buttons.h"
+#include "ED_fileselect.h"
 #include "ED_image.h"
 #include "ED_node.h"
 #include "ED_screen.h"
@@ -266,13 +270,7 @@ static ScrArea *rna_area_from_space(PointerRNA *ptr)
 {
 	bScreen *sc = (bScreen *)ptr->id.data;
 	SpaceLink *link = (SpaceLink *)ptr->data;
-	ScrArea *sa;
-
-	for (sa = sc->areabase.first; sa; sa = sa->next)
-		if (BLI_findindex(&sa->spacedata, link) != -1)
-			return sa;
-
-	return NULL;
+	return BKE_screen_find_area_from_space(sc, link);
 }
 
 static void area_region_from_regiondata(bScreen *sc, void *regiondata, ScrArea **r_sa, ARegion **r_ar)
@@ -415,8 +413,8 @@ static void rna_SpaceView3D_lock_camera_and_layers_set(PointerRNA *ptr, int valu
 		/* seek for layact */
 		bit = 0;
 		while (bit < 32) {
-			if (v3d->lay & (1 << bit)) {
-				v3d->layact = 1 << bit;
+			if (v3d->lay & (1u << bit)) {
+				v3d->layact = (1u << bit);
 				break;
 			}
 			bit++;
@@ -485,7 +483,7 @@ static void rna_SpaceView3D_matcap_update(Main *UNUSED(bmain), Scene *UNUSED(sce
 			BKE_previewimg_free(&ma->preview);
 		
 		if (ma->gpumaterial.first)
-			GPU_material_free(ma);
+			GPU_material_free(&ma->gpumaterial);
 		
 		WM_main_add_notifier(NC_MATERIAL | ND_SHADING_DRAW, ma);
 	}
@@ -797,7 +795,7 @@ static void rna_SpaceImageEditor_cursor_location_set(PointerRNA *ptr, const floa
 	}
 }
 
-static void rna_SpaceImageEditor_scopes_update(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
+static void rna_SpaceImageEditor_scopes_update(struct bContext *C, struct PointerRNA *ptr)
 {
 	SpaceImage *sima = (SpaceImage *)ptr->data;
 	ImBuf *ibuf;
@@ -805,7 +803,7 @@ static void rna_SpaceImageEditor_scopes_update(Main *UNUSED(bmain), Scene *scene
 	
 	ibuf = ED_space_image_acquire_buffer(sima, &lock);
 	if (ibuf) {
-		scopes_update(&sima->scopes, ibuf, &scene->view_settings, &scene->display_settings);
+		ED_space_image_scopes_update(C, sima, ibuf, true);
 		WM_main_add_notifier(NC_IMAGE, sima->image);
 	}
 	ED_space_image_release_buffer(sima, ibuf, lock);
@@ -855,7 +853,6 @@ static void rna_SpaceTextEditor_updateEdited(Main *UNUSED(bmain), Scene *UNUSED(
 	if (st->text)
 		WM_main_add_notifier(NC_TEXT | NA_EDITED, st->text);
 }
-
 
 /* Space Properties */
 
@@ -1117,12 +1114,12 @@ static void rna_SpaceDopeSheetEditor_action_update(Main *UNUSED(bmain), Scene *s
 		
 		if (saction->mode == SACTCONT_ACTION) {
 			/* TODO: context selector could help decide this with more control? */
-			adt = BKE_id_add_animdata(&obact->id); /* this only adds if non-existant */
+			adt = BKE_id_add_animdata(&obact->id); /* this only adds if non-existent */
 		}
 		else if (saction->mode == SACTCONT_SHAPEKEY) {
 			Key *key = BKE_key_from_object(obact);
 			if (key)
-				adt = BKE_id_add_animdata(&key->id);  /* this only adds if non-existant */
+				adt = BKE_id_add_animdata(&key->id);  /* this only adds if non-existent */
 		}
 		
 		/* set action */
@@ -1130,7 +1127,7 @@ static void rna_SpaceDopeSheetEditor_action_update(Main *UNUSED(bmain), Scene *s
 			/* fix id-count of action we're replacing */
 			id_us_min(&adt->action->id);
 			
-			/* show new id-count of action we're replacing */
+			/* assign new action, and adjust the usercounts accordingly */
 			adt->action = saction->action;
 			id_us_plus(&adt->action->id);
 			
@@ -1256,7 +1253,7 @@ static int rna_SpaceNodeEditor_node_tree_poll(PointerRNA *ptr, const PointerRNA 
 	bNodeTree *ntree = (bNodeTree *)value.data;
 	
 	/* node tree type must match the selected type in node editor */
-	return (strcmp(snode->tree_idname, ntree->idname) == 0);
+	return (STREQ(snode->tree_idname, ntree->idname));
 }
 
 static void rna_SpaceNodeEditor_node_tree_update(const bContext *C, PointerRNA *UNUSED(ptr))
@@ -1373,6 +1370,271 @@ static void rna_SpaceClipEditor_view_type_update(Main *UNUSED(bmain), Scene *UNU
 {
 	ScrArea *sa = rna_area_from_space(ptr);
 	ED_area_tag_refresh(sa);
+}
+
+/* File browser. */
+
+static void rna_FileBrowser_FSMenuEntry_path_get(PointerRNA *ptr, char *value)
+{
+	char *path = ED_fsmenu_entry_get_path(ptr->data);
+
+	strcpy(value, path ? path : "");
+}
+
+static int rna_FileBrowser_FSMenuEntry_path_length(PointerRNA *ptr)
+{
+	char *path = ED_fsmenu_entry_get_path(ptr->data);
+
+	return (int)(path ? strlen(path) : 0);
+}
+
+static void rna_FileBrowser_FSMenuEntry_path_set(PointerRNA *ptr, const char *value)
+{
+	FSMenuEntry *fsm = ptr->data;
+
+	/* Note: this will write to file immediately.
+	 * Not nice (and to be fixed ultimately), but acceptable in this case for now. */
+	ED_fsmenu_entry_set_path(fsm, value);
+}
+
+static void rna_FileBrowser_FSMenuEntry_name_get(PointerRNA *ptr, char *value)
+{
+	strcpy(value, ED_fsmenu_entry_get_name(ptr->data));
+}
+
+static int rna_FileBrowser_FSMenuEntry_name_length(PointerRNA *ptr)
+{
+	return (int)strlen(ED_fsmenu_entry_get_name(ptr->data));
+}
+
+static void rna_FileBrowser_FSMenuEntry_name_set(PointerRNA *ptr, const char *value)
+{
+	FSMenuEntry *fsm = ptr->data;
+
+	/* Note: this will write to file immediately.
+	 * Not nice (and to be fixed ultimately), but acceptable in this case for now. */
+	ED_fsmenu_entry_set_name(fsm, value);
+}
+
+static int rna_FileBrowser_FSMenuEntry_name_get_editable(PointerRNA *ptr)
+{
+	FSMenuEntry *fsm = ptr->data;
+
+	return fsm->save;
+}
+
+static void rna_FileBrowser_FSMenu_next(CollectionPropertyIterator *iter)
+{
+	ListBaseIterator *internal = &iter->internal.listbase;
+
+	if (internal->skip) {
+		do {
+			internal->link = (Link *)(((FSMenuEntry *)(internal->link))->next);
+			iter->valid = (internal->link != NULL);
+		} while (iter->valid && internal->skip(iter, internal->link));
+	}
+	else {
+		internal->link = (Link *)(((FSMenuEntry *)(internal->link))->next);
+		iter->valid = (internal->link != NULL);
+	}
+}
+
+static void rna_FileBrowser_FSMenu_begin(CollectionPropertyIterator *iter, FSMenuCategory category)
+{
+	ListBaseIterator *internal = &iter->internal.listbase;
+
+	struct FSMenu *fsmenu = ED_fsmenu_get();
+	struct FSMenuEntry *fsmentry = ED_fsmenu_get_category(fsmenu, category);
+
+	internal->link = (fsmentry) ? (Link *)fsmentry : NULL;
+	internal->skip = NULL;
+
+	iter->valid = (internal->link != NULL);
+}
+
+static PointerRNA rna_FileBrowser_FSMenu_get(CollectionPropertyIterator *iter)
+{
+	ListBaseIterator *internal = &iter->internal.listbase;
+	PointerRNA r_ptr;
+
+	RNA_pointer_create(NULL, &RNA_FileBrowserFSMenuEntry, internal->link, &r_ptr);
+
+	return r_ptr;
+}
+
+static void rna_FileBrowser_FSMenu_end(CollectionPropertyIterator *UNUSED(iter))
+{
+}
+
+static void rna_FileBrowser_FSMenuSystem_data_begin(CollectionPropertyIterator *iter, PointerRNA *UNUSED(ptr))
+{
+	rna_FileBrowser_FSMenu_begin(iter, FS_CATEGORY_SYSTEM);
+}
+
+static int rna_FileBrowser_FSMenuSystem_data_length(PointerRNA *UNUSED(ptr))
+{
+	struct FSMenu *fsmenu = ED_fsmenu_get();
+
+	return ED_fsmenu_get_nentries(fsmenu, FS_CATEGORY_SYSTEM);
+}
+
+static void rna_FileBrowser_FSMenuSystemBookmark_data_begin(CollectionPropertyIterator *iter, PointerRNA *UNUSED(ptr))
+{
+	rna_FileBrowser_FSMenu_begin(iter, FS_CATEGORY_SYSTEM_BOOKMARKS);
+}
+
+static int rna_FileBrowser_FSMenuSystemBookmark_data_length(PointerRNA *UNUSED(ptr))
+{
+	struct FSMenu *fsmenu = ED_fsmenu_get();
+
+	return ED_fsmenu_get_nentries(fsmenu, FS_CATEGORY_SYSTEM_BOOKMARKS);
+}
+
+static void rna_FileBrowser_FSMenuBookmark_data_begin(CollectionPropertyIterator *iter, PointerRNA *UNUSED(ptr))
+{
+	rna_FileBrowser_FSMenu_begin(iter, FS_CATEGORY_BOOKMARKS);
+}
+
+static int rna_FileBrowser_FSMenuBookmark_data_length(PointerRNA *UNUSED(ptr))
+{
+	struct FSMenu *fsmenu = ED_fsmenu_get();
+
+	return ED_fsmenu_get_nentries(fsmenu, FS_CATEGORY_BOOKMARKS);
+}
+
+static void rna_FileBrowser_FSMenuRecent_data_begin(CollectionPropertyIterator *iter, PointerRNA *UNUSED(ptr))
+{
+	rna_FileBrowser_FSMenu_begin(iter, FS_CATEGORY_RECENT);
+}
+
+static int rna_FileBrowser_FSMenuRecent_data_length(PointerRNA *UNUSED(ptr))
+{
+	struct FSMenu *fsmenu = ED_fsmenu_get();
+
+	return ED_fsmenu_get_nentries(fsmenu, FS_CATEGORY_RECENT);
+}
+
+static int rna_FileBrowser_FSMenu_active_get(PointerRNA *ptr, const FSMenuCategory category)
+{
+	SpaceFile *sf = ptr->data;
+	int actnr = -1;
+
+	switch (category) {
+		case FS_CATEGORY_SYSTEM:
+			actnr = sf->systemnr;
+			break;
+		case FS_CATEGORY_SYSTEM_BOOKMARKS:
+			actnr = sf->system_bookmarknr;
+			break;
+		case FS_CATEGORY_BOOKMARKS:
+			actnr = sf->bookmarknr;
+			break;
+		case FS_CATEGORY_RECENT:
+			actnr = sf->recentnr;
+			break;
+	}
+
+	return actnr;
+}
+
+static void rna_FileBrowser_FSMenu_active_set(PointerRNA *ptr, int value, const FSMenuCategory category)
+{
+	SpaceFile *sf = ptr->data;
+	struct FSMenu *fsmenu = ED_fsmenu_get();
+	FSMenuEntry *fsm = ED_fsmenu_get_entry(fsmenu, category, value);
+
+	if (fsm && sf->params) {
+		switch (category) {
+			case FS_CATEGORY_SYSTEM:
+				sf->systemnr = value;
+				break;
+			case FS_CATEGORY_SYSTEM_BOOKMARKS:
+				sf->system_bookmarknr = value;
+				break;
+			case FS_CATEGORY_BOOKMARKS:
+				sf->bookmarknr = value;
+				break;
+			case FS_CATEGORY_RECENT:
+				sf->recentnr = value;
+				break;
+		}
+
+		BLI_strncpy(sf->params->dir, fsm->path, sizeof(sf->params->dir));
+	}
+}
+
+static void rna_FileBrowser_FSMenu_active_range(
+        PointerRNA *UNUSED(ptr), int *min, int *max, int *softmin, int *softmax, const FSMenuCategory category)
+{
+	struct FSMenu *fsmenu = ED_fsmenu_get();
+
+	*min = *softmin = -1;
+	*max = *softmax = ED_fsmenu_get_nentries(fsmenu, category) - 1;
+}
+
+static void rna_FileBrowser_FSMenu_active_update(struct bContext *C, PointerRNA *UNUSED(ptr))
+{
+	ED_file_change_dir(C, true);
+}
+
+static int rna_FileBrowser_FSMenuSystem_active_get(PointerRNA *ptr)
+{
+	return rna_FileBrowser_FSMenu_active_get(ptr, FS_CATEGORY_SYSTEM);
+}
+
+static void rna_FileBrowser_FSMenuSystem_active_set(PointerRNA *ptr, int value)
+{
+	rna_FileBrowser_FSMenu_active_set(ptr, value, FS_CATEGORY_SYSTEM);
+}
+
+static void rna_FileBrowser_FSMenuSystem_active_range(PointerRNA *ptr, int *min, int *max, int *softmin, int *softmax)
+{
+	rna_FileBrowser_FSMenu_active_range(ptr, min, max, softmin, softmax, FS_CATEGORY_SYSTEM);
+}
+
+static int rna_FileBrowser_FSMenuSystemBookmark_active_get(PointerRNA *ptr)
+{
+	return rna_FileBrowser_FSMenu_active_get(ptr, FS_CATEGORY_SYSTEM_BOOKMARKS);
+}
+
+static void rna_FileBrowser_FSMenuSystemBookmark_active_set(PointerRNA *ptr, int value)
+{
+	rna_FileBrowser_FSMenu_active_set(ptr, value, FS_CATEGORY_SYSTEM_BOOKMARKS);
+}
+
+static void rna_FileBrowser_FSMenuSystemBookmark_active_range(PointerRNA *ptr, int *min, int *max, int *softmin, int *softmax)
+{
+	rna_FileBrowser_FSMenu_active_range(ptr, min, max, softmin, softmax, FS_CATEGORY_SYSTEM_BOOKMARKS);
+}
+
+static int rna_FileBrowser_FSMenuBookmark_active_get(PointerRNA *ptr)
+{
+	return rna_FileBrowser_FSMenu_active_get(ptr, FS_CATEGORY_BOOKMARKS);
+}
+
+static void rna_FileBrowser_FSMenuBookmark_active_set(PointerRNA *ptr, int value)
+{
+	rna_FileBrowser_FSMenu_active_set(ptr, value, FS_CATEGORY_BOOKMARKS);
+}
+
+static void rna_FileBrowser_FSMenuBookmark_active_range(PointerRNA *ptr, int *min, int *max, int *softmin, int *softmax)
+{
+	rna_FileBrowser_FSMenu_active_range(ptr, min, max, softmin, softmax, FS_CATEGORY_BOOKMARKS);
+}
+
+static int rna_FileBrowser_FSMenuRecent_active_get(PointerRNA *ptr)
+{
+	return rna_FileBrowser_FSMenu_active_get(ptr, FS_CATEGORY_RECENT);
+}
+
+static void rna_FileBrowser_FSMenuRecent_active_set(PointerRNA *ptr, int value)
+{
+	rna_FileBrowser_FSMenu_active_set(ptr, value, FS_CATEGORY_RECENT);
+}
+
+static void rna_FileBrowser_FSMenuRecent_active_range(PointerRNA *ptr, int *min, int *max, int *softmin, int *softmax)
+{
+	rna_FileBrowser_FSMenu_active_range(ptr, min, max, softmin, softmax, FS_CATEGORY_RECENT);
 }
 
 #else
@@ -1572,6 +1834,8 @@ static void rna_def_space_outliner(BlenderRNA *brna)
 		{SO_LIBRARIES, "LIBRARIES", 0, "Blender File", "Display data of current file and linked libraries"},
 		{SO_DATABLOCKS, "DATABLOCKS", 0, "Datablocks", "Display all raw datablocks"},
 		{SO_USERDEF, "USER_PREFERENCES", 0, "User Preferences", "Display the user preference datablocks"},
+		{SO_ID_ORPHANS, "ORPHAN_DATA", 0, "Orphan Data",
+		                "Display datablocks which are unused and/or will be lost when the file is reloaded"},
 		{0, NULL, 0, NULL, NULL}
 	};
 	
@@ -1588,6 +1852,7 @@ static void rna_def_space_outliner(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "filter_text", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "search_string");
 	RNA_def_property_ui_text(prop, "Display Filter", "Live search filtering string");
+	RNA_def_property_flag(prop, PROP_TEXTEDIT_UPDATE);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_OUTLINER, NULL);
 	
 	prop = RNA_def_property(srna, "use_filter_case_sensitive", PROP_BOOLEAN, PROP_NONE);
@@ -1599,7 +1864,12 @@ static void rna_def_space_outliner(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "search_flags", SO_FIND_COMPLETE);
 	RNA_def_property_ui_text(prop, "Complete Matches Only", "Only use complete matches of search string");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_OUTLINER, NULL);
-	
+
+	prop = RNA_def_property(srna, "use_sort_alpha", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", SO_SKIP_SORT_ALPHA);
+	RNA_def_property_ui_text(prop, "Sort Alphabetically", "");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_OUTLINER, NULL);
+
 	prop = RNA_def_property(srna, "show_restrict_columns", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", SO_HIDE_RESTRICTCOLS);
 	RNA_def_property_ui_text(prop, "Show Restriction Columns", "Show column");
@@ -1701,7 +1971,22 @@ static void rna_def_background_image(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Size", "Scaling factor for the background image");
 	RNA_def_property_range(prop, 0.0, FLT_MAX);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
-	
+
+	prop = RNA_def_property(srna, "rotation", PROP_FLOAT, PROP_EULER);
+	RNA_def_property_float_sdna(prop, NULL, "rotation");
+	RNA_def_property_ui_text(prop, "Rotation", "Rotation for the background image");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "use_flip_x", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", V3D_BGPIC_FLIP_X);
+	RNA_def_property_ui_text(prop, "Flip Horizontally", "Flip the background image horizontally");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
+	prop = RNA_def_property(srna, "use_flip_y", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", V3D_BGPIC_FLIP_Y);
+	RNA_def_property_ui_text(prop, "Flip Vertically", "Flip the background image vertically");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
 	prop = RNA_def_property(srna, "opacity", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "blend");
 	RNA_def_property_float_funcs(prop, "rna_BackgroundImage_opacity_get", "rna_BackgroundImage_opacity_set", NULL);
@@ -1839,7 +2124,6 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 	
-
 	srna = RNA_def_struct(brna, "SpaceView3D", "Space");
 	RNA_def_struct_sdna(srna, "View3D");
 	RNA_def_struct_ui_text(srna, "3D View Space", "3D View space data");
@@ -1944,6 +2228,7 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "grid");
 	RNA_def_property_ui_text(prop, "Grid Scale", "Distance between 3D View grid lines");
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.001f, 1000.0f, 0.1f, 3);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
 
@@ -2040,6 +2325,11 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Only Render", "Display only objects which will be rendered");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
 	
+	prop = RNA_def_property(srna, "show_world", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag3", V3D_SHOW_WORLD);
+	RNA_def_property_ui_text(prop, "World Background", "Display world colors in the background");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
 	prop = RNA_def_property(srna, "use_occlude_geometry", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", V3D_ZBUF_SELECT);
 	RNA_def_property_ui_text(prop, "Occlude Geometry", "Limit selection to visible (clipped with depth buffer)");
@@ -2175,6 +2465,10 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Matcap", "Image to use for Material Capture, active objects only");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, "rna_SpaceView3D_matcap_update");
 
+	prop = RNA_def_property(srna, "fx_settings", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "FX Options", "Options used for real time compositing");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
+
 	/* region */
 
 	srna = RNA_def_struct(brna, "RegionView3D", NULL);
@@ -2200,13 +2494,20 @@ static void rna_def_space_view3d(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "persmat");
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE); /* XXX: for now, it's too risky for users to do this */
 	RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
-	RNA_def_property_ui_text(prop, "Perspective Matrix", "Current perspective matrix of the 3D region");
+	RNA_def_property_ui_text(prop, "Perspective Matrix",
+	                         "Current perspective matrix (``window_matrix * view_matrix``)");
+
+	prop = RNA_def_property(srna, "window_matrix", PROP_FLOAT, PROP_MATRIX);
+	RNA_def_property_float_sdna(prop, NULL, "winmat");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
+	RNA_def_property_ui_text(prop, "Window Matrix", "Current window matrix");
 	
 	prop = RNA_def_property(srna, "view_matrix", PROP_FLOAT, PROP_MATRIX);
 	RNA_def_property_float_sdna(prop, NULL, "viewmat");
 	RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RegionView3D_view_matrix_set", NULL);
-	RNA_def_property_ui_text(prop, "View Matrix", "Current view matrix of the 3D region");
+	RNA_def_property_ui_text(prop, "View Matrix", "Current view matrix");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_VIEW3D, NULL);
 
 	prop = RNA_def_property(srna, "view_perspective", PROP_ENUM, PROP_NONE);
@@ -2354,6 +2655,7 @@ static void rna_def_space_image(BlenderRNA *brna)
 	RNA_def_property_pointer_sdna(prop, NULL, "scopes");
 	RNA_def_property_struct_type(prop, "Scopes");
 	RNA_def_property_ui_text(prop, "Scopes", "Scopes to visualize image statistics");
+	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_IMAGE, "rna_SpaceImageEditor_scopes_update");
 
 	prop = RNA_def_property(srna, "use_image_pin", PROP_BOOLEAN, PROP_NONE);
@@ -2424,8 +2726,8 @@ static void rna_def_space_image(BlenderRNA *brna)
 	/* grease pencil */
 	prop = RNA_def_property(srna, "grease_pencil", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "gpd");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_struct_type(prop, "GreasePencil");
+	RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_REFCOUNT);
 	RNA_def_property_ui_text(prop, "Grease Pencil", "Grease pencil data for this space");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_IMAGE, NULL);
 	
@@ -2508,6 +2810,16 @@ static void rna_def_space_sequencer(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem waveform_type_draw_items[] = {
+		{SEQ_NO_WAVEFORMS, "NO_WAVEFORMS", 0, "Waveforms Off",
+		 "No waveforms drawn for any sound strips"},
+		{SEQ_ALL_WAVEFORMS, "ALL_WAVEFORMS", 0, "Waveforms On",
+		 "Waveforms drawn for all sound strips"},
+		{0, "DEFAULT_WAVEFORMS", 0, "Use Strip Option",
+		 "Waveforms drawn according to strip setting"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "SpaceSequenceEditor", "Space");
 	RNA_def_struct_sdna(srna, "SpaceSeq");
 	RNA_def_struct_ui_text(srna, "Space Sequence Editor", "Sequence editor space data");
@@ -2548,11 +2860,16 @@ static void rna_def_space_sequencer(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Separate Colors", "Separate color channels in preview");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
 
-	prop = RNA_def_property(srna, "show_safe_margin", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "flag", SEQ_DRAW_SAFE_MARGINS);
-	RNA_def_property_ui_text(prop, "Safe Margin", "Draw title safe margins in preview");
+	prop = RNA_def_property(srna, "show_safe_areas", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", SEQ_SHOW_SAFE_MARGINS);
+	RNA_def_property_ui_text(prop, "Safe Areas", "Show TV title safe and action safe areas in preview");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
-	
+
+	prop = RNA_def_property(srna, "show_safe_center", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", SEQ_SHOW_SAFE_CENTER);
+	RNA_def_property_ui_text(prop, "Center-Cut Safe Areas", "Show safe areas to fit content in a different aspect ratio");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
+
 	prop = RNA_def_property(srna, "show_seconds", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", SEQ_DRAWFRAMES);
 	RNA_def_property_ui_text(prop, "Show Seconds", "Show timing in seconds not frames");
@@ -2577,6 +2894,12 @@ static void rna_def_space_sequencer(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Draw Channels", "Channels of the preview to draw");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
 
+	prop = RNA_def_property(srna, "waveform_draw_type", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_bitflag_sdna(prop, NULL, "flag");
+	RNA_def_property_enum_items(prop, waveform_type_draw_items);
+	RNA_def_property_ui_text(prop, "Waveform Drawing", "How Waveforms are drawn");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
+
 	prop = RNA_def_property(srna, "draw_overexposed", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "zebra");
 	RNA_def_property_ui_text(prop, "Show Overexposed", "Show overexposed areas with zebra stripes");
@@ -2593,8 +2916,8 @@ static void rna_def_space_sequencer(BlenderRNA *brna)
 	/* grease pencil */
 	prop = RNA_def_property(srna, "grease_pencil", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "gpd");
-	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_struct_type(prop, "GreasePencil");
+	RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_REFCOUNT);
 	RNA_def_property_ui_text(prop, "Grease Pencil", "Grease pencil data for this space");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
 
@@ -2602,6 +2925,16 @@ static void rna_def_space_sequencer(BlenderRNA *brna)
 	RNA_def_property_enum_sdna(prop, NULL, "overlay_type");
 	RNA_def_property_enum_items(prop, overlay_type_items);
 	RNA_def_property_ui_text(prop, "Overlay Type", "Overlay draw type");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
+
+	prop = RNA_def_property(srna, "show_backdrop", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "draw_flag", SEQ_DRAW_BACKDROP);
+	RNA_def_property_ui_text(prop, "Use Backdrop", "Display result under strips");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
+
+	prop = RNA_def_property(srna, "show_strip_offset", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "draw_flag", SEQ_DRAW_OFFSET_EXT);
+	RNA_def_property_ui_text(prop, "Show Offsets", "Display strip in/out offsets");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_SEQUENCER, NULL);
 }
 
@@ -2715,6 +3048,8 @@ static void rna_def_space_text(BlenderRNA *brna)
 	RNA_def_property_string_sdna(prop, NULL, "replacestr");
 	RNA_def_property_ui_text(prop, "Replace Text", "Text to replace selected text with using the replace tool");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TEXT, NULL);
+
+	RNA_api_space_text(srna);
 }
 
 static void rna_def_space_dopesheet(BlenderRNA *brna)
@@ -2779,7 +3114,8 @@ static void rna_def_space_dopesheet(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "show_group_colors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", SACTION_NODRAWGCOLORS);
 	RNA_def_property_ui_text(prop, "Show Group Colors",
-	                         "Draw groups and channels with colors matching their corresponding groups");
+	                         "Draw groups and channels with colors matching their corresponding groups "
+	                         "(pose bones only currently)");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_DOPESHEET, NULL);
 	
 	/* editing */
@@ -2934,14 +3270,12 @@ static void rna_def_space_graph(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, autosnap_items);
 	RNA_def_property_ui_text(prop, "Auto Snap", "Automatic time snapping settings for transformations");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_GRAPH, NULL);
-	
+
 	/* readonly state info */
 	prop = RNA_def_property(srna, "has_ghost_curves", PROP_BOOLEAN, PROP_NONE);
-	/* XXX: hack to make this compile, since this property doesn't actually exist*/
-	RNA_def_property_boolean_sdna(prop, NULL, "flag", 0);
 	RNA_def_property_boolean_funcs(prop, "rna_SpaceGraphEditor_has_ghost_curves_get", NULL);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Has Ghost Curves", "Graph Editor instance has some ghost curves stored");
-	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_GRAPH, NULL);
 
 	/* nromalize curves */
 	prop = RNA_def_property(srna, "use_normalization", PROP_BOOLEAN, PROP_NONE);
@@ -3077,7 +3411,6 @@ static void rna_def_console_line(BlenderRNA *brna)
 	
 	srna = RNA_def_struct(brna, "ConsoleLine", NULL);
 	RNA_def_struct_ui_text(srna, "Console Input", "Input line for the interactive console");
-	/* XXX using non-inited "prop", uh? RNA_def_property_update(prop, NC_SPACE|ND_SPACE_CONSOLE, NULL); */
 	
 	prop = RNA_def_property(srna, "body", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_funcs(prop, "rna_ConsoleLine_body_get", "rna_ConsoleLine_body_length",
@@ -3202,55 +3535,55 @@ static void rna_def_fileselect_params(BlenderRNA *brna)
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_image", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", IMAGEFILE);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_IMAGE);
 	RNA_def_property_ui_text(prop, "Filter Images", "Show image files");
 	RNA_def_property_ui_icon(prop, ICON_FILE_IMAGE, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_blender", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", BLENDERFILE);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_BLENDER);
 	RNA_def_property_ui_text(prop, "Filter Blender", "Show .blend files");
 	RNA_def_property_ui_icon(prop, ICON_FILE_BLEND, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_backup", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", BLENDERFILE_BACKUP);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_BLENDER_BACKUP);
 	RNA_def_property_ui_text(prop, "Filter BlenderBackup files", "Show .blend1, .blend2, etc. files");
 	RNA_def_property_ui_icon(prop, ICON_FILE_BACKUP, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_movie", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", MOVIEFILE);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_MOVIE);
 	RNA_def_property_ui_text(prop, "Filter Movies", "Show movie files");
 	RNA_def_property_ui_icon(prop, ICON_FILE_MOVIE, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_script", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", PYSCRIPTFILE);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_PYSCRIPT);
 	RNA_def_property_ui_text(prop, "Filter Script", "Show script files");
 	RNA_def_property_ui_icon(prop, ICON_FILE_SCRIPT, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_font", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", FTFONTFILE);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_FTFONT);
 	RNA_def_property_ui_text(prop, "Filter Fonts", "Show font files");
 	RNA_def_property_ui_icon(prop, ICON_FILE_FONT, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_sound", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", SOUNDFILE);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_SOUND);
 	RNA_def_property_ui_text(prop, "Filter Sound", "Show sound files");
 	RNA_def_property_ui_icon(prop, ICON_FILE_SOUND, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_text", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", TEXTFILE);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_TEXT);
 	RNA_def_property_ui_text(prop, "Filter Text", "Show text files");
 	RNA_def_property_ui_icon(prop, ICON_FILE_TEXT, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
 
 	prop = RNA_def_property(srna, "use_filter_folder", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "filter", FOLDERFILE);
+	RNA_def_property_boolean_sdna(prop, NULL, "filter", FILE_TYPE_FOLDER);
 	RNA_def_property_ui_text(prop, "Filter Folder", "Show folders");
 	RNA_def_property_ui_icon(prop, ICON_FILE_FOLDER, 0);
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, NULL);
@@ -3260,6 +3593,47 @@ static void rna_def_fileselect_params(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Extension Filter", "");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_LIST, NULL);
 
+	prop = RNA_def_property(srna, "filter_search", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "filter_search");
+	RNA_def_property_ui_text(prop, "Name Filter", "Filter by name, supports '*' wildcard");
+	RNA_def_property_flag(prop, PROP_TEXTEDIT_UPDATE);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_LIST, NULL);
+}
+
+static void rna_def_filemenu_entry(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "FileBrowserFSMenuEntry", NULL);
+	RNA_def_struct_sdna(srna, "FSMenuEntry");
+	RNA_def_struct_ui_text(srna, "File Select Parameters", "File Select Parameters");
+
+	prop = RNA_def_property(srna, "path", PROP_STRING, PROP_FILEPATH);
+	RNA_def_property_string_sdna(prop, NULL, "path");
+	RNA_def_property_string_funcs(prop, "rna_FileBrowser_FSMenuEntry_path_get",
+	                                    "rna_FileBrowser_FSMenuEntry_path_length",
+	                                    "rna_FileBrowser_FSMenuEntry_path_set");
+	RNA_def_property_ui_text(prop, "Path", "");
+
+	prop = RNA_def_property(srna, "name", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "name");
+	RNA_def_property_string_funcs(prop, "rna_FileBrowser_FSMenuEntry_name_get",
+	                                    "rna_FileBrowser_FSMenuEntry_name_length",
+	                                    "rna_FileBrowser_FSMenuEntry_name_set");
+	RNA_def_property_editable_func(prop, "rna_FileBrowser_FSMenuEntry_name_get_editable");
+	RNA_def_property_ui_text(prop, "Name", "");
+	RNA_def_struct_name_property(srna, prop);
+
+	prop = RNA_def_property(srna, "use_save", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "save", 1);
+	RNA_def_property_ui_text(prop, "Save", "Whether this path is saved in bookmarks, or generated from OS");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
+	prop = RNA_def_property(srna, "is_valid", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "valid", 1);
+	RNA_def_property_ui_text(prop, "Valid", "Whether this path is currently reachable");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 }
 
 static void rna_def_space_filebrowser(BlenderRNA *brna)
@@ -3284,6 +3658,67 @@ static void rna_def_space_filebrowser(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "operator", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "op");
 	RNA_def_property_ui_text(prop, "Active Operator", "");
+
+	/* bookmarks, recent files etc. */
+	prop = RNA_def_collection(srna, "system_folders", "FileBrowserFSMenuEntry", "System Folders",
+	                          "System's folders (usually root, available hard drives, etc)");
+	RNA_def_property_collection_funcs(prop, "rna_FileBrowser_FSMenuSystem_data_begin", "rna_FileBrowser_FSMenu_next",
+	                                  "rna_FileBrowser_FSMenu_end", "rna_FileBrowser_FSMenu_get",
+	                                  "rna_FileBrowser_FSMenuSystem_data_length", NULL, NULL, NULL);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
+	prop = RNA_def_int(srna, "system_folders_active", -1, -1, INT_MAX, "Active System Folder",
+	                   "Index of active system folder (-1 if none)", -1, INT_MAX);
+	RNA_def_property_int_sdna(prop, NULL, "systemnr");
+	RNA_def_property_int_funcs(prop, "rna_FileBrowser_FSMenuSystem_active_get",
+	                           "rna_FileBrowser_FSMenuSystem_active_set", "rna_FileBrowser_FSMenuSystem_active_range");
+	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, "rna_FileBrowser_FSMenu_active_update");
+
+	prop = RNA_def_collection(srna, "system_bookmarks", "FileBrowserFSMenuEntry", "System Bookmarks",
+	                          "System's bookmarks");
+	RNA_def_property_collection_funcs(prop, "rna_FileBrowser_FSMenuSystemBookmark_data_begin", "rna_FileBrowser_FSMenu_next",
+	                                  "rna_FileBrowser_FSMenu_end", "rna_FileBrowser_FSMenu_get",
+	                                  "rna_FileBrowser_FSMenuSystemBookmark_data_length", NULL, NULL, NULL);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
+	prop = RNA_def_int(srna, "system_bookmarks_active", -1, -1, INT_MAX, "Active System Bookmark",
+	                   "Index of active system bookmark (-1 if none)", -1, INT_MAX);
+	RNA_def_property_int_sdna(prop, NULL, "system_bookmarknr");
+	RNA_def_property_int_funcs(prop, "rna_FileBrowser_FSMenuSystemBookmark_active_get",
+	                           "rna_FileBrowser_FSMenuSystemBookmark_active_set", "rna_FileBrowser_FSMenuSystemBookmark_active_range");
+	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, "rna_FileBrowser_FSMenu_active_update");
+
+	prop = RNA_def_collection(srna, "bookmarks", "FileBrowserFSMenuEntry", "Bookmarks",
+	                          "User's bookmarks");
+	RNA_def_property_collection_funcs(prop, "rna_FileBrowser_FSMenuBookmark_data_begin", "rna_FileBrowser_FSMenu_next",
+	                                  "rna_FileBrowser_FSMenu_end", "rna_FileBrowser_FSMenu_get",
+	                                  "rna_FileBrowser_FSMenuBookmark_data_length", NULL, NULL, NULL);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
+	prop = RNA_def_int(srna, "bookmarks_active", -1, -1, INT_MAX, "Active Bookmark",
+	                   "Index of active bookmark (-1 if none)", -1, INT_MAX);
+	RNA_def_property_int_sdna(prop, NULL, "bookmarknr");
+	RNA_def_property_int_funcs(prop, "rna_FileBrowser_FSMenuBookmark_active_get",
+	                           "rna_FileBrowser_FSMenuBookmark_active_set", "rna_FileBrowser_FSMenuBookmark_active_range");
+	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, "rna_FileBrowser_FSMenu_active_update");
+
+	prop = RNA_def_collection(srna, "recent_folders", "FileBrowserFSMenuEntry", "Recent Folders",
+	                          "");
+	RNA_def_property_collection_funcs(prop, "rna_FileBrowser_FSMenuRecent_data_begin", "rna_FileBrowser_FSMenu_next",
+	                                  "rna_FileBrowser_FSMenu_end", "rna_FileBrowser_FSMenu_get",
+	                                  "rna_FileBrowser_FSMenuRecent_data_length", NULL, NULL, NULL);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
+	prop = RNA_def_int(srna, "recent_folders_active", -1, -1, INT_MAX, "Active Recent Folder",
+	                   "Index of active recent folder (-1 if none)", -1, INT_MAX);
+	RNA_def_property_int_sdna(prop, NULL, "recentnr");
+	RNA_def_property_int_funcs(prop, "rna_FileBrowser_FSMenuRecent_active_get",
+	                           "rna_FileBrowser_FSMenuRecent_active_set", "rna_FileBrowser_FSMenuRecent_active_range");
+	RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_FILE_PARAMS, "rna_FileBrowser_FSMenu_active_update");
 }
 
 static void rna_def_space_info(BlenderRNA *brna)
@@ -3344,6 +3779,7 @@ static void rna_def_space_userpref(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "filter_text", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "filter");
+	RNA_def_property_flag(prop, PROP_TEXTEDIT_UPDATE);
 	RNA_def_property_ui_text(prop, "Filter", "Search term for filtering in the UI");
 
 }
@@ -3886,6 +4322,7 @@ void RNA_def_space(BlenderRNA *brna)
 	rna_def_space_sequencer(brna);
 	rna_def_space_text(brna);
 	rna_def_fileselect_params(brna);
+	rna_def_filemenu_entry(brna);
 	rna_def_space_filebrowser(brna);
 	rna_def_space_outliner(brna);
 	rna_def_background_image(brna);

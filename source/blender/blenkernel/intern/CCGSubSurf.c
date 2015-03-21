@@ -172,29 +172,19 @@ static void *_ehash_lookup(EHash *eh, void *key)
 
 /**/
 
-typedef struct _EHashIterator {
-	EHash *eh;
-	int curBucket;
-	EHEntry *curEntry;
-} EHashIterator;
-
-static EHashIterator *_ehashIterator_new(EHash *eh)
+static void _ehashIterator_init(EHash *eh, EHashIterator *ehi)
 {
-	EHashIterator *ehi = EHASH_alloc(eh, sizeof(*ehi));
+	/* fill all members */
 	ehi->eh = eh;
-	ehi->curEntry = NULL;
 	ehi->curBucket = -1;
+	ehi->curEntry = NULL;
+
 	while (!ehi->curEntry) {
 		ehi->curBucket++;
 		if (ehi->curBucket == ehi->eh->curSize)
 			break;
 		ehi->curEntry = ehi->eh->buckets[ehi->curBucket];
 	}
-	return ehi;
-}
-static void _ehashIterator_free(EHashIterator *ehi)
-{
-	EHASH_free(ehi->eh, ehi);
 }
 
 static void *_ehashIterator_getCurrent(EHashIterator *ehi)
@@ -223,15 +213,15 @@ static int _ehashIterator_isStopped(EHashIterator *ehi)
 
 static void *_stdAllocator_alloc(CCGAllocatorHDL UNUSED(a), int numBytes)
 {
-	return malloc(numBytes);
+	return MEM_mallocN(numBytes, "CCG standard alloc");
 }
 static void *_stdAllocator_realloc(CCGAllocatorHDL UNUSED(a), void *ptr, int newSize, int UNUSED(oldSize))
 {
-	return realloc(ptr, newSize);
+	return MEM_reallocN(ptr, newSize);
 }
 static void _stdAllocator_free(CCGAllocatorHDL UNUSED(a), void *ptr)
 {
-	free(ptr);
+	MEM_freeN(ptr);
 }
 
 static CCGAllocatorIFC *_getStandardAllocatorIFC(void)
@@ -589,8 +579,14 @@ static float *_vert_getNo(CCGVert *v, int lvl, int dataSize, int normalDataOffse
 
 static void _vert_free(CCGVert *v, CCGSubSurf *ss)
 {
-	CCGSUBSURF_free(ss, v->edges);
-	CCGSUBSURF_free(ss, v->faces);
+	if (v->edges) {
+		CCGSUBSURF_free(ss, v->edges);
+	}
+
+	if (v->faces) {
+		CCGSUBSURF_free(ss, v->faces);
+	}
+
 	CCGSUBSURF_free(ss, v);
 }
 
@@ -679,7 +675,10 @@ static void *_edge_getCoVert(CCGEdge *e, CCGVert *v, int lvl, int x, int dataSiz
 
 static void _edge_free(CCGEdge *e, CCGSubSurf *ss)
 {
-	CCGSUBSURF_free(ss, e->faces);
+	if (e->faces) {
+		CCGSUBSURF_free(ss, e->faces);
+	}
+
 	CCGSUBSURF_free(ss, e);
 }
 static void _edge_unlinkMarkAndFree(CCGEdge *e, CCGSubSurf *ss)
@@ -3051,17 +3050,17 @@ void *ccgSubSurf_getFaceGridData(CCGSubSurf *ss, CCGFace *f, int gridIndex, int 
 
 /*** External API iterator functions ***/
 
-CCGVertIterator *ccgSubSurf_getVertIterator(CCGSubSurf *ss)
+void ccgSubSurf_initVertIterator(CCGSubSurf *ss, CCGVertIterator *viter)
 {
-	return (CCGVertIterator *) _ehashIterator_new(ss->vMap);
+	_ehashIterator_init(ss->vMap, viter);
 }
-CCGEdgeIterator *ccgSubSurf_getEdgeIterator(CCGSubSurf *ss)
+void ccgSubSurf_initEdgeIterator(CCGSubSurf *ss, CCGEdgeIterator *eiter)
 {
-	return (CCGEdgeIterator *) _ehashIterator_new(ss->eMap);
+	_ehashIterator_init(ss->eMap, eiter);
 }
-CCGFaceIterator *ccgSubSurf_getFaceIterator(CCGSubSurf *ss)
+void ccgSubSurf_initFaceIterator(CCGSubSurf *ss, CCGFaceIterator *fiter)
 {
-	return (CCGFaceIterator *) _ehashIterator_new(ss->fMap);
+	_ehashIterator_init(ss->fMap, fiter);
 }
 
 CCGVert *ccgVertIterator_getCurrent(CCGVertIterator *vi)
@@ -3076,10 +3075,6 @@ void ccgVertIterator_next(CCGVertIterator *vi)
 {
 	_ehashIterator_next((EHashIterator *) vi);
 }
-void ccgVertIterator_free(CCGVertIterator *vi)
-{
-	_ehashIterator_free((EHashIterator *) vi);
-}
 
 CCGEdge *ccgEdgeIterator_getCurrent(CCGEdgeIterator *vi)
 {
@@ -3093,10 +3088,6 @@ void ccgEdgeIterator_next(CCGEdgeIterator *vi)
 {
 	_ehashIterator_next((EHashIterator *) vi);
 }
-void ccgEdgeIterator_free(CCGEdgeIterator *vi)
-{
-	_ehashIterator_free((EHashIterator *) vi);
-}
 
 CCGFace *ccgFaceIterator_getCurrent(CCGFaceIterator *vi)
 {
@@ -3109,10 +3100,6 @@ int ccgFaceIterator_isStopped(CCGFaceIterator *vi)
 void ccgFaceIterator_next(CCGFaceIterator *vi)
 {
 	_ehashIterator_next((EHashIterator *) vi);
-}
-void ccgFaceIterator_free(CCGFaceIterator *vi)
-{
-	_ehashIterator_free((EHashIterator *) vi);
 }
 
 /*** Extern API final vert/edge/face interface ***/

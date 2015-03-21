@@ -119,11 +119,11 @@ void ED_keymap_armature(struct wmKeyConfig *keyconf);
 void ED_armature_from_edit(struct bArmature *arm);
 void ED_armature_to_edit(struct bArmature *arm);
 void ED_armature_edit_free(struct bArmature *arm);
-void ED_armature_deselect_all(struct Object *obedit, int toggle);
+void ED_armature_deselect_all(struct Object *obedit);
 void ED_armature_deselect_all_visible(struct Object *obedit);
 
 int ED_do_pose_selectbuffer(struct Scene *scene, struct Base *base, unsigned int *buffer, 
-                            short hits, bool extend, bool deselect, bool toggle);
+                            short hits, bool extend, bool deselect, bool toggle, bool do_nearest);
 bool mouse_armature(struct bContext *C, const int mval[2], bool extend, bool deselect, bool toggle);
 int join_armature_exec(struct bContext *C, struct wmOperator *op);
 struct Bone *get_indexed_bone(struct Object *ob, int index);
@@ -157,9 +157,11 @@ void ED_armature_transform(struct bArmature *arm, float mat[4][4]);
 #define ARM_GROUPS_ENVELOPE 2
 #define ARM_GROUPS_AUTO     3
 
-void create_vgroups_from_armature(struct ReportList *reports, struct Scene *scene, struct Object *ob, struct Object *par, int mode, bool mirror);
+void create_vgroups_from_armature(struct ReportList *reports, struct Scene *scene, struct Object *ob,
+                                  struct Object *par, const int mode, const bool mirror);
 
-void unique_editbone_name(struct ListBase *ebones, char *name, EditBone *bone); /* if bone is already in list, pass it as param to ignore it */
+/* if bone is already in list, pass it as param to ignore it */
+void unique_editbone_name(struct ListBase *ebones, char *name, EditBone *bone);
 void ED_armature_bone_rename(struct bArmature *arm, const char *oldnamep, const char *newnamep);
 
 void undo_push_armature(struct bContext *C, const char *name);

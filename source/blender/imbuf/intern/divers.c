@@ -37,7 +37,6 @@
 #include "imbuf.h"
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
-#include "IMB_allocimbuf.h"
 #include "IMB_filter.h"
 
 #include "IMB_colormanagement.h"
@@ -123,16 +122,6 @@ static void clear_dither_context(DitherContext *di)
 	MEM_freeN(di);
 }
 
-MINLINE float dither_random_value(float s, float t)
-{
-	static float vec[2] = {12.9898f, 78.233f};
-	float st[2];
-	float value;
-	copy_v2_fl2(st, s, t);
-
-	value = sinf(dot_v2v2(st, vec)) * 43758.5453f;
-	return value - floorf(value);
-}
 
 /************************* Generic Buffer Conversion *************************/
 
@@ -180,8 +169,8 @@ void IMB_buffer_byte_from_float(uchar *rect_to, const float *rect_from,
 	float tmp[4];
 	int x, y;
 	DitherContext *di = NULL;
-	float inv_width = 1.0f / width,
-	      inv_height = 1.0f / height;
+	float inv_width = 1.0f / width;
+	float inv_height = 1.0f / height;
 
 	/* we need valid profiles */
 	BLI_assert(profile_to != IB_PROFILE_NONE);
@@ -786,12 +775,12 @@ void IMB_color_to_bw(ImBuf *ibuf)
 
 	if (rct_fl) {
 		for (i = ibuf->x * ibuf->y; i > 0; i--, rct_fl += 4)
-			rct_fl[0] = rct_fl[1] = rct_fl[2] = rgb_to_grayscale(rct_fl);
+			rct_fl[0] = rct_fl[1] = rct_fl[2] = IMB_colormanagement_get_luminance(rct_fl);
 	}
 
 	if (rct) {
 		for (i = ibuf->x * ibuf->y; i > 0; i--, rct += 4)
-			rct[0] = rct[1] = rct[2] = rgb_to_grayscale_byte(rct);
+			rct[0] = rct[1] = rct[2] = IMB_colormanagement_get_luminance_byte(rct);
 	}
 }
 

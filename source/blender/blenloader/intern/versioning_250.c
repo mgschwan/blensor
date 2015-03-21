@@ -25,11 +25,10 @@
  *  \ingroup blenloader
  */
 
-#include "zlib.h"
-
 #ifndef WIN32
 #  include <unistd.h>  /* for read close */
 #else
+#  include <zlib.h>  /* odd include order-issue */
 #  include <io.h> // for open close read
 #  include "winsock2.h"
 #  include "BLI_winstuff.h"
@@ -89,17 +88,9 @@
 
 #include "NOD_socket.h"
 
-//XXX #include "BIF_butspace.h" // badlevel, for do_versions, patching event codes
-//XXX #include "BIF_filelist.h" // badlevel too, where to move this? - elubie
-//XXX #include "BIF_previewrender.h" // bedlelvel, for struct RenderInfo
 #include "BLO_readfile.h"
-#include "BLO_undofile.h"
-
-#include "RE_engine.h"
 
 #include "readfile.h"
-
-#include "PIL_time.h"
 
 #include <errno.h>
 
@@ -332,7 +323,7 @@ static void area_add_window_regions(ScrArea *sa, SpaceLink *sl, ListBase *lb)
 					SpaceNla *snla = (SpaceNla *)sl;
 					memcpy(&ar->v2d, &snla->v2d, sizeof(View2D));
 
-					ar->v2d.tot.ymin = (float)(-sa->winy)/3.0f;
+					ar->v2d.tot.ymin = (float)(-sa->winy) / 3.0f;
 					ar->v2d.tot.ymax = 0.0f;
 
 					ar->v2d.scroll |= (V2D_SCROLL_BOTTOM|V2D_SCROLL_SCALE_HORIZONTAL);
@@ -347,8 +338,8 @@ static void area_add_window_regions(ScrArea *sa, SpaceLink *sl, ListBase *lb)
 
 					/* we totally reinit the view for the Action Editor, as some old instances had some weird cruft set */
 					ar->v2d.tot.xmin = -20.0f;
-					ar->v2d.tot.ymin = (float)(-sa->winy)/3.0f;
-					ar->v2d.tot.xmax = (float)((sa->winx > 120)? (sa->winx) : 120);
+					ar->v2d.tot.ymin = (float)(-sa->winy) / 3.0f;
+					ar->v2d.tot.xmax = (float)((sa->winx > 120) ? (sa->winx) : 120);
 					ar->v2d.tot.ymax = 0.0f;
 
 					ar->v2d.cur = ar->v2d.tot;

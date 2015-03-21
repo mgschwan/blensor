@@ -130,6 +130,44 @@ bool BLI_remlink_safe(ListBase *listbase, void *vlink)
 }
 
 /**
+ * Swaps \a vlinka and \a vlinkb in the list. Assumes they are both already in the list!
+ */
+void BLI_listbase_swaplinks(ListBase *listbase, void *vlinka, void *vlinkb)
+{
+	Link *linka = vlinka;
+	Link *linkb = vlinkb;
+
+	if (!linka || !linkb)
+		return;
+
+	if (linkb->next == linka) {
+		SWAP(Link *, linka, linkb);
+	}
+
+	if (linka->next == linkb) {
+		linka->next = linkb->next;
+		linkb->prev = linka->prev;
+		linka->prev = linkb;
+		linkb->next = linka;
+	}
+	else {  /* Non-contiguous items, we can safely swap. */
+		SWAP(Link *, linka->prev, linkb->prev);
+		SWAP(Link *, linka->next, linkb->next);
+	}
+
+	/* Update neighbors of linka and linkb. */
+	if (linka->prev) linka->prev->next = linka;
+	if (linka->next) linka->next->prev = linka;
+	if (linkb->prev) linkb->prev->next = linkb;
+	if (linkb->next) linkb->next->prev = linkb;
+
+	if (listbase->last == linka) listbase->last = linkb;
+	else if (listbase->last == linkb) listbase->last = linka;
+	if (listbase->first == linka) listbase->first = linkb;
+	else if (listbase->first == linkb) listbase->first = linka;
+}
+
+/**
  * Removes the head from \a listbase and returns it.
  */
 void *BLI_pophead(ListBase *listbase)
@@ -173,7 +211,7 @@ void BLI_freelinkN(ListBase *listbase, void *vlink)
  * (which should return 1 iff its first arg should come after its second arg).
  * This uses insertion sort, so NOT ok for large list.
  */
-void BLI_sortlist(ListBase *listbase, int (*cmp)(void *, void *))
+void BLI_listbase_sort(ListBase *listbase, int (*cmp)(const void *, const void *))
 {
 	Link *current = NULL;
 	Link *previous = NULL;
@@ -195,7 +233,7 @@ void BLI_sortlist(ListBase *listbase, int (*cmp)(void *, void *))
 	}
 }
 
-void BLI_sortlist_r(ListBase *listbase, void *thunk, int (*cmp)(void *, void *, void *))
+void BLI_listbase_sort_r(ListBase *listbase, void *thunk, int (*cmp)(void *, const void *, const void *))
 {
 	Link *current = NULL;
 	Link *previous = NULL;
@@ -334,22 +372,35 @@ void BLI_freelistN(ListBase *listbase)
 	BLI_listbase_clear(listbase);
 }
 
+/**
+ * Returns the number of elements in \a listbase, up until (and including count_max)
+ *
+ * \note Use to avoid redundant looping.
+ */
+int BLI_listbase_count_ex(const ListBase *listbase, const int count_max)
+{
+	Link *link;
+	int count = 0;
+
+	for (link = listbase->first; link && count != count_max; link = link->next) {
+		count++;
+	}
+
+	return count;
+}
 
 /**
  * Returns the number of elements in \a listbase.
  */
-int BLI_countlist(const ListBase *listbase)
+int BLI_listbase_count(const ListBase *listbase)
 {
 	Link *link;
 	int count = 0;
-	
-	if (listbase) {
-		link = listbase->first;
-		while (link) {
-			count++;
-			link = link->next;
-		}
+
+	for (link = listbase->first; link; link = link->next) {
+		count++;
 	}
+
 	return count;
 }
 
@@ -423,7 +474,7 @@ void *BLI_findstring(const ListBase *listbase, const char *id, const int offset)
 	for (link = listbase->first; link; link = link->next) {
 		id_iter = ((const char *)link) + offset;
 
-		if (id[0] == id_iter[0] && strcmp(id, id_iter) == 0) {
+		if (id[0] == id_iter[0] && STREQ(id, id_iter)) {
 			return link;
 		}
 	}
@@ -443,7 +494,7 @@ void *BLI_rfindstring(const ListBase *listbase, const char *id, const int offset
 	for (link = listbase->last; link; link = link->prev) {
 		id_iter = ((const char *)link) + offset;
 
-		if (id[0] == id_iter[0] && strcmp(id, id_iter) == 0) {
+		if (id[0] == id_iter[0] && STREQ(id, id_iter)) {
 			return link;
 		}
 	}
@@ -464,7 +515,7 @@ void *BLI_findstring_ptr(const ListBase *listbase, const char *id, const int off
 		/* exact copy of BLI_findstring(), except for this line */
 		id_iter = *((const char **)(((const char *)link) + offset));
 
-		if (id[0] == id_iter[0] && strcmp(id, id_iter) == 0) {
+		if (id[0] == id_iter[0] && STREQ(id, id_iter)) {
 			return link;
 		}
 	}
@@ -485,7 +536,7 @@ void *BLI_rfindstring_ptr(const ListBase *listbase, const char *id, const int of
 		/* exact copy of BLI_rfindstring(), except for this line */
 		id_iter = *((const char **)(((const char *)link) + offset));
 
-		if (id[0] == id_iter[0] && strcmp(id, id_iter) == 0) {
+		if (id[0] == id_iter[0] && STREQ(id, id_iter)) {
 			return link;
 		}
 	}
@@ -549,7 +600,7 @@ int BLI_findstringindex(const ListBase *listbase, const char *id, const int offs
 	while (link) {
 		id_iter = ((const char *)link) + offset;
 
-		if (id[0] == id_iter[0] && strcmp(id, id_iter) == 0)
+		if (id[0] == id_iter[0] && STREQ(id, id_iter))
 			return i;
 		i++;
 		link = link->next;

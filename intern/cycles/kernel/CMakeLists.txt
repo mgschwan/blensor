@@ -24,6 +24,7 @@ set(SRC_HEADERS
 	kernel_compat_cpu.h
 	kernel_compat_cuda.h
 	kernel_compat_opencl.h
+	kernel_debug.h
 	kernel_differential.h
 	kernel_emission.h
 	kernel_film.h
@@ -61,7 +62,6 @@ set(SRC_CLOSURE_HEADERS
 	closure/bsdf_transparent.h
 	closure/bsdf_util.h
 	closure/bsdf_ashikhmin_shirley.h
-	closure/bsdf_westin.h
 	closure/bsdf_hair.h
 	closure/bssrdf.h
 	closure/emissive.h
@@ -91,6 +91,7 @@ set(SRC_SVM_HEADERS
 	svm/svm_magic.h
 	svm/svm_mapping.h
 	svm/svm_math.h
+	svm/svm_math_util.h
 	svm/svm_mix.h
 	svm/svm_musgrave.h
 	svm/svm_noise.h
@@ -116,12 +117,19 @@ set(SRC_GEOM_HEADERS
 	geom/geom_bvh_shadow.h
 	geom/geom_bvh_subsurface.h
 	geom/geom_bvh_traversal.h
+	geom/geom_bvh_volume.h
 	geom/geom_curve.h
 	geom/geom_motion_curve.h
 	geom/geom_motion_triangle.h
 	geom/geom_object.h
 	geom/geom_primitive.h
+	geom/geom_qbvh.h
+	geom/geom_qbvh_shadow.h
+	geom/geom_qbvh_subsurface.h
+	geom/geom_qbvh_traversal.h
+	geom/geom_qbvh_volume.h
 	geom/geom_triangle.h
+	geom/geom_triangle_intersect.h
 	geom/geom_volume.h
 )
 
@@ -129,6 +137,7 @@ set(SRC_UTIL_HEADERS
 	../util/util_color.h
 	../util/util_half.h
 	../util/util_math.h
+	../util/util_math_fast.h
 	../util/util_transform.h
 	../util/util_types.h
 )
@@ -169,6 +178,12 @@ if(WITH_CYCLES_CUDA_BINARIES)
 			set(cuda_cubin kernel_${arch}.cubin)
 		endif()
 
+		if(WITH_CYCLES_DEBUG)
+			set(cuda_debug_flags "-D__KERNEL_DEBUG__")
+		else()
+			set(cuda_debug_flags "")
+		endif()
+
 		set(cuda_version_flags "-D__KERNEL_CUDA_VERSION__=${CUDA_VERSION}")
 		set(cuda_math_flags "--use_fast_math")
 
@@ -184,6 +199,7 @@ if(WITH_CYCLES_CUDA_BINARIES)
 					${cuda_version_flags}
 					${cuda_math_flags}
 					${cuda_extra_flags}
+					${cuda_debug_flags}
 					-I${CMAKE_CURRENT_SOURCE_DIR}/../util
 					-I${CMAKE_CURRENT_SOURCE_DIR}/svm
 					-DCCL_NAMESPACE_BEGIN=
@@ -196,6 +212,7 @@ if(WITH_CYCLES_CUDA_BINARIES)
 		list(APPEND cuda_cubins ${cuda_cubin})
 
 		unset(cuda_extra_flags)
+		unset(cuda_debug_flags)
 	endmacro()
 
 	foreach(arch ${CYCLES_CUDA_BINARIES_ARCH})
@@ -226,17 +243,26 @@ if(CXX_HAS_SSE)
 		kernel_sse2.cpp
 		kernel_sse3.cpp
 		kernel_sse41.cpp
-		kernel_avx.cpp
-		kernel_avx2.cpp
 	)
 
 	set_source_files_properties(kernel_sse2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE2_KERNEL_FLAGS}")
 	set_source_files_properties(kernel_sse3.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE3_KERNEL_FLAGS}")
 	set_source_files_properties(kernel_sse41.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_SSE41_KERNEL_FLAGS}")
-	set_source_files_properties(kernel_avx.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_AVX_KERNEL_FLAGS}")
-	set_source_files_properties(kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_AVX2_KERNEL_FLAGS}")
 endif()
 
+if(CXX_HAS_AVX)
+	list(APPEND SRC
+		kernel_avx.cpp
+	)
+	set_source_files_properties(kernel_avx.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_AVX_KERNEL_FLAGS}")
+endif()
+
+if(CXX_HAS_AVX2)
+	list(APPEND SRC
+		kernel_avx2.cpp
+	)
+	set_source_files_properties(kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_AVX2_KERNEL_FLAGS}")
+endif()
 
 add_library(cycles_kernel ${SRC} ${SRC_HEADERS} ${SRC_CLOSURE_HEADERS} ${SRC_SVM_HEADERS} ${SRC_GEOM_HEADERS})
 

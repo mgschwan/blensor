@@ -164,6 +164,7 @@ void RNA_def_nodetree(struct BlenderRNA *brna);
 void RNA_def_object(struct BlenderRNA *brna);
 void RNA_def_object_force(struct BlenderRNA *brna);
 void RNA_def_packedfile(struct BlenderRNA *brna);
+void RNA_def_palette(struct BlenderRNA *brna);
 void RNA_def_particle(struct BlenderRNA *brna);
 void RNA_def_pose(struct BlenderRNA *brna);
 void RNA_def_render(struct BlenderRNA *brna);
@@ -207,6 +208,7 @@ void rna_def_render_layer_common(struct StructRNA *srna, int scene);
 
 void rna_def_actionbone_group_common(struct StructRNA *srna, int update_flag, const char *update_cb);
 void rna_ActionGroup_colorset_set(struct PointerRNA *ptr, int value);
+int rna_ActionGroup_is_custom_colorset_get(struct PointerRNA *ptr);
 
 void rna_ID_name_get(struct PointerRNA *ptr, char *value);
 int rna_ID_name_length(struct PointerRNA *ptr);
@@ -258,6 +260,7 @@ void RNA_api_armature_edit_bone(StructRNA *srna);
 void RNA_api_bone(StructRNA *srna);
 void RNA_api_camera(StructRNA *srna);
 void RNA_api_curve(StructRNA *srna);
+void RNA_api_fcurves(StructRNA *srna);
 void RNA_api_drivers(StructRNA *srna);
 void RNA_api_image(struct StructRNA *srna);
 void RNA_api_lattice(struct StructRNA *srna);
@@ -286,6 +289,7 @@ void RNA_api_ui_layout(struct StructRNA *srna);
 void RNA_api_window(struct StructRNA *srna);
 void RNA_api_wm(struct StructRNA *srna);
 void RNA_api_space_node(struct StructRNA *srna);
+void RNA_api_space_text(struct StructRNA *srna);
 void RNA_api_region_view3d(struct StructRNA *srna);
 void RNA_api_sensor(struct StructRNA *srna);
 void RNA_api_controller(struct StructRNA *srna);
@@ -294,6 +298,8 @@ void RNA_api_texture(struct StructRNA *srna);
 void RNA_api_environment_map(struct StructRNA *srna);
 void RNA_api_sequences(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_api_sequence_elements(BlenderRNA *brna, PropertyRNA *cprop);
+void RNA_api_sound(struct StructRNA *srna);
+void RNA_api_vfont(struct StructRNA *srna);
 
 /* main collection functions */
 void RNA_def_main_cameras(BlenderRNA *brna, PropertyRNA *cprop);
@@ -321,6 +327,7 @@ void RNA_def_main_sounds(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_armatures(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_actions(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_particles(BlenderRNA *brna, PropertyRNA *cprop);
+void RNA_def_main_palettes(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_gpencil(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_movieclips(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_masks(BlenderRNA *brna, PropertyRNA *cprop);

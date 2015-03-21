@@ -186,8 +186,7 @@ extern GHOST_WindowHandle GHOST_CreateWindow(GHOST_SystemHandle systemhandle,
                                              GHOST_TUns32 height,
                                              GHOST_TWindowState state,
                                              GHOST_TDrawingContextType type,
-                                             const int stereoVisual,
-                                             const GHOST_TUns16 numOfAASamples);
+                                             GHOST_GLSettings glSettings);
 
 /**
  * Returns the window user data.
@@ -674,9 +673,17 @@ extern GHOST_TSuccess GHOST_SetSwapInterval(GHOST_WindowHandle windowhandle, int
 
 /**
  * Gets the current swap interval for swapBuffers.
- * \return An integer.
+ * \param windowhandle The handle to the window
+ * \param intervalOut pointer to location to return swap interval (left untouched if there is an error)
+ * \return A boolean success indicator of if swap interval was successfully read.
  */
-extern int GHOST_GetSwapInterval(GHOST_WindowHandle windowhandle);
+extern GHOST_TSuccess GHOST_GetSwapInterval(GHOST_WindowHandle windowhandle, int* intervalOut);
+
+/**
+ * Gets the current swap interval for swapBuffers.
+ * \return Number of AA Samples (0 if there is no multisample buffer)
+ */
+extern GHOST_TUns16 GHOST_GetNumOfAASamples(GHOST_WindowHandle windowhandle);
 
 /**
  * Activates the drawing context of this window.
@@ -889,6 +896,30 @@ extern int GHOST_UseNativePixels(void);
  */
 extern float GHOST_GetNativePixelSize(GHOST_WindowHandle windowhandle);
 
+/**
+ * Enable IME attached to the given window, i.e. allows user-input
+ * events to be dispatched to the IME.
+ * \param windowhandle Window handle of the caller
+ * \param x Requested x-coordinate of the rectangle
+ * \param y Requested y-coordinate of the rectangle
+ * \param w Requested width of the rectangle
+ * \param h Requested height of the rectangle
+ * \param complete Whether or not to complete the ongoing composition
+ * true:  Start a new composition
+ * false: Move the IME windows to the given position without finishing it.
+ */
+extern void GHOST_BeginIME(GHOST_WindowHandle windowhandle,
+                            GHOST_TInt32 x,
+                            GHOST_TInt32 y,
+                            GHOST_TInt32 w,
+                            GHOST_TInt32 h,
+                            int complete);
+/**
+ * Disable the IME attached to the given window, i.e. prohibits any user-input
+ * events from being dispatched to the IME.
+ * \param windowhandle The window handle of the caller
+ */
+extern void GHOST_EndIME(GHOST_WindowHandle windowhandle);
 
 #ifdef __cplusplus
 }

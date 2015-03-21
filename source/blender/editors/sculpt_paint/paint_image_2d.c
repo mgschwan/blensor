@@ -38,9 +38,7 @@
 #include "DNA_space_types.h"
 #include "DNA_object_types.h"
 
-#include "BLI_math.h"
 
-#include "BLI_rect.h"
 #include "BLI_math_color_blend.h"
 #include "BLI_stack.h"
 #include "BLI_bitmap.h"
@@ -65,7 +63,6 @@
 
 #include "UI_view2d.h"
 
-#include "RE_shader_ext.h"
 
 #include "GPU_draw.h"
 
@@ -348,8 +345,8 @@ static unsigned short *brush_painter_curve_mask_new(BrushPainter *painter, int d
 {
 	Brush *brush = painter->brush;
 
-	int xoff = -diameter * 0.5f + 0.5f;
-	int yoff = -diameter * 0.5f + 0.5f;
+	int xoff = -radius;
+	int yoff = -radius;
 
 	unsigned short *mask, *m;
 	int x, y;
@@ -362,7 +359,7 @@ static unsigned short *brush_painter_curve_mask_new(BrushPainter *painter, int d
 			float xy[2] = {x + xoff, y + yoff};
 			float len = len_v2(xy);
 
-			*m = (unsigned short)(65535.0f * BKE_brush_curve_strength_clamp(brush, len, radius));
+			*m = (unsigned short)(65535.0f * BKE_brush_curve_strength(brush, len, radius));
 		}
 	}
 
@@ -411,11 +408,11 @@ static ImBuf *brush_painter_imbuf_new(BrushPainter *painter, int size, float pre
 			if (is_texbrush) {
 				brush_imbuf_tex_co(&tex_mapping, x, y, texco);
 				BKE_brush_sample_tex_3D(scene, brush, texco, rgba, thread, pool);
-				mul_v3_v3(rgba, brush_rgb);
 				/* TODO(sergey): Support texture paint color space. */
 				if (!use_float) {
 					IMB_colormanagement_scene_linear_to_display_v3(rgba, display);
 				}
+				mul_v3_v3(rgba, brush_rgb);
 			}
 			else {
 				copy_v3_v3(rgba, brush_rgb);
@@ -485,11 +482,11 @@ static void brush_painter_imbuf_update(BrushPainter *painter, ImBuf *oldtexibuf,
 				if (is_texbrush) {
 					brush_imbuf_tex_co(&tex_mapping, x, y, texco);
 					BKE_brush_sample_tex_3D(scene, brush, texco, rgba, thread, pool);
-					mul_v3_v3(rgba, brush_rgb);
 					/* TODO(sergey): Support texture paint color space. */
 					if (!use_float) {
 						IMB_colormanagement_scene_linear_to_display_v3(rgba, display);
 					}
+					mul_v3_v3(rgba, brush_rgb);
 				}
 				else {
 					copy_v3_v3(rgba, brush_rgb);
@@ -689,7 +686,7 @@ static void brush_painter_2d_refresh_cache(ImagePaintState *s, BrushPainter *pai
 		bool do_partial_update_mask = false;
 		/* invalidate case for all mapping modes */
 		if (brush->mask_mtex.brush_map_mode == MTEX_MAP_MODE_VIEW) {
-			mask_rotation += ups->brush_rotation;
+			mask_rotation += ups->brush_rotation_sec;
 		}
 		else if (brush->mask_mtex.brush_map_mode == MTEX_MAP_MODE_RANDOM) {
 			renew_maxmask = true;
@@ -892,7 +889,7 @@ static void paint_2d_lift_soften(ImagePaintState *s, ImBuf *ibuf, ImBuf *ibufb, 
 
 					/* now rgba_ub contains the edge result, but this should be converted to luminance to avoid
 					 * colored speckles appearing in final image, and also to check for threshold */
-					outrgb[0] = outrgb[1] = outrgb[2] = rgb_to_grayscale(outrgb);
+					outrgb[0] = outrgb[1] = outrgb[2] = IMB_colormanagement_get_luminance(outrgb);
 					if (fabsf(outrgb[0]) > threshold) {
 						float mask = BKE_brush_alpha_get(s->scene, s->brush);
 						float alpha = rgba[3];
@@ -1564,7 +1561,7 @@ void paint_2d_gradient_fill(
 	sub_v2_v2v2(tangent, image_final, image_init);
 	line_len = len_squared_v2(tangent);
 	line_len_sq_inv = 1.0f / line_len;
-	line_len = sqrt(line_len);
+	line_len = sqrtf(line_len);
 
 	do_float = (ibuf->rect_float != NULL);
 

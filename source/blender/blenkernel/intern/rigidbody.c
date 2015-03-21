@@ -62,8 +62,6 @@
 #include "BKE_pointcache.h"
 #include "BKE_rigidbody.h"
 
-#include "RNA_access.h"
-
 #ifdef WITH_BULLET
 
 /* ************************************** */
@@ -401,7 +399,7 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 		height = size[2];
 	}
 	else if (rbo->shape == RB_SHAPE_SPHERE) {
-		/* take radius to the the largest dimension to try and encompass everything */
+		/* take radius to the largest dimension to try and encompass everything */
 		radius = MAX3(size[0], size[1], size[2]);
 	}
 
@@ -440,17 +438,16 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 			new_shape = rigidbody_get_shape_trimesh_from_mesh(ob);
 			break;
 	}
+	/* use box shape if we can't fall back to old shape */
+	if (new_shape == NULL && rbo->physics_shape == NULL) {
+		new_shape = RB_shape_new_box(size[0], size[1], size[2]);
+	}
 	/* assign new collision shape if creation was successful */
 	if (new_shape) {
 		if (rbo->physics_shape)
 			RB_shape_delete(rbo->physics_shape);
 		rbo->physics_shape = new_shape;
 		RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
-	}
-	/* use box shape if we can't fall back to old shape */
-	else if (rbo->physics_shape == NULL) {
-		rbo->shape = RB_SHAPE_BOX;
-		rigidbody_validate_sim_shape(ob, true);
 	}
 }
 
@@ -483,7 +480,7 @@ void BKE_rigidbody_calc_volume(Object *ob, float *r_vol)
 		height = size[2];
 	}
 	else if (rbo->shape == RB_SHAPE_SPHERE) {
-		/* take radius to the the largest dimension to try and encompass everything */
+		/* take radius to the largest dimension to try and encompass everything */
 		radius = max_fff(size[0], size[1], size[2]) * 0.5f;
 	}
 
@@ -1158,7 +1155,7 @@ static void rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	GroupObject *go;
 	int i, n;
 
-	n = BLI_countlist(&rbw->group->gobject);
+	n = BLI_listbase_count(&rbw->group->gobject);
 
 	if (rbw->numbodies != n) {
 		rbw->numbodies = n;
@@ -1499,7 +1496,7 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 	cache = rbw->pointcache;
 
 	/* flag cache as outdated if we don't have a world or number of objects in the simulation has changed */
-	if (rbw->physics_world == NULL || rbw->numbodies != BLI_countlist(&rbw->group->gobject)) {
+	if (rbw->physics_world == NULL || rbw->numbodies != BLI_listbase_count(&rbw->group->gobject)) {
 		cache->flag |= PTCACHE_OUTDATED;
 	}
 

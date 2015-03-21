@@ -79,7 +79,7 @@ void    free_editText(struct Object *obedit);
 
 void    ED_text_to_object(struct bContext *C, struct Text *text, const bool split_lines);
 
-bool ED_curve_select_nth(struct Curve *cu, int nth);
+bool ED_curve_select_nth(struct Curve *cu, int nth, int skip, int offset);
 
 void ED_curve_beztcpy(struct EditNurb *editnurb, struct BezTriple *dst, struct BezTriple *src, int count);
 void ED_curve_bpcpy(struct EditNurb *editnurb, struct BPoint *dst, struct BPoint *src, int count);
@@ -90,7 +90,9 @@ bool ED_curve_active_center(struct Curve *cu, float center[3]);
 
 bool    mouse_font(struct bContext *C, const int mval[2], bool extend, bool deselect, bool toggle);
 
+#if 0
 /* debug only */
 void printknots(struct Object *obedit);
+#endif
 
 #endif /* __ED_CURVE_H__ */

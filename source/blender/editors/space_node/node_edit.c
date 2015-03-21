@@ -31,7 +31,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "DNA_action_types.h"
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
 #include "DNA_node_types.h"
@@ -73,8 +72,6 @@
 #include "IMB_imbuf_types.h"
 
 #include "node_intern.h"  /* own include */
-#include "NOD_common.h"
-#include "NOD_socket.h"
 #include "NOD_composite.h"
 #include "NOD_shader.h"
 #include "NOD_texture.h"
@@ -342,14 +339,22 @@ void snode_dag_update(bContext *C, SpaceNode *snode)
 
 void snode_notify(bContext *C, SpaceNode *snode)
 {
+	ID *id = snode->id;
+
 	WM_event_add_notifier(C, NC_NODE | NA_EDITED, NULL);
 
-	if (ED_node_is_shader(snode))
-		WM_event_add_notifier(C, NC_MATERIAL | ND_NODES, snode->id);
+	if (ED_node_is_shader(snode)) {
+		if (GS(id->name) == ID_MA)
+			WM_main_add_notifier(NC_MATERIAL | ND_SHADING, id);
+		else if (GS(id->name) == ID_LA)
+			WM_main_add_notifier(NC_LAMP | ND_LIGHTING, id);
+		else if (GS(id->name) == ID_WO)
+			WM_main_add_notifier(NC_WORLD | ND_WORLD, id);
+	}
 	else if (ED_node_is_compositor(snode))
-		WM_event_add_notifier(C, NC_SCENE | ND_NODES, snode->id);
+		WM_event_add_notifier(C, NC_SCENE | ND_NODES, id);
 	else if (ED_node_is_texture(snode))
-		WM_event_add_notifier(C, NC_TEXTURE | ND_NODES, snode->id);
+		WM_event_add_notifier(C, NC_TEXTURE | ND_NODES, id);
 }
 
 void ED_node_set_tree_type(SpaceNode *snode, bNodeTreeType *typeinfo)
@@ -561,7 +566,7 @@ void snode_set_context(const bContext *C)
 		return;
 	}
 	
-	if (snode->nodetree && strcmp(snode->nodetree->idname, snode->tree_idname) != 0) {
+	if (snode->nodetree && !STREQ(snode->nodetree->idname, snode->tree_idname)) {
 		/* current tree does not match selected type, clear tree path */
 		ntree = NULL;
 		id = NULL;
@@ -662,11 +667,16 @@ void ED_node_set_active(Main *bmain, bNodeTree *ntree, bNode *node)
 			/* if active texture changed, free glsl materials */
 			if ((node->flag & NODE_ACTIVE_TEXTURE) && !was_active_texture) {
 				Material *ma;
+				World *wo;
 
 				for (ma = bmain->mat.first; ma; ma = ma->id.next)
 					if (ma->nodetree && ma->use_nodes && ntreeHasTree(ma->nodetree, ntree))
-						GPU_material_free(ma);
+						GPU_material_free(&ma->gpumaterial);
 
+				for (wo = bmain->world.first; wo; wo = wo->id.next)
+					if (wo->nodetree && wo->use_nodes && ntreeHasTree(wo->nodetree, ntree))
+						GPU_material_free(&wo->gpumaterial);
+				
 				WM_main_add_notifier(NC_IMAGE, NULL);
 			}
 
@@ -695,7 +705,7 @@ void ED_node_set_active(Main *bmain, bNodeTree *ntree, bNode *node)
 				for (scene = bmain->scene.first; scene; scene = scene->id.next) {
 					if (scene->nodetree && scene->use_nodes && ntreeHasTree(scene->nodetree, ntree)) {
 						if (node->id == NULL || node->id == (ID *)scene) {
-							int num_layers = BLI_countlist(&scene->r.layers);
+							int num_layers = BLI_listbase_count(&scene->r.layers);
 							scene->r.actlay = node->custom1;
 							/* Clamp the value, because it might have come from a different
 							 * scene which could have more render layers than new one.
@@ -1142,7 +1152,7 @@ static int node_duplicate_exec(bContext *C, wmOperator *op)
 	bNodeLink *link, *newlink, *lastlink;
 	const bool keep_inputs = RNA_boolean_get(op->ptr, "keep_inputs");
 	
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 	
 	lastnode = ntree->nodes.last;
 	for (node = ntree->nodes.first; node; node = node->next) {
@@ -1277,7 +1287,7 @@ static int node_read_renderlayers_exec(bContext *C, wmOperator *UNUSED(op))
 	Scene *curscene = CTX_data_scene(C), *scene;
 	bNode *node;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), bmain);
 
 	/* first tag scenes unread */
 	for (scene = bmain->scene.first; scene; scene = scene->id.next)
@@ -1476,7 +1486,7 @@ static int node_preview_toggle_exec(bContext *C, wmOperator *UNUSED(op))
 	if ((snode == NULL) || (snode->edittree == NULL))
 		return OPERATOR_CANCELLED;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	node_flag_toggle_exec(snode, NODE_PREVIEW);
 
@@ -1540,7 +1550,7 @@ static int node_socket_toggle_exec(bContext *C, wmOperator *UNUSED(op))
 	if ((snode == NULL) || (snode->edittree == NULL))
 		return OPERATOR_CANCELLED;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	/* Toggle for all selected nodes */
 	hidden = 0;
@@ -1588,7 +1598,7 @@ static int node_mute_exec(bContext *C, wmOperator *UNUSED(op))
 	SpaceNode *snode = CTX_wm_space_node(C);
 	bNode *node;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	for (node = snode->edittree->nodes.first; node; node = node->next) {
 		/* Only allow muting of nodes having a mute func! */
@@ -1626,7 +1636,7 @@ static int node_delete_exec(bContext *C, wmOperator *UNUSED(op))
 	SpaceNode *snode = CTX_wm_space_node(C);
 	bNode *node, *next;
 	
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	for (node = snode->edittree->nodes.first; node; node = next) {
 		next = node->next;
@@ -1667,7 +1677,7 @@ static int node_delete_reconnect_exec(bContext *C, wmOperator *UNUSED(op))
 	SpaceNode *snode = CTX_wm_space_node(C);
 	bNode *node, *next;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	for (node = snode->edittree->nodes.first; node; node = next) {
 		next = node->next;
@@ -1924,7 +1934,7 @@ static int node_clipboard_copy_exec(bContext *C, wmOperator *UNUSED(op))
 	bNode *node;
 	bNodeLink *link, *newlink;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	/* clear current clipboard */
 	BKE_node_clipboard_clear();
@@ -2037,7 +2047,7 @@ static int node_clipboard_paste_exec(bContext *C, wmOperator *op)
 	if (!all_nodes_valid)
 		return OPERATOR_CANCELLED;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	/* deselect old nodes */
 	node_deselect_all(snode);
@@ -2445,7 +2455,7 @@ static int viewer_border_exec(bContext *C, wmOperator *op)
 	void *lock;
 	ImBuf *ibuf;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	ima = BKE_image_verify_viewer(IMA_TYPE_COMPOSITE, "Viewer Node");
 	ibuf = BKE_image_acquire_ibuf(ima, NULL, &lock);

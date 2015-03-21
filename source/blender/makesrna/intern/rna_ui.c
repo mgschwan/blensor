@@ -221,7 +221,7 @@ static StructRNA *rna_Panel_register(Main *bmain, ReportList *reports, void *dat
 
 	/* check if we have registered this panel type before, and remove it */
 	for (pt = art->paneltypes.first; pt; pt = pt->next) {
-		if (strcmp(pt->idname, dummypt.idname) == 0) {
+		if (STREQ(pt->idname, dummypt.idname)) {
 			if (pt->ext.srna)
 				rna_Panel_unregister(bmain, pt->ext.srna);
 			else
@@ -587,7 +587,7 @@ static StructRNA *rna_Header_register(Main *bmain, ReportList *reports, void *da
 
 	/* check if we have registered this header type before, and remove it */
 	for (ht = art->headertypes.first; ht; ht = ht->next) {
-		if (strcmp(ht->idname, dummyht.idname) == 0) {
+		if (STREQ(ht->idname, dummyht.idname)) {
 			if (ht->ext.srna)
 				rna_Header_unregister(bmain, ht->ext.srna);
 			break;
@@ -1062,6 +1062,7 @@ static void rna_def_uilist(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "filter_name", PROP_STRING, PROP_NONE);
 	RNA_def_property_string_sdna(prop, NULL, "filter_byname");
+	RNA_def_property_flag(prop, PROP_TEXTEDIT_UPDATE);
 	RNA_def_property_ui_text(prop, "Filter by Name", "Only show items matching this name (use '*' as wildcard)");
 
 	prop = RNA_def_property(srna, "use_filter_invert", PROP_BOOLEAN, PROP_NONE);

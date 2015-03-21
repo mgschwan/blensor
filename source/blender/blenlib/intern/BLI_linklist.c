@@ -32,6 +32,8 @@
 
 
 #include "MEM_guardedalloc.h"
+
+#include "BLI_utildefines.h"
 #include "BLI_linklist.h"
 #include "BLI_memarena.h"
 #include "BLI_mempool.h"
@@ -85,6 +87,77 @@ void BLI_linklist_reverse(LinkNode **listp)
 }
 
 /**
+ * Move an item from its current position to a new one inside a single-linked list.
+ * Note *listp may be modified.
+ */
+void BLI_linklist_move_item(LinkNode **listp, int curr_index, int new_index)
+{
+	LinkNode *lnk, *lnk_psrc = NULL, *lnk_pdst = NULL;
+	int i;
+
+	if (new_index == curr_index) {
+		return;
+	}
+
+	if (new_index < curr_index) {
+		for (lnk = *listp, i = 0; lnk; lnk = lnk->next, i++) {
+			if (i == new_index - 1) {
+				lnk_pdst = lnk;
+			}
+			else if (i == curr_index - 1) {
+				lnk_psrc = lnk;
+				break;
+			}
+		}
+
+		if (!(lnk_psrc && lnk_psrc->next && (!lnk_pdst || lnk_pdst->next))) {
+			/* Invalid indices, abort. */
+			return;
+		}
+
+		lnk = lnk_psrc->next;
+		lnk_psrc->next = lnk->next;
+		if (lnk_pdst) {
+			lnk->next = lnk_pdst->next;
+			lnk_pdst->next = lnk;
+		}
+		else {
+			/* destination is first element of the list... */
+			lnk->next = *listp;
+			*listp = lnk;
+		}
+	}
+	else {
+		for (lnk = *listp, i = 0; lnk; lnk = lnk->next, i++) {
+			if (i == new_index) {
+				lnk_pdst = lnk;
+				break;
+			}
+			else if (i == curr_index - 1) {
+				lnk_psrc = lnk;
+			}
+		}
+
+		if (!(lnk_pdst && (!lnk_psrc || lnk_psrc->next))) {
+			/* Invalid indices, abort. */
+			return;
+		}
+
+		if (lnk_psrc) {
+			lnk = lnk_psrc->next;
+			lnk_psrc->next = lnk->next;
+		}
+		else {
+			/* source is first element of the list... */
+			lnk = *listp;
+			*listp = lnk->next;
+		}
+		lnk->next = lnk_pdst->next;
+		lnk_pdst->next = lnk;
+	}
+}
+
+/**
  * A version of prepend that takes the allocated link.
  */
 void BLI_linklist_prepend_nlink(LinkNode **listp, void *ptr, LinkNode *nlink)
@@ -96,7 +169,7 @@ void BLI_linklist_prepend_nlink(LinkNode **listp, void *ptr, LinkNode *nlink)
 
 void BLI_linklist_prepend(LinkNode **listp, void *ptr)
 {
-	LinkNode *nlink = MEM_mallocN(sizeof(*nlink), "nlink");
+	LinkNode *nlink = MEM_mallocN(sizeof(*nlink), __func__);
 	BLI_linklist_prepend_nlink(listp, ptr, nlink);
 }
 
@@ -135,7 +208,7 @@ void BLI_linklist_append_nlink(LinkNode **listp, void *ptr, LinkNode *nlink)
 
 void BLI_linklist_append(LinkNode **listp, void *ptr)
 {
-	LinkNode *nlink = MEM_mallocN(sizeof(*nlink), "nlink");
+	LinkNode *nlink = MEM_mallocN(sizeof(*nlink), __func__);
 	BLI_linklist_append_nlink(listp, ptr, nlink);
 }
 
@@ -177,7 +250,7 @@ void *BLI_linklist_pop_pool(struct LinkNode **listp, struct BLI_mempool *mempool
 
 void BLI_linklist_insert_after(LinkNode **listp, void *ptr)
 {
-	LinkNode *nlink = MEM_mallocN(sizeof(*nlink), "nlink");
+	LinkNode *nlink = MEM_mallocN(sizeof(*nlink), __func__);
 	LinkNode *node = *listp;
 
 	nlink->link = ptr;

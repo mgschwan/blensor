@@ -45,14 +45,14 @@
  *
  * pixel_array is a Python object storing BakePixel elements:
  *
- * <pre>
+ * \code{.c}
  * struct BakePixel {
  *     int primitive_id;
  *     float uv[2];
  *     float du_dx, du_dy;
  *     float dv_dx, dv_dy;
  * };
- * </pre>
+ * \endcode
  *
  * In python you have access to:
  * - ``primitive_id``, ``uv``, ``du_dx``, ``du_dy``, ``next``
@@ -444,7 +444,7 @@ bool RE_bake_pixels_populate_from_objects(
 	size_t i;
 	int primitive_id;
 	float u, v;
-	float imat_low [4][4];
+	float imat_low[4][4];
 	bool is_cage = me_cage != NULL;
 	bool result = true;
 
@@ -928,7 +928,6 @@ bool RE_bake_internal(
 		case SCE_PASS_UV:
 		{
 			return bake_uv(pixel_array, num_pixels, depth, result);
-			break;
 		}
 		default:
 			break;

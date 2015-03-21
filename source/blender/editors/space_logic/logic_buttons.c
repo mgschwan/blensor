@@ -34,7 +34,6 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
-#include "BKE_screen.h"
 
 #include "ED_screen.h"
 
@@ -124,12 +123,12 @@ static int cut_links_exec(bContext *C, wmOperator *op)
 		for (block = ar->uiblocks.first; block; block = block->next) {
 			but = block->buttons.first;
 			while (but) {
-				if (but->type==LINK && but->link) {
+				if (but->type==UI_BTYPE_LINK && but->link) {
 					for (line = but->link->lines.first; line; line = nline) {
 						nline = line->next;
 
 						if (cut_links_intersect(line, mcoords, i)) {
-							ui_delete_linkline(line, but);
+							ui_linkline_remove(line, but);
 						}
 					}
 				}

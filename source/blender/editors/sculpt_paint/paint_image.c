@@ -45,13 +45,11 @@
 #include "BLI_utildefines.h"
 #include "BLI_threads.h"
 
-#include "PIL_time.h"
 
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
 
 #include "DNA_brush_types.h"
-#include "DNA_mesh_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
 
@@ -62,15 +60,9 @@
 #include "BKE_image.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
-#include "BKE_mesh.h"
 #include "BKE_node.h"
 #include "BKE_paint.h"
-#include "BKE_report.h"
-#include "BKE_scene.h"
 #include "BKE_texture.h"
-#include "BKE_colortools.h"
-
-#include "BKE_editmesh.h"
 
 #include "UI_view2d.h"
 
@@ -85,7 +77,6 @@
 
 #include "RNA_access.h"
 #include "RNA_define.h"
-#include "RNA_enum_types.h"
 
 #include "GPU_draw.h"
 #include "GPU_buffers.h"
@@ -167,9 +158,10 @@ static void undo_copy_tile(UndoImageTile *tile, ImBuf *tmpibuf, ImBuf *ibuf, Cop
 		}
 	}
 	else {
-		if (mode == RESTORE_COPY)
+		if (mode == RESTORE_COPY) {
 			IMB_rectcpy(tmpibuf, ibuf, 0, 0, tile->x * IMAPAINT_TILE_SIZE,
-		                tile->y * IMAPAINT_TILE_SIZE, IMAPAINT_TILE_SIZE, IMAPAINT_TILE_SIZE);
+			            tile->y * IMAPAINT_TILE_SIZE, IMAPAINT_TILE_SIZE, IMAPAINT_TILE_SIZE);
+		}
 		/* swap to the tmpbuf for easy copying */
 		if (ibuf->rect_float) {
 			SWAP(float *, tmpibuf->rect_float, tile->rect.fp);
@@ -201,7 +193,7 @@ void *image_undo_find_tile(Image *ima, ImBuf *ibuf, int x_tile, int y_tile, unsi
 	for (tile = lb->first; tile; tile = tile->next) {
 		if (tile->x == x_tile && tile->y == y_tile && ima->gen_type == tile->gen_type && ima->source == tile->source) {
 			if (tile->use_float == use_float) {
-				if (strcmp(tile->idname, ima->id.name) == 0 && strcmp(tile->ibufname, ibuf->name) == 0) {
+				if (STREQ(tile->idname, ima->id.name) && STREQ(tile->ibufname, ibuf->name)) {
 					if (mask) {
 						/* allocate mask if requested */
 						if (!tile->mask) {
@@ -336,7 +328,7 @@ void ED_image_undo_restore(bContext *C, ListBase *lb)
 		short use_float;
 
 		/* find image based on name, pointer becomes invalid with global undo */
-		if (ima && strcmp(tile->idname, ima->id.name) == 0) {
+		if (ima && STREQ(tile->idname, ima->id.name)) {
 			/* ima is valid */
 		}
 		else {
@@ -345,7 +337,7 @@ void ED_image_undo_restore(bContext *C, ListBase *lb)
 
 		ibuf = BKE_image_acquire_ibuf(ima, NULL, NULL);
 
-		if (ima && ibuf && strcmp(tile->ibufname, ibuf->name) != 0) {
+		if (ima && ibuf && !STREQ(tile->ibufname, ibuf->name)) {
 			/* current ImBuf filename was changed, probably current frame
 			 * was changed when painting on image sequence, rather than storing
 			 * full image user (which isn't so obvious, btw) try to find ImBuf with
@@ -671,22 +663,24 @@ void paint_brush_color_get(struct Scene *scene, struct Brush *br, bool color_cor
 		copy_v3_v3(color, BKE_brush_secondary_color_get(scene, br));
 	else {
 		if (br->flag & BRUSH_USE_GRADIENT) {
+			float color_gr[4];
 			switch (br->gradient_stroke_mode) {
 				case BRUSH_GRADIENT_PRESSURE:
-					do_colorband(br->gradient, pressure, color);
+					do_colorband(br->gradient, pressure, color_gr);
 					break;
 				case BRUSH_GRADIENT_SPACING_REPEAT:
 				{
 					float coord = fmod(distance / br->gradient_spacing, 1.0);
-					do_colorband(br->gradient, coord, color);
+					do_colorband(br->gradient, coord, color_gr);
 					break;
 				}
 				case BRUSH_GRADIENT_SPACING_CLAMP:
 				{
-					do_colorband(br->gradient, distance / br->gradient_spacing, color);
+					do_colorband(br->gradient, distance / br->gradient_spacing, color_gr);
 					break;
 				}
 			}
+			copy_v3_v3(color, color_gr);
 		}
 		else
 			copy_v3_v3(color, BKE_brush_color_get(scene, br));
@@ -1065,7 +1059,7 @@ void ED_space_image_paint_update(wmWindowManager *wm, ToolSettings *settings)
 					enabled = true;
 
 	if (enabled) {
-		BKE_paint_init(&imapaint->paint, PAINT_CURSOR_TEXTURE_PAINT);
+		BKE_paint_init(&settings->unified_paint_settings, &imapaint->paint, PAINT_CURSOR_TEXTURE_PAINT);
 
 		paint_cursor_start_explicit(&imapaint->paint, wm, image_paint_poll);
 	}
@@ -1422,7 +1416,7 @@ static int texture_paint_toggle_exec(bContext *C, wmOperator *op)
 		
 		ob->mode |= mode_flag;
 
-		BKE_paint_init(&scene->toolsettings->imapaint.paint, PAINT_CURSOR_TEXTURE_PAINT);
+		BKE_paint_init(&scene->toolsettings->unified_paint_settings, &imapaint->paint, PAINT_CURSOR_TEXTURE_PAINT);
 
 		if (U.glreslimit != 0)
 			GPU_free_images();

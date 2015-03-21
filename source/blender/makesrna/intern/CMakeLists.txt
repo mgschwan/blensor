@@ -28,8 +28,6 @@ if(CMAKE_COMPILER_IS_GNUCC)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=implicit-function-declaration")
 endif()
 
-# message(STATUS "Configuring makesrna")
-
 # files rna_access.c rna_define.c makesrna.c intentionally excluded.
 set(DEFSRC
 	rna_ID.c
@@ -69,6 +67,7 @@ set(DEFSRC
 	rna_object.c
 	rna_object_force.c
 	rna_packedfile.c
+	rna_palette.c
 	rna_particle.c
 	rna_pose.c
 	rna_property.c
@@ -117,14 +116,34 @@ set(APISRC
 	rna_scene_api.c
 	rna_sensor_api.c
 	rna_sequencer_api.c
+	rna_sound_api.c
 	rna_space_api.c
 	rna_text_api.c
 	rna_ui_api.c
+	rna_vfont_api.c
 	rna_wm_api.c
 )
 
 string(REGEX REPLACE "rna_([a-zA-Z0-9_-]*).c" "${CMAKE_CURRENT_BINARY_DIR}/rna_\\1_gen.c" GENSRC "${DEFSRC}")
+list(APPEND GENSRC
+	"${CMAKE_CURRENT_BINARY_DIR}/rna_prototypes_gen.h"
+)
 set_source_files_properties(${GENSRC} PROPERTIES GENERATED TRUE)
+
+# --------------------------
+# CFLAGS for Generated Files
+#
+# less strict flags for generated source
+set(GENSRC_CFLAGS)
+if(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
+	set(GENSRC_CFLAGS "-Wno-missing-prototypes")
+endif()
+
+if(GENSRC_CFLAGS)
+	set_source_files_properties(${GENSRC} PROPERTIES COMPILE_FLAGS "${GENSRC_CFLAGS}")
+endif()
+unset(GENSRC_CFLAGS)
+
 
 set(SRC_RNA_INC
 	../RNA_access.h
@@ -155,6 +174,9 @@ set(INC_SYS
 
 if(WITH_CYCLES)
 	add_definitions(-DWITH_CYCLES)
+	if(WITH_CYCLES_DEBUG)
+		add_definitions(-DWITH_CYCLES_DEBUG)
+	endif()
 endif()
 
 if(WITH_PYTHON)
@@ -238,6 +260,12 @@ if(WITH_MOD_OCEANSIM)
 endif()
 
 if(WITH_SDL)
+	if(WITH_SDL_DYNLOAD)
+		add_definitions(-DWITH_SDL_DYNLOAD)
+		list(APPEND INC
+			../../../../extern/sdlew/include
+		)
+	endif()
 	add_definitions(-DWITH_SDL)
 endif()
 
@@ -265,6 +293,9 @@ if(WITH_BULLET)
 endif()
 
 if(WITH_FREESTYLE)
+	list(APPEND INC
+		../../freestyle
+	)
 	add_definitions(-DWITH_FREESTYLE)
 endif()
 
@@ -281,27 +312,26 @@ blender_include_dirs(
 	../../ikplugin
 	../../makesdna
 	../../nodes/
+	../../physics
 	../../windowmanager
 	../../editors/include
 	../../render/extern/include
 	../../../../intern/audaspace/intern
 	../../../../intern/cycles/blender
 	../../../../intern/guardedalloc
+	../../../../intern/glew-mx
 	../../../../intern/atomic
 	../../../../intern/memutil
 	../../../../intern/smoke/extern
 )
 
 blender_include_dirs_sys(
-	${GLEW_INCLUDE_PATH}
+	"${GLEW_INCLUDE_PATH}"
 )
 
 add_executable(makesrna ${SRC} ${SRC_RNA_INC} ${SRC_DNA_INC})
 target_link_libraries(makesrna bf_dna)
 target_link_libraries(makesrna bf_dna_blenlib)
-
-# too many warnings with clang
-remove_cc_flag("-Wmissing-prototypes")
 
 # Output rna_*_gen.c
 # note (linux only): with crashes try add this after COMMAND: valgrind --leak-check=full --track-origins=yes
@@ -321,5 +351,7 @@ set(SRC
 	rna_internal_types.h
 	rna_mesh_utils.h
 )
+
+add_definitions(${GL_DEFINITIONS})
 
 blender_add_lib(bf_rna "${SRC}" "${INC}" "${INC_SYS}")

@@ -88,6 +88,7 @@ protected:
 	int									m_layer;
 	std::vector<RAS_MeshObject*>		m_meshes;
 	std::vector<RAS_MeshObject*>		m_lodmeshes;
+	int                                 m_currentLodLevel;
 	SG_QList							m_meshSlots;	// head of mesh slots of this 
 	struct Object*						m_pBlenderObject;
 	struct Object*						m_pBlenderGroupObject;
@@ -684,6 +685,12 @@ public:
 		bool local
 	);
 
+	virtual float	getLinearDamping() const;
+	virtual float	getAngularDamping() const;
+	virtual void	setLinearDamping(float damping);
+	virtual void	setAngularDamping(float damping);
+	virtual void	setDamping(float linear, float angular);
+
 	/**
 	 * Update the physics object transform based upon the current SG_Node
 	 * position.
@@ -852,10 +859,10 @@ public:
 	/**
 	 * Was this object culled?
 	 */
-	bool
+	inline bool
 	GetCulled(
 		void
-	);
+	) { return m_bCulled; }
 
 	/**
 	 * Set culled flag of this object
@@ -913,7 +920,7 @@ public:
 
 	void RegisterCollisionCallbacks();
 	void UnregisterCollisionCallbacks();
-	void RunCollisionCallbacks(KX_GameObject *collider);
+	void RunCollisionCallbacks(KX_GameObject *collider, const MT_Vector3 &point, const MT_Vector3 &normal);
 	/**
 	 * Stop making progress
 	 */
@@ -965,6 +972,7 @@ public:
 	KX_PYMETHOD_VARARGS(KX_GameObject,GetAngularVelocity);
 	KX_PYMETHOD_VARARGS(KX_GameObject,SetAngularVelocity);
 	KX_PYMETHOD_VARARGS(KX_GameObject,GetVelocity);
+	KX_PYMETHOD_VARARGS(KX_GameObject,SetDamping);
 
 	KX_PYMETHOD_NOARGS(KX_GameObject,GetReactionForce);
 
@@ -1070,6 +1078,10 @@ public:
 	static int			pyattr_set_debug(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
 	static PyObject*	pyattr_get_debugRecursive(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
 	static int			pyattr_set_debugRecursive(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
+	static PyObject*	pyattr_get_linearDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static int			pyattr_set_linearDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
+	static PyObject*	pyattr_get_angularDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);
+	static int			pyattr_set_angularDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value);
 
 	/* Experimental! */
 	static PyObject*	pyattr_get_sensors(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef);

@@ -33,7 +33,6 @@
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_rand.h"
-#include "BLI_rect.h"
 
 #include "BKE_brush.h"
 #include "BKE_colortools.h"
@@ -49,7 +48,6 @@
 #include "IMB_imbuf_types.h"
 
 #include "RE_render_ext.h" /* externtex */
-#include "RE_shader_ext.h"
 
 static RNG *brush_rng;
 
@@ -180,6 +178,10 @@ Brush *BKE_brush_copy(Brush *brush)
 		brushn->id.us++;
 	}
 	
+	if (brush->id.lib) {
+		BKE_id_lib_local_paths(G.main, brush->id.lib, &brushn->id);
+	}
+
 	return brushn;
 }
 
@@ -300,7 +302,6 @@ void BKE_brush_debug_print_state(Brush *br)
 	BR_TEST_FLAG(BRUSH_SIZE_PRESSURE);
 	BR_TEST_FLAG(BRUSH_JITTER_PRESSURE);
 	BR_TEST_FLAG(BRUSH_SPACING_PRESSURE);
-	BR_TEST_FLAG(BRUSH_RAKE);
 	BR_TEST_FLAG(BRUSH_ANCHORED);
 	BR_TEST_FLAG(BRUSH_DIR_IN);
 	BR_TEST_FLAG(BRUSH_SPACE);
@@ -316,7 +317,6 @@ void BKE_brush_debug_print_state(Brush *br)
 	BR_TEST_FLAG(BRUSH_EDGE_TO_EDGE);
 	BR_TEST_FLAG(BRUSH_DRAG_DOT);
 	BR_TEST_FLAG(BRUSH_INVERSE_SMOOTH_PRESSURE);
-	BR_TEST_FLAG(BRUSH_RANDOM_ROTATION);
 	BR_TEST_FLAG(BRUSH_PLANE_TRIM);
 	BR_TEST_FLAG(BRUSH_FRONTFACE);
 	BR_TEST_FLAG(BRUSH_CUSTOM_ICON);
@@ -542,7 +542,7 @@ float BKE_brush_sample_tex_3D(const Scene *scene, Brush *br,
 		/* Get strength by feeding the vertex
 		 * location directly into a texture */
 		hasrgb = externtex(mtex, point, &intensity,
-		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool);
+		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
 	}
 	else if (mtex->brush_map_mode == MTEX_MAP_MODE_STENCIL) {
 		float rotation = -mtex->rot;
@@ -573,7 +573,7 @@ float BKE_brush_sample_tex_3D(const Scene *scene, Brush *br,
 		co[2] = 0.0f;
 
 		hasrgb = externtex(mtex, co, &intensity,
-		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool);
+		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
 	}
 	else {
 		float rotation = -mtex->rot;
@@ -630,7 +630,7 @@ float BKE_brush_sample_tex_3D(const Scene *scene, Brush *br,
 		co[2] = 0.0f;
 
 		hasrgb = externtex(mtex, co, &intensity,
-		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool);
+		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
 	}
 
 	intensity += br->texture_sample_bias;
@@ -690,7 +690,7 @@ float BKE_brush_sample_masktex(const Scene *scene, Brush *br,
 		co[2] = 0.0f;
 
 		externtex(mtex, co, &intensity,
-		          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool);
+		          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
 	}
 	else {
 		float rotation = -mtex->rot;
@@ -702,7 +702,7 @@ float BKE_brush_sample_masktex(const Scene *scene, Brush *br,
 		if (mtex->brush_map_mode == MTEX_MAP_MODE_VIEW) {
 			/* keep coordinates relative to mouse */
 
-			rotation += ups->brush_rotation;
+			rotation += ups->brush_rotation_sec;
 
 			x = point_2d[0] - ups->mask_tex_mouse[0];
 			y = point_2d[1] - ups->mask_tex_mouse[1];
@@ -720,7 +720,7 @@ float BKE_brush_sample_masktex(const Scene *scene, Brush *br,
 			y = point_2d[1];
 		}
 		else if (mtex->brush_map_mode == MTEX_MAP_MODE_RANDOM) {
-			rotation += ups->brush_rotation;
+			rotation += ups->brush_rotation_sec;
 			/* these contain a random coordinate */
 			x = point_2d[0] - ups->mask_tex_mouse[0];
 			y = point_2d[1] - ups->mask_tex_mouse[1];
@@ -747,7 +747,7 @@ float BKE_brush_sample_masktex(const Scene *scene, Brush *br,
 		co[2] = 0.0f;
 
 		externtex(mtex, co, &intensity,
-		          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool);
+		          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
 	}
 
 	CLAMP(intensity, 0.0f, 1.0f);
@@ -810,6 +810,9 @@ void BKE_brush_size_set(Scene *scene, Brush *brush, int size)
 	
 	size = (int)((float)size / U.pixelsize);
 	
+	/* make sure range is sane */
+	CLAMP(size, 1, MAX_BRUSH_PIXEL_RADIUS);
+
 	if (ups->flag & UNIFIED_PAINT_SIZE)
 		ups->size = size;
 	else
@@ -937,7 +940,7 @@ void BKE_brush_jitter_pos(const Scene *scene, Brush *brush, const float pos[2], 
 	do {
 		rand_pos[0] = BLI_rng_get_float(brush_rng) - 0.5f;
 		rand_pos[1] = BLI_rng_get_float(brush_rng) - 0.5f;
-	} while (len_squared_v2(rand_pos) > (0.5f * 0.5f));
+	} while (len_squared_v2(rand_pos) > SQUARE(0.5f));
 
 
 	if (brush->flag & BRUSH_ABSOLUTE_JITTER) {
@@ -953,7 +956,7 @@ void BKE_brush_jitter_pos(const Scene *scene, Brush *brush, const float pos[2], 
 	jitterpos[1] = pos[1] + 2 * rand_pos[1] * diameter * spread;
 }
 
-void BKE_brush_randomize_texture_coordinates(UnifiedPaintSettings *ups, bool mask)
+void BKE_brush_randomize_texture_coords(UnifiedPaintSettings *ups, bool mask)
 {
 	/* we multiply with brush radius as an optimization for the brush
 	 * texture sampling functions */
@@ -968,7 +971,7 @@ void BKE_brush_randomize_texture_coordinates(UnifiedPaintSettings *ups, bool mas
 }
 
 /* Uses the brush curve control to find a strength value between 0 and 1 */
-float BKE_brush_curve_strength_clamp(Brush *br, float p, const float len)
+float BKE_brush_curve_strength(Brush *br, float p, const float len)
 {
 	float strength;
 
@@ -980,17 +983,6 @@ float BKE_brush_curve_strength_clamp(Brush *br, float p, const float len)
 	CLAMP(strength, 0.0f, 1.0f);
 
 	return strength;
-}
-/* same as above but can return negative values if the curve enables
- * used for sculpt only */
-float BKE_brush_curve_strength(Brush *br, float p, const float len)
-{
-	if (p >= len)
-		p = 1.0f;
-	else
-		p = p / len;
-
-	return curvemapping_evaluateF(br->curve, 0, p);
 }
 
 /* TODO: should probably be unified with BrushPainter stuff? */
@@ -1018,7 +1010,7 @@ unsigned int *BKE_brush_gen_texture_cache(Brush *br, int half_side, bool use_sec
 				/* This is copied from displace modifier code */
 				/* TODO(sergey): brush are always cacheing with CM enabled for now. */
 				externtex(mtex, co, &intensity,
-				          rgba, rgba + 1, rgba + 2, rgba + 3, 0, NULL);
+				          rgba, rgba + 1, rgba + 2, rgba + 3, 0, NULL, false);
 
 				((char *)texcache)[(iy * side + ix) * 4] =
 				((char *)texcache)[(iy * side + ix) * 4 + 1] =
@@ -1048,8 +1040,8 @@ struct ImBuf *BKE_brush_gen_radial_control_imbuf(Brush *br, bool secondary)
 
 	for (i = 0; i < side; ++i) {
 		for (j = 0; j < side; ++j) {
-			float magn = sqrtf(powf(i - half, 2) + powf(j - half, 2));
-			im->rect_float[i * side + j] = BKE_brush_curve_strength_clamp(br, magn, half);
+			float magn = sqrtf(pow2f(i - half) + pow2f(j - half));
+			im->rect_float[i * side + j] = BKE_brush_curve_strength(br, magn, half);
 		}
 	}
 

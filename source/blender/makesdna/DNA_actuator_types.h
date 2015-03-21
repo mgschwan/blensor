@@ -57,7 +57,7 @@ typedef struct bActionActuator {
 	short   blendin;        /* Number of frames of blending */
 	short   priority;       /* Execution priority */
 	short   layer;          /* Animation layer */
-	short   end_reset;      /* Ending the actuator (negative pulse) wont reset the the action to its starting frame */
+	short   end_reset;      /* Ending the actuator (negative pulse) wont reset the action to its starting frame */
 	short   strideaxis;     /* Displacement axis */
 	short   blend_mode;		/* Layer blending mode */
 	float   stridelength;   /* Displacement incurred by cycle */ // not in use
@@ -570,6 +570,7 @@ typedef struct bActuator {
 #define ACT_STEERING_ENABLEVISUALIZATION   2
 #define ACT_STEERING_AUTOMATICFACING   4
 #define ACT_STEERING_NORMALUP  8
+#define ACT_STEERING_LOCKZVEL  16
 
 /* mouseactuator->type */
 #define ACT_MOUSE_VISIBILITY	0

@@ -184,6 +184,7 @@ void PAINT_OT_image_from_view(struct wmOperatorType *ot);
 void PAINT_OT_add_texture_paint_slot(struct wmOperatorType *ot);
 void PAINT_OT_delete_texture_paint_slot(struct wmOperatorType *ot);
 void PAINT_OT_image_paint(struct wmOperatorType *ot);
+void PAINT_OT_add_simple_uvs(struct wmOperatorType *ot);
 
 /* uv sculpting */
 int uv_sculpt_poll(struct bContext *C);
@@ -243,6 +244,18 @@ typedef enum BrushStrokeMode {
 	BRUSH_STROKE_INVERT,
 	BRUSH_STROKE_SMOOTH
 } BrushStrokeMode;
+
+/* paint_ops.c */
+typedef enum {
+	RC_COLOR    = 1,
+	RC_ROTATION = 2,
+	RC_ZOOM     = 4,
+	RC_WEIGHT   = 8,
+	RC_SECONDARY_ROTATION = 16
+} RCFlags;
+
+void set_brush_rc_props(struct PointerRNA *ptr, const char *paint, const char *prop, const char *secondary_prop,
+                        RCFlags flags);
 
 /* paint_undo.c */
 struct ListBase *undo_paint_push_get_list(int type);

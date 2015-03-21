@@ -238,6 +238,10 @@ MetaBall *BKE_mball_copy(MetaBall *mb)
 	mbn->editelems = NULL;
 	mbn->lastelem = NULL;
 	
+	if (mb->id.lib) {
+		BKE_id_lib_local_paths(G.main, mb->id.lib, &mbn->id);
+	}
+
 	return mbn;
 }
 
@@ -464,7 +468,7 @@ bool BKE_mball_is_basis_for(Object *ob1, Object *ob2)
 	BLI_split_name_num(basis1name, &basis1nr, ob1->id.name + 2, '.');
 	BLI_split_name_num(basis2name, &basis2nr, ob2->id.name + 2, '.');
 
-	if (!strcmp(basis1name, basis2name)) {
+	if (STREQ(basis1name, basis2name)) {
 		return BKE_mball_is_basis(ob1);
 	}
 	else {
@@ -499,7 +503,7 @@ void BKE_mball_properties_copy(Scene *scene, Object *active_object)
 
 				/* Object ob has to be in same "group" ... it means, that it has to have
 				 * same base of its name */
-				if (strcmp(obname, basisname) == 0) {
+				if (STREQ(obname, basisname)) {
 					MetaBall *mb = ob->data;
 
 					/* Copy properties from selected/edited metaball */
@@ -541,7 +545,7 @@ Object *BKE_mball_basis_find(Scene *scene, Object *basis)
 				BLI_split_name_num(obname, &obnr, ob->id.name + 2, '.');
 
 				/* object ob has to be in same "group" ... it means, that it has to have same base of its name */
-				if (strcmp(obname, basisname) == 0) {
+				if (STREQ(obname, basisname)) {
 					if (obnr < basisnr) {
 						basis = ob;
 						basisnr = obnr;
@@ -909,7 +913,11 @@ static void docube(PROCESS *process, CUBE *cube, MetaBall *mb)
 	CORNER *c1, *c2;
 	int i, index = 0, count, indexar[8];
 	
-	for (i = 0; i < 8; i++) if (cube->corners[i]->value > 0.0f) index += (1 << i);
+	for (i = 0; i < 8; i++) {
+		if (cube->corners[i]->value > 0.0f) {
+			index += (1 << i);
+		}
+	}
 	
 	for (polys = cubetable[index]; polys; polys = polys->next) {
 		INTLIST *edges;
@@ -1671,7 +1679,7 @@ static float init_meta(EvaluationContext *eval_ctx, PROCESS *process, Scene *sce
 				int nr;
 				
 				BLI_split_name_num(name, &nr, bob->id.name + 2, '.');
-				if (strcmp(obname, name) == 0) {
+				if (STREQ(obname, name)) {
 					mb = bob->data;
 					
 					if (mb->editelems) ml = mb->editelems->first;
@@ -2235,7 +2243,7 @@ static void mball_count(EvaluationContext *eval_ctx, PROCESS *process, Scene *sc
 
 				/* object ob has to be in same "group" ... it means, that it has to have
 				 * same base of its name */
-				if (strcmp(obname, basisname) == 0) {
+				if (STREQ(obname, basisname)) {
 					MetaBall *mb = ob->data;
 
 					/* if object is in edit mode, then dynamic list of all MetaElems
@@ -2436,10 +2444,10 @@ bool BKE_mball_center_bounds(MetaBall *mb, float r_cent[3])
 
 	if (BKE_mball_minmax(mb, min, max)) {
 		mid_v3_v3v3(r_cent, min, max);
-		return 1;
+		return true;
 	}
 
-	return 0;
+	return false;
 }
 
 void BKE_mball_transform(MetaBall *mb, float mat[4][4])

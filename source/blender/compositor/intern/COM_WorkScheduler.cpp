@@ -111,7 +111,9 @@ static void **g_highlightedNodesRead;
 }
 #endif  /* COM_CURRENT_THREADING_MODEL == COM_TM_QUEUE */
 #else
+#  if COM_CURRENT_THREADING_MODEL != COM_TM_NOTHREAD
 #define HIGHLIGHT(wp) {}
+#  endif
 #endif
 
 void COM_startReadHighlights()
@@ -196,7 +198,7 @@ void WorkScheduler::schedule(ExecutionGroup *group, int chunkNumber)
 		BLI_thread_queue_push(g_cpuqueue, package);
 	}
 #else
-	BLI_thread_queue_push(cpuqueue, package);
+	BLI_thread_queue_push(g_cpuqueue, package);
 #endif
 #endif
 }

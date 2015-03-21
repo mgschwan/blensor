@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include <stdlib.h>
@@ -19,9 +19,6 @@
 
 #include "device.h"
 #include "device_intern.h"
-
-#include "cuew.h"
-#include "clew.h"
 
 #include "util_debug.h"
 #include "util_foreach.h"
@@ -268,5 +265,28 @@ vector<DeviceInfo>& Device::available_devices()
 	return devices;
 }
 
-CCL_NAMESPACE_END
+string Device::device_capabilities()
+{
+	string capabilities = "CPU device capabilities: ";
+	capabilities += device_cpu_capabilities() + "\n";
+#ifdef WITH_CUDA
+	if(device_cuda_init()) {
+		capabilities += "\nCUDA device capabilities:\n";
+		capabilities += device_cuda_capabilities();
+	}
+#endif
 
+#ifdef WITH_OPENCL
+	/* TODO(sergey): Needs proper usable implementation. */
+	/*
+	if(device_opencl_init()) {
+		capabilities += "\nOpenCL device capabilities:\n";
+		capabilities += device_opencl_capabilities();
+	}
+	*/
+#endif
+
+	return capabilities;
+}
+
+CCL_NAMESPACE_END

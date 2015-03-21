@@ -28,7 +28,6 @@
 #include <stddef.h>
 
 #include "DNA_dynamicpaint_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
@@ -39,8 +38,6 @@
 #include "BKE_modifier.h"
 
 #include "depsgraph_private.h"
-
-#include "MOD_util.h"
 
 
 static void initData(ModifierData *md) 
@@ -115,6 +112,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *scene,
                            Object *ob,
                            DagNode *obNode)

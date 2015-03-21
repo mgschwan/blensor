@@ -130,6 +130,9 @@ ccl_device_inline float3 motion_triangle_refine(KernelGlobals *kg, ShaderData *s
 
 #ifdef __INTERSECTION_REFINE__
 	if(isect->object != OBJECT_NONE) {
+		if(UNLIKELY(t == 0.0f)) {
+			return P;
+		}
 #ifdef __OBJECT_MOTION__
 		Transform tfm = sd->ob_itfm;
 #else
@@ -233,7 +236,7 @@ ccl_device_inline float3 motion_triangle_refine_subsurface(KernelGlobals *kg, Sh
 ccl_device_noinline void motion_triangle_shader_setup(KernelGlobals *kg, ShaderData *sd, const Intersection *isect, const Ray *ray, bool subsurface)
 {
 	/* get shader */
-	sd->shader =  __float_as_int(kernel_tex_fetch(__tri_shader, sd->prim));
+	sd->shader =  kernel_tex_fetch(__tri_shader, sd->prim);
 
 	/* get motion info */
 	int numsteps, numverts;
@@ -336,12 +339,12 @@ ccl_device_inline bool motion_triangle_intersect(KernelGlobals *kg, Intersection
 		if(kernel_tex_fetch(__prim_visibility, triAddr) & visibility)
 #endif
 		{
+			isect->t = t;
+			isect->u = u;
+			isect->v = v;
 			isect->prim = triAddr;
 			isect->object = object;
 			isect->type = PRIMITIVE_MOTION_TRIANGLE;
-			isect->u = u;
-			isect->v = v;
-			isect->t = t;
 		
 			return true;
 		}
@@ -388,12 +391,12 @@ ccl_device_inline void motion_triangle_intersect_subsurface(KernelGlobals *kg, I
 
 		/* record intersection */
 		Intersection *isect = &isect_array[hit];
+		isect->t = t;
+		isect->u = u;
+		isect->v = v;
 		isect->prim = triAddr;
 		isect->object = object;
 		isect->type = PRIMITIVE_MOTION_TRIANGLE;
-		isect->u = u;
-		isect->v = v;
-		isect->t = t;
 	}
 }
 #endif

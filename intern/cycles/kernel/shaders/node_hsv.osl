@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "stdosl.h"
@@ -34,6 +34,11 @@ shader node_hsv(
 	Color[2] *= Value;
 
 	Color = hsv_to_rgb(Color);
+
+	// Clamp color to prevent negative values cauzed by oversaturation.
+	Color[0] = max(Color[0], 0.0);
+	Color[1] = max(Color[1], 0.0);
+	Color[2] = max(Color[2], 0.0);
 
 	ColorOut = mix(ColorIn, Color, Fac);
 }

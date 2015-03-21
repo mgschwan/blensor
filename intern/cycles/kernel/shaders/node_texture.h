@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 /* Voronoi Distances */
@@ -153,12 +153,12 @@ float voronoi_CrS(point p) { return 2.0 * voronoi_Cr(p) - 1.0; }
 
 /* Noise Bases */
 
-float safe_noise(point p, int type)
+float safe_noise(point p, string type)
 {
 	float f = 0.0;
 	
 	/* Perlin noise in range -1..1 */
-	if (type == 0)
+	if (type == "signed")
 		f = noise("perlin", p);
 	
 	/* Perlin noise in range 0..1 */
@@ -175,7 +175,7 @@ float safe_noise(point p, int type)
 float noise_basis(point p, string basis)
 {
 	if (basis == "Perlin")
-		return safe_noise(p, 1);
+		return safe_noise(p, "unsigned");
 	if (basis == "Voronoi F1")
 		return voronoi_F1S(p);
 	if (basis == "Voronoi F2")

@@ -69,7 +69,6 @@
 #include "BKE_effect.h"
 #include "BKE_font.h"
 #include "BKE_group.h"
-#include "BKE_image.h"
 #include "BKE_lamp.h"
 #include "BKE_lattice.h"
 #include "BKE_library.h"
@@ -97,7 +96,6 @@
 
 #include "ED_armature.h"
 #include "ED_curve.h"
-#include "ED_lattice.h"
 #include "ED_mball.h"
 #include "ED_mesh.h"
 #include "ED_node.h"
@@ -108,7 +106,6 @@
 #include "ED_transform.h"
 #include "ED_view3d.h"
 
-#include "UI_interface.h"
 #include "UI_resources.h"
 
 #include "GPU_material.h"
@@ -165,14 +162,13 @@ void ED_object_rotation_from_view(bContext *C, float rot[3], const char align_ax
 	BLI_assert(align_axis >= 'X' && align_axis <= 'Z');
 
 	if (rv3d) {
-		const float pi_2 = (float)M_PI / 2.0f;
 		float quat[4];
 
 		switch (align_axis) {
 			case 'X':
 			{
 				float quat_y[4];
-				axis_angle_to_quat(quat_y, rv3d->viewinv[1], -pi_2);
+				axis_angle_to_quat(quat_y, rv3d->viewinv[1], -M_PI_2);
 				mul_qt_qtqt(quat, rv3d->viewquat, quat_y);
 				quat[0] = -quat[0];
 
@@ -185,7 +181,7 @@ void ED_object_rotation_from_view(bContext *C, float rot[3], const char align_ax
 				quat[0] = -quat[0];
 
 				quat_to_eul(rot, quat);
-				rot[0] -= pi_2;
+				rot[0] -= (float)M_PI_2;
 				break;
 			}
 			case 'Z':
@@ -222,9 +218,9 @@ void ED_object_base_init_transform(bContext *C, Base *base, const float loc[3], 
 
 /* Uses context to figure out transform for primitive.
  * Returns standard diameter. */
-float ED_object_new_primitive_matrix(bContext *C, Object *obedit,
-                                     const float loc[3], const float rot[3], float primmat[4][4],
-                                     bool apply_diameter)
+float ED_object_new_primitive_matrix(
+        bContext *C, Object *obedit,
+        const float loc[3], const float rot[3], float primmat[4][4])
 {
 	Scene *scene = CTX_data_scene(C);
 	View3D *v3d = CTX_wm_view3d(C);
@@ -249,13 +245,6 @@ float ED_object_new_primitive_matrix(bContext *C, Object *obedit,
 
 	{
 		const float dia = v3d ? ED_view3d_grid_scale(scene, v3d, NULL) : ED_scene_grid_scale(scene, NULL);
-
-		if (apply_diameter) {
-			primmat[0][0] *= dia;
-			primmat[1][1] *= dia;
-			primmat[2][2] *= dia;
-		}
-
 		return dia;
 	}
 
@@ -308,18 +297,19 @@ bool ED_object_add_generic_get_opts(bContext *C, wmOperator *op, const char view
 {
 	View3D *v3d = CTX_wm_view3d(C);
 	unsigned int _layer;
+	PropertyRNA *prop;
 
-	/* Switch to Edit mode? */
-	if (RNA_struct_find_property(op->ptr, "enter_editmode")) { /* optional */
+	/* Switch to Edit mode? optional prop */
+	if ((prop = RNA_struct_find_property(op->ptr, "enter_editmode"))) {
 		bool _enter_editmode;
 		if (!enter_editmode)
 			enter_editmode = &_enter_editmode;
 
-		if (RNA_struct_property_is_set(op->ptr, "enter_editmode") && enter_editmode)
-			*enter_editmode = RNA_boolean_get(op->ptr, "enter_editmode");
+		if (RNA_property_is_set(op->ptr, prop) && enter_editmode)
+			*enter_editmode = RNA_property_boolean_get(op->ptr, prop);
 		else {
 			*enter_editmode = (U.flag & USER_ADD_EDITMODE) != 0;
-			RNA_boolean_set(op->ptr, "enter_editmode", *enter_editmode);
+			RNA_property_boolean_set(op->ptr, prop, *enter_editmode);
 		}
 	}
 
@@ -329,8 +319,9 @@ bool ED_object_add_generic_get_opts(bContext *C, wmOperator *op, const char view
 		if (!layer)
 			layer = &_layer;
 
-		if (RNA_struct_property_is_set(op->ptr, "layers")) {
-			RNA_boolean_get_array(op->ptr, "layers", layer_values);
+		prop = RNA_struct_find_property(op->ptr, "layers");
+		if (RNA_property_is_set(op->ptr, prop)) {
+			RNA_property_boolean_get_array(op->ptr, prop, layer_values);
 			*layer = 0;
 			for (a = 0; a < 20; a++) {
 				if (layer_values[a])
@@ -341,9 +332,9 @@ bool ED_object_add_generic_get_opts(bContext *C, wmOperator *op, const char view
 			Scene *scene = CTX_data_scene(C);
 			*layer = BKE_screen_view3d_layer_active_ex(v3d, scene, false);
 			for (a = 0; a < 20; a++) {
-				layer_values[a] = *layer & (1 << a);
+				layer_values[a] = (*layer & (1 << a)) != 0;
 			}
-			RNA_boolean_set_array(op->ptr, "layers", layer_values);
+			RNA_property_boolean_set_array(op->ptr, prop, layer_values);
 		}
 
 		/* in local view we additionally add local view layers,
@@ -449,14 +440,23 @@ static int object_add_exec(bContext *C, wmOperator *op)
 	Object *ob;
 	bool enter_editmode;
 	unsigned int layer;
-	float loc[3], rot[3];
+	float loc[3], rot[3], radius;
 
 	WM_operator_view3d_unit_defaults(C, op);
 	if (!ED_object_add_generic_get_opts(C, op, 'Z', loc, rot, &enter_editmode, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
+	radius = RNA_float_get(op->ptr, "radius");
 	ob = ED_object_add_type(C, RNA_enum_get(op->ptr, "type"), loc, rot, enter_editmode, layer);
-	BKE_object_obdata_size_init(ob, RNA_float_get(op->ptr, "radius"));
+
+	if (ob->type == OB_LATTICE) {
+		/* lattice is a special case!
+		 * we never want to scale the obdata since that is the rest-state */
+		copy_v3_fl(ob->size, radius);
+	}
+	else {
+		BKE_object_obdata_size_init(ob, radius);
+	}
 
 	return OPERATOR_FINISHED;
 }
@@ -510,7 +510,7 @@ static int effector_add_exec(bContext *C, wmOperator *op)
 		cu = ob->data;
 		cu->flag |= CU_PATH | CU_3D;
 		ED_object_editmode_enter(C, 0);
-		ED_object_new_primitive_matrix(C, ob, loc, rot, mat, false);
+		ED_object_new_primitive_matrix(C, ob, loc, rot, mat);
 		BLI_addtail(&cu->editnurb->nurbs, add_nurbs_primitive(C, ob, mat, CU_NURBS | CU_PRIM_PATH, dia));
 		if (!enter_editmode)
 			ED_object_editmode_exit(C, EM_FREEDATA);
@@ -633,7 +633,7 @@ static int object_metaball_add_exec(bContext *C, wmOperator *op)
 		DAG_id_tag_update(&obedit->id, OB_RECALC_DATA);
 	}
 
-	ED_object_new_primitive_matrix(C, obedit, loc, rot, mat, false);
+	ED_object_new_primitive_matrix(C, obedit, loc, rot, mat);
 	dia = RNA_float_get(op->ptr, "radius");
 
 	add_metaball_primitive(C, obedit, mat, dia, RNA_enum_get(op->ptr, "type"));
@@ -824,24 +824,12 @@ static int empty_drop_named_image_invoke(bContext *C, wmOperator *op, const wmEv
 	Image *ima = NULL;
 	Object *ob = NULL;
 
-	/* check image input variables */
-	if (RNA_struct_property_is_set(op->ptr, "filepath")) {
-		char path[FILE_MAX];
-
-		RNA_string_get(op->ptr, "filepath", path);
-		ima = BKE_image_load_exists(path);
-	}
-	else if (RNA_struct_property_is_set(op->ptr, "name")) {
-		char name[MAX_ID_NAME - 2];
-
-		RNA_string_get(op->ptr, "name", name);
-		ima = (Image *)BKE_libblock_find_name(ID_IM, name);
-	}
-
-	if (ima == NULL) {
-		BKE_report(op->reports, RPT_ERROR, "Not an image");
+	ima = (Image *)WM_operator_drop_load_path(C, op, ID_IM);
+	if (!ima) {
 		return OPERATOR_CANCELLED;
 	}
+	/* handled below */
+	id_us_min((ID *)ima);
 
 	base = ED_view3d_give_base_under_cursor(C, event->mval);
 
@@ -892,6 +880,8 @@ void OBJECT_OT_drop_named_image(wmOperatorType *ot)
 
 	/* properties */
 	prop = RNA_def_string(ot->srna, "filepath", NULL, FILE_MAX, "Filepath", "Path to image file");
+	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
+	RNA_def_boolean(ot->srna, "relative_path", true, "Relative Path", "Select the file relative to the blend file");
 	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 	prop = RNA_def_string(ot->srna, "name", NULL, MAX_ID_NAME - 2, "Name", "Image name to assign");
 	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
@@ -981,8 +971,11 @@ static int group_instance_add_exec(bContext *C, wmOperator *op)
 		
 		if (0 == RNA_struct_property_is_set(op->ptr, "location")) {
 			wmEvent *event = CTX_wm_window(C)->eventstate;
+			ARegion *ar = CTX_wm_region(C);
+			const int mval[2] = {event->x - ar->winrct.xmin,
+			                     event->y - ar->winrct.ymin};
 			ED_object_location_from_view(C, loc);
-			ED_view3d_cursor3d_position(C, loc, event->mval);
+			ED_view3d_cursor3d_position(C, loc, mval);
 			RNA_float_set_array(op->ptr, "location", loc);
 		}
 	}
@@ -1290,6 +1283,44 @@ static void copy_object_set_idnew(bContext *C, int dupflag)
 
 /********************* Make Duplicates Real ************************/
 
+/**
+ * \note regarding hashing dupli-objects, skip the first member of #DupliObject.persistent_id
+ * since its a unique index and we only want to know if the group objects are from the same dupli-group instance.
+ */
+static unsigned int dupliobject_hash(const void *ptr)
+{
+	const DupliObject *dob = ptr;
+	unsigned int hash = BLI_ghashutil_ptrhash(dob->ob);
+	unsigned int i;
+	for (i = 1; (i < MAX_DUPLI_RECUR) && dob->persistent_id[i] != INT_MAX; i++) {
+		hash ^= (dob->persistent_id[i] ^ i);
+	}
+	return hash;
+}
+
+static bool dupliobject_cmp(const void *a_, const void *b_)
+{
+	const DupliObject *a = a_;
+	const DupliObject *b = b_;
+	unsigned int i;
+
+	if (a->ob != b->ob) {
+		return true;
+	}
+
+	for (i = 1; (i < MAX_DUPLI_RECUR); i++) {
+		if (a->persistent_id[i] != b->persistent_id[i]) {
+			return true;
+		}
+		else if (a->persistent_id[i] == INT_MAX) {
+			break;
+		}
+	}
+
+	/* matching */
+	return false;
+}
+
 static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
                                        const bool use_base_parent,
                                        const bool use_hierarchy)
@@ -1306,8 +1337,8 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 	lb = object_duplilist(bmain->eval_ctx, scene, base->object);
 
 	if (use_hierarchy || use_base_parent) {
-		dupli_gh = BLI_ghash_ptr_new("make_object_duplilist_real dupli_gh");
-		parent_gh = BLI_ghash_pair_new("make_object_duplilist_real parent_gh");
+		dupli_gh = BLI_ghash_ptr_new(__func__);
+		parent_gh = BLI_ghash_new(dupliobject_hash, dupliobject_cmp, __func__);
 	}
 
 	for (dob = lb->first; dob; dob = dob->next) {
@@ -1347,7 +1378,7 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 		if (dupli_gh)
 			BLI_ghash_insert(dupli_gh, dob, ob);
 		if (parent_gh)
-			BLI_ghash_insert(parent_gh, BLI_ghashutil_pairalloc(dob->ob, SET_INT_IN_POINTER(dob->persistent_id[0])), ob);
+			BLI_ghash_insert(parent_gh, dob, ob);
 
 		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 	}
@@ -1363,9 +1394,14 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 
 			/* find parent that was also made real */
 			if (ob_src_par) {
-				GHashPair *pair = BLI_ghashutil_pairalloc(ob_src_par, SET_INT_IN_POINTER(dob->persistent_id[0]));
-				ob_dst_par = BLI_ghash_lookup(parent_gh, pair);
-				BLI_ghashutil_pairfree(pair);
+				/* OK to keep most of the members uninitialized,
+				 * they won't be read, this is simply for a hash lookup. */
+				DupliObject dob_key;
+				dob_key.ob = ob_src_par;
+				memcpy(&dob_key.persistent_id[1],
+				       &dob->persistent_id[1],
+				       sizeof(dob->persistent_id[1]) * (MAX_DUPLI_RECUR - 1));
+				ob_dst_par = BLI_ghash_lookup(parent_gh, &dob_key);
 			}
 
 			if (ob_dst_par) {
@@ -1428,7 +1464,7 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 	if (dupli_gh)
 		BLI_ghash_free(dupli_gh, NULL, NULL);
 	if (parent_gh)
-		BLI_ghash_free(parent_gh, BLI_ghashutil_pairfree, NULL);
+		BLI_ghash_free(parent_gh, NULL, NULL);
 
 	copy_object_set_idnew(C, 0);
 
@@ -1569,18 +1605,30 @@ static int convert_exec(bContext *C, wmOperator *op)
 
 	/* don't forget multiple users! */
 
-	/* reset flags */
-	CTX_DATA_BEGIN (C, Base *, base, selected_editable_bases)
 	{
-		ob = base->object;
-		ob->flag &= ~OB_DONE;
+		Base *base;
 
-		/* flag data thats not been edited (only needed for !keep_original) */
-		if (ob->data) {
-			((ID *)ob->data)->flag |= LIB_DOIT;
+		for (base = scene->base.first; base; base = base->next) {
+			ob = base->object;
+			ob->flag &= ~OB_DONE;
+
+			/* flag data thats not been edited (only needed for !keep_original) */
+			if (ob->data) {
+				((ID *)ob->data)->flag |= LIB_DOIT;
+			}
+
+			/* possible metaball basis is not in this scene */
+			if (ob->type == OB_MBALL && target == OB_MESH) {
+				if (BKE_mball_is_basis(ob) == false) {
+					Object *ob_basis;
+					ob_basis = BKE_mball_basis_find(scene, ob);
+					if (ob_basis) {
+						ob_basis->flag &= ~OB_DONE;
+					}
+				}
+			}
 		}
 	}
-	CTX_DATA_END;
 
 	CTX_DATA_BEGIN (C, Base *, base, selected_editable_bases)
 	{
@@ -1652,11 +1700,10 @@ static int convert_exec(bContext *C, wmOperator *op)
 			dm = mesh_get_derived_final(scene, newob, CD_MASK_MESH);
 			// dm = mesh_create_derived_no_deform(ob1, NULL);  /* this was called original (instead of get_derived). man o man why! (ton) */
 
-			DM_to_mesh(dm, newob->data, newob, CD_MASK_MESH);
+			DM_to_mesh(dm, newob->data, newob, CD_MASK_MESH, true);
 
 			/* re-tessellation is called by DM_to_mesh */
 
-			dm->release(dm);
 			BKE_object_free_modifiers(newob);   /* after derivedmesh calls! */
 		}
 		else if (ob->type == OB_FONT) {
@@ -1820,14 +1867,21 @@ static int convert_exec(bContext *C, wmOperator *op)
 
 	if (!keep_original) {
 		if (mballConverted) {
-			Base *base = scene->base.first, *tmpbase;
-			while (base) {
-				ob = base->object;
-				tmpbase = base;
-				base = base->next;
+			Base *base, *base_next;
 
+			for (base = scene->base.first; base; base = base_next) {
+				base_next = base->next;
+
+				ob = base->object;
 				if (ob->type == OB_MBALL) {
-					ED_base_object_free_and_unlink(bmain, scene, tmpbase);
+					if (ob->flag & OB_DONE) {
+						Object *ob_basis = NULL;
+						if (BKE_mball_is_basis(ob) ||
+						    ((ob_basis = BKE_mball_basis_find(scene, ob)) && (ob_basis->flag & OB_DONE)))
+						{
+							ED_base_object_free_and_unlink(bmain, scene, base);
+						}
+					}
 				}
 			}
 		}
@@ -2270,7 +2324,7 @@ static int add_named_exec(bContext *C, wmOperator *op)
 
 	MEM_freeN(base);
 
-	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
+	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT | ND_OB_ACTIVE, scene);
 
 	return OPERATOR_FINISHED;
 }

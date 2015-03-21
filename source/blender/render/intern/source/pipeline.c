@@ -90,7 +90,6 @@
 #include "renderdatabase.h"
 #include "rendercore.h"
 #include "initrender.h"
-#include "shadbuf.h"
 #include "pixelblending.h"
 #include "zbuf.h"
 
@@ -257,7 +256,7 @@ Render *RE_GetRender(const char *name)
 
 	/* search for existing renders */
 	for (re = RenderGlobal.renderlist.first; re; re = re->next)
-		if (strncmp(re->name, name, RE_MAXNAME) == 0)
+		if (STREQLEN(re->name, name, RE_MAXNAME))
 			break;
 
 	return re;
@@ -386,6 +385,7 @@ Render *RE_NewRender(const char *name)
 		BLI_addtail(&RenderGlobal.renderlist, re);
 		BLI_strncpy(re->name, name, RE_MAXNAME);
 		BLI_rw_mutex_init(&re->resultmutex);
+		BLI_rw_mutex_init(&re->partsmutex);
 		re->eval_ctx = MEM_callocN(sizeof(EvaluationContext), "re->eval_ctx");
 		re->eval_ctx->mode = DAG_EVAL_RENDER;
 	}
@@ -424,6 +424,7 @@ void RE_FreeRender(Render *re)
 		RE_engine_free(re->engine);
 
 	BLI_rw_mutex_end(&re->resultmutex);
+	BLI_rw_mutex_end(&re->partsmutex);
 
 	BLI_freelistN(&re->r.layers);
 	
@@ -491,6 +492,12 @@ void RE_FreePersistentData(void)
 static int check_mode_full_sample(RenderData *rd)
 {
 	int scemode = rd->scemode;
+
+	if (!STREQ(rd->engine, RE_engine_id_BLENDER_RENDER) &&
+	    !STREQ(rd->engine, RE_engine_id_BLENDER_GAME))
+	{
+		scemode &= ~R_FULL_SAMPLE;
+	}
 
 	if ((rd->mode & R_OSA) == 0)
 		scemode &= ~R_FULL_SAMPLE;
@@ -713,10 +720,10 @@ static void render_result_rescale(Render *re)
 			scale_y = (float) result->recty / re->result->recty;
 			for (x = 0; x < re->result->rectx; ++x) {
 				for (y = 0; y < re->result->recty; ++y) {
-					int src_x = x * scale_x,
-					    src_y = y * scale_y;
-					int dst_index = y * re->result->rectx + x,
-					    src_index = src_y * result->rectx + src_x;
+					int src_x = x * scale_x;
+					int src_y = y * scale_y;
+					int dst_index = y * re->result->rectx + x;
+					int src_index = src_y * result->rectx + src_x;
 					copy_v4_v4(dst_rectf + dst_index * 4,
 					           src_rectf + src_index * 4);
 				}
@@ -1015,8 +1022,8 @@ static bool find_next_pano_slice(Render *re, int *slice, int *minx, rctf *viewpl
 		
 		/* rotate database according to part coordinates */
 		project_renderdata(re, projectverto, 1, -R.panodxp * phi, 1);
-		R.panosi = sin(R.panodxp * phi);
-		R.panoco = cos(R.panodxp * phi);
+		R.panosi = sinf(R.panodxp * phi);
+		R.panoco = cosf(R.panodxp * phi);
 	}
 	
 	(*slice)++;
@@ -1263,8 +1270,9 @@ static void threaded_tile_processor(Render *re)
 
 	/* unset threadsafety */
 	g_break = 0;
-	
+	BLI_rw_mutex_lock(&re->partsmutex, THREAD_LOCK_WRITE);
 	RE_parts_free(re);
+	BLI_rw_mutex_unlock(&re->partsmutex);
 	re->viewplane = viewplane; /* restore viewplane, modified by pano render */
 }
 
@@ -2345,7 +2353,9 @@ static void renderresult_stampinfo(Render *re)
 
 	/* this is the basic trick to get the displayed float or char rect from render result */
 	RE_AcquireResultImage(re, &rres);
-	BKE_stamp_buf(re->scene, RE_GetCamera(re), (unsigned char *)rres.rect32, rres.rectf, rres.rectx, rres.recty, 4);
+	BKE_image_stamp_buf(
+	        re->scene, RE_GetCamera(re),
+	        (unsigned char *)rres.rect32, rres.rectf, rres.rectx, rres.recty, 4);
 	RE_ReleaseResultImage(re);
 }
 
@@ -2374,6 +2384,7 @@ static void do_render_seq(Render *re)
 	RenderResult *rr; /* don't assign re->result here as it might change during give_ibuf_seq */
 	int cfra = re->r.cfra;
 	SeqRenderData context;
+	int re_x, re_y;
 
 	re->i.cfra = cfra;
 
@@ -2387,13 +2398,18 @@ static void do_render_seq(Render *re)
 	if ((re->r.mode & R_BORDER) && (re->r.mode & R_CROP) == 0) {
 		/* if border rendering is used and cropping is disabled, final buffer should
 		 * be as large as the whole frame */
-		context = BKE_sequencer_new_render_data(re->eval_ctx, re->main, re->scene,
-		                                        re->winx, re->winy, 100);
+		re_x = re->winx;
+		re_y = re->winy;
 	}
 	else {
-		context = BKE_sequencer_new_render_data(re->eval_ctx, re->main, re->scene,
-		                                        re->result->rectx, re->result->recty, 100);
+		re_x = re->result->rectx;
+		re_y = re->result->recty;
 	}
+
+	BKE_sequencer_new_render_data(
+	        re->eval_ctx, re->main, re->scene,
+	        re_x, re_y, 100,
+	        &context);
 
 	out = BKE_sequencer_give_ibuf(&context, cfra, 0);
 
@@ -2820,8 +2836,9 @@ void RE_BlenderFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 			}
 			else {
 				char name[FILE_MAX];
-				BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra,
-				                  &scene->r.im_format, (scene->r.scemode & R_EXTENSION) != 0, false);
+				BKE_image_path_from_imformat(
+				        name, scene->r.pic, bmain->name, scene->r.cfra,
+				        &scene->r.im_format, (scene->r.scemode & R_EXTENSION) != 0, false);
 
 				/* reports only used for Movie */
 				do_write_image_or_movie(re, bmain, scene, NULL, name);
@@ -2829,6 +2846,9 @@ void RE_BlenderFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 		}
 
 		BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_POST); /* keep after file save */
+		if (write_still) {
+			BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_WRITE);
+		}
 	}
 
 	BLI_callback_exec(re->main, (ID *)scene, G.is_break ? BLI_CB_EVT_RENDER_CANCEL : BLI_CB_EVT_RENDER_COMPLETE);
@@ -2903,8 +2923,9 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 		if (name_override)
 			BLI_strncpy(name, name_override, sizeof(name));
 		else
-			BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra,
-			                  &scene->r.im_format, (scene->r.scemode & R_EXTENSION) != 0, true);
+			BKE_image_path_from_imformat(
+			        name, scene->r.pic, bmain->name, scene->r.cfra,
+			        &scene->r.im_format, (scene->r.scemode & R_EXTENSION) != 0, true);
 		
 		if (re->r.im_format.imtype == R_IMF_IMTYPE_MULTILAYER) {
 			if (re->result) {
@@ -2932,7 +2953,7 @@ static int do_write_image_or_movie(Render *re, Main *bmain, Scene *scene, bMovie
 
 				if (BLI_testextensie(name, ".exr"))
 					name[strlen(name) - 4] = 0;
-				BKE_add_image_extension(name, &imf);
+				BKE_image_path_ensure_ext_from_imformat(name, &imf);
 				ibuf->planes = 24;
 
 				IMB_colormanagement_imbuf_for_write(ibuf, true, false, &scene->view_settings,
@@ -3026,6 +3047,7 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 
 				if (G.is_break == false) {
 					BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_POST); /* keep after file save */
+					BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_WRITE);
 				}
 			}
 			else {
@@ -3064,8 +3086,9 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 			/* Touch/NoOverwrite options are only valid for image's */
 			if (BKE_imtype_is_movie(scene->r.im_format.imtype) == 0) {
 				if (scene->r.mode & (R_NO_OVERWRITE | R_TOUCH))
-					BKE_makepicstring(name, scene->r.pic, bmain->name, scene->r.cfra,
-					                  &scene->r.im_format, (scene->r.scemode & R_EXTENSION) != 0, true);
+					BKE_image_path_from_imformat(
+					        name, scene->r.pic, bmain->name, scene->r.cfra,
+					        &scene->r.im_format, (scene->r.scemode & R_EXTENSION) != 0, true);
 
 				if (scene->r.mode & R_NO_OVERWRITE && BLI_exists(name)) {
 					printf("skipping existing frame \"%s\"\n", name);
@@ -3098,7 +3121,8 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 			if (G.is_break == true) {
 				/* remove touched file */
 				if (BKE_imtype_is_movie(scene->r.im_format.imtype) == 0) {
-					if (scene->r.mode & R_TOUCH && BLI_exists(name) && BLI_file_size(name) == 0) {
+					if ((scene->r.mode & R_TOUCH) && (BLI_file_size(name) == 0)) {
+						/* BLI_exists(name) is implicit */
 						BLI_delete(name, false, false);
 					}
 				}
@@ -3108,6 +3132,7 @@ void RE_BlenderAnim(Render *re, Main *bmain, Scene *scene, Object *camera_overri
 
 			if (G.is_break == false) {
 				BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_POST); /* keep after file save */
+				BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_WRITE);
 			}
 		}
 	}
@@ -3319,11 +3344,3 @@ bool RE_WriteEnvmapResult(struct ReportList *reports, Scene *scene, EnvMap *env,
 	}
 }
 
-
-/* Needed to export the static render_initialize_from_main_function */
-int blensor_initialize_from_main(Render *re, RenderData *rd, Main *bmain, Scene *scene, SceneRenderLayer *srl,
-                                       Object *camera_override, unsigned int lay_override, int anim, int anim_init)
-{
-  return render_initialize_from_main(re, rd, bmain, scene, srl,
-                       camera_override, lay_override, anim, anim_init);
-}

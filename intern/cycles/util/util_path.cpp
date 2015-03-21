@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "util_debug.h"
@@ -25,12 +25,6 @@ OIIO_NAMESPACE_USING
 
 #include <stdio.h>
 
-#include <boost/version.hpp>
-
-#if (BOOST_VERSION < 104400)
-#  define BOOST_FILESYSTEM_VERSION 2
-#endif
-
 #include <boost/filesystem.hpp> 
 #include <boost/algorithm/string.hpp>
 
@@ -41,21 +35,31 @@ static string cached_user_path = "";
 
 static boost::filesystem::path to_boost(const string& path)
 {
-#ifdef _MSC_VER
-	std::wstring path_utf16 = Strutil::utf8_to_utf16(path.c_str());
-	return boost::filesystem::path(path_utf16.c_str());
-#else
 	return boost::filesystem::path(path.c_str());
-#endif
 }
 
 static string from_boost(const boost::filesystem::path& path)
 {
-#ifdef _MSC_VER
-	return Strutil::utf16_to_utf8(path.wstring().c_str());
-#else
 	return path.string().c_str();
-#endif
+}
+
+static char *path_specials(const string& sub)
+{
+	static bool env_init = false;
+	static char *env_shader_path;
+	static char *env_kernel_path;
+	if(!env_init) {
+		env_shader_path = getenv("CYCLES_SHADER_PATH");
+		env_kernel_path = getenv("CYCLES_KERNEL_PATH");
+		env_init = true;
+	}
+	if(env_shader_path != NULL && sub == "shader") {
+		return env_shader_path;
+	}
+	else if(env_shader_path != NULL && sub == "kernel") {
+		return env_kernel_path;
+	}
+	return NULL;
 }
 
 void path_init(const string& path, const string& user_path)
@@ -71,6 +75,10 @@ void path_init(const string& path, const string& user_path)
 
 string path_get(const string& sub)
 {
+	char *special = path_specials(sub);
+	if(special != NULL)
+		return special;
+
 	if(cached_path == "")
 		cached_path = path_dirname(Sysutil::this_program_path());
 
@@ -87,11 +95,7 @@ string path_user_get(const string& sub)
 
 string path_filename(const string& path)
 {
-#if (BOOST_FILESYSTEM_VERSION == 2)
-	return to_boost(path).filename();
-#else
 	return from_boost(to_boost(path).filename());
-#endif
 }
 
 string path_dirname(const string& path)
@@ -259,14 +263,7 @@ string path_source_replace_includes(const string& source_, const string& path)
 
 FILE *path_fopen(const string& path, const string& mode)
 {
-#ifdef _WIN32
-	std::wstring path_utf16 = Strutil::utf8_to_utf16(path);
-	std::wstring mode_utf16 = Strutil::utf8_to_utf16(mode);
-
-	return _wfopen(path_utf16.c_str(), mode_utf16.c_str());
-#else
 	return fopen(path.c_str(), mode.c_str());
-#endif
 }
 
 void path_cache_clear_except(const string& name, const set<string>& except)
@@ -277,11 +274,7 @@ void path_cache_clear_except(const string& name, const set<string>& except)
 		boost::filesystem::directory_iterator it(dir), it_end;
 
 		for(; it != it_end; it++) {
-#if (BOOST_FILESYSTEM_VERSION == 2)
-			string filename = from_boost(it->path().filename());
-#else
 			string filename = from_boost(it->path().filename().string());
-#endif
 
 			if(boost::starts_with(filename, name))
 				if(except.find(filename) == except.end())

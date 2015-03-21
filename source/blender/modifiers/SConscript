@@ -34,7 +34,6 @@ incs = [
     './intern', 
     '#/intern/guardedalloc',
     '#/intern/elbeem/extern',
-    '#/extern/glew/include',
     '#/intern/opennl/extern',
     '../render/extern/include',
     '../bmesh',
@@ -53,6 +52,9 @@ defs = []
 if env['WITH_BF_BOOLEAN']:
     incs.append('#/extern/carve')
     defs.append('WITH_MOD_BOOLEAN')
+else:
+    from os import path
+    sources.remove(path.join('intern', 'MOD_boolean_util.c'))
 
 if env['WITH_BF_REMESH']:
     incs.append('#/intern/dualcon')
@@ -63,6 +65,9 @@ if env['WITH_BF_FLUID']:
 
 if env['WITH_BF_OCEANSIM']:
     defs.append('WITH_OCEANSIM')
+
+if env['WITH_BF_BULLET']:
+    defs.append('WITH_BULLET')
 
 if env['WITH_BF_GAMEENGINE']:
     incs.append('#/extern/recastnavigation')

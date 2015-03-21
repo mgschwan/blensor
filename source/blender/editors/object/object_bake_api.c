@@ -379,7 +379,10 @@ static bool bake_object_check(Object *ob, ReportList *reports)
 
 			if (node) {
 				if (BKE_node_is_connected_to_output(ntree, node)) {
-					BKE_reportf(reports, RPT_ERROR,
+					/* we don't return false since this may be a false positive
+					 * this can't be RPT_ERROR though, otherwise it prevents
+					 * multiple highpoly objects to be baked at once */
+					BKE_reportf(reports, RPT_INFO,
 					            "Circular dependency for image \"%s\" from object \"%s\"",
 					            image->id.name + 2, ob->id.name + 2);
 				}
@@ -682,7 +685,9 @@ static int bake(
 	result = MEM_callocN(sizeof(float) * depth * num_pixels, "bake return pixels");
 
 	/* get the mesh as it arrives in the renderer */
-	me_low = BKE_mesh_new_from_object(bmain, scene, ob_low, 1, 2, 1, 0);
+	me_low = BKE_mesh_new_from_object(bmain, scene, ob_low, 1, 2, 0, 0);
+	BKE_mesh_split_faces(me_low);
+	BKE_mesh_tessface_ensure(me_low);
 
 	/* populate the pixel array with the face data */
 	if ((is_selected_to_active && (ob_cage == NULL) && is_cage) == false)
@@ -697,7 +702,9 @@ static int bake(
 
 		/* prepare cage mesh */
 		if (ob_cage) {
-			me_cage = BKE_mesh_new_from_object(bmain, scene, ob_cage, 1, 2, 1, 0);
+			me_cage = BKE_mesh_new_from_object(bmain, scene, ob_cage, 1, 2, 0, 0);
+			BKE_mesh_split_faces(me_cage);
+			BKE_mesh_tessface_ensure(me_cage);
 			if (me_low->totface != me_cage->totface) {
 				BKE_report(reports, RPT_ERROR,
 				           "Invalid cage object, the cage mesh must have the same number "
@@ -729,7 +736,9 @@ static int bake(
 			ob_low->modifiers = modifiers_tmp;
 
 			/* get the cage mesh as it arrives in the renderer */
-			me_cage = BKE_mesh_new_from_object(bmain, scene, ob_low, 1, 2, 1, 0);
+			me_cage = BKE_mesh_new_from_object(bmain, scene, ob_low, 1, 2, 0, 0);
+			BKE_mesh_split_faces(me_cage);
+			BKE_mesh_tessface_ensure(me_cage);
 			RE_bake_pixels_populate(me_cage, pixel_array_low, num_pixels, &bake_images, uv_layer);
 		}
 
@@ -757,8 +766,10 @@ static int bake(
 			tmd->quad_method = MOD_TRIANGULATE_QUAD_FIXED;
 			tmd->ngon_method = MOD_TRIANGULATE_NGON_EARCLIP;
 
-			highpoly[i].me = BKE_mesh_new_from_object(bmain, scene, highpoly[i].ob, 1, 2, 1, 0);
+			highpoly[i].me = BKE_mesh_new_from_object(bmain, scene, highpoly[i].ob, 1, 2, 0, 0);
 			highpoly[i].ob->restrictflag &= ~OB_RESTRICT_RENDER;
+			BKE_mesh_split_faces(highpoly[i].me);
+			BKE_mesh_tessface_ensure(highpoly[i].me);
 
 			/* lowpoly to highpoly transformation matrix */
 			copy_m4_m4(highpoly[i].obmat, highpoly[i].ob->obmat);
@@ -768,7 +779,7 @@ static int bake(
 			normalize_m4_m4(highpoly[i].rotmat, highpoly[i].imat);
 			zero_v3(highpoly[i].rotmat[3]);
 			if (is_negative_m4(highpoly[i].rotmat))
-				negate_m3(highpoly[i].rotmat);
+				negate_mat3_m4(highpoly[i].rotmat);
 
 			i++;
 		}
@@ -864,7 +875,9 @@ cage_cleanup:
 						md->mode &= ~eModifierMode_Render;
 					}
 
-					me_nores = BKE_mesh_new_from_object(bmain, scene, ob_low, 1, 2, 1, 0);
+					me_nores = BKE_mesh_new_from_object(bmain, scene, ob_low, 1, 2, 0, 0);
+					BKE_mesh_split_faces(me_nores);
+					BKE_mesh_tessface_ensure(me_nores);
 					RE_bake_pixels_populate(me_nores, pixel_array_low, num_pixels, &bake_images, uv_layer);
 
 					RE_bake_normal_world_to_tangent(pixel_array_low, num_pixels, depth, result, me_nores, normal_swizzle, ob_low->obmat);
@@ -916,7 +929,7 @@ cage_cleanup:
 				BakeData *bake = &scene->r.bake;
 				char name[FILE_MAX];
 
-				BKE_makepicstring_from_type(name, filepath, bmain->name, 0, bake->im_format.imtype, true, false);
+				BKE_image_path_from_imtype(name, filepath, bmain->name, 0, bake->im_format.imtype, true, false);
 
 				if (is_automatic_name) {
 					BLI_path_suffix(name, FILE_MAX, ob_low->id.name + 2, "_");
@@ -1081,8 +1094,9 @@ static int bake_exec(bContext *C, wmOperator *op)
 	/* setup new render */
 	RE_test_break_cb(re, NULL, bake_break);
 
-	if (!bake_objects_check(bkr.main, bkr.ob, &bkr.selected_objects, bkr.reports, bkr.is_selected_to_active))
-		return OPERATOR_CANCELLED;
+	if (!bake_objects_check(bkr.main, bkr.ob, &bkr.selected_objects, bkr.reports, bkr.is_selected_to_active)) {
+		goto finally;
+	}
 
 	if (bkr.is_clear) {
 		const bool is_tangent = ((bkr.pass_type == SCE_PASS_NORMAL) && (bkr.normal_space == R_BAKE_SPACE_TANGENT));
@@ -1117,6 +1131,8 @@ static int bake_exec(bContext *C, wmOperator *op)
 
 	RE_SetReports(re, NULL);
 
+
+finally:
 	BLI_freelistN(&bkr.selected_objects);
 	return result;
 }
@@ -1208,7 +1224,7 @@ static void bake_set_props(wmOperator *op, Scene *scene)
 
 	prop = RNA_struct_find_property(op->ptr, "use_selected_to_active");
 	if (!RNA_property_is_set(op->ptr, prop)) {
-		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_TO_ACTIVE));
+		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_TO_ACTIVE) != 0);
 	}
 
 	prop = RNA_struct_find_property(op->ptr, "cage_extrusion");
@@ -1248,22 +1264,22 @@ static void bake_set_props(wmOperator *op, Scene *scene)
 
 	prop = RNA_struct_find_property(op->ptr, "use_clear");
 	if (!RNA_property_is_set(op->ptr, prop)) {
-		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_CLEAR));
+		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_CLEAR) != 0);
 	}
 
 	prop = RNA_struct_find_property(op->ptr, "use_cage");
 	if (!RNA_property_is_set(op->ptr, prop)) {
-		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_CAGE));
+		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_CAGE) != 0);
 	}
 
 	prop = RNA_struct_find_property(op->ptr, "use_split_materials");
 	if (!RNA_property_is_set(op->ptr, prop)) {
-		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_SPLIT_MAT));
+		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_SPLIT_MAT) != 0);
 	}
 
 	prop = RNA_struct_find_property(op->ptr, "use_automatic_name");
 	if (!RNA_property_is_set(op->ptr, prop)) {
-		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_AUTO_NAME));
+		RNA_property_boolean_set(op->ptr, prop, (bake->flag & R_BAKE_AUTO_NAME) != 0);
 	}
 }
 

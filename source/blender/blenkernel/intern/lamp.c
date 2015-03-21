@@ -41,7 +41,6 @@
 #include "DNA_scene_types.h"
 #include "DNA_texture_types.h"
 
-#include "BLI_listbase.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
@@ -127,6 +126,10 @@ Lamp *BKE_lamp_copy(Lamp *la)
 	if (la->preview)
 		lan->preview = BKE_previewimg_copy(la->preview);
 	
+	if (la->id.lib) {
+		BKE_id_lib_local_paths(G.main, la->id.lib, &lan->id);
+	}
+
 	return lan;
 }
 

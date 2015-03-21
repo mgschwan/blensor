@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
@@ -40,6 +40,9 @@ ccl_device_inline int find_attribute(KernelGlobals *kg, const ShaderData *sd, ui
 	uint4 attr_map = kernel_tex_fetch(__attributes_map, attr_offset);
 	
 	while(attr_map.x != id) {
+		if(UNLIKELY(attr_map.x == ATTR_STD_NONE)) {
+			return ATTR_STD_NOT_FOUND;
+		}
 		attr_offset += ATTR_PRIM_TYPES;
 		attr_map = kernel_tex_fetch(__attributes_map, attr_offset);
 	}

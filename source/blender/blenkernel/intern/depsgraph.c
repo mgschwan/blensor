@@ -484,7 +484,7 @@ static void dag_add_collision_field_relation(DagForest *dag, Scene *scene, Objec
 	}
 }
 
-static void build_dag_object(DagForest *dag, DagNode *scenenode, Scene *scene, Object *ob, int mask)
+static void build_dag_object(DagForest *dag, DagNode *scenenode, Main *bmain, Scene *scene, Object *ob, int mask)
 {
 	bConstraint *con;
 	DagNode *node;
@@ -576,7 +576,7 @@ static void build_dag_object(DagForest *dag, DagNode *scenenode, Scene *scene, O
 		for (md = ob->modifiers.first; md; md = md->next) {
 			ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 			
-			if (mti->updateDepgraph) mti->updateDepgraph(md, dag, scene, ob, node);
+			if (mti->updateDepgraph) mti->updateDepgraph(md, dag, bmain, scene, ob, node);
 		}
 	}
 	if (ob->parent) {
@@ -891,7 +891,7 @@ static void build_dag_object(DagForest *dag, DagNode *scenenode, Scene *scene, O
 		dag_add_relation(dag, scenenode, node, DAG_RL_SCENE, "Scene Relation");
 }
 
-static void build_dag_group(DagForest *dag, DagNode *scenenode, Scene *scene, Group *group, short mask)
+static void build_dag_group(DagForest *dag, DagNode *scenenode, Main *bmain, Scene *scene, Group *group, short mask)
 {
 	GroupObject *go;
 
@@ -901,9 +901,9 @@ static void build_dag_group(DagForest *dag, DagNode *scenenode, Scene *scene, Gr
 	group->id.flag |= LIB_DOIT;
 
 	for (go = group->gobject.first; go; go = go->next) {
-		build_dag_object(dag, scenenode, scene, go->ob, mask);
+		build_dag_object(dag, scenenode, bmain, scene, go->ob, mask);
 		if (go->ob->dup_group)
-			build_dag_group(dag, scenenode, scene, go->ob->dup_group, mask);
+			build_dag_group(dag, scenenode, bmain, scene, go->ob->dup_group, mask);
 	}
 }
 
@@ -936,11 +936,11 @@ DagForest *build_dag(Main *bmain, Scene *sce, short mask)
 	for (base = sce->base.first; base; base = base->next) {
 		ob = base->object;
 		
-		build_dag_object(dag, scenenode, sce, ob, mask);
+		build_dag_object(dag, scenenode, bmain, sce, ob, mask);
 		if (ob->proxy)
-			build_dag_object(dag, scenenode, sce, ob->proxy, mask);
+			build_dag_object(dag, scenenode, bmain, sce, ob->proxy, mask);
 		if (ob->dup_group) 
-			build_dag_group(dag, scenenode, sce, ob->dup_group, mask);
+			build_dag_group(dag, scenenode, bmain, sce, ob->dup_group, mask);
 	}
 	
 	BKE_main_id_tag_idcode(bmain, ID_GR, false);
@@ -2355,6 +2355,15 @@ void DAG_on_visible_update(Main *bmain, const bool do_time)
 			if ((oblay & lay) & ~scene->lay_updated) {
 				if (ELEM(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_FONT, OB_MBALL, OB_LATTICE)) {
 					ob->recalc |= OB_RECALC_DATA;
+					lib_id_recalc_tag(bmain, &ob->id);
+				}
+				/* This should not be needed here, but in some cases, like after a redo, we can end up with
+				 * a wrong final matrix (see T42472).
+				 * Quoting Sergey, this comes from BKE_object_handle_update_ex, which is calling
+				 * BKE_object_where_is_calc_ex when it shouldn't, but that issue is not easily fixable.
+				 */
+				else {
+					ob->recalc |= OB_RECALC_OB;
 					lib_id_recalc_tag(bmain, &ob->id);
 				}
 				if (ob->proxy && (ob->proxy_group == NULL)) {

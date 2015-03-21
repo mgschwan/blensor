@@ -62,7 +62,10 @@ from freestyle.predicates import (
     TrueBP1D,
     TrueUP1D,
     WithinImageBoundaryUP1D,
+    pyNFirstUP1D,
     pyNatureUP1D,
+    pyProjectedXBP1D,
+    pyProjectedYBP1D,
     pyZBP1D,
     )
 from freestyle.shaders import (
@@ -94,7 +97,7 @@ from freestyle.utils import (
     stroke_normal,
     bound,
     pairwise,
-    BoundedProperty
+    BoundedProperty,
     )
 from _freestyle import (
     blendRamp,
@@ -106,6 +109,12 @@ import time
 from mathutils import Vector
 from math import pi, sin, cos, acos, radians
 from itertools import cycle, tee
+
+# lists of callback functions
+# WARNING: highly experimental, not a stable API
+callbacks_lineset_pre = []
+callbacks_modifiers_post = []
+callbacks_lineset_post = []
 
 
 class ColorRampModifier(StrokeShader):
@@ -271,7 +280,7 @@ class ColorAlongStrokeShader(ColorRampModifier):
 
 
 class AlphaAlongStrokeShader(CurveMappingModifier):
-    """Maps a curve to the alpha/transparancy of the stroke, using the curvilinear abscissa (t)."""
+    """Maps a curve to the alpha/transparency of the stroke, using the curvilinear abscissa (t)."""
     def shade(self, stroke):
         for svert, t in zip(stroke, iter_t2d_along_stroke(stroke)):
             a = svert.attribute.alpha
@@ -875,6 +884,21 @@ class Seed:
 _seed = Seed()
 
 
+def get_dashed_pattern(linestyle):
+    """Extracts the dashed pattern from the various UI options """
+    pattern = []
+    if linestyle.dash1 > 0 and linestyle.gap1 > 0:
+        pattern.append(linestyle.dash1)
+        pattern.append(linestyle.gap1)
+    if linestyle.dash2 > 0 and linestyle.gap2 > 0:
+        pattern.append(linestyle.dash2)
+        pattern.append(linestyle.gap2)
+    if linestyle.dash3 > 0 and linestyle.gap3 > 0:
+        pattern.append(linestyle.dash3)
+        pattern.append(linestyle.gap3)
+    return pattern
+
+
 integration_types = {
     'MEAN': IntegrationType.MEAN,
     'MIN': IntegrationType.MIN,
@@ -884,12 +908,15 @@ integration_types = {
 
 
 # main function for parameter processing
-
 def process(layer_name, lineset_name):
     scene = getCurrentScene()
     layer = scene.render.layers[layer_name]
     lineset = layer.freestyle_settings.linesets[lineset_name]
     linestyle = lineset.linestyle
+
+    # execute line set pre-processing callback functions
+    for fn in callbacks_lineset_pre:
+        fn(scene, layer, lineset)
 
     selection_criteria = []
     # prepare selection criteria by visibility
@@ -1006,11 +1033,6 @@ def process(layer_name, lineset_name):
             Operators.sequential_split(SplitPatternStartingUP0D(controller),
                                        SplitPatternStoppingUP0D(controller),
                                        sampling)
-    # select chains
-    if linestyle.use_length_min or linestyle.use_length_max:
-        length_min = linestyle.length_min if linestyle.use_length_min else None
-        length_max = linestyle.length_max if linestyle.use_length_max else None
-        Operators.select(LengthThresholdUP1D(length_min, length_max))
     # sort selected chains
     if linestyle.use_sorting:
         integration = integration_types.get(linestyle.integration_type, IntegrationType.MEAN)
@@ -1018,9 +1040,20 @@ def process(layer_name, lineset_name):
             bpred = pyZBP1D(integration)
         elif linestyle.sort_key == '2D_LENGTH':
             bpred = Length2DBP1D()
+        elif linestyle.sort_key == 'PROJECTED_X':
+            bpred = pyProjectedXBP1D(integration)
+        elif linestyle.sort_key == 'PROJECTED_Y':
+            bpred = pyProjectedYBP1D(integration)
         if linestyle.sort_order == 'REVERSE':
             bpred = NotBP1D(bpred)
         Operators.sort(bpred)
+    # select chains
+    if linestyle.use_length_min or linestyle.use_length_max:
+        length_min = linestyle.length_min if linestyle.use_length_min else None
+        length_max = linestyle.length_max if linestyle.use_length_max else None
+        Operators.select(LengthThresholdUP1D(length_min, length_max))
+    if linestyle.use_chain_count:
+        Operators.select(pyNFirstUP1D(linestyle.chain_count))
     # prepare a list of stroke shaders
     shaders_list = []
     for m in linestyle.geometry_modifiers:
@@ -1163,24 +1196,26 @@ def process(layer_name, lineset_name):
                 has_tex = True
     if has_tex:
         shaders_list.append(StrokeTextureStepShader(linestyle.texture_spacing))
+
+    # execute post-base stylization callbacks
+    for fn in callbacks_modifiers_post:
+        shaders_list.extend(fn(scene, layer, lineset))
+
     # -- Stroke caps -- #
     if linestyle.caps == 'ROUND':
         shaders_list.append(RoundCapShader())
     elif linestyle.caps == 'SQUARE':
         shaders_list.append(SquareCapShader())
+
     # -- Dashed line -- #
     if linestyle.use_dashed_line:
-        pattern = []
-        if linestyle.dash1 > 0 and linestyle.gap1 > 0:
-            pattern.append(linestyle.dash1)
-            pattern.append(linestyle.gap1)
-        if linestyle.dash2 > 0 and linestyle.gap2 > 0:
-            pattern.append(linestyle.dash2)
-            pattern.append(linestyle.gap2)
-        if linestyle.dash3 > 0 and linestyle.gap3 > 0:
-            pattern.append(linestyle.dash3)
-            pattern.append(linestyle.gap3)
+        pattern = get_dashed_pattern(linestyle)
         if len(pattern) > 0:
             shaders_list.append(DashedLineShader(pattern))
+
     # create strokes using the shaders list
     Operators.create(TrueUP1D(), shaders_list)
+
+    # execute line set post-processing callback functions
+    for fn in callbacks_lineset_post:
+        fn(scene, layer, lineset)

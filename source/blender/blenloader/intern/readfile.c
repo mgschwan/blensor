@@ -113,6 +113,7 @@
 
 #include "BKE_armature.h"
 #include "BKE_brush.h"
+#include "BKE_cloth.h"
 #include "BKE_constraint.h"
 #include "BKE_context.h"
 #include "BKE_curve.h"
@@ -141,13 +142,9 @@
 #include "BKE_treehash.h"
 #include "BKE_sound.h"
 
-#include "IMB_imbuf.h"  // for proxy / timecode versioning stuff
 
 #include "NOD_common.h"
 #include "NOD_socket.h"
-#include "NOD_composite.h"
-#include "NOD_shader.h"
-#include "NOD_texture.h"
 
 #include "BLO_readfile.h"
 #include "BLO_undofile.h"
@@ -157,7 +154,6 @@
 
 #include "readfile.h"
 
-#include "PIL_time.h"
 
 #include <errno.h>
 
@@ -210,6 +206,9 @@
  * - initialize FileGlobal and copy pointers to Global
  */
 
+/* use GHash for BHead name-based lookups (speeds up linking) */
+#define USE_GHASH_BHEAD
+
 /***/
 
 typedef struct OldNew {
@@ -229,6 +228,8 @@ typedef struct OldNewMap {
 static void *read_struct(FileData *fd, BHead *bh, const char *blockname);
 static void direct_link_modifiers(FileData *fd, ListBase *lb);
 static void convert_tface_mt(FileData *fd, Main *main);
+static BHead *find_bhead_from_code_name(FileData *fd, const short idcode, const char *name);
+static BHead *find_bhead_from_idname(FileData *fd, const char *idname);
 
 /* this function ensures that reports are printed,
  * in the case of libraray linking errors this is important!
@@ -254,6 +255,12 @@ void blo_reportf_wrap(ReportList *reports, ReportType type, const char *format, 
 	if (G.background == 0) {
 		printf("%s\n", fixed_buf);
 	}
+}
+
+/* for reporting linking messages */
+static const char *library_parent_filepath(Library *lib)
+{
+	return lib->parent ? lib->parent->filepath : "<direct>";
 }
 
 static OldNewMap *oldnewmap_new(void) 
@@ -289,15 +296,9 @@ static void oldnewmap_insert(OldNewMap *onm, void *oldaddr, void *newaddr, int n
 	
 	if (oldaddr==NULL || newaddr==NULL) return;
 	
-	if (onm->nentries == onm->entriessize) {
-		int osize = onm->entriessize;
-		OldNew *oentries = onm->entries;
-		
+	if (UNLIKELY(onm->nentries == onm->entriessize)) {
 		onm->entriessize *= 2;
-		onm->entries = MEM_mallocN(sizeof(*onm->entries)*onm->entriessize, "OldNewMap.entries");
-		
-		memcpy(onm->entries, oentries, sizeof(*oentries)*osize);
-		MEM_freeN(oentries);
+		onm->entries = MEM_reallocN(onm->entries, sizeof(*onm->entries) * onm->entriessize);
 	}
 
 	entry = &onm->entries[onm->nentries++];
@@ -505,6 +506,44 @@ static void read_file_version(FileData *fd, Main *main)
 		}
 	}
 }
+
+#ifdef USE_GHASH_BHEAD
+static void read_file_bhead_idname_map_create(FileData *fd)
+{
+	BHead *bhead;
+
+	/* dummy values */
+	bool is_link = false;
+	int code_prev = ENDB;
+	unsigned int reserve = 0;
+
+	for (bhead = blo_firstbhead(fd); bhead; bhead = blo_nextbhead(fd, bhead)) {
+		if (code_prev != bhead->code) {
+			code_prev = bhead->code;
+			is_link = BKE_idcode_is_valid(code_prev) ? BKE_idcode_is_linkable(code_prev) : false;
+		}
+
+		if (is_link) {
+			reserve += 1;
+		}
+	}
+
+	BLI_assert(fd->bhead_idname_hash == NULL);
+
+	fd->bhead_idname_hash = BLI_ghash_str_new_ex(__func__, reserve);
+
+	for (bhead = blo_firstbhead(fd); bhead; bhead = blo_nextbhead(fd, bhead)) {
+		if (code_prev != bhead->code) {
+			code_prev = bhead->code;
+			is_link = BKE_idcode_is_valid(code_prev) ? BKE_idcode_is_linkable(code_prev) : false;
+		}
+
+		if (is_link) {
+			BLI_ghash_insert(fd->bhead_idname_hash, (void *)bhead_id_name(fd, bhead), bhead);
+		}
+	}
+}
+#endif
 
 
 static Main *blo_find_main(FileData *fd, const char *filepath, const char *relabase)
@@ -734,7 +773,7 @@ BHead *blo_firstbhead(FileData *fd)
 
 BHead *blo_prevbhead(FileData *UNUSED(fd), BHead *thisblock)
 {
-	BHeadN *bheadn = (BHeadN *) (((char *) thisblock) - offsetof(BHeadN, bhead));
+	BHeadN *bheadn = (BHeadN *)POINTER_OFFSET(thisblock, -offsetof(BHeadN, bhead));
 	BHeadN *prev = bheadn->prev;
 	
 	return (prev) ? &prev->bhead : NULL;
@@ -748,7 +787,7 @@ BHead *blo_nextbhead(FileData *fd, BHead *thisblock)
 	if (thisblock) {
 		/* bhead is actually a sub part of BHeadN
 		 * We calculate the BHeadN pointer from the BHead pointer below */
-		new_bhead = (BHeadN *) (((char *) thisblock) - offsetof(BHeadN, bhead));
+		new_bhead = (BHeadN *)POINTER_OFFSET(thisblock, -offsetof(BHeadN, bhead));
 		
 		/* get the next BHeadN. If it doesn't exist we read in the next one */
 		new_bhead = new_bhead->next;
@@ -775,7 +814,7 @@ static void decode_blender_header(FileData *fd)
 	readsize = fd->read(fd, header, sizeof(header));
 	
 	if (readsize == sizeof(header)) {
-		if (strncmp(header, "BLENDER", 7) == 0) {
+		if (STREQLEN(header, "BLENDER", 7)) {
 			int remove_this_endian_test = 1;
 			
 			fd->flags |= FD_FLAGS_FILE_OK;
@@ -918,7 +957,7 @@ static int fd_read_from_memfile(FileData *filedata, void *buffer, unsigned int s
 			if (chunkoffset+readsize > chunk->size)
 				readsize= chunk->size-chunkoffset;
 			
-			memcpy((char *)buffer + totread, chunk->buf + chunkoffset, readsize);
+			memcpy(POINTER_OFFSET(buffer, totread), chunk->buf + chunkoffset, readsize);
 			totread += readsize;
 			filedata->seek += readsize;
 			seek += readsize;
@@ -1122,6 +1161,8 @@ void blo_freefiledata(FileData *fd)
 			oldnewmap_free(fd->imamap);
 		if (fd->movieclipmap)
 			oldnewmap_free(fd->movieclipmap);
+		if (fd->soundmap)
+			oldnewmap_free(fd->soundmap);
 		if (fd->packedmap)
 			oldnewmap_free(fd->packedmap);
 		if (fd->libmap && !(fd->flags & FD_FLAGS_NOT_MY_LIBMAP))
@@ -1129,6 +1170,12 @@ void blo_freefiledata(FileData *fd)
 		if (fd->bheadmap)
 			MEM_freeN(fd->bheadmap);
 		
+#ifdef USE_GHASH_BHEAD
+		if (fd->bhead_idname_hash) {
+			BLI_ghash_free(fd->bhead_idname_hash, NULL, NULL);
+		}
+#endif
+
 		MEM_freeN(fd);
 	}
 }
@@ -1149,6 +1196,9 @@ bool BLO_is_a_library(const char *path, char *dir, char *group)
 	int len;
 	char *fd;
 	
+	/* if path leads to a directory we can be sure we're not in a library */
+	if (BLI_is_dir(path)) return 0;
+
 	strcpy(dir, path);
 	len = strlen(dir);
 	if (len < 7) return 0;
@@ -1175,7 +1225,7 @@ bool BLO_is_a_library(const char *path, char *dir, char *group)
 		
 		/* now we know that we are in a blend file and it is safe to 
 		 * assume that gp actually points to a group */
-		if (strcmp("Screen", gp) != 0)
+		if (!STREQ("Screen", gp))
 			BLI_strncpy(group, gp, BLO_GROUP_MAX);
 	}
 	return 1;
@@ -1209,6 +1259,13 @@ static void *newmclipadr(FileData *fd, void *adr)      /* used to restore movie 
 {
 	if (fd->movieclipmap && adr)
 		return oldnewmap_lookup_and_inc(fd->movieclipmap, adr, true);
+	return NULL;
+}
+
+static void *newsoundadr(FileData *fd, void *adr)      /* used to restore sound data after undo */
+{
+	if (fd->soundmap && adr)
+		return oldnewmap_lookup_and_inc(fd->soundmap, adr, true);
 	return NULL;
 }
 
@@ -1425,6 +1482,37 @@ void blo_end_movieclip_pointer_map(FileData *fd, Main *oldmain)
 				if (node->type == CMP_NODE_MOVIEDISTORTION)
 					node->storage = newmclipadr(fd, node->storage);
 		}
+	}
+}
+
+void blo_make_sound_pointer_map(FileData *fd, Main *oldmain)
+{
+	bSound *sound = oldmain->sound.first;
+	
+	fd->soundmap = oldnewmap_new();
+	
+	for (; sound; sound = sound->id.next) {
+		if (sound->waveform)
+			oldnewmap_insert(fd->soundmap, sound->waveform, sound->waveform, 0);			
+	}
+}
+
+/* set old main sound caches to zero if it has been restored */
+/* this works because freeing old main only happens after this call */
+void blo_end_sound_pointer_map(FileData *fd, Main *oldmain)
+{
+	OldNew *entry = fd->soundmap->entries;
+	bSound *sound = oldmain->sound.first;
+	int i;
+	
+	/* used entries were restored, so we put them to zero */
+	for (i = 0; i < fd->soundmap->nentries; i++, entry++) {
+		if (entry->nr > 0)
+			entry->newp = NULL;
+	}
+	
+	for (; sound; sound = sound->id.next) {
+		sound->waveform = newsoundadr(fd, sound->waveform);
 	}
 }
 
@@ -1862,7 +1950,6 @@ static void direct_link_palette(FileData *fd, Palette *palette)
 {
 	/* palette itself has been read */
 	link_list(fd, &palette->colors);
-	BLI_listbase_clear(&palette->deleted);
 }
 
 static void lib_link_paint_curve(FileData *UNUSED(fd), Main *main)
@@ -3079,14 +3166,14 @@ static void lib_link_key(FileData *fd, Main *main)
 static void switch_endian_keyblock(Key *key, KeyBlock *kb)
 {
 	int elemsize, a, b;
-	const char *data, *poin, *cp;
+	char *data;
 	
 	elemsize = key->elemsize;
 	data = kb->data;
 	
 	for (a = 0; a < kb->totelem; a++) {
-		cp = key->elemstr;
-		poin = data;
+		const char *cp = key->elemstr;
+		char *poin = data;
 		
 		while (cp[0]) {  /* cp[0] == amount */
 			switch (cp[1]) {  /* cp[1] = type */
@@ -3211,6 +3298,7 @@ static void direct_link_world(FileData *fd, World *wrld)
 	}
 	
 	wrld->preview = direct_link_preview_image(fd, wrld->preview);
+	BLI_listbase_clear(&wrld->gpumaterial);
 }
 
 
@@ -3721,25 +3809,26 @@ static void lib_link_particlesettings(FileData *fd, Main *main)
 				BoidRule *rule;
 				for (; state; state=state->next) {
 					rule = state->rules.first;
-				for (; rule; rule=rule->next)
-					switch (rule->type) {
-						case eBoidRuleType_Goal:
-						case eBoidRuleType_Avoid:
-						{
-							BoidRuleGoalAvoid *brga = (BoidRuleGoalAvoid*)rule;
-							brga->ob = newlibadr(fd, part->id.lib, brga->ob);
-							break;
-						}
-						case eBoidRuleType_FollowLeader:
-						{
-							BoidRuleFollowLeader *brfl = (BoidRuleFollowLeader*)rule;
-							brfl->ob = newlibadr(fd, part->id.lib, brfl->ob);
-							break;
+					for (; rule; rule=rule->next) {
+						switch (rule->type) {
+							case eBoidRuleType_Goal:
+							case eBoidRuleType_Avoid:
+							{
+								BoidRuleGoalAvoid *brga = (BoidRuleGoalAvoid*)rule;
+								brga->ob = newlibadr(fd, part->id.lib, brga->ob);
+								break;
+							}
+							case eBoidRuleType_FollowLeader:
+							{
+								BoidRuleFollowLeader *brfl = (BoidRuleFollowLeader*)rule;
+								brfl->ob = newlibadr(fd, part->id.lib, brfl->ob);
+								break;
+							}
 						}
 					}
 				}
 			}
-			
+
 			for (a = 0; a < MAX_MTEX; a++) {
 				mtex= part->mtex[a];
 				if (mtex) {
@@ -3769,6 +3858,13 @@ static void direct_link_particlesettings(FileData *fd, ParticleSettings *part)
 	direct_link_animdata(fd, part->adt);
 	direct_link_partdeflect(part->pd);
 	direct_link_partdeflect(part->pd2);
+
+	part->clumpcurve = newdataadr(fd, part->clumpcurve);
+	if (part->clumpcurve)
+		direct_link_curvemapping(fd, part->clumpcurve);
+	part->roughcurve = newdataadr(fd, part->roughcurve);
+	if (part->roughcurve)
+		direct_link_curvemapping(fd, part->roughcurve);
 
 	part->effector_weights = newdataadr(fd, part->effector_weights);
 	if (!part->effector_weights)
@@ -3886,6 +3982,7 @@ static void direct_link_particlesystems(FileData *fd, ListBase *particles)
 		if (psys->clmd) {
 			psys->clmd = newdataadr(fd, psys->clmd);
 			psys->clmd->clothObject = NULL;
+			psys->clmd->hairdata = NULL;
 			
 			psys->clmd->sim_parms= newdataadr(fd, psys->clmd->sim_parms);
 			psys->clmd->coll_parms= newdataadr(fd, psys->clmd->coll_parms);
@@ -3897,6 +3994,7 @@ static void direct_link_particlesystems(FileData *fd, ListBase *particles)
 			}
 			
 			psys->hair_in_dm = psys->hair_out_dm = NULL;
+			psys->clmd->solver_result = NULL;
 			
 			psys->clmd->point_cache = psys->pointcache;
 		}
@@ -4456,11 +4554,11 @@ static void lib_link_object(FileData *fd, Main *main)
 				}
 				else if (act->type == ACT_ACTION) {
 					bActionActuator *aa = act->data;
-					aa->act= newlibadr(fd, ob->id.lib, aa->act);
+					aa->act= newlibadr_us(fd, ob->id.lib, aa->act);
 				}
 				else if (act->type == ACT_SHAPEACTION) {
 					bActionActuator *aa = act->data;
-					aa->act= newlibadr(fd, ob->id.lib, aa->act);
+					aa->act= newlibadr_us(fd, ob->id.lib, aa->act);
 				}
 				else if (act->type == ACT_PROPERTY) {
 					bPropertyActuator *pa = act->data;
@@ -4491,7 +4589,7 @@ static void lib_link_object(FileData *fd, Main *main)
 					steeringa->target = newlibadr(fd, ob->id.lib, steeringa->target);
 					steeringa->navmesh = newlibadr(fd, ob->id.lib, steeringa->navmesh);
 				}
-				else if(act->type == ACT_MOUSE) {
+				else if (act->type == ACT_MOUSE) {
 					/* bMouseActuator *moa= act->data; */
 				}
 			}
@@ -4611,6 +4709,7 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			ClothModifierData *clmd = (ClothModifierData *)md;
 			
 			clmd->clothObject = NULL;
+			clmd->hairdata = NULL;
 			
 			clmd->sim_parms= newdataadr(fd, clmd->sim_parms);
 			clmd->coll_parms= newdataadr(fd, clmd->coll_parms);
@@ -4629,6 +4728,8 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 					clmd->sim_parms->effector_weights = BKE_add_effector_weights(NULL);
 				}
 			}
+			
+			clmd->solver_result = NULL;
 		}
 		else if (md->type == eModifierType_Fluidsim) {
 			FluidsimModifierData *fluidmd = (FluidsimModifierData *)md;
@@ -4779,6 +4880,11 @@ static void direct_link_modifiers(FileData *fd, ListBase *lb)
 			if (fd->flags & FD_FLAGS_SWITCH_ENDIAN) {
 				BLI_endian_switch_int32_array(hmd->indexar, hmd->totindex);
 			}
+
+			hmd->curfalloff = newdataadr(fd, hmd->curfalloff);
+			if (hmd->curfalloff) {
+				direct_link_curvemapping(fd, hmd->curfalloff);
+			}
 		}
 		else if (md->type == eModifierType_ParticleSystem) {
 			ParticleSystemModifierData *psmd = (ParticleSystemModifierData *)md;
@@ -4865,9 +4971,14 @@ static void direct_link_object(FileData *fd, Object *ob)
 	/* loading saved files with editmode enabled works, but for undo we like
 	 * to stay in object mode during undo presses so keep editmode disabled.
 	 *
-	 * Also when linking in a file don't allow editmode: [#34776] */
+	 * Also when linking in a file don't allow edit and pose modes.
+	 * See [#34776, #42780] for more information.
+	 */
 	if (fd->memfile || (ob->id.flag & (LIB_EXTERN | LIB_INDIRECT))) {
 		ob->mode &= ~(OB_MODE_EDIT | OB_MODE_PARTICLE_EDIT);
+		if (!fd->memfile) {
+			ob->mode &= ~OB_MODE_POSE;
+		}
 	}
 	
 	ob->adt = newdataadr(fd, ob->adt);
@@ -5115,6 +5226,36 @@ static void lib_link_sequence_modifiers(FileData *fd, Scene *scene, ListBase *lb
 	}
 }
 
+/* check for cyclic set-scene,
+ * libs can cause this case which is normally prevented, see (T#####) */
+#define USE_SETSCENE_CHECK
+
+#ifdef USE_SETSCENE_CHECK
+/**
+ * A version of #BKE_scene_validate_setscene with special checks for linked libs.
+ */
+static bool scene_validate_setscene__liblink(Scene *sce, const int totscene)
+{
+	Scene *sce_iter;
+	int a;
+
+	if (sce->set == NULL) return 1;
+
+	for (a = 0, sce_iter = sce; sce_iter->set; sce_iter = sce_iter->set, a++) {
+		if (sce_iter->id.flag & LIB_NEED_LINK) {
+			return 1;
+		}
+
+		if (a > totscene) {
+			sce->set = NULL;
+			return 0;
+		}
+	}
+
+	return 1;
+}
+#endif
+
 static void lib_link_scene(FileData *fd, Main *main)
 {
 	Scene *sce;
@@ -5124,6 +5265,11 @@ static void lib_link_scene(FileData *fd, Main *main)
 	TimeMarker *marker;
 	FreestyleModuleConfig *fmc;
 	FreestyleLineSet *fls;
+
+#ifdef USE_SETSCENE_CHECK
+	bool need_check_set = false;
+	int totscene = 0;
+#endif
 	
 	for (sce = main->scene.first; sce; sce = sce->id.next) {
 		if (sce->id.flag & LIB_NEED_LINK) {
@@ -5162,6 +5308,8 @@ static void lib_link_scene(FileData *fd, Main *main)
 				        newlibadr_us(fd, sce->id.lib, sce->toolsettings->imapaint.canvas);
 			
 			sce->toolsettings->skgen_template = newlibadr(fd, sce->id.lib, sce->toolsettings->skgen_template);
+			
+			sce->toolsettings->particle.shape_object = newlibadr(fd, sce->id.lib, sce->toolsettings->particle.shape_object);
 			
 			for (base = sce->base.first; base; base = next) {
 				next = base->next;
@@ -5269,11 +5417,44 @@ static void lib_link_scene(FileData *fd, Main *main)
 			
 			/* Motion Tracking */
 			sce->clip = newlibadr_us(fd, sce->id.lib, sce->clip);
-			
-			sce->id.flag -= LIB_NEED_LINK;
+
+#ifdef USE_SETSCENE_CHECK
+			if (sce->set != NULL) {
+				/* link flag for scenes with set would be reset later,
+				 * so this way we only check cyclic for newly linked scenes.
+				 */
+				need_check_set = true;
+			}
+			else {
+				/* postpone un-setting the flag until we've checked the set-scene */
+				sce->id.flag &= ~LIB_NEED_LINK;
+			}
+#else
+			sce->id.flag &= ~LIB_NEED_LINK;
+#endif
+		}
+
+#ifdef USE_SETSCENE_CHECK
+		totscene++;
+#endif
+	}
+
+#ifdef USE_SETSCENE_CHECK
+	if (need_check_set) {
+		for (sce = main->scene.first; sce; sce = sce->id.next) {
+			if (sce->id.flag & LIB_NEED_LINK) {
+				sce->id.flag &= ~LIB_NEED_LINK;
+				if (!scene_validate_setscene__liblink(sce, totscene)) {
+					printf("Found cyclic background scene when linking %s\n", sce->id.name + 2);
+				}
+			}
 		}
 	}
+#endif
 }
+
+#undef USE_SETSCENE_CHECK
+
 
 static void link_recurs_seq(FileData *fd, ListBase *lb)
 {
@@ -5287,12 +5468,26 @@ static void link_recurs_seq(FileData *fd, ListBase *lb)
 	}
 }
 
-static void direct_link_paint(FileData *fd, Paint **paint)
+static void direct_link_paint(FileData *fd, Paint *p)
+{
+	if (p->num_input_samples < 1)
+		p->num_input_samples = 1;
+
+	p->cavity_curve = newdataadr(fd, p->cavity_curve);
+	if (p->cavity_curve)
+		direct_link_curvemapping(fd, p->cavity_curve);
+	else
+		BKE_paint_cavity_curve_preset(p, CURVE_PRESET_LINE);
+}
+
+static void direct_link_paint_helper(FileData *fd, Paint **paint)
 {
 	/* TODO. is this needed */
 	(*paint) = newdataadr(fd, (*paint));
-	if (*paint && (*paint)->num_input_samples < 1)
-		(*paint)->num_input_samples = 1;
+
+	if (*paint) {
+		direct_link_paint(fd, *paint);
+	}
 }
 
 static void direct_link_sequence_modifiers(FileData *fd, ListBase *lb)
@@ -5358,11 +5553,13 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 	
 	sce->toolsettings= newdataadr(fd, sce->toolsettings);
 	if (sce->toolsettings) {
-		direct_link_paint(fd, (Paint**)&sce->toolsettings->sculpt);
-		direct_link_paint(fd, (Paint**)&sce->toolsettings->vpaint);
-		direct_link_paint(fd, (Paint**)&sce->toolsettings->wpaint);
-		direct_link_paint(fd, (Paint**)&sce->toolsettings->uvsculpt);
+		direct_link_paint_helper(fd, (Paint**)&sce->toolsettings->sculpt);
+		direct_link_paint_helper(fd, (Paint**)&sce->toolsettings->vpaint);
+		direct_link_paint_helper(fd, (Paint**)&sce->toolsettings->wpaint);
+		direct_link_paint_helper(fd, (Paint**)&sce->toolsettings->uvsculpt);
 		
+		direct_link_paint(fd, &sce->toolsettings->imapaint.paint);
+
 		sce->toolsettings->imapaint.paintcursor = NULL;
 		sce->toolsettings->particle.paintcursor = NULL;
 		sce->toolsettings->particle.scene = NULL;
@@ -5380,7 +5577,7 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 	}
 
 	if (sce->ed) {
-		ListBase *old_seqbasep = &((Editing *)sce->ed)->seqbase;
+		ListBase *old_seqbasep = &sce->ed->seqbase;
 		
 		ed = sce->ed = newdataadr(fd, sce->ed);
 		
@@ -5394,6 +5591,7 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 			seq->seq1= newdataadr(fd, seq->seq1);
 			seq->seq2= newdataadr(fd, seq->seq2);
 			seq->seq3= newdataadr(fd, seq->seq3);
+			
 			/* a patch: after introduction of effects with 3 input strips */
 			if (seq->seq3 == NULL) seq->seq3 = seq->seq2;
 			
@@ -5451,7 +5649,7 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 		/* link metastack, slight abuse of structs here, have to restore pointer to internal part in struct */
 		{
 			Sequence temp;
-			char *poin;
+			void *poin;
 			intptr_t offset;
 			
 			offset = ((intptr_t)&(temp.seqbase)) - ((intptr_t)&temp);
@@ -5461,12 +5659,11 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 				ed->seqbasep = &ed->seqbase;
 			}
 			else {
-				poin = (char *)ed->seqbasep;
-				poin -= offset;
+				poin = POINTER_OFFSET(ed->seqbasep, -offset);
 				
 				poin = newdataadr(fd, poin);
 				if (poin)
-					ed->seqbasep = (ListBase *)(poin+offset);
+					ed->seqbasep = (ListBase *)POINTER_OFFSET(poin, offset);
 				else
 					ed->seqbasep = &ed->seqbase;
 			}
@@ -5479,11 +5676,10 @@ static void direct_link_scene(FileData *fd, Scene *sce)
 				if (ms->oldbasep == old_seqbasep)
 					ms->oldbasep= &ed->seqbase;
 				else {
-					poin = (char *)ms->oldbasep;
-					poin -= offset;
+					poin = POINTER_OFFSET(ms->oldbasep, -offset);
 					poin = newdataadr(fd, poin);
 					if (poin) 
-						ms->oldbasep = (ListBase *)(poin+offset);
+						ms->oldbasep = (ListBase *)POINTER_OFFSET(poin, offset);
 					else 
 						ms->oldbasep = &ed->seqbase;
 				}
@@ -5563,6 +5759,9 @@ static void direct_link_windowmanager(FileData *fd, wmWindowManager *wm)
 		win->eventstate = NULL;
 		win->curswin = NULL;
 		win->tweak = NULL;
+#ifdef WIN32
+		win->ime_data = NULL;
+#endif
 		
 		BLI_listbase_clear(&win->queue);
 		BLI_listbase_clear(&win->handlers);
@@ -5618,6 +5817,21 @@ static void lib_link_windowmanager(FileData *fd, Main *main)
 
 /* ****************** READ GREASE PENCIL ***************** */
 
+/* relink's grease pencil data's refs */
+static void lib_link_gpencil(FileData *fd, Main *main)
+{
+	bGPdata *gpd;
+	
+	for (gpd = main->gpencil.first; gpd; gpd = gpd->id.next) {
+		if (gpd->id.flag & LIB_NEED_LINK) {
+			gpd->id.flag -= LIB_NEED_LINK;
+			
+			if (gpd->adt)
+				lib_link_animdata(fd, &gpd->id, gpd->adt);
+		}
+	}
+}
+
 /* relinks grease-pencil data - used for direct_link and old file linkage */
 static void direct_link_gpencil(FileData *fd, bGPdata *gpd)
 {
@@ -5628,6 +5842,10 @@ static void direct_link_gpencil(FileData *fd, bGPdata *gpd)
 	/* we must firstly have some grease-pencil data to link! */
 	if (gpd == NULL)
 		return;
+	
+	/* relink animdata */
+	gpd->adt = newdataadr(fd, gpd->adt);
+	direct_link_animdata(fd, gpd->adt);
 	
 	/* relink layers */
 	link_list(fd, &gpd->layers);
@@ -5661,6 +5879,12 @@ static void lib_link_screen(FileData *fd, Main *main)
 		if (sc->id.flag & LIB_NEED_LINK) {
 			sc->id.us = 1;
 			sc->scene = newlibadr(fd, sc->id.lib, sc->scene);
+
+			/* this should not happen, but apparently it does somehow. Until we figure out the cause,
+			 * just assign first available scene */
+			if (!sc->scene)
+				sc->scene = main->scene.first;
+
 			sc->animtimer = NULL; /* saved in rare cases */
 			
 			for (sa = sc->areabase.first; sa; sa = sa->next) {
@@ -5852,7 +6076,7 @@ typedef enum ePointerUserMode {
 
 static bool restore_pointer(ID *id, ID *newid, ePointerUserMode user)
 {
-	if (strcmp(newid->name + 2, id->name + 2) == 0) {
+	if (STREQ(newid->name + 2, id->name + 2)) {
 		if (newid->lib == id->lib) {
 			if (user == USER_ONE) {
 				if (newid->us == 0) {
@@ -6238,10 +6462,10 @@ static void direct_link_region(FileData *fd, ARegion *ar, int spacetype)
 
 				rv3d->depths = NULL;
 				rv3d->gpuoffscreen = NULL;
-				rv3d->ri = NULL;
 				rv3d->render_engine = NULL;
 				rv3d->sms = NULL;
 				rv3d->smooth_timer = NULL;
+				rv3d->compositor = NULL;
 			}
 		}
 	}
@@ -6349,7 +6573,7 @@ static bool direct_link_screen(FileData *fd, bScreen *sc)
 		/* add local view3d too */
 		else if (sa->spacetype == SPACE_VIEW3D)
 			blo_do_versions_view3d_split_250(sa->spacedata.first, &sa->regionbase);
-		
+
 		/* incase we set above */
 		sa->butspacetype = sa->spacetype;
 
@@ -6396,6 +6620,11 @@ static bool direct_link_screen(FileData *fd, bScreen *sc)
 				/* render can be quite heavy, set to solid on load */
 				if (v3d->drawtype == OB_RENDER)
 					v3d->drawtype = OB_SOLID;
+
+				if (v3d->fx_settings.dof)
+					v3d->fx_settings.dof = newdataadr(fd, v3d->fx_settings.dof);
+				if (v3d->fx_settings.ssao)
+					v3d->fx_settings.ssao = newdataadr(fd, v3d->fx_settings.ssao);
 				
 				blo_do_versions_view3d_split_250(v3d, &sl->regionbase);
 			}
@@ -6700,13 +6929,26 @@ static void direct_link_sound(FileData *fd, bSound *sound)
 {
 	sound->handle = NULL;
 	sound->playback_handle = NULL;
-	sound->waveform = NULL;
 
-	// versioning stuff, if there was a cache, then we enable caching:
+	/* versioning stuff, if there was a cache, then we enable caching: */
 	if (sound->cache) {
 		sound->flags |= SOUND_FLAGS_CACHING;
 		sound->cache = NULL;
 	}
+
+	if (fd->soundmap) {
+		sound->waveform = newsoundadr(fd, sound->waveform);
+	}	
+	else {
+		sound->waveform = NULL;
+	}
+		
+	if (sound->spinlock) {
+		sound->spinlock = MEM_mallocN(sizeof(SpinLock), "sound_spinlock");
+		BLI_spin_init(sound->spinlock);
+	}
+	/* clear waveform loading flag */
+	sound->flags &= ~SOUND_FLAGS_WAVEFORM_LOADING;
 
 	sound->packedfile = direct_link_packedfile(fd, sound->packedfile);
 	sound->newpackedfile = direct_link_packedfile(fd, sound->newpackedfile);
@@ -7419,9 +7661,7 @@ static BHead *read_global(BlendFileData *bfd, FileData *fd, BHead *bhead)
 	bfd->main->build_commit_timestamp = fg->build_commit_timestamp;
 	BLI_strncpy(bfd->main->build_hash, fg->build_hash, sizeof(bfd->main->build_hash));
 	
-	bfd->winpos = fg->winpos;
 	bfd->fileflags = fg->fileflags;
-	bfd->displaymode = fg->displaymode;
 	bfd->globalf = fg->globalf;
 	BLI_strncpy(bfd->filename, fg->filename, sizeof(bfd->filename));
 	
@@ -7589,6 +7829,7 @@ static void lib_link_all(FileData *fd, Main *main)
 	lib_link_movieclip(fd, main);
 	lib_link_mask(fd, main);
 	lib_link_linestyle(fd, main);
+	lib_link_gpencil(fd, main);
 
 	lib_link_mesh(fd, main);		/* as last: tpage images with users at zero */
 	
@@ -7836,9 +8077,48 @@ static BHead *find_bhead(FileData *fd, void *old)
 	return NULL;
 }
 
-char *bhead_id_name(FileData *fd, BHead *bhead)
+static BHead *find_bhead_from_code_name(FileData *fd, const short idcode, const char *name)
 {
-	return ((char *)(bhead+1)) + fd->id_name_offs;
+#ifdef USE_GHASH_BHEAD
+
+	char idname_full[MAX_ID_NAME];
+
+	*((short *)idname_full) = idcode;
+	BLI_strncpy(idname_full + 2, name, sizeof(idname_full) - 2);
+
+	return BLI_ghash_lookup(fd->bhead_idname_hash, idname_full);
+
+#else
+	BHead *bhead;
+
+	for (bhead = blo_firstbhead(fd); bhead; bhead = blo_nextbhead(fd, bhead)) {
+		if (bhead->code == idcode) {
+			const char *idname_test = bhead_id_name(fd, bhead);
+			if (STREQ(idname_test + 2, name)) {
+				return bhead;
+			}
+		}
+		else if (bhead->code == ENDB) {
+			break;
+		}
+	}
+
+	return NULL;
+#endif
+}
+
+static BHead *find_bhead_from_idname(FileData *fd, const char *idname)
+{
+#ifdef USE_GHASH_BHEAD
+	return BLI_ghash_lookup(fd->bhead_idname_hash, idname);
+#else
+	return find_bhead_from_code_name(fd, GS(idname), idname + 2);
+#endif
+}
+
+const char *bhead_id_name(const FileData *fd, const BHead *bhead)
+{
+	return (const char *)POINTER_OFFSET(bhead, sizeof(*bhead) + fd->id_name_offs);
 }
 
 static ID *is_yet_read(FileData *fd, Main *mainvar, BHead *bhead)
@@ -8694,6 +8974,12 @@ static void expand_linestyle(FileData *fd, Main *mainvar, FreestyleLineStyle *li
 	}
 }
 
+static void expand_gpencil(FileData *fd, Main *mainvar, bGPdata *gpd)
+{
+	if (gpd->adt)
+		expand_animdata(fd, mainvar, gpd->adt);
+}
+
 void BLO_main_expander(void (*expand_doit_func)(void *, Main *, void *))
 {
 	expand_doit = expand_doit_func;
@@ -8788,6 +9074,9 @@ void BLO_expand_main(void *fdhandle, Main *mainvar)
 					case ID_LS:
 						expand_linestyle(fd, mainvar, (FreestyleLineStyle *)id);
 						break;
+					case ID_GD:
+						expand_gpencil(fd, mainvar, (bGPdata *)id);
+						break;
 					}
 					
 					do_it = true;
@@ -8836,7 +9125,7 @@ static void give_base_to_objects(Main *mainvar, Scene *sce, Library *lib, const 
 					do_it = true;
 				}
 				else if (idcode==ID_GR) {
-					if (ob->id.us == 1 && is_link == false && ob->id.lib == lib) {
+					if ((is_link == false) && (ob->id.lib == lib)) {
 						if ((ob->flag & OB_FROMGROUP) && object_in_any_scene(mainvar, ob)==0) {
 							do_it = true;
 						}
@@ -8845,7 +9134,7 @@ static void give_base_to_objects(Main *mainvar, Scene *sce, Library *lib, const 
 				else {
 					/* when appending, make sure any indirectly loaded objects
 					 * get a base else they cant be accessed at all [#27437] */
-					if (ob->id.us==1 && is_link == false && ob->id.lib == lib) {
+					if ((is_link == false) && (ob->id.lib == lib)) {
 						/* we may be appending from a scene where we already
 						 *  have a linked object which is not in any scene [#27616] */
 						if ((ob->id.flag & LIB_PRE_EXISTING)==0) {
@@ -8865,7 +9154,9 @@ static void give_base_to_objects(Main *mainvar, Scene *sce, Library *lib, const 
 					base->lay = ob->lay;
 					base->object = ob;
 					base->flag = ob->flag;
-					ob->id.us = 1;
+
+					CLAMP_MIN(ob->id.us, 0);
+					ob->id.us += 1;
 					
 					ob->id.flag -= LIB_INDIRECT;
 					ob->id.flag |= LIB_EXTERN;
@@ -8913,50 +9204,40 @@ static void give_base_to_groups(Main *mainvar, Scene *scene)
  * but it may already have already been appended/linked */
 static ID *append_named_part(Main *mainl, FileData *fd, const char *idname, const short idcode)
 {
-	BHead *bhead;
-	ID *id = NULL;
-	int found = 0;
+	BHead *bhead = find_bhead_from_code_name(fd, idcode, idname);
+	ID *id;
 
-	for (bhead = blo_firstbhead(fd); bhead; bhead = blo_nextbhead(fd, bhead)) {
-		if (bhead->code == idcode) {
-			const char *idname_test= bhead_id_name(fd, bhead);
-			
-			if (strcmp(idname_test + 2, idname) == 0) {
-				found = 1;
-				id = is_yet_read(fd, mainl, bhead);
-				if (id == NULL) {
-					/* not read yet */
-					read_libblock(fd, mainl, bhead, LIB_TESTEXT, &id);
-					
-					if (id) {
-						/* sort by name in list */
-						ListBase *lb = which_libbase(mainl, idcode);
-						id_sort_by_name(lb, id);
-					}
-				}
-				else {
-					/* already linked */
-					if (G.debug)
-						printf("append: already linked\n");
-					oldnewmap_insert(fd->libmap, bhead->old, id, bhead->code);
-					if (id->flag & LIB_INDIRECT) {
-						id->flag -= LIB_INDIRECT;
-						id->flag |= LIB_EXTERN;
-					}
-				}
-				
-				break;
+	if (bhead) {
+		id = is_yet_read(fd, mainl, bhead);
+		if (id == NULL) {
+			/* not read yet */
+			read_libblock(fd, mainl, bhead, LIB_TESTEXT, &id);
+
+			if (id) {
+				/* sort by name in list */
+				ListBase *lb = which_libbase(mainl, idcode);
+				id_sort_by_name(lb, id);
 			}
 		}
-		else if (bhead->code == ENDB) {
-			break;
+		else {
+			/* already linked */
+			if (G.debug)
+				printf("append: already linked\n");
+			oldnewmap_insert(fd->libmap, bhead->old, id, bhead->code);
+			if (id->flag & LIB_INDIRECT) {
+				id->flag -= LIB_INDIRECT;
+				id->flag |= LIB_EXTERN;
+			}
 		}
+	}
+	else {
+		id = NULL;
 	}
 	
 	/* if we found the id but the id is NULL, this is really bad */
-	BLI_assert((found != 0) == (id != NULL));
+	BLI_assert((bhead != NULL) == (id != NULL));
 	
-	return (found) ? id : NULL;
+	return id;
 }
 
 /* simple reader for copy/paste buffers */
@@ -9037,22 +9318,13 @@ ID *BLO_library_append_named_part_ex(const bContext *C, Main *mainl, BlendHandle
 
 static void append_id_part(FileData *fd, Main *mainvar, ID *id, ID **r_id)
 {
-	BHead *bhead;
-	
-	for (bhead = blo_firstbhead(fd); bhead; bhead = blo_nextbhead(fd, bhead)) {
-		if (bhead->code == GS(id->name)) {
-			
-			if (strcmp(id->name, bhead_id_name(fd, bhead))==0) {
-				id->flag &= ~LIB_READ;
-				id->flag |= LIB_NEED_EXPAND;
-//				printf("read lib block %s\n", id->name);
-				read_libblock(fd, mainvar, bhead, id->flag, r_id);
-				
-				break;
-			}
-		}
-		else if (bhead->code==ENDB)
-			break;
+	BHead *bhead = find_bhead_from_idname(fd, id->name);
+
+	if (bhead) {
+		id->flag &= ~LIB_READ;
+		id->flag |= LIB_NEED_EXPAND;
+		// printf("read lib block %s\n", id->name);
+		read_libblock(fd, mainvar, bhead, id->flag, r_id);
 	}
 }
 
@@ -9076,6 +9348,9 @@ static Main *library_append_begin(Main *mainvar, FileData **fd, const char *file
 	/* needed for do_version */
 	mainl->versionfile = (*fd)->fileversion;
 	read_file_version(*fd, mainl);
+#ifdef USE_GHASH_BHEAD
+	read_file_bhead_idname_map_create(*fd);
+#endif
 	
 	return mainl;
 }
@@ -9220,8 +9495,10 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 					if (mainptr->curlib->packedfile) {
 						PackedFile *pf = mainptr->curlib->packedfile;
 						
-						blo_reportf_wrap(basefd->reports, RPT_INFO, TIP_("Read packed library:  '%s'"),
-						                 mainptr->curlib->name);
+						blo_reportf_wrap(
+						        basefd->reports, RPT_INFO, TIP_("Read packed library:  '%s', parent '%s'"),
+						        mainptr->curlib->name,
+						        library_parent_filepath(mainptr->curlib));
 						fd = blo_openblendermemory(pf->data, pf->size, basefd->reports);
 						
 						
@@ -9229,8 +9506,11 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 						BLI_strncpy(fd->relabase, mainptr->curlib->filepath, sizeof(fd->relabase));
 					}
 					else {
-						blo_reportf_wrap(basefd->reports, RPT_INFO, TIP_("Read library:  '%s', '%s'"),
-						                 mainptr->curlib->filepath, mainptr->curlib->name);
+						blo_reportf_wrap(
+						        basefd->reports, RPT_INFO, TIP_("Read library:  '%s', '%s', parent '%s'"),
+						        mainptr->curlib->filepath,
+						        mainptr->curlib->name,
+						        library_parent_filepath(mainptr->curlib));
 						fd = blo_openblenderfile(mainptr->curlib->filepath, basefd->reports);
 					}
 					/* allow typing in a new lib path */
@@ -9277,6 +9557,10 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 						
 						/* subversion */
 						read_file_version(fd, mainptr);
+#ifdef USE_GHASH_BHEAD
+						read_file_bhead_idname_map_create(fd);
+#endif
+
 					}
 					else {
 						mainptr->curlib->filedata = NULL;
@@ -9301,10 +9585,13 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 								
 								append_id_part(fd, mainptr, id, &realid);
 								if (!realid) {
-									blo_reportf_wrap(fd->reports, RPT_WARNING,
-									                 TIP_("LIB ERROR: %s: '%s' missing from '%s'"),
-									                 BKE_idcode_to_name(GS(id->name)),
-									                 id->name + 2, mainptr->curlib->filepath);
+									blo_reportf_wrap(
+									        fd->reports, RPT_WARNING,
+									        TIP_("LIB ERROR: %s: '%s' missing from '%s', parent '%s'"),
+									        BKE_idcode_to_name(GS(id->name)),
+									        id->name + 2,
+									        mainptr->curlib->filepath,
+									        library_parent_filepath(mainptr->curlib));
 								}
 								
 								change_idid_adr(mainlist, basefd, id, realid);
@@ -9333,9 +9620,13 @@ static void read_libraries(FileData *basefd, ListBase *mainlist)
 				idn = id->next;
 				if (id->flag & LIB_READ) {
 					BLI_remlink(lbarray[a], id);
-					blo_reportf_wrap(basefd->reports, RPT_WARNING,
-					                 TIP_("LIB ERROR: %s: '%s' unread lib block missing from '%s'"),
-					                 BKE_idcode_to_name(GS(id->name)), id->name + 2, mainptr->curlib->filepath);
+					blo_reportf_wrap(
+					        basefd->reports, RPT_WARNING,
+					        TIP_("LIB ERROR: %s: '%s' unread lib block missing from '%s', parent '%s'"),
+					        BKE_idcode_to_name(GS(id->name)),
+					        id->name + 2,
+					        mainptr->curlib->filepath,
+					        library_parent_filepath(mainptr->curlib));
 					change_idid_adr(mainlist, basefd, id, NULL);
 					
 					MEM_freeN(id);

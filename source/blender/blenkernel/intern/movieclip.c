@@ -69,7 +69,6 @@
 #include "BKE_image.h"  /* openanim */
 #include "BKE_tracking.h"
 
-#include "IMB_colormanagement.h"
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 #include "IMB_moviecache.h"
@@ -77,8 +76,6 @@
 #ifdef WITH_OPENEXR
 #  include "intern/openexr/openexr_multi.h"
 #endif
-
-#include "NOD_composite.h"
 
 /*********************** movieclip buffer loaders *************************/
 
@@ -391,7 +388,7 @@ static int user_frame_to_cache_frame(MovieClip *clip, int framenr)
 
 static void moviecache_keydata(void *userkey, int *framenr, int *proxy, int *render_flags)
 {
-	MovieClipImBufCacheKey *key = (MovieClipImBufCacheKey *)userkey;
+	const MovieClipImBufCacheKey *key = userkey;
 
 	*framenr = key->framenr;
 	*proxy = key->proxy;
@@ -400,33 +397,20 @@ static void moviecache_keydata(void *userkey, int *framenr, int *proxy, int *ren
 
 static unsigned int moviecache_hashhash(const void *keyv)
 {
-	MovieClipImBufCacheKey *key = (MovieClipImBufCacheKey *)keyv;
+	const MovieClipImBufCacheKey *key = keyv;
 	int rval = key->framenr;
 
 	return rval;
 }
 
-static int moviecache_hashcmp(const void *av, const void *bv)
+static bool moviecache_hashcmp(const void *av, const void *bv)
 {
-	const MovieClipImBufCacheKey *a = (MovieClipImBufCacheKey *)av;
-	const MovieClipImBufCacheKey *b = (MovieClipImBufCacheKey *)bv;
+	const MovieClipImBufCacheKey *a = av;
+	const MovieClipImBufCacheKey *b = bv;
 
-	if (a->framenr < b->framenr)
-		return -1;
-	else if (a->framenr > b->framenr)
-		return 1;
-
-	if (a->proxy < b->proxy)
-		return -1;
-	else if (a->proxy > b->proxy)
-		return 1;
-
-	if (a->render_flag < b->render_flag)
-		return -1;
-	else if (a->render_flag > b->render_flag)
-		return 1;
-
-	return 0;
+	return ((a->framenr != b->framenr) ||
+	        (a->proxy != b->proxy) ||
+	        (a->render_flag != b->render_flag));
 }
 
 static void *moviecache_getprioritydata(void *key_v)
@@ -541,6 +525,15 @@ static bool put_imbuf_cache(MovieClip *clip, MovieClipUser *user, ImBuf *ibuf, i
 	}
 }
 
+static bool moviecache_check_free_proxy(ImBuf *UNUSED(ibuf),
+                                        void *userkey,
+                                        void *UNUSED(userdata))
+{
+	MovieClipImBufCacheKey *key = (MovieClipImBufCacheKey *)userkey;
+
+	return !(key->proxy == IMB_PROXY_NONE && key->render_flag == 0);
+}
+
 /*********************** common functions *************************/
 
 /* only image block itself */
@@ -628,7 +621,7 @@ MovieClip *BKE_movieclip_file_add(Main *bmain, const char *name)
 		BLI_strncpy(strtest, clip->name, sizeof(clip->name));
 		BLI_path_abs(strtest, G.main->name);
 
-		if (strcmp(strtest, str) == 0) {
+		if (STREQ(strtest, str)) {
 			BLI_strncpy(clip->name, name, sizeof(clip->name));  /* for stringcode */
 			clip->id.us++;  /* officially should not, it doesn't link here! */
 
@@ -797,10 +790,10 @@ static ImBuf *postprocess_frame(MovieClip *clip, MovieClipUser *user, ImBuf *ibu
 	}
 
 	if (postprocess_flag) {
-		bool disable_red   = (postprocess_flag & MOVIECLIP_DISABLE_RED) != 0,
-			 disable_green = (postprocess_flag & MOVIECLIP_DISABLE_GREEN) != 0,
-			 disable_blue  = (postprocess_flag & MOVIECLIP_DISABLE_BLUE) != 0,
-			 grayscale     = (postprocess_flag & MOVIECLIP_PREVIEW_GRAYSCALE) != 0;
+		bool disable_red   = (postprocess_flag & MOVIECLIP_DISABLE_RED) != 0;
+		bool disable_green = (postprocess_flag & MOVIECLIP_DISABLE_GREEN) != 0;
+		bool disable_blue  = (postprocess_flag & MOVIECLIP_DISABLE_BLUE) != 0;
+		bool grayscale     = (postprocess_flag & MOVIECLIP_PREVIEW_GRAYSCALE) != 0;
 
 		if (disable_red || disable_green || disable_blue || grayscale)
 			BKE_tracking_disable_channels(postproc_ibuf, disable_red, disable_green, disable_blue, 1);
@@ -1183,6 +1176,15 @@ void BKE_movieclip_clear_cache(MovieClip *clip)
 	free_buffers(clip);
 }
 
+void BKE_movieclip_clear_proxy_cache(MovieClip *clip)
+{
+	if (clip->cache && clip->cache->moviecache) {
+		IMB_moviecache_cleanup(clip->cache->moviecache,
+		                       moviecache_check_free_proxy,
+		                       NULL);
+	}
+}
+
 void BKE_movieclip_reload(MovieClip *clip)
 {
 	/* clear cache */
@@ -1274,7 +1276,7 @@ void BKE_movieclip_update_scopes(MovieClip *clip, MovieClipUser *user, MovieClip
 					scopes->frame_width = ibuf->x;
 					scopes->frame_height = ibuf->y;
 
-					scopes->use_track_mask = track->flag & TRACK_PREVIEW_ALPHA;
+					scopes->use_track_mask = (track->flag & TRACK_PREVIEW_ALPHA) != 0;
 				}
 
 				IMB_freeImBuf(ibuf);

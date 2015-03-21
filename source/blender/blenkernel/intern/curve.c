@@ -237,6 +237,10 @@ Curve *BKE_curve_copy(Curve *cu)
 	id_us_plus((ID *)cun->vfonti);
 	id_us_plus((ID *)cun->vfontbi);
 
+	if (cu->id.lib) {
+		BKE_id_lib_local_paths(G.main, cu->id.lib, &cun->id);
+	}
+
 	return cun;
 }
 
@@ -588,6 +592,10 @@ Nurb *BKE_nurb_copy(Nurb *src, int pntsu, int pntsv)
 	if (pntsu == 1) SWAP(int, pntsu, pntsv);
 	newnu->pntsu = pntsu;
 	newnu->pntsv = pntsv;
+
+	/* caller can manually handle these arrays */
+	newnu->knotsu = NULL;
+	newnu->knotsv = NULL;
 
 	if (src->bezt) {
 		newnu->bezt = (BezTriple *)MEM_mallocN(pntsu * pntsv * sizeof(BezTriple), "copyNurb2");
@@ -1239,6 +1247,7 @@ void BKE_nurb_makeFaces(Nurb *nu, float *coord_array, int rowstride, int resolu,
 void BKE_nurb_makeCurve(Nurb *nu, float *coord_array, float *tilt_array, float *radius_array, float *weight_array,
                         int resolu, int stride)
 {
+	const float eps = 1e-6f;
 	BPoint *bp;
 	float u, ustart, uend, ustep, sumdiv;
 	float *basisu, *sum, *fp;
@@ -1297,7 +1306,7 @@ void BKE_nurb_makeCurve(Nurb *nu, float *coord_array, float *tilt_array, float *
 			*fp = basisu[i] * bp->vec[3];
 			sumdiv += *fp;
 		}
-		if ((sumdiv != 0.0f) && (sumdiv < 0.999f || sumdiv > 1.001f)) {
+		if ((sumdiv != 0.0f) && (sumdiv < 1.0f - eps || sumdiv > 1.0f + eps)) {
 			/* is normalizing needed? */
 			fp = sum;
 			for (i = istart; i <= iend; i++, fp++) {
@@ -1734,7 +1743,7 @@ void BKE_curve_bevel_make(Scene *scene, Object *ob, ListBase *disp,
 
 			/* half a circle */
 			fp = dl->verts;
-			dangle = (0.5 * M_PI / (dnr - 1));
+			dangle = ((float)M_PI_2 / (dnr - 1));
 			angle = -(nr - 1) * dangle;
 
 			for (a = 0; a < nr; a++) {
@@ -1793,7 +1802,7 @@ void BKE_curve_bevel_make(Scene *scene, Object *ob, ListBase *disp,
 			/* half a circle */
 			fp = dl->verts;
 			angle = 0.0;
-			dangle = (0.5 * M_PI / (dnr - 1));
+			dangle = ((float)M_PI_2 / (dnr - 1));
 
 			for (a = 0; a < nr; a++) {
 				fp[0] = 0.0;
@@ -1935,7 +1944,7 @@ static void calc_bevel_sin_cos(float x1, float y1, float x2, float y2,
 
 	t02 = x1 * x2 + y1 * y2;
 	if (fabsf(t02) >= 1.0f)
-		t02 = 0.5 * M_PI;
+		t02 = M_PI_2;
 	else
 		t02 = (saacos(t02)) / 2.0f;
 
@@ -2468,7 +2477,7 @@ static void make_bevel_list_2D(BevList *bl)
 
 		/* first */
 		bevp = bl->bevpoints;
-		angle = atan2(bevp->dir[0], bevp->dir[1]) - M_PI / 2.0;
+		angle = atan2f(bevp->dir[0], bevp->dir[1]) - (float)M_PI_2;
 		bevp->sina = sinf(angle);
 		bevp->cosa = cosf(angle);
 		vec_to_quat(bevp->quat, bevp->dir, 5, 1);
@@ -2476,7 +2485,7 @@ static void make_bevel_list_2D(BevList *bl)
 		/* last */
 		bevp = bl->bevpoints;
 		bevp += (bl->nr - 1);
-		angle = atan2(bevp->dir[0], bevp->dir[1]) - M_PI / 2.0;
+		angle = atan2f(bevp->dir[0], bevp->dir[1]) - (float)M_PI_2;
 		bevp->sina = sinf(angle);
 		bevp->cosa = cosf(angle);
 		vec_to_quat(bevp->quat, bevp->dir, 5, 1);
@@ -3343,6 +3352,21 @@ void BKE_nurb_handle_calc_simple(Nurb *nu, BezTriple *bezt)
 	}
 }
 
+void BKE_nurb_handle_calc_simple_auto(Nurb *nu, BezTriple *bezt)
+{
+	if (nu->pntsu > 1) {
+		const char h1_back = bezt->h1, h2_back = bezt->h2;
+
+		bezt->h1 = bezt->h2 = HD_AUTO;
+
+		/* Override handle types to HD_AUTO and recalculate */
+		BKE_nurb_handle_calc_simple(nu, bezt);
+
+		bezt->h1 = h1_back;
+		bezt->h2 = h2_back;
+	}
+}
+
 /**
  * Use when something has changed handle positions.
  *
@@ -3600,24 +3624,12 @@ void BKE_nurbList_handles_recalculate(ListBase *editnurb, const bool calc_length
 
 				if (h1_select || h2_select) {
 
-					/* Override handle types to HD_AUTO and recalculate */
-
-					char h1_back, h2_back;
 					float co1_back[3], co2_back[3];
-
-					h1_back = bezt->h1;
-					h2_back = bezt->h2;
-
-					bezt->h1 = HD_AUTO;
-					bezt->h2 = HD_AUTO;
 
 					copy_v3_v3(co1_back, bezt->vec[0]);
 					copy_v3_v3(co2_back, bezt->vec[2]);
 
-					BKE_nurb_handle_calc_simple(nu, bezt);
-
-					bezt->h1 = h1_back;
-					bezt->h2 = h2_back;
+					BKE_nurb_handle_calc_simple_auto(nu, bezt);
 
 					if (h1_select) {
 						if (!calc_length) {
@@ -4312,7 +4324,7 @@ bool BKE_curve_center_bounds(Curve *cu, float cent[3])
 }
 
 
-void BKE_curve_transform_ex(Curve *cu, float mat[4][4], bool do_keys, float unit_scale)
+void BKE_curve_transform_ex(Curve *cu, float mat[4][4], const bool do_keys, const float unit_scale)
 {
 	Nurb *nu;
 	BPoint *bp;
@@ -4348,13 +4360,13 @@ void BKE_curve_transform_ex(Curve *cu, float mat[4][4], bool do_keys, float unit
 	}
 }
 
-void BKE_curve_transform(Curve *cu, float mat[4][4], bool do_keys)
+void BKE_curve_transform(Curve *cu, float mat[4][4], const bool do_keys)
 {
 	float unit_scale = mat4_to_scale(mat);
 	BKE_curve_transform_ex(cu, mat, do_keys, unit_scale);
 }
 
-void BKE_curve_translate(Curve *cu, float offset[3], bool do_keys)
+void BKE_curve_translate(Curve *cu, float offset[3], const bool do_keys)
 {
 	ListBase *nurb_lb = BKE_curve_nurbs_get(cu);
 	Nurb *nu;

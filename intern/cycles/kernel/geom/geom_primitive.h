@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 /* Primitive Utilities
@@ -144,7 +144,8 @@ ccl_device float4 primitive_motion_vector(KernelGlobals *kg, ShaderData *sd)
 	float3 center;
 
 #ifdef __HAIR__
-	if(sd->type & PRIMITIVE_ALL_CURVE) {
+	bool is_curve_primitive = sd->type & PRIMITIVE_ALL_CURVE;
+	if(is_curve_primitive) {
 		center = curve_motion_center_location(kg, sd);
 
 		if(!(sd->flag & SD_TRANSFORM_APPLIED))
@@ -170,6 +171,13 @@ ccl_device float4 primitive_motion_vector(KernelGlobals *kg, ShaderData *sd)
 
 		motion_pre = primitive_attribute_float3(kg, sd, elem, offset, NULL, NULL);
 		motion_post = primitive_attribute_float3(kg, sd, elem, offset_next, NULL, NULL);
+
+#ifdef __HAIR__
+		if(is_curve_primitive && (sd->flag & SD_OBJECT_HAS_VERTEX_MOTION) == 0) {
+			object_position_transform(kg, sd, &motion_pre);
+			object_position_transform(kg, sd, &motion_post);
+		}
+#endif
 	}
 
 	/* object motion. note that depending on the mesh having motion vectors, this

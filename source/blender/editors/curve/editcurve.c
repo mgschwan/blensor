@@ -85,6 +85,7 @@ typedef struct {
 	GHash *undoIndex;
 	ListBase fcurves, drivers;
 	int actnu;
+	int flag;
 } UndoCurve;
 
 /* Definitions needed for shape keys */
@@ -233,6 +234,7 @@ static int isNurbsel_count(Curve *cu, Nurb *nu)
 
 /* ******************* PRINTS ********************* */
 
+#if 0
 void printknots(Object *obedit)
 {
 	ListBase *editnurb = object_editcurve_get(obedit);
@@ -252,6 +254,7 @@ void printknots(Object *obedit)
 		}
 	}
 }
+#endif
 
 /* ********************* Shape keys *************** */
 
@@ -642,24 +645,19 @@ static void keyData_switchDirectionNurb(Curve *cu, Nurb *nu)
 static GHash *dupli_keyIndexHash(GHash *keyindex)
 {
 	GHash *gh;
-	GHashIterator *hashIter;
+	GHashIterator gh_iter;
 
 	gh = BLI_ghash_ptr_new_ex("dupli_keyIndex gh", BLI_ghash_size(keyindex));
 
-	for (hashIter = BLI_ghashIterator_new(keyindex);
-	     BLI_ghashIterator_done(hashIter) == false;
-	     BLI_ghashIterator_step(hashIter))
-	{
-		void *cv = BLI_ghashIterator_getKey(hashIter);
-		CVKeyIndex *index = BLI_ghashIterator_getValue(hashIter);
-		CVKeyIndex *newIndex = MEM_callocN(sizeof(CVKeyIndex), "dupli_keyIndexHash index");
+	GHASH_ITER (gh_iter, keyindex) {
+		void *cv = BLI_ghashIterator_getKey(&gh_iter);
+		CVKeyIndex *index = BLI_ghashIterator_getValue(&gh_iter);
+		CVKeyIndex *newIndex = MEM_mallocN(sizeof(CVKeyIndex), "dupli_keyIndexHash index");
 
 		memcpy(newIndex, index, sizeof(CVKeyIndex));
 
 		BLI_ghash_insert(gh, cv, newIndex);
 	}
-
-	BLI_ghashIterator_free(hashIter);
 
 	return gh;
 }
@@ -766,16 +764,7 @@ static void calc_shapeKeys(Object *obedit)
 
 		/* editing the base key should update others */
 		if (cu->key->type == KEY_RELATIVE) {
-			int act_is_basis = 0;
-			/* find if this key is a basis for any others */
-			for (currkey = cu->key->block.first; currkey; currkey = currkey->next) {
-				if (editnurb->shapenr - 1 == currkey->relative) {
-					act_is_basis = 1;
-					break;
-				}
-			}
-
-			if (act_is_basis) { /* active key is a base */
+			if (BKE_keyblock_is_basis(cu->key, editnurb->shapenr - 1)) { /* active key is a base */
 				int totvec = 0;
 
 				/* Calculate needed memory to store offset */
@@ -1007,7 +996,7 @@ static void fcurve_path_rename(AnimData *adt, const char *orig_rna_path, char *r
 
 	for (fcu = orig_curves->first; fcu; fcu = nextfcu) {
 		nextfcu = fcu->next;
-		if (!strncmp(fcu->rna_path, orig_rna_path, len)) {
+		if (STREQLEN(fcu->rna_path, orig_rna_path, len)) {
 			char *spath, *suffix = fcu->rna_path + len;
 			nfcu = copy_fcurve(fcu);
 			spath = nfcu->rna_path;
@@ -1110,10 +1099,10 @@ static void curve_rename_fcurves(Curve *cu, ListBase *orig_curves)
 	for (fcu = orig_curves->first; fcu; fcu = next) {
 		next = fcu->next;
 
-		if (!strncmp(fcu->rna_path, "splines", 7)) {
+		if (STREQLEN(fcu->rna_path, "splines", 7)) {
 			const char *ch = strchr(fcu->rna_path, '.');
 
-			if (ch && (!strncmp(ch, ".bezier_points", 14) || !strncmp(ch, ".points", 7)))
+			if (ch && (STREQLEN(ch, ".bezier_points", 14) || STREQLEN(ch, ".points", 7)))
 				fcurve_remove(adt, orig_curves, fcu);
 		}
 	}
@@ -1137,7 +1126,7 @@ static void curve_rename_fcurves(Curve *cu, ListBase *orig_curves)
 	for (fcu = orig_curves->first; fcu; fcu = next) {
 		next = fcu->next;
 
-		if (!strncmp(fcu->rna_path, "splines", 7)) fcurve_remove(adt, orig_curves, fcu);
+		if (STREQLEN(fcu->rna_path, "splines", 7)) fcurve_remove(adt, orig_curves, fcu);
 		else BLI_addtail(&curves, fcu);
 	}
 
@@ -1358,7 +1347,7 @@ void make_editNurb(Object *obedit)
 		if (actkey) {
 			// XXX strcpy(G.editModeTitleExtra, "(Key) ");
 			undo_editmode_clear();
-			BKE_key_convert_to_curve(actkey, cu, &cu->nurb);
+			BKE_keyblock_convert_to_curve(actkey, cu, &cu->nurb);
 		}
 
 		if (editnurb) {
@@ -2015,7 +2004,7 @@ static void ed_curve_delete_selected(Object *obedit)
 }
 
 /* only for OB_SURF */
-bool ed_editnurb_extrude_flag(EditNurb *editnurb, short flag)
+bool ed_editnurb_extrude_flag(EditNurb *editnurb, const short flag)
 {
 	Nurb *nu;
 	BPoint *bp, *bpn, *newbp;
@@ -2376,7 +2365,6 @@ static void adduplicateflagNurb(Object *obedit, ListBase *newnurb,
 			}
 			else {
 				/* knots done after duplicate as pntsu may change */
-				nu->knotsu = nu->knotsv = NULL;
 				BKE_nurb_order_clamp_u(nu);
 				BKE_nurb_knot_calc_u(nu);
 
@@ -4799,7 +4787,7 @@ bool ed_editnurb_spin(float viewmat[4][4], Object *obedit, const float axis[3], 
 	ok = true;
 
 	for (a = 0; a < 7; a++) {
-		ok = ed_editnurb_extrude_flag(cu->editnurb, 1);
+		ok = ed_editnurb_extrude_flag(cu->editnurb, SELECT);
 
 		if (ok == false)
 			return changed;
@@ -4897,285 +4885,409 @@ void CURVE_OT_spin(wmOperatorType *ot)
 	RNA_def_float_vector(ot->srna, "axis", 3, NULL, -FLT_MAX, FLT_MAX, "Axis", "Axis in global view space", -1.0f, 1.0f);
 }
 
+/***************** extrude vertex operator **********************/
+
+static bool ed_editcurve_extrude(Curve *cu, EditNurb *editnurb)
+{
+	Nurb *nu = NULL;
+	Nurb *nu_last = NULL;
+
+	bool changed = false;
+
+	Nurb *cu_actnu;
+	union {
+		BezTriple *bezt;
+		BPoint    *bp;
+		void      *p;
+	} cu_actvert;
+
+	if (BLI_listbase_is_empty(&editnurb->nurbs)) {
+		return changed;
+	}
+
+	BKE_curve_nurb_vert_active_get(cu, &cu_actnu, &cu_actvert.p);
+	BKE_curve_nurb_vert_active_set(cu, NULL, NULL);
+
+	/* first pass (endpoints) */
+	for (nu = editnurb->nurbs.first; nu; nu = nu->next) {
+
+		if ((nu->flagu & CU_NURB_CYCLIC) && (nu->pntsu > 1)) {
+			continue;
+		}
+
+		if (nu->type == CU_BEZIER) {
+
+			/* Check to see if the first bezier point is selected */
+			if (nu->pntsu > 0 && nu->bezt != NULL) {
+				BezTriple *nu_bezt_old = nu->bezt;
+				BezTriple *bezt = nu->bezt;
+
+				if (BEZSELECTED_HIDDENHANDLES(cu, bezt)) {
+					BezTriple *bezt_new;
+					BEZ_DESEL(bezt);
+
+					bezt_new = MEM_mallocN((nu->pntsu + 1) * sizeof(BezTriple), __func__);
+					ED_curve_beztcpy(editnurb, bezt_new + 1, bezt, nu->pntsu);
+					*bezt_new = *bezt;
+
+
+					MEM_freeN(nu->bezt);
+					nu->bezt = bezt_new;
+
+					nu->pntsu += 1;
+
+					if (ARRAY_HAS_ITEM(cu_actvert.bezt, nu_bezt_old, nu->pntsu - 1)) {
+						cu_actvert.bezt = (cu_actvert.bezt == bezt) ?
+						                  bezt_new : &nu->bezt[(cu_actvert.bezt - nu_bezt_old) + 1];
+						BKE_curve_nurb_vert_active_set(cu, nu, cu_actvert.bezt);
+					}
+
+					BEZ_SEL(bezt_new);
+					changed = true;
+				}
+			}
+
+			/* Check to see if the last bezier point is selected */
+			if (nu->pntsu > 1) {
+				BezTriple *nu_bezt_old = nu->bezt;
+				BezTriple *bezt = &nu->bezt[nu->pntsu - 1];
+
+				if (BEZSELECTED_HIDDENHANDLES(cu, bezt)) {
+					BezTriple *bezt_new;
+					BEZ_DESEL(bezt);
+
+					bezt_new = MEM_mallocN((nu->pntsu + 1) * sizeof(BezTriple), __func__);
+					ED_curve_beztcpy(editnurb, bezt_new, nu->bezt, nu->pntsu);
+					bezt_new[nu->pntsu] = *bezt;
+
+					MEM_freeN(nu->bezt);
+					nu->bezt = bezt_new;
+
+					bezt_new += nu->pntsu;
+					nu->pntsu += 1;
+
+					if (ARRAY_HAS_ITEM(cu_actvert.bezt, nu_bezt_old, nu->pntsu - 1)) {
+						cu_actvert.bezt = (cu_actvert.bezt == bezt) ?
+						                  bezt_new : &nu->bezt[cu_actvert.bezt - nu_bezt_old];
+						BKE_curve_nurb_vert_active_set(cu, nu, cu_actvert.bezt);
+					}
+
+					BEZ_SEL(bezt_new);
+					changed = true;
+				}
+			}
+		}
+		else {
+
+			/* Check to see if the first bpoint is selected */
+			if (nu->pntsu > 0 && nu->bp != NULL) {
+				BPoint *nu_bp_old = nu->bp;
+				BPoint *bp = nu->bp;
+
+				if (bp->f1 & SELECT) {
+					BPoint *bp_new;
+					bp->f1 &= ~SELECT;
+
+					bp_new = MEM_mallocN((nu->pntsu + 1) * sizeof(BPoint), __func__);
+					ED_curve_bpcpy(editnurb, bp_new + 1, bp, nu->pntsu);
+					*bp_new = *bp;
+
+					MEM_freeN(nu->bp);
+					nu->bp = bp_new;
+
+					nu->pntsu += 1;
+					BKE_nurb_knot_calc_u(nu);
+
+					if (ARRAY_HAS_ITEM(cu_actvert.bp, nu_bp_old, nu->pntsu - 1)) {
+						cu_actvert.bp = (cu_actvert.bp == bp) ?
+						                 bp_new : &nu->bp[(cu_actvert.bp - nu_bp_old) + 1];
+						BKE_curve_nurb_vert_active_set(cu, nu, cu_actvert.bp);
+					}
+
+					bp_new->f1 |= SELECT;
+					changed = true;
+				}
+			}
+
+			/* Check to see if the last bpoint is selected */
+			if (nu->pntsu > 1) {
+				BPoint *nu_bp_old = nu->bp;
+				BPoint *bp = &nu->bp[nu->pntsu - 1];
+
+				if (bp->f1 & SELECT) {
+					BPoint *bp_new;
+					bp->f1 &= ~SELECT;
+
+					bp_new = MEM_mallocN((nu->pntsu + 1) * sizeof(BPoint), __func__);
+					ED_curve_bpcpy(editnurb, bp_new, nu->bp, nu->pntsu);
+					bp_new[nu->pntsu] = *bp;
+
+					MEM_freeN(nu->bp);
+					nu->bp = bp_new;
+
+					bp_new += nu->pntsu;
+					nu->pntsu += 1;
+
+					if (ARRAY_HAS_ITEM(cu_actvert.bp, nu_bp_old, nu->pntsu - 1)) {
+						cu_actvert.bp = (cu_actvert.bp == bp) ?
+						                 bp_new : &nu->bp[cu_actvert.bp - nu_bp_old];
+						BKE_curve_nurb_vert_active_set(cu, nu, cu_actvert.bp);
+					}
+
+					BKE_nurb_knot_calc_u(nu);
+
+					bp_new->f1 |= SELECT;
+					changed = true;
+				}
+			}
+		}
+	}
+
+	/* second pass (interior points) */
+	nu_last = editnurb->nurbs.last;
+	for (nu = editnurb->nurbs.first; (nu != nu_last->next); nu = nu->next) {
+		int i, i_end;
+
+		if ((nu->flagu & CU_NURB_CYCLIC) && (nu->pntsu > 1)) {
+			/* all points are interior */
+			i = 0;
+			i_end = nu->pntsu;
+		}
+		else {
+			/* skip endpoints */
+			i = 1;
+			i_end = nu->pntsu - 1;
+		}
+
+		if (nu->type == CU_BEZIER) {
+			BezTriple *bezt;
+
+			for (bezt = &nu->bezt[i]; i < i_end; i++, bezt++) {
+				if (BEZSELECTED_HIDDENHANDLES(cu, bezt)) {
+					Nurb *nurb_new;
+					BezTriple *bezt_new;
+
+					BEZ_DESEL(bezt);
+					nurb_new = BKE_nurb_copy(nu, 1, 1);
+					nurb_new->flagu &= ~CU_NURB_CYCLIC;
+					BLI_addtail(&editnurb->nurbs, nurb_new);
+					bezt_new = nurb_new->bezt;
+					ED_curve_beztcpy(editnurb, bezt_new, bezt, 1);
+					BEZ_SEL(bezt_new);
+
+					if (cu_actvert.bezt == bezt || cu_actnu == NULL) {
+						BKE_curve_nurb_vert_active_set(cu, nurb_new, bezt_new);
+					}
+
+					changed = true;
+				}
+			}
+		}
+		else {
+			BPoint *bp;
+
+			for (bp = &nu->bp[i]; i < i_end; i++, bp++) {
+				if (bp->f1 & SELECT) {
+					Nurb *nurb_new;
+					BPoint *bp_new;
+
+					bp->f1 &= ~SELECT;
+					nurb_new = BKE_nurb_copy(nu, 1, 1);
+					nurb_new->flagu &= ~CU_NURB_CYCLIC;
+					BLI_addtail(&editnurb->nurbs, nurb_new);
+					bp_new = nurb_new->bp;
+					ED_curve_bpcpy(editnurb, bp_new, bp, 1);
+					bp_new->f1 |= SELECT;
+
+					if (cu_actvert.bp == bp || cu_actnu == NULL) {
+						BKE_curve_nurb_vert_active_set(cu, nurb_new, bp_new);
+					}
+
+					changed = true;
+				}
+			}
+		}
+	}
+
+	if (changed == false) {
+		BKE_curve_nurb_vert_active_set(cu, cu_actnu, cu_actvert.p);
+	}
+
+	return changed;
+}
+
 /***************** add vertex operator **********************/
 
-static int addvert_Nurb(bContext *C, short mode, float location[3])
+static int ed_editcurve_addvert(Curve *cu, EditNurb *editnurb, const float location[3])
+{
+	Nurb *nu;
+
+	float minmax[2][3];
+	float temp[3];
+	bool nu_has_select = false;
+
+	bool changed = false;
+
+	INIT_MINMAX(minmax[0], minmax[1]);
+
+	for (nu = editnurb->nurbs.first; nu; nu = nu->next) {
+		int i;
+		if (nu->type == CU_BEZIER) {
+			BezTriple *bezt;
+
+			for (i = 0, bezt = nu->bezt; i < nu->pntsu; i++, bezt++) {
+				if (BEZSELECTED_HIDDENHANDLES(cu, bezt)) {
+					minmax_v3v3_v3(UNPACK2(minmax), bezt->vec[1]);
+					nu_has_select = true;
+				}
+			}
+		}
+		else {
+			BPoint *bp;
+
+			for (i = 0, bp = nu->bp; i < nu->pntsu; i++, bp++) {
+				if (bp->f1 & SELECT) {
+					minmax_v3v3_v3(UNPACK2(minmax), bp->vec);
+					nu_has_select = true;
+				}
+			}
+		}
+	}
+
+	if (nu_has_select && ed_editcurve_extrude(cu, editnurb)) {
+		float ofs[3], center[3];
+		int i;
+
+		mid_v3_v3v3(center, minmax[0], minmax[1]);
+		sub_v3_v3v3(ofs, location, center);
+
+		if ((cu->flag & CU_3D) == 0) {
+			ofs[2] = 0.0f;
+		}
+
+		for (nu = editnurb->nurbs.first; nu; nu = nu->next) {
+			if (nu->type == CU_BEZIER) {
+				BezTriple *bezt;
+				for (i = 0, bezt = nu->bezt; i < nu->pntsu; i++, bezt++) {
+					if (BEZSELECTED_HIDDENHANDLES(cu, bezt)) {
+						add_v3_v3(bezt->vec[0], ofs);
+						add_v3_v3(bezt->vec[1], ofs);
+						add_v3_v3(bezt->vec[2], ofs);
+
+						if (((nu->flagu & CU_NURB_CYCLIC) == 0) &&
+						    (i == 0 || i == nu->pntsu - 1))
+						{
+							BKE_nurb_handle_calc_simple_auto(nu, bezt);
+						}
+					}
+				}
+			}
+			else {
+				BPoint *bp;
+
+				for (i = 0, bp = nu->bp; i < nu->pntsu; i++, bp++) {
+					if (bp->f1 & SELECT) {
+						add_v3_v3(bp->vec, ofs);
+					}
+				}
+			}
+		}
+		changed = true;
+	}
+	else {
+		/* nothing selected: create a new curve */
+		nu = BKE_curve_nurb_active_get(cu);
+
+		if (!nu || nu->type == CU_BEZIER) {
+			Nurb *nurb_new;
+			BezTriple *bezt_new;
+
+			if (nu) {
+				nurb_new = BKE_nurb_copy(nu, 1, 1);
+			}
+			else {
+				nurb_new = MEM_callocN(sizeof(Nurb), "BLI_editcurve_addvert new_bezt_nurb 2");
+				nurb_new->type = CU_BEZIER;
+				nurb_new->resolu = cu->resolu;
+				nurb_new->orderu = 4;
+				nurb_new->flag |= CU_SMOOTH;
+				BKE_nurb_bezierPoints_add(nurb_new, 1);
+			}
+			BLI_addtail(&editnurb->nurbs, nurb_new);
+
+			bezt_new = nurb_new->bezt;
+
+			BEZ_SEL(bezt_new);
+
+			bezt_new->h1 = HD_AUTO;
+			bezt_new->h2 = HD_AUTO;
+
+			temp[0] = 1.0f;
+			temp[1] = 0.0f;
+			temp[2] = 0.0f;
+
+			copy_v3_v3(bezt_new->vec[1], location);
+			sub_v3_v3v3(bezt_new->vec[0], bezt_new->vec[1], temp);
+			add_v3_v3v3(bezt_new->vec[2], bezt_new->vec[1], temp);
+
+			changed = true;
+		}
+		else {
+			Nurb *nurb_new;
+			BPoint *bp_new;
+
+			{
+				nurb_new = MEM_callocN(sizeof(Nurb), __func__);
+				nurb_new->type = CU_POLY;
+				nurb_new->resolu = cu->resolu;
+				nurb_new->flag |= CU_SMOOTH;
+				nurb_new->orderu = 4;
+				BKE_nurb_points_add(nurb_new, 1);
+			}
+			BLI_addtail(&editnurb->nurbs, nurb_new);
+
+			bp_new = nurb_new->bp;
+
+			bp_new->f1 |= SELECT;
+
+			copy_v3_v3(bp_new->vec, location);
+			bp_new->vec[3] = 1.0f;
+
+			BKE_nurb_knot_calc_u(nurb_new);
+
+			changed = true;
+		}
+	}
+
+	return changed;
+}
+
+static int add_vertex_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	Curve *cu = (Curve *)obedit->data;
+	Curve *cu = obedit->data;
 	EditNurb *editnurb = cu->editnurb;
-	Nurb *nu, *newnu = NULL;
-	BezTriple *bezt, *newbezt = NULL;
-	BPoint *bp, *newbp = NULL;
-	float imat[4][4], temp[3];
-	bool ok = false;
-	BezTriple *bezt_recalc[3] = {NULL};
+	float location[3];
+	float imat[4][4];
+
+	RNA_float_get_array(op->ptr, "location", location);
 
 	invert_m4_m4(imat, obedit->obmat);
+	mul_m4_v3(imat, location);
 
-	findselectedNurbvert(&editnurb->nurbs, &nu, &bezt, &bp);
-
-	if ((nu == NULL) || (nu->type == CU_BEZIER && bezt == NULL) || (nu->type != CU_BEZIER && bp == NULL)) {
-		if (mode != 'e') {
-			if (cu->actnu != CU_ACT_NONE)
-				nu = BLI_findlink(&editnurb->nurbs, cu->actnu);
-
-			if (!nu || nu->type == CU_BEZIER) {
-				newbezt = (BezTriple *)MEM_callocN(sizeof(BezTriple), "addvert_Nurb");
-				newbezt->radius = 1;
-				newbezt->alfa = 0;
-				BEZ_SEL(newbezt);
-				newbezt->h2 = newbezt->h1 = HD_AUTO;
-
-				newnu = (Nurb *)MEM_callocN(sizeof(Nurb), "addvert_Nurb newnu");
-				if (!nu) {
-					/* no selected segment -- create new one which is BEZIER type
-					 * type couldn't be determined from Curve bt could be changed
-					 * in the future, so shouldn't make much headache */
-					newnu->type = CU_BEZIER;
-					newnu->resolu = cu->resolu;
-					newnu->flag |= CU_SMOOTH;
-				}
-				else {
-					memcpy(newnu, nu, sizeof(Nurb));
-				}
-
-				BLI_addtail(&editnurb->nurbs, newnu);
-				newnu->bezt = newbezt;
-				newnu->pntsu = 1;
-
-				temp[0] = 1;
-				temp[1] = 0;
-				temp[2] = 0;
-
-				copy_v3_v3(newbezt->vec[1], location);
-				sub_v3_v3v3(newbezt->vec[0], newbezt->vec[1], temp);
-				add_v3_v3v3(newbezt->vec[2], newbezt->vec[1], temp);
-
-				mul_m4_v3(imat, newbezt->vec[0]);
-				mul_m4_v3(imat, newbezt->vec[1]);
-				mul_m4_v3(imat, newbezt->vec[2]);
-
-				ok = 1;
-				nu = newnu;
-			}
-			else if (nu->pntsv == 1) {
-				newbp = (BPoint *)MEM_callocN(sizeof(BPoint), "addvert_Nurb5");
-				newbp->radius = 1;
-				newbp->alfa = 0;
-				newbp->f1 |= SELECT;
-
-				newnu = (Nurb *)MEM_mallocN(sizeof(Nurb), "addvert_Nurb newnu");
-				memcpy(newnu, nu, sizeof(Nurb));
-				BLI_addtail(&editnurb->nurbs, newnu);
-				newnu->bp = newbp;
-				newnu->orderu = 2;
-				newnu->pntsu = 1;
-
-				mul_v3_m4v3(newbp->vec, imat, location);
-				newbp->vec[3] = 1.0;
-
-				newnu->knotsu = newnu->knotsv = NULL;
-				BKE_nurb_knot_calc_u(newnu);
-
-				ok = 1;
-				nu = newnu;
-			}
-
-		}
-
-		if (!ok)
-			return OPERATOR_CANCELLED;
-	}
-
-	if (!ok && nu->type == CU_BEZIER) {
-		/* which bezpoint? */
-		if (bezt == &nu->bezt[nu->pntsu - 1]) {  /* last */
-			BEZ_DESEL(bezt);
-			newbezt = (BezTriple *)MEM_callocN((nu->pntsu + 1) * sizeof(BezTriple), "addvert_Nurb");
-			ED_curve_beztcpy(editnurb, newbezt, nu->bezt, nu->pntsu);
-			newbezt[nu->pntsu] = *bezt;
-			copy_v3_v3(temp, bezt->vec[1]);
-			MEM_freeN(nu->bezt);
-			nu->bezt = newbezt;
-			newbezt += nu->pntsu;
-			BEZ_SEL(newbezt);
-			newbezt->h1 = newbezt->h2;
-			bezt = &nu->bezt[nu->pntsu - 1];
-			ok = 1;
-
-			if (nu->pntsu > 1) {
-				bezt_recalc[1] = newbezt;
-				bezt_recalc[0] = newbezt - 1;
-			}
-		}
-		else if (bezt == nu->bezt) {   /* first */
-			BEZ_DESEL(bezt);
-			newbezt = (BezTriple *)MEM_callocN((nu->pntsu + 1) * sizeof(BezTriple), "addvert_Nurb");
-			ED_curve_beztcpy(editnurb, newbezt + 1, bezt, nu->pntsu);
-			*newbezt = *bezt;
-			BEZ_SEL(newbezt);
-			newbezt->h2 = newbezt->h1;
-			copy_v3_v3(temp, bezt->vec[1]);
-			MEM_freeN(nu->bezt);
-			nu->bezt = newbezt;
-			bezt = newbezt + 1;
-			ok = 1;
-
-			if (nu->pntsu > 1) {
-				bezt_recalc[1] = newbezt;
-				bezt_recalc[2] = newbezt + 1;
-			}
-		}
-		else if (mode != 'e') {
-			BEZ_DESEL(bezt);
-			newbezt = (BezTriple *)MEM_callocN(sizeof(BezTriple), "addvert_Nurb");
-			*newbezt = *bezt;
-			BEZ_SEL(newbezt);
-			newbezt->h2 = newbezt->h1;
-			copy_v3_v3(temp, bezt->vec[1]);
-
-			newnu = (Nurb *)MEM_mallocN(sizeof(Nurb), "addvert_Nurb newnu");
-			memcpy(newnu, nu, sizeof(Nurb));
-			BLI_addtail(&editnurb->nurbs, newnu);
-			newnu->bezt = newbezt;
-			newnu->pntsu = 1;
-
-			nu = newnu;
-			bezt = newbezt;
-			ok = 1;
-		}
-		else {
-			bezt = NULL;
-		}
-
-		if (bezt) {
-			if (!newnu) nu->pntsu++;
-
-			if (mode == 'e') {
-				copy_v3_v3(newbezt->vec[0], bezt->vec[0]);
-				copy_v3_v3(newbezt->vec[1], bezt->vec[1]);
-				copy_v3_v3(newbezt->vec[2], bezt->vec[2]);
-			}
-			else {
-				mul_v3_m4v3(newbezt->vec[1], imat, location);
-				sub_v3_v3v3(temp, newbezt->vec[1], temp);
-
-				if (bezt_recalc[1]) {
-					const char h1 = bezt_recalc[1]->h1, h2 = bezt_recalc[1]->h2;
-					bezt_recalc[1]->h1 = bezt_recalc[1]->h2 = HD_AUTO;
-					BKE_nurb_handle_calc(bezt_recalc[1], bezt_recalc[0], bezt_recalc[2], 0);
-					bezt_recalc[1]->h1 = h1;
-					bezt_recalc[1]->h2 = h2;
-				}
-				else {
-					add_v3_v3v3(newbezt->vec[0], bezt->vec[0], temp);
-					add_v3_v3v3(newbezt->vec[2], bezt->vec[2], temp);
-				}
-				
-
-				if (newnu) BKE_nurb_handles_calc(newnu);
-				else BKE_nurb_handles_calc(nu);
-			}
-		}
-	}
-	else if (!ok && nu->pntsv == 1) {
-		/* which b-point? */
-		if (bp == &nu->bp[nu->pntsu - 1]) {  /* last */
-			bp->f1 = 0;
-			newbp = (BPoint *)MEM_callocN((nu->pntsu + 1) * sizeof(BPoint), "addvert_Nurb4");
-			ED_curve_bpcpy(editnurb, newbp, nu->bp, nu->pntsu);
-			newbp[nu->pntsu] = *bp;
-			MEM_freeN(nu->bp);
-			nu->bp = newbp;
-			newbp += nu->pntsu;
-			newbp->f1 |= SELECT;
-			bp = newbp - 1;
-			ok = 1;
-		}
-		else if (bp == nu->bp) {   /* first */
-			bp->f1 = 0;
-			newbp = (BPoint *)MEM_callocN((nu->pntsu + 1) * sizeof(BPoint), "addvert_Nurb3");
-			ED_curve_bpcpy(editnurb, newbp + 1, bp, nu->pntsu);
-			*newbp = *bp;
-			newbp->f1 |= SELECT;
-			MEM_freeN(nu->bp);
-			nu->bp = newbp;
-			bp = newbp + 1;
-			ok = 1;
-		}
-		else if (mode != 'e') {
-			bp->f1 = 0;
-			newbp = (BPoint *)MEM_callocN(sizeof(BPoint), "addvert_Nurb5");
-			*newbp = *bp;
-			newbp->f1 |= SELECT;
-
-			newnu = (Nurb *)MEM_mallocN(sizeof(Nurb), "addvert_Nurb newnu");
-			memcpy(newnu, nu, sizeof(Nurb));
-			BLI_addtail(&editnurb->nurbs, newnu);
-			newnu->bp = newbp;
-			newnu->orderu = 2;
-			newnu->pntsu = 1;
-			newnu->knotsu = newnu->knotsv = NULL;
-
-			nu = newnu;
-			bp = newbp;
-			ok = 1;
-		}
-		else {
-			bp = NULL;
-		}
-
-		if (bp) {
-			if (mode == 'e') {
-				copy_v3_v3(newbp->vec, bp->vec);
-			}
-			else {
-				mul_v3_m4v3(newbp->vec, imat, location);
-				newbp->vec[3] = 1.0;
-
-				if (!newnu && nu->orderu < 4 && nu->orderu <= nu->pntsu)
-					nu->orderu++;
-			}
-
-			if (!newnu) {
-				nu->pntsu++;
-				BKE_nurb_knot_calc_u(nu);
-			}
-			else {
-				BKE_nurb_knot_calc_u(newnu);
-			}
-		}
-	}
-
-	if (ok) {
-		if (nu->bezt) {
-			BKE_curve_nurb_vert_active_set(cu, nu, newbezt);
-		}
-		else {
-			BKE_curve_nurb_vert_active_set(cu, nu, newbp);
-		}
-
-		BKE_nurb_test2D(nu);
-
-		if (ED_curve_updateAnimPaths(obedit->data))
+	if (ed_editcurve_addvert(cu, editnurb, location)) {
+		if (ED_curve_updateAnimPaths(obedit->data)) {
 			WM_event_add_notifier(C, NC_OBJECT | ND_KEYS, obedit);
+		}
 
 		WM_event_add_notifier(C, NC_GEOM | ND_DATA, obedit->data);
 		DAG_id_tag_update(obedit->data, 0);
 
 		return OPERATOR_FINISHED;
 	}
-
-	return OPERATOR_CANCELLED;
-}
-
-static int add_vertex_exec(bContext *C, wmOperator *op)
-{
-	float location[3];
-
-	RNA_float_get_array(op->ptr, "location", location);
-	return addvert_Nurb(C, 0, location);
+	else {
+		return OPERATOR_CANCELLED;
+	}
 }
 
 static int add_vertex_invoke(bContext *C, wmOperator *op, const wmEvent *event)
@@ -5244,29 +5356,39 @@ void CURVE_OT_vertex_add(wmOperatorType *ot)
 
 /***************** extrude operator **********************/
 
-static int extrude_exec(bContext *C, wmOperator *UNUSED(op))
+static int curve_extrude_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Object *obedit = CTX_data_edit_object(C);
 	Curve *cu = obedit->data;
 	EditNurb *editnurb = cu->editnurb;
-	Nurb *nu;
+	bool changed = false;
+	bool as_curve = false;
 	
 	/* first test: curve? */
-	for (nu = editnurb->nurbs.first; nu; nu = nu->next)
-		if (nu->pntsv == 1 && isNurbsel_count(cu, nu) == 1)
-			break;
+	if (obedit->type != OB_CURVE) {
+		Nurb *nu;
+		for (nu = editnurb->nurbs.first; nu; nu = nu->next) {
+			if (nu->pntsv == 1 && isNurbsel_count(cu, nu) == 1) {
+				as_curve = true;
+				break;
+			}
+		}
+	}
 
-	if (obedit->type == OB_CURVE || nu) {
-		addvert_Nurb(C, 'e', NULL);
+	if (obedit->type == OB_CURVE || as_curve) {
+		changed = ed_editcurve_extrude(cu, editnurb);
 	}
 	else {
-		if (ed_editnurb_extrude_flag(editnurb, 1)) { /* '1'= flag */
-			if (ED_curve_updateAnimPaths(obedit->data))
-				WM_event_add_notifier(C, NC_OBJECT | ND_KEYS, obedit);
+		changed = ed_editnurb_extrude_flag(editnurb, SELECT);
+	}
 
-			WM_event_add_notifier(C, NC_GEOM | ND_DATA, obedit->data);
-			DAG_id_tag_update(obedit->data, 0);
+	if (changed) {
+		if (ED_curve_updateAnimPaths(obedit->data)) {
+			WM_event_add_notifier(C, NC_OBJECT | ND_KEYS, obedit);
 		}
+
+		WM_event_add_notifier(C, NC_GEOM | ND_DATA, obedit->data);
+		DAG_id_tag_update(obedit->data, 0);
 	}
 
 	return OPERATOR_FINISHED;
@@ -5280,7 +5402,7 @@ void CURVE_OT_extrude(wmOperatorType *ot)
 	ot->idname = "CURVE_OT_extrude";
 	
 	/* api callbacks */
-	ot->exec = extrude_exec;
+	ot->exec = curve_extrude_exec;
 	ot->poll = ED_operator_editsurfcurve;
 
 	/* flags */
@@ -5382,11 +5504,11 @@ static int toggle_cyclic_invoke(bContext *C, wmOperator *op, const wmEvent *UNUS
 		for (nu = editnurb->first; nu; nu = nu->next) {
 			if (nu->pntsu > 1 || nu->pntsv > 1) {
 				if (nu->type == CU_NURBS) {
-					pup = uiPupMenuBegin(C, IFACE_("Direction"), ICON_NONE);
-					layout = uiPupMenuLayout(pup);
+					pup = UI_popup_menu_begin(C, IFACE_("Direction"), ICON_NONE);
+					layout = UI_popup_menu_layout(pup);
 					uiItemsEnumO(layout, op->type->idname, "direction");
-					uiPupMenuEnd(C, pup);
-					return OPERATOR_CANCELLED;
+					UI_popup_menu_end(C, pup);
+					return OPERATOR_INTERFACE;
 				}
 			}
 		}
@@ -6020,7 +6142,7 @@ void CURVE_OT_select_random(wmOperatorType *ot)
 
 /********************* every nth number of point *******************/
 
-static void select_nth_bezt(Nurb *nu, BezTriple *bezt, int nth)
+static void select_nth_bezt(Nurb *nu, BezTriple *bezt, int nth, int skip, int offset)
 {
 	int a, start;
 
@@ -6029,7 +6151,8 @@ static void select_nth_bezt(Nurb *nu, BezTriple *bezt, int nth)
 	bezt = &nu->bezt[a - 1];
 
 	while (a--) {
-		if (abs(start - a) % nth) {
+		const int depth = abs(start - a);
+		if ((offset + depth) % (skip + nth) >= skip) {
 			select_beztriple(bezt, DESELECT, SELECT, HIDDEN);
 		}
 
@@ -6037,10 +6160,10 @@ static void select_nth_bezt(Nurb *nu, BezTriple *bezt, int nth)
 	}
 }
 
-static void select_nth_bp(Nurb *nu, BPoint *bp, int nth)
+static void select_nth_bp(Nurb *nu, BPoint *bp, int nth, int skip, int offset)
 {
 	int a, startrow, startpnt;
-	int dist, row, pnt;
+	int row, pnt;
 
 	startrow = (bp - nu->bp) / nu->pntsu;
 	startpnt = (bp - nu->bp) % nu->pntsu;
@@ -6051,8 +6174,8 @@ static void select_nth_bp(Nurb *nu, BPoint *bp, int nth)
 	pnt = nu->pntsu - 1;
 
 	while (a--) {
-		dist = abs(pnt - startpnt) + abs(row - startrow);
-		if (dist % nth) {
+		const int depth = abs(pnt - startpnt) + abs(row - startrow);
+		if ((offset + depth) % (skip + nth) >= skip) {
 			select_bpoint(bp, DESELECT, SELECT, HIDDEN);
 		}
 
@@ -6066,7 +6189,7 @@ static void select_nth_bp(Nurb *nu, BPoint *bp, int nth)
 	}
 }
 
-bool ED_curve_select_nth(Curve *cu, int nth)
+bool ED_curve_select_nth(Curve *cu, int nth, int skip, int offset)
 {
 	Nurb *nu = NULL;
 	void *vert = NULL;
@@ -6075,10 +6198,10 @@ bool ED_curve_select_nth(Curve *cu, int nth)
 		return false;
 
 	if (nu->bezt) {
-		select_nth_bezt(nu, vert, nth);
+		select_nth_bezt(nu, vert, nth, skip, offset);
 	}
 	else {
-		select_nth_bp(nu, vert, nth);
+		select_nth_bp(nu, vert, nth, skip, offset);
 	}
 
 	return true;
@@ -6087,9 +6210,14 @@ bool ED_curve_select_nth(Curve *cu, int nth)
 static int select_nth_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
-	int nth = RNA_int_get(op->ptr, "nth");
+	const int nth = RNA_int_get(op->ptr, "nth") - 1;
+	const int skip = RNA_int_get(op->ptr, "skip");
+	int offset = RNA_int_get(op->ptr, "offset");
 
-	if (!ED_curve_select_nth(obedit->data, nth)) {
+	/* so input of offset zero ends up being (nth - 1) */
+	offset = mod_i(offset, nth + skip);
+
+	if (!ED_curve_select_nth(obedit->data, nth, skip, offset)) {
 		if (obedit->type == OB_SURF) {
 			BKE_report(op->reports, RPT_ERROR, "Surface has not got active point");
 		}
@@ -6120,6 +6248,8 @@ void CURVE_OT_select_nth(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	RNA_def_int(ot->srna, "nth", 2, 2, INT_MAX, "Nth Selection", "", 2, 100);
+	RNA_def_int(ot->srna, "skip", 1, 1, INT_MAX, "Skip", "", 1, 100);
+	RNA_def_int(ot->srna, "offset", 0, INT_MIN, INT_MAX, "Offset", "", -100, 100);
 }
 
 /********************** add duplicate operator *********************/
@@ -6551,7 +6681,6 @@ static int curve_delete_segments(Object *obedit, const bool split)
 				}
 			}
 
-			nu->knotsu = nu->knotsv = NULL;
 			BKE_nurb_order_clamp_u(nu);
 			BKE_nurb_knot_calc_u(nu);
 
@@ -6648,7 +6777,7 @@ static int shade_smooth_exec(bContext *C, wmOperator *op)
 	Object *obedit = CTX_data_edit_object(C);
 	ListBase *editnurb = object_editcurve_get(obedit);
 	Nurb *nu;
-	int clear = (strcmp(op->idname, "CURVE_OT_shade_flat") == 0);
+	int clear = (STREQ(op->idname, "CURVE_OT_shade_flat"));
 	
 	if (obedit->type != OB_CURVE)
 		return OPERATOR_CANCELLED;
@@ -6889,6 +7018,7 @@ static void undoCurve_to_editCurve(void *ucu, void *UNUSED(edata), void *cu_v)
 
 	cu->actvert = undoCurve->actvert;
 	cu->actnu = undoCurve->actnu;
+	cu->flag = undoCurve->flag;
 	ED_curve_updateAnimPaths(cu);
 }
 
@@ -6928,6 +7058,7 @@ static void *editCurve_to_undoCurve(void *UNUSED(edata), void *cu_v)
 
 	undoCurve->actvert = cu->actvert;
 	undoCurve->actnu = cu->actnu;
+	undoCurve->flag = cu->flag;
 
 	return undoCurve;
 }

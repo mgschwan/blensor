@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "attribute.h"
@@ -227,6 +227,21 @@ void ShaderGraph::disconnect(ShaderInput *to)
 	from->links.erase(remove(from->links.begin(), from->links.end(), to), from->links.end());
 }
 
+void ShaderGraph::relink(vector<ShaderInput*> inputs, vector<ShaderInput*> outputs, ShaderOutput *output)
+{
+	/* Remove nodes and re-link if output isn't NULL. */
+	foreach(ShaderInput *sock, inputs) {
+		if(sock->link)
+			disconnect(sock);
+	}
+
+	foreach(ShaderInput *sock, outputs) {
+		disconnect(sock);
+		if(output)
+			connect(output, sock);
+	}
+}
+
 void ShaderGraph::finalize(bool do_bump, bool do_osl)
 {
 	/* before compiling, the shader graph may undergo a number of modifications.
@@ -320,20 +335,20 @@ void ShaderGraph::remove_unneeded_nodes()
 {
 	vector<bool> removed(num_node_ids, false);
 	bool any_node_removed = false;
-	
+
 	/* find and unlink proxy nodes */
 	foreach(ShaderNode *node, nodes) {
 		if(node->special_type == SHADER_SPECIAL_TYPE_PROXY) {
 			ProxyNode *proxy = static_cast<ProxyNode*>(node);
 			ShaderInput *input = proxy->inputs[0];
 			ShaderOutput *output = proxy->outputs[0];
-			
+
 			/* temp. copy of the output links list.
 			 * output->links is modified when we disconnect!
 			 */
 			vector<ShaderInput*> links(output->links);
 			ShaderOutput *from = input->link;
-			
+
 			/* bypass the proxy node */
 			if(from) {
 				disconnect(input);
@@ -374,6 +389,21 @@ void ShaderGraph::remove_unneeded_nodes()
 			removed[proxy->id] = true;
 			any_node_removed = true;
 		}
+		else if(node->special_type == SHADER_SPECIAL_TYPE_BACKGROUND) {
+			BackgroundNode *bg = static_cast<BackgroundNode*>(node);
+
+			if(bg->outputs[0]->links.size()) {
+				/* Black color or zero strength, remove node */
+				if((!bg->inputs[0]->link && bg->inputs[0]->value == make_float3(0.0f, 0.0f, 0.0f)) ||
+				   (!bg->inputs[1]->link && bg->inputs[1]->value.x == 0.0f)) {
+					vector<ShaderInput*> inputs = bg->outputs[0]->links;
+
+					relink(bg->inputs, inputs, NULL);
+					removed[bg->id] = true;
+					any_node_removed = true;
+				}
+			}
+		}
 		else if(node->special_type == SHADER_SPECIAL_TYPE_MIX_CLOSURE) {
 			MixClosureNode *mix = static_cast<MixClosureNode*>(node);
 
@@ -382,15 +412,7 @@ void ShaderGraph::remove_unneeded_nodes()
 				ShaderOutput *output = mix->inputs[1]->link;
 				vector<ShaderInput*> inputs = mix->outputs[0]->links;
 
-				foreach(ShaderInput *sock, mix->inputs)
-					if(sock->link)
-						disconnect(sock);
-
-				foreach(ShaderInput *input, inputs) {
-					disconnect(input);
-					if(output)
-						connect(output, input);
-				}
+				relink(mix->inputs, inputs, output);
 				removed[mix->id] = true;
 				any_node_removed = true;
 			}
@@ -402,16 +424,8 @@ void ShaderGraph::remove_unneeded_nodes()
 				if(mix->inputs[0]->value.x == 0.0f) {
 					ShaderOutput *output = mix->inputs[1]->link;
 					vector<ShaderInput*> inputs = mix->outputs[0]->links;
-					
-					foreach(ShaderInput *sock, mix->inputs)
-						if(sock->link)
-							disconnect(sock);
 
-					foreach(ShaderInput *input, inputs) {
-						disconnect(input);
-						if(output)
-							connect(output, input);
-					}
+					relink(mix->inputs, inputs, output);
 					removed[mix->id] = true;
 					any_node_removed = true;
 				}
@@ -419,16 +433,34 @@ void ShaderGraph::remove_unneeded_nodes()
 				else if(mix->inputs[0]->value.x == 1.0f) {
 					ShaderOutput *output = mix->inputs[2]->link;
 					vector<ShaderInput*> inputs = mix->outputs[0]->links;
-					
-					foreach(ShaderInput *sock, mix->inputs)
-						if(sock->link)
-							disconnect(sock);
 
-					foreach(ShaderInput *input, inputs) {
-						disconnect(input);
-						if(output)
-							connect(output, input);
-					}
+					relink(mix->inputs, inputs, output);
+					removed[mix->id] = true;
+					any_node_removed = true;
+				}
+			}
+		}
+		else if(node->special_type == SHADER_SPECIAL_TYPE_MIX_RGB) {
+			MixNode *mix = static_cast<MixNode*>(node);
+
+			/* remove unused Mix RGB inputs when factor is 0.0 or 1.0 */
+			/* check for color links and make sure factor link is disconnected */
+			if(mix->outputs[0]->links.size() && mix->inputs[1]->link && mix->inputs[2]->link && !mix->inputs[0]->link) {
+				/* factor 0.0 */
+				if(mix->inputs[0]->value.x == 0.0f) {
+					ShaderOutput *output = mix->inputs[1]->link;
+					vector<ShaderInput*> inputs = mix->outputs[0]->links;
+
+					relink(mix->inputs, inputs, output);
+					removed[mix->id] = true;
+					any_node_removed = true;
+				}
+				/* factor 1.0 */
+				else if(mix->inputs[0]->value.x == 1.0f) {
+					ShaderOutput *output = mix->inputs[2]->link;
+					vector<ShaderInput*> inputs = mix->outputs[0]->links;
+
+					relink(mix->inputs, inputs, output);
 					removed[mix->id] = true;
 					any_node_removed = true;
 				}
@@ -477,7 +509,7 @@ void ShaderGraph::break_cycles(ShaderNode *node, vector<bool>& visited, vector<b
 
 void ShaderGraph::clean()
 {
-	/* remove proxy and unnecessary mix nodes */
+	/* remove proxy and unnecessary nodes */
 	remove_unneeded_nodes();
 
 	/* we do two things here: find cycles and break them, and remove unused
@@ -642,7 +674,7 @@ void ShaderGraph::bump_from_displacement()
 	 * different shifted coordinates.
 	 *
 	 * these 3 displacement values are then fed into the bump node, which will
-	 * output the the perturbed normal. */
+	 * output the perturbed normal. */
 
 	ShaderInput *displacement_in = output()->input("Displacement");
 
@@ -695,10 +727,18 @@ void ShaderGraph::bump_from_displacement()
 	/* connect bump output to normal input nodes that aren't set yet. actually
 	 * this will only set the normal input to the geometry node that we created
 	 * and connected to all other normal inputs already. */
-	foreach(ShaderNode *node, nodes)
-		foreach(ShaderInput *input, node->inputs)
+	foreach(ShaderNode *node, nodes) {
+		/* Don't connect normal to the bump node we're coming from,
+		 * otherwise it'll be a cycle in graph.
+		 */
+		if(node == bump) {
+			continue;
+		}
+		foreach(ShaderInput *input, node->inputs) {
 			if(!input->link && input->default_value == ShaderInput::NORMAL)
 				connect(set_normal->output("Normal"), input);
+		}
+	}
 
 	/* for displacement bump, clear the normal input in case the above loop
 	 * connected the setnormal out to the bump normalin */
@@ -791,6 +831,78 @@ void ShaderGraph::transform_multi_closure(ShaderNode *node, ShaderOutput *weight
 		else
 			weight_in->value.x += 1.0f;
 	}
+}
+
+void ShaderGraph::dump_graph(const char *filename)
+{
+	FILE *fd = fopen(filename, "w");
+
+	if(fd == NULL) {
+		printf("Error opening file for dumping the graph: %s\n", filename);
+		return;
+	}
+
+	fprintf(fd, "digraph shader_graph {\n");
+	fprintf(fd, "ranksep=1.5\n");
+	fprintf(fd, "rankdir=LR\n");
+	fprintf(fd, "splines=false\n");
+
+	foreach(ShaderNode *node, nodes) {
+		fprintf(fd, "// NODE: %p\n", node);
+		fprintf(fd, "\"%p\" [shape=record,label=\"{", node);
+		if(node->inputs.size()) {
+			fprintf(fd, "{");
+			foreach(ShaderInput *socket, node->inputs) {
+				if(socket != node->inputs[0]) {
+					fprintf(fd, "|");
+				}
+				fprintf(fd, "<IN_%p>%s", socket, socket->name);
+			}
+			fprintf(fd, "}|");
+		}
+		fprintf(fd, "%s", node->name.c_str());
+		if(node->bump == SHADER_BUMP_CENTER) {
+			fprintf(fd, " (bump:center)");
+		}
+		else if(node->bump == SHADER_BUMP_DX) {
+			fprintf(fd, " (bump:dx)");
+		}
+		else if(node->bump == SHADER_BUMP_DY) {
+			fprintf(fd, " (bump:dy)");
+		}
+		if(node->outputs.size()) {
+			fprintf(fd, "|{");
+			foreach(ShaderOutput *socket, node->outputs) {
+				if(socket != node->outputs[0]) {
+					fprintf(fd, "|");
+				}
+				fprintf(fd, "<OUT_%p>%s", socket, socket->name);
+			}
+			fprintf(fd, "}");
+		}
+		fprintf(fd, "}\"]");
+	}
+
+	foreach(ShaderNode *node, nodes) {
+		foreach(ShaderOutput *output, node->outputs) {
+			foreach(ShaderInput *input, output->links) {
+				fprintf(fd,
+				        "// CONNECTION: OUT_%p->IN_%p (%s:%s)\n",
+				        output,
+				        input,
+				        output->name, input->name);
+				fprintf(fd,
+				        "\"\%p\":\"OUT_%p\":e -> \"%p\":\"IN_%p\":w [label=\"\"]\n",
+				        output->parent,
+				        output,
+				        input->parent,
+				        input);
+			}
+		}
+	}
+
+	fprintf(fd, "}\n");
+	fclose(fd);
 }
 
 CCL_NAMESPACE_END

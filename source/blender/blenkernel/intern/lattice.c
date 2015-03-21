@@ -284,6 +284,10 @@ Lattice *BKE_lattice_copy(Lattice *lt)
 
 	ltn->editlatt = NULL;
 
+	if (lt->id.lib) {
+		BKE_id_lib_local_paths(G.main, lt->id.lib, &ltn->id);
+	}
+
 	return ltn;
 }
 
@@ -575,7 +579,7 @@ static bool where_on_path_deform(Object *ob, float ctime, float vec[4], float di
 	
 	/* test for cyclic */
 	bl = ob->curve_cache->bev.first;
-	if (!bl->nr) return 0;
+	if (!bl->nr) return false;
 	if (bl->poly > -1) cycl = 1;
 
 	if (cycl == 0) {
@@ -608,9 +612,9 @@ static bool where_on_path_deform(Object *ob, float ctime, float vec[4], float di
 				/* weight - not used but could be added */
 			}
 		}
-		return 1;
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 /* for each point, rotate & translate to curve */
@@ -634,9 +638,7 @@ static bool calc_curve_deform(Scene *scene, Object *par, float co[3],
 #endif
 
 	if (par->curve_cache->path == NULL) {
-		return 0;  /* happens on append, cyclic dependencies
-		            * and empty curves
-		            */
+		return false;  /* happens on append, cyclic dependencies and empty curves */
 	}
 
 	/* options */
@@ -718,13 +720,14 @@ static bool calc_curve_deform(Scene *scene, Object *par, float co[3],
 		if (r_quat)
 			copy_qt_qt(r_quat, quat);
 
-		return 1;
+		return true;
 	}
-	return 0;
+	return false;
 }
 
-void curve_deform_verts(Scene *scene, Object *cuOb, Object *target, DerivedMesh *dm, float (*vertexCos)[3],
-                        int numVerts, const char *vgroup, short defaxis)
+void curve_deform_verts(
+        Scene *scene, Object *cuOb, Object *target, DerivedMesh *dm, float (*vertexCos)[3],
+        int numVerts, const char *vgroup, short defaxis)
 {
 	Curve *cu;
 	int a;
@@ -939,10 +942,10 @@ bool object_deform_mball(Object *ob, ListBase *dispbase)
 			                     (float(*)[3])dl->verts, dl->nr, NULL, 1.0f);
 		}
 
-		return 1;
+		return true;
 	}
 	else {
-		return 0;
+		return false;
 	}
 }
 

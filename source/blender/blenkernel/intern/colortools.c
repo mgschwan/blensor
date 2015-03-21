@@ -50,7 +50,6 @@
 
 
 #include "IMB_colormanagement.h"
-#include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
 
 /* ********************************* color curve ********************* */
@@ -577,14 +576,14 @@ static void curvemap_make_table(CurveMap *cuma, const rctf *clipr)
 	/* store first and last handle for extrapolation, unit length */
 	cuma->ext_in[0] = bezt[0].vec[0][0] - bezt[0].vec[1][0];
 	cuma->ext_in[1] = bezt[0].vec[0][1] - bezt[0].vec[1][1];
-	range = sqrt(cuma->ext_in[0] * cuma->ext_in[0] + cuma->ext_in[1] * cuma->ext_in[1]);
+	range = sqrtf(cuma->ext_in[0] * cuma->ext_in[0] + cuma->ext_in[1] * cuma->ext_in[1]);
 	cuma->ext_in[0] /= range;
 	cuma->ext_in[1] /= range;
 
 	a = cuma->totpoint - 1;
 	cuma->ext_out[0] = bezt[a].vec[1][0] - bezt[a].vec[2][0];
 	cuma->ext_out[1] = bezt[a].vec[1][1] - bezt[a].vec[2][1];
-	range = sqrt(cuma->ext_out[0] * cuma->ext_out[0] + cuma->ext_out[1] * cuma->ext_out[1]);
+	range = sqrtf(cuma->ext_out[0] * cuma->ext_out[0] + cuma->ext_out[1] * cuma->ext_out[1]);
 	cuma->ext_out[0] /= range;
 	cuma->ext_out[1] /= range;
 	
@@ -995,7 +994,7 @@ void BKE_histogram_update_sample_line(Histogram *hist, ImBuf *ibuf, const ColorM
 				copy_v3_v3(rgb, fp);
 				IMB_colormanagement_processor_apply_v3(cm_processor, rgb);
 
-				hist->data_luma[i]  = rgb_to_luma(rgb);
+				hist->data_luma[i]  = IMB_colormanagement_get_luminance(rgb);
 				hist->data_r[i]     = rgb[0];
 				hist->data_g[i]     = rgb[1];
 				hist->data_b[i]     = rgb[2];
@@ -1003,7 +1002,7 @@ void BKE_histogram_update_sample_line(Histogram *hist, ImBuf *ibuf, const ColorM
 			}
 			else if (ibuf->rect) {
 				cp = (unsigned char *)(ibuf->rect + y * ibuf->x + x);
-				hist->data_luma[i]  = (float)rgb_to_luma_byte(cp) / 255.0f;
+				hist->data_luma[i]  = (float)IMB_colormanagement_get_luminance_byte(cp) / 255.0f;
 				hist->data_r[i]     = (float)cp[0] / 255.0f;
 				hist->data_g[i]     = (float)cp[1] / 255.0f;
 				hist->data_b[i]     = (float)cp[2] / 255.0f;
@@ -1125,7 +1124,7 @@ void scopes_update(Scopes *scopes, ImBuf *ibuf, const ColorManagedViewSettings *
 			}
 
 			/* we still need luma for histogram */
-			luma = rgb_to_luma(rgba);
+			luma = IMB_colormanagement_get_luminance(rgba);
 
 			/* check for min max */
 			if (ycc_mode == -1) {

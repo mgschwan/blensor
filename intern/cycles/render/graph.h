@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __GRAPH_H__
@@ -76,9 +76,11 @@ enum ShaderNodeSpecialType {
 	SHADER_SPECIAL_TYPE_NONE,
 	SHADER_SPECIAL_TYPE_PROXY,
 	SHADER_SPECIAL_TYPE_MIX_CLOSURE,
+	SHADER_SPECIAL_TYPE_MIX_RGB, /* Only Mix subtype */
 	SHADER_SPECIAL_TYPE_AUTOCONVERT,
 	SHADER_SPECIAL_TYPE_GEOMETRY,
-	SHADER_SPECIAL_TYPE_SCRIPT
+	SHADER_SPECIAL_TYPE_SCRIPT,
+	SHADER_SPECIAL_TYPE_BACKGROUND,
 };
 
 /* Enum
@@ -194,6 +196,7 @@ public:
 	virtual bool has_converter_blackbody() { return false; }
 	virtual bool has_bssrdf_bump() { return false; }
 	virtual bool has_spatial_varying() { return false; }
+	virtual bool has_object_dependency() { return false; }
 
 	vector<ShaderInput*> inputs;
 	vector<ShaderOutput*> outputs;
@@ -245,9 +248,12 @@ public:
 
 	void connect(ShaderOutput *from, ShaderInput *to);
 	void disconnect(ShaderInput *to);
+	void relink(vector<ShaderInput*> inputs, vector<ShaderInput*> outputs, ShaderOutput *output);
 
 	void remove_unneeded_nodes();
 	void finalize(bool do_bump = false, bool do_osl = false);
+
+	void dump_graph(const char *filename);
 
 protected:
 	typedef pair<ShaderNode* const, ShaderNode*> NodePair;

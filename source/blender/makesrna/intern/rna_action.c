@@ -60,7 +60,7 @@ static void rna_ActionGroup_channels_next(CollectionPropertyIterator *iter)
 	FCurve *fcu = (FCurve *)internal->link;
 	bActionGroup *grp = fcu->grp;
 	
-	/* only continue if the next F-Curve (if existant) belongs in the same group */
+	/* only continue if the next F-Curve (if existent) belongs in the same group */
 	if ((fcu->next) && (fcu->next->grp == grp))
 		internal->link = (Link *)fcu->next;
 	else
@@ -197,7 +197,7 @@ static void rna_Action_active_pose_marker_index_range(PointerRNA *ptr, int *min,
 	bAction *act = (bAction *)ptr->data;
 
 	*min = 0;
-	*max = max_ii(0, BLI_countlist(&act->markers) - 1);
+	*max = max_ii(0, BLI_listbase_count(&act->markers) - 1);
 }
 
 
@@ -462,6 +462,12 @@ static void rna_def_dopesheet(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Display Speaker", "Include visualization of speaker related animation data");
 	RNA_def_property_ui_icon(prop, ICON_SPEAKER, 0);
 	RNA_def_property_update(prop, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
+	
+	prop = RNA_def_property(srna, "show_gpencil", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "filterflag", ADS_FILTER_NOGPENCIL);
+	RNA_def_property_ui_text(prop, "Display Grease Pencil", "Include visualization of Grease Pencil related animation data and frames");
+	RNA_def_property_ui_icon(prop, ICON_GREASEPENCIL, 0);
+	RNA_def_property_update(prop, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
 }
 
 static void rna_def_action_group(BlenderRNA *brna)
@@ -527,7 +533,7 @@ static void rna_def_action_groups(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_struct_ui_text(srna, "Action Groups", "Collection of action groups");
 
 	func = RNA_def_function(srna, "new", "rna_Action_groups_new");
-	RNA_def_function_ui_description(func, "Add a keyframe to the curve");
+	RNA_def_function_ui_description(func, "Create a new action group and add it to the action");
 	parm = RNA_def_string(func, "name", "Group", 0, "", "New name for the action group");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 

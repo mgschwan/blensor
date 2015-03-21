@@ -193,8 +193,28 @@ bool BM_vert_pair_share_face_check(
 		BMFace *f;
 
 		BM_ITER_ELEM (f, &iter, v_a, BM_FACES_OF_VERT) {
-			if (BM_vert_in_face(f, v_b)) {
+			if (BM_vert_in_face(v_b, f)) {
 				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+bool BM_vert_pair_share_face_check_cb(
+        BMVert *v_a, BMVert *v_b,
+        bool (*test_fn)(BMFace *, void *user_data), void *user_data)
+{
+	if (v_a->e && v_b->e) {
+		BMIter iter;
+		BMFace *f;
+
+		BM_ITER_ELEM (f, &iter, v_a, BM_FACES_OF_VERT) {
+			if (test_fn(f, user_data)) {
+				if (BM_vert_in_face(v_b, f)) {
+					return true;
+				}
 			}
 		}
 	}
@@ -247,6 +267,37 @@ static float bm_face_calc_split_dot(BMLoop *l_a, BMLoop *l_b)
 	else {
 		return -1.0f;
 	}
+}
+
+/**
+ * Check if a point is inside the corner defined by a loop
+ * (within the 2 planes defined by the loops corner & face normal).
+ *
+ * \return signed, squared distance to the loops planes, less than 0.0 when outside.
+ */
+float BM_loop_point_side_of_loop_test(const BMLoop *l, const float co[3])
+{
+	const float *axis = l->f->no;
+	return dist_signed_squared_to_corner_v3v3v3(co, l->prev->v->co, l->v->co, l->next->v->co, axis);
+}
+
+/**
+ * Check if a point is inside the edge defined by a loop
+ * (within the plane defined by the loops edge & face normal).
+ *
+ * \return signed, squared distablce to the edge plane, less than 0.0 when outside.
+ */
+float BM_loop_point_side_of_edge_test(const BMLoop *l, const float co[3])
+{
+	const float *axis = l->f->no;
+	float dir[3];
+	float plane[4];
+
+	sub_v3_v3v3(dir, l->next->v->co, l->v->co);
+	cross_v3_v3v3(plane, axis, dir);
+
+	plane[3] = -dot_v3v3(plane, l->v->co);
+	return dist_signed_squared_to_plane_v3(co, plane);
 }
 
 /**
@@ -311,7 +362,7 @@ BMLoop *BM_vert_find_first_loop(BMVert *v)
 {
 	BMEdge *e;
 
-	if (!v || !v->e)
+	if (!v->e)
 		return NULL;
 
 	e = bmesh_disk_faceedge_find_first(v->e, v);
@@ -325,7 +376,7 @@ BMLoop *BM_vert_find_first_loop(BMVert *v)
 /**
  * Returns true if the vertex is used in a given face.
  */
-bool BM_vert_in_face(BMFace *f, BMVert *v)
+bool BM_vert_in_face(BMVert *v, BMFace *f)
 {
 	BMLoop *l_iter, *l_first;
 
@@ -353,7 +404,7 @@ bool BM_vert_in_face(BMFace *f, BMVert *v)
  * Compares the number of vertices in an array
  * that appear in a given face
  */
-int BM_verts_in_face_count(BMFace *f, BMVert **varr, int len)
+int BM_verts_in_face_count(BMVert **varr, int len, BMFace *f)
 {
 	BMLoop *l_iter, *l_first;
 
@@ -397,7 +448,7 @@ int BM_verts_in_face_count(BMFace *f, BMVert **varr, int len)
 /**
  * Return true if all verts are in the face.
  */
-bool BM_verts_in_face(BMFace *f, BMVert **varr, int len)
+bool BM_verts_in_face(BMVert **varr, int len, BMFace *f)
 {
 	BMLoop *l_iter, *l_first;
 
@@ -448,7 +499,7 @@ bool BM_verts_in_face(BMFace *f, BMVert **varr, int len)
 }
 
 /**
- * Returns whether or not a given edge is is part of a given face.
+ * Returns whether or not a given edge is part of a given face.
  */
 bool BM_edge_in_face(BMEdge *e, BMFace *f)
 {
@@ -613,7 +664,7 @@ BMEdge *BM_vert_other_disk_edge(BMVert *v, BMEdge *e_first)
 /**
  * Returns edge length
  */
-float BM_edge_calc_length(BMEdge *e)
+float BM_edge_calc_length(const BMEdge *e)
 {
 	return len_v3v3(e->v1->co, e->v2->co);
 }
@@ -621,7 +672,7 @@ float BM_edge_calc_length(BMEdge *e)
 /**
  * Returns edge length squared (for comparisons)
  */
-float BM_edge_calc_length_squared(BMEdge *e)
+float BM_edge_calc_length_squared(const BMEdge *e)
 {
 	return len_squared_v3v3(e->v1->co, e->v2->co);
 }
@@ -681,9 +732,9 @@ bool BM_edge_loop_pair(BMEdge *e, BMLoop **r_la, BMLoop **r_lb)
 /**
  * Fast alternative to ``(BM_vert_edge_count(v) == 2)``
  */
-bool BM_vert_is_edge_pair(BMVert *v)
+bool BM_vert_is_edge_pair(const BMVert *v)
 {
-	BMEdge *e = v->e;
+	const BMEdge *e = v->e;
 	if (e) {
 		const BMDiskLink *dl = bmesh_disk_edge_link_from_vert(e, v);
 		return (dl->next == dl->prev);
@@ -694,17 +745,17 @@ bool BM_vert_is_edge_pair(BMVert *v)
 /**
  *	Returns the number of edges around this vertex.
  */
-int BM_vert_edge_count(BMVert *v)
+int BM_vert_edge_count(const BMVert *v)
 {
 	return bmesh_disk_count(v);
 }
 
-int BM_vert_edge_count_nonwire(BMVert *v)
+int BM_vert_edge_count_nonwire(const BMVert *v)
 {
 	int count = 0;
 	BMIter eiter;
 	BMEdge *edge;
-	BM_ITER_ELEM (edge, &eiter, v, BM_EDGES_OF_VERT) {
+	BM_ITER_ELEM (edge, &eiter, (BMVert *)v, BM_EDGES_OF_VERT) {
 		if (edge->l) {
 			count++;
 		}
@@ -714,7 +765,7 @@ int BM_vert_edge_count_nonwire(BMVert *v)
 /**
  *	Returns the number of faces around this edge
  */
-int BM_edge_face_count(BMEdge *e)
+int BM_edge_face_count(const BMEdge *e)
 {
 	int count = 0;
 
@@ -736,7 +787,7 @@ int BM_edge_face_count(BMEdge *e)
  * Returns the number of faces around this vert
  * length matches #BM_LOOPS_OF_VERT iterator
  */
-int BM_vert_face_count(BMVert *v)
+int BM_vert_face_count(const BMVert *v)
 {
 	return bmesh_disk_facevert_count(v);
 }
@@ -1305,7 +1356,7 @@ void BM_edge_calc_face_tangent(const BMEdge *e, const BMLoop *e_loop, float r_ta
  *
  * \returns the angle in radians
  */
-float BM_vert_calc_edge_angle(BMVert *v)
+float BM_vert_calc_edge_angle_ex(BMVert *v, const float fallback)
 {
 	BMEdge *e1, *e2;
 
@@ -1323,8 +1374,13 @@ float BM_vert_calc_edge_angle(BMVert *v)
 		return (float)M_PI - angle_v3v3v3(v1->co, v->co, v2->co);
 	}
 	else {
-		return DEG2RADF(90.0f);
+		return fallback;
 	}
+}
+
+float BM_vert_calc_edge_angle(BMVert *v)
+{
+	return BM_vert_calc_edge_angle_ex(v, DEG2RADF(90.0f));
 }
 
 /**
@@ -1353,7 +1409,7 @@ float BM_vert_calc_shell_factor(BMVert *v)
 }
 /* alternate version of #BM_vert_calc_shell_factor which only
  * uses 'hflag' faces, but falls back to all if none found. */
-float BM_vert_calc_shell_factor_ex(BMVert *v, const char hflag)
+float BM_vert_calc_shell_factor_ex(BMVert *v, const float no[3], const char hflag)
 {
 	BMIter iter;
 	BMLoop *l;
@@ -1364,7 +1420,7 @@ float BM_vert_calc_shell_factor_ex(BMVert *v, const char hflag)
 	BM_ITER_ELEM (l, &iter, v, BM_LOOPS_OF_VERT) {
 		if (BM_elem_flag_test(l->f, hflag)) {  /* <-- main difference to BM_vert_calc_shell_factor! */
 			const float face_angle = BM_loop_calc_face_angle(l);
-			accum_shell += shell_v3v3_normalized_to_dist(v->no, l->f->no) * face_angle;
+			accum_shell += shell_v3v3_normalized_to_dist(no, l->f->no) * face_angle;
 			accum_angle += face_angle;
 			tot_sel++;
 		}
@@ -1552,7 +1608,7 @@ bool BM_face_exists(BMVert **varr, int len, BMFace **r_existface)
 #if 0
 	BM_ITER_ELEM (f, &viter, v_search, BM_FACES_OF_VERT) {
 		if (f->len == len) {
-			if (BM_verts_in_face(f, varr, len)) {
+			if (BM_verts_in_face(varr, len, f)) {
 				if (r_existface) {
 					*r_existface = f;
 				}
@@ -1777,7 +1833,7 @@ bool BM_face_exists_multi_edge(BMEdge **earr, int len)
  *
  * \note The face may contain other verts \b not in \a varr.
  *
- * \note Its possible there are more then one overlapping faces,
+ * \note Its possible there are more than one overlapping faces,
  * in this case the first one found will be assigned to \a r_f_overlap.
  *
  * \param varr  Array of unordered verts.
@@ -1810,7 +1866,7 @@ bool BM_face_exists_overlap(BMVert **varr, const int len, BMFace **r_f_overlap)
 	for (i = 0; i < len; i++) {
 		BM_ITER_ELEM (f, &viter, varr[i], BM_FACES_OF_VERT) {
 			if (BM_ELEM_API_FLAG_TEST(f, _FLAG_OVERLAP) == 0) {
-				if (len <= BM_verts_in_face_count(f, varr, len)) {
+				if (len <= BM_verts_in_face_count(varr, len, f)) {
 					if (r_f_overlap)
 						*r_f_overlap = f;
 
@@ -2128,6 +2184,7 @@ int BM_mesh_calc_face_groups(BMesh *bm, int *r_groups_array, int (**r_group_inde
 		}
 
 		BLI_assert(ok == true);
+		UNUSED_VARS_NDEBUG(ok);
 
 		/* manage arrays */
 		if (group_index_len == group_curr) {
@@ -2244,7 +2301,7 @@ int BM_mesh_calc_edge_groups(BMesh *bm, int *r_groups_array, int (**r_group_inde
 	BMEdge *e;
 	int i;
 
-	STACK_INIT(group_array, bm->totface);
+	STACK_INIT(group_array, bm->totedge);
 
 	/* init the array */
 	BM_ITER_MESH_INDEX (e, &iter, bm, BM_EDGES_OF_MESH, i) {
@@ -2282,6 +2339,7 @@ int BM_mesh_calc_edge_groups(BMesh *bm, int *r_groups_array, int (**r_group_inde
 		}
 
 		BLI_assert(ok == true);
+		UNUSED_VARS_NDEBUG(ok);
 
 		/* manage arrays */
 		if (group_index_len == group_curr) {

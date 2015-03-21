@@ -64,6 +64,7 @@
 #include "image_intern.h"
 
 #define B_NOP -1
+#define MAX_IMAGE_INFO_LEN  128
 
 /* proto */
 
@@ -268,7 +269,7 @@ static void image_panel_preview(ScrArea *sa, short cntrl)   // IMAGE_HANDLER_PRE
 		return;
 	}
 	
-	block = uiBeginBlock(C, ar, __func__, UI_EMBOSS);
+	block = UI_block_begin(C, ar, __func__, UI_EMBOSS);
 	uiPanelControl(UI_PNL_SOLID | UI_PNL_CLOSE | UI_PNL_SCALE | cntrl);
 	uiSetPanelHandler(IMAGE_HANDLER_PREVIEW);  // for close and esc
 	
@@ -276,7 +277,7 @@ static void image_panel_preview(ScrArea *sa, short cntrl)   // IMAGE_HANDLER_PRE
 	ofsy = -100 + (sa->winy / 2) / sima->blockscale;
 	if (uiNewPanel(C, ar, block, "Preview", "Image", ofsx, ofsy, 300, 200) == 0) return;
 	
-	uiBlockSetDrawExtraFunc(block, preview_cb);
+	UI_but_func_drawextra_set(block, preview_cb);
 	
 }
 #endif
@@ -290,15 +291,20 @@ static void ui_imageuser_slot_menu(bContext *UNUSED(C), uiLayout *layout, void *
 	Image *image = image_p;
 	int slot;
 
-	uiDefBut(block, LABEL, 0, IFACE_("Slot"),
+	uiDefBut(block, UI_BTYPE_LABEL, 0, IFACE_("Slot"),
 	         0, 0, UI_UNIT_X * 5, UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
 	uiItemS(layout);
 
 	slot = IMA_MAX_RENDER_SLOT;
 	while (slot--) {
 		char str[64];
-		BLI_snprintf(str, sizeof(str), IFACE_("Slot %d"), slot + 1);
-		uiDefButS(block, BUTM, B_NOP, str, 0, 0,
+		if (image->render_slots[slot].name[0] != '\0') {
+			BLI_strncpy(str, image->render_slots[slot].name, sizeof(str));
+		}
+		else {
+			BLI_snprintf(str, sizeof(str), IFACE_("Slot %d"), slot + 1);
+		}
+		uiDefButS(block, UI_BTYPE_BUT_MENU, B_NOP, str, 0, 0,
 		          UI_UNIT_X * 5, UI_UNIT_X, &image->render_slot, (float) slot, 0.0, 0, -1, "");
 	}
 }
@@ -335,14 +341,14 @@ static void ui_imageuser_layer_menu(bContext *UNUSED(C), uiLayout *layout, void 
 		return;
 	}
 
-	uiBlockSetCurLayout(block, layout);
+	UI_block_layout_set_current(block, layout);
 	uiLayoutColumn(layout, false);
 
-	uiDefBut(block, LABEL, 0, IFACE_("Layer"),
+	uiDefBut(block, UI_BTYPE_LABEL, 0, IFACE_("Layer"),
 	         0, 0, UI_UNIT_X * 5, UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
 	uiItemS(layout);
 
-	nr = BLI_countlist(&rr->layers) - 1;
+	nr = BLI_listbase_count(&rr->layers) - 1;
 	fake_name = ui_imageuser_layer_fake_name(rr);
 
 	if (fake_name) {
@@ -352,7 +358,7 @@ static void ui_imageuser_layer_menu(bContext *UNUSED(C), uiLayout *layout, void 
 
 	for (rl = rr->layers.last; rl; rl = rl->prev, nr--) {
 final:
-		uiDefButS(block, BUTM, B_NOP, IFACE_(rl->name), 0, 0,
+		uiDefButS(block, UI_BTYPE_BUT_MENU, B_NOP, IFACE_(rl->name), 0, 0,
 		          UI_UNIT_X * 5, UI_UNIT_X, &iuser->layer, (float) nr, 0.0, 0, -1, "");
 	}
 
@@ -401,15 +407,15 @@ static void ui_imageuser_pass_menu(bContext *UNUSED(C), uiLayout *layout, void *
 
 	rl = BLI_findlink(&rr->layers, rpass_index);
 
-	uiBlockSetCurLayout(block, layout);
+	UI_block_layout_set_current(block, layout);
 	uiLayoutColumn(layout, false);
 
-	uiDefBut(block, LABEL, 0, IFACE_("Pass"),
+	uiDefBut(block, UI_BTYPE_LABEL, 0, IFACE_("Pass"),
 	         0, 0, UI_UNIT_X * 5, UI_UNIT_Y, NULL, 0.0, 0.0, 0, 0, "");
 
 	uiItemS(layout);
 
-	nr = (rl ? BLI_countlist(&rl->passes) : 0) - 1;
+	nr = (rl ? BLI_listbase_count(&rl->passes) : 0) - 1;
 	fake_name = ui_imageuser_pass_fake_name(rl);
 
 	if (fake_name) {
@@ -420,7 +426,7 @@ static void ui_imageuser_pass_menu(bContext *UNUSED(C), uiLayout *layout, void *
 	/* rendered results don't have a Combined pass */
 	for (rpass = rl ? rl->passes.last : NULL; rpass; rpass = rpass->prev, nr--) {
 final:
-		uiDefButS(block, BUTM, B_NOP, IFACE_(rpass->name), 0, 0,
+		uiDefButS(block, UI_BTYPE_BUT_MENU, B_NOP, IFACE_(rpass->name), 0, 0,
 		          UI_UNIT_X * 5, UI_UNIT_X, &iuser->pass, (float) nr, 0.0, 0, -1, "");
 	}
 
@@ -447,7 +453,7 @@ static void image_multi_inclay_cb(bContext *C, void *rr_v, void *iuser_v)
 {
 	RenderResult *rr = rr_v;
 	ImageUser *iuser = iuser_v;
-	int tot = BLI_countlist(&rr->layers);
+	int tot = BLI_listbase_count(&rr->layers);
 
 	if (rr->rectf || rr->rect32)
 		tot++;  /* fake compo/sequencer layer */
@@ -475,7 +481,7 @@ static void image_multi_incpass_cb(bContext *C, void *rr_v, void *iuser_v)
 	RenderLayer *rl = BLI_findlink(&rr->layers, iuser->layer);
 
 	if (rl) {
-		int tot = BLI_countlist(&rl->passes);
+		int tot = BLI_listbase_count(&rl->passes);
 
 		if (rr->rectf || rr->rect32)
 			tot++;  /* fake compo/sequencer layer */
@@ -539,10 +545,15 @@ static void uiblock_layer_pass_buttons(uiLayout *layout, Image *image, RenderRes
 	/* menu buts */
 	if (render_slot) {
 		char str[64];
-		BLI_snprintf(str, sizeof(str), IFACE_("Slot %d"), *render_slot + 1);
+		if (image->render_slots[*render_slot].name[0] != '\0') {
+			BLI_strncpy(str, image->render_slots[*render_slot].name, sizeof(str));
+		}
+		else {
+			BLI_snprintf(str, sizeof(str), IFACE_("Slot %d"), *render_slot + 1);
+		}
 		but = uiDefMenuBut(block, ui_imageuser_slot_menu, image, str, 0, 0, wmenu1, UI_UNIT_Y, TIP_("Select Slot"));
-		uiButSetFunc(but, image_multi_cb, rr, iuser);
-		uiButSetMenuFromPulldown(but);
+		UI_but_func_set(but, image_multi_cb, rr, iuser);
+		UI_but_type_set_menu_from_pulldown(but);
 	}
 
 	if (rr) {
@@ -557,8 +568,8 @@ static void uiblock_layer_pass_buttons(uiLayout *layout, Image *image, RenderRes
 
 		display_name = rl ? rl->name : (fake_name ? fake_name : "");
 		but = uiDefMenuBut(block, ui_imageuser_layer_menu, rnd_pt, display_name, 0, 0, wmenu2, UI_UNIT_Y, TIP_("Select Layer"));
-		uiButSetFunc(but, image_multi_cb, rr, iuser);
-		uiButSetMenuFromPulldown(but);
+		UI_but_func_set(but, image_multi_cb, rr, iuser);
+		UI_but_type_set_menu_from_pulldown(but);
 
 
 		/* pass */
@@ -567,8 +578,8 @@ static void uiblock_layer_pass_buttons(uiLayout *layout, Image *image, RenderRes
 
 		display_name = rpass ? rpass->name : (fake_name ? fake_name : "");
 		but = uiDefMenuBut(block, ui_imageuser_pass_menu, rnd_pt, display_name, 0, 0, wmenu3, UI_UNIT_Y, TIP_("Select Pass"));
-		uiButSetFunc(but, image_multi_cb, rr, iuser);
-		uiButSetMenuFromPulldown(but);
+		UI_but_func_set(but, image_multi_cb, rr, iuser);
+		UI_but_type_set_menu_from_pulldown(but);
 	}
 }
 
@@ -589,20 +600,20 @@ static void uiblock_layer_pass_arrow_buttons(uiLayout *layout, Image *image, Ren
 	}
 
 	/* decrease, increase arrows */
-	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_LEFT,   0, 0, 0.85f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Previous Layer"));
-	uiButSetFunc(but, image_multi_declay_cb, rr, iuser);
-	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_RIGHT,  0, 0, 0.90f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Next Layer"));
-	uiButSetFunc(but, image_multi_inclay_cb, rr, iuser);
+	but = uiDefIconBut(block, UI_BTYPE_BUT, 0, ICON_TRIA_LEFT,   0, 0, 0.85f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Previous Layer"));
+	UI_but_func_set(but, image_multi_declay_cb, rr, iuser);
+	but = uiDefIconBut(block, UI_BTYPE_BUT, 0, ICON_TRIA_RIGHT,  0, 0, 0.90f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Next Layer"));
+	UI_but_func_set(but, image_multi_inclay_cb, rr, iuser);
 
 	uiblock_layer_pass_buttons(row, image, rr, iuser, 230 * dpi_fac, render_slot);
 
 	/* decrease, increase arrows */
-	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_LEFT,   0, 0, 0.85f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Previous Pass"));
-	uiButSetFunc(but, image_multi_decpass_cb, rr, iuser);
-	but = uiDefIconBut(block, BUT, 0, ICON_TRIA_RIGHT,  0, 0, 0.90f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Next Pass"));
-	uiButSetFunc(but, image_multi_incpass_cb, rr, iuser);
+	but = uiDefIconBut(block, UI_BTYPE_BUT, 0, ICON_TRIA_LEFT,   0, 0, 0.85f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Previous Pass"));
+	UI_but_func_set(but, image_multi_decpass_cb, rr, iuser);
+	but = uiDefIconBut(block, UI_BTYPE_BUT, 0, ICON_TRIA_RIGHT,  0, 0, 0.90f * UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, TIP_("Next Pass"));
+	UI_but_func_set(but, image_multi_incpass_cb, rr, iuser);
 
-	uiBlockEndAlign(block);
+	UI_block_align_end(block);
 }
 
 // XXX HACK!
@@ -630,8 +641,6 @@ static void rna_update_cb(bContext *C, void *arg_cb, void *UNUSED(arg))
 
 void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char *propname, PointerRNA *userptr, int compact)
 {
-#define MAX_INFO_LEN  128
-
 	PropertyRNA *prop;
 	PointerRNA imaptr;
 	RNAUpdateCb *cb;
@@ -640,7 +649,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 	Scene *scene = CTX_data_scene(C);
 	uiLayout *row, *split, *col;
 	uiBlock *block;
-	char str[MAX_INFO_LEN];
+	char str[MAX_IMAGE_INFO_LEN];
 
 	void *lock;
 
@@ -677,14 +686,14 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 	uiLayoutSetContextPointer(layout, "edit_image_user", userptr);
 
 	if (!compact)
-		uiTemplateID(layout, C, ptr, propname, "IMAGE_OT_new", "IMAGE_OT_open", NULL);
+		uiTemplateID(layout, C, ptr, propname, ima ? NULL : "IMAGE_OT_new", "IMAGE_OT_open", NULL);
 
 	if (ima) {
-		uiBlockSetNFunc(block, rna_update_cb, MEM_dupallocN(cb), NULL);
+		UI_block_funcN_set(block, rna_update_cb, MEM_dupallocN(cb), NULL);
 
 		if (ima->source == IMA_SRC_VIEWER) {
 			ImBuf *ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
-			image_info(scene, iuser, ima, ibuf, str, MAX_INFO_LEN);
+			image_info(scene, iuser, ima, ibuf, str, MAX_IMAGE_INFO_LEN);
 			BKE_image_release_ibuf(ima, ibuf, lock);
 
 			uiItemL(layout, ima->id.name + 2, ICON_NONE);
@@ -695,18 +704,18 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 #if 0
 				iuser = ntree_get_active_iuser(scene->nodetree);
 				if (iuser) {
-					uiBlockBeginAlign(block);
-					uiDefIconTextBut(block, BUT, B_SIMA_RECORD, ICON_REC, "Record", 10, 120, 100, 20, 0, 0, 0, 0, 0, "");
-					uiDefIconTextBut(block, BUT, B_SIMA_PLAY, ICON_PLAY, "Play",    110, 120, 100, 20, 0, 0, 0, 0, 0, "");
-					but = uiDefBut(block, BUT, B_NOP, "Free Cache", 210, 120, 100, 20, 0, 0, 0, 0, 0, "");
-					uiButSetFunc(but, image_freecache_cb, ima, NULL);
+					UI_block_align_begin(block);
+					uiDefIconTextBut(block, UI_BTYPE_BUT, B_SIMA_RECORD, ICON_REC, "Record", 10, 120, 100, 20, 0, 0, 0, 0, 0, "");
+					uiDefIconTextBut(block, UI_BTYPE_BUT, B_SIMA_PLAY, ICON_PLAY, "Play",    110, 120, 100, 20, 0, 0, 0, 0, 0, "");
+					but = uiDefBut(block, UI_BTYPE_BUT, B_NOP, "Free Cache", 210, 120, 100, 20, 0, 0, 0, 0, 0, "");
+					UI_but_func_set(but, image_freecache_cb, ima, NULL);
 					
 					if (iuser->frames)
 						BLI_snprintf(str, sizeof(str), "(%d) Frames:", iuser->framenr);
 					else strcpy(str, "Frames:");
-					uiBlockBeginAlign(block);
-					uiDefButI(block, NUM, imagechanged, str,        10, 90, 150, 20, &iuser->frames, 0.0, MAXFRAMEF, 0, 0, "Number of images of a movie to use");
-					uiDefButI(block, NUM, imagechanged, "StartFr:", 160, 90, 150, 20, &iuser->sfra, 1.0, MAXFRAMEF, 0, 0, "Global starting frame of the movie");
+					UI_block_align_begin(block);
+					uiDefButI(block, UI_BTYPE_NUM, imagechanged, str,        10, 90, 150, 20, &iuser->frames, 0.0, MAXFRAMEF, 0, 0, "Number of images of a movie to use");
+					uiDefButI(block, UI_BTYPE_NUM, imagechanged, "StartFr:", 160, 90, 150, 20, &iuser->sfra, 1.0, MAXFRAMEF, 0, 0, "Global starting frame of the movie");
 				}
 #endif
 			}
@@ -753,10 +762,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 			}
 			else if (ima->source != IMA_SRC_GENERATED) {
 				if (compact == 0) {
-					ImBuf *ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
-					image_info(scene, iuser, ima, ibuf, str, MAX_INFO_LEN);
-					BKE_image_release_ibuf(ima, ibuf, lock);
-					uiItemL(layout, str, ICON_NONE);
+					uiTemplateImageInfo(layout, C, ima, iuser);
 				}
 			}
 
@@ -770,7 +776,7 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 					bool has_alpha = true;
 
 					if (ibuf) {
-						int imtype = BKE_ftype_to_imtype(ibuf->ftype);
+						int imtype = BKE_image_ftype_to_imtype(ibuf->ftype);
 						char valid_channels = BKE_imtype_valid_channels(imtype, false);
 
 						has_alpha = (valid_channels & IMA_CHAN_FLAG_ALPHA) != 0;
@@ -781,7 +787,14 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 					if (has_alpha) {
 						col = uiLayoutColumn(layout, false);
 						uiItemR(col, &imaptr, "use_alpha", 0, NULL, ICON_NONE);
-						uiItemR(col, &imaptr, "alpha_mode", 0, IFACE_("Alpha"), ICON_NONE);
+						row = uiLayoutRow(col, false);
+						uiLayoutSetActive(row, RNA_boolean_get(&imaptr, "use_alpha"));
+						uiItemR(row, &imaptr, "alpha_mode", 0, IFACE_("Alpha"), ICON_NONE);
+					}
+
+					if (ima->source == IMA_SRC_MOVIE) {
+						col = uiLayoutColumn(layout, false);
+						uiItemR(col, &imaptr, "use_deinterlace", 0, IFACE_("Deinterlace"), ICON_NONE);
 					}
 
 					uiItemS(layout);
@@ -834,16 +847,18 @@ void uiTemplateImage(uiLayout *layout, bContext *C, PointerRNA *ptr, const char 
 				uiItemR(col, &imaptr, "use_generated_float", 0, NULL, ICON_NONE);
 
 				uiItemR(split, &imaptr, "generated_type", UI_ITEM_R_EXPAND, NULL, ICON_NONE);
+
+				if (ima->gen_type == IMA_GENTYPE_BLANK) {
+					uiItemR(layout, &imaptr, "generated_color", 0, NULL, ICON_NONE);
+				}
 			}
 
 		}
 
-		uiBlockSetNFunc(block, NULL, NULL, NULL);
+		UI_block_funcN_set(block, NULL, NULL, NULL);
 	}
 
 	MEM_freeN(cb);
-
-#undef MAX_INFO_LEN
 }
 
 void uiTemplateImageSettings(uiLayout *layout, PointerRNA *imfptr, int color_management)
@@ -963,19 +978,27 @@ void uiTemplateImageLayers(uiLayout *layout, bContext *C, Image *ima, ImageUser 
 	}
 }
 
-void image_buttons_register(ARegionType *art)
+void uiTemplateImageInfo(uiLayout *layout, bContext *C, Image *ima, ImageUser *iuser)
 {
-	PanelType *pt;
-	const char *category = "Grease Pencil";
+	ImBuf *ibuf;
+	char str[MAX_IMAGE_INFO_LEN];
+	void *lock;
 
-	pt = MEM_callocN(sizeof(PanelType), "spacetype image panel gpencil");
-	strcpy(pt->idname, "IMAGE_PT_gpencil");
-	strcpy(pt->label, N_("Grease Pencil"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
-	pt->draw_header = ED_gpencil_panel_standard_header;
-	pt->draw = ED_gpencil_panel_standard;
-	BLI_strncpy(pt->category, category, BLI_strlen_utf8(category));
-	BLI_addtail(&art->paneltypes, pt);
+	if (!ima || !iuser)
+		return;
+
+	ibuf = BKE_image_acquire_ibuf(ima, iuser, &lock);
+
+	image_info(CTX_data_scene(C), iuser, ima, ibuf, str, MAX_IMAGE_INFO_LEN);
+	BKE_image_release_ibuf(ima, ibuf, lock);
+	uiItemL(layout, str, ICON_NONE);
+}
+
+#undef MAX_IMAGE_INFO_LEN
+
+void image_buttons_register(ARegionType *UNUSED(art))
+{
+	
 }
 
 static int image_properties_toggle_exec(bContext *C, wmOperator *UNUSED(op))

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
  
 float fresnel_dielectric_cos(float cosi, float eta)
@@ -36,14 +36,14 @@ float fresnel_dielectric_cos(float cosi, float eta)
 
 color fresnel_conductor(float cosi, color eta, color k)
 {
-	color cosi2 = color(cosi*cosi);
+	color cosi2 = color(cosi * cosi);
 	color one = color(1, 1, 1);
 	color tmp_f = eta * eta + k * k;
 	color tmp = tmp_f * cosi2;
 	color Rparl2 = (tmp - (2.0 * eta * cosi) + one) /
-					(tmp + (2.0 * eta * cosi) + one);
+	               (tmp + (2.0 * eta * cosi) + one);
 	color Rperp2 = (tmp_f - (2.0 * eta * cosi) + cosi2) /
-					(tmp_f + (2.0 * eta * cosi) + cosi2);
+	               (tmp_f + (2.0 * eta * cosi) + cosi2);
 	return (Rparl2 + Rperp2) * 0.5;
 }
 

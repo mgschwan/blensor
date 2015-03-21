@@ -218,7 +218,7 @@ KX_Scene::KX_Scene(class SCA_IInputDevice* keyboarddevice,
 
 	m_bucketmanager=new RAS_BucketManager();
 	
-	bool showObstacleSimulation = scene->gm.flag & GAME_SHOW_OBSTACLE_SIMULATION;
+	bool showObstacleSimulation = (scene->gm.flag & GAME_SHOW_OBSTACLE_SIMULATION) != 0;
 	switch (scene->gm.obstacleSimulation)
 	{
 	case OBSTSIMULATION_TOI_rays:
@@ -532,6 +532,8 @@ KX_GameObject* KX_Scene::AddNodeReplicaObject(class SG_IObject* node, class CVal
 	m_objectlist->Add(newobj->AddRef());
 	if (newobj->GetGameObjectType()==SCA_IObject::OBJ_LIGHT)
 		m_lightlist->Add(newobj->AddRef());
+	else if (newobj->GetGameObjectType()==SCA_IObject::OBJ_TEXT)
+		AddFont((KX_FontObject*)newobj);
 	newobj->AddMeshUser();
 
 	// logic cannot be replicated, until the whole hierarchy is replicated.
@@ -867,8 +869,6 @@ SCA_IObject* KX_Scene::AddReplicaObject(class CValue* originalobject,
 	m_map_gameobject_to_replica.clear();
 	m_groupGameObjects.clear();
 
-	// todo: place a timebomb in the object, for temporarily objects :)
-	// lifespan of zero means 'this object lives forever'
 	KX_GameObject* originalobj = (KX_GameObject*) originalobject;
 	KX_GameObject* parentobj = (KX_GameObject*) parentobject;
 
@@ -877,9 +877,10 @@ SCA_IObject* KX_Scene::AddReplicaObject(class CValue* originalobject,
 	// lets create a replica
 	KX_GameObject* replica = (KX_GameObject*) AddNodeReplicaObject(NULL,originalobj);
 
+	// add a timebomb to this object
+	// lifespan of zero means 'this object lives forever'
 	if (lifespan > 0)
 	{
-		// add a timebomb to this object
 		// for now, convert between so called frames and realtime
 		m_tempObjectList->Add(replica->AddRef());
 		// this convert the life from frames to sort-of seconds, hard coded 0.02 that assumes we have 50 frames per second
@@ -915,7 +916,6 @@ SCA_IObject* KX_Scene::AddReplicaObject(class CValue* originalobject,
 	
 	// get the rootnode's scale
 	MT_Vector3 newscale = parentobj->GetSGNode()->GetRootSGParent()->GetLocalScale();
-
 	// set the replica's relative scale with the rootnode's scale
 	replica->NodeSetRelativeScale(newscale);
 
@@ -1502,6 +1502,15 @@ void KX_Scene::CalculateVisibleMeshes(RAS_IRasterizer* rasty,KX_Camera* cam, int
 	bool dbvt_culling = false;
 	if (m_dbvt_culling) 
 	{
+		/* Reset KX_GameObject m_bCulled to true before doing culling
+		 * since DBVT culling will only set it to false.
+		 * This is similar to what RAS_BucketManager does for RAS_MeshSlot culling.
+		 */
+		for (int i = 0; i < m_objectlist->GetCount(); i++) {
+			KX_GameObject *gameobj = static_cast<KX_GameObject*>(m_objectlist->GetValue(i));
+			gameobj->SetCulled(true);
+		}
+
 		// test culling through Bullet
 		MT_Vector4 planes[6];
 		// get the clip planes
@@ -1531,9 +1540,6 @@ void KX_Scene::CalculateVisibleMeshes(RAS_IRasterizer* rasty,KX_Camera* cam, int
 			MarkVisible(rasty, static_cast<KX_GameObject*>(m_objectlist->GetValue(i)), cam, layer);
 		}
 	}
-
-	// Now that we know visible meshes, update LoDs
-	UpdateObjectLods();
 }
 
 // logic stuff
@@ -1642,20 +1648,6 @@ static void update_anim_thread_func(TaskPool *pool, void *taskdata, int UNUSED(t
 
 void KX_Scene::UpdateAnimations(double curtime)
 {
-	KX_KetsjiEngine *engine = KX_GetActiveEngine();
-
-	if (engine->GetRestrictAnimationFPS())
-	{
-		// Handle the animations independently of the logic time step
-		double anim_timestep = 1.0 / GetAnimationFPS();
-		if (curtime - m_previousAnimTime < anim_timestep)
-			return;
-
-		// Sanity/debug print to make sure we're actually going at the fps we want (should be close to anim_timestep)
-		// printf("Anim fps: %f\n", 1.0/(m_clockTime - m_previousAnimTime));
-		m_previousAnimTime = curtime;
-	}
-
 	TaskPool *pool = BLI_task_pool_create(KX_GetActiveEngine()->GetTaskScheduler(), &curtime);
 
 	for (int i=0; i<m_animatedlist->GetCount(); ++i) {

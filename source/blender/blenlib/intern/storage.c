@@ -135,10 +135,10 @@ static int bli_compare(struct direntry *entry1, struct direntry *entry2)
 
 	/* OK, now we know their S_IFMT fields are the same, go on to a name comparison */
 	/* make sure "." and ".." are always first */
-	if (strcmp(entry1->relname, ".") == 0) return (-1);
-	if (strcmp(entry2->relname, ".") == 0) return (1);
-	if (strcmp(entry1->relname, "..") == 0) return (-1);
-	if (strcmp(entry2->relname, "..") == 0) return (1);
+	if (FILENAME_IS_CURRENT(entry1->relname)) return (-1);
+	if (FILENAME_IS_CURRENT(entry2->relname)) return (1);
+	if (FILENAME_IS_PARENT(entry1->relname)) return (-1);
+	if (FILENAME_IS_PARENT(entry2->relname)) return (1);
 
 	return (BLI_natstrcmp(entry1->relname, entry2->relname));
 }
@@ -219,7 +219,6 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
 	DIR *dir;
 
 	if ((dir = opendir(dirname)) != NULL) {
-
 		const struct dirent *fname;
 		while ((fname = readdir(dir)) != NULL) {
 			struct dirlink * const dlink = (struct dirlink *)malloc(sizeof(struct dirlink));
@@ -231,20 +230,19 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
 		}
 
 		if (newnum) {
-
 			if (dir_ctx->files) {
-				void * const tmp = realloc(dir_ctx->files, (dir_ctx->nrfiles + newnum) * sizeof(struct direntry));
+				void * const tmp = MEM_reallocN(dir_ctx->files, (dir_ctx->nrfiles + newnum) * sizeof(struct direntry));
 				if (tmp) {
 					dir_ctx->files = (struct direntry *)tmp;
 				}
 				else { /* realloc fail */
-					free(dir_ctx->files);
+					MEM_freeN(dir_ctx->files);
 					dir_ctx->files = NULL;
 				}
 			}
 			
 			if (dir_ctx->files == NULL)
-				dir_ctx->files = (struct direntry *)malloc(newnum * sizeof(struct direntry));
+				dir_ctx->files = (struct direntry *)MEM_mallocN(newnum * sizeof(struct direntry), __func__);
 
 			if (dir_ctx->files) {
 				struct dirlink * dlink = (struct dirlink *) dirbase.first;
@@ -255,8 +253,9 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
 					file->relname = dlink->name;
 					file->path = BLI_strdupcat(dirname, dlink->name);
 					BLI_join_dirfile(fullname, sizeof(fullname), dirname, dlink->name);
-					BLI_stat(fullname, &file->s);
-					file->type = file->s.st_mode;
+					if (BLI_stat(fullname, &file->s) != -1) {
+						file->type = file->s.st_mode;
+					}
 					file->flags = 0;
 					dir_ctx->nrfiles++;
 					file++;
@@ -280,7 +279,7 @@ static void bli_builddir(struct BuildDirCtx *dir_ctx, const char *dirname)
 		closedir(dir);
 	}
 	else {
-		printf("%s non-existant directory\n", dirname);
+		printf("%s non-existent directory\n", dirname);
 	}
 }
 
@@ -385,9 +384,11 @@ static void bli_adddirstrings(struct BuildDirCtx *dir_ctx)
 
 /**
  * Scans the contents of the directory named *dirname, and allocates and fills in an
- * array of entries describing them in *filelist. The length of the array is the function result.
+ * array of entries describing them in *filelist.
+ *
+ * \return The length of filelist array.
  */
-unsigned int BLI_dir_contents(const char *dirname,  struct direntry **filelist)
+unsigned int BLI_filelist_dir_contents(const char *dirname,  struct direntry **filelist)
 {
 	struct BuildDirCtx dir_ctx;
 
@@ -403,18 +404,51 @@ unsigned int BLI_dir_contents(const char *dirname,  struct direntry **filelist)
 	else {
 		// keep blender happy. Blender stores this in a variable
 		// where 0 has special meaning.....
-		*filelist = malloc(sizeof(struct direntry));
+		*filelist = MEM_mallocN(sizeof(**filelist), __func__);
 	}
 
 	return dir_ctx.nrfiles;
 }
 
-/* frees storage for an array of direntries, including the array itself. */
-void BLI_free_filelist(struct direntry *filelist, unsigned int nrentries)
+/**
+ * Deep-duplicate of an array of direntries, including the array itself.
+ *
+ * \param dup_poin If given, called for each non-NULL direntry->poin. Otherwise, pointer is always simply copied over.
+ */
+void BLI_filelist_duplicate(
+        struct direntry **dest_filelist, struct direntry *src_filelist, unsigned int nrentries,
+        void *(*dup_poin)(void *))
+{
+	unsigned int i;
+
+	*dest_filelist = MEM_mallocN(sizeof(**dest_filelist) * (size_t)(nrentries), __func__);
+	for (i = 0; i < nrentries; ++i) {
+		struct direntry * const src = &src_filelist[i];
+		struct direntry *dest = &(*dest_filelist)[i];
+		*dest = *src;
+		if (dest->image) {
+			dest->image = IMB_dupImBuf(src->image);
+		}
+		if (dest->relname) {
+			dest->relname = MEM_dupallocN(src->relname);
+		}
+		if (dest->path) {
+			dest->path = MEM_dupallocN(src->path);
+		}
+		if (dest->poin && dup_poin) {
+			dest->poin = dup_poin(src->poin);
+		}
+	}
+}
+
+/**
+ * frees storage for an array of direntries, including the array itself.
+ */
+void BLI_filelist_free(struct direntry *filelist, unsigned int nrentries, void (*free_poin)(void *))
 {
 	unsigned int i;
 	for (i = 0; i < nrentries; ++i) {
-		struct direntry * const entry = filelist + i;
+		struct direntry *entry = filelist + i;
 		if (entry->image) {
 			IMB_freeImBuf(entry->image);
 		}
@@ -422,10 +456,13 @@ void BLI_free_filelist(struct direntry *filelist, unsigned int nrentries)
 			MEM_freeN(entry->relname);
 		if (entry->path)
 			MEM_freeN(entry->path);
-		/* entry->poin assumed not to point to anything needing freeing here */
+		if (entry->poin && free_poin)
+			free_poin(entry->poin);
 	}
 
-	free(filelist);
+	if (filelist != NULL) {
+		MEM_freeN(filelist);
+	}
 }
 
 
@@ -495,6 +532,7 @@ int BLI_exists(const char *name)
 	if (res == -1) return(0);
 #else
 	struct stat st;
+	BLI_assert(name);
 	if (stat(name, &st)) return(0);
 #endif
 	return(st.st_mode);

@@ -50,6 +50,17 @@ typedef unsigned short GHOST_TUns16;
 typedef int GHOST_TInt32;
 typedef unsigned int GHOST_TUns32;
 
+typedef struct {
+	GHOST_TUns16 numOfAASamples;
+	int flags;
+} GHOST_GLSettings;
+
+typedef enum {
+	GHOST_glStereoVisual = (1 << 0),
+	GHOST_glWarnSupport  = (1 << 1)
+} GHOST_GLFlags;
+
+
 #ifdef _MSC_VER
 typedef __int64 GHOST_TInt64;
 typedef unsigned __int64 GHOST_TUns64;
@@ -189,6 +200,10 @@ typedef enum {
 	GHOST_kEventNativeResolutionChange, // Needed for Cocoa when window moves to other display
 
 	GHOST_kEventTimer,
+
+	GHOST_kEventImeCompositionStart,
+	GHOST_kEventImeComposition,
+	GHOST_kEventImeCompositionEnd,
 
 	GHOST_kNumEventTypes
 } GHOST_TEventType;
@@ -435,6 +450,22 @@ typedef struct {
 	/** The "dropped content" */
 	GHOST_TEventDataPtr data;
 } GHOST_TEventDragnDropData;
+
+/** similar to wmImeData */
+typedef struct {
+	/** size_t */
+	GHOST_TUserDataPtr result_len, composite_len;
+	/** char * utf8 encoding */
+	GHOST_TUserDataPtr result, composite;
+	/** Cursor position in the IME composition. */
+	int cursor_position;
+	/** Represents the position of the beginning of the selection */
+	int target_start;
+	/** Represents the position of the end of the selection */
+	int target_end;
+	/** custom temporal data */
+	GHOST_TUserDataPtr tmp;
+} GHOST_TEventImeData;
 
 typedef struct {
 	int count;

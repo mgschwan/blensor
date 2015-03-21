@@ -29,18 +29,19 @@ Example linux usage
 Windows not supported so far
 """
 
-from project_info import (SIMPLE_PROJECTFILE,
-                          SOURCE_DIR,
-                          CMAKE_DIR,
-                          PROJECT_DIR,
-                          source_list,
-                          is_project_file,
-                          is_c_header,
-                          # is_py,
-                          cmake_advanced_info,
-                          cmake_compiler_defines,
-                          project_name_get,
-                          )
+from project_info import (
+        SIMPLE_PROJECTFILE,
+        SOURCE_DIR,
+        CMAKE_DIR,
+        PROJECT_DIR,
+        source_list,
+        is_project_file,
+        is_c_header,
+        # is_py,
+        cmake_advanced_info,
+        cmake_compiler_defines,
+        project_name_get,
+        )
 
 
 import os
@@ -124,6 +125,8 @@ def create_nb_project_main():
         f.write('        </data>\n')
         f.write('    </configuration>\n')
         f.write('</project>\n')
+
+        f.close()
 
         f = open(join(PROJECT_DIR_NB, "configurations.xml"), 'w')
 
@@ -242,6 +245,8 @@ def create_nb_project_main():
         # todo
 
         f.write('</configurationDescriptor>\n')
+
+        f.close()
 
 
 def main():

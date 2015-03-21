@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __MESH_H__
@@ -79,6 +79,8 @@ public:
 	vector<uint> shader;
 	vector<bool> smooth;
 
+	bool has_volume;  /* Set in the device_update_flags(). */
+
 	vector<float4> curve_keys; /* co + radius */
 	vector<Curve> curves;
 
@@ -123,7 +125,7 @@ public:
 	void add_face_normals();
 	void add_vertex_normals();
 
-	void pack_normals(Scene *scene, float *shader, float4 *vnormal);
+	void pack_normals(Scene *scene, uint *shader, float4 *vnormal);
 	void pack_verts(float4 *tri_verts, float4 *tri_vindex, size_t vert_offset);
 	void pack_curves(Scene *scene, float4 *curve_key_co, float4 *curve_data, size_t curvekey_offset);
 	void compute_bvh(SceneParams *params, Progress *progress, int n, int total);
@@ -143,6 +145,7 @@ public:
 	BVH *bvh;
 
 	bool need_update;
+	bool need_flags_update;
 
 	MeshManager();
 	~MeshManager();
@@ -158,6 +161,7 @@ public:
 	void device_update_mesh(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
 	void device_update_attributes(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
 	void device_update_bvh(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
+	void device_update_flags(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
 	void device_free(Device *device, DeviceScene *dscene);
 
 	void tag_update(Scene *scene);

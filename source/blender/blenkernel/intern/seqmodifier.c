@@ -77,9 +77,9 @@ typedef struct ModifierThread {
 } ModifierThread;
 
 
-static ImBuf *modifier_mask_get(SequenceModifierData *smd, const SeqRenderData *context, int cfra, bool make_float)
+static ImBuf *modifier_mask_get(SequenceModifierData *smd, const SeqRenderData *context, int cfra, int fra_offset, bool make_float)
 {
-	return BKE_sequencer_render_mask_input(context, smd->mask_input_type, smd->mask_sequence, smd->mask_id, cfra, make_float);
+	return BKE_sequencer_render_mask_input(context, smd->mask_input_type, smd->mask_sequence, smd->mask_id, cfra, fra_offset, make_float);
 }
 
 static void modifier_init_handle(void *handle_v, int start_line, int tot_line, void *init_data_v)
@@ -531,15 +531,11 @@ static void maskmodifier_apply_threaded(int width, int height, unsigned char *re
 	}
 }
 
-static void maskmodifier_apply(struct SequenceModifierData *smd, ImBuf *ibuf, ImBuf *mask)
+static void maskmodifier_apply(struct SequenceModifierData *UNUSED(smd), ImBuf *ibuf, ImBuf *mask)
 {
-	BrightContrastModifierData *bcmd = (BrightContrastModifierData *) smd;
-	BrightContrastThreadData data;
+	// SequencerMaskModifierData *bcmd = (SequencerMaskModifierData *)smd;
 
-	data.bright = bcmd->bright;
-	data.contrast = bcmd->contrast;
-
-	modifier_apply_threaded(ibuf, mask, maskmodifier_apply_threaded, &data);
+	modifier_apply_threaded(ibuf, mask, maskmodifier_apply_threaded, NULL);
 }
 
 static SequenceModifierTypeInfo seqModifier_Mask = {
@@ -671,7 +667,7 @@ ImBuf *BKE_sequence_modifier_apply_stack(const SeqRenderData *context, Sequence 
 			continue;
 
 		if (smti->apply) {
-			ImBuf *mask = modifier_mask_get(smd, context, cfra, ibuf->rect_float != NULL);
+			ImBuf *mask = modifier_mask_get(smd, context, cfra, seq->start, ibuf->rect_float != NULL);
 
 			if (processed_ibuf == ibuf)
 				processed_ibuf = IMB_dupImBuf(ibuf);

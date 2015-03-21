@@ -24,7 +24,7 @@
  *
  * ***** END GPL LICENSE BLOCK *****
  */
-/** \file SCA_IController.h
+/** \file SCA_IObject.h
  *  \ingroup gamelogic
  *  \brief An abstract object that has some logic, python scripting and
  *   reference counting Note: transformation stuff has been moved to
@@ -221,6 +221,7 @@ public:
 		OBJ_ARMATURE=0,
 		OBJ_CAMERA=1,
 		OBJ_LIGHT=2,
+		OBJ_TEXT=3
 	} ObjectTypes;
 
 };

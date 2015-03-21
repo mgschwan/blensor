@@ -668,6 +668,24 @@ bool ED_uvedit_minmax(Scene *scene, Image *ima, Object *obedit, float r_min[2], 
 	return changed;
 }
 
+/* Be careful when using this, it bypasses all synchronization options */
+void ED_uvedit_select_all(BMesh *bm)
+{
+	BMFace *efa;
+	BMLoop *l;
+	BMIter iter, liter;
+	MLoopUV *luv;
+
+	const int cd_loop_uv_offset  = CustomData_get_offset(&bm->ldata, CD_MLOOPUV);
+
+	BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
+		BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+			luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+			luv->flag |= MLOOPUV_VERTSEL;
+		}
+	}
+}
+
 static bool ED_uvedit_median(Scene *scene, Image *ima, Object *obedit, float co[2])
 {
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
@@ -1096,7 +1114,7 @@ static int uv_select_edgeloop(Scene *scene, Image *ima, BMEditMesh *em, NearestH
 
 /*********************** linked select ***********************/
 
-static void uv_select_linked(Scene *scene, Image *ima, BMEditMesh *em, const float limit[2], NearestHit *hit, bool extend)
+static void uv_select_linked(Scene *scene, Image *ima, BMEditMesh *em, const float limit[2], NearestHit *hit, bool extend, bool select_faces)
 {
 	BMFace *efa;
 	BMLoop *l;
@@ -1113,7 +1131,7 @@ static void uv_select_linked(Scene *scene, Image *ima, BMEditMesh *em, const flo
 	const int cd_poly_tex_offset = CustomData_get_offset(&em->bm->pdata, CD_MTEXPOLY);
 
 	BM_mesh_elem_table_ensure(em->bm, BM_FACE); /* we can use this too */
-	vmap = BM_uv_vert_map_create(em->bm, 1, limit);
+	vmap = BM_uv_vert_map_create(em->bm, !select_faces, limit);
 
 	if (vmap == NULL)
 		return;
@@ -1126,15 +1144,24 @@ static void uv_select_linked(Scene *scene, Image *ima, BMEditMesh *em, const flo
 			tf = BM_ELEM_CD_GET_VOID_P(efa, cd_poly_tex_offset);
 
 			if (uvedit_face_visible_test(scene, ima, efa, tf)) {
-				BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-					luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-
-					if (luv->flag & MLOOPUV_VERTSEL) {
+				if (select_faces) {
+					if (BM_elem_flag_test(efa, BM_ELEM_SELECT)) {
 						stack[stacksize] = a;
 						stacksize++;
 						flag[a] = 1;
+					}
+				}
+				else {
+					BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+						luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 
-						break;
+						if (luv->flag & MLOOPUV_VERTSEL) {
+							stack[stacksize] = a;
+							stacksize++;
+							flag[a] = 1;
+
+							break;
+						}
 					}
 				}
 			}
@@ -1186,13 +1213,21 @@ static void uv_select_linked(Scene *scene, Image *ima, BMEditMesh *em, const flo
 
 	if (!extend) {
 		BM_ITER_MESH_INDEX (efa, &iter, em->bm, BM_FACES_OF_MESH, a) {
-			BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-				luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-				
+			if (select_faces) {
 				if (flag[a])
-					luv->flag |= MLOOPUV_VERTSEL;
+					BM_face_select_set(em->bm, efa, true);
 				else
-					luv->flag &= ~MLOOPUV_VERTSEL;
+					BM_face_select_set(em->bm, efa, false);
+			}
+			else {
+				BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+					luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+
+					if (flag[a])
+						luv->flag |= MLOOPUV_VERTSEL;
+					else
+						luv->flag &= ~MLOOPUV_VERTSEL;
+				}
 			}
 		}
 	}
@@ -1201,17 +1236,23 @@ static void uv_select_linked(Scene *scene, Image *ima, BMEditMesh *em, const flo
 			if (!flag[a]) {
 				continue;
 			}
-			
-			BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-				luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-						
-				if (luv->flag & MLOOPUV_VERTSEL) {
+
+			if (select_faces) {
+				if (BM_elem_flag_test(efa, BM_ELEM_SELECT) && !BM_elem_flag_test(efa, BM_ELEM_HIDDEN))
+					break;
+			}
+			else {
+				BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+					luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+
+					if (luv->flag & MLOOPUV_VERTSEL) {
+						break;
+					}
+				}
+
+				if (l) {
 					break;
 				}
-			}
-			
-			if (l) {
-				break;
 			}
 		}
 
@@ -1221,10 +1262,15 @@ static void uv_select_linked(Scene *scene, Image *ima, BMEditMesh *em, const flo
 					continue;
 				}
 
-				BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-					luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-					
-					luv->flag &= ~MLOOPUV_VERTSEL;
+				if (select_faces) {
+					BM_face_select_set(em->bm, efa, false);
+				}
+				else {
+					BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+						luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+
+						luv->flag &= ~MLOOPUV_VERTSEL;
+					}
 				}
 			}
 		}
@@ -1234,10 +1280,15 @@ static void uv_select_linked(Scene *scene, Image *ima, BMEditMesh *em, const flo
 					continue;
 				}
 
-				BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
-					luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-					
-					luv->flag |= MLOOPUV_VERTSEL;
+				if (select_faces) {
+					BM_face_select_set(em->bm, efa, true);
+				}
+				else {
+					BM_ITER_ELEM (l, &liter, efa, BM_LOOPS_OF_FACE) {
+						luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+
+						luv->flag |= MLOOPUV_VERTSEL;
+					}
 				}
 			}
 		}
@@ -1291,10 +1342,10 @@ static int uv_select_more_less(bContext *C, const bool select)
 
 	if (ts->uv_flag & UV_SYNC_SELECTION) {
 		if (select) {
-			EDBM_select_more(em);
+			EDBM_select_more(em, true);
 		}
 		else {
-			EDBM_select_less(em);
+			EDBM_select_less(em, true);
 		}
 
 		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit->data);
@@ -1753,7 +1804,7 @@ static int uv_remove_doubles_exec(bContext *C, wmOperator *op)
 					if ((vert_arr[uv_b_index].weld == false) &&
 					    (len_manhattan_v2v2(uv_a, uv_b) < threshold))
 					{
-						minmax_v2v2_v2(uv_max, uv_min, uv_b);
+						minmax_v2v2_v2(uv_min, uv_max, uv_b);
 						BLI_array_append(loop_arr, vert_arr[uv_b_index].uv_loop);
 						vert_arr[uv_b_index].weld = true;
 					}
@@ -2136,7 +2187,7 @@ static int uv_mouse_select(bContext *C, const float co[2], bool extend, bool loo
 		flush = uv_select_edgeloop(scene, ima, em, &hit, limit, extend);
 	}
 	else if (selectmode == UV_SELECT_ISLAND) {
-		uv_select_linked(scene, ima, em, limit, &hit, extend);
+		uv_select_linked(scene, ima, em, limit, &hit, extend, false);
 	}
 	else if (extend) {
 		if (selectmode == UV_SELECT_VERTEX) {
@@ -2357,11 +2408,12 @@ static int uv_select_linked_internal(bContext *C, wmOperator *op, const wmEvent 
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
 	float limit[2];
 	int extend;
+	bool select_faces = (ts->uv_flag & UV_SYNC_SELECTION) && (ts->selectmode & SCE_SELECT_FACE);
 
 	NearestHit hit, *hit_p = NULL;
 
-	if (ts->uv_flag & UV_SYNC_SELECTION) {
-		BKE_report(op->reports, RPT_ERROR, "Cannot select linked when sync selection is enabled");
+	if ((ts->uv_flag & UV_SYNC_SELECTION) && !(ts->selectmode & SCE_SELECT_FACE)) {
+		BKE_report(op->reports, RPT_ERROR, "Select linked only works in face select mode when sync selection is enabled");
 		return OPERATOR_CANCELLED;
 	}
 
@@ -2387,7 +2439,7 @@ static int uv_select_linked_internal(bContext *C, wmOperator *op, const wmEvent 
 		hit_p = &hit;
 	}
 
-	uv_select_linked(scene, ima, em, limit, hit_p, extend);
+	uv_select_linked(scene, ima, em, limit, hit_p, extend, select_faces);
 
 	DAG_id_tag_update(obedit->data, 0);
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit->data);
@@ -3171,8 +3223,8 @@ static void UV_OT_select_lasso(wmOperatorType *ot)
 
 static void uv_snap_to_pixel(float uvco[2], float w, float h)
 {
-	uvco[0] = ((float)((int)((uvco[0] * w) + 0.5f))) / w;
-	uvco[1] = ((float)((int)((uvco[1] * h) + 0.5f))) / h;
+	uvco[0] = roundf(uvco[0] * w) / w;
+	uvco[1] = roundf(uvco[1] * h) / h;
 }
 
 static void uv_snap_cursor_to_pixels(SpaceImage *sima)
@@ -3858,6 +3910,15 @@ static int uv_set_2d_cursor_invoke(bContext *C, wmOperator *op, const wmEvent *e
 {
 	ARegion *ar = CTX_wm_region(C);
 	float location[2];
+
+	if (ar->regiontype == RGN_TYPE_WINDOW) {
+		if (event->mval[1] <= 16) {
+			SpaceImage *sima = CTX_wm_space_image(C);
+			if (sima && ED_space_image_show_cache(sima)) {
+				return OPERATOR_PASS_THROUGH;
+			}
+		}
+	}
 
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1], &location[0], &location[1]);
 	RNA_float_set_array(op->ptr, "location", location);

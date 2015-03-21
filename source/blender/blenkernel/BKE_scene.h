@@ -39,6 +39,7 @@ extern "C" {
 
 struct AviCodecData;
 struct Base;
+struct DisplaySafeAreas;
 struct EvaluationContext;
 struct bglMats;
 struct Main;
@@ -110,10 +111,10 @@ char *BKE_scene_find_marker_name(struct Scene *scene, int frame);
 char *BKE_scene_find_last_marker_name(struct Scene *scene, int frame);
 
 /* checks for cycle, returns 1 if it's all OK */
-int BKE_scene_validate_setscene(struct Main *bmain, struct Scene *sce);
+bool BKE_scene_validate_setscene(struct Main *bmain, struct Scene *sce);
 
-float BKE_scene_frame_get(struct Scene *scene);
-float BKE_scene_frame_get_from_ctime(struct Scene *scene, const float frame);
+float BKE_scene_frame_get(const struct Scene *scene);
+float BKE_scene_frame_get_from_ctime(const struct Scene *scene, const float frame);
 void  BKE_scene_frame_set(struct Scene *scene, double cfra);
 
 /* **  Scene evaluation ** */
@@ -125,13 +126,15 @@ struct SceneRenderLayer *BKE_scene_add_render_layer(struct Scene *sce, const cha
 bool BKE_scene_remove_render_layer(struct Main *main, struct Scene *scene, struct SceneRenderLayer *srl);
 
 /* render profile */
-int get_render_subsurf_level(struct RenderData *r, int level);
-int get_render_child_particle_number(struct RenderData *r, int num);
-int get_render_shadow_samples(struct RenderData *r, int samples);
-float get_render_aosss_error(struct RenderData *r, float error);
+int get_render_subsurf_level(const struct RenderData *r, int level);
+int get_render_child_particle_number(const struct RenderData *r, int num);
+int get_render_shadow_samples(const struct RenderData *r, int samples);
+float get_render_aosss_error(const struct RenderData *r, float error);
 
-bool BKE_scene_use_new_shading_nodes(struct Scene *scene);
-bool BKE_scene_uses_blender_internal(struct Scene *scene);
+bool BKE_scene_use_new_shading_nodes(const struct Scene *scene);
+
+bool BKE_scene_uses_blender_internal(const struct Scene *scene);
+bool BKE_scene_uses_blender_game(const struct Scene *scene);
 
 void BKE_scene_disable_color_management(struct Scene *scene);
 bool BKE_scene_check_color_management_enabled(const struct Scene *scene);

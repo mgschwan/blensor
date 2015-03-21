@@ -36,14 +36,6 @@
 #  pragma warning( disable:4786 )
 #endif
 
-#if defined(_WIN64) && !defined(FREE_WINDOWS64)
-typedef unsigned __int64 uint_ptr;
-#elif defined(FREE_WINDOWS64)
-typedef unsigned long long uint_ptr;
-#else
-typedef unsigned long uint_ptr;
-#endif
-
 #include "RAS_IPolygonMaterial.h"
 #include "KX_BlenderMaterial.h"
 #include "KX_GameObject.h"
@@ -77,6 +69,8 @@ typedef unsigned long uint_ptr;
 #include "BL_Action.h"
 
 #include "PyObjectPlus.h" /* python stuff */
+#include "BLI_utildefines.h"
+#include "python_utildefines.h"
 
 // This file defines relationships between parents and children
 // in the game engine.
@@ -97,6 +91,7 @@ KX_GameObject::KX_GameObject(
     : SCA_IObject(),
       m_bDyna(false),
       m_layer(0),
+      m_currentLodLevel(0),
       m_pBlenderObject(NULL),
       m_pBlenderGroupObject(NULL),
       m_bSuspendDynamics(false),
@@ -575,6 +570,39 @@ CValue* KX_GameObject::GetReplica()
 	return replica;
 }
 
+float KX_GameObject::getLinearDamping() const
+{
+	if (m_pPhysicsController)
+		return m_pPhysicsController->GetLinearDamping();
+	return 0;
+}
+
+float KX_GameObject::getAngularDamping() const
+{
+	if (m_pPhysicsController)
+		return m_pPhysicsController->GetAngularDamping();
+	return 0;
+}
+
+void KX_GameObject::setLinearDamping(float damping)
+{
+	if (m_pPhysicsController)
+		m_pPhysicsController->SetLinearDamping(damping);
+}
+
+
+void KX_GameObject::setAngularDamping(float damping)
+{
+	if (m_pPhysicsController)
+		m_pPhysicsController->SetAngularDamping(damping);
+}
+
+
+void KX_GameObject::setDamping(float linear, float angular)
+{
+	if (m_pPhysicsController)
+		m_pPhysicsController->SetDamping(linear, angular);
+}
 
 
 void KX_GameObject::ApplyForce(const MT_Vector3& force,bool local)
@@ -767,7 +795,7 @@ void KX_GameObject::UpdateLod(MT_Vector3 &cam_pos)
 	}
 
 	RAS_MeshObject *mesh = this->m_lodmeshes[level];
-
+	this->m_currentLodLevel = level;
 	if (mesh != this->m_meshes[0]) {
 		this->GetScene()->ReplaceMesh(this, mesh, true, false);
 	}
@@ -928,27 +956,6 @@ KX_GameObject::SetVisible(
 		if (recursive)
 			setVisible_recursive(GetSGNode(), v);
 	}
-}
-
-bool KX_GameObject::GetCulled()
-{
-	// If we're set to not cull, double-check with
-	// the mesh slots first. This is kind of nasty, but
-	// it allows us to get proper culling information.
-	if (!m_bCulled)
-	{
-		SG_QList::iterator<RAS_MeshSlot> mit(m_meshSlots);
-		for (mit.begin(); !mit.end(); ++mit)
-		{
-			if ((*mit)->m_bCulled)
-			{
-				m_bCulled = true;
-				break;
-			}
-		}
-	}
-
-	return m_bCulled;
 }
 
 static void setOccluder_recursive(SG_Node* node, bool v)
@@ -1486,7 +1493,7 @@ void KX_GameObject::RegisterCollisionCallbacks()
 			pe->AddSensor(spc);
 	}
 }
-void KX_GameObject::RunCollisionCallbacks(KX_GameObject *collider)
+void KX_GameObject::RunCollisionCallbacks(KX_GameObject *collider, const MT_Vector3 &point, const MT_Vector3 &normal)
 {
 	#ifdef WITH_PYTHON
 	Py_ssize_t len;
@@ -1494,15 +1501,50 @@ void KX_GameObject::RunCollisionCallbacks(KX_GameObject *collider)
 
 	if (collision_callbacks && (len=PyList_GET_SIZE(collision_callbacks)))
 	{
-		PyObject* args = Py_BuildValue("(O)", collider->GetProxy()); // save python creating each call
+		// Argument tuples are created lazily, only when they are needed.
+		PyObject *args_3 = NULL;
+		PyObject *args_1 = NULL; // Only for compatibility with pre-2.74 callbacks that take 1 argument.
+
 		PyObject *func;
 		PyObject *ret;
+		int co_argcount;
 
 		// Iterate the list and run the callbacks
 		for (Py_ssize_t pos=0; pos < len; pos++)
 		{
 			func = PyList_GET_ITEM(collision_callbacks, pos);
-			ret = PyObject_Call(func, args, NULL);
+
+			// Get the number of arguments, supporting functions, methods and generic callables.
+			if (PyMethod_Check(func)) {
+				// Take away the 'self' argument for methods.
+				co_argcount = ((PyCodeObject *)PyFunction_GET_CODE(PyMethod_GET_FUNCTION(func)))->co_argcount - 1;
+			} else if (PyFunction_Check(func)) {
+				co_argcount = ((PyCodeObject *)PyFunction_GET_CODE(func))->co_argcount;
+			} else {
+				// We'll just assume the callable takes the correct number of arguments.
+				co_argcount = 3;
+			}
+
+			// Check whether the function expects the colliding object only,
+			// or also the point and normal.
+			if (co_argcount <= 1) {
+				// One argument, or *args (which gives co_argcount == 0)
+				if (args_1 == NULL) {
+					args_1 = PyTuple_New(1);
+					PyTuple_SET_ITEMS(args_1, collider->GetProxy());
+				}
+				ret = PyObject_Call(func, args_1, NULL);
+			} else {
+				// More than one argument, assume we can give point & normal.
+				if (args_3 == NULL) {
+					args_3 = PyTuple_New(3);
+					PyTuple_SET_ITEMS(args_3,
+					                  collider->GetProxy(),
+					                  PyObjectFrom(point),
+					                  PyObjectFrom(normal));
+				}
+				ret = PyObject_Call(func, args_3, NULL);
+			}
 
 			if (ret == NULL) {
 				PyErr_Print();
@@ -1513,7 +1555,8 @@ void KX_GameObject::RunCollisionCallbacks(KX_GameObject *collider)
 			}
 		}
 
-		Py_DECREF(args);
+		if (args_3) Py_DECREF(args_3);
+		if (args_1) Py_DECREF(args_1);
 	}
 	#endif
 }
@@ -1824,7 +1867,7 @@ static Mathutils_Callback mathutils_kxgameob_matrix_cb = {
 
 void KX_GameObject_Mathutils_Callback_Init(void)
 {
-	// register mathutils callbacks, ok to run more then once.
+	// register mathutils callbacks, ok to run more than once.
 	mathutils_kxgameob_vector_cb_index= Mathutils_RegisterCallback(&mathutils_kxgameob_vector_cb);
 	mathutils_kxgameob_matrix_cb_index= Mathutils_RegisterCallback(&mathutils_kxgameob_matrix_cb);
 }
@@ -1843,6 +1886,7 @@ PyMethodDef KX_GameObject::Methods[] = {
 	{"getAngularVelocity", (PyCFunction) KX_GameObject::sPyGetAngularVelocity, METH_VARARGS},
 	{"setAngularVelocity", (PyCFunction) KX_GameObject::sPySetAngularVelocity, METH_VARARGS},
 	{"getVelocity", (PyCFunction) KX_GameObject::sPyGetVelocity, METH_VARARGS},
+	{"setDamping", (PyCFunction) KX_GameObject::sPySetDamping, METH_VARARGS},
 	{"getReactionForce", (PyCFunction) KX_GameObject::sPyGetReactionForce, METH_NOARGS},
 	{"alignAxisToVect",(PyCFunction) KX_GameObject::sPyAlignAxisToVect, METH_VARARGS},
 	{"getAxisVect",(PyCFunction) KX_GameObject::sPyGetAxisVect, METH_O},
@@ -1884,6 +1928,7 @@ PyMethodDef KX_GameObject::Methods[] = {
 };
 
 PyAttributeDef KX_GameObject::Attributes[] = {
+	KX_PYATTRIBUTE_INT_RO("currentLodLevel", KX_GameObject, m_currentLodLevel),
 	KX_PYATTRIBUTE_RO_FUNCTION("name",		KX_GameObject, pyattr_get_name),
 	KX_PYATTRIBUTE_RO_FUNCTION("parent",	KX_GameObject, pyattr_get_parent),
 	KX_PYATTRIBUTE_RO_FUNCTION("groupMembers",	KX_GameObject, pyattr_get_group_members),
@@ -1918,6 +1963,8 @@ PyAttributeDef KX_GameObject::Attributes[] = {
 	KX_PYATTRIBUTE_RW_FUNCTION("angularVelocity", KX_GameObject, pyattr_get_localAngularVelocity, pyattr_set_worldAngularVelocity),
 	KX_PYATTRIBUTE_RW_FUNCTION("localAngularVelocity", KX_GameObject, pyattr_get_localAngularVelocity, pyattr_set_localAngularVelocity),
 	KX_PYATTRIBUTE_RW_FUNCTION("worldAngularVelocity", KX_GameObject, pyattr_get_worldAngularVelocity, pyattr_set_worldAngularVelocity),
+	KX_PYATTRIBUTE_RW_FUNCTION("linearDamping", KX_GameObject, pyattr_get_linearDamping, pyattr_set_linearDamping),
+	KX_PYATTRIBUTE_RW_FUNCTION("angularDamping", KX_GameObject, pyattr_get_angularDamping, pyattr_set_angularDamping),
 	KX_PYATTRIBUTE_RO_FUNCTION("children",	KX_GameObject, pyattr_get_children),
 	KX_PYATTRIBUTE_RO_FUNCTION("childrenRecursive",	KX_GameObject, pyattr_get_children_recursive),
 	KX_PYATTRIBUTE_RO_FUNCTION("attrDict",	KX_GameObject, pyattr_get_attrDict),
@@ -2708,6 +2755,34 @@ int KX_GameObject::pyattr_set_localAngularVelocity(void *self_v, const KX_PYATTR
 	return PY_SET_ATTR_SUCCESS;
 }
 
+PyObject *KX_GameObject::pyattr_get_linearDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
+{
+	KX_GameObject* self = static_cast<KX_GameObject*>(self_v);
+	return PyFloat_FromDouble(self->getLinearDamping());
+}
+
+int KX_GameObject::pyattr_set_linearDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value)
+{
+	KX_GameObject* self = static_cast<KX_GameObject*>(self_v);
+	float val = PyFloat_AsDouble(value);
+	self->setLinearDamping(val);
+	return PY_SET_ATTR_SUCCESS;
+}
+
+PyObject *KX_GameObject::pyattr_get_angularDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
+{
+	KX_GameObject* self = static_cast<KX_GameObject*>(self_v);
+	return PyFloat_FromDouble(self->getAngularDamping());
+}
+
+int KX_GameObject::pyattr_set_angularDamping(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef, PyObject *value)
+{
+	KX_GameObject* self = static_cast<KX_GameObject*>(self_v);
+	float val = PyFloat_AsDouble(value);
+	self->setAngularDamping(val);
+	return PY_SET_ATTR_SUCCESS;
+}
+
 
 PyObject *KX_GameObject::pyattr_get_timeOffset(void *self_v, const KX_PYATTRIBUTE_DEF *attrdef)
 {
@@ -3004,6 +3079,18 @@ PyObject *KX_GameObject::PySetAngularVelocity(PyObject *args)
 	return NULL;
 }
 
+PyObject *KX_GameObject::PySetDamping(PyObject *args)
+{
+	float linear;
+	float angular;
+
+	if (!PyArg_ParseTuple(args,"ff|i:setDamping", &linear, &angular))
+		return NULL;
+
+	setDamping(linear, angular);
+	Py_RETURN_NONE;
+}
+
 PyObject *KX_GameObject::PySetVisible(PyObject *args)
 {
 	int visible, recursive = 0;
@@ -3201,12 +3288,12 @@ PyObject *KX_GameObject::PyGetAxisVect(PyObject *value)
 PyObject *KX_GameObject::PyGetPhysicsId()
 {
 	PHY_IPhysicsController* ctrl = GetPhysicsController();
-	uint_ptr physid=0;
+	unsigned long long physid = 0;
 	if (ctrl)
 	{
-		physid= (uint_ptr)ctrl;
+		physid = (unsigned long long)ctrl;
 	}
-	return PyLong_FromLong((long)physid);
+	return PyLong_FromUnsignedLongLong(physid);
 }
 
 PyObject *KX_GameObject::PyGetPropertyNames()

@@ -57,6 +57,7 @@
 
 /* ******************* node space & buttons ************** */
 
+#if 0
 /* poll for active nodetree */
 static int active_nodetree_poll(const bContext *C, PanelType *UNUSED(pt))
 {
@@ -64,6 +65,7 @@ static int active_nodetree_poll(const bContext *C, PanelType *UNUSED(pt))
 	
 	return (snode && snode->nodetree);
 }
+#endif
 
 static int node_sockets_poll(const bContext *C, PanelType *UNUSED(pt))
 {
@@ -146,14 +148,14 @@ static void node_tree_interface_panel(const bContext *C, Panel *pa)
 	col = uiLayoutColumn(split, true);
 	uiItemL(col, IFACE_("Inputs:"), ICON_NONE);
 	uiTemplateList(col, (bContext *)C, "NODE_UL_interface_sockets", "inputs", &ptr, "inputs", &ptr, "active_input",
-	               0, 0, 0, 0);
+	               NULL, 0, 0, 0, 0);
 	opptr = uiItemFullO(col, "NODE_OT_tree_socket_add", "", ICON_PLUS, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 	RNA_enum_set(&opptr, "in_out", SOCK_IN);
 	
 	col = uiLayoutColumn(split, true);
 	uiItemL(col, IFACE_("Outputs:"), ICON_NONE);
 	uiTemplateList(col, (bContext *)C, "NODE_UL_interface_sockets", "outputs", &ptr, "outputs", &ptr, "active_output",
-	               0, 0, 0, 0);
+	               NULL, 0, 0, 0, 0);
 	opptr = uiItemFullO(col, "NODE_OT_tree_socket_add", "", ICON_PLUS, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 	RNA_enum_set(&opptr, "in_out", SOCK_OUT);
 	
@@ -196,15 +198,6 @@ void node_buttons_register(ARegionType *art)
 	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = node_tree_interface_panel;
 	pt->poll = node_tree_interface_poll;
-	BLI_addtail(&art->paneltypes, pt);
-
-	pt = MEM_callocN(sizeof(PanelType), "spacetype node panel gpencil");
-	strcpy(pt->idname, "NODE_PT_gpencil");
-	strcpy(pt->label, N_("Grease Pencil"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
-	pt->draw_header = ED_gpencil_panel_standard_header;
-	pt->draw = ED_gpencil_panel_standard;
-	pt->poll = active_nodetree_poll;
 	BLI_addtail(&art->paneltypes, pt);
 }
 

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __DEVICE_H__
@@ -148,6 +148,7 @@ public:
 	static string string_from_type(DeviceType type);
 	static vector<DeviceType>& available_types();
 	static vector<DeviceInfo>& available_devices();
+	static string device_capabilities();
 };
 
 CCL_NAMESPACE_END

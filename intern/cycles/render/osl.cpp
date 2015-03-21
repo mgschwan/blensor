@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "device.h"
@@ -30,6 +30,7 @@
 #include "osl_shader.h"
 
 #include "util_foreach.h"
+#include "util_logging.h"
 #include "util_md5.h"
 #include "util_path.h"
 #include "util_progress.h"
@@ -188,11 +189,13 @@ void OSLShaderManager::shading_system_init()
 	if(ss_shared_users == 0) {
 		services_shared = new OSLRenderServices();
 
-		ss_shared = OSL::ShadingSystem::create(services_shared, ts_shared, &errhandler);
+		ss_shared = new OSL::ShadingSystem(services_shared, ts_shared, &errhandler);
 		ss_shared->attribute("lockgeom", 1);
 		ss_shared->attribute("commonspace", "world");
 		ss_shared->attribute("searchpath:shader", path_get("shader"));
 		//ss_shared->attribute("greedyjit", 1);
+
+		VLOG(1) << "Using shader search path: " << path_get("shader");
 
 		/* our own ray types */
 		static const char *raytypes[] = {
@@ -235,7 +238,7 @@ void OSLShaderManager::shading_system_free()
 	ss_shared_users--;
 
 	if(ss_shared_users == 0) {
-		OSL::ShadingSystem::destroy(ss_shared);
+		delete ss_shared;
 		ss_shared = NULL;
 
 		delete services_shared;
@@ -248,11 +251,11 @@ void OSLShaderManager::shading_system_free()
 
 bool OSLShaderManager::osl_compile(const string& inputfile, const string& outputfile)
 {
-#if OSL_LIBRARY_VERSION_CODE < 10500
-	typedef string string_view;
-#endif
-
+#if OSL_LIBRARY_VERSION_CODE < 10602
 	vector<string_view> options;
+#else
+	vector<string> options;
+#endif
 	string stdosl_path;
 	string shader_path = path_get("shader");
 
@@ -261,13 +264,13 @@ bool OSLShaderManager::osl_compile(const string& inputfile, const string& output
 	options.push_back(outputfile);
 
 	/* specify standard include path */
-	options.push_back("-I");
-	options.push_back(shader_path);
+	string include_path_arg = string("-I") + shader_path;
+	options.push_back(include_path_arg);
 
 	stdosl_path = path_get("shader/stdosl.h");
 
 	/* compile */
-	OSL::OSLCompiler *compiler = OSL::OSLCompiler::create();
+	OSL::OSLCompiler *compiler = new OSL::OSLCompiler();
 	bool ok = compiler->compile(string_view(inputfile), options, string_view(stdosl_path));
 	delete compiler;
 
@@ -564,6 +567,10 @@ void OSLCompiler::add(ShaderNode *node, const char *name, bool isfilepath)
 		if(node->has_spatial_varying())
 			current_shader->has_heterogeneous_volume = true;
 	}
+
+	if(node->has_object_dependency()) {
+		current_shader->has_object_dependency = true;
+	}
 }
 
 void OSLCompiler::parameter(const char *name, float f)
@@ -748,11 +755,7 @@ OSL::ShadingAttribStateRef OSLCompiler::compile_type(Shader *shader, ShaderGraph
 
 	current_type = type;
 
-#if OSL_LIBRARY_VERSION_CODE >= 10501
 	OSL::ShadingAttribStateRef group = ss->ShaderGroupBegin(shader->name.c_str());
-#else
-	ss->ShaderGroupBegin(shader->name.c_str());
-#endif
 
 	ShaderNode *output = graph->output();
 	set<ShaderNode*> dependencies;
@@ -780,13 +783,7 @@ OSL::ShadingAttribStateRef OSLCompiler::compile_type(Shader *shader, ShaderGraph
 
 	ss->ShaderGroupEnd();
 
-#if OSL_LIBRARY_VERSION_CODE >= 10501
 	return group;
-#else
-	OSL::ShadingAttribStateRef group = ss->state();
-	ss->clear_state();
-	return group;
-#endif
 }
 
 void OSLCompiler::compile(OSLGlobals *og, Shader *shader)
@@ -815,6 +812,7 @@ void OSLCompiler::compile(OSLGlobals *og, Shader *shader)
 		shader->has_volume = false;
 		shader->has_displacement = false;
 		shader->has_heterogeneous_volume = false;
+		shader->has_object_dependency = false;
 
 		/* generate surface shader */
 		if(shader->used && graph && output->input("Surface")->link) {

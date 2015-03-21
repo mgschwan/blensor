@@ -22,7 +22,7 @@ from bpy.types import Panel
 from rna_prop_ui import PropertyPanel
 
 
-class WorldButtonsPanel():
+class WorldButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "world"
@@ -49,7 +49,6 @@ class WORLD_PT_context_world(WorldButtonsPanel, Panel):
         scene = context.scene
         world = context.world
         space = context.space_data
-        rd = context.scene.render
 
         texture_count = world and len(world.texture_slots.keys())
 
@@ -59,7 +58,7 @@ class WORLD_PT_context_world(WorldButtonsPanel, Panel):
         elif world:
             split.template_ID(space, "pin_id")
 
-        if texture_count and rd.engine != 'CYCLES':
+        if texture_count:
             split.label(text=str(texture_count), icon='TEXTURE')
 
 

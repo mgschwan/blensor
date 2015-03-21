@@ -20,15 +20,17 @@
 
 import bpy
 import nodeitems_utils
-from bpy.types import (Operator,
-                       PropertyGroup,
-                       )
-from bpy.props import (BoolProperty,
-                       CollectionProperty,
-                       EnumProperty,
-                       IntProperty,
-                       StringProperty,
-                       )
+from bpy.types import (
+        Operator,
+        PropertyGroup,
+        )
+from bpy.props import (
+        BoolProperty,
+        CollectionProperty,
+        EnumProperty,
+        IntProperty,
+        StringProperty,
+        )
 
 
 class NodeSetting(PropertyGroup):
@@ -40,7 +42,7 @@ class NodeSetting(PropertyGroup):
 
 
 # Base class for node 'Add' operators
-class NodeAddOperator():
+class NodeAddOperator:
 
     type = StringProperty(
             name="Node Type",
@@ -122,7 +124,7 @@ class NodeAddOperator():
         result = self.execute(context)
 
         if self.use_transform and ('FINISHED' in result):
-            # removes the node again if transform is cancelled
+            # removes the node again if transform is canceled
             bpy.ops.transform.translate('INVOKE_DEFAULT', remove_on_cancel=True)
 
         return result

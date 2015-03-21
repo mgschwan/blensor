@@ -238,7 +238,7 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 
 static int vergaverco(const void *e1, const void *e2)
 {
-	const BMVert *v1 = *(void **)e1, *v2 = *(void **)e2;
+	const BMVert *v1 = *(const void **)e1, *v2 = *(const void **)e2;
 	float x1 = v1->co[0] + v1->co[1] + v1->co[2];
 	float x2 = v2->co[0] + v2->co[1] + v2->co[2];
 
@@ -529,7 +529,7 @@ static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op,
 
 	const float dist  = BMO_slot_float_get(op->slots_in, "dist");
 	const float dist_sq = dist * dist;
-	const float dist3 = (M_SQRT3 + 0.00005f) * dist;   /* Just above sqrt(3) */
+	const float dist3 = ((float)M_SQRT3 + 0.00005f) * dist;   /* Just above sqrt(3) */
 
 	/* Test whether keep_verts arg exists and is non-empty */
 	if (BMO_slot_exists(op->slots_in, "keep_verts")) {

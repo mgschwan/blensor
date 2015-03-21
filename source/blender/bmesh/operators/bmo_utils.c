@@ -177,42 +177,108 @@ void bmo_rotate_edges_exec(BMesh *bm, BMOperator *op)
 #define SEL_FLAG	1
 #define SEL_ORIG	2
 
-static void bmo_region_extend_extend(BMesh *bm, BMOperator *op, const bool use_faces)
+static void bmo_face_flag_set_flush(BMesh *bm, BMFace *f, const short oflag, const bool value)
 {
-	BMVert *v;
-	BMEdge *e;
-	BMIter eiter;
+	BMLoop *l_iter;
+	BMLoop *l_first;
+
+	BMO_elem_flag_set(bm, f, oflag, value);
+	l_iter = l_first = BM_FACE_FIRST_LOOP(f);
+	do {
+		BMO_elem_flag_set(bm, l_iter->e, oflag, value);
+		BMO_elem_flag_set(bm, l_iter->v, oflag, value);
+	} while ((l_iter = l_iter->next) != l_first);
+}
+
+
+static void bmo_region_extend_expand(
+        BMesh *bm, BMOperator *op,
+        const bool use_faces, const bool use_faces_step)
+{
 	BMOIter siter;
 
 	if (!use_faces) {
+		BMVert *v;
+
 		BMO_ITER (v, &siter, op->slots_in, "geom", BM_VERT) {
-			BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
-				if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN))
-					if (!BMO_elem_flag_test(bm, e, SEL_ORIG))
+			bool found = false;
+
+			{
+				BMIter eiter;
+				BMEdge *e;
+
+				BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
+					if (!BMO_elem_flag_test(bm, e, SEL_ORIG)) {
+						found = true;
 						break;
+					}
+				}
 			}
 
-			if (e) {
-				BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
-					if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN)) {
-						BMO_elem_flag_enable(bm, e, SEL_FLAG);
-						BMO_elem_flag_enable(bm, BM_edge_other_vert(e, v), SEL_FLAG);
+			if (found) {
+				if (!use_faces_step) {
+					BMIter eiter;
+					BMEdge *e;
+
+					BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
+						if (!BMO_elem_flag_test(bm, e, SEL_FLAG)) {
+							BMO_elem_flag_enable(bm, e, SEL_FLAG);
+							BMO_elem_flag_enable(bm, BM_edge_other_vert(e, v), SEL_FLAG);
+						}
+					}
+				}
+				else {
+					BMIter fiter;
+					BMFace *f;
+
+					BM_ITER_ELEM (f, &fiter, v, BM_FACES_OF_VERT) {
+						if (!BMO_elem_flag_test(bm, f, SEL_FLAG)) {
+							bmo_face_flag_set_flush(bm, f, SEL_FLAG, true);
+						}
+					}
+
+					/* handle wire edges (when stepping over faces) */
+					{
+						BMIter eiter;
+						BMEdge *e;
+						BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
+							if (BM_edge_is_wire(e)) {
+								if (!BMO_elem_flag_test(bm, e, SEL_FLAG)) {
+									BMO_elem_flag_enable(bm, e, SEL_FLAG);
+									BMO_elem_flag_enable(bm, BM_edge_other_vert(e, v), SEL_FLAG);
+								}
+							}
+						}
 					}
 				}
 			}
 		}
 	}
 	else {
-		BMIter liter, fiter;
-		BMFace *f, *f2;
-		BMLoop *l;
+		BMFace *f;
 
 		BMO_ITER (f, &siter, op->slots_in, "geom", BM_FACE) {
+			BMIter liter;
+			BMLoop *l;
+
 			BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
-				BM_ITER_ELEM (f2, &fiter, l->e, BM_FACES_OF_EDGE) {
-					if (!BM_elem_flag_test(f2, BM_ELEM_HIDDEN)) {
-						if (!BMO_elem_flag_test(bm, f2, SEL_ORIG)) {
-							BMO_elem_flag_enable(bm, f2, SEL_FLAG);
+				if (!use_faces_step) {
+					BMIter fiter;
+					BMFace *f_other;
+
+					BM_ITER_ELEM (f_other, &fiter, l->e, BM_FACES_OF_EDGE) {
+						if (!BMO_elem_flag_test(bm, f_other, SEL_ORIG | SEL_FLAG)) {
+							BMO_elem_flag_enable(bm, f_other, SEL_FLAG);
+						}
+					}
+				}
+				else {
+					BMIter fiter;
+					BMFace *f_other;
+
+					BM_ITER_ELEM (f_other, &fiter, l->v, BM_FACES_OF_VERT) {
+						if (!BMO_elem_flag_test(bm, f_other, SEL_ORIG | SEL_FLAG)) {
+							BMO_elem_flag_enable(bm, f_other, SEL_FLAG);
 						}
 					}
 				}
@@ -221,43 +287,94 @@ static void bmo_region_extend_extend(BMesh *bm, BMOperator *op, const bool use_f
 	}
 }
 
-static void bmo_region_extend_constrict(BMesh *bm, BMOperator *op, const bool use_faces)
+static void bmo_region_extend_contract(
+        BMesh *bm, BMOperator *op,
+        const bool use_faces, const bool use_faces_step)
 {
-	BMVert *v;
-	BMEdge *e;
-	BMIter eiter;
 	BMOIter siter;
 
 	if (!use_faces) {
-		BMO_ITER (v, &siter, op->slots_in, "geom", BM_VERT) {
-			BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
-				if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN))
-					if (!BMO_elem_flag_test(bm, e, SEL_ORIG))
-						break;
-			}
+		BMVert *v;
 
-			if (e) {
-				BMO_elem_flag_enable(bm, v, SEL_FLAG);
+		BMO_ITER (v, &siter, op->slots_in, "geom", BM_VERT) {
+			bool found = false;
+
+			if (!use_faces_step) {
+				BMIter eiter;
+				BMEdge *e;
 
 				BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
-					if (!BM_elem_flag_test(e, BM_ELEM_HIDDEN)) {
-						BMO_elem_flag_enable(bm, e, SEL_FLAG);
+					if (!BMO_elem_flag_test(bm, e, SEL_ORIG)) {
+						found = true;
+						break;
+					}
+				}
+			}
+			else {
+				BMIter fiter;
+				BMFace *f;
+
+				BM_ITER_ELEM (f, &fiter, v, BM_FACES_OF_VERT) {
+					if (!BMO_elem_flag_test(bm, f, SEL_ORIG)) {
+						found = true;
+						break;
 					}
 				}
 
+				/* handle wire edges (when stepping over faces) */
+				if (!found) {
+					BMIter eiter;
+					BMEdge *e;
+
+					BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
+						if (BM_edge_is_wire(e)) {
+							if (!BMO_elem_flag_test(bm, e, SEL_ORIG)) {
+								found = true;
+								break;
+							}
+						}
+					}
+				}
+			}
+
+			if (found) {
+				BMIter eiter;
+				BMEdge *e;
+
+				BMO_elem_flag_enable(bm, v, SEL_FLAG);
+
+				BM_ITER_ELEM (e, &eiter, v, BM_EDGES_OF_VERT) {
+					BMO_elem_flag_enable(bm, e, SEL_FLAG);
+				}
 			}
 		}
 	}
 	else {
-		BMIter liter, fiter;
-		BMFace *f, *f2;
-		BMLoop *l;
+		BMFace *f;
 
 		BMO_ITER (f, &siter, op->slots_in, "geom", BM_FACE) {
+			BMIter liter;
+			BMLoop *l;
+
 			BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
-				BM_ITER_ELEM (f2, &fiter, l->e, BM_FACES_OF_EDGE) {
-					if (!BM_elem_flag_test(f2, BM_ELEM_HIDDEN)) {
-						if (!BMO_elem_flag_test(bm, f2, SEL_ORIG)) {
+
+				if (!use_faces_step) {
+					BMIter fiter;
+					BMFace *f_other;
+
+					BM_ITER_ELEM (f_other, &fiter, l->e, BM_FACES_OF_EDGE) {
+						if (!BMO_elem_flag_test(bm, f_other, SEL_ORIG)) {
+							BMO_elem_flag_enable(bm, f, SEL_FLAG);
+							break;
+						}
+					}
+				}
+				else {
+					BMIter fiter;
+					BMFace *f_other;
+
+					BM_ITER_ELEM (f_other, &fiter, l->v, BM_FACES_OF_VERT) {
+						if (!BMO_elem_flag_test(bm, f_other, SEL_ORIG)) {
 							BMO_elem_flag_enable(bm, f, SEL_FLAG);
 							break;
 						}
@@ -271,14 +388,17 @@ static void bmo_region_extend_constrict(BMesh *bm, BMOperator *op, const bool us
 void bmo_region_extend_exec(BMesh *bm, BMOperator *op)
 {
 	const bool use_faces = BMO_slot_bool_get(op->slots_in, "use_faces");
-	const bool constrict = BMO_slot_bool_get(op->slots_in, "use_constrict");
+	const bool use_face_step = BMO_slot_bool_get(op->slots_in, "use_face_step");
+	const bool constrict = BMO_slot_bool_get(op->slots_in, "use_contract");
 
 	BMO_slot_buffer_flag_enable(bm, op->slots_in, "geom", BM_ALL_NOLOOP, SEL_ORIG);
 
-	if (constrict)
-		bmo_region_extend_constrict(bm, op, use_faces);
-	else
-		bmo_region_extend_extend(bm, op, use_faces);
+	if (constrict) {
+		bmo_region_extend_contract(bm, op, use_faces, use_face_step);
+	}
+	else {
+		bmo_region_extend_expand(bm, op, use_faces, use_face_step);
+	}
 
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "geom.out", BM_ALL_NOLOOP, SEL_FLAG);
 }
@@ -291,6 +411,7 @@ void bmo_smooth_vert_exec(BMesh *UNUSED(bm), BMOperator *op)
 	BMEdge *e;
 	float (*cos)[3] = MEM_mallocN(sizeof(*cos) * BMO_slot_buffer_count(op->slots_in, "verts"), __func__);
 	float *co, *co2, clip_dist = BMO_slot_float_get(op->slots_in, "clip_dist");
+	const float fac = BMO_slot_float_get(op->slots_in, "factor");
 	int i, j, clipx, clipy, clipz;
 	int xaxis, yaxis, zaxis;
 	
@@ -322,7 +443,7 @@ void bmo_smooth_vert_exec(BMesh *UNUSED(bm), BMOperator *op)
 		}
 
 		mul_v3_fl(co, 1.0f / (float)j);
-		mid_v3_v3v3(co, co, v->co);
+		interp_v3_v3v3(co, v->co, co, fac);
 
 		if (clipx && fabsf(v->co[0]) <= clip_dist)
 			co[0] = 0.0f;

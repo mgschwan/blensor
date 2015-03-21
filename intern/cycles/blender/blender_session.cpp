@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include <stdlib.h>
@@ -40,6 +40,8 @@
 #include "blender_util.h"
 
 CCL_NAMESPACE_BEGIN
+
+bool BlenderSession::headless = false;
 
 BlenderSession::BlenderSession(BL::RenderEngine b_engine_, BL::UserPreferences b_userpref_,
 	BL::BlendData b_data_, BL::Scene b_scene_)
@@ -86,12 +88,14 @@ void BlenderSession::create()
 
 void BlenderSession::create_session()
 {
-	SceneParams scene_params = BlenderSync::get_scene_params(b_scene, background);
 	SessionParams session_params = BlenderSync::get_session_params(b_engine, b_userpref, b_scene, background);
+	bool is_cpu = session_params.device.type == DEVICE_CPU;
+	SceneParams scene_params = BlenderSync::get_scene_params(b_scene, background, is_cpu);
 	bool session_pause = BlenderSync::get_session_pause(b_scene, background);
 
 	/* reset status/progress */
 	last_status = "";
+	last_error = "";
 	last_progress = -1.0f;
 	start_resize_time = 0.0;
 
@@ -111,7 +115,7 @@ void BlenderSession::create_session()
 	session->set_pause(session_pause);
 
 	/* create sync */
-	sync = new BlenderSync(b_engine, b_data, b_scene, scene, !background, session->progress, session_params.device.type == DEVICE_CPU);
+	sync = new BlenderSync(b_engine, b_data, b_scene, scene, !background, session->progress, is_cpu);
 
 	if(b_v3d) {
 		if(session_pause == false) {
@@ -141,8 +145,9 @@ void BlenderSession::reset_session(BL::BlendData b_data_, BL::Scene b_scene_)
 	b_render = b_engine.render();
 	b_scene = b_scene_;
 
-	SceneParams scene_params = BlenderSync::get_scene_params(b_scene, background);
 	SessionParams session_params = BlenderSync::get_session_params(b_engine, b_userpref, b_scene, background);
+	const bool is_cpu = session_params.device.type == DEVICE_CPU;
+	SceneParams scene_params = BlenderSync::get_scene_params(b_scene, background, is_cpu);
 
 	width = render_resolution_x(b_render);
 	height = render_resolution_y(b_render);
@@ -173,7 +178,7 @@ void BlenderSession::reset_session(BL::BlendData b_data_, BL::Scene b_scene_)
 	session->stats.mem_peak = session->stats.mem_used;
 
 	/* sync object should be re-created */
-	sync = new BlenderSync(b_engine, b_data, b_scene, scene, !background, session->progress, session_params.device.type == DEVICE_CPU);
+	sync = new BlenderSync(b_engine, b_data, b_scene, scene, !background, session->progress, is_cpu);
 
 	/* for final render we will do full data sync per render layer, only
 	 * do some basic syncing here, no objects or materials for speed */
@@ -261,6 +266,14 @@ static PassType get_pass_type(BL::RenderPass b_pass)
 		case BL::RenderPass::type_SPECULAR:
 		case BL::RenderPass::type_REFLECTION:
 			return PASS_NONE;
+#ifdef WITH_CYCLES_DEBUG
+		case BL::RenderPass::type_DEBUG:
+		{
+			if(b_pass.debug_type() == BL::RenderPass::debug_type_BVH_TRAVERSAL_STEPS)
+				return PASS_BVH_TRAVERSAL_STEPS;
+			break;
+		}
+#endif
 	}
 	
 	return PASS_NONE;
@@ -423,6 +436,9 @@ void BlenderSession::render()
 		/* add passes */
 		vector<Pass> passes;
 		Pass::add(PASS_COMBINED, passes);
+#ifdef WITH_CYCLES_DEBUG
+		Pass::add(PASS_BVH_TRAVERSAL_STEPS, passes);
+#endif
 
 		if(session_params.device.advanced_shading) {
 
@@ -629,8 +645,9 @@ void BlenderSession::synchronize()
 		return;
 
 	/* on session/scene parameter changes, we recreate session entirely */
-	SceneParams scene_params = BlenderSync::get_scene_params(b_scene, background);
 	SessionParams session_params = BlenderSync::get_session_params(b_engine, b_userpref, b_scene, background);
+	const bool is_cpu = session_params.device.type == DEVICE_CPU;
+	SceneParams scene_params = BlenderSync::get_scene_params(b_scene, background, is_cpu);
 	bool session_pause = BlenderSync::get_session_pause(b_scene, background);
 
 	if(session->params.modified(session_params) ||
@@ -763,19 +780,23 @@ void BlenderSession::get_status(string& status, string& substatus)
 	session->progress.get_status(status, substatus);
 }
 
-void BlenderSession::get_progress(float& progress, double& total_time)
+void BlenderSession::get_progress(float& progress, double& total_time, double& render_time)
 {
 	double tile_time;
 	int tile, sample, samples_per_tile;
 	int tile_total = session->tile_manager.state.num_tiles;
+	int samples = session->tile_manager.state.sample + 1;
+	int total_samples = session->tile_manager.num_samples;
 
-	session->progress.get_tile(tile, total_time, tile_time);
+	session->progress.get_tile(tile, total_time, render_time, tile_time);
 
 	sample = session->progress.get_sample();
 	samples_per_tile = session->tile_manager.num_samples;
 
-	if(samples_per_tile && tile_total)
+	if(background && samples_per_tile && tile_total)
 		progress = ((float)sample / (float)(tile_total * samples_per_tile));
+	else if(!background && samples > 0 && total_samples != USHRT_MAX)
+		progress = ((float)samples) / total_samples;
 	else
 		progress = 0.0;
 }
@@ -805,22 +826,18 @@ void BlenderSession::update_status_progress()
 	string timestatus, status, substatus;
 	string scene = "";
 	float progress;
-	double total_time, remaining_time = 0;
+	double total_time, remaining_time = 0, render_time;
 	char time_str[128];
 	float mem_used = (float)session->stats.mem_used / 1024.0f / 1024.0f;
 	float mem_peak = (float)session->stats.mem_peak / 1024.0f / 1024.0f;
-	int samples = session->tile_manager.state.sample + 1;
-	int total_samples = session->tile_manager.num_samples;
 
 	get_status(status, substatus);
-	get_progress(progress, total_time);
+	get_progress(progress, total_time, render_time);
 
-	
+	if(progress > 0)
+		remaining_time = (1.0 - (double)progress) * (render_time / (double)progress);
 
 	if(background) {
-		if(progress>0)
-			remaining_time = (1-progress) * (total_time / progress);
-
 		scene += " | " + b_scene.name();
 		if(b_rlay_name != "")
 			scene += ", "  + b_rlay_name;
@@ -828,17 +845,14 @@ void BlenderSession::update_status_progress()
 	else {
 		BLI_timestr(total_time, time_str, sizeof(time_str));
 		timestatus = "Time:" + string(time_str) + " | ";
-
-		if(samples > 0 && total_samples != USHRT_MAX)
-			remaining_time = (total_samples - samples) * (total_time / samples);
 	}
-	
-	if(remaining_time>0) {
+
+	if(remaining_time > 0) {
 		BLI_timestr(remaining_time, time_str, sizeof(time_str));
 		timestatus += "Remaining:" + string(time_str) + " | ";
 	}
-	
-	timestatus += string_printf("Mem:%.2fM, Peak:%.2fM", mem_used, mem_peak);
+
+	timestatus += string_printf("Mem:%.2fM, Peak:%.2fM", (double)mem_used, (double)mem_peak);
 
 	if(status.size() > 0)
 		status = " | " + status;
@@ -853,6 +867,21 @@ void BlenderSession::update_status_progress()
 	if(progress != last_progress) {
 		b_engine.update_progress(progress);
 		last_progress = progress;
+	}
+
+	if (session->progress.get_error()) {
+		string error = session->progress.get_error_message();
+		if(error != last_error) {
+			/* TODO(sergey): Currently C++ RNA API doesn't let us to
+			 * use mnemonic name for the variable. Would be nice to
+			 * have this figured out.
+			 *
+			 * For until then, 1 << 5 means RPT_ERROR.
+			 */
+			b_engine.report(1 << 5, error.c_str());
+			b_engine.error_set(error.c_str());
+			last_error = error;
+		}
 	}
 }
 

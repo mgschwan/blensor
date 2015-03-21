@@ -2,7 +2,11 @@
 
 Import('env')
 
-SConscript(['glew/SConscript'])
+if env['WITH_BF_GLEW_ES']:
+    SConscript(['glew-es/SConscript'])
+else:
+    SConscript(['glew/SConscript'])
+
 SConscript(['colamd/SConscript'])
 SConscript(['rangetree/SConscript'])
 SConscript(['wcwidth/SConscript'])
@@ -46,3 +50,6 @@ if env['WITH_GHOST_XDND']:
     # FreeBSD doesn't seems to support XDND protocol
     if env['OURPLATFORM'] in ('linux', 'openbsd3', 'sunos5', 'aix4', 'aix5'):
         SConscript(['xdnd/SConscript'])
+
+if env['WITH_BF_SDL'] and env['WITH_BF_SDL_DYNLOAD']:
+    SConscript(['sdlew/SConscript'])

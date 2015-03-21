@@ -51,18 +51,23 @@
 #include "DNA_material_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_screen_types.h"
+#include "DNA_space_types.h"
 #include "DNA_texture_types.h"
 #include "DNA_world_types.h"
 
 #include "BKE_animsys.h"
 #include "BKE_action.h"
+#include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_fcurve.h"
 #include "BKE_nla.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
+#include "BKE_material.h"
 #include "BKE_library.h"
 #include "BKE_report.h"
+#include "BKE_texture.h"
 
 #include "RNA_access.h"
 
@@ -78,7 +83,7 @@ bool id_type_can_have_animdata(ID *id)
 {
 	/* sanity check */
 	if (id == NULL)
-		return 0;
+		return false;
 
 	/* Only some ID-blocks have this info for now */
 	/* TODO: finish adding this for the other blocktypes */
@@ -95,13 +100,14 @@ bool id_type_can_have_animdata(ID *id)
 		case ID_SCE:
 		case ID_MC:
 		case ID_MSK:
+		case ID_GD:
 		{
-			return 1;
+			return true;
 		}
 		
 		/* no AnimData */
 		default:
-			return 0;
+			return false;
 	}
 }
 
@@ -188,20 +194,20 @@ bool BKE_animdata_set_action(ReportList *reports, ID *id, bAction *act)
 			/* can set */
 			adt->action = act;
 			id_us_plus((ID *)adt->action);
-			ok = 1;
+			ok = true;
 		}
 		else {
 			/* cannot set */
 			BKE_reportf(reports, RPT_ERROR,
 			            "Could not set action '%s' onto ID '%s', as it does not have suitably rooted paths "
 			            "for this purpose", act->id.name + 2, id->name);
-			/* ok = 0; */
+			/* ok = false; */
 		}
 	}
 	else {
 		/* just clearing the action... */
 		adt->action = NULL;
-		ok = 1;
+		ok = true;
 	}
 	
 	return ok;
@@ -284,7 +290,7 @@ bool BKE_copy_animdata_id(ID *id_to, ID *id_from, const bool do_action)
 	AnimData *adt;
 
 	if ((id_to && id_from) && (GS(id_to->name) != GS(id_from->name)))
-		return 0;
+		return false;
 
 	BKE_free_animdata(id_to);
 
@@ -294,7 +300,7 @@ bool BKE_copy_animdata_id(ID *id_to, ID *id_from, const bool do_action)
 		iat->adt = BKE_copy_animdata(adt, do_action);
 	}
 
-	return 1;
+	return true;
 }
 
 void BKE_copy_animdata_id_action(ID *id)
@@ -309,6 +315,77 @@ void BKE_copy_animdata_id_action(ID *id)
 			id_us_min((ID *)adt->tmpact);
 			adt->tmpact = BKE_action_copy(adt->tmpact);
 		}
+	}
+}
+
+/* Merge copies of the data from the src AnimData into the destination AnimData */
+void BKE_animdata_merge_copy(ID *dst_id, ID *src_id, eAnimData_MergeCopy_Modes action_mode, bool fix_drivers)
+{
+	AnimData *src = BKE_animdata_from_id(src_id);
+	AnimData *dst = BKE_animdata_from_id(dst_id);
+	
+	/* sanity checks */
+	if (ELEM(NULL, dst, src))
+		return;
+		
+	// TODO: we must unset all "tweakmode" flags
+	if ((src->flag & ADT_NLA_EDIT_ON) || (dst->flag & ADT_NLA_EDIT_ON)) {
+		printf("ERROR: Merging AnimData blocks while editing NLA is dangerous as it may cause data corruption\n");
+		return;
+	}
+	
+	/* handle actions... */
+	if (action_mode == ADT_MERGECOPY_SRC_COPY) {
+		/* make a copy of the actions */
+		dst->action = BKE_action_copy(src->action);
+		dst->tmpact = BKE_action_copy(src->tmpact);
+	}
+	else if (action_mode == ADT_MERGECOPY_SRC_REF) {
+		/* make a reference to it */
+		dst->action = src->action;
+		id_us_plus((ID *)dst->action);
+		
+		dst->tmpact = src->tmpact;
+		id_us_plus((ID *)dst->tmpact);
+	}
+	
+	/* duplicate NLA data */
+	if (src->nla_tracks.first) {
+		ListBase tracks = {NULL, NULL};
+		
+		copy_nladata(&tracks, &src->nla_tracks);
+		BLI_movelisttolist(&dst->nla_tracks, &tracks);
+	}
+	
+	/* duplicate drivers (F-Curves) */
+	if (src->drivers.first) {
+		ListBase drivers = {NULL, NULL};
+		
+		copy_fcurves(&drivers, &src->drivers);
+		
+		/* Fix up all driver targets using the old target id
+		 * - This assumes that the src ID is being merged into the dst ID
+		 */
+		if (fix_drivers) {
+			FCurve *fcu;
+			
+			for (fcu = drivers.first; fcu; fcu = fcu->next) {
+				ChannelDriver *driver = fcu->driver;
+				DriverVar *dvar;
+				
+				for (dvar = driver->variables.first; dvar; dvar = dvar->next) {
+					DRIVER_TARGETS_USED_LOOPER(dvar)
+					{
+						if (dtar->id == src_id) {
+							dtar->id = dst_id;
+						}
+					}
+					DRIVER_TARGETS_LOOPER_END
+				}
+			}
+		}
+		
+		BLI_movelisttolist(&dst->drivers, &drivers);
 	}
 }
 
@@ -551,6 +628,74 @@ void BKE_animdata_separate_by_basepath(ID *srcID, ID *dstID, ListBase *basepaths
 	}
 }
 
+/**
+ * Temporary wrapper for driver operators for buttons to make it easier to create
+ * such drivers by rerouting all paths through the active object instead so that
+ * they will get picked up by the dependency system.
+ *
+ * \param C Context pointer - for getting active data
+ * \param[in,out] ptr RNA pointer for property's datablock. May be modified as result of path remapping.
+ * \param prop RNA definition of property to add for
+ * \return MEM_alloc'd string representing the path to the property from the given #PointerRNA
+ */
+char *BKE_animdata_driver_path_hack(bContext *C, PointerRNA *ptr, PropertyRNA *prop, char *base_path)
+{
+	ID *id = (ID *)ptr->id.data;
+	ScrArea *sa = CTX_wm_area(C);
+
+	/* get standard path which may be extended */
+	char *basepath = base_path ? base_path : RNA_path_from_ID_to_property(ptr, prop);
+	char *path = basepath; /* in case no remapping is needed */
+
+	/* Remapping will only be performed in the Properties Editor, as only this
+	 * restricts the subspace of options to the 'active' data (a manageable state)
+	 */
+	/* TODO: watch out for pinned context? */
+	if ((sa) && (sa->spacetype == SPACE_BUTS)) {
+		Object *ob = CTX_data_active_object(C);
+
+		if (ob && id) {
+			/* only id-types which can be remapped to go through objects should be considered */
+			switch (GS(id->name)) {
+				case ID_TE: /* textures */
+				{
+					Material *ma = give_current_material(ob, ob->actcol);
+					Tex *tex = give_current_material_texture(ma);
+
+					/* assumes: texture will only be shown if it is active material's active texture it's ok */
+					if ((ID *)tex == id) {
+						char name_esc_ma[(sizeof(ma->id.name) - 2) * 2];
+						char name_esc_tex[(sizeof(tex->id.name) - 2) * 2];
+
+						BLI_strescape(name_esc_ma, ma->id.name + 2, sizeof(name_esc_ma));
+						BLI_strescape(name_esc_tex, tex->id.name + 2, sizeof(name_esc_tex));
+
+						/* create new path */
+						// TODO: use RNA path functions to construct step by step instead?
+						// FIXME: maybe this isn't even needed anymore...
+						path = BLI_sprintfN("material_slots[\"%s\"].material.texture_slots[\"%s\"].texture.%s",
+						                    name_esc_ma, name_esc_tex, basepath);
+
+						/* free old one */
+						if (basepath != base_path)
+							MEM_freeN(basepath);
+					}
+					break;
+				}
+			}
+
+			/* fix RNA pointer, as we've now changed the ID root by changing the paths */
+			if (basepath != path) {
+				/* rebase provided pointer so that it starts from object... */
+				RNA_pointer_create(&ob->id, ptr->type, ptr->data, ptr);
+			}
+		}
+	}
+
+	/* the path should now have been corrected for use */
+	return path;
+}
+
 /* Path Validation -------------------------------------------- */
 
 /* Check if a given RNA Path is valid, by tracing it from the given ID, and seeing if we can resolve it */
@@ -646,7 +791,7 @@ static void fcurves_path_rename_fix(ID *owner_id, const char *prefix, const char
 			if (fcu->rna_path != old_path) {
 				bActionGroup *agrp = fcu->grp;
 				
-				if ((agrp) && strcmp(oldName, agrp->name) == 0) {
+				if ((agrp) && STREQ(oldName, agrp->name)) {
 					BLI_strncpy(agrp->name, newName, sizeof(agrp->name));
 				}
 			}
@@ -683,7 +828,7 @@ static void drivers_path_rename_fix(ID *owner_id, ID *ref_id, const char *prefix
 					/* also fix the bone-name (if applicable) */
 					if (strstr(prefix, "bones")) {
 						if ( ((dtar->id) && (GS(dtar->id->name) == ID_OB) && (!ref_id || ((Object *)(dtar->id))->data == ref_id)) &&
-						     (dtar->pchan_name[0]) && (strcmp(oldName, dtar->pchan_name) == 0) )
+						     (dtar->pchan_name[0]) && STREQ(oldName, dtar->pchan_name) )
 						{
 							BLI_strncpy(dtar->pchan_name, newName, sizeof(dtar->pchan_name));
 						}
@@ -711,6 +856,60 @@ static void nlastrips_path_rename_fix(ID *owner_id, const char *prefix, const ch
 		/* check sub-strips (if metas) */
 		nlastrips_path_rename_fix(owner_id, prefix, oldName, newName, oldKey, newKey, &strip->strips, verify_paths);
 	}
+}
+
+/* ----------------------- */
+
+
+/* Fix up the given RNA-Path
+ *
+ * This is just an external wrapper for the RNA-Path fixing function,
+ * with input validity checks on top of the basic method.
+ *
+ * NOTE: it is assumed that the structure we're replacing is <prefix><["><name><"]>
+ *       i.e. pose.bones["Bone"]
+ */
+char *BKE_animsys_fix_rna_path_rename(ID *owner_id, char *old_path, const char *prefix, const char *oldName,
+                                      const char *newName, int oldSubscript, int newSubscript, bool verify_paths)
+{
+	char *oldN, *newN;
+	char *result;
+	
+	/* if no action, no need to proceed */
+	if (ELEM(NULL, owner_id, old_path)) {
+		printf("early abort\n");
+		return old_path;
+	}
+	
+	/* Name sanitation logic - copied from BKE_animdata_fix_paths_rename() */
+	if ((oldName != NULL) && (newName != NULL)) {
+		/* pad the names with [" "] so that only exact matches are made */
+		const size_t name_old_len = strlen(oldName);
+		const size_t name_new_len = strlen(newName);
+		char *name_old_esc = BLI_array_alloca(name_old_esc, (name_old_len * 2) + 1);
+		char *name_new_esc = BLI_array_alloca(name_new_esc, (name_new_len * 2) + 1);
+
+		BLI_strescape(name_old_esc, oldName, (name_old_len * 2) + 1);
+		BLI_strescape(name_new_esc, newName, (name_new_len * 2) + 1);
+		oldN = BLI_sprintfN("[\"%s\"]", name_old_esc);
+		newN = BLI_sprintfN("[\"%s\"]", name_new_esc);
+	}
+	else {
+		oldN = BLI_sprintfN("[%d]", oldSubscript);
+		newN = BLI_sprintfN("[%d]", newSubscript);
+	}
+	
+	/* fix given path */
+	printf("%s | %s  | oldpath = %p ", oldN, newN, old_path);
+	result = rna_path_rename_fix(owner_id, prefix, oldN, newN, old_path, verify_paths);
+	printf("result = %p\n", result);
+	
+	/* free the temp names */
+	MEM_freeN(oldN);
+	MEM_freeN(newN);
+	
+	/* return the resulting path - may be the same path again if nothing changed */
+	return result;
 }
 
 /* Fix all RNA_Paths in the given Action, relative to the given ID block 
@@ -958,6 +1157,9 @@ void BKE_animdata_main_cb(Main *mainptr, ID_AnimData_Edit_Callback func, void *u
 
 	/* line styles */
 	ANIMDATA_IDS_CB(mainptr->linestyle.first);
+	
+	/* grease pencil */
+	ANIMDATA_IDS_CB(mainptr->gpencil.first);
 }
 
 /* Fix all RNA-Paths throughout the database (directly access the Global.main version)
@@ -1046,6 +1248,9 @@ void BKE_all_animdata_fix_paths_rename(ID *ref_id, const char *prefix, const cha
 	/* linestyles */
 	RENAMEFIX_ANIM_IDS(mainptr->linestyle.first);
 	
+	/* grease pencil */
+	RENAMEFIX_ANIM_IDS(mainptr->gpencil.first);
+	
 	/* scenes */
 	RENAMEFIX_ANIM_NODETREE_IDS(mainptr->scene.first, Scene);
 }
@@ -1076,7 +1281,7 @@ KS_Path *BKE_keyingset_find_path(KeyingSet *ks, ID *id, const char group_name[],
 			eq_id = 0;
 		
 		/* path */
-		if ((ksp->rna_path == NULL) || strcmp(rna_path, ksp->rna_path))
+		if ((ksp->rna_path == NULL) || !STREQ(rna_path, ksp->rna_path))
 			eq_path = 0;
 			
 		/* index - need to compare whole-array setting too... */
@@ -1112,6 +1317,7 @@ KeyingSet *BKE_keyingset_add(ListBase *list, const char idname[], const char nam
 
 	ks->flag = flag;
 	ks->keyingflag = keyingflag;
+	ks->keyingoverride = keyingflag; /* NOTE: assume that if one is set one way, the other should be too, so that it'll work */
 	
 	/* add KeyingSet to list */
 	BLI_addtail(list, ks);
@@ -1273,11 +1479,11 @@ static bool animsys_remap_path(AnimMapper *UNUSED(remap), char *path, char **dst
 
 	/* nothing suitable found, so just set dst to look at path (i.e. no alloc/free needed) */
 	*dst = path;
-	return 0;
+	return false;
 }
 
 
-/* less then 1.0 evaluates to false, use epsilon to avoid float error */
+/* less than 1.0 evaluates to false, use epsilon to avoid float error */
 #define ANIMSYS_FLOAT_AS_BOOL(value) ((value) > ((1.0f - FLT_EPSILON)))
 
 /* Write the given value to a setting using RNA, and return success */
@@ -1302,7 +1508,7 @@ static bool animsys_write_rna_setting(PointerRNA *ptr, char *path, int array_ind
 					       path, array_index, array_len - 1);
 				}
 				
-				return 0;
+				return false;
 			}
 			
 			switch (RNA_property_type(prop)) {
@@ -1356,7 +1562,7 @@ static bool animsys_write_rna_setting(PointerRNA *ptr, char *path, int array_ind
 					break;
 				default:
 					/* nothing can be done here... so it is unsuccessful? */
-					return 0;
+					return false;
 			}
 			
 			/* RNA property update disabled for now - [#28525] [#28690] [#28774] [#28777] */
@@ -1395,7 +1601,7 @@ static bool animsys_write_rna_setting(PointerRNA *ptr, char *path, int array_ind
 		}
 		
 		/* successful */
-		return 1;
+		return true;
 	}
 	else {
 		/* failed to get path */
@@ -1406,7 +1612,7 @@ static bool animsys_write_rna_setting(PointerRNA *ptr, char *path, int array_ind
 			       (ptr->id.data) ? (((ID *)ptr->id.data)->name + 2) : "<No ID>",
 			       path, array_index);
 		}
-		return 0;
+		return false;
 	}
 }
 
@@ -2259,13 +2465,19 @@ static void animsys_evaluate_nla(ListBase *echannels, PointerRNA *ptr, AnimData 
 		if ((adt->flag & ADT_NLA_EDIT_ON) && (nlt->flag & NLATRACK_DISABLED))
 			break;
 			
-		/* skip if we're only considering a track tagged 'solo' */
-		if ((adt->flag & ADT_NLA_SOLO_TRACK) && (nlt->flag & NLATRACK_SOLO) == 0)
-			continue;
-		/* skip if track is muted */
-		if (nlt->flag & NLATRACK_MUTED) 
-			continue;
-			
+		/* solo and muting are mutually exclusive... */
+		if (adt->flag & ADT_NLA_SOLO_TRACK) {
+			/* skip if there is a solo track, but this isn't it */
+			if ((nlt->flag & NLATRACK_SOLO) == 0)
+				continue;
+			/* else - mute doesn't matter */
+		}
+		else {
+			/* no solo tracks - skip track if muted */
+			if (nlt->flag & NLATRACK_MUTED) 
+				continue;
+		}
+		
 		/* if this track has strips (but maybe they won't be suitable), set has_strips 
 		 *	- used for mainly for still allowing normal action evaluation...
 		 */
@@ -2606,6 +2818,9 @@ void BKE_animsys_evaluate_all_animation(Main *main, Scene *scene, float ctime)
 
 	/* linestyles */
 	EVAL_ANIM_IDS(main->linestyle.first, ADT_RECALC_ANIM);
+	
+	/* grease pencil */
+	EVAL_ANIM_IDS(main->gpencil.first, ADT_RECALC_ANIM);
 	
 	/* objects */
 	/* ADT_RECALC_ANIM doesn't need to be supplied here, since object AnimData gets

@@ -165,16 +165,18 @@ enum {
 	WM_INIT_KEYMAP = (1<<1),
 };
 
+/* IME is win32 only! */
+#ifndef WIN32
+#  ifdef __GNUC__
+#    define ime_data ime_data __attribute__ ((deprecated))
+#  endif
+#endif
+
 /* the savable part, rest of data is local in ghostwinlay */
 typedef struct wmWindow {
 	struct wmWindow *next, *prev;
 
 	void *ghostwin;             /* don't want to include ghost.h stuff */
-
-	int winid;                  /* winid also in screens, is for retrieving this window after read */
-
-	short grabcursor;           /* cursor grab mode */
-	short pad;
 
 	struct bScreen *screen;     /* active screen */
 	struct bScreen *newscreen;  /* temporary when switching */
@@ -187,14 +189,24 @@ typedef struct wmWindow {
 	short cursor;       /* current mouse cursor type */
 	short lastcursor;   /* previous cursor when setting modal one */
 	short modalcursor;  /* the current modal cursor */
+	short grabcursor;           /* cursor grab mode */
 	short addmousemove; /* internal: tag this for extra mousemove event, makes cursors/buttons active on UI switching */
-	short pad2;
+
+	int winid;                  /* winid also in screens, is for retrieving this window after read */
+
+	short lock_pie_event;      /* internal, lock pie creation from this event until released */
+	short last_pie_event;      /* exception to the above rule for nested pies, store last pie event for operators
+	                            * that spawn a new pie right after destruction of last pie */
 
 	struct wmEvent *eventstate;   /* storage for event system */
 
 	struct wmSubWindow *curswin;  /* internal for wm_subwindow.c only */
 
 	struct wmGesture *tweak;      /* internal for wm_operators.c */
+
+	/* Input Method Editor data - complex character input (esp. for asian character input)
+	 * Currently WIN32, runtime-only data */
+	struct wmIMEData *ime_data;
 
 	int drawmethod, drawfail;     /* internal for wm_draw.c only */
 	void *drawdata;               /* internal for wm_draw.c only */
@@ -206,6 +218,10 @@ typedef struct wmWindow {
 	ListBase subwindows;          /* opengl stuff for sub windows, see notes in wm_subwindow.c */
 	ListBase gesture;             /* gesture stuff */
 } wmWindow;
+
+#ifdef ime_data
+#  undef ime_data
+#endif
 
 /* These two Lines with # tell makesdna this struct can be excluded. */
 /* should be something like DNA_EXCLUDE 
@@ -351,13 +367,22 @@ enum {
 	OPERATOR_RUNNING_MODAL  = (1 << 0),
 	OPERATOR_CANCELLED      = (1 << 1),
 	OPERATOR_FINISHED       = (1 << 2),
-/* add this flag if the event should pass through */
+	/* add this flag if the event should pass through */
 	OPERATOR_PASS_THROUGH   = (1 << 3),
-/* in case operator got executed outside WM code... like via fileselect */
+	/* in case operator got executed outside WM code... like via fileselect */
 	OPERATOR_HANDLED        = (1 << 4),
+	/* used for operators that act indirectly (eg. popup menu)
+	 * note: this isn't great design (using operators to trigger UI) avoid where possible. */
+	OPERATOR_INTERFACE      = (1 << 5),
 };
-#define OPERATOR_FLAGS_ALL    (OPERATOR_RUNNING_MODAL | OPERATOR_CANCELLED | OPERATOR_FINISHED | \
-                               OPERATOR_PASS_THROUGH | OPERATOR_HANDLED)
+#define OPERATOR_FLAGS_ALL ( \
+	OPERATOR_RUNNING_MODAL | \
+	OPERATOR_CANCELLED | \
+	OPERATOR_FINISHED | \
+	OPERATOR_PASS_THROUGH | \
+	OPERATOR_HANDLED | \
+	OPERATOR_INTERFACE | \
+	0)
 
 /* sanity checks for debug mode only */
 #define OPERATOR_RETVAL_CHECK(ret) (void)ret, BLI_assert(ret != 0 && (ret & OPERATOR_FLAGS_ALL) == ret)

@@ -118,6 +118,19 @@ macro(target_link_libraries_debug TARGET LIBS)
 	unset(_LIB)
 endmacro()
 
+macro(target_link_libraries_decoupled target libraries_var)
+	if(NOT MSVC)
+		target_link_libraries(${target} ${${libraries_var}})
+	else()
+		# For MSVC we link to different libraries depending whether
+		# release or debug target is being built.
+		file_list_suffix(_libraries_debug "${${libraries_var}}" "_d")
+		target_link_libraries_debug(${target} "${_libraries_debug}")
+		target_link_libraries_optimized(${target} "${${libraries_var}}")
+		unset(_libraries_debug)
+	endif()
+endmacro()
+
 # Nicer makefiles with -I/1/foo/ instead of -I/1/2/3/../../foo/
 # use it instead of include_directories()
 macro(blender_include_dirs
@@ -221,7 +234,7 @@ macro(SETUP_LIBDIRS)
 	if(WITH_PYTHON)  #  AND NOT WITH_PYTHON_MODULE  # WIN32 needs
 		link_directories(${PYTHON_LIBPATH})
 	endif()
-	if(WITH_SDL)
+	if(WITH_SDL AND NOT WITH_SDL_DYNLOAD)
 		link_directories(${SDL_LIBPATH})
 	endif()
 	if(WITH_CODEC_FFMPEG)
@@ -283,9 +296,13 @@ macro(setup_liblinks
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
 	set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
 
+	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
+	set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
+
+	set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}")
+	set(CMAKE_MODULE_LINKER_FLAGS_DEBUG "${CMAKE_MODULE_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}")
+
 	target_link_libraries(${target}
-			${OPENGL_gl_LIBRARY}
-			${OPENGL_glu_LIBRARY}
 			${PNG_LIBRARIES}
 			${ZLIB_LIBRARIES}
 			${FREETYPE_LIBRARY})
@@ -304,8 +321,11 @@ macro(setup_liblinks
 		endif()
 	endif()
 
+	if(WITH_LZO AND WITH_SYSTEM_LZO)
+		target_link_libraries(${target} ${LZO_LIBRARIES})
+	endif()
 	if(WITH_SYSTEM_GLEW)
-		target_link_libraries(${target} ${GLEW_LIBRARY})
+		target_link_libraries(${target} ${BLENDER_GLEW_LIBRARIES})
 	endif()
 	if(WITH_BULLET AND WITH_SYSTEM_BULLET)
 		target_link_libraries(${target} ${BULLET_LIBRARIES})
@@ -322,7 +342,7 @@ macro(setup_liblinks
 	if(WITH_CODEC_SNDFILE)
 		target_link_libraries(${target} ${SNDFILE_LIBRARIES})
 	endif()
-	if(WITH_SDL)
+	if(WITH_SDL AND NOT WITH_SDL_DYNLOAD)
 		target_link_libraries(${target} ${SDL_LIBRARY})
 	endif()
 	if(WITH_CODEC_QUICKTIME)
@@ -336,6 +356,9 @@ macro(setup_liblinks
 	endif()
 	if(WITH_OPENCOLORIO)
 		target_link_libraries(${target} ${OPENCOLORIO_LIBRARIES})
+	endif()
+	if(WITH_CYCLES_OSL)
+		target_link_libraries(${target} ${OSL_LIBRARIES})
 	endif()
 	if(WITH_BOOST)
 		target_link_libraries(${target} ${BOOST_LIBRARIES})
@@ -358,11 +381,6 @@ macro(setup_liblinks
 		target_link_libraries(${target} ${OPENJPEG_LIBRARIES})
 	endif()
 	if(WITH_CODEC_FFMPEG)
-
-		# Strange!, without this ffmpeg gives linking errors (on linux)
-		# even though its linked above
-		target_link_libraries(${target} ${OPENGL_glu_LIBRARY})
-
 		target_link_libraries(${target} ${FFMPEG_LIBRARIES})
 	endif()
 	if(WITH_OPENCOLLADA)
@@ -400,9 +418,6 @@ macro(setup_liblinks
 	if(WITH_MOD_CLOTH_ELTOPO)
 		target_link_libraries(${target} ${LAPACK_LIBRARIES})
 	endif()
-	if(WITH_CYCLES_OSL)
-		target_link_libraries(${target} ${OSL_LIBRARIES})
-	endif()
 	if(WITH_LLVM)
 		target_link_libraries(${target} ${LLVM_LIBRARY})
 	endif()
@@ -410,13 +425,17 @@ macro(setup_liblinks
 		target_link_libraries(${target} ${PTHREADS_LIBRARIES})
 	endif()
 
-	target_link_libraries(${target} ${PLATFORM_LINKLIBS} ${CMAKE_DL_LIBS})
-
 	# We put CLEW and CUEW here because OPENSUBDIV_LIBRARIES dpeends on them..
 	if(WITH_CYCLES OR WITH_COMPOSITOR OR WITH_OPENSUBDIV)
 		target_link_libraries(${target} "extern_clew")
 		target_link_libraries(${target} "extern_cuew")
 	endif()
+
+	#system libraries with no dependencies such as platform link libs or opengl should go last
+	target_link_libraries(${target}
+			${BLENDER_GL_LIBRARIES})
+
+	target_link_libraries(${target} ${PLATFORM_LINKLIBS} ${CMAKE_DL_LIBS})
 endmacro()
 
 macro(SETUP_BLENDER_SORTED_LIBS)
@@ -498,7 +517,7 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		bf_modifiers
 		bf_bmesh
 		bf_blenkernel
-		bf_python_blensor
+		bf_physics
 		bf_nodes
 		bf_rna
 		bf_gpu
@@ -523,7 +542,6 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		ge_phys_dummy
 		ge_phys_bullet
 		bf_intern_smoke
-		extern_minilzo
 		extern_lzma
 		extern_colamd
 		ge_logic_ketsji
@@ -558,6 +576,9 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		extern_wcwidth
 		extern_libmv
 		extern_glog
+		extern_sdlew
+
+		bf_intern_glew_mx
 	)
 
 	if(WITH_COMPOSITOR)
@@ -574,8 +595,12 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		list(APPEND BLENDER_SORTED_LIBS extern_eltopo)
 	endif()
 
+	if(NOT WITH_SYSTEM_LZO)
+		list(APPEND BLENDER_SORTED_LIBS extern_minilzo)
+	endif()
+
 	if(NOT WITH_SYSTEM_GLEW)
-		list(APPEND BLENDER_SORTED_LIBS extern_glew)
+		list(APPEND BLENDER_SORTED_LIBS ${BLENDER_GLEW_LIBRARIES})
 	endif()
 
 	if(WITH_BINRELOC)
@@ -719,6 +744,8 @@ macro(TEST_SSE_SUPPORT
 endmacro()
 
 macro(TEST_STDBOOL_SUPPORT)
+	include(CheckCSourceRuns)
+
 	# This program will compile correctly if and only if
 	# this C compiler supports C99 stdbool.
 	check_c_source_runs("
@@ -904,6 +931,7 @@ macro(remove_strict_flags)
 		remove_cc_flag("-Wstrict-prototypes")
 		remove_cc_flag("-Wmissing-prototypes")
 		remove_cc_flag("-Wunused-parameter")
+		remove_cc_flag("-Wunused-macros")
 		remove_cc_flag("-Wwrite-strings")
 		remove_cc_flag("-Wredundant-decls")
 		remove_cc_flag("-Wundef")
@@ -993,7 +1021,16 @@ macro(ADD_CHECK_CXX_COMPILER_FLAG
 	endif()
 endmacro()
 
-macro(get_blender_version)
+function(get_blender_version)
+	# extracts header vars and defines them in the parent scope:
+	#
+	# - BLENDER_VERSION (major.minor)
+	# - BLENDER_VERSION_MAJOR
+	# - BLENDER_VERSION_MINOR
+	# - BLENDER_SUBVERSION (used for internal versioning mainly)
+	# - BLENDER_VERSION_CHAR (a, b, c, ...or empty string)
+	# - BLENDER_VERSION_CYCLE (alpha, beta, rc, release)
+
 	# So cmake depends on BKE_blender.h, beware of inf-loops!
 	CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/source/blender/blenkernel/BKE_blender.h
 	               ${CMAKE_BINARY_DIR}/source/blender/blenkernel/BKE_blender.h.done)
@@ -1026,33 +1063,29 @@ macro(get_blender_version)
 		message(FATAL_ERROR "Version parsing failed for BLENDER_VERSION_CYCLE")
 	endif()
 
-	math(EXPR BLENDER_VERSION_MAJOR "${_out_version} / 100")
-	math(EXPR BLENDER_VERSION_MINOR "${_out_version} % 100")
-	set(BLENDER_VERSION "${BLENDER_VERSION_MAJOR}.${BLENDER_VERSION_MINOR}")
-
-	set(BLENDER_SUBVERSION ${_out_subversion})
-	set(BLENDER_VERSION_CHAR ${_out_version_char})
-	set(BLENDER_VERSION_CYCLE ${_out_version_cycle})
+	math(EXPR _out_version_major "${_out_version} / 100")
+	math(EXPR _out_version_minor "${_out_version} % 100")
 
 	# for packaging, alpha to numbers
-	string(COMPARE EQUAL "${BLENDER_VERSION_CHAR}" "" _out_version_char_empty)
+	string(COMPARE EQUAL "${_out_version_char}" "" _out_version_char_empty)
 	if(${_out_version_char_empty})
-		set(BLENDER_VERSION_CHAR_INDEX "0")
+		set(_out_version_char_index "0")
 	else()
 		set(_char_ls a b c d e f g h i j k l m n o p q r s t u v w x y z)
-		list(FIND _char_ls ${BLENDER_VERSION_CHAR} _out_version_char_index)
-		math(EXPR BLENDER_VERSION_CHAR_INDEX "${_out_version_char_index} + 1")
-		unset(_char_ls)
-		unset(_out_version_char_index)
+		list(FIND _char_ls ${_out_version_char} _out_version_char_index)
+		math(EXPR _out_version_char_index "${_out_version_char_index} + 1")
 	endif()
 
-	unset(_out_subversion)
-	unset(_out_version_char)
-	unset(_out_version_char_empty)
-	unset(_out_version_cycle)
+	# output vars
+	set(BLENDER_VERSION "${_out_version_major}.${_out_version_minor}" PARENT_SCOPE)
+	set(BLENDER_VERSION_MAJOR "${_out_version_major}" PARENT_SCOPE)
+	set(BLENDER_VERSION_MINOR "${_out_version_minor}" PARENT_SCOPE)
+	set(BLENDER_SUBVERSION "${_out_subversion}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CHAR "${_out_version_char}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CHAR_INDEX "${_out_version_char_index}" PARENT_SCOPE)
+	set(BLENDER_VERSION_CYCLE "${_out_version_cycle}" PARENT_SCOPE)
 
-	# message(STATUS "Version (Internal): ${BLENDER_VERSION}.${BLENDER_SUBVERSION}, Version (external): ${BLENDER_VERSION}${BLENDER_VERSION_CHAR}-${BLENDER_VERSION_CYCLE}")
-endmacro()
+endfunction()
 
 
 # hacks to override initial project settings
@@ -1089,7 +1122,7 @@ endmacro()
 macro(blender_project_hack_post)
 	# --------------
 	# MINGW HACK END
-	if (_reset_standard_libraries)
+	if(_reset_standard_libraries)
 		# Must come after projecINCt(...)
 		#
 		# MINGW workaround for -ladvapi32 being included which surprisingly causes
@@ -1149,6 +1182,7 @@ macro(delayed_install
 		endif()
 		set_property(GLOBAL APPEND PROPERTY DELAYED_INSTALL_DESTINATIONS ${destination})
 	endforeach()
+	unset(f)
 endmacro()
 
 # note this is a function instead of a macro so that ${BUILD_TYPE} in targetdir
@@ -1168,6 +1202,7 @@ function(delayed_do_install
 			list(GET destinations ${i} d)
 			install(FILES ${f} DESTINATION ${targetdir}/${d})
 		endforeach()
+		unset(f)
 	endif()
 endfunction()
 
@@ -1382,3 +1417,14 @@ macro(find_python_package
 
 	  unset(_upper_package)
 endmacro()
+
+# like Python's 'print(dir())'
+macro(print_all_vars)
+	get_cmake_property(_vars VARIABLES)
+	foreach(_var ${_vars})
+		message("${_var}=${${_var}}")
+	endforeach()
+	unset(_vars)
+	unset(_var)
+endmacro()
+

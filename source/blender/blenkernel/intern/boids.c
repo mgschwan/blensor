@@ -994,8 +994,8 @@ void boid_brain(BoidBrainData *bbd, int p, ParticleData *pa)
 		}
 		case eBoidRulesetType_Random:
 		{
-			/* use random rule for each particle (allways same for same particle though) */
-			rule = BLI_findlink(&state->rules, rand % BLI_countlist(&state->rules));
+			/* use random rule for each particle (always same for same particle though) */
+			rule = BLI_findlink(&state->rules, rand % BLI_listbase_count(&state->rules));
 
 			apply_boid_rule(bbd, rule, &val, pa, -1.0);
 			break;

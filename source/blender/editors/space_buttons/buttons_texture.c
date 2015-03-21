@@ -61,7 +61,9 @@
 #include "BKE_paint.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
-#include "BKE_freestyle.h"
+#ifdef WITH_FREESTYLE
+#  include "BKE_freestyle.h"
+#endif
 
 #include "RNA_access.h"
 
@@ -256,7 +258,7 @@ static void buttons_texture_user_property_add(ListBase *users, ID *id,
 	user->category = category;
 	user->icon = icon;
 	user->name = name;
-	user->index = BLI_countlist(users);
+	user->index = BLI_listbase_count(users);
 
 	BLI_addtail(users, user);
 }
@@ -273,7 +275,7 @@ static void buttons_texture_user_node_add(ListBase *users, ID *id,
 	user->category = category;
 	user->icon = icon;
 	user->name = name;
-	user->index = BLI_countlist(users);
+	user->index = BLI_listbase_count(users);
 
 	BLI_addtail(users, user);
 }
@@ -468,7 +470,7 @@ void buttons_texture_context_compute(const bContext *C, SpaceButs *sbuts)
 	}
 	else {
 		/* set one user as active based on active index */
-		if (ct->index >= BLI_countlist(&ct->users))
+		if (ct->index == BLI_listbase_count_ex(&ct->users, ct->index + 1))
 			ct->index = 0;
 
 		ct->user = BLI_findlink(&ct->users, ct->index);
@@ -557,7 +559,7 @@ static void template_texture_user_menu(bContext *C, uiLayout *layout, void *UNUS
 		char name[UI_MAX_NAME_STR];
 
 		/* add label per category */
-		if (!last_category || strcmp(last_category, user->category) != 0) {
+		if (!last_category || !STREQ(last_category, user->category)) {
 			uiItemL(layout, user->category, ICON_NONE);
 			but = block->buttons.last;
 			but->drawflag = UI_BUT_TEXT_LEFT;
@@ -576,9 +578,9 @@ static void template_texture_user_menu(bContext *C, uiLayout *layout, void *UNUS
 		else
 			BLI_snprintf(name, UI_MAX_NAME_STR, "  %s", user->name);
 
-		but = uiDefIconTextBut(block, BUT, 0, user->icon, name, 0, 0, UI_UNIT_X * 4, UI_UNIT_Y,
+		but = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, user->icon, name, 0, 0, UI_UNIT_X * 4, UI_UNIT_Y,
 		                       NULL, 0.0, 0.0, 0.0, 0.0, "");
-		uiButSetNFunc(but, template_texture_select, MEM_dupallocN(user), NULL);
+		UI_but_funcN_set(but, template_texture_select, MEM_dupallocN(user), NULL);
 
 		last_category = user->category;
 	}
@@ -620,9 +622,9 @@ void uiTemplateTextureUser(uiLayout *layout, bContext *C)
 	}
 
 	/* some cosmetic tweaks */
-	uiButSetMenuFromPulldown(but);
+	UI_but_type_set_menu_from_pulldown(but);
 
-	but->flag &= ~UI_ICON_SUBMENU;
+	but->flag &= ~UI_BUT_ICON_SUBMENU;
 }
 
 /************************* Texture Show **************************/
@@ -675,9 +677,9 @@ void uiTemplateTextureShow(uiLayout *layout, bContext *C, PointerRNA *ptr, Prope
 		uiBlock *block = uiLayoutGetBlock(layout);
 		uiBut *but;
 		
-		but = uiDefIconBut(block, BUT, 0, ICON_BUTS, 0, 0, UI_UNIT_X, UI_UNIT_Y,
+		but = uiDefIconBut(block, UI_BTYPE_BUT, 0, ICON_BUTS, 0, 0, UI_UNIT_X, UI_UNIT_Y,
 		                   NULL, 0.0, 0.0, 0.0, 0.0, "Show texture in texture tab");
-		uiButSetFunc(but, template_texture_show, user->ptr.data, user->prop);
+		UI_but_func_set(but, template_texture_show, user->ptr.data, user->prop);
 	}
 }
 

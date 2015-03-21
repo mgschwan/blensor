@@ -89,7 +89,7 @@ void BLI_bvhtree_insert(BVHTree *tree, int index, const float co[3], int numpoin
 void BLI_bvhtree_balance(BVHTree *tree);
 
 /* update: first update points/nodes, then call update_tree to refit the bounding volumes */
-int BLI_bvhtree_update_node(BVHTree *tree, int index, const float co[3], const float co_moving[3], int numpoints);
+bool BLI_bvhtree_update_node(BVHTree *tree, int index, const float co[3], const float co_moving[3], int numpoints);
 void BLI_bvhtree_update_tree(BVHTree *tree);
 
 /* collision/overlap: check two trees if they overlap, alloc's *overlap with length of the int return value */
@@ -104,6 +104,10 @@ int BLI_bvhtree_find_nearest(BVHTree *tree, const float co[3], BVHTreeNearest *n
 
 int BLI_bvhtree_ray_cast(BVHTree *tree, const float co[3], const float dir[3], float radius, BVHTreeRayHit *hit,
                          BVHTree_RayCastCallback callback, void *userdata);
+
+/* Calls the callback for every ray intersection */
+int BLI_bvhtree_ray_cast_all(BVHTree *tree, const float co[3], const float dir[3], float radius,
+                             BVHTree_RayCastCallback callback, void *userdata);
 
 float BLI_bvhtree_bb_raycast(const float bv[6], const float light_start[3], const float light_end[3], float pos[3]);
 

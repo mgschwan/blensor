@@ -19,7 +19,10 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Menu, Panel, UIList
-from bl_ui.properties_grease_pencil_common import GreasePencilPanel
+from bl_ui.properties_grease_pencil_common import (
+        GreasePencilDrawingToolsPanel,
+        GreasePencilStrokeEditPanel
+        )
 from bl_ui.properties_paint_common import (
         UnifiedPaintPanel,
         brush_texture_settings,
@@ -28,7 +31,7 @@ from bl_ui.properties_paint_common import (
         )
 
 
-class View3DPanel():
+class View3DPanel:
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
@@ -96,6 +99,13 @@ class VIEW3D_PT_tools_object(View3DPanel, Panel):
                 row = col.row(align=True)
                 row.operator("object.shade_smooth", text="Smooth")
                 row.operator("object.shade_flat", text="Flat")
+
+            if obj_type in {'MESH'}:
+                col = layout.column(align=True)
+                col.label(text="Data Transfer:")
+                row = col.row(align=True)
+                row.operator("object.data_transfer", text="Data")
+                row.operator("object.datalayout_transfer", text="Data Layout")
 
 
 class VIEW3D_PT_tools_add_object(View3DPanel, Panel):
@@ -313,6 +323,8 @@ class VIEW3D_PT_tools_meshedit(View3DPanel, Panel):
         col.menu("VIEW3D_MT_edit_mesh_extrude")
         col.operator("view3d.edit_mesh_extrude_move_normal", text="Extrude Region")
         col.operator("view3d.edit_mesh_extrude_individual_move", text="Extrude Individual")
+        col.operator("mesh.inset", text="Inset Faces")
+        col.operator("mesh.edge_face_add")
         col.operator("mesh.subdivide")
         col.operator("mesh.loopcut_slide")
         col.operator("mesh.duplicate_move", text="Duplicate")
@@ -775,6 +787,7 @@ class View3DPaintPanel(UnifiedPaintPanel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
+
 class VIEW3D_PT_imapaint_tools_missing(Panel, View3DPaintPanel):
     bl_category = "Tools"
     bl_label = "Missing Data"
@@ -793,16 +806,15 @@ class VIEW3D_PT_imapaint_tools_missing(Panel, View3DPaintPanel):
         if toolsettings.missing_uvs:
             col.separator()
             col.label("Missing UVs", icon='INFO')
-            col.label("Unwrap the mesh in edit mode or generate a simple UVs")
-            col.operator("mesh.uv_texture_add", text="Add Simple UVs")
-    
+            col.label("Unwrap the mesh in edit mode or generate a simple UV layer")
+            col.operator("paint.add_simple_uvs")
+
         if toolsettings.mode == 'MATERIAL':
             if toolsettings.missing_materials:
                 col.separator()
                 col.label("Missing Materials", icon='INFO')
                 col.label("Add a material and paint slot below")
                 col.operator_menu_enum("paint.add_texture_paint_slot", "type", text="Add Paint Slot")
-                   
             elif toolsettings.missing_texture:
                 ob = context.active_object
                 mat = ob.active_material
@@ -816,7 +828,6 @@ class VIEW3D_PT_imapaint_tools_missing(Panel, View3DPaintPanel):
                     col.label("Missing Materials", icon='INFO')
                     col.label("Add a material and paint slot below")
                     col.operator_menu_enum("paint.add_texture_paint_slot", "type", text="Add Paint Slot")
- 
 
         elif toolsettings.mode == 'IMAGE':
             if toolsettings.missing_texture:
@@ -834,6 +845,7 @@ class VIEW3D_PT_imapaint_tools_missing(Panel, View3DPaintPanel):
             col.label("Stencil Image")
             col.template_ID(toolsettings, "stencil_image")
             col.operator("image.new", text="New").gen_context = 'PAINT_STENCIL'
+
 
 class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
     bl_category = "Tools"
@@ -870,10 +882,8 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
                 col.prop(brush, "count")
                 col = layout.column()
                 col.prop(settings, "use_default_interpolate")
-                sub = col.column(align=True)
-                sub.active = settings.use_default_interpolate
-                sub.prop(brush, "steps", slider=True)
-                sub.prop(settings, "default_key_count", slider=True)
+                col.prop(brush, "steps", slider=True)
+                col.prop(settings, "default_key_count", slider=True)
             elif tool == 'LENGTH':
                 layout.prop(brush, "length_mode", expand=True)
             elif tool == 'PUFF':
@@ -903,14 +913,15 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
             self.prop_unified_size(row, context, brush, "use_pressure_size")
 
             # strength, use_strength_pressure, and use_strength_attenuation
-            if capabilities.has_strength:
-                col.separator()
-                row = col.row(align=True)
+            col.separator()
+            row = col.row(align=True)
 
-                if capabilities.has_space_attenuation:
-                    row.prop(brush, "use_space_attenuation", toggle=True, icon_only=True)
+            if capabilities.has_space_attenuation:
+                row.prop(brush, "use_space_attenuation", toggle=True, icon_only=True)
 
-                self.prop_unified_strength(row, context, brush, "strength", text="Strength")
+            self.prop_unified_strength(row, context, brush, "strength", text="Strength")
+
+            if capabilities.has_strength_pressure:
                 self.prop_unified_strength(row, context, brush, "use_pressure_strength")
 
             # auto_smooth_factor and use_inverse_smooth_pressure
@@ -1057,12 +1068,13 @@ class TEXTURE_UL_texpaintslots(UIList):
 
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             layout.prop(item, "name", text="", emboss=False, icon_value=icon)
-            if (not mat.use_nodes) and (context.scene.render.engine == 'BLENDER_RENDER'):
+            if (not mat.use_nodes) and context.scene.render.engine in {'BLENDER_RENDER', 'BLENDER_GAME'}:
                 mtex_index = mat.texture_paint_slots[index].index
                 layout.prop(mat, "use_textures", text="", index=mtex_index)
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
             layout.label(text="")
+
 
 class VIEW3D_MT_tools_projectpaint_uvlayer(Menu):
     bl_label = "Clone Layer"
@@ -1114,18 +1126,23 @@ class VIEW3D_PT_slots_projectpaint(View3DPanel, Panel):
                                   mat, "texture_paint_images",
                                   mat, "paint_active_slot", rows=2)
 
-                if (not mat.use_nodes) and (context.scene.render.engine == 'BLENDER_RENDER'):
+                if mat.texture_paint_slots:
+                    slot = mat.texture_paint_slots[mat.paint_active_slot]
+                else:
+                    slot = None
+
+                if (not mat.use_nodes) and context.scene.render.engine in {'BLENDER_RENDER', 'BLENDER_GAME'}:
                     row = col.row(align=True)
                     row.operator_menu_enum("paint.add_texture_paint_slot", "type")
                     row.operator("paint.delete_texture_paint_slot", text="", icon='X')
 
-                    if mat.texture_paint_slots:
-                        slot = mat.texture_paint_slots[mat.paint_active_slot]
-
+                    if slot:
                         col.prop(mat.texture_slots[slot.index], "blend_type")
                         col.separator()
-                        col.label("UV Map")
-                        col.prop_search(slot, "uv_layer", ob.data, "uv_textures", text="")
+
+                if slot and slot.index != -1:
+                    col.label("UV Map")
+                    col.prop_search(slot, "uv_layer", ob.data, "uv_textures", text="")
 
         elif settings.mode == 'IMAGE':
             mesh = ob.data
@@ -1174,7 +1191,6 @@ class VIEW3D_PT_stencil_projectpaint(View3DPanel, Panel):
         col.template_ID(ipaint, "stencil_image")
         col.operator("image.new", text="New").gen_context = 'PAINT_STENCIL'
 
- 
         col.label("Visualization")
         row = col.row(align=True)
         row.prop(ipaint, "stencil_color", text="")
@@ -1585,7 +1601,9 @@ class VIEW3D_PT_tools_weightpaint(View3DPanel, Panel):
 
         col = layout.column()
         col.operator("paint.weight_gradient")
-        col.operator("object.vertex_group_transfer_weight", text="Transfer Weights")
+        prop = col.operator("object.data_transfer", text="Transfer Weights")
+        prop.use_reverse_transfer = True
+        prop.data_type = 'VGROUP_WEIGHTS'
 
 
 class VIEW3D_PT_tools_weightpaint_options(Panel, View3DPaintPanel):
@@ -1704,7 +1722,12 @@ class VIEW3D_PT_tools_projectpaint(View3DPaintPanel, Panel):
         sub.active = (ipaint.use_normal_falloff)
         sub.prop(ipaint, "normal_angle", text="")
 
+        layout.prop(ipaint, "use_cavity")
+        if ipaint.use_cavity:
+            layout.template_curve_mapping(ipaint, "cavity_curve", brush=True)
+
         layout.prop(ipaint, "seam_bleed")
+        layout.prop(ipaint, "dither")
         self.unified_paint_settings(layout, context)
 
 
@@ -1788,6 +1811,9 @@ class VIEW3D_PT_tools_particlemode(View3DPanel, Panel):
             col.prop(pe, "use_auto_velocity", text="Velocity")
         col.prop(ob.data, "use_mirror_x")
 
+        col.prop(pe, "shape_object")
+        col.operator("particle.shape_cut")
+
         col = layout.column(align=True)
         col.active = pe.is_editable
         col.label(text="Draw:")
@@ -1803,11 +1829,14 @@ class VIEW3D_PT_tools_particlemode(View3DPanel, Panel):
             sub.prop(pe, "fade_frames", slider=True)
 
 
-# Grease Pencil tools
-class VIEW3D_PT_tools_grease_pencil(GreasePencilPanel, Panel):
+# Grease Pencil drawing tools
+class VIEW3D_PT_tools_grease_pencil_draw(GreasePencilDrawingToolsPanel, Panel):
     bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
-    bl_category = "Grease Pencil"
+
+
+# Grease Pencil stroke editing tools
+class VIEW3D_PT_tools_grease_pencil_edit(GreasePencilStrokeEditPanel, Panel):
+    bl_space_type = 'VIEW_3D'
 
 
 # Note: moved here so that it's always in last position in 'Tools' panels!

@@ -86,10 +86,19 @@ enum {
 	 * paint and drawing tools however will want to handle these. */
 	INBETWEEN_MOUSEMOVE = 0x0011,
 
+/* IME event, GHOST_kEventImeCompositionStart in ghost */
+	WM_IME_COMPOSITE_START = 0x0014,
+/* IME event, GHOST_kEventImeComposition in ghost */
+	WM_IME_COMPOSITE_EVENT      = 0x0015,
+/* IME event, GHOST_kEventImeCompositionEnd in ghost */
+	WM_IME_COMPOSITE_END   = 0x0016,
+
 	/* *** Start of keyboard codes. *** */
 
 	/* standard keyboard.
 	 * XXX from 0x0020 to 0x00ff, and 0x012c to 0x013f for function keys! */
+
+	/* NOTE: these values are saved in keymap files, do not change them but just add new ones */
 	AKEY            = 0x0061,  /* 'a' */
 	BKEY            = 0x0062,  /* 'b' */
 	CKEY            = 0x0063,  /* 'c' */
@@ -299,6 +308,10 @@ enum {
 	/* Tweak, gestures: 0x500x, 0x501x */
 	EVT_ACTIONZONE_AREA   = 0x5000,
 	EVT_ACTIONZONE_REGION = 0x5001,
+	EVT_ACTIONZONE_FULLSCREEN = 0x5011,
+
+	/* NOTE: these values are saved in keymap files, do not change them but just add new ones */
+
 	/* tweak events, for L M R mousebuttons */
 	EVT_TWEAK_L           = 0x5002,
 	EVT_TWEAK_M           = 0x5003,
@@ -307,6 +320,8 @@ enum {
 	EVT_TWEAK_A           = 0x5005,
 	EVT_TWEAK_S           = 0x5006,
 	EVT_GESTURE           = 0x5010,
+
+	/* 0x5011 is taken, see EVT_ACTIONZONE_FULLSCREEN */
 
 	/* Misc Blender internals: 0x502x */
 	EVT_FILESELECT        = 0x5020,
@@ -354,10 +369,23 @@ enum {
 	 (event_type >= LEFTCTRLKEY && event_type <= LEFTSHIFTKEY) == false &&    \
 	 (event_type >= UNKNOWNKEY  && event_type <= GRLESSKEY) == false)
 
+/* internal helpers*/
+#define _VA_IS_EVENT_MOD2(v, a) (CHECK_TYPE_INLINE(v, wmEvent *), \
+       ((v)->a))
+#define _VA_IS_EVENT_MOD3(v, a, b) \
+       (_VA_IS_EVENT_MOD2(v, a) || ((v)->b))
+#define _VA_IS_EVENT_MOD4(v, a, b, c) \
+       (_VA_IS_EVENT_MOD3(v, a, b) || ((v)->c))
+#define _VA_IS_EVENT_MOD5(v, a, b, c, d) \
+       (_VA_IS_EVENT_MOD4(v, a, b, c) || ((v)->d))
+
+/* reusable IS_EVENT_MOD(event, shift, ctrl, alt, oskey), macro */
+#define IS_EVENT_MOD(...) VA_NARGS_CALL_OVERLOAD(_VA_IS_EVENT_MOD, __VA_ARGS__)
 
 /* ********** wmEvent.val ********** */
 
 /* Gestures */
+/* NOTE: these values are saved in keymap files, do not change them but just add new ones */
 enum {
 	/* value of tweaks and line gestures, note, KM_ANY (-1) works for this case too */
 	EVT_GESTURE_N   = 1,
@@ -381,11 +409,10 @@ enum {
 
 /* File select */
 enum {
-	EVT_FILESELECT_OPEN             = 1,
-	EVT_FILESELECT_FULL_OPEN        = 2,
-	EVT_FILESELECT_EXEC             = 3,
-	EVT_FILESELECT_CANCEL           = 4,
-	EVT_FILESELECT_EXTERNAL_CANCEL  = 5,
+	EVT_FILESELECT_FULL_OPEN        = 1,
+	EVT_FILESELECT_EXEC             = 2,
+	EVT_FILESELECT_CANCEL           = 3,
+	EVT_FILESELECT_EXTERNAL_CANCEL  = 4,
 };
 
 /* Gesture */

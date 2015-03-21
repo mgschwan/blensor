@@ -40,7 +40,7 @@
 #  include <windows.h>
 #endif  /* WIN32 */
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 
 #include <map>
 
@@ -56,6 +56,8 @@ protected:
 	/** Rect that defines the area used for rendering,
 	 * relative to the context */
 	RAS_Rect m_displayarea;
+	/** Frame counter for screenshots */
+	int m_frame;
 
 	int m_viewport[4];
 

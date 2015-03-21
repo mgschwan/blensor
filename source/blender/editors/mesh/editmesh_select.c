@@ -38,7 +38,6 @@
 #include "BLI_math.h"
 #include "BLI_rand.h"
 #include "BLI_array.h"
-#include "BLI_smallhash.h"
 
 #include "BKE_context.h"
 #include "BKE_report.h"
@@ -62,9 +61,9 @@
 #include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
 
-#include "GPU_extensions.h"
-
 #include "UI_resources.h"
+
+#include "bmesh_tools.h"
 
 #include "mesh_intern.h"  /* own include */
 
@@ -382,8 +381,6 @@ static void findnearestvert__doClosest(void *userData, BMVert *eve, const float 
 		}
 	}
 }
-
-
 
 
 static bool findnearestvert__backbufIndextest(void *handle, unsigned int index)
@@ -709,6 +706,7 @@ static EnumPropertyItem prop_similar_types[] = {
 	{SIMFACE_PERIMETER, "PERIMETER", 0, "Perimeter", ""},
 	{SIMFACE_NORMAL, "NORMAL", 0, "Normal", ""},
 	{SIMFACE_COPLANAR, "COPLANAR", 0, "Co-planar", ""},
+	{SIMFACE_SMOOTH, "SMOOTH", 0, "Flat/Smooth", ""},
 #ifdef WITH_FREESTYLE
 	{SIMFACE_FREESTYLE, "FREESTYLE_FACE", 0, "Freestyle Face Marks", ""},
 #endif
@@ -886,7 +884,7 @@ static EnumPropertyItem *select_similar_type_itemf(bContext *C, PointerRNA *UNUS
 #ifdef WITH_FREESTYLE
 			const int a_end = SIMFACE_FREESTYLE;
 #else
-			const int a_end = SIMFACE_COPLANAR;
+			const int a_end = SIMFACE_SMOOTH;
 #endif
 			for (a = SIMFACE_MATERIAL; a <= a_end; a++) {
 				RNA_enum_items_add_value(&item, &totitem, prop_similar_types, a);
@@ -926,6 +924,97 @@ void MESH_OT_select_similar(wmOperatorType *ot)
 	RNA_def_enum(ot->srna, "compare", prop_similar_compare_types, SIM_CMP_EQ, "Compare", "");
 
 	RNA_def_float(ot->srna, "threshold", 0.0, 0.0, 1.0, "Threshold", "", 0.0, 1.0);
+}
+
+
+/* -------------------------------------------------------------------- */
+/* Select Similar Regions */
+
+static int edbm_select_similar_region_exec(bContext *C, wmOperator *op)
+{
+	Object *obedit = CTX_data_edit_object(C);
+	BMEditMesh *em = BKE_editmesh_from_object(obedit);
+	BMesh *bm = em->bm;
+	bool changed = false;
+
+	/* group vars */
+	int *groups_array;
+	int (*group_index)[2];
+	int group_tot;
+	int i;
+
+	if (bm->totfacesel < 2) {
+		BKE_report(op->reports, RPT_ERROR, "No face regions selected");
+		return OPERATOR_CANCELLED;
+	}
+
+	groups_array = MEM_mallocN(sizeof(*groups_array) * bm->totfacesel, __func__);
+	group_tot = BM_mesh_calc_face_groups(bm, groups_array, &group_index,
+	                                     NULL, NULL,
+	                                     BM_ELEM_SELECT, BM_VERT);
+
+	BM_mesh_elem_table_ensure(bm, BM_FACE);
+
+	for (i = 0; i < group_tot; i++) {
+		ListBase faces_regions;
+		int tot;
+
+		const int fg_sta = group_index[i][0];
+		const int fg_len = group_index[i][1];
+		int j;
+		BMFace **fg = MEM_mallocN(sizeof(*fg) * fg_len, __func__);
+
+
+		for (j = 0; j < fg_len; j++) {
+			fg[j] = BM_face_at_index(bm, groups_array[fg_sta + j]);
+		}
+
+		tot = BM_mesh_region_match(bm, fg, fg_len, &faces_regions);
+
+		MEM_freeN(fg);
+
+		if (tot) {
+			LinkData *link;
+			while ((link = BLI_pophead(&faces_regions))) {
+				BMFace *f, **faces = link->data;
+				unsigned int i = 0;
+				while ((f = faces[i++])) {
+					BM_face_select_set(bm, f, true);
+				}
+				MEM_freeN(faces);
+				MEM_freeN(link);
+
+				changed = true;
+			}
+		}
+	}
+
+	MEM_freeN(groups_array);
+	MEM_freeN(group_index);
+
+	if (changed) {
+		WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit);
+	}
+	else {
+		BKE_report(op->reports, RPT_WARNING, "No matching face regions found");
+	}
+
+	return OPERATOR_FINISHED;
+}
+
+void MESH_OT_select_similar_region(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Select Similar Regions";
+	ot->idname = "MESH_OT_select_similar_region";
+	ot->description = "Select similar face regions to the current selection";
+
+	/* api callbacks */
+	ot->exec = edbm_select_similar_region_exec;
+	ot->poll = ED_operator_editmesh;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
 
@@ -2381,12 +2470,13 @@ void MESH_OT_select_mirror(wmOperatorType *ot)
 
 /* ******************** **************** */
 
-static int edbm_select_more_exec(bContext *C, wmOperator *UNUSED(op))
+static int edbm_select_more_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
+	const bool use_face_step = RNA_boolean_get(op->ptr, "use_face_step");
 
-	EDBM_select_more(em);
+	EDBM_select_more(em, use_face_step);
 
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit);
 	return OPERATOR_FINISHED;
@@ -2405,14 +2495,17 @@ void MESH_OT_select_more(wmOperatorType *ot)
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	RNA_def_boolean(ot->srna, "use_face_step", true, "Face Step", "Connected faces (instead of edges)");
 }
 
-static int edbm_select_less_exec(bContext *C, wmOperator *UNUSED(op))
+static int edbm_select_less_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
+	const bool use_face_step = RNA_boolean_get(op->ptr, "use_face_step");
 
-	EDBM_select_less(em);
+	EDBM_select_less(em, use_face_step);
 
 	WM_event_add_notifier(C, NC_GEOM | ND_SELECT, obedit);
 	return OPERATOR_FINISHED;
@@ -2431,6 +2524,8 @@ void MESH_OT_select_less(wmOperatorType *ot)
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	RNA_def_boolean(ot->srna, "use_face_step", true, "Face Step", "Connected faces (instead of edges)");
 }
 
 /**
@@ -2457,7 +2552,7 @@ static bool bm_edge_is_select_isolated(BMEdge *e)
 /* Walk all reachable elements of the same type as h_act in breadth-first
  * order, starting from h_act. Deselects elements if the depth when they
  * are reached is not a multiple of "nth". */
-static void walker_deselect_nth(BMEditMesh *em, int nth, int offset, BMHeader *h_act)
+static void walker_deselect_nth(BMEditMesh *em, int nth, int skip, int offset, BMHeader *h_act)
 {
 	BMElem *ele;
 	BMesh *bm = em->bm;
@@ -2523,7 +2618,8 @@ static void walker_deselect_nth(BMEditMesh *em, int nth, int offset, BMHeader *h
 	for (ele = BMW_begin(&walker, h_act); ele != NULL; ele = BMW_step(&walker)) {
 		if (!BM_elem_flag_test(ele, BM_ELEM_TAG)) {
 			/* Deselect elements that aren't at "nth" depth from active */
-			if ((offset + BMW_current_depth(&walker)) % nth) {
+			const int depth = BMW_current_depth(&walker) - 1;
+			if ((offset + depth) % (skip + nth) >= skip) {
 				BM_elem_select_set(bm, ele, false);
 			}
 			BM_elem_flag_enable(ele, BM_ELEM_TAG);
@@ -2590,7 +2686,7 @@ static void deselect_nth_active(BMEditMesh *em, BMVert **r_eve, BMEdge **r_eed, 
 	}
 }
 
-static bool edbm_deselect_nth(BMEditMesh *em, int nth, int offset)
+static bool edbm_deselect_nth(BMEditMesh *em, int nth, int skip, int offset)
 {
 	BMVert *v;
 	BMEdge *e;
@@ -2599,15 +2695,15 @@ static bool edbm_deselect_nth(BMEditMesh *em, int nth, int offset)
 	deselect_nth_active(em, &v, &e, &f);
 
 	if (v) {
-		walker_deselect_nth(em, nth, offset, &v->head);
+		walker_deselect_nth(em, nth, skip, offset, &v->head);
 		return true;
 	}
 	else if (e) {
-		walker_deselect_nth(em, nth, offset, &e->head);
+		walker_deselect_nth(em, nth, skip, offset, &e->head);
 		return true;
 	}
 	else if (f) {
-		walker_deselect_nth(em, nth, offset, &f->head);
+		walker_deselect_nth(em, nth, skip, offset, &f->head);
 		return true;
 	}
 
@@ -2618,15 +2714,14 @@ static int edbm_select_nth_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	BMEditMesh *em = BKE_editmesh_from_object(obedit);
-	const int nth = RNA_int_get(op->ptr, "nth");
+	const int nth = RNA_int_get(op->ptr, "nth") - 1;
+	const int skip = RNA_int_get(op->ptr, "skip");
 	int offset = RNA_int_get(op->ptr, "offset");
 
 	/* so input of offset zero ends up being (nth - 1) */
-	offset = mod_i(offset, nth);
-	/* depth starts at 1, this keeps active item selected */
-	offset -= 1;
+	offset = mod_i(offset, nth + skip);
 
-	if (edbm_deselect_nth(em, nth, offset) == false) {
+	if (edbm_deselect_nth(em, nth, skip, offset) == false) {
 		BKE_report(op->reports, RPT_ERROR, "Mesh has no active vert/edge/face");
 		return OPERATOR_CANCELLED;
 	}
@@ -2652,6 +2747,7 @@ void MESH_OT_select_nth(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	RNA_def_int(ot->srna, "nth", 2, 2, INT_MAX, "Nth Selection", "", 2, 100);
+	RNA_def_int(ot->srna, "skip", 1, 1, INT_MAX, "Skip", "", 1, 100);
 	RNA_def_int(ot->srna, "offset", 0, INT_MIN, INT_MAX, "Offset", "", -100, 100);
 }
 
@@ -3267,8 +3363,8 @@ static int loop_find_region(BMLoop *l, int flag,
 
 static int verg_radial(const void *va, const void *vb)
 {
-	BMEdge *e_a = *((BMEdge **)va);
-	BMEdge *e_b = *((BMEdge **)vb);
+	const BMEdge *e_a = *((const BMEdge **)va);
+	const BMEdge *e_b = *((const BMEdge **)vb);
 
 	int a, b;
 	a = BM_edge_face_count(e_a);

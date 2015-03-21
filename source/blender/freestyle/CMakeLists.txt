@@ -189,8 +189,6 @@ set(SRC
 	intern/python/StrokeShader/BPy_CalligraphicShader.h
 	intern/python/StrokeShader/BPy_ColorNoiseShader.cpp
 	intern/python/StrokeShader/BPy_ColorNoiseShader.h
-	intern/python/StrokeShader/BPy_ColorVariationPatternShader.cpp
-	intern/python/StrokeShader/BPy_ColorVariationPatternShader.h
 	intern/python/StrokeShader/BPy_ConstantColorShader.cpp
 	intern/python/StrokeShader/BPy_ConstantColorShader.h
 	intern/python/StrokeShader/BPy_ConstantThicknessShader.cpp
@@ -211,22 +209,12 @@ set(SRC
 	intern/python/StrokeShader/BPy_SmoothingShader.h
 	intern/python/StrokeShader/BPy_SpatialNoiseShader.cpp
 	intern/python/StrokeShader/BPy_SpatialNoiseShader.h
-	intern/python/StrokeShader/BPy_StrokeTextureShader.cpp
-	intern/python/StrokeShader/BPy_StrokeTextureShader.h
 	intern/python/StrokeShader/BPy_StrokeTextureStepShader.cpp
 	intern/python/StrokeShader/BPy_StrokeTextureStepShader.h
-	intern/python/StrokeShader/BPy_TextureAssignerShader.cpp
-	intern/python/StrokeShader/BPy_TextureAssignerShader.h
 	intern/python/StrokeShader/BPy_ThicknessNoiseShader.cpp
 	intern/python/StrokeShader/BPy_ThicknessNoiseShader.h
-	intern/python/StrokeShader/BPy_ThicknessVariationPatternShader.cpp
-	intern/python/StrokeShader/BPy_ThicknessVariationPatternShader.h
 	intern/python/StrokeShader/BPy_TipRemoverShader.cpp
 	intern/python/StrokeShader/BPy_TipRemoverShader.h
-	intern/python/StrokeShader/BPy_fstreamShader.cpp
-	intern/python/StrokeShader/BPy_fstreamShader.h
-	intern/python/StrokeShader/BPy_streamShader.cpp
-	intern/python/StrokeShader/BPy_streamShader.h
 	intern/python/UnaryFunction0D/BPy_UnaryFunction0DDouble.cpp
 	intern/python/UnaryFunction0D/BPy_UnaryFunction0DDouble.h
 	intern/python/UnaryFunction0D/BPy_UnaryFunction0DEdgeNature.cpp
@@ -404,6 +392,8 @@ set(SRC
 	intern/scene_graph/NodeGroup.h
 	intern/scene_graph/NodeLight.cpp
 	intern/scene_graph/NodeLight.h
+	intern/scene_graph/NodeSceneRenderLayer.cpp
+	intern/scene_graph/NodeSceneRenderLayer.h
 	intern/scene_graph/NodeShape.cpp
 	intern/scene_graph/NodeShape.h
 	intern/scene_graph/NodeTransform.cpp
@@ -412,6 +402,8 @@ set(SRC
 	intern/scene_graph/OrientedLineRep.h
 	intern/scene_graph/Rep.cpp
 	intern/scene_graph/Rep.h
+	intern/scene_graph/SceneHash.cpp
+	intern/scene_graph/SceneHash.h
 	intern/scene_graph/ScenePrettyPrinter.cpp
 	intern/scene_graph/ScenePrettyPrinter.h
 	intern/scene_graph/SceneVisitor.cpp
@@ -499,6 +491,7 @@ set(SRC
 	intern/system/TimeUtils.h
 	intern/view_map/ArbitraryGridDensityProvider.cpp
 	intern/view_map/ArbitraryGridDensityProvider.h
+	intern/view_map/AutoPtrHelper.h
 	intern/view_map/AverageAreaGridDensityProvider.cpp
 	intern/view_map/AverageAreaGridDensityProvider.h
 	intern/view_map/BoxGrid.cpp
@@ -585,6 +578,6 @@ if(WIN32)
 	list(APPEND INC_SYS
 		${PTHREADS_INC}
 	)
-endif(WIN32)
+endif()
 
 blender_add_lib(bf_freestyle "${SRC}" "${INC}" "${INC_SYS}")

@@ -38,6 +38,7 @@
 
 #include "BKE_sound.h"
 #include "BKE_context.h"
+#include "BKE_sequencer.h"
 
 static void rna_Sound_update(Main *bmain, Scene *UNUSED(scene), PointerRNA *ptr)
 {
@@ -59,9 +60,9 @@ static void rna_Sound_caching_set(PointerRNA *ptr, const int value)
 		sound_delete_cache(sound);
 }
 
-static void rna_Sound_caching_update(Main *bmain, Scene *UNUSED(scene), PointerRNA *ptr)
+static void rna_Sound_caching_update(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
 {
-	sound_update_sequencer(bmain, (bSound *)(ptr->data));
+	BKE_sequencer_update_sound(scene, (bSound *)(ptr->data));
 }
 
 #else
@@ -97,6 +98,8 @@ static void rna_def_sound(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Mono",
 	                         "If the file contains multiple audio channels they are rendered to a single one");
 	RNA_def_property_update(prop, 0, "rna_Sound_update");
+
+	RNA_api_sound(srna);
 }
 
 void RNA_def_sound(BlenderRNA *brna)

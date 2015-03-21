@@ -36,8 +36,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "PIL_time.h"
-
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_jitter.h"
@@ -48,11 +46,7 @@
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-
 #include "BKE_camera.h"
-
-#include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
 
 #ifdef WITH_QUICKTIME
 #include "quicktime_export.h"
@@ -61,10 +55,6 @@
 /* this module */
 #include "renderpipeline.h"
 #include "render_types.h"
-
-#include "rendercore.h"
-#include "pixelshading.h"
-#include "zbuf.h"
 
 /* Own includes */
 #include "initrender.h"
@@ -164,8 +154,11 @@ float RE_filter_value(int type, float x)
 			return 1.0f - x;
 			
 		case R_FILTER_GAUSS:
-			x *= gaussfac;
-			return (1.0f / expf(x * x) - 1.0f / expf(gaussfac * gaussfac * 2.25f));
+		{
+			const float two_gaussfac2 = 2.0f * gaussfac * gaussfac;
+			x *= 3.0f * gaussfac;
+			return 1.0f / sqrtf((float)M_PI * two_gaussfac2) * expf(-x*x / two_gaussfac2);
+		}
 			
 		case R_FILTER_MITCH:
 			return filt_mitchell(x * gaussfac);
@@ -190,7 +183,7 @@ static float calc_weight(Render *re, float *weight, int i, int j)
 	for (a = 0; a < re->osa; a++) {
 		x = re->jit[a][0] + i;
 		y = re->jit[a][1] + j;
-		dist = sqrt(x * x + y * y);
+		dist = sqrtf(x * x + y * y);
 
 		weight[a] = 0.0;
 

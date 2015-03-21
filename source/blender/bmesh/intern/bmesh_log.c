@@ -423,9 +423,7 @@ static void bm_log_id_ghash_retake(RangeTreeUInt *unused_ids, GHash *id_ghash)
 		void *key = BLI_ghashIterator_getKey(&gh_iter);
 		unsigned int id = GET_UINT_FROM_POINTER(key);
 
-		if (range_tree_uint_has(unused_ids, id)) {
-			range_tree_uint_take(unused_ids, id);
-		}
+		range_tree_uint_retake(unused_ids, id);
 	}
 }
 
@@ -584,7 +582,7 @@ void BM_log_free(BMLog *log)
 /* Get the number of log entries */
 int BM_log_length(const BMLog *log)
 {
-	return BLI_countlist(&log->entries);
+	return BLI_listbase_count(&log->entries);
 }
 
 /* Apply a consistent ordering to BMesh vertices */

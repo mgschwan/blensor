@@ -30,7 +30,6 @@
 
 #include "DNA_space_types.h"
 
-#include "BLI_utildefines.h"
 
 #include "RNA_access.h"
 
@@ -55,6 +54,8 @@ void outliner_operatortypes(void)
 	WM_operatortype_append(OUTLINER_OT_data_operation);
 	WM_operatortype_append(OUTLINER_OT_animdata_operation);
 	WM_operatortype_append(OUTLINER_OT_action_set);
+	WM_operatortype_append(OUTLINER_OT_constraint_operation);
+	WM_operatortype_append(OUTLINER_OT_modifier_operation);
 
 	WM_operatortype_append(OUTLINER_OT_show_one_level);
 	WM_operatortype_append(OUTLINER_OT_show_active);
@@ -73,11 +74,14 @@ void outliner_operatortypes(void)
 	
 	WM_operatortype_append(OUTLINER_OT_drivers_add_selected);
 	WM_operatortype_append(OUTLINER_OT_drivers_delete_selected);
+	
+	WM_operatortype_append(OUTLINER_OT_orphans_purge);
 
 	WM_operatortype_append(OUTLINER_OT_parent_drop);
 	WM_operatortype_append(OUTLINER_OT_parent_clear);
 	WM_operatortype_append(OUTLINER_OT_scene_drop);
 	WM_operatortype_append(OUTLINER_OT_material_drop);
+	WM_operatortype_append(OUTLINER_OT_group_link);
 }
 
 void outliner_keymap(wmKeyConfig *keyconf)

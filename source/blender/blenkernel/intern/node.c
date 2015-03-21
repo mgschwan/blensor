@@ -955,7 +955,7 @@ void nodeRemSocketLinks(bNodeTree *ntree, bNodeSocket *sock)
 	ntree->update |= NTREE_UPDATE_LINKS;
 }
 
-int nodeLinkIsHidden(bNodeLink *link)
+bool nodeLinkIsHidden(bNodeLink *link)
 {
 	return nodeSocketIsHidden(link->fromsock) || nodeSocketIsHidden(link->tosock);
 }
@@ -1202,6 +1202,10 @@ static bNodeTree *ntreeCopyTree_internal(bNodeTree *ntree, Main *bmain, bool do_
 	/* node tree will generate its own interface type */
 	newtree->interface_type = NULL;
 	
+	if (ntree->id.lib) {
+		BKE_id_lib_local_paths(bmain, ntree->id.lib, &newtree->id);
+	}
+
 	return newtree;
 }
 
@@ -2246,7 +2250,7 @@ StructRNA *ntreeInterfaceTypeGet(bNodeTree *ntree, int create)
 		ntree_interface_identifier_base(ntree, base);
 		
 		/* RNA identifier may have a number suffix, but should start with the idbase string */
-		if (strncmp(RNA_struct_identifier(srna), base, sizeof(base)) != 0) {
+		if (!STREQLEN(RNA_struct_identifier(srna), base, sizeof(base))) {
 			/* generate new unique RNA identifier from the ID name */
 			ntree_interface_identifier(ntree, base, identifier, sizeof(identifier), name, description);
 			
@@ -2293,8 +2297,8 @@ bool ntreeHasType(const bNodeTree *ntree, int type)
 	if (ntree)
 		for (node = ntree->nodes.first; node; node = node->next)
 			if (node->type == type)
-				return 1;
-	return 0;
+				return true;
+	return false;
 }
 
 bool ntreeHasTree(const bNodeTree *ntree, const bNodeTree *lookup)
@@ -2559,8 +2563,8 @@ bool BKE_node_clipboard_validate(void)
 
 
 	/* lists must be aligned */
-	BLI_assert(BLI_countlist(&node_clipboard.nodes) ==
-	           BLI_countlist(&node_clipboard.nodes_extra_info));
+	BLI_assert(BLI_listbase_count(&node_clipboard.nodes) ==
+	           BLI_listbase_count(&node_clipboard.nodes_extra_info));
 
 	for (node = node_clipboard.nodes.first, node_info = node_clipboard.nodes_extra_info.first;
 	     node;
@@ -2682,16 +2686,12 @@ static unsigned int node_instance_hash_key(const void *key)
 	return ((const bNodeInstanceKey *)key)->value;
 }
 
-static int node_instance_hash_key_cmp(const void *a, const void *b)
+static bool node_instance_hash_key_cmp(const void *a, const void *b)
 {
 	unsigned int value_a = ((const bNodeInstanceKey *)a)->value;
 	unsigned int value_b = ((const bNodeInstanceKey *)b)->value;
-	if (value_a == value_b)
-		return 0;
-	else if (value_a < value_b)
-		return -1;
-	else
-		return 1;
+
+	return (value_a != value_b);
 }
 
 bNodeInstanceHash *BKE_node_instance_hash_new(const char *info)
@@ -2881,6 +2881,32 @@ static void ntree_update_node_level(bNodeTree *ntree)
 	}
 }
 
+void ntreeTagUsedSockets(bNodeTree *ntree)
+{
+	bNode *node;
+	bNodeSocket *sock;
+	bNodeLink *link;
+	
+	/* first clear data */
+	for (node = ntree->nodes.first; node; node = node->next) {
+		for (sock = node->inputs.first; sock; sock = sock->next) {
+			sock->flag &= ~SOCK_IN_USE;
+		}
+		for (sock = node->outputs.first; sock; sock = sock->next) {
+			sock->flag &= ~SOCK_IN_USE;
+		}
+	}
+	
+	for (link = ntree->links.first; link; link = link->next) {
+		/* link is unused if either side is disabled */
+		if ((link->fromsock->flag & SOCK_UNAVAIL) || (link->tosock->flag & SOCK_UNAVAIL))
+			continue;
+		
+		link->fromsock->flag |= SOCK_IN_USE;
+		link->tosock->flag |= SOCK_IN_USE;
+	}
+}
+
 static void ntree_update_link_pointers(bNodeTree *ntree)
 {
 	bNode *node;
@@ -2891,19 +2917,14 @@ static void ntree_update_link_pointers(bNodeTree *ntree)
 	for (node = ntree->nodes.first; node; node = node->next) {
 		for (sock = node->inputs.first; sock; sock = sock->next) {
 			sock->link = NULL;
-			sock->flag &= ~SOCK_IN_USE;
-		}
-		for (sock = node->outputs.first; sock; sock = sock->next) {
-			sock->flag &= ~SOCK_IN_USE;
 		}
 	}
 
 	for (link = ntree->links.first; link; link = link->next) {
 		link->tosock->link = link;
-		
-		link->fromsock->flag |= SOCK_IN_USE;
-		link->tosock->flag |= SOCK_IN_USE;
 	}
+	
+	ntreeTagUsedSockets(ntree);
 }
 
 static void ntree_validate_links(bNodeTree *ntree)

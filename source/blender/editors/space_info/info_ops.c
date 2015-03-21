@@ -253,15 +253,15 @@ static int unpack_all_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(
 	else
 		BLI_snprintf(title, sizeof(title), IFACE_("Unpack %d Files"), count);
 	
-	pup = uiPupMenuBegin(C, title, ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, title, ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 
 	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
 	uiItemsEnumO(layout, "FILE_OT_unpack_all", "method");
 
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 void FILE_OT_unpack_all(wmOperatorType *ot)
@@ -322,15 +322,15 @@ static int unpack_item_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED
 	uiPopupMenu *pup;
 	uiLayout *layout;
 	
-	pup = uiPupMenuBegin(C, IFACE_("Unpack"), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, IFACE_("Unpack"), ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 	
 	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
 	uiItemsFullEnumO(layout, op->type->idname, "method", op->ptr->data, WM_OP_EXEC_REGION_WIN, 0);
 	
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 void FILE_OT_unpack_item(wmOperatorType *ot)

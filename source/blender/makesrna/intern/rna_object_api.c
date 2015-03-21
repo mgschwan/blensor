@@ -109,7 +109,29 @@ static void rna_Scene_mat_convert_space(Object *ob, ReportList *reports, bPoseCh
 		}
 	}
 
-	BKE_constraint_mat_convertspace(ob, pchan, (float (*)[4])mat_ret, from, to);
+	BKE_constraint_mat_convertspace(ob, pchan, (float (*)[4])mat_ret, from, to, false);
+}
+
+static void rna_Object_calc_matrix_camera(
+        Object *ob, float mat_ret[16], int width, int height, float scalex, float scaley)
+{
+	CameraParams params;
+
+	/* setup parameters */
+	BKE_camera_params_init(&params);
+	BKE_camera_params_from_object(&params, ob);
+
+	/* compute matrix, viewplane, .. */
+	BKE_camera_params_compute_viewplane(&params, width, height, scalex, scaley);
+	BKE_camera_params_compute_matrix(&params);
+
+	copy_m4_m4((float (*)[4])mat_ret, params.winmat);
+}
+
+static void rna_Object_camera_fit_coords(
+        Object *ob, Scene *scene, int num_cos, float *cos, float co_ret[3], float *scale_ret)
+{
+	BKE_camera_view_frame_fit_to_coords(scene, (const float (*)[3])cos, num_cos / 3, ob, co_ret, scale_ret);
 }
 
 /* copied from Mesh_getFromObject and adapted to RNA interface */
@@ -203,10 +225,9 @@ static void rna_Object_free_duplilist(Object *ob)
 static PointerRNA rna_Object_shape_key_add(Object *ob, bContext *C, ReportList *reports,
                                            const char *name, int from_mix)
 {
-	Scene *scene = CTX_data_scene(C);
 	KeyBlock *kb = NULL;
 
-	if ((kb = BKE_object_insert_shape_key(scene, ob, name, from_mix))) {
+	if ((kb = BKE_object_insert_shape_key(ob, name, from_mix))) {
 		PointerRNA keyptr;
 
 		RNA_pointer_create((ID *)ob->data, &RNA_ShapeKey, kb, &keyptr);
@@ -468,6 +489,35 @@ void RNA_api_object(StructRNA *srna)
 	parm = RNA_def_enum(func, "to_space", space_items, CONSTRAINT_SPACE_WORLD, "",
 	                    "The space to which you want to transform 'matrix'");
 
+	/* Camera-related operations */
+	func = RNA_def_function(srna, "calc_matrix_camera", "rna_Object_calc_matrix_camera");
+	RNA_def_function_ui_description(func, "Generate the camera projection matrix of this object "
+	                                      "(mostly useful for Camera and Lamp types)");
+	parm = RNA_def_property(func, "result", PROP_FLOAT, PROP_MATRIX);
+	RNA_def_property_multi_array(parm, 2, rna_matrix_dimsize_4x4);
+	RNA_def_property_ui_text(parm, "", "The camera projection matrix");
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_int(func, "x", 1, 0, INT_MAX, "", "Width of the render area", 0, 10000);
+	parm = RNA_def_int(func, "y", 1, 0, INT_MAX, "", "Height of the render area", 0, 10000);
+	parm = RNA_def_float(func, "scale_x", 1.0f, 1.0e-6f, FLT_MAX, "", "Width scaling factor", 1.0e-2f, 100.0f);
+	parm = RNA_def_float(func, "scale_y", 1.0f, 1.0e-6f, FLT_MAX, "", "height scaling factor", 1.0e-2f, 100.0f);
+
+	func = RNA_def_function(srna, "camera_fit_coords", "rna_Object_camera_fit_coords");
+	RNA_def_function_ui_description(func, "Compute the coordinate (and scale for ortho cameras) "
+	                                      "given object should be to 'see' all given coordinates");
+	parm = RNA_def_pointer(func, "scene", "Scene", "", "Scene to get render size information from, if available");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_float_array(func, "coordinates", 1, NULL, -FLT_MAX, FLT_MAX, "", "Coordinates to fit in",
+	                           -FLT_MAX, FLT_MAX);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_DYNAMIC);
+	parm = RNA_def_property(func, "co_return", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_array(parm, 3);
+	RNA_def_property_ui_text(parm, "", "The location to aim to be able to see all given points");
+	RNA_def_property_flag(parm, PROP_OUTPUT);
+	parm = RNA_def_property(func, "scale_return", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_ui_text(parm, "", "The ortho scale to aim to be able to see all given points (if relevant)");
+	RNA_def_property_flag(parm, PROP_OUTPUT);
+
 	/* mesh */
 	func = RNA_def_function(srna, "to_mesh", "rna_Object_to_mesh");
 	RNA_def_function_ui_description(func, "Create a Mesh datablock with modifiers applied");
@@ -507,7 +557,7 @@ void RNA_api_object(StructRNA *srna)
 	func = RNA_def_function(srna, "shape_key_add", "rna_Object_shape_key_add");
 	RNA_def_function_ui_description(func, "Add shape key to an object");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
-	RNA_def_string(func, "name", "Key", 0, "", "Unique name for the new keylock"); /* optional */
+	RNA_def_string(func, "name", "Key", 0, "", "Unique name for the new keyblock"); /* optional */
 	RNA_def_boolean(func, "from_mix", 1, "", "Create new shape from existing mix of shapes");
 	parm = RNA_def_pointer(func, "key", "ShapeKey", "", "New shape keyblock");
 	RNA_def_property_flag(parm, PROP_RNAPTR);
@@ -605,6 +655,9 @@ void RNA_api_object(StructRNA *srna)
 	RNA_def_function_ui_description(func, "Load the objects edit-mode data intp the object data");
 	parm = RNA_def_boolean(func, "result", 0, "", "Success");
 	RNA_def_function_return(func, parm);
+
+	func = RNA_def_function(srna, "cache_release", "BKE_object_free_caches");
+	RNA_def_function_ui_description(func, "Release memory used by caches associated with this object. Intended to be used by render engines only");
 }
 
 

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __SVM_H__
@@ -164,6 +164,7 @@ CCL_NAMESPACE_END
 #include "svm_mapping.h"
 #include "svm_normal.h"
 #include "svm_wave.h"
+#include "svm_math_util.h"
 #include "svm_math.h"
 #include "svm_mix.h"
 #include "svm_ramp.h"
@@ -360,7 +361,7 @@ ccl_device_noinline void svm_eval_nodes(KernelGlobals *kg, ShaderData *sd, Shade
 				break;
 #ifdef __EXTRA_NODES__
 			case NODE_WIREFRAME:
-				svm_node_wireframe(kg, sd, stack, node.y, node.z, node.w);
+				svm_node_wireframe(kg, sd, stack, node);
 				break;
 			case NODE_WAVELENGTH:
 				svm_node_wavelength(sd, stack, node.y, node.z);
@@ -394,14 +395,14 @@ ccl_device_noinline void svm_eval_nodes(KernelGlobals *kg, ShaderData *sd, Shade
 				svm_node_min_max(kg, sd, stack, node.y, node.z, &offset);
 				break;
 			case NODE_TEX_COORD:
-				svm_node_tex_coord(kg, sd, path_flag, stack, node.y, node.z);
+				svm_node_tex_coord(kg, sd, path_flag, stack, node, &offset);
 				break;
 #ifdef __EXTRA_NODES__
 			case NODE_TEX_COORD_BUMP_DX:
-				svm_node_tex_coord_bump_dx(kg, sd, path_flag, stack, node.y, node.z);
+				svm_node_tex_coord_bump_dx(kg, sd, path_flag, stack, node, &offset);
 				break;
 			case NODE_TEX_COORD_BUMP_DY:
-				svm_node_tex_coord_bump_dy(kg, sd, path_flag, stack, node.y, node.z);
+				svm_node_tex_coord_bump_dy(kg, sd, path_flag, stack, node, &offset);
 				break;
 			case NODE_CLOSURE_SET_NORMAL:
 				svm_node_set_normal(kg, sd, stack, node.y, node.z );

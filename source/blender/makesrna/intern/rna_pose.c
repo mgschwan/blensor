@@ -179,6 +179,13 @@ void rna_ActionGroup_colorset_set(PointerRNA *ptr, int value)
 	}
 }
 
+int rna_ActionGroup_is_custom_colorset_get(PointerRNA *ptr)
+{
+	bActionGroup *grp = ptr->data;
+	
+	return (grp->customCol < 0);
+}
+
 static void rna_BoneGroup_name_set(PointerRNA *ptr, const char *value)
 {
 	Object *ob = ptr->id.data;
@@ -251,7 +258,7 @@ static void rna_PoseChannel_rotation_axis_angle_set(PointerRNA *ptr, const float
 	
 	/* for now, assume that rotation mode is axis-angle */
 	pchan->rotAngle = value[0];
-	copy_v3_v3(pchan->rotAxis, (float *)&value[1]);
+	copy_v3_v3(pchan->rotAxis, &value[1]);
 	
 	/* TODO: validate axis? */
 }
@@ -414,7 +421,7 @@ static void rna_PoseChannel_bone_group_index_range(PointerRNA *ptr, int *min, in
 	bPose *pose = (ob) ? ob->pose : NULL;
 	
 	*min = 0;
-	*max = pose ? max_ii(0, BLI_countlist(&pose->agroups) - 1) : 0;
+	*max = pose ? max_ii(0, BLI_listbase_count(&pose->agroups) - 1) : 0;
 }
 
 static PointerRNA rna_Pose_active_bone_group_get(PointerRNA *ptr)
@@ -447,7 +454,7 @@ static void rna_Pose_active_bone_group_index_range(PointerRNA *ptr, int *min, in
 	bPose *pose = (bPose *)ptr->data;
 
 	*min = 0;
-	*max = max_ii(0, BLI_countlist(&pose->agroups) - 1);
+	*max = max_ii(0, BLI_listbase_count(&pose->agroups) - 1);
 }
 
 #if 0
@@ -674,6 +681,11 @@ void rna_def_actionbone_group_common(StructRNA *srna, int update_flag, const cha
 	RNA_def_property_enum_funcs(prop, NULL, "rna_ActionGroup_colorset_set", NULL);
 	RNA_def_property_ui_text(prop, "Color Set", "Custom color set to use");
 	RNA_def_property_update(prop, update_flag, update_cb);
+	
+	prop = RNA_def_property(srna, "is_custom_color_set", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_funcs(prop, "rna_ActionGroup_is_custom_colorset_get", NULL);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Custom Color Set", "Color set is user-defined instead of a fixed theme color set");
 	
 	/* TODO: editing the colors for this should result in changes to the color type... */
 	prop = RNA_def_property(srna, "colors", PROP_POINTER, PROP_NONE);

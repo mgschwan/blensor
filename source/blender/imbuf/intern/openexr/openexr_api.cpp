@@ -38,6 +38,8 @@
 #include <errno.h>
 #include <algorithm>
 
+#include "DNA_scene_types.h" /* For OpenEXR compression constants */
+
 #include <openexr_api.h>
 
 #if defined (WIN32) && !defined(FREE_WINDOWS)
@@ -59,6 +61,8 @@ _CRTIMP void __cdecl _invalid_parameter_noinfo(void)
 #include "BLI_blenlib.h"
 #include "BLI_math_color.h"
 #include "BLI_threads.h"
+
+#include "BKE_idprop.h"
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
@@ -282,21 +286,38 @@ int imb_is_a_openexr(unsigned char *mem)
 static void openexr_header_compression(Header *header, int compression)
 {
 	switch (compression) {
-		case 0:
+		case R_IMF_EXR_CODEC_NONE:
 			header->compression() = NO_COMPRESSION;
 			break;
-		case 1:
+		case R_IMF_EXR_CODEC_PXR24:
 			header->compression() = PXR24_COMPRESSION;
 			break;
-		case 2:
+		case R_IMF_EXR_CODEC_ZIP:
 			header->compression() = ZIP_COMPRESSION;
 			break;
-		case 3:
+		case R_IMF_EXR_CODEC_PIZ:
 			header->compression() = PIZ_COMPRESSION;
 			break;
-		case 4:
+		case R_IMF_EXR_CODEC_RLE:
 			header->compression() = RLE_COMPRESSION;
 			break;
+		case R_IMF_EXR_CODEC_ZIPS:
+			header->compression() = ZIPS_COMPRESSION;
+			break;
+		case R_IMF_EXR_CODEC_B44:
+			header->compression() = B44_COMPRESSION;
+			break;
+		case R_IMF_EXR_CODEC_B44A:
+			header->compression() = B44A_COMPRESSION;
+			break;
+#if OPENEXR_VERSION_MAJOR >= 2 && OPENEXR_VERSION_MINOR >= 2
+		case R_IMF_EXR_CODEC_DWAA:
+			header->compression() = DWAA_COMPRESSION;
+			break;
+		case R_IMF_EXR_CODEC_DWAB:
+			header->compression() = DWAB_COMPRESSION;
+			break;
+#endif
 		default:
 			header->compression() = ZIP_COMPRESSION;
 			break;
@@ -305,10 +326,15 @@ static void openexr_header_compression(Header *header, int compression)
 
 static void openexr_header_metadata(Header *header, struct ImBuf *ibuf)
 {
-	ImMetaData *info;
+	if (ibuf->metadata) {
+		IDProperty *prop;
 
-	for (info = ibuf->metadata; info; info = info->next)
-		header->insert(info->key, StringAttribute(info->value));
+		for (prop = (IDProperty *)ibuf->metadata->data.group.first; prop; prop = prop->next) {
+			if (prop->type == IDP_STRING) {
+				header->insert(prop->name, StringAttribute(IDP_String(prop)));
+			}
+		}
+	}
 
 	if (ibuf->ppm[0] > 0.0)
 		addXDensity(*header, ibuf->ppm[0] / 39.3700787); /* 1 meter = 39.3700787 inches */
@@ -784,7 +810,7 @@ void IMB_exr_read_channels(void *handle)
 
 	/* check if exr was saved with previous versions of blender which flipped images */
 	const StringAttribute *ta = data->ifile->header().findTypedAttribute <StringAttribute> ("BlenderMultiChannel");
-	short flip = (ta && strncmp(ta->value().c_str(), "Blender V2.43", 13) == 0); /* 'previous multilayer attribute, flipped */
+	short flip = (ta && STREQLEN(ta->value().c_str(), "Blender V2.43", 13)); /* 'previous multilayer attribute, flipped */
 
 	for (echan = (ExrChannel *)data->channels.first; echan; echan = echan->next) {
 
@@ -982,7 +1008,7 @@ static ExrPass *imb_exr_get_pass(ListBase *lb, char *passname)
 	if (pass == NULL) {
 		pass = (ExrPass *)MEM_callocN(sizeof(ExrPass), "exr pass");
 
-		if (strcmp(passname, "Combined") == 0)
+		if (STREQ(passname, "Combined"))
 			BLI_addhead(lb, pass);
 		else
 			BLI_addtail(lb, pass);

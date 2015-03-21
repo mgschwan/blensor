@@ -37,9 +37,8 @@
 #include "DNA_scene_types.h"
 
 #include "BLI_math.h"
+#include "BLI_task.h"
 #include "BLI_utildefines.h"
-
-#include "BLF_translation.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_global.h"
@@ -53,6 +52,9 @@
 
 #include "MOD_util.h"
 
+#ifdef __SSE2__
+#  include <emmintrin.h>
+#endif
 
 static void initData(ModifierData *md)
 {
@@ -80,9 +82,16 @@ static void copyData(ModifierData *md, ModifierData *target)
 	MeshDeformModifierData *mmd = (MeshDeformModifierData *) md;
 	MeshDeformModifierData *tmmd = (MeshDeformModifierData *) target;
 
-	tmmd->gridsize = mmd->gridsize;
-	tmmd->flag = mmd->flag;
-	tmmd->object = mmd->object;
+	*tmmd = *mmd;
+
+	if (mmd->bindinfluences) tmmd->bindinfluences = MEM_dupallocN(mmd->bindinfluences);
+	if (mmd->bindoffsets) tmmd->bindoffsets = MEM_dupallocN(mmd->bindoffsets);
+	if (mmd->bindcagecos) tmmd->bindcagecos = MEM_dupallocN(mmd->bindcagecos);
+	if (mmd->dyngrid) tmmd->dyngrid = MEM_dupallocN(mmd->dyngrid);
+	if (mmd->dyninfluences) tmmd->dyninfluences = MEM_dupallocN(mmd->dyninfluences);
+	if (mmd->dynverts) tmmd->dynverts = MEM_dupallocN(mmd->dynverts);
+	if (mmd->bindweights) tmmd->dynverts = MEM_dupallocN(mmd->bindweights);  /* deprecated */
+	if (mmd->bindcos) tmmd->dynverts = MEM_dupallocN(mmd->bindcos);  /* deprecated */
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
@@ -114,6 +123,7 @@ static void foreachObjectLink(
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)
@@ -133,11 +143,15 @@ static float meshdeform_dynamic_bind(MeshDeformModifierData *mmd, float (*dco)[3
 {
 	MDefCell *cell;
 	MDefInfluence *inf;
-	float gridvec[3], dvec[3], ivec[3], co[3], wx, wy, wz;
+	float gridvec[3], dvec[3], ivec[3], wx, wy, wz;
 	float weight, cageweight, totweight, *cageco;
 	int i, j, a, x, y, z, size;
+#ifdef __SSE2__
+	__m128 co = _mm_setzero_ps();
+#else
+	float co[3] = {0.0f, 0.0f, 0.0f};
+#endif
 
-	zero_v3(co);
 	totweight = 0.0f;
 	size = mmd->dyngridsize;
 
@@ -169,16 +183,98 @@ static float meshdeform_dynamic_bind(MeshDeformModifierData *mmd, float (*dco)[3
 		for (j = 0; j < cell->totinfluence; j++, inf++) {
 			cageco = dco[inf->vertex];
 			cageweight = weight * inf->weight;
+#ifdef __SSE2__
+			{
+				__m128 cageweight_r = _mm_set1_ps(cageweight);
+				/* This will load one extra element, this is ok because
+				 * we ignore that part of register anyway.
+				 */
+				__m128 cageco_r = _mm_loadu_ps(cageco);
+				co = _mm_add_ps(co,
+				                _mm_mul_ps(cageco_r, cageweight_r));
+			}
+#else
 			co[0] += cageweight * cageco[0];
 			co[1] += cageweight * cageco[1];
 			co[2] += cageweight * cageco[2];
+#endif
 			totweight += cageweight;
 		}
 	}
 
+#ifdef __SSE2__
+	copy_v3_v3(vec, (float *)&co);
+#else
 	copy_v3_v3(vec, co);
+#endif
 
 	return totweight;
+}
+
+typedef struct MeshdeformUserdata {
+	/*const*/ MeshDeformModifierData *mmd;
+	const MDeformVert *dvert;
+	/*const*/ float (*dco)[3];
+	int defgrp_index;
+	float (*vertexCos)[3];
+	float (*cagemat)[4];
+	float (*icagemat)[3];
+} MeshdeformUserdata;
+
+static void meshdeform_vert_task(void * userdata, int iter)
+{
+	MeshdeformUserdata *data = userdata;
+	/*const*/ MeshDeformModifierData *mmd = data->mmd;
+	const MDeformVert *dvert = data->dvert;
+	const int defgrp_index = data->defgrp_index;
+	const int *offsets = mmd->bindoffsets;
+	const MDefInfluence *influences = mmd->bindinfluences;
+	/*const*/ float (*dco)[3] = data->dco;
+	float (*vertexCos)[3] = data->vertexCos;
+	float co[3];
+	float weight, totweight, fac = 1.0f;
+
+	if (mmd->flag & MOD_MDEF_DYNAMIC_BIND)
+		if (!mmd->dynverts[iter])
+			return;
+
+	if (dvert) {
+		fac = defvert_find_weight(&dvert[iter], defgrp_index);
+
+		if (mmd->flag & MOD_MDEF_INVERT_VGROUP) {
+			fac = 1.0f - fac;
+		}
+
+		if (fac <= 0.0f) {
+			return;
+		}
+	}
+
+	if (mmd->flag & MOD_MDEF_DYNAMIC_BIND) {
+		/* transform coordinate into cage's local space */
+		mul_v3_m4v3(co, data->cagemat, vertexCos[iter]);
+		totweight = meshdeform_dynamic_bind(mmd, dco, co);
+	}
+	else {
+		int a;
+		totweight = 0.0f;
+		zero_v3(co);
+
+		for (a = offsets[iter]; a < offsets[iter + 1]; a++) {
+			weight = influences[a].weight;
+			madd_v3_v3fl(co, dco[influences[a].vertex], weight);
+			totweight += weight;
+		}
+	}
+
+	if (totweight > 0.0f) {
+		mul_v3_fl(co, fac / totweight);
+		mul_m3_v3(data->icagemat, co);
+		if (G.debug_value != 527)
+			add_v3_v3(vertexCos[iter], co);
+		else
+			copy_v3_v3(vertexCos[iter], co);
+	}
 }
 
 static void meshdeformModifier_do(
@@ -188,12 +284,11 @@ static void meshdeformModifier_do(
 	MeshDeformModifierData *mmd = (MeshDeformModifierData *) md;
 	DerivedMesh *tmpdm, *cagedm;
 	MDeformVert *dvert = NULL;
-	MDefInfluence *influences;
-	const int *offsets;
 	float imat[4][4], cagemat[4][4], iobmat[4][4], icagemat[3][3], cmat[4][4];
-	float weight, totweight, fac, co[3], (*dco)[3], (*bindcagecos)[3];
-	int a, b, totvert, totcagevert, defgrp_index;
+	float co[3], (*dco)[3], (*bindcagecos)[3];
+	int a, totvert, totcagevert, defgrp_index;
 	float (*cagecos)[3];
+	MeshdeformUserdata data;
 
 	if (!mmd->object || (!mmd->bindcagecos && !mmd->bindfunc))
 		return;
@@ -273,11 +368,13 @@ static void meshdeformModifier_do(
 
 	/* setup deformation data */
 	cagedm->getVertCos(cagedm, cagecos);
-	influences = mmd->bindinfluences;
-	offsets = mmd->bindoffsets;
 	bindcagecos = (float(*)[3])mmd->bindcagecos;
 
-	dco = MEM_callocN(sizeof(*dco) * totcagevert, "MDefDco");
+	/* We allocate 1 element extra to make it possible to
+	 * load the values to SSE registers, which are float4.
+	 */
+	dco = MEM_callocN(sizeof(*dco) * (totcagevert + 1), "MDefDco");
+	zero_v3(dco[totcagevert]);
 	for (a = 0; a < totcagevert; a++) {
 		/* get cage vertex in world space with binding transform */
 		copy_v3_v3(co, cagecos[a]);
@@ -293,51 +390,17 @@ static void meshdeformModifier_do(
 
 	modifier_get_vgroup(ob, dm, mmd->defgrp_name, &dvert, &defgrp_index);
 
-	/* do deformation */
-	fac = 1.0f;
+	/* Initialize data to be pass to the for body function. */
+	data.mmd = mmd;
+	data.dvert = dvert;
+	data.dco = dco;
+	data.defgrp_index = defgrp_index;
+	data.vertexCos = vertexCos;
+	data.cagemat = cagemat;
+	data.icagemat = icagemat;
 
-	for (b = 0; b < totvert; b++) {
-		if (mmd->flag & MOD_MDEF_DYNAMIC_BIND)
-			if (!mmd->dynverts[b])
-				continue;
-
-		if (dvert) {
-			fac = defvert_find_weight(&dvert[b], defgrp_index);
-
-			if (mmd->flag & MOD_MDEF_INVERT_VGROUP) {
-				fac = 1.0f - fac;
-			}
-
-			if (fac <= 0.0f) {
-				continue;
-			}
-		}
-
-		if (mmd->flag & MOD_MDEF_DYNAMIC_BIND) {
-			/* transform coordinate into cage's local space */
-			mul_v3_m4v3(co, cagemat, vertexCos[b]);
-			totweight = meshdeform_dynamic_bind(mmd, dco, co);
-		}
-		else {
-			totweight = 0.0f;
-			zero_v3(co);
-
-			for (a = offsets[b]; a < offsets[b + 1]; a++) {
-				weight = influences[a].weight;
-				madd_v3_v3fl(co, dco[influences[a].vertex], weight);
-				totweight += weight;
-			}
-		}
-
-		if (totweight > 0.0f) {
-			mul_v3_fl(co, fac / totweight);
-			mul_m3_v3(icagemat, co);
-			if (G.debug_value != 527)
-				add_v3_v3(vertexCos[b], co);
-			else
-				copy_v3_v3(vertexCos[b], co);
-		}
-	}
+	/* Do deformation. */
+	BLI_task_parallel_range(0, totvert, &data, meshdeform_vert_task);
 
 	/* release cage derivedmesh */
 	MEM_freeN(dco);

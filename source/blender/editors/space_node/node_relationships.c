@@ -57,7 +57,6 @@
 #include "BLF_translation.h"
 
 #include "node_intern.h"  /* own include */
-#include "NOD_common.h"
 
 /* ****************** Add *********************** */
 
@@ -67,12 +66,12 @@ typedef struct bNodeListItem {
 	struct bNode *node;
 } bNodeListItem;
 
-static int sort_nodes_locx(void *a, void *b)
+static int sort_nodes_locx(const void *a, const void *b)
 {
-	bNodeListItem *nli1 = (bNodeListItem *)a;
-	bNodeListItem *nli2 = (bNodeListItem *)b;
-	bNode *node1 = nli1->node;
-	bNode *node2 = nli2->node;
+	const bNodeListItem *nli1 = a;
+	const bNodeListItem *nli2 = b;
+	const bNode *node1 = nli1->node;
+	const bNode *node2 = nli2->node;
 
 	if (node1->locx > node2->locx)
 		return 1;
@@ -203,7 +202,7 @@ static void snode_autoconnect(SpaceNode *snode, const bool allow_multiple, const
 	}
 
 	/* sort nodes left to right */
-	BLI_sortlist(nodelist, sort_nodes_locx);
+	BLI_listbase_sort(nodelist, sort_nodes_locx);
 
 	for (nli = nodelist->first; nli; nli = nli->next) {
 		bNode *node_fr, *node_to;
@@ -236,7 +235,7 @@ static void snode_autoconnect(SpaceNode *snode, const bool allow_multiple, const
 
 		if (!has_selected_inputs) {
 			/* no selected inputs, connect by finding suitable match */
-			int num_inputs = BLI_countlist(&node_to->inputs);
+			int num_inputs = BLI_listbase_count(&node_to->inputs);
 
 			for (i = 0; i < num_inputs; i++) {
 
@@ -368,7 +367,7 @@ static int node_active_link_viewer_exec(bContext *C, wmOperator *UNUSED(op))
 	if (!node)
 		return OPERATOR_CANCELLED;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	if (node_link_viewer(C, node) == OPERATOR_CANCELLED)
 		return OPERATOR_CANCELLED;
@@ -747,7 +746,7 @@ static int node_link_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	UI_view2d_region_to_view(&ar->v2d, event->mval[0], event->mval[1],
 	                         &cursor[0], &cursor[1]);
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	nldrag = node_link_init(snode, cursor, detach);
 
@@ -803,7 +802,7 @@ static int node_make_link_exec(bContext *C, wmOperator *op)
 	SpaceNode *snode = CTX_wm_space_node(C);
 	const bool replace = RNA_boolean_get(op->ptr, "replace");
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	snode_autoconnect(snode, 1, replace);
 
@@ -874,7 +873,7 @@ static int cut_links_exec(bContext *C, wmOperator *op)
 		bool found = false;
 		bNodeLink *link, *next;
 		
-		ED_preview_kill_jobs(C);
+		ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 		
 		for (link = snode->edittree->links.first; link; link = next) {
 			next = link->next;
@@ -884,7 +883,8 @@ static int cut_links_exec(bContext *C, wmOperator *op)
 			if (cut_links_intersect(link, mcoords, i)) {
 
 				if (found == false) {
-					ED_preview_kill_jobs(C);
+					/* TODO(sergey): Why did we kill jobs twice? */
+					ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 					found = true;
 				}
 
@@ -941,7 +941,7 @@ static int detach_links_exec(bContext *C, wmOperator *UNUSED(op))
 	bNodeTree *ntree = snode->edittree;
 	bNode *node;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	for (node = ntree->nodes.first; node; node = node->next) {
 		if (node->flag & SELECT) {
@@ -1005,40 +1005,6 @@ void NODE_OT_parent_set(wmOperatorType *ot)
 
 	/* api callbacks */
 	ot->exec = node_parent_set_exec;
-	ot->poll = ED_operator_node_editable;
-
-	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
-}
-
-/* ****************** Clear Parent ******************* */
-
-static int node_parent_clear_exec(bContext *C, wmOperator *UNUSED(op))
-{
-	SpaceNode *snode = CTX_wm_space_node(C);
-	bNodeTree *ntree = snode->edittree;
-	bNode *node;
-
-	for (node = ntree->nodes.first; node; node = node->next) {
-		if (node->flag & NODE_SELECT) {
-			nodeDetachNode(node);
-		}
-	}
-
-	WM_event_add_notifier(C, NC_NODE | ND_DISPLAY, NULL);
-
-	return OPERATOR_FINISHED;
-}
-
-void NODE_OT_parent_clear(wmOperatorType *ot)
-{
-	/* identifiers */
-	ot->name = "Clear Parent";
-	ot->description = "Detach selected nodes";
-	ot->idname = "NODE_OT_parent_clear";
-
-	/* api callbacks */
-	ot->exec = node_parent_clear_exec;
 	ot->poll = ED_operator_node_editable;
 
 	/* flags */

@@ -33,8 +33,6 @@
 
 /* Part of the code copied from elbeem fluid library, copyright by Nils Thuerey */
 
-#include <GL/glew.h>
-
 #include "MEM_guardedalloc.h"
 
 #include <float.h>
@@ -62,6 +60,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_smoke_types.h"
 
+#include "BKE_appdir.h"
 #include "BKE_animsys.h"
 #include "BKE_armature.h"
 #include "BKE_bvhutils.h"
@@ -83,6 +82,8 @@
 #include "BKE_texture.h"
 
 #include "RE_shader_ext.h"
+
+#include "GPU_glew.h"
 
 /* UNUSED so far, may be enabled later */
 /* #define USE_SMOKE_COLLISION_DM */
@@ -205,7 +206,7 @@ void smoke_reallocate_highres_fluid(SmokeDomainSettings *sds, float dx, int res[
 	/* smoke_turbulence_init uses non-threadsafe functions from fftw3 lib (like fftw_plan & co). */
 	BLI_lock_thread(LOCK_FFTW);
 
-	sds->wt = smoke_turbulence_init(res, sds->amplify + 1, sds->noise, BLI_temp_dir_session(), use_fire, use_colors);
+	sds->wt = smoke_turbulence_init(res, sds->amplify + 1, sds->noise, BKE_tempdir_session(), use_fire, use_colors);
 
 	BLI_unlock_thread(LOCK_FFTW);
 
@@ -729,7 +730,8 @@ static void obstacles_from_derivedmesh(Object *coll_ob, SmokeDomainSettings *sds
 		BVHTreeFromMesh treeData = {NULL};
 		int numverts, i, z;
 
-		float surface_distance = 0.6;
+		/* slightly rounded-up sqrt(3 * (0.5)^2) == max. distance of cell boundary along the diagonal */
+		const float surface_distance = 0.867f;
 
 		float *vert_vel = NULL;
 		int has_velocity = 0;
@@ -953,7 +955,7 @@ static bool subframe_updateObject(Scene *scene, Object *ob, int update_mesh, int
 
 	/* if other is dynamic paint canvas, don't update */
 	if (smd && (smd->type & MOD_SMOKE_TYPE_DOMAIN))
-		return 1;
+		return true;
 
 	/* if object has parents, update them too */
 	if (parent_recursion) {
@@ -965,7 +967,7 @@ static bool subframe_updateObject(Scene *scene, Object *ob, int update_mesh, int
 		/* skip subframe if object is parented
 		 *  to vertex of a dynamic paint canvas */
 		if (is_domain && (ob->partype == PARVERT1 || ob->partype == PARVERT3))
-			return 0;
+			return false;
 
 		/* also update constraint targets */
 		for (con = ob->constraints.first; con; con = con->next) {
@@ -1011,7 +1013,7 @@ static bool subframe_updateObject(Scene *scene, Object *ob, int update_mesh, int
 		BKE_pose_where_is(scene, ob);
 	}
 
-	return 0;
+	return false;
 }
 
 /**********************************************************
@@ -1424,7 +1426,7 @@ static void emit_from_particles(Object *flow_ob, SmokeDomainSettings *sds, Smoke
 
 static void sample_derivedmesh(
         SmokeFlowSettings *sfs, MVert *mvert, MTFace *tface, MFace *mface,
-        float *influence_map, float *velocity_map, int index, int base_res[3], float flow_center[3],
+        float *influence_map, float *velocity_map, int index, const int base_res[3], float flow_center[3],
         BVHTreeFromMesh *treeData, const float ray_start[3], const float *vert_vel,
         bool has_velocity, int defgrp_index, MDeformVert *dvert, float x, float y, float z)
 {
@@ -2020,7 +2022,7 @@ BLI_INLINE void apply_inflow_fields(SmokeFlowSettings *sfs, float emission_value
 	if (fuel && fuel[index] > FLT_EPSILON) {
 		/* instead of using 1.0 for all new fuel add slight falloff
 		 * to reduce flow blockiness */
-		float value = 1.0f - powf(1.0f - emission_value, 2.0f);
+		float value = 1.0f - pow2f(1.0f - emission_value);
 
 		if (value > react[index]) {
 			float f = fuel_flow / fuel[index];
@@ -2130,6 +2132,9 @@ static void update_flowsfluids(Scene *scene, Object *ob, SmokeDomainSettings *sd
 					if (sfs->source == MOD_SMOKE_FLOW_SOURCE_PARTICLES) {
 						/* emit_from_particles() updates timestep internally */
 						emit_from_particles(collob, sds, sfs, &em_temp, scene, sdt);
+						if (!(sfs->flags & MOD_SMOKE_FLOW_USE_PART_SIZE)) {
+							hires_multiplier = 1;
+						}
 					}
 					else { /* MOD_SMOKE_FLOW_SOURCE_MESH */
 						/* update flow object frame */

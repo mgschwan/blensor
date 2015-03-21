@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_BOUNDBOX_H__
@@ -166,6 +166,15 @@ public:
 		}
 
 		return result;
+	}
+
+	__forceinline bool intersects(const BoundBox& other)
+	{
+		float3 center_diff = center() - other.center(),
+		       total_size = (size() + other.size()) * 0.5f;
+		return fabsf(center_diff.x) <= total_size.x &&
+		       fabsf(center_diff.y) <= total_size.y &&
+		       fabsf(center_diff.z) <= total_size.z;
 	}
 };
 

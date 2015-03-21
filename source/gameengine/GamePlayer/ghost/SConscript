@@ -68,15 +68,14 @@ incs = [
     '#source/blender/misc',
     '#source/blender/blenloader',
     '#source/blender/gpu',
-    '#extern/glew/include',
+    env['BF_GLEW_INC'],
+    '#/intern/glew-mx',
     ]
 
 incs.append(env['BF_PTHREADS_INC'])
 incs.append(env['BF_BOOST_INC'])
 
-defs = [
-    'GLEW_STATIC',
-    ]
+defs = env['BF_GL_DEFINITIONS']
 
 if env['WITH_BF_PYTHON']:
     incs += Split(env['BF_PYTHON_INC'])
@@ -87,5 +86,9 @@ if env['WITH_BF_FFMPEG']:
 
 if env['WITH_BF_INTERNATIONAL']:
     defs.append('WITH_INTERNATIONAL')
+
+if env['WITH_BF_SDL'] and env['WITH_BF_SDL_DYNLOAD']:
+    defs.append('WITH_SDL_DYNLOAD')
+    incs += ['#extern/sdlew/include']
 
 env.BlenderLib (libname='ge_player_ghost', sources=source_files, includes = incs, defines = defs, libtype=['player'],priority=[0], cxx_compileflags=env['BGE_CXXFLAGS'])

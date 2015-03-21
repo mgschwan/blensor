@@ -290,11 +290,14 @@ static void rna_Sequence_channel_set(PointerRNA *ptr, int value)
 	Scene *scene = (Scene *)ptr->id.data;
 	Editing *ed = BKE_sequencer_editing_get(scene, false);
 	ListBase *seqbase = BKE_sequence_seqbase(&ed->seqbase, seq);
-
-	seq->machine = value;
 	
+	/* check channel increment or decrement */
+	const int channel_delta = (value >= seq->machine) ? 1 : -1;
+	seq->machine = value;
+
 	if (BKE_sequence_test_overlap(seqbase, seq)) {
-		BKE_sequence_base_shuffle(seqbase, seq, scene);  /* XXX - BROKEN!, uses context seqbasep */
+		/* XXX - BROKEN!, uses context seqbasep */
+		BKE_sequence_base_shuffle_ex(seqbase, seq, scene, channel_delta);
 	}
 	BKE_sequencer_sort(scene);
 }
@@ -310,18 +313,7 @@ static void rna_Sequence_frame_offset_range(PointerRNA *ptr, int *min, int *max,
 static void rna_Sequence_use_proxy_set(PointerRNA *ptr, int value)
 {
 	Sequence *seq = (Sequence *)ptr->data;
-	if (value) {
-		seq->flag |= SEQ_USE_PROXY;
-		if (seq->strip->proxy == NULL) {
-			seq->strip->proxy = MEM_callocN(sizeof(struct StripProxy), "StripProxy");
-			seq->strip->proxy->quality = 90;
-			seq->strip->proxy->build_tc_flags = SEQ_PROXY_TC_ALL;
-			seq->strip->proxy->build_size_flags = SEQ_PROXY_IMAGE_SIZE_25;
-		}
-	}
-	else {
-		seq->flag ^= SEQ_USE_PROXY;
-	}
+	BKE_sequencer_proxy_set(seq, value != 0);
 }
 
 static void rna_Sequence_use_translation_set(PointerRNA *ptr, int value)
@@ -1187,6 +1179,10 @@ static void rna_def_strip_proxy(BlenderRNA *brna)
 
 	RNA_def_property_update(prop, NC_SCENE | ND_SEQUENCER, "rna_SequenceProxy_update");
 
+	prop = RNA_def_property(srna, "use_overwrite", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "build_flags", SEQ_PROXY_SKIP_EXISTING);
+	RNA_def_property_ui_text(prop, "Overwrite", "Overwrite existing proxy files when building");
+
 	prop = RNA_def_property(srna, "build_25", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "build_size_flags", SEQ_PROXY_IMAGE_SIZE_25);
 	RNA_def_property_ui_text(prop, "25%", "Build 25% proxy resolution");
@@ -1503,7 +1499,7 @@ static void rna_def_sequence(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "channel", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_int_sdna(prop, NULL, "machine");
-	RNA_def_property_range(prop, 0, MAXSEQ - 1);
+	RNA_def_property_range(prop, 1, MAXSEQ);
 	RNA_def_property_ui_text(prop, "Channel", "Y position of the sequence strip");
 	RNA_def_property_int_funcs(prop, NULL, "rna_Sequence_channel_set", NULL); /* overlap test */
 	RNA_def_property_update(prop, NC_SCENE | ND_SEQUENCER, "rna_Sequence_update");
@@ -1845,6 +1841,11 @@ static void rna_def_scene(BlenderRNA *brna)
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_pointer_funcs(prop, NULL, NULL, NULL, "rna_Camera_object_poll");
 	RNA_def_property_ui_text(prop, "Camera Override", "Override the scenes active camera");
+	RNA_def_property_update(prop, NC_SCENE | ND_SEQUENCER, "rna_Sequence_update");
+	
+	prop = RNA_def_property(srna, "use_grease_pencil", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "flag", SEQ_SCENE_NO_GPENCIL);
+	RNA_def_property_ui_text(prop, "Use Grease Pencil", "Show Grease Pencil strokes in OpenGL previews");
 	RNA_def_property_update(prop, NC_SCENE | ND_SEQUENCER, "rna_Sequence_update");
 
 	rna_def_filter_video(srna);

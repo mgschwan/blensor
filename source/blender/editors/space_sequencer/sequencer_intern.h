@@ -45,6 +45,7 @@ struct ARegion;
 struct ARegionType;
 struct Scene;
 struct Main;
+struct SequencePreview;
 
 /* space_sequencer.c */
 struct ARegion *sequencer_has_buttons_region(struct ScrArea *sa);
@@ -52,7 +53,12 @@ struct ARegion *sequencer_has_buttons_region(struct ScrArea *sa);
 
 /* sequencer_draw.c */
 void draw_timeline_seq(const struct bContext *C, struct ARegion *ar);
-void draw_image_seq(const struct bContext *C, struct Scene *scene, struct  ARegion *ar, struct SpaceSeq *sseq, int cfra, int offset, bool draw_overlay);
+void draw_image_seq(const struct bContext *C, struct Scene *scene, struct  ARegion *ar, struct SpaceSeq *sseq, int cfra, int offset, bool draw_overlay, bool draw_backdrop);
+void color3ubv_from_seq(struct Scene *curscene, struct Sequence *seq, unsigned char col[3]);
+void draw_shadedstrip(struct Sequence *seq, unsigned char col[3], float x1, float y1, float x2, float y2);
+void draw_sequence_extensions(struct Scene *scene, struct ARegion *ar, struct Sequence *seq);
+
+void sequencer_special_update_set(Sequence *seq);
 
 /* UNUSED */
 // void seq_reset_imageofs(struct SpaceSeq *sseq);
@@ -73,7 +79,8 @@ int sequencer_edit_poll(struct bContext *C);
 /* UNUSED */
 //int sequencer_strip_poll(struct bContext *C);
 int sequencer_strip_has_path_poll(struct bContext *C);
-int sequencer_view_poll(struct bContext *C);
+int sequencer_view_preview_poll(struct bContext *C);
+int sequencer_view_strips_poll(struct bContext *C);
 
 /* externs */
 extern EnumPropertyItem sequencer_prop_effect_types[];
@@ -84,6 +91,7 @@ struct wmOperatorType;
 struct wmKeyConfig;
 
 void SEQUENCER_OT_cut(struct wmOperatorType *ot);
+void SEQUENCER_OT_slip(struct wmOperatorType *ot);
 void SEQUENCER_OT_mute(struct wmOperatorType *ot);
 void SEQUENCER_OT_unmute(struct wmOperatorType *ot);
 void SEQUENCER_OT_lock(struct wmOperatorType *ot);
@@ -123,6 +131,7 @@ void SEQUENCER_OT_copy(struct wmOperatorType *ot);
 void SEQUENCER_OT_paste(struct wmOperatorType *ot);
 
 void SEQUENCER_OT_rebuild_proxy(struct wmOperatorType *ot);
+void SEQUENCER_OT_enable_proxies(struct wmOperatorType *ot);
 
 /* preview specific operators */
 void SEQUENCER_OT_view_all_preview(struct wmOperatorType *ot);
@@ -149,13 +158,6 @@ void SEQUENCER_OT_sound_strip_add(struct wmOperatorType *ot);
 void SEQUENCER_OT_image_strip_add(struct wmOperatorType *ot);
 void SEQUENCER_OT_effect_strip_add(struct wmOperatorType *ot);
 
-/* RNA enums, just to be more readable */
-enum {
-	SEQ_SIDE_NONE = 0,
-	SEQ_SIDE_LEFT,
-	SEQ_SIDE_RIGHT,
-	SEQ_SIDE_BOTH
-};
 enum {
 	SEQ_CUT_SOFT,
 	SEQ_CUT_HARD
@@ -197,6 +199,9 @@ void SEQUENCER_OT_strip_modifier_move(struct wmOperatorType *ot);
 
 /* sequencer_view.c */
 void SEQUENCER_OT_sample(struct wmOperatorType *ot);
+
+/* sequencer_preview.c */
+void sequencer_preview_add_sound(const struct bContext *C, struct Sequence *seq);
 
 #endif /* __SEQUENCER_INTERN_H__ */
 

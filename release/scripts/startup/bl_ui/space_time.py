@@ -145,7 +145,8 @@ class TIME_MT_view(Menu):
         layout.separator()
 
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class TIME_MT_cache(Menu):
@@ -205,6 +206,8 @@ class TIME_MT_playback(Menu):
         layout.prop(screen, "use_play_node_editors")
         layout.prop(screen, "use_play_clip_editors")
 
+        layout.separator()
+        layout.prop(screen, "use_follow")
         layout.separator()
 
         layout.prop(scene, "use_frame_drop", text="Frame Dropping")

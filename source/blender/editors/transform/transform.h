@@ -173,6 +173,13 @@ typedef struct TransDataSeq {
 
 } TransDataSeq;
 
+typedef struct TransSeq {
+	TransDataSeq *tdseq;
+	int min;
+	int max;
+	bool snap_left;
+} TransSeq;
+
 /* for NLA transform (stored in td->extra pointer) */
 typedef struct TransDataNla {
 	ID *id;						/* ID-block NLA-data is attached to */
@@ -193,12 +200,23 @@ typedef struct TransDataNla {
 struct LinkNode;
 struct GHash;
 
-typedef struct TransDataEdgeSlideVert {
-	struct BMVert *v_a, *v_b;
+/* header of TransDataEdgeSlideVert, TransDataEdgeSlideEdge */
+typedef struct TransDataGenericSlideVert {
 	struct BMVert *v;
+	struct LinkNode **cd_loop_groups;
+	float co_orig_3d[3];
+} TransDataGenericSlideVert;
+
+typedef struct TransDataEdgeSlideVert {
+	/* TransDataGenericSlideVert */
+	struct BMVert *v;
+	struct LinkNode **cd_loop_groups;
 	float v_co_orig[3];
+	/* end generic */
 
 	float edge_len;
+
+	struct BMVert *v_a, *v_b;
 
 	/* add origvert.co to get the original locations */
 	float dir_a[3], dir_b[3];
@@ -206,18 +224,31 @@ typedef struct TransDataEdgeSlideVert {
 	int loop_nr;
 } TransDataEdgeSlideVert;
 
+
+/* store original data so we can correct UV's and similar when sliding */
+typedef struct SlideOrigData {
+	/* flag that is set when origfaces is initialized */
+	bool use_origfaces;
+	struct GHash    *origverts;  /* map {BMVert: TransDataGenericSlideVert} */
+	struct GHash    *origfaces;
+	struct BMesh *bm_origfaces;
+
+	struct MemArena *arena;
+	/* number of math BMLoop layers */
+	int  layer_math_map_num;
+	/* array size of 'layer_math_map_num'
+	 * maps TransDataVertSlideVert.cd_group index to absolute CustomData layer index */
+	int *layer_math_map;
+} SlideOrigData;
+
 typedef struct EdgeSlideData {
 	TransDataEdgeSlideVert *sv;
 	int totsv;
-	
-	struct GHash *origfaces;
 
 	int mval_start[2], mval_end[2];
 	struct BMEditMesh *em;
 
-	/* flag that is set when origfaces is initialized */
-	bool use_origfaces;
-	struct BMesh *bm_origfaces;
+	SlideOrigData orig_data;
 
 	float perc;
 
@@ -229,8 +260,12 @@ typedef struct EdgeSlideData {
 
 
 typedef struct TransDataVertSlideVert {
+	/* TransDataGenericSlideVert */
 	BMVert *v;
+	struct LinkNode **cd_loop_groups;
 	float   co_orig_3d[3];
+	/* end generic */
+
 	float   co_orig_2d[2];
 	float (*co_link_orig_3d)[3];
 	float (*co_link_orig_2d)[2];
@@ -243,6 +278,8 @@ typedef struct VertSlideData {
 	int totsv;
 
 	struct BMEditMesh *em;
+
+	SlideOrigData orig_data;
 
 	float perc;
 
@@ -537,7 +574,6 @@ void restoreBones(TransInfo *t);
 
 /*********************** exported from transform_manipulator.c ********** */
 bool gimbal_axis(struct Object *ob, float gmat[3][3]); /* return 0 when no gimbal for selection */
-int calc_manipulator_stats(const struct bContext *C);
 
 /*********************** TransData Creation and General Handling *********** */
 void createTransData(struct bContext *C, TransInfo *t);
@@ -546,6 +582,7 @@ void special_aftertrans_update(struct bContext *C, TransInfo *t);
 int  special_transform_moving(TransInfo *t);
 
 void transform_autoik_update(TransInfo *t, short mode);
+bool transdata_check_local_islands(TransInfo *t, short around);
 
 int count_set_pose_transflags(int *out_mode, short around, struct Object *ob);
 
@@ -588,6 +625,8 @@ typedef enum {
 
 void snapGridIncrement(TransInfo *t, float *val);
 void snapGridIncrementAction(TransInfo *t, float *val, GearsType action);
+
+void snapSequenceBounds(TransInfo *t, const int mval[2]);
 
 bool activeSnap(TransInfo *t);
 bool validSnap(TransInfo *t);
@@ -690,7 +729,9 @@ void freeEdgeSlideTempFaces(EdgeSlideData *sld);
 void freeEdgeSlideVerts(TransInfo *t);
 void projectEdgeSlideData(TransInfo *t, bool is_final);
 
+void freeVertSlideTempFaces(VertSlideData *sld);
 void freeVertSlideVerts(TransInfo *t);
+void projectVertSlideData(TransInfo *t, bool is_final);
 
 
 /* TODO. transform_queries.c */

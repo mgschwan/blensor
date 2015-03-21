@@ -36,7 +36,7 @@ class Object;
 class Progress;
 
 #define BVH_NODE_SIZE	4
-#define BVH_QNODE_SIZE	8
+#define BVH_QNODE_SIZE	7
 #define BVH_ALIGN		4096
 #define TRI_NODE_SIZE	3
 
@@ -63,7 +63,7 @@ struct PackedBVH {
 	array<int> prim_object;
 	/* quick array to lookup if a node is a leaf, not used for traversal, only
 	 * for instance BVH merging  */
-	array<int> is_leaf;
+	array<bool> is_leaf;
 
 	/* index of the root node. */
 	int root_index;
@@ -106,13 +106,12 @@ protected:
 	/* triangles and strands*/
 	void pack_primitives();
 	void pack_triangle(int idx, float4 woop[3]);
-	void pack_curve_segment(int idx, float4 woop[3]);
 
 	/* merge instance BVH's */
 	void pack_instances(size_t nodes_size);
 
 	/* for subclasses to implement */
-	virtual void pack_nodes(const array<int>& prims, const BVHNode *root) = 0;
+	virtual void pack_nodes(const BVHNode *root) = 0;
 	virtual void refit_nodes() = 0;
 };
 
@@ -127,7 +126,7 @@ protected:
 	RegularBVH(const BVHParams& params, const vector<Object*>& objects);
 
 	/* pack */
-	void pack_nodes(const array<int>& prims, const BVHNode *root);
+	void pack_nodes(const BVHNode *root);
 	void pack_leaf(const BVHStackEntry& e, const LeafNode *leaf);
 	void pack_inner(const BVHStackEntry& e, const BVHStackEntry& e0, const BVHStackEntry& e1);
 	void pack_node(int idx, const BoundBox& b0, const BoundBox& b1, int c0, int c1, uint visibility0, uint visibility1);
@@ -148,12 +147,13 @@ protected:
 	QBVH(const BVHParams& params, const vector<Object*>& objects);
 
 	/* pack */
-	void pack_nodes(const array<int>& prims, const BVHNode *root);
+	void pack_nodes(const BVHNode *root);
 	void pack_leaf(const BVHStackEntry& e, const LeafNode *leaf);
 	void pack_inner(const BVHStackEntry& e, const BVHStackEntry *en, int num);
 
 	/* refit */
 	void refit_nodes();
+	void refit_node(int idx, bool leaf, BoundBox& bbox, uint& visibility);
 };
 
 CCL_NAMESPACE_END

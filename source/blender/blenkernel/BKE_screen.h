@@ -52,6 +52,7 @@ struct wmKeyConfig;
 struct wmNotifier;
 struct wmWindow;
 struct wmWindowManager;
+struct GPUFXSettings;
 
 #include "BLI_compiler_attrs.h"
 
@@ -265,7 +266,7 @@ struct SpaceType *BKE_spacetype_from_id(int spaceid);
 struct ARegionType *BKE_regiontype_from_id(struct SpaceType *st, int regionid);
 const struct ListBase *BKE_spacetypes_list(void);
 void BKE_spacetype_register(struct SpaceType *st);
-int BKE_spacetype_exists(int spaceid);
+bool BKE_spacetype_exists(int spaceid);
 void BKE_spacetypes_free(void); /* only for quitting blender */
 
 /* spacedata */
@@ -280,7 +281,9 @@ void            BKE_screen_area_free(struct ScrArea *sa);
 
 struct ARegion *BKE_area_find_region_type(struct ScrArea *sa, int type);
 struct ARegion *BKE_area_find_region_active_win(struct ScrArea *sa);
+struct ScrArea *BKE_screen_find_area_from_space(struct bScreen *sc, struct SpaceLink *sl) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1, 2);
 struct ScrArea *BKE_screen_find_big_area(struct bScreen *sc, const int spacetype, const short min);
+struct ScrArea *BKE_screen_find_area_xy(struct bScreen *sc, const int spacetype, int x, int y);
 
 unsigned int BKE_screen_view3d_layer_active_ex(
         const struct View3D *v3d, const struct Scene *scene, bool use_localvd) ATTR_NONNULL(2);
@@ -292,6 +295,7 @@ void BKE_screen_view3d_scene_sync(struct bScreen *sc);
 void BKE_screen_view3d_main_sync(ListBase *screen_lb, struct Scene *scene);
 void BKE_screen_view3d_twmode_remove(struct View3D *v3d, const int i);
 void BKE_screen_view3d_main_twmode_remove(ListBase *screen_lb, struct Scene *scene, const int i);
+void BKE_screen_gpu_fx_validate(struct GPUFXSettings *fx_settings);
 
 /* zoom factor conversion */
 float BKE_screen_view3d_zoom_to_fac(float camzoom);

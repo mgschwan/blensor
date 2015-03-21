@@ -57,7 +57,6 @@ struct Scopes;
 struct Histogram;
 struct SpaceIpo;
 struct BlendHandle;
-struct RenderInfo;
 struct bNodeTree;
 struct uiBlock;
 struct FileList;
@@ -274,6 +273,7 @@ typedef enum eSpaceOutliner_Flag {
 	SO_NEWSELECTED          = (1 << 1),
 	SO_HIDE_RESTRICTCOLS    = (1 << 2),
 	SO_HIDE_KEYINGSETINFO   = (1 << 3),
+	SO_SKIP_SORT_ALPHA      = (1 << 4),
 } eSpaceOutliner_Flag;
 
 /* SpaceOops->outlinevis */
@@ -292,6 +292,7 @@ typedef enum eSpaceOutliner_Mode {
 	SO_DATABLOCKS = 11,
 	SO_USERDEF = 12,
 	/* SO_KEYMAP = 13, */        /* deprecated! */
+	SO_ID_ORPHANS = 14,
 } eSpaceOutliner_Mode;
 
 /* SpaceOops->storeflag */
@@ -462,6 +463,8 @@ typedef enum eScreen_Redraws_Flag {
 	// TIME_CONTINUE_PHYSICS  = (1 << 7), /* UNUSED */
 	TIME_NODES             = (1 << 8),
 	TIME_CLIPS             = (1 << 9),
+
+	TIME_FOLLOW            = (1 << 15),
 } eScreen_Redraws_Flag;
 
 /* time->cache */
@@ -491,13 +494,15 @@ typedef struct SpaceSeq {
 	
 	float xof DNA_DEPRECATED, yof DNA_DEPRECATED;   /* deprecated: offset for drawing the image preview */
 	short mainb;    /* weird name for the sequencer subtype (seq, image, luma... etc) */
-	short render_size;
+	short render_size;  /* eSpaceSeq_Proxy_RenderSize */
 	short chanshown;
 	short zebra;
 	int flag;
 	float zoom DNA_DEPRECATED;  /* deprecated, handled by View2D now */
 	int view; /* see SEQ_VIEW_* below */
 	int overlay_type;
+	int draw_flag; /* overlay an image of the editing on below the strips */
+	int pad;
 
 	struct bGPdata *gpd;        /* grease-pencil data */
 
@@ -514,15 +519,25 @@ typedef enum eSpaceSeq_RegionType {
 	SEQ_DRAW_IMG_HISTOGRAM = 4,
 } eSpaceSeq_RegionType;
 
+/* sseq->draw_flag */
+typedef enum eSpaceSeq_DrawFlag {
+	SEQ_DRAW_BACKDROP              = (1 << 0),
+	SEQ_DRAW_OFFSET_EXT            = (1 << 1),
+} eSpaceSeq_DrawFlag;
+
+
 /* sseq->flag */
 typedef enum eSpaceSeq_Flag {
 	SEQ_DRAWFRAMES              = (1 << 0),
 	SEQ_MARKER_TRANS            = (1 << 1),
 	SEQ_DRAW_COLOR_SEPARATED    = (1 << 2),
-	SEQ_DRAW_SAFE_MARGINS       = (1 << 3),
+	SEQ_SHOW_SAFE_MARGINS       = (1 << 3),
 	SEQ_SHOW_GPENCIL            = (1 << 4),
 	SEQ_NO_DRAW_CFRANUM         = (1 << 5),
 	SEQ_USE_ALPHA               = (1 << 6), /* use RGBA display mode for preview */
+	SEQ_ALL_WAVEFORMS           = (1 << 7), /* draw all waveforms */
+	SEQ_NO_WAVEFORMS            = (1 << 8), /* draw no waveforms */
+	SEQ_SHOW_SAFE_CENTER        = (1 << 9),
 } eSpaceSeq_Flag;
 
 /* sseq->view */
@@ -566,13 +581,16 @@ typedef enum eSpaceSeq_OverlayType {
 /* Config and Input for File Selector */
 typedef struct FileSelectParams {
 	char title[96]; /* title, also used for the text of the execute button */
-	char dir[1056]; /* directory, FILE_MAX_LIBEXTRA, 1024 + 32, this is for extreme case when 1023 length path
+	char dir[1090]; /* directory, FILE_MAX_LIBEXTRA, 1024 + 66, this is for extreme case when 1023 length path
 	                 * needs to be linked in, where foo.blend/Armature need adding  */
+	char pad_c1[2];
 	char file[256]; /* file */
 	char renamefile[256];
 	char renameedit[256]; /* annoying but the first is only used for initialization */
 
 	char filter_glob[64]; /* list of filetypes to filter */
+
+	char filter_search[64];  /* text items' name must match to be shown. */
 
 	int active_file;
 	int sel_first;
@@ -619,9 +637,19 @@ typedef struct SpaceFile {
 	struct FileLayout *layout;
 	
 	short recentnr, bookmarknr;
-	short systemnr, pad2;
+	short systemnr, system_bookmarknr;
 } SpaceFile;
 
+/* FSMenuEntry's without paths indicate seperators */
+typedef struct FSMenuEntry {
+	struct FSMenuEntry *next;
+
+	char *path;
+	char name[256];  /* FILE_MAXFILE */
+	short save;
+	short valid;
+	short pad[2];
+} FSMenuEntry;
 
 /* FileSelectParams.display */
 enum FileDisplayTypeE {
@@ -681,28 +709,28 @@ typedef enum eFileSel_Params_Flag {
 
 /* files in filesel list: file types */
 typedef enum eFileSel_File_Types {
-	BLENDERFILE         = (1 << 2),
-	BLENDERFILE_BACKUP  = (1 << 3),
-	IMAGEFILE           = (1 << 4),
-	MOVIEFILE           = (1 << 5),
-	PYSCRIPTFILE        = (1 << 6),
-	FTFONTFILE          = (1 << 7),
-	SOUNDFILE           = (1 << 8),
-	TEXTFILE            = (1 << 9),
-	MOVIEFILE_ICON      = (1 << 10), /* movie file that preview can't load */
-	FOLDERFILE          = (1 << 11), /* represents folders for filtering */
-	BTXFILE             = (1 << 12),
-	COLLADAFILE         = (1 << 13),
-	OPERATORFILE        = (1 << 14), /* from filter_glob operator property */
-	APPLICATIONBUNDLE   = (1 << 15),
+	FILE_TYPE_BLENDER           = (1 << 2),
+	FILE_TYPE_BLENDER_BACKUP    = (1 << 3),
+	FILE_TYPE_IMAGE             = (1 << 4),
+	FILE_TYPE_MOVIE             = (1 << 5),
+	FILE_TYPE_PYSCRIPT          = (1 << 6),
+	FILE_TYPE_FTFONT            = (1 << 7),
+	FILE_TYPE_SOUND             = (1 << 8),
+	FILE_TYPE_TEXT              = (1 << 9),
+	FILE_TYPE_MOVIE_ICON        = (1 << 10), /* movie file that preview can't load */
+	FILE_TYPE_FOLDER            = (1 << 11), /* represents folders for filtering */
+	FILE_TYPE_BTX               = (1 << 12),
+	FILE_TYPE_COLLADA           = (1 << 13),
+	FILE_TYPE_OPERATOR          = (1 << 14), /* from filter_glob operator property */
+	FILE_TYPE_APPLICATIONBUNDLE = (1 << 15),
 } eFileSel_File_Types;
 
 /* Selection Flags in filesel: struct direntry, unsigned char selflag */
 typedef enum eDirEntry_SelectFlag {
-/*  ACTIVE_FILE         = (1 << 1), */ /* UNUSED */
-	HILITED_FILE        = (1 << 2),
-	SELECTED_FILE       = (1 << 3),
-	EDITING_FILE        = (1 << 4),
+/*	FILE_SEL_ACTIVE         = (1 << 1), */ /* UNUSED */
+	FILE_SEL_HIGHLIGHTED    = (1 << 2),
+	FILE_SEL_SELECTED       = (1 << 3),
+	FILE_SEL_EDITING        = (1 << 4),
 } eDirEntry_SelectFlag;
 
 /* Image/UV Editor ======================================== */
@@ -810,7 +838,7 @@ typedef enum eSpaceImage_Flag {
 
 	SI_COLOR_CORRECTION   = (1 << 24),
 
-	SI_NO_DRAW_TEXPAINT   = (1 << 25)
+	SI_NO_DRAW_TEXPAINT   = (1 << 25),
 } eSpaceImage_Flag;
 
 /* Text Editor ============================================ */
@@ -919,7 +947,7 @@ typedef struct bNodeTreePath {
 	bNodeInstanceKey parent_key;	/* base key for nodes in this tree instance */
 	int pad;
 	float view_center[2];			/* v2d center point, so node trees can have different offsets in editors */
-	/* XXX this is not automatically updated when node names are changed! */
+	
 	char node_name[64];		/* MAX_NAME */
 } bNodeTreePath;
 
@@ -1186,6 +1214,9 @@ typedef enum eSpace_Type {
 	
 	SPACEICONMAX = SPACE_CLIP
 } eSpace_Type;
+
+/* use for function args */
+#define SPACE_TYPE_ANY -1
 
 // TODO: SPACE_SCRIPT
 #if (DNA_DEPRECATED_GCC_POISON == 1)

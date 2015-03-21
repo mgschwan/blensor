@@ -639,7 +639,16 @@ void mul_mat3_m4_fl(float m[4][4], float f)
 			m[i][j] *= f;
 }
 
-void negate_m3(float m[4][4])
+void negate_m3(float m[3][3])
+{
+	int i, j;
+
+	for (i = 0; i < 3; i++)
+		for (j = 0; j < 3; j++)
+			m[i][j] *= -1.0f;
+}
+
+void negate_mat3_m4(float m[4][4])
 {
 	int i, j;
 
@@ -839,9 +848,10 @@ bool invert_m4_m4(float inverse[4][4], float mat[4][4])
 			}
 		}
 
-		temp = tempmat[i][i];
-		if (temp == 0)
-			return 0;  /* No non-zero pivot */
+		if (UNLIKELY(tempmat[i][i] == 0.0f)) {
+			return false;  /* No non-zero pivot */
+		}
+		temp = (double)tempmat[i][i];
 		for (k = 0; k < 4; k++) {
 			tempmat[i][k] = (float)((double)tempmat[i][k] / temp);
 			inverse[i][k] = (float)((double)inverse[i][k] / temp);
@@ -856,7 +866,7 @@ bool invert_m4_m4(float inverse[4][4], float mat[4][4])
 			}
 		}
 	}
-	return 1;
+	return true;
 }
 
 /****************************** Linear Algebra *******************************/
@@ -874,6 +884,37 @@ void transpose_m3(float mat[3][3])
 	t = mat[1][2];
 	mat[1][2] = mat[2][1];
 	mat[2][1] = t;
+}
+
+void transpose_m3_m3(float rmat[3][3], float mat[3][3])
+{
+	BLI_assert(rmat != mat);
+
+	rmat[0][0] = mat[0][0];
+	rmat[0][1] = mat[1][0];
+	rmat[0][2] = mat[2][0];
+	rmat[1][0] = mat[0][1];
+	rmat[1][1] = mat[1][1];
+	rmat[1][2] = mat[2][1];
+	rmat[2][0] = mat[0][2];
+	rmat[2][1] = mat[1][2];
+	rmat[2][2] = mat[2][2];
+}
+
+/* seems obscure but in-fact a common operation */
+void transpose_m3_m4(float rmat[3][3], float mat[4][4])
+{
+	BLI_assert(&rmat[0][0] != &mat[0][0]);
+
+	rmat[0][0] = mat[0][0];
+	rmat[0][1] = mat[1][0];
+	rmat[0][2] = mat[2][0];
+	rmat[1][0] = mat[0][1];
+	rmat[1][1] = mat[1][1];
+	rmat[1][2] = mat[2][1];
+	rmat[2][0] = mat[0][2];
+	rmat[2][1] = mat[1][2];
+	rmat[2][2] = mat[2][2];
 }
 
 void transpose_m4(float mat[4][4])
@@ -900,6 +941,28 @@ void transpose_m4(float mat[4][4])
 	t = mat[2][3];
 	mat[2][3] = mat[3][2];
 	mat[3][2] = t;
+}
+
+void transpose_m4_m4(float rmat[4][4], float mat[4][4])
+{
+	BLI_assert(rmat != mat);
+
+	rmat[0][0] = mat[0][0];
+	rmat[0][1] = mat[1][0];
+	rmat[0][2] = mat[2][0];
+	rmat[0][3] = mat[3][0];
+	rmat[1][0] = mat[0][1];
+	rmat[1][1] = mat[1][1];
+	rmat[1][2] = mat[2][1];
+	rmat[1][3] = mat[3][1];
+	rmat[2][0] = mat[0][2];
+	rmat[2][1] = mat[1][2];
+	rmat[2][2] = mat[2][2];
+	rmat[2][3] = mat[3][2];
+	rmat[3][0] = mat[0][3];
+	rmat[3][1] = mat[1][3];
+	rmat[3][2] = mat[2][3];
+	rmat[3][3] = mat[3][3];
 }
 
 int compare_m4m4(float mat1[4][4], float mat2[4][4], float limit)
@@ -1087,11 +1150,11 @@ bool is_orthogonal_m3(float m[3][3])
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < i; j++) {
 			if (fabsf(dot_v3v3(m[i], m[j])) > 1.5f * FLT_EPSILON)
-				return 0;
+				return false;
 		}
 	}
 
-	return 1;
+	return true;
 }
 
 bool is_orthogonal_m4(float m[4][4])
@@ -1101,12 +1164,12 @@ bool is_orthogonal_m4(float m[4][4])
 	for (i = 0; i < 4; i++) {
 		for (j = 0; j < i; j++) {
 			if (fabsf(dot_v4v4(m[i], m[j])) > 1.5f * FLT_EPSILON)
-				return 0;
+				return false;
 		}
 
 	}
 
-	return 1;
+	return true;
 }
 
 bool is_orthonormal_m3(float m[3][3])
@@ -1116,12 +1179,12 @@ bool is_orthonormal_m3(float m[3][3])
 
 		for (i = 0; i < 3; i++)
 			if (fabsf(dot_v3v3(m[i], m[i]) - 1) > 1.5f * FLT_EPSILON)
-				return 0;
+				return false;
 
-		return 1;
+		return true;
 	}
 
-	return 0;
+	return false;
 }
 
 bool is_orthonormal_m4(float m[4][4])
@@ -1131,12 +1194,12 @@ bool is_orthonormal_m4(float m[4][4])
 
 		for (i = 0; i < 4; i++)
 			if (fabsf(dot_v4v4(m[i], m[i]) - 1) > 1.5f * FLT_EPSILON)
-				return 0;
+				return false;
 
-		return 1;
+		return true;
 	}
 
-	return 0;
+	return false;
 }
 
 bool is_uniform_scaled_m3(float m[3][3])
@@ -1145,8 +1208,7 @@ bool is_uniform_scaled_m3(float m[3][3])
 	float t[3][3];
 	float l1, l2, l3, l4, l5, l6;
 
-	copy_m3_m3(t, m);
-	transpose_m3(t);
+	transpose_m3_m3(t, m);
 
 	l1 = len_squared_v3(m[0]);
 	l2 = len_squared_v3(m[1]);
@@ -1387,7 +1449,7 @@ float mat3_to_scale(float mat[3][3])
 {
 	/* unit length vector */
 	float unit_vec[3];
-	copy_v3_fl(unit_vec, (float)(1.0 / M_SQRT3));
+	copy_v3_fl(unit_vec, (float)M_SQRT1_3);
 	mul_m3_v3(mat, unit_vec);
 	return len_v3(unit_vec);
 }
@@ -1396,7 +1458,7 @@ float mat4_to_scale(float mat[4][4])
 {
 	/* unit length vector */
 	float unit_vec[3];
-	copy_v3_fl(unit_vec, (float)(1.0 / M_SQRT3));
+	copy_v3_fl(unit_vec, (float)M_SQRT1_3);
 	mul_mat3_m4_v3(mat, unit_vec);
 	return len_v3(unit_vec);
 }
@@ -1413,9 +1475,7 @@ void mat3_to_rot_size(float rot[3][3], float size[3], float mat3[3][3])
 	/* note: this is a workaround for negative matrix not working for rotation conversion, FIXME */
 	normalize_m3_m3(mat3_n, mat3);
 	if (is_negative_m3(mat3)) {
-		negate_v3(mat3_n[0]);
-		negate_v3(mat3_n[1]);
-		negate_v3(mat3_n[2]);
+		negate_m3(mat3_n);
 	}
 
 	/* rotation */
@@ -1425,11 +1485,19 @@ void mat3_to_rot_size(float rot[3][3], float size[3], float mat3[3][3])
 	/* scale */
 	/* note: mat4_to_size(ob->size, mat) fails for negative scale */
 	invert_m3_m3(imat3_n, mat3_n);
+
+	/* better not edit mat3 */
+#if 0
 	mul_m3_m3m3(mat3, imat3_n, mat3);
 
 	size[0] = mat3[0][0];
 	size[1] = mat3[1][1];
 	size[2] = mat3[2][2];
+#else
+	size[0] = dot_m3_v3_row_x(imat3_n, mat3[0]);
+	size[1] = dot_m3_v3_row_y(imat3_n, mat3[1]);
+	size[2] = dot_m3_v3_row_z(imat3_n, mat3[2]);
+#endif
 }
 
 void mat4_to_loc_rot_size(float loc[3], float rot[3][3], float size[3], float wmat[4][4])
@@ -1454,9 +1522,7 @@ void mat4_to_loc_quat(float loc[3], float quat[4], float wmat[4][4])
 	/* so scale doesn't interfere with rotation [#24291] */
 	/* note: this is a workaround for negative matrix not working for rotation conversion, FIXME */
 	if (is_negative_m3(mat3)) {
-		negate_v3(mat3_n[0]);
-		negate_v3(mat3_n[1]);
-		negate_v3(mat3_n[2]);
+		negate_m3(mat3_n);
 	}
 
 	mat3_to_quat(quat, mat3_n);
@@ -2183,14 +2249,14 @@ void svd_m4(float U[4][4], float s[4], float V[4][4], float A_[4][4])
 	}
 }
 
-void pseudoinverse_m4_m4(float Ainv[4][4], float A[4][4], float epsilon)
+void pseudoinverse_m4_m4(float Ainv[4][4], float A_[4][4], float epsilon)
 {
 	/* compute moon-penrose pseudo inverse of matrix, singular values
 	 * below epsilon are ignored for stability (truncated SVD) */
-	float V[4][4], W[4], Wm[4][4], U[4][4];
+	float A[4][4], V[4][4], W[4], Wm[4][4], U[4][4];
 	int i;
 
-	transpose_m4(A);
+	transpose_m4_m4(A, A_);
 	svd_m4(V, W, U, A);
 	transpose_m4(U);
 	transpose_m4(V);

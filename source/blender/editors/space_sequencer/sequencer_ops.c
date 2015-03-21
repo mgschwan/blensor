@@ -40,6 +40,8 @@
 #include "ED_markers.h"
 #include "ED_transform.h" /* transform keymap */
 
+#include "BKE_sequencer.h"
+
 #include "sequencer_intern.h"
 
 
@@ -50,6 +52,7 @@ void sequencer_operatortypes(void)
 {
 	/* sequencer_edit.c */
 	WM_operatortype_append(SEQUENCER_OT_cut);
+	WM_operatortype_append(SEQUENCER_OT_slip);
 	WM_operatortype_append(SEQUENCER_OT_mute);
 	WM_operatortype_append(SEQUENCER_OT_unmute);
 	WM_operatortype_append(SEQUENCER_OT_lock);
@@ -85,6 +88,7 @@ void sequencer_operatortypes(void)
 	WM_operatortype_append(SEQUENCER_OT_view_ghost_border);
 
 	WM_operatortype_append(SEQUENCER_OT_rebuild_proxy);
+	WM_operatortype_append(SEQUENCER_OT_enable_proxies);
 	WM_operatortype_append(SEQUENCER_OT_change_effect_input);
 	WM_operatortype_append(SEQUENCER_OT_change_effect_type);
 	WM_operatortype_append(SEQUENCER_OT_change_path);
@@ -315,6 +319,8 @@ void sequencer_keymap(wmKeyConfig *keyconf)
 	WM_keymap_add_menu(keymap, "SEQUENCER_MT_add", AKEY, KM_PRESS, KM_SHIFT, 0);
 
 	WM_keymap_add_menu(keymap, "SEQUENCER_MT_change", CKEY, KM_PRESS, 0, 0);
+
+	WM_keymap_add_item(keymap, "SEQUENCER_OT_slip", SKEY, KM_PRESS, 0, 0);
 
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_set_int", OKEY, KM_PRESS, 0, 0);
 	RNA_string_set(kmi->ptr, "data_path", "scene.sequence_editor.overlay_frame");

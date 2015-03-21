@@ -79,8 +79,6 @@
 
 #include "bmesh.h"
 
-#include "MOD_util.h"
-
 typedef struct {
 	float mat[3][3];
 	/* Vert that edge is pointing away from, no relation to
@@ -218,6 +216,7 @@ static bool skin_frame_find_contained_faces(const Frame *frame,
 /* Returns true if hull is successfully built, false otherwise */
 static bool build_hull(SkinOutput *so, Frame **frames, int totframe)
 {
+#ifdef WITH_BULLET
 	BMesh *bm = so->bm;
 	BMOperator op;
 	BMIter iter;
@@ -326,6 +325,10 @@ static bool build_hull(SkinOutput *so, Frame **frames, int totframe)
 	BM_mesh_delete_hflag_tagged(bm, BM_ELEM_TAG, BM_EDGE | BM_FACE);
 
 	return true;
+#else
+	UNUSED_VARS(so, frames, totframe, skin_frame_find_contained_faces);
+	return false;
+#endif
 }
 
 /* Returns the average frame side length (frames are rectangular, so
@@ -962,23 +965,51 @@ static void add_poly(SkinOutput *so,
 	f->mat_nr = so->mat_nr;
 }
 
-static void connect_frames(SkinOutput *so,
-                           BMVert *frame1[4],
-BMVert *frame2[4])
+static void connect_frames(
+        SkinOutput *so,
+        BMVert *frame1[4],
+        BMVert *frame2[4])
 {
 	BMVert *q[4][4] = {{frame2[0], frame2[1], frame1[1], frame1[0]},
 	                   {frame2[1], frame2[2], frame1[2], frame1[1]},
 	                   {frame2[2], frame2[3], frame1[3], frame1[2]},
 	                   {frame2[3], frame2[0], frame1[0], frame1[3]}};
-	float p[3], no[3];
-	int i, swap;
+	int i;
+	bool swap;
 
 	/* Check if frame normals need swap */
-	sub_v3_v3v3(p, q[3][0]->co, q[0][0]->co);
-	normal_quad_v3(no,
-	               q[0][0]->co, q[0][1]->co,
-	               q[0][2]->co, q[0][3]->co);
-	swap = dot_v3v3(no, p) > 0;
+#if 0
+	{
+		/* simple method, works mostly */
+		float p[3], no[3];
+		sub_v3_v3v3(p, q[3][0]->co, q[0][0]->co);
+		normal_quad_v3(no,
+		        q[0][0]->co, q[0][1]->co,
+		        q[0][2]->co, q[0][3]->co);
+		swap = dot_v3v3(no, p) > 0;
+	}
+#else
+	{
+		/* comprehensive method, accumulate flipping of all faces */
+		float cent_sides[4][3];
+		float cent[3];
+		float dot = 0.0f;
+
+		for (i = 0; i < 4; i++) {
+			mid_v3_v3v3v3v3(cent_sides[i], UNPACK4_EX(, q[i], ->co));
+		}
+		mid_v3_v3v3v3v3(cent, UNPACK4(cent_sides));
+
+		for (i = 0; i < 4; i++) {
+			float p[3], no[3];
+			normal_quad_v3(no, UNPACK4_EX(, q[i], ->co));
+			sub_v3_v3v3(p, cent, cent_sides[i]);
+			dot += dot_v3v3(no, p);
+		}
+
+		swap = dot > 0;
+	}
+#endif
 
 	for (i = 0; i < 4; i++) {
 		if (swap)
@@ -1111,7 +1142,7 @@ static BMFace *collapse_face_corners(BMesh *bm, BMFace *f, int n,
 					orig_verts[i] = NULL;
 				}
 				else if (orig_verts[i] &&
-				         !BM_vert_in_face(vf, orig_verts[i]))
+				         !BM_vert_in_face(orig_verts[i], vf))
 				{
 					wrong_face = true;
 					break;
@@ -1257,7 +1288,7 @@ static void skin_fix_hole_no_good_verts(BMesh *bm, Frame *frame, BMFace *split_f
 
 		BMO_op_callf(bm, BMO_FLAG_DEFAULTS,
 		             "subdivide_edges edges=%he cuts=%i quad_corner_type=%i",
-		             BM_ELEM_TAG, 1, SUBD_STRAIGHT_CUT);
+		             BM_ELEM_TAG, 1, SUBD_CORNER_STRAIGHT_CUT);
 	}
 	else if (split_face->len > 4) {
 		/* Maintain a dynamic vert array containing the split_face's

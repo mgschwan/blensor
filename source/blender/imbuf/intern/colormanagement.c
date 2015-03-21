@@ -44,7 +44,6 @@
 #include "DNA_scene_types.h"
 #include "DNA_space_types.h"
 
-#include "IMB_filter.h"
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
 #include "IMB_filetype.h"
@@ -53,14 +52,13 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_fileops.h"
 #include "BLI_math.h"
 #include "BLI_math_color.h"
-#include "BLI_path_util.h"
 #include "BLI_string.h"
 #include "BLI_threads.h"
 #include "BLI_rect.h"
 
+#include "BKE_appdir.h"
 #include "BKE_colortools.h"
 #include "BKE_context.h"
 #include "BKE_image.h"
@@ -91,6 +89,11 @@ static int global_tot_colorspace = 0;
 static int global_tot_display = 0;
 static int global_tot_view = 0;
 static int global_tot_looks = 0;
+
+/* Set to ITU-BT.709 / sRGB primaries weight. Brute force stupid, but only
+ * option with no colormanagement in place.
+ */
+static float luma_coefficients[3] = { 0.2126729f, 0.7151522f, 0.0721750f };
 
 /* lock used by pre-cached processors getters, so processor wouldn't
  * be created several times
@@ -245,29 +248,20 @@ static ColormnaageCacheData *colormanage_cachedata_get(const ImBuf *ibuf)
 
 static unsigned int colormanage_hashhash(const void *key_v)
 {
-	ColormanageCacheKey *key = (ColormanageCacheKey *)key_v;
+	const ColormanageCacheKey *key = key_v;
 
 	unsigned int rval = (key->display << 16) | (key->view % 0xffff);
 
 	return rval;
 }
 
-static int colormanage_hashcmp(const void *av, const void *bv)
+static bool colormanage_hashcmp(const void *av, const void *bv)
 {
-	const ColormanageCacheKey *a = (ColormanageCacheKey *) av;
-	const ColormanageCacheKey *b = (ColormanageCacheKey *) bv;
+	const ColormanageCacheKey *a = av;
+	const ColormanageCacheKey *b = bv;
 
-	if (a->view < b->view)
-		return -1;
-	else if (a->view > b->view)
-		return 1;
-
-	if (a->display < b->display)
-		return -1;
-	else if (a->display > b->display)
-		return 1;
-
-	return 0;
+	return ((a->view != b->view) ||
+	        (a->display != b->display));
 }
 
 static struct MovieCache *colormanage_moviecache_ensure(ImBuf *ibuf)
@@ -556,6 +550,9 @@ static void colormanage_load_config(OCIO_ConstConfigRcPtr *config)
 
 		colormanage_look_add(name, process_space, false);
 	}
+
+	/* Load luminance coefficients. */
+	OCIO_configGetDefaultLumaCoefs(config, luma_coefficients);
 }
 
 static void colormanage_free_config(void)
@@ -634,7 +631,7 @@ void colormanagement_init(void)
 	}
 
 	if (config == NULL) {
-		configdir = BLI_get_folder(BLENDER_DATAFILES, "colormanagement");
+		configdir = BKE_appdir_folder_id(BLENDER_DATAFILES, "colormanagement");
 
 		if (configdir) {
 			BLI_join_dirfile(configfile, sizeof(configfile), configdir, BCM_CONFIG_FILE);
@@ -1152,7 +1149,7 @@ void IMB_colormanagement_validate_settings(ColorManagedDisplaySettings *display_
 	for (view_link = display->views.first; view_link; view_link = view_link->next) {
 		ColorManagedView *view = view_link->data;
 
-		if (!strcmp(view->name, view_settings->view_transform))
+		if (STREQ(view->name, view_settings->view_transform))
 			break;
 	}
 
@@ -1231,6 +1228,34 @@ const char *IMB_colormanagement_get_float_colorspace(ImBuf *ibuf)
 const char *IMB_colormanagement_get_rect_colorspace(ImBuf *ibuf)
 {
 	return ibuf->rect_colorspace->name;
+}
+
+/* Convert a float RGB triplet to the correct luminance weighted average.
+ *
+ * Grayscale, or Luma is a distillation of RGB data values down to a weighted average
+ * based on the luminance positions of the red, green, and blue primaries.
+ * Given that the internal reference space may be arbitrarily set, any
+ * effort to glean the luminance coefficients must be aware of the reference
+ * space primaries.
+ *
+ * See http://wiki.blender.org/index.php/User:Nazg-gul/ColorManagement#Luminance
+ */
+
+float IMB_colormanagement_get_luminance(const float rgb[3])
+{
+	return dot_v3v3(luma_coefficients, rgb);
+}
+
+/* Byte equivalent of IMB_colormanagement_get_luminance(). */
+unsigned char IMB_colormanagement_get_luminance_byte(const unsigned char rgb[3])
+{
+	float rgbf[3];
+	float val;
+
+	rgb_uchar_to_float(rgbf, rgb);
+	val = dot_v3v3(luma_coefficients, rgbf);
+
+	return FTOCHAR(val);
 }
 
 /*********************** Threaded display buffer transform routines *************************/
@@ -1507,7 +1532,7 @@ static bool is_ibuf_rect_in_display_space(ImBuf *ibuf, const ColorManagedViewSet
 		const char *from_colorspace = ibuf->rect_colorspace->name;
 		const char *to_colorspace = IMB_colormanagement_get_display_colorspace_name(view_settings, display_settings);
 
-		if (to_colorspace && !strcmp(from_colorspace, to_colorspace))
+		if (to_colorspace && STREQ(from_colorspace, to_colorspace))
 			return true;
 	}
 
@@ -1636,7 +1661,7 @@ static void colormanagement_transform_ex(float *buffer, int width, int height, i
 		return;
 	}
 
-	if (!strcmp(from_colorspace, to_colorspace)) {
+	if (STREQ(from_colorspace, to_colorspace)) {
 		/* if source and destination color spaces are identical, skip
 		 * threading overhead and simply do nothing
 		 */
@@ -1677,7 +1702,7 @@ void IMB_colormanagement_transform_v4(float pixel[4], const char *from_colorspac
 		return;
 	}
 
-	if (!strcmp(from_colorspace, to_colorspace)) {
+	if (STREQ(from_colorspace, to_colorspace)) {
 		/* if source and destination color spaces are identical, skip
 		 * threading overhead and simply do nothing
 		 */
@@ -1929,7 +1954,7 @@ ImBuf *IMB_colormanagement_imbuf_for_write(ImBuf *ibuf, bool save_as_render, boo
 		 * should be pretty safe since this image buffer is supposed to be used for
 		 * saving only and ftype would be overwritten a bit later by BKE_imbuf_write
 		 */
-		colormanaged_ibuf->ftype = BKE_imtype_to_ftype(image_format_data->imtype);
+		colormanaged_ibuf->ftype = BKE_image_imtype_to_ftype(image_format_data->imtype);
 
 		/* if file format isn't able to handle float buffer itself,
 		 * we need to allocate byte buffer and store color managed
@@ -2163,7 +2188,7 @@ ColorManagedDisplay *colormanage_display_get_named(const char *name)
 	ColorManagedDisplay *display;
 
 	for (display = global_displays.first; display; display = display->next) {
-		if (!strcmp(display->name, name))
+		if (STREQ(display->name, name))
 			return display;
 	}
 
@@ -2268,7 +2293,7 @@ ColorManagedView *colormanage_view_get_named(const char *name)
 	ColorManagedView *view;
 
 	for (view = global_views.first; view; view = view->next) {
-		if (!strcmp(view->name, name))
+		if (STREQ(view->name, name))
 			return view;
 	}
 
@@ -2384,7 +2409,7 @@ ColorSpace *colormanage_colorspace_get_named(const char *name)
 	ColorSpace *colorspace;
 
 	for (colorspace = global_colorspaces.first; colorspace; colorspace = colorspace->next) {
-		if (!strcmp(colorspace->name, name))
+		if (STREQ(colorspace->name, name))
 			return colorspace;
 	}
 
@@ -2470,7 +2495,7 @@ ColorManagedLook *colormanage_look_get_named(const char *name)
 	ColorManagedLook *look;
 
 	for (look = global_looks.first; look; look = look->next) {
-		if (!strcmp(look->name, name)) {
+		if (STREQ(look->name, name)) {
 			return look;
 		}
 	}

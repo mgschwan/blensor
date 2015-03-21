@@ -414,6 +414,16 @@ void BKE_mesh_update_customdata_pointers(Mesh *me, const bool do_ensure_tess_cd)
 	me->mloopuv = CustomData_get_layer(&me->ldata, CD_MLOOPUV);
 }
 
+bool BKE_mesh_has_custom_loop_normals(Mesh *me)
+{
+	if (me->edit_btmesh) {
+		return CustomData_has_layer(&me->edit_btmesh->bm->ldata, CD_CUSTOMLOOPNORMAL);
+	}
+	else {
+		return CustomData_has_layer(&me->ldata, CD_CUSTOMLOOPNORMAL);
+	}
+}
+
 /* Note: unlinking is called when me->id.us is 0, question remains how
  * much unlinking of Library data in Mesh should be done... probably
  * we need a more generic method, like the expand() functions in
@@ -562,6 +572,10 @@ Mesh *BKE_mesh_copy_ex(Main *bmain, Mesh *me)
 	men->key = BKE_key_copy(me->key);
 	if (men->key) men->key->from = (ID *)men;
 
+	if (me->id.lib) {
+		BKE_id_lib_local_paths(bmain, me->id.lib, &men->id);
+	}
+
 	return men;
 }
 
@@ -699,7 +713,7 @@ bool BKE_mesh_uv_cdlayer_rename_index(Mesh *me, const int poly_index, const int 
 	}
 
 	/* Loop until we do have exactly the same name for all layers! */
-	for (i = 1; (strcmp(cdlp->name, cdlu->name) != 0 || (cdlf && strcmp(cdlp->name, cdlf->name) != 0)); i++) {
+	for (i = 1; !STREQ(cdlp->name, cdlu->name) || (cdlf && !STREQ(cdlp->name, cdlf->name)); i++) {
 		switch (i % step) {
 			case 0:
 				BLI_strncpy(cdlp->name, cdlu->name, sizeof(cdlp->name));
@@ -1487,7 +1501,7 @@ void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, const bool use
 	}
 	else {
 		me = BKE_mesh_add(G.main, "Mesh");
-		DM_to_mesh(dm, me, ob, CD_MASK_MESH);
+		DM_to_mesh(dm, me, ob, CD_MASK_MESH, false);
 	}
 
 	me->totcol = cu->totcol;
@@ -2110,6 +2124,146 @@ void BKE_mesh_mselect_active_set(Mesh *me, int index, int type)
 	           (me->mselect[me->totselect - 1].type  == type));
 }
 
+void BKE_mesh_calc_normals_split(Mesh *mesh)
+{
+	float (*r_loopnors)[3];
+	float (*polynors)[3];
+	short (*clnors)[2] = NULL;
+	bool free_polynors = false;
+
+	if (CustomData_has_layer(&mesh->ldata, CD_NORMAL)) {
+		r_loopnors = CustomData_get_layer(&mesh->ldata, CD_NORMAL);
+		memset(r_loopnors, 0, sizeof(float[3]) * mesh->totloop);
+	}
+	else {
+		r_loopnors = CustomData_add_layer(&mesh->ldata, CD_NORMAL, CD_CALLOC, NULL, mesh->totloop);
+		CustomData_set_layer_flag(&mesh->ldata, CD_NORMAL, CD_FLAG_TEMPORARY);
+	}
+
+	/* may be NULL */
+	clnors = CustomData_get_layer(&mesh->ldata, CD_CUSTOMLOOPNORMAL);
+
+	if (CustomData_has_layer(&mesh->pdata, CD_NORMAL)) {
+		/* This assume that layer is always up to date, not sure this is the case (esp. in Edit mode?)... */
+		polynors = CustomData_get_layer(&mesh->pdata, CD_NORMAL);
+		free_polynors = false;
+	}
+	else {
+		polynors = MEM_mallocN(sizeof(float[3]) * mesh->totpoly, __func__);
+		BKE_mesh_calc_normals_poly(mesh->mvert, mesh->totvert, mesh->mloop, mesh->mpoly, mesh->totloop, mesh->totpoly,
+		                           polynors, false);
+		free_polynors = true;
+	}
+
+	BKE_mesh_normals_loop_split(
+	        mesh->mvert, mesh->totvert, mesh->medge, mesh->totedge,
+	        mesh->mloop, r_loopnors, mesh->totloop, mesh->mpoly, (const float (*)[3])polynors, mesh->totpoly,
+	        (mesh->flag & ME_AUTOSMOOTH) != 0, mesh->smoothresh, NULL, clnors, NULL);
+
+	if (free_polynors) {
+		MEM_freeN(polynors);
+	}
+}
+
+/* Spli faces based on the edge angle.
+ * Matches behavior of face splitting in render engines.
+ */
+void BKE_mesh_split_faces(Mesh *mesh)
+{
+	const int num_verts = mesh->totvert;
+	const int num_edges = mesh->totedge;
+	const int num_polys = mesh->totpoly;
+	MVert *mvert = mesh->mvert;
+	MEdge *medge = mesh->medge;
+	MLoop *mloop = mesh->mloop;
+	MPoly *mpoly = mesh->mpoly;
+	float (*lnors)[3];
+	int poly, num_new_verts = 0;
+	if ((mesh->flag & ME_AUTOSMOOTH) == 0) {
+		return;
+	}
+	BKE_mesh_tessface_clear(mesh);
+	/* Compute loop normals if needed. */
+	if (!CustomData_has_layer(&mesh->ldata, CD_NORMAL)) {
+		BKE_mesh_calc_normals_split(mesh);
+	}
+	lnors = CustomData_get_layer(&mesh->ldata, CD_NORMAL);
+	/* Count. */
+	for (poly = 0; poly < num_polys; poly++) {
+		MPoly *mp = &mpoly[poly];
+		int loop;
+		for (loop = 0; loop < mp->totloop; loop++) {
+			MLoop *ml = &mloop[mp->loopstart + loop];
+			MVert *mv = &mvert[ml->v];
+			float vn[3];
+			normal_short_to_float_v3(vn, mv->no);
+			if (!equals_v3v3(vn, lnors[mp->loopstart + loop])) {
+				num_new_verts++;
+			}
+		}
+	}
+	if (num_new_verts == 0) {
+		/* No new vertices are to be added, can do early exit. */
+		return;
+	}
+	/* Actual split. */
+	mesh->totvert += num_new_verts;
+	mesh->totedge += 2 * num_new_verts;
+	mvert = mesh->mvert = MEM_reallocN(mesh->mvert,
+	                                   sizeof(MVert) * mesh->totvert);
+	medge = mesh->medge = MEM_reallocN(mesh->medge,
+	                                   sizeof(MEdge) * mesh->totedge);
+	CustomData_set_layer(&mesh->vdata, CD_MVERT, mesh->mvert);
+	CustomData_set_layer(&mesh->edata, CD_MEDGE, mesh->medge);
+	num_new_verts = 0;
+	for (poly = 0; poly < num_polys; poly++) {
+		MPoly *mp = &mpoly[poly];
+		int loop;
+		for (loop = 0; loop < mp->totloop; loop++) {
+			int poly_loop = mp->loopstart + loop;
+			MLoop *ml = &mloop[poly_loop];
+			MVert *mv = &mvert[ml->v];
+			float vn[3];
+			normal_short_to_float_v3(vn, mv->no);
+			if (!equals_v3v3(vn, lnors[mp->loopstart + loop])) {
+				int poly_loop_prev = mp->loopstart + (loop + mp->totloop - 1) % mp->totloop;
+				MLoop *ml_prev = &mloop[poly_loop_prev];
+				int new_edge_prev, new_edge;
+				/* Cretae new vertex. */
+				int new_vert = num_verts + num_new_verts;
+				CustomData_copy_data(&mesh->vdata, &mesh->vdata,
+				                     ml->v, new_vert, 1);
+				normal_float_to_short_v3(mvert[new_vert].no,
+				                         lnors[poly_loop]);
+				/* Create new edges. */
+				new_edge_prev = num_edges + 2 * num_new_verts;
+				new_edge = num_edges + 2 * num_new_verts + 1;
+				CustomData_copy_data(&mesh->edata, &mesh->edata,
+				                     ml_prev->e, new_edge_prev, 1);
+				CustomData_copy_data(&mesh->edata, &mesh->edata,
+				                     ml->e, new_edge, 1);
+				if (medge[new_edge_prev].v1 == ml->v) {
+					medge[new_edge_prev].v1 = new_vert;
+				}
+				else {
+					medge[new_edge_prev].v2 = new_vert;
+				}
+				if (medge[new_edge].v1 == ml->v) {
+					medge[new_edge].v1 = new_vert;
+				}
+				else {
+					medge[new_edge].v2 = new_vert;
+				}
+
+				ml->v = new_vert;
+				ml_prev->e = new_edge_prev;
+				ml->e = new_edge;
+				num_new_verts++;
+			}
+		}
+	}
+}
+
 /* settings: 1 - preview, 2 - render */
 Mesh *BKE_mesh_new_from_object(
         Main *bmain, Scene *sce, Object *ob,
@@ -2242,8 +2396,7 @@ Mesh *BKE_mesh_new_from_object(
 					dm = mesh_create_derived_view(sce, ob, mask);
 
 				tmpmesh = BKE_mesh_add(bmain, "Mesh");
-				DM_to_mesh(dm, tmpmesh, ob, mask);
-				dm->release(dm);
+				DM_to_mesh(dm, tmpmesh, ob, mask, true);
 			}
 
 			/* BKE_mesh_add/copy gives us a user count we don't need */

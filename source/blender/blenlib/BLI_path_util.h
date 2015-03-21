@@ -40,40 +40,6 @@ extern "C" {
 struct ListBase;
 struct direntry;
 
-const char *BLI_getDefaultDocumentFolder(void);
-
-const char *BLI_get_folder(int folder_id, const char *subfolder);
-const char *BLI_get_folder_create(int folder_id, const char *subfolder);
-const char *BLI_get_user_folder_notest(int folder_id, const char *subfolder);
-const char *BLI_get_folder_version(const int id, const int ver, const bool do_check);
-
-/* folder_id */
-
-/* general, will find based on user/local/system priority */
-#define BLENDER_DATAFILES           2
-
-/* user-specific */
-#define BLENDER_USER_CONFIG         31
-#define BLENDER_USER_DATAFILES      32
-#define BLENDER_USER_SCRIPTS        33
-#define BLENDER_USER_AUTOSAVE       34
-
-/* system */
-#define BLENDER_SYSTEM_DATAFILES    52
-#define BLENDER_SYSTEM_SCRIPTS      53
-#define BLENDER_SYSTEM_PYTHON       54
-
-/* for BLI_get_folder_version only */
-#define BLENDER_RESOURCE_PATH_USER      0
-#define BLENDER_RESOURCE_PATH_LOCAL     1
-#define BLENDER_RESOURCE_PATH_SYSTEM    2
-
-#define BLENDER_STARTUP_FILE    "startup.blend"
-#define BLENDER_USERPREF_FILE   "userpref.blend"
-#define BLENDER_QUIT_FILE       "quit.blend"
-#define BLENDER_BOOKMARK_FILE   "bookmarks.txt"
-#define BLENDER_HISTORY_FILE    "recent-files.txt"
-
 #ifdef WIN32
 #define SEP '\\'
 #define ALTSEP '/'
@@ -121,7 +87,7 @@ bool BLI_testextensie_glob(const char *str, const char *ext_fnmatch) ATTR_NONNUL
 bool BLI_replace_extension(char *path, size_t maxlen, const char *ext) ATTR_NONNULL();
 bool BLI_ensure_extension(char *path, size_t maxlen, const char *ext) ATTR_NONNULL();
 bool BLI_ensure_filename(char *filepath, size_t maxlen, const char *filename) ATTR_NONNULL();
-void BLI_uniquename(struct ListBase *list, void *vlink, const char *defname, char delim, int name_offs, int len);
+bool BLI_uniquename(struct ListBase *list, void *vlink, const char *defname, char delim, int name_offs, int len);
 bool BLI_uniquename_cb(bool (*unique_check)(void *arg, const char *name),
                        void *arg, const char *defname, char delim, char *name, int name_len);
 void BLI_newname(char *name, int add);
@@ -141,6 +107,8 @@ void BLI_cleanup_file(const char *relabase, char *path) ATTR_NONNULL(2);
 void BLI_cleanup_dir(const char *relabase, char *dir) ATTR_NONNULL(2);
 /* doesn't touch trailing slash */
 void BLI_cleanup_path(const char *relabase, char *path) ATTR_NONNULL(2);
+
+void BLI_filename_make_safe(char *fname) ATTR_NONNULL(1);
 
 /* go back one directory */
 bool BLI_parent_dir(char *path) ATTR_NONNULL();
@@ -185,19 +153,6 @@ bool BLI_path_suffix(char *string, size_t maxlen, const char *suffix, const char
 
 void BLI_char_switch(char *string, char from, char to) ATTR_NONNULL();
 
-/* Initialize path to program executable */
-void BLI_init_program_path(const char *argv0);
-/* Initialize path to temporary directory.
- * NOTE: On Window userdir will be set to the temporary directory! */
-void BLI_temp_dir_init(char *userdir);
-
-const char *BLI_program_path(void);
-const char *BLI_program_dir(void);
-const char *BLI_temp_dir_session(void);
-const char *BLI_temp_dir_base(void);
-void BLI_system_temporary_dir(char *dir);
-void BLI_temp_dir_session_purge(void);
-
 #ifdef WITH_ICONV
 void BLI_string_to_utf8(char *original, char *utf_8, const char *code);
 #endif
@@ -209,6 +164,15 @@ void BLI_string_to_utf8(char *original, char *utf_8, const char *code);
 #  define FILE_MAXFILE        256
 #  define FILE_MAX            1024
 #endif
+
+/* Parent and current dir helpers. */
+#define FILENAME_PARENT ".."
+#define FILENAME_CURRENT "."
+
+/* Avoid calling strcmp on one or two chars! */
+#define FILENAME_IS_PARENT(_n) (((_n)[0] == '.') && ((_n)[1] == '.') && ((_n)[2] == '\0'))
+#define FILENAME_IS_CURRENT(_n) (((_n)[0] == '.') && ((_n)[1] == '\0'))
+#define FILENAME_IS_CURRPAR(_n) (((_n)[0] == '.') && (((_n)[1] == '\0') || (((_n)[1] == '.') && ((_n)[2] == '\0'))))
 
 #ifdef __cplusplus
 }

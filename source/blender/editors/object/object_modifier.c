@@ -68,6 +68,7 @@
 #include "BKE_multires.h"
 #include "BKE_report.h"
 #include "BKE_object.h"
+#include "BKE_object_deform.h"
 #include "BKE_ocean.h"
 #include "BKE_paint.h"
 #include "BKE_particle.h"
@@ -439,9 +440,9 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	for (a = 0; a < totpart; a++) {
 		key = cache[a];
 
-		if (key->steps > 0) {
-			totvert += key->steps + 1;
-			totedge += key->steps;
+		if (key->segments > 0) {
+			totvert += key->segments + 1;
+			totedge += key->segments;
 		}
 	}
 
@@ -449,9 +450,9 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	for (a = 0; a < totchild; a++) {
 		key = cache[a];
 
-		if (key->steps > 0) {
-			totvert += key->steps + 1;
-			totedge += key->steps;
+		if (key->segments > 0) {
+			totvert += key->segments + 1;
+			totedge += key->segments;
 		}
 	}
 
@@ -475,7 +476,7 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	cache = psys->pathcache;
 	for (a = 0; a < totpart; a++) {
 		key = cache[a];
-		kmax = key->steps;
+		kmax = key->segments;
 		for (k = 0; k <= kmax; k++, key++, cvert++, mvert++) {
 			copy_v3_v3(mvert->co, key->co);
 			if (k) {
@@ -494,7 +495,7 @@ int ED_object_modifier_convert(ReportList *UNUSED(reports), Main *bmain, Scene *
 	cache = psys->childcache;
 	for (a = 0; a < totchild; a++) {
 		key = cache[a];
-		kmax = key->steps;
+		kmax = key->segments;
 		for (k = 0; k <= kmax; k++, key++, cvert++, mvert++) {
 			copy_v3_v3(mvert->co, key->co);
 			if (k) {
@@ -560,7 +561,7 @@ static int modifier_apply_shape(ReportList *reports, Scene *scene, Object *ob, M
 			/* if that was the first key block added, then it was the basis.
 			 * Initialize it with the mesh, and add another for the modifier */
 			kb = BKE_keyblock_add(key, NULL);
-			BKE_key_convert_from_mesh(me, kb);
+			BKE_keyblock_convert_from_mesh(me, kb);
 		}
 
 		kb = BKE_keyblock_add(key, md->name);
@@ -613,9 +614,7 @@ static int modifier_apply_obdata(ReportList *reports, Scene *scene, Object *ob, 
 				return 0;
 			}
 
-			DM_to_mesh(dm, me, ob, CD_MASK_MESH);
-
-			dm->release(dm);
+			DM_to_mesh(dm, me, ob, CD_MASK_MESH, true);
 
 			if (md->type == eModifierType_Multires)
 				multires_customdata_delete(me);
@@ -807,7 +806,7 @@ void OBJECT_OT_modifier_add(wmOperatorType *ot)
 
 /************************ generic functions for operators using mod names and data context *********************/
 
-static int edit_modifier_poll_generic(bContext *C, StructRNA *rna_type, int obtype_flag)
+int edit_modifier_poll_generic(bContext *C, StructRNA *rna_type, int obtype_flag)
 {
 	PointerRNA ptr = CTX_data_pointer_get_type(C, "modifier", rna_type);
 	Object *ob = (ptr.id.data) ? ptr.id.data : ED_object_active_context(C);
@@ -819,17 +818,17 @@ static int edit_modifier_poll_generic(bContext *C, StructRNA *rna_type, int obty
 	return 1;
 }
 
-static int edit_modifier_poll(bContext *C)
+int edit_modifier_poll(bContext *C)
 {
 	return edit_modifier_poll_generic(C, &RNA_Modifier, 0);
 }
 
-static void edit_modifier_properties(wmOperatorType *ot)
+void edit_modifier_properties(wmOperatorType *ot)
 {
 	RNA_def_string(ot->srna, "modifier", NULL, MAX_NAME, "Modifier", "Name of the modifier to edit");
 }
 
-static int edit_modifier_invoke_properties(bContext *C, wmOperator *op)
+int edit_modifier_invoke_properties(bContext *C, wmOperator *op)
 {
 	ModifierData *md;
 	
@@ -848,7 +847,7 @@ static int edit_modifier_invoke_properties(bContext *C, wmOperator *op)
 	return false;
 }
 
-static ModifierData *edit_modifier_property_get(wmOperator *op, Object *ob, int type)
+ModifierData *edit_modifier_property_get(wmOperator *op, Object *ob, int type)
 {
 	char modifier_name[MAX_NAME];
 	ModifierData *md;
@@ -1353,7 +1352,7 @@ void OBJECT_OT_multires_external_save(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
-	WM_operator_properties_filesel(ot, FOLDERFILE | BTXFILE, FILE_SPECIAL, FILE_SAVE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_BTX, FILE_SPECIAL, FILE_SAVE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 	edit_modifier_properties(ot);
 }
@@ -1667,7 +1666,7 @@ static void skin_armature_bone_create(Object *skin_ob,
 		BLI_snprintf(bone->name, sizeof(bone->name), "Bone.%.2d", endx);
 
 		/* add bDeformGroup */
-		if ((dg = ED_vgroup_add_name(skin_ob, bone->name))) {
+		if ((dg = BKE_object_defgroup_add_name(skin_ob, bone->name))) {
 			ED_vgroup_vert_add(skin_ob, dg, parent_v, 1, WEIGHT_REPLACE);
 			ED_vgroup_vert_add(skin_ob, dg, v, 1, WEIGHT_REPLACE);
 		}

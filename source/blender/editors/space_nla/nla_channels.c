@@ -182,6 +182,7 @@ static int mouse_nla_channels(bContext *C, bAnimContext *ac, float x, int channe
 		case ANIMTYPE_DSLAT:
 		case ANIMTYPE_DSLINESTYLE:
 		case ANIMTYPE_DSSPK:
+		case ANIMTYPE_DSGPENCIL:
 		{
 			/* sanity checking... */
 			if (ale->adt) {
@@ -649,7 +650,7 @@ static int nlaedit_delete_tracks_exec(bContext *C, wmOperator *UNUSED(op))
 		return OPERATOR_CANCELLED;
 		
 	/* get a list of the AnimData blocks being shown in the NLA */
-	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_SEL);
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_SEL | ANIMFILTER_NODUPLIS);
 	ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
 	
 	/* delete tracks */

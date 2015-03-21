@@ -22,7 +22,7 @@
  *  \ingroup ketsji
  */
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 
 #include <iostream>
 #include <map>
@@ -203,9 +203,21 @@ void BL_Texture::InitGLTex(unsigned int *pix,int x,int y,bool mipmap)
 
 	glBindTexture(GL_TEXTURE_2D, mTexture );
 	if ( mipmap ) {
+		int i;
+		ImBuf *ibuf;
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		gluBuild2DMipmaps( GL_TEXTURE_2D, GL_RGBA, x, y, GL_RGBA, GL_UNSIGNED_BYTE, pix );
+
+		ibuf = IMB_allocFromBuffer(pix, NULL, x, y);
+
+		IMB_makemipmap(ibuf, true);
+
+		for (i = 0; i < ibuf->miptot; i++) {
+			ImBuf *mip = IMB_getmipmap(ibuf, i);
+
+			glTexImage2D(GL_TEXTURE_2D, i,  GL_RGBA,  mip->x, mip->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, mip->rect);
+		}
+		IMB_freeImBuf(ibuf);
 	} 
 	else {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -239,26 +251,34 @@ void BL_Texture::InitNonPow2Tex(unsigned int *pix,int x,int y,bool mipmap)
 	int nx= power_of_2_min_i(x);
 	int ny= power_of_2_min_i(y);
 
-	unsigned int *newPixels = (unsigned int *)malloc(nx*ny*sizeof(unsigned int));
-	
-	gluScaleImage(GL_RGBA, x, y, GL_UNSIGNED_BYTE, pix, nx,ny, GL_UNSIGNED_BYTE, newPixels);
+	ImBuf *ibuf = IMB_allocFromBuffer(pix, NULL, x, y);
+	IMB_scaleImBuf(ibuf, nx, ny);
+
 	glBindTexture(GL_TEXTURE_2D, mTexture );
 
 	if ( mipmap ) {
+		int i;
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		gluBuild2DMipmaps( GL_TEXTURE_2D, GL_RGBA, nx, ny, GL_RGBA, GL_UNSIGNED_BYTE, newPixels );
+
+		IMB_makemipmap(ibuf, true);
+
+		for (i = 0; i < ibuf->miptot; i++) {
+			ImBuf *mip = IMB_getmipmap(ibuf, i);
+
+			glTexImage2D(GL_TEXTURE_2D, i,  GL_RGBA,  mip->x, mip->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, mip->rect);
+		}
 	}
 	else {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, nx, ny, 0, GL_RGBA, GL_UNSIGNED_BYTE, newPixels );
+		glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, nx, ny, 0, GL_RGBA, GL_UNSIGNED_BYTE, ibuf->rect );
 	}
 
 	if (GLEW_EXT_texture_filter_anisotropic)
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, GPU_get_anisotropic());
 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-	free(newPixels);
+	IMB_freeImBuf(ibuf);
 }
 
 

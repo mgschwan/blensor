@@ -32,6 +32,10 @@
  *  \ingroup bli
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* avoid many includes for now */
 #include "BLI_sys_types.h"
 #include "BLI_compiler_compat.h"
@@ -51,17 +55,18 @@
 	_49_, _50_, _51_, _52_, _53_, _54_, _55_, _56_, _57_, _58_, _59_, _60_, _61_, _62_, _63_, _64_, \
 	count, ...) count
 #define _VA_NARGS_EXPAND(args) _VA_NARGS_RETURN_COUNT args
-#define _VA_NARGS_COUNT_MAX32(...) _VA_NARGS_EXPAND((__VA_ARGS__, \
+/* 64 args max */
+#define _VA_NARGS_COUNT(...) _VA_NARGS_EXPAND((__VA_ARGS__, \
 	64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, \
 	48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, \
-	32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, \
-	15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0))
+	32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, \
+	16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2, 1, 0))
 #define _VA_NARGS_OVERLOAD_MACRO2(name, count) name##count
 #define _VA_NARGS_OVERLOAD_MACRO1(name, count) _VA_NARGS_OVERLOAD_MACRO2(name, count)
 #define _VA_NARGS_OVERLOAD_MACRO(name,  count) _VA_NARGS_OVERLOAD_MACRO1(name, count)
 /* --- expose for re-use --- */
 #define VA_NARGS_CALL_OVERLOAD(name, ...) \
-	_VA_NARGS_GLUE(_VA_NARGS_OVERLOAD_MACRO(name, _VA_NARGS_COUNT_MAX32(__VA_ARGS__)), (__VA_ARGS__))
+	_VA_NARGS_GLUE(_VA_NARGS_OVERLOAD_MACRO(name, _VA_NARGS_COUNT(__VA_ARGS__)), (__VA_ARGS__))
 
 /* useful for finding bad use of min/max */
 #if 0
@@ -70,6 +75,9 @@
 #  define MIN2(x, y)          (_TYPECHECK(x, y), (((x) < (y) ? (x) : (y))))
 #  define MAX2(x, y)          (_TYPECHECK(x, y), (((x) > (y) ? (x) : (y))))
 #endif
+
+/* include after _VA_NARGS macro */
+#include "BLI_compiler_typecheck.h"
 
 /* min/max */
 #if defined(__GNUC__) || defined(__clang__)
@@ -155,48 +163,6 @@
 
 /* some math and copy defines */
 
-/* Causes warning:
- * incompatible types when assigning to type 'Foo' from type 'Bar'
- * ... the compiler optimizes away the temp var */
-#ifdef __GNUC__
-#define CHECK_TYPE(var, type)  {  \
-	typeof(var) *__tmp;           \
-	__tmp = (type *)NULL;         \
-	(void)__tmp;                  \
-} (void)0
-
-#define CHECK_TYPE_PAIR(var_a, var_b)  {  \
-	typeof(var_a) *__tmp;                 \
-	__tmp = (typeof(var_b) *)NULL;        \
-	(void)__tmp;                          \
-} (void)0
-
-#define CHECK_TYPE_PAIR_INLINE(var_a, var_b)  ((void)({  \
-	typeof(var_a) *__tmp;                                \
-	__tmp = (typeof(var_b) *)NULL;                       \
-	(void)__tmp;                                         \
-}))
-
-#else
-#  define CHECK_TYPE(var, type)
-#  define CHECK_TYPE_PAIR(var_a, var_b)
-#  define CHECK_TYPE_PAIR_INLINE(var_a, var_b) (void)0
-#endif
-
-/* can be used in simple macros */
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
-#  define CHECK_TYPE_INLINE(val, type) \
-	(void)((void)(((type)0) != (0 ? (val) : ((type)0))), \
-	       _Generic((val), type: 0, const type: 0))
-#else
-#  define CHECK_TYPE_INLINE(val, type) \
-	((void)(((type)0) != (0 ? (val) : ((type)0))))
-#endif
-
-#define CHECK_TYPE_NONCONST(var)  {      \
-	void *non_const = 0 ? (var) : NULL;  \
-	(void)non_const;                     \
-} (void)0
 
 #define SWAP(type, a, b)  {    \
 	type sw_ap;                \
@@ -218,8 +184,10 @@
 
 /* ELEM#(v, ...): is the first arg equal any others? */
 /* internal helpers*/
+#define _VA_ELEM2(v, a) \
+       ((v) == (a))
 #define _VA_ELEM3(v, a, b) \
-       (((v) == (a)) || ((v) == (b)))
+       (_VA_ELEM2(v, a) || ((v) == (b)))
 #define _VA_ELEM4(v, a, b, c) \
        (_VA_ELEM3(v, a, b) || ((v) == (c)))
 #define _VA_ELEM5(v, a, b, c, d) \
@@ -252,6 +220,8 @@
 /* reusable ELEM macro */
 #define ELEM(...) VA_NARGS_CALL_OVERLOAD(_VA_ELEM, __VA_ARGS__)
 
+/* no-op for expressions we don't want to instansiate, but must remian valid */
+#define EXPR_NOP(expr) (void)(0 ? ((void)(expr), 1) : 0)
 
 /* shift around elements */
 #define SHIFT3(type, a, b, c)  {                                              \
@@ -282,7 +252,7 @@
 #define FTOCHAR(val) ((CHECK_TYPE_INLINE(val, float)), \
 		(char)(((val) <= 0.0f) ? 0 : (((val) > (1.0f - 0.5f / 255.0f)) ? 255 : ((255.0f * (val)) + 0.5f))))
 #define FTOUSHORT(val) ((CHECK_TYPE_INLINE(val, float)), \
-		((val >= 1.0f - 0.5f / 65535) ? 65535 : (val <= 0.0f) ? 0 : (unsigned short)(val * 65535.0f + 0.5f)))
+		(unsigned short)((val >= 1.0f - 0.5f / 65535) ? 65535 : (val <= 0.0f) ? 0 : (val * 65535.0f + 0.5f)))
 #define USHORTTOUCHAR(val) ((unsigned char)(((val) >= 65535 - 128) ? 255 : ((val) + 128) >> 8))
 #define F3TOCHAR3(v2, v1) {                                                   \
 		(v1)[0] = FTOCHAR((v2[0]));                                           \
@@ -348,10 +318,14 @@
 #define ABS(a)  ({ \
 	typeof(a) a_ = (a); \
 	((a_) < 0 ? (-(a_)) : (a_)); })
+#define SQUARE(a)  ({ \
+	typeof(a) a_ = (a); \
+	((a_) * (a_)); })
 
 #else
 
 #define ABS(a)  ((a) < 0 ? (-(a)) : (a))
+#define SQUARE(a)  ((a) * (a))
 
 #endif
 
@@ -368,6 +342,60 @@
 
 #define CLAMP_MIN(a, b)  {          \
 	if      ((a) < (b)) (a) = (b);  \
+} (void)0
+
+#define CLAMP2(vec, b, c) { \
+	CLAMP((vec)[0], b, c); \
+	CLAMP((vec)[1], b, c); \
+} (void)0
+
+#define CLAMP2_MIN(vec, b) { \
+	CLAMP_MIN((vec)[0], b); \
+	CLAMP_MIN((vec)[1], b); \
+} (void)0
+
+#define CLAMP2_MAX(vec, b) { \
+	CLAMP_MAX((vec)[0], b); \
+	CLAMP_MAX((vec)[1], b); \
+} (void)0
+
+#define CLAMP3(vec, b, c) { \
+	CLAMP((vec)[0], b, c); \
+	CLAMP((vec)[1], b, c); \
+	CLAMP((vec)[2], b, c); \
+} (void)0
+
+#define CLAMP3_MIN(vec, b) { \
+	CLAMP_MIN((vec)[0], b); \
+	CLAMP_MIN((vec)[1], b); \
+	CLAMP_MIN((vec)[2], b); \
+} (void)0
+
+#define CLAMP3_MAX(vec, b) { \
+	CLAMP_MAX((vec)[0], b); \
+	CLAMP_MAX((vec)[1], b); \
+	CLAMP_MAX((vec)[2], b); \
+} (void)0
+
+#define CLAMP4(vec, b, c) { \
+	CLAMP((vec)[0], b, c); \
+	CLAMP((vec)[1], b, c); \
+	CLAMP((vec)[2], b, c); \
+	CLAMP((vec)[3], b, c); \
+} (void)0
+
+#define CLAMP4_MIN(vec, b) { \
+	CLAMP_MIN((vec)[0], b); \
+	CLAMP_MIN((vec)[1], b); \
+	CLAMP_MIN((vec)[2], b); \
+	CLAMP_MIN((vec)[3], b); \
+} (void)0
+
+#define CLAMP4_MAX(vec, b) { \
+	CLAMP_MAX((vec)[0], b); \
+	CLAMP_MAX((vec)[1], b); \
+	CLAMP_MAX((vec)[2], b); \
+	CLAMP_MAX((vec)[3], b); \
 } (void)0
 
 #define IS_EQ(a, b)  ( \
@@ -408,11 +436,57 @@
 
 /* assuming a static array */
 #if defined(__GNUC__) && !defined(__cplusplus)
-#  define ARRAY_SIZE(arr)                                                     \
-	((sizeof(struct {int isnt_array : ((void *)&(arr) == &(arr)[0]);}) * 0) + \
+#  define ARRAY_SIZE(arr) \
+	((sizeof(struct {int isnt_array : ((const void *)&(arr) == &(arr)[0]);}) * 0) + \
 	 (sizeof(arr) / sizeof(*(arr))))
 #else
 #  define ARRAY_SIZE(arr)  (sizeof(arr) / sizeof(*(arr)))
+#endif
+
+/* ARRAY_SET_ITEMS#(v, ...): set indices of array 'v'  */
+/* internal helpers */
+#define _VA_ARRAY_SET_ITEMS2(v, a) \
+        ((v)[0] = (a))
+#define _VA_ARRAY_SET_ITEMS3(v, a, b) \
+        _VA_ARRAY_SET_ITEMS2(v, a); ((v)[1] = (b))
+#define _VA_ARRAY_SET_ITEMS4(v, a, b, c) \
+        _VA_ARRAY_SET_ITEMS3(v, a, b); ((v)[2] = (c))
+#define _VA_ARRAY_SET_ITEMS5(v, a, b, c, d) \
+        _VA_ARRAY_SET_ITEMS4(v, a, b, c); ((v)[3] = (d))
+#define _VA_ARRAY_SET_ITEMS6(v, a, b, c, d, e) \
+        _VA_ARRAY_SET_ITEMS5(v, a, b, c, d); ((v)[4] = (e))
+#define _VA_ARRAY_SET_ITEMS7(v, a, b, c, d, e, f) \
+        _VA_ARRAY_SET_ITEMS6(v, a, b, c, d, e); ((v)[5] = (f))
+#define _VA_ARRAY_SET_ITEMS8(v, a, b, c, d, e, f, g) \
+        _VA_ARRAY_SET_ITEMS7(v, a, b, c, d, e, f); ((v)[6] = (g))
+#define _VA_ARRAY_SET_ITEMS9(v, a, b, c, d, e, f, g, h) \
+        _VA_ARRAY_SET_ITEMS8(v, a, b, c, d, e, f, g); ((v)[7] = (h))
+#define _VA_ARRAY_SET_ITEMS10(v, a, b, c, d, e, f, g, h, i) \
+        _VA_ARRAY_SET_ITEMS9(v, a, b, c, d, e, f, g, h); ((v)[8] = (i))
+#define _VA_ARRAY_SET_ITEMS11(v, a, b, c, d, e, f, g, h, i, j) \
+        _VA_ARRAY_SET_ITEMS10(v, a, b, c, d, e, f, g, h, i); ((v)[9] = (j))
+#define _VA_ARRAY_SET_ITEMS12(v, a, b, c, d, e, f, g, h, i, j, k) \
+        _VA_ARRAY_SET_ITEMS11(v, a, b, c, d, e, f, g, h, i, j); ((v)[10] = (k))
+#define _VA_ARRAY_SET_ITEMS13(v, a, b, c, d, e, f, g, h, i, j, k, l) \
+        _VA_ARRAY_SET_ITEMS12(v, a, b, c, d, e, f, g, h, i, j, k); ((v)[11] = (l))
+#define _VA_ARRAY_SET_ITEMS14(v, a, b, c, d, e, f, g, h, i, j, k, l, m) \
+        _VA_ARRAY_SET_ITEMS13(v, a, b, c, d, e, f, g, h, i, j, k, l); ((v)[12] = (m))
+#define _VA_ARRAY_SET_ITEMS15(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n) \
+        _VA_ARRAY_SET_ITEMS14(v, a, b, c, d, e, f, g, h, i, j, k, l, m); ((v)[13] = (n))
+#define _VA_ARRAY_SET_ITEMS16(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o) \
+        _VA_ARRAY_SET_ITEMS15(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n); ((v)[14] = (o))
+#define _VA_ARRAY_SET_ITEMS17(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) \
+        _VA_ARRAY_SET_ITEMS16(v, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o); ((v)[15] = (p))
+
+/* reusable ARRAY_SET_ITEMS macro */
+#define ARRAY_SET_ITEMS(...) { VA_NARGS_CALL_OVERLOAD(_VA_ARRAY_SET_ITEMS, __VA_ARGS__); } (void)0
+
+#if defined(__GNUC__) || defined(__clang__)
+#define POINTER_OFFSET(v, ofs) \
+	((typeof(v))((char *)(v) + ofs))
+#else
+#define POINTER_OFFSET(v, ofs) \
+	((void *)((char *)(v) + ofs))
 #endif
 
 /* Like offsetof(typeof(), member), for non-gcc compilers */
@@ -449,6 +523,11 @@
 
 
 /* generic strcmp macros */
+#if defined(_MSC_VER)
+#  define strcasecmp _stricmp
+#  define strncasecmp _strnicmp
+#endif
+
 #define STREQ(a, b) (strcmp(a, b) == 0)
 #define STRCASEEQ(a, b) (strcasecmp(a, b) == 0)
 #define STREQLEN(a, b, n) (strncmp(a, b, n) == 0)
@@ -472,6 +551,62 @@
 #  define UNUSED_FUNCTION(x) UNUSED_ ## x
 #endif
 
+/**
+ * UNUSED_VARS#(a, ...): quiet unused warnings
+ *
+ * \code{.py}
+ * for i in range(16):
+ *     args = [(chr(ord('a') + (c % 26)) + (chr(ord('0') + (c // 26)))) for c in range(i + 1)]
+ *     print("#define _VA_UNUSED_VARS_%d(%s) \\" % (i + 1, ", ".join(args)))
+ *     print("\t((void)(%s)%s)" %
+ *             (args[0], ((", _VA_UNUSED_VARS_" + str(i) + "(%s)") if i else "%s") % ", ".join((args[1:]))))
+ * \endcode
+ */
+
+#define _VA_UNUSED_VARS_1(a0) \
+	((void)(a0))
+#define _VA_UNUSED_VARS_2(a0, b0) \
+	((void)(a0), _VA_UNUSED_VARS_1(b0))
+#define _VA_UNUSED_VARS_3(a0, b0, c0) \
+	((void)(a0), _VA_UNUSED_VARS_2(b0, c0))
+#define _VA_UNUSED_VARS_4(a0, b0, c0, d0) \
+	((void)(a0), _VA_UNUSED_VARS_3(b0, c0, d0))
+#define _VA_UNUSED_VARS_5(a0, b0, c0, d0, e0) \
+	((void)(a0), _VA_UNUSED_VARS_4(b0, c0, d0, e0))
+#define _VA_UNUSED_VARS_6(a0, b0, c0, d0, e0, f0) \
+	((void)(a0), _VA_UNUSED_VARS_5(b0, c0, d0, e0, f0))
+#define _VA_UNUSED_VARS_7(a0, b0, c0, d0, e0, f0, g0) \
+	((void)(a0), _VA_UNUSED_VARS_6(b0, c0, d0, e0, f0, g0))
+#define _VA_UNUSED_VARS_8(a0, b0, c0, d0, e0, f0, g0, h0) \
+	((void)(a0), _VA_UNUSED_VARS_7(b0, c0, d0, e0, f0, g0, h0))
+#define _VA_UNUSED_VARS_9(a0, b0, c0, d0, e0, f0, g0, h0, i0) \
+	((void)(a0), _VA_UNUSED_VARS_8(b0, c0, d0, e0, f0, g0, h0, i0))
+#define _VA_UNUSED_VARS_10(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0) \
+	((void)(a0), _VA_UNUSED_VARS_9(b0, c0, d0, e0, f0, g0, h0, i0, j0))
+#define _VA_UNUSED_VARS_11(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0) \
+	((void)(a0), _VA_UNUSED_VARS_10(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0))
+#define _VA_UNUSED_VARS_12(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0) \
+	((void)(a0), _VA_UNUSED_VARS_11(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0))
+#define _VA_UNUSED_VARS_13(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0) \
+	((void)(a0), _VA_UNUSED_VARS_12(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0))
+#define _VA_UNUSED_VARS_14(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0) \
+	((void)(a0), _VA_UNUSED_VARS_13(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0))
+#define _VA_UNUSED_VARS_15(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0) \
+	((void)(a0), _VA_UNUSED_VARS_14(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0))
+#define _VA_UNUSED_VARS_16(a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0, p0) \
+	((void)(a0), _VA_UNUSED_VARS_15(b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0, p0))
+
+
+/* reusable ELEM macro */
+#define UNUSED_VARS(...) VA_NARGS_CALL_OVERLOAD(_VA_UNUSED_VARS_, __VA_ARGS__)
+
+/* for debug-only variables */
+#ifndef NDEBUG
+#  define UNUSED_VARS_NDEBUG(...)
+#else
+#  define UNUSED_VARS_NDEBUG UNUSED_VARS
+#endif
+
 /*little macro so inline keyword works*/
 #if defined(_MSC_VER)
 #  define BLI_INLINE static __forceinline
@@ -489,6 +624,7 @@
  * for aborting need to define WITH_ASSERT_ABORT
  */
 #ifndef NDEBUG
+extern void BLI_system_backtrace(FILE *fp);
 #  ifdef WITH_ASSERT_ABORT
 #    define _BLI_DUMMY_ABORT abort
 #  else
@@ -498,6 +634,7 @@
 #    define BLI_assert(a)                                                     \
 	(void)((!(a)) ?  (                                                        \
 		(                                                                     \
+		BLI_system_backtrace(stderr),                                         \
 		fprintf(stderr,                                                       \
 			"BLI_assert failed: %s:%d, %s(), at \'%s\'\n",                    \
 			__FILE__, __LINE__, __func__, STRINGIFY(a)),                      \
@@ -535,6 +672,10 @@
 #else
 #  define LIKELY(x)       (x)
 #  define UNLIKELY(x)     (x)
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif  /* __BLI_UTILDEFINES_H__ */

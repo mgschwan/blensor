@@ -56,6 +56,10 @@ if(WIN32 AND NOT UNIX)
 
 	add_executable(blenderplayer ${EXETYPE} bad_level_call_stubs/stubs.c ../icons/winblender.rc)
 
+	install(TARGETS blenderplayer
+			COMPONENT Blenderplayer
+			DESTINATION ".")
+
 elseif(APPLE)
 	add_executable(blenderplayer ${EXETYPE} bad_level_call_stubs/stubs.c)
 	# setup Info.plist
@@ -69,6 +73,13 @@ elseif(APPLE)
 
 else()
 	add_executable(blenderplayer bad_level_call_stubs/stubs.c)
+
+	if(NOT WITH_INSTALL_PORTABLE)
+		install(
+			TARGETS blenderplayer
+			DESTINATION bin
+		)
+	endif()
 endif()
 
 add_dependencies(blenderplayer makesdna)
@@ -95,6 +106,7 @@ endif()
 		bf_intern_ghostndof3dconnexion
 		bf_rna
 		bf_blenkernel
+		bf_physics
 		bf_intern_rigidbody
 		bf_blenloader
 		ge_blen_routines
@@ -151,10 +163,12 @@ endif()
 		bf_intern_raskter
 		bf_intern_opencolorio
 		bf_intern_opennl
+		bf_intern_glew_mx
 		extern_rangetree
 		extern_wcwidth
 		extern_libmv
 		extern_glog
+		extern_sdlew
 	)
 
 	if(WITH_MOD_CLOTH_ELTOPO)
@@ -162,7 +176,7 @@ endif()
 	endif()
 
 	if(NOT WITH_SYSTEM_GLEW)
-		list(APPEND BLENDER_SORTED_LIBS extern_glew)
+		list(APPEND BLENDER_SORTED_LIBS ${BLENDER_GLEW_LIBRARIES})
 	endif()
 
 	if(WITH_LZMA)

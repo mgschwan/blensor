@@ -222,6 +222,10 @@ bArmature *BKE_armature_copy(bArmature *arm)
 	newArm->act_edbone = NULL;
 	newArm->sketch = NULL;
 
+	if (arm->id.lib) {
+		BKE_id_lib_local_paths(G.main, arm->id.lib, &newArm->id);
+	}
+
 	return newArm;
 }
 
@@ -229,7 +233,7 @@ static Bone *get_named_bone_bonechildren(Bone *bone, const char *name)
 {
 	Bone *curBone, *rbone;
 
-	if (!strcmp(bone->name, name))
+	if (STREQ(bone->name, name))
 		return bone;
 
 	for (curBone = bone->childbase.first; curBone; curBone = curBone->next) {
@@ -257,6 +261,19 @@ Bone *BKE_armature_find_bone_name(bArmature *arm, const char *name)
 	}
 
 	return bone;
+}
+
+bool BKE_armature_bone_flag_test_recursive(const Bone *bone, int flag)
+{
+	if (bone->flag & flag) {
+		return true;
+	}
+	else if (bone->parent) {
+		return BKE_armature_bone_flag_test_recursive(bone->parent, flag);
+	}
+	else {
+		return false;
+	}
 }
 
 /* Finds the best possible extension to the name on a particular axis. (For renaming, check for
@@ -505,7 +522,7 @@ void b_bone_spline_setup(bPoseChannel *pchan, int rest, Mat4 result_array[MAX_BB
 			invert_m3_m3(imat3, mat3);
 			mul_m3_m3m3(mat3, result, imat3); /* the matrix transforming vec_roll to desired roll */
 
-			roll1 = (float)atan2(mat3[2][0], mat3[2][2]);
+			roll1 = atan2f(mat3[2][0], mat3[2][2]);
 		}
 	}
 	else {
@@ -543,7 +560,7 @@ void b_bone_spline_setup(bPoseChannel *pchan, int rest, Mat4 result_array[MAX_BB
 		invert_m3_m3(imat3, mat3);
 		mul_m3_m3m3(mat3, imat3, result); /* the matrix transforming vec_roll to desired roll */
 
-		roll2 = (float)atan2(mat3[2][0], mat3[2][2]);
+		roll2 = atan2f(mat3[2][0], mat3[2][2]);
 
 		/* and only now negate handle */
 		mul_v3_fl(h2, -hlength2);
@@ -840,7 +857,7 @@ void armature_deform_verts(Object *armOb, Object *target, DerivedMesh *dm, float
 	/* bone defmats are already in the channels, chan_mat */
 
 	/* initialize B_bone matrices and dual quaternions */
-	totchan = BLI_countlist(&armOb->pose->chanbase);
+	totchan = BLI_listbase_count(&armOb->pose->chanbase);
 
 	if (use_quaternion) {
 		dualquats = MEM_callocN(sizeof(DualQuat) * totchan, "dualquats");
@@ -866,7 +883,7 @@ void armature_deform_verts(Object *armOb, Object *target, DerivedMesh *dm, float
 	armature_def_nr = defgroup_name_index(target, defgrp_name);
 
 	if (ELEM(target->type, OB_MESH, OB_LATTICE)) {
-		defbase_tot = BLI_countlist(&target->defbase);
+		defbase_tot = BLI_listbase_count(&target->defbase);
 
 		if (target->type == OB_MESH) {
 			Mesh *me = target->data;
@@ -1654,6 +1671,7 @@ static void pose_proxy_synchronize(Object *ob, Object *from, int layer_protected
 			pchanw.next = pchan->next;
 			pchanw.parent = pchan->parent;
 			pchanw.child = pchan->child;
+			pchanw.custom_tx = pchan->custom_tx;
 
 			pchanw.mpath = pchan->mpath;
 			pchan->mpath = NULL;
@@ -1662,7 +1680,7 @@ static void pose_proxy_synchronize(Object *ob, Object *from, int layer_protected
 			if (pchanw.prop) {
 				pchanw.prop = IDP_CopyProperty(pchanw.prop);
 				
-				/* use the values from the the existing props */
+				/* use the values from the existing props */
 				if (pchan->prop) {
 					IDP_SyncGroupValues(pchanw.prop, pchan->prop);
 				}
@@ -1916,7 +1934,7 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 		if (ikData->points)
 			MEM_freeN(ikData->points);
 		ikData->numpoints = ikData->chainlen + 1;
-		ikData->points = MEM_callocN(sizeof(float) * ikData->numpoints, "Spline IK Binding");
+		ikData->points = MEM_mallocN(sizeof(float) * ikData->numpoints, "Spline IK Binding");
 
 		/* bind 'tip' of chain (i.e. first joint = tip of bone with the Spline IK Constraint) */
 		ikData->points[0] = 1.0f;
@@ -1943,6 +1961,9 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 		/* spline has now been bound */
 		ikData->flag |= CONSTRAINT_SPLINEIK_BOUND;
 	}
+
+	/* disallow negative values (happens with float precision) */
+	CLAMP_MIN(ikData->points[segcount], 0.0f);
 
 	/* apply corrections for sensitivity to scaling on a copy of the bind points,
 	 * since it's easier to determine the positions of all the joints beforehand this way
@@ -1989,7 +2010,7 @@ static void splineik_init_tree_from_pchan(Scene *scene, Object *UNUSED(ob), bPos
 		tree->chainlen = segcount;
 
 		/* copy over the array of links to bones in the chain (from tip to root) */
-		tree->chain = MEM_callocN(sizeof(bPoseChannel *) * segcount, "SplineIK Chain");
+		tree->chain = MEM_mallocN(sizeof(bPoseChannel *) * segcount, "SplineIK Chain");
 		memcpy(tree->chain, pchanChain, sizeof(bPoseChannel *) * segcount);
 
 		/* store reference to joint position array */
@@ -2158,9 +2179,9 @@ static void splineik_evaluate_bone(tSplineIK_Tree *tree, Scene *scene, Object *o
 				mul_v3_fl(poseMat[2], scale);
 				break;
 			}
-			case CONSTRAINT_SPLINEIK_XZS_VOLUMETRIC:
+			case CONSTRAINT_SPLINEIK_XZS_INVERSE:
 			{
-				/* 'volume preservation' */
+				/* old 'volume preservation' method using the inverse scale */
 				float scale;
 
 				/* calculate volume preservation factor which is
@@ -2179,6 +2200,54 @@ static void splineik_evaluate_bone(tSplineIK_Tree *tree, Scene *scene, Object *o
 				/* apply the scaling */
 				mul_v3_fl(poseMat[0], scale);
 				mul_v3_fl(poseMat[2], scale);
+				break;
+			}
+			case CONSTRAINT_SPLINEIK_XZS_VOLUMETRIC:
+			{
+				/* improved volume preservation based on the Stretch To constraint */
+				float final_scale;
+				
+				/* as the basis for volume preservation, we use the inverse scale factor... */
+				if (fabsf(scaleFac) != 0.0f) {
+					/* NOTE: The method here is taken wholesale from the Stretch To constraint */
+					float bulge = powf(1.0f / fabsf(scaleFac), ikData->bulge);
+					
+					if (bulge > 1.0f) {
+						if (ikData->flag & CONSTRAINT_SPLINEIK_USE_BULGE_MAX) {
+							float bulge_max = max_ff(ikData->bulge_max, 1.0f);
+							float hard = min_ff(bulge, bulge_max);
+							
+							float range = bulge_max - 1.0f;
+							float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
+							float soft = 1.0f + range * atanf((bulge - 1.0f) * scale) / (float)M_PI_2;
+							
+							bulge = interpf(soft, hard, ikData->bulge_smooth);
+						}
+					}
+					if (bulge < 1.0f) {
+						if (ikData->flag & CONSTRAINT_SPLINEIK_USE_BULGE_MIN) {
+							float bulge_min = CLAMPIS(ikData->bulge_min, 0.0f, 1.0f);
+							float hard = max_ff(bulge, bulge_min);
+							
+							float range = 1.0f - bulge_min;
+							float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
+							float soft = 1.0f - range * atanf((1.0f - bulge) * scale) / (float)M_PI_2;
+							
+							bulge = interpf(soft, hard, ikData->bulge_smooth);
+						}
+					}
+					
+					/* compute scale factor for xz axes from this value */
+					final_scale = sqrt(bulge);
+				}
+				else {
+					/* no scaling, so scale factor is simple */
+					final_scale = 1.0f;
+				}
+				
+				/* apply the scaling (assuming normalised scale) */
+				mul_v3_fl(poseMat[0], final_scale);
+				mul_v3_fl(poseMat[2], final_scale);
 				break;
 			}
 		}
@@ -2361,7 +2430,7 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 						/* validate first */
 						if (amod->ob && amod->ob->type == OB_CURVE && amod->channel[0]) {
 
-							if (strcmp(pchan->name, amod->channel) == 0) {
+							if (STREQ(pchan->name, amod->channel)) {
 								float mat4[4][4], mat3[3][3];
 
 								curve_deform_vector(scene, amod->ob, armob, bone->arm_mat[3], pchan->pose_mat[3], mat3, amod->no_rot_axis);
@@ -2374,7 +2443,7 @@ static void do_strip_modifiers(Scene *scene, Object *armob, Bone *bone, bPoseCha
 					break;
 					case ACTSTRIP_MOD_NOISE:
 					{
-						if (strcmp(pchan->name, amod->channel) == 0) {
+						if (STREQ(pchan->name, amod->channel)) {
 							float nor[3], loc[3], ofs;
 							float eul[3], size[3], eulo[3], sizeo[3];
 

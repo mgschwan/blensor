@@ -68,6 +68,7 @@
 #include "ED_gpencil.h"
 #include "ED_image.h"
 #include "ED_mask.h"
+#include "ED_render.h"
 #include "ED_screen.h"
 
 #include "UI_interface.h"
@@ -79,26 +80,36 @@
 
 #include "image_intern.h"
 
-static void draw_render_info(Scene *scene, Image *ima, ARegion *ar, float zoomx, float zoomy)
+static void draw_render_info(const bContext *C,
+                             Scene *scene,
+                             Image *ima,
+                             ARegion *ar,
+                             float zoomx,
+                             float zoomy)
 {
 	RenderResult *rr;
 	Render *re = RE_GetRender(scene->id.name);
 	RenderData *rd = RE_engine_get_render_data(re);
+	Scene *stats_scene = ED_render_job_get_scene(C);
+	if (stats_scene == NULL) {
+		stats_scene = CTX_data_scene(C);
+	}
 
-	rr = BKE_image_acquire_renderresult(scene, ima);
+	rr = BKE_image_acquire_renderresult(stats_scene, ima);
 
 	if (rr && rr->text) {
 		float fill_color[4] = {0.0f, 0.0f, 0.0f, 0.25f};
 		ED_region_info_draw(ar, rr->text, 1, fill_color);
 	}
 
-	BKE_image_release_renderresult(scene, ima);
+	BKE_image_release_renderresult(stats_scene, ima);
 
 	if (re) {
 		int total_tiles;
+		bool need_free_tiles;
 		rcti *tiles;
 
-		RE_engine_get_current_tiles(re, &total_tiles, &tiles);
+		tiles = RE_engine_get_current_tiles(re, &total_tiles, &need_free_tiles);
 
 		if (total_tiles) {
 			int i, x, y;
@@ -123,7 +134,9 @@ static void draw_render_info(Scene *scene, Image *ima, ARegion *ar, float zoomx,
 				glaDrawBorderCorners(tile, zoomx, zoomy);
 			}
 
-			MEM_freeN(tiles);
+			if (need_free_tiles) {
+				MEM_freeN(tiles);
+			}
 
 			glPopMatrix();
 		}
@@ -851,11 +864,16 @@ void draw_image_main(const bContext *C, ARegion *ar)
 
 	/* render info */
 	if (ima && show_render)
-		draw_render_info(sima->iuser.scene, ima, ar, zoomx, zoomy);
+		draw_render_info(C, sima->iuser.scene, ima, ar, zoomx, zoomy);
 }
 
-static bool show_image_cache(Image *image, Mask *mask)
+bool ED_space_image_show_cache(SpaceImage *sima)
 {
+	Image *image = ED_space_image(sima);
+	Mask *mask = NULL;
+	if (sima->mode == SI_MODE_MASK) {
+		mask = ED_space_image_get_mask(sima);
+	}
 	if (image == NULL && mask == NULL) {
 		return false;
 	}
@@ -873,12 +891,12 @@ void draw_image_cache(const bContext *C, ARegion *ar)
 	float x, cfra = CFRA, sfra = SFRA, efra = EFRA, framelen = ar->winx / (efra - sfra + 1);
 	Mask *mask = NULL;
 
-	if (sima->mode == SI_MODE_MASK) {
-		mask = ED_space_image_get_mask(sima);
+	if (!ED_space_image_show_cache(sima)) {
+		return;
 	}
 
-	if (!show_image_cache(image, mask)) {
-		return;
+	if (sima->mode == SI_MODE_MASK) {
+		mask = ED_space_image_get_mask(sima);
 	}
 
 	glEnable(GL_BLEND);

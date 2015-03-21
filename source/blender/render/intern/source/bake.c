@@ -54,8 +54,6 @@
 #include "IMB_imbuf.h"
 #include "IMB_colormanagement.h"
 
-#include "RE_bake.h"
-
 /* local include */
 #include "rayintersection.h"
 #include "rayobject.h"
@@ -374,8 +372,8 @@ static void bake_displacement(void *handle, ShadeInput *UNUSED(shi), float dist,
 			bs->vcol->b = col[2];
 		}
 		else {
-			const char *imcol = (char *)(bs->rect + bs->rectx * y + x);
-			copy_v4_v4_char((char *)imcol, (char *)col);
+			char *imcol = (char *)(bs->rect + bs->rectx * y + x);
+			copy_v4_v4_char(imcol, (char *)col);
 		}
 	}
 	if (bs->rect_mask) {
@@ -612,6 +610,10 @@ static int get_next_bake_face(BakeShade *bs)
 
 	for (; obi; obi = obi->next, v = 0) {
 		obr = obi->obr;
+
+		/* only allow non instances here */
+		if (obr->flag & R_INSTANCEABLE)
+			continue;
 
 		for (; v < obr->totvlak; v++) {
 			vlr = RE_findOrAddVlak(obr, v);
@@ -982,8 +984,12 @@ int RE_bake_shade_all_selected(Render *re, int type, Object *actob, short *do_up
 	int a, vdone = false, result = BAKE_RESULT_OK;
 	bool use_mask = false;
 	bool use_displacement_buffer = false;
-	bool do_manage = BKE_scene_check_color_management_enabled(re->scene);
-	
+	bool do_manage = false;
+
+	if (ELEM(type, RE_BAKE_ALL, RE_BAKE_TEXTURE)) {
+		do_manage = BKE_scene_check_color_management_enabled(re->scene);
+	}
+
 	re->scene_color_manage = BKE_scene_check_color_management_enabled(re->scene);
 	
 	/* initialize render global */

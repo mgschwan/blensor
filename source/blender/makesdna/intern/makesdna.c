@@ -73,6 +73,7 @@ static const char *includefiles[] = {
 	"DNA_key_types.h",
 	"DNA_text_types.h",
 	"DNA_packedFile_types.h",
+	"DNA_gpu_types.h",
 	"DNA_camera_types.h",
 	"DNA_image_types.h",
 	"DNA_texture_types.h",
@@ -909,7 +910,7 @@ static void dna_write(FILE *file, const void *pntr, const int size)
 	int i;
 	const char *data;
 
-	data = (char *) pntr;
+	data = (const char *)pntr;
 	
 	for (i = 0; i < size; i++) {
 		fprintf(file, "%d, ", data[i]);

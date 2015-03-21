@@ -51,7 +51,6 @@
 #include "BKE_curve.h"
 #include "BKE_depsgraph.h"
 #include "BKE_font.h"
-#include "BKE_freestyle.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
 #include "BKE_library.h"
@@ -65,17 +64,15 @@
 #include "BKE_world.h"
 #include "BKE_editmesh.h"
 
-#include "IMB_imbuf.h"
-#include "IMB_imbuf_types.h"
 
-#include "GPU_material.h"
 
 #ifdef WITH_FREESTYLE
+#  include "BKE_freestyle.h"
 #  include "FRS_freestyle.h"
+#  include "RNA_enum_types.h"
 #endif
 
 #include "RNA_access.h"
-#include "RNA_enum_types.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -408,7 +405,7 @@ static int new_material_exec(bContext *C, wmOperator *UNUSED(op))
 	}
 
 	/* hook into UI */
-	uiIDContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
@@ -457,7 +454,7 @@ static int new_texture_exec(bContext *C, wmOperator *UNUSED(op))
 	}
 
 	/* hook into UI */
-	uiIDContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
@@ -520,7 +517,7 @@ static int new_world_exec(bContext *C, wmOperator *UNUSED(op))
 	}
 
 	/* hook into UI */
-	uiIDContextProperty(C, &ptr, &prop);
+	UI_context_active_but_prop_get_templateID(C, &ptr, &prop);
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
@@ -558,7 +555,7 @@ static int render_layer_add_exec(bContext *C, wmOperator *UNUSED(op))
 	Scene *scene = CTX_data_scene(C);
 
 	BKE_scene_add_render_layer(scene, NULL);
-	scene->r.actlay = BLI_countlist(&scene->r.layers) - 1;
+	scene->r.actlay = BLI_listbase_count(&scene->r.layers) - 1;
 
 	DAG_id_tag_update(&scene->id, 0);
 	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
@@ -734,10 +731,11 @@ void SCENE_OT_freestyle_module_move(wmOperatorType *ot)
 
 static int freestyle_lineset_add_exec(bContext *C, wmOperator *UNUSED(op))
 {
+	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	SceneRenderLayer *srl = BLI_findlink(&scene->r.layers, scene->r.actlay);
 
-	BKE_freestyle_lineset_add(&srl->freestyleConfig, NULL);
+	BKE_freestyle_lineset_add(bmain, &srl->freestyleConfig, NULL);
 
 	DAG_id_tag_update(&scene->id, 0);
 	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
@@ -896,6 +894,7 @@ void SCENE_OT_freestyle_lineset_move(wmOperatorType *ot)
 
 static int freestyle_linestyle_new_exec(bContext *C, wmOperator *op)
 {
+	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
 	SceneRenderLayer *srl = BLI_findlink(&scene->r.layers, scene->r.actlay);
 	FreestyleLineSet *lineset = BKE_freestyle_lineset_get_active(&srl->freestyleConfig);
@@ -906,10 +905,10 @@ static int freestyle_linestyle_new_exec(bContext *C, wmOperator *op)
 	}
 	if (lineset->linestyle) {
 		lineset->linestyle->id.us--;
-		lineset->linestyle = BKE_linestyle_copy(lineset->linestyle);
+		lineset->linestyle = BKE_linestyle_copy(bmain, lineset->linestyle);
 	}
 	else {
-		lineset->linestyle = BKE_linestyle_new("LineStyle", NULL);
+		lineset->linestyle = BKE_linestyle_new(bmain, "LineStyle");
 	}
 	DAG_id_tag_update(&lineset->linestyle->id, 0);
 	WM_event_add_notifier(C, NC_LINESTYLE, lineset->linestyle);
@@ -1389,11 +1388,15 @@ void TEXTURE_OT_slot_move(wmOperatorType *ot)
 
 static int save_envmap(wmOperator *op, Scene *scene, EnvMap *env, char *path, const char imtype)
 {
+	PropertyRNA *prop;
 	float layout[12];
-	if (RNA_struct_find_property(op->ptr, "layout") )
-		RNA_float_get_array(op->ptr, "layout", layout);
-	else
+
+	if ((prop = RNA_struct_find_property(op->ptr, "layout"))) {
+		RNA_property_float_get_array(op->ptr, prop, layout);
+	}
+	else {
 		memcpy(layout, default_envmap_layout, sizeof(layout));
+	}
 
 	if (RE_WriteEnvmapResult(op->reports, scene, env, path, imtype, layout)) {
 		return OPERATOR_FINISHED;
@@ -1415,7 +1418,7 @@ static int envmap_save_exec(bContext *C, wmOperator *op)
 	RNA_string_get(op->ptr, "filepath", path);
 	
 	if (scene->r.scemode & R_EXTENSION) {
-		BKE_add_image_extension(path, &scene->r.im_format);
+		BKE_image_path_ensure_ext_from_imformat(path, &scene->r.im_format);
 	}
 	
 	WM_cursor_wait(1);
@@ -1481,7 +1484,7 @@ void TEXTURE_OT_envmap_save(wmOperatorType *ot)
 	                           "(use -1 to skip a face)", 0.0f, 0.0f);
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	WM_operator_properties_filesel(ot, FOLDERFILE | IMAGEFILE | MOVIEFILE, FILE_SPECIAL, FILE_SAVE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_IMAGE | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_SAVE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 }
 

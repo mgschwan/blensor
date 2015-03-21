@@ -47,11 +47,8 @@
 
 
 #include "render_types.h"
-#include "initrender.h"
 #include "rendercore.h"
 #include "renderdatabase.h"
-#include "renderpipeline.h"
-#include "pixelblending.h"
 #include "shading.h"
 #include "strand.h"
 #include "zbuf.h"
@@ -145,7 +142,7 @@ void strand_eval_point(StrandSegment *sseg, StrandPoint *spoint)
 	w= spoint->co[2]*strandbuf->winmat[2][3] + strandbuf->winmat[3][3];
 	dx= strandbuf->winx*cross[0]*strandbuf->winmat[0][0]/w;
 	dy= strandbuf->winy*cross[1]*strandbuf->winmat[1][1]/w;
-	w= sqrt(dx*dx + dy*dy);
+	w = sqrtf(dx * dx + dy * dy);
 
 	if (w > 0.0f) {
 		if (strandbuf->flag & R_STRAND_B_UNITS) {

@@ -37,6 +37,7 @@
 #include "BLI_math.h"
 #include "BLI_memarena.h"
 #include "BLI_polyfill2d.h"
+#include "BLI_polyfill2d_beautify.h"
 
 #include "bmesh.h"
 #include "bmesh_tools.h"
@@ -212,9 +213,6 @@ float BM_face_calc_area(BMFace *f)
 
 	if (f->len == 3) {
 		area = area_tri_v3(verts[0], verts[1], verts[2]);
-	}
-	else if (f->len == 4) {
-		area = area_quad_v3(verts[0], verts[1], verts[2], verts[3]);
 	}
 	else {
 		area = area_poly_v3((const float (*)[3])verts, f->len);
@@ -422,6 +420,43 @@ void BM_edge_normals_update(BMEdge *e)
 	BM_vert_normal_update(e->v2);
 }
 
+bool BM_vert_normal_update_ex(BMVert *v, const char hflag, float r_no[3])
+{
+	/* TODO, we can normalize each edge only once, then compare with previous edge */
+
+	BMIter liter;
+	BMLoop *l;
+	int len = 0;
+
+	zero_v3(r_no);
+
+	BM_ITER_ELEM (l, &liter, v, BM_LOOPS_OF_VERT) {
+		if (BM_elem_flag_test(l->f, hflag)) {
+			float vec1[3], vec2[3], fac;
+
+			/* Same calculation used in BM_mesh_normals_update */
+			sub_v3_v3v3(vec1, l->v->co, l->prev->v->co);
+			sub_v3_v3v3(vec2, l->next->v->co, l->v->co);
+			normalize_v3(vec1);
+			normalize_v3(vec2);
+
+			fac = saacos(-dot_v3v3(vec1, vec2));
+
+			madd_v3_v3fl(r_no, l->f->no, fac);
+
+			len++;
+		}
+	}
+
+	if (len) {
+		normalize_v3(r_no);
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
 /**
  * update a vert normal (but not the faces incident on it)
  */
@@ -431,12 +466,13 @@ void BM_vert_normal_update(BMVert *v)
 
 	BMIter liter;
 	BMLoop *l;
-	float vec1[3], vec2[3], fac;
 	int len = 0;
 
 	zero_v3(v->no);
 
 	BM_ITER_ELEM (l, &liter, v, BM_LOOPS_OF_VERT) {
+		float vec1[3], vec2[3], fac;
+
 		/* Same calculation used in BM_mesh_normals_update */
 		sub_v3_v3v3(vec1, l->v->co, l->prev->v->co);
 		sub_v3_v3v3(vec2, l->next->v->co, l->v->co);
@@ -704,20 +740,24 @@ bool BM_face_point_inside_test(BMFace *f, const float co[3])
  *
  * \note use_tag tags new flags and edges.
  */
-void BM_face_triangulate(BMesh *bm, BMFace *f,
-                         BMFace **r_faces_new,
-                         int *r_faces_new_tot,
-                         MemArena *sf_arena,
-                         const int quad_method,
-                         const int ngon_method,
-                         const bool use_tag)
+void BM_face_triangulate(
+        BMesh *bm, BMFace *f,
+        BMFace **r_faces_new,
+        int     *r_faces_new_tot,
+        BMEdge **r_edges_new,
+        int     *r_edges_new_tot,
+        const int quad_method,
+        const int ngon_method,
+        const bool use_tag,
+        MemArena *pf_arena,
+
+        /* use for MOD_TRIANGULATE_NGON_BEAUTY only! */
+        struct Heap *pf_heap, struct EdgeHash *pf_ehash)
 {
 	BMLoop *l_iter, *l_first, *l_new;
 	BMFace *f_new;
-	int orig_f_len = f->len;
 	int nf_i = 0;
-	BMEdge **edge_array;
-	int edge_array_len;
+	int ne_i = 0;
 	bool use_beauty = (ngon_method == MOD_TRIANGULATE_NGON_BEAUTY);
 
 	BLI_assert(BM_face_is_normal_valid(f));
@@ -743,38 +783,39 @@ void BM_face_triangulate(BMesh *bm, BMFace *f,
 				break;
 			}
 			case MOD_TRIANGULATE_QUAD_SHORTEDGE:
-			{
-				BMLoop *l_v3, *l_v4;
-				float d1, d2;
-
-				l_v1 = l_first;
-				l_v2 = l_first->next->next;
-				l_v3 = l_first->next;
-				l_v4 = l_first->prev;
-
-				d1 = len_squared_v3v3(l_v1->v->co, l_v2->v->co);
-				d2 = len_squared_v3v3(l_v3->v->co, l_v4->v->co);
-
-				if (d2 < d1) {
-					l_v1 = l_v3;
-					l_v2 = l_v4;
-				}
-				break;
-			}
 			case MOD_TRIANGULATE_QUAD_BEAUTY:
 			default:
 			{
 				BMLoop *l_v3, *l_v4;
-				float cost;
+				bool split_24;
 
 				l_v1 = l_first->next;
 				l_v2 = l_first->next->next;
 				l_v3 = l_first->prev;
 				l_v4 = l_first;
 
-				cost = BM_verts_calc_rotate_beauty(l_v1->v, l_v2->v, l_v3->v, l_v4->v, 0, 0);
+				if (quad_method == MOD_TRIANGULATE_QUAD_SHORTEDGE) {
+					float d1, d2;
+					d1 = len_squared_v3v3(l_v4->v->co, l_v2->v->co);
+					d2 = len_squared_v3v3(l_v1->v->co, l_v3->v->co);
+					split_24 = ((d2 - d1) > 0.0f);
+				}
+				else {
+					/* first check if the quad is concave on either diagonal */
+					const int flip_flag = is_quad_flip_v3(l_v1->v->co, l_v2->v->co, l_v3->v->co, l_v4->v->co);
+					if (UNLIKELY(flip_flag & (1 << 0))) {
+						split_24 = true;
+					}
+					else if (UNLIKELY(flip_flag & (1 << 1))) {
+						split_24 = false;
+					}
+					else {
+						split_24 = (BM_verts_calc_rotate_beauty(l_v1->v, l_v2->v, l_v3->v, l_v4->v, 0, 0) > 0.0f);
+					}
+				}
 
-				if (cost < 0.0f) {
+				/* named confusingly, l_v1 is in fact the second vertex */
+				if (split_24) {
 					l_v1 = l_v4;
 					//l_v2 = l_v2;
 				}
@@ -797,6 +838,9 @@ void BM_face_triangulate(BMesh *bm, BMFace *f,
 		if (r_faces_new) {
 			r_faces_new[nf_i++] = f_new;
 		}
+		if (r_edges_new) {
+			r_edges_new[ne_i++] = l_new->e;
+		}
 	}
 	else if (f->len > 4) {
 
@@ -816,11 +860,12 @@ void BM_face_triangulate(BMesh *bm, BMFace *f,
 		}
 
 		BLI_polyfill_calc_arena((const float (*)[2])projverts, f->len, -1, tris,
-		                        sf_arena);
+		                        pf_arena);
 
 		if (use_beauty) {
-			edge_array = BLI_array_alloca(edge_array, orig_f_len - 3);
-			edge_array_len = 0;
+			BLI_polyfill_beautify(
+			        (const float (*)[2])projverts, f->len, tris,
+			        pf_arena, pf_heap, pf_ehash);
 		}
 
 		/* loop over calculated triangles and create new geometry */
@@ -856,8 +901,7 @@ void BM_face_triangulate(BMesh *bm, BMFace *f,
 				}
 			}
 
-			/* we know any edge that we create and _isnt_ */
-			if (use_beauty || use_tag) {
+			if (use_tag || r_edges_new) {
 				/* new faces loops */
 				l_iter = l_first = l_new;
 				do {
@@ -867,14 +911,11 @@ void BM_face_triangulate(BMesh *bm, BMFace *f,
 					bool is_new_edge = (l_iter == l_iter->radial_next);
 
 					if (is_new_edge) {
-						if (use_beauty) {
-							edge_array[edge_array_len] = e;
-							edge_array_len++;
-						}
-
 						if (use_tag) {
 							BM_elem_flag_enable(e, BM_ELEM_TAG);
-
+						}
+						if (r_edges_new) {
+							r_edges_new[ne_i++] = e;
 						}
 					}
 					/* note, never disable tag's */
@@ -882,82 +923,21 @@ void BM_face_triangulate(BMesh *bm, BMFace *f,
 			}
 		}
 
-		if ((!use_beauty) || (!r_faces_new)) {
+		{
 			/* we can't delete the real face, because some of the callers expect it to remain valid.
 			 * so swap data and delete the last created tri */
 			bmesh_face_swap_data(f, f_new);
 			BM_face_kill(bm, f_new);
-		}
-
-		if (use_beauty) {
-			BLI_assert(edge_array_len <= orig_f_len - 3);
-
-			BM_mesh_beautify_fill(bm, edge_array, edge_array_len, 0, 0, 0, 0);
-
-			if (r_faces_new) {
-				/* beautify deletes and creates new faces
-				 * we need to re-populate the r_faces_new array
-				 * with the new faces
-				 */
-				int i;
-
-
-#define FACE_USED_TEST(f) (BM_elem_index_get(f) == -2)
-#define FACE_USED_SET(f)   BM_elem_index_set(f,    -2)
-
-				nf_i = 0;
-				for (i = 0; i < edge_array_len; i++) {
-					BMFace *f_a, *f_b;
-					BMEdge *e = edge_array[i];
-#ifndef NDEBUG
-					const bool ok = BM_edge_face_pair(e, &f_a, &f_b);
-					BLI_assert(ok);
-#else
-					BM_edge_face_pair(e, &f_a, &f_b);
-#endif
-
-					if (FACE_USED_TEST(f_a) == false) {
-						FACE_USED_SET(f_a);  /* set_dirty */
-
-						if (nf_i < edge_array_len) {
-							r_faces_new[nf_i++] = f_a;
-						}
-						else {
-							f_new = f_a;
-							break;
-						}
-					}
-
-					if (FACE_USED_TEST(f_b) == false) {
-						FACE_USED_SET(f_b);  /* set_dirty */
-
-						if (nf_i < edge_array_len) {
-							r_faces_new[nf_i++] = f_b;
-						}
-						else {
-							f_new = f_b;
-							break;
-						}
-					}
-				}
-
-#undef FACE_USED_TEST
-#undef FACE_USED_SET
-
-				/* nf_i doesn't include the last face */
-				BLI_assert(nf_i <= orig_f_len - 3);
-
-				/* we can't delete the real face, because some of the callers expect it to remain valid.
-				 * so swap data and delete the last created tri */
-				bmesh_face_swap_data(f, f_new);
-				BM_face_kill(bm, f_new);
-			}
 		}
 	}
 	bm->elem_index_dirty |= BM_FACE;
 
 	if (r_faces_new_tot) {
 		*r_faces_new_tot = nf_i;
+	}
+
+	if (r_edges_new_tot) {
+		*r_edges_new_tot = ne_i;
 	}
 }
 

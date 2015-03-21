@@ -58,14 +58,21 @@ void		wm_window_lower			(wmWindow *win);
 void		wm_window_set_size		(wmWindow *win, int width, int height);
 void		wm_window_get_position	(wmWindow *win, int *posx_r, int *posy_r);
 void		wm_window_swap_buffers	(wmWindow *win);
-void		wm_window_set_swap_interval	(wmWindow *win, int interval);
-int			wm_window_get_swap_interval	(wmWindow *win);
+void		wm_window_set_swap_interval(wmWindow *win, int interval);
+bool		wm_window_get_swap_interval(wmWindow *win, int *intervalOut);
+
+float		wm_window_pixelsize(wmWindow *win);
 
 void		wm_get_cursor_position	(wmWindow *win, int *x, int *y);
 
 wmWindow	*wm_window_copy			(bContext *C, wmWindow *winorig);
 
 void		wm_window_testbreak		(void);
+
+#ifdef WITH_INPUT_IME
+void		wm_window_IME_begin	(wmWindow *win, int x, int y, int w, int h, bool complete);
+void		wm_window_IME_end	(wmWindow *win);
+#endif
 
 /* *************** window operators ************** */
 int			wm_window_duplicate_exec(bContext *C, struct wmOperator *op);

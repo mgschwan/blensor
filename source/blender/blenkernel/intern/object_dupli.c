@@ -969,9 +969,9 @@ static void make_duplis_particle_system(const DupliContext *ctx, ParticleSystem 
 			}
 
 			/* some hair paths might be non-existent so they can't be used for duplication */
-			if (hair &&
-			    ((a < totpart && psys->pathcache[a]->steps < 0) ||
-			     (a >= totpart && psys->childcache[a - totpart]->steps < 0)))
+			if (hair && psys->pathcache &&
+			    ((a < totpart && psys->pathcache[a]->segments < 0) ||
+			     (a >= totpart && psys->childcache[a - totpart]->segments < 0)))
 			{
 				continue;
 			}
@@ -1240,7 +1240,7 @@ int count_duplilist(Object *ob)
 DupliApplyData *duplilist_apply(Object *ob, ListBase *duplilist)
 {
 	DupliApplyData *apply_data = NULL;
-	int num_objects = BLI_countlist(duplilist);
+	int num_objects = BLI_listbase_count(duplilist);
 	
 	if (num_objects > 0) {
 		DupliObject *dob;

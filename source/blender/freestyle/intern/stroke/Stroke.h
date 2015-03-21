@@ -474,6 +474,10 @@ public:
 
 	/* interface definition */
 	/* inherited */
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:StrokeVertex")
+#endif
 };
 
 
@@ -545,6 +549,7 @@ private:
 	MTex *_mtex[MAX_MTEX];
 	bNodeTree *_nodeTree;
 	bool _tips;
+	StrokeRep *_rep;
 	Vec2r _extremityOrientations[2]; // the orientations of the first and last extermity
 
 public:
@@ -862,6 +867,10 @@ public:
 
 	virtual Interface0DIterator pointsBegin(float t = 0.0f);
 	virtual Interface0DIterator pointsEnd(float t = 0.0f);
+
+#ifdef WITH_CXX_GUARDEDALLOC
+	MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:Stroke")
+#endif
 };
 
 

@@ -70,11 +70,11 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
 				return NULL;
 			
 			if (icon && name && name[0] == '\0')
-				but = uiDefIconButR_prop(block, ICONTOG, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconButR_prop(block, UI_BTYPE_ICON_TOGGLE, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else if (icon)
-				but = uiDefIconTextButR_prop(block, ICONTOG, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconTextButR_prop(block, UI_BTYPE_ICON_TOGGLE, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else
-				but = uiDefButR_prop(block, OPTION, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_CHECKBOX, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			break;
 		}
 		case PROP_INT:
@@ -83,30 +83,42 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
 			int arraylen = RNA_property_array_length(ptr, prop);
 
 			if (arraylen && index == -1) {
-				if (ELEM(RNA_property_subtype(prop), PROP_COLOR, PROP_COLOR_GAMMA))
-					but = uiDefButR_prop(block, COLOR, 0, name, x1, y1, x2, y2, ptr, prop, -1, 0, 0, -1, -1, NULL);
+				if (ELEM(RNA_property_subtype(prop), PROP_COLOR, PROP_COLOR_GAMMA)) {
+					but = uiDefButR_prop(block, UI_BTYPE_COLOR, 0, name, x1, y1, x2, y2, ptr, prop, -1, 0, 0, -1, -1, NULL);
+				}
+				else {
+					return NULL;
+				}
 			}
 			else if (RNA_property_subtype(prop) == PROP_PERCENTAGE || RNA_property_subtype(prop) == PROP_FACTOR)
-				but = uiDefButR_prop(block, NUMSLI, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_NUM_SLIDER, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else
-				but = uiDefButR_prop(block, NUM, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_NUM, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+
+			if (RNA_property_flag(prop) & PROP_TEXTEDIT_UPDATE) {
+				UI_but_flag_enable(but, UI_BUT_TEXTEDIT_UPDATE);
+			}
 			break;
 		}
 		case PROP_ENUM:
 			if (icon && name && name[0] == '\0')
-				but = uiDefIconButR_prop(block, MENU, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconButR_prop(block, UI_BTYPE_MENU, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else if (icon)
-				but = uiDefIconTextButR_prop(block, MENU, 0, icon, NULL, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconTextButR_prop(block, UI_BTYPE_MENU, 0, icon, NULL, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else
-				but = uiDefButR_prop(block, MENU, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_MENU, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			break;
 		case PROP_STRING:
 			if (icon && name && name[0] == '\0')
-				but = uiDefIconButR_prop(block, TEX, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconButR_prop(block, UI_BTYPE_TEXT, 0, icon, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else if (icon)
-				but = uiDefIconTextButR_prop(block, TEX, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefIconTextButR_prop(block, UI_BTYPE_TEXT, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			else
-				but = uiDefButR_prop(block, TEX, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+				but = uiDefButR_prop(block, UI_BTYPE_TEXT, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+
+			if (RNA_property_flag(prop) & PROP_TEXTEDIT_UPDATE) {
+				UI_but_flag_enable(but, UI_BUT_TEXTEDIT_UPDATE);
+			}
 			break;
 		case PROP_POINTER:
 		{
@@ -119,15 +131,15 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
 			if (icon == ICON_DOT)
 				icon = 0;
 
-			but = uiDefIconTextButR_prop(block, SEARCH_MENU, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
+			but = uiDefIconTextButR_prop(block, UI_BTYPE_SEARCH_MENU, 0, icon, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 			break;
 		}
 		case PROP_COLLECTION:
 		{
 			char text[256];
 			BLI_snprintf(text, sizeof(text), IFACE_("%d items"), RNA_property_collection_length(ptr, prop));
-			but = uiDefBut(block, LABEL, 0, text, x1, y1, x2, y2, NULL, 0, 0, 0, 0, NULL);
-			uiButSetFlag(but, UI_BUT_DISABLED);
+			but = uiDefBut(block, UI_BTYPE_LABEL, 0, text, x1, y1, x2, y2, NULL, 0, 0, 0, 0, NULL);
+			UI_but_flag_enable(but, UI_BUT_DISABLED);
 			break;
 		}
 		default:
@@ -201,7 +213,7 @@ int uiDefAutoButsRNA(uiLayout *layout, PointerRNA *ptr,
 
 /***************************** ID Utilities *******************************/
 
-int uiIconFromID(ID *id)
+int UI_icon_from_id(ID *id)
 {
 	Object *ob;
 	PointerRNA ptr;
@@ -219,7 +231,7 @@ int uiIconFromID(ID *id)
 		if (ob->type == OB_EMPTY)
 			return ICON_EMPTY_DATA;
 		else
-			return uiIconFromID(ob->data);
+			return UI_icon_from_id(ob->data);
 	}
 
 	/* otherwise get it through RNA, creating the pointer
@@ -230,7 +242,7 @@ int uiIconFromID(ID *id)
 }
 
 /* see: report_type_str */
-int uiIconFromReportType(int type)
+int UI_icon_from_report_type(int type)
 {
 	if (type & RPT_ERROR_ALL)
 		return ICON_ERROR;
@@ -247,7 +259,7 @@ int uiIconFromReportType(int type)
 /**
  * Returns the best "UI" precision for given floating value, so that e.g. 10.000001 rather gets drawn as '10'...
  */
-int uiFloatPrecisionCalc(int prec, double value)
+int UI_calc_float_precision(int prec, double value)
 {
 	static const double pow10_neg[UI_PRECISION_FLOAT_MAX + 1] = {1e0, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7};
 	static const double max_pow = 10000000.0;  /* pow(10, UI_PRECISION_FLOAT_MAX) */
@@ -387,6 +399,27 @@ void UI_butstore_unregister(uiButStore *bs_handle, uiBut **but_p)
 	}
 
 	BLI_assert(0);
+}
+
+/**
+ * Update the pointer for a registered button.
+ */
+bool UI_butstore_register_update(uiBlock *block, uiBut *but_dst, const uiBut *but_src)
+{
+	uiButStore *bs_handle;
+	bool found = false;
+
+	for (bs_handle = block->butstore.first; bs_handle; bs_handle = bs_handle->next) {
+		uiButStoreElem *bs_elem;
+		for (bs_elem = bs_handle->items.first; bs_elem; bs_elem = bs_elem->next) {
+			if (*bs_elem->but_p == but_src) {
+				*bs_elem->but_p = but_dst;
+				found = true;
+			}
+		}
+	}
+
+	return found;
 }
 
 /**

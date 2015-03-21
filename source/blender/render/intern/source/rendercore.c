@@ -50,15 +50,7 @@
 #include "DNA_material_types.h"
 #include "DNA_group_types.h"
 
-#include "BKE_main.h"
-
-#include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
-#include "IMB_colormanagement.h"
-
 /* local include */
-#include "rayintersection.h"
-#include "rayobject.h"
 #include "renderpipeline.h"
 #include "render_result.h"
 #include "render_types.h"
@@ -70,8 +62,6 @@
 #include "shading.h"
 #include "sss.h"
 #include "zbuf.h"
-
-#include "PIL_time.h"
 
 /* own include */
 #include "rendercore.h"
@@ -1906,9 +1896,9 @@ static void renderflare(RenderResult *rr, float *rectf, HaloRen *har)
 		fla.hard= 20.0f + fabsf(70.0f*rc[7]);
 		fla.tex= 0;
 		
-		type= (int)(fabs(3.9f*rc[6]));
+		type= (int)(fabsf(3.9f*rc[6]));
 
-		fla.rad= ma->subsize*sqrtf(fabs(2.0f*har->rad*rc[4]));
+		fla.rad = ma->subsize * sqrtf(fabsf(2.0f * har->rad * rc[4]));
 		
 		if (type==3) {
 			fla.rad*= 3.0f;

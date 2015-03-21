@@ -29,8 +29,10 @@
  *  \ingroup GHOST
  */
 
-
-#include <GL/glxew.h>
+/* For standard X11 cursors */
+#include <X11/cursorfont.h>
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
 
 #include "GHOST_WindowX11.h"
 #include "GHOST_SystemX11.h"
@@ -38,19 +40,24 @@
 #include "GHOST_Debug.h"
 
 #ifdef WITH_XDND
-#include "GHOST_DropTargetX11.h"
+#  include "GHOST_DropTargetX11.h"
 #endif
 
-/* For standard X11 cursors */
-#include <X11/cursorfont.h>
-#include <X11/Xatom.h>
+#if defined(WITH_GL_EGL)
+#  include "GHOST_ContextEGL.h"
+#else
+#  include "GHOST_ContextGLX.h"
+#endif
 
 #if defined(__sun__) || defined(__sun) || defined(__sparc) || defined(__sparc__) || defined(_AIX)
-#include <strings.h>
+#  include <strings.h>
 #endif
 
 #include <cstring>
 #include <cstdio>
+
+/* gethostname */
+#include <unistd.h>
 
 #include <algorithm>
 #include <string>
@@ -65,16 +72,11 @@ typedef struct {
 	long input_mode;
 } MotifWmHints;
 
-// Workaround for MESA bug #54080
-// https://bugs.freedesktop.org/show_bug.cgi?id=54080()
-#define SWAP_INTERVALS_WORKAROUND
-
-#ifdef SWAP_INTERVALS_WORKAROUND
-static bool g_swap_interval_disabled = false;
-#endif  // SWAP_INTERVALS_WORKAROUND
-
 #define MWM_HINTS_DECORATIONS         (1L << 1)
 
+#ifndef HOST_NAME_MAX
+#  define HOST_NAME_MAX 64
+#endif
 
 // #define GHOST_X11_GRAB
 
@@ -156,14 +158,124 @@ static long BLENDER_ICON_48x48x32[] = {
 	4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303, 4671303,
 };
 
+static XVisualInfo *x11_visualinfo_from_glx(
+        Display *display,
+        bool stereoVisual, GHOST_TUns16 *r_numOfAASamples)
+{
+	XVisualInfo *visualInfo = NULL;
+	GHOST_TUns16 numOfAASamples = *r_numOfAASamples;
+	/* Set up the minimum attributes that we require and see if
+	 * X can find us a visual matching those requirements. */
 
-GLXContext GHOST_WindowX11::s_firstContext = NULL;
+	std::vector<int> attribs;
+	attribs.reserve(40);
+
+	int glx_major, glx_minor; /* GLX version: major.minor */
+
+	if (!glXQueryVersion(display, &glx_major, &glx_minor)) {
+		fprintf(stderr,
+		        "%s:%d: X11 glXQueryVersion() failed, "
+		        "verify working openGL system!\n",
+		        __FILE__, __LINE__);
+
+		return NULL;
+	}
+
+#ifdef GHOST_OPENGL_ALPHA
+	const bool needAlpha = true;
+#else
+	const bool needAlpha = false;
+#endif
+
+#ifdef GHOST_OPENGL_STENCIL
+	const bool needStencil = true;
+#else
+	const bool needStencil = false;
+#endif
+
+	/* Find the display with highest samples, starting at level requested */
+	GHOST_TUns16 actualSamples = numOfAASamples;
+	for (;;) {
+		attribs.clear();
+
+		if (stereoVisual)
+			attribs.push_back(GLX_STEREO);
+
+		attribs.push_back(GLX_RGBA);
+
+		attribs.push_back(GLX_DOUBLEBUFFER);
+
+		attribs.push_back(GLX_RED_SIZE);
+		attribs.push_back(1);
+
+		attribs.push_back(GLX_BLUE_SIZE);
+		attribs.push_back(1);
+
+		attribs.push_back(GLX_GREEN_SIZE);
+		attribs.push_back(1);
+
+		attribs.push_back(GLX_DEPTH_SIZE);
+		attribs.push_back(1);
+
+		if (needAlpha) {
+			attribs.push_back(GLX_ALPHA_SIZE);
+			attribs.push_back(1);
+		}
+
+		if (needStencil) {
+			attribs.push_back(GLX_STENCIL_SIZE);
+			attribs.push_back(1);
+		}
+
+		/* GLX >= 1.4 required for multi-sample */
+		if (actualSamples > 0 && ((glx_major > 1) || (glx_major == 1 && glx_minor >= 4))) {
+			attribs.push_back(GLX_SAMPLE_BUFFERS);
+			attribs.push_back(1);
+
+			attribs.push_back(GLX_SAMPLES);
+			attribs.push_back(actualSamples);
+		}
+
+		attribs.push_back(None);
+
+		visualInfo = glXChooseVisual(display, DefaultScreen(display), &attribs[0]);
+
+		/* Any sample level or even zero, which means oversampling disabled, is good
+		 * but we need a valid visual to continue */
+		if (visualInfo != NULL) {
+			if (actualSamples < numOfAASamples) {
+				fprintf(stderr,
+				        "Warning! Unable to find a multisample pixel format that supports exactly %d samples. "
+				        "Substituting one that uses %d samples.\n",
+				        numOfAASamples, actualSamples);
+			}
+			break;
+		}
+
+		if (actualSamples == 0) {
+			/* All options exhausted, cannot continue */
+			fprintf(stderr,
+			        "%s:%d: X11 glXChooseVisual() failed, "
+			        "verify working openGL system!\n",
+			        __FILE__, __LINE__);
+
+			return NULL;
+		}
+		else {
+			--actualSamples;
+		}
+	}
+
+	*r_numOfAASamples = actualSamples;
+
+	return visualInfo;
+}
 
 GHOST_WindowX11::
 GHOST_WindowX11(
         GHOST_SystemX11 *system,
         Display *display,
-        const STR_String& title,
+        const STR_String &title,
         GHOST_TInt32 left,
         GHOST_TInt32 top,
         GHOST_TUns32 width,
@@ -174,9 +286,9 @@ GHOST_WindowX11(
         const bool stereoVisual,
         const bool exclusive,
         const GHOST_TUns16 numOfAASamples)
-    : GHOST_Window(width, height, state, type, stereoVisual, exclusive, numOfAASamples),
-      m_context(NULL),
+    : GHOST_Window(width, height, state, stereoVisual, exclusive, numOfAASamples),
       m_display(display),
+      m_visualInfo(NULL),
       m_normal_state(GHOST_kWindowStateNormal),
       m_system(system),
       m_valid_setup(false),
@@ -185,97 +297,32 @@ GHOST_WindowX11(
       m_custom_cursor(None),
       m_visible_cursor(None)
 {
-	
-	/* Set up the minimum attributes that we require and see if
-	 * X can find us a visual matching those requirements. */
-
-	int attributes[40], i, samples;
-	int natom;
-	int glxVersionMajor, glxVersionMinor; /* As in GLX major.minor */
-
-	m_visual = NULL;
-
-	if (!glXQueryVersion(m_display, &glxVersionMajor, &glxVersionMinor)) {
-		printf("%s:%d: X11 glXQueryVersion() failed, verify working openGL system!\n", __FILE__, __LINE__);
-		
-		/* exit if this is the first window */
-		if (s_firstContext == NULL) {
-			printf("initial window could not find the GLX extension, exit!\n");
-			exit(1);
-		}
-
-		return;
+	if (type == GHOST_kDrawingContextTypeOpenGL) {
+		m_visualInfo = x11_visualinfo_from_glx(m_display, stereoVisual, &m_wantNumOfAASamples);
+	}
+	else {
+		XVisualInfo tmp = {0};
+		int n;
+		m_visualInfo = XGetVisualInfo(m_display, 0, &tmp, &n);
 	}
 
-	/* Find the display with highest samples, starting at level requested */
-	for (samples = m_numOfAASamples; samples >= 0; samples--) {
-		i = 0; /* Reusing attributes array, so reset counter */
-
-		if (m_stereoVisual)
-			attributes[i++] = GLX_STEREO;
-
-		attributes[i++] = GLX_RGBA;
-		attributes[i++] = GLX_DOUBLEBUFFER;
-		attributes[i++] = GLX_RED_SIZE;   attributes[i++] = 1;
-		attributes[i++] = GLX_BLUE_SIZE;  attributes[i++] = 1;
-		attributes[i++] = GLX_GREEN_SIZE; attributes[i++] = 1;
-		attributes[i++] = GLX_DEPTH_SIZE; attributes[i++] = 1;
-#ifdef GHOST_OPENGL_ALPHA
-		attributes[i++] = GLX_ALPHA_SIZE; attributes[i++] = 1;
-#endif
-		/* GLX >= 1.4 required for multi-sample */
-		if (samples && (glxVersionMajor >= 1) && (glxVersionMinor >= 4)) {
-			attributes[i++] = GLX_SAMPLE_BUFFERS; attributes[i++] = 1;
-			attributes[i++] = GLX_SAMPLES; attributes[i++] = samples;
-		}
-		attributes[i] = None;
-
-		m_visual = glXChooseVisual(m_display, DefaultScreen(m_display), attributes);
-
-		/* Any sample level or even zero, which means oversampling disabled, is good
-		 * but we need a valid visual to continue */
-		if (m_visual == NULL) {
-			if (samples == 0) {
-				/* All options exhausted, cannot continue */
-				printf("%s:%d: X11 glXChooseVisual() failed, verify working openGL system!\n", __FILE__, __LINE__);
-				
-				if (s_firstContext == NULL) {
-					printf("initial window could not find the GLX extension, exit!\n");
-					exit(1);
-				}
-				
-				return;
-			}
-		}
-		else {
-			if (m_numOfAASamples && (m_numOfAASamples > samples)) {
-				printf("%s:%d: oversampling requested %i but using %i samples\n",
-				       __FILE__, __LINE__, m_numOfAASamples, samples);
-			}
-			break;
-		}
+	/* exit if this is the first window */
+	if (m_visualInfo == NULL) {
+		fprintf(stderr, "initial window could not find the GLX extension, exit!\n");
+		exit(EXIT_FAILURE);
 	}
 
-	/* Create a bunch of attributes needed to create an X window. */
-
-
-	/* First create a colormap for the window and visual.
-	 * This seems pretty much a legacy feature as we are in rgba mode anyway. */
+	unsigned int xattributes_valuemask = 0;
 
 	XSetWindowAttributes xattributes;
-	unsigned int xattributes_valuemask = (CWBorderPixel | CWColormap | CWEventMask);
 	memset(&xattributes, 0, sizeof(xattributes));
 
-	xattributes.colormap = XCreateColormap(m_display,
-	                                       RootWindow(m_display, m_visual->screen),
-	                                       m_visual->visual,
-	                                       AllocNone
-	                                       );
-
+	xattributes_valuemask |= CWBorderPixel;
 	xattributes.border_pixel = 0;
 
 	/* Specify which events we are interested in hearing. */
 
+	xattributes_valuemask |= CWEventMask;
 	xattributes.event_mask =
 	        ExposureMask | StructureNotifyMask |
 	        KeyPressMask | KeyReleaseMask |
@@ -289,24 +336,28 @@ GHOST_WindowX11(
 		xattributes.override_redirect = True;
 	}
 
+	xattributes_valuemask |= CWColormap;
+	xattributes.colormap = XCreateColormap(
+	        m_display,
+	        RootWindow(m_display, m_visualInfo->screen),
+	        m_visualInfo->visual,
+	        AllocNone
+	        );
+
 	/* create the window! */
 	if (parentWindow == 0) {
-		m_window =  XCreateWindow(m_display,
-		                          RootWindow(m_display, m_visual->screen),
-		                          left,
-		                          top,
-		                          width,
-		                          height,
-		                          0,  /* no border. */
-		                          m_visual->depth,
-		                          InputOutput,
-		                          m_visual->visual,
-		                          xattributes_valuemask,
-		                          &xattributes
-		                          );
+		m_window =  XCreateWindow(
+		        m_display,
+		        RootWindow(m_display, m_visualInfo->screen),
+		        left, top, width, height,
+		        0, /* no border. */
+		        m_visualInfo->depth,
+		        InputOutput,
+		        m_visualInfo->visual,
+		        xattributes_valuemask,
+		        &xattributes);
 	}
 	else {
-
 		Window root_return;
 		int x_return, y_return;
 		unsigned int w_return, h_return, border_w_return, depth_return;
@@ -320,19 +371,16 @@ GHOST_WindowX11(
 		height = h_return;
 
 
-		m_window = XCreateWindow(m_display,
-		                         parentWindow,  /* reparent against embedder */
-		                         left,
-		                         top,
-		                         width,
-		                         height,
-		                         0,     /* no border. */
-		                         m_visual->depth,
-		                         InputOutput,
-		                         m_visual->visual,
-		                         xattributes_valuemask,
-		                         &xattributes
-		                         );
+		m_window = XCreateWindow(
+		        m_display,
+		        parentWindow, /* reparent against embedder */
+		        left, top, width, height,
+		        0, /* no border. */
+		        m_visualInfo->depth,
+		        InputOutput,
+		        m_visualInfo->visual,
+		        xattributes_valuemask,
+		        &xattributes);
 
 		XSelectInput(m_display, parentWindow, SubstructureNotifyMask);
 		
@@ -384,36 +432,43 @@ GHOST_WindowX11(
 		m_post_state = GHOST_kWindowStateNormal;
 	}
 
+
 	/* Create some hints for the window manager on how
 	 * we want this window treated. */
+	{
+		XSizeHints *xsizehints = XAllocSizeHints();
+		xsizehints->flags = PPosition | PSize | PMinSize | PMaxSize;
+		xsizehints->x = left;
+		xsizehints->y = top;
+		xsizehints->width = width;
+		xsizehints->height = height;
+		xsizehints->min_width = 320;     /* size hints, could be made apart of the ghost api */
+		xsizehints->min_height = 240;    /* limits are also arbitrary, but should not allow 1x1 window */
+		xsizehints->max_width = 65535;
+		xsizehints->max_height = 65535;
+		XSetWMNormalHints(m_display, m_window, xsizehints);
+		XFree(xsizehints);
+	}
 
-	XSizeHints *xsizehints = XAllocSizeHints();
-	xsizehints->flags = PPosition | PSize | PMinSize | PMaxSize;
-	xsizehints->x = left;
-	xsizehints->y = top;
-	xsizehints->width = width;
-	xsizehints->height = height;
-	xsizehints->min_width = 320;     /* size hints, could be made apart of the ghost api */
-	xsizehints->min_height = 240;    /* limits are also arbitrary, but should not allow 1x1 window */
-	xsizehints->max_width = 65535;
-	xsizehints->max_height = 65535;
-	XSetWMNormalHints(m_display, m_window, xsizehints);
-	XFree(xsizehints);
 
-	XClassHint *xclasshint = XAllocClassHint();
-	const int len = title.Length() + 1;
-	char *wmclass = (char *)malloc(sizeof(char) * len);
-	strncpy(wmclass, (const char *)title, sizeof(char) * len);
-	xclasshint->res_name = wmclass;
-	xclasshint->res_class = wmclass;
-	XSetClassHint(m_display, m_window, xclasshint);
-	free(wmclass);
-	XFree(xclasshint);
+	/* XClassHint, title */
+	{
+		XClassHint *xclasshint = XAllocClassHint();
+		const int len = title.Length() + 1;
+		char *wmclass = (char *)malloc(sizeof(char) * len);
+		memcpy(wmclass, title.ReadPtr(), len * sizeof(char));
+		xclasshint->res_name = wmclass;
+		xclasshint->res_class = wmclass;
+		XSetClassHint(m_display, m_window, xclasshint);
+		free(wmclass);
+		XFree(xclasshint);
+	}
+
 
 	/* The basic for a good ICCCM "work" */
 	if (m_system->m_atom.WM_PROTOCOLS) {
 		Atom atoms[2];
-		natom = 0;
+		int natom = 0;
 
 		if (m_system->m_atom.WM_DELETE_WINDOW) {
 			atoms[natom] = m_system->m_atom.WM_DELETE_WINDOW;
@@ -435,23 +490,49 @@ GHOST_WindowX11(
 	m_xic = NULL;
 #endif
 
+
 	/* Set the window hints */
-	XWMHints *xwmhints = XAllocWMHints();
-	xwmhints->initial_state = NormalState;
-	xwmhints->input = True;
-	xwmhints->flags = InputHint | StateHint;
-	XSetWMHints(display, m_window, xwmhints);
-	XFree(xwmhints);
-	/* done setting the hints */
+	{
+		XWMHints *xwmhints = XAllocWMHints();
+		xwmhints->initial_state = NormalState;
+		xwmhints->input = True;
+		xwmhints->flags = InputHint | StateHint;
+		XSetWMHints(display, m_window, xwmhints);
+		XFree(xwmhints);
+	}
+
 
 	/* set the icon */
-	Atom _NET_WM_ICON     = XInternAtom(m_display, "_NET_WM_ICON", False);
-	XChangeProperty(m_display, m_window, _NET_WM_ICON, XA_CARDINAL,
-	                32, PropModeReplace, (unsigned char *)BLENDER_ICON_48x48x32,
-	                BLENDER_ICON_48x48x32[0] * BLENDER_ICON_48x48x32[1] + 2);
-	/* done setting the icon */
+	{
+		Atom _NET_WM_ICON     = XInternAtom(m_display, "_NET_WM_ICON", False);
+		XChangeProperty(m_display, m_window, _NET_WM_ICON, XA_CARDINAL,
+		                32, PropModeReplace, (unsigned char *)BLENDER_ICON_48x48x32,
+		                BLENDER_ICON_48x48x32[0] * BLENDER_ICON_48x48x32[1] + 2);
+	}
 
-	setTitle(title);
+	/* set the process ID (_NET_WM_PID) */
+	{
+		Atom _NET_WM_PID = XInternAtom(m_display, "_NET_WM_PID", False);
+		pid_t pid = getpid();
+		XChangeProperty(m_display, m_window, _NET_WM_PID, XA_CARDINAL,
+		                32, PropModeReplace, (unsigned char *)&pid, 1);
+	}
+
+
+	/* set the hostname (WM_CLIENT_MACHINE) */
+	{
+		char  hostname[HOST_NAME_MAX];
+		char *text_array[1];
+		XTextProperty text_prop;
+
+		gethostname(hostname, sizeof(hostname));
+		hostname[sizeof(hostname) - 1] = '\0';
+		text_array[0] = hostname;
+
+		XStringListToTextProperty(text_array, 1, &text_prop);
+		XSetWMClientMachine(m_display, m_window, &text_prop);
+		XFree(text_prop.value);
+	}
 
 #ifdef WITH_X11_XINPUT
 	initXInputDevices();
@@ -459,11 +540,14 @@ GHOST_WindowX11(
 	m_tabletData.Active = GHOST_kTabletModeNone;
 #endif
 
+
 	/* now set up the rendering context. */
-	if (installDrawingContext(type) == GHOST_kSuccess) {
+	if (setDrawingContextType(type) == GHOST_kSuccess) {
 		m_valid_setup = true;
 		GHOST_PRINT("Created window\n");
 	}
+
+	setTitle(title);
 
 	if (exclusive) {
 		XMapRaised(m_display, m_window);
@@ -525,11 +609,18 @@ void GHOST_WindowX11::initXInputDevices()
 	if (version && (version != (XExtensionVersion *)NoSuchExtension)) {
 		if (version->present) {
 			GHOST_SystemX11::GHOST_TabletX11 &xtablet = m_system->GetXTablet();
-			XEventClass xevents[10], ev;
+			XEventClass xevents[8], ev;
 			int dcount = 0;
+
+			/* With modern XInput (xlib 1.6.2 at least and/or evdev 2.9.0) and some 'no-name' tablets
+			 * like 'UC-LOGIC Tablet WP5540U', we also need to 'select' ButtonPress for motion event,
+			 * otherwise we do not get any tablet motion event once pen is pressed... See T43367.
+			 */
 
 			if (xtablet.StylusDevice) {
 				DeviceMotionNotify(xtablet.StylusDevice, xtablet.MotionEvent, ev);
+				if (ev) xevents[dcount++] = ev;
+				DeviceButtonPress(xtablet.StylusDevice, xtablet.PressEvent, ev);
 				if (ev) xevents[dcount++] = ev;
 				ProximityIn(xtablet.StylusDevice, xtablet.ProxInEvent, ev);
 				if (ev) xevents[dcount++] = ev;
@@ -537,11 +628,13 @@ void GHOST_WindowX11::initXInputDevices()
 				if (ev) xevents[dcount++] = ev;
 			}
 			if (xtablet.EraserDevice) {
-				DeviceMotionNotify(xtablet.EraserDevice, xtablet.MotionEvent, ev);
+				DeviceMotionNotify(xtablet.EraserDevice, xtablet.MotionEventEraser, ev);
 				if (ev) xevents[dcount++] = ev;
-				ProximityIn(xtablet.EraserDevice, xtablet.ProxInEvent, ev);
+				DeviceButtonPress(xtablet.EraserDevice, xtablet.PressEventEraser, ev);
 				if (ev) xevents[dcount++] = ev;
-				ProximityOut(xtablet.EraserDevice, xtablet.ProxOutEvent, ev);
+				ProximityIn(xtablet.EraserDevice, xtablet.ProxInEventEraser, ev);
+				if (ev) xevents[dcount++] = ev;
+				ProximityOut(xtablet.EraserDevice, xtablet.ProxOutEventEraser, ev);
 				if (ev) xevents[dcount++] = ev;
 			}
 
@@ -564,7 +657,7 @@ bool
 GHOST_WindowX11::
 getValid() const
 {
-	return m_valid_setup;
+	return GHOST_Window::getValid() && m_valid_setup;
 }
 
 void
@@ -685,7 +778,7 @@ screenToClient(
 	Window temp;
 
 	XTranslateCoordinates(m_display,
-	                      RootWindow(m_display, m_visual->screen),
+	                      RootWindow(m_display, m_visualInfo->screen),
 	                      m_window,
 	                      inX, inY,
 	                      &ax, &ay,
@@ -708,7 +801,7 @@ clientToScreen(
 	XTranslateCoordinates(
 	    m_display,
 	    m_window,
-	    RootWindow(m_display, m_visual->screen),
+	    RootWindow(m_display, m_visualInfo->screen),
 	    inX, inY,
 	    &ax, &ay,
 	    &temp);
@@ -731,7 +824,7 @@ void GHOST_WindowX11::icccmSetState(int state)
 	xev.xclient.format = 32;
 	xev.xclient.message_type = m_system->m_atom.WM_CHANGE_STATE;
 	xev.xclient.data.l[0] = state;
-	XSendEvent(m_display, RootWindow(m_display, DefaultScreen(m_display)),
+	XSendEvent(m_display, RootWindow(m_display, m_visualInfo->screen),
 	           False, SubstructureNotifyMask | SubstructureRedirectMask, &xev);
 }
 
@@ -777,7 +870,7 @@ void GHOST_WindowX11::netwmMaximized(bool set)
 	xev.xclient.data.l[2] = m_system->m_atom._NET_WM_STATE_MAXIMIZED_VERT;
 	xev.xclient.data.l[3] = 0;
 	xev.xclient.data.l[4] = 0;
-	XSendEvent(m_display, RootWindow(m_display, DefaultScreen(m_display)),
+	XSendEvent(m_display, RootWindow(m_display, m_visualInfo->screen),
 	           False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
 }
 
@@ -833,7 +926,7 @@ void GHOST_WindowX11::netwmFullScreen(bool set)
 	xev.xclient.data.l[2] = 0;
 	xev.xclient.data.l[3] = 0;
 	xev.xclient.data.l[4] = 0;
-	XSendEvent(m_display, RootWindow(m_display, DefaultScreen(m_display)),
+	XSendEvent(m_display, RootWindow(m_display, m_visualInfo->screen),
 	           False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
 }
 
@@ -1052,7 +1145,7 @@ setOrder(
 			xev.xclient.data.l[3] = 0;
 			xev.xclient.data.l[4] = 0;
 
-			root = RootWindow(m_display, m_visual->screen),
+			root = RootWindow(m_display, m_visualInfo->screen),
 			eventmask = SubstructureRedirectMask | SubstructureNotifyMask;
 
 			XSendEvent(m_display, root, False, eventmask, &xev);
@@ -1075,34 +1168,6 @@ setOrder(
 	}
 	
 	return GHOST_kSuccess;
-}
-
-GHOST_TSuccess
-GHOST_WindowX11::
-swapBuffers()
-{
-	if (getDrawingContextType() == GHOST_kDrawingContextTypeOpenGL) {
-		glXSwapBuffers(m_display, m_window);
-		return GHOST_kSuccess;
-	}
-	else {
-		return GHOST_kFailure;
-	}
-}
-
-GHOST_TSuccess
-GHOST_WindowX11::
-activateDrawingContext()
-{
-	if (m_context != NULL) {
-		glXMakeCurrent(m_display, m_window, m_context);
-		/* Disable AA by default */
-		if (m_numOfAASamples > 0) {
-			glDisable(GL_MULTISAMPLE_ARB);
-		}
-		return GHOST_kSuccess;
-	} 
-	return GHOST_kFailure;
 }
 
 GHOST_TSuccess
@@ -1172,10 +1237,6 @@ GHOST_WindowX11::
 		XFreeCursor(m_display, m_custom_cursor);
 	}
 
-	if (m_context != s_firstContext) {
-		glXDestroyContext(m_display, m_context);
-	}
-	
 	if (p_owner == m_window) {
 		XSetSelectionOwner(m_display, Primary_atom, None, CurrentTime);
 	}
@@ -1183,6 +1244,10 @@ GHOST_WindowX11::
 		XSetSelectionOwner(m_display, Clipboard_atom, None, CurrentTime);
 	}
 	
+	if (m_visualInfo) {
+		XFree(m_visualInfo);
+	}
+
 #if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)
 	if (m_xic) {
 		XDestroyIC(m_xic);
@@ -1193,88 +1258,101 @@ GHOST_WindowX11::
 	delete m_dropTarget;
 #endif
 
+	releaseNativeHandles();
+
 	XDestroyWindow(m_display, m_window);
-	XFree(m_visual);
 }
 
 
-
-
-/**
- * Tries to install a rendering context in this window.
- * \param type	The type of rendering context installed.
- * \return Indication as to whether installation has succeeded.
- */
-GHOST_TSuccess
-GHOST_WindowX11::
-installDrawingContext(
-		GHOST_TDrawingContextType type)
+GHOST_Context *GHOST_WindowX11::newDrawingContext(GHOST_TDrawingContextType type)
 {
-	/* only support openGL for now. */
-	GHOST_TSuccess success;
-	switch (type) {
-		case GHOST_kDrawingContextTypeOpenGL:
-		{
-#ifdef WITH_X11_XINPUT
-			/* use our own event handlers to avoid exiting blender,
-			 * this would happen for eg:
-			 * if you open blender, unplug a tablet, then open a new window. */
-			XErrorHandler old_handler      = XSetErrorHandler(GHOST_X11_ApplicationErrorHandler);
-			XIOErrorHandler old_handler_io = XSetIOErrorHandler(GHOST_X11_ApplicationIOErrorHandler);
+	if (type == GHOST_kDrawingContextTypeOpenGL) {
+#if !defined(WITH_GL_EGL)
+
+#if defined(WITH_GL_PROFILE_CORE)
+		GHOST_Context *context = new GHOST_ContextGLX(
+		        m_wantStereoVisual,
+		        m_wantNumOfAASamples,
+		        m_window,
+		        m_display,
+		        m_visualInfo,
+		        GLX_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+		        3, 2,
+		        GHOST_OPENGL_GLX_CONTEXT_FLAGS,
+		        GHOST_OPENGL_GLX_RESET_NOTIFICATION_STRATEGY);
+#elif defined(WITH_GL_PROFILE_ES20)
+		GHOST_Context *context = new GHOST_ContextGLX(
+		        m_wantStereoVisual,
+		        m_wantNumOfAASamples,
+		        m_window,
+		        m_display,
+		        m_visualInfo,
+		        GLX_CONTEXT_ES2_PROFILE_BIT_EXT,
+		        2, 0,
+		        GHOST_OPENGL_GLX_CONTEXT_FLAGS,
+		        GHOST_OPENGL_GLX_RESET_NOTIFICATION_STRATEGY);
+#elif defined(WITH_GL_PROFILE_COMPAT)
+		GHOST_Context *context = new GHOST_ContextGLX(
+		        m_wantStereoVisual,
+		        m_wantNumOfAASamples,
+		        m_window,
+		        m_display,
+		        m_visualInfo,
+		        0, // profile bit
+		        0, 0,
+		        GHOST_OPENGL_GLX_CONTEXT_FLAGS,
+		        GHOST_OPENGL_GLX_RESET_NOTIFICATION_STRATEGY);
+#else
+#  error
 #endif
 
-			m_context = glXCreateContext(m_display, m_visual, s_firstContext, True);
-			if (m_context != NULL) {
-				if (!s_firstContext) {
-					s_firstContext = m_context;
-				}
-				glXMakeCurrent(m_display, m_window, m_context);
-				glClearColor(0.447, 0.447, 0.447, 0);
-				glClear(GL_COLOR_BUFFER_BIT);
-				success = GHOST_kSuccess;
-			}
-			else {
-				success = GHOST_kFailure;
-			}
+#else
 
-#ifdef WITH_X11_XINPUT
-			/* Restore handler */
-			(void) XSetErrorHandler(old_handler);
-			(void) XSetIOErrorHandler(old_handler_io);
+#if defined(WITH_GL_PROFILE_CORE)
+		GHOST_Context *context = new GHOST_ContextEGL(
+		        m_wantStereoVisual,
+		        m_wantNumOfAASamples,
+		        m_window,
+		        m_display,
+		        EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+		        3, 2,
+		        GHOST_OPENGL_EGL_CONTEXT_FLAGS,
+		        GHOST_OPENGL_EGL_RESET_NOTIFICATION_STRATEGY,
+		        EGL_OPENGL_API);
+#elif defined(WITH_GL_PROFILE_ES20)
+		GHOST_Context *context = new GHOST_ContextEGL(
+		        m_wantStereoVisual,
+		        m_wantNumOfAASamples,
+		        m_window,
+		        m_display,
+		        0, // profile bit
+		        2, 0,
+		        GHOST_OPENGL_EGL_CONTEXT_FLAGS,
+		        GHOST_OPENGL_EGL_RESET_NOTIFICATION_STRATEGY,
+		        EGL_OPENGL_ES_API);
+#elif defined(WITH_GL_PROFILE_COMPAT)
+		GHOST_Context *context = new GHOST_ContextEGL(
+		        m_wantStereoVisual,
+		        m_wantNumOfAASamples,
+		        m_window,
+		        m_display,
+		        0, // profile bit
+		        0, 0,
+		        GHOST_OPENGL_EGL_CONTEXT_FLAGS,
+		        GHOST_OPENGL_EGL_RESET_NOTIFICATION_STRATEGY,
+		        EGL_OPENGL_API);
+#else
+#  error
 #endif
-			break;
-		}
-		case GHOST_kDrawingContextTypeNone:
-		{
-			success = GHOST_kSuccess;
-			break;
-		}
-		default:
-			success = GHOST_kFailure;
+
+#endif
+		if (context->initializeDrawingContext())
+			return context;
+		else
+			delete context;
 	}
-	return success;
-}
 
-
-
-/**
- * Removes the current drawing context.
- * \return Indication as to whether removal has succeeded.
- */
-GHOST_TSuccess
-GHOST_WindowX11::
-removeDrawingContext()
-{
-	GHOST_TSuccess success;
-
-	if (m_context != NULL) {
-		glXDestroyContext(m_display, m_context);
-		success = GHOST_kSuccess;
-	}
-	else {
-		success = GHOST_kFailure;
-	}
-	return success;	
+	return NULL;
 }
 
 
@@ -1336,13 +1414,13 @@ getEmptyCursor(
         ) {
 	if (!m_empty_cursor) {
 		Pixmap blank;
-		XColor dummy;
+		XColor dummy = {0};
 		char data[1] = {0};
 			
 		/* make a blank cursor */
 		blank = XCreateBitmapFromData(
 		    m_display,
-		    RootWindow(m_display, DefaultScreen(m_display)),
+		    RootWindow(m_display, m_visualInfo->screen),
 		    data, 1, 1
 		    );
 
@@ -1461,7 +1539,7 @@ setWindowCustomCursorShape(
 		int fg_color,
 		int bg_color)
 {
-	Colormap colormap = DefaultColormap(m_display, DefaultScreen(m_display));
+	Colormap colormap = DefaultColormap(m_display, m_visualInfo->screen);
 	Pixmap bitmap_pix, mask_pix;
 	XColor fg, bg;
 	
@@ -1529,73 +1607,4 @@ endFullScreen() const
 	XUngrabPointer(m_display, CurrentTime);
 
 	return GHOST_kSuccess;
-}
-
-GHOST_TSuccess
-GHOST_WindowX11::
-setSwapInterval(int interval) {
-	if (!GLX_EXT_swap_control || !glXSwapIntervalEXT
-#ifdef SWAP_INTERVALS_WORKAROUND
-	    || g_swap_interval_disabled
-#endif  // SWAP_INTERVALS_WORKAROUND
-	    )
-	{
-		return GHOST_kFailure;
-	}
-	glXSwapIntervalEXT(m_display, m_window, interval);
-	return GHOST_kSuccess;
-}
-
-#ifdef SWAP_INTERVALS_WORKAROUND
-static int QueryDrawable_ApplicationErrorHandler(Display *display, XErrorEvent *theEvent)
-{
-	fprintf(stderr, "Ignoring Xlib error: error code %d request code %d\n",
-	        theEvent->error_code, theEvent->request_code);
-	if (!g_swap_interval_disabled) {
-		fprintf(stderr, "Disabling SWAP INTERVALS extension\n");
-		g_swap_interval_disabled = true;
-	}
-	return 0;
-}
-
-static int QueryDrawable_ApplicationIOErrorHandler(Display *display)
-{
-	fprintf(stderr, "Ignoring Xlib error: error IO\n");
-	if (!g_swap_interval_disabled) {
-		fprintf(stderr, "Disabling SWAP INTERVALS extension\n");
-		g_swap_interval_disabled = true;
-	}
-	return 0;
-}
-#endif  // SWAP_INTERVALS_WORKAROUND
-
-int
-GHOST_WindowX11::
-getSwapInterval() {
-	if (GLX_EXT_swap_control) {
-#ifdef SWAP_INTERVALS_WORKAROUND
-		/* XXX: Current MESA driver will give GLXBadDrawable for all
-		 *      the glXQueryDrawable requests with direct contexts.
-		 *
-		 *      To prevent crashes and unexpected behaviors, we will
-		 *      disable swap intervals extension if query fails here.
-		 *      (because if we will override interval without having
-		 *      old value we couldn't restore it properly).
-		 */
-		XErrorHandler old_handler      = XSetErrorHandler(QueryDrawable_ApplicationErrorHandler);
-		XIOErrorHandler old_handler_io = XSetIOErrorHandler(QueryDrawable_ApplicationIOErrorHandler);
-#endif  // SWAP_INTERVALS_WORKAROUND
-
-		unsigned int value = 0;
-		glXQueryDrawable(m_display, m_window, GLX_SWAP_INTERVAL_EXT, &value);
-
-#ifdef SWAP_INTERVALS_WORKAROUND
-		/* Restore handler */
-		(void) XSetErrorHandler(old_handler);
-		(void) XSetIOErrorHandler(old_handler_io);
-#endif  // SWAP_INTERVALS_WORKAROUND
-
-		return (int)value;
-	}
-	return 0;
 }

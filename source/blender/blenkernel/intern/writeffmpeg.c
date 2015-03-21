@@ -57,7 +57,6 @@
 #include "BKE_sound.h"
 #include "BKE_writeffmpeg.h"
 
-#include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 
 #include "ffmpeg_compat.h"
@@ -470,8 +469,8 @@ static int ffmpeg_proprty_valid(AVCodecContext *c, const char *prop_name, IDProp
 {
 	int valid = 1;
 
-	if (strcmp(prop_name, "video") == 0) {
-		if (strcmp(curr->name, "bf") == 0) {
+	if (STREQ(prop_name, "video")) {
+		if (STREQ(curr->name, "bf")) {
 			/* flash codec doesn't support b frames */
 			valid &= c->codec_id != AV_CODEC_ID_FLV1;
 		}
@@ -484,7 +483,6 @@ static void set_ffmpeg_properties(RenderData *rd, AVCodecContext *c, const char 
                                   AVDictionary **dictionary)
 {
 	IDProperty *prop;
-	void *iter;
 	IDProperty *curr;
 
 	/* TODO(sergey): This is actually rather stupid, because changing
@@ -495,7 +493,7 @@ static void set_ffmpeg_properties(RenderData *rd, AVCodecContext *c, const char 
 	 *
 	 * For as long we don't allow editing properties in the interface
 	 * it's all good. bug if we allow editing them, we'll need to
-	 * repace it with some smarter code which would port settings
+	 * replace it with some smarter code which would port settings
 	 * from deprecated to new one.
 	 */
 	ffmpeg_set_expert_options(rd);
@@ -509,9 +507,7 @@ static void set_ffmpeg_properties(RenderData *rd, AVCodecContext *c, const char 
 		return;
 	}
 
-	iter = IDP_GetGroupIterator(prop);
-
-	while ((curr = IDP_GroupIterNext(iter)) != NULL) {
+	for (curr = prop->data.group.first; curr; curr = curr->next) {
 		if (ffmpeg_proprty_valid(c, prop_name, curr))
 			set_ffmpeg_property_option(c, curr, dictionary);
 	}
@@ -602,8 +598,12 @@ static AVStream *alloc_video_stream(RenderData *rd, int codec_id, AVFormatContex
 	
 	/* Keep lossless encodes in the RGB domain. */
 	if (codec_id == AV_CODEC_ID_HUFFYUV) {
-		/* HUFFYUV was PIX_FMT_YUV422P before */
-		c->pix_fmt = PIX_FMT_RGB32;
+		if (rd->im_format.planes == R_IMF_PLANES_RGBA) {
+			c->pix_fmt = PIX_FMT_BGRA;
+		}
+		else {
+			c->pix_fmt = PIX_FMT_RGB32;
+		}
 	}
 
 	if (codec_id == AV_CODEC_ID_FFV1) {
@@ -624,9 +624,9 @@ static AVStream *alloc_video_stream(RenderData *rd, int codec_id, AVFormatContex
 
 	if ((of->oformat->flags & AVFMT_GLOBALHEADER)
 #if 0
-	    || !strcmp(of->oformat->name, "mp4")
-	    || !strcmp(of->oformat->name, "mov")
-	    || !strcmp(of->oformat->name, "3gp")
+	    || STREQ(of->oformat->name, "mp4")
+	    || STREQ(of->oformat->name, "mov")
+	    || STREQ(of->oformat->name, "3gp")
 #endif
 	    )
 	{
@@ -696,7 +696,7 @@ static AVStream *alloc_audio_stream(RenderData *rd, int codec_id, AVFormatContex
 	}
 
 	if (codec->sample_fmts) {
-		/* check if the prefered sample format for this codec is supported.
+		/* check if the preferred sample format for this codec is supported.
 		 * this is because, depending on the version of libav, and with the whole ffmpeg/libav fork situation,
 		 * you have various implementations around. float samples in particular are not always supported.
 		 */
@@ -1630,6 +1630,12 @@ bool BKE_ffmpeg_alpha_channel_is_supported(RenderData *rd)
 		return true;
 
 	if (codec == AV_CODEC_ID_PNG)
+		return true;
+
+	if (codec == AV_CODEC_ID_PNG)
+		return true;
+
+	if (codec == AV_CODEC_ID_HUFFYUV)
 		return true;
 
 #ifdef FFMPEG_FFV1_ALPHA_SUPPORTED

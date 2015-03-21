@@ -30,11 +30,12 @@ import zipfile
 # extension stripping
 def strip_extension(filename):
     extensions = '.zip', '.tar', '.bz2', '.gz', '.tgz', '.tbz', '.exe'
-    filename_noext, ext = os.path.splitext(filename)
-    if ext in extensions:
-        return strip_extension(filename_noext)  # may have .tar.bz2
-    else:
-        return filename
+
+    for ext in extensions:
+        if filename.endswith(ext):
+            filename = filename[:-len(ext)]
+
+    return filename
 
 
 # extract platform from package name
@@ -48,12 +49,11 @@ def get_platform(filename):
     tokens = filename.split("-")
     platforms = ('osx', 'mac', 'bsd',
                  'win', 'linux', 'source',
-                 'solaris',
-                 'mingw')
+                 'irix', 'solaris', 'mingw')
     platform_tokens = []
     found = False
 
-    for token in tokens:
+    for i, token in enumerate(tokens):
         if not found:
             for platform in platforms:
                 if platform in token.lower():
@@ -71,13 +71,13 @@ def get_branch(filename):
     branch = ""
 
     for token in tokens:
+        if token == "blender":
+            return branch
+
         if branch == "":
             branch = token
         else:
             branch = branch + "-" + token
-
-        if token == "blender":
-            return branch
 
     return ""
 
@@ -95,7 +95,7 @@ if not os.path.exists(filename):
 
 try:
     z = zipfile.ZipFile(filename, "r")
-except Exception, ex:
+except Exception as ex:
     sys.stderr.write('Failed to open zip file: %s\n' % str(ex))
     sys.exit(1)
 
@@ -112,16 +112,16 @@ branch = get_branch(packagename)
 
 if platform == '':
     sys.stderr.write('Failed to detect platform ' +
-                     'from package: %r\n' % packagename)
+        'from package: %r\n' % packagename)
     sys.exit(1)
 
 # extract
-directory = 'public_html/download'
 if not branch or branch == 'master':
     directory = 'public_html/download'
 elif branch == 'experimental-build':
-    directory = 'public_html/experimental'
-# else: put 'official' branches in their own public subdir of download/ ?
+    directory = 'public_html/download/experimental'
+else:
+    directory = 'public_html/download'
 
 try:
     zf = z.open(package)
@@ -131,9 +131,7 @@ try:
 
     zf.close()
     z.close()
-
-    os.remove(filename)
-except Exception, ex:
+except Exception as ex:
     sys.stderr.write('Failed to unzip package: %s\n' % str(ex))
     sys.exit(1)
 
@@ -143,6 +141,6 @@ try:
         if get_platform(f) == platform and get_branch(f) == branch:
             if f != packagename:
                 os.remove(os.path.join(directory, f))
-except Exception, ex:
+except Exception as ex:
     sys.stderr.write('Failed to remove old packages: %s\n' % str(ex))
     sys.exit(1)

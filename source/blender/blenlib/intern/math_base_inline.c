@@ -44,6 +44,24 @@
 #  define UNLIKELY(x)     (x)
 #endif
 
+/* powf is really slow for raising to integer powers. */
+MINLINE float pow2f(float x)
+{
+	return x * x;
+}
+MINLINE float pow3f(float x)
+{
+	return pow2f(x) * x;
+}
+MINLINE float pow4f(float x)
+{
+	return pow2f(pow2f(x));
+}
+MINLINE float pow7f(float x)
+{
+	return pow2f(pow3f(x)) * x;
+}
+
 MINLINE float sqrt3f(float f)
 {
 	if      (UNLIKELY(f == 0.0f)) return 0.0f;
@@ -258,5 +276,18 @@ MINLINE float signf(float f)
 	return (f < 0.f) ? -1.f : 1.f;
 }
 
+MINLINE int signum_i_ex(float a, float eps)
+{
+	if (a >  eps) return  1;
+	if (a < -eps) return -1;
+	else          return  0;
+}
+
+MINLINE int signum_i(float a)
+{
+	if (a > 0.0f) return  1;
+	if (a < 0.0f) return -1;
+	else          return  0;
+}
 
 #endif /* __MATH_BASE_INLINE_C__ */

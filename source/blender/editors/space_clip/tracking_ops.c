@@ -41,7 +41,6 @@
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
 #include "BLI_listbase.h"
-#include "BLI_rect.h"
 #include "BLI_blenlib.h"
 
 #include "BKE_main.h"
@@ -65,7 +64,6 @@
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 
-#include "UI_interface.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -74,7 +72,6 @@
 
 #include "PIL_time.h"
 
-#include "UI_view2d.h"
 
 #include "clip_intern.h"    // own include
 
@@ -1083,7 +1080,7 @@ void CLIP_OT_slide_marker(wmOperatorType *ot)
 /********************** track operator *********************/
 
 typedef struct TrackMarkersJob {
-	struct MovieTrackingContext *context;   /* tracking context */
+	struct AutoTrackContext *context;   /* tracking context */
 	int sfra, efra, lastfra;    /* Start, end and recently tracked frames */
 	int backwards;              /* Backwards tracking flag */
 	MovieClip *clip;            /* Clip which is tracking */
@@ -1231,7 +1228,7 @@ static int track_markers_initjob(bContext *C, TrackMarkersJob *tmj, int backward
 			tmj->delay /= 2;
 	}
 
-	tmj->context = BKE_tracking_context_new(clip, &sc->user, backwards, 1);
+	tmj->context = BKE_autotrack_context_new(clip, &sc->user, backwards, 1);
 
 	clip->tracking_context = tmj->context;
 
@@ -1265,14 +1262,14 @@ static void track_markers_startjob(void *tmv, short *stop, short *do_update, flo
 
 			double start_time = PIL_check_seconds_timer(), exec_time;
 
-			if (!BKE_tracking_context_step(tmj->context))
+			if (!BKE_autotrack_context_step(tmj->context))
 				break;
 
 			exec_time = PIL_check_seconds_timer() - start_time;
 			if (tmj->delay > (float)exec_time)
 				PIL_sleep_ms(tmj->delay - (float)exec_time);
 		}
-		else if (!BKE_tracking_context_step(tmj->context))
+		else if (!BKE_autotrack_context_step(tmj->context))
 			break;
 
 		*do_update = true;
@@ -1296,7 +1293,7 @@ static void track_markers_updatejob(void *tmv)
 {
 	TrackMarkersJob *tmj = (TrackMarkersJob *)tmv;
 
-	BKE_tracking_context_sync(tmj->context);
+	BKE_autotrack_context_sync(tmj->context);
 }
 
 static void track_markers_endjob(void *tmv)
@@ -1310,8 +1307,8 @@ static void track_markers_endjob(void *tmv)
 		ED_update_for_newframe(tmj->main, tmj->scene, 0);
 	}
 
-	BKE_tracking_context_sync(tmj->context);
-	BKE_tracking_context_finish(tmj->context);
+	BKE_autotrack_context_sync(tmj->context);
+	BKE_autotrack_context_finish(tmj->context);
 
 	WM_main_add_notifier(NC_SCENE | ND_FRAME, tmj->scene);
 }
@@ -1319,7 +1316,7 @@ static void track_markers_endjob(void *tmv)
 static void track_markers_freejob(void *tmv)
 {
 	TrackMarkersJob *tmj = (TrackMarkersJob *)tmv;
-	BKE_tracking_context_free(tmj->context);
+	BKE_autotrack_context_free(tmj->context);
 	MEM_freeN(tmj);
 }
 
@@ -1328,7 +1325,7 @@ static int track_markers_exec(bContext *C, wmOperator *op)
 	SpaceClip *sc;
 	MovieClip *clip;
 	Scene *scene = CTX_data_scene(C);
-	struct MovieTrackingContext *context;
+	struct AutoTrackContext *context;
 	MovieClipUser *user, fake_user = {0};
 	int framenr, sfra, efra;
 	const bool backwards = RNA_boolean_get(op->ptr, "backwards");
@@ -1388,10 +1385,10 @@ static int track_markers_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	/* do not disable tracks due to threshold when tracking frame-by-frame */
-	context = BKE_tracking_context_new(clip, user, backwards, sequence);
+	context = BKE_autotrack_context_new(clip, user, backwards, sequence);
 
 	while (framenr != efra) {
-		if (!BKE_tracking_context_step(context))
+		if (!BKE_autotrack_context_step(context))
 			break;
 
 		if (backwards) framenr--;
@@ -1401,9 +1398,9 @@ static int track_markers_exec(bContext *C, wmOperator *op)
 			break;
 	}
 
-	BKE_tracking_context_sync(context);
-	BKE_tracking_context_finish(context);
-	BKE_tracking_context_free(context);
+	BKE_autotrack_context_sync(context);
+	BKE_autotrack_context_finish(context);
+	BKE_autotrack_context_free(context);
 
 	/* update scene current frame to the lastes tracked frame */
 	scene->r.cfra = BKE_movieclip_remap_clip_to_scene_frame(clip, framenr);

@@ -33,15 +33,16 @@
 
 #include "idprop_py_api.h"
 
-
 #include "BKE_idprop.h"
-
 
 #define USE_STRING_COERCE
 
 #ifdef USE_STRING_COERCE
 #include "py_capi_utils.h"
 #endif
+
+#include "../generic/python_utildefines.h"
+
 
 /*********************** ID Property Main Wrapper Stuff ***************/
 
@@ -296,10 +297,10 @@ static PyObject *BPy_IDGroup_Map_GetItem(BPy_IDProperty *self, PyObject *item)
 }
 
 /* returns NULL on success, error string on failure */
-static int idp_sequence_type(PyObject *seq_fast)
+static char idp_sequence_type(PyObject *seq_fast)
 {
 	PyObject *item;
-	int type = IDP_INT;
+	char type = IDP_INT;
 
 	Py_ssize_t i, len = PySequence_Fast_GET_SIZE(seq_fast);
 	for (i = 0; i < len; i++) {
@@ -376,7 +377,7 @@ bool BPy_IDProperty_Map_ValidateAndCreate(PyObject *name_obj, IDProperty *group,
 	else if (PyUnicode_Check(ob)) {
 #ifdef USE_STRING_COERCE
 		PyObject *value_coerce = NULL;
-		val.string.str = (char *)PyC_UnicodeAsByte(ob, &value_coerce);
+		val.string.str = PyC_UnicodeAsByte(ob, &value_coerce);
 		val.string.subtype = IDP_STRING_SUB_UTF8;
 		prop = IDP_New(IDP_STRING, &val, name);
 		Py_XDECREF(value_coerce);
@@ -403,7 +404,7 @@ bool BPy_IDProperty_Map_ValidateAndCreate(PyObject *name_obj, IDProperty *group,
 			return false;
 		}
 
-		if ((val.array.type = idp_sequence_type(ob_seq_fast)) == -1) {
+		if ((val.array.type = idp_sequence_type(ob_seq_fast)) == (char)-1) {
 			Py_DECREF(ob_seq_fast);
 			PyErr_SetString(PyExc_TypeError, "only floats, ints and dicts are allowed in ID property arrays");
 			return false;
@@ -510,7 +511,26 @@ bool BPy_IDProperty_Map_ValidateAndCreate(PyObject *name_obj, IDProperty *group,
 		MEM_freeN(prop);
 	}
 	else {
-		IDP_ReplaceInGroup(group, prop);
+		IDProperty *prop_exist;
+
+		/* avoid freeing when types match in case they are referenced by the UI, see: T37073
+		 * obviously this isn't a complete solution, but helps for common cases. */
+		prop_exist = IDP_GetPropertyFromGroup(group, prop->name);
+		if ((prop_exist != NULL) &&
+		    (prop_exist->type == prop->type) &&
+		    (prop_exist->subtype == prop->subtype))
+		{
+			/* Preserve prev/next links!!! See T42593. */
+			prop->prev = prop_exist->prev;
+			prop->next = prop_exist->next;
+
+			IDP_FreeProperty(prop_exist);
+			*prop_exist = *prop;
+			MEM_freeN(prop);
+		}
+		else {
+			IDP_ReplaceInGroup_ex(group, prop, prop_exist);
+		}
 	}
 
 	return true;
@@ -727,10 +747,9 @@ static void BPy_IDGroup_CorrectListLen(IDProperty *prop, PyObject *seq, int len,
 
 	printf("%s: ID Property Error found and corrected!\n", func);
 
-	/*fill rest of list with valid references to None*/
+	/* fill rest of list with valid references to None */
 	for (j = len; j < prop->len; j++) {
-		Py_INCREF(Py_None);
-		PyList_SET_ITEM(seq, j, Py_None);
+		PyList_SET_ITEM(seq, j, Py_INCREF_RET(Py_None));
 	}
 
 	/*set correct group length*/
@@ -789,8 +808,9 @@ PyObject *BPy_Wrap_GetItems(ID *id, IDProperty *prop)
 
 	for (i = 0, loop = prop->data.group.first; loop; loop = loop->next, i++) {
 		PyObject *item = PyTuple_New(2);
-		PyTuple_SET_ITEM(item, 0, PyUnicode_FromString(loop->name));
-		PyTuple_SET_ITEM(item, 1, BPy_IDGroup_WrapData(id, loop, prop));
+		PyTuple_SET_ITEMS(item,
+		        PyUnicode_FromString(loop->name),
+		        BPy_IDGroup_WrapData(id, loop, prop));
 		PyList_SET_ITEM(seq, i, item);
 	}
 
@@ -1387,8 +1407,9 @@ static PyObject *BPy_Group_Iter_Next(BPy_IDGroup_Iter *self)
 
 		if (self->mode == IDPROP_ITER_ITEMS) {
 			ret = PyTuple_New(2);
-			PyTuple_SET_ITEM(ret, 0, PyUnicode_FromString(cur->name));
-			PyTuple_SET_ITEM(ret, 1, BPy_IDGroup_WrapData(self->group->id, cur, self->group->prop));
+			PyTuple_SET_ITEMS(ret,
+			        PyUnicode_FromString(cur->name),
+			        BPy_IDGroup_WrapData(self->group->id, cur, self->group->prop));
 			return ret;
 		}
 		else {

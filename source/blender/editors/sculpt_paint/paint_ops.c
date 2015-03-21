@@ -106,15 +106,14 @@ static int brush_scale_size_exec(bContext *C, wmOperator *op)
 			const int old_size = BKE_brush_size_get(scene, brush);
 			int size = (int)(scalar * old_size);
 
-			if (old_size == size) {
+			if (abs(old_size - size) < U.pixelsize) {
 				if (scalar > 1) {
-					size++;
+					size += U.pixelsize;
 				}
 				else if (scalar < 1) {
-					size--;
+					size -= U.pixelsize;
 				}
 			}
-			CLAMP(size, 1, 2000); // XXX magic number
 
 			BKE_brush_size_set(scene, brush, size);
 		}
@@ -128,6 +127,8 @@ static int brush_scale_size_exec(bContext *C, wmOperator *op)
 
 			BKE_brush_unprojected_radius_set(scene, brush, unprojected_radius);
 		}
+
+		WM_main_add_notifier(NC_BRUSH | NA_EDITED, brush);
 	}
 
 	return OPERATOR_FINISHED;
@@ -195,7 +196,10 @@ static int palette_color_add_exec(bContext *C, wmOperator *UNUSED(op))
 	Brush *brush = paint->brush;
 	PaintMode mode = BKE_paintmode_get_active_from_context(C);
 	Palette *palette = paint->palette;
-	PaletteColor *color = BKE_palette_color_add(palette);
+	PaletteColor *color;
+
+	color = BKE_palette_color_add(palette);
+	palette->active_color = BLI_listbase_count(&palette->colors) - 1;
 
 	if (ELEM(mode, PAINT_TEXTURE_PROJECTIVE, PAINT_TEXTURE_2D, PAINT_VERTEX)) {
 		copy_v3_v3(color->rgb, BKE_brush_color_get(scene, brush));
@@ -230,7 +234,9 @@ static int palette_color_delete_exec(bContext *C, wmOperator *UNUSED(op))
 	Palette *palette = paint->palette;
 	PaletteColor *color = BLI_findlink(&palette->colors, palette->active_color);
 
-	BKE_palette_color_remove(palette, color);
+	if (color) {
+		BKE_palette_color_remove(palette, color);
+	}
 
 	return OPERATOR_FINISHED;
 }
@@ -667,7 +673,7 @@ static void stencil_set_target(StencilControlData *scd)
 
 	scd->lenorig = len_v2(mdiff);
 
-	scd->init_angle = atan2(mdiff[1], mdiff[0]);
+	scd->init_angle = atan2f(mdiff[1], mdiff[0]);
 }
 
 static int stencil_control_invoke(bContext *C, wmOperator *op, const wmEvent *event)
@@ -763,7 +769,7 @@ static void stencil_control_calculate(StencilControlData *scd, const int mval[2]
 		{
 			float angle;
 			sub_v2_v2v2(mdiff, mvalf, scd->pos_target);
-			angle = atan2(mdiff[1], mdiff[0]);
+			angle = atan2f(mdiff[1], mdiff[0]);
 			angle = scd->init_rot + angle - scd->init_angle;
 			if (angle < 0.0f)
 				angle += (float)(2 * M_PI);
@@ -916,7 +922,7 @@ static int stencil_fit_image_aspect_exec(bContext *C, wmOperator *op)
 			stencil_area = br->stencil_dimension[0] * br->stencil_dimension[1];
 		}
 
-		factor = sqrt(stencil_area / orig_area);
+		factor = sqrtf(stencil_area / orig_area);
 
 		if (do_mask) {
 			br->mask_stencil_dimension[0] = factor * aspx;
@@ -1085,6 +1091,7 @@ void ED_operatortypes_paint(void)
 	WM_operatortype_append(PAINT_OT_brush_colors_flip);
 	WM_operatortype_append(PAINT_OT_add_texture_paint_slot);
 	WM_operatortype_append(PAINT_OT_delete_texture_paint_slot);
+	WM_operatortype_append(PAINT_OT_add_simple_uvs);
 
 	/* weight */
 	WM_operatortype_append(PAINT_OT_weight_paint_toggle);
@@ -1148,14 +1155,6 @@ static void ed_keymap_paint_brush_size(wmKeyMap *keymap, const char *UNUSED(path
 	RNA_float_set(kmi->ptr, "scalar", 10.0 / 9.0); // 1.1111....
 }
 
-typedef enum {
-	RC_COLOR    = 1,
-	RC_ROTATION = 2,
-	RC_ZOOM     = 4,
-	RC_WEIGHT   = 8,
-	RC_SECONDARY_ROTATION = 16
-} RCFlags;
-
 static void set_brush_rc_path(PointerRNA *ptr, const char *brush_path,
                               const char *output_name, const char *input_name)
 {
@@ -1166,9 +1165,9 @@ static void set_brush_rc_path(PointerRNA *ptr, const char *brush_path,
 	MEM_freeN(path);
 }
 
-static void set_brush_rc_props(PointerRNA *ptr, const char *paint,
-                               const char *prop, const char *secondary_prop,
-                               RCFlags flags)
+void set_brush_rc_props(PointerRNA *ptr, const char *paint,
+                        const char *prop, const char *secondary_prop,
+                        RCFlags flags)
 {
 	const char *ups_path = "tool_settings.unified_paint_settings";
 	char *brush_path;
@@ -1324,9 +1323,7 @@ void ED_keymap_paint(wmKeyConfig *keyconf)
 	 * 
 	 * This should be improved further, perhaps by showing a triangle
 	 * grid rather than brush alpha */
-	kmi = WM_keymap_add_item(keymap, "WM_OT_radial_control", DKEY, KM_PRESS, KM_SHIFT, 0);
-	set_brush_rc_props(kmi->ptr, "sculpt", "detail_size", NULL, 0);
-	RNA_string_set(kmi->ptr, "data_path_primary", "tool_settings.sculpt.detail_size");
+	kmi = WM_keymap_add_item(keymap, "SCULPT_OT_set_detail_size", DKEY, KM_PRESS, KM_SHIFT, 0);
 
 	/* multires switch */
 	kmi = WM_keymap_add_item(keymap, "OBJECT_OT_subdivision_set", PAGEUPKEY, KM_PRESS, 0, 0);
@@ -1364,8 +1361,7 @@ void ED_keymap_paint(wmKeyConfig *keyconf)
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", SKEY, KM_PRESS, KM_SHIFT, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.sculpt.brush.use_smooth_stroke");
 
-	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", RKEY, KM_PRESS, 0, 0);
-	RNA_string_set(kmi->ptr, "data_path", "tool_settings.sculpt.brush.texture_angle_source_random");
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_angle_control", RKEY, KM_PRESS, 0, 0);
 
 	/* Vertex Paint mode */
 	keymap = WM_keymap_find(keyconf, "Vertex Paint", 0, 0);
@@ -1389,8 +1385,7 @@ void ED_keymap_paint(wmKeyConfig *keyconf)
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", SKEY, KM_PRESS, KM_SHIFT, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.vertex_paint.brush.use_smooth_stroke");
 
-	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", RKEY, KM_PRESS, 0, 0);
-	RNA_string_set(kmi->ptr, "data_path", "tool_settings.vertex_paint.brush.texture_angle_source_random");
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_angle_control", RKEY, KM_PRESS, 0, 0);
 
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", EKEY, KM_PRESS, 0, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.vertex_paint.brush.stroke_method");
@@ -1466,8 +1461,7 @@ void ED_keymap_paint(wmKeyConfig *keyconf)
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", SKEY, KM_PRESS, KM_SHIFT, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.image_paint.brush.use_smooth_stroke");
 
-	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", RKEY, KM_PRESS, 0, 0);
-	RNA_string_set(kmi->ptr, "data_path", "tool_settings.image_paint.brush.texture_angle_source_random");
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_angle_control", RKEY, KM_PRESS, 0, 0);
 
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_menu_enum", EKEY, KM_PRESS, 0, 0);
 	RNA_string_set(kmi->ptr, "data_path", "tool_settings.image_paint.brush.stroke_method");

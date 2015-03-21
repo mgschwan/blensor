@@ -130,6 +130,7 @@ void ED_operatortypes_mesh(void)
 	WM_operatortype_append(MESH_OT_edge_face_add);
 	WM_operatortype_append(MESH_OT_shortest_path_pick);
 	WM_operatortype_append(MESH_OT_select_similar);
+	WM_operatortype_append(MESH_OT_select_similar_region);
 	WM_operatortype_append(MESH_OT_select_mode);
 	WM_operatortype_append(MESH_OT_loop_multi_select);
 	WM_operatortype_append(MESH_OT_mark_seam);
@@ -152,6 +153,8 @@ void ED_operatortypes_mesh(void)
 	WM_operatortype_append(MESH_OT_vertex_color_remove);
 	WM_operatortype_append(MESH_OT_customdata_clear_mask);
 	WM_operatortype_append(MESH_OT_customdata_clear_skin);
+	WM_operatortype_append(MESH_OT_customdata_custom_splitnormals_add);
+	WM_operatortype_append(MESH_OT_customdata_custom_splitnormals_clear);
 	WM_operatortype_append(MESH_OT_drop_named_image);
 
 	WM_operatortype_append(MESH_OT_edgering_select);
@@ -160,6 +163,8 @@ void ED_operatortypes_mesh(void)
 	WM_operatortype_append(MESH_OT_solidify);
 	WM_operatortype_append(MESH_OT_select_nth);
 	WM_operatortype_append(MESH_OT_vert_connect);
+	WM_operatortype_append(MESH_OT_vert_connect_path);
+	WM_operatortype_append(MESH_OT_vert_connect_concave);
 	WM_operatortype_append(MESH_OT_vert_connect_nonplanar);
 	WM_operatortype_append(MESH_OT_knife_tool);
 	WM_operatortype_append(MESH_OT_knife_project);
@@ -342,7 +347,7 @@ void ED_keymap_mesh(wmKeyConfig *keyconf)
 	
 	WM_keymap_add_item(keymap, "MESH_OT_faces_select_linked_flat", FKEY, KM_PRESS, (KM_CTRL | KM_SHIFT | KM_ALT), 0);
 
-	WM_keymap_add_item(keymap, "MESH_OT_select_similar", GKEY, KM_PRESS, KM_SHIFT, 0);
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_edit_mesh_select_similar", GKEY, KM_PRESS, KM_SHIFT, 0);
 	
 	/* selection mode */
 	WM_keymap_add_menu(keymap, "VIEW3D_MT_edit_mesh_select_mode", TABKEY, KM_PRESS, KM_CTRL, 0);
@@ -397,7 +402,7 @@ void ED_keymap_mesh(wmKeyConfig *keyconf)
 	
 	WM_keymap_add_item(keymap, "MESH_OT_separate", PKEY, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "MESH_OT_split", YKEY, KM_PRESS, 0, 0);
-	WM_keymap_add_item(keymap, "MESH_OT_vert_connect", JKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "MESH_OT_vert_connect_path", JKEY, KM_PRESS, 0, 0);
 
 	/* Vertex Slide */
 	WM_keymap_add_item(keymap, "TRANSFORM_OT_vert_slide", VKEY, KM_PRESS, KM_SHIFT, 0);

@@ -177,7 +177,7 @@ static void axis_angle_to_gimbal_axis(float gmat[3][3], const float axis[3], con
 	mul_qt_v3(quat, gmat[0]);
 
 	/* Y-axis */
-	axis_angle_to_quat(quat, axis, M_PI / 2.0);
+	axis_angle_to_quat(quat, axis, M_PI_2);
 	copy_v3_v3(gmat[1], gmat[0]);
 	mul_qt_v3(quat, gmat[1]);
 
@@ -262,13 +262,12 @@ bool gimbal_axis(Object *ob, float gmat[3][3])
 
 /* centroid, boundbox, of selection */
 /* returns total items selected */
-int calc_manipulator_stats(const bContext *C)
+static int calc_manipulator_stats(const bContext *C)
 {
 	ScrArea *sa = CTX_wm_area(C);
 	ARegion *ar = CTX_wm_region(C);
 	Scene *scene = CTX_data_scene(C);
 	Object *obedit = CTX_data_edit_object(C);
-	ToolSettings *ts = CTX_data_tool_settings(C);
 	View3D *v3d = sa->spacedata.first;
 	RegionView3D *rv3d = ar->regiondata;
 	Base *base;
@@ -305,48 +304,11 @@ int calc_manipulator_stats(const bContext *C)
 
 				BMIter iter;
 
-				/* do vertices/edges/faces for center depending on selection
-				 * mode. note we can't use just vertex selection flag because
-				 * it is not flush down on changes */
-				if (ts->selectmode & SCE_SELECT_VERTEX) {
-					BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
-						if (!BM_elem_flag_test(eve, BM_ELEM_HIDDEN)) {
-							if (BM_elem_flag_test(eve, BM_ELEM_SELECT)) {
-								totsel++;
-								calc_tw_center(scene, eve->co);
-							}
-						}
-					}
-				}
-				else if (ts->selectmode & SCE_SELECT_EDGE) {
-					BMIter itersub;
-					BMEdge *eed;
-					BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
-						if (!BM_elem_flag_test(eve, BM_ELEM_HIDDEN)) {
-							/* check the vertex has a selected edge, only add it once */
-							BM_ITER_ELEM (eed, &itersub, eve, BM_EDGES_OF_VERT) {
-								if (BM_elem_flag_test(eed, BM_ELEM_SELECT)) {
-									totsel++;
-									calc_tw_center(scene, eve->co);
-									break;
-								}
-							}
-						}
-					}
-				}
-				else {
-					BMIter itersub;
-					BMFace *efa;
-					BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
-						if (!BM_elem_flag_test(eve, BM_ELEM_HIDDEN)) {
-							/* check the vertex has a selected face, only add it once */
-							BM_ITER_ELEM (efa, &itersub, eve, BM_FACES_OF_VERT) {
-								if (BM_elem_flag_test(efa, BM_ELEM_SELECT)) {
-									totsel++;
-									calc_tw_center(scene, eve->co);
-									break;
-								}
-							}
+				BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
+					if (!BM_elem_flag_test(eve, BM_ELEM_HIDDEN)) {
+						if (BM_elem_flag_test(eve, BM_ELEM_SELECT)) {
+							totsel++;
+							calc_tw_center(scene, eve->co);
 						}
 					}
 				}
@@ -1850,7 +1812,6 @@ int BIF_do_manipulator(bContext *C, const struct wmEvent *event, wmOperator *op)
 			}
 			RNA_boolean_set_array(op->ptr, "constraint_axis", constraint_axis);
 			WM_operator_name_call(C, "TRANSFORM_OT_translate", WM_OP_INVOKE_DEFAULT, op->ptr);
-			//wm_operator_invoke(C, WM_operatortype_find("TRANSFORM_OT_translate", 0), event, op->ptr, NULL, false);
 		}
 		else if (drawflags & MAN_SCALE_C) {
 			switch (drawflags) {
@@ -1881,7 +1842,6 @@ int BIF_do_manipulator(bContext *C, const struct wmEvent *event, wmOperator *op)
 			}
 			RNA_boolean_set_array(op->ptr, "constraint_axis", constraint_axis);
 			WM_operator_name_call(C, "TRANSFORM_OT_resize", WM_OP_INVOKE_DEFAULT, op->ptr);
-			//wm_operator_invoke(C, WM_operatortype_find("TRANSFORM_OT_resize", 0), event, op->ptr, NULL, false);
 		}
 		else if (drawflags == MAN_ROT_T) { /* trackball need special case, init is different */
 			/* Do not pass op->ptr!!! trackball has no "constraint" properties!
@@ -1894,8 +1854,7 @@ int BIF_do_manipulator(bContext *C, const struct wmEvent *event, wmOperator *op)
 			if ((prop = RNA_struct_find_property(op->ptr, "release_confirm")) && RNA_property_is_set(op->ptr, prop)) {
 				RNA_property_boolean_set(&props_ptr, prop, RNA_property_boolean_get(op->ptr, prop));
 			}
-			WM_operator_name_call(C, ot->idname, WM_OP_INVOKE_DEFAULT, &props_ptr);
-			//wm_operator_invoke(C, WM_operatortype_find(ot->idname, 0), event, NULL, NULL, false);
+			WM_operator_name_call_ptr(C, ot, WM_OP_INVOKE_DEFAULT, &props_ptr);
 			WM_operator_properties_free(&props_ptr);
 		}
 		else if (drawflags & MAN_ROT_C) {
@@ -1912,7 +1871,6 @@ int BIF_do_manipulator(bContext *C, const struct wmEvent *event, wmOperator *op)
 			}
 			RNA_boolean_set_array(op->ptr, "constraint_axis", constraint_axis);
 			WM_operator_name_call(C, "TRANSFORM_OT_rotate", WM_OP_INVOKE_DEFAULT, op->ptr);
-			//wm_operator_invoke(C, WM_operatortype_find("TRANSFORM_OT_rotate", 0), event, op->ptr, NULL, false);
 		}
 	}
 	/* after transform, restore drawflags */

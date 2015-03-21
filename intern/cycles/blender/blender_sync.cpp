@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "background.h"
@@ -30,6 +30,7 @@
 #include "device.h"
 
 #include "blender_sync.h"
+#include "blender_session.h"
 #include "blender_util.h"
 
 #include "util_debug.h"
@@ -70,10 +71,18 @@ bool BlenderSync::sync_recalc()
 	 * so we can do it later on if doing it immediate is not suitable */
 
 	BL::BlendData::materials_iterator b_mat;
-
-	for(b_data.materials.begin(b_mat); b_mat != b_data.materials.end(); ++b_mat)
-		if(b_mat->is_updated() || (b_mat->node_tree() && b_mat->node_tree().is_updated()))
+	bool has_updated_objects = b_data.objects.is_updated();
+	for(b_data.materials.begin(b_mat); b_mat != b_data.materials.end(); ++b_mat) {
+		if(b_mat->is_updated() || (b_mat->node_tree() && b_mat->node_tree().is_updated())) {
 			shader_map.set_recalc(*b_mat);
+		}
+		else {
+			Shader *shader = shader_map.find(*b_mat);
+			if(has_updated_objects && shader != NULL && shader->has_object_dependency) {
+				shader_map.set_recalc(*b_mat);
+			}
+		}
+	}
 
 	BL::BlendData::lamps_iterator b_lamp;
 
@@ -353,7 +362,7 @@ void BlenderSync::sync_render_layers(BL::SpaceView3D b_v3d, const char *layer)
 
 /* Scene Parameters */
 
-SceneParams BlenderSync::get_scene_params(BL::Scene b_scene, bool background)
+SceneParams BlenderSync::get_scene_params(BL::Scene b_scene, bool background, bool is_cpu)
 {
 	BL::RenderSettings r = b_scene.render();
 	SceneParams params;
@@ -378,6 +387,16 @@ SceneParams BlenderSync::get_scene_params(BL::Scene b_scene, bool background)
 	else
 		params.persistent_data = false;
 
+#if !(defined(__GNUC__) && (defined(i386) || defined(_M_IX86)))
+	if(is_cpu) {
+		params.use_qbvh = system_cpu_support_sse2();
+	}
+	else
+#endif
+	{
+		params.use_qbvh = false;
+	}
+
 	return params;
 }
 
@@ -389,7 +408,10 @@ bool BlenderSync::get_session_pause(BL::Scene b_scene, bool background)
 	return (background)? false: get_boolean(cscene, "preview_pause");
 }
 
-SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine, BL::UserPreferences b_userpref, BL::Scene b_scene, bool background)
+SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine,
+                                              BL::UserPreferences b_userpref,
+                                              BL::Scene b_scene,
+                                              bool background)
 {
 	SessionParams params;
 	PointerRNA cscene = RNA_pointer_get(&b_scene.ptr, "cycles");
@@ -478,8 +500,13 @@ SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine, BL::Use
 
 		params.tile_size = make_int2(tile_x, tile_y);
 	}
-	
-	params.tile_order = (TileOrder)RNA_enum_get(&cscene, "tile_order");
+
+	if(BlenderSession::headless == false) {
+		params.tile_order = (TileOrder)RNA_enum_get(&cscene, "tile_order");
+	}
+	else {
+		params.tile_order = TILE_BOTTOM_TO_TOP;
+	}
 
 	params.start_resolution = get_int(cscene, "preview_start_resolution");
 
@@ -515,7 +542,24 @@ SessionParams BlenderSync::get_session_params(BL::RenderEngine b_engine, BL::Use
 		params.shadingsystem = SHADINGSYSTEM_OSL;
 	
 	/* color managagement */
-	params.display_buffer_linear = GLEW_ARB_half_float_pixel && b_engine.support_display_space_shader(b_scene);
+#ifdef GLEW_MX
+	/* When using GLEW MX we need to check whether we've got an OpenGL
+	 * context for current window. This is because command line rendering
+	 * doesn't have OpenGL context actually.
+	 */
+	if(glewGetContext() != NULL)
+#endif
+	{
+		params.display_buffer_linear = GLEW_ARB_half_float_pixel &&
+		                               b_engine.support_display_space_shader(b_scene);
+	}
+
+	if(b_engine.is_preview()) {
+		/* For preview rendering we're using same timeout as
+		 * blender's job update.
+		 */
+		params.progressive_update_timeout = 0.1;
+	}
 
 	return params;
 }

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __SVM_TYPES_H__
@@ -334,6 +334,19 @@ typedef enum NodeNormalMapSpace {
 	NODE_NORMAL_MAP_BLENDER_WORLD,
 } NodeNormalMapSpace;
 
+typedef enum NodeImageProjection {
+	NODE_IMAGE_PROJ_FLAT   = 0,
+	NODE_IMAGE_PROJ_BOX    = 1,
+	NODE_IMAGE_PROJ_SPHERE = 2,
+	NODE_IMAGE_PROJ_TUBE   = 3,
+} NodeImageProjection;
+
+typedef enum NodeBumpOffset {
+	NODE_BUMP_OFFSET_CENTER,
+	NODE_BUMP_OFFSET_DX,
+	NODE_BUMP_OFFSET_DY,
+} NodeBumpOffset;
+
 typedef enum ShaderType {
 	SHADER_TYPE_SURFACE,
 	SHADER_TYPE_VOLUME,
@@ -348,7 +361,6 @@ typedef enum ClosureType {
 	/* Diffuse */
 	CLOSURE_BSDF_DIFFUSE_ID,
 	CLOSURE_BSDF_OREN_NAYAR_ID,
-	CLOSURE_BSDF_WESTIN_SHEEN_ID,
 	CLOSURE_BSDF_DIFFUSE_RAMP_ID,
 	CLOSURE_BSDF_DIFFUSE_TOON_ID,
 
@@ -362,7 +374,6 @@ typedef enum ClosureType {
 	CLOSURE_BSDF_MICROFACET_BECKMANN_ANISO_ID,
 	CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ANISO_ID,
 	CLOSURE_BSDF_ASHIKHMIN_VELVET_ID,
-	CLOSURE_BSDF_WESTIN_BACKSCATTER_ID,
 	CLOSURE_BSDF_PHONG_RAMP_ID,
 	CLOSURE_BSDF_GLOSSY_TOON_ID,
 	CLOSURE_BSDF_HAIR_REFLECTION_ID,

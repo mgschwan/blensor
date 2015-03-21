@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "camera.h"
@@ -117,8 +117,8 @@ void EdgeDice::stitch_triangles(Patch *patch, vector<int>& outer, vector<int>& i
 		}
 		else {
 			/* length of diagonals */
-			float len1 = len(mesh_P[inner[i]] - mesh_P[outer[j+1]]);
-			float len2 = len(mesh_P[outer[j]] - mesh_P[inner[i+1]]);
+			float len1 = len_squared(mesh_P[inner[i]] - mesh_P[outer[j+1]]);
+			float len2 = len_squared(mesh_P[outer[j]] - mesh_P[inner[i+1]]);
 
 			/* use smallest diagonal */
 			if(len1 < len2)

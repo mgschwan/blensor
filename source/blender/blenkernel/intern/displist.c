@@ -37,7 +37,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_curve_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
 #include "DNA_vfont_types.h"
@@ -352,7 +351,8 @@ static void curve_to_displist(Curve *cu, ListBase *nubase, ListBase *dispbase,
 
 				data = dl->verts;
 
-				if (nu->flagu & CU_NURB_CYCLIC) {
+				/* check that (len != 2) so we don't immediately loop back on ourselves */
+				if (nu->flagu & CU_NURB_CYCLIC && (dl->nr != 2)) {
 					dl->type = DL_POLY;
 					a = nu->pntsu;
 				}
@@ -422,8 +422,12 @@ static void curve_to_displist(Curve *cu, ListBase *nubase, ListBase *dispbase,
 				dl->charidx = nu->charidx;
 
 				data = dl->verts;
-				if (nu->flagu & CU_NURB_CYCLIC) dl->type = DL_POLY;
-				else dl->type = DL_SEGM;
+				if ((nu->flagu & CU_NURB_CYCLIC) && (dl->nr != 2)) {
+					dl->type = DL_POLY;
+				}
+				else {
+					dl->type = DL_SEGM;
+				}
 
 				a = len;
 				bp = nu->bp;
@@ -814,7 +818,7 @@ static void curve_calc_modifiers_pre(Scene *scene, Object *ob, ListBase *nurb,
 		required_mode |= eModifierMode_Editmode;
 
 	if (cu->editnurb == NULL) {
-		keyVerts = BKE_key_evaluate_object(scene, ob, &numVerts);
+		keyVerts = BKE_key_evaluate_object(ob, &numVerts);
 
 		if (keyVerts) {
 			/* split coords from key data, the latter also includes
@@ -1271,6 +1275,7 @@ void BKE_displist_make_surf(Scene *scene, Object *ob, ListBase *dispbase,
 	}
 
 	if (!for_orco) {
+		BKE_nurbList_duplicate(&ob->curve_cache->deformed_nurbs, &nubase);
 		curve_calc_modifiers_post(scene, ob, &nubase, dispbase, r_dm_final,
 		                          for_render, use_render_resolution);
 	}
@@ -1621,8 +1626,12 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 							dl->type = DL_SURF;
 
 							dl->flag = dlb->flag & (DL_FRONT_CURVE | DL_BACK_CURVE);
-							if (dlb->type == DL_POLY) dl->flag |= DL_CYCL_U;
-							if (bl->poly >= 0) dl->flag |= DL_CYCL_V;
+							if (dlb->type == DL_POLY) {
+								dl->flag |= DL_CYCL_U;
+							}
+							if ((bl->poly >= 0) && (steps != 2)) {
+								dl->flag |= DL_CYCL_V;
+							}
 
 							dl->parts = steps;
 							dl->nr = dlb->nr;
@@ -1729,8 +1738,10 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 			}
 		}
 
-		if (!for_orco)
+		if (!for_orco) {
+			BKE_nurbList_duplicate(&ob->curve_cache->deformed_nurbs, &nubase);
 			curve_calc_modifiers_post(scene, ob, &nubase, dispbase, r_dm_final, for_render, use_render_resolution);
+		}
 
 		if (cu->flag & CU_DEFORM_FILL && !ob->derivedFinal) {
 			curve_to_filledpoly(cu, &nubase, dispbase);

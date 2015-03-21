@@ -6,7 +6,7 @@ ocio_profile_version: 1
 
 search_path: luts
 strictparsing: true
-luma: [0.2126, 0.7152, 0.0722]
+luma: [0.2126729, 0.7151522, 0.0721750]
 
 description: RRT version ut33
 
@@ -25,7 +25,7 @@ roles:
   # Default color space sequencer is working in
   default_sequencer: sRGB
 
-  # Color spaces for color picking and exture painting (not internally supported yet)
+  # Color spaces for color picking and texture painting (not internally supported yet)
   color_picking: Raw
   texture_paint: Raw
 

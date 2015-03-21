@@ -53,7 +53,6 @@
 
 #include "WM_api.h"
 #include "wm_subwindow.h"
-#include "wm_window.h"
 
 /* wmSubWindow stored in wmWindow... but not exposed outside this C file */
 /* it seems a bit redundant (area regions can store it too, but we keep it
@@ -368,7 +367,7 @@ static void wmOrtho2_offset(const float x, const float y, const float ofs)
  */
 void wmOrtho2_region_pixelspace(const struct ARegion *ar)
 {
-	wmOrtho2_offset(ar->winx + 1, ar->winy + 1, -GLA_PIXEL_OFS);
+	wmOrtho2_offset(ar->winx, ar->winy, -0.01f);
 }
 
 void wmOrtho2_pixelspace(const float x, const float y)

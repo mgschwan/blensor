@@ -33,7 +33,6 @@
 #include "BKE_customdata.h"
 
 #include "bmesh.h"
-#include "intern/bmesh_private.h"
 #include "intern/bmesh_walkers_private.h"
 
 /* pop into stack memory (common operation) */
@@ -738,7 +737,7 @@ static void *bmw_LoopWalker_step(BMWalker *walker)
 		    (owalk.is_single == false && vert_edge_tot > 2) ||
 
 		    /* initial edge was a boundary, so is this edge and vertex is only apart of this face
-		     * this lets us walk over the the boundary of an ngon which is handy */
+		     * this lets us walk over the boundary of an ngon which is handy */
 		    (owalk.is_single == true && vert_edge_tot == 2 && BM_edge_is_boundary(e)))
 		{
 			/* find next boundary edge in the fan */

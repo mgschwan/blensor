@@ -1372,11 +1372,15 @@ static int nlaedit_toggle_mute_exec(bContext *C, wmOperator *UNUSED(op))
 				/* just flip the mute flag for now */
 				// TODO: have a pre-pass to check if mute all or unmute all?
 				strip->flag ^= NLASTRIP_FLAG_MUTED;
+				
+				/* tag AnimData to get recalculated */
+				ale->update |= ANIM_UPDATE_DEPS;
 			}
 		}
 	}
 	
-	/* free temp data */
+	/* cleanup */
+	ANIM_animdata_update(&ac, &anim_data);
 	ANIM_animdata_freelist(&anim_data);
 	
 	/* set notifier that things have changed */
@@ -1436,7 +1440,9 @@ static int nlaedit_swap_exec(bContext *C, wmOperator *op)
 		if (BLI_listbase_is_empty(&nlt->strips) == false) {
 			NlaStrip *mstrip = (NlaStrip *)nlt->strips.first;
 			
-			if ((mstrip->flag & NLASTRIP_FLAG_TEMP_META) && (BLI_countlist(&mstrip->strips) == 2)) {
+			if ((mstrip->flag & NLASTRIP_FLAG_TEMP_META) &&
+			    (BLI_listbase_count_ex(&mstrip->strips, 3) == 2))
+			{
 				/* remove this temp meta, so that we can see the strips inside */
 				BKE_nlastrips_clear_metas(&nlt->strips, 0, 1);
 			}
@@ -2128,9 +2134,13 @@ static int nlaedit_snap_exec(bContext *C, wmOperator *op)
 		
 		/* remove the meta-strips now that we're done */
 		BKE_nlastrips_clear_metas(&nlt->strips, 0, 1);
+		
+		/* tag for recalculating the animation */
+		ale->update |= ANIM_UPDATE_DEPS;
 	}
 	
-	/* free temp data */
+	/* cleanup */
+	ANIM_animdata_update(&ac, &anim_data);
 	ANIM_animdata_freelist(&anim_data);
 	
 	/* refresh auto strip properties */
@@ -2174,8 +2184,8 @@ static int nla_fmodifier_add_invoke(bContext *C, wmOperator *UNUSED(op), const w
 	uiLayout *layout;
 	int i;
 	
-	pup = uiPupMenuBegin(C, IFACE_("Add F-Modifier"), ICON_NONE);
-	layout = uiPupMenuLayout(pup);
+	pup = UI_popup_menu_begin(C, IFACE_("Add F-Modifier"), ICON_NONE);
+	layout = UI_popup_menu_layout(pup);
 	
 	/* start from 1 to skip the 'Invalid' modifier type */
 	for (i = 1; i < FMODIFIER_NUM_TYPES; i++) {
@@ -2192,9 +2202,9 @@ static int nla_fmodifier_add_invoke(bContext *C, wmOperator *UNUSED(op), const w
 	}
 	uiItemS(layout);
 	
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 static int nla_fmodifier_add_exec(bContext *C, wmOperator *op)
@@ -2244,6 +2254,7 @@ static int nla_fmodifier_add_exec(bContext *C, wmOperator *op)
 			
 			if (fcm) {
 				set_active_fmodifier(&strip->modifiers, fcm);
+				ale->update |= ANIM_UPDATE_DEPS;
 			}
 			else {
 				BKE_reportf(op->reports, RPT_ERROR,
@@ -2254,6 +2265,7 @@ static int nla_fmodifier_add_exec(bContext *C, wmOperator *op)
 	}
 	
 	/* free temp data */
+	ANIM_animdata_update(&ac, &anim_data);
 	ANIM_animdata_freelist(&anim_data);
 	
 	/* set notifier that things have changed */
@@ -2319,6 +2331,9 @@ static int nla_fmodifier_copy_exec(bContext *C, wmOperator *op)
 		}
 	}
 	
+	/* free temp data */
+	ANIM_animdata_freelist(&anim_data);
+	
 	/* successful or not? */
 	if (ok == 0) {
 		BKE_report(op->reports, RPT_ERROR, "No F-Modifiers available to be copied");
@@ -2373,10 +2388,12 @@ static int nla_fmodifier_paste_exec(bContext *C, wmOperator *op)
 		for (strip = nlt->strips.first; strip; strip = strip->next) {
 			// TODO: do we want to replace existing modifiers? add user pref for that!
 			ok += ANIM_fmodifiers_paste_from_buf(&strip->modifiers, 0);
+			ale->update |= ANIM_UPDATE_DEPS;
 		}
 	}
 	
 	/* clean up */
+	ANIM_animdata_update(&ac, &anim_data);
 	ANIM_animdata_freelist(&anim_data);
 	
 	/* successful or not? */

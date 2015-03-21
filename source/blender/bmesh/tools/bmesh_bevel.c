@@ -525,23 +525,28 @@ static void bev_merge_uvs(BMesh *bm, BMVert *v)
 	BMLoop *l;
 	float uv[2];
 	int n;
-	int cd_loop_uv_offset = CustomData_get_offset(&bm->ldata, CD_MLOOPUV);
+	int num_of_uv_layers = CustomData_number_of_layers(&bm->ldata, CD_MLOOPUV);
+	int i;
 
-	if (cd_loop_uv_offset == -1)
-		return;
+	for (i = 0; i < num_of_uv_layers; i++) {
+		int cd_loop_uv_offset = CustomData_get_n_offset(&bm->ldata, CD_MLOOPUV, i);
 
-	n = 0;
-	zero_v2(uv);
-	BM_ITER_ELEM (l, &iter, v, BM_LOOPS_OF_VERT) {
-		luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-		add_v2_v2(uv, luv->uv);
-		n++;
-	}
-	if (n > 1) {
-		mul_v2_fl(uv, 1.0f / (float)n);
+		if (cd_loop_uv_offset == -1)
+			return;
+
+		n = 0;
+		zero_v2(uv);
 		BM_ITER_ELEM (l, &iter, v, BM_LOOPS_OF_VERT) {
 			luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
-			copy_v2_v2(luv->uv, uv);
+			add_v2_v2(uv, luv->uv);
+			n++;
+		}
+		if (n > 1) {
+			mul_v2_fl(uv, 1.0f / (float)n);
+			BM_ITER_ELEM (l, &iter, v, BM_LOOPS_OF_VERT) {
+				luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
+				copy_v2_v2(luv->uv, uv);
+			}
 		}
 	}
 }
@@ -787,7 +792,7 @@ static void offset_on_edge_between(BevelParams *bp, EdgeHalf *e1, EdgeHalf *e2, 
  * be on emid if that does a better job of keeping offsets at the user spec.
  * Viewed from the vertex normal side, the CCW order of the edges is e1, emid, e2.
  * The offset lines may not meet exactly: the lines may be angled so that they can't meet.
- * In that case, pick  the the offset_on_edge_between. */
+ * In that case, pick  the offset_on_edge_between. */
 static void offset_in_two_planes(BevelParams *bp, EdgeHalf *e1, EdgeHalf *e2, EdgeHalf *emid,
                                  BMVert *v,  float meetco[3])
 {
@@ -904,11 +909,11 @@ static void project_to_edge(BMEdge *e, const float co_a[3], const float co_b[3],
 /* If there is a bndv->ebev edge, find the mid control point if necessary.
  * It is the closest point on the beveled edge to the line segment between
  * bndv and bndv->next.  */
-static void set_profile_params(BevelParams *bp, BoundVert *bndv)
+static void set_profile_params(BevelParams *bp, BevVert *bv, BoundVert *bndv)
 {
 	EdgeHalf *e;
 	Profile *pro;
-	float co1[3], co2[3], co3[3], d1[3], d2[3], d3[3], l;
+	float co1[3], co2[3], co3[3], d1[3], d2[3], l;
 	bool do_linear_interp;
 
 	copy_v3_v3(co1, bndv->nv.co);
@@ -942,18 +947,37 @@ static void set_profile_params(BevelParams *bp, BoundVert *bndv)
 		cross_v3_v3v3(pro->plane_no, d1, d2);
 		l = normalize_v3(pro->plane_no);
 		if (l  <= BEVEL_EPSILON_BIG) {
-			/* co1 - midco -co2 are collinear - project plane that contains that line
-			 * and is perpendicular to the plane containing it and the beveled edge */
-			cross_v3_v3v3(d3, d1, pro->proj_dir);
-			normalize_v3(d3);
-			cross_v3_v3v3(pro->plane_no, d1, d3);
-			l = normalize_v3(pro->plane_no);
-			if (l <= BEVEL_EPSILON_BIG) {
-				/* whole profile is collinear with edge: just interpolate */
+			/* co1 - midco -co2 are collinear.
+			 * Should be case that beveled edge is coplanar with two boundary verts.
+			 * If the profile is going to lead into unbeveled edges on each side
+			 * (that is, both BoundVerts are "on-edge" points on non-beveled edges)
+			 * then in order to get curve in multi-segment case, change projection plane
+			 * to be that common plane, projection dir to be the plane normal,
+			 * and mid to be the original vertex.
+			 * Otherwise, we just want to linearly interpolate between co1 and co2.
+			 */
+			if (e->prev->is_bev || e->next->is_bev) {
 				do_linear_interp = true;
 			}
-			/* signal to weld that this is linear */
-			pro->super_r = PRO_LINE_R;
+			else {
+				copy_v3_v3(pro->coa, co1);
+				copy_v3_v3(pro->midco, bv->v->co);
+				copy_v3_v3(pro->cob, co2);
+				sub_v3_v3v3(d1, pro->midco, co1);
+				normalize_v3(d1);
+				sub_v3_v3v3(d2, pro->midco, co2);
+				normalize_v3(d2);
+				cross_v3_v3v3(pro->plane_no, d1, d2);
+				l = normalize_v3(pro->plane_no);
+				if (l <= BEVEL_EPSILON_BIG) {
+					/* whole profile is collinear with edge: just interpolate */
+					do_linear_interp = true;
+				}
+				else {
+					copy_v3_v3(pro->plane_co, bv->v->co);
+					copy_v3_v3(pro->proj_dir, pro->plane_no);
+				}
+			}
 		}
 		copy_v3_v3(pro->plane_co, co1);
 	}
@@ -1387,7 +1411,7 @@ static void set_bound_vert_seams(BevVert *bv)
 }
 
 /* Make a circular list of BoundVerts for bv, each of which has the coordinates
- * of a vertex on the the boundary of the beveled vertex bv->v.
+ * of a vertex on the boundary of the beveled vertex bv->v.
  * This may adjust some EdgeHalf widths, and there might have to be
  * a subsequent pass to make the widths as consistent as possible.
  * The first time through, construct will be true and we are making the BoundVerts
@@ -1469,12 +1493,12 @@ static void build_boundary(BevelParams *bp, BevVert *bv, bool construct)
 		else {
 			adjust_bound_vert(e->next->leftv, co);
 		}
-		set_profile_params(bp, vm->boundstart);
+		set_profile_params(bp, bv, vm->boundstart);
 		calculate_profile(bp, vm->boundstart);
 		return;
 	}
 
-	lastd = bp->vertex_only ? bv->offset : e->offset_l;
+	lastd = e->offset_l;
 	do {
 		if (e->is_bev) {
 			/* handle only left side of beveled edge e here: next iteration should do right side */
@@ -1557,9 +1581,10 @@ static void build_boundary(BevelParams *bp, BevVert *bv, bool construct)
 				/* None of e->prev, e, e->next are beveled.
 				 * could either leave alone or add slide points to make
 				 * one polygon around bv->v.  For now, we choose latter.
+				 * For vertex bevel, we use e->offset_l as slide distance.
 				 * Could slide to make an even bevel plane but for now will
 				 * just use last distance a meet point moved from bv->v. */
-				slide_dist(e, bv->v, lastd, co);
+				slide_dist(e, bv->v, bp->vertex_only ? e->offset_l : lastd, co);
 				if (construct) {
 					v = add_new_bound_vert(mem_arena, vm, co);
 					v->efirst = v->elast = e;
@@ -1574,7 +1599,7 @@ static void build_boundary(BevelParams *bp, BevVert *bv, bool construct)
 
 	v = vm->boundstart;
 	do {
-		set_profile_params(bp, v);
+		set_profile_params(bp, bv, v);
 		calculate_profile(bp, v);
 	} while ((v = v->next) != vm->boundstart);
 
@@ -2229,7 +2254,6 @@ static VMesh *make_cube_corner_adj_vmesh(BevelParams *bp)
 	BoundVert *bndv;
 	int i, j, k, ns2;
 	float co[3], coc[3];
-	float w;
 
 	if (r == PRO_SQUARE_R)
 		return make_cube_corner_straight(mem_arena, nseg);
@@ -2262,10 +2286,8 @@ static VMesh *make_cube_corner_adj_vmesh(BevelParams *bp)
 		bndv = bndv->next;
 	}
 	/* center vertex */
-	w = (float)(1.0 / M_SQRT3);
-	co[0] = w;
-	co[1] = w;
-	co[2] = w;
+	copy_v3_fl(co, M_SQRT1_3);
+
 	if (nseg > 2) {
 		if (r > 1.5f)
 			mul_v3_fl(co, 1.4f);
@@ -2712,23 +2734,60 @@ static void bevel_build_quadstrip(BevelParams *bp, BMesh *bm, BevVert *bv)
 	}
 }
 
-/* Special case: there is no vmesh pattern because this has only two boundary verts,
- * and there are no faces in the original mesh at the original vertex.
- * Since there will be no rebuilt face to make the edge between the boundary verts,
+/* Special case: vertex bevel with only two boundary verts.
+ * Want to make a curved edge if seg > 0.
+ * If there are no faces in the original mesh at the original vertex,
+ * there will be no rebuilt face to make the edge between the boundary verts,
  * we have to make it here. */
-static void bevel_build_one_wire(BMesh *bm, BevVert *bv)
+static void bevel_vert_two_edges(BevelParams *bp, BMesh *bm, BevVert *bv)
 {
 	VMesh *vm = bv->vmesh;
 	BMVert *v1, *v2;
 	BMEdge *e_eg;
+	Profile *pro;
+	float co[3];
+	BoundVert *bndv;
+	int ns, k;
 
-	BLI_assert(vm->count == 2);
+	BLI_assert(vm->count == 2 && bp->vertex_only);
 
 	v1 = mesh_vert(vm, 0, 0, 0)->v;
 	v2 = mesh_vert(vm, 1, 0, 0)->v;
-	e_eg = bv->edges[0].e;
-	BLI_assert(v1 != NULL && v2 != NULL && e_eg != NULL);
-	BM_edge_create(bm, v1, v2, e_eg, BM_CREATE_NO_DOUBLE);
+
+	ns = vm->seg;
+	if (ns > 1) {
+		/* Set up profile parameters */
+		bndv = vm->boundstart;
+		pro = &bndv->profile;
+		pro->super_r = bp->pro_super_r;
+		copy_v3_v3(pro->coa, v1->co);
+		copy_v3_v3(pro->cob, v2->co);
+		copy_v3_v3(pro->midco, bv->v->co);
+		/* don't use projection */
+		zero_v3(pro->plane_co);
+		zero_v3(pro->plane_no);
+		zero_v3(pro->proj_dir);
+		calculate_profile(bp, bndv);
+		for (k = 1; k < ns; k++) {
+			get_profile_point(bp, pro, k, ns, co);
+			copy_v3_v3(mesh_vert(vm, 0, 0, k)->co, co);
+			create_mesh_bmvert(bm, vm, 0, 0, k, bv->v);
+		}
+		copy_v3_v3(mesh_vert(vm, 0, 0, ns)->co, v2->co);
+		for (k = 1; k < ns; k++)
+			copy_mesh_vert(vm, 1, 0, ns - k, 0, 0, k);
+	}
+
+	if (BM_vert_face_count(bv->v) == 0) {
+		e_eg = bv->edges[0].e;
+		BLI_assert(e_eg != NULL);
+		for (k = 0; k < ns; k++) {
+			v1 = mesh_vert(vm, 0, 0, k)->v;
+			v2 = mesh_vert(vm, 0, 0, k + 1)->v;
+			BLI_assert(v1 != NULL && v2 != NULL);
+			BM_edge_create(bm, v1, v2, e_eg, BM_CREATE_NO_DOUBLE);
+		}
+	}
 }
 
 /* Given that the boundary is built, now make the actual BMVerts
@@ -2814,8 +2873,8 @@ static void build_vmesh(BevelParams *bp, BMesh *bm, BevVert *bv)
 
 	switch (vm->mesh_kind) {
 		case M_NONE:
-			if  (n == 2 && BM_vert_face_count(bv->v) == 0)
-				bevel_build_one_wire(bm, bv);
+			if  (n == 2 && bp->vertex_only)
+				bevel_vert_two_edges(bp, bm, bv);
 			break;
 		case M_POLY:
 			bevel_build_poly(bp, bm, bv);
@@ -2898,8 +2957,9 @@ static BevVert *bevel_vert_construct(BMesh *bm, BevelParams *bp, BMVert *v)
 			nwire++;
 			/* If edge beveling, exclude wire edges from edges array.
 			 * Mark this edge as "chosen" so loop below won't choose it. */
-			 if (!bp->vertex_only)
+			if (!bp->vertex_only) {
 				BM_BEVEL_EDGE_TAG_ENABLE(bme);
+			}
 		}
 	}
 	if (!first_bme)
@@ -2933,6 +2993,10 @@ static BevVert *bevel_vert_construct(BMesh *bm, BevelParams *bp, BMVert *v)
 				BM_elem_flag_disable(v, BM_ELEM_TAG);
 				return NULL;
 			}
+			bv->offset *= weight;
+		}
+		else if (bp->use_weights) {
+			weight = BM_elem_float_data_get(&bm->vdata, v, CD_BWEIGHT);
 			bv->offset *= weight;
 		}
 	}
@@ -3077,6 +3141,18 @@ static BevVert *bevel_vert_construct(BMesh *bm, BevelParams *bp, BMVert *v)
 				e->offset_r_spec *= weight;
 			}
 		}
+		else if (bp->vertex_only) {
+			/* Weight has already been applied to bv->offset, if present.
+			 * Transfer to e->offset_[lr]_spec and treat percent as special case */
+			if (bp->offset_type == BEVEL_AMT_PERCENT) {
+				v2 = BM_edge_other_vert(e->e, bv->v);
+				e->offset_l_spec = BM_edge_calc_length(e->e) * bv->offset / 100.0f;
+			}
+			else {
+				e->offset_l_spec = bv->offset;
+			}
+			e->offset_r_spec = e->offset_l_spec;
+		}
 		else {
 			e->offset_l_spec = e->offset_r_spec = 0.0f;
 		}
@@ -3155,7 +3231,7 @@ static bool bev_rebuild_polygon(BMesh *bm, BevelParams *bp, BMFace *f)
 							BLI_array_append(vv_fix, bmv);
 					}
 				}
-				else if (vm->mesh_kind == M_ADJ && vm->seg > 1 && !e->is_bev && !eprev->is_bev) {
+				else if ((vm->mesh_kind == M_ADJ || bp->vertex_only) && vm->seg > 1 && !e->is_bev && !eprev->is_bev) {
 					BLI_assert(v->prev == vend);
 					i = vend->index;
 					for (k = vm->seg - 1; k > 0; k--) {

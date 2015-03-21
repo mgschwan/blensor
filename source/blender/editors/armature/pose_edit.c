@@ -381,14 +381,14 @@ static void pose_copy_menu(Scene *scene)
 	 * but for constraints (just add local constraints)
 	 */
 	if (pose_has_protected_selected(ob, 0)) {
-		i = BLI_countlist(&(pchanact->constraints)); /* if there are 24 or less, allow for the user to select constraints */
+		i = BLI_listbase_count(&(pchanact->constraints)); /* if there are 24 or less, allow for the user to select constraints */
 		if (i < 25)
 			nr = pupmenu("Copy Pose Attributes %t|Local Location %x1|Local Rotation %x2|Local Size %x3|%l|Visual Location %x9|Visual Rotation %x10|Visual Size %x11|%l|Constraints (All) %x4|Constraints... %x5");
 		else
 			nr = pupmenu("Copy Pose Attributes %t|Local Location %x1|Local Rotation %x2|Local Size %x3|%l|Visual Location %x9|Visual Rotation %x10|Visual Size %x11|%l|Constraints (All) %x4");
 	}
 	else {
-		i = BLI_countlist(&(pchanact->constraints)); /* if there are 24 or less, allow for the user to select constraints */
+		i = BLI_listbase_count(&(pchanact->constraints)); /* if there are 24 or less, allow for the user to select constraints */
 		if (i < 25)
 			nr = pupmenu("Copy Pose Attributes %t|Local Location %x1|Local Rotation %x2|Local Size %x3|%l|Visual Location %x9|Visual Rotation %x10|Visual Size %x11|%l|Constraints (All) %x4|Constraints... %x5|%l|Transform Locks %x6|IK Limits %x7|Bone Shape %x8");
 		else
@@ -503,7 +503,7 @@ static void pose_copy_menu(Scene *scene)
 		/* build the puplist of constraints */
 		for (con = pchanact->constraints.first, i = 0; con; con = con->next, i++) {
 			const_toggle[i] = 1;
-//			add_numbut(i, TOG|INT, con->name, 0, 0, &(const_toggle[i]), "");
+//			add_numbut(i, UI_BTYPE_TOGGLE|INT, con->name, 0, 0, &(const_toggle[i]), "");
 		}
 		
 //		if (!do_clever_numbuts("Select Constraints", i, REDRAW)) {
@@ -595,7 +595,7 @@ void POSE_OT_flip_names(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "Flip Names";
 	ot->idname = "POSE_OT_flip_names";
-	ot->description = "Flips (and corrects) the axis suffixes of the the names of selected bones";
+	ot->description = "Flips (and corrects) the axis suffixes of the names of selected bones";
 	
 	/* api callbacks */
 	ot->exec = pose_flip_names_exec;
@@ -853,7 +853,7 @@ void ARMATURE_OT_armature_layers(wmOperatorType *ot)
 /* Present a popup to get the layers that should be used */
 static int pose_bone_layers_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
-	int layers[32] = {0}; /* hardcoded for now - we can only have 32 armature layers, so this should be fine... */
+	int layers[32]; /* hardcoded for now - we can only have 32 armature layers, so this should be fine... */
 	
 	/* get layers that are active already */
 	CTX_DATA_BEGIN (C, bPoseChannel *, pchan, selected_pose_bones)
@@ -862,8 +862,7 @@ static int pose_bone_layers_invoke(bContext *C, wmOperator *op, const wmEvent *e
 		
 		/* loop over the bits for this pchan's layers, adding layers where they're needed */
 		for (bit = 0; bit < 32; bit++) {
-			if (pchan->bone->layer & (1 << bit))
-				layers[bit] = 1;
+			layers[bit] = (pchan->bone->layer & (1u << bit)) != 0;
 		}
 	}
 	CTX_DATA_END;
@@ -937,8 +936,9 @@ static int armature_bone_layers_invoke(bContext *C, wmOperator *op, const wmEven
 		
 		/* loop over the bits for this pchan's layers, adding layers where they're needed */
 		for (bit = 0; bit < 32; bit++) {
-			if (ebone->layer & (1 << bit))
+			if (ebone->layer & (1u << bit)) {
 				layers[bit] = 1;
+			}
 		}
 	}
 	CTX_DATA_END;

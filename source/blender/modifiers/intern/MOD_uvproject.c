@@ -49,7 +49,6 @@
 #include "BKE_DerivedMesh.h"
 
 #include "MOD_modifiertypes.h"
-#include "MOD_util.h"
 
 #include "MEM_guardedalloc.h"
 #include "depsgraph_private.h"
@@ -105,6 +104,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)

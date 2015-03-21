@@ -43,7 +43,6 @@
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-#include "BLI_alloca.h"
 #include "BLI_buffer.h"
 #include "BLI_bitmap.h"
 
@@ -71,7 +70,7 @@
 
 static void draw_uvs_lineloop_bmface(BMFace *efa, const int cd_loop_uv_offset);
 
-void draw_image_cursor(ARegion *ar, const float cursor[2])
+void ED_image_draw_cursor(ARegion *ar, const float cursor[2])
 {
 	float zoom[2], x_fac, y_fac;
 
@@ -325,7 +324,7 @@ static void draw_uvs_stretch(SpaceImage *sima, Scene *scene, BMEditMesh *em, MTe
 					BM_ITER_ELEM_INDEX (l, &liter, efa, BM_LOOPS_OF_FACE, i) {
 						luv = BM_ELEM_CD_GET_VOID_P(l, cd_loop_uv_offset);
 						a = fabsf(uvang[i] - ang[i]) / (float)M_PI;
-						weight_to_rgb(col, 1.0f - powf((1.0f - a), 2.0f));
+						weight_to_rgb(col, 1.0f - pow2f(1.0f - a));
 						glColor3fv(col);
 						glVertex2fv(luv->uv);
 					}
@@ -506,6 +505,8 @@ static void draw_uvs_texpaint(SpaceImage *sima, Scene *scene, Object *ob)
 		mloopuv_base = mloopuv;
 
 		for (a = me->totpoly; a > 0; a--, mpoly++) {
+			if ((scene->toolsettings->uv_flag & UV_SHOW_SAME_IMAGE) && mpoly->mat_nr != ob->actcol - 1)
+				continue;
 			glBegin(GL_LINE_LOOP);
 
 			mloopuv = mloopuv_base + mpoly->loopstart;
@@ -963,7 +964,7 @@ static void draw_uv_shadows_get(SpaceImage *sima, Object *ob, Object *obedit, bo
 	*show_texpaint = (ob && ob->type == OB_MESH && ob->mode == OB_MODE_TEXTURE_PAINT);
 }
 
-void draw_uvedit_main(SpaceImage *sima, ARegion *ar, Scene *scene, Object *obedit, Object *obact)
+void ED_uvedit_draw_main(SpaceImage *sima, ARegion *ar, Scene *scene, Object *obedit, Object *obact)
 {
 	ToolSettings *toolsettings = scene->toolsettings;
 	bool show_uvedit, show_uvshadow, show_texpaint_uvshadow;
@@ -980,7 +981,7 @@ void draw_uvedit_main(SpaceImage *sima, ARegion *ar, Scene *scene, Object *obedi
 			draw_uvs_texpaint(sima, scene, obact);
 
 		if (show_uvedit && !(toolsettings->use_uv_sculpt))
-			draw_image_cursor(ar, sima->cursor);
+			ED_image_draw_cursor(ar, sima->cursor);
 	}
 }
 

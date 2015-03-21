@@ -69,6 +69,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_world_types.h"
 #include "BKE_main.h"
+#include "BKE_fcurve.h"
 
 #include "BLI_math.h"
 
@@ -87,6 +88,7 @@ extern "C"
 #include "BKE_mesh.h" // BKE_mesh_copy
 #include "DNA_space_types.h"
 #include "DNA_anim_types.h"
+#include "DNA_action_types.h"
 #include "RNA_define.h"
 #include "../../blender/editors/include/ED_keyframing.h"
 }
@@ -527,76 +529,59 @@ void KX_BlenderSceneConverter::CacheBlenderMaterial(KX_Scene *scene, struct Mate
 		m_mat_cache[scene][mat] = blmat;
 }
 
+
 BL_Material *KX_BlenderSceneConverter::FindCachedBlenderMaterial(KX_Scene *scene, struct Material *mat)
 {
 	return (m_use_mat_cache) ? m_mat_cache[scene][mat] : NULL;
 }
 
-void KX_BlenderSceneConverter::RegisterInterpolatorList(
-									BL_InterpolatorList *actList,
-									struct bAction *for_act)
+
+void KX_BlenderSceneConverter::RegisterInterpolatorList(BL_InterpolatorList *actList, struct bAction *for_act)
 {
 	m_map_blender_to_gameAdtList.insert(CHashedPtr(for_act), actList);
 }
 
-
-
-BL_InterpolatorList *KX_BlenderSceneConverter::FindInterpolatorList(
-									struct bAction *for_act)
+BL_InterpolatorList *KX_BlenderSceneConverter::FindInterpolatorList(struct bAction *for_act)
 {
 	BL_InterpolatorList **listp = m_map_blender_to_gameAdtList[CHashedPtr(for_act)];
-		
 	return listp?*listp:NULL;
 }
 
 
-
-void KX_BlenderSceneConverter::RegisterGameActuator(
-									SCA_IActuator *act,
-									struct bActuator *for_actuator)
+void KX_BlenderSceneConverter::RegisterGameActuator(SCA_IActuator *act, struct bActuator *for_actuator)
 {
 	m_map_blender_to_gameactuator.insert(CHashedPtr(for_actuator), act);
 }
 
-
-
-SCA_IActuator *KX_BlenderSceneConverter::FindGameActuator(
-									struct bActuator *for_actuator)
+SCA_IActuator *KX_BlenderSceneConverter::FindGameActuator(struct bActuator *for_actuator)
 {
 	SCA_IActuator **actp = m_map_blender_to_gameactuator[CHashedPtr(for_actuator)];
-	
 	return actp?*actp:NULL;
 }
 
 
-
-void KX_BlenderSceneConverter::RegisterGameController(
-									SCA_IController *cont,
-									struct bController *for_controller)
+void KX_BlenderSceneConverter::RegisterGameController(SCA_IController *cont, struct bController *for_controller)
 {
 	m_map_blender_to_gamecontroller.insert(CHashedPtr(for_controller), cont);
 }
 
-
-
-SCA_IController *KX_BlenderSceneConverter::FindGameController(
-									struct bController *for_controller)
+SCA_IController *KX_BlenderSceneConverter::FindGameController(struct bController *for_controller)
 {
 	SCA_IController **contp = m_map_blender_to_gamecontroller[CHashedPtr(for_controller)];
-	
 	return contp?*contp:NULL;
 }
 
 
 
-void KX_BlenderSceneConverter::RegisterWorldInfo(
-									KX_WorldInfo *worldinfo)
+void KX_BlenderSceneConverter::RegisterWorldInfo(KX_WorldInfo *worldinfo)
 {
 	m_worldinfos.push_back(pair<KX_Scene*,KX_WorldInfo*>(m_currentScene,worldinfo));
 }
 
 void	KX_BlenderSceneConverter::ResetPhysicsObjectsAnimationIpo(bool clearIpo)
 {
+	//TODO this entire function is deprecated, written for 2.4x
+	//the functionality should be rewritten, currently it does nothing
 
 	KX_SceneList* scenes = m_ketsjiEngine->CurrentScenes();
 	int numScenes = scenes->size();
@@ -612,7 +597,7 @@ void	KX_BlenderSceneConverter::ResetPhysicsObjectsAnimationIpo(bool clearIpo)
 		{
 			KX_GameObject* gameObj = (KX_GameObject*)parentList->GetValue(g);
 			if (gameObj->IsRecordAnimation()) {
-				
+
 				Object* blenderObject = gameObj->GetBlenderObject();
 				if (blenderObject)
 				{
@@ -623,21 +608,21 @@ void	KX_BlenderSceneConverter::ResetPhysicsObjectsAnimationIpo(bool clearIpo)
 					{ 	//clear the curve data
 						if (clearIpo) {//rcruiz
 							IpoCurve *icu1;
-														
+
 							int numCurves = 0;
 							for ( icu1 = (IpoCurve*)ipo->curve.first; icu1;  ) {
-							
+
 								IpoCurve* tmpicu = icu1;
-								
+
 								/*int i;
 								BezTriple *bezt;
 								for ( bezt = tmpicu->bezt, i = 0;	i < tmpicu->totvert; i++, bezt++) {
 									printf("(%f,%f,%f),(%f,%f,%f),(%f,%f,%f)\n",bezt->vec[0][0],bezt->vec[0][1],bezt->vec[0][2],bezt->vec[1][0],bezt->vec[1][1],bezt->vec[1][2],bezt->vec[2][0],bezt->vec[2][1],bezt->vec[2][2]);
 								}*/
-								
+
 								icu1 = icu1->next;
 								numCurves++;
-			
+
 								BLI_remlink( &( blenderObject->ipo->curve ), tmpicu );
 								if ( tmpicu->bezt )
 									MEM_freeN( tmpicu->bezt );
@@ -655,8 +640,8 @@ void	KX_BlenderSceneConverter::ResetPhysicsObjectsAnimationIpo(bool clearIpo)
 			}
 
 		}
-		
-	
+
+
 	}
 
 
@@ -665,45 +650,7 @@ void	KX_BlenderSceneConverter::ResetPhysicsObjectsAnimationIpo(bool clearIpo)
 
 void	KX_BlenderSceneConverter::resetNoneDynamicObjectToIpo()
 {
-	if (addInitFromFrame) {
-		KX_SceneList* scenes = m_ketsjiEngine->CurrentScenes();
-		int numScenes = scenes->size();
-		if (numScenes>=0) {
-			KX_Scene* scene = scenes->at(0);
-			CListValue* parentList = scene->GetRootParentList();
-			for (int ix=0;ix<parentList->GetCount();ix++) {
-				KX_GameObject* gameobj = (KX_GameObject*)parentList->GetValue(ix);
-				if (!gameobj->IsRecordAnimation()) {
-					Object* blenderobject = gameobj->GetBlenderObject();
-					if (!blenderobject)
-						continue;
-					if (blenderobject->type==OB_ARMATURE)
-						continue;
-					float eu[3];
-					mat4_to_eul(eu,blenderobject->obmat);
-					MT_Point3 pos = MT_Point3(
-						blenderobject->obmat[3][0],
-						blenderobject->obmat[3][1],
-						blenderobject->obmat[3][2]
-					);
-					MT_Vector3 eulxyz = MT_Vector3(
-						eu[0],
-						eu[1],
-						eu[2]
-					);
-					MT_Vector3 scale = MT_Vector3(
-						blenderobject->size[0],
-						blenderobject->size[1],
-						blenderobject->size[2]
-					);
-					gameobj->NodeSetLocalPosition(pos);
-					gameobj->NodeSetLocalOrientation(MT_Matrix3x3(eulxyz));
-					gameobj->NodeSetLocalScale(scale);
-					gameobj->NodeUpdateGS(0);
-				}
-			}
-		}
-	}
+	//TODO the functionality should be rewritten
 }
 
 
@@ -843,13 +790,26 @@ void	KX_BlenderSceneConverter::TestHandlesPhysicsObjectToAnimationIpo()
 		{
 			KX_GameObject* gameObj = (KX_GameObject*)parentList->GetValue(g);
 			if (gameObj->IsRecordAnimation()) {
-#if 0
 				Object* blenderObject = gameObj->GetBlenderObject();
-				if (blenderObject && blenderObject->ipo)
+				if (blenderObject && blenderObject->adt)
 				{
+					bAction *act = verify_adt_action(&blenderObject->id, false);
+					FCurve *fcu;
+
+					if (!act) {
+						continue;
+					}
+
+					/* for now, not much choice but to run this on all curves... */
+					for (fcu = (FCurve *)act->curves.first; fcu; fcu = fcu->next) {
+						/* Note: calling `sort_time_fcurve()` here is not needed, since
+						 *       all keys have been added in 'right' order. */
+						calchandles_fcurve(fcu);
+					}
+#if 0
 					// XXX animato
 					Ipo* ipo = blenderObject->ipo;
-					
+
 					//create the curves, if not existing
 					//testhandles_ipocurve checks for NULL
 					testhandles_ipocurve(findIpoCurve((IpoCurve *)ipo->curve.first,"LocX"));
@@ -858,8 +818,8 @@ void	KX_BlenderSceneConverter::TestHandlesPhysicsObjectToAnimationIpo()
 					testhandles_ipocurve(findIpoCurve((IpoCurve *)ipo->curve.first,"RotX"));
 					testhandles_ipocurve(findIpoCurve((IpoCurve *)ipo->curve.first,"RotY"));
 					testhandles_ipocurve(findIpoCurve((IpoCurve *)ipo->curve.first,"RotZ"));
-				}
 #endif
+				}
 			}
 		}
 	}

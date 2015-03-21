@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License
+# limitations under the License.
 #
 
 # <pep8 compliant>
@@ -37,7 +37,7 @@ class CYCLES_MT_integrator_presets(Menu):
     draw = Menu.draw_preset
 
 
-class CyclesButtonsPanel():
+class CyclesButtonsPanel:
     bl_space_type = "PROPERTIES"
     bl_region_type = "WINDOW"
     bl_context = "render"
@@ -445,6 +445,7 @@ class CyclesCamera_PT_dof(CyclesButtonsPanel, Panel):
 
         cam = context.camera
         ccam = cam.cycles
+        dof_options = cam.gpu_dof
 
         split = layout.split()
 
@@ -455,7 +456,11 @@ class CyclesCamera_PT_dof(CyclesButtonsPanel, Panel):
         sub = col.row()
         sub.active = cam.dof_object is None
         sub.prop(cam, "dof_distance", text="Distance")
-
+        col.prop(dof_options, "fstop")
+        col.prop(dof_options, "use_high_quality")
+        if dof_options.use_high_quality:
+            col.prop(dof_options, "blades")
+ 
         col = split.column()
 
         col.label("Aperture:")
@@ -729,11 +734,11 @@ class CyclesLamp_PT_lamp(CyclesButtonsPanel, Panel):
 
         if cscene.progressive == 'BRANCHED_PATH':
             col.prop(clamp, "samples")
+        col.prop(clamp, "max_bounces")
 
         col = split.column()
         col.prop(clamp, "cast_shadow")
-
-        layout.prop(clamp, "use_multiple_importance_sampling")
+        col.prop(clamp, "use_multiple_importance_sampling", text="Multiple Importance")
 
         if lamp.type == 'HEMI':
             layout.label(text="Not supported, interpreted as sun lamp")
@@ -936,6 +941,7 @@ class CyclesWorld_PT_settings(CyclesButtonsPanel, Panel):
         sub = col.column()
         sub.active = use_cpu(context)
         sub.prop(cworld, "volume_sampling", text="")
+        sub.prop(cworld, "volume_interpolation", text="")
         col.prop(cworld, "homogeneous_volume", text="Homogeneous")
 
 
@@ -1019,17 +1025,6 @@ class CyclesMaterial_PT_settings(CyclesButtonsPanel, Panel):
         cmat = mat.cycles
 
         split = layout.split()
-
-        col = split.column(align=True)
-        col.prop(mat, "diffuse_color", text="Viewport Color")
-        col.prop(mat, "alpha")
-
-        col = split.column(align=True)
-        col.label()
-        col.prop(mat, "pass_index")
-
-        split = layout.split()
-
         col = split.column()
         col.label(text="Surface:")
         col.prop(cmat, "sample_as_light", text="Multiple Importance")
@@ -1040,7 +1035,24 @@ class CyclesMaterial_PT_settings(CyclesButtonsPanel, Panel):
         sub = col.column()
         sub.active = use_cpu(context)
         sub.prop(cmat, "volume_sampling", text="")
+        col.prop(cmat, "volume_interpolation", text="")
         col.prop(cmat, "homogeneous_volume", text="Homogeneous")
+
+        layout.separator()
+        split = layout.split()
+
+        col = split.column(align=True)
+        col.label("Viewport Color:")
+        col.prop(mat, "diffuse_color", text="")
+        col.prop(mat, "alpha")
+
+        col.separator()
+        col.prop(mat, "pass_index")
+
+        col = split.column(align=True)
+        col.label("Viewport Specular:")
+        col.prop(mat, "specular_color", text="")
+        col.prop(mat, "specular_hardness", text="Hardness")
 
 
 class CyclesTexture_PT_context(CyclesButtonsPanel, Panel):
@@ -1381,7 +1393,11 @@ def get_panels():
         "RENDER_PT_encoding",
         "RENDER_PT_dimensions",
         "RENDER_PT_stamp",
+        "RENDER_PT_freestyle",
         "RENDERLAYER_PT_layers",
+        "RENDERLAYER_PT_freestyle",
+        "RENDERLAYER_PT_freestyle_lineset",
+        "RENDERLAYER_PT_freestyle_linestyle",
         "SCENE_PT_scene",
         "SCENE_PT_color_management",
         "SCENE_PT_custom_props",
@@ -1406,6 +1422,7 @@ def get_panels():
         "DATA_PT_vertex_colors",
         "DATA_PT_camera",
         "DATA_PT_camera_display",
+        "DATA_PT_camera_safe_areas",
         "DATA_PT_lens",
         "DATA_PT_speaker",
         "DATA_PT_distance",
@@ -1419,6 +1436,7 @@ def get_panels():
         "DATA_PT_custom_props_curve",
         "DATA_PT_custom_props_lattice",
         "DATA_PT_custom_props_metaball",
+        "TEXTURE_PT_preview",
         "TEXTURE_PT_custom_props",
         "TEXTURE_PT_clouds",
         "TEXTURE_PT_wood",
@@ -1458,6 +1476,7 @@ def get_panels():
         "PARTICLE_PT_force_fields",
         "PARTICLE_PT_vertexgroups",
         "MATERIAL_PT_custom_props",
+        "MATERIAL_PT_freestyle_line",
         "BONE_PT_custom_props",
         "OBJECT_PT_custom_props",
         ]

@@ -76,7 +76,7 @@ typedef struct ScanFillIsect {
 
 
 #if 0
-void BKE_scanfill_obj_dump(ScanFillContext *sf_ctx)
+void BLI_scanfill_obj_dump(ScanFillContext *sf_ctx)
 {
 	FILE *f = fopen("test.obj", "w");
 	unsigned int i = 1;
@@ -96,7 +96,7 @@ void BKE_scanfill_obj_dump(ScanFillContext *sf_ctx)
 #endif
 
 #if 0
-void BKE_scanfill_view3d_dump(ScanFillContext *sf_ctx)
+void BLI_scanfill_view3d_dump(ScanFillContext *sf_ctx)
 {
 	ScanFillEdge *eed;
 
@@ -132,12 +132,12 @@ static ListBase *edge_isect_ls_add(GHash *isect_hash, ScanFillEdge *eed, ScanFil
 	return e_ls;
 }
 
-static int edge_isect_ls_sort_cb(void *thunk, void *def_a_ptr, void *def_b_ptr)
+static int edge_isect_ls_sort_cb(void *thunk, const void *def_a_ptr, const void *def_b_ptr)
 {
 	const float *co = thunk;
 
-	ScanFillIsect *i_a = (ScanFillIsect *)(((LinkData *)def_a_ptr)->data);
-	ScanFillIsect *i_b = (ScanFillIsect *)(((LinkData *)def_b_ptr)->data);
+	const ScanFillIsect *i_a = ((const LinkData *)def_a_ptr)->data;
+	const ScanFillIsect *i_b = ((const LinkData *)def_b_ptr)->data;
 	const float a = len_squared_v2v2(co, i_a->co);
 	const float b = len_squared_v2v2(co, i_b->co);
 
@@ -265,7 +265,7 @@ static bool scanfill_preprocess_self_isect(
 				}
 
 				if (BLI_listbase_is_single(e_ls) == false) {
-					BLI_sortlist_r(e_ls, eed->v2->co, edge_isect_ls_sort_cb);
+					BLI_listbase_sort_r(e_ls, eed->v2->co, edge_isect_ls_sort_cb);
 				}
 
 				/* move original edge to filledgebase and add replacement
@@ -508,8 +508,8 @@ bool BLI_scanfill_calc_self_isect(
 	sf_ctx->poly_nr = SF_POLY_UNSET;
 
 #if 0
-	BKE_scanfill_view3d_dump(sf_ctx);
-	BKE_scanfill_obj_dump(sf_ctx);
+	BLI_scanfill_view3d_dump(sf_ctx);
+	BLI_scanfill_obj_dump(sf_ctx);
 #endif
 
 	return changed;

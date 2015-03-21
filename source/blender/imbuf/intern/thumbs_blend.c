@@ -29,8 +29,6 @@
 
 #include "zlib.h"
 
-#include "MEM_guardedalloc.h"
-
 #include "BLI_utildefines.h"
 #include "BLI_endian_switch.h"
 #include "BLI_fileops.h"
@@ -57,7 +55,7 @@ static ImBuf *loadblend_thumb(gzFile gzfile)
 	/* read the blend file header */
 	if (gzread(gzfile, buf, 12) != 12)
 		return NULL;
-	if (strncmp(buf, "BLENDER", 7))
+	if (!STREQLEN(buf, "BLENDER", 7))
 		return NULL;
 
 	if (buf[7] == '-')

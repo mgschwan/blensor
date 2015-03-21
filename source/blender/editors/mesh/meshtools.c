@@ -329,7 +329,7 @@ int join_mesh_exec(bContext *C, wmOperator *op)
 							if (odg) {
 								/*	Search for a match in the new object, and set new index */
 								for (dg = ob->defbase.first, index = 0; dg; dg = dg->next, index++) {
-									if (!strcmp(dg->name, odg->name)) {
+									if (STREQ(dg->name, odg->name)) {
 										dvert[i].dw[j].def_nr = index;
 										break;
 									}
@@ -627,7 +627,7 @@ int join_mesh_shapes_exec(bContext *C, wmOperator *op)
 
 		/* first key added, so it was the basis. initialize it with the existing mesh */
 		kb = BKE_keyblock_add(key, NULL);
-		BKE_key_convert_from_mesh(me, kb);
+		BKE_keyblock_convert_from_mesh(me, kb);
 	}
 	
 	/* now ready to add new keys from selected meshes */
@@ -895,7 +895,7 @@ int ED_mesh_mirror_get_vert(Object *ob, int index)
 		index_mirr = eve_mirr ? BM_elem_index_get(eve_mirr) : -1;
 	}
 	else {
-		 index_mirr = mesh_get_x_mirror_vert(ob, index, use_topology);
+		index_mirr = mesh_get_x_mirror_vert(ob, index, use_topology);
 	}
 
 	return index_mirr;
@@ -999,7 +999,7 @@ static int mirror_facerotation(MFace *a, MFace *b)
 	return -1;
 }
 
-static int mirror_facecmp(const void *a, const void *b)
+static bool mirror_facecmp(const void *a, const void *b)
 {
 	return (mirror_facerotation((MFace *)a, (MFace *)b) == -1);
 }

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "stdosl.h"
@@ -26,7 +26,8 @@ shader node_geometry(
 	output normal TrueNormal = normal(0.0, 0.0, 0.0),
 	output vector Incoming = vector(0.0, 0.0, 0.0),
 	output point Parametric = point(0.0, 0.0, 0.0),
-	output float Backfacing = 0.0)
+	output float Backfacing = 0.0,
+	output float Pointiness = 0.0)
 {
 	Position = P;
 	Normal = NormalIn;
@@ -49,13 +50,21 @@ shader node_geometry(
 
 	/* try to create spherical tangent from generated coordinates */
 	if (getattribute("geom:generated", generated)) {
-		normal data = normal(-(generated[1]-0.5), (generated[0]-0.5), 0.0);
+		normal data = normal(-(generated[1] - 0.5), (generated[0] - 0.5), 0.0);
 		vector T = transform("object", "world", data);
 		Tangent = cross(Normal, normalize(cross(T, Normal)));
 	}
 	else {
 		/* otherwise use surface derivatives */
 		Tangent = normalize(dPdu);
+	}
+
+	getattribute("geom:pointiness", Pointiness);
+	if (bump_offset == "dx") {
+		Pointiness += Dx(Pointiness);
+	}
+	else if (bump_offset == "dy") {
+		Pointiness += Dy(Pointiness);
 	}
 }
 

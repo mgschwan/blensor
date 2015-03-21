@@ -142,9 +142,9 @@ kmi = km.keymap_items.new('screen.frame_offset', 'LEFT_ARROW', 'PRESS')
 kmi.properties.delta = -1
 kmi = km.keymap_items.new('screen.frame_offset', 'RIGHT_ARROW', 'PRESS')
 kmi.properties.delta = 1
-kmi = km.keymap_items.new('screen.frame_offset', 'WHEELDOWNMOUSE', 'PRESS', alt=True)
+kmi = km.keymap_items.new('screen.frame_offset', 'WHEELDOWNMOUSE', 'PRESS', ctrl=True, alt=True)
 kmi.properties.delta = 1
-kmi = km.keymap_items.new('screen.frame_offset', 'WHEELUPMOUSE', 'PRESS', alt=True)
+kmi = km.keymap_items.new('screen.frame_offset', 'WHEELUPMOUSE', 'PRESS', ctrl=True, alt=True)
 kmi.properties.delta = -1
 kmi = km.keymap_items.new('screen.frame_jump', 'V', 'PRESS', shift=True, alt=True)
 kmi.properties.end = False
@@ -957,6 +957,10 @@ kmi = km.keymap_items.new('view3d.zoom', 'WHEELINMOUSE', 'PRESS')
 kmi.properties.delta = 1
 kmi = km.keymap_items.new('view3d.zoom', 'WHEELOUTMOUSE', 'PRESS')
 kmi.properties.delta = -1
+kmi = km.keymap_items.new('view3d.zoom', 'WHEELINMOUSE', 'PRESS', alt=True)
+kmi.properties.delta = 1
+kmi = km.keymap_items.new('view3d.zoom', 'WHEELOUTMOUSE', 'PRESS', alt=True)
+kmi.properties.delta = -1
 kmi = km.keymap_items.new('view3d.view_all', 'A', 'PRESS')
 kmi.properties.center = False
 kmi = km.keymap_items.new('view3d.viewnumpad', 'ZERO', 'PRESS', ctrl=True)
@@ -1419,32 +1423,29 @@ kmi = km.keymap_items.new('object.mode_set', 'TAB', 'PRESS')
 kmi.properties.mode = 'EDIT'
 kmi.properties.toggle = True
 kmi = km.keymap_items.new('wm.context_set_int', 'ONE', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 0
 kmi = km.keymap_items.new('wm.context_set_int', 'TWO', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 1
 kmi = km.keymap_items.new('wm.context_set_int', 'THREE', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 2
 kmi = km.keymap_items.new('wm.context_set_int', 'FOUR', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 3
 kmi = km.keymap_items.new('wm.context_set_int', 'FIVE', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 4
 kmi = km.keymap_items.new('wm.context_set_int', 'SIX', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 5
 kmi = km.keymap_items.new('wm.context_set_int', 'SEVEN', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 6
 kmi = km.keymap_items.new('wm.context_set_int', 'EIGHT', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
+kmi.properties.data_path = 'space_data.image.render_slots.active_index'
 kmi.properties.value = 7
-kmi = km.keymap_items.new('wm.context_set_int', 'NINE', 'PRESS')
-kmi.properties.data_path = 'space_data.image.render_slot'
-kmi.properties.value = 8
 
 # Map Node Editor
 km = kc.keymaps.new('Node Editor', space_type='NODE_EDITOR', region_type='WINDOW', modal=False)

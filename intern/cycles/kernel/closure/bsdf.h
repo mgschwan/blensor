@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "../closure/bsdf_ashikhmin_velvet.h"
@@ -24,7 +24,6 @@
 #include "../closure/bsdf_refraction.h"
 #include "../closure/bsdf_transparent.h"
 #include "../closure/bsdf_ashikhmin_shirley.h"
-#include "../closure/bsdf_westin.h"
 #include "../closure/bsdf_toon.h"
 #include "../closure/bsdf_hair.h"
 #ifdef __SUBSURFACE__
@@ -109,14 +108,6 @@ ccl_device int bsdf_sample(KernelGlobals *kg, const ShaderData *sd, const Shader
 			label = bsdf_glossy_toon_sample(sc, sd->Ng, sd->I, sd->dI.dx, sd->dI.dy, randu, randv,
 				eval, omega_in, &domega_in->dx, &domega_in->dy, pdf);
 			break;
-		case CLOSURE_BSDF_WESTIN_BACKSCATTER_ID:
-			label = bsdf_westin_backscatter_sample(sc, sd->Ng, sd->I, sd->dI.dx, sd->dI.dy, randu, randv,
-				eval, omega_in, &domega_in->dx, &domega_in->dy, pdf);
-			break;
-		case CLOSURE_BSDF_WESTIN_SHEEN_ID:
-			label = bsdf_westin_sheen_sample(sc, sd->Ng, sd->I, sd->dI.dx, sd->dI.dy, randu, randv,
-				eval, omega_in, &domega_in->dx, &domega_in->dy, pdf);
-			break;
 		case CLOSURE_BSDF_HAIR_REFLECTION_ID:
 			label = bsdf_hair_reflection_sample(sc, sd->Ng, sd->I, sd->dI.dx, sd->dI.dy, randu, randv,
 				eval, omega_in, &domega_in->dx, &domega_in->dy, pdf);
@@ -199,12 +190,6 @@ ccl_device float3 bsdf_eval(KernelGlobals *kg, const ShaderData *sd, const Shade
 			case CLOSURE_BSDF_GLOSSY_TOON_ID:
 				eval = bsdf_glossy_toon_eval_reflect(sc, sd->I, omega_in, pdf);
 				break;
-			case CLOSURE_BSDF_WESTIN_BACKSCATTER_ID:
-				eval = bsdf_westin_backscatter_eval_reflect(sc, sd->I, omega_in, pdf);
-				break;
-			case CLOSURE_BSDF_WESTIN_SHEEN_ID:
-				eval = bsdf_westin_sheen_eval_reflect(sc, sd->I, omega_in, pdf);
-				break;
 			case CLOSURE_BSDF_HAIR_REFLECTION_ID:
 				eval = bsdf_hair_reflection_eval_reflect(sc, sd->I, omega_in, pdf);
 				break;
@@ -267,12 +252,6 @@ ccl_device float3 bsdf_eval(KernelGlobals *kg, const ShaderData *sd, const Shade
 			case CLOSURE_BSDF_GLOSSY_TOON_ID:
 				eval = bsdf_glossy_toon_eval_transmit(sc, sd->I, omega_in, pdf);
 				break;
-			case CLOSURE_BSDF_WESTIN_BACKSCATTER_ID:
-				eval = bsdf_westin_backscatter_eval_transmit(sc, sd->I, omega_in, pdf);
-				break;
-			case CLOSURE_BSDF_WESTIN_SHEEN_ID:
-				eval = bsdf_westin_sheen_eval_transmit(sc, sd->I, omega_in, pdf);
-				break;
 			case CLOSURE_BSDF_HAIR_REFLECTION_ID:
 				eval = bsdf_hair_reflection_eval_transmit(sc, sd->I, omega_in, pdf);
 				break;
@@ -296,6 +275,8 @@ ccl_device float3 bsdf_eval(KernelGlobals *kg, const ShaderData *sd, const Shade
 
 ccl_device void bsdf_blur(KernelGlobals *kg, ShaderClosure *sc, float roughness)
 {
+/* ToDo: do we want to blur volume closures? */
+
 #ifdef __OSL__
 	if(kg->osl && sc->prim) {
 		OSLShader::bsdf_blur(sc, roughness);
@@ -303,33 +284,8 @@ ccl_device void bsdf_blur(KernelGlobals *kg, ShaderClosure *sc, float roughness)
 	}
 #endif
 
-	switch(sc->type) {
-		case CLOSURE_BSDF_DIFFUSE_ID:
-		case CLOSURE_BSDF_BSSRDF_ID:
-			bsdf_diffuse_blur(sc, roughness);
-			break;
 #ifdef __SVM__
-		case CLOSURE_BSDF_OREN_NAYAR_ID:
-			bsdf_oren_nayar_blur(sc, roughness);
-			break;
-		/*case CLOSURE_BSDF_PHONG_RAMP_ID:
-			bsdf_phong_ramp_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_DIFFUSE_RAMP_ID:
-			bsdf_diffuse_ramp_blur(sc, roughness);
-			break;*/
-		case CLOSURE_BSDF_TRANSLUCENT_ID:
-			bsdf_translucent_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_REFLECTION_ID:
-			bsdf_reflection_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_REFRACTION_ID:
-			bsdf_refraction_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_TRANSPARENT_ID:
-			bsdf_transparent_blur(sc, roughness);
-			break;
+	switch(sc->type) {
 		case CLOSURE_BSDF_MICROFACET_GGX_ID:
 		case CLOSURE_BSDF_MICROFACET_GGX_ANISO_ID:
 		case CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID:
@@ -344,30 +300,10 @@ ccl_device void bsdf_blur(KernelGlobals *kg, ShaderClosure *sc, float roughness)
 		case CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ANISO_ID:
 			bsdf_ashikhmin_shirley_blur(sc, roughness);
 			break;
-		case CLOSURE_BSDF_ASHIKHMIN_VELVET_ID:
-			bsdf_ashikhmin_velvet_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_DIFFUSE_TOON_ID:
-			bsdf_diffuse_toon_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_GLOSSY_TOON_ID:
-			bsdf_glossy_toon_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_WESTIN_BACKSCATTER_ID:
-			bsdf_westin_backscatter_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_WESTIN_SHEEN_ID:
-			bsdf_westin_sheen_blur(sc, roughness);
-			break;
-		case CLOSURE_BSDF_HAIR_REFLECTION_ID:
-		case CLOSURE_BSDF_HAIR_TRANSMISSION_ID:
-			bsdf_hair_reflection_blur(sc, roughness);
-			break;
-#endif
-		/* todo: do we want to blur volume closures? */
 		default:
 			break;
 	}
+#endif
 }
 
 CCL_NAMESPACE_END

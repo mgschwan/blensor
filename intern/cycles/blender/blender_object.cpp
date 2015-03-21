@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "camera.h"
@@ -30,6 +30,7 @@
 
 #include "util_foreach.h"
 #include "util_hash.h"
+#include "util_logging.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -168,6 +169,8 @@ void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSI
 	else
 		light->samples = samples;
 
+	light->max_bounces = get_int(clamp, "max_bounces");
+
 	/* visibility */
 	uint visibility = object_ray_visibility(b_ob);
 	light->use_diffuse = (visibility & PATH_RAY_DIFFUSE) != 0;
@@ -249,6 +252,7 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 		if(object && (scene->need_motion() == Scene::MOTION_PASS || object_use_motion(b_ob))) {
 			/* object transformation */
 			if(tfm != object->tfm) {
+				VLOG(1) << "Object " << b_ob.name() << " motion detected.";
 				if(motion_time == -1.0f) {
 					object->motion.pre = tfm;
 					object->use_motion = true;
@@ -410,9 +414,17 @@ static bool object_render_hide(BL::Object b_ob, bool top_level, bool parent_hide
 
 	/* hide original object for duplis */
 	BL::Object parent = b_ob.parent();
-	if(parent && object_render_hide_original(b_ob.type(), parent.dupli_type()))
-		if(parent_hide)
-			hide_as_dupli_child_original = true;
+	while(parent) {
+		if(object_render_hide_original(b_ob.type(),
+		                               parent.dupli_type()))
+		{
+			if(parent_hide) {
+				hide_as_dupli_child_original = true;
+				break;
+			}
+		}
+		parent = parent.parent();
+	}
 	
 	hide_triangles = hide_emitter;
 
@@ -458,10 +470,10 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 	BL::Scene::object_bases_iterator b_base;
 	BL::Scene b_sce = b_scene;
 	/* modifier result type (not exposed as enum in C++ API)
-     * 1 : DAG_EVAL_PREVIEW
-     * 2 : DAG_EVAL_RENDER
-     */
-    int dupli_settings = preview ? 1 : 2;
+	 * 1 : DAG_EVAL_PREVIEW
+	 * 2 : DAG_EVAL_RENDER
+	 */
+	int dupli_settings = preview ? 1 : 2;
 
 	bool cancel = false;
 

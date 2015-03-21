@@ -21,7 +21,11 @@
 import bpy
 from bpy.types import Panel, Header, Menu, UIList
 from bpy.app.translations import pgettext_iface as iface_
-from bl_ui.properties_grease_pencil_common import GreasePencilPanel
+from bl_ui.properties_grease_pencil_common import (
+        GreasePencilDrawingToolsPanel,
+        GreasePencilStrokeEditPanel,
+        GreasePencilDataPanel
+        )
 
 
 class CLIP_UL_tracking_objects(UIList):
@@ -422,7 +426,9 @@ class CLIP_PT_tools_solve(CLIP_PT_tracking_panel, Panel):
         col = layout.column()
         row = col.row()
         row.prop(settings, "use_tripod_solver", text="Tripod")
-        row.prop(settings, "use_keyframe_selection", text="Keyframe")
+        sub = row.row()
+        sub.active = not settings.use_tripod_solver
+        sub.prop(settings, "use_keyframe_selection", text="Keyframe")
 
         col = layout.column(align=True)
         col.active = (not settings.use_tripod_solver and
@@ -461,6 +467,7 @@ class CLIP_PT_tools_cleanup(CLIP_PT_tracking_panel, Panel):
         layout.prop(settings, "clean_frames", text="Frames")
         layout.prop(settings, "clean_error", text="Error")
         layout.prop(settings, "clean_action", text="")
+        layout.operator("clip.filter_tracks")
 
 
 class CLIP_PT_tools_geometry(CLIP_PT_tracking_panel, Panel):
@@ -997,15 +1004,16 @@ class CLIP_PT_proxy(CLIP_PT_clip_view_panel, Panel):
 # -----------------------------------------------------------------------------
 # Mask (similar code in space_image.py, keep in sync)
 
-
-from bl_ui.properties_mask_common import (MASK_PT_mask,
-                                          MASK_PT_layers,
-                                          MASK_PT_spline,
-                                          MASK_PT_point,
-                                          MASK_PT_display,
-                                          MASK_PT_tools,
-                                          MASK_PT_transforms,
-                                          MASK_PT_add)
+from bl_ui.properties_mask_common import (
+        MASK_PT_mask,
+        MASK_PT_layers,
+        MASK_PT_spline,
+        MASK_PT_point,
+        MASK_PT_display,
+        MASK_PT_tools,
+        MASK_PT_transforms,
+        MASK_PT_add,
+        )
 
 
 class CLIP_PT_mask_layers(MASK_PT_layers, Panel):
@@ -1048,12 +1056,6 @@ class CLIP_PT_tools_mask(MASK_PT_tools, Panel):
     bl_region_type = 'TOOLS'
 
 # --- end mask ---
-
-
-class CLIP_PT_tools_grease_pencil(GreasePencilPanel, Panel):
-    bl_space_type = 'CLIP_EDITOR'
-    bl_region_type = 'TOOLS'
-    bl_category = "Grease Pencil"
 
 
 class CLIP_PT_footage(CLIP_PT_clip_view_panel, Panel):
@@ -1110,6 +1112,26 @@ class CLIP_PT_tools_scenesetup(Panel):
         layout.operator("clip.setup_tracking_scene")
 
 
+# Grease Pencil properties
+class CLIP_PT_grease_pencil(GreasePencilDataPanel, CLIP_PT_clip_view_panel, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+    bl_region_type = 'UI'
+    bl_options = {'DEFAULT_CLOSED'}
+
+    # NOTE: this is just a wrapper around the generic GP Panel
+    # But, this should only be visible in "clip" view
+
+
+# Grease Pencil drawing tools
+class CLIP_PT_tools_grease_pencil_draw(GreasePencilDrawingToolsPanel, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+
+
+# Grease Pencil stroke editing tools
+class CLIP_PT_tools_grease_pencil_edit(GreasePencilStrokeEditPanel, Panel):
+    bl_space_type = 'CLIP_EDITOR'
+
+
 class CLIP_MT_view(Menu):
     bl_label = "View"
 
@@ -1152,7 +1174,8 @@ class CLIP_MT_view(Menu):
 
         layout.separator()
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class CLIP_MT_clip(Menu):
@@ -1193,14 +1216,17 @@ class CLIP_MT_track(Menu):
         layout.operator("clip.solve_camera")
 
         layout.separator()
-        layout.operator("clip.clear_track_path",
-                        text="Clear After").action = 'REMAINED'
+        props = layout.operator("clip.clear_track_path", text="Clear After")
+        props.clear_active = False
+        props.action = 'REMAINED'
 
-        layout.operator("clip.clear_track_path",
-                        text="Clear Before").action = 'UPTO'
+        props = layout.operator("clip.clear_track_path", text="Clear Before")
+        props.clear_active = False
+        props.action = 'UPTO'
 
-        layout.operator("clip.clear_track_path",
-                        text="Clear Track Path").action = 'ALL'
+        props = layout.operator("clip.clear_track_path", text="Clear Track Path")
+        props.clear_active = False
+        props.action = 'ALL'
 
         layout.separator()
         layout.operator("clip.join_tracks")
@@ -1213,16 +1239,21 @@ class CLIP_MT_track(Menu):
         layout.operator("clip.paste_tracks")
 
         layout.separator()
-        layout.operator("clip.track_markers",
-                        text="Track Frame Backwards").backwards = True
+        props = layout.operator("clip.track_markers", text="Track Frame Backwards")
+        props.backwards = True
+        props.sequence = False
 
         props = layout.operator("clip.track_markers", text="Track Backwards")
         props.backwards = True
         props.sequence = True
 
-        layout.operator("clip.track_markers",
-                        text="Track Forwards").sequence = True
-        layout.operator("clip.track_markers", text="Track Frame Forwards")
+        props = layout.operator("clip.track_markers", text="Track Forwards")
+        props.backwards = False
+        props.sequence = True
+
+        props = layout.operator("clip.track_markers", text="Track Frame Forwards")
+        props.backwards = False
+        props.sequence = False
 
         layout.separator()
         layout.operator("clip.delete_track")
@@ -1264,10 +1295,8 @@ class CLIP_MT_track_visibility(Menu):
         layout = self.layout
 
         layout.operator("clip.hide_tracks_clear", text="Show Hidden")
-        layout.operator("clip.hide_tracks", text="Hide Selected")
-
-        layout.operator("clip.hide_tracks",
-                        text="Hide Unselected").unselected = True
+        layout.operator("clip.hide_tracks", text="Hide Selected").unselected = False
+        layout.operator("clip.hide_tracks", text="Hide Unselected").unselected = True
 
 
 class CLIP_MT_track_transform(Menu):

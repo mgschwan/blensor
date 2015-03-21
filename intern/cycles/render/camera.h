@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __CAMERA_H__
@@ -53,6 +53,10 @@ public:
 	PanoramaType panorama_type;
 	float fisheye_fov;
 	float fisheye_lens;
+	float latitude_min;
+	float latitude_max;
+	float longitude_min;
+	float longitude_max;
 
 	/* anamorphic lens bokeh */
 	float aperture_ratio;
@@ -72,6 +76,7 @@ public:
 
 	/* border */
 	BoundBox2D border;
+	BoundBox2D viewport_camera_border;
 
 	/* transformation */
 	Transform matrix;
@@ -111,11 +116,16 @@ public:
 	void update();
 
 	void device_update(Device *device, DeviceScene *dscene, Scene *scene);
+	void device_update_volume(Device *device, DeviceScene *dscene, Scene *scene);
 	void device_free(Device *device, DeviceScene *dscene);
 
 	bool modified(const Camera& cam);
 	bool motion_modified(const Camera& cam);
 	void tag_update();
+
+	BoundBox viewplane_bounds_get();
+	float3 transform_raster_to_world(float raster_x, float raster_y);
+	Transform transform_from_viewplane(BoundBox2D &viewplane);
 };
 
 CCL_NAMESPACE_END

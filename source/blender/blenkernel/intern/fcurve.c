@@ -55,6 +55,7 @@
 #include "BKE_action.h"
 #include "BKE_armature.h"
 #include "BKE_constraint.h"
+#include "BKE_context.h"
 #include "BKE_curve.h" 
 #include "BKE_global.h"
 #include "BKE_object.h"
@@ -229,7 +230,7 @@ FCurve *list_find_fcurve(ListBase *list, const char rna_path[], const int array_
 	/* check paths of curves, then array indices... */
 	for (fcu = list->first; fcu; fcu = fcu->next) {
 		/* simple string-compare (this assumes that they have the same root...) */
-		if (fcu->rna_path && !strcmp(fcu->rna_path, rna_path)) {
+		if (fcu->rna_path && STREQ(fcu->rna_path, rna_path)) {
 			/* now check indices */
 			if (fcu->array_index == array_index)
 				return fcu;
@@ -252,7 +253,7 @@ FCurve *iter_step_fcurve(FCurve *fcu_iter, const char rna_path[])
 	/* check paths of curves, then array indices... */
 	for (fcu = fcu_iter; fcu; fcu = fcu->next) {
 		/* simple string-compare (this assumes that they have the same root...) */
-		if (fcu->rna_path && !strcmp(fcu->rna_path, rna_path)) {
+		if (fcu->rna_path && STREQ(fcu->rna_path, rna_path)) {
 			return fcu;
 		}
 	}
@@ -289,7 +290,7 @@ int list_find_data_fcurves(ListBase *dst, ListBase *src, const char *dataPrefix,
 			
 			if (quotedName) {
 				/* check if the quoted name matches the required name */
-				if (strcmp(quotedName, dataName) == 0) {
+				if (STREQ(quotedName, dataName)) {
 					LinkData *ld = MEM_callocN(sizeof(LinkData), __func__);
 					
 					ld->data = fcu;
@@ -308,21 +309,38 @@ int list_find_data_fcurves(ListBase *dst, ListBase *src, const char *dataPrefix,
 	return matches;
 }
 
-FCurve *rna_get_fcurve(PointerRNA *ptr, PropertyRNA *prop, int rnaindex, bAction **action, bool *r_driven)
+FCurve *rna_get_fcurve(PointerRNA *ptr, PropertyRNA *prop, int rnaindex, AnimData **adt, bAction **action, bool *r_driven)
+{
+	return rna_get_fcurve_context_ui(NULL, ptr, prop, rnaindex, adt, action, r_driven);
+}
+
+FCurve *rna_get_fcurve_context_ui(bContext *C, PointerRNA *ptr, PropertyRNA *prop, int rnaindex,
+                                  AnimData **animdata, bAction **action, bool *r_driven)
 {
 	FCurve *fcu = NULL;
+	PointerRNA tptr = *ptr;
 	
+	if (animdata) *animdata = NULL;
 	*r_driven = false;
 	
 	/* there must be some RNA-pointer + property combon */
-	if (prop && ptr->id.data && RNA_property_animateable(ptr, prop)) {
-		AnimData *adt = BKE_animdata_from_id(ptr->id.data);
-		char *path;
+	if (prop && tptr.id.data && RNA_property_animateable(&tptr, prop)) {
+		AnimData *adt = BKE_animdata_from_id(tptr.id.data);
+		int step = C ? 2 : 1;  /* Always 1 in case we have no context (can't check in 'ancestors' of given RNA ptr). */
+		char *path = NULL;
 		
-		if (adt) {
+		if (!adt && C) {
+			path = BKE_animdata_driver_path_hack(C, &tptr, prop, NULL);
+			adt = BKE_animdata_from_id(tptr.id.data);
+			step--;
+		}
+		
+		while (adt && step--) {
 			if ((adt->action && adt->action->curves.first) || (adt->drivers.first)) {
 				/* XXX this function call can become a performance bottleneck */
-				path = RNA_path_from_ID_to_property(ptr, prop);
+				if (step) {
+					path = RNA_path_from_ID_to_property(&tptr, prop);
+				}
 				
 				if (path) {
 					/* animation takes priority over drivers */
@@ -333,17 +351,32 @@ FCurve *rna_get_fcurve(PointerRNA *ptr, PropertyRNA *prop, int rnaindex, bAction
 					if (!fcu && (adt->drivers.first)) {
 						fcu = list_find_fcurve(&adt->drivers, path, rnaindex);
 						
-						if (fcu)
+						if (fcu) {
+							if (animdata) *animdata = adt;
 							*r_driven = true;
+						}
 					}
 					
-					if (fcu && action)
+					if (fcu && action) {
+						if (animdata) *animdata = adt;
 						*action = adt->action;
-					
-					MEM_freeN(path);
+						break;
+					}
+					else if (step) {
+						char *tpath = BKE_animdata_driver_path_hack(C, &tptr, prop, path);
+						if (tpath && tpath != path) {
+							MEM_freeN(path);
+							path = tpath;
+							adt = BKE_animdata_from_id(tptr.id.data);
+						}
+						else {
+							adt = NULL;
+						}
+					}
 				}
 			}
 		}
+		MEM_SAFE_FREE(path);
 	}
 	
 	return fcu;
@@ -654,11 +687,11 @@ bool fcurve_are_keyframes_usable(FCurve *fcu)
 {
 	/* F-Curve must exist */
 	if (fcu == NULL)
-		return 0;
+		return false;
 		
 	/* F-Curve must not have samples - samples are mutually exclusive of keyframes */
 	if (fcu->fpt)
-		return 0;
+		return false;
 	
 	/* if it has modifiers, none of these should "drastically" alter the curve */
 	if (fcu->modifiers.first) {
@@ -685,7 +718,7 @@ bool fcurve_are_keyframes_usable(FCurve *fcu)
 					FMod_Generator *data = (FMod_Generator *)fcm->data;
 					
 					if ((data->flag & FCM_GENERATOR_ADDITIVE) == 0)
-						return 0;
+						return false;
 					break;
 				}
 				case FMODIFIER_TYPE_FN_GENERATOR:
@@ -693,18 +726,18 @@ bool fcurve_are_keyframes_usable(FCurve *fcu)
 					FMod_FunctionGenerator *data = (FMod_FunctionGenerator *)fcm->data;
 					
 					if ((data->flag & FCM_GENERATOR_ADDITIVE) == 0)
-						return 0;
+						return false;
 					break;
 				}
 				/* always harmful - cannot allow */
 				default:
-					return 0;
+					return false;
 			}
 		}
 	}
 	
 	/* keyframes are usable */
-	return 1;
+	return true;
 }
 
 bool BKE_fcurve_is_protected(FCurve *fcu)
@@ -787,7 +820,7 @@ void fcurve_store_samples(FCurve *fcu, void *data, int start, int end, FcuSample
 		printf("Error: No F-Curve with F-Curve Modifiers to Bake\n");
 		return;
 	}
-	if (start >= end) {
+	if (start > end) {
 		printf("Error: Frame range for Sampled F-Curve creation is inappropriate\n");
 		return;
 	}
@@ -1250,7 +1283,7 @@ static float dvar_eval_locDiff(ChannelDriver *driver, DriverVar *dvar)
 					
 					/* extract transform just like how the constraints do it! */
 					copy_m4_m4(mat, pchan->pose_mat);
-					BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_LOCAL);
+					BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_LOCAL, false);
 					
 					/* ... and from that, we get our transform */
 					copy_v3_v3(tmp_loc, mat[3]);
@@ -1275,7 +1308,7 @@ static float dvar_eval_locDiff(ChannelDriver *driver, DriverVar *dvar)
 					
 					/* extract transform just like how the constraints do it! */
 					copy_m4_m4(mat, ob->obmat);
-					BKE_constraint_mat_convertspace(ob, NULL, mat, CONSTRAINT_SPACE_WORLD, CONSTRAINT_SPACE_LOCAL);
+					BKE_constraint_mat_convertspace(ob, NULL, mat, CONSTRAINT_SPACE_WORLD, CONSTRAINT_SPACE_LOCAL, false);
 					
 					/* ... and from that, we get our transform */
 					copy_v3_v3(tmp_loc, mat[3]);
@@ -1352,7 +1385,7 @@ static float dvar_eval_transChan(ChannelDriver *driver, DriverVar *dvar)
 			if (dtar->flag & DTAR_FLAG_LOCAL_CONSTS) {
 				/* just like how the constraints do it! */
 				copy_m4_m4(mat, pchan->pose_mat);
-				BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_LOCAL);
+				BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, CONSTRAINT_SPACE_LOCAL, false);
 			}
 			else {
 				/* specially calculate local matrix, since chan_mat is not valid 
@@ -1379,7 +1412,7 @@ static float dvar_eval_transChan(ChannelDriver *driver, DriverVar *dvar)
 			if (dtar->flag & DTAR_FLAG_LOCAL_CONSTS) {
 				/* just like how the constraints do it! */
 				copy_m4_m4(mat, ob->obmat);
-				BKE_constraint_mat_convertspace(ob, NULL, mat, CONSTRAINT_SPACE_WORLD, CONSTRAINT_SPACE_LOCAL);
+				BKE_constraint_mat_convertspace(ob, NULL, mat, CONSTRAINT_SPACE_WORLD, CONSTRAINT_SPACE_LOCAL, false);
 			}
 			else {
 				/* transforms to matrix */
@@ -2069,7 +2102,7 @@ static float fcurve_eval_keyframes(FCurve *fcu, BezTriple *bezts, float evaltime
 		 *                                 This lower bound was established in b888a32eee8147b028464336ad2404d8155c64dd
 		 */
 		a = binarysearch_bezt_index_ex(bezts, evaltime, fcu->totvert, 0.0001, &exact);
-		if (G.debug & G_DEBUG) printf("eval fcurve '%s' - %f => %d/%d, %d\n", fcu->rna_path, evaltime, a, fcu->totvert, exact);
+		if (G.debug & G_DEBUG) printf("eval fcurve '%s' - %f => %u/%u, %d\n", fcu->rna_path, evaltime, a, fcu->totvert, exact);
 		
 		if (exact) {
 			/* index returned must be interpreted differently when it sits on top of an existing keyframe 
@@ -2124,18 +2157,29 @@ static float fcurve_eval_keyframes(FCurve *fcu, BezTriple *bezts, float evaltime
 						v4[0] = bezt->vec[1][0];
 						v4[1] = bezt->vec[1][1];
 						
-						/* adjust handles so that they don't overlap (forming a loop) */
-						correct_bezpart(v1, v2, v3, v4);
-						
-						/* try to get a value for this position - if failure, try another set of points */
-						b = findzero(evaltime, v1[0], v2[0], v3[0], v4[0], opl);
-						if (b) {
-							berekeny(v1[1], v2[1], v3[1], v4[1], opl, 1);
-							cvalue = opl[0];
-							/* break; */
+						if (fabsf(v1[1] - v4[1]) < FLT_EPSILON &&
+						    fabsf(v2[1] - v3[1]) < FLT_EPSILON &&
+						    fabsf(v3[1] - v4[1]) < FLT_EPSILON)
+						{
+							/* Optimisation: If all the handles are flat/at the same values,
+							 * the value is simply the shared value (see T40372 -> F91346)
+							 */
+							cvalue = v1[1];
 						}
 						else {
-							if (G.debug & G_DEBUG) printf("    ERROR: findzero() failed at %f with %f %f %f %f\n", evaltime, v1[0], v2[0], v3[0], v4[0]);
+							/* adjust handles so that they don't overlap (forming a loop) */
+							correct_bezpart(v1, v2, v3, v4);
+							
+							/* try to get a value for this position - if failure, try another set of points */
+							b = findzero(evaltime, v1[0], v2[0], v3[0], v4[0], opl);
+							if (b) {
+								berekeny(v1[1], v2[1], v3[1], v4[1], opl, 1);
+								cvalue = opl[0];
+								/* break; */
+							}
+							else {
+								if (G.debug & G_DEBUG) printf("    ERROR: findzero() failed at %f with %f %f %f %f\n", evaltime, v1[0], v2[0], v3[0], v4[0]);
+							}
 						}
 						break;
 						

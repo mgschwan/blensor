@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifdef WITH_OPENCL
@@ -20,12 +20,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "clew.h"
+
 #include "device.h"
 #include "device_intern.h"
 
 #include "buffers.h"
-
-#include "clew.h"
 
 #include "util_foreach.h"
 #include "util_map.h"
@@ -102,7 +102,11 @@ static string opencl_kernel_build_options(const string& platform, const string *
 
 	if(opencl_kernel_use_debug())
 		build_options += "-D__KERNEL_OPENCL_DEBUG__ ";
-	
+
+#ifdef WITH_CYCLES_DEBUG
+	build_options += "-D__KERNEL_DEBUG__ ";
+#endif
+
 	return build_options;
 }
 
@@ -1191,7 +1195,12 @@ void device_opencl_info(vector<DeviceInfo>& devices)
 	}
 }
 
+string device_opencl_capabilities(void)
+{
+	/* TODO(sergey): Not implemented yet. */
+	return "";
+}
+
 CCL_NAMESPACE_END
 
 #endif /* WITH_OPENCL */
-

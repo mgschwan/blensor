@@ -86,6 +86,7 @@ struct anim;
 
 struct ColorManagedDisplay;
 
+struct GSet;
 /**
  *
  * \attention Defined in allocimbuf.c
@@ -123,6 +124,13 @@ void IMB_freeImBuf(struct ImBuf *ibuf);
  */
 struct ImBuf *IMB_allocImBuf(unsigned int x, unsigned int y,
                              unsigned char d, unsigned int flags);
+
+/**
+ * Create a copy of a pixel buffer and wrap it to a new ImBuf
+ * \attention Defined in allocimbuf.c
+ */
+struct ImBuf *IMB_allocFromBuffer(const unsigned int *rect, const float *rectf,
+                                  unsigned int w, unsigned int h);
 
 /**
  *
@@ -236,11 +244,14 @@ void IMB_anim_set_index_dir(struct anim *anim, const char *dir);
 int IMB_anim_index_get_frame_index(struct anim *anim, IMB_Timecode_Type tc,
                                    int position);
 
+IMB_Proxy_Size IMB_anim_proxy_get_existing(struct anim *anim);
+
 struct IndexBuildContext;
 
 /* prepare context for proxies/imecodes builder */
 struct IndexBuildContext *IMB_anim_index_rebuild_context(struct anim *anim, IMB_Timecode_Type tcs_in_use,
-                                                         IMB_Proxy_Size proxy_sizes_in_use, int quality);
+                                                         IMB_Proxy_Size proxy_sizes_in_use, int quality,
+                                                         const bool overwite, struct GSet *file_list);
 
 /* will rebuild all used indices and proxies at once */
 void IMB_anim_index_rebuild(struct IndexBuildContext *context,

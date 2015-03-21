@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 /* CUDA kernel entry points */
@@ -52,8 +52,20 @@
 #define CUDA_KERNEL_MAX_REGISTERS 63
 #define CUDA_KERNEL_BRANCHED_MAX_REGISTERS 63
 
-/* 5.0 */
-#elif __CUDA_ARCH__ == 500
+/* 3.2 */
+#elif __CUDA_ARCH__ == 320
+#define CUDA_MULTIPRESSOR_MAX_REGISTERS 32768
+#define CUDA_MULTIPROCESSOR_MAX_BLOCKS 16
+#define CUDA_BLOCK_MAX_THREADS 1024
+#define CUDA_THREAD_MAX_REGISTERS 63
+
+/* tunable parameters */
+#define CUDA_THREADS_BLOCK_WIDTH 16
+#define CUDA_KERNEL_MAX_REGISTERS 63
+#define CUDA_KERNEL_BRANCHED_MAX_REGISTERS 63
+
+/* 5.0 and 5.2 */
+#elif __CUDA_ARCH__ == 500 || __CUDA_ARCH__ == 520
 #define CUDA_MULTIPRESSOR_MAX_REGISTERS 65536
 #define CUDA_MULTIPROCESSOR_MAX_BLOCKS 32
 #define CUDA_BLOCK_MAX_THREADS 1024

@@ -71,6 +71,8 @@
 
 #include "BIF_gl.h"
 
+#include "GPU_debug.h"
+
 #include "UI_interface.h"
 
 #include "PIL_time.h"
@@ -81,7 +83,6 @@
 #include "wm_window.h"
 #include "wm_event_system.h"
 #include "wm_event_types.h"
-#include "wm_draw.h"
 
 #ifndef NDEBUG
 #  include "RNA_enum_types.h"
@@ -269,7 +270,7 @@ void wm_event_do_notifiers(bContext *C)
 				if (note->category == NC_SCREEN) {
 					if (note->data == ND_SCREENBROWSE) {
 						/* free popup handlers only [#35434] */
-						UI_remove_popup_handlers_all(C, &win->modalhandlers);
+						UI_popup_handlers_remove_all(C, &win->modalhandlers);
 
 
 						ED_screen_set(C, note->reference);  // XXX hrms, think this over!
@@ -542,7 +543,7 @@ void WM_event_print(const wmEvent *event)
 		       event->shift, event->ctrl, event->alt, event->oskey, event->keymodifier,
 		       event->x, event->y, event->ascii,
 		       BLI_str_utf8_size(event->utf8_buf), event->utf8_buf,
-		       event->keymap_idname, (void *)event);
+		       event->keymap_idname, (const void *)event);
 
 		if (ISNDOF(event->type)) {
 			const wmNDOFMotionData *ndof = event->customdata;
@@ -621,7 +622,7 @@ static void wm_operator_reports(bContext *C, wmOperator *op, int retval, bool ca
 {
 	if (caller_owns_reports == false) { /* popup */
 		if (op->reports->list.first) {
-			/* FIXME, temp setting window, see other call to uiPupMenuReports for why */
+			/* FIXME, temp setting window, see other call to UI_popup_menu_reports for why */
 			wmWindow *win_prev = CTX_wm_window(C);
 			ScrArea *area_prev = CTX_wm_area(C);
 			ARegion *ar_prev = CTX_wm_region(C);
@@ -629,7 +630,7 @@ static void wm_operator_reports(bContext *C, wmOperator *op, int retval, bool ca
 			if (win_prev == NULL)
 				CTX_wm_window_set(C, CTX_wm_manager(C)->windows.first);
 
-			uiPupMenuReports(C, op->reports);
+			UI_popup_menu_reports(C, op->reports);
 
 			CTX_wm_window_set(C, win_prev);
 			CTX_wm_area_set(C, area_prev);
@@ -730,7 +731,7 @@ static int wm_operator_exec(bContext *C, wmOperator *op, const bool repeat, cons
 	/* XXX Disabled the repeat check to address part 2 of #31840.
 	 *     Carefully checked all calls to wm_operator_exec and WM_operator_repeat, don't see any reason
 	 *     why this was needed, but worth to note it in case something turns bad. (mont29) */
-	if (retval & (OPERATOR_FINISHED | OPERATOR_CANCELLED)/* && repeat == 0 */)
+	if (retval & (OPERATOR_FINISHED | OPERATOR_CANCELLED) /* && repeat == 0 */)
 		wm_operator_reports(C, op, retval, false);
 	
 	if (retval & OPERATOR_FINISHED) {
@@ -871,7 +872,7 @@ static wmOperator *wm_operator_create(wmWindowManager *wm, wmOperatorType *ot,
 					break;
 
 				/* skip invalid properties */
-				if (strcmp(RNA_property_identifier(prop), otmacro->idname) == 0) {
+				if (STREQ(RNA_property_identifier(prop), otmacro->idname)) {
 					wmOperatorType *otm = WM_operatortype_find(otmacro->idname, 0);
 					PointerRNA someptr = RNA_property_pointer_get(properties, prop);
 					wmOperator *opm = wm_operator_create(wm, otm, &someptr, NULL);
@@ -1663,7 +1664,6 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 	int action = WM_HANDLER_CONTINUE;
 
 	switch (val) {
-		case EVT_FILESELECT_OPEN: 
 		case EVT_FILESELECT_FULL_OPEN: 
 		{
 			ScrArea *sa;
@@ -1677,9 +1677,16 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 			else {
 				sa = handler->op_area;
 			}
-					
-			if (val == EVT_FILESELECT_OPEN) {
+
+			if (sa->full) {
+				/* ensure the first area becomes the file browser, because the second one is the small
+				 * top (info-)area which might be too small (in fullscreens we have max two areas) */
+				if (sa->prev) {
+					sa = sa->prev;
+				}
 				ED_area_newspace(C, sa, SPACE_FILE);     /* 'sa' is modified in-place */
+				/* we already had a fullscreen here -> mark new space as a stacked fullscreen */
+				sa->flag |= AREA_FLAG_STACKED_FULLSCREEN;
 			}
 			else {
 				sa = ED_screen_full_newspace(C, sa, SPACE_FILE);    /* sets context */
@@ -1703,24 +1710,16 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 		case EVT_FILESELECT_CANCEL:
 		case EVT_FILESELECT_EXTERNAL_CANCEL:
 		{
-			/* XXX validate area and region? */
-			bScreen *screen = CTX_wm_screen(C);
-
 			/* remlink now, for load file case before removing*/
 			BLI_remlink(handlers, handler);
-				
+
 			if (val != EVT_FILESELECT_EXTERNAL_CANCEL) {
-				if (screen != handler->filescreen) {
-					ED_screen_full_prevspace(C, CTX_wm_area(C));
-				}
-				else {
-					ED_area_prevspace(C, CTX_wm_area(C));
-				}
+				ED_screen_full_prevspace(C, CTX_wm_area(C));
 			}
-				
+
 			wm_handler_op_context(C, handler);
 
-			/* needed for uiPupMenuReports */
+			/* needed for UI_popup_menu_reports */
 
 			if (val == EVT_FILESELECT_EXEC) {
 				int retval;
@@ -1752,7 +1751,7 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 						CTX_wm_window_set(C, CTX_wm_manager(C)->windows.first);
 
 					BKE_report_print_level_set(handler->op->reports, RPT_WARNING);
-					uiPupMenuReports(C, handler->op->reports);
+					UI_popup_menu_reports(C, handler->op->reports);
 
 					/* XXX - copied from 'wm_operator_finished()' */
 					/* add reports to the global list, otherwise they are not seen */
@@ -1955,7 +1954,7 @@ static int wm_handlers_do_intern(bContext *C, wmEvent *event, ListBase *handlers
 									event->customdata = NULL;
 									event->custom = 0;
 									
-									WM_operator_name_call(C, drop->ot->idname, drop->opcontext, drop->ptr);
+									WM_operator_name_call_ptr(C, drop->ot, drop->opcontext, drop->ptr);
 									action |= WM_HANDLER_BREAK;
 									
 									/* XXX fileread case */
@@ -2188,6 +2187,23 @@ static void wm_event_drag_test(wmWindowManager *wm, wmWindow *win, wmEvent *even
 	
 }
 
+/* filter out all events of the pie that spawned the last pie unless it's a release event */
+static bool wm_event_pie_filter(wmWindow *win, wmEvent *event)
+{
+	if (win->lock_pie_event && win->lock_pie_event == event->type) {
+		if (event->val == KM_RELEASE) {
+			win->lock_pie_event = EVENT_NONE;
+			return false;
+		}
+		else {
+			return true;
+		}
+	}
+	else {
+		return false;
+	}
+}
+
 /* called in main loop */
 /* goes over entire hierarchy:  events -> window -> screen -> area -> region */
 void wm_event_do_handlers(bContext *C)
@@ -2251,9 +2267,21 @@ void wm_event_do_handlers(bContext *C)
 				WM_event_print(event);
 			}
 #endif
-			
+
+			/* take care of pie event filter */
+			if (wm_event_pie_filter(win, event)) {
+#ifndef NDEBUG
+				if (G.debug & (G_DEBUG_HANDLERS | G_DEBUG_EVENTS) && !ELEM(event->type, MOUSEMOVE, INBETWEEN_MOUSEMOVE)) {
+					printf("\n%s: event filtered due to pie button pressed\n", __func__);
+				}
+#endif
+				BLI_remlink(&win->queue, event);
+				wm_event_free(event);
+				continue;
+			}
+
 			CTX_wm_window_set(C, win);
-			
+
 			/* we let modal handlers get active area/region, also wm_paintcursor_test needs it */
 			CTX_wm_area_set(C, area_event_inside(C, &event->x));
 			CTX_wm_region_set(C, region_event_inside(C, &event->x));
@@ -2262,6 +2290,7 @@ void wm_event_do_handlers(bContext *C)
 			wm_window_make_drawable(wm, win);
 			
 			wm_region_mouse_co(C, event);
+
 
 			/* first we do priority handlers, modal + some limited keymaps */
 			action |= wm_handlers_do(C, event, &win->modalhandlers);
@@ -2293,6 +2322,14 @@ void wm_event_do_handlers(bContext *C)
 				}
 
 				for (sa = win->screen->areabase.first; sa; sa = sa->next) {
+					/* after restoring a screen from SCREENMAXIMIZED we have to wait
+					 * with the screen handling till the region coordinates are updated */
+					if (win->screen->skip_handling == true) {
+						/* restore for the next iteration of wm_event_do_handlers */
+						win->screen->skip_handling = false;
+						break;
+					}
+
 					if (wm_event_inside_i(event, &sa->totrct)) {
 						CTX_wm_area_set(C, sa);
 
@@ -2387,12 +2424,7 @@ void wm_event_do_handlers(bContext *C)
 	/* update key configuration after handling events */
 	WM_keyconfig_update(wm);
 
-	if (G.debug) {
-		GLenum error = glGetError();
-		if (error != GL_NO_ERROR) {
-			printf("GL error: %s\n", gluErrorString(error));
-		}
-	}
+	GPU_ASSERT_NO_GL_ERRORS("wm_event_do_handlers");
 }
 
 /* ********** filesector handling ************ */
@@ -2426,7 +2458,6 @@ void WM_event_add_fileselect(bContext *C, wmOperator *op)
 	wmEventHandler *handler, *handlernext;
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmWindow *win = CTX_wm_window(C);
-	int full = 1;    // XXX preset?
 
 	/* only allow 1 file selector open per window */
 	for (handler = win->modalhandlers.first; handler; handler = handlernext) {
@@ -2461,7 +2492,6 @@ void WM_event_add_fileselect(bContext *C, wmOperator *op)
 	handler->op = op;
 	handler->op_area = CTX_wm_area(C);
 	handler->op_region = CTX_wm_region(C);
-	handler->filescreen = CTX_wm_screen(C);
 	
 	BLI_addhead(&win->modalhandlers, handler);
 	
@@ -2471,7 +2501,7 @@ void WM_event_add_fileselect(bContext *C, wmOperator *op)
 		op->type->check(C, op); /* ignore return value */
 	}
 
-	WM_event_fileselect_event(wm, op, full ? EVT_FILESELECT_FULL_OPEN : EVT_FILESELECT_OPEN);
+	WM_event_fileselect_event(wm, op, EVT_FILESELECT_FULL_OPEN);
 }
 
 #if 0
@@ -3020,6 +3050,13 @@ static void wm_event_add_mousemove(wmWindow *win, const wmEvent *event)
 void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int UNUSED(time), void *customdata)
 {
 	wmWindow *owin;
+
+	/* Having both, event and evt, can be highly confusing to work with, but is necessary for
+	 * our current event system, so let's clear things up a bit:
+	 * - data added to event only will be handled immediately, but will not be copied to the next event
+	 * - data added to evt only stays, but is handled with the next event -> execution delay
+	 * - data added to event and evt stays and is handled immediately
+	 */
 	wmEvent event, *evt = win->eventstate;
 
 	/* initialize and copy state (only mouse x y and modifiers) */
@@ -3160,6 +3197,7 @@ void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int U
 		case GHOST_kEventKeyUp:
 		{
 			GHOST_TEventKeyData *kd = customdata;
+			short keymodifier = KM_NOTHING;
 			event.type = convert_key(kd->key);
 			event.ascii = kd->ascii;
 			memcpy(event.utf8_buf, kd->utf8_buf, sizeof(event.utf8_buf)); /* might be not null terminated*/
@@ -3200,28 +3238,38 @@ void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int U
 				}
 			}
 
-			/* modifiers assign to eventstate, so next event gets the modifer (makes modifier key events work) */
 			/* assigning both first and second is strange - campbell */
 			switch (event.type) {
-				case LEFTSHIFTKEY: case RIGHTSHIFTKEY:
-					evt->shift = (event.val == KM_PRESS) ?
-					            ((evt->ctrl || evt->alt || evt->oskey) ? (KM_MOD_FIRST | KM_MOD_SECOND) : KM_MOD_FIRST) :
-					            false;
+				case LEFTSHIFTKEY:
+				case RIGHTSHIFTKEY:
+					if (event.val == KM_PRESS) {
+						if (evt->ctrl || evt->alt || evt->oskey) keymodifier = (KM_MOD_FIRST | KM_MOD_SECOND);
+						else keymodifier = KM_MOD_FIRST;
+					}
+					event.shift = evt->shift = keymodifier;
 					break;
-				case LEFTCTRLKEY: case RIGHTCTRLKEY:
-					evt->ctrl = (event.val == KM_PRESS) ?
-					            ((evt->shift || evt->alt || evt->oskey) ? (KM_MOD_FIRST | KM_MOD_SECOND) : KM_MOD_FIRST) :
-					            false;
+				case LEFTCTRLKEY:
+				case RIGHTCTRLKEY:
+					if (event.val == KM_PRESS) {
+						if (evt->shift || evt->alt || evt->oskey) keymodifier = (KM_MOD_FIRST | KM_MOD_SECOND);
+						else keymodifier = KM_MOD_FIRST;
+					}
+					event.ctrl = evt->ctrl = keymodifier;
 					break;
-				case LEFTALTKEY: case RIGHTALTKEY:
-					evt->alt = (event.val == KM_PRESS) ?
-					            ((evt->ctrl || evt->shift || evt->oskey) ? (KM_MOD_FIRST | KM_MOD_SECOND) : KM_MOD_FIRST) :
-					            false;
+				case LEFTALTKEY:
+				case RIGHTALTKEY:
+					if (event.val == KM_PRESS) {
+						if (evt->ctrl || evt->shift || evt->oskey) keymodifier = (KM_MOD_FIRST | KM_MOD_SECOND);
+						else keymodifier = KM_MOD_FIRST;
+					}
+					event.alt = evt->alt = keymodifier;
 					break;
 				case OSKEY:
-					evt->oskey = (event.val == KM_PRESS) ?
-					            ((evt->ctrl || evt->alt || evt->shift) ? (KM_MOD_FIRST | KM_MOD_SECOND) : KM_MOD_FIRST) :
-					            false;
+					if (event.val == KM_PRESS) {
+						if (evt->ctrl || evt->alt || evt->shift) keymodifier = (KM_MOD_FIRST | KM_MOD_SECOND);
+						else keymodifier = KM_MOD_FIRST;
+					}
+					event.oskey = evt->oskey = keymodifier;
 					break;
 				default:
 					if (event.val == KM_PRESS && event.keymodifier == 0)
@@ -3344,6 +3392,35 @@ void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int U
 			break;
 		}
 
+#ifdef WITH_INPUT_IME
+		case GHOST_kEventImeCompositionStart:
+		{
+			event.val = KM_PRESS;
+			win->ime_data = customdata;
+			win->ime_data->is_ime_composing = true;
+			event.type = WM_IME_COMPOSITE_START;
+			wm_event_add(win, &event);
+			break;
+		}
+		case GHOST_kEventImeComposition:
+		{
+			event.val = KM_PRESS;
+			event.type = WM_IME_COMPOSITE_EVENT;
+			wm_event_add(win, &event);
+			break;
+		}
+		case GHOST_kEventImeCompositionEnd:
+		{
+			event.val = KM_PRESS;
+			if (win->ime_data) {
+				win->ime_data->is_ime_composing = false;
+			}
+			event.type = WM_IME_COMPOSITE_END;
+			wm_event_add(win, &event);
+			break;
+		}
+#endif /* WITH_INPUT_IME */
+
 	}
 
 #if 0
@@ -3450,5 +3527,13 @@ bool WM_event_is_tablet(const struct wmEvent *event)
 	return (event->tablet_data) ? true : false;
 }
 
+#ifdef WITH_INPUT_IME
+/* most os using ctrl/oskey + space to switch ime, avoid added space */
+bool WM_event_is_ime_switch(const struct wmEvent *event)
+{
+	return event->val == KM_PRESS && event->type == SPACEKEY &&
+	       (event->ctrl || event->oskey || event->shift || event->alt);
+}
+#endif
 
 /** \} */

@@ -40,7 +40,6 @@
 #include "DNA_scene_types.h"
 #include "DNA_mask_types.h"
 
-#include "BLF_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -61,7 +60,6 @@
 #include "ED_screen.h"
 #include "ED_sequencer.h"
 
-#include "UI_view2d.h"
 
 #include "BKE_sound.h"
 
@@ -626,7 +624,7 @@ void SEQUENCER_OT_movie_strip_add(struct wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
-	WM_operator_properties_filesel(ot, FOLDERFILE | MOVIEFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH | WM_FILESEL_FILES, FILE_DEFAULTDISPLAY);
 	sequencer_generic_props__internal(ot, SEQPROP_STARTFRAME);
 	RNA_def_boolean(ot->srna, "sound", true, "Sound", "Load sound with the movie");
@@ -675,7 +673,7 @@ void SEQUENCER_OT_sound_strip_add(struct wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
-	WM_operator_properties_filesel(ot, FOLDERFILE | SOUNDFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_SOUND, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH | WM_FILESEL_FILES, FILE_DEFAULTDISPLAY);
 	sequencer_generic_props__internal(ot, SEQPROP_STARTFRAME);
 	RNA_def_boolean(ot->srna, "cache", false, "Cache", "Cache the sound in memory");
@@ -774,7 +772,7 @@ void SEQUENCER_OT_image_strip_add(struct wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
-	WM_operator_properties_filesel(ot, FOLDERFILE | IMAGEFILE, FILE_SPECIAL, FILE_OPENFILE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_IMAGE, FILE_SPECIAL, FILE_OPENFILE,
 	                               WM_FILESEL_DIRECTORY | WM_FILESEL_RELPATH | WM_FILESEL_FILES, FILE_DEFAULTDISPLAY);
 	sequencer_generic_props__internal(ot, SEQPROP_STARTFRAME | SEQPROP_ENDFRAME);
 }
@@ -923,5 +921,6 @@ void SEQUENCER_OT_effect_strip_add(struct wmOperatorType *ot)
 	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
 	sequencer_generic_props__internal(ot, SEQPROP_STARTFRAME | SEQPROP_ENDFRAME);
 	RNA_def_enum(ot->srna, "type", sequencer_prop_effect_types, SEQ_TYPE_CROSS, "Type", "Sequencer effect type");
-	RNA_def_float_vector(ot->srna, "color", 3, NULL, 0.0f, 1.0f, "Color", "Initialize the strip with this color (only used when type='COLOR')", 0.0f, 1.0f);
+	RNA_def_float_vector(ot->srna, "color", 3, NULL, 0.0f, 1.0f, "Color",
+	                     "Initialize the strip with this color (only used when type='COLOR')", 0.0f, 1.0f);
 }

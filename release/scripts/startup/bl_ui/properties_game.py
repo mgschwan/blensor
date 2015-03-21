@@ -21,7 +21,7 @@ import bpy
 from bpy.types import Panel, Menu
 
 
-class PhysicsButtonsPanel():
+class PhysicsButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "physics"
@@ -100,6 +100,7 @@ class PHYSICS_PT_game_physics(PhysicsButtonsPanel, Panel):
             sub.prop(game, "damping", text="Translation", slider=True)
             sub.prop(game, "rotation_damping", text="Rotation", slider=True)
 
+        if physics_type == 'RIGID_BODY':
             layout.separator()
 
             split = layout.split()
@@ -179,7 +180,7 @@ class PHYSICS_PT_game_physics(PhysicsButtonsPanel, Panel):
             col.prop(game, "use_actor", text="Detect Actors")
             col.prop(ob, "hide_render", text="Invisible")
 
-        elif physics_type in {'INVISIBLE', 'NO_COLLISION', 'OCCLUDE'}:
+        elif physics_type in {'INVISIBLE', 'NO_COLLISION', 'OCCLUDER'}:
             layout.prop(ob, "hide_render", text="Invisible")
 
         elif physics_type == 'NAVMESH':
@@ -191,15 +192,6 @@ class PHYSICS_PT_game_physics(PhysicsButtonsPanel, Panel):
             layout.operator("mesh.navmesh_reset")
             layout.operator("mesh.navmesh_clear")
 
-        if physics_type not in {'NO_COLLISION', 'OCCLUDE'}:
-            layout.separator()
-            split = layout.split()
-
-            col = split.column()
-            col.prop(game, "collision_group")
-            col = split.column()
-            col.prop(game, "collision_mask")
-
 
 class PHYSICS_PT_game_collision_bounds(PhysicsButtonsPanel, Panel):
     bl_label = "Collision Bounds"
@@ -209,7 +201,8 @@ class PHYSICS_PT_game_collision_bounds(PhysicsButtonsPanel, Panel):
     def poll(cls, context):
         game = context.object.game
         rd = context.scene.render
-        return (game.physics_type in {'DYNAMIC', 'RIGID_BODY', 'SENSOR', 'SOFT_BODY', 'STATIC', 'CHARACTER'}) and (rd.engine in cls.COMPAT_ENGINES)
+        return (rd.engine in cls.COMPAT_ENGINES) \
+                and (game.physics_type in {'SENSOR', 'STATIC', 'DYNAMIC', 'RIGID_BODY', 'CHARACTER', 'SOFT_BODY'})
 
     def draw_header(self, context):
         game = context.active_object.game
@@ -220,13 +213,23 @@ class PHYSICS_PT_game_collision_bounds(PhysicsButtonsPanel, Panel):
         layout = self.layout
 
         game = context.active_object.game
-
         layout.active = game.use_collision_bounds
+
         layout.prop(game, "collision_bounds_type", text="Bounds")
 
         row = layout.row()
         row.prop(game, "collision_margin", text="Margin", slider=True)
-        row.prop(game, "use_collision_compound", text="Compound")
+
+        sub = row.row()
+        sub.active = game.physics_type  not in {'SOFT_BODY', 'CHARACTER'}
+        sub.prop(game, "use_collision_compound", text="Compound")
+
+        layout.separator()
+        split = layout.split()
+        col = split.column()
+        col.prop(game, "collision_group")
+        col = split.column()
+        col.prop(game, "collision_mask")
 
 
 class PHYSICS_PT_game_obstacles(PhysicsButtonsPanel, Panel):
@@ -237,7 +240,8 @@ class PHYSICS_PT_game_obstacles(PhysicsButtonsPanel, Panel):
     def poll(cls, context):
         game = context.object.game
         rd = context.scene.render
-        return (game.physics_type in {'DYNAMIC', 'RIGID_BODY', 'SENSOR', 'SOFT_BODY', 'STATIC'}) and (rd.engine in cls.COMPAT_ENGINES)
+        return (rd.engine in cls.COMPAT_ENGINES) \
+                and (game.physics_type in {'SENSOR', 'STATIC', 'DYNAMIC', 'RIGID_BODY', 'SOFT_BODY'})
 
     def draw_header(self, context):
         game = context.active_object.game
@@ -256,7 +260,7 @@ class PHYSICS_PT_game_obstacles(PhysicsButtonsPanel, Panel):
         row.label()
 
 
-class RenderButtonsPanel():
+class RenderButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "render"
@@ -455,7 +459,7 @@ class RENDER_PT_game_display(RenderButtonsPanel, Panel):
             col.prop(gs, "frame_color", text="")
 
 
-class SceneButtonsPanel():
+class SceneButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "scene"
@@ -519,23 +523,7 @@ class SCENE_PT_game_navmesh(SceneButtonsPanel, Panel):
         row.prop(rd, "sample_max_error")
 
 
-class RENDER_PT_game_sound(RenderButtonsPanel, Panel):
-    bl_label = "Sound"
-    COMPAT_ENGINES = {'BLENDER_GAME'}
-
-    def draw(self, context):
-        layout = self.layout
-
-        scene = context.scene
-
-        layout.prop(scene, "audio_distance_model")
-
-        col = layout.column(align=True)
-        col.prop(scene, "audio_doppler_speed", text="Speed")
-        col.prop(scene, "audio_doppler_factor")
-
-
-class WorldButtonsPanel():
+class WorldButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "world"
@@ -691,7 +679,7 @@ class WORLD_PT_game_physics_obstacles(WorldButtonsPanel, Panel):
             layout.prop(gs, "show_obstacle_simulation")
 
 
-class DataButtonsPanel():
+class DataButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "data"
@@ -749,7 +737,7 @@ class DATA_PT_shadow_game(DataButtonsPanel, Panel):
             row.prop(lamp, "shadow_frustum_size", text="Frustum Size")
 
 
-class ObjectButtonsPanel():
+class ObjectButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"

@@ -30,12 +30,13 @@ op_get_rna = ops_module.get_rna
 op_get_instance = ops_module.get_instance
 
 
-class BPyOps(object):
+class BPyOps:
     """
     Fake module like class.
 
      bpy.ops
     """
+    __slots__ = ()
 
     def __getattr__(self, module):
         """
@@ -68,7 +69,7 @@ class BPyOps(object):
         return "<module like class 'bpy.ops'>"
 
 
-class BPyOpsSubMod(object):
+class BPyOpsSubMod:
     """
     Utility class to fake submodules.
 
@@ -104,7 +105,7 @@ class BPyOpsSubMod(object):
         return "<module like class 'bpy.ops.%s'>" % self._module
 
 
-class BPyOpsSubModOp(object):
+class BPyOpsSubModOp:
     """
     Utility class to fake submodule operators.
 

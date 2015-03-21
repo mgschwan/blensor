@@ -252,6 +252,13 @@ void mid_v3_v3v3v3(float v[3], const float v1[3], const float v2[3], const float
 	v[2] = (v1[2] + v2[2] + v3[2]) / 3.0f;
 }
 
+void mid_v3_v3v3v3v3(float v[3], const float v1[3], const float v2[3], const float v3[3], const float v4[3])
+{
+	v[0] = (v1[0] + v2[0] + v3[0] + v4[0]) / 4.0f;
+	v[1] = (v1[1] + v2[1] + v3[1] + v4[1]) / 4.0f;
+	v[2] = (v1[2] + v2[2] + v3[2] + v4[2]) / 4.0f;
+}
+
 /**
  * Specialized function for calculating normals.
  * fastpath for:
@@ -757,6 +764,13 @@ void minmax_v2v2_v2(float min[2], float max[2], const float vec[2])
 	if (max[1] < vec[1]) max[1] = vec[1];
 }
 
+void minmax_v3v3_v3_array(float r_min[3], float r_max[3], float (*vec_arr)[3], int nbr)
+{
+	while (nbr--) {
+		minmax_v3v3_v3(r_min, r_max, *vec_arr++);
+	}
+}
+
 /** ensure \a v1 is \a dist from \a v2 */
 void dist_ensure_v3_v3fl(float v1[3], const float v2[3], const float dist)
 {
@@ -1027,6 +1041,15 @@ void fill_vn_short(short *array_tar, const int size, const short val)
 void fill_vn_ushort(unsigned short *array_tar, const int size, const unsigned short val)
 {
 	unsigned short *tar = array_tar + (size - 1);
+	int i = size;
+	while (i--) {
+		*(tar--) = val;
+	}
+}
+
+void fill_vn_uchar(unsigned char *array_tar, const int size, const unsigned char val)
+{
+	unsigned char *tar = array_tar + (size - 1);
 	int i = size;
 	while (i--) {
 		*(tar--) = val;

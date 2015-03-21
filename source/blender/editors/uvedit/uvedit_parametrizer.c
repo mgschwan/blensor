@@ -35,7 +35,6 @@
 #include "BLI_boxpack2d.h"
 #include "BLI_convexhull2d.h"
 
-#include "uvedit_intern.h"
 #include "uvedit_parametrizer.h"
 
 #include <math.h>
@@ -372,7 +371,7 @@ static float p_vec_angle(float *v1, float *v2, float *v3)
 	else if (dot >= 1.0f)
 		return 0.0f;
 	else
-		return (float)acos(dot);
+		return acosf(dot);
 }
 
 static float p_vec2_angle(float *v1, float *v2, float *v3)
@@ -433,7 +432,7 @@ static float p_edge_length(PEdge *e)
 	d[1] = v2->co[1] - v1->co[1];
 	d[2] = v2->co[2] - v1->co[2];
 
-	return sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+	return sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
 }
 
 static float p_edge_uv_length(PEdge *e)
@@ -444,7 +443,7 @@ static float p_edge_uv_length(PEdge *e)
 	d[0] = v2->uv[0] - v1->uv[0];
 	d[1] = v2->uv[1] - v1->uv[1];
 
-	return sqrt(d[0] * d[0] + d[1] * d[1]);
+	return sqrtf(d[0] * d[0] + d[1] * d[1]);
 }
 
 static void p_chart_uv_bbox(PChart *chart, float minv[2], float maxv[2])
@@ -2353,8 +2352,8 @@ static void p_abf_compute_sines(PAbfSystem *sys)
 	float *sine = sys->sine, *cosine = sys->cosine, *alpha = sys->alpha;
 
 	for (i = 0; i < sys->nangles; i++, sine++, cosine++, alpha++) {
-		*sine = sin(*alpha);
-		*cosine = cos(*alpha);
+		*sine = sinf(*alpha);
+		*cosine = cosf(*alpha);
 	}
 }
 
@@ -2673,8 +2672,8 @@ static PBool p_abf_matrix_invert(PAbfSystem *sys, PChart *chart)
 		}
 
 		for (i = 0; i < ninterior; i++) {
-			sys->lambdaPlanar[i] += nlGetVariable(0, i);
-			sys->lambdaLength[i] += nlGetVariable(0, ninterior + i);
+			sys->lambdaPlanar[i] += (float)nlGetVariable(0, i);
+			sys->lambdaLength[i] += (float)nlGetVariable(0, ninterior + i);
 		}
 	}
 
@@ -3163,9 +3162,9 @@ static PBool p_chart_lscm_solve(PHandle *handle, PChart *chart)
 			SWAP(PVert *, v2, v3);
 		}
 
-		sina1 = sin(a1);
-		sina2 = sin(a2);
-		sina3 = sin(a3);
+		sina1 = sinf(a1);
+		sina2 = sinf(a2);
+		sina3 = sinf(a3);
 
 		sinmax = max_fff(sina1, sina2, sina3);
 
@@ -3314,7 +3313,7 @@ static float p_face_stretch(PFace *f)
 	a = dot_v3v3(Ps, Ps);
 	c = dot_v3v3(Pt, Pt);
 
-	T =  sqrt(0.5f * (a + c));
+	T =  sqrtf(0.5f * (a + c));
 	if (f->flag & PFACE_FILLED)
 		T *= 0.2f;
 
@@ -3403,8 +3402,8 @@ static void p_chart_stretch_minimize(PChart *chart, RNG *rng)
 
 static int p_compare_geometric_uv(const void *a, const void *b)
 {
-	PVert *v1 = *(PVert **)a;
-	PVert *v2 = *(PVert **)b;
+	const PVert *v1 = *(const PVert * const *)a;
+	const PVert *v2 = *(const PVert * const *)b;
 
 	if (v1->uv[0] < v2->uv[0])
 		return -1;
@@ -3630,8 +3629,8 @@ static float p_chart_minimum_area_angle(PChart *chart)
 static void p_chart_rotate_minimum_area(PChart *chart)
 {
 	float angle = p_chart_minimum_area_angle(chart);
-	float sine = sin(angle);
-	float cosine = cos(angle);
+	float sine = sinf(angle);
+	float cosine = cosf(angle);
 	PVert *v;
 
 	for (v = chart->verts; v; v = v->nextlink) {
@@ -3789,11 +3788,14 @@ static PBool p_node_intersect(SmoothNode *node, float co[2])
 
 /* smoothing */
 
-static int p_compare_float(const void *a, const void *b)
+static int p_compare_float(const void *a_, const void *b_)
 {
-	if (*((float *)a) < *((float *)b))
+	const float a = *(const float *)a_;
+	const float b = *(const float *)b_;
+
+	if (a < b)
 		return -1;
-	else if (*((float *)a) == *((float *)b))
+	else if (a == b)
 		return 0;
 	else
 		return 1;
@@ -4045,7 +4047,7 @@ static void p_smooth(PChart *chart)
 					diff[0] = p[0] - oldp[0];
 					diff[1] = p[1] - oldp[1];
 
-					length = sqrt(diff[0] * diff[0] + diff[1] * diff[1]);
+					length = len_v2(diff);
 					d = max_ff(d, length);
 					moved += length;
 				}
@@ -4194,7 +4196,7 @@ void param_delete(ParamHandle *handle)
 
 static void p_add_ngon(ParamHandle *handle, ParamKey key, int nverts,
                        ParamKey *vkeys, float **co, float **uv,
-                       ParamBool *pin, ParamBool *select, float normal[3])
+                       ParamBool *pin, ParamBool *select, const float normal[3])
 {
 	int *boundary = BLI_array_alloca(boundary, nverts);
 	int i;
@@ -4559,7 +4561,7 @@ void param_pack(ParamHandle *handle, float margin, bool do_rotate)
 		box->index = i; /* warning this index skips PCHART_NOPACK boxes */
 		
 		if (margin > 0.0f)
-			area += sqrt(box->w * box->h);
+			area += (double)sqrtf(box->w * box->h);
 	}
 	
 	if (margin > 0.0f) {
@@ -4661,7 +4663,7 @@ void param_average(ParamHandle *handle)
 			
 			/* Move center to 0,0 */
 			p_chart_uv_translate(chart, trans);
-			p_chart_uv_scale(chart, sqrt(fac / tot_fac));
+			p_chart_uv_scale(chart, sqrtf(fac / tot_fac));
 			
 			/* Move to original center */
 			trans[0] = -trans[0];

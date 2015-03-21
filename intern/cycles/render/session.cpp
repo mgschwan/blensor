@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include <string.h>
@@ -199,8 +199,7 @@ void Session::run_gpu()
 	paused_time = 0.0;
 	last_update_time = time_dt();
 
-	if(!params.background)
-		progress.set_start_time(start_time + paused_time);
+	progress.set_render_start_time(start_time + paused_time);
 
 	while(!progress.get_cancel()) {
 		/* advance to next tile */
@@ -233,6 +232,7 @@ void Session::run_gpu()
 
 					if(!params.background)
 						progress.set_start_time(start_time + paused_time);
+					progress.set_render_start_time(start_time + paused_time);
 
 					update_status_time(pause, no_tiles);
 					progress.set_update();
@@ -251,7 +251,7 @@ void Session::run_gpu()
 			update_scene();
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 
 			if(progress.get_cancel())
 				break;
@@ -292,7 +292,7 @@ void Session::run_gpu()
 			}
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 
 			tiles_written = update_progressive_refine(progress.get_cancel());
 
@@ -517,6 +517,7 @@ void Session::run_cpu()
 
 					if(!params.background)
 						progress.set_start_time(start_time + paused_time);
+					progress.set_render_start_time(start_time + paused_time);
 
 					update_status_time(pause, no_tiles);
 					progress.set_update();
@@ -540,7 +541,7 @@ void Session::run_cpu()
 			update_scene();
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 
 			if(progress.get_cancel())
 				break;
@@ -558,7 +559,7 @@ void Session::run_cpu()
 				need_tonemap = true;
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 		}
 
 		device->task_wait();
@@ -580,7 +581,7 @@ void Session::run_cpu()
 			}
 
 			if(!device->error_message().empty())
-				progress.set_cancel(device->error_message());
+				progress.set_error(device->error_message());
 
 			tiles_written = update_progressive_refine(progress.get_cancel());
 		}
@@ -604,7 +605,7 @@ void Session::load_kernels()
 			if(message.empty())
 				message = "Failed loading render kernel, see console for errors";
 
-			progress.set_cancel(message);
+			progress.set_error(message);
 			progress.set_status("Error", message);
 			progress.set_update();
 			return;
@@ -665,7 +666,8 @@ void Session::reset_(BufferParams& buffer_params, int samples)
 	paused_time = 0.0;
 
 	if(!params.background)
-		progress.set_start_time(start_time + paused_time);
+		progress.set_start_time(start_time);
+	progress.set_render_start_time(start_time);
 }
 
 void Session::reset(BufferParams& buffer_params, int samples)
@@ -887,7 +889,7 @@ bool Session::update_progressive_refine(bool cancel)
 
 	double current_time = time_dt();
 
-	if (current_time - last_update_time < 1.0) {
+	if (current_time - last_update_time < params.progressive_update_timeout) {
 		/* if last sample was processed, we need to write buffers anyway  */
 		if (!write)
 			return false;

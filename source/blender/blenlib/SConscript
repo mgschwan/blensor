@@ -34,8 +34,8 @@ cflags=''
 incs = [
     '.',
     '#/extern/wcwidth',
-    '#/intern/ghost',
     '#/intern/guardedalloc',
+    '#/intern/atomic',
     '../makesdna',
     env['BF_FREETYPE_INC'],
     env['BF_ZLIB_INC'],
@@ -43,10 +43,6 @@ incs = [
 incs = ' '.join(incs)
 
 defs = []
-
-if env['WITH_BF_BINRELOC']:
-    incs += ' ../../../extern/binreloc/include'
-    defs.append('WITH_BINRELOC')
 
 if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc', 'win64-mingw'):
     incs += ' ' + env['BF_PTHREADS_INC']

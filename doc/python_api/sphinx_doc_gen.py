@@ -937,10 +937,16 @@ def pymodule2sphinx(basepath, module_name, module, title):
                 fw(title_string(heading, heading_char))
 
         # May need to be its own function
-        fw(".. class:: %s\n\n" % type_name)
         if value.__doc__:
-            write_indented_lines("   ", fw, value.__doc__, False)
-            fw("\n")
+            if value.__doc__.startswith(".. class::"):
+                fw(value.__doc__)
+            else:
+                fw(".. class:: %s\n\n" % type_name)
+                write_indented_lines("   ", fw, value.__doc__, False)
+        else:
+            fw(".. class:: %s\n\n" % type_name)
+        fw("\n")
+
         write_example_ref("   ", fw, module_name + "." + type_name)
 
         descr_items = [(key, descr) for key, descr in sorted(value.__dict__.items()) if not key.startswith("__")]
@@ -971,10 +977,12 @@ def pymodule2sphinx(basepath, module_name, module, title):
 context_type_map = {
     "active_base": ("ObjectBase", False),
     "active_bone": ("EditBone", False),
+    "active_gpencil_frame": ("GreasePencilLayer", True),
+    "active_gpencil_layer": ("GPencilLayer", True),
+    "active_node": ("Node", False),
     "active_object": ("Object", False),
     "active_operator": ("Operator", False),
     "active_pose_bone": ("PoseBone", False),
-    "active_node": ("Node", False),
     "armature": ("Armature", False),
     "bone": ("Bone", False),
     "brush": ("Brush", False),
@@ -990,7 +998,11 @@ context_type_map = {
     "edit_object": ("Object", False),
     "edit_text": ("Text", False),
     "editable_bones": ("EditBone", True),
+    "editable_gpencil_layers": ("GPencilLayer", True),
+    "editable_gpencil_strokes": ("GPencilStroke", True),
     "fluid": ("FluidSimulationModifier", False),
+    "gpencil_data": ("GreasePencel", False),
+    "gpencil_data_owner": ("ID", False),
     "image_paint_object": ("Object", False),
     "lamp": ("Lamp", False),
     "lattice": ("Lattice", False),
@@ -1030,6 +1042,7 @@ context_type_map = {
     "vertex_paint_object": ("Object", False),
     "visible_bases": ("ObjectBase", True),
     "visible_bones": ("EditBone", True),
+    "visible_gpencil_layers": ("GPencilLayer", True),
     "visible_objects": ("Object", True),
     "visible_pose_bones": ("PoseBone", True),
     "weight_paint_object": ("Object", False),

@@ -80,7 +80,9 @@ static void filepath_avi(char *string, RenderData *rd);
 #  include "BKE_writeffmpeg.h"
 #endif
 
-#include "BKE_writeframeserver.h"
+#ifdef WITH_FRAMESERVER
+#  include "BKE_writeframeserver.h"
+#endif
 
 bMovieHandle *BKE_movie_handle_get(const char imtype)
 {
@@ -251,7 +253,7 @@ static void end_avi(void)
 }
 #endif  /* WITH_AVI */
 
-/* similar to BKE_makepicstring() */
+/* similar to BKE_image_path_from_imformat() */
 void BKE_movie_filepath_get(char *string, RenderData *rd)
 {
 	bMovieHandle *mh = BKE_movie_handle_get(rd->im_format.imtype);

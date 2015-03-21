@@ -35,8 +35,6 @@
 #include <math.h>
 #include <string.h>
 
-#include "GL/glew.h"
-
 #include "MEM_guardedalloc.h"
 
 #include "DNA_lamp_types.h"
@@ -78,10 +76,15 @@ typedef enum DynMatProperty {
 	DYN_LAMP_PERSMAT = 8,
 } DynMatProperty;
 
+
 struct GPUMaterial {
 	Scene *scene;
 	Material *ma;
 
+	/* material for mesh surface, worlds or something else.
+	 * some code generation is done differently depending on the use case */
+	int type;
+	
 	/* for creating the material */
 	ListBase nodes;
 	GPUNodeLink *outlink;
@@ -98,6 +101,7 @@ struct GPUMaterial {
 	int viewmatloc, invviewmatloc;
 	int obmatloc, invobmatloc;
 	int obcolloc, obautobumpscaleloc;
+	int cameratexcofacloc;
 
 	ListBase lamps;
 };
@@ -196,7 +200,7 @@ static void gpu_material_set_attrib_id(GPUMaterial *material)
 	attribs->totlayer = b;
 }
 
-static int GPU_material_construct_end(GPUMaterial *material)
+static int GPU_material_construct_end(GPUMaterial *material, const char *passname)
 {
 	if (material->outlink) {
 		GPUNodeLink *outlink;
@@ -204,7 +208,7 @@ static int GPU_material_construct_end(GPUMaterial *material)
 
 		outlink = material->outlink;
 		material->pass = GPU_generate_pass(&material->nodes, outlink,
-			&material->attribs, &material->builtins, material->ma->id.name);
+			&material->attribs, &material->builtins, material->type, passname);
 
 		if (!material->pass)
 			return 0;
@@ -225,18 +229,20 @@ static int GPU_material_construct_end(GPUMaterial *material)
 			material->obcolloc = GPU_shader_get_uniform(shader, GPU_builtin_name(GPU_OBCOLOR));
 		if (material->builtins & GPU_AUTO_BUMPSCALE)
 			material->obautobumpscaleloc = GPU_shader_get_uniform(shader, GPU_builtin_name(GPU_AUTO_BUMPSCALE));
+		if (material->builtins & GPU_CAMERA_TEXCO_FACTORS)
+			material->cameratexcofacloc = GPU_shader_get_uniform(shader, GPU_builtin_name(GPU_CAMERA_TEXCO_FACTORS));
 		return 1;
 	}
 
 	return 0;
 }
 
-void GPU_material_free(Material *ma)
+void GPU_material_free(ListBase *gpumaterial)
 {
 	LinkData *link;
 	LinkData *nlink, *mlink, *next;
 
-	for (link=ma->gpumaterial.first; link; link=link->next) {
+	for (link=gpumaterial->first; link; link=link->next) {
 		GPUMaterial *material = link->data;
 
 		if (material->pass)
@@ -245,19 +251,23 @@ void GPU_material_free(Material *ma)
 		for (nlink=material->lamps.first; nlink; nlink=nlink->next) {
 			GPULamp *lamp = nlink->data;
 
-			for (mlink=lamp->materials.first; mlink; mlink=next) {
-				next = mlink->next;
-				if (mlink->data == ma)
-					BLI_freelinkN(&lamp->materials, mlink);
+			if (material->ma) {
+				Material *ma = material->ma;
+				
+				for (mlink=lamp->materials.first; mlink; mlink=next) {
+					next = mlink->next;
+					if (mlink->data == ma)
+						BLI_freelinkN(&lamp->materials, mlink);
+				}
 			}
 		}
-
+		
 		BLI_freelistN(&material->lamps);
 
 		MEM_freeN(material);
 	}
 
-	BLI_freelistN(&ma->gpumaterial);
+	BLI_freelistN(gpumaterial);
 }
 
 bool GPU_lamp_override_visible(GPULamp *lamp, SceneRenderLayer *srl, Material *ma)
@@ -270,7 +280,7 @@ bool GPU_lamp_override_visible(GPULamp *lamp, SceneRenderLayer *srl, Material *m
 		return true;
 }
 
-void GPU_material_bind(GPUMaterial *material, int oblay, int viewlay, double time, int mipmap, float viewmat[4][4], float viewinv[4][4], bool scenelock)
+void GPU_material_bind(GPUMaterial *material, int oblay, int viewlay, double time, int mipmap, float viewmat[4][4], float viewinv[4][4], float camerafactors[4], bool scenelock)
 {
 	if (material->pass) {
 		LinkData *nlink;
@@ -282,42 +292,44 @@ void GPU_material_bind(GPUMaterial *material, int oblay, int viewlay, double tim
 			viewlay &= srl->lay;
 
 		/* handle layer lamps */
-		for (nlink=material->lamps.first; nlink; nlink=nlink->next) {
-			lamp= nlink->data;
-
-			if (!lamp->hide && (lamp->lay & viewlay) && (!(lamp->mode & LA_LAYER) || (lamp->lay & oblay))
-			    && GPU_lamp_override_visible(lamp, srl, material->ma)) {
-				lamp->dynenergy = lamp->energy;
-				copy_v3_v3(lamp->dyncol, lamp->col);
-			}
-			else {
-				lamp->dynenergy = 0.0f;
-				lamp->dyncol[0]= lamp->dyncol[1]= lamp->dyncol[2] = 0.0f;
-			}
-
-			if (material->dynproperty & DYN_LAMP_VEC) {
-				copy_v3_v3(lamp->dynvec, lamp->vec);
-				normalize_v3(lamp->dynvec);
-				negate_v3(lamp->dynvec);
-				mul_mat3_m4_v3(viewmat, lamp->dynvec);
-			}
-
-			if (material->dynproperty & DYN_LAMP_CO) {
-				copy_v3_v3(lamp->dynco, lamp->co);
-				mul_m4_v3(viewmat, lamp->dynco);
-			}
-
-			if (material->dynproperty & DYN_LAMP_IMAT) {
-				mul_m4_m4m4(lamp->dynimat, lamp->imat, viewinv);
-			}
-
-			if (material->dynproperty & DYN_LAMP_PERSMAT) {
-				if (!GPU_lamp_has_shadow_buffer(lamp)) /* The lamp matrices are already updated if we're using shadow buffers */
-					GPU_lamp_update_buffer_mats(lamp);
-				mul_m4_m4m4(lamp->dynpersmat, lamp->persmat, viewinv);
+		if (material->type == GPU_MATERIAL_TYPE_MESH) {
+			for (nlink=material->lamps.first; nlink; nlink=nlink->next) {
+				lamp= nlink->data;
+				
+				if (!lamp->hide && (lamp->lay & viewlay) && (!(lamp->mode & LA_LAYER) || (lamp->lay & oblay))
+				        && GPU_lamp_override_visible(lamp, srl, material->ma)) {
+					lamp->dynenergy = lamp->energy;
+					copy_v3_v3(lamp->dyncol, lamp->col);
+				}
+				else {
+					lamp->dynenergy = 0.0f;
+					lamp->dyncol[0]= lamp->dyncol[1]= lamp->dyncol[2] = 0.0f;
+				}
+				
+				if (material->dynproperty & DYN_LAMP_VEC) {
+					copy_v3_v3(lamp->dynvec, lamp->vec);
+					normalize_v3(lamp->dynvec);
+					negate_v3(lamp->dynvec);
+					mul_mat3_m4_v3(viewmat, lamp->dynvec);
+				}
+				
+				if (material->dynproperty & DYN_LAMP_CO) {
+					copy_v3_v3(lamp->dynco, lamp->co);
+					mul_m4_v3(viewmat, lamp->dynco);
+				}
+				
+				if (material->dynproperty & DYN_LAMP_IMAT) {
+					mul_m4_m4m4(lamp->dynimat, lamp->imat, viewinv);
+				}
+				
+				if (material->dynproperty & DYN_LAMP_PERSMAT) {
+					if (!GPU_lamp_has_shadow_buffer(lamp)) /* The lamp matrices are already updated if we're using shadow buffers */
+						GPU_lamp_update_buffer_mats(lamp);
+					mul_m4_m4m4(lamp->dynpersmat, lamp->persmat, viewinv);
+				}
 			}
 		}
-
+		
 		/* note material must be bound before setting uniforms */
 		GPU_pass_bind(material->pass, time, mipmap);
 
@@ -327,6 +339,16 @@ void GPU_material_bind(GPUMaterial *material, int oblay, int viewlay, double tim
 		}
 		if (material->builtins & GPU_INVERSE_VIEW_MATRIX) {
 			GPU_shader_uniform_vector(shader, material->invviewmatloc, 16, 1, (float*)viewinv);
+		}
+		if (material->builtins & GPU_CAMERA_TEXCO_FACTORS) {
+			if (camerafactors) {
+				GPU_shader_uniform_vector(shader, material->cameratexcofacloc, 4, 1, (float*)camerafactors);
+			}
+			else {
+				/* use default, no scaling no offset */
+				float borders[4] = {1.0f, 1.0f, 0.0f, 0.0f};
+				GPU_shader_uniform_vector(shader, material->cameratexcofacloc, 4, 1, (float*)borders);
+			}
 		}
 
 		GPU_pass_update_uniforms(material->pass);
@@ -377,6 +399,12 @@ Scene *GPU_material_scene(GPUMaterial *material)
 {
 	return material->scene;
 }
+
+GPUMatType GPU_Material_get_type(GPUMaterial *material)
+{
+	return material->type;
+}
+
 
 void GPU_material_vertex_attributes(GPUMaterial *material, GPUVertexAttribs *attribs)
 {
@@ -1171,7 +1199,7 @@ static void do_material_tex(GPUShadeInput *shi)
 						}
 						else if (mtex->normapspace == MTEX_NSPACE_OBJECT) {
 							/* transform normal by object then view matrix */
-							GPU_link(mat, "mtex_nspace_object", GPU_builtin(GPU_VIEW_MATRIX), GPU_builtin(GPU_OBJECT_MATRIX), tnor, &newnor);
+							GPU_link(mat, "mtex_nspace_object", tnor, &newnor);
 						}
 						else if (mtex->normapspace == MTEX_NSPACE_WORLD) {
 							/* transform normal by view matrix */
@@ -1206,7 +1234,6 @@ static void do_material_tex(GPUShadeInput *shi)
 						float imag_tspace_dimension_x = 1024.0f;		// only used for texture space variant
 						float aspect = 1.0f;
 						
-						GPUNodeLink *surf_pos = GPU_builtin(GPU_VIEW_POSITION);
 						GPUNodeLink *vR1, *vR2;
 						GPUNodeLink *dBs, *dBt, *fDet;
 
@@ -1263,7 +1290,8 @@ static void do_material_tex(GPUShadeInput *shi)
 						
 						// re-initialize if bump space changed
 						if ( iBumpSpacePrev != iBumpSpace ) {
-							
+							GPUNodeLink *surf_pos = GPU_builtin(GPU_VIEW_POSITION);
+
 							if ( mtex->texflag & MTEX_BUMP_OBJECTSPACE )
 								GPU_link(mat, "mtex_bump_init_objspace",
 								         surf_pos, vNorg,
@@ -1428,6 +1456,7 @@ void GPU_shadeinput_set(GPUMaterial *mat, Material *ma, GPUShadeInput *shi)
 	GPU_link(mat, "set_value", GPU_uniform(&ma->emit), &shi->emit);
 	GPU_link(mat, "set_value", GPU_uniform(&hard), &shi->har);
 	GPU_link(mat, "set_value", GPU_uniform(&ma->amb), &shi->amb);
+	GPU_link(mat, "set_value", GPU_uniform(&ma->spectra), &shi->spectra);
 	GPU_link(mat, "shade_view", GPU_builtin(GPU_VIEW_POSITION), &shi->view);
 	GPU_link(mat, "vcol_attribute", GPU_attribute(CD_MCOL, ""), &shi->vcol);
 	if (GPU_material_do_color_management(mat))
@@ -1497,6 +1526,12 @@ void GPU_shaderesult_set(GPUShadeInput *shi, GPUShadeResult *shr)
 					GPU_link(mat, "shade_maddf", shr->combined, GPU_uniform(&ma->amb),
 						GPU_uniform(&world->ambr), &shr->combined);
 			}
+		}
+
+		if (ma->mode & MA_TRANSP && (ma->mode & (MA_ZTRANSP|MA_RAYTRANSP))) {
+			if (GPU_link_changed(shi->spectra) || ma->spectra != 0.0f)
+				GPU_link(mat, "alpha_spec_correction", shr->spec, shi->spectra,
+					shi->alpha, &shr->alpha);
 		}
 
 		if (ma->mode & MA_RAMP_COL) ramp_diffuse_result(shi, &shr->combined);
@@ -1584,6 +1619,7 @@ GPUMaterial *GPU_material_matcap(Scene *scene, Material *ma)
 	/* allocate material */
 	mat = GPU_material_construct_begin(ma);
 	mat->scene = scene;
+	mat->type = GPU_MATERIAL_TYPE_MESH;
 	
 	if (ma->preview && ma->preview->rect[0]) {
 		outlink = gpu_material_preview_matcap(mat, ma);
@@ -1594,7 +1630,7 @@ GPUMaterial *GPU_material_matcap(Scene *scene, Material *ma)
 		
 	GPU_material_output_link(mat, outlink);
 
-	GPU_material_construct_end(mat);
+	GPU_material_construct_end(mat, "matcap_pass");
 	
 	/* note that even if building the shader fails in some way, we still keep
 	 * it to avoid trying to compile again and again, and simple do not use
@@ -1606,6 +1642,45 @@ GPUMaterial *GPU_material_matcap(Scene *scene, Material *ma)
 	
 	return mat;
 }
+
+GPUMaterial *GPU_material_world(struct Scene *scene, struct World *wo)
+{
+	LinkData *link;
+	GPUMaterial *mat;
+
+	for (link=wo->gpumaterial.first; link; link=link->next)
+		if (((GPUMaterial*)link->data)->scene == scene)
+			return link->data;
+
+	/* allocate material */
+	mat = GPU_material_construct_begin(NULL);
+	mat->scene = scene;
+	mat->type = GPU_MATERIAL_TYPE_WORLD;
+	
+	/* create nodes */
+	if (BKE_scene_use_new_shading_nodes(scene) && wo->nodetree && wo->use_nodes)
+		ntreeGPUMaterialNodes(wo->nodetree, mat, NODE_NEW_SHADING);
+	else {
+		/* old fixed function world */
+	}
+
+	if (GPU_material_do_color_management(mat))
+		if (mat->outlink)
+			GPU_link(mat, "linearrgb_to_srgb", mat->outlink, &mat->outlink);
+
+	GPU_material_construct_end(mat, wo->id.name);
+	
+	/* note that even if building the shader fails in some way, we still keep
+	 * it to avoid trying to compile again and again, and simple do not use
+	 * the actual shader on drawing */
+
+	link = MEM_callocN(sizeof(LinkData), "GPUMaterialLink");
+	link->data = mat;
+	BLI_addtail(&wo->gpumaterial, link);
+
+	return mat;
+}
+
 
 GPUMaterial *GPU_material_from_blender(Scene *scene, Material *ma)
 {
@@ -1620,6 +1695,7 @@ GPUMaterial *GPU_material_from_blender(Scene *scene, Material *ma)
 	/* allocate material */
 	mat = GPU_material_construct_begin(ma);
 	mat->scene = scene;
+	mat->type = GPU_MATERIAL_TYPE_MESH;
 
 	/* render pipeline option */
 	if (ma->mode & MA_TRANSP)
@@ -1649,7 +1725,7 @@ GPUMaterial *GPU_material_from_blender(Scene *scene, Material *ma)
 		if (mat->outlink)
 			GPU_link(mat, "linearrgb_to_srgb", mat->outlink, &mat->outlink);
 
-	GPU_material_construct_end(mat);
+	GPU_material_construct_end(mat, ma->id.name);
 
 	/* note that even if building the shader fails in some way, we still keep
 	 * it to avoid trying to compile again and again, and simple do not use
@@ -1666,12 +1742,16 @@ void GPU_materials_free(void)
 {
 	Object *ob;
 	Material *ma;
+	World *wo;
 	extern Material defmaterial;
 
 	for (ma=G.main->mat.first; ma; ma=ma->id.next)
-		GPU_material_free(ma);
+		GPU_material_free(&ma->gpumaterial);
 
-	GPU_material_free(&defmaterial);
+	for (wo=G.main->world.first; wo; wo=wo->id.next)
+		GPU_material_free(&wo->gpumaterial);
+	
+	GPU_material_free(&defmaterial.gpumaterial);
 
 	for (ob=G.main->object.first; ob; ob=ob->id.next)
 		GPU_lamp_free(ob);
@@ -1688,10 +1768,10 @@ static void gpu_lamp_calc_winmat(GPULamp *lamp)
 		orthographic_m4(lamp->winmat, -wsize, wsize, -wsize, wsize, lamp->d, lamp->clipend);
 	}
 	else {
-		angle= saacos(lamp->spotsi);
-		temp= 0.5f*lamp->size*cosf(angle)/sinf(angle);
-		pixsize= (lamp->d)/temp;
-		wsize= pixsize*0.5f*lamp->size;
+		angle = saacos(lamp->spotsi);
+		temp = 0.5f * lamp->size * cosf(angle) / sinf(angle);
+		pixsize = lamp->d / temp;
+		wsize = pixsize * 0.5f * lamp->size;
 		perspective_m4(lamp->winmat, -wsize, wsize, -wsize, wsize, lamp->d, lamp->clipend);
 	}
 }
@@ -1846,7 +1926,7 @@ GPULamp *GPU_lamp_from_blender(Scene *scene, Object *ob, Object *par)
 				return lamp;
 			}
 		
-			if (!GPU_framebuffer_texture_attach(lamp->fb, lamp->depthtex, NULL)) {
+			if (!GPU_framebuffer_texture_attach(lamp->fb, lamp->depthtex, 0, NULL)) {
 				gpu_lamp_shadow_free(lamp);
 				return lamp;
 			}
@@ -1858,11 +1938,16 @@ GPULamp *GPU_lamp_from_blender(Scene *scene, Object *ob, Object *par)
 				return lamp;
 			}
 
-			if (!GPU_framebuffer_texture_attach(lamp->fb, lamp->tex, NULL)) {
+			if (!GPU_framebuffer_texture_attach(lamp->fb, lamp->tex, 0, NULL)) {
 				gpu_lamp_shadow_free(lamp);
 				return lamp;
 			}
 
+			if (!GPU_framebuffer_check_valid(lamp->fb, NULL)) {
+				gpu_lamp_shadow_free(lamp);
+				return lamp;				
+			}
+			
 			/* FBO and texture for blurring */
 			lamp->blurfb = GPU_framebuffer_create();
 			if (!lamp->blurfb) {
@@ -1876,10 +1961,20 @@ GPULamp *GPU_lamp_from_blender(Scene *scene, Object *ob, Object *par)
 				return lamp;
 			}
 		
-			if (!GPU_framebuffer_texture_attach(lamp->blurfb, lamp->blurtex, NULL)) {
+			if (!GPU_framebuffer_texture_attach(lamp->blurfb, lamp->blurtex, 0, NULL)) {
 				gpu_lamp_shadow_free(lamp);
 				return lamp;
 			}
+			
+			/* we need to properly bind to test for completeness */
+			GPU_texture_bind_as_framebuffer(lamp->blurtex);
+			
+			if (!GPU_framebuffer_check_valid(lamp->blurfb, NULL)) {
+				gpu_lamp_shadow_free(lamp);
+				return lamp;
+			}
+			
+			GPU_framebuffer_texture_unbind(lamp->blurfb, lamp->blurtex);
 		}
 		else {
 			lamp->tex = GPU_texture_create_depth(lamp->size, lamp->size, NULL);
@@ -1888,10 +1983,15 @@ GPULamp *GPU_lamp_from_blender(Scene *scene, Object *ob, Object *par)
 				return lamp;
 			}
 
-			if (!GPU_framebuffer_texture_attach(lamp->fb, lamp->tex, NULL)) {
+			if (!GPU_framebuffer_texture_attach(lamp->fb, lamp->tex, 0, NULL)) {
 				gpu_lamp_shadow_free(lamp);
 				return lamp;
 			}
+			
+			if (!GPU_framebuffer_check_valid(lamp->fb, NULL)) {
+				gpu_lamp_shadow_free(lamp);
+				return lamp;				
+			}						
 		}
 
 		GPU_framebuffer_restore();
@@ -1925,7 +2025,7 @@ void GPU_lamp_free(Object *ob)
 			BLI_freelinkN(&lamp->materials, nlink);
 
 			if (ma->gpumaterial.first)
-				GPU_material_free(ma);
+				GPU_material_free(&ma->gpumaterial);
 		}
 
 		gpu_lamp_shadow_free(lamp);
@@ -1974,8 +2074,7 @@ void GPU_lamp_shadow_buffer_bind(GPULamp *lamp, float viewmat[4][4], int *winsiz
 
 	/* opengl */
 	glDisable(GL_SCISSOR_TEST);
-	GPU_framebuffer_texture_bind(lamp->fb, lamp->tex,
-		GPU_texture_opengl_width(lamp->tex), GPU_texture_opengl_height(lamp->tex));
+	GPU_texture_bind_as_framebuffer(lamp->tex);
 	if (lamp->la->shadowmap_type == LA_SHADMAP_VARIANCE)
 		GPU_shader_bind(GPU_shader_get_builtin_shader(GPU_SHADER_VSM_STORE));
 
@@ -2010,13 +2109,14 @@ int GPU_lamp_shadow_layer(GPULamp *lamp)
 		return -1;
 }
 
-GPUNodeLink *GPU_lamp_get_data(GPUMaterial *mat, GPULamp *lamp, GPUNodeLink **col, GPUNodeLink **lv, GPUNodeLink **dist, GPUNodeLink **shadow)
+GPUNodeLink *GPU_lamp_get_data(GPUMaterial *mat, GPULamp *lamp, GPUNodeLink **col, GPUNodeLink **lv, GPUNodeLink **dist, GPUNodeLink **shadow, GPUNodeLink **energy)
 {
 	GPUNodeLink *visifac;
 
 	*col = GPU_dynamic_uniform(lamp->dyncol, GPU_DYNAMIC_LAMP_DYNCOL, lamp->ob);
+	*energy = GPU_dynamic_uniform(&lamp->dynenergy, GPU_DYNAMIC_LAMP_DYNENERGY, lamp->ob);
 	visifac = lamp_get_visibility(mat, lamp, lv, dist);
-	/* looks like it's not used? psy-fi */
+
 	shade_light_textures(mat, lamp, col);
 
 	if (GPU_lamp_has_shadow_buffer(lamp)) {
@@ -2028,18 +2128,18 @@ GPUNodeLink *GPU_lamp_get_data(GPUMaterial *mat, GPULamp *lamp, GPUNodeLink **co
 
 		if (lamp->la->shadowmap_type == LA_SHADMAP_VARIANCE) {
 			GPU_link(mat, "shadows_only_vsm",
-				 GPU_builtin(GPU_VIEW_POSITION),
-				 GPU_dynamic_texture(lamp->tex, GPU_DYNAMIC_SAMPLER_2DSHADOW, lamp->ob),
-				 GPU_dynamic_uniform((float*)lamp->dynpersmat, GPU_DYNAMIC_LAMP_DYNPERSMAT, lamp->ob),
-				 GPU_uniform(&lamp->bias), GPU_uniform(&lamp->la->bleedbias),
-				 GPU_uniform(lamp->shadow_color), inp, shadow);
+			         GPU_builtin(GPU_VIEW_POSITION),
+			         GPU_dynamic_texture(lamp->tex, GPU_DYNAMIC_SAMPLER_2DSHADOW, lamp->ob),
+			         GPU_dynamic_uniform((float*)lamp->dynpersmat, GPU_DYNAMIC_LAMP_DYNPERSMAT, lamp->ob),
+			         GPU_uniform(&lamp->bias), GPU_uniform(&lamp->la->bleedbias),
+			         GPU_uniform(lamp->shadow_color), inp, shadow);
 		}
 		else {
 			GPU_link(mat, "shadows_only",
-				 GPU_builtin(GPU_VIEW_POSITION),
-				 GPU_dynamic_texture(lamp->tex, GPU_DYNAMIC_SAMPLER_2DSHADOW, lamp->ob),
-				 GPU_dynamic_uniform((float*)lamp->dynpersmat, GPU_DYNAMIC_LAMP_DYNPERSMAT, lamp->ob),
-				 GPU_uniform(&lamp->bias), GPU_uniform(lamp->shadow_color), inp, shadow);
+			         GPU_builtin(GPU_VIEW_POSITION),
+			         GPU_dynamic_texture(lamp->tex, GPU_DYNAMIC_SAMPLER_2DSHADOW, lamp->ob),
+			         GPU_dynamic_uniform((float*)lamp->dynpersmat, GPU_DYNAMIC_LAMP_DYNPERSMAT, lamp->ob),
+			         GPU_uniform(&lamp->bias), GPU_uniform(lamp->shadow_color), inp, shadow);
 		}
 	}
 	else {
@@ -2122,29 +2222,45 @@ GPUShaderExport *GPU_shader_export(struct Scene *scene, struct Material *ma)
 						glBindTexture(GL_TEXTURE_2D, lastbindcode);
 					}
 					break;
+
+				case GPU_NONE:
+				case GPU_FLOAT:
+				case GPU_VEC2:
+				case GPU_VEC3:
+				case GPU_VEC4:
+				case GPU_MAT3:
+				case GPU_MAT4:
+				case GPU_ATTRIB:
+					break;
 				}
 			}
 			else {
 				uniform->type = input->dynamictype;
 				BLI_strncpy(uniform->varname, input->shadername, sizeof(uniform->varname));
 				switch (input->type) {
-				case 1:
+				case GPU_FLOAT:
 					uniform->datatype = GPU_DATA_1F;
 					break;
-				case 2:
+				case GPU_VEC2:
 					uniform->datatype = GPU_DATA_2F;
 					break;
-				case 3:
+				case GPU_VEC3:
 					uniform->datatype = GPU_DATA_3F;
 					break;
-				case 4:
+				case GPU_VEC4:
 					uniform->datatype = GPU_DATA_4F;
 					break;
-				case 9:
+				case GPU_MAT3:
 					uniform->datatype = GPU_DATA_9F;
 					break;
-				case 16:
+				case GPU_MAT4:
 					uniform->datatype = GPU_DATA_16F;
+					break;
+
+				case GPU_NONE:
+				case GPU_TEX2D:
+				case GPU_SHADOW2D:
+				case GPU_ATTRIB:
 					break;
 				}
 

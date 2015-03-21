@@ -47,7 +47,6 @@
 
 #include "DNA_armature_types.h"
 #include "DNA_object_types.h"
-#include "DNA_meshdata_types.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_path_util.h"
@@ -57,6 +56,7 @@
 
 #include "BLF_translation.h"
 
+#include "BKE_appdir.h"
 #include "BKE_key.h"
 #include "BKE_multires.h"
 #include "BKE_DerivedMesh.h"
@@ -143,13 +143,14 @@ void modifier_free(ModifierData *md)
 	MEM_freeN(md);
 }
 
-void modifier_unique_name(ListBase *modifiers, ModifierData *md)
+bool modifier_unique_name(ListBase *modifiers, ModifierData *md)
 {
 	if (modifiers && md) {
 		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
-		BLI_uniquename(modifiers, md, DATA_(mti->name), '.', offsetof(ModifierData, name), sizeof(md->name));
+		return BLI_uniquename(modifiers, md, DATA_(mti->name), '.', offsetof(ModifierData, name), sizeof(md->name));
 	}
+	return false;
 }
 
 bool modifier_dependsOnTime(ModifierData *md)
@@ -262,8 +263,8 @@ void modifier_copyData_generic(const ModifierData *md_src, ModifierData *md_dst)
 {
 	ModifierTypeInfo *mti = modifierType_getInfo(md_src->type);
 	const size_t data_size = sizeof(ModifierData);
-	const char *md_src_data = ((char *)md_src) + data_size;
-	char       *md_dst_data = ((char *)md_dst) + data_size;
+	const char *md_src_data = ((const char *)md_src) + data_size;
+	char       *md_dst_data =       ((char *)md_dst) + data_size;
 	BLI_assert(data_size <= (size_t)mti->structSize);
 	memcpy(md_dst_data, md_src_data, (size_t)mti->structSize - data_size);
 }
@@ -713,7 +714,7 @@ const char *modifier_path_relbase(Object *ob)
 	else {
 		/* last resort, better then using "" which resolves to the current
 		 * working directory */
-		return BLI_temp_dir_session();
+		return BKE_tempdir_session();
 	}
 }
 
@@ -723,7 +724,7 @@ void modifier_path_init(char *path, int path_maxlen, const char *name)
 	/* elubie: changed this to default to the same dir as the render output
 	 * to prevent saving to C:\ on Windows */
 	BLI_join_dirfile(path, path_maxlen,
-	                 G.relbase_valid ? "//" : BLI_temp_dir_session(),
+	                 G.relbase_valid ? "//" : BKE_tempdir_session(),
 	                 name);
 }
 

@@ -3,6 +3,10 @@
 #   bash doc/python_api/sphinx_doc_gen.sh
 # ssh upload means you need an account on the server
 
+if [ "$1" == "" ] ; then
+	echo "Expected a single argument for the username on blender.org, aborting"
+	exit 1
+fi
 
 # ----------------------------------------------------------------------------
 # Upload vars
@@ -16,9 +20,9 @@ DO_OUT_PDF=false
 
 
 BLENDER="./blender.bin"
-SSH_USER="ideasman42"
+SSH_USER=$1
 SSH_HOST=$SSH_USER"@blender.org"
-SSH_UPLOAD="/data/www/vhosts/www.blender.org/documentation" # blender_python_api_VERSION, added after
+SSH_UPLOAD="/data/www/vhosts/www.blender.org/api" # blender_python_api_VERSION, added after
 
 # ----------------------------------------------------------------------------
 # Blender Version & Info

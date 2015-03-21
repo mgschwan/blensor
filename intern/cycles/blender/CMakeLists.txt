@@ -6,6 +6,7 @@ set(INC
 	../kernel/svm
 	../util
 	../subd
+	../../glew-mx
 	../../guardedalloc
 	../../mikktspace
 	../../../source/blender/makesdna
@@ -16,7 +17,7 @@ set(INC
 
 set(INC_SYS
 	${PYTHON_INCLUDE_DIRS}
-	${GLEW_INCLUDE_PATH}
+	${GLEW_INCLUDE_DIR}
 )
 
 set(SRC
@@ -25,6 +26,7 @@ set(SRC
 	blender_object.cpp
 	blender_particles.cpp
 	blender_curves.cpp
+	blender_logging.cpp
 	blender_python.cpp
 	blender_session.cpp
 	blender_shader.cpp
@@ -46,7 +48,7 @@ set(ADDON_FILES
 	addon/version_update.py
 )
 
-add_definitions(-DGLEW_STATIC)
+add_definitions(${GL_DEFINITIONS})
 
 blender_add_lib(bf_intern_cycles "${SRC}" "${INC}" "${INC_SYS}")
 

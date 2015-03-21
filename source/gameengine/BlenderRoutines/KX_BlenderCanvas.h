@@ -82,8 +82,9 @@ public:
 		int interval
 	);
 
-		int
+		bool
 	GetSwapInterval(
+		int &intervalOut
 	);
 
 		void 
@@ -209,6 +210,7 @@ private:
 	RAS_Rect 	m_area_rect;
 	int			m_area_left;
 	int			m_area_top;
+	int			m_frame;
 
 
 #ifdef WITH_CXX_GUARDEDALLOC

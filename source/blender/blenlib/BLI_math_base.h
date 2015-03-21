@@ -42,37 +42,43 @@
 #endif
 
 #ifndef M_PI
-#define M_PI        3.14159265358979323846
+#define M_PI        3.14159265358979323846  /* pi */
 #endif
 #ifndef M_PI_2
-#define M_PI_2      1.57079632679489661923
+#define M_PI_2      1.57079632679489661923  /* pi/2 */
+#endif
+#ifndef M_PI_4
+#define M_PI_4      0.78539816339744830962  /* pi/4 */
 #endif
 #ifndef M_SQRT2
-#define M_SQRT2     1.41421356237309504880
+#define M_SQRT2     1.41421356237309504880  /* sqrt(2) */
 #endif
 #ifndef M_SQRT1_2
-#define M_SQRT1_2   0.70710678118654752440
+#define M_SQRT1_2   0.70710678118654752440  /* 1/sqrt(2) */
 #endif
 #ifndef M_SQRT3
-#define M_SQRT3   1.7320508075688772
+#define M_SQRT3     1.73205080756887729352  /* sqrt(3) */
+#endif
+#ifndef M_SQRT1_3
+#define M_SQRT1_3   0.57735026918962576450  /* 1/sqrt(3) */
 #endif
 #ifndef M_1_PI
-#define M_1_PI      0.318309886183790671538
+#define M_1_PI      0.318309886183790671538  /* 1/pi */
 #endif
 #ifndef M_E
-#define M_E             2.7182818284590452354
+#define M_E         2.7182818284590452354  /* e */
 #endif
 #ifndef M_LOG2E
-#define M_LOG2E         1.4426950408889634074
+#define M_LOG2E     1.4426950408889634074  /* log_2 e */
 #endif
 #ifndef M_LOG10E
-#define M_LOG10E        0.43429448190325182765
+#define M_LOG10E    0.43429448190325182765  /* log_10 e */
 #endif
 #ifndef M_LN2
-#define M_LN2           0.69314718055994530942
+#define M_LN2       0.69314718055994530942  /* log_e 2 */
 #endif
 #ifndef M_LN10
-#define M_LN10          2.30258509299404568402
+#define M_LN10      2.30258509299404568402  /* log_e 10 */
 #endif
 
 #if defined(__GNUC__)
@@ -146,32 +152,6 @@ static const int NAN_INT = 0x7FC00000;
 #  endif
 #endif
 
-/* Causes warning:
- * incompatible types when assigning to type 'Foo' from type 'Bar'
- * ... the compiler optimizes away the temp var */
-#ifndef CHECK_TYPE
-#ifdef __GNUC__
-#define CHECK_TYPE(var, type)  {  \
-	typeof(var) *__tmp;           \
-	__tmp = (type *)NULL;         \
-	(void)__tmp;                  \
-} (void)0
-#else
-#define CHECK_TYPE(var, type)
-#endif
-#endif
-
-#ifndef SWAP
-#  define SWAP(type, a, b)  {  \
-	type sw_ap;                \
-	CHECK_TYPE(a, type);       \
-	CHECK_TYPE(b, type);       \
-	sw_ap = (a);               \
-	(a) = (b);                 \
-	(b) = sw_ap;               \
-} (void)0
-#endif
-
 #if BLI_MATH_DO_INLINE
 #include "intern/math_base_inline.c"
 #endif
@@ -182,6 +162,11 @@ static const int NAN_INT = 0x7FC00000;
 #endif
 
 /******************************* Float ******************************/
+
+MINLINE float pow2f(float x);
+MINLINE float pow3f(float x);
+MINLINE float pow4f(float x);
+MINLINE float pow7f(float x);
 
 MINLINE float sqrt3f(float f);
 MINLINE double sqrt3d(double d);
@@ -212,6 +197,8 @@ MINLINE int min_iiii(int a, int b, int c, int d);
 MINLINE int max_iiii(int a, int b, int c, int d);
 
 MINLINE float signf(float f);
+MINLINE int signum_i_ex(float a, float eps);
+MINLINE int signum_i(float a);
 
 MINLINE float power_of_2(float f);
 

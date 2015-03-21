@@ -42,8 +42,6 @@
 #include "BKE_modifier.h"
 #include "BKE_deform.h"
 
-#include "bmesh.h"
-
 #include "MEM_guardedalloc.h"
 #include "depsgraph_private.h"
 
@@ -75,6 +73,7 @@ static void foreachObjectLink(ModifierData *md, Object *ob,
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)

@@ -38,7 +38,8 @@ incs = [
     '#/intern/guardedalloc',
     '#/intern/atomic',
     '#/intern/memutil',
-    '#/extern/glew/include',
+    env['BF_GLEW_INC'],
+    '#/intern/glew-mx',
     '#/intern/audaspace/intern',
     '#/intern/cycles/blender',
     '#/intern/smoke/extern',
@@ -52,12 +53,13 @@ incs = [
     '../imbuf',
     '../makesdna',
     '../nodes',
+    '../physics',
     '../render/extern/include',
     '../windowmanager',
     ]
 incs = ' '.join(incs)
 
-defs = []
+defs = env['BF_GL_DEFINITIONS']
 
 if env['WITH_BF_SMOKE']:
     defs.append('WITH_SMOKE')
@@ -117,7 +119,13 @@ if env['WITH_BF_OCEANSIM']:
 if env['WITH_BF_CYCLES']:
     defs.append('WITH_CYCLES')
 
+    if env['WITH_BF_CYCLES_DEBUG']:
+        defs.append('WITH_CYCLES_DEBUG')
+
 if env['WITH_BF_SDL']:
+    if env['WITH_BF_SDL_DYNLOAD']:
+        defs.append('WITH_SDL_DYNLOAD')
+        incs += ' #extern/sdlew/include'
     defs.append('WITH_SDL')
 
 if env['WITH_BF_OPENAL']:
@@ -125,6 +133,10 @@ if env['WITH_BF_OPENAL']:
 
 if env['WITH_BF_JACK']:
     defs.append('WITH_JACK')
+
+if env['WITH_BF_FREESTYLE']:
+    defs.append('WITH_FREESTYLE')
+    incs += ' ../freestyle'
 
 if env['OURPLATFORM'] == 'linux':
     cflags='-pthread'

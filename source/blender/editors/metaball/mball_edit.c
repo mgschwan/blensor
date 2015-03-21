@@ -47,7 +47,6 @@
 
 #include "RNA_define.h"
 #include "RNA_access.h"
-#include "RNA_enum_types.h"
 
 #include "BKE_depsgraph.h"
 #include "BKE_context.h"
@@ -584,7 +583,7 @@ bool mouse_mball(bContext *C, const int mval[2], bool extend, bool deselect, boo
 	MetaBall *mb = (MetaBall *)obedit->data;
 	MetaElem *ml, *ml_act = NULL;
 	int a, hits;
-	unsigned int buffer[4 * MAXPICKBUF];
+	unsigned int buffer[MAXPICKBUF];
 	rcti rect;
 
 	view3d_set_viewcontext(C, &vc);

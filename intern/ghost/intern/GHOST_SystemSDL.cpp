@@ -67,9 +67,8 @@ GHOST_SystemSDL::createWindow(const STR_String& title,
                               GHOST_TUns32 height,
                               GHOST_TWindowState state,
                               GHOST_TDrawingContextType type,
-                              const bool stereoVisual,
+                              GHOST_GLSettings glSettings,
                               const bool exclusive,
-                              const GHOST_TUns16 numOfAASamples,
                               const GHOST_TEmbedderWindowID parentWindow
                               )
 {
@@ -78,8 +77,8 @@ GHOST_SystemSDL::createWindow(const STR_String& title,
 	window = new GHOST_WindowSDL(this, title,
 	                             left, top, width, height,
 	                             state, parentWindow, type,
-	                             stereoVisual, exclusive,
-	                             numOfAASamples);
+	                             ((glSettings.flags & GHOST_glStereoVisual) != 0), exclusive,
+	                             glSettings.numOfAASamples);
 
 	if (window) {
 		if (GHOST_kWindowStateFullScreen == state) {

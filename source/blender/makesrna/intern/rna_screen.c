@@ -110,13 +110,15 @@ static void rna_Screen_redraw_update(Main *UNUSED(bmain), Scene *UNUSED(scene), 
 
 static int rna_Screen_is_animation_playing_get(PointerRNA *UNUSED(ptr))
 {
-	return (ED_screen_animation_playing(G.main->wm.first) != NULL);
+	/* can be NULL on file load, T42619 */
+	wmWindowManager *wm = G.main->wm.first;
+	return wm ? (ED_screen_animation_playing(wm) != NULL) : 0;
 }
 
 static int rna_Screen_fullscreen_get(PointerRNA *ptr)
 {
 	bScreen *sc = (bScreen *)ptr->data;
-	return (sc->full != 0);
+	return (sc->state == SCREENMAXIMIZED);
 }
 
 /* UI compatible list: should not be needed, but for now we need to keep EMPTY
@@ -398,7 +400,7 @@ static void rna_def_screen(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "show_fullscreen", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_boolean_funcs(prop, "rna_Screen_fullscreen_get", NULL);
-	RNA_def_property_ui_text(prop, "Fullscreen", "An area is maximized, filling this screen");
+	RNA_def_property_ui_text(prop, "Maximize", "An area is maximized, filling this screen");
 
 	/* Define Anim Playback Areas */
 	prop = RNA_def_property(srna, "use_play_top_left_3d_editor", PROP_BOOLEAN, PROP_NONE);
@@ -409,6 +411,11 @@ static void rna_def_screen(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_play_3d_editors", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_ALL_3D_WIN);
 	RNA_def_property_ui_text(prop, "All 3D View Editors", "");
+	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
+
+	prop = RNA_def_property(srna, "use_follow", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "redraws_flag", TIME_FOLLOW);
+	RNA_def_property_ui_text(prop, "Follow", "Follow current frame in editors");
 	RNA_def_property_update(prop, NC_SPACE | ND_SPACE_TIME, "rna_Screen_redraw_update");
 
 	prop = RNA_def_property(srna, "use_play_animation_editors", PROP_BOOLEAN, PROP_NONE);

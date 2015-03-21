@@ -11,10 +11,12 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
+
+#undef USE_BAKE_JITTER
 
 ccl_device void compute_light_pass(KernelGlobals *kg, ShaderData *sd, PathRadiance *L, RNG rng,
                                    const bool is_combined, const bool is_ao, const bool is_sss, int sample)
@@ -33,7 +35,7 @@ ccl_device void compute_light_pass(KernelGlobals *kg, ShaderData *sd, PathRadian
 	path_radiance_init(&L_sample, kernel_data.film.use_light_pass);
 
 	/* init path state */
-	path_state_init(kg, &state, &rng, sample);
+	path_state_init(kg, &state, &rng, sample, NULL);
 
 	/* evaluate surface shader */
 	float rbsdf = path_state_rng_1D(kg, &rng, &state, PRNG_BSDF);
@@ -96,7 +98,7 @@ ccl_device void compute_light_pass(KernelGlobals *kg, ShaderData *sd, PathRadian
 		/* sample subsurface scattering */
 		if((is_combined || is_sss_sample) && (sd->flag & SD_BSSRDF)) {
 			/* when mixing BSSRDF and BSDF closures we should skip BSDF lighting if scattering was successful */
-			kernel_branched_path_subsurface_scatter(kg, sd, &L_sample, &state, &rng, throughput);
+			kernel_branched_path_subsurface_scatter(kg, sd, &L_sample, &state, &rng, &ray, throughput);
 		}
 #endif
 
@@ -159,7 +161,8 @@ ccl_device bool is_light_pass(ShaderEvalType type)
 	}
 }
 
-#if 0
+/* this helps with AA but it's not the real solution as it does not AA the geometry
+ *  but it's better than nothing, thus committed */
 ccl_device_inline float bake_clamp_mirror_repeat(float u)
 {
 	/* use mirror repeat (like opengl texture) so that if the barycentric
@@ -170,7 +173,6 @@ ccl_device_inline float bake_clamp_mirror_repeat(float u)
 
 	return (((int)fu) & 1)? 1.0f - u: u;
 }
-#endif
 
 ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input, ccl_global float4 *output,
                                      ShaderEvalType type, int i, int offset, int sample)
@@ -198,12 +200,16 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 	int num_samples = kernel_data.integrator.aa_samples;
 
 	/* random number generator */
-	RNG rng = cmj_hash(offset + i, 0);
+	RNG rng = cmj_hash(offset + i, kernel_data.integrator.seed);
 
-#if 0
-	uint rng_state = cmj_hash(i, 0);
+#ifdef USE_BAKE_JITTER
 	float filter_x, filter_y;
-	path_rng_init(kg, &rng_state, sample, num_samples, &rng, 0, 0, &filter_x, &filter_y);
+	if(sample == 0) {
+		filter_x = filter_y = 0.5f;
+	}
+	else {
+		path_rng_2D(kg, &rng, sample, num_samples, PRNG_FILTER_U, &filter_x, &filter_x);
+	}
 
 	/* subpixel u/v offset */
 	if(sample > 0) {
@@ -253,6 +259,10 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		/* data passes */
 		case SHADER_EVAL_NORMAL:
 		{
+			if ((sd.flag & SD_HAS_BUMP)) {
+				shader_eval_surface(kg, &sd, 0.f, 0, SHADER_CONTEXT_MAIN);
+			}
+
 			/* compression: normal = (2 * color) - 1 */
 			out = sd.N * 0.5f + make_float3(0.5f, 0.5f, 0.5f);
 			break;

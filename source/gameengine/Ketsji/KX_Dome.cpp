@@ -41,7 +41,7 @@
 #include "RAS_CameraData.h"
 #include "BLI_math.h"
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 
 // constructor
 KX_Dome::KX_Dome (
@@ -2044,7 +2044,6 @@ void KX_Dome::RenderDomeFrame(KX_Scene* scene, KX_Camera* cam, int i)
 	cam->NodeUpdateGS(0.f);
 
 	scene->CalculateVisibleMeshes(m_rasterizer,cam);
-	scene->UpdateAnimations(m_engine->GetFrameTime());
 	scene->RenderBuckets(camtrans, m_rasterizer);
 }
 

@@ -34,6 +34,7 @@
 
 #include "DNA_scene_types.h"
 
+#include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 #include "BLI_math_base.h"
 
@@ -200,6 +201,174 @@ static void GRAPH_OT_cursor_set(wmOperatorType *ot)
 	RNA_def_float(ot->srna, "value", 0, -FLT_MAX, FLT_MAX, "Value", "", -100.0f, 100.0f);
 }
 
+/* Hide/Reveal ------------------------------------------------------------ */
+
+static int graphview_curves_hide_exec(bContext *C, wmOperator *op)
+{
+	bAnimContext ac;
+	ListBase anim_data = {NULL, NULL};
+	ListBase all_data = {NULL, NULL};
+	bAnimListElem *ale;
+	int filter;
+	const bool unselected = RNA_boolean_get(op->ptr, "unselected");
+	
+	/* get editor data */
+	if (ANIM_animdata_get_context(C, &ac) == 0)
+		return OPERATOR_CANCELLED;
+		
+	/* get list of all channels that selection may need to be flushed to 
+	 * - hierarchy must not affect what we have access to here...
+	 */
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_CHANNELS | ANIMFILTER_NODUPLIS);
+	ANIM_animdata_filter(&ac, &all_data, filter, ac.data, ac.datatype);
+	
+	/* filter data
+	 * - of the remaining visible curves, we want to hide the ones that are 
+	 *   selected/unselected (depending on "unselected" prop) 
+	 */
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_CURVE_VISIBLE | ANIMFILTER_NODUPLIS);
+	if (unselected)
+		filter |= ANIMFILTER_UNSEL;
+	else
+		filter |= ANIMFILTER_SEL;
+	
+	ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
+	
+	for (ale = anim_data.first; ale; ale = ale->next) {
+		/* hack: skip object channels for now, since flushing those will always flush everything, but they are always included */
+		/* TODO: find out why this is the case, and fix that */
+		if (ale->type == ANIMTYPE_OBJECT)
+			continue;
+		
+		/* change the hide setting, and unselect it... */
+		ANIM_channel_setting_set(&ac, ale, ACHANNEL_SETTING_VISIBLE, ACHANNEL_SETFLAG_CLEAR);
+		ANIM_channel_setting_set(&ac, ale, ACHANNEL_SETTING_SELECT,  ACHANNEL_SETFLAG_CLEAR);
+		
+		/* now, also flush selection status up/down as appropriate */
+		ANIM_flush_setting_anim_channels(&ac, &all_data, ale, ACHANNEL_SETTING_VISIBLE, ACHANNEL_SETFLAG_CLEAR);
+	}
+
+	/* cleanup */
+	ANIM_animdata_freelist(&anim_data);
+	BLI_freelistN(&all_data);
+	
+	/* unhide selected */
+	if (unselected) {
+		/* turn off requirement for visible */
+		filter = ANIMFILTER_SEL | ANIMFILTER_NODUPLIS | ANIMFILTER_LIST_CHANNELS;
+
+		/* flushing has been done */
+		ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
+
+		for (ale = anim_data.first; ale; ale = ale->next) {
+			/* hack: skip object channels for now, since flushing those will always flush everything, but they are always included */
+			/* TODO: find out why this is the case, and fix that */
+			if (ale->type == ANIMTYPE_OBJECT)
+				continue;
+			
+			/* change the hide setting, and unselect it... */
+			ANIM_channel_setting_set(&ac, ale, ACHANNEL_SETTING_VISIBLE, ACHANNEL_SETFLAG_ADD);
+			ANIM_channel_setting_set(&ac, ale, ACHANNEL_SETTING_SELECT,  ACHANNEL_SETFLAG_ADD);
+			
+			/* now, also flush selection status up/down as appropriate */
+			ANIM_flush_setting_anim_channels(&ac, &anim_data, ale, ACHANNEL_SETTING_VISIBLE, ACHANNEL_SETFLAG_ADD);
+		}
+		ANIM_animdata_freelist(&anim_data);	
+	}
+	
+	
+	/* send notifier that things have changed */
+	WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
+	
+	return OPERATOR_FINISHED;
+}
+
+static void GRAPH_OT_hide(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Hide Curves";
+	ot->idname = "GRAPH_OT_hide";
+	ot->description = "Hide selected curves from Graph Editor view";
+	
+	/* api callbacks */
+	ot->exec = graphview_curves_hide_exec;
+	ot->poll = ED_operator_graphedit_active;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	
+	/* props */
+	RNA_def_boolean(ot->srna, "unselected", 0, "Unselected", "Hide unselected rather than selected curves");
+}
+
+/* ........ */
+
+static int graphview_curves_reveal_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	bAnimContext ac;
+	ListBase anim_data = {NULL, NULL};
+	ListBase all_data = {NULL, NULL};
+	bAnimListElem *ale;
+	int filter;
+	
+	/* get editor data */
+	if (ANIM_animdata_get_context(C, &ac) == 0)
+		return OPERATOR_CANCELLED;
+		
+	/* get list of all channels that selection may need to be flushed to 
+	 * - hierarchy must not affect what we have access to here...
+	 */
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_CHANNELS | ANIMFILTER_NODUPLIS);
+	ANIM_animdata_filter(&ac, &all_data, filter, ac.data, ac.datatype);
+	
+	/* filter data
+	 * - just go through all visible channels, ensuring that everything is set to be curve-visible
+	 */
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_NODUPLIS);
+	ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
+	
+	for (ale = anim_data.first; ale; ale = ale->next) {
+		/* hack: skip object channels for now, since flushing those will always flush everything, but they are always included */
+		/* TODO: find out why this is the case, and fix that */
+		if (ale->type == ANIMTYPE_OBJECT)
+			continue;
+		
+		/* select if it is not visible */
+		if (ANIM_channel_setting_get(&ac, ale, ACHANNEL_SETTING_VISIBLE) == 0)
+			ANIM_channel_setting_set(&ac, ale, ACHANNEL_SETTING_SELECT, ACHANNEL_SETFLAG_ADD);
+		
+		/* change the visibility setting */
+		ANIM_channel_setting_set(&ac, ale, ACHANNEL_SETTING_VISIBLE, ACHANNEL_SETFLAG_ADD);
+		
+		/* now, also flush selection status up/down as appropriate */
+		ANIM_flush_setting_anim_channels(&ac, &all_data, ale, ACHANNEL_SETTING_VISIBLE, true);
+	}
+	
+	/* cleanup */
+	ANIM_animdata_freelist(&anim_data);
+	BLI_freelistN(&all_data);
+	
+	/* send notifier that things have changed */
+	WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
+	
+	return OPERATOR_FINISHED;
+}
+
+static void GRAPH_OT_reveal(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Reveal Curves";
+	ot->idname = "GRAPH_OT_reveal";
+	ot->description = "Make previously hidden curves visible again in Graph Editor view";
+	
+	/* api callbacks */
+	ot->exec = graphview_curves_reveal_exec;
+	ot->poll = ED_operator_graphedit_active;
+	
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
 /* ************************** registration - operator types **********************************/
 
 void graphedit_operatortypes(void)
@@ -215,12 +384,16 @@ void graphedit_operatortypes(void)
 	WM_operatortype_append(GRAPH_OT_ghost_curves_create);
 	WM_operatortype_append(GRAPH_OT_ghost_curves_clear);
 	
+	WM_operatortype_append(GRAPH_OT_hide);
+	WM_operatortype_append(GRAPH_OT_reveal);
+	
 	/* keyframes */
 	/* selection */
 	WM_operatortype_append(GRAPH_OT_clickselect);
 	WM_operatortype_append(GRAPH_OT_select_all_toggle);
 	WM_operatortype_append(GRAPH_OT_select_border);
 	WM_operatortype_append(GRAPH_OT_select_lasso);
+	WM_operatortype_append(GRAPH_OT_select_circle);
 	WM_operatortype_append(GRAPH_OT_select_column);
 	WM_operatortype_append(GRAPH_OT_select_linked);
 	WM_operatortype_append(GRAPH_OT_select_more);
@@ -359,6 +532,8 @@ static void graphedit_keymap_keyframes(wmKeyConfig *keyconf, wmKeyMap *keymap)
 	kmi = WM_keymap_add_item(keymap, "GRAPH_OT_select_lasso", EVT_TWEAK_A, KM_ANY, KM_CTRL | KM_SHIFT, 0);
 	RNA_boolean_set(kmi->ptr, "deselect", true);
 
+	WM_keymap_add_item(keymap, "GRAPH_OT_select_circle", CKEY, KM_PRESS, 0, 0);
+	
 	/* column select */
 	RNA_enum_set(WM_keymap_add_item(keymap, "GRAPH_OT_select_column", KKEY, KM_PRESS, 0, 0)->ptr, "mode", GRAPHKEYS_COLUMNSEL_KEYS);
 	RNA_enum_set(WM_keymap_add_item(keymap, "GRAPH_OT_select_column", KKEY, KM_PRESS, KM_CTRL, 0)->ptr, "mode", GRAPHKEYS_COLUMNSEL_CFRA);
@@ -405,9 +580,13 @@ static void graphedit_keymap_keyframes(wmKeyConfig *keyconf, wmKeyMap *keymap)
 	/* copy/paste */
 	WM_keymap_add_item(keymap, "GRAPH_OT_copy", CKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "GRAPH_OT_paste", VKEY, KM_PRESS, KM_CTRL, 0);
+	kmi = WM_keymap_add_item(keymap, "GRAPH_OT_paste", VKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
+	RNA_boolean_set(kmi->ptr, "flipped", true);
 #ifdef __APPLE__
 	WM_keymap_add_item(keymap, "GRAPH_OT_copy", CKEY, KM_PRESS, KM_OSKEY, 0);
 	WM_keymap_add_item(keymap, "GRAPH_OT_paste", VKEY, KM_PRESS, KM_OSKEY, 0);
+	kmi = WM_keymap_add_item(keymap, "GRAPH_OT_paste", VKEY, KM_PRESS, KM_OSKEY | KM_SHIFT, 0);
+	RNA_boolean_set(kmi->ptr, "flipped", true);
 #endif
 
 	/* auto-set range */
@@ -429,6 +608,19 @@ static void graphedit_keymap_keyframes(wmKeyConfig *keyconf, wmKeyMap *keymap)
 	/* transform system */
 	transform_keymap_for_space(keyconf, keymap, SPACE_IPO);
 	
+	/* pivot point settings */
+	kmi = WM_keymap_add_item(keymap, "WM_OT_context_set_enum", COMMAKEY, KM_PRESS, 0, 0);
+	RNA_string_set(kmi->ptr, "data_path", "space_data.pivot_point");
+	RNA_string_set(kmi->ptr, "value", "BOUNDING_BOX_CENTER");
+	
+	kmi = WM_keymap_add_item(keymap, "WM_OT_context_set_enum", PERIODKEY, KM_PRESS, 0, 0);
+	RNA_string_set(kmi->ptr, "data_path", "space_data.pivot_point");
+	RNA_string_set(kmi->ptr, "value", "CURSOR");
+	
+	kmi = WM_keymap_add_item(keymap, "WM_OT_context_set_enum", PERIODKEY, KM_PRESS, KM_CTRL, 0);
+	RNA_string_set(kmi->ptr, "data_path", "space_data.pivot_point");
+	RNA_string_set(kmi->ptr, "value", "INDIVIDUAL_ORIGINS");
+		
 	/* special markers hotkeys for anim editors: see note in definition of this function */
 	ED_marker_keymap_animedit_conflictfree(keymap);
 }
@@ -438,6 +630,7 @@ static void graphedit_keymap_keyframes(wmKeyConfig *keyconf, wmKeyMap *keymap)
 void graphedit_keymap(wmKeyConfig *keyconf)
 {
 	wmKeyMap *keymap;
+	wmKeyMapItem *kmi;
 	
 	/* keymap for all regions */
 	keymap = WM_keymap_find(keyconf, "Graph Editor Generic", SPACE_IPO, 0);
@@ -448,7 +641,17 @@ void graphedit_keymap(wmKeyConfig *keyconf)
 	
 	/* find (i.e. a shortcut for setting the name filter) */
 	WM_keymap_add_item(keymap, "ANIM_OT_channels_find", FKEY, KM_PRESS, KM_CTRL, 0);
-
+	
+	/* hide/reveal selected curves */
+	kmi = WM_keymap_add_item(keymap, "GRAPH_OT_hide", HKEY, KM_PRESS, 0, 0);
+	RNA_boolean_set(kmi->ptr, "unselected", false);
+	
+	kmi = WM_keymap_add_item(keymap, "GRAPH_OT_hide", HKEY, KM_PRESS, KM_SHIFT, 0);
+	RNA_boolean_set(kmi->ptr, "unselected", true);
+	
+	WM_keymap_add_item(keymap, "GRAPH_OT_reveal", HKEY, KM_PRESS, KM_ALT, 0);
+	
+	
 	/* channels */
 	/* Channels are not directly handled by the Graph Editor module, but are inherited from the Animation module. 
 	 * All the relevant operations, keymaps, drawing, etc. can therefore all be found in that module instead, as these

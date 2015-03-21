@@ -37,8 +37,10 @@ struct Main;
 struct AnimData;
 struct KeyingSet;
 struct KS_Path;
+struct bContext;
 
 struct PointerRNA;
+struct PropertyRNA;
 struct ReportList;
 struct bAction;
 struct bActionGroup;
@@ -70,6 +72,20 @@ bool BKE_copy_animdata_id(struct ID *id_to, struct ID *id_from, const bool do_ac
 
 /* Copy AnimData Actions */
 void BKE_copy_animdata_id_action(struct ID *id);
+
+/* Merge copies of data from source AnimData block */
+typedef enum eAnimData_MergeCopy_Modes {
+	/* Keep destination action */
+	ADT_MERGECOPY_KEEP_DST = 0,
+	
+	/* Use src action (make a new copy) */
+	ADT_MERGECOPY_SRC_COPY = 1,
+	
+	/* Use src action (but just reference the existing version) */
+	ADT_MERGECOPY_SRC_REF  = 2
+} eAnimData_MergeCopy_Modes;
+
+void BKE_animdata_merge_copy(struct ID *dst_id, struct ID *src_id, eAnimData_MergeCopy_Modes action_mode, bool fix_drivers);
 
 /* Make Local */
 void BKE_animdata_make_local(struct AnimData *adt);
@@ -104,7 +120,11 @@ void BKE_keyingsets_free(struct ListBase *list);
 /* ************************************* */
 /* Path Fixing API */
 
-/* Fix all the paths for the the given ID + Action */
+/* Get a "fixed" version of the given path (oldPath) */
+char *BKE_animsys_fix_rna_path_rename(ID *owner_id, char *old_path, const char *prefix, const char *oldName,
+                                      const char *newName, int oldSubscript, int newSubscript, bool verify_paths);
+
+/* Fix all the paths for the given ID + Action */
 void BKE_action_fix_paths_rename(struct ID *owner_id, struct bAction *act, const char *prefix, const char *oldName,
                                  const char *newName, int oldSubscript, int newSubscript, bool verify_paths);
 
@@ -126,6 +146,9 @@ void BKE_animdata_separate_by_basepath(struct ID *srcID, struct ID *dstID, struc
 
 /* Move F-Curves from src to destination if it's path is based on basepath */
 void action_move_fcurves_by_basepath(struct bAction *srcAct, struct bAction *dstAct, const char basepath[]);
+
+char *BKE_animdata_driver_path_hack(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop,
+                                    char *base_path);
 
 /* ************************************* */
 /* Batch AnimData API */

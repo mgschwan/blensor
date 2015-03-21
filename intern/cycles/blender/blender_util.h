@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __BLENDER_UTIL_H__
@@ -45,9 +45,9 @@ static inline BL::Mesh object_to_mesh(BL::BlendData data, BL::Object object, BL:
 	BL::Mesh me = data.meshes.new_from_object(scene, object, apply_modifiers, (render)? 2: 1, false, calc_undeformed);
 	if ((bool)me) {
 		if (me.use_auto_smooth()) {
-			me.calc_normals_split(me.auto_smooth_angle());
+			me.calc_normals_split();
 		}
-		me.calc_tessface();
+		me.calc_tessface(true);
 	}
 	return me;
 }

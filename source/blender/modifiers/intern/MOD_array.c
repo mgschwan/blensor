@@ -102,7 +102,9 @@ static void foreachObjectLink(
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
-                           struct Scene *UNUSED(scene), Object *UNUSED(ob), DagNode *obNode)
+                           struct Main *UNUSED(bmain),
+                           struct Scene *UNUSED(scene),
+                           Object *UNUSED(ob), DagNode *obNode)
 {
 	ArrayModifierData *amd = (ArrayModifierData *) md;
 
@@ -167,8 +169,8 @@ typedef struct SortVertsElem {
 
 static int svert_sum_cmp(const void *e1, const void *e2)
 {
-	const SortVertsElem *sv1 = (SortVertsElem *)e1;
-	const SortVertsElem *sv2 = (SortVertsElem *)e2;
+	const SortVertsElem *sv1 = e1;
+	const SortVertsElem *sv2 = e2;
 
 	if      (sv1->sum_co > sv2->sum_co) return  1;
 	else if (sv1->sum_co < sv2->sum_co) return -1;
@@ -201,7 +203,7 @@ static void dm_mvert_map_doubles(
         const float dist,
         const bool with_follow)
 {
-	const float dist3 = (M_SQRT3 + 0.00005f) * dist;   /* Just above sqrt(3) */
+	const float dist3 = ((float)M_SQRT3 + 0.00005f) * dist;   /* Just above sqrt(3) */
 	int i_source, i_target, i_target_low_bound, target_end, source_end;
 	SortVertsElem *sorted_verts_target, *sorted_verts_source;
 	SortVertsElem *sve_source, *sve_target, *sve_target_low_bound;
@@ -323,8 +325,8 @@ static void dm_merge_transform(
 	/* needed for subsurf so arrays are allocated */
 	cap_dm->getVertArray(cap_dm);
 	cap_dm->getEdgeArray(cap_dm);
-	cap_dm->getNumLoops(cap_dm);
-	cap_dm->getNumPolys(cap_dm);
+	cap_dm->getLoopArray(cap_dm);
+	cap_dm->getPolyArray(cap_dm);
 
 	DM_copy_vert_data(cap_dm, result, 0, cap_verts_index, cap_nverts);
 	DM_copy_edge_data(cap_dm, result, 0, cap_edges_index, cap_nedges);
@@ -404,7 +406,7 @@ static DerivedMesh *arrayModifier_doArray(
 	int *full_doubles_map = NULL;
 	int tot_doubles;
 
-	const bool use_merge = amd->flags & MOD_ARR_MERGE;
+	const bool use_merge = (amd->flags & MOD_ARR_MERGE) != 0;
 	const bool use_recalc_normals = (dm->dirty & DM_DIRTY_NORMALS) || use_merge;
 	const bool use_offset_ob = ((amd->offset_type & MOD_ARR_OFF_OBJ) && amd->offset_ob);
 	/* allow pole vertices to be used by many faces */

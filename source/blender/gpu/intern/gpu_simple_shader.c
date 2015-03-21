@@ -42,13 +42,10 @@
  * - Optimize for case where no texture matrix is used.
  */
 
-#include "GL/glew.h"
+#include "GPU_glew.h"
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-
-#include "DNA_mesh_types.h"
-#include "DNA_object_types.h"
 
 #include "GPU_extensions.h"
 #include "GPU_simple_shader.h"
@@ -154,7 +151,8 @@ static GPUShader *gpu_simple_shader(int options)
 		shader = GPU_shader_create(
 			datatoc_gpu_shader_simple_vert_glsl,
 			datatoc_gpu_shader_simple_frag_glsl,
-			NULL, defines);
+			NULL,
+			NULL, defines, 0, 0, 0);
 		
 		if (shader) {
 			/* set texture map to first texture unit */

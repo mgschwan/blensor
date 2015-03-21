@@ -47,7 +47,7 @@ typedef unsigned int BLI_bitmap;
 
 /* size (in bytes) used to hold '_tot' bits */
 #define BLI_BITMAP_SIZE(_tot) \
-	(_BITMAP_NUM_BLOCKS(_tot) * sizeof(BLI_bitmap))
+	((size_t)(_BITMAP_NUM_BLOCKS(_tot)) * sizeof(BLI_bitmap))
 
 /* allocate memory for a bitmap with '_tot' bits; free
  *  with MEM_freeN() */
@@ -59,25 +59,30 @@ typedef unsigned int BLI_bitmap;
 #define BLI_BITMAP_NEW_ALLOCA(_tot) \
 	((BLI_bitmap *)memset(alloca(BLI_BITMAP_SIZE(_tot)), 0, BLI_BITMAP_SIZE(_tot)))
 
+/* Allocate using given MemArena */
+#define BLI_BITMAP_NEW_MEMARENA(_mem, _tot) \
+	(CHECK_TYPE_INLINE(_mem, MemArena *), \
+	 ((BLI_bitmap *)BLI_memarena_calloc(_mem, BLI_BITMAP_SIZE(_tot))))
+
 /* get the value of a single bit at '_index' */
 #define BLI_BITMAP_TEST(_bitmap, _index) \
-	(CHECK_TYPE_INLINE(_bitmap, BLI_bitmap *), \
+	(CHECK_TYPE_ANY(_bitmap, BLI_bitmap *, const BLI_bitmap *), \
 	 ((_bitmap)[(_index) >> _BITMAP_POWER] & \
 	  (1u << ((_index) & _BITMAP_MASK))))
 
 #define BLI_BITMAP_TEST_BOOL(_bitmap, _index) \
-	(CHECK_TYPE_INLINE(_bitmap, BLI_bitmap *), \
+	(CHECK_TYPE_ANY(_bitmap, BLI_bitmap *, const BLI_bitmap *), \
 	 (BLI_BITMAP_TEST(_bitmap, _index) != 0))
 
 /* set the value of a single bit at '_index' */
 #define BLI_BITMAP_ENABLE(_bitmap, _index) \
-	(CHECK_TYPE_INLINE(_bitmap, BLI_bitmap *), \
+	(CHECK_TYPE_ANY(_bitmap, BLI_bitmap *, const BLI_bitmap *), \
 	 ((_bitmap)[(_index) >> _BITMAP_POWER] |= \
 	  (1u << ((_index) & _BITMAP_MASK))))
 
 /* clear the value of a single bit at '_index' */
 #define BLI_BITMAP_DISABLE(_bitmap, _index) \
-	(CHECK_TYPE_INLINE(_bitmap, BLI_bitmap *), \
+	(CHECK_TYPE_ANY(_bitmap, BLI_bitmap *, const BLI_bitmap *), \
 	 ((_bitmap)[(_index) >> _BITMAP_POWER] &= \
 	  ~(1u << ((_index) & _BITMAP_MASK))))
 
@@ -89,6 +94,16 @@ typedef unsigned int BLI_bitmap;
 			BLI_BITMAP_ENABLE(_bitmap, _index); \
 		else \
 			BLI_BITMAP_DISABLE(_bitmap, _index); \
+	} (void)0
+
+/* set or clear the value of the whole bitmap (needs size info) */
+#define BLI_BITMAP_SET_ALL(_bitmap, _set, _tot) \
+	{ \
+		CHECK_TYPE(_bitmap, BLI_bitmap *); \
+		if (_set) \
+			memset(_bitmap, UCHAR_MAX, BLI_BITMAP_SIZE(_tot)); \
+		else \
+			memset(_bitmap, 0, BLI_BITMAP_SIZE(_tot)); \
 	} (void)0
 
 /* resize bitmap to have space for '_tot' bits */

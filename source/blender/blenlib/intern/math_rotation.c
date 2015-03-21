@@ -366,7 +366,7 @@ void mat3_to_quat_is_ok(float q[4], float wmat[3][3])
 	mul_m3_v3(matn, mat[0]);
 
 	/* and align x-axes */
-	angle = (float)(0.5 * atan2(mat[0][1], mat[0][0]));
+	angle = 0.5f * atan2f(mat[0][1], mat[0][0]);
 
 	co = cosf(angle);
 	si = sinf(angle);
@@ -765,7 +765,7 @@ void tri_to_quat_ex(float quat[4], const float v1[3], const float v2[3], const f
 	vec[2] = 0.0f;
 	normalize_v3(vec);
 
-	angle = (float)(0.5 * atan2(vec[1], vec[0]));
+	angle = 0.5f * atan2f(vec[1], vec[0]);
 	co = cosf(angle);
 	si = sinf(angle);
 	q2[0] = co;
@@ -1014,6 +1014,40 @@ void angle_to_mat2(float mat[2][2], const float angle)
 	mat[0][1] =  angle_sin;
 	mat[1][0] = -angle_sin;
 	mat[1][1] =  angle_cos;
+}
+
+/****************************** Exponential Map ******************************/
+
+void quat_normalized_to_expmap(float expmap[3], const float q[4])
+{
+	float angle;
+	BLI_ASSERT_UNIT_QUAT(q);
+
+	/* Obtain axis/angle representation. */
+	quat_to_axis_angle(expmap, &angle, q);
+
+	/* Convert to exponential map. */
+	mul_v3_fl(expmap, angle);
+}
+
+void quat_to_expmap(float expmap[3], const float q[4])
+{
+	float q_no[4];
+	normalize_qt_qt(q_no, q);
+	quat_normalized_to_expmap(expmap, q_no);
+}
+
+void expmap_to_quat(float r[4], const float expmap[3])
+{
+	float axis[3];
+	float angle;
+
+	/* Obtain axis/angle representation. */
+	angle = normalize_v3_v3(axis, expmap);
+	angle = angle_wrap_rad(angle);
+
+	/* Convert to quaternion. */
+	axis_angle_to_quat(r, axis, angle);
 }
 
 /******************************** XYZ Eulers *********************************/
@@ -1867,7 +1901,7 @@ float angle_wrap_deg(float angle)
 /* returns an angle compatible with angle_compat */
 float angle_compat_rad(float angle, float angle_compat)
 {
-	return angle + (floorf(((angle_compat - angle) / (float)M_PI) + 0.5f)) * (float)M_PI;
+	return angle_compat + angle_wrap_rad(angle - angle_compat);
 }
 
 /* axis conversion */

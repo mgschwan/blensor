@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "background.h"
@@ -229,6 +229,10 @@ static ShaderNode *add_node(Scene *scene, BL::BlendData b_data, BL::Scene b_scen
 		BL::ShaderNodeMixRGB b_mix_node(b_node);
 		MixNode *mix = new MixNode();
 		mix->type = MixNode::type_enum[b_mix_node.blend_type()];
+		/* Tag if it's Mix */
+		if(b_mix_node.blend_type() == 0) 
+			mix->special_type = SHADER_SPECIAL_TYPE_MIX_RGB;
+
 		mix->use_clamp = b_mix_node.use_clamp();
 		node = mix;
 	}
@@ -683,6 +687,10 @@ static ShaderNode *add_node(Scene *scene, BL::BlendData b_data, BL::Scene b_scen
 		BL::ShaderNodeTexCoord b_tex_coord_node(b_node);
 		TextureCoordinateNode *tex_coord = new TextureCoordinateNode();
 		tex_coord->from_dupli = b_tex_coord_node.from_dupli();
+		if(b_tex_coord_node.object()) {
+			tex_coord->use_transform = true;
+			tex_coord->ob_tfm = get_transform(b_tex_coord_node.object().matrix_world());
+		}
 		node = tex_coord;
 	}
 	else if (b_node.is_a(&RNA_ShaderNodeTexSky)) {
@@ -1010,7 +1018,8 @@ void BlenderSync::sync_materials(bool update_all)
 			shader->use_mis = get_boolean(cmat, "sample_as_light");
 			shader->use_transparent_shadow = get_boolean(cmat, "use_transparent_shadow");
 			shader->heterogeneous_volume = !get_boolean(cmat, "homogeneous_volume");
-			shader->volume_sampling_method = RNA_enum_get(&cmat, "volume_sampling");
+			shader->volume_sampling_method = (VolumeSampling)RNA_enum_get(&cmat, "volume_sampling");
+			shader->volume_interpolation_method = (VolumeInterpolation)RNA_enum_get(&cmat, "volume_interpolation");
 
 			shader->set_graph(graph);
 			shader->tag_update(scene);
@@ -1040,7 +1049,8 @@ void BlenderSync::sync_world(bool update_all)
 			/* volume */
 			PointerRNA cworld = RNA_pointer_get(&b_world.ptr, "cycles");
 			shader->heterogeneous_volume = !get_boolean(cworld, "homogeneous_volume");
-			shader->volume_sampling_method = RNA_enum_get(&cworld, "volume_sampling");
+			shader->volume_sampling_method = (VolumeSampling)RNA_enum_get(&cworld, "volume_sampling");
+			shader->volume_interpolation_method = (VolumeInterpolation)RNA_enum_get(&cworld, "volume_interpolation");
 		}
 		else if(b_world) {
 			ShaderNode *closure, *out;

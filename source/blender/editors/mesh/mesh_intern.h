@@ -137,6 +137,7 @@ void MESH_OT_rip_edge(struct wmOperatorType *ot);
 
 /* *** editmesh_select.c *** */
 void MESH_OT_select_similar(struct wmOperatorType *ot);
+void MESH_OT_select_similar_region(struct wmOperatorType *ot);
 void MESH_OT_select_mode(struct wmOperatorType *ot);
 void MESH_OT_loop_multi_select(struct wmOperatorType *ot);
 void MESH_OT_loop_select(struct wmOperatorType *ot);
@@ -174,6 +175,8 @@ void MESH_OT_normals_make_consistent(struct wmOperatorType *ot);
 void MESH_OT_vertices_smooth(struct wmOperatorType *ot);
 void MESH_OT_vertices_smooth_laplacian(struct wmOperatorType *ot);
 void MESH_OT_vert_connect(struct wmOperatorType *ot);
+void MESH_OT_vert_connect_path(struct wmOperatorType *ot);
+void MESH_OT_vert_connect_concave(struct wmOperatorType *ot);
 void MESH_OT_vert_connect_nonplanar(struct wmOperatorType *ot);
 void MESH_OT_edge_split(struct wmOperatorType *ot);
 void MESH_OT_bridge_edge_loops(struct wmOperatorType *ot);
@@ -236,6 +239,8 @@ void MESH_OT_vertex_color_remove(struct wmOperatorType *ot);
 /* no create_mask yet */
 void MESH_OT_customdata_clear_mask(struct wmOperatorType *ot);
 void MESH_OT_customdata_clear_skin(struct wmOperatorType *ot);
+void MESH_OT_customdata_custom_splitnormals_add(struct wmOperatorType *ot);
+void MESH_OT_customdata_custom_splitnormals_clear(struct wmOperatorType *ot);
 void MESH_OT_drop_named_image(struct wmOperatorType *ot);
 
 

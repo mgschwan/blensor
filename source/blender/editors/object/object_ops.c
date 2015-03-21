@@ -40,7 +40,6 @@
 #include "BKE_context.h"
 
 #include "RNA_access.h"
-#include "RNA_define.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -178,7 +177,6 @@ void ED_operatortypes_object(void)
 	WM_operatortype_append(OBJECT_OT_vertex_group_select);
 	WM_operatortype_append(OBJECT_OT_vertex_group_deselect);
 	WM_operatortype_append(OBJECT_OT_vertex_group_copy_to_linked);
-	WM_operatortype_append(OBJECT_OT_vertex_group_transfer_weight);
 	WM_operatortype_append(OBJECT_OT_vertex_group_copy_to_selected);
 	WM_operatortype_append(OBJECT_OT_vertex_group_copy);
 	WM_operatortype_append(OBJECT_OT_vertex_group_normalize);
@@ -250,6 +248,9 @@ void ED_operatortypes_object(void)
 	WM_operatortype_append(OBJECT_OT_lod_remove);
 
 	WM_operatortype_append(OBJECT_OT_vertex_random);
+
+	WM_operatortype_append(OBJECT_OT_data_transfer);
+	WM_operatortype_append(OBJECT_OT_datalayout_transfer);
 }
 
 void ED_operatormacros_object(void)
@@ -320,6 +321,7 @@ void ED_keymap_object(wmKeyConfig *keyconf)
 	ED_keymap_proportional_cycle(keyconf, keymap);
 	ED_keymap_proportional_obmode(keyconf, keymap);
 
+	/* game-engine only, leave free for users to define */
 	WM_keymap_add_item(keymap, "VIEW3D_OT_game_start", PKEY, KM_PRESS, 0, 0);
 
 	kmi = WM_keymap_add_item(keymap, "OBJECT_OT_select_all", AKEY, KM_PRESS, 0, 0);
@@ -419,6 +421,10 @@ void ED_keymap_object(wmKeyConfig *keyconf)
 	WM_keymap_verify_item(keymap, "GROUP_OT_objects_remove_active", GKEY, KM_PRESS, KM_SHIFT | KM_ALT, 0);
 	
 	WM_keymap_add_menu(keymap, "VIEW3D_MT_object_specials", WKEY, KM_PRESS, 0, 0);
+
+	WM_keymap_verify_item(keymap, "OBJECT_OT_data_transfer", TKEY, KM_PRESS, KM_SHIFT | KM_CTRL, 0);
+	/* XXX No more available 'T' shortcuts... :/ */
+	/* WM_keymap_verify_item(keymap, "OBJECT_OT_datalayout_transfer", TKEY, KM_PRESS, KM_SHIFT | KM_CTRL, 0); */
 
 	for (i = 0; i <= 5; i++) {
 		kmi = WM_keymap_add_item(keymap, "OBJECT_OT_subdivision_set", ZEROKEY + i, KM_PRESS, KM_CTRL, 0);

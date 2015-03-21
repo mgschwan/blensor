@@ -55,7 +55,6 @@
 
 #include "RNA_access.h"
 #include "RNA_define.h"
-#include "RNA_enum_types.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -64,7 +63,6 @@
 
 #include "node_intern.h"  /* own include */
 #include "NOD_common.h"
-#include "NOD_socket.h"
 
 static int node_group_operator_active(bContext *C)
 {
@@ -144,7 +142,7 @@ static int node_group_edit_exec(bContext *C, wmOperator *op)
 	bNode *gnode;
 	const bool exit = RNA_boolean_get(op->ptr, "exit");
 	
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 	
 	gnode = node_group_get_active(C, node_idname);
 	
@@ -352,7 +350,7 @@ static int node_group_ungroup_exec(bContext *C, wmOperator *op)
 	const char *node_idname = group_node_idname(C);
 	bNode *gnode;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	gnode = node_group_get_active(C, node_idname);
 	if (!gnode)
@@ -522,7 +520,7 @@ static int node_group_separate_exec(bContext *C, wmOperator *op)
 	int type = RNA_enum_get(op->ptr, "type");
 	float offx, offy;
 
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 
 	/* are we inside of a group? */
 	ngroup = snode->edittree;
@@ -562,16 +560,16 @@ static int node_group_separate_exec(bContext *C, wmOperator *op)
 
 static int node_group_separate_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
-	uiPopupMenu *pup = uiPupMenuBegin(C, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Separate"), ICON_NONE);
-	uiLayout *layout = uiPupMenuLayout(pup);
+	uiPopupMenu *pup = UI_popup_menu_begin(C, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Separate"), ICON_NONE);
+	uiLayout *layout = UI_popup_menu_layout(pup);
 	
 	uiLayoutSetOperatorContext(layout, WM_OP_EXEC_DEFAULT);
 	uiItemEnumO(layout, "NODE_OT_group_separate", NULL, 0, "type", NODE_GS_COPY);
 	uiItemEnumO(layout, "NODE_OT_group_separate", NULL, 0, "type", NODE_GS_MOVE);
 	
-	uiPupMenuEnd(C, pup);
+	UI_popup_menu_end(C, pup);
 	
-	return OPERATOR_CANCELLED;
+	return OPERATOR_INTERFACE;
 }
 
 void NODE_OT_group_separate(wmOperatorType *ot)
@@ -915,7 +913,7 @@ static int node_group_make_exec(bContext *C, wmOperator *op)
 	bNode *gnode;
 	Main *bmain = CTX_data_main(C);
 	
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 	
 	if (!node_group_make_test_selected(ntree, NULL, ntree_idname, op->reports))
 		return OPERATOR_CANCELLED;
@@ -966,7 +964,7 @@ static int node_group_insert_exec(bContext *C, wmOperator *op)
 	bNode *gnode;
 	Main *bmain = CTX_data_main(C);
 	
-	ED_preview_kill_jobs(C);
+	ED_preview_kill_jobs(CTX_wm_manager(C), CTX_data_main(C));
 	
 	gnode = node_group_get_active(C, node_idname);
 	

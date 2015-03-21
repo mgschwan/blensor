@@ -68,7 +68,7 @@ BF_SNDFILE_LIBPATH = '${BF_SNDFILE}/lib ${BF_FFMPEG}/lib' #ogg libs are stored i
 WITH_BF_SDL = True
 BF_SDL = LIBDIR + '/sdl' #$(shell sdl-config --prefix)
 BF_SDL_INC = '${BF_SDL}/include' #$(shell $(BF_SDL)/bin/sdl-config --cflags)
-BF_SDL_LIB = 'SDL' #BF_SDL #$(shell $(BF_SDL)/bin/sdl-config --libs) -lSDL_mixer
+BF_SDL_LIB = 'SDL2' #BF_SDL #$(shell $(BF_SDL)/bin/sdl-config --libs) -lSDL_mixer
 BF_SDL_LIBPATH = '${BF_SDL}/lib'
 
 WITH_BF_OPENEXR = True
@@ -205,7 +205,7 @@ BF_BOOST_LIBPATH = '${BF_BOOST}/lib'
 
 WITH_BF_CYCLES_CUDA_BINARIES = False
 BF_CYCLES_CUDA_NVCC = '/usr/local/cuda/bin/nvcc'
-BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_20', 'sm_21', 'sm_30', 'sm_35', 'sm_50']
+BF_CYCLES_CUDA_BINARIES_ARCH = ['sm_20', 'sm_21', 'sm_30', 'sm_35', 'sm_50', 'sm_52']
 
 #Freestyle
 WITH_BF_FREESTYLE = True

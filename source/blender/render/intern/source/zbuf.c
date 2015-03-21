@@ -63,12 +63,10 @@
 #include "pixelblending.h"
 #include "render_result.h"
 #include "render_types.h"
-#include "renderpipeline.h"
 #include "renderdatabase.h"
 #include "rendercore.h"
 #include "shadbuf.h"
 #include "shading.h"
-#include "sss.h"
 #include "strand.h"
 
 /* own includes */
@@ -2065,8 +2063,6 @@ static void zmask_rect(int *rectz, int *rectp, int xs, int ys, int neg)
 }
 
 
-
-
 /* ***************** ZBUFFER MAIN ROUTINES **************** */
 
 void zbuffer_solid(RenderPart *pa, RenderLayer *rl, void(*fillfunc)(RenderPart *, ZSpan *, int, void *), void *data)
@@ -2951,7 +2947,7 @@ void RE_zbuf_accumulate_vecblur(NodeBlurData *nbd, int xsize, int ysize, float *
 					dvec2[1]= 0.0f;
 				}
 				else {
-					speedsq= 1.0f - minspeed/sqrt(speedsq);
+					speedsq = 1.0f - minspeed / sqrtf(speedsq);
 					dvec2[0]= speedsq*dvec1[0];
 					dvec2[1]= speedsq*dvec1[1];
 				}
@@ -3027,7 +3023,7 @@ void RE_zbuf_accumulate_vecblur(NodeBlurData *nbd, int xsize, int ysize, float *
 				if (maxspeed) {
 					float speedsq= dvz[0]*dvz[0] + dvz[1]*dvz[1];
 					if (speedsq > maxspeedsq) {
-						speedsq= (float)maxspeed/sqrt(speedsq);
+						speedsq = (float)maxspeed / sqrtf(speedsq);
 						dvz[0]*= speedsq;
 						dvz[1]*= speedsq;
 					}
@@ -3386,7 +3382,7 @@ static int zbuffer_abuf(Render *re, RenderPart *pa, APixstr *APixbuf, ListBase *
 							projectverto(vec, obwinmat, hoco);
 							fval= mul*(1.0f+hoco[2]/hoco[3]);
 
-							polygon_offset= (int) fabs(zval - fval );
+							polygon_offset= (int)fabsf(zval - fval);
 						}
 						else polygon_offset= 0;
 						

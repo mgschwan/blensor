@@ -79,6 +79,8 @@
 #include "BKE_tracking.h"
 #include "BKE_movieclip.h"
 
+#include "BIK_api.h"
+
 #ifdef WITH_PYTHON
 #  include "BPY_extern.h"
 #endif
@@ -185,6 +187,10 @@ void BKE_constraints_clear_evalob(bConstraintOb *cob)
 	
 	/* calculate delta of constraints evaluation */
 	invert_m4_m4(imat, cob->startmat);
+	/* XXX This would seem to be in wrong order. However, it does not work in 'right' order - would be nice to
+	 *     understand why premul is needed here instead of usual postmul?
+	 *     In any case, we **do not get a delta** here (e.g. startmat & matrix having same location, still gives
+	 *     a 'delta' with non-null translation component :/ ).*/
 	mul_m4_m4m4(delta, cob->matrix, imat);
 	
 	/* copy matrices back to source */
@@ -225,7 +231,8 @@ void BKE_constraints_clear_evalob(bConstraintOb *cob)
  * of a matrix from one space to another for constraint evaluation.
  * For now, this is only implemented for Objects and PoseChannels.
  */
-void BKE_constraint_mat_convertspace(Object *ob, bPoseChannel *pchan, float mat[4][4], short from, short to)
+void BKE_constraint_mat_convertspace(
+        Object *ob, bPoseChannel *pchan, float mat[4][4], short from, short to, const bool keep_scale)
 {
 	float diff_mat[4][4];
 	float imat[4][4];
@@ -248,7 +255,7 @@ void BKE_constraint_mat_convertspace(Object *ob, bPoseChannel *pchan, float mat[
 				/* use pose-space as stepping stone for other spaces... */
 				if (ELEM(to, CONSTRAINT_SPACE_LOCAL, CONSTRAINT_SPACE_PARLOCAL)) {
 					/* call self with slightly different values */
-					BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, to);
+					BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, to, keep_scale);
 				}
 				break;
 			}
@@ -284,7 +291,7 @@ void BKE_constraint_mat_convertspace(Object *ob, bPoseChannel *pchan, float mat[
 				/* use pose-space as stepping stone for other spaces */
 				if (ELEM(to, CONSTRAINT_SPACE_WORLD, CONSTRAINT_SPACE_PARLOCAL)) {
 					/* call self with slightly different values */
-					BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, to);
+					BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, to, keep_scale);
 				}
 				break;
 			}
@@ -299,7 +306,7 @@ void BKE_constraint_mat_convertspace(Object *ob, bPoseChannel *pchan, float mat[
 				/* use pose-space as stepping stone for other spaces */
 				if (ELEM(to, CONSTRAINT_SPACE_WORLD, CONSTRAINT_SPACE_LOCAL)) {
 					/* call self with slightly different values */
-					BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, to);
+					BKE_constraint_mat_convertspace(ob, pchan, mat, CONSTRAINT_SPACE_POSE, to, keep_scale);
 				}
 				break;
 			}
@@ -319,8 +326,17 @@ void BKE_constraint_mat_convertspace(Object *ob, bPoseChannel *pchan, float mat[
 				/* Local space in this case will have to be defined as local to the owner's 
 				 * transform-property-rotated axes. So subtract this rotation component.
 				 */
+				/* XXX This is actually an ugly hack, local space of a parent-less object *is* the same as
+				 *     global space!
+				 *     Think what we want actually here is some kind of 'Final Space', i.e. once transformations
+				 *     are applied - users are often confused about this too, this is not consistent with bones
+				 *     local space either... Meh :|
+				 *     --mont29
+				 */
 				BKE_object_to_mat4(ob, diff_mat);
-				normalize_m4(diff_mat);
+				if (!keep_scale) {
+					normalize_m4(diff_mat);
+				}
 				zero_v3(diff_mat[3]);
 				
 				invert_m4_m4_safe(imat, diff_mat);
@@ -338,8 +354,11 @@ void BKE_constraint_mat_convertspace(Object *ob, bPoseChannel *pchan, float mat[
 				/* Local space in this case will have to be defined as local to the owner's 
 				 * transform-property-rotated axes. So add back this rotation component.
 				 */
+				/* XXX See comment above for world->local case... */
 				BKE_object_to_mat4(ob, diff_mat);
-				normalize_m4(diff_mat);
+				if (!keep_scale) {
+					normalize_m4(diff_mat);
+				}
 				zero_v3(diff_mat[3]);
 				
 				mul_m4_m4m4(mat, diff_mat, mat);
@@ -507,7 +526,7 @@ static void constraint_target_to_mat4(Object *ob, const char *substring, float m
 	/*	Case OBJECT */
 	if (!strlen(substring)) {
 		copy_m4_m4(mat, ob->obmat);
-		BKE_constraint_mat_convertspace(ob, NULL, mat, from, to);
+		BKE_constraint_mat_convertspace(ob, NULL, mat, from, to, false);
 	}
 	/*  Case VERTEXGROUP */
 	/* Current method just takes the average location of all the points in the
@@ -520,11 +539,11 @@ static void constraint_target_to_mat4(Object *ob, const char *substring, float m
 	 */
 	else if (ob->type == OB_MESH) {
 		contarget_get_mesh_mat(ob, substring, mat);
-		BKE_constraint_mat_convertspace(ob, NULL, mat, from, to);
+		BKE_constraint_mat_convertspace(ob, NULL, mat, from, to, false);
 	}
 	else if (ob->type == OB_LATTICE) {
 		contarget_get_lattice_mat(ob, substring, mat);
-		BKE_constraint_mat_convertspace(ob, NULL, mat, from, to);
+		BKE_constraint_mat_convertspace(ob, NULL, mat, from, to, false);
 	}
 	/*	Case BONE */
 	else {
@@ -557,7 +576,7 @@ static void constraint_target_to_mat4(Object *ob, const char *substring, float m
 			copy_m4_m4(mat, ob->obmat);
 			
 		/* convert matrix space as required */
-		BKE_constraint_mat_convertspace(ob, pchan, mat, from, to);
+		BKE_constraint_mat_convertspace(ob, pchan, mat, from, to, false);
 	}
 }
 
@@ -1967,7 +1986,7 @@ static void pycon_get_tarmat(bConstraint *con, bConstraintOb *cob, bConstraintTa
 static void pycon_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *targets)
 {
 #ifndef WITH_PYTHON
-	(void)con; (void)cob; (void)targets; /* unused */
+	UNUSED_VARS(con, cob, targets);
 	return;
 #else
 	bPythonConstraint *data = con->data;
@@ -2613,6 +2632,8 @@ static void stretchto_new_data(void *cdata)
 	data->plane = 0;
 	data->orglength = 0.0; 
 	data->bulge = 1.0;
+	data->bulge_max = 1.0f;
+	data->bulge_min = 1.0f;
 }
 
 static void stretchto_id_looper(bConstraint *con, ConstraintIDFunc func, void *userdata)
@@ -2658,7 +2679,7 @@ static void stretchto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 	if (VALID_CONS_TARGET(ct)) {
 		float size[3], scale[3], vec[3], xx[3], zz[3], orth[3];
 		float totmat[3][3];
-		float dist;
+		float dist, bulge;
 		
 		/* store scaling before destroying obmat */
 		mat4_to_size(size, cob->matrix);
@@ -2676,7 +2697,7 @@ static void stretchto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 /*		vec[2] /= size[2];*/
 		
 /*		dist = normalize_v3(vec);*/
-		
+
 		dist = len_v3v3(cob->matrix[3], ct->matrix[3]);
 		/* Only Y constrained object axis scale should be used, to keep same length when scaling it. */
 		dist /= size[1];
@@ -2684,23 +2705,49 @@ static void stretchto_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		/* data->orglength==0 occurs on first run, and after 'R' button is clicked */
 		if (data->orglength == 0)
 			data->orglength = dist;
-		if (data->bulge == 0)
-			data->bulge = 1.0;
-		
+
 		scale[1] = dist / data->orglength;
+		
+		bulge = powf(data->orglength / dist, data->bulge);
+		
+		if (bulge > 1.0f) {
+			if (data->flag & STRETCHTOCON_USE_BULGE_MAX) {
+				float bulge_max = max_ff(data->bulge_max, 1.0f);
+				float hard = min_ff(bulge, bulge_max);
+				
+				float range = bulge_max - 1.0f;
+				float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
+				float soft = 1.0f + range * atanf((bulge - 1.0f) * scale) / (float)M_PI_2;
+				
+				bulge = interpf(soft, hard, data->bulge_smooth);
+			}
+		}
+		if (bulge < 1.0f) {
+			if (data->flag & STRETCHTOCON_USE_BULGE_MIN) {
+				float bulge_min = CLAMPIS(data->bulge_min, 0.0f, 1.0f);
+				float hard = max_ff(bulge, bulge_min);
+				
+				float range = 1.0f - bulge_min;
+				float scale = (range > 0.0f) ? 1.0f / range : 0.0f;
+				float soft = 1.0f - range * atanf((1.0f - bulge) * scale) / (float)M_PI_2;
+				
+				bulge = interpf(soft, hard, data->bulge_smooth);
+			}
+		}
+		
 		switch (data->volmode) {
 			/* volume preserving scaling */
 			case VOLUME_XZ:
-				scale[0] = 1.0f - sqrtf(data->bulge) + sqrtf(data->bulge * (data->orglength / dist));
+				scale[0] = sqrtf(bulge);
 				scale[2] = scale[0];
 				break;
 			case VOLUME_X:
-				scale[0] = 1.0f + data->bulge * (data->orglength / dist - 1);
+				scale[0] = bulge;
 				scale[2] = 1.0;
 				break;
 			case VOLUME_Z:
 				scale[0] = 1.0;
-				scale[2] = 1.0f + data->bulge * (data->orglength / dist - 1);
+				scale[2] = bulge;
 				break;
 			/* don't care for volume */
 			case NO_VOLUME:
@@ -3429,8 +3476,11 @@ static void shrinkwrap_get_tarmat(bConstraint *con, bConstraintOb *cob, bConstra
 					}
 					
 					/* transform normal into requested space */
+					/* Note that in this specific case, we need to keep scaling in non-parented 'local2world' object
+					 * case, because SpaceTransform also takes it into account when handling normals. See T42447. */
 					unit_m4(mat);
-					BKE_constraint_mat_convertspace(cob->ob, cob->pchan, mat, CONSTRAINT_SPACE_LOCAL, scon->projAxisSpace);
+					BKE_constraint_mat_convertspace(cob->ob, cob->pchan, mat,
+					                                CONSTRAINT_SPACE_LOCAL, scon->projAxisSpace, true);
 					invert_m4(mat);
 					mul_mat3_m4_v3(mat, no);
 
@@ -3592,7 +3642,7 @@ static void damptrack_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *t
 		cross_v3_v3v3(raxis, obvec, tarvec);
 		
 		rangle = dot_v3v3(obvec, tarvec);
-		rangle = acos(max_ff(-1.0f, min_ff(1.0f, rangle)));
+		rangle = acosf(max_ff(-1.0f, min_ff(1.0f, rangle)));
 		
 		/* construct rotation matrix from the axis-angle rotation found above 
 		 *	- this call takes care to make sure that the axis provided is a unit vector first
@@ -3650,6 +3700,9 @@ static void splineik_new_data(void *cdata)
 	bSplineIKConstraint *data = (bSplineIKConstraint *)cdata;
 
 	data->chainlen = 1;
+	data->bulge = 1.0;
+	data->bulge_max = 1.0f;
+	data->bulge_min = 1.0f;
 }
 
 static void splineik_id_looper(bConstraint *con, ConstraintIDFunc func, void *userdata)
@@ -4317,7 +4370,7 @@ static void con_unlink_refs_cb(bConstraint *UNUSED(con), ID **idpoin, bool is_re
  * be sure to run BIK_clear_data() when freeing an IK constraint,
  * unless DAG_relations_tag_update is called. 
  */
-void BKE_constraint_free_data(bConstraint *con)
+void BKE_constraint_free_data_ex(bConstraint *con, bool do_id_user)
 {
 	if (con->data) {
 		bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
@@ -4328,7 +4381,7 @@ void BKE_constraint_free_data(bConstraint *con)
 				cti->free_data(con);
 				
 			/* unlink the referenced resources it uses */
-			if (cti->id_looper)
+			if (do_id_user && cti->id_looper)
 				cti->id_looper(con, con_unlink_refs_cb, NULL);
 		}
 		
@@ -4337,19 +4390,28 @@ void BKE_constraint_free_data(bConstraint *con)
 	}
 }
 
+void BKE_constraint_free_data(bConstraint *con)
+{
+	BKE_constraint_free_data_ex(con, true);
+}
+
 /* Free all constraints from a constraint-stack */
-void BKE_constraints_free(ListBase *list)
+void BKE_constraints_free_ex(ListBase *list, bool do_id_user)
 {
 	bConstraint *con;
 	
 	/* Free constraint data and also any extra data */
 	for (con = list->first; con; con = con->next)
-		BKE_constraint_free_data(con);
+		BKE_constraint_free_data_ex(con, do_id_user);
 	
 	/* Free the whole list */
 	BLI_freelistN(list);
 }
 
+void BKE_constraints_free(ListBase *list)
+{
+	BKE_constraints_free_ex(list, true);
+}
 
 /* Remove the specified constraint from the given constraint stack */
 bool BKE_constraint_remove(ListBase *list, bConstraint *con)
@@ -4357,10 +4419,26 @@ bool BKE_constraint_remove(ListBase *list, bConstraint *con)
 	if (con) {
 		BKE_constraint_free_data(con);
 		BLI_freelinkN(list, con);
-		return 1;
+		return true;
 	}
-	else
-		return 0;
+	else {
+		return false;
+	}
+}
+
+bool BKE_constraint_remove_ex(ListBase *list, Object *ob, bConstraint *con, bool clear_dep)
+{
+	const short type = con->type;
+	if (BKE_constraint_remove(list, con)) {
+		/* ITASC needs to be rebuilt once a constraint is removed [#26920] */
+		if (clear_dep && ELEM(type, CONSTRAINT_TYPE_KINEMATIC, CONSTRAINT_TYPE_SPLINEIK)) {
+			BIK_clear_data(ob->pose);
+		}
+		return true;
+	}
+	else {
+		return false;
+	}
 }
 
 /* ......... */
@@ -4624,15 +4702,15 @@ bool BKE_constraints_proxylocked_owner(Object *ob, bPoseChannel *pchan)
 			
 			/* On bone-level, check if bone is on proxy-protected layer */
 			if ((pchan->bone) && (pchan->bone->layer & arm->layer_protected))
-				return 1;
+				return true;
 		}
 		else {
 			/* FIXME: constraints on object-level are not handled well yet */
-			return 1;
+			return true;
 		}
 	}
 	
-	return 0;
+	return false;
 }
 
 /* -------- Target-Matrix Stuff ------- */
@@ -4778,7 +4856,7 @@ void BKE_constraints_solve(ListBase *conlist, bConstraintOb *cob, float ctime)
 		copy_m4_m4(oldmat, cob->matrix);
 		
 		/* move owner matrix into right space */
-		BKE_constraint_mat_convertspace(cob->ob, cob->pchan, cob->matrix, CONSTRAINT_SPACE_WORLD, con->ownspace);
+		BKE_constraint_mat_convertspace(cob->ob, cob->pchan, cob->matrix, CONSTRAINT_SPACE_WORLD, con->ownspace, false);
 		
 		/* prepare targets for constraint solving */
 		BKE_constraint_targets_for_solving_get(con, cob, &targets, ctime);
@@ -4796,7 +4874,7 @@ void BKE_constraints_solve(ListBase *conlist, bConstraintOb *cob, float ctime)
 		
 		/* move owner back into worldspace for next constraint/other business */
 		if ((con->flag & CONSTRAINT_SPACEONCE) == 0) 
-			BKE_constraint_mat_convertspace(cob->ob, cob->pchan, cob->matrix, con->ownspace, CONSTRAINT_SPACE_WORLD);
+			BKE_constraint_mat_convertspace(cob->ob, cob->pchan, cob->matrix, con->ownspace, CONSTRAINT_SPACE_WORLD, false);
 			
 		/* Interpolate the enforcement, to blend result of constraint into final owner transform 
 		 *  - all this happens in worldspace to prevent any weirdness creeping in ([#26014] and [#25725]),

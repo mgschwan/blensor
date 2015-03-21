@@ -48,15 +48,13 @@
 
 #include "BLF_translation.h"
 
-#include "BKE_scene.h"
 #include "BKE_brush.h"
 #include "BKE_context.h"
 #include "BKE_DerivedMesh.h"
-#include "BKE_material.h"
 #include "BKE_image.h"
+#include "BKE_material.h"
 #include "BKE_paint.h"
 #include "BKE_report.h"
-#include "BKE_image.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -66,16 +64,12 @@
 
 #include "IMB_colormanagement.h"
 #include "IMB_imbuf_types.h"
+#include "IMB_imbuf.h"
 
-#include "RE_shader_ext.h"
 #include "RE_render_ext.h"
 
 #include "ED_view3d.h"
 #include "ED_screen.h"
-#include "ED_uvedit.h"
-
-#include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
 
 #include "BLI_sys_types.h"
 #include "ED_mesh.h" /* for face mask functions */
@@ -183,7 +177,7 @@ float paint_get_tex_pixel(MTex *mtex, float u, float v, struct ImagePool *pool, 
 	float co[3] = {u, v, 0.0f};
 
 	externtex(mtex, co, &intensity,
-	          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool);
+	          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
 
 	return intensity;
 }
@@ -195,7 +189,7 @@ void paint_get_tex_pixel_col(MTex *mtex, float u, float v, float rgba[4], struct
 	float intensity;
 
 	hasrgb = externtex(mtex, co, &intensity,
-	                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool);
+	                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
 	if (!hasrgb) {
 		rgba[0] = intensity;
 		rgba[1] = intensity;
@@ -292,6 +286,7 @@ static void imapaint_pick_uv(Scene *scene, Object *ob, unsigned int faceindex, c
 	MVert mv[4];
 	float matrix[4][4], proj[4][4];
 	GLint view[4];
+	ImagePaintMode mode = scene->toolsettings->imapaint.mode;
 
 	/* compute barycentric coordinates */
 
@@ -320,19 +315,25 @@ static void imapaint_pick_uv(Scene *scene, Object *ob, unsigned int faceindex, c
 		if (findex == faceindex) {
 			dm->getTessFace(dm, a, &mf);
 
-			ma = dm->mat[mf.mat_nr];
-			slot = &ma->texpaintslot[ma->paint_active_slot];
-
 			dm->getVert(dm, mf.v1, &mv[0]);
 			dm->getVert(dm, mf.v2, &mv[1]);
 			dm->getVert(dm, mf.v3, &mv[2]);
 			if (mf.v4)
 				dm->getVert(dm, mf.v4, &mv[3]);
 
-			if (!(slot && slot->uvname && (tf_base = CustomData_get_layer_named(&dm->faceData, CD_MTFACE, slot->uvname))))
-				tf_base = CustomData_get_layer(&dm->faceData, CD_MTFACE);
+			if (mode == IMAGEPAINT_MODE_MATERIAL) {
+				ma = dm->mat[mf.mat_nr];
+				slot = &ma->texpaintslot[ma->paint_active_slot];
 
-			tf = &tf_base[a];
+				if (!(slot && slot->uvname && (tf_base = CustomData_get_layer_named(&dm->faceData, CD_MTFACE, slot->uvname))))
+					tf_base = CustomData_get_layer(&dm->faceData, CD_MTFACE);
+
+				tf = &tf_base[a];
+			}
+			else {
+				tf_base = CustomData_get_layer(&dm->faceData, CD_MTFACE);
+				tf = &tf_base[a];
+			}
 
 			p[0] = xy[0];
 			p[1] = xy[1];
@@ -372,15 +373,15 @@ static void imapaint_pick_uv(Scene *scene, Object *ob, unsigned int faceindex, c
 }
 
 /* returns 0 if not found, otherwise 1 */
-static int imapaint_pick_face(ViewContext *vc, const int mval[2], unsigned int *r_index, unsigned int totface)
+static int imapaint_pick_face(ViewContext *vc, const int mval[2], unsigned int *r_index, unsigned int totpoly)
 {
-	if (totface == 0)
+	if (totpoly == 0)
 		return 0;
 
 	/* sample only on the exact position */
 	*r_index = view3d_sample_backbuf(vc, mval[0], mval[1]);
 
-	if ((*r_index) == 0 || (*r_index) > (unsigned int)totface) {
+	if ((*r_index) == 0 || (*r_index) > (unsigned int)totpoly) {
 		return 0;
 	}
 
@@ -390,12 +391,12 @@ static int imapaint_pick_face(ViewContext *vc, const int mval[2], unsigned int *
 }
 
 
-static Image *imapaint_face_image(DerivedMesh *dm, int face_index)
+static Image *imapaint_face_image(Object *ob, Mesh *me, int face_index)
 {
 	Image *ima;
-	MFace *mf = dm->getTessFaceArray(dm) + face_index;
-	Material *ma = dm->mat[mf->mat_nr];
-	ima = ma ? ma->texpaintslot[ma->paint_active_slot].ima : NULL;
+	MPoly *mp = me->mpoly + face_index;
+	Material *ma = give_current_material(ob, mp->mat_nr + 1);;
+	ima = ma && ma->texpaintslot ? ma->texpaintslot[ma->paint_active_slot].ima : NULL;
 
 	return ima;
 }
@@ -438,6 +439,7 @@ void paint_sample_color(bContext *C, ARegion *ar, int x, int y, bool texpaint_pr
 		}
 
 		color = BKE_palette_color_add(palette);
+		palette->active_color = BLI_listbase_count(&palette->colors) - 1;
 	}
 
 
@@ -449,26 +451,25 @@ void paint_sample_color(bContext *C, ARegion *ar, int x, int y, bool texpaint_pr
 		bool use_material = (imapaint->mode == IMAGEPAINT_MODE_MATERIAL);
 
 		if (ob) {
+			Mesh *me = (Mesh *)ob->data;
 			DerivedMesh *dm = mesh_get_derived_final(scene, ob, CD_MASK_BAREMESH);
 
 			ViewContext vc;
 			const int mval[2] = {x, y};
 			unsigned int faceindex;
-			unsigned int totface = dm->getNumTessFaces(dm);
+			unsigned int totpoly = me->totpoly;
 			MTFace *dm_mtface = dm->getTessFaceDataArray(dm, CD_MTFACE);
-
-			DM_update_materials(dm, ob);
 
 			if (dm_mtface) {
 				view3d_set_viewcontext(C, &vc);
 
 				view3d_operator_needs_opengl(C);
 
-				if (imapaint_pick_face(&vc, mval, &faceindex, totface)) {
+				if (imapaint_pick_face(&vc, mval, &faceindex, totpoly)) {
 					Image *image;
 					
 					if (use_material) 
-						image = imapaint_face_image(dm, faceindex);
+						image = imapaint_face_image(ob, me, faceindex);
 					else
 						image = imapaint->canvas;
 					

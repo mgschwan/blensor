@@ -36,7 +36,7 @@
 #include <math.h>
 
 
-#include "GL/glew.h"
+#include "glew-mx.h"
 
 #include "KX_PythonInit.h"
 #include "DNA_scene_types.h"
@@ -273,8 +273,6 @@ void ImageRender::Render()
 	m_rasterizer->SetStereoMode(stereomode);
 
 	m_scene->CalculateVisibleMeshes(m_rasterizer,m_camera);
-
-	m_scene->UpdateAnimations(m_engine->GetFrameTime());
 
 	m_scene->RenderBuckets(camtrans, m_rasterizer);
 

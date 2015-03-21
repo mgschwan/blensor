@@ -194,6 +194,7 @@ struct Render
 	struct Object *camera_override;
 	unsigned int lay, layer_override;
 	
+	ThreadRWMutex partsmutex;
 	ListBase parts;
 	
 	/* render engine */
@@ -424,6 +425,7 @@ typedef struct HaloRen {
 	unsigned int lay;
 	struct Material *mat;
 	struct ImagePool *pool;
+	bool skip_load_image;
 } HaloRen;
 
 /* ------------------------------------------------------------------------- */

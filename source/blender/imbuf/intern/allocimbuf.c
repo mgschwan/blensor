@@ -47,8 +47,8 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_threads.h"
 #include "BLI_utildefines.h"
+#include "BLI_threads.h"
 
 static SpinLock refcounter_spin;
 
@@ -360,6 +360,30 @@ bool imb_addrectImBuf(ImBuf *ibuf)
 	}
 
 	return false;
+}
+
+struct ImBuf *IMB_allocFromBuffer(const unsigned int *rect, const float *rectf,
+                                  unsigned int w, unsigned int h)
+{
+	ImBuf *ibuf = NULL;
+
+	if (!(rect || rectf))
+		return NULL;
+
+	ibuf = IMB_allocImBuf(w, h, 32, 0);
+
+	if (rectf) {
+		ibuf->rect_float = MEM_dupallocN(rectf);
+		ibuf->flags |= IB_rectfloat;
+		ibuf->mall |= IB_rectfloat;
+	}
+	if (rect) {
+		ibuf->rect = MEM_dupallocN(rect);
+		ibuf->flags |= IB_rect;
+		ibuf->mall |= IB_rect;
+	}
+
+	return ibuf;
 }
 
 bool imb_addtilesImBuf(ImBuf *ibuf)

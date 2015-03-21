@@ -36,6 +36,7 @@ set(INC
 	../nodes
 	../nodes/intern
 
+	../../../intern/glew-mx
 	../../../intern/guardedalloc
 	../../../intern/smoke/extern
 )
@@ -49,17 +50,43 @@ set(SRC
 	intern/gpu_codegen.c
 	intern/gpu_draw.c
 	intern/gpu_extensions.c
+	intern/gpu_init_exit.c
 	intern/gpu_material.c
 	intern/gpu_simple_shader.c
 	intern/gpu_select.c
+	intern/gpu_compositing.c
+	intern/gpu_debug.c
+
+	shaders/gpu_shader_fx_lib.glsl
+	shaders/gpu_shader_fx_ssao_frag.glsl
+	shaders/gpu_shader_fx_dof_frag.glsl
+	shaders/gpu_shader_fx_dof_vert.glsl
+	shaders/gpu_shader_fx_dof_hq_frag.glsl
+	shaders/gpu_shader_fx_dof_hq_vert.glsl
+	shaders/gpu_shader_fx_dof_hq_geo.glsl
+	shaders/gpu_shader_fx_vert.glsl
+	shaders/gpu_shader_material.glsl
+	shaders/gpu_shader_sep_gaussian_blur_frag.glsl
+	shaders/gpu_shader_sep_gaussian_blur_vert.glsl
+	shaders/gpu_shader_simple_frag.glsl
+	shaders/gpu_shader_simple_vert.glsl
+	shaders/gpu_shader_vertex.glsl
+	shaders/gpu_shader_vsm_store_frag.glsl
+	shaders/gpu_shader_vsm_store_vert.glsl
+	shaders/gpu_shader_fx_depth_resolve.glsl
 
 	GPU_buffers.h
 	GPU_draw.h
+	GPU_debug.h
 	GPU_extensions.h
+	GPU_glew.h
+	GPU_init_exit.h
 	GPU_material.h
 	GPU_simple_shader.h
 	GPU_select.h
+	GPU_compositing.h
 	intern/gpu_codegen.h
+	intern/gpu_private.h
 )
 
 data_to_c_simple(shaders/gpu_shader_material.glsl SRC)
@@ -68,8 +95,18 @@ data_to_c_simple(shaders/gpu_shader_sep_gaussian_blur_vert.glsl SRC)
 data_to_c_simple(shaders/gpu_shader_simple_frag.glsl SRC)
 data_to_c_simple(shaders/gpu_shader_simple_vert.glsl SRC)
 data_to_c_simple(shaders/gpu_shader_vertex.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_vertex_world.glsl SRC)
 data_to_c_simple(shaders/gpu_shader_vsm_store_frag.glsl SRC)
 data_to_c_simple(shaders/gpu_shader_vsm_store_vert.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_vert.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_ssao_frag.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_dof_frag.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_dof_vert.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_dof_hq_frag.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_dof_hq_vert.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_dof_hq_geo.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_depth_resolve.glsl SRC)
+data_to_c_simple(shaders/gpu_shader_fx_lib.glsl SRC)
 
 if(WITH_GAMEENGINE)
 	add_definitions(-DWITH_GAMEENGINE)
@@ -79,7 +116,7 @@ if(WITH_MOD_SMOKE)
 	add_definitions(-DWITH_SMOKE)
 endif()
 
-add_definitions(-DGLEW_STATIC)
+add_definitions(${GL_DEFINITIONS})
 
 if(WITH_IMAGE_DDS)
 	add_definitions(-DWITH_DDS)

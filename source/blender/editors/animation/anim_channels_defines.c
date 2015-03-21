@@ -61,6 +61,7 @@
 
 #include "RNA_access.h"
 
+#include "BKE_animsys.h"
 #include "BKE_curve.h"
 #include "BKE_key.h"
 #include "BKE_nla.h"
@@ -120,8 +121,8 @@ static void acf_generic_root_backdrop(bAnimContext *ac, bAnimListElem *ale, floa
 	glColor3fv(color);
 	
 	/* rounded corners on LHS only - top only when expanded, but bottom too when collapsed */
-	uiSetRoundBox((expanded) ? UI_CNR_TOP_LEFT : (UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT));
-	uiDrawBox(GL_POLYGON, offset,  yminc, v2d->cur.xmax + EXTRA_SCROLL_PAD, ymaxc, 8);
+	UI_draw_roundbox_corner_set((expanded) ? UI_CNR_TOP_LEFT : (UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT));
+	UI_draw_roundbox_gl_mode(GL_POLYGON, offset,  yminc, v2d->cur.xmax + EXTRA_SCROLL_PAD, ymaxc, 8);
 }
 
 
@@ -420,8 +421,8 @@ static void acf_summary_backdrop(bAnimContext *ac, bAnimListElem *ale, float ymi
 	 *	- top and bottom 
 	 *	- special hack: make the top a bit higher, since we are first... 
 	 */
-	uiSetRoundBox(UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT);
-	uiDrawBox(GL_POLYGON, 0,  yminc - 2, v2d->cur.xmax + EXTRA_SCROLL_PAD, ymaxc, 8);
+	UI_draw_roundbox_corner_set(UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT);
+	UI_draw_roundbox_gl_mode(GL_POLYGON, 0,  yminc - 2, v2d->cur.xmax + EXTRA_SCROLL_PAD, ymaxc, 8);
 }
 
 /* name for summary entries */
@@ -800,8 +801,8 @@ static void acf_group_backdrop(bAnimContext *ac, bAnimListElem *ale, float yminc
 	glColor3fv(color);
 	
 	/* rounded corners on LHS only - top only when expanded, but bottom too when collapsed */
-	uiSetRoundBox(expanded ? UI_CNR_TOP_LEFT : (UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT));
-	uiDrawBox(GL_POLYGON, offset,  yminc, v2d->cur.xmax + EXTRA_SCROLL_PAD, ymaxc, 8);
+	UI_draw_roundbox_corner_set(expanded ? UI_CNR_TOP_LEFT : (UI_CNR_TOP_LEFT | UI_CNR_BOTTOM_LEFT));
+	UI_draw_roundbox_gl_mode(GL_POLYGON, offset,  yminc, v2d->cur.xmax + EXTRA_SCROLL_PAD, ymaxc, 8);
 }
 
 /* name for group entries */
@@ -2365,6 +2366,83 @@ static bAnimChannelType ACF_DSSPK =
 	acf_dsspk_setting_ptr                   /* pointer for setting */
 };
 
+/* GPencil Expander  ------------------------------------------- */
+
+// TODO: just get this from RNA?
+static int acf_dsgpencil_icon(bAnimListElem *UNUSED(ale))
+{
+	return ICON_GREASEPENCIL;
+}
+
+/* get the appropriate flag(s) for the setting when it is valid  */
+static int acf_dsgpencil_setting_flag(bAnimContext *UNUSED(ac), eAnimChannel_Settings setting, bool *neg)
+{
+	/* clear extra return data first */
+	*neg = false;
+	
+	switch (setting) {
+		case ACHANNEL_SETTING_EXPAND: /* expanded */
+			return GP_DATA_EXPAND;
+		
+		case ACHANNEL_SETTING_MUTE: /* mute (only in NLA) */
+			return ADT_NLA_EVAL_OFF;
+		
+		case ACHANNEL_SETTING_VISIBLE: /* visible (only in Graph Editor) */
+			*neg = true;
+			return ADT_CURVES_NOT_VISIBLE;
+		
+		case ACHANNEL_SETTING_SELECT: /* selected */
+			return ADT_UI_SELECTED;
+		
+		default: /* unsupported */
+			return 0;
+	}
+}
+
+/* get pointer to the setting */
+static void *acf_dsgpencil_setting_ptr(bAnimListElem *ale, eAnimChannel_Settings setting, short *type)
+{
+	bGPdata *gpd = (bGPdata *)ale->data;
+	
+	/* clear extra return data first */
+	*type = 0;
+	
+	switch (setting) {
+		case ACHANNEL_SETTING_EXPAND: /* expanded */
+			return GET_ACF_FLAG_PTR(gpd->flag, type);
+		
+		case ACHANNEL_SETTING_SELECT: /* selected */
+		case ACHANNEL_SETTING_MUTE: /* muted (for NLA only) */
+		case ACHANNEL_SETTING_VISIBLE: /* visible (for Graph Editor only) */
+			if (gpd->adt)
+				return GET_ACF_FLAG_PTR(gpd->adt->flag, type);
+			return NULL;
+		
+		default: /* unsupported */
+			return NULL;
+	}
+}
+
+/* grease pencil expander type define */
+static bAnimChannelType ACF_DSGPENCIL =
+{
+	"GPencil DS Expander",          /* type name */
+	ACHANNEL_ROLE_EXPANDER,         /* role */
+	
+	acf_generic_dataexpand_color,   /* backdrop color */
+	acf_generic_dataexpand_backdrop, /* backdrop */
+	acf_generic_indention_1,        /* indent level */
+	acf_generic_basic_offset,       /* offset */
+
+	acf_generic_idblock_name,       /* name */
+	acf_generic_idblock_name_prop,  /* name prop */
+	acf_dsgpencil_icon,             /* icon */
+
+	acf_generic_dataexpand_setting_valid,   /* has setting */
+	acf_dsgpencil_setting_flag,             /* flag for setting */
+	acf_dsgpencil_setting_ptr               /* pointer for setting */
+};
+
 /* ShapeKey Entry  ------------------------------------------- */
 
 /* name for ShapeKey */
@@ -3010,12 +3088,12 @@ static void acf_nlaaction_backdrop(bAnimContext *ac, bAnimListElem *ale, float y
 	/* only on top left corner, to show that this channel sits on top of the preceding ones 
 	 * while still linking into the action line strip to the right
 	 */
-	uiSetRoundBox(UI_CNR_TOP_LEFT);
+	UI_draw_roundbox_corner_set(UI_CNR_TOP_LEFT);
 	
 	/* draw slightly shifted up vertically to look like it has more separation from other channels,
 	 * but we then need to slightly shorten it so that it doesn't look like it overlaps
 	 */
-	uiDrawBox(GL_POLYGON, offset,  yminc + NLACHANNEL_SKIP, (float)v2d->cur.xmax, ymaxc + NLACHANNEL_SKIP - 1, 8);
+	UI_draw_roundbox_gl_mode(GL_POLYGON, offset,  yminc + NLACHANNEL_SKIP, (float)v2d->cur.xmax, ymaxc + NLACHANNEL_SKIP - 1, 8);
 }
 
 /* name for nla action entries */
@@ -3162,6 +3240,7 @@ static void ANIM_init_channel_typeinfo_data(void)
 		animchannelTypeInfo[type++] = &ACF_DSLAT;        /* Lattice Channel */
 		animchannelTypeInfo[type++] = &ACF_DSLINESTYLE;  /* LineStyle Channel */
 		animchannelTypeInfo[type++] = &ACF_DSSPK;        /* Speaker Channel */
+		animchannelTypeInfo[type++] = &ACF_DSGPENCIL;    /* GreasePencil Channel */
 		
 		animchannelTypeInfo[type++] = &ACF_SHAPEKEY;     /* ShapeKey */
 		
@@ -3407,6 +3486,7 @@ void ANIM_channel_draw(bAnimContext *ac, bAnimListElem *ale, float yminc, float 
 	/* step 4) draw special toggles  .................................
 	 *	- in Graph Editor, checkboxes for visibility in curves area
 	 *	- in NLA Editor, glowing dots for solo/not solo...
+	 *	- in Grease Pencil mode, color swatches for layer color
 	 */
 	if (ac->sl) {
 		if ((ac->spacetype == SPACE_IPO) && acf->has_setting(ac, ale, ACHANNEL_SETTING_VISIBLE)) {
@@ -3431,11 +3511,16 @@ void ANIM_channel_draw(bAnimContext *ac, bAnimListElem *ale, float yminc, float 
 			/* just skip - drawn as widget now */
 			offset += ICON_WIDTH; 
 		}
+		else if (ale->type == ANIMTYPE_GPLAYER) {
+			/* just skip - drawn as a widget */
+			offset += ICON_WIDTH;
+		}
 	}
 
 	/* step 5) draw name ............................................... */
 	/* TODO: when renaming, we might not want to draw this, especially if name happens to be longer than channel */
 	if (acf->name) {
+		const uiFontStyle *fstyle = UI_FSTYLE_WIDGET;
 		char name[ANIM_CHAN_NAME_SIZE]; /* hopefully this will be enough! */
 		
 		/* set text color */
@@ -3449,7 +3534,7 @@ void ANIM_channel_draw(bAnimContext *ac, bAnimListElem *ale, float yminc, float 
 		acf->name(ale, name);
 		
 		offset += 3;
-		UI_DrawString(offset, ytext, name);
+		UI_fontstyle_draw_simple(fstyle, offset, ytext, name);
 		
 		/* draw red underline if channel is disabled */
 		if ((ale->type == ANIMTYPE_FCURVE) && (ale->flag & FCURVE_DISABLED)) {
@@ -3601,22 +3686,11 @@ static void achannel_nlatrack_solo_widget_cb(bContext *C, void *adt_poin, void *
 	WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_RENAME, NULL);
 }
 
-/* callback for rename widgets - clear rename-in-progress */
-static void achannel_setting_rename_done_cb(bContext *C, void *ads_poin, void *UNUSED(arg2))
-{
-	bDopeSheet *ads = (bDopeSheet *)ads_poin;
-	
-	/* reset rename index so that edit box disappears now that editing is done */
-	ads->renameIndex = 0;
-	
-	/* send notifiers */
-	WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_RENAME, NULL);
-}
-
 /* callback for widget sliders - insert keyframes */
 static void achannel_setting_slider_cb(bContext *C, void *id_poin, void *fcu_poin)
 {
 	ID *id = (ID *)id_poin;
+	AnimData *adt = BKE_animdata_from_id(id);
 	FCurve *fcu = (FCurve *)fcu_poin;
 	
 	ReportList *reports = CTX_wm_reports(C);
@@ -3627,9 +3701,8 @@ static void achannel_setting_slider_cb(bContext *C, void *id_poin, void *fcu_poi
 	bool done = false;
 	float cfra;
 	
-	/* get current frame */
-	// NOTE: this will do for now...
-	cfra = (float)CFRA;
+	/* get current frame and apply NLA-mapping to it (if applicable) */
+	cfra = BKE_nla_tweakedit_remap(adt, (float)CFRA, NLATIME_CONVERT_UNMAP);
 	
 	/* get flags for keyframing */
 	flag = ANIM_get_keyframing_flags(scene, 1);
@@ -3666,9 +3739,8 @@ static void achannel_setting_slider_shapekey_cb(bContext *C, void *key_poin, voi
 	bool done = false;
 	float cfra;
 	
-	/* get current frame */
-	// NOTE: this will do for now...
-	cfra = (float)CFRA;
+	/* get current frame and apply NLA-mapping to it (if applicable) */
+	cfra = BKE_nla_tweakedit_remap(key->adt, (float)CFRA, NLATIME_CONVERT_UNMAP);
 	
 	/* get flags for keyframing */
 	flag = ANIM_get_keyframing_flags(scene, 1);
@@ -3788,9 +3860,9 @@ static void draw_setting_widget(bAnimContext *ac, bAnimListElem *ale, bAnimChann
 	
 	/* type of button */
 	if (negflag)
-		butType = ICONTOGN;
+		butType = UI_BTYPE_ICON_TOGGLE_N;
 	else
-		butType = ICONTOG;
+		butType = UI_BTYPE_ICON_TOGGLE;
 	
 	/* draw button for setting */
 	if (ptr && flag) {
@@ -3819,18 +3891,18 @@ static void draw_setting_widget(bAnimContext *ac, bAnimListElem *ale, bAnimChann
 				case ACHANNEL_SETTING_PROTECT: /* General - protection flags */
 				case ACHANNEL_SETTING_MUTE: /* General - muting flags */
 				case ACHANNEL_SETTING_PINNED: /* NLA Actions - 'map/nomap' */
-					uiButSetNFunc(but, achannel_setting_flush_widget_cb, MEM_dupallocN(ale), SET_INT_IN_POINTER(setting));
+					UI_but_funcN_set(but, achannel_setting_flush_widget_cb, MEM_dupallocN(ale), SET_INT_IN_POINTER(setting));
 					break;
 					
 				/* settings needing special attention */
 				case ACHANNEL_SETTING_SOLO: /* NLA Tracks - Solo toggle */
-					uiButSetFunc(but, achannel_nlatrack_solo_widget_cb, ale->adt, ale->data);
+					UI_but_func_set(but, achannel_nlatrack_solo_widget_cb, ale->adt, ale->data);
 					break;
 					
 				/* no flushing */
 				case ACHANNEL_SETTING_EXPAND: /* expanding - cannot flush, otherwise all would open/close at once */
 				default:
-					uiButSetFunc(but, achannel_setting_widget_cb, NULL, NULL);
+					UI_but_func_set(but, achannel_setting_widget_cb, NULL, NULL);
 					break;
 			}
 		}
@@ -3838,7 +3910,7 @@ static void draw_setting_widget(bAnimContext *ac, bAnimListElem *ale, bAnimChann
 }
 
 /* Draw UI widgets the given channel */
-void ANIM_channel_draw_widgets(bContext *C, bAnimContext *ac, bAnimListElem *ale, uiBlock *block, float yminc, float ymaxc, size_t channel_index)
+void ANIM_channel_draw_widgets(const bContext *C, bAnimContext *ac, bAnimListElem *ale, uiBlock *block, float yminc, float ymaxc, size_t channel_index)
 {
 	bAnimChannelType *acf = ANIM_channel_get_typeinfo(ale);
 	View2D *v2d = &ac->ar->v2d;
@@ -3861,7 +3933,7 @@ void ANIM_channel_draw_widgets(bContext *C, bAnimContext *ac, bAnimListElem *ale
 	ymid = y - 0.5f * ICON_WIDTH;
 	
 	/* no button backdrop behind icons */
-	uiBlockSetEmboss(block, UI_EMBOSSN);
+	UI_block_emboss_set(block, UI_EMBOSS_NONE);
 	
 	/* step 1) draw expand widget ....................................... */
 	if (acf->has_setting(ac, ale, ACHANNEL_SETTING_EXPAND)) {
@@ -3878,6 +3950,7 @@ void ANIM_channel_draw_widgets(bContext *C, bAnimContext *ac, bAnimListElem *ale
 	/* step 3) draw special toggles  .................................
 	 *	- in Graph Editor, checkboxes for visibility in curves area
 	 *	- in NLA Editor, glowing dots for solo/not solo...
+	 *	- in Grease Pencil mode, color swatches for layer color
 	 */
 	if (ac->sl) {
 		if ((ac->spacetype == SPACE_IPO) && acf->has_setting(ac, ale, ACHANNEL_SETTING_VISIBLE)) {
@@ -3889,6 +3962,31 @@ void ANIM_channel_draw_widgets(bContext *C, bAnimContext *ac, bAnimListElem *ale
 			/* 'solo' setting for NLA Tracks */
 			draw_setting_widget(ac, ale, acf, block, offset, ymid, ACHANNEL_SETTING_SOLO);
 			offset += ICON_WIDTH; 
+		}
+		else if (ale->type == ANIMTYPE_GPLAYER) {
+			/* color swatch for layer color */
+			bGPDlayer *gpl = (bGPDlayer *)ale->data;
+			PointerRNA ptr;
+			float w = ICON_WIDTH / 2.0f;
+			
+			RNA_pointer_create(ale->id, &RNA_GPencilLayer, ale->data, &ptr);
+			
+			UI_block_align_begin(block);
+			
+			UI_block_emboss_set(block, RNA_boolean_get(&ptr, "is_stroke_visible") ? UI_EMBOSS : UI_EMBOSS_NONE);
+			uiDefButR(block, UI_BTYPE_COLOR, 1, "", offset, yminc, w, ICON_WIDTH, 
+			          &ptr, "color", -1, 
+			          0, 0, 0, 0, gpl->info);
+			
+			UI_block_emboss_set(block, RNA_boolean_get(&ptr, "is_fill_visible") ? UI_EMBOSS : UI_EMBOSS_NONE);
+			uiDefButR(block, UI_BTYPE_COLOR, 1, "", offset + w, yminc, w, ICON_WIDTH, 
+			          &ptr, "fill_color", -1, 
+			          0, 0, 0, 0, gpl->info);
+			
+			UI_block_emboss_set(block, UI_EMBOSS_NONE);
+			UI_block_align_end(block);
+			
+			offset += ICON_WIDTH;
 		}
 	}
 	
@@ -3908,14 +4006,20 @@ void ANIM_channel_draw_widgets(bContext *C, bAnimContext *ac, bAnimListElem *ale
 			if (acf->name_prop(ale, &ptr, &prop)) {
 				uiBut *but;
 				
-				uiBlockSetEmboss(block, UI_EMBOSS);
+				UI_block_emboss_set(block, UI_EMBOSS);
 				
-				but = uiDefButR(block, TEX, 1, "", offset + 3, yminc, RENAME_TEXT_WIDTH, channel_height,
+				but = uiDefButR(block, UI_BTYPE_TEXT, 1, "", offset + 3, yminc, RENAME_TEXT_WIDTH, channel_height,
 				                &ptr, RNA_property_identifier(prop), -1, 0, 0, -1, -1, NULL);
-				uiButSetFunc(but, achannel_setting_rename_done_cb, ac->ads, NULL);
-				uiButActiveOnly(C, ac->ar, block, but);
 				
-				uiBlockSetEmboss(block, UI_EMBOSSN);
+				/* copy what outliner does here, see outliner_buttons */
+				if (UI_but_active_only(C, ac->ar, block, but) == false) {
+					ac->ads->renameIndex = 0;
+					
+					/* send notifiers */
+					WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_RENAME, NULL);
+				}
+				
+				UI_block_emboss_set(block, UI_EMBOSS_NONE);
 			}
 		}
 	}
@@ -3972,16 +4076,16 @@ void ANIM_channel_draw_widgets(bContext *C, bAnimContext *ac, bAnimListElem *ale
 				uiBut *but;
 				PointerRNA *opptr_b;
 				
-				uiBlockSetEmboss(block, UI_EMBOSS);
+				UI_block_emboss_set(block, UI_EMBOSS);
 				
 				offset += UI_UNIT_X;
-				but = uiDefIconButO(block, BUT, "NLA_OT_action_pushdown", WM_OP_INVOKE_DEFAULT, ICON_NLA_PUSHDOWN, 
+				but = uiDefIconButO(block, UI_BTYPE_BUT, "NLA_OT_action_pushdown", WM_OP_INVOKE_DEFAULT, ICON_NLA_PUSHDOWN, 
 				                   (int)v2d->cur.xmax - offset, ymid, UI_UNIT_X, UI_UNIT_X, NULL);
 				
-				opptr_b = uiButGetOperatorPtrRNA(but);
+				opptr_b = UI_but_operator_ptr_get(but);
 				RNA_int_set(opptr_b, "channel_index", channel_index);
 				
-				uiBlockSetEmboss(block, UI_EMBOSSN);
+				UI_block_emboss_set(block, UI_EMBOSS_NONE);
 			}
 		}
 		
@@ -3999,7 +4103,7 @@ void ANIM_channel_draw_widgets(bContext *C, bAnimContext *ac, bAnimListElem *ale
 			offset += SLIDER_WIDTH;
 			
 			/* need backdrop behind sliders... */
-			uiBlockSetEmboss(block, UI_EMBOSS);
+			UI_block_emboss_set(block, UI_EMBOSS);
 			
 			if (ale->id) { /* Slider using RNA Access -------------------- */
 				PointerRNA id_ptr, ptr;
@@ -4037,9 +4141,9 @@ void ANIM_channel_draw_widgets(bContext *C, bAnimContext *ac, bAnimListElem *ale
 						
 						/* assign keyframing function according to slider type */
 						if (ale->type == ANIMTYPE_SHAPEKEY)
-							uiButSetFunc(but, achannel_setting_slider_shapekey_cb, ale->id, ale->data);
+							UI_but_func_set(but, achannel_setting_slider_shapekey_cb, ale->id, ale->data);
 						else
-							uiButSetFunc(but, achannel_setting_slider_cb, ale->id, ale->data);
+							UI_but_func_set(but, achannel_setting_slider_cb, ale->id, ale->data);
 					}
 					
 					/* free the path if necessary */

@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
@@ -402,7 +402,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 						sc->data2 = 0.0f;
 					}
 					else
-						sc->T = sd->dPdu;
+						sc->T = normalize(sd->dPdu);
 
 					if(type == CLOSURE_BSDF_HAIR_REFLECTION_ID) {
 						sd->flag |= bsdf_hair_reflection_setup(sc);
@@ -528,8 +528,7 @@ ccl_device void svm_node_closure_volume(KernelGlobals *kg, ShaderData *sd, float
 			ShaderClosure *sc = svm_node_closure_get_bsdf(sd, mix_weight * density);
 
 			if(sc) {
-				float g = param2;
-				sc->data0 = g;
+				sc->data0 = param2; /* g */
 				sd->flag |= volume_henyey_greenstein_setup(sc);
 			}
 			break;

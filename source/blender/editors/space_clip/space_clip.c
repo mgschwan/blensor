@@ -55,7 +55,7 @@
 #include "ED_screen.h"
 #include "ED_clip.h"
 #include "ED_transform.h"
-#include "ED_uvedit.h"  /* just for draw_image_cursor */
+#include "ED_uvedit.h"  /* just for ED_image_draw_cursor */
 
 #include "IMB_imbuf.h"
 
@@ -418,6 +418,9 @@ static void clip_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn)
 		case NC_GPENCIL:
 			if (wmn->action == NA_EDITED) {
 				clip_scopes_check_gpencil_change(sa);
+				ED_area_tag_redraw(sa);
+			}
+			else if (wmn->data & ND_GPENCIL_EDITMODE) {
 				ED_area_tag_redraw(sa);
 			}
 			break;
@@ -1159,7 +1162,7 @@ static void clip_main_area_draw(const bContext *C, ARegion *ar)
 	/* if tracking is in progress, we should synchronize framenr from clipuser
 	 * so latest tracked frame would be shown */
 	if (clip && clip->tracking_context)
-		BKE_tracking_context_sync_user(clip->tracking_context, &sc->user);
+		BKE_autotrack_context_sync_user(clip->tracking_context, &sc->user);
 
 	if (sc->flag & SC_LOCK_SELECTION) {
 		ImBuf *tmpibuf = NULL;
@@ -1218,7 +1221,7 @@ static void clip_main_area_draw(const bContext *C, ARegion *ar)
 		glScalef(zoomx, zoomy, 0);
 		glMultMatrixf(sc->stabmat);
 		glScalef(width, height, 0);
-		draw_image_cursor(ar, sc->cursor);
+		ED_image_draw_cursor(ar, sc->cursor);
 		glPopMatrix();
 	}
 
@@ -1244,6 +1247,8 @@ static void clip_main_area_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(sa), AR
 	switch (wmn->category) {
 		case NC_GPENCIL:
 			if (wmn->action == NA_EDITED)
+				ED_region_tag_redraw(ar);
+			else if (wmn->data & ND_GPENCIL_EDITMODE)
 				ED_region_tag_redraw(ar);
 			break;
 	}
@@ -1495,7 +1500,7 @@ static void clip_properties_area_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(s
 	/* context changes */
 	switch (wmn->category) {
 		case NC_GPENCIL:
-			if (wmn->data == ND_DATA)
+			if (ELEM(wmn->data, ND_DATA, ND_GPENCIL_EDITMODE))
 				ED_region_tag_redraw(ar);
 			break;
 		case NC_BRUSH:

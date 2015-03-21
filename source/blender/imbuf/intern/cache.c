@@ -22,7 +22,6 @@
  *  \ingroup imbuf
  */
 
-
 #include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
@@ -30,8 +29,6 @@
 #include "BLI_listbase.h"
 #include "BLI_memarena.h"
 #include "BLI_threads.h"
-
-
 
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
@@ -101,14 +98,14 @@ static unsigned int imb_global_tile_hash(const void *gtile_p)
 	return ((unsigned int)(intptr_t)gtile->ibuf) * 769 + gtile->tx * 53 + gtile->ty * 97;
 }
 
-static int imb_global_tile_cmp(const void *a_p, const void *b_p)
+static bool imb_global_tile_cmp(const void *a_p, const void *b_p)
 {
 	const ImGlobalTile *a = a_p;
 	const ImGlobalTile *b = b_p;
 
-	if (a->ibuf == b->ibuf && a->tx == b->tx && a->ty == b->ty) return 0;
-	else if (a->ibuf < b->ibuf || a->tx < b->tx || a->ty < b->ty) return -1;
-	else return 1;
+	return ((a->ibuf != b->ibuf) ||
+	        (a->tx != b->tx) ||
+	        (a->ty != b->ty));
 }
 
 static unsigned int imb_thread_tile_hash(const void *ttile_p)
@@ -118,14 +115,14 @@ static unsigned int imb_thread_tile_hash(const void *ttile_p)
 	return ((unsigned int)(intptr_t)ttile->ibuf) * 769 + ttile->tx * 53 + ttile->ty * 97;
 }
 
-static int imb_thread_tile_cmp(const void *a_p, const void *b_p)
+static bool imb_thread_tile_cmp(const void *a_p, const void *b_p)
 {
 	const ImThreadTile *a = a_p;
 	const ImThreadTile *b = b_p;
 
-	if (a->ibuf == b->ibuf && a->tx == b->tx && a->ty == b->ty) return 0;
-	else if (a->ibuf < b->ibuf || a->tx < b->tx || a->ty < b->ty) return -1;
-	else return 1;
+	return ((a->ibuf != b->ibuf) ||
+	        (a->tx != b->tx) ||
+	        (a->ty != b->ty));
 }
 
 /******************************** Load/Unload ********************************/

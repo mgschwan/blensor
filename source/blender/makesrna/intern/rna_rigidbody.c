@@ -94,6 +94,8 @@ static EnumPropertyItem rigidbody_mesh_source_items[] = {
 #include "BKE_depsgraph.h"
 #include "BKE_rigidbody.h"
 
+#include "WM_api.h"
+
 #define RB_FLAG_SET(dest, value, flag) { \
 	if (value) \
 		dest |= flag; \
@@ -149,6 +151,15 @@ static void rna_RigidBodyOb_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA 
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	
 	BKE_rigidbody_cache_reset(rbw);
+}
+
+static void rna_RigidBodyOb_shape_update(Main *bmain, Scene *scene, PointerRNA *ptr)
+{
+	Object *ob = ptr->id.data;
+	
+	rna_RigidBodyOb_reset(bmain, scene, ptr);
+	
+	WM_main_add_notifier(NC_OBJECT | ND_DRAW, ob);
 }
 
 static void rna_RigidBodyOb_shape_reset(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
@@ -633,8 +644,7 @@ static void rna_RigidBodyWorld_convex_sweep_test(
 		BKE_report(reports, RPT_ERROR, "Rigidbody world was not properly initialized, need to step the simulation first");
 	}
 #else
-	(void)rbw, (void)reports, (void)object, (void)ray_start, (void)ray_end;
-	(void)r_location, (void)r_hitpoint, (void)r_normal, (void)r_hit;
+	UNUSED_VARS(rbw, reports, object, ray_start, ray_end, r_location, r_hitpoint, r_normal, r_hit);
 #endif
 }
 
@@ -797,7 +807,7 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_enum_funcs(prop, NULL, "rna_RigidBodyOb_shape_set", NULL);
 	RNA_def_property_ui_text(prop, "Collision Shape", "Collision Shape of object in Rigid Body Simulations");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_shape_update");
 	
 	prop = RNA_def_property(srna, "kinematic", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_KINEMATIC);

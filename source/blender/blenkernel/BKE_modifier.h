@@ -41,6 +41,7 @@ struct Scene;
 struct ListBase;
 struct LinkNode;
 struct bArmature;
+struct Main;
 struct ModifierData;
 struct BMEditMesh;
 
@@ -256,7 +257,8 @@ typedef struct ModifierTypeInfo {
 	 *
 	 * This function is optional.
 	 */
-	void (*updateDepgraph)(struct ModifierData *md, struct DagForest *forest, struct Scene *scene,
+	void (*updateDepgraph)(struct ModifierData *md, struct DagForest *forest,
+	                       struct Main *bmain, struct Scene *scene,
 	                       struct Object *ob, struct DagNode *obNode);
 
 	/* Should return true if the modifier needs to be recalculated on time
@@ -319,7 +321,7 @@ ModifierTypeInfo *modifierType_getInfo(ModifierType type);
 struct ModifierData  *modifier_new(int type);
 void          modifier_free(struct ModifierData *md);
 
-void          modifier_unique_name(struct ListBase *modifiers, struct ModifierData *md);
+bool          modifier_unique_name(struct ListBase *modifiers, struct ModifierData *md);
 
 void          modifier_copyData_generic(const struct ModifierData *md, struct ModifierData *target);
 void          modifier_copyData(struct ModifierData *md, struct ModifierData *target);

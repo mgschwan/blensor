@@ -55,7 +55,6 @@
 #include "BKE_global.h"
 #include "BKE_main.h"
 
-#include "BIF_gl.h"
 
 #include "RNA_access.h"
 
@@ -74,6 +73,8 @@
 
 #include "GPU_draw.h"
 #include "GPU_extensions.h"
+#include "GPU_init_exit.h"
+#include "GPU_glew.h"
 
 #include "UI_interface.h"
 
@@ -319,8 +320,7 @@ void wm_window_title(wmWindowManager *wm, wmWindow *win)
 		/* nothing to do for 'temp' windows,
 		 * because WM_window_open_temp always sets window title  */
 	}
-	else {
-		
+	else if (win->ghostwin) {
 		/* this is set to 1 if you don't have startup.blend open */
 		if (G.save_over && G.main->name[0]) {
 			char str[sizeof(G.main->name) + 24];
@@ -339,10 +339,24 @@ void wm_window_title(wmWindowManager *wm, wmWindow *win)
 	}
 }
 
+float wm_window_pixelsize(wmWindow *win)
+{
+	float pixelsize = GHOST_GetNativePixelSize(win->ghostwin);
+	
+	switch (U.virtual_pixel) {
+		default:
+		case VIRTUAL_PIXEL_NATIVE:
+			return pixelsize;
+		case VIRTUAL_PIXEL_DOUBLE:
+			return 2.0f * pixelsize;
+	}
+}
+
 /* belongs to below */
-static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
+static void wm_window_add_ghostwindow(wmWindowManager *wm, const char *title, wmWindow *win)
 {
 	GHOST_WindowHandle ghostwin;
+	GHOST_GLSettings glSettings = {0};
 	static int multisamples = -1;
 	int scr_w, scr_h, posy;
 	
@@ -350,7 +364,12 @@ static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
 	 * mix it, either all windows have it, or none (tested in OSX opengl) */
 	if (multisamples == -1)
 		multisamples = U.ogl_multisamples;
-	
+
+	glSettings.numOfAASamples = multisamples;
+
+	if (!(U.uiflag2 & USER_OPENGL_NO_WARN_SUPPORT))
+		glSettings.flags |= GHOST_glWarnSupport;
+
 	wm_get_screensize(&scr_w, &scr_h);
 	posy = (scr_h - win->posy - win->sizey);
 	
@@ -358,14 +377,16 @@ static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
 	                              win->posx, posy, win->sizex, win->sizey,
 	                              (GHOST_TWindowState)win->windowstate,
 	                              GHOST_kDrawingContextTypeOpenGL,
-	                              0 /* no stereo */,
-	                              multisamples /* AA */);
+	                              glSettings);
 	
 	if (ghostwin) {
 		GHOST_RectangleHandle bounds;
 		
+		/* the new window has already been made drawable upon creation */
+		wm->windrawable = win;
+
 		/* needed so we can detect the graphics card below */
-		GPU_extensions_init();
+		GPU_init();
 		
 		win->ghostwin = ghostwin;
 		GHOST_SetWindowUserData(ghostwin, win); /* pointer back */
@@ -397,7 +418,7 @@ static void wm_window_add_ghostwindow(const char *title, wmWindow *win)
 		
 		/* displays with larger native pixels, like Macbook. Used to scale dpi with */
 		/* needed here, because it's used before it reads userdef */
-		U.pixelsize = GHOST_GetNativePixelSize(win->ghostwin);
+		U.pixelsize = wm_window_pixelsize(win);
 		BKE_userdef_state();
 		
 		wm_window_swap_buffers(win);
@@ -431,8 +452,7 @@ void wm_window_add_ghostwindows(wmWindowManager *wm)
 	wm_init_state.start_x = 0;
 	wm_init_state.start_y = 0;
 
-
-#if !defined(__APPLE__) && !defined(WIN32)  /* X11 */
+#ifdef WITH_X11 /* X11 */
 		/* X11, start maximized but use default sane size */
 		wm_init_state.size_x = min_ii(wm_init_state.size_x, WM_WIN_INIT_SIZE_X);
 		wm_init_state.size_y = min_ii(wm_init_state.size_y, WM_WIN_INIT_SIZE_Y);
@@ -461,7 +481,7 @@ void wm_window_add_ghostwindows(wmWindowManager *wm)
 				wm_init_state.override_flag &= ~WIN_OVERRIDE_WINSTATE;
 			}
 
-			wm_window_add_ghostwindow("Blender", win);
+			wm_window_add_ghostwindow(wm, "Blender", win);
 		}
 		/* happens after fileread */
 		if (win->eventstate == NULL)
@@ -686,7 +706,7 @@ void wm_window_make_drawable(wmWindowManager *wm, wmWindow *win)
 		GHOST_ActivateWindowDrawingContext(win->ghostwin);
 		
 		/* this can change per window */
-		U.pixelsize = GHOST_GetNativePixelSize(win->ghostwin);
+		U.pixelsize = wm_window_pixelsize(win);
 		BKE_userdef_state();
 	}
 }
@@ -1046,7 +1066,7 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr C_void_ptr
 			case GHOST_kEventNativeResolutionChange:
 				// printf("change, pixel size %f\n", GHOST_GetNativePixelSize(win->ghostwin));
 				
-				U.pixelsize = GHOST_GetNativePixelSize(win->ghostwin);
+				U.pixelsize = wm_window_pixelsize(win);
 				BKE_userdef_state();
 				WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, NULL);
 				WM_event_add_notifier(C, NC_WINDOW | NA_EDITED, NULL);
@@ -1413,9 +1433,9 @@ void wm_window_set_swap_interval (wmWindow *win, int interval)
 	GHOST_SetSwapInterval(win->ghostwin, interval);
 }
 
-int wm_window_get_swap_interval (wmWindow *win)
+bool wm_window_get_swap_interval(wmWindow *win, int *intervalOut)
 {
-	return GHOST_GetSwapInterval(win->ghostwin);
+	return GHOST_GetSwapInterval(win->ghostwin, intervalOut);
 }
 
 
@@ -1509,3 +1529,21 @@ bool WM_window_is_fullscreen(wmWindow *win)
 	return win->windowstate == GHOST_kWindowStateFullScreen;
 }
 
+
+#ifdef WITH_INPUT_IME
+/* note: keep in mind wm_window_IME_begin is also used to reposition the IME window */
+void wm_window_IME_begin(wmWindow *win, int x, int y, int w, int h, bool complete)
+{
+	BLI_assert(win);
+
+	GHOST_BeginIME(win->ghostwin, x, win->sizey - y, w, h, complete);
+}
+
+void wm_window_IME_end(wmWindow *win)
+{
+	BLI_assert(win && win->ime_data);
+
+	GHOST_EndIME(win->ghostwin);
+	win->ime_data = NULL;
+}
+#endif  /* WITH_INPUT_IME */

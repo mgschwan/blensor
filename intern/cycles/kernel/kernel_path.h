@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifdef __OSL__
@@ -45,6 +45,10 @@
 #include "kernel_path_surface.h"
 #include "kernel_path_volume.h"
 
+#ifdef __KERNEL_DEBUG__
+#include "kernel_debug.h"
+#endif
+
 CCL_NAMESPACE_BEGIN
 
 ccl_device void kernel_path_indirect(KernelGlobals *kg, RNG *rng, Ray ray,
@@ -55,11 +59,7 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg, RNG *rng, Ray ray,
 		/* intersect scene */
 		Intersection isect;
 		uint visibility = path_state_ray_visibility(kg, &state);
-#ifdef __HAIR__
 		bool hit = scene_intersect(kg, &ray, visibility, &isect, NULL, 0.0f, 0.0f);
-#else
-		bool hit = scene_intersect(kg, &ray, visibility, &isect);
-#endif
 
 #ifdef __LAMP_MIS__
 		if(kernel_data.integrator.use_lamp_mis && !(state.flag & PATH_RAY_CAMERA)) {
@@ -117,7 +117,7 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg, RNG *rng, Ray ray,
 
 					/* direct light sampling */
 					kernel_branched_path_volume_connect_light(kg, rng, &volume_sd,
-						throughput, &state, L, 1.0f, all, &volume_ray, &volume_segment);
+						throughput, &state, L, all, &volume_ray, &volume_segment);
 
 					/* indirect sample. if we use distance sampling and take just
 					 * one sample for direct and indirect light, we could share
@@ -130,9 +130,6 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg, RNG *rng, Ray ray,
 						rphase, rscatter, &volume_segment, NULL, true);
 				}
 
-				if(result != VOLUME_PATH_SCATTERED)
-					throughput *= volume_segment.accum_transmittance;
-
 				/* free cached steps */
 				kernel_volume_decoupled_free(kg, &volume_segment);
 
@@ -141,6 +138,9 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg, RNG *rng, Ray ray,
 						continue;
 					else
 						break;
+				}
+				else {
+					throughput *= volume_segment.accum_transmittance;
 				}
 			}
 			else
@@ -363,6 +363,32 @@ ccl_device void kernel_branched_path_ao(KernelGlobals *kg, ShaderData *sd, PathR
 }
 
 #ifdef __SUBSURFACE__
+
+#ifdef __VOLUME__
+ccl_device void kernel_path_subsurface_update_volume_stack(KernelGlobals *kg,
+                                                           Ray *ray,
+                                                           VolumeStack *stack)
+{
+	kernel_assert(kernel_data.integrator.use_volumes);
+
+	Ray volume_ray = *ray;
+	Intersection isect;
+	int step = 0;
+	while(step < VOLUME_STACK_SIZE &&
+	      scene_intersect_volume(kg, &volume_ray, &isect))
+	{
+		ShaderData sd;
+		shader_setup_from_ray(kg, &sd, &isect, &volume_ray, 0, 0);
+		kernel_volume_stack_enter_exit(kg, &sd, stack);
+
+		/* Move ray forward. */
+		volume_ray.P = ray_offset(sd.P, -sd.Ng);
+		volume_ray.t -= sd.ray_length;
+		++step;
+	}
+}
+#endif
+
 ccl_device bool kernel_path_subsurface_scatter(KernelGlobals *kg, ShaderData *sd, PathRadiance *L, PathState *state, RNG *rng, Ray *ray, float3 *throughput)
 {
 	float bssrdf_probability;
@@ -379,6 +405,11 @@ ccl_device bool kernel_path_subsurface_scatter(KernelGlobals *kg, ShaderData *sd
 		float bssrdf_u, bssrdf_v;
 		path_state_rng_2D(kg, rng, state, PRNG_BSDF_U, &bssrdf_u, &bssrdf_v);
 		int num_hits = subsurface_scatter_multi_step(kg, sd, bssrdf_sd, state->flag, sc, &lcg_state, bssrdf_u, bssrdf_v, false);
+#ifdef __VOLUME__
+		Ray volume_ray = *ray;
+		bool need_update_volume_stack = kernel_data.integrator.use_volumes &&
+		                                sd->flag & SD_OBJECT_INTERSECTS_VOLUME;
+#endif
 
 		/* compute lighting with the BSDF closure */
 		for(int hit = 0; hit < num_hits; hit++) {
@@ -394,6 +425,22 @@ ccl_device bool kernel_path_subsurface_scatter(KernelGlobals *kg, ShaderData *sd
 			if(kernel_path_surface_bounce(kg, rng, &bssrdf_sd[hit], &tp, &hit_state, L, &hit_ray)) {
 #ifdef __LAMP_MIS__
 				hit_state.ray_t = 0.0f;
+#endif
+
+#ifdef __VOLUME__
+				if(need_update_volume_stack) {
+					/* Setup ray from previous surface point to the new one. */
+					volume_ray.D = normalize_len(hit_ray.P - volume_ray.P,
+					                             &volume_ray.t);
+
+					kernel_path_subsurface_update_volume_stack(
+					    kg,
+					    &volume_ray,
+					    hit_state.volume_stack);
+
+					/* Move volume ray forward. */
+					volume_ray.P = hit_ray.P;
+				}
 #endif
 
 				kernel_path_indirect(kg, rng, hit_ray, tp, state->num_samples, hit_state, L);
@@ -420,7 +467,12 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 	path_radiance_init(&L, kernel_data.film.use_light_pass);
 
 	PathState state;
-	path_state_init(kg, &state, rng, sample);
+	path_state_init(kg, &state, rng, sample, &ray);
+
+#ifdef __KERNEL_DEBUG__
+	DebugData debug_data;
+	debug_data_init(&debug_data);
+#endif
 
 	/* path iteration */
 	for(;;) {
@@ -445,7 +497,13 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 
 		bool hit = scene_intersect(kg, &ray, visibility, &isect, &lcg_state, difl, extmax);
 #else
-		bool hit = scene_intersect(kg, &ray, visibility, &isect);
+		bool hit = scene_intersect(kg, &ray, visibility, &isect, NULL, 0.0f, 0.0f);
+#endif
+
+#ifdef __KERNEL_DEBUG__
+		if(state.flag & PATH_RAY_CAMERA) {
+			debug_data.num_bvh_traversal_steps += isect.num_traversal_steps;
+		}
 #endif
 
 #ifdef __LAMP_MIS__
@@ -504,7 +562,7 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 
 					/* direct light sampling */
 					kernel_branched_path_volume_connect_light(kg, rng, &volume_sd,
-						throughput, &state, &L, 1.0f, all, &volume_ray, &volume_segment);
+						throughput, &state, &L, all, &volume_ray, &volume_segment);
 
 					/* indirect sample. if we use distance sampling and take just
 					 * one sample for direct and indirect light, we could share
@@ -517,9 +575,6 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 						rphase, rscatter, &volume_segment, NULL, true);
 				}
 
-				if(result != VOLUME_PATH_SCATTERED)
-					throughput *= volume_segment.accum_transmittance;
-
 				/* free cached steps */
 				kernel_volume_decoupled_free(kg, &volume_segment);
 
@@ -528,6 +583,9 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 						continue;
 					else
 						break;
+				}
+				else {
+					throughput *= volume_segment.accum_transmittance;
 				}
 			}
 			else 
@@ -668,6 +726,10 @@ ccl_device float4 kernel_path_integrate(KernelGlobals *kg, RNG *rng, int sample,
 
 	kernel_write_light_passes(kg, buffer, &L, sample);
 
+#ifdef __KERNEL_DEBUG__
+	kernel_write_debug_passes(kg, buffer, &state, &debug_data, sample);
+#endif
+
 	return make_float4(L_sum.x, L_sum.y, L_sum.z, 1.0f - L_transparent);
 }
 
@@ -722,7 +784,13 @@ ccl_device_noinline void kernel_branched_path_surface_indirect_light(KernelGloba
 }
 
 #ifdef __SUBSURFACE__
-ccl_device void kernel_branched_path_subsurface_scatter(KernelGlobals *kg, ShaderData *sd, PathRadiance *L, PathState *state, RNG *rng, float3 throughput)
+ccl_device void kernel_branched_path_subsurface_scatter(KernelGlobals *kg,
+                                                        ShaderData *sd,
+                                                        PathRadiance *L,
+                                                        PathState *state,
+                                                        RNG *rng,
+                                                        Ray *ray,
+                                                        float3 throughput)
 {
 	for(int i = 0; i< sd->num_closure; i++) {
 		ShaderClosure *sc = &sd->closure[i];
@@ -745,12 +813,34 @@ ccl_device void kernel_branched_path_subsurface_scatter(KernelGlobals *kg, Shade
 			float bssrdf_u, bssrdf_v;
 			path_branched_rng_2D(kg, &bssrdf_rng, state, j, num_samples, PRNG_BSDF_U, &bssrdf_u, &bssrdf_v);
 			int num_hits = subsurface_scatter_multi_step(kg, sd, bssrdf_sd, state->flag, sc, &lcg_state, bssrdf_u, bssrdf_v, true);
+#ifdef __VOLUME__
+			Ray volume_ray = *ray;
+			bool need_update_volume_stack = kernel_data.integrator.use_volumes &&
+			                                sd->flag & SD_OBJECT_INTERSECTS_VOLUME;
+#endif
 
 			/* compute lighting with the BSDF closure */
 			for(int hit = 0; hit < num_hits; hit++) {
 				PathState hit_state = *state;
 
 				path_state_branch(&hit_state, j, num_samples);
+
+#ifdef __VOLUME__
+				if(need_update_volume_stack) {
+					/* Setup ray from previous surface point to the new one. */
+					float3 P = ray_offset(bssrdf_sd[hit].P, -bssrdf_sd[hit].Ng);
+					volume_ray.D = normalize_len(P - volume_ray.P,
+					                             &volume_ray.t);
+
+					kernel_path_subsurface_update_volume_stack(
+					    kg,
+					    &volume_ray,
+					    hit_state.volume_stack);
+
+					/* Move volume ray forward. */
+					volume_ray.P = P;
+				}
+#endif
 
 #if defined(__EMISSION__) && defined(__BRANCHED_PATH__)
 				/* direct light */
@@ -783,7 +873,12 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 	path_radiance_init(&L, kernel_data.film.use_light_pass);
 
 	PathState state;
-	path_state_init(kg, &state, rng, sample);
+	path_state_init(kg, &state, rng, sample, &ray);
+
+#ifdef __KERNEL_DEBUG__
+	DebugData debug_data;
+	debug_data_init(&debug_data);
+#endif
 
 	for(;;) {
 		/* intersect scene */
@@ -807,7 +902,13 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 
 		bool hit = scene_intersect(kg, &ray, visibility, &isect, &lcg_state, difl, extmax);
 #else
-		bool hit = scene_intersect(kg, &ray, visibility, &isect);
+		bool hit = scene_intersect(kg, &ray, visibility, &isect, NULL, 0.0f, 0.0f);
+#endif
+
+#ifdef __KERNEL_DEBUG__
+		if(state.flag & PATH_RAY_CAMERA) {
+			debug_data.num_bvh_traversal_steps += isect.num_traversal_steps;
+		}
 #endif
 
 #ifdef __VOLUME__
@@ -836,7 +937,7 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 				bool all = kernel_data.integrator.sample_all_lights_direct;
 
 				kernel_branched_path_volume_connect_light(kg, rng, &volume_sd,
-					throughput, &state, &L, 1.0f, all, &volume_ray, &volume_segment);
+					throughput, &state, &L, all, &volume_ray, &volume_segment);
 
 				/* indirect light sampling */
 				int num_samples = kernel_data.integrator.volume_samples;
@@ -1016,7 +1117,8 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 #ifdef __SUBSURFACE__
 		/* bssrdf scatter to a different location on the same object */
 		if(sd.flag & SD_BSSRDF) {
-			kernel_branched_path_subsurface_scatter(kg, &sd, &L, &state, rng, throughput);
+			kernel_branched_path_subsurface_scatter(kg, &sd, &L, &state,
+			                                        rng, &ray, throughput);
 		}
 #endif
 
@@ -1063,6 +1165,10 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 	float3 L_sum = path_radiance_clamp_and_sum(kg, &L);
 
 	kernel_write_light_passes(kg, buffer, &L, sample);
+
+#ifdef __KERNEL_DEBUG__
+	kernel_write_debug_passes(kg, buffer, &state, &debug_data, sample);
+#endif
 
 	return make_float4(L_sum.x, L_sum.y, L_sum.z, 1.0f - L_transparent);
 }

@@ -53,8 +53,6 @@
 #include "BKE_colortools.h"
 #include "BKE_animsys.h"
 
-#include "RNA_access.h"
-
 static const char *modifier_name[LS_MODIFIER_NUM] = {
 	NULL,
 	"Along Stroke",
@@ -93,6 +91,7 @@ static void default_linestyle_settings(FreestyleLineStyle *linestyle)
 	linestyle->min_length = 0.0f;
 	linestyle->max_length = 10000.0f;
 	linestyle->split_length = 100;
+	linestyle->chain_count = 10;
 	linestyle->sort_key = LS_SORT_KEY_DISTANCE_FROM_CAMERA;
 	linestyle->integration_type = LS_INTEGRATION_MEAN;
 	linestyle->texstep = 1.0f;
@@ -108,14 +107,11 @@ static void default_linestyle_settings(FreestyleLineStyle *linestyle)
 	linestyle->caps = LS_CAPS_BUTT;
 }
 
-FreestyleLineStyle *BKE_linestyle_new(const char *name, struct Main *main)
+FreestyleLineStyle *BKE_linestyle_new(struct Main *bmain, const char *name)
 {
 	FreestyleLineStyle *linestyle;
 
-	if (!main)
-		main = G.main;
-
-	linestyle = (FreestyleLineStyle *)BKE_libblock_alloc(main, ID_LS, name);
+	linestyle = (FreestyleLineStyle *)BKE_libblock_alloc(bmain, ID_LS, name);
 
 	default_linestyle_settings(linestyle);
 
@@ -150,13 +146,13 @@ void BKE_linestyle_free(FreestyleLineStyle *linestyle)
 		BKE_linestyle_geometry_modifier_remove(linestyle, m);
 }
 
-FreestyleLineStyle *BKE_linestyle_copy(FreestyleLineStyle *linestyle)
+FreestyleLineStyle *BKE_linestyle_copy(struct Main *bmain, FreestyleLineStyle *linestyle)
 {
 	FreestyleLineStyle *new_linestyle;
 	LineStyleModifier *m;
 	int a;
 
-	new_linestyle = BKE_linestyle_new(linestyle->id.name + 2, NULL);
+	new_linestyle = BKE_linestyle_new(bmain, linestyle->id.name + 2);
 	BKE_linestyle_free(new_linestyle);
 
 	for (a = 0; a < MAX_MTEX; a++) {
@@ -186,6 +182,7 @@ FreestyleLineStyle *BKE_linestyle_copy(FreestyleLineStyle *linestyle)
 	new_linestyle->max_angle = linestyle->max_angle;
 	new_linestyle->min_length = linestyle->min_length;
 	new_linestyle->max_length = linestyle->max_length;
+	new_linestyle->chain_count = linestyle->chain_count;
 	new_linestyle->split_dash1 = linestyle->split_dash1;
 	new_linestyle->split_gap1 = linestyle->split_gap1;
 	new_linestyle->split_dash2 = linestyle->split_dash2;
@@ -199,8 +196,11 @@ FreestyleLineStyle *BKE_linestyle_copy(FreestyleLineStyle *linestyle)
 	new_linestyle->dash3 = linestyle->dash3;
 	new_linestyle->gap3 = linestyle->gap3;
 	new_linestyle->panel = linestyle->panel;
+	new_linestyle->sort_key = linestyle->sort_key;
+	new_linestyle->integration_type = linestyle->integration_type;
 	new_linestyle->texstep = linestyle->texstep;
 	new_linestyle->pr_texture = linestyle->pr_texture;
+	new_linestyle->use_nodes = linestyle->use_nodes;
 	for (m = (LineStyleModifier *)linestyle->color_modifiers.first; m; m = m->next)
 		BKE_linestyle_color_modifier_copy(new_linestyle, m);
 	for (m = (LineStyleModifier *)linestyle->alpha_modifiers.first; m; m = m->next)
@@ -209,6 +209,10 @@ FreestyleLineStyle *BKE_linestyle_copy(FreestyleLineStyle *linestyle)
 		BKE_linestyle_thickness_modifier_copy(new_linestyle, m);
 	for (m = (LineStyleModifier *)linestyle->geometry_modifiers.first; m; m = m->next)
 		BKE_linestyle_geometry_modifier_copy(new_linestyle, m);
+
+	if (linestyle->id.lib) {
+		BKE_id_lib_local_paths(G.main, linestyle->id.lib, &new_linestyle->id);
+	}
 
 	return new_linestyle;
 }
@@ -276,6 +280,9 @@ LineStyleModifier *BKE_linestyle_color_modifier_add(FreestyleLineStyle *linestyl
 	LineStyleModifier *m;
 
 	m = alloc_color_modifier(name, type);
+	if (UNLIKELY(m == NULL)) {
+		return NULL;
+	}
 	m->blend = MA_RAMP_BLEND;
 
 	switch (type) {
@@ -310,6 +317,9 @@ LineStyleModifier *BKE_linestyle_color_modifier_copy(FreestyleLineStyle *linesty
 	LineStyleModifier *new_m;
 
 	new_m = alloc_color_modifier(m->name, m->type);
+	if (UNLIKELY(new_m == NULL)) {
+		return NULL;
+	}
 	new_m->influence = m->influence;
 	new_m->flags = m->flags;
 	new_m->blend = m->blend;

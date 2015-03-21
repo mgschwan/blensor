@@ -33,9 +33,7 @@
 
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
-#include "DNA_key_types.h"
 #include "DNA_mesh_types.h"
-#include "DNA_meshdata_types.h"
 #include "DNA_meta_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
@@ -69,7 +67,6 @@
 
 #include "ED_armature.h"
 #include "ED_keyframing.h"
-#include "ED_mball.h"
 #include "ED_mesh.h"
 #include "ED_screen.h"
 #include "ED_view3d.h"
@@ -974,7 +971,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 						DAG_id_tag_update(&ob_other->id, OB_RECALC_OB | OB_RECALC_DATA);
 
 						copy_v3_v3(centn, cent);
-						mul_mat3_m4_v3(ob_other->obmat, centn); /* ommit translation part */
+						mul_mat3_m4_v3(ob_other->obmat, centn); /* omit translation part */
 						add_v3_v3(ob_other->loc, centn);
 
 						BKE_object_where_is_calc(scene, ob_other);

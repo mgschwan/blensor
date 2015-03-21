@@ -126,7 +126,7 @@ static BLI_bitmap *multires_mdisps_upsample_hidden(BLI_bitmap *lo_hidden,
 	if (lo_level == hi_level)
 		return MEM_dupallocN(lo_hidden);
 
-	subd = BLI_BITMAP_NEW(hi_gridsize * hi_gridsize, "MDisps.hidden upsample");
+	subd = BLI_BITMAP_NEW(SQUARE(hi_gridsize), "MDisps.hidden upsample");
 
 	factor = BKE_ccg_factor(lo_level, hi_level);
 	offset = 1 << (hi_level - lo_level - 1);
@@ -182,9 +182,7 @@ static BLI_bitmap *multires_mdisps_downsample_hidden(BLI_bitmap *old_hidden,
 
 	BLI_assert(new_level <= old_level);
 	factor = BKE_ccg_factor(new_level, old_level);
-	new_hidden = BLI_BITMAP_NEW(new_gridsize * new_gridsize,
-	                            "downsample hidden");
-
+	new_hidden = BLI_BITMAP_NEW(SQUARE(new_gridsize), "downsample hidden");
 
 
 	for (y = 0; y < new_gridsize; y++) {
@@ -250,15 +248,15 @@ static MDisps *multires_mdisps_initialize_hidden(Mesh *me, int level)
 	MDisps *mdisps = CustomData_add_layer(&me->ldata, CD_MDISPS,
 	                                      CD_CALLOC, NULL, me->totloop);
 	int gridsize = BKE_ccg_gridsize(level);
-	int gridarea = gridsize * gridsize;
-	int i, j, k;
+	int gridarea = SQUARE(gridsize);
+	int i, j;
 	
 	for (i = 0; i < me->totpoly; i++) {
-		int hide = 0;
+		bool hide = false;
 
 		for (j = 0; j < me->mpoly[i].totloop; j++) {
 			if (me->mvert[me->mloop[me->mpoly[i].loopstart + j].v].flag & ME_HIDE) {
-				hide = 1;
+				hide = true;
 				break;
 			}
 		}
@@ -272,9 +270,7 @@ static MDisps *multires_mdisps_initialize_hidden(Mesh *me, int level)
 			BLI_assert(!md->hidden);
 
 			md->hidden = BLI_BITMAP_NEW(gridarea, "MDisps.hidden initialize");
-
-			for (k = 0; k < gridarea; k++)
-				BLI_BITMAP_ENABLE(md->hidden, k);
+			BLI_BITMAP_SET_ALL(md->hidden, true, gridarea);
 		}
 	}
 
@@ -601,7 +597,7 @@ static void multires_grid_paint_mask_downsample(GridPaintMask *gpm, int level)
 {
 	if (level < gpm->level) {
 		int gridsize = BKE_ccg_gridsize(level);
-		float *data = MEM_callocN(sizeof(float) * gridsize * gridsize,
+		float *data = MEM_callocN(sizeof(float) * SQUARE(gridsize),
 		                          "multires_grid_paint_mask_downsample");
 		int x, y;
 
@@ -1604,7 +1600,7 @@ void multires_load_old_250(Mesh *me)
 			int nvert = mf->v4 ? 4 : 3;
 			int totdisp = mdisps[i].totdisp / nvert;
 			
-			for (j = 0; j < mf->v4 ? 4 : 3; j++, k++) {
+			for (j = 0; j < nvert; j++, k++) {
 				mdisps2[k].disps = MEM_callocN(sizeof(float) * 3 * totdisp, "multires disp in conversion");
 				mdisps2[k].totdisp = totdisp;
 				mdisps2[k].level = mdisps[i].level;
@@ -1645,7 +1641,8 @@ void multires_free(Multires *mr)
 			lvl = lvl->next;
 		}
 
-		MEM_freeN(mr->verts);
+		/* mr->verts may be NULL when loading old files, see direct_link_mesh() in readfile.c, and T43560. */
+		MEM_SAFE_FREE(mr->verts);
 
 		BLI_freelistN(&mr->levels);
 

@@ -429,6 +429,7 @@ EnumPropertyItem operator_return_items[] = {
 	{OPERATOR_FINISHED, "FINISHED", 0, "Finished", "When the operator is complete, operator exits"},
 	/* used as a flag */
 	{OPERATOR_PASS_THROUGH, "PASS_THROUGH", 0, "Pass Through", "Do nothing and pass the event on"},
+	{OPERATOR_INTERFACE, "INTERFACE", 0, "Interface", "Handled but not executed (popup menus)"},
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -525,21 +526,21 @@ static PointerRNA rna_OperatorMacro_properties_get(PointerRNA *ptr)
 
 static void rna_Event_ascii_get(PointerRNA *ptr, char *value)
 {
-	wmEvent *event = (wmEvent *)ptr->data;
+	const wmEvent *event = ptr->data;
 	value[0] = event->ascii;
 	value[1] = '\0';
 }
 
 static int rna_Event_ascii_length(PointerRNA *ptr)
 {
-	wmEvent *event = (wmEvent *)ptr->data;
+	const wmEvent *event = ptr->data;
 	return (event->ascii) ? 1 : 0;
 }
 
 static void rna_Event_unicode_get(PointerRNA *ptr, char *value)
 {
 	/* utf8 buf isn't \0 terminated */
-	wmEvent *event = (wmEvent *)ptr->data;
+	const wmEvent *event = ptr->data;
 	size_t len = 0;
 
 	if (event->utf8_buf[0]) {
@@ -555,7 +556,7 @@ static void rna_Event_unicode_get(PointerRNA *ptr, char *value)
 static int rna_Event_unicode_length(PointerRNA *ptr)
 {
 
-	wmEvent *event = (wmEvent *)ptr->data;
+	const wmEvent *event = ptr->data;
 	if (event->utf8_buf[0]) {
 		/* invalid value is checked on assignment so we don't need to account for this */
 		return BLI_str_utf8_size(event->utf8_buf);
@@ -567,13 +568,13 @@ static int rna_Event_unicode_length(PointerRNA *ptr)
 
 static float rna_Event_pressure_get(PointerRNA *ptr)
 {
-	wmEvent *event = ptr->data;
+	const wmEvent *event = ptr->data;
 	return WM_event_tablet_data(event, NULL, NULL);
 }
 
 static int rna_Event_is_tablet_get(PointerRNA *ptr)
 {
-	wmEvent *event = ptr->data;
+	const wmEvent *event = ptr->data;
 	return WM_event_is_tablet(event);
 }
 
@@ -586,7 +587,7 @@ static void rna_Event_tilt_get(PointerRNA *ptr, float *values)
 static PointerRNA rna_PopupMenu_layout_get(PointerRNA *ptr)
 {
 	struct uiPopupMenu *pup = ptr->data;
-	uiLayout *layout = uiPupMenuLayout(pup);
+	uiLayout *layout = UI_popup_menu_layout(pup);
 
 	PointerRNA rptr;
 	RNA_pointer_create(ptr->id.data, &RNA_UILayout, layout, &rptr);
@@ -597,7 +598,7 @@ static PointerRNA rna_PopupMenu_layout_get(PointerRNA *ptr)
 static PointerRNA rna_PieMenu_layout_get(PointerRNA *ptr)
 {
 	struct uiPieMenu *pie = ptr->data;
-	uiLayout *layout = uiPieMenuLayout(pie);
+	uiLayout *layout = UI_pie_menu_layout(pie);
 
 	PointerRNA rptr;
 	RNA_pointer_create(ptr->id.data, &RNA_UILayout, layout, &rptr);
@@ -761,7 +762,7 @@ static EnumPropertyItem *rna_KeyMapItem_propvalue_itemf(bContext *C, PointerRNA 
 	return keymap_propvalue_items; /* ERROR */
 }
 
-static int rna_KeyMapItem_any_getf(PointerRNA *ptr)
+static int rna_KeyMapItem_any_get(PointerRNA *ptr)
 {
 	wmKeyMapItem *kmi = (wmKeyMapItem *)ptr->data;
 
@@ -777,7 +778,7 @@ static int rna_KeyMapItem_any_getf(PointerRNA *ptr)
 	}
 }
 
-static void rna_KeyMapItem_any_setf(PointerRNA *ptr, int value)
+static void rna_KeyMapItem_any_set(PointerRNA *ptr, int value)
 {
 	wmKeyMapItem *kmi = (wmKeyMapItem *)ptr->data;
 
@@ -834,7 +835,7 @@ static void rna_wmKeyMapItem_idname_set(PointerRNA *ptr, const char *value)
 
 	WM_operator_bl_idname(idname, value);
 
-	if (strcmp(idname, kmi->idname) != 0) {
+	if (!STREQ(idname, kmi->idname)) {
 		BLI_strncpy(kmi->idname, idname, sizeof(kmi->idname));
 
 		WM_keymap_properties_reset(kmi, NULL);
@@ -2027,7 +2028,7 @@ static void rna_def_keyconfig(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_KeyMapItem_update");
 
 	prop = RNA_def_property(srna, "any", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_funcs(prop, "rna_KeyMapItem_any_getf", "rna_KeyMapItem_any_setf");
+	RNA_def_property_boolean_funcs(prop, "rna_KeyMapItem_any_get", "rna_KeyMapItem_any_set");
 	RNA_def_property_ui_text(prop, "Any", "Any modifier keys pressed");
 	RNA_def_property_update(prop, 0, "rna_KeyMapItem_update");
 

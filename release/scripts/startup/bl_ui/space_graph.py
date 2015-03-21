@@ -52,6 +52,7 @@ class GRAPH_HT_header(Header):
         row = layout.row(align=True)
         row.operator("graph.copy", text="", icon='COPYDOWN')
         row.operator("graph.paste", text="", icon='PASTEDOWN')
+        row.operator("graph.paste", text="", icon='PASTEFLIPDOWN').flipped = True
 
         row = layout.row(align=True)
         if st.has_ghost_curves:
@@ -118,7 +119,8 @@ class GRAPH_MT_view(Menu):
 
         layout.separator()
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class GRAPH_MT_select(Menu):
@@ -132,9 +134,15 @@ class GRAPH_MT_select(Menu):
         layout.operator("graph.select_all_toggle", text="Invert Selection").invert = True
 
         layout.separator()
-        layout.operator("graph.select_border")
-        layout.operator("graph.select_border", text="Border Axis Range").axis_range = True
-        layout.operator("graph.select_border", text="Border (Include Handles)").include_handles = True
+        props = layout.operator("graph.select_border")
+        props.axis_range = False
+        props.include_handles = False
+        props = layout.operator("graph.select_border", text="Border Axis Range")
+        props.axis_range = True
+        props.include_handles = False
+        props = layout.operator("graph.select_border", text="Border (Include Handles)")
+        props.axis_range = False
+        props.include_handles = True
 
         layout.separator()
         layout.operator("graph.select_column", text="Columns on Selected Keys").mode = 'KEYS'
@@ -144,8 +152,12 @@ class GRAPH_MT_select(Menu):
         layout.operator("graph.select_column", text="Between Selected Markers").mode = 'MARKERS_BETWEEN'
 
         layout.separator()
-        layout.operator("graph.select_leftright", text="Before Current Frame").mode = 'LEFT'
-        layout.operator("graph.select_leftright", text="After Current Frame").mode = 'RIGHT'
+        props = layout.operator("graph.select_leftright", text="Before Current Frame")
+        props.extend = False
+        props.mode = 'LEFT'
+        props = layout.operator("graph.select_leftright", text="After Current Frame")
+        props.extend = False
+        props.mode = 'RIGHT'
 
         layout.separator()
         layout.operator("graph.select_more")
@@ -188,8 +200,12 @@ class GRAPH_MT_channel(Menu):
 
         layout.separator()
         layout.operator("anim.channels_editable_toggle")
-        layout.operator("anim.channels_visibility_set")
         layout.operator_menu_enum("graph.extrapolation_type", "type", text="Extrapolation Mode")
+
+        layout.separator()
+        layout.operator("graph.hide", text="Hide Selected Curves").unselected = False
+        layout.operator("graph.hide", text="Hide Unselected Curves").unselected = True
+        layout.operator("graph.reveal")
 
         layout.separator()
         layout.operator("anim.channels_expand")

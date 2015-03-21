@@ -38,7 +38,6 @@
 
 #include "RE_engine.h"
 #include "RE_pipeline.h"
-#include "RE_engine.h"
 
 
 EnumPropertyItem render_pass_type_items[] = {
@@ -71,6 +70,9 @@ EnumPropertyItem render_pass_type_items[] = {
 	{SCE_PASS_SUBSURFACE_DIRECT, "SUBSURFACE_DIRECT", 0, "Subsurface Direct", ""},
 	{SCE_PASS_SUBSURFACE_INDIRECT, "SUBSURFACE_INDIRECT", 0, "Subsurface Indirect", ""},
 	{SCE_PASS_SUBSURFACE_COLOR, "SUBSURFACE_COLOR", 0, "Subsurface Color", ""},
+#ifdef WITH_CYCLES_DEBUG
+	{SCE_PASS_DEBUG, "DEBUG", 0, "Pass used for render engine debugging", ""},
+#endif
 	{0, NULL, 0, NULL, NULL}
 };
 
@@ -265,7 +267,7 @@ static StructRNA *rna_RenderEngine_register(Main *bmain, ReportList *reports, vo
 
 	/* check if we have registered this engine type before, and remove it */
 	for (et = R_engines.first; et; et = et->next) {
-		if (strcmp(et->idname, dummyet.idname) == 0) {
+		if (STREQ(et->idname, dummyet.idname)) {
 			if (et->ext.srna)
 				rna_RenderEngine_unregister(bmain, et->ext.srna);
 			break;
@@ -517,6 +519,11 @@ static void rna_def_render_engine(BlenderRNA *brna)
 	prop = RNA_def_string(func, "message", NULL, 0, "Report Message", "");
 	RNA_def_property_flag(prop, PROP_REQUIRED);
 
+	func = RNA_def_function(srna, "error_set", "RE_engine_set_error_message");
+	RNA_def_function_ui_description(func, "Set error message displaying after the render is finished");
+	prop = RNA_def_string(func, "message", NULL, 0, "Report Message", "");
+	RNA_def_property_flag(prop, PROP_REQUIRED);
+
 	func = RNA_def_function(srna, "bind_display_space_shader", "engine_bind_display_space_shader");
 	RNA_def_function_ui_description(func, "Bind GLSL fragment shader that converts linear colors to display space colors using scene color management settings");
 	prop = RNA_def_pointer(func, "scene", "Scene", "", "");
@@ -687,6 +694,11 @@ static void rna_def_render_pass(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
+	static EnumPropertyItem render_pass_debug_type_items[] = {
+		{RENDER_PASS_DEBUG_BVH_TRAVERSAL_STEPS, "BVH_TRAVERSAL_STEPS", 0, "BVH Traversal Steps", ""},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "RenderPass", NULL);
 	RNA_def_struct_ui_text(srna, "Render Pass", "");
 
@@ -715,6 +727,11 @@ static void rna_def_render_pass(BlenderRNA *brna)
 	RNA_def_property_multi_array(prop, 2, NULL);
 	RNA_def_property_dynamic_array_funcs(prop, "rna_RenderPass_rect_get_length");
 	RNA_def_property_float_funcs(prop, "rna_RenderPass_rect_get", "rna_RenderPass_rect_set", NULL);
+
+	prop = RNA_def_property(srna, "debug_type", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "debug_type");
+	RNA_def_property_enum_items(prop, render_pass_debug_type_items);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 
 	RNA_define_verify_sdna(1);
 }

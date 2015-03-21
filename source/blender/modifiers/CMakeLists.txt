@@ -40,7 +40,6 @@ set(INC
 
 set(INC_SYS
 	${ZLIB_INCLUDE_DIRS}
-	${GLEW_INCLUDE_PATH}
 )
 
 set(SRC
@@ -53,6 +52,7 @@ set(SRC
 	intern/MOD_cloth.c
 	intern/MOD_collision.c
 	intern/MOD_curve.c
+	intern/MOD_datatransfer.c
 	intern/MOD_decimate.c
 	intern/MOD_displace.c
 	intern/MOD_dynamicpaint.c
@@ -73,6 +73,7 @@ set(SRC
 	intern/MOD_mirror.c
 	intern/MOD_multires.c
 	intern/MOD_none.c
+	intern/MOD_normal_edit.c
 	intern/MOD_ocean.c
 	intern/MOD_particleinstance.c
 	intern/MOD_particlesystem.c
@@ -131,6 +132,10 @@ endif()
 
 if(WITH_MOD_OCEANSIM)
 	add_definitions(-DWITH_OCEANSIM)
+endif()
+
+if(WITH_BULLET)
+	add_definitions(-DWITH_BULLET)
 endif()
 
 if(WITH_INTERNATIONAL)

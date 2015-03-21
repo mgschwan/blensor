@@ -40,9 +40,6 @@
 
 #include "node_composite_util.h"
 
-#include "IMB_imbuf.h"
-#include "IMB_imbuf_types.h"
-
 #include "intern/openexr/openexr_multi.h"
 
 
@@ -140,7 +137,7 @@ int ntreeCompositOutputFileRemoveActiveSocket(bNodeTree *ntree, bNode *node)
 {
 	NodeImageMultiFile *nimf = node->storage;
 	bNodeSocket *sock = BLI_findlink(&node->inputs, nimf->active_input);
-	int totinputs = BLI_countlist(&node->inputs);
+	int totinputs = BLI_listbase_count(&node->inputs);
 	
 	if (!sock)
 		return 0;

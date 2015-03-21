@@ -48,6 +48,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
+#include "BLI_path_util.h"
 
 #include "BKE_action.h"
 #include "BKE_context.h"
@@ -94,91 +95,6 @@
 /* proto */
 static ID **get_selected_and_linked_obs(bContext *C, short *count, short scavisflag);
 
-static int vergname(const void *v1, const void *v2)
-{
-	char **x1, **x2;
-	
-	x1 = (char **)v1;
-	x2 = (char **)v2;
-	
-	return BLI_natstrcmp(*x1, *x2);
-}
-
-void make_unique_prop_names(bContext *C, char *str)
-{
-	Object *ob;
-	bProperty *prop;
-	bSensor *sens;
-	bController *cont;
-	bActuator *act;
-	ID **idar;
-	short a, obcount, propcount=0, nr;
-	const char **names;
-	
-	/* this function is called by a Button, and gives the current
-	 * stringpointer as an argument, this is the one that can change
-	 */
-	
-	idar= get_selected_and_linked_obs(C, &obcount, BUTS_SENS_SEL|BUTS_SENS_ACT|BUTS_ACT_SEL|BUTS_ACT_ACT|BUTS_CONT_SEL|BUTS_CONT_ACT);
-	
-	/* for each object, make properties and sca names unique */
-	
-	/* count total names */
-	for (a=0; a<obcount; a++) {
-		ob= (Object *)idar[a];
-		propcount+= BLI_countlist(&ob->prop);
-		propcount+= BLI_countlist(&ob->sensors);
-		propcount+= BLI_countlist(&ob->controllers);
-		propcount+= BLI_countlist(&ob->actuators);
-	}
-	if (propcount==0) {
-		if (idar) MEM_freeN(idar);
-		return;
-	}
-	
-	/* make names array for sorting */
-	names= MEM_callocN(propcount*sizeof(void *), "names");
-	
-	/* count total names */
-	nr= 0;
-	for (a=0; a<obcount; a++) {
-		ob= (Object *)idar[a];
-		prop= ob->prop.first;
-		while (prop) {
-			names[nr++] = prop->name;
-			prop= prop->next;
-		}
-		sens= ob->sensors.first;
-		while (sens) {
-			names[nr++] = sens->name;
-			sens= sens->next;
-		}
-		cont= ob->controllers.first;
-		while (cont) {
-			names[nr++] = cont->name;
-			cont= cont->next;
-		}
-		act= ob->actuators.first;
-		while (act) {
-			names[nr++] = act->name;
-			act= act->next;
-		}
-	}
-	
-	qsort(names, propcount, sizeof(void *), vergname);
-	
-	/* now we check for double names, and change them */
-	
-	for (nr=0; nr<propcount; nr++) {
-		if (names[nr]!=str && strcmp( names[nr], str )==0 ) {
-			BLI_newname(str, +1);
-		}
-	}
-	
-	MEM_freeN(idar);
-	MEM_freeN(names);
-}
-
 static void do_logic_buts(bContext *C, void *UNUSED(arg), int event)
 {
 	Main *bmain= CTX_data_main(C);
@@ -210,7 +126,7 @@ static void do_logic_buts(bContext *C, void *UNUSED(arg), int event)
 				ob->scaflag &= ~OB_ADDSENS;
 				sens= new_sensor(SENS_ALWAYS);
 				BLI_addtail(&(ob->sensors), sens);
-				make_unique_prop_names(C, sens->name);
+				BLI_uniquename(&ob->sensors, sens, DATA_("Sensor"), '.', offsetof(bSensor, name), sizeof(sens->name));
 				ob->scaflag |= OB_SHOWSENS;
 			}
 		}
@@ -252,7 +168,7 @@ static void do_logic_buts(bContext *C, void *UNUSED(arg), int event)
 			if (ob->scaflag & OB_ADDCONT) {
 				ob->scaflag &= ~OB_ADDCONT;
 				cont= new_controller(CONT_LOGIC_AND);
-				make_unique_prop_names(C, cont->name);
+				BLI_uniquename(&ob->controllers, cont, DATA_("Controller"), '.', offsetof(bController, name), sizeof(cont->name));
 				ob->scaflag |= OB_SHOWCONT;
 				BLI_addtail(&(ob->controllers), cont);
 				/* set the controller state mask from the current object state.
@@ -328,7 +244,7 @@ static void do_logic_buts(bContext *C, void *UNUSED(arg), int event)
 			if (ob->scaflag & OB_ADDACT) {
 				ob->scaflag &= ~OB_ADDACT;
 				act= new_actuator(ACT_OBJECT);
-				make_unique_prop_names(C, act->name);
+				BLI_uniquename(&ob->actuators, act, DATA_("Actuator"), '.', offsetof(bActuator, name), sizeof(act->name));
 				BLI_addtail(&(ob->actuators), act);
 				ob->scaflag |= OB_SHOWACT;
 			}
@@ -761,17 +677,17 @@ static uiBlock *sensor_menu(bContext *C, ARegion *ar, void *UNUSED(arg))
 	uiBlock *block;
 	int yco=0;
 	
-	block= uiBeginBlock(C, ar, __func__, UI_EMBOSSP);
-	uiBlockSetButmFunc(block, do_sensor_menu, NULL);
+	block= UI_block_begin(C, ar, __func__, UI_EMBOSS_PULLDOWN);
+	UI_block_func_butmenu_set(block, do_sensor_menu, NULL);
 	
-	uiDefBut(block, BUTM, 1, IFACE_("Show Objects"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 0, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Hide Objects"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 1, "");
-	uiDefBut(block, SEPRLINE, 0, "",	0, (short)(yco-=6), 160, 6, NULL, 0.0, 0.0, 0, 0, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Show Sensors"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 2, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Hide Sensors"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 3, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Show Objects"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 0, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Hide Objects"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 1, "");
+	uiDefBut(block, UI_BTYPE_SEPR_LINE, 0, "",	0, (short)(yco-=6), 160, 6, NULL, 0.0, 0.0, 0, 0, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Show Sensors"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 2, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Hide Sensors"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 3, "");
 
-	uiBlockSetDirection(block, UI_TOP);
-	uiEndBlock(C, block);
+	UI_block_direction_set(block, UI_DIR_UP);
+	UI_block_end(C, block);
 	
 	return block;
 }
@@ -810,17 +726,17 @@ static uiBlock *controller_menu(bContext *C, ARegion *ar, void *UNUSED(arg))
 	uiBlock *block;
 	int yco=0;
 	
-	block= uiBeginBlock(C, ar, __func__, UI_EMBOSSP);
-	uiBlockSetButmFunc(block, do_controller_menu, NULL);
+	block= UI_block_begin(C, ar, __func__, UI_EMBOSS_PULLDOWN);
+	UI_block_func_butmenu_set(block, do_controller_menu, NULL);
 	
-	uiDefBut(block, BUTM, 1, IFACE_("Show Objects"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 0, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Hide Objects"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 1, "");
-	uiDefBut(block, SEPRLINE, 0, "",					0, (short)(yco-=6), 160, 6, NULL, 0.0, 0.0, 0, 0, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Show Controllers"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 2, 2, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Hide Controllers"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 3, 3, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Show Objects"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 0, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Hide Objects"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 1, 1, "");
+	uiDefBut(block, UI_BTYPE_SEPR_LINE, 0, "",					0, (short)(yco-=6), 160, 6, NULL, 0.0, 0.0, 0, 0, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Show Controllers"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 2, 2, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Hide Controllers"),	0, (short)(yco-=20), 160, 19, NULL, 0.0, 0.0, 3, 3, "");
 
-	uiBlockSetDirection(block, UI_TOP);
-	uiEndBlock(C, block);
+	UI_block_direction_set(block, UI_DIR_UP);
+	UI_block_end(C, block);
 	
 	return block;
 }
@@ -859,17 +775,17 @@ static uiBlock *actuator_menu(bContext *C, ARegion *ar, void *UNUSED(arg))
 	uiBlock *block;
 	int xco=0;
 	
-	block= uiBeginBlock(C, ar, __func__, UI_EMBOSSP);
-	uiBlockSetButmFunc(block, do_actuator_menu, NULL);
+	block= UI_block_begin(C, ar, __func__, UI_EMBOSS_PULLDOWN);
+	UI_block_func_butmenu_set(block, do_actuator_menu, NULL);
 	
-	uiDefBut(block, BUTM, 1, IFACE_("Show Objects"),	0, (short)(xco-=20), 160, 19, NULL, 0.0, 0.0, 1, 0, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Hide Objects"),	0, (short)(xco-=20), 160, 19, NULL, 0.0, 0.0, 1, 1, "");
-	uiDefBut(block, SEPRLINE, 0, "",	0, (short)(xco-=6), 160, 6, NULL, 0.0, 0.0, 0, 0, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Show Actuators"),	0, (short)(xco-=20), 160, 19, NULL, 0.0, 0.0, 1, 2, "");
-	uiDefBut(block, BUTM, 1, IFACE_("Hide Actuators"),	0, (short)(xco-=20), 160, 19, NULL, 0.0, 0.0, 1, 3, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Show Objects"),	0, (short)(xco-=20), 160, 19, NULL, 0.0, 0.0, 1, 0, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Hide Objects"),	0, (short)(xco-=20), 160, 19, NULL, 0.0, 0.0, 1, 1, "");
+	uiDefBut(block, UI_BTYPE_SEPR_LINE, 0, "",	0, (short)(xco-=6), 160, 6, NULL, 0.0, 0.0, 0, 0, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Show Actuators"),	0, (short)(xco-=20), 160, 19, NULL, 0.0, 0.0, 1, 2, "");
+	uiDefBut(block, UI_BTYPE_BUT_MENU, 1, IFACE_("Hide Actuators"),	0, (short)(xco-=20), 160, 19, NULL, 0.0, 0.0, 1, 3, "");
 
-	uiBlockSetDirection(block, UI_TOP);
-	uiEndBlock(C, block);
+	UI_block_direction_set(block, UI_DIR_UP);
+	UI_block_end(C, block);
 	
 	return block;
 }
@@ -892,26 +808,26 @@ static uiBlock *controller_state_mask_menu(bContext *C, ARegion *ar, void *arg_c
 
 	short yco = 12, xco = 0, stbit, offset;
 
-	block= uiBeginBlock(C, ar, __func__, UI_EMBOSS);
+	block= UI_block_begin(C, ar, __func__, UI_EMBOSS);
 
 	/* use this for a fake extra empy space around the buttons */
-	uiDefBut(block, LABEL, 0, "",			-5, -5, 200, 34, NULL, 0, 0, 0, 0, "");
+	uiDefBut(block, UI_BTYPE_LABEL, 0, "",			-5, -5, 200, 34, NULL, 0, 0, 0, 0, "");
 	
 	for (offset=0; offset<15; offset += 5) {
-		uiBlockBeginAlign(block);
+		UI_block_align_begin(block);
 		for (stbit=0; stbit<5; stbit++) {
-			but = uiDefButBitI(block, TOG, (1<<(stbit+offset)), (stbit+offset), "",	(short)(xco+12*stbit+13*offset), yco, 12, 12, (int *)&(cont->state_mask), 0, 0, 0, 0, "");
-			uiButSetFunc(but, check_controller_state_mask, but, &(cont->state_mask));
+			but = uiDefButBitI(block, UI_BTYPE_TOGGLE, (1<<(stbit+offset)), (stbit+offset), "",	(short)(xco+12*stbit+13*offset), yco, 12, 12, (int *)&(cont->state_mask), 0, 0, 0, 0, "");
+			UI_but_func_set(but, check_controller_state_mask, but, &(cont->state_mask));
 		}
 		for (stbit=0; stbit<5; stbit++) {
-			but = uiDefButBitI(block, TOG, (1<<(stbit+offset+15)), (stbit+offset+15), "",	(short)(xco+12*stbit+13*offset), yco-12, 12, 12, (int *)&(cont->state_mask), 0, 0, 0, 0, "");
-			uiButSetFunc(but, check_controller_state_mask, but, &(cont->state_mask));
+			but = uiDefButBitI(block, UI_BTYPE_TOGGLE, (1<<(stbit+offset+15)), (stbit+offset+15), "",	(short)(xco+12*stbit+13*offset), yco-12, 12, 12, (int *)&(cont->state_mask), 0, 0, 0, 0, "");
+			UI_but_func_set(but, check_controller_state_mask, but, &(cont->state_mask));
 		}
 	}
-	uiBlockEndAlign(block);
+	UI_block_align_end(block);
 
-	uiBlockSetDirection(block, UI_TOP);
-	uiEndBlock(C, block);
+	UI_block_direction_set(block, UI_DIR_UP);
+	UI_block_end(C, block);
 
 	return block;
 }
@@ -923,7 +839,7 @@ static bool is_sensor_linked(uiBlock *block, bSensor *sens)
 
 	for (i=0; i<sens->totlinks; i++) {
 		cont = sens->links[i];
-		if (uiFindInlink(block, cont) != NULL)
+		if (UI_block_links_find_inlink(block, cont) != NULL)
 			return 1;
 	}
 	return 0;
@@ -2189,11 +2105,14 @@ static void draw_actuator_steering(uiLayout *layout, PointerRNA *ptr)
 	}
 
 	row = uiLayoutRow(layout, false);
-	uiItemR(row, ptr, "self_terminated", 0, NULL, ICON_NONE);
+	col = uiLayoutColumn(row, false);
+	uiItemR(col, ptr, "self_terminated", 0, NULL, ICON_NONE);
 	if (RNA_enum_get(ptr, "mode")==ACT_STEERING_PATHFOLLOWING) {
-		uiItemR(row, ptr, "update_period", 0, NULL, ICON_NONE);
-		row = uiLayoutRow(layout, false);
+		col = uiLayoutColumn(row, false);
+		uiItemR(col, ptr, "update_period", 0, NULL, ICON_NONE);
 	}
+	row = uiLayoutRow(layout, false);
+	uiItemR(row, ptr, "lock_z_velocity", 1, NULL, ICON_NONE);
 	row = uiLayoutRow(layout, false);
 	uiItemR(row, ptr, "show_visualization", 0, NULL, ICON_NONE);
 	if (RNA_enum_get(ptr, "mode") != ACT_STEERING_PATHFOLLOWING) {
@@ -2353,9 +2272,9 @@ void logic_buttons(bContext *C, ARegion *ar)
 	idar= get_selected_and_linked_obs(C, &count, slogic->scaflag);
 	
 	BLI_snprintf(uiblockstr, sizeof(uiblockstr), "buttonswin %p", (void *)ar);
-	block= uiBeginBlock(C, ar, uiblockstr, UI_EMBOSS);
-	uiBlockSetHandleFunc(block, do_logic_buts, NULL);
-	uiBoundsBlock(block, U.widget_unit/2);
+	block= UI_block_begin(C, ar, uiblockstr, UI_EMBOSS);
+	UI_block_func_handle_set(block, do_logic_buts, NULL);
+	UI_block_bounds_set_normal(block, U.widget_unit/2);
 	
 	/* loop over all objects and set visible/linked flags for the logic bricks */
 	for (a=0; a<count; a++) {
@@ -2401,7 +2320,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 	/* ****************** Controllers ****************** */
 	
 	xco= 21 * U.widget_unit; yco= - U.widget_unit / 2; width= 15 * U.widget_unit;
-	layout= uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, 0, UI_GetStyle());
+	layout= UI_block_layout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, 0, UI_style_get());
 	row = uiLayoutRow(layout, true);
 	
 	uiDefBlockBut(block, controller_menu, NULL, IFACE_("Controllers"), xco - U.widget_unit / 2, yco, width, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
@@ -2431,7 +2350,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 		uiItemR(split, &settings_ptr, "show_state_panel", UI_ITEM_R_NO_BG, "", ICON_DISCLOSURE_TRI_RIGHT);
 
 		row = uiLayoutRow(split, true);
-		uiDefButBitS(block, TOG, OB_SHOWCONT, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide controllers"));
+		uiDefButBitS(block, UI_BTYPE_TOGGLE, OB_SHOWCONT, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide controllers"));
 
 		RNA_pointer_create((ID *)ob, &RNA_Object, ob, &object_ptr);
 		uiLayoutSetContextPointer(row, "object", &object_ptr);
@@ -2479,9 +2398,9 @@ void logic_buttons(bContext *C, ARegion *ar)
 			col = uiLayoutColumn(split, false);
 			uiLayoutSetActive(col, RNA_boolean_get(&ptr, "active"));
 			uiLayoutSetAlignment(col, UI_LAYOUT_ALIGN_LEFT);
-			but = uiDefIconBut(block, INLINK, 0, ICON_INLINK, 0, 0, UI_UNIT_X, UI_UNIT_Y, cont, LINK_CONTROLLER, 0, 0, 0, "");
+			but = uiDefIconBut(block, UI_BTYPE_INLINK, 0, ICON_INLINK, 0, 0, UI_UNIT_X, UI_UNIT_Y, cont, LINK_CONTROLLER, 0, 0, 0, "");
 			if (!RNA_boolean_get(&ptr, "active")) {
-				uiButSetFlag(but, UI_BUT_SCA_LINK_GREY);
+				UI_but_flag_enable(but, UI_BUT_SCA_LINK_GREY);
 			}
 			
 			//col = uiLayoutColumn(split, true);
@@ -2502,22 +2421,22 @@ void logic_buttons(bContext *C, ARegion *ar)
 			col = uiLayoutColumn(subsplit, false);
 			uiLayoutSetActive(col, RNA_boolean_get(&ptr, "active"));
 			uiLayoutSetAlignment(col, UI_LAYOUT_ALIGN_LEFT);
-			but = uiDefIconBut(block, LINK, 0, ICON_LINK, 0, 0, UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
+			but = uiDefIconBut(block, UI_BTYPE_LINK, 0, ICON_LINK, 0, 0, UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
 			if (!RNA_boolean_get(&ptr, "active")) {
-				uiButSetFlag(but, UI_BUT_SCA_LINK_GREY);
+				UI_but_flag_enable(but, UI_BUT_SCA_LINK_GREY);
 			}
 
-			uiSetButLink(but, NULL, (void ***)&(cont->links), &cont->totlinks, LINK_CONTROLLER, LINK_ACTUATOR);
+			UI_but_link_set(but, NULL, (void ***)&(cont->links), &cont->totlinks, LINK_CONTROLLER, LINK_ACTUATOR);
 
 		}
 	}
-	uiBlockLayoutResolve(block, NULL, &yco);	/* stores final height in yco */
+	UI_block_layout_resolve(block, NULL, &yco);	/* stores final height in yco */
 	height = yco;
 	
 	/* ****************** Sensors ****************** */
 	
 	xco= U.widget_unit / 2; yco= -U.widget_unit / 2; width= 17 * U.widget_unit;
-	layout= uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, 0, UI_GetStyle());
+	layout= UI_block_layout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, 0, UI_style_get());
 	row = uiLayoutRow(layout, true);
 	
 	uiDefBlockBut(block, sensor_menu, NULL, IFACE_("Sensors"), xco - U.widget_unit / 2, yco, 15 * U.widget_unit, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
@@ -2537,7 +2456,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 		if ((ob->scavisflag & OB_VIS_SENS) == 0) continue;
 
 		row = uiLayoutRow(layout, true);
-		uiDefButBitS(block, TOG, OB_SHOWSENS, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide sensors"));
+		uiDefButBitS(block, UI_BTYPE_TOGGLE, OB_SHOWSENS, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide sensors"));
 
 		RNA_pointer_create((ID *)ob, &RNA_Object, ob, &object_ptr);
 		uiLayoutSetContextPointer(row, "object", &object_ptr);
@@ -2575,23 +2494,23 @@ void logic_buttons(bContext *C, ARegion *ar)
 				/* put link button to the right */
 				col = uiLayoutColumn(split, false);
 				uiLayoutSetActive(col, RNA_boolean_get(&ptr, "active"));
-				but = uiDefIconBut(block, LINK, 0, ICON_LINK, 0, 0, UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
+				but = uiDefIconBut(block, UI_BTYPE_LINK, 0, ICON_LINK, 0, 0, UI_UNIT_X, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
 				if (!RNA_boolean_get(&ptr, "active")) {
-					uiButSetFlag(but, UI_BUT_SCA_LINK_GREY);
+					UI_but_flag_enable(but, UI_BUT_SCA_LINK_GREY);
 				}
 
 				/* use old-school uiButtons for links for now */
-				uiSetButLink(but, NULL, (void ***)&sens->links, &sens->totlinks, LINK_SENSOR, LINK_CONTROLLER);
+				UI_but_link_set(but, NULL, (void ***)&sens->links, &sens->totlinks, LINK_SENSOR, LINK_CONTROLLER);
 			}
 		}
 	}
-	uiBlockLayoutResolve(block, NULL, &yco);	/* stores final height in yco */
+	UI_block_layout_resolve(block, NULL, &yco);	/* stores final height in yco */
 	height = MIN2(height, yco);
 	
 	/* ****************** Actuators ****************** */
 	
 	xco= 40 * U.widget_unit; yco= -U.widget_unit / 2; width= 17 * U.widget_unit;
-	layout= uiBlockLayout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, 0, UI_GetStyle());
+	layout= UI_block_layout(block, UI_LAYOUT_VERTICAL, UI_LAYOUT_PANEL, xco, yco, width, 20, 0, UI_style_get());
 	row = uiLayoutRow(layout, true);
 	
 	uiDefBlockBut(block, actuator_menu, NULL, IFACE_("Actuators"), xco - U.widget_unit / 2, yco, 15 * U.widget_unit, UI_UNIT_Y, "");		/* replace this with uiLayout stuff later */
@@ -2613,7 +2532,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 		}
 
 		row = uiLayoutRow(layout, true);
-		uiDefButBitS(block, TOG, OB_SHOWACT, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide actuators"));
+		uiDefButBitS(block, UI_BTYPE_TOGGLE, OB_SHOWACT, B_REDR, ob->id.name + 2, (short)(xco - U.widget_unit / 2), yco, (short)(width - 1.5f * U.widget_unit), UI_UNIT_Y, &ob->scaflag, 0, 31, 0, 0, TIP_("Object name, click to show/hide actuators"));
 
 		RNA_pointer_create((ID *)ob, &RNA_Object, ob, &object_ptr);
 		uiLayoutSetContextPointer(row, "object", &object_ptr);
@@ -2644,9 +2563,9 @@ void logic_buttons(bContext *C, ARegion *ar)
 				/* put inlink button to the left */
 				col = uiLayoutColumn(split, false);
 				uiLayoutSetActive(col, RNA_boolean_get(&ptr, "active"));
-				but = uiDefIconBut(block, INLINK, 0, ICON_INLINK, 0, 0, UI_UNIT_X, UI_UNIT_Y, act, LINK_ACTUATOR, 0, 0, 0, "");
+				but = uiDefIconBut(block, UI_BTYPE_INLINK, 0, ICON_INLINK, 0, 0, UI_UNIT_X, UI_UNIT_Y, act, LINK_ACTUATOR, 0, 0, 0, "");
 				if (!RNA_boolean_get(&ptr, "active")) {
-					uiButSetFlag(but, UI_BUT_SCA_LINK_GREY);
+					UI_but_flag_enable(but, UI_BUT_SCA_LINK_GREY);
 				}
 
 				col = uiLayoutColumn(split, true);
@@ -2661,7 +2580,7 @@ void logic_buttons(bContext *C, ARegion *ar)
 			}
 		}
 	}
-	uiBlockLayoutResolve(block, NULL, &yco);	/* stores final height in yco */
+	UI_block_layout_resolve(block, NULL, &yco);	/* stores final height in yco */
 	height = MIN2(height, yco);
 
 	UI_view2d_totRect_set(&ar->v2d, 57.5f * U.widget_unit, height - U.widget_unit);
@@ -2669,10 +2588,10 @@ void logic_buttons(bContext *C, ARegion *ar)
 	/* set the view */
 	UI_view2d_view_ortho(&ar->v2d);
 
-	uiComposeLinks(block);
+	UI_block_links_compose(block);
 	
-	uiEndBlock(C, block);
-	uiDrawBlock(C, block);
+	UI_block_end(C, block);
+	UI_block_draw(C, block);
 	
 	/* restore view matrix */
 	UI_view2d_view_restore(C);

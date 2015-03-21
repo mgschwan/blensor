@@ -31,6 +31,7 @@ set(INC
 	../../render/extern/include
 	../../windowmanager
 	../../../../intern/guardedalloc
+	../../../../intern/glew-mx
 	../../../../intern/smoke/extern
 )
 
@@ -43,6 +44,7 @@ set(SRC
 	drawarmature.c
 	drawmesh.c
 	drawobject.c
+	drawsimdebug.c
 	drawvolume.c
 	space_view3d.c
 	view3d_buttons.c
@@ -76,7 +78,7 @@ if(WITH_GAMEENGINE)
 	add_definitions(-DWITH_GAMEENGINE)
 endif()
 
-add_definitions(-DGLEW_STATIC)
+add_definitions(${GL_DEFINITIONS})
 
 if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)

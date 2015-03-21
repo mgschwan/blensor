@@ -5,6 +5,7 @@
                           menu_shadow_width="12"
                           icon_file=""
                           icon_alpha="1"
+                          widget_emboss="#ffffff05"
                           axis_x="#dc0000"
                           axis_y="#00dc00"
                           axis_z="#0000dc">
@@ -240,6 +241,9 @@
       <ThemeView3D grid="#4c4c4c"
                    wire="#000000"
                    wire_edit="#000000"
+                   gp_vertex="#000000"
+                   gp_vertex_select="#ff8500"
+                   gp_vertex_size="3"
                    lamp="#00000028"
                    speaker="#000000"
                    camera="#000000"
@@ -295,6 +299,7 @@
                    bundle_solid="#c8c8c8"
                    camera_path="#000000"
                    skin_root="#b44d4d"
+                   clipping_border_3d="#313131ff"
                    paint_curve_handle="#7fff7f7f"
                    paint_curve_pivot="#ff7f7f7f">
         <space>
@@ -433,18 +438,18 @@
     <nla_editor>
       <ThemeNLAEditor grid="#5e5e5e"
                       view_sliders="#969696"
-                      active_action="#00000000"
-                      active_action_unset="#00000000"
+                      active_action="#cc701a66"
+                      active_action_unset="#9987614d"
                       strips="#0c0a0a"
                       strips_selected="#ff8c00"
-                      transition_strips="#000000"
-                      transition_strips_selected="#000000"
-                      meta_strips="#000000"
-                      meta_strips_selected="#000000"
-                      sound_strips="#000000"
-                      sound_strips_selected="#000000"
-                      tweak="#000000"
-                      tweak_duplicate="#000000"
+                      transition_strips="#1c2630"
+                      transition_strips_selected="#2e75db"
+                      meta_strips="#332642"
+                      meta_strips_selected="#692196"
+                      sound_strips="#2b3d3d"
+                      sound_strips_selected="#1f7a7a"
+                      tweak="#4df31a"
+                      tweak_duplicate="#d90000"
                       keyframe_border="#000000ff"
                       keyframe_border_selected="#000000ff"
                       frame_current="#60c040">
@@ -505,7 +510,7 @@
                       keyframe_jitter_selected="#61c042"
                       keyframe_border="#000000ff"
                       keyframe_border_selected="#000000ff"
-                      summary="#00000000">
+                      summary="#cc701a66">
         <space>
           <ThemeSpaceGeneric back="#a0a0a0"
                              title="#000000"
@@ -541,7 +546,10 @@
       </ThemeDopeSheet>
     </dopesheet_editor>
     <image_editor>
-      <ThemeImageEditor vertex="#000000"
+      <ThemeImageEditor gp_vertex="#000000"
+                        gp_vertex_select="#ff8500"
+                        gp_vertex_size="3"
+                        vertex="#000000"
                         vertex_select="#ff8500"
                         vertex_size="3"
                         vertex_unreferenced="#000000"
@@ -604,7 +612,10 @@
       </ThemeImageEditor>
     </image_editor>
     <sequence_editor>
-      <ThemeSequenceEditor grid="#404040"
+      <ThemeSequenceEditor gp_vertex="#000000"
+                           gp_vertex_select="#ff8500"
+                           gp_vertex_size="3"
+                           grid="#404040"
                            window_sliders="#a0a0a0"
                            movie_strip="#516987"
                            movieclip_strip="#20208f"
@@ -715,7 +726,9 @@
     </text_editor>
     <timeline>
       <ThemeTimeline grid="#5b5b5b"
-                     frame_current="#60c040">
+                     frame_current="#60c040"
+                     time_keyframe="#ddd700"
+                     time_grease_pencil="#b5e61d">
         <space>
           <ThemeSpaceGeneric back="#999999"
                              title="#000000"
@@ -744,9 +757,13 @@
       </ThemeTimeline>
     </timeline>
     <node_editor>
-      <ThemeNodeEditor node_selected="#ffffff"
+      <ThemeNodeEditor gp_vertex="#000000"
+                       gp_vertex_select="#ff8500"
+                       gp_vertex_size="3"
+                       node_selected="#ffffff"
                        node_active="#ffffff"
                        wire="#000000"
+                       wire_inner="#737373"
                        wire_select="#ffffff"
                        selected_text="#7f7070"
                        node_backdrop="#9b9b9ba0"
@@ -962,7 +979,10 @@
       </ThemeConsole>
     </console>
     <clip_editor>
-      <ThemeClipEditor marker_outline="#000000"
+      <ThemeClipEditor gp_vertex="#000000"
+                       gp_vertex_select="#000000"
+                       gp_vertex_size="1"
+                       marker_outline="#000000"
                        marker="#7f7f00"
                        active_marker="#ffffff"
                        selected_marker="#ffff00"
@@ -970,7 +990,6 @@
                        locked_marker="#7f7f7f"
                        path_before="#ff0000"
                        path_after="#0000ff"
-                       grid="#5e5e5e"
                        frame_current="#60c040"
                        strips="#0c0a0a"
                        strips_selected="#ff8c00"

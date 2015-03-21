@@ -190,7 +190,7 @@ static void rna_Cache_idname_change(Main *UNUSED(bmain), Scene *UNUSED(scene), P
 		for (pid = pidlist.first; pid; pid = pid->next) {
 			if (pid->cache == cache)
 				pid2 = pid;
-			else if (cache->name[0] != '\0' && strcmp(cache->name, pid->cache->name) == 0) {
+			else if (cache->name[0] != '\0' && STREQ(cache->name, pid->cache->name)) {
 				/*TODO: report "name exists" to user */
 				BLI_strncpy(cache->name, cache->prev_name, sizeof(cache->name));
 				new_name = 0;
@@ -243,7 +243,7 @@ static void rna_Cache_active_point_cache_index_range(PointerRNA *ptr, int *min, 
 
 	for (pid = pidlist.first; pid; pid = pid->next) {
 		if (pid->cache == cache) {
-			*max = max_ii(0, BLI_countlist(pid->ptcaches) - 1);
+			*max = max_ii(0, BLI_listbase_count(pid->ptcaches) - 1);
 			break;
 		}
 	}

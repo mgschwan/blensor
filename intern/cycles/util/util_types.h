@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #ifndef __UTIL_TYPES_H__
@@ -40,7 +40,6 @@
 #define __KERNEL_WITH_SSE_ALIGN__
 
 #if defined(_WIN32) && !defined(FREE_WINDOWS)
-
 #define ccl_device_inline static __forceinline
 #define ccl_align(...) __declspec(align(__VA_ARGS__))
 #ifdef __KERNEL_64_BIT__
@@ -265,6 +264,19 @@ struct ccl_try_align(16) float4 {
 	__forceinline float& operator[](int i) { return *(&x + i); }
 };
 
+template<typename T>
+class vector3
+{
+public:
+	T x, y, z;
+
+	ccl_always_inline vector3() {}
+	ccl_always_inline vector3(const T& a)
+	  : x(a), y(a), z(a) {}
+	ccl_always_inline vector3(const T& x, const T& y, const T& z)
+	  : x(x), y(y), z(z) {}
+};
+
 #endif
 
 #ifndef __KERNEL_GPU__
@@ -469,18 +481,32 @@ enum InterpolationType {
 #  define UNLIKELY(x)     (x)
 #endif
 
+#if defined(__cplusplus) && ((__cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1800))
+#  define HAS_CPP11_FEATURES
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#  if defined(HAS_CPP11_FEATURES)
+/* Some magic to be sure we don't have reference in the type. */
+template<typename T> static inline T decltype_helper(T x) { return x; }
+#    define TYPEOF(x) decltype(decltype_helper(x))
+#  else
+#    define TYPEOF(x) typeof(x)
+#  endif
+#endif
+
 /* Causes warning:
  * incompatible types when assigning to type 'Foo' from type 'Bar'
  * ... the compiler optimizes away the temp var */
 #ifdef __GNUC__
 #define CHECK_TYPE(var, type)  {  \
-	typeof(var) *__tmp;         \
+	TYPEOF(var) *__tmp;         \
 	__tmp = (type *)NULL;         \
 	(void)__tmp;                  \
 } (void)0
 
 #define CHECK_TYPE_PAIR(var_a, var_b)  {  \
-	typeof(var_a) *__tmp;                 \
+	TYPEOF(var_a) *__tmp;                 \
 	__tmp = (typeof(var_b) *)NULL;        \
 	(void)__tmp;                          \
 } (void)0

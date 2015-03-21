@@ -24,10 +24,12 @@ set(INC
 	../../blenkernel
 	../../blenlib
 	../../imbuf
+	../../gpu
 	../../makesdna
 	../../makesrna
 	../../windowmanager
 	../../../../intern/guardedalloc
+	../../../../intern/glew-mx
 )
 
 set(INC_SYS
@@ -41,6 +43,7 @@ set(SRC
 	sequencer_edit.c
 	sequencer_modifier.c
 	sequencer_ops.c
+	sequencer_preview.c
 	sequencer_scopes.c
 	sequencer_select.c
 	sequencer_view.c
@@ -59,5 +62,7 @@ endif()
 if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)
 endif()
+
+add_definitions(${GL_DEFINITIONS})
 
 blender_add_lib(bf_editor_space_sequencer "${SRC}" "${INC}" "${INC_SYS}")

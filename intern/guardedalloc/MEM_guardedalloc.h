@@ -165,9 +165,9 @@ extern "C" {
 	 * Memory usage stats
 	 * - MEM_get_memory_in_use is all memory
 	 * - MEM_get_mapped_memory_in_use is a subset of all memory */
-	extern uintptr_t (*MEM_get_memory_in_use)(void);
+	extern size_t (*MEM_get_memory_in_use)(void);
 	/** Get mapped memory usage. */
-	extern uintptr_t (*MEM_get_mapped_memory_in_use)(void);
+	extern size_t (*MEM_get_mapped_memory_in_use)(void);
 	/** Get amount of memory blocks in use. */
 	extern unsigned int (*MEM_get_memory_blocks_in_use)(void);
 
@@ -177,7 +177,23 @@ extern "C" {
 	/** Get the peak memory usage in bytes, including mmap allocations. */
 	extern size_t (*MEM_get_peak_memory)(void) ATTR_WARN_UNUSED_RESULT;
 
-#define MEM_SAFE_FREE(v) if (v) { MEM_freeN(v); v = NULL; } (void)0
+#ifdef __GNUC__
+#define MEM_SAFE_FREE(v) do { \
+	typeof(&(v)) _v = &(v); \
+	if (*_v) { \
+		MEM_freeN(*_v); \
+		*_v = NULL; \
+	} \
+} while (0)
+#else
+#define MEM_SAFE_FREE(v) do { \
+	void ** _v = (void **)&(v); \
+	if (*_v) { \
+		MEM_freeN(*_v); \
+		*_v = NULL; \
+	} \
+} while (0)
+#endif
 
 /* overhead for lockfree allocator (use to avoid slop-space) */
 #define MEM_SIZE_OVERHEAD sizeof(size_t)

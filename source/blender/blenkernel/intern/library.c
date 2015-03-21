@@ -139,7 +139,7 @@ void BKE_id_lib_local_paths(Main *bmain, Library *lib, ID *id)
 	BKE_bpath_traverse_id(bmain, id,
 	                      BKE_bpath_relocate_visitor,
 	                      BKE_BPATH_TRAVERSE_SKIP_MULTIFILE,
-	                      bpath_user_data);
+	                      (void *)bpath_user_data);
 }
 
 void id_lib_extern(ID *id)
@@ -351,7 +351,7 @@ bool id_copy(ID *id, ID **newid, bool test)
 		case ID_VF:
 			return false;  /* not implemented */
 		case ID_TXT:
-			if (!test) *newid = (ID *)BKE_text_copy((Text *)id);
+			if (!test) *newid = (ID *)BKE_text_copy(G.main, (Text *)id);
 			return true;
 		case ID_SCRIPT:
 			return false;  /* deprecated */
@@ -378,12 +378,13 @@ bool id_copy(ID *id, ID **newid, bool test)
 		case ID_WM:
 			return false;  /* can't be copied from here */
 		case ID_GD:
-			return false;  /* not implemented */
+			if (!test) *newid = (ID *)gpencil_data_duplicate((bGPdata *)id, false);
+			return true;
 		case ID_MSK:
 			if (!test) *newid = (ID *)BKE_mask_copy((Mask *)id);
 			return true;
 		case ID_LS:
-			if (!test) *newid = (ID *)BKE_linestyle_copy((FreestyleLineStyle *)id);
+			if (!test) *newid = (ID *)BKE_linestyle_copy(G.main, (FreestyleLineStyle *)id);
 			return true;
 	}
 	
@@ -609,13 +610,13 @@ int set_listbasepointers(Main *main, ListBase **lb)
 	lb[a++] = &(main->speaker);
 
 	lb[a++] = &(main->world);
+	lb[a++] = &(main->movieclip);
 	lb[a++] = &(main->screen);
 	lb[a++] = &(main->object);
 	lb[a++] = &(main->linestyle); /* referenced by scenes */
 	lb[a++] = &(main->scene);
 	lb[a++] = &(main->library);
 	lb[a++] = &(main->wm);
-	lb[a++] = &(main->movieclip);
 	lb[a++] = &(main->mask);
 	
 	lb[a] = NULL;
@@ -1202,7 +1203,7 @@ static ID *is_dupid(ListBase *lb, ID *id, const char *name)
 			/* do not test alphabetic! */
 			/* optimized */
 			if (idtest->name[2] == name[0]) {
-				if (strcmp(name, idtest->name + 2) == 0) break;
+				if (STREQ(name, idtest->name + 2)) break;
 			}
 		}
 	}
@@ -1260,7 +1261,7 @@ static bool check_for_dupid(ListBase *lb, ID *id, char *name)
 			if ( (id != idtest) &&
 			     (idtest->lib == NULL) &&
 			     (*name == *(idtest->name + 2)) &&
-			     (strncmp(name, idtest->name + 2, left_len) == 0) &&
+			     STREQLEN(name, idtest->name + 2, left_len) &&
 			     (BLI_split_name_num(leftest, &nrtest, idtest->name + 2, '.') == left_len)
 			     )
 			{
@@ -1571,7 +1572,7 @@ void test_idbutton(char *name)
 	ID *idtest;
 	
 
-	lb = which_libbase(G.main, GS(name) );
+	lb = which_libbase(G.main, GS(name));
 	if (lb == NULL) return;
 	
 	/* search for id */
@@ -1590,7 +1591,7 @@ void rename_id(ID *id, const char *name)
 	ListBase *lb;
 
 	BLI_strncpy(id->name + 2, name, sizeof(id->name) - 2);
-	lb = which_libbase(G.main, GS(id->name) );
+	lb = which_libbase(G.main, GS(id->name));
 	
 	new_id(lb, id, name);
 }

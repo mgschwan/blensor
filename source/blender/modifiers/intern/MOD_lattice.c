@@ -38,7 +38,6 @@
 #include "DNA_object_types.h"
 
 #include "BLI_utildefines.h"
-#include "BLI_string.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_lattice.h"
@@ -93,6 +92,7 @@ static void foreachObjectLink(
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)

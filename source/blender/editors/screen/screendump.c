@@ -65,7 +65,6 @@
 
 #include "PIL_time.h"
 
-#include "ED_screen_types.h"
 
 #include "screen_intern.h"
 
@@ -287,7 +286,7 @@ void SCREEN_OT_screenshot(wmOperatorType *ot)
 	
 	ot->flag = 0;
 	
-	WM_operator_properties_filesel(ot, FOLDERFILE | IMAGEFILE, FILE_SPECIAL, FILE_SAVE,
+	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_IMAGE, FILE_SPECIAL, FILE_SAVE,
 	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
 	RNA_def_boolean(ot->srna, "full", 1, "Full Screen",
 	                "Capture the whole window (otherwise only capture the active area)");
@@ -378,8 +377,9 @@ static void screenshot_startjob(void *sjv, short *stop, short *do_update, float 
 				char name[FILE_MAX];
 				int ok;
 				
-				BKE_makepicstring(name, rd.pic, sj->bmain->name, rd.cfra,
-				                  &rd.im_format, (rd.scemode & R_EXTENSION) != 0, true);
+				BKE_image_path_from_imformat(
+				        name, rd.pic, sj->bmain->name, rd.cfra,
+				        &rd.im_format, (rd.scemode & R_EXTENSION) != 0, true);
 				
 				ibuf->rect = sj->dumprect;
 				ok = BKE_imbuf_write(ibuf, name, &rd.im_format);

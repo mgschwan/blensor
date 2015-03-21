@@ -22,6 +22,7 @@
  *
  * Contributor(s): Brecht Van Lommel
  *                 Campbell Barton
+ *                 Sergey Sharybin
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -1147,13 +1148,13 @@ size_t MEM_guarded_get_peak_memory(void)
 void MEM_guarded_reset_peak_memory(void)
 {
 	mem_lock_thread();
-	peak_mem = 0;
+	peak_mem = mem_in_use;
 	mem_unlock_thread();
 }
 
-uintptr_t MEM_guarded_get_memory_in_use(void)
+size_t MEM_guarded_get_memory_in_use(void)
 {
-	uintptr_t _mem_in_use;
+	size_t _mem_in_use;
 
 	mem_lock_thread();
 	_mem_in_use = mem_in_use;
@@ -1162,9 +1163,9 @@ uintptr_t MEM_guarded_get_memory_in_use(void)
 	return _mem_in_use;
 }
 
-uintptr_t MEM_guarded_get_mapped_memory_in_use(void)
+size_t MEM_guarded_get_mapped_memory_in_use(void)
 {
-	uintptr_t _mmap_in_use;
+	size_t _mmap_in_use;
 
 	mem_lock_thread();
 	_mmap_in_use = mmap_in_use;

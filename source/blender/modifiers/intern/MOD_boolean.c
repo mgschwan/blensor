@@ -39,8 +39,6 @@
 
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
-
 #include "BKE_cdderivedmesh.h"
 #include "BKE_modifier.h"
 
@@ -48,8 +46,6 @@
 
 #include "MOD_boolean_util.h"
 #include "MOD_util.h"
-
-#include "PIL_time.h"
 
 static void copyData(ModifierData *md, ModifierData *target)
 {
@@ -78,6 +74,7 @@ static void foreachObjectLink(
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
                            struct Scene *UNUSED(scene),
                            Object *UNUSED(ob),
                            DagNode *obNode)

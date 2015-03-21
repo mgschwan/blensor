@@ -182,7 +182,7 @@ static void init_camera(Render *re)
 {
 	// It is assumed that imported meshes are in the camera coordinate system.
 	// Therefore, the view point (i.e., camera position) is at the origin, and
-	// the the model-view matrix is simply the identity matrix.
+	// the model-view matrix is simply the identity matrix.
 
 	freestyle_viewpoint[0] = 0.0;
 	freestyle_viewpoint[1] = 0.0;
@@ -474,6 +474,9 @@ static void prepare(Main *bmain, Render *re, SceneRenderLayer *srl)
 		cout << "  Z = " << (z ? "enabled" : "disabled") << endl;
 	}
 
+	if (controller->hitViewMapCache())
+		return;
+
 	// compute view map
 	re->i.infostr = "Freestyle: View map creation";
 	re->stats_draw(re->sdh, &re->i);
@@ -493,7 +496,7 @@ void FRS_composite_result(Render *re, SceneRenderLayer *srl, Render *freestyle_r
 	rl = render_get_active_layer( freestyle_render, freestyle_render->result );
 	if (!rl || rl->rectf == NULL) {
 		if (G.debug & G_DEBUG_FREESTYLE) {
-			cout << "Cannot find Freestyle result image" << endl;
+			cout << "No Freestyle result image to composite" << endl;
 		}
 		return;
 	}
@@ -589,6 +592,7 @@ Render *FRS_do_stroke_rendering(Render *re, SceneRenderLayer *srl, int render)
 
 	RenderMonitor monitor(re);
 	controller->setRenderMonitor(&monitor);
+	controller->setViewMapCache((srl->freestyleConfig.flags & FREESTYLE_VIEW_MAP_CACHE) ? true : false);
 
 	if (G.debug & G_DEBUG_FREESTYLE) {
 		cout << endl;
@@ -645,6 +649,17 @@ void FRS_finish_stroke_rendering(Render *re)
 {
 	// clear canvas
 	controller->Clear();
+}
+
+void FRS_free_view_map_cache(void)
+{
+	// free cache
+	controller->DeleteViewMap(true);
+#if 0
+	if (G.debug & G_DEBUG_FREESTYLE) {
+		printf("View map cache freed\n");
+	}
+#endif
 }
 
 //=======================================================

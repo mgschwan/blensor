@@ -144,8 +144,8 @@ static int pose_groups_menu_invoke(bContext *C, wmOperator *op, const wmEvent *U
 	/* if there's no active group (or active is invalid), create a new menu to find it */
 	if (pose->active_group <= 0) {
 		/* create a new menu, and start populating it with group names */
-		pup = uiPupMenuBegin(C, op->type->name, ICON_NONE);
-		layout = uiPupMenuLayout(pup);
+		pup = UI_popup_menu_begin(C, op->type->name, ICON_NONE);
+		layout = UI_popup_menu_layout(pup);
 		
 		/* special entry - allow to create new group, then use that 
 		 *	(not to be used for removing though)
@@ -160,9 +160,9 @@ static int pose_groups_menu_invoke(bContext *C, wmOperator *op, const wmEvent *U
 			uiItemIntO(layout, grp->name, ICON_NONE, op->idname, "type", i);
 			
 		/* finish building the menu, and process it (should result in calling self again) */
-		uiPupMenuEnd(C, pup);
+		UI_popup_menu_end(C, pup);
 		
-		return OPERATOR_CANCELLED;
+		return OPERATOR_INTERFACE;
 	}
 	else {
 		/* just use the active group index, and call the exec callback for the calling operator */
@@ -365,8 +365,8 @@ typedef struct tSortActionGroup {
 /* compare bone groups by name */
 static int compare_agroup(const void *sgrp_a_ptr, const void *sgrp_b_ptr)
 {
-	tSortActionGroup *sgrp_a = (tSortActionGroup *)sgrp_a_ptr;
-	tSortActionGroup *sgrp_b = (tSortActionGroup *)sgrp_b_ptr;
+	const tSortActionGroup *sgrp_a = sgrp_a_ptr;
+	const tSortActionGroup *sgrp_b = sgrp_b_ptr;
 
 	return strcmp(sgrp_a->agrp->name, sgrp_b->agrp->name);
 }
@@ -387,7 +387,7 @@ static int group_sort_exec(bContext *C, wmOperator *UNUSED(op))
 		return OPERATOR_CANCELLED;
 
 	/* create temporary array with bone groups and indices */
-	agrp_count = BLI_countlist(&pose->agroups);
+	agrp_count = BLI_listbase_count(&pose->agroups);
 	agrp_array = MEM_mallocN(sizeof(tSortActionGroup) * agrp_count, "sort bone groups");
 	for (agrp = pose->agroups.first, i = 0; agrp; agrp = agrp->next, i++) {
 		BLI_assert(i < agrp_count);

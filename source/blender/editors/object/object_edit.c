@@ -42,6 +42,8 @@
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
 
+#include "BLF_translation.h"
+
 #include "DNA_armature_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_group_types.h"
@@ -64,6 +66,7 @@
 #include "BKE_effect.h"
 #include "BKE_depsgraph.h"
 #include "BKE_image.h"
+#include "BKE_lattice.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
@@ -568,8 +571,8 @@ static int editmode_toggle_exec(bContext *C, wmOperator *op)
 	ToolSettings *toolsettings =  CTX_data_tool_settings(C);
 
 	if (!is_mode_set) {
-		Scene *scene = CTX_data_scene(C);
-		if (!ED_object_mode_compat_set(C, scene->basact->object, mode_flag, op->reports)) {
+		Object *ob = CTX_data_active_object(C);
+		if (!ED_object_mode_compat_set(C, ob, mode_flag, op->reports)) {
 			return OPERATOR_CANCELLED;
 		}
 	}
@@ -1347,7 +1350,7 @@ static int shade_smooth_exec(bContext *C, wmOperator *op)
 	ID *data;
 	Curve *cu;
 	Nurb *nu;
-	int clear = (strcmp(op->idname, "OBJECT_OT_shade_flat") == 0);
+	int clear = (STREQ(op->idname, "OBJECT_OT_shade_flat"));
 	bool done = false, linked_data = false;
 
 	CTX_DATA_BEGIN(C, Object *, ob, selected_editable_objects)
@@ -1701,7 +1704,7 @@ static int game_property_new_exec(bContext *C, wmOperator *op)
 		BLI_strncpy(prop->name, name, sizeof(prop->name));
 	}
 
-	BKE_bproperty_unique(NULL, prop, 0); // make_unique_prop_names(prop->name);
+	BLI_uniquename(&ob->prop, prop, DATA_("Property"), '.', offsetof(bProperty, name), sizeof(prop->name));
 
 	WM_event_add_notifier(C, NC_LOGIC, NULL);
 	return OPERATOR_FINISHED;
@@ -1996,4 +1999,68 @@ void OBJECT_OT_game_physics_copy(struct wmOperatorType *ot)
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+/* generic utility function */
+
+bool ED_object_editmode_calc_active_center(Object *obedit, const bool select_only, float r_center[3])
+{
+	switch (obedit->type) {
+		case OB_MESH:
+		{
+			BMEditMesh *em = BKE_editmesh_from_object(obedit);
+			BMEditSelection ese;
+
+			if (BM_select_history_active_get(em->bm, &ese)) {
+				BM_editselection_center(&ese, r_center);
+				return true;
+			}
+			break;
+		}
+		case OB_ARMATURE:
+		{
+			bArmature *arm = obedit->data;
+			EditBone *ebo = arm->act_edbone;
+
+			if (ebo && (!select_only || (ebo->flag & (BONE_SELECTED | BONE_ROOTSEL)))) {
+				copy_v3_v3(r_center, ebo->head);
+				return true;
+			}
+
+			break;
+		}
+		case OB_CURVE:
+		case OB_SURF:
+		{
+			Curve *cu = obedit->data;
+
+			if (ED_curve_active_center(cu, r_center)) {
+				return true;
+			}
+			break;
+		}
+		case OB_MBALL:
+		{
+			MetaBall *mb = obedit->data;
+			MetaElem *ml_act = mb->lastelem;
+
+			if (ml_act && (!select_only || (ml_act->flag & SELECT))) {
+				copy_v3_v3(r_center, &ml_act->x);
+				return true;
+			}
+			break;
+		}
+		case OB_LATTICE:
+		{
+			BPoint *actbp = BKE_lattice_active_point_get(obedit->data);
+
+			if (actbp) {
+				copy_v3_v3(r_center, actbp->vec);
+				return true;
+			}
+			break;
+		}
+	}
+
+	return false;
 }

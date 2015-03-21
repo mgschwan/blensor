@@ -350,7 +350,7 @@ typedef unsigned int cl_GLenum;
 
 #ifdef _MSC_VER
 #if defined(_M_IX86)
-#if _M_IX86_FP >= 0
+#if _M_IX86_FP >= 0 && !defined(__SSE__)
 #define __SSE__
 #endif
 #if _M_IX86_FP >= 1
@@ -1815,6 +1815,11 @@ typedef struct _cl_buffer_region {
 
 /*  Function signature typedef's */
 
+#ifdef __APPLE__
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wignored-attributes"
+#endif
+
 /* Platform API */
 typedef CL_API_ENTRY cl_int (CL_API_CALL *
 PFNCLGETPLATFORMIDS)(cl_uint          /* num_entries */,
@@ -2476,6 +2481,10 @@ PFNCLCREATEFROMGLTEXTURE3D)(cl_context      /* context */,
                       cl_int *        /* errcode_ret */) CL_EXT_SUFFIX__VERSION_1_1_DEPRECATED;
 #endif
 
+#ifdef __APPLE__
+#  pragma GCC diagnostic pop // ignored "-Wignored-attributes"
+#endif
+	
 /* cl_khr_gl_sharing extension  */
 
 #define cl_khr_gl_sharing 1

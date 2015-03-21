@@ -101,7 +101,7 @@ static void game_copy_pose(bPose **dst, bPose *src, int copy_constraint)
 	out->chanhash = NULL;
 	out->agroups.first= out->agroups.last= NULL;
 	out->ikdata = NULL;
-    out->ikparam = MEM_dupallocN(src->ikparam);
+	out->ikparam = MEM_dupallocN(src->ikparam);
 	out->flag |= POSE_GAME_ENGINE;
 	BLI_duplicatelist(&out->chanbase, &src->chanbase);
 
@@ -234,6 +234,9 @@ BL_ArmatureObject::BL_ArmatureObject(
     // need this to get iTaSC working ok in the BGE
     m_pose->flag |= POSE_GAME_ENGINE;
 	memcpy(m_obmat, m_objArma->obmat, sizeof(m_obmat));
+
+	// The side-effect of this method registers this object as "animatable" with the KX_Scene.
+	GetActionManager();
 }
 
 BL_ArmatureObject::~BL_ArmatureObject()

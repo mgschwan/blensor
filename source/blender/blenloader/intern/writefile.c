@@ -79,9 +79,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "zlib.h"
-
 #ifdef WIN32
+#  include <zlib.h>  /* odd include order-issue */
 #  include "winsock2.h"
 #  include <io.h>
 #  include "BLI_winstuff.h"
@@ -163,11 +162,9 @@
 #include "BKE_mesh.h"
 
 #ifdef USE_NODE_COMPAT_CUSTOMNODES
-#include "NOD_common.h"
 #include "NOD_socket.h"	/* for sock->default_value data */
 #endif
 
-#include "RNA_access.h"
 
 #include "BLO_writefile.h"
 #include "BLO_readfile.h"
@@ -912,16 +909,39 @@ static void write_nodetree(WriteData *wd, bNodeTree *ntree)
 		write_node_socket_interface(wd, ntree, sock);
 }
 
-static void current_screen_compat(Main *mainvar, bScreen **screen)
+/**
+ * Take care using 'use_active_win', since we wont want the currently active window
+ * to change which scene renders (currently only used for undo).
+ */
+static void current_screen_compat(Main *mainvar, bScreen **r_screen, bool use_active_win)
 {
 	wmWindowManager *wm;
-	wmWindow *window;
+	wmWindow *window = NULL;
 
 	/* find a global current screen in the first open window, to have
 	 * a reasonable default for reading in older versions */
 	wm = mainvar->wm.first;
-	window = (wm) ? wm->windows.first : NULL;
-	*screen = (window) ? window->screen : NULL;
+
+	if (wm) {
+		if (use_active_win) {
+			/* write the active window into the file, needed for multi-window undo T43424 */
+			for (window = wm->windows.first; window; window = window->next) {
+				if (window->active) {
+					break;
+				}
+			}
+
+			/* fallback */
+			if (window == NULL) {
+				window = wm->windows.first;
+			}
+		}
+		else {
+			window = wm->windows.first;
+		}
+	}
+
+	*r_screen = (window) ? window->screen : NULL;
 }
 
 typedef struct RenderInfo {
@@ -940,7 +960,7 @@ static void write_renderinfo(WriteData *wd, Main *mainvar)
 	RenderInfo data;
 
 	/* XXX in future, handle multiple windows with multiple screens? */
-	current_screen_compat(mainvar, &curscreen);
+	current_screen_compat(mainvar, &curscreen, false);
 	if (curscreen) curscene = curscreen->scene;
 	
 	for (sce= mainvar->scene.first; sce; sce= sce->id.next) {
@@ -1111,6 +1131,11 @@ static void write_particlesettings(WriteData *wd, ListBase *idbase)
 			writestruct(wd, DATA, "PartDeflect", 1, part->pd2);
 			writestruct(wd, DATA, "EffectorWeights", 1, part->effector_weights);
 
+			if (part->clumpcurve)
+				write_curvemapping(wd, part->clumpcurve);
+			if (part->roughcurve)
+				write_curvemapping(wd, part->roughcurve);
+			
 			dw = part->dupliweights.first;
 			for (; dw; dw=dw->next) {
 				/* update indices */
@@ -1451,7 +1476,7 @@ static void write_pose(WriteData *wd, bPose *pose)
 
 	/* write IK param */
 	if (pose->ikparam) {
-		const char *structname = (char *)BKE_pose_ikparam_get_name(pose);
+		const char *structname = BKE_pose_ikparam_get_name(pose);
 		if (structname)
 			writestruct(wd, DATA, structname, 1, pose->ikparam);
 	}
@@ -1483,6 +1508,10 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 		if (md->type==eModifierType_Hook) {
 			HookModifierData *hmd = (HookModifierData*) md;
 			
+			if (hmd->curfalloff) {
+				write_curvemapping(wd, hmd->curfalloff);
+			}
+
 			writedata(wd, DATA, sizeof(int)*hmd->totindex, hmd->indexar);
 		}
 		else if (md->type==eModifierType_Cloth) {
@@ -2060,7 +2089,8 @@ static void write_lattices(WriteData *wd, ListBase *idbase)
 
 static void write_previews(WriteData *wd, PreviewImage *prv)
 {
-	if (prv) {
+	/* Never write previews in undo steps! */
+	if (prv && !wd->current) {
 		short w = prv->w[1];
 		short h = prv->h[1];
 		unsigned int *rect = prv->rect[1];
@@ -2286,6 +2316,12 @@ static void write_view_settings(WriteData *wd, ColorManagedViewSettings *view_se
 	}
 }
 
+static void write_paint(WriteData *wd, Paint *p)
+{
+	if (p->cavity_curve)
+		write_curvemapping(wd, p->cavity_curve);
+}
+
 static void write_scenes(WriteData *wd, ListBase *scebase)
 {
 	Scene *sce;
@@ -2321,18 +2357,22 @@ static void write_scenes(WriteData *wd, ListBase *scebase)
 		writestruct(wd, DATA, "ToolSettings", 1, tos);
 		if (tos->vpaint) {
 			writestruct(wd, DATA, "VPaint", 1, tos->vpaint);
+			write_paint (wd, &tos->vpaint->paint);
 		}
 		if (tos->wpaint) {
 			writestruct(wd, DATA, "VPaint", 1, tos->wpaint);
+			write_paint (wd, &tos->wpaint->paint);
 		}
 		if (tos->sculpt) {
 			writestruct(wd, DATA, "Sculpt", 1, tos->sculpt);
+			write_paint (wd, &tos->sculpt->paint);
 		}
 		if (tos->uvsculpt) {
 			writestruct(wd, DATA, "UvSculpt", 1, tos->uvsculpt);
+			write_paint (wd, &tos->uvsculpt->paint);
 		}
 
-		// write_paint(wd, &tos->imapaint.paint);
+		write_paint(wd, &tos->imapaint.paint);
 
 		ed= sce->ed;
 		if (ed) {
@@ -2467,6 +2507,8 @@ static void write_gpencils(WriteData *wd, ListBase *lb)
 		if (gpd->id.us>0 || wd->current) {
 			/* write gpd data block to file */
 			writestruct(wd, ID_GD, "bGPdata", 1, gpd);
+			
+			if (gpd->adt) write_animdata(wd, gpd->adt);
 			
 			/* write grease-pencil layers to file */
 			writelist(wd, DATA, "bGPDlayer", &gpd->layers);
@@ -2640,6 +2682,11 @@ static void write_screens(WriteData *wd, ListBase *scrbase)
 					for (bgpic= v3d->bgpicbase.first; bgpic; bgpic= bgpic->next)
 						writestruct(wd, DATA, "BGpic", 1, bgpic);
 					if (v3d->localvd) writestruct(wd, DATA, "View3D", 1, v3d->localvd);
+
+					if (v3d->fx_settings.ssao)
+						writestruct(wd, DATA, "GPUSSAOSettings", 1, v3d->fx_settings.ssao);
+					if (v3d->fx_settings.dof)
+						writestruct(wd, DATA, "GPUDOFSettings", 1, v3d->fx_settings.dof);
 				}
 				else if (sl->spacetype==SPACE_IPO) {
 					SpaceIpo *sipo= (SpaceIpo *)sl;
@@ -2726,6 +2773,9 @@ static void write_screens(WriteData *wd, ListBase *scrbase)
 				}
 				else if (sl->spacetype==SPACE_CLIP) {
 					writestruct(wd, DATA, "SpaceClip", 1, sl);
+				}
+				else if (sl->spacetype == SPACE_INFO) {
+					writestruct(wd, DATA, "SpaceInfo", 1, sl);
 				}
 
 				sl= sl->next;
@@ -3037,7 +3087,7 @@ static void write_brushes(WriteData *wd, ListBase *idbase)
 			
 			if (brush->curve)
 				write_curvemapping(wd, brush->curve);
-			if (brush->curve)
+			if (brush->gradient)
 				writestruct(wd, DATA, "ColorBand", 1, brush->gradient);
 		}
 	}
@@ -3428,22 +3478,21 @@ static void write_linestyles(WriteData *wd, ListBase *idbase)
  * - for undofile, curscene needs to be saved */
 static void write_global(WriteData *wd, int fileflags, Main *mainvar)
 {
+	const bool is_undo = (wd->current != NULL);
 	FileGlobal fg;
 	bScreen *screen;
 	char subvstr[8];
 	
 	/* prevent mem checkers from complaining */
-	fg.pads= 0;
+	memset(fg.pad, 0, sizeof(fg.pad));
 	memset(fg.filename, 0, sizeof(fg.filename));
 	memset(fg.build_hash, 0, sizeof(fg.build_hash));
 
-	current_screen_compat(mainvar, &screen);
+	current_screen_compat(mainvar, &screen, is_undo);
 
 	/* XXX still remap G */
 	fg.curscreen= screen;
 	fg.curscene= screen ? screen->scene : NULL;
-	fg.displaymode= G.displaymode;
-	fg.winpos= G.winpos;
 
 	/* prevent to save this, is not good convention, and feature with concerns... */
 	fg.fileflags= (fileflags & ~G_FILE_FLAGS_RUNTIME);

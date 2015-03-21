@@ -25,7 +25,11 @@ from bl_ui.properties_paint_common import (
         brush_texpaint_common,
         brush_mask_texture_settings,
         )
-from bl_ui.properties_grease_pencil_common import GreasePencilPanel
+from bl_ui.properties_grease_pencil_common import (
+        GreasePencilDrawingToolsPanel,
+        GreasePencilStrokeEditPanel,
+        GreasePencilDataPanel,
+        )
 from bpy.app.translations import pgettext_iface as iface_
 
 
@@ -82,6 +86,7 @@ class IMAGE_MT_view(Menu):
         layout.prop(uv, "show_other_objects")
         if paint.brush and (context.image_paint_object or sima.mode == 'PAINT'):
             layout.prop(uv, "show_texpaint")
+            layout.prop(toolsettings, "show_uv_local_view", text="Show same material")
 
         layout.separator()
 
@@ -110,7 +115,8 @@ class IMAGE_MT_view(Menu):
             layout.separator()
 
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
+        layout.operator("screen.screen_full_area").use_hide_panels = True
 
 
 class IMAGE_MT_select(Menu):
@@ -130,7 +136,7 @@ class IMAGE_MT_select(Menu):
         layout.separator()
 
         layout.operator("uv.select_pinned")
-        layout.operator("uv.select_linked")
+        layout.operator("uv.select_linked").extend = False
 
         layout.separator()
 
@@ -509,12 +515,14 @@ class MASK_MT_editor_menus(Menu):
 # Mask (similar code in space_clip.py, keep in sync)
 # note! - panel placement does _not_ fit well with image panels... need to fix
 
-from bl_ui.properties_mask_common import (MASK_PT_mask,
-                                          MASK_PT_layers,
-                                          MASK_PT_spline,
-                                          MASK_PT_point,
-                                          MASK_PT_display,
-                                          MASK_PT_tools)
+from bl_ui.properties_mask_common import (
+        MASK_PT_mask,
+        MASK_PT_layers,
+        MASK_PT_spline,
+        MASK_PT_point,
+        MASK_PT_display,
+        MASK_PT_tools,
+        )
 
 
 class IMAGE_PT_mask(MASK_PT_mask, Panel):
@@ -660,6 +668,11 @@ class IMAGE_PT_view_properties(Panel):
             sub = col.column()
             sub.active = uvedit.show_stretch
             sub.row().prop(uvedit, "draw_stretch_type", expand=True)
+
+        if ima:
+            layout.separator()
+            render_slot = ima.render_slots.active
+            layout.prop(render_slot, "name", text="Slot Name")
 
 
 class IMAGE_PT_tools_transform_uvs(Panel, UVToolsPanel):
@@ -1031,16 +1044,26 @@ class IMAGE_PT_tools_mask(MASK_PT_tools, Panel):
 # --- end mask ---
 
 
-class IMAGE_PT_view_histogram(Panel):
+class ImageScopesPanel:
+    @classmethod
+    def poll(cls, context):
+        sima = context.space_data
+        if not (sima and sima.image):
+            return False
+        # scopes are not updated in paint modes, hide
+        if sima.mode in {'PAINT'}:
+            return False
+        ob = context.active_object
+        if ob and ob.mode in {'TEXTURE_PAINT'}:
+            return False
+        return True
+
+
+class IMAGE_PT_view_histogram(ImageScopesPanel, Panel):
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Histogram"
     bl_category = "Scopes"
-
-    @classmethod
-    def poll(cls, context):
-        sima = context.space_data
-        return (sima and sima.image)
 
     def draw(self, context):
         layout = self.layout
@@ -1054,16 +1077,11 @@ class IMAGE_PT_view_histogram(Panel):
         row.prop(hist, "show_line", text="")
 
 
-class IMAGE_PT_view_waveform(Panel):
+class IMAGE_PT_view_waveform(ImageScopesPanel, Panel):
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Waveform"
     bl_category = "Scopes"
-
-    @classmethod
-    def poll(cls, context):
-        sima = context.space_data
-        return (sima and sima.image)
 
     def draw(self, context):
         layout = self.layout
@@ -1076,16 +1094,11 @@ class IMAGE_PT_view_waveform(Panel):
         row.prop(sima.scopes, "waveform_mode", text="")
 
 
-class IMAGE_PT_view_vectorscope(Panel):
+class IMAGE_PT_view_vectorscope(ImageScopesPanel, Panel):
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Vectorscope"
     bl_category = "Scopes"
-
-    @classmethod
-    def poll(cls, context):
-        sima = context.space_data
-        return (sima and sima.image)
 
     def draw(self, context):
         layout = self.layout
@@ -1095,16 +1108,11 @@ class IMAGE_PT_view_vectorscope(Panel):
         layout.prop(sima.scopes, "vectorscope_alpha")
 
 
-class IMAGE_PT_sample_line(Panel):
+class IMAGE_PT_sample_line(ImageScopesPanel, Panel):
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Sample Line"
     bl_category = "Scopes"
-
-    @classmethod
-    def poll(cls, context):
-        sima = context.space_data
-        return (sima and sima.image)
 
     def draw(self, context):
         layout = self.layout
@@ -1119,16 +1127,11 @@ class IMAGE_PT_sample_line(Panel):
         row.prop(hist, "show_line", text="")
 
 
-class IMAGE_PT_scope_sample(Panel):
+class IMAGE_PT_scope_sample(ImageScopesPanel, Panel):
     bl_space_type = 'IMAGE_EDITOR'
     bl_region_type = 'TOOLS'
     bl_label = "Scope Samples"
     bl_category = "Scopes"
-
-    @classmethod
-    def poll(cls, context):
-        sima = context.space_data
-        return sima
 
     def draw(self, context):
         layout = self.layout
@@ -1142,10 +1145,22 @@ class IMAGE_PT_scope_sample(Panel):
         sub.prop(sima.scopes, "accuracy")
 
 
-class IMAGE_PT_tools_grease_pencil(GreasePencilPanel, Panel):
+# Grease Pencil properties
+class IMAGE_PT_grease_pencil(GreasePencilDataPanel, Panel):
     bl_space_type = 'IMAGE_EDITOR'
-    bl_region_type = 'TOOLS'
-    bl_category = "Grease Pencil"
+    bl_region_type = 'UI'
+
+    # NOTE: this is just a wrapper around the generic GP Panel
+
+
+# Grease Pencil drawing tools
+class IMAGE_PT_tools_grease_pencil_draw(GreasePencilDrawingToolsPanel, Panel):
+    bl_space_type = 'IMAGE_EDITOR'
+
+
+# Grease Pencil stroke editing tools
+class IMAGE_PT_tools_grease_pencil_edit(GreasePencilStrokeEditPanel, Panel):
+    bl_space_type = 'IMAGE_EDITOR'
 
 
 if __name__ == "__main__":  # only for live edit.

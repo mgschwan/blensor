@@ -32,6 +32,7 @@
 #include "BLI_rand.h"
 #include "BLI_array.h"
 #include "BLI_noise.h"
+#include "BLI_stack.h"
 
 #include "BKE_customdata.h"
 
@@ -318,13 +319,9 @@ static void bm_subdivide_multicut(BMesh *bm, BMEdge *edge, const SubDParams *par
 	for (i = 0; i < numcuts; i++) {
 		v = subdivideedgenum(bm, eed, &e_tmp, i, params->numcuts, params, &e_new, vsta, vend);
 
-		BMO_elem_flag_enable(bm, v, SUBD_SPLIT);
-		BMO_elem_flag_enable(bm, eed, SUBD_SPLIT);
-		BMO_elem_flag_enable(bm, e_new, SUBD_SPLIT);
-
-		BMO_elem_flag_enable(bm, v, ELE_SPLIT);
-		BMO_elem_flag_enable(bm, eed, ELE_SPLIT);
-		BMO_elem_flag_enable(bm, e_new, SUBD_SPLIT);
+		BMO_elem_flag_enable(bm, v, SUBD_SPLIT | ELE_SPLIT);
+		BMO_elem_flag_enable(bm, eed, SUBD_SPLIT | ELE_SPLIT);
+		BMO_elem_flag_enable(bm, e_new, SUBD_SPLIT | ELE_SPLIT);
 
 		BM_CHECK_ELEMENT(v);
 		if (v->e) BM_CHECK_ELEMENT(v->e);
@@ -766,8 +763,7 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 	BMOpSlot *einput;
 	const SubDPattern *pat;
 	SubDParams params;
-	SubDFaceData *facedata = NULL;
-	BLI_array_declare(facedata);
+	BLI_Stack *facedata;
 	BMIter viter, fiter, liter;
 	BMVert *v, **verts = NULL;
 	BMEdge *edge;
@@ -782,7 +778,7 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 	BLI_array_declare(verts);
 	float smooth, fractal, along_normal;
 	bool use_sphere, use_single_edge, use_grid_fill, use_only_quads;
-	int cornertype, seed, i, j, matched, a, b, numcuts, totesel, smooth_falloff;
+	int cornertype, seed, i, j, a, b, numcuts, totesel, smooth_falloff;
 	
 	BMO_slot_buffer_flag_enable(bm, op->slots_in, "edges", BM_EDGE, SUBD_SPLIT);
 	
@@ -802,13 +798,13 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 	patterns[1] = NULL;
 	/* straight cut is patterns[1] == NULL */
 	switch (cornertype) {
-		case SUBD_PATH:
+		case SUBD_CORNER_PATH:
 			patterns[1] = &quad_2edge_path;
 			break;
-		case SUBD_INNERVERT:
+		case SUBD_CORNER_INNERVERT:
 			patterns[1] = &quad_2edge_innervert;
 			break;
-		case SUBD_FAN:
+		case SUBD_CORNER_FAN:
 			patterns[1] = &quad_2edge_fan;
 			break;
 	}
@@ -875,9 +871,12 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 	                     BM_EDGE, EDGE_PERCENT);
 
 
+	facedata = BLI_stack_new(sizeof(SubDFaceData), __func__);
+
 	BM_ITER_MESH (face, &fiter, bm, BM_FACES_OF_MESH) {
 		BMEdge *e1 = NULL, *e2 = NULL;
 		float vec1[3], vec2[3];
+		bool matched = false;
 
 		/* skip non-quads if requested */
 		if (use_only_quads && face->len != 4)
@@ -890,8 +889,6 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 
 		BLI_array_grow_items(edges, face->len);
 		BLI_array_grow_items(verts, face->len);
-
-		matched = 0;
 
 		totesel = 0;
 		BM_ITER_ELEM_INDEX (l_new, &liter, face, BM_LOOPS_OF_FACE, i) {
@@ -930,12 +927,13 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 					}
 				}
 				if (matched) {
-					BLI_array_grow_one(facedata);
-					b = BLI_array_count(facedata) - 1;
-					facedata[b].pat = pat;
-					facedata[b].start = verts[i];
-					facedata[b].face = face;
-					facedata[b].totedgesel = totesel;
+					SubDFaceData *fd;
+
+					fd = BLI_stack_push_r(facedata);
+					fd->pat = pat;
+					fd->start = verts[i];
+					fd->face = face;
+					fd->totedgesel = totesel;
 					BMO_elem_flag_enable(bm, face, SUBD_SPLIT);
 					break;
 				}
@@ -966,15 +964,15 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 					}
 				}
 				if (matched) {
-					BLI_array_grow_one(facedata);
-					j = BLI_array_count(facedata) - 1;
+					SubDFaceData *fd;
 
 					BMO_elem_flag_enable(bm, face, SUBD_SPLIT);
 
-					facedata[j].pat = pat;
-					facedata[j].start = verts[a];
-					facedata[j].face = face;
-					facedata[j].totedgesel = totesel;
+					fd = BLI_stack_push_r(facedata);
+					fd->pat = pat;
+					fd->start = verts[a];
+					fd->face = face;
+					fd->totedgesel = totesel;
 					break;
 				}
 			}
@@ -982,16 +980,16 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 		}
 		
 		if (!matched && totesel) {
-			BLI_array_grow_one(facedata);
-			j = BLI_array_count(facedata) - 1;
+			SubDFaceData *fd;
 			
 			BMO_elem_flag_enable(bm, face, SUBD_SPLIT);
 
 			/* must initialize all members here */
-			facedata[j].start = NULL;
-			facedata[j].pat = NULL;
-			facedata[j].totedgesel = totesel;
-			facedata[j].face = face;
+			fd = BLI_stack_push_r(facedata);
+			fd->start = NULL;
+			fd->pat = NULL;
+			fd->totedgesel = totesel;
+			fd->face = face;
 		}
 	}
 
@@ -1009,16 +1007,17 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 		copy_v3_v3(v->co, co);
 	}
 
-	i = 0;
-	for (i = 0; i < BLI_array_count(facedata); i++) {
-		face = facedata[i].face;
+	for (; !BLI_stack_is_empty(facedata); BLI_stack_discard(facedata)) {
+		SubDFaceData *fd = BLI_stack_peek(facedata);
+
+		face = fd->face;
 
 		/* figure out which pattern to use */
 		BLI_array_empty(verts);
 
-		pat = facedata[i].pat;
+		pat = fd->pat;
 
-		if (!pat && facedata[i].totedgesel == 2) {
+		if (!pat && fd->totedgesel == 2) {
 			int vlen;
 			
 			/* ok, no pattern.  we still may be able to do something */
@@ -1079,7 +1078,7 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 					BMIter other_fiter;
 					BM_ITER_ELEM (other_loop, &other_fiter, loops[a]->v, BM_LOOPS_OF_VERT) {
 						if (other_loop->f != face) {
-							if (BM_vert_in_face(other_loop->f, loops[b]->v)) {
+							if (BM_vert_in_face(loops[b]->v, other_loop->f)) {
 								/* we assume that these verts are not making an edge in the face */
 								BLI_assert(other_loop->prev->v != loops[a]->v);
 								BLI_assert(other_loop->next->v != loops[a]->v);
@@ -1131,7 +1130,7 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 
 		a = 0;
 		BM_ITER_ELEM_INDEX (l_new, &liter, face, BM_LOOPS_OF_FACE, j) {
-			if (l_new->v == facedata[i].start) {
+			if (l_new->v == fd->start) {
 				a = j + 1;
 				break;
 			}
@@ -1156,7 +1155,7 @@ void bmo_subdivide_edges_exec(BMesh *bm, BMOperator *op)
 
 	BM_data_layer_free_n(bm, &bm->vdata, CD_SHAPEKEY, params.shape_info.tmpkey);
 	
-	if (facedata) BLI_array_free(facedata);
+	BLI_stack_free(facedata);
 	if (edges) BLI_array_free(edges);
 	if (verts) BLI_array_free(verts);
 	BLI_array_free(loops_split);

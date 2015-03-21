@@ -34,15 +34,14 @@
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
 
-#include "BLI_listbase.h"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
-#include "BKE_animsys.h"
 #include "BKE_fcurve.h"
 #include "BKE_global.h"
+#include "BKE_nla.h"
 
 #include "ED_keyframing.h"
 
@@ -55,27 +54,36 @@
 
 #include "interface_intern.h"
 
-static FCurve *ui_but_get_fcurve(uiBut *but, bAction **action, bool *r_driven)
+static FCurve *ui_but_get_fcurve(uiBut *but, AnimData **adt, bAction **action, bool *r_driven)
 {
 	/* for entire array buttons we check the first component, it's not perfect
 	 * but works well enough in typical cases */
 	int rnaindex = (but->rnaindex == -1) ? 0 : but->rnaindex;
 
-	return rna_get_fcurve(&but->rnapoin, but->rnaprop, rnaindex, action, r_driven);
+	return rna_get_fcurve_context_ui(but->block->evil_C, &but->rnapoin, but->rnaprop, rnaindex, adt, action, r_driven);
 }
 
 void ui_but_anim_flag(uiBut *but, float cfra)
 {
+	AnimData *adt;
+	bAction *act;
 	FCurve *fcu;
 	bool driven;
 
 	but->flag &= ~(UI_BUT_ANIMATED | UI_BUT_ANIMATED_KEY | UI_BUT_DRIVEN);
 
-	fcu = ui_but_get_fcurve(but, NULL, &driven);
+	fcu = ui_but_get_fcurve(but, &adt, &act, &driven);
 
 	if (fcu) {
 		if (!driven) {
 			but->flag |= UI_BUT_ANIMATED;
+			
+			/* T41525 - When the active action is a NLA strip being edited, 
+			 * we need to correct the frame number to "look inside" the
+			 * remapped action
+			 */
+			if (adt)
+				cfra = BKE_nla_tweakedit_remap(adt, cfra, NLATIME_CONVERT_UNMAP);
 			
 			if (fcurve_frame_has_keyframe(fcu, cfra, 0))
 				but->flag |= UI_BUT_ANIMATED_KEY;
@@ -92,7 +100,7 @@ bool ui_but_anim_expression_get(uiBut *but, char *str, size_t maxlen)
 	ChannelDriver *driver;
 	bool driven;
 
-	fcu = ui_but_get_fcurve(but, NULL, &driven);
+	fcu = ui_but_get_fcurve(but, NULL, NULL, &driven);
 
 	if (fcu && driven) {
 		driver = fcu->driver;
@@ -112,7 +120,7 @@ bool ui_but_anim_expression_set(uiBut *but, const char *str)
 	ChannelDriver *driver;
 	bool driven;
 
-	fcu = ui_but_get_fcurve(but, NULL, &driven);
+	fcu = ui_but_get_fcurve(but, NULL, NULL, &driven);
 
 	if (fcu && driven) {
 		driver = fcu->driver;
@@ -208,7 +216,7 @@ void ui_but_anim_autokey(bContext *C, uiBut *but, Scene *scene, float cfra)
 	FCurve *fcu;
 	bool driven;
 
-	fcu = ui_but_get_fcurve(but, &action, &driven);
+	fcu = ui_but_get_fcurve(but, NULL, &action, &driven);
 
 	if (fcu && !driven) {
 		id = but->rnapoin.id.data;
@@ -219,7 +227,14 @@ void ui_but_anim_autokey(bContext *C, uiBut *but, Scene *scene, float cfra)
 			short flag = ANIM_get_keyframing_flags(scene, 1);
 
 			fcu->flag &= ~FCURVE_SELECTED;
-			insert_keyframe(reports, id, action, ((fcu->grp) ? (fcu->grp->name) : (NULL)), fcu->rna_path, fcu->array_index, cfra, flag);
+
+			/* Note: We use but->rnaindex instead of fcu->array_index,
+			 *       because a button may control all items of an array at once.
+			 *       E.g., color wheels (see T42567). */
+			BLI_assert((fcu->array_index == but->rnaindex) || (but->rnaindex == -1));
+			insert_keyframe(reports, id, action, ((fcu->grp) ? (fcu->grp->name) : (NULL)),
+			                fcu->rna_path, but->rnaindex, cfra, flag);
+
 			WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
 		}
 	}
@@ -227,54 +242,54 @@ void ui_but_anim_autokey(bContext *C, uiBut *but, Scene *scene, float cfra)
 
 void ui_but_anim_insert_keyframe(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_keyframe_insert_button", WM_OP_INVOKE_DEFAULT, NULL);
 }
 
 void ui_but_anim_delete_keyframe(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_keyframe_delete_button", WM_OP_INVOKE_DEFAULT, NULL);
 }
 
 void ui_but_anim_clear_keyframe(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_keyframe_clear_button", WM_OP_INVOKE_DEFAULT, NULL);
 }
 
 void ui_but_anim_add_driver(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_driver_button_add", WM_OP_INVOKE_DEFAULT, NULL);
 }
 
 void ui_but_anim_remove_driver(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_driver_button_remove", WM_OP_INVOKE_DEFAULT, NULL);
 }
 
 void ui_but_anim_copy_driver(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_copy_driver_button", WM_OP_INVOKE_DEFAULT, NULL);
 }
 
 void ui_but_anim_paste_driver(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_paste_driver_button", WM_OP_INVOKE_DEFAULT, NULL);
 }
 
 void ui_but_anim_add_keyingset(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_keyingset_button_add", WM_OP_INVOKE_DEFAULT, NULL);
 }
 
 void ui_but_anim_remove_keyingset(bContext *C)
 {
-	/* this operator calls uiContextActiveProperty */
+	/* this operator calls UI_context_active_but_prop_get */
 	WM_operator_name_call(C, "ANIM_OT_keyingset_button_remove", WM_OP_INVOKE_DEFAULT, NULL);
 }

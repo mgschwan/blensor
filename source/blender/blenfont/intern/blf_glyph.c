@@ -262,8 +262,8 @@ GlyphBLF *blf_glyph_add(FontBLF *font, unsigned int index, unsigned int c)
 	g->xoff = -1;
 	g->yoff = -1;
 	bitmap = slot->bitmap;
-	g->width = bitmap.width;
-	g->height = bitmap.rows;
+	g->width = (int)bitmap.width;
+	g->height = (int)bitmap.rows;
 
 	if (g->width && g->height) {
 		if (sharp) {
@@ -379,7 +379,7 @@ static void blf_texture3_draw(const float shadow_col[4], float uv[2][2], float x
 
 static void blf_glyph_calc_rect(rctf *rect, GlyphBLF *g, float x, float y)
 {
-	rect->xmin = (float)floor(x + g->pos_x);
+	rect->xmin = floorf(x + g->pos_x);
 	rect->xmax = rect->xmin + (float)g->width;
 	rect->ymin = y + g->pos_y;
 	rect->ymax = y + g->pos_y - (float)g->height;

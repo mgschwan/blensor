@@ -33,9 +33,11 @@
 
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
+#include "DNA_key_types.h"
 
 #include "BLI_math.h"
 #include "BLI_alloca.h"
+#include "BLI_listbase.h"
 
 #include "BKE_DerivedMesh.h"
 #include "BKE_context.h"
@@ -230,7 +232,7 @@ bool EDBM_op_finish(BMEditMesh *em, BMOperator *bmop, wmOperator *op, const bool
 	else {
 		em->emcopyusers--;
 		if (em->emcopyusers < 0) {
-			printf("warning: em->emcopyusers was less then zero.\n");
+			printf("warning: em->emcopyusers was less than zero.\n");
 		}
 
 		if (em->emcopyusers <= 0) {
@@ -381,6 +383,12 @@ void EDBM_mesh_load(Object *ob)
 	Mesh *me = ob->data;
 	BMesh *bm = me->edit_btmesh->bm;
 
+	/* Workaround for T42360, 'ob->shapenr' should be 1 in this case.
+	 * however this isn't synchronized between objects at the moment. */
+	if (UNLIKELY((ob->shapenr == 0) && (me->key && !BLI_listbase_is_empty(&me->key->block)))) {
+		bm->shapenr = 1;
+	}
+
 	BM_mesh_bm_to_me(bm, me, false);
 
 #ifdef USE_TESSFACE_DEFAULT
@@ -432,14 +440,14 @@ void EDBM_select_flush(BMEditMesh *em)
 	BM_mesh_select_flush(em->bm);
 }
 
-void EDBM_select_more(BMEditMesh *em)
+void EDBM_select_more(BMEditMesh *em, const bool use_face_step)
 {
 	BMOperator bmop;
-	int use_faces = em->selectmode == SCE_SELECT_FACE;
+	const bool use_faces = (em->selectmode == SCE_SELECT_FACE);
 
 	BMO_op_initf(em->bm, &bmop, BMO_FLAG_DEFAULTS,
-	             "region_extend geom=%hvef use_constrict=%b use_faces=%b",
-	             BM_ELEM_SELECT, false, use_faces);
+	             "region_extend geom=%hvef use_contract=%b use_faces=%b use_face_step=%b",
+	             BM_ELEM_SELECT, false, use_faces, use_face_step);
 	BMO_op_exec(em->bm, &bmop);
 	/* don't flush selection in edge/vertex mode  */
 	BMO_slot_buffer_hflag_enable(em->bm, bmop.slots_out, "geom.out", BM_ALL_NOLOOP, BM_ELEM_SELECT, use_faces ? true : false);
@@ -448,14 +456,14 @@ void EDBM_select_more(BMEditMesh *em)
 	EDBM_selectmode_flush(em);
 }
 
-void EDBM_select_less(BMEditMesh *em)
+void EDBM_select_less(BMEditMesh *em, const bool use_face_step)
 {
 	BMOperator bmop;
-	int use_faces = em->selectmode == SCE_SELECT_FACE;
+	const bool use_faces = (em->selectmode == SCE_SELECT_FACE);
 
 	BMO_op_initf(em->bm, &bmop, BMO_FLAG_DEFAULTS,
-	             "region_extend geom=%hvef use_constrict=%b use_faces=%b",
-	             BM_ELEM_SELECT, true, use_faces);
+	             "region_extend geom=%hvef use_contract=%b use_faces=%b use_face_step=%b",
+	             BM_ELEM_SELECT, true, use_faces, use_face_step);
 	BMO_op_exec(em->bm, &bmop);
 	/* don't flush selection in edge/vertex mode  */
 	BMO_slot_buffer_hflag_disable(em->bm, bmop.slots_out, "geom.out", BM_ALL_NOLOOP, BM_ELEM_SELECT, use_faces ? true : false);
@@ -524,29 +532,55 @@ static void *editbtMesh_to_undoMesh(void *emv, void *obdata)
 	return um;
 }
 
-static void undoMesh_to_editbtMesh(void *umv, void *em_v, void *UNUSED(obdata))
+static void undoMesh_to_editbtMesh(void *umv, void *em_v, void *obdata)
 {
 	BMEditMesh *em = em_v, *em_tmp;
 	Object *ob = em->ob;
 	UndoMesh *um = umv;
 	BMesh *bm;
+	Key *key = ((Mesh *) obdata)->key;
 
 	const BMAllocTemplate allocsize = BMALLOC_TEMPLATE_FROM_ME(&um->me);
 
-	ob->shapenr = em->bm->shapenr = um->shapenr;
+	em->bm->shapenr = um->shapenr;
 
 	EDBM_mesh_free(em);
 
 	bm = BM_mesh_create(&allocsize);
 
-	BM_mesh_bm_from_me(bm, &um->me, true, false, ob->shapenr);
+	BM_mesh_bm_from_me(bm, &um->me, true, false, um->shapenr);
 
 	em_tmp = BKE_editmesh_create(bm, true);
 	*em = *em_tmp;
-	
+
 	em->selectmode = um->selectmode;
 	bm->selectmode = um->selectmode;
 	em->ob = ob;
+
+	/* T35170: Restore the active key on the RealMesh. Otherwise 'fake' offset propagation happens
+	 *         if the active is a basis for any other. */
+	if (key && (key->type == KEY_RELATIVE)) {
+		/* Since we can't add, remove or reorder keyblocks in editmode, it's safe to assume
+		 * shapenr from restored bmesh and keyblock indices are in sync. */
+		const int kb_act_idx = ob->shapenr - 1;
+
+		/* If it is, let's patch the current mesh key block to its restored value.
+		 * Else, the offsets won't be computed and it won't matter. */
+		if (BKE_keyblock_is_basis(key, kb_act_idx)) {
+			KeyBlock *kb_act = BLI_findlink(&key->block, kb_act_idx);
+
+			if (kb_act->totelem != um->me.totvert) {
+				/* The current mesh has some extra/missing verts compared to the undo, adjust. */
+				MEM_SAFE_FREE(kb_act->data);
+				kb_act->data = MEM_mallocN((size_t)(key->elemsize * bm->totvert), __func__);
+				kb_act->totelem = um->me.totvert;
+			}
+
+			BKE_keyblock_update_from_mesh(&um->me, kb_act);
+		}
+	}
+
+	ob->shapenr = um->shapenr;
 
 	MEM_freeN(em_tmp);
 }

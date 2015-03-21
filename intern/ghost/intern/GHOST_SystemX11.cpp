@@ -32,6 +32,11 @@
  *  \ingroup GHOST
  */
 
+#include <X11/Xatom.h>
+#include <X11/keysym.h>
+#include <X11/XKBlib.h> /* allow detectable autorepeate */
+#include <X11/Xutil.h>
+
 #include "GHOST_SystemX11.h"
 #include "GHOST_WindowX11.h"
 #include "GHOST_WindowManager.h"
@@ -51,10 +56,6 @@
 #endif
 
 #include "GHOST_Debug.h"
-
-#include <X11/Xatom.h>
-#include <X11/keysym.h>
-#include <X11/XKBlib.h> /* allow detectable autorepeate */
 
 #ifdef WITH_XF86KEYSYM
 #include <X11/XF86keysym.h>
@@ -288,31 +289,26 @@ getAllDisplayDimensions(
  */
 GHOST_IWindow *
 GHOST_SystemX11::
-createWindow(
-		const STR_String& title,
+createWindow(const STR_String& title,
 		GHOST_TInt32 left,
 		GHOST_TInt32 top,
 		GHOST_TUns32 width,
 		GHOST_TUns32 height,
 		GHOST_TWindowState state,
 		GHOST_TDrawingContextType type,
-		const bool stereoVisual,
+		GHOST_GLSettings glSettings,
 		const bool exclusive,
-		const GHOST_TUns16 numOfAASamples,
 		const GHOST_TEmbedderWindowID parentWindow)
 {
 	GHOST_WindowX11 *window = 0;
 	
 	if (!m_display) return 0;
 	
-
-	
-
 	window = new GHOST_WindowX11(this, m_display, title,
 	                             left, top, width, height,
 	                             state, parentWindow, type,
-	                             stereoVisual, exclusive,
-	                             numOfAASamples);
+	                             ((glSettings.flags & GHOST_glStereoVisual) != 0), exclusive,
+	                             glSettings.numOfAASamples);
 
 	if (window) {
 		/* Both are now handle in GHOST_WindowX11.cpp
@@ -1180,7 +1176,11 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 		default:
 		{
 #ifdef WITH_X11_XINPUT
-			if (xe->type == m_xtablet.MotionEvent) {
+			if (xe->type == m_xtablet.MotionEvent ||
+			    xe->type == m_xtablet.MotionEventEraser ||
+			    xe->type == m_xtablet.PressEvent ||
+			    xe->type == m_xtablet.PressEventEraser)
+			{
 				XDeviceMotionEvent *data = (XDeviceMotionEvent *)xe;
 				const unsigned char axis_first = data->first_axis;
 				const unsigned char axes_end = axis_first + data->axes_count;  /* after the last */
@@ -1873,8 +1873,11 @@ GHOST_TSuccess GHOST_SystemX11::pushDragDropEvent(GHOST_TEventType eventType,
 }
 #endif
 
-#ifdef WITH_X11_XINPUT
-/* 
+#if defined(USE_X11_ERROR_HANDLERS) || defined(WITH_X11_XINPUT)
+/*
+ * These callbacks can be used for debugging, so we can breakpoint on an X11 error.
+
+ *
  * Dummy function to get around IO Handler exiting if device invalid
  * Basically it will not crash blender now if you have a X device that
  * is configured but not plugged in.
@@ -1895,7 +1898,9 @@ int GHOST_X11_ApplicationIOErrorHandler(Display *display)
 	/* No exit! - but keep lint happy */
 	return 0;
 }
+#endif
 
+#ifdef WITH_X11_XINPUT
 /* These C functions are copied from Wine 1.1.13's wintab.c */
 #define BOOL int
 #define TRUE 1

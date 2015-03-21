@@ -63,6 +63,7 @@
 
 #include "DNA_text_types.h"
 
+#include "BKE_appdir.h"
 #include "BKE_context.h"
 #include "BKE_text.h"
 #include "BKE_main.h"
@@ -76,7 +77,6 @@
 #include "../generic/py_capi_utils.h"
 
 /* inittab initialization functions */
-#include "../blensor/blensor.h"
 #include "../generic/bgl.h"
 #include "../generic/blf_py_api.h"
 #include "../generic/idprop_py_api.h"
@@ -236,7 +236,6 @@ static struct _inittab bpy_internal_modules[] = {
 #endif
 	{"gpu", GPU_initPython},
 	{"idprop", BPyInit_idprop},
-	{"blensor_intern",  PyInit_blensor},
 	{NULL, NULL}
 };
 
@@ -245,11 +244,11 @@ void BPY_python_start(int argc, const char **argv)
 {
 #ifndef WITH_PYTHON_MODULE
 	PyThreadState *py_tstate = NULL;
-	const char *py_path_bundle = BLI_get_folder(BLENDER_SYSTEM_PYTHON, NULL);
+	const char *py_path_bundle = BKE_appdir_folder_id(BLENDER_SYSTEM_PYTHON, NULL);
 
 	/* not essential but nice to set our name */
 	static wchar_t program_path_wchar[FILE_MAX]; /* python holds a reference */
-	BLI_strncpy_wchar_from_utf8(program_path_wchar, BLI_program_path(), ARRAY_SIZE(program_path_wchar));
+	BLI_strncpy_wchar_from_utf8(program_path_wchar, BKE_appdir_program_path(), ARRAY_SIZE(program_path_wchar));
 	Py_SetProgramName(program_path_wchar);
 
 	/* must run before python initializes */
@@ -422,7 +421,7 @@ static void python_script_error_jump_text(struct Text *text)
 typedef struct {
 	PyObject_HEAD
 	PyObject *md_dict;
-	/* ommit other values, we only want the dict. */
+	/* omit other values, we only want the dict. */
 } PyModuleObject;
 #endif
 

@@ -93,7 +93,6 @@
 #include "ED_mball.h"
 
 #include "UI_interface.h"
-#include "UI_resources.h"
 
 #include "view3d_intern.h"  /* own include */
 
@@ -1143,7 +1142,7 @@ static Base *object_mouse_select_menu(bContext *C, ViewContext *vc, unsigned int
 			const char *name = ob->id.name + 2;
 
 			BLI_strncpy(object_mouse_select_menu_data[i].idname, name, MAX_ID_NAME - 2);
-			object_mouse_select_menu_data[i].icon = uiIconFromID(&ob->id);
+			object_mouse_select_menu_data[i].icon = UI_icon_from_id(&ob->id);
 		}
 
 		{
@@ -1181,14 +1180,14 @@ static short selectbuffer_ret_hits_15(unsigned int *UNUSED(buffer), const short 
 static short selectbuffer_ret_hits_9(unsigned int *buffer, const short hits15, const short hits9)
 {
 	const int offs = 4 * hits15;
-	memcpy(buffer, buffer + offs, 4 * hits9 * sizeof (unsigned int));
+	memcpy(buffer, buffer + offs, 4 * hits9 * sizeof(unsigned int));
 	return hits9;
 }
 
 static short selectbuffer_ret_hits_5(unsigned int *buffer, const short hits15, const short hits9, const short hits5)
 {
 	const int offs = 4 * hits15 + 4 * hits9;
-	memcpy(buffer, buffer + offs, 4 * hits5  * sizeof (unsigned int));
+	memcpy(buffer, buffer + offs, 4 * hits5  * sizeof(unsigned int));
 	return hits5;
 }
 
@@ -1346,7 +1345,7 @@ Base *ED_view3d_give_base_under_cursor(bContext *C, const int mval[2])
 {
 	ViewContext vc;
 	Base *basact = NULL;
-	unsigned int buffer[4 * MAXPICKBUF];
+	unsigned int buffer[MAXPICKBUF];
 	int hits;
 	bool do_nearest;
 	
@@ -1444,7 +1443,7 @@ static bool mouse_select(bContext *C, const int mval[2],
 		}
 	}
 	else {
-		unsigned int buffer[4 * MAXPICKBUF];
+		unsigned int buffer[MAXPICKBUF];
 		bool do_nearest;
 
 		/* if objects have posemode set, the bones are in the same selection buffer */
@@ -1522,7 +1521,7 @@ static bool mouse_select(bContext *C, const int mval[2],
 						}
 					}
 				}
-				else if (ED_do_pose_selectbuffer(scene, basact, buffer, hits, extend, deselect, toggle) ) {
+				else if (ED_do_pose_selectbuffer(scene, basact, buffer, hits, extend, deselect, toggle, do_nearest)) {
 					/* then bone is found */
 				
 					/* we make the armature selected: 
@@ -1877,7 +1876,7 @@ static int do_meta_box_select(ViewContext *vc, rcti *rect, bool select, bool ext
 	MetaElem *ml;
 	int a;
 
-	unsigned int buffer[4 * MAXPICKBUF];
+	unsigned int buffer[MAXPICKBUF];
 	short hits;
 
 	hits = view3d_opengl_select(vc, buffer, MAXPICKBUF, rect, false);
@@ -1911,7 +1910,7 @@ static int do_armature_box_select(ViewContext *vc, rcti *rect, bool select, bool
 	EditBone *ebone;
 	int a;
 
-	unsigned int buffer[4 * MAXPICKBUF];
+	unsigned int buffer[MAXPICKBUF];
 	short hits;
 
 	hits = view3d_opengl_select(vc, buffer, MAXPICKBUF, rect, false);
@@ -2007,8 +2006,8 @@ static int do_object_pose_box_select(bContext *C, ViewContext *vc, rcti *rect, b
 	}
 
 	/* selection buffer now has bones potentially too, so we add MAXPICKBUF */
-	vbuffer = MEM_mallocN(4 * (totobj + MAXPICKBUF) * sizeof(unsigned int), "selection buffer");
-	hits = view3d_opengl_select(vc, vbuffer, 4 * (totobj + MAXPICKBUF), rect, false);
+	vbuffer = MEM_mallocN(4 * (totobj + MAXPICKELEMS) * sizeof(unsigned int), "selection buffer");
+	hits = view3d_opengl_select(vc, vbuffer, 4 * (totobj + MAXPICKELEMS), rect, false);
 	/*
 	 * LOGIC NOTES (theeth):
 	 * The buffer and ListBase have the same relative order, which makes the selection

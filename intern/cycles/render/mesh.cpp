@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 #include "bvh.h"
@@ -30,6 +30,7 @@
 
 #include "util_cache.h"
 #include "util_foreach.h"
+#include "util_logging.h"
 #include "util_progress.h"
 #include "util_set.h"
 
@@ -93,6 +94,8 @@ Mesh::Mesh()
 
 	attributes.triangle_mesh = this;
 	curve_attributes.curve_mesh = this;
+
+	has_volume = false;
 }
 
 Mesh::~Mesh()
@@ -378,12 +381,12 @@ void Mesh::add_vertex_normals()
 	}
 }
 
-void Mesh::pack_normals(Scene *scene, float *tri_shader, float4 *vnormal)
+void Mesh::pack_normals(Scene *scene, uint *tri_shader, float4 *vnormal)
 {
 	Attribute *attr_vN = attributes.find(ATTR_STD_VERTEX_NORMAL);
 
 	float3 *vN = attr_vN->data_float3();
-	int shader_id = 0;
+	uint shader_id = 0;
 	uint last_shader = -1;
 	bool last_smooth = false;
 
@@ -401,7 +404,7 @@ void Mesh::pack_normals(Scene *scene, float *tri_shader, float4 *vnormal)
 			shader_id = scene->shader_manager->get_shader_id(last_shader, this, last_smooth);
 		}
 
-		tri_shader[i] = __int_as_float(shader_id);
+		tri_shader[i] = shader_id;
 	}
 
 	size_t verts_size = verts.size();
@@ -553,6 +556,7 @@ MeshManager::MeshManager()
 {
 	bvh = NULL;
 	need_update = true;
+	need_flags_update = true;
 }
 
 MeshManager::~MeshManager()
@@ -746,8 +750,49 @@ void MeshManager::update_svm_attributes(Device *device, DeviceScene *dscene, Sce
 	device->tex_alloc("__attributes_map", dscene->attributes_map);
 }
 
-static void update_attribute_element_offset(Mesh *mesh, vector<float>& attr_float, vector<float4>& attr_float3, vector<uchar4>& attr_uchar4,
-	Attribute *mattr, TypeDesc& type, int& offset, AttributeElement& element)
+static void update_attribute_element_size(Mesh *mesh,
+                                          Attribute *mattr,
+                                          size_t *attr_float_size,
+                                          size_t *attr_float3_size,
+                                          size_t *attr_uchar4_size)
+{
+	if(mattr) {
+		size_t size = mattr->element_size(
+			mesh->verts.size(),
+			mesh->triangles.size(),
+			mesh->motion_steps,
+			mesh->curves.size(),
+			mesh->curve_keys.size());
+
+		if(mattr->element == ATTR_ELEMENT_VOXEL) {
+			/* pass */
+		}
+		else if(mattr->element == ATTR_ELEMENT_CORNER_BYTE) {
+			*attr_uchar4_size += size;
+		}
+		else if(mattr->type == TypeDesc::TypeFloat) {
+			*attr_float_size += size;
+		}
+		else if(mattr->type == TypeDesc::TypeMatrix) {
+			*attr_float3_size += size * 4;
+		}
+		else {
+			*attr_float3_size += size;
+		}
+	}
+}
+
+static void update_attribute_element_offset(Mesh *mesh,
+                                            vector<float>& attr_float,
+                                            size_t& attr_float_offset,
+                                            vector<float4>& attr_float3,
+                                            size_t& attr_float3_offset,
+                                            vector<uchar4>& attr_uchar4,
+                                            size_t& attr_uchar4_offset,
+                                            Attribute *mattr,
+                                            TypeDesc& type,
+                                            int& offset,
+                                            AttributeElement& element)
 {
 	if(mattr) {
 		/* store element and type */
@@ -769,39 +814,43 @@ static void update_attribute_element_offset(Mesh *mesh, vector<float>& attr_floa
 		}
 		else if(mattr->element == ATTR_ELEMENT_CORNER_BYTE) {
 			uchar4 *data = mattr->data_uchar4();
-			offset = attr_uchar4.size();
+			offset = attr_uchar4_offset;
 
-			attr_uchar4.resize(attr_uchar4.size() + size);
-
-			for(size_t k = 0; k < size; k++)
+			assert(attr_uchar4.capacity() >= offset + size);
+			for(size_t k = 0; k < size; k++) {
 				attr_uchar4[offset+k] = data[k];
+			}
+			attr_uchar4_offset += size;
 		}
 		else if(mattr->type == TypeDesc::TypeFloat) {
 			float *data = mattr->data_float();
-			offset = attr_float.size();
+			offset = attr_float_offset;
 
-			attr_float.resize(attr_float.size() + size);
-
-			for(size_t k = 0; k < size; k++)
+			assert(attr_float.capacity() >= offset + size);
+			for(size_t k = 0; k < size; k++) {
 				attr_float[offset+k] = data[k];
+			}
+			attr_float_offset += size;
 		}
 		else if(mattr->type == TypeDesc::TypeMatrix) {
 			Transform *tfm = mattr->data_transform();
-			offset = attr_float3.size();
+			offset = attr_float3_offset;
 
-			attr_float3.resize(attr_float3.size() + size*4);
-
-			for(size_t k = 0; k < size*4; k++)
+			assert(attr_float3.capacity() >= offset + size * 4);
+			for(size_t k = 0; k < size*4; k++) {
 				attr_float3[offset+k] = (&tfm->x)[k];
+			}
+			attr_float3_offset += size * 4;
 		}
 		else {
 			float4 *data = mattr->data_float4();
-			offset = attr_float3.size();
+			offset = attr_float3_offset;
 
-			attr_float3.resize(attr_float3.size() + size);
-
-			for(size_t k = 0; k < size; k++)
+			assert(attr_float3.capacity() >= offset + size);
+			for(size_t k = 0; k < size; k++) {
 				attr_float3[offset+k] = data[k];
+			}
+			attr_float3_offset += size;
 		}
 
 		/* mesh vertex/curve index is global, not per object, so we sneak
@@ -851,16 +900,16 @@ void MeshManager::device_update_attributes(Device *device, DeviceScene *dscene, 
 	/* mesh attribute are stored in a single array per data type. here we fill
 	 * those arrays, and set the offset and element type to create attribute
 	 * maps next */
-	vector<float> attr_float;
-	vector<float4> attr_float3;
-	vector<uchar4> attr_uchar4;
 
+	/* Pre-allocate attributes to avoid arrays re-allocation which would
+	 * take 2x of overall attribute memory usage.
+	 */
+	size_t attr_float_size = 0;
+	size_t attr_float3_size = 0;
+	size_t attr_uchar4_size = 0;
 	for(size_t i = 0; i < scene->meshes.size(); i++) {
 		Mesh *mesh = scene->meshes[i];
 		AttributeRequestSet& attributes = mesh_attributes[i];
-
-		/* todo: we now store std and name attributes from requests even if
-		 * they actually refer to the same mesh attributes, optimize */
 		foreach(AttributeRequest& req, attributes.requests) {
 			Attribute *triangle_mattr = mesh->attributes.find(req);
 			Attribute *curve_mattr = mesh->curve_attributes.find(req);
@@ -874,12 +923,56 @@ void MeshManager::device_update_attributes(Device *device, DeviceScene *dscene, 
 					memcpy(triangle_mattr->data_float3(), &mesh->verts[0], sizeof(float3)*mesh->verts.size());
 			}
 
-			update_attribute_element_offset(mesh, attr_float, attr_float3, attr_uchar4, triangle_mattr,
-				req.triangle_type, req.triangle_offset, req.triangle_element);
+			update_attribute_element_size(mesh,
+			                              triangle_mattr,
+			                              &attr_float_size,
+			                              &attr_float3_size,
+			                              &attr_uchar4_size);
+			update_attribute_element_size(mesh,
+			                              curve_mattr,
+			                              &attr_float_size,
+			                              &attr_float3_size,
+			                              &attr_uchar4_size);
+		}
+	}
 
-			update_attribute_element_offset(mesh, attr_float, attr_float3, attr_uchar4, curve_mattr,
-				req.curve_type, req.curve_offset, req.curve_element);
-	
+	vector<float> attr_float(attr_float_size);
+	vector<float4> attr_float3(attr_float3_size);
+	vector<uchar4> attr_uchar4(attr_uchar4_size);
+
+	size_t attr_float_offset = 0;
+	size_t attr_float3_offset = 0;
+	size_t attr_uchar4_offset = 0;
+
+	/* Fill in attributes. */
+	for(size_t i = 0; i < scene->meshes.size(); i++) {
+		Mesh *mesh = scene->meshes[i];
+		AttributeRequestSet& attributes = mesh_attributes[i];
+
+		/* todo: we now store std and name attributes from requests even if
+		 * they actually refer to the same mesh attributes, optimize */
+		foreach(AttributeRequest& req, attributes.requests) {
+			Attribute *triangle_mattr = mesh->attributes.find(req);
+			Attribute *curve_mattr = mesh->curve_attributes.find(req);
+
+			update_attribute_element_offset(mesh,
+			                                attr_float, attr_float_offset,
+			                                attr_float3, attr_float3_offset,
+			                                attr_uchar4, attr_uchar4_offset,
+			                                triangle_mattr,
+			                                req.triangle_type,
+			                                req.triangle_offset,
+			                                req.triangle_element);
+
+			update_attribute_element_offset(mesh,
+			                                attr_float, attr_float_offset,
+			                                attr_float3, attr_float3_offset,
+			                                attr_uchar4, attr_uchar4_offset,
+			                                curve_mattr,
+			                                req.curve_type,
+			                                req.curve_offset,
+			                                req.curve_element);
+
 			if(progress.get_cancel()) return;
 		}
 	}
@@ -936,7 +1029,7 @@ void MeshManager::device_update_mesh(Device *device, DeviceScene *dscene, Scene 
 		/* normals */
 		progress.set_status("Updating Mesh", "Computing normals");
 
-		float *tri_shader = dscene->tri_shader.resize(tri_size);
+		uint *tri_shader = dscene->tri_shader.resize(tri_size);
 		float4 *vnormal = dscene->tri_vnormal.resize(vert_size);
 		float4 *tri_verts = dscene->tri_verts.resize(vert_size);
 		float4 *tri_vindex = dscene->tri_vindex.resize(tri_size);
@@ -977,6 +1070,9 @@ void MeshManager::device_update_bvh(Device *device, DeviceScene *dscene, Scene *
 {
 	/* bvh build */
 	progress.set_status("Updating Scene BVH", "Building");
+
+	VLOG(1) << (scene->params.use_qbvh ? "Using QBVH optimization structure"
+	                                   : "Using regular BVH optimization structure");
 
 	BVHParams bparams;
 	bparams.top_level = true;
@@ -1025,6 +1121,24 @@ void MeshManager::device_update_bvh(Device *device, DeviceScene *dscene, Scene *
 	}
 
 	dscene->data.bvh.root = pack.root_index;
+	dscene->data.bvh.use_qbvh = scene->params.use_qbvh;
+}
+
+void MeshManager::device_update_flags(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress)
+{
+	if(!need_update && !need_flags_update) {
+		return;
+	}
+	/* update flags */
+	foreach(Mesh *mesh, scene->meshes) {
+		mesh->has_volume = false;
+		foreach(uint shader, mesh->used_shaders) {
+			if(scene->shaders[shader]->has_volume) {
+				mesh->has_volume = true;
+			}
+		}
+	}
+	need_flags_update = false;
 }
 
 void MeshManager::device_update(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress)
@@ -1034,9 +1148,10 @@ void MeshManager::device_update(Device *device, DeviceScene *dscene, Scene *scen
 
 	/* update normals */
 	foreach(Mesh *mesh, scene->meshes) {
-		foreach(uint shader, mesh->used_shaders)
+		foreach(uint shader, mesh->used_shaders) {
 			if(scene->shaders[shader]->need_update_attributes)
 				mesh->need_update = true;
+		}
 
 		if(mesh->need_update) {
 			mesh->add_face_normals();
@@ -1087,13 +1202,17 @@ void MeshManager::device_update(Device *device, DeviceScene *dscene, Scene *scen
 
 	foreach(Mesh *mesh, scene->meshes) {
 		if(mesh->need_update) {
-			pool.push(function_bind(&Mesh::compute_bvh, mesh, &scene->params, &progress, i, num_bvh));
+			pool.push(function_bind(&Mesh::compute_bvh,
+			                        mesh,
+			                        &scene->params,
+			                        &progress,
+			                        i,
+			                        num_bvh));
 			i++;
 		}
 	}
 
 	pool.wait_work();
-	
 	foreach(Shader *shader, scene->shaders)
 		shader->need_update_attributes = false;
 
@@ -1104,6 +1223,8 @@ void MeshManager::device_update(Device *device, DeviceScene *dscene, Scene *scen
 	bool motion_blur = false;
 #endif
 
+	/* update obejcts */
+	vector<Object *> volume_objects;
 	foreach(Object *object, scene->objects)
 		object->compute_bounds(motion_blur);
 

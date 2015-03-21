@@ -17,6 +17,7 @@
  *
  * Contributor(s): Brecht Van Lommel
  *                 Campbell Barton
+ *                 Sergey Sharybin
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -53,11 +54,11 @@ void (*MEM_set_error_callback)(void (*func)(const char *)) = MEM_lockfree_set_er
 bool (*MEM_check_memory_integrity)(void) = MEM_lockfree_check_memory_integrity;
 void (*MEM_set_lock_callback)(void (*lock)(void), void (*unlock)(void)) = MEM_lockfree_set_lock_callback;
 void (*MEM_set_memory_debug)(void) = MEM_lockfree_set_memory_debug;
-uintptr_t (*MEM_get_memory_in_use)(void) = MEM_lockfree_get_memory_in_use;
-uintptr_t (*MEM_get_mapped_memory_in_use)(void) = MEM_lockfree_get_mapped_memory_in_use;
+size_t (*MEM_get_memory_in_use)(void) = MEM_lockfree_get_memory_in_use;
+size_t (*MEM_get_mapped_memory_in_use)(void) = MEM_lockfree_get_mapped_memory_in_use;
 unsigned int (*MEM_get_memory_blocks_in_use)(void) = MEM_lockfree_get_memory_blocks_in_use;
 void (*MEM_reset_peak_memory)(void) = MEM_lockfree_reset_peak_memory;
-uintptr_t (*MEM_get_peak_memory)(void) = MEM_lockfree_get_peak_memory;
+size_t (*MEM_get_peak_memory)(void) = MEM_lockfree_get_peak_memory;
 
 #ifndef NDEBUG
 const char *(*MEM_name_ptr)(void *vmemh) = MEM_lockfree_name_ptr;
@@ -72,6 +73,7 @@ void *aligned_malloc(size_t size, size_t alignment)
 	 * they work natively with SSE types with no further work.
 	 */
 	assert(alignment == 16);
+	(void)alignment;
 	return malloc(size);
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
 	void *result;

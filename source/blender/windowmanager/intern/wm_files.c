@@ -69,6 +69,7 @@
 #include "DNA_screen_types.h"
 #include "DNA_windowmanager_types.h"
 
+#include "BKE_appdir.h"
 #include "BKE_utildefines.h"
 #include "BKE_autoexec.h"
 #include "BKE_blender.h"
@@ -95,8 +96,6 @@
 #include "ED_screen.h"
 #include "ED_view3d.h"
 #include "ED_util.h"
-
-#include "RE_pipeline.h" /* only to report missing engine */
 
 #include "GHOST_C-api.h"
 #include "GHOST_Path-api.h"
@@ -171,6 +170,28 @@ static void wm_window_match_init(bContext *C, ListBase *wmlist)
 #endif
 }
 
+static void wm_window_substitute_old(wmWindowManager *wm, wmWindow *oldwin, wmWindow *win)
+{
+	win->ghostwin = oldwin->ghostwin;
+	win->active = oldwin->active;
+	if (win->active)
+		wm->winactive = win;
+
+	if (!G.background) /* file loading in background mode still calls this */
+		GHOST_SetWindowUserData(win->ghostwin, win);    /* pointer back */
+
+	oldwin->ghostwin = NULL;
+
+	win->eventstate = oldwin->eventstate;
+	oldwin->eventstate = NULL;
+
+	/* ensure proper screen rescaling */
+	win->sizex = oldwin->sizex;
+	win->sizey = oldwin->sizey;
+	win->posx = oldwin->posx;
+	win->posy = oldwin->posy;
+}
+
 /* match old WM with new, 4 cases:
  * 1- no current wm, no read wm: make new default
  * 2- no current wm, but read wm: that's OK, do nothing
@@ -224,6 +245,8 @@ static void wm_window_match_do(bContext *C, ListBase *oldwmlist)
 			ED_screens_initialize(G.main->wm.first);
 		}
 		else {
+			bool has_match = false;
+
 			/* what if old was 3, and loaded 1? */
 			/* this code could move to setup_appdata */
 			oldwm = oldwmlist->first;
@@ -243,33 +266,27 @@ static void wm_window_match_do(bContext *C, ListBase *oldwmlist)
 			/* ensure making new keymaps and set space types */
 			wm->initialized = 0;
 			wm->winactive = NULL;
-			
+
 			/* only first wm in list has ghostwins */
 			for (win = wm->windows.first; win; win = win->next) {
 				for (oldwin = oldwm->windows.first; oldwin; oldwin = oldwin->next) {
-					
+
 					if (oldwin->winid == win->winid) {
-						win->ghostwin = oldwin->ghostwin;
-						win->active = oldwin->active;
-						if (win->active)
-							wm->winactive = win;
+						has_match = true;
 
-						if (!G.background) /* file loading in background mode still calls this */
-							GHOST_SetWindowUserData(win->ghostwin, win);    /* pointer back */
-
-						oldwin->ghostwin = NULL;
-						
-						win->eventstate = oldwin->eventstate;
-						oldwin->eventstate = NULL;
-						
-						/* ensure proper screen rescaling */
-						win->sizex = oldwin->sizex;
-						win->sizey = oldwin->sizey;
-						win->posx = oldwin->posx;
-						win->posy = oldwin->posy;
+						wm_window_substitute_old(wm, oldwin, win);
 					}
 				}
 			}
+
+			/* make sure at least one window is kept open so we don't lose the context, check T42303 */
+			if (!has_match) {
+				oldwin = oldwm->windows.first;
+				win = wm->windows.first;
+
+				wm_window_substitute_old(wm, oldwin, win);
+			}
+
 			wm_close_and_free_all(C, oldwmlist);
 		}
 	}
@@ -301,7 +318,7 @@ static void wm_init_userdef(bContext *C, const bool from_memory)
 	}
 
 	/* update tempdir from user preferences */
-	BLI_temp_dir_init(U.tempdir);
+	BKE_tempdir_init(U.tempdir);
 
 	BKE_userdef_state();
 }
@@ -338,7 +355,7 @@ static int wm_read_exotic(Scene *UNUSED(scene), const char *name)
 		else {
 			len = gzread(gzfile, header, sizeof(header));
 			gzclose(gzfile);
-			if (len == sizeof(header) && strncmp(header, "BLENDER", 7) == 0) {
+			if (len == sizeof(header) && STREQLEN(header, "BLENDER", 7)) {
 				retval = BKE_READ_EXOTIC_OK_BLEND;
 			}
 			else {
@@ -458,6 +475,8 @@ bool WM_file_read(bContext *C, const char *filepath, ReportList *reports)
 		BPY_python_reset(C);
 #endif
 
+		WM_operatortype_last_properties_clear_all();
+
 		/* important to do before NULL'ing the context */
 		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_VERSION_UPDATE);
 		BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_LOAD_POST);
@@ -516,11 +535,13 @@ bool WM_file_read(bContext *C, const char *filepath, ReportList *reports)
 }
 
 
-/* called on startup,  (context entirely filled with NULLs) */
-/* or called for 'New File' */
-/* both startup.blend and userpref.blend are checked */
-/* the optional paramater custom_file points to an alterntive startup page */
-/* custom_file can be NULL */
+/**
+ * called on startup,  (context entirely filled with NULLs)
+ * or called for 'New File'
+ * both startup.blend and userpref.blend are checked
+ * the optional parameter custom_file points to an alternative startup page
+ * custom_file can be NULL
+ */
 int wm_homefile_read(bContext *C, ReportList *reports, bool from_memory, const char *custom_file)
 {
 	ListBase wmbase;
@@ -542,13 +563,17 @@ int wm_homefile_read(bContext *C, ReportList *reports, bool from_memory, const c
 	/* options exclude eachother */
 	BLI_assert((from_memory && custom_file) == 0);
 
+	if ((G.f & G_SCRIPT_OVERRIDE_PREF) == 0) {
+		BKE_BIT_TEST_SET(G.f, (U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0, G_SCRIPT_AUTOEXEC);
+	}
+
 	BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_LOAD_PRE);
 
 	UI_view2d_zoom_cache_reset();
 
 	G.relbase_valid = 0;
 	if (!from_memory) {
-		const char * const cfgdir = BLI_get_folder(BLENDER_USER_CONFIG, NULL);
+		const char * const cfgdir = BKE_appdir_folder_id(BLENDER_USER_CONFIG, NULL);
 		if (custom_file) {
 			BLI_strncpy(startstr, custom_file, FILE_MAX);
 
@@ -594,7 +619,7 @@ int wm_homefile_read(bContext *C, ReportList *reports, bool from_memory, const c
 		if (BLI_listbase_is_empty(&wmbase)) {
 			wm_clear_default_size(C);
 		}
-		BLI_temp_dir_init(U.tempdir);
+		BKE_tempdir_init(U.tempdir);
 
 #ifdef WITH_PYTHON_SECURITY
 		/* use alternative setting for security nuts
@@ -649,6 +674,8 @@ int wm_homefile_read(bContext *C, ReportList *reports, bool from_memory, const c
 		BPY_python_reset(C);
 	}
 #endif
+
+	WM_operatortype_last_properties_clear_all();
 
 	/* important to do before NULL'ing the context */
 	BLI_callback_exec(CTX_data_main(C), NULL, BLI_CB_EVT_VERSION_UPDATE);
@@ -705,7 +732,7 @@ void wm_read_history(void)
 	struct RecentFile *recent;
 	const char *line;
 	int num;
-	const char * const cfgdir = BLI_get_folder(BLENDER_USER_CONFIG, NULL);
+	const char * const cfgdir = BKE_appdir_folder_id(BLENDER_USER_CONFIG, NULL);
 
 	if (!cfgdir) return;
 
@@ -742,7 +769,7 @@ static void write_history(void)
 		return;
 	
 	/* will be NULL in background mode */
-	user_config_dir = BLI_get_folder_create(BLENDER_USER_CONFIG, NULL);
+	user_config_dir = BKE_appdir_folder_id_create(BLENDER_USER_CONFIG, NULL);
 	if (!user_config_dir)
 		return;
 
@@ -819,11 +846,11 @@ static ImBuf *blend_file_thumb(Scene *scene, bScreen *screen, int **thumb_pt)
 	if (scene->camera) {
 		ibuf = ED_view3d_draw_offscreen_imbuf_simple(scene, scene->camera,
 		                                             BLEN_THUMB_SIZE * 2, BLEN_THUMB_SIZE * 2,
-		                                             IB_rect, OB_SOLID, false, false, R_ADDSKY, err_out);
+		                                             IB_rect, OB_SOLID, false, false, false, R_ALPHAPREMUL, err_out);
 	}
 	else {
 		ibuf = ED_view3d_draw_offscreen_imbuf(scene, v3d, ar, BLEN_THUMB_SIZE * 2, BLEN_THUMB_SIZE * 2,
-		                                      IB_rect, false, R_ADDSKY, err_out);
+		                                      IB_rect, false, R_ALPHAPREMUL, err_out);
 	}
 
 	if (ibuf) {
@@ -993,6 +1020,8 @@ int wm_homefile_write_exec(bContext *C, wmOperator *op)
 	char filepath[FILE_MAX];
 	int fileflags;
 
+	BLI_callback_exec(G.main, NULL, BLI_CB_EVT_SAVE_PRE);
+
 	/* check current window and close it if temp */
 	if (win && win->screen->temp)
 		wm_window_close(C, wm, win);
@@ -1000,7 +1029,7 @@ int wm_homefile_write_exec(bContext *C, wmOperator *op)
 	/* update keymaps in user preferences */
 	WM_keyconfig_update(wm);
 	
-	BLI_make_file_string("/", filepath, BLI_get_folder_create(BLENDER_USER_CONFIG, NULL), BLENDER_STARTUP_FILE);
+	BLI_make_file_string("/", filepath, BKE_appdir_folder_id_create(BLENDER_USER_CONFIG, NULL), BLENDER_STARTUP_FILE);
 	printf("trying to save homefile at %s ", filepath);
 	
 	ED_editors_flush_edits(C, false);
@@ -1017,6 +1046,8 @@ int wm_homefile_write_exec(bContext *C, wmOperator *op)
 
 	G.save_over = 0;
 
+	BLI_callback_exec(G.main, NULL, BLI_CB_EVT_SAVE_POST);
+
 	return OPERATOR_FINISHED;
 }
 
@@ -1029,7 +1060,7 @@ int wm_userpref_write_exec(bContext *C, wmOperator *op)
 	/* update keymaps in user preferences */
 	WM_keyconfig_update(wm);
 	
-	BLI_make_file_string("/", filepath, BLI_get_folder_create(BLENDER_USER_CONFIG, NULL), BLENDER_USERPREF_FILE);
+	BLI_make_file_string("/", filepath, BKE_appdir_folder_id_create(BLENDER_USER_CONFIG, NULL), BLENDER_USERPREF_FILE);
 	printf("trying to save userpref at %s ", filepath);
 	
 	if (BKE_write_file_userdef(filepath, op->reports) == 0) {
@@ -1046,12 +1077,20 @@ int wm_userpref_write_exec(bContext *C, wmOperator *op)
 
 void wm_autosave_location(char *filepath)
 {
-	char pidstr[32];
+	const int pid = abs(getpid());
+	char path[1024];
 #ifdef WIN32
 	const char *savedir;
 #endif
 
-	BLI_snprintf(pidstr, sizeof(pidstr), "%d.blend", abs(getpid()));
+	if (G.main && G.relbase_valid) {
+		const char *basename = BLI_path_basename(G.main->name);
+		int len = strlen(basename) - 6;
+		BLI_snprintf(path, sizeof(path), "%.*s-%d.blend", len, basename, pid);
+	}
+	else {
+		BLI_snprintf(path, sizeof(path), "%d.blend", pid);
+	}
 
 #ifdef WIN32
 	/* XXX Need to investigate how to handle default location of '/tmp/'
@@ -1062,14 +1101,14 @@ void wm_autosave_location(char *filepath)
 	 * BLI_make_file_string will create string that has it most likely on C:\
 	 * through get_default_root().
 	 * If there is no C:\tmp autosave fails. */
-	if (!BLI_exists(BLI_temp_dir_base())) {
-		savedir = BLI_get_folder_create(BLENDER_USER_AUTOSAVE, NULL);
-		BLI_make_file_string("/", filepath, savedir, pidstr);
+	if (!BLI_exists(BKE_tempdir_base())) {
+		savedir = BKE_appdir_folder_id_create(BLENDER_USER_AUTOSAVE, NULL);
+		BLI_make_file_string("/", filepath, savedir, path);
 		return;
 	}
 #endif
 
-	BLI_make_file_string("/", filepath, BLI_temp_dir_base(), pidstr);
+	BLI_make_file_string("/", filepath, BKE_tempdir_base(), path);
 }
 
 void WM_autosave_init(wmWindowManager *wm)
@@ -1133,7 +1172,7 @@ void wm_autosave_delete(void)
 
 	if (BLI_exists(filename)) {
 		char str[FILE_MAX];
-		BLI_make_file_string("/", str, BLI_temp_dir_base(), BLENDER_QUIT_FILE);
+		BLI_make_file_string("/", str, BKE_tempdir_base(), BLENDER_QUIT_FILE);
 
 		/* if global undo; remove tempsave, otherwise rename */
 		if (U.uiflag & USER_GLOBALUNDO) BLI_delete(filename, false, false);

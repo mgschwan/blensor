@@ -59,6 +59,7 @@
 #include "BKE_anim.h"  /* for duplis */
 #include "BKE_context.h"
 #include "BKE_editmesh.h"
+#include "BKE_sequencer.h"
 #include "BKE_main.h"
 #include "BKE_tracking.h"
 
@@ -341,22 +342,15 @@ void applyProject(TransInfo *t)
 					if (t->tsnap.align && (t->flag & T_OBJECT)) {
 						/* handle alignment as well */
 						const float *original_normal;
-						float axis[3];
 						float mat[3][3];
-						float angle;
 						float totmat[3][3], smat[3][3];
-						float eul[3], fmat[3][3], quat[4];
+						float eul[3], fmat[3][3];
 						float obmat[3][3];
 
 						/* In pose mode, we want to align normals with Y axis of bones... */
 						original_normal = td->axismtx[2];
 
-						cross_v3_v3v3(axis, original_normal, no);
-						angle = saacos(dot_v3v3(original_normal, no));
-
-						axis_angle_to_quat(quat, axis, angle);
-
-						quat_to_mat3(mat, quat);
+						rotation_between_vecs_to_mat3(mat, original_normal, no);
 
 						mul_m3_m3m3(totmat, mat, td->mtx);
 						mul_m3_m3m3(smat, td->smtx, totmat);
@@ -582,6 +576,10 @@ static void initSnappingMode(TransInfo *t)
 			/* Grid if snap is not possible */
 			t->tsnap.mode = SCE_SNAP_MODE_INCREMENT;
 		}
+	}
+	else if (t->spacetype == SPACE_SEQ) {
+		/* We do our own snapping currently, so nothing here */
+		t->tsnap.mode = SCE_SNAP_MODE_GRID;  /* Dummy, should we rather add a NOP mode? */
 	}
 	else {
 		/* Always grid outside of 3D view */
@@ -872,9 +870,9 @@ static float RotationBetween(TransInfo *t, const float p1[3], const float p2[3])
 		cross_v3_v3v3(tmp, start, end);
 		
 		if (dot_v3v3(tmp, axis) < 0.0f)
-			angle = -acos(dot_v3v3(start, end));
+			angle = -acosf(dot_v3v3(start, end));
 		else
-			angle = acos(dot_v3v3(start, end));
+			angle = acosf(dot_v3v3(start, end));
 	}
 	else {
 		float mtx[3][3];
@@ -884,7 +882,7 @@ static float RotationBetween(TransInfo *t, const float p1[3], const float p2[3])
 		mul_m3_v3(mtx, end);
 		mul_m3_v3(mtx, start);
 		
-		angle = atan2(start[1], start[0]) - atan2(end[1], end[0]);
+		angle = atan2f(start[1], start[0]) - atan2f(end[1], end[0]);
 	}
 	
 	if (angle > (float)M_PI) {
@@ -1543,8 +1541,7 @@ static bool snapDerivedMesh(short snap_mode, ARegion *ar, Object *ob, DerivedMes
 		float ray_start_local[3], ray_normal_local[3], local_scale, len_diff = TRANSFORM_DIST_MAX_RAY;
 
 		invert_m4_m4(imat, obmat);
-		copy_m3_m4(timat, imat);
-		transpose_m3(timat);
+		transpose_m3_m4(timat, imat);
 
 		copy_v3_v3(ray_start_local, ray_start);
 		copy_v3_v3(ray_normal_local, ray_normal);
@@ -1956,21 +1953,32 @@ static bool snapObjectsRay(Scene *scene, short snap_mode, Base *base_act, View3D
 		     (ELEM(mode, SNAP_ALL, SNAP_NOT_OBEDIT) && base != base_act)))
 		{
 			Object *ob = base->object;
-			
+			Object *ob_snap = ob;
+			bool use_obedit = false;
+
+			/* for linked objects, use the same object but a different matrix */
+			if (obedit && ob->data == obedit->data) {
+				use_obedit = true;
+				ob_snap = obedit;
+			}
+
 			if (ob->transflag & OB_DUPLI) {
 				DupliObject *dupli_ob;
 				ListBase *lb = object_duplilist(G.main->eval_ctx, scene, ob);
 				
 				for (dupli_ob = lb->first; dupli_ob; dupli_ob = dupli_ob->next) {
-					retval |= snapObject(scene, snap_mode, ar, dupli_ob->ob, dupli_ob->mat, false,
+					bool use_obedit_dupli = (obedit && dupli_ob->ob->data == obedit->data);
+					Object *dupli_snap = (use_obedit_dupli) ? obedit : dupli_ob->ob;
+
+					retval |= snapObject(scene, snap_mode, ar, dupli_snap, dupli_ob->mat, use_obedit_dupli,
 					                     r_ob, r_obmat,
 					                     ray_start, ray_normal, ray_origin, mval, r_loc, r_no, r_dist_px, r_ray_dist);
 				}
 				
 				free_object_duplilist(lb);
 			}
-			
-			retval |= snapObject(scene, snap_mode, ar, ob, ob->obmat, false,
+
+			retval |= snapObject(scene, snap_mode, ar, ob_snap, ob->obmat, use_obedit,
 			                     r_ob, r_obmat,
 			                     ray_start, ray_normal, ray_origin, mval, r_loc, r_no, r_dist_px, r_ray_dist);
 		}
@@ -2036,10 +2044,10 @@ bool snapObjectsRayEx(Scene *scene, Base *base_act, View3D *v3d, ARegion *ar, Ob
 /******************** PEELING *********************************/
 
 
-static int cmpPeel(void *arg1, void *arg2)
+static int cmpPeel(const void *arg1, const void *arg2)
 {
-	DepthPeel *p1 = arg1;
-	DepthPeel *p2 = arg2;
+	const DepthPeel *p1 = arg1;
+	const DepthPeel *p2 = arg2;
 	int val = 0;
 	
 	if (p1->depth < p2->depth) {
@@ -2101,8 +2109,7 @@ static bool peelDerivedMesh(Object *ob, DerivedMesh *dm, float obmat[4][4],
 
 		invert_m4_m4(imat, obmat);
 
-		copy_m3_m4(timat, imat);
-		transpose_m3(timat);
+		transpose_m3_m4(timat, imat);
 		
 		copy_v3_v3(ray_start_local, ray_start);
 		copy_v3_v3(ray_normal_local, ray_normal);
@@ -2265,7 +2272,7 @@ static bool peelObjects(Scene *scene, View3D *v3d, ARegion *ar, Object *obedit,
 		}
 	}
 	
-	BLI_sortlist(depth_peels, cmpPeel);
+	BLI_listbase_sort(depth_peels, cmpPeel);
 	removeDoublesPeel(depth_peels);
 	
 	return retval;
@@ -2396,7 +2403,7 @@ bool snapNodesContext(bContext *C, const int mval[2], float *r_dist_px, float r_
 
 /*================================================================*/
 
-static void applyGridIncrement(TransInfo *t, float *val, int max_index, float fac[3], GearsType action);
+static void applyGridIncrement(TransInfo *t, float *val, int max_index, const float fac[3], GearsType action);
 
 
 void snapGridIncrementAction(TransInfo *t, float *val, GearsType action)
@@ -2428,8 +2435,29 @@ void snapGridIncrement(TransInfo *t, float *val)
 	snapGridIncrementAction(t, val, action);
 }
 
+void snapSequenceBounds(TransInfo *t, const int mval[2])
+{
+	float xmouse, ymouse;
+	int frame;
+	int mframe;
+	TransSeq *ts = t->customData;
+	/* reuse increment, strictly speaking could be another snap mode, but leave as is */
+	if (!(t->modifiers & MOD_SNAP_INVERT))
+		return;
 
-static void applyGridIncrement(TransInfo *t, float *val, int max_index, float fac[3], GearsType action)
+	/* convert to frame range */
+	UI_view2d_region_to_view(&t->ar->v2d, mval[0], mval[1], &xmouse, &ymouse);
+	mframe = iroundf(xmouse);
+	/* now find the closest sequence */
+	frame = BKE_sequencer_find_next_prev_edit(t->scene, mframe, SEQ_SIDE_BOTH, true, false, true);
+
+	if (!ts->snap_left)
+		frame = frame - (ts->max - ts->min);
+
+	t->values[0] = frame - ts->min;
+}
+
+static void applyGridIncrement(TransInfo *t, float *val, int max_index, const float fac[3], GearsType action)
 {
 	int i;
 	float asp[3] = {1.0f, 1.0f, 1.0f}; // TODO: Remove hard coded limit here (3)
@@ -2455,8 +2483,21 @@ static void applyGridIncrement(TransInfo *t, float *val, int max_index, float fa
 			ED_space_image_get_uv_aspect(t->sa->spacedata.first, asp, asp + 1);
 		}
 	}
+	else if ((t->spacetype == SPACE_IPO) && (t->mode == TFM_TRANSLATION)) {
+		View2D *v2d = &t->ar->v2d;
+		View2DGrid *grid;
+		SpaceIpo *sipo = t->sa->spacedata.first;
+		int unity = V2D_UNIT_VALUES;
+		int unitx = (sipo->flag & SIPO_DRAWTIME) ? V2D_UNIT_SECONDS : V2D_UNIT_FRAMESCALE;
+
+		/* grid */
+		grid = UI_view2d_grid_calc(t->scene, v2d, unitx, V2D_GRID_NOCLAMP, unity, V2D_GRID_NOCLAMP, t->ar->winx, t->ar->winy);
+
+		UI_view2d_grid_size(grid, &asp[0], &asp[1]);
+		UI_view2d_grid_free(grid);
+	}
 
 	for (i = 0; i <= max_index; i++) {
-		val[i] = fac[action] * asp[i] * (float)floor(val[i] / (fac[action] * asp[i]) + 0.5f);
+		val[i] = fac[action] * asp[i] * floorf(val[i] / (fac[action] * asp[i]) + 0.5f);
 	}
 }

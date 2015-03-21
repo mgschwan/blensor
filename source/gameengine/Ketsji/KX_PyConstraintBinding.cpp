@@ -56,38 +56,95 @@
 // if there is a better way (without global), please do so!
 static PHY_IPhysicsEnvironment* g_CurrentActivePhysicsEnvironment = NULL;
 
-static char PhysicsConstraints_module_documentation[] =
-"This is the Python API for the Physics Constraints";
 
+PyDoc_STRVAR(PhysicsConstraints_module_documentation,
+"This is the Python API for the Physics Constraints"
+);
 
-static char gPySetGravity__doc__[] = "setGravity(float x,float y,float z)";
-static char gPySetDebugMode__doc__[] = "setDebugMode(int mode)";
+PyDoc_STRVAR(gPySetGravity__doc__,
+"setGravity(float x,float y,float z)\n"
+""
+);
+PyDoc_STRVAR(gPySetDebugMode__doc__,
+"setDebugMode(int mode)\n"
+""
+);
 
-static char gPySetNumIterations__doc__[] = "setNumIterations(int numiter) This sets the number of iterations for an iterative constraint solver";
-static char gPySetNumTimeSubSteps__doc__[] = "setNumTimeSubSteps(int numsubstep) This sets the number of substeps for each physics proceed. Tradeoff quality for performance.";
+PyDoc_STRVAR(gPySetNumIterations__doc__,
+"setNumIterations(int numiter)\n"
+"This sets the number of iterations for an iterative constraint solver"
+);
+PyDoc_STRVAR(gPySetNumTimeSubSteps__doc__,
+"setNumTimeSubSteps(int numsubstep)\n"
+"This sets the number of substeps for each physics proceed. Tradeoff quality for performance."
+);
 
+PyDoc_STRVAR(gPySetDeactivationTime__doc__,
+"setDeactivationTime(float time)\n"
+"This sets the time after which a resting rigidbody gets deactived"
+);
+PyDoc_STRVAR(gPySetDeactivationLinearTreshold__doc__,
+"setDeactivationLinearTreshold(float linearTreshold)\n"
+""
+);
+PyDoc_STRVAR(gPySetDeactivationAngularTreshold__doc__,
+"setDeactivationAngularTreshold(float angularTreshold)\n"
+""
+);
+PyDoc_STRVAR(gPySetContactBreakingTreshold__doc__,
+"setContactBreakingTreshold(float breakingTreshold)\n"
+"Reasonable default is 0.02 (if units are meters)"
+);
 
-static char gPySetDeactivationTime__doc__[] = "setDeactivationTime(float time) This sets the time after which a resting rigidbody gets deactived";
-static char gPySetDeactivationLinearTreshold__doc__[] = "setDeactivationLinearTreshold(float linearTreshold)";
-static char gPySetDeactivationAngularTreshold__doc__[] = "setDeactivationAngularTreshold(float angularTreshold)";
-static char gPySetContactBreakingTreshold__doc__[] = "setContactBreakingTreshold(float breakingTreshold) Reasonable default is 0.02 (if units are meters)";
+PyDoc_STRVAR(gPySetCcdMode__doc__,
+"setCcdMode(int ccdMode)\n"
+"Very experimental, not recommended"
+);
+PyDoc_STRVAR(gPySetSorConstant__doc__,
+"setSorConstant(float sor)\n"
+"Very experimental, not recommended"
+);
+PyDoc_STRVAR(gPySetSolverTau__doc__,
+"setTau(float tau)\n"
+"Very experimental, not recommended"
+);
+PyDoc_STRVAR(gPySetSolverDamping__doc__,
+"setDamping(float damping)\n"
+"Very experimental, not recommended"
+);
+PyDoc_STRVAR(gPySetLinearAirDamping__doc__,
+"setLinearAirDamping(float damping)\n"
+"Very experimental, not recommended"
+);
+PyDoc_STRVAR(gPySetUseEpa__doc__,
+"setUseEpa(int epa)\n"
+"Very experimental, not recommended"
+);
+PyDoc_STRVAR(gPySetSolverType__doc__,
+"setSolverType(int solverType)\n"
+"Very experimental, not recommended"
+);
 
-static char gPySetCcdMode__doc__[] = "setCcdMode(int ccdMode) Very experimental, not recommended";
-static char gPySetSorConstant__doc__[] = "setSorConstant(float sor) Very experimental, not recommended";
-static char gPySetSolverTau__doc__[] = "setTau(float tau) Very experimental, not recommended";
-static char gPySetSolverDamping__doc__[] = "setDamping(float damping) Very experimental, not recommended";
-static char gPySetLinearAirDamping__doc__[] = "setLinearAirDamping(float damping) Very experimental, not recommended";
-static char gPySetUseEpa__doc__[] = "setUseEpa(int epa) Very experimental, not recommended";
-static char gPySetSolverType__doc__[] = "setSolverType(int solverType) Very experimental, not recommended";
-
-
-static char gPyCreateConstraint__doc__[] = "createConstraint(ob1,ob2,float restLength,float restitution,float damping)";
-static char gPyGetVehicleConstraint__doc__[] = "getVehicleConstraint(int constraintId)";
-static char gPyGetCharacter__doc__[] = "getCharacter(KX_GameObject obj)";
-static char gPyRemoveConstraint__doc__[] = "removeConstraint(int constraintId)";
-static char gPyGetAppliedImpulse__doc__[] = "getAppliedImpulse(int constraintId)";
-
-
+PyDoc_STRVAR(gPyCreateConstraint__doc__,
+"createConstraint(ob1,ob2,float restLength,float restitution,float damping)\n"
+""
+);
+PyDoc_STRVAR(gPyGetVehicleConstraint__doc__,
+"getVehicleConstraint(int constraintId)\n"
+""
+);
+PyDoc_STRVAR(gPyGetCharacter__doc__,
+"getCharacter(KX_GameObject obj)\n"
+""
+);
+PyDoc_STRVAR(gPyRemoveConstraint__doc__,
+"removeConstraint(int constraintId)\n"
+""
+);
+PyDoc_STRVAR(gPyGetAppliedImpulse__doc__,
+"getAppliedImpulse(int constraintId)\n"
+""
+);
 
 
 
@@ -438,11 +495,7 @@ static PyObject *gPyCreateConstraint(PyObject *self,
                                      PyObject *kwds)
 {
 	/* FIXME - physicsid is a long being cast to a pointer, should at least use PyCapsule */
-#if defined(_WIN64)
-	__int64 physicsid=0,physicsid2 = 0;
-#else
-	long physicsid=0,physicsid2 = 0;
-#endif
+	unsigned long long physicsid = 0, physicsid2 = 0;
 	int constrainttype=0, extrainfo=0;
 	int len = PyTuple_Size(args);
 	int success = 1;
@@ -451,51 +504,28 @@ static PyObject *gPyCreateConstraint(PyObject *self,
 	float pivotX=1,pivotY=1,pivotZ=1,axisX=0,axisY=0,axisZ=1;
 	if (len == 3)
 	{
-#if defined(_WIN64)
-		success = PyArg_ParseTuple(args,"LLi",&physicsid,&physicsid2,&constrainttype);
-#else
-		success = PyArg_ParseTuple(args,"lli",&physicsid,&physicsid2,&constrainttype);
-#endif
+		success = PyArg_ParseTuple(args, "KKi", &physicsid, &physicsid2, &constrainttype);
 	}
 	else if (len == 6)
 	{
-#if defined(_WIN64)
-		success = PyArg_ParseTuple(args,"LLifff",&physicsid,&physicsid2,&constrainttype,
-		                           &pivotX,&pivotY,&pivotZ);
-#else
-		success = PyArg_ParseTuple(args,"llifff",&physicsid,&physicsid2,&constrainttype,
-		                           &pivotX,&pivotY,&pivotZ);
-#endif
+		success = PyArg_ParseTuple(args, "KKifff", &physicsid, &physicsid2, &constrainttype,
+		                           &pivotX, &pivotY, &pivotZ);
 	}
 	else if (len == 9)
 	{
-#if defined(_WIN64)
-		success = PyArg_ParseTuple(args,"LLiffffff",&physicsid,&physicsid2,&constrainttype,
-		                           &pivotX,&pivotY,&pivotZ,&axisX,&axisY,&axisZ);
-#else
-		success = PyArg_ParseTuple(args,"lliffffff",&physicsid,&physicsid2,&constrainttype,
-		                           &pivotX,&pivotY,&pivotZ,&axisX,&axisY,&axisZ);
-#endif
+		success = PyArg_ParseTuple(args, "KKiffffff", &physicsid, &physicsid2, &constrainttype,
+		                           &pivotX, &pivotY, &pivotZ, &axisX, &axisY, &axisZ);
 	}
 	else if (len == 10)
 	{
-#if defined(_WIN64)
-		success = PyArg_ParseTuple(args,"LLiffffffi",&physicsid,&physicsid2,&constrainttype,
-		                           &pivotX,&pivotY,&pivotZ,&axisX,&axisY,&axisZ,&flag);
-#else
-		success = PyArg_ParseTuple(args,"lliffffffi",&physicsid,&physicsid2,&constrainttype,
-		                           &pivotX,&pivotY,&pivotZ,&axisX,&axisY,&axisZ,&flag);
-#endif
+		success = PyArg_ParseTuple(args, "KKiffffffi", &physicsid, &physicsid2, &constrainttype,
+		                           &pivotX, &pivotY, &pivotZ, &axisX, &axisY, &axisZ, &flag);
 	}
 
 	/* XXX extrainfo seems to be nothing implemented. right now it works as a pivot with [X,0,0] */
 	else if (len == 4)
 	{
-#if defined(_WIN64)
-		success = PyArg_ParseTuple(args,"LLii",&physicsid,&physicsid2,&constrainttype,&extrainfo);
-#else
-		success = PyArg_ParseTuple(args,"llii",&physicsid,&physicsid2,&constrainttype,&extrainfo);
-#endif
+		success = PyArg_ParseTuple(args,"KKii", &physicsid, &physicsid2, &constrainttype, &extrainfo);
 		pivotX=extrainfo;
 	}
 
@@ -508,31 +538,24 @@ static PyObject *gPyCreateConstraint(PyObject *self,
 			PHY_IPhysicsController* physctrl2 = (PHY_IPhysicsController*) physicsid2;
 			if (physctrl) //TODO:check for existence of this pointer!
 			{
-				PHY_ConstraintType ct = (PHY_ConstraintType) constrainttype;
 				int constraintid =0;
 
-				if (ct == PHY_GENERIC_6DOF_CONSTRAINT)
-				{
-					//convert from euler angle into axis
-					float radsPerDeg = 6.283185307179586232f / 360.f;
+				//convert from euler angle into axis
+				float radsPerDeg = 6.283185307179586232f / 360.f;
 
-					//we need to pass a full constraint frame, not just axis
-					//localConstraintFrameBasis
-					MT_Matrix3x3 localCFrame(MT_Vector3(radsPerDeg*axisX,radsPerDeg*axisY,radsPerDeg*axisZ));
-					MT_Vector3 axis0 = localCFrame.getColumn(0);
-					MT_Vector3 axis1 = localCFrame.getColumn(1);
-					MT_Vector3 axis2 = localCFrame.getColumn(2);
+				//we need to pass a full constraint frame, not just axis
+				//localConstraintFrameBasis
+				MT_Matrix3x3 localCFrame(MT_Vector3(radsPerDeg*axisX,radsPerDeg*axisY,radsPerDeg*axisZ));
+				MT_Vector3 axis0 = localCFrame.getColumn(0);
+				MT_Vector3 axis1 = localCFrame.getColumn(1);
+				MT_Vector3 axis2 = localCFrame.getColumn(2);
 
-					constraintid = PHY_GetActiveEnvironment()->CreateConstraint(physctrl,physctrl2,(enum PHY_ConstraintType)constrainttype,
-					                                                            pivotX,pivotY,pivotZ,
-					                                                            (float)axis0.x(),(float)axis0.y(),(float)axis0.z(),
-					                                                            (float)axis1.x(),(float)axis1.y(),(float)axis1.z(),
-					                                                            (float)axis2.x(),(float)axis2.y(),(float)axis2.z(),flag);
-				}
-				else {
-					constraintid = PHY_GetActiveEnvironment()->CreateConstraint(physctrl,physctrl2,(enum PHY_ConstraintType)constrainttype,pivotX,pivotY,pivotZ,axisX,axisY,axisZ,0);
-				}
-				
+				constraintid = PHY_GetActiveEnvironment()->CreateConstraint(physctrl,physctrl2,(enum PHY_ConstraintType)constrainttype,
+				                                                            pivotX,pivotY,pivotZ,
+				                                                            (float)axis0.x(),(float)axis0.y(),(float)axis0.z(),
+				                                                            (float)axis1.x(),(float)axis1.y(),(float)axis1.z(),
+				                                                            (float)axis2.x(),(float)axis2.y(),(float)axis2.z(),flag);
+
 				KX_ConstraintWrapper* wrap = new KX_ConstraintWrapper((enum PHY_ConstraintType)constrainttype,constraintid,PHY_GetActiveEnvironment());
 
 				return wrap->NewProxy(true);
@@ -677,7 +700,7 @@ static struct PyMethodDef physicsconstraints_methods[] = {
 };
 
 static struct PyModuleDef PhysicsConstraints_module_def = {
-	{}, /* m_base */
+	PyModuleDef_HEAD_INIT,
 	"PhysicsConstraints",  /* m_name */
 	PhysicsConstraints_module_documentation,  /* m_doc */
 	0,  /* m_size */
@@ -688,7 +711,7 @@ static struct PyModuleDef PhysicsConstraints_module_def = {
 	0,  /* m_free */
 };
 
-PyObject *initPythonConstraintBinding()
+PyMODINIT_FUNC initConstraintPythonBinding()
 {
 
 	PyObject *ErrorObject;
@@ -696,19 +719,8 @@ PyObject *initPythonConstraintBinding()
 	PyObject *d;
 	PyObject *item;
 
-	/* Use existing module where possible
-	 * be careful not to init any runtime vars after this */
-	m = PyImport_ImportModule( "PhysicsConstraints" );
-	if (m) {
-		Py_DECREF(m);
-		return m;
-	}
-	else {
-		PyErr_Clear();
-		
-		m = PyModule_Create(&PhysicsConstraints_module_def);
-		PyDict_SetItemString(PySys_GetObject("modules"), PhysicsConstraints_module_def.m_name, m);
-	}
+	m = PyModule_Create(&PhysicsConstraints_module_def);
+	PyDict_SetItemString(PySys_GetObject("modules"), PhysicsConstraints_module_def.m_name, m);
 
 	// Add some symbolic constants to the module
 	d = PyModule_GetDict(m);
@@ -747,7 +759,7 @@ PyObject *initPythonConstraintBinding()
 		Py_FatalError("can't initialize module PhysicsConstraints");
 	}
 
-	return d;
+	return m;
 }
 
 #if 0

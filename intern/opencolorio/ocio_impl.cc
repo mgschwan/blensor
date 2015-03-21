@@ -29,13 +29,6 @@
 #include <sstream>
 #include <string.h>
 
-#ifdef __APPLE__
-#include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
-#else
-#include <GL/glew.h>
-#endif
-
 #include <OpenColorIO/OpenColorIO.h>
 
 using namespace OCIO_NAMESPACE;
@@ -277,6 +270,16 @@ const char *OCIOImpl::configGetDisplayColorSpaceName(OCIO_ConstConfigRcPtr *conf
 	}
 
 	return NULL;
+}
+
+void OCIOImpl::configGetDefaultLumaCoefs(OCIO_ConstConfigRcPtr *config, float *rgb)
+{
+	try {
+		(*(ConstConfigRcPtr *) config)->getDefaultLumaCoefs(rgb);
+	}
+	catch (Exception &exception) {
+		OCIO_reportException(exception);
+	}
 }
 
 int OCIOImpl::configGetNumLooks(OCIO_ConstConfigRcPtr *config)

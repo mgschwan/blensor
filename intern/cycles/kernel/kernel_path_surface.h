@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
@@ -38,6 +38,9 @@ ccl_device void kernel_branched_path_surface_connect_light(KernelGlobals *kg, RN
 	if(sample_all_lights) {
 		/* lamp sampling */
 		for(int i = 0; i < kernel_data.integrator.num_all_lights; i++) {
+			if(UNLIKELY(light_select_reached_max_bounces(kg, i, state->bounce)))
+			   continue;
+
 			int num_samples = ceil_to_int(num_samples_adjust*light_select_num_samples(kg, i));
 			float num_samples_inv = num_samples_adjust/(num_samples*kernel_data.integrator.num_all_lights);
 			RNG lamp_rng = cmj_hash(*rng, i);
@@ -82,7 +85,7 @@ ccl_device void kernel_branched_path_surface_connect_light(KernelGlobals *kg, RN
 					light_t = 0.5f*light_t;
 
 				LightSample ls;
-				light_sample(kg, light_t, light_u, light_v, sd->time, sd->P, &ls);
+				light_sample(kg, light_t, light_u, light_v, sd->time, sd->P, state->bounce, &ls);
 
 				if(direct_emission(kg, sd, &ls, &light_ray, &L_light, &is_lamp, state->bounce, state->transparent_bounce)) {
 					/* trace shadow ray */
@@ -103,7 +106,7 @@ ccl_device void kernel_branched_path_surface_connect_light(KernelGlobals *kg, RN
 		path_state_rng_2D(kg, rng, state, PRNG_LIGHT_U, &light_u, &light_v);
 
 		LightSample ls;
-		light_sample(kg, light_t, light_u, light_v, sd->time, sd->P, &ls);
+		light_sample(kg, light_t, light_u, light_v, sd->time, sd->P, state->bounce, &ls);
 
 		/* sample random light */
 		if(direct_emission(kg, sd, &ls, &light_ray, &L_light, &is_lamp, state->bounce, state->transparent_bounce)) {
@@ -200,7 +203,7 @@ ccl_device_inline void kernel_path_surface_connect_light(KernelGlobals *kg, RNG 
 #endif
 
 	LightSample ls;
-	light_sample(kg, light_t, light_u, light_v, sd->time, sd->P, &ls);
+	light_sample(kg, light_t, light_u, light_v, sd->time, sd->P, state->bounce, &ls);
 
 	if(direct_emission(kg, sd, &ls, &light_ray, &L_light, &is_lamp, state->bounce, state->transparent_bounce)) {
 		/* trace shadow ray */
@@ -277,6 +280,11 @@ ccl_device_inline bool kernel_path_surface_bounce(KernelGlobals *kg, RNG *rng,
 
 		/* update path state, count as transparent */
 		path_state_next(kg, state, LABEL_TRANSPARENT);
+
+		if(state->bounce == 0)
+			ray->t -= sd->ray_length; /* clipping works through transparent */
+		else
+			ray->t = FLT_MAX;
 
 		/* setup ray position, direction stays unchanged */
 		ray->P = ray_offset(sd->P, -sd->Ng);

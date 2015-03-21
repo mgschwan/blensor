@@ -1322,7 +1322,7 @@ static float check_zone(WipeZone *wipezone, int x, int y, Sequence *seq, float f
 			if (angle == 0.0f) {
 				b1 = posy;
 				b2 = y;
-				hyp = fabs(y - posy);
+				hyp = fabsf(y - posy);
 			}
 			else {
 				b1 = posy - (-angle) * posx;
@@ -1745,8 +1745,8 @@ static void transform_image(int x, int y, ImBuf *ibuf1, ImBuf *out,  float scale
 	yo = y;
 	
 	/* Rotate */
-	s = sin(rotate);
-	c = cos(rotate);
+	s = sinf(rotate);
+	c = cosf(rotate);
 
 	for (yi = 0; yi < yo; yi++) {
 		for (xi = 0; xi < xo; xi++) {
@@ -2670,8 +2670,8 @@ static void do_gaussian_blur_effect_byte(Sequence *seq,
 {
 #define INDEX(_x, _y) (((_y) * (x) + (_x)) * 4)
 	GaussianBlurVars *data = seq->effectdata;
-	const int size_x = (int) (data->size_x + 0.5f),
-	          size_y = (int) (data->size_y + 0.5f);
+	const int size_x = (int) (data->size_x + 0.5f);
+	const int size_y = (int) (data->size_y + 0.5f);
 	int i, j;
 
 	/* Make gaussian weight tabke. */
@@ -2754,8 +2754,8 @@ static void do_gaussian_blur_effect_float(Sequence *seq,
 {
 #define INDEX(_x, _y) (((_y) * (x) + (_x)) * 4)
 	GaussianBlurVars *data = seq->effectdata;
-	const int size_x = (int) (data->size_x + 0.5f),
-	          size_y = (int) (data->size_y + 0.5f);
+	const int size_x = (int) (data->size_x + 0.5f);
+	const int size_y = (int) (data->size_y + 0.5f);
 	int i, j;
 
 	/* Make gaussian weight tabke. */

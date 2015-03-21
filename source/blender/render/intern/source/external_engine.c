@@ -46,9 +46,6 @@
 #include "BKE_report.h"
 #include "BKE_scene.h"
 
-#include "IMB_imbuf.h"
-#include "IMB_imbuf_types.h"
-
 #include "RNA_access.h"
 
 #ifdef WITH_PYTHON
@@ -358,28 +355,51 @@ void RE_engine_report(RenderEngine *engine, int type, const char *msg)
 		BKE_report(engine->reports, type, msg);
 }
 
-void RE_engine_get_current_tiles(Render *re, int *total_tiles_r, rcti **tiles_r)
+void RE_engine_set_error_message(RenderEngine *engine, const char *msg)
 {
+	Render *re = engine->re;
+	if (re != NULL) {
+		RenderResult *rr = RE_AcquireResultRead(re);
+		if (rr->error != NULL) {
+			MEM_freeN(rr->error);
+		}
+		rr->error = BLI_strdup(msg);
+		RE_ReleaseResult(re);
+	}
+}
+
+rcti* RE_engine_get_current_tiles(Render *re, int *total_tiles_r, bool *r_needs_free)
+{
+	static rcti tiles_static[BLENDER_MAX_THREADS];
+	const int allocation_step = BLENDER_MAX_THREADS;
 	RenderPart *pa;
 	int total_tiles = 0;
-	rcti *tiles = NULL;
-	int allocation_size = 0, allocation_step = BLENDER_MAX_THREADS;
+	rcti *tiles = tiles_static;
+	int allocation_size = BLENDER_MAX_THREADS;
+
+	BLI_rw_mutex_lock(&re->partsmutex, THREAD_LOCK_READ);
+
+	*r_needs_free = false;
 
 	if (re->engine && (re->engine->flag & RE_ENGINE_HIGHLIGHT_TILES) == 0) {
 		*total_tiles_r = 0;
-		*tiles_r = NULL;
-		return;
+		BLI_rw_mutex_unlock(&re->partsmutex);
+		return NULL;
 	}
 
 	for (pa = re->parts.first; pa; pa = pa->next) {
 		if (pa->status == PART_STATUS_IN_PROGRESS) {
 			if (total_tiles >= allocation_size) {
-				if (tiles == NULL)
+				/* Just in case we're using crazy network rendering with more
+				 * slaves as BLENDER_MAX_THREADS.
+				 */
+				if (tiles == tiles_static)
 					tiles = MEM_mallocN(allocation_step * sizeof(rcti), "current engine tiles");
 				else
 					tiles = MEM_reallocN(tiles, (total_tiles + allocation_step) * sizeof(rcti));
 
 				allocation_size += allocation_step;
+				*r_needs_free = true;
 			}
 
 			tiles[total_tiles] = pa->disprect;
@@ -394,9 +414,9 @@ void RE_engine_get_current_tiles(Render *re, int *total_tiles_r, rcti **tiles_r)
 			total_tiles++;
 		}
 	}
-
+	BLI_rw_mutex_unlock(&re->partsmutex);
 	*total_tiles_r = total_tiles;
-	*tiles_r = tiles;
+	return tiles;
 }
 
 RenderData *RE_engine_get_render_data(Render *re)
@@ -430,7 +450,7 @@ bool RE_bake_engine(
 {
 	RenderEngineType *type = RE_engines_find(re->r.engine);
 	RenderEngine *engine;
-	int persistent_data = re->r.mode & R_PERSISTENT_DATA;
+	bool persistent_data = (re->r.mode & R_PERSISTENT_DATA) != 0;
 
 	/* set render info */
 	re->i.cfra = re->scene->r.cfra;
@@ -468,6 +488,8 @@ bool RE_bake_engine(
 	engine->tile_y = 0;
 	engine->flag &= ~RE_ENGINE_RENDERING;
 
+	BLI_rw_mutex_lock(&re->partsmutex, THREAD_LOCK_WRITE);
+
 	/* re->engine becomes zero if user changed active render engine during render */
 	if (!persistent_data || !re->engine) {
 		RE_engine_free(engine);
@@ -475,6 +497,7 @@ bool RE_bake_engine(
 	}
 
 	RE_parts_free(re);
+	BLI_rw_mutex_unlock(&re->partsmutex);
 
 	if (BKE_reports_contain(re->reports, RPT_ERROR))
 		G.is_break = true;
@@ -522,7 +545,7 @@ int RE_engine_render(Render *re, int do_all)
 {
 	RenderEngineType *type = RE_engines_find(re->r.engine);
 	RenderEngine *engine;
-	int persistent_data = re->r.mode & R_PERSISTENT_DATA;
+	bool persistent_data = (re->r.mode & R_PERSISTENT_DATA) != 0;
 
 	/* verify if we can render */
 	if (!type->render)
@@ -653,6 +676,8 @@ int RE_engine_render(Render *re, int do_all)
 
 	render_result_free_list(&engine->fullresult, engine->fullresult.first);
 
+	BLI_rw_mutex_lock(&re->partsmutex, THREAD_LOCK_WRITE);
+
 	/* re->engine becomes zero if user changed active render engine during render */
 	if (!persistent_data || !re->engine) {
 		RE_engine_free(engine);
@@ -672,6 +697,7 @@ int RE_engine_render(Render *re, int do_all)
 	}
 
 	RE_parts_free(re);
+	BLI_rw_mutex_unlock(&re->partsmutex);
 
 	if (BKE_reports_contain(re->reports, RPT_ERROR))
 		G.is_break = true;

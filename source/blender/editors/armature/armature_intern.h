@@ -72,6 +72,7 @@ void ARMATURE_OT_shortest_path_pick(struct wmOperatorType *ot);
 
 void ARMATURE_OT_delete(struct wmOperatorType *ot);
 void ARMATURE_OT_duplicate(struct wmOperatorType *ot);
+void ARMATURE_OT_symmetrize(struct wmOperatorType *ot);
 void ARMATURE_OT_extrude(struct wmOperatorType *ot);
 void ARMATURE_OT_hide(struct wmOperatorType *ot);
 void ARMATURE_OT_reveal(struct wmOperatorType *ot);
@@ -215,7 +216,7 @@ void POSE_OT_propagate(struct wmOperatorType *ot);
  */
 
 EditBone *make_boneList(struct ListBase *edbo, struct ListBase *bones, struct EditBone *parent, struct Bone *actBone);
-void BIF_sk_selectStroke(struct bContext *C, const int mval[2], short extend);
+bool BIF_sk_selectStroke(struct bContext *C, const int mval[2], const bool extend);
 
 /* duplicate method */
 void preEditBoneDuplicate(struct ListBase *editbones);
@@ -237,7 +238,7 @@ void armature_select_mirrored(struct bArmature *arm);
 void armature_tag_unselect(struct bArmature *arm);
 
 void *get_nearest_bone(struct bContext *C, short findunsel, int x, int y);
-void *get_bone_from_selectbuffer(struct Scene *scene, struct Base *base, unsigned int *buffer, short hits, short findunsel);
+void *get_bone_from_selectbuffer(struct Scene *scene, struct Base *base, unsigned int *buffer, short hits, short findunsel, bool do_nearest);
 
 int bone_looper(struct Object *ob, struct Bone *bone, void *data,
                 int (*bone_func)(struct Object *, struct Bone *, void *));

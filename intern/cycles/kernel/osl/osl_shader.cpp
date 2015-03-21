@@ -11,8 +11,10 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
+
+#include <OSL/oslexec.h>
 
 #include "kernel_compat_cpu.h"
 #include "kernel_montecarlo.h"
@@ -34,7 +36,6 @@
 
 #include "attribute.h"
 
-#include <OSL/oslexec.h>
 
 CCL_NAMESPACE_BEGIN
 

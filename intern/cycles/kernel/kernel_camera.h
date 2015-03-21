@@ -11,10 +11,21 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License
+ * limitations under the License.
  */
 
 CCL_NAMESPACE_BEGIN
+
+/* Workaround for explicit conversion from constant to private memory
+ * pointer when using OpenCL.
+ *
+ * TODO(sergey): Find a real solution for this.
+ */
+#ifdef __KERNEL_OPENCL__
+#  define __motion_as_decoupled_const_ptr(motion) ((motion))
+#else
+#  define __motion_as_decoupled_const_ptr(motion) ((const DecompMotionTransform*)(motion))
+#endif
 
 /* Perspective Camera */
 
@@ -68,8 +79,11 @@ ccl_device void camera_sample_perspective(KernelGlobals *kg, float raster_x, flo
 	Transform cameratoworld = kernel_data.cam.cameratoworld;
 
 #ifdef __CAMERA_MOTION__
-	if(kernel_data.cam.have_motion)
-		transform_motion_interpolate(&cameratoworld, (const DecompMotionTransform*)&kernel_data.cam.motion, ray->time);
+	if(kernel_data.cam.have_motion) {
+		transform_motion_interpolate(&cameratoworld,
+		                             __motion_as_decoupled_const_ptr(&kernel_data.cam.motion),
+		                             ray->time);
+	}
 #endif
 
 	ray->P = transform_point(&cameratoworld, ray->P);
@@ -88,8 +102,10 @@ ccl_device void camera_sample_perspective(KernelGlobals *kg, float raster_x, flo
 
 #ifdef __CAMERA_CLIPPING__
 	/* clipping */
-	ray->P += kernel_data.cam.nearclip*ray->D;
-	ray->t = kernel_data.cam.cliplength;
+	float3 Pclip = normalize(Pcamera);
+	float z_inv = 1.0f / Pclip.z;
+	ray->P += kernel_data.cam.nearclip*ray->D * z_inv;
+	ray->t = kernel_data.cam.cliplength * z_inv;
 #else
 	ray->t = FLT_MAX;
 #endif
@@ -127,8 +143,11 @@ ccl_device void camera_sample_orthographic(KernelGlobals *kg, float raster_x, fl
 	Transform cameratoworld = kernel_data.cam.cameratoworld;
 
 #ifdef __CAMERA_MOTION__
-	if(kernel_data.cam.have_motion)
-		transform_motion_interpolate(&cameratoworld, (const DecompMotionTransform*)&kernel_data.cam.motion, ray->time);
+	if(kernel_data.cam.have_motion) {
+		transform_motion_interpolate(&cameratoworld,
+		                             __motion_as_decoupled_const_ptr(&kernel_data.cam.motion),
+		                             ray->time);
+	}
 #endif
 
 	ray->P = transform_point(&cameratoworld, ray->P);
@@ -202,7 +221,9 @@ ccl_device void camera_sample_panorama(KernelGlobals *kg, float raster_x, float 
 
 #ifdef __CAMERA_MOTION__
 	if(kernel_data.cam.have_motion)
-		transform_motion_interpolate(&cameratoworld, (const DecompMotionTransform*)&kernel_data.cam.motion, ray->time);
+		transform_motion_interpolate(&cameratoworld,
+		                             __motion_as_decoupled_const_ptr(&kernel_data.cam.motion),
+		                             ray->time);
 #endif
 
 	ray->P = transform_point(&cameratoworld, ray->P);
@@ -307,6 +328,8 @@ ccl_device_inline float3 camera_world_to_ndc(KernelGlobals *kg, ShaderData *sd, 
 		return make_float3(uv.x, uv.y, 0.0f);
 	}
 }
+
+#undef __motion_as_decoupled_const_ptr
 
 CCL_NAMESPACE_END
 

@@ -37,7 +37,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_blenlib.h"
 #include "BLI_math.h"
 #include "BLI_kdopbvh.h"
 #include "BLI_utildefines.h"
@@ -328,7 +327,7 @@ bool do_colorband(const ColorBand *coba, float in, float out[4])
 	int ipotype;
 	int a;
 	
-	if (coba == NULL || coba->tot == 0) return 0;
+	if (coba == NULL || coba->tot == 0) return false;
 	
 	cbd1 = coba->data;
 
@@ -350,7 +349,11 @@ bool do_colorband(const ColorBand *coba, float in, float out[4])
 		CBData left, right;
 
 		/* we're looking for first pos > in */
-		for (a = 0; a < coba->tot; a++, cbd1++) if (cbd1->pos > in) break;
+		for (a = 0; a < coba->tot; a++, cbd1++) {
+			if (cbd1->pos > in) {
+				break;
+			}
+		}
 
 		if (a == coba->tot) {
 			cbd2 = cbd1 - 1;
@@ -464,7 +467,7 @@ bool do_colorband(const ColorBand *coba, float in, float out[4])
 			}
 		}
 	}
-	return 1;   /* OK */
+	return true;   /* OK */
 }
 
 void colorband_table_RGBA(ColorBand *coba, float **array, int *size)
@@ -746,6 +749,7 @@ void default_mtex(MTex *mtex)
 	mtex->lengthfac = 1.0f;
 	mtex->clumpfac = 1.0f;
 	mtex->kinkfac = 1.0f;
+	mtex->kinkampfac = 1.0f;
 	mtex->roughfac = 1.0f;
 	mtex->padensfac = 1.0f;
 	mtex->lifefac = 1.0f;
@@ -756,6 +760,8 @@ void default_mtex(MTex *mtex)
 	mtex->fieldfac = 1.0f;
 	mtex->normapspace = MTEX_NSPACE_TANGENT;
 	mtex->brush_map_mode = MTEX_MAP_MODE_TILED;
+	mtex->random_angle = 2.0f * (float)M_PI;
+	mtex->brush_angle_mode = 0;
 }
 
 
@@ -826,8 +832,12 @@ Tex *BKE_texture_copy(Tex *tex)
 	Tex *texn;
 	
 	texn = BKE_libblock_copy(&tex->id);
-	if (texn->type == TEX_IMAGE) id_us_plus((ID *)texn->ima);
-	else texn->ima = NULL;
+	if (BKE_texture_is_image_user(tex)) {
+		id_us_plus((ID *)texn->ima);
+	}
+	else {
+		texn->ima = NULL;
+	}
 	
 	if (texn->coba) texn->coba = MEM_dupallocN(texn->coba);
 	if (texn->env) texn->env = BKE_copy_envmap(texn->env);
@@ -843,6 +853,10 @@ Tex *BKE_texture_copy(Tex *tex)
 		texn->nodetree = ntreeCopyTree(tex->nodetree);
 	}
 	
+	if (tex->id.lib) {
+		BKE_id_lib_local_paths(G.main, tex->id.lib, &texn->id);
+	}
+
 	return texn;
 }
 
@@ -1305,7 +1319,7 @@ bool has_current_material_texture(Material *ma)
 		node = nodeGetActiveID(ma->nodetree, ID_TE);
 
 		if (node)
-			return 1;
+			return true;
 	}
 
 	return (ma != NULL);
@@ -1594,27 +1608,52 @@ void BKE_free_oceantex(struct OceanTex *ot)
 	MEM_freeN(ot);
 }
 
+/**
+ * \returns true if this texture can use its #Texture.ima (even if its NULL)
+ */
+bool BKE_texture_is_image_user(const struct Tex *tex)
+{
+	switch (tex->type) {
+		case TEX_IMAGE:
+		{
+			return true;
+		}
+		case TEX_ENVMAP:
+		{
+			if (tex->env) {
+				if (tex->env->stype == ENV_LOAD) {
+					return true;
+				}
+			}
+			break;
+		}
+	}
+
+	return false;
+}
 
 /* ------------------------------------------------------------------------- */
 bool BKE_texture_dependsOnTime(const struct Tex *texture)
 {
 	if (texture->ima && BKE_image_is_animated(texture->ima)) {
-		return 1;
+		return true;
 	}
 	else if (texture->adt) {
 		/* assume anything in adt means the texture is animated */
-		return 1;
+		return true;
 	}
 	else if (texture->type == TEX_NOISE) {
 		/* noise always varies with time */
-		return 1;
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 /* ------------------------------------------------------------------------- */
 
-void BKE_texture_get_value(Scene *scene, Tex *texture, float *tex_co, TexResult *texres, bool use_color_management)
+void BKE_texture_get_value(
+        const Scene *scene, Tex *texture,
+        float *tex_co, TexResult *texres, bool use_color_management)
 {
 	int result_type;
 	bool do_color_manage = false;
@@ -1624,7 +1663,7 @@ void BKE_texture_get_value(Scene *scene, Tex *texture, float *tex_co, TexResult 
 	}
 
 	/* no node textures for now */
-	result_type = multitex_ext_safe(texture, tex_co, texres, NULL, do_color_manage);
+	result_type = multitex_ext_safe(texture, tex_co, texres, NULL, do_color_manage, false);
 
 	/* if the texture gave an RGB value, we assume it didn't give a valid
 	 * intensity, since this is in the context of modifiers don't use perceptual color conversion.

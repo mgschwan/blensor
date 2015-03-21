@@ -51,12 +51,12 @@ __all__ = (
     )
 
 from _bpy import (
-    escape_identifier,
-    register_class,
-    unregister_class,
-    blend_paths,
-    resource_path,
-    )
+        escape_identifier,
+        register_class,
+        unregister_class,
+        blend_paths,
+        resource_path,
+        )
 from _bpy import script_paths as _bpy_script_paths
 from _bpy import user_resource as _user_resource
 from _bpy import _utils_units as units
@@ -185,7 +185,7 @@ def load_scripts(reload_scripts=False, refresh_scripts=False):
                 traceback.print_exc()
 
     def test_reload(mod):
-        import imp
+        import importlib
         # reloading this causes internal errors
         # because the classes from this module are stored internally
         # possibly to refresh internal references too but for now, best not to.
@@ -193,7 +193,7 @@ def load_scripts(reload_scripts=False, refresh_scripts=False):
             return mod
 
         try:
-            return imp.reload(mod)
+            return importlib.reload(mod)
         except:
             import traceback
             traceback.print_exc()
@@ -244,7 +244,14 @@ def load_scripts(reload_scripts=False, refresh_scripts=False):
                         test_register(mod)
 
     # deal with addons separately
-    _addon_utils.reset_all(reload_scripts)
+    _initialize = getattr(_addon_utils, "_initialize", None)
+    if _initialize is not None:
+        # first time, use fast-path
+        _initialize()
+        del _addon_utils._initialize
+    else:
+        _addon_utils.reset_all(reload_scripts)
+    del _initialize
 
     # run the active integration preset
     filepath = preset_find(_user_preferences.inputs.active_keyconfig,

@@ -46,6 +46,7 @@
 
 #include "BKE_cloth.h"
 #include "BKE_cdderivedmesh.h"
+#include "BKE_effect.h"
 #include "BKE_global.h"
 #include "BKE_key.h"
 #include "BKE_modifier.h"
@@ -117,7 +118,9 @@ static void deformVerts(ModifierData *md, Object *ob, DerivedMesh *derivedData, 
 	dm->release(dm);
 }
 
-static void updateDepgraph(ModifierData *md, DagForest *forest, Scene *scene, Object *ob, DagNode *obNode)
+static void updateDepgraph(ModifierData *md, DagForest *forest,
+                           struct Main *UNUSED(bmain),
+                           Scene *scene, Object *ob, DagNode *obNode)
 {
 	ClothModifierData *clmd = (ClothModifierData *) md;
 	
@@ -175,6 +178,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	tclmd->point_cache = BKE_ptcache_add(&tclmd->ptcaches);
 	tclmd->point_cache->step = 1;
 	tclmd->clothObject = NULL;
+	tclmd->hairdata = NULL;
+	tclmd->solver_result = NULL;
 }
 
 static bool dependsOnTime(ModifierData *UNUSED(md))
@@ -202,6 +207,12 @@ static void freeData(ModifierData *md)
 		
 		BKE_ptcache_free_list(&clmd->ptcaches);
 		clmd->point_cache = NULL;
+		
+		if (clmd->hairdata)
+			MEM_freeN(clmd->hairdata);
+		
+		if (clmd->solver_result)
+			MEM_freeN(clmd->solver_result);
 	}
 }
 
