@@ -54,6 +54,7 @@
 #include "../generic/python_utildefines.h"
 
 /* external util modules */
+#include "../blensor/blensor.h"
 #include "../generic/idprop_py_api.h"
 
 #ifdef WITH_FREESTYLE

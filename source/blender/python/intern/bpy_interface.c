@@ -77,6 +77,7 @@
 #include "../generic/py_capi_utils.h"
 
 /* inittab initialization functions */
+#include "../blensor/blensor.h"
 #include "../generic/bgl.h"
 #include "../generic/blf_py_api.h"
 #include "../generic/idprop_py_api.h"
@@ -236,6 +237,7 @@ static struct _inittab bpy_internal_modules[] = {
 #endif
 	{"gpu", GPU_initPython},
 	{"idprop", BPyInit_idprop},
+	{"blensor_intern",  PyInit_blensor},
 	{NULL, NULL}
 };
 

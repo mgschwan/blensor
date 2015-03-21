@@ -579,6 +579,7 @@ macro(SETUP_BLENDER_SORTED_LIBS)
 		extern_sdlew
 
 		bf_intern_glew_mx
+		bf_python_blensor
 	)
 
 	if(WITH_COMPOSITOR)
