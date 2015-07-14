@@ -118,7 +118,11 @@ def calculateRay(laserAngle, mirrorAngle, laserMirrorDistance):
     return [reusable_ray, reflectionPoint, math.pi/4-incomingAngle]
 
 
-def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0.5, max_distance = 90, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = -35, end_angle = 50, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, simulation_time = 0.0,laser_mirror_distance=0.05, world_transformation=Matrix()):
+def scan_advanced(scanner_object, rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0.5, max_distance = 90, evd_file=None,noise_mu=0.0, noise_sigma=0.03, start_angle = -35, end_angle = 50, evd_last_scan=True, add_blender_mesh = False, add_noisy_blender_mesh = False, simulation_time = 0.0,laser_mirror_distance=0.05, world_transformation=Matrix()):
+    inv_scan_x = scanner_object.inv_scan_x
+    inv_scan_y = scanner_object.inv_scan_y
+    inv_scan_z = scanner_object.inv_scan_z   
+
     start_time = time.time()
 
     current_time = simulation_time
@@ -152,7 +156,7 @@ def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0
             rays.extend([ray[0],ray[1],ray[2]])
 
 
-    returns = blensor.scan_interface.scan_rays(rays, max_distance)
+    returns = blensor.scan_interface.scan_rays(rays, max_distance, inv_scan_x = inv_scan_x, inv_scan_y = inv_scan_y, inv_scan_z = inv_scan_z)
 
     verts = []
     verts_noise = []
@@ -200,7 +204,7 @@ def scan_advanced(rotation_speed = 25.0, simulation_fps=24, angle_resolution = 0
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time = (1.0/24.0), rotation_speed = 25.0, fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, angle_resolution = 0.5, max_distance = 90.0, noise_mu = 0.0, noise_sigma= 0.02, laser_mirror_distance = 0.05, start_angle=-35.0, end_angle=50.0, last_frame = True, world_transformation=Matrix()):
+def scan_range(scanner_object, frame_start, frame_end, filename="/tmp/landscape.evd", frame_time = (1.0/24.0), rotation_speed = 25.0, fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, angle_resolution = 0.5, max_distance = 90.0, noise_mu = 0.0, noise_sigma= 0.02, laser_mirror_distance = 0.05, start_angle=-35.0, end_angle=50.0, last_frame = True, world_transformation=Matrix()):
 
     fps = rotation_speed # The Ibeo Module does not yet support an update
                          # rate different to the simulation speed
@@ -213,7 +217,21 @@ def scan_range(frame_start, frame_end, filename="/tmp/landscape.evd", frame_time
 
                 bpy.context.scene.frame_current = i
 
-                ok,start_radians,scan_time = scan_advanced(angle_resolution = angle_resolution, start_angle = start_angle, end_angle=end_angle, evd_file = filename, evd_last_scan=False,add_blender_mesh=add_blender_mesh, add_noisy_blender_mesh=add_noisy_blender_mesh, simulation_time = float(i)*frame_time, max_distance=max_distance, noise_mu = noise_mu, noise_sigma=noise_sigma, laser_mirror_distance=laser_mirror_distance, world_transformation=world_transformation)
+                ok,start_radians,scan_time = scan_advanced(\
+                                            scanner_object= scanner_object, \
+                                            angle_resolution = angle_resolution,\
+                                            start_angle = start_angle, \
+                                            end_angle=end_angle, \
+                                            evd_file = filename, \
+                                            evd_last_scan=False,\
+                                            add_blender_mesh=add_blender_mesh, \
+                                            add_noisy_blender_mesh=add_noisy_blender_mesh,\
+                                            simulation_time = float(i)*frame_time,\
+                                            max_distance=max_distance, \
+                                            noise_mu = noise_mu, \
+                                            noise_sigma=noise_sigma, \
+                                            laser_mirror_distance=laser_mirror_distance, \
+                                            world_transformation=world_transformation)
 
                 if not ok:
                     break

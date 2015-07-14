@@ -153,6 +153,10 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
     if scanner_object.velodyne_model == BLENSOR_VELODYNE_HDL32E:
       scanner_angles = laser_angles_32
     
+    inv_scan_x = scanner_object.inv_scan_x
+    inv_scan_y = scanner_object.inv_scan_y
+    inv_scan_z = scanner_object.inv_scan_z    
+
     start_time = time.time()
 
     current_time = simulation_time
@@ -185,7 +189,7 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
             ray.rotate( rotator )
             rays.extend([ray[0],ray[1],ray[2]])
 
-    returns = blensor.scan_interface.scan_rays(rays, max_distance)
+    returns = blensor.scan_interface.scan_rays(rays, max_distance, inv_scan_x = inv_scan_x, inv_scan_y = inv_scan_y, inv_scan_z = inv_scan_z)
     verts = []
     verts_noise = []
 

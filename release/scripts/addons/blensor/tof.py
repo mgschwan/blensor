@@ -67,11 +67,15 @@ def addProperties(cType):
 
 
 
-def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False, 
+def scan_advanced(scanner_object, max_distance = 10.0, evd_file=None, add_blender_mesh = False, 
                   add_noisy_blender_mesh = False, tof_res_x = 176, tof_res_y = 144, 
                   lens_angle_w=43.6, lens_angle_h=34.6, flength = 10.0,  evd_last_scan=True, 
                   noise_mu=0.0, noise_sigma=0.004, timestamp = 0.0, backfolding=False,
                   world_transformation=Matrix()):
+
+    inv_scan_x = scanner_object.inv_scan_x
+    inv_scan_y = scanner_object.inv_scan_y
+    inv_scan_z = scanner_object.inv_scan_z  
 
     start_time = time.time()
 
@@ -127,7 +131,7 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
             ray_info.append([yaw, pitch, timestamp])
             
 
-    returns = blensor.scan_interface.scan_rays(rays, max_distance)
+    returns = blensor.scan_interface.scan_rays(rays, max_distance, inv_scan_x = inv_scan_x, inv_scan_y = inv_scan_y, inv_scan_z = inv_scan_z)
 
     verts = []
     verts_noise = []
@@ -183,7 +187,7 @@ def scan_advanced(max_distance = 10.0, evd_file=None, add_blender_mesh = False,
 
 # This Function creates scans over a range of frames
 
-def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144, lens_angle_w=43.6, lens_angle_h=34.6, flength = 10.0, world_transformation=Matrix()):
+def scan_range(scanne_object, frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.0/24.0), fps = 24, add_blender_mesh=False, add_noisy_blender_mesh=False, max_distance = 20.0, last_frame = True, noise_mu = 0.0, noise_sigma = 0.0, backfolding=False, tof_res_x = 176, tof_res_y=144, lens_angle_w=43.6, lens_angle_h=34.6, flength = 10.0, world_transformation=Matrix()):
 
 
 
@@ -196,7 +200,8 @@ def scan_range(frame_start, frame_end, filename="/tmp/tof.evd", frame_time = (1.
 
             bpy.context.scene.frame_current = i
 
-            ok,start_radians,scan_time = scan_advanced(evd_file = filename , 
+            ok,start_radians,scan_time = scan_advanced(scanner_object=scanner_object,
+                    evd_file = filename , 
                     add_blender_mesh=add_blender_mesh, 
                     add_noisy_blender_mesh=add_noisy_blender_mesh, 
                     max_distance=max_distance,

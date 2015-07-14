@@ -18,6 +18,9 @@ import time
 import random
 import bpy
 from mathutils import Vector, Euler,geometry, Matrix
+from blensor import advanced_error_model
+from blensor import gaussian_error_model
+
 
 from blensor import evd
 from blensor import mesh_utils
@@ -27,7 +30,7 @@ import blensor
 parameters = {"angle_resolution":0.25, "rotation_speed":40,"max_dist":30,"noise_mu":0.0,"noise_sigma":0.03,
               "start_angle":-135.0,"end_angle":135.0,
               "reflectivity_distance":50,"reflectivity_limit":0.1,"reflectivity_slope":0.005333333,
-              "laser_angles":"0.0"}
+              "laser_angles":"0.0", "advanced_error_model":""}
 
 def addProperties(cType):
     global parameters
@@ -43,6 +46,7 @@ def addProperties(cType):
     cType.generic_ref_limit = bpy.props.FloatProperty( name = "Reflectivity Limit", default = parameters["reflectivity_limit"], description = "Minimum reflectivity for objects at the reflectivity distance" )
     cType.generic_ref_slope = bpy.props.FloatProperty( name = "Reflectivity Slope", default = parameters["reflectivity_slope"], description = "Slope of the reflectivity limit curve" )
     cType.generic_laser_angles = bpy.props.StringProperty( name = "Laser angles", default = parameters["laser_angles"], description = "Comma separated list of vertical angles" )
+    cType.generic_advanced_error_model = bpy.props.StringProperty( name = "Advanced Error Model", default = parameters["advanced_error_model"], description = "List of (distance, mu, sigma) tuples, leave empty if standard error model is used" )
 
 
 
@@ -94,7 +98,18 @@ def scan_advanced(scanner_object, simulation_fps=24, evd_file=None,noise_mu=0.0,
     noise_sigma=scanner_object.generic_noise_sigma
     laser_angles = scanner_object.generic_laser_angles
     rotation_speed = scanner_object.generic_rotation_speed
-    
+
+    inv_scan_x = scanner_object.inv_scan_x
+    inv_scan_y = scanner_object.inv_scan_y
+    inv_scan_z = scanner_object.inv_scan_z    
+
+    """Standard Error model is a Gaussian Distribution"""
+    model = gaussian_error_model.GaussianErrorModel(noise_mu, noise_sigma)
+    if scanner_object.generic_advanced_error_model:
+      """Advanced error model is a list of distance,mu,sigma tuples"""
+      model = advanced_error_model.AdvancedErrorModel(scanner_object.generic_advanced_error_model)
+
+
     start_time = time.time()
 
     current_time = simulation_time
@@ -140,7 +155,7 @@ def scan_advanced(scanner_object, simulation_fps=24, evd_file=None,noise_mu=0.0,
             rays.extend([ray[0],ray[1],ray[2]])
 
 
-    returns = blensor.scan_interface.scan_rays(rays, max_distance)
+    returns = blensor.scan_interface.scan_rays(rays, max_distance, inv_scan_x = inv_scan_x, inv_scan_y = inv_scan_y, inv_scan_z = inv_scan_z)
 
     verts = []
     verts_noise = []
@@ -156,8 +171,8 @@ def scan_advanced(scanner_object, simulation_fps=24, evd_file=None,noise_mu=0.0,
         v = [returns[i][1],returns[i][2],returns[i][3]]
         verts.append ( vt )
 
-        distance_noise =  laser_noise[idx%len(laser_noise)] + random.gauss(noise_mu, noise_sigma) 
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
+        distance_noise =  laser_noise[idx%len(laser_noise)] + model.drawErrorFromModel(vector_length) 
         norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
         vector_length_noise = vector_length+distance_noise
         reusable_vector.xyzw = [norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0]

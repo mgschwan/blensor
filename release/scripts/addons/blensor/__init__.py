@@ -7,6 +7,9 @@ from math import pi
 import types
 import bpy
 
+
+import blensor.gaussian_error_model
+import blensor.advanced_error_model
 import blensor.blendodyne
 import blensor.depthmap
 import blensor.tof
@@ -49,6 +52,10 @@ __all__ = [
     'mesh_utils',
     'noise'
     ]
+
+
+class UserInfoException(Exception):
+  pass
 
 
 
@@ -208,6 +215,8 @@ def generic_layout(obj, layout):
             col = row.column()
             col.prop(obj, "generic_noise_sigma")
             row = layout.row()
+            row.prop(obj, "generic_advanced_error_model")
+            row = layout.row()
             col = row.column()
             col.prop(obj, "generic_start_angle")
             col = row.column()
@@ -255,7 +264,7 @@ def dispatch_scan(obj, filename=None, output_labels=True):
                 obj.ref_limit = obj.ibeo_ref_limit
                 obj.ref_slope = obj.ibeo_ref_slope
 
-                blensor.ibeo.scan_advanced( angle_resolution=obj.ibeo_angle_resolution, 
+                blensor.ibeo.scan_advanced(scanner_object = obj, angle_resolution=obj.ibeo_angle_resolution, 
                   max_distance=obj.ibeo_max_dist, start_angle=obj.ibeo_start_angle, 
                   end_angle=obj.ibeo_end_angle, noise_mu = obj.ibeo_noise_mu, 
                   noise_sigma=obj.ibeo_noise_sigma, add_blender_mesh=obj.add_scan_mesh, 
@@ -280,7 +289,7 @@ def dispatch_scan(obj, filename=None, output_labels=True):
                   world_transformation=world_transformation)
 
             elif obj.scan_type == "tof":
-                blensor.tof.scan_advanced( max_distance=obj.tof_max_dist,
+                blensor.tof.scan_advanced( scanner_object = obj, max_distance=obj.tof_max_dist,
                   add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh, 
                   evd_file=filename, noise_mu=obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,
                   backfolding=obj.tof_backfolding, tof_res_x = obj.tof_xres, 
@@ -322,7 +331,7 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                   add_blender_mesh=obj.add_scan_mesh, add_noisy_blender_mesh=obj.add_noise_scan_mesh)
 
             elif obj.scan_type == "ibeo":
-                blensor.ibeo.scan_range( angle_resolution=obj.ibeo_angle_resolution,
+                blensor.ibeo.scan_range(scanner_object = obj, angle_resolution=obj.ibeo_angle_resolution,
                   max_distance=obj.ibeo_max_dist, noise_mu = obj.ibeo_noise_mu, 
                   noise_sigma=obj.ibeo_noise_sigma,  rotation_speed = obj.ibeo_rotation_speed, 
                   frame_start = frame, frame_end=frame+1, filename=filename, last_frame=last_frame,
@@ -343,7 +352,7 @@ def dispatch_scan_range(obj,filename,frame=0,last_frame=True, time_per_frame=1.0
                   add_blender_mesh=obj.add_scan_mesh)
 
             elif obj.scan_type == "tof":
-                blensor.tof.scan_range( max_distance=obj.tof_max_dist, 
+                blensor.tof.scan_range( scanner_object = obj, max_distance=obj.tof_max_dist, 
                   noise_mu = obj.tof_noise_mu, noise_sigma=obj.tof_noise_sigma,                
                   frame_start = frame, frame_end=frame+1, filename=filename, 
                   last_frame=last_frame,frame_time = time_per_frame,
@@ -425,6 +434,13 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             row.prop(obj, "ref_enabled")
             row = layout.row()
             col = row.column()
+            col.prop(obj, "inv_scan_x")
+            col = row.column()
+            col.prop(obj, "inv_scan_y")
+            col = row.column()
+            col.prop(obj, "inv_scan_z")
+            row = layout.row()
+            col = row.column()
             col.prop(obj, "scan_frame_start")
             col = row.column()
             col.prop(obj, "scan_frame_end")
@@ -455,13 +471,11 @@ class OBJECT_OT_scan(bpy.types.Operator):
     def execute(self, context):
         obj = context.object
 
-        if True:
-        #try:
+        try:
           dispatch_scan(obj, self.filepath, self.output_labels)
-
-        #except Exception as e:
-        #    print ("Scan not successful")
-        #    self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
+        except UserInfoException as e:
+            print ("Scan not successful")
+            self.report({'WARNING'}, "Scan not successful: "+str(e))
 
         return {'FINISHED'}
  
@@ -478,11 +492,11 @@ class OBJECT_OT_scan(bpy.types.Operator):
                context.window_manager.fileselect_add(self)
                return {'RUNNING_MODAL'}
             else:
-                if True:
-                #try:
+                try:
                     dispatch_scan(obj)
-                #except Exception as e:
-                #    print ("Scan not successful")
+                except UserInfoException as e:
+                    print ("Scan not successful")
+                    self.report({'WARNING'}, "Scan not successful: "+str(e))
                 #    exc_type, exc_value, exc_traceback = sys.exc_info()
                 #    traceback.print_tb(exc_traceback)
                 #    self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
@@ -552,9 +566,9 @@ class OBJECT_OT_scanrange_handler(bpy.types.Operator):
                                         last_frame=(self.properties.frame == obj.scan_frame_end),
                                         time_per_frame=1.0/(context.scene.render.fps / 
                                         context.scene.render.fps_base))
-            except:
+            except UserInfoException as e:
                 print ("Scan not successful")
-                self.report({'WARNING'}, "Range scan not successful: "+str(type(e)))
+                self.report({'WARNING'}, "Scan not successful: "+str(e))
                 return {'FINISHED'}
 
             if self.properties.frame >= obj.scan_frame_end:
@@ -814,6 +828,11 @@ def register():
 
     cType.scan_frame_start = bpy.props.IntProperty( name = "Start frame", default = 1, min = 0, description = "First frame to be scanned" )
     cType.scan_frame_end = bpy.props.IntProperty( name = "End frame", default = 250, min = 0, description = "Last frame to be scanned" )
+
+    cType.inv_scan_x = bpy.props.BoolProperty( name = "Inv X", default = False, description = "Invert the X coordinate" )
+    cType.inv_scan_y = bpy.props.BoolProperty( name = "Inv Y", default = False, description = "Invert the X coordinate" )
+    cType.inv_scan_z = bpy.props.BoolProperty( name = "Inv Z", default = False, description = "Invert the X coordinate" )
+
 
 
 

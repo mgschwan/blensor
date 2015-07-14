@@ -22,7 +22,7 @@ SIZEOF_FLOAT = 4
     keep_render_setup is passed to the blender internal code to keep the renderer
     setup for additional calls
 """
-def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do_shading=True, return_all = False):
+def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do_shading=True, return_all = False, inv_scan_x = False, inv_scan_y = False, inv_scan_z = False):
 
     elementsPerRay = 3
     if ray_origins == True:
@@ -46,7 +46,11 @@ def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do
       blensor_intern.scan(numberOfRays, max_distance, elementsPerRay, keep_render_setup, do_shading,                 
                 "%016X"%(ctypes.addressof(rays_buffer)), "%016X"%(ctypes.addressof(returns_buffer)))
       
+      x_multiplier = -1.0 if inv_scan_x else 1.0
+      y_multiplier = -1.0 if inv_scan_y else 1.0
+      z_multiplier = -1.0 if inv_scan_z else 1.0
 
+      print ("X: %f Y: %f Z: %f"%(x_multiplier,y_multiplier,z_multiplier))
 
       for idx in range(numberOfRays):
           if return_all or (returns_buffer[idx*ELEMENTS_PER_RETURN] < max_distance and returns_buffer[idx*ELEMENTS_PER_RETURN]>0.0 ):
@@ -56,7 +60,7 @@ def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do
               ret[3] = float('NaN')
               
               if returns_buffer[idx*ELEMENTS_PER_RETURN] > 0.0:
-                #The ray may have been reflecten and refracted. But the laser
+                #The ray may have been reflected and refracted. But the laser
                 #does not know that so we need to calculate the point which
                 #is the measured distance away from the sensor but without
                 #beeing reflected/refracted. We use the original ray direction
@@ -65,9 +69,9 @@ def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do
                        float(rays[idx*elementsPerRay+2])]
                 veclen = math.sqrt(vec[0]**2+vec[1]**2+vec[2]**2)
                 raydistance = float(returns_buffer[idx*ELEMENTS_PER_RETURN])
-                vec[0] = raydistance * vec[0]/veclen
-                vec[1] = raydistance * vec[1]/veclen
-                vec[2] = raydistance * vec[2]/veclen
+                vec[0] = x_multiplier * raydistance * vec[0]/veclen
+                vec[1] = y_multiplier * raydistance * vec[1]/veclen
+                vec[2] = z_multiplier * raydistance * vec[2]/veclen
 
 
                 ret[1] = vec[0]

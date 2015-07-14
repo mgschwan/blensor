@@ -40,6 +40,14 @@ def scan_advanced(scanner_object, max_distance = 120, filename=None, add_blender
     world_transformation=Matrix()):
     start_time = time.time()
 
+    inv_scan_x = scanner_object.inv_scan_x
+    inv_scan_y = scanner_object.inv_scan_y
+    inv_scan_z = scanner_object.inv_scan_z    
+
+    x_multiplier = -1.0 if inv_scan_x else 1.0
+    y_multiplier = -1.0 if inv_scan_y else 1.0
+    z_multiplier = -1.0 if inv_scan_z else 1.0
+
     add_noisy_blender_mesh = scanner_object.add_noise_scan_mesh
 
     bpy.context.scene.render.resolution_percentage=100
@@ -91,7 +99,7 @@ def scan_advanced(scanner_object, max_distance = 120, filename=None, add_blender
                     reusable_vector.xyzw = [X,Y,Z,1.0]
                     vt = (world_transformation * reusable_vector).xyz
 
-                    verts.append((vt[0],vt[1],vt[2]))                
+                    verts.append((x_multiplier * vt[0], y_multiplier*vt[1], z_multiplier*vt[2]))                
 
     if filename:
         fh = open(filename, "w")

@@ -156,6 +156,14 @@ def scan_advanced(scanner_object, evd_file=None,
                   timestamp = 0.0,
                   world_transformation=Matrix()):
 
+    inv_scan_x = scanner_object.inv_scan_x
+    inv_scan_y = scanner_object.inv_scan_y
+    inv_scan_z = scanner_object.inv_scan_z 
+
+    x_multiplier = -1.0 if inv_scan_x else 1.0
+    y_multiplier = -1.0 if inv_scan_y else 1.0
+    z_multiplier = -1.0 if inv_scan_z else 1.0
+
     start_time = time.time()
 
     max_distance = scanner_object.kinect_max_dist
@@ -324,13 +332,15 @@ def scan_advanced(scanner_object, evd_file=None,
             Y_quantized = baseline.y+Z_quantized*camera_y*pixel_width/flength
             Z_quantized = -(Z_quantized+baseline.z)
             
-            v.xyz=[returns[idx][1]+baseline.x,returns[idx][2]+baseline.y,returns[idx][3]+baseline.z]
+            v.xyz=[x_multiplier*(returns[idx][1]+baseline.x),\
+                   y_multiplier*(returns[idx][2]+baseline.y),\
+                   z_multiplier*(returns[idx][3]+baseline.z)]
             vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
 
             vt = (world_transformation * v.to_4d()).xyz
             verts.append ( vt )
 
-            vn.xyz = [X_quantized,Y_quantized,Z_quantized]
+            vn.xyz = [x_multiplier*X_quantized,y_multiplier*Y_quantized,z_multiplier*Z_quantized]
             vector_length_noise = vn.magnitude
             
             #TODO@mgschwan: prevent object creation here too
