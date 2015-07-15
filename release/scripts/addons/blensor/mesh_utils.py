@@ -35,6 +35,12 @@ def add_mesh_from_points(points, name="mesh"):
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.scene.objects.link(obj)
 
+    scanner = bpy.context.object
+    if scanner.show_in_frame: 
+      blensor.show_in_frame(obj, bpy.context.scene.frame_current)
+
+
+
 """Add a mesh from points or from a flattened list and transform it according to
    world_transformation, or according to the transformation of the camera
 """
@@ -45,8 +51,11 @@ def add_mesh_from_points_tf(points, name="Scan", world_transformation = Matrix()
     mesh.update()
     mesh_object = bpy.data.objects.new("{0}.{1}".format(name,bpy.context.scene.frame_current), mesh)
     bpy.context.scene.objects.link(mesh_object)
-    blensor.show_in_frame(mesh_object, bpy.context.scene.frame_current)
-    
+
+    scanner = bpy.context.object
+    if scanner.show_in_frame: 
+      blensor.show_in_frame(mesh_object, bpy.context.scene.frame_current)
+
     if world_transformation == Matrix():
        mesh_object.matrix_world = bpy.context.object.matrix_world
 

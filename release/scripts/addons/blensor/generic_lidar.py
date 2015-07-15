@@ -136,9 +136,10 @@ def scan_advanced(scanner_object, simulation_fps=24, evd_file=None,noise_mu=0.0,
     rays = []
     ray_info = []
 
-    steps_per_rotation = 360.0/angle_resolution
-    time_per_step = (1.0 / rotation_speed) / steps_per_rotation
-    angles = end_angle-start_angle
+    #Bad code???
+    #steps_per_rotation = 360.0/angle_resolution
+    #time_per_step = (1.0 / rotation_speed) / steps_per_rotation
+    #angles = end_angle-start_angle
   
     lines = (end_angle-start_angle)/angle_resolution
     ray = Vector([0.0,0.0,0.0])
@@ -218,7 +219,7 @@ def scan_range(scanner_object, frame_start, frame_end, filename="/tmp/landscape.
     laser_angles = scanner_object.generic_laser_angles
     rotation_speed = scanner_object.generic_rotation_speed
 
-    fps = rotation_speed # The Ibeo Module does not yet support an update
+    fps = rotation_speed # Todo this module does not yet support an update
                          # rate different to the simulation speed
     start_time = time.time()
 

@@ -57,7 +57,9 @@ __all__ = [
 class UserInfoException(Exception):
   pass
 
-
+def setupActiveCamera(context, scanner):
+  if context.scene.camera != scanner:
+    raise UserInfoException("Must set active object as camera")
 
 ################ Blender Addon specific ######################
 
@@ -431,7 +433,10 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             col = row.column()            
             col.prop(obj,"local_coordinates")        
             row = layout.row()
-            row.prop(obj, "ref_enabled")
+            col = row.column()
+            col.prop(obj, "ref_enabled")
+            col = row.column()
+            col.prop(obj, "show_in_frame")
             row = layout.row()
             col = row.column()
             col.prop(obj, "inv_scan_x")
@@ -472,6 +477,7 @@ class OBJECT_OT_scan(bpy.types.Operator):
         obj = context.object
 
         try:
+          setupActiveCamera(context,obj)
           dispatch_scan(obj, self.filepath, self.output_labels)
         except UserInfoException as e:
             print ("Scan not successful")
@@ -488,15 +494,16 @@ class OBJECT_OT_scan(bpy.types.Operator):
         except:
             self.report({'WARNING'}, "Please select a valid camera")
         if is_cam:
-            if obj.save_scan:
-               context.window_manager.fileselect_add(self)
-               return {'RUNNING_MODAL'}
-            else:
-                try:
+            try:
+              setupActiveCamera(context,obj)
+              if obj.save_scan:
+                 context.window_manager.fileselect_add(self)
+                 return {'RUNNING_MODAL'}
+              else:
                     dispatch_scan(obj)
-                except UserInfoException as e:
-                    print ("Scan not successful")
-                    self.report({'WARNING'}, "Scan not successful: "+str(e))
+            except UserInfoException as e:
+               print ("Scan not successful")
+               self.report({'WARNING'}, "Scan not successful: "+str(e))
                 #    exc_type, exc_value, exc_traceback = sys.exc_info()
                 #    traceback.print_tb(exc_traceback)
                 #    self.report({'WARNING'}, "Scan not successful: "+str(type(e)))
@@ -511,10 +518,14 @@ class OBJECT_OT_scanrange(bpy.types.Operator):
 
     def execute(self, context):
         obj = context.object
+        try:
+          setupActiveCamera(context,obj)
 
-        bpy.ops.blensor.scanrange_handler(filepath=self.filepath)
+          bpy.ops.blensor.scanrange_handler(filepath=self.filepath)
+        except UserInfoException as e:
+            print ("Scan not successful")
+            self.report({'WARNING'}, "Scan not successful: "+str(e))
         return {'FINISHED'}
-
     def invoke(self,context,event):
         wm = context.window_manager
 
@@ -543,49 +554,47 @@ class OBJECT_OT_scanrange_handler(bpy.types.Operator):
 
     def modal(self, context, event):
         obj=context.object
+        try:
+          setupActiveCamera(context,obj)
 
-        if event.type in ('ESC'):
-            if self._timer is not None:
-               context.window_manager.event_timer_remove(self._timer)
-            print ("ABORT MISSION NOW !!")
-            return {'CANCELLED'}
+          if event.type in ('ESC'):
+              if self._timer is not None:
+                 context.window_manager.event_timer_remove(self._timer)
+              print ("ABORT MISSION NOW !!")
+              return {'CANCELLED'}
 
-        if event.type in ('TIMER'):
-            """We only want to create a scan if we are actually called
-               otherwise every event i.e. MOUSEMOVE will force a scan
-               and totally clog the event handling.
-            """
-            if self._timer is not None:
-               """We don not want to generate timer events while we are scanning
-               """
-               context.window_manager.event_timer_remove(self._timer)
+          if event.type in ('TIMER'):
+              """We only want to create a scan if we are actually called
+                 otherwise every event i.e. MOUSEMOVE will force a scan
+                 and totally clog the event handling.
+              """
+              if self._timer is not None:
+                 """We don not want to generate timer events while we are scanning
+                 """
+                 context.window_manager.event_timer_remove(self._timer)
+                 dispatch_scan_range(obj, self.filepath, frame=self.properties.frame, 
+                                    last_frame=(self.properties.frame == obj.scan_frame_end),
+                                    time_per_frame=1.0/(context.scene.render.fps / 
+                                    context.scene.render.fps_base))
 
+              if self.properties.frame >= obj.scan_frame_end:
+                  return {'FINISHED'}
 
-            try:
-                    dispatch_scan_range(obj, self.filepath, frame=self.properties.frame, 
-                                        last_frame=(self.properties.frame == obj.scan_frame_end),
-                                        time_per_frame=1.0/(context.scene.render.fps / 
-                                        context.scene.render.fps_base))
-            except UserInfoException as e:
-                print ("Scan not successful")
-                self.report({'WARNING'}, "Scan not successful: "+str(e))
-                return {'FINISHED'}
+              range = float(obj.scan_frame_end-obj.scan_frame_start)
+              finished = float(self.properties.frame-obj.scan_frame_start)
+              percent = 100.0
+              if range > 0:
+                  percent = 100.0 * finished/range
 
-            if self.properties.frame >= obj.scan_frame_end:
-                return {'FINISHED'}
+              """Inform the user about our progress"""
+              self.report({'INFO'}, "Scanned frame: %d ( %.2f %% )"%
+                          (self.properties.frame,percent))
 
-            range = float(obj.scan_frame_end-obj.scan_frame_start)
-            finished = float(self.properties.frame-obj.scan_frame_start)
-            percent = 100.0
-            if range > 0:
-                percent = 100.0 * finished/range
-
-            """Inform the user about our progress"""
-            self.report({'INFO'}, "Scanned frame: %d ( %.2f %% )"%
-                        (self.properties.frame,percent))
-
-            self.properties.frame += 1
-            self._timer = context.window_manager.event_timer_add(0.1, context.window)
+              self.properties.frame += 1
+              self._timer = context.window_manager.event_timer_add(0.1, context.window)
+        except UserInfoException as e:
+            print ("Scan not successful")
+            self.report({'WARNING'}, "Scan not successful: "+str(e))
 
         return {'PASS_THROUGH'}
         
@@ -839,6 +848,7 @@ def register():
     cType.scan_type = bpy.props.EnumProperty( items=laser_types, name = "Scanner type", description = "Which scanner to use" )
 
     cType.ref_enabled = bpy.props.BoolProperty( name = "Enable reflection", default = False, description = "Should the respect reflective surfaces" )
+    cType.show_in_frame = bpy.props.BoolProperty( name = "Show in frame", default = True, description = "Show the scanned result only in the frame it was scanned" )
 
     cType.ref_dist = bpy.props.FloatProperty( name = "Reflectivity Distance", default = 100.0, description = "Objects closer than reflectivity distance are independent of their reflectivity" )
     cType.ref_limit = bpy.props.FloatProperty( name = "Reflectivity Limit", default = -1.0, description = "Minimum reflectivity for objects at the reflectivity distance" )
