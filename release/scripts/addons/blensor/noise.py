@@ -59,6 +59,6 @@ class PerlinNoise(object):
         
         random.shuffle(self.P)
         
-        self.idx_ar = indices(2*ones(self.order), dtype=int8).reshape(self.order, -1).T
+        self.idx_ar = indices(int32(2*ones(self.order)), dtype=int8).reshape(self.order, -1).T
         self.drop = poly1d((-6, 15, -10, 0, 0, 1.0))
 

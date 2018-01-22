@@ -142,7 +142,8 @@ def fast_9x9_window(distances, res_x, res_y, disparity_map, noise_smooth, noise_
           if numpy.sum(valids) > numpy.sum(dot_window)/1.5:
             accu = window[4,4]
             
-            disp_data[y+4,x+4] = round((accu + noise_scale*noise_field[(x+4)/noise_smooth,(y+4)/noise_smooth])*8.0)/8.0
+            disp_data[y+4,x+4] = round((accu + noise_scale*
+                noise_field[numpy.int32((x+4)/noise_smooth),numpy.int32((y+4)/noise_smooth)])*8.0)/8.0
             #round(accu*8.0)/8.0 #Values need to be requantified
             
             interpolation_window = interpolation_map[y:y+9,x:x+9]
@@ -155,6 +156,10 @@ def scan_advanced(scanner_object, evd_file=None,
                   evd_last_scan=True, 
                   timestamp = 0.0,
                   world_transformation=Matrix()):
+
+
+    # threshold for comparing projector and camera rays
+    thresh = 0.01
 
     inv_scan_x = scanner_object.inv_scan_x
     inv_scan_y = scanner_object.inv_scan_y
@@ -244,7 +249,7 @@ def scan_advanced(scanner_object, evd_file=None,
     returns = blensor.scan_interface.scan_rays(rays, 2.0*max_distance, True,True,True,True)
 
     camera_rays = []
-    projector_ray_index = numpy.empty(len(returns), dtype=numpy.uint32)
+    projector_ray_index = -1 * numpy.ones(len(returns), dtype=numpy.uint32)
 
     kinect_image = numpy.zeros((res_x*res_y,16))
     kinect_image[:,3:11] = float('NaN')
@@ -282,7 +287,11 @@ def scan_advanced(scanner_object, evd_file=None,
         idx = camera_returns[i][-1] 
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
 
-        if abs(camera_rays[idx*3]-camera_returns[i][1]) < 0.01 and abs(camera_rays[idx*3+1]-camera_returns[i][2]) < 0.01 and  abs(camera_rays[idx*3+2]-camera_returns[i][3]) < 0.01 and abs(camera_returns[i][3]) <= max_distance and abs(camera_returns[i][3]) >= min_distance:
+        if (abs(camera_rays[idx*3]-camera_returns[i][1]) < thresh and
+            abs(camera_rays[idx*3+1]-camera_returns[i][2]) < thresh and
+            abs(camera_rays[idx*3+2]-camera_returns[i][3]) < thresh and
+            abs(camera_returns[i][3]) <= max_distance and
+            abs(camera_returns[i][3]) >= min_distance):
             """The ray hit the projected ray, so this is a valid measurement"""
             projector_point = get_uv_from_idx(projector_idx, res_x,res_y)
 
@@ -300,7 +309,8 @@ def scan_advanced(scanner_object, evd_file=None,
             camera_y_quantized = round(camera_y*8.0)/8.0 
 
             disparity_quantized = camera_x_quantized + projector_point[0]
-            all_quantized_disparities[projector_idx] = disparity_quantized
+            if projector_idx >= 0: 
+              all_quantized_disparities[projector_idx] = disparity_quantized
         
     processed_disparities = numpy.empty(res_x*res_y)
     fast_9x9_window(all_quantized_disparities, res_x, res_y, processed_disparities, noise_smooth, noise_scale)
@@ -320,13 +330,13 @@ def scan_advanced(scanner_object, evd_file=None,
         projector_idx = projector_ray_index[idx] # Get the index of the original ray
         camera_x,camera_y = get_uv_from_idx(projector_idx, res_x,res_y)
 
-        
-        
-        disparity_quantized = processed_disparities[projector_idx] 
+        if projector_idx >= 0:
+          disparity_quantized = processed_disparities[projector_idx] 
+        else:
+          disparity_quantized = INVALID_DISPARITY
         
         if disparity_quantized < INVALID_DISPARITY and disparity_quantized != 0.0:
             disparity_quantized = -disparity_quantized
-                                   
             Z_quantized = (flength*(baseline.x))/(disparity_quantized*pixel_width)
             X_quantized = baseline.x+Z_quantized*camera_x*pixel_width/flength
             Y_quantized = baseline.y+Z_quantized*camera_y*pixel_width/flength
