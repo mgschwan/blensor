@@ -147,6 +147,8 @@ def kinect_layout(obj, layout):
             col = row.column()
             col.prop(obj, "kinect_yres")
             row = layout.row()
+            row.prop(obj, "kinect_flength")
+            row = layout.row()
             row.prop(obj, "kinect_max_dist")
             row = layout.row()
             row.prop(obj, "kinect_min_dist")

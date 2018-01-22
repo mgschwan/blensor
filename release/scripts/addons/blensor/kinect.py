@@ -57,7 +57,7 @@ INVALID_DISPARITY = 99999999.9
 parameters = {"max_dist":6.0,"min_dist": 0.7, "noise_mu":0.0,"noise_sigma":0.0,  
               "xres": 640, "yres": 480, "flength": 4.73, "reflectivity_distance":0.0,
               "reflectivity_limit":0.01,"reflectivity_slope":0.16, "noise_scale": 0.25, "noise_smooth":1.5,
-              "inlier_distance": 0.05 }
+              "inlier_distance": 0.05, "vert_fov":43.1845, "horiz_fov":55.6408 }
 
 def addProperties(cType):
     global parameters
@@ -188,9 +188,14 @@ def scan_advanced(scanner_object, evd_file=None,
     if res_x < 1 or res_y < 1:
         raise ValueError("Resolution must be > 0")
 
-    pixel_width = 0.0078
-    pixel_height = 0.0078
+        
 
+
+    pixel_width = max(0.0001, (
+        math.tan((parameters["horiz_fov"]/2.0)*math.pi/180.0)*flength)/max(1.0,res_x/2.0))   #default:0.0078
+    pixel_height = max(0.0001, (
+        math.tan((parameters["vert_fov"]/2.0)*math.pi/180.0)*flength)/max(1.0,res_y/2.0))   #default:0.0078
+    print ("%f,%f"%(pixel_width,pixel_height))
     cx = float(res_x) /2.0
     cy = float(res_y) /2.0 
 
